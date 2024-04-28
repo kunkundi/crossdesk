@@ -527,11 +527,16 @@ int PeerConnection::SendVideoData(const char *data, size_t size) {
   }
 
   int ret = video_encoder_->Encode(
-      (uint8_t *)data, size, [this](char *encoded_frame, size_t size) -> int {
+      (uint8_t *)data, size,
+      [this](char *encoded_frame, size_t size,
+             VideoEncoder::VideoFrameType frame_type) -> int {
         for (auto &ice_trans : ice_transmission_list_) {
           // LOG_ERROR("H264 frame size: [{}]", size);
-          ice_trans.second->SendData(IceTransmission::DATA_TYPE::VIDEO,
-                                     encoded_frame, size);
+          // ice_trans.second->SendData(IceTransmission::DATA_TYPE::VIDEO,
+          //                            encoded_frame, size);
+          ice_trans.second->SendVideoData(
+              static_cast<IceTransmission::VideoFrameType>(frame_type),
+              encoded_frame, size);
         }
         return 0;
       });
@@ -550,8 +555,8 @@ int PeerConnection::SendAudioData(const char *data, size_t size) {
       [this](char *encoded_audio_buffer, size_t size) -> int {
         for (auto &ice_trans : ice_transmission_list_) {
           // LOG_ERROR("opus frame size: [{}]", size);
-          // ice_trans.second->SendData(IceTransmission::DATA_TYPE::AUDIO,
-          //                            encoded_audio_buffer, size);
+          ice_trans.second->SendData(IceTransmission::DATA_TYPE::AUDIO,
+                                     encoded_audio_buffer, size);
         }
         return 0;
       });

@@ -289,9 +289,10 @@ int AomAv1Encoder::Init() {
   return 0;
 }
 
-int AomAv1Encoder::Encode(
-    const uint8_t *pData, int nSize,
-    std::function<int(char *encoded_packets, size_t size)> on_encoded_image) {
+int AomAv1Encoder::Encode(const uint8_t *pData, int nSize,
+                          std::function<int(char *encoded_packets, size_t size,
+                                            VideoFrameType frame_type)>
+                              on_encoded_image) {
   if (SAVE_NV12_STREAM) {
     fwrite(pData, 1, nSize, file_nv12_);
   }
@@ -311,10 +312,13 @@ int AomAv1Encoder::Encode(
   // NV12ToYUV420PFFmpeg((unsigned char *)pData, frame_width_, frame_height_,
   //                     (unsigned char *)yuv420p_buffer);
 
+  VideoFrameType frame_type;
   if (0 == seq_++ % 300) {
     force_i_frame_flags_ = AOM_EFLAG_FORCE_KF;
+    frame_type = VideoFrameType::kVideoFrameKey;
   } else {
     force_i_frame_flags_ = 0;
+    frame_type = VideoFrameType::kVideoFrameDelta;
   }
 
   // Encode a frame. The presentation timestamp `pts` should not use real
@@ -341,7 +345,8 @@ int AomAv1Encoder::Encode(
       LOG_INFO("Encoded frame qp = {}", qp);
 
       if (on_encoded_image) {
-        on_encoded_image((char *)encoded_frame_, encoded_frame_size_);
+        on_encoded_image((char *)encoded_frame_, encoded_frame_size_,
+                         frame_type);
         if (SAVE_H264_STREAM) {
           fwrite(encoded_frame_, 1, encoded_frame_size_, file_ivf_);
         }

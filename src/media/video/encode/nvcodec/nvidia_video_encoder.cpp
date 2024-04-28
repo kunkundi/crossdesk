@@ -78,14 +78,20 @@ int NvidiaVideoEncoder::Init() {
 
 int NvidiaVideoEncoder::Encode(
     const uint8_t *pData, int nSize,
-    std::function<int(char *encoded_packets, size_t size)> on_encoded_image) {
+    std::function<int(char *encoded_packets, size_t size,
+                      VideoFrameType frame_type)>
+        on_encoded_image) {
   if (!encoder_) {
     LOG_ERROR("Invalid encoder");
     return -1;
   }
 
+  VideoFrameType frame_type;
   if (0 == seq_++ % 300) {
     ForceIdr();
+    frame_type = VideoFrameType::kVideoFrameKey;
+  } else {
+    frame_type = VideoFrameType::kVideoFrameDelta;
   }
 
 #ifdef SHOW_SUBMODULE_TIME_COST
@@ -110,7 +116,7 @@ int NvidiaVideoEncoder::Encode(
 
   for (const auto &packet : encoded_packets_) {
     if (on_encoded_image) {
-      on_encoded_image((char *)packet.data(), packet.size());
+      on_encoded_image((char *)packet.data(), packet.size(), frame_type);
       if (SAVE_ENCODER_STREAM) {
         fwrite(packet.data(), 1, packet.size(), file_);
       }

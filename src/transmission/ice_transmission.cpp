@@ -312,6 +312,23 @@ int IceTransmission::SendData(DATA_TYPE type, const char *data, size_t size) {
   return 0;
 }
 
+int IceTransmission::SendVideoData(VideoFrameType frame_type, const char *data,
+                                   size_t size) {
+  if (NiceComponentState::NICE_COMPONENT_STATE_READY == state_) {
+    std::vector<RtpPacket> packets;
+
+    if (rtp_video_sender_) {
+      if (video_rtp_codec_) {
+        video_rtp_codec_->Encode(
+            static_cast<RtpCodec::VideoFrameType>(frame_type), (uint8_t *)data,
+            size, packets);
+      }
+      rtp_video_sender_->Enqueue(packets);
+    }
+  }
+  return 0;
+}
+
 uint8_t IceTransmission::CheckIsRtcpPacket(const char *buffer, size_t size) {
   if (size < 4) {
     return 0;

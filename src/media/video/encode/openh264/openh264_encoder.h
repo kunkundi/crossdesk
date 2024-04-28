@@ -23,9 +23,10 @@ class OpenH264Encoder : public VideoEncoder {
   virtual ~OpenH264Encoder();
 
   int Init();
-  int Encode(
-      const uint8_t* pData, int nSize,
-      std::function<int(char* encoded_packets, size_t size)> on_encoded_image);
+  int Encode(const uint8_t* pData, int nSize,
+             std::function<int(char* encoded_packets, size_t size,
+                               VideoFrameType frame_type)>
+                 on_encoded_image);
 
   virtual int OnEncodedImage(char* encoded_packets, size_t size);
 

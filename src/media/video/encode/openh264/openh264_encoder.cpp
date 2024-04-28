@@ -155,7 +155,9 @@ int OpenH264Encoder::Init() {
 }
 int OpenH264Encoder::Encode(
     const uint8_t *pData, int nSize,
-    std::function<int(char *encoded_packets, size_t size)> on_encoded_image) {
+    std::function<int(char *encoded_packets, size_t size,
+                      VideoFrameType frame_type)>
+        on_encoded_image) {
   if (!openh264_encoder_) {
     LOG_ERROR("Invalid openh264 encoder");
     return -1;
@@ -165,8 +167,12 @@ int OpenH264Encoder::Encode(
     fwrite(yuv420p_buffer, 1, nSize, file_nv12_);
   }
 
+  VideoFrameType frame_type;
   if (0 == seq_++ % 300) {
     ForceIdr();
+    frame_type = VideoFrameType::kVideoFrameKey;
+  } else {
+    frame_type = VideoFrameType::kVideoFrameDelta;
   }
 
   NV12ToYUV420PFFmpeg((unsigned char *)pData, frame_width_, frame_height_,
@@ -222,7 +228,7 @@ int OpenH264Encoder::Encode(
   encoded_frame_size_ = encoded_frame_size;
 
   if (on_encoded_image) {
-    on_encoded_image((char *)encoded_frame_, encoded_frame_size_);
+    on_encoded_image((char *)encoded_frame_, encoded_frame_size_, frame_type);
     if (SAVE_H264_STREAM) {
       fwrite(encoded_frame_, 1, encoded_frame_size_, file_h264_);
     }
@@ -268,7 +274,7 @@ int OpenH264Encoder::Encode(
     encoded_frame_size_ = encoded_frame_size;
 
     if (on_encoded_image) {
-      on_encoded_image((char *)encoded_frame_, encoded_frame_size_);
+      on_encoded_image((char *)encoded_frame_, frame_type);
       if (SAVE_H264_STREAM) {
         fwrite(encoded_frame_, 1, encoded_frame_size_, file_h264_);
       }

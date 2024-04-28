@@ -149,7 +149,9 @@ int FFmpegVideoEncoder::Init() {
 
 int FFmpegVideoEncoder::Encode(
     const uint8_t *pData, int nSize,
-    std::function<int(char *encoded_packets, size_t size)> on_encoded_image) {
+    std::function<int(char *encoded_packets, size_t size,
+                      VideoFrameType frame_type)>
+        on_encoded_image) {
   if (!codec_ctx_) {
     LOG_ERROR("Invalid codec context");
     return -1;
@@ -181,6 +183,13 @@ int FFmpegVideoEncoder::Encode(
   int ret = avcodec_send_frame(codec_ctx_, frame_);
 
   // frame_->pict_type = AV_PICTURE_TYPE_I;
+  VideoFrameType frame_type;
+  if (0 == seq_++ % 300) {
+    frame_type = VideoFrameType::kVideoFrameKey;
+  } else {
+    frame_type = VideoFrameType::kVideoFrameDelta;
+  }
+
   while (ret >= 0) {
     ret = avcodec_receive_packet(codec_ctx_, packet_);
     if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
@@ -198,7 +207,7 @@ int FFmpegVideoEncoder::Encode(
     }
 
     if (on_encoded_image) {
-      on_encoded_image((char *)packet_->data, packet_->size);
+      on_encoded_image((char *)packet_->data, packet_->size, frame_type);
       if (SAVE_H264_STREAM) {
         fwrite(packet_->data, 1, packet_->size, file_h264_);
       }

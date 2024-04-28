@@ -25,6 +25,11 @@
 class IceTransmission {
  public:
   typedef enum { VIDEO = 96, AUDIO = 97, DATA = 127 } DATA_TYPE;
+  enum VideoFrameType {
+    kEmptyFrame = 0,
+    kVideoFrameKey = 3,
+    kVideoFrameDelta = 4,
+  };
 
  public:
   IceTransmission(bool offer_peer, std::string &transmission_id,
@@ -65,6 +70,12 @@ class IceTransmission {
   int SetTransmissionId(const std::string &transmission_id);
 
   int SendData(DATA_TYPE type, const char *data, size_t size);
+
+  int SendVideoData(VideoFrameType frame_type, const char *data, size_t size);
+
+  int SendAudioData(const char *data, size_t size);
+
+  int SendUserData(const char *data, size_t size);
 
  public:
   int GatherCandidates();
