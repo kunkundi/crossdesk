@@ -54,7 +54,7 @@ void RtpVideoReceiver::InsertRtpPacket(RtpPacket& rtp_packet) {
     // SendRtcpRR(rtcp_rr);
   }
   if (rtp_packet.PayloadType() == RtpPacket::PAYLOAD_TYPE::AV1) {
-    ProcessAV1RtpPacket(rtp_packet);
+    ProcessAv1RtpPacket(rtp_packet);
   } else {
     ProcessH264RtpPacket(rtp_packet);
   }
@@ -173,27 +173,22 @@ void RtpVideoReceiver::ProcessH264RtpPacket(RtpPacket& rtp_packet) {
   }
 }
 
-void RtpVideoReceiver::ProcessAV1RtpPacket(RtpPacket& rtp_packet) {
-  LOG_ERROR("recv payload size = {}, sequence_number_ = {}",
-            rtp_packet.PayloadSize(), rtp_packet.SequenceNumber());
+void RtpVideoReceiver::ProcessAv1RtpPacket(RtpPacket& rtp_packet) {
+  // LOG_ERROR("recv payload size = {}, sequence_number_ = {}",
+  //           rtp_packet.PayloadSize(), rtp_packet.SequenceNumber());
 
-  int z, y, w, n;
-  rtp_packet.GetAv1AggrHeader(z, y, w, n);
-  LOG_ERROR("z = {}, y = {}, w = {}, n = {}", z, y, w, n);
-
-  if (z == 0) {
+  if (RtpPacket::PAYLOAD_TYPE::AV1 == rtp_packet.PayloadType()) {
+    incomplete_frame_list_[rtp_packet.SequenceNumber()] = rtp_packet;
+    bool complete = CheckIsAv1FrameCompleted(rtp_packet);
   }
 
-  if (y == 0) {
-  }
-
-  std::vector<Obu> obus =
-      ParseObus((uint8_t*)rtp_packet.Payload(), rtp_packet.PayloadSize());
-  for (int i = 0; i < obus.size(); i++) {
-    LOG_ERROR("2 [{}|{}] Obu size = [{}], Obu type [{}]", i, obus.size(),
-              obus[i].size_,
-              ObuTypeToString((OBU_TYPE)ObuType(obus[i].header_)));
-  }
+  // std::vector<Obu> obus =
+  //     ParseObus((uint8_t*)rtp_packet.Payload(), rtp_packet.PayloadSize());
+  // for (int i = 0; i < obus.size(); i++) {
+  //   LOG_ERROR("2 [{}|{}] Obu size = [{}], Obu type [{}]", i, obus.size(),
+  //             obus[i].size_,
+  //             ObuTypeToString((OBU_TYPE)ObuType(obus[i].header_)));
+  // }
 }
 
 bool RtpVideoReceiver::CheckIsH264FrameCompleted(RtpPacket& rtp_packet) {
@@ -239,6 +234,58 @@ bool RtpVideoReceiver::CheckIsH264FrameCompleted(RtpPacket& rtp_packet) {
     }
 
     return true;
+  }
+  return false;
+}
+
+bool RtpVideoReceiver::CheckIsAv1FrameCompleted(RtpPacket& rtp_packet) {
+  if (rtp_packet.Av1FrameEnd()) {
+    uint16_t end_seq = rtp_packet.SequenceNumber();
+    if (incomplete_frame_list_.size() == end_seq) {
+      return true;
+    }
+
+    size_t start = rtp_packet.SequenceNumber();
+
+    while (end_seq--) {
+      auto it = incomplete_frame_list_.find(end_seq);
+      if (it == incomplete_frame_list_.end()) {
+        // The last fragment has already received. If all fragments are in
+        // order, then some fragments lost in tranmission and need to be
+        // repaired using FEC
+        return false;
+      } else if (!it->second.Av1FrameStart()) {
+        continue;
+      } else if (it->second.Av1FrameStart()) {
+        start = it->second.SequenceNumber();
+        // skip temporal delimiter OBU
+        break;
+      } else {
+        LOG_WARN("What happened?")
+        return false;
+      }
+    }
+
+    if (start != rtp_packet.SequenceNumber()) {
+      if (!nv12_data_) {
+        nv12_data_ = new uint8_t[NV12_BUFFER_SIZE];
+      }
+
+      size_t complete_frame_size = 0;
+      for (; start <= rtp_packet.SequenceNumber(); start++) {
+        memcpy(nv12_data_ + complete_frame_size,
+               incomplete_frame_list_[start].Payload(),
+               incomplete_frame_list_[start].PayloadSize());
+
+        complete_frame_size += incomplete_frame_list_[start].PayloadSize();
+        incomplete_frame_list_.erase(start);
+      }
+
+      compelete_video_frame_queue_.push(
+          VideoFrame(nv12_data_, complete_frame_size));
+
+      return true;
+    }
   }
   return false;
 }

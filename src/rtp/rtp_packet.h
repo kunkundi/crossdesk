@@ -346,6 +346,20 @@ class RtpPacket {
     return fu_header_.end;
   }
 
+  bool Av1FrameStart() {
+    ParseRtpData();
+    int z, y, w, n;
+    GetAv1AggrHeader(z, y, w, n);
+    return !z && !y;
+  }
+
+  bool Av1FrameEnd() {
+    ParseRtpData();
+    int z, y, w, n;
+    GetAv1AggrHeader(z, y, w, n);
+    return z && !y;
+  }
+
  private:
   void TryToDecodeRtpPacket();
   void ParseRtpData();

@@ -76,14 +76,6 @@ int Dav1dAv1Decoder::Init() {
 int Dav1dAv1Decoder::Decode(
     const uint8_t *data, int size,
     std::function<void(VideoFrame)> on_receive_decoded_frame) {
-  if (!first_) {
-    if ((*(data + 4) & 0x1f) != 0x07) {
-      return -1;
-    } else {
-      first_ = true;
-    }
-  }
-
   ScopedDav1dData scoped_dav1d_data;
   Dav1dData &dav1d_data = scoped_dav1d_data.Data();
   dav1d_data_wrap(&dav1d_data, data, size,

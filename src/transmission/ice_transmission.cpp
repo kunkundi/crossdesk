@@ -62,7 +62,7 @@ int IceTransmission::InitIceTransmission(
       });
   rtp_video_receiver_->SetOnReceiveCompleteFrame(
       [this](VideoFrame &video_frame) -> void {
-        // LOG_ERROR("OnReceiveCompleteFrame {}", video_frame.Size());
+        LOG_ERROR("OnReceiveCompleteFrame {}", video_frame.Size());
         on_receive_video_((const char *)video_frame.Buffer(),
                           video_frame.Size(), remote_user_id_.data(),
                           remote_user_id_.size());
