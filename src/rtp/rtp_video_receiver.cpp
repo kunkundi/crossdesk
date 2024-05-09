@@ -194,9 +194,6 @@ void RtpVideoReceiver::ProcessAv1RtpPacket(RtpPacket& rtp_packet) {
 bool RtpVideoReceiver::CheckIsH264FrameCompleted(RtpPacket& rtp_packet) {
   if (rtp_packet.FuAEnd()) {
     uint16_t end_seq = rtp_packet.SequenceNumber();
-    if (incomplete_frame_list_.size() == end_seq) {
-      return true;
-    }
 
     while (end_seq--) {
       auto it = incomplete_frame_list_.find(end_seq);
