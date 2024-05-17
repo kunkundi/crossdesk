@@ -16,28 +16,22 @@ end
 add_requires("sdl2 2.28.3", {system = false})
 add_requires("spdlog 1.11.0", {system = false})
 add_requires("imgui 1.89.9", {configs = {sdl2 = true, sdl2_renderer = true}})
+add_requires("libyuv")
 
 if is_os("windows") then
     add_links("Shell32", "windowsapp", "dwmapi", "User32", "kernel32",
         "SDL2-static", "SDL2main", "gdi32", "winmm", "setupapi", "version",
         "Imm32", "iphlpapi")
-    add_requires("vcpkg::ffmpeg 5.1.2", {configs = {shared = false}})
-    add_packages("vcpkg::ffmpeg")
 elseif is_os("linux") then
-    add_requires("ffmpeg 5.1.2", {system = false})
-    add_packages("ffmpeg")
     add_syslinks("pthread", "dl")
     add_linkdirs("thirdparty/projectx/thirdparty/nvcodec/Lib/x64")
     add_links("SDL2", "cuda", "nvidia-encode", "nvcuvid")
-    add_ldflags("-lavformat", "-lavdevice", "-lavfilter", "-lavcodec",
-        "-lswscale", "-lavutil", "-lswresample",
-        "-lasound", "-lxcb-shape", "-lxcb-xfixes", "-lsndio", "-lxcb", 
+    add_ldflags("-lasound", "-lxcb-shape", "-lxcb-xfixes", "-lsndio", "-lxcb", 
         "-lxcb-shm", "-lXext", "-lX11", "-lXv", "-ldl", "-lpthread",
         {force = true})
 elseif is_os("macosx") then
-    add_requires("ffmpeg 5.1.2", {system = false})
     add_requires("libxcb", {system = false})
-    add_packages("ffmpeg", "libxcb")
+    add_packages("libxcb")
     add_links("SDL2", "SDL2main")
     add_ldflags("-Wl,-ld_classic")
     add_frameworks("OpenGL")
@@ -62,6 +56,7 @@ target("common")
 target("screen_capturer")
     set_kind("object")
     add_deps("log")
+    add_packages("libyuv")
     add_includedirs("src/screen_capturer", {public = true})
     if is_os("windows") then
         add_files("src/screen_capturer/windows/*.cpp")

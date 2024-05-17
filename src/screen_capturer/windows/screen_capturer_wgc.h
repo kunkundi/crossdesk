@@ -49,9 +49,10 @@ class ScreenCapturerWgc : public ScreenCapturer,
 
   int _fps;
 
-  cb_desktop_data _on_data;
+  cb_desktop_data _on_data = nullptr;
 
   unsigned char *nv12_frame_ = nullptr;
+  unsigned char *nv12_frame_scaled_ = nullptr;
 };
 
 #endif
