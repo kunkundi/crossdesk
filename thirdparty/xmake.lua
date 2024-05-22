@@ -1,1 +1,1 @@
-includes("openfec", "libyuv")
+includes("openfec", "libyuv", "aom")

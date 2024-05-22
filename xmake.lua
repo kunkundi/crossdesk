@@ -11,31 +11,28 @@ add_defines("ASIO_STANDALONE", "ASIO_HAS_STD_TYPE_TRAITS", "ASIO_HAS_STD_SHARED_
     "ASIO_HAS_STD_ADDRESSOF", "ASIO_HAS_STD_ATOMIC", "ASIO_HAS_STD_CHRONO", 
     "ASIO_HAS_CSTDINT", "ASIO_HAS_STD_ARRAY",  "ASIO_HAS_STD_SYSTEM_ERROR")
 
-add_requires("asio 1.24.0", "nlohmann_json", "spdlog 1.11.0", "openfec", "libopus 1.4", "dav1d 1.1.0", "libyuv")
-add_packages("asio", "nlohmann_json", "spdlog", "openfec", "libopus", "dav1d", "libyuv")
+add_requires("asio 1.24.0", "nlohmann_json", "spdlog 1.11.0", "openfec", "libopus 1.4", "dav1d 1.1.0", "libyuv", "aom")
+add_packages("asio", "nlohmann_json", "spdlog", "openfec", "libopus", "dav1d", "libyuv", "aom")
 
 includes("thirdparty")
 
 if is_os("windows") then
     add_requires("vcpkg::libnice", {configs = {shared = false}})
     add_requires("openh264 2.1.1", {configs = {shared = false}})
-    add_requires("vcpkg::aom 3.8.1")
-    add_packages("vcpkg::libnice", "openh264", "vcpkg::aom", "cuda")
+    add_packages("vcpkg::libnice", "openh264", "cuda")
     add_defines("_WEBSOCKETPP_CPP11_INTERNAL_")
     add_requires("cuda")
 elseif is_os("linux") then
     add_requires("glib", {system = true})
     add_requires("vcpkg::libnice", {configs = {shared = false}})
     add_requires("openh264 2.1.1", {configs = {shared = false}})
-    add_requires("vcpkg::aom 3.8.1")
     add_packages("glib", "vcpkg::libnice", "openh264", "cuda")
     add_cxflags("-fPIC") 
     add_syslinks("pthread")
 elseif is_os("macosx") then
     add_requires("vcpkg::libnice", {configs = {shared = false}})
     add_requires("vcpkg::openh264", {configs = {shared = false}})
-    add_requires("vcpkg::aom 3.8.1")
-    add_packages("vcpkg::libnice", "vcpkg::openh264", "vcpkg::aom")
+    add_packages("vcpkg::libnice", "vcpkg::openh264")
     add_ldflags("-Wl,-ld_classic")
 end
 
@@ -197,7 +194,7 @@ target("projectx")
         add_links("nice", "glib-2.0", "gio-2.0", "gmodule-2.0", "gobject-2.0",
         "pcre2-8", "pcre2-16", "pcre2-32", "pcre2-posix", 
         "zlib", "ffi", "libcrypto", "libssl", "intl", "iconv", 
-        "Shell32", "Advapi32", "Dnsapi", "Shlwapi", 
+        "Shell32", "Advapi32", "Dnsapi", "Shlwapi", "Crypt32", 
         "cuda", "nvencodeapi", "nvcuvid",
         "ws2_32", "Bcrypt", "windowsapp", "User32", "Strmiids", "Mfuuid",
         "Secur32", "Bcrypt")
