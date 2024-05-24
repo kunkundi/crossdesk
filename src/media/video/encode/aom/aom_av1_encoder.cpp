@@ -45,7 +45,7 @@ bool AomAv1Encoder::SetEncoderControlParameters(int param_id, P param_value) {
   if (error_code != AOM_CODEC_OK) {
     LOG_ERROR(
         "AomAv1Encoder::SetEncoderControlParameters returned {} on id: {}",
-        error_code, param_id);
+        (int)error_code, param_id);
   }
   return error_code == AOM_CODEC_OK;
 }
@@ -113,7 +113,7 @@ int AomAv1Encoder::Init() {
   if (ret != AOM_CODEC_OK) {
     LOG_ERROR(
         "AomAv1Encoder::EncodeInit returned {} on aom_codec_enc_config_default",
-        ret);
+        (int)ret);
     return -1;
   }
 
@@ -156,7 +156,7 @@ int AomAv1Encoder::Init() {
                            &aom_av1_encoder_config_, flags);
   if (ret != AOM_CODEC_OK) {
     LOG_ERROR("AomAv1Encoder::EncodeInit returned {} on aom_codec_enc_init",
-              ret);
+              (int)ret);
     return -1;
   }
   inited_ = true;
@@ -285,7 +285,8 @@ int AomAv1Encoder::Encode(const uint8_t *pData, int nSize,
       aom_codec_encode(&aom_av1_encoder_ctx_, frame_for_encode_, timestamp_,
                        duration, force_i_frame_flags_);
   if (ret != AOM_CODEC_OK) {
-    LOG_ERROR("AomAv1Encoder::Encode returned {} on aom_codec_encode", ret);
+    LOG_ERROR("AomAv1Encoder::Encode returned {} on aom_codec_encode",
+              (int)ret);
     return -1;
   }
 

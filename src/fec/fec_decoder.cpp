@@ -66,7 +66,7 @@ int FecDecoder::ResetParams(unsigned int source_symbol_num) {
   fec_params_->encoding_symbol_length = max_size_of_packet_;
 
   if (OF_STATUS_OK != of_set_fec_parameters(fec_session_, fec_params_)) {
-    LOG_ERROR("Set FEC params failed for codec_id {}", fec_codec_id_);
+    LOG_ERROR("Set FEC params failed for codec_id {}", (int)fec_codec_id_);
     return -1;
   }
 

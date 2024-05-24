@@ -22,7 +22,7 @@ void RtpPacket::TryToDecodeRtpPacket() {
   } else if (PAYLOAD_TYPE::DATA == PAYLOAD_TYPE(buffer_[1] & 0x7F)) {
     DecodeData();
   } else {
-    LOG_ERROR("Unknown pt: {}", PAYLOAD_TYPE(buffer_[1] & 0x7F));
+    LOG_ERROR("Unknown pt: {}", (int)PAYLOAD_TYPE(buffer_[1] & 0x7F));
   }
 }
 
