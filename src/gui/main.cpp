@@ -453,8 +453,14 @@ int main(int argc, char *argv[]) {
                                  io.Fonts->GetGlyphRangesChineseFull());
   }
 #elif __APPLE__
-  io.Fonts->AddFontFromFileTTF("c:/windows/fonts/msyh.ttc", 13.0f, NULL,
-                               io.Fonts->GetGlyphRangesChineseFull());
+  std::string default_font_path = "/System/Library/Fonts/PingFang.ttc";
+  std::ifstream font_path_f(default_font_path.c_str());
+  std::string font_path =
+      font_path_f.good() ? "/System/Library/Fonts/PingFang.ttc" : "";
+  if (!font_path.empty()) {
+    io.Fonts->AddFontFromFileTTF(font_path.c_str(), 13.0f, NULL,
+                                 io.Fonts->GetGlyphRangesChineseFull());
+  }
 #elif __linux__
   io.Fonts->AddFontFromFileTTF("c:/windows/fonts/msyh.ttc", 13.0f, NULL,
                                io.Fonts->GetGlyphRangesChineseFull());
@@ -609,7 +615,7 @@ int main(int argc, char *argv[]) {
 #endif
 
 #if CHINESE_FONT
-      ImGui::Begin(u8"²Ëµ¥", nullptr,
+      ImGui::Begin(u8"èœå•", nullptr,
                    ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
                        ImGuiWindowFlags_NoMove);
 #else
@@ -619,7 +625,7 @@ int main(int argc, char *argv[]) {
       {
         menu_hovered = ImGui::IsWindowHovered();
 #if CHINESE_FONT
-        ImGui::Text(u8"±¾»úID:");
+        ImGui::Text(u8"æœ¬æœºID:");
 #else
         ImGui::Text("LOCAL ID:");
 #endif
@@ -636,7 +642,7 @@ int main(int argc, char *argv[]) {
             ImGuiInputTextFlags_CharsUppercase | ImGuiInputTextFlags_ReadOnly);
 
 #if CHINESE_FONT
-        ImGui::Text(u8"ÃÜÂë:");
+        ImGui::Text(u8"å¯†ç :");
 #else
         ImGui::Text("PASSWORD:");
 #endif
@@ -647,7 +653,7 @@ int main(int argc, char *argv[]) {
         ImGui::SetNextItemWidth(90);
 #if CHINESE_FONT
         ImGui::SetCursorPosX(60.0f);
-        ImGui::InputTextWithHint("##server_pwd", u8"×î³¤6¸ö×Ö·û",
+        ImGui::InputTextWithHint("##server_pwd", u8"æœ€é•¿6ä¸ªå­—ç¬¦",
                                  input_password, IM_ARRAYSIZE(input_password),
                                  ImGuiInputTextFlags_CharsNoBlank);
 #else
@@ -678,7 +684,7 @@ int main(int argc, char *argv[]) {
           {
             static char remote_id[20] = "";
 #if CHINESE_FONT
-            ImGui::Text(u8"Ô¶¶ËID:");
+            ImGui::Text(u8"è¿œç«¯ID:");
 #else
             ImGui::Text("REMOTE ID:");
 #endif
@@ -697,7 +703,7 @@ int main(int argc, char *argv[]) {
             ImGui::Spacing();
 
 #if CHINESE_FONT
-            ImGui::Text(u8"ÃÜÂë:");
+            ImGui::Text(u8"å¯†ç :");
 #else
             ImGui::Text("PASSWORD:");
 #endif
@@ -706,7 +712,7 @@ int main(int argc, char *argv[]) {
             static char client_password[20] = "";
 #if CHINESE_FONT
             ImGui::SetCursorPosX(60.0f);
-            ImGui::InputTextWithHint("##client_pwd", u8"×î³¤6¸ö×Ö·û",
+            ImGui::InputTextWithHint("##client_pwd", u8"æœ€é•¿6ä¸ªå­—ç¬¦",
                                      client_password,
                                      IM_ARRAYSIZE(client_password),
                                      ImGuiInputTextFlags_CharsNoBlank);
@@ -722,7 +728,7 @@ int main(int argc, char *argv[]) {
             ImGui::Separator();
             ImGui::Spacing();
 #if CHINESE_FONT
-            if (ImGui::Button(u8"Á¬½Ó")) {
+            if (ImGui::Button(u8"è¿æ¥")) {
 #else
             if (ImGui::Button("Connect")) {
 #endif
@@ -762,7 +768,7 @@ int main(int argc, char *argv[]) {
 
       {
 #if CHINESE_FONT
-        if (ImGui::Button(u8"ÖØÖÃ´°¿Ú")) {
+        if (ImGui::Button(u8"é‡ç½®çª—å£")) {
 #else
         if (ImGui::Button("Resize Window")) {
 #endif
@@ -779,7 +785,7 @@ int main(int argc, char *argv[]) {
       ImGui::SameLine();
 
 #if CHINESE_FONT
-      if (ImGui::Button(u8"È«ÆÁ")) {
+      if (ImGui::Button(u8"å…¨å±")) {
 #else
       if (ImGui::Button("FULLSCREEN")) {
 #endif

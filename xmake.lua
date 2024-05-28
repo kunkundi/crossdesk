@@ -92,6 +92,11 @@ target("device_controller")
 target("remote_desk")
     set_kind("binary")
     add_deps("log", "common", "screen_capturer", "device_controller", "projectx")
+    if is_os("macosx") then
+        add_packages("ffmpeg")
+    elseif is_os("linux") then
+        add_packages("ffmpeg")
+    end
     add_files("src/gui/main.cpp")
 
     -- after_install(function (target)
