@@ -19,7 +19,7 @@ RtcpHeader::RtcpHeader(const uint8_t* buffer, uint32_t size) {
     padding_ = buffer[0] >> 5 & 0x01;
     count_or_format_ = buffer[0] & 0x1F;
     payload_type_ = PAYLOAD_TYPE(buffer[1]);
-    length_ = buffer[2] << 8 + buffer[3];
+    length_ = (buffer[2] << 8) + buffer[3];
   }
 }
 
