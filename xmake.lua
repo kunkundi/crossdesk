@@ -89,15 +89,53 @@ target("device_controller")
          add_includedirs("src/device_controller/mouse/linux", {public = true})
     end
 
+target("config_center")
+    set_kind("object")
+    add_deps("log")
+    add_files("src/config_center/*.cpp")
+    add_includedirs("src/config_center", {public = true})
+
+target("render")
+    set_kind("object")
+    add_deps("log", "common", "config_center")
+    add_files("src/render/*.cpp")
+    add_includedirs("src/render", {public = true})
+
+target("localization")
+    set_kind("headeronly")
+    add_includedirs("src/localization", {public = true})
+
+target("connection")
+    set_kind("object")
+    add_deps("log", "common", "screen_capturer", "device_controller")
+    add_files("src/connection/*.cpp")
+    add_includedirs("src/connection", {public = true})
+
+target("main_window")
+    set_kind("object")
+    add_deps("log", "common", "localization", "config_center")
+    add_files("src/main_window/*.cpp")
+    add_includedirs("src/main_window", {public = true})
+
 target("remote_desk")
     set_kind("binary")
-    add_deps("log", "common", "screen_capturer", "device_controller", "projectx")
+    add_deps("log", "common", "projectx", "screen_capturer", "device_controller", "render", "main_window", "connection")
     if is_os("macosx") then
         add_packages("ffmpeg")
     elseif is_os("linux") then
         add_packages("ffmpeg")
     end
     add_files("src/gui/main.cpp")
+
+-- target("remote_desk")
+--     set_kind("binary")
+--     add_deps("log", "common", "projectx", "screen_capturer", "device_controller", "config_center")
+--     if is_os("macosx") then
+--         add_packages("ffmpeg")
+--     elseif is_os("linux") then
+--         add_packages("ffmpeg")
+--     end
+--     add_files("src/gui/main.cpp")
 
     -- after_install(function (target)
     --     os.cp("$(projectdir)/thirdparty/nvcodec/Lib/x64/*.so", "$(projectdir)/out/bin")
