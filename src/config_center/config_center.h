@@ -26,7 +26,7 @@ class ConfigCenter {
 
  private:
   VIDEO_QUALITY video_quality_ = VIDEO_QUALITY::MEDIUM;
-  LANGUAGE language_ = LANGUAGE::ENGLISH;
+  LANGUAGE language_ = LANGUAGE::CHINESE;
 };
 
 #endif

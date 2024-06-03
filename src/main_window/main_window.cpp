@@ -291,24 +291,6 @@ int MainWindow::Run() {
 
       ImGui::Spacing();
 
-      {
-        if (ImGui::Button(
-                localization::reset_ratio[localization_language_index_]
-                    .c_str())) {
-          SDL_GetWindowSize(main_window_, &main_window_width_,
-                            &main_window_height_);
-
-          if (main_window_height_ != main_window_width_ * 9 / 16) {
-            main_window_width_ = main_window_height_ * 16 / 9;
-          }
-
-          SDL_SetWindowSize(main_window_, main_window_width_,
-                            main_window_height_);
-        }
-      }
-
-      ImGui::SameLine();
-
       if (ImGui::Button(fullscreen_button_label_.c_str())) {
         if (fullscreen_button_label_ ==
             localization::fullscreen[localization_language_index_]) {
@@ -331,6 +313,45 @@ int MainWindow::Run() {
     ImGui::Render();
     SDL_RenderSetScale(sdl_renderer_, io.DisplayFramebufferScale.x,
                        io.DisplayFramebufferScale.y);
+
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+      ImGui_ImplSDL2_ProcessEvent(&event);
+      if (event.type == SDL_QUIT) {
+        exit_ = true;
+      } else if (event.type == SDL_WINDOWEVENT &&
+                 event.window.event == SDL_WINDOWEVENT_RESIZED) {
+        int window_w_last = main_window_width_;
+        int window_h_last = main_window_height_;
+
+        SDL_GetWindowSize(main_window_, &main_window_width_,
+                          &main_window_height_);
+
+        int w_change_ratio = abs(main_window_width_ - window_w_last) / 16;
+        int h_change_ratio = abs(main_window_height_ - window_h_last) / 9;
+
+        if (w_change_ratio > h_change_ratio) {
+          main_window_height_ = main_window_width_ * 9 / 16;
+        } else {
+          main_window_width_ = main_window_height_ * 16 / 9;
+        }
+
+        SDL_SetWindowSize(main_window_, main_window_width_,
+                          main_window_height_);
+      } else if (event.type == SDL_WINDOWEVENT &&
+                 event.window.event == SDL_WINDOWEVENT_CLOSE &&
+                 event.window.windowID == SDL_GetWindowID(main_window_)) {
+        exit_ = true;
+      } else if (event.type == REFRESH_EVENT) {
+        sdlRect.x = 0;
+        sdlRect.y = 0;
+        sdlRect.w = main_window_width_;
+        sdlRect.h = main_window_height_;
+
+        // SDL_UpdateTexture(sdl_texture_, NULL, dst_buffer, pixel_w);
+      } else {
+      }
+    }
 
     SDL_RenderClear(sdl_renderer_);
     SDL_RenderCopy(sdl_renderer_, sdl_texture_, NULL, &sdlRect);
