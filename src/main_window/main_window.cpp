@@ -284,8 +284,6 @@ int MainWindow::Run() {
   params_.on_connection_status = OnConnectionStatusCb;
   params_.user_data = this;
 
-  std::string transmission_id = "000001";
-
   peer_ = CreatePeer(&params_);
   LOG_INFO("Create peer");
   std::string user_id = "S-" + mac_addr_str_;
@@ -673,7 +671,7 @@ int MainWindow::Run() {
           if (video_encode_format_button_value_ == 0) {
             config_center_.SetVideoEncodeFormat(
                 ConfigCenter::VIDEO_ENCODE_FORMAT::AV1);
-          } else if (video_quality_button_value_ == 1) {
+          } else if (video_encode_format_button_value_ == 1) {
             config_center_.SetVideoEncodeFormat(
                 ConfigCenter::VIDEO_ENCODE_FORMAT::H264);
           }
@@ -689,8 +687,45 @@ int MainWindow::Run() {
           enable_hardware_video_codec_last_ = enable_hardware_video_codec_;
 
           SaveSettingsIntoCacheFile();
-          // To do: set encode resolution
           settings_window_pos_reset_ = true;
+
+          // Recreate peer instance
+          LoadSettingsIntoCacheFile();
+
+          // Recreate peer instance
+          {
+            DestroyPeer(peer_);
+
+            params_.use_cfg_file = false;
+            params_.signal_server_ip = "150.158.81.30";
+            params_.signal_server_port = 9099;
+            params_.stun_server_ip = "150.158.81.30";
+            params_.stun_server_port = 3478;
+            params_.turn_server_ip = "150.158.81.30";
+            params_.turn_server_port = 3478;
+            params_.turn_server_username = "dijunkun";
+            params_.turn_server_password = "dijunkunpw";
+            params_.hardware_acceleration =
+                config_center_.IsHardwareVideoCodec();
+            params_.av1_encoding =
+                config_center_.GetVideoEncodeFormat() ==
+                        ConfigCenter::VIDEO_ENCODE_FORMAT::AV1
+                    ? true
+                    : false;
+
+            params_.on_receive_video_buffer = OnReceiveVideoBufferCb;
+            params_.on_receive_audio_buffer = OnReceiveAudioBufferCb;
+            params_.on_receive_data_buffer = OnReceiveDataBufferCb;
+            params_.on_signal_status = OnSignalStatusCb;
+            params_.on_connection_status = OnConnectionStatusCb;
+            params_.user_data = this;
+
+            peer_ = CreatePeer(&params_);
+            LOG_INFO("Rereate peer");
+            std::string user_id = "S-" + mac_addr_str_;
+            Init(peer_, user_id.c_str());
+            LOG_INFO("Peer init finish");
+          }
         }
         ImGui::SameLine();
         // Cancel
@@ -804,6 +839,10 @@ int MainWindow::Run() {
 
   if (is_create_connection_) {
     LeaveConnection(peer_);
+  }
+
+  if (peer_) {
+    DestroyPeer(peer_);
   }
 
   // rtc_thread.join();
