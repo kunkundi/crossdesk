@@ -61,6 +61,8 @@ class MainWindow {
   int StartMouseControl();
   int StopMouseControl();
 
+  int CreateConnectionPeer();
+
  private:
   typedef struct {
     char password[7];

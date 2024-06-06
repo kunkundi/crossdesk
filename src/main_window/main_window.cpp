@@ -158,6 +158,43 @@ int MainWindow::StopMouseControl() {
   return 0;
 }
 
+int MainWindow::CreateConnectionPeer() {
+  mac_addr_str_ = GetMac();
+
+  params_.use_cfg_file = false;
+  params_.signal_server_ip = "150.158.81.30";
+  params_.signal_server_port = 9099;
+  params_.stun_server_ip = "150.158.81.30";
+  params_.stun_server_port = 3478;
+  params_.turn_server_ip = "150.158.81.30";
+  params_.turn_server_port = 3478;
+  params_.turn_server_username = "dijunkun";
+  params_.turn_server_password = "dijunkunpw";
+  params_.hardware_acceleration = config_center_.IsHardwareVideoCodec();
+  params_.av1_encoding = config_center_.GetVideoEncodeFormat() ==
+                                 ConfigCenter::VIDEO_ENCODE_FORMAT::AV1
+                             ? true
+                             : false;
+  params_.on_receive_video_buffer = OnReceiveVideoBufferCb;
+  params_.on_receive_audio_buffer = OnReceiveAudioBufferCb;
+  params_.on_receive_data_buffer = OnReceiveDataBufferCb;
+  params_.on_signal_status = OnSignalStatusCb;
+  params_.on_connection_status = OnConnectionStatusCb;
+  params_.user_data = this;
+
+  peer_ = CreatePeer(&params_);
+  if (peer_) {
+    LOG_INFO("Create peer instance successful");
+    std::string user_id = "S-" + mac_addr_str_;
+    Init(peer_, user_id.c_str());
+    LOG_INFO("Peer init finish");
+  } else {
+    LOG_INFO("Create peer instance failed");
+  }
+
+  return 0;
+}
+
 int MainWindow::Run() {
   LoadSettingsIntoCacheFile();
 
@@ -256,12 +293,6 @@ int MainWindow::Run() {
 
   mac_addr_str_ = GetMac();
 
-#if 0
-  std::string default_cfg_path = "../../../../config/config.ini";
-  std::ifstream f(default_cfg_path.c_str());
-  params_.use_cfg_file = true;
-  params_.cfg_path = f.good() ? "../../../../config/config.ini" : "config.ini";
-#else
   params_.use_cfg_file = false;
   params_.signal_server_ip = "150.158.81.30";
   params_.signal_server_port = 9099;
@@ -276,7 +307,6 @@ int MainWindow::Run() {
                                  ConfigCenter::VIDEO_ENCODE_FORMAT::AV1
                              ? true
                              : false;
-#endif
   params_.on_receive_video_buffer = OnReceiveVideoBufferCb;
   params_.on_receive_audio_buffer = OnReceiveAudioBufferCb;
   params_.on_receive_data_buffer = OnReceiveDataBufferCb;
@@ -621,7 +651,9 @@ int MainWindow::Run() {
                           &enable_hardware_video_codec_);
         }
 
-        ImGui::SetCursorPosX(60.0f);
+        ImGui::SetCursorPosX(
+            settings_language_pos_ == settings_language_pos_default_ ? 60.0f
+                                                                     : 80.0f);
         ImGui::SetCursorPosY(160.0f);
 
         // OK
@@ -695,36 +727,8 @@ int MainWindow::Run() {
           // Recreate peer instance
           {
             DestroyPeer(peer_);
-
-            params_.use_cfg_file = false;
-            params_.signal_server_ip = "150.158.81.30";
-            params_.signal_server_port = 9099;
-            params_.stun_server_ip = "150.158.81.30";
-            params_.stun_server_port = 3478;
-            params_.turn_server_ip = "150.158.81.30";
-            params_.turn_server_port = 3478;
-            params_.turn_server_username = "dijunkun";
-            params_.turn_server_password = "dijunkunpw";
-            params_.hardware_acceleration =
-                config_center_.IsHardwareVideoCodec();
-            params_.av1_encoding =
-                config_center_.GetVideoEncodeFormat() ==
-                        ConfigCenter::VIDEO_ENCODE_FORMAT::AV1
-                    ? true
-                    : false;
-
-            params_.on_receive_video_buffer = OnReceiveVideoBufferCb;
-            params_.on_receive_audio_buffer = OnReceiveAudioBufferCb;
-            params_.on_receive_data_buffer = OnReceiveDataBufferCb;
-            params_.on_signal_status = OnSignalStatusCb;
-            params_.on_connection_status = OnConnectionStatusCb;
-            params_.user_data = this;
-
-            peer_ = CreatePeer(&params_);
-            LOG_INFO("Rereate peer");
-            std::string user_id = "S-" + mac_addr_str_;
-            Init(peer_, user_id.c_str());
-            LOG_INFO("Peer init finish");
+            CreateConnectionPeer();
+            LOG_INFO("Recreate peer instance successful");
           }
         }
         ImGui::SameLine();
@@ -836,7 +840,6 @@ int MainWindow::Run() {
   }
 
   // Cleanup
-
   if (is_create_connection_) {
     LeaveConnection(peer_);
   }
@@ -845,17 +848,8 @@ int MainWindow::Run() {
     DestroyPeer(peer_);
   }
 
-  // rtc_thread.join();
   SDL_CloseAudioDevice(output_dev_);
   SDL_CloseAudioDevice(input_dev_);
-
-  // if (screen_capturer_) {
-  //   screen_capturer_->Destroy();
-  // }
-
-  // if (mouse_controller_) {
-  //   mouse_controller_->Destroy();
-  // }
 
   ImGui_ImplSDLRenderer2_Shutdown();
   ImGui_ImplSDL2_Shutdown();
