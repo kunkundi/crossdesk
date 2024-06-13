@@ -6,6 +6,11 @@
 #define REFRESH_EVENT (SDL_USEREVENT + 1)
 #define NV12_BUFFER_SIZE 1280 * 720 * 3 / 2
 
+#ifdef REMOTE_DESK_DEBUG
+#else
+#define MOUSE_CONTROL 1
+#endif
+
 int MainWindow::ProcessMouseKeyEven(SDL_Event &ev) {
   float ratio = (float)(1280.0 / main_window_width_);
 
