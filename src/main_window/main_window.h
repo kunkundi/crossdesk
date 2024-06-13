@@ -93,6 +93,7 @@ class MainWindow {
   std::string mac_addr_str_ = "";
   std::string connect_button_label_ = "Connect";
   std::string fullscreen_button_label_ = "Fullscreen";
+  std::string mouse_control_button_label_ = "Mouse Control";
   std::string settings_button_label_ = "Setting";
   char input_password_tmp_[7] = "";
   char input_password_[7] = "";
@@ -118,16 +119,19 @@ class MainWindow {
   SDL_Window *main_window_;
   uint32_t pixformat_ = 0;
 
+  bool inited_ = false;
   bool exit_ = false;
   bool connection_established_ = false;
   bool subwindow_hovered_ = false;
   bool connect_button_pressed_ = false;
   bool fullscreen_button_pressed_ = false;
+  bool mouse_control_button_pressed_ = false;
   bool settings_button_pressed_ = false;
   bool received_frame_ = false;
   bool is_create_connection_ = false;
   bool audio_buffer_fresh_ = false;
   bool rejoin_ = false;
+  bool control_mouse_ = false;
 
   int fps_ = 0;
   uint32_t start_time_;

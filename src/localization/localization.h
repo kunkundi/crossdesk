@@ -21,6 +21,8 @@ static std::vector<std::string> disconnect = {u8"断开连接", "Disconnect"};
 static std::vector<std::string> fullscreen = {u8"全屏", "Fullscreen"};
 static std::vector<std::string> exit_fullscreen = {u8"退出全屏",
                                                    "Exit fullscreen"};
+static std::vector<std::string> control_mouse = {u8"控制鼠标", "Mouse Control"};
+static std::vector<std::string> release_mouse = {u8"释放鼠标", "Release Mouse"};
 static std::vector<float> settings_window_width = {188.0f, 228.0f};
 static std::vector<std::string> settings = {u8"设置", "Settings"};
 static std::vector<std::string> language = {u8"语言:", "Language:"};

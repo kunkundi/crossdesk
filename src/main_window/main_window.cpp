@@ -314,17 +314,25 @@ int MainWindow::Run() {
       LOG_INFO("Connected with signal server, create p2p connection");
     }
 
-    connect_button_label_ =
-        connect_button_pressed_
-            ? localization::disconnect[localization_language_index_]
-            : localization::connect[localization_language_index_];
-    fullscreen_button_label_ =
-        fullscreen_button_pressed_
-            ? localization::exit_fullscreen[localization_language_index_]
-            : localization::fullscreen[localization_language_index_];
+    if (!inited_) {
+      connect_button_label_ =
+          connect_button_pressed_
+              ? localization::disconnect[localization_language_index_]
+              : localization::connect[localization_language_index_];
+      fullscreen_button_label_ =
+          fullscreen_button_pressed_
+              ? localization::exit_fullscreen[localization_language_index_]
+              : localization::fullscreen[localization_language_index_];
 
-    settings_button_label_ =
-        localization::settings[localization_language_index_];
+      mouse_control_button_label_ =
+          mouse_control_button_pressed_
+              ? localization::release_mouse[localization_language_index_]
+              : localization::control_mouse[localization_language_index_];
+
+      settings_button_label_ =
+          localization::settings[localization_language_index_];
+      inited_ = true;
+    }
 
     if (start_screen_capture_ && !screen_capture_is_started_) {
       StartScreenCapture();
@@ -347,7 +355,7 @@ int MainWindow::Run() {
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
 
-    if (connection_established_ && !subwindow_hovered_) {
+    if (connection_established_ && !subwindow_hovered_ && control_mouse_) {
       ImGui::SetMouseCursor(ImGuiMouseCursor_None);
     }
 
@@ -356,9 +364,9 @@ int MainWindow::Run() {
       ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Once);
 
       if (ConfigCenter::LANGUAGE::CHINESE == localization_language_) {
-        ImGui::SetNextWindowSize(ImVec2(160, 210));
+        ImGui::SetNextWindowSize(ImVec2(160, 245));
       } else {
-        ImGui::SetNextWindowSize(ImVec2(180, 210));
+        ImGui::SetNextWindowSize(ImVec2(190, 245));
       }
 
       if (!connection_established_) {
@@ -525,28 +533,44 @@ int MainWindow::Run() {
 
       ImGui::Spacing();
 
+      if (ImGui::Button(mouse_control_button_label_.c_str())) {
+        if (mouse_control_button_label_ ==
+            localization::control_mouse[localization_language_index_]) {
+          mouse_control_button_pressed_ = true;
+          control_mouse_ = true;
+          mouse_control_button_label_ =
+              localization::release_mouse[localization_language_index_];
+        } else {
+          control_mouse_ = false;
+          mouse_control_button_label_ =
+              localization::control_mouse[localization_language_index_];
+        }
+      }
+
+      ImGui::SameLine();
+
       if (ImGui::Button(fullscreen_button_label_.c_str())) {
         if (fullscreen_button_label_ ==
             localization::fullscreen[localization_language_index_]) {
           main_window_width_before_fullscreen_ = main_window_width_;
           main_window_height_before_fullscreen_ = main_window_height_;
           SDL_SetWindowFullscreen(main_window_, SDL_WINDOW_FULLSCREEN_DESKTOP);
-          fullscreen_button_pressed_ = true;
+          fullscreen_button_label_ =
+              localization::exit_fullscreen[localization_language_index_];
         } else {
           SDL_SetWindowFullscreen(main_window_, SDL_FALSE);
           SDL_SetWindowSize(main_window_, main_window_width_before_fullscreen_,
                             main_window_height_before_fullscreen_);
+          fullscreen_button_label_ =
+              localization::fullscreen[localization_language_index_];
         }
-        fullscreen_button_pressed_ = !fullscreen_button_pressed_;
-        fullscreen_button_label_ =
-            fullscreen_button_pressed_
-                ? localization::exit_fullscreen[localization_language_index_]
-
-                : localization::fullscreen[localization_language_index_];
-        fullscreen_button_pressed_ = false;
       }
 
-      ImGui::SameLine();
+      ImGui::Spacing();
+
+      ImGui::Separator();
+
+      ImGui::Spacing();
 
       if (ImGui::Button(settings_button_label_.c_str())) {
         settings_button_pressed_ = !settings_button_pressed_;
