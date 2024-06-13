@@ -167,6 +167,11 @@ void MainWindow::OnConnectionStatusCb(ConnectionStatus status,
     main_window->start_screen_capture_ = false;
     main_window->start_mouse_control_ = false;
     main_window->connection_established_ = false;
+    if (main_window->dst_buffer_) {
+      memset(main_window->dst_buffer_, 0, 1280 * 720 * 3);
+      SDL_UpdateTexture(main_window->sdl_texture_, NULL,
+                        main_window->dst_buffer_, 1280);
+    }
   } else if (ConnectionStatus::IncorrectPassword == status) {
     main_window->connection_status_str_ = "Incorrect password";
     if (main_window->connect_button_pressed_) {
