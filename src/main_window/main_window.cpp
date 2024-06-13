@@ -347,7 +347,7 @@ int MainWindow::Run() {
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
 
-    if (connection_established_ && !menu_hovered_) {
+    if (connection_established_ && !subwindow_hovered_) {
       ImGui::SetMouseCursor(ImGuiMouseCursor_None);
     }
 
@@ -374,7 +374,7 @@ int MainWindow::Run() {
       }
 
       {
-        menu_hovered_ = ImGui::IsWindowHovered();
+        subwindow_hovered_ = ImGui::IsWindowHovered();
 
         // local
         {
@@ -569,6 +569,7 @@ int MainWindow::Run() {
           settings_window_pos_reset_ = false;
         }
 
+        // Settings
         ImGui::Begin(
             localization::settings[localization_language_index_].c_str(),
             nullptr,
@@ -576,6 +577,8 @@ int MainWindow::Run() {
                 ImGuiWindowFlags_NoSavedSettings);
 
         {
+          subwindow_hovered_ = ImGui::IsWindowHovered();
+
           const char *language_items[] = {
               localization::language_zh[localization_language_index_].c_str(),
               localization::language_en[localization_language_index_].c_str()};

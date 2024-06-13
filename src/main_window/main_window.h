@@ -120,7 +120,7 @@ class MainWindow {
 
   bool exit_ = false;
   bool connection_established_ = false;
-  bool menu_hovered_ = false;
+  bool subwindow_hovered_ = false;
   bool connect_button_pressed_ = false;
   bool fullscreen_button_pressed_ = false;
   bool settings_button_pressed_ = false;

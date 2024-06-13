@@ -40,6 +40,9 @@ int MainWindow::ProcessMouseKeyEven(SDL_Event &ev) {
     } else if (SDL_BUTTON_RIGHT == ev.button.button) {
       remote_action.m.flag = MouseFlag::right_down;
     }
+    if (subwindow_hovered_) {
+      remote_action.m.flag = MouseFlag::move;
+    }
     SendData(peer_, DATA_TYPE::DATA, (const char *)&remote_action,
              sizeof(remote_action));
   } else if (SDL_MOUSEBUTTONUP == ev.type) {
@@ -48,6 +51,9 @@ int MainWindow::ProcessMouseKeyEven(SDL_Event &ev) {
       remote_action.m.flag = MouseFlag::left_up;
     } else if (SDL_BUTTON_RIGHT == ev.button.button) {
       remote_action.m.flag = MouseFlag::right_up;
+    }
+    if (subwindow_hovered_) {
+      remote_action.m.flag = MouseFlag::move;
     }
     SendData(peer_, DATA_TYPE::DATA, (const char *)&remote_action,
              sizeof(remote_action));
