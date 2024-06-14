@@ -53,6 +53,10 @@ int IceTransmission::InitIceTransmission(
           return -1;
         }
 
+        if (state_ != NICE_COMPONENT_STATE_READY) {
+          return -2;
+        }
+
         return ice_agent_->Send(data, size);
       });
   rtp_video_receiver_->SetOnReceiveCompleteFrame(
@@ -71,6 +75,10 @@ int IceTransmission::InitIceTransmission(
         if (!ice_agent_) {
           LOG_ERROR("ice_agent_ is nullptr");
           return -1;
+        }
+
+        if (state_ != NICE_COMPONENT_STATE_READY) {
+          return -2;
         }
 
         return ice_agent_->Send(data, size);
@@ -93,6 +101,10 @@ int IceTransmission::InitIceTransmission(
           return -1;
         }
 
+        if (state_ != NICE_COMPONENT_STATE_READY) {
+          return -2;
+        }
+
         return ice_agent_->Send(data, size);
       });
 
@@ -106,6 +118,10 @@ int IceTransmission::InitIceTransmission(
           return -1;
         }
 
+        if (state_ != NICE_COMPONENT_STATE_READY) {
+          return -2;
+        }
+
         return ice_agent_->Send(data, size);
       });
 
@@ -117,6 +133,10 @@ int IceTransmission::InitIceTransmission(
         if (!ice_agent_) {
           LOG_ERROR("ice_agent_ is nullptr");
           return -1;
+        }
+
+        if (state_ != NICE_COMPONENT_STATE_READY) {
+          return -2;
         }
 
         return ice_agent_->Send(data, size);

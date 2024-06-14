@@ -228,11 +228,11 @@ int IceAgent::Send(const char *data, size_t size) {
     return -1;
   }
 
-  if (NiceComponentState::NICE_COMPONENT_STATE_READY !=
-      nice_agent_get_component_state(agent_, stream_id_, 1)) {
-    LOG_ERROR("Nice agent not ready");
-    return -1;
-  }
+  // if (NiceComponentState::NICE_COMPONENT_STATE_READY !=
+  //     nice_agent_get_component_state(agent_, stream_id_, 1)) {
+  //   LOG_ERROR("Nice agent not ready");
+  //   return -1;
+  // }
 
   nice_agent_send(agent_, stream_id_, 1, size, data);
   return 0;
