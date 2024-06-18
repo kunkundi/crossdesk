@@ -4,6 +4,7 @@
 #include <iostream>
 #include <string>
 
+#include "IconsFontAwesome6.h"
 #include "device_controller_factory.h"
 #include "layout_style.h"
 #include "localization.h"
@@ -243,6 +244,15 @@ int MainWindow::Run() {
 #endif
   }
 
+  ImFontConfig config;
+  config.MergeMode = true;
+  config.GlyphMinAdvanceX =
+      13.0f;  // Use if you want to make the icon monospaced
+  static const ImWchar icon_ranges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
+  io.Fonts->AddFontFromFileTTF("fonts/fa-solid-900.ttf", 30.0f, &config,
+                               icon_ranges);
+  io.Fonts->Build();
+
   // Setup Dear ImGui style
   // ImGui::StyleColorsDark();
   ImGui::StyleColorsLight();
@@ -372,7 +382,6 @@ int MainWindow::Run() {
           ImGui::Spacing();
           ImGui::SetWindowFontScale(1.0f);
           ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0, 0, 0, 0.3));
-
           ImGui::InputTextWithHint(
               "##server_pwd",
               localization::max_password_len[localization_language_index_]
@@ -381,13 +390,36 @@ int MainWindow::Run() {
               show_password_ ? ImGuiInputTextFlags_CharsNoBlank
                              : ImGuiInputTextFlags_CharsNoBlank |
                                    ImGuiInputTextFlags_Password);
+          ImGui::PopStyleColor();
           ImGui::SameLine();
-          ImGui::SetWindowFontScale(0.5f);
-          if (ImGui::Button(u8"²é¿´ÃÜÂë", ImVec2(80, 35))) {
+          ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+          ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0, 0, 0, 0));
+          ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0));
+
+          if (ImGui::Button(show_password_ ? ICON_FA_EYE : ICON_FA_EYE_SLASH,
+                            ImVec2(50, 35))) {
             show_password_ = !show_password_;
           }
+          ImGui::PopStyleColor(3);
 
-          ImGui::PopStyleColor();
+          ImGui::SameLine();
+          ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+          ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0, 0, 0, 0));
+          ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0));
+          if (!regenerate_password_) {
+            if (ImGui::Button(ICON_FA_ARROWS_ROTATE, ImVec2(38, 38))) {
+              regenerate_password_ = true;
+            }
+          } else {
+            regenerate_password_frame_count_++;
+            if (ImGui::Button(ICON_FA_SPINNER)) {
+            }
+            if (regenerate_password_frame_count_ == 30) {
+              regenerate_password_frame_count_ = 0;
+              regenerate_password_ = false;
+            }
+          }
+          ImGui::PopStyleColor(3);
 
           if (strcmp(input_password_tmp_, input_password_)) {
             SaveSettingsIntoCacheFile();
@@ -445,10 +477,13 @@ int MainWindow::Run() {
 
       ImGui::Spacing();
 
-      if (ImGui::Button(settings_button_label_.c_str())) {
+      ImGui::SetWindowFontScale(0.5f);
+      std::string gear = ICON_FA_GEAR + settings_button_label_;
+      if (ImGui::Button(gear.c_str(), ImVec2(55, 25))) {
         settings_button_pressed_ = !settings_button_pressed_;
         settings_window_pos_reset_ = true;
       }
+      ImGui::SetWindowFontScale(1.0f);
 
       if (settings_button_pressed_) {
         if (settings_window_pos_reset_) {
@@ -480,13 +515,14 @@ int MainWindow::Run() {
           settings_window_pos_reset_ = false;
         }
 
+        ImGui::SetWindowFontScale(0.5f);
         // Settings
         ImGui::Begin(
             localization::settings[localization_language_index_].c_str(),
             nullptr,
             ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
                 ImGuiWindowFlags_NoSavedSettings);
-
+        ImGui::SetWindowFontScale(0.5f);
         {
           const char *language_items[] = {
               localization::language_zh[localization_language_index_].c_str(),

@@ -128,7 +128,9 @@ class MainWindow {
   bool audio_buffer_fresh_ = false;
   bool rejoin_ = false;
   bool control_mouse_ = false;
-  bool show_password_ = false;
+  bool show_password_ = true;
+  bool regenerate_password_ = false;
+  int regenerate_password_frame_count_ = 0;
 
   int fps_ = 0;
   uint32_t start_time_;
