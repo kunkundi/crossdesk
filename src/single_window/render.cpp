@@ -1,5 +1,3 @@
-#include "main_window.h"
-
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -9,17 +7,18 @@
 #include "localization.h"
 #include "log.h"
 #include "platform.h"
+#include "render.h"
 #include "screen_capturer_factory.h"
 
 // Refresh Event
 #define REFRESH_EVENT (SDL_USEREVENT + 1)
 #define NV12_BUFFER_SIZE 1280 * 720 * 3 / 2
 
-MainWindow::MainWindow() {}
+Render::Render() {}
 
-MainWindow::~MainWindow() {}
+Render::~Render() {}
 
-int MainWindow::SaveSettingsIntoCacheFile() {
+int Render::SaveSettingsIntoCacheFile() {
   cd_cache_file_ = fopen("cache.cd", "w+");
   if (!cd_cache_file_) {
     return -1;
@@ -41,7 +40,7 @@ int MainWindow::SaveSettingsIntoCacheFile() {
   return 0;
 }
 
-int MainWindow::LoadSettingsIntoCacheFile() {
+int Render::LoadSettingsIntoCacheFile() {
   cd_cache_file_ = fopen("cache.cd", "r+");
   if (!cd_cache_file_) {
     return -1;
@@ -59,7 +58,7 @@ int MainWindow::LoadSettingsIntoCacheFile() {
   return 0;
 }
 
-int MainWindow::StartScreenCapture() {
+int Render::StartScreenCapture() {
   screen_capturer_ = (ScreenCapturer *)screen_capturer_factory_->Create();
   ScreenCapturer::RECORD_DESKTOP_RECT rect;
   rect.left = 0;
@@ -93,7 +92,7 @@ int MainWindow::StartScreenCapture() {
   return 0;
 }
 
-int MainWindow::StopScreenCapture() {
+int Render::StopScreenCapture() {
   if (screen_capturer_) {
     LOG_INFO("Destroy screen capturer")
     screen_capturer_->Destroy();
@@ -104,7 +103,7 @@ int MainWindow::StopScreenCapture() {
   return 0;
 }
 
-int MainWindow::StartMouseControl() {
+int Render::StartMouseControl() {
   device_controller_factory_ = new DeviceControllerFactory();
   mouse_controller_ = (MouseController *)device_controller_factory_->Create(
       DeviceControllerFactory::Device::Mouse);
@@ -119,7 +118,7 @@ int MainWindow::StartMouseControl() {
   return 0;
 }
 
-int MainWindow::StopMouseControl() {
+int Render::StopMouseControl() {
   if (mouse_controller_) {
     mouse_controller_->Destroy();
     delete mouse_controller_;
@@ -128,7 +127,7 @@ int MainWindow::StopMouseControl() {
   return 0;
 }
 
-int MainWindow::CreateConnectionPeer() {
+int Render::CreateConnectionPeer() {
   mac_addr_str_ = GetMac();
 
   params_.use_cfg_file = false;
@@ -165,7 +164,7 @@ int MainWindow::CreateConnectionPeer() {
   return 0;
 }
 
-int MainWindow::Run() {
+int Render::Run() {
   LoadSettingsIntoCacheFile();
 
   localization_language_ = (ConfigCenter::LANGUAGE)language_button_value_;

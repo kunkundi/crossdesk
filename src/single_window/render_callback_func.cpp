@@ -1,6 +1,6 @@
 #include "device_controller.h"
 #include "localization.h"
-#include "main_window.h"
+#include "render.h"
 
 // Refresh Event
 #define REFRESH_EVENT (SDL_USEREVENT + 1)
@@ -11,7 +11,7 @@
 #define MOUSE_CONTROL 1
 #endif
 
-int MainWindow::ProcessMouseKeyEven(SDL_Event &ev) {
+int Render::ProcessMouseKeyEven(SDL_Event &ev) {
   if (!control_mouse_) {
     return 0;
   }
@@ -77,7 +77,7 @@ int MainWindow::ProcessMouseKeyEven(SDL_Event &ev) {
   return 0;
 }
 
-void MainWindow::SdlCaptureAudioIn(void *userdata, Uint8 *stream, int len) {
+void Render::SdlCaptureAudioIn(void *userdata, Uint8 *stream, int len) {
   if (1) {
     if ("Connected" == connection_status_str_) {
       SendData(peer_, DATA_TYPE::AUDIO, (const char *)stream, len);
@@ -90,7 +90,7 @@ void MainWindow::SdlCaptureAudioIn(void *userdata, Uint8 *stream, int len) {
   }
 }
 
-void MainWindow::SdlCaptureAudioOut(void *userdata, Uint8 *stream, int len) {
+void Render::SdlCaptureAudioOut(void *userdata, Uint8 *stream, int len) {
   if (!audio_buffer_fresh_) {
     return;
   }
@@ -108,10 +108,10 @@ void MainWindow::SdlCaptureAudioOut(void *userdata, Uint8 *stream, int len) {
   audio_buffer_fresh_ = false;
 }
 
-void MainWindow::OnReceiveVideoBufferCb(const char *data, size_t size,
-                                        const char *user_id,
-                                        size_t user_id_size, void *user_data) {
-  MainWindow *main_window = (MainWindow *)user_data;
+void Render::OnReceiveVideoBufferCb(const char *data, size_t size,
+                                    const char *user_id, size_t user_id_size,
+                                    void *user_data) {
+  Render *main_window = (Render *)user_data;
   if (main_window->connection_established_) {
     memcpy(main_window->dst_buffer_, data, size);
     SDL_Event event;
@@ -121,18 +121,18 @@ void MainWindow::OnReceiveVideoBufferCb(const char *data, size_t size,
   }
 }
 
-void MainWindow::OnReceiveAudioBufferCb(const char *data, size_t size,
-                                        const char *user_id,
-                                        size_t user_id_size, void *user_data) {
-  MainWindow *main_window = (MainWindow *)user_data;
+void Render::OnReceiveAudioBufferCb(const char *data, size_t size,
+                                    const char *user_id, size_t user_id_size,
+                                    void *user_data) {
+  Render *main_window = (Render *)user_data;
   main_window->audio_buffer_fresh_ = true;
   SDL_QueueAudio(main_window->output_dev_, data, (uint32_t)size);
 }
 
-void MainWindow::OnReceiveDataBufferCb(const char *data, size_t size,
-                                       const char *user_id, size_t user_id_size,
-                                       void *user_data) {
-  MainWindow *main_window = (MainWindow *)user_data;
+void Render::OnReceiveDataBufferCb(const char *data, size_t size,
+                                   const char *user_id, size_t user_id_size,
+                                   void *user_data) {
+  Render *main_window = (Render *)user_data;
   std::string user(user_id, user_id_size);
   RemoteAction remote_action;
   memcpy(&remote_action, data, sizeof(remote_action));
@@ -144,8 +144,8 @@ void MainWindow::OnReceiveDataBufferCb(const char *data, size_t size,
 #endif
 }
 
-void MainWindow::OnSignalStatusCb(SignalStatus status, void *user_data) {
-  MainWindow *main_window = (MainWindow *)user_data;
+void Render::OnSignalStatusCb(SignalStatus status, void *user_data) {
+  Render *main_window = (Render *)user_data;
   main_window->signal_status_ = status;
   if (SignalStatus::SignalConnecting == status) {
     main_window->signal_status_str_ = "SignalConnecting";
@@ -160,9 +160,8 @@ void MainWindow::OnSignalStatusCb(SignalStatus status, void *user_data) {
   }
 }
 
-void MainWindow::OnConnectionStatusCb(ConnectionStatus status,
-                                      void *user_data) {
-  MainWindow *main_window = (MainWindow *)user_data;
+void Render::OnConnectionStatusCb(ConnectionStatus status, void *user_data) {
+  Render *main_window = (Render *)user_data;
   main_window->connection_status_ = status;
   if (ConnectionStatus::Connecting == status) {
     main_window->connection_status_str_ = "Connecting";

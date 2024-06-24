@@ -7,13 +7,13 @@
 #endif
 
 #include "log.h"
-#include "main_window.h"
+#include "render.h"
 
 int main(int argc, char *argv[]) {
   LOG_INFO("Remote desk");
-  MainWindow main_window;
+  Render render;
 
-  main_window.Run();
+  render.Run();
 
   return 0;
 }
