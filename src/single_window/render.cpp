@@ -241,6 +241,15 @@ int Render::Run() {
 
   io.Fonts->Build();
 
+  SDL_GL_GetDrawableSize(main_window_, &main_window_width_real_,
+                         &main_window_height_real_);
+  dpi_scaling_w_ = (float)main_window_width_real_ / (float)main_window_width_;
+  dpi_scaling_h_ = (float)main_window_width_real_ / (float)main_window_width_;
+
+  LOG_INFO("Use dpi scaling [{}x{}]", dpi_scaling_w_, dpi_scaling_h_);
+
+  SDL_RenderSetScale(main_renderer_, dpi_scaling_w_, dpi_scaling_h_);
+
   // Setup Dear ImGui style
   // ImGui::StyleColorsDark();
   ImGui::StyleColorsLight();

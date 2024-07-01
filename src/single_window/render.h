@@ -124,6 +124,11 @@ class Render {
   int menu_window_height_ = 30;
   int local_window_width_ = 350;
 
+  int main_window_width_real_ = 960;
+  int main_window_height_real_ = 540;
+  float dpi_scaling_w_ = 1.0f;
+  float dpi_scaling_h_ = 1.0f;
+
   int texture_width_ = 1280;
   int texture_height_ = 720;
 
