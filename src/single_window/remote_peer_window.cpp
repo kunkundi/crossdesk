@@ -8,12 +8,14 @@ int Render::RemoteWindow() {
   ImGui::SetNextWindowPos(ImVec2(local_window_width_ - 1, menu_window_height_),
                           ImGuiCond_Always);
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(255, 255, 255, 1));
-  ImGui::BeginChild("RemoteDesktopWindow",
-                    ImVec2(main_window_width_ - local_window_width_,
-                           main_window_height_ - menu_window_height_),
-                    ImGuiChildFlags_Border,
-                    ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
-                        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar);
+  ImGui::BeginChild(
+      "RemoteDesktopWindow",
+      ImVec2(main_window_width_ - local_window_width_ + 1,
+             main_window_height_ - menu_window_height_ - status_bar_height_),
+      ImGuiChildFlags_Border,
+      ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
+          ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar |
+          ImGuiWindowFlags_NoBringToFrontOnFocus);
 
   ImGui::SetWindowFontScale(1.0f);
   ImGui::Text(
@@ -24,7 +26,10 @@ int Render::RemoteWindow() {
   ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0.09));
   ImGui::BeginChild("RemoteDesktopWindow_1", ImVec2(330, 180),
-                    ImGuiChildFlags_Border);
+                    ImGuiChildFlags_Border,
+                    ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
+                        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar |
+                        ImGuiWindowFlags_NoBringToFrontOnFocus);
   {
     ImGui::SetWindowFontScale(0.5f);
     ImGui::Text("%s",
@@ -38,10 +43,11 @@ int Render::RemoteWindow() {
         ImGuiInputTextFlags_CharsUppercase | ImGuiInputTextFlags_CharsNoBlank);
 
     ImGui::SameLine();
-    if (ImGui::Button(ICON_FA_ARROW_RIGHT_LONG, ImVec2(55, 35)) || rejoin_) {
+    if (ImGui::Button(ICON_FA_ARROW_RIGHT_LONG, ImVec2(55, 38)) || rejoin_) {
+      connect_button_pressed_ = true;
       int ret = -1;
-      if ("SignalConnected" == signal_status_str_) {
-        if (!connection_established_ && strlen(remote_id_)) {
+      if (signal_connected_) {
+        if (!connection_established_) {
           if (remote_id_ == local_id_ && !peer_reserved_) {
             peer_reserved_ = CreatePeer(&params_);
             if (peer_reserved_) {

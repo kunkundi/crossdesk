@@ -190,7 +190,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, void *user_data) {
   } else if (ConnectionStatus::IncorrectPassword == status) {
     main_window->connection_status_str_ = "Incorrect password";
     if (main_window->connect_button_pressed_) {
-      main_window->connect_button_pressed_ = false;
+      // main_window->connect_button_pressed_ = false;
       main_window->connection_established_ = false;
       main_window->connect_button_label_ =
           main_window->connect_button_pressed_
@@ -202,7 +202,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, void *user_data) {
   } else if (ConnectionStatus::NoSuchTransmissionId == status) {
     main_window->connection_status_str_ = "No such transmission id";
     if (main_window->connect_button_pressed_) {
-      main_window->connect_button_pressed_ = false;
+      // main_window->connect_button_pressed_ = false;
       main_window->connection_established_ = false;
       main_window->connect_button_label_ =
           main_window->connect_button_pressed_

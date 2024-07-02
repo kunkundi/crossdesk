@@ -38,6 +38,8 @@ class Render {
   int ControlWindow();
   int ControlBar();
   int MenuWindow();
+  int StatusBar();
+  int ConnectionStatusWindow();
 
  public:
   static void OnReceiveVideoBufferCb(const char *data, size_t size,
@@ -123,6 +125,9 @@ class Render {
   int main_window_height_before_fullscreen_ = 720;
   int menu_window_height_ = 30;
   int local_window_width_ = 350;
+  int status_bar_height_ = 20;
+  int connection_status_window_width_ = 200;
+  int connection_status_window_height_ = 150;
 
   int main_window_width_real_ = 960;
   int main_window_height_real_ = 540;
@@ -171,6 +176,7 @@ class Render {
   SignalStatus signal_status_ = SignalStatus::SignalClosed;
   std::string signal_status_str_ = "";
   std::string connection_status_str_ = "";
+  bool signal_connected_ = false;
 
  private:
   PeerPtr *peer_ = nullptr;

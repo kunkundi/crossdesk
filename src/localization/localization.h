@@ -45,6 +45,18 @@ static std::vector<std::string> enable_hardware_video_codec = {
 static std::vector<std::string> ok = {u8"确认", "OK"};
 static std::vector<std::string> cancel = {u8"取消", "Cancel"};
 
+static std::vector<std::string> signal_connected = {u8"已连接服务器",
+                                                    "Connected"};
+static std::vector<std::string> signal_disconnected = {u8"未连接服务器",
+                                                       "Disconnected"};
+
+static std::vector<std::string> p2p_connected = {u8"对等连接已建立",
+                                                 "P2P Connected"};
+static std::vector<std::string> p2p_disconnected = {u8"对等连接已断开",
+                                                    "P2P Disconnected"};
+static std::vector<std::string> p2p_connecting = {u8"正在建立对等连接",
+                                                  "P2P Connecting"};
+
 }  // namespace localization
 
 #endif

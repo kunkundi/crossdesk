@@ -149,14 +149,19 @@ void Render::OnSignalStatusCb(SignalStatus status, void *user_data) {
   render->signal_status_ = status;
   if (SignalStatus::SignalConnecting == status) {
     render->signal_status_str_ = "SignalConnecting";
+    render->signal_connected_ = false;
   } else if (SignalStatus::SignalConnected == status) {
     render->signal_status_str_ = "SignalConnected";
+    render->signal_connected_ = true;
   } else if (SignalStatus::SignalFailed == status) {
     render->signal_status_str_ = "SignalFailed";
+    render->signal_connected_ = false;
   } else if (SignalStatus::SignalClosed == status) {
     render->signal_status_str_ = "SignalClosed";
+    render->signal_connected_ = false;
   } else if (SignalStatus::SignalReconnecting == status) {
     render->signal_status_str_ = "SignalReconnecting";
+    render->signal_connected_ = false;
   }
 }
 
@@ -169,6 +174,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, void *user_data) {
     render->connection_status_str_ = "Connected";
     render->connection_established_ = true;
     render->streaming_ = true;
+    // render->connect_button_pressed_ = false;
     SDL_SetWindowSize(render->main_window_, render->stream_window_width_,
                       render->stream_window_height_);
     SDL_SetWindowPosition(render->main_window_, SDL_WINDOWPOS_CENTERED,
@@ -196,7 +202,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, void *user_data) {
   } else if (ConnectionStatus::IncorrectPassword == status) {
     render->connection_status_str_ = "Incorrect password";
     if (render->connect_button_pressed_) {
-      render->connect_button_pressed_ = false;
+      // render->connect_button_pressed_ = false;
       render->connection_established_ = false;
       render->connect_button_label_ =
           render->connect_button_pressed_
@@ -206,7 +212,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, void *user_data) {
   } else if (ConnectionStatus::NoSuchTransmissionId == status) {
     render->connection_status_str_ = "No such transmission id";
     if (render->connect_button_pressed_) {
-      render->connect_button_pressed_ = false;
+      // render->connect_button_pressed_ = false;
       render->connection_established_ = false;
       render->connect_button_label_ =
           render->connect_button_pressed_

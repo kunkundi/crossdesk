@@ -8,6 +8,8 @@ int Render::MainWindow() {
   MenuWindow();
   LocalWindow();
   RemoteWindow();
+  StatusBar();
+  ConnectionStatusWindow();
 
   return 0;
 }

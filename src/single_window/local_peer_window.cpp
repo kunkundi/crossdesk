@@ -8,10 +8,12 @@ int Render::LocalWindow() {
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(255, 255, 255, 1));
   ImGui::BeginChild(
       "LocalDesktopWindow",
-      ImVec2(local_window_width_, main_window_height_ - menu_window_height_),
+      ImVec2(local_window_width_,
+             main_window_height_ - menu_window_height_ - status_bar_height_),
       ImGuiChildFlags_Border,
       ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
-          ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar);
+          ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar |
+          ImGuiWindowFlags_NoBringToFrontOnFocus);
 
   ImGui::SetWindowFontScale(1.0f);
   ImGui::Text(
@@ -21,8 +23,11 @@ int Render::LocalWindow() {
   {
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0.05));
-    ImGui::BeginChild("LocalDesktopWindow_1", ImVec2(330, 180),
-                      ImGuiChildFlags_Border);
+    ImGui::BeginChild(
+        "LocalDesktopWindow_1", ImVec2(330, 180), ImGuiChildFlags_Border,
+        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
+            ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar |
+            ImGuiWindowFlags_NoBringToFrontOnFocus);
     {
       ImGui::SetWindowFontScale(0.5f);
       ImGui::Text("%s",
@@ -64,7 +69,7 @@ int Render::LocalWindow() {
 
       ImGui::SetWindowFontScale(0.5f);
       if (ImGui::Button(show_password_ ? ICON_FA_EYE : ICON_FA_EYE_SLASH,
-                        ImVec2(35, 35))) {
+                        ImVec2(35, 38))) {
         show_password_ = !show_password_;
       }
       ImGui::PopStyleColor(3);
@@ -74,12 +79,12 @@ int Render::LocalWindow() {
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0, 0, 0, 0));
       ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0));
       if (!regenerate_password_) {
-        if (ImGui::Button(ICON_FA_ARROWS_ROTATE, ImVec2(35, 35))) {
+        if (ImGui::Button(ICON_FA_ARROWS_ROTATE, ImVec2(35, 38))) {
           regenerate_password_ = true;
         }
       } else {
         regenerate_password_frame_count_++;
-        if (ImGui::Button(ICON_FA_SPINNER, ImVec2(35, 35))) {
+        if (ImGui::Button(ICON_FA_SPINNER, ImVec2(35, 38))) {
         }
         if (regenerate_password_frame_count_ == 15) {
           regenerate_password_frame_count_ = 0;
