@@ -46,8 +46,7 @@ int Render::ControlBar() {
     }
 
     ImGui::SameLine();
-    ImGui::Dummy(ImVec2(main_window_width_ * 0.91f, 0));
-    ImGui::SameLine();
+    ImGui::SetCursorPosX(main_window_width_ - 35);
   }
 
   std::string control_bar =

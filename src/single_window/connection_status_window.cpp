@@ -94,8 +94,7 @@ int Render::ConnectionStatusWindow() {
                 localization::ok[localization_language_index_].c_str())) {
           show_connection_status_window_ = true;
           password_validating_ = true;
-          JoinConnection(peer_reserved_ ? peer_reserved_ : peer_, remote_id_,
-                         remote_password_.c_str());
+          rejoin_ = true;
         }
 
         ImGui::SameLine();
