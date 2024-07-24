@@ -603,6 +603,14 @@ int PeerConnection::SendVideoData(const char *data, size_t size) {
 }
 
 int PeerConnection::SendAudioData(const char *data, size_t size) {
+  if (!ice_ready_) {
+    return -1;
+  }
+
+  if (ice_transmission_list_.empty()) {
+    return -1;
+  }
+
   int ret = audio_encoder_->Encode(
       (uint8_t *)data, size,
       [this](char *encoded_audio_buffer, size_t size) -> int {

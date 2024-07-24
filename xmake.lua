@@ -181,7 +181,7 @@ target("pc")
     add_includedirs("src/transmission", "src/interface", {public = true})
 
 target("projectx")
-    set_kind("shared")
+    set_kind("static")
     add_deps("log", "pc")
     add_files("src/rtc/*.cpp")
     add_includedirs("src/rtc", "src/pc", "src/interface")
@@ -203,14 +203,14 @@ target("projectx")
     end
 
     add_installfiles("src/interface/*.h", {prefixdir = "include"})
-    add_rules("utils.symbols.export_list", {symbols = {
-        "CreatePeer",
-        "DestroyPeer",
-        "Init",
-        "CreateConnection",
-        "JoinConnection",
-        "LeaveConnection",
-        "SendData"}})
+    -- add_rules("utils.symbols.export_list", {symbols = {
+    --     "CreatePeer",
+    --     "DestroyPeer",
+    --     "Init",
+    --     "CreateConnection",
+    --     "JoinConnection",
+    --     "LeaveConnection",
+    --     "SendData"}})
 
 
     -- add_rules("utils.symbols.export_all", {export_classes = true})
