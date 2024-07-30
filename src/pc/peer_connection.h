@@ -20,8 +20,8 @@ typedef void (*OnSignalStatus)(SignalStatus status, void *);
 
 typedef void (*OnConnectionStatus)(ConnectionStatus status, void *);
 
-typedef void (*NetStatusReport)(const unsigned short, const unsigned short,
-                                void *);
+typedef void (*NetStatusReport)(TraversalMode mode, const unsigned short,
+                                const unsigned short, void *);
 
 typedef struct {
   bool use_cfg_file;
@@ -98,6 +98,7 @@ class PeerConnection {
   bool hardware_acceleration_ = false;
   bool av1_encoding_ = false;
   bool trickle_ice_ = true;
+  TraversalMode mode_ = TraversalMode::P2P;
 
  private:
   std::shared_ptr<WsTransmission> ws_transport_ = nullptr;
@@ -122,6 +123,9 @@ class PeerConnection {
   std::function<void(const char *, size_t, const char *, size_t)>
       on_receive_data_ = nullptr;
   std::function<void(std::string)> on_ice_status_change_ = nullptr;
+  std::function<void(IceTransmission::TraversalType, const unsigned short,
+                     const unsigned short, void *)>
+      on_net_status_report_ = nullptr;
   bool ice_ready_ = false;
 
   OnReceiveBuffer on_receive_video_buffer_;
@@ -129,6 +133,7 @@ class PeerConnection {
   OnReceiveBuffer on_receive_data_buffer_;
   OnSignalStatus on_signal_status_;
   OnConnectionStatus on_connection_status_;
+  NetStatusReport net_status_report_;
   void *user_data_;
 
   char *nv12_data_ = nullptr;

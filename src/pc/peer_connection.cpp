@@ -96,6 +96,7 @@ int PeerConnection::Init(PeerConnectionParams params,
   on_receive_data_buffer_ = params.on_receive_data_buffer;
   on_signal_status_ = params.on_signal_status;
   on_connection_status_ = params.on_connection_status;
+  net_status_report_ = params.net_status_report;
   user_data_ = params.user_data;
 
   on_receive_ws_msg_ = [this](const std::string &msg) { ProcessSignal(msg); };
@@ -167,6 +168,14 @@ int PeerConnection::Init(PeerConnectionParams params,
       LOG_INFO("Ice closed");
     } else {
       ice_ready_ = false;
+    }
+  };
+
+  on_net_status_report_ = [this](IceTransmission::TraversalType mode,
+                                 const unsigned short send,
+                                 const unsigned short receive, void *user_ptr) {
+    if (net_status_report_) {
+      net_status_report_(TraversalMode(mode), send, receive, user_ptr);
     }
   };
 
@@ -435,6 +444,8 @@ void PeerConnection::ProcessSignal(const std::string &signal) {
               on_receive_audio_);
           ice_transmission_list_[remote_user_id]->SetOnReceiveDataFunc(
               on_receive_data_);
+          ice_transmission_list_[remote_user_id]
+              ->SetOnReceiveNetStatusReportFunc(on_net_status_report_);
 
           ice_transmission_list_[remote_user_id]->InitIceTransmission(
               cfg_stun_server_ip_, stun_server_port_, cfg_turn_server_ip_,
@@ -486,6 +497,9 @@ void PeerConnection::ProcessSignal(const std::string &signal) {
           on_receive_audio_);
       ice_transmission_list_[remote_user_id]->SetOnReceiveDataFunc(
           on_receive_data_);
+      ice_transmission_list_[remote_user_id]->SetOnReceiveNetStatusReportFunc(
+          on_net_status_report_);
+
       ice_transmission_list_[remote_user_id]->InitIceTransmission(
           cfg_stun_server_ip_, stun_server_port_, cfg_turn_server_ip_,
           turn_server_port_, cfg_turn_server_username_,

@@ -83,9 +83,7 @@ int IceAgent::CreateIceAgent(nice_cb_state_changed_t on_state_changed,
                               turn_username_.c_str(), turn_password_.c_str(),
                               NICE_RELAY_TYPE_TURN_UDP);
 
-    // g_object_set(agent_, "ice-tcp", false, "ice-udp", true, "force-relay",
-    // true,
-    //              NULL);
+    // g_object_set(agent_, "force-relay", true, NULL);
 
     nice_agent_attach_recv(agent_, stream_id_, NICE_COMPONENT_TYPE_RTP,
                            g_main_loop_get_context(gloop_), on_recv_,

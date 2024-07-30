@@ -31,6 +31,8 @@ class IceTransmission {
     kVideoFrameDelta = 4,
   };
 
+  enum TraversalType { TP2P = 0, TRelay = 1 };
+
  public:
   IceTransmission(bool trickle_ice, bool offer_peer,
                   std::string &transmission_id, std::string &user_id,
@@ -64,6 +66,13 @@ class IceTransmission {
       std::function<void(const char *, size_t, const char *, size_t)>
           on_receive_data) {
     on_receive_data_ = on_receive_data;
+  }
+
+  void SetOnReceiveNetStatusReportFunc(
+      std::function<void(TraversalType, const unsigned short,
+                         const unsigned short, void *)>
+          on_receive_net_status_report) {
+    on_receive_net_status_report_ = on_receive_net_status_report;
   }
 
   int JoinTransmission();
@@ -109,6 +118,7 @@ class IceTransmission {
   std::string remote_user_id_;
   std::string remote_ice_username_ = "";
   NiceComponentState state_ = NICE_COMPONENT_STATE_DISCONNECTED;
+  TraversalType traversal_type_ = TraversalType::TP2P;
 
  private:
   std::unique_ptr<IceAgent> ice_agent_ = nullptr;
@@ -121,6 +131,9 @@ class IceTransmission {
   std::function<void(const char *, size_t, const char *, size_t)>
       on_receive_data_ = nullptr;
   std::function<void(std::string)> on_ice_status_change_ = nullptr;
+  std::function<void(TraversalType, const unsigned short, const unsigned short,
+                     void *)>
+      on_receive_net_status_report_ = nullptr;
 
  private:
   std::unique_ptr<RtpCodec> video_rtp_codec_ = nullptr;

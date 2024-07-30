@@ -222,6 +222,24 @@ int IceTransmission::InitIceTransmission(
       [](NiceAgent *agent, guint stream_id, guint component_id,
          const char *lfoundation, const char *rfoundation, gpointer user_ptr) {
         LOG_INFO("new selected pair: [{}] [{}]", lfoundation, rfoundation);
+        NiceCandidate *local = nullptr;
+        NiceCandidate *remote = nullptr;
+        nice_agent_get_selected_pair(agent, stream_id, component_id, &local,
+                                     &remote);
+        if (user_ptr) {
+          IceTransmission *ice_transmission_obj =
+              static_cast<IceTransmission *>(user_ptr);
+          if (local->type == NICE_CANDIDATE_TYPE_RELAYED &&
+              remote->type == NICE_CANDIDATE_TYPE_RELAYED) {
+            LOG_INFO("Traversal using relay server");
+            ice_transmission_obj->traversal_type_ = TraversalType::TRelay;
+          } else {
+            LOG_INFO("Traversal using p2p");
+            ice_transmission_obj->traversal_type_ = TraversalType::TP2P;
+          }
+          ice_transmission_obj->on_receive_net_status_report_(
+              ice_transmission_obj->traversal_type_, 0, 0, nullptr);
+        }
       },
       [](NiceAgent *agent, guint stream_id, guint component_id, guint size,
          gchar *buffer, gpointer user_ptr) {
