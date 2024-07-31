@@ -174,33 +174,35 @@ int IceTransmission::InitIceTransmission(
           IceTransmission *ice_transmission_obj =
               static_cast<IceTransmission *>(user_ptr);
 
-          GSList *cands =
-              nice_agent_get_local_candidates(agent, stream_id, component_id);
-          NiceCandidate *cand;
-          for (GSList *i = cands; i; i = i->next) {
-            cand = (NiceCandidate *)i->data;
-            if (g_strcmp0(cand->foundation, foundation) == 0) {
-              ice_transmission_obj->new_local_candidate_ =
-                  nice_agent_generate_local_candidate_sdp(agent, cand);
+          if (ice_transmission_obj->trickle_ice_) {
+            GSList *cands =
+                nice_agent_get_local_candidates(agent, stream_id, component_id);
+            NiceCandidate *cand;
+            for (GSList *i = cands; i; i = i->next) {
+              cand = (NiceCandidate *)i->data;
+              if (g_strcmp0(cand->foundation, foundation) == 0) {
+                ice_transmission_obj->new_local_candidate_ =
+                    nice_agent_generate_local_candidate_sdp(agent, cand);
 
-              json message = {
-                  {"type", "new_candidate"},
-                  {"transmission_id", ice_transmission_obj->transmission_id_},
-                  {"user_id", ice_transmission_obj->user_id_},
-                  {"remote_user_id", ice_transmission_obj->remote_user_id_},
-                  {"sdp", ice_transmission_obj->new_local_candidate_}};
-              // LOG_INFO("[{}] Send new candidate to [{}]]:[{}]",
-              //          ice_transmission_obj->user_id_,
-              //          ice_transmission_obj->remote_user_id_,
-              //          ice_transmission_obj->new_local_candidate_);
+                json message = {
+                    {"type", "new_candidate"},
+                    {"transmission_id", ice_transmission_obj->transmission_id_},
+                    {"user_id", ice_transmission_obj->user_id_},
+                    {"remote_user_id", ice_transmission_obj->remote_user_id_},
+                    {"sdp", ice_transmission_obj->new_local_candidate_}};
+                // LOG_INFO("[{}] Send new candidate to [{}]]:[{}]",
+                //          ice_transmission_obj->user_id_,
+                //          ice_transmission_obj->remote_user_id_,
+                //          ice_transmission_obj->new_local_candidate_);
 
-              if (ice_transmission_obj->ice_ws_transport_) {
-                ice_transmission_obj->ice_ws_transport_->Send(message.dump());
+                if (ice_transmission_obj->ice_ws_transport_) {
+                  ice_transmission_obj->ice_ws_transport_->Send(message.dump());
+                }
               }
             }
-          }
 
-          g_slist_free_full(cands, (GDestroyNotify)nice_candidate_free);
+            g_slist_free_full(cands, (GDestroyNotify)nice_candidate_free);
+          }
         }
       },
       [](NiceAgent *agent, guint stream_id, gpointer user_ptr) {
