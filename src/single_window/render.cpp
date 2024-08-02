@@ -104,6 +104,13 @@ int Render::LoadSettingsIntoCacheFile() {
   video_encode_format_button_value_ = cd_cache_.video_encode_format;
   enable_hardware_video_codec_ = cd_cache_.enable_hardware_video_codec;
 
+  config_center_.SetLanguage((ConfigCenter::LANGUAGE)language_button_value_);
+  config_center_.SetVideoQuality(
+      (ConfigCenter::VIDEO_QUALITY)video_quality_button_value_);
+  config_center_.SetVideoEncodeFormat(
+      (ConfigCenter::VIDEO_ENCODE_FORMAT)video_encode_format_button_value_);
+  config_center_.SetHardwareVideoCodec(enable_hardware_video_codec_);
+
   return 0;
 }
 
