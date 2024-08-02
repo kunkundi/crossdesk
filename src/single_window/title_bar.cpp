@@ -5,9 +5,9 @@
 #define BUTTON_PADDING 36.0f
 
 int Render::TitleBar() {
-  ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 0);
+  // ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1);
 
-  ImGui::PushStyleColor(ImGuiCol_MenuBarBg, ImVec4(1, 1, 1, 1.0f));
+  ImGui::PushStyleColor(ImGuiCol_MenuBarBg, ImVec4(1, 1, 1, 0.0f));
   ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
   ImGui::SetWindowFontScale(0.8f);
   ImGui::BeginChild("TitleBar", ImVec2(main_window_width_, title_bar_height_),
@@ -97,6 +97,6 @@ int Render::TitleBar() {
 
   ImGui::EndChild();
   ImGui::PopStyleColor(2);
-  ImGui::PopStyleVar();
+  // ImGui::PopStyleVar();
   return 0;
 }

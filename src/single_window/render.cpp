@@ -438,12 +438,14 @@ int Render::Run() {
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
 
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(
+        ImGuiCol_WindowBg,
+        ImVec4(1.0f, 1.0f, 1.0f, fullscreen_button_pressed_ ? 0 : 1.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
     ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
     ImGui::SetNextWindowSize(
         ImVec2(main_window_width_,
-               streaming_ ? title_bar_height_ + control_window_height_
+               streaming_ ? (fullscreen_button_pressed_ ? 0 : title_bar_height_)
                           : main_window_height_default_),
         ImGuiCond_Always);
     ImGui::Begin("Render", nullptr,
@@ -453,7 +455,9 @@ int Render::Run() {
     ImGui::PopStyleVar();
     ImGui::PopStyleColor();
 
-    TitleBar();
+    if (!fullscreen_button_pressed_) {
+      TitleBar();
+    }
 
     if (streaming_ && is_client_mode_) {
       if (!resizable_) {
@@ -536,8 +540,8 @@ int Render::Run() {
     // Rendering
     ImGui::Render();
 
+    SDL_RenderClear(main_renderer_);
     if (connection_established_ && received_frame_ && streaming_) {
-      SDL_RenderClear(main_renderer_);
       SDL_RenderCopy(main_renderer_, stream_texture_, NULL,
                      &stream_render_rect_);
     }

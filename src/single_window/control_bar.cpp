@@ -33,20 +33,14 @@ int Render::ControlBar() {
     if (ImGui::Button(fullscreen.c_str(), ImVec2(25, 25))) {
       fullscreen_button_pressed_ = !fullscreen_button_pressed_;
       if (fullscreen_button_pressed_) {
-        main_window_width_before_fullscreen_ = main_window_width_;
-        main_window_height_before_fullscreen_ = main_window_height_;
         SDL_SetWindowFullscreen(main_window_, SDL_WINDOW_FULLSCREEN_DESKTOP);
       } else {
         SDL_SetWindowFullscreen(main_window_, SDL_FALSE);
-        SDL_SetWindowSize(main_window_, main_window_width_before_fullscreen_,
-                          main_window_height_before_fullscreen_);
-        main_window_width_ = main_window_width_before_fullscreen_;
-        main_window_height_ = main_window_height_before_fullscreen_;
       }
     }
 
     ImGui::SameLine();
-    ImGui::SetCursorPosX(main_window_width_ - 35);
+    ImGui::SetCursorPosX(control_window_max_width_ - 35);
   }
 
   std::string control_bar =
