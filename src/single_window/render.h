@@ -123,7 +123,6 @@ class Render {
   std::string local_id_ = "";
   char remote_id_[20] = "";
   char client_password_[20] = "";
-  bool is_client_mode_ = false;
 
  private:
   int title_bar_width_ = 960;
@@ -192,14 +191,17 @@ class Render {
   bool show_password_ = true;
   bool password_inited_ = false;
   bool regenerate_password_ = false;
-  bool streaming_ = false;
   bool show_about_window_ = false;
   bool show_connection_status_window_ = false;
   bool window_maximized_ = false;
+  bool streaming_ = true;
+  bool is_client_mode_ = true;
 
   double copy_start_time_ = 0;
   double regenerate_password_start_time_ = 0;
   double control_bar_button_pressed_time_ = 0;
+
+  ImVec2 control_winodw_pos_;
 
   int fps_ = 0;
   uint32_t start_time_;

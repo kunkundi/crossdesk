@@ -15,9 +15,13 @@ int Render::ControlWindow() {
                     time_duration
           : control_window_max_width_;
 
-  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1, 1, 1, 1));
+  ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-  ImGui::SetNextWindowPos(ImVec2(0, title_bar_height_), ImGuiCond_Once);
+  ImGui::SetNextWindowPos(
+      ImVec2(-control_window_min_width_ / 2, title_bar_height_),
+      ImGuiCond_Once);
+
   ImGui::SetNextWindowSize(ImVec2(control_window_width, control_window_height_),
                            ImGuiCond_Always);
   ImGui::Begin("ControlWindow", nullptr,
@@ -25,6 +29,13 @@ int Render::ControlWindow() {
                    ImGuiWindowFlags_NoScrollbar |
                    ImGuiWindowFlags_NoBringToFrontOnFocus);
   ImGui::PopStyleVar();
+
+  control_winodw_pos_ = ImGui::GetWindowPos();
+  if (control_winodw_pos_.x != -control_window_min_width_ / 2) {
+    ImGui::SetWindowPos(
+        ImVec2(-control_window_min_width_ / 2, control_winodw_pos_.y),
+        ImGuiCond_Always);
+  }
 
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
   static bool a, b, c, d, e;
@@ -40,8 +51,8 @@ int Render::ControlWindow() {
   ControlBar();
 
   ImGui::EndChild();
-
   ImGui::End();
+  ImGui::PopStyleVar();
   ImGui::PopStyleColor();
 
   return 0;

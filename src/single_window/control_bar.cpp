@@ -5,9 +5,12 @@
 #include "render.h"
 
 int Render::ControlBar() {
+  ImVec2 bar_pos = ImGui::GetWindowPos();
+
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
 
   if (control_bar_button_pressed_) {
+    ImGui::SetCursorPosX(control_winodw_pos_.x + 22);
     // Mouse control
     std::string mouse = ICON_FA_COMPUTER_MOUSE;
     if (ImGui::Button(mouse.c_str(), ImVec2(25, 25))) {
@@ -40,12 +43,17 @@ int Render::ControlBar() {
     }
 
     ImGui::SameLine();
-    ImGui::SetCursorPosX(control_window_max_width_ - 35);
+    ImGui::SetCursorPosX(control_winodw_pos_.x + control_window_max_width_ -
+                         35);
   }
 
+  ImGui::SetCursorPosX(control_winodw_pos_.x +
+                       (control_bar_button_pressed_
+                            ? (control_window_max_width_ - 18)
+                            : (control_window_min_width_)));
   std::string control_bar =
       control_bar_button_pressed_ ? ICON_FA_ANGLE_LEFT : ICON_FA_ANGLE_RIGHT;
-  if (ImGui::Button(control_bar.c_str(), ImVec2(25, 25))) {
+  if (ImGui::Button(control_bar.c_str(), ImVec2(15, 25))) {
     control_bar_button_pressed_ = !control_bar_button_pressed_;
     control_bar_button_pressed_time_ = ImGui::GetTime();
   }
