@@ -29,10 +29,7 @@ int Render::ControlWindow() {
   ImGui::SetNextWindowPos(ImVec2(0, title_bar_height_), ImGuiCond_Once);
   if (ImGui::IsMouseReleased(ImGuiPopupFlags_MouseButtonLeft) ||
       control_window_width_is_changing_) {
-    if (control_winodw_pos_.x <= main_window_width_ / 2 ||
-        (control_winodw_pos_.y < title_bar_height_ ||
-         control_winodw_pos_.y >
-             main_window_height_ - control_window_height_)) {
+    if (control_winodw_pos_.x <= main_window_width_ / 2) {
       int pos_x = 0;
       int pos_y = (control_winodw_pos_.y >= title_bar_height_ &&
                    control_winodw_pos_.y <=
@@ -59,10 +56,7 @@ int Render::ControlWindow() {
       }
       ImGui::SetNextWindowPos(ImVec2(pos_x, pos_y), ImGuiCond_Always);
       is_control_bar_in_left_ = true;
-    } else if (control_winodw_pos_.x > main_window_width_ / 2 ||
-               (control_winodw_pos_.y < title_bar_height_ ||
-                control_winodw_pos_.y >
-                    main_window_height_ - control_window_height_)) {
+    } else if (control_winodw_pos_.x > main_window_width_ / 2) {
       int pos_x = 0;
       int pos_y = (control_winodw_pos_.y >= title_bar_height_ &&
                    control_winodw_pos_.y <=
