@@ -177,7 +177,7 @@ int PeerConnection::Init(PeerConnectionParams params,
                                  const unsigned short receive, void *user_ptr) {
     if (net_status_report_) {
       net_status_report_(atoi(transmission_id_.c_str()), TraversalMode(mode),
-                         send, receive, user_ptr);
+                         send, receive, user_data_);
     }
   };
 
