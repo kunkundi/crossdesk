@@ -87,6 +87,8 @@ int Render::SaveSettingsIntoCacheFile() {
   fwrite(&cd_cache_, sizeof(cd_cache_), 1, cd_cache_file_);
   fclose(cd_cache_file_);
 
+  LOG_INFO("Save settings into cache file");
+
   return 0;
 }
 
@@ -113,6 +115,8 @@ int Render::LoadSettingsIntoCacheFile() {
   config_center_.SetVideoEncodeFormat(
       (ConfigCenter::VIDEO_ENCODE_FORMAT)video_encode_format_button_value_);
   config_center_.SetHardwareVideoCodec(enable_hardware_video_codec_);
+
+  LOG_INFO("Load settings into cache file");
 
   return 0;
 }
@@ -492,7 +496,8 @@ int Render::Run() {
         if (streaming_) {
           LOG_INFO("Return to main interface");
           streaming_ = false;
-          LeaveConnection(peer_reserved_ ? peer_reserved_ : peer_);
+          LOG_INFO("[{}] Leave connection [{}]", client_id_, remote_id_);
+          LeaveConnection(peer_reserved_ ? peer_reserved_ : peer_, remote_id_);
           rejoin_ = false;
           memset(audio_buffer_, 0, 960);
           connection_established_ = false;
@@ -579,7 +584,8 @@ int Render::Run() {
 
   // Cleanup
   if (is_create_connection_) {
-    LeaveConnection(peer_);
+    LOG_INFO("[{}] Leave connection [{}]", client_id_, client_id_);
+    LeaveConnection(peer_, client_id_);
     is_client_mode_ = false;
   }
 

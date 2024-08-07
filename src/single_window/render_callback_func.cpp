@@ -235,7 +235,7 @@ void Render::NetStatusReport(int TransmissionId, TraversalMode mode,
                              const unsigned short send,
                              const unsigned short receive, void *user_data) {
   Render *render = (Render *)user_data;
-  if (TransmissionId != 0) {
+  if (TransmissionId != 0 && 0 == strcmp(render->client_id_, "")) {
     std::string client_id = std::to_string(TransmissionId);
     strncpy(render->client_id_, client_id.c_str(), sizeof(client_id));
     render->SaveSettingsIntoCacheFile();

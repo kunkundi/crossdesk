@@ -181,7 +181,7 @@ int Render::LocalWindow() {
         regenerate_password_ = true;
         password_inited_ = false;
         regenerate_password_start_time_ = ImGui::GetTime();
-        LeaveConnection(peer_);
+        LeaveConnection(peer_, client_id_);
         is_create_connection_ = false;
       }
       if (ImGui::GetTime() - regenerate_password_start_time_ > 0.3f) {
