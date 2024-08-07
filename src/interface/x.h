@@ -85,7 +85,7 @@ DLLAPI int CreateConnection(PeerPtr* peer_ptr, const char* transmission_id,
 DLLAPI int JoinConnection(PeerPtr* peer_ptr, const char* transmission_id,
                           const char* password);
 
-DLLAPI int LeaveConnection(PeerPtr* peer_ptr);
+DLLAPI int LeaveConnection(PeerPtr* peer_ptr, const char* transmission_id);
 
 DLLAPI int SendData(PeerPtr* peer_ptr, DATA_TYPE data_type, const char* data,
                     size_t size);

@@ -193,6 +193,8 @@ int PeerConnection::Init(PeerConnectionParams params,
 
   nv12_data_ = new char[1280 * 720 * 3 / 2];
 
+  LOG_INFO("[{}] Init finish", user_id);
+
   // if (0 != CreateVideoCodec(hardware_acceleration_)) {
   //   LOG_ERROR("Create video codec failed");
   //   return -1;
@@ -342,7 +344,7 @@ int PeerConnection::Join(const std::string &transmission_id,
   return ret;
 }
 
-int PeerConnection::Leave() {
+int PeerConnection::Leave(const std::string &transmission_id) {
   if (SignalStatus::SignalConnected != GetSignalStatus()) {
     LOG_ERROR("Signal not connected");
     return -1;
@@ -350,11 +352,11 @@ int PeerConnection::Leave() {
 
   json message = {{"type", "leave_transmission"},
                   {"user_id", user_id_},
-                  {"transmission_id", transmission_id_}};
+                  {"transmission_id", transmission_id}};
   if (ws_transport_) {
     ws_transport_->Send(message.dump());
     LOG_INFO("[{}] sends leave transmission [{}] notification ", user_id_,
-             transmission_id_);
+             transmission_id);
   }
 
   ice_ready_ = false;
@@ -576,7 +578,7 @@ int PeerConnection::RequestTransmissionMemberList(
     return -1;
   }
 
-  LOG_INFO("Request member list");
+  LOG_INFO("[{}] Request member list", user_id_);
 
   json message = {{"type", "query_user_id_list"},
                   {"transmission_id", transmission_id_},

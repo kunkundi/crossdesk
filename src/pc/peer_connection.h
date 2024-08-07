@@ -61,7 +61,7 @@ class PeerConnection {
   int Join(const std::string &transmission_id,
            const std::string &password = "");
 
-  int Leave();
+  int Leave(const std::string &transmission_id);
 
   int Destroy();
 

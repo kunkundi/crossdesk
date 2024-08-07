@@ -81,13 +81,13 @@ int JoinConnection(PeerPtr *peer_ptr, const char *transmission_id,
   return ret;
 }
 
-int LeaveConnection(PeerPtr *peer_ptr) {
+int LeaveConnection(PeerPtr *peer_ptr, const char *transmission_id) {
   if (!peer_ptr) {
     LOG_ERROR("peer_ptr not created");
     return -1;
   }
 
-  peer_ptr->peer_connection->Leave();
+  peer_ptr->peer_connection->Leave(transmission_id);
   LOG_INFO("LeaveConnection");
   return 0;
 }
