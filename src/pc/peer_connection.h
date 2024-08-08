@@ -72,6 +72,8 @@ class PeerConnection {
   int SendUserData(const char *data, size_t size);
 
  private:
+  int Login();
+
   int CreateVideoCodec(bool hardware_acceleration);
   int CreateAudioCodec();
 
@@ -97,7 +99,7 @@ class PeerConnection {
   int turn_server_port_ = 0;
   bool hardware_acceleration_ = false;
   bool av1_encoding_ = false;
-  bool trickle_ice_ = true;
+  bool trickle_ice_ = false;
   TraversalMode mode_ = TraversalMode::P2P;
 
  private:
@@ -108,6 +110,7 @@ class PeerConnection {
   std::string user_id_ = "";
   std::string transmission_id_ = "";
   std::vector<std::string> user_id_list_;
+  WsStatus ws_status_ = WsStatus::WsClosed;
   SignalStatus signal_status_ = SignalStatus::SignalClosed;
   std::mutex signal_status_mutex_;
   std::atomic<bool> leave_{false};

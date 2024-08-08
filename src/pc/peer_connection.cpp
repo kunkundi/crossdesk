@@ -103,18 +103,23 @@ int PeerConnection::Init(PeerConnectionParams params,
 
   on_ws_status_ = [this](WsStatus ws_status) {
     if (WsStatus::WsOpening == ws_status) {
+      ws_status_ = WsStatus::WsOpening;
       signal_status_ = SignalStatus::SignalConnecting;
       on_signal_status_(SignalStatus::SignalConnecting, user_data_);
     } else if (WsStatus::WsOpened == ws_status) {
-      signal_status_ = SignalStatus::SignalConnected;
-      on_signal_status_(SignalStatus::SignalConnected, user_data_);
+      ws_status_ = WsStatus::WsOpened;
+      LOG_INFO("Login to signal server");
+      Login();
     } else if (WsStatus::WsFailed == ws_status) {
+      ws_status_ = WsStatus::WsFailed;
       signal_status_ = SignalStatus::SignalFailed;
       on_signal_status_(SignalStatus::SignalFailed, user_data_);
     } else if (WsStatus::WsClosed == ws_status) {
+      ws_status_ = WsStatus::WsClosed;
       signal_status_ = SignalStatus::SignalClosed;
       on_signal_status_(SignalStatus::SignalClosed, user_data_);
     } else if (WsStatus::WsReconnecting == ws_status) {
+      ws_status_ = WsStatus::WsReconnecting;
       signal_status_ = SignalStatus::SignalReconnecting;
       on_signal_status_(SignalStatus::SignalReconnecting, user_data_);
     }
@@ -303,6 +308,23 @@ int PeerConnection::CreateAudioCodec() {
   return 0;
 }
 
+int PeerConnection::Login() {
+  if (WsStatus::WsOpened != ws_status_) {
+    LOG_ERROR("Websocket not opened");
+    return -1;
+  }
+
+  int ret = 0;
+
+  json message = {{"type", "login"}, {"user_id", user_id_}};
+
+  if (ws_transport_) {
+    ws_transport_->Send(message.dump());
+    LOG_INFO("[{}] send login request to signal server", user_id_);
+  }
+  return ret;
+}
+
 int PeerConnection::Create(const std::string &transmission_id,
                            const std::string &password) {
   if (SignalStatus::SignalConnected != GetSignalStatus()) {
@@ -376,18 +398,23 @@ void PeerConnection::ProcessSignal(const std::string &signal) {
   std::string type = j["type"];
   // LOG_INFO("signal type: {}", type);
   switch (HASH_STRING_PIECE(type.c_str())) {
-    case "ws_connection_id"_H: {
-      ws_connection_id_ = j["ws_connection_id"].get<unsigned int>();
-      LOG_INFO("Receive local peer websocket connection id [{}]",
-               ws_connection_id_);
+    case "login"_H: {
+      if (j["status"].get<std::string>() == "success") {
+        user_id_ = j["user_id"].get<std::string>();
+        net_status_report_(atoi(user_id_.c_str()), TraversalMode::UnknownMode,
+                           0, 0, user_data_);
+        LOG_INFO("Login success with id [{}]", user_id_);
+        signal_status_ = SignalStatus::SignalConnected;
+        on_signal_status_(SignalStatus::SignalConnected, user_data_);
+      } else if (j["status"].get<std::string>() == "fail") {
+        LOG_WARN("Login failed with id [{}]", transmission_id_);
+      }
       break;
     }
     case "transmission_id"_H: {
       if (j["status"].get<std::string>() == "success") {
         transmission_id_ = j["transmission_id"].get<std::string>();
         user_id_ = transmission_id_;
-        net_status_report_(atoi(transmission_id_.c_str()),
-                           TraversalMode::UnknownMode, 0, 0, user_data_);
         LOG_INFO("Create transmission success with id [{}]", transmission_id_);
       } else if (j["status"].get<std::string>() == "fail") {
         LOG_WARN("Create transmission failed with id [{}], due to [{}]",
@@ -534,6 +561,8 @@ void PeerConnection::ProcessSignal(const std::string &signal) {
       on_connection_status_(ConnectionStatus::Connecting, user_data_);
       std::string transmission_id = j["transmission_id"].get<std::string>();
       std::string remote_user_id = j["remote_user_id"].get<std::string>();
+      LOG_INFO("[{}] receive answer from [{}]", user_id_, remote_user_id);
+
       if (j.contains("sdp")) {
         std::string remote_sdp = j["sdp"].get<std::string>();
         if (ice_transmission_list_.find(remote_user_id) !=
