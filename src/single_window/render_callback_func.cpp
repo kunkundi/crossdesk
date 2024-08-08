@@ -231,15 +231,16 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, void *user_data) {
   }
 }
 
-void Render::NetStatusReport(int TransmissionId, TraversalMode mode,
+void Render::NetStatusReport(int client_id, TraversalMode mode,
                              const unsigned short send,
                              const unsigned short receive, void *user_data) {
   Render *render = (Render *)user_data;
-  if (TransmissionId != 0 && 0 == strcmp(render->client_id_, "")) {
-    std::string client_id = std::to_string(TransmissionId);
-    strncpy(render->client_id_, client_id.c_str(), sizeof(client_id));
+  if (client_id != 0 && 0 == strcmp(render->client_id_, "")) {
+    std::string client_id_s = std::to_string(client_id);
+    strncpy(render->client_id_, client_id_s.c_str(),
+            sizeof(render->client_id_));
+    LOG_INFO("Use client id [{}] and save id into cache file", client_id_s);
     render->SaveSettingsIntoCacheFile();
-    LOG_INFO("Transmission id: [{}]", TransmissionId);
   }
   if (mode != TraversalMode::UnknownMode) {
     LOG_INFO("Net mode: [{}]", int(mode));
