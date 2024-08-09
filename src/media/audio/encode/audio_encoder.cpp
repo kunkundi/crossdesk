@@ -25,7 +25,7 @@ AudioEncoder::~AudioEncoder() {
 int AudioEncoder::Init() {
   last_ts = static_cast<uint32_t>(
       std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::high_resolution_clock::now().time_since_epoch())
+          std::chrono::steady_clock::now().time_since_epoch())
           .count());
   int err;
 
@@ -61,7 +61,7 @@ int AudioEncoder::Encode(
 
   // uint32_t now_ts = static_cast<uint32_t>(
   //     std::chrono::duration_cast<std::chrono::milliseconds>(
-  //         std::chrono::high_resolution_clock::now().time_since_epoch())
+  //         std::chrono::steady_clock::now().time_since_epoch())
   //         .count());
 
   // printf("1 Time cost: %d size: %d\n", now_ts - last_ts, size);

@@ -48,8 +48,9 @@ void RtpCodec::Encode(uint8_t* buffer, size_t size,
       fec_encoder_.GetFecPacketsParams(size, num_of_total_packets,
                                        num_of_source_packets, last_packet_size);
 
-      timestamp_ =
-          std::chrono::high_resolution_clock::now().time_since_epoch().count();
+      timestamp_ = std::chrono::duration_cast<std::chrono::microseconds>(
+                       std::chrono::system_clock::now().time_since_epoch())
+                       .count();
 
       for (unsigned int index = 0; index < num_of_total_packets; index++) {
         RtpPacket rtp_packet;
@@ -143,8 +144,9 @@ void RtpCodec::Encode(uint8_t* buffer, size_t size,
       rtp_packet.SetPayloadType(RtpPacket::PAYLOAD_TYPE(payload_type_));
       rtp_packet.SetSequenceNumber(sequence_number_++);
 
-      timestamp_ =
-          std::chrono::high_resolution_clock::now().time_since_epoch().count();
+      timestamp_ = std::chrono::duration_cast<std::chrono::microseconds>(
+                       std::chrono::system_clock::now().time_since_epoch())
+                       .count();
       rtp_packet.SetTimestamp(timestamp_);
       rtp_packet.SetSsrc(ssrc_);
 
@@ -169,8 +171,9 @@ void RtpCodec::Encode(uint8_t* buffer, size_t size,
     } else {
       size_t last_packet_size = size % MAX_NALU_LEN;
       size_t packet_num = size / MAX_NALU_LEN + (last_packet_size ? 1 : 0);
-      timestamp_ =
-          std::chrono::high_resolution_clock::now().time_since_epoch().count();
+      timestamp_ = std::chrono::duration_cast<std::chrono::microseconds>(
+                       std::chrono::system_clock::now().time_since_epoch())
+                       .count();
 
       for (size_t index = 0; index < packet_num; index++) {
         RtpPacket rtp_packet;
@@ -230,8 +233,8 @@ void RtpCodec::Encode(uint8_t* buffer, size_t size,
         rtp_packet.SetPayloadType(RtpPacket::PAYLOAD_TYPE(payload_type_));
         rtp_packet.SetSequenceNumber(sequence_number_++);
 
-        timestamp_ = std::chrono::high_resolution_clock::now()
-                         .time_since_epoch()
+        timestamp_ = std::chrono::duration_cast<std::chrono::microseconds>(
+                         std::chrono::system_clock::now().time_since_epoch())
                          .count();
         rtp_packet.SetTimestamp(timestamp_);
         rtp_packet.SetSsrc(ssrc_);
@@ -253,8 +256,8 @@ void RtpCodec::Encode(uint8_t* buffer, size_t size,
         size_t last_packet_size = obus[i].payload_size_ % MAX_NALU_LEN;
         size_t packet_num =
             obus[i].payload_size_ / MAX_NALU_LEN + (last_packet_size ? 1 : 0);
-        timestamp_ = std::chrono::high_resolution_clock::now()
-                         .time_since_epoch()
+        timestamp_ = std::chrono::duration_cast<std::chrono::microseconds>(
+                         std::chrono::system_clock::now().time_since_epoch())
                          .count();
         for (size_t index = 0; index < packet_num; index++) {
           RtpPacket rtp_packet;
@@ -300,8 +303,9 @@ void RtpCodec::Encode(uint8_t* buffer, size_t size,
     rtp_packet.SetPayloadType(RtpPacket::PAYLOAD_TYPE(payload_type_));
     rtp_packet.SetSequenceNumber(sequence_number_++);
 
-    timestamp_ =
-        std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    timestamp_ = std::chrono::duration_cast<std::chrono::microseconds>(
+                     std::chrono::system_clock::now().time_since_epoch())
+                     .count();
     rtp_packet.SetTimestamp(timestamp_);
     rtp_packet.SetSsrc(ssrc_);
 
@@ -316,8 +320,9 @@ void RtpCodec::Encode(uint8_t* buffer, size_t size,
     rtp_packet.SetPayloadType(RtpPacket::PAYLOAD_TYPE(payload_type_));
     rtp_packet.SetSequenceNumber(sequence_number_++);
 
-    timestamp_ =
-        std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    timestamp_ = std::chrono::duration_cast<std::chrono::microseconds>(
+                     std::chrono::system_clock::now().time_since_epoch())
+                     .count();
     rtp_packet.SetTimestamp(timestamp_);
     rtp_packet.SetSsrc(ssrc_);
 
@@ -341,8 +346,9 @@ void RtpCodec::Encode(VideoFrameType frame_type, uint8_t* buffer, size_t size,
       fec_encoder_.GetFecPacketsParams(size, num_of_total_packets,
                                        num_of_source_packets, last_packet_size);
 
-      timestamp_ =
-          std::chrono::high_resolution_clock::now().time_since_epoch().count();
+      timestamp_ = std::chrono::duration_cast<std::chrono::microseconds>(
+                       std::chrono::system_clock::now().time_since_epoch())
+                       .count();
 
       for (unsigned int index = 0; index < num_of_total_packets; index++) {
         RtpPacket rtp_packet;
@@ -436,8 +442,10 @@ void RtpCodec::Encode(VideoFrameType frame_type, uint8_t* buffer, size_t size,
       rtp_packet.SetPayloadType(RtpPacket::PAYLOAD_TYPE(payload_type_));
       rtp_packet.SetSequenceNumber(sequence_number_++);
 
-      timestamp_ =
-          std::chrono::high_resolution_clock::now().time_since_epoch().count();
+      timestamp_ = std::chrono::duration_cast<std::chrono::microseconds>(
+                       std::chrono::system_clock::now().time_since_epoch())
+                       .count();
+
       rtp_packet.SetTimestamp(timestamp_);
       rtp_packet.SetSsrc(ssrc_);
 
@@ -462,8 +470,9 @@ void RtpCodec::Encode(VideoFrameType frame_type, uint8_t* buffer, size_t size,
     } else {
       size_t last_packet_size = size % MAX_NALU_LEN;
       size_t packet_num = size / MAX_NALU_LEN + (last_packet_size ? 1 : 0);
-      timestamp_ =
-          std::chrono::high_resolution_clock::now().time_since_epoch().count();
+      timestamp_ = std::chrono::duration_cast<std::chrono::microseconds>(
+                       std::chrono::system_clock::now().time_since_epoch())
+                       .count();
 
       for (size_t index = 0; index < packet_num; index++) {
         RtpPacket rtp_packet;
@@ -513,7 +522,9 @@ void RtpCodec::Encode(VideoFrameType frame_type, uint8_t* buffer, size_t size,
     // LOG_ERROR("Total size = [{}]", size);
 
     uint32_t timestamp =
-        std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::system_clock::now().time_since_epoch())
+            .count();
 
     for (int i = 0; i < obus.size(); i++) {
       // LOG_ERROR("1 [{}] Obu size = [{}], Obu type [{}]", i, obus[i].size_,

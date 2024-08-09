@@ -64,8 +64,7 @@ int RtpDataSender::SendRtpPacket(RtpPacket& rtp_packet) {
     sender_info.ntp_ts_msw = (uint32_t)seconds_u32;
     sender_info.ntp_ts_lsw = (uint32_t)fraction_u32;
     sender_info.rtp_ts =
-        std::chrono::high_resolution_clock::now().time_since_epoch().count() *
-        1000000;
+        std::chrono::system_clock::now().time_since_epoch().count() * 1000000;
     sender_info.sender_packet_count = total_rtp_packets_sent_;
     sender_info.sender_octet_count = total_rtp_payload_sent_;
 
@@ -108,7 +107,7 @@ int RtpDataSender::SendRtcpSR(RtcpSenderReport& rtcp_sr) {
 bool RtpDataSender::CheckIsTimeSendSR() {
   uint32_t now_ts = static_cast<uint32_t>(
       std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::high_resolution_clock::now().time_since_epoch())
+          std::chrono::system_clock::now().time_since_epoch())
           .count());
 
   if (now_ts - last_send_rtcp_sr_packet_ts_ >= RTCP_SR_INTERVAL) {

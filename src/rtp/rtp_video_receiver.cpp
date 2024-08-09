@@ -288,7 +288,7 @@ bool RtpVideoReceiver::Process() {
     compelete_video_frame_queue_.pop(video_frame);
     if (on_receive_complete_frame_) {
       // auto now_complete_frame_ts =
-      //     std::chrono::high_resolution_clock::now().time_since_epoch().count()
+      //     std::chrono::system_clock::now().time_since_epoch().count()
       //     / 1000000;
       // uint32_t duration = now_complete_frame_ts - last_complete_frame_ts_;
       // LOG_ERROR("Duration {}", 1000 / duration);
@@ -324,7 +324,7 @@ int RtpVideoReceiver::SendRtcpRR(RtcpReceiverReport& rtcp_rr) {
 bool RtpVideoReceiver::CheckIsTimeSendRR() {
   uint32_t now_ts = static_cast<uint32_t>(
       std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::high_resolution_clock::now().time_since_epoch())
+          std::chrono::system_clock::now().time_since_epoch())
           .count());
 
   if (now_ts - last_send_rtcp_rr_packet_ts_ >= RTCP_RR_INTERVAL) {

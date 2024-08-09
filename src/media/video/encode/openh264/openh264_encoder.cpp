@@ -177,7 +177,7 @@ int OpenH264Encoder::Encode(
   raw_frame_.iPicHeight = frame_height_;
   raw_frame_.iColorFormat = EVideoFormatType::videoFormatI420;
   raw_frame_.uiTimeStamp =
-      std::chrono::high_resolution_clock::now().time_since_epoch().count();
+      std::chrono::system_clock::now().time_since_epoch().count();
 
   raw_frame_.iStride[0] = frame_width_;
   raw_frame_.iStride[1] = frame_width_ >> 1;

@@ -80,7 +80,7 @@ int RtpAudioReceiver::SendRtcpRR(RtcpReceiverReport& rtcp_rr) {
 bool RtpAudioReceiver::CheckIsTimeSendRR() {
   uint32_t now_ts = static_cast<uint32_t>(
       std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::high_resolution_clock::now().time_since_epoch())
+          std::chrono::system_clock::now().time_since_epoch())
           .count());
 
   if (now_ts - last_send_rtcp_rr_packet_ts_ >= RTCP_RR_INTERVAL) {
