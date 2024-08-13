@@ -228,7 +228,6 @@ int PeerConnection::CreateVideoCodec(bool hardware_acceleration) {
         "MacOS not support hardware acceleration, use default software codec");
   }
 #else
-  InitNvCodecApi();
 #endif
 
   if (av1_encoding_) {
@@ -237,7 +236,7 @@ int PeerConnection::CreateVideoCodec(bool hardware_acceleration) {
     LOG_WARN("Only support software codec for AV1");
   } else {
     if (hardware_acceleration_) {
-      if (0 == InitNvCodecApi()) {
+      if (0 == LoadNvCodecDll()) {
         video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(true, false);
         video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(true, false);
       } else {
@@ -613,6 +612,10 @@ int PeerConnection::Destroy() {
   if (nv12_data_) {
     delete nv12_data_;
     nv12_data_ = nullptr;
+  }
+
+  if (hardware_acceleration_) {
+    ReleaseNvCodecDll();
   }
   return 0;
 }

@@ -21,9 +21,7 @@ add_packages("vcpkg::libnice")
 includes("thirdparty")
 
 if is_os("windows") then
-    add_packages("cuda")
     add_defines("_WEBSOCKETPP_CPP11_INTERNAL_")
-    add_requires("cuda")
 elseif is_os("linux") then
     add_requires("glib", {system = true})
     add_packages("glib", "cuda")
@@ -113,7 +111,8 @@ target("media")
         "src/media/video/encode/openh264/*.cpp",
         "src/media/video/decode/openh264/*.cpp",
         "src/media/video/encode/aom/*.cpp",
-        "src/media/video/decode/dav1d/*.cpp")
+        "src/media/video/decode/dav1d/*.cpp",
+        "src/media/nvcodec/*.cpp")
         add_includedirs("src/media/video/encode",
         "src/media/video/decode",
         "src/media/video/encode/nvcodec",
@@ -122,6 +121,7 @@ target("media")
         "src/media/video/decode/openh264",
         "src/media/video/encode/aom",
         "src/media/video/decode/dav1d",
+        "src/media/nvcodec",
         "thirdparty/nvcodec/Interface",
         "thirdparty/nvcodec/Samples", {public = true})
     elseif is_os(("linux")) then
@@ -132,7 +132,8 @@ target("media")
         "src/media/video/encode/openh264/*.cpp",
         "src/media/video/decode/openh264/*.cpp",
         "src/media/video/encode/aom/*.cpp",
-        "src/media/video/decode/dav1d/*.cpp")
+        "src/media/video/decode/dav1d/*.cpp",
+        "src/media/nvcodec/*.cpp")
         add_includedirs("src/media/video/encode",
         "src/media/video/decode",
         "src/media/video/encode/nvcodec",
@@ -141,6 +142,7 @@ target("media")
         "src/media/video/decode/openh264",
         "src/media/video/encode/aom",
         "src/media/video/decode/dav1d",
+        "src/media/nvcodec",
         "thirdparty/nvcodec/Interface",
         "thirdparty/nvcodec/Samples", {public = true})
     elseif is_os("macosx") then
