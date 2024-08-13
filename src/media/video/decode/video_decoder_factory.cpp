@@ -6,11 +6,11 @@
 #else
 #include "dav1d/dav1d_av1_decoder.h"
 #include "nvcodec/nvidia_video_decoder.h"
+#include "nvcodec_api.h"
 #include "openh264/openh264_decoder.h"
 #endif
 
 #include "log.h"
-#include "nvcodec_api.h"
 
 VideoDecoderFactory::VideoDecoderFactory() {}
 

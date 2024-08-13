@@ -6,11 +6,11 @@
 #else
 #include "aom/aom_av1_encoder.h"
 #include "nvcodec/nvidia_video_encoder.h"
+#include "nvcodec_api.h"
 #include "openh264/openh264_encoder.h"
 #endif
 
 #include "log.h"
-#include "nvcodec_api.h"
 
 VideoEncoderFactory::VideoEncoderFactory() {}
 

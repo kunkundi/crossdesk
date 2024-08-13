@@ -6,7 +6,11 @@
 #include "common.h"
 #include "log.h"
 #include "nlohmann/json.hpp"
+
+#if __APPLE__
+#else
 #include "nvcodec_api.h"
+#endif
 
 using nlohmann::json;
 
@@ -212,20 +216,22 @@ int PeerConnection::CreateVideoCodec(bool hardware_acceleration) {
   }
 
   hardware_acceleration_ = hardware_acceleration;
-#ifdef __APPLE__
-  if (hardware_acceleration_) {
-    hardware_acceleration_ = false;
-    LOG_WARN(
-        "MacOS not support hardware acceleration, use default software codec");
-  }
-#else
-#endif
 
   if (av1_encoding_) {
     video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(false, true);
     video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(false, true);
     LOG_WARN("Only support software codec for AV1");
   } else {
+#ifdef __APPLE__
+    if (hardware_acceleration_) {
+      hardware_acceleration_ = false;
+      LOG_WARN(
+          "MacOS not support hardware acceleration, use default software "
+          "codec");
+      video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(false, false);
+      video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(false, false);
+    }
+#else
     if (hardware_acceleration_) {
       if (0 == LoadNvCodecDll()) {
         load_nvcodec_dll_success = true;
@@ -239,6 +245,7 @@ int PeerConnection::CreateVideoCodec(bool hardware_acceleration) {
         video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(false, false);
       }
     }
+#endif
   }
 
   if (!video_encoder_) {
@@ -606,9 +613,12 @@ int PeerConnection::Destroy() {
     nv12_data_ = nullptr;
   }
 
+#ifdef __APPLE__
+#else
   if (hardware_acceleration_ && load_nvcodec_dll_success) {
     ReleaseNvCodecDll();
   }
+#endif
   return 0;
 }
 
