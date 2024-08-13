@@ -22,24 +22,26 @@ int Render::TitleBar() {
     ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0, 0, 0, 0.1f));
     ImGui::PushStyleColor(ImGuiCol_HeaderActive,
                           ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
-    if (ImGui::BeginMenu(ICON_FA_BARS)) {
-      ImGui::SetWindowFontScale(0.5f);
-      if (ImGui::MenuItem(
-              localization::settings[localization_language_index_].c_str())) {
-        show_settings_window_ = true;
+    if (!streaming_) {
+      if (ImGui::BeginMenu(ICON_FA_BARS)) {
+        ImGui::SetWindowFontScale(0.5f);
+        if (ImGui::MenuItem(
+                localization::settings[localization_language_index_].c_str())) {
+          show_settings_window_ = true;
+        }
+        if (ImGui::MenuItem(
+                localization::about[localization_language_index_].c_str())) {
+          show_about_window_ = true;
+        }
+        ImGui::SetWindowFontScale(1.0f);
+        ImGui::EndMenu();
       }
-      if (ImGui::MenuItem(
-              localization::about[localization_language_index_].c_str())) {
-        show_about_window_ = true;
-      }
-      ImGui::SetWindowFontScale(1.0f);
-      ImGui::EndMenu();
-    }
-    ImGui::PopStyleColor(2);
+      ImGui::PopStyleColor(2);
 
-    {
-      SettingWindow();
-      AboutWindow();
+      {
+        SettingWindow();
+        AboutWindow();
+      }
     }
 
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
