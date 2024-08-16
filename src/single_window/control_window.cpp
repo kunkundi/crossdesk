@@ -114,6 +114,7 @@ int Render::ControlWindow() {
   ImGui::PopStyleColor();
 
   ControlBar();
+  control_bar_hovered_ = ImGui::IsWindowHovered();
 
   ImGui::EndChild();
   ImGui::End();

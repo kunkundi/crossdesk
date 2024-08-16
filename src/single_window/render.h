@@ -181,7 +181,7 @@ class Render {
   bool exit_ = false;
   bool exit_video_window_ = false;
   bool connection_established_ = false;
-  bool subwindow_hovered_ = false;
+  bool control_bar_hovered_ = false;
   bool connect_button_pressed_ = false;
   bool password_validating_ = false;
   uint32_t password_validating_time_ = 0;

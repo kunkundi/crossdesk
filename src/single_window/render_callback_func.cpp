@@ -45,7 +45,7 @@ int Render::ProcessMouseKeyEven(SDL_Event &ev) {
     } else if (SDL_BUTTON_RIGHT == ev.button.button) {
       remote_action.m.flag = MouseFlag::right_down;
     }
-    if (subwindow_hovered_) {
+    if (control_bar_hovered_) {
       remote_action.m.flag = MouseFlag::move;
     }
     SendData(peer_, DATA_TYPE::DATA, (const char *)&remote_action,
@@ -57,7 +57,7 @@ int Render::ProcessMouseKeyEven(SDL_Event &ev) {
     } else if (SDL_BUTTON_RIGHT == ev.button.button) {
       remote_action.m.flag = MouseFlag::right_up;
     }
-    if (subwindow_hovered_) {
+    if (control_bar_hovered_) {
       remote_action.m.flag = MouseFlag::move;
     }
     SendData(peer_, DATA_TYPE::DATA, (const char *)&remote_action,
