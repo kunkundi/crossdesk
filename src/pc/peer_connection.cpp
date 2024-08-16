@@ -237,6 +237,9 @@ int PeerConnection::CreateVideoCodec(bool hardware_acceleration) {
           "codec");
       video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(false, false);
       video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(false, false);
+    } else {
+      video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(false, false);
+      video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(false, false);
     }
 #else
     if (hardware_acceleration_) {
