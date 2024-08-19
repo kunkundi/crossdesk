@@ -81,10 +81,16 @@ int Render::ConnectionStatusWindow() {
         ImGui::SetNextItemWidth(IPUT_WINDOW_WIDTH / 2);
 
         ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+
+        if (focus_on_input_widget_) {
+          ImGui::SetKeyboardFocusHere();
+          focus_on_input_widget_ = false;
+        }
         bool enter_pressed =
             ImGui::InputText("##password", (char *)remote_password_.c_str(), 7,
                              ImGuiInputTextFlags_CharsNoBlank |
                                  ImGuiInputTextFlags_EnterReturnsTrue);
+
         ImGui::PopStyleVar();
 
         ImGui::SetCursorPosX(window_width * 0.315f);
@@ -96,6 +102,7 @@ int Render::ConnectionStatusWindow() {
           show_connection_status_window_ = true;
           password_validating_ = true;
           rejoin_ = true;
+          focus_on_input_widget_ = true;
         }
 
         ImGui::SameLine();
@@ -104,6 +111,7 @@ int Render::ConnectionStatusWindow() {
                 localization::cancel[localization_language_index_].c_str())) {
           remote_password_ = "";
           show_connection_status_window_ = false;
+          focus_on_input_widget_ = true;
         }
       } else {
         text = localization::validate_password[localization_language_index_];

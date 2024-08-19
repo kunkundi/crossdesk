@@ -202,6 +202,7 @@ class Render {
   bool regenerate_password_ = false;
   bool show_about_window_ = false;
   bool show_connection_status_window_ = false;
+  bool focus_on_input_widget_ = true;
   bool window_maximized_ = false;
   bool streaming_ = false;
   bool is_client_mode_ = false;
