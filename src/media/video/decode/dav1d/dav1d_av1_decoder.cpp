@@ -60,9 +60,11 @@ int Dav1dAv1Decoder::Init() {
   Dav1dSettings s;
   dav1d_default_settings(&s);
 
-  s.n_threads = std::max(2, 4);
-  s.max_frame_delay = 1;   // For low latency decoding.
-  s.all_layers = 0;        // Don't output a frame for every spatial layer.
+  s.n_threads = std::max(2, 8);
+  s.max_frame_delay = 1;  // For low latency decoding.
+  s.all_layers = 0;       // Don't output a frame for every spatial layer.
+  // Limit max frame size to avoid OOM'ing fuzzers. crbug.com/325284120.
+  s.frame_size_limit = 16384 * 16384;
   s.operating_point = 31;  // Decode all operating points.
 
   int ret = dav1d_open(&context_, &s);
@@ -115,19 +117,30 @@ int Dav1dAv1Decoder::Decode(
                   /*user_data=*/nullptr);
 
   if (int decode_res = dav1d_send_data(context_, &dav1d_data)) {
-    LOG_ERROR("Dav1dAv1Decoder::Decode decoding failed with error code {}",
-              decode_res);
-
-    return -1;
+    // On EAGAIN, dav1d can not consume more data and
+    // dav1d_get_picture needs to be called first, which
+    // will happen below, so just keep going in that case
+    // and do not error out.
+    if (decode_res != DAV1D_ERR(EAGAIN)) {
+      LOG_ERROR("Dav1dAv1Decoder::Decode decoding failed with error code {}",
+                decode_res);
+      return -1;
+    }
   }
 
   std::shared_ptr<ScopedDav1dPicture> scoped_dav1d_picture(
       new ScopedDav1dPicture{});
   Dav1dPicture &dav1d_picture = scoped_dav1d_picture->Picture();
   if (int get_picture_res = dav1d_get_picture(context_, &dav1d_picture)) {
-    LOG_ERROR("Dav1dDecoder::Decode getting picture failed with error code {}",
-              get_picture_res);
-    return -1;
+    // On EAGAIN, it means dav1d has not enough data to decode
+    // therefore this is not a decoding error but just means
+    // we need to feed it more data, which happens in the next
+    // run of the decoder loop.
+    if (get_picture_res == DAV1D_ERR(EAGAIN)) {
+      return -2;
+    } else {
+      return -1;
+    }
   }
 
   if (dav1d_picture.p.bpc != 8) {
