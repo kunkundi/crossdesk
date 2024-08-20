@@ -65,9 +65,9 @@ SEncParamExt OpenH264Encoder::CreateEncoderParams() const {
   SEncParamExt encoder_params;
   openh264_encoder_->GetDefaultParams(&encoder_params);
   // if (codec_.mode == VideoCodecMode::kRealtimeVideo) {  //
-  // encoder_params.iUsageType = CAMERA_VIDEO_REAL_TIME;
+  encoder_params.iUsageType = CAMERA_VIDEO_REAL_TIME;
   // } else if (codec_.mode == VideoCodecMode::kScreensharing) {
-  encoder_params.iUsageType = SCREEN_CONTENT_REAL_TIME;
+  // encoder_params.iUsageType = SCREEN_CONTENT_REAL_TIME;
   // }
 
   encoder_params.iPicWidth = frame_width_;
@@ -75,7 +75,7 @@ SEncParamExt OpenH264Encoder::CreateEncoderParams() const {
   encoder_params.iTargetBitrate = target_bitrate_;
   encoder_params.iMaxBitrate = max_bitrate_;
   encoder_params.iRCMode = RC_BITRATE_MODE;
-  encoder_params.fMaxFrameRate = 0.000030;
+  encoder_params.fMaxFrameRate = 60;
   encoder_params.bEnableFrameSkip = false;
   encoder_params.uiIntraPeriod = key_frame_interval_;
   encoder_params.uiMaxNalSize = 0;
