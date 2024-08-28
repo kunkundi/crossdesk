@@ -87,6 +87,7 @@ void WsCore::Close(websocketpp::close::status::value code, std::string reason) {
   if (ec) {
     LOG_ERROR("Initiating close error: {}", ec.message());
   }
+  OnWsStatus(WsStatus::WsClosed);
 }
 
 void WsCore::Send(std::string message) {

@@ -48,6 +48,26 @@ typedef struct {
   void *user_data;
 } PeerConnectionParams;
 
+struct IceWorkMsg {
+  enum Type {
+    Login = 0,
+    UserIdList,
+    UserLeaveTransmission,
+    Offer,
+    Answer,
+    NewCandidate,
+    Destroy
+  };
+
+  Type type;
+  std::vector<std::string> user_id_list;
+  std::string user_id;
+  std::string transmission_id;
+  std::string remote_user_id;
+  std::string new_candidate;
+  std::string remote_sdp;
+};
+
 class PeerConnection {
  public:
   PeerConnection();
@@ -84,6 +104,12 @@ class PeerConnection {
                                     const std::string &password);
 
  private:
+  void StartIceWorker();
+  void StopIceWorker();
+  void ProcessIceWorkMsg(const IceWorkMsg &msg);
+  void PushIceWorkMsg(const IceWorkMsg &msg);
+
+ private:
   std::string uri_ = "";
   std::string cfg_signal_server_ip_;
   std::string cfg_signal_server_port_;
@@ -110,7 +136,8 @@ class PeerConnection {
   std::function<void(WsStatus)> on_ws_status_ = nullptr;
   unsigned int ws_connection_id_ = 0;
   std::string user_id_ = "";
-  std::string transmission_id_ = "";
+  std::string local_transmission_id_ = "";
+  std::string remote_transmission_id_ = "";
   std::vector<std::string> user_id_list_;
   WsStatus ws_status_ = WsStatus::WsClosed;
   SignalStatus signal_status_ = SignalStatus::SignalClosed;
@@ -158,6 +185,13 @@ class PeerConnection {
   std::unique_ptr<AudioEncoder> audio_encoder_ = nullptr;
   std::unique_ptr<AudioDecoder> audio_decoder_ = nullptr;
   bool audio_codec_inited_ = false;
+
+ private:
+  std::unique_ptr<std::thread> ice_worker_ = nullptr;
+  std::atomic<bool> ice_worker_running_{true};
+  std::queue<IceWorkMsg> ice_work_msg_queue_;
+  std::condition_variable ice_work_cv_;
+  std::mutex ice_work_mutex_;
 };
 
 #endif
