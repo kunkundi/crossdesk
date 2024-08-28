@@ -198,7 +198,9 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, void *user_data) {
   } else if (ConnectionStatus::Failed == status) {
     render->connection_status_str_ = "Failed";
     render->password_validating_time_ = 0;
-    LOG_ERROR("rtc connection failed");
+    render->is_create_connection_ = false;
+    render->params_.enable_turn = true;
+    render->rejoin_ = true;
   } else if (ConnectionStatus::Closed == status) {
     render->connection_status_str_ = "Closed";
     render->password_validating_time_ = 0;
@@ -212,7 +214,9 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, void *user_data) {
       render->audio_capture_button_pressed_ = false;
     }
     render->exit_video_window_ = false;
-    render->remote_password_.clear();
+    if (!render->rejoin_) {
+      render->remote_password_.clear();
+    }
     if (render->dst_buffer_) {
       memset(render->dst_buffer_, 0, 1280 * 720 * 3);
       SDL_UpdateTexture(render->stream_texture_, NULL, render->dst_buffer_,

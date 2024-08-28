@@ -438,11 +438,26 @@ int Render::Run() {
   // Main loop
   while (!exit_) {
     if (SignalStatus::SignalConnected == signal_status_ &&
-        !is_create_connection_ && password_inited_) {
+        !is_create_connection_ && password_inited_ &&
+        "Failed" != connection_status_str_) {
       LOG_INFO("Connected with signal server, create p2p connection");
       is_create_connection_ =
           CreateConnection(peer_, client_id_, password_saved_.c_str()) ? false
                                                                        : true;
+    }
+
+    if (!is_create_connection_ && rejoin_ &&
+        "Failed" == connection_status_str_) {
+      LeaveConnection(peer_, client_id_);
+      DestroyPeer(&peer_);
+      peer_ = CreatePeer(&params_);
+      if (peer_) {
+        LOG_INFO("[{}] Create peer instance successful", client_id_);
+        Init(peer_, client_id_);
+        LOG_INFO("[{}] Peer init finish", client_id_);
+      } else {
+        LOG_INFO("Create peer instance failed");
+      }
     }
 
     if (!inited_ ||
@@ -541,8 +556,8 @@ int Render::Run() {
           LeaveConnection(peer_reserved_ ? peer_reserved_ : peer_,
                           remote_id_.c_str());
           if (peer_reserved_) {
-            DestroyPeer(&peer_reserved_);
             LOG_INFO("Destroy peer[reserved]");
+            DestroyPeer(&peer_reserved_);
           }
 
           rejoin_ = false;
@@ -667,17 +682,16 @@ int Render::Run() {
     device_controller_factory_ = nullptr;
   }
 
-  if (is_create_connection_) {
+  if (peer_) {
     LOG_INFO("[{}] Leave connection [{}]", client_id_, client_id_);
     LeaveConnection(peer_, client_id_);
     is_client_mode_ = false;
-  }
-
-  if (peer_) {
+    LOG_INFO("Destroy peer");
     DestroyPeer(&peer_);
   }
 
   if (peer_reserved_) {
+    LOG_INFO("Destroy peer[reserved]");
     DestroyPeer(&peer_reserved_);
   }
 
