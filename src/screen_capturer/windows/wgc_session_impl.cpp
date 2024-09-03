@@ -89,6 +89,8 @@ int WgcSessionImpl::Start() {
 
     capture_session_.StartCapture();
 
+    capture_session_.IsCursorCaptureEnabled(false);
+
     error = 0;
   } catch (winrt::hresult_error) {
     std::cout << "AE_WGC_CREATE_CAPTURER_FAILED" << std::endl;

@@ -32,6 +32,8 @@ int ScreenCapturerX11::Init(const RECORD_DESKTOP_RECT &rect, const int fps,
 
   // grabbing frame rate
   av_dict_set(&options_, "framerate", "30", 0);
+  // show remote cursor
+  av_dict_set(&options_, "capture_cursor", "0", 0);
   // Make the grabbed area follow the mouse
   // av_dict_set(&options_, "follow_mouse", "centered", 0);
   // Video frame size. The default is to capture the full screen
