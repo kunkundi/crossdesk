@@ -437,8 +437,7 @@ int Render::Run() {
   // Main loop
   while (!exit_) {
     if (SignalStatus::SignalConnected == signal_status_ &&
-        !is_create_connection_ && password_inited_ &&
-        "Failed" != connection_status_str_) {
+        !is_create_connection_ && password_inited_) {
       LOG_INFO("Connected with signal server, create p2p connection");
       is_create_connection_ =
           CreateConnection(peer_, client_id_, password_saved_) ? false : true;

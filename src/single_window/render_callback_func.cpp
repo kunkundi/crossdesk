@@ -174,6 +174,10 @@ void Render::OnSignalStatusCb(SignalStatus status, void *user_data) {
   } else if (SignalStatus::SignalReconnecting == status) {
     render->signal_status_str_ = "SignalReconnecting";
     render->signal_connected_ = false;
+  } else if (SignalStatus::SignalServerClosed == status) {
+    render->signal_status_str_ = "SignalServerClosed";
+    render->signal_connected_ = false;
+    render->is_create_connection_ = false;
   }
 }
 
