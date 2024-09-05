@@ -123,8 +123,6 @@ void WsCore::Ping(websocketpp::connection_hdl hdl) {
         }
       }
     }
-
-    if (!running_) break;
   }
 }
 

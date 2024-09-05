@@ -103,6 +103,9 @@ int PeerConnection::Init(PeerConnectionParams params,
   on_receive_video_buffer_ = params.on_receive_video_buffer;
   on_receive_audio_buffer_ = params.on_receive_audio_buffer;
   on_receive_data_buffer_ = params.on_receive_data_buffer;
+
+  on_receive_video_frame_ = params.on_receive_video_frame;
+
   on_signal_status_ = params.on_signal_status;
   on_connection_status_ = params.on_connection_status;
   net_status_report_ = params.net_status_report;
@@ -143,10 +146,14 @@ int PeerConnection::Init(PeerConnectionParams params,
     int num_frame_returned = video_decoder_->Decode(
         (uint8_t *)data, size,
         [this, user_id, user_id_size](VideoFrame video_frame) {
-          if (on_receive_video_buffer_) {
-            on_receive_video_buffer_((const char *)video_frame.Buffer(),
-                                     video_frame.Size(), user_id, user_id_size,
-                                     user_data_);
+          if (on_receive_video_frame_) {
+            XVideoFrame x_video_frame;
+            x_video_frame.data = (const char *)video_frame.Buffer();
+            x_video_frame.width = video_frame.GetWidth();
+            x_video_frame.height = video_frame.GetHeight();
+            x_video_frame.size = video_frame.Size();
+            on_receive_video_frame_(&x_video_frame, user_id, user_id_size,
+                                    user_data_);
           }
         });
   };
@@ -537,6 +544,42 @@ int PeerConnection::SendUserData(const char *data, size_t size) {
   for (auto &ice_trans : ice_transmission_list_) {
     ice_trans.second->SendData(IceTransmission::DATA_TYPE::DATA, data, size);
   }
+  return 0;
+}
+
+int PeerConnection::SendVideoData(const XVideoFrame *video_frame) {
+  if (!ice_ready_) {
+    return -1;
+  }
+
+  if (ice_transmission_list_.empty()) {
+    return -1;
+  }
+
+  if (b_force_i_frame_) {
+    video_encoder_->ForceIdr();
+    LOG_INFO("Force I frame");
+    b_force_i_frame_ = false;
+  }
+
+  int ret = video_encoder_->Encode(
+      video_frame,
+      [this](char *encoded_frame, size_t size,
+             VideoEncoder::VideoFrameType frame_type) -> int {
+        for (auto &ice_trans : ice_transmission_list_) {
+          // LOG_ERROR("Send frame size: [{}]", size);
+          ice_trans.second->SendVideoData(
+              static_cast<IceTransmission::VideoFrameType>(frame_type),
+              encoded_frame, size);
+        }
+        return 0;
+      });
+
+  if (0 != ret) {
+    LOG_ERROR("Encode failed");
+    return -1;
+  }
+
   return 0;
 }
 

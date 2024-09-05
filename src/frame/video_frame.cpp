@@ -12,6 +12,13 @@ VideoFrame::VideoFrame(size_t size) {
   height_ = 0;
 }
 
+VideoFrame::VideoFrame(size_t size, size_t width, size_t height) {
+  buffer_ = new uint8_t[size];
+  size_ = size;
+  width_ = width;
+  height_ = height;
+}
+
 VideoFrame::VideoFrame(const uint8_t *buffer, size_t size) {
   buffer_ = new uint8_t[size];
   memcpy(buffer_, buffer, size);

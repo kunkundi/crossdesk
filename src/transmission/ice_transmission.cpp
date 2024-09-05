@@ -44,11 +44,26 @@ int IceTransmission::InitIceTransmission(
     std::string &stun_ip, int stun_port, std::string &turn_ip, int turn_port,
     std::string &turn_username, std::string &turn_password,
     RtpPacket::PAYLOAD_TYPE video_codec_payload_type) {
+  ice_io_statistics_ = std::make_unique<IOStatistics>(
+      [](uint32_t video_inbound_bitrate, uint32_t video_outbound_bitrate,
+         uint32_t audio_inbound_bitrate, uint32_t audio_outbound_bitrate,
+         uint32_t data_inbound_bitrate, uint32_t data_outbound_bitrate,
+         uint32_t total_inbound_bitrate, uint32_t total_outbound_bitrate) {
+        LOG_ERROR(
+            "video in: [{}] kbps, video out: [{}] kbps, audio in: [{}] kbps, "
+            "audio out: [{}] kbps, data in: [{}] kbps, data out: [{}] kbps, "
+            "total in: [{}] kbps, total out: [{}] kbps",
+            video_inbound_bitrate / 1000, video_outbound_bitrate / 1000,
+            audio_inbound_bitrate / 1000, audio_outbound_bitrate / 1000,
+            data_inbound_bitrate / 1000, data_outbound_bitrate / 1000,
+            total_inbound_bitrate / 1000, total_outbound_bitrate / 1000);
+      });
   video_rtp_codec_ = std::make_unique<RtpCodec>(video_codec_payload_type);
   audio_rtp_codec_ = std::make_unique<RtpCodec>(RtpPacket::PAYLOAD_TYPE::OPUS);
   data_rtp_codec_ = std::make_unique<RtpCodec>(RtpPacket::PAYLOAD_TYPE::DATA);
 
   rtp_video_receiver_ = std::make_unique<RtpVideoReceiver>();
+  // rr sender
   rtp_video_receiver_->SetSendDataFunc(
       [this](const char *data, size_t size) -> int {
         if (!ice_agent_) {
@@ -68,6 +83,7 @@ int IceTransmission::InitIceTransmission(
   rtp_video_receiver_->SetOnReceiveCompleteFrame(
       [this](VideoFrame &video_frame) -> void {
         // LOG_ERROR("OnReceiveCompleteFrame {}", video_frame.Size());
+        ice_io_statistics_->UpdateVideoInboundBytes(video_frame.Size());
         on_receive_video_((const char *)video_frame.Buffer(),
                           video_frame.Size(), remote_user_id_.data(),
                           remote_user_id_.size());
@@ -90,14 +106,33 @@ int IceTransmission::InitIceTransmission(
           return -2;
         }
 
+        ice_io_statistics_->UpdateVideoOutboundBytes(size);
         return ice_agent_->Send(data, size);
       });
 
   rtp_video_sender_->Start();
 
   rtp_audio_receiver_ = std::make_unique<RtpAudioReceiver>();
+  // rr sender
+  rtp_audio_receiver_->SetSendDataFunc(
+      [this](const char *data, size_t size) -> int {
+        if (!ice_agent_) {
+          LOG_ERROR("ice_agent_ is nullptr");
+          return -1;
+        }
+
+        if (state_ != NICE_COMPONENT_STATE_CONNECTED &&
+            state_ != NICE_COMPONENT_STATE_READY) {
+          LOG_ERROR("Ice is not connected, state = [{}]",
+                    nice_component_state_to_string(state_));
+          return -2;
+        }
+
+        return ice_agent_->Send(data, size);
+      });
   rtp_audio_receiver_->SetOnReceiveData(
       [this](const char *data, size_t size) -> void {
+        ice_io_statistics_->UpdateAudioInboundBytes(size);
         on_receive_audio_(data, size, remote_user_id_.data(),
                           remote_user_id_.size());
       });
@@ -117,32 +152,14 @@ int IceTransmission::InitIceTransmission(
           return -2;
         }
 
+        ice_io_statistics_->UpdateAudioOutboundBytes(size);
         return ice_agent_->Send(data, size);
       });
 
   rtp_audio_sender_->Start();
 
-  rtp_data_sender_ = std::make_unique<RtpDataSender>();
-  rtp_data_sender_->SetSendDataFunc(
-      [this](const char *data, size_t size) -> int {
-        if (!ice_agent_) {
-          LOG_ERROR("ice_agent_ is nullptr");
-          return -1;
-        }
-
-        if (state_ != NICE_COMPONENT_STATE_CONNECTED &&
-            state_ != NICE_COMPONENT_STATE_READY) {
-          LOG_ERROR("Ice is not connected, state = [{}]",
-                    nice_component_state_to_string(state_));
-          return -2;
-        }
-
-        return ice_agent_->Send(data, size);
-      });
-
-  rtp_data_sender_->Start();
-
   rtp_data_receiver_ = std::make_unique<RtpDataReceiver>();
+  // rr sender
   rtp_data_receiver_->SetSendDataFunc(
       [this](const char *data, size_t size) -> int {
         if (!ice_agent_) {
@@ -161,9 +178,31 @@ int IceTransmission::InitIceTransmission(
       });
   rtp_data_receiver_->SetOnReceiveData(
       [this](const char *data, size_t size) -> void {
+        ice_io_statistics_->UpdateDataInboundBytes(size);
         on_receive_data_(data, size, remote_user_id_.data(),
                          remote_user_id_.size());
       });
+
+  rtp_data_sender_ = std::make_unique<RtpDataSender>();
+  rtp_data_sender_->SetSendDataFunc(
+      [this](const char *data, size_t size) -> int {
+        if (!ice_agent_) {
+          LOG_ERROR("ice_agent_ is nullptr");
+          return -1;
+        }
+
+        if (state_ != NICE_COMPONENT_STATE_CONNECTED &&
+            state_ != NICE_COMPONENT_STATE_READY) {
+          LOG_ERROR("Ice is not connected, state = [{}]",
+                    nice_component_state_to_string(state_));
+          return -2;
+        }
+
+        ice_io_statistics_->UpdateDataOutboundBytes(size);
+        return ice_agent_->Send(data, size);
+      });
+
+  rtp_data_sender_->Start();
 
   ice_agent_ = std::make_unique<IceAgent>(
       enable_turn_, trickle_ice_, offer_peer_, stun_ip, stun_port, turn_ip,
@@ -179,6 +218,12 @@ int IceTransmission::InitIceTransmission(
                    ice_transmission_obj->remote_user_id_,
                    nice_component_state_to_string(state));
           ice_transmission_obj->state_ = state;
+
+          if (state == NICE_COMPONENT_STATE_READY ||
+              state == NICE_COMPONENT_STATE_CONNECTED) {
+            ice_transmission_obj->ice_io_statistics_->Start();
+          }
+
           ice_transmission_obj->on_ice_status_change_(
               nice_component_state_to_string(state));
         } else {

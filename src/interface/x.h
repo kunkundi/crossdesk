@@ -39,10 +39,20 @@ enum TraversalMode { P2P = 0, Relay, UnknownMode };
 extern "C" {
 #endif
 
+typedef struct {
+  const char* data;
+  size_t size;
+  unsigned int width;
+  unsigned int height;
+} XVideoFrame;
+
 typedef struct Peer PeerPtr;
 
-typedef void (*OnReceiveBuffer)(const char*, size_t, const char*, size_t,
+typedef void (*OnReceiveBuffer)(const char*, size_t, const char*, const size_t,
                                 void*);
+
+typedef void (*OnReceiveVideoFrame)(const XVideoFrame* video_frame, const char*,
+                                    const size_t, void*);
 
 typedef void (*OnSignalStatus)(SignalStatus, void*);
 
@@ -70,6 +80,9 @@ typedef struct {
   OnReceiveBuffer on_receive_video_buffer;
   OnReceiveBuffer on_receive_audio_buffer;
   OnReceiveBuffer on_receive_data_buffer;
+
+  OnReceiveVideoFrame on_receive_video_frame;
+
   OnSignalStatus on_signal_status;
   OnConnectionStatus on_connection_status;
   NetStatusReport net_status_report;
@@ -92,6 +105,8 @@ DLLAPI int LeaveConnection(PeerPtr* peer_ptr, const char* transmission_id);
 
 DLLAPI int SendData(PeerPtr* peer_ptr, DATA_TYPE data_type, const char* data,
                     size_t size);
+
+DLLAPI int SendVideoFrame(PeerPtr* peer_ptr, const XVideoFrame* video_frame);
 
 #ifdef __cplusplus
 }

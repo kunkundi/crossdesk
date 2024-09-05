@@ -32,6 +32,9 @@ PeerPtr *CreatePeer(const Params *params) {
   peer_ptr->pc_params.on_receive_video_buffer = params->on_receive_video_buffer;
   peer_ptr->pc_params.on_receive_audio_buffer = params->on_receive_audio_buffer;
   peer_ptr->pc_params.on_receive_data_buffer = params->on_receive_data_buffer;
+
+  peer_ptr->pc_params.on_receive_video_frame = params->on_receive_video_frame;
+
   peer_ptr->pc_params.on_signal_status = params->on_signal_status;
   peer_ptr->pc_params.on_connection_status = params->on_connection_status;
   peer_ptr->pc_params.net_status_report = params->net_status_report;
@@ -109,5 +112,21 @@ int SendData(PeerPtr *peer_ptr, DATA_TYPE data_type, const char *data,
   } else if (DATA_TYPE::DATA == data_type) {
     peer_ptr->peer_connection->SendUserData(data, size);
   }
+  return 0;
+}
+
+DLLAPI int SendVideoFrame(PeerPtr *peer_ptr, const XVideoFrame *video_frame) {
+  if (!peer_ptr) {
+    LOG_ERROR("peer_ptr not created");
+    return -1;
+  }
+
+  if (!video_frame) {
+    LOG_ERROR("Invaild video frame");
+    return -1;
+  }
+
+  peer_ptr->peer_connection->SendVideoData(video_frame);
+
   return 0;
 }

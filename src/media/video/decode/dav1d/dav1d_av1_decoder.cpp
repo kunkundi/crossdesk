@@ -73,7 +73,7 @@ int Dav1dAv1Decoder::Init() {
   }
 
   decoded_frame_yuv_ = new VideoFrame(1280 * 720 * 3 / 2);
-  decoded_frame_nv12_ = new VideoFrame(1280 * 720 * 3 / 2);
+  // decoded_frame_nv12_ = new VideoFrame(1280 * 720 * 3 / 2);
 
   if (SAVE_RECEIVED_AV1_STREAM) {
     file_av1_ = fopen("received_av1_stream.ivf", "w+b");
@@ -157,6 +157,22 @@ int Dav1dAv1Decoder::Decode(
                   decoded_frame_nv12_->GetBuffer(), dav1d_picture.p.w,
                   dav1d_picture.p.h);
   } else {
+    if (!decoded_frame_nv12_) {
+      decoded_frame_nv12_capacity_ =
+          dav1d_picture.p.w * dav1d_picture.p.h * 3 / 2;
+      decoded_frame_nv12_ = new VideoFrame(
+          decoded_frame_nv12_capacity_, dav1d_picture.p.w, dav1d_picture.p.h);
+    }
+
+    if (decoded_frame_nv12_capacity_ <
+        dav1d_picture.p.w * dav1d_picture.p.h * 3 / 2) {
+      delete decoded_frame_nv12_;
+      decoded_frame_nv12_capacity_ =
+          dav1d_picture.p.w * dav1d_picture.p.h * 3 / 2;
+      decoded_frame_nv12_ = new VideoFrame(
+          decoded_frame_nv12_capacity_, dav1d_picture.p.w, dav1d_picture.p.h);
+    }
+
     libyuv::I420ToNV12(
         (const uint8_t *)dav1d_picture.data[0], dav1d_picture.p.w,
         (const uint8_t *)dav1d_picture.data[1], dav1d_picture.p.w / 2,

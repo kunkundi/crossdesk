@@ -41,6 +41,11 @@ class AomAv1Encoder : public VideoEncoder {
                                VideoFrameType frame_type)>
                  on_encoded_image);
 
+  int Encode(const XVideoFrame* video_frame,
+             std::function<int(char* encoded_packets, size_t size,
+                               VideoFrameType frame_type)>
+                 on_encoded_image);
+
   virtual int OnEncodedImage(char* encoded_packets, size_t size);
 
   void ForceIdr();
@@ -50,6 +55,8 @@ class AomAv1Encoder : public VideoEncoder {
   bool SetEncoderControlParameters(int param_id, P param_value);
   int NumberOfThreads(int width, int height, int number_of_cores);
   int GetCpuSpeed(int width, int height);
+
+  int ResetEncodeResolution(unsigned int width, unsigned int height);
 
   int Release();
 
@@ -79,6 +86,7 @@ class AomAv1Encoder : public VideoEncoder {
   int64_t timestamp_ = 0;
   aom_enc_frame_flags_t force_i_frame_flags_ = 0;
   uint8_t* encoded_frame_ = nullptr;
+  size_t encoded_frame_capacity_ = 0;
   int encoded_frame_size_ = 0;
 };
 

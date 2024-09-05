@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <functional>
 
+#include "x.h"
+
 class VideoEncoder {
  public:
   enum VideoFrameType {
@@ -20,6 +22,12 @@ class VideoEncoder {
                      std::function<int(char* encoded_packets, size_t size,
                                        VideoFrameType frame_type)>
                          on_encoded_image) = 0;
+
+  virtual int Encode(const XVideoFrame* video_frame,
+                     std::function<int(char* encoded_packets, size_t size,
+                                       VideoFrameType frame_type)>
+                         on_encoded_image) = 0;
+
   virtual int OnEncodedImage(char* encoded_packets, size_t size) = 0;
   virtual void ForceIdr() = 0;
 

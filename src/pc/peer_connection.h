@@ -16,6 +16,9 @@
 typedef void (*OnReceiveBuffer)(const char *, size_t, const char *,
                                 const size_t, void *);
 
+typedef void (*OnReceiveVideoFrame)(const XVideoFrame *video_frame,
+                                    const char *, const size_t, void *);
+
 typedef void (*OnSignalStatus)(SignalStatus, void *);
 
 typedef void (*OnConnectionStatus)(ConnectionStatus, void *);
@@ -42,6 +45,9 @@ typedef struct {
   OnReceiveBuffer on_receive_video_buffer;
   OnReceiveBuffer on_receive_audio_buffer;
   OnReceiveBuffer on_receive_data_buffer;
+
+  OnReceiveVideoFrame on_receive_video_frame;
+
   OnSignalStatus on_signal_status;
   OnConnectionStatus on_connection_status;
   NetStatusReport net_status_report;
@@ -91,6 +97,8 @@ class PeerConnection {
   int SendVideoData(const char *data, size_t size);
   int SendAudioData(const char *data, size_t size);
   int SendUserData(const char *data, size_t size);
+
+  int SendVideoData(const XVideoFrame *video_frame);
 
  private:
   int Login();
@@ -165,6 +173,9 @@ class PeerConnection {
   OnReceiveBuffer on_receive_video_buffer_;
   OnReceiveBuffer on_receive_audio_buffer_;
   OnReceiveBuffer on_receive_data_buffer_;
+
+  OnReceiveVideoFrame on_receive_video_frame_;
+
   OnSignalStatus on_signal_status_;
   OnConnectionStatus on_connection_status_;
   NetStatusReport net_status_report_;

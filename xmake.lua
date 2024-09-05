@@ -162,7 +162,7 @@ target("media")
     add_files("src/media/audio/encode/*.cpp",
         "src/media/audio/decode/*.cpp")
     add_includedirs("src/media/audio/encode",
-        "src/media/audio/decode", {public = true})
+        "src/media/audio/decode", "src/interface", {public = true})
 
 target("qos")
     set_kind("object")

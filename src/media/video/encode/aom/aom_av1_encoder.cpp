@@ -8,8 +8,6 @@
 #define SAVE_RECEIVED_NV12_STREAM 0
 #define SAVE_ENCODED_AV1_STREAM 0
 
-#define NV12_BUFFER_SIZE 1280 * 720 * 3 / 2
-
 #define SET_ENCODER_PARAM_OR_RETURN_ERROR(param_id, param_value) \
   do {                                                           \
     if (!SetEncoderControlParameters(param_id, param_value)) {   \
@@ -84,6 +82,27 @@ int AomAv1Encoder::GetCpuSpeed(int width, int height) {
     return 9;
 }
 
+int AomAv1Encoder::ResetEncodeResolution(unsigned int width,
+                                         unsigned int height) {
+  LOG_INFO("Reset encode resolution from [{}x{}] to [{}x{}]]", frame_width_,
+           frame_height_, width, height);
+
+  frame_width_ = width;
+  frame_height_ = height;
+
+  aom_av1_encoder_config_.g_w = width;
+  aom_av1_encoder_config_.g_h = height;
+
+  if (frame_for_encode_ != nullptr) {
+    aom_img_free(frame_for_encode_);
+    frame_for_encode_ = aom_img_wrap(nullptr, AOM_IMG_FMT_NV12, frame_width_,
+                                     frame_height_, 1, nullptr);
+  }
+
+  return aom_codec_enc_config_set(&aom_av1_encoder_ctx_,
+                                  &aom_av1_encoder_config_);
+}
+
 AomAv1Encoder::AomAv1Encoder() {}
 
 AomAv1Encoder::~AomAv1Encoder() {
@@ -99,14 +118,13 @@ AomAv1Encoder::~AomAv1Encoder() {
     file_av1_ = nullptr;
   }
 
-  delete encoded_frame_;
+  delete[] encoded_frame_;
+  encoded_frame_ = nullptr;
 
   Release();
 }
 
 int AomAv1Encoder::Init() {
-  encoded_frame_ = new uint8_t[NV12_BUFFER_SIZE];
-
   // Initialize encoder configuration structure with default values
   aom_codec_err_t ret = aom_codec_enc_config_default(
       aom_codec_av1_cx(), &aom_av1_encoder_config_, kUsageProfile);
@@ -286,6 +304,97 @@ int AomAv1Encoder::Encode(const uint8_t *pData, int nSize,
   if (ret != AOM_CODEC_OK) {
     LOG_ERROR("AomAv1Encoder::Encode returned {} on aom_codec_encode",
               (int)ret);
+    return -1;
+  }
+
+  aom_codec_iter_t iter = nullptr;
+  int data_pkt_count = 0;
+  while (const aom_codec_cx_pkt_t *pkt =
+             aom_codec_get_cx_data(&aom_av1_encoder_ctx_, &iter)) {
+    if (pkt->kind == AOM_CODEC_CX_FRAME_PKT && pkt->data.frame.sz > 0) {
+      memcpy(encoded_frame_, pkt->data.frame.buf, pkt->data.frame.sz);
+      encoded_frame_size_ = pkt->data.frame.sz;
+
+      int qp = -1;
+      SET_ENCODER_PARAM_OR_RETURN_ERROR(AOME_GET_LAST_QUANTIZER, &qp);
+      // LOG_INFO("Encoded frame qp = {}", qp);
+
+      if (on_encoded_image) {
+        on_encoded_image((char *)encoded_frame_, encoded_frame_size_,
+                         frame_type);
+        if (SAVE_ENCODED_AV1_STREAM) {
+          fwrite(encoded_frame_, 1, encoded_frame_size_, file_av1_);
+        }
+      } else {
+        OnEncodedImage((char *)encoded_frame_, encoded_frame_size_);
+      }
+    }
+  }
+
+  return 0;
+}
+
+int AomAv1Encoder::Encode(const XVideoFrame *video_frame,
+                          std::function<int(char *encoded_packets, size_t size,
+                                            VideoFrameType frame_type)>
+                              on_encoded_image) {
+  if (SAVE_RECEIVED_NV12_STREAM) {
+    fwrite(video_frame->data, 1, video_frame->size, file_nv12_);
+  }
+
+  aom_codec_err_t ret = AOM_CODEC_OK;
+
+  if (!encoded_frame_) {
+    encoded_frame_ = new uint8_t[video_frame->size];
+    encoded_frame_capacity_ = video_frame->size;
+  }
+
+  if (encoded_frame_capacity_ < video_frame->size) {
+    encoded_frame_capacity_ = video_frame->size;
+    delete[] encoded_frame_;
+    encoded_frame_ = new uint8_t[video_frame->size];
+  }
+
+  if (frame_width_ != video_frame->width ||
+      frame_height_ != video_frame->height) {
+    if (AOM_CODEC_OK !=
+        ResetEncodeResolution(video_frame->width, video_frame->height)) {
+      LOG_ERROR("Reset encode resolution failed");
+      return -1;
+    }
+  }
+
+  const uint32_t duration =
+      kRtpTicksPerSecond / static_cast<float>(max_frame_rate_);
+  timestamp_ += duration;
+
+  frame_for_encode_->planes[AOM_PLANE_Y] = (unsigned char *)(video_frame->data);
+  frame_for_encode_->planes[AOM_PLANE_U] =
+      (unsigned char *)(video_frame->data +
+                        video_frame->width * video_frame->height);
+  frame_for_encode_->planes[AOM_PLANE_V] = nullptr;
+  frame_for_encode_->stride[AOM_PLANE_Y] = video_frame->width;
+  frame_for_encode_->stride[AOM_PLANE_U] = video_frame->width;
+  frame_for_encode_->stride[AOM_PLANE_V] = 0;
+
+  VideoFrameType frame_type;
+  if (0 == seq_++ % 300) {
+    force_i_frame_flags_ = AOM_EFLAG_FORCE_KF;
+    frame_type = VideoFrameType::kVideoFrameKey;
+  } else {
+    force_i_frame_flags_ = 0;
+    frame_type = VideoFrameType::kVideoFrameDelta;
+  }
+
+  // Encode a frame. The presentation timestamp `pts` should not use real
+  // timestamps from frames or the wall clock, as that can cause the rate
+  // controller to misbehave.
+  ret = aom_codec_encode(&aom_av1_encoder_ctx_, frame_for_encode_, timestamp_,
+                         duration, force_i_frame_flags_);
+  if (ret != AOM_CODEC_OK) {
+    LOG_ERROR("Encode failed: {}, {}",
+              aom_codec_error_detail(&aom_av1_encoder_ctx_),
+              aom_codec_build_config());
     return -1;
   }
 
