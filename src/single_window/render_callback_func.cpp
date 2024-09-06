@@ -17,11 +17,30 @@ int Render::ProcessMouseKeyEven(SDL_Event &ev) {
     return 0;
   }
 
-  float ratio = (float)(1280.0 / main_window_width_);
+  float ratio_x = (float)video_width_ / (float)stream_render_rect_.w;
+  float ratio_y = (float)video_height_ / (float)stream_render_rect_.h;
+
+  if (ev.button.x <= stream_render_rect_.x) {
+    ev.button.x = 0;
+  } else if (ev.button.x > stream_render_rect_.x &&
+             ev.button.x < stream_render_rect_.x + stream_render_rect_.w) {
+    ev.button.x -= stream_render_rect_.x;
+  } else if (ev.button.x >= stream_render_rect_.x + stream_render_rect_.w) {
+    ev.button.x = stream_render_rect_.w;
+  }
+
+  if (ev.button.y <= stream_render_rect_.y) {
+    ev.button.y = 0;
+  } else if (ev.button.y > stream_render_rect_.y &&
+             ev.button.y < stream_render_rect_.y + stream_render_rect_.h) {
+    ev.button.y -= stream_render_rect_.y;
+  } else if (ev.button.y >= stream_render_rect_.y + stream_render_rect_.h) {
+    ev.button.y = stream_render_rect_.h;
+  }
 
   RemoteAction remote_action;
-  remote_action.m.x = (size_t)(ev.button.x * ratio);
-  remote_action.m.y = (size_t)((ev.button.y - title_bar_height_) * ratio);
+  remote_action.m.x = (size_t)(ev.button.x * ratio_x);
+  remote_action.m.y = (size_t)(ev.button.y * ratio_y);
 
   if (SDL_KEYDOWN == ev.type)  // SDL_KEYUP
   {
