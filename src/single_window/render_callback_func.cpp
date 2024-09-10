@@ -99,6 +99,10 @@ int Render::ProcessMouseKeyEven(SDL_Event &ev) {
 
 void Render::SdlCaptureAudioIn(void *userdata, Uint8 *stream, int len) {
   Render *render = (Render *)userdata;
+  if (!render) {
+    return;
+  }
+
   if (1) {
     if ("Connected" == render->connection_status_str_) {
       SendData(render->peer_, DATA_TYPE::AUDIO, (const char *)stream, len);
@@ -138,6 +142,10 @@ void Render::OnReceiveVideoBufferCb(const XVideoFrame *video_frame,
                                     const char *user_id, size_t user_id_size,
                                     void *user_data) {
   Render *render = (Render *)user_data;
+  if (!render) {
+    return;
+  }
+
   if (render->connection_established_) {
     if (!render->dst_buffer_) {
       render->dst_buffer_capacity_ = video_frame->size;
@@ -172,6 +180,10 @@ void Render::OnReceiveAudioBufferCb(const char *data, size_t size,
                                     const char *user_id, size_t user_id_size,
                                     void *user_data) {
   Render *render = (Render *)user_data;
+  if (!render) {
+    return;
+  }
+
   render->audio_buffer_fresh_ = true;
   SDL_QueueAudio(render->output_dev_, data, (uint32_t)size);
 }
@@ -180,6 +192,10 @@ void Render::OnReceiveDataBufferCb(const char *data, size_t size,
                                    const char *user_id, size_t user_id_size,
                                    void *user_data) {
   Render *render = (Render *)user_data;
+  if (!render) {
+    return;
+  }
+
   std::string user(user_id, user_id_size);
   RemoteAction remote_action;
   memcpy(&remote_action, data, sizeof(remote_action));
@@ -197,6 +213,10 @@ void Render::OnReceiveDataBufferCb(const char *data, size_t size,
 
 void Render::OnSignalStatusCb(SignalStatus status, void *user_data) {
   Render *render = (Render *)user_data;
+  if (!render) {
+    return;
+  }
+
   render->signal_status_ = status;
   if (SignalStatus::SignalConnecting == status) {
     render->signal_status_str_ = "SignalConnecting";
@@ -222,6 +242,10 @@ void Render::OnSignalStatusCb(SignalStatus status, void *user_data) {
 
 void Render::OnConnectionStatusCb(ConnectionStatus status, void *user_data) {
   Render *render = (Render *)user_data;
+  if (!render) {
+    return;
+  }
+
   render->connection_status_ = status;
   render->show_connection_status_window_ = true;
   if (ConnectionStatus::Connecting == status) {
@@ -289,6 +313,10 @@ void Render::NetStatusReport(int client_id, TraversalMode mode,
                              const unsigned short send,
                              const unsigned short receive, void *user_data) {
   Render *render = (Render *)user_data;
+  if (!render) {
+    return;
+  }
+
   if (client_id != 0 && 0 == strcmp(render->client_id_, "")) {
     std::string client_id_s = std::to_string(client_id);
     memset(&render->client_id_, 0, sizeof(render->client_id_));
