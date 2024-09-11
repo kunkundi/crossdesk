@@ -313,7 +313,11 @@ int Render::Run() {
     return -1;
   }
 
-  // Create main window with SDL_Renderer graphics context
+  // use linear filtering to render textures otherwise the graphics will be
+  // blurry
+  SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+
+  // create main window with SDL_Renderer graphics context
   SDL_WindowFlags window_flags =
       (SDL_WindowFlags)(SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_BORDERLESS);
   main_window_ = SDL_CreateWindow(
