@@ -560,6 +560,13 @@ int Render::Run() {
           audio_capture_button_pressed_ = false;
           SDL_SetWindowSize(main_window_, main_window_width_default_,
                             main_window_height_default_);
+
+          SDL_Rect display_bounds;
+          SDL_GetDisplayBounds(0, &display_bounds);
+          int center_x = (display_bounds.w - main_window_width_default_) / 2;
+          int center_y = (display_bounds.h - main_window_height_default_) / 2;
+          SDL_SetWindowPosition(main_window_, center_x, center_y);
+
           continue;
         } else {
           LOG_INFO("Quit program");
