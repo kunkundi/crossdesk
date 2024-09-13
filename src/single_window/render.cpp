@@ -503,8 +503,9 @@ int Render::Run() {
     ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
     ImGui::SetNextWindowSize(
         ImVec2(main_window_width_,
-               streaming_ ? (fullscreen_button_pressed_ ? 0 : title_bar_height_)
-                          : main_window_height_default_),
+               (connection_established_ && streaming_ && is_client_mode_)
+                   ? (fullscreen_button_pressed_ ? 0 : title_bar_height_)
+                   : main_window_height_default_),
         ImGuiCond_Always);
     ImGui::Begin("Render", nullptr,
                  ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar |
@@ -516,7 +517,7 @@ int Render::Run() {
       TitleBar();
     }
 
-    if (streaming_ && is_client_mode_) {
+    if (connection_established_ && streaming_ && is_client_mode_) {
       if (!resizable_) {
         resizable_ = !resizable_;
         SDL_SetWindowResizable(main_window_, SDL_TRUE);
