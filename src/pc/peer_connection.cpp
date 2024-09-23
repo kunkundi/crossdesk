@@ -243,14 +243,6 @@ int PeerConnection::Init(PeerConnectionParams params,
 
   StartIceWorker();
 
-  if (0 != CreateVideoCodec(hardware_acceleration_)) {
-    LOG_ERROR("Create video codec failed");
-  }
-
-  if (0 != CreateAudioCodec()) {
-    LOG_ERROR("Create audio codec failed");
-  }
-
   // do {
   // } while (SignalStatus::SignalConnected != GetSignalStatus());
 
@@ -262,7 +254,7 @@ int PeerConnection::Init(PeerConnectionParams params,
   return 0;
 }
 
-int PeerConnection::CreateVideoCodec(bool hardware_acceleration) {
+int PeerConnection::CreateVideoCodec(bool av1, bool hardware_acceleration) {
   if (video_codec_inited_) {
     return 0;
   }
@@ -410,6 +402,30 @@ int PeerConnection::Join(const std::string &transmission_id,
   remote_transmission_id_ = transmission_id;
   ret = RequestTransmissionMemberList(remote_transmission_id_, password_);
   return ret;
+}
+
+int PeerConnection::NegotiationFailed() {
+  if (SignalStatus::SignalConnected != GetSignalStatus()) {
+    LOG_ERROR("Signal not connected");
+    return -1;
+  }
+
+  json message = {{"type", "negotiation_failed"},
+                  {"user_id", user_id_},
+                  {"transmission_id", local_transmission_id_}};
+  if (ws_transport_) {
+    ws_transport_->Send(message.dump());
+    LOG_INFO(
+        "[{}] sends negotiation failed notification to [{}] for transmission "
+        "id [{}]",
+        user_id_, remote_user_id_, local_transmission_id_);
+  }
+
+  IceWorkMsg msg;
+  msg.type = IceWorkMsg::Type::Destroy;
+  PushIceWorkMsg(msg);
+
+  return 0;
 }
 
 int PeerConnection::Leave(const std::string &transmission_id) {
@@ -656,6 +672,8 @@ void PeerConnection::ProcessSignal(const std::string &signal) {
     case "offer"_H: {
       std::string transmission_id = j["transmission_id"].get<std::string>();
       std::string remote_user_id = j["remote_user_id"].get<std::string>();
+      remote_user_id_ = remote_user_id;
+
       if (j.contains("sdp")) {
         std::string remote_sdp = j["sdp"].get<std::string>();
         LOG_INFO("[{}] receive offer from [{}]", user_id_, remote_user_id);
@@ -676,6 +694,7 @@ void PeerConnection::ProcessSignal(const std::string &signal) {
     case "answer"_H: {
       std::string transmission_id = j["transmission_id"].get<std::string>();
       std::string remote_user_id = j["remote_user_id"].get<std::string>();
+      remote_user_id_ = remote_user_id;
 
       if (j.contains("sdp")) {
         std::string remote_sdp = j["sdp"].get<std::string>();
@@ -853,7 +872,25 @@ void PeerConnection::ProcessIceWorkMsg(const IceWorkMsg &msg) {
       }
 
       std::string remote_sdp = msg.remote_sdp;
-      ice_transmission_list_[remote_user_id]->SetRemoteSdp(remote_sdp);
+      int ret =
+          ice_transmission_list_[remote_user_id]->SetRemoteSdp(remote_sdp);
+      if (0 != ret) {
+        NegotiationFailed();
+        break;
+      } else {
+        std::vector<RtpPacket::PAYLOAD_TYPE> negotiated_payload_types =
+            ice_transmission_list_[remote_user_id]->GetNegotiatedCapabilities();
+        if (0 != CreateVideoCodec(RtpPacket::PAYLOAD_TYPE::AV1 ==
+                                      negotiated_payload_types[0],
+                                  hardware_acceleration_)) {
+          LOG_ERROR("Create video codec failed");
+        }
+
+        if (0 != CreateAudioCodec()) {
+          LOG_ERROR("Create audio codec failed");
+        }
+      }
+
       if (trickle_ice_) {
         sdp_without_cands_ = remote_sdp;
         ice_transmission_list_[remote_user_id]->SendAnswer();
@@ -867,7 +904,26 @@ void PeerConnection::ProcessIceWorkMsg(const IceWorkMsg &msg) {
       std::string remote_sdp = msg.remote_sdp;
       if (ice_transmission_list_.find(remote_user_id) !=
           ice_transmission_list_.end()) {
-        ice_transmission_list_[remote_user_id]->SetRemoteSdp(remote_sdp);
+        int ret =
+            ice_transmission_list_[remote_user_id]->SetRemoteSdp(remote_sdp);
+        if (0 != ret) {
+          Leave(remote_transmission_id_);
+          break;
+        } else {
+          std::vector<RtpPacket::PAYLOAD_TYPE> negotiated_payload_types =
+              ice_transmission_list_[remote_user_id]
+                  ->GetNegotiatedCapabilities();
+          if (0 != CreateVideoCodec(RtpPacket::PAYLOAD_TYPE::AV1 ==
+                                        negotiated_payload_types[0],
+                                    hardware_acceleration_)) {
+            LOG_ERROR("Create video codec failed");
+          }
+
+          if (0 != CreateAudioCodec()) {
+            LOG_ERROR("Create audio codec failed");
+          }
+        }
+
         if (trickle_ice_) {
           sdp_without_cands_ = remote_sdp;
           ice_transmission_list_[remote_user_id]->GatherCandidates();

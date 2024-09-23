@@ -103,13 +103,15 @@ class PeerConnection {
  private:
   int Login();
 
-  int CreateVideoCodec(bool hardware_acceleration);
+  int CreateVideoCodec(bool av1, bool hardware_acceleration);
   int CreateAudioCodec();
 
   void ProcessSignal(const std::string &signal);
 
   int RequestTransmissionMemberList(const std::string &transmission_id,
                                     const std::string &password);
+
+  int NegotiationFailed();
 
  private:
   void StartIceWorker();
@@ -150,6 +152,7 @@ class PeerConnection {
   unsigned int ws_connection_id_ = 0;
   bool offer_peer_ = false;
   std::string user_id_ = "";
+  std::string remote_user_id_ = "";
   std::string local_transmission_id_ = "";
   std::string remote_transmission_id_ = "";
   std::vector<std::string> user_id_list_;

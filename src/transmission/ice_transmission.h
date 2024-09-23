@@ -103,6 +103,8 @@ class IceTransmission {
 
   int SendAnswer();
 
+  std::vector<RtpPacket::PAYLOAD_TYPE> GetNegotiatedCapabilities();
+
  private:
   int AppendLocalCapabilitiesToOffer(const std::string &remote_sdp);
   int AppendLocalCapabilitiesToAnswer(const std::string &remote_sdp);
@@ -111,6 +113,8 @@ class IceTransmission {
   bool NegotiateVideoPayloadType(const std::string &remote_sdp);
   bool NegotiateAudioPayloadType(const std::string &remote_sdp);
   bool NegotiateDataPayloadType(const std::string &remote_sdp);
+
+  int CreateMediaCodec();
 
  private:
   uint8_t CheckIsRtcpPacket(const char *buffer, size_t size);
