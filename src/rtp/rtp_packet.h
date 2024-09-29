@@ -149,6 +149,17 @@
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 // | AV1 aggr hdr  |
+//
+// Z=1: first obu element is an obu fragment that is a continuation of an OBU
+// fragment from the previous packet.
+//
+// Y=1: the last OBU element is an OBU fragment that will continue in the next
+// packet.
+//
+// W=1: two bit field that describes the number of OBU elements in the packet.
+//
+// N=1: the packet is the first packet of a coded video sequence.
+//
 //  0 1 2 3 4 5 6 7
 // +-+-+-+-+-+-+-+-+
 // |Z|Y| W |N|-|-|-|

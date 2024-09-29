@@ -1,9 +1,17 @@
 #include "byte_buffer.h"
 #include "log.h"
+#include "obu_parser.h"
 #include "rtp_codec.h"
 
 void EncodeAv1(uint8_t* buffer, size_t size, std::vector<RtpPacket>& packets) {
-  std::vector<Obu> obus = ParseObus(buffer, size);
+  std::vector<Obu> obus = obu::ParseObus(buffer, size);
+  std::vector<Packet> packets = obu::Packetizer(obus);
+
+  int num_packets = packets.size();
+
+  if (1 == num_packets) {
+  }
+
   // LOG_ERROR("Total size = [{}]", size);
 
   uint32_t timestamp = std::chrono::duration_cast<std::chrono::microseconds>(

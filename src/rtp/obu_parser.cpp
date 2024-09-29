@@ -184,7 +184,7 @@ int AdditionalBytesForPreviousObuElement(const Packet& packet) {
   return Leb128Size(packet.last_obu_size);
 }
 
-std::vector<Packet> Packetize(std::vector<Obu> obus, PayloadSizeLimits limits) {
+std::vector<Packet> Packetize(std::vector<Obu> obus) {
   int max_payload_len = 1200;
   std::vector<Packet> packets;
   if (obus.empty()) {
