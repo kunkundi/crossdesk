@@ -2,8 +2,8 @@
 
 #include "log.h"
 
-#define SAVE_RECEIVED_AV1_STREAM 1
-#define SAVE_DECODED_NV12_STREAM 0
+#define SAVE_RECEIVED_AV1_STREAM 0
+#define SAVE_DECODED_NV12_STREAM 1
 
 #include "libyuv.h"
 
@@ -31,14 +31,10 @@ class ScopedDav1dData {
 void NullFreeCallback(const uint8_t *buffer, void *opaque) {}
 
 void Yuv420pToNv12(unsigned char *SrcY, unsigned char *SrcU,
-                   unsigned char *SrcV, unsigned char *Dst, int Width,
-                   int Height) {
-  memcpy(Dst, SrcY, Width * Height);
-  unsigned char *DstU = Dst + Width * Height;
-  for (int i = 0; i < Width * Height / 4; i++) {
-    (*DstU++) = (*SrcU++);
-    (*DstU++) = (*SrcV++);
-  }
+                   unsigned char *SrcV, int y_stride, int uv_stride,
+                   unsigned char *Dst, int Width, int Height) {
+  libyuv::I420ToNV12(SrcY, y_stride, SrcU, uv_stride, SrcV, uv_stride, Dst,
+                     Width, Dst + Width * Height, Width / 2, Width, Height);
 }
 
 Dav1dAv1Decoder::Dav1dAv1Decoder() {}
@@ -167,21 +163,57 @@ int Dav1dAv1Decoder::Decode(
     nv12_frame_->SetHeight(frame_height_);
   }
 
-  if (0) {
-    Yuv420pToNv12((unsigned char *)dav1d_picture.data[0],
-                  (unsigned char *)dav1d_picture.data[1],
-                  (unsigned char *)dav1d_picture.data[2],
-                  (unsigned char *)nv12_frame_->Buffer(), frame_width_,
-                  frame_height_);
-  } else {
-    libyuv::I420ToNV12(
-        (const uint8_t *)dav1d_picture.data[0], dav1d_picture.p.w,
-        (const uint8_t *)dav1d_picture.data[1], dav1d_picture.p.w / 2,
-        (const uint8_t *)dav1d_picture.data[2], dav1d_picture.p.w / 2,
-        (uint8_t *)nv12_frame_->Buffer(), frame_width_,
-        (uint8_t *)nv12_frame_->Buffer() + frame_width_ * frame_height_,
-        frame_width_, frame_width_, frame_height_);
+  // if (1) {
+  //   Yuv420pToNv12((unsigned char *)dav1d_picture.data[0],
+  //                 (unsigned char *)dav1d_picture.data[1],
+  //                 (unsigned char *)dav1d_picture.data[2],
+  //                 dav1d_picture.stride[0], dav1d_picture.stride[1],
+  //                 (unsigned char *)nv12_frame_->Buffer(), frame_width_,
+  //                 frame_height_);
+  // } else {
+  //   libyuv::I420ToNV12(
+  //       (const uint8_t *)dav1d_picture.data[0], dav1d_picture.stride[0],
+  //       (const uint8_t *)dav1d_picture.data[1], dav1d_picture.stride[1] / 2,
+  //       (const uint8_t *)dav1d_picture.data[2], dav1d_picture.stride[1] / 2,
+  //       (uint8_t *)nv12_frame_->Buffer(), frame_width_,
+  //       (uint8_t *)nv12_frame_->Buffer() + frame_width_ * frame_height_,
+  //       frame_width_ / 2, frame_width_, frame_height_);
+  // }
+
+  size_t y_size = frame_width_ * frame_height_;
+  size_t u_size = frame_width_ * frame_height_ / 4;
+  size_t v_size = frame_width_ * frame_height_ / 4;
+
+  for (int i = 0; i < frame_height_; i++) {
+    memcpy((void *)(nv12_frame_->Buffer() + i * frame_width_),
+           (uint8_t *)(dav1d_picture.data[0]) + i * dav1d_picture.stride[0],
+           frame_width_);
   }
+
+  // for (int i = 0; i < frame_height_ / 2; i++) {
+  //   memcpy((void *)(nv12_frame_->Buffer() + y_size + i * (frame_width_ / 2)),
+  //          (uint8_t *)(dav1d_picture.data[1]) + i * dav1d_picture.stride[1],
+  //          frame_width_ / 2);
+  // }
+
+  uint8_t *uv_plane = (uint8_t *)nv12_frame_->Buffer() + y_size;
+  for (int i = 0; i < frame_height_ / 2; i++) {
+    for (int j = 0; j < frame_width_ / 2; j++) {
+      uv_plane[i * frame_width_ + 2 * j] =
+          ((uint8_t *)(dav1d_picture.data[1]))[i * dav1d_picture.stride[1] + j];
+      uv_plane[i * frame_width_ + 2 * j + 1] =
+          ((uint8_t *)(dav1d_picture.data[2]))[i * dav1d_picture.stride[1] + j];
+    }
+  }
+
+  for (int i = 0; i < frame_height_ / 2; i++) {
+    memcpy((void *)(nv12_frame_->Buffer() + y_size + u_size +
+                    i * (frame_width_ / 2)),
+           (uint8_t *)(dav1d_picture.data[2]) + i * dav1d_picture.stride[1],
+           frame_width_ / 2);
+  }
+
+  LOG_ERROR("{}x{}", dav1d_picture.stride[0], dav1d_picture.stride[1]);
 
   on_receive_decoded_frame(*nv12_frame_);
 
