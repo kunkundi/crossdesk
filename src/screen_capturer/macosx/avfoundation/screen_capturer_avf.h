@@ -49,7 +49,6 @@ class ScreenCapturerAvf : public ScreenCapturer {
   void CleanUp();
 
  private:
-  std::atomic_bool _running;
   std::atomic_bool _paused;
   std::atomic_bool _inited;
 

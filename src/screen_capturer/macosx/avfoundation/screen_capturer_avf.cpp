@@ -152,7 +152,7 @@ int ScreenCapturerAvf::Destroy() {
 }
 
 int ScreenCapturerAvf::Start() {
-  if (_running) {
+  if (running_) {
     return 0;
   }
 

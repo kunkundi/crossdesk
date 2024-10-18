@@ -12,7 +12,8 @@
 #elif __linux__
 #include "screen_capturer_x11.h"
 #elif __APPLE__
-#include "screen_capturer_avf.h"
+// #include "screen_capturer_avf.h"
+#include "screen_capturer_sck.h"
 #endif
 
 class ScreenCapturerFactory {
@@ -26,7 +27,8 @@ class ScreenCapturerFactory {
 #elif __linux__
     return new ScreenCapturerX11();
 #elif __APPLE__
-    return new ScreenCapturerAvf();
+    // return new ScreenCapturerAvf();
+    return new ScreenCapturerSck();
 #else
     return nullptr;
 #endif

@@ -55,7 +55,8 @@ std::string GetMac() {
         const unsigned char *base =
             (const unsigned char *)&dlAddr->sdl_data[dlAddr->sdl_nlen];
         for (int i = 0; i < dlAddr->sdl_alen; i++) {
-          len += sprintf(mac_addr + len, "%.2X", base[i]);
+          len +=
+              snprintf(mac_addr + len, sizeof(mac_addr) - len, "%.2X", base[i]);
         }
       }
       cursor = cursor->ifa_next;

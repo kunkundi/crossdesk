@@ -41,7 +41,7 @@ elseif is_os("macosx") then
     add_packages("libxcb")
     add_links("SDL2", "SDL2main")
     add_ldflags("-Wl,-ld_classic")
-    add_frameworks("OpenGL")
+    add_frameworks("OpenGL", "IOSurface", "ScreenCaptureKit")
 end
 
 add_packages("spdlog", "imgui")
@@ -70,8 +70,11 @@ target("screen_capturer")
         add_includedirs("src/screen_capturer/windows", {public = true})
     elseif is_os("macosx") then
         add_packages("ffmpeg")
-        add_files("src/screen_capturer/macosx/*.cpp")
-        add_includedirs("src/screen_capturer/macosx", {public = true})
+        add_files("src/screen_capturer/macosx/avfoundation/*.cpp",
+        "src/screen_capturer/macosx/screen_capturer_kit/*.cpp",
+        "src/screen_capturer/macosx/screen_capturer_kit/*.mm")
+        add_includedirs("src/screen_capturer/macosx/avfoundation",
+        "src/screen_capturer/macosx/screen_capturer_kit", {public = true})
     elseif is_os("linux") then
         add_packages("ffmpeg")
         add_files("src/screen_capturer/linux/*.cpp")
@@ -138,8 +141,8 @@ target("remote_desk")
         add_files("icon/app.rc")
     elseif is_os("macosx") then
         add_packages("ffmpeg")
-        add_rules("xcode.application")
-        add_files("Info.plist")
+        -- add_rules("xcode.application")
+        -- add_files("Info.plist")
     elseif is_os("linux") then
         add_packages("ffmpeg")
     end
