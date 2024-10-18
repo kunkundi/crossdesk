@@ -22,6 +22,7 @@ class IOStatistics {
 
  public:
   void Start();
+  void Stop();
 
   void UpdateVideoInboundBytes(uint32_t bytes);
   void UpdateVideoOutboundBytes(uint32_t bytes);

@@ -22,19 +22,7 @@ IceTransmission::IceTransmission(
       ice_ws_transport_(ice_ws_transmission),
       on_ice_status_change_(on_ice_status_change) {}
 
-IceTransmission::~IceTransmission() {
-  if (rtp_video_sender_) {
-    rtp_video_sender_->Stop();
-  }
-
-  if (rtp_audio_sender_) {
-    rtp_audio_sender_->Stop();
-  }
-
-  if (rtp_data_sender_) {
-    rtp_data_sender_->Stop();
-  }
-}
+IceTransmission::~IceTransmission() {}
 
 int IceTransmission::SetLocalCapabilities(
     bool use_trickle_ice, bool use_reliable_ice, bool enable_turn,
@@ -351,6 +339,29 @@ int IceTransmission::DestroyIceTransmission() {
   if (on_ice_status_change_) {
     on_ice_status_change_("closed");
   }
+
+  if (ice_io_statistics_) {
+    ice_io_statistics_->Stop();
+  }
+
+  if (rtp_video_receiver_) {
+    rtp_video_receiver_->Stop();
+  }
+
+  if (rtp_video_sender_) {
+    rtp_video_sender_->Stop();
+  }
+
+  if (rtp_audio_sender_) {
+    rtp_audio_sender_->Stop();
+  }
+
+  if (rtp_data_sender_) {
+    rtp_data_sender_->Stop();
+  }
+
+  LOG_ERROR("threads stoped");
+
   return ice_agent_->DestroyIceAgent();
 }
 

@@ -1,5 +1,7 @@
 #include "io_statistics.h"
 
+#include "log.h"
+
 IOStatistics::IOStatistics(
     std::function<void(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t,
                        uint32_t, uint32_t, uint32_t)>
@@ -8,13 +10,7 @@ IOStatistics::IOStatistics(
   interval_ = 1000;
 }
 
-IOStatistics::~IOStatistics() {
-  running_ = false;
-  cond_var_.notify_one();
-  if (statistics_thread_.joinable()) {
-    statistics_thread_.join();
-  }
-}
+IOStatistics::~IOStatistics() {}
 
 void IOStatistics::Process() {
   while (running_) {
@@ -53,6 +49,14 @@ void IOStatistics::Start() {
   if (!running_) {
     running_ = true;
     statistics_thread_ = std::thread(&IOStatistics::Process, this);
+  }
+}
+
+void IOStatistics::Stop() {
+  running_ = false;
+  cond_var_.notify_one();
+  if (statistics_thread_.joinable()) {
+    statistics_thread_.join();
   }
 }
 

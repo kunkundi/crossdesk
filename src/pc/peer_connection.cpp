@@ -956,6 +956,7 @@ void PeerConnection::ProcessIceWorkMsg(const IceWorkMsg &msg) {
     }
     case IceWorkMsg::Type::Destroy: {
       for (auto &user_id_it : ice_transmission_list_) {
+        LOG_ERROR("Destroy transmission");
         user_id_it.second->DestroyIceTransmission();
       }
       ice_transmission_list_.clear();

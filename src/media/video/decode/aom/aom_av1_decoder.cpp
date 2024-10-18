@@ -83,7 +83,8 @@ int AomAv1Decoder::Decode(
     return -1;
   }
 
-  if (img_ = aom_codec_get_frame(&aom_av1_decoder_ctx_, &iter)) {
+  img_ = aom_codec_get_frame(&aom_av1_decoder_ctx_, &iter);
+  if (img_) {
     {
       aom_codec_frame_flags_t flags;
       ret = aom_codec_control(&aom_av1_decoder_ctx_, AOMD_GET_FRAME_FLAGS,
