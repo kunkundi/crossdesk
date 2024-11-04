@@ -881,7 +881,7 @@ int Render::Run() {
         SDL_UpdateTexture(stream_texture_, NULL, dst_buffer_, texture_width_);
       } else {
         if (connection_established_) {
-          ProcessMouseKeyEven(event);
+          ProcessMouseKeyEvent(event);
         }
       }
     }
@@ -889,6 +889,15 @@ int Render::Run() {
     if (connection_established_ && streaming_) {
       CreateStreamWindow();
       SetupStreamWindow();
+
+      if (!stream_window_grabbed_ && control_mouse_) {
+        SDL_SetWindowGrab(stream_window_, SDL_TRUE);
+        stream_window_grabbed_ = true;
+        LOG_INFO("Grabbing input events");
+      } else if (stream_window_grabbed_ && !control_mouse_) {
+        SDL_SetWindowGrab(stream_window_, SDL_FALSE);
+        stream_window_grabbed_ = false;
+      }
     }
 
     DrawMainWindow();

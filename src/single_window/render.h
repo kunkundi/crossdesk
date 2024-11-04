@@ -83,7 +83,9 @@ class Render {
                                            const SDL_Point *area, void *data);
 
  private:
-  int ProcessMouseKeyEven(SDL_Event &ev);
+  int ProcessMouseKeyEvent(SDL_Event &event);
+  int ProcessKeyEvent(SDL_Event &event);
+  int ProcessMouseEvent(SDL_Event &event);
 
   static void SdlCaptureAudioIn(void *userdata, Uint8 *stream, int len);
   static void SdlCaptureAudioOut(void *userdata, Uint8 *stream, int len);
@@ -233,6 +235,7 @@ class Render {
   bool audio_buffer_fresh_ = false;
   bool rejoin_ = false;
   bool control_mouse_ = false;
+  bool stream_window_grabbed_ = false;
   bool audio_capture_ = true;
   bool local_id_copied_ = false;
   bool show_password_ = true;

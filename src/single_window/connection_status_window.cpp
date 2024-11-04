@@ -39,7 +39,15 @@ int Render::ConnectionStatusWindow() {
       ImGui::SetCursorPosY(connection_status_window_height_ * 2 / 3);
     } else if (ConnectionStatus::Connected == connection_status_) {
       text = localization::p2p_connected[localization_language_index_];
-      // show_connection_status_window_ = false;
+      ImGui::SetCursorPosX(connection_status_window_width_ * 3 / 7);
+      ImGui::SetCursorPosY(connection_status_window_height_ * 2 / 3);
+      // ok
+      if (ImGui::Button(
+              localization::ok[localization_language_index_].c_str()) ||
+          ImGui::IsKeyPressed(ImGuiKey_Enter) ||
+          ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        show_connection_status_window_ = false;
+      }
     } else if (ConnectionStatus::Disconnected == connection_status_) {
       text = localization::p2p_disconnected[localization_language_index_];
       ImGui::SetCursorPosX(connection_status_window_width_ * 3 / 7);

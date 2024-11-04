@@ -12,56 +12,51 @@
 #define MOUSE_CONTROL 1
 #endif
 
-int Render::ProcessMouseKeyEven(SDL_Event &ev) {
+int Render::ProcessMouseKeyEvent(SDL_Event &event) {
   if (!control_mouse_ || !connection_established_) {
     return 0;
   }
 
+  if (SDL_KEYDOWN == event.type || SDL_KEYUP == event.type) {
+    ProcessKeyEvent(event);
+  } else {
+    ProcessMouseEvent(event);
+  }
+
+  return 0;
+}
+
+int Render::ProcessMouseEvent(SDL_Event &event) {
   float ratio_x = (float)video_width_ / (float)stream_render_rect_.w;
   float ratio_y = (float)video_height_ / (float)stream_render_rect_.h;
 
-  if (ev.button.x <= stream_render_rect_.x) {
-    ev.button.x = 0;
-  } else if (ev.button.x > stream_render_rect_.x &&
-             ev.button.x < stream_render_rect_.x + stream_render_rect_.w) {
-    ev.button.x -= stream_render_rect_.x;
-  } else if (ev.button.x >= stream_render_rect_.x + stream_render_rect_.w) {
-    ev.button.x = stream_render_rect_.w;
+  if (event.button.x <= stream_render_rect_.x) {
+    event.button.x = 0;
+  } else if (event.button.x > stream_render_rect_.x &&
+             event.button.x < stream_render_rect_.x + stream_render_rect_.w) {
+    event.button.x -= stream_render_rect_.x;
+  } else if (event.button.x >= stream_render_rect_.x + stream_render_rect_.w) {
+    event.button.x = stream_render_rect_.w;
   }
 
-  if (ev.button.y <= stream_render_rect_.y) {
-    ev.button.y = 0;
-  } else if (ev.button.y > stream_render_rect_.y &&
-             ev.button.y < stream_render_rect_.y + stream_render_rect_.h) {
-    ev.button.y -= stream_render_rect_.y;
-  } else if (ev.button.y >= stream_render_rect_.y + stream_render_rect_.h) {
-    ev.button.y = stream_render_rect_.h;
+  if (event.button.y <= stream_render_rect_.y) {
+    event.button.y = 0;
+  } else if (event.button.y > stream_render_rect_.y &&
+             event.button.y < stream_render_rect_.y + stream_render_rect_.h) {
+    event.button.y -= stream_render_rect_.y;
+  } else if (event.button.y >= stream_render_rect_.y + stream_render_rect_.h) {
+    event.button.y = stream_render_rect_.h;
   }
 
   RemoteAction remote_action;
-  remote_action.m.x = (size_t)(ev.button.x * ratio_x);
-  remote_action.m.y = (size_t)(ev.button.y * ratio_y);
+  remote_action.m.x = (size_t)(event.button.x * ratio_x);
+  remote_action.m.y = (size_t)(event.button.y * ratio_y);
 
-  if (SDL_KEYDOWN == ev.type)  // SDL_KEYUP
-  {
-    // printf("SDLK_DOWN: %d\n", SDL_KeyCode(ev.key.keysym.sym));
-    if (SDLK_DOWN == ev.key.keysym.sym) {
-      // printf("SDLK_DOWN  \n");
-
-    } else if (SDLK_UP == ev.key.keysym.sym) {
-      // printf("SDLK_UP  \n");
-
-    } else if (SDLK_LEFT == ev.key.keysym.sym) {
-      // printf("SDLK_LEFT  \n");
-
-    } else if (SDLK_RIGHT == ev.key.keysym.sym) {
-      // printf("SDLK_RIGHT  \n");
-    }
-  } else if (SDL_MOUSEBUTTONDOWN == ev.type) {
+  if (SDL_MOUSEBUTTONDOWN == event.type) {
     remote_action.type = ControlType::mouse;
-    if (SDL_BUTTON_LEFT == ev.button.button) {
+    if (SDL_BUTTON_LEFT == event.button.button) {
       remote_action.m.flag = MouseFlag::left_down;
-    } else if (SDL_BUTTON_RIGHT == ev.button.button) {
+    } else if (SDL_BUTTON_RIGHT == event.button.button) {
       remote_action.m.flag = MouseFlag::right_down;
     }
     if (control_bar_hovered_) {
@@ -69,11 +64,11 @@ int Render::ProcessMouseKeyEven(SDL_Event &ev) {
     }
     SendData(peer_, DATA_TYPE::DATA, (const char *)&remote_action,
              sizeof(remote_action));
-  } else if (SDL_MOUSEBUTTONUP == ev.type) {
+  } else if (SDL_MOUSEBUTTONUP == event.type) {
     remote_action.type = ControlType::mouse;
-    if (SDL_BUTTON_LEFT == ev.button.button) {
+    if (SDL_BUTTON_LEFT == event.button.button) {
       remote_action.m.flag = MouseFlag::left_up;
-    } else if (SDL_BUTTON_RIGHT == ev.button.button) {
+    } else if (SDL_BUTTON_RIGHT == event.button.button) {
       remote_action.m.flag = MouseFlag::right_up;
     }
     if (control_bar_hovered_) {
@@ -81,17 +76,23 @@ int Render::ProcessMouseKeyEven(SDL_Event &ev) {
     }
     SendData(peer_, DATA_TYPE::DATA, (const char *)&remote_action,
              sizeof(remote_action));
-  } else if (SDL_MOUSEMOTION == ev.type) {
+  } else if (SDL_MOUSEMOTION == event.type) {
     remote_action.type = ControlType::mouse;
     remote_action.m.flag = MouseFlag::move;
     SendData(peer_, DATA_TYPE::DATA, (const char *)&remote_action,
              sizeof(remote_action));
-  } else if (SDL_QUIT == ev.type) {
-    SDL_Event event;
-    event.type = SDL_QUIT;
-    SDL_PushEvent(&event);
-    printf("SDL_QUIT\n");
-    return 0;
+  }
+
+  return 0;
+}
+
+int Render::ProcessKeyEvent(SDL_Event &event) {
+  RemoteAction remote_action;
+  SDL_Keycode key = event.key.keysym.sym;
+  if (SDL_KEYDOWN == event.type) {
+    std::cout << "Key pressed: " << SDL_GetKeyName(key) << std::endl;
+  } else if (SDL_KEYUP == event.type) {
+    std::cout << "Key released: " << SDL_GetKeyName(key) << std::endl;
   }
 
   return 0;
