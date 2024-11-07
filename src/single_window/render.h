@@ -21,6 +21,7 @@
 #include "imgui_impl_sdlrenderer2.h"
 #include "screen_capturer_factory.h"
 #include "speaker_capturer_factory.h"
+#include "thumbnail.h"
 
 class Render {
  public:
@@ -227,11 +228,16 @@ class Render {
   SDL_Texture *recent_connection_texture_ = nullptr;
   int recent_connection_image_width_ = 128;
   int recent_connection_image_height_ = 72;
+  uint32_t recent_connection_image_save_time_ = 0;
 
   // video window
   SDL_Texture *stream_texture_ = nullptr;
   SDL_Rect stream_render_rect_;
   uint32_t stream_pixformat_ = 0;
+  std::string host_name_ = "";
+  std::string image_path_ = "thumbnails";
+
+  Thumbnail thumbnail_;
 
   bool resizable_ = false;
   bool label_inited_ = false;
@@ -268,6 +274,7 @@ class Render {
   bool is_control_bar_in_left_ = true;
   bool control_window_width_is_changing_ = false;
   bool reload_recent_connections_ = true;
+  bool hostname_sent_ = false;
 
   double copy_start_time_ = 0;
   double regenerate_password_start_time_ = 0;

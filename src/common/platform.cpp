@@ -100,3 +100,26 @@ std::string GetMac() {
 #endif
   return mac_addr;
 }
+
+std::string GetHostName() {
+  char hostname[256];
+#ifdef _WIN32
+  WSADATA wsaData;
+  if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+    std::cerr << "WSAStartup failed." << std::endl;
+    return "";
+  }
+  if (gethostname(hostname, sizeof(hostname)) == SOCKET_ERROR) {
+    LOG_ERROR("gethostname failed: {}", WSAGetLastError());
+    WSACleanup();
+    return "";
+  }
+  WSACleanup();
+#else
+  if (gethostname(hostname, sizeof(hostname)) == -1) {
+    LOG_ERROR("gethostname failed");
+    return "";
+  }
+#endif
+  return hostname;
+}

@@ -10,5 +10,6 @@
 #include <iostream>
 
 std::string GetMac();
+std::string GetHostName();
 
 #endif

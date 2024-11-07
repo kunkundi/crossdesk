@@ -1,5 +1,6 @@
 #include "render.h"
 
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -14,12 +15,6 @@
 #include "platform.h"
 #include "rd_log.h"
 #include "screen_capturer_factory.h"
-
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "libyuv.h"
-#include "stb_image_write.h"
 
 // Refresh Event
 #define REFRESH_EVENT (SDL_USEREVENT + 1)
@@ -73,61 +68,6 @@ SDL_HitTestResult Render::HitTestCallback(SDL_Window* window,
   }
 
   return SDL_HITTEST_NORMAL;
-}
-
-bool LoadTextureFromMemory(const void* data, size_t data_size,
-                           SDL_Renderer* renderer, SDL_Texture** out_texture,
-                           int* out_width, int* out_height) {
-  int image_width = 0;
-  int image_height = 0;
-  int channels = 4;
-  unsigned char* image_data =
-      stbi_load_from_memory((const unsigned char*)data, (int)data_size,
-                            &image_width, &image_height, NULL, 4);
-  if (image_data == nullptr) {
-    fprintf(stderr, "Failed to load image: %s\n", stbi_failure_reason());
-    return false;
-  }
-
-  SDL_Surface* surface = SDL_CreateRGBSurfaceFrom(
-      (void*)image_data, image_width, image_height, channels * 8,
-      channels * image_width, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
-  if (surface == nullptr) {
-    fprintf(stderr, "Failed to create SDL surface: %s\n", SDL_GetError());
-    return false;
-  }
-
-  SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
-  if (texture == nullptr)
-    fprintf(stderr, "Failed to create SDL texture: %s\n", SDL_GetError());
-
-  *out_texture = texture;
-  *out_width = image_width;
-  *out_height = image_height;
-
-  SDL_FreeSurface(surface);
-  stbi_image_free(image_data);
-
-  return true;
-}
-
-// Open and read a file, then forward to LoadTextureFromMemory()
-bool LoadTextureFromFile(const char* file_name, SDL_Renderer* renderer,
-                         SDL_Texture** out_texture, int* out_width,
-                         int* out_height) {
-  FILE* f = fopen(file_name, "rb");
-  if (f == NULL) return false;
-  fseek(f, 0, SEEK_END);
-  size_t file_size = (size_t)ftell(f);
-  if (file_size == -1) return false;
-  fseek(f, 0, SEEK_SET);
-  void* file_data = IM_ALLOC(file_size);
-  fread(file_data, 1, file_size, f);
-  bool ret = LoadTextureFromMemory(file_data, file_size, renderer, out_texture,
-                                   out_width, out_height);
-  IM_FREE(file_data);
-  fclose(f);
-  return ret;
 }
 
 Render::Render() {}
@@ -701,47 +641,6 @@ int Render::DrawMainWindow() {
   return 0;
 }
 
-void ScaleYUV420pToABGR(char* dst_buffer_, int video_width_, int video_height_,
-                        int scaled_video_width_, int scaled_video_height_,
-                        char* argb_buffer_) {
-  int src_y_size = video_width_ * video_height_;
-  int src_uv_size = (video_width_ + 1) / 2 * (video_height_ + 1) / 2;
-  int dst_y_size = scaled_video_width_ * scaled_video_height_;
-  int dst_uv_size =
-      (scaled_video_width_ + 1) / 2 * (scaled_video_height_ + 1) / 2;
-
-  uint8_t* src_y = reinterpret_cast<uint8_t*>(dst_buffer_);
-  uint8_t* src_u = src_y + src_y_size;
-  uint8_t* src_v = src_u + src_uv_size;
-
-  std::unique_ptr<uint8_t[]> dst_y(new uint8_t[dst_y_size]);
-  std::unique_ptr<uint8_t[]> dst_u(new uint8_t[dst_uv_size]);
-  std::unique_ptr<uint8_t[]> dst_v(new uint8_t[dst_uv_size]);
-
-  try {
-    libyuv::I420Scale(src_y, video_width_, src_u, (video_width_ + 1) / 2, src_v,
-                      (video_width_ + 1) / 2, video_width_, video_height_,
-                      dst_y.get(), scaled_video_width_, dst_u.get(),
-                      (scaled_video_width_ + 1) / 2, dst_v.get(),
-                      (scaled_video_width_ + 1) / 2, scaled_video_width_,
-                      scaled_video_height_, libyuv::kFilterBilinear);
-  } catch (const std::exception& e) {
-    LOG_ERROR("I420Scale failed: %s", e.what());
-    return;
-  }
-
-  try {
-    libyuv::I420ToABGR(
-        dst_y.get(), scaled_video_width_, dst_u.get(),
-        (scaled_video_width_ + 1) / 2, dst_v.get(),
-        (scaled_video_width_ + 1) / 2, reinterpret_cast<uint8_t*>(argb_buffer_),
-        scaled_video_width_ * 4, scaled_video_width_, scaled_video_height_);
-  } catch (const std::exception& e) {
-    LOG_ERROR("I420ToBGRA failed: %s", e.what());
-    return;
-  }
-}
-
 int Render::DrawStreamWindow() {
   if (!stream_ctx_) {
     LOG_ERROR("Stream context is null");
@@ -842,8 +741,8 @@ int Render::Run() {
   CreateMainWindow();
   SetupMainWindow();
 
-  const int scaled_video_width_ = 128;
-  const int scaled_video_height_ = 72;
+  const int scaled_video_width_ = 160;
+  const int scaled_video_height_ = 90;
   char* argb_buffer_ =
       new char[scaled_video_width_ * scaled_video_height_ * 40];
 
@@ -904,13 +803,9 @@ int Render::Run() {
           DestroyStreamWindowContext();
 
           if (dst_buffer_) {
-            ScaleYUV420pToABGR((char*)dst_buffer_, video_width_, video_height_,
-                               scaled_video_width_, scaled_video_height_,
-                               argb_buffer_);
-            stbi_write_png("RecentConnectionImage01.png", scaled_video_width_,
-                           scaled_video_height_, 4, argb_buffer_,
-                           scaled_video_width_ * 4);
-            LOG_ERROR("RecentConnectionImage01.png saved");
+            thumbnail_.SaveToThumbnail((char*)dst_buffer_, video_width_,
+                                       video_height_, host_name_, remote_id_);
+            recent_connection_image_save_time_ = SDL_GetTicks();
           }
 
           LOG_INFO("[{}] Leave connection [{}]", client_id_, remote_id_);
@@ -1013,18 +908,17 @@ int Render::Run() {
     }
 
     if (reload_recent_connections_ && main_renderer_) {
-      bool ret = LoadTextureFromFile(
-          "RecentConnectionImage01.png", main_renderer_,
-          &recent_connection_texture_, &recent_connection_image_width_,
-          &recent_connection_image_height_);
-      if (!ret) {
-        LOG_ERROR("Load recent connections image failed");
-      } else {
-        LOG_ERROR("Load recent connections image width: {}, height: {}",
-                  recent_connection_image_width_,
-                  recent_connection_image_height_);
+      // loal recent connection thumbnails after saving for 1 second
+      uint32_t now_time = SDL_GetTicks();
+      if (now_time - recent_connection_image_save_time_ >= 1000) {
+        int ret = thumbnail_.LoadThumbnail(
+            main_renderer_, &recent_connection_texture_,
+            &recent_connection_image_width_, &recent_connection_image_height_);
+        if (!ret) {
+          LOG_INFO("Load recent connection thumbnails");
+        }
+        reload_recent_connections_ = false;
       }
-      reload_recent_connections_ = false;
     }
 
     if (connection_established_ && streaming_) {

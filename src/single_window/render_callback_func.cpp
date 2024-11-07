@@ -1,5 +1,6 @@
 #include "device_controller.h"
 #include "localization.h"
+#include "platform.h"
 #include "rd_log.h"
 #include "render.h"
 
@@ -209,6 +210,11 @@ void Render::OnReceiveDataBufferCb(const char *data, size_t size,
     } else {
       render->StopSpeakerCapture();
     }
+  } else if (ControlType::keyboard == remote_action.type) {
+  } else if (ControlType::host_info == remote_action.type) {
+    render->host_name_ =
+        std::string(remote_action.i.host_name, remote_action.i.host_name_size);
+    LOG_INFO("Remote hostname: [{}]", render->host_name_);
   }
 }
 
@@ -261,6 +267,18 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char *user_id,
       render->start_screen_capture_ = true;
       render->start_mouse_control_ = true;
     }
+    if (!render->hostname_sent_) {
+      std::string host_name = GetHostName();
+      RemoteAction remote_action;
+      remote_action.type = ControlType::host_info;
+      memcpy(&remote_action.i.host_name, host_name.data(), host_name.size());
+      remote_action.i.host_name_size = host_name.size();
+      int ret = SendData(render->peer_, DATA_TYPE::DATA,
+                         (const char *)&remote_action, sizeof(remote_action));
+      if (0 == ret) {
+        render->hostname_sent_ = true;
+      }
+    }
   } else if (ConnectionStatus::Disconnected == status) {
     render->connection_status_str_ = "Disconnected";
     render->password_validating_time_ = 0;
@@ -274,6 +292,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char *user_id,
     render->start_mouse_control_ = false;
     render->connection_established_ = false;
     render->control_mouse_ = false;
+    render->hostname_sent_ = false;
     if (render->audio_capture_) {
       render->StopSpeakerCapture();
       render->audio_capture_ = false;
