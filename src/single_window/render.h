@@ -59,6 +59,7 @@ class Render {
   int DestroyStreamWindowContext();
   int DrawMainWindow();
   int DrawStreamWindow();
+  int ConfirmDeleteConnection();
 
  public:
   static void OnReceiveVideoBufferCb(const XVideoFrame *video_frame,
@@ -275,6 +276,8 @@ class Render {
   bool control_window_width_is_changing_ = false;
   bool reload_recent_connections_ = true;
   bool hostname_sent_ = false;
+  bool show_confirm_delete_connection_ = false;
+  bool delete_connection_ = false;
 
   double copy_start_time_ = 0;
   double regenerate_password_start_time_ = 0;

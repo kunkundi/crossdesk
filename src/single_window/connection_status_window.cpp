@@ -139,7 +139,7 @@ int Render::ConnectionStatusWindow() {
       // ok
       if (ImGui::Button(
               localization::ok[localization_language_index_].c_str()) ||
-          ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+          ImGui::IsKeyPressed(ImGuiKey_Enter)) {
         show_connection_status_window_ = false;
       }
     }

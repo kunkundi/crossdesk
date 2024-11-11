@@ -136,8 +136,13 @@ int Render::ShowRecentConnections() {
         xmake + "##RecentConnectionDelete" +
         std::to_string(delete_button_pos.x);
     if (ImGui::SmallButton(recent_connection_delete_button_name.c_str())) {
+      show_confirm_delete_connection_ = true;
+    }
+
+    if (delete_connection_) {
       if (!thumbnail_.DeleteThumbnail(pos.first)) {
         reload_recent_connections_ = true;
+        delete_connection_ = false;
       }
     }
     ImGui::SetWindowFontScale(1.0f);
@@ -146,5 +151,67 @@ int Render::ShowRecentConnections() {
 
   ImGui::EndChild();
 
+  if (show_confirm_delete_connection_) {
+    ConfirmDeleteConnection();
+  }
+
+  return 0;
+}
+
+int Render::ConfirmDeleteConnection() {
+  const ImGuiViewport* viewport = ImGui::GetMainViewport();
+  ImGui::SetNextWindowPos(ImVec2((viewport->WorkSize.x - viewport->WorkPos.x -
+                                  connection_status_window_width_) /
+                                     2,
+                                 (viewport->WorkSize.y - viewport->WorkPos.y -
+                                  connection_status_window_height_) /
+                                     2));
+
+  ImGui::SetNextWindowSize(ImVec2(connection_status_window_width_,
+                                  connection_status_window_height_));
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0, 1.0, 1.0, 1.0));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
+
+  ImGui::Begin("ConfirmDeleteConnectionWindow", nullptr,
+               ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
+                   ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar |
+                   ImGuiWindowFlags_NoSavedSettings);
+  ImGui::PopStyleVar(2);
+  ImGui::PopStyleColor();
+
+  ImGui::SetWindowFontScale(0.5f);
+  std::string text =
+      localization::confirm_delete_connection[localization_language_index_];
+  ImGui::SetCursorPosX(connection_status_window_width_ * 6 / 19);
+  ImGui::SetCursorPosY(connection_status_window_height_ * 2 / 3);
+
+  // ok
+  if (ImGui::Button(localization::ok[localization_language_index_].c_str()) ||
+      ImGui::IsKeyPressed(ImGuiKey_Enter)) {
+    delete_connection_ = true;
+    show_confirm_delete_connection_ = false;
+  }
+
+  ImGui::SameLine();
+  // cancel
+  if (ImGui::Button(
+          localization::cancel[localization_language_index_].c_str()) ||
+      ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+    delete_connection_ = false;
+    show_confirm_delete_connection_ = false;
+  }
+
+  auto window_width = ImGui::GetWindowSize().x;
+  auto window_height = ImGui::GetWindowSize().y;
+  auto text_width = ImGui::CalcTextSize(text.c_str()).x;
+  ImGui::SetCursorPosX((window_width - text_width) * 0.5f);
+  ImGui::SetCursorPosY(window_height * 0.2f);
+  ImGui::Text(text.c_str());
+  ImGui::SetWindowFontScale(1.0f);
+
+  ImGui::End();
+  ImGui::PopStyleVar();
   return 0;
 }

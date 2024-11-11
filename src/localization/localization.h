@@ -82,6 +82,8 @@ static std::vector<std::string> no_such_id = {u8"无此ID", "No such ID"};
 static std::vector<std::string> about = {u8"关于", "About"};
 static std::vector<std::string> version = {u8"版本", "Version"};
 
+static std::vector<std::string> confirm_delete_connection = {
+    u8"确认删除此连接", "Confirm to delete this connection"};
 }  // namespace localization
 
 #endif
