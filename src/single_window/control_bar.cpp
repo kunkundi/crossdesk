@@ -86,6 +86,23 @@ int Render::ControlBar() {
     }
 
     ImGui::SameLine();
+    // net traffic stats button
+    std::string net_traffic_stats = ICON_FA_SIGNAL;
+    if (ImGui::Button(net_traffic_stats.c_str(), ImVec2(25, 25))) {
+      net_traffic_stats_button_pressed_ = !net_traffic_stats_button_pressed_;
+      net_traffic_stats_button_label_ =
+          net_traffic_stats_button_pressed_
+              ? localization::hide_net_traffic_stats
+                    [localization_language_index_]
+              : localization::show_net_traffic_stats
+                    [localization_language_index_];
+    }
+
+    if (net_traffic_stats_button_pressed_) {
+      NetTrafficStats();
+    }
+
+    ImGui::SameLine();
     // fullscreen button
     std::string fullscreen =
         fullscreen_button_pressed_ ? ICON_FA_COMPRESS : ICON_FA_EXPAND;
@@ -139,5 +156,78 @@ int Render::ControlBar() {
 
   ImGui::PopStyleVar();
 
+  return 0;
+}
+
+int Render::NetTrafficStats() {
+  const ImGuiViewport* viewport = ImGui::GetMainViewport();
+  ImGui::SetNextWindowPos(ImVec2((viewport->WorkSize.x - viewport->WorkPos.x -
+                                  connection_status_window_width_) /
+                                     2,
+                                 (viewport->WorkSize.y - viewport->WorkPos.y -
+                                  connection_status_window_height_) /
+                                     2));
+
+  ImGui::SetNextWindowSize(ImVec2(connection_status_window_width_,
+                                  connection_status_window_height_));
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0, 1.0, 1.0, 1.0));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
+
+  ImGui::Begin("NetTrafficStatsWindow", nullptr,
+               ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
+                   ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar |
+                   ImGuiWindowFlags_NoSavedSettings);
+  ImGui::PopStyleVar(2);
+  ImGui::PopStyleColor();
+
+  if (ImGui::BeginTable("split", 3)) {
+    int row = 0;
+    ImGui::TableNextColumn();
+    ImGui::Text(" ");
+    ImGui::TableNextColumn();
+    ImGui::Text("In");
+    ImGui::TableNextColumn();
+    ImGui::Text("Out");
+
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::Text("Video");
+    ImGui::TableNextColumn();
+    ImGui::Text("%d", net_traffic_stats_.video_in);
+    ImGui::TableNextColumn();
+    ImGui::Text("%d", net_traffic_stats_.video_out);
+
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::Text("Audio");
+    ImGui::TableNextColumn();
+    ImGui::Text("%d", net_traffic_stats_.audio_in);
+    ImGui::TableNextColumn();
+    ImGui::Text("%d", net_traffic_stats_.audio_out);
+
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::Text("Total");
+    ImGui::TableNextColumn();
+    ImGui::Text("%d", net_traffic_stats_.total_in);
+    ImGui::TableNextColumn();
+    ImGui::Text("%d", net_traffic_stats_.total_out);
+    ImGui::EndTable();
+  }
+
+  ImGui::SetCursorPosX(connection_status_window_width_ * 6 / 19);
+  ImGui::SetCursorPosY(connection_status_window_height_ * 2 / 3);
+
+  // ok
+  ImGui::SetWindowFontScale(0.5f);
+  if (ImGui::Button(localization::ok[localization_language_index_].c_str()) ||
+      ImGui::IsKeyPressed(ImGuiKey_Enter)) {
+    net_traffic_stats_button_pressed_ = false;
+  }
+
+  ImGui::End();
+  ImGui::PopStyleVar();
   return 0;
 }

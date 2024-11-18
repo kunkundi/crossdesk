@@ -26,6 +26,10 @@ static std::vector<std::string> recent_connections = {u8"近期连接",
                                                       "Recent Connections"};
 static std::vector<std::string> disconnect = {u8"断开连接", "Disconnect"};
 static std::vector<std::string> fullscreen = {u8" 全屏", " Fullscreen"};
+static std::vector<std::string> show_net_traffic_stats = {
+    u8"显示流量统计", "Show Net Traffic Stats"};
+static std::vector<std::string> hide_net_traffic_stats = {
+    u8"隐藏流量统计", "Hide Net Traffic Stats"};
 static std::vector<std::string> exit_fullscreen = {u8" 退出全屏",
                                                    " Exit fullscreen"};
 static std::vector<std::string> control_mouse = {u8" 控制", " Control"};

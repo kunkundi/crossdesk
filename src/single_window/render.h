@@ -64,6 +64,7 @@ class Render {
   int DrawMainWindow();
   int DrawStreamWindow();
   int ConfirmDeleteConnection();
+  int NetTrafficStats();
 
  public:
   static void OnReceiveVideoBufferCb(const XVideoFrame *video_frame,
@@ -84,8 +85,9 @@ class Render {
                                    size_t user_id_size, void *user_data);
 
   static void NetStatusReport(const char *client_id, size_t client_id_size,
-                              TraversalMode mode, const unsigned short send,
-                              const unsigned short receive, void *user_data);
+                              TraversalMode mode,
+                              const XNetTrafficStats *net_traffic_stats,
+                              void *user_data);
 
   static SDL_HitTestResult HitTestCallback(SDL_Window *window,
                                            const SDL_Point *area, void *data);
@@ -148,6 +150,7 @@ class Render {
   std::string mac_addr_str_ = "";
   std::string connect_button_label_ = "Connect";
   std::string fullscreen_button_label_ = "Fullscreen";
+  std::string net_traffic_stats_button_label_ = "Show Net Traffic Stats";
   std::string mouse_control_button_label_ = "Mouse Control";
   std::string audio_capture_button_label_ = "Audio Capture";
   std::string settings_button_label_ = "Setting";
@@ -180,8 +183,8 @@ class Render {
   int main_window_width_before_maximized_ = 640;
   int main_window_height_before_maximized_ = 480;
   int control_window_min_width_ = 20;
-  int control_window_max_width_ = 170;
-  int control_window_width_ = 170;
+  int control_window_max_width_ = 200;
+  int control_window_width_ = 200;
   int control_window_height_ = 40;
   int local_window_width_ = 320;
   int local_window_height_ = 235;
@@ -259,6 +262,7 @@ class Render {
   uint32_t password_validating_time_ = 0;
   bool control_bar_expand_ = true;
   bool fullscreen_button_pressed_ = false;
+  bool net_traffic_stats_button_pressed_ = false;
   bool mouse_control_button_pressed_ = false;
   bool audio_capture_button_pressed_ = false;
   bool show_settings_window_ = false;
@@ -312,6 +316,8 @@ class Render {
   PeerPtr *peer_ = nullptr;
   PeerPtr *peer_reserved_ = nullptr;
   Params params_;
+  TraversalMode traversal_mode_ = TraversalMode::UnknownMode;
+  XNetTrafficStats net_traffic_stats_;
 
  private:
   SDL_AudioDeviceID input_dev_;

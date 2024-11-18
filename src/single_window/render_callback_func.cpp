@@ -332,8 +332,9 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char *user_id,
 }
 
 void Render::NetStatusReport(const char *client_id, size_t client_id_size,
-                             TraversalMode mode, const unsigned short send,
-                             const unsigned short receive, void *user_data) {
+                             TraversalMode mode,
+                             const XNetTrafficStats *net_traffic_stats,
+                             void *user_data) {
   Render *render = (Render *)user_data;
   if (!render) {
     return;
@@ -345,7 +346,17 @@ void Render::NetStatusReport(const char *client_id, size_t client_id_size,
     LOG_INFO("Use client id [{}] and save id into cache file", client_id);
     render->SaveSettingsIntoCacheFile();
   }
-  if (mode != TraversalMode::UnknownMode) {
-    LOG_INFO("Net mode: [{}]", int(mode));
+  if (render->traversal_mode_ != mode) {
+    render->traversal_mode_ = mode;
+    LOG_INFO("Net mode: [{}]", int(render->traversal_mode_));
+  }
+
+  if (net_traffic_stats) {
+    render->net_traffic_stats_.video_in = net_traffic_stats->video_in;
+    render->net_traffic_stats_.video_out = net_traffic_stats->video_out;
+    render->net_traffic_stats_.audio_in = net_traffic_stats->audio_in;
+    render->net_traffic_stats_.audio_out = net_traffic_stats->audio_out;
+    render->net_traffic_stats_.total_in = net_traffic_stats->total_in;
+    render->net_traffic_stats_.total_out = net_traffic_stats->total_out;
   }
 }
