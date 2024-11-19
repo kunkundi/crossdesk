@@ -69,16 +69,7 @@ SDL_HitTestResult Render::HitTestCallback(SDL_Window* window,
   return SDL_HITTEST_NORMAL;
 }
 
-Render::Render() {
-  net_traffic_stats_.video_in = 0;
-  net_traffic_stats_.video_out = 0;
-  net_traffic_stats_.audio_in = 0;
-  net_traffic_stats_.audio_out = 0;
-  net_traffic_stats_.data_in = 0;
-  net_traffic_stats_.data_out = 0;
-  net_traffic_stats_.total_in = 0;
-  net_traffic_stats_.total_out = 0;
-}
+Render::Render() { memset(&net_traffic_stats_, 0, sizeof(net_traffic_stats_)); }
 
 Render::~Render() {}
 
@@ -841,6 +832,7 @@ int Render::Run() {
           reload_recent_connections_ = true;
           remember_password_ = false;
 
+          memset(&net_traffic_stats_, 0, sizeof(net_traffic_stats_));
           SDL_SetWindowFullscreen(main_window_, SDL_FALSE);
           memset(audio_buffer_, 0, 720);
           SDL_SetWindowSize(main_window_, main_window_width_default_,
