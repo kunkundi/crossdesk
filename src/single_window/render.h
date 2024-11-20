@@ -37,6 +37,7 @@ class Render {
   int CreateStreamRenderWindow();
   int TitleBar(bool main_window);
   int MainWindow();
+  int StreamWindow();
   int LocalWindow();
   int RemoteWindow();
   int RecentConnectionsWindow();
@@ -180,8 +181,8 @@ class Render {
   int stream_window_height_ = 720;
   int stream_window_width_last_ = 1280;
   int stream_window_height_last_ = 720;
-  int main_window_width_before_maximized_ = 640;
-  int main_window_height_before_maximized_ = 480;
+  int stream_window_width_before_maximized_ = 1280;
+  int stream_window_height_before_maximized_ = 720;
   int control_window_min_width_ = 20;
   int control_window_max_width_ = 200;
   int control_window_min_height_ = 40;
@@ -209,6 +210,12 @@ class Render {
 
   int control_bar_pos_x_ = 0;
   int control_bar_pos_y_ = 30;
+  int mouse_diff_control_bar_pos_x_ = 0;
+  int mouse_diff_control_bar_pos_y_ = 0;
+  int mouse_pos_x_ = 0;
+  int mouse_pos_y_ = 0;
+  int mouse_pos_x_last_ = 0;
+  int mouse_pos_y_last_ = 0;
 
   int main_window_width_real_ = 720;
   int main_window_height_real_ = 540;
@@ -246,6 +253,7 @@ class Render {
   // video window
   SDL_Texture *stream_texture_ = nullptr;
   SDL_Rect stream_render_rect_;
+  SDL_Rect stream_render_rect_last_;
   uint32_t stream_pixformat_ = 0;
   std::string host_name_ = "";
 
@@ -258,11 +266,9 @@ class Render {
   bool exit_ = false;
   bool exit_video_window_ = false;
   bool connection_established_ = false;
-  bool control_bar_hovered_ = false;
   bool connect_button_pressed_ = false;
   bool password_validating_ = false;
   uint32_t password_validating_time_ = 0;
-  bool control_bar_expand_ = true;
   bool fullscreen_button_pressed_ = false;
   bool net_traffic_stats_button_pressed_ = false;
   bool mouse_control_button_pressed_ = false;
@@ -288,6 +294,9 @@ class Render {
   bool is_client_mode_ = false;
   bool is_control_bar_in_left_ = true;
   bool is_control_bar_in_top_ = true;
+  bool control_bar_hovered_ = false;
+  bool control_bar_expand_ = true;
+  bool reset_control_bar_pos_ = false;
   bool control_window_width_is_changing_ = false;
   bool control_window_height_is_changing_ = false;
   bool reload_recent_connections_ = true;

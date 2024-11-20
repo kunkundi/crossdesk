@@ -4,17 +4,19 @@
 #define BUTTON_PADDING 36.0f
 
 int Render::TitleBar(bool main_window) {
-  ImGui::PushStyleColor(ImGuiCol_MenuBarBg, ImVec4(1, 1, 1, 0.0f));
+  ImGui::PushStyleColor(ImGuiCol_MenuBarBg, ImVec4(1.0f, 1.0f, 1.0f, 0.0f));
+  ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
   ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
   ImGui::SetWindowFontScale(0.8f);
   ImGui::BeginChild(
-      "TitleBar",
+      main_window ? "MainTitleBar" : "StreamTitleBar",
       ImVec2(main_window ? main_window_width_ : stream_window_width_,
              title_bar_height_),
       ImGuiChildFlags_Border,
       ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDecoration |
           ImGuiWindowFlags_NoBringToFrontOnFocus);
   ImGui::SetWindowFontScale(1.0f);
+  ImGui::PopStyleColor();
 
   ImDrawList* draw_list = ImGui::GetWindowDrawList();
   if (ImGui::BeginMenuBar()) {

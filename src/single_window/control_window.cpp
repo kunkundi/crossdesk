@@ -41,20 +41,71 @@ int Render::ControlWindow() {
 
   ImGui::SetNextWindowSize(
       ImVec2(control_window_width_, control_window_height_), ImGuiCond_Always);
-  ImGui::SetNextWindowPos(ImVec2(0, title_bar_height_), ImGuiCond_Once);
-  if (ImGui::IsMouseReleased(ImGuiPopupFlags_MouseButtonLeft) ||
-      control_window_width_is_changing_) {
+  ImGui::SetNextWindowPos(ImVec2(0, title_bar_height_ + 1), ImGuiCond_Once);
+
+  if (reset_control_bar_pos_) {
+    int new_control_window_pos_x, new_control_window_pos_y, new_cursor_pos_x,
+        new_cursor_pos_y;
+
+    // set control window pos
+    new_control_window_pos_x = control_winodw_pos_.x;
+    if (control_winodw_pos_.y < stream_render_rect_last_.y) {
+      new_control_window_pos_y =
+          stream_render_rect_.y -
+          (stream_render_rect_last_.y - control_winodw_pos_.y);
+      if (fullscreen_button_pressed_ && new_control_window_pos_y < 0) {
+        new_control_window_pos_y = 0;
+      } else if (!fullscreen_button_pressed_ &&
+                 new_control_window_pos_y < (title_bar_height_ + 1)) {
+        new_control_window_pos_y = title_bar_height_ + 1;
+      }
+    } else if (control_winodw_pos_.y + control_window_height_ >
+               stream_render_rect_last_.y + stream_render_rect_last_.h) {
+      new_control_window_pos_y =
+          stream_render_rect_.y + stream_render_rect_.h +
+          (control_winodw_pos_.y - stream_render_rect_last_.y -
+           stream_render_rect_last_.h);
+      if (new_control_window_pos_y >
+          stream_window_height_ - control_window_height_) {
+        new_control_window_pos_y =
+            stream_window_height_ - control_window_height_;
+      }
+    } else if (control_winodw_pos_.y + control_window_height_ ==
+               stream_render_rect_last_.y + stream_render_rect_last_.h) {
+      new_control_window_pos_y = stream_render_rect_.y + stream_render_rect_.h -
+                                 control_window_height_;
+    } else {
+      new_control_window_pos_y =
+          (control_winodw_pos_.y - stream_render_rect_last_.y) /
+              (float)(stream_render_rect_last_.h) * stream_render_rect_.h +
+          stream_render_rect_.y;
+    }
+
+    // set cursor pos
+    new_cursor_pos_x = new_control_window_pos_x + mouse_diff_control_bar_pos_x_;
+    new_cursor_pos_y = new_control_window_pos_y + mouse_diff_control_bar_pos_y_;
+
+    ImGui::SetNextWindowPos(
+        ImVec2(new_control_window_pos_x, new_control_window_pos_y),
+        ImGuiCond_Always);
+    SDL_WarpMouseInWindow(stream_window_, new_cursor_pos_x, new_cursor_pos_y);
+    reset_control_bar_pos_ = false;
+  } else if (!reset_control_bar_pos_ &&
+                 ImGui::IsMouseReleased(ImGuiPopupFlags_MouseButtonLeft) ||
+             control_window_width_is_changing_) {
     if (control_winodw_pos_.x <= stream_window_width_ / 2) {
       int pos_x = 0;
       int pos_y =
           (control_winodw_pos_.y >=
-               (fullscreen_button_pressed_ ? 0 : title_bar_height_) &&
+               (fullscreen_button_pressed_ ? 0 : (title_bar_height_ + 1)) &&
            control_winodw_pos_.y <=
                stream_window_height_ - control_window_height_)
               ? control_winodw_pos_.y
-              : (control_winodw_pos_.y <
-                         (fullscreen_button_pressed_ ? 0 : title_bar_height_)
-                     ? (fullscreen_button_pressed_ ? 0 : title_bar_height_)
+              : (control_winodw_pos_.y < (fullscreen_button_pressed_
+                                              ? 0
+                                              : (title_bar_height_ + 1))
+                     ? (fullscreen_button_pressed_ ? 0
+                                                   : (title_bar_height_ + 1))
                      : (stream_window_height_ - control_window_height_));
 
       if (control_bar_expand_) {
@@ -78,13 +129,15 @@ int Render::ControlWindow() {
       int pos_x = 0;
       int pos_y =
           (control_winodw_pos_.y >=
-               (fullscreen_button_pressed_ ? 0 : title_bar_height_) &&
+               (fullscreen_button_pressed_ ? 0 : (title_bar_height_ + 1)) &&
            control_winodw_pos_.y <=
                stream_window_height_ - control_window_height_)
               ? control_winodw_pos_.y
-              : (control_winodw_pos_.y <
-                         (fullscreen_button_pressed_ ? 0 : title_bar_height_)
-                     ? (fullscreen_button_pressed_ ? 0 : title_bar_height_)
+              : (control_winodw_pos_.y < (fullscreen_button_pressed_
+                                              ? 0
+                                              : (title_bar_height_ + 1))
+                     ? (fullscreen_button_pressed_ ? 0
+                                                   : (title_bar_height_ + 1))
                      : (stream_window_height_ - control_window_height_));
 
       if (control_bar_expand_) {
@@ -131,11 +184,14 @@ int Render::ControlWindow() {
 
   ImGui::Begin("ControlWindow", nullptr,
                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                   ImGuiWindowFlags_NoScrollbar |
-                   ImGuiWindowFlags_NoBringToFrontOnFocus);
+                   ImGuiWindowFlags_NoScrollbar);
   ImGui::PopStyleVar();
 
   control_winodw_pos_ = ImGui::GetWindowPos();
+  SDL_GetMouseState(&mouse_pos_x_, &mouse_pos_y_);
+  mouse_diff_control_bar_pos_x_ = mouse_pos_x_ - control_winodw_pos_.x;
+  mouse_diff_control_bar_pos_y_ = mouse_pos_y_ - control_winodw_pos_.y;
+
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
   static bool a, b, c, d, e;
   ImGui::SetNextWindowPos(
@@ -159,25 +215,6 @@ int Render::ControlWindow() {
   ImGui::End();
   ImGui::PopStyleVar(4);
   ImGui::PopStyleColor();
-
-  ImGui::SetNextWindowPos(
-      ImVec2(0, fullscreen_button_pressed_ ? 0 : title_bar_height_),
-      ImGuiCond_Always);
-  ImGui::SetNextWindowSize(
-      ImVec2(stream_window_width_,
-             stream_window_height_ -
-                 (fullscreen_button_pressed_ ? 0 : title_bar_height_)),
-      ImGuiCond_Always);
-  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
-  ImGui::PushStyleColor(ImGuiCol_Border,
-                        ImVec4(178 / 255.0f, 178 / 255.0f, 178 / 255.0f,
-                               fullscreen_button_pressed_ ? 0 : 1.0f));
-  ImGui::Begin("VideoBg", nullptr,
-               ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar |
-                   ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar |
-                   ImGuiWindowFlags_NoBringToFrontOnFocus);
-  ImGui::PopStyleColor(2);
-  ImGui::End();
 
   return 0;
 }

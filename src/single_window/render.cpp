@@ -657,22 +657,23 @@ int Render::DrawStreamWindow() {
   ImGui_ImplSDL2_NewFrame();
   ImGui::NewFrame();
 
-  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
-  ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-  ImGui::SetNextWindowSize(
-      ImVec2(stream_window_width_,
-             fullscreen_button_pressed_ ? 0 : title_bar_height_),
-      ImGuiCond_Always);
-  ImGui::Begin("StreamRender", nullptr,
-               ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar |
-                   ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar |
-                   ImGuiWindowFlags_NoBringToFrontOnFocus);
-  ImGui::PopStyleColor();
+  if (!fullscreen_button_pressed_) {
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+    ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(
+        ImVec2(stream_window_width_,
+               fullscreen_button_pressed_ ? 0 : title_bar_height_),
+        ImGuiCond_Always);
+    ImGui::Begin("StreamRender", nullptr,
+                 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration |
+                     ImGuiWindowFlags_NoBringToFrontOnFocus);
+    ImGui::PopStyleColor();
 
-  TitleBar(false);
-  ControlWindow();
+    TitleBar(false);
+    ImGui::End();
+  }
 
-  ImGui::End();
+  StreamWindow();
 
   // Rendering
   ImGui::Render();
@@ -854,6 +855,7 @@ int Render::Run() {
       } else if (event.window.event == SDL_WINDOWEVENT_RESTORED) {
         window_maximized_ = false;
       } else if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+        reset_control_bar_pos_ = true;
         SDL_GetWindowSize(stream_window_, &stream_window_width_,
                           &stream_window_height_);
 
@@ -865,6 +867,7 @@ int Render::Run() {
             stream_window_height_ -
             (fullscreen_button_pressed_ ? 0 : title_bar_height_);
 
+        stream_render_rect_last_ = stream_render_rect_;
         if (render_area_width < render_area_height * video_ratio) {
           stream_render_rect_.x = 0;
           stream_render_rect_.y =

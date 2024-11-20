@@ -139,11 +139,15 @@ int Render::ControlBar() {
           fullscreen_button_pressed_
               ? localization::exit_fullscreen[localization_language_index_]
               : localization::fullscreen[localization_language_index_];
+      // save stream window last size
+      SDL_GetWindowSize(stream_window_, &stream_window_width_last_,
+                        &stream_window_height_last_);
       if (fullscreen_button_pressed_) {
-        SDL_SetWindowFullscreen(main_window_, SDL_WINDOW_FULLSCREEN_DESKTOP);
+        SDL_SetWindowFullscreen(stream_window_, SDL_WINDOW_FULLSCREEN_DESKTOP);
       } else {
-        SDL_SetWindowFullscreen(main_window_, SDL_FALSE);
+        SDL_SetWindowFullscreen(stream_window_, SDL_FALSE);
       }
+      reset_control_bar_pos_ = true;
     }
 
     ImGui::SameLine();
