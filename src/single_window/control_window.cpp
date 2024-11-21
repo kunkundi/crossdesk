@@ -41,7 +41,10 @@ int Render::ControlWindow() {
 
   ImGui::SetNextWindowSize(
       ImVec2(control_window_width_, control_window_height_), ImGuiCond_Always);
-  ImGui::SetNextWindowPos(ImVec2(0, title_bar_height_ + 1), ImGuiCond_Once);
+
+  if (0 == control_winodw_pos_.x && 0 == control_winodw_pos_.y) {
+    ImGui::SetNextWindowPos(ImVec2(0, title_bar_height_ + 1), ImGuiCond_Once);
+  }
 
   if (reset_control_bar_pos_) {
     int new_control_window_pos_x, new_control_window_pos_y, new_cursor_pos_x,
@@ -88,7 +91,11 @@ int Render::ControlWindow() {
     ImGui::SetNextWindowPos(
         ImVec2(new_control_window_pos_x, new_control_window_pos_y),
         ImGuiCond_Always);
-    SDL_WarpMouseInWindow(stream_window_, new_cursor_pos_x, new_cursor_pos_y);
+
+    if (0 != mouse_diff_control_bar_pos_x_ &&
+        0 != mouse_diff_control_bar_pos_y_) {
+      SDL_WarpMouseInWindow(stream_window_, new_cursor_pos_x, new_cursor_pos_y);
+    }
     reset_control_bar_pos_ = false;
   } else if (!reset_control_bar_pos_ &&
                  ImGui::IsMouseReleased(ImGuiPopupFlags_MouseButtonLeft) ||
