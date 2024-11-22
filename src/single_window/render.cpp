@@ -295,12 +295,11 @@ int Render::StopMouseController() {
 }
 
 int Render::StartKeyboardCapturer() {
-  if (!device_controller_factory_) {
-    LOG_INFO("Device controller factory is nullptr");
+  if (!keyboard_capturer_) {
+    LOG_INFO("keyboard capturer is nullptr");
     return -1;
   }
-  keyboard_capturer_ = (KeyboardCapturer*)device_controller_factory_->Create(
-      DeviceControllerFactory::Device::Keyboard);
+
   int keyboard_capturer_init_ret = keyboard_capturer_->Hook(
       [](int key_code, bool is_down, void* user_ptr) {
         if (user_ptr) {
@@ -323,8 +322,6 @@ int Render::StartKeyboardCapturer() {
 int Render::StopKeyboardCapturer() {
   if (keyboard_capturer_) {
     keyboard_capturer_->Unhook();
-    delete keyboard_capturer_;
-    keyboard_capturer_ = nullptr;
   }
   return 0;
 }
@@ -789,6 +786,8 @@ int Render::Run() {
 
     // mouse control/keyboard capturer
     device_controller_factory_ = new DeviceControllerFactory();
+    keyboard_capturer_ = (KeyboardCapturer*)device_controller_factory_->Create(
+        DeviceControllerFactory::Device::Keyboard);
 
     // RTC
     CreateConnectionPeer();
