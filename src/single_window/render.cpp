@@ -186,7 +186,7 @@ int Render::LoadSettingsFromCacheFile() {
   return 0;
 }
 
-int Render::StartScreenCapture() {
+int Render::StartScreenCapturer() {
   screen_capturer_ = (ScreenCapturer*)screen_capturer_factory_->Create();
   last_frame_time_ = std::chrono::duration_cast<std::chrono::milliseconds>(
                          std::chrono::steady_clock::now().time_since_epoch())
@@ -224,7 +224,7 @@ int Render::StartScreenCapture() {
   return 0;
 }
 
-int Render::StopScreenCapture() {
+int Render::StopScreenCapturer() {
   if (screen_capturer_) {
     LOG_INFO("Stop screen capturer")
     screen_capturer_->Stop();
@@ -236,7 +236,7 @@ int Render::StopScreenCapture() {
   return 0;
 }
 
-int Render::StartSpeakerCapture() {
+int Render::StartSpeakerCapturer() {
   if (!speaker_capturer_) {
     speaker_capturer_ = (SpeakerCapturer*)speaker_capturer_factory_->Create();
     int speaker_capturer_init_ret = speaker_capturer_->Init(
@@ -259,7 +259,7 @@ int Render::StartSpeakerCapture() {
   return 0;
 }
 
-int Render::StopSpeakerCapture() {
+int Render::StopSpeakerCapturer() {
   if (speaker_capturer_) {
     speaker_capturer_->Stop();
   }
@@ -267,8 +267,11 @@ int Render::StopSpeakerCapture() {
   return 0;
 }
 
-int Render::StartMouseControl() {
-  device_controller_factory_ = new DeviceControllerFactory();
+int Render::StartMouseController() {
+  if (!device_controller_factory_) {
+    LOG_INFO("Device controller factory is nullptr");
+    return -1;
+  }
   mouse_controller_ = (MouseController*)device_controller_factory_->Create(
       DeviceControllerFactory::Device::Mouse);
   int mouse_controller_init_ret =
@@ -282,11 +285,46 @@ int Render::StartMouseControl() {
   return 0;
 }
 
-int Render::StopMouseControl() {
+int Render::StopMouseController() {
   if (mouse_controller_) {
     mouse_controller_->Destroy();
     delete mouse_controller_;
     mouse_controller_ = nullptr;
+  }
+  return 0;
+}
+
+int Render::StartKeyboardCapturer() {
+  if (!device_controller_factory_) {
+    LOG_INFO("Device controller factory is nullptr");
+    return -1;
+  }
+  keyboard_capturer_ = (KeyboardCapturer*)device_controller_factory_->Create(
+      DeviceControllerFactory::Device::Keyboard);
+  int keyboard_capturer_init_ret = keyboard_capturer_->Hook(
+      [](int key_code, bool is_down, void* user_ptr) {
+        if (user_ptr) {
+          Render* render = (Render*)user_ptr;
+          render->SendKeyEvent(key_code, is_down);
+        }
+      },
+      this);
+  if (0 != keyboard_capturer_init_ret) {
+    LOG_INFO("Destroy keyboard capturer")
+    keyboard_capturer_->Unhook();
+    keyboard_capturer_ = nullptr;
+  } else {
+    LOG_INFO("Start keyboard capturer");
+  }
+
+  return 0;
+}
+
+int Render::StopKeyboardCapturer() {
+  if (keyboard_capturer_) {
+    keyboard_capturer_->Unhook();
+    delete keyboard_capturer_;
+    keyboard_capturer_ = nullptr;
   }
   return 0;
 }
@@ -386,20 +424,28 @@ int Render::CreateRtcConnection() {
         CreateConnection(peer_, client_id_, password_saved_) ? false : true;
   }
 
-  if (start_screen_capture_ && !screen_capture_is_started_) {
-    StartScreenCapture();
-    screen_capture_is_started_ = true;
-  } else if (!start_screen_capture_ && screen_capture_is_started_) {
-    StopScreenCapture();
-    screen_capture_is_started_ = false;
+  if (start_screen_capturer_ && !screen_capturer_is_started_) {
+    StartScreenCapturer();
+    screen_capturer_is_started_ = true;
+  } else if (!start_screen_capturer_ && screen_capturer_is_started_) {
+    StopScreenCapturer();
+    screen_capturer_is_started_ = false;
   }
 
-  if (start_mouse_control_ && !mouse_control_is_started_) {
-    StartMouseControl();
-    mouse_control_is_started_ = true;
-  } else if (!start_mouse_control_ && mouse_control_is_started_) {
-    StopMouseControl();
-    mouse_control_is_started_ = false;
+  if (start_mouse_controller_ && !mouse_controller_is_started_) {
+    StartMouseController();
+    mouse_controller_is_started_ = true;
+  } else if (!start_mouse_controller_ && mouse_controller_is_started_) {
+    StopMouseController();
+    mouse_controller_is_started_ = false;
+  }
+
+  if (start_keyboard_capturer_ && !keyboard_capturer_is_started_) {
+    StartKeyboardCapturer();
+    keyboard_capturer_is_started_ = true;
+  } else if (!start_keyboard_capturer_ && keyboard_capturer_is_started_) {
+    StopKeyboardCapturer();
+    keyboard_capturer_is_started_ = false;
   }
 
   return 0;
@@ -741,7 +787,7 @@ int Render::Run() {
     // speaker capture init
     speaker_capturer_factory_ = new SpeakerCapturerFactory();
 
-    // mouse control
+    // mouse control/keyboard capturer
     device_controller_factory_ = new DeviceControllerFactory();
 
     // RTC

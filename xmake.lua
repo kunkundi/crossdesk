@@ -103,14 +103,20 @@ target("device_controller")
     add_deps("rd_log")
     add_includedirs("src/device_controller", {public = true})
     if is_os("windows") then
-        add_files("src/device_controller/mouse/windows/*.cpp")
-        add_includedirs("src/device_controller/mouse/windows", {public = true})
+        add_files("src/device_controller/mouse/windows/*.cpp",
+        "src/device_controller/keyboard/windows/*.cpp")
+        add_includedirs("src/device_controller/mouse/windows",
+        "src/device_controller/keyboard/windows", {public = true})
     elseif is_os("macosx") then
-        add_files("src/device_controller/mouse/mac/*.cpp")
-        add_includedirs("src/device_controller/mouse/mac", {public = true})
+        add_files("src/device_controller/mouse/mac/*.cpp",
+        "src/device_controller/mouse/keyboard/*.cpp")
+        add_includedirs("src/device_controller/mouse/mac",
+        "src/device_controller/keyboard/mac", {public = true})
     elseif is_os("linux") then
-         add_files("src/device_controller/mouse/linux/*.cpp")
-         add_includedirs("src/device_controller/mouse/linux", {public = true})
+         add_files("src/device_controller/mouse/linux/*.cpp",
+         "src/device_controller/keyboard/linux/*.cpp")
+         add_includedirs("src/device_controller/mouse/linux",
+         "src/device_controller/keyboard/linux", {public = true})
     end
 
 target("config_center")

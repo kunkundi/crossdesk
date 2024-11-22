@@ -47,6 +47,7 @@ int Render::ControlBar() {
     if (ImGui::Button(mouse.c_str(), ImVec2(25, 25))) {
       if (connection_established_) {
         control_mouse_ = !control_mouse_;
+        start_keyboard_capturer_ = !start_keyboard_capturer_;
         mouse_control_button_pressed_ = !mouse_control_button_pressed_;
         mouse_control_button_label_ =
             mouse_control_button_pressed_

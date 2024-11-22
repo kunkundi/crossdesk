@@ -43,14 +43,20 @@ typedef struct {
   };
 } RemoteAction;
 
+// int key_code, bool is_down
+typedef void (*OnKeyAction)(int, bool, void*);
+
 class DeviceController {
  public:
   virtual ~DeviceController() {}
 
  public:
-  virtual int Init(int screen_width, int screen_height) = 0;
-  virtual int Destroy() = 0;
-  virtual int SendCommand(RemoteAction remote_action) = 0;
+  // virtual int Init(int screen_width, int screen_height);
+  // virtual int Destroy();
+  // virtual int SendCommand(RemoteAction remote_action);
+
+  // virtual int Hook();
+  // virtual int Unhook();
 };
 
 #endif

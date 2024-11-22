@@ -95,8 +95,10 @@ class Render {
 
  private:
   int ProcessMouseKeyEvent(SDL_Event &event);
-  int ProcessKeyEvent(SDL_Event &event);
   int ProcessMouseEvent(SDL_Event &event);
+
+  int SendKeyEvent(int key_code, bool is_down);
+  int ProcessKeyEvent(int key_code, bool is_down);
 
   static void SdlCaptureAudioIn(void *userdata, Uint8 *stream, int len);
   static void SdlCaptureAudioOut(void *userdata, Uint8 *stream, int len);
@@ -105,14 +107,17 @@ class Render {
   int SaveSettingsIntoCacheFile();
   int LoadSettingsFromCacheFile();
 
-  int StartScreenCapture();
-  int StopScreenCapture();
+  int StartScreenCapturer();
+  int StopScreenCapturer();
 
-  int StartSpeakerCapture();
-  int StopSpeakerCapture();
+  int StartSpeakerCapturer();
+  int StopSpeakerCapturer();
 
-  int StartMouseControl();
-  int StopMouseControl();
+  int StartMouseController();
+  int StopMouseController();
+
+  int StartKeyboardCapturer();
+  int StopKeyboardCapturer();
 
   int CreateConnectionPeer();
 
@@ -350,6 +355,7 @@ class Render {
   SpeakerCapturer *speaker_capturer_ = nullptr;
   DeviceControllerFactory *device_controller_factory_ = nullptr;
   MouseController *mouse_controller_ = nullptr;
+  KeyboardCapturer *keyboard_capturer_ = nullptr;
   uint32_t last_frame_time_;
 
  private:
@@ -369,10 +375,12 @@ class Render {
   bool enable_turn_last_ = false;
 
  private:
-  std::atomic<bool> start_screen_capture_{false};
-  std::atomic<bool> start_mouse_control_{false};
-  std::atomic<bool> screen_capture_is_started_{false};
-  std::atomic<bool> mouse_control_is_started_{false};
+  std::atomic<bool> start_screen_capturer_{false};
+  std::atomic<bool> start_mouse_controller_{false};
+  std::atomic<bool> start_keyboard_capturer_{false};
+  std::atomic<bool> screen_capturer_is_started_{false};
+  std::atomic<bool> mouse_controller_is_started_{false};
+  std::atomic<bool> keyboard_capturer_is_started_{false};
 
  private:
   bool settings_window_pos_reset_ = true;

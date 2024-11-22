@@ -19,7 +19,6 @@ int Render::ProcessMouseKeyEvent(SDL_Event &event) {
   }
 
   if (SDL_KEYDOWN == event.type || SDL_KEYUP == event.type) {
-    ProcessKeyEvent(event);
   } else {
     ProcessMouseEvent(event);
   }
@@ -87,14 +86,24 @@ int Render::ProcessMouseEvent(SDL_Event &event) {
   return 0;
 }
 
-int Render::ProcessKeyEvent(SDL_Event &event) {
+int Render::SendKeyEvent(int key_code, bool is_down) {
   RemoteAction remote_action;
-  SDL_Keycode key = event.key.keysym.sym;
-  if (SDL_KEYDOWN == event.type) {
-    std::cout << "Key pressed: " << SDL_GetKeyName(key) << std::endl;
-  } else if (SDL_KEYUP == event.type) {
-    std::cout << "Key released: " << SDL_GetKeyName(key) << std::endl;
+  remote_action.type = ControlType::keyboard;
+  if (is_down) {
+    remote_action.k.flag = KeyFlag::key_down;
+  } else {
+    remote_action.k.flag = KeyFlag::key_up;
   }
+  remote_action.k.key_value = key_code;
+
+  SendData(peer_, DATA_TYPE::DATA, (const char *)&remote_action,
+           sizeof(remote_action));
+
+  return 0;
+}
+
+int Render::ProcessKeyEvent(int key_code, bool is_down) {
+  LOG_ERROR("key code [{}], is down [{}]", key_code, is_down);
 
   return 0;
 }
@@ -206,11 +215,12 @@ void Render::OnReceiveDataBufferCb(const char *data, size_t size,
     render->mouse_controller_->SendCommand(remote_action);
   } else if (ControlType::audio_capture == remote_action.type) {
     if (remote_action.a) {
-      render->StartSpeakerCapture();
+      render->StartSpeakerCapturer();
     } else {
-      render->StopSpeakerCapture();
+      render->StopSpeakerCapturer();
     }
   } else if (ControlType::keyboard == remote_action.type) {
+    render->ProcessKeyEvent(remote_action.k.key_value, remote_action.k.flag);
   } else if (ControlType::host_infomation == remote_action.type) {
     render->host_name_ =
         std::string(remote_action.i.host_name, remote_action.i.host_name_size);
@@ -264,8 +274,8 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char *user_id,
     render->connection_status_str_ = "Connected";
     render->connection_established_ = true;
     if (render->peer_reserved_ || !render->is_client_mode_) {
-      render->start_screen_capture_ = true;
-      render->start_mouse_control_ = true;
+      render->start_screen_capturer_ = true;
+      render->start_mouse_controller_ = true;
     }
     if (!render->hostname_sent_) {
       // TODO: self and remote hostname
@@ -289,13 +299,17 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char *user_id,
   } else if (ConnectionStatus::Closed == status) {
     render->connection_status_str_ = "Closed";
     render->password_validating_time_ = 0;
-    render->start_screen_capture_ = false;
-    render->start_mouse_control_ = false;
+    render->start_screen_capturer_ = false;
+    render->mouse_controller_is_started_ = false;
+    render->start_mouse_controller_ = false;
+    render->mouse_controller_is_started_ = false;
     render->connection_established_ = false;
     render->control_mouse_ = false;
+    render->start_keyboard_capturer_ = false;
+    render->keyboard_capturer_is_started_ = false;
     render->hostname_sent_ = false;
     if (render->audio_capture_) {
-      render->StopSpeakerCapture();
+      render->StopSpeakerCapturer();
       render->audio_capture_ = false;
       render->audio_capture_button_pressed_ = false;
     }

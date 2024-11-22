@@ -8,6 +8,7 @@
 #define _DEVICE_CONTROLLER_FACTORY_H_
 
 #include "device_controller.h"
+#include "keyboard_capturer.h"
 #include "mouse_controller.h"
 
 class DeviceControllerFactory {
@@ -23,7 +24,7 @@ class DeviceControllerFactory {
       case Mouse:
         return new MouseController();
       case Keyboard:
-        return nullptr;
+        return new KeyboardCapturer();
       default:
         return nullptr;
     }
