@@ -309,9 +309,7 @@ int Render::StartKeyboardCapturer() {
       },
       this);
   if (0 != keyboard_capturer_init_ret) {
-    LOG_INFO("Destroy keyboard capturer")
-    keyboard_capturer_->Unhook();
-    keyboard_capturer_ = nullptr;
+    LOG_ERROR("Start keyboard capturer failed");
   } else {
     LOG_INFO("Start keyboard capturer");
   }
@@ -322,6 +320,7 @@ int Render::StartKeyboardCapturer() {
 int Render::StopKeyboardCapturer() {
   if (keyboard_capturer_) {
     keyboard_capturer_->Unhook();
+    LOG_INFO("Stop keyboard capturer");
   }
   return 0;
 }
@@ -857,6 +856,7 @@ int Render::Run() {
       if (event.type == SDL_QUIT) {
         if (streaming_) {
           LOG_INFO("Destroy stream window");
+          SDL_SetWindowGrab(stream_window_, SDL_FALSE);
           DestroyStreamWindow();
           DestroyStreamWindowContext();
 
@@ -991,7 +991,6 @@ int Render::Run() {
       if (!stream_window_grabbed_ && control_mouse_) {
         SDL_SetWindowGrab(stream_window_, SDL_TRUE);
         stream_window_grabbed_ = true;
-        LOG_INFO("Grabbing input events");
       } else if (stream_window_grabbed_ && !control_mouse_) {
         SDL_SetWindowGrab(stream_window_, SDL_FALSE);
         stream_window_grabbed_ = false;

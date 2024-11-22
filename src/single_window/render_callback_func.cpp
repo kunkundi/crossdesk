@@ -302,13 +302,11 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char *user_id,
     render->connection_status_str_ = "Closed";
     render->password_validating_time_ = 0;
     render->start_screen_capturer_ = false;
-    render->mouse_controller_is_started_ = false;
     render->start_mouse_controller_ = false;
-    render->mouse_controller_is_started_ = false;
     render->connection_established_ = false;
     render->control_mouse_ = false;
+    render->mouse_control_button_pressed_ = false;
     render->start_keyboard_capturer_ = false;
-    render->keyboard_capturer_is_started_ = false;
     render->hostname_sent_ = false;
     if (render->audio_capture_) {
       render->StopSpeakerCapturer();
