@@ -9,9 +9,9 @@
 
 #include <map>
 
-// Windows vkCode 转 macOS CGKeyCode 映射表 (104 键)
+// Windows vkCode to macOS CGKeyCode (104 keys)
 std::map<int, int> vkCodeToCGKeyCode = {
-    // 字母键 (A-Z)
+    // A-Z
     {0x41, 0x00},  // A
     {0x42, 0x0B},  // B
     {0x43, 0x08},  // C
@@ -39,7 +39,7 @@ std::map<int, int> vkCodeToCGKeyCode = {
     {0x59, 0x10},  // Y
     {0x5A, 0x06},  // Z
 
-    // 数字键 (0-9)
+    // 0-9
     {0x30, 0x1D},  // 0
     {0x31, 0x12},  // 1
     {0x32, 0x13},  // 2
@@ -51,7 +51,7 @@ std::map<int, int> vkCodeToCGKeyCode = {
     {0x38, 0x1C},  // 8
     {0x39, 0x19},  // 9
 
-    // 功能键 (F1-F12)
+    // F1-F12
     {0x70, 0x7A},  // F1
     {0x71, 0x78},  // F2
     {0x72, 0x63},  // F3
@@ -65,7 +65,7 @@ std::map<int, int> vkCodeToCGKeyCode = {
     {0x7A, 0x67},  // F11
     {0x7B, 0x6F},  // F12
 
-    // 控制键
+    // control keys
     {0x1B, 0x35},  // Escape
     {0x0D, 0x24},  // Enter
     {0x20, 0x31},  // Space
@@ -79,13 +79,13 @@ std::map<int, int> vkCodeToCGKeyCode = {
     {0x21, 0x79},  // Page Up
     {0x22, 0x7A},  // Page Down
 
-    // 箭头键
+    // arrow keys
     {0x25, 0x7B},  // Left Arrow
     {0x27, 0x7C},  // Right Arrow
     {0x26, 0x7E},  // Up Arrow
     {0x28, 0x7D},  // Down Arrow
 
-    // 数字小键盘 (Numpad)
+    // numpad
     {0x60, 0x52},  // Numpad 0
     {0x61, 0x53},  // Numpad 1
     {0x62, 0x54},  // Numpad 2
@@ -102,7 +102,7 @@ std::map<int, int> vkCodeToCGKeyCode = {
     {0x6D, 0x4E},  // Numpad -
     {0x6B, 0x45},  // Numpad +
 
-    // 符号键
+    // symbol keys
     {0xBA, 0x29},  // ; (Semicolon)
     {0xDE, 0x27},  // ' (Quote)
     {0xC0, 0x32},  // ` (Backtick)
@@ -115,11 +115,11 @@ std::map<int, int> vkCodeToCGKeyCode = {
     {0xBD, 0x1B},  // - (Minus)
     {0xBB, 0x18},  // = (Equals)
 
-    // 修饰键
+    // modifier keys
     {0x14, 0x39},  // Caps Lock
     {0xA0, 0x38},  // Shift (Left)
-    {0xA2, 0x3B},  // Shift (Right)
-    {0xA3, 0x3B},  // Ctrl (Left)
+    {0xA1, 0x3B},  // Shift (Right)
+    {0xA2, 0x3B},  // Ctrl (Left)
     {0xA3, 0x3E},  // Ctrl (Right)
     {0xA4, 0x3A},  // Alt (Left)
     {0xA5, 0x3D},  // Alt (Right)
@@ -127,9 +127,9 @@ std::map<int, int> vkCodeToCGKeyCode = {
     {0x5C, 0x36},  // Right Command
 };
 
-// macOS CGKeyCode 转 Windows vkCode 映射表
+// macOS CGKeyCode to Windows vkCode
 std::map<int, int> CGKeyCodeToVkCode = {
-    // 字母键 (A-Z)
+    // A-Z
     {0x00, 0x41},  // A
     {0x0B, 0x42},  // B
     {0x08, 0x43},  // C
@@ -157,7 +157,7 @@ std::map<int, int> CGKeyCodeToVkCode = {
     {0x10, 0x59},  // Y
     {0x06, 0x5A},  // Z
 
-    // 数字键 (0-9)
+    // 0-9
     {0x1D, 0x30},  // 0
     {0x12, 0x31},  // 1
     {0x13, 0x32},  // 2
@@ -169,7 +169,7 @@ std::map<int, int> CGKeyCodeToVkCode = {
     {0x1C, 0x38},  // 8
     {0x19, 0x39},  // 9
 
-    // 功能键 (F1-F12)
+    // F1-F12
     {0x7A, 0x70},  // F1
     {0x78, 0x71},  // F2
     {0x63, 0x72},  // F3
@@ -183,7 +183,7 @@ std::map<int, int> CGKeyCodeToVkCode = {
     {0x67, 0x7A},  // F11
     {0x6F, 0x7B},  // F12
 
-    // 控制键
+    // control keys
     {0x35, 0x1B},  // Escape
     {0x24, 0x0D},  // Enter
     {0x31, 0x20},  // Space
@@ -197,13 +197,13 @@ std::map<int, int> CGKeyCodeToVkCode = {
     {0x79, 0x21},  // Page Up
     {0x7A, 0x22},  // Page Down
 
-    // 箭头键
+    // arrow keys
     {0x7B, 0x25},  // Left Arrow
     {0x7C, 0x27},  // Right Arrow
     {0x7E, 0x26},  // Up Arrow
     {0x7D, 0x28},  // Down Arrow
 
-    // 数字小键盘 (Numpad)
+    // numpad
     {0x52, 0x60},  // Numpad 0
     {0x53, 0x61},  // Numpad 1
     {0x54, 0x62},  // Numpad 2
@@ -220,7 +220,7 @@ std::map<int, int> CGKeyCodeToVkCode = {
     {0x4E, 0x6D},  // Numpad -
     {0x45, 0x6B},  // Numpad +
 
-    // 符号键
+    // symbol keys
     {0x29, 0xBA},  // ; (Semicolon)
     {0x27, 0xDE},  // ' (Quote)
     {0x32, 0xC0},  // ` (Backtick)
@@ -233,7 +233,7 @@ std::map<int, int> CGKeyCodeToVkCode = {
     {0x1B, 0xBD},  // - (Minus)
     {0x18, 0xBB},  // = (Equals)
 
-    // 修饰键
+    // modifier keys
     {0x39, 0x14},  // Caps Lock
     {0x38, 0xA0},  // Shift (Left)
     {0x3C, 0xA1},  // Shift (Right)
@@ -244,11 +244,5 @@ std::map<int, int> CGKeyCodeToVkCode = {
     {0x37, 0x5B},  // Left Command (Windows key)
     {0x36, 0x5C},  // Right Command
 };
-
-#define MAC_CAPSLOCK 0x39
-#define MAC_SHIFT 0x38
-#define MAC_CONTROL 0x3B
-#define MAC_OPTION 0x3A
-#define MAC_COMMAND 0x37
 
 #endif

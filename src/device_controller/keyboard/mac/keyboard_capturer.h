@@ -22,8 +22,8 @@ class KeyboardCapturer : public DeviceController {
   virtual int SendKeyboardCommand(int key_code, bool is_down);
 
  private:
-  CFMachPortRef eventTap;
-  CFRunLoopSourceRef runLoopSource;
+  CFMachPortRef event_tap_;
+  CFRunLoopSourceRef run_loop_source_;
 
  public:
   bool caps_lock_flag_ = false;

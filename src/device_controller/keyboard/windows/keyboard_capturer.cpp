@@ -9,27 +9,14 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
   if (nCode == HC_ACTION && g_on_key_action) {
     KBDLLHOOKSTRUCT* kbData = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
 
-    // 处理键盘事件
-    if (wParam == WM_KEYDOWN) {
-      // LOG_ERROR("Keydown: [{}]", kbData->vkCode);
+    if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
       g_on_key_action(kbData->vkCode, true, g_user_ptr);
-      return 1;
-    } else if (wParam == WM_KEYUP) {
-      // LOG_ERROR("Keyup: [{}]", kbData->vkCode);
+    } else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP) {
       g_on_key_action(kbData->vkCode, false, g_user_ptr);
-      return 1;
-    } else if (wParam == WM_SYSKEYDOWN) {
-      // LOG_ERROR("System keydown: [{}]", kbData->vkCode);
-      g_on_key_action(kbData->vkCode, true, g_user_ptr);
-      return 1;
-    } else if (wParam == WM_SYSKEYUP) {
-      // LOG_ERROR("System keyup: [{}]", kbData->vkCode);
-      g_on_key_action(kbData->vkCode, false, g_user_ptr);
-      return 1;
     }
+    return 1;
   }
 
-  // 调用下一个钩子
   return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
 
@@ -54,6 +41,7 @@ int KeyboardCapturer::Unhook() {
   return 0;
 }
 
+// apply remote keyboard commands to the local machine
 int KeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down) {
   INPUT input = {0};
   input.type = INPUT_KEYBOARD;
