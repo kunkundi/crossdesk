@@ -62,8 +62,7 @@ int Render::ProcessMouseEvent(SDL_Event &event) {
     if (control_bar_hovered_) {
       remote_action.m.flag = MouseFlag::move;
     }
-    SendData(peer_, DATA_TYPE::DATA, (const char *)&remote_action,
-             sizeof(remote_action));
+    SendData(peer_, (const char *)&remote_action, sizeof(remote_action));
   } else if (SDL_MOUSEBUTTONUP == event.type) {
     remote_action.type = ControlType::mouse;
     if (SDL_BUTTON_LEFT == event.button.button) {
@@ -74,13 +73,11 @@ int Render::ProcessMouseEvent(SDL_Event &event) {
     if (control_bar_hovered_) {
       remote_action.m.flag = MouseFlag::move;
     }
-    SendData(peer_, DATA_TYPE::DATA, (const char *)&remote_action,
-             sizeof(remote_action));
+    SendData(peer_, (const char *)&remote_action, sizeof(remote_action));
   } else if (SDL_MOUSEMOTION == event.type) {
     remote_action.type = ControlType::mouse;
     remote_action.m.flag = MouseFlag::move;
-    SendData(peer_, DATA_TYPE::DATA, (const char *)&remote_action,
-             sizeof(remote_action));
+    SendData(peer_, (const char *)&remote_action, sizeof(remote_action));
   }
 
   return 0;
@@ -96,8 +93,7 @@ int Render::SendKeyEvent(int key_code, bool is_down) {
   }
   remote_action.k.key_value = key_code;
 
-  SendData(peer_, DATA_TYPE::DATA, (const char *)&remote_action,
-           sizeof(remote_action));
+  SendData(peer_, (const char *)&remote_action, sizeof(remote_action));
 
   return 0;
 }
@@ -118,7 +114,7 @@ void Render::SdlCaptureAudioIn(void *userdata, Uint8 *stream, int len) {
 
   if (1) {
     if ("Connected" == render->connection_status_str_) {
-      SendData(render->peer_, DATA_TYPE::AUDIO, (const char *)stream, len);
+      SendAudioFrame(render->peer_, (const char *)stream, len);
     }
   } else {
     memcpy(render->audio_buffer_, stream, len);
@@ -131,7 +127,7 @@ void Render::SdlCaptureAudioIn(void *userdata, Uint8 *stream, int len) {
 void Render::SdlCaptureAudioOut(void *userdata, Uint8 *stream, int len) {
   // Render *render = (Render *)userdata;
   // if ("Connected" == render->connection_status_str_) {
-  //   SendData(render->peer_, DATA_TYPE::AUDIO, (const char *)stream, len);
+  //   SendAudioFrame(render->peer_,  (const char *)stream, len);
   // }
 
   // if (!render->audio_buffer_fresh_) {
@@ -286,8 +282,8 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char *user_id,
       remote_action.type = ControlType::host_infomation;
       memcpy(&remote_action.i.host_name, host_name.data(), host_name.size());
       remote_action.i.host_name_size = host_name.size();
-      int ret = SendData(render->peer_, DATA_TYPE::DATA,
-                         (const char *)&remote_action, sizeof(remote_action));
+      int ret = SendData(render->peer_, (const char *)&remote_action,
+                         sizeof(remote_action));
       if (0 == ret) {
         render->hostname_sent_ = true;
       }

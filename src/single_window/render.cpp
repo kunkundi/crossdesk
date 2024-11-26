@@ -199,9 +199,6 @@ int Render::StartScreenCapturer() {
                             .count();
         auto duration = now_time - last_frame_time_;
         if (duration >= 0 && connection_established_) {
-          // SendData(peer_, DATA_TYPE::VIDEO, (const char *)data,
-          //          NV12_BUFFER_SIZE);
-
           XVideoFrame frame;
           frame.data = (const char*)data;
           frame.size = size;
@@ -242,7 +239,7 @@ int Render::StartSpeakerCapturer() {
     int speaker_capturer_init_ret = speaker_capturer_->Init(
         [this](unsigned char* data, size_t size) -> void {
           if (connection_established_) {
-            SendData(peer_, DATA_TYPE::AUDIO, (const char*)data, size);
+            SendAudioFrame(peer_, (const char*)data, size);
           }
         });
 
