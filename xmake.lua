@@ -52,7 +52,7 @@ includes("thirdparty")
 target("rd_log")
     set_kind("object")
     add_packages("spdlog")
-    add_headerfiles("src/log/rd_log.h")
+    add_files("src/log/rd_log.cpp")
     add_includedirs("src/log", {public = true})
 
 target("common")
