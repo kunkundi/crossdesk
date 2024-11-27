@@ -908,6 +908,12 @@ int Render::Run() {
       } else if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED &&
                  stream_window_created_ &&
                  event.window.windowID == SDL_GetWindowID(stream_window_)) {
+        // to prevent cursor relocation
+        if (!reset_control_bar_pos_) {
+          mouse_diff_control_bar_pos_x_ = 0;
+          mouse_diff_control_bar_pos_y_ = 0;
+        }
+
         reset_control_bar_pos_ = true;
         int stream_window_width, stream_window_height;
         SDL_GetWindowSize(stream_window_, &stream_window_width,
