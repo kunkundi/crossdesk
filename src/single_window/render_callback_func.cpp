@@ -223,7 +223,7 @@ void Render::OnReceiveDataBufferCb(const char *data, size_t size,
     }
   } else if (ControlType::keyboard == remote_action.type) {
     render->ProcessKeyEvent((int)remote_action.k.key_value,
-                            remote_action.k.flag);
+                            remote_action.k.flag == KeyFlag::key_down);
   } else if (ControlType::host_infomation == remote_action.type) {
     render->host_name_ =
         std::string(remote_action.i.host_name, remote_action.i.host_name_size);
