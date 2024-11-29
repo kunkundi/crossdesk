@@ -26,7 +26,7 @@ if is_os("windows") then
     add_links("Shell32", "windowsapp", "dwmapi", "User32", "kernel32",
         "SDL2-static", "SDL2main", "gdi32", "winmm", "setupapi", "version",
         "Imm32", "iphlpapi")
-    add_cxflags("/W4", "/WX")
+    add_cxflags("/WX")
 elseif is_os("linux") then
     add_requires("ffmpeg 5.1.2", {system = false})
     add_syslinks("pthread", "dl")

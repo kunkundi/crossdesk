@@ -219,35 +219,35 @@ int Render::NetTrafficStats() {
     ImGui::Text("%s",
                 localization::video[localization_language_index_].c_str());
     ImGui::TableNextColumn();
-    BitrateDisplay((int)net_traffic_stats_.video_in);
+    BitrateDisplay((int)net_traffic_stats_.video_inbound_stats.bitrate);
     ImGui::TableNextColumn();
-    BitrateDisplay((int)net_traffic_stats_.video_out);
+    BitrateDisplay((int)net_traffic_stats_.video_outbound_stats.bitrate);
 
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
     ImGui::Text("%s",
                 localization::audio[localization_language_index_].c_str());
     ImGui::TableNextColumn();
-    BitrateDisplay((int)net_traffic_stats_.audio_in);
+    BitrateDisplay((int)net_traffic_stats_.audio_inbound_stats.bitrate);
     ImGui::TableNextColumn();
-    BitrateDisplay((int)net_traffic_stats_.audio_out);
+    BitrateDisplay((int)net_traffic_stats_.audio_outbound_stats.bitrate);
 
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
     ImGui::Text("%s", localization::data[localization_language_index_].c_str());
     ImGui::TableNextColumn();
-    BitrateDisplay((int)net_traffic_stats_.data_in);
+    BitrateDisplay((int)net_traffic_stats_.data_inbound_stats.bitrate);
     ImGui::TableNextColumn();
-    BitrateDisplay((int)net_traffic_stats_.data_out);
+    BitrateDisplay((int)net_traffic_stats_.data_outbound_stats.bitrate);
 
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
     ImGui::Text("%s",
                 localization::total[localization_language_index_].c_str());
     ImGui::TableNextColumn();
-    BitrateDisplay((int)net_traffic_stats_.total_in);
+    BitrateDisplay((int)net_traffic_stats_.total_inbound_stats.bitrate);
     ImGui::TableNextColumn();
-    BitrateDisplay((int)net_traffic_stats_.total_out);
+    BitrateDisplay((int)net_traffic_stats_.total_outbound_stats.bitrate);
 
     ImGui::EndTable();
   }
