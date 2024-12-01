@@ -36,6 +36,7 @@ static std::vector<std::string> data = {u8"数据", "Data"};
 static std::vector<std::string> total = {u8"总计", "Total"};
 static std::vector<std::string> in = {u8"输入", "In"};
 static std::vector<std::string> out = {u8"输出", "Out"};
+static std::vector<std::string> loss_rate = {u8"丢包率", "Loss Rate"};
 static std::vector<std::string> exit_fullscreen = {u8"退出全屏",
                                                    "Exit fullscreen"};
 static std::vector<std::string> control_mouse = {u8"控制", "Control"};

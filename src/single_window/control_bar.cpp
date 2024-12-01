@@ -20,6 +20,15 @@ int BitrateDisplay(int bitrate) {
   return 0;
 }
 
+int LossRateDisplay(float loss_rate) {
+  if (loss_rate < 0.01f) {
+    ImGui::Text("0%%");
+  } else {
+    ImGui::Text("%.2f%", loss_rate);
+  }
+  return 0;
+}
+
 int Render::ControlBar() {
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
 
@@ -204,7 +213,7 @@ int Render::NetTrafficStats() {
   ImGui::SetCursorPos(ImVec2(
       is_control_bar_in_left_ ? (control_window_width_ + 5.0f) : 5.0f, 40.0f));
 
-  if (ImGui::BeginTable("split", 3, ImGuiTableFlags_BordersH,
+  if (ImGui::BeginTable("split", 4, ImGuiTableFlags_BordersH,
                         ImVec2(control_window_max_width_ - 10.0f,
                                control_window_max_height_ - 40.0f))) {
     ImGui::TableNextColumn();
@@ -213,6 +222,9 @@ int Render::NetTrafficStats() {
     ImGui::Text("%s", localization::in[localization_language_index_].c_str());
     ImGui::TableNextColumn();
     ImGui::Text("%s", localization::out[localization_language_index_].c_str());
+    ImGui::TableNextColumn();
+    ImGui::Text("%s",
+                localization::loss_rate[localization_language_index_].c_str());
 
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
@@ -222,6 +234,8 @@ int Render::NetTrafficStats() {
     BitrateDisplay((int)net_traffic_stats_.video_inbound_stats.bitrate);
     ImGui::TableNextColumn();
     BitrateDisplay((int)net_traffic_stats_.video_outbound_stats.bitrate);
+    ImGui::TableNextColumn();
+    LossRateDisplay(net_traffic_stats_.video_inbound_stats.loss_rate);
 
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
@@ -231,6 +245,8 @@ int Render::NetTrafficStats() {
     BitrateDisplay((int)net_traffic_stats_.audio_inbound_stats.bitrate);
     ImGui::TableNextColumn();
     BitrateDisplay((int)net_traffic_stats_.audio_outbound_stats.bitrate);
+    ImGui::TableNextColumn();
+    LossRateDisplay(net_traffic_stats_.audio_inbound_stats.loss_rate);
 
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
@@ -239,6 +255,8 @@ int Render::NetTrafficStats() {
     BitrateDisplay((int)net_traffic_stats_.data_inbound_stats.bitrate);
     ImGui::TableNextColumn();
     BitrateDisplay((int)net_traffic_stats_.data_outbound_stats.bitrate);
+    ImGui::TableNextColumn();
+    LossRateDisplay(net_traffic_stats_.data_inbound_stats.loss_rate);
 
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
@@ -248,6 +266,8 @@ int Render::NetTrafficStats() {
     BitrateDisplay((int)net_traffic_stats_.total_inbound_stats.bitrate);
     ImGui::TableNextColumn();
     BitrateDisplay((int)net_traffic_stats_.total_outbound_stats.bitrate);
+    ImGui::TableNextColumn();
+    LossRateDisplay(net_traffic_stats_.total_inbound_stats.loss_rate);
 
     ImGui::EndTable();
   }
