@@ -79,13 +79,13 @@ class IOStatistics {
 
   std::atomic<uint32_t> video_inbound_bytes_ = 0;
   std::atomic<uint32_t> video_outbound_bytes_ = 0;
-  std::atomic<uint16_t> last_received_video_rtp_pkt_seq_ = 0;
+  uint16_t last_received_video_rtp_pkt_seq_ = 0;
   std::atomic<uint32_t> audio_inbound_bytes_ = 0;
   std::atomic<uint32_t> audio_outbound_bytes_ = 0;
-  std::atomic<uint16_t> last_received_audio_rtp_pkt_seq_ = 0;
+  uint16_t last_received_audio_rtp_pkt_seq_ = 0;
   std::atomic<uint32_t> data_inbound_bytes_ = 0;
   std::atomic<uint32_t> data_outbound_bytes_ = 0;
-  std::atomic<uint16_t> last_received_data_rtp_pkt_seq_ = 0;
+  uint16_t last_received_data_rtp_pkt_seq_ = 0;
   std::atomic<uint32_t> total_inbound_bytes_ = 0;
   std::atomic<uint32_t> total_outbound_bytes_ = 0;
 
@@ -104,18 +104,18 @@ class IOStatistics {
   std::atomic<uint32_t> expected_video_inbound_rtp_pkt_cnt_ = 0;
   std::atomic<uint32_t> expected_audio_inbound_rtp_pkt_cnt_ = 0;
   std::atomic<uint32_t> expected_data_inbound_rtp_pkt_cnt_ = 0;
-  std::atomic<uint32_t> video_rtp_pkt_loss_cnt_ = 0;
-  std::atomic<uint32_t> audio_rtp_pkt_loss_cnt_ = 0;
-  std::atomic<uint32_t> data_rtp_pkt_loss_cnt_ = 0;
+  int32_t video_rtp_pkt_loss_cnt_ = 0;
+  int32_t audio_rtp_pkt_loss_cnt_ = 0;
+  int32_t data_rtp_pkt_loss_cnt_ = 0;
 
-  std::atomic<uint32_t> video_inbound_bitrate_ = 0;
-  std::atomic<uint32_t> video_outbound_bitrate_ = 0;
-  std::atomic<uint32_t> audio_inbound_bitrate_ = 0;
-  std::atomic<uint32_t> audio_outbound_bitrate_ = 0;
-  std::atomic<uint32_t> data_inbound_bitrate_ = 0;
-  std::atomic<uint32_t> data_outbound_bitrate_ = 0;
-  std::atomic<uint32_t> total_inbound_bitrate_ = 0;
-  std::atomic<uint32_t> total_outbound_bitrate_ = 0;
+  uint32_t video_inbound_bitrate_ = 0;
+  uint32_t video_outbound_bitrate_ = 0;
+  uint32_t audio_inbound_bitrate_ = 0;
+  uint32_t audio_outbound_bitrate_ = 0;
+  uint32_t data_inbound_bitrate_ = 0;
+  uint32_t data_outbound_bitrate_ = 0;
+  uint32_t total_inbound_bitrate_ = 0;
+  uint32_t total_outbound_bitrate_ = 0;
 
   float video_rtp_pkt_loss_rate_ = 0;
   float audio_rtp_pkt_loss_rate_ = 0;

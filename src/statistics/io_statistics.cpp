@@ -124,30 +124,6 @@ void IOStatistics::Process() {
           video_outbound_rtp_pkt_cnt_ + audio_outbound_rtp_pkt_cnt_ +
           data_outbound_rtp_pkt_cnt_;
 
-      LOG_ERROR(
-          "[{} {} {}] | [{} {}] | [{} {} {}] | [{} {}] | [{} {} {}] | [{} "
-          "{}] | [{} {} {}] | [{} {}]",
-          net_traffic_stats.video_inbound_stats.bitrate,
-          net_traffic_stats.video_inbound_stats.loss_rate,
-          net_traffic_stats.video_inbound_stats.rtp_packet_count,
-          net_traffic_stats.video_outbound_stats.bitrate,
-          net_traffic_stats.video_outbound_stats.rtp_packet_count,
-          net_traffic_stats.audio_inbound_stats.bitrate,
-          net_traffic_stats.audio_inbound_stats.loss_rate,
-          net_traffic_stats.audio_inbound_stats.rtp_packet_count,
-          net_traffic_stats.audio_outbound_stats.bitrate,
-          net_traffic_stats.audio_outbound_stats.rtp_packet_count,
-          net_traffic_stats.data_inbound_stats.bitrate,
-          net_traffic_stats.data_inbound_stats.loss_rate,
-          net_traffic_stats.data_inbound_stats.rtp_packet_count,
-          net_traffic_stats.data_outbound_stats.bitrate,
-          net_traffic_stats.data_outbound_stats.rtp_packet_count,
-          net_traffic_stats.total_inbound_stats.bitrate,
-          net_traffic_stats.total_inbound_stats.loss_rate,
-          net_traffic_stats.total_inbound_stats.rtp_packet_count,
-          net_traffic_stats.total_outbound_stats.bitrate,
-          net_traffic_stats.total_outbound_stats.rtp_packet_count);
-
       io_report_callback_(net_traffic_stats);
     }
   }
@@ -169,106 +145,117 @@ void IOStatistics::Stop() {
 }
 
 void IOStatistics::UpdateVideoInboundBytes(uint32_t bytes) {
-  video_inbound_bytes_ += bytes;
+  video_inbound_bytes_.fetch_add(bytes, std::memory_order_relaxed);
 }
 
 void IOStatistics::UpdateVideoOutboundBytes(uint32_t bytes) {
-  video_outbound_bytes_ += bytes;
+  video_outbound_bytes_.fetch_add(bytes, std::memory_order_relaxed);
 }
 
 void IOStatistics::UpdateVideoPacketLossCount(uint16_t seq_num) {
   if (last_received_video_rtp_pkt_seq_ != 0) {
     if (last_received_video_rtp_pkt_seq_ < seq_num) {
       if (seq_num - last_received_video_rtp_pkt_seq_ > 0x8000) {
-        expected_video_inbound_rtp_pkt_cnt_ +=
-            0xffff - last_received_video_rtp_pkt_seq_ + seq_num + 1;
+        expected_video_inbound_rtp_pkt_cnt_.fetch_add(
+            0xffff - last_received_video_rtp_pkt_seq_ + seq_num + 1,
+            std::memory_order_relaxed);
       } else {
-        expected_video_inbound_rtp_pkt_cnt_ +=
-            seq_num - last_received_video_rtp_pkt_seq_;
+        expected_video_inbound_rtp_pkt_cnt_.fetch_add(
+            seq_num - last_received_video_rtp_pkt_seq_,
+            std::memory_order_relaxed);
       }
     } else if (last_received_video_rtp_pkt_seq_ > seq_num) {
-      expected_video_inbound_rtp_pkt_cnt_ +=
-          0xffff - last_received_video_rtp_pkt_seq_ + seq_num + 1;
+      expected_video_inbound_rtp_pkt_cnt_.fetch_add(
+          0xffff - last_received_video_rtp_pkt_seq_ + seq_num + 1,
+          std::memory_order_relaxed);
     }
+  } else {
+    expected_video_inbound_rtp_pkt_cnt_.fetch_add(1, std::memory_order_relaxed);
   }
   last_received_video_rtp_pkt_seq_ = seq_num;
 }
 
 void IOStatistics::UpdateAudioInboundBytes(uint32_t bytes) {
-  audio_inbound_bytes_ += bytes;
+  audio_inbound_bytes_.fetch_add(bytes, std::memory_order_relaxed);
 }
 
 void IOStatistics::UpdateAudioOutboundBytes(uint32_t bytes) {
-  audio_outbound_bytes_ += bytes;
+  audio_outbound_bytes_.fetch_add(bytes, std::memory_order_relaxed);
 }
 
 void IOStatistics::UpdateAudioPacketLossCount(uint16_t seq_num) {
   if (last_received_audio_rtp_pkt_seq_ != 0) {
     if (last_received_audio_rtp_pkt_seq_ < seq_num) {
       if (seq_num - last_received_audio_rtp_pkt_seq_ > 0x8000) {
-        expected_audio_inbound_rtp_pkt_cnt_ +=
-            0xffff - last_received_audio_rtp_pkt_seq_ + seq_num + 1;
+        expected_audio_inbound_rtp_pkt_cnt_.fetch_add(
+            0xffff - last_received_audio_rtp_pkt_seq_ + seq_num + 1,
+            std::memory_order_relaxed);
       } else {
-        expected_audio_inbound_rtp_pkt_cnt_ +=
-            seq_num - last_received_audio_rtp_pkt_seq_;
+        expected_audio_inbound_rtp_pkt_cnt_.fetch_add(
+            seq_num - last_received_audio_rtp_pkt_seq_,
+            std::memory_order_relaxed);
       }
     } else if (last_received_audio_rtp_pkt_seq_ > seq_num) {
-      expected_audio_inbound_rtp_pkt_cnt_ +=
-          0xffff - last_received_audio_rtp_pkt_seq_ + seq_num + 1;
+      expected_audio_inbound_rtp_pkt_cnt_.fetch_add(
+          0xffff - last_received_audio_rtp_pkt_seq_ + seq_num + 1,
+          std::memory_order_relaxed);
     }
   }
   last_received_audio_rtp_pkt_seq_ = seq_num;
 }
 
 void IOStatistics::UpdateDataInboundBytes(uint32_t bytes) {
-  data_inbound_bytes_ += bytes;
+  data_inbound_bytes_.fetch_add(bytes, std::memory_order_relaxed);
 }
 
 void IOStatistics::UpdateDataOutboundBytes(uint32_t bytes) {
-  data_outbound_bytes_ += bytes;
+  data_outbound_bytes_.fetch_add(bytes, std::memory_order_relaxed);
 }
 
 void IOStatistics::UpdateDataPacketLossCount(uint16_t seq_num) {
   if (last_received_data_rtp_pkt_seq_ != 0) {
     if (last_received_data_rtp_pkt_seq_ < seq_num) {
       if (seq_num - last_received_data_rtp_pkt_seq_ > 0x8000) {
-        expected_data_inbound_rtp_pkt_cnt_ +=
-            0xffff - last_received_data_rtp_pkt_seq_ + seq_num + 1;
+        expected_data_inbound_rtp_pkt_cnt_.fetch_add(
+            0xffff - last_received_data_rtp_pkt_seq_ + seq_num + 1,
+            std::memory_order_relaxed);
       } else {
-        expected_data_inbound_rtp_pkt_cnt_ +=
-            seq_num - last_received_data_rtp_pkt_seq_;
+        expected_data_inbound_rtp_pkt_cnt_.fetch_add(
+            seq_num - last_received_data_rtp_pkt_seq_,
+            std::memory_order_relaxed);
       }
     } else if (last_received_data_rtp_pkt_seq_ > seq_num) {
-      expected_data_inbound_rtp_pkt_cnt_ +=
-          0xffff - last_received_data_rtp_pkt_seq_ + seq_num + 1;
+      expected_data_inbound_rtp_pkt_cnt_.fetch_add(
+          0xffff - last_received_data_rtp_pkt_seq_ + seq_num + 1,
+          std::memory_order_relaxed);
     }
   }
   last_received_data_rtp_pkt_seq_ = seq_num;
 }
 
 void IOStatistics::IncrementVideoInboundRtpPacketCount() {
-  video_inbound_rtp_pkt_cnt_++;
-  video_inbound_rtp_pkt_cnt_tmp_++;
+  ++video_inbound_rtp_pkt_cnt_;
+  ++video_inbound_rtp_pkt_cnt_tmp_;
 }
 
 void IOStatistics::IncrementVideoOutboundRtpPacketCount() {
-  video_outbound_rtp_pkt_cnt_++;
+  ++video_outbound_rtp_pkt_cnt_;
 }
 
 void IOStatistics::IncrementAudioInboundRtpPacketCount() {
-  audio_inbound_rtp_pkt_cnt_++;
-  audio_inbound_rtp_pkt_cnt_tmp_++;
+  ++audio_inbound_rtp_pkt_cnt_;
+  ++audio_inbound_rtp_pkt_cnt_tmp_;
 }
 
 void IOStatistics::IncrementAudioOutboundRtpPacketCount() {
-  audio_outbound_rtp_pkt_cnt_++;
+  ++audio_outbound_rtp_pkt_cnt_;
 }
 
 void IOStatistics::IncrementDataInboundRtpPacketCount() {
-  data_inbound_rtp_pkt_cnt_++;
-  data_inbound_rtp_pkt_cnt_tmp_++;
+  ++data_inbound_rtp_pkt_cnt_;
+  ++data_inbound_rtp_pkt_cnt_tmp_;
 }
 
 void IOStatistics::IncrementDataOutboundRtpPacketCount() {
-  data_outbound_rtp_pkt_cnt_++;
+  ++data_outbound_rtp_pkt_cnt_;
 }
