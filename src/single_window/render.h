@@ -25,6 +25,8 @@
 #include "speaker_capturer_factory.h"
 #include "thumbnail.h"
 
+extern const Uint32 STREAM_FRASH;
+
 class Render {
  public:
   struct SubStreamWindowProperties {
@@ -34,14 +36,6 @@ class Render {
     bool mouse_control_button_pressed_ = false;
     bool mouse_controller_is_started_ = false;
     bool audio_capture_button_pressed_ = false;
-    bool audio_capture_ = true;
-    bool start_screen_capturer_ = false;
-    bool screen_capturer_is_started_ = false;
-    bool start_keyboard_capturer_ = false;
-    bool keyboard_capturer_is_started_ = false;
-    bool control_mouse_ = false;
-    bool stream_window_grabbed_ = false;
-    bool window_maximized_ = false;
     bool streaming_ = false;
     bool is_control_bar_in_left_ = true;
     bool control_bar_hovered_ = false;
@@ -50,6 +44,9 @@ class Render {
     bool control_window_width_is_changing_ = false;
     bool control_window_height_is_changing_ = false;
     bool p2p_mode_ = true;
+    bool hostname_sent_ = false;
+    bool remember_password_ = false;
+    char remote_password_[7] = "";
     float sub_stream_window_width_ = 1280;
     float sub_stream_window_height_ = 720;
     float control_window_min_width_ = 20;
@@ -80,6 +77,7 @@ class Render {
     std::string mouse_control_button_label_ = "Mouse Control";
     std::string audio_capture_button_label_ = "Audio Capture";
     std::string remote_host_name_ = "";
+    SDL_Texture *stream_texture_ = nullptr;
     SDL_Rect stream_render_rect_;
     SDL_Rect stream_render_rect_last_;
     ImVec2 control_winodw_pos_;
@@ -104,17 +102,19 @@ class Render {
   int RemoteWindow();
   int RecentConnectionsWindow();
   int SettingWindow();
-  int ControlWindow(SubStreamWindowProperties &properties);
-  int ControlBar(SubStreamWindowProperties &properties);
+  int ControlWindow(std::shared_ptr<SubStreamWindowProperties> &properties);
+  int ControlBar(std::shared_ptr<SubStreamWindowProperties> &properties);
   int AboutWindow();
   int StatusBar();
-  int ConnectionStatusWindow(SubStreamWindowProperties &properties);
+  int ConnectionStatusWindow(
+      std::shared_ptr<SubStreamWindowProperties> &properties);
   int LoadRecentConnections();
   int ShowRecentConnections();
 
  private:
   int CreateRtcConnection();
-  int ConnectTo();
+  int ConnectTo(const std::string &host_name, const char *password,
+                bool remember_password);
   int CreateMainWindow();
   int DestroyMainWindow();
   int CreateStreamWindow();
@@ -127,7 +127,7 @@ class Render {
   int DrawMainWindow();
   int DrawStreamWindow();
   int ConfirmDeleteConnection();
-  int NetTrafficStats(SubStreamWindowProperties &properties);
+  int NetTrafficStats(std::shared_ptr<SubStreamWindowProperties> &properties);
 
  public:
   static void OnReceiveVideoBufferCb(const XVideoFrame *video_frame,
@@ -150,6 +150,7 @@ class Render {
   static void NetStatusReport(const char *client_id, size_t client_id_size,
                               TraversalMode mode,
                               const XNetTrafficStats *net_traffic_stats,
+                              const char *user_id, const size_t user_id_size,
                               void *user_data);
 
   static SDL_HitTestResult HitTestCallback(SDL_Window *window,
@@ -228,8 +229,16 @@ class Render {
   SDL_Window *main_window_ = nullptr;
   SDL_Renderer *main_renderer_ = nullptr;
   ImGuiContext *main_ctx_ = nullptr;
+  bool exit_ = false;
 
   // main window properties
+  bool start_mouse_controller_ = false;
+  bool mouse_controller_is_started_ = false;
+  bool start_screen_capturer_ = false;
+  bool screen_capturer_is_started_ = false;
+  bool start_keyboard_capturer_ = false;
+  bool keyboard_capturer_is_started_ = false;
+  bool audio_capture_ = false;
   int main_window_width_real_ = 720;
   int main_window_height_real_ = 540;
   float main_window_dpi_scaling_w_ = 1.0f;
@@ -279,8 +288,12 @@ class Render {
   ImGuiContext *stream_ctx_ = nullptr;
 
   // stream window properties
+  bool need_to_create_stream_window_ = false;
   bool stream_window_created_ = false;
   bool stream_window_inited_ = false;
+  bool window_maximized_ = false;
+  bool stream_window_grabbed_ = false;
+  bool control_mouse_ = false;
   int stream_window_width_default_ = 1280;
   int stream_window_height_default_ = 720;
   float stream_window_width_ = 1280;
@@ -309,10 +322,8 @@ class Render {
   bool focus_on_input_widget_ = true;
   bool is_client_mode_ = false;
   bool reload_recent_connections_ = true;
-  bool hostname_sent_ = false;
   bool show_confirm_delete_connection_ = false;
   bool delete_connection_ = false;
-  bool remember_password_ = false;
   bool re_enter_remote_id_ = false;
   double copy_start_time_ = 0;
   double regenerate_password_start_time_ = 0;
@@ -350,9 +361,12 @@ class Render {
   /* ------ main window property end ------ */
 
   /* ------ sub stream window property start ------ */
-  std::unordered_map<std::string, SubStreamWindowProperties>
-      connection_properties_;
+  std::unordered_map<std::string, std::shared_ptr<SubStreamWindowProperties>>
+      client_properties_;
   /* ------ stream window property end ------ */
+
+  std::unordered_map<std::string, std::shared_ptr<SubStreamWindowProperties>>
+      server_properties_;
 };
 
 #endif

@@ -177,11 +177,14 @@ int Render::ShowRecentConnections() {
       if (ImGui::Button(connect_to_this_connection_button_name.c_str(),
                         ImVec2(button_width, button_height))) {
         remote_id_ = remote_id;
+
+        bool remember_password_flag = false;
         if (!password.empty() && password.size() == 6) {
-          remember_password_ = true;
+          remember_password_flag = true;
+          memcpy(remote_password_, password.c_str(), 6);
         }
-        memcpy(remote_password_, password.c_str(), 6);
-        ConnectTo();
+
+        ConnectTo(remote_id, remote_password_, remember_password_flag);
       }
     }
     ImGui::SetWindowFontScale(1.0f);

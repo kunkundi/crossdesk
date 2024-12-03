@@ -96,7 +96,6 @@ int Thumbnail::SaveToThumbnail(const char* yuv420p, int width, int height,
       image_name = remote_id + 'Y' + password + host_name;
     }
 
-    LOG_ERROR("1 image_path: [{}]", image_name);
     std::string ciphertext = AES_encrypt(image_name, aes128_key_, aes128_iv_);
     std::string file_path = image_path_ + ciphertext;
     stbi_write_png(file_path.data(), thumbnail_width_, thumbnail_height_, 4,
@@ -219,7 +218,6 @@ int Thumbnail::LoadThumbnail(SDL_Renderer* renderer,
           AES_decrypt(cipher_image_name, aes128_key_, aes128_iv_);
       std::string image_path = image_path_ + cipher_image_name;
       textures[original_image_name] = nullptr;
-      LOG_ERROR("2 image_path: [{}]", original_image_name);
       LoadTextureFromFile(image_path.c_str(), renderer,
                           &(textures[original_image_name]), width, height);
     }

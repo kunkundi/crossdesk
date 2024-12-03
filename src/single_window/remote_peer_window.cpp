@@ -75,11 +75,12 @@ int Render::RemoteWindow() {
         remote_id_.erase(remove_if(remote_id_.begin(), remote_id_.end(),
                                    static_cast<int (*)(int)>(&isspace)),
                          remote_id_.end());
-        ConnectTo();
+        ConnectTo(remote_id_, remote_password_, false);
       }
 
       if (rejoin_) {
-        ConnectTo();
+        ConnectTo(remote_id_, remote_password_,
+                  client_properties_[remote_id_]->remember_password_);
       }
     }
     ImGui::EndChild();
@@ -102,33 +103,44 @@ static int InputTextCallback(ImGuiInputTextCallbackData *data) {
   return 0;
 }
 
-int Render::ConnectTo() {
-  // connection_status_ = ConnectionStatus::Connecting;
+int Render::ConnectTo(const std::string &host_name, const char *password,
+                      bool remember_password) {
+  LOG_INFO("Connect to [{}]", host_name);
+  if (client_properties_.find(host_name) == client_properties_.end()) {
+    client_properties_[host_name] =
+        std::make_shared<SubStreamWindowProperties>();
+  }
+
+  auto props = client_properties_[host_name];
+  props->connection_status_ = ConnectionStatus::Connecting;
+  props->remember_password_ = remember_password;
+  memcpy(props->remote_password_, password, 6);
+
   int ret = -1;
   if (signal_connected_) {
-    // if (!connection_established_) {
-    if (0 == strcmp(remote_id_.c_str(), client_id_) && !peer_reserved_) {
-      peer_reserved_ = CreatePeer(&params_);
-      if (peer_reserved_) {
-        LOG_INFO("Create peer[reserved] instance successful");
-        std::string client_id = "C-";
-        client_id += client_id_;
-        Init(peer_reserved_, client_id.c_str());
-        LOG_INFO("Peer[reserved] init finish");
+    if (!props->connection_established_) {
+      if (0 == strcmp(host_name.c_str(), client_id_) && !peer_reserved_) {
+        peer_reserved_ = CreatePeer(&params_);
+        if (peer_reserved_) {
+          LOG_INFO("Create peer[reserved] instance successful");
+          std::string client_id = "C-";
+          client_id += client_id_;
+          Init(peer_reserved_, client_id.c_str());
+          LOG_INFO("Peer[reserved] init finish");
+        } else {
+          LOG_INFO("Create peer[reserved] instance failed");
+        }
+      }
+
+      ret = JoinConnection(peer_reserved_ ? peer_reserved_ : peer_,
+                           host_name.c_str(), password);
+      if (0 == ret) {
+        is_client_mode_ = true;
+        rejoin_ = false;
       } else {
-        LOG_INFO("Create peer[reserved] instance failed");
+        rejoin_ = true;
       }
     }
-
-    ret = JoinConnection(peer_reserved_ ? peer_reserved_ : peer_,
-                         remote_id_.c_str(), remote_password_);
-    if (0 == ret) {
-      is_client_mode_ = true;
-      rejoin_ = false;
-    } else {
-      rejoin_ = true;
-    }
-    // }
   }
 
   return 0;

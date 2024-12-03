@@ -4,8 +4,6 @@
 #include "rd_log.h"
 #include "render.h"
 
-// Refresh Event
-#define REFRESH_EVENT (SDL_USEREVENT + 1)
 #define NV12_BUFFER_SIZE 1280 * 720 * 3 / 2
 
 #ifdef REMOTE_DESK_DEBUG
@@ -80,41 +78,50 @@ void Render::SdlCaptureAudioOut([[maybe_unused]] void *userdata,
 }
 
 void Render::OnReceiveVideoBufferCb(const XVideoFrame *video_frame,
-                                    [[maybe_unused]] const char *user_id,
-                                    [[maybe_unused]] size_t user_id_size,
+                                    const char *user_id, size_t user_id_size,
                                     void *user_data) {
   Render *render = (Render *)user_data;
   if (!render) {
     return;
   }
 
-  if (render->connection_established_) {
-    if (!render->dst_buffer_) {
-      render->dst_buffer_capacity_ = video_frame->size;
-      render->dst_buffer_ = new unsigned char[video_frame->size];
+  std::string remote_id(user_id, user_id_size);
+  if (render->client_properties_.find(remote_id) ==
+      render->client_properties_.end()) {
+    return;
+  }
+  SubStreamWindowProperties *props =
+      render->client_properties_.find(remote_id)->second.get();
+
+  if (props->connection_established_) {
+    if (!props->dst_buffer_) {
+      props->dst_buffer_capacity_ = video_frame->size;
+      props->dst_buffer_ = new unsigned char[video_frame->size];
     }
 
-    if (render->dst_buffer_capacity_ < video_frame->size) {
-      delete render->dst_buffer_;
-      render->dst_buffer_capacity_ = video_frame->size;
-      render->dst_buffer_ = new unsigned char[video_frame->size];
+    if (props->dst_buffer_capacity_ < video_frame->size) {
+      delete props->dst_buffer_;
+      props->dst_buffer_capacity_ = video_frame->size;
+      props->dst_buffer_ = new unsigned char[video_frame->size];
     }
 
-    memcpy(render->dst_buffer_, video_frame->data, video_frame->size);
-    render->video_width_ = video_frame->width;
-    render->video_height_ = video_frame->height;
-    render->video_size_ = video_frame->size;
+    memcpy(props->dst_buffer_, video_frame->data, video_frame->size);
+    props->video_width_ = video_frame->width;
+    props->video_height_ = video_frame->height;
+    props->video_size_ = video_frame->size;
 
     SDL_Event event;
-    event.type = REFRESH_EVENT;
+    event.type = STREAM_FRASH;
+    event.user.type = STREAM_FRASH;
+    event.user.data1 = props;
     SDL_PushEvent(&event);
-    render->streaming_ = true;
+
+    props->streaming_ = true;
   }
 }
 
 void Render::OnReceiveAudioBufferCb(const char *data, size_t size,
-                                    [[maybe_unused]] const char *user_id,
-                                    [[maybe_unused]] size_t user_id_size,
+                                    const char *user_id, size_t user_id_size,
                                     void *user_data) {
   Render *render = (Render *)user_data;
   if (!render) {
@@ -130,12 +137,16 @@ void Render::OnReceiveDataBufferCb(const char *data, size_t size,
                                    void *user_data) {
   Render *render = (Render *)user_data;
   if (!render) {
-    LOG_ERROR("??????????????????");
     return;
   }
 
-  std::string user(user_id, user_id_size);
-  LOG_INFO("Receive data from: {}", user);
+  std::string remote_id(user_id, user_id_size);
+  if (render->client_properties_.find(remote_id) ==
+      render->client_properties_.end()) {
+    return;
+  }
+  auto props = render->client_properties_.find(remote_id)->second;
+
   RemoteAction remote_action;
   memcpy(&remote_action, data, size);
 
@@ -144,18 +155,18 @@ void Render::OnReceiveDataBufferCb(const char *data, size_t size,
   } else if (ControlType::audio_capture == remote_action.type) {
     if (remote_action.a) {
       render->StartSpeakerCapturer();
+      render->audio_capture_ = true;
     } else {
       render->StopSpeakerCapturer();
+      render->audio_capture_ = false;
     }
   } else if (ControlType::keyboard == remote_action.type) {
     render->ProcessKeyEvent((int)remote_action.k.key_value,
                             remote_action.k.flag == KeyFlag::key_down);
   } else if (ControlType::host_infomation == remote_action.type) {
-    render->remote_host_name_ =
+    props->remote_host_name_ =
         std::string(remote_action.i.host_name, remote_action.i.host_name_size);
-    LOG_INFO("Remote hostname: [{}]", render->remote_host_name_);
-  } else {
-    LOG_ERROR("Unknown control type: {}", (int)remote_action.type);
+    LOG_INFO("Remote hostname: [{}]", props->remote_host_name_);
   }
 }
 
@@ -188,31 +199,44 @@ void Render::OnSignalStatusCb(SignalStatus status, void *user_data) {
   }
 }
 
-void Render::OnConnectionStatusCb(ConnectionStatus status,
-                                  [[maybe_unused]] const char *user_id,
-                                  [[maybe_unused]] const size_t user_id_size,
-                                  void *user_data) {
+void Render::OnConnectionStatusCb(ConnectionStatus status, const char *user_id,
+                                  const size_t user_id_size, void *user_data) {
   Render *render = (Render *)user_data;
   if (!render) {
     return;
   }
 
-  render->connection_status_ = status;
+  bool is_server = false;
+  std::shared_ptr<SubStreamWindowProperties> props;
+
+  std::string remote_id(user_id, user_id_size);
+  if (render->client_properties_.find(remote_id) !=
+      render->client_properties_.end()) {
+    props = render->client_properties_.find(remote_id)->second;
+  } else {
+    if (render->server_properties_.find(remote_id) ==
+        render->server_properties_.end()) {
+      render->server_properties_[remote_id] =
+          std::make_shared<SubStreamWindowProperties>();
+    }
+    props = render->server_properties_.find(remote_id)->second;
+    is_server = true;
+  }
+
+  props->connection_status_ = status;
   render->show_connection_status_window_ = true;
   if (ConnectionStatus::Connecting == status) {
     render->connection_status_str_ = "Connecting";
   } else if (ConnectionStatus::Gathering == status) {
     render->connection_status_str_ = "Gathering";
   } else if (ConnectionStatus::Connected == status) {
-    std::string remote_id(user_id, user_id_size);
-    render->connection_properties_[remote_id] = SubStreamWindowProperties();
     render->connection_status_str_ = "Connected";
-    render->connection_established_ = true;
-    if (render->peer_reserved_ || !render->is_client_mode_) {
-      render->start_screen_capturer_ = true;
-      render->start_mouse_controller_ = true;
+    if (!render->need_to_create_stream_window_) {
+      render->need_to_create_stream_window_ = true;
     }
-    if (!render->hostname_sent_) {
+
+    props->connection_established_ = true;
+    if (!props->hostname_sent_) {
       // TODO: self and remote hostname
       std::string host_name = GetHostName();
       RemoteAction remote_action;
@@ -222,11 +246,21 @@ void Render::OnConnectionStatusCb(ConnectionStatus status,
       int ret = SendDataFrame(render->peer_, (const char *)&remote_action,
                               sizeof(remote_action));
       if (0 == ret) {
-        render->hostname_sent_ = true;
+        props->hostname_sent_ = true;
       }
-      LOG_ERROR("1111111111111111 [{}|{}]", ret, host_name);
-    } else {
-      LOG_ERROR("2222222222222222");
+    }
+
+    if (!is_server) {
+      props->stream_render_rect_.x = 0;
+      props->stream_render_rect_.y = (int)render->title_bar_height_;
+      props->stream_render_rect_.w = (int)render->stream_window_width_;
+      props->stream_render_rect_.h =
+          (int)(render->stream_window_height_ - render->title_bar_height_);
+    }
+
+    if (render->peer_reserved_ || !render->is_client_mode_) {
+      render->start_screen_capturer_ = true;
+      render->start_mouse_controller_ = true;
     }
   } else if (ConnectionStatus::Disconnected == status) {
     render->connection_status_str_ = "Disconnected";
@@ -239,30 +273,29 @@ void Render::OnConnectionStatusCb(ConnectionStatus status,
     render->password_validating_time_ = 0;
     render->start_screen_capturer_ = false;
     render->start_mouse_controller_ = false;
-    render->connection_established_ = false;
-    render->control_mouse_ = false;
-    render->mouse_control_button_pressed_ = false;
     render->start_keyboard_capturer_ = false;
-    render->hostname_sent_ = false;
+    render->control_mouse_ = false;
+    props->connection_established_ = false;
+    props->mouse_control_button_pressed_ = false;
+    props->hostname_sent_ = false;
     if (render->audio_capture_) {
       render->StopSpeakerCapturer();
       render->audio_capture_ = false;
-      render->audio_capture_button_pressed_ = false;
     }
     if (!render->rejoin_) {
       memset(render->remote_password_, 0, sizeof(render->remote_password_));
     }
-    if (render->dst_buffer_) {
-      memset(render->dst_buffer_, 0, render->dst_buffer_capacity_);
-      SDL_UpdateTexture(render->stream_texture_, NULL, render->dst_buffer_,
-                        render->texture_width_);
+    if (props->dst_buffer_) {
+      memset(props->dst_buffer_, 0, props->dst_buffer_capacity_);
+      SDL_UpdateTexture(props->stream_texture_, NULL, props->dst_buffer_,
+                        props->texture_width_);
     }
   } else if (ConnectionStatus::IncorrectPassword == status) {
     render->connection_status_str_ = "Incorrect password";
     render->password_validating_ = false;
     render->password_validating_time_++;
     if (render->connect_button_pressed_) {
-      render->connection_established_ = false;
+      props->connection_established_ = false;
       render->connect_button_label_ =
           render->connect_button_pressed_
               ? localization::disconnect[render->localization_language_index_]
@@ -271,7 +304,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status,
   } else if (ConnectionStatus::NoSuchTransmissionId == status) {
     render->connection_status_str_ = "No such transmission id";
     if (render->connect_button_pressed_) {
-      render->connection_established_ = false;
+      props->connection_established_ = false;
       render->connect_button_label_ =
           render->connect_button_pressed_
               ? localization::disconnect[render->localization_language_index_]
@@ -283,11 +316,19 @@ void Render::OnConnectionStatusCb(ConnectionStatus status,
 void Render::NetStatusReport(const char *client_id, size_t client_id_size,
                              TraversalMode mode,
                              const XNetTrafficStats *net_traffic_stats,
+                             const char *user_id, const size_t user_id_size,
                              void *user_data) {
   Render *render = (Render *)user_data;
   if (!render) {
     return;
   }
+
+  std::string remote_id(user_id, user_id_size);
+  if (render->client_properties_.find(remote_id) ==
+      render->client_properties_.end()) {
+    return;
+  }
+  auto props = render->client_properties_.find(remote_id)->second;
 
   if (0 == strcmp(render->client_id_, "")) {
     memset(&render->client_id_, 0, sizeof(render->client_id_));
@@ -295,9 +336,9 @@ void Render::NetStatusReport(const char *client_id, size_t client_id_size,
     LOG_INFO("Use client id [{}] and save id into cache file", client_id);
     render->SaveSettingsIntoCacheFile();
   }
-  if (render->traversal_mode_ != mode) {
-    render->traversal_mode_ = mode;
-    LOG_INFO("Net mode: [{}]", int(render->traversal_mode_));
+  if (props->traversal_mode_ != mode) {
+    props->traversal_mode_ = mode;
+    LOG_INFO("Net mode: [{}]", int(props->traversal_mode_));
   }
 
   if (!net_traffic_stats) {
@@ -306,6 +347,6 @@ void Render::NetStatusReport(const char *client_id, size_t client_id_size,
 
   // only display client side net status if connected to itself
   if (!(render->peer_reserved_ && !strstr(client_id, "C-"))) {
-    render->net_traffic_stats_ = *net_traffic_stats;
+    props->net_traffic_stats_ = *net_traffic_stats;
   }
 }

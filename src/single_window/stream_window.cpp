@@ -18,7 +18,7 @@ int Render::StreamWindow() {
                    ImGuiWindowFlags_NoBringToFrontOnFocus);
   ImGui::PopStyleColor(2);
 
-  for (auto &properties : connection_properties_) {
+  for (auto &properties : client_properties_) {
     ControlWindow(properties.second);
   }
 

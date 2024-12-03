@@ -70,7 +70,7 @@ int Render::SettingWindow() {
 
       ImGui::Separator();
 
-      if (streaming_) {
+      if (stream_window_inited_) {
         ImGui::BeginDisabled();
       }
 
@@ -161,7 +161,7 @@ int Render::SettingWindow() {
         ImGui::Checkbox("##enable_turn", &enable_turn_);
       }
 
-      if (streaming_) {
+      if (stream_window_inited_) {
         ImGui::EndDisabled();
       }
 
@@ -234,7 +234,7 @@ int Render::SettingWindow() {
         LoadSettingsFromCacheFile();
 
         // Recreate peer instance
-        if (!streaming_) {
+        if (!stream_window_inited_) {
           LOG_INFO("Recreate peer instance");
           DestroyPeer(&peer_);
           is_create_connection_ = false;

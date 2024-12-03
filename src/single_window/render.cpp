@@ -15,11 +15,11 @@
 #include "rd_log.h"
 #include "screen_capturer_factory.h"
 
-// Refresh Event
-#define REFRESH_EVENT (SDL_USEREVENT + 1)
 #define NV12_BUFFER_SIZE 1280 * 720 * 3 / 2
 
 #define MOUSE_GRAB_PADDING 5
+
+const Uint32 STREAM_FRASH = SDL_RegisterEvents(29);
 
 SDL_HitTestResult Render::HitTestCallback(SDL_Window* window,
                                           const SDL_Point* area, void* data) {
@@ -40,9 +40,9 @@ SDL_HitTestResult Render::HitTestCallback(SDL_Window* window,
     return SDL_HITTEST_DRAGGABLE;
   }
 
-  if (!render->streaming_) {
-    return SDL_HITTEST_NORMAL;
-  }
+  // if (!render->streaming_) {
+  //   return SDL_HITTEST_NORMAL;
+  // }
 
   if (area->y < MOUSE_GRAB_PADDING) {
     if (area->x < MOUSE_GRAB_PADDING) {
@@ -69,7 +69,7 @@ SDL_HitTestResult Render::HitTestCallback(SDL_Window* window,
   return SDL_HITTEST_NORMAL;
 }
 
-Render::Render() { memset(&net_traffic_stats_, 0, sizeof(net_traffic_stats_)); }
+Render::Render() {}
 
 Render::~Render() {}
 
@@ -198,7 +198,7 @@ int Render::StartScreenCapturer() {
                             std::chrono::steady_clock::now().time_since_epoch())
                             .count();
         auto duration = now_time - last_frame_time_;
-        if (duration >= 0 && connection_established_) {
+        if (duration >= 0) {
           XVideoFrame frame;
           frame.data = (const char*)data;
           frame.size = size;
@@ -238,9 +238,7 @@ int Render::StartSpeakerCapturer() {
     speaker_capturer_ = (SpeakerCapturer*)speaker_capturer_factory_->Create();
     int speaker_capturer_init_ret = speaker_capturer_->Init(
         [this](unsigned char* data, size_t size) -> void {
-          if (connection_established_) {
-            SendAudioFrame(peer_, (const char*)data, size);
-          }
+          SendAudioFrame(peer_, (const char*)data, size);
         });
 
     if (0 != speaker_capturer_init_ret) {
@@ -518,16 +516,16 @@ int Render::CreateStreamWindow() {
   }
 
   stream_pixformat_ = SDL_PIXELFORMAT_NV12;
-  stream_texture_ = SDL_CreateTexture(stream_renderer_, stream_pixformat_,
-                                      SDL_TEXTUREACCESS_STREAMING,
-                                      texture_width_, texture_height_);
+  // stream_texture_ = SDL_CreateTexture(stream_renderer_, stream_pixformat_,
+  //                                     SDL_TEXTUREACCESS_STREAMING,
+  //                                     texture_width_, texture_height_);
 
   SDL_SetWindowResizable(stream_window_, SDL_TRUE);
 
   // for window region action
   SDL_SetWindowHitTest(stream_window_, HitTestCallback, this);
 
-  // change stream_render_rect_
+  // change props->stream_render_rect_
   SDL_Event event;
   event.type = SDL_WINDOWEVENT;
   event.window.windowID = SDL_GetWindowID(stream_window_);
@@ -733,7 +731,12 @@ int Render::DrawStreamWindow() {
   // Rendering
   ImGui::Render();
   SDL_RenderClear(stream_renderer_);
-  SDL_RenderCopy(stream_renderer_, stream_texture_, NULL, &stream_render_rect_);
+
+  for (auto& it : client_properties_) {
+    auto props = it.second;
+    SDL_RenderCopy(stream_renderer_, props->stream_texture_, NULL,
+                   &(props->stream_render_rect_));
+  }
   ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), stream_renderer_);
   SDL_RenderPresent(stream_renderer_);
 
@@ -765,11 +768,6 @@ int Render::Run() {
   SDL_GetCurrentDisplayMode(0, &DM);
   screen_width_ = DM.w;
   screen_height_ = DM.h;
-
-  stream_render_rect_.x = 0;
-  stream_render_rect_.y = (int)title_bar_height_;
-  stream_render_rect_.w = (int)stream_window_width_;
-  stream_render_rect_.h = (int)(stream_window_height_ - title_bar_height_);
 
   // use linear filtering to render textures otherwise the graphics will be
   // blurry
@@ -842,40 +840,47 @@ int Render::Run() {
         ImGui_ImplSDL2_ProcessEvent(&event);
       }
       if (event.type == SDL_QUIT) {
-        if (streaming_) {
+        if (stream_window_inited_) {
           LOG_INFO("Destroy stream window");
           SDL_SetWindowGrab(stream_window_, SDL_FALSE);
           DestroyStreamWindow();
           DestroyStreamWindowContext();
 
-          if (dst_buffer_) {
-            thumbnail_->SaveToThumbnail(
-                (char*)dst_buffer_, video_width_, video_height_, remote_id_,
-                remote_host_name_, remember_password_ ? remote_password_ : "");
-            recent_connection_image_save_time_ = SDL_GetTicks();
-          }
+          for (auto& it : client_properties_) {
+            auto props = it.second;
+            if (props->dst_buffer_) {
+              thumbnail_->SaveToThumbnail(
+                  (char*)props->dst_buffer_, props->video_width_,
+                  props->video_height_, it.first, props->remote_host_name_,
+                  props->remember_password_ ? props->remote_password_ : "");
+            }
 
-          LOG_INFO("[{}] Leave connection [{}]", client_id_, remote_id_);
-          LeaveConnection(peer_reserved_ ? peer_reserved_ : peer_,
-                          remote_id_.c_str());
-          if (peer_reserved_) {
-            LOG_INFO("Destroy peer[reserved]");
-            DestroyPeer(&peer_reserved_);
-          }
+            LOG_INFO("[{}] Leave connection [{}]", client_id_, it.first);
+            LeaveConnection(peer_reserved_ ? peer_reserved_ : peer_,
+                            it.first.c_str());
+            if (peer_reserved_) {
+              LOG_INFO("Destroy peer[reserved]");
+              DestroyPeer(&peer_reserved_);
+            }
 
-          streaming_ = false;
+            props->streaming_ = false;
+            props->remember_password_ = false;
+            props->connection_established_ = false;
+            props->audio_capture_button_pressed_ = false;
+
+            memset(&props->net_traffic_stats_, 0,
+                   sizeof(props->net_traffic_stats_));
+            SDL_SetWindowFullscreen(main_window_, SDL_FALSE);
+            SDL_DestroyTexture(props->stream_texture_);
+            memset(audio_buffer_, 0, 720);
+          }
+          client_properties_.clear();
+
           rejoin_ = false;
-          connection_established_ = false;
           is_client_mode_ = false;
-          audio_capture_button_pressed_ = false;
-          fullscreen_button_pressed_ = false;
           reload_recent_connections_ = true;
-          remember_password_ = false;
-
-          memset(&net_traffic_stats_, 0, sizeof(net_traffic_stats_));
-          SDL_SetWindowFullscreen(main_window_, SDL_FALSE);
-          memset(audio_buffer_, 0, 720);
-
+          fullscreen_button_pressed_ = false;
+          recent_connection_image_save_time_ = SDL_GetTicks();
           continue;
         } else {
           LOG_INFO("Quit program");
@@ -888,73 +893,101 @@ int Render::Run() {
       } else if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED &&
                  stream_window_created_ &&
                  event.window.windowID == SDL_GetWindowID(stream_window_)) {
-        // to prevent cursor relocation
-        if (!reset_control_bar_pos_) {
-          mouse_diff_control_bar_pos_x_ = 0;
-          mouse_diff_control_bar_pos_y_ = 0;
-        }
+        for (auto& it : client_properties_) {
+          auto props = it.second;
 
-        reset_control_bar_pos_ = true;
-        int stream_window_width, stream_window_height;
-        SDL_GetWindowSize(stream_window_, &stream_window_width,
-                          &stream_window_height);
-        stream_window_width_ = (float)stream_window_width;
-        stream_window_height_ = (float)stream_window_height;
+          // to prevent cursor relocation
+          if (!props->reset_control_bar_pos_) {
+            props->mouse_diff_control_bar_pos_x_ = 0;
+            props->mouse_diff_control_bar_pos_y_ = 0;
+          }
 
-        float video_ratio = (float)video_width_ / (float)video_height_;
-        float video_ratio_reverse = (float)video_height_ / (float)video_width_;
+          props->reset_control_bar_pos_ = true;
+          int stream_window_width, stream_window_height;
+          SDL_GetWindowSize(stream_window_, &stream_window_width,
+                            &stream_window_height);
+          stream_window_width_ = (float)stream_window_width;
+          stream_window_height_ = (float)stream_window_height;
 
-        float render_area_width = stream_window_width_;
-        float render_area_height =
-            stream_window_height_ -
-            (fullscreen_button_pressed_ ? 0 : title_bar_height_);
+          float video_ratio =
+              (float)props->video_width_ / (float)props->video_height_;
+          float video_ratio_reverse =
+              (float)props->video_height_ / (float)props->video_width_;
 
-        stream_render_rect_last_ = stream_render_rect_;
-        if (render_area_width < render_area_height * video_ratio) {
-          stream_render_rect_.x = 0;
-          stream_render_rect_.y =
-              (int)(abs(render_area_height -
-                        render_area_width * video_ratio_reverse) /
-                        2 +
-                    (fullscreen_button_pressed_ ? 0 : title_bar_height_));
-          stream_render_rect_.w = (int)render_area_width;
-          stream_render_rect_.h =
-              (int)(render_area_width * video_ratio_reverse);
-        } else if (render_area_width > render_area_height * video_ratio) {
-          stream_render_rect_.x =
-              (int)abs(render_area_width - render_area_height * video_ratio) /
-              2;
-          stream_render_rect_.y =
-              fullscreen_button_pressed_ ? 0 : (int)title_bar_height_;
-          stream_render_rect_.w = (int)(render_area_height * video_ratio);
-          stream_render_rect_.h = (int)render_area_height;
-        } else {
-          stream_render_rect_.x = 0;
-          stream_render_rect_.y =
-              fullscreen_button_pressed_ ? 0 : (int)title_bar_height_;
-          stream_render_rect_.w = (int)render_area_width;
-          stream_render_rect_.h = (int)render_area_height;
+          float render_area_width = stream_window_width_;
+          float render_area_height =
+              stream_window_height_ -
+              (fullscreen_button_pressed_ ? 0 : title_bar_height_);
+
+          props->stream_render_rect_last_ = props->stream_render_rect_;
+          if (render_area_width < render_area_height * video_ratio) {
+            props->stream_render_rect_.x = 0;
+            props->stream_render_rect_.y =
+                (int)(abs(render_area_height -
+                          render_area_width * video_ratio_reverse) /
+                          2 +
+                      (fullscreen_button_pressed_ ? 0 : title_bar_height_));
+            props->stream_render_rect_.w = (int)render_area_width;
+            props->stream_render_rect_.h =
+                (int)(render_area_width * video_ratio_reverse);
+          } else if (render_area_width > render_area_height * video_ratio) {
+            props->stream_render_rect_.x =
+                (int)abs(render_area_width - render_area_height * video_ratio) /
+                2;
+            props->stream_render_rect_.y =
+                fullscreen_button_pressed_ ? 0 : (int)title_bar_height_;
+            props->stream_render_rect_.w =
+                (int)(render_area_height * video_ratio);
+            props->stream_render_rect_.h = (int)render_area_height;
+          } else {
+            props->stream_render_rect_.x = 0;
+            props->stream_render_rect_.y =
+                fullscreen_button_pressed_ ? 0 : (int)title_bar_height_;
+            props->stream_render_rect_.w = (int)render_area_width;
+            props->stream_render_rect_.h = (int)render_area_height;
+          }
         }
       } else if (event.type == SDL_WINDOWEVENT &&
                  event.window.event == SDL_WINDOWEVENT_CLOSE) {
-        if (connection_established_) {
+        if (event.window.windowID == SDL_GetWindowID(stream_window_)) {
           continue;
         } else {
           exit_ = true;
         }
-      } else if (event.type == REFRESH_EVENT) {
-        if (stream_texture_)
-          if (video_width_ != texture_width_ ||
-              video_height_ != texture_height_) {
-            texture_width_ = video_width_;
-            texture_height_ = video_height_;
+      } else if (event.type == STREAM_FRASH) {
+        SubStreamWindowProperties* props =
+            static_cast<SubStreamWindowProperties*>(event.user.data1);
+        if (!props) {
+          LOG_ERROR("Invalid stream window properties");
+          continue;
+        }
 
-            SDL_DestroyTexture(stream_texture_);
-            stream_texture_ = SDL_CreateTexture(
+        if (props->stream_texture_) {
+          if (props->video_width_ != props->texture_width_ ||
+              props->video_height_ != props->texture_height_) {
+            props->texture_width_ = props->video_width_;
+            props->texture_height_ = props->video_height_;
+
+            SDL_DestroyTexture(props->stream_texture_);
+            props->stream_texture_ = SDL_CreateTexture(
                 stream_renderer_, stream_pixformat_,
-                SDL_TEXTUREACCESS_STREAMING, texture_width_, texture_height_);
+                SDL_TEXTUREACCESS_STREAMING, props->texture_width_,
+                props->texture_height_);
           }
-        SDL_UpdateTexture(stream_texture_, NULL, dst_buffer_, texture_width_);
+        } else {
+          if (props->video_width_ != props->texture_width_ ||
+              props->video_height_ != props->texture_height_) {
+            props->texture_width_ = props->video_width_;
+            props->texture_height_ = props->video_height_;
+          }
+
+          props->stream_texture_ = SDL_CreateTexture(
+              stream_renderer_, stream_pixformat_, SDL_TEXTUREACCESS_STREAMING,
+              props->texture_width_, props->texture_height_);
+        }
+
+        SDL_UpdateTexture(props->stream_texture_, NULL, props->dst_buffer_,
+                          props->texture_width_);
       }
     }
 
@@ -965,6 +998,7 @@ int Render::Run() {
         int ret = thumbnail_->LoadThumbnail(
             main_renderer_, recent_connection_textures_,
             &recent_connection_image_width_, &recent_connection_image_height_);
+        LOG_INFO("1 Load recent connection thumbnails");
         if (!ret) {
           LOG_INFO("Load recent connection thumbnails");
         }
@@ -972,10 +1006,13 @@ int Render::Run() {
       }
     }
 
-    if (connection_established_ && streaming_) {
+    if (need_to_create_stream_window_) {
       CreateStreamWindow();
       SetupStreamWindow();
+      need_to_create_stream_window_ = false;
+    }
 
+    if (stream_window_inited_) {
       if (!stream_window_grabbed_ && control_mouse_) {
         SDL_SetWindowGrab(stream_window_, SDL_TRUE);
         stream_window_grabbed_ = true;
