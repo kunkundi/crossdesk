@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <unordered_set>
 #include <vector>
 
 #include "fec_encoder.h"
@@ -55,6 +56,38 @@ class RtpCodec {
   RtpPacket::FU_INDICATOR fu_indicator_;
   bool fec_enable_ = false;
   FecEncoder fec_encoder_;
+};
+
+class SSRCManager {
+ public:
+  static SSRCManager& Instance() {
+    static SSRCManager instance;
+    return instance;
+  }
+
+  void AddSsrc(uint32_t ssrc) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    ssrcs_.insert(ssrc);
+  }
+
+  void DeleteSsrc(uint32_t ssrc) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    ssrcs_.erase(ssrc);
+  }
+
+  bool Contains(uint32_t ssrc) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return ssrcs_.count(ssrc) > 0;
+  }
+
+ private:
+  SSRCManager() = default;
+  ~SSRCManager() = default;
+  SSRCManager(const SSRCManager&) = delete;
+  SSRCManager& operator=(const SSRCManager&) = delete;
+
+  std::unordered_set<uint32_t> ssrcs_;
+  std::mutex mutex_;
 };
 
 #endif

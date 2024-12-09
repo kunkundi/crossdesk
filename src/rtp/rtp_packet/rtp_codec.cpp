@@ -1,6 +1,7 @@
 #include "rtp_codec.h"
 
 #include <chrono>
+#include <random>
 
 #include "log.h"
 #include "obu_parser.h"
@@ -14,16 +15,35 @@ constexpr int kObuTypeSequenceHeader = 1;
 
 using namespace obu;
 
+uint32_t GenerateRandomSSRC() {
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<uint32_t> dis(1, 0xFFFFFFFF);
+  return dis(gen);
+}
+
+uint32_t GenerateUniqueSsrc() {
+  uint32_t new_ssrc;
+  do {
+    new_ssrc = GenerateRandomSSRC();
+  } while (SSRCManager::Instance().Contains(new_ssrc));
+  SSRCManager::Instance().AddSsrc(new_ssrc);
+  return new_ssrc;
+}
+
 RtpCodec ::RtpCodec(RtpPacket::PAYLOAD_TYPE payload_type)
     : version_(RTP_VERSION),
       has_padding_(false),
       has_extension_(false),
       payload_type_(payload_type),
       sequence_number_(1) {
+  ssrc_ = GenerateUniqueSsrc();
   fec_encoder_.Init();
 }
 
 RtpCodec ::~RtpCodec() {
+  SSRCManager::Instance().DeleteSsrc(ssrc_);
+
   if (extension_data_) {
     delete extension_data_;
     extension_data_ = nullptr;
