@@ -21,8 +21,6 @@ void DataChannelReceive::Initialize(RtpPacket::PAYLOAD_TYPE payload_type) {
 
   rtp_data_receiver_->SetOnReceiveData(
       [this](const char *data, size_t size) -> void {
-        ice_io_statistics_->UpdateDataInboundBytes((uint32_t)size);
-
         if (on_receive_data_) {
           on_receive_data_(data, size);
         }
@@ -52,6 +50,10 @@ void DataChannelReceive::Initialize(RtpPacket::PAYLOAD_TYPE payload_type) {
 void DataChannelReceive::Destroy() {}
 
 int DataChannelReceive::OnReceiveRtpPacket(const char *data, size_t size) {
+  if (ice_io_statistics_) {
+    ice_io_statistics_->UpdateDataInboundBytes((uint32_t)size);
+  }
+
   if (rtp_data_receiver_) {
     rtp_data_receiver_->InsertRtpPacket(RtpPacket((uint8_t *)data, size));
   }

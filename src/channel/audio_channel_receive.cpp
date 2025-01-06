@@ -20,8 +20,6 @@ void AudioChannelReceive::Initialize(RtpPacket::PAYLOAD_TYPE payload_type) {
 
   rtp_audio_receiver_->SetOnReceiveData(
       [this](const char *data, size_t size) -> void {
-        ice_io_statistics_->UpdateAudioInboundBytes((uint32_t)size);
-
         if (on_receive_audio_) {
           on_receive_audio_(data, size);
         }
@@ -51,6 +49,10 @@ void AudioChannelReceive::Initialize(RtpPacket::PAYLOAD_TYPE payload_type) {
 void AudioChannelReceive::Destroy() {}
 
 int AudioChannelReceive::OnReceiveRtpPacket(const char *data, size_t size) {
+  if (ice_io_statistics_) {
+    ice_io_statistics_->UpdateAudioInboundBytes((uint32_t)size);
+  }
+
   if (rtp_audio_receiver_) {
     rtp_audio_receiver_->InsertRtpPacket(RtpPacket((uint8_t *)data, size));
   }

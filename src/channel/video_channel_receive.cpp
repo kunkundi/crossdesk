@@ -20,8 +20,6 @@ void VideoChannelReceive::Initialize(RtpPacket::PAYLOAD_TYPE payload_type) {
 
   rtp_video_receiver_->SetOnReceiveCompleteFrame(
       [this](VideoFrame &video_frame) -> void {
-        ice_io_statistics_->UpdateVideoInboundBytes(
-            (uint32_t)video_frame.Size());
         on_receive_complete_frame_(video_frame);
       });
 
@@ -41,7 +39,7 @@ void VideoChannelReceive::Initialize(RtpPacket::PAYLOAD_TYPE payload_type) {
           return -2;
         }
 
-        ice_io_statistics_->UpdateVideoInboundBytes((uint32_t)size);
+        ice_io_statistics_->UpdateVideoOutboundBytes((uint32_t)size);
         return ice_agent_->Send(data, size);
       });
 
@@ -51,6 +49,10 @@ void VideoChannelReceive::Initialize(RtpPacket::PAYLOAD_TYPE payload_type) {
 void VideoChannelReceive::Destroy() {}
 
 int VideoChannelReceive::OnReceiveRtpPacket(const char *data, size_t size) {
+  if (ice_io_statistics_) {
+    ice_io_statistics_->UpdateVideoInboundBytes((uint32_t)size);
+  }
+
   if (rtp_video_receiver_) {
     rtp_video_receiver_->InsertRtpPacket(RtpPacket((uint8_t *)data, size));
   }
