@@ -12,7 +12,7 @@
 
 #include <stdint.h>
 
-#include "bandwidth_usage.h"
+#include "api/transport/bandwidth_usage.h"
 
 namespace webrtc {
 

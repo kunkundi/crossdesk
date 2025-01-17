@@ -13,7 +13,17 @@
 #include <algorithm>
 #include <cstdint>
 
-CongestionWindowPushbackController::CongestionWindowPushbackController() {}
+#include "api/units/data_size.h"
+
+namespace webrtc {
+
+const int kDefaultMinPushbackTargetBitrateBps = 30000;
+
+CongestionWindowPushbackController::CongestionWindowPushbackController()
+    : add_pacing_(false),
+      min_pushback_target_bitrate_bps_(kDefaultMinPushbackTargetBitrateBps),
+      current_data_window_(
+          DataSize::Bytes(kDefaultMinPushbackTargetBitrateBps)) {}
 
 void CongestionWindowPushbackController::UpdateOutstandingData(
     int64_t outstanding_bytes) {
@@ -24,17 +34,18 @@ void CongestionWindowPushbackController::UpdatePacingQueue(
   pacing_bytes_ = pacing_bytes;
 }
 
-void CongestionWindowPushbackController::SetDataWindow(int64_t data_window) {
+void CongestionWindowPushbackController::SetDataWindow(DataSize data_window) {
   current_data_window_ = data_window;
 }
 
 uint32_t CongestionWindowPushbackController::UpdateTargetBitrate(
     uint32_t bitrate_bps) {
-  if (!current_data_window_ || current_data_window_ == 0) return bitrate_bps;
+  if (!current_data_window_ || current_data_window_->IsZero())
+    return bitrate_bps;
   int64_t total_bytes = outstanding_bytes_;
   if (add_pacing_) total_bytes += pacing_bytes_;
   double fill_ratio =
-      total_bytes / static_cast<double>(current_data_window_.value());
+      total_bytes / static_cast<double>(current_data_window_->bytes());
   if (fill_ratio > 1.5) {
     encoding_rate_ratio_ *= 0.9;
   } else if (fill_ratio > 1) {
@@ -55,3 +66,5 @@ uint32_t CongestionWindowPushbackController::UpdateTargetBitrate(
                     : adjusted_target_bitrate_bps;
   return bitrate_bps;
 }
+
+}  // namespace webrtc

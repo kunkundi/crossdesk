@@ -17,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include "api/transport/network_types.h"
 #include "api/units/data_rate.h"
 #include "api/units/data_size.h"
 #include "api/units/time_delta.h"
@@ -24,7 +25,6 @@
 #include "bwe_defines.h"
 #include "inter_arrival_delta.h"
 #include "log.h"
-#include "network_types.h"
 #include "trendline_estimator.h"
 
 namespace webrtc {

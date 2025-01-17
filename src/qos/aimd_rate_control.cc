@@ -17,9 +17,9 @@
 #include <cstdio>
 #include <string>
 
+#include "api/transport/network_types.h"
 #include "api/units/data_rate.h"
 #include "log.h"
-#include "network_types.h"
 #include "overuse_detector.h"
 #include "rtc_base/numerics/safe_minmax.h"
 

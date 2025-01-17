@@ -15,9 +15,9 @@
 
 #include <optional>
 
+#include "api/transport/bandwidth_usage.h"
 #include "api/units/data_rate.h"
 #include "api/units/time_delta.h"
-#include "bandwidth_usage.h"
 
 namespace webrtc {
 

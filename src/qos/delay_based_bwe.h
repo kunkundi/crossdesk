@@ -18,15 +18,15 @@
 #include <vector>
 
 #include "aimd_rate_control.h"
+#include "api/transport/bandwidth_usage.h"
+#include "api/transport/network_types.h"
 #include "api/units/data_rate.h"
 #include "api/units/time_delta.h"
 #include "api/units/timestamp.h"
-#include "bandwidth_usage.h"
 #include "delay_increase_detector_interface.h"
 #include "inter_arrival.h"
 #include "inter_arrival_delta.h"
 #include "link_capacity_estimator.h"
-#include "network_types.h"
 #include "probe_bitrate_estimator.h"
 
 namespace webrtc {

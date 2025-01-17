@@ -1,67 +1,88 @@
 /*
- * @Author: DI JUNKUN
- * @Date: 2024-12-18
- * Copyright (c) 2024 by DI JUNKUN, All Rights Reserved.
+ *  Copyright (c) 2024 The WebRTC project authors. All Rights Reserved.
+ *
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree. An additional intellectual property rights grant can be found
+ *  in the file PATENTS.  All contributing project authors may
+ *  be found in the AUTHORS file in the root of the source tree.
  */
+#ifndef MODULES_REMOTE_BITRATE_ESTIMATOR_CONGESTION_CONTROL_FEEDBACK_GENERATOR_H_
+#define MODULES_REMOTE_BITRATE_ESTIMATOR_CONGESTION_CONTROL_FEEDBACK_GENERATOR_H_
 
-#ifndef _CONGESTION_CONTROL_FEEDBACK_GENERATOR_H_
-#define _CONGESTION_CONTROL_FEEDBACK_GENERATOR_H_
-
+#include <cstdint>
+#include <map>
+#include <memory>
 #include <optional>
-#include <vector>
 
+#include "api/units/data_rate.h"
+#include "api/units/data_size.h"
+#include "api/units/time_delta.h"
+#include "api/units/timestamp.h"
+#include "clock.h"
 #include "congestion_control_feedback_tracker.h"
-#include "rtcp_packet.h"
 #include "rtp_packet_received.h"
+#include "rtp_transport_feedback_generator.h"
 
-class CongestionControlFeedbackGenerator {
+namespace webrtc {
+
+// The class is responsible for generating RTCP feedback packets based on
+// incoming media packets. Feedback format will comply with RFC 8888.
+// https://datatracker.ietf.org/doc/rfc8888/
+
+// Feedback should not use more than 5% of the configured send bandwidth
+// estimate. Min and max duration between feedback is configurable using field
+// trials, but per default, min is 25ms and max is 250ms.
+// If possible, given the other constraints, feedback will be sent when a packet
+// with marker bit is received in order to provide feedback as soon as possible
+// after receiving a complete video frame. If no packet with marker bit is
+// received, feedback can be delayed up to 25ms after the first packet since the
+// last sent feedback. On good networks, this means that a sender may receive
+// feedback for every sent frame.
+class CongestionControlFeedbackGenerator
+    : public RtpTransportFeedbackGenerator {
  public:
-  CongestionControlFeedbackGenerator(RtcpSender feedback_sender);
+  CongestionControlFeedbackGenerator(
+      std::shared_ptr<SimulatedClock> clock,
+      RtpTransportFeedbackGenerator::RtcpSender feedback_sender);
   ~CongestionControlFeedbackGenerator() = default;
 
-  void OnReceivedPacket(RtpPacketReceived& packet);
+  void OnReceivedPacket(const RtpPacketReceived& packet) override;
 
-  void OnSendBandwidthEstimateChanged(int64_t estimate);
+  void OnSendBandwidthEstimateChanged(DataRate estimate) override;
 
-  int64_t Process(int64_t now_ms);
+  TimeDelta Process(Timestamp now) override;
 
-  void SetTransportOverhead(int64_t overhead_per_packet);
+  void SetTransportOverhead(DataSize overhead_per_packet) override;
 
  private:
-  int64_t NextFeedbackTime() const;
+  Timestamp NextFeedbackTime() const;
 
-  void SendFeedback(int64_t now_ms);
+  void SendFeedback(Timestamp now);
 
-  void CalculateNextPossibleSendTime(int64_t feedback_size, int64_t now_ms);
+  void CalculateNextPossibleSendTime(DataSize feedback_size, Timestamp now);
 
+  std::shared_ptr<SimulatedClock> clock_;
   const RtcpSender rtcp_sender_;
 
- private:
-  // Feedback should not use more than 5% of the configured send bandwidth
-  // estimate. Min and max duration between feedback is configurable using field
-  // trials, but per default, min is 25ms and max is 250ms.
-  // If possible, given the other constraints, feedback will be sent when a
-  // packet with marker bit is received in order to provide feedback as soon as
-  // possible after receiving a complete video frame. If no packet with marker
-  // bit is received, feedback can be delayed up to 25ms after the first packet
-  // since the last sent feedback. On good networks, this means that a sender
-  // may receive feedback for every sent frame.
-  int64_t min_time_between_feedback_ = 25;
-  int64_t max_time_between_feedback_ = 250;
-  int64_t max_time_to_wait_for_packet_with_marker_ = 25;
+  TimeDelta min_time_between_feedback_;
+  TimeDelta max_time_to_wait_for_packet_with_marker_;
+  TimeDelta max_time_between_feedback_;
 
-  int64_t max_feedback_rate_ = 1000;  // kbps
-  int64_t packet_overhead_ = 0;
-  int64_t send_rate_debt_ = 0;
+  DataRate max_feedback_rate_ = DataRate::KilobitsPerSec(1000);
+  DataSize packet_overhead_ = DataSize::Zero();
+  DataSize send_rate_debt_ = DataSize::Zero();
 
   std::map</*ssrc=*/uint32_t, CongestionControlFeedbackTracker>
       feedback_trackers_;
 
-  std::optional<int64_t> first_arrival_time_since_feedback_;
-  int64_t next_possible_feedback_send_time_ = 0;
-  int64_t last_feedback_sent_time_ = 0;
-
+  // std::vector<PacketInfo> packets_;
+  Timestamp last_feedback_sent_time_ = Timestamp::Zero();
+  std::optional<Timestamp> first_arrival_time_since_feedback_;
   bool marker_bit_seen_ = false;
+  Timestamp next_possible_feedback_send_time_ = Timestamp::Zero();
 };
 
-#endif
+}  // namespace webrtc
+
+#endif  // MODULES_REMOTE_BITRATE_ESTIMATOR_CONGESTION_CONTROL_FEEDBACK_GENERATOR_H_

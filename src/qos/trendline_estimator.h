@@ -16,7 +16,8 @@
 #include <deque>
 #include <memory>
 
-#include "bandwidth_usage.h"
+#include "api/transport/bandwidth_usage.h"
+#include "delay_increase_detector_interface.h"
 
 namespace webrtc {
 

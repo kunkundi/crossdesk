@@ -14,6 +14,8 @@
 
 #include "api/units/timestamp.h"
 
+static constexpr int kAbsSendTimeFraction = 18;
+
 enum { kRtpCsrcSize = 15 };  // RFC 3550 page 13
 
 struct RTPHeader {

@@ -15,10 +15,10 @@
 #include <optional>
 #include <vector>
 
+#include "api/transport/network_types.h"
 #include "api/units/data_rate.h"
 #include "api/units/timestamp.h"
 #include "bitrate_estimator.h"
-#include "network_types.h"
 
 namespace webrtc {
 

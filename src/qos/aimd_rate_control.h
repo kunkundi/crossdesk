@@ -15,11 +15,11 @@
 
 #include <optional>
 
+#include "api/transport/network_types.h"
 #include "api/units/data_rate.h"
 #include "api/units/timestamp.h"
 #include "bwe_defines.h"
 #include "link_capacity_estimator.h"
-#include "network_types.h"
 
 namespace webrtc {
 // A rate control implementation based on additive increases of
@@ -98,7 +98,7 @@ class AimdRateControl {
   const bool send_side_;
   // Allow the delay based estimate to only increase as long as application
   // limited region (alr) is not detected.
-  const bool no_bitrate_increase_in_alr_;
+  const bool no_bitrate_increase_in_alr_ = true;
   // If "Disabled",  estimated link capacity is not used as upper bound.
   bool disable_estimate_bounded_increase_ = true;
   bool use_current_estimate_as_min_upper_bound_ = true;

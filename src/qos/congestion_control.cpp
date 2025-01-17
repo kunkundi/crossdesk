@@ -21,7 +21,34 @@ constexpr float kDefaultPaceMultiplier = 2.5f;
 // below the current throughput estimate to drain the network queues.
 constexpr double kProbeDropThroughputFraction = 0.85;
 
-CongestionControl::CongestionControl() {}
+CongestionControl::CongestionControl()
+    : use_min_allocatable_as_lower_bound_(false),
+      ignore_probes_lower_than_network_estimate_(false),
+      limit_probes_lower_than_throughput_estimate_(false),
+      pace_at_max_of_bwe_and_lower_link_capacity_(false),
+      limit_pacingfactor_by_upper_link_capacity_estimate_(false),
+      probe_controller_(new ProbeController()),
+      bandwidth_estimation_(new SendSideBandwidthEstimation()),
+      alr_detector_(new AlrDetector()),
+      probe_bitrate_estimator_(new ProbeBitrateEstimator()),
+      network_estimator_(new NetworkStateEstimator()),
+      network_state_predictor_(new NetworkStatePredictor()),
+      delay_based_bwe_(new DelayBasedBwe()),
+      acknowledged_bitrate_estimator_(new AcknowledgedBitrateEstimator()),
+      initial_config_(std::nullopt),
+      last_loss_based_target_rate_(*config.constraints.starting_rate),
+      last_pushback_target_rate_(last_loss_based_target_rate_),
+      last_stable_target_rate_(last_loss_based_target_rate_),
+      last_loss_base_state_(LossBasedState::kDelayBasedEstimate),
+      pacing_factor_(config.stream_based_config.pacing_factor.value_or(
+          kDefaultPaceMultiplier)),
+      min_total_allocated_bitrate_(
+          config.stream_based_config.min_total_allocated_bitrate.value_or(
+              DataRate::Zero())),
+      max_padding_rate_(config.stream_based_config.max_padding_rate.value_or(
+          DataRate::Zero()))
+
+{}
 
 CongestionControl::~CongestionControl() {}
 
@@ -35,28 +62,27 @@ NetworkControlUpdate CongestionControl::OnTransportPacketsFeedback(
 
   if (congestion_window_pushback_controller_) {
     congestion_window_pushback_controller_->UpdateOutstandingData(
-        report.data_in_flight);
+        report.data_in_flight.bytes());
   }
-  int64_t max_feedback_rtt = std::numeric_limits<int64_t>::min();
-  int64_t min_propagation_rtt = std::numeric_limits<int64_t>::max();
-  int64_t max_recv_time = std::numeric_limits<int64_t>::min();
+  TimeDelta max_feedback_rtt = TimeDelta::MinusInfinity();
+  TimeDelta min_propagation_rtt = TimeDelta::PlusInfinity();
+  Timestamp max_recv_time = Timestamp::MinusInfinity();
 
   std::vector<PacketResult> feedbacks = report.ReceivedWithSendInfo();
   for (const auto& feedback : feedbacks)
     max_recv_time = std::max(max_recv_time, feedback.receive_time);
 
   for (const auto& feedback : feedbacks) {
-    int64_t feedback_rtt =
+    TimeDelta feedback_rtt =
         report.feedback_time - feedback.sent_packet.send_time;
-    int64_t min_pending_time = max_recv_time - feedback.receive_time;
-    int64_t propagation_rtt = feedback_rtt - min_pending_time;
+    TimeDelta min_pending_time = max_recv_time - feedback.receive_time;
+    TimeDelta propagation_rtt = feedback_rtt - min_pending_time;
     max_feedback_rtt = std::max(max_feedback_rtt, feedback_rtt);
     min_propagation_rtt = std::min(min_propagation_rtt, propagation_rtt);
   }
 
-  if (max_feedback_rtt != std::numeric_limits<int64_t>::min() &&
-      min_propagation_rtt != std::numeric_limits<int64_t>::max()) {
-    feedback_max_rtts_.push_back(max_feedback_rtt);
+  if (max_feedback_rtt.IsFinite()) {
+    feedback_max_rtts_.push_back(max_feedback_rtt.ms());
     const size_t kMaxFeedbackRttWindow = 32;
     if (feedback_max_rtts_.size() > kMaxFeedbackRttWindow)
       feedback_max_rtts_.pop_front();
@@ -70,19 +96,19 @@ NetworkControlUpdate CongestionControl::OnTransportPacketsFeedback(
           std::accumulate(feedback_max_rtts_.begin(), feedback_max_rtts_.end(),
                           static_cast<int64_t>(0));
       int64_t mean_rtt_ms = sum_rtt_ms / feedback_max_rtts_.size();
-      if (delay_based_bwe_) delay_based_bwe_->OnRttUpdate(mean_rtt_ms);
+      if (delay_based_bwe_)
+        delay_based_bwe_->OnRttUpdate(TimeDelta::Millis(mean_rtt_ms));
     }
 
-    int64_t feedback_min_rtt = std::numeric_limits<int64_t>::max();
+    TimeDelta feedback_min_rtt = TimeDelta::PlusInfinity();
     for (const auto& packet_feedback : feedbacks) {
-      int64_t pending_time = max_recv_time - packet_feedback.receive_time;
-      int64_t rtt = report.feedback_time -
-                    packet_feedback.sent_packet.send_time - pending_time;
+      TimeDelta pending_time = max_recv_time - packet_feedback.receive_time;
+      TimeDelta rtt = report.feedback_time -
+                      packet_feedback.sent_packet.send_time - pending_time;
       // Value used for predicting NACK round trip time in FEC controller.
       feedback_min_rtt = std::min(rtt, feedback_min_rtt);
     }
-    if (feedback_min_rtt != std::numeric_limits<int64_t>::max() &&
-        feedback_min_rtt != std::numeric_limits<int64_t>::min()) {
+    if (feedback_min_rtt.IsFinite()) {
       bandwidth_estimation_->UpdateRtt(feedback_min_rtt, report.feedback_time);
     }
 
@@ -105,7 +131,7 @@ NetworkControlUpdate CongestionControl::OnTransportPacketsFeedback(
       alr_detector_->GetApplicationLimitedRegionStartTime();
 
   if (previously_in_alr_ && !alr_start_time.has_value()) {
-    int64_t now_ms = report.feedback_time;
+    int64_t now_ms = report.feedback_time.ms();
     acknowledged_bitrate_estimator_->SetAlrEndedTime(report.feedback_time);
     probe_controller_->SetAlrEndedTimeMs(now_ms);
   }
@@ -122,7 +148,11 @@ NetworkControlUpdate CongestionControl::OnTransportPacketsFeedback(
     }
   }
 
-  std::optional<int64_t> probe_bitrate =
+  if (network_estimator_) {
+    network_estimator_->OnTransportPacketsFeedback(report);
+    SetNetworkStateEstimate(network_estimator_->GetCurrentEstimate());
+  }
+  std::optional<DataRate> probe_bitrate =
       probe_bitrate_estimator_->FetchAndResetLastEstimatedBitrate();
   if (ignore_probes_lower_than_network_estimate_ && probe_bitrate &&
       estimate_ && *probe_bitrate < delay_based_bwe_->last_estimate() &&
@@ -138,7 +168,7 @@ NetworkControlUpdate CongestionControl::OnTransportPacketsFeedback(
     // based estimate, but it could happen e.g. due to packet bursts or
     // encoder overshoot. We use std::min to ensure that a probe result
     // below the current BWE never causes an increase.
-    int64_t limit =
+    DataRate limit =
         std::min(delay_based_bwe_->last_estimate(),
                  *acknowledged_bitrate * kProbeDropThroughputFraction);
     probe_bitrate = std::max(*probe_bitrate, limit);

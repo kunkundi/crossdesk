@@ -41,8 +41,8 @@ void CongestionControlFeedbackTracker::ReceivedPacket(
     // received.
     last_sequence_number_in_feedback_ = unwrapped_sequence_number - 1;
   }
-  packets_.emplace_back(packet.Ssrc(), unwrapped_sequence_number,
-                        packet.arrival_time(), packet.ecn());
+  packets_.push_back({packet.Ssrc(), unwrapped_sequence_number,
+                      packet.arrival_time(), packet.ecn()});
 }
 
 void CongestionControlFeedbackTracker::AddPacketsToFeedback(
@@ -89,8 +89,8 @@ void CongestionControlFeedbackTracker::AddPacketsToFeedback(
         ++packet_it;
       }
     }  // else - the packet has not been received yet.
-    packet_feedback.emplace_back(ssrc, static_cast<uint16_t>(sequence_number),
-                                 arrival_time_offset, ecn);
+    packet_feedback.push_back({ssrc, static_cast<uint16_t>(sequence_number),
+                               arrival_time_offset, ecn});
   }
   last_sequence_number_in_feedback_ = packets_.back().unwrapped_sequence_number;
   packets_.clear();
