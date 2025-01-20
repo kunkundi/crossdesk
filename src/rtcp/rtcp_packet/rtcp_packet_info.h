@@ -24,7 +24,8 @@ struct RtcpPacketInfo {
   // std::vector<ReportBlockData> report_block_datas;
   std::optional<int64_t> rtt;
   uint32_t receiver_estimated_max_bitrate_bps = 0;
-  std::optional<CongestionControlFeedback> congestion_control_feedback;
+  std::optional<webrtc::rtcp::CongestionControlFeedback>
+      congestion_control_feedback;
   // std::optional<VideoBitrateAllocation> target_bitrate_allocation;
   // std::optional<NetworkStateEstimate> network_state_estimate;
   // std::unique_ptr<rtcp::LossNotification> loss_notification;

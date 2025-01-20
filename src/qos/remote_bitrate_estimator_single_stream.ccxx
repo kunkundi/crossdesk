@@ -36,7 +36,7 @@ RemoteBitrateEstimatorSingleStream::Detector::Detector()
       inter_arrival(90 * kTimestampGroupLengthMs, kTimestampToMs) {}
 
 RemoteBitrateEstimatorSingleStream::RemoteBitrateEstimatorSingleStream(
-    std::shared_ptr<SimulatedClock> clock, RemoteBitrateObserver* observer)
+    std::shared_ptr<Clock> clock, RemoteBitrateObserver* observer)
     : clock_(clock),
       observer_(observer),
       incoming_bitrate_(kBitrateWindow),

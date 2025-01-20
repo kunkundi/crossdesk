@@ -16,13 +16,13 @@
 #include <utility>
 
 #include "api/media_types.h"
-#include "api/transport/network_control.h"
 #include "api/units/data_rate.h"
 #include "api/units/data_size.h"
 #include "api/units/time_delta.h"
 #include "api/units/timestamp.h"
 #include "log.h"
-#include "remote_bitrate_estimator_single_stream.h"
+// #include "remote_bitrate_estimator_single_stream.h"
+#include "remote_bitrate_estimator_abs_send_time.h"
 #include "rtp_packet_received.h"
 
 namespace webrtc {
@@ -56,21 +56,24 @@ void ReceiveSideCongestionController::PickEstimator() {
           "WrappingBitrateEstimator: Switching to transmission "
           "time offset RBE.");
       using_absolute_send_time_ = false;
-      rbe_ = std::make_unique<RemoteBitrateEstimatorSingleStream>(
+      // rbe_ = std::make_unique<RemoteBitrateEstimatorSingleStream>(
+      //     clock_, &remb_throttler_);
+      rbe_ = std::make_unique<RemoteBitrateEstimatorAbsSendTime>(
           clock_, &remb_throttler_);
     }
   }
 }
 
 ReceiveSideCongestionController::ReceiveSideCongestionController(
-    std::shared_ptr<SimulatedClock> clock,
+    std::shared_ptr<Clock> clock,
     RtpTransportFeedbackGenerator::RtcpSender feedback_sender,
-    RembThrottler::RembSender remb_sender,
-    std::shared_ptr<NetworkStateEstimator> network_state_estimator)
+    RembThrottler::RembSender remb_sender)
     : clock_(clock),
       remb_throttler_(std::move(remb_sender), clock.get()),
       congestion_control_feedback_generator_(clock, feedback_sender),
-      rbe_(std::make_unique<RemoteBitrateEstimatorSingleStream>(
+      // rbe_(std::make_unique<RemoteBitrateEstimatorSingleStream>(
+      //     clock, &remb_throttler_)),
+      rbe_(std::make_unique<RemoteBitrateEstimatorAbsSendTime>(
           clock, &remb_throttler_)),
       using_absolute_send_time_(false),
       packets_since_absolute_send_time_(0) {}

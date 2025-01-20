@@ -7,13 +7,11 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
-#ifndef RTC_BASE_NETWORK_ECN_MARKING_H_
-#define RTC_BASE_NETWORK_ECN_MARKING_H_
 
-// // TODO: bugs.webrtc.org/42225697 - delete this file.
-#include "ecn_marking.h"
+#ifndef API_TRANSPORT_ECN_MARKING_H_
+#define API_TRANSPORT_ECN_MARKING_H_
 
-namespace rtc {
+namespace webrtc {
 
 // TODO: bugs.webrtc.org/42225697 - L4S support is slowly being developed.
 // Help is appreciated.
@@ -39,6 +37,6 @@ enum class EcnMarking {
   kCe = 3,      // Congestion experienced
 };
 
-}  // namespace rtc
+}  // namespace webrtc
 
-#endif  // RTC_BASE_NETWORK_ECN_MARKING_H_
+#endif  // API_TRANSPORT_ECN_MARKING_H_

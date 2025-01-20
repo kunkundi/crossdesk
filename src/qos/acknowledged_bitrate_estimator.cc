@@ -24,11 +24,14 @@
 namespace webrtc {
 
 AcknowledgedBitrateEstimator::AcknowledgedBitrateEstimator()
-    : AcknowledgedBitrateEstimator(std::make_unique<BitrateEstimator>()) {}
+    : in_alr_(false),
+      bitrate_estimator_(std::make_unique<BitrateEstimator>()) {}
 
 AcknowledgedBitrateEstimator::AcknowledgedBitrateEstimator(
     std::unique_ptr<BitrateEstimator> bitrate_estimator)
     : in_alr_(false), bitrate_estimator_(std::move(bitrate_estimator)) {}
+
+AcknowledgedBitrateEstimator::~AcknowledgedBitrateEstimator() {}
 
 void AcknowledgedBitrateEstimator::IncomingPacketFeedbackVector(
     const std::vector<PacketResult>& packet_feedback_vector) {

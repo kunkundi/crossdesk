@@ -7,6 +7,7 @@
 #ifndef _VIDEO_CHANNEL_SEND_H_
 #define _VIDEO_CHANNEL_SEND_H_
 
+#include "congestion_control_feedback.h"
 #include "ice_agent.h"
 #include "rtp_codec.h"
 #include "rtp_video_sender.h"
@@ -25,10 +26,11 @@ class VideoChannelSend {
 
   int SendVideo(char* data, size_t size);
 
-  void OnCongestionControlFeedback(int64_t recv_ts,
-                                   const CongestionControlFeedback& feedback);
+  void OnCongestionControlFeedback(
+      int64_t recv_ts, const webrtc::rtcp::CongestionControlFeedback& feedback);
 
-  void HandleTransportPacketsFeedback(const TransportPacketsFeedback& feedback);
+  void HandleTransportPacketsFeedback(
+      const webrtc::TransportPacketsFeedback& feedback);
 
  private:
   std::shared_ptr<IceAgent> ice_agent_ = nullptr;
@@ -42,7 +44,7 @@ class VideoChannelSend {
   std::optional<uint32_t> last_feedback_compact_ntp_time_;
   int feedback_count_ = 0;
 
-  TransportFeedbackAdapter transport_feedback_adapter_;
+  webrtc::TransportFeedbackAdapter transport_feedback_adapter_;
 };
 
 #endif

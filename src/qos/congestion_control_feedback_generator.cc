@@ -30,7 +30,7 @@
 namespace webrtc {
 
 CongestionControlFeedbackGenerator::CongestionControlFeedbackGenerator(
-    std::shared_ptr<SimulatedClock> clock, RtcpSender rtcp_sender)
+    std::shared_ptr<Clock> clock, RtcpSender rtcp_sender)
     : clock_(clock),
       rtcp_sender_(std::move(rtcp_sender)),
       min_time_between_feedback_(TimeDelta::Millis(25)),
@@ -89,8 +89,7 @@ void CongestionControlFeedbackGenerator::SetTransportOverhead(
 }
 
 void CongestionControlFeedbackGenerator::SendFeedback(Timestamp now) {
-  SimulatedClock clock(now);
-  uint32_t compact_ntp = CompactNtp(clock.ConvertTimestampToNtpTime(now));
+  uint32_t compact_ntp = CompactNtp(clock_->ConvertTimestampToNtpTime(now));
   std::vector<rtcp::CongestionControlFeedback::PacketInfo> rtcp_packet_info;
   for (auto& [unused, tracker] : feedback_trackers_) {
     tracker.AddPacketsToFeedback(now, rtcp_packet_info);

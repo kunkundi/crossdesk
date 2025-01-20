@@ -15,9 +15,9 @@
 #include <vector>
 
 #include "api/array_view.h"
+#include "api/transport/ecn_marking.h"
 #include "api/units/time_delta.h"
 #include "common_header.h"
-#include "rtc_base/network/ecn_marking.h"
 #include "rtp_feedback.h"
 
 namespace webrtc {
@@ -33,7 +33,7 @@ class CongestionControlFeedback : public RtpFeedback {
     //  Time offset from report timestamp. Minus infinity if the packet has not
     //  been received.
     TimeDelta arrival_time_offset = TimeDelta::MinusInfinity();
-    rtc::EcnMarking ecn = rtc::EcnMarking::kNotEct;
+    EcnMarking ecn = EcnMarking::kNotEct;
   };
 
   static constexpr uint8_t kFeedbackMessageType = 11;

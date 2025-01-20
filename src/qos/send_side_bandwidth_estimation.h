@@ -111,6 +111,10 @@ class SendSideBandwidthEstimation {
   int GetMinBitrate() const;
   void SetAcknowledgedRate(std::optional<DataRate> acknowledged_rate,
                            Timestamp at_time);
+  void UpdateLossBasedEstimator(const TransportPacketsFeedback& report,
+                                BandwidthUsage delay_detector_state,
+                                std::optional<DataRate> probe_bitrate,
+                                bool in_alr);
 
  private:
   friend class GoogCcStatePrinter;

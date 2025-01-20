@@ -16,7 +16,6 @@
 #include <mutex>
 
 #include "api/media_types.h"
-#include "api/transport/network_control.h"
 #include "api/units/data_rate.h"
 #include "api/units/data_size.h"
 #include "api/units/time_delta.h"
@@ -37,10 +36,9 @@ class RemoteBitrateEstimator;
 class ReceiveSideCongestionController : public CallStatsObserver {
  public:
   ReceiveSideCongestionController(
-      std::shared_ptr<SimulatedClock> clock,
+      std::shared_ptr<Clock> clock,
       RtpTransportFeedbackGenerator::RtcpSender feedback_sender,
-      RembThrottler::RembSender remb_sender,
-      std::shared_ptr<NetworkStateEstimator> network_state_estimator);
+      RembThrottler::RembSender remb_sender);
 
   ~ReceiveSideCongestionController() override = default;
 
@@ -73,7 +71,7 @@ class ReceiveSideCongestionController : public CallStatsObserver {
  private:
   void PickEstimator();
 
-  std::shared_ptr<SimulatedClock> clock_;
+  std::shared_ptr<Clock> clock_;
   RembThrottler remb_throttler_;
 
   CongestionControlFeedbackGenerator congestion_control_feedback_generator_;

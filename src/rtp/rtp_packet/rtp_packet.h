@@ -184,6 +184,7 @@ class RtpPacket {
 
  public:
   RtpPacket();
+  RtpPacket(uint32_t size);
   RtpPacket(const uint8_t *buffer, uint32_t size);
   RtpPacket(const RtpPacket &rtp_packet);
   RtpPacket(RtpPacket &&rtp_packet);
@@ -218,6 +219,31 @@ class RtpPacket {
     extension_len_ = extension_len;
     extension_data_ = new uint8_t[extension_len_];
     memcpy(extension_data_, extension_data, extension_len_);
+  }
+
+  void SetAbsoluteSendTimestamp(uint32_t abs_send_time) {
+    // Absolute Send Time is a 24-bit field, we need to ensure it fits in 24
+    // bits
+    abs_send_time &= 0x00FFFFFF;
+
+    // Allocate memory for the extension data if not already allocated
+    if (extension_data_ == nullptr) {
+      extension_data_ = new uint8_t[4];  // 2 bytes for profile, 2 bytes for
+                                         // length, 3 bytes for abs_send_time
+      extension_len_ = 4;
+    }
+
+    // Set the extension profile to 0xBEDE (one-byte header)
+    extension_profile_ = 0xBEDE;
+
+    // Set the length of the extension data (in 32-bit words minus one)
+    extension_data_[0] = 0x00;
+    extension_data_[1] = 0x02;  // 2 words (8 bytes)
+
+    // Set the absolute send time in the extension data
+    extension_data_[2] = (abs_send_time >> 16) & 0xFF;
+    extension_data_[3] = (abs_send_time >> 8) & 0xFF;
+    extension_data_[4] = abs_send_time & 0xFF;
   }
 
  public:
@@ -323,6 +349,18 @@ class RtpPacket {
     return extension_data_;
   }
 
+  uint32_t GetAbsoluteSendTimestamp(uint32_t *abs_send_time) const {
+    if (extension_data_ == nullptr || extension_len_ < 4) {
+      return 0;
+    }
+
+    // Absolute Send Time is a 24-bit field
+    *abs_send_time = (extension_data_[2] << 16) | (extension_data_[3] << 8) |
+                     extension_data_[4];
+
+    return *abs_send_time;
+  }
+
   uint8_t FecSymbolId() { return fec_symbol_id_; }
 
   uint8_t FecSourceSymbolNum() { return fec_source_symbol_num_; }
@@ -355,6 +393,7 @@ class RtpPacket {
   // Entire RTP buffer
   const uint8_t *Buffer() const { return buffer_; }
   size_t Size() const { return size_; }
+  size_t size() const { return size_; }
 
   // NAL
   NAL_UNIT_TYPE NalUnitType() {

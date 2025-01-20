@@ -228,8 +228,10 @@ std::vector<ProbeClusterConfig> ProbeController::InitiateExponentialProbing(
       max_total_allocated_bitrate_.IsZero()) {
     last_allowed_repeated_initial_probe_ =
         at_time + config_.repeated_initial_probing_time_period;
-    LOG_INFO("Repeated initial probing enabled, last allowed probe: {} now: {}",
-             last_allowed_repeated_initial_probe_, at_time);
+    // LOG_INFO("Repeated initial probing enabled, last allowed probe: {} now:
+    // {}",
+    //          ToString(last_allowed_repeated_initial_probe_),
+    //          ToString(at_time));
   }
 
   return InitiateProbing(at_time, probes, true);
@@ -262,10 +264,10 @@ std::vector<ProbeClusterConfig> ProbeController::SetEstimatedBitrate(
             ? network_estimate_->link_capacity_upper *
                   config_.further_probe_threshold
             : DataRate::PlusInfinity();
-    LOG_INFO(
-        "Measured bitrate: {} Minimum to probe further: {} upper limit: {}",
-        bitrate, min_bitrate_to_probe_further_,
-        network_state_estimate_probe_further_limit);
+    // LOG_INFO(
+    //     "Measured bitrate: {} Minimum to probe further: {} upper limit: {}",
+    //     bitrate, ToString(min_bitrate_to_probe_further_),
+    //     ToString(network_state_estimate_probe_further_limit));
 
     if (bitrate > min_bitrate_to_probe_further_ &&
         bitrate <= network_state_estimate_probe_further_limit) {

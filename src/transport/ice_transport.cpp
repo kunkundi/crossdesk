@@ -260,7 +260,7 @@ void IceTransport::OnReceiveBuffer(NiceAgent *agent, guint stream_id,
 
 bool IceTransport::ParseRtcpPacket(const uint8_t *buffer, size_t size,
                                    RtcpPacketInfo *rtcp_packet_info) {
-  RtcpCommonHeader rtcp_block;
+  webrtc::rtcp::CommonHeader rtcp_block;
   // If a sender report is received but no DLRR, we need to reset the
   // roundTripTime stat according to the standard, see
   // https://www.w3.org/TR/webrtc-stats/#dom-rtcremoteoutboundrtpstreamstats-roundtriptime
@@ -287,7 +287,7 @@ bool IceTransport::ParseRtcpPacket(const uint8_t *buffer, size_t size,
       break;
     case RtcpPacket::PAYLOAD_TYPE::TCC:
       switch (rtcp_block.fmt()) {
-        case CongestionControlFeedback::kFeedbackMessageType:
+        case webrtc::rtcp::CongestionControlFeedback::kFeedbackMessageType:
           LOG_INFO("Congestion Control Feedback");
           valid = HandleCongestionControlFeedback(rtcp_block, rtcp_packet_info);
           break;
@@ -350,16 +350,17 @@ bool IceTransport::ParseRtcpPacket(const uint8_t *buffer, size_t size,
 }
 
 bool IceTransport::HandleCongestionControlFeedback(
-    const RtcpCommonHeader &rtcp_block, RtcpPacketInfo *rtcp_packet_info) {
-  CongestionControlFeedback feedback;
+    const webrtc::rtcp::CommonHeader &rtcp_block,
+    RtcpPacketInfo *rtcp_packet_info) {
+  webrtc::rtcp::CongestionControlFeedback feedback;
   if (!feedback.Parse(rtcp_block) || feedback.packets().empty()) {
     return false;
   }
-  // uint32_t first_media_source_ssrc = feedback.packets()[0].ssrc;
-  // if (first_media_source_ssrc == local_media_ssrc() ||
-  //     registered_ssrcs_.contains(first_media_source_ssrc)) {
-  //   rtcp_packet_info->congestion_control_feedback.emplace(std::move(feedback));
-  // }
+  uint32_t first_media_source_ssrc = feedback.packets()[0].ssrc;
+  if (first_media_source_ssrc == local_media_ssrc() ||
+      registered_ssrcs_.contains(first_media_source_ssrc)) {
+    rtcp_packet_info->congestion_control_feedback.emplace(std::move(feedback));
+  }
   return true;
 }
 

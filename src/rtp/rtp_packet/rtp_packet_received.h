@@ -17,8 +17,8 @@
 #include "api/array_view.h"
 #include "api/ref_counted_base.h"
 #include "api/scoped_refptr.h"
+#include "api/transport/ecn_marking.h"
 #include "api/units/timestamp.h"
-#include "rtc_base/network/ecn_marking.h"
 #include "rtp_header.h"
 #include "rtp_packet.h"
 
@@ -29,8 +29,7 @@ namespace webrtc {
 class RtpPacketReceived : public RtpPacket {
  public:
   RtpPacketReceived();
-  explicit RtpPacketReceived(
-      webrtc::Timestamp arrival_time = webrtc::Timestamp::MinusInfinity());
+  explicit RtpPacketReceived(webrtc::Timestamp arrival_time);
   RtpPacketReceived(const RtpPacketReceived& packet);
   RtpPacketReceived(RtpPacketReceived&& packet);
 
@@ -50,8 +49,8 @@ class RtpPacketReceived : public RtpPacket {
 
   // Explicit Congestion Notification (ECN), RFC-3168, Section 5.
   // Used by L4S: https://www.rfc-editor.org/rfc/rfc9331.html
-  rtc::EcnMarking ecn() const { return ecn_; }
-  void set_ecn(rtc::EcnMarking ecn) { ecn_ = ecn; }
+  EcnMarking ecn() const { return ecn_; }
+  void set_ecn(EcnMarking ecn) { ecn_ = ecn; }
 
   // Flag if packet was recovered via RTX or FEC.
   bool recovered() const { return recovered_; }
@@ -73,7 +72,7 @@ class RtpPacketReceived : public RtpPacket {
 
  private:
   webrtc::Timestamp arrival_time_ = Timestamp::MinusInfinity();
-  rtc::EcnMarking ecn_ = rtc::EcnMarking::kNotEct;
+  EcnMarking ecn_ = EcnMarking::kNotEct;
   int payload_type_frequency_ = 0;
   bool recovered_ = false;
   rtc::scoped_refptr<rtc::RefCountedBase> additional_data_;

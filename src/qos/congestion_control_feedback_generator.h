@@ -43,7 +43,7 @@ class CongestionControlFeedbackGenerator
     : public RtpTransportFeedbackGenerator {
  public:
   CongestionControlFeedbackGenerator(
-      std::shared_ptr<SimulatedClock> clock,
+      std::shared_ptr<Clock> clock,
       RtpTransportFeedbackGenerator::RtcpSender feedback_sender);
   ~CongestionControlFeedbackGenerator() = default;
 
@@ -62,7 +62,7 @@ class CongestionControlFeedbackGenerator
 
   void CalculateNextPossibleSendTime(DataSize feedback_size, Timestamp now);
 
-  std::shared_ptr<SimulatedClock> clock_;
+  std::shared_ptr<Clock> clock_;
   const RtcpSender rtcp_sender_;
 
   TimeDelta min_time_between_feedback_;

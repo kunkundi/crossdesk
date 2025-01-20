@@ -32,7 +32,7 @@ namespace webrtc {
 
 class RemoteBitrateEstimatorSingleStream : public RemoteBitrateEstimator {
  public:
-  RemoteBitrateEstimatorSingleStream(std::shared_ptr<SimulatedClock> clock,
+  RemoteBitrateEstimatorSingleStream(std::shared_ptr<Clock> clock,
                                      RemoteBitrateObserver* observer);
 
   RemoteBitrateEstimatorSingleStream() = delete;
@@ -64,7 +64,7 @@ class RemoteBitrateEstimatorSingleStream : public RemoteBitrateEstimator {
 
   std::vector<uint32_t> GetSsrcs() const;
 
-  std::shared_ptr<SimulatedClock> clock_;
+  std::shared_ptr<Clock> clock_;
   RemoteBitrateObserver* observer_;
   std::map<uint32_t, Detector> overuse_detectors_;
   BitrateTracker incoming_bitrate_;

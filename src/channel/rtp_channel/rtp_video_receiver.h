@@ -6,15 +6,19 @@
 #include <queue>
 #include <set>
 
+#include "clock.h"
 #include "fec_decoder.h"
 #include "io_statistics.h"
 #include "receive_side_congestion_controller.h"
 #include "ringbuffer.h"
 #include "rtcp_receiver_report.h"
 #include "rtp_codec.h"
+#include "rtp_rtcp_defines.h "
 #include "rtp_statistics.h"
 #include "thread_base.h"
 #include "video_frame.h"
+
+using namespace webrtc;
 
 class RtpVideoReceiver : public ThreadBase {
  public:
@@ -46,6 +50,8 @@ class RtpVideoReceiver : public ThreadBase {
 
   void SendCombinedRtcpPacket(
       std::vector<std::unique_ptr<RtcpPacket>> rtcp_packets);
+
+  void SendRemb(int64_t bitrate_bps, std::vector<uint32_t> ssrcs);
 
  private:
   bool Process() override;
@@ -89,7 +95,9 @@ class RtpVideoReceiver : public ThreadBase {
   int rtcp_tcc_interval_ms_ = 200;
 
  private:
+  std::shared_ptr<Clock> clock_;
   ReceiveSideCongestionController receive_side_congestion_controller_;
+  RtcpFeedbackSenderInterface* active_remb_module_;
   uint32_t feedback_ssrc_ = 0;
 };
 

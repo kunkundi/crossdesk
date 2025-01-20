@@ -57,18 +57,18 @@ int VideoChannelSend::SendVideo(char* data, size_t size) {
 }
 
 void VideoChannelSend::OnCongestionControlFeedback(
-    int64_t recv_ts, const CongestionControlFeedback& feedback) {
+    int64_t recv_ts, const webrtc::rtcp::CongestionControlFeedback& feedback) {
   ++feedback_count_;
-  std::optional<TransportPacketsFeedback> feedback_msg =
-      transport_feedback_adapter_.ProcessCongestionControlFeedback(feedback,
-                                                                   recv_ts);
+  std::optional<webrtc::TransportPacketsFeedback> feedback_msg =
+      transport_feedback_adapter_.ProcessCongestionControlFeedback(
+          feedback, webrtc::Timestamp::Micros(recv_ts));
   if (feedback_msg) {
     HandleTransportPacketsFeedback(*feedback_msg);
   }
 }
 
 void VideoChannelSend::HandleTransportPacketsFeedback(
-    const TransportPacketsFeedback& feedback) {
+    const webrtc::TransportPacketsFeedback& feedback) {
   // if (transport_is_ecn_capable_) {
   //   // If transport does not support ECN, packets should not be sent as
   //   ECT(1).

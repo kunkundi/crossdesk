@@ -17,12 +17,12 @@
 #include <vector>
 
 #include "api/array_view.h"
+#include "api/transport/ecn_marking.h"
 #include "api/units/time_delta.h"
 #include "api/units/timestamp.h"
 #include "byte_io.h"
 #include "common_header.h"
 #include "log.h"
-#include "rtc_base/network/ecn_marking.h"
 
 namespace webrtc {
 namespace rtcp {
@@ -102,31 +102,33 @@ TimeDelta AtoToTimeDelta(uint16_t receive_info) {
   return TimeDelta::Seconds(ato) / 1024;
 }
 
-uint16_t To2BitEcn(rtc::EcnMarking ecn_marking) {
+uint16_t To2BitEcn(EcnMarking ecn_marking) {
   switch (ecn_marking) {
-    case rtc::EcnMarking::kNotEct:
+    case EcnMarking::kNotEct:
       return 0;
-    case rtc::EcnMarking::kEct1:
+    case EcnMarking::kEct1:
       return kEcnEct1 << 13;
-    case rtc::EcnMarking::kEct0:
+    case EcnMarking::kEct0:
       return kEcnEct0 << 13;
-    case rtc::EcnMarking::kCe:
+    case EcnMarking::kCe:
       return kEcnCe << 13;
+    default:
+      return 0;
   }
 }
 
-rtc::EcnMarking ToEcnMarking(uint16_t receive_info) {
+EcnMarking ToEcnMarking(uint16_t receive_info) {
   const uint16_t ecn = (receive_info >> 13) & 0b11;
   if (ecn == kEcnEct1) {
-    return rtc::EcnMarking::kEct1;
+    return EcnMarking::kEct1;
   }
   if (ecn == kEcnEct0) {
-    return rtc::EcnMarking::kEct0;
+    return EcnMarking::kEct0;
   }
   if (ecn == kEcnCe) {
-    return rtc::EcnMarking::kCe;
+    return EcnMarking::kCe;
   }
-  return rtc::EcnMarking::kNotEct;
+  return EcnMarking::kNotEct;
 }
 
 }  // namespace
@@ -146,9 +148,9 @@ bool CongestionControlFeedback::Create(uint8_t* buffer, size_t* position,
   const size_t position_end = *position + BlockLength();
 
   //    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-  //    |V=2|P| FMT=11  |   PT = 205    |          length               |
+  //    |V=2|P| FMT=11  |   PT = 205    |          length |
   //    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-  //    |                 SSRC of RTCP packet sender                    |
+  //    |                 SSRC of RTCP packet sender |
   //    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
   CreateHeader(kFeedbackMessageType, kPacketType, HeaderLength(), buffer,
                position);
@@ -175,9 +177,9 @@ bool CongestionControlFeedback::Create(uint8_t* buffer, size_t* position,
     // num_reports
     uint16_t num_reports = packets.size();
 
-    // Each report block MUST NOT include more than 16384 packet metric
-    // blocks (i.e., it MUST NOT report on more than one quarter of the
-    // sequence number space in a single report).
+    // Each report block MUST NOT include more than 16384 packet
+    // metric blocks (i.e., it MUST NOT report on more than one
+    // quarter of the sequence number space in a single report).
     if (num_reports > 16384) {
       LOG_ERROR("Unexpected number of reports:{}", num_reports);
       return;

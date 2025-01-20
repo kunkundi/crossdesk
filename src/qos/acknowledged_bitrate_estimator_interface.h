@@ -22,44 +22,6 @@
 
 namespace webrtc {
 
-struct RobustThroughputEstimatorSettings {
-  static constexpr char kKey[] = "WebRTC-Bwe-RobustThroughputEstimatorSettings";
-
-  RobustThroughputEstimatorSettings();
-
-  // Set `enabled` to true to use the RobustThroughputEstimator, false to use
-  // the AcknowledgedBitrateEstimator.
-  bool enabled = true;
-
-  // The estimator keeps the smallest window containing at least
-  // `window_packets` and at least the packets received during the last
-  // `min_window_duration` milliseconds.
-  // (This means that it may store more than `window_packets` at high bitrates,
-  // and a longer duration than `min_window_duration` at low bitrates.)
-  // However, if will never store more than kMaxPackets (for performance
-  // reasons), and never longer than max_window_duration (to avoid very old
-  // packets influencing the estimate for example when sending is paused).
-  unsigned window_packets = 20;
-  unsigned max_window_packets = 500;
-  TimeDelta min_window_duration = TimeDelta::Seconds(1);
-  TimeDelta max_window_duration = TimeDelta::Seconds(5);
-
-  // The estimator window requires at least `required_packets` packets
-  // to produce an estimate.
-  unsigned required_packets = 10;
-
-  // If audio packets aren't included in allocation (i.e. the
-  // estimated available bandwidth is divided only among the video
-  // streams), then `unacked_weight` should be set to 0.
-  // If audio packets are included in allocation, but not in bandwidth
-  // estimation (i.e. they don't have transport-wide sequence numbers,
-  // but we nevertheless divide the estimated available bandwidth among
-  // both audio and video streams), then `unacked_weight` should be set to 1.
-  // If all packets have transport-wide sequence numbers, then the value
-  // of `unacked_weight` doesn't matter.
-  double unacked_weight = 1.0;
-};
-
 class AcknowledgedBitrateEstimatorInterface {
  public:
   static std::unique_ptr<AcknowledgedBitrateEstimatorInterface> Create();

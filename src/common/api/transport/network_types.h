@@ -16,11 +16,11 @@
 #include <optional>
 #include <vector>
 
+#include "api/transport/ecn_marking.h"
 #include "api/units/data_rate.h"
 #include "api/units/data_size.h"
 #include "api/units/time_delta.h"
 #include "api/units/timestamp.h"
-#include "rtc_base/network/ecn_marking.h"
 
 namespace webrtc {
 
@@ -167,7 +167,7 @@ struct PacketResult {
 
   SentPacket sent_packet;
   Timestamp receive_time = Timestamp::PlusInfinity();
-  rtc::EcnMarking ecn = rtc::EcnMarking::kNotEct;
+  EcnMarking ecn = EcnMarking::kNotEct;
 };
 
 struct TransportPacketsFeedback {

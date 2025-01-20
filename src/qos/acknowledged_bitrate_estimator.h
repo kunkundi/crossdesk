@@ -15,6 +15,7 @@
 #include <optional>
 #include <vector>
 
+#include "acknowledged_bitrate_estimator_interface.h"
 #include "api/transport/network_types.h"
 #include "api/units/data_rate.h"
 #include "api/units/timestamp.h"
@@ -22,12 +23,13 @@
 
 namespace webrtc {
 
-class AcknowledgedBitrateEstimator {
+class AcknowledgedBitrateEstimator
+    : public AcknowledgedBitrateEstimatorInterface {
  public:
+  AcknowledgedBitrateEstimator();
   AcknowledgedBitrateEstimator(
       std::unique_ptr<BitrateEstimator> bitrate_estimator);
 
-  explicit AcknowledgedBitrateEstimator();
   ~AcknowledgedBitrateEstimator();
 
   void IncomingPacketFeedbackVector(

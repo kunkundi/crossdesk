@@ -20,8 +20,7 @@
 namespace webrtc {
 
 RtpPacketReceived::RtpPacketReceived() = default;
-RtpPacketReceived::RtpPacketReceived(
-    webrtc::Timestamp arrival_time /*= webrtc::Timestamp::MinusInfinity()*/)
+RtpPacketReceived::RtpPacketReceived(webrtc::Timestamp arrival_time)
     : RtpPacket(), arrival_time_(arrival_time) {}
 RtpPacketReceived::RtpPacketReceived(const RtpPacketReceived& packet) = default;
 RtpPacketReceived::RtpPacketReceived(RtpPacketReceived&& packet) = default;

@@ -9,18 +9,29 @@
 
 RtpVideoReceiver::RtpVideoReceiver()
     : feedback_ssrc_(GenerateUniqueSsrc()),
+      active_remb_module_(nullptr),
       receive_side_congestion_controller_(
+          clock_,
           [this](std::vector<std::unique_ptr<RtcpPacket>> packets) {
             SendCombinedRtcpPacket(std::move(packets));
-          }) {}
+          },
+          [this](int64_t bitrate_bps, std::vector<uint32_t> ssrcs) {
+            SendRemb(bitrate_bps, ssrcs);
+          }),
+      clock_(Clock::GetRealTimeClock()) {}
 
 RtpVideoReceiver::RtpVideoReceiver(std::shared_ptr<IOStatistics> io_statistics)
     : io_statistics_(io_statistics),
       feedback_ssrc_(GenerateUniqueSsrc()),
       receive_side_congestion_controller_(
+          clock_,
           [this](std::vector<std::unique_ptr<RtcpPacket>> packets) {
             SendCombinedRtcpPacket(std::move(packets));
-          }) {
+          },
+          [this](int64_t bitrate_bps, std::vector<uint32_t> ssrcs) {
+            SendRemb(bitrate_bps, ssrcs);
+          }),
+      clock_(Clock::GetRealTimeClock()) {
   rtcp_thread_ = std::thread(&RtpVideoReceiver::RtcpThread, this);
 }
 
@@ -45,16 +56,15 @@ void RtpVideoReceiver::InsertRtpPacket(RtpPacket& rtp_packet) {
     rtp_statistics_->Start();
   }
 
-  RtpPacketReceived rtp_packet_received;
+  webrtc::RtpPacketReceived rtp_packet_received;
   rtp_packet_received.Build(rtp_packet.Buffer(), rtp_packet.Size());
 
-  rtp_packet_received.set_arrival_time(
-      std::chrono::system_clock::now().time_since_epoch().count());
-  rtp_packet_received.set_ecn(rtc::EcnMarking::kEct0);
+  rtp_packet_received.set_arrival_time(clock_->CurrentTime());
+  rtp_packet_received.set_ecn(EcnMarking::kEct0);
   rtp_packet_received.set_recovered(false);
   rtp_packet_received.set_payload_type_frequency(0);
-  receive_side_congestion_controller_.OnReceivedPacket(
-      rtp_packet_received, ReceiveSideCongestionController::MediaType::VIDEO);
+  receive_side_congestion_controller_.OnReceivedPacket(rtp_packet_received,
+                                                       MediaType::VIDEO);
 
   last_recv_bytes_ = (uint32_t)rtp_packet.PayloadSize();
   total_rtp_payload_recv_ += (uint32_t)rtp_packet.PayloadSize();
@@ -371,6 +381,17 @@ void RtpVideoReceiver::SendCombinedRtcpPacket(
     rtcp_sender.AppendPacket(*rtcp_packet);
     rtcp_sender.Send();
   }
+}
+
+void RtpVideoReceiver::SendRemb(int64_t bitrate_bps,
+                                std::vector<uint32_t> ssrcs) {
+  if (!active_remb_module_) {
+    return;
+  }
+
+  // The Add* and Remove* methods above ensure that REMB is disabled on all
+  // other modules, because otherwise, they will send REMB with stale info.
+  active_remb_module_->SetRemb(bitrate_bps, std::move(ssrcs));
 }
 
 bool RtpVideoReceiver::CheckIsTimeSendRR() {

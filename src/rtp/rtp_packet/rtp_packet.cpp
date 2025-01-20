@@ -38,6 +38,8 @@ RtpPacket::RtpPacket() : buffer_(new uint8_t[DEFAULT_MTU]), size_(DEFAULT_MTU) {
   ParseRtpData();
 }
 
+RtpPacket::RtpPacket(uint32_t size) : buffer_(new uint8_t[size]), size_(size) {}
+
 RtpPacket::RtpPacket(const uint8_t *buffer, uint32_t size) {
   if (size > 0) {
     buffer_ = (uint8_t *)malloc(size);
