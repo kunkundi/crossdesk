@@ -115,7 +115,7 @@ void Render::OnReceiveVideoBufferCb(const XVideoFrame *video_frame,
     event.user.type = STREAM_FRASH;
     event.user.data1 = props;
     SDL_PushEvent(&event);
-
+    LOG_ERROR("STREAM_FRASH");
     props->streaming_ = true;
   }
 }

@@ -1,7 +1,7 @@
 #include "rd_log.h"
 
-std::shared_ptr<spdlog::logger> get_logger() {
-  if (auto logger = spdlog::get(LOGGER_NAME)) {
+std::shared_ptr<spdlog::logger> get_rd_logger() {
+  if (auto logger = spdlog::get(RD_LOGGER_NAME)) {
     return logger;
   }
 
@@ -18,7 +18,7 @@ std::shared_ptr<spdlog::logger> get_logger() {
 
   std::stringstream ss;
   std::string filename;
-  ss << LOGGER_NAME;
+  ss << RD_LOGGER_NAME;
   ss << std::put_time(&tm_info, "-%Y%m%d-%H%M%S.log");
   ss >> filename;
 
@@ -28,8 +28,8 @@ std::shared_ptr<spdlog::logger> get_logger() {
   sinks.push_back(std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
       path, 1048576 * 5, 3));
 
-  auto combined_logger =
-      std::make_shared<spdlog::logger>(LOGGER_NAME, begin(sinks), end(sinks));
+  auto combined_logger = std::make_shared<spdlog::logger>(
+      RD_LOGGER_NAME, begin(sinks), end(sinks));
   combined_logger->flush_on(spdlog::level::info);
   spdlog::register_logger(combined_logger);
 

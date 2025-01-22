@@ -24,16 +24,16 @@ using namespace std::chrono;
 
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_INFO
 
-constexpr auto LOGGER_NAME = "rd";
+constexpr auto RD_LOGGER_NAME = "rd";
 
-std::shared_ptr<spdlog::logger> get_logger();
+std::shared_ptr<spdlog::logger> get_rd_logger();
 
-#define LOG_INFO(...) SPDLOG_LOGGER_INFO(get_logger(), __VA_ARGS__);
+#define LOG_INFO(...) SPDLOG_LOGGER_INFO(get_rd_logger(), __VA_ARGS__);
 
-#define LOG_WARN(...) SPDLOG_LOGGER_WARN(get_logger(), __VA_ARGS__);
+#define LOG_WARN(...) SPDLOG_LOGGER_WARN(get_rd_logger(), __VA_ARGS__);
 
-#define LOG_ERROR(...) SPDLOG_LOGGER_ERROR(get_logger(), __VA_ARGS__);
+#define LOG_ERROR(...) SPDLOG_LOGGER_ERROR(get_rd_logger(), __VA_ARGS__);
 
-#define LOG_FATAL(...) SPDLOG_LOGGER_CRITICAL(get_logger(), __VA_ARGS__);
+#define LOG_FATAL(...) SPDLOG_LOGGER_CRITICAL(get_rd_logger(), __VA_ARGS__);
 
 #endif
