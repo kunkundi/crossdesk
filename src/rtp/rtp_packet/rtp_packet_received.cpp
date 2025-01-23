@@ -33,7 +33,7 @@ RtpPacketReceived& RtpPacketReceived::operator=(RtpPacketReceived&& packet) =
 RtpPacketReceived::~RtpPacketReceived() {}
 
 void RtpPacketReceived::GetHeader(RTPHeader* header) const {
-  header->version = Version();
+  header->version_ = Version();
   header->has_padding_ = HasPadding();
   header->has_extension_ = HasExtension();
   header->csrc_count_ = Csrcs().size();
@@ -44,7 +44,7 @@ void RtpPacketReceived::GetHeader(RTPHeader* header) const {
   header->ssrc_ = Ssrc();
   std::vector<uint32_t> csrcs = Csrcs();
   for (size_t i = 0; i < csrcs.size(); ++i) {
-    header->csrc_[i] = csrcs[i];
+    header->csrcs_[i] = csrcs[i];
   }
   header->padding_len = padding_size();
   header->header_len = headers_size();

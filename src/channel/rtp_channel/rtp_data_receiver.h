@@ -5,7 +5,7 @@
 
 #include "io_statistics.h"
 #include "rtcp_receiver_report.h"
-#include "rtp_codec.h"
+#include "rtp_packet.h"
 #include "rtp_statistics.h"
 
 class RtpDataReceiver {

@@ -54,7 +54,7 @@ struct RTPHeader {
   uint16_t sequence_number_ = 1;
   uint64_t timestamp_ = 0;
   uint32_t ssrc_ = 0;
-  uint32_t csrcs_[kRtpCsrcSize];
+  uint32_t csrcs_[kMaxRtpCsrcSize];
   size_t padding_len;
   size_t header_len;
 

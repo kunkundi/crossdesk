@@ -39,6 +39,14 @@ class RtpPacketizerH264 : public RtpPacketizer {
   uint8_t* extension_data_;
 
  private:
+  // H.264 header
+  rtp::FU_INDICATOR fu_indicator_;
+  rtp::FU_HEADER fu_header_;
+  uint8_t fec_symbol_id_ = 0;
+  uint8_t fec_source_symbol_num_ = 0;
+  uint8_t av1_aggr_header_ = 0;
+
+ private:
   std::vector<uint8_t> rtp_packet_frame_;
 };
 

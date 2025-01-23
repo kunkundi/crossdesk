@@ -14,10 +14,8 @@ VideoChannelReceive::VideoChannelReceive(
 
 VideoChannelReceive::~VideoChannelReceive() {}
 
-void VideoChannelReceive::Initialize(RtpPacket::PAYLOAD_TYPE payload_type) {
-  video_rtp_codec_ = std::make_unique<RtpCodec>(payload_type);
+void VideoChannelReceive::Initialize(rtp::PAYLOAD_TYPE payload_type) {
   rtp_video_receiver_ = std::make_unique<RtpVideoReceiver>(ice_io_statistics_);
-
   rtp_video_receiver_->SetOnReceiveCompleteFrame(
       [this](VideoFrame &video_frame) -> void {
         on_receive_complete_frame_(video_frame);
@@ -54,7 +52,9 @@ int VideoChannelReceive::OnReceiveRtpPacket(const char *data, size_t size) {
   }
 
   if (rtp_video_receiver_) {
-    rtp_video_receiver_->InsertRtpPacket(RtpPacket((uint8_t *)data, size));
+    RtpPacket rtp_packet;
+    rtp_packet.Build((uint8_t *)data, (uint32_t)size);
+    rtp_video_receiver_->InsertRtpPacket(rtp_packet);
   }
 
   return 0;

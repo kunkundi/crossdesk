@@ -17,7 +17,7 @@ class RtpCodec {
   };
 
  public:
-  RtpCodec(RtpPacket::PAYLOAD_TYPE payload_type);
+  RtpCodec(rtp::PAYLOAD_TYPE payload_type);
   ~RtpCodec();
 
  public:

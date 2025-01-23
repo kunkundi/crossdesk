@@ -11,9 +11,8 @@ AudioChannelSend::AudioChannelSend(
     std::shared_ptr<IOStatistics> ice_io_statistics)
     : ice_agent_(ice_agent), ice_io_statistics_(ice_io_statistics) {}
 
-void AudioChannelSend::Initialize(RtpPacket::PAYLOAD_TYPE payload_type) {
-  audio_rtp_codec_ = std::make_unique<RtpCodec>(payload_type);
-
+void AudioChannelSend::Initialize(rtp::PAYLOAD_TYPE payload_type) {
+  rtp_packetizer_ = RtpPacketizer::Create(payload_type);
   rtp_audio_sender_ = std::make_unique<RtpAudioSender>(ice_io_statistics_);
   rtp_audio_sender_->SetSendDataFunc(
       [this](const char *data, size_t size) -> int {
@@ -45,10 +44,10 @@ void AudioChannelSend::Destroy() {
 }
 
 int AudioChannelSend::SendAudio(char *data, size_t size) {
-  if (audio_rtp_codec_) {
-    std::vector<RtpPacket> packets;
-    audio_rtp_codec_->Encode((uint8_t *)data, (uint32_t)size, packets);
-    rtp_audio_sender_->Enqueue(packets);
+  if (rtp_audio_sender_ && rtp_packetizer_) {
+    std::vector<RtpPacket> rtp_packets =
+        rtp_packetizer_->Build((uint8_t *)data, (uint32_t)size);
+    rtp_audio_sender_->Enqueue(rtp_packets);
   }
 
   return 0;

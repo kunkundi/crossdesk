@@ -19,7 +19,8 @@ class RtpPacketizer {
 
   virtual ~RtpPacketizer() = default;
 
-  bool Build(uint8_t* payload, uint32_t payload_size) = 0;
+  virtual std::vector<RtpPacket> Build(uint8_t* payload,
+                                       uint32_t payload_size) = 0;
 };
 
 #endif

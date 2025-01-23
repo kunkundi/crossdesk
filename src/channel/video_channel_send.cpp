@@ -11,9 +11,8 @@ VideoChannelSend::VideoChannelSend(
     std::shared_ptr<IOStatistics> ice_io_statistics)
     : ice_agent_(ice_agent), ice_io_statistics_(ice_io_statistics){};
 
-void VideoChannelSend::Initialize(RtpPacket::PAYLOAD_TYPE payload_type) {
-  video_rtp_codec_ = std::make_unique<RtpCodec>(payload_type);
-
+void VideoChannelSend::Initialize(rtp::PAYLOAD_TYPE payload_type) {
+  rtp_packetizer_ = RtpPacketizer::Create(payload_type);
   rtp_video_sender_ = std::make_unique<RtpVideoSender>(ice_io_statistics_);
   rtp_video_sender_->SetSendDataFunc(
       [this](const char* data, size_t size) -> int {
@@ -45,12 +44,10 @@ void VideoChannelSend::Destroy() {
 }
 
 int VideoChannelSend::SendVideo(char* data, size_t size) {
-  std::vector<RtpPacket> packets;
-  if (rtp_video_sender_) {
-    if (video_rtp_codec_) {
-      video_rtp_codec_->Encode((uint8_t*)data, (uint32_t)size, packets);
-    }
-    rtp_video_sender_->Enqueue(packets);
+  if (rtp_video_sender_ && rtp_packetizer_) {
+    std::vector<RtpPacket> rtp_packets =
+        rtp_packetizer_->Build((uint8_t*)data, (uint32_t)size);
+    rtp_video_sender_->Enqueue(rtp_packets);
   }
 
   return 0;

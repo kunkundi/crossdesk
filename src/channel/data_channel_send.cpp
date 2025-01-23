@@ -11,9 +11,8 @@ DataChannelSend::DataChannelSend(
     std::shared_ptr<IOStatistics> ice_io_statistics)
     : ice_agent_(ice_agent), ice_io_statistics_(ice_io_statistics) {}
 
-void DataChannelSend::Initialize(RtpPacket::PAYLOAD_TYPE payload_type) {
-  data_rtp_codec_ = std::make_unique<RtpCodec>(payload_type);
-
+void DataChannelSend::Initialize(rtp::PAYLOAD_TYPE payload_type) {
+  rtp_packetizer_ = RtpPacketizer::Create(payload_type);
   rtp_data_sender_ = std::make_unique<RtpDataSender>(ice_io_statistics_);
   rtp_data_sender_->SetSendDataFunc(
       [this](const char *data, size_t size) -> int {
@@ -45,13 +44,10 @@ void DataChannelSend::Destroy() {
 }
 
 int DataChannelSend::SendData(const char *data, size_t size) {
-  std::vector<RtpPacket> packets;
-
-  if (rtp_data_sender_) {
-    if (data_rtp_codec_) {
-      data_rtp_codec_->Encode((uint8_t *)data, (uint32_t)size, packets);
-      rtp_data_sender_->Enqueue(packets);
-    }
+  if (rtp_data_sender_ && rtp_packetizer_) {
+    std::vector<RtpPacket> rtp_packets =
+        rtp_packetizer_->Build((uint8_t *)data, (uint32_t)size);
+    rtp_data_sender_->Enqueue(rtp_packets);
   }
 
   return 0;

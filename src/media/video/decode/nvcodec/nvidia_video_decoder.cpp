@@ -66,11 +66,9 @@ int NvidiaVideoDecoder::Init() {
 int NvidiaVideoDecoder::Decode(
     const uint8_t *data, size_t size,
     std::function<void(VideoFrame)> on_receive_decoded_frame) {
-  LOG_ERROR("1");
   if (!decoder) {
     return -1;
   }
-  LOG_ERROR("2");
 #ifdef SAVE_RECEIVED_H264_STREAM
   fwrite((unsigned char *)data, 1, size, file_h264_);
 #endif
@@ -80,14 +78,11 @@ int NvidiaVideoDecoder::Decode(
   }
 
   int num_frame_returned = decoder->Decode(data, (int)size);
-  LOG_ERROR("???? {}", num_frame_returned);
   for (size_t i = 0; i < num_frame_returned; ++i) {
     cudaVideoSurfaceFormat format = decoder->GetOutputFormat();
-    LOG_ERROR("3");
     if (format == cudaVideoSurfaceFormat_NV12) {
       uint8_t *decoded_frame_buffer = nullptr;
       decoded_frame_buffer = decoder->GetFrame();
-      LOG_ERROR("4");
       if (decoded_frame_buffer) {
         if (on_receive_decoded_frame) {
           VideoFrame decoded_frame(

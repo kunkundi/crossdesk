@@ -29,7 +29,7 @@
 //       rtp_packet.SetHasPadding(has_padding_);
 //       rtp_packet.SetHasExtension(has_extension_);
 //       rtp_packet.SetMarker(1);
-//       rtp_packet.SetPayloadType(RtpPacket::PAYLOAD_TYPE(payload_type_));
+//       rtp_packet.SetPayloadType(rtp::PAYLOAD_TYPE(payload_type_));
 //       rtp_packet.SetSequenceNumber(sequence_number_++);
 //       rtp_packet.SetTimestamp(timestamp);
 //       rtp_packet.SetSsrc(ssrc_);
@@ -58,7 +58,7 @@
 //         rtp_packet.SetHasPadding(has_padding_);
 //         rtp_packet.SetHasExtension(has_extension_);
 //         rtp_packet.SetMarker(index == packet_num - 1 ? 1 : 0);
-//         rtp_packet.SetPayloadType(RtpPacket::PAYLOAD_TYPE(payload_type_));
+//         rtp_packet.SetPayloadType(rtp::PAYLOAD_TYPE(payload_type_));
 //         rtp_packet.SetSequenceNumber(sequence_number_++);
 //         rtp_packet.SetTimestamp(timestamp);
 //         rtp_packet.SetSsrc(ssrc_);

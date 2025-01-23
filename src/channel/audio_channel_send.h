@@ -9,7 +9,7 @@
 
 #include "ice_agent.h"
 #include "rtp_audio_sender.h"
-#include "rtp_codec.h"
+#include "rtp_packetizer.h"
 
 class AudioChannelSend {
  public:
@@ -19,14 +19,14 @@ class AudioChannelSend {
   ~AudioChannelSend();
 
  public:
-  void Initialize(RtpPacket::PAYLOAD_TYPE payload_type);
+  void Initialize(rtp::PAYLOAD_TYPE payload_type);
   void Destroy();
   int SendAudio(char *data, size_t size);
 
  private:
   std::shared_ptr<IceAgent> ice_agent_ = nullptr;
   std::shared_ptr<IOStatistics> ice_io_statistics_ = nullptr;
-  std::unique_ptr<RtpCodec> audio_rtp_codec_ = nullptr;
+  std::unique_ptr<RtpPacketizer> rtp_packetizer_ = nullptr;
   std::unique_ptr<RtpAudioSender> rtp_audio_sender_ = nullptr;
 };
 

@@ -14,10 +14,8 @@ AudioChannelReceive::AudioChannelReceive(
 
 AudioChannelReceive::~AudioChannelReceive() {}
 
-void AudioChannelReceive::Initialize(RtpPacket::PAYLOAD_TYPE payload_type) {
-  audio_rtp_codec_ = std::make_unique<RtpCodec>(payload_type);
+void AudioChannelReceive::Initialize(rtp::PAYLOAD_TYPE payload_type) {
   rtp_audio_receiver_ = std::make_unique<RtpAudioReceiver>(ice_io_statistics_);
-
   rtp_audio_receiver_->SetOnReceiveData(
       [this](const char *data, size_t size) -> void {
         if (on_receive_audio_) {
@@ -54,7 +52,9 @@ int AudioChannelReceive::OnReceiveRtpPacket(const char *data, size_t size) {
   }
 
   if (rtp_audio_receiver_) {
-    rtp_audio_receiver_->InsertRtpPacket(RtpPacket((uint8_t *)data, size));
+    RtpPacket rtp_packet;
+    rtp_packet.Build((uint8_t *)data, (uint32_t)size);
+    rtp_audio_receiver_->InsertRtpPacket(rtp_packet);
   }
 
   return 0;

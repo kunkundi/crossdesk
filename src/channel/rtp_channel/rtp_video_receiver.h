@@ -12,7 +12,8 @@
 #include "receive_side_congestion_controller.h"
 #include "ringbuffer.h"
 #include "rtcp_receiver_report.h"
-#include "rtp_codec.h"
+#include "rtp_packet_av1.h"
+#include "rtp_packet_h264.h"
 #include "rtp_rtcp_defines.h "
 #include "rtp_statistics.h"
 #include "thread_base.h"
@@ -37,12 +38,12 @@ class RtpVideoReceiver : public ThreadBase {
   }
 
  private:
-  void ProcessAv1RtpPacket(RtpPacket& rtp_packet);
-  bool CheckIsAv1FrameCompleted(RtpPacket& rtp_packet);
+  void ProcessAv1RtpPacket(RtpPacketAv1& rtp_packet_av1);
+  bool CheckIsAv1FrameCompleted(RtpPacketAv1& rtp_packet_av1);
 
  private:
-  void ProcessH264RtpPacket(RtpPacket& rtp_packet);
-  bool CheckIsH264FrameCompleted(RtpPacket& rtp_packet);
+  void ProcessH264RtpPacket(RtpPacketH264& rtp_packet_h264);
+  bool CheckIsH264FrameCompleted(RtpPacketH264& rtp_packet_h264);
 
  private:
   bool CheckIsTimeSendRR();
@@ -58,6 +59,8 @@ class RtpVideoReceiver : public ThreadBase {
   void RtcpThread();
 
  private:
+  std::map<uint16_t, RtpPacketH264> incomplete_h264_frame_list_;
+  std::map<uint16_t, RtpPacketAv1> incomplete_av1_frame_list_;
   std::map<uint16_t, RtpPacket> incomplete_frame_list_;
   uint8_t* nv12_data_ = nullptr;
   std::function<void(VideoFrame&)> on_receive_complete_frame_ = nullptr;

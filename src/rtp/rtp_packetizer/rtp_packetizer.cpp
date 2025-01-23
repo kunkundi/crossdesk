@@ -1,11 +1,16 @@
 #include "rtp_packetizer.h"
 
-std::unique_ptr<RtpPacketizer> Create(uint32_t payload_type, uint8_t* payload,
-                                      size_t payload_size) {
+#include "rtp_packetizer_av1.h"
+#include "rtp_packetizer_generic.h"
+#include "rtp_packetizer_h264.h"
+
+std::unique_ptr<RtpPacketizer> RtpPacketizer::Create(uint32_t payload_type) {
   switch (payload_type) {
-    case RtpPacket::PAYLOAD_TYPE::H264:
-      return std::make_unique<RtpPacketizerH264>(payload, payload_size);
-    case RtpPacket::PAYLOAD_TYPE::AV1:
-      return std::make_unique<RtpPacketizerAv1>(payload, payload_size);
+    case rtp::PAYLOAD_TYPE::H264:
+      return std::make_unique<RtpPacketizerH264>();
+    case rtp::PAYLOAD_TYPE::AV1:
+      return std::make_unique<RtpPacketizerAv1>();
+    default:
+      return std::make_unique<RtpPacketizerGeneric>();
   }
 }

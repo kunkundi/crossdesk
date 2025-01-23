@@ -147,9 +147,9 @@ class PeerConnection {
   bool try_rejoin_with_turn_ = false;
   TraversalMode mode_ = TraversalMode::P2P;
 
-  std::vector<int> video_payload_types_ = {RtpPacket::PAYLOAD_TYPE::H264,
-                                           RtpPacket::PAYLOAD_TYPE::AV1};
-  std::vector<int> audio_payload_types_ = {RtpPacket::PAYLOAD_TYPE::OPUS};
+  std::vector<int> video_payload_types_ = {rtp::PAYLOAD_TYPE::H264,
+                                           rtp::PAYLOAD_TYPE::AV1};
+  std::vector<int> audio_payload_types_ = {rtp::PAYLOAD_TYPE::OPUS};
 
  private:
   std::shared_ptr<WsClient> ws_transport_ = nullptr;

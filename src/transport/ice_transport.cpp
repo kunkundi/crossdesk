@@ -54,14 +54,14 @@ int IceTransport::SetLocalCapabilities(bool hardware_acceleration,
   force_turn_ = force_turn;
   support_video_payload_types_ = video_payload_types;
   support_audio_payload_types_ = audio_payload_types;
-  support_data_payload_types_ = {RtpPacket::PAYLOAD_TYPE::DATA};
+  support_data_payload_types_ = {rtp::PAYLOAD_TYPE::DATA};
   return 0;
 }
 
 int IceTransport::InitIceTransmission(
     std::string &stun_ip, int stun_port, std::string &turn_ip, int turn_port,
     std::string &turn_username, std::string &turn_password,
-    RtpPacket::PAYLOAD_TYPE video_codec_payload_type) {
+    rtp::PAYLOAD_TYPE video_codec_payload_type) {
   ice_agent_ = std::make_unique<IceAgent>(
       offer_peer_, use_trickle_ice_, use_reliable_ice_, enable_turn_,
       force_turn_, stun_ip, stun_port, turn_ip, turn_port, turn_username,
@@ -116,7 +116,7 @@ void IceTransport::InitializeIOStatistics() {
 }
 
 void IceTransport::InitializeChannels(
-    RtpPacket::PAYLOAD_TYPE video_codec_payload_type) {
+    rtp::PAYLOAD_TYPE video_codec_payload_type) {
   video_codec_payload_type_ = video_codec_payload_type;
 
   video_channel_send_ =
@@ -127,14 +127,12 @@ void IceTransport::InitializeChannels(
       std::make_unique<DataChannelSend>(ice_agent_, ice_io_statistics_);
 
   video_channel_send_->Initialize(video_codec_payload_type_);
-  audio_channel_send_->Initialize(RtpPacket::PAYLOAD_TYPE::OPUS);
-  data_channel_send_->Initialize(RtpPacket::PAYLOAD_TYPE::DATA);
+  audio_channel_send_->Initialize(rtp::PAYLOAD_TYPE::OPUS);
+  data_channel_send_->Initialize(rtp::PAYLOAD_TYPE::DATA);
 
   video_channel_receive_ = std::make_unique<VideoChannelReceive>(
-      ice_agent_, ice_io_statistics_, [this](VideoFrame &video_frame) {
-        LOG_ERROR("ccccccc");
-        OnReceiveCompleteFrame(video_frame);
-      });
+      ice_agent_, ice_io_statistics_,
+      [this](VideoFrame &video_frame) { OnReceiveCompleteFrame(video_frame); });
 
   audio_channel_receive_ = std::make_unique<AudioChannelReceive>(
       ice_agent_, ice_io_statistics_, [this](const char *data, size_t size) {
@@ -147,8 +145,8 @@ void IceTransport::InitializeChannels(
       });
 
   video_channel_receive_->Initialize(video_codec_payload_type_);
-  audio_channel_receive_->Initialize(RtpPacket::PAYLOAD_TYPE::OPUS);
-  data_channel_receive_->Initialize(RtpPacket::PAYLOAD_TYPE::DATA);
+  audio_channel_receive_->Initialize(rtp::PAYLOAD_TYPE::OPUS);
+  data_channel_receive_->Initialize(rtp::PAYLOAD_TYPE::DATA);
 }
 
 void IceTransport::OnIceStateChange(NiceAgent *agent, guint stream_id,
@@ -379,7 +377,6 @@ void IceTransport::OnReceiveCompleteFrame(VideoFrame &video_frame) {
           x_video_frame.width = video_frame.Width();
           x_video_frame.height = video_frame.Height();
           x_video_frame.size = video_frame.Size();
-          LOG_ERROR("ccccccc 2222222");
           on_receive_video_(&x_video_frame, remote_user_id_.data(),
                             remote_user_id_.size(), user_data_);
         }
@@ -434,14 +431,7 @@ int IceTransport::DestroyIceTransmission() {
   return ice_agent_->DestroyIceAgent();
 }
 
-int IceTransport::CreateMediaCodec() {
-  video_rtp_codec_ = std::make_unique<RtpCodec>(negotiated_video_pt_);
-  audio_rtp_codec_ = std::make_unique<RtpCodec>(negotiated_audio_pt_);
-  data_rtp_codec_ = std::make_unique<RtpCodec>(negotiated_data_pt_);
-  return 0;
-}
-
-int IceTransport::CreateVideoCodec(RtpPacket::PAYLOAD_TYPE video_pt,
+int IceTransport::CreateVideoCodec(rtp::PAYLOAD_TYPE video_pt,
                                    bool hardware_acceleration) {
   if (video_codec_inited_) {
     return 0;
@@ -449,14 +439,14 @@ int IceTransport::CreateVideoCodec(RtpPacket::PAYLOAD_TYPE video_pt,
 
   hardware_acceleration_ = hardware_acceleration;
 
-  if (RtpPacket::PAYLOAD_TYPE::AV1 == video_pt) {
+  if (rtp::PAYLOAD_TYPE::AV1 == video_pt) {
     if (hardware_acceleration_) {
       hardware_acceleration_ = false;
       LOG_WARN("Only support software codec for AV1");
     }
     video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(false, true);
     video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(false, true);
-  } else if (RtpPacket::PAYLOAD_TYPE::H264 == video_pt) {
+  } else if (rtp::PAYLOAD_TYPE::H264 == video_pt) {
 #ifdef __APPLE__
     if (hardware_acceleration_) {
       hardware_acceleration_ = false;
@@ -619,18 +609,18 @@ int IceTransport::AppendLocalCapabilitiesToOffer(
   std::string data_capabilities = "UDP/TLS/RTP/SAVPF 127";
 
   switch (video_codec_payload_type_) {
-    case RtpPacket::PAYLOAD_TYPE::H264: {
-      preferred_video_pt = std::to_string(RtpPacket::PAYLOAD_TYPE::H264);
+    case rtp::PAYLOAD_TYPE::H264: {
+      preferred_video_pt = std::to_string(rtp::PAYLOAD_TYPE::H264);
       video_capabilities += preferred_video_pt + " 97 98 99";
       break;
     }
-    case RtpPacket::PAYLOAD_TYPE::AV1: {
-      preferred_video_pt = std::to_string(RtpPacket::PAYLOAD_TYPE::AV1);
+    case rtp::PAYLOAD_TYPE::AV1: {
+      preferred_video_pt = std::to_string(rtp::PAYLOAD_TYPE::AV1);
       video_capabilities += preferred_video_pt + " 96 97 98";
       break;
     }
     default: {
-      preferred_video_pt = std::to_string(RtpPacket::PAYLOAD_TYPE::H264);
+      preferred_video_pt = std::to_string(rtp::PAYLOAD_TYPE::H264);
       video_capabilities += preferred_video_pt + " 97 98 99";
       break;
     }
@@ -734,7 +724,6 @@ std::string IceTransport::GetRemoteCapabilities(const std::string &remote_sdp) {
       return std::string();
     }
 
-    CreateMediaCodec();
     CreateVideoCodec(negotiated_video_pt_, hardware_acceleration_);
     CreateAudioCodec();
 
@@ -808,7 +797,7 @@ bool IceTransport::NegotiateVideoPayloadType(const std::string &remote_sdp) {
     }
 
     remote_prefered_video_pt_ =
-        (RtpPacket::PAYLOAD_TYPE)(atoi(remote_prefered_video_pt.c_str()));
+        (rtp::PAYLOAD_TYPE)(atoi(remote_prefered_video_pt.c_str()));
 
     bool is_support_this_video_pt =
         std::find(support_video_payload_types_.begin(),
@@ -817,7 +806,7 @@ bool IceTransport::NegotiateVideoPayloadType(const std::string &remote_sdp) {
         support_video_payload_types_.end();
 
     if (is_support_this_video_pt) {
-      negotiated_video_pt_ = (RtpPacket::PAYLOAD_TYPE)remote_prefered_video_pt_;
+      negotiated_video_pt_ = (rtp::PAYLOAD_TYPE)remote_prefered_video_pt_;
       break;
     } else {
       if (prefered_pt_end != std::string::npos) {
@@ -828,7 +817,7 @@ bool IceTransport::NegotiateVideoPayloadType(const std::string &remote_sdp) {
     }
   }
 
-  if (negotiated_video_pt_ == RtpPacket::PAYLOAD_TYPE::UNDEFINED) {
+  if (negotiated_video_pt_ == rtp::PAYLOAD_TYPE::UNDEFINED) {
     LOG_ERROR("Negotiate video pt failed");
     return false;
   } else {
@@ -868,7 +857,7 @@ bool IceTransport::NegotiateAudioPayloadType(const std::string &remote_sdp) {
     }
 
     remote_prefered_audio_pt_ =
-        (RtpPacket::PAYLOAD_TYPE)(atoi(remote_prefered_audio_pt.c_str()));
+        (rtp::PAYLOAD_TYPE)(atoi(remote_prefered_audio_pt.c_str()));
 
     bool is_support_this_audio_pt =
         std::find(support_audio_payload_types_.begin(),
@@ -877,7 +866,7 @@ bool IceTransport::NegotiateAudioPayloadType(const std::string &remote_sdp) {
         support_audio_payload_types_.end();
 
     if (is_support_this_audio_pt) {
-      negotiated_audio_pt_ = (RtpPacket::PAYLOAD_TYPE)remote_prefered_audio_pt_;
+      negotiated_audio_pt_ = (rtp::PAYLOAD_TYPE)remote_prefered_audio_pt_;
       break;
     } else {
       if (prefered_pt_end != std::string::npos) {
@@ -888,7 +877,7 @@ bool IceTransport::NegotiateAudioPayloadType(const std::string &remote_sdp) {
     }
   }
 
-  if (negotiated_audio_pt_ == RtpPacket::PAYLOAD_TYPE::UNDEFINED) {
+  if (negotiated_audio_pt_ == rtp::PAYLOAD_TYPE::UNDEFINED) {
     LOG_ERROR("Negotiate audio pt failed");
     return false;
   } else {
@@ -928,7 +917,7 @@ bool IceTransport::NegotiateDataPayloadType(const std::string &remote_sdp) {
     }
 
     remote_prefered_data_pt_ =
-        (RtpPacket::PAYLOAD_TYPE)(atoi(remote_prefered_data_pt.c_str()));
+        (rtp::PAYLOAD_TYPE)(atoi(remote_prefered_data_pt.c_str()));
 
     bool is_support_this_data_pt =
         std::find(support_data_payload_types_.begin(),
@@ -937,7 +926,7 @@ bool IceTransport::NegotiateDataPayloadType(const std::string &remote_sdp) {
         support_data_payload_types_.end();
 
     if (is_support_this_data_pt) {
-      negotiated_data_pt_ = (RtpPacket::PAYLOAD_TYPE)remote_prefered_data_pt_;
+      negotiated_data_pt_ = (rtp::PAYLOAD_TYPE)remote_prefered_data_pt_;
       break;
     } else {
       if (prefered_pt_end != std::string::npos) {
@@ -948,7 +937,7 @@ bool IceTransport::NegotiateDataPayloadType(const std::string &remote_sdp) {
     }
   }
 
-  if (negotiated_data_pt_ == RtpPacket::PAYLOAD_TYPE::UNDEFINED) {
+  if (negotiated_data_pt_ == rtp::PAYLOAD_TYPE::UNDEFINED) {
     LOG_ERROR("Negotiate data pt failed");
     return false;
   } else {
@@ -957,7 +946,7 @@ bool IceTransport::NegotiateDataPayloadType(const std::string &remote_sdp) {
   }
 }
 
-std::vector<RtpPacket::PAYLOAD_TYPE> IceTransport::GetNegotiatedCapabilities() {
+std::vector<rtp::PAYLOAD_TYPE> IceTransport::GetNegotiatedCapabilities() {
   return {negotiated_video_pt_, negotiated_audio_pt_, negotiated_data_pt_};
 }
 
@@ -1068,10 +1057,10 @@ uint8_t IceTransport::CheckIsVideoPacket(const char *buffer, size_t size) {
   }
 
   uint8_t pt = buffer[1] & 0x7F;
-  if (RtpPacket::PAYLOAD_TYPE::H264 == pt ||
-      RtpPacket::PAYLOAD_TYPE::H264_FEC_SOURCE == pt ||
-      RtpPacket::PAYLOAD_TYPE::H264_FEC_REPAIR == pt ||
-      RtpPacket::PAYLOAD_TYPE::AV1 == pt) {
+  if (rtp::PAYLOAD_TYPE::H264 == pt ||
+      rtp::PAYLOAD_TYPE::H264_FEC_SOURCE == pt ||
+      rtp::PAYLOAD_TYPE::H264_FEC_REPAIR == pt ||
+      rtp::PAYLOAD_TYPE::AV1 == pt) {
     return pt;
   } else {
     return 0;
@@ -1089,7 +1078,7 @@ uint8_t IceTransport::CheckIsAudioPacket(const char *buffer, size_t size) {
   }
 
   uint8_t pt = buffer[1] & 0x7F;
-  if (RtpPacket::PAYLOAD_TYPE::OPUS == pt) {
+  if (rtp::PAYLOAD_TYPE::OPUS == pt) {
     return pt;
   } else {
     return 0;
@@ -1107,7 +1096,7 @@ uint8_t IceTransport::CheckIsDataPacket(const char *buffer, size_t size) {
   }
 
   uint8_t pt = buffer[1] & 0x7F;
-  if (RtpPacket::PAYLOAD_TYPE::DATA == pt) {
+  if (rtp::PAYLOAD_TYPE::DATA == pt) {
     return pt;
   } else {
     return 0;

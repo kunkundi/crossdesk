@@ -616,7 +616,7 @@ void PeerConnection::ProcessIceWorkMsg(const IceWorkMsg &msg) {
             cfg_stun_server_ip_, stun_server_port_, cfg_turn_server_ip_,
             turn_server_port_, cfg_turn_server_username_,
             cfg_turn_server_password_,
-            av1_encoding_ ? RtpPacket::AV1 : RtpPacket::H264);
+            av1_encoding_ ? rtp::PAYLOAD_TYPE::AV1 : rtp::PAYLOAD_TYPE::H264);
         ice_transport_list_[remote_user_id]->JoinTransmission();
       }
 
@@ -663,7 +663,7 @@ void PeerConnection::ProcessIceWorkMsg(const IceWorkMsg &msg) {
             cfg_stun_server_ip_, stun_server_port_, cfg_turn_server_ip_,
             turn_server_port_, cfg_turn_server_username_,
             cfg_turn_server_password_,
-            av1_encoding_ ? RtpPacket::AV1 : RtpPacket::H264);
+            av1_encoding_ ? rtp::PAYLOAD_TYPE::AV1 : rtp::PAYLOAD_TYPE::H264);
         ice_transport_list_[remote_user_id]->SetTransmissionId(transmission_id);
       }
 

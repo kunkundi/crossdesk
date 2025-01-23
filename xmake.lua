@@ -107,9 +107,11 @@ target("rtp")
     set_kind("object")
     add_deps("log", "common", "frame", "ringbuffer", "thread", "rtcp", "fec", "statistics")
     add_files("src/rtp/*.cpp", 
-    "src/rtp/rtp_packet/*.cpp")
+    "src/rtp/rtp_packet/*.cpp",
+    "src/rtp/rtp_packetizer/*.cpp")
     add_includedirs("src/rtp", 
-    "src/rtp/rtp_packet", {public = true})
+    "src/rtp/rtp_packet",
+    "src/rtp/rtp_packetizer", {public = true})
 
 target("rtcp")
     set_kind("object")

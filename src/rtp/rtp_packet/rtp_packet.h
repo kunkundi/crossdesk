@@ -8,6 +8,7 @@
 
 #include "copy_on_write_buffer.h"
 #include "log.h"
+#include "rtp_defines.h"
 #include "rtp_header.h"
 
 // Common
@@ -170,25 +171,14 @@
 #define DEFAULT_MTU 1500
 #define MAX_NALU_LEN 1400
 
+constexpr uint16_t kOneByteExtensionProfileId = 0xBEDE;
+constexpr uint16_t kTwoByteExtensionProfileId = 0x1000;
+constexpr size_t kFixedHeaderSize = 12;
+
 class RtpPacket {
  public:
-  typedef enum {
-    UNDEFINED = 0,
-    H264 = 96,
-    H264_FEC_SOURCE = 97,
-    H264_FEC_REPAIR = 98,
-    AV1 = 99,
-    OPUS = 111,
-    DATA = 127
-  } PAYLOAD_TYPE;
-
-  constexpr uint16_t kOneByteExtensionProfileId = 0xBEDE;
-  constexpr uint16_t kTwoByteExtensionProfileId = 0x1000;
-
-  constexpr size_t kFixedHeaderSize = 12;
-
- public:
   RtpPacket();
+  RtpPacket(size_t size);
   RtpPacket(const RtpPacket &rtp_packet);
   RtpPacket(RtpPacket &&rtp_packet);
   RtpPacket &operator=(const RtpPacket &rtp_packet);
@@ -199,13 +189,16 @@ class RtpPacket {
  public:
   bool Build(const uint8_t *buffer, uint32_t size);
 
+ private:
+  bool Parse(const uint8_t *buffer, uint32_t size);
+
  public:
   // Set Header
   void SetVerion(uint8_t version) { version_ = version; }
   void SetHasPadding(bool has_padding) { has_padding_ = has_padding; }
   void SetHasExtension(bool has_extension) { has_extension_ = has_extension; }
   void SetMarker(bool marker) { marker_ = marker; }
-  void SetPayloadType(PAYLOAD_TYPE payload_type) {
+  void SetPayloadType(rtp::PAYLOAD_TYPE payload_type) {
     payload_type_ = (uint8_t)payload_type;
   }
   void SetSequenceNumber(uint16_t sequence_number) {
@@ -220,47 +213,54 @@ class RtpPacket {
     // bits
     abs_send_time &= 0x00FFFFFF;
 
-    // Allocate memory for the extension data if not already allocated
-    if (extension_data_ == nullptr) {
-      extension_data_ =
-          (uint8_t *)malloc(5);  // 2 bytes for profile, 2 bytes for length, 3
-                                 // bytes for abs_send_time
-      extension_len_ = 5;
-    }
-
     // Set the extension profile to 0xBEDE (one-byte header)
     extension_profile_ = kOneByteExtensionProfileId;
+    extension_len_ = 5;  // 2 bytes for profile, 2 bytes for length, 3 bytes for
+                         // abs_send_time
 
-    // Set the length of the extension data (in 32-bit words minus one)
-    extension_data_[0] = 0x00;
-    extension_data_[1] = 0x02;  // 2 words (8 bytes)
-
-    // Set the absolute send time in the extension data
-    extension_data_[2] = (abs_send_time >> 16) & 0xFF;
-    extension_data_[3] = (abs_send_time >> 8) & 0xFF;
-    extension_data_[4] = abs_send_time & 0xFF;
+    Extension extension;
+    extension.id = 0;
+    extension.len = 2;
+    extension.data.push_back(extension.id << 4 | extension.len);
+    extension.data.push_back((abs_send_time >> 16) & 0xFF);
+    extension.data.push_back((abs_send_time >> 8) & 0xFF);
+    extension.data.push_back(abs_send_time & 0xFF);
   }
 
  public:
   // Get Header
-  uint32_t Verion() const { return version_; }
+  uint32_t Version() const { return version_; }
   bool HasPadding() const { return has_padding_; }
   bool HasExtension() const { return has_extension_; }
   bool Marker() const { return marker_; }
-  PAYLOAD_TYPE PayloadType() const { return PAYLOAD_TYPE(payload_type_); }
+  rtp::PAYLOAD_TYPE PayloadType() const {
+    return rtp::PAYLOAD_TYPE(payload_type_);
+  }
   uint16_t SequenceNumber() const { return sequence_number_; }
   uint64_t Timestamp() const { return timestamp_; }
   uint32_t Ssrc() const { return ssrc_; }
   std::vector<uint32_t> Csrcs() const { return csrcs_; };
   uint16_t ExtensionProfile() const { return extension_profile_; }
-  const uint8_t *ExtensionData() { return extension_data_; }
+
+  uint32_t GetAbsoluteSendTimestamp(uint32_t *abs_send_time) const {
+    if (!extensions_.empty()) {
+      for (auto &ext : extensions_) {
+        if (ext.id == 1) {
+          *abs_send_time = (ext.data[0] << 16) | (ext.data[1] << 8) |
+                           ext.data[2];  // 24-bit value
+          return *abs_send_time;
+        }
+      }
+    }
+    return 0;
+  }
 
   // Payload
-  const uint8_t *Payload() { return Buffer() + payload_offset_; };
+  const uint8_t *Payload() { return Buffer().data() + payload_offset_; };
   size_t PayloadSize() { return payload_size_; }
 
   // Entire RTP buffer
-  const uint8_t *Buffer() const { return buffer_; }
+  CopyOnWriteBuffer Buffer() const { return buffer_; }
   size_t Size() const { return size_; }
 
   // For webrtc module use
@@ -288,6 +288,7 @@ class RtpPacket {
   uint16_t extension_len_ = 0;
   struct Extension {
     uint8_t id;
+    uint8_t len;
     std::vector<uint8_t> data;
   };
   std::vector<Extension> extensions_;
@@ -300,15 +301,8 @@ class RtpPacket {
   size_t padding_size_ = 0;
 
   // Entire rtp buffer
-  CopyOnWriteBuffer buffer_ = nullptr;
+  CopyOnWriteBuffer buffer_;
   size_t size_ = 0;
-
-  // H.264 header
-  FU_INDICATOR fu_indicator_;
-  FU_HEADER fu_header_;
-  uint8_t fec_symbol_id_ = 0;
-  uint8_t fec_source_symbol_num_ = 0;
-  uint8_t av1_aggr_header_ = 0;
 };
 
 #endif

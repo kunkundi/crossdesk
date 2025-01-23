@@ -39,8 +39,8 @@ int RtpAudioSender::SendRtpPacket(RtpPacket& rtp_packet) {
     return -1;
   }
 
-  if (0 !=
-      data_send_func_((const char*)rtp_packet.Buffer(), rtp_packet.Size())) {
+  if (0 != data_send_func_((const char*)rtp_packet.Buffer().data(),
+                           rtp_packet.Size())) {
     LOG_ERROR("Send rtp packet failed");
     return -1;
   }

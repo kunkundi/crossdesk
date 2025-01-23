@@ -6,7 +6,7 @@ RtpPacketizerH264::RtpPacketizerH264()
       has_extension_(true),
       csrc_count_(0),
       marker_(false),
-      payload_type_(RtpPacket::PAYLOAD_TYPE::H264),
+      payload_type_(rtp::PAYLOAD_TYPE::H264),
       sequence_number_(1),
       timestamp_(0),
       ssrc_(0),
@@ -28,13 +28,14 @@ std::vector<RtpPacket> RtpPacketizerH264::Build(uint8_t* payload,
                    std::chrono::system_clock::now().time_since_epoch())
                    .count();
 
+  std::vector<RtpPacket> rtp_packets;
   for (uint32_t index = 0; index < packet_num; index++) {
     version_ = kRtpVersion;
     has_padding_ = false;
     has_extension_ = true;
     csrc_count_ = 0;
     marker_ = index == packet_num - 1 ? 1 : 0;
-    payload_type_ = RtpPacket::PAYLOAD_TYPE(payload_type_);
+    payload_type_ = rtp::PAYLOAD_TYPE(payload_type_);
     sequence_number_++;
     timestamp_ = timestamp_;
     ssrc_ = ssrc_;
@@ -43,16 +44,16 @@ std::vector<RtpPacket> RtpPacketizerH264::Build(uint8_t* payload,
       csrcs_ = csrcs_;
     }
 
-    RtpPacket::FU_INDICATOR fu_indicator;
+    rtp::FU_INDICATOR fu_indicator;
     fu_indicator.forbidden_bit = 0;
     fu_indicator.nal_reference_idc = 0;
-    fu_indicator.nal_unit_type = FU_A;
+    fu_indicator.nal_unit_type = rtp::NAL_UNIT_TYPE::FU_A;
 
-    RtpPacket::FU_HEADER fu_header;
+    rtp::FU_HEADER fu_header;
     fu_header.start = index == 0 ? 1 : 0;
     fu_header.end = index == packet_num - 1 ? 1 : 0;
     fu_header.remain_bit = 0;
-    fu_header.nal_unit_type = FU_A;
+    fu_header.nal_unit_type = rtp::NAL_UNIT_TYPE::FU_A;
 
     rtp_packet_frame_.clear();
     rtp_packet_frame_.push_back((version_ << 6) | (has_padding_ << 5) |
@@ -77,20 +78,38 @@ std::vector<RtpPacket> RtpPacketizerH264::Build(uint8_t* payload,
     }
 
     if (has_extension_) {
+      //  0                   1                   2                   3
+      //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+      // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      // |  ID   |  L=2  |              Absolute Send Time               |
+      // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      // ID (4 bits): The identifier of the extension header field. In WebRTC,
+      // the ID for Absolute Send Time is typically 3.
+      // L (4 bits): The length of the extension data in bytes minus 1. For
+      // Absolute Send Time: the length is 2 (indicating 3 bytes of data).
+      // Absolute Send Time (24 bits): The absolute send time, with a unit of
+      // 1/65536 seconds (approximately 15.258 microseconds).
+
       extension_profile_ = kOneByteExtensionProfileId;
-      extension_len_ = 5;
+      // 2 bytes for profile, 2 bytes for length, 3 bytes for abs_send_time, 1
+      // byte for id and sub extension length
+      extension_len_ = 8;
 
       uint32_t abs_send_time =
           std::chrono::duration_cast<std::chrono::microseconds>(
               std::chrono::system_clock::now().time_since_epoch())
               .count();
 
+      abs_send_time &= 0x00FFFFFF;
+
+      uint8_t sub_extension_id = 0;
+      uint8_t sub_extension_len = 2;
+
       rtp_packet_frame_.push_back(extension_profile_ >> 8);
       rtp_packet_frame_.push_back(extension_profile_ & 0xff);
       rtp_packet_frame_.push_back((extension_len_ >> 8) & 0xFF);
       rtp_packet_frame_.push_back(extension_len_ & 0xFF);
-      rtp_packet_frame_.push_back(0x00);
-      rtp_packet_frame_.push_back(0x02);
+      rtp_packet_frame_.push_back(sub_extension_id << 4 | sub_extension_len);
       rtp_packet_frame_.push_back((abs_send_time >> 16) & 0xFF);
       rtp_packet_frame_.push_back((abs_send_time >> 8) & 0xFF);
       rtp_packet_frame_.push_back(abs_send_time & 0xFF);
@@ -115,8 +134,9 @@ std::vector<RtpPacket> RtpPacketizerH264::Build(uint8_t* payload,
     RtpPacket rtp_packet;
     rtp_packet.Build(rtp_packet_frame_.data(), rtp_packet_frame_.size());
 
-    packets.emplace_back(rtp_packet);
+    rtp_packets.emplace_back(rtp_packet);
   }
+  return rtp_packets;
 }
 
 // bool BuildFec(uint8_t* payload, uint32_t payload_size) {
@@ -143,7 +163,7 @@ std::vector<RtpPacket> RtpPacketizerH264::Build(uint8_t* payload,
 //       rtp_packet.SetHasPadding(false);
 //       rtp_packet.SetHasExtension(has_extension_);
 //       rtp_packet.SetMarker(index == num_of_source_packets - 1 ? 1 : 0);
-//       rtp_packet.SetPayloadType(RtpPacket::PAYLOAD_TYPE::H264_FEC_SOURCE);
+//       rtp_packet.SetPayloadType(rtp::PAYLOAD_TYPE::H264_FEC_SOURCE);
 //       rtp_packet.SetSequenceNumber(sequence_number_++);
 //       rtp_packet.SetTimestamp(timestamp_);
 //       rtp_packet.SetSsrc(ssrc_);
@@ -192,7 +212,7 @@ std::vector<RtpPacket> RtpPacketizerH264::Build(uint8_t* payload,
 //       rtp_packet.SetHasPadding(false);
 //       rtp_packet.SetHasExtension(has_extension_);
 //       rtp_packet.SetMarker(index == num_of_total_packets - 1 ? 1 : 0);
-//       rtp_packet.SetPayloadType(RtpPacket::PAYLOAD_TYPE::H264_FEC_REPAIR);
+//       rtp_packet.SetPayloadType(rtp::PAYLOAD_TYPE::H264_FEC_REPAIR);
 //       rtp_packet.SetSequenceNumber(sequence_number_++);
 //       rtp_packet.SetTimestamp(timestamp_);
 //       rtp_packet.SetSsrc(ssrc_);
@@ -234,7 +254,7 @@ std::vector<RtpPacket> RtpPacketizerH264::Build(uint8_t* payload,
 
 //   rtp_packet.SetHasExtension(has_extension_);
 //   rtp_packet.SetMarker(1);
-//   rtp_packet.SetPayloadType(RtpPacket::PAYLOAD_TYPE(payload_type_));
+//   rtp_packet.SetPayloadType(rtp::PAYLOAD_TYPE(payload_type_));
 //   rtp_packet.SetSequenceNumber(sequence_number_++);
 
 //   timestamp_ = std::chrono::duration_cast<std::chrono::microseconds>(

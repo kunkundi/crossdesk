@@ -4,6 +4,8 @@
 
 RtpPacket::RtpPacket() {}
 
+RtpPacket::RtpPacket(size_t size) : buffer_(size) {}
+
 RtpPacket::RtpPacket(const RtpPacket &rtp_packet) = default;
 
 RtpPacket::RtpPacket(RtpPacket &&rtp_packet) = default;
@@ -15,12 +17,13 @@ RtpPacket &RtpPacket::operator=(RtpPacket &&rtp_packet) = default;
 RtpPacket::~RtpPacket() = default;
 
 bool RtpPacket::Build(const uint8_t *buffer, uint32_t size) {
-  if (size > 0) {
-    buffer_.SetData(buffer, size);
-    size_ = size;
-    return true;
+  if (!Parse(buffer, size)) {
+    LOG_WARN("RtpPacket::Build: parse failed");
+    return false;
   }
-  return false;
+  buffer_.SetData(buffer, size);
+  size_ = size;
+  return true;
 }
 
 bool RtpPacket::Parse(const uint8_t *buffer, uint32_t size) {
@@ -30,36 +33,40 @@ bool RtpPacket::Parse(const uint8_t *buffer, uint32_t size) {
   }
 
   // 1st byte
-  version_ = (buffer_[payload_offset_] >> 6) & 0x03;
+  version_ = (buffer[payload_offset_] >> 6) & 0x03;
   if (version_ != kRtpVersion) {
     LOG_WARN("RtpPacket::Parse: version is not qual to kRtpVersion");
     return false;
   }
-  has_padding_ = (buffer_[payload_offset_] >> 5) & 0x01;
-  has_extension_ = (buffer_[payload_offset_] >> 4) & 0x01;
-  csrc_count_ = buffer_[payload_offset_] & 0x0f;
+  has_padding_ = (buffer[payload_offset_] >> 5) & 0x01;
+  has_extension_ = (buffer[payload_offset_] >> 4) & 0x01;
+  csrc_count_ = buffer[payload_offset_] & 0x0f;
   if (csrc_count_ > kMaxRtpCsrcSize) {
     LOG_WARN("RtpPacket::Parse: csrc count is too large");
     return false;
   }
+  payload_offset_++;
 
   // 2nd byte
-  marker_ = (buffer_[payload_offset_] >> 7) & 0x01;
-  payload_type_ = buffer_[payload_offset_] & 0x7f;
+  marker_ = (buffer[payload_offset_] >> 7) & 0x01;
+  payload_type_ = buffer[payload_offset_] & 0x7f;
+  payload_offset_ += 1;
 
   // 3rd byte and 4th byte
   sequence_number_ =
-      (buffer_[payload_offset_] << 8) | buffer_[payload_offset_ + 1];
+      (buffer[payload_offset_] << 8) | buffer[payload_offset_ + 1];
+  payload_offset_ += 2;
 
   // 5th byte to 8th byte
-  timestamp_ =
-      (buffer_[payload_offset_] << 24) | (buffer_[payload_offset_ + 1] << 16) |
-      (buffer_[payload_offset_ + 2] << 8) | buffer_[payload_offset_ + 3];
+  timestamp_ = (buffer[payload_offset_] << 24) |
+               (buffer[payload_offset_ + 1] << 16) |
+               (buffer[payload_offset_ + 2] << 8) | buffer[payload_offset_ + 3];
+  payload_offset_ += 4;
 
   // 9th byte to 12th byte
-  ssrc_ = (buffer_[payload_offset_] << 24) |
-          (buffer_[payload_offset_ + 1] << 16) |
-          (buffer_[payload_offset_ + 2] << 8) | buffer_[payload_offset_ + 3];
+  ssrc_ = (buffer[payload_offset_] << 24) |
+          (buffer[payload_offset_ + 1] << 16) |
+          (buffer[payload_offset_ + 2] << 8) | buffer[payload_offset_ + 3];
 
   payload_offset_ = kFixedHeaderSize;
 
@@ -68,11 +75,11 @@ bool RtpPacket::Parse(const uint8_t *buffer, uint32_t size) {
     return false;
   }
   // csrc
-  for (uint32_t csrc_index = 0; i < csrc_count_; i++) {
-    uint32_t csrc = (buffer_[payload_offset_ + csrc_index * 4] << 24) |
-                    (buffer_[payload_offset_ + 1 + csrc_index * 4] << 16) |
-                    (buffer_[payload_offset_ + 2 + csrc_index * 4] << 8) |
-                    buffer_[payload_offset_ + 3 + csrc_index * 4];
+  for (uint32_t csrc_index = 0; csrc_index < csrc_count_; csrc_index++) {
+    uint32_t csrc = (buffer[payload_offset_ + csrc_index * 4] << 24) |
+                    (buffer[payload_offset_ + 1 + csrc_index * 4] << 16) |
+                    (buffer[payload_offset_ + 2 + csrc_index * 4] << 8) |
+                    buffer[payload_offset_ + 3 + csrc_index * 4];
     csrcs_.push_back(csrc);
   }
 
@@ -89,28 +96,30 @@ bool RtpPacket::Parse(const uint8_t *buffer, uint32_t size) {
       return false;
     }
     extension_profile_ =
-        (buffer_[payload_offset_] << 8) | buffer_[payload_offset_ + 1];
+        (buffer[payload_offset_] << 8) | buffer[payload_offset_ + 1];
     extension_len_ =
-        (buffer_[payload_offset_ + 2] << 8) | buffer_[payload_offset_ + 3];
+        (buffer[payload_offset_ + 2] << 8) | buffer[payload_offset_ + 3];
 
-    if (payload_offset_ + 4 + extension_len_ > size) {
+    if (payload_offset_ + extension_len_ > size) {
       LOG_WARN("RtpPacket::Parse: extension len is too large");
       return false;
     }
 
     size_t offset = payload_offset_ + 4;
     while (offset < size && extension_len_ > 0) {
-      uint8_t id = buffer_[offset] >> 4;
-      uint8_t len = (buffer_[offset] & 0x0F) + 1;
+      uint8_t id = buffer[offset] >> 4;
+      uint8_t len = (buffer[offset] & 0x0F) + 1;
       if (offset + 1 + len > size) {
         break;
       }
-      extensions_.push_back(
-          {id, std::vector<uint8_t>(buffer_ + offset + 1,
-                                    buffer_ + offset + 1 + len)});
+      Extension extension;
+      extension.id = id;
+      extension.data =
+          std::vector<uint8_t>(buffer + offset + 1, buffer + offset + 1 + len);
+      extensions_.push_back(extension);
       offset += 1 + len;
     }
-    payload_offset_ += (4 + extension_len_);
+    payload_offset_ += extension_len_;
   }
 
   if (has_padding_ && payload_offset_ < size) {
