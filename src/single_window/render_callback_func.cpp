@@ -322,19 +322,19 @@ void Render::NetStatusReport(const char *client_id, size_t client_id_size,
     return;
   }
 
-  std::string remote_id(user_id, user_id_size);
-  if (render->client_properties_.find(remote_id) ==
-      render->client_properties_.end()) {
-    return;
-  }
-  auto props = render->client_properties_.find(remote_id)->second;
-
   if (0 == strcmp(render->client_id_, "")) {
     memset(&render->client_id_, 0, sizeof(render->client_id_));
     memcpy(render->client_id_, client_id, client_id_size);
     LOG_INFO("Use client id [{}] and save id into cache file", client_id);
     render->SaveSettingsIntoCacheFile();
   }
+
+  std::string remote_id(user_id, user_id_size);
+  if (render->client_properties_.find(remote_id) ==
+      render->client_properties_.end()) {
+    return;
+  }
+  auto props = render->client_properties_.find(remote_id)->second;
   if (props->traversal_mode_ != mode) {
     props->traversal_mode_ = mode;
     LOG_INFO("Net mode: [{}]", int(props->traversal_mode_));
