@@ -99,5 +99,5 @@ int NvidiaVideoDecoder::Decode(
     }
   }
 
-  return -1;
+  return 0;
 }
