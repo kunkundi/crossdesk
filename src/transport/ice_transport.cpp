@@ -130,18 +130,29 @@ void IceTransport::InitializeChannels(
   audio_channel_send_->Initialize(rtp::PAYLOAD_TYPE::OPUS);
   data_channel_send_->Initialize(rtp::PAYLOAD_TYPE::DATA);
 
+  std::weak_ptr<IceTransport> weak_self = shared_from_this();
   video_channel_receive_ = std::make_unique<VideoChannelReceive>(
       ice_agent_, ice_io_statistics_,
-      [this](VideoFrame &video_frame) { OnReceiveCompleteFrame(video_frame); });
+      [this, weak_self](VideoFrame &video_frame) {
+        if (auto self = weak_self.lock()) {
+          OnReceiveCompleteFrame(video_frame);
+        }
+      });
 
   audio_channel_receive_ = std::make_unique<AudioChannelReceive>(
-      ice_agent_, ice_io_statistics_, [this](const char *data, size_t size) {
-        OnReceiveCompleteAudio(data, size);
+      ice_agent_, ice_io_statistics_,
+      [this, weak_self](const char *data, size_t size) {
+        if (auto self = weak_self.lock()) {
+          OnReceiveCompleteAudio(data, size);
+        }
       });
 
   data_channel_receive_ = std::make_unique<DataChannelReceive>(
-      ice_agent_, ice_io_statistics_, [this](const char *data, size_t size) {
-        OnReceiveCompleteData(data, size);
+      ice_agent_, ice_io_statistics_,
+      [this, weak_self](const char *data, size_t size) {
+        if (auto self = weak_self.lock()) {
+          OnReceiveCompleteData(data, size);
+        }
       });
 
   video_channel_receive_->Initialize(video_codec_payload_type_);

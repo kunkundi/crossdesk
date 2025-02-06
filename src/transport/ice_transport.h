@@ -33,7 +33,7 @@
 #include "video_encoder_factory.h"
 #include "ws_client.h"
 
-class IceTransport {
+class IceTransport : public std::enable_shared_from_this<IceTransport> {
  public:
   typedef enum { VIDEO = 96, AUDIO = 97, DATA = 127 } DATA_TYPE;
   typedef enum { H264 = 96, AV1 = 99 } VIDEO_TYPE;

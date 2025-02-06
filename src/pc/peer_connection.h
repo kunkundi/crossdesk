@@ -169,7 +169,7 @@ class PeerConnection {
   std::string sdp_without_cands_ = "";
 
  private:
-  std::map<std::string, std::unique_ptr<IceTransport>> ice_transport_list_;
+  std::map<std::string, std::shared_ptr<IceTransport>> ice_transport_list_;
   std::map<std::string, bool> is_ice_transport_ready_;
 
   std::function<void(std::string, const std::string &)> on_ice_status_change_ =

@@ -594,7 +594,7 @@ void PeerConnection::ProcessIceWorkMsg(const IceWorkMsg &msg) {
       LOG_INFO("]");
 
       for (auto &remote_user_id : user_id_list) {
-        ice_transport_list_[remote_user_id] = std::make_unique<IceTransport>(
+        ice_transport_list_[remote_user_id] = std::make_shared<IceTransport>(
             true, transmission_id, user_id_, remote_user_id, ws_transport_,
             on_ice_status_change_, user_data_);
 
@@ -641,7 +641,7 @@ void PeerConnection::ProcessIceWorkMsg(const IceWorkMsg &msg) {
       if (ice_transport_list_.end() ==
           ice_transport_list_.find(remote_user_id)) {
         // Enable TURN for answer peer by default
-        ice_transport_list_[remote_user_id] = std::make_unique<IceTransport>(
+        ice_transport_list_[remote_user_id] = std::make_shared<IceTransport>(
             false, transmission_id, user_id_, remote_user_id, ws_transport_,
             on_ice_status_change_, user_data_);
 
