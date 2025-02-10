@@ -69,7 +69,6 @@ int IceTransport::InitIceTransmission(
       turn_password);
 
   InitializeIOStatistics();
-  InitializeChannels(video_codec_payload_type);
 
   ice_agent_->CreateIceAgent(
       [](NiceAgent *agent, guint stream_id, guint component_id,
@@ -742,6 +741,8 @@ std::string IceTransport::GetRemoteCapabilities(const std::string &remote_sdp) {
     if (!NegotiateDataPayloadType(remote_sdp)) {
       return std::string();
     }
+
+    InitializeChannels(negotiated_video_pt_);
 
     CreateVideoCodec(negotiated_video_pt_, hardware_acceleration_);
     CreateAudioCodec();
