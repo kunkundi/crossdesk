@@ -207,6 +207,7 @@ class RtpPacket {
   void SetTimestamp(uint64_t timestamp) { timestamp_ = timestamp; }
   void SetSsrc(uint32_t ssrc) { ssrc_ = ssrc; }
   void SetCsrcs(std::vector<uint32_t> &csrcs) { csrcs_ = csrcs; }
+  void SetSize(size_t size) { size_ = size; }
 
   void SetAbsoluteSendTimestamp(uint32_t abs_send_time) {
     // Absolute Send Time is a 24-bit field, we need to ensure it fits in 24

@@ -96,7 +96,6 @@ void TransportFeedbackAdapter::AddPacket(const RtpPacketToSend& packet_to_send,
   feedback.sent.sequence_number = seq_num_unwrapper_.Unwrap(
       packet_to_send.transport_sequence_number().value_or(0));
   feedback.sent.size = DataSize::Bytes(packet_to_send.size() + overhead_bytes);
-  LOG_WARN("!!! packet_to_send.size: {}", packet_to_send.size());
   feedback.sent.audio =
       packet_to_send.packet_type() == RtpPacketMediaType::kAudio;
   feedback.network_route = network_route_;

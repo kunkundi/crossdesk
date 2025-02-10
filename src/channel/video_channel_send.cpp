@@ -12,7 +12,7 @@ VideoChannelSend::VideoChannelSend(
     std::shared_ptr<IOStatistics> ice_io_statistics)
     : ice_agent_(ice_agent),
       ice_io_statistics_(ice_io_statistics),
-      clock_(clock){};
+      clock_(clock) {};
 
 void VideoChannelSend::Initialize(rtp::PAYLOAD_TYPE payload_type) {
   controller_ = std::make_unique<CongestionControl>();

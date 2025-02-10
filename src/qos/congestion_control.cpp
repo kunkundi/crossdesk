@@ -133,19 +133,9 @@ NetworkControlUpdate CongestionControl::OnTransportPacketsFeedback(
   }
   previously_in_alr_ = alr_start_time.has_value();
 
-  int count = 0;
-  for (auto r : report.SortedByReceiveTime()) {
-    count++;
-    LOG_WARN("{} packet.sent_packet.size: {}", count,
-             ToString(r.sent_packet.size));
-  }
-
   acknowledged_bitrate_estimator_->IncomingPacketFeedbackVector(
       report.SortedByReceiveTime());
   auto acknowledged_bitrate = acknowledged_bitrate_estimator_->bitrate();
-  LOG_WARN("acknowledged_bitrate:{}", acknowledged_bitrate->kbps());
-  // TODO: fix acknowledged_bitrate
-  // acknowledged_bitrate = DataRate::KilobitsPerSec(1000);
   bandwidth_estimation_->SetAcknowledgedRate(acknowledged_bitrate,
                                              report.feedback_time);
   for (const auto& feedback : report.SortedByReceiveTime()) {

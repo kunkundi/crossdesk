@@ -69,6 +69,7 @@ int RtpVideoSender::SendRtpPacket(RtpPacket& rtp_packet) {
     webrtc::RtpPacketToSend rtp_packet_to_send;
     rtp_packet_to_send.SetSequenceNumber(rtp_packet.SequenceNumber());
     rtp_packet_to_send.SetSsrc(rtp_packet.Ssrc());
+    rtp_packet_to_send.SetSize(rtp_packet.Size());
     rtp_packet_to_send.set_transport_sequence_number(transport_seq_++);
     rtp_packet_to_send.set_packet_type(webrtc::RtpPacketMediaType::kVideo);
     on_sent_packet_func_(rtp_packet_to_send);
