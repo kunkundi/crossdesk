@@ -18,11 +18,9 @@ class RtpPacketizerH264 : public RtpPacketizer {
   std::vector<RtpPacket> Build(uint8_t* payload,
                                uint32_t payload_size) override;
 
-  std::vector<RtpPacket> RtpPacketizerH264::BuildNalu(uint8_t* payload,
-                                                      uint32_t payload_size);
+  std::vector<RtpPacket> BuildNalu(uint8_t* payload, uint32_t payload_size);
 
-  std::vector<RtpPacket> RtpPacketizerH264::BuildFua(uint8_t* payload,
-                                                     uint32_t payload_size);
+  std::vector<RtpPacket> BuildFua(uint8_t* payload, uint32_t payload_size);
 
  private:
   bool EncodeH264Fua(RtpPacket& rtp_packet, uint8_t* payload,

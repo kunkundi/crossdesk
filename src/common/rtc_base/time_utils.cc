@@ -15,13 +15,12 @@
 #endif
 
 #include "rtc_base/numerics/safe_conversions.h"
+#include "rtc_base/system_time.h"
 #include "rtc_base/time_utils.h"
-#include "system_time.h"
-#if defined(_WIN32)
-#include "rtc_base/win32.h"
-#endif
 #if defined(_WIN32)
 #include <minwinbase.h>
+
+#include "rtc_base/win32.h"
 #endif
 
 namespace rtc {
@@ -228,6 +227,7 @@ int64_t TimeUTCMicros() {
   return (li.QuadPart - kFileTimeToUnixTimeEpochOffset) /
          kFileTimeToMicroSeconds;
 #endif
+  return 0;
 }
 
 int64_t TimeUTCMillis() { return TimeUTCMicros() / kNumMicrosecsPerMillisec; }

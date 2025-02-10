@@ -18,9 +18,9 @@
 
 #if defined(__POSIX__)
 #include <sys/time.h>
+#endif
 #if defined(__APPLE__)
 #include <mach/mach_time.h>
-#endif
 #endif
 
 #if defined(_WIN32)

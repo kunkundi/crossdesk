@@ -38,7 +38,7 @@ class CopyOnWriteBuffer {
 
  private:
   void EnsureUnique() {
-    if (!buffer_.unique()) {
+    if (buffer_.use_count() != 1) {
       buffer_ = std::make_shared<std::vector<uint8_t>>(*buffer_);
     }
   }

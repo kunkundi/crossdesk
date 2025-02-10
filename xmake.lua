@@ -48,6 +48,9 @@ target("common")
     "src/common/rtc_base/numerics/*.cc",
     "src/common/api/units/*.cc",
     "src/common/api/transport/*.cc")
+    if not is_os("windows") then
+        remove_files("src/common/rtc_base/win32.cc")
+    end
     add_includedirs("src/common", {public = true})
 
 target("inih")
