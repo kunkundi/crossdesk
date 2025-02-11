@@ -44,6 +44,8 @@ class AomAv1Encoder : public VideoEncoder {
 
   int ForceIdr();
 
+  int SetTargetBitrate(int bitrate);
+
   std::string GetEncoderName() { return "AomAV1"; }
 
  private:

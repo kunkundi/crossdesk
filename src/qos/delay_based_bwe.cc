@@ -206,6 +206,7 @@ DelayBasedBwe::Result DelayBasedBwe::MaybeUpdateEstimate(
   }
 
   result.delay_detector_state = detector_state;
+
   return result;
 }
 

@@ -29,6 +29,16 @@
 
 namespace webrtc {
 
+enum class LossBasedState {
+  kIncreasing = 0,
+  // TODO(bugs.webrtc.org/12707): Remove one of the increasing states once we
+  // have decided if padding is usefull for ramping up when BWE is loss
+  // limited.
+  kIncreaseUsingPadding = 1,
+  kDecreasing = 2,
+  kDelayBasedEstimate = 3
+};
+
 class LinkCapacityTracker {
  public:
   LinkCapacityTracker() = default;
@@ -79,6 +89,7 @@ class SendSideBandwidthEstimation {
   void OnRouteChange();
 
   DataRate target_rate() const;
+  LossBasedState loss_based_state() const;
   // Return whether the current rtt is higher than the rtt limited configured in
   // RttBasedBackoff.
   bool IsRttAboveLimit() const;
@@ -115,6 +126,7 @@ class SendSideBandwidthEstimation {
                                 BandwidthUsage delay_detector_state,
                                 std::optional<DataRate> probe_bitrate,
                                 bool in_alr);
+  bool PaceAtLossBasedEstimate() const;
 
  private:
   friend class GoogCcStatePrinter;
@@ -184,6 +196,7 @@ class SendSideBandwidthEstimation {
   float high_loss_threshold_;
   DataRate bitrate_threshold_;
   bool disable_receiver_limit_caps_only_;
+  LossBasedState loss_based_state_;
 };
 }  // namespace webrtc
 #endif  // MODULES_CONGESTION_CONTROLLER_GOOG_CC_SEND_SIDE_BANDWIDTH_ESTIMATION_H_

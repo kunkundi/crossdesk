@@ -23,7 +23,9 @@ class VideoChannelSend {
   VideoChannelSend();
   VideoChannelSend(std::shared_ptr<webrtc::Clock> clock,
                    std::shared_ptr<IceAgent> ice_agent,
-                   std::shared_ptr<IOStatistics> ice_io_statistics);
+                   std::shared_ptr<IOStatistics> ice_io_statistics,
+                   std::function<void(const webrtc::RtpPacketToSend& packet)>
+                       on_sent_packet_func_);
   ~VideoChannelSend();
 
  public:
@@ -50,15 +52,11 @@ class VideoChannelSend {
   std::unique_ptr<RtpPacketizer> rtp_packetizer_ = nullptr;
   std::unique_ptr<RtpVideoSender> rtp_video_sender_ = nullptr;
 
+  std::function<void(const webrtc::RtpPacketToSend& packet)>
+      on_sent_packet_func_ = nullptr;
+
  private:
   std::shared_ptr<Clock> clock_;
-  int64_t current_offset_ = std::numeric_limits<int64_t>::min();
-  // Used by RFC 8888 congestion control feedback to track base time.
-  std::optional<uint32_t> last_feedback_compact_ntp_time_;
-  int feedback_count_ = 0;
-
-  webrtc::TransportFeedbackAdapter transport_feedback_adapter_;
-  std::unique_ptr<CongestionControl> controller_;
 };
 
 #endif

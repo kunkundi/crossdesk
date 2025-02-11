@@ -234,6 +234,10 @@ DataRate SendSideBandwidthEstimation::target_rate() const {
   return std::max(min_bitrate_configured_, target);
 }
 
+LossBasedState SendSideBandwidthEstimation::loss_based_state() const {
+  return loss_based_state_;
+}
+
 bool SendSideBandwidthEstimation::IsRttAboveLimit() const {
   return rtt_backoff_.IsRttAboveLimit();
 }
@@ -509,6 +513,12 @@ void SendSideBandwidthEstimation::UpdateTargetBitrate(DataRate new_bitrate,
 
 void SendSideBandwidthEstimation::ApplyTargetLimits(Timestamp at_time) {
   UpdateTargetBitrate(current_target_, at_time);
+}
+
+bool SendSideBandwidthEstimation::PaceAtLossBasedEstimate() const {
+  // return LossBasedBandwidthEstimatorV2ReadyForUse() &&
+  //        loss_based_bandwidth_estimator_v2_->PaceAtLossBasedEstimate();
+  return false;
 }
 
 }  // namespace webrtc

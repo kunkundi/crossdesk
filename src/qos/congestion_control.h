@@ -29,6 +29,9 @@ class CongestionControl {
                                     Timestamp at_time);
 
  private:
+  PacerConfig GetPacingRates(Timestamp at_time) const;
+
+ private:
   const bool packet_feedback_only_;
   const bool use_min_allocatable_as_lower_bound_;
   const bool ignore_probes_lower_than_network_estimate_;
@@ -54,11 +57,18 @@ class CongestionControl {
 
   bool first_packet_sent_ = false;
 
+  std::optional<NetworkStateEstimate> estimate_;
+
   Timestamp next_loss_update_ = Timestamp::MinusInfinity();
   int lost_packets_since_last_loss_update_ = 0;
   int expected_packets_since_last_loss_update_ = 0;
 
   std::deque<int64_t> feedback_max_rtts_;
+
+  DataRate last_loss_based_target_rate_;
+  DataRate last_pushback_target_rate_;
+  DataRate last_stable_target_rate_;
+  LossBasedState last_loss_base_state_;
 
   std::optional<uint8_t> last_estimated_fraction_loss_ = 0;
   TimeDelta last_estimated_round_trip_time_ = TimeDelta::PlusInfinity();

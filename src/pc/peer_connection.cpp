@@ -602,11 +602,8 @@ void PeerConnection::ProcessIceWorkMsg(const IceWorkMsg &msg) {
             hardware_acceleration_, trickle_ice_, reliable_ice_, enable_turn_,
             false, video_payload_types_, audio_payload_types_);
 
-        ice_transport_list_[remote_user_id]->SetOnReceiveVideoFunc(
-            on_receive_video_frame_);
-        ice_transport_list_[remote_user_id]->SetOnReceiveAudioFunc(
-            on_receive_audio_buffer_);
-        ice_transport_list_[remote_user_id]->SetOnReceiveDataFunc(
+        ice_transport_list_[remote_user_id]->SetOnReceiveFunc(
+            on_receive_video_frame_, on_receive_audio_buffer_,
             on_receive_data_buffer_);
 
         ice_transport_list_[remote_user_id]->SetOnReceiveNetStatusReportFunc(
@@ -649,11 +646,8 @@ void PeerConnection::ProcessIceWorkMsg(const IceWorkMsg &msg) {
             hardware_acceleration_, trickle_ice_, reliable_ice_, enable_turn_,
             false, video_payload_types_, audio_payload_types_);
 
-        ice_transport_list_[remote_user_id]->SetOnReceiveVideoFunc(
-            on_receive_video_frame_);
-        ice_transport_list_[remote_user_id]->SetOnReceiveAudioFunc(
-            on_receive_audio_buffer_);
-        ice_transport_list_[remote_user_id]->SetOnReceiveDataFunc(
+        ice_transport_list_[remote_user_id]->SetOnReceiveFunc(
+            on_receive_video_frame_, on_receive_audio_buffer_,
             on_receive_data_buffer_);
 
         ice_transport_list_[remote_user_id]->SetOnReceiveNetStatusReportFunc(

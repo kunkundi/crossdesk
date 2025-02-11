@@ -31,6 +31,8 @@ class OpenH264Encoder : public VideoEncoder {
 
   int ForceIdr();
 
+  int SetTargetBitrate(int bitrate);
+
   std::string GetEncoderName() { return "OpenH264"; }
 
  private:

@@ -359,6 +359,11 @@ int AomAv1Encoder::ForceIdr() {
   return 0;
 }
 
+int AomAv1Encoder::SetTargetBitrate(int bitrate) {
+  target_bitrate_ = bitrate;
+  return 0;
+}
+
 int AomAv1Encoder::Release() {
   if (frame_for_encode_ != nullptr) {
     aom_img_free(frame_for_encode_);

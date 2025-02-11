@@ -21,6 +21,32 @@ constexpr float kDefaultPaceMultiplier = 2.5f;
 // below the current throughput estimate to drain the network queues.
 constexpr double kProbeDropThroughputFraction = 0.85;
 
+BandwidthLimitedCause GetBandwidthLimitedCause(LossBasedState loss_based_state,
+                                               bool is_rtt_above_limit,
+                                               BandwidthUsage bandwidth_usage) {
+  if (bandwidth_usage == BandwidthUsage::kBwOverusing ||
+      bandwidth_usage == BandwidthUsage::kBwUnderusing) {
+    return BandwidthLimitedCause::kDelayBasedLimitedDelayIncreased;
+  } else if (is_rtt_above_limit) {
+    return BandwidthLimitedCause::kRttBasedBackOffHighRtt;
+  }
+  switch (loss_based_state) {
+    case LossBasedState::kDecreasing:
+      // Probes may not be sent in this state.
+      return BandwidthLimitedCause::kLossLimitedBwe;
+    case webrtc::LossBasedState::kIncreaseUsingPadding:
+      // Probes may not be sent in this state.
+      return BandwidthLimitedCause::kLossLimitedBwe;
+    case LossBasedState::kIncreasing:
+      // Probes may be sent in this state.
+      return BandwidthLimitedCause::kLossLimitedBweIncreasing;
+    case LossBasedState::kDelayBasedEstimate:
+      return BandwidthLimitedCause::kDelayBasedLimited;
+    default:
+      return BandwidthLimitedCause::kLossLimitedBwe;
+  }
+}
+
 CongestionControl::CongestionControl()
     : packet_feedback_only_(true),
       use_min_allocatable_as_lower_bound_(false),
@@ -179,13 +205,13 @@ NetworkControlUpdate CongestionControl::OnTransportPacketsFeedback(
     bandwidth_estimation_->UpdateDelayBasedEstimate(report.feedback_time,
                                                     result.target_bitrate);
   }
-  // bandwidth_estimation_->UpdateLossBasedEstimator(
-  //     report, result.delay_detector_state, probe_bitrate,
-  //     alr_start_time.has_value());
-  // if (result.updated) {
-  //   // Update the estimate in the ProbeController, in case we want to probe.
-  //   MaybeTriggerOnNetworkChanged(&update, report.feedback_time);
-  // }
+  bandwidth_estimation_->UpdateLossBasedEstimator(
+      report, result.delay_detector_state, probe_bitrate,
+      alr_start_time.has_value());
+  if (result.updated) {
+    // Update the estimate in the ProbeController, in case we want to probe.
+    MaybeTriggerOnNetworkChanged(&update, report.feedback_time);
+  }
 
   recovered_from_overuse = result.recovered_from_overuse;
 
@@ -214,14 +240,13 @@ NetworkControlUpdate CongestionControl::OnTransportPacketsFeedback(
 
 void CongestionControl::MaybeTriggerOnNetworkChanged(
     NetworkControlUpdate* update, Timestamp at_time) {
-  // uint8_t fraction_loss = bandwidth_estimation_->fraction_loss();
-  // TimeDelta round_trip_time = bandwidth_estimation_->round_trip_time();
-  // DataRate loss_based_target_rate = bandwidth_estimation_->target_rate();
-  // LossBasedState loss_based_state =
-  // bandwidth_estimation_->loss_based_state(); DataRate pushback_target_rate =
-  // loss_based_target_rate;
+  uint8_t fraction_loss = bandwidth_estimation_->fraction_loss();
+  TimeDelta round_trip_time = bandwidth_estimation_->round_trip_time();
+  DataRate loss_based_target_rate = bandwidth_estimation_->target_rate();
+  LossBasedState loss_based_state = bandwidth_estimation_->loss_based_state();
+  DataRate pushback_target_rate = loss_based_target_rate;
 
-  // double cwnd_reduce_ratio = 0.0;
+  double cwnd_reduce_ratio = 0.0;
   // if (congestion_window_pushback_controller_) {
   //   int64_t pushback_rate =
   //       congestion_window_pushback_controller_->UpdateTargetBitrate(
@@ -235,53 +260,88 @@ void CongestionControl::MaybeTriggerOnNetworkChanged(
   //                         loss_based_target_rate.bps();
   //   }
   // }
-  // DataRate stable_target_rate =
-  //     bandwidth_estimation_->GetEstimatedLinkCapacity();
-  // stable_target_rate = std::min(stable_target_rate, pushback_target_rate);
+  DataRate stable_target_rate =
+      bandwidth_estimation_->GetEstimatedLinkCapacity();
+  stable_target_rate = std::min(stable_target_rate, pushback_target_rate);
 
-  // if ((loss_based_target_rate != last_loss_based_target_rate_) ||
-  //     (loss_based_state != last_loss_base_state_) ||
-  //     (fraction_loss != last_estimated_fraction_loss_) ||
-  //     (round_trip_time != last_estimated_round_trip_time_) ||
-  //     (pushback_target_rate != last_pushback_target_rate_) ||
-  //     (stable_target_rate != last_stable_target_rate_)) {
-  //   last_loss_based_target_rate_ = loss_based_target_rate;
-  //   last_pushback_target_rate_ = pushback_target_rate;
-  //   last_estimated_fraction_loss_ = fraction_loss;
-  //   last_estimated_round_trip_time_ = round_trip_time;
-  //   last_stable_target_rate_ = stable_target_rate;
-  //   last_loss_base_state_ = loss_based_state;
+  if ((loss_based_target_rate != last_loss_based_target_rate_) ||
+      (loss_based_state != last_loss_base_state_) ||
+      (fraction_loss != last_estimated_fraction_loss_) ||
+      (round_trip_time != last_estimated_round_trip_time_) ||
+      (pushback_target_rate != last_pushback_target_rate_) ||
+      (stable_target_rate != last_stable_target_rate_)) {
+    last_loss_based_target_rate_ = loss_based_target_rate;
+    last_pushback_target_rate_ = pushback_target_rate;
+    last_estimated_fraction_loss_ = fraction_loss;
+    last_estimated_round_trip_time_ = round_trip_time;
+    last_stable_target_rate_ = stable_target_rate;
+    last_loss_base_state_ = loss_based_state;
 
-  //   alr_detector_->SetEstimatedBitrate(loss_based_target_rate.bps());
+    alr_detector_->SetEstimatedBitrate(loss_based_target_rate.bps());
 
-  //   TimeDelta bwe_period = delay_based_bwe_->GetExpectedBwePeriod();
+    TimeDelta bwe_period = delay_based_bwe_->GetExpectedBwePeriod();
 
-  //   TargetTransferRate target_rate_msg;
-  //   target_rate_msg.at_time = at_time;
-  //   if (rate_control_settings_.UseCongestionWindowDropFrameOnly()) {
-  //     target_rate_msg.target_rate = loss_based_target_rate;
-  //     target_rate_msg.cwnd_reduce_ratio = cwnd_reduce_ratio;
-  //   } else {
-  //     target_rate_msg.target_rate = pushback_target_rate;
-  //   }
-  //   target_rate_msg.stable_target_rate = stable_target_rate;
-  //   target_rate_msg.network_estimate.at_time = at_time;
-  //   target_rate_msg.network_estimate.round_trip_time = round_trip_time;
-  //   target_rate_msg.network_estimate.loss_rate_ratio = fraction_loss /
-  //   255.0f; target_rate_msg.network_estimate.bwe_period = bwe_period;
+    TargetTransferRate target_rate_msg;
+    target_rate_msg.at_time = at_time;
+    // if (rate_control_settings_.UseCongestionWindowDropFrameOnly()) {
+    //   target_rate_msg.target_rate = loss_based_target_rate;
+    //   target_rate_msg.cwnd_reduce_ratio = cwnd_reduce_ratio;
+    // } else
+    { target_rate_msg.target_rate = pushback_target_rate; }
+    target_rate_msg.stable_target_rate = stable_target_rate;
+    target_rate_msg.network_estimate.at_time = at_time;
+    target_rate_msg.network_estimate.round_trip_time = round_trip_time;
+    target_rate_msg.network_estimate.loss_rate_ratio = fraction_loss / 255.0f;
+    target_rate_msg.network_estimate.bwe_period = bwe_period;
 
-  //   update->target_rate = target_rate_msg;
+    update->target_rate = target_rate_msg;
 
-  //   auto probes = probe_controller_->SetEstimatedBitrate(
-  //       loss_based_target_rate,
-  //       GetBandwidthLimitedCause(bandwidth_estimation_->loss_based_state(),
-  //                                bandwidth_estimation_->IsRttAboveLimit(),
-  //                                delay_based_bwe_->last_state()),
-  //       at_time);
-  //   update->probe_cluster_configs.insert(update->probe_cluster_configs.end(),
-  //                                        probes.begin(), probes.end());
-  //   update->pacer_config = GetPacingRates(at_time);
-  //   LOG_INFO("bwe {} pushback_target_bps={} estimate_bps={}", at_time.ms(),
-  //            last_pushback_target_rate_.bps(), loss_based_target_rate.bps());
-  // }
+    auto probes = probe_controller_->SetEstimatedBitrate(
+        loss_based_target_rate,
+        GetBandwidthLimitedCause(bandwidth_estimation_->loss_based_state(),
+                                 bandwidth_estimation_->IsRttAboveLimit(),
+                                 delay_based_bwe_->last_state()),
+        at_time);
+    update->probe_cluster_configs.insert(update->probe_cluster_configs.end(),
+                                         probes.begin(), probes.end());
+    update->pacer_config = GetPacingRates(at_time);
+    // LOG_INFO("bwe {} pushback_target_bps={} estimate_bps={}", at_time.ms(),
+    //          last_pushback_target_rate_.bps(), loss_based_target_rate.bps());
+  }
+}
+
+PacerConfig CongestionControl::GetPacingRates(Timestamp at_time) const {
+  // Pacing rate is based on target rate before congestion window pushback,
+  // because we don't want to build queues in the pacer when pushback occurs.
+  DataRate pacing_rate = DataRate::Zero();
+  if (pace_at_max_of_bwe_and_lower_link_capacity_ && estimate_ &&
+      !bandwidth_estimation_->PaceAtLossBasedEstimate()) {
+    pacing_rate =
+        std::max({min_total_allocated_bitrate_, estimate_->link_capacity_lower,
+                  last_loss_based_target_rate_}) *
+        pacing_factor_;
+  } else {
+    pacing_rate =
+        std::max(min_total_allocated_bitrate_, last_loss_based_target_rate_) *
+        pacing_factor_;
+  }
+  if (limit_pacingfactor_by_upper_link_capacity_estimate_ && estimate_ &&
+      estimate_->link_capacity_upper.IsFinite() &&
+      pacing_rate > estimate_->link_capacity_upper) {
+    pacing_rate =
+        std::max({estimate_->link_capacity_upper, min_total_allocated_bitrate_,
+                  last_loss_based_target_rate_});
+  }
+
+  DataRate padding_rate =
+      (last_loss_base_state_ == LossBasedState::kIncreaseUsingPadding)
+          ? std::max(max_padding_rate_, last_loss_based_target_rate_)
+          : max_padding_rate_;
+  padding_rate = std::min(padding_rate, last_pushback_target_rate_);
+  PacerConfig msg;
+  msg.at_time = at_time;
+  msg.time_window = TimeDelta::Seconds(1);
+  msg.data_window = pacing_rate * msg.time_window;
+  msg.pad_window = padding_rate * msg.time_window;
+  return msg;
 }

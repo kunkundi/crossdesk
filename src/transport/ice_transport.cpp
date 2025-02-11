@@ -7,10 +7,6 @@
 
 #include "common.h"
 #include "log.h"
-#if __APPLE__
-#else
-#include "nvcodec_api.h"
-#endif
 
 using nlohmann::json;
 
@@ -25,22 +21,9 @@ IceTransport::IceTransport(
       remote_user_id_(remote_user_id),
       ice_ws_transport_(ice_ws_transmission),
       on_ice_status_change_(on_ice_status_change),
-      user_data_(user_data),
-      clock_(webrtc::Clock::GetRealTimeClockShared()) {}
+      user_data_(user_data) {}
 
-IceTransport::~IceTransport() {
-  user_data_ = nullptr;
-  video_codec_inited_ = false;
-  audio_codec_inited_ = false;
-  load_nvcodec_dll_success_ = false;
-
-#ifdef __APPLE__
-#else
-  if (hardware_acceleration_ && load_nvcodec_dll_success_) {
-    ReleaseNvCodecDll();
-  }
-#endif
-}
+IceTransport::~IceTransport() {}
 
 int IceTransport::SetLocalCapabilities(bool hardware_acceleration,
                                        bool use_trickle_ice,
@@ -63,12 +46,24 @@ int IceTransport::InitIceTransmission(
     std::string &stun_ip, int stun_port, std::string &turn_ip, int turn_port,
     std::string &turn_username, std::string &turn_password,
     rtp::PAYLOAD_TYPE video_codec_payload_type) {
+  ice_transport_controller_ = std::make_shared<IceTransportController>();
   ice_agent_ = std::make_unique<IceAgent>(
       offer_peer_, use_trickle_ice_, use_reliable_ice_, enable_turn_,
       force_turn_, stun_ip, stun_port, turn_ip, turn_port, turn_username,
       turn_password);
 
-  InitializeIOStatistics();
+  ice_io_statistics_ = std::make_unique<IOStatistics>(
+      [this](const IOStatistics::NetTrafficStats &net_traffic_stats) {
+        if (on_receive_net_status_report_) {
+          XNetTrafficStats xnet_traffic_stats;
+          memcpy(&xnet_traffic_stats, &net_traffic_stats,
+                 sizeof(XNetTrafficStats));
+          on_receive_net_status_report_(
+              user_id_.data(), user_id_.size(), TraversalMode(traversal_type_),
+              &xnet_traffic_stats, remote_user_id_.data(),
+              remote_user_id_.size(), user_data_);
+        }
+      });
 
   ice_agent_->CreateIceAgent(
       [](NiceAgent *agent, guint stream_id, guint component_id,
@@ -98,66 +93,6 @@ int IceTransport::InitIceTransmission(
       this);
 
   return 0;
-}
-
-void IceTransport::InitializeIOStatistics() {
-  ice_io_statistics_ = std::make_unique<IOStatistics>(
-      [this](const IOStatistics::NetTrafficStats &net_traffic_stats) {
-        if (on_receive_net_status_report_) {
-          XNetTrafficStats xnet_traffic_stats;
-          memcpy(&xnet_traffic_stats, &net_traffic_stats,
-                 sizeof(XNetTrafficStats));
-          on_receive_net_status_report_(
-              user_id_.data(), user_id_.size(), TraversalMode(traversal_type_),
-              &xnet_traffic_stats, remote_user_id_.data(),
-              remote_user_id_.size(), user_data_);
-        }
-      });
-}
-
-void IceTransport::InitializeChannels(
-    rtp::PAYLOAD_TYPE video_codec_payload_type) {
-  video_codec_payload_type_ = video_codec_payload_type;
-
-  video_channel_send_ = std::make_unique<VideoChannelSend>(clock_, ice_agent_,
-                                                           ice_io_statistics_);
-  audio_channel_send_ =
-      std::make_unique<AudioChannelSend>(ice_agent_, ice_io_statistics_);
-  data_channel_send_ =
-      std::make_unique<DataChannelSend>(ice_agent_, ice_io_statistics_);
-
-  video_channel_send_->Initialize(video_codec_payload_type_);
-  audio_channel_send_->Initialize(rtp::PAYLOAD_TYPE::OPUS);
-  data_channel_send_->Initialize(rtp::PAYLOAD_TYPE::DATA);
-
-  std::weak_ptr<IceTransport> weak_self = shared_from_this();
-  video_channel_receive_ = std::make_unique<VideoChannelReceive>(
-      clock_, ice_agent_, ice_io_statistics_,
-      [this, weak_self](VideoFrame &video_frame) {
-        if (auto self = weak_self.lock()) {
-          OnReceiveCompleteFrame(video_frame);
-        }
-      });
-
-  audio_channel_receive_ = std::make_unique<AudioChannelReceive>(
-      ice_agent_, ice_io_statistics_,
-      [this, weak_self](const char *data, size_t size) {
-        if (auto self = weak_self.lock()) {
-          OnReceiveCompleteAudio(data, size);
-        }
-      });
-
-  data_channel_receive_ = std::make_unique<DataChannelReceive>(
-      ice_agent_, ice_io_statistics_,
-      [this, weak_self](const char *data, size_t size) {
-        if (auto self = weak_self.lock()) {
-          OnReceiveCompleteData(data, size);
-        }
-      });
-
-  video_channel_receive_->Initialize(video_codec_payload_type_);
-  audio_channel_receive_->Initialize(rtp::PAYLOAD_TYPE::OPUS);
-  data_channel_receive_->Initialize(rtp::PAYLOAD_TYPE::DATA);
 }
 
 void IceTransport::OnIceStateChange(NiceAgent *agent, guint stream_id,
@@ -252,12 +187,13 @@ void IceTransport::OnReceiveBuffer(NiceAgent *agent, guint stream_id,
                                    gchar *buffer, gpointer user_ptr) {
   if (!is_closed_) {
     if (CheckIsRtpPacket(buffer, size)) {
-      if (CheckIsVideoPacket(buffer, size)) {
-        video_channel_receive_->OnReceiveRtpPacket(buffer, size);
-      } else if (CheckIsAudioPacket(buffer, size)) {
-        audio_channel_receive_->OnReceiveRtpPacket(buffer, size);
-      } else if (CheckIsDataPacket(buffer, size)) {
-        data_channel_receive_->OnReceiveRtpPacket(buffer, size);
+      if (CheckIsVideoPacket(buffer, size) && ice_transport_controller_) {
+        ice_transport_controller_->OnReceiveVideoRtpPacket(buffer, size);
+      } else if (CheckIsAudioPacket(buffer, size) &&
+                 ice_transport_controller_) {
+        ice_transport_controller_->OnReceiveAudioRtpPacket(buffer, size);
+      } else if (CheckIsDataPacket(buffer, size) && ice_transport_controller_) {
+        ice_transport_controller_->OnReceiveDataRtpPacket(buffer, size);
       }
     } else if (CheckIsRtcpPacket(buffer, size)) {
       // LOG_ERROR("Rtcp packet [{}]", (uint8_t)(buffer[1]));
@@ -372,42 +308,10 @@ bool IceTransport::HandleCongestionControlFeedback(
   //   rtcp_packet_info->congestion_control_feedback.emplace(std::move(feedback));
   // }
 
-  video_channel_send_->OnCongestionControlFeedback(clock_->CurrentTime(),
-                                                   feedback);
-  return true;
-}
-
-void IceTransport::OnReceiveCompleteFrame(VideoFrame &video_frame) {
-  int num_frame_returned = video_decoder_->Decode(
-      (uint8_t *)video_frame.Buffer(), video_frame.Size(),
-      [this](VideoFrame video_frame) {
-        if (on_receive_video_) {
-          XVideoFrame x_video_frame;
-          x_video_frame.data = (const char *)video_frame.Buffer();
-          x_video_frame.width = video_frame.Width();
-          x_video_frame.height = video_frame.Height();
-          x_video_frame.size = video_frame.Size();
-          on_receive_video_(&x_video_frame, remote_user_id_.data(),
-                            remote_user_id_.size(), user_data_);
-        }
-      });
-}
-
-void IceTransport::OnReceiveCompleteAudio(const char *data, size_t size) {
-  int num_frame_returned = audio_decoder_->Decode(
-      (uint8_t *)data, size, [this](uint8_t *data, int size) {
-        if (on_receive_audio_) {
-          on_receive_audio_((const char *)data, size, remote_user_id_.data(),
-                            remote_user_id_.size(), user_data_);
-        }
-      });
-}
-
-void IceTransport::OnReceiveCompleteData(const char *data, size_t size) {
-  if (on_receive_data_) {
-    on_receive_data_(data, size, remote_user_id_.data(), remote_user_id_.size(),
-                     user_data_);
+  if (ice_transport_controller_) {
+    ice_transport_controller_->OnCongestionControlFeedback(feedback);
   }
+  return true;
 }
 
 int IceTransport::DestroyIceTransmission() {
@@ -422,128 +326,7 @@ int IceTransport::DestroyIceTransmission() {
     ice_io_statistics_->Stop();
   }
 
-  if (video_channel_send_) {
-    video_channel_send_->Destroy();
-  }
-
-  if (audio_channel_send_) {
-    audio_channel_send_->Destroy();
-  }
-
-  if (data_channel_send_) {
-    data_channel_send_->Destroy();
-  }
-
-  if (video_channel_receive_) {
-    video_channel_receive_->Destroy();
-  }
-
-  if (audio_channel_receive_) {
-    audio_channel_receive_->Destroy();
-  }
-
-  if (data_channel_receive_) {
-    data_channel_receive_->Destroy();
-  }
-
   return ice_agent_->DestroyIceAgent();
-}
-
-int IceTransport::CreateVideoCodec(rtp::PAYLOAD_TYPE video_pt,
-                                   bool hardware_acceleration) {
-  if (video_codec_inited_) {
-    return 0;
-  }
-
-  hardware_acceleration_ = hardware_acceleration;
-
-  if (rtp::PAYLOAD_TYPE::AV1 == video_pt) {
-    if (hardware_acceleration_) {
-      hardware_acceleration_ = false;
-      LOG_WARN("Only support software codec for AV1");
-    }
-    video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(false, true);
-    video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(false, true);
-  } else if (rtp::PAYLOAD_TYPE::H264 == video_pt) {
-#ifdef __APPLE__
-    if (hardware_acceleration_) {
-      hardware_acceleration_ = false;
-      LOG_WARN(
-          "MacOS not support hardware acceleration, use default software "
-          "codec");
-      video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(false, false);
-      video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(false, false);
-    } else {
-      video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(false, false);
-      video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(false, false);
-    }
-#else
-    if (hardware_acceleration_) {
-      if (0 == LoadNvCodecDll()) {
-        load_nvcodec_dll_success_ = true;
-        video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(true, false);
-        video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(true, false);
-      } else {
-        LOG_WARN(
-            "Hardware accelerated codec not available, use default software "
-            "codec");
-        video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(false, false);
-        video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(false, false);
-      }
-    } else {
-      video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(false, false);
-      video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(false, false);
-    }
-#endif
-  }
-
-  if (!video_encoder_) {
-    video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(false, false);
-    LOG_ERROR("Create encoder failed, try to use software H.264 encoder");
-  }
-  if (!video_encoder_ || 0 != video_encoder_->Init()) {
-    LOG_ERROR("Encoder init failed");
-    return -1;
-  }
-
-  if (!video_decoder_) {
-    video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(false, false);
-    LOG_ERROR("Create decoder failed, try to use software H.264 decoder");
-  }
-  if (!video_decoder_ || video_decoder_->Init()) {
-    LOG_ERROR("Decoder init failed");
-    return -1;
-  }
-
-  video_codec_inited_ = true;
-  LOG_INFO("Create video codec [{}|{}] finish",
-           video_encoder_->GetEncoderName(), video_decoder_->GetDecoderName());
-
-  return 0;
-}
-
-int IceTransport::CreateAudioCodec() {
-  if (audio_codec_inited_) {
-    return 0;
-  }
-
-  audio_encoder_ = std::make_unique<AudioEncoder>(AudioEncoder(48000, 1, 480));
-  if (!audio_encoder_ || 0 != audio_encoder_->Init()) {
-    LOG_ERROR("Audio encoder init failed");
-    return -1;
-  }
-
-  audio_decoder_ = std::make_unique<AudioDecoder>(AudioDecoder(48000, 1, 480));
-  if (!audio_decoder_ || 0 != audio_decoder_->Init()) {
-    LOG_ERROR("Audio decoder init failed");
-    return -1;
-  }
-
-  audio_codec_inited_ = true;
-  LOG_INFO("Create audio codec [{}|{}] finish",
-           audio_encoder_->GetEncoderName(), audio_decoder_->GetDecoderName());
-
-  return 0;
 }
 
 int IceTransport::SetTransmissionId(const std::string &transmission_id) {
@@ -742,10 +525,12 @@ std::string IceTransport::GetRemoteCapabilities(const std::string &remote_sdp) {
       return std::string();
     }
 
-    InitializeChannels(negotiated_video_pt_);
-
-    CreateVideoCodec(negotiated_video_pt_, hardware_acceleration_);
-    CreateAudioCodec();
+    if (ice_transport_controller_) {
+      ice_transport_controller_->Create(
+          remote_user_id_, negotiated_video_pt_, hardware_acceleration_,
+          ice_agent_, ice_io_statistics_, on_receive_video_, on_receive_audio_,
+          on_receive_data_, user_data_);
+    }
 
     remote_capabilities_got_ = true;
   }
@@ -978,29 +763,11 @@ int IceTransport::SendVideoFrame(const XVideoFrame *video_frame) {
     return -2;
   }
 
-  if (b_force_i_frame_) {
-    video_encoder_->ForceIdr();
-    LOG_INFO("Force I frame");
-    b_force_i_frame_ = false;
+  if (ice_transport_controller_) {
+    return ice_transport_controller_->SendVideo(video_frame);
   }
 
-  int ret = video_encoder_->Encode(
-      video_frame,
-      [this](char *encoded_frame, size_t size,
-             VideoEncoder::VideoFrameType frame_type) -> int {
-        if (video_channel_send_) {
-          video_channel_send_->SendVideo(encoded_frame, size);
-        }
-
-        return 0;
-      });
-
-  if (0 != ret) {
-    LOG_ERROR("Encode failed");
-    return -1;
-  }
-
-  return 0;
+  return -1;
 }
 
 int IceTransport::SendAudioFrame(const char *data, size_t size) {
@@ -1011,17 +778,11 @@ int IceTransport::SendAudioFrame(const char *data, size_t size) {
     return -2;
   }
 
-  int ret = audio_encoder_->Encode(
-      (uint8_t *)data, size,
-      [this](char *encoded_audio_buffer, size_t size) -> int {
-        if (audio_channel_send_) {
-          audio_channel_send_->SendAudio(encoded_audio_buffer, size);
-        }
+  if (ice_transport_controller_) {
+    return ice_transport_controller_->SendAudio(data, size);
+  }
 
-        return 0;
-      });
-
-  return ret;
+  return -1;
 }
 
 int IceTransport::SendDataFrame(const char *data, size_t size) {
@@ -1032,11 +793,11 @@ int IceTransport::SendDataFrame(const char *data, size_t size) {
     return -2;
   }
 
-  if (data_channel_send_) {
-    data_channel_send_->SendData(data, size);
+  if (ice_transport_controller_) {
+    return ice_transport_controller_->SendData(data, size);
   }
 
-  return 0;
+  return -1;
 }
 
 uint8_t IceTransport::CheckIsRtpPacket(const char *buffer, size_t size) {

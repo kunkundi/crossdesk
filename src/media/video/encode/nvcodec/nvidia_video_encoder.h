@@ -20,6 +20,8 @@ class NvidiaVideoEncoder : public VideoEncoder {
 
   int ForceIdr();
 
+  int SetTargetBitrate(int bitrate);
+
   std::string GetEncoderName() { return "NvidiaH264"; }
 
  private:
@@ -50,6 +52,7 @@ class NvidiaVideoEncoder : public VideoEncoder {
   uint32_t key_frame_interval_ = 3000;
   uint32_t average_bitrate_ = 2000000;
   uint32_t max_bitrate_ = 10000000;
+  uint32_t fps_ = 30;
   int max_payload_size_ = 3000;
   NvEncoder* encoder_ = nullptr;
   CUcontext cuda_context_ = nullptr;

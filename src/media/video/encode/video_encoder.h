@@ -27,6 +27,8 @@ class VideoEncoder {
 
   virtual int ForceIdr() = 0;
 
+  virtual int SetTargetBitrate(int bitrate) = 0;
+
   virtual std::string GetEncoderName() = 0;
 
   VideoEncoder() = default;

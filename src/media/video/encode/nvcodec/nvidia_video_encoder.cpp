@@ -221,6 +221,25 @@ int NvidiaVideoEncoder::ForceIdr() {
   return 0;
 }
 
+int NvidiaVideoEncoder::SetTargetBitrate(int bitrate) {
+  if (!encoder_) {
+    return -1;
+  }
+
+  NV_ENC_RECONFIGURE_PARAMS reconfig_params;
+  reconfig_params.version = NV_ENC_RECONFIGURE_PARAMS_VER;
+  NV_ENC_INITIALIZE_PARAMS init_params;
+  NV_ENC_CONFIG encode_config = {NV_ENC_CONFIG_VER};
+  init_params.encodeConfig = &encode_config;
+  encoder_->GetInitializeParams(&init_params);
+  init_params.frameRateDen = 1;
+  init_params.frameRateNum = init_params.frameRateDen * fps_;
+  init_params.encodeConfig->rcParams.averageBitRate = average_bitrate_;
+  init_params.encodeConfig->rcParams.maxBitRate = bitrate;
+  reconfig_params.reInitEncodeParams = init_params;
+  return encoder_->Reconfigure(&reconfig_params) ? 0 : -1;
+}
+
 int NvidiaVideoEncoder::ResetEncodeResolution(unsigned int width,
                                               unsigned int height) {
   if (!encoder_) {
