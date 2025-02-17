@@ -128,11 +128,10 @@ class IceTransport {
   bool ParseRtcpPacket(const uint8_t *buffer, size_t size,
                        RtcpPacketInfo *rtcp_packet_info);
 
-  bool HandleCongestionControlFeedback(
-      const webrtc::rtcp::CommonHeader &rtcp_block,
-      RtcpPacketInfo *rtcp_packet_info);
+  bool HandleCongestionControlFeedback(const CommonHeader &rtcp_block,
+                                       RtcpPacketInfo *rtcp_packet_info);
 
-  bool HandleNack(const webrtc::rtcp::CommonHeader &rtcp_block,
+  bool HandleNack(const CommonHeader &rtcp_block,
                   RtcpPacketInfo *rtcp_packet_info);
 
  private:

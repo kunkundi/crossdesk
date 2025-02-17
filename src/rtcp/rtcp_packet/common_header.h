@@ -13,8 +13,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-namespace webrtc {
-namespace rtcp {
 class CommonHeader {
  public:
   static constexpr size_t kHeaderSizeBytes = 4;
@@ -47,6 +45,5 @@ class CommonHeader {
   uint32_t payload_size_ = 0;
   const uint8_t* payload_ = nullptr;
 };
-}  // namespace rtcp
-}  // namespace webrtc
+
 #endif  // MODULES_RTP_RTCP_SOURCE_RTCP_PACKET_COMMON_HEADER_H_

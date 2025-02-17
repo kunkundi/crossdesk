@@ -207,7 +207,7 @@ void IceTransport::OnReceiveBuffer(NiceAgent *agent, guint stream_id,
 
 bool IceTransport::ParseRtcpPacket(const uint8_t *buffer, size_t size,
                                    RtcpPacketInfo *rtcp_packet_info) {
-  webrtc::rtcp::CommonHeader rtcp_block;
+  CommonHeader rtcp_block;
   // If a sender report is received but no DLRR, we need to reset the
   // roundTripTime stat according to the standard, see
   // https://www.w3.org/TR/webrtc-stats/#dom-rtcremoteoutboundrtpstreamstats-roundtriptime
@@ -300,8 +300,7 @@ bool IceTransport::ParseRtcpPacket(const uint8_t *buffer, size_t size,
 }
 
 bool IceTransport::HandleCongestionControlFeedback(
-    const webrtc::rtcp::CommonHeader &rtcp_block,
-    RtcpPacketInfo *rtcp_packet_info) {
+    const CommonHeader &rtcp_block, RtcpPacketInfo *rtcp_packet_info) {
   webrtc::rtcp::CongestionControlFeedback feedback;
   if (!feedback.Parse(rtcp_block) || feedback.packets().empty()) {
     return false;
@@ -318,7 +317,7 @@ bool IceTransport::HandleCongestionControlFeedback(
   return true;
 }
 
-bool IceTransport::HandleNack(const webrtc::rtcp::CommonHeader &rtcp_block,
+bool IceTransport::HandleNack(const CommonHeader &rtcp_block,
                               RtcpPacketInfo *rtcp_packet_info) {
   webrtc::rtcp::Nack nack;
   if (!nack.Parse(rtcp_block)) {

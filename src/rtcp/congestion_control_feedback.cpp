@@ -261,7 +261,7 @@ size_t CongestionControlFeedback::BlockLength() const {
   return total_size;
 }
 
-bool CongestionControlFeedback::Parse(const rtcp::CommonHeader& packet) {
+bool CongestionControlFeedback::Parse(const CommonHeader& packet) {
   const uint8_t* payload = packet.payload();
   const uint8_t* payload_end = packet.payload() + packet.payload_size_bytes();
 

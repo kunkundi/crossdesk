@@ -13,8 +13,6 @@
 #include "byte_io.h"
 #include "log.h"
 
-namespace webrtc {
-namespace rtcp {
 //    0                   1           1       2                   3
 //    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 //   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -83,5 +81,3 @@ bool CommonHeader::Parse(const uint8_t* buffer, size_t size_bytes) {
   }
   return true;
 }
-}  // namespace rtcp
-}  // namespace webrtc
