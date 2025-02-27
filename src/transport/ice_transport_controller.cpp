@@ -333,21 +333,9 @@ int IceTransportController::CreateAudioCodec() {
 }
 
 void IceTransportController::OnSenderReport(const SenderReport& sender_report) {
-  if (video_channel_receive_ &&
-      sender_report.SenderSsrc() == video_channel_receive_->GetRemoteSsrc()) {
-    video_channel_receive_->OnSenderReport(clock_->CurrentTimeUs(),
-                                           sender_report.NtpTimestamp());
-  } else if (audio_channel_receive_ &&
-             sender_report.SenderSsrc() ==
-                 audio_channel_receive_->GetRemoteSsrc()) {
-    audio_channel_receive_->OnSenderReport(clock_->CurrentTimeUs(),
-                                           sender_report.NtpTimestamp());
-  } else if (data_channel_receive_ &&
-             sender_report.SenderSsrc() ==
-                 data_channel_receive_->GetRemoteSsrc()) {
-    data_channel_receive_->OnSenderReport(clock_->CurrentTimeUs(),
-                                          sender_report.NtpTimestamp());
-  }
+  video_channel_receive_->OnSenderReport(sender_report);
+  audio_channel_receive_->OnSenderReport(sender_report);
+  data_channel_receive_->OnSenderReport(sender_report);
 }
 
 void IceTransportController::OnCongestionControlFeedback(

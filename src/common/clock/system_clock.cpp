@@ -15,15 +15,15 @@
 #include <windows.h>
 #endif
 
-uint64_t ConvertToNtpTime(int64_t time_us) {
+int64_t ConvertToNtpTime(int64_t time_us) {
   constexpr int64_t kMicrosecondsPerSecond = 1000000;
   constexpr uint64_t kNtpFractionalUnit = 0x100000000;  // 2^32
   uint32_t seconds = static_cast<uint32_t>(time_us / kMicrosecondsPerSecond);
-  uint32_t fraction =
+  uint32_t fractions =
       static_cast<uint32_t>((time_us % kMicrosecondsPerSecond) *
                             kNtpFractionalUnit / kMicrosecondsPerSecond);
-  uint64_t ntp_time = (static_cast<uint64_t>(seconds) << 32) | fraction;
-  return ntp_time;
+
+  return seconds * kNtpFractionalUnit + fractions;
 }
 
 int64_t SystemClock::CurrentTimeNs() {

@@ -39,9 +39,9 @@ class AudioChannelReceive {
 
   int OnReceiveRtpPacket(const char *data, size_t size);
 
-  void OnSenderReport(int64_t now_time, uint64_t ntp_time) {
+  void OnSenderReport(const SenderReport &sender_report) {
     if (rtp_audio_receiver_) {
-      rtp_audio_receiver_->OnSenderReport(now_time, ntp_time);
+      rtp_audio_receiver_->OnSenderReport(sender_report);
     }
   }
 

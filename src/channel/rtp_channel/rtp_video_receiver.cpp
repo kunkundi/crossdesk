@@ -1,5 +1,6 @@
 #include "rtp_video_receiver.h"
 
+#include "api/ntp/ntp_time_util.h"
 #include "common.h"
 #include "log.h"
 #include "nack.h"
@@ -566,11 +567,29 @@ inline uint32_t DivideRoundToNearest(int64_t dividend, int64_t divisor) {
   return quotient;
 }
 
-void RtpVideoReceiver::OnSenderReport(int64_t now_time, uint64_t ntp_time) {
-  last_sr_ = ((uint32_t)(ntp_time / 0x100000000) << 16) |
-             ((uint32_t)(ntp_time % 0x100000000) >> 16);
-  last_delay_ = DivideRoundToNearest(
-      (clock_->CurrentTime().us() - now_time) * 0x10000, 1000000);
+void RtpVideoReceiver::OnSenderReport(const SenderReport& sender_report) {
+  remote_ssrc = sender_report.SenderSsrc();
+  last_remote_ntp_timestamp = sender_report.NtpTimestamp();
+  last_remote_rtp_timestamp = sender_report.Timestamp();
+  last_arrival_timestamp = clock_->CurrentTime().ms();
+  last_arrival_ntp_timestamp = webrtc::CompactNtp(clock_->CurrentNtpTime());
+  packets_sent = sender_report.SenderPacketCount();
+  bytes_sent = sender_report.SenderOctetCount();
+  reports_count++;
 
-  LOG_WARN("OnSenderReport [{}][{}]", last_sr_, last_delay_);
+  LOG_WARN(
+      "OnSenderReport remote_ssrc[{}], last_remote_ntp_timestamp[{}], "
+      "last_remote_rtp_timestamp[{}], last_arrival_timestamp[{}], "
+      "last_arrival_ntp_timestamp[{}], packets_sent[{}], bytes_sent[{}], "
+      "reports_count[{}]",
+      remote_ssrc, last_remote_ntp_timestamp, last_remote_rtp_timestamp,
+      last_arrival_timestamp, last_arrival_ntp_timestamp, packets_sent,
+      bytes_sent, reports_count);
+
+  // last_sr_ = ((uint32_t)(ntp_time / 0x100000000) << 16) |
+  //            ((uint32_t)(ntp_time % 0x100000000) >> 16);
+  // last_delay_ = DivideRoundToNearest(
+  //     (clock_->CurrentTime().us() - now_time) * 0x10000, 1000000);
+
+  // LOG_WARN("OnSenderReport [{}][{}] {}", last_sr_, last_delay_, now_time);
 }

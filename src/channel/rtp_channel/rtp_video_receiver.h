@@ -19,6 +19,7 @@
 #include "rtp_packet_h264.h"
 #include "rtp_rtcp_defines.h"
 #include "rtp_statistics.h"
+#include "sender_report.h"
 #include "thread_base.h"
 #include "video_frame.h"
 
@@ -45,7 +46,7 @@ class RtpVideoReceiver : public ThreadBase,
   }
   uint32_t GetSsrc() { return ssrc_; }
   uint32_t GetRemoteSsrc() { return remote_ssrc_; }
-  void OnSenderReport(int64_t now_time, uint64_t ntp_time);
+  void OnSenderReport(const SenderReport& sender_report);
 
  private:
   void ProcessAv1RtpPacket(RtpPacketAv1& rtp_packet_av1);
@@ -129,6 +130,15 @@ class RtpVideoReceiver : public ThreadBase,
 
   uint32_t last_sr_ = 0;
   uint32_t last_delay_ = 0;
+
+  uint32_t remote_ssrc = 0;
+  uint32_t last_remote_ntp_timestamp = 0;
+  uint32_t last_remote_rtp_timestamp = 0;
+  uint32_t last_arrival_timestamp = 0;
+  uint32_t last_arrival_ntp_timestamp = 0;
+  uint32_t packets_sent = 0;
+  uint32_t bytes_sent = 0;
+  uint32_t reports_count = 0;
 
  private:
   FILE* file_rtp_recv_ = nullptr;

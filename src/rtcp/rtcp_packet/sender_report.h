@@ -44,6 +44,7 @@
 
 #include <vector>
 
+#include "api/ntp/ntp_time.h"
 #include "rtcp_common_header.h"
 #include "rtcp_report_block.h"
 
@@ -51,8 +52,8 @@ class SenderReport {
  public:
   typedef struct {
     uint32_t sender_ssrc : 32;
-    uint64_t ntp_ts_msw : 64;
-    uint64_t ntp_ts_lsw : 64;
+    uint32_t ntp_ts_msw : 32;
+    uint32_t ntp_ts_lsw : 32;
     uint32_t rtp_ts : 32;
     uint32_t sender_packet_count : 32;
     uint32_t sender_octet_count : 32;
@@ -65,8 +66,10 @@ class SenderReport {
  public:
   void SetSenderSsrc(uint32_t ssrc) { sender_info_.sender_ssrc = ssrc; }
   void SetNtpTimestamp(uint64_t ntp_timestamp) {
-    sender_info_.ntp_ts_msw = ntp_timestamp >> 32;
-    sender_info_.ntp_ts_lsw = ntp_timestamp & 0xFFFFFFFF;
+    sender_info_.ntp_ts_msw =
+        ntp_timestamp / webrtc::NtpTime::kFractionsPerSecond;
+    sender_info_.ntp_ts_lsw =
+        ntp_timestamp % webrtc::NtpTime::kFractionsPerSecond;
   }
   void SetTimestamp(uint32_t timestamp) { sender_info_.rtp_ts = timestamp; }
   void SetSenderPacketCount(uint32_t packet_count) {
@@ -79,8 +82,8 @@ class SenderReport {
   void SetReportBlocks(std::vector<RtcpReportBlock> &rtcp_report_blocks);
 
   uint32_t SenderSsrc() const { return sender_info_.sender_ssrc; }
-  uint64_t NtpTimestamp() const {
-    return (sender_info_.ntp_ts_msw << 32) | sender_info_.ntp_ts_lsw;
+  uint32_t NtpTimestamp() const {
+    return (sender_info_.ntp_ts_msw << 16) | sender_info_.ntp_ts_lsw >> 16;
   }
   uint32_t Timestamp() const { return sender_info_.rtp_ts; }
   uint32_t SenderPacketCount() const {
@@ -90,7 +93,7 @@ class SenderReport {
 
  public:
   const uint8_t *Build();
-  size_t Parse(const RtcpCommonHeader &packet);
+  bool Parse(const RtcpCommonHeader &packet);
 
   // Entire RTP buffer
   const uint8_t *Buffer() const { return buffer_; }

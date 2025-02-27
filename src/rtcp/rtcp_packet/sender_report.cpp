@@ -40,10 +40,10 @@ const uint8_t *SenderReport::Build() {
   buffer_[pos++] = sender_info_.sender_ssrc >> 8 & 0xFF;
   buffer_[pos++] = sender_info_.sender_ssrc & 0xFF;
 
-  buffer_[pos++] = sender_info_.ntp_ts_msw >> 56 & 0xFF;
-  buffer_[pos++] = sender_info_.ntp_ts_msw >> 48 & 0xFF;
-  buffer_[pos++] = sender_info_.ntp_ts_msw >> 40 & 0xFF;
-  buffer_[pos++] = sender_info_.ntp_ts_msw >> 32 & 0xFF;
+  buffer_[pos++] = sender_info_.ntp_ts_msw >> 24 & 0xFF;
+  buffer_[pos++] = sender_info_.ntp_ts_msw >> 16 & 0xFF;
+  buffer_[pos++] = sender_info_.ntp_ts_msw >> 8 & 0xFF;
+  buffer_[pos++] = sender_info_.ntp_ts_msw & 0xFF;
   buffer_[pos++] = sender_info_.ntp_ts_lsw >> 24 & 0xFF;
   buffer_[pos++] = sender_info_.ntp_ts_lsw >> 16 & 0xFF;
   buffer_[pos++] = sender_info_.ntp_ts_lsw >> 8 & 0xFF;
@@ -71,36 +71,58 @@ const uint8_t *SenderReport::Build() {
   return buffer_;
 }
 
-size_t SenderReport::Parse(const RtcpCommonHeader &packet) {
+bool SenderReport::Parse(const RtcpCommonHeader &packet) {
   reports_.clear();
-  size_t pos = packet.payload_size_bytes();
+  const uint8_t *payload = packet.payload();
+  const uint8_t *payload_end = packet.payload() + packet.payload_size_bytes();
+  size_t pos = 0;
 
-  sender_info_.sender_ssrc = (buffer_[pos] << 24) + (buffer_[pos + 1] << 16) +
-                             (buffer_[pos + 2] << 8) + buffer_[pos + 3];
+  sender_info_.sender_ssrc = (payload[pos] << 24) + (payload[pos + 1] << 16) +
+                             (payload[pos + 2] << 8) + payload[pos + 3];
   pos += 4;
-  sender_info_.ntp_ts_msw = (buffer_[pos] << 24) + (buffer_[pos + 1] << 16) +
-                            (buffer_[pos + 2] << 8) + buffer_[pos + 3];
+
+  if (pos > packet.payload_size_bytes()) {
+    return false;
+  }
+  sender_info_.ntp_ts_msw = (payload[pos] << 24) + (payload[pos + 1] << 16) +
+                            (payload[pos + 2] << 8) + payload[pos + 3];
   pos += 4;
-  sender_info_.ntp_ts_lsw = (buffer_[pos] << 24) + (buffer_[pos + 1] << 16) +
-                            (buffer_[pos + 2] << 8) + buffer_[pos + 3];
+  if (pos > packet.payload_size_bytes()) {
+    return false;
+  }
+  sender_info_.ntp_ts_lsw = (payload[pos] << 24) + (payload[pos + 1] << 16) +
+                            (payload[pos + 2] << 8) + payload[pos + 3];
   pos += 4;
-  sender_info_.rtp_ts = (buffer_[pos] << 24) + (buffer_[pos + 1] << 16) +
-                        (buffer_[pos + 2] << 8) + buffer_[pos + 3];
+  if (pos > packet.payload_size_bytes()) {
+    return false;
+  }
+  sender_info_.rtp_ts = (payload[pos] << 24) + (payload[pos + 1] << 16) +
+                        (payload[pos + 2] << 8) + payload[pos + 3];
   pos += 4;
-  sender_info_.sender_packet_count = (buffer_[pos] << 24) +
-                                     (buffer_[pos + 1] << 16) +
-                                     (buffer_[pos + 2] << 8) + buffer_[pos + 3];
+  if (pos > packet.payload_size_bytes()) {
+    return false;
+  }
+  sender_info_.sender_packet_count = (payload[pos] << 24) +
+                                     (payload[pos + 1] << 16) +
+                                     (payload[pos + 2] << 8) + payload[pos + 3];
   pos += 4;
-  sender_info_.sender_octet_count = (buffer_[pos] << 24) +
-                                    (buffer_[pos + 1] << 16) +
-                                    (buffer_[pos + 2] << 8) + buffer_[pos + 3];
+  if (pos > packet.payload_size_bytes()) {
+    return false;
+  }
+  sender_info_.sender_octet_count = (payload[pos] << 24) +
+                                    (payload[pos + 1] << 16) +
+                                    (payload[pos + 2] << 8) + payload[pos + 3];
+
   pos += 4;
+  if (pos > packet.payload_size_bytes()) {
+    return false;
+  }
 
   for (int i = 0; i < rtcp_common_header_.fmt(); i++) {
     RtcpReportBlock report;
-    pos += report.Parse(buffer_ + pos);
+    pos += report.Parse(payload + pos);
     reports_.emplace_back(std::move(report));
   }
 
-  return pos;
+  return pos == packet.payload_size_bytes();
 }

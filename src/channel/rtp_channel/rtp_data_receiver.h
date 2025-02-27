@@ -7,7 +7,7 @@
 #include "receiver_report.h"
 #include "rtp_packet.h"
 #include "rtp_statistics.h"
-
+#include "sender_report.h"
 class RtpDataReceiver {
  public:
   RtpDataReceiver();
@@ -26,7 +26,7 @@ class RtpDataReceiver {
 
   uint32_t GetSsrc() { return ssrc_; }
   uint32_t GetRemoteSsrc() { return remote_ssrc_; }
-  void OnSenderReport(int64_t now_time, uint64_t ntp_time) {}
+  void OnSenderReport(const SenderReport& sender_report) {}
 
  private:
   bool CheckIsTimeSendRR();
