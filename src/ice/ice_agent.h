@@ -9,6 +9,19 @@
 #include "glib.h"
 #include "nice/agent.h"
 
+typedef enum {
+  ICE_STATE_DISCONNECTED,
+  ICE_STATE_GATHERING,
+  ICE_STATE_CONNECTING,
+  ICE_STATE_CONNECTED,
+  ICE_STATE_READY,
+  ICE_STATE_FAILED,
+  ICE_STATE_NOT_INITIALIZED,
+  ICE_STATE_DESTROYED,
+  ICE_STATE_NULLPTR,
+  ICE_STATE_LAST
+} ICE_STATE;
+
 typedef void (*nice_cb_state_changed_t)(NiceAgent* agent, guint stream_id,
                                         guint component_id,
                                         NiceComponentState state,
@@ -56,7 +69,7 @@ class IceAgent {
 
   int GatherCandidates();
 
-  NiceComponentState GetIceState();
+  ICE_STATE GetIceState();
 
   int SetRemoteGatheringDone();
 
@@ -99,7 +112,7 @@ class IceAgent {
   uint32_t n_components_ = 1;
   // char* local_sdp_ = nullptr;
   std::string local_sdp_ = "";
-  NiceComponentState state_ = NiceComponentState::NICE_COMPONENT_STATE_LAST;
+  ICE_STATE state_ = ICE_STATE_LAST;
   bool destroyed_ = false;
   gboolean agent_closed_ = false;
 

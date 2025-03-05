@@ -335,23 +335,20 @@ int IceAgent::GatherCandidates() {
   return 0;
 }
 
-NiceComponentState IceAgent::GetIceState() {
+ICE_STATE IceAgent::GetIceState() {
   if (!nice_inited_) {
-    LOG_ERROR("Nice agent has not been initialized");
-    return NiceComponentState::NICE_COMPONENT_STATE_LAST;
+    return ICE_STATE_NOT_INITIALIZED;
   }
 
   if (nullptr == agent_) {
-    LOG_ERROR("Nice agent is nullptr");
-    return NiceComponentState::NICE_COMPONENT_STATE_LAST;
+    return ICE_STATE_NULLPTR;
   }
 
   if (destroyed_) {
-    LOG_ERROR("Nice agent is destroyed");
-    return NiceComponentState::NICE_COMPONENT_STATE_LAST;
+    return ICE_STATE_DESTROYED;
   }
 
-  state_ = nice_agent_get_component_state(agent_, stream_id_, 1);
+  state_ = (ICE_STATE)nice_agent_get_component_state(agent_, stream_id_, 1);
 
   return state_;
 }
@@ -377,7 +374,7 @@ int IceAgent::Send(const char *data, size_t size) {
     return -1;
   }
 
-  // if (NiceComponentState::NICE_COMPONENT_STATE_READY !=
+  // if (ICE_STATE_READY !=
   //     nice_agent_get_component_state(agent_, stream_id_, 1)) {
   //   LOG_ERROR("Nice agent not ready");
   //   return -1;

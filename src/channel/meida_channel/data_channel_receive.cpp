@@ -23,25 +23,23 @@ void DataChannelReceive::Initialize(rtp::PAYLOAD_TYPE payload_type) {
         }
       });
 
-  rtp_data_receiver_->SetSendDataFunc(
-      [this](const char *data, size_t size) -> int {
-        if (!ice_agent_) {
-          LOG_ERROR("ice_agent_ is nullptr");
-          return -1;
-        }
+  rtp_data_receiver_->SetSendDataFunc([this](const char *data,
+                                             size_t size) -> int {
+    if (!ice_agent_) {
+      LOG_ERROR("ice_agent_ is nullptr");
+      return -1;
+    }
 
-        auto ice_state = ice_agent_->GetIceState();
+    auto ice_state = ice_agent_->GetIceState();
 
-        if (ice_state != NICE_COMPONENT_STATE_CONNECTED &&
-            ice_state != NICE_COMPONENT_STATE_READY) {
-          LOG_ERROR("Ice is not connected, state = [{}]",
-                    nice_component_state_to_string(ice_state));
-          return -2;
-        }
+    if (ICE_STATE_NULLPTR == ice_state || ICE_STATE_DESTROYED == ice_state) {
+      LOG_ERROR("Ice is not connected, state = [{}]", (int)ice_state);
+      return -2;
+    }
 
-        ice_io_statistics_->UpdateDataOutboundBytes((uint32_t)size);
-        return ice_agent_->Send(data, size);
-      });
+    ice_io_statistics_->UpdateDataOutboundBytes((uint32_t)size);
+    return ice_agent_->Send(data, size);
+  });
 }
 
 void DataChannelReceive::Destroy() {}

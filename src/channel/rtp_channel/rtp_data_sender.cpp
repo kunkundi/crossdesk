@@ -45,9 +45,10 @@ int RtpDataSender::SendRtpPacket(std::shared_ptr<RtpPacket> rtp_packet) {
     return -1;
   }
 
-  if (0 != data_send_func_((const char*)rtp_packet->Buffer().data(),
-                           rtp_packet->Size())) {
-    LOG_ERROR("Send rtp packet failed");
+  int ret = data_send_func_((const char*)rtp_packet->Buffer().data(),
+                            rtp_packet->Size());
+  if (-2 == ret) {
+    rtp_packet_queue_.clear();
     return -1;
   }
 

@@ -25,10 +25,7 @@ void AudioChannelSend::Initialize(rtp::PAYLOAD_TYPE payload_type) {
 
         auto ice_state = ice_agent_->GetIceState();
 
-        if (ice_state != NICE_COMPONENT_STATE_CONNECTED &&
-            ice_state != NICE_COMPONENT_STATE_READY) {
-          LOG_ERROR("Ice is not connected, state = [{}]",
-                    nice_component_state_to_string(ice_state));
+        if (ICE_STATE_DESTROYED == ice_state) {
           return -2;
         }
 

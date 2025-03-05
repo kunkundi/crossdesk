@@ -85,9 +85,11 @@ int RtpVideoSender::SendRtpPacket(
   }
 
   last_rtp_timestamp_ = rtp_packet_to_send->capture_time().ms();
-  if (0 != data_send_func_((const char*)rtp_packet_to_send->Buffer().data(),
-                           rtp_packet_to_send->Size())) {
-    // LOG_ERROR("Send rtp packet failed");
+
+  int ret = data_send_func_((const char*)rtp_packet_to_send->Buffer().data(),
+                            rtp_packet_to_send->Size());
+  if (-2 == ret) {
+    rtp_packet_queue_.clear();
     return -1;
   }
 
@@ -131,8 +133,9 @@ int RtpVideoSender::SendRtcpSR(SenderReport& rtcp_sr) {
     return -1;
   }
 
-  if (data_send_func_((const char*)rtcp_sr.Buffer(), rtcp_sr.Size())) {
-    LOG_ERROR("Send SR failed");
+  int ret = data_send_func_((const char*)rtcp_sr.Buffer(), rtcp_sr.Size());
+  if (ret != 0) {
+    LOG_ERROR("Send rtcp sr failed");
     return -1;
   }
 
