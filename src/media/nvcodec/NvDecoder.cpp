@@ -681,8 +681,8 @@ int NvDecoder::HandlePictureDisplay(CUVIDPARSERDISPINFO *pDispInfo) {
   if (result == CUDA_SUCCESS &&
       (DecodeStatus.decodeStatus == cuvidDecodeStatus_Error ||
        DecodeStatus.decodeStatus == cuvidDecodeStatus_Error_Concealed)) {
-    printf("Decode Error occurred for picture %d\n",
-           m_nPicNumInDecodeOrder[pDispInfo->picture_index]);
+    // printf("Decode Error occurred for picture %d\n",
+    //        m_nPicNumInDecodeOrder[pDispInfo->picture_index]);
   }
 
   uint8_t *pDecodedFrame = nullptr;

@@ -263,7 +263,6 @@ int NvidiaVideoEncoder::ResetEncodeResolution(unsigned int width,
 
   frame_width_ = width;
   frame_height_ = height;
-  LOG_WARN("Reset resolution to [{}x{}]", frame_width_, frame_height_);
 
   NV_ENC_RECONFIGURE_PARAMS reconfig_params = {NV_ENC_RECONFIGURE_PARAMS_VER};
   NV_ENC_INITIALIZE_PARAMS init_params = {NV_ENC_INITIALIZE_PARAMS_VER};

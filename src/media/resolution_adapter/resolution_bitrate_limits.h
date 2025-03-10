@@ -8,13 +8,15 @@
 #define _RESOLUTION_BITRATE_LIMITS_H_
 
 struct ResolutionBitrateLimits {
-  ResolutionBitrateLimits(int frame_size_pixels, int min_start_bitrate_bps,
+  ResolutionBitrateLimits(int width, int height, int min_start_bitrate_bps,
                           int min_bitrate_bps, int max_bitrate_bps)
-      : frame_size_pixels(frame_size_pixels),
+      : width(width),
+        height(height),
         min_start_bitrate_bps(min_start_bitrate_bps),
         min_bitrate_bps(min_bitrate_bps),
         max_bitrate_bps(max_bitrate_bps) {}
-  int frame_size_pixels = 0;
+  int width = 0;
+  int height = 0;
   int min_start_bitrate_bps = 0;
   int min_bitrate_bps = 0;
   int max_bitrate_bps = 0;

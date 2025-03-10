@@ -13,8 +13,6 @@ IceTransportController::IceTransportController(
     : last_report_block_time_(
           webrtc::Timestamp::Millis(webrtc_clock_->TimeInMilliseconds())),
       b_force_i_frame_(true),
-      target_width_(1280),
-      target_height_(720),
       video_codec_inited_(false),
       audio_codec_inited_(false),
       load_nvcodec_dll_success_(false),
@@ -472,13 +470,13 @@ void IceTransportController::PostUpdates(webrtc::NetworkControlUpdate update) {
         target_height_ = target_height;
 
         b_force_i_frame_ = true;
-        LOG_WARN("Set target resolution [{}x{}]", target_width_.value(),
+        LOG_INFO("Set target resolution [{}x{}]", target_width_.value(),
                  target_height_.value());
       }
-    } else {
+    } else if (target_width_.has_value() && target_height_.has_value()) {
       target_width_.reset();
       target_height_.reset();
-      LOG_WARN("Use original resolution [{}x{}]", source_width_,
+      LOG_INFO("Use original resolution [{}x{}]", source_width_,
                source_height_);
     }
     video_encoder_->SetTargetBitrate(target_bitrate_);
