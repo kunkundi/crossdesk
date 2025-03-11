@@ -36,7 +36,8 @@ int ResolutionAdapter::ResolutionDowngrade(const XVideoFrame* video_frame,
 
   new_frame->width = target_width;
   new_frame->height = target_height;
-  new_frame->data = new char[target_width * target_height * 3 / 2];
+  new_frame->size = target_width * target_height * 3 / 2;
+  new_frame->data = new char[new_frame->size];
 
   libyuv::NV12Scale((const uint8_t*)(video_frame->data), video_frame->width,
                     (const uint8_t*)(video_frame->data +

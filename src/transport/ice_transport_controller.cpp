@@ -144,6 +144,7 @@ int IceTransportController::SendVideo(const XVideoFrame* video_frame) {
   new_frame.data = nullptr;
   new_frame.width = video_frame->width;
   new_frame.height = video_frame->height;
+  new_frame.size = video_frame->size;
   if (target_width_.has_value() && target_height_.has_value()) {
     if (target_width_.value() < video_frame->width &&
         target_height_.value() < video_frame->height) {
