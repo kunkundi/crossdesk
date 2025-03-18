@@ -56,6 +56,8 @@ void IceTransportController::Create(
   packet_sender_ = std::make_shared<PacketSenderImp>(ice_agent, webrtc_clock_);
   packet_sender_->SetPacingRates(DataRate::BitsPerSec(300000),
                                  DataRate::Zero());
+  packet_sender_->SetSendBurstInterval(TimeDelta::Millis(40));
+  packet_sender_->SetQueueTimeLimit(TimeDelta::Millis(2000));
   packet_sender_->SetOnSentPacketFunc(
       [this](const webrtc::RtpPacketToSend& packet) {
         if (ice_agent_) {

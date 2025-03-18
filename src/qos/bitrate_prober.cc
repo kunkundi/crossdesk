@@ -93,7 +93,6 @@ void BitrateProber::OnIncomingPacket(DataSize packet_size) {
 
 void BitrateProber::CreateProbeCluster(
     const ProbeClusterConfig& cluster_config) {
-  LOG_WARN("a1");
   while (!clusters_.empty() &&
          (cluster_config.at_time - clusters_.front().requested_at >
               kProbeClusterTimeout ||

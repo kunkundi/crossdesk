@@ -55,8 +55,7 @@ void RtpVideoSender::Enqueue(
   for (auto& rtp_packet : rtp_packets) {
     std::unique_ptr<webrtc::RtpPacketToSend> rtp_packet_to_send(
         static_cast<webrtc::RtpPacketToSend*>(rtp_packet.release()));
-    rtp_packet_to_send->set_capture_time(
-        webrtc::Timestamp::Millis(capture_timestamp_ms));
+    rtp_packet_to_send->set_capture_time(clock_->CurrentTime());
     rtp_packet_to_send->set_transport_sequence_number(transport_seq_++);
     rtp_packet_to_send->set_packet_type(webrtc::RtpPacketMediaType::kVideo);
     // rtp_packet_queue_.push(std::move(rtp_packet_to_send));

@@ -92,9 +92,7 @@ PacingController::~PacingController() = default;
 
 void PacingController::CreateProbeClusters(
     rtc::ArrayView<const ProbeClusterConfig> probe_cluster_configs) {
-  LOG_WARN("b0");
   for (const ProbeClusterConfig probe_cluster_config : probe_cluster_configs) {
-    LOG_WARN("b1");
     prober_.CreateProbeCluster(probe_cluster_config);
   }
 }
@@ -184,11 +182,6 @@ void PacingController::EnqueuePacket(std::unique_ptr<RtpPacketToSend> packet) {
     // queue). Flush any pending packets currently in the queue for that stream
     // in order to get the new keyframe out as quickly as possible.
     packet_queue_.RemovePacketsForSsrc(packet->Ssrc());
-    std::optional<uint32_t> rtx_ssrc =
-        packet_sender_->GetRtxSsrcForMedia(packet->Ssrc());
-    if (rtx_ssrc) {
-      packet_queue_.RemovePacketsForSsrc(*rtx_ssrc);
-    }
   }
 
   prober_.OnIncomingPacket(DataSize::Bytes(packet->payload_size()));
@@ -399,14 +392,11 @@ void PacingController::ProcessPackets() {
   if (now + early_execute_margin < target_send_time) {
     // We are too early, but if queue is empty still allow draining some debt.
     // Probing is allowed to be sent up to kMinSleepTime early.
-    LOG_ERROR("!!!!!!! too early, target_send_time {}, now {}, {}",
-              target_send_time.ms(), now.ms(), early_execute_margin.ms());
     UpdateBudgetWithElapsedTime(UpdateTimeAndGetElapsed(now));
     return;
   }
 
   TimeDelta elapsed_time = UpdateTimeAndGetElapsed(target_send_time);
-
   if (elapsed_time > TimeDelta::Zero()) {
     UpdateBudgetWithElapsedTime(elapsed_time);
   }
@@ -436,7 +426,6 @@ void PacingController::ProcessPackets() {
     std::unique_ptr<RtpPacketToSend> rtp_packet =
         GetPendingPacket(pacing_info, target_send_time, now);
     if (!rtp_packet) {
-      LOG_WARN("rtp_packet == nullptr");
       // No packet available to send, check if we should send padding.
       if (now - target_send_time > kMaxPaddingReplayDuration) {
         // The target send time is more than `kMaxPaddingReplayDuration` behind

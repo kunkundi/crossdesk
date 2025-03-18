@@ -61,6 +61,12 @@ class PacketSenderImp : public PacketSender,
 
       packet->UpdateSequenceNumber(ssrc_seq_[packet->Ssrc()]++);
 
+      webrtc::Timestamp now = clock_->CurrentTime();
+      webrtc::TimeDelta interval = now - last_send_time_;
+      webrtc::TimeDelta delay = now - packet->capture_time();
+      LOG_WARN("interval: {}, delay: {}", interval.ms(), delay.seconds());
+      last_send_time_ = now;
+
       on_sent_packet_func_(*packet);
     }
   }
@@ -216,6 +222,8 @@ class PacketSenderImp : public PacketSender,
   TaskQueue task_queue_;
   int64_t transport_seq_ = 0;
   std::map<int32_t, int16_t> ssrc_seq_;
+
+  webrtc::Timestamp last_send_time_;
 };
 
 #endif

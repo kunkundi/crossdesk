@@ -16,7 +16,8 @@ PacketSenderImp::PacketSenderImp(std::shared_ptr<IceAgent> ice_agent,
       is_started_(false),
       is_shutdown_(false),
       packet_size_(/*alpha=*/0.95),
-      include_overhead_(false) {}
+      include_overhead_(false),
+      last_send_time_(webrtc::Timestamp::Millis(0)) {}
 
 PacketSenderImp::~PacketSenderImp() {}
 
@@ -89,11 +90,6 @@ void PacketSenderImp::EnqueuePackets(
     }
     MaybeProcessPackets(webrtc::Timestamp::MinusInfinity());
   });
-
-  // webrtc::PacedPacketInfo cluster_info;
-  // for (auto &packet : packets) {
-  //   SendPacket(std::move(packet), cluster_info);
-  // }
 }
 
 void PacketSenderImp::RemovePacketsForSsrc(uint32_t ssrc) {
@@ -157,9 +153,7 @@ void PacketSenderImp::OnStatsUpdated(const Stats &stats) {
 }
 
 void PacketSenderImp::MaybeScheduleProcessPackets() {
-  LOG_ERROR("x1");
   if (!processing_packets_) {
-    LOG_ERROR("x2");
     MaybeProcessPackets(webrtc::Timestamp::MinusInfinity());
   }
 }
