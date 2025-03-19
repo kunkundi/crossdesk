@@ -13,6 +13,7 @@
 #include "io_statistics.h"
 #include "nack_requester.h"
 #include "receive_side_congestion_controller.h"
+#include "received_frame.h"
 #include "receiver_report.h"
 #include "ringbuffer.h"
 #include "rtcp_sender.h"
@@ -22,7 +23,6 @@
 #include "rtp_statistics.h"
 #include "sender_report.h"
 #include "thread_base.h"
-#include "video_frame.h"
 
 using namespace webrtc;
 
@@ -42,7 +42,7 @@ class RtpVideoReceiver : public ThreadBase,
   void SetSendDataFunc(std::function<int(const char*, size_t)> data_send_func);
 
   void SetOnReceiveCompleteFrame(
-      std::function<void(VideoFrame&)> on_receive_complete_frame) {
+      std::function<void(const ReceivedFrame&)> on_receive_complete_frame) {
     on_receive_complete_frame_ = on_receive_complete_frame;
   }
   uint32_t GetSsrc() { return ssrc_; }
@@ -89,9 +89,10 @@ class RtpVideoReceiver : public ThreadBase,
   std::map<uint16_t, RtpPacketAv1> incomplete_av1_frame_list_;
   std::map<uint16_t, RtpPacket> incomplete_frame_list_;
   uint8_t* nv12_data_ = nullptr;
-  std::function<void(VideoFrame&)> on_receive_complete_frame_ = nullptr;
+  std::function<void(const ReceivedFrame&)> on_receive_complete_frame_ =
+      nullptr;
   uint32_t last_complete_frame_ts_ = 0;
-  RingBuffer<VideoFrame> compelete_video_frame_queue_;
+  RingBuffer<ReceivedFrame> compelete_video_frame_queue_;
 
  private:
   std::unique_ptr<RtpStatistics> rtp_statistics_ = nullptr;
@@ -162,6 +163,7 @@ class RtpVideoReceiver : public ThreadBase,
 
  private:
   FILE* file_rtp_recv_ = nullptr;
+  int64_t delta_ntp_internal_ms_;
 };
 
 #endif

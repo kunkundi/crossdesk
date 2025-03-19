@@ -9,15 +9,14 @@
 
 class NvidiaVideoEncoder : public VideoEncoder {
  public:
-  NvidiaVideoEncoder();
+  NvidiaVideoEncoder(std::shared_ptr<SystemClock> clock);
   virtual ~NvidiaVideoEncoder();
 
   int Init();
 
-  int Encode(
-      const XVideoFrame* video_frame,
-      std::function<int(std::shared_ptr<VideoFrameWrapper> encoded_frame)>
-          on_encoded_image);
+  int Encode(const XVideoFrame* video_frame,
+             std::function<int(std::shared_ptr<EncodedFrame> encoded_frame)>
+                 on_encoded_image);
 
   int ForceIdr();
 
@@ -35,6 +34,7 @@ class NvidiaVideoEncoder : public VideoEncoder {
   int ResetEncodeResolution(unsigned int width, unsigned int height);
 
  private:
+  std::shared_ptr<SystemClock> clock_ = nullptr;
   int index_of_gpu_ = 0;
   CUdevice cuda_device_ = 0;
 

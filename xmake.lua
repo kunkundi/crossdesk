@@ -150,7 +150,7 @@ target("transport")
 
 target("media")
     set_kind("object")
-    add_deps("log", "frame")
+    add_deps("log", "frame", "common")
     if is_os("windows") then
         add_files("src/media/video/encode/*.cpp",
         "src/media/video/decode/*.cpp",

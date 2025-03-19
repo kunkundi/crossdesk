@@ -1,25 +1,24 @@
 /*
  * @Author: DI JUNKUN
- * @Date: 2025-02-21
+ * @Date: 2025-03-19
  * Copyright (c) 2025 by DI JUNKUN, All Rights Reserved.
  */
 
-#ifndef _VIDEO_FRAME_WRAPPER_H_
-#define _VIDEO_FRAME_WRAPPER_H_
+#ifndef _ENCODED_FRAME_H_
+#define _ENCODED_FRAME_H_
 
 #include "video_frame.h"
 
-class VideoFrameWrapper : public VideoFrame {
+class EncodedFrame : public VideoFrame {
  public:
-  VideoFrameWrapper(const uint8_t *buffer, size_t size, uint32_t width,
-                    uint32_t height)
+  EncodedFrame(const uint8_t *buffer, size_t size, uint32_t width,
+               uint32_t height)
       : VideoFrame(buffer, size, width, height) {}
-  VideoFrameWrapper(size_t size, uint32_t width, uint32_t height)
+  EncodedFrame(size_t size, uint32_t width, uint32_t height)
       : VideoFrame(size, width, height) {}
-  VideoFrameWrapper(const uint8_t *buffer, size_t size)
-      : VideoFrame(buffer, size) {}
-  VideoFrameWrapper() = default;
-  ~VideoFrameWrapper() = default;
+  EncodedFrame(const uint8_t *buffer, size_t size) : VideoFrame(buffer, size) {}
+  EncodedFrame() = default;
+  ~EncodedFrame() = default;
 
   int64_t CapturedTimestamp() const { return captured_timestamp_us_; }
 
@@ -27,16 +26,10 @@ class VideoFrameWrapper : public VideoFrame {
     captured_timestamp_us_ = captured_timestamp_us;
   }
 
-  int64_t ReceivedTimestamp() const { return received_timestamp_us_; }
+  int64_t EncodedTimestamp() const { return encoded_timestamp_us_; }
 
-  void SetReceivedTimestamp(int64_t received_timestamp_us) {
-    received_timestamp_us_ = received_timestamp_us;
-  }
-
-  int64_t DecodedTimestamp() const { return decoded_timestamp_us_; }
-
-  void SetDecodedTimestamp(int64_t decoded_timestamp_us) {
-    decoded_timestamp_us_ = decoded_timestamp_us;
+  void SetEncodedTimestamp(int64_t encoded_timestamp_us) {
+    encoded_timestamp_us_ = encoded_timestamp_us;
   }
 
   VideoFrameType FrameType() const { return frame_type_; }
@@ -57,8 +50,7 @@ class VideoFrameWrapper : public VideoFrame {
 
  private:
   int64_t captured_timestamp_us_ = 0;
-  int64_t received_timestamp_us_ = 0;
-  int64_t decoded_timestamp_us_ = 0;
+  int64_t encoded_timestamp_us_ = 0;
   VideoFrameType frame_type_ = VideoFrameType::kVideoFrameDelta;
   uint32_t encoded_width_ = 0;
   uint32_t encoded_height_ = 0;

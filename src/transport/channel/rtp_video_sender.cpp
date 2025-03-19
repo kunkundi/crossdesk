@@ -45,7 +45,7 @@ RtpVideoSender::~RtpVideoSender() {
 
 void RtpVideoSender::Enqueue(
     std::vector<std::unique_ptr<RtpPacket>>& rtp_packets,
-    int64_t capture_timestamp_us) {
+    int64_t captured_timestamp_us) {
   if (!rtp_statistics_) {
     rtp_statistics_ = std::make_unique<RtpStatistics>();
     rtp_statistics_->Start();

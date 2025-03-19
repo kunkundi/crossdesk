@@ -19,15 +19,14 @@
 
 class OpenH264Encoder : public VideoEncoder {
  public:
-  OpenH264Encoder();
+  OpenH264Encoder(std::shared_ptr<SystemClock> clock);
   virtual ~OpenH264Encoder();
 
   int Init();
 
-  int Encode(
-      const XVideoFrame* video_frame,
-      std::function<int(std::shared_ptr<VideoFrameWrapper> encoded_frame)>
-          on_encoded_image);
+  int Encode(const XVideoFrame* video_frame,
+             std::function<int(std::shared_ptr<EncodedFrame> encoded_frame)>
+                 on_encoded_image);
 
   int ForceIdr();
 
@@ -48,6 +47,7 @@ class OpenH264Encoder : public VideoEncoder {
   int Release();
 
  private:
+  std::shared_ptr<SystemClock> clock_ = nullptr;
   uint32_t frame_width_ = 1280;
   uint32_t frame_height_ = 720;
   int key_frame_interval_ = 3000;

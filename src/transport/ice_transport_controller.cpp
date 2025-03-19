@@ -49,7 +49,7 @@ void IceTransportController::Create(
   on_receive_data_ = on_receive_data;
   user_data_ = user_data;
 
-  CreateVideoCodec(video_codec_payload_type, hardware_acceleration);
+  CreateVideoCodec(clock_, video_codec_payload_type, hardware_acceleration);
   CreateAudioCodec();
 
   controller_ = std::make_unique<CongestionControl>();
@@ -75,9 +75,10 @@ void IceTransportController::Create(
       });
 
   packet_sender_->SetGeneratePaddingFunc(
-      [this](uint32_t size, int64_t capture_timestamp_us)
+      [this](uint32_t size, int64_t captured_timestamp_us)
           -> std::vector<std::unique_ptr<RtpPacket>> {
-        return video_channel_send_->GeneratePadding(size, capture_timestamp_us);
+        return video_channel_send_->GeneratePadding(size,
+                                                    captured_timestamp_us);
       });
 
   audio_channel_send_ = std::make_unique<AudioChannelSend>(
@@ -96,9 +97,9 @@ void IceTransportController::Create(
   std::weak_ptr<IceTransportController> weak_self = shared_from_this();
   video_channel_receive_ = std::make_unique<VideoChannelReceive>(
       clock_, ice_agent, ice_io_statistics,
-      [this, weak_self](VideoFrame& video_frame) {
+      [this, weak_self](const ReceivedFrame& received_frame) {
         if (auto self = weak_self.lock()) {
-          OnReceiveCompleteFrame(video_frame);
+          OnReceiveCompleteFrame(received_frame);
         }
       });
 
@@ -170,7 +171,7 @@ int IceTransportController::SendVideo(const XVideoFrame* video_frame) {
   new_frame.width = video_frame->width;
   new_frame.height = video_frame->height;
   new_frame.size = video_frame->size;
-  new_frame.timestamp = video_frame->timestamp;
+  new_frame.captured_timestamp = video_frame->captured_timestamp;
   if (target_width_.has_value() && target_height_.has_value()) {
     if (target_width_.value() < video_frame->width &&
         target_height_.value() < video_frame->height) {
@@ -183,7 +184,7 @@ int IceTransportController::SendVideo(const XVideoFrame* video_frame) {
 
   int ret = video_encoder_->Encode(
       need_to_release ? &new_frame : video_frame,
-      [this](std::shared_ptr<VideoFrameWrapper> encoded_frame) -> int {
+      [this](std::shared_ptr<EncodedFrame> encoded_frame) -> int {
         if (video_channel_send_) {
           video_channel_send_->SendVideo(encoded_frame);
         }
@@ -268,16 +269,19 @@ int IceTransportController::OnReceiveDataRtpPacket(const char* data,
   return -1;
 }
 
-void IceTransportController::OnReceiveCompleteFrame(VideoFrame& video_frame) {
+void IceTransportController::OnReceiveCompleteFrame(
+    const ReceivedFrame& received_frame) {
   int num_frame_returned = video_decoder_->Decode(
-      (uint8_t*)video_frame.Buffer(), video_frame.Size(),
-      [this](VideoFrame video_frame) {
+      received_frame, [this](DecodedFrame decoded_frame) {
         if (on_receive_video_) {
           XVideoFrame x_video_frame;
-          x_video_frame.data = (const char*)video_frame.Buffer();
-          x_video_frame.width = video_frame.Width();
-          x_video_frame.height = video_frame.Height();
-          x_video_frame.size = video_frame.Size();
+          x_video_frame.data = (const char*)decoded_frame.Buffer();
+          x_video_frame.width = decoded_frame.Width();
+          x_video_frame.height = decoded_frame.Height();
+          x_video_frame.size = decoded_frame.Size();
+          x_video_frame.captured_timestamp = decoded_frame.CapturedTimestamp();
+          x_video_frame.received_timestamp = decoded_frame.ReceivedTimestamp();
+          x_video_frame.decoded_timestamp = decoded_frame.DecodedTimestamp();
           on_receive_video_(&x_video_frame, remote_user_id_.data(),
                             remote_user_id_.size(), user_data_);
         }
@@ -303,7 +307,8 @@ void IceTransportController::OnReceiveCompleteData(const char* data,
   }
 }
 
-int IceTransportController::CreateVideoCodec(rtp::PAYLOAD_TYPE video_pt,
+int IceTransportController::CreateVideoCodec(std::shared_ptr<SystemClock> clock,
+                                             rtp::PAYLOAD_TYPE video_pt,
                                              bool hardware_acceleration) {
   if (video_codec_inited_) {
     return 0;
@@ -316,8 +321,10 @@ int IceTransportController::CreateVideoCodec(rtp::PAYLOAD_TYPE video_pt,
       hardware_acceleration_ = false;
       LOG_WARN("Only support software codec for AV1");
     }
-    video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(false, true);
-    video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(false, true);
+    video_encoder_ =
+        VideoEncoderFactory::CreateVideoEncoder(clock, false, true);
+    video_decoder_ =
+        VideoDecoderFactory::CreateVideoDecoder(clock, false, true);
   } else if (rtp::PAYLOAD_TYPE::H264 == video_pt) {
 #ifdef __APPLE__
     if (hardware_acceleration_) {
@@ -325,34 +332,45 @@ int IceTransportController::CreateVideoCodec(rtp::PAYLOAD_TYPE video_pt,
       LOG_WARN(
           "MacOS not support hardware acceleration, use default software "
           "codec");
-      video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(false, false);
-      video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(false, false);
+      video_encoder_ =
+          VideoEncoderFactory::CreateVideoEncoder(clock, false, false);
+      video_decoder_ =
+          VideoDecoderFactory::CreateVideoDecoder(clock, false, false);
     } else {
-      video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(false, false);
-      video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(false, false);
+      video_encoder_ =
+          VideoEncoderFactory::CreateVideoEncoder(clock, false, false);
+      video_decoder_ =
+          VideoDecoderFactory::CreateVideoDecoder(clock, false, false);
     }
 #else
     if (hardware_acceleration_) {
       if (0 == LoadNvCodecDll()) {
         load_nvcodec_dll_success_ = true;
-        video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(true, false);
-        video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(true, false);
+        video_encoder_ =
+            VideoEncoderFactory::CreateVideoEncoder(clock, true, false);
+        video_decoder_ =
+            VideoDecoderFactory::CreateVideoDecoder(clock, true, false);
       } else {
         LOG_WARN(
             "Hardware accelerated codec not available, use default software "
             "codec");
-        video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(false, false);
-        video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(false, false);
+        video_encoder_ =
+            VideoEncoderFactory::CreateVideoEncoder(clock, false, false);
+        video_decoder_ =
+            VideoDecoderFactory::CreateVideoDecoder(clock, false, false);
       }
     } else {
-      video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(false, false);
-      video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(false, false);
+      video_encoder_ =
+          VideoEncoderFactory::CreateVideoEncoder(clock, false, false);
+      video_decoder_ =
+          VideoDecoderFactory::CreateVideoDecoder(clock, false, false);
     }
 #endif
   }
 
   if (!video_encoder_) {
-    video_encoder_ = VideoEncoderFactory::CreateVideoEncoder(false, false);
+    video_encoder_ =
+        VideoEncoderFactory::CreateVideoEncoder(clock, false, false);
     LOG_ERROR("Create encoder failed, try to use software H.264 encoder");
   }
   if (!video_encoder_ || 0 != video_encoder_->Init()) {
@@ -361,7 +379,8 @@ int IceTransportController::CreateVideoCodec(rtp::PAYLOAD_TYPE video_pt,
   }
 
   if (!video_decoder_) {
-    video_decoder_ = VideoDecoderFactory::CreateVideoDecoder(false, false);
+    video_decoder_ =
+        VideoDecoderFactory::CreateVideoDecoder(clock, false, false);
     LOG_ERROR("Create decoder failed, try to use software H.264 decoder");
   }
   if (!video_decoder_ || video_decoder_->Init()) {

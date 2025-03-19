@@ -50,7 +50,8 @@ void ConvertYuv420pToNv12(const unsigned char *yuv_data,
   }
 }
 
-OpenH264Decoder::OpenH264Decoder() {}
+OpenH264Decoder::OpenH264Decoder(std::shared_ptr<SystemClock> clock)
+    : clock_(clock) {}
 OpenH264Decoder::~OpenH264Decoder() {
   if (openh264_decoder_) {
     openh264_decoder_->Uninitialize();
@@ -119,11 +120,14 @@ int OpenH264Decoder::Init() {
 }
 
 int OpenH264Decoder::Decode(
-    const uint8_t *data, size_t size,
-    std::function<void(VideoFrame)> on_receive_decoded_frame) {
+    const ReceivedFrame &received_frame,
+    std::function<void(const DecodedFrame &)> on_receive_decoded_frame) {
   if (!openh264_decoder_) {
     return -1;
   }
+
+  const uint8_t *data = received_frame.Buffer();
+  size_t size = received_frame.Size();
 
 #ifdef SAVE_RECEIVED_H264_STREAM
   fwrite((unsigned char *)data, 1, size, h264_stream_);
@@ -158,14 +162,14 @@ int OpenH264Decoder::Decode(
   if (!nv12_frame_) {
     nv12_frame_capacity_ = yuv420p_frame_size_;
     nv12_frame_ =
-        new VideoFrame(nv12_frame_capacity_, frame_width_, frame_height_);
+        new DecodedFrame(nv12_frame_capacity_, frame_width_, frame_height_);
   }
 
   if (nv12_frame_capacity_ < yuv420p_frame_size_) {
     nv12_frame_capacity_ = yuv420p_frame_size_;
     delete nv12_frame_;
     nv12_frame_ =
-        new VideoFrame(nv12_frame_capacity_, frame_width_, frame_height_);
+        new DecodedFrame(nv12_frame_capacity_, frame_width_, frame_height_);
   }
 
   if (nv12_frame_->Size() != nv12_frame_size_ ||
@@ -202,6 +206,9 @@ int OpenH264Decoder::Decode(
             frame_width_, frame_width_, frame_height_);
       }
 
+      nv12_frame_->SetReceivedTimestamp(received_frame.ReceivedTimestamp());
+      nv12_frame_->SetCapturedTimestamp(received_frame.CapturedTimestamp());
+      nv12_frame_->SetDecodedTimestamp(clock_->CurrentTime());
       on_receive_decoded_frame(*nv12_frame_);
 
 #ifdef SAVE_DECODED_NV12_STREAM

@@ -18,18 +18,19 @@
 
 class OpenH264Decoder : public VideoDecoder {
  public:
-  OpenH264Decoder();
+  OpenH264Decoder(std::shared_ptr<SystemClock> clock);
   virtual ~OpenH264Decoder();
 
  public:
   int Init();
 
-  int Decode(const uint8_t* data, size_t size,
-             std::function<void(VideoFrame)> on_receive_decoded_frame);
+  int Decode(const ReceivedFrame& received_frame,
+             std::function<void(const DecodedFrame&)> on_receive_decoded_frame);
 
   std::string GetDecoderName() { return "OpenH264"; }
 
  private:
+  std::shared_ptr<SystemClock> clock_ = nullptr;
   ISVCDecoder* openh264_decoder_ = nullptr;
   bool get_first_keyframe_ = false;
   bool skip_frame_ = false;
@@ -45,7 +46,7 @@ class OpenH264Decoder : public VideoDecoder {
   int yuv420p_frame_capacity_ = 0;
   int yuv420p_frame_size_ = 0;
 
-  VideoFrame* nv12_frame_ = 0;
+  DecodedFrame* nv12_frame_ = 0;
   int nv12_frame_capacity_ = 0;
   int nv12_frame_size_ = 0;
 };

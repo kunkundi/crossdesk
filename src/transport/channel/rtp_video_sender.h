@@ -24,7 +24,7 @@ class RtpVideoSender : public ThreadBase {
 
  public:
   void Enqueue(std::vector<std::unique_ptr<RtpPacket>> &rtp_packets,
-               int64_t capture_timestamp_us);
+               int64_t captured_timestamp_us);
   void SetSendDataFunc(std::function<int(const char *, size_t)> data_send_func);
   void SetOnSentPacketFunc(
       std::function<void(const webrtc::RtpPacketToSend &)> on_sent_packet_func);

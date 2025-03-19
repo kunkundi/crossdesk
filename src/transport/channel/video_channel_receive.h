@@ -17,7 +17,7 @@ class VideoChannelReceive {
   VideoChannelReceive(
       std::shared_ptr<SystemClock> clock, std::shared_ptr<IceAgent> ice_agent,
       std::shared_ptr<IOStatistics> ice_io_statistics,
-      std::function<void(VideoFrame &)> on_receive_complete_frame);
+      std::function<void(const ReceivedFrame &)> on_receive_complete_frame);
 
   ~VideoChannelReceive();
 
@@ -51,7 +51,8 @@ class VideoChannelReceive {
   std::shared_ptr<IceAgent> ice_agent_ = nullptr;
   std::shared_ptr<IOStatistics> ice_io_statistics_ = nullptr;
   std::unique_ptr<RtpVideoReceiver> rtp_video_receiver_ = nullptr;
-  std::function<void(VideoFrame &)> on_receive_complete_frame_ = nullptr;
+  std::function<void(const ReceivedFrame &)> on_receive_complete_frame_ =
+      nullptr;
 
  private:
   std::shared_ptr<SystemClock> clock_;

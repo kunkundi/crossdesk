@@ -1,7 +1,5 @@
 #include "rtp_packetizer_h264.h"
 
-static int kMsToRtpTimestamp = 90;
-
 RtpPacketizerH264::RtpPacketizerH264(uint32_t ssrc)
     : version_(kRtpVersion),
       has_padding_(false),
@@ -61,19 +59,19 @@ void RtpPacketizerH264::AddAbsSendTimeExtension(
 }
 
 std::vector<std::unique_ptr<RtpPacket>> RtpPacketizerH264::Build(
-    uint8_t* payload, uint32_t payload_size, int64_t capture_timestamp_us,
+    uint8_t* payload, uint32_t payload_size, uint32_t rtp_timestamp,
     bool use_rtp_packet_to_send) {
   if (payload_size <= MAX_NALU_LEN) {
-    return BuildNalu(payload, payload_size, capture_timestamp_us,
+    return BuildNalu(payload, payload_size, rtp_timestamp,
                      use_rtp_packet_to_send);
   } else {
-    return BuildFua(payload, payload_size, capture_timestamp_us,
+    return BuildFua(payload, payload_size, rtp_timestamp,
                     use_rtp_packet_to_send);
   }
 }
 
 std::vector<std::unique_ptr<RtpPacket>> RtpPacketizerH264::BuildNalu(
-    uint8_t* payload, uint32_t payload_size, int64_t capture_timestamp_us,
+    uint8_t* payload, uint32_t payload_size, uint32_t rtp_timestamp,
     bool use_rtp_packet_to_send) {
   std::vector<std::unique_ptr<RtpPacket>> rtp_packets;
 
@@ -84,7 +82,7 @@ std::vector<std::unique_ptr<RtpPacket>> RtpPacketizerH264::BuildNalu(
   marker_ = 1;
   payload_type_ = rtp::PAYLOAD_TYPE(payload_type_);
   sequence_number_++;
-  timestamp_ = kMsToRtpTimestamp * static_cast<uint32_t>(capture_timestamp_us);
+  timestamp_ = rtp::kMsToRtpTimestamp * rtp_timestamp;
 
   if (!csrc_count_) {
   }
@@ -142,7 +140,7 @@ std::vector<std::unique_ptr<RtpPacket>> RtpPacketizerH264::BuildNalu(
 }
 
 std::vector<std::unique_ptr<RtpPacket>> RtpPacketizerH264::BuildFua(
-    uint8_t* payload, uint32_t payload_size, int64_t capture_timestamp_us,
+    uint8_t* payload, uint32_t payload_size, uint32_t rtp_timestamp,
     bool use_rtp_packet_to_send) {
   std::vector<std::unique_ptr<RtpPacket>> rtp_packets;
 
@@ -242,7 +240,7 @@ std::vector<std::unique_ptr<RtpPacket>> RtpPacketizerH264::BuildFua(
 }
 
 std::vector<std::unique_ptr<RtpPacket>> RtpPacketizerH264::BuildPadding(
-    uint32_t payload_size, int64_t capture_timestamp_us,
+    uint32_t payload_size, uint32_t rtp_timestamp,
     bool use_rtp_packet_to_send) {
   std::vector<std::unique_ptr<RtpPacket>> rtp_packets;
 
@@ -258,8 +256,7 @@ std::vector<std::unique_ptr<RtpPacket>> RtpPacketizerH264::BuildPadding(
     marker_ = 0;
     uint8_t payload_type = rtp::PAYLOAD_TYPE(payload_type_ - 1);
     sequence_number_++;
-    timestamp_ =
-        kMsToRtpTimestamp * static_cast<uint32_t>(capture_timestamp_us);
+    timestamp_ = rtp::kMsToRtpTimestamp * rtp_timestamp;
 
     rtp_packet_frame_.clear();
     rtp_packet_frame_.push_back((version_ << 6) | (has_padding_ << 5) |

@@ -65,7 +65,7 @@ class IceTransportController
   int OnReceiveAudioRtpPacket(const char *data, size_t size);
   int OnReceiveDataRtpPacket(const char *data, size_t size);
 
-  void OnReceiveCompleteFrame(VideoFrame &video_frame);
+  void OnReceiveCompleteFrame(const ReceivedFrame &received_frame);
   void OnReceiveCompleteAudio(const char *data, size_t size);
   void OnReceiveCompleteData(const char *data, size_t size);
 
@@ -76,7 +76,8 @@ class IceTransportController
       const webrtc::rtcp::CongestionControlFeedback &feedback);
 
  private:
-  int CreateVideoCodec(rtp::PAYLOAD_TYPE video_pt, bool hardware_acceleration);
+  int CreateVideoCodec(std::shared_ptr<SystemClock> clock,
+                       rtp::PAYLOAD_TYPE video_pt, bool hardware_acceleration);
   int CreateAudioCodec();
 
  private:

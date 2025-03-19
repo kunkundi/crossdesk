@@ -9,7 +9,8 @@
 // #define SAVE_RECEIVED_NV12_STREAM
 // #define SAVE_ENCODED_H264_STREAM
 
-NvidiaVideoEncoder::NvidiaVideoEncoder() {}
+NvidiaVideoEncoder::NvidiaVideoEncoder(std::shared_ptr<SystemClock> clock)
+    : clock_(clock) {}
 NvidiaVideoEncoder::~NvidiaVideoEncoder() {
 #ifdef SAVE_RECEIVED_NV12_STREAM
   if (file_nv12_) {
@@ -130,7 +131,7 @@ int NvidiaVideoEncoder::Init() {
 
 int NvidiaVideoEncoder::Encode(
     const XVideoFrame *video_frame,
-    std::function<int(std::shared_ptr<VideoFrameWrapper> encoded_frame)>
+    std::function<int(std::shared_ptr<EncodedFrame> encoded_frame)>
         on_encoded_image) {
   if (!encoder_) {
     LOG_ERROR("Invalid encoder");
@@ -181,14 +182,15 @@ int NvidiaVideoEncoder::Encode(
 
   for (const auto &packet : encoded_packets_) {
     if (on_encoded_image) {
-      std::shared_ptr<VideoFrameWrapper> encoded_frame =
-          std::make_shared<VideoFrameWrapper>(packet.data(), packet.size(),
-                                              encoder_->GetEncodeWidth(),
-                                              encoder_->GetEncodeHeight());
+      std::shared_ptr<EncodedFrame> encoded_frame =
+          std::make_shared<EncodedFrame>(packet.data(), packet.size(),
+                                         encoder_->GetEncodeWidth(),
+                                         encoder_->GetEncodeHeight());
       encoded_frame->SetFrameType(frame_type);
-      encoded_frame->SetCaptureTimestamp(video_frame->timestamp);
       encoded_frame->SetEncodedWidth(encoder_->GetEncodeWidth());
       encoded_frame->SetEncodedHeight(encoder_->GetEncodeHeight());
+      encoded_frame->SetCapturedTimestamp(video_frame->captured_timestamp);
+      encoded_frame->SetEncodedTimestamp(clock_->CurrentTime());
       on_encoded_image(encoded_frame);
 #ifdef SAVE_ENCODED_H264_STREAM
       fwrite((unsigned char *)packet.data(), 1, packet.size(), file_h264_);

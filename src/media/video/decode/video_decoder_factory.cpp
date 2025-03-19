@@ -17,26 +17,27 @@ VideoDecoderFactory::VideoDecoderFactory() {}
 VideoDecoderFactory::~VideoDecoderFactory() {}
 
 std::unique_ptr<VideoDecoder> VideoDecoderFactory::CreateVideoDecoder(
-    bool hardware_acceleration, bool av1_encoding) {
+    std::shared_ptr<SystemClock> clock, bool hardware_acceleration,
+    bool av1_encoding) {
   if (av1_encoding) {
     LOG_INFO("Use dav1d decoder");
-    return std::make_unique<Dav1dAv1Decoder>(Dav1dAv1Decoder());
+    return std::make_unique<Dav1dAv1Decoder>(Dav1dAv1Decoder(clock));
     // LOG_INFO("Use aom decoder");
     // return std::make_unique<AomAv1Decoder>(AomAv1Decoder());
   } else {
 #if __APPLE__
-    return std::make_unique<OpenH264Decoder>(OpenH264Decoder());
+    return std::make_unique<OpenH264Decoder>(OpenH264Decoder(clock));
 #else
     if (hardware_acceleration) {
       if (CheckIsHardwareAccerlerationSupported()) {
         LOG_INFO("Use nvidia decoder");
-        return std::make_unique<NvidiaVideoDecoder>(NvidiaVideoDecoder());
+        return std::make_unique<NvidiaVideoDecoder>(NvidiaVideoDecoder(clock));
       } else {
         return nullptr;
       }
     } else {
       LOG_INFO("Use openh264 decoder");
-      return std::make_unique<OpenH264Decoder>(OpenH264Decoder());
+      return std::make_unique<OpenH264Decoder>(OpenH264Decoder(clock));
     }
 #endif
   }

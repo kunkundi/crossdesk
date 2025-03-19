@@ -250,13 +250,12 @@ PacketSenderImp::Stats PacketSenderImp::GetStats() const {
 
 int PacketSenderImp::EnqueueRtpPacket(
     std::vector<std::unique_ptr<RtpPacket>> &rtp_packets,
-    int64_t capture_timestamp_us) {
+    int64_t captured_timestamp_us) {
   std::vector<std::unique_ptr<webrtc::RtpPacketToSend>> to_send_rtp_packets;
   for (auto &rtp_packet : rtp_packets) {
     std::unique_ptr<webrtc::RtpPacketToSend> rtp_packet_to_send(
         static_cast<webrtc::RtpPacketToSend *>(rtp_packet.release()));
-    rtp_packet_to_send->set_capture_time(
-        webrtc::Timestamp::Micros(capture_timestamp_us));
+    rtp_packet_to_send->set_capture_time(clock_->CurrentTime());
     rtp_packet_to_send->set_transport_sequence_number(transport_seq_++);
 
     switch (rtp_packet_to_send->PayloadType()) {

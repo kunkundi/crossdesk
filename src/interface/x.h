@@ -44,7 +44,10 @@ typedef struct {
   size_t size;
   uint32_t width;
   uint32_t height;
-  uint64_t timestamp;
+  uint64_t captured_timestamp;
+  uint64_t received_timestamp;
+  uint64_t decoded_timestamp;
+  uint64_t rendered_timestamp;
 } XVideoFrame;
 
 typedef struct {

@@ -12,12 +12,12 @@
 #include "clock/system_clock.h"
 #include "congestion_control.h"
 #include "congestion_control_feedback.h"
+#include "encoded_frame.h"
 #include "ice_agent.h"
 #include "packet_sender.h"
 #include "rtp_packetizer.h"
 #include "rtp_video_sender.h"
 #include "transport_feedback_adapter.h"
-#include "video_frame_wrapper.h"
 
 class VideoChannelSend {
  public:
@@ -36,7 +36,7 @@ class VideoChannelSend {
           enqueue_packets_func);
 
   std::vector<std::unique_ptr<RtpPacket>> GeneratePadding(
-      uint32_t payload_size, int64_t capture_timestamp_us);
+      uint32_t payload_size, int64_t captured_timestamp_us);
 
   int64_t GetTransportSeqAndIncrement() {
     int64_t transport_seq = rtp_video_sender_->GetTransportSequenceNumber();
@@ -55,7 +55,7 @@ class VideoChannelSend {
     return 0;
   }
 
-  int SendVideo(std::shared_ptr<VideoFrameWrapper> encoded_frame);
+  int SendVideo(std::shared_ptr<EncodedFrame> encoded_frame);
 
   void OnCongestionControlFeedback(
       Timestamp recv_ts,
@@ -84,6 +84,7 @@ class VideoChannelSend {
 
  private:
   std::shared_ptr<SystemClock> clock_;
+  int64_t delta_ntp_internal_ms_;
 };
 
 #endif

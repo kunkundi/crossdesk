@@ -38,7 +38,8 @@ void Nv12ToI420(unsigned char *Src_data, int src_width, int src_height,
       Dst_Stride_U, (uint8_t *)V_data_Dst, Dst_Stride_V, src_width, src_height);
 }
 
-OpenH264Encoder::OpenH264Encoder() {}
+OpenH264Encoder::OpenH264Encoder(std::shared_ptr<SystemClock> clock)
+    : clock_(clock) {}
 
 OpenH264Encoder::~OpenH264Encoder() {
 #ifdef SAVE_RECEIVED_NV12_STREAM
@@ -181,7 +182,7 @@ int OpenH264Encoder::Init() {
 
 int OpenH264Encoder::Encode(
     const XVideoFrame *video_frame,
-    std::function<int(std::shared_ptr<VideoFrameWrapper> encoded_frame)>
+    std::function<int(std::shared_ptr<EncodedFrame> encoded_frame)>
         on_encoded_image) {
   if (!openh264_encoder_) {
     LOG_ERROR("Invalid openh264 encoder");
@@ -281,14 +282,15 @@ int OpenH264Encoder::Encode(
   encoded_frame_size_ = encoded_frame_size;
 
   if (on_encoded_image) {
-    std::shared_ptr<VideoFrameWrapper> encoded_frame =
-        std::make_shared<VideoFrameWrapper>(encoded_frame_, encoded_frame_size_,
-                                            raw_frame_.iPicWidth,
-                                            raw_frame_.iPicHeight);
+    std::shared_ptr<EncodedFrame> encoded_frame =
+        std::make_shared<EncodedFrame>(encoded_frame_, encoded_frame_size_,
+                                       raw_frame_.iPicWidth,
+                                       raw_frame_.iPicHeight);
     encoded_frame->SetFrameType(frame_type);
-    encoded_frame->SetCaptureTimestamp(video_frame->timestamp);
     encoded_frame->SetEncodedWidth(raw_frame_.iPicWidth);
     encoded_frame->SetEncodedHeight(raw_frame_.iPicHeight);
+    encoded_frame->SetCapturedTimestamp(video_frame->captured_timestamp);
+    encoded_frame->SetEncodedTimestamp(clock_->CurrentTime());
     on_encoded_image(encoded_frame);
 #ifdef SAVE_ENCODED_H264_STREAM
     fwrite(encoded_frame_, 1, encoded_frame_size_, file_h264_);
@@ -333,6 +335,11 @@ int OpenH264Encoder::Encode(
     encoded_frame_size_ = encoded_frame_size;
 
     if (on_encoded_image) {
+      encoded_frame->SetFrameType(frame_type);
+      encoded_frame->SetEncodedWidth(raw_frame_.iPicWidth);
+      encoded_frame->SetEncodedHeight(raw_frame_.iPicHeight);
+      encoded_frame->SetCapturedTimestamp(video_frame->captured_timestamp);
+      encoded_frame->SetEncodedTimestamp(clock_->CurrentTime());
       on_encoded_image((char *)encoded_frame_, frame_type);
 #ifdef SAVE_ENCODED_H264_STREAM
       fwrite(encoded_frame_, 1, encoded_frame_size_, file_h264_);

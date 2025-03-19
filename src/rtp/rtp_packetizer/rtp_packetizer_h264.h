@@ -16,20 +16,20 @@ class RtpPacketizerH264 : public RtpPacketizer {
   virtual ~RtpPacketizerH264();
 
   std::vector<std::unique_ptr<RtpPacket>> Build(
-      uint8_t* payload, uint32_t payload_size, int64_t capture_timestamp_us,
+      uint8_t* payload, uint32_t payload_size, uint32_t rtp_timestamp,
       bool use_rtp_packet_to_send) override;
 
   std::vector<std::unique_ptr<RtpPacket>> BuildNalu(
-      uint8_t* payload, uint32_t payload_size, int64_t capture_timestamp_us,
+      uint8_t* payload, uint32_t payload_size, uint32_t rtp_timestamp,
       bool use_rtp_packet_to_send);
 
   std::vector<std::unique_ptr<RtpPacket>> BuildFua(uint8_t* payload,
                                                    uint32_t payload_size,
-                                                   int64_t capture_timestamp_us,
+                                                   uint32_t rtp_timestamp,
                                                    bool use_rtp_packet_to_send);
 
   std::vector<std::unique_ptr<RtpPacket>> BuildPadding(
-      uint32_t payload_size, int64_t capture_timestamp_us,
+      uint32_t payload_size, uint32_t rtp_timestamp,
       bool use_rtp_packet_to_send) override;
 
  private:

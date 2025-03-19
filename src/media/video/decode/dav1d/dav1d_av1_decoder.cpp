@@ -47,7 +47,8 @@ void Yuv420pToNv12(unsigned char *SrcY, unsigned char *SrcU,
   }
 }
 
-Dav1dAv1Decoder::Dav1dAv1Decoder() {}
+Dav1dAv1Decoder::Dav1dAv1Decoder(std::shared_ptr<SystemClock> clock)
+    : clock_(clock) {}
 
 Dav1dAv1Decoder::~Dav1dAv1Decoder() {
 #ifdef SAVE_DECODED_NV12_STREAM
@@ -106,8 +107,11 @@ int Dav1dAv1Decoder::Init() {
 }
 
 int Dav1dAv1Decoder::Decode(
-    const uint8_t *data, size_t size,
-    std::function<void(VideoFrame)> on_receive_decoded_frame) {
+    const ReceivedFrame &received_frame,
+    std::function<void(const DecodedFrame &)> on_receive_decoded_frame) {
+  const uint8_t *data = received_frame.Buffer();
+  size_t size = received_frame.Size();
+
 #ifdef SAVE_RECEIVED_AV1_STREAM
   fwrite((unsigned char *)data, 1, size, file_av1_);
 #endif
@@ -159,14 +163,14 @@ int Dav1dAv1Decoder::Decode(
   if (!nv12_frame_) {
     nv12_frame_capacity_ = nv12_frame_size_;
     nv12_frame_ =
-        new VideoFrame(nv12_frame_capacity_, frame_width_, frame_height_);
+        new DecodedFrame(nv12_frame_capacity_, frame_width_, frame_height_);
   }
 
   if (nv12_frame_capacity_ < nv12_frame_size_) {
     nv12_frame_capacity_ = nv12_frame_size_;
     delete nv12_frame_;
     nv12_frame_ =
-        new VideoFrame(nv12_frame_capacity_, frame_width_, frame_height_);
+        new DecodedFrame(nv12_frame_capacity_, frame_width_, frame_height_);
   }
 
   if (nv12_frame_->Size() != nv12_frame_size_ ||
@@ -194,6 +198,9 @@ int Dav1dAv1Decoder::Decode(
         frame_width_, frame_width_, frame_height_);
   }
 
+  nv12_frame_->SetReceivedTimestamp(received_frame.ReceivedTimestamp());
+  nv12_frame_->SetCapturedTimestamp(received_frame.CapturedTimestamp());
+  nv12_frame_->SetDecodedTimestamp(clock_->CurrentTime());
   on_receive_decoded_frame(*nv12_frame_);
 
 #ifdef SAVE_DECODED_NV12_STREAM

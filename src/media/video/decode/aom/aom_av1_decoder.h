@@ -16,19 +16,21 @@
 
 class AomAv1Decoder : public VideoDecoder {
  public:
-  AomAv1Decoder();
+  AomAv1Decoder(std::shared_ptr<SystemClock> clock);
   virtual ~AomAv1Decoder();
 
  public:
   int Init();
 
-  int Decode(const uint8_t *data, size_t size,
-             std::function<void(VideoFrame)> on_receive_decoded_frame);
+  int Decode(
+      const ReceivedFrame &received_frame,
+      std::function<void(const DecodedFrame &)> on_receive_decoded_frame);
 
   std::string GetDecoderName() { return "AomAv1"; }
 
  private:
-  VideoFrame *nv12_frame_ = 0;
+  std::shared_ptr<SystemClock> clock_ = nullptr;
+  DecodedFrame *nv12_frame_ = 0;
   int nv12_frame_capacity_ = 0;
   int nv12_frame_size_ = 0;
 

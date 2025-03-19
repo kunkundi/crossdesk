@@ -8,7 +8,8 @@
 #include <memory>
 #include <string>
 
-#include "video_frame_wrapper.h"
+#include "clock/system_clock.h"
+#include "encoded_frame.h"
 #include "x.h"
 
 #define I_FRAME_INTERVAL 3000
@@ -18,7 +19,7 @@ class VideoEncoder {
 
   virtual int Encode(
       const XVideoFrame* video_frame,
-      std::function<int(std::shared_ptr<VideoFrameWrapper> encoded_frame)>
+      std::function<int(std::shared_ptr<EncodedFrame> encoded_frame)>
           on_encoded_image) = 0;
 
   virtual int ForceIdr() = 0;

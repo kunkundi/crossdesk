@@ -10,7 +10,8 @@ class VideoEncoderFactory {
   ~VideoEncoderFactory();
 
   static std::unique_ptr<VideoEncoder> CreateVideoEncoder(
-      bool hardware_acceleration, bool av1_encoding);
+      std::shared_ptr<SystemClock> clock, bool hardware_acceleration,
+      bool av1_encoding);
 
   static bool CheckIsHardwareAccerlerationSupported();
 };

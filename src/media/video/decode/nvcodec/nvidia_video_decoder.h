@@ -8,18 +8,19 @@
 
 class NvidiaVideoDecoder : public VideoDecoder {
  public:
-  NvidiaVideoDecoder();
+  NvidiaVideoDecoder(std::shared_ptr<SystemClock> clock);
   virtual ~NvidiaVideoDecoder();
 
  public:
   int Init();
 
-  int Decode(const uint8_t* data, size_t size,
-             std::function<void(VideoFrame)> on_receive_decoded_frame);
+  int Decode(const ReceivedFrame& received_frame,
+             std::function<void(const DecodedFrame&)> on_receive_decoded_frame);
 
   std::string GetDecoderName() { return "NvidiaH264"; }
 
  private:
+  std::shared_ptr<SystemClock> clock_ = nullptr;
   NvDecoder* decoder = nullptr;
   bool get_first_keyframe_ = false;
   bool skip_frame_ = false;

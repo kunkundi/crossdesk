@@ -20,7 +20,7 @@ class PacketSender {
   virtual int Send() = 0;
   virtual int EnqueueRtpPacket(
       std::vector<std::unique_ptr<RtpPacket>> &rtp_packets,
-      int64_t capture_timestamp_us) = 0;
+      int64_t captured_timestamp_us) = 0;
 };
 
 #endif

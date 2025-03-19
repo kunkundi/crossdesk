@@ -17,25 +17,26 @@ VideoEncoderFactory::VideoEncoderFactory() {}
 VideoEncoderFactory::~VideoEncoderFactory() {}
 
 std::unique_ptr<VideoEncoder> VideoEncoderFactory::CreateVideoEncoder(
-    bool hardware_acceleration, bool av1_encoding) {
+    std::shared_ptr<SystemClock> clock, bool hardware_acceleration,
+    bool av1_encoding) {
   if (av1_encoding) {
     LOG_INFO("Use AOM encoder");
-    return std::make_unique<AomAv1Encoder>(AomAv1Encoder());
+    return std::make_unique<AomAv1Encoder>(AomAv1Encoder(clock));
   } else {
 #if __APPLE__
     LOG_INFO("Use OpenH264 encoder");
-    return std::make_unique<OpenH264Encoder>(OpenH264Encoder());
+    return std::make_unique<OpenH264Encoder>(OpenH264Encoder(clock));
 #else
     if (hardware_acceleration) {
       if (CheckIsHardwareAccerlerationSupported()) {
         LOG_INFO("Use Nvidia encoder");
-        return std::make_unique<NvidiaVideoEncoder>(NvidiaVideoEncoder());
+        return std::make_unique<NvidiaVideoEncoder>(NvidiaVideoEncoder(clock));
       } else {
         return nullptr;
       }
     } else {
       LOG_INFO("Use OpenH264 encoder");
-      return std::make_unique<OpenH264Encoder>(OpenH264Encoder());
+      return std::make_unique<OpenH264Encoder>(OpenH264Encoder(clock));
     }
 #endif
   }

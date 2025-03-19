@@ -17,6 +17,8 @@ VideoChannelSend::VideoChannelSend(
       packet_sender_(packet_sender),
       ice_io_statistics_(ice_io_statistics),
       on_sent_packet_func_(on_sent_packet_func),
+      delta_ntp_internal_ms_(clock->CurrentNtpInMilliseconds() -
+                             clock->CurrentTimeMs()),
       clock_(clock){};
 
 void VideoChannelSend::Initialize(rtp::PAYLOAD_TYPE payload_type) {
@@ -57,9 +59,9 @@ void VideoChannelSend::SetEnqueuePacketsFunc(
 }
 
 std::vector<std::unique_ptr<RtpPacket>> VideoChannelSend::GeneratePadding(
-    uint32_t payload_size, int64_t capture_timestamp_us) {
+    uint32_t payload_size, int64_t captured_timestamp_us) {
   if (rtp_packetizer_) {
-    return rtp_packetizer_->BuildPadding(payload_size, capture_timestamp_us,
+    return rtp_packetizer_->BuildPadding(payload_size, captured_timestamp_us,
                                          true);
   }
   return std::vector<std::unique_ptr<RtpPacket>>{};
@@ -71,15 +73,16 @@ void VideoChannelSend::Destroy() {
   }
 }
 
-int VideoChannelSend::SendVideo(
-    std::shared_ptr<VideoFrameWrapper> encoded_frame) {
+int VideoChannelSend::SendVideo(std::shared_ptr<EncodedFrame> encoded_frame) {
   if (rtp_video_sender_ && rtp_packetizer_) {
+    int64_t rtp_timestamp =
+        delta_ntp_internal_ms_ +
+        static_cast<uint32_t>(encoded_frame->CapturedTimestamp() / 1000);
     std::vector<std::unique_ptr<RtpPacket>> rtp_packets =
         rtp_packetizer_->Build((uint8_t*)encoded_frame->Buffer(),
-                               (uint32_t)encoded_frame->Size(),
-                               encoded_frame->CaptureTimestamp(), true);
-    packet_sender_->EnqueueRtpPacket(std::move(rtp_packets),
-                                     encoded_frame->CaptureTimestamp());
+                               (uint32_t)encoded_frame->Size(), rtp_timestamp,
+                               true);
+    packet_sender_->EnqueueRtpPacket(std::move(rtp_packets), rtp_timestamp);
   }
 
   return 0;

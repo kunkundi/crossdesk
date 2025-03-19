@@ -38,7 +38,7 @@ class PacketSenderImp : public PacketSender,
   int Send() { return 0; }
 
   int EnqueueRtpPacket(std::vector<std::unique_ptr<RtpPacket>>& rtp_packets,
-                       int64_t capture_timestamp_us);
+                       int64_t captured_timestamp_us);
 
   void SetOnSentPacketFunc(
       std::function<void(const webrtc::RtpPacketToSend&)> on_sent_packet_func) {

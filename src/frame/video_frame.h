@@ -10,6 +10,12 @@
 #include <cstddef>
 #include <cstdint>
 
+enum VideoFrameType {
+  kEmptyFrame = 0,
+  kVideoFrameKey = 3,
+  kVideoFrameDelta = 4,
+};
+
 class VideoFrame {
  public:
   VideoFrame();
@@ -26,10 +32,10 @@ class VideoFrame {
   ~VideoFrame();
 
  public:
-  const uint8_t *Buffer() { return buffer_; }
-  size_t Size() { return size_; }
-  uint32_t Width() { return width_; }
-  uint32_t Height() { return height_; }
+  const uint8_t *Buffer() const { return buffer_; }
+  size_t Size() const { return size_; }
+  uint32_t Width() const { return width_; }
+  uint32_t Height() const { return height_; }
 
   void SetSize(size_t size) { size_ = size; }
   void SetWidth(uint32_t width) { width_ = width; }

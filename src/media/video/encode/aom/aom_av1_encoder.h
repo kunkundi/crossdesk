@@ -31,16 +31,15 @@ typedef struct {
 
 class AomAv1Encoder : public VideoEncoder {
  public:
-  AomAv1Encoder();
+  AomAv1Encoder(std::shared_ptr<SystemClock> clock);
   virtual ~AomAv1Encoder();
 
  public:
   int Init();
 
-  int Encode(
-      const XVideoFrame* video_frame,
-      std::function<int(std::shared_ptr<VideoFrameWrapper> encoded_frame)>
-          on_encoded_image);
+  int Encode(const XVideoFrame* video_frame,
+             std::function<int(std::shared_ptr<EncodedFrame> encoded_frame)>
+                 on_encoded_image);
 
   int ForceIdr();
 
@@ -65,6 +64,7 @@ class AomAv1Encoder : public VideoEncoder {
   int Release();
 
  private:
+  std::shared_ptr<SystemClock> clock_ = nullptr;
   uint32_t frame_width_ = 1280;
   uint32_t frame_height_ = 720;
   int key_frame_interval_ = I_FRAME_INTERVAL;

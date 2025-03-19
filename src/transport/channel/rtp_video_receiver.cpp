@@ -29,6 +29,8 @@ RtpVideoReceiver::RtpVideoReceiver(std::shared_ptr<SystemClock> clock)
           },
           1200)),
       nack_(std::make_unique<NackRequester>(clock_, this, this)),
+      delta_ntp_internal_ms_(clock->CurrentNtpInMilliseconds() -
+                             clock->CurrentTimeMs()),
       clock_(webrtc::Clock::GetWebrtcClockShared(clock)) {
   SetPeriod(std::chrono::milliseconds(5));
   rtcp_thread_ = std::thread(&RtpVideoReceiver::RtcpThread, this);
@@ -217,8 +219,15 @@ void RtpVideoReceiver::ProcessH264RtpPacket(RtpPacketH264& rtp_packet_h264) {
     if (rtp::PAYLOAD_TYPE::H264 == rtp_packet_h264.PayloadType()) {
       rtp::NAL_UNIT_TYPE nalu_type = rtp_packet_h264.NalUnitType();
       if (rtp::NAL_UNIT_TYPE::NALU == nalu_type) {
-        compelete_video_frame_queue_.push(VideoFrame(
-            rtp_packet_h264.Payload(), rtp_packet_h264.PayloadSize()));
+        ReceivedFrame received_frame(rtp_packet_h264.Payload(),
+                                     rtp_packet_h264.PayloadSize());
+        received_frame.SetReceivedTimestamp(clock_->CurrentTime().us());
+        received_frame.SetCapturedTimestamp(
+            (static_cast<int64_t>(rtp_packet_h264.Timestamp()) /
+                 rtp::kMsToRtpTimestamp -
+             delta_ntp_internal_ms_) *
+            1000);
+        compelete_video_frame_queue_.push(received_frame);
       } else if (rtp::NAL_UNIT_TYPE::FU_A == nalu_type) {
         incomplete_h264_frame_list_[rtp_packet_h264.SequenceNumber()] =
             rtp_packet_h264;
@@ -409,8 +418,15 @@ bool RtpVideoReceiver::CheckIsH264FrameCompleted(
           incomplete_h264_frame_list_.erase(seq);
           frame_fragment_count++;
         }
-        compelete_video_frame_queue_.push(
-            VideoFrame(nv12_data_, complete_frame_size));
+
+        ReceivedFrame received_frame(nv12_data_, complete_frame_size);
+        received_frame.SetReceivedTimestamp(clock_->CurrentTime().us());
+        received_frame.SetCapturedTimestamp(
+            (static_cast<int64_t>(rtp_packet_h264.Timestamp()) /
+                 rtp::kMsToRtpTimestamp -
+             delta_ntp_internal_ms_) *
+            1000);
+        compelete_video_frame_queue_.push(received_frame);
 
         return true;
       } else {
@@ -461,8 +477,14 @@ bool RtpVideoReceiver::CheckIsAv1FrameCompleted(RtpPacketAv1& rtp_packet_av1) {
         incomplete_av1_frame_list_.erase(start);
       }
 
-      compelete_video_frame_queue_.push(
-          VideoFrame(nv12_data_, complete_frame_size));
+      ReceivedFrame received_frame(nv12_data_, complete_frame_size);
+      received_frame.SetReceivedTimestamp(clock_->CurrentTime().us());
+      received_frame.SetCapturedTimestamp(
+          (static_cast<int64_t>(rtp_packet_av1.Timestamp()) /
+               rtp::kMsToRtpTimestamp -
+           delta_ntp_internal_ms_) *
+          1000);
+      compelete_video_frame_queue_.push(received_frame);
 
       return true;
     }
@@ -546,14 +568,15 @@ bool RtpVideoReceiver::CheckIsTimeSendRR() {
 
 bool RtpVideoReceiver::Process() {
   if (!compelete_video_frame_queue_.isEmpty()) {
-    std::optional<VideoFrame> video_frame = compelete_video_frame_queue_.pop();
+    std::optional<ReceivedFrame> video_frame =
+        compelete_video_frame_queue_.pop();
     if (on_receive_complete_frame_ && video_frame) {
       // auto now_complete_frame_ts =
       //     std::chrono::duration_cast<std::chrono::milliseconds>(
       //         std::chrono::system_clock::now().time_since_epoch())
       //         .count();
-      // uint32_t duration = now_complete_frame_ts - last_complete_frame_ts_;
-      // LOG_ERROR("Duration {}", duration);
+      // uint32_t duration = now_complete_frame_ts -
+      // last_complete_frame_ts_; LOG_ERROR("Duration {}", duration);
       // last_complete_frame_ts_ = now_complete_frame_ts;
 
       on_receive_complete_frame_(*video_frame);
@@ -577,13 +600,13 @@ void RtpVideoReceiver::ReviseFrequencyAndJitter(int payload_type_frequency) {
     if (last_payload_type_frequency_ != 0) {
       // Value in "jitter_q4_" variable is a number of samples.
       // I.e. jitter = timestamp (s) * frequency (Hz).
-      // Since the frequency has changed we have to update the number of samples
-      // accordingly. The new value should rely on a new frequency.
+      // Since the frequency has changed we have to update the number of
+      // samples accordingly. The new value should rely on a new frequency.
 
-      // If we don't do such procedure we end up with the number of samples that
-      // cannot be converted into TimeDelta correctly
-      // (i.e. jitter = jitter_q4_ >> 4 / payload_type_frequency).
-      // In such case, the number of samples has a "mix".
+      // If we don't do such procedure we end up with the number of samples
+      // that cannot be converted into TimeDelta correctly (i.e. jitter =
+      // jitter_q4_ >> 4 / payload_type_frequency). In such case, the number
+      // of samples has a "mix".
 
       // Doing so we pretend that everything prior and including the current
       // packet were computed on packet's frequency.
