@@ -434,6 +434,10 @@ int IceTransport::DestroyIceTransmission() {
     ice_io_statistics_->Stop();
   }
 
+  if (ice_transport_controller_) {
+    ice_transport_controller_->Destroy();
+  }
+
   return ice_agent_->DestroyIceAgent();
 }
 

@@ -12,6 +12,7 @@ RtpDataSender::RtpDataSender() {}
 RtpDataSender::RtpDataSender(std::shared_ptr<IOStatistics> io_statistics)
     : ssrc_(GenerateUniqueSsrc()), io_statistics_(io_statistics) {
   SetPeriod(std::chrono::milliseconds(5));
+  SetThreadName("RtpDataSender");
 }
 
 RtpDataSender::~RtpDataSender() {

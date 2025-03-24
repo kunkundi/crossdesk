@@ -48,6 +48,9 @@ class RtpVideoReceiver : public ThreadBase,
   }
   uint32_t GetSsrc() { return ssrc_; }
   uint32_t GetRemoteSsrc() { return remote_ssrc_; }
+
+  void StopRtcp();
+
   void OnSenderReport(const SenderReport& sender_report);
 
  private:
@@ -134,6 +137,7 @@ class RtpVideoReceiver : public ThreadBase,
   std::atomic<bool> rtcp_stop_ = false;
   int rtcp_rr_interval_ms_ = 5000;
   int rtcp_tcc_interval_ms_ = 200;
+  std::atomic<bool> is_running_;
 
  private:
   uint32_t ssrc_ = 0;

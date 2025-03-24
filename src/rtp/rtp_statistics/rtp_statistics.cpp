@@ -2,7 +2,10 @@
 
 #include "log.h"
 
-RtpStatistics::RtpStatistics() {}
+RtpStatistics::RtpStatistics() {
+  SetPeriod(std::chrono::milliseconds(1000));
+  SetThreadName("RtpStatistics");
+}
 
 RtpStatistics::~RtpStatistics() {}
 

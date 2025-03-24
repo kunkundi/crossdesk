@@ -17,6 +17,7 @@
 RtpVideoReceiver::RtpVideoReceiver(std::shared_ptr<SystemClock> clock)
     : ssrc_(GenerateUniqueSsrc()),
       active_remb_module_(nullptr),
+      is_running_(true),
       receive_side_congestion_controller_(
           clock_,
           [this](std::vector<std::unique_ptr<RtcpPacket>> packets) {
@@ -35,6 +36,7 @@ RtpVideoReceiver::RtpVideoReceiver(std::shared_ptr<SystemClock> clock)
                              clock->CurrentTimeMs()),
       clock_(webrtc::Clock::GetWebrtcClockShared(clock)) {
   SetPeriod(std::chrono::milliseconds(5));
+  SetThreadName("RtpVideoReceiver");
   rtcp_thread_ = std::thread(&RtpVideoReceiver::RtcpThread, this);
 }
 
@@ -42,6 +44,7 @@ RtpVideoReceiver::RtpVideoReceiver(std::shared_ptr<SystemClock> clock,
                                    std::shared_ptr<IOStatistics> io_statistics)
     : io_statistics_(io_statistics),
       ssrc_(GenerateUniqueSsrc()),
+      is_running_(true),
       receive_side_congestion_controller_(
           clock_,
           [this](std::vector<std::unique_ptr<RtcpPacket>> packets) {
@@ -58,6 +61,7 @@ RtpVideoReceiver::RtpVideoReceiver(std::shared_ptr<SystemClock> clock,
       nack_(std::make_unique<NackRequester>(clock_, this, this)),
       clock_(webrtc::Clock::GetWebrtcClockShared(clock)) {
   SetPeriod(std::chrono::milliseconds(5));
+  SetThreadName("RtpVideoReceiver");
   rtcp_thread_ = std::thread(&RtpVideoReceiver::RtcpThread, this);
 
 #ifdef SAVE_RTP_RECV_STREAM
@@ -69,11 +73,7 @@ RtpVideoReceiver::RtpVideoReceiver(std::shared_ptr<SystemClock> clock,
 }
 
 RtpVideoReceiver::~RtpVideoReceiver() {
-  rtcp_stop_.store(true);
-  rtcp_cv_.notify_all();
-  if (rtcp_thread_.joinable()) {
-    rtcp_thread_.join();
-  }
+  StopRtcp();
 
   SSRCManager::Instance().DeleteSsrc(ssrc_);
 
@@ -670,6 +670,10 @@ void RtpVideoReceiver::CheckIsTimeUpdateNack(uint32_t now) {
 }
 
 bool RtpVideoReceiver::Process() {
+  if (!is_running_.load()) {
+    return false;
+  }
+
   if (!compelete_video_frame_queue_.isEmpty()) {
     std::optional<ReceivedFrame> video_frame =
         compelete_video_frame_queue_.pop();
@@ -771,6 +775,19 @@ void RtpVideoReceiver::SendRR() {
 
   last_extended_high_seq_num_ = extended_high_seq_num_;
   last_report_cumulative_loss_ = cumulative_loss_;
+}
+
+void RtpVideoReceiver::StopRtcp() {
+  is_running_.store(false);
+  if (rtcp_stop_.load()) {
+    return;
+  }
+
+  rtcp_stop_.store(true);
+  rtcp_cv_.notify_all();
+  if (rtcp_thread_.joinable()) {
+    rtcp_thread_.join();
+  }
 }
 
 void RtpVideoReceiver::RtcpThread() {

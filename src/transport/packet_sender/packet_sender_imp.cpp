@@ -22,7 +22,7 @@ PacketSenderImp::PacketSenderImp(std::shared_ptr<IceAgent> ice_agent,
       last_call_time_(webrtc::Timestamp::Millis(0)),
       task_queue_(task_queue) {}
 
-PacketSenderImp::~PacketSenderImp() {}
+PacketSenderImp::~PacketSenderImp() { is_shutdown_ = true; }
 
 std::vector<std::unique_ptr<webrtc::RtpPacketToSend>>
 PacketSenderImp::GeneratePadding(webrtc::DataSize size) {

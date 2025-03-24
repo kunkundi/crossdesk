@@ -106,7 +106,7 @@ void VideoChannelSend::Destroy() {
 }
 
 int VideoChannelSend::SendVideo(std::shared_ptr<EncodedFrame> encoded_frame) {
-  if (rtp_video_sender_ && rtp_packetizer_) {
+  if (rtp_video_sender_ && rtp_packetizer_ && packet_sender_) {
     int32_t rtp_timestamp =
         delta_ntp_internal_ms_ +
         static_cast<uint32_t>(encoded_frame->CapturedTimestamp() / 1000);
@@ -158,7 +158,9 @@ int32_t VideoChannelSend::ReSendPacket(uint16_t packet_id) {
   std::vector<std::unique_ptr<webrtc::RtpPacketToSend>> packets;
   packets.emplace_back(std::move(packet));
 
-  packet_sender_->EnqueueRtpPacket(std::move(packets));
+  if (packet_sender_) {
+    packet_sender_->EnqueueRtpPacket(std::move(packets));
+  }
 
   return packet_size;
 }

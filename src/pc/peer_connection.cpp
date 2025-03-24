@@ -629,8 +629,8 @@ void PeerConnection::ProcessIceWorkMsg(const IceWorkMsg &msg) {
     }
     case IceWorkMsg::Type::UserLeaveTransmission: {
       std::string user_id = msg.user_id;
-      LOG_INFO("Receive notification: user id [{}] leave transmission",
-               user_id);
+      LOG_INFO("[{}] Receive notification: user id [{}] leave transmission",
+               (void *)this, user_id);
       auto user_id_it = ice_transport_list_.find(user_id);
       if (user_id_it != ice_transport_list_.end()) {
         user_id_it->second->DestroyIceTransmission();

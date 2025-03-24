@@ -112,6 +112,7 @@ class IceTransportController
   std::shared_ptr<PacketSenderImp> packet_sender_ = nullptr;
   std::string remote_user_id_;
   void *user_data_ = nullptr;
+  std::atomic<bool> is_running_;
 
  private:
   std::shared_ptr<SystemClock> clock_;

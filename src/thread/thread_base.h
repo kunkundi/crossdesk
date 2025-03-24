@@ -5,6 +5,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
+#include <string>
 #include <thread>
 
 class ThreadBase {
@@ -20,6 +21,8 @@ class ThreadBase {
   void Resume();
 
   void SetPeriod(std::chrono::milliseconds period);
+  void SetThreadName(const std::string& name);
+  std::string GetThreadName();
 
   virtual bool Process() = 0;
 
@@ -29,6 +32,7 @@ class ThreadBase {
  private:
   std::thread thread_;
   std::chrono::milliseconds period_;
+  std::string thread_name_;
 
   std::condition_variable cv_;
   std::mutex cv_mtx_;

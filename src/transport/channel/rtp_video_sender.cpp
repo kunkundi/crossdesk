@@ -18,6 +18,7 @@ RtpVideoSender::RtpVideoSender(std::shared_ptr<SystemClock> clock,
       io_statistics_(io_statistics),
       clock_(webrtc::Clock::GetWebrtcClockShared(clock)) {
   SetPeriod(std::chrono::milliseconds(5));
+  SetThreadName("RtpVideoSender");
 #ifdef SAVE_RTP_SENT_STREAM
   file_rtp_sent_ = fopen("rtp_sent_stream.h264", "w+b");
   if (!file_rtp_sent_) {

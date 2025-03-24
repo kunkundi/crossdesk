@@ -19,8 +19,10 @@ IceTransportController::IceTransportController(
       audio_codec_inited_(false),
       load_nvcodec_dll_success_(false),
       hardware_acceleration_(false),
+      is_running_(true),
       congestion_window_size_(DataSize::PlusInfinity()) {
   SetPeriod(std::chrono::milliseconds(25));
+  SetThreadName("IceTransportController");
 }
 
 IceTransportController::~IceTransportController() {
@@ -92,25 +94,38 @@ void IceTransportController::Create(
         OnSentRtpPacket(packet);
       });
 
-  packet_sender_->SetGeneratePaddingFunc(
-      [this](uint32_t size, int64_t captured_timestamp_us)
-          -> std::vector<std::unique_ptr<RtpPacket>> {
-        return video_channel_send_->GeneratePadding(size,
-                                                    captured_timestamp_us);
-      });
+  if (packet_sender_) {
+    packet_sender_->SetGeneratePaddingFunc(
+        [this](uint32_t size, int64_t captured_timestamp_us)
+            -> std::vector<std::unique_ptr<RtpPacket>> {
+          return video_channel_send_->GeneratePadding(size,
+                                                      captured_timestamp_us);
+        });
+  }
 
   audio_channel_send_ = std::make_unique<AudioChannelSend>(
       ice_agent, packet_sender_, ice_io_statistics);
   data_channel_send_ = std::make_unique<DataChannelSend>(
       ice_agent, packet_sender_, ice_io_statistics);
 
-  video_channel_send_->Initialize(video_codec_payload_type);
-  audio_channel_send_->Initialize(rtp::PAYLOAD_TYPE::OPUS);
-  data_channel_send_->Initialize(rtp::PAYLOAD_TYPE::DATA);
+  if (video_channel_send_) {
+    video_channel_send_->Initialize(video_codec_payload_type);
+    video_channel_send_->SetEnqueuePacketsFunc(
+        [this](std::vector<std::unique_ptr<webrtc::RtpPacketToSend>>& packets)
+            -> void {
+          if (packet_sender_) {
+            packet_sender_->EnqueuePackets(std::move(packets));
+          }
+        });
+  }
 
-  video_channel_send_->SetEnqueuePacketsFunc(
-      [this](std::vector<std::unique_ptr<webrtc::RtpPacketToSend>>& packets)
-          -> void { packet_sender_->EnqueuePackets(std::move(packets)); });
+  if (audio_channel_send_) {
+    audio_channel_send_->Initialize(rtp::PAYLOAD_TYPE::OPUS);
+  }
+
+  if (data_channel_send_) {
+    data_channel_send_->Initialize(rtp::PAYLOAD_TYPE::DATA);
+  }
 
   std::weak_ptr<IceTransportController> weak_self = shared_from_this();
   video_channel_receive_ = std::make_unique<VideoChannelReceive>(
@@ -143,6 +158,8 @@ void IceTransportController::Create(
 }
 
 void IceTransportController::Destroy() {
+  is_running_.store(false);
+
   if (video_channel_send_) {
     video_channel_send_->Destroy();
   }
@@ -166,6 +183,8 @@ void IceTransportController::Destroy() {
   if (data_channel_receive_) {
     data_channel_receive_->Destroy();
   }
+
+  Stop();
 }
 
 int IceTransportController::SendVideo(const XVideoFrame* video_frame) {
@@ -256,6 +275,9 @@ void IceTransportController::UpdateNetworkAvaliablity(bool network_available) {
         webrtc::Timestamp::Millis(webrtc_clock_->TimeInMilliseconds());
     msg.network_available = network_available;
     controller_->OnNetworkAvailability(msg);
+  }
+
+  if (packet_sender_) {
     packet_sender_->EnsureStarted();
   }
 }
@@ -484,11 +506,13 @@ void IceTransportController::OnReceiverReport(
   msg.start_time = last_report_block_time_;
   msg.end_time = now;
 
-  task_queue_->PostTask([this, msg]() mutable {
-    if (controller_) {
-      PostUpdates(controller_->OnTransportLossReport(msg));
-    }
-  });
+  if (task_queue_) {
+    task_queue_->PostTask([this, msg]() mutable {
+      if (controller_) {
+        PostUpdates(controller_->OnTransportLossReport(msg));
+      }
+    });
+  }
 
   last_report_block_time_ = now;
 }
@@ -498,7 +522,7 @@ void IceTransportController::OnCongestionControlFeedback(
   std::optional<webrtc::TransportPacketsFeedback> feedback_msg =
       transport_feedback_adapter_.ProcessCongestionControlFeedback(
           feedback, Timestamp::Micros(clock_->CurrentTimeUs()));
-  if (feedback_msg.has_value()) {
+  if (feedback_msg.has_value() && task_queue_) {
     task_queue_->PostTask([this, feedback_msg]() mutable {
       if (controller_) {
         PostUpdates(
@@ -543,12 +567,12 @@ void IceTransportController::PostUpdates(webrtc::NetworkControlUpdate update) {
     UpdateCongestedState();
   }
 
-  if (update.pacer_config) {
+  if (update.pacer_config && packet_sender_) {
     packet_sender_->SetPacingRates(update.pacer_config->data_rate(),
                                    update.pacer_config->pad_rate());
   }
 
-  if (!update.probe_cluster_configs.empty()) {
+  if (!update.probe_cluster_configs.empty() && packet_sender_) {
     packet_sender_->CreateProbeClusters(
         std::move(update.probe_cluster_configs));
   }
@@ -559,7 +583,7 @@ void IceTransportController::PostUpdates(webrtc::NetworkControlUpdate update) {
                                     ? target_bitrate_
                                     : update.target_rate->target_rate.bps())
                              : target_bitrate_;
-    if (target_bitrate != target_bitrate_) {
+    if (target_bitrate != target_bitrate_ && video_encoder_) {
       target_bitrate_ = target_bitrate;
       int width, height, target_width, target_height;
       video_encoder_->GetResolution(&width, &height);
@@ -591,7 +615,9 @@ void IceTransportController::UpdateControlState() {
 void IceTransportController::UpdateCongestedState() {
   if (auto update = GetCongestedStateUpdate()) {
     is_congested_ = update.value();
-    packet_sender_->SetCongested(update.value());
+    if (packet_sender_) {
+      packet_sender_->SetCongested(update.value());
+    }
   }
 }
 
@@ -603,11 +629,17 @@ std::optional<bool> IceTransportController::GetCongestedStateUpdate() const {
 }
 
 bool IceTransportController::Process() {
-  task_queue_->PostTask([this]() mutable {
-    webrtc::ProcessInterval msg;
-    msg.at_time = Timestamp::Millis(webrtc_clock_->TimeInMilliseconds());
-    PostUpdates(controller_->OnProcessInterval(msg));
-  });
+  if (!is_running_.load()) {
+    return false;
+  }
+
+  if (task_queue_ && controller_) {
+    task_queue_->PostTask([this]() mutable {
+      webrtc::ProcessInterval msg;
+      msg.at_time = Timestamp::Millis(webrtc_clock_->TimeInMilliseconds());
+      PostUpdates(controller_->OnProcessInterval(msg));
+    });
+  }
 
   return true;
 }

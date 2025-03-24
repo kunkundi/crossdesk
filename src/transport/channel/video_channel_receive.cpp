@@ -46,6 +46,7 @@ void VideoChannelReceive::Initialize(rtp::PAYLOAD_TYPE payload_type) {
 
 void VideoChannelReceive::Destroy() {
   if (rtp_video_receiver_) {
+    rtp_video_receiver_->StopRtcp();
     rtp_video_receiver_->Stop();
   }
 }
