@@ -3,6 +3,8 @@
 #include "log.h"
 #include "rtc_base/network/sent_packet.h"
 
+#define SAVE_RTP_SENT_STREAM
+
 VideoChannelSend::VideoChannelSend(
     std::shared_ptr<SystemClock> clock, std::shared_ptr<IceAgent> ice_agent,
     std::shared_ptr<PacketSender> packet_sender,
@@ -16,9 +18,24 @@ VideoChannelSend::VideoChannelSend(
       delta_ntp_internal_ms_(clock->CurrentNtpInMilliseconds() -
                              clock->CurrentTimeMs()),
       rtp_packet_history_(clock),
-      clock_(clock){};
+      clock_(clock) {
+#ifdef SAVE_RTP_SENT_STREAM
+  file_rtp_sent_ = fopen("rtp_sent_stream.h264", "w+b");
+  if (!file_rtp_sent_) {
+    LOG_WARN("Fail to open rtp_sent_stream.h264");
+  }
+#endif
+};
 
-VideoChannelSend::~VideoChannelSend() {}
+VideoChannelSend::~VideoChannelSend() {
+#ifdef SAVE_RTP_SENT_STREAM
+  if (file_rtp_sent_) {
+    fflush(file_rtp_sent_);
+    fclose(file_rtp_sent_);
+    file_rtp_sent_ = nullptr;
+  }
+#endif
+}
 
 void VideoChannelSend::Initialize(rtp::PAYLOAD_TYPE payload_type) {
   rtp_video_sender_ =
@@ -114,6 +131,12 @@ int VideoChannelSend::SendVideo(const EncodedFrame& encoded_frame) {
         rtp_packetizer_->Build((uint8_t*)encoded_frame.Buffer(),
                                (uint32_t)encoded_frame.Size(), rtp_timestamp,
                                true);
+
+#ifdef SAVE_RTP_SENT_STREAM
+    fwrite((unsigned char*)encoded_frame.Buffer(), 1, encoded_frame.Size(),
+           file_rtp_sent_);
+#endif
+
     packet_sender_->EnqueueRtpPacket(std::move(rtp_packets), rtp_timestamp);
   }
 

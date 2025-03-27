@@ -78,6 +78,9 @@ class VideoChannelSend {
   std::shared_ptr<SystemClock> clock_;
   RtpPacketHistory rtp_packet_history_;
   int64_t delta_ntp_internal_ms_;
+
+ private:
+  FILE* file_rtp_sent_ = nullptr;
 };
 
 #endif

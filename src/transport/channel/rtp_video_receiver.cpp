@@ -7,7 +7,7 @@
 #include "nack.h"
 #include "rtcp_sender.h"
 
-// #define SAVE_RTP_RECV_STREAM
+#define SAVE_RTP_RECV_STREAM
 
 #define NV12_BUFFER_SIZE (1280 * 720 * 3 / 2)
 #define RTCP_RR_INTERVAL 1000
@@ -195,39 +195,52 @@ void RtpVideoReceiver::InsertRtpPacket(RtpPacket& rtp_packet) {
     ProcessAv1RtpPacket(rtp_packet_av1);
   } else if (rtp_packet.PayloadType() == rtp::PAYLOAD_TYPE::H264 ||
              rtp_packet.PayloadType() == rtp::PAYLOAD_TYPE::H264 - 1) {
-    // std::unique_ptr<RtpPacketH264> rtp_packet_h264 =
-    //     std::make_unique<RtpPacketH264>();
-    // if (rtp_packet_h264->Build(rtp_packet.Buffer().data(),
-    // rtp_packet.Size())) {
-    //   std::vector<std::unique_ptr<RtpPacketH264>> complete_frame = std::move(
-    //       h264_frame_assembler_.InsertPacket(std::move(rtp_packet_h264)));
-    //   if (!complete_frame.empty()) {
-    //     for (auto& frame : complete_frame) {
-    //       ReceivedFrame received_frame(frame->Payload(),
-    //       frame->PayloadSize());
-    //       received_frame.SetReceivedTimestamp(clock_->CurrentTime().us());
-    //       received_frame.SetCapturedTimestamp(
-    //           (static_cast<int64_t>(frame->Timestamp()) /
-    //                rtp::kMsToRtpTimestamp -
-    //            delta_ntp_internal_ms_) *
-    //           1000);
-    //       compelete_video_frame_queue_.push(received_frame);
-    //     }
-    //   }
-    // }
+    std::unique_ptr<RtpPacketH264> rtp_packet_h264 =
+        std::make_unique<RtpPacketH264>();
+    if (rtp_packet.Buffer().data() != nullptr && rtp_packet.Size() > 0 &&
+        rtp_packet_h264->Build(rtp_packet.Buffer().data(), rtp_packet.Size())) {
+      rtp_packet_h264->GetFrameHeaderInfo();
+      std::vector<std::unique_ptr<RtpPacketH264>> complete_frame =
+          h264_frame_assembler_.InsertPacket(std::move(rtp_packet_h264));
+      if (!complete_frame.empty()) {
+        uint8_t* nv12_data_ = new uint8_t[NV12_BUFFER_SIZE];
+        uint8_t* dest = nv12_data_;
+        size_t complete_frame_size = 0;
+        for (auto& frame : complete_frame) {
+          memcpy(dest, frame->Payload(), frame->PayloadSize());
+          dest += frame->PayloadSize();
+          complete_frame_size += frame->PayloadSize();
+        }
 
-    RtpPacketH264 rtp_packet_h264;
-    if (rtp_packet_h264.Build(rtp_packet.Buffer().data(), rtp_packet.Size())) {
-      rtp_packet_h264.GetFrameHeaderInfo();
-      bool is_missing_packet = ProcessH264RtpPacket(rtp_packet_h264);
-      if (!is_missing_packet) {
-        receive_side_congestion_controller_.OnReceivedPacket(
-            rtp_packet_received, MediaType::VIDEO);
-        nack_->OnReceivedPacket(rtp_packet.SequenceNumber(), true);
-      } else {
-        nack_->OnReceivedPacket(rtp_packet.SequenceNumber(), false);
+        ReceivedFrame received_frame(nv12_data_, complete_frame_size);
+        received_frame.SetReceivedTimestamp(clock_->CurrentTime().us());
+        received_frame.SetCapturedTimestamp(
+            (static_cast<int64_t>(complete_frame[0]->Timestamp()) /
+                 rtp::kMsToRtpTimestamp -
+             delta_ntp_internal_ms_) *
+            1000);
+        compelete_video_frame_queue_.push(received_frame);
+
+        fwrite((unsigned char*)received_frame.Buffer(), 1,
+               received_frame.Size(), file_rtp_recv_);
+
+        delete[] nv12_data_;
       }
     }
+
+    // RtpPacketH264 rtp_packet_h264;
+    // if (rtp_packet_h264.Build(rtp_packet.Buffer().data(), rtp_packet.Size()))
+    // {
+    //   rtp_packet_h264.GetFrameHeaderInfo();
+    //   bool is_missing_packet = ProcessH264RtpPacket(rtp_packet_h264);
+    //   if (!is_missing_packet) {
+    //     receive_side_congestion_controller_.OnReceivedPacket(
+    //         rtp_packet_received, MediaType::VIDEO);
+    //     nack_->OnReceivedPacket(rtp_packet.SequenceNumber(), true);
+    //   } else {
+    //     nack_->OnReceivedPacket(rtp_packet.SequenceNumber(), false);
+    //   }
+    // }
   }
 }
 

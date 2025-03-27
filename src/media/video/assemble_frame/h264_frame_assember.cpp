@@ -1,5 +1,7 @@
 #include "h264_frame_assember.h"
 
+#include "log.h"
+
 H264FrameAssembler::H264FrameAssembler() {}
 
 H264FrameAssembler::~H264FrameAssembler() {}
@@ -30,21 +32,22 @@ int64_t H264FrameAssembler::Unwrap(uint16_t seq_num) {
   return (int64_t)seq_num;
 }
 
-std::vector<std::unique_ptr<RtpPacketH264>>& H264FrameAssembler::InsertPacket(
+std::vector<std::unique_ptr<RtpPacketH264>> H264FrameAssembler::InsertPacket(
     std::unique_ptr<RtpPacketH264> rtp_packet) {
   std::vector<std::unique_ptr<RtpPacketH264>> result;
 
-  int64_t unwrapped_seq_num = Unwrap(rtp_packet->SequenceNumber());
+  int64_t unwrapped_seq_num =
+      rtp_seq_num_unwrapper_.Unwrap(rtp_packet->SequenceNumber());
   auto& packet_slotted = GetPacketFromBuffer(unwrapped_seq_num);
   if (packet_slotted != nullptr &&
       AheadOrAt(packet_slotted->Timestamp(), rtp_packet->Timestamp())) {
     // The incoming `packet` is old or a duplicate.
-    return std::move(result);
+    return result;
   } else {
     packet_slotted = std::move(rtp_packet);
   }
 
-  return std::move(FindFrames(unwrapped_seq_num));
+  return FindFrames(unwrapped_seq_num);
 }
 
 std::unique_ptr<RtpPacketH264>& H264FrameAssembler::GetPacketFromBuffer(
@@ -98,13 +101,14 @@ std::vector<std::unique_ptr<RtpPacketH264>> H264FrameAssembler::FindFrames(
         if (prev_packet == nullptr ||
             prev_packet->Timestamp() != rtp_timestamp) {
           const auto& current_packet = GetPacketFromBuffer(seq_num_start);
+
           if (!current_packet->FuAStart()) {
             // First packet of the frame is missing.
             return result;
           }
 
-          for (int64_t seq_num = seq_num_start; seq_num <= seq_num; ++seq_num) {
-            auto& packet = GetPacketFromBuffer(seq_num);
+          for (int64_t seq = seq_num_start; seq <= seq_num; ++seq) {
+            auto& packet = GetPacketFromBuffer(seq);
             result.push_back(std::move(packet));
           }
           break;
