@@ -7,7 +7,7 @@
 #include "nack.h"
 #include "rtcp_sender.h"
 
-#define SAVE_RTP_RECV_STREAM
+// #define SAVE_RTP_RECV_STREAM
 
 #define NV12_BUFFER_SIZE (1280 * 720 * 3 / 2)
 #define RTCP_RR_INTERVAL 1000
@@ -200,31 +200,41 @@ void RtpVideoReceiver::InsertRtpPacket(RtpPacket& rtp_packet) {
     if (rtp_packet.Buffer().data() != nullptr && rtp_packet.Size() > 0 &&
         rtp_packet_h264->Build(rtp_packet.Buffer().data(), rtp_packet.Size())) {
       rtp_packet_h264->GetFrameHeaderInfo();
-      std::vector<std::unique_ptr<RtpPacketH264>> complete_frame =
-          h264_frame_assembler_.InsertPacket(std::move(rtp_packet_h264));
-      if (!complete_frame.empty()) {
-        uint8_t* nv12_data_ = new uint8_t[NV12_BUFFER_SIZE];
-        uint8_t* dest = nv12_data_;
-        size_t complete_frame_size = 0;
-        for (auto& frame : complete_frame) {
-          memcpy(dest, frame->Payload(), frame->PayloadSize());
-          dest += frame->PayloadSize();
-          complete_frame_size += frame->PayloadSize();
-        }
-
-        ReceivedFrame received_frame(nv12_data_, complete_frame_size);
+      rtp::NAL_UNIT_TYPE nalu_type = rtp_packet_h264->NalUnitType();
+      if (rtp::NAL_UNIT_TYPE::NALU == nalu_type) {
+        ReceivedFrame received_frame(rtp_packet_h264->Payload(),
+                                     rtp_packet_h264->PayloadSize());
         received_frame.SetReceivedTimestamp(clock_->CurrentTime().us());
         received_frame.SetCapturedTimestamp(
-            (static_cast<int64_t>(complete_frame[0]->Timestamp()) /
+            (static_cast<int64_t>(rtp_packet_h264->Timestamp()) /
                  rtp::kMsToRtpTimestamp -
              delta_ntp_internal_ms_) *
             1000);
         compelete_video_frame_queue_.push(received_frame);
+      } else if (rtp::NAL_UNIT_TYPE::FU_A == nalu_type) {
+        std::vector<std::unique_ptr<RtpPacketH264>> complete_frame =
+            h264_frame_assembler_.InsertPacket(std::move(rtp_packet_h264));
+        if (!complete_frame.empty()) {
+          uint8_t* nv12_data_ = new uint8_t[NV12_BUFFER_SIZE];
+          uint8_t* dest = nv12_data_;
+          size_t complete_frame_size = 0;
+          for (auto& frame : complete_frame) {
+            memcpy(dest, frame->Payload(), frame->PayloadSize());
+            dest += frame->PayloadSize();
+            complete_frame_size += frame->PayloadSize();
+          }
 
-        fwrite((unsigned char*)received_frame.Buffer(), 1,
-               received_frame.Size(), file_rtp_recv_);
+          ReceivedFrame received_frame(nv12_data_, complete_frame_size);
+          received_frame.SetReceivedTimestamp(clock_->CurrentTime().us());
+          received_frame.SetCapturedTimestamp(
+              (static_cast<int64_t>(complete_frame[0]->Timestamp()) /
+                   rtp::kMsToRtpTimestamp -
+               delta_ntp_internal_ms_) *
+              1000);
+          compelete_video_frame_queue_.push(received_frame);
 
-        delete[] nv12_data_;
+          delete[] nv12_data_;
+        }
       }
     }
 

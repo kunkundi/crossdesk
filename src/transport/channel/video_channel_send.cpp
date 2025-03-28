@@ -3,7 +3,7 @@
 #include "log.h"
 #include "rtc_base/network/sent_packet.h"
 
-#define SAVE_RTP_SENT_STREAM
+// #define SAVE_RTP_SENT_STREAM
 
 VideoChannelSend::VideoChannelSend(
     std::shared_ptr<SystemClock> clock, std::shared_ptr<IceAgent> ice_agent,
