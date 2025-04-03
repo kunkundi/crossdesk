@@ -447,6 +447,11 @@ bool RtpVideoReceiver::CheckIsH264FrameCompleted(RtpPacketH264& rtp_packet_h264,
   uint32_t timestamp = rtp_packet_h264.Timestamp();
   uint16_t seq, start_seq, end_seq;
 
+  if (pending_frames_.find(timestamp) == pending_frames_.end()) {
+    std::lock_guard<std::mutex> lock(pending_frames_mtx_);
+    pending_frames_[timestamp] = {nullptr, false, clock_->CurrentTime().ms()};
+  }
+
   if (is_rtx) {
     seq = rtp_packet_h264.GetOsn();
   } else {
@@ -488,6 +493,9 @@ bool RtpVideoReceiver::CheckIsH264FrameCompleted(RtpPacketH264& rtp_packet_h264,
           MAX_WAIT_TIME_MS) {
         missing_sequence_numbers_wait_time_.erase(missing_seqs_wait_ts_iter);
         std::lock_guard<std::mutex> lock(pending_frames_mtx_);
+        LOG_WARN(
+            "retransmit packet [seq {} | ts {}] timeout, remove pending frame",
+            seq, timestamp);
         pending_frames_.erase(timestamp);
         return false;
       }
@@ -498,8 +506,6 @@ bool RtpVideoReceiver::CheckIsH264FrameCompleted(RtpPacketH264& rtp_packet_h264,
        ++sequence_number) {
     if (incomplete_h264_frame_list_.find(sequence_number) ==
         incomplete_h264_frame_list_.end()) {
-      std::lock_guard<std::mutex> lock(pending_frames_mtx_);
-      pending_frames_[timestamp] = {nullptr, false, clock_->CurrentTime().ms()};
       return false;
     }
   }
@@ -733,7 +739,11 @@ bool RtpVideoReceiver::Process() {
     } else {
       if (clock_->CurrentTime().ms() - it->second.arrival_time >
           MAX_WAIT_TIME_MS) {
-        it = pending_frames_.erase(it);
+        LOG_WARN("pending frame [ts {}] timeout, remove it", it->first);
+        // it = pending_frames_.erase(it);
+        pending_frames_.clear();
+        RequestKeyFrame();
+        return false;
       } else {
         return false;
       }
