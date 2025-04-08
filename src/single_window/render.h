@@ -30,8 +30,12 @@ extern const Uint32 STREAM_FRASH;
 class Render {
  public:
   struct SubStreamWindowProperties {
+    Params params_;
     bool exit_ = false;
+    bool signal_connected_ = false;
+    SignalStatus signal_status_ = SignalStatus::SignalClosed;
     bool connection_established_ = false;
+    bool rejoin_ = false;
     bool net_traffic_stats_button_pressed_ = false;
     bool mouse_control_button_pressed_ = false;
     bool mouse_controller_is_started_ = false;
@@ -142,7 +146,8 @@ class Render {
                                     const char *user_id, size_t user_id_size,
                                     void *user_data);
 
-  static void OnSignalStatusCb(SignalStatus status, void *user_data);
+  static void OnSignalStatusCb(SignalStatus status, const char *user_id,
+                               size_t user_id_size, void *user_data);
 
   static void OnConnectionStatusCb(ConnectionStatus status, const char *user_id,
                                    size_t user_id_size, void *user_data);
@@ -157,8 +162,8 @@ class Render {
                                            const SDL_Point *area, void *data);
 
  private:
-  int SendKeyEvent(int key_code, bool is_down);
-  int ProcessKeyEvent(int key_code, bool is_down);
+  int SendKeyCommand(int key_code, bool is_down);
+  int ProcessMouseEvent(SDL_Event &event);
 
   static void SdlCaptureAudioIn(void *userdata, Uint8 *stream, int len);
   static void SdlCaptureAudioOut(void *userdata, Uint8 *stream, int len);
@@ -363,6 +368,7 @@ class Render {
   /* ------ sub stream window property start ------ */
   std::unordered_map<std::string, std::shared_ptr<SubStreamWindowProperties>>
       client_properties_;
+  std::unordered_map<std::string, PeerPtr *> peer_map_;
   /* ------ stream window property end ------ */
 
   std::unordered_map<std::string, std::shared_ptr<SubStreamWindowProperties>>

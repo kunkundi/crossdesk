@@ -53,7 +53,7 @@ class DeviceController {
  public:
   // virtual int Init(int screen_width, int screen_height);
   // virtual int Destroy();
-  // virtual int SendCommand(RemoteAction remote_action);
+  // virtual int SendMouseCommand(RemoteAction remote_action);
 
   // virtual int Hook();
   // virtual int Unhook();

@@ -17,7 +17,7 @@ class MouseController : public DeviceController {
  public:
   virtual int Init(int screen_width, int screen_height);
   virtual int Destroy();
-  virtual int SendCommand(RemoteAction remote_action);
+  virtual int SendMouseCommand(RemoteAction remote_action);
 
  private:
   int screen_width_ = 0;

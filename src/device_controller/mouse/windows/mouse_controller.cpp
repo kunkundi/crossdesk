@@ -15,7 +15,7 @@ int MouseController::Init(int screen_width, int screen_height) {
 
 int MouseController::Destroy() { return 0; }
 
-int MouseController::SendCommand(RemoteAction remote_action) {
+int MouseController::SendMouseCommand(RemoteAction remote_action) {
   INPUT ip;
 
   if (remote_action.type == ControlType::mouse) {

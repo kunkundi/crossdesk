@@ -11,7 +11,7 @@
 #define MOUSE_CONTROL 1
 #endif
 
-int Render::SendKeyEvent(int key_code, bool is_down) {
+int Render::SendKeyCommand(int key_code, bool is_down) {
   RemoteAction remote_action;
   remote_action.type = ControlType::keyboard;
   if (is_down) {
@@ -26,9 +26,55 @@ int Render::SendKeyEvent(int key_code, bool is_down) {
   return 0;
 }
 
-int Render::ProcessKeyEvent(int key_code, bool is_down) {
-  if (keyboard_capturer_) {
-    keyboard_capturer_->SendKeyboardCommand(key_code, is_down);
+int Render::ProcessMouseEvent(SDL_Event &event) {
+  std::string remote_id = "";
+  int video_width, video_height = 0;
+  int render_width, render_height = 0;
+  for (auto &it : client_properties_) {
+    auto props = it.second;
+    if (event.button.x >= props->stream_render_rect_.x &&
+        event.button.x <=
+            props->stream_render_rect_.x + props->stream_render_rect_.w &&
+        event.button.y >= props->stream_render_rect_.y &&
+        event.button.y <=
+            props->stream_render_rect_.y + props->stream_render_rect_.h) {
+      remote_id = it.first;
+      video_width = props->video_width_;
+      video_height = props->video_height_;
+      render_width = props->stream_render_rect_.w;
+      render_height = props->stream_render_rect_.h;
+    }
+  }
+
+  float ratio_x = (float)video_width / (float)render_width;
+  float ratio_y = (float)video_height / (float)render_height;
+
+  RemoteAction remote_action;
+  remote_action.m.x = (size_t)(event.button.x * ratio_x);
+  remote_action.m.y = (size_t)(event.button.y * ratio_y);
+
+  if (SDL_MOUSEBUTTONDOWN == event.type) {
+    remote_action.type = ControlType::mouse;
+    if (SDL_BUTTON_LEFT == event.button.button) {
+      remote_action.m.flag = MouseFlag::left_down;
+    } else if (SDL_BUTTON_RIGHT == event.button.button) {
+      remote_action.m.flag = MouseFlag::right_down;
+    }
+    remote_action.m.flag = MouseFlag::move;
+    SendDataFrame(peer_, (const char *)&remote_action, sizeof(remote_action));
+  } else if (SDL_MOUSEBUTTONUP == event.type) {
+    remote_action.type = ControlType::mouse;
+    if (SDL_BUTTON_LEFT == event.button.button) {
+      remote_action.m.flag = MouseFlag::left_up;
+    } else if (SDL_BUTTON_RIGHT == event.button.button) {
+      remote_action.m.flag = MouseFlag::right_up;
+    }
+    remote_action.m.flag = MouseFlag::move;
+    SendDataFrame(peer_, (const char *)&remote_action, sizeof(remote_action));
+  } else if (SDL_MOUSEMOTION == event.type) {
+    remote_action.type = ControlType::mouse;
+    remote_action.m.flag = MouseFlag::move;
+    SendDataFrame(peer_, (const char *)&remote_action, sizeof(remote_action));
   }
 
   return 0;
@@ -150,7 +196,7 @@ void Render::OnReceiveDataBufferCb(const char *data, size_t size,
   memcpy(&remote_action, data, size);
 
   if (ControlType::mouse == remote_action.type && render->mouse_controller_) {
-    render->mouse_controller_->SendCommand(remote_action);
+    render->mouse_controller_->SendMouseCommand(remote_action);
   } else if (ControlType::audio_capture == remote_action.type) {
     if (remote_action.a) {
       render->StartSpeakerCapturer();
@@ -159,9 +205,11 @@ void Render::OnReceiveDataBufferCb(const char *data, size_t size,
       render->StopSpeakerCapturer();
       render->audio_capture_ = false;
     }
-  } else if (ControlType::keyboard == remote_action.type) {
-    render->ProcessKeyEvent((int)remote_action.k.key_value,
-                            remote_action.k.flag == KeyFlag::key_down);
+  } else if (ControlType::keyboard == remote_action.type &&
+             render->keyboard_capturer_) {
+    render->keyboard_capturer_->SendKeyboardCommand(
+        (int)remote_action.k.key_value,
+        remote_action.k.flag == KeyFlag::key_down);
   } else if (ControlType::host_infomation == remote_action.type) {
     props->remote_host_name_ =
         std::string(remote_action.i.host_name, remote_action.i.host_name_size);
@@ -169,32 +217,51 @@ void Render::OnReceiveDataBufferCb(const char *data, size_t size,
   }
 }
 
-void Render::OnSignalStatusCb(SignalStatus status, void *user_data) {
+void Render::OnSignalStatusCb(SignalStatus status, const char *user_id,
+                              size_t user_id_size, void *user_data) {
   Render *render = (Render *)user_data;
   if (!render) {
     return;
   }
+  std::string remote_id(user_id, user_id_size);
 
-  render->signal_status_ = status;
-  if (SignalStatus::SignalConnecting == status) {
-    render->signal_status_str_ = "SignalConnecting";
-    render->signal_connected_ = false;
-  } else if (SignalStatus::SignalConnected == status) {
-    render->signal_status_str_ = "SignalConnected";
-    render->signal_connected_ = true;
-  } else if (SignalStatus::SignalFailed == status) {
-    render->signal_status_str_ = "SignalFailed";
-    render->signal_connected_ = false;
-  } else if (SignalStatus::SignalClosed == status) {
-    render->signal_status_str_ = "SignalClosed";
-    render->signal_connected_ = false;
-  } else if (SignalStatus::SignalReconnecting == status) {
-    render->signal_status_str_ = "SignalReconnecting";
-    render->signal_connected_ = false;
-  } else if (SignalStatus::SignalServerClosed == status) {
-    render->signal_status_str_ = "SignalServerClosed";
-    render->signal_connected_ = false;
-    render->is_create_connection_ = false;
+  if (remote_id == render->client_id_) {
+    render->signal_status_ = status;
+    if (SignalStatus::SignalConnecting == status) {
+      render->signal_connected_ = false;
+    } else if (SignalStatus::SignalConnected == status) {
+      render->signal_connected_ = true;
+      LOG_INFO("[{}] connected to signal server", remote_id);
+    } else if (SignalStatus::SignalFailed == status) {
+      render->signal_connected_ = false;
+    } else if (SignalStatus::SignalClosed == status) {
+      render->signal_connected_ = false;
+    } else if (SignalStatus::SignalReconnecting == status) {
+      render->signal_connected_ = false;
+    } else if (SignalStatus::SignalServerClosed == status) {
+      render->signal_connected_ = false;
+    }
+  } else {
+    if (render->client_properties_.find(remote_id) ==
+        render->client_properties_.end()) {
+      return;
+    }
+    auto props = render->client_properties_.find(remote_id)->second;
+    props->signal_status_ = status;
+    if (SignalStatus::SignalConnecting == status) {
+      props->signal_connected_ = false;
+    } else if (SignalStatus::SignalConnected == status) {
+      props->signal_connected_ = true;
+      LOG_INFO("[{}] connected to signal server", remote_id);
+    } else if (SignalStatus::SignalFailed == status) {
+      props->signal_connected_ = false;
+    } else if (SignalStatus::SignalClosed == status) {
+      props->signal_connected_ = false;
+    } else if (SignalStatus::SignalReconnecting == status) {
+      props->signal_connected_ = false;
+    } else if (SignalStatus::SignalServerClosed == status) {
+      props->signal_connected_ = false;
+    }
   }
 }
 

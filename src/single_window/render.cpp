@@ -299,7 +299,7 @@ int Render::StartKeyboardCapturer() {
       [](int key_code, bool is_down, void* user_ptr) {
         if (user_ptr) {
           Render* render = (Render*)user_ptr;
-          render->SendKeyEvent(key_code, is_down);
+          render->SendKeyCommand(key_code, is_down);
         }
       },
       this);
@@ -345,12 +345,14 @@ int Render::CreateConnectionPeer() {
   params_.on_signal_status = OnSignalStatusCb;
   params_.on_connection_status = OnConnectionStatusCb;
   params_.net_status_report = NetStatusReport;
+
+  params_.user_id = client_id_;
   params_.user_data = this;
 
   peer_ = CreatePeer(&params_);
   if (peer_) {
     LOG_INFO("[{}] Create peer instance successful", client_id_);
-    Init(peer_, client_id_);
+    Init(peer_);
     LOG_INFO("[{}] Peer init finish", client_id_);
   } else {
     LOG_INFO("Create peer [{}] instance failed", client_id_);
@@ -855,16 +857,19 @@ int Render::Run() {
                   props->remember_password_ ? props->remote_password_ : "");
             }
 
-            if (peer_reserved_) {
-              std::string client_id = "C-";
-              client_id += client_id_;
-              LOG_INFO("[{}] Leave connection [{}]", client_id, it.first);
-              LeaveConnection(peer_reserved_, it.first.c_str());
+            std::string host_name = it.first;
+            PeerPtr* peer_client = peer_map_[host_name];
+            if (peer_client) {
+              std::string client_id;
+              if (host_name == client_id_) {
+                client_id = "C-" + std::string(client_id_);
+              } else {
+                client_id = client_id_;
+              }
+              LOG_INFO("[{}] Leave connection [{}]", client_id, host_name);
+              LeaveConnection(peer_client, host_name.c_str());
               LOG_INFO("Destroy peer [{}]", client_id);
-              DestroyPeer(&peer_reserved_);
-            } else {
-              LOG_INFO("[{}] Leave connection [{}]", client_id_, it.first);
-              LeaveConnection(peer_, it.first.c_str());
+              DestroyPeer(&peer_client);
             }
 
             props->streaming_ = false;
@@ -995,6 +1000,8 @@ int Render::Run() {
 
         SDL_UpdateTexture(props->stream_texture_, NULL, props->dst_buffer_,
                           props->texture_width_);
+      } else {
+        ProcessMouseEvent(event);
       }
     }
 
@@ -1086,9 +1093,29 @@ int Render::Run() {
     DestroyPeer(&peer_);
   }
 
-  if (peer_reserved_) {
-    LOG_INFO("Destroy peer[reserved]");
-    DestroyPeer(&peer_reserved_);
+  for (auto& it : client_properties_) {
+    auto props = it.second;
+    if (props->dst_buffer_) {
+      thumbnail_->SaveToThumbnail(
+          (char*)props->dst_buffer_, props->video_width_, props->video_height_,
+          it.first, props->remote_host_name_,
+          props->remember_password_ ? props->remote_password_ : "");
+    }
+
+    std::string host_name = it.first;
+    PeerPtr* peer_client = peer_map_[host_name];
+    if (peer_client) {
+      std::string client_id;
+      if (host_name == client_id_) {
+        client_id = "C-" + std::string(client_id_);
+      } else {
+        client_id = client_id_;
+      }
+      LOG_INFO("[{}] Leave connection [{}]", client_id, host_name);
+      LeaveConnection(peer_client, host_name.c_str());
+      LOG_INFO("Destroy peer [{}]", client_id);
+      DestroyPeer(&peer_client);
+    }
   }
 
   AudioDeviceDestroy();
