@@ -130,6 +130,7 @@ int Render::ConnectionStatusWindow(
           show_connection_status_window_ = true;
           password_validating_ = true;
           props->rejoin_ = true;
+          need_to_rejoin_ = true;
           focus_on_input_widget_ = true;
         }
 
