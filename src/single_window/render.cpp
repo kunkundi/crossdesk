@@ -1027,6 +1027,8 @@ void Render::ProcessSdlEvent() {
                    sizeof(props->net_traffic_stats_));
             SDL_SetWindowFullscreen(main_window_, SDL_FALSE);
             SDL_DestroyTexture(props->stream_texture_);
+            props->stream_texture_ = nullptr;
+            SDL_FlushEvents(STREAM_FRASH, STREAM_FRASH);
             memset(audio_buffer_, 0, 720);
           }
           client_properties_.clear();
