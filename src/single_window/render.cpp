@@ -830,8 +830,10 @@ void Render::MainLoop() {
       remote_action.type = ControlType::host_infomation;
       memcpy(&remote_action.i.host_name, host_name.data(), host_name.size());
       remote_action.i.host_name_size = host_name.size();
-      remote_action.i.origin_display_width = screen_width_;
-      remote_action.i.origin_display_height = screen_height_;
+      remote_action.i.original_display_width =
+          screen_width_ * main_window_dpi_scaling_w_;
+      remote_action.i.original_display_height =
+          screen_height_ * main_window_dpi_scaling_h_;
       int ret = SendDataFrame(peer_, (const char*)&remote_action,
                               sizeof(remote_action));
       if (0 == ret) {
