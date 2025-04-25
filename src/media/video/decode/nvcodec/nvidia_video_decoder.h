@@ -27,6 +27,8 @@ class NvidiaVideoDecoder : public VideoDecoder {
   DecodedFrame* decoded_frame_ = nullptr;
   bool get_first_keyframe_ = false;
   bool skip_frame_ = false;
+  uint32_t frame_width_ = 1280;
+  uint32_t frame_height_ = 720;
 
   FILE* file_h264_ = nullptr;
   FILE* file_nv12_ = nullptr;
