@@ -1,4 +1,5 @@
 #include "localization.h"
+#include "rd_log.h"
 #include "render.h"
 
 #define BUTTON_PADDING 36.0f

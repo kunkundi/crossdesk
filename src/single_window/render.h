@@ -12,6 +12,7 @@
 #include <atomic>
 #include <chrono>
 #include <fstream>
+#include <optional>
 #include <string>
 
 #include "../../thirdparty/projectx/src/interface/x.h"
@@ -21,6 +22,7 @@
 #include "imgui.h"
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_sdlrenderer2.h"
+#include "imgui_internal.h"
 #include "screen_capturer_factory.h"
 #include "speaker_capturer_factory.h"
 #include "thumbnail.h"
@@ -55,10 +57,10 @@ class Render {
     float sub_stream_window_width_ = 1280;
     float sub_stream_window_height_ = 720;
     float control_window_min_width_ = 20;
-    float control_window_max_width_ = 200;
+    float control_window_max_width_ = 170;
     float control_window_min_height_ = 40;
     float control_window_max_height_ = 150;
-    float control_window_width_ = 200;
+    float control_window_width_ = 170;
     float control_window_height_ = 40;
     float control_bar_pos_x_ = 0;
     float control_bar_pos_y_ = 30;
@@ -79,6 +81,8 @@ class Render {
     size_t video_size_ = 0;
     bool tab_selected_ = false;
     bool tab_opened_ = true;
+    std::optional<float> pos_x_before_docked_;
+    std::optional<float> pos_y_before_docked_;
     float render_window_x_ = 0;
     float render_window_y_ = 0;
     float render_window_width_ = 0;
@@ -357,6 +361,7 @@ class Render {
   bool reload_recent_connections_ = true;
   bool show_confirm_delete_connection_ = false;
   bool delete_connection_ = false;
+  bool is_tab_bar_hovered_ = false;
   std::string delete_connection_name_ = "";
   bool re_enter_remote_id_ = false;
   double copy_start_time_ = 0;

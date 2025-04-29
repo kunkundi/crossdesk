@@ -36,7 +36,8 @@ SDL_HitTestResult Render::HitTestCallback(SDL_Window* window,
   SDL_GetWindowSize(window, &window_width, &window_height);
 
   if (area->y < 30 && area->y > MOUSE_GRAB_PADDING &&
-      area->x < window_width - 120 && area->x > MOUSE_GRAB_PADDING) {
+      area->x < window_width - 120 && area->x > MOUSE_GRAB_PADDING &&
+      !render->is_tab_bar_hovered_) {
     return SDL_HITTEST_DRAGGABLE;
   }
 
@@ -706,6 +707,8 @@ int Render::DrawStreamWindow() {
   ImGui_ImplSDL2_NewFrame();
   ImGui::NewFrame();
 
+  StreamWindow();
+
   if (!fullscreen_button_pressed_) {
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
     ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
@@ -715,14 +718,14 @@ int Render::DrawStreamWindow() {
         ImGuiCond_Always);
     ImGui::Begin("StreamWindowTitleBar", nullptr,
                  ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration |
-                     ImGuiWindowFlags_NoBringToFrontOnFocus);
+                     ImGuiWindowFlags_NoBringToFrontOnFocus |
+                     ImGuiWindowFlags_NoDocking);
+
     ImGui::PopStyleColor();
 
     TitleBar(false);
     ImGui::End();
   }
-
-  StreamWindow();
 
   // Rendering
   ImGui::Render();
@@ -730,8 +733,10 @@ int Render::DrawStreamWindow() {
 
   for (auto& it : client_properties_) {
     auto props = it.second;
-    SDL_RenderCopy(stream_renderer_, props->stream_texture_, NULL,
-                   &(props->stream_render_rect_));
+    if (props->tab_selected_) {
+      SDL_RenderCopy(stream_renderer_, props->stream_texture_, NULL,
+                     &(props->stream_render_rect_));
+    }
   }
   ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), stream_renderer_);
   SDL_RenderPresent(stream_renderer_);
@@ -954,14 +959,6 @@ void Render::CleanupPeer(std::string host_name,
     LeaveConnection(peer_client, host_name.c_str());
     LOG_INFO("Destroy peer [{}]", client_id);
     DestroyPeer(&peer_client);
-  }
-
-  client_properties_.erase(host_name);
-
-  if (client_properties_.empty()) {
-    SDL_Event event;
-    event.type = SDL_QUIT;
-    SDL_PushEvent(&event);
   }
 }
 
