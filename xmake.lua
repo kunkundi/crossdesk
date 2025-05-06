@@ -21,7 +21,7 @@ add_requires("imgui v1.91.5-docking", {configs = {sdl2 = true, sdl2_renderer = t
 add_requires("openssl3 3.3.2", {system = false})
 
 if is_os("windows") then
-    add_requires("libyuv")
+    add_requires("libyuv", "miniaudio 0.11.21")
     add_links("Shell32", "windowsapp", "dwmapi", "User32", "kernel32",
         "SDL2-static", "SDL2main", "gdi32", "winmm", "setupapi", "version",
         "Imm32", "iphlpapi")
