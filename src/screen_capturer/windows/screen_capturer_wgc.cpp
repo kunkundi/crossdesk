@@ -8,17 +8,36 @@
 #include <iostream>
 
 #include "libyuv.h"
+#include "rd_log.h"
+
+static std::vector<ScreenCapturer::DisplayInfo> gs_display_list;
+
+std::string WideToUtf8(const wchar_t *wideStr) {
+  int size_needed = WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, nullptr, 0,
+                                        nullptr, nullptr);
+  std::string result(size_needed, 0);
+  WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, &result[0], size_needed, nullptr,
+                      nullptr);
+  result.pop_back();
+  return result;
+}
 
 BOOL WINAPI EnumMonitorProc(HMONITOR hmonitor, [[maybe_unused]] HDC hdc,
                             [[maybe_unused]] LPRECT lprc, LPARAM data) {
-  MONITORINFOEX info_ex;
-  info_ex.cbSize = sizeof(MONITORINFOEX);
+  MONITORINFOEX monitor_info_;
+  monitor_info_.cbSize = sizeof(MONITORINFOEX);
 
-  GetMonitorInfo(hmonitor, &info_ex);
+  if (GetMonitorInfo(hmonitor, &monitor_info_)) {
+    gs_display_list.push_back(
+        {(void *)hmonitor, WideToUtf8(monitor_info_.szDevice),
+         (monitor_info_.dwFlags & MONITORINFOF_PRIMARY) ? true : false,
+         monitor_info_.rcMonitor.left, monitor_info_.rcMonitor.top,
+         monitor_info_.rcMonitor.right, monitor_info_.rcMonitor.bottom});
+  }
 
-  if (info_ex.dwFlags == DISPLAY_DEVICE_MIRRORING_DRIVER) return true;
+  if (monitor_info_.dwFlags == DISPLAY_DEVICE_MIRRORING_DRIVER) return true;
 
-  if (info_ex.dwFlags & MONITORINFOF_PRIMARY) {
+  if (monitor_info_.dwFlags & MONITORINFOF_PRIMARY) {
     *(HMONITOR *)data = hmonitor;
   }
 
@@ -28,12 +47,13 @@ BOOL WINAPI EnumMonitorProc(HMONITOR hmonitor, [[maybe_unused]] HDC hdc,
 HMONITOR GetPrimaryMonitor() {
   HMONITOR hmonitor = nullptr;
 
+  gs_display_list.clear();
   ::EnumDisplayMonitors(NULL, NULL, EnumMonitorProc, (LPARAM)&hmonitor);
 
   return hmonitor;
 }
 
-ScreenCapturerWgc::ScreenCapturerWgc() {}
+ScreenCapturerWgc::ScreenCapturerWgc() : monitor_(nullptr) {}
 
 ScreenCapturerWgc::~ScreenCapturerWgc() {
   Stop();
@@ -89,7 +109,17 @@ int ScreenCapturerWgc::Init(const int fps, cb_desktop_data cb) {
 
     session_->RegisterObserver(this);
 
-    error = session_->Initialize(GetPrimaryMonitor());
+    monitor_ = GetPrimaryMonitor();
+
+    display_list_ = gs_display_list;
+
+    for (const auto &display : display_list_) {
+      LOG_INFO("Display Name: {}, Is Primary: {}, Bounds: ({}, {}) - ({}, {})",
+               display.name, (display.is_primary ? "Yes" : "No"), display.left,
+               display.top, display.right, display.bottom);
+    }
+
+    error = session_->Initialize(monitor_);
 
     _inited = true;
   } while (0);
@@ -137,6 +167,44 @@ int ScreenCapturerWgc::Stop() {
   if (session_) session_->Stop();
 
   return 0;
+}
+
+int ScreenCapturerWgc::SwitchTo(int monitor_index) {
+  if (!_inited) return -1;
+  if (monitor_index >= display_list_.size()) {
+    LOG_ERROR("Invalid monitor index: {}", monitor_index);
+    return -3;
+  }
+
+  LOG_INFO("Switching to monitor {}:{}", monitor_index,
+           display_list_[monitor_index].name);
+
+  Stop();
+
+  if (session_) {
+    session_->Release();
+    delete session_;
+    session_ = nullptr;
+  }
+
+  session_ = new WgcSessionImpl();
+  if (!session_) {
+    LOG_ERROR("Failed to create new WgcSessionImpl.");
+    return -4;
+  }
+
+  session_->RegisterObserver(this);
+
+  int err = session_->Initialize((HMONITOR)display_list_[monitor_index].handle);
+  if (err != 0) {
+    LOG_ERROR("Failed to re-initialize session on new monitor.");
+    return -5;
+  }
+
+  monitor_ = (HMONITOR)display_list_[monitor_index].handle;
+  _inited = true;
+
+  return Start();
 }
 
 void ConvertABGRtoBGRA(const uint8_t *abgr_data, uint8_t *bgra_data, int width,

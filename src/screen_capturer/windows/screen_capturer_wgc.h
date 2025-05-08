@@ -5,6 +5,7 @@
 #include <functional>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "screen_capturer.h"
 #include "wgc_session.h"
@@ -27,10 +28,19 @@ class ScreenCapturerWgc : public ScreenCapturer,
   int Pause();
   int Resume();
 
+  std::vector<DisplayInfo> GetDisplayList() { return display_list_; }
+
+  int SwitchTo(int monitor_index);
+
   void OnFrame(const WgcSession::wgc_session_frame &frame);
 
  protected:
   void CleanUp();
+
+ private:
+  HMONITOR monitor_;
+  MONITORINFOEX monitor_info_;
+  std::vector<DisplayInfo> display_list_;
 
  private:
   WgcSession *session_ = nullptr;

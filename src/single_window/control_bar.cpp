@@ -80,6 +80,28 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
           2.0f);
     }
 
+    // const char* items[] = {"1", "2", "3"};
+    // static int item_selected_idx = 0;
+    // ImGui::Text("Display:");
+    // ImGui::SameLine();
+    // ImGui::SetNextItemWidth(25.0f);
+    // ImGuiComboFlags flags =
+    //     ImGuiComboFlags_HeightSmall | ImGuiComboFlags_NoArrowButton;
+    // const char* combo_preview_value = items[item_selected_idx];
+    // ImGui::SetWindowFontScale(1.2f);
+    // if (ImGui::BeginCombo("##display", combo_preview_value, flags)) {
+    //   ImGui::SetWindowFontScale(0.5f);
+    //   for (int n = 0; n < IM_ARRAYSIZE(items); n++) {
+    //     const bool is_selected = (item_selected_idx == n);
+    //     if (ImGui::Selectable(items[n], is_selected)) item_selected_idx = n;
+
+    //     if (is_selected) ImGui::SetItemDefaultFocus();
+    //   }
+    //   ImGui::SetWindowFontScale(1.0f);
+    //   ImGui::EndCombo();
+    // }
+    // ImGui::SetWindowFontScale(1.0f);
+
     ImGui::SameLine();
     // audio capture button
     float disable_audio_x = ImGui::GetCursorScreenPos().x + 4;

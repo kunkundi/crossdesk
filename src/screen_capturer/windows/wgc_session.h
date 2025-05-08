@@ -33,7 +33,6 @@ class WgcSession {
   virtual int Pause() = 0;
   virtual int Resume() = 0;
 
- protected:
   virtual ~WgcSession(){};
 };
 

@@ -11,7 +11,18 @@
 
 class ScreenCapturer {
  public:
-  typedef std::function<void(unsigned char *, int, int, int)> cb_desktop_data;
+  typedef std::function<void(unsigned char*, int, int, int)> cb_desktop_data;
+
+  class DisplayInfo {
+   public:
+    void* handle = nullptr;
+    std::string name = "";
+    bool is_primary = false;
+    int left = 0;
+    int top = 0;
+    int right = 0;
+    int bottom = 0;
+  };
 
  public:
   virtual ~ScreenCapturer() {}
@@ -21,6 +32,8 @@ class ScreenCapturer {
   virtual int Destroy() = 0;
   virtual int Start() = 0;
   virtual int Stop() = 0;
+
+  virtual std::vector<DisplayInfo> GetDisplayList() = 0;
 };
 
 #endif
