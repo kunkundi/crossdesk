@@ -264,8 +264,6 @@ void ScreenCapturerWgc::CleanUp() {
     for (auto &session : sessions_) {
       if (session.session_) {
         session.session_->Stop();
-        session.session_->Release();
-        session.session_ = nullptr;
       }
     }
     sessions_.clear();
