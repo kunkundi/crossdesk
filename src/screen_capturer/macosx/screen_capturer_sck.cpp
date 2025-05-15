@@ -42,9 +42,9 @@ int ScreenCapturerSck::Start() {
 
 int ScreenCapturerSck::Stop() { return 0; }
 
-int ScreenCapturerSck::Pause() { return 0; }
+int ScreenCapturerSck::Pause(int monitor_index) { return 0; }
 
-int ScreenCapturerSck::Resume() { return 0; }
+int ScreenCapturerSck::Resume(int monitor_index) { return 0; }
 
 void ScreenCapturerSck::OnFrame() {}
 

@@ -56,6 +56,14 @@ public:
 
   virtual int Stop() { return 0; }
 
+  virtual int Pause(int monitor_index) { return 0; }
+
+  virtual int Resume(int monitor_index) { return 0; }
+
+  virtual int SwitchTo(int monitor_index) { return 0; }
+
+  virtual std::vector<DisplayInfo> GetDisplayInfoList() { return {}; }
+
 private:
   SckHelper *__strong helper_;
   SCStream *__strong stream_;
@@ -246,7 +254,7 @@ void ScreenCapturerSckImpl::OnNewIOSurface(IOSurfaceRef io_surface,
   nv12_frame_ =
       static_cast<unsigned char *>(IOSurfaceGetBaseAddress(io_surface));
 
-  _on_data(nv12_frame_, width * height * 3 / 2, width, height);
+  _on_data(nv12_frame_, width * height * 3 / 2, width, height, 0);
 
   IOSurfaceUnlock(io_surface, kIOSurfaceLockReadOnly, &aseed);
 }

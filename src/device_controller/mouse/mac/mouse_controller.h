@@ -7,6 +7,8 @@
 #ifndef _MOUSE_CONTROLLER_H_
 #define _MOUSE_CONTROLLER_H_
 
+#include <vector>
+
 #include "device_controller.h"
 
 class MouseController : public DeviceController {
@@ -15,13 +17,12 @@ class MouseController : public DeviceController {
   virtual ~MouseController();
 
  public:
-  virtual int Init(int screen_width, int screen_height);
+  virtual int Init(std::vector<DisplayInfo> display_info_list);
   virtual int Destroy();
-  virtual int SendMouseCommand(RemoteAction remote_action);
+  virtual int SendMouseCommand(RemoteAction remote_action, int display_index);
 
  private:
-  int screen_width_ = 0;
-  int screen_height_ = 0;
+  std::vector<DisplayInfo> display_info_list_;
 };
 
 #endif

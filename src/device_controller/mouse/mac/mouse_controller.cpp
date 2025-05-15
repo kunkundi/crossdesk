@@ -8,18 +8,22 @@ MouseController::MouseController() {}
 
 MouseController::~MouseController() {}
 
-int MouseController::Init(int screen_width, int screen_height) {
-  screen_width_ = screen_width;
-  screen_height_ = screen_height;
+int MouseController::Init(std::vector<DisplayInfo> display_info_list) {
+  display_info_list_ = display_info_list;
 
   return 0;
 }
 
 int MouseController::Destroy() { return 0; }
 
-int MouseController::SendMouseCommand(RemoteAction remote_action) {
-  int mouse_pos_x = remote_action.m.x * screen_width_;
-  int mouse_pos_y = remote_action.m.y * screen_height_;
+int MouseController::SendMouseCommand(RemoteAction remote_action,
+                                      int display_index) {
+  int mouse_pos_x =
+      remote_action.m.x * display_info_list_[display_index].width +
+      display_info_list_[display_index].left;
+  int mouse_pos_y =
+      remote_action.m.y * display_info_list_[display_index].height +
+      display_info_list_[display_index].top;
 
   if (remote_action.type == ControlType::mouse) {
     CGEventRef mouse_event = nullptr;
