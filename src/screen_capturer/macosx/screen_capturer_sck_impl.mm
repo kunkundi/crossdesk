@@ -114,6 +114,11 @@ ScreenCapturerSckImpl::~ScreenCapturerSckImpl() {
   display_id_map_.clear();
   display_id_map_reverse_.clear();
 
+  if (nv12_frame_) {
+    delete[] nv12_frame_;
+    nv12_frame_ = nullptr;
+  }
+
   [stream_ stopCaptureWithCompletionHandler:nil];
   [helper_ releaseCapturer];
 }
@@ -281,15 +286,10 @@ void ScreenCapturerSckImpl::OnNewIOSurface(IOSurfaceRef io_surface, CFDictionary
   uint32_t aseed;
   IOSurfaceLock(io_surface, kIOSurfaceLockReadOnly, &aseed);
 
-  if (!nv12_frame_) {
-    nv12_frame_ = new unsigned char[width * height * 3 / 2];
-    width_ = width;
-    height_ = height;
-  }
-
-  if (nv12_frame_ && width_ * height_ < width * height) {
+  size_t required_size = width * height * 3 / 2;
+  if (!nv12_frame_ || (width_ * height_ * 3 / 2 < required_size)) {
     delete[] nv12_frame_;
-    nv12_frame_ = new unsigned char[width * height * 3 / 2];
+    nv12_frame_ = new unsigned char[required_size];
     width_ = width;
     height_ = height;
   }

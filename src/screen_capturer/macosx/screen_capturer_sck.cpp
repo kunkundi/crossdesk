@@ -29,9 +29,19 @@ int ScreenCapturerSck::Start() {
 
 int ScreenCapturerSck::Stop() { return 0; }
 
-int ScreenCapturerSck::Pause(int monitor_index) { return 0; }
+int ScreenCapturerSck::Pause(int monitor_index) {
+  if (screen_capturer_sck_impl_) {
+    return screen_capturer_sck_impl_->Pause(monitor_index);
+  }
+  return 0;
+}
 
-int ScreenCapturerSck::Resume(int monitor_index) { return 0; }
+int ScreenCapturerSck::Resume(int monitor_index) {
+  if (screen_capturer_sck_impl_) {
+    return screen_capturer_sck_impl_->Resume(monitor_index);
+  }
+  return 0;
+}
 
 int ScreenCapturerSck::SwitchTo(int monitor_index) {
   if (screen_capturer_sck_impl_) {
