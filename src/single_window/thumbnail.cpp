@@ -82,40 +82,49 @@ bool LoadTextureFromFile(const char* file_name, SDL_Renderer* renderer,
   return ret;
 }
 
-void ScaleNv12ToABGR(char* dst_buffer_, int video_width_, int video_height_,
-                     int scaled_video_width_, int scaled_video_height_,
-                     char* rgba_buffer_) {
-  uint8_t* src_y = reinterpret_cast<uint8_t*>(dst_buffer_);
-  uint8_t* src_uv = src_y + video_width_ * video_height_;
-  int src_uv_stride = video_width_ / 2;
-  int src_uv_size = src_uv_stride * (video_height_ / 2);
+void ScaleNv12ToABGR(char* src, int src_w, int src_h, int dst_w, int dst_h,
+                     char* dst_rgba) {
+  uint8_t* y = reinterpret_cast<uint8_t*>(src);
+  uint8_t* uv = y + src_w * src_h;
 
-  std::unique_ptr<uint8_t[]> tmp_u(new uint8_t[src_uv_size]);
-  std::unique_ptr<uint8_t[]> tmp_v(new uint8_t[src_uv_size]);
+  float src_aspect = float(src_w) / src_h;
+  float dst_aspect = float(dst_w) / dst_h;
+  int fit_w = dst_w, fit_h = dst_h;
+  if (src_aspect > dst_aspect) {
+    fit_h = int(dst_w / src_aspect);
+  } else {
+    fit_w = int(dst_h * src_aspect);
+  }
 
-  libyuv::NV12ToI420(src_y, video_width_, src_uv, video_width_, src_y,
-                     video_width_, tmp_u.get(), src_uv_stride, tmp_v.get(),
-                     src_uv_stride, video_width_, video_height_);
+  std::vector<uint8_t> y_i420(src_w * src_h);
+  std::vector<uint8_t> u_i420((src_w / 2) * (src_h / 2));
+  std::vector<uint8_t> v_i420((src_w / 2) * (src_h / 2));
+  libyuv::NV12ToI420(y, src_w, uv, src_w, y_i420.data(), src_w, u_i420.data(),
+                     src_w / 2, v_i420.data(), src_w / 2, src_w, src_h);
 
-  int dst_y_stride = scaled_video_width_;
-  int dst_uv_stride = (scaled_video_width_ + 1) / 2;
-  int dst_uv_size = dst_uv_stride * ((scaled_video_height_ + 1) / 2);
+  std::vector<uint8_t> y_fit(fit_w * fit_h);
+  std::vector<uint8_t> u_fit((fit_w + 1) / 2 * (fit_h + 1) / 2);
+  std::vector<uint8_t> v_fit((fit_w + 1) / 2 * (fit_h + 1) / 2);
+  libyuv::I420Scale(y_i420.data(), src_w, u_i420.data(), src_w / 2,
+                    v_i420.data(), src_w / 2, src_w, src_h, y_fit.data(), fit_w,
+                    u_fit.data(), (fit_w + 1) / 2, v_fit.data(),
+                    (fit_w + 1) / 2, fit_w, fit_h, libyuv::kFilterBilinear);
 
-  std::unique_ptr<uint8_t[]> dst_y(
-      new uint8_t[dst_y_stride * scaled_video_height_]);
-  std::unique_ptr<uint8_t[]> dst_u(new uint8_t[dst_uv_size]);
-  std::unique_ptr<uint8_t[]> dst_v(new uint8_t[dst_uv_size]);
+  std::vector<uint8_t> abgr(fit_w * fit_h * 4);
+  libyuv::I420ToABGR(y_fit.data(), fit_w, u_fit.data(), (fit_w + 1) / 2,
+                     v_fit.data(), (fit_w + 1) / 2, abgr.data(), fit_w * 4,
+                     fit_w, fit_h);
 
-  libyuv::I420Scale(src_y, video_width_, tmp_u.get(), src_uv_stride,
-                    tmp_v.get(), src_uv_stride, video_width_, video_height_,
-                    dst_y.get(), dst_y_stride, dst_u.get(), dst_uv_stride,
-                    dst_v.get(), dst_uv_stride, scaled_video_width_,
-                    scaled_video_height_, libyuv::kFilterBilinear);
+  memset(dst_rgba, 0, dst_w * dst_h * 4);
+  for (int i = 0; i < dst_w * dst_h; ++i) {
+    dst_rgba[i * 4 + 3] = 255;
+  }
 
-  libyuv::I420ToABGR(
-      dst_y.get(), dst_y_stride, dst_u.get(), dst_uv_stride, dst_v.get(),
-      dst_uv_stride, reinterpret_cast<uint8_t*>(rgba_buffer_),
-      scaled_video_width_ * 4, scaled_video_width_, scaled_video_height_);
+  for (int y = 0; y < fit_h; ++y) {
+    int dst_offset =
+        ((y + (dst_h - fit_h) / 2) * dst_w + (dst_w - fit_w) / 2) * 4;
+    memcpy(dst_rgba + dst_offset, abgr.data() + y * fit_w * 4, fit_w * 4);
+  }
 }
 
 Thumbnail::Thumbnail() {

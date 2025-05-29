@@ -251,24 +251,6 @@ void Render::OnReceiveAudioBufferCb(const char *data, size_t size,
   SDL_QueueAudio(render->output_dev_, data, (uint32_t)size);
 }
 
-std::vector<std::string> restore_display_list(char **display_list,
-                                              size_t display_num) {
-  std::vector<std::string> result;
-  result.reserve(display_num);  // 预分配空间，提升效率
-
-  for (size_t i = 0; i < display_num; i++) {
-    if (display_list[i] != nullptr) {
-      // 直接用std::string构造函数复制C字符串
-      result.emplace_back(display_list[i]);
-    } else {
-      // 如果遇到nullptr指针，放空字符串或者处理错误
-      result.emplace_back("");
-    }
-  }
-
-  return result;
-}
-
 void Render::OnReceiveDataBufferCb(const char *data, size_t size,
                                    const char *user_id, size_t user_id_size,
                                    void *user_data) {
