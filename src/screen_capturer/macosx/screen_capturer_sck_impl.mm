@@ -58,9 +58,9 @@ class API_AVAILABLE(macos(14.0)) ScreenCapturerSckImpl : public ScreenCapturer {
 
   int SwitchTo(int monitor_index) override;
 
-  int Destroy() override { return 0; }
+  int Destroy() override;
 
-  int Stop() override { return 0; }
+  int Stop() override;
 
   int Pause(int monitor_index) override { return 0; }
 
@@ -260,6 +260,35 @@ int ScreenCapturerSckImpl::SwitchTo(int monitor_index) {
     current_display_ = display_id_map_[monitor_index];
     StartOrReconfigureCapturer();
   }
+  return 0;
+}
+
+int ScreenCapturerSckImpl::Destroy() {
+  std::lock_guard<std::mutex> lock(lock_);
+  if (stream_) {
+    LOG_INFO("Destroying stream");
+    [stream_ stopCaptureWithCompletionHandler:nil];
+    stream_ = nil;
+  }
+  current_display_ = 0;
+  permanent_error_ = false;
+  _on_data = nullptr;
+  [helper_ releaseCapturer];
+  helper_ = nil;
+
+  return 0;
+}
+
+int ScreenCapturerSckImpl::Stop() {
+  [stream_ stopCaptureWithCompletionHandler:nil];
+  std::lock_guard<std::mutex> lock(lock_);
+  if (stream_) {
+    LOG_INFO("Stopping stream");
+    [stream_ stopCaptureWithCompletionHandler:nil];
+    stream_ = nil;
+  }
+  current_display_ = 0;
+
   return 0;
 }
 

@@ -117,7 +117,7 @@ void ScaleNv12ToABGR(char* src, int src_w, int src_h, int dst_w, int dst_h,
 
   memset(dst_rgba, 0, dst_w * dst_h * 4);
   for (int i = 0; i < dst_w * dst_h; ++i) {
-    dst_rgba[i * 4 + 3] = 255;
+    dst_rgba[i * 4 + 3] = 0xFF;
   }
 
   for (int y = 0; y < fit_h; ++y) {
