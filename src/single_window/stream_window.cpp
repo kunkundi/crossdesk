@@ -2,6 +2,43 @@
 #include "rd_log.h"
 #include "render.h"
 
+void Render::DrawConnectionStatusText(
+    std::shared_ptr<SubStreamWindowProperties>& props) {
+  std::string text;
+  switch (props->connection_status_) {
+    case ConnectionStatus::Disconnected:
+      text = localization::p2p_disconnected[localization_language_index_];
+      break;
+    case ConnectionStatus::Failed:
+      text = localization::p2p_failed[localization_language_index_];
+      break;
+    case ConnectionStatus::Closed:
+      text = localization::p2p_closed[localization_language_index_];
+      break;
+    default:
+      break;
+  }
+
+  if (!text.empty()) {
+    ImVec2 size = ImGui::GetWindowSize();
+    ImVec2 text_size = ImGui::CalcTextSize(text.c_str());
+    ImGui::SetCursorPos(
+        ImVec2((size.x - text_size.x) * 0.5f,
+               (size.y - text_size.y - title_bar_height_) * 0.5f));
+    ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), text.c_str());
+  }
+}
+
+void Render::CloseTab(decltype(client_properties_)::iterator& it) {
+  CleanupPeer(it->second);
+  it = client_properties_.erase(it);
+  if (client_properties_.empty()) {
+    SDL_Event event;
+    event.type = SDL_QUIT;
+    SDL_PushEvent(&event);
+  }
+}
+
 int Render::StreamWindow() {
   ImGui::SetNextWindowPos(
       ImVec2(0, fullscreen_button_pressed_ ? 0 : title_bar_height_),
@@ -44,13 +81,7 @@ int Render::StreamWindow() {
            it != client_properties_.end();) {
         auto& props = it->second;
         if (!props->tab_opened_) {
-          CleanupPeer(props);
-          it = client_properties_.erase(it);
-          if (client_properties_.empty()) {
-            SDL_Event event;
-            event.type = SDL_QUIT;
-            SDL_PushEvent(&event);
-          }
+          CloseTab(it);
           continue;
         }
 
@@ -91,6 +122,7 @@ int Render::StreamWindow() {
               SDL_PushEvent(&event);
             }
           } else {
+            DrawConnectionStatusText(props);
             ++it;
           }
 
@@ -112,13 +144,7 @@ int Render::StreamWindow() {
          it != client_properties_.end();) {
       auto& props = it->second;
       if (!props->tab_opened_) {
-        CleanupPeer(props);
-        it = client_properties_.erase(it);
-        if (client_properties_.empty()) {
-          SDL_Event event;
-          event.type = SDL_QUIT;
-          SDL_PushEvent(&event);
-        }
+        CloseTab(it);
         continue;
       }
 
@@ -155,6 +181,7 @@ int Render::StreamWindow() {
             SDL_PushEvent(&event);
           }
         } else {
+          DrawConnectionStatusText(props);
           ++it;
         }
       } else {

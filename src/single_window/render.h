@@ -167,6 +167,8 @@ class Render {
   int DrawStreamWindow();
   int ConfirmDeleteConnection();
   int NetTrafficStats(std::shared_ptr<SubStreamWindowProperties> &props);
+  void DrawConnectionStatusText(
+      std::shared_ptr<SubStreamWindowProperties> &props);
 
  public:
   static void OnReceiveVideoBufferCb(const XVideoFrame *video_frame,
@@ -422,6 +424,7 @@ class Render {
   /* ------ sub stream window property start ------ */
   std::unordered_map<std::string, std::shared_ptr<SubStreamWindowProperties>>
       client_properties_;
+  void CloseTab(decltype(client_properties_)::iterator &it);
   /* ------ stream window property end ------ */
 };
 
