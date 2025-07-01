@@ -1285,13 +1285,9 @@ void Render::ProcessSdlEvent() {
           if (stream_window_ &&
               SDL_GetWindowID(stream_window_) == event.window.windowID) {
             foucs_on_stream_window_ = focus_gained;
-            LOG_INFO("{} focus on stream window",
-                     focus_gained ? "Gained" : "Lost");
           } else if (main_window_ &&
                      SDL_GetWindowID(main_window_) == event.window.windowID) {
             foucs_on_main_window_ = focus_gained;
-            LOG_INFO("{} focus on main window",
-                     focus_gained ? "Gained" : "Lost");
           }
         }
         break;

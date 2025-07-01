@@ -260,7 +260,8 @@ int Thumbnail::DeleteThumbnail(const std::string& filename_keyword) {
   for (const auto& entry : std::filesystem::directory_iterator(image_path_)) {
     if (entry.is_regular_file()) {
       const std::string filename = entry.path().filename().string();
-      if (filename.find(filename_keyword) != std::string::npos) {
+      std::string id_hostname = filename_keyword.substr(0, filename.find('@'));
+      if (filename.find(id_hostname) != std::string::npos) {
         std::filesystem::remove(entry.path());
       }
     }
