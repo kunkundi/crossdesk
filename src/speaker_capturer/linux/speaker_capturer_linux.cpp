@@ -164,7 +164,10 @@ int SpeakerCapturerLinux::Start() {
           self->frame_cache_.insert(self->frame_cache_.end(), p, p + len);
 
           while (self->frame_cache_.size() >= kFrameSizeBytes) {
-            self->cb_(self->frame_cache_.data(), kFrameSizeBytes, "audio");
+            std::vector<uint8_t> temp_frame(
+                self->frame_cache_.begin(),
+                self->frame_cache_.begin() + kFrameSizeBytes);
+            self->cb_(temp_frame.data(), kFrameSizeBytes, "audio");
             self->frame_cache_.erase(
                 self->frame_cache_.begin(),
                 self->frame_cache_.begin() + kFrameSizeBytes);
