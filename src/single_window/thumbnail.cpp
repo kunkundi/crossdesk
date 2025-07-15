@@ -186,8 +186,8 @@ int Thumbnail::SaveToThumbnail(const char* yuv420p, int width, int height,
 
 int Thumbnail::LoadThumbnail(
     SDL_Renderer* renderer,
-    std::map<std::string, RecentConnection>& recent_connections, int* width,
-    int* height) {
+    std::unordered_map<std::string, RecentConnection>& recent_connections,
+    int* width, int* height) {
   for (auto& it : recent_connections) {
     if (it.second.texture != nullptr) {
       SDL_DestroyTexture(it.second.texture);

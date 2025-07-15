@@ -11,6 +11,7 @@
 
 #include <filesystem>
 #include <map>
+#include <unordered_map>
 #include <vector>
 
 class Thumbnail {
@@ -34,9 +35,10 @@ class Thumbnail {
                       const std::string& host_name,
                       const std::string& password);
 
-  int LoadThumbnail(SDL_Renderer* renderer,
-                    std::map<std::string, RecentConnection>& recent_connections,
-                    int* width, int* height);
+  int LoadThumbnail(
+      SDL_Renderer* renderer,
+      std::unordered_map<std::string, RecentConnection>& recent_connections,
+      int* width, int* height);
 
   int DeleteThumbnail(const std::string& filename_keyword);
 
