@@ -208,7 +208,7 @@ int ScreenCapturerSckImpl::Init(const int fps, cb_desktop_data cb) {
   dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
 
   if (!content || content.displays.count == 0) {
-    LOG_ERROR("Failed to get display info")
+    LOG_ERROR("Failed to get display info");
     return 0;
   }
 
