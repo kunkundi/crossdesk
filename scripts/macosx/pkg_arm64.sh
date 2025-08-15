@@ -5,7 +5,7 @@ set -e  # 遇错退出
 APP_NAME="crossdesk"
 APP_NAME_UPPER="CrossDesk"  # 这个变量用来指定大写的应用名
 EXECUTABLE_PATH="./build/macosx/arm64/release/crossdesk"             # 可执行文件路径
-APP_VERSION="0.0.1"
+APP_VERSION="$1"
 PLATFORM="macos"
 ARCH="arm64"
 IDENTIFIER="cn.crossdesk.app"
@@ -20,8 +20,8 @@ CONTENTS_DIR="${APP_BUNDLE}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
 RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 
-PKG_NAME="${APP_NAME}-${PLATFORM}-${ARCH}-v${APP_VERSION}.pkg"  # 保持安装包名称小写
-DMG_NAME="${APP_NAME}-${PLATFORM}-${ARCH}-v${APP_VERSION}.dmg"
+PKG_NAME="${APP_NAME}-${PLATFORM}-${ARCH}-${APP_VERSION}.pkg"  # 保持安装包名称小写
+DMG_NAME="${APP_NAME}-${PLATFORM}-${ARCH}-${APP_VERSION}.dmg"
 VOL_NAME="Install ${APP_NAME_UPPER}"
 
 # === 清理旧文件 ===

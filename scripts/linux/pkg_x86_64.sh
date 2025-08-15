@@ -3,7 +3,7 @@ set -e
 
 # 配置变量
 APP_NAME="CrossDesk"
-APP_VERSION="0.0.1"
+APP_VERSION="$1"
 ARCHITECTURE="amd64"
 MAINTAINER="Junkun Di <junkun.di@hotmail.com>"
 DESCRIPTION="A simple cross-platform remote desktop client."
@@ -119,6 +119,9 @@ chmod +x "$DEBIAN_DIR/postinst"
 
 # 构建 .deb 包
 dpkg-deb --build "$DEB_DIR"
+
+OUTPUT_FILE="crossdesk-linux-x86_64-$APP_VERSION.deb"
+mv "$DEB_DIR.deb" "$OUTPUT_FILE"
 
 # 清理构建目录
 rm -rf "$DEB_DIR"

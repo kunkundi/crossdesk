@@ -3,7 +3,7 @@
 
 ; 安装程序初始定义常量
 !define PRODUCT_NAME "CrossDesk"
-!define PRODUCT_VERSION "0.0.1"
+!define PRODUCT_VERSION "${VERSION}"
 !define PRODUCT_PUBLISHER "CrossDesk"
 !define PRODUCT_WEB_SITE "https://www.crossdesk.cn/"
 !define APP_NAME "CrossDesk"
@@ -33,7 +33,7 @@ RequestExecutionLevel admin
 ; ------ MUI 定义结束 ------
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
-OutFile "CrossDesk-${PRODUCT_VERSION}.exe"
+OutFile "crossdesk-win-x86_64-${PRODUCT_VERSION}.exe"
 InstallDir "$PROGRAMFILES\CrossDesk"
 ShowInstDetails show
 

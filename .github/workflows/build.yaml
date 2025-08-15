@@ -23,6 +23,24 @@ jobs:
       image: crossdesk/ubuntu22.04:latest
       options: --user root
     steps:
+      - name: Extract version number
+        id: version
+        run: |
+          VERSION="${GITHUB_REF##*/}"
+          VERSION_NUM="${VERSION#v}"
+          echo "VERSION_NUM=${VERSION_NUM}" >> $GITHUB_ENV
+
+      - name: Set legal Debian version
+        shell: bash
+        id: set_deb_version
+        run: |
+          if [[ ! "${VERSION_NUM}" =~ ^[0-9] ]]; then
+            LEGAL_VERSION="0.0.0-${VERSION_NUM}"
+          else
+            LEGAL_VERSION="${VERSION_NUM}"
+          fi
+          echo "LEGAL_VERSION=${LEGAL_VERSION}" >> $GITHUB_ENV
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -45,13 +63,13 @@ jobs:
       - name: Package
         run: |
           chmod +x ./scripts/linux/pkg_x86_64.sh
-          ./scripts/linux/pkg_x86_64.sh
+          ./scripts/linux/pkg_x86_64.sh ${LEGAL_VERSION}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: crossdesk-linux-x86_64
-          path: ${{ github.workspace }}/CrossDesk-0.0.1.deb
+          name: crossdesk-linux-x86_64-${{ env.LEGAL_VERSION }}
+          path: ${{ github.workspace }}/crossdesk-linux-x86_64-${{ env.LEGAL_VERSION }}.deb
 
   # macOS
   build-macos:
@@ -64,16 +82,22 @@ jobs:
             runner: macos-13
             cache-key: intel
             out-dir: ./build/macosx/x86_64/release/crossdesk
-            artifact-name: crossdesk-macos-x86_64
             package_script: ./scripts/macosx/pkg_x86_64.sh
           - arch: arm64
             runner: macos-14
             cache-key: arm
             out-dir: ./build/macosx/arm64/release/crossdesk
-            artifact-name: crossdesk-macos-arm64
             package_script: ./scripts/macosx/pkg_arm64.sh
 
     steps:
+      - name: Extract version number
+        id: version
+        run: |
+          VERSION="${GITHUB_REF##*/}"
+          VERSION_NUM="${VERSION#v}"
+          echo "VERSION_NUM=${VERSION_NUM}" >> $GITHUB_ENV
+          echo "VERSION_NUM=${VERSION_NUM}"
+
       - name: Cache xmake dependencies
         uses: actions/cache@v4
         with:
@@ -103,18 +127,18 @@ jobs:
       - name: Package CrossDesk app
         run: |
           chmod +x ${{ matrix.package_script }}
-          ${{ matrix.package_script }}
+          ${{ matrix.package_script }} ${VERSION_NUM}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact-name }}
-          path: crossdesk-macos-${{ matrix.arch }}-v0.0.1.pkg
+          name: crossdesk-macos-${{ matrix.arch }}-${{ env.VERSION_NUM }}
+          path: crossdesk-macos-${{ matrix.arch }}-${{ env.VERSION_NUM }}.pkg
 
       - name: Move files to release dir
         run: |
           mkdir -p release
-          cp crossdesk-macos-${{ matrix.arch }}-v0.0.1.pkg release/
+          cp crossdesk-macos-${{ matrix.arch }}-${{ env.VERSION_NUM }}.pkg release/
 
   # Windows
   build-windows:
@@ -123,6 +147,14 @@ jobs:
     env:
       XMAKE_GLOBALDIR: D:\xmake_global
     steps:
+      - name: Extract version number
+        shell: pwsh
+        run: |
+          $ref = $env:GITHUB_REF
+          $version = $ref -replace '^refs/(tags|heads)/', ''
+          $version = $version -replace '/', '-'
+          echo "VERSION_NUM=$version" >> $env:GITHUB_ENV
+
       - name: Cache xmake dependencies
         uses: actions/cache@v4
         with:
@@ -177,15 +209,16 @@ jobs:
           [System.IO.File]::WriteAllBytes('certs\crossdesk.cn_root.crt', [Convert]::FromBase64String('${{ secrets.CROSSDESK_CERT_BASE64 }}'))
 
       - name: Package
+        shell: pwsh
         run: |
-          cd ${{ github.workspace }}/scripts/windows
-          makensis nsis_script.nsi
+          cd "${{ github.workspace }}\scripts\windows"
+          makensis /DVERSION=$env:VERSION_NUM nsis_script.nsi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: crossdesk-win-x86_64
-          path: ${{ github.workspace }}/scripts/windows/CrossDesk-0.0.1.exe
+          name: crossdesk-win-x86_64-${{ env.VERSION_NUM }}
+          path: ${{ github.workspace }}/scripts/windows/crossdesk-win-x86_64-${{ env.VERSION_NUM }}.exe
 
   release:
     name: Publish Release
@@ -212,10 +245,10 @@ jobs:
       - name: Rename artifacts
         run: |
           mkdir -p release
-          cp artifacts/crossdesk-macos-x86_64/* release/crossdesk-macos-x86_64-v${{ steps.version.outputs.VERSION_NUM }}.pkg
-          cp artifacts/crossdesk-macos-arm64/* release/crossdesk-macos-aarch64-v${{ steps.version.outputs.VERSION_NUM }}.pkg
-          cp artifacts/crossdesk-linux-x86_64/* release/crossdesk-linux-x86_64-v${{ steps.version.outputs.VERSION_NUM }}.deb
-          cp artifacts/crossdesk-win-x86_64/* release/crossdesk-win-x86_64-v${{ steps.version.outputs.VERSION_NUM }}.exe
+          cp artifacts/crossdesk-macos-x86_64/* release/crossdesk-macos-x86_64-${{ steps.version.outputs.VERSION_NUM }}.pkg
+          cp artifacts/crossdesk-macos-arm64/* release/crossdesk-macos-arm64-${{ steps.version.outputs.VERSION_NUM }}.pkg
+          cp artifacts/crossdesk-linux-x86_64/* release/crossdesk-linux-x86_64-${{ steps.version.outputs.VERSION_NUM }}.deb
+          cp artifacts/crossdesk-win-x86_64/* release/crossdesk-win-x86_64-${{ steps.version.outputs.VERSION_NUM }}.exe
 
       - name: Upload to Versioned GitHub Release
         uses: softprops/action-gh-release@v2
