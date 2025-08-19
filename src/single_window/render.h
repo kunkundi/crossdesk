@@ -151,7 +151,8 @@ class Render {
   int ControlBar(std::shared_ptr<SubStreamWindowProperties> &props);
   int AboutWindow();
   int StatusBar();
-  int ConnectionStatusWindow(std::shared_ptr<SubStreamWindowProperties> &props);
+  bool ConnectionStatusWindow(
+      std::shared_ptr<SubStreamWindowProperties> &props);
   int ShowRecentConnections();
 
  private:

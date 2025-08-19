@@ -3,7 +3,7 @@
 #include "rd_log.h"
 #include "render.h"
 
-int Render::ConnectionStatusWindow(
+bool Render::ConnectionStatusWindow(
     std::shared_ptr<SubStreamWindowProperties> &props) {
   if (show_connection_status_window_) {
     const ImGuiViewport *viewport = ImGui::GetMainViewport();
@@ -160,7 +160,7 @@ int Render::ConnectionStatusWindow(
         show_connection_status_window_ = false;
         re_enter_remote_id_ = true;
         DestroyPeer(&props->peer_);
-        client_properties_.erase(props->remote_id_);
+        return true;
       }
     }
 
@@ -175,5 +175,5 @@ int Render::ConnectionStatusWindow(
     ImGui::End();
     ImGui::PopStyleVar();
   }
-  return 0;
+  return false;
 }

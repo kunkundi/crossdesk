@@ -29,8 +29,13 @@ int Render::MainWindow() {
   RecentConnectionsWindow();
   StatusBar();
 
-  for (auto& it : client_properties_) {
-    ConnectionStatusWindow(it.second);
+  for (auto it = client_properties_.begin(); it != client_properties_.end();) {
+    auto& props = it->second;
+    if (ConnectionStatusWindow(props)) {
+      it = client_properties_.erase(it);
+    } else {
+      ++it;
+    }
   }
 
   return 0;
