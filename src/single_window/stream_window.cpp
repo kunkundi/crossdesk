@@ -34,7 +34,7 @@ void Render::CloseTab(decltype(client_properties_)::iterator& it) {
   it = client_properties_.erase(it);
   if (client_properties_.empty()) {
     SDL_Event event;
-    event.type = SDL_QUIT;
+    event.type = SDL_EVENT_QUIT;
     SDL_PushEvent(&event);
   }
 }
@@ -120,7 +120,7 @@ int Render::StreamWindow() {
             it = client_properties_.erase(it);
             if (client_properties_.empty()) {
               SDL_Event event;
-              event.type = SDL_QUIT;
+              event.type = SDL_EVENT_QUIT;
               SDL_PushEvent(&event);
             }
           } else {
@@ -175,11 +175,11 @@ int Render::StreamWindow() {
 
         if (!props->peer_) {
           fullscreen_button_pressed_ = false;
-          SDL_SetWindowFullscreen(stream_window_, SDL_FALSE);
+          SDL_SetWindowFullscreen(stream_window_, false);
           it = client_properties_.erase(it);
           if (client_properties_.empty()) {
             SDL_Event event;
-            event.type = SDL_QUIT;
+            event.type = SDL_EVENT_QUIT;
             SDL_PushEvent(&event);
           }
         } else {

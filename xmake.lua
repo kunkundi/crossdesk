@@ -17,26 +17,23 @@ if is_mode("debug") then
 end
 
 add_requires("spdlog 1.14.1", {system = false})
-add_requires("imgui v1.91.5-docking", {configs = {sdl2 = true, sdl2_renderer = true}})
+add_requires("imgui v1.91.5-docking", {configs = {sdl3 = true, sdl3_renderer = true}})
 add_requires("openssl3 3.3.2", {system = false})
-
-add_requires("libsdl2", {configs = {pulseaudio = true}})
-add_packages("libsdl2")
 
 if is_os("windows") then
     add_requires("libyuv", "miniaudio 0.11.21")
     add_links("Shell32", "windowsapp", "dwmapi", "User32", "kernel32",
-        "SDL2-static", "SDL2main", "gdi32", "winmm", "setupapi", "version",
+        "SDL3-static", "gdi32", "winmm", "setupapi", "version",
         "Imm32", "iphlpapi")
     add_cxflags("/WX")
 elseif is_os("linux") then
     add_links("pulse-simple", "pulse")
     add_requires("libyuv") 
     add_syslinks("pthread", "dl")
-    add_links("SDL2", "asound", "X11", "Xtst", "Xrandr")
+    add_links("SDL3", "asound", "X11", "Xtst", "Xrandr")
     add_cxflags("-Wno-unused-variable")   
 elseif is_os("macosx") then
-    add_links("SDL2", "SDL2main")
+    add_links("SDL3")
     add_ldflags("-Wl,-ld_classic")
     add_cxflags("-Wno-unused-variable")
     add_frameworks("OpenGL", "IOSurface", "ScreenCaptureKit", "AVFoundation", 

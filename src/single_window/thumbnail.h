@@ -7,7 +7,7 @@
 #ifndef _THUMBNAIL_H_
 #define _THUMBNAIL_H_
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <filesystem>
 #include <map>

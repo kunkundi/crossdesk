@@ -7,7 +7,7 @@
 #ifndef _MAIN_WINDOW_H_
 #define _MAIN_WINDOW_H_
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <atomic>
 #include <chrono>
@@ -21,8 +21,8 @@
 #include "config_center.h"
 #include "device_controller_factory.h"
 #include "imgui.h"
-#include "imgui_impl_sdl2.h"
-#include "imgui_impl_sdlrenderer2.h"
+#include "imgui_impl_sdl3.h"
+#include "imgui_impl_sdlrenderer3.h"
 #include "imgui_internal.h"
 #include "minirtc.h"
 #include "path_manager.h"
@@ -76,10 +76,10 @@ class Render {
     double net_traffic_stats_button_pressed_time_ = 0;
     unsigned char *dst_buffer_ = nullptr;
     size_t dst_buffer_capacity_ = 0;
-    int mouse_pos_x_ = 0;
-    int mouse_pos_y_ = 0;
-    int mouse_pos_x_last_ = 0;
-    int mouse_pos_y_last_ = 0;
+    float mouse_pos_x_ = 0;
+    float mouse_pos_y_ = 0;
+    float mouse_pos_x_last_ = 0;
+    float mouse_pos_y_last_ = 0;
     int texture_width_ = 1280;
     int texture_height_ = 720;
     int video_width_ = 0;
@@ -300,10 +300,6 @@ class Render {
   bool foucs_on_main_window_ = false;
   bool foucs_on_stream_window_ = false;
   bool audio_capture_ = false;
-  int main_window_width_real_ = 720;
-  int main_window_height_real_ = 540;
-  float main_window_dpi_scaling_w_ = 1.0f;
-  float main_window_dpi_scaling_h_ = 1.0f;
   float main_window_width_default_ = 640;
   float main_window_height_default_ = 480;
   float main_window_width_ = 640;
@@ -346,6 +342,9 @@ class Render {
   std::string focused_remote_id_ = "";
   bool need_to_send_host_info_ = false;
   SDL_Event last_mouse_event;
+  SDL_AudioStream *input_stream_;
+  SDL_AudioStream *output_stream_;
+  uint32_t STREAM_REFRESH_EVENT = 0;
 
   // stream window render
   SDL_Window *stream_window_ = nullptr;
@@ -363,11 +362,7 @@ class Render {
   int stream_window_height_default_ = 720;
   float stream_window_width_ = 1280;
   float stream_window_height_ = 720;
-  uint32_t stream_pixformat_ = 0;
-  int stream_window_width_real_ = 1280;
-  int stream_window_height_real_ = 720;
-  float stream_window_dpi_scaling_w_ = 1.0f;
-  float stream_window_dpi_scaling_h_ = 1.0f;
+  SDL_PixelFormat stream_pixformat_ = SDL_PIXELFORMAT_NV12;
 
   bool label_inited_ = false;
   bool connect_button_pressed_ = false;

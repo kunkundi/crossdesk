@@ -6,8 +6,6 @@
 
 #define NV12_BUFFER_SIZE 1280 * 720 * 3 / 2
 
-#define STREAM_FRASH (SDL_USEREVENT + 1)
-
 #ifdef DESK_PORT_DEBUG
 #else
 #define MOUSE_CONTROL 1
@@ -68,7 +66,7 @@ int Render::ProcessMouseEvent(SDL_Event &event) {
           (float)(event.button.y - props->stream_render_rect_.y) /
           render_height;
 
-      if (SDL_MOUSEBUTTONDOWN == event.type) {
+      if (SDL_EVENT_MOUSE_BUTTON_DOWN == event.type) {
         remote_action.type = ControlType::mouse;
         if (SDL_BUTTON_LEFT == event.button.button) {
           remote_action.m.flag = MouseFlag::left_down;
@@ -77,7 +75,7 @@ int Render::ProcessMouseEvent(SDL_Event &event) {
         } else if (SDL_BUTTON_MIDDLE == event.button.button) {
           remote_action.m.flag = MouseFlag::middle_down;
         }
-      } else if (SDL_MOUSEBUTTONUP == event.type) {
+      } else if (SDL_EVENT_MOUSE_BUTTON_UP == event.type) {
         remote_action.type = ControlType::mouse;
         if (SDL_BUTTON_LEFT == event.button.button) {
           remote_action.m.flag = MouseFlag::left_up;
@@ -86,7 +84,7 @@ int Render::ProcessMouseEvent(SDL_Event &event) {
         } else if (SDL_BUTTON_MIDDLE == event.button.button) {
           remote_action.m.flag = MouseFlag::middle_up;
         }
-      } else if (SDL_MOUSEMOTION == event.type) {
+      } else if (SDL_EVENT_MOUSE_MOTION == event.type) {
         remote_action.type = ControlType::mouse;
         remote_action.m.flag = MouseFlag::move;
       }
@@ -96,7 +94,7 @@ int Render::ProcessMouseEvent(SDL_Event &event) {
       }
       SendDataFrame(props->peer_, (const char *)&remote_action,
                     sizeof(remote_action), props->data_label_.c_str());
-    } else if (SDL_MOUSEWHEEL == event.type &&
+    } else if (SDL_EVENT_MOUSE_WHEEL == event.type &&
                last_mouse_event.button.x >= props->stream_render_rect_.x &&
                last_mouse_event.button.x <= props->stream_render_rect_.x +
                                                 props->stream_render_rect_.w &&
@@ -231,8 +229,7 @@ void Render::OnReceiveVideoBufferCb(const XVideoFrame *video_frame,
     }
 
     SDL_Event event;
-    event.type = STREAM_FRASH;
-    event.user.type = STREAM_FRASH;
+    event.type = render->STREAM_REFRESH_EVENT;
     event.user.data1 = props;
     SDL_PushEvent(&event);
     props->streaming_ = true;
@@ -248,7 +245,14 @@ void Render::OnReceiveAudioBufferCb(const char *data, size_t size,
   }
 
   render->audio_buffer_fresh_ = true;
-  SDL_QueueAudio(render->output_dev_, data, (uint32_t)size);
+
+  if (render->output_stream_) {
+    int pushed = SDL_PutAudioStreamData(
+        render->output_stream_, (const Uint8 *)data, static_cast<int>(size));
+    if (pushed < 0) {
+      LOG_ERROR("Failed to push audio data: {}", SDL_GetError());
+    }
+  }
 }
 
 void Render::OnReceiveDataBufferCb(const char *data, size_t size,

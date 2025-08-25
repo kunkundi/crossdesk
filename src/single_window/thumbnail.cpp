@@ -38,9 +38,10 @@ bool LoadTextureFromMemory(const void* data, size_t data_size,
   }
 
   // ABGR
-  SDL_Surface* surface = SDL_CreateRGBSurfaceFrom(
-      (void*)image_data, image_width, image_height, channels * 8,
-      channels * image_width, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
+  int pitch = image_width * channels;
+  SDL_Surface* surface =
+      SDL_CreateSurfaceFrom(image_width, image_height, SDL_PIXELFORMAT_RGBA32,
+                            (void*)image_data, pitch);
   if (surface == nullptr) {
     LOG_ERROR("Failed to create SDL surface: [{}]", SDL_GetError());
     return false;
@@ -55,7 +56,7 @@ bool LoadTextureFromMemory(const void* data, size_t data_size,
   *out_width = image_width;
   *out_height = image_height;
 
-  SDL_FreeSurface(surface);
+  SDL_DestroySurface(surface);
   stbi_image_free(image_data);
 
   return true;

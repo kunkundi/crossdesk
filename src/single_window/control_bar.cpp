@@ -195,9 +195,9 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
               : localization::fullscreen[localization_language_index_];
 
       if (fullscreen_button_pressed_) {
-        SDL_SetWindowFullscreen(stream_window_, SDL_WINDOW_FULLSCREEN_DESKTOP);
+        SDL_SetWindowFullscreen(stream_window_, true);
       } else {
-        SDL_SetWindowFullscreen(stream_window_, SDL_FALSE);
+        SDL_SetWindowFullscreen(stream_window_, false);
       }
       props->reset_control_bar_pos_ = true;
     }

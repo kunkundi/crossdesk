@@ -19,8 +19,6 @@
 
 #define MOUSE_GRAB_PADDING 5
 
-#define STREAM_FRASH (SDL_USEREVENT + 1)
-
 std::vector<char> Render::SerializeRemoteAction(const RemoteAction& action) {
   std::vector<char> buffer;
   buffer.push_back(static_cast<char>(action.type));
@@ -128,7 +126,7 @@ SDL_HitTestResult Render::HitTestCallback(SDL_Window* window,
   }
 
   int window_width, window_height;
-  SDL_GetWindowSize(window, &window_width, &window_height);
+  SDL_GetWindowSizeInPixels(window, &window_width, &window_height);
 
   if (area->y < 30 && area->y > MOUSE_GRAB_PADDING &&
       area->x < window_width - 120 && area->x > MOUSE_GRAB_PADDING &&
@@ -512,49 +510,47 @@ int Render::CreateConnectionPeer() {
 }
 
 int Render::AudioDeviceInit() {
-  // Audio
-  SDL_AudioSpec want_in = {};
-  SDL_AudioSpec want_out = {};
-  SDL_zero(want_in);
-  want_in.freq = 48000;
-  want_in.format = AUDIO_S16LSB;
-  want_in.channels = 1;
-  want_in.samples = 480;
-  want_in.callback = SdlCaptureAudioIn;
-  want_in.userdata = this;
+  SDL_AudioSpec desired_in{};
+  desired_in.freq = 48000;
+  desired_in.format = SDL_AUDIO_S16;
+  desired_in.channels = 1;
 
-  // input_dev_ = SDL_OpenAudioDevice(NULL, 1, &want_in, &have_in, 0);
-  // if (input_dev_ == 0) {
-  //   SDL_Log("Failed to open input: %s", SDL_GetError());
-  //   // return 1;
-  // }
+  SDL_AudioSpec desired_out{};
+  desired_out.freq = 48000;
+  desired_out.format = SDL_AUDIO_S16;
+  desired_out.channels = 1;
 
-  SDL_zero(want_out);
-  want_out.freq = 48000;
-  want_out.format = AUDIO_S16LSB;
-  want_out.channels = 1;
-  // want_out.silence = 0;
-  want_out.samples = 480;
-  want_out.callback = nullptr;
-  want_out.userdata = this;
-
-  output_dev_ = SDL_OpenAudioDevice(nullptr, 0, &want_out, NULL, 0);
-  if (output_dev_ == 0) {
-    SDL_Log("Failed to open input: %s", SDL_GetError());
-    // return 1;
+  input_stream_ = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_RECORDING,
+                                            &desired_in, nullptr, nullptr);
+  if (!input_stream_) {
+    LOG_ERROR("Failed to open input stream: {}", SDL_GetError());
+    return -1;
   }
 
-  // SDL_PauseAudioDevice(input_dev_, 0);
-  SDL_PauseAudioDevice(output_dev_, 0);
+  output_stream_ = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
+                                             &desired_out, nullptr, nullptr);
+  if (!output_stream_) {
+    LOG_ERROR("Failed to open output stream: {}", SDL_GetError());
+    return -1;
+  }
+
+  SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(input_stream_));
+  SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(output_stream_));
 
   return 0;
 }
 
 int Render::AudioDeviceDestroy() {
-  SDL_PauseAudioDevice(output_dev_, 1);
-  SDL_CloseAudioDevice(output_dev_);
-  // SDL_CloseAudioDevice(input_dev_);
-
+  if (input_stream_) {
+    SDL_CloseAudioDevice(SDL_GetAudioStreamDevice(input_stream_));
+    SDL_DestroyAudioStream(input_stream_);
+    input_stream_ = nullptr;
+  }
+  if (output_stream_) {
+    SDL_CloseAudioDevice(SDL_GetAudioStreamDevice(output_stream_));
+    SDL_DestroyAudioStream(output_stream_);
+    output_stream_ = nullptr;
+  }
   return 0;
 }
 
@@ -595,22 +591,18 @@ int Render::CreateMainWindow() {
 
   ImGui::SetCurrentContext(main_ctx_);
 
-  SDL_WindowFlags window_flags =
-      (SDL_WindowFlags)(SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_BORDERLESS |
-                        SDL_WINDOW_HIDDEN);
-  main_window_ =
-      SDL_CreateWindow("Remote Desk", SDL_WINDOWPOS_UNDEFINED,
-                       SDL_WINDOWPOS_UNDEFINED, (int)main_window_width_default_,
-                       (int)main_window_height_default_, window_flags);
-
-  main_renderer_ = SDL_CreateRenderer(
-      main_window_, -1, SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_ACCELERATED);
-  if (main_renderer_ == nullptr) {
-    LOG_ERROR("Error creating SDL_Renderer");
-    return 0;
+  if (!SDL_CreateWindowAndRenderer(
+          "Remote Desk", (int)main_window_width_default_,
+          (int)main_window_height_default_,
+          SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_BORDERLESS |
+              SDL_WINDOW_HIDDEN,
+          &main_window_, &main_renderer_)) {
+    LOG_ERROR("Error creating main_window_ and main_renderer_: {}",
+              SDL_GetError());
+    return -1;
   }
 
-  SDL_SetWindowResizable(main_window_, SDL_FALSE);
+  SDL_SetWindowResizable(main_window_, false);
 
   // for window region action
   SDL_SetWindowHitTest(main_window_, HitTestCallback, this);
@@ -647,35 +639,27 @@ int Render::CreateStreamWindow() {
 
   ImGui::SetCurrentContext(stream_ctx_);
 
-  SDL_WindowFlags window_flags =
-      (SDL_WindowFlags)(SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_BORDERLESS);
-  stream_window_ =
-      SDL_CreateWindow("Stream window", SDL_WINDOWPOS_UNDEFINED,
-                       SDL_WINDOWPOS_UNDEFINED, stream_window_width_default_,
-                       stream_window_height_default_, window_flags);
-
-  stream_renderer_ = SDL_CreateRenderer(
-      stream_window_, -1, SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_ACCELERATED);
-  if (stream_renderer_ == nullptr) {
-    LOG_ERROR("Error creating SDL_Renderer");
-    return 0;
+  if (!SDL_CreateWindowAndRenderer(
+          "Stream window", (int)stream_window_width_default_,
+          (int)stream_window_height_default_,
+          SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_BORDERLESS,
+          &stream_window_, &stream_renderer_)) {
+    LOG_ERROR("Error creating stream_window_ and stream_renderer_: {}",
+              SDL_GetError());
+    return -1;
   }
 
   stream_pixformat_ = SDL_PIXELFORMAT_NV12;
-  // stream_texture_ = SDL_CreateTexture(stream_renderer_, stream_pixformat_,
-  //                                     SDL_TEXTUREACCESS_STREAMING,
-  //                                     texture_width_, texture_height_);
 
-  SDL_SetWindowResizable(stream_window_, SDL_TRUE);
+  SDL_SetWindowResizable(stream_window_, true);
 
   // for window region action
   SDL_SetWindowHitTest(stream_window_, HitTestCallback, this);
 
   // change props->stream_render_rect_
   SDL_Event event;
-  event.type = SDL_WINDOWEVENT;
+  event.type = SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED;
   event.window.windowID = SDL_GetWindowID(stream_window_);
-  event.window.event = SDL_WINDOWEVENT_SIZE_CHANGED;
   SDL_PushEvent(&event);
 
   stream_window_created_ = true;
@@ -744,25 +728,16 @@ int Render::SetupMainWindow() {
 
   SetupFontAndStyle();
 
-  SDL_GL_GetDrawableSize(main_window_, &main_window_width_real_,
-                         &main_window_height_real_);
-  main_window_dpi_scaling_w_ = main_window_width_real_ / main_window_width_;
-  main_window_dpi_scaling_h_ = main_window_width_real_ / main_window_width_;
-  SDL_RenderSetScale(main_renderer_, main_window_dpi_scaling_w_,
-                     main_window_dpi_scaling_h_);
-  LOG_INFO("Use dpi scaling [{}x{}] for main window",
-           main_window_dpi_scaling_w_, main_window_dpi_scaling_h_);
-
-  ImGui_ImplSDL2_InitForSDLRenderer(main_window_, main_renderer_);
-  ImGui_ImplSDLRenderer2_Init(main_renderer_);
+  ImGui_ImplSDL3_InitForSDLRenderer(main_window_, main_renderer_);
+  ImGui_ImplSDLRenderer3_Init(main_renderer_);
 
   return 0;
 }
 
 int Render::DestroyMainWindowContext() {
   ImGui::SetCurrentContext(main_ctx_);
-  ImGui_ImplSDLRenderer2_Shutdown();
-  ImGui_ImplSDL2_Shutdown();
+  ImGui_ImplSDLRenderer3_Shutdown();
+  ImGui_ImplSDL3_Shutdown();
   ImGui::DestroyContext(main_ctx_);
 
   return 0;
@@ -782,21 +757,8 @@ int Render::SetupStreamWindow() {
 
   SetupFontAndStyle();
 
-  SDL_GL_GetDrawableSize(stream_window_, &stream_window_width_real_,
-                         &stream_window_height_real_);
-
-  stream_window_dpi_scaling_w_ =
-      stream_window_width_real_ / stream_window_width_;
-  stream_window_dpi_scaling_h_ =
-      stream_window_width_real_ / stream_window_width_;
-
-  SDL_RenderSetScale(stream_renderer_, stream_window_dpi_scaling_w_,
-                     stream_window_dpi_scaling_h_);
-  LOG_INFO("Use dpi scaling [{}x{}] for stream window",
-           stream_window_dpi_scaling_w_, stream_window_dpi_scaling_h_);
-
-  ImGui_ImplSDL2_InitForSDLRenderer(stream_window_, stream_renderer_);
-  ImGui_ImplSDLRenderer2_Init(stream_renderer_);
+  ImGui_ImplSDL3_InitForSDLRenderer(stream_window_, stream_renderer_);
+  ImGui_ImplSDLRenderer3_Init(stream_renderer_);
 
   stream_window_inited_ = true;
   LOG_INFO("Stream window inited");
@@ -807,8 +769,8 @@ int Render::SetupStreamWindow() {
 int Render::DestroyStreamWindowContext() {
   stream_window_inited_ = false;
   ImGui::SetCurrentContext(stream_ctx_);
-  ImGui_ImplSDLRenderer2_Shutdown();
-  ImGui_ImplSDL2_Shutdown();
+  ImGui_ImplSDLRenderer3_Shutdown();
+  ImGui_ImplSDL3_Shutdown();
   ImGui::DestroyContext(stream_ctx_);
 
   return 0;
@@ -821,8 +783,8 @@ int Render::DrawMainWindow() {
   }
 
   ImGui::SetCurrentContext(main_ctx_);
-  ImGui_ImplSDLRenderer2_NewFrame();
-  ImGui_ImplSDL2_NewFrame();
+  ImGui_ImplSDLRenderer3_NewFrame();
+  ImGui_ImplSDL3_NewFrame();
   ImGui::NewFrame();
 
   ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
@@ -845,7 +807,7 @@ int Render::DrawMainWindow() {
   // Rendering
   ImGui::Render();
   SDL_RenderClear(main_renderer_);
-  ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), main_renderer_);
+  ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), main_renderer_);
   SDL_RenderPresent(main_renderer_);
 
   return 0;
@@ -858,8 +820,8 @@ int Render::DrawStreamWindow() {
   }
 
   ImGui::SetCurrentContext(stream_ctx_);
-  ImGui_ImplSDLRenderer2_NewFrame();
-  ImGui_ImplSDL2_NewFrame();
+  ImGui_ImplSDLRenderer3_NewFrame();
+  ImGui_ImplSDL3_NewFrame();
   ImGui::NewFrame();
 
   StreamWindow();
@@ -889,11 +851,16 @@ int Render::DrawStreamWindow() {
   for (auto& it : client_properties_) {
     auto props = it.second;
     if (props->tab_selected_) {
-      SDL_RenderCopy(stream_renderer_, props->stream_texture_, NULL,
-                     &(props->stream_render_rect_));
+      SDL_FRect render_rect_f = {
+          static_cast<float>(props->stream_render_rect_.x),
+          static_cast<float>(props->stream_render_rect_.y),
+          static_cast<float>(props->stream_render_rect_.w),
+          static_cast<float>(props->stream_render_rect_.h)};
+      SDL_RenderTexture(stream_renderer_, props->stream_texture_, NULL,
+                        &render_rect_f);
     }
   }
-  ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), stream_renderer_);
+  ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), stream_renderer_);
   SDL_RenderPresent(stream_renderer_);
 
   return 0;
@@ -946,20 +913,23 @@ void Render::InitializeSettings() {
 }
 
 void Render::InitializeSDL() {
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER |
-               SDL_INIT_GAMECONTROLLER) != 0) {
-    printf("Error: %s\n", SDL_GetError());
-    exit(-1);
+  if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
+    LOG_ERROR("Error: {}", SDL_GetError());
+    return;
   }
 
-  SDL_DisplayMode DM;
-  SDL_GetCurrentDisplayMode(0, &DM);
-  screen_width_ = DM.w;
-  screen_height_ = DM.h;
+  const SDL_DisplayMode* dm = SDL_GetCurrentDisplayMode(0);
+  if (dm) {
+    screen_width_ = dm->w;
+    screen_height_ = dm->h;
+  }
+
+  STREAM_REFRESH_EVENT = SDL_RegisterEvents(1);
+  if (STREAM_REFRESH_EVENT == (uint32_t)-1) {
+    LOG_ERROR("Failed to register custom SDL event");
+  }
 
   LOG_INFO("Screen resolution: [{}x{}]", screen_width_, screen_height_);
-
-  SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
 }
 
 void Render::InitializeModules() {
@@ -1082,10 +1052,10 @@ void Render::HandleStreamWindow() {
 
   if (stream_window_inited_) {
     if (!stream_window_grabbed_ && control_mouse_) {
-      SDL_SetWindowGrab(stream_window_, SDL_TRUE);
+      SDL_SetWindowMouseGrab(stream_window_, true);
       stream_window_grabbed_ = true;
     } else if (stream_window_grabbed_ && !control_mouse_) {
-      SDL_SetWindowGrab(stream_window_, SDL_FALSE);
+      SDL_SetWindowMouseGrab(stream_window_, false);
       stream_window_grabbed_ = false;
     }
   }
@@ -1135,13 +1105,13 @@ void Render::CleanupFactories() {
   }
 
   if (device_controller_factory_) {
-    delete device_controller_factory_;
+    SDL_FlushEvent(STREAM_REFRESH_EVENT);
     device_controller_factory_ = nullptr;
   }
 }
 
 void Render::CleanupPeer(std::shared_ptr<SubStreamWindowProperties> props) {
-  SDL_FlushEvent(STREAM_FRASH);
+  SDL_FlushEvent(STREAM_REFRESH_EVENT);
 
   if (props->dst_buffer_) {
     thumbnail_->SaveToThumbnail(
@@ -1200,8 +1170,8 @@ void Render::UpdateRenderRect() {
     }
 
     int stream_window_width, stream_window_height;
-    SDL_GetWindowSize(stream_window_, &stream_window_width,
-                      &stream_window_height);
+    SDL_GetWindowSizeInPixels(stream_window_, &stream_window_width,
+                              &stream_window_height);
     stream_window_width_ = (float)stream_window_width;
     stream_window_height_ = (float)stream_window_height;
 
@@ -1241,7 +1211,7 @@ void Render::ProcessSdlEvent() {
   while (SDL_PollEvent(&event)) {
     if (main_ctx_) {
       ImGui::SetCurrentContext(main_ctx_);
-      ImGui_ImplSDL2_ProcessEvent(&event);
+      ImGui_ImplSDL3_ProcessEvent(&event);
     } else {
       LOG_ERROR("Main context is null");
       return;
@@ -1250,7 +1220,7 @@ void Render::ProcessSdlEvent() {
     if (stream_window_inited_) {
       if (stream_ctx_) {
         ImGui::SetCurrentContext(stream_ctx_);
-        ImGui_ImplSDL2_ProcessEvent(&event);
+        ImGui_ImplSDL3_ProcessEvent(&event);
       } else {
         LOG_ERROR("Stream context is null");
         return;
@@ -1258,10 +1228,10 @@ void Render::ProcessSdlEvent() {
     }
 
     switch (event.type) {
-      case SDL_QUIT:
+      case SDL_EVENT_QUIT:
         if (stream_window_inited_) {
           LOG_INFO("Destroy stream window");
-          SDL_SetWindowGrab(stream_window_, SDL_FALSE);
+          SDL_SetWindowMouseGrab(stream_window_, false);
           DestroyStreamWindow();
           DestroyStreamWindowContext();
 
@@ -1283,13 +1253,13 @@ void Render::ProcessSdlEvent() {
 
             props->streaming_ = false;
             props->remember_password_ = false;
-            props->connection_established_ = false;
+            SDL_FlushEvents(STREAM_REFRESH_EVENT, STREAM_REFRESH_EVENT);
             props->audio_capture_button_pressed_ = false;
 
             memset(&props->net_traffic_stats_, 0,
                    sizeof(props->net_traffic_stats_));
-            SDL_SetWindowFullscreen(main_window_, SDL_FALSE);
-            SDL_FlushEvents(STREAM_FRASH, STREAM_FRASH);
+            SDL_SetWindowFullscreen(main_window_, false);
+            SDL_FlushEvents(STREAM_REFRESH_EVENT, STREAM_REFRESH_EVENT);
             memset(audio_buffer_, 0, 720);
           }
           client_properties_.clear();
@@ -1306,79 +1276,83 @@ void Render::ProcessSdlEvent() {
         }
         break;
 
-      case SDL_WINDOWEVENT:
-        if (event.window.event == SDL_WINDOWEVENT_CLOSE &&
-            event.window.windowID != SDL_GetWindowID(stream_window_)) {
+      case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+        if (event.window.windowID != SDL_GetWindowID(stream_window_)) {
           exit_ = true;
-        } else if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED &&
-                   stream_window_created_ &&
-                   event.window.windowID == SDL_GetWindowID(stream_window_)) {
+        }
+        break;
+
+      case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+        if (stream_window_created_ &&
+            event.window.windowID == SDL_GetWindowID(stream_window_)) {
           UpdateRenderRect();
-        } else if (event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED ||
-                   event.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
-          bool focus_gained =
-              event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED;
-          if (stream_window_ &&
-              SDL_GetWindowID(stream_window_) == event.window.windowID) {
-            foucs_on_stream_window_ = focus_gained;
-          } else if (main_window_ &&
-                     SDL_GetWindowID(main_window_) == event.window.windowID) {
-            foucs_on_main_window_ = focus_gained;
-          }
         }
         break;
 
-      case STREAM_FRASH: {
-        auto* props = static_cast<SubStreamWindowProperties*>(event.user.data1);
-        if (!props) {
-          continue;
+      case SDL_EVENT_WINDOW_FOCUS_GAINED:
+        if (stream_window_ &&
+            SDL_GetWindowID(stream_window_) == event.window.windowID) {
+          foucs_on_stream_window_ = true;
+        } else if (main_window_ &&
+                   SDL_GetWindowID(main_window_) == event.window.windowID) {
+          foucs_on_main_window_ = true;
         }
-        if (props->video_width_ <= 0 || props->video_height_ <= 0) {
-          continue;
-        }
-        if (!props->dst_buffer_) {
-          continue;
-        }
-
-        if (props->stream_texture_) {
-          if (props->video_width_ != props->texture_width_ ||
-              props->video_height_ != props->texture_height_) {
-            // LOG_WARN("Resolution changed, old: [{}x{}], new: [{}x{}]",
-            //          props->texture_width_, props->texture_height_,
-            //          props->video_width_, props->video_height_);
-            props->texture_width_ = props->video_width_;
-            props->texture_height_ = props->video_height_;
-
-            SDL_DestroyTexture(props->stream_texture_);
-            props->stream_texture_ = SDL_CreateTexture(
-                stream_renderer_, stream_pixformat_,
-                SDL_TEXTUREACCESS_STREAMING, props->texture_width_,
-                props->texture_height_);
-          }
-        } else {
-          props->texture_width_ = props->video_width_;
-          props->texture_height_ = props->video_height_;
-          props->stream_texture_ = SDL_CreateTexture(
-              stream_renderer_, stream_pixformat_, SDL_TEXTUREACCESS_STREAMING,
-              props->texture_width_, props->texture_height_);
-        }
-
-        SDL_UpdateTexture(props->stream_texture_, NULL, props->dst_buffer_,
-                          props->texture_width_);
         break;
-      }
 
-      case SDL_MOUSEMOTION:
-      case SDL_MOUSEBUTTONDOWN:
-      case SDL_MOUSEBUTTONUP:
-      case SDL_MOUSEWHEEL:
+      case SDL_EVENT_WINDOW_FOCUS_LOST:
+        if (stream_window_ &&
+            SDL_GetWindowID(stream_window_) == event.window.windowID) {
+          foucs_on_stream_window_ = false;
+        } else if (main_window_ &&
+                   SDL_GetWindowID(main_window_) == event.window.windowID) {
+          foucs_on_main_window_ = false;
+        }
+        break;
+
+      case SDL_EVENT_MOUSE_MOTION:
+      case SDL_EVENT_MOUSE_BUTTON_DOWN:
+      case SDL_EVENT_MOUSE_BUTTON_UP:
+      case SDL_EVENT_MOUSE_WHEEL:
         if (foucs_on_stream_window_) {
           ProcessMouseEvent(event);
         }
         break;
+    }
 
-      default:
-        break;
+    if (event.type == STREAM_REFRESH_EVENT) {
+      auto* props = static_cast<SubStreamWindowProperties*>(event.user.data1);
+      if (!props) {
+        continue;
+      }
+      if (props->video_width_ <= 0 || props->video_height_ <= 0) {
+        continue;
+      }
+      if (!props->dst_buffer_) {
+        continue;
+      }
+
+      if (props->stream_texture_) {
+        if (props->video_width_ != props->texture_width_ ||
+            props->video_height_ != props->texture_height_) {
+          props->texture_width_ = props->video_width_;
+          props->texture_height_ = props->video_height_;
+
+          SDL_DestroyTexture(props->stream_texture_);
+          props->stream_texture_ = SDL_CreateTexture(
+              stream_renderer_, stream_pixformat_, SDL_TEXTUREACCESS_STREAMING,
+              props->texture_width_, props->texture_height_);
+        }
+      } else {
+        props->texture_width_ = props->video_width_;
+        props->texture_height_ = props->video_height_;
+        props->stream_texture_ = SDL_CreateTexture(
+            stream_renderer_, stream_pixformat_, SDL_TEXTUREACCESS_STREAMING,
+            props->texture_width_, props->texture_height_);
+      }
+
+      SDL_UpdateTexture(props->stream_texture_, NULL, props->dst_buffer_,
+                        props->texture_width_);
+      break;
     }
   }
 }
