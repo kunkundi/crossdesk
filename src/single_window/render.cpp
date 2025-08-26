@@ -1,5 +1,7 @@
 #include "render.h"
 
+#include <libyuv.h>
+
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -126,7 +128,7 @@ SDL_HitTestResult Render::HitTestCallback(SDL_Window* window,
   }
 
   int window_width, window_height;
-  SDL_GetWindowSizeInPixels(window, &window_width, &window_height);
+  SDL_GetWindowSize(window, &window_width, &window_height);
 
   if (area->y < 30 && area->y > MOUSE_GRAB_PADDING &&
       area->x < window_width - 120 && area->x > MOUSE_GRAB_PADDING &&
@@ -693,8 +695,7 @@ int Render::SetupFontAndStyle() {
   // Setup Dear ImGui style
   ImGuiIO& io = ImGui::GetIO();
 
-  imgui_cache_path_ = cache_path_ + "/crossdesk.ini";
-  io.IniFilename = imgui_cache_path_.c_str();
+  io.IniFilename = NULL;  // disable imgui.ini
 
   io.ConfigFlags |=
       ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
@@ -1105,7 +1106,7 @@ void Render::CleanupFactories() {
   }
 
   if (device_controller_factory_) {
-    SDL_FlushEvent(STREAM_REFRESH_EVENT);
+    delete device_controller_factory_;
     device_controller_factory_ = nullptr;
   }
 }
@@ -1170,8 +1171,8 @@ void Render::UpdateRenderRect() {
     }
 
     int stream_window_width, stream_window_height;
-    SDL_GetWindowSizeInPixels(stream_window_, &stream_window_width,
-                              &stream_window_height);
+    SDL_GetWindowSize(stream_window_, &stream_window_width,
+                      &stream_window_height);
     stream_window_width_ = (float)stream_window_width;
     stream_window_height_ = (float)stream_window_height;
 
@@ -1253,7 +1254,7 @@ void Render::ProcessSdlEvent() {
 
             props->streaming_ = false;
             props->remember_password_ = false;
-            SDL_FlushEvents(STREAM_REFRESH_EVENT, STREAM_REFRESH_EVENT);
+            props->connection_established_ = false;
             props->audio_capture_button_pressed_ = false;
 
             memset(&props->net_traffic_stats_, 0,
@@ -1331,6 +1332,8 @@ void Render::ProcessSdlEvent() {
         continue;
       }
 
+      // use libyuv to convert NV12 to ARGB in order to fix SDL3 NV12 texture
+      // display issue
       if (props->stream_texture_) {
         if (props->video_width_ != props->texture_width_ ||
             props->video_height_ != props->texture_height_) {
@@ -1338,20 +1341,41 @@ void Render::ProcessSdlEvent() {
           props->texture_height_ = props->video_height_;
 
           SDL_DestroyTexture(props->stream_texture_);
-          props->stream_texture_ = SDL_CreateTexture(
-              stream_renderer_, stream_pixformat_, SDL_TEXTUREACCESS_STREAMING,
-              props->texture_width_, props->texture_height_);
+          props->stream_texture_ =
+              SDL_CreateTexture(stream_renderer_, SDL_PIXELFORMAT_ARGB8888,
+                                SDL_TEXTUREACCESS_STREAMING,
+                                props->texture_width_, props->texture_height_);
         }
       } else {
         props->texture_width_ = props->video_width_;
         props->texture_height_ = props->video_height_;
-        props->stream_texture_ = SDL_CreateTexture(
-            stream_renderer_, stream_pixformat_, SDL_TEXTUREACCESS_STREAMING,
-            props->texture_width_, props->texture_height_);
+        props->stream_texture_ =
+            SDL_CreateTexture(stream_renderer_, SDL_PIXELFORMAT_ARGB8888,
+                              SDL_TEXTUREACCESS_STREAMING,
+                              props->texture_width_, props->texture_height_);
       }
 
-      SDL_UpdateTexture(props->stream_texture_, NULL, props->dst_buffer_,
-                        props->texture_width_);
+      size_t argb_stride = props->texture_width_ * 4;
+      size_t argb_size = argb_stride * props->texture_height_;
+      if (!props->argb_buffer_ || props->argb_buffer_size_ != argb_size) {
+        if (props->argb_buffer_) {
+          delete[] props->argb_buffer_;
+        }
+        props->argb_buffer_ = new uint8_t[argb_size];
+        props->argb_buffer_size_ = argb_size;
+      }
+
+      uint8_t* src_y = reinterpret_cast<uint8_t*>(props->dst_buffer_);
+      int src_stride_y = props->texture_width_;
+      uint8_t* src_uv = src_y + src_stride_y * props->texture_height_;
+      int src_stride_uv = props->texture_width_;
+
+      libyuv::NV12ToARGB(src_y, src_stride_y, src_uv, src_stride_uv,
+                         props->argb_buffer_, static_cast<int>(argb_stride),
+                         props->texture_width_, props->texture_height_);
+
+      SDL_UpdateTexture(props->stream_texture_, NULL, props->argb_buffer_,
+                        static_cast<int>(argb_stride));
       break;
     }
   }

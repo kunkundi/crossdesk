@@ -103,6 +103,8 @@ class Render {
     std::string remote_host_name_ = "";
     std::vector<DisplayInfo> display_info_list_;
     SDL_Texture *stream_texture_ = nullptr;
+    uint8_t *argb_buffer_ = nullptr;
+    int argb_buffer_size_ = 0;
     SDL_Rect stream_render_rect_;
     SDL_Rect stream_render_rect_last_;
     ImVec2 control_window_pos_;
@@ -262,7 +264,6 @@ class Render {
   std::string exec_log_path_;
   std::string dll_log_path_;
   std::string cache_path_;
-  std::string imgui_cache_path_;
   int localization_language_index_ = -1;
   int localization_language_index_last_ = -1;
   bool modules_inited_ = false;
