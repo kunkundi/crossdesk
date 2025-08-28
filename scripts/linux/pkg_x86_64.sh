@@ -10,17 +10,22 @@ DESCRIPTION="A simple cross-platform remote desktop client."
 DEB_DIR="$APP_NAME-$APP_VERSION"
 DEBIAN_DIR="$DEB_DIR/DEBIAN"
 BIN_DIR="$DEB_DIR/usr/local/bin"
-CERT_SRC_DIR="$DEB_DIR/opt/$APP_NAME/certs"  # 用于中转安装时分发
-ICON_DIR="$DEB_DIR/usr/share/icons/hicolor/256x256/apps"
+CERT_SRC_DIR="$DEB_DIR/opt/$APP_NAME/certs"
+ICON_BASE_DIR="$DEB_DIR/usr/share/icons/hicolor"
 DESKTOP_DIR="$DEB_DIR/usr/share/applications"
 
 rm -rf "$DEB_DIR"
 
-mkdir -p "$DEBIAN_DIR" "$BIN_DIR" "$CERT_SRC_DIR" "$ICON_DIR" "$DESKTOP_DIR"
+mkdir -p "$DEBIAN_DIR" "$BIN_DIR" "$CERT_SRC_DIR" "$DESKTOP_DIR"
 
 cp build/linux/x86_64/release/crossdesk "$BIN_DIR"
 cp certs/crossdesk.cn_root.crt "$CERT_SRC_DIR/crossdesk.cn_root.crt"
-cp icons/crossdesk.png "$ICON_DIR/crossdesk.png"
+
+for size in 16 24 48 128 256; do
+    mkdir -p "$ICON_BASE_DIR/${size}x${size}/apps"
+    cp "icons/linux/crossdesk_${size}x${size}.png" \
+       "$ICON_BASE_DIR/${size}x${size}/apps/crossdesk.png"
+done
 
 chmod +x "$BIN_DIR/crossdesk"
 
@@ -58,9 +63,11 @@ set -e
 
 if [ "\$1" = "remove" ] || [ "\$1" = "purge" ]; then
     rm -f /usr/local/bin/crossdesk
-    rm -f /usr/share/icons/hicolor/256x256/apps/crossdesk.png
     rm -f /usr/share/applications/$APP_NAME.desktop
     rm -rf /opt/$APP_NAME
+    for size in 16 24 48 128 256; do
+        rm -f /usr/share/icons/hicolor/\${size}x\${size}/apps/crossdesk.png
+    done
 fi
 
 exit 0

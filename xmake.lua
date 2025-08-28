@@ -141,11 +141,4 @@ target("single_window")
 target("crossdesk")
     set_kind("binary")
     add_deps("rd_log", "common", "single_window")
-    if is_os("windows") then
-        add_files("icons/app.rc")
-    elseif is_os("macosx") then
-        -- add_rules("xcode.application")
-        -- add_files("Info.plist")
-    elseif is_os("linux") then
-    end
     add_files("src/gui/main.cpp")

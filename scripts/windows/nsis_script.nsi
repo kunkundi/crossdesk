@@ -10,7 +10,7 @@
 !define UNINSTALL_REG_KEY "CrossDesk"
 
 ; 设置安装包图标路径
-!define MUI_ICON "${__FILEDIR__}\..\..\icons\crossdesk.ico"
+!define MUI_ICON "${__FILEDIR__}\..\..\icons\windows\crossdesk.ico"
 
 ; 设置证书路径
 !define CERT_FILE "${__FILEDIR__}\..\..\certs\crossdesk.cn_root.crt"
