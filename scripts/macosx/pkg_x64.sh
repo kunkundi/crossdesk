@@ -6,7 +6,7 @@ APP_NAME_UPPER="CrossDesk"
 EXECUTABLE_PATH="build/macosx/x86_64/release/crossdesk"
 APP_VERSION="$1"
 PLATFORM="macos"
-ARCH="x86_64"
+ARCH="x64"
 IDENTIFIER="cn.crossdesk.app"
 ICON_PATH="icons/macos/crossdesk.icns"
 MACOS_MIN_VERSION="10.12"
@@ -29,7 +29,7 @@ rm -rf "${APP_BUNDLE}" "${PKG_NAME}" "${DMG_NAME}" build_pkg_temp CrossDesk_dmg_
 mkdir -p build_pkg_temp
 mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 
-cp "${EXECUTABLE_PATH}" "${MACOS_DIR}/${APP_NAME_UPPER}"  # 拷贝时使用大写的应用名称
+cp "${EXECUTABLE_PATH}" "${MACOS_DIR}/${APP_NAME_UPPER}"
 chmod +x "${MACOS_DIR}/${APP_NAME_UPPER}"
 
 if [ -f "${ICON_PATH}" ]; then

@@ -15,9 +15,9 @@ env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
-  # Linux x86_64
-  build-linux-x86_64:
-    name: Build on Ubuntu 22.04 x86_64
+  # Linux amd64
+  build-linux-amd64:
+    name: Build on Ubuntu 22.04 amd64
     runs-on: ubuntu-22.04
     container:
       image: crossdesk/ubuntu22.04:latest
@@ -62,14 +62,14 @@ jobs:
 
       - name: Package
         run: |
-          chmod +x ./scripts/linux/pkg_x86_64.sh
-          ./scripts/linux/pkg_x86_64.sh ${LEGAL_VERSION}
+          chmod +x ./scripts/linux/pkg_amd64.sh
+          ./scripts/linux/pkg_amd64.sh ${LEGAL_VERSION}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: crossdesk-linux-x86_64-${{ env.LEGAL_VERSION }}
-          path: ${{ github.workspace }}/crossdesk-linux-x86_64-${{ env.LEGAL_VERSION }}.deb
+          name: crossdesk-linux-amd64-${{ env.LEGAL_VERSION }}
+          path: ${{ github.workspace }}/crossdesk-linux-amd64-${{ env.LEGAL_VERSION }}.deb
 
   # Linux arm64
   build-linux-arm64:
@@ -139,11 +139,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - arch: x86_64
+          - arch: x64
             runner: macos-13
             cache-key: intel
             out-dir: ./build/macosx/x86_64/release/crossdesk
-            package_script: ./scripts/macosx/pkg_x86_64.sh
+            package_script: ./scripts/macosx/pkg_x64.sh
           - arch: arm64
             runner: macos-14
             cache-key: arm
@@ -202,8 +202,8 @@ jobs:
           cp crossdesk-macos-${{ matrix.arch }}-${{ env.VERSION_NUM }}.pkg release/
 
   # Windows
-  build-windows:
-    name: Build on Windows
+  build-windows-x64:
+    name: Build on Windows x64
     runs-on: windows-2022
     env:
       XMAKE_GLOBALDIR: D:\xmake_global
@@ -279,13 +279,14 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: crossdesk-win-x86_64-${{ env.VERSION_NUM }}
-          path: ${{ github.workspace }}/scripts/windows/crossdesk-win-x86_64-${{ env.VERSION_NUM }}.exe
+          name: crossdesk-win-x64-${{ env.VERSION_NUM }}
+          path: ${{ github.workspace }}/scripts/windows/crossdesk-win-x64-${{ env.VERSION_NUM }}.exe
 
   release:
     name: Publish Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-linux-x86_64, build-linux-arm64, build-macos, build-windows]
+    needs:
+      [build-linux-amd64, build-linux-arm64, build-macos, build-windows-x64]
     runs-on: ubuntu-latest
 
     steps:
@@ -307,11 +308,11 @@ jobs:
       - name: Rename artifacts
         run: |
           mkdir -p release
-          cp artifacts/crossdesk-macos-x86_64-${{ steps.version.outputs.VERSION_NUM }}/* release/crossdesk-macos-x86_64-${{ steps.version.outputs.VERSION_NUM }}.pkg
+          cp artifacts/crossdesk-macos-x64-${{ steps.version.outputs.VERSION_NUM }}/* release/crossdesk-macos-x64-${{ steps.version.outputs.VERSION_NUM }}.pkg
           cp artifacts/crossdesk-macos-arm64-${{ steps.version.outputs.VERSION_NUM }}/* release/crossdesk-macos-arm64-${{ steps.version.outputs.VERSION_NUM }}.pkg
-          cp artifacts/crossdesk-linux-x86_64-${{ steps.version.outputs.VERSION_NUM }}/* release/crossdesk-linux-x86_64-${{ steps.version.outputs.VERSION_NUM }}.deb
+          cp artifacts/crossdesk-linux-amd64-${{ steps.version.outputs.VERSION_NUM }}/* release/crossdesk-linux-amd64-${{ steps.version.outputs.VERSION_NUM }}.deb
           cp artifacts/crossdesk-linux-arm64-${{ steps.version.outputs.VERSION_NUM }}/* release/crossdesk-linux-arm64-${{ steps.version.outputs.VERSION_NUM }}.deb
-          cp artifacts/crossdesk-win-x86_64-${{ steps.version.outputs.VERSION_NUM }}/* release/crossdesk-win-x86_64-${{ steps.version.outputs.VERSION_NUM }}.exe
+          cp artifacts/crossdesk-win-x64-${{ steps.version.outputs.VERSION_NUM }}/* release/crossdesk-win-x64-${{ steps.version.outputs.VERSION_NUM }}.exe
 
       - name: List release files
         run: ls -lh release/

@@ -111,7 +111,7 @@ chmod +x "$DEBIAN_DIR/postinst"
 
 dpkg-deb --build "$DEB_DIR"
 
-OUTPUT_FILE="${PKG_NAME}-${APP_VERSION}-${ARCHITECTURE}.deb"
+OUTPUT_FILE="${PKG_NAME}-linux-${ARCHITECTURE}-${APP_VERSION}.deb"
 mv "$DEB_DIR.deb" "$OUTPUT_FILE"
 
 rm -rf "$DEB_DIR"

@@ -37,7 +37,7 @@ RequestExecutionLevel admin
 ; ------ MUI ∂®“ÂΩ· ¯ ------
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
-OutFile "crossdesk-win-x86_64-${PRODUCT_VERSION}.exe"
+OutFile "crossdesk-win-x64-${PRODUCT_VERSION}.exe"
 InstallDir "$PROGRAMFILES\CrossDesk"
 ShowInstDetails show
 

@@ -30,10 +30,10 @@ jobs:
       - name: Update download links
         run: |
           cd pages
-          sed -E -i "s/crossdesk-win-x86_64-[0-9]+\.[0-9]+\.[0-9]+\.exe/crossdesk-win-x86_64-${VERSION_NUM}.exe/g" index.html
-          sed -E -i "s/crossdesk-macos-x86_64-[0-9]+\.[0-9]+\.[0-9]+\.pkg/crossdesk-macos-x86_64-${VERSION_NUM}.pkg/g" index.html
+          sed -E -i "s/crossdesk-win-x64-[0-9]+\.[0-9]+\.[0-9]+\.exe/crossdesk-win-x64-${VERSION_NUM}.exe/g" index.html
+          sed -E -i "s/crossdesk-macos-x64-[0-9]+\.[0-9]+\.[0-9]+\.pkg/crossdesk-macos-x64-${VERSION_NUM}.pkg/g" index.html
           sed -E -i "s/crossdesk-macos-arm64-[0-9]+\.[0-9]+\.[0-9]+\.pkg/crossdesk-macos-arm64-${VERSION_NUM}.pkg/g" index.html
-          sed -E -i "s/crossdesk-linux-x86_64-[0-9]+\.[0-9]+\.[0-9]+\.deb/crossdesk-linux-x86_64-${VERSION_NUM}.deb/g" index.html
+          sed -E -i "s/crossdesk-linux-amd64-[0-9]+\.[0-9]+\.[0-9]+\.deb/crossdesk-linux-amd64-${VERSION_NUM}.deb/g" index.html
           sed -E -i "s/crossdesk-linux-arm64-[0-9]+\.[0-9]+\.[0-9]+\.deb/crossdesk-linux-arm64-${VERSION_NUM}.deb/g" index.html
 
       - name: Commit & Push changes
