@@ -1,7 +1,7 @@
-; 设置搜索路径
+; Set search path
 !addincludedir "${__FILEDIR__}"
 
-; 安装程序初始定义常量
+; Installer initial constants
 !define PRODUCT_NAME "CrossDesk"
 !define PRODUCT_VERSION "${VERSION}"
 !define PRODUCT_PUBLISHER "CrossDesk"
@@ -9,23 +9,19 @@
 !define APP_NAME "CrossDesk"
 !define UNINSTALL_REG_KEY "CrossDesk"
 
-; 设置安装包图标路径
+; Installer icon path
 !define MUI_ICON "${__FILEDIR__}\..\..\icons\windows\crossdesk.ico"
 
-; 设置证书路径
+; Certificate path
 !define CERT_FILE "${__FILEDIR__}\..\..\certs\crossdesk.cn_root.crt"
 
-; 安装后是否立即运行的选项
-!define MUI_FINISHPAGE_RUN "crossdesk.exe"  ; 默认运行程序
-!define MUI_FINISHPAGE_TEXT "安装完成！是否立即运行 CrossDesk?"
-
-; 压缩设置
+; Compression settings
 SetCompressor /FINAL lzma
 
-; 请求管理员权限（写入HKLM需要）
+; Request admin privileges (needed to write HKLM)
 RequestExecutionLevel admin
 
-; ------ MUI 现代界面定义 ------
+; ------ MUI Modern UI Definition ------
 !include "MUI.nsh"
 !define MUI_ABORTWARNING
 !insertmacro MUI_PAGE_WELCOME
@@ -34,7 +30,7 @@ RequestExecutionLevel admin
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_LANGUAGE "SimpChinese"
 !insertmacro MUI_RESERVEFILE_INSTALLOPTIONS
-; ------ MUI 定义结束 ------
+; ------ End of MUI Definition ------
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
 OutFile "crossdesk-win-x64-${PRODUCT_VERSION}.exe"
@@ -45,13 +41,13 @@ Section "MainSection"
     SetOutPath "$INSTDIR"
     SetOverwrite ifnewer
 
-    ; 设置程序主文件路径
+    ; Main application executable path
     File /oname=crossdesk.exe "..\..\build\windows\x64\release\crossdesk.exe"
     
-    ; ? 复制图标文件到安装目录
+    ; Copy icon file to installation directory
     File "${MUI_ICON}"
 
-    ; 写入卸载信息
+    ; Write uninstall information
     WriteUninstaller "$INSTDIR\uninstall.exe"
 
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_REG_KEY}" "DisplayName" "${PRODUCT_NAME}"
@@ -64,12 +60,9 @@ Section "MainSection"
     WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_REG_KEY}" "NoRepair" 1
 SectionEnd
 
-; 安装完成后
+; After installation
 Section -Post
     ExecWait '"C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x86\mt.exe" -manifest "$INSTDIR\crossdesk.manifest" -outputresource:"$INSTDIR\crossdesk.exe";1'
-    ; 如果用户选择立即运行
-    StrCmp $INSTDIR\crossdesk.exe "" 0 +2
-    Exec "$INSTDIR\crossdesk.exe"
 SectionEnd
 
 Section "Cert"
@@ -78,33 +71,29 @@ Section "Cert"
 SectionEnd
 
 Section -AdditionalIcons
-    ; 桌面快捷方式
+    ; Desktop shortcut
     CreateShortCut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\crossdesk.exe" "" "$INSTDIR\crossdesk.ico"
 
-    ; 开始菜单快捷方式
+    ; Start menu shortcut
     CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}.lnk" "$INSTDIR\crossdesk.exe" "" "$INSTDIR\crossdesk.ico"
-
-    ; 网页快捷方式（桌面）
-    WriteIniStr "$DESKTOP\${PRODUCT_NAME}.url" "InternetShortcut" "URL" "${PRODUCT_WEB_SITE}"
 SectionEnd
 
 Section "Uninstall"
-    ; 删除主程序和卸载程序
+    ; Delete main executable and uninstaller
     Delete "$INSTDIR\crossdesk.exe"
     Delete "$INSTDIR\uninstall.exe"
 
-    ; 递归删除安装目录
+    ; Recursively delete installation directory
     RMDir /r "$INSTDIR"
 
-    ; 删除桌面和开始菜单快捷方式
+    ; Delete desktop and start menu shortcuts
     Delete "$DESKTOP\${PRODUCT_NAME}.lnk"
-    Delete "$DESKTOP\${PRODUCT_NAME}.url"
     Delete "$SMPROGRAMS\${PRODUCT_NAME}.lnk"
 
-    ; 删除注册表卸载项
+    ; Delete registry uninstall entry
     DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_REG_KEY}"
 
-    ; 递归删除用户 AppData 中的 CrossDesk 文件夹
+    ; Recursively delete CrossDesk folder in user AppData
     RMDir /r "$APPDATA\CrossDesk"
     RMDir /r "$LOCALAPPDATA\CrossDesk"
 SectionEnd
