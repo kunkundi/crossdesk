@@ -108,17 +108,12 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Check libstdc++
-        run: |
-          strings /usr/lib/aarch64-linux-gnu/libstdc++.so.6 | grep GLIBCXX | tail
-
       - name: Build CrossDesk
         env:
           CUDA_PATH: /usr/local/cuda
           XMAKE_GLOBALDIR: /data
         run: |
           xmake b -vy --root crossdesk
-          ldd /path/to/your_binary | grep libstdc++
 
       - name: Decode and save certificate
         shell: bash
