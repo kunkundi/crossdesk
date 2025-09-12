@@ -87,22 +87,22 @@ CERT_FILE="crossdesk.cn_root.crt"
 for user_home in /home/*; do
     [ -d "$user_home" ] || continue
     username=$(basename "$user_home")
-    config_dir="$user_home/.config/crossdesk/certs"
+    config_dir="$user_home/.config/CrossDesk/certs"
     target="$config_dir/$CERT_FILE"
 
     if [ ! -f "$target" ]; then
         mkdir -p "$config_dir" || true
         cp "$CERT_SRC/$CERT_FILE" "$target" || true
-        chown -R "$username:$username" "$user_home/.config/crossdesk" || true
+        chown -R "$username:$username" "$user_home/.config/CrossDesk" || true
         echo "✔ Installed cert for $username at $target"
     fi
 done
 
 if [ -d "/root" ]; then
-    config_dir="/root/.config/crossdesk/certs"
+    config_dir="/root/.config/CrossDesk/certs"
     mkdir -p "$config_dir" || true
     cp "$CERT_SRC/$CERT_FILE" "$config_dir/$CERT_FILE" || true
-    chown -R root:root /root/.config/crossdesk || true
+    chown -R root:root /root/.config/CrossDesk || true
 fi
 
 exit 0
