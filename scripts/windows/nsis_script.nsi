@@ -44,6 +44,27 @@ InstallDir "$PROGRAMFILES\CrossDesk"
 InstallDirRegKey HKCU "Software\${PRODUCT_NAME}" "InstallDir"
 ShowInstDetails show
 
+Function CheckVCRedist
+  ReadRegDWORD $0 HKLM "SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64" "Installed"
+  StrCmp $0 1 done
+
+  DetailPrint "Downloading Microsoft Visual C++ Redistributable..."
+  inetc::get /popup "" /caption "Downloading VC++ Runtime..." \
+    "https://aka.ms/vs/17/release/vc_redist.x64.exe" \
+    "$TEMP\\vc_redist.x64.exe"
+  Pop $0
+  StrCmp $0 "OK" +2
+    MessageBox MB_OK "Failed to download VC++ Redistributable. Please install it manually." IDOK done
+
+  ExecWait '"$TEMP\\vc_redist.x64.exe" /quiet /norestart'
+
+done:
+FunctionEnd
+
+Section "VC++ Runtime"
+    Call CheckVCRedist
+SectionEnd
+
 Section "MainSection"
     SetOutPath "$INSTDIR"
     SetOverwrite ifnewer
@@ -107,9 +128,6 @@ Section "Uninstall"
     ; Recursively delete CrossDesk folder in user AppData
     RMDir /r "$APPDATA\CrossDesk"
     RMDir /r "$LOCALAPPDATA\CrossDesk"
-SectionEnd
-
-Section -Post
 SectionEnd
 
 ; ------ Functions ------

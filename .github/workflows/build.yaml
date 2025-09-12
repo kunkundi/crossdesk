@@ -255,6 +255,20 @@ jobs:
           Write-Host "Resolved CUDA_PATH = $cudaPath"
           Pop-Location
 
+      - name: Download INetC plugin
+        shell: powershell
+        run: |
+          $url = "https://github.com/DigitalMediaServer/NSIS-INetC-plugin/releases/download/v1.0.5.7/InetC.zip"
+          $out = "$env:RUNNER_TEMP\InetC.zip"
+          Invoke-WebRequest -Uri $url -OutFile $out
+          Expand-Archive $out -DestinationPath "$env:RUNNER_TEMP\InetC" -Force
+
+          $source = "$env:RUNNER_TEMP\InetC\x86-unicode\INetC.dll"
+          $target = "C:\Program Files (x86)\NSIS\Plugins\x86-unicode\INetC.dll"
+
+          Write-Host "Copying $source to $target"
+          Copy-Item $source $target -Force
+
       - name: Checkout code
         uses: actions/checkout@v4
 
