@@ -17,7 +17,7 @@ CrossDesk is an experimental application of [MiniRTC](https://github.com/kunkund
 
 Enter the remote desktop ID in the menu bar’s “Remote ID” field and click “→” to initiate a remote connection.
 
-![usage1](https://github.com/user-attachments/assets/3537648e-49b5-4404-ba15-a1a1ae86bdc7)
+![usage1](https://github.com/user-attachments/assets/bf39f8fa-de77-41a1-8db3-73d6cab9da6a)
 
 If the remote desktop requires a connection password, you must enter the correct password on your side to successfully establish the connection.
 
