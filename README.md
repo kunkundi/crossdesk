@@ -1,45 +1,45 @@
 # CrossDesk
 
-#### Bridging work, uniting efficiency
+#### 跨界连接，高效如一
 
 ----
-[中文](README_CN.md) / [English](README.md)
+[English](README.md) / [中文](README_CN.md)
 
-![sup_example](https://github.com/user-attachments/assets/3f17d8f3-7c4a-4b63-bae4-903363628687)
+![sup_example](https://github.com/user-attachments/assets/eeb64fbe-1f07-4626-be1c-b77396beb905)
 
-# Intro
+## 简介
 
-CrossDesk is a lightweight cross-platform remote desktop software.
+CrossDesk 是一个轻量级的跨平台远程桌面软件。
 
-CrossDesk is an experimental application of [MiniRTC](https://github.com/kunkundi/minirtc.git), a lightweight cross-platform real-time audio and video transmission library. MiniRTC provides fundamental capabilities including network traversal ([RFC5245](https://datatracker.ietf.org/doc/html/rfc5245)), video software/hardware encoding and decoding (H264/AV1), audio encoding/decoding ([Opus](https://github.com/xiph/opus)), signaling interaction, network congestion control ([TCP over UDP](https://libnice.freedesktop.org/)), and transmission encryption ([SRTP](https://tools.ietf.org/html/rfc3711)).
+CrossDesk 是 [MiniRTC](https://github.com/kunkundi/minirtc.git) 实时音视频传输库的实验性应用。MiniRTC 是一个轻量级的跨平台实时音视频传输库。它具有网络透传（[RFC5245](https://datatracker.ietf.org/doc/html/rfc5245)），视频软硬编解码（H264/AV1），音频编解码（[Opus](https://github.com/xiph/opus)），信令交互，网络拥塞控制（[TCP over UDP](https://libnice.freedesktop.org/)），传输加密（[SRTP](https://tools.ietf.org/html/rfc3711)）等基础能力。
 
-## Usage
 
-Enter the remote desktop ID in the menu bar’s “Remote ID” field and click “→” to initiate a remote connection.
+## 使用
 
-![usage1](https://github.com/user-attachments/assets/bf39f8fa-de77-41a1-8db3-73d6cab9da6a)
+在菜单栏“对端ID”处输入远端桌面的ID，点击“→”即可发起远程连接。
 
-If the remote desktop requires a connection password, you must enter the correct password on your side to successfully establish the connection.
+![usage1](https://github.com/user-attachments/assets/3a4bb59f-c84c-44d2-9a20-11790aac510e)
 
-![password](https://github.com/user-attachments/assets/f6556966-a84f-4301-a79b-2726b389ed71)
+如果远端桌面设置了连接密码，则本端需填写正确的连接密码才能成功发起远程连接。
 
-Before connecting, you can customize configuration options in the settings, such as language and video encoding format.
+![password](https://github.com/user-attachments/assets/1beadcce-640d-4f5c-8e77-51917b5294d5)
 
-![settings](https://github.com/user-attachments/assets/12f7e9c3-a472-40c1-8fb9-ae7d1ae3865c)
+发起连接前，可在设置中自定义配置项，如语言、视频编码格式等。
+![settings](https://github.com/user-attachments/assets/8bc5468d-7bbb-4e30-95bd-da1f352ac08c)
 
-## How to build
+## 编译
 
-Requirements:
+依赖：
 - [xmake](https://xmake.io/#/guide/installation)
 - [cmake](https://cmake.org/download/)
 
-Following packages need to be installed on Linux:
+Linux环境下需安装以下包：
 
 ```
 sudo apt-get install -y software-properties-common git curl unzip build-essential libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev libxcb-shape0-dev libxcb-xkb-dev libxcb-xfixes0-dev libxv-dev libxtst-dev libasound2-dev libsndio-dev libxcb-shm0-dev libasound2-dev libpulse-dev
 ```
 
-Build:
+编译
 ```
 git clone https://github.com/kunkundi/crossdesk.git
 
@@ -51,7 +51,7 @@ git submodule update
 
 xmake b crossdesk
 ```
-Run:
+运行
 ```
 xmake r crossdesk
 ```
