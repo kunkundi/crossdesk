@@ -52,7 +52,7 @@ class ScreenCapturerX11 : public ScreenCapturer {
   std::atomic<bool> running_{false};
   std::atomic<bool> paused_{false};
   std::atomic<int> monitor_index_{0};
-  int fps_ = 30;
+  int fps_ = 60;
   cb_desktop_data callback_;
   std::vector<DisplayInfo> display_info_list_;
 

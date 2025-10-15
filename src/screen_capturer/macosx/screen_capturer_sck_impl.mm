@@ -76,7 +76,7 @@ class API_AVAILABLE(macos(14.0)) ScreenCapturerSckImpl : public ScreenCapturer {
   unsigned char *nv12_frame_ = nullptr;
   int width_ = 0;
   int height_ = 0;
-  int fps_ = 30;
+  int fps_ = 60;
 
  public:
   // Called by SckHelper when shareable content is returned by ScreenCaptureKit. `content` will be

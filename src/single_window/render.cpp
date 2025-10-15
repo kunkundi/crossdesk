@@ -330,7 +330,7 @@ int Render::ScreenCapturerInit() {
                             std::chrono::steady_clock::now().time_since_epoch())
                             .count();
         auto duration = now_time - last_frame_time_;
-        if (duration >= 33) {
+        if (duration >= 16) {  // ~60 FPS
           XVideoFrame frame;
           frame.data = (const char*)data;
           frame.size = size;

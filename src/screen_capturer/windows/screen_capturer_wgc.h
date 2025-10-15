@@ -32,7 +32,7 @@ class ScreenCapturerWgc : public ScreenCapturer,
 
   int SwitchTo(int monitor_index);
 
-  void OnFrame(const WgcSession::wgc_session_frame &frame, int id);
+  void OnFrame(const WgcSession::wgc_session_frame& frame, int id);
 
  protected:
   void CleanUp();
@@ -57,12 +57,12 @@ class ScreenCapturerWgc : public ScreenCapturer,
   std::atomic_bool running_;
   std::atomic_bool inited_;
 
-  int fps_;
+  int fps_ = 60;
 
   cb_desktop_data on_data_ = nullptr;
 
-  unsigned char *nv12_frame_ = nullptr;
-  unsigned char *nv12_frame_scaled_ = nullptr;
+  unsigned char* nv12_frame_ = nullptr;
+  unsigned char* nv12_frame_scaled_ = nullptr;
 };
 
 #endif
