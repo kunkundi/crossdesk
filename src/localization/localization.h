@@ -95,6 +95,10 @@ static std::vector<std::string> enable_turn = {
 static std::vector<std::string> enable_srtp = {
     reinterpret_cast<const char*>(u8"启用SRTP:"), "Enable SRTP:"};
 
+static std::vector<std::string> self_hosted_server_config = {
+    reinterpret_cast<const char*>(u8"自托管服务器配置"),
+    "Self-Hosted Server Config"};
+
 static std::vector<std::string> ok = {reinterpret_cast<const char*>(u8"确认"),
                                       "OK"};
 static std::vector<std::string> cancel = {

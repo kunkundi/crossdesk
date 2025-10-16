@@ -431,6 +431,7 @@ class Render {
   bool enable_hardware_video_codec_ = false;
   bool enable_turn_ = false;
   bool enable_srtp_ = true;
+  bool enable_self_hosted_server_ = false;
   int language_button_value_last_ = 0;
   int video_quality_button_value_last_ = 0;
   int video_encode_format_button_value_last_ = 0;

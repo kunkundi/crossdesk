@@ -211,6 +211,28 @@ int Render::SettingWindow() {
         ImGui::Checkbox("##enable_srtp", &enable_srtp_);
       }
 
+      ImGui::Separator();
+
+      {
+        settings_items_offset += settings_items_padding;
+        ImGui::SetCursorPosY(settings_items_offset + 2);
+
+        if (ImGui::Button(localization::self_hosted_server_config
+                              [localization_language_index_]
+                                  .c_str())) {
+          LOG_ERROR("Self Built Server");
+        }
+
+        if (ConfigCenter::LANGUAGE::CHINESE == localization_language_) {
+          ImGui::SetCursorPosX(ENABLE_SELF_HOSTED_SERVER_CHECKBOX_PADDING_CN);
+        } else {
+          ImGui::SetCursorPosX(ENABLE_SELF_HOSTED_SERVER_CHECKBOX_PADDING_EN);
+        }
+        ImGui::SetCursorPosY(settings_items_offset);
+        ImGui::Checkbox("##enable_self_hosted_server",
+                        &enable_self_hosted_server_);
+      }
+
       if (stream_window_inited_) {
         ImGui::EndDisabled();
       }
