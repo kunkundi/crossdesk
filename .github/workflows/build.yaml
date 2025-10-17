@@ -140,7 +140,7 @@ jobs:
       matrix:
         include:
           - arch: x64
-            runner: macos-13
+            runner: macos-15-intel
             cache-key: intel
             out-dir: ./build/macosx/x86_64/release/crossdesk
             package_script: ./scripts/macosx/pkg_x64.sh
