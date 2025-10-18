@@ -7,18 +7,24 @@
 #ifndef _CONFIG_CENTER_H_
 #define _CONFIG_CENTER_H_
 
+#include <string>
+
+#include "SimpleIni.h"
+
 class ConfigCenter {
  public:
   enum class LANGUAGE { CHINESE = 0, ENGLISH = 1 };
   enum class VIDEO_QUALITY { LOW = 0, MEDIUM = 1, HIGH = 2 };
   enum class VIDEO_FRAME_RATE { FPS_30 = 0, FPS_60 = 1 };
-  enum class VIDEO_ENCODE_FORMAT { AV1 = 0, H264 = 1 };
+  enum class VIDEO_ENCODE_FORMAT { H264 = 0, AV1 = 1 };
 
  public:
-  ConfigCenter();
+  explicit ConfigCenter(
+      const std::string& config_path = "config.ini",
+      const std::string& cert_file_path = "crossdesk.cn_root.crt");
   ~ConfigCenter();
 
- public:
+  // write config
   int SetLanguage(LANGUAGE language);
   int SetVideoQuality(VIDEO_QUALITY video_quality);
   int SetVideoFrameRate(VIDEO_FRAME_RATE video_frame_rate);
@@ -26,25 +32,50 @@ class ConfigCenter {
   int SetHardwareVideoCodec(bool hardware_video_codec);
   int SetTurn(bool enable_turn);
   int SetSrtp(bool enable_srtp);
+  int SetServerHost(const std::string& server_host);
+  int SetServerPort(int server_port);
+  int SetCertFilePath(const std::string& cert_file_path);
+  int SetSelfHosted(bool enable_self_hosted);
 
- public:
-  LANGUAGE GetLanguage();
-  VIDEO_QUALITY GetVideoQuality();
-  int GetVideoFrameRate();
-  VIDEO_ENCODE_FORMAT GetVideoEncodeFormat();
-  bool IsHardwareVideoCodec();
-  bool IsEnableTurn();
-  bool IsEnableSrtp();
+  // read config
+
+  LANGUAGE GetLanguage() const;
+  VIDEO_QUALITY GetVideoQuality() const;
+  VIDEO_FRAME_RATE GetVideoFrameRate() const;
+  VIDEO_ENCODE_FORMAT GetVideoEncodeFormat() const;
+  bool IsHardwareVideoCodec() const;
+  bool IsEnableTurn() const;
+  bool IsEnableSrtp() const;
+  std::string GetServerHost() const;
+  int GetServerPort() const;
+  std::string GetCertFilePath() const;
+  std::string GetDefaultServerHost() const;
+  int GetDefaultServerPort() const;
+  std::string GetDefaultCertFilePath() const;
+  bool IsSelfHosted() const;
+
+  int Load();
+  int Save();
 
  private:
-  // Default value should be same with parameters in localization.h
+  std::string config_path_;
+  std::string cert_file_path_;
+  CSimpleIniA ini_;
+  const char* section_ = "Settings";
+
   LANGUAGE language_ = LANGUAGE::CHINESE;
   VIDEO_QUALITY video_quality_ = VIDEO_QUALITY::MEDIUM;
   VIDEO_FRAME_RATE video_frame_rate_ = VIDEO_FRAME_RATE::FPS_30;
-  VIDEO_ENCODE_FORMAT video_encode_format_ = VIDEO_ENCODE_FORMAT::AV1;
+  VIDEO_ENCODE_FORMAT video_encode_format_ = VIDEO_ENCODE_FORMAT::H264;
   bool hardware_video_codec_ = false;
   bool enable_turn_ = false;
   bool enable_srtp_ = false;
+  std::string server_host_ = "api.crossdesk.cn";
+  int server_port_ = 9099;
+  std::string server_host_default_ = "api.crossdesk.cn";
+  int server_port_default_ = 9099;
+  std::string cert_file_path_default_ = "";
+  bool enable_self_hosted_ = false;
 };
 
 #endif

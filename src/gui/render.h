@@ -263,7 +263,7 @@ class Render {
  private:
   CDCache cd_cache_;
   std::mutex cd_cache_mutex_;
-  ConfigCenter config_center_;
+  std::unique_ptr<ConfigCenter> config_center_;
   ConfigCenter::LANGUAGE localization_language_ =
       ConfigCenter::LANGUAGE::CHINESE;
   std::unique_ptr<PathManager> path_manager_;
@@ -357,9 +357,6 @@ class Render {
   SDL_Event last_mouse_event;
   SDL_AudioStream* output_stream_;
   uint32_t STREAM_REFRESH_EVENT = 0;
-  char self_hosted_server_host_[256] = "";
-  char self_hosted_server_port_[6] = "";
-  char self_hosted_server_cert_path_[256] = "";
 
   // stream window render
   SDL_Window* stream_window_ = nullptr;
@@ -437,6 +434,9 @@ class Render {
   bool enable_hardware_video_codec_ = false;
   bool enable_turn_ = false;
   bool enable_srtp_ = false;
+  char signal_server_ip_[256] = "api.crossdesk.cn";
+  char signal_server_port_[6] = "9099";
+  char cert_file_path_[256] = "";
   bool enable_self_hosted_server_ = false;
   int language_button_value_last_ = 0;
   int video_quality_button_value_last_ = 0;
@@ -444,6 +444,8 @@ class Render {
   bool enable_hardware_video_codec_last_ = false;
   bool enable_turn_last_ = false;
   bool enable_srtp_last_ = false;
+  char signal_server_ip_tmp_[256] = "api.crossdesk.cn";
+  char signal_server_port_tmp_[6] = "9099";
   bool settings_window_pos_reset_ = true;
   bool self_hosted_server_config_window_pos_reset_ = true;
   std::string selected_current_file_path_ = "";

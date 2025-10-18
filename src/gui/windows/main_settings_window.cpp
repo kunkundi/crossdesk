@@ -1,4 +1,4 @@
-#include "layout_style.h"
+#include "layout.h"
 #include "localization.h"
 #include "rd_log.h"
 #include "render.h"
@@ -108,7 +108,7 @@ int Render::SettingWindow() {
       ImGui::Separator();
 
       {
-        const char* video_frame_rate_items[] = {"30", "60"};
+        const char* video_frame_rate_items[] = {"30 fps", "60 fps"};
 
         settings_items_offset += settings_items_padding;
         ImGui::SetCursorPosY(settings_items_offset + 2);
@@ -133,8 +133,8 @@ int Render::SettingWindow() {
 
       {
         const char* video_encode_format_items[] = {
-            localization::av1[localization_language_index_].c_str(),
-            localization::h264[localization_language_index_].c_str()};
+            localization::h264[localization_language_index_].c_str(),
+            localization::av1[localization_language_index_].c_str()};
 
         settings_items_offset += settings_items_padding;
         ImGui::SetCursorPosY(settings_items_offset + 2);
@@ -255,9 +255,9 @@ int Render::SettingWindow() {
 
         // Language
         if (language_button_value_ == 0) {
-          config_center_.SetLanguage(ConfigCenter::LANGUAGE::CHINESE);
+          config_center_->SetLanguage(ConfigCenter::LANGUAGE::CHINESE);
         } else {
-          config_center_.SetLanguage(ConfigCenter::LANGUAGE::ENGLISH);
+          config_center_->SetLanguage(ConfigCenter::LANGUAGE::ENGLISH);
         }
         language_button_value_last_ = language_button_value_;
         localization_language_ = (ConfigCenter::LANGUAGE)language_button_value_;
@@ -267,50 +267,55 @@ int Render::SettingWindow() {
 
         // Video quality
         if (video_quality_button_value_ == 0) {
-          config_center_.SetVideoQuality(ConfigCenter::VIDEO_QUALITY::HIGH);
+          config_center_->SetVideoQuality(ConfigCenter::VIDEO_QUALITY::HIGH);
         } else if (video_quality_button_value_ == 1) {
-          config_center_.SetVideoQuality(ConfigCenter::VIDEO_QUALITY::MEDIUM);
+          config_center_->SetVideoQuality(ConfigCenter::VIDEO_QUALITY::MEDIUM);
         } else {
-          config_center_.SetVideoQuality(ConfigCenter::VIDEO_QUALITY::LOW);
+          config_center_->SetVideoQuality(ConfigCenter::VIDEO_QUALITY::LOW);
         }
         video_quality_button_value_last_ = video_quality_button_value_;
 
         // Video encode format
         if (video_encode_format_button_value_ == 0) {
-          config_center_.SetVideoEncodeFormat(
-              ConfigCenter::VIDEO_ENCODE_FORMAT::AV1);
-        } else if (video_encode_format_button_value_ == 1) {
-          config_center_.SetVideoEncodeFormat(
+          config_center_->SetVideoEncodeFormat(
               ConfigCenter::VIDEO_ENCODE_FORMAT::H264);
+        } else if (video_encode_format_button_value_ == 1) {
+          config_center_->SetVideoEncodeFormat(
+              ConfigCenter::VIDEO_ENCODE_FORMAT::AV1);
         }
         video_encode_format_button_value_last_ =
             video_encode_format_button_value_;
 
         // Hardware video codec
         if (enable_hardware_video_codec_) {
-          config_center_.SetHardwareVideoCodec(true);
+          config_center_->SetHardwareVideoCodec(true);
         } else {
-          config_center_.SetHardwareVideoCodec(false);
+          config_center_->SetHardwareVideoCodec(false);
         }
         enable_hardware_video_codec_last_ = enable_hardware_video_codec_;
 
         // TURN mode
         if (enable_turn_) {
-          config_center_.SetTurn(true);
+          config_center_->SetTurn(true);
         } else {
-          config_center_.SetTurn(false);
+          config_center_->SetTurn(false);
         }
         enable_turn_last_ = enable_turn_;
 
         // SRTP
         if (enable_srtp_) {
-          config_center_.SetSrtp(true);
+          config_center_->SetSrtp(true);
         } else {
-          config_center_.SetSrtp(false);
+          config_center_->SetSrtp(false);
         }
         enable_srtp_last_ = enable_srtp_;
 
-        SaveSettingsIntoCacheFile();
+        if (enable_self_hosted_server_) {
+          config_center_->SetSelfHosted(true);
+        } else {
+          config_center_->SetSelfHosted(false);
+        }
+
         settings_window_pos_reset_ = true;
 
         // Recreate peer instance

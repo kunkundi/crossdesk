@@ -5,7 +5,7 @@
 #include <windows.h>
 #endif
 
-#include "layout_style.h"
+#include "layout.h"
 #include "localization.h"
 #include "rd_log.h"
 #include "render.h"
@@ -157,8 +157,9 @@ int Render::SelfHostedServerWindow() {
         ImGui::SetCursorPosY(settings_items_offset);
         ImGui::SetNextItemWidth(SELF_HOSTED_SERVER_INPUT_WINDOW_WIDTH);
 
-        ImGui::InputText("##self_hosted_server_host_", self_hosted_server_host_,
-                         IM_ARRAYSIZE(self_hosted_server_host_));
+        ImGui::InputText("##signal_server_ip_tmp_", signal_server_ip_tmp_,
+                         IM_ARRAYSIZE(signal_server_ip_tmp_),
+                         ImGuiInputTextFlags_AlwaysOverwrite);
       }
 
       ImGui::Separator();
@@ -179,8 +180,8 @@ int Render::SelfHostedServerWindow() {
         ImGui::SetCursorPosY(settings_items_offset);
         ImGui::SetNextItemWidth(SELF_HOSTED_SERVER_INPUT_WINDOW_WIDTH);
 
-        ImGui::InputText("##self_hosted_server_port_", self_hosted_server_port_,
-                         IM_ARRAYSIZE(self_hosted_server_port_));
+        ImGui::InputText("##signal_server_port_tmp_", signal_server_port_tmp_,
+                         IM_ARRAYSIZE(signal_server_port_tmp_));
       }
 
       ImGui::Separator();
@@ -222,75 +223,20 @@ int Render::SelfHostedServerWindow() {
               localization::ok[localization_language_index_].c_str())) {
         show_self_hosted_server_config_window_ = false;
 
-        // Language
-        if (language_button_value_ == 0) {
-          config_center_.SetLanguage(ConfigCenter::LANGUAGE::CHINESE);
-        } else {
-          config_center_.SetLanguage(ConfigCenter::LANGUAGE::ENGLISH);
-        }
-        language_button_value_last_ = language_button_value_;
-        localization_language_ = (ConfigCenter::LANGUAGE)language_button_value_;
-        localization_language_index_ = language_button_value_;
-        LOG_INFO("Set localization language: {}",
-                 localization_language_index_ == 0 ? "zh" : "en");
+        config_center_->SetServerHost(signal_server_ip_tmp_);
+        config_center_->SetServerPort(atoi(signal_server_port_tmp_));
+        config_center_->SetCertFilePath(selected_file_);
+        strncpy(signal_server_ip_, signal_server_ip_tmp_,
+                sizeof(signal_server_ip_) - 1);
+        signal_server_ip_[sizeof(signal_server_ip_) - 1] = '\0';
+        strncpy(signal_server_port_, signal_server_port_tmp_,
+                sizeof(signal_server_port_) - 1);
+        signal_server_port_[sizeof(signal_server_port_) - 1] = '\0';
+        strncpy(cert_file_path_, selected_file_.c_str(),
+                sizeof(cert_file_path_) - 1);
+        cert_file_path_[sizeof(cert_file_path_) - 1] = '\0';
 
-        // Video quality
-        if (video_quality_button_value_ == 0) {
-          config_center_.SetVideoQuality(ConfigCenter::VIDEO_QUALITY::HIGH);
-        } else if (video_quality_button_value_ == 1) {
-          config_center_.SetVideoQuality(ConfigCenter::VIDEO_QUALITY::MEDIUM);
-        } else {
-          config_center_.SetVideoQuality(ConfigCenter::VIDEO_QUALITY::LOW);
-        }
-        video_quality_button_value_last_ = video_quality_button_value_;
-
-        // Video encode format
-        if (video_encode_format_button_value_ == 0) {
-          config_center_.SetVideoEncodeFormat(
-              ConfigCenter::VIDEO_ENCODE_FORMAT::AV1);
-        } else if (video_encode_format_button_value_ == 1) {
-          config_center_.SetVideoEncodeFormat(
-              ConfigCenter::VIDEO_ENCODE_FORMAT::H264);
-        }
-        video_encode_format_button_value_last_ =
-            video_encode_format_button_value_;
-
-        // Hardware video codec
-        if (enable_hardware_video_codec_) {
-          config_center_.SetHardwareVideoCodec(true);
-        } else {
-          config_center_.SetHardwareVideoCodec(false);
-        }
-        enable_hardware_video_codec_last_ = enable_hardware_video_codec_;
-
-        // TURN mode
-        if (enable_turn_) {
-          config_center_.SetTurn(true);
-        } else {
-          config_center_.SetTurn(false);
-        }
-        enable_turn_last_ = enable_turn_;
-
-        // SRTP
-        if (enable_srtp_) {
-          config_center_.SetSrtp(true);
-        } else {
-          config_center_.SetSrtp(false);
-        }
-        enable_srtp_last_ = enable_srtp_;
-
-        SaveSettingsIntoCacheFile();
         self_hosted_server_config_window_pos_reset_ = true;
-
-        // Recreate peer instance
-        LoadSettingsFromCacheFile();
-
-        // Recreate peer instance
-        if (!stream_window_inited_) {
-          LOG_INFO("Recreate peer instance");
-          CleanupPeers();
-          CreateConnectionPeer();
-        }
       }
 
       ImGui::SameLine();
@@ -298,30 +244,19 @@ int Render::SelfHostedServerWindow() {
       if (ImGui::Button(
               localization::cancel[localization_language_index_].c_str())) {
         show_self_hosted_server_config_window_ = false;
-        if (language_button_value_ != language_button_value_last_) {
-          language_button_value_ = language_button_value_last_;
-        }
-
-        if (video_quality_button_value_ != video_quality_button_value_last_) {
-          video_quality_button_value_ = video_quality_button_value_last_;
-        }
-
-        if (video_encode_format_button_value_ !=
-            video_encode_format_button_value_last_) {
-          video_encode_format_button_value_ =
-              video_encode_format_button_value_last_;
-        }
-
-        if (enable_hardware_video_codec_ != enable_hardware_video_codec_last_) {
-          enable_hardware_video_codec_ = enable_hardware_video_codec_last_;
-        }
-
-        if (enable_turn_ != enable_turn_last_) {
-          enable_turn_ = enable_turn_last_;
-        }
-
         self_hosted_server_config_window_pos_reset_ = true;
+
+        strncpy(signal_server_ip_tmp_, signal_server_ip_,
+                sizeof(signal_server_ip_tmp_) - 1);
+        signal_server_ip_tmp_[sizeof(signal_server_ip_tmp_) - 1] = '\0';
+        strncpy(signal_server_port_tmp_, signal_server_port_,
+                sizeof(signal_server_port_tmp_) - 1);
+        signal_server_port_tmp_[sizeof(signal_server_port_tmp_) - 1] = '\0';
+        config_center_->SetServerHost(signal_server_ip_tmp_);
+        config_center_->SetServerPort(atoi(signal_server_port_tmp_));
+        selected_file_.clear();
       }
+
       ImGui::SetWindowFontScale(1.0f);
       ImGui::SetWindowFontScale(0.5f);
       ImGui::End();

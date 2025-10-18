@@ -120,26 +120,38 @@ target("device_controller")
          "src/device_controller/keyboard/linux", {public = true})
     end
 
+target("thumbnail")
+    set_kind("object")
+    add_packages("libyuv", "openssl3")
+    add_deps("rd_log", "common")
+    add_files("src/thumbnail/*.cpp")
+    add_includedirs("src/thumbnail", {public = true})
+
 target("config_center")
     set_kind("object")
     add_deps("rd_log")
     add_files("src/config_center/*.cpp")
     add_includedirs("src/config_center", {public = true})
 
-target("localization")
+target("assets")
     set_kind("headeronly")
-    add_includedirs("src/localization", {public = true})
+    add_includedirs("src/gui/assets/localization", 
+        "src/gui/assets/fonts", 
+        "src/gui/assets/icons",
+        "src/gui/assets/layouts", {public = true})
 
-target("single_window")
+target("gui")
     set_kind("object")
-    add_packages("libyuv", "openssl3")
-    add_deps("rd_log", "common", "localization", "config_center", "minirtc", 
-        "path_manager", "screen_capturer", "speaker_capturer", "device_controller")
-    add_files("src/single_window/*.cpp")
-    add_includedirs("src/single_window", {public = true})
-    add_includedirs("fonts", {public = true})
+    add_packages("libyuv")
+    add_deps("rd_log", "common", "assets", "config_center", "minirtc", 
+        "path_manager", "screen_capturer", "speaker_capturer", 
+        "device_controller", "thumbnail")
+    add_files("src/gui/*.cpp", "src/gui/panels/*.cpp", "src/gui/toolbars/*.cpp", 
+        "src/gui/windows/*.cpp")
+    add_includedirs("src/gui", "src/gui/panels", "src/gui/toolbars", 
+        "src/gui/windows", {public = true})
 
 target("crossdesk")
     set_kind("binary")
-    add_deps("rd_log", "common", "single_window")
-    add_files("src/gui/main.cpp")
+    add_deps("rd_log", "common", "gui")
+    add_files("src/app/main.cpp")

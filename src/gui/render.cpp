@@ -11,7 +11,7 @@
 #include "device_controller_factory.h"
 #include "fa_regular_400.h"
 #include "fa_solid_900.h"
-#include "layout_style.h"
+#include "layout.h"
 #include "localization.h"
 #include "platform.h"
 #include "rd_log.h"
@@ -171,7 +171,8 @@ Render::~Render() {}
 
 int Render::SaveSettingsIntoCacheFile() {
   cd_cache_mutex_.lock();
-  std::ofstream cd_cache_file(cache_path_ + "/cache.cd", std::ios::binary);
+  std::ofstream cd_cache_file(cache_path_ + "/secure_cache.enc",
+                              std::ios::binary);
   if (!cd_cache_file) {
     cd_cache_mutex_.unlock();
     return -1;
@@ -181,18 +182,6 @@ int Render::SaveSettingsIntoCacheFile() {
          sizeof(cd_cache_.client_id_with_password));
   memcpy(cd_cache_.client_id_with_password, client_id_with_password_,
          sizeof(client_id_with_password_));
-  memcpy(&cd_cache_.language, &language_button_value_,
-         sizeof(language_button_value_));
-  memcpy(&cd_cache_.video_quality, &video_quality_button_value_,
-         sizeof(video_quality_button_value_));
-  memcpy(&cd_cache_.video_frame_rate, &video_frame_rate_button_value_,
-         sizeof(video_frame_rate_button_value_));
-  memcpy(&cd_cache_.video_encode_format, &video_encode_format_button_value_,
-         sizeof(video_encode_format_button_value_));
-  memcpy(&cd_cache_.enable_hardware_video_codec, &enable_hardware_video_codec_,
-         sizeof(enable_hardware_video_codec_));
-  memcpy(&cd_cache_.enable_turn, &enable_turn_, sizeof(enable_turn_));
-  memcpy(&cd_cache_.enable_srtp, &enable_srtp_, sizeof(enable_srtp_));
   memcpy(&cd_cache_.key, &aes128_key_, sizeof(aes128_key_));
   memcpy(&cd_cache_.iv, &aes128_iv_, sizeof(aes128_iv_));
 
@@ -200,49 +189,19 @@ int Render::SaveSettingsIntoCacheFile() {
   cd_cache_file.close();
   cd_cache_mutex_.unlock();
 
-  config_center_.SetLanguage((ConfigCenter::LANGUAGE)language_button_value_);
-  config_center_.SetVideoQuality(
-      (ConfigCenter::VIDEO_QUALITY)video_quality_button_value_);
-  config_center_.SetVideoFrameRate(
-      (ConfigCenter::VIDEO_FRAME_RATE)video_frame_rate_button_value_);
-  config_center_.SetVideoEncodeFormat(
-      (ConfigCenter::VIDEO_ENCODE_FORMAT)video_encode_format_button_value_);
-  config_center_.SetHardwareVideoCodec(enable_hardware_video_codec_);
-  config_center_.SetTurn(enable_turn_);
-  config_center_.SetSrtp(enable_srtp_);
-
-  LOG_INFO("Save settings into cache file success");
-
   return 0;
 }
 
 int Render::LoadSettingsFromCacheFile() {
   cd_cache_mutex_.lock();
-  std::ifstream cd_cache_file(cache_path_ + "/cache.cd", std::ios::binary);
+  std::ifstream cd_cache_file(cache_path_ + "/secure_cache.enc",
+                              std::ios::binary);
   if (!cd_cache_file) {
     cd_cache_mutex_.unlock();
 
-    LOG_INFO("Init cache file by using default settings");
     memset(password_saved_, 0, sizeof(password_saved_));
     memset(aes128_key_, 0, sizeof(aes128_key_));
     memset(aes128_iv_, 0, sizeof(aes128_iv_));
-    language_button_value_ = 0;
-    video_quality_button_value_ = 0;
-    video_encode_format_button_value_ = 1;
-    enable_hardware_video_codec_ = false;
-    enable_turn_ = false;
-    enable_srtp_ = false;
-
-    config_center_.SetLanguage((ConfigCenter::LANGUAGE)language_button_value_);
-    config_center_.SetVideoQuality(
-        (ConfigCenter::VIDEO_QUALITY)video_quality_button_value_);
-    config_center_.SetVideoFrameRate(
-        (ConfigCenter::VIDEO_FRAME_RATE)video_frame_rate_button_value_);
-    config_center_.SetVideoEncodeFormat(
-        (ConfigCenter::VIDEO_ENCODE_FORMAT)video_encode_format_button_value_);
-    config_center_.SetHardwareVideoCodec(enable_hardware_video_codec_);
-    config_center_.SetTurn(enable_turn_);
-    config_center_.SetSrtp(enable_srtp_);
 
     thumbnail_.reset();
     thumbnail_ = std::make_unique<Thumbnail>(cache_path_ + "/thumbnails/");
@@ -289,13 +248,14 @@ int Render::LoadSettingsFromCacheFile() {
   thumbnail_ = std::make_unique<Thumbnail>(cache_path_ + "/thumbnails/",
                                            aes128_key_, aes128_iv_);
 
-  language_button_value_ = cd_cache_.language;
-  video_quality_button_value_ = cd_cache_.video_quality;
-  video_frame_rate_button_value_ = cd_cache_.video_frame_rate;
-  video_encode_format_button_value_ = cd_cache_.video_encode_format;
-  enable_hardware_video_codec_ = cd_cache_.enable_hardware_video_codec;
-  enable_turn_ = cd_cache_.enable_turn;
-  enable_srtp_ = cd_cache_.enable_srtp;
+  language_button_value_ = (int)config_center_->GetLanguage();
+  video_quality_button_value_ = (int)config_center_->GetVideoQuality();
+  video_frame_rate_button_value_ = (int)config_center_->GetVideoFrameRate();
+  video_encode_format_button_value_ =
+      (int)config_center_->GetVideoEncodeFormat();
+  enable_hardware_video_codec_ = config_center_->IsHardwareVideoCodec();
+  enable_turn_ = config_center_->IsEnableTurn();
+  enable_srtp_ = config_center_->IsEnableSrtp();
 
   language_button_value_last_ = language_button_value_;
   video_quality_button_value_last_ = video_quality_button_value_;
@@ -303,17 +263,6 @@ int Render::LoadSettingsFromCacheFile() {
   enable_hardware_video_codec_last_ = enable_hardware_video_codec_;
   enable_turn_last_ = enable_turn_;
   enable_srtp_last_ = enable_srtp_;
-
-  config_center_.SetLanguage((ConfigCenter::LANGUAGE)language_button_value_);
-  config_center_.SetVideoQuality(
-      (ConfigCenter::VIDEO_QUALITY)video_quality_button_value_);
-  config_center_.SetVideoFrameRate(
-      (ConfigCenter::VIDEO_FRAME_RATE)video_frame_rate_button_value_);
-  config_center_.SetVideoEncodeFormat(
-      (ConfigCenter::VIDEO_ENCODE_FORMAT)video_encode_format_button_value_);
-  config_center_.SetHardwareVideoCodec(enable_hardware_video_codec_);
-  config_center_.SetTurn(enable_turn_);
-  config_center_.SetSrtp(enable_srtp_);
 
   LOG_INFO("Load settings from cache file");
 
@@ -328,18 +277,21 @@ int Render::ScreenCapturerInit() {
   last_frame_time_ = std::chrono::duration_cast<std::chrono::milliseconds>(
                          std::chrono::steady_clock::now().time_since_epoch())
                          .count();
-  int fps = config_center_.GetVideoFrameRate();
+  int fps = config_center_->GetVideoFrameRate() ==
+                    ConfigCenter::VIDEO_FRAME_RATE::FPS_30
+                ? 30
+                : 60;
   LOG_INFO("Init screen capturer with {} fps", fps);
 
   int screen_capturer_init_ret = screen_capturer_->Init(
       fps,
-      [this](unsigned char* data, int size, int width, int height,
-             const char* display_name) -> void {
+      [this, fps](unsigned char* data, int size, int width, int height,
+                  const char* display_name) -> void {
         auto now_time = std::chrono::duration_cast<std::chrono::milliseconds>(
                             std::chrono::steady_clock::now().time_since_epoch())
                             .count();
         auto duration = now_time - last_frame_time_;
-        if (duration * config_center_.GetVideoFrameRate() >= 1000) {  // ~60 FPS
+        if (duration * fps >= 1000) {  // ~60 FPS
           XVideoFrame frame;
           frame.data = (const char*)data;
           frame.size = size;
@@ -474,25 +426,53 @@ int Render::StopKeyboardCapturer() {
 
 int Render::CreateConnectionPeer() {
   params_.use_cfg_file = false;
-  params_.signal_server_ip = "api.crossdesk.cn";
-  params_.signal_server_port = 9099;
-  params_.stun_server_ip = "150.158.81.30";
+
+  std::string server_ip;
+  int server_port;
+  std::string server_cert_path;
+
+  if (config_center_->IsSelfHosted()) {
+    server_ip = config_center_->GetServerHost();
+    server_port = config_center_->GetServerPort();
+    server_cert_path = config_center_->GetCertFilePath();
+  } else {
+    server_ip = config_center_->GetDefaultServerHost();
+    server_port = config_center_->GetDefaultServerPort();
+    server_cert_path = config_center_->GetDefaultCertFilePath();
+  }
+
+  strncpy((char*)params_.signal_server_ip, server_ip.c_str(),
+          sizeof(params_.signal_server_ip) - 1);
+  params_.signal_server_ip[sizeof(params_.signal_server_ip) - 1] = '\0';
+  params_.signal_server_port = server_port;
+  strncpy((char*)params_.stun_server_ip, server_ip.c_str(),
+          sizeof(params_.stun_server_ip) - 1);
+  params_.stun_server_ip[sizeof(params_.stun_server_ip) - 1] = '\0';
   params_.stun_server_port = 3478;
-  params_.turn_server_ip = "150.158.81.30";
+  strncpy((char*)params_.turn_server_ip, server_ip.c_str(),
+          sizeof(params_.turn_server_ip) - 1);
+  params_.turn_server_ip[sizeof(params_.turn_server_ip) - 1] = '\0';
   params_.turn_server_port = 3478;
-  params_.turn_server_username = "dijunkun";
-  params_.turn_server_password = "dijunkunpw";
-  params_.tls_cert_path = std::filesystem::exists(cert_path_)
-                              ? cert_path_.c_str()
-                              : "certs/crossdesk.cn_root.crt";
-  params_.log_path = dll_log_path_.c_str();
-  params_.hardware_acceleration = config_center_.IsHardwareVideoCodec();
-  params_.av1_encoding = config_center_.GetVideoEncodeFormat() ==
+  strncpy((char*)params_.turn_server_username, "dijunkun",
+          sizeof(params_.turn_server_username) - 1);
+  params_.turn_server_username[sizeof(params_.turn_server_username) - 1] = '\0';
+  strncpy((char*)params_.turn_server_password, "dijunkunpw",
+          sizeof(params_.turn_server_password) - 1);
+  params_.turn_server_password[sizeof(params_.turn_server_password) - 1] = '\0';
+  strncpy(params_.tls_cert_path, server_cert_path.c_str(),
+          sizeof(params_.tls_cert_path) - 1);
+  params_.tls_cert_path[sizeof(params_.tls_cert_path) - 1] = '\0';
+
+  strncpy(params_.log_path, dll_log_path_.c_str(),
+          sizeof(params_.log_path) - 1);
+  params_.log_path[sizeof(params_.log_path) - 1] = '\0';
+  params_.hardware_acceleration = config_center_->IsHardwareVideoCodec();
+  params_.av1_encoding = config_center_->GetVideoEncodeFormat() ==
                                  ConfigCenter::VIDEO_ENCODE_FORMAT::AV1
                              ? true
                              : false;
-  params_.enable_turn = config_center_.IsEnableTurn();
-  params_.enable_srtp = config_center_.IsEnableSrtp();
+  params_.enable_turn = config_center_->IsEnableTurn();
+  params_.enable_srtp = config_center_->IsEnableSrtp();
   params_.on_receive_video_buffer = nullptr;
   params_.on_receive_audio_buffer = OnReceiveAudioBufferCb;
   params_.on_receive_data_buffer = OnReceiveDataBufferCb;
@@ -890,6 +870,20 @@ int Render::Run() {
     exec_log_path_ = path_manager_->GetLogPath().string();
     dll_log_path_ = path_manager_->GetLogPath().string();
     cache_path_ = path_manager_->GetCachePath().string();
+    config_center_ =
+        std::make_unique<ConfigCenter>(cache_path_ + "/config.ini", cert_path_);
+    strncpy(signal_server_ip_tmp_, config_center_->GetServerHost().c_str(),
+            sizeof(signal_server_ip_tmp_) - 1);
+    signal_server_ip_tmp_[sizeof(signal_server_ip_tmp_) - 1] = '\0';
+    strncpy(signal_server_port_tmp_,
+            std::to_string(config_center_->GetServerPort()).c_str(),
+            sizeof(signal_server_port_tmp_) - 1);
+    signal_server_port_tmp_[sizeof(signal_server_port_tmp_) - 1] = '\0';
+    strncpy(cert_file_path_, cert_path_.c_str(), sizeof(cert_file_path_) - 1);
+    cert_file_path_[sizeof(cert_file_path_) - 1] = '\0';
+  } else {
+    std::cerr << "Failed to create PathManager" << std::endl;
+    return -1;
   }
 
   InitializeLogger();
