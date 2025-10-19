@@ -1,8 +1,5 @@
 # CrossDesk
 
-#### 跨界连接，高效如一
-
-----
 [English](README_EN.md) / [中文](README.md)
 
 ![sup_example](https://github.com/user-attachments/assets/eeb64fbe-1f07-4626-be1c-b77396beb905)
@@ -72,7 +69,7 @@ xmake r crossdesk
 #### 注意
 运行时如果客户端状态栏显示 **未连接服务器**，请先在 [CrossDesk 官方网站](https://www.crossdesk.cn/) 安装客户端，以便在环境中安装所需的证书文件。
 
-<img width="129" height="60" alt="image" src="https://github.com/user-attachments/assets/1812f7d6-516b-4b4f-8a3d-98bee505cc5a" />
+<img width="256" height="120" alt="image" src="https://github.com/user-attachments/assets/1812f7d6-516b-4b4f-8a3d-98bee505cc5a" />
 
 ## 关于 Xmake
 
@@ -239,25 +236,32 @@ chmod +x generate_certs.sh
 ```
 输出如下：
 ```
-生成根证书私钥...
-生成自签根证书...
-生成服务器私钥...
-生成服务器证书签名请求（CSR）...
-用根证书签发服务器证书...
+Generating root private key...
+Generating self-signed root certificate...
+Generating server private key...
+Generating server CSR...
+Signing server certificate with root certificate...
 Certificate request self-signature ok
-subject=C = CN, ST = Zhejiang, L = Hangzhou, O = CrossDesk, OU = CrossDesk, CN = CrossDesk
-清理中间文件...
-生成完成,部署时需要：
-  根证书: crossdesk.cn_root.crt
-  服务器私钥: crossdesk.cn.key
-  服务器证书: crossdesk.cn_bundle.crt
+subject=C = CN, ST = Zhejiang, L = Hangzhou, O = CrossDesk, OU = CrossDesk, CN = xxx.xxx.xxx.xxx
+cleaning up intermediate files...
+Generation complete. Deployment files::
+  Client root certificate:: crossdesk.cn_root.crt
+  Server private key: crossdesk.cn.key
+  Server certificate: crossdesk.cn_bundle.crt
 ```
 
 #### 服务端
 将 **crossdesk.cn.key** 和 **crossdesk.cn_bundle.crt** 放置到 **/path/to/your/certs** 目录下。
 
 #### 客户端
-1. 点击右上角设置进入设置页面。
-2. 点击点击**自托管服务器配置**。
-3. 在**证书文件路径**选择框中找到 **crossdesk.cn_root.crt** 的存放路径，选中 **crossdesk.cn_root.crt**。
-4. 勾选使用**自托管服务器配置**。
+1. 点击右上角设置进入设置页面。<br>
+<img width="600" height="210" alt="image" src="https://github.com/user-attachments/assets/6431131d-b32a-4726-8783-6788f47baa3b" /><br><br>
+
+3. 点击点击**自托管服务器配置**。<br><br>
+<img width="600" height="160" alt="image" src="https://github.com/user-attachments/assets/24c761a3-1985-4d7e-84be-787383c2afb8" /><br><br>
+
+5. 在**证书文件路径**选择框中找到 **crossdesk.cn_root.crt** 的存放路径，选中 **crossdesk.cn_root.crt**，点击确认。<br><br>
+<img width="600" height="220" alt="image" src="https://github.com/user-attachments/assets/4af7cd3a-c72e-44fb-b032-30e050019c2a" /><br><br>
+
+7. 勾选使用**自托管服务器配置**，点击确认配置生效。<br><br>
+<img width="600" height="160" alt="image" src="https://github.com/user-attachments/assets/1e455dc3-4087-4f37-a544-1ff9f8789383" /><br><br>

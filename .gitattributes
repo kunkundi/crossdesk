@@ -1,0 +1,3 @@
+*.h   linguist-language=C++
+*.cpp linguist-language=C++
+*.lua linguist-language=Xmake

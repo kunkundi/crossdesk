@@ -1,8 +1,5 @@
 # CrossDesk
 
-#### Bridging work, uniting efficiency
-
-----
 [中文](README.md) / [English](README_EN.md)
 
 ![sup_example](https://github.com/user-attachments/assets/3f17d8f3-7c4a-4b63-bae4-903363628687)
@@ -17,15 +14,15 @@ CrossDesk is an experimental application of [MiniRTC](https://github.com/kunkund
 
 Enter the remote desktop ID in the menu bar’s “Remote ID” field and click “→” to initiate a remote connection.
 
-![usage1](https://github.com/user-attachments/assets/bf39f8fa-de77-41a1-8db3-73d6cab9da6a)
+![usage1](https://github.com/user-attachments/assets/3a4bb59f-c84c-44d2-9a20-11790aac510e)
 
 If the remote desktop requires a connection password, you must enter the correct password on your side to successfully establish the connection.
 
-![password](https://github.com/user-attachments/assets/f6556966-a84f-4301-a79b-2726b389ed71)
+![password](https://github.com/user-attachments/assets/1beadcce-640d-4f5c-8e77-51917b5294d5)
 
 Before connecting, you can customize configuration options in the settings, such as language and video encoding format.
 
-![settings](https://github.com/user-attachments/assets/12f7e9c3-a472-40c1-8fb9-ae7d1ae3865c)
+![settings](https://github.com/user-attachments/assets/8bc5468d-7bbb-4e30-95bd-da1f352ac08c)
 
 ## How to build
 
@@ -73,7 +70,7 @@ xmake r crossdesk
 #### Notice
 If the client status bar shows **Disconnected** during runtime, please first install the client from the [CrossDesk official website](https://www.crossdesk.cn/) to ensure the required certificate files are available in the environment.
 
-<img width="108" height="57" alt="image" src="https://github.com/user-attachments/assets/26e8b9f3-b326-410e-9466-dd073eaf675a" />
+<img width="256" height="120" alt="image" src="https://github.com/user-attachments/assets/1812f7d6-516b-4b4f-8a3d-98bee505cc5a" />
 
 ## About Xmake
 #### Installing Xmake
@@ -261,7 +258,14 @@ Generation complete. Deployment files::
 Place **crossdesk.cn.key** and **crossdesk.cn_bundle.crt** into the **/path/to/your/certs** directory.
 
 #### Client Side
-1. Click the settings icon in the top-right corner to enter the settings page.  
-2. Click **Self-Hosted Server Configuration**.  
-3. In the **Certificate File Path** selection, locate and select the **crossdesk.cn_root.crt** file.  
-4. Check the option to use **Self-Hosted Server Configuration**.
+1. Click the settings icon in the top-right corner to enter the settings page.<br>
+<img width="600" height="210" alt="image" src="https://github.com/user-attachments/assets/6431131d-b32a-4726-8783-6788f47baa3b" /><br><br>
+
+2. Click **Self-Hosted Server Configuration**.<br><br>
+<img width="600" height="160" alt="image" src="https://github.com/user-attachments/assets/24c761a3-1985-4d7e-84be-787383c2afb8" /><br><br>
+
+3. In the **Certificate File Path** selection, locate and select the **crossdesk.cn_root.crt** file.<br><br>
+<img width="600" height="220" alt="image" src="https://github.com/user-attachments/assets/4af7cd3a-c72e-44fb-b032-30e050019c2a" /><br><br>
+
+4. Check the option to use **Self-Hosted Server Configuration**.<br><br>
+<img width="600" height="160" alt="image" src="https://github.com/user-attachments/assets/1e455dc3-4087-4f37-a544-1ff9f8789383" /><br><br>
