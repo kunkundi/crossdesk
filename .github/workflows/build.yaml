@@ -1,4 +1,4 @@
-name: Build and Release CrossDesk
+name: Build and Release
 
 on:
   push:
