@@ -12,7 +12,7 @@
 
 static std::vector<DisplayInfo> gs_display_list;
 
-std::string WideToUtf8(const wchar_t *wideStr) {
+std::string WideToUtf8(const wchar_t* wideStr) {
   int size_needed = WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, nullptr, 0,
                                         nullptr, nullptr);
   std::string result(size_needed, 0);
@@ -31,14 +31,14 @@ BOOL WINAPI EnumMonitorProc(HMONITOR hmonitor, [[maybe_unused]] HDC hdc,
     if (monitor_info_.dwFlags & MONITORINFOF_PRIMARY) {
       gs_display_list.insert(
           gs_display_list.begin(),
-          {(void *)hmonitor, WideToUtf8(monitor_info_.szDevice),
+          {(void*)hmonitor, WideToUtf8(monitor_info_.szDevice),
            (monitor_info_.dwFlags & MONITORINFOF_PRIMARY) ? true : false,
            monitor_info_.rcMonitor.left, monitor_info_.rcMonitor.top,
            monitor_info_.rcMonitor.right, monitor_info_.rcMonitor.bottom});
-      *(HMONITOR *)data = hmonitor;
+      *(HMONITOR*)data = hmonitor;
     } else {
       gs_display_list.push_back(DisplayInfo(
-          (void *)hmonitor, WideToUtf8(monitor_info_.szDevice),
+          (void*)hmonitor, WideToUtf8(monitor_info_.szDevice),
           (monitor_info_.dwFlags & MONITORINFOF_PRIMARY) ? true : false,
           monitor_info_.rcMonitor.left, monitor_info_.rcMonitor.top,
           monitor_info_.rcMonitor.right, monitor_info_.rcMonitor.bottom));
@@ -81,7 +81,7 @@ bool ScreenCapturerWgc::IsWgcSupported() {
     /* no contract for IGraphicsCaptureItemInterop, verify 10.0.18362.0 */
     return winrt::Windows::Foundation::Metadata::ApiInformation::
         IsApiContractPresent(L"Windows.Foundation.UniversalApiContract", 8);
-  } catch (const winrt::hresult_error &) {
+  } catch (const winrt::hresult_error&) {
     return false;
   } catch (...) {
     return false;
@@ -115,7 +115,7 @@ int ScreenCapturerWgc::Init(const int fps, cb_desktop_data cb) {
   }
 
   for (int i = 0; i < display_info_list_.size(); i++) {
-    const auto &display = display_info_list_[i];
+    const auto& display = display_info_list_[i];
     LOG_INFO(
         "index: {}, display name: {}, is primary: {}, bounds: ({}, {}) - "
         "({}, {})",
@@ -243,26 +243,28 @@ int ScreenCapturerWgc::SwitchTo(int monitor_index) {
   return 0;
 }
 
-void ScreenCapturerWgc::OnFrame(const WgcSession::wgc_session_frame &frame,
+void ScreenCapturerWgc::OnFrame(const WgcSession::wgc_session_frame& frame,
                                 int id) {
-  if (on_data_) {
-    if (!nv12_frame_) {
-      nv12_frame_ = new unsigned char[frame.width * frame.height * 3 / 2];
-    }
-
-    libyuv::ARGBToNV12((const uint8_t *)frame.data, frame.width * 4,
-                       (uint8_t *)nv12_frame_, frame.width,
-                       (uint8_t *)(nv12_frame_ + frame.width * frame.height),
-                       frame.width, frame.width, frame.height);
-
-    on_data_(nv12_frame_, frame.width * frame.height * 3 / 2, frame.width,
-             frame.height, display_info_list_[id].name.c_str());
+  if (!on_data_) {
+    return;
   }
+
+  if (!nv12_frame_) {
+    nv12_frame_ = new unsigned char[frame.width * frame.height * 3 / 2];
+  }
+
+  libyuv::ARGBToNV12((const uint8_t*)frame.data, frame.width * 4,
+                     (uint8_t*)nv12_frame_, frame.width,
+                     (uint8_t*)(nv12_frame_ + frame.width * frame.height),
+                     frame.width, frame.width, frame.height);
+
+  on_data_(nv12_frame_, frame.width * frame.height * 3 / 2, frame.width,
+           frame.height, display_info_list_[id].name.c_str());
 }
 
 void ScreenCapturerWgc::CleanUp() {
   if (inited_) {
-    for (auto &session : sessions_) {
+    for (auto& session : sessions_) {
       if (session.session_) {
         session.session_->Stop();
       }

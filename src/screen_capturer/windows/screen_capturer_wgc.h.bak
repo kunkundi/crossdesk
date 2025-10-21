@@ -43,8 +43,6 @@ class ScreenCapturerWgc : public ScreenCapturer,
   std::vector<DisplayInfo> display_info_list_;
   int monitor_index_ = 0;
 
-  HWND hwnd_ = nullptr;
-
  private:
   class WgcSessionInfo {
    public:
@@ -65,9 +63,6 @@ class ScreenCapturerWgc : public ScreenCapturer,
 
   unsigned char* nv12_frame_ = nullptr;
   unsigned char* nv12_frame_scaled_ = nullptr;
-
- private:
-  bool CreateHiddenWindow();
 };
 
 #endif
