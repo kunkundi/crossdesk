@@ -26,13 +26,17 @@ jobs:
               const lastUpdated = new Date(issue.updated_at).getTime();
               
               // if the issue hasn't been updated in the past week, close it
-              if (now - lastUpdated > inactivePeriod) {
-                console.log(`Closing inactive issue: ${issue.number}`);
+              if (now - lastUpdated > inactivePeriod && issue.labels.length === 0) {
+                console.log(`Closing inactive issue: ${issue.number} (No labels)`);
                 await github.rest.issues.update({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: issue.number,
                   state: 'closed',
                 });
+              } else if (issue.labels.length === 0) {
+                console.log(`Skipping issue ${issue.number} (No labels) as it has been recently updated.`);
+              } else {
+                console.log(`Skipping issue ${issue.number} (Has labels).`);
               }
             }
