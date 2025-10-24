@@ -453,10 +453,10 @@ int Render::CreateConnectionPeer() {
           sizeof(params_.turn_server_ip) - 1);
   params_.turn_server_ip[sizeof(params_.turn_server_ip) - 1] = '\0';
   params_.turn_server_port = 3478;
-  strncpy((char*)params_.turn_server_username, "dijunkun",
+  strncpy((char*)params_.turn_server_username, "crossdesk",
           sizeof(params_.turn_server_username) - 1);
   params_.turn_server_username[sizeof(params_.turn_server_username) - 1] = '\0';
-  strncpy((char*)params_.turn_server_password, "dijunkunpw",
+  strncpy((char*)params_.turn_server_password, "crossdeskpw",
           sizeof(params_.turn_server_password) - 1);
   params_.turn_server_password[sizeof(params_.turn_server_password) - 1] = '\0';
   strncpy(params_.tls_cert_path, server_cert_path.c_str(),
