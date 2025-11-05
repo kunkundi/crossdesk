@@ -76,22 +76,34 @@ std::filesystem::path PathManager::GetKnownFolder(REFKNOWNFOLDERID id) {
 #endif
 
 std::string PathManager::GetHome() {
-  if (const char* home = getenv("HOME")) {
-    return std::string(home);
-  }
 #ifdef _WIN32
   char path[MAX_PATH];
   if (SUCCEEDED(SHGetFolderPathA(NULL, CSIDL_PROFILE, NULL, 0, path)))
     return std::string(path);
+#else
+  if (const char* home = getenv("HOME")) {
+    return std::string(home);
+  }
 #endif
   return {};
 }
 
 std::filesystem::path PathManager::GetEnvOrDefault(const char* env_var,
                                                    const std::string& def) {
+#ifdef _WIN32
+  char* buffer = nullptr;
+  size_t size = 0;
+
+  if (_dupenv_s(&buffer, &size, env_var) == 0 && buffer != nullptr) {
+    std::filesystem::path result(buffer);
+    free(buffer);
+    return result;
+  }
+#else
   if (const char* val = getenv(env_var)) {
     return std::filesystem::path(val);
   }
+#endif
 
   return std::filesystem::path(def);
 }

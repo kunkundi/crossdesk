@@ -14,14 +14,22 @@ namespace crossdesk {
 
 static std::vector<DisplayInfo> gs_display_list;
 
-std::string WideToUtf8(const wchar_t* wideStr) {
-  int size_needed = WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, nullptr, 0,
-                                        nullptr, nullptr);
+std::string WideToUtf8(const std::wstring& wstr) {
+  if (wstr.empty()) return {};
+  int size_needed = WideCharToMultiByte(
+      CP_UTF8, 0, wstr.data(), (int)wstr.size(), nullptr, 0, nullptr, nullptr);
   std::string result(size_needed, 0);
-  WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, &result[0], size_needed, nullptr,
-                      nullptr);
-  result.pop_back();
+  WideCharToMultiByte(CP_UTF8, 0, wstr.data(), (int)wstr.size(), result.data(),
+                      size_needed, nullptr, nullptr);
   return result;
+}
+
+std::string CleanDisplayName(const std::wstring& wide_name) {
+  std::string name = WideToUtf8(wide_name);
+  name.erase(std::remove_if(name.begin(), name.end(),
+                            [](unsigned char c) { return !std::isalnum(c); }),
+             name.end());
+  return name;
 }
 
 BOOL WINAPI EnumMonitorProc(HMONITOR hmonitor, [[maybe_unused]] HDC hdc,
@@ -30,17 +38,18 @@ BOOL WINAPI EnumMonitorProc(HMONITOR hmonitor, [[maybe_unused]] HDC hdc,
   monitor_info_.cbSize = sizeof(MONITORINFOEX);
 
   if (GetMonitorInfo(hmonitor, &monitor_info_)) {
+    std::string display_name = CleanDisplayName(monitor_info_.szDevice);
     if (monitor_info_.dwFlags & MONITORINFOF_PRIMARY) {
       gs_display_list.insert(
           gs_display_list.begin(),
-          {(void*)hmonitor, WideToUtf8(monitor_info_.szDevice),
+          {(void*)hmonitor, display_name,
            (monitor_info_.dwFlags & MONITORINFOF_PRIMARY) ? true : false,
            monitor_info_.rcMonitor.left, monitor_info_.rcMonitor.top,
            monitor_info_.rcMonitor.right, monitor_info_.rcMonitor.bottom});
       *(HMONITOR*)data = hmonitor;
     } else {
       gs_display_list.push_back(DisplayInfo(
-          (void*)hmonitor, WideToUtf8(monitor_info_.szDevice),
+          (void*)hmonitor, display_name,
           (monitor_info_.dwFlags & MONITORINFOF_PRIMARY) ? true : false,
           monitor_info_.rcMonitor.left, monitor_info_.rcMonitor.top,
           monitor_info_.rcMonitor.right, monitor_info_.rcMonitor.bottom));

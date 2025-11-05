@@ -13,6 +13,7 @@ set_encodings("utf-8")
 
 -- set_policy("build.warning", true)
 -- set_warnings("all", "extra")
+-- add_cxxflags("/W4", "/WX")
 
 add_defines("UNICODE")
 if is_mode("debug") then

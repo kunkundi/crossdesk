@@ -118,13 +118,13 @@ void ScaleNv12ToABGR(char* src, int src_w, int src_h, int dst_w, int dst_h,
 
   memset(dst_rgba, 0, dst_w * dst_h * 4);
   for (int i = 0; i < dst_w * dst_h; ++i) {
-    dst_rgba[i * 4 + 3] = 0xFF;
+    dst_rgba[i * 4 + 3] = static_cast<char>(0xFF);
   }
 
-  for (int y = 0; y < fit_h; ++y) {
+  for (int row = 0; row < fit_h; ++row) {
     int dst_offset =
-        ((y + (dst_h - fit_h) / 2) * dst_w + (dst_w - fit_w) / 2) * 4;
-    memcpy(dst_rgba + dst_offset, abgr.data() + y * fit_w * 4, fit_w * 4);
+        ((row + (dst_h - fit_h) / 2) * dst_w + (dst_w - fit_w) / 2) * 4;
+    memcpy(dst_rgba + dst_offset, abgr.data() + row * fit_w * 4, fit_w * 4);
   }
 }
 
@@ -172,7 +172,7 @@ int Thumbnail::SaveToThumbnail(const char* yuv420p, int width, int height,
     memset(rgba_buffer_, 0x00, thumbnail_width_ * thumbnail_height_ * 4);
     for (int i = 0; i < thumbnail_width_ * thumbnail_height_; ++i) {
       // Set alpha channel to opaque
-      rgba_buffer_[i * 4 + 3] = 0xFF;
+      rgba_buffer_[i * 4 + 3] = static_cast<char>(0xFF);
     }
   }
 
@@ -214,7 +214,7 @@ int Thumbnail::LoadThumbnail(
     return -1;
   } else {
     for (int i = 0; i < image_paths.size(); i++) {
-      size_t pos1 = image_paths[i].string().find('/') + 1;
+      // size_t pos1 = image_paths[i].string().find('/') + 1;
       std::string cipher_image_name = image_paths[i].filename().string();
       std::string remote_id;
       std::string cipher_password;
@@ -241,7 +241,7 @@ int Thumbnail::LoadThumbnail(
             AES_decrypt(cipher_password, aes128_key_, aes128_iv_);
       } else {
         size_t pos_n = cipher_image_name.find('N');
-        size_t pos_at = cipher_image_name.find('@');
+        // size_t pos_at = cipher_image_name.find('@');
 
         if (pos_n == std::string::npos) {
           LOG_ERROR("Invalid filename");
