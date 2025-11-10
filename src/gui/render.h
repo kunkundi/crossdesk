@@ -438,7 +438,7 @@ class Render {
   char password_saved_[7] = "";
   int language_button_value_ = 0;
   int video_quality_button_value_ = 0;
-  int video_frame_rate_button_value_ = 0;
+  int video_frame_rate_button_value_ = 1;
   int video_encode_format_button_value_ = 0;
   bool enable_hardware_video_codec_ = false;
   bool enable_turn_ = false;
