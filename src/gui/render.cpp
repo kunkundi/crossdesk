@@ -1191,6 +1191,10 @@ void Render::CleanupPeers() {
     LOG_INFO("[{}] Leave connection [{}]", client_id_, client_id_);
     LeaveConnection(peer_, client_id_);
     is_client_mode_ = false;
+    StopScreenCapturer();
+    StopSpeakerCapturer();
+    StopMouseController();
+    StopKeyboardCapturer();
     LOG_INFO("Destroy peer [{}]", client_id_);
     DestroyPeer(&peer_);
   }
