@@ -72,7 +72,7 @@ class ConfigCenter {
 
   LANGUAGE language_ = LANGUAGE::CHINESE;
   VIDEO_QUALITY video_quality_ = VIDEO_QUALITY::MEDIUM;
-  VIDEO_FRAME_RATE video_frame_rate_ = VIDEO_FRAME_RATE::FPS_30;
+  VIDEO_FRAME_RATE video_frame_rate_ = VIDEO_FRAME_RATE::FPS_60;
   VIDEO_ENCODE_FORMAT video_encode_format_ = VIDEO_ENCODE_FORMAT::H264;
   bool hardware_video_codec_ = false;
   bool enable_turn_ = false;
