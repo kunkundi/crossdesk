@@ -28,8 +28,7 @@ int Render::SendKeyCommand(int key_code, bool is_down) {
         client_properties_.end()) {
       auto props = client_properties_[controlled_remote_id_];
       if (props->connection_status_ == ConnectionStatus::Connected) {
-        json j = remote_action.to_json();
-        std::string msg = j.dump();
+        std::string msg = remote_action.to_json();
         SendDataFrame(props->peer_, msg.c_str(), msg.size(),
                       props->data_label_.c_str());
       }
@@ -97,8 +96,7 @@ int Render::ProcessMouseEvent(const SDL_Event& event) {
         remote_action.m.flag = MouseFlag::move;
       }
 
-      json j = remote_action.to_json();
-      std::string msg = j.dump();
+      std::string msg = remote_action.to_json();
       SendDataFrame(props->peer_, msg.c_str(), msg.size(),
                     props->data_label_.c_str());
     } else if (SDL_EVENT_MOUSE_WHEEL == event.type &&
@@ -132,8 +130,7 @@ int Render::ProcessMouseEvent(const SDL_Event& event) {
           (float)(event.button.y - props->stream_render_rect_.y) /
           render_height;
 
-      json j = remote_action.to_json();
-      std::string msg = j.dump();
+      std::string msg = remote_action.to_json();
       SendDataFrame(props->peer_, msg.c_str(), msg.size(),
                     props->data_label_.c_str());
     }
@@ -321,9 +318,9 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
       render->mouse_controller_->SendMouseCommand(remote_action,
                                                   render->selected_display_);
     } else if (remote_action.type == ControlType::audio_capture) {
-      if (remote_action.a)
+      if (remote_action.a && !render->start_speaker_capturer_)
         render->StartSpeakerCapturer();
-      else
+      else if (!remote_action.a && render->start_speaker_capturer_)
         render->StopSpeakerCapturer();
     } else if (remote_action.type == ControlType::keyboard &&
                render->keyboard_capturer_) {
@@ -422,6 +419,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
       case ConnectionStatus::Closed:
         render->password_validating_time_ = 0;
         render->start_screen_capturer_ = false;
+        render->start_speaker_capturer_ = false;
         render->start_mouse_controller_ = false;
         render->start_keyboard_capturer_ = false;
         render->control_mouse_ = false;
@@ -462,10 +460,12 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
       case ConnectionStatus::Connected:
         render->need_to_send_host_info_ = true;
         render->start_screen_capturer_ = true;
+        render->start_speaker_capturer_ = true;
         render->start_mouse_controller_ = true;
         break;
       case ConnectionStatus::Closed:
         render->start_screen_capturer_ = false;
+        render->start_speaker_capturer_ = false;
         render->start_mouse_controller_ = false;
         render->start_keyboard_capturer_ = false;
         render->need_to_send_host_info_ = false;

@@ -566,6 +566,14 @@ void Render::UpdateInteractions() {
     screen_capturer_is_started_ = false;
   }
 
+  if (start_speaker_capturer_ && !speaker_capturer_is_started_) {
+    StartSpeakerCapturer();
+    speaker_capturer_is_started_ = true;
+  } else if (!start_speaker_capturer_ && speaker_capturer_is_started_) {
+    StopSpeakerCapturer();
+    speaker_capturer_is_started_ = false;
+  }
+
   if (start_mouse_controller_ && !mouse_controller_is_started_) {
     StartMouseController();
     mouse_controller_is_started_ = true;
@@ -1055,9 +1063,9 @@ void Render::MainLoop() {
       remote_action.i.host_name[host_name.size()] = '\0';
       remote_action.i.host_name_size = host_name.size();
 
-      std::vector<char> serialized = SerializeRemoteAction(remote_action);
-      int ret = SendDataFrame(peer_, serialized.data(), serialized.size(),
-                              data_label_.c_str());
+      std::string msg = remote_action.to_json();
+      int ret =
+          SendDataFrame(peer_, msg.data(), msg.size(), data_label_.c_str());
       FreeRemoteAction(remote_action);
       if (0 == ret) {
         need_to_send_host_info_ = false;

@@ -68,8 +68,9 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
           remote_action.type = ControlType::display_id;
           remote_action.d = i;
           if (props->connection_status_ == ConnectionStatus::Connected) {
-            SendDataFrame(props->peer_, (const char*)&remote_action,
-                          sizeof(remote_action), props->data_label_.c_str());
+            std::string msg = remote_action.to_json();
+            SendDataFrame(props->peer_, msg.c_str(), msg.size(),
+                          props->data_label_.c_str());
           }
         }
         props->display_selectable_hovered_ = ImGui::IsWindowHovered();
@@ -142,8 +143,9 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
         RemoteAction remote_action;
         remote_action.type = ControlType::audio_capture;
         remote_action.a = props->audio_capture_button_pressed_;
-        SendDataFrame(props->peer_, (const char*)&remote_action,
-                      sizeof(remote_action), props->data_label_.c_str());
+        std::string msg = remote_action.to_json();
+        SendDataFrame(props->peer_, msg.c_str(), msg.size(),
+                      props->data_label_.c_str());
       }
     }
     if (!props->audio_capture_button_pressed_) {

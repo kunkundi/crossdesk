@@ -51,7 +51,7 @@ class Render {
     bool net_traffic_stats_button_pressed_ = false;
     bool mouse_control_button_pressed_ = false;
     bool mouse_controller_is_started_ = false;
-    bool audio_capture_button_pressed_ = false;
+    bool audio_capture_button_pressed_ = true;
     bool control_mouse_ = false;
     bool streaming_ = false;
     bool is_control_bar_in_left_ = true;
@@ -311,6 +311,8 @@ class Render {
   bool mouse_controller_is_started_ = false;
   bool start_screen_capturer_ = false;
   bool screen_capturer_is_started_ = false;
+  bool start_speaker_capturer_ = false;
+  bool speaker_capturer_is_started_ = false;
   bool start_keyboard_capturer_ = false;
   bool keyboard_capturer_is_started_ = false;
   bool foucs_on_main_window_ = false;
