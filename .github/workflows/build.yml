@@ -385,3 +385,19 @@ jobs:
           remote_host: ${{ secrets.SERVER_HOST }}
           remote_user: ${{ secrets.SERVER_USER }}
           remote_key: ${{ secrets.SERVER_KEY }}
+
+      - name: Generate version.json
+        run: | 
+          echo "{" > version.json
+          echo " \"latest_version\": \"${{ steps.version.outputs.VERSION_NUM }}\"" >> version.json
+          echo "}" >> version.json cat version.json
+
+      - name: Upload version.json to server 
+        uses: burnett01/rsync-deployments@5.2
+        with: 
+          switches: -avzr --delete
+          path: version.json 
+          remote_path: /var/www/html/version/ 
+          remote_host: ${{ secrets.SERVER_HOST }} 
+          remote_user: ${{ secrets.SERVER_USER }} 
+          remote_key: ${{ secrets.SERVER_KEY }}
