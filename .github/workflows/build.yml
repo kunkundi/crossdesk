@@ -292,7 +292,7 @@ jobs:
         run: |
           xmake f --CROSSDESK_VERSION=${{ env.VERSION_NUM }} -y
           xmake b -vy crossdesk
- 
+
       - name: Decode and save certificate
         shell: powershell
         run: |
@@ -385,3 +385,19 @@ jobs:
           remote_host: ${{ secrets.SERVER_HOST }}
           remote_user: ${{ secrets.SERVER_USER }}
           remote_key: ${{ secrets.SERVER_KEY }}
+
+      - name: Generate version.json
+        run: |
+          echo "{" > version.json
+          echo "  \"latest_version\": \"${{ steps.version.outputs.VERSION_NUM }}\"" >> version.json
+          echo "}" >> version.json
+          cat version.json
+
+      - name: Upload version.json to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_KEY }}
+          source: "version.json"
+          target: "/var/www/html/version.crossdesk.cn/"
