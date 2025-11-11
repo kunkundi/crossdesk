@@ -70,7 +70,7 @@ int Render::AboutWindow() {
                        ": CrossDesk v" + version;
     ImGui::Text("%s", text.c_str());
 
-    if (!latest_version_.empty()) {
+    if (update_available_) {
       std::string latest_version =
           localization::new_version_available[localization_language_index_] +
           ": " + latest_version_;

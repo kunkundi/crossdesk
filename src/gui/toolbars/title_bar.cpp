@@ -45,7 +45,7 @@ int Render::TitleBar(bool main_window) {
 
         std::string about_str =
             localization::about[localization_language_index_];
-        if (!latest_version_.empty()) {
+        if (update_available_) {
           auto now_time =
               std::chrono::duration_cast<std::chrono::milliseconds>(
                   std::chrono::steady_clock::now().time_since_epoch())
@@ -75,7 +75,7 @@ int Render::TitleBar(bool main_window) {
           show_about_window_ = true;
         }
 
-        if (!latest_version_.empty() && ImGui::IsItemHovered()) {
+        if (update_available_ && ImGui::IsItemHovered()) {
           ImGui::BeginTooltip();
           ImGui::SetWindowFontScale(0.5f);
           std::string new_version_available_str =
@@ -104,7 +104,7 @@ int Render::TitleBar(bool main_window) {
                          ImVec2(bar_pos_x + menu_bar_line_size, bar_pos_y + 6),
                          IM_COL32(0, 0, 0, 255));
 
-      if (!latest_version_.empty() && show_new_version_icon_in_menu_) {
+      if (update_available_ && show_new_version_icon_in_menu_) {
         auto now_time = std::chrono::duration_cast<std::chrono::milliseconds>(
                             std::chrono::steady_clock::now().time_since_epoch())
                             .count();

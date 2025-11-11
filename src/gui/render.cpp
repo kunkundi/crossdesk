@@ -908,6 +908,7 @@ int Render::DrawStreamWindow() {
 
 int Render::Run() {
   latest_version_ = CheckUpdate();
+  update_available_ = IsNewerVersion(CROSSDESK_VERSION, latest_version_);
 
   path_manager_ = std::make_unique<PathManager>("CrossDesk");
   if (path_manager_) {

@@ -308,6 +308,7 @@ class Render {
 
   // main window properties
   std::string latest_version_ = "";
+  bool update_available_ = false;
   bool start_mouse_controller_ = false;
   bool mouse_controller_is_started_ = false;
   bool start_screen_capturer_ = false;
