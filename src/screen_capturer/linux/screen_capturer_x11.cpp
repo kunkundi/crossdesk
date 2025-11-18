@@ -36,9 +36,21 @@ int ScreenCapturerX11::Init(const int fps, cb_desktop_data cb) {
       XRRCrtcInfo* crtc_info =
           XRRGetCrtcInfo(display_, screen_res_, output_info->crtc);
 
-      display_info_list_.push_back(
-          DisplayInfo((void*)display_, output_info->name, true, crtc_info->x,
-                      crtc_info->y, crtc_info->width, crtc_info->height));
+      std::string name(output_info->name);
+
+      if (name.empty()) {
+        name = "Display" + std::to_string(i + 1);
+      }
+
+      // clean display name, remove non-alphanumeric characters
+      name.erase(
+          std::remove_if(name.begin(), name.end(),
+                         [](unsigned char c) { return !std::isalnum(c); }),
+          name.end());
+
+      display_info_list_.push_back(DisplayInfo(
+          (void*)display_, name, true, crtc_info->x, crtc_info->y,
+          crtc_info->x + crtc_info->width, crtc_info->y + crtc_info->height));
 
       XRRFreeCrtcInfo(crtc_info);
     }

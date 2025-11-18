@@ -226,12 +226,16 @@ int ScreenCapturerSckImpl::Init(const int fps, cb_desktop_data cb) {
     CGRect bounds = CGDisplayBounds(display_id);
     bool is_primary = CGDisplayIsMain(display_id);
 
-    std::string name;
-    name = GetDisplayName(display_id);
+    std::string name = GetDisplayName(display_id);
 
     if (name.empty()) {
-      name = "Display " + std::to_string(unnamed_count++);
+      name = "Display" + std::to_string(unnamed_count++);
     }
+
+    // clean display name, remove non-alphanumeric characters
+    name.erase(
+        std::remove_if(name.begin(), name.end(), [](unsigned char c) { return !std::isalnum(c); }),
+        name.end());
 
     DisplayInfo info((void *)(uintptr_t)display_id, name, is_primary,
                      static_cast<int>(bounds.origin.x), static_cast<int>(bounds.origin.y),
