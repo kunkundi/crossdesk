@@ -7,6 +7,12 @@ option("CROSSDESK_VERSION")
     set_description("Set CROSSDESK_VERSION for build")
 option_end()
 
+option("USE_CUDA")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Use CUDA for hardware codec acceleration")
+option_end()
+
 add_rules("mode.release", "mode.debug")
 set_languages("c++17")
 set_encodings("utf-8")
@@ -16,6 +22,8 @@ set_encodings("utf-8")
 -- add_cxxflags("/W4", "/WX")
 
 add_defines("UNICODE")
+add_defines("USE_CUDA=" .. (is_config("USE_CUDA", true) and "1" or "0"))
+
 if is_mode("debug") then
     add_defines("CROSSDESK_DEBUG")
 end

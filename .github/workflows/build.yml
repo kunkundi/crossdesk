@@ -55,7 +55,7 @@ jobs:
           XMAKE_GLOBALDIR: /data
         run: |
           ls -la $XMAKE_GLOBALDIR
-          xmake f --CROSSDESK_VERSION=${LEGAL_VERSION} --root -y
+          xmake f --CROSSDESK_VERSION=${LEGAL_VERSION} --USE_CUDA=true --root -y
           xmake b -vy --root crossdesk
 
       - name: Decode and save certificate
@@ -120,7 +120,7 @@ jobs:
           CUDA_PATH: /usr/local/cuda
           XMAKE_GLOBALDIR: /data
         run: |
-          xmake f --CROSSDESK_VERSION=${LEGAL_VERSION} --root -y
+          xmake f --CROSSDESK_VERSION=${LEGAL_VERSION} --USE_CUDA=true --root -y
           xmake b -vy --root crossdesk
 
       - name: Decode and save certificate
@@ -189,7 +189,7 @@ jobs:
 
       - name: Build CrossDesk
         run: |
-          xmake f --CROSSDESK_VERSION=${VERSION_NUM} -y
+          xmake f --CROSSDESK_VERSION=${VERSION_NUM} --USE_CUDA=true -y
           xmake b -vy crossdesk
 
       - name: Decode and save certificate
@@ -298,7 +298,7 @@ jobs:
 
       - name: Build CrossDesk
         run: |
-          xmake f --CROSSDESK_VERSION=${{ env.VERSION_NUM }} -y
+          xmake f --CROSSDESK_VERSION=${{ env.VERSION_NUM }} --USE_CUDA=true -y
           xmake b -vy crossdesk
 
       - name: Decode and save certificate

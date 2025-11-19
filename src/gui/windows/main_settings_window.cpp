@@ -158,6 +158,7 @@ int Render::SettingWindow() {
             video_encode_format_items, IM_ARRAYSIZE(video_encode_format_items));
       }
 
+#if USE_CUDA && !defined(__aarch64__) && !defined(__arm__)
       ImGui::Separator();
 
       {
@@ -176,6 +177,7 @@ int Render::SettingWindow() {
         ImGui::Checkbox("##enable_hardware_video_codec",
                         &enable_hardware_video_codec_);
       }
+#endif
 
       ImGui::Separator();
 
