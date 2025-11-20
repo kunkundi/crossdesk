@@ -35,7 +35,7 @@ jobs:
         id: set_deb_version
         run: |
           SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          BUILD_DATE=$(date +%Y%m%d)
+          BUILD_DATE=$(TZ=Asia/Shanghai date +%Y%m%d)
           if [[ ! "${VERSION_NUM}" =~ ^[0-9] ]]; then
             LEGAL_VERSION="v0.0.0-${VERSION_NUM}-${BUILD_DATE}-${SHORT_SHA}"
           else
@@ -101,7 +101,7 @@ jobs:
         id: set_deb_version
         run: |
           SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          BUILD_DATE=$(date +%Y%m%d)
+          BUILD_DATE=$(TZ=Asia/Shanghai date +%Y%m%d)
           if [[ ! "${VERSION_NUM}" =~ ^[0-9] ]]; then
             LEGAL_VERSION="v0.0.0-${VERSION_NUM}-${BUILD_DATE}-${SHORT_SHA}"
           else
@@ -164,7 +164,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF##*/}"
           SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          BUILD_DATE=$(date +%Y%m%d)
+          BUILD_DATE=$(TZ=Asia/Shanghai date +%Y%m%d)
           VERSION_NUM="v${VERSION#v}-${BUILD_DATE}-${SHORT_SHA}"
           echo "VERSION_NUM=${VERSION_NUM}" >> $GITHUB_ENV
           echo "VERSION_NUM=${VERSION_NUM}"
@@ -229,7 +229,7 @@ jobs:
           $version = $version -replace '^v', ''
           $version = $version -replace '/', '-'
           $SHORT_SHA = $env:GITHUB_SHA.Substring(0,7)
-          $BUILD_DATE = Get-Date -Format "yyyyMMdd"
+          $BUILD_DATE = ([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId((Get-Date), "China Standard Time")).ToString("yyyyMMdd")
           echo "VERSION_NUM=v$version-$BUILD_DATE-$SHORT_SHA" >> $env:GITHUB_ENV
           echo "BUILD_DATE=$BUILD_DATE" >> $env:GITHUB_ENV
 
@@ -340,8 +340,8 @@ jobs:
         run: |
           VERSION="${GITHUB_REF##*/}"
           SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          BUILD_DATE=$(date +%Y%m%d)
-          BUILD_DATE_ISO=$(date +%Y-%m-%d)
+          BUILD_DATE=$(TZ=Asia/Shanghai date +%Y%m%d)
+          BUILD_DATE_ISO=$(TZ=Asia/Shanghai date +%Y-%m-%d)
           VERSION_NUM="${VERSION#v}-${BUILD_DATE}-${SHORT_SHA}"
           VERSION_WITH_V="v${VERSION_NUM}"
           VERSION_ONLY="${VERSION#v}"
