@@ -74,64 +74,58 @@ jobs:
 
       - name: Generate or update version.json
         run: |
-          TAG_NAME="${{ steps.version.outputs.TAG_NAME }}"
-          VERSION_ONLY="${{ steps.version.outputs.VERSION_ONLY }}"
-          BUILD_DATE_ISO="${{ steps.version.outputs.BUILD_DATE_ISO }}"
-          RELEASE_NAME_JSON="${{ steps.release_info.outputs.RELEASE_NAME }}"
-          RELEASE_BODY_JSON="${{ steps.release_info.outputs.RELEASE_BODY }}"
-          
-          # Default downloads structure
-          DEFAULT_DOWNLOADS='{
-            "windows-x64": {
-              "url": "https://downloads.crossdesk.cn/crossdesk-win-x64-'${TAG_NAME}'.exe",
-              "filename": "crossdesk-win-x64-'${TAG_NAME}'.exe"
-            },
-            "macos-x64": {
-              "url": "https://downloads.crossdesk.cn/crossdesk-macos-x64-'${TAG_NAME}'.pkg",
-              "filename": "crossdesk-macos-x64-'${TAG_NAME}'.pkg"
-            },
-            "macos-arm64": {
-              "url": "https://downloads.crossdesk.cn/crossdesk-macos-arm64-'${TAG_NAME}'.pkg",
-              "filename": "crossdesk-macos-arm64-'${TAG_NAME}'.pkg"
-            },
-            "linux-amd64": {
-              "url": "https://downloads.crossdesk.cn/crossdesk-linux-amd64-'${TAG_NAME}'.deb",
-              "filename": "crossdesk-linux-amd64-'${TAG_NAME}'.deb"
-            },
-            "linux-arm64": {
-              "url": "https://downloads.crossdesk.cn/crossdesk-linux-arm64-'${TAG_NAME}'.deb",
-              "filename": "crossdesk-linux-arm64-'${TAG_NAME}'.deb"
-            }
-          }'
-          
           # If version.json exists, try to preserve downloads section
           if [ -f version.json ] && jq -e '.downloads' version.json > /dev/null 2>&1; then
             EXISTING_DOWNLOADS=$(jq -c '.downloads' version.json)
             if [ "$EXISTING_DOWNLOADS" != "null" ] && [ "$EXISTING_DOWNLOADS" != "{}" ]; then
-              DOWNLOADS="$EXISTING_DOWNLOADS"
+              DOWNLOADS_JSON="$EXISTING_DOWNLOADS"
             else
-              DOWNLOADS="$DEFAULT_DOWNLOADS"
+              DOWNLOADS_JSON=""
             fi
           else
-            DOWNLOADS="$DEFAULT_DOWNLOADS"
+            DOWNLOADS_JSON=""
           fi
           
-          # Create version.json using jq for proper JSON formatting
-          jq -n \
-            --arg version "$VERSION_ONLY" \
-            --arg releaseDate "$BUILD_DATE_ISO" \
-            --argjson releaseName "$RELEASE_NAME_JSON" \
-            --argjson releaseNotes "$RELEASE_BODY_JSON" \
-            --arg tagName "$TAG_NAME" \
-            --argjson downloads "$DOWNLOADS" \
-            '{
-              version: $version,
-              releaseDate: $releaseDate,
-              releaseName: $releaseName,
-              releaseNotes: $releaseNotes,
-              tagName: $tagName,
-              downloads: $downloads
-            }' > version.json
+          # If downloads is empty, use default structure
+          if [ -z "$DOWNLOADS_JSON" ]; then
+            DOWNLOADS_JSON=$(cat << DOWNLOADS_EOF
+            {
+              "windows-x64": {
+                "url": "https://downloads.crossdesk.cn/crossdesk-win-x64-${{ steps.version.outputs.TAG_NAME }}.exe",
+                "filename": "crossdesk-win-x64-${{ steps.version.outputs.TAG_NAME }}.exe"
+              },
+              "macos-x64": {
+                "url": "https://downloads.crossdesk.cn/crossdesk-macos-x64-${{ steps.version.outputs.TAG_NAME }}.pkg",
+                "filename": "crossdesk-macos-x64-${{ steps.version.outputs.TAG_NAME }}.pkg"
+              },
+              "macos-arm64": {
+                "url": "https://downloads.crossdesk.cn/crossdesk-macos-arm64-${{ steps.version.outputs.TAG_NAME }}.pkg",
+                "filename": "crossdesk-macos-arm64-${{ steps.version.outputs.TAG_NAME }}.pkg"
+              },
+              "linux-amd64": {
+                "url": "https://downloads.crossdesk.cn/crossdesk-linux-amd64-${{ steps.version.outputs.TAG_NAME }}.deb",
+                "filename": "crossdesk-linux-amd64-${{ steps.version.outputs.TAG_NAME }}.deb"
+              },
+              "linux-arm64": {
+                "url": "https://downloads.crossdesk.cn/crossdesk-linux-arm64-${{ steps.version.outputs.TAG_NAME }}.deb",
+                "filename": "crossdesk-linux-arm64-${{ steps.version.outputs.TAG_NAME }}.deb"
+              }
+            }
+          DOWNLOADS_EOF
+                      )
+                    fi
+          
+          # Generate version.json using cat and heredoc
+          cat > version.json << EOF
+          {
+            "version": "${{ steps.version.outputs.VERSION_ONLY }}",
+            "releaseDate": "${{ steps.version.outputs.BUILD_DATE_ISO }}",
+            "releaseName": ${{ steps.release_info.outputs.RELEASE_NAME }},
+            "releaseNotes": ${{ steps.release_info.outputs.RELEASE_BODY }},
+            "tagName": "${{ steps.version.outputs.TAG_NAME }}",
+            "downloads": ${DOWNLOADS_JSON}
+          }
+          EOF
           
           cat version.json
 
