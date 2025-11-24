@@ -73,6 +73,7 @@ jobs:
           curl -f -s "https://version.crossdesk.cn/version.json" -o version.json || echo "Failed to download, will create new one"
 
       - name: Generate or update version.json
+        shell: bash
         run: |
           TAG_NAME="${{ steps.version.outputs.TAG_NAME }}"
           VERSION_ONLY="${{ steps.version.outputs.VERSION_ONLY }}"
@@ -80,29 +81,31 @@ jobs:
           RELEASE_NAME_JSON="${{ steps.release_info.outputs.RELEASE_NAME }}"
           RELEASE_BODY_JSON="${{ steps.release_info.outputs.RELEASE_BODY }}"
           
-          # Default downloads structure
-          DEFAULT_DOWNLOADS='{
-            "windows-x64": {
-              "url": "https://downloads.crossdesk.cn/crossdesk-win-x64-'${TAG_NAME}'.exe",
-              "filename": "crossdesk-win-x64-'${TAG_NAME}'.exe"
-            },
-            "macos-x64": {
-              "url": "https://downloads.crossdesk.cn/crossdesk-macos-x64-'${TAG_NAME}'.pkg",
-              "filename": "crossdesk-macos-x64-'${TAG_NAME}'.pkg"
-            },
-            "macos-arm64": {
-              "url": "https://downloads.crossdesk.cn/crossdesk-macos-arm64-'${TAG_NAME}'.pkg",
-              "filename": "crossdesk-macos-arm64-'${TAG_NAME}'.pkg"
-            },
-            "linux-amd64": {
-              "url": "https://downloads.crossdesk.cn/crossdesk-linux-amd64-'${TAG_NAME}'.deb",
-              "filename": "crossdesk-linux-amd64-'${TAG_NAME}'.deb"
-            },
-            "linux-arm64": {
-              "url": "https://downloads.crossdesk.cn/crossdesk-linux-arm64-'${TAG_NAME}'.deb",
-              "filename": "crossdesk-linux-arm64-'${TAG_NAME}'.deb"
-            }
-          }'
+          # Default downloads structure - use jq to build JSON safely
+          DEFAULT_DOWNLOADS=$(jq -n \
+            --arg tag "${TAG_NAME}" \
+            '{
+              "windows-x64": {
+                "url": ("https://downloads.crossdesk.cn/crossdesk-win-x64-" + $tag + ".exe"),
+                "filename": ("crossdesk-win-x64-" + $tag + ".exe")
+              },
+              "macos-x64": {
+                "url": ("https://downloads.crossdesk.cn/crossdesk-macos-x64-" + $tag + ".pkg"),
+                "filename": ("crossdesk-macos-x64-" + $tag + ".pkg")
+              },
+              "macos-arm64": {
+                "url": ("https://downloads.crossdesk.cn/crossdesk-macos-arm64-" + $tag + ".pkg"),
+                "filename": ("crossdesk-macos-arm64-" + $tag + ".pkg")
+              },
+              "linux-amd64": {
+                "url": ("https://downloads.crossdesk.cn/crossdesk-linux-amd64-" + $tag + ".deb"),
+                "filename": ("crossdesk-linux-amd64-" + $tag + ".deb")
+              },
+              "linux-arm64": {
+                "url": ("https://downloads.crossdesk.cn/crossdesk-linux-arm64-" + $tag + ".deb"),
+                "filename": ("crossdesk-linux-arm64-" + $tag + ".deb")
+              }
+            }')
           
           # If version.json exists, try to preserve downloads section
           if [ -f version.json ] && jq -e '.downloads' version.json > /dev/null 2>&1; then
