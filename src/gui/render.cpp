@@ -966,6 +966,7 @@ int Render::DrawStreamWindow() {
 }
 
 int Render::Run() {
+  LOG_INFO("CrossDesk version: {}", CROSSDESK_VERSION);
   latest_version_info_ = CheckUpdate();
   if (!latest_version_info_.empty() &&
       latest_version_info_.contains("version") &&
