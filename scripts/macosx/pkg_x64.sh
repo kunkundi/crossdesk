@@ -86,9 +86,9 @@ pkgbuild \
   --component "${APP_BUNDLE}" \
   build_pkg_temp/${APP_NAME}-component.pkg
 
-mkdir -p scripts
+mkdir -p build_pkg_scripts
 
-cat > scripts/postinstall <<'EOF'
+cat > build_pkg_scripts/postinstall <<'EOF'
 #!/bin/bash
 USER_HOME=$( /usr/bin/stat -f "%Su" /dev/console )
 HOME_DIR=$( /usr/bin/dscl . -read /Users/$USER_HOME NFSHomeDirectory | awk '{print $2}' )
@@ -101,14 +101,14 @@ cp -R "/Library/Application Support/CrossDesk/certs/"* "$DEST/"
 exit 0
 EOF
 
-chmod +x scripts/postinstall
+chmod +x build_pkg_scripts/postinstall
 
 pkgbuild \
   --root "${CERTS_SOURCE}" \
   --identifier "${IDENTIFIER}.certs" \
   --version "${APP_VERSION}" \
   --install-location "/Library/Application Support/CrossDesk/certs" \
-  --scripts scripts \
+  --scripts build_pkg_scripts \
   build_pkg_temp/${APP_NAME}-certs.pkg
 
 productbuild \
@@ -118,7 +118,7 @@ productbuild \
 
 echo "PKG package created: ${PKG_NAME}"
 
-rm -rf build_pkg_temp scripts ${APP_BUNDLE}
+rm -rf build_pkg_temp build_pkg_scripts ${APP_BUNDLE}
 
 echo "PKG package created successfully."
 echo "package ${APP_BUNDLE}"
