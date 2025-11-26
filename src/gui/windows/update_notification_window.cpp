@@ -58,6 +58,12 @@ int Render::UpdateNotificationWindow() {
     float window_width = update_notification_window_width_;
     float window_height = update_notification_window_height_;
 
+#ifdef __APPLE__
+    float font_scale = 0.3f;
+#else
+    float font_scale = 0.5f;
+#endif
+
     ImGui::SetNextWindowPos(
         ImVec2(
             (viewport->WorkSize.x - viewport->WorkPos.x - window_width) / 2,
@@ -70,29 +76,27 @@ int Render::UpdateNotificationWindow() {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
-    ImGui::SetWindowFontScale(0.5f);
     ImGui::Begin(
         localization::notification[localization_language_index_].c_str(),
         nullptr,
         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
-            ImGuiWindowFlags_NoSavedSettings);
+            ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoTitleBar);
 
-    ImGui::SetWindowFontScale(1.0f);
-    ImGui::SetWindowFontScale(0.5f);
-
-    // use system Chinese font
     if (system_chinese_font_ != nullptr) {
       ImGui::PushFont(system_chinese_font_);
     }
 
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + ImGui::GetTextLineHeight() +
+                         5.0f);
+
     // title: new version available
     ImGui::SetCursorPosX(window_width * 0.1f);
-    ImGui::SetWindowFontScale(0.7f);
+    ImGui::SetWindowFontScale(font_scale + 0.2f);
     std::string title =
         localization::new_version_available[localization_language_index_] +
         ": v" + latest_version_;
     ImGui::Text("%s", title.c_str());
-    ImGui::SetWindowFontScale(0.5f);
+    ImGui::SetWindowFontScale(font_scale);
 
     ImGui::Spacing();
 
@@ -104,8 +108,8 @@ int Render::UpdateNotificationWindow() {
 
     ImGui::Spacing();
 
-    float reserved_height = 140.0f;
-    float scrollable_height = window_height - reserved_height;
+    float scrollable_height =
+        window_height - UPDATE_NOTIFICATION_RESERVED_HEIGHT;
 
     // scrollable content area
     ImGui::SetCursorPosX(window_width * 0.05f);
@@ -187,7 +191,7 @@ int Render::UpdateNotificationWindow() {
     }
 
     ImGui::SetWindowFontScale(1.0f);
-    ImGui::SetWindowFontScale(0.5f);
+    ImGui::SetWindowFontScale(font_scale);
 
     // pop system font
     if (system_chinese_font_ != nullptr) {
