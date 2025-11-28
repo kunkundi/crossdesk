@@ -90,7 +90,7 @@ int Render::RemoteWindow() {
             target_remote_id = props.remote_id;
             target_password = props.password;
             {
-              std::shared_lock lock(client_properties_mutex_);
+              // std::shared_lock lock(client_properties_mutex_);
               if (client_properties_.find(remote_id) !=
                   client_properties_.end()) {
                 if (!client_properties_[remote_id]->connection_established_) {
@@ -126,7 +126,7 @@ int Render::RemoteWindow() {
         if (elapsed >= 1000) {
           last_rejoin_check_time_ = now;
           need_to_rejoin_ = false;
-          std::shared_lock lock(client_properties_mutex_);
+          // std::shared_lock lock(client_properties_mutex_);
           for (const auto& [_, props] : client_properties_) {
             if (props->rejoin_) {
               ConnectTo(props->remote_id_, props->remote_password_,
@@ -161,17 +161,17 @@ int Render::ConnectTo(const std::string& remote_id, const char* password,
   LOG_INFO("Connect to [{}]", remote_id);
   focused_remote_id_ = remote_id;
 
-  std::shared_lock shared_lock(client_properties_mutex_);
+  // std::shared_lock shared_lock(client_properties_mutex_);
   bool exists =
       (client_properties_.find(remote_id) != client_properties_.end());
-  shared_lock.unlock();
+  // shared_lock.unlock();
 
   if (!exists) {
     PeerPtr* peer_to_init = nullptr;
     std::string local_id;
 
     {
-      std::unique_lock unique_lock(client_properties_mutex_);
+      // std::unique_lock unique_lock(client_properties_mutex_);
       if (client_properties_.find(remote_id) == client_properties_.end()) {
         client_properties_[remote_id] =
             std::make_shared<SubStreamWindowProperties>();
@@ -208,7 +208,7 @@ int Render::ConnectTo(const std::string& remote_id, const char* password,
   }
 
   int ret = -1;
-  std::shared_lock read_lock(client_properties_mutex_);
+  // std::shared_lock read_lock(client_properties_mutex_);
   auto props = client_properties_[remote_id];
   if (!props->connection_established_) {
     props->remember_password_ = remember_password;
@@ -230,7 +230,7 @@ int Render::ConnectTo(const std::string& remote_id, const char* password,
       }
     }
   }
-  read_lock.unlock();
+  // read_lock.unlock();
 
   return 0;
 }

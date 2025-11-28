@@ -32,7 +32,7 @@ void Render::DrawConnectionStatusText(
 }
 
 void Render::CloseTab(decltype(client_properties_)::iterator& it) {
-  std::unique_lock lock(client_properties_mutex_);
+  // std::unique_lock lock(client_properties_mutex_);
   if (it != client_properties_.end()) {
     CleanupPeer(it->second);
     it = client_properties_.erase(it);
@@ -82,21 +82,21 @@ int Render::StreamWindow() {
                                ImGuiTabBarFlags_AutoSelectNewTabs)) {
       is_tab_bar_hovered_ = ImGui::IsWindowHovered();
 
-      std::shared_lock lock(client_properties_mutex_);
+      // std::shared_lock lock(client_properties_mutex_);
       for (auto it = client_properties_.begin();
            it != client_properties_.end();) {
         auto& props = it->second;
         if (!props->tab_opened_) {
           std::string remote_id_to_close = props->remote_id_;
-          lock.unlock();
+          // lock.unlock();
           {
-            std::unique_lock unique_lock(client_properties_mutex_);
+            // std::unique_lock unique_lock(client_properties_mutex_);
             auto close_it = client_properties_.find(remote_id_to_close);
             if (close_it != client_properties_.end()) {
               CloseTab(close_it);
             }
           }
-          lock.lock();
+          // lock.lock();
           it = client_properties_.begin();
           continue;
         }
@@ -137,9 +137,9 @@ int Render::StreamWindow() {
 
           if (!props->peer_) {
             std::string remote_id_to_erase = props->remote_id_;
-            lock.unlock();
+            // lock.unlock();
             {
-              std::unique_lock unique_lock(client_properties_mutex_);
+              // std::unique_lock unique_lock(client_properties_mutex_);
               auto erase_it = client_properties_.find(remote_id_to_erase);
               if (erase_it != client_properties_.end()) {
                 erase_it = client_properties_.erase(erase_it);
@@ -150,7 +150,7 @@ int Render::StreamWindow() {
                 }
               }
             }
-            lock.lock();
+            // lock.lock();
             it = client_properties_.begin();
             continue;
           } else {
@@ -172,21 +172,21 @@ int Render::StreamWindow() {
 
     ImGui::End();  // End TabBar
   } else {
-    std::shared_lock lock(client_properties_mutex_);
+    // std::shared_lock lock(client_properties_mutex_);
     for (auto it = client_properties_.begin();
          it != client_properties_.end();) {
       auto& props = it->second;
       if (!props->tab_opened_) {
         std::string remote_id_to_close = props->remote_id_;
-        lock.unlock();
+        // lock.unlock();
         {
-          std::unique_lock unique_lock(client_properties_mutex_);
+          // std::unique_lock unique_lock(client_properties_mutex_);
           auto close_it = client_properties_.find(remote_id_to_close);
           if (close_it != client_properties_.end()) {
             CloseTab(close_it);
           }
         }
-        lock.lock();
+        // lock.lock();
         it = client_properties_.begin();
         continue;
       }
@@ -218,9 +218,9 @@ int Render::StreamWindow() {
           fullscreen_button_pressed_ = false;
           SDL_SetWindowFullscreen(stream_window_, false);
           std::string remote_id_to_erase = props->remote_id_;
-          lock.unlock();
+          // lock.unlock();
           {
-            std::unique_lock unique_lock(client_properties_mutex_);
+            // std::unique_lock unique_lock(client_properties_mutex_);
             auto erase_it = client_properties_.find(remote_id_to_erase);
             if (erase_it != client_properties_.end()) {
               client_properties_.erase(erase_it);
@@ -231,7 +231,7 @@ int Render::StreamWindow() {
               }
             }
           }
-          lock.lock();
+          // lock.lock();
           it = client_properties_.begin();
           continue;
         } else {

@@ -947,7 +947,7 @@ int Render::DrawStreamWindow() {
   ImGui::Render();
   SDL_RenderClear(stream_renderer_);
 
-  std::shared_lock lock(client_properties_mutex_);
+  // std::shared_lock lock(client_properties_mutex_);
   for (auto& it : client_properties_) {
     auto props = it.second;
     if (props->tab_selected_) {
@@ -1285,7 +1285,7 @@ void Render::CleanupPeers() {
   }
 
   {
-    std::shared_lock lock(client_properties_mutex_);
+    // std::shared_lock lock(client_properties_mutex_);
     for (auto& it : client_properties_) {
       auto props = it.second;
       CleanupPeer(props);
@@ -1293,7 +1293,7 @@ void Render::CleanupPeers() {
   }
 
   {
-    std::unique_lock lock(client_properties_mutex_);
+    // std::unique_lock lock(client_properties_mutex_);
     client_properties_.clear();
   }
 }
@@ -1312,7 +1312,7 @@ void Render::CleanSubStreamWindowProperties(
 }
 
 void Render::UpdateRenderRect() {
-  std::shared_lock lock(client_properties_mutex_);
+  // std::shared_lock lock(client_properties_mutex_);
   for (auto& [_, props] : client_properties_) {
     if (!props->reset_control_bar_pos_) {
       props->mouse_diff_control_bar_pos_x_ = 0;
@@ -1388,7 +1388,7 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
         DestroyStreamWindowContext();
 
         {
-          std::shared_lock lock(client_properties_mutex_);
+          // std::shared_lock lock(client_properties_mutex_);
           for (auto& [host_name, props] : client_properties_) {
             thumbnail_->SaveToThumbnail(
                 (char*)props->dst_buffer_, props->video_width_,
@@ -1419,7 +1419,7 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
         }
 
         {
-          std::unique_lock lock(client_properties_mutex_);
+          // std::unique_lock lock(client_properties_mutex_);
           client_properties_.clear();
         }
 

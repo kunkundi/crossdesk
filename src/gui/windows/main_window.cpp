@@ -32,7 +32,7 @@ int Render::MainWindow() {
   StatusBar();
 
   if (show_connection_status_window_) {
-    std::unique_lock lock(client_properties_mutex_);
+    // std::unique_lock lock(client_properties_mutex_);
     for (auto it = client_properties_.begin();
          it != client_properties_.end();) {
       auto& props = it->second;

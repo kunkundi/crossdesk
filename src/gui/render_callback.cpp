@@ -21,7 +21,7 @@ int Render::SendKeyCommand(int key_code, bool is_down) {
   remote_action.k.key_value = key_code;
 
   if (!controlled_remote_id_.empty()) {
-    std::shared_lock lock(client_properties_mutex_);
+    // std::shared_lock lock(client_properties_mutex_);
     if (client_properties_.find(controlled_remote_id_) !=
         client_properties_.end()) {
       auto props = client_properties_[controlled_remote_id_];
@@ -45,7 +45,7 @@ int Render::ProcessMouseEvent(const SDL_Event& event) {
   float ratio_x, ratio_y = 0;
   RemoteAction remote_action;
 
-  std::shared_lock lock(client_properties_mutex_);
+  // std::shared_lock lock(client_properties_mutex_);
   for (auto& it : client_properties_) {
     auto props = it.second;
     if (!props->control_mouse_) {
@@ -162,7 +162,7 @@ void Render::SdlCaptureAudioIn(void* userdata, Uint8* stream, int len) {
   }
 
   if (1) {
-    std::shared_lock lock(render->client_properties_mutex_);
+    // std::shared_lock lock(render->client_properties_mutex_);
     for (const auto& it : render->client_properties_) {
       auto props = it.second;
       if (props->connection_status_ == ConnectionStatus::Connected) {
@@ -218,7 +218,7 @@ void Render::OnReceiveVideoBufferCb(const XVideoFrame* video_frame,
   }
 
   std::string remote_id(user_id, user_id_size);
-  std::shared_lock lock(render->client_properties_mutex_);
+  // std::shared_lock lock(render->client_properties_mutex_);
   if (render->client_properties_.find(remote_id) ==
       render->client_properties_.end()) {
     return;
@@ -314,7 +314,7 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
   }
 
   std::string remote_id(user_id, user_id_size);
-  std::shared_lock lock(render->client_properties_mutex_);
+  // std::shared_lock lock(render->client_properties_mutex_);
   if (render->client_properties_.find(remote_id) !=
       render->client_properties_.end()) {
     // local
@@ -386,7 +386,7 @@ void Render::OnSignalStatusCb(SignalStatus status, const char* user_id,
     }
 
     std::string remote_id(client_id.begin() + 2, client_id.end());
-    std::shared_lock lock(render->client_properties_mutex_);
+    // std::shared_lock lock(render->client_properties_mutex_);
     if (render->client_properties_.find(remote_id) ==
         render->client_properties_.end()) {
       return;
@@ -416,7 +416,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
   if (!render) return;
 
   std::string remote_id(user_id, user_id_size);
-  std::shared_lock lock(render->client_properties_mutex_);
+  // std::shared_lock lock(render->client_properties_mutex_);
   auto it = render->client_properties_.find(remote_id);
   auto props = (it != render->client_properties_.end()) ? it->second : nullptr;
 
@@ -577,7 +577,7 @@ void Render::NetStatusReport(const char* client_id, size_t client_id_size,
   }
 
   std::string remote_id(user_id, user_id_size);
-  std::shared_lock lock(render->client_properties_mutex_);
+  // std::shared_lock lock(render->client_properties_mutex_);
   if (render->client_properties_.find(remote_id) ==
       render->client_properties_.end()) {
     return;
