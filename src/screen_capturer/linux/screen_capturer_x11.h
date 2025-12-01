@@ -7,10 +7,14 @@
 #ifndef _SCREEN_CAPTURER_X11_H_
 #define _SCREEN_CAPTURER_X11_H_
 
-#include <X11/Xlib.h>
-#include <X11/Xutil.h>
-#include <X11/extensions/Xrandr.h>
-#include <X11/extensions/Xfixes.h>
+// forward declarations for X11 types
+struct _XDisplay;
+typedef struct _XDisplay Display;
+typedef unsigned long Window;
+struct _XRRScreenResources;
+typedef struct _XRRScreenResources XRRScreenResources;
+struct _XImage;
+typedef struct _XImage XImage;
 
 #include <atomic>
 #include <cstring>
@@ -44,6 +48,9 @@ class ScreenCapturerX11 : public ScreenCapturer {
   void OnFrame();
 
  private:
+  void DrawCursor(XImage* image, int x, int y);
+
+ private:
   Display* display_ = nullptr;
   Window root_ = 0;
   XRRScreenResources* screen_res_ = nullptr;
@@ -60,12 +67,8 @@ class ScreenCapturerX11 : public ScreenCapturer {
   cb_desktop_data callback_;
   std::vector<DisplayInfo> display_info_list_;
 
-  // 缓冲区
   std::vector<uint8_t> y_plane_;
   std::vector<uint8_t> uv_plane_;
-  
-  // 鼠标光标相关
-  void DrawCursor(XImage* image, int x, int y);
 };
 }  // namespace crossdesk
 #endif

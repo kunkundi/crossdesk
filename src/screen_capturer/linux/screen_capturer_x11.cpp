@@ -1,6 +1,9 @@
 #include "screen_capturer_x11.h"
 
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
 #include <X11/extensions/Xfixes.h>
+#include <X11/extensions/Xrandr.h>
 
 #include <chrono>
 #include <thread>

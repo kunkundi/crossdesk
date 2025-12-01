@@ -12,9 +12,6 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #elif __linux__
-#include <X11/Xlib.h>
-#include <X11/Xresource.h>
-#include <X11/extensions/Xrandr.h>
 #include <fcntl.h>
 #include <net/if.h>
 #include <sys/ioctl.h>
