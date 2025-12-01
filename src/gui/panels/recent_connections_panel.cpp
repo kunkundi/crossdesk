@@ -37,7 +37,10 @@ int Render::RecentConnectionsWindow() {
 }
 
 int Render::ShowRecentConnections() {
-  ImGui::SetCursorPosX(25.0f * dpi_scale_);
+  float recent_connection_window_padding = 25.0f * dpi_scale_;
+  float recent_connection_window_width =
+      main_window_width_ - 2 * recent_connection_window_padding;
+  ImGui::SetCursorPosX(recent_connection_window_padding);
   ImVec2 sub_window_pos = ImGui::GetCursorPos();
   std::map<std::string, ImVec2> sub_containers_pos;
   float recent_connection_sub_container_width =
@@ -48,7 +51,7 @@ int Render::ShowRecentConnections() {
                         ImVec4(239.0f / 255, 240.0f / 255, 242.0f / 255, 1.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
   ImGui::BeginChild("RecentConnectionsContainer",
-                    ImVec2(main_window_width_ * 0.95f,
+                    ImVec2(recent_connection_window_width,
                            recent_connection_sub_container_height * 1.1f),
                     ImGuiChildFlags_Border,
                     ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
@@ -209,11 +212,11 @@ int Render::ShowRecentConnections() {
     if (count != recent_connections_count - 1) {
       ImVec2 line_start =
           ImVec2(image_screen_pos.x + recent_connection_image_width_ +
-                     25.0f * dpi_scale_,
+                     20.0f * dpi_scale_,
                  image_screen_pos.y);
       ImVec2 line_end = ImVec2(
           image_screen_pos.x + recent_connection_image_width_ +
-              25.0f * dpi_scale_,
+              20.0f * dpi_scale_,
           image_screen_pos.y + recent_connection_image_height_ + button_height);
       ImGui::GetWindowDrawList()->AddLine(line_start, line_end,
                                           IM_COL32(0, 0, 0, 122), 1.0f);
@@ -221,7 +224,7 @@ int Render::ShowRecentConnections() {
 
     count++;
     ImGui::SameLine(
-        0, count != recent_connections_count ? (35.0f * dpi_scale_) : 0.0f);
+        0, count != recent_connections_count ? (25.0f * dpi_scale_) : 0.0f);
   }
 
   ImGui::EndChild();
