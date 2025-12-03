@@ -9,9 +9,9 @@ int Render::MainWindow() {
   ImGuiIO& io = ImGui::GetIO();
   float local_remote_window_width = io.DisplaySize.x;
   float local_remote_window_height =
-      io.DisplaySize.y * (1 - TITLE_BAR_HEIGHT - STATUS_BAR_HEIGHT);
+      io.DisplaySize.y * (0.56f - TITLE_BAR_HEIGHT);
 
-  ImGui::SetNextWindowPos(ImVec2(0.0f, io.DisplaySize.y * TITLE_BAR_HEIGHT),
+  ImGui::SetNextWindowPos(ImVec2(0.0f, io.DisplaySize.y * (TITLE_BAR_HEIGHT)),
                           ImGuiCond_Always);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
@@ -34,7 +34,7 @@ int Render::MainWindow() {
   RemoteWindow();
   ImGui::EndChild();
 
-  // RecentConnectionsWindow();
+  RecentConnectionsWindow();
   StatusBar();
 
   if (show_connection_status_window_) {

@@ -10,7 +10,7 @@ namespace crossdesk {
 int Render::TitleBar(bool main_window) {
   ImGuiIO& io = ImGui::GetIO();
   float title_bar_width = io.DisplaySize.x;
-  float title_bar_height = io.DisplaySize.y * TITLE_BAR_HEIGHT;
+  float title_bar_height = io.DisplaySize.y * (TITLE_BAR_HEIGHT + 0.01f);
   float title_bar_button_width = io.DisplaySize.x * TITLE_BAR_BUTTON_WIDTH;
   float title_bar_button_height = io.DisplaySize.y * TITLE_BAR_BUTTON_HEIGHT;
 
@@ -165,7 +165,7 @@ int Render::TitleBar(bool main_window) {
   float minimize_pos_x = title_bar_width -
                          title_bar_button_width * (main_window ? 2 : 3) +
                          title_bar_button_width * 0.33f;
-  float minimize_pos_y = title_bar_height * 0.5f;
+  float minimize_pos_y = title_bar_button_height * 0.5f;
   std::string window_minimize_button = "##minimize";  // ICON_FA_MINUS;
   if (ImGui::Button(window_minimize_button.c_str(),
                     ImVec2(title_bar_button_width, title_bar_button_height))) {
@@ -249,7 +249,7 @@ int Render::TitleBar(bool main_window) {
   ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.0f, 0, 0, 0.5f));
 
   float xmark_pos_x = xmark_button_pos_x + title_bar_button_width * 0.5f;
-  float xmark_pos_y = title_bar_height * 0.5f;
+  float xmark_pos_y = title_bar_button_height * 0.5f;
   float xmark_size = title_bar_button_width * 0.33f;
   std::string close_button = "##xmark";  // ICON_FA_XMARK;
   if (ImGui::Button(close_button.c_str(),

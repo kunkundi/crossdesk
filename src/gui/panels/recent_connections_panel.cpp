@@ -1,3 +1,4 @@
+#include "layout_relative.h"
 #include "localization.h"
 #include "rd_log.h"
 #include "render.h"
@@ -5,25 +6,25 @@
 namespace crossdesk {
 
 int Render::RecentConnectionsWindow() {
-  ImGui::SetNextWindowPos(
-      ImVec2(0, title_bar_height_ + local_window_height_ - 1.0f),
-      ImGuiCond_Always);
+  ImGuiIO& io = ImGui::GetIO();
+  float recent_connection_window_width = io.DisplaySize.x;
+  float recent_connection_window_height =
+      io.DisplaySize.y * (0.46f - STATUS_BAR_HEIGHT);
+  ImGui::SetNextWindowPos(ImVec2(0, io.DisplaySize.y * 0.55f),
+                          ImGuiCond_Always);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
   ImGui::BeginChild(
       "RecentConnectionsWindow",
-      ImVec2(main_window_width_, main_window_height_ - title_bar_height_ -
-                                     local_window_height_ - status_bar_height_ +
-                                     1.0f),
+      ImVec2(recent_connection_window_width, recent_connection_window_height),
       ImGuiChildFlags_Border,
-      ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
-          ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar |
+      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
           ImGuiWindowFlags_NoBringToFrontOnFocus);
   ImGui::PopStyleVar();
   ImGui::PopStyleColor();
 
-  ImGui::SetCursorPosY(ImGui::GetCursorPosY() + main_window_text_y_padding_);
-  ImGui::Indent(main_child_window_x_padding_);
+  ImGui::SetCursorPos(
+      ImVec2(io.DisplaySize.x * 0.045f, io.DisplaySize.y * 0.02f));
 
   ImGui::TextColored(
       ImVec4(0.0f, 0.0f, 0.0f, 0.5f), "%s",
@@ -37,35 +38,40 @@ int Render::RecentConnectionsWindow() {
 }
 
 int Render::ShowRecentConnections() {
-  float recent_connection_window_padding = 25.0f * dpi_scale_;
-  float recent_connection_window_width =
-      main_window_width_ - 2 * recent_connection_window_padding;
-  ImGui::SetCursorPosX(recent_connection_window_padding);
-  ImVec2 sub_window_pos = ImGui::GetCursorPos();
-  std::map<std::string, ImVec2> sub_containers_pos;
+  ImGuiIO& io = ImGui::GetIO();
+  float recent_connection_panel_width = io.DisplaySize.x * 0.912f;
+  float recent_connection_panel_height = io.DisplaySize.y * 0.29f;
+  float recent_connection_image_height = recent_connection_panel_height * 0.6f;
+  float recent_connection_image_width = recent_connection_image_height * 16 / 9;
   float recent_connection_sub_container_width =
-      recent_connection_image_width_ + 16.0f * dpi_scale_;
+      recent_connection_image_width * 1.2f;
   float recent_connection_sub_container_height =
-      recent_connection_image_height_ + 36.0f * dpi_scale_;
+      recent_connection_image_height * 1.4f;
+  float recent_connection_button_width = recent_connection_image_width * 0.15f;
+  float recent_connection_button_height =
+      recent_connection_image_height * 0.25f;
+  float recent_connection_dummy_button_width =
+      recent_connection_image_width - 2 * recent_connection_button_width;
+
+  ImGui::SetCursorPos(
+      ImVec2(io.DisplaySize.x * 0.045f, io.DisplaySize.y * 0.1f));
+
+  std::map<std::string, ImVec2> sub_containers_pos;
   ImGui::PushStyleColor(ImGuiCol_ChildBg,
                         ImVec4(239.0f / 255, 240.0f / 255, 242.0f / 255, 1.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
-  ImGui::BeginChild("RecentConnectionsContainer",
-                    ImVec2(recent_connection_window_width,
-                           recent_connection_sub_container_height * 1.1f),
-                    ImGuiChildFlags_Border,
-                    ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
-                        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar |
-                        ImGuiWindowFlags_NoBringToFrontOnFocus |
-                        ImGuiWindowFlags_AlwaysHorizontalScrollbar |
-                        ImGuiWindowFlags_NoScrollbar |
-                        ImGuiWindowFlags_NoScrollWithMouse);
+  ImGui::BeginChild(
+      "RecentConnectionsContainer",
+      ImVec2(recent_connection_panel_width, recent_connection_panel_height),
+      ImGuiChildFlags_Border,
+      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+          ImGuiWindowFlags_NoBringToFrontOnFocus |
+          ImGuiWindowFlags_AlwaysHorizontalScrollbar |
+          ImGuiWindowFlags_NoScrollWithMouse);
   ImGui::PopStyleVar();
   ImGui::PopStyleColor();
   size_t recent_connections_count = recent_connections_.size();
   int count = 0;
-  float button_width = 22 * dpi_scale_;
-  float button_height = 22 * dpi_scale_;
   for (auto& it : recent_connections_) {
     sub_containers_pos[it.first] = ImGui::GetCursorPos();
     std::string recent_connection_sub_window_name =
@@ -75,11 +81,8 @@ int Render::ShowRecentConnections() {
                       ImVec2(recent_connection_sub_container_width,
                              recent_connection_sub_container_height),
                       ImGuiChildFlags_None,
-                      ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
-                          ImGuiWindowFlags_NoMove |
-                          ImGuiWindowFlags_NoTitleBar |
-                          ImGuiWindowFlags_NoBringToFrontOnFocus |
-                          ImGuiWindowFlags_NoScrollbar);
+                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                          ImGuiWindowFlags_NoBringToFrontOnFocus);
     std::string connection_info = it.first;
 
     // remote id length is 9
@@ -118,15 +121,16 @@ int Render::ShowRecentConnections() {
       it.second.remote_host_name = "unknown";
     }
 
-    ImVec2 image_screen_pos =
-        ImVec2(ImGui::GetCursorScreenPos().x + 5.0f * dpi_scale_,
-               ImGui::GetCursorScreenPos().y + 5.0f * dpi_scale_);
-    ImVec2 image_pos = ImVec2(ImGui::GetCursorPosX() + 5.0f * dpi_scale_,
-                              ImGui::GetCursorPosY() + 5.0f * dpi_scale_);
+    ImVec2 image_screen_pos = ImVec2(
+        ImGui::GetCursorScreenPos().x + recent_connection_image_width * 0.04f,
+        ImGui::GetCursorScreenPos().y + recent_connection_image_height * 0.08f);
+    ImVec2 image_pos =
+        ImVec2(ImGui::GetCursorPosX() + recent_connection_image_width * 0.05f,
+               ImGui::GetCursorPosY() + recent_connection_image_height * 0.08f);
     ImGui::SetCursorPos(image_pos);
-    ImGui::Image((ImTextureID)(intptr_t)it.second.texture,
-                 ImVec2((float)recent_connection_image_width_,
-                        (float)recent_connection_image_height_));
+    ImGui::Image(
+        (ImTextureID)(intptr_t)it.second.texture,
+        ImVec2(recent_connection_image_width, recent_connection_image_height));
 
     // remote id display button
     {
@@ -135,16 +139,17 @@ int Render::ShowRecentConnections() {
       ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0.2f));
 
       ImVec2 dummy_button_pos =
-          ImVec2(image_pos.x, image_pos.y + recent_connection_image_height_);
+          ImVec2(image_pos.x, image_pos.y + recent_connection_image_height);
       std::string dummy_button_name = "##DummyButton" + it.second.remote_id;
       ImGui::SetCursorPos(dummy_button_pos);
       ImGui::SetWindowFontScale(0.6f);
       ImGui::Button(dummy_button_name.c_str(),
-                    ImVec2(recent_connection_image_width_ - 2 * button_width,
-                           button_height));
+                    ImVec2(recent_connection_dummy_button_width,
+                           recent_connection_button_height));
       ImGui::SetWindowFontScale(1.0f);
-      ImGui::SetCursorPos(
-          ImVec2(dummy_button_pos.x + 2.0f, dummy_button_pos.y + 1.0f));
+      ImGui::SetCursorPos(ImVec2(
+          dummy_button_pos.x + recent_connection_dummy_button_width * 0.05f,
+          dummy_button_pos.y + recent_connection_button_height * 0.05f));
       ImGui::SetWindowFontScale(0.65f);
       ImGui::Text("%s", it.second.remote_id.c_str());
       ImGui::SetWindowFontScale(1.0f);
@@ -167,16 +172,18 @@ int Render::ShowRecentConnections() {
     ImGui::SetWindowFontScale(0.5f);
     // trash button
     {
-      ImVec2 trash_can_button_pos = ImVec2(
-          image_pos.x + recent_connection_image_width_ - 2 * button_width,
-          image_pos.y + recent_connection_image_height_);
+      ImVec2 trash_can_button_pos =
+          ImVec2(image_pos.x + recent_connection_image_width -
+                     2 * recent_connection_button_width,
+                 image_pos.y + recent_connection_image_height);
       ImGui::SetCursorPos(trash_can_button_pos);
       std::string trash_can = ICON_FA_TRASH_CAN;
       std::string recent_connection_delete_button_name =
           trash_can + "##RecentConnectionDelete" +
           std::to_string(trash_can_button_pos.x);
       if (ImGui::Button(recent_connection_delete_button_name.c_str(),
-                        ImVec2(button_width, button_height))) {
+                        ImVec2(recent_connection_button_width,
+                               recent_connection_button_height))) {
         show_confirm_delete_connection_ = true;
         delete_connection_name_ = it.first;
       }
@@ -192,14 +199,16 @@ int Render::ShowRecentConnections() {
     // connect button
     {
       ImVec2 connect_button_pos =
-          ImVec2(image_pos.x + recent_connection_image_width_ - button_width,
-                 image_pos.y + recent_connection_image_height_);
+          ImVec2(image_pos.x + recent_connection_image_width -
+                     recent_connection_button_width,
+                 image_pos.y + recent_connection_image_height);
       ImGui::SetCursorPos(connect_button_pos);
       std::string connect = ICON_FA_ARROW_RIGHT_LONG;
       std::string connect_to_this_connection_button_name =
           connect + "##ConnectionTo" + it.first;
       if (ImGui::Button(connect_to_this_connection_button_name.c_str(),
-                        ImVec2(button_width, button_height))) {
+                        ImVec2(recent_connection_button_width,
+                               recent_connection_button_height))) {
         ConnectTo(it.second.remote_id, it.second.password.c_str(),
                   it.second.remember_password);
       }
@@ -211,20 +220,20 @@ int Render::ShowRecentConnections() {
 
     if (count != recent_connections_count - 1) {
       ImVec2 line_start =
-          ImVec2(image_screen_pos.x + recent_connection_image_width_ +
-                     20.0f * dpi_scale_,
+          ImVec2(image_screen_pos.x + recent_connection_image_width * 1.19f,
                  image_screen_pos.y);
-      ImVec2 line_end = ImVec2(
-          image_screen_pos.x + recent_connection_image_width_ +
-              20.0f * dpi_scale_,
-          image_screen_pos.y + recent_connection_image_height_ + button_height);
+      ImVec2 line_end =
+          ImVec2(image_screen_pos.x + recent_connection_image_width * 1.19f,
+                 image_screen_pos.y + recent_connection_image_height +
+                     recent_connection_button_height);
       ImGui::GetWindowDrawList()->AddLine(line_start, line_end,
                                           IM_COL32(0, 0, 0, 122), 1.0f);
     }
 
     count++;
-    ImGui::SameLine(
-        0, count != recent_connections_count ? (25.0f * dpi_scale_) : 0.0f);
+    ImGui::SameLine(0, count != recent_connections_count
+                           ? (recent_connection_image_width * 0.165f)
+                           : 0.0f);
   }
 
   ImGui::EndChild();
@@ -237,32 +246,30 @@ int Render::ShowRecentConnections() {
 }
 
 int Render::ConfirmDeleteConnection() {
-  const ImGuiViewport* viewport = ImGui::GetMainViewport();
-  ImGui::SetNextWindowPos(ImVec2((viewport->WorkSize.x - viewport->WorkPos.x -
-                                  connection_status_window_width_) /
-                                     2,
-                                 (viewport->WorkSize.y - viewport->WorkPos.y -
-                                  connection_status_window_height_) /
-                                     2));
+  ImGuiIO& io = ImGui::GetIO();
+  ImGui::SetNextWindowPos(
+      ImVec2(io.DisplaySize.x * 0.33f, io.DisplaySize.y * 0.33f));
+  ImGui::SetNextWindowSize(
+      ImVec2(io.DisplaySize.x * 0.33f, io.DisplaySize.y * 0.33f));
 
-  ImGui::SetNextWindowSize(ImVec2(connection_status_window_width_,
-                                  connection_status_window_height_));
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
   ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0, 1.0, 1.0, 1.0));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
 
   ImGui::Begin("ConfirmDeleteConnectionWindow", nullptr,
-               ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
-                   ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar |
+               ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                    ImGuiWindowFlags_NoSavedSettings);
   ImGui::PopStyleVar(2);
   ImGui::PopStyleColor();
 
+  auto connection_status_window_width = ImGui::GetWindowSize().x;
+  auto connection_status_window_height = ImGui::GetWindowSize().y;
+
   std::string text =
       localization::confirm_delete_connection[localization_language_index_];
-  ImGui::SetCursorPosX(connection_status_window_width_ * 6 / 19);
-  ImGui::SetCursorPosY(connection_status_window_height_ * 2 / 3);
+  ImGui::SetCursorPosX(connection_status_window_width * 0.33f);
+  ImGui::SetCursorPosY(connection_status_window_height * 0.67f);
 
   // ok
   ImGui::SetWindowFontScale(0.5f);
@@ -281,12 +288,9 @@ int Render::ConfirmDeleteConnection() {
     show_confirm_delete_connection_ = false;
   }
 
-  auto window_width = ImGui::GetWindowSize().x;
-  auto window_height = ImGui::GetWindowSize().y;
-
   auto text_width = ImGui::CalcTextSize(text.c_str()).x;
-  ImGui::SetCursorPosX((window_width - text_width) * 0.5f);
-  ImGui::SetCursorPosY(window_height * 0.2f);
+  ImGui::SetCursorPosX((connection_status_window_width - text_width) * 0.5f);
+  ImGui::SetCursorPosY(connection_status_window_height * 0.2f);
   ImGui::Text("%s", text.c_str());
   ImGui::SetWindowFontScale(1.0f);
 
