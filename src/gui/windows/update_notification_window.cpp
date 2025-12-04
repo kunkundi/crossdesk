@@ -55,8 +55,8 @@ int Render::UpdateNotificationWindow() {
   if (show_update_notification_window_ && update_available_) {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
 
-    float window_width = update_notification_window_width_;
-    float window_height = update_notification_window_height_;
+    float update_notification_window_width = title_bar_button_width_ * 10.0f;
+    float update_notification_window_height = title_bar_button_width_ * 8.0f;
 
     // #ifdef __APPLE__
     //     float font_scale = 0.3f;
@@ -64,16 +64,16 @@ int Render::UpdateNotificationWindow() {
     //     float font_scale = 0.5f;
     // #endif
 
-    float button_width = 35.0f * dpi_scale_;
-    float button_height = 25.0f * dpi_scale_;
+    ImGui::SetNextWindowPos(ImVec2((viewport->WorkSize.x - viewport->WorkPos.x -
+                                    update_notification_window_width) /
+                                       2,
+                                   (viewport->WorkSize.y - viewport->WorkPos.y -
+                                    update_notification_window_height) /
+                                       2),
+                            ImGuiCond_FirstUseEver);
 
-    ImGui::SetNextWindowPos(
-        ImVec2(
-            (viewport->WorkSize.x - viewport->WorkPos.x - window_width) / 2,
-            (viewport->WorkSize.y - viewport->WorkPos.y - window_height) / 2),
-        ImGuiCond_FirstUseEver);
-
-    ImGui::SetNextWindowSize(ImVec2(window_width, window_height));
+    ImGui::SetNextWindowSize(ImVec2(update_notification_window_width,
+                                    update_notification_window_height));
 
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
@@ -85,11 +85,12 @@ int Render::UpdateNotificationWindow() {
         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoTitleBar);
 
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + window_height * 0.05f);
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() +
+                         update_notification_window_height * 0.05f);
 
     // title: new version available
-    ImGui::SetCursorPosX(window_width * 0.1f);
-    ImGui::SetWindowFontScale(0.6f);
+    ImGui::SetCursorPosX(update_notification_window_width * 0.1f);
+    ImGui::SetWindowFontScale(0.55f);
     std::string title =
         localization::new_version_available[localization_language_index_] +
         ": v" + latest_version_;
@@ -103,23 +104,25 @@ int Render::UpdateNotificationWindow() {
         localization::access_website[localization_language_index_] +
         "https://crossdesk.cn";
     ImGui::SetWindowFontScale(0.5f);
-    Hyperlink(download_text, "https://crossdesk.cn", window_width);
+    Hyperlink(download_text, "https://crossdesk.cn",
+              update_notification_window_width);
     ImGui::SetWindowFontScale(1.0f);
 
     ImGui::Spacing();
 
     float scrollable_height =
-        window_height - UPDATE_NOTIFICATION_RESERVED_HEIGHT;
+        update_notification_window_height - UPDATE_NOTIFICATION_RESERVED_HEIGHT;
 
     if (main_windows_system_chinese_font_ != nullptr) {
       ImGui::PushFont(main_windows_system_chinese_font_);
     }
     // scrollable content area
-    ImGui::SetCursorPosX(window_width * 0.05f);
-    ImGui::BeginChild("ScrollableContent",
-                      ImVec2(window_width * 0.9f, scrollable_height),
-                      ImGuiChildFlags_Border, ImGuiWindowFlags_None);
-    ImGui::SetWindowFontScale(0.6f);
+    ImGui::SetCursorPosX(update_notification_window_width * 0.05f);
+    ImGui::BeginChild(
+        "ScrollableContent",
+        ImVec2(update_notification_window_width * 0.9f, scrollable_height),
+        ImGuiChildFlags_Border, ImGuiWindowFlags_None);
+    ImGui::SetWindowFontScale(0.5f);
     // set text wrap position to current available width (accounts for
     // scrollbar)
     float wrap_pos = ImGui::GetContentRegionAvail().x;
@@ -129,7 +132,7 @@ int Render::UpdateNotificationWindow() {
     if (latest_version_info_.contains("releaseName") &&
         latest_version_info_["releaseName"].is_string() &&
         !latest_version_info_["releaseName"].empty()) {
-      ImGui::SetCursorPosX(window_width * 0.05f);
+      ImGui::SetCursorPosX(update_notification_window_width * 0.05f);
       std::string release_name =
           latest_version_info_["releaseName"].get<std::string>();
       ImGui::TextWrapped("%s", release_name.c_str());
@@ -138,7 +141,7 @@ int Render::UpdateNotificationWindow() {
 
     // release notes
     if (!release_notes_.empty()) {
-      ImGui::SetCursorPosX(window_width * 0.05f);
+      ImGui::SetCursorPosX(update_notification_window_width * 0.05f);
       std::string cleaned_notes = CleanMarkdown(release_notes_);
       ImGui::TextWrapped("%s", cleaned_notes.c_str());
       ImGui::Spacing();
@@ -148,7 +151,7 @@ int Render::UpdateNotificationWindow() {
     if (latest_version_info_.contains("releaseDate") &&
         latest_version_info_["releaseDate"].is_string() &&
         !latest_version_info_["releaseDate"].empty()) {
-      ImGui::SetCursorPosX(window_width * 0.05f);
+      ImGui::SetCursorPosX(update_notification_window_width * 0.05f);
       std::string date_label =
           localization::release_date[localization_language_index_];
       std::string release_date = latest_version_info_["releaseDate"];
@@ -170,16 +173,15 @@ int Render::UpdateNotificationWindow() {
     ImGui::Spacing();
 
     if (ConfigCenter::LANGUAGE::CHINESE == localization_language_) {
-      ImGui::SetCursorPosX(UPDATE_NOTIFICATION_OK_BUTTON_PADDING_CN);
+      ImGui::SetCursorPosX(update_notification_window_width * 0.407f);
     } else {
-      ImGui::SetCursorPosX(UPDATE_NOTIFICATION_OK_BUTTON_PADDING_EN);
+      ImGui::SetCursorPosX(update_notification_window_width * 0.367f);
     }
 
     ImGui::SetWindowFontScale(0.5f);
     // update button
     if (ImGui::Button(
-            localization::update[localization_language_index_].c_str(),
-            ImVec2(button_width, button_height))) {
+            localization::update[localization_language_index_].c_str())) {
       // open download page
       std::string url = "https://crossdesk.cn";
 #if defined(_WIN32)
@@ -196,8 +198,7 @@ int Render::UpdateNotificationWindow() {
     ImGui::SameLine();
 
     if (ImGui::Button(
-            localization::cancel[localization_language_index_].c_str(),
-            ImVec2(button_width, button_height))) {
+            localization::cancel[localization_language_index_].c_str())) {
       show_update_notification_window_ = false;
     }
 

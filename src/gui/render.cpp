@@ -933,7 +933,7 @@ int Render::DrawMainWindow() {
 
   MainWindow();
 
-  // UpdateNotificationWindow();
+  UpdateNotificationWindow();
 
 #ifdef __APPLE__
   if (show_request_permission_window_) {
