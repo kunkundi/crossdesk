@@ -21,8 +21,6 @@
 
 #define NV12_BUFFER_SIZE 1280 * 720 * 3 / 2
 
-#define MOUSE_GRAB_PADDING 5
-
 namespace crossdesk {
 
 std::vector<char> Render::SerializeRemoteAction(const RemoteAction& action) {
@@ -134,9 +132,39 @@ SDL_HitTestResult Render::HitTestCallback(SDL_Window* window,
   int window_width, window_height;
   SDL_GetWindowSize(window, &window_width, &window_height);
 
-  if (area->y < 30 * render->dpi_scale_ && area->y > MOUSE_GRAB_PADDING &&
-      area->x < window_width - 120 * render->dpi_scale_ &&
-      area->x > MOUSE_GRAB_PADDING && !render->is_tab_bar_hovered_) {
+  // check if curosor is in tab bar
+  if (render->stream_window_inited_ && render->stream_window_created_ &&
+      !render->fullscreen_button_pressed_ && render->stream_ctx_) {
+    ImGuiContext* prev_ctx = ImGui::GetCurrentContext();
+    ImGui::SetCurrentContext(render->stream_ctx_);
+
+    ImGuiWindow* tab_bar_window = ImGui::FindWindowByName("TabBar");
+    if (tab_bar_window && tab_bar_window->Active) {
+      ImGuiIO& io = ImGui::GetIO();
+      float scale_x = io.DisplayFramebufferScale.x;
+      float scale_y = io.DisplayFramebufferScale.y;
+
+      float tab_bar_x = tab_bar_window->Pos.x * scale_x;
+      float tab_bar_y = tab_bar_window->Pos.y * scale_y;
+      float tab_bar_width = tab_bar_window->Size.x * scale_x;
+      float tab_bar_height = tab_bar_window->Size.y * scale_y;
+
+      ImGui::SetCurrentContext(prev_ctx);
+
+      if (area->x >= tab_bar_x && area->x <= tab_bar_x + tab_bar_width &&
+          area->y >= tab_bar_y && area->y <= tab_bar_y + tab_bar_height) {
+        return SDL_HITTEST_NORMAL;
+      }
+    } else {
+      ImGui::SetCurrentContext(prev_ctx);
+    }
+  }
+
+  float mouse_grab_padding = render->title_bar_button_width_ * 0.16f;
+  if (area->y < render->title_bar_button_width_ &&
+      area->y > mouse_grab_padding &&
+      area->x < window_width - render->title_bar_button_width_ * 4.0f &&
+      area->x > mouse_grab_padding) {
     return SDL_HITTEST_DRAGGABLE;
   }
 
@@ -144,25 +172,25 @@ SDL_HitTestResult Render::HitTestCallback(SDL_Window* window,
   //   return SDL_HITTEST_NORMAL;
   // }
 
-  if (area->y < MOUSE_GRAB_PADDING) {
-    if (area->x < MOUSE_GRAB_PADDING) {
+  if (area->y < mouse_grab_padding) {
+    if (area->x < mouse_grab_padding) {
       return SDL_HITTEST_RESIZE_TOPLEFT;
-    } else if (area->x > window_width - MOUSE_GRAB_PADDING) {
+    } else if (area->x > window_width - mouse_grab_padding) {
       return SDL_HITTEST_RESIZE_TOPRIGHT;
     } else {
       return SDL_HITTEST_RESIZE_TOP;
     }
-  } else if (area->y > window_height - MOUSE_GRAB_PADDING) {
-    if (area->x < MOUSE_GRAB_PADDING) {
+  } else if (area->y > window_height - mouse_grab_padding) {
+    if (area->x < mouse_grab_padding) {
       return SDL_HITTEST_RESIZE_BOTTOMLEFT;
-    } else if (area->x > window_width - MOUSE_GRAB_PADDING) {
+    } else if (area->x > window_width - mouse_grab_padding) {
       return SDL_HITTEST_RESIZE_BOTTOMRIGHT;
     } else {
       return SDL_HITTEST_RESIZE_BOTTOM;
     }
-  } else if (area->x < MOUSE_GRAB_PADDING) {
+  } else if (area->x < mouse_grab_padding) {
     return SDL_HITTEST_RESIZE_LEFT;
-  } else if (area->x > window_width - MOUSE_GRAB_PADDING) {
+  } else if (area->x > window_width - mouse_grab_padding) {
     return SDL_HITTEST_RESIZE_RIGHT;
   }
 
