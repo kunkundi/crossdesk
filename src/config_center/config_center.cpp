@@ -41,16 +41,43 @@ int ConfigCenter::Load() {
 
   enable_turn_ = ini_.GetBoolValue(section_, "enable_turn", enable_turn_);
   enable_srtp_ = ini_.GetBoolValue(section_, "enable_srtp", enable_srtp_);
-  signal_server_host_ = ini_.GetValue(section_, "signal_server_host",
-                                      signal_server_host_.c_str());
-  signal_server_port_ = static_cast<int>(
-      ini_.GetLongValue(section_, "signal_server_port", signal_server_port_));
-  coturn_server_port_ = static_cast<int>(
-      ini_.GetLongValue(section_, "coturn_server_port", coturn_server_port_));
-  cert_file_path_ =
-      ini_.GetValue(section_, "cert_file_path", cert_file_path_.c_str());
   enable_self_hosted_ =
       ini_.GetBoolValue(section_, "enable_self_hosted", enable_self_hosted_);
+
+  const char* signal_server_host_value =
+      ini_.GetValue(section_, "signal_server_host", nullptr);
+  if (signal_server_host_value != nullptr &&
+      strlen(signal_server_host_value) > 0) {
+    signal_server_host_ = signal_server_host_value;
+  } else {
+    signal_server_host_ = "";
+  }
+  const char* signal_server_port_value =
+      ini_.GetValue(section_, "signal_server_port", nullptr);
+  if (signal_server_port_value != nullptr &&
+      strlen(signal_server_port_value) > 0) {
+    signal_server_port_ =
+        static_cast<int>(ini_.GetLongValue(section_, "signal_server_port", 0));
+  } else {
+    signal_server_port_ = 0;
+  }
+  const char* coturn_server_port_value =
+      ini_.GetValue(section_, "coturn_server_port", nullptr);
+  if (coturn_server_port_value != nullptr &&
+      strlen(coturn_server_port_value) > 0) {
+    coturn_server_port_ =
+        static_cast<int>(ini_.GetLongValue(section_, "coturn_server_port", 0));
+  } else {
+    coturn_server_port_ = 0;
+  }
+  const char* cert_file_path_value =
+      ini_.GetValue(section_, "cert_file_path", nullptr);
+  if (cert_file_path_value != nullptr && strlen(cert_file_path_value) > 0) {
+    cert_file_path_ = cert_file_path_value;
+  } else {
+    cert_file_path_ = "";
+  }
+
   enable_autostart_ =
       ini_.GetBoolValue(section_, "enable_autostart", enable_autostart_);
   enable_daemon_ = ini_.GetBoolValue(section_, "enable_daemon", enable_daemon_);
@@ -71,11 +98,18 @@ int ConfigCenter::Save() {
   ini_.SetBoolValue(section_, "hardware_video_codec", hardware_video_codec_);
   ini_.SetBoolValue(section_, "enable_turn", enable_turn_);
   ini_.SetBoolValue(section_, "enable_srtp", enable_srtp_);
-  ini_.SetValue(section_, "signal_server_host", signal_server_host_.c_str());
-  ini_.SetLongValue(section_, "signal_server_port",
-                    static_cast<long>(signal_server_port_));
-  ini_.SetValue(section_, "cert_file_path", cert_file_path_.c_str());
   ini_.SetBoolValue(section_, "enable_self_hosted", enable_self_hosted_);
+
+  // only save when self hosted
+  if (enable_self_hosted_) {
+    ini_.SetValue(section_, "signal_server_host", signal_server_host_.c_str());
+    ini_.SetLongValue(section_, "signal_server_port",
+                      static_cast<long>(signal_server_port_));
+    ini_.SetLongValue(section_, "coturn_server_port",
+                      static_cast<long>(coturn_server_port_));
+    ini_.SetValue(section_, "cert_file_path", cert_file_path_.c_str());
+  }
+
   ini_.SetBoolValue(section_, "enable_autostart", enable_autostart_);
   ini_.SetBoolValue(section_, "enable_daemon", enable_daemon_);
   ini_.SetBoolValue(section_, "enable_minimize_to_tray",
@@ -210,6 +244,43 @@ int ConfigCenter::SetCertFilePath(const std::string& cert_file_path) {
 int ConfigCenter::SetSelfHosted(bool enable_self_hosted) {
   enable_self_hosted_ = enable_self_hosted;
   ini_.SetBoolValue(section_, "enable_self_hosted", enable_self_hosted_);
+
+  // load from config if self hosted is enabled
+  if (enable_self_hosted_) {
+    const char* signal_server_host_value =
+        ini_.GetValue(section_, "signal_server_host", nullptr);
+    if (signal_server_host_value != nullptr &&
+        strlen(signal_server_host_value) > 0) {
+      signal_server_host_ = signal_server_host_value;
+    }
+    const char* signal_server_port_value =
+        ini_.GetValue(section_, "signal_server_port", nullptr);
+    if (signal_server_port_value != nullptr &&
+        strlen(signal_server_port_value) > 0) {
+      signal_server_port_ = static_cast<int>(
+          ini_.GetLongValue(section_, "signal_server_port", 0));
+    }
+    const char* coturn_server_port_value =
+        ini_.GetValue(section_, "coturn_server_port", nullptr);
+    if (coturn_server_port_value != nullptr &&
+        strlen(coturn_server_port_value) > 0) {
+      coturn_server_port_ = static_cast<int>(
+          ini_.GetLongValue(section_, "coturn_server_port", 0));
+    }
+    const char* cert_file_path_value =
+        ini_.GetValue(section_, "cert_file_path", nullptr);
+    if (cert_file_path_value != nullptr && strlen(cert_file_path_value) > 0) {
+      cert_file_path_ = cert_file_path_value;
+    }
+
+    ini_.SetValue(section_, "signal_server_host", signal_server_host_.c_str());
+    ini_.SetLongValue(section_, "signal_server_port",
+                      static_cast<long>(signal_server_port_));
+    ini_.SetLongValue(section_, "coturn_server_port",
+                      static_cast<long>(coturn_server_port_));
+    ini_.SetValue(section_, "cert_file_path", cert_file_path_.c_str());
+  }
+
   SI_Error rc = ini_.SaveFile(config_path_.c_str());
   if (rc < 0) {
     return -1;

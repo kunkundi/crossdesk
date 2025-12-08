@@ -491,14 +491,22 @@ int Render::CreateConnectionPeer() {
   strncpy(signal_server_ip_self_, config_center_->GetSignalServerHost().c_str(),
           sizeof(signal_server_ip_self_) - 1);
   signal_server_ip_self_[sizeof(signal_server_ip_self_) - 1] = '\0';
-  strncpy(signal_server_port_self_,
-          std::to_string(config_center_->GetSignalServerPort()).c_str(),
-          sizeof(signal_server_port_self_) - 1);
-  signal_server_port_self_[sizeof(signal_server_port_self_) - 1] = '\0';
-  strncpy(coturn_server_port_self_,
-          std::to_string(config_center_->GetCoturnServerPort()).c_str(),
-          sizeof(coturn_server_port_self_) - 1);
-  coturn_server_port_self_[sizeof(coturn_server_port_self_) - 1] = '\0';
+  int signal_port = config_center_->GetSignalServerPort();
+  if (signal_port > 0) {
+    strncpy(signal_server_port_self_, std::to_string(signal_port).c_str(),
+            sizeof(signal_server_port_self_) - 1);
+    signal_server_port_self_[sizeof(signal_server_port_self_) - 1] = '\0';
+  } else {
+    signal_server_port_self_[0] = '\0';
+  }
+  int coturn_port = config_center_->GetCoturnServerPort();
+  if (coturn_port > 0) {
+    strncpy(coturn_server_port_self_, std::to_string(coturn_port).c_str(),
+            sizeof(coturn_server_port_self_) - 1);
+    coturn_server_port_self_[sizeof(coturn_server_port_self_) - 1] = '\0';
+  } else {
+    coturn_server_port_self_[0] = '\0';
+  }
   tls_cert_path_self_ = config_center_->GetCertFilePath();
 
   // peer config
@@ -1038,10 +1046,15 @@ int Render::Run() {
             config_center_->GetSignalServerHost().c_str(),
             sizeof(signal_server_ip_self_) - 1);
     signal_server_ip_self_[sizeof(signal_server_ip_self_) - 1] = '\0';
-    strncpy(signal_server_port_self_,
-            std::to_string(config_center_->GetSignalServerPort()).c_str(),
-            sizeof(signal_server_port_self_) - 1);
-    signal_server_port_self_[sizeof(signal_server_port_self_) - 1] = '\0';
+    int signal_port_init = config_center_->GetSignalServerPort();
+    if (signal_port_init > 0) {
+      strncpy(signal_server_port_self_,
+              std::to_string(signal_port_init).c_str(),
+              sizeof(signal_server_port_self_) - 1);
+      signal_server_port_self_[sizeof(signal_server_port_self_) - 1] = '\0';
+    } else {
+      signal_server_port_self_[0] = '\0';
+    }
     strncpy(cert_file_path_, cert_path_.c_str(), sizeof(cert_file_path_) - 1);
     cert_file_path_[sizeof(cert_file_path_) - 1] = '\0';
   } else {

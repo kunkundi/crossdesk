@@ -275,16 +275,27 @@ int Render::SelfHostedServerWindow() {
               localization::cancel[localization_language_index_].c_str())) {
         show_self_hosted_server_config_window_ = false;
         self_hosted_server_config_window_pos_reset_ = true;
-
-        strncpy(signal_server_ip_self_, signal_server_ip_,
+        strncpy(signal_server_ip_self_,
+                config_center_->GetSignalServerHost().c_str(),
                 sizeof(signal_server_ip_self_) - 1);
         signal_server_ip_self_[sizeof(signal_server_ip_self_) - 1] = '\0';
-        strncpy(signal_server_port_self_, signal_server_port_,
-                sizeof(signal_server_port_self_) - 1);
-        signal_server_port_self_[sizeof(signal_server_port_self_) - 1] = '\0';
-        config_center_->SetServerHost(signal_server_ip_self_);
-        config_center_->SetServerPort(atoi(signal_server_port_self_));
-        tls_cert_path_self_.clear();
+        int signal_port = config_center_->GetSignalServerPort();
+        if (signal_port > 0) {
+          strncpy(signal_server_port_self_, std::to_string(signal_port).c_str(),
+                  sizeof(signal_server_port_self_) - 1);
+          signal_server_port_self_[sizeof(signal_server_port_self_) - 1] = '\0';
+        } else {
+          signal_server_port_self_[0] = '\0';
+        }
+        int coturn_port = config_center_->GetCoturnServerPort();
+        if (coturn_port > 0) {
+          strncpy(coturn_server_port_self_, std::to_string(coturn_port).c_str(),
+                  sizeof(coturn_server_port_self_) - 1);
+          coturn_server_port_self_[sizeof(coturn_server_port_self_) - 1] = '\0';
+        } else {
+          coturn_server_port_self_[0] = '\0';
+        }
+        tls_cert_path_self_ = config_center_->GetCertFilePath();
       }
 
       ImGui::SetWindowFontScale(1.0f);

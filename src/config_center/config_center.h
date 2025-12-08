@@ -70,7 +70,6 @@ class ConfigCenter {
 
  private:
   std::string config_path_;
-  std::string cert_file_path_;
   CSimpleIniA ini_;
   const char* section_ = "Settings";
 
@@ -81,12 +80,13 @@ class ConfigCenter {
   bool hardware_video_codec_ = false;
   bool enable_turn_ = true;
   bool enable_srtp_ = false;
-  std::string signal_server_host_ = "api.crossdesk.cn";
+  std::string signal_server_host_ = "";
   std::string signal_server_host_default_ = "api.crossdesk.cn";
-  int signal_server_port_ = 9099;
+  int signal_server_port_ = 0;
   int server_port_default_ = 9099;
-  int coturn_server_port_ = 3478;
+  int coturn_server_port_ = 0;
   int coturn_server_port_default_ = 3478;
+  std::string cert_file_path_ = "";
   std::string cert_file_path_default_ = "";
   bool enable_self_hosted_ = false;
   bool enable_minimize_to_tray_ = false;
