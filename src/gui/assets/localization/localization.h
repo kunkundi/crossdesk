@@ -185,6 +185,8 @@ static std::vector<std::string> enable_daemon = {
 static std::vector<std::string> takes_effect_after_restart = {
     reinterpret_cast<const char*>(u8"重启后生效"),
     "Takes effect after restart"};
+static std::vector<std::string> select_file = {
+    reinterpret_cast<const char*>(u8"选择文件"), "Select File"};
 #if _WIN32
 static std::vector<std::string> minimize_to_tray = {
     reinterpret_cast<const char*>(u8"退出时最小化到系统托盘:"),

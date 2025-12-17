@@ -230,6 +230,7 @@ int Render::SelfHostedServerWindow() {
 
       //   ShowSimpleFileBrowser();
       // }
+
       {
         ImGui::AlignTextToFramePadding();
         if (ImGui::Button(localization::reset_cert_fingerprint

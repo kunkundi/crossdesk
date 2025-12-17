@@ -2,8 +2,21 @@
 #include "localization.h"
 #include "rd_log.h"
 #include "render.h"
+#include "tinyfiledialogs.h"
 
 namespace crossdesk {
+
+std::string OpenFileDialog(std::string title) {
+  const char* path = tinyfd_openFileDialog(title.c_str(),
+                                           "",       // default path
+                                           0,        // number of filters
+                                           nullptr,  // filters
+                                           nullptr,  // filter description
+                                           0         // no multiple selection
+  );
+
+  return path ? path : "";
+}
 
 int CountDigits(int number) {
   if (number == 0) return 1;
@@ -41,14 +54,14 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
   if (props->control_bar_expand_) {
     ImGui::SetCursorPosX(props->is_control_bar_in_left_
                              ? props->control_window_width_ * 1.03f
-                             : props->control_window_width_ * 0.2f);
+                             : props->control_window_width_ * 0.17f);
 
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     if (!props->is_control_bar_in_left_) {
       draw_list->AddLine(
-          ImVec2(ImGui::GetCursorScreenPos().x - button_height * 0.56f,
+          ImVec2(ImGui::GetCursorScreenPos().x - button_height * 0.5f,
                  ImGui::GetCursorScreenPos().y + button_height * 0.2f),
-          ImVec2(ImGui::GetCursorScreenPos().x - button_height * 0.56f,
+          ImVec2(ImGui::GetCursorScreenPos().x - button_height * 0.5f,
                  ImGui::GetCursorScreenPos().y + button_height * 0.8f),
           IM_COL32(178, 178, 178, 255), 2.0f);
     }
@@ -74,7 +87,7 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
           if (props->connection_status_ == ConnectionStatus::Connected) {
             std::string msg = remote_action.to_json();
             SendDataFrame(props->peer_, msg.c_str(), msg.size(),
-                          props->data_label_.c_str());
+                          props->data_label_.c_str(), false);
           }
         }
         props->display_selectable_hovered_ = ImGui::IsWindowHovered();
@@ -155,7 +168,7 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
         remote_action.a = props->audio_capture_button_pressed_;
         std::string msg = remote_action.to_json();
         SendDataFrame(props->peer_, msg.c_str(), msg.size(),
-                      props->data_label_.c_str());
+                      props->data_label_.c_str(), false);
       }
     }
 
@@ -173,6 +186,18 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
           ImGui::IsItemHovered() ? IM_COL32(66, 150, 250, 255)
                                  : IM_COL32(179, 213, 253, 255),
           line_thickness);
+    }
+
+    ImGui::SameLine();
+    std::string open_folder = ICON_FA_FOLDER_OPEN;
+    if (ImGui::Button(open_folder.c_str(),
+                      ImVec2(button_width, button_height))) {
+      std::string title =
+          localization::select_file[localization_language_index_];
+      std::string path = OpenFileDialog(title);
+      if (!path.empty()) {
+        LOG_INFO("Selected file: {}", path.c_str());
+      }
     }
 
     ImGui::SameLine();
@@ -238,9 +263,9 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
 
     if (props->is_control_bar_in_left_) {
       draw_list->AddLine(
-          ImVec2(ImGui::GetCursorScreenPos().x + button_height * 0.2f,
+          ImVec2(ImGui::GetCursorScreenPos().x + button_height * 0.13f,
                  ImGui::GetCursorScreenPos().y + button_height * 0.2f),
-          ImVec2(ImGui::GetCursorScreenPos().x + button_height * 0.2f,
+          ImVec2(ImGui::GetCursorScreenPos().x + button_height * 0.13f,
                  ImGui::GetCursorScreenPos().y + button_height * 0.8f),
           IM_COL32(178, 178, 178, 255), 2.0f);
     }
@@ -250,7 +275,7 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
 
   float expand_button_pos_x =
       props->control_bar_expand_ ? (props->is_control_bar_in_left_
-                                        ? props->control_window_width_ * 1.91f
+                                        ? props->control_window_width_ * 1.917f
                                         : props->control_window_width_ * 0.03f)
                                  : (props->is_control_bar_in_left_
                                         ? props->control_window_width_ * 1.02f

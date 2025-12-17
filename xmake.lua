@@ -33,6 +33,7 @@ add_requires("imgui v1.92.1-docking", {configs = {sdl3 = true, sdl3_renderer = t
 add_requires("openssl3 3.3.2", {system = false})
 add_requires("nlohmann_json 3.11.3")
 add_requires("cpp-httplib v0.26.0", {configs = {ssl = true}})
+add_requires("tinyfiledialogs 3.15.1")
 
 if is_os("windows") then
     add_requires("libyuv", "miniaudio 0.11.21")
@@ -170,7 +171,7 @@ target("version_checker")
 
 target("gui")
     set_kind("object")
-    add_packages("libyuv")
+    add_packages("libyuv", "tinyfiledialogs")
     add_defines("CROSSDESK_VERSION=\"" .. (get_config("CROSSDESK_VERSION") or "Unknown") .. "\"")
     add_deps("rd_log", "common", "assets", "config_center", "minirtc", 
         "path_manager", "screen_capturer", "speaker_capturer", 

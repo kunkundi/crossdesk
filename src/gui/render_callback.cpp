@@ -30,7 +30,7 @@ int Render::SendKeyCommand(int key_code, bool is_down) {
         std::string msg = remote_action.to_json();
         if (props->peer_) {
           SendDataFrame(props->peer_, msg.c_str(), msg.size(),
-                        props->data_label_.c_str());
+                        props->data_label_.c_str(), false);
         }
       }
     }
@@ -101,7 +101,7 @@ int Render::ProcessMouseEvent(const SDL_Event& event) {
       std::string msg = remote_action.to_json();
       if (props->peer_) {
         SendDataFrame(props->peer_, msg.c_str(), msg.size(),
-                      props->data_label_.c_str());
+                      props->data_label_.c_str(), false);
       }
     } else if (SDL_EVENT_MOUSE_WHEEL == event.type &&
                last_mouse_event.button.x >= props->stream_render_rect_.x &&
@@ -148,7 +148,7 @@ int Render::ProcessMouseEvent(const SDL_Event& event) {
       std::string msg = remote_action.to_json();
       if (props->peer_) {
         SendDataFrame(props->peer_, msg.c_str(), msg.size(),
-                      props->data_label_.c_str());
+                      props->data_label_.c_str(), false);
       }
     }
   }
@@ -485,12 +485,12 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
         render->need_to_send_host_info_ = true;
         render->start_screen_capturer_ = true;
         render->start_speaker_capturer_ = true;
-#ifdef CROSSDESK_DEBUG
+        // #ifdef CROSSDESK_DEBUG
         render->start_mouse_controller_ = false;
         render->start_keyboard_capturer_ = false;
-#else
+        // #else
         render->start_mouse_controller_ = true;
-#endif
+        // #endif
         if (std::all_of(render->connection_status_.begin(),
                         render->connection_status_.end(), [](const auto& kv) {
                           return kv.first.find("web") != std::string::npos;
