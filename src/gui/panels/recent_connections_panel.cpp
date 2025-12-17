@@ -26,6 +26,7 @@ int Render::RecentConnectionsWindow() {
   ImGui::SetCursorPos(
       ImVec2(io.DisplaySize.x * 0.045f, io.DisplaySize.y * 0.02f));
 
+  ImGui::SetWindowFontScale(0.9f);
   ImGui::TextColored(
       ImVec4(0.0f, 0.0f, 0.0f, 0.5f), "%s",
       localization::recent_connections[localization_language_index_].c_str());
