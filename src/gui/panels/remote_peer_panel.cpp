@@ -207,6 +207,7 @@ int Render::ConnectTo(const std::string& remote_id, const char* password,
         }
         AddAudioStream(props->peer_, props->audio_label_.c_str());
         AddDataStream(props->peer_, props->data_label_.c_str());
+        AddDataStream(props->peer_, props->file_label_.c_str());
 
         props->connection_status_ = ConnectionStatus::Connecting;
 

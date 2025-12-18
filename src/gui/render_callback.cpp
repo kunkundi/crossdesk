@@ -1,7 +1,11 @@
+#include <chrono>
 #include <cmath>
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 
 #include "device_controller.h"
+#include "file_transfer.h"
 #include "localization.h"
 #include "platform.h"
 #include "rd_log.h"
@@ -304,6 +308,12 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
     return;
   }
 
+  // try to parse as file-transfer chunk first
+  static FileReceiver receiver;
+  if (receiver.OnData(data, size)) {
+    return;
+  }
+
   std::string json_str(data, size);
   RemoteAction remote_action;
 
@@ -485,12 +495,12 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
         render->need_to_send_host_info_ = true;
         render->start_screen_capturer_ = true;
         render->start_speaker_capturer_ = true;
-        // #ifdef CROSSDESK_DEBUG
+#ifdef CROSSDESK_DEBUG
         render->start_mouse_controller_ = false;
         render->start_keyboard_capturer_ = false;
-        // #else
+#else
         render->start_mouse_controller_ = true;
-        // #endif
+#endif
         if (std::all_of(render->connection_status_.begin(),
                         render->connection_status_.end(), [](const auto& kv) {
                           return kv.first.find("web") != std::string::npos;

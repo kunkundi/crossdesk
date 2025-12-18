@@ -714,6 +714,7 @@ int Render::CreateConnectionPeer() {
 
     AddAudioStream(peer_, audio_label_.c_str());
     AddDataStream(peer_, data_label_.c_str());
+    AddDataStream(peer_, file_label_.c_str());
     return 0;
   } else {
     return -1;

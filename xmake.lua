@@ -169,13 +169,19 @@ target("version_checker")
     add_files("src/version_checker/*.cpp")
     add_includedirs("src/version_checker", {public = true})
 
+target("tools")
+    set_kind("object")
+    add_deps("rd_log")
+    add_files("src/tools/*.cpp")
+    add_includedirs("src/tools", {public = true})
+
 target("gui")
     set_kind("object")
     add_packages("libyuv", "tinyfiledialogs")
     add_defines("CROSSDESK_VERSION=\"" .. (get_config("CROSSDESK_VERSION") or "Unknown") .. "\"")
     add_deps("rd_log", "common", "assets", "config_center", "minirtc", 
         "path_manager", "screen_capturer", "speaker_capturer", 
-        "device_controller", "thumbnail", "version_checker")
+        "device_controller", "thumbnail", "version_checker", "tools")
     add_files("src/gui/*.cpp", "src/gui/panels/*.cpp", "src/gui/toolbars/*.cpp",
         "src/gui/windows/*.cpp")
     add_includedirs("src/gui", "src/gui/panels", "src/gui/toolbars",

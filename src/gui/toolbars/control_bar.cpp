@@ -1,3 +1,9 @@
+#include <filesystem>
+#include <fstream>
+#include <thread>
+#include <vector>
+
+#include "file_transfer.h"
 #include "layout.h"
 #include "localization.h"
 #include "rd_log.h"
@@ -197,6 +203,27 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
       std::string path = OpenFileDialog(title);
       if (!path.empty()) {
         LOG_INFO("Selected file: {}", path.c_str());
+
+        // Send selected file over file data channel in a background thread.
+        auto peer = props->peer_;
+        std::filesystem::path file_path = std::filesystem::path(path);
+        std::string file_label = file_label_;
+
+        std::thread([peer, file_path, file_label]() {
+          FileSender sender;
+          int ret = sender.SendFile(
+              file_path, file_path.filename().string(),
+              [peer, file_label](const char* buf, size_t sz) -> int {
+                return SendDataFrame(peer, buf, sz, file_label.c_str(), true);
+              });
+
+          if (ret != 0) {
+            LOG_ERROR("FileSender::SendFile failed for [{}], ret={}",
+                      file_path.string().c_str(), ret);
+          } else {
+            LOG_INFO("File send finished: {}", file_path.string().c_str());
+          }
+        }).detach();
       }
     }
 
