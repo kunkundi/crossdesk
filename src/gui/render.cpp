@@ -713,8 +713,8 @@ int Render::CreateConnectionPeer() {
     }
 
     AddAudioStream(peer_, audio_label_.c_str());
-    AddDataStream(peer_, data_label_.c_str());
-    AddDataStream(peer_, file_label_.c_str());
+    AddDataStream(peer_, data_label_.c_str(), false);
+    AddDataStream(peer_, file_label_.c_str(), true);
     return 0;
   } else {
     return -1;
@@ -1341,8 +1341,8 @@ void Render::MainLoop() {
       remote_action.i.host_name_size = host_name.size();
 
       std::string msg = remote_action.to_json();
-      int ret = SendReliableDataFrame(peer_, msg.data(), msg.size(),
-                                      data_label_.c_str());
+      int ret =
+          SendDataFrame(peer_, msg.data(), msg.size(), data_label_.c_str());
       FreeRemoteAction(remote_action);
       if (0 == ret) {
         need_to_send_host_info_ = false;
