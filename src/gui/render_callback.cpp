@@ -216,6 +216,7 @@ void Render::SdlCaptureAudioOut([[maybe_unused]] void* userdata,
 
 void Render::OnReceiveVideoBufferCb(const XVideoFrame* video_frame,
                                     const char* user_id, size_t user_id_size,
+                                    const char* src_id, size_t src_id_size,
                                     void* user_data) {
   Render* render = (Render*)user_data;
   if (!render) {
@@ -283,6 +284,7 @@ void Render::OnReceiveVideoBufferCb(const XVideoFrame* video_frame,
 
 void Render::OnReceiveAudioBufferCb(const char* data, size_t size,
                                     const char* user_id, size_t user_id_size,
+                                    const char* src_id, size_t src_id_size,
                                     void* user_data) {
   Render* render = (Render*)user_data;
   if (!render) {
@@ -302,16 +304,19 @@ void Render::OnReceiveAudioBufferCb(const char* data, size_t size,
 
 void Render::OnReceiveDataBufferCb(const char* data, size_t size,
                                    const char* user_id, size_t user_id_size,
+                                   const char* src_id, size_t src_id_size,
                                    void* user_data) {
   Render* render = (Render*)user_data;
   if (!render) {
     return;
   }
 
-  // try to parse as file-transfer chunk first
-  static FileReceiver receiver;
-  if (receiver.OnData(data, size)) {
-    return;
+  std::string source_id = std::string(src_id, src_id_size);
+  LOG_ERROR("Receive from source [{}]", source_id);
+  if (source_id == "file") {
+    // try to parse as file-transfer chunk first
+    static FileReceiver receiver;
+    receiver.OnData(data, size);
   }
 
   std::string json_str(data, size);

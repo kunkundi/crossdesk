@@ -202,14 +202,17 @@ class Render {
  public:
   static void OnReceiveVideoBufferCb(const XVideoFrame* video_frame,
                                      const char* user_id, size_t user_id_size,
+                                     const char* src_id, size_t src_id_size,
                                      void* user_data);
 
   static void OnReceiveAudioBufferCb(const char* data, size_t size,
                                      const char* user_id, size_t user_id_size,
+                                     const char* src_id, size_t src_id_size,
                                      void* user_data);
 
   static void OnReceiveDataBufferCb(const char* data, size_t size,
                                     const char* user_id, size_t user_id_size,
+                                    const char* src_id, size_t src_id_size,
                                     void* user_data);
 
   static void OnSignalStatusCb(SignalStatus status, const char* user_id,

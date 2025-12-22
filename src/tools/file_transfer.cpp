@@ -165,6 +165,7 @@ std::filesystem::path FileReceiver::GetDefaultDesktopPath() {
 }
 
 bool FileReceiver::OnData(const char* data, size_t size) {
+  LOG_ERROR("FileReceiver::OnData: size={}", size);
   if (!data || size < sizeof(FileChunkHeader)) {
     LOG_ERROR("FileReceiver::OnData: invalid buffer");
     return false;
