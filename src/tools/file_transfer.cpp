@@ -43,6 +43,8 @@ int FileSender::SendFile(const std::filesystem::path& path,
               path.string().c_str());
     return -1;
   }
+  LOG_INFO("FileSender send file {}, total size {}", path.string().c_str(),
+           total_size);
 
   const uint32_t file_id = NextFileId();
   uint64_t offset = 0;
@@ -260,6 +262,11 @@ bool FileReceiver::HandleChunk(const FileChunkHeader& header,
       return false;
     }
     ctx.received += static_cast<uint64_t>(payload_size);
+    LOG_ERROR(
+        "FileReceiver: chunk received, file_id={}, offset={}, chunk_size={}, "
+        "received={}/{}, is_first={}, is_last={}",
+        header.file_id, header.offset, payload_size, ctx.received,
+        ctx.total_size, (header.flags & 0x01) != 0, (header.flags & 0x02) != 0);
   }
 
   bool is_last = (header.flags & 0x02) != 0;
