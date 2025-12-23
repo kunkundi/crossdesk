@@ -165,7 +165,6 @@ std::filesystem::path FileReceiver::GetDefaultDesktopPath() {
 }
 
 bool FileReceiver::OnData(const char* data, size_t size) {
-  LOG_ERROR("FileReceiver::OnData: size={}", size);
   if (!data || size < sizeof(FileChunkHeader)) {
     LOG_ERROR("FileReceiver::OnData: invalid buffer");
     return false;
@@ -263,11 +262,6 @@ bool FileReceiver::HandleChunk(const FileChunkHeader& header,
       return false;
     }
     ctx.received += static_cast<uint64_t>(payload_size);
-    LOG_ERROR(
-        "FileReceiver: chunk received, file_id={}, offset={}, chunk_size={}, "
-        "received={}/{}, is_first={}, is_last={}",
-        header.file_id, header.offset, payload_size, ctx.received,
-        ctx.total_size, (header.flags & 0x01) != 0, (header.flags & 0x02) != 0);
   }
 
   bool is_last = (header.flags & 0x02) != 0;

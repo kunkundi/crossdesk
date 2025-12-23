@@ -312,11 +312,11 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
   }
 
   std::string source_id = std::string(src_id, src_id_size);
-  LOG_ERROR("Receive from source [{}]", source_id);
   if (source_id == "file") {
     // try to parse as file-transfer chunk first
     static FileReceiver receiver;
     receiver.OnData(data, size);
+    return;
   }
 
   std::string json_str(data, size);
