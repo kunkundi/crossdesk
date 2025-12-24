@@ -123,6 +123,19 @@ class Render {
     int frame_count_ = 0;
     std::chrono::steady_clock::time_point last_time_;
     XNetTrafficStats net_traffic_stats_;
+
+    // File transfer progress
+    std::atomic<bool> file_sending_ = false;
+    std::atomic<uint64_t> file_sent_bytes_ = 0;
+    std::atomic<uint64_t> file_total_bytes_ = 0;
+    std::atomic<uint32_t> file_send_rate_bps_ = 0;  // bytes per second
+    std::string file_sending_name_ = "";
+    std::mutex file_transfer_mutex_;
+    std::chrono::steady_clock::time_point file_send_start_time_;
+    std::chrono::steady_clock::time_point file_send_last_update_time_;
+    uint64_t file_send_last_bytes_ = 0;
+    bool file_transfer_window_visible_ = false;
+    bool file_transfer_completed_ = false;
   };
 
  public:
@@ -173,6 +186,7 @@ class Render {
   int ShowRecentConnections();
   void Hyperlink(const std::string& label, const std::string& url,
                  const float window_width);
+  int FileTransferWindow(std::shared_ptr<SubStreamWindowProperties>& props);
 
  private:
   int ConnectTo(const std::string& remote_id, const char* password,

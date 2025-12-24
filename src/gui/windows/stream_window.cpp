@@ -138,6 +138,9 @@ int Render::StreamWindow() {
           UpdateRenderRect();
 
           ControlWindow(props);
+          
+          // Show file transfer window if needed
+          FileTransferWindow(props);
 
           focused_remote_id_ = props->remote_id_;
 
@@ -233,6 +236,10 @@ int Render::StreamWindow() {
         UpdateRenderRect();
 
         ControlWindow(props);
+        
+        // Show file transfer window if needed
+        FileTransferWindow(props);
+        
         ImGui::End();
 
         if (!props->peer_) {
