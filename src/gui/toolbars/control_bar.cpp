@@ -213,8 +213,9 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
         std::filesystem::path file_path = std::filesystem::path(path);
         std::string file_label = file_label_;
         auto props_weak = std::weak_ptr<SubStreamWindowProperties>(props);
+        Render* render_ptr = this;
 
-        std::thread([peer, file_path, file_label, props_weak]() {
+        std::thread([peer, file_path, file_label, props_weak, render_ptr]() {
           auto props_locked = props_weak.lock();
           if (!props_locked) {
             return;
@@ -254,94 +255,63 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
               props_locked->file_total_bytes_.load());
 
           FileSender sender;
-          auto last_progress_update = std::chrono::steady_clock::now();
-          auto last_rate_update = std::chrono::steady_clock::now();
-          uint64_t last_actual_sent_bytes = 0;
+          uint32_t file_id = FileSender::NextFileId();
 
-          int ret = sender.SendFile(
-              file_path, file_path.filename().string(),
-              [peer, file_label, props_weak, &last_progress_update,
-               &last_rate_update, &last_actual_sent_bytes,
-               total_size](const char* buf, size_t sz) -> int {
-                int send_ret =
-                    SendReliableDataFrame(peer, buf, sz, file_label.c_str());
-                if (send_ret == 0) {
-                  // Update progress periodically (every 50ms) by querying
-                  // actual sent bytes
-                  auto now = std::chrono::steady_clock::now();
-                  auto elapsed_progress =
-                      std::chrono::duration_cast<std::chrono::milliseconds>(
-                          now - last_progress_update)
-                          .count();
-
-                  if (elapsed_progress >= 50) {
-                    // Query actual sent bytes from the transport layer
-                    uint64_t actual_sent_bytes =
-                        GetDataChannelSentBytes(peer, file_label.c_str());
-
-                    auto props_locked = props_weak.lock();
-                    if (props_locked) {
-                      props_locked->file_sent_bytes_ = actual_sent_bytes;
-
-                      // Update rate every 100ms
-                      auto elapsed_rate =
-                          std::chrono::duration_cast<std::chrono::milliseconds>(
-                              now - last_rate_update)
-                              .count();
-
-                      if (elapsed_rate >= 100) {
-                        std::lock_guard<std::mutex> lock(
-                            props_locked->file_transfer_mutex_);
-                        uint64_t bytes_sent_since_last =
-                            actual_sent_bytes - last_actual_sent_bytes;
-                        // Calculate rate in bits per second
-                        uint32_t rate_bps = static_cast<uint32_t>(
-                            (bytes_sent_since_last * 8 * 1000) / elapsed_rate);
-                        props_locked->file_send_rate_bps_ = rate_bps;
-                        last_actual_sent_bytes = actual_sent_bytes;
-                        last_rate_update = now;
-                      }
-                    }
-                    last_progress_update = now;
-                  }
-                }
-                return send_ret;
-              });
-
-          // Reset file transfer progress and show completion
-          auto props_locked_final = props_weak.lock();
-          if (props_locked_final) {
-            // Reset atomic variables first
-            props_locked_final->file_sending_ = false;
-            props_locked_final->file_sent_bytes_ = 0;
-            props_locked_final->file_total_bytes_ = 0;
-            props_locked_final->file_send_rate_bps_ = 0;
-
-            // Show completion window
-            if (ret == 0) {
-              props_locked_final->file_transfer_completed_ = true;
-              props_locked_final->file_transfer_window_visible_ = true;
-            } else {
-              props_locked_final->file_transfer_completed_ = false;
-              props_locked_final->file_transfer_window_visible_ = false;
-            }
-
-            {
-              std::lock_guard<std::mutex> lock(
-                  props_locked_final->file_transfer_mutex_);
-              // Keep file name for completion message
-              if (ret != 0) {
-                props_locked_final->file_sending_name_ = "";
-              }
-            }
-            LOG_INFO("File transfer progress reset, completed={}", ret == 0);
+          {
+            std::lock_guard<std::shared_mutex> lock(
+                render_ptr->file_id_to_props_mutex_);
+            render_ptr->file_id_to_props_[file_id] = props_weak;
           }
 
-          if (ret != 0) {
-            LOG_ERROR("FileSender::SendFile failed for [{}], ret={}",
-                      file_path.string().c_str(), ret);
-          } else {
-            LOG_INFO("File send finished: {}", file_path.string().c_str());
+          props_locked->current_file_id_ = file_id;
+
+          // Progress will be updated via ACK from receiver
+          // Don't update file_sent_bytes_ here, let ACK control the progress
+          int ret = sender.SendFile(
+              file_path, file_path.filename().string(),
+              [peer, file_label](const char* buf, size_t sz) -> int {
+                return SendReliableDataFrame(peer, buf, sz, file_label.c_str());
+              },
+              64 * 1024,  // chunk_size
+              file_id);   // file_id
+
+          // Mark sending thread as finished, but don't set completion flag yet
+          // Completion will be set when we receive the final ACK from receiver
+          auto props_locked_final = props_weak.lock();
+          if (props_locked_final) {
+            props_locked_final->file_sending_ = false;
+
+            if (ret != 0) {
+              // On error, clean up immediately
+              props_locked_final->file_transfer_completed_ = false;
+              props_locked_final->file_transfer_window_visible_ = false;
+              props_locked_final->file_sent_bytes_ = 0;
+              props_locked_final->file_total_bytes_ = 0;
+              props_locked_final->file_send_rate_bps_ = 0;
+              props_locked_final->current_file_id_ = 0;
+
+              // Unregister file_id mapping on error
+              {
+                std::lock_guard<std::shared_mutex> lock(
+                    render_ptr->file_id_to_props_mutex_);
+                render_ptr->file_id_to_props_.erase(file_id);
+              }
+
+              {
+                std::lock_guard<std::mutex> lock(
+                    props_locked_final->file_transfer_mutex_);
+                props_locked_final->file_sending_name_ = "";
+              }
+
+              LOG_ERROR("FileSender::SendFile failed for [{}], ret={}",
+                        file_path.string().c_str(), ret);
+            } else {
+              // On success, keep file_id mapping and wait for final ACK
+              // Don't set completion flag here - wait for ACK with completed
+              // flag
+              LOG_INFO("File send finished (waiting for ACK): {}",
+                       file_path.string().c_str());
+            }
           }
         }).detach();
       }
@@ -450,16 +420,6 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
 
   if (props->net_traffic_stats_button_pressed_ && props->control_bar_expand_) {
     NetTrafficStats(props);
-  } else {
-    // Debug: log why NetTrafficStats is not being called
-    static bool logged_once = false;
-    if (!logged_once && props->file_sending_.load()) {
-      LOG_INFO(
-          "NetTrafficStats not called: button_pressed={}, "
-          "control_bar_expand={}",
-          props->net_traffic_stats_button_pressed_, props->control_bar_expand_);
-      logged_once = true;
-    }
   }
 
   ImGui::PopStyleVar();

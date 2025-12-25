@@ -46,6 +46,7 @@ class Render {
     std::string audio_label_ = "control_audio";
     std::string data_label_ = "control_data";
     std::string file_label_ = "file";
+    std::string file_feedback_label_ = "file_feedback";
     std::string local_id_ = "";
     std::string remote_id_ = "";
     bool exit_ = false;
@@ -136,6 +137,8 @@ class Render {
     uint64_t file_send_last_bytes_ = 0;
     bool file_transfer_window_visible_ = false;
     bool file_transfer_completed_ = false;
+    std::atomic<uint32_t> current_file_id_{
+        0};  // Track current file transfer ID
   };
 
  public:
@@ -482,8 +485,15 @@ class Render {
   std::string video_secondary_label_ = "secondary_display";
   std::string audio_label_ = "audio";
   std::string data_label_ = "data";
+  std::string info_label_ = "info";
+  std::string control_data_label_ = "control_data";
   std::string file_label_ = "file";
+  std::string file_feedback_label_ = "file_feedback";
   Params params_;
+  // Map file_id to props for tracking file transfer progress via ACK
+  std::unordered_map<uint32_t, std::weak_ptr<SubStreamWindowProperties>>
+      file_id_to_props_;
+  std::shared_mutex file_id_to_props_mutex_;
   SDL_AudioDeviceID input_dev_;
   SDL_AudioDeviceID output_dev_;
   ScreenCapturerFactory* screen_capturer_factory_ = nullptr;

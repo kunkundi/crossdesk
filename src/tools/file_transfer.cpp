@@ -9,14 +9,13 @@ namespace crossdesk {
 
 namespace {
 std::atomic<uint32_t> g_next_file_id{1};
-constexpr uint32_t kFileChunkMagic = 0x4A4E544D;  // 'JNTM'
 }  // namespace
 
 uint32_t FileSender::NextFileId() { return g_next_file_id.fetch_add(1); }
 
 int FileSender::SendFile(const std::filesystem::path& path,
                          const std::string& label, const SendFunc& send,
-                         std::size_t chunk_size) {
+                         std::size_t chunk_size, uint32_t file_id) {
   if (!send) {
     LOG_ERROR("FileSender::SendFile: send function is empty");
     return -1;
@@ -43,10 +42,13 @@ int FileSender::SendFile(const std::filesystem::path& path,
               path.string().c_str());
     return -1;
   }
-  LOG_INFO("FileSender send file {}, total size {}", path.string().c_str(),
-           total_size);
+  LOG_INFO("FileSender send file {}, total size {}, file_id={}",
+           path.string().c_str(), total_size, file_id);
 
-  const uint32_t file_id = NextFileId();
+  if (file_id == 0) {
+    file_id = NextFileId();
+  }
+  const uint32_t final_file_id = file_id;
   uint64_t offset = 0;
   bool is_first = true;
   std::string file_name = label.empty() ? path.filename().string() : label;
@@ -69,7 +71,7 @@ int FileSender::SendFile(const std::filesystem::path& path,
     const std::string* name_ptr = is_first ? &file_name : nullptr;
 
     std::vector<char> chunk = BuildChunk(
-        file_id, offset, total_size, buffer.data(),
+        final_file_id, offset, total_size, buffer.data(),
         static_cast<uint32_t>(bytes_read), name_ptr, is_first, is_last);
 
     int ret = send(chunk.data(), chunk.size());
@@ -262,6 +264,27 @@ bool FileReceiver::HandleChunk(const FileChunkHeader& header,
       return false;
     }
     ctx.received += static_cast<uint64_t>(payload_size);
+  }
+
+  // Send ACK after processing chunk
+  if (on_send_ack_) {
+    FileTransferAck ack{};
+    ack.magic = kFileAckMagic;
+    ack.file_id = header.file_id;
+    ack.acked_offset = header.offset + static_cast<uint64_t>(payload_size);
+    ack.total_size = header.total_size;
+    ack.flags = 0;
+
+    bool is_last = (header.flags & 0x02) != 0;
+    if (is_last || ctx.received >= ctx.total_size) {
+      ack.flags |= 0x01;  // completed
+    }
+
+    int ret = on_send_ack_(ack);
+    if (ret != 0) {
+      LOG_ERROR("FileReceiver: failed to send ACK for file_id={}, ret={}",
+                header.file_id, ret);
+    }
   }
 
   bool is_last = (header.flags & 0x02) != 0;

@@ -1,12 +1,15 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <unordered_map>
 
 #include "device_controller.h"
 #include "file_transfer.h"
 #include "localization.h"
+#include "minirtc.h"
 #include "platform.h"
 #include "rd_log.h"
 #include "render.h"
@@ -312,10 +315,90 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
   }
 
   std::string source_id = std::string(src_id, src_id_size);
-  if (source_id == "file") {
-    // try to parse as file-transfer chunk first
+  if (source_id == render->file_label_) {
+    std::string remote_user_id = std::string(user_id, user_id_size);
+
     static FileReceiver receiver;
+    receiver.SetOnSendAck([render](const FileTransferAck& ack) -> int {
+      return SendReliableDataFrame(
+          render->peer_, reinterpret_cast<const char*>(&ack),
+          sizeof(FileTransferAck), render->file_feedback_label_.c_str());
+    });
+
     receiver.OnData(data, size);
+    return;
+  } else if (source_id == render->file_feedback_label_) {
+    if (size < sizeof(FileTransferAck)) {
+      LOG_ERROR("FileTransferAck: buffer too small, size={}", size);
+      return;
+    }
+
+    FileTransferAck ack{};
+    memcpy(&ack, data, sizeof(FileTransferAck));
+
+    if (ack.magic != kFileAckMagic) {
+      LOG_ERROR(
+          "FileTransferAck: invalid magic, got 0x{:08X}, expected 0x{:08X}",
+          ack.magic, kFileAckMagic);
+      return;
+    }
+
+    std::shared_ptr<SubStreamWindowProperties> props = nullptr;
+    {
+      std::shared_lock lock(render->file_id_to_props_mutex_);
+      auto it = render->file_id_to_props_.find(ack.file_id);
+      if (it != render->file_id_to_props_.end()) {
+        props = it->second.lock();
+      }
+    }
+
+    if (!props) {
+      LOG_WARN("FileTransferAck: no props found for file_id={}", ack.file_id);
+      return;
+    }
+
+    // Update progress based on ACK
+    props->file_sent_bytes_ = ack.acked_offset;
+    props->file_total_bytes_ = ack.total_size;
+
+    // Check if transfer is completed
+    if ((ack.flags & 0x01) != 0) {
+      // Transfer completed - receiver has finished receiving the file
+      props->file_transfer_completed_ = true;
+      props->file_transfer_window_visible_ = true;
+      props->file_sending_ = false;  // Mark sending as finished
+      LOG_INFO(
+          "File transfer completed via ACK, file_id={}, total_size={}, "
+          "acked_offset={}",
+          ack.file_id, ack.total_size, ack.acked_offset);
+
+      // Unregister file_id mapping after completion
+      {
+        std::lock_guard<std::shared_mutex> lock(
+            render->file_id_to_props_mutex_);
+        render->file_id_to_props_.erase(ack.file_id);
+      }
+    }
+
+    // Update rate calculation
+    auto now = std::chrono::steady_clock::now();
+    {
+      std::lock_guard<std::mutex> lock(props->file_transfer_mutex_);
+      auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                         now - props->file_send_last_update_time_)
+                         .count();
+
+      if (elapsed >= 100) {
+        uint64_t bytes_sent_since_last =
+            ack.acked_offset - props->file_send_last_bytes_;
+        uint32_t rate_bps =
+            static_cast<uint32_t>((bytes_sent_since_last * 8 * 1000) / elapsed);
+        props->file_send_rate_bps_ = rate_bps;
+        props->file_send_last_bytes_ = ack.acked_offset;
+        props->file_send_last_update_time_ = now;
+      }
+    }
+
     return;
   }
 
