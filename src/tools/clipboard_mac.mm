@@ -70,19 +70,28 @@ void StartMacOSClipboardMonitoring() {
       CFRetain(g_monitor_runloop);
     }
 
-    // Register for clipboard change notifications
-    id observer =
-        [[NSNotificationCenter defaultCenter] addObserverForName:NSPasteboardDidChangeNotification
-                                                          object:pasteboard
-                                                           queue:nil
-                                                      usingBlock:^(NSNotification* notification) {
-                                                        if (!g_monitoring.load()) {
-                                                          return;
-                                                        }
-                                                        HandleClipboardChange();
-                                                      }];
+    // Track changeCount to detect clipboard changes
+    // Use __block to allow modification inside the block
+    __block NSInteger lastChangeCount = [pasteboard changeCount];
 
     LOG_INFO("Clipboard event monitoring started (macOS)");
+
+    // Use a timer to periodically check changeCount
+    // This is more reliable than NSPasteboardDidChangeNotification which may not be available
+    NSTimer* timer =
+        [NSTimer scheduledTimerWithTimeInterval:0.1
+                                        repeats:YES
+                                          block:^(NSTimer* timer) {
+                                            if (!g_monitoring.load()) {
+                                              [timer invalidate];
+                                              return;
+                                            }
+                                            NSInteger currentChangeCount = [pasteboard changeCount];
+                                            if (currentChangeCount != lastChangeCount) {
+                                              lastChangeCount = currentChangeCount;
+                                              HandleClipboardChange();
+                                            }
+                                          }];
 
     while (g_monitoring.load()) {
       @autoreleasepool {
@@ -92,9 +101,7 @@ void StartMacOSClipboardMonitoring() {
     }
 
     // Cleanup
-    [[NSNotificationCenter defaultCenter] removeObserver:observer
-                                                    name:NSPasteboardDidChangeNotification
-                                                  object:pasteboard];
+    [timer invalidate];
     if (g_monitor_runloop) {
       CFRelease(g_monitor_runloop);
       g_monitor_runloop = nullptr;
