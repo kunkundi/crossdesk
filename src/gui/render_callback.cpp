@@ -6,6 +6,7 @@
 #include <fstream>
 #include <unordered_map>
 
+#include "clipboard.h"
 #include "device_controller.h"
 #include "file_transfer.h"
 #include "localization.h"
@@ -326,6 +327,14 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
     });
 
     receiver.OnData(data, size);
+    return;
+  } else if (source_id == render->clipboard_label_) {
+    if (size > 0) {
+      std::string clipboard_text(data, size);
+      if (!Clipboard::SetText(clipboard_text)) {
+        LOG_ERROR("Failed to set clipboard content from remote");
+      }
+    }
     return;
   } else if (source_id == render->file_feedback_label_) {
     if (size < sizeof(FileTransferAck)) {

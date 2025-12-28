@@ -9,6 +9,7 @@
 #include <thread>
 
 #include "OPPOSans_Regular.h"
+#include "clipboard.h"
 #include "device_controller_factory.h"
 #include "fa_regular_400.h"
 #include "fa_solid_900.h"
@@ -717,6 +718,7 @@ int Render::CreateConnectionPeer() {
     AddDataStream(peer_, data_label_.c_str(), false);
     AddDataStream(peer_, file_label_.c_str(), true);
     AddDataStream(peer_, file_feedback_label_.c_str(), true);
+    AddDataStream(peer_, clipboard_label_.c_str(), true);
     return 0;
   } else {
     return -1;
@@ -1267,6 +1269,26 @@ void Render::InitializeModules() {
     keyboard_capturer_ = (KeyboardCapturer*)device_controller_factory_->Create(
         DeviceControllerFactory::Device::Keyboard);
     CreateConnectionPeer();
+
+    // start clipboard monitoring with callback to send data to peers
+    Clipboard::StartMonitoring(
+        100, [this](const char* data, size_t size) -> int {
+          // send clipboard data to all connected peers
+          std::shared_lock lock(client_properties_mutex_);
+          int ret = -1;
+          for (const auto& [remote_id, props] : client_properties_) {
+            if (props && props->peer_ && props->connection_established_) {
+              ret = SendReliableDataFrame(props->peer_, data, size,
+                                          props->clipboard_label_.c_str());
+              if (ret != 0) {
+                LOG_WARN("Failed to send clipboard data to peer [{}], ret={}",
+                         remote_id.c_str(), ret);
+              }
+            }
+          }
+          return ret;
+        });
+
     modules_inited_ = true;
   }
 }
@@ -1398,6 +1420,8 @@ void Render::HandleStreamWindow() {
 }
 
 void Render::Cleanup() {
+  Clipboard::StopMonitoring();
+
   if (screen_capturer_) {
     screen_capturer_->Destroy();
     delete screen_capturer_;

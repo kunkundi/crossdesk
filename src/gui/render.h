@@ -49,6 +49,7 @@ class Render {
     std::string data_label_ = "control_data";
     std::string file_label_ = "file";
     std::string file_feedback_label_ = "file_feedback";
+    std::string clipboard_label_ = "clipboard";
     std::string local_id_ = "";
     std::string remote_id_ = "";
     bool exit_ = false;
@@ -515,6 +516,7 @@ class Render {
   std::string control_data_label_ = "control_data";
   std::string file_label_ = "file";
   std::string file_feedback_label_ = "file_feedback";
+  std::string clipboard_label_ = "clipboard";
   Params params_;
   // Map file_id to props for tracking file transfer progress via ACK
   std::unordered_map<uint32_t, std::weak_ptr<SubStreamWindowProperties>>

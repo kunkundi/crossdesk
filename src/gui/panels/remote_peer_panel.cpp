@@ -209,6 +209,7 @@ int Render::ConnectTo(const std::string& remote_id, const char* password,
         AddDataStream(props->peer_, props->data_label_.c_str(), false);
         AddDataStream(props->peer_, props->file_label_.c_str(), true);
         AddDataStream(props->peer_, props->file_feedback_label_.c_str(), true);
+        AddDataStream(props->peer_, props->clipboard_label_.c_str(), true);
 
         props->connection_status_ = ConnectionStatus::Connecting;
 

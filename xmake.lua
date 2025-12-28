@@ -173,6 +173,9 @@ target("tools")
     set_kind("object")
     add_deps("rd_log")
     add_files("src/tools/*.cpp")
+    if is_os("macosx") then
+        add_files("src/tools/*.mm")
+    end
     add_includedirs("src/tools", {public = true})
 
 target("gui")
