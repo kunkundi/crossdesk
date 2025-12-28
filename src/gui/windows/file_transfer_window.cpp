@@ -30,47 +30,80 @@ int BitrateDisplay(int bitrate) {
 
 int Render::FileTransferWindow(
     std::shared_ptr<SubStreamWindowProperties>& props) {
-  if (!props->file_transfer_window_visible_ &&
-      !props->file_transfer_completed_) {
+  // Only show window if there are files in transfer list or currently
+  // transferring
+  std::vector<SubStreamWindowProperties::FileTransferInfo> file_list;
+  {
+    std::lock_guard<std::mutex> lock(props->file_transfer_list_mutex_);
+    file_list = props->file_transfer_list_;
+  }
+
+  // Sort file list: Sending first, then Completed, then Queued, then Failed
+  std::sort(
+      file_list.begin(), file_list.end(),
+      [](const SubStreamWindowProperties::FileTransferInfo& a,
+         const SubStreamWindowProperties::FileTransferInfo& b) {
+        // Priority: Sending > Completed > Queued > Failed
+        auto get_priority =
+            [](SubStreamWindowProperties::FileTransferStatus status) {
+              switch (status) {
+                case SubStreamWindowProperties::FileTransferStatus::Sending:
+                  return 0;
+                case SubStreamWindowProperties::FileTransferStatus::Completed:
+                  return 1;
+                case SubStreamWindowProperties::FileTransferStatus::Queued:
+                  return 2;
+                case SubStreamWindowProperties::FileTransferStatus::Failed:
+                  return 3;
+              }
+              return 3;
+            };
+        return get_priority(a.status) < get_priority(b.status);
+      });
+
+  // Only show window if file_transfer_window_visible_ is true
+  // Window can be closed by user even during transfer
+  // It will be reopened automatically when:
+  // 1. A file transfer completes (in render_callback.cpp)
+  // 2. A new file starts sending from queue (in render.cpp)
+  if (!props->file_transfer_window_visible_) {
     return 0;
   }
 
   ImGuiIO& io = ImGui::GetIO();
 
   // Position window at bottom-left of stream window
-  float window_width = main_window_width_ * 0.35f;
-  float window_height = main_window_height_ * 0.25f;
-  float pos_x = 10.0f;
-  float pos_y = 10.0f;
-
-  // Get stream window size and position
-  ImVec2 stream_window_size =
-      ImVec2(stream_window_width_, stream_window_height_);
-  if (fullscreen_button_pressed_) {
-    pos_y = stream_window_size.y - window_height - 10.0f;
-  } else {
-    pos_y = stream_window_size.y - window_height - 10.0f - title_bar_height_;
-  }
+  // Adjust window size based on number of files
+  float file_transfer_window_width = main_window_width_ * 0.6f;
+  float file_transfer_window_height =
+      main_window_height_ * 0.3f;  // Dynamic height
+  float pos_x = file_transfer_window_width * 0.05f;
+  float pos_y = stream_window_height_ - file_transfer_window_height -
+                file_transfer_window_width * 0.05;
+  float same_line_width = file_transfer_window_width * 0.1f;
 
   ImGui::SetNextWindowPos(ImVec2(pos_x, pos_y), ImGuiCond_Always);
-  ImGui::SetNextWindowSize(ImVec2(window_width, window_height),
-                           ImGuiCond_Always);
+  ImGui::SetNextWindowSize(
+      ImVec2(file_transfer_window_width, file_transfer_window_height),
+      ImGuiCond_Always);
 
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
-  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0f, 1.0f, 1.0f, 0.8f));
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0f, 1.0f, 1.0f, 0.9f));
   ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
   ImGui::PushStyleColor(ImGuiCol_TitleBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
-  ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
+  ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
 
-  std::string window_title = "File Transfer";
+  ImGui::SetWindowFontScale(0.5f);
   bool window_opened = true;
-
-  // ImGui::SetWindowFontScale(0.5f);
-  if (ImGui::Begin("FileTransferWindow", &window_opened,
-                   ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
-                       ImGuiWindowFlags_NoMove |
-                       ImGuiWindowFlags_NoSavedSettings)) {
+  if (ImGui::Begin(
+          localization::file_transfer_progress[localization_language_index_]
+              .c_str(),
+          &window_opened,
+          ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
+              ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+              ImGuiWindowFlags_NoScrollbar)) {
+    ImGui::SetWindowFontScale(1.0f);
     ImGui::SetWindowFontScale(0.5f);
     ImGui::PopStyleColor(4);
     ImGui::PopStyleVar(2);
@@ -78,89 +111,115 @@ int Render::FileTransferWindow(
     // Close button handling
     if (!window_opened) {
       props->file_transfer_window_visible_ = false;
-      props->file_transfer_completed_ = false;
       ImGui::End();
       return 0;
     }
 
-    bool is_sending = props->file_sending_.load();
-    uint64_t total = props->file_total_bytes_.load();
-    bool has_transfer = total > 0;  // Check if there's an active transfer
+    // Display file list
+    if (file_list.empty()) {
+      ImGui::Text("No files in transfer queue");
+    } else {
+      // Use a scrollable child window for the file list
+      ImGui::SetWindowFontScale(0.5f);
+      ImGui::BeginChild("FileList",
+                        ImVec2(0, file_transfer_window_height * 0.75f),
+                        ImGuiChildFlags_Border);
+      ImGui::SetWindowFontScale(1.0f);
+      ImGui::SetWindowFontScale(0.5f);
 
-    if (props->file_transfer_completed_ && !is_sending) {
-      // Show completion message
-      ImGui::SetCursorPos(ImVec2(10, 30));
-      ImGui::TextColored(ImVec4(0.0f, 0.0f, 1.0f, 1.0f),
-                         "%s File transfer completed!", ICON_FA_CHECK);
+      for (size_t i = 0; i < file_list.size(); ++i) {
+        const auto& info = file_list[i];
+        ImGui::PushID(static_cast<int>(i));
 
-      std::string file_name;
-      {
-        std::lock_guard<std::mutex> lock(props->file_transfer_mutex_);
-        file_name = props->file_sending_name_;
+        // Status icon and file name
+        const char* status_icon = "";
+        ImVec4 status_color(0.5f, 0.5f, 0.5f, 1.0f);
+        const char* status_text = "";
+
+        switch (info.status) {
+          case SubStreamWindowProperties::FileTransferStatus::Queued:
+            status_icon = ICON_FA_CLOCK;
+            status_color =
+                ImVec4(0.5f, 0.6f, 0.7f, 1.0f);  // Common blue-gray for queued
+            status_text =
+                localization::queued[localization_language_index_].c_str();
+            break;
+          case SubStreamWindowProperties::FileTransferStatus::Sending:
+            status_icon = ICON_FA_ARROW_UP;
+            status_color = ImVec4(0.2f, 0.6f, 1.0f, 1.0f);
+            status_text =
+                localization::sending[localization_language_index_].c_str();
+            break;
+          case SubStreamWindowProperties::FileTransferStatus::Completed:
+            status_icon = ICON_FA_CHECK;
+            status_color = ImVec4(0.0f, 0.8f, 0.0f, 1.0f);
+            status_text =
+                localization::completed[localization_language_index_].c_str();
+            break;
+          case SubStreamWindowProperties::FileTransferStatus::Failed:
+            status_icon = ICON_FA_XMARK;
+            status_color = ImVec4(1.0f, 0.2f, 0.2f, 1.0f);
+            status_text =
+                localization::failed[localization_language_index_].c_str();
+            break;
+        }
+
+        ImGui::TextColored(status_color, "%s", status_icon);
+        ImGui::SameLine();
+        ImGui::Text("%s", info.file_name.c_str());
+        ImGui::SameLine();
+        ImGui::TextColored(status_color, "%s", status_text);
+
+        // Progress bar for sending files
+        if (info.status ==
+                SubStreamWindowProperties::FileTransferStatus::Sending &&
+            info.file_size > 0) {
+          float progress = static_cast<float>(info.sent_bytes) /
+                           static_cast<float>(info.file_size);
+          progress = (std::max)(0.0f, (std::min)(1.0f, progress));
+
+          float text_height = ImGui::GetTextLineHeight();
+          ImGui::ProgressBar(
+              progress, ImVec2(file_transfer_window_width * 0.5f, text_height),
+              "");
+          ImGui::SameLine();
+
+          ImGui::Text("%.1f%%", progress * 100.0f);
+          ImGui::SameLine();
+
+          float speed_x_pos = file_transfer_window_width * 0.65f;
+          ImGui::SetCursorPosX(speed_x_pos);
+          BitrateDisplay(static_cast<int>(info.rate_bps));
+        } else if (info.status ==
+                   SubStreamWindowProperties::FileTransferStatus::Completed) {
+          // Show completed size
+          char size_str[64];
+          if (info.file_size < 1024) {
+            snprintf(size_str, sizeof(size_str), "%llu B",
+                     (unsigned long long)info.file_size);
+          } else if (info.file_size < 1024 * 1024) {
+            snprintf(size_str, sizeof(size_str), "%.2f KB",
+                     info.file_size / 1024.0f);
+          } else {
+            snprintf(size_str, sizeof(size_str), "%.2f MB",
+                     info.file_size / (1024.0f * 1024.0f));
+          }
+          ImGui::Text("Size: %s", size_str);
+        }
+
+        ImGui::PopID();
+        ImGui::Spacing();
       }
-      if (!file_name.empty()) {
-        ImGui::SetCursorPos(ImVec2(10, 50));
-        ImGui::Text("File: %s", file_name.c_str());
-      }
 
-      ImGui::SetCursorPos(ImVec2(10, 70));
-      if (ImGui::Button("OK", ImVec2(80, 25))) {
-        props->file_transfer_completed_ = false;
-        props->file_transfer_window_visible_ = false;
-      }
-    } else if (has_transfer && !props->file_transfer_completed_) {
-      // Show transfer progress (either sending or waiting for ACK)
-      uint64_t sent = props->file_sent_bytes_.load();
-      // Re-read total in case it was updated
-      uint64_t current_total = props->file_total_bytes_.load();
-      float progress = current_total > 0 ? static_cast<float>(sent) /
-                                               static_cast<float>(current_total)
-                                         : 0.0f;
-      progress = (std::max)(0.0f, (std::min)(1.0f, progress));
-
-      // File name
-      std::string file_name;
-      {
-        std::lock_guard<std::mutex> lock(props->file_transfer_mutex_);
-        file_name = props->file_sending_name_;
-      }
-      if (file_name.empty()) {
-        file_name = "Sending...";
-      }
-
-      ImGui::SetCursorPos(ImVec2(10, 30));
-      ImGui::Text("File: %s", file_name.c_str());
-
-      // Progress bar
-      ImGui::SetCursorPos(ImVec2(10, 50));
-      ImGui::ProgressBar(progress, ImVec2(window_width - 40, 0), "");
-      ImGui::SameLine(0, 5);
-      ImGui::Text("%.1f%%", progress * 100.0f);
-
-      // Transfer rate and size info
-      ImGui::SetCursorPos(ImVec2(10, 75));
-      uint32_t rate_bps = props->file_send_rate_bps_.load();
-      ImGui::Text("Speed: ");
-      ImGui::SameLine();
-      BitrateDisplay(static_cast<int>(rate_bps));
-
-      ImGui::SameLine(0, 20);
-      // Format size display
-      char size_str[64];
-      if (current_total < 1024) {
-        snprintf(size_str, sizeof(size_str), "%llu B",
-                 (unsigned long long)current_total);
-      } else if (current_total < 1024 * 1024) {
-        snprintf(size_str, sizeof(size_str), "%.2f KB",
-                 current_total / 1024.0f);
-      } else {
-        snprintf(size_str, sizeof(size_str), "%.2f MB",
-                 current_total / (1024.0f * 1024.0f));
-      }
-      ImGui::Text("Size: %s", size_str);
+      ImGui::SetWindowFontScale(1.0f);
+      ImGui::SetWindowFontScale(0.5f);
+      ImGui::EndChild();
+      ImGui::SetWindowFontScale(1.0f);
     }
-
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::SetWindowFontScale(0.5f);
     ImGui::End();
+    ImGui::SetWindowFontScale(1.0f);
   } else {
     ImGui::PopStyleColor(4);
     ImGui::PopStyleVar(2);

@@ -207,113 +207,67 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
       if (!path.empty()) {
         LOG_INFO("Selected file: {}", path.c_str());
 
-        // Send selected file over file data channel in a background thread.
-        auto peer = props->peer_;
-        props->file_sending_ = true;
         std::filesystem::path file_path = std::filesystem::path(path);
         std::string file_label = file_label_;
-        auto props_weak = std::weak_ptr<SubStreamWindowProperties>(props);
-        Render* render_ptr = this;
 
-        std::thread([peer, file_path, file_label, props_weak, render_ptr]() {
-          auto props_locked = props_weak.lock();
-          if (!props_locked) {
-            return;
-          }
+        // Get file size
+        std::error_code ec;
+        uint64_t file_size = std::filesystem::file_size(file_path, ec);
+        if (ec) {
+          LOG_ERROR("Failed to get file size: {}", ec.message().c_str());
+          file_size = 0;
+        }
 
-          // Initialize file transfer progress
-          std::error_code ec;
-          uint64_t total_size = std::filesystem::file_size(file_path, ec);
-          if (ec) {
-            LOG_ERROR("Failed to get file size: {}", ec.message().c_str());
-            return;
-          }
+        // Add file to transfer list
+        {
+          std::lock_guard<std::mutex> lock(props->file_transfer_list_mutex_);
+          SubStreamWindowProperties::FileTransferInfo info;
+          info.file_name = file_path.filename().string();
+          info.file_path = file_path;  // Store full path for precise matching
+          info.file_size = file_size;
+          info.status = SubStreamWindowProperties::FileTransferStatus::Queued;
+          info.sent_bytes = 0;
+          info.file_id = 0;
+          info.rate_bps = 0;
+          props->file_transfer_list_.push_back(info);
+        }
+        props->file_transfer_window_visible_ = true;
 
-          // Set file transfer status (atomic variables don't need mutex)
-          props_locked->file_sending_ = true;
-          props_locked->file_sent_bytes_ = 0;
-          props_locked->file_total_bytes_ = total_size;
-          props_locked->file_send_rate_bps_ = 0;
-          props_locked->file_transfer_window_visible_ = true;
-          props_locked->file_transfer_completed_ = false;
+        if (props->file_sending_.load()) {
+          // Add to queue
+          size_t queue_size = 0;
           {
-            std::lock_guard<std::mutex> lock(
-                props_locked->file_transfer_mutex_);
-            props_locked->file_sending_name_ = file_path.filename().string();
+            std::lock_guard<std::mutex> lock(props->file_queue_mutex_);
+            SubStreamWindowProperties::QueuedFile queued_file;
+            queued_file.file_path = file_path;
+            queued_file.file_label = file_label;
+            props->file_send_queue_.push(queued_file);
+            queue_size = props->file_send_queue_.size();
           }
-          props_locked->file_send_start_time_ =
-              std::chrono::steady_clock::now();
-          props_locked->file_send_last_update_time_ =
-              props_locked->file_send_start_time_;
-          props_locked->file_send_last_bytes_ = 0;
+          LOG_INFO("File added to queue: {} ({} files in queue)",
+                   file_path.filename().string().c_str(), queue_size);
+        } else {
+          StartFileTransfer(props, file_path, file_label);
 
-          LOG_INFO(
-              "File transfer started: {} ({} bytes), file_sending_={}, "
-              "total_bytes_={}",
-              file_path.filename().string(), total_size,
-              props_locked->file_sending_.load(),
-              props_locked->file_total_bytes_.load());
-
-          FileSender sender;
-          uint32_t file_id = FileSender::NextFileId();
-
-          {
-            std::lock_guard<std::shared_mutex> lock(
-                render_ptr->file_id_to_props_mutex_);
-            render_ptr->file_id_to_props_[file_id] = props_weak;
-          }
-
-          props_locked->current_file_id_ = file_id;
-
-          // Progress will be updated via ACK from receiver
-          // Don't update file_sent_bytes_ here, let ACK control the progress
-          int ret = sender.SendFile(
-              file_path, file_path.filename().string(),
-              [peer, file_label](const char* buf, size_t sz) -> int {
-                return SendReliableDataFrame(peer, buf, sz, file_label.c_str());
-              },
-              64 * 1024,  // chunk_size
-              file_id);   // file_id
-
-          // Mark sending thread as finished, but don't set completion flag yet
-          // Completion will be set when we receive the final ACK from receiver
-          auto props_locked_final = props_weak.lock();
-          if (props_locked_final) {
-            props_locked_final->file_sending_ = false;
-
-            if (ret != 0) {
-              // On error, clean up immediately
-              props_locked_final->file_transfer_completed_ = false;
-              props_locked_final->file_transfer_window_visible_ = false;
-              props_locked_final->file_sent_bytes_ = 0;
-              props_locked_final->file_total_bytes_ = 0;
-              props_locked_final->file_send_rate_bps_ = 0;
-              props_locked_final->current_file_id_ = 0;
-
-              // Unregister file_id mapping on error
-              {
-                std::lock_guard<std::shared_mutex> lock(
-                    render_ptr->file_id_to_props_mutex_);
-                render_ptr->file_id_to_props_.erase(file_id);
-              }
-
-              {
-                std::lock_guard<std::mutex> lock(
-                    props_locked_final->file_transfer_mutex_);
-                props_locked_final->file_sending_name_ = "";
-              }
-
-              LOG_ERROR("FileSender::SendFile failed for [{}], ret={}",
-                        file_path.string().c_str(), ret);
-            } else {
-              // On success, keep file_id mapping and wait for final ACK
-              // Don't set completion flag here - wait for ACK with completed
-              // flag
-              LOG_INFO("File send finished (waiting for ACK): {}",
-                       file_path.string().c_str());
+          if (props->file_sending_.load()) {
+          } else {
+            // Failed to start (race condition: another file started between
+            // check and call) Add to queue
+            size_t queue_size = 0;
+            {
+              std::lock_guard<std::mutex> lock(props->file_queue_mutex_);
+              SubStreamWindowProperties::QueuedFile queued_file;
+              queued_file.file_path = file_path;
+              queued_file.file_label = file_label;
+              props->file_send_queue_.push(queued_file);
+              queue_size = props->file_send_queue_.size();
             }
+            LOG_INFO(
+                "File added to queue after race condition: {} ({} files in "
+                "queue)",
+                file_path.filename().string().c_str(), queue_size);
           }
-        }).detach();
+        }
       }
     }
 

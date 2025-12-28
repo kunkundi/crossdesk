@@ -361,27 +361,9 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
     props->file_sent_bytes_ = ack.acked_offset;
     props->file_total_bytes_ = ack.total_size;
 
-    // Check if transfer is completed
-    if ((ack.flags & 0x01) != 0) {
-      // Transfer completed - receiver has finished receiving the file
-      props->file_transfer_completed_ = true;
-      props->file_transfer_window_visible_ = true;
-      props->file_sending_ = false;  // Mark sending as finished
-      LOG_INFO(
-          "File transfer completed via ACK, file_id={}, total_size={}, "
-          "acked_offset={}",
-          ack.file_id, ack.total_size, ack.acked_offset);
-
-      // Unregister file_id mapping after completion
-      {
-        std::lock_guard<std::shared_mutex> lock(
-            render->file_id_to_props_mutex_);
-        render->file_id_to_props_.erase(ack.file_id);
-      }
-    }
-
     // Update rate calculation
     auto now = std::chrono::steady_clock::now();
+    uint32_t rate_bps = 0;
     {
       std::lock_guard<std::mutex> lock(props->file_transfer_mutex_);
       auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -391,12 +373,62 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
       if (elapsed >= 100) {
         uint64_t bytes_sent_since_last =
             ack.acked_offset - props->file_send_last_bytes_;
-        uint32_t rate_bps =
+        rate_bps =
             static_cast<uint32_t>((bytes_sent_since_last * 8 * 1000) / elapsed);
         props->file_send_rate_bps_ = rate_bps;
         props->file_send_last_bytes_ = ack.acked_offset;
         props->file_send_last_update_time_ = now;
+      } else {
+        rate_bps = props->file_send_rate_bps_.load();
       }
+    }
+
+    // Update file transfer list: update progress and rate
+    {
+      std::lock_guard<std::mutex> lock(props->file_transfer_list_mutex_);
+      for (auto& info : props->file_transfer_list_) {
+        if (info.file_id == ack.file_id) {
+          info.sent_bytes = ack.acked_offset;
+          info.file_size = ack.total_size;
+          info.rate_bps = rate_bps;
+          break;
+        }
+      }
+    }
+
+    // Check if transfer is completed
+    if ((ack.flags & 0x01) != 0) {
+      // Transfer completed - receiver has finished receiving the file
+      // Reopen window if it was closed by user
+      props->file_transfer_window_visible_ = true;
+      props->file_sending_ = false;  // Mark sending as finished
+      LOG_INFO(
+          "File transfer completed via ACK, file_id={}, total_size={}, "
+          "acked_offset={}",
+          ack.file_id, ack.total_size, ack.acked_offset);
+
+      // Update file transfer list: mark as completed
+      {
+        std::lock_guard<std::mutex> lock(props->file_transfer_list_mutex_);
+        for (auto& info : props->file_transfer_list_) {
+          if (info.file_id == ack.file_id) {
+            info.status =
+                SubStreamWindowProperties::FileTransferStatus::Completed;
+            info.sent_bytes = ack.total_size;
+            break;
+          }
+        }
+      }
+
+      // Unregister file_id mapping after completion
+      {
+        std::lock_guard<std::shared_mutex> lock(
+            render->file_id_to_props_mutex_);
+        render->file_id_to_props_.erase(ack.file_id);
+      }
+
+      // Process next file in queue
+      render->ProcessFileQueue(props);
     }
 
     return;

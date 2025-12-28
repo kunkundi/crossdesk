@@ -11,10 +11,12 @@
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>
 #include <fstream>
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <queue>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
@@ -129,16 +131,34 @@ class Render {
     std::atomic<bool> file_sending_ = false;
     std::atomic<uint64_t> file_sent_bytes_ = 0;
     std::atomic<uint64_t> file_total_bytes_ = 0;
-    std::atomic<uint32_t> file_send_rate_bps_ = 0;  // bytes per second
-    std::string file_sending_name_ = "";
+    std::atomic<uint32_t> file_send_rate_bps_ = 0;
     std::mutex file_transfer_mutex_;
     std::chrono::steady_clock::time_point file_send_start_time_;
     std::chrono::steady_clock::time_point file_send_last_update_time_;
     uint64_t file_send_last_bytes_ = 0;
     bool file_transfer_window_visible_ = false;
-    bool file_transfer_completed_ = false;
-    std::atomic<uint32_t> current_file_id_{
-        0};  // Track current file transfer ID
+    std::atomic<uint32_t> current_file_id_{0};
+
+    struct QueuedFile {
+      std::filesystem::path file_path;
+      std::string file_label;
+    };
+    std::queue<QueuedFile> file_send_queue_;
+    std::mutex file_queue_mutex_;
+
+    enum class FileTransferStatus { Queued, Sending, Completed, Failed };
+
+    struct FileTransferInfo {
+      std::string file_name;
+      std::filesystem::path file_path;
+      uint64_t file_size = 0;
+      FileTransferStatus status = FileTransferStatus::Queued;
+      uint64_t sent_bytes = 0;
+      uint32_t file_id = 0;
+      uint32_t rate_bps = 0;
+    };
+    std::vector<FileTransferInfo> file_transfer_list_;
+    std::mutex file_transfer_list_mutex_;
   };
 
  public:
@@ -279,6 +299,12 @@ class Render {
   int StopKeyboardCapturer();
 
   int CreateConnectionPeer();
+
+  // File transfer helper functions
+  void StartFileTransfer(std::shared_ptr<SubStreamWindowProperties> props,
+                         const std::filesystem::path& file_path,
+                         const std::string& file_label);
+  void ProcessFileQueue(std::shared_ptr<SubStreamWindowProperties> props);
 
   int AudioDeviceInit();
   int AudioDeviceDestroy();

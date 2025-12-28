@@ -187,6 +187,17 @@ static std::vector<std::string> takes_effect_after_restart = {
     "Takes effect after restart"};
 static std::vector<std::string> select_file = {
     reinterpret_cast<const char*>(u8"选择文件"), "Select File"};
+static std::vector<std::string> file_transfer_progress = {
+    reinterpret_cast<const char*>(u8"文件传输进度"), "File Transfer Progress"};
+static std::vector<std::string> queued = {
+    reinterpret_cast<const char*>(u8"队列中"), "Queued"};
+static std::vector<std::string> sending = {
+    reinterpret_cast<const char*>(u8"正在传输"), "Sending"};
+static std::vector<std::string> completed = {
+    reinterpret_cast<const char*>(u8"已完成"), "Completed"};
+static std::vector<std::string> failed = {
+    reinterpret_cast<const char*>(u8"失败"), "Failed"};
+
 #if _WIN32
 static std::vector<std::string> minimize_to_tray = {
     reinterpret_cast<const char*>(u8"退出时最小化到系统托盘:"),
