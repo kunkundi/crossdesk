@@ -361,26 +361,27 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
     props->file_sent_bytes_ = ack.acked_offset;
     props->file_total_bytes_ = ack.total_size;
 
-    // Update rate calculation
-    auto now = std::chrono::steady_clock::now();
     uint32_t rate_bps = 0;
     {
-      std::lock_guard<std::mutex> lock(props->file_transfer_mutex_);
-      auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                         now - props->file_send_last_update_time_)
-                         .count();
+      uint32_t data_channel_bitrate =
+          props->net_traffic_stats_.data_outbound_stats.bitrate;
 
-      if (elapsed >= 100) {
-        uint64_t bytes_sent_since_last =
-            ack.acked_offset - props->file_send_last_bytes_;
-        rate_bps =
-            static_cast<uint32_t>((bytes_sent_since_last * 8 * 1000) / elapsed);
-        props->file_send_rate_bps_ = rate_bps;
-        props->file_send_last_bytes_ = ack.acked_offset;
-        props->file_send_last_update_time_ = now;
+      if (data_channel_bitrate > 0 && props->file_sending_.load()) {
+        rate_bps = static_cast<uint32_t>(data_channel_bitrate * 0.99f);
+
+        uint32_t current_rate = props->file_send_rate_bps_.load();
+        if (current_rate > 0) {
+          // 70% old + 30% new for smoother display
+          rate_bps = static_cast<uint32_t>(current_rate * 0.7 + rate_bps * 0.3);
+        }
       } else {
         rate_bps = props->file_send_rate_bps_.load();
       }
+
+      props->file_send_rate_bps_ = rate_bps;
+      props->file_send_last_bytes_ = ack.acked_offset;
+      auto now = std::chrono::steady_clock::now();
+      props->file_send_last_update_time_ = now;
     }
 
     // Update file transfer list: update progress and rate
