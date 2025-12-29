@@ -1283,10 +1283,20 @@ void Render::InitializeModules() {
               if (ret != 0) {
                 LOG_WARN("Failed to send clipboard data to peer [{}], ret={}",
                          remote_id.c_str(), ret);
+                return ret;
               }
             }
           }
-          return ret;
+
+          ret = SendReliableDataFrame(peer_, data, size,
+                                      clipboard_label_.c_str());
+          if (ret != 0) {
+            LOG_WARN("Failed to send clipboard data to peer [{}], ret={}",
+                     remote_id_display_, ret);
+            return ret;
+          }
+
+          return 0;
         });
 
     modules_inited_ = true;
