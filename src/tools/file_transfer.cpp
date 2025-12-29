@@ -298,10 +298,6 @@ bool FileReceiver::HandleChunk(const FileChunkHeader& header,
     LOG_INFO("FileReceiver: file received complete, file_id={}, size={}",
              header.file_id, ctx.received);
 
-    if (on_file_complete_) {
-      on_file_complete_(saved_path);
-    }
-
     contexts_.erase(header.file_id);
   }
 

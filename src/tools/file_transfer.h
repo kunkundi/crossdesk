@@ -93,8 +93,6 @@ class FileReceiver {
   // return true if parsed and processed successfully, false otherwise.
   bool OnData(const char* data, size_t size);
 
-  void SetOnFileComplete(OnFileComplete cb) { on_file_complete_ = cb; }
-
   void SetOnSendAck(OnSendAck cb) { on_send_ack_ = cb; }
 
   const std::filesystem::path& OutputDir() const { return output_dir_; }
@@ -108,7 +106,6 @@ class FileReceiver {
  private:
   std::filesystem::path output_dir_;
   std::unordered_map<uint32_t, FileContext> contexts_;
-  OnFileComplete on_file_complete_ = nullptr;
   OnSendAck on_send_ack_ = nullptr;
 };
 
