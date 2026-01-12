@@ -48,6 +48,7 @@ class Render {
     std::string audio_label_ = "control_audio";
     std::string data_label_ = "control_data";
     std::string file_label_ = "file";
+    std::string control_data_label_ = "control_data";
     std::string file_feedback_label_ = "file_feedback";
     std::string clipboard_label_ = "clipboard";
     std::string local_id_ = "";
