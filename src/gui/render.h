@@ -46,7 +46,7 @@ class Render {
     Params params_;
     PeerPtr* peer_ = nullptr;
     std::string audio_label_ = "control_audio";
-    std::string data_label_ = "control_data";
+    std::string data_label_ = "data";
     std::string file_label_ = "file";
     std::string control_data_label_ = "control_data";
     std::string file_feedback_label_ = "file_feedback";

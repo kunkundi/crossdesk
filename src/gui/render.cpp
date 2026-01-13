@@ -1376,8 +1376,8 @@ void Render::MainLoop() {
       remote_action.i.host_name_size = host_name.size();
 
       std::string msg = remote_action.to_json();
-      int ret = SendDataFrame(peer_, msg.data(), msg.size(),
-                              control_data_label_.c_str());
+      int ret = SendReliableDataFrame(peer_, msg.data(), msg.size(),
+                                      control_data_label_.c_str());
       FreeRemoteAction(remote_action);
       if (0 == ret) {
         need_to_send_host_info_ = false;
@@ -1895,6 +1895,12 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
       } else if (main_window_ &&
                  SDL_GetWindowID(main_window_) == event.window.windowID) {
         foucs_on_main_window_ = false;
+      }
+      break;
+    case SDL_EVENT_DROP_FILE:
+      if (stream_window_ &&
+          SDL_GetWindowID(stream_window_) == event.window.windowID) {
+        printf("SDL_EVENT_DROP_FILE (%s)\n", event.drop.data);
       }
       break;
 
