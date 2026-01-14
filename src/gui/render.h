@@ -190,6 +190,12 @@ class Render {
   void UpdateRenderRect();
   void ProcessSdlEvent(const SDL_Event& event);
 
+  void ProcessFileDropEvent(const SDL_Event& event);
+
+  void ProcessSelectedFile(const std::string& path,
+                           std::shared_ptr<SubStreamWindowProperties>& props,
+                           const std::string& file_label);
+
  private:
   int CreateStreamRenderWindow();
   int TitleBar(bool main_window);

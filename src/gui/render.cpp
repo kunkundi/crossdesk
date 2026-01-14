@@ -996,7 +996,13 @@ int Render::SetupFontAndStyle(bool main_window) {
             io.Fonts->AddFontFromFileTTF(font_paths[i], font_size, &config,
                                          io.Fonts->GetGlyphRangesChineseFull());
         if (main_windows_system_chinese_font_ != nullptr) {
-          LOG_INFO("Loaded system Chinese font: {}", font_paths[i]);
+          // Merge FontAwesome icons into the Chinese font
+          config.MergeMode = true;
+          static const ImWchar icon_ranges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
+          io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len,
+                                         font_size, &config, icon_ranges);
+          config.MergeMode = false;
+          LOG_INFO("Loaded system Chinese font with icons: {}", font_paths[i]);
           break;
         }
       } else {
@@ -1004,7 +1010,13 @@ int Render::SetupFontAndStyle(bool main_window) {
             io.Fonts->AddFontFromFileTTF(font_paths[i], font_size, &config,
                                          io.Fonts->GetGlyphRangesChineseFull());
         if (stream_windows_system_chinese_font_ != nullptr) {
-          LOG_INFO("Loaded system Chinese font: {}", font_paths[i]);
+          // Merge FontAwesome icons into the Chinese font
+          config.MergeMode = true;
+          static const ImWchar icon_ranges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
+          io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len,
+                                         font_size, &config, icon_ranges);
+          config.MergeMode = false;
+          LOG_INFO("Loaded system Chinese font with icons: {}", font_paths[i]);
           break;
         }
       }
@@ -1015,12 +1027,24 @@ int Render::SetupFontAndStyle(bool main_window) {
   if (main_window) {
     if (main_windows_system_chinese_font_ == nullptr) {
       main_windows_system_chinese_font_ = io.Fonts->AddFontDefault(&config);
-      LOG_WARN("System Chinese font not found, using default font");
+      // Merge FontAwesome icons into the default font
+      config.MergeMode = true;
+      static const ImWchar icon_ranges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
+      io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len,
+                                     font_size, &config, icon_ranges);
+      config.MergeMode = false;
+      LOG_WARN("System Chinese font not found, using default font with icons");
     }
   } else {
     if (stream_windows_system_chinese_font_ == nullptr) {
       stream_windows_system_chinese_font_ = io.Fonts->AddFontDefault(&config);
-      LOG_WARN("System Chinese font not found, using default font");
+      // Merge FontAwesome icons into the default font
+      config.MergeMode = true;
+      static const ImWchar icon_ranges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
+      io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len,
+                                     font_size, &config, icon_ranges);
+      config.MergeMode = false;
+      LOG_WARN("System Chinese font not found, using default font with icons");
     }
   }
 
@@ -1900,7 +1924,7 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
     case SDL_EVENT_DROP_FILE:
       if (stream_window_ &&
           SDL_GetWindowID(stream_window_) == event.window.windowID) {
-        printf("SDL_EVENT_DROP_FILE (%s)\n", event.drop.data);
+        ProcessFileDropEvent(event);
       }
       break;
 
@@ -1981,6 +2005,65 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
                           props->texture_width_);
       }
       break;
+  }
+}
+
+void Render::ProcessFileDropEvent(const SDL_Event& event) {
+  if (event.type != SDL_EVENT_DROP_FILE) {
+    return;
+  }
+
+  if (!stream_window_inited_) {
+    return;
+  }
+
+  std::shared_lock lock(client_properties_mutex_);
+  for (auto& [_, props] : client_properties_) {
+    if (props->tab_selected_) {
+      if (event.drop.data == nullptr) {
+        LOG_ERROR("ProcessFileDropEvent: drop event data is null");
+        break;
+      }
+
+      if (!props || !props->peer_) {
+        LOG_ERROR("ProcessFileDropEvent: invalid props or peer");
+        break;
+      }
+
+      std::string utf8_path = static_cast<const char*>(event.drop.data);
+      std::filesystem::path file_path = std::filesystem::u8path(utf8_path);
+
+      // Check if file exists
+      std::error_code ec;
+      if (!std::filesystem::exists(file_path, ec)) {
+        LOG_ERROR("ProcessFileDropEvent: file does not exist: {}",
+                  file_path.string().c_str());
+        break;
+      }
+
+      // Check if it's a regular file
+      if (!std::filesystem::is_regular_file(file_path, ec)) {
+        LOG_ERROR("ProcessFileDropEvent: path is not a regular file: {}",
+                  file_path.string().c_str());
+        break;
+      }
+
+      // Get file size
+      uint64_t file_size = std::filesystem::file_size(file_path, ec);
+      if (ec) {
+        LOG_ERROR("ProcessFileDropEvent: failed to get file size: {}",
+                  ec.message().c_str());
+        break;
+      }
+
+      LOG_INFO("Drop file [{}] to send (size: {} bytes)", event.drop.data,
+               file_size);
+
+      // Use ProcessSelectedFile to handle the file processing
+      ProcessSelectedFile(utf8_path, props, props->file_label_);
+
+      break;
+    }
   }
 }
 }  // namespace crossdesk

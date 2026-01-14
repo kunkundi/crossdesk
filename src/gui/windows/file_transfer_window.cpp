@@ -87,6 +87,11 @@ int Render::FileTransferWindow(
       ImVec2(file_transfer_window_width, file_transfer_window_height),
       ImGuiCond_Always);
 
+  // Set Chinese font for proper display
+  if (stream_windows_system_chinese_font_) {
+    ImGui::PushFont(stream_windows_system_chinese_font_);
+  }
+
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
   ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0f, 1.0f, 1.0f, 0.9f));
@@ -121,9 +126,9 @@ int Render::FileTransferWindow(
     } else {
       // Use a scrollable child window for the file list
       ImGui::SetWindowFontScale(0.5f);
-      ImGui::BeginChild("FileList",
-                        ImVec2(0, file_transfer_window_height * 0.75f),
-                        ImGuiChildFlags_Border);
+      ImGui::BeginChild(
+          "FileList", ImVec2(0, file_transfer_window_height * 0.75f),
+          ImGuiChildFlags_Border, ImGuiWindowFlags_HorizontalScrollbar);
       ImGui::SetWindowFontScale(1.0f);
       ImGui::SetWindowFontScale(0.5f);
 
@@ -220,6 +225,11 @@ int Render::FileTransferWindow(
     ImGui::SetWindowFontScale(0.5f);
     ImGui::End();
     ImGui::SetWindowFontScale(1.0f);
+
+    // Pop Chinese font if it was pushed
+    if (stream_windows_system_chinese_font_) {
+      ImGui::PopFont();
+    }
   } else {
     ImGui::PopStyleColor(4);
     ImGui::PopStyleVar(2);

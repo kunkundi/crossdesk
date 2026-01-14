@@ -53,6 +53,77 @@ int LossRateDisplay(float loss_rate) {
   return 0;
 }
 
+void Render::ProcessSelectedFile(
+    const std::string& path, std::shared_ptr<SubStreamWindowProperties>& props,
+    const std::string& file_label) {
+  if (path.empty()) {
+    return;
+  }
+
+  LOG_INFO("Selected file: {}", path.c_str());
+
+  std::filesystem::path file_path = std::filesystem::u8path(path);
+
+  // Get file size
+  std::error_code ec;
+  uint64_t file_size = std::filesystem::file_size(file_path, ec);
+  if (ec) {
+    LOG_ERROR("Failed to get file size: {}", ec.message().c_str());
+    file_size = 0;
+  }
+
+  // Add file to transfer list
+  {
+    std::lock_guard<std::mutex> lock(props->file_transfer_list_mutex_);
+    SubStreamWindowProperties::FileTransferInfo info;
+    info.file_name = file_path.filename().u8string();
+    info.file_path = file_path;  // Store full path for precise matching
+    info.file_size = file_size;
+    info.status = SubStreamWindowProperties::FileTransferStatus::Queued;
+    info.sent_bytes = 0;
+    info.file_id = 0;
+    info.rate_bps = 0;
+    props->file_transfer_list_.push_back(info);
+  }
+  props->file_transfer_window_visible_ = true;
+
+  if (props->file_sending_.load()) {
+    // Add to queue
+    size_t queue_size = 0;
+    {
+      std::lock_guard<std::mutex> lock(props->file_queue_mutex_);
+      SubStreamWindowProperties::QueuedFile queued_file;
+      queued_file.file_path = file_path;
+      queued_file.file_label = file_label;
+      props->file_send_queue_.push(queued_file);
+      queue_size = props->file_send_queue_.size();
+    }
+    LOG_INFO("File added to queue: {} ({} files in queue)",
+             file_path.filename().string().c_str(), queue_size);
+  } else {
+    StartFileTransfer(props, file_path, file_label);
+
+    if (props->file_sending_.load()) {
+    } else {
+      // Failed to start (race condition: another file started between
+      // check and call) Add to queue
+      size_t queue_size = 0;
+      {
+        std::lock_guard<std::mutex> lock(props->file_queue_mutex_);
+        SubStreamWindowProperties::QueuedFile queued_file;
+        queued_file.file_path = file_path;
+        queued_file.file_label = file_label;
+        props->file_send_queue_.push(queued_file);
+        queue_size = props->file_send_queue_.size();
+      }
+      LOG_INFO(
+          "File added to queue after race condition: {} ({} files in "
+          "queue)",
+          file_path.filename().string().c_str(), queue_size);
+    }
+  }
+}
+
 int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
   float button_width = title_bar_height_ * 0.8f;
   float button_height = title_bar_height_ * 0.8f;
@@ -204,71 +275,7 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
       std::string title =
           localization::select_file[localization_language_index_];
       std::string path = OpenFileDialog(title);
-      if (!path.empty()) {
-        LOG_INFO("Selected file: {}", path.c_str());
-
-        std::filesystem::path file_path = std::filesystem::path(path);
-        std::string file_label = file_label_;
-
-        // Get file size
-        std::error_code ec;
-        uint64_t file_size = std::filesystem::file_size(file_path, ec);
-        if (ec) {
-          LOG_ERROR("Failed to get file size: {}", ec.message().c_str());
-          file_size = 0;
-        }
-
-        // Add file to transfer list
-        {
-          std::lock_guard<std::mutex> lock(props->file_transfer_list_mutex_);
-          SubStreamWindowProperties::FileTransferInfo info;
-          info.file_name = file_path.filename().string();
-          info.file_path = file_path;  // Store full path for precise matching
-          info.file_size = file_size;
-          info.status = SubStreamWindowProperties::FileTransferStatus::Queued;
-          info.sent_bytes = 0;
-          info.file_id = 0;
-          info.rate_bps = 0;
-          props->file_transfer_list_.push_back(info);
-        }
-        props->file_transfer_window_visible_ = true;
-
-        if (props->file_sending_.load()) {
-          // Add to queue
-          size_t queue_size = 0;
-          {
-            std::lock_guard<std::mutex> lock(props->file_queue_mutex_);
-            SubStreamWindowProperties::QueuedFile queued_file;
-            queued_file.file_path = file_path;
-            queued_file.file_label = file_label;
-            props->file_send_queue_.push(queued_file);
-            queue_size = props->file_send_queue_.size();
-          }
-          LOG_INFO("File added to queue: {} ({} files in queue)",
-                   file_path.filename().string().c_str(), queue_size);
-        } else {
-          StartFileTransfer(props, file_path, file_label);
-
-          if (props->file_sending_.load()) {
-          } else {
-            // Failed to start (race condition: another file started between
-            // check and call) Add to queue
-            size_t queue_size = 0;
-            {
-              std::lock_guard<std::mutex> lock(props->file_queue_mutex_);
-              SubStreamWindowProperties::QueuedFile queued_file;
-              queued_file.file_path = file_path;
-              queued_file.file_label = file_label;
-              props->file_send_queue_.push(queued_file);
-              queue_size = props->file_send_queue_.size();
-            }
-            LOG_INFO(
-                "File added to queue after race condition: {} ({} files in "
-                "queue)",
-                file_path.filename().string().c_str(), queue_size);
-          }
-        }
-      }
+      this->ProcessSelectedFile(path, props, file_label_);
     }
 
     ImGui::SameLine();
