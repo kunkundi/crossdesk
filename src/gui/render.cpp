@@ -939,6 +939,55 @@ int Render::DestroyStreamWindow() {
   return 0;
 }
 
+int Render::CreateServerWindow() {
+  if (server_window_created_) {
+    return 0;
+  }
+  server_ctx_ = ImGui::CreateContext();
+  if (!server_ctx_) {
+    LOG_ERROR("Server context is null");
+    return -1;
+  }
+  ImGui::SetCurrentContext(server_ctx_);
+  if (!SDL_CreateWindowAndRenderer(
+          "Server window", (int)server_window_width_,
+          (int)server_window_height_,
+          SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_BORDERLESS,
+          &server_window_, &server_renderer_)) {
+    LOG_ERROR("Error creating server_window_ and server_renderer_: {}",
+              SDL_GetError());
+    return -1;
+  }
+  SDL_SetWindowResizable(server_window_, true);
+  // for window region action
+  SDL_SetWindowHitTest(server_window_, HitTestCallback, this);
+  SetupFontAndStyle(false);
+  ImGui_ImplSDL3_InitForSDLRenderer(server_window_, server_renderer_);
+  ImGui_ImplSDLRenderer3_Init(server_renderer_);
+  server_window_created_ = true;
+  server_window_inited_ = true;
+  LOG_INFO("Server window inited");
+  return 0;
+}
+
+int Render::DestroyServerWindow() {
+  if (server_ctx_) {
+    ImGui::SetCurrentContext(server_ctx_);
+  }
+
+  if (server_renderer_) {
+    SDL_DestroyRenderer(server_renderer_);
+  }
+
+  if (server_window_) {
+    SDL_DestroyWindow(server_window_);
+  }
+
+  server_window_created_ = false;
+
+  return 0;
+}
+
 int Render::SetupFontAndStyle(bool main_window) {
   float font_size = 32.0f;
 
@@ -1183,6 +1232,23 @@ int Render::DrawStreamWindow() {
   return 0;
 }
 
+int Render::DrawServerWindow() {
+  if (!server_ctx_) {
+    LOG_ERROR("Server context is null");
+    return -1;
+  }
+  ImGui::SetCurrentContext(server_ctx_);
+  ImGui_ImplSDLRenderer3_NewFrame();
+  ImGui_ImplSDL3_NewFrame();
+  ImGui::NewFrame();
+  ServerWindow();
+  ImGui::Render();
+  SDL_RenderClear(server_renderer_);
+  ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), server_renderer_);
+  SDL_RenderPresent(server_renderer_);
+  return 0;
+}
+
 int Render::Run() {
   latest_version_info_ = CheckUpdate();
   if (!latest_version_info_.empty() &&
@@ -1357,10 +1423,15 @@ void Render::MainLoop() {
     UpdateLabels();
     HandleRecentConnections();
     HandleStreamWindow();
+    HandleServerWindow();
 
     DrawMainWindow();
     if (stream_window_inited_) {
       DrawStreamWindow();
+    }
+
+    if (need_to_send_host_info_) {
+      DrawServerWindow();
     }
 
     UpdateInteractions();
@@ -1451,6 +1522,13 @@ void Render::HandleStreamWindow() {
       SDL_SetWindowMouseGrab(stream_window_, false);
       stream_window_grabbed_ = false;
     }
+  }
+}
+
+void Render::HandleServerWindow() {
+  if (need_to_create_server_window_) {
+    CreateServerWindow();
+    need_to_create_server_window_ = false;
   }
 }
 

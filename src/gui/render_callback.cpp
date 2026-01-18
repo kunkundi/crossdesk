@@ -622,6 +622,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
 
     switch (status) {
       case ConnectionStatus::Connected: {
+        render->need_to_create_server_window_ = true;
         render->need_to_send_host_info_ = true;
         render->start_screen_capturer_ = true;
         render->start_speaker_capturer_ = true;
@@ -647,6 +648,8 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
                                  kv.second == ConnectionStatus::Failed ||
                                  kv.second == ConnectionStatus::Disconnected;
                         })) {
+          render->need_to_create_server_window_ = false;
+          render->need_to_send_host_info_ = false;
           render->start_screen_capturer_ = false;
           render->start_speaker_capturer_ = false;
           render->start_mouse_controller_ = false;

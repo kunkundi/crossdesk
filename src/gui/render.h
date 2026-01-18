@@ -181,6 +181,7 @@ class Render {
   void UpdateInteractions();
   void HandleRecentConnections();
   void HandleStreamWindow();
+  void HandleServerWindow();
   void Cleanup();
   void CleanupFactories();
   void CleanupPeer(std::shared_ptr<SubStreamWindowProperties> props);
@@ -202,6 +203,7 @@ class Render {
   int MainWindow();
   int UpdateNotificationWindow();
   int StreamWindow();
+  int ServerWindow();
   int LocalWindow();
   int RemoteWindow();
   int RecentConnectionsWindow();
@@ -226,11 +228,15 @@ class Render {
   int DestroyMainWindow();
   int CreateStreamWindow();
   int DestroyStreamWindow();
+  int CreateServerWindow();
+  int DestroyServerWindow();
   int SetupFontAndStyle(bool main_window);
   int DestroyMainWindowContext();
   int DestroyStreamWindowContext();
+  int DestroyServerWindowContext();
   int DrawMainWindow();
   int DrawStreamWindow();
+  int DrawServerWindow();
   int ConfirmDeleteConnection();
   int NetTrafficStats(std::shared_ptr<SubStreamWindowProperties>& props);
   void DrawConnectionStatusText(
@@ -486,6 +492,25 @@ class Render {
   int stream_window_height_real_ = 720;
   float stream_window_dpi_scaling_w_ = 1.0f;
   float stream_window_dpi_scaling_h_ = 1.0f;
+
+  // server window render
+  SDL_Window* server_window_ = nullptr;
+  SDL_Renderer* server_renderer_ = nullptr;
+  ImGuiContext* server_ctx_ = nullptr;
+
+  // server window properties
+  bool need_to_create_server_window_ = false;
+  bool server_window_created_ = false;
+  bool server_window_inited_ = false;
+  int server_window_width_default_ = 600;
+  int server_window_height_default_ = 400;
+  float server_window_width_ = 600;
+  float server_window_height_ = 400;
+  SDL_PixelFormat server_pixformat_ = SDL_PIXELFORMAT_NV12;
+  int server_window_width_real_ = 600;
+  int server_window_height_real_ = 400;
+  float server_window_dpi_scaling_w_ = 1.0f;
+  float server_window_dpi_scaling_h_ = 1.0f;
 
   bool label_inited_ = false;
   bool connect_button_pressed_ = false;
