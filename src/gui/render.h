@@ -500,17 +500,27 @@ class Render {
 
   // server window properties
   bool need_to_create_server_window_ = false;
+  bool need_to_destroy_server_window_ = false;
   bool server_window_created_ = false;
   bool server_window_inited_ = false;
-  int server_window_width_default_ = 600;
-  int server_window_height_default_ = 400;
-  float server_window_width_ = 600;
-  float server_window_height_ = 400;
+  int server_window_width_default_ = 300;
+  int server_window_height_default_ = 450;
+  float server_window_width_ = 300;
+  float server_window_height_ = 450;
+  float server_window_title_bar_height_ = 30.0f;
   SDL_PixelFormat server_pixformat_ = SDL_PIXELFORMAT_NV12;
-  int server_window_width_real_ = 600;
-  int server_window_height_real_ = 400;
+  int server_window_width_real_ = 400;
+  int server_window_height_real_ = 450;
   float server_window_dpi_scaling_w_ = 1.0f;
   float server_window_dpi_scaling_h_ = 1.0f;
+
+  // server window compact mode (50x50) toggle
+  bool server_window_compact_ = false;
+  int server_window_width_before_compact_ = 0;
+  int server_window_height_before_compact_ = 0;
+  int server_window_x_before_compact_ = 0;
+  int server_window_y_before_compact_ = 0;
+  bool server_window_bounds_saved_ = false;
 
   bool label_inited_ = false;
   bool connect_button_pressed_ = false;
@@ -528,6 +538,7 @@ class Render {
   bool fullscreen_button_pressed_ = false;
   bool focus_on_input_widget_ = true;
   bool is_client_mode_ = false;
+  bool is_server_mode_ = false;
   bool reload_recent_connections_ = true;
   bool show_confirm_delete_connection_ = false;
   bool delete_connection_ = false;

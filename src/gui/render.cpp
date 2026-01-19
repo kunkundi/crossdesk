@@ -949,24 +949,43 @@ int Render::CreateServerWindow() {
     return -1;
   }
   ImGui::SetCurrentContext(server_ctx_);
-  if (!SDL_CreateWindowAndRenderer(
-          "Server window", (int)server_window_width_,
-          (int)server_window_height_,
-          SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_BORDERLESS,
-          &server_window_, &server_renderer_)) {
+  if (!SDL_CreateWindowAndRenderer("Server window", (int)server_window_width_,
+                                   (int)server_window_height_,
+                                   SDL_WINDOW_HIGH_PIXEL_DENSITY |
+                                       SDL_WINDOW_BORDERLESS |
+                                       SDL_WINDOW_TRANSPARENT,
+                                   &server_window_, &server_renderer_)) {
     LOG_ERROR("Error creating server_window_ and server_renderer_: {}",
               SDL_GetError());
     return -1;
   }
-  SDL_SetWindowResizable(server_window_, true);
+
+  // Set window position to bottom-right corner
+  SDL_Rect display_bounds;
+  if (SDL_GetDisplayUsableBounds(SDL_GetDisplayForWindow(server_window_),
+                                 &display_bounds)) {
+    int window_x =
+        display_bounds.x + display_bounds.w - (int)server_window_width_;
+    int window_y =
+        display_bounds.y + display_bounds.h - (int)server_window_height_;
+    SDL_SetWindowPosition(server_window_, window_x, window_y);
+  }
+
+  SDL_SetWindowResizable(server_window_, false);
+
+  SDL_SetRenderDrawBlendMode(server_renderer_, SDL_BLENDMODE_BLEND);
+
   // for window region action
   SDL_SetWindowHitTest(server_window_, HitTestCallback, this);
   SetupFontAndStyle(false);
   ImGui_ImplSDL3_InitForSDLRenderer(server_window_, server_renderer_);
   ImGui_ImplSDLRenderer3_Init(server_renderer_);
+
   server_window_created_ = true;
   server_window_inited_ = true;
+
   LOG_INFO("Server window inited");
+
   return 0;
 }
 
@@ -1237,12 +1256,28 @@ int Render::DrawServerWindow() {
     LOG_ERROR("Server context is null");
     return -1;
   }
+
+  if (server_window_) {
+    int w = 0, h = 0;
+    SDL_GetWindowSize(server_window_, &w, &h);
+    if (w > 0 && h > 0) {
+      server_window_width_ = (float)w;
+      server_window_height_ = (float)h;
+    }
+  }
+
   ImGui::SetCurrentContext(server_ctx_);
   ImGui_ImplSDLRenderer3_NewFrame();
   ImGui_ImplSDL3_NewFrame();
   ImGui::NewFrame();
   ServerWindow();
   ImGui::Render();
+  // Transparent clear for compact (shaped) mode; opaque clear for normal mode.
+  if (server_window_compact_) {
+    SDL_SetRenderDrawColor(server_renderer_, 0, 0, 0, 0);
+  } else {
+    SDL_SetRenderDrawColor(server_renderer_, 255, 255, 255, 255);
+  }
   SDL_RenderClear(server_renderer_);
   ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), server_renderer_);
   SDL_RenderPresent(server_renderer_);
@@ -1430,7 +1465,7 @@ void Render::MainLoop() {
       DrawStreamWindow();
     }
 
-    if (need_to_send_host_info_) {
+    if (is_server_mode_) {
       DrawServerWindow();
     }
 
@@ -1529,6 +1564,11 @@ void Render::HandleServerWindow() {
   if (need_to_create_server_window_) {
     CreateServerWindow();
     need_to_create_server_window_ = false;
+  }
+
+  if (need_to_destroy_server_window_) {
+    DestroyServerWindow();
+    need_to_destroy_server_window_ = false;
   }
 }
 
@@ -1906,6 +1946,16 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
       ImGui_ImplSDL3_ProcessEvent(&event);
     } else {
       LOG_ERROR("Stream context is null");
+      return;
+    }
+  }
+
+  if (server_window_inited_) {
+    if (server_ctx_) {
+      ImGui::SetCurrentContext(server_ctx_);
+      ImGui_ImplSDL3_ProcessEvent(&event);
+    } else {
+      LOG_ERROR("Server context is null");
       return;
     }
   }
