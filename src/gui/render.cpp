@@ -811,10 +811,10 @@ int Render::CreateMainWindow() {
   if (std::abs(dpi_scale_ - dpi_scale) > 0.01f) {
     dpi_scale_ = dpi_scale;
 
-    main_window_width_ = (int)(main_window_width_ * dpi_scale_);
-    main_window_height_ = (int)(main_window_height_ * dpi_scale_);
-    stream_window_width_ = (int)(stream_window_width_ * dpi_scale_);
-    stream_window_height_ = (int)(stream_window_height_ * dpi_scale_);
+    main_window_width_ = (int)(main_window_width_default_ * dpi_scale_);
+    main_window_height_ = (int)(main_window_height_default_ * dpi_scale_);
+    stream_window_width_ = (int)(stream_window_width_default_ * dpi_scale_);
+    stream_window_height_ = (int)(stream_window_height_default_ * dpi_scale_);
 
     SDL_SetWindowSize(main_window_, (int)main_window_width_,
                       (int)main_window_height_);
@@ -868,6 +868,9 @@ int Render::CreateStreamWindow() {
   if (stream_window_created_) {
     return 0;
   }
+
+  stream_window_width_ = (int)(stream_window_width_default_ * dpi_scale_);
+  stream_window_height_ = (int)(stream_window_height_default_ * dpi_scale_);
 
   stream_ctx_ = ImGui::CreateContext();
   if (!stream_ctx_) {
