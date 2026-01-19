@@ -825,7 +825,7 @@ int Render::CreateMainWindow() {
   // for window region action
   SDL_SetWindowHitTest(main_window_, HitTestCallback, this);
 
-  SetupFontAndStyle(true);
+  SetupFontAndStyle(&main_windows_system_chinese_font_);
 
   ImGuiStyle& style = ImGui::GetStyle();
   style.ScaleAllSizes(dpi_scale_);
@@ -894,7 +894,7 @@ int Render::CreateStreamWindow() {
   // for window region action
   SDL_SetWindowHitTest(stream_window_, HitTestCallback, this);
 
-  SetupFontAndStyle(false);
+  SetupFontAndStyle(&stream_windows_system_chinese_font_);
 
   ImGuiStyle& style = ImGui::GetStyle();
   style.ScaleAllSizes(dpi_scale_);
@@ -977,7 +977,13 @@ int Render::CreateServerWindow() {
 
   // for window region action
   SDL_SetWindowHitTest(server_window_, HitTestCallback, this);
-  SetupFontAndStyle(false);
+
+  SetupFontAndStyle(&server_windows_system_chinese_font_);
+
+  ImGuiStyle& style = ImGui::GetStyle();
+  style.ScaleAllSizes(dpi_scale_);
+  style.FontScaleDpi = dpi_scale_;
+
   ImGui_ImplSDL3_InitForSDLRenderer(server_window_, server_renderer_);
   ImGui_ImplSDLRenderer3_Init(server_renderer_);
 
@@ -1007,7 +1013,7 @@ int Render::DestroyServerWindow() {
   return 0;
 }
 
-int Render::SetupFontAndStyle(bool main_window) {
+int Render::SetupFontAndStyle(ImFont** system_chinese_font_out) {
   float font_size = 32.0f;
 
   // Setup Dear ImGui style
@@ -1029,10 +1035,8 @@ int Render::SetupFontAndStyle(bool main_window) {
   // Load system Chinese font as fallback
   config.MergeMode = false;
   config.FontDataOwnedByAtlas = false;
-  if (main_window) {
-    main_windows_system_chinese_font_ = nullptr;
-  } else {
-    stream_windows_system_chinese_font_ = nullptr;
+  if (system_chinese_font_out) {
+    *system_chinese_font_out = nullptr;
   }
 
 #if defined(_WIN32)
@@ -1059,61 +1063,36 @@ int Render::SetupFontAndStyle(bool main_window) {
     std::ifstream font_file(font_paths[i], std::ios::binary);
     if (font_file.good()) {
       font_file.close();
-      if (main_window) {
-        main_windows_system_chinese_font_ =
-            io.Fonts->AddFontFromFileTTF(font_paths[i], font_size, &config,
-                                         io.Fonts->GetGlyphRangesChineseFull());
-        if (main_windows_system_chinese_font_ != nullptr) {
-          // Merge FontAwesome icons into the Chinese font
-          config.MergeMode = true;
-          static const ImWchar icon_ranges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
-          io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len,
-                                         font_size, &config, icon_ranges);
-          config.MergeMode = false;
-          LOG_INFO("Loaded system Chinese font with icons: {}", font_paths[i]);
-          break;
-        }
-      } else {
-        stream_windows_system_chinese_font_ =
-            io.Fonts->AddFontFromFileTTF(font_paths[i], font_size, &config,
-                                         io.Fonts->GetGlyphRangesChineseFull());
-        if (stream_windows_system_chinese_font_ != nullptr) {
-          // Merge FontAwesome icons into the Chinese font
-          config.MergeMode = true;
-          static const ImWchar icon_ranges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
-          io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len,
-                                         font_size, &config, icon_ranges);
-          config.MergeMode = false;
-          LOG_INFO("Loaded system Chinese font with icons: {}", font_paths[i]);
-          break;
-        }
+      if (!system_chinese_font_out) {
+        break;
+      }
+
+      *system_chinese_font_out =
+          io.Fonts->AddFontFromFileTTF(font_paths[i], font_size, &config,
+                                       io.Fonts->GetGlyphRangesChineseFull());
+      if (*system_chinese_font_out != nullptr) {
+        // Merge FontAwesome icons into the Chinese font
+        config.MergeMode = true;
+        static const ImWchar icon_ranges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
+        io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len,
+                                       font_size, &config, icon_ranges);
+        config.MergeMode = false;
+        LOG_INFO("Loaded system Chinese font with icons: {}", font_paths[i]);
+        break;
       }
     }
   }
 
   // If no system font found, use default font
-  if (main_window) {
-    if (main_windows_system_chinese_font_ == nullptr) {
-      main_windows_system_chinese_font_ = io.Fonts->AddFontDefault(&config);
-      // Merge FontAwesome icons into the default font
-      config.MergeMode = true;
-      static const ImWchar icon_ranges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
-      io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len,
-                                     font_size, &config, icon_ranges);
-      config.MergeMode = false;
-      LOG_WARN("System Chinese font not found, using default font with icons");
-    }
-  } else {
-    if (stream_windows_system_chinese_font_ == nullptr) {
-      stream_windows_system_chinese_font_ = io.Fonts->AddFontDefault(&config);
-      // Merge FontAwesome icons into the default font
-      config.MergeMode = true;
-      static const ImWchar icon_ranges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
-      io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len,
-                                     font_size, &config, icon_ranges);
-      config.MergeMode = false;
-      LOG_WARN("System Chinese font not found, using default font with icons");
-    }
+  if (system_chinese_font_out && *system_chinese_font_out == nullptr) {
+    *system_chinese_font_out = io.Fonts->AddFontDefault(&config);
+    // Merge FontAwesome icons into the default font
+    config.MergeMode = true;
+    static const ImWchar icon_ranges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
+    io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len,
+                                   font_size, &config, icon_ranges);
+    config.MergeMode = false;
+    LOG_WARN("System Chinese font not found, using default font with icons");
   }
 
   ImGui::StyleColorsLight();
@@ -1258,7 +1237,8 @@ int Render::DrawServerWindow() {
   }
 
   if (server_window_) {
-    int w = 0, h = 0;
+    int w = 0;
+    int h = 0;
     SDL_GetWindowSize(server_window_, &w, &h);
     if (w > 0 && h > 0) {
       server_window_width_ = (float)w;
@@ -1272,12 +1252,7 @@ int Render::DrawServerWindow() {
   ImGui::NewFrame();
   ServerWindow();
   ImGui::Render();
-  // Transparent clear for compact (shaped) mode; opaque clear for normal mode.
-  if (server_window_compact_) {
-    SDL_SetRenderDrawColor(server_renderer_, 0, 0, 0, 0);
-  } else {
-    SDL_SetRenderDrawColor(server_renderer_, 255, 255, 255, 255);
-  }
+  SDL_SetRenderDrawColor(server_renderer_, 255, 255, 255, 255);
   SDL_RenderClear(server_renderer_);
   ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), server_renderer_);
   SDL_RenderPresent(server_renderer_);

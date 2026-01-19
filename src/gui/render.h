@@ -230,7 +230,7 @@ class Render {
   int DestroyStreamWindow();
   int CreateServerWindow();
   int DestroyServerWindow();
-  int SetupFontAndStyle(bool main_window);
+  int SetupFontAndStyle(ImFont** system_chinese_font_out);
   int DestroyMainWindowContext();
   int DestroyStreamWindowContext();
   int DestroyServerWindowContext();
@@ -395,6 +395,7 @@ class Render {
   ImGuiContext* main_ctx_ = nullptr;
   ImFont* main_windows_system_chinese_font_ = nullptr;
   ImFont* stream_windows_system_chinese_font_ = nullptr;
+  ImFont* server_windows_system_chinese_font_ = nullptr;
   bool exit_ = false;
   const int sdl_refresh_ms_ = 16;  // ~60 FPS
 #if _WIN32
@@ -507,20 +508,27 @@ class Render {
   int server_window_height_default_ = 450;
   float server_window_width_ = 300;
   float server_window_height_ = 450;
-  float server_window_title_bar_height_ = 30.0f;
+  float server_window_title_bar_height_ = 50.0f;
   SDL_PixelFormat server_pixformat_ = SDL_PIXELFORMAT_NV12;
-  int server_window_width_real_ = 400;
-  int server_window_height_real_ = 450;
+  int server_window_normal_width_ = 300;
+  int server_window_normal_height_ = 450;
   float server_window_dpi_scaling_w_ = 1.0f;
   float server_window_dpi_scaling_h_ = 1.0f;
 
-  // server window compact mode (50x50) toggle
-  bool server_window_compact_ = false;
-  int server_window_width_before_compact_ = 0;
-  int server_window_height_before_compact_ = 0;
-  int server_window_x_before_compact_ = 0;
-  int server_window_y_before_compact_ = 0;
-  bool server_window_bounds_saved_ = false;
+  // server window collapsed mode
+  bool server_window_collapsed_ = false;
+  bool server_window_collapsed_dragging_ = false;
+  float server_window_collapsed_drag_start_mouse_x_ = 0.0f;
+  float server_window_collapsed_drag_start_mouse_y_ = 0.0f;
+  int server_window_collapsed_drag_start_win_x_ = 0;
+  int server_window_collapsed_drag_start_win_y_ = 0;
+
+  // server window drag normal mode
+  bool server_window_dragging_ = false;
+  float server_window_drag_start_mouse_x_ = 0.0f;
+  float server_window_drag_start_mouse_y_ = 0.0f;
+  int server_window_drag_start_win_x_ = 0;
+  int server_window_drag_start_win_y_ = 0;
 
   bool label_inited_ = false;
   bool connect_button_pressed_ = false;

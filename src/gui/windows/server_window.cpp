@@ -1,65 +1,55 @@
-#include <cmath>
-#include <vector>
-
 #include "rd_log.h"
 #include "render.h"
 
 namespace crossdesk {
 
-static void SetServerWindowCircleShape(SDL_Window* window, int diameter) {
-  if (!window || diameter <= 0) {
+namespace {
+constexpr float kDragThresholdPx = 3.0f;
+
+// Handles dragging for the *last submitted ImGui item*.
+// `reset_on_deactivate` should be false when the caller needs to know whether a
+// deactivation was a click (no drag) vs a drag-release (dragging==true).
+inline void HandleWindowDragForLastItem(SDL_Window* window, bool& dragging,
+                                        float& start_mouse_x,
+                                        float& start_mouse_y, int& start_win_x,
+                                        int& start_win_y,
+                                        bool reset_on_deactivate = true) {
+  if (!window) {
     return;
   }
 
-  const int pitch = diameter * 4;
-  std::vector<unsigned char> pixels((size_t)diameter * (size_t)diameter * 4, 0);
+  if (ImGui::IsItemActivated()) {
+    SDL_GetGlobalMouseState(&start_mouse_x, &start_mouse_y);
+    SDL_GetWindowPosition(window, &start_win_x, &start_win_y);
+    dragging = false;
+  }
 
-  // Sub-pixel centered circle helps symmetry on even diameters.
-  const float r = (float)diameter * 0.5f;
-  const float cx = r - 0.5f;
-  const float cy = r - 0.5f;
+  if (ImGui::IsItemActive()) {
+    if (!dragging &&
+        ImGui::IsMouseDragging(ImGuiMouseButton_Left, kDragThresholdPx)) {
+      dragging = true;
+    }
 
-  for (int y = 0; y < diameter; ++y) {
-    for (int x = 0; x < diameter; ++x) {
-      const float dx = (float)x - cx;
-      const float dy = (float)y - cy;
-      const float dist = std::sqrt(dx * dx + dy * dy);
-
-      // 1px soft edge to reduce jaggies on small circles.
-      float a = r + 0.5f - dist;
-      if (a < 0.0f) a = 0.0f;
-      if (a > 1.0f) a = 1.0f;
-      const unsigned char alpha = (unsigned char)(a * 255.0f);
-      const size_t idx = ((size_t)y * (size_t)diameter + (size_t)x) * 4;
-      pixels[idx + 0] = 255;    // R
-      pixels[idx + 1] = 255;    // G
-      pixels[idx + 2] = 255;    // B
-      pixels[idx + 3] = alpha;  // A
+    if (dragging) {
+      float mouse_x = 0.0f;
+      float mouse_y = 0.0f;
+      SDL_GetGlobalMouseState(&mouse_x, &mouse_y);
+      const int dx = (int)(mouse_x - start_mouse_x);
+      const int dy = (int)(mouse_y - start_mouse_y);
+      SDL_SetWindowPosition(window, start_win_x + dx, start_win_y + dy);
     }
   }
 
-  SDL_Surface* shape = SDL_CreateSurfaceFrom(
-      diameter, diameter, SDL_PIXELFORMAT_RGBA32, pixels.data(), pitch);
-  if (!shape) {
-    LOG_ERROR("SDL_CreateSurfaceFrom failed: {}", SDL_GetError());
-    return;
+  if (reset_on_deactivate && ImGui::IsItemDeactivated()) {
+    dragging = false;
   }
-
-  if (!SDL_SetWindowShape(window, shape)) {
-    LOG_ERROR("SDL_SetWindowShape failed: {}", SDL_GetError());
-  }
-
-  SDL_DestroySurface(shape);
 }
+}  // namespace
 
 int Render::ServerWindow() {
   ImGui::SetNextWindowSize(ImVec2(server_window_width_, server_window_height_),
                            ImGuiCond_Always);
   ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-
-  if (server_window_compact_) {
-    ImGui::SetNextWindowBgAlpha(0.0f);
-  }
 
   ImGui::Begin("##server_window", nullptr,
                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
@@ -67,44 +57,39 @@ int Render::ServerWindow() {
                    ImGuiWindowFlags_NoScrollbar |
                    ImGuiWindowFlags_NoScrollWithMouse);
 
-  // Compact mode: show a 50x50 clickable square that restores the window.
-  if (server_window_compact_) {
-    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+  // Collapsed mode: no buttons; drag to move; click to restore.
+  if (server_window_collapsed_) {
     ImGui::SetCursorPos(ImVec2(0.0f, 0.0f));
-    if (ImGui::InvisibleButton(
-            "##server_compact_restore",
-            ImVec2(server_window_width_, server_window_height_))) {
-      if (server_window_) {
-        SDL_SetWindowShape(server_window_, nullptr);
-      }
-      if (server_window_ && server_window_bounds_saved_ &&
-          server_window_width_before_compact_ > 0 &&
-          server_window_height_before_compact_ > 0) {
-        SDL_SetWindowSize(server_window_, server_window_width_before_compact_,
-                          server_window_height_before_compact_);
-        SDL_SetWindowPosition(server_window_, server_window_x_before_compact_,
-                              server_window_y_before_compact_);
+    ImGui::InvisibleButton("##server_collapsed_area",
+                           ImVec2(server_window_width_, server_window_height_));
 
-        server_window_width_ = (float)server_window_width_before_compact_;
-        server_window_height_ = (float)server_window_height_before_compact_;
-      }
-      server_window_compact_ = false;
-      server_window_bounds_saved_ = false;
+    HandleWindowDragForLastItem(server_window_,
+                                server_window_collapsed_dragging_,
+                                server_window_collapsed_drag_start_mouse_x_,
+                                server_window_collapsed_drag_start_mouse_y_,
+                                server_window_collapsed_drag_start_win_x_,
+                                server_window_collapsed_drag_start_win_y_,
+                                /*reset_on_deactivate=*/false);
+
+    const bool request_restore =
+        ImGui::IsItemDeactivated() && !server_window_collapsed_dragging_;
+    if (ImGui::IsItemDeactivated()) {
+      server_window_collapsed_dragging_ = false;
     }
 
-    // Draw a visible circular affordance.
-    const float w = server_window_width_;
-    const float h = server_window_height_;
-    const float radius = (w < h ? w : h) * 0.5f - 1.0f;
-    const ImVec2 center(w * 0.5f, h * 0.5f);
-    draw_list->AddCircleFilled(center, radius, IM_COL32(255, 255, 255, 220),
-                               32);
-    draw_list->AddCircle(center, radius, IM_COL32(0, 0, 0, 255), 32, 2.0f);
-    // A simple "restore" hint.
-    draw_list->AddRect(
-        ImVec2(center.x - radius * 0.35f, center.y - radius * 0.35f),
-        ImVec2(center.x + radius * 0.35f, center.y + radius * 0.35f),
-        IM_COL32(0, 0, 0, 255), 2.0f, 0, 2.0f);
+    if (request_restore && server_window_) {
+      int w = 0;
+      int x = 0;
+      int y = 0;
+      int h = 0;
+      SDL_GetWindowSize(server_window_, &w, &h);
+      SDL_GetWindowPosition(server_window_, &x, &y);
+
+      const int normal_h = server_window_normal_height_;
+      SDL_SetWindowSize(server_window_, w, normal_h);
+      SDL_SetWindowPosition(server_window_, x, y);
+      server_window_collapsed_ = false;
+    }
 
     ImGui::End();
     return 0;
@@ -122,11 +107,22 @@ int Render::ServerWindow() {
 
   ImDrawList* draw_list = ImGui::GetWindowDrawList();
 
-  ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-
   float server_title_bar_button_width = server_window_title_bar_height_;
   float server_title_bar_button_height = server_window_title_bar_height_;
+
+  // Drag area: the title bar excluding the right-side buttons.
+  {
+    const float drag_w =
+        server_window_width_ - server_title_bar_button_width * 2;
+    const float drag_h = server_title_bar_button_height;
+    ImGui::SetCursorPos(ImVec2(0.0f, 0.0f));
+    ImGui::InvisibleButton("##server_title_drag_area", ImVec2(drag_w, drag_h));
+
+    HandleWindowDragForLastItem(
+        server_window_, server_window_dragging_,
+        server_window_drag_start_mouse_x_, server_window_drag_start_mouse_y_,
+        server_window_drag_start_win_x_, server_window_drag_start_win_y_);
+  }
 
   float minimize_button_pos_x =
       server_window_width_ - server_title_bar_button_width * 2;
@@ -143,36 +139,18 @@ int Render::ServerWindow() {
                     ImVec2(server_title_bar_button_width,
                            server_title_bar_button_height))) {
     if (server_window_) {
-      int w = 0, h = 0;
-      int x = 0, y = 0;
+      int w = 0;
+      int h = 0;
+      int x = 0;
+      int y = 0;
       SDL_GetWindowSize(server_window_, &w, &h);
       SDL_GetWindowPosition(server_window_, &x, &y);
-      server_window_width_before_compact_ = w;
-      server_window_height_before_compact_ = h;
-      server_window_x_before_compact_ = x;
-      server_window_y_before_compact_ = y;
-      server_window_bounds_saved_ = true;
 
-      constexpr int kCompactSize = 50;
-      SDL_SetWindowSize(server_window_, kCompactSize, kCompactSize);
-
-      // Move to bottom-right of the current display's usable bounds.
-      SDL_Rect display_bounds;
-      if (SDL_GetDisplayUsableBounds(SDL_GetDisplayForWindow(server_window_),
-                                     &display_bounds)) {
-        int compact_x = display_bounds.x + display_bounds.w - kCompactSize;
-        int compact_y = display_bounds.y + display_bounds.h - kCompactSize;
-        SDL_SetWindowPosition(server_window_, compact_x, compact_y);
-      }
-
-      // Use pixel size to match transparency buffer on HiDPI.
-      int w_px = kCompactSize;
-      int h_px = kCompactSize;
-      SDL_GetWindowSizeInPixels(server_window_, &w_px, &h_px);
-      const int diameter = (w_px < h_px ? w_px : h_px);
-      SetServerWindowCircleShape(server_window_, diameter);
-
-      server_window_compact_ = true;
+      const int collapsed_h = (int)server_window_title_bar_height_;
+      // Collapse upward: keep top edge stable.
+      SDL_SetWindowSize(server_window_, w, collapsed_h);
+      SDL_SetWindowPosition(server_window_, x, y);
+      server_window_collapsed_ = true;
     }
   }
   draw_list->AddLine(
@@ -212,8 +190,6 @@ int Render::ServerWindow() {
       IM_COL32(0, 0, 0, 255));
 
   ImGui::PopStyleColor(3);
-  ImGui::PopStyleVar();
-  ImGui::PopStyleColor();
 
   ImGui::EndChild();
   ImGui::PopStyleVar();
