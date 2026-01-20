@@ -197,6 +197,10 @@ static std::vector<std::string> completed = {
     reinterpret_cast<const char*>(u8"已完成"), "Completed"};
 static std::vector<std::string> failed = {
     reinterpret_cast<const char*>(u8"失败"), "Failed"};
+static std::vector<std::string> controller = {
+    reinterpret_cast<const char*>(u8"控制端:"), "Controller:"};
+static std::vector<std::string> file_transfer = {
+    reinterpret_cast<const char*>(u8"文件传输:"), "File Transfer:"};
 
 #if _WIN32
 static std::vector<std::string> minimize_to_tray = {

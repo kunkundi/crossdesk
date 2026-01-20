@@ -2,6 +2,12 @@
 
 #include <libyuv.h>
 
+#if defined(__linux__) && !defined(__APPLE__)
+#include <X11/Xatom.h>
+#include <X11/Xlib.h>
+#endif
+
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -21,9 +27,122 @@
 #include "screen_capturer_factory.h"
 #include "version_checker.h"
 
+#if defined(__APPLE__)
+#include "window_util_mac.h"
+#endif
+
 #define NV12_BUFFER_SIZE 1280 * 720 * 3 / 2
 
 namespace crossdesk {
+
+namespace {
+#if defined(__linux__) && !defined(__APPLE__)
+inline bool X11GetDisplayAndWindow(SDL_Window* window, Display** display_out,
+                                   ::Window* x11_window_out) {
+  if (!window || !display_out || !x11_window_out) {
+    return false;
+  }
+
+#if !defined(SDL_PROP_WINDOW_X11_DISPLAY_POINTER) || \
+    !defined(SDL_PROP_WINDOW_X11_WINDOW_NUMBER)
+  // SDL build does not expose X11 window properties.
+  return false;
+#else
+  SDL_PropertiesID props = SDL_GetWindowProperties(window);
+  Display* display = (Display*)SDL_GetPointerProperty(
+      props, SDL_PROP_WINDOW_X11_DISPLAY_POINTER, NULL);
+  const Sint64 x11_window_num =
+      SDL_GetNumberProperty(props, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
+  const ::Window x11_window = (::Window)x11_window_num;
+
+  if (!display || !x11_window) {
+    return false;
+  }
+
+  *display_out = display;
+  *x11_window_out = x11_window;
+  return true;
+#endif
+}
+
+inline void X11SendNetWmState(Display* display, ::Window x11_window,
+                              long action, Atom state1, Atom state2 = 0) {
+  if (!display || !x11_window) {
+    return;
+  }
+
+  const Atom wm_state = XInternAtom(display, "_NET_WM_STATE", False);
+
+  XEvent event;
+  memset(&event, 0, sizeof(event));
+  event.xclient.type = ClientMessage;
+  event.xclient.serial = 0;
+  event.xclient.send_event = True;
+  event.xclient.message_type = wm_state;
+  event.xclient.window = x11_window;
+  event.xclient.format = 32;
+  event.xclient.data.l[0] = action;
+  event.xclient.data.l[1] = (long)state1;
+  event.xclient.data.l[2] = (long)state2;
+  event.xclient.data.l[3] = 1;  // normal source indication
+  event.xclient.data.l[4] = 0;
+
+  XSendEvent(display, DefaultRootWindow(display), False,
+             SubstructureRedirectMask | SubstructureNotifyMask, &event);
+}
+
+inline void X11SetWindowTypeUtility(Display* display, ::Window x11_window) {
+  if (!display || !x11_window) {
+    return;
+  }
+
+  const Atom wm_window_type =
+      XInternAtom(display, "_NET_WM_WINDOW_TYPE", False);
+  const Atom wm_window_type_utility =
+      XInternAtom(display, "_NET_WM_WINDOW_TYPE_UTILITY", False);
+
+  XChangeProperty(display, x11_window, wm_window_type, XA_ATOM, 32,
+                  PropModeReplace, (unsigned char*)&wm_window_type_utility, 1);
+}
+
+inline void X11SetWindowAlwaysOnTop(SDL_Window* window) {
+  Display* display = nullptr;
+  ::Window x11_window = 0;
+  if (!X11GetDisplayAndWindow(window, &display, &x11_window)) {
+    return;
+  }
+
+  const Atom state_above = XInternAtom(display, "_NET_WM_STATE_ABOVE", False);
+  const Atom state_stays_on_top =
+      XInternAtom(display, "_NET_WM_STATE_STAYS_ON_TOP", False);
+
+  // Request _NET_WM_STATE_ADD for ABOVE + STAYS_ON_TOP.
+  X11SendNetWmState(display, x11_window, 1, state_above, state_stays_on_top);
+  XFlush(display);
+}
+
+inline void X11SetWindowSkipTaskbar(SDL_Window* window) {
+  Display* display = nullptr;
+  ::Window x11_window = 0;
+  if (!X11GetDisplayAndWindow(window, &display, &x11_window)) {
+    return;
+  }
+
+  const Atom skip_taskbar =
+      XInternAtom(display, "_NET_WM_STATE_SKIP_TASKBAR", False);
+  const Atom skip_pager =
+      XInternAtom(display, "_NET_WM_STATE_SKIP_PAGER", False);
+
+  // Request _NET_WM_STATE_ADD for SKIP_TASKBAR + SKIP_PAGER.
+  X11SendNetWmState(display, x11_window, 1, skip_taskbar, skip_pager);
+
+  // Hint the WM that this is an auxiliary/utility window.
+  X11SetWindowTypeUtility(display, x11_window);
+
+  XFlush(display);
+}
+#endif
+}  // namespace
 
 std::vector<char> Render::SerializeRemoteAction(const RemoteAction& action) {
   std::vector<char> buffer;
@@ -128,6 +247,20 @@ SDL_HitTestResult Render::HitTestCallback(SDL_Window* window,
   }
 
   if (render->fullscreen_button_pressed_) {
+    return SDL_HITTEST_NORMAL;
+  }
+
+  // Server window: OS-level dragging for the title bar, but keep the left-side
+  // collapse/expand button clickable.
+  if (render->server_window_ && window == render->server_window_) {
+    const float title_h = render->server_window_title_bar_height_;
+    const float button_w = title_h;
+    if (area->y >= 0 && area->y < title_h) {
+      if (area->x >= 0 && area->x < button_w) {
+        return SDL_HITTEST_NORMAL;
+      }
+      return SDL_HITTEST_DRAGGABLE;
+    }
     return SDL_HITTEST_NORMAL;
   }
 
@@ -962,6 +1095,51 @@ int Render::CreateServerWindow() {
               SDL_GetError());
     return -1;
   }
+
+#if _WIN32
+  // Hide server window from the taskbar by making it an owned tool window.
+  {
+    SDL_PropertiesID server_props = SDL_GetWindowProperties(server_window_);
+    HWND server_hwnd = (HWND)SDL_GetPointerProperty(
+        server_props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
+
+    HWND owner_hwnd = nullptr;
+    if (main_window_) {
+      SDL_PropertiesID main_props = SDL_GetWindowProperties(main_window_);
+      owner_hwnd = (HWND)SDL_GetPointerProperty(
+          main_props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
+    }
+
+    if (server_hwnd) {
+      LONG_PTR ex_style = GetWindowLongPtr(server_hwnd, GWL_EXSTYLE);
+      ex_style |= WS_EX_TOOLWINDOW;
+      ex_style &= ~WS_EX_APPWINDOW;
+      SetWindowLongPtr(server_hwnd, GWL_EXSTYLE, ex_style);
+
+      if (owner_hwnd) {
+        SetWindowLongPtr(server_hwnd, GWLP_HWNDPARENT, (LONG_PTR)owner_hwnd);
+      }
+
+      // Keep the server window above normal windows.
+      SetWindowPos(server_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                   SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED | SWP_NOACTIVATE);
+    }
+  }
+#endif
+
+#if defined(__linux__) && !defined(__APPLE__)
+  // Best-effort keep above other windows on X11.
+  X11SetWindowAlwaysOnTop(server_window_);
+  // Best-effort hide from taskbar on X11.
+  X11SetWindowSkipTaskbar(server_window_);
+#endif
+
+#if defined(__APPLE__)
+  // Best-effort keep above other windows on macOS.
+  MacSetWindowAlwaysOnTop(server_window_, true);
+  // Best-effort exclude from Window menu / window cycling.
+  MacSetWindowExcludedFromWindowMenu(server_window_, true);
+#endif
 
   // Set window position to bottom-right corner
   SDL_Rect display_bounds;
@@ -2028,10 +2206,7 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
       }
       break;
     case SDL_EVENT_DROP_FILE:
-      if (stream_window_ &&
-          SDL_GetWindowID(stream_window_) == event.window.windowID) {
-        ProcessFileDropEvent(event);
-      }
+      ProcessFileDropEvent(event);
       break;
 
     case SDL_EVENT_MOUSE_MOTION:
@@ -2115,61 +2290,110 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
 }
 
 void Render::ProcessFileDropEvent(const SDL_Event& event) {
+  if (!((stream_window_ &&
+         SDL_GetWindowID(stream_window_) == event.window.windowID) ||
+        (server_window_ &&
+         SDL_GetWindowID(server_window_) == event.window.windowID))) {
+    return;
+  }
+
   if (event.type != SDL_EVENT_DROP_FILE) {
     return;
   }
 
-  if (!stream_window_inited_) {
-    return;
-  }
-
-  std::shared_lock lock(client_properties_mutex_);
-  for (auto& [_, props] : client_properties_) {
-    if (props->tab_selected_) {
-      if (event.drop.data == nullptr) {
-        LOG_ERROR("ProcessFileDropEvent: drop event data is null");
-        break;
-      }
-
-      if (!props || !props->peer_) {
-        LOG_ERROR("ProcessFileDropEvent: invalid props or peer");
-        break;
-      }
-
-      std::string utf8_path = static_cast<const char*>(event.drop.data);
-      std::filesystem::path file_path = std::filesystem::u8path(utf8_path);
-
-      // Check if file exists
-      std::error_code ec;
-      if (!std::filesystem::exists(file_path, ec)) {
-        LOG_ERROR("ProcessFileDropEvent: file does not exist: {}",
-                  file_path.string().c_str());
-        break;
-      }
-
-      // Check if it's a regular file
-      if (!std::filesystem::is_regular_file(file_path, ec)) {
-        LOG_ERROR("ProcessFileDropEvent: path is not a regular file: {}",
-                  file_path.string().c_str());
-        break;
-      }
-
-      // Get file size
-      uint64_t file_size = std::filesystem::file_size(file_path, ec);
-      if (ec) {
-        LOG_ERROR("ProcessFileDropEvent: failed to get file size: {}",
-                  ec.message().c_str());
-        break;
-      }
-
-      LOG_INFO("Drop file [{}] to send (size: {} bytes)", event.drop.data,
-               file_size);
-
-      // Use ProcessSelectedFile to handle the file processing
-      ProcessSelectedFile(utf8_path, props, props->file_label_);
-
-      break;
+  if (SDL_GetWindowID(stream_window_) == event.window.windowID) {
+    if (!stream_window_inited_) {
+      return;
     }
+
+    std::shared_lock lock(client_properties_mutex_);
+    for (auto& [_, props] : client_properties_) {
+      if (props->tab_selected_) {
+        if (event.drop.data == nullptr) {
+          LOG_ERROR("ProcessFileDropEvent: drop event data is null");
+          break;
+        }
+
+        if (!props || !props->peer_) {
+          LOG_ERROR("ProcessFileDropEvent: invalid props or peer");
+          break;
+        }
+
+        std::string utf8_path = static_cast<const char*>(event.drop.data);
+        std::filesystem::path file_path = std::filesystem::u8path(utf8_path);
+
+        // Check if file exists
+        std::error_code ec;
+        if (!std::filesystem::exists(file_path, ec)) {
+          LOG_ERROR("ProcessFileDropEvent: file does not exist: {}",
+                    file_path.string().c_str());
+          break;
+        }
+
+        // Check if it's a regular file
+        if (!std::filesystem::is_regular_file(file_path, ec)) {
+          LOG_ERROR("ProcessFileDropEvent: path is not a regular file: {}",
+                    file_path.string().c_str());
+          break;
+        }
+
+        // Get file size
+        uint64_t file_size = std::filesystem::file_size(file_path, ec);
+        if (ec) {
+          LOG_ERROR("ProcessFileDropEvent: failed to get file size: {}",
+                    ec.message().c_str());
+          break;
+        }
+
+        LOG_INFO("Drop file [{}] to send (size: {} bytes)", event.drop.data,
+                 file_size);
+
+        // Use ProcessSelectedFile to handle the file processing
+        ProcessSelectedFile(utf8_path, props, props->file_label_);
+
+        break;
+      }
+    }
+  } else if (SDL_GetWindowID(server_window_) == event.window.windowID) {
+    if (!server_window_inited_) {
+      return;
+    }
+
+    if (event.drop.data == nullptr) {
+      LOG_ERROR("ProcessFileDropEvent: drop event data is null");
+      return;
+    }
+
+    std::string utf8_path = static_cast<const char*>(event.drop.data);
+    std::filesystem::path file_path = std::filesystem::u8path(utf8_path);
+
+    // Check if file exists
+    std::error_code ec;
+    if (!std::filesystem::exists(file_path, ec)) {
+      LOG_ERROR("ProcessFileDropEvent: file does not exist: {}",
+                file_path.string().c_str());
+      return;
+    }
+
+    // Check if it's a regular file
+    if (!std::filesystem::is_regular_file(file_path, ec)) {
+      LOG_ERROR("ProcessFileDropEvent: path is not a regular file: {}",
+                file_path.string().c_str());
+      return;
+    }
+
+    // Get file size
+    uint64_t file_size = std::filesystem::file_size(file_path, ec);
+    if (ec) {
+      LOG_ERROR("ProcessFileDropEvent: failed to get file size: {}",
+                ec.message().c_str());
+      return;
+    }
+
+    LOG_INFO("Drop file [{}] on server window (size: {} bytes)",
+             event.drop.data, file_size);
+
+    // Handle the dropped file on server window as needed
   }
 }
 }  // namespace crossdesk

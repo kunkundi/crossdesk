@@ -628,6 +628,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
         render->is_server_mode_ = true;
         render->start_screen_capturer_ = true;
         render->start_speaker_capturer_ = true;
+        render->remote_client_id_ = remote_id;
 #ifdef CROSSDESK_DEBUG
         render->start_mouse_controller_ = false;
         render->start_keyboard_capturer_ = false;
@@ -657,6 +658,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
           render->start_mouse_controller_ = false;
           render->start_keyboard_capturer_ = false;
           render->need_to_send_host_info_ = false;
+          render->remote_client_id_ = "";
           if (props) props->connection_established_ = false;
           if (render->audio_capture_) {
             render->StopSpeakerCapturer();

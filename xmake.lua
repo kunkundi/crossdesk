@@ -70,6 +70,9 @@ target("common")
     set_kind("object")
     add_deps("rd_log")
     add_files("src/common/*.cpp")
+    if is_os("macosx") then
+        add_files("src/common/*.mm")
+    end
     add_includedirs("src/common", {public = true})
 
 target("path_manager")

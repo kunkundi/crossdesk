@@ -204,6 +204,7 @@ class Render {
   int UpdateNotificationWindow();
   int StreamWindow();
   int ServerWindow();
+  int RemoteClientInfoWindow();
   int LocalWindow();
   int RemoteWindow();
   int RecentConnectionsWindow();
@@ -220,6 +221,7 @@ class Render {
   void Hyperlink(const std::string& label, const std::string& url,
                  const float window_width);
   int FileTransferWindow(std::shared_ptr<SubStreamWindowProperties>& props);
+  std::string OpenFileDialog(std::string title);
 
  private:
   int ConnectTo(const std::string& remote_id, const char* password,
@@ -468,6 +470,7 @@ class Render {
   std::string controlled_remote_id_ = "";
   std::string focused_remote_id_ = "";
   bool need_to_send_host_info_ = false;
+  std::string remote_client_id_ = "";
   SDL_Event last_mouse_event;
   SDL_AudioStream* output_stream_;
   uint32_t STREAM_REFRESH_EVENT = 0;
@@ -504,14 +507,14 @@ class Render {
   bool need_to_destroy_server_window_ = false;
   bool server_window_created_ = false;
   bool server_window_inited_ = false;
-  int server_window_width_default_ = 300;
-  int server_window_height_default_ = 450;
-  float server_window_width_ = 300;
-  float server_window_height_ = 450;
-  float server_window_title_bar_height_ = 50.0f;
+  int server_window_width_default_ = 250;
+  int server_window_height_default_ = 150;
+  float server_window_width_ = 250;
+  float server_window_height_ = 150;
+  float server_window_title_bar_height_ = 30.0f;
   SDL_PixelFormat server_pixformat_ = SDL_PIXELFORMAT_NV12;
-  int server_window_normal_width_ = 300;
-  int server_window_normal_height_ = 450;
+  int server_window_normal_width_ = 250;
+  int server_window_normal_height_ = 150;
   float server_window_dpi_scaling_w_ = 1.0f;
   float server_window_dpi_scaling_h_ = 1.0f;
 

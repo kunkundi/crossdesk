@@ -15,18 +15,6 @@
 
 namespace crossdesk {
 
-std::string OpenFileDialog(std::string title) {
-  const char* path = tinyfd_openFileDialog(title.c_str(),
-                                           "",       // default path
-                                           0,        // number of filters
-                                           nullptr,  // filters
-                                           nullptr,  // filter description
-                                           0         // no multiple selection
-  );
-
-  return path ? path : "";
-}
-
 int CountDigits(int number) {
   if (number == 0) return 1;
   return (int)std::floor(std::log10(std::abs(number))) + 1;
@@ -51,6 +39,18 @@ int LossRateDisplay(float loss_rate) {
     ImGui::Text("%.0f%%", loss_rate * 100);
   }
   return 0;
+}
+
+std::string Render::OpenFileDialog(std::string title) {
+  const char* path = tinyfd_openFileDialog(title.c_str(),
+                                           "",       // default path
+                                           0,        // number of filters
+                                           nullptr,  // filters
+                                           nullptr,  // filter description
+                                           0         // no multiple selection
+  );
+
+  return path ? path : "";
 }
 
 void Render::ProcessSelectedFile(
