@@ -18,6 +18,8 @@ int Render::ServerWindow() {
                    ImGuiWindowFlags_NoScrollbar |
                    ImGuiWindowFlags_NoScrollWithMouse);
 
+  server_window_title_bar_height_ = title_bar_height_;
+
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
   ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);

@@ -948,6 +948,12 @@ int Render::CreateMainWindow() {
     main_window_height_ = (int)(main_window_height_default_ * dpi_scale_);
     stream_window_width_ = (int)(stream_window_width_default_ * dpi_scale_);
     stream_window_height_ = (int)(stream_window_height_default_ * dpi_scale_);
+    server_window_width_ = (int)(server_window_width_default_ * dpi_scale_);
+    server_window_height_ = (int)(server_window_height_default_ * dpi_scale_);
+    server_window_normal_width_ =
+        (int)(server_window_width_default_ * dpi_scale_);
+    server_window_normal_height_ =
+        (int)(server_window_height_default_ * dpi_scale_);
 
     SDL_SetWindowSize(main_window_, (int)main_window_width_,
                       (int)main_window_height_);
