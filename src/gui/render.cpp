@@ -1103,28 +1103,17 @@ int Render::CreateServerWindow() {
   }
 
 #if _WIN32
-  // Hide server window from the taskbar by making it an owned tool window.
+  // Hide server window from the taskbar by making it a tool window.
   {
     SDL_PropertiesID server_props = SDL_GetWindowProperties(server_window_);
     HWND server_hwnd = (HWND)SDL_GetPointerProperty(
         server_props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
-
-    HWND owner_hwnd = nullptr;
-    if (main_window_) {
-      SDL_PropertiesID main_props = SDL_GetWindowProperties(main_window_);
-      owner_hwnd = (HWND)SDL_GetPointerProperty(
-          main_props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
-    }
 
     if (server_hwnd) {
       LONG_PTR ex_style = GetWindowLongPtr(server_hwnd, GWL_EXSTYLE);
       ex_style |= WS_EX_TOOLWINDOW;
       ex_style &= ~WS_EX_APPWINDOW;
       SetWindowLongPtr(server_hwnd, GWL_EXSTYLE, ex_style);
-
-      if (owner_hwnd) {
-        SetWindowLongPtr(server_hwnd, GWLP_HWNDPARENT, (LONG_PTR)owner_hwnd);
-      }
 
       // Keep the server window above normal windows.
       SetWindowPos(server_hwnd, HWND_TOPMOST, 0, 0, 0, 0,

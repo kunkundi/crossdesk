@@ -102,7 +102,7 @@ int Render::RemoteClientInfoWindow() {
   ImGui::PopStyleVar();
   ImGui::PopStyleColor();
 
-  ImGui::SetWindowFontScale(0.7f);
+  ImGui::SetWindowFontScale(0.6f);
   ImGui::Text("%s",
               localization::controller[localization_language_index_].c_str());
   ImGui::SameLine();
@@ -121,7 +121,7 @@ int Render::RemoteClientInfoWindow() {
   ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
   ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.0f, 0.5f, 0.5f, 1.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 5.0f);
-  ImGui::SetWindowFontScale(0.7f);
+  ImGui::SetWindowFontScale(0.6f);
   if (ImGui::Button(ICON_FA_XMARK, ImVec2(close_connection_button_width,
                                           close_connection_button_height))) {
     LeaveConnection(peer_, self_hosted_id_);
@@ -139,7 +139,7 @@ int Render::RemoteClientInfoWindow() {
           ImGuiWindowFlags_NoBringToFrontOnFocus);
   ImGui::PopStyleColor();
 
-  ImGui::SetWindowFontScale(0.7f);
+  ImGui::SetWindowFontScale(0.6f);
   ImGui::AlignTextToFramePadding();
   ImGui::Text(
       "%s", localization::file_transfer[localization_language_index_].c_str());

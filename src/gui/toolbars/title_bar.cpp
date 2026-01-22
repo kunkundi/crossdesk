@@ -15,14 +15,28 @@ int Render::TitleBar(bool main_window) {
   float title_bar_button_width = title_bar_button_width_;
   float title_bar_button_height = title_bar_button_height_;
   if (main_window) {
-    title_bar_width = io.DisplaySize.x;
-    title_bar_height = io.DisplaySize.y * TITLE_BAR_HEIGHT;
-    title_bar_height_padding = io.DisplaySize.y * (TITLE_BAR_HEIGHT + 0.01f);
-    title_bar_button_width = io.DisplaySize.x * TITLE_BAR_BUTTON_WIDTH;
-    title_bar_button_height = io.DisplaySize.y * TITLE_BAR_BUTTON_HEIGHT;
-    title_bar_height_ = title_bar_height;
-    title_bar_button_width_ = title_bar_button_width;
-    title_bar_button_height_ = title_bar_button_height;
+    // When the main window is minimized, Dear ImGui may report DisplaySize as
+    // (0, 0). Do not overwrite shared title-bar metrics with zeros, otherwise
+    // stream/server windows (which reuse these metrics) will lose their title
+    // bars and appear collapsed.
+    if (io.DisplaySize.x > 0.0f && io.DisplaySize.y > 0.0f) {
+      title_bar_width = io.DisplaySize.x;
+      title_bar_height = io.DisplaySize.y * TITLE_BAR_HEIGHT;
+      title_bar_height_padding = io.DisplaySize.y * (TITLE_BAR_HEIGHT + 0.01f);
+      title_bar_button_width = io.DisplaySize.x * TITLE_BAR_BUTTON_WIDTH;
+      title_bar_button_height = io.DisplaySize.y * TITLE_BAR_BUTTON_HEIGHT;
+
+      title_bar_height_ = title_bar_height;
+      title_bar_button_width_ = title_bar_button_width;
+      title_bar_button_height_ = title_bar_button_height;
+    } else {
+      // Keep using last known good values.
+      title_bar_width = title_bar_width_;
+      title_bar_height = title_bar_height_;
+      title_bar_height_padding = title_bar_height_;
+      title_bar_button_width = title_bar_button_width_;
+      title_bar_button_height = title_bar_button_height_;
+    }
   } else {
     title_bar_width = io.DisplaySize.x;
     title_bar_height = title_bar_button_height_;
@@ -187,6 +201,11 @@ int Render::TitleBar(bool main_window) {
   std::string window_minimize_button = "##minimize";  // ICON_FA_MINUS;
   if (ImGui::Button(window_minimize_button.c_str(),
                     ImVec2(title_bar_button_width, title_bar_button_height))) {
+    if (main_window) {
+      last_main_minimize_request_tick_ = SDL_GetTicks();
+    } else {
+      last_stream_minimize_request_tick_ = SDL_GetTicks();
+    }
     SDL_MinimizeWindow(main_window ? main_window_ : stream_window_);
   }
   draw_list->AddLine(
