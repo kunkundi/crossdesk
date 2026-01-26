@@ -42,6 +42,41 @@
 namespace crossdesk {
 class Render {
  public:
+  struct FileTransferState {
+    std::atomic<bool> file_sending_ = false;
+    std::atomic<uint64_t> file_sent_bytes_ = 0;
+    std::atomic<uint64_t> file_total_bytes_ = 0;
+    std::atomic<uint32_t> file_send_rate_bps_ = 0;
+    std::mutex file_transfer_mutex_;
+    std::chrono::steady_clock::time_point file_send_start_time_;
+    std::chrono::steady_clock::time_point file_send_last_update_time_;
+    uint64_t file_send_last_bytes_ = 0;
+    bool file_transfer_window_visible_ = false;
+    std::atomic<uint32_t> current_file_id_{0};
+
+    struct QueuedFile {
+      std::filesystem::path file_path;
+      std::string file_label;
+      std::string remote_id;
+    };
+    std::queue<QueuedFile> file_send_queue_;
+    std::mutex file_queue_mutex_;
+
+    enum class FileTransferStatus { Queued, Sending, Completed, Failed };
+
+    struct FileTransferInfo {
+      std::string file_name;
+      std::filesystem::path file_path;
+      uint64_t file_size = 0;
+      FileTransferStatus status = FileTransferStatus::Queued;
+      uint64_t sent_bytes = 0;
+      uint32_t file_id = 0;
+      uint32_t rate_bps = 0;
+    };
+    std::vector<FileTransferInfo> file_transfer_list_;
+    std::mutex file_transfer_list_mutex_;
+  };
+
   struct SubStreamWindowProperties {
     Params params_;
     PeerPtr* peer_ = nullptr;
@@ -129,38 +164,10 @@ class Render {
     std::chrono::steady_clock::time_point last_time_;
     XNetTrafficStats net_traffic_stats_;
 
-    // File transfer progress
-    std::atomic<bool> file_sending_ = false;
-    std::atomic<uint64_t> file_sent_bytes_ = 0;
-    std::atomic<uint64_t> file_total_bytes_ = 0;
-    std::atomic<uint32_t> file_send_rate_bps_ = 0;
-    std::mutex file_transfer_mutex_;
-    std::chrono::steady_clock::time_point file_send_start_time_;
-    std::chrono::steady_clock::time_point file_send_last_update_time_;
-    uint64_t file_send_last_bytes_ = 0;
-    bool file_transfer_window_visible_ = false;
-    std::atomic<uint32_t> current_file_id_{0};
-
-    struct QueuedFile {
-      std::filesystem::path file_path;
-      std::string file_label;
-    };
-    std::queue<QueuedFile> file_send_queue_;
-    std::mutex file_queue_mutex_;
-
-    enum class FileTransferStatus { Queued, Sending, Completed, Failed };
-
-    struct FileTransferInfo {
-      std::string file_name;
-      std::filesystem::path file_path;
-      uint64_t file_size = 0;
-      FileTransferStatus status = FileTransferStatus::Queued;
-      uint64_t sent_bytes = 0;
-      uint32_t file_id = 0;
-      uint32_t rate_bps = 0;
-    };
-    std::vector<FileTransferInfo> file_transfer_list_;
-    std::mutex file_transfer_list_mutex_;
+    using QueuedFile = FileTransferState::QueuedFile;
+    using FileTransferStatus = FileTransferState::FileTransferStatus;
+    using FileTransferInfo = FileTransferState::FileTransferInfo;
+    FileTransferState file_transfer_;
   };
 
  public:
@@ -193,9 +200,13 @@ class Render {
 
   void ProcessFileDropEvent(const SDL_Event& event);
 
-  void ProcessSelectedFile(const std::string& path,
-                           std::shared_ptr<SubStreamWindowProperties>& props,
-                           const std::string& file_label);
+  void ProcessSelectedFile(
+      const std::string& path,
+      const std::shared_ptr<SubStreamWindowProperties>& props,
+      const std::string& file_label, const std::string& remote_id = "");
+
+  std::shared_ptr<SubStreamWindowProperties>
+  GetSubStreamWindowPropertiesByRemoteId(const std::string& remote_id);
 
  private:
   int CreateStreamRenderWindow();
@@ -274,11 +285,11 @@ class Render {
   static void OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
                                    size_t user_id_size, void* user_data);
 
-  static void NetStatusReport(const char* client_id, size_t client_id_size,
-                              TraversalMode mode,
-                              const XNetTrafficStats* net_traffic_stats,
-                              const char* user_id, const size_t user_id_size,
-                              void* user_data);
+  static void OnNetStatusReport(const char* client_id, size_t client_id_size,
+                                TraversalMode mode,
+                                const XNetTrafficStats* net_traffic_stats,
+                                const char* user_id, const size_t user_id_size,
+                                void* user_data);
 
   static SDL_HitTestResult HitTestCallback(SDL_Window* window,
                                            const SDL_Point* area, void* data);
@@ -319,7 +330,8 @@ class Render {
   // File transfer helper functions
   void StartFileTransfer(std::shared_ptr<SubStreamWindowProperties> props,
                          const std::filesystem::path& file_path,
-                         const std::string& file_label);
+                         const std::string& file_label,
+                         const std::string& remote_id = "");
   void ProcessFileQueue(std::shared_ptr<SubStreamWindowProperties> props);
 
   int AudioDeviceInit();
@@ -579,6 +591,10 @@ class Render {
   std::unordered_map<uint32_t, std::weak_ptr<SubStreamWindowProperties>>
       file_id_to_props_;
   std::shared_mutex file_id_to_props_mutex_;
+
+  // Map file_id to FileTransferState for global file transfer (props == null)
+  std::unordered_map<uint32_t, FileTransferState*> file_id_to_transfer_state_;
+  std::shared_mutex file_id_to_transfer_state_mutex_;
   SDL_AudioDeviceID input_dev_;
   SDL_AudioDeviceID output_dev_;
   ScreenCapturerFactory* screen_capturer_factory_ = nullptr;
@@ -653,6 +669,8 @@ class Render {
 
   /* ------ server mode ------ */
   std::unordered_map<std::string, ConnectionStatus> connection_status_;
+  std::string selected_server_remote_id_ = "";
+  FileTransferState file_transfer_;
 };
 }  // namespace crossdesk
 #endif

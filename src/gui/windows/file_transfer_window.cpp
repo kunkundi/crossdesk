@@ -30,12 +30,14 @@ int BitrateDisplay(int bitrate) {
 
 int Render::FileTransferWindow(
     std::shared_ptr<SubStreamWindowProperties>& props) {
+  FileTransferState* state = props ? &props->file_transfer_ : &file_transfer_;
+
   // Only show window if there are files in transfer list or currently
   // transferring
   std::vector<SubStreamWindowProperties::FileTransferInfo> file_list;
   {
-    std::lock_guard<std::mutex> lock(props->file_transfer_list_mutex_);
-    file_list = props->file_transfer_list_;
+    std::lock_guard<std::mutex> lock(state->file_transfer_list_mutex_);
+    file_list = state->file_transfer_list_;
   }
 
   // Sort file list: Sending first, then Completed, then Queued, then Failed
@@ -66,7 +68,7 @@ int Render::FileTransferWindow(
   // It will be reopened automatically when:
   // 1. A file transfer completes (in render_callback.cpp)
   // 2. A new file starts sending from queue (in render.cpp)
-  if (!props->file_transfer_window_visible_) {
+  if (!state->file_transfer_window_visible_) {
     return 0;
   }
 
@@ -115,7 +117,7 @@ int Render::FileTransferWindow(
 
     // Close button handling
     if (!window_opened) {
-      props->file_transfer_window_visible_ = false;
+      state->file_transfer_window_visible_ = false;
       ImGui::End();
       return 0;
     }

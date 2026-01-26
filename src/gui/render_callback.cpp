@@ -361,42 +361,62 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
       }
     }
 
+    Render::FileTransferState* state = nullptr;
     if (!props) {
-      LOG_WARN("FileTransferAck: no props found for file_id={}", ack.file_id);
-      return;
+      {
+        std::shared_lock lock(render->file_id_to_transfer_state_mutex_);
+        auto it = render->file_id_to_transfer_state_.find(ack.file_id);
+        if (it != render->file_id_to_transfer_state_.end()) {
+          state = it->second;
+        }
+      }
+
+      if (!state) {
+        LOG_WARN("FileTransferAck: no props/state found for file_id={}",
+                 ack.file_id);
+        return;
+      }
+    } else {
+      state = &props->file_transfer_;
     }
 
     // Update progress based on ACK
-    props->file_sent_bytes_ = ack.acked_offset;
-    props->file_total_bytes_ = ack.total_size;
+    state->file_sent_bytes_ = ack.acked_offset;
+    state->file_total_bytes_ = ack.total_size;
 
     uint32_t rate_bps = 0;
     {
-      uint32_t data_channel_bitrate =
-          props->net_traffic_stats_.data_outbound_stats.bitrate;
+      if (props) {
+        uint32_t data_channel_bitrate =
+            props->net_traffic_stats_.data_outbound_stats.bitrate;
 
-      if (data_channel_bitrate > 0 && props->file_sending_.load()) {
-        rate_bps = static_cast<uint32_t>(data_channel_bitrate * 0.99f);
+        if (data_channel_bitrate > 0 && state->file_sending_.load()) {
+          rate_bps = static_cast<uint32_t>(data_channel_bitrate * 0.99f);
 
-        uint32_t current_rate = props->file_send_rate_bps_.load();
-        if (current_rate > 0) {
-          // 70% old + 30% new for smoother display
-          rate_bps = static_cast<uint32_t>(current_rate * 0.7 + rate_bps * 0.3);
+          uint32_t current_rate = state->file_send_rate_bps_.load();
+          if (current_rate > 0) {
+            // 70% old + 30% new for smoother display
+            rate_bps =
+                static_cast<uint32_t>(current_rate * 0.7 + rate_bps * 0.3);
+          }
+        } else {
+          rate_bps = state->file_send_rate_bps_.load();
         }
       } else {
-        rate_bps = props->file_send_rate_bps_.load();
+        // Global transfer: no per-connection bitrate, keep existing value.
+        rate_bps = state->file_send_rate_bps_.load();
       }
 
-      props->file_send_rate_bps_ = rate_bps;
-      props->file_send_last_bytes_ = ack.acked_offset;
+      state->file_send_rate_bps_ = rate_bps;
+      state->file_send_last_bytes_ = ack.acked_offset;
       auto now = std::chrono::steady_clock::now();
-      props->file_send_last_update_time_ = now;
+      state->file_send_last_update_time_ = now;
     }
 
     // Update file transfer list: update progress and rate
     {
-      std::lock_guard<std::mutex> lock(props->file_transfer_list_mutex_);
-      for (auto& info : props->file_transfer_list_) {
+      std::lock_guard<std::mutex> lock(state->file_transfer_list_mutex_);
+      for (auto& info : state->file_transfer_list_) {
         if (info.file_id == ack.file_id) {
           info.sent_bytes = ack.acked_offset;
           info.file_size = ack.total_size;
@@ -410,8 +430,8 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
     if ((ack.flags & 0x01) != 0) {
       // Transfer completed - receiver has finished receiving the file
       // Reopen window if it was closed by user
-      props->file_transfer_window_visible_ = true;
-      props->file_sending_ = false;  // Mark sending as finished
+      state->file_transfer_window_visible_ = true;
+      state->file_sending_ = false;  // Mark sending as finished
       LOG_INFO(
           "File transfer completed via ACK, file_id={}, total_size={}, "
           "acked_offset={}",
@@ -419,11 +439,11 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
 
       // Update file transfer list: mark as completed
       {
-        std::lock_guard<std::mutex> lock(props->file_transfer_list_mutex_);
-        for (auto& info : props->file_transfer_list_) {
+        std::lock_guard<std::mutex> lock(state->file_transfer_list_mutex_);
+        for (auto& info : state->file_transfer_list_) {
           if (info.file_id == ack.file_id) {
             info.status =
-                SubStreamWindowProperties::FileTransferStatus::Completed;
+                Render::FileTransferState::FileTransferStatus::Completed;
             info.sent_bytes = ack.total_size;
             break;
           }
@@ -432,9 +452,15 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
 
       // Unregister file_id mapping after completion
       {
-        std::lock_guard<std::shared_mutex> lock(
-            render->file_id_to_props_mutex_);
-        render->file_id_to_props_.erase(ack.file_id);
+        if (props) {
+          std::lock_guard<std::shared_mutex> lock(
+              render->file_id_to_props_mutex_);
+          render->file_id_to_props_.erase(ack.file_id);
+        } else {
+          std::lock_guard<std::shared_mutex> lock(
+              render->file_id_to_transfer_state_mutex_);
+          render->file_id_to_transfer_state_.erase(ack.file_id);
+        }
       }
 
       // Process next file in queue
@@ -683,11 +709,11 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
   }
 }
 
-void Render::NetStatusReport(const char* client_id, size_t client_id_size,
-                             TraversalMode mode,
-                             const XNetTrafficStats* net_traffic_stats,
-                             const char* user_id, const size_t user_id_size,
-                             void* user_data) {
+void Render::OnNetStatusReport(const char* client_id, size_t client_id_size,
+                               TraversalMode mode,
+                               const XNetTrafficStats* net_traffic_stats,
+                               const char* user_id, const size_t user_id_size,
+                               void* user_data) {
   Render* render = (Render*)user_data;
   if (!render) {
     return;

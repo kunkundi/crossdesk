@@ -201,6 +201,8 @@ static std::vector<std::string> controller = {
     reinterpret_cast<const char*>(u8"控制端:"), "Controller:"};
 static std::vector<std::string> file_transfer = {
     reinterpret_cast<const char*>(u8"文件传输:"), "File Transfer:"};
+static std::vector<std::string> connection_status = {
+    reinterpret_cast<const char*>(u8"连接状态:"), "Connection Status:"};
 
 #if _WIN32
 static std::vector<std::string> minimize_to_tray = {
