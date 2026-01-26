@@ -320,7 +320,20 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
     std::string remote_user_id = std::string(user_id, user_id_size);
 
     static FileReceiver receiver;
-    receiver.SetOnSendAck([render](const FileTransferAck& ack) -> int {
+    receiver.SetOnSendAck([render,
+                           remote_user_id](const FileTransferAck& ack) -> int {
+      bool is_server_sending = remote_user_id.rfind("C-", 0) != 0;
+      if (is_server_sending) {
+        auto props =
+            render->GetSubStreamWindowPropertiesByRemoteId(remote_user_id);
+        if (props) {
+          PeerPtr* peer = props->peer_;
+          return SendReliableDataFrame(
+              peer, reinterpret_cast<const char*>(&ack),
+              sizeof(FileTransferAck), render->file_feedback_label_.c_str());
+        }
+      }
+
       return SendReliableDataFrame(
           render->peer_, reinterpret_cast<const char*>(&ack),
           sizeof(FileTransferAck), render->file_feedback_label_.c_str());
@@ -594,7 +607,49 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
 
     switch (status) {
       case ConnectionStatus::Connected: {
-        render->need_to_send_host_info_ = true;
+        {
+          RemoteAction remote_action;
+          remote_action.i.display_num = render->display_info_list_.size();
+          remote_action.i.display_list =
+              (char**)malloc(remote_action.i.display_num * sizeof(char*));
+          remote_action.i.left =
+              (int*)malloc(remote_action.i.display_num * sizeof(int));
+          remote_action.i.top =
+              (int*)malloc(remote_action.i.display_num * sizeof(int));
+          remote_action.i.right =
+              (int*)malloc(remote_action.i.display_num * sizeof(int));
+          remote_action.i.bottom =
+              (int*)malloc(remote_action.i.display_num * sizeof(int));
+          for (int i = 0; i < remote_action.i.display_num; i++) {
+            LOG_INFO("Local display [{}:{}]", i + 1,
+                     render->display_info_list_[i].name);
+            remote_action.i.display_list[i] =
+                (char*)malloc(render->display_info_list_[i].name.length() + 1);
+            strncpy(remote_action.i.display_list[i],
+                    render->display_info_list_[i].name.c_str(),
+                    render->display_info_list_[i].name.length());
+            remote_action.i
+                .display_list[i][render->display_info_list_[i].name.length()] =
+                '\0';
+            remote_action.i.left[i] = render->display_info_list_[i].left;
+            remote_action.i.top[i] = render->display_info_list_[i].top;
+            remote_action.i.right[i] = render->display_info_list_[i].right;
+            remote_action.i.bottom[i] = render->display_info_list_[i].bottom;
+          }
+
+          std::string host_name = GetHostName();
+          remote_action.type = ControlType::host_infomation;
+          memcpy(&remote_action.i.host_name, host_name.data(),
+                 host_name.size());
+          remote_action.i.host_name[host_name.size()] = '\0';
+          remote_action.i.host_name_size = host_name.size();
+
+          std::string msg = remote_action.to_json();
+          int ret = SendReliableDataFrame(props->peer_, msg.data(), msg.size(),
+                                          render->control_data_label_.c_str());
+          FreeRemoteAction(remote_action);
+        }
+
         if (!render->need_to_create_stream_window_ &&
             !render->client_properties_.empty()) {
           render->need_to_create_stream_window_ = true;
@@ -649,8 +704,50 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
 
     switch (status) {
       case ConnectionStatus::Connected: {
+        {
+          RemoteAction remote_action;
+          remote_action.i.display_num = render->display_info_list_.size();
+          remote_action.i.display_list =
+              (char**)malloc(remote_action.i.display_num * sizeof(char*));
+          remote_action.i.left =
+              (int*)malloc(remote_action.i.display_num * sizeof(int));
+          remote_action.i.top =
+              (int*)malloc(remote_action.i.display_num * sizeof(int));
+          remote_action.i.right =
+              (int*)malloc(remote_action.i.display_num * sizeof(int));
+          remote_action.i.bottom =
+              (int*)malloc(remote_action.i.display_num * sizeof(int));
+          for (int i = 0; i < remote_action.i.display_num; i++) {
+            LOG_INFO("Local display [{}:{}]", i + 1,
+                     render->display_info_list_[i].name);
+            remote_action.i.display_list[i] =
+                (char*)malloc(render->display_info_list_[i].name.length() + 1);
+            strncpy(remote_action.i.display_list[i],
+                    render->display_info_list_[i].name.c_str(),
+                    render->display_info_list_[i].name.length());
+            remote_action.i
+                .display_list[i][render->display_info_list_[i].name.length()] =
+                '\0';
+            remote_action.i.left[i] = render->display_info_list_[i].left;
+            remote_action.i.top[i] = render->display_info_list_[i].top;
+            remote_action.i.right[i] = render->display_info_list_[i].right;
+            remote_action.i.bottom[i] = render->display_info_list_[i].bottom;
+          }
+
+          std::string host_name = GetHostName();
+          remote_action.type = ControlType::host_infomation;
+          memcpy(&remote_action.i.host_name, host_name.data(),
+                 host_name.size());
+          remote_action.i.host_name[host_name.size()] = '\0';
+          remote_action.i.host_name_size = host_name.size();
+
+          std::string msg = remote_action.to_json();
+          int ret = SendReliableDataFrame(render->peer_, msg.data(), msg.size(),
+                                          render->control_data_label_.c_str());
+          FreeRemoteAction(remote_action);
+        }
+
         render->need_to_create_server_window_ = true;
-        render->need_to_send_host_info_ = true;
         render->is_server_mode_ = true;
         render->start_screen_capturer_ = true;
         render->start_speaker_capturer_ = true;
@@ -683,7 +780,6 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
           render->start_speaker_capturer_ = false;
           render->start_mouse_controller_ = false;
           render->start_keyboard_capturer_ = false;
-          render->need_to_send_host_info_ = false;
           render->remote_client_id_ = "";
           if (props) props->connection_established_ = false;
           if (render->audio_capture_) {

@@ -484,7 +484,6 @@ class Render {
   bool just_created_ = false;
   std::string controlled_remote_id_ = "";
   std::string focused_remote_id_ = "";
-  bool need_to_send_host_info_ = false;
   std::string remote_client_id_ = "";
   SDL_Event last_mouse_event;
   SDL_AudioStream* output_stream_;

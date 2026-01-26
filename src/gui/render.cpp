@@ -1621,49 +1621,6 @@ void Render::MainLoop() {
     }
 
     UpdateInteractions();
-
-    if (need_to_send_host_info_) {
-      RemoteAction remote_action;
-      remote_action.i.display_num = display_info_list_.size();
-      remote_action.i.display_list =
-          (char**)malloc(remote_action.i.display_num * sizeof(char*));
-      remote_action.i.left =
-          (int*)malloc(remote_action.i.display_num * sizeof(int));
-      remote_action.i.top =
-          (int*)malloc(remote_action.i.display_num * sizeof(int));
-      remote_action.i.right =
-          (int*)malloc(remote_action.i.display_num * sizeof(int));
-      remote_action.i.bottom =
-          (int*)malloc(remote_action.i.display_num * sizeof(int));
-      for (int i = 0; i < remote_action.i.display_num; i++) {
-        LOG_INFO("Local display [{}:{}]", i + 1, display_info_list_[i].name);
-        remote_action.i.display_list[i] =
-            (char*)malloc(display_info_list_[i].name.length() + 1);
-        strncpy(remote_action.i.display_list[i],
-                display_info_list_[i].name.c_str(),
-                display_info_list_[i].name.length());
-        remote_action.i.display_list[i][display_info_list_[i].name.length()] =
-            '\0';
-        remote_action.i.left[i] = display_info_list_[i].left;
-        remote_action.i.top[i] = display_info_list_[i].top;
-        remote_action.i.right[i] = display_info_list_[i].right;
-        remote_action.i.bottom[i] = display_info_list_[i].bottom;
-      }
-
-      std::string host_name = GetHostName();
-      remote_action.type = ControlType::host_infomation;
-      memcpy(&remote_action.i.host_name, host_name.data(), host_name.size());
-      remote_action.i.host_name[host_name.size()] = '\0';
-      remote_action.i.host_name_size = host_name.size();
-
-      std::string msg = remote_action.to_json();
-      int ret = SendReliableDataFrame(peer_, msg.data(), msg.size(),
-                                      control_data_label_.c_str());
-      FreeRemoteAction(remote_action);
-      if (0 == ret) {
-        need_to_send_host_info_ = false;
-      }
-    }
   }
 }
 
