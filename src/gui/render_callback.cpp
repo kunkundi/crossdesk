@@ -495,24 +495,39 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
 
   std::string remote_id(user_id, user_id_size);
   // std::shared_lock lock(render->client_properties_mutex_);
-  if (render->client_properties_.find(remote_id) !=
-      render->client_properties_.end()) {
-    // local
-    auto props = render->client_properties_.find(remote_id)->second;
-    if (remote_action.type == ControlType::host_infomation &&
-        props->remote_host_name_.empty()) {
-      props->remote_host_name_ = std::string(remote_action.i.host_name,
-                                             remote_action.i.host_name_size);
-      LOG_INFO("Remote hostname: [{}]", props->remote_host_name_);
+  if (remote_action.type == ControlType::host_infomation) {
+    if (render->client_properties_.find(remote_id) !=
+        render->client_properties_.end()) {
+      // client mode
+      auto props = render->client_properties_.find(remote_id)->second;
+      if (props && props->remote_host_name_.empty()) {
+        props->remote_host_name_ = std::string(remote_action.i.host_name,
+                                               remote_action.i.host_name_size);
+        LOG_INFO("Remote hostname: [{}]", props->remote_host_name_);
+
+        for (int i = 0; i < remote_action.i.display_num; i++) {
+          props->display_info_list_.push_back(
+              DisplayInfo(remote_action.i.display_list[i],
+                          remote_action.i.left[i], remote_action.i.top[i],
+                          remote_action.i.right[i], remote_action.i.bottom[i]));
+        }
+      }
+      FreeRemoteAction(remote_action);
+    } else {
+      // server mode
+      render->connection_host_names_[remote_id] = std::string(
+          remote_action.i.host_name, remote_action.i.host_name_size);
+      LOG_INFO("Remote hostname: [{}]",
+               render->connection_host_names_[remote_id]);
 
       for (int i = 0; i < remote_action.i.display_num; i++) {
-        props->display_info_list_.push_back(
+        render->display_info_list_.push_back(
             DisplayInfo(remote_action.i.display_list[i],
                         remote_action.i.left[i], remote_action.i.top[i],
                         remote_action.i.right[i], remote_action.i.bottom[i]));
       }
+      FreeRemoteAction(remote_action);
     }
-    FreeRemoteAction(remote_action);
   } else {
     // remote
     if (remote_action.type == ControlType::mouse && render->mouse_controller_) {

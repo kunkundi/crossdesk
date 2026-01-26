@@ -668,7 +668,9 @@ class Render {
 
   /* ------ server mode ------ */
   std::unordered_map<std::string, ConnectionStatus> connection_status_;
+  std::unordered_map<std::string, std::string> connection_host_names_;
   std::string selected_server_remote_id_ = "";
+  std::string selected_server_remote_hostname_ = "";
   FileTransferState file_transfer_;
 };
 }  // namespace crossdesk

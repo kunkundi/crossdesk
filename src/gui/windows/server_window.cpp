@@ -106,44 +106,61 @@ int Render::RemoteClientInfoWindow() {
 
   float font_scale = localization_language_index_ == 0 ? 0.5f : 0.45f;
 
-  ImGui::SetWindowFontScale(localization_language_index_ == 0 ? 0.5f : 0.48f);
-
-  std::vector<std::string> remote_ids;
-  remote_ids.reserve(connection_status_.size());
-  for (const auto& kv : connection_status_) {
-    remote_ids.push_back(kv.first);
+  std::vector<std::string> remote_hostnames;
+  remote_hostnames.reserve(connection_host_names_.size());
+  for (const auto& kv : connection_host_names_) {
+    remote_hostnames.push_back(kv.second);
   }
 
-  if (!selected_server_remote_id_.empty()) {
-    if (std::find(remote_ids.begin(), remote_ids.end(),
-                  selected_server_remote_id_) == remote_ids.end()) {
+  auto find_remote_id_by_hostname =
+      [this](const std::string& hostname) -> std::string {
+    for (const auto& kv : connection_host_names_) {
+      if (kv.second == hostname) {
+        return kv.first;
+      }
+    }
+    return {};
+  };
+
+  if (!selected_server_remote_hostname_.empty()) {
+    if (std::find(remote_hostnames.begin(), remote_hostnames.end(),
+                  selected_server_remote_hostname_) == remote_hostnames.end()) {
+      selected_server_remote_hostname_.clear();
       selected_server_remote_id_.clear();
     }
   }
-  if (selected_server_remote_id_.empty() && !remote_ids.empty()) {
-    selected_server_remote_id_ = remote_ids.front();
+  if (selected_server_remote_hostname_.empty() && !remote_hostnames.empty()) {
+    selected_server_remote_hostname_ = remote_hostnames.front();
+    selected_server_remote_id_ =
+        find_remote_id_by_hostname(selected_server_remote_hostname_);
   }
 
+  ImGui::SetWindowFontScale(font_scale);
   ImGui::AlignTextToFramePadding();
   ImGui::Text("%s",
               localization::controller[localization_language_index_].c_str());
   ImGui::SameLine();
 
   const char* selected_preview = "-";
-  if (!selected_server_remote_id_.empty()) {
-    selected_preview = selected_server_remote_id_.c_str();
+  if (!selected_server_remote_hostname_.empty()) {
+    selected_preview = selected_server_remote_hostname_.c_str();
   } else if (!remote_client_id_.empty()) {
     selected_preview = remote_client_id_.c_str();
   }
 
   ImGui::SetNextItemWidth(remote_client_info_window_width *
-                          (localization_language_index_ == 0 ? 0.65f : 0.6f));
+                          (localization_language_index_ == 0 ? 0.68f : 0.62f));
+  ImGui::SetWindowFontScale(localization_language_index_ == 0 ? 0.45f : 0.4f);
+  ImGui::AlignTextToFramePadding();
   if (ImGui::BeginCombo("##server_remote_id", selected_preview)) {
-    ImGui::SetWindowFontScale(font_scale);
-    for (int i = 0; i < static_cast<int>(remote_ids.size()); i++) {
-      const bool selected = (remote_ids[i] == selected_server_remote_id_);
-      if (ImGui::Selectable(remote_ids[i].c_str(), selected)) {
-        selected_server_remote_id_ = remote_ids[i];
+    ImGui::SetWindowFontScale(localization_language_index_ == 0 ? 0.45f : 0.4f);
+    for (int i = 0; i < static_cast<int>(remote_hostnames.size()); i++) {
+      const bool selected =
+          (remote_hostnames[i] == selected_server_remote_hostname_);
+      if (ImGui::Selectable(remote_hostnames[i].c_str(), selected)) {
+        selected_server_remote_hostname_ = remote_hostnames[i];
+        selected_server_remote_id_ =
+            find_remote_id_by_hostname(selected_server_remote_hostname_);
       }
       if (selected) {
         ImGui::SetItemDefaultFocus();
@@ -167,7 +184,7 @@ int Render::RemoteClientInfoWindow() {
         localization::connection_status[localization_language_index_].c_str());
     ImGui::SameLine();
 
-    switch (connection_status_[selected_server_remote_id_]) {
+    switch (status) {
       case ConnectionStatus::Connected:
         ImGui::Text(
             "%s",
