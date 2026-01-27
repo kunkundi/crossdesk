@@ -734,7 +734,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
 
         SDL_Event event;
         event.type = render->STREAM_REFRESH_EVENT;
-        event.user.data1 = props;
+        event.user.data1 = props.get();
         SDL_PushEvent(&event);
 
         break;
