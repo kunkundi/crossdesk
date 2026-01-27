@@ -123,8 +123,13 @@ class Render {
     float mouse_diff_control_bar_pos_y_ = 0;
     double control_bar_button_pressed_time_ = 0;
     double net_traffic_stats_button_pressed_time_ = 0;
-    unsigned char* dst_buffer_ = nullptr;
-    size_t dst_buffer_capacity_ = 0;
+    // Double-buffered NV12 frame storage. Written by decode callback thread,
+    // consumed by SDL main thread.
+    std::mutex video_frame_mutex_;
+    std::shared_ptr<std::vector<unsigned char>> front_frame_;
+    std::shared_ptr<std::vector<unsigned char>> back_frame_;
+    bool render_rect_dirty_ = false;
+    bool stream_cleanup_pending_ = false;
     float mouse_pos_x_ = 0;
     float mouse_pos_y_ = 0;
     float mouse_pos_x_last_ = 0;
