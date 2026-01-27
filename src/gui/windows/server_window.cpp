@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <cmath>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -8,6 +10,39 @@
 #include "render.h"
 
 namespace crossdesk {
+
+namespace {
+int CountDigits(int number) {
+  if (number == 0) return 1;
+  return (int)std::floor(std::log10(std::abs(number))) + 1;
+}
+
+void BitrateDisplay(uint32_t bitrate) {
+  const int num_of_digits = CountDigits(static_cast<int>(bitrate));
+  if (num_of_digits <= 3) {
+    ImGui::Text("%u bps", bitrate);
+  } else if (num_of_digits > 3 && num_of_digits <= 6) {
+    ImGui::Text("%u kbps", bitrate / 1000);
+  } else {
+    ImGui::Text("%.1f mbps", bitrate / 1000000.0f);
+  }
+}
+
+std::string FormatBytes(uint64_t bytes) {
+  char buf[64];
+  if (bytes < 1024ULL) {
+    std::snprintf(buf, sizeof(buf), "%llu B", (unsigned long long)bytes);
+  } else if (bytes < 1024ULL * 1024ULL) {
+    std::snprintf(buf, sizeof(buf), "%.2f KB", bytes / 1024.0);
+  } else if (bytes < 1024ULL * 1024ULL * 1024ULL) {
+    std::snprintf(buf, sizeof(buf), "%.2f MB", bytes / (1024.0 * 1024.0));
+  } else {
+    std::snprintf(buf, sizeof(buf), "%.2f GB",
+                  bytes / (1024.0 * 1024.0 * 1024.0));
+  }
+  return std::string(buf);
+}
+}  // namespace
 
 int Render::ServerWindow() {
   ImGui::SetNextWindowSize(ImVec2(server_window_width_, server_window_height_),
@@ -233,6 +268,75 @@ int Render::RemoteClientInfoWindow() {
     LOG_INFO("Selected file path: {}", path.c_str());
 
     ProcessSelectedFile(path, nullptr, file_label_, selected_server_remote_id_);
+  }
+
+  if (file_transfer_.file_transfer_window_visible_) {
+    ImGui::SameLine();
+    const bool is_sending = file_transfer_.file_sending_.load();
+
+    if (is_sending) {
+      // Simple animation: cycle icon every 0.5s while sending.
+      static const char* kFileTransferIcons[] = {ICON_FA_ANGLE_UP,
+                                                 ICON_FA_ANGLES_UP};
+      const int icon_index = static_cast<int>(ImGui::GetTime() / 0.5) %
+                             (static_cast<int>(sizeof(kFileTransferIcons) /
+                                               sizeof(kFileTransferIcons[0])));
+      ImGui::Text("%s", kFileTransferIcons[icon_index]);
+    } else {
+      // Completed.
+      ImGui::Text("%s", ICON_FA_CHECK);
+    }
+
+    if (ImGui::IsItemHovered()) {
+      const uint64_t sent_bytes = file_transfer_.file_sent_bytes_.load();
+      const uint64_t total_bytes = file_transfer_.file_total_bytes_.load();
+      const uint32_t rate_bps = file_transfer_.file_send_rate_bps_.load();
+
+      float progress = 0.0f;
+      if (total_bytes > 0) {
+        progress =
+            static_cast<float>(sent_bytes) / static_cast<float>(total_bytes);
+        progress = (std::max)(0.0f, (std::min)(1.0f, progress));
+      }
+
+      std::string current_file_name;
+      const uint32_t current_file_id = file_transfer_.current_file_id_.load();
+      if (current_file_id != 0) {
+        std::lock_guard<std::mutex> lock(
+            file_transfer_.file_transfer_list_mutex_);
+        for (const auto& info : file_transfer_.file_transfer_list_) {
+          if (info.file_id == current_file_id) {
+            current_file_name = info.file_name;
+            break;
+          }
+        }
+      }
+
+      ImGui::BeginTooltip();
+      if (server_windows_system_chinese_font_) {
+        ImGui::PushFont(server_windows_system_chinese_font_);
+      }
+      ImGui::SetWindowFontScale(0.5f);
+      if (!current_file_name.empty()) {
+        ImGui::Text("%s", current_file_name.c_str());
+      }
+      if (total_bytes > 0) {
+        const std::string sent_str = FormatBytes(sent_bytes);
+        const std::string total_str = FormatBytes(total_bytes);
+        ImGui::Text("%s / %s", sent_str.c_str(), total_str.c_str());
+      }
+
+      const float text_height = ImGui::GetTextLineHeight();
+      char overlay[32];
+      std::snprintf(overlay, sizeof(overlay), "%.1f%%", progress * 100.0f);
+      ImGui::ProgressBar(progress, ImVec2(180.0f, text_height), overlay);
+      BitrateDisplay(rate_bps);
+      ImGui::SetWindowFontScale(1.0f);
+      if (server_windows_system_chinese_font_) {
+        ImGui::PopFont();
+      }
+      ImGui::EndTooltip();
+    }
   }
 
   ImGui::SetWindowFontScale(1.0f);

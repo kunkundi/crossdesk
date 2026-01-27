@@ -4,6 +4,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <unordered_map>
 
 #include "clipboard.h"
@@ -416,8 +417,46 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
           rate_bps = state->file_send_rate_bps_.load();
         }
       } else {
-        // Global transfer: no per-connection bitrate, keep existing value.
-        rate_bps = state->file_send_rate_bps_.load();
+        // Global transfer: no per-connection bitrate available.
+        // Estimate send rate from ACKed bytes delta over time.
+        const uint32_t current_rate = state->file_send_rate_bps_.load();
+        uint32_t estimated_rate_bps = 0;
+        const auto now = std::chrono::steady_clock::now();
+
+        uint64_t last_bytes = 0;
+        std::chrono::steady_clock::time_point last_time;
+        {
+          std::lock_guard<std::mutex> lock(state->file_transfer_mutex_);
+          last_bytes = state->file_send_last_bytes_;
+          last_time = state->file_send_last_update_time_;
+        }
+
+        if (state->file_sending_.load() && ack.acked_offset >= last_bytes) {
+          const uint64_t delta_bytes = ack.acked_offset - last_bytes;
+          const double delta_seconds =
+              std::chrono::duration<double>(now - last_time).count();
+
+          if (delta_seconds > 0.0 && delta_bytes > 0) {
+            const double bps =
+                (static_cast<double>(delta_bytes) * 8.0) / delta_seconds;
+            if (bps > 0.0) {
+              const double capped =
+                  (std::min)(bps, static_cast<double>(
+                                      (std::numeric_limits<uint32_t>::max)()));
+              estimated_rate_bps = static_cast<uint32_t>(capped);
+            }
+          }
+        }
+
+        if (estimated_rate_bps > 0 && current_rate > 0) {
+          // 70% old + 30% new for smoother display
+          rate_bps = static_cast<uint32_t>(current_rate * 0.7 +
+                                           estimated_rate_bps * 0.3);
+        } else if (estimated_rate_bps > 0) {
+          rate_bps = estimated_rate_bps;
+        } else {
+          rate_bps = current_rate;
+        }
       }
 
       state->file_send_rate_bps_ = rate_bps;
