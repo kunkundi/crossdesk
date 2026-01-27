@@ -607,8 +607,8 @@ class Render {
   uint64_t last_frame_time_;
   bool show_new_version_icon_ = false;
   bool show_new_version_icon_in_menu_ = true;
-  uint64_t new_version_icon_last_trigger_time_ = 0;
-  uint64_t new_version_icon_render_start_time_ = 0;
+  double new_version_icon_last_trigger_time_ = 0.0;
+  double new_version_icon_render_start_time_ = 0.0;
 #ifdef __APPLE__
   bool show_request_permission_window_ = true;
 #endif

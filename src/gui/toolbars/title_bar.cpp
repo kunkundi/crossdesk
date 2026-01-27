@@ -3,7 +3,8 @@
 #include "rd_log.h"
 #include "render.h"
 
-#define NEW_VERSION_ICON_RENDER_TIME_INTERVAL 2000
+constexpr double kNewVersionIconBlinkIntervalSec = 2.0;
+constexpr double kNewVersionIconBlinkOnTimeSec = 1.0;
 
 namespace crossdesk {
 
@@ -106,13 +107,11 @@ int Render::TitleBar(bool main_window) {
 
       std::string about_str = localization::about[localization_language_index_];
       if (update_available_) {
-        auto now_time = std::chrono::duration_cast<std::chrono::milliseconds>(
-                            std::chrono::steady_clock::now().time_since_epoch())
-                            .count();
+        const double now_time = ImGui::GetTime();
 
         // every 2 seconds
         if (now_time - new_version_icon_last_trigger_time_ >=
-            NEW_VERSION_ICON_RENDER_TIME_INTERVAL) {
+            kNewVersionIconBlinkIntervalSec) {
           show_new_version_icon_ = true;
           new_version_icon_render_start_time_ = now_time;
           new_version_icon_last_trigger_time_ = now_time;
@@ -120,9 +119,9 @@ int Render::TitleBar(bool main_window) {
 
         // render for 1 second
         if (show_new_version_icon_) {
-          about_str = about_str + " " + ICON_FA_TRIANGLE_EXCLAMATION;
+          about_str = about_str + " " + ICON_FA_CIRCLE_ARROW_UP;
           if (now_time - new_version_icon_render_start_time_ >=
-              NEW_VERSION_ICON_RENDER_TIME_INTERVAL / 2) {
+              kNewVersionIconBlinkOnTimeSec) {
             show_new_version_icon_ = false;
           }
         } else {
@@ -151,13 +150,11 @@ int Render::TitleBar(bool main_window) {
     }
 
     if (update_available_ && show_new_version_icon_in_menu_) {
-      auto now_time = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          std::chrono::steady_clock::now().time_since_epoch())
-                          .count();
+      const double now_time = ImGui::GetTime();
 
       // every 2 seconds
       if (now_time - new_version_icon_last_trigger_time_ >=
-          NEW_VERSION_ICON_RENDER_TIME_INTERVAL) {
+          kNewVersionIconBlinkIntervalSec) {
         show_new_version_icon_ = true;
         new_version_icon_render_start_time_ = now_time;
         new_version_icon_last_trigger_time_ = now_time;
@@ -166,14 +163,13 @@ int Render::TitleBar(bool main_window) {
       // render for 1 second
       if (show_new_version_icon_) {
         ImGui::SetWindowFontScale(0.6f);
-        ImGui::SetCursorPos(
-            ImVec2(bar_pos_x + title_bar_button_width * 0.15f,
-                   bar_pos_y - title_bar_button_width * 0.325f));
-        ImGui::Text(ICON_FA_TRIANGLE_EXCLAMATION);
+        ImGui::SetCursorPos(ImVec2(bar_pos_x + title_bar_button_width * 0.21f,
+                                   bar_pos_y - title_bar_button_width * 0.24f));
+        ImGui::Text(ICON_FA_CIRCLE_ARROW_UP);
         ImGui::SetWindowFontScale(1.0f);
 
         if (now_time - new_version_icon_render_start_time_ >=
-            NEW_VERSION_ICON_RENDER_TIME_INTERVAL / 2) {
+            kNewVersionIconBlinkOnTimeSec) {
           show_new_version_icon_ = false;
         }
       }
