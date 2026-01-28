@@ -238,31 +238,31 @@ void Render::OnReceiveVideoBufferCb(const XVideoFrame* video_frame,
       render->client_properties_.find(remote_id)->second.get();
 
   if (props->connection_established_) {
-    if (!props->dst_buffer_) {
-      props->dst_buffer_capacity_ = video_frame->size;
-      props->dst_buffer_ = new unsigned char[video_frame->size];
-    }
+    {
+      std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
 
-    if (props->dst_buffer_capacity_ < video_frame->size) {
-      delete props->dst_buffer_;
-      props->dst_buffer_capacity_ = video_frame->size;
-      props->dst_buffer_ = new unsigned char[video_frame->size];
-    }
+      if (!props->back_frame_) {
+        props->back_frame_ =
+            std::make_shared<std::vector<unsigned char>>(video_frame->size);
+      }
+      if (props->back_frame_->size() != video_frame->size) {
+        props->back_frame_->resize(video_frame->size);
+      }
 
-    memcpy(props->dst_buffer_, video_frame->data, video_frame->size);
-    bool need_to_update_render_rect = false;
-    if (props->video_width_ != props->video_width_last_ ||
-        props->video_height_ != props->video_height_last_) {
-      need_to_update_render_rect = true;
-      props->video_width_last_ = props->video_width_;
-      props->video_height_last_ = props->video_height_;
-    }
-    props->video_width_ = video_frame->width;
-    props->video_height_ = video_frame->height;
-    props->video_size_ = video_frame->size;
+      std::memcpy(props->back_frame_->data(), video_frame->data,
+                  video_frame->size);
 
-    if (need_to_update_render_rect) {
-      render->UpdateRenderRect();
+      const bool size_changed = (props->video_width_ != video_frame->width) ||
+                                (props->video_height_ != video_frame->height);
+      if (size_changed) {
+        props->render_rect_dirty_ = true;
+      }
+
+      props->video_width_ = video_frame->width;
+      props->video_height_ = video_frame->height;
+      props->video_size_ = video_frame->size;
+
+      props->front_frame_.swap(props->back_frame_);
     }
 
     SDL_Event event;
@@ -720,12 +720,22 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
       case ConnectionStatus::Closed: {
         props->connection_established_ = false;
         props->mouse_control_button_pressed_ = false;
-        if (props->dst_buffer_ && props->stream_texture_) {
-          memset(props->dst_buffer_, 0, props->dst_buffer_capacity_);
-          SDL_UpdateTexture(props->stream_texture_, NULL, props->dst_buffer_,
-                            props->texture_width_);
+
+        {
+          std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
+          props->front_frame_.reset();
+          props->back_frame_.reset();
+          props->video_width_ = 0;
+          props->video_height_ = 0;
+          props->video_size_ = 0;
+          props->render_rect_dirty_ = true;
+          props->stream_cleanup_pending_ = true;
         }
-        render->CleanSubStreamWindowProperties(props);
+
+        SDL_Event event;
+        event.type = render->STREAM_REFRESH_EVENT;
+        event.user.data1 = props.get();
+        SDL_PushEvent(&event);
 
         break;
       }

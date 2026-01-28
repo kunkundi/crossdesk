@@ -1737,13 +1737,19 @@ void Render::CleanupFactories() {
 void Render::CleanupPeer(std::shared_ptr<SubStreamWindowProperties> props) {
   SDL_FlushEvent(STREAM_REFRESH_EVENT);
 
-  if (props->dst_buffer_) {
-    size_t buffer_size = props->dst_buffer_capacity_;
-    std::vector<unsigned char> buffer_copy(buffer_size);
-    memcpy(buffer_copy.data(), props->dst_buffer_, buffer_size);
+  std::shared_ptr<std::vector<unsigned char>> frame_snapshot;
+  int video_width = 0;
+  int video_height = 0;
+  {
+    std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
+    frame_snapshot = props->front_frame_;
+    video_width = props->video_width_;
+    video_height = props->video_height_;
+  }
 
-    int video_width = props->video_width_;
-    int video_height = props->video_height_;
+  if (frame_snapshot && !frame_snapshot->empty() && video_width > 0 &&
+      video_height > 0) {
+    std::vector<unsigned char> buffer_copy(*frame_snapshot);
     std::string remote_id = props->remote_id_;
     std::string remote_host_name = props->remote_host_name_;
     std::string password =
@@ -1824,9 +1830,15 @@ void Render::CleanSubStreamWindowProperties(
     props->stream_texture_ = nullptr;
   }
 
-  if (props->dst_buffer_) {
-    delete[] props->dst_buffer_;
-    props->dst_buffer_ = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
+    props->front_frame_.reset();
+    props->back_frame_.reset();
+    props->video_width_ = 0;
+    props->video_height_ = 0;
+    props->video_size_ = 0;
+    props->render_rect_dirty_ = true;
+    props->stream_cleanup_pending_ = false;
   }
 }
 
@@ -2112,10 +2124,22 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
         {
           // std::shared_lock lock(client_properties_mutex_);
           for (auto& [host_name, props] : client_properties_) {
-            thumbnail_->SaveToThumbnail(
-                (char*)props->dst_buffer_, props->video_width_,
-                props->video_height_, host_name, props->remote_host_name_,
-                props->remember_password_ ? props->remote_password_ : "");
+            std::shared_ptr<std::vector<unsigned char>> frame_snapshot;
+            int video_width = 0;
+            int video_height = 0;
+            {
+              std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
+              frame_snapshot = props->front_frame_;
+              video_width = props->video_width_;
+              video_height = props->video_height_;
+            }
+            if (frame_snapshot && !frame_snapshot->empty() && video_width > 0 &&
+                video_height > 0) {
+              thumbnail_->SaveToThumbnail(
+                  (char*)frame_snapshot->data(), video_width, video_height,
+                  host_name, props->remote_host_name_,
+                  props->remember_password_ ? props->remote_password_ : "");
+            }
 
             if (props->peer_) {
               std::string client_id = (host_name == client_id_)
@@ -2209,18 +2233,52 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
         if (!props) {
           break;
         }
-        if (props->video_width_ <= 0 || props->video_height_ <= 0) {
+        std::shared_ptr<std::vector<unsigned char>> frame_snapshot;
+        int video_width = 0;
+        int video_height = 0;
+        bool render_rect_dirty = false;
+        bool cleanup_pending = false;
+        {
+          std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
+          cleanup_pending = props->stream_cleanup_pending_;
+          if (!cleanup_pending) {
+            frame_snapshot = props->front_frame_;
+            video_width = props->video_width_;
+            video_height = props->video_height_;
+          }
+          render_rect_dirty = props->render_rect_dirty_;
+        }
+
+        if (cleanup_pending) {
+          if (props->stream_texture_) {
+            SDL_DestroyTexture(props->stream_texture_);
+            props->stream_texture_ = nullptr;
+          }
+          {
+            std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
+            props->stream_cleanup_pending_ = false;
+          }
+
+          if (render_rect_dirty) {
+            UpdateRenderRect();
+            std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
+            props->render_rect_dirty_ = false;
+          }
           break;
         }
-        if (!props->dst_buffer_) {
+
+        if (video_width <= 0 || video_height <= 0) {
+          break;
+        }
+        if (!frame_snapshot || frame_snapshot->empty()) {
           break;
         }
 
         if (props->stream_texture_) {
-          if (props->video_width_ != props->texture_width_ ||
-              props->video_height_ != props->texture_height_) {
-            props->texture_width_ = props->video_width_;
-            props->texture_height_ = props->video_height_;
+          if (video_width != props->texture_width_ ||
+              video_height != props->texture_height_) {
+            props->texture_width_ = video_width;
+            props->texture_height_ = video_height;
 
             SDL_DestroyTexture(props->stream_texture_);
             // props->stream_texture_ = SDL_CreateTexture(
@@ -2245,8 +2303,8 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
             SDL_DestroyProperties(nvProps);
           }
         } else {
-          props->texture_width_ = props->video_width_;
-          props->texture_height_ = props->video_height_;
+          props->texture_width_ = video_width;
+          props->texture_height_ = video_height;
           // props->stream_texture_ = SDL_CreateTexture(
           //     stream_renderer_, stream_pixformat_,
           //     SDL_TEXTUREACCESS_STREAMING, props->texture_width_,
@@ -2267,8 +2325,14 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
           SDL_DestroyProperties(nvProps);
         }
 
-        SDL_UpdateTexture(props->stream_texture_, NULL, props->dst_buffer_,
+        SDL_UpdateTexture(props->stream_texture_, NULL, frame_snapshot->data(),
                           props->texture_width_);
+
+        if (render_rect_dirty) {
+          UpdateRenderRect();
+          std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
+          props->render_rect_dirty_ = false;
+        }
       }
       break;
   }
