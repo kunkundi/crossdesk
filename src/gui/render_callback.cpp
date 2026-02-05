@@ -440,9 +440,9 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
             const double bps =
                 (static_cast<double>(delta_bytes) * 8.0) / delta_seconds;
             if (bps > 0.0) {
-              const double capped =
-                  (std::min)(bps, static_cast<double>(
-                                      (std::numeric_limits<uint32_t>::max)()));
+              const double capped = (std::min)(
+                  bps,
+                  static_cast<double>((std::numeric_limits<uint32_t>::max)()));
               estimated_rate_bps = static_cast<uint32_t>(capped);
             }
           }
@@ -613,6 +613,10 @@ void Render::OnSignalStatusCb(SignalStatus status, const char* user_id,
       render->signal_connected_ = false;
     } else if (SignalStatus::SignalServerClosed == status) {
       render->signal_connected_ = false;
+    } else if (SignalStatus::SignalFingerprintMismatch == status) {
+      render->signal_connected_ = false;
+      LOG_ERROR("[{}] signal server fingerprint mismatch", client_id);
+      render->config_center_->ClearCertFingerprint();
     }
   } else {
     if (client_id.rfind("C-", 0) != 0) {
@@ -640,6 +644,9 @@ void Render::OnSignalStatusCb(SignalStatus status, const char* user_id,
       props->signal_connected_ = false;
     } else if (SignalStatus::SignalServerClosed == status) {
       props->signal_connected_ = false;
+    } else if (SignalStatus::SignalFingerprintMismatch == status) {
+      props->signal_connected_ = false;
+      LOG_ERROR("[{}] signal server fingerprint mismatch", remote_id);
     }
   }
 }
