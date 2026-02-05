@@ -616,7 +616,7 @@ void Render::OnSignalStatusCb(SignalStatus status, const char* user_id,
     } else if (SignalStatus::SignalFingerprintMismatch == status) {
       render->signal_connected_ = false;
       LOG_ERROR("[{}] signal server fingerprint mismatch", client_id);
-      render->config_center_->ClearCertFingerprint();
+      render->config_center_->ClearDefaultCertFingerprint();
     }
   } else {
     if (client_id.rfind("C-", 0) != 0) {
