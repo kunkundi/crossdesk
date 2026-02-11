@@ -613,10 +613,6 @@ void Render::OnSignalStatusCb(SignalStatus status, const char* user_id,
       render->signal_connected_ = false;
     } else if (SignalStatus::SignalServerClosed == status) {
       render->signal_connected_ = false;
-    } else if (SignalStatus::SignalFingerprintMismatch == status) {
-      render->signal_connected_ = false;
-      LOG_ERROR("[{}] signal server fingerprint mismatch", client_id);
-      render->config_center_->ClearDefaultCertFingerprint();
     }
   } else {
     if (client_id.rfind("C-", 0) != 0) {
@@ -644,9 +640,6 @@ void Render::OnSignalStatusCb(SignalStatus status, const char* user_id,
       props->signal_connected_ = false;
     } else if (SignalStatus::SignalServerClosed == status) {
       props->signal_connected_ = false;
-    } else if (SignalStatus::SignalFingerprintMismatch == status) {
-      props->signal_connected_ = false;
-      LOG_ERROR("[{}] signal server fingerprint mismatch", remote_id);
     }
   }
 }

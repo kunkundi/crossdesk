@@ -226,7 +226,6 @@ class Render {
   int RecentConnectionsWindow();
   int SettingWindow();
   int SelfHostedServerWindow();
-  int ShowSimpleFileBrowser();
   int ControlWindow(std::shared_ptr<SubStreamWindowProperties>& props);
   int ControlBar(std::shared_ptr<SubStreamWindowProperties>& props);
   int AboutWindow();
@@ -381,7 +380,6 @@ class Render {
   ConfigCenter::LANGUAGE localization_language_ =
       ConfigCenter::LANGUAGE::CHINESE;
   std::unique_ptr<PathManager> path_manager_;
-  std::string cert_path_;
   std::string exec_log_path_;
   std::string dll_log_path_;
   std::string cache_path_;
@@ -633,7 +631,6 @@ class Render {
   char signal_server_ip_[256] = "api.crossdesk.cn";
   char signal_server_port_[6] = "9099";
   char coturn_server_port_[6] = "3478";
-  char cert_file_path_[256] = "";
   bool enable_self_hosted_ = false;
   int language_button_value_last_ = 0;
   int video_quality_button_value_last_ = 0;
@@ -652,7 +649,6 @@ class Render {
   char signal_server_ip_self_[256] = "";
   char signal_server_port_self_[6] = "";
   char coturn_server_port_self_[6] = "";
-  std::string tls_cert_path_self_ = "";
   bool settings_window_pos_reset_ = true;
   bool self_hosted_server_config_window_pos_reset_ = true;
   std::string selected_current_file_path_ = "";

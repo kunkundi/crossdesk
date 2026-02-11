@@ -5,11 +5,8 @@
 
 namespace crossdesk {
 
-ConfigCenter::ConfigCenter(const std::string& config_path,
-                           const std::string& cert_file_path)
-    : config_path_(config_path),
-      cert_file_path_(cert_file_path),
-      cert_file_path_default_(cert_file_path) {
+ConfigCenter::ConfigCenter(const std::string& config_path)
+    : config_path_(config_path) {
   ini_.SetUnicode(true);
   Load();
 }
@@ -70,71 +67,6 @@ int ConfigCenter::Load() {
   } else {
     coturn_server_port_ = 0;
   }
-  const char* cert_file_path_value =
-      ini_.GetValue(section_, "cert_file_path", nullptr);
-  if (cert_file_path_value != nullptr && strlen(cert_file_path_value) > 0) {
-    cert_file_path_ = cert_file_path_value;
-  } else {
-    cert_file_path_ = "";
-  }
-  const char* cert_fingerprint_value =
-      ini_.GetValue(section_, "cert_fingerprint", nullptr);
-  if (cert_fingerprint_value != nullptr && strlen(cert_fingerprint_value) > 0) {
-    cert_fingerprint_ = cert_fingerprint_value;
-  } else {
-    cert_fingerprint_ = "";
-  }
-  const char* cert_fingerprint_server_host_value =
-      ini_.GetValue(section_, "cert_fingerprint_server_host", nullptr);
-  if (cert_fingerprint_server_host_value != nullptr &&
-      strlen(cert_fingerprint_server_host_value) > 0) {
-    cert_fingerprint_server_host_ = cert_fingerprint_server_host_value;
-  } else {
-    cert_fingerprint_server_host_ = "";
-  }
-
-  const char* default_cert_fingerprint_value =
-      ini_.GetValue(section_, "default_cert_fingerprint", nullptr);
-  if (default_cert_fingerprint_value != nullptr &&
-      strlen(default_cert_fingerprint_value) > 0) {
-    default_cert_fingerprint_ = default_cert_fingerprint_value;
-  } else {
-    default_cert_fingerprint_ = "";
-  }
-  const char* default_cert_fingerprint_server_host_value =
-      ini_.GetValue(section_, "default_cert_fingerprint_server_host", nullptr);
-  if (default_cert_fingerprint_server_host_value != nullptr &&
-      strlen(default_cert_fingerprint_server_host_value) > 0) {
-    default_cert_fingerprint_server_host_ =
-        default_cert_fingerprint_server_host_value;
-  } else {
-    default_cert_fingerprint_server_host_ = "";
-  }
-
-  if (enable_self_hosted_ && !cert_fingerprint_.empty() &&
-      !cert_fingerprint_server_host_.empty() &&
-      signal_server_host_ != cert_fingerprint_server_host_) {
-    LOG_INFO("Server IP changed from {} to {}, clearing old fingerprint",
-             cert_fingerprint_server_host_, signal_server_host_);
-    cert_fingerprint_.clear();
-    cert_fingerprint_server_host_.clear();
-    ini_.Delete(section_, "cert_fingerprint", false);
-    ini_.Delete(section_, "cert_fingerprint_server_host", false);
-    ini_.SaveFile(config_path_.c_str());
-  }
-
-  if (!enable_self_hosted_ && !default_cert_fingerprint_.empty() &&
-      !default_cert_fingerprint_server_host_.empty() &&
-      signal_server_host_default_ != default_cert_fingerprint_server_host_) {
-    LOG_INFO(
-        "Default server IP changed from {} to {}, clearing old fingerprint",
-        default_cert_fingerprint_server_host_, signal_server_host_default_);
-    default_cert_fingerprint_.clear();
-    default_cert_fingerprint_server_host_.clear();
-    ini_.Delete(section_, "default_cert_fingerprint", false);
-    ini_.Delete(section_, "default_cert_fingerprint_server_host", false);
-    ini_.SaveFile(config_path_.c_str());
-  }
 
   enable_autostart_ =
       ini_.GetBoolValue(section_, "enable_autostart", enable_autostart_);
@@ -165,19 +97,6 @@ int ConfigCenter::Save() {
                       static_cast<long>(signal_server_port_));
     ini_.SetLongValue(section_, "coturn_server_port",
                       static_cast<long>(coturn_server_port_));
-    ini_.SetValue(section_, "cert_file_path", cert_file_path_.c_str());
-    if (!cert_fingerprint_.empty()) {
-      ini_.SetValue(section_, "cert_fingerprint", cert_fingerprint_.c_str());
-      ini_.SetValue(section_, "cert_fingerprint_server_host",
-                    cert_fingerprint_server_host_.c_str());
-    }
-  }
-
-  if (!default_cert_fingerprint_.empty()) {
-    ini_.SetValue(section_, "default_cert_fingerprint",
-                  default_cert_fingerprint_.c_str());
-    ini_.SetValue(section_, "default_cert_fingerprint_server_host",
-                  default_cert_fingerprint_server_host_.c_str());
   }
 
   ini_.SetBoolValue(section_, "enable_autostart", enable_autostart_);
@@ -270,15 +189,6 @@ int ConfigCenter::SetSrtp(bool enable_srtp) {
 }
 
 int ConfigCenter::SetServerHost(const std::string& signal_server_host) {
-  if (enable_self_hosted_ && !cert_fingerprint_.empty() &&
-      signal_server_host != signal_server_host_) {
-    LOG_INFO("Server IP changed from {} to {}, clearing old fingerprint",
-             signal_server_host_, signal_server_host);
-    cert_fingerprint_.clear();
-    cert_fingerprint_server_host_.clear();
-    ini_.Delete(section_, "cert_fingerprint", false);
-    ini_.Delete(section_, "cert_fingerprint_server_host", false);
-  }
   signal_server_host_ = signal_server_host;
   ini_.SetValue(section_, "signal_server_host", signal_server_host_.c_str());
   SI_Error rc = ini_.SaveFile(config_path_.c_str());
@@ -303,67 +213,6 @@ int ConfigCenter::SetCoturnServerPort(int coturn_server_port) {
   coturn_server_port_ = coturn_server_port;
   ini_.SetLongValue(section_, "coturn_server_port",
                     static_cast<long>(coturn_server_port_));
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
-  return 0;
-}
-
-int ConfigCenter::SetCertFilePath(const std::string& cert_file_path) {
-  cert_file_path_ = cert_file_path;
-  ini_.SetValue(section_, "cert_file_path", cert_file_path_.c_str());
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
-  return 0;
-}
-
-int ConfigCenter::SetCertFingerprint(const std::string& fingerprint) {
-  cert_fingerprint_ = fingerprint;
-  cert_fingerprint_server_host_ = signal_server_host_;
-  ini_.SetValue(section_, "cert_fingerprint", cert_fingerprint_.c_str());
-  ini_.SetValue(section_, "cert_fingerprint_server_host",
-                cert_fingerprint_server_host_.c_str());
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
-  return 0;
-}
-
-int ConfigCenter::SetDefaultCertFingerprint(const std::string& fingerprint) {
-  default_cert_fingerprint_ = fingerprint;
-  default_cert_fingerprint_server_host_ = signal_server_host_default_;
-  ini_.SetValue(section_, "default_cert_fingerprint",
-                default_cert_fingerprint_.c_str());
-  ini_.SetValue(section_, "default_cert_fingerprint_server_host",
-                default_cert_fingerprint_server_host_.c_str());
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
-  return 0;
-}
-
-int ConfigCenter::ClearCertFingerprint() {
-  cert_fingerprint_.clear();
-  cert_fingerprint_server_host_.clear();
-  ini_.Delete(section_, "cert_fingerprint", false);
-  ini_.Delete(section_, "cert_fingerprint_server_host", false);
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
-  return 0;
-}
-
-int ConfigCenter::ClearDefaultCertFingerprint() {
-  default_cert_fingerprint_.clear();
-  default_cert_fingerprint_server_host_.clear();
-  ini_.Delete(section_, "default_cert_fingerprint", false);
-  ini_.Delete(section_, "default_cert_fingerprint_server_host", false);
   SI_Error rc = ini_.SaveFile(config_path_.c_str());
   if (rc < 0) {
     return -1;
@@ -397,45 +246,12 @@ int ConfigCenter::SetSelfHosted(bool enable_self_hosted) {
       coturn_server_port_ = static_cast<int>(
           ini_.GetLongValue(section_, "coturn_server_port", 0));
     }
-    const char* cert_file_path_value =
-        ini_.GetValue(section_, "cert_file_path", nullptr);
-    if (cert_file_path_value != nullptr && strlen(cert_file_path_value) > 0) {
-      cert_file_path_ = cert_file_path_value;
-    }
-    const char* cert_fingerprint_value =
-        ini_.GetValue(section_, "cert_fingerprint", nullptr);
-    if (cert_fingerprint_value != nullptr &&
-        strlen(cert_fingerprint_value) > 0) {
-      cert_fingerprint_ = cert_fingerprint_value;
-    }
-    const char* cert_fingerprint_server_host_value =
-        ini_.GetValue(section_, "cert_fingerprint_server_host", nullptr);
-    if (cert_fingerprint_server_host_value != nullptr &&
-        strlen(cert_fingerprint_server_host_value) > 0) {
-      cert_fingerprint_server_host_ = cert_fingerprint_server_host_value;
-    }
-
-    if (!cert_fingerprint_.empty() && !cert_fingerprint_server_host_.empty() &&
-        signal_server_host_ != cert_fingerprint_server_host_) {
-      LOG_INFO("Server IP changed from {} to {}, clearing old fingerprint",
-               cert_fingerprint_server_host_, signal_server_host_);
-      cert_fingerprint_.clear();
-      cert_fingerprint_server_host_.clear();
-      ini_.Delete(section_, "cert_fingerprint", false);
-      ini_.Delete(section_, "cert_fingerprint_server_host", false);
-    }
 
     ini_.SetValue(section_, "signal_server_host", signal_server_host_.c_str());
     ini_.SetLongValue(section_, "signal_server_port",
                       static_cast<long>(signal_server_port_));
     ini_.SetLongValue(section_, "coturn_server_port",
                       static_cast<long>(coturn_server_port_));
-    ini_.SetValue(section_, "cert_file_path", cert_file_path_.c_str());
-    if (!cert_fingerprint_.empty()) {
-      ini_.SetValue(section_, "cert_fingerprint", cert_fingerprint_.c_str());
-      ini_.SetValue(section_, "cert_fingerprint_server_host",
-                    cert_fingerprint_server_host_.c_str());
-    }
   }
 
   SI_Error rc = ini_.SaveFile(config_path_.c_str());
@@ -523,16 +339,6 @@ int ConfigCenter::GetSignalServerPort() const { return signal_server_port_; }
 
 int ConfigCenter::GetCoturnServerPort() const { return coturn_server_port_; }
 
-std::string ConfigCenter::GetCertFilePath() const { return cert_file_path_; }
-
-std::string ConfigCenter::GetCertFingerprint() const {
-  return cert_fingerprint_;
-}
-
-std::string ConfigCenter::GetDefaultCertFingerprint() const {
-  return default_cert_fingerprint_;
-}
-
 std::string ConfigCenter::GetDefaultServerHost() const {
   return signal_server_host_default_;
 }
@@ -543,10 +349,6 @@ int ConfigCenter::GetDefaultSignalServerPort() const {
 
 int ConfigCenter::GetDefaultCoturnServerPort() const {
   return coturn_server_port_default_;
-}
-
-std::string ConfigCenter::GetDefaultCertFilePath() const {
-  return cert_file_path_default_;
 }
 
 bool ConfigCenter::IsSelfHosted() const { return enable_self_hosted_; }

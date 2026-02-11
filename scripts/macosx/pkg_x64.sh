@@ -11,9 +11,6 @@ IDENTIFIER="cn.crossdesk.app"
 ICON_PATH="icons/macos/crossdesk.icns"
 MACOS_MIN_VERSION="10.12"
 
-CERTS_SOURCE="certs"
-CERT_NAME="crossdesk.cn_root.crt"
-
 APP_BUNDLE="${APP_NAME_UPPER}.app"
 CONTENTS_DIR="${APP_BUNDLE}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
@@ -98,11 +95,6 @@ IDENTIFIER="cn.crossdesk.app"
 USER_HOME=$( /usr/bin/stat -f "%Su" /dev/console )
 HOME_DIR=$( /usr/bin/dscl . -read /Users/$USER_HOME NFSHomeDirectory | awk '{print $2}' )
 
-# 复制证书文件
-DEST="$HOME_DIR/Library/Application Support/CrossDesk/certs"
-mkdir -p "$DEST"
-cp -R "/Library/Application Support/CrossDesk/certs/"* "$DEST/"
-
 # 清除应用的权限授权，以便重新授权
 # 使用 tccutil 重置录屏权限和辅助功能权限
 if command -v tccutil >/dev/null 2>&1; then
@@ -140,17 +132,8 @@ EOF
 
 chmod +x build_pkg_scripts/postinstall
 
-pkgbuild \
-  --root "${CERTS_SOURCE}" \
-  --identifier "${IDENTIFIER}.certs" \
-  --version "${APP_VERSION}" \
-  --install-location "/Library/Application Support/CrossDesk/certs" \
-  --scripts build_pkg_scripts \
-  build_pkg_temp/${APP_NAME}-certs.pkg
-
 productbuild \
   --package build_pkg_temp/${APP_NAME}-component.pkg \
-  --package build_pkg_temp/${APP_NAME}-certs.pkg \
   "${PKG_NAME}"
 
 echo "PKG package created: ${PKG_NAME}"

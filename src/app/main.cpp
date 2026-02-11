@@ -35,11 +35,8 @@ int main(int argc, char* argv[]) {
   bool enable_daemon = false;
   auto path_manager = std::make_unique<crossdesk::PathManager>("CrossDesk");
   if (path_manager) {
-    std::string cert_path =
-        (path_manager->GetCertPath() / "crossdesk.cn_root.crt").string();
     std::string cache_path = path_manager->GetCachePath().string();
-    crossdesk::ConfigCenter config_center(cache_path + "/config.ini",
-                                          cert_path);
+    crossdesk::ConfigCenter config_center(cache_path + "/config.ini");
     enable_daemon = config_center.IsEnableDaemon();
   }
 

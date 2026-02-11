@@ -12,9 +12,6 @@
 ; Installer icon path
 !define MUI_ICON "${__FILEDIR__}\..\..\icons\windows\crossdesk.ico"
 
-; Certificate path
-!define CERT_FILE "${__FILEDIR__}\..\..\certs\crossdesk.cn_root.crt"
-
 ; Compression settings
 SetCompressor /FINAL lzma
 
@@ -97,11 +94,6 @@ SectionEnd
 ; After installation
 Section -Post
     ExecWait '"C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x86\mt.exe" -manifest "$INSTDIR\crossdesk.manifest" -outputresource:"$INSTDIR\crossdesk.exe";1'
-SectionEnd
-
-Section "Cert"
-    SetOutPath "$APPDATA\CrossDesk\certs"
-    File /r "${CERT_FILE}"
 SectionEnd
 
 Section -AdditionalIcons

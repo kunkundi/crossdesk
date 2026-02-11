@@ -222,7 +222,7 @@ sudo docker run -d \
 **Notes**
 - **The server must open the following ports: COTURN_PORT/udp, COTURN_PORT/tcp, MIN_PORT–MAX_PORT/udp, and CROSSDESK_SERVER_PORT/tcp.**
 - If you don’t mount volumes, all data will be lost when the container is removed.
-- Certificate files will be automatically generated on first startup and persisted to the host at `/var/lib/crossdesk/certs`.
+- Certificate files will be automatically generated on first startup and persisted to the host at `/var/lib/crossdesk/certs`.As the default certificates are self-signed and cannot guarantee security, it is strongly recommended to apply for a trusted certificate from a cloud provider, deploy it to this directory, and restart the service.
 - The database file will be automatically created and stored at `/var/lib/crossdesk/db/crossdesk-server.db`.
 - Log files will be created and stored at `/var/log/crossdesk/`.
 
@@ -243,16 +243,31 @@ Place **crossdesk.cn.key** and **crossdesk.cn_bundle.crt** into the **/path/to/y
 
 ### Client Side
 1. Click the settings icon in the top-right corner to enter the settings page.<br><br>
-<img width="600" height="210" alt="image" src="https://github.com/user-attachments/assets/6431131d-b32a-4726-8783-6788f47baa3b" /><br><br>
+<img width="600" height="210" alt="image" src="https://github.com/user-attachments/assets/6431131d-b32a-4726-8783-6788f47baa3b" /><br>
 
 2. Click `Self-Hosted Server Configuration` button.<br><br>
-<img width="600" height="160" alt="image" src="https://github.com/user-attachments/assets/24c761a3-1985-4d7e-84be-787383c2afb8" /><br><br>
+<img width="600" height="160" alt="image" src="https://github.com/user-attachments/assets/24c761a3-1985-4d7e-84be-787383c2afb8" /><br>
 
-3. Enter the `Server Address` (**EXTERNAL_IP**), `Signaling Service Port` (**CROSSDESK_SERVER_PORT**), and `Relay Service Port` (**COTURN_PORT**).<br><br>
-<img width="600" height="200" alt="image" src="https://github.com/user-attachments/assets/9a32ddd5-37f8-4bee-9a51-eae295820f9a" /><br><br>
+3. Enter the `Server Address` (**EXTERNAL_IP**), `Signaling Service Port` (**CROSSDESK_SERVER_PORT**), and `Relay Service Port` (**COTURN_PORT**) and click OK button.
 
-4. If the self-hosted server is later reset or the certificate is replaced for any reason, you can click the `Reset Certificate Fingerprint` button to clear the certificate fingerprint saved on the client.<br><br>
-<img width="600" height="200" alt="image" src="https://github.com/user-attachments/assets/d9e423ab-0c2b-4fab-b132-4dc27462d704" /><br><br>
+4. Check the `Self-hosted server configuration` option and click the OK button to save the settings. If the server is using a valid (official) certificate, the process ends here and the client will show that it is connected to the server.
+
+5. If the default certificate is used (skip this step if an official certificate is used), download the self-signed root certificate `api.crossdesk.cn_root.crt` from the server directory /var/lib/crossdesk/certs/ to the machine running the client, and install the certificate by executing the following command:
+
+On Windows, open PowerShell with **administrator privileges** and execute:
+```
+certutil -addstore "Root" "C:\path\to\api.crossdesk.cn_root.crt"
+```
+Linux
+```
+sudo cp /path/to/api.crossdesk.cn_root.crt /usr/local/share/ca-certificates/api.crossdesk.cn_root.crt
+sudo update-ca-certificates
+```
+macOS
+```
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain path/to/api.crossdesk.cn_root.crt
+```
+
 
 ### Web Client
 See [CrossDesk Web Client](https://github.com/kunkundi/crossdesk-web-client)。

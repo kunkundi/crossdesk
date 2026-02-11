@@ -40,20 +40,6 @@ std::filesystem::path PathManager::GetLogPath() {
 #endif
 }
 
-std::filesystem::path PathManager::GetCertPath() {
-#ifdef _WIN32
-  // %APPDATA%\AppName\Certs
-  return GetKnownFolder(FOLDERID_RoamingAppData) / app_name_ / "certs";
-#elif __APPLE__
-  // $HOME/Library/Application Support/AppName/certs
-  return GetHome() + "/Library/Application Support/" + app_name_ + "/certs";
-#else
-  // $XDG_CONFIG_HOME/AppName/certs
-  return GetEnvOrDefault("XDG_CONFIG_HOME", GetHome() + "/.config") /
-         app_name_ / "certs";
-#endif
-}
-
 bool PathManager::CreateDirectories(const std::filesystem::path& p) {
   std::error_code ec;
   bool created = std::filesystem::create_directories(p, ec);

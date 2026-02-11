@@ -58,12 +58,6 @@ jobs:
           xmake f --CROSSDESK_VERSION=${LEGAL_VERSION} --USE_CUDA=true --root -y
           xmake b -vy --root crossdesk
 
-      - name: Decode and save certificate
-        shell: bash
-        run: |
-          mkdir -p certs
-          echo "${{ secrets.CROSSDESK_CERT_BASE64 }}" | base64 --decode > certs/crossdesk.cn_root.crt
-
       - name: Package
         run: |
           chmod +x ./scripts/linux/pkg_amd64.sh
@@ -122,12 +116,6 @@ jobs:
         run: |
           xmake f --CROSSDESK_VERSION=${LEGAL_VERSION} --USE_CUDA=true --root -y
           xmake b -vy --root crossdesk
-
-      - name: Decode and save certificate
-        shell: bash
-        run: |
-          mkdir -p certs
-          echo "${{ secrets.CROSSDESK_CERT_BASE64 }}" | base64 --decode > certs/crossdesk.cn_root.crt
 
       - name: Package
         run: |
@@ -191,12 +179,6 @@ jobs:
         run: |
           xmake f --CROSSDESK_VERSION=${VERSION_NUM} --USE_CUDA=true -y
           xmake b -vy crossdesk
-
-      - name: Decode and save certificate
-        shell: bash
-        run: |
-          mkdir -p certs
-          echo "${{ secrets.CROSSDESK_CERT_BASE64 }}" | base64 --decode > certs/crossdesk.cn_root.crt
 
       - name: Package CrossDesk app
         run: |
@@ -300,12 +282,6 @@ jobs:
         run: |
           xmake f --CROSSDESK_VERSION=${{ env.VERSION_NUM }} --USE_CUDA=true -y
           xmake b -vy crossdesk
-
-      - name: Decode and save certificate
-        shell: powershell
-        run: |
-          New-Item -ItemType Directory -Force -Path certs
-          [System.IO.File]::WriteAllBytes('certs\crossdesk.cn_root.crt', [Convert]::FromBase64String('${{ secrets.CROSSDESK_CERT_BASE64 }}'))
 
       - name: Package
         shell: pwsh

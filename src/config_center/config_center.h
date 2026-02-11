@@ -21,9 +21,7 @@ class ConfigCenter {
   enum class VIDEO_ENCODE_FORMAT { H264 = 0, AV1 = 1 };
 
  public:
-  explicit ConfigCenter(
-      const std::string& config_path = "config.ini",
-      const std::string& cert_file_path = "crossdesk.cn_root.crt");
+  explicit ConfigCenter(const std::string& config_path = "config.ini");
   ~ConfigCenter();
 
   // write config
@@ -37,11 +35,6 @@ class ConfigCenter {
   int SetServerHost(const std::string& signal_server_host);
   int SetServerPort(int signal_server_port);
   int SetCoturnServerPort(int coturn_server_port);
-  int SetCertFilePath(const std::string& cert_file_path);
-  int SetCertFingerprint(const std::string& fingerprint);
-  int SetDefaultCertFingerprint(const std::string& fingerprint);
-  int ClearCertFingerprint();
-  int ClearDefaultCertFingerprint();
   int SetSelfHosted(bool enable_self_hosted);
   int SetMinimizeToTray(bool enable_minimize_to_tray);
   int SetAutostart(bool enable_autostart);
@@ -59,13 +52,9 @@ class ConfigCenter {
   std::string GetSignalServerHost() const;
   int GetSignalServerPort() const;
   int GetCoturnServerPort() const;
-  std::string GetCertFilePath() const;
-  std::string GetCertFingerprint() const;
-  std::string GetDefaultCertFingerprint() const;
   std::string GetDefaultServerHost() const;
   int GetDefaultSignalServerPort() const;
   int GetDefaultCoturnServerPort() const;
-  std::string GetDefaultCertFilePath() const;
   bool IsSelfHosted() const;
   bool IsMinimizeToTray() const;
   bool IsEnableAutostart() const;
@@ -92,12 +81,6 @@ class ConfigCenter {
   int server_port_default_ = 9099;
   int coturn_server_port_ = 0;
   int coturn_server_port_default_ = 3478;
-  std::string cert_file_path_ = "";
-  std::string cert_file_path_default_ = "";
-  std::string cert_fingerprint_ = "";
-  std::string cert_fingerprint_server_host_ = "";
-  std::string default_cert_fingerprint_ = "";
-  std::string default_cert_fingerprint_server_host_ = "";
   bool enable_self_hosted_ = false;
   bool enable_minimize_to_tray_ = false;
   bool enable_autostart_ = false;

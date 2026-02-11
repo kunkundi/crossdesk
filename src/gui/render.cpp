@@ -672,13 +672,11 @@ int Render::CreateConnectionPeer() {
   std::string signal_server_ip;
   int signal_server_port;
   int coturn_server_port;
-  std::string tls_cert_fingerprint;
 
   if (config_center_->IsSelfHosted()) {
     signal_server_ip = config_center_->GetSignalServerHost();
     signal_server_port = config_center_->GetSignalServerPort();
     coturn_server_port = config_center_->GetCoturnServerPort();
-    tls_cert_fingerprint = config_center_->GetCertFingerprint();
 
     std::string current_self_hosted_ip = config_center_->GetSignalServerHost();
     bool use_cached_id = false;
@@ -739,7 +737,6 @@ int Render::CreateConnectionPeer() {
     signal_server_ip = config_center_->GetDefaultServerHost();
     signal_server_port = config_center_->GetDefaultSignalServerPort();
     coturn_server_port = config_center_->GetDefaultCoturnServerPort();
-    tls_cert_fingerprint = config_center_->GetDefaultCertFingerprint();
     params_.user_id = client_id_with_password_;
   }
 
@@ -763,7 +760,6 @@ int Render::CreateConnectionPeer() {
   } else {
     coturn_server_port_self_[0] = '\0';
   }
-  tls_cert_path_self_ = config_center_->GetCertFilePath();
 
   // peer config
   strncpy((char*)params_.signal_server_ip, signal_server_ip.c_str(),
@@ -784,30 +780,6 @@ int Render::CreateConnectionPeer() {
   strncpy((char*)params_.turn_server_password, "crossdeskpw",
           sizeof(params_.turn_server_password) - 1);
   params_.turn_server_password[sizeof(params_.turn_server_password) - 1] = '\0';
-  strncpy(params_.tls_cert_fingerprint, tls_cert_fingerprint.c_str(),
-          sizeof(params_.tls_cert_fingerprint) - 1);
-  params_.tls_cert_fingerprint[sizeof(params_.tls_cert_fingerprint) - 1] = '\0';
-
-  if (config_center_->IsSelfHosted()) {
-    params_.on_cert_fingerprint = [](const char* fingerprint, void* user_data) {
-      Render* render = static_cast<Render*>(user_data);
-      if (render && render->config_center_) {
-        render->config_center_->SetCertFingerprint(fingerprint);
-        LOG_INFO("Saved self-hosted certificate fingerprint: {}", fingerprint);
-      }
-    };
-    params_.fingerprint_user_data = this;
-  } else {
-    params_.on_cert_fingerprint = [](const char* fingerprint, void* user_data) {
-      Render* render = static_cast<Render*>(user_data);
-      if (render && render->config_center_) {
-        render->config_center_->SetDefaultCertFingerprint(fingerprint);
-        LOG_INFO("Saved default server certificate fingerprint: {}",
-                 fingerprint);
-      }
-    };
-    params_.fingerprint_user_data = this;
-  }
 
   strncpy(params_.log_path, dll_log_path_.c_str(),
           sizeof(params_.log_path) - 1);
@@ -1458,13 +1430,11 @@ int Render::Run() {
 
   path_manager_ = std::make_unique<PathManager>("CrossDesk");
   if (path_manager_) {
-    cert_path_ =
-        (path_manager_->GetCertPath() / "crossdesk.cn_root.crt").string();
     exec_log_path_ = path_manager_->GetLogPath().string();
     dll_log_path_ = path_manager_->GetLogPath().string();
     cache_path_ = path_manager_->GetCachePath().string();
     config_center_ =
-        std::make_unique<ConfigCenter>(cache_path_ + "/config.ini", cert_path_);
+        std::make_unique<ConfigCenter>(cache_path_ + "/config.ini");
     strncpy(signal_server_ip_self_,
             config_center_->GetSignalServerHost().c_str(),
             sizeof(signal_server_ip_self_) - 1);
@@ -1478,8 +1448,6 @@ int Render::Run() {
     } else {
       signal_server_port_self_[0] = '\0';
     }
-    strncpy(cert_file_path_, cert_path_.c_str(), sizeof(cert_file_path_) - 1);
-    cert_file_path_[sizeof(cert_file_path_) - 1] = '\0';
   } else {
     std::cerr << "Failed to create PathManager" << std::endl;
     return -1;

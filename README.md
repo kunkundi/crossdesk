@@ -214,7 +214,7 @@ sudo docker run -d \
 **注意**：
 - **服务器需开放端口：COTURN_PORT/udp，COTURN_PORT/tcp，MIN_PORT-MAX_PORT/udp，CROSSDESK_SERVER_PORT/tcp。**
 - 如果不挂载 volume，容器删除后数据会丢失
-- 证书文件会在首次启动时自动生成并持久化到宿主机的 `/var/lib/crossdesk/certs` 路径下
+- 证书文件会在首次启动时自动生成并持久化到宿主机的 `/var/lib/crossdesk/certs` 路径下。由于默认使用的是自签证书，无法保障安全性，建议在云服务商申请正式证书放到该目录下并重启服务。
 - 数据库文件会自动创建并持久化到宿主机的 `/var/lib/crossdesk/db/crossdesk-server.db` 路径下
 - 日志文件会自动创建并持久化到宿主机的 `/var/log/crossdesk/` 路径下
 
@@ -232,16 +232,30 @@ sudo chown -R $(id -u):$(id -g) /var/lib/crossdesk /var/log/crossdesk
 
 ### 客户端
 1. 点击右上角设置进入设置页面。<br><br>
-<img width="600" height="210" alt="image" src="https://github.com/user-attachments/assets/6431131d-b32a-4726-8783-6788f47baa3b" /><br><br>
+<img width="600" height="210" alt="image" src="https://github.com/user-attachments/assets/6431131d-b32a-4726-8783-6788f47baa3b" /><br>
 
-2. 点击点击`自托管服务器配置`按钮。<br><br>
-<img width="600" height="140" alt="image" src="https://github.com/user-attachments/assets/24c761a3-1985-4d7e-84be-787383c2afb8" /><br><br>
+2. 点击`自托管服务器配置`按钮。<br><br>
+<img width="600" height="160" alt="image" src="https://github.com/user-attachments/assets/24c761a3-1985-4d7e-84be-787383c2afb8" /><br>
 
-3. 输入`服务器地址`(**EXTERNAL_IP**)、`信令服务端口`(**CROSSDESK_SERVER_PORT**)、`中继服务端口`(**COTURN_PORT**)。<br><br>
-<img width="600" height="200" alt="image" src="https://github.com/user-attachments/assets/9a32ddd5-37f8-4bee-9a51-eae295820f9a" /><br><br>
+3. 输入`服务器地址`(**EXTERNAL_IP**)、`信令服务端口`(**CROSSDESK_SERVER_PORT**)、`中继服务端口`(**COTURN_PORT**)，点击确认按钮。
+   
+4. 勾选`自托管服务器配置`选项，点击确认按钮保存设置。如果服务端使用的是正式证书，则到此步骤为止，客户端即可显示已连接服务器。
 
-4. 后续如果自托管服务器被重置或因其他原因导致证书更换，可以点击`重置证书指纹`按钮重置客户端保存的证书指纹。<br><br>
-<img width="600" height="200" alt="image" src="https://github.com/user-attachments/assets/d9e423ab-0c2b-4fab-b132-4dc27462d704" /><br><br>
+5. 如果使用默认证书（正式证书忽略此步骤），则需要将服务端`/var/lib/crossdesk/certs/`目录下的`api.crossdesk.cn_root.crt`自签根证书下载到运行客户端的机器，并执行下述命令安装证书：
+
+Windows 平台使用**管理员权限**打开 PowerShell 执行
+```
+certutil -addstore "Root" "C:\path\to\api.crossdesk.cn_root.crt"
+```
+Linux
+```
+sudo cp /path/to/api.crossdesk.cn_root.crt /usr/local/share/ca-certificates/api.crossdesk.cn_root.crt
+sudo update-ca-certificates
+```
+macOS
+```
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain path/to/api.crossdesk.cn_root.crt
+```
 
 ### Web 客户端
 详情见项目 [CrossDesk Web Client](https://github.com/kunkundi/crossdesk-web-client)。
