@@ -46,7 +46,7 @@ ShowInstDetails show
 
 Section "MainSection"
     ; Check if CrossDesk is running
-    StrCpy $1 "crossdesk.exe"
+    StrCpy $1 "CrossDesk.exe"
     
     nsProcess::_FindProcess "$1"
     Pop $R0
@@ -72,7 +72,7 @@ installApp:
     SetOverwrite ifnewer
 
     ; Main application executable path
-    File /oname=crossdesk.exe "..\..\build\windows\x64\release\crossdesk.exe"
+    File /oname=CrossDesk.exe "..\..\build\windows\x64\release\crossdesk.exe"
 
     ; Write uninstall information
     WriteUninstaller "$INSTDIR\uninstall.exe"
@@ -82,7 +82,7 @@ installApp:
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_REG_KEY}" "DisplayVersion" "${PRODUCT_VERSION}"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_REG_KEY}" "Publisher" "${PRODUCT_PUBLISHER}"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_REG_KEY}" "URLInfoAbout" "${PRODUCT_WEB_SITE}"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_REG_KEY}" "DisplayIcon" "$INSTDIR\crossdesk.exe"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_REG_KEY}" "DisplayIcon" "$INSTDIR\CrossDesk.exe"
     WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_REG_KEY}" "NoModify" 1
     WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_REG_KEY}" "NoRepair" 1
     WriteRegStr HKCU "Software\${PRODUCT_NAME}" "InstallDir" "$INSTDIR"
@@ -90,15 +90,15 @@ SectionEnd
 
 Section -AdditionalIcons
     ; Desktop shortcut
-    CreateShortCut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\crossdesk.exe" "" "$INSTDIR\crossdesk.exe"
+    CreateShortCut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\CrossDesk.exe" "" "$INSTDIR\CrossDesk.exe"
 
     ; Start menu shortcut
-    CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}.lnk" "$INSTDIR\crossdesk.exe" "" "$INSTDIR\crossdesk.exe"
+    CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}.lnk" "$INSTDIR\CrossDesk.exe" "" "$INSTDIR\CrossDesk.exe"
 SectionEnd
 
 Section "Uninstall"
     ; Check if CrossDesk is running
-    StrCpy $1 "crossdesk.exe"
+    StrCpy $1 "CrossDesk.exe"
     
     nsProcess::_FindProcess "$1"
     Pop $R0
@@ -121,7 +121,7 @@ cancelUninstall:
 
 uninstallApp:
     ; Delete main executable and uninstaller
-    Delete "$INSTDIR\crossdesk.exe"
+    Delete "$INSTDIR\CrossDesk.exe"
     Delete "$INSTDIR\uninstall.exe"
 
     ; Recursively delete installation directory
@@ -144,5 +144,5 @@ SectionEnd
 
 ; ------ Functions ------
 Function LaunchApp
-    Exec "$INSTDIR\crossdesk.exe"
+    Exec "$INSTDIR\CrossDesk.exe"
 FunctionEnd
