@@ -893,7 +893,7 @@ void Render::UpdateInteractions() {
     mouse_controller_is_started_ = false;
   }
 
-  if (start_keyboard_capturer_ && foucs_on_stream_window_) {
+  if (start_keyboard_capturer_ && focus_on_stream_window_) {
     if (!keyboard_capturer_is_started_) {
       StartKeyboardCapturer();
       keyboard_capturer_is_started_ = true;
@@ -2176,7 +2176,7 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
     case SDL_EVENT_WINDOW_FOCUS_GAINED:
       if (stream_window_ &&
           SDL_GetWindowID(stream_window_) == event.window.windowID) {
-        foucs_on_stream_window_ = true;
+        focus_on_stream_window_ = true;
       } else if (main_window_ &&
                  SDL_GetWindowID(main_window_) == event.window.windowID) {
         foucs_on_main_window_ = true;
@@ -2186,7 +2186,7 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
     case SDL_EVENT_WINDOW_FOCUS_LOST:
       if (stream_window_ &&
           SDL_GetWindowID(stream_window_) == event.window.windowID) {
-        foucs_on_stream_window_ = false;
+        focus_on_stream_window_ = false;
       } else if (main_window_ &&
                  SDL_GetWindowID(main_window_) == event.window.windowID) {
         foucs_on_main_window_ = false;
@@ -2200,7 +2200,7 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
     case SDL_EVENT_MOUSE_BUTTON_UP:
     case SDL_EVENT_MOUSE_WHEEL:
-      if (foucs_on_stream_window_) {
+      if (focus_on_stream_window_) {
         ProcessMouseEvent(event);
       }
       break;

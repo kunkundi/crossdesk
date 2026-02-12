@@ -138,7 +138,7 @@ int Render::StreamWindow() {
           UpdateRenderRect();
 
           ControlWindow(props);
-          
+
           // Show file transfer window if needed
           FileTransferWindow(props);
 
@@ -151,12 +151,12 @@ int Render::StreamWindow() {
               // std::unique_lock unique_lock(client_properties_mutex_);
               auto erase_it = client_properties_.find(remote_id_to_erase);
               if (erase_it != client_properties_.end()) {
-                erase_it = client_properties_.erase(erase_it);
-                if (client_properties_.empty()) {
-                  SDL_Event event;
-                  event.type = SDL_EVENT_QUIT;
-                  SDL_PushEvent(&event);
-                }
+                // Ensure we flush pending STREAM_REFRESH_EVENT events and
+                // clean up peer resources before erasing the entry, otherwise
+                // SDL events may still hold raw pointers to freed
+                // SubStreamWindowProperties (including video_frame_mutex_),
+                // leading to std::system_error when locking.
+                CloseTab(erase_it);
               }
             }
             // lock.lock();
@@ -236,10 +236,10 @@ int Render::StreamWindow() {
         UpdateRenderRect();
 
         ControlWindow(props);
-        
+
         // Show file transfer window if needed
         FileTransferWindow(props);
-        
+
         ImGui::End();
 
         if (!props->peer_) {
@@ -251,12 +251,7 @@ int Render::StreamWindow() {
             // std::unique_lock unique_lock(client_properties_mutex_);
             auto erase_it = client_properties_.find(remote_id_to_erase);
             if (erase_it != client_properties_.end()) {
-              client_properties_.erase(erase_it);
-              if (client_properties_.empty()) {
-                SDL_Event event;
-                event.type = SDL_EVENT_QUIT;
-                SDL_PushEvent(&event);
-              }
+              CloseTab(erase_it);
             }
           }
           // lock.lock();
