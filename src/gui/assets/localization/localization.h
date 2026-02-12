@@ -205,11 +205,10 @@ static std::vector<std::string> browse = {
     reinterpret_cast<const char*>(u8"浏览"), "Browse"};
 static std::vector<std::string> default_desktop = {
     reinterpret_cast<const char*>(u8"桌面"), "Desktop"};
-
-#if _WIN32
 static std::vector<std::string> minimize_to_tray = {
     reinterpret_cast<const char*>(u8"退出时最小化到系统托盘:"),
     "Minimize to system tray when exit:"};
+#if _WIN32
 static std::vector<LPCWSTR> exit_program = {L"退出", L"Exit"};
 #endif
 #ifdef __APPLE__
