@@ -1393,23 +1393,19 @@ int Render::DrawServerWindow() {
     LOG_ERROR("Server context is null");
     return -1;
   }
-
-  if (server_window_) {
-    int w = 0;
-    int h = 0;
-    SDL_GetWindowSize(server_window_, &w, &h);
-    if (w > 0 && h > 0) {
-      server_window_width_ = (float)w;
-      server_window_height_ = (float)h;
-    }
-  }
-
   ImGui::SetCurrentContext(server_ctx_);
   ImGui_ImplSDLRenderer3_NewFrame();
   ImGui_ImplSDL3_NewFrame();
   ImGui::NewFrame();
+
+  ImGuiIO& io = ImGui::GetIO();
+  server_window_width_ = io.DisplaySize.x;
+  server_window_height_ = io.DisplaySize.y;
+
   ServerWindow();
   ImGui::Render();
+  SDL_SetRenderScale(server_renderer_, io.DisplayFramebufferScale.x,
+                     io.DisplayFramebufferScale.y);
   SDL_SetRenderDrawColor(server_renderer_, 255, 255, 255, 255);
   SDL_RenderClear(server_renderer_);
   ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), server_renderer_);
