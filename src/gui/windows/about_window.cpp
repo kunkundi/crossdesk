@@ -1,6 +1,10 @@
 #include <cstdlib>
 #include <string>
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 #include "layout.h"
 #include "localization.h"
 #include "rd_log.h"
@@ -24,13 +28,34 @@ void Render::Hyperlink(const std::string& label, const std::string& url,
     ImGui::EndTooltip();
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 #if defined(_WIN32)
-      std::string cmd = "start " + url;
+      int wide_len =
+          MultiByteToWideChar(CP_UTF8, 0, url.c_str(), -1, nullptr, 0);
+      if (wide_len > 0) {
+        std::wstring wide_url(static_cast<size_t>(wide_len), L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, url.c_str(), -1, &wide_url[0],
+                            wide_len);
+        if (!wide_url.empty() && wide_url.back() == L'\0') {
+          wide_url.pop_back();
+        }
+
+        std::wstring cmd = L"cmd.exe /c start \"\" \"" + wide_url + L"\"";
+        STARTUPINFOW startup_info = {sizeof(startup_info)};
+        PROCESS_INFORMATION process_info = {};
+        if (CreateProcessW(nullptr, &cmd[0], nullptr, nullptr, FALSE,
+                           CREATE_NO_WINDOW, nullptr, nullptr, &startup_info,
+                           &process_info)) {
+          CloseHandle(process_info.hThread);
+          CloseHandle(process_info.hProcess);
+        }
+      }
 #elif defined(__APPLE__)
       std::string cmd = "open " + url;
 #else
       std::string cmd = "xdg-open " + url;
 #endif
+#if !defined(_WIN32)
       system(cmd.c_str());  // open browser
+#endif
     }
   }
 }
