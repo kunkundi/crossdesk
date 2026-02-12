@@ -204,3 +204,6 @@ target("crossdesk")
     add_deps("rd_log", "common", "gui")
     add_files("src/app/*.cpp")
     add_includedirs("src/app", {public = true})
+    if is_os("windows") then
+        add_files("scripts/windows/crossdesk.rc")
+    end

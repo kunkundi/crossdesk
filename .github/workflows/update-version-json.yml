@@ -11,7 +11,7 @@ jobs:
   update-version-json:
     name: Update version.json with release information
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -25,7 +25,7 @@ jobs:
           VERSION_ONLY="${TAG_NAME#v}"
           echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_OUTPUT
           echo "VERSION_ONLY=${VERSION_ONLY}" >> $GITHUB_OUTPUT
-          
+
           # Extract date from tag if available (format: v1.2.3-20251113-abc)
           if [[ "${TAG_NAME}" =~ -([0-9]{8})- ]]; then
             DATE_STR="${BASH_REMATCH[1]}"
@@ -45,7 +45,7 @@ jobs:
           # Use jq to properly escape JSON
           RELEASE_BODY="${{ github.event.release.body }}"
           RELEASE_NAME="${{ github.event.release.name }}"
-          
+
           # Handle empty values
           if [ -z "$RELEASE_BODY" ]; then
             RELEASE_BODY=""
@@ -53,15 +53,15 @@ jobs:
           if [ -z "$RELEASE_NAME" ]; then
             RELEASE_NAME=""
           fi
-          
+
           # Save to temporary files for proper handling
           echo -n "$RELEASE_BODY" > /tmp/release_body.txt
           echo -n "$RELEASE_NAME" > /tmp/release_name.txt
-          
+
           # Use jq to escape JSON strings
           RELEASE_BODY_JSON=$(jq -Rs . < /tmp/release_body.txt)
           RELEASE_NAME_JSON=$(jq -Rs . < /tmp/release_name.txt)
-          
+
           echo "RELEASE_BODY=${RELEASE_BODY_JSON}" >> $GITHUB_OUTPUT
           echo "RELEASE_NAME=${RELEASE_NAME_JSON}" >> $GITHUB_OUTPUT
 
@@ -85,7 +85,7 @@ jobs:
           else
             DOWNLOADS_JSON=""
           fi
-          
+
           # If downloads is empty, use default structure
           if [ -z "$DOWNLOADS_JSON" ]; then
             DOWNLOADS_JSON=$(cat << DOWNLOADS_EOF
@@ -93,6 +93,10 @@ jobs:
               "windows-x64": {
                 "url": "https://downloads.crossdesk.cn/crossdesk-win-x64-${{ steps.version.outputs.TAG_NAME }}.exe",
                 "filename": "crossdesk-win-x64-${{ steps.version.outputs.TAG_NAME }}.exe"
+              },
+              "windows-x64-portable": {
+                "url": "https://downloads.crossdesk.cn/crossdesk-win-x64-portable-${{ steps.version.outputs.TAG_NAME }}.zip",
+                "filename": "crossdesk-win-x64-portable-${{ steps.version.outputs.TAG_NAME }}.zip"
               },
               "macos-x64": {
                 "url": "https://downloads.crossdesk.cn/crossdesk-macos-x64-${{ steps.version.outputs.TAG_NAME }}.pkg",
@@ -114,7 +118,7 @@ jobs:
           DOWNLOADS_EOF
                       )
                     fi
-          
+
           # Generate version.json using cat and heredoc
           cat > version.json << EOF
           {
@@ -126,7 +130,7 @@ jobs:
             "downloads": ${DOWNLOADS_JSON}
           }
           EOF
-          
+
           cat version.json
 
       - name: Upload version.json to server
