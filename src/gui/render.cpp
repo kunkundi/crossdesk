@@ -492,6 +492,16 @@ int Render::LoadSettingsFromCacheFile() {
   enable_daemon_ = config_center_->IsEnableDaemon();
   enable_minimize_to_tray_ = config_center_->IsMinimizeToTray();
 
+  // File transfer save path
+  {
+    std::string saved_path = config_center_->GetFileTransferSavePath();
+    strncpy(file_transfer_save_path_buf_, saved_path.c_str(),
+            sizeof(file_transfer_save_path_buf_) - 1);
+    file_transfer_save_path_buf_[sizeof(file_transfer_save_path_buf_) - 1] =
+        '\0';
+    file_transfer_save_path_last_ = saved_path;
+  }
+
   language_button_value_last_ = language_button_value_;
   video_quality_button_value_last_ = video_quality_button_value_;
   video_encode_format_button_value_last_ = video_encode_format_button_value_;

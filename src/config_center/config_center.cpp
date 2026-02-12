@@ -74,6 +74,15 @@ int ConfigCenter::Load() {
   enable_minimize_to_tray_ = ini_.GetBoolValue(
       section_, "enable_minimize_to_tray", enable_minimize_to_tray_);
 
+  const char* file_transfer_save_path_value =
+      ini_.GetValue(section_, "file_transfer_save_path", nullptr);
+  if (file_transfer_save_path_value != nullptr &&
+      strlen(file_transfer_save_path_value) > 0) {
+    file_transfer_save_path_ = file_transfer_save_path_value;
+  } else {
+    file_transfer_save_path_ = "";
+  }
+
   return 0;
 }
 
@@ -103,6 +112,9 @@ int ConfigCenter::Save() {
   ini_.SetBoolValue(section_, "enable_daemon", enable_daemon_);
   ini_.SetBoolValue(section_, "enable_minimize_to_tray",
                     enable_minimize_to_tray_);
+
+  ini_.SetValue(section_, "file_transfer_save_path",
+                file_transfer_save_path_.c_str());
 
   SI_Error rc = ini_.SaveFile(config_path_.c_str());
   if (rc < 0) {
@@ -358,4 +370,19 @@ bool ConfigCenter::IsMinimizeToTray() const { return enable_minimize_to_tray_; }
 bool ConfigCenter::IsEnableAutostart() const { return enable_autostart_; }
 
 bool ConfigCenter::IsEnableDaemon() const { return enable_daemon_; }
+
+int ConfigCenter::SetFileTransferSavePath(const std::string& path) {
+  file_transfer_save_path_ = path;
+  ini_.SetValue(section_, "file_transfer_save_path",
+                file_transfer_save_path_.c_str());
+  SI_Error rc = ini_.SaveFile(config_path_.c_str());
+  if (rc < 0) {
+    return -1;
+  }
+  return 0;
+}
+
+std::string ConfigCenter::GetFileTransferSavePath() const {
+  return file_transfer_save_path_;
+}
 }  // namespace crossdesk

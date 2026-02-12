@@ -2,6 +2,7 @@
 #include "localization.h"
 #include "rd_log.h"
 #include "render.h"
+#include "tinyfiledialogs.h"
 
 namespace crossdesk {
 
@@ -15,28 +16,28 @@ int Render::SettingWindow() {
       !defined(__arm__) && USE_CUDA) ||                                   \
      defined(__APPLE__))
         ImGui::SetNextWindowPos(
-            ImVec2(io.DisplaySize.x * 0.343f, io.DisplaySize.y * 0.07f));
+            ImVec2(io.DisplaySize.x * 0.343f, io.DisplaySize.y * 0.05f));
         ImGui::SetNextWindowSize(
-            ImVec2(io.DisplaySize.x * 0.315f, io.DisplaySize.y * 0.85f));
+            ImVec2(io.DisplaySize.x * 0.315f, io.DisplaySize.y * 0.9f));
 #else
         ImGui::SetNextWindowPos(
-            ImVec2(io.DisplaySize.x * 0.343f, io.DisplaySize.y * 0.1f));
+            ImVec2(io.DisplaySize.x * 0.343f, io.DisplaySize.y * 0.08f));
         ImGui::SetNextWindowSize(
-            ImVec2(io.DisplaySize.x * 0.315f, io.DisplaySize.y * 0.8f));
+            ImVec2(io.DisplaySize.x * 0.315f, io.DisplaySize.y * 0.85f));
 #endif
       } else {
 #if (((defined(_WIN32) || defined(__linux__)) && !defined(__aarch64__) && \
       !defined(__arm__) && USE_CUDA) ||                                   \
      defined(__APPLE__))
         ImGui::SetNextWindowPos(
-            ImVec2(io.DisplaySize.x * 0.297f, io.DisplaySize.y * 0.07f));
+            ImVec2(io.DisplaySize.x * 0.297f, io.DisplaySize.y * 0.05f));
         ImGui::SetNextWindowSize(
-            ImVec2(io.DisplaySize.x * 0.407f, io.DisplaySize.y * 0.85f));
+            ImVec2(io.DisplaySize.x * 0.407f, io.DisplaySize.y * 0.9f));
 #else
         ImGui::SetNextWindowPos(
-            ImVec2(io.DisplaySize.x * 0.297f, io.DisplaySize.y * 0.1f));
+            ImVec2(io.DisplaySize.x * 0.297f, io.DisplaySize.y * 0.08f));
         ImGui::SetNextWindowSize(
-            ImVec2(io.DisplaySize.x * 0.407f, io.DisplaySize.y * 0.8f));
+            ImVec2(io.DisplaySize.x * 0.407f, io.DisplaySize.y * 0.85f));
 #endif
       }
 
@@ -351,6 +352,62 @@ int Render::SettingWindow() {
                         &enable_minimize_to_tray_);
       }
 #endif
+
+      ImGui::Separator();
+
+      {
+        settings_items_offset += settings_items_padding;
+        ImGui::SetCursorPosY(settings_items_offset);
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text(
+            "%s",
+            localization::file_transfer_save_path[localization_language_index_]
+                .c_str());
+        ImGui::SameLine();
+        if (ConfigCenter::LANGUAGE::CHINESE == localization_language_) {
+          ImGui::SetCursorPosX(title_bar_button_width_ * 2.8f);
+        } else {
+          ImGui::SetCursorPosX(title_bar_button_width_ * 4.3f);
+        }
+
+        std::string display_path =
+            strlen(file_transfer_save_path_buf_) > 0
+                ? file_transfer_save_path_buf_
+                : localization::default_desktop[localization_language_index_];
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                              ImVec4(0.95f, 0.95f, 0.95f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive,
+                              ImVec4(0.9f, 0.9f, 0.9f, 1.0f));
+        ImGui::PushFont(main_windows_system_chinese_font_);
+        if (ImGui::Button(display_path.c_str(),
+                          ImVec2(title_bar_button_width_ * 2.0f, 0))) {
+          const char* folder =
+              tinyfd_selectFolderDialog(localization::file_transfer_save_path
+                                            [localization_language_index_]
+                                                .c_str(),
+                                        strlen(file_transfer_save_path_buf_) > 0
+                                            ? file_transfer_save_path_buf_
+                                            : nullptr);
+          if (folder) {
+            strncpy(file_transfer_save_path_buf_, folder,
+                    sizeof(file_transfer_save_path_buf_) - 1);
+            file_transfer_save_path_buf_[sizeof(file_transfer_save_path_buf_) -
+                                         1] = '\0';
+          }
+        }
+        if (ImGui::IsItemHovered() &&
+            strlen(file_transfer_save_path_buf_) > 0) {
+          ImGui::BeginTooltip();
+          ImGui::SetWindowFontScale(0.5f);
+          ImGui::Text("%s", file_transfer_save_path_buf_);
+          ImGui::SetWindowFontScale(1.0f);
+          ImGui::EndTooltip();
+        }
+        ImGui::PopFont();
+        ImGui::PopStyleColor(3);
+      }
+
       if (stream_window_inited_) {
         ImGui::EndDisabled();
       }
@@ -469,6 +526,10 @@ int Render::SettingWindow() {
         enable_minimize_to_tray_last_ = enable_minimize_to_tray_;
 #endif
 
+        // File transfer save path
+        config_center_->SetFileTransferSavePath(file_transfer_save_path_buf_);
+        file_transfer_save_path_last_ = file_transfer_save_path_buf_;
+
         settings_window_pos_reset_ = true;
 
         // Recreate peer instance
@@ -515,6 +576,13 @@ int Render::SettingWindow() {
         if (enable_turn_ != enable_turn_last_) {
           enable_turn_ = enable_turn_last_;
         }
+
+        // Restore file transfer save path
+        strncpy(file_transfer_save_path_buf_,
+                file_transfer_save_path_last_.c_str(),
+                sizeof(file_transfer_save_path_buf_) - 1);
+        file_transfer_save_path_buf_[sizeof(file_transfer_save_path_buf_) - 1] =
+            '\0';
 
         settings_window_pos_reset_ = true;
       }

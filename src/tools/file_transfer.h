@@ -97,6 +97,14 @@ class FileReceiver {
 
   const std::filesystem::path& OutputDir() const { return output_dir_; }
 
+  void SetOutputDir(const std::filesystem::path& dir) {
+    output_dir_ = dir;
+    if (!output_dir_.empty()) {
+      std::error_code ec;
+      std::filesystem::create_directories(output_dir_, ec);
+    }
+  }
+
  private:
   static std::filesystem::path GetDefaultDesktopPath();
 

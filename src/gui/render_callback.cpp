@@ -321,6 +321,14 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
     std::string remote_user_id = std::string(user_id, user_id_size);
 
     static FileReceiver receiver;
+    // Update output directory from config
+    std::string configured_path =
+        render->config_center_->GetFileTransferSavePath();
+    if (!configured_path.empty()) {
+      receiver.SetOutputDir(std::filesystem::u8path(configured_path));
+    } else if (receiver.OutputDir().empty()) {
+      receiver = FileReceiver();  // re-init with default desktop path
+    }
     receiver.SetOnSendAck([render,
                            remote_user_id](const FileTransferAck& ack) -> int {
       bool is_server_sending = remote_user_id.rfind("C-", 0) != 0;
