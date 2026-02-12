@@ -15,76 +15,28 @@ env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
-  # Linux amd64
-  build-linux-amd64:
-    name: Build on Ubuntu 22.04 amd64
-    runs-on: ubuntu-22.04
-    container:
-      image: crossdesk/ubuntu20.04:latest
-      options: --user root
-    steps:
-      - name: Extract version number
-        id: version
-        run: |
-          VERSION="${GITHUB_REF##*/}"
-          VERSION_NUM="${VERSION#v}"
-          echo "VERSION_NUM=${VERSION_NUM}" >> $GITHUB_ENV
-
-      - name: Set legal Debian version
-        shell: bash
-        id: set_deb_version
-        run: |
-          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          BUILD_DATE=$(TZ=Asia/Shanghai date +%Y%m%d)
-          if [[ ! "${VERSION_NUM}" =~ ^[0-9] ]]; then
-            LEGAL_VERSION="v0.0.0-${VERSION_NUM}-${BUILD_DATE}-${SHORT_SHA}"
-          else
-            LEGAL_VERSION="v${VERSION_NUM}-${BUILD_DATE}-${SHORT_SHA}"
-          fi
-          echo "LEGAL_VERSION=${LEGAL_VERSION}" >> $GITHUB_ENV
-          echo "BUILD_DATE=${BUILD_DATE}" >> $GITHUB_ENV
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Build CrossDesk
-        env:
-          CUDA_PATH: /usr/local/cuda
-          XMAKE_GLOBALDIR: /data
-        run: |
-          ls -la $XMAKE_GLOBALDIR
-          xmake f --CROSSDESK_VERSION=${LEGAL_VERSION} --USE_CUDA=true --root -y
-          xmake b -vy --root crossdesk
-
-      - name: Package
-        run: |
-          chmod +x ./scripts/linux/pkg_amd64.sh
-          ./scripts/linux/pkg_amd64.sh ${LEGAL_VERSION}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: crossdesk-linux-amd64-${{ env.LEGAL_VERSION }}
-          path: ${{ github.workspace }}/crossdesk-linux-amd64-${{ env.LEGAL_VERSION }}.deb
-
-  # Linux arm64
-  build-linux-arm64:
-    name: Build on Ubuntu 22.04 arm64
-    runs-on: ubuntu-22.04-arm
+  build-linux:
+    name: Build Linux (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
         include:
+          - arch: amd64
+            runner: ubuntu-22.04
+            image: crossdesk/ubuntu20.04:latest
+            package_script: ./scripts/linux/pkg_amd64.sh
+
           - arch: arm64
+            runner: ubuntu-22.04-arm
             image: crossdesk/ubuntu20.04-arm64v8:latest
             package_script: ./scripts/linux/pkg_arm64.sh
+
     container:
       image: ${{ matrix.image }}
       options: --user root
+
     steps:
       - name: Extract version number
-        id: version
         run: |
           VERSION="${GITHUB_REF##*/}"
           VERSION_NUM="${VERSION#v}"
@@ -92,15 +44,16 @@ jobs:
 
       - name: Set legal Debian version
         shell: bash
-        id: set_deb_version
         run: |
           SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
           BUILD_DATE=$(TZ=Asia/Shanghai date +%Y%m%d)
+
           if [[ ! "${VERSION_NUM}" =~ ^[0-9] ]]; then
             LEGAL_VERSION="v0.0.0-${VERSION_NUM}-${BUILD_DATE}-${SHORT_SHA}"
           else
             LEGAL_VERSION="v${VERSION_NUM}-${BUILD_DATE}-${SHORT_SHA}"
           fi
+
           echo "LEGAL_VERSION=${LEGAL_VERSION}" >> $GITHUB_ENV
           echo "BUILD_DATE=${BUILD_DATE}" >> $GITHUB_ENV
 
@@ -313,7 +266,7 @@ jobs:
     name: Publish Release
     if: startsWith(github.ref, 'refs/tags/v')
     needs:
-      [build-linux-amd64, build-linux-arm64, build-macos, build-windows-x64]
+      [build-linux, build-macos, build-windows-x64]
     runs-on: ubuntu-latest
 
     steps:
