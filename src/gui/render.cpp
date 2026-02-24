@@ -893,7 +893,7 @@ void Render::UpdateInteractions() {
     mouse_controller_is_started_ = false;
   }
 
-  if (start_keyboard_capturer_ && foucs_on_stream_window_) {
+  if (start_keyboard_capturer_ && focus_on_stream_window_) {
     if (!keyboard_capturer_is_started_) {
       StartKeyboardCapturer();
       keyboard_capturer_is_started_ = true;
@@ -1393,23 +1393,19 @@ int Render::DrawServerWindow() {
     LOG_ERROR("Server context is null");
     return -1;
   }
-
-  if (server_window_) {
-    int w = 0;
-    int h = 0;
-    SDL_GetWindowSize(server_window_, &w, &h);
-    if (w > 0 && h > 0) {
-      server_window_width_ = (float)w;
-      server_window_height_ = (float)h;
-    }
-  }
-
   ImGui::SetCurrentContext(server_ctx_);
   ImGui_ImplSDLRenderer3_NewFrame();
   ImGui_ImplSDL3_NewFrame();
   ImGui::NewFrame();
+
+  ImGuiIO& io = ImGui::GetIO();
+  server_window_width_ = io.DisplaySize.x;
+  server_window_height_ = io.DisplaySize.y;
+
   ServerWindow();
   ImGui::Render();
+  SDL_SetRenderScale(server_renderer_, io.DisplayFramebufferScale.x,
+                     io.DisplayFramebufferScale.y);
   SDL_SetRenderDrawColor(server_renderer_, 255, 255, 255, 255);
   SDL_RenderClear(server_renderer_);
   ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), server_renderer_);
@@ -2177,7 +2173,7 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
     case SDL_EVENT_WINDOW_FOCUS_GAINED:
       if (stream_window_ &&
           SDL_GetWindowID(stream_window_) == event.window.windowID) {
-        foucs_on_stream_window_ = true;
+        focus_on_stream_window_ = true;
       } else if (main_window_ &&
                  SDL_GetWindowID(main_window_) == event.window.windowID) {
         foucs_on_main_window_ = true;
@@ -2187,7 +2183,7 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
     case SDL_EVENT_WINDOW_FOCUS_LOST:
       if (stream_window_ &&
           SDL_GetWindowID(stream_window_) == event.window.windowID) {
-        foucs_on_stream_window_ = false;
+        focus_on_stream_window_ = false;
       } else if (main_window_ &&
                  SDL_GetWindowID(main_window_) == event.window.windowID) {
         foucs_on_main_window_ = false;
@@ -2201,7 +2197,7 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
     case SDL_EVENT_MOUSE_BUTTON_UP:
     case SDL_EVENT_MOUSE_WHEEL:
-      if (foucs_on_stream_window_) {
+      if (focus_on_stream_window_) {
         ProcessMouseEvent(event);
       }
       break;

@@ -331,10 +331,14 @@ int Render::SettingWindow() {
           ImGui::EndTooltip();
         }
       }
-#if _WIN32
+
       ImGui::Separator();
 
       {
+#ifndef _WIN32
+        ImGui::BeginDisabled();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
+#endif
         settings_items_offset += settings_items_padding;
         ImGui::SetCursorPosY(settings_items_offset);
         ImGui::AlignTextToFramePadding();
@@ -350,8 +354,11 @@ int Render::SettingWindow() {
 
         ImGui::Checkbox("##enable_minimize_to_tray_",
                         &enable_minimize_to_tray_);
-      }
+#ifndef _WIN32
+        ImGui::PopStyleColor();
+        ImGui::EndDisabled();
 #endif
+      }
 
       ImGui::Separator();
 

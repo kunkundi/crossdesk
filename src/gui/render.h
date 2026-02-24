@@ -434,7 +434,7 @@ class Render {
   bool show_cursor_ = false;
   bool keyboard_capturer_is_started_ = false;
   bool foucs_on_main_window_ = false;
-  bool foucs_on_stream_window_ = false;
+  bool focus_on_stream_window_ = false;
   bool main_window_minimized_ = false;
   uint32_t last_main_minimize_request_tick_ = 0;
   uint32_t last_stream_minimize_request_tick_ = 0;
