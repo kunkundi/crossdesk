@@ -365,7 +365,7 @@ int Render::SettingWindow() {
                 .c_str());
         ImGui::SameLine();
         if (ConfigCenter::LANGUAGE::CHINESE == localization_language_) {
-          ImGui::SetCursorPosX(title_bar_button_width_ * 2.8f);
+          ImGui::SetCursorPosX(title_bar_button_width_ * 2.82f);
         } else {
           ImGui::SetCursorPosX(title_bar_button_width_ * 4.3f);
         }
