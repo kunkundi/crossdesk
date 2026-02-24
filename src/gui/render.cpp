@@ -2051,7 +2051,8 @@ void Render::UpdateRenderRect() {
           (int)(render_area_width * video_ratio_reverse)};
     } else if (render_area_width > render_area_height * video_ratio) {
       props->stream_render_rect_ = {
-          (int)abs(render_area_width - render_area_height * video_ratio) / 2,
+          (int)abs(render_area_width - render_area_height * video_ratio) / 2 +
+              (int)props->render_window_x_,
           (int)props->render_window_y_, (int)(render_area_height * video_ratio),
           (int)render_area_height};
     } else {

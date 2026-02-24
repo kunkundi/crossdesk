@@ -117,7 +117,9 @@ int Render::StreamWindow() {
           ImGui::SetWindowFontScale(0.6f);
 
           ImGui::SetNextWindowSize(
-              ImVec2(stream_window_width_, stream_window_height_),
+              ImVec2(stream_window_width_,
+                     stream_window_height_ -
+                         (fullscreen_button_pressed_ ? 0 : title_bar_height_)),
               ImGuiCond_Always);
           ImGui::SetNextWindowPos(
               ImVec2(0, fullscreen_button_pressed_ ? 0 : title_bar_height_),
@@ -217,7 +219,9 @@ int Render::StreamWindow() {
 
       if (props->tab_selected_) {
         ImGui::SetNextWindowSize(
-            ImVec2(stream_window_width_, stream_window_height_),
+            ImVec2(stream_window_width_,
+                   stream_window_height_ -
+                       (fullscreen_button_pressed_ ? 0 : title_bar_height_)),
             ImGuiCond_Always);
         ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
