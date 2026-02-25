@@ -195,7 +195,7 @@ int Render::ConnectTo(const std::string& remote_id, const char* password,
         props->control_window_min_width_ = title_bar_height_ * 0.65f;
         props->control_window_min_height_ = title_bar_height_ * 1.3f;
         props->control_window_max_width_ = title_bar_height_ * 9.0f;
-        props->control_window_max_height_ = title_bar_height_ * 6.0f;
+        props->control_window_max_height_ = title_bar_height_ * 7.0f;
 
         if (!props->peer_) {
           LOG_INFO("Create peer [{}] instance failed", props->local_id_);

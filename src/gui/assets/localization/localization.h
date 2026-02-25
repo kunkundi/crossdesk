@@ -208,6 +208,14 @@ static std::vector<std::string> default_desktop = {
 static std::vector<std::string> minimize_to_tray = {
     reinterpret_cast<const char*>(u8"退出时最小化到系统托盘:"),
     "Minimize to system tray when exit:"};
+static std::vector<std::string> resolution = {
+    reinterpret_cast<const char*>(u8"分辨率"), "Res"};
+static std::vector<std::string> connection_mode = {
+    reinterpret_cast<const char*>(u8"连接模式"), "Mode"};
+static std::vector<std::string> connection_mode_direct = {
+    reinterpret_cast<const char*>(u8"直连"), "Direct"};
+static std::vector<std::string> connection_mode_relay = {
+    reinterpret_cast<const char*>(u8"中继"), "Relay"};
 #if _WIN32
 static std::vector<LPCWSTR> exit_program = {L"退出", L"Exit"};
 #endif

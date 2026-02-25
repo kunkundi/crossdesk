@@ -460,11 +460,32 @@ int Render::NetTrafficStats(std::shared_ptr<SubStreamWindowProperties>& props) {
     LossRateDisplay(props->net_traffic_stats_.total_inbound_stats.loss_rate);
 
     ImGui::TableNextColumn();
-    ImGui::Text("FPS");
+    ImGui::Text("FPS:");
     ImGui::TableNextColumn();
     ImGui::Text("%d", props->fps_);
     ImGui::TableNextColumn();
     ImGui::TableNextColumn();
+
+    ImGui::TableNextColumn();
+    ImGui::Text("%s:",
+                localization::resolution[localization_language_index_].c_str());
+    ImGui::TableNextColumn();
+    ImGui::Text("%dx%d", props->video_width_, props->video_height_);
+    ImGui::TableNextColumn();
+    ImGui::TableNextColumn();
+
+    ImGui::TableNextColumn();
+    ImGui::Text(
+        "%s:",
+        localization::connection_mode[localization_language_index_].c_str());
+    ImGui::TableNextColumn();
+    ImGui::Text(
+        "%s",
+        props->traversal_mode_ == 0
+            ? localization::connection_mode_direct[localization_language_index_]
+                  .c_str()
+            : localization::connection_mode_relay[localization_language_index_]
+                  .c_str());
 
     ImGui::EndTable();
   }
