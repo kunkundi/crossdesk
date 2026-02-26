@@ -8,6 +8,7 @@
 #include "localization.h"
 #include "rd_log.h"
 #include "render.h"
+#include "rounded_corner_button.h"
 
 namespace crossdesk {
 
@@ -48,17 +49,19 @@ int Render::ServerWindow() {
   ImGui::SetNextWindowSize(ImVec2(server_window_width_, server_window_height_),
                            ImGuiCond_Always);
   ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
   ImGui::Begin("##server_window", nullptr,
                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                    ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
                    ImGuiWindowFlags_NoScrollbar |
                    ImGuiWindowFlags_NoScrollWithMouse);
+  ImGui::PopStyleVar();
 
   server_window_title_bar_height_ = title_bar_height_;
 
-  ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+  ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 0.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
   ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
   ImGui::BeginChild(
       "ServerTitleBar",
@@ -83,9 +86,13 @@ int Render::ServerWindow() {
     const char* icon =
         server_window_collapsed_ ? ICON_FA_ANGLE_DOWN : ICON_FA_ANGLE_UP;
     std::string toggle_label = std::string(icon) + "##server_toggle";
-    if (ImGui::Button(toggle_label.c_str(),
-                      ImVec2(server_title_bar_button_width,
-                             server_title_bar_button_height))) {
+
+    bool toggle_clicked = RoundedCornerButton(
+        toggle_label.c_str(),
+        ImVec2(server_title_bar_button_width, server_title_bar_button_height),
+        8.5f, ImDrawFlags_RoundCornersTopLeft, true, IM_COL32(0, 0, 0, 0),
+        IM_COL32(0, 0, 0, 25), IM_COL32(255, 255, 255, 255));
+    if (toggle_clicked) {
       if (server_window_) {
         int w = 0;
         int h = 0;
@@ -114,7 +121,7 @@ int Render::ServerWindow() {
   }
 
   ImGui::EndChild();
-  ImGui::PopStyleVar();
+  ImGui::PopStyleVar(2);
   ImGui::PopStyleColor();
 
   RemoteClientInfoWindow();

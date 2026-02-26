@@ -9,15 +9,17 @@ int Render::StatusBar() {
   float status_bar_width = io.DisplaySize.x;
   float status_bar_height = io.DisplaySize.y * STATUS_BAR_HEIGHT;
 
-  ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
   static bool a, b, c, d, e;
   ImGui::SetNextWindowPos(ImVec2(0, io.DisplaySize.y * (1 - STATUS_BAR_HEIGHT)),
                           ImGuiCond_Always);
 
-  ImGui::BeginChild(
-      "StatusBar", ImVec2(status_bar_width, status_bar_height),
-      ImGuiChildFlags_Border,
-      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBringToFrontOnFocus);
+  ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 0.0f));
+  ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1.0f, 1.0f, 1.0f, 0.0f));
+  ImGui::BeginChild("StatusBar", ImVec2(status_bar_width, status_bar_height),
+                    ImGuiChildFlags_Border,
+                    ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                        ImGuiWindowFlags_NoBringToFrontOnFocus);
+  ImGui::PopStyleColor(2);
 
   ImVec2 dot_pos = ImVec2(status_bar_width * 0.025f,
                           io.DisplaySize.y * (1 - STATUS_BAR_HEIGHT * 0.5f));
@@ -40,7 +42,6 @@ int Render::StatusBar() {
                 .c_str());
   ImGui::SetWindowFontScale(1.0f);
 
-  ImGui::PopStyleColor();
   ImGui::EndChild();
   return 0;
 }

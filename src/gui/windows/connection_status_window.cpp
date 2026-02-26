@@ -18,7 +18,7 @@ bool Render::ConnectionStatusWindow(
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
   ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
 
   ImGui::Begin("ConnectionStatusWindow", nullptr,
                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |

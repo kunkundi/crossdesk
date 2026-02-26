@@ -14,7 +14,8 @@ int Render::MainWindow() {
   ImGui::SetNextWindowPos(ImVec2(0.0f, io.DisplaySize.y * (TITLE_BAR_HEIGHT)),
                           ImGuiCond_Always);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-  ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+  ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 0.0f));
+  ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1.0f, 1.0f, 1.0f, 0.0f));
   ImGui::BeginChild(
       "DeskWindow",
       ImVec2(local_remote_window_width, local_remote_window_height),
@@ -22,7 +23,7 @@ int Render::MainWindow() {
       ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
           ImGuiWindowFlags_NoBringToFrontOnFocus);
   ImGui::PopStyleVar();
-  ImGui::PopStyleColor();
+  ImGui::PopStyleColor(2);
 
   LocalWindow();
 

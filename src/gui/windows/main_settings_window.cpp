@@ -50,7 +50,7 @@ int Render::SettingWindow() {
       int settings_items_offset = 0;
 
       ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
-      ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
+      ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
       ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
 
       ImGui::Begin(localization::settings[localization_language_index_].c_str(),

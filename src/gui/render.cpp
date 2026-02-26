@@ -298,7 +298,7 @@ SDL_HitTestResult Render::HitTestCallback(SDL_Window* window,
   float mouse_grab_padding = render->title_bar_button_width_ * 0.16f;
   if (area->y < render->title_bar_button_width_ &&
       area->y > mouse_grab_padding &&
-      area->x < window_width - render->title_bar_button_width_ * 4.0f &&
+      area->x < window_width - render->title_bar_button_width_ * 3.0f &&
       area->x > mouse_grab_padding) {
     return SDL_HITTEST_DRAGGABLE;
   }
@@ -914,9 +914,10 @@ int Render::CreateMainWindow() {
   ImGui::SetCurrentContext(main_ctx_);
 
   if (!SDL_CreateWindowAndRenderer(
-          "Remote Desk", (int)main_window_width_, (int)main_window_height_,
+          "CrossDesk Main Window", (int)main_window_width_,
+          (int)main_window_height_,
           SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_BORDERLESS |
-              SDL_WINDOW_HIDDEN,
+              SDL_WINDOW_HIDDEN | SDL_WINDOW_TRANSPARENT,
           &main_window_, &main_renderer_)) {
     LOG_ERROR("Error creating MainWindow and MainRenderer: {}", SDL_GetError());
     return -1;
@@ -945,6 +946,8 @@ int Render::CreateMainWindow() {
 
   // for window region action
   SDL_SetWindowHitTest(main_window_, HitTestCallback, this);
+
+  SDL_SetRenderDrawBlendMode(main_renderer_, SDL_BLENDMODE_BLEND);
 
   SetupFontAndStyle(&main_windows_system_chinese_font_);
 
@@ -1002,9 +1005,10 @@ int Render::CreateStreamWindow() {
   ImGui::SetCurrentContext(stream_ctx_);
 
   if (!SDL_CreateWindowAndRenderer(
-          "Stream window", (int)stream_window_width_,
+          "CrossDesk Stream Window", (int)stream_window_width_,
           (int)stream_window_height_,
-          SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_BORDERLESS,
+          SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_BORDERLESS |
+              SDL_WINDOW_TRANSPARENT,
           &stream_window_, &stream_renderer_)) {
     LOG_ERROR("Error creating stream_window_ and stream_renderer_: {}",
               SDL_GetError());
@@ -1017,6 +1021,8 @@ int Render::CreateStreamWindow() {
 
   // for window region action
   SDL_SetWindowHitTest(stream_window_, HitTestCallback, this);
+
+  SDL_SetRenderDrawBlendMode(stream_renderer_, SDL_BLENDMODE_BLEND);
 
   SetupFontAndStyle(&stream_windows_system_chinese_font_);
 
@@ -1073,12 +1079,12 @@ int Render::CreateServerWindow() {
     return -1;
   }
   ImGui::SetCurrentContext(server_ctx_);
-  if (!SDL_CreateWindowAndRenderer("Server window", (int)server_window_width_,
-                                   (int)server_window_height_,
-                                   SDL_WINDOW_HIGH_PIXEL_DENSITY |
-                                       SDL_WINDOW_BORDERLESS |
-                                       SDL_WINDOW_TRANSPARENT,
-                                   &server_window_, &server_renderer_)) {
+  if (!SDL_CreateWindowAndRenderer(
+          "CrossDesk Server Window", (int)server_window_width_,
+          (int)server_window_height_,
+          SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_BORDERLESS |
+              SDL_WINDOW_TRANSPARENT,
+          &server_window_, &server_renderer_)) {
     LOG_ERROR("Error creating server_window_ and server_renderer_: {}",
               SDL_GetError());
     return -1;
@@ -1290,6 +1296,8 @@ int Render::DrawMainWindow() {
 
   ImGuiIO& io = ImGui::GetIO();
   ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
+
   ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
   ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x, io.DisplaySize.y),
                            ImGuiCond_Always);
@@ -1298,6 +1306,7 @@ int Render::DrawMainWindow() {
                    ImGuiWindowFlags_NoBringToFrontOnFocus |
                    ImGuiWindowFlags_NoDocking);
   ImGui::PopStyleColor();
+  ImGui::PopStyleVar();
 
   TitleBar(true);
 
@@ -1318,6 +1327,7 @@ int Render::DrawMainWindow() {
   ImGui::Render();
   SDL_SetRenderScale(main_renderer_, io.DisplayFramebufferScale.x,
                      io.DisplayFramebufferScale.y);
+  SDL_SetRenderDrawColor(main_renderer_, 0, 0, 0, 0);
   SDL_RenderClear(main_renderer_);
   ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), main_renderer_);
   SDL_RenderPresent(main_renderer_);
@@ -1367,6 +1377,7 @@ int Render::DrawStreamWindow() {
   ImGui::Render();
   SDL_SetRenderScale(stream_renderer_, io.DisplayFramebufferScale.x,
                      io.DisplayFramebufferScale.y);
+  SDL_SetRenderDrawColor(stream_renderer_, 0, 0, 0, 255);
   SDL_RenderClear(stream_renderer_);
 
   // std::shared_lock lock(client_properties_mutex_);
@@ -1406,7 +1417,7 @@ int Render::DrawServerWindow() {
   ImGui::Render();
   SDL_SetRenderScale(server_renderer_, io.DisplayFramebufferScale.x,
                      io.DisplayFramebufferScale.y);
-  SDL_SetRenderDrawColor(server_renderer_, 255, 255, 255, 255);
+  SDL_SetRenderDrawColor(server_renderer_, 0, 0, 0, 0);
   SDL_RenderClear(server_renderer_);
   ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), server_renderer_);
   SDL_RenderPresent(server_renderer_);

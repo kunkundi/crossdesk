@@ -9,7 +9,7 @@ int Render::RecentConnectionsWindow() {
   ImGuiIO& io = ImGui::GetIO();
   float recent_connection_window_width = io.DisplaySize.x;
   float recent_connection_window_height =
-      io.DisplaySize.y * (0.46f - STATUS_BAR_HEIGHT);
+      io.DisplaySize.y * (0.455f - STATUS_BAR_HEIGHT);
   ImGui::SetNextWindowPos(ImVec2(0, io.DisplaySize.y * 0.55f),
                           ImGuiCond_Always);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
@@ -256,7 +256,7 @@ int Render::ConfirmDeleteConnection() {
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
   ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0, 1.0, 1.0, 1.0));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
 
   ImGui::Begin("ConfirmDeleteConnectionWindow", nullptr,
                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |

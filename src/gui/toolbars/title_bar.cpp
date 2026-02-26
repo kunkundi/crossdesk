@@ -2,6 +2,7 @@
 #include "localization.h"
 #include "rd_log.h"
 #include "render.h"
+#include "rounded_corner_button.h"
 
 constexpr double kNewVersionIconBlinkIntervalSec = 2.0;
 constexpr double kNewVersionIconBlinkOnTimeSec = 1.0;
@@ -23,7 +24,7 @@ int Render::TitleBar(bool main_window) {
     if (io.DisplaySize.x > 0.0f && io.DisplaySize.y > 0.0f) {
       title_bar_width = io.DisplaySize.x;
       title_bar_height = io.DisplaySize.y * TITLE_BAR_HEIGHT;
-      title_bar_height_padding = io.DisplaySize.y * (TITLE_BAR_HEIGHT + 0.01f);
+      title_bar_height_padding = io.DisplaySize.y * TITLE_BAR_HEIGHT;
       title_bar_button_width = io.DisplaySize.x * TITLE_BAR_BUTTON_WIDTH;
       title_bar_button_height = io.DisplaySize.y * TITLE_BAR_BUTTON_HEIGHT;
 
@@ -45,7 +46,7 @@ int Render::TitleBar(bool main_window) {
     title_bar_button_height = title_bar_button_height_;
   }
 
-  ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+  ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 0.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
   ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
   ImGui::BeginChild(main_window ? "MainTitleBar" : "StreamTitleBar",
@@ -285,8 +286,20 @@ int Render::TitleBar(bool main_window) {
   float xmark_pos_y = title_bar_button_height * 0.5f;
   float xmark_size = title_bar_button_width * 0.33f;
   std::string close_button = "##xmark";  // ICON_FA_XMARK;
-  if (ImGui::Button(close_button.c_str(),
-                    ImVec2(title_bar_button_width, title_bar_button_height))) {
+  bool close_button_clicked = false;
+  if (main_window) {
+    close_button_clicked = RoundedCornerButton(
+        close_button.c_str(),
+        ImVec2(title_bar_button_width, title_bar_button_height), 8.5f,
+        ImDrawFlags_RoundCornersTopRight, true, IM_COL32(0, 0, 0, 0),
+        IM_COL32(250, 0, 0, 255), IM_COL32(255, 0, 0, 128));
+  } else {
+    close_button_clicked =
+        ImGui::Button(close_button.c_str(),
+                      ImVec2(title_bar_button_width, title_bar_button_height));
+  }
+
+  if (close_button_clicked) {
 #if _WIN32
     if (enable_minimize_to_tray_) {
       tray_->MinimizeToTray();
@@ -299,6 +312,7 @@ int Render::TitleBar(bool main_window) {
     }
 #endif
   }
+
   draw_list->AddLine(ImVec2(xmark_pos_x - xmark_size / 2 - 0.25f,
                             xmark_pos_y - xmark_size / 2 + 0.75f),
                      ImVec2(xmark_pos_x + xmark_size / 2 - 1.5f,
