@@ -42,50 +42,74 @@ int Render::ControlWindow(std::shared_ptr<SubStreamWindowProperties>& props) {
     }
   }
 
-  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1, 1, 1, 1));
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(0, 0));
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 10.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
 
-  ImGui::SetNextWindowSize(
-      ImVec2(props->control_window_width_, props->control_window_height_),
-      ImGuiCond_Always);
+  float y_boundary = fullscreen_button_pressed_ ? 0.0f : title_bar_height_;
+  float container_x = 0.0f;
+  float container_y = y_boundary;
+  float container_w = stream_window_width_;
+  float container_h = stream_window_height_ - y_boundary;
 
-  ImGui::SetNextWindowPos(ImVec2(0, title_bar_height_), ImGuiCond_Once);
+  ImGui::SetNextWindowSize(ImVec2(container_w, container_h), ImGuiCond_Always);
+  ImGui::SetNextWindowPos(ImVec2(container_x, container_y), ImGuiCond_Always);
 
   float pos_x = 0;
   float pos_y = 0;
-  float y_boundary = fullscreen_button_pressed_ ? 0 : title_bar_height_;
 
-  if (props->reset_control_bar_pos_) {
-    float new_cursor_pos_x = 0;
-    float new_cursor_pos_y = 0;
+  std::string container_window_title =
+      props->remote_id_ + "ControlContainerWindow";
+  ImGui::Begin(container_window_title.c_str(), nullptr,
+               ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                   ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoDocking |
+                   ImGuiWindowFlags_NoBackground);
+  ImGui::PopStyleVar();
+
+  ImVec2 container_pos = ImGui::GetWindowPos();
+
+  if (ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
+      props->control_bar_hovered_) {
+    float current_x_rel = props->control_window_pos_.x - container_pos.x;
+    float current_y_rel = props->control_window_pos_.y - container_pos.y;
+    ImVec2 delta = ImGui::GetIO().MouseDelta;
+    pos_x = current_x_rel + delta.x;
+    pos_y = current_y_rel + delta.y;
+    if (pos_x < 0.0f) pos_x = 0.0f;
+    if (pos_y < 0.0f) pos_y = 0.0f;
+    if (pos_x + props->control_window_width_ > container_w)
+      pos_x = container_w - props->control_window_width_;
+    if (pos_y + props->control_window_height_ > container_h)
+      pos_y = container_h - props->control_window_height_;
+  } else if (props->reset_control_bar_pos_) {
+    float new_cursor_pos_x = 0.0f;
+    float new_cursor_pos_y = 0.0f;
 
     // set control window pos
-    if (props->control_window_pos_.y + props->control_window_height_ >
-        stream_window_height_) {
-      pos_y = stream_window_height_ - props->control_window_height_;
-    } else if (props->control_window_pos_.y < y_boundary) {
-      pos_y = y_boundary;
+    float current_y_rel = props->control_window_pos_.y - container_pos.y;
+    if (current_y_rel + props->control_window_height_ > container_h) {
+      pos_y = container_h - props->control_window_height_;
+    } else if (current_y_rel < 0.0f) {
+      pos_y = 0.0f;
     } else {
-      pos_y = props->control_window_pos_.y;
+      pos_y = current_y_rel;
     }
 
     if (props->is_control_bar_in_left_) {
-      pos_x = 0;
+      pos_x = 0.0f;
     } else {
-      pos_x = stream_window_width_ - props->control_window_width_;
+      pos_x = container_w - props->control_window_width_;
     }
-
-    ImGui::SetNextWindowPos(ImVec2(pos_x, pos_y), ImGuiCond_Always);
 
     if (0 != props->mouse_diff_control_bar_pos_x_ &&
         0 != props->mouse_diff_control_bar_pos_y_) {
       // set cursor pos
-      new_cursor_pos_x = pos_x + props->mouse_diff_control_bar_pos_x_;
-      new_cursor_pos_y = pos_y + props->mouse_diff_control_bar_pos_y_;
+      new_cursor_pos_x =
+          container_pos.x + pos_x + props->mouse_diff_control_bar_pos_x_;
+      new_cursor_pos_y =
+          container_pos.y + pos_y + props->mouse_diff_control_bar_pos_y_;
 
       SDL_WarpMouseInWindow(stream_window_, (int)new_cursor_pos_x,
                             (int)new_cursor_pos_y);
@@ -94,12 +118,14 @@ int Render::ControlWindow(std::shared_ptr<SubStreamWindowProperties>& props) {
   } else if (!props->reset_control_bar_pos_ &&
                  ImGui::IsMouseReleased(ImGuiMouseButton_Left) ||
              props->control_window_width_is_changing_) {
-    if (props->control_window_pos_.x <= stream_window_width_ * 0.5f) {
-      if (props->control_window_pos_.y + props->control_window_height_ >
-          stream_window_height_) {
-        pos_y = stream_window_height_ - props->control_window_height_;
+    float current_x_rel = props->control_window_pos_.x - container_pos.x;
+    float current_y_rel = props->control_window_pos_.y - container_pos.y;
+    if (current_x_rel <= container_w * 0.5f) {
+      pos_x = 0.0f;
+      if (current_y_rel + props->control_window_height_ > container_h) {
+        pos_y = container_h - props->control_window_height_;
       } else {
-        pos_y = props->control_window_pos_.y;
+        pos_y = current_y_rel;
       }
 
       if (props->control_bar_expand_) {
@@ -118,47 +144,53 @@ int Render::ControlWindow(std::shared_ptr<SubStreamWindowProperties>& props) {
         }
       }
       props->is_control_bar_in_left_ = true;
-    } else if (props->control_window_pos_.x > stream_window_width_ * 0.5f) {
-      pos_x = 0;
-      pos_y =
-          (props->control_window_pos_.y >= y_boundary &&
-           props->control_window_pos_.y <=
-               stream_window_height_ - props->control_window_height_)
-              ? props->control_window_pos_.y
-              : (props->control_window_pos_.y <
-                         (fullscreen_button_pressed_ ? 0 : title_bar_height_)
-                     ? (fullscreen_button_pressed_ ? 0 : title_bar_height_)
-                     : (stream_window_height_ - props->control_window_height_));
+    } else if (current_x_rel > container_w * 0.5f) {
+      pos_x = container_w - props->control_window_width_;
+      pos_y = (current_y_rel >= 0.0f &&
+               current_y_rel <= container_h - props->control_window_height_)
+                  ? current_y_rel
+                  : (current_y_rel < 0.0f
+                         ? 0.0f
+                         : (container_h - props->control_window_height_));
 
       if (props->control_bar_expand_) {
         if (props->control_window_width_ >= props->control_window_max_width_) {
           props->control_window_width_ = props->control_window_max_width_;
           props->control_window_width_is_changing_ = false;
-          pos_x = stream_window_width_ - props->control_window_max_width_;
+          pos_x = container_w - props->control_window_max_width_;
         } else {
           props->control_window_width_is_changing_ = true;
-          pos_x = stream_window_width_ - props->control_window_width_;
+          pos_x = container_w - props->control_window_width_;
         }
       } else {
         if (props->control_window_width_ <= props->control_window_min_width_) {
           props->control_window_width_ = props->control_window_min_width_;
           props->control_window_width_is_changing_ = false;
-          pos_x = stream_window_width_ - props->control_window_min_width_;
+          pos_x = container_w - props->control_window_min_width_;
         } else {
           props->control_window_width_is_changing_ = true;
-          pos_x = stream_window_width_ - props->control_window_width_;
+          pos_x = container_w - props->control_window_width_;
         }
       }
       props->is_control_bar_in_left_ = false;
     }
 
-    if (props->control_window_pos_.y + props->control_window_height_ >
-        stream_window_height_) {
-      pos_y = stream_window_height_ - props->control_window_height_;
-    } else if (props->control_window_pos_.y < y_boundary) {
-      pos_y = y_boundary;
+    if (current_y_rel + props->control_window_height_ > container_h) {
+      pos_y = container_h - props->control_window_height_;
+    } else if (current_y_rel < 0.0f) {
+      pos_y = 0.0f;
     }
-    ImGui::SetNextWindowPos(ImVec2(pos_x, pos_y), ImGuiCond_Always);
+  } else {
+    float current_x_rel = props->control_window_pos_.x - container_pos.x;
+    float current_y_rel = props->control_window_pos_.y - container_pos.y;
+    pos_x = current_x_rel;
+    pos_y = current_y_rel;
+    if (pos_x < 0.0f) pos_x = 0.0f;
+    if (pos_y < 0.0f) pos_y = 0.0f;
+    if (pos_x + props->control_window_width_ > container_w)
+      pos_x = container_w - props->control_window_width_;
+    if (pos_y + props->control_window_height_ > container_h)
+      pos_y = container_h - props->control_window_height_;
   }
 
   if (props->control_bar_expand_ && props->control_window_height_is_changing_) {
@@ -180,10 +212,20 @@ int Render::ControlWindow(std::shared_ptr<SubStreamWindowProperties>& props) {
   }
 
   std::string control_window_title = props->remote_id_ + "ControlWindow";
-  ImGui::Begin(control_window_title.c_str(), nullptr,
-               ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                   ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoDocking);
-  ImGui::PopStyleVar();
+
+  ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+  static bool a, b, c, d, e;
+  float child_cursor_x = pos_x;
+  float child_cursor_y = pos_y;
+  ImGui::SetCursorPos(ImVec2(child_cursor_x, child_cursor_y));
+
+  std::string control_child_window_title =
+      props->remote_id_ + "ControlChildWindow";
+  ImGui::BeginChild(
+      control_child_window_title.c_str(),
+      ImVec2(props->control_window_width_, props->control_window_height_),
+      ImGuiChildFlags_Border, ImGuiWindowFlags_NoDecoration);
+  ImGui::PopStyleColor();
 
   props->control_window_pos_ = ImGui::GetWindowPos();
   SDL_GetMouseState(&props->mouse_pos_x_, &props->mouse_pos_y_);
@@ -192,29 +234,24 @@ int Render::ControlWindow(std::shared_ptr<SubStreamWindowProperties>& props) {
   props->mouse_diff_control_bar_pos_y_ =
       props->mouse_pos_y_ - props->control_window_pos_.y;
 
-  ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
-  static bool a, b, c, d, e;
-  ImGui::SetNextWindowPos(
-      ImVec2(props->is_control_bar_in_left_
-                 ? props->control_window_pos_.x - props->control_window_width_
-                 : props->control_window_pos_.x,
-             props->control_window_pos_.y),
-      ImGuiCond_Always);
-
-  std::string control_child_window_title =
-      props->remote_id_ + "ControlChildWindow";
-  ImGui::BeginChild(control_child_window_title.c_str(),
-                    ImVec2(props->control_window_width_ * 2.0f,
-                           props->control_window_height_),
-                    ImGuiChildFlags_Border, ImGuiWindowFlags_NoDecoration);
-  ImGui::PopStyleColor();
+  if (props->control_window_pos_.y < container_pos.y ||
+      props->control_window_pos_.y + props->control_window_height_ >
+          (container_pos.y + container_h) ||
+      props->control_window_pos_.x < container_pos.x ||
+      props->control_window_pos_.x + props->control_window_width_ >
+          (container_pos.x + container_w)) {
+    ImGui::ClearActiveID();
+    props->reset_control_bar_pos_ = true;
+    props->mouse_diff_control_bar_pos_x_ = 0;
+    props->mouse_diff_control_bar_pos_y_ = 0;
+  }
 
   ControlBar(props);
   props->control_bar_hovered_ = ImGui::IsWindowHovered();
 
   ImGui::EndChild();
   ImGui::End();
-  ImGui::PopStyleVar(4);
+  ImGui::PopStyleVar(3);
   ImGui::PopStyleColor();
 
   return 0;

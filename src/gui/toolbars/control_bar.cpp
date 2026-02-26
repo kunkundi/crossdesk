@@ -141,7 +141,7 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
   if (props->control_bar_expand_) {
     ImGui::SetCursorPosX(props->is_control_bar_in_left_
-                             ? props->control_window_width_ * 1.03f
+                             ? props->control_window_width_ * 0.03f
                              : props->control_window_width_ * 0.17f);
 
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
@@ -359,13 +359,11 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
     ImGui::SameLine();
   }
 
-  float expand_button_pos_x =
-      props->control_bar_expand_ ? (props->is_control_bar_in_left_
-                                        ? props->control_window_width_ * 1.917f
-                                        : props->control_window_width_ * 0.03f)
-                                 : (props->is_control_bar_in_left_
-                                        ? props->control_window_width_ * 1.02f
-                                        : props->control_window_width_ * 0.23f);
+  float expand_button_pos_x = props->control_bar_expand_
+                                  ? (props->is_control_bar_in_left_
+                                         ? props->control_window_width_ * 0.917f
+                                         : props->control_window_width_ * 0.03f)
+                                  : props->control_window_width_ * 0.11f;
 
   ImGui::SetCursorPosX(expand_button_pos_x);
 
@@ -397,9 +395,7 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
 }
 
 int Render::NetTrafficStats(std::shared_ptr<SubStreamWindowProperties>& props) {
-  ImGui::SetCursorPos(ImVec2(props->is_control_bar_in_left_
-                                 ? props->control_window_width_ * 1.02f
-                                 : props->control_window_width_ * 0.02f,
+  ImGui::SetCursorPos(ImVec2(props->control_window_width_ * 0.048f,
                              props->control_window_min_height_));
   ImGui::SetWindowFontScale(0.5f);
   if (ImGui::BeginTable("NetTrafficStats", 4, ImGuiTableFlags_BordersH,

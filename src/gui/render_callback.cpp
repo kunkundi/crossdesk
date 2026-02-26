@@ -104,11 +104,10 @@ int Render::ProcessMouseEvent(const SDL_Event& event) {
       }
 
       if (props->control_bar_hovered_ || props->display_selectable_hovered_) {
-        remote_action.m.flag = MouseFlag::move;
+        break;
       }
-
-      std::string msg = remote_action.to_json();
       if (props->peer_) {
+        std::string msg = remote_action.to_json();
         SendDataFrame(props->peer_, msg.c_str(), msg.size(),
                       props->data_label_.c_str());
       }
@@ -154,8 +153,11 @@ int Render::ProcessMouseEvent(const SDL_Event& event) {
           (float)(last_mouse_event.button.y - props->stream_render_rect_.y) /
           render_height;
 
-      std::string msg = remote_action.to_json();
+      if (props->control_bar_hovered_) {
+        continue;
+      }
       if (props->peer_) {
+        std::string msg = remote_action.to_json();
         SendDataFrame(props->peer_, msg.c_str(), msg.size(),
                       props->data_label_.c_str());
       }
@@ -448,9 +450,9 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
             const double bps =
                 (static_cast<double>(delta_bytes) * 8.0) / delta_seconds;
             if (bps > 0.0) {
-              const double capped = (std::min)(
-                  bps,
-                  static_cast<double>((std::numeric_limits<uint32_t>::max)()));
+              const double capped =
+                  (std::min)(bps, static_cast<double>(
+                                      (std::numeric_limits<uint32_t>::max)()));
               estimated_rate_bps = static_cast<uint32_t>(capped);
             }
           }
