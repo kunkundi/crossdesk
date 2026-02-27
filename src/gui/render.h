@@ -622,10 +622,10 @@ class Render {
   char self_hosted_id_[17] = "";
   char self_hosted_user_id_[17] = "";
   int language_button_value_ = 0;
-  int video_quality_button_value_ = 0;
+  int video_quality_button_value_ = 2;
   int video_frame_rate_button_value_ = 1;
   int video_encode_format_button_value_ = 0;
-  bool enable_hardware_video_codec_ = false;
+  bool enable_hardware_video_codec_ = true;
   bool enable_turn_ = true;
   bool enable_srtp_ = false;
   char signal_server_ip_[256] = "api.crossdesk.cn";
