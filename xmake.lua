@@ -39,7 +39,7 @@ if is_os("windows") then
     add_requires("libyuv", "miniaudio 0.11.21")
     add_links("Shell32", "windowsapp", "dwmapi", "User32", "kernel32",
         "SDL3-static", "gdi32", "winmm", "setupapi", "version",
-        "Imm32", "iphlpapi")
+        "Imm32", "iphlpapi", "d3d11", "dxgi")
     add_cxflags("/WX")
     set_runtimes("MT")
 elseif is_os("linux") then

@@ -8,7 +8,7 @@
 #define _SCREEN_CAPTURER_FACTORY_H_
 
 #ifdef _WIN32
-#include "screen_capturer_wgc.h"
+#include "screen_capturer_win.h"
 #elif __linux__
 #include "screen_capturer_x11.h"
 #elif __APPLE__
@@ -25,7 +25,7 @@ class ScreenCapturerFactory {
  public:
   ScreenCapturer* Create() {
 #ifdef _WIN32
-    return new ScreenCapturerWgc();
+    return new ScreenCapturerWin();
 #elif __linux__
     return new ScreenCapturerX11();
 #elif __APPLE__
