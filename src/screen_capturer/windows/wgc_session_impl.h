@@ -79,6 +79,7 @@ class WgcSessionImpl : public WgcSession {
   bool is_initialized_ = false;
   bool is_running_ = false;
   bool is_paused_ = false;
+  bool last_show_cursor_ = false;
 
   wgc_session_observer* observer_ = nullptr;
 

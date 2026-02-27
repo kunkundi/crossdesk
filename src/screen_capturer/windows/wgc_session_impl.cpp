@@ -7,6 +7,8 @@
 #include <iostream>
 #include <memory>
 
+#include "rd_log.h"
+
 #define CHECK_INIT                            \
   if (!is_initialized_) {                     \
     std::cout << "AE_NEED_INIT" << std::endl; \
@@ -64,6 +66,7 @@ int WgcSessionImpl::Start(bool show_cursor) {
 
   CHECK_INIT;
   try {
+    last_show_cursor_ = show_cursor;
     if (!capture_session_) {
       auto current_size = capture_item_.Size();
       capture_framepool_ =
@@ -89,13 +92,12 @@ int WgcSessionImpl::Start(bool show_cursor) {
     // we need to test the performance later
     // loop_ = std::thread(std::bind(&WgcSessionImpl::message_func, this));
 
-    capture_session_.StartCapture();
-
     capture_session_.IsCursorCaptureEnabled(show_cursor);
+    capture_session_.StartCapture();
 
     error = 0;
   } catch (winrt::hresult_error) {
-    std::cout << "AE_WGC_CREATE_CAPTURER_FAILED" << std::endl;
+    LOG_ERROR("AE_WGC_CREATE_CAPTURER_FAILED");
     return 86;
   } catch (...) {
     return 86;
@@ -246,8 +248,15 @@ void WgcSessionImpl::OnFrame(
       auto frame_captured =
           GetDXGIInterfaceFromObject<ID3D11Texture2D>(frame.Surface());
 
-      if (!d3d11_texture_mapped_ || is_new_size)
-        CreateMappedTexture(frame_captured);
+      if (!d3d11_texture_mapped_ || is_new_size) {
+        HRESULT tex_hr = CreateMappedTexture(frame_captured);
+        if (FAILED(tex_hr)) {
+          OutputDebugStringW(
+              (L"CreateMappedTexture failed: " + std::to_wstring(tex_hr))
+                  .c_str());
+          return;
+        }
+      }
 
       d3d11_device_context_->CopyResource(d3d11_texture_mapped_.get(),
                                           frame_captured.get());
@@ -262,6 +271,7 @@ void WgcSessionImpl::OnFrame(
       if (FAILED(hr)) {
         OutputDebugStringW(
             (L"map resource failed: " + std::to_wstring(hr)).c_str());
+        return;
       }
 
       // copy data from map_result.pData
@@ -290,7 +300,24 @@ void WgcSessionImpl::OnFrame(
 void WgcSessionImpl::OnClosed(
     winrt::Windows::Graphics::Capture::GraphicsCaptureItem const&,
     winrt::Windows::Foundation::IInspectable const&) {
-  OutputDebugStringW(L"WgcSessionImpl::OnClosed");
+  std::lock_guard locker(lock_);
+  try {
+    CleanUp();
+    is_initialized_ = false;
+    if (Initialize() == 0) {
+      int ret = Start(last_show_cursor_);
+      if (ret == 0) {
+        OutputDebugStringW(L"WgcSessionImpl::OnClosed: auto recovered");
+      } else {
+        OutputDebugStringW(L"WgcSessionImpl::OnClosed: recover Start failed");
+      }
+    } else {
+      OutputDebugStringW(
+          L"WgcSessionImpl::OnClosed: recover Initialize failed");
+    }
+  } catch (...) {
+    OutputDebugStringW(L"WgcSessionImpl::OnClosed: exception during recover");
+  }
 }
 
 int WgcSessionImpl::Initialize() {
@@ -313,7 +340,7 @@ int WgcSessionImpl::Initialize() {
     d3d11_device->GetImmediateContext(d3d11_device_context_.put());
 
   } catch (winrt::hresult_error) {
-    std::cout << "AE_WGC_CREATE_CAPTURER_FAILED" << std::endl;
+    LOG_ERROR("AE_WGC_CREATE_CAPTURER_FAILED");
     return 86;
   } catch (...) {
     return 86;

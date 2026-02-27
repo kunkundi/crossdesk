@@ -56,8 +56,6 @@ BOOL WINAPI EnumMonitorProc(HMONITOR hmonitor, [[maybe_unused]] HDC hdc,
     }
   }
 
-  if (monitor_info_.dwFlags == DISPLAY_DEVICE_MIRRORING_DRIVER) return true;
-
   return true;
 }
 
@@ -165,6 +163,8 @@ int ScreenCapturerWgc::Start(bool show_cursor) {
     return 4;
   }
 
+  bool any_started = false;
+  int last_error = 0;
   for (int i = 0; i < sessions_.size(); i++) {
     if (sessions_[i].inited_ == false) {
       LOG_ERROR("Session {} not inited", i);
@@ -174,17 +174,27 @@ int ScreenCapturerWgc::Start(bool show_cursor) {
     if (sessions_[i].running_) {
       LOG_ERROR("Session {} is already running", i);
     } else {
-      sessions_[i].session_->Start(show_cursor);
+      int ret = sessions_[i].session_->Start(show_cursor);
+      if (ret != 0) {
+        LOG_ERROR("Session {} start failed, ret={}", i, ret);
+        last_error = ret;
+        continue;
+      }
 
       if (i != 0) {
         sessions_[i].session_->Pause();
         sessions_[i].paused_ = true;
       }
       sessions_[i].running_ = true;
+      any_started = true;
     }
-    running_ = true;
+    running_ = running_ || any_started;
   }
 
+  if (!any_started) {
+    LOG_ERROR("WGC: no session started successfully");
+    return last_error != 0 ? last_error : -1;
+  }
   return 0;
 }
 

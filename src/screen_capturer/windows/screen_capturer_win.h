@@ -8,6 +8,9 @@
 #define _SCREEN_CAPTURER_WIN_H_
 
 #include <memory>
+#include <mutex>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "screen_capturer.h"
@@ -36,7 +39,16 @@ class ScreenCapturerWin : public ScreenCapturer {
   std::unique_ptr<ScreenCapturer> impl_;
   int fps_ = 60;
   cb_desktop_data cb_;
+  cb_desktop_data cb_orig_;
+
+  std::unordered_map<void*, std::string> handle_to_canonical_;
+  std::unordered_map<std::string, std::string> label_alias_;
+  std::mutex alias_mutex_;
+  std::vector<DisplayInfo> canonical_displays_;
+  std::unordered_set<std::string> canonical_labels_;
+
+  void BuildCanonicalFromImpl();
+  void RebuildAliasesFromImpl();
 };
 }  // namespace crossdesk
-
 #endif

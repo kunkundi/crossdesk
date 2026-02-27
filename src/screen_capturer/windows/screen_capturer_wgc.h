@@ -57,8 +57,8 @@ class ScreenCapturerWgc : public ScreenCapturer,
 
   std::vector<WgcSessionInfo> sessions_;
 
-  std::atomic_bool running_;
-  std::atomic_bool inited_;
+  std::atomic_bool running_{false};
+  std::atomic_bool inited_{false};
 
   int fps_ = 60;
 
