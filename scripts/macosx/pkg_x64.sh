@@ -138,6 +138,39 @@ productbuild \
 
 echo "PKG package created: ${PKG_NAME}"
 
+# Set custom icon for PKG file
+if [ -f "${ICON_PATH}" ]; then
+    echo "Setting custom icon for PKG file..."
+    # Create a temporary iconset from icns
+    TEMP_ICON_DIR=$(mktemp -d)
+    cp "${ICON_PATH}" "${TEMP_ICON_DIR}/icon.icns"
+    
+    # Use sips to create a png from icns for the icon
+    sips -s format png "${TEMP_ICON_DIR}/icon.icns" --out "${TEMP_ICON_DIR}/icon.png" 2>/dev/null || true
+    
+    # Method: Use osascript to set file icon (works on macOS)
+    osascript <<APPLESCRIPT
+use framework "Foundation"
+use framework "AppKit"
+
+set iconPath to POSIX file "${TEMP_ICON_DIR}/icon.icns"
+set targetPath to POSIX file "$(pwd)/${PKG_NAME}"
+
+set iconImage to current application's NSImage's alloc()'s initWithContentsOfFile:(POSIX path of iconPath)
+set workspace to current application's NSWorkspace's sharedWorkspace()
+workspace's setIcon:iconImage forFile:(POSIX path of targetPath) options:0
+APPLESCRIPT
+
+    if [ $? -eq 0 ]; then
+        echo "Custom icon set successfully for ${PKG_NAME}"
+    else
+        echo "Warning: Failed to set custom icon (this is optional)"
+    fi
+    
+    rm -rf "${TEMP_ICON_DIR}"
+fi
+echo "Set icon finished"
+
 rm -rf build_pkg_temp build_pkg_scripts ${APP_BUNDLE}
 
 echo "PKG package created successfully."
