@@ -568,13 +568,6 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
           remote_action.i.host_name, remote_action.i.host_name_size);
       LOG_INFO("Remote hostname: [{}]",
                render->connection_host_names_[remote_id]);
-
-      for (int i = 0; i < remote_action.i.display_num; i++) {
-        render->display_info_list_.push_back(
-            DisplayInfo(remote_action.i.display_list[i],
-                        remote_action.i.left[i], remote_action.i.top[i],
-                        remote_action.i.right[i], remote_action.i.bottom[i]));
-      }
       FreeRemoteAction(remote_action);
     }
   } else {
