@@ -6,6 +6,7 @@
 #include <fstream>
 #include <limits>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "clipboard.h"
 #include "device_controller.h"
@@ -19,6 +20,47 @@
 #define NV12_BUFFER_SIZE 1280 * 720 * 3 / 2
 
 namespace crossdesk {
+
+void Render::OnSignalMessageCb(const char* message, size_t size,
+                               void* user_data) {
+  Render* render = (Render*)user_data;
+  if (!render || !message || size == 0) {
+    return;
+  }
+  std::string s(message, size);
+  auto j = nlohmann::json::parse(s, nullptr, false);
+  if (j.is_discarded() || !j.contains("type") || !j["type"].is_string()) {
+    return;
+  }
+  std::string type = j["type"].get<std::string>();
+  if (type == "presence") {
+    if (j.contains("devices") && j["devices"].is_array()) {
+      for (auto& dev : j["devices"]) {
+        if (!dev.is_object()) {
+          continue;
+        }
+        if (!dev.contains("id") || !dev["id"].is_string()) {
+          continue;
+        }
+        if (!dev.contains("online") || !dev["online"].is_boolean()) {
+          continue;
+        }
+        std::string id = dev["id"].get<std::string>();
+        bool online = dev["online"].get<bool>();
+        render->device_presence_.SetOnline(id, online);
+      }
+    }
+  } else if (type == "presence_update") {
+    if (j.contains("id") && j["id"].is_string() && j.contains("online") &&
+        j["online"].is_boolean()) {
+      std::string id = j["id"].get<std::string>();
+      bool online = j["online"].get<bool>();
+      if (!id.empty()) {
+        render->device_presence_.SetOnline(id, online);
+      }
+    }
+  }
+}
 
 int Render::SendKeyCommand(int key_code, bool is_down) {
   RemoteAction remote_action;

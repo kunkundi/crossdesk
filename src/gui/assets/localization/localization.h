@@ -216,6 +216,11 @@ static std::vector<std::string> connection_mode_direct = {
     reinterpret_cast<const char*>(u8"直连"), "Direct"};
 static std::vector<std::string> connection_mode_relay = {
     reinterpret_cast<const char*>(u8"中继"), "Relay"};
+static std::vector<std::string> online = {
+    reinterpret_cast<const char*>(u8"在线"), "Online"};
+static std::vector<std::string> offline = {
+    reinterpret_cast<const char*>(u8"离线"), "Offline"};
+
 #if _WIN32
 static std::vector<LPCWSTR> exit_program = {L"退出", L"Exit"};
 #endif

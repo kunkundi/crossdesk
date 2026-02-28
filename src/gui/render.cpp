@@ -810,6 +810,7 @@ int Render::CreateConnectionPeer() {
   params_.on_receive_video_frame = OnReceiveVideoBufferCb;
 
   params_.on_signal_status = OnSignalStatusCb;
+  params_.on_signal_message = OnSignalMessageCb;
   params_.on_connection_status = OnConnectionStatusCb;
   params_.on_net_status_report = OnNetStatusReport;
 
@@ -1593,6 +1594,7 @@ void Render::MainLoop() {
 
     UpdateLabels();
     HandleRecentConnections();
+    HandleConnectionStatusChange();
     HandleStreamWindow();
     HandleServerWindow();
 
@@ -1632,8 +1634,44 @@ void Render::HandleRecentConnections() {
         LOG_INFO("Load recent connection thumbnails");
       }
       reload_recent_connections_ = false;
+
+      recent_connection_ids_.clear();
+      for (const auto& conn : recent_connections_) {
+        recent_connection_ids_.push_back(conn.first);
+      }
+      need_to_send_recent_connections_ = true;
     }
   }
+}
+
+void Render::HandleConnectionStatusChange() {
+  if (signal_connected_ && peer_ && need_to_send_recent_connections_) {
+    if (!recent_connection_ids_.empty()) {
+      nlohmann::json j;
+      j["type"] = "recent_connections_presence";
+      j["user_id"] = client_id_;
+      j["devices"] = nlohmann::json::array();
+      for (const auto& id : recent_connection_ids_) {
+        std::string pure_id = id;
+        size_t pos_y = pure_id.find('Y');
+        size_t pos_n = pure_id.find('N');
+        size_t pos = std::string::npos;
+        if (pos_y != std::string::npos &&
+            (pos_n == std::string::npos || pos_y < pos_n)) {
+          pos = pos_y;
+        } else if (pos_n != std::string::npos) {
+          pos = pos_n;
+        }
+        if (pos != std::string::npos) {
+          pure_id = pure_id.substr(0, pos);
+        }
+        j["devices"].push_back(pure_id);
+      }
+      auto s = j.dump();
+      SendSignalMessage(peer_, s.data(), s.size());
+    }
+  }
+  need_to_send_recent_connections_ = false;
 }
 
 void Render::HandleStreamWindow() {

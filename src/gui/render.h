@@ -25,6 +25,7 @@
 #include "IconsFontAwesome6.h"
 #include "config_center.h"
 #include "device_controller_factory.h"
+#include "device_presence.h"
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_sdlrenderer3.h"
@@ -192,6 +193,7 @@ class Render {
   void UpdateLabels();
   void UpdateInteractions();
   void HandleRecentConnections();
+  void HandleConnectionStatusChange();
   void HandleStreamWindow();
   void HandleServerWindow();
   void Cleanup();
@@ -285,6 +287,9 @@ class Render {
 
   static void OnSignalStatusCb(SignalStatus status, const char* user_id,
                                size_t user_id_size, void* user_data);
+
+  static void OnSignalMessageCb(const char* message, size_t size,
+                                void* user_data);
 
   static void OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
                                    size_t user_id_size, void* user_data);
@@ -402,9 +407,12 @@ class Render {
   // recent connections
   std::vector<std::pair<std::string, Thumbnail::RecentConnection>>
       recent_connections_;
+  std::vector<std::string> recent_connection_ids_;
   int recent_connection_image_width_ = 160;
   int recent_connection_image_height_ = 90;
   uint32_t recent_connection_image_save_time_ = 0;
+  DevicePresence device_presence_;
+  bool need_to_send_recent_connections_ = true;
 
   // main window render
   SDL_Window* main_window_ = nullptr;
