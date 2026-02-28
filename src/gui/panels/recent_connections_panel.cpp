@@ -149,8 +149,10 @@ int Render::ShowRecentConnections() {
             ImVec2(circle_pos.x + 6.0f, circle_pos.y + 6.0f))) {
       ImGui::BeginTooltip();
       ImGui::SetWindowFontScale(0.5f);
-      ImGui::Text("%s", online ? localization::online[0].c_str()
-                               : localization::offline[0].c_str());
+      ImGui::Text(
+          "%s",
+          online ? localization::online[localization_language_index_].c_str()
+                 : localization::offline[localization_language_index_].c_str());
       ImGui::SetWindowFontScale(1.0f);
       ImGui::EndTooltip();
     }
@@ -181,7 +183,11 @@ int Render::ShowRecentConnections() {
       if (ImGui::IsItemHovered()) {
         ImGui::BeginTooltip();
         ImGui::SetWindowFontScale(0.5f);
-        ImGui::Text("%s", it.second.remote_host_name.c_str());
+        std::string display_host_name_with_presence =
+            it.second.remote_host_name + " " +
+            (online ? localization::online[localization_language_index_]
+                    : localization::offline[localization_language_index_]);
+        ImGui::Text("%s", display_host_name_with_presence.c_str());
         ImGui::SetWindowFontScale(1.0f);
         ImGui::EndTooltip();
       }
