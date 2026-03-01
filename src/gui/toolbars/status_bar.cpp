@@ -24,12 +24,12 @@ int Render::StatusBar() {
   ImVec2 dot_pos = ImVec2(status_bar_width * 0.025f,
                           io.DisplaySize.y * (1 - STATUS_BAR_HEIGHT * 0.5f));
   ImDrawList* draw_list = ImGui::GetWindowDrawList();
+  draw_list->AddCircleFilled(dot_pos, status_bar_height * 0.25f,
+                             ImColor(1.0f, 1.0f, 1.0f), 100);
   draw_list->AddCircleFilled(dot_pos, status_bar_height * 0.2f,
                              ImColor(signal_connected_ ? 0.0f : 1.0f,
                                      signal_connected_ ? 1.0f : 0.0f, 0.0f),
                              100);
-  draw_list->AddCircle(dot_pos, status_bar_height * 0.25f,
-                       ImColor(1.0f, 1.0f, 1.0f), 100);
 
   ImGui::SetWindowFontScale(0.6f);
   draw_list->AddText(

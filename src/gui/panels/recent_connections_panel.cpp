@@ -138,15 +138,17 @@ int Render::ShowRecentConnections() {
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     ImVec2 circle_pos =
         ImVec2(image_screen_pos.x + recent_connection_image_width * 0.07f,
-               image_screen_pos.y + recent_connection_image_height * 0.13f);
+               image_screen_pos.y + recent_connection_image_height * 0.12f);
     ImU32 fill_color =
         online ? IM_COL32(0, 255, 0, 255) : IM_COL32(140, 140, 140, 255);
-    ImU32 border_color = IM_COL32(255, 255, 255, 230);
-    draw_list->AddCircleFilled(circle_pos, 6.0f, fill_color);
-    draw_list->AddCircle(circle_pos, 6.0f, border_color, 100, 2.0f);
+    ImU32 border_color = IM_COL32(255, 255, 255, 255);
+    float dot_radius = recent_connection_image_height * 0.06f;
+    draw_list->AddCircleFilled(circle_pos, dot_radius * 1.25f, border_color,
+                               100);
+    draw_list->AddCircleFilled(circle_pos, dot_radius, fill_color, 100);
     if (ImGui::IsMouseHoveringRect(
-            ImVec2(circle_pos.x - 6.0f, circle_pos.y - 6.0f),
-            ImVec2(circle_pos.x + 6.0f, circle_pos.y + 6.0f))) {
+            ImVec2(circle_pos.x - dot_radius, circle_pos.y - dot_radius),
+            ImVec2(circle_pos.x + dot_radius, circle_pos.y + dot_radius))) {
       ImGui::BeginTooltip();
       ImGui::SetWindowFontScale(0.5f);
       ImGui::Text(
