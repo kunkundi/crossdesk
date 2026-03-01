@@ -238,8 +238,14 @@ int Render::ShowRecentConnections() {
       if (ImGui::Button(connect_to_this_connection_button_name.c_str(),
                         ImVec2(recent_connection_button_width,
                                recent_connection_button_height))) {
-        ConnectTo(it.second.remote_id, it.second.password.c_str(),
-                  it.second.remember_password);
+        if (online) {
+          ConnectTo(it.second.remote_id, it.second.password.c_str(),
+                    it.second.remember_password);
+        } else {
+          show_offline_warning_window_ = true;
+          offline_warning_text_ =
+              localization::device_offline[localization_language_index_];
+        }
       }
     }
     ImGui::SetWindowFontScale(1.0f);
@@ -270,6 +276,9 @@ int Render::ShowRecentConnections() {
   if (show_confirm_delete_connection_) {
     ConfirmDeleteConnection();
   }
+  if (show_offline_warning_window_) {
+    OfflineWarningWindow();
+  }
 
   return 0;
 }
@@ -282,7 +291,7 @@ int Render::ConfirmDeleteConnection() {
       ImVec2(io.DisplaySize.x * 0.33f, io.DisplaySize.y * 0.33f));
 
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
-  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0, 1.0, 1.0, 1.0));
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
 
@@ -321,6 +330,47 @@ int Render::ConfirmDeleteConnection() {
   ImGui::SetCursorPosX((connection_status_window_width - text_width) * 0.5f);
   ImGui::SetCursorPosY(connection_status_window_height * 0.2f);
   ImGui::Text("%s", text.c_str());
+  ImGui::SetWindowFontScale(1.0f);
+
+  ImGui::End();
+  ImGui::PopStyleVar();
+  return 0;
+}
+
+int Render::OfflineWarningWindow() {
+  ImGuiIO& io = ImGui::GetIO();
+  ImGui::SetNextWindowPos(
+      ImVec2(io.DisplaySize.x * 0.33f, io.DisplaySize.y * 0.33f));
+  ImGui::SetNextWindowSize(
+      ImVec2(io.DisplaySize.x * 0.33f, io.DisplaySize.y * 0.33f));
+
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
+
+  ImGui::Begin("OfflineWarningWindow", nullptr,
+               ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                   ImGuiWindowFlags_NoSavedSettings);
+  ImGui::PopStyleVar(2);
+  ImGui::PopStyleColor();
+
+  auto window_width = ImGui::GetWindowSize().x;
+  auto window_height = ImGui::GetWindowSize().y;
+
+  ImGui::SetCursorPosX(window_width * 0.43f);
+  ImGui::SetCursorPosY(window_height * 0.67f);
+  ImGui::SetWindowFontScale(0.5f);
+  if (ImGui::Button(localization::ok[localization_language_index_].c_str()) ||
+      ImGui::IsKeyPressed(ImGuiKey_Enter) ||
+      ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+    show_offline_warning_window_ = false;
+  }
+
+  auto text_width = ImGui::CalcTextSize(offline_warning_text_.c_str()).x;
+  ImGui::SetCursorPosX((window_width - text_width) * 0.5f);
+  ImGui::SetCursorPosY(window_height * 0.2f);
+  ImGui::Text("%s", offline_warning_text_.c_str());
   ImGui::SetWindowFontScale(1.0f);
 
   ImGui::End();

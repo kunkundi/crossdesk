@@ -257,6 +257,7 @@ class Render {
   int DrawStreamWindow();
   int DrawServerWindow();
   int ConfirmDeleteConnection();
+  int OfflineWarningWindow();
   int NetTrafficStats(std::shared_ptr<SubStreamWindowProperties>& props);
   void DrawConnectionStatusText(
       std::shared_ptr<SubStreamWindowProperties>& props);
@@ -577,9 +578,11 @@ class Render {
   bool is_server_mode_ = false;
   bool reload_recent_connections_ = true;
   bool show_confirm_delete_connection_ = false;
+  bool show_offline_warning_window_ = false;
   bool delete_connection_ = false;
   bool is_tab_bar_hovered_ = false;
   std::string delete_connection_name_ = "";
+  std::string offline_warning_text_ = "";
   bool re_enter_remote_id_ = false;
   double copy_start_time_ = 0;
   SignalStatus signal_status_ = SignalStatus::SignalClosed;

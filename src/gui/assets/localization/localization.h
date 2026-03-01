@@ -220,6 +220,8 @@ static std::vector<std::string> online = {
     reinterpret_cast<const char*>(u8"在线"), "Online"};
 static std::vector<std::string> offline = {
     reinterpret_cast<const char*>(u8"离线"), "Offline"};
+static std::vector<std::string> device_offline = {
+    reinterpret_cast<const char*>(u8"设备离线"), "Device Offline"};
 
 #if _WIN32
 static std::vector<LPCWSTR> exit_program = {L"退出", L"Exit"};
