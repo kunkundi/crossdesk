@@ -51,8 +51,8 @@ int Render::SelfHostedServerWindow() {
     {
       ImGui::SetWindowFontScale(0.5f);
       ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
-      ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
-      ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+      ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, window_rounding_);
+      ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, window_rounding_ * 0.5f);
 
       ImGui::Begin(localization::self_hosted_server_settings
                        [localization_language_index_]

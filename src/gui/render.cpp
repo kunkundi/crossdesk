@@ -938,6 +938,7 @@ int Render::CreateMainWindow() {
         (int)(server_window_width_default_ * dpi_scale_);
     server_window_normal_height_ =
         (int)(server_window_height_default_ * dpi_scale_);
+    window_rounding_ = window_rounding_default_ * dpi_scale_;
 
     SDL_SetWindowSize(main_window_, (int)main_window_width_,
                       (int)main_window_height_);
@@ -1297,7 +1298,7 @@ int Render::DrawMainWindow() {
 
   ImGuiIO& io = ImGui::GetIO();
   ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, window_rounding_);
 
   ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
   ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x, io.DisplaySize.y),

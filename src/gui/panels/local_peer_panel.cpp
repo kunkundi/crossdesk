@@ -17,7 +17,7 @@ int Render::LocalWindow() {
 
   ImGui::SetNextWindowPos(ImVec2(0.0f, io.DisplaySize.y * TITLE_BAR_HEIGHT),
                           ImGuiCond_Always);
-  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, window_rounding_ * 0.5f);
 
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
   ImGui::BeginChild("LocalDesktopWindow",
@@ -42,7 +42,7 @@ int Render::LocalWindow() {
         ImGuiCond_Always);
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(239.0f / 255, 240.0f / 255,
                                                    242.0f / 255, 1.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, window_rounding_ * 1.5f);
     ImGui::BeginChild(
         "LocalDesktopPanel",
         ImVec2(local_window_width * 0.8f, local_window_height * 0.43f),
@@ -101,7 +101,7 @@ int Render::LocalWindow() {
             ImGuiCol_WindowBg,
             ImVec4(1.0f, 1.0f, 1.0f, 1.0f - (float)time_duration));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, window_rounding_);
         ImGui::Begin("ConnectionStatusWindow", nullptr,
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                          ImGuiWindowFlags_NoSavedSettings);
@@ -177,10 +177,11 @@ int Render::LocalWindow() {
         ImGui::SetNextWindowSize(
             ImVec2(io.DisplaySize.x * 0.33f, io.DisplaySize.y * 0.33f));
 
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding,
+                            window_rounding_ * 0.5f);
         ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.0, 1.0, 1.0, 1.0));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, window_rounding_);
 
         ImGui::Begin("ResetPasswordWindow", nullptr,
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |

@@ -49,7 +49,7 @@ int Render::ServerWindow() {
   ImGui::SetNextWindowSize(ImVec2(server_window_width_, server_window_height_),
                            ImGuiCond_Always);
   ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, window_rounding_);
   ImGui::Begin("##server_window", nullptr,
                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                    ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
@@ -61,7 +61,7 @@ int Render::ServerWindow() {
 
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 0.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, window_rounding_);
   ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
   ImGui::BeginChild(
       "ServerTitleBar",
@@ -358,7 +358,7 @@ int Render::RemoteClientInfoWindow() {
   ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1.0f, 0.0f, 0.0f, 1.0f));
   ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
   ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.0f, 0.5f, 0.5f, 1.0f));
-  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 5.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, window_rounding_);
   ImGui::SetWindowFontScale(font_scale);
   if (ImGui::Button(ICON_FA_XMARK, ImVec2(close_connection_button_width,
                                           close_connection_button_height))) {

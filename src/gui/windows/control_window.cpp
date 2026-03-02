@@ -43,9 +43,9 @@ int Render::ControlWindow(std::shared_ptr<SubStreamWindowProperties>& props) {
   }
 
   ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 10.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, window_rounding_ * 1.5f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, window_rounding_ * 1.5f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
 
   float y_boundary = fullscreen_button_pressed_ ? 0.0f : title_bar_height_;

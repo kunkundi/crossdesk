@@ -138,7 +138,7 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
   float line_padding = title_bar_height_ * 0.12f;
   float line_thickness = title_bar_height_ * 0.07f;
 
-  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, window_rounding_ * 0.5f);
   if (props->control_bar_expand_) {
     ImGui::SetCursorPosX(props->is_control_bar_in_left_
                              ? props->control_window_width_ * 0.03f

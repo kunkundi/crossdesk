@@ -543,6 +543,8 @@ class Render {
   int server_window_normal_height_ = 150;
   float server_window_dpi_scaling_w_ = 1.0f;
   float server_window_dpi_scaling_h_ = 1.0f;
+  float window_rounding_ = 6.0f;
+  float window_rounding_default_ = 6.0f;
 
   // server window collapsed mode
   bool server_window_collapsed_ = false;

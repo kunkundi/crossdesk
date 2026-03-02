@@ -18,7 +18,7 @@ int Render::RemoteWindow() {
   ImGui::SetNextWindowPos(
       ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * TITLE_BAR_HEIGHT),
       ImGuiCond_Always);
-  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, window_rounding_ * 0.5f);
 
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
   ImGui::BeginChild("RemoteDesktopWindow",
