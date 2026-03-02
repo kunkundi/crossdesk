@@ -134,6 +134,17 @@ int Render::ShowRecentConnections() {
     ImGui::Image(
         (ImTextureID)(intptr_t)it.second.texture,
         ImVec2(recent_connection_image_width, recent_connection_image_height));
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      ImGui::SetWindowFontScale(0.5f);
+      std::string display_host_name_with_presence =
+          it.second.remote_host_name + " " +
+          (online ? localization::online[localization_language_index_]
+                  : localization::offline[localization_language_index_]);
+      ImGui::Text("%s", display_host_name_with_presence.c_str());
+      ImGui::SetWindowFontScale(1.0f);
+      ImGui::EndTooltip();
+    }
 
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     ImVec2 circle_pos =
@@ -146,18 +157,6 @@ int Render::ShowRecentConnections() {
     draw_list->AddCircleFilled(circle_pos, dot_radius * 1.25f, border_color,
                                100);
     draw_list->AddCircleFilled(circle_pos, dot_radius, fill_color, 100);
-    if (ImGui::IsMouseHoveringRect(
-            ImVec2(circle_pos.x - dot_radius, circle_pos.y - dot_radius),
-            ImVec2(circle_pos.x + dot_radius, circle_pos.y + dot_radius))) {
-      ImGui::BeginTooltip();
-      ImGui::SetWindowFontScale(0.5f);
-      ImGui::Text(
-          "%s",
-          online ? localization::online[localization_language_index_].c_str()
-                 : localization::offline[localization_language_index_].c_str());
-      ImGui::SetWindowFontScale(1.0f);
-      ImGui::EndTooltip();
-    }
 
     // remote id display button
     {
@@ -181,18 +180,6 @@ int Render::ShowRecentConnections() {
       ImGui::Text("%s", it.second.remote_id.c_str());
       ImGui::SetWindowFontScale(1.0f);
       ImGui::PopStyleColor(3);
-
-      if (ImGui::IsItemHovered()) {
-        ImGui::BeginTooltip();
-        ImGui::SetWindowFontScale(0.5f);
-        std::string display_host_name_with_presence =
-            it.second.remote_host_name + " " +
-            (online ? localization::online[localization_language_index_]
-                    : localization::offline[localization_language_index_]);
-        ImGui::Text("%s", display_host_name_with_presence.c_str());
-        ImGui::SetWindowFontScale(1.0f);
-        ImGui::EndTooltip();
-      }
     }
 
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0.2f));
