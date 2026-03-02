@@ -32,6 +32,7 @@ class ScreenCapturerWin : public ScreenCapturer {
   int Resume(int monitor_index) override;
 
   int SwitchTo(int monitor_index) override;
+  int ResetToInitialMonitor() override;
 
   std::vector<DisplayInfo> GetDisplayInfoList() override;
 

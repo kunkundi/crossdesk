@@ -147,6 +147,7 @@ int ScreenCapturerWgc::Init(const int fps, cb_desktop_data cb) {
   LOG_INFO("Default on monitor {}:{}", monitor_index_,
            display_info_list_[monitor_index_].name);
 
+  initial_monitor_index_ = monitor_index_;
   return 0;
 }
 
@@ -267,6 +268,26 @@ int ScreenCapturerWgc::SwitchTo(int monitor_index) {
   return 0;
 }
 
+int ScreenCapturerWgc::ResetToInitialMonitor() {
+  if (display_info_list_.empty()) return -1;
+  if (initial_monitor_index_ < 0 ||
+      initial_monitor_index_ >= static_cast<int>(display_info_list_.size())) {
+    return -1;
+  }
+  if (monitor_index_ == initial_monitor_index_) {
+    return 0;
+  }
+  if (running_) {
+    Pause(monitor_index_);
+  }
+  monitor_index_ = initial_monitor_index_;
+  LOG_INFO("Reset to initial monitor {}:{}", monitor_index_,
+           display_info_list_[monitor_index_].name);
+  if (running_) {
+    Resume(monitor_index_);
+  }
+  return 0;
+}
 void ScreenCapturerWgc::OnFrame(const WgcSession::wgc_session_frame& frame,
                                 int id) {
   if (!running_ || !on_data_) {

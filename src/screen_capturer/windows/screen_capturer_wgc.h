@@ -34,6 +34,7 @@ class ScreenCapturerWgc : public ScreenCapturer,
   std::vector<DisplayInfo> GetDisplayInfoList() { return display_info_list_; }
 
   int SwitchTo(int monitor_index);
+  int ResetToInitialMonitor() override;
 
   void OnFrame(const WgcSession::wgc_session_frame& frame, int id);
 
@@ -45,6 +46,7 @@ class ScreenCapturerWgc : public ScreenCapturer,
   MONITORINFOEX monitor_info_;
   std::vector<DisplayInfo> display_info_list_;
   int monitor_index_ = 0;
+  int initial_monitor_index_ = 0;
 
  private:
   class WgcSessionInfo {

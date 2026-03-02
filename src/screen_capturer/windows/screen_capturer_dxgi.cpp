@@ -56,6 +56,7 @@ int ScreenCapturerDxgi::Init(const int fps, cb_desktop_data cb) {
   }
 
   monitor_index_ = 0;
+  initial_monitor_index_ = monitor_index_;
   return 0;
 }
 
@@ -125,6 +126,28 @@ int ScreenCapturerDxgi::SwitchTo(int monitor_index) {
   paused_ = false;
   LOG_INFO("DXGI: switched to monitor {}:{}", monitor_index_.load(),
            display_info_list_[monitor_index_].name);
+  return 0;
+}
+
+int ScreenCapturerDxgi::ResetToInitialMonitor() {
+  if (display_info_list_.empty()) return -1;
+  int target = initial_monitor_index_;
+  if (target < 0 || target >= (int)display_info_list_.size()) return -1;
+  if (monitor_index_ == target) return 0;
+  if (running_) {
+    paused_ = true;
+    monitor_index_ = target;
+    ReleaseDuplication();
+    if (!CreateDuplicationForMonitor(monitor_index_)) {
+      paused_ = false;
+      return -2;
+    }
+    paused_ = false;
+    LOG_INFO("DXGI: reset to initial monitor {}:{}", monitor_index_.load(),
+             display_info_list_[monitor_index_].name);
+  } else {
+    monitor_index_ = target;
+  }
   return 0;
 }
 

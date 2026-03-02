@@ -148,6 +148,11 @@ int ScreenCapturerWin::SwitchTo(int monitor_index) {
   return impl_->SwitchTo(monitor_index);
 }
 
+int ScreenCapturerWin::ResetToInitialMonitor() {
+  if (!impl_) return -1;
+  return impl_->ResetToInitialMonitor();
+}
+
 std::vector<DisplayInfo> ScreenCapturerWin::GetDisplayInfoList() {
   if (!impl_) return {};
   return impl_->GetDisplayInfoList();

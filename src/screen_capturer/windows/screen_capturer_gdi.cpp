@@ -73,6 +73,7 @@ int ScreenCapturerGdi::Init(const int fps, cb_desktop_data cb) {
     return -2;
   }
   monitor_index_ = 0;
+  initial_monitor_index_ = monitor_index_;
   return 0;
 }
 
@@ -120,6 +121,16 @@ int ScreenCapturerGdi::SwitchTo(int monitor_index) {
   }
   monitor_index_ = monitor_index;
   LOG_INFO("GDI: switched to monitor {}:{}", monitor_index_.load(),
+           display_info_list_[monitor_index_].name);
+  return 0;
+}
+
+int ScreenCapturerGdi::ResetToInitialMonitor() {
+  if (display_info_list_.empty()) return -1;
+  int target = initial_monitor_index_;
+  if (target < 0 || target >= (int)display_info_list_.size()) return -1;
+  monitor_index_ = target;
+  LOG_INFO("GDI: reset to initial monitor {}:{}", monitor_index_.load(),
            display_info_list_[monitor_index_].name);
   return 0;
 }

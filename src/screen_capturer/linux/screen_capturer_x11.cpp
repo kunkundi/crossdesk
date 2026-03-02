@@ -138,6 +138,10 @@ int ScreenCapturerX11::SwitchTo(int monitor_index) {
   return 0;
 }
 
+int ScreenCapturerX11::ResetToInitialMonitor() {
+  monitor_index_ = initial_monitor_index_;
+  return 0;
+}
 std::vector<DisplayInfo> ScreenCapturerX11::GetDisplayInfoList() {
   return display_info_list_;
 }

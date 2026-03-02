@@ -31,6 +31,7 @@ class ScreenCapturer {
 
   virtual std::vector<DisplayInfo> GetDisplayInfoList() = 0;
   virtual int SwitchTo(int monitor_index) = 0;
+  virtual int ResetToInitialMonitor() = 0;
 };
 }  // namespace crossdesk
 #endif

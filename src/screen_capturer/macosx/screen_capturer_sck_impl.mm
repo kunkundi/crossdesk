@@ -70,6 +70,7 @@ class API_AVAILABLE(macos(14.0)) ScreenCapturerSckImpl : public ScreenCapturer {
   int Resume(int monitor_index) override { return 0; }
 
   std::vector<DisplayInfo> GetDisplayInfoList() override { return display_info_list_; }
+  int ResetToInitialMonitor() override;
 
  private:
   std::vector<DisplayInfo> display_info_list_;
@@ -113,6 +114,7 @@ class API_AVAILABLE(macos(14.0)) ScreenCapturerSckImpl : public ScreenCapturer {
   // Currently selected display, or 0 if the full desktop is selected. This capturer does not
   // support full-desktop capture, and will fall back to the first display.
   CGDirectDisplayID current_display_ = 0;
+  int initial_monitor_index_ = 0;
 };
 
 std::string GetDisplayName(CGDirectDisplayID display_id) {
@@ -261,6 +263,7 @@ int ScreenCapturerSckImpl::Init(const int fps, cb_desktop_data cb) {
     display_id_name_map_[display_id] = name;
   }
 
+  initial_monitor_index_ = 0;
   return 0;
 }
 
@@ -290,6 +293,25 @@ int ScreenCapturerSckImpl::SwitchTo(int monitor_index) {
     }];
   } else {
     current_display_ = display_id_map_[monitor_index];
+    StartOrReconfigureCapturer();
+  }
+  return 0;
+}
+
+int ScreenCapturerSckImpl::ResetToInitialMonitor() {
+  int target = initial_monitor_index_;
+  if (display_info_list_.empty()) return -1;
+  CGDirectDisplayID target_display = display_id_map_[target];
+  if (current_display_ == target_display) return 0;
+  if (stream_) {
+    [stream_ stopCaptureWithCompletionHandler:^(NSError *error) {
+      std::lock_guard<std::mutex> lock(lock_);
+      stream_ = nil;
+      current_display_ = target_display;
+      StartOrReconfigureCapturer();
+    }];
+  } else {
+    current_display_ = target_display;
     StartOrReconfigureCapturer();
   }
   return 0;

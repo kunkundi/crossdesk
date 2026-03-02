@@ -62,6 +62,13 @@ int ScreenCapturerSck::SwitchTo(int monitor_index) {
   return -1;
 }
 
+int ScreenCapturerSck::ResetToInitialMonitor() {
+  if (screen_capturer_sck_impl_) {
+    return screen_capturer_sck_impl_->ResetToInitialMonitor();
+  }
+  return -1;
+}
+
 std::vector<DisplayInfo> ScreenCapturerSck::GetDisplayInfoList() {
   if (screen_capturer_sck_impl_) {
     return screen_capturer_sck_impl_->GetDisplayInfoList();

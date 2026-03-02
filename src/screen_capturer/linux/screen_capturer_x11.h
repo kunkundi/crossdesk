@@ -42,6 +42,7 @@ class ScreenCapturerX11 : public ScreenCapturer {
   int Resume(int monitor_index) override;
 
   int SwitchTo(int monitor_index) override;
+  int ResetToInitialMonitor() override;
 
   std::vector<DisplayInfo> GetDisplayInfoList() override;
 
@@ -62,6 +63,7 @@ class ScreenCapturerX11 : public ScreenCapturer {
   std::atomic<bool> running_{false};
   std::atomic<bool> paused_{false};
   std::atomic<int> monitor_index_{0};
+  int initial_monitor_index_ = 0;
   std::atomic<bool> show_cursor_{true};
   int fps_ = 60;
   cb_desktop_data callback_;
