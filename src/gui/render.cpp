@@ -1060,13 +1060,18 @@ int Render::DestroyStreamWindow() {
 
   if (stream_renderer_) {
     SDL_DestroyRenderer(stream_renderer_);
+    stream_renderer_ = nullptr;
   }
 
   if (stream_window_) {
     SDL_DestroyWindow(stream_window_);
+    stream_window_ = nullptr;
   }
 
   stream_window_created_ = false;
+  focus_on_stream_window_ = false;
+  stream_window_grabbed_ = false;
+  control_mouse_ = false;
 
   return 0;
 }

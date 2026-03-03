@@ -72,17 +72,16 @@ int Render::SendKeyCommand(int key_code, bool is_down) {
   }
   remote_action.k.key_value = key_code;
 
-  if (!controlled_remote_id_.empty()) {
-    // std::shared_lock lock(client_properties_mutex_);
-    if (client_properties_.find(controlled_remote_id_) !=
-        client_properties_.end()) {
-      auto props = client_properties_[controlled_remote_id_];
-      if (props->connection_status_ == ConnectionStatus::Connected) {
+  std::string target_id = controlled_remote_id_.empty() ? focused_remote_id_
+                                                        : controlled_remote_id_;
+  if (!target_id.empty()) {
+    if (client_properties_.find(target_id) != client_properties_.end()) {
+      auto props = client_properties_[target_id];
+      if (props->connection_status_ == ConnectionStatus::Connected &&
+          props->peer_) {
         std::string msg = remote_action.to_json();
-        if (props->peer_) {
-          SendDataFrame(props->peer_, msg.c_str(), msg.size(),
-                        props->data_label_.c_str());
-        }
+        SendDataFrame(props->peer_, msg.c_str(), msg.size(),
+                      props->data_label_.c_str());
       }
     }
   }
@@ -758,6 +757,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
             0, (int)render->title_bar_height_,
             (int)render->stream_window_width_,
             (int)(render->stream_window_height_ - render->title_bar_height_)};
+        render->start_keyboard_capturer_ = true;
         break;
       }
       case ConnectionStatus::Disconnected:
@@ -781,6 +781,8 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
         event.type = render->STREAM_REFRESH_EVENT;
         event.user.data1 = props.get();
         SDL_PushEvent(&event);
+
+        render->focus_on_stream_window_ = false;
 
         break;
       }
@@ -861,12 +863,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
         render->start_screen_capturer_ = true;
         render->start_speaker_capturer_ = true;
         render->remote_client_id_ = remote_id;
-#ifdef CROSSDESK_DEBUG
-        render->start_mouse_controller_ = false;
-        render->start_keyboard_capturer_ = false;
-#else
         render->start_mouse_controller_ = true;
-#endif
         if (std::all_of(render->connection_status_.begin(),
                         render->connection_status_.end(), [](const auto& kv) {
                           return kv.first.find("web") != std::string::npos;
