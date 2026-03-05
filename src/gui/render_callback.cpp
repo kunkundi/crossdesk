@@ -395,6 +395,13 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
     return;
   } else if (source_id == render->clipboard_label_) {
     if (size > 0) {
+      std::string remote_user_id(user_id, user_id_size);
+      auto props =
+          render->GetSubStreamWindowPropertiesByRemoteId(remote_user_id);
+      if (props && !props->enable_mouse_control_) {
+        return;
+      }
+
       std::string clipboard_text(data, size);
       if (!Clipboard::SetText(clipboard_text)) {
         LOG_ERROR("Failed to set clipboard content from remote");
@@ -764,7 +771,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
       case ConnectionStatus::Failed:
       case ConnectionStatus::Closed: {
         props->connection_established_ = false;
-        props->mouse_control_button_pressed_ = false;
+        props->enable_mouse_control_ = false;
 
         {
           std::lock_guard<std::mutex> lock(props->video_frame_mutex_);

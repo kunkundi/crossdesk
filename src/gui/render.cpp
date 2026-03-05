@@ -1546,7 +1546,8 @@ void Render::InitializeModules() {
           std::shared_lock lock(client_properties_mutex_);
           int ret = -1;
           for (const auto& [remote_id, props] : client_properties_) {
-            if (props && props->peer_ && props->connection_established_) {
+            if (props && props->peer_ && props->connection_established_ &&
+                props->enable_mouse_control_) {
               ret = SendReliableDataFrame(props->peer_, data, size,
                                           props->clipboard_label_.c_str());
               if (ret != 0) {

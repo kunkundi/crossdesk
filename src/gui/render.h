@@ -95,7 +95,7 @@ class Render {
     bool connection_established_ = false;
     bool rejoin_ = false;
     bool net_traffic_stats_button_pressed_ = false;
-    bool mouse_control_button_pressed_ = true;
+    bool enable_mouse_control_ = true;
     bool mouse_controller_is_started_ = false;
     bool audio_capture_button_pressed_ = true;
     bool control_mouse_ = true;

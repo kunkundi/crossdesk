@@ -198,24 +198,21 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
     float mouse_y = ImGui::GetCursorScreenPos().y;
     float disable_mouse_x = mouse_x + line_padding;
     float disable_mouse_y = mouse_y + line_padding;
-    std::string mouse = props->mouse_control_button_pressed_
-                            ? ICON_FA_COMPUTER_MOUSE
-                            : ICON_FA_COMPUTER_MOUSE;
+    std::string mouse = ICON_FA_COMPUTER_MOUSE;
     ImGui::SetWindowFontScale(0.5f);
     if (ImGui::Button(mouse.c_str(), ImVec2(button_width, button_height))) {
       if (props->connection_established_) {
         start_keyboard_capturer_ = !start_keyboard_capturer_;
         props->control_mouse_ = !props->control_mouse_;
-        props->mouse_control_button_pressed_ =
-            !props->mouse_control_button_pressed_;
+        props->enable_mouse_control_ = !props->enable_mouse_control_;
         props->mouse_control_button_label_ =
-            props->mouse_control_button_pressed_
+            props->enable_mouse_control_
                 ? localization::release_mouse[localization_language_index_]
                 : localization::control_mouse[localization_language_index_];
       }
     }
 
-    if (!props->mouse_control_button_pressed_) {
+    if (!props->enable_mouse_control_) {
       draw_list->AddLine(ImVec2(disable_mouse_x, disable_mouse_y),
                          ImVec2(mouse_x + button_width - line_padding,
                                 mouse_y + button_height - line_padding),
