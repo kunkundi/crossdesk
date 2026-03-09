@@ -881,6 +881,8 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
 
         break;
       }
+      case ConnectionStatus::Disconnected:
+      case ConnectionStatus::Failed:
       case ConnectionStatus::Closed: {
         if (std::all_of(render->connection_status_.begin(),
                         render->connection_status_.end(), [](const auto& kv) {
@@ -902,6 +904,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
           }
 
           render->connection_status_.erase(remote_id);
+          render->connection_host_names_.erase(remote_id);
           if (render->screen_capturer_) {
             render->screen_capturer_->ResetToInitialMonitor();
           }

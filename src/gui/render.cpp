@@ -1173,13 +1173,16 @@ int Render::DestroyServerWindow() {
 
   if (server_renderer_) {
     SDL_DestroyRenderer(server_renderer_);
+    server_renderer_ = nullptr;
   }
 
   if (server_window_) {
     SDL_DestroyWindow(server_window_);
+    server_window_ = nullptr;
   }
 
   server_window_created_ = false;
+  server_window_inited_ = false;
 
   return 0;
 }
