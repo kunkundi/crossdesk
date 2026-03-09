@@ -31,6 +31,34 @@ void Render::DrawConnectionStatusText(
   }
 }
 
+void Render::DrawReceivingScreenText(
+    std::shared_ptr<SubStreamWindowProperties>& props) {
+  if (!props->connection_established_ ||
+      props->connection_status_ != ConnectionStatus::Connected) {
+    return;
+  }
+
+  bool has_valid_frame = false;
+  {
+    std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
+    has_valid_frame = props->stream_texture_ != nullptr &&
+                      props->video_width_ > 0 && props->video_height_ > 0 &&
+                      props->front_frame_ && !props->front_frame_->empty();
+  }
+
+  if (has_valid_frame) {
+    return;
+  }
+
+  const std::string& text =
+      localization::receiving_screen[localization_language_index_];
+  ImVec2 size = ImGui::GetWindowSize();
+  ImVec2 text_size = ImGui::CalcTextSize(text.c_str());
+  ImGui::SetCursorPos(
+      ImVec2((size.x - text_size.x) * 0.5f, (size.y - text_size.y) * 0.5f));
+  ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 0.92f), "%s", text.c_str());
+}
+
 void Render::CloseTab(decltype(client_properties_)::iterator& it) {
   // std::unique_lock lock(client_properties_mutex_);
   if (it != client_properties_.end()) {
@@ -144,6 +172,8 @@ int Render::StreamWindow() {
           // Show file transfer window if needed
           FileTransferWindow(props);
 
+          DrawReceivingScreenText(props);
+
           focused_remote_id_ = props->remote_id_;
 
           if (!props->peer_) {
@@ -243,6 +273,8 @@ int Render::StreamWindow() {
 
         // Show file transfer window if needed
         FileTransferWindow(props);
+
+        DrawReceivingScreenText(props);
 
         ImGui::End();
 

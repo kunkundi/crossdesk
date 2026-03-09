@@ -146,6 +146,8 @@ static std::vector<std::string> p2p_disconnected = {
 static std::vector<std::string> p2p_connecting = {
     reinterpret_cast<const char*>(u8"正在建立对等连接..."),
     "P2P Connecting ..."};
+static std::vector<std::string> receiving_screen = {
+    reinterpret_cast<const char*>(u8"画面接收中..."), "Receiving screen..."};
 static std::vector<std::string> p2p_failed = {
     reinterpret_cast<const char*>(u8"对等连接失败"), "P2P Failed"};
 static std::vector<std::string> p2p_closed = {

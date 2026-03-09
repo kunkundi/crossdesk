@@ -261,6 +261,8 @@ class Render {
   int NetTrafficStats(std::shared_ptr<SubStreamWindowProperties>& props);
   void DrawConnectionStatusText(
       std::shared_ptr<SubStreamWindowProperties>& props);
+  void DrawReceivingScreenText(
+      std::shared_ptr<SubStreamWindowProperties>& props);
 #ifdef __APPLE__
   int RequestPermissionWindow();
   bool CheckScreenRecordingPermission();
