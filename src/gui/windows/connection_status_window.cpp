@@ -36,6 +36,18 @@ bool Render::ConnectionStatusWindow(
     text = localization::p2p_connecting[localization_language_index_];
     ImGui::SetCursorPosX(connection_status_window_width * 0.43f);
     ImGui::SetCursorPosY(connection_status_window_height * 0.67f);
+    // cancel
+    if (ImGui::Button(
+            localization::cancel[localization_language_index_].c_str()) ||
+        ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+      show_connection_status_window_ = false;
+      re_enter_remote_id_ = true;
+      LOG_INFO("User cancelled connecting to [{}]", props->remote_id_);
+      if (props->peer_) {
+        LeaveConnection(props->peer_, props->remote_id_.c_str());
+      }
+      ret_flag = true;
+    }
   } else if (ConnectionStatus::Connected == props->connection_status_) {
     text = localization::p2p_connected[localization_language_index_];
     ImGui::SetCursorPosX(connection_status_window_width * 0.43f);
