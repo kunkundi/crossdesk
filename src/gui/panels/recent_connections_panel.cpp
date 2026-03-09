@@ -227,14 +227,8 @@ int Render::ShowRecentConnections() {
       if (ImGui::Button(connect_to_this_connection_button_name.c_str(),
                         ImVec2(recent_connection_button_width,
                                recent_connection_button_height))) {
-        if (online) {
-          ConnectTo(it.second.remote_id, it.second.password.c_str(),
-                    it.second.remember_password);
-        } else {
-          show_offline_warning_window_ = true;
-          offline_warning_text_ =
-              localization::device_offline[localization_language_index_];
-        }
+        ConnectTo(it.second.remote_id, it.second.password.c_str(),
+                  it.second.remember_password);
       }
     }
     ImGui::SetWindowFontScale(1.0f);

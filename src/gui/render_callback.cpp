@@ -498,9 +498,9 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
             const double bps =
                 (static_cast<double>(delta_bytes) * 8.0) / delta_seconds;
             if (bps > 0.0) {
-              const double capped =
-                  (std::min)(bps, static_cast<double>(
-                                      (std::numeric_limits<uint32_t>::max)()));
+              const double capped = (std::min)(
+                  bps,
+                  static_cast<double>((std::numeric_limits<uint32_t>::max)()));
               estimated_rate_bps = static_cast<uint32_t>(capped);
             }
           }
@@ -655,6 +655,7 @@ void Render::OnSignalStatusCb(SignalStatus status, const char* user_id,
       render->signal_connected_ = false;
     } else if (SignalStatus::SignalConnected == status) {
       render->signal_connected_ = true;
+      render->need_to_send_recent_connections_ = true;
       LOG_INFO("[{}] connected to signal server", client_id);
     } else if (SignalStatus::SignalFailed == status) {
       render->signal_connected_ = false;
