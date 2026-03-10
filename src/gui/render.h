@@ -235,6 +235,7 @@ class Render {
   bool ConnectionStatusWindow(
       std::shared_ptr<SubStreamWindowProperties>& props);
   int ShowRecentConnections();
+  bool OpenUrl(const std::string& url);
   void Hyperlink(const std::string& label, const std::string& url,
                  const float window_width);
   int FileTransferWindow(std::shared_ptr<SubStreamWindowProperties>& props);

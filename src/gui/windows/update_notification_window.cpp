@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <cstdlib>
 #include <string>
 
 #include "layout.h"
@@ -184,14 +183,7 @@ int Render::UpdateNotificationWindow() {
             localization::update[localization_language_index_].c_str())) {
       // open download page
       std::string url = "https://crossdesk.cn";
-#if defined(_WIN32)
-      std::string cmd = "start " + url;
-#elif defined(__APPLE__)
-      std::string cmd = "open " + url;
-#else
-      std::string cmd = "xdg-open " + url;
-#endif
-      system(cmd.c_str());
+      OpenUrl(url);
       show_update_notification_window_ = false;
     }
 
