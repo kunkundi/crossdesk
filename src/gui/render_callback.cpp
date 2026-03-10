@@ -48,6 +48,15 @@ void Render::OnSignalMessageCb(const char* message, size_t size,
         std::string id = dev["id"].get<std::string>();
         bool online = dev["online"].get<bool>();
         render->device_presence_.SetOnline(id, online);
+        {
+          std::lock_guard<std::mutex> lock(
+              render->pending_presence_probe_mutex_);
+          if (render->pending_presence_probe_ &&
+              render->pending_presence_remote_id_ == id) {
+            render->pending_presence_result_ready_ = true;
+            render->pending_presence_online_ = online;
+          }
+        }
       }
     }
   } else if (type == "presence_update") {
@@ -57,6 +66,15 @@ void Render::OnSignalMessageCb(const char* message, size_t size,
       bool online = j["online"].get<bool>();
       if (!id.empty()) {
         render->device_presence_.SetOnline(id, online);
+        {
+          std::lock_guard<std::mutex> lock(
+              render->pending_presence_probe_mutex_);
+          if (render->pending_presence_probe_ &&
+              render->pending_presence_remote_id_ == id) {
+            render->pending_presence_result_ready_ = true;
+            render->pending_presence_online_ = online;
+          }
+        }
       }
     }
   }
@@ -498,9 +516,9 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
             const double bps =
                 (static_cast<double>(delta_bytes) * 8.0) / delta_seconds;
             if (bps > 0.0) {
-              const double capped = (std::min)(
-                  bps,
-                  static_cast<double>((std::numeric_limits<uint32_t>::max)()));
+              const double capped =
+                  (std::min)(bps, static_cast<double>(
+                                      (std::numeric_limits<uint32_t>::max)()));
               estimated_rate_bps = static_cast<uint32_t>(capped);
             }
           }

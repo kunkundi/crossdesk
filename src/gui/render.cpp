@@ -1605,6 +1605,7 @@ void Render::MainLoop() {
     UpdateLabels();
     HandleRecentConnections();
     HandleConnectionStatusChange();
+    HandlePendingPresenceProbe();
     HandleStreamWindow();
     HandleServerWindow();
 
@@ -1682,6 +1683,84 @@ void Render::HandleConnectionStatusChange() {
     }
   }
   need_to_send_recent_connections_ = false;
+}
+
+void Render::HandlePendingPresenceProbe() {
+  bool has_action = false;
+  bool should_connect = false;
+  bool remember_password = false;
+  std::string remote_id;
+  std::string password;
+
+  {
+    std::lock_guard<std::mutex> lock(pending_presence_probe_mutex_);
+    if (!pending_presence_probe_ || !pending_presence_result_ready_) {
+      return;
+    }
+
+    has_action = true;
+    should_connect = pending_presence_online_;
+    remote_id = pending_presence_remote_id_;
+    password = pending_presence_password_;
+    remember_password = pending_presence_remember_password_;
+
+    pending_presence_probe_ = false;
+    pending_presence_result_ready_ = false;
+    pending_presence_online_ = false;
+    pending_presence_remote_id_.clear();
+    pending_presence_password_.clear();
+    pending_presence_remember_password_ = false;
+  }
+
+  if (!has_action) {
+    return;
+  }
+
+  if (should_connect) {
+    ConnectTo(remote_id, password.c_str(), remember_password, true);
+    return;
+  }
+
+  offline_warning_text_ =
+      localization::device_offline[localization_language_index_];
+  show_offline_warning_window_ = true;
+}
+
+int Render::RequestSingleDevicePresence(const std::string& remote_id,
+                                        const char* password,
+                                        bool remember_password) {
+  if (!signal_connected_ || !peer_) {
+    return -1;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(pending_presence_probe_mutex_);
+    pending_presence_probe_ = true;
+    pending_presence_result_ready_ = false;
+    pending_presence_online_ = false;
+    pending_presence_remote_id_ = remote_id;
+    pending_presence_password_ = password ? password : "";
+    pending_presence_remember_password_ = remember_password;
+  }
+
+  nlohmann::json j;
+  j["type"] = "recent_connections_presence";
+  j["user_id"] = client_id_;
+  j["devices"] = nlohmann::json::array({remote_id});
+  auto s = j.dump();
+
+  int ret = SendSignalMessage(peer_, s.data(), s.size());
+  if (ret != 0) {
+    std::lock_guard<std::mutex> lock(pending_presence_probe_mutex_);
+    pending_presence_probe_ = false;
+    pending_presence_result_ready_ = false;
+    pending_presence_online_ = false;
+    pending_presence_remote_id_.clear();
+    pending_presence_password_.clear();
+    pending_presence_remember_password_ = false;
+  }
+
+  return ret;
 }
 
 void Render::HandleStreamWindow() {

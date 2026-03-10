@@ -194,6 +194,7 @@ class Render {
   void UpdateInteractions();
   void HandleRecentConnections();
   void HandleConnectionStatusChange();
+  void HandlePendingPresenceProbe();
   void HandleStreamWindow();
   void HandleServerWindow();
   void Cleanup();
@@ -243,7 +244,9 @@ class Render {
 
  private:
   int ConnectTo(const std::string& remote_id, const char* password,
-                bool remember_password);
+                bool remember_password, bool bypass_presence_check = false);
+  int RequestSingleDevicePresence(const std::string& remote_id,
+                                  const char* password, bool remember_password);
   int CreateMainWindow();
   int DestroyMainWindow();
   int CreateStreamWindow();
@@ -690,6 +693,13 @@ class Render {
   std::unordered_map<std::string, std::string> connection_host_names_;
   std::string selected_server_remote_id_ = "";
   std::string selected_server_remote_hostname_ = "";
+  std::mutex pending_presence_probe_mutex_;
+  bool pending_presence_probe_ = false;
+  bool pending_presence_result_ready_ = false;
+  bool pending_presence_online_ = false;
+  std::string pending_presence_remote_id_ = "";
+  std::string pending_presence_password_ = "";
+  bool pending_presence_remember_password_ = false;
   FileTransferState file_transfer_;
 };
 }  // namespace crossdesk

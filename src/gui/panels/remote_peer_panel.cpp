@@ -165,12 +165,18 @@ static int InputTextCallback(ImGuiInputTextCallbackData* data) {
 }
 
 int Render::ConnectTo(const std::string& remote_id, const char* password,
-                      bool remember_password) {
-  if (!device_presence_.IsOnline(remote_id)) {
-    offline_warning_text_ =
-        localization::device_offline[localization_language_index_];
-    show_offline_warning_window_ = true;
-    LOG_WARN("Skip connect to [{}]: device is offline", remote_id);
+                      bool remember_password, bool bypass_presence_check) {
+  if (!bypass_presence_check && !device_presence_.IsOnline(remote_id)) {
+    int ret =
+        RequestSingleDevicePresence(remote_id, password, remember_password);
+    if (ret != 0) {
+      offline_warning_text_ =
+          localization::device_offline[localization_language_index_];
+      show_offline_warning_window_ = true;
+      LOG_WARN("Presence probe failed for [{}], ret={}", remote_id, ret);
+    } else {
+      LOG_INFO("Presence probe requested for [{}] before connect", remote_id);
+    }
     return -1;
   }
 
