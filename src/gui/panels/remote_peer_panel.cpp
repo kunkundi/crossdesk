@@ -166,6 +166,14 @@ static int InputTextCallback(ImGuiInputTextCallbackData* data) {
 
 int Render::ConnectTo(const std::string& remote_id, const char* password,
                       bool remember_password) {
+  if (!device_presence_.IsOnline(remote_id)) {
+    offline_warning_text_ =
+        localization::device_offline[localization_language_index_];
+    show_offline_warning_window_ = true;
+    LOG_WARN("Skip connect to [{}]: device is offline", remote_id);
+    return -1;
+  }
+
   LOG_INFO("Connect to [{}]", remote_id);
   focused_remote_id_ = remote_id;
 
