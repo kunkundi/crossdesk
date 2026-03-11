@@ -2335,7 +2335,8 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
     case SDL_EVENT_MOUSE_BUTTON_UP:
     case SDL_EVENT_MOUSE_WHEEL:
-      if (focus_on_stream_window_) {
+      if (focus_on_stream_window_ && stream_window_ &&
+          SDL_GetWindowID(stream_window_) == event.motion.windowID) {
         ProcessMouseEvent(event);
       }
       break;
