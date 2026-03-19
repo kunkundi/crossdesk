@@ -60,9 +60,9 @@ int Render::SettingWindow() {
       ImGui::SetWindowFontScale(0.5f);
       ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
       {
-        const char* language_items[] = {
-            localization::language_zh[localization_language_index_].c_str(),
-            localization::language_en[localization_language_index_].c_str()};
+        const auto& supported_languages = localization::GetSupportedLanguages();
+        language_button_value_ =
+            localization::detail::ClampLanguageIndex(language_button_value_);
 
         settings_items_offset += settings_items_padding;
         ImGui::SetCursorPosY(settings_items_offset);
@@ -77,13 +77,23 @@ int Render::SettingWindow() {
         }
 
         ImGui::SetNextItemWidth(title_bar_button_width_ * 1.8f);
-        if (ImGui::BeginCombo("##language",
-                              language_items[language_button_value_])) {
+        if (ImGui::BeginCombo(
+                "##language",
+                localization::GetSupportedLanguages()
+                    [localization::detail::ClampLanguageIndex(
+                        language_button_value_)]
+                    .display_name
+                    .c_str())) {
           ImGui::SetWindowFontScale(0.5f);
-          for (int i = 0; i < IM_ARRAYSIZE(language_items); i++) {
+          for (int i = 0; i < static_cast<int>(supported_languages.size());
+               ++i) {
             bool selected = (i == language_button_value_);
-            if (ImGui::Selectable(language_items[i], selected))
+            if (ImGui::Selectable(
+                    supported_languages[i].display_name.c_str(), selected))
               language_button_value_ = i;
+            if (selected) {
+              ImGui::SetItemDefaultFocus();
+            }
           }
 
           ImGui::EndCombo();
@@ -438,16 +448,24 @@ int Render::SettingWindow() {
         show_self_hosted_server_config_window_ = false;
 
         // Language
+        language_button_value_ =
+            localization::detail::ClampLanguageIndex(language_button_value_);
         if (language_button_value_ == 0) {
-          config_center_->SetLanguage(ConfigCenter::LANGUAGE::CHINESE);
+          localization_language_ = ConfigCenter::LANGUAGE::CHINESE;
+        } else if (language_button_value_ == 1) {
+          localization_language_ = ConfigCenter::LANGUAGE::ENGLISH;
         } else {
-          config_center_->SetLanguage(ConfigCenter::LANGUAGE::ENGLISH);
+          localization_language_ = ConfigCenter::LANGUAGE::RUSSIAN;
         }
+        config_center_->SetLanguage(localization_language_);
         language_button_value_last_ = language_button_value_;
-        localization_language_ = (ConfigCenter::LANGUAGE)language_button_value_;
         localization_language_index_ = language_button_value_;
         LOG_INFO("Set localization language: {}",
-                 localization_language_index_ == 0 ? "zh" : "en");
+                 localization::GetSupportedLanguages()
+                     [localization::detail::ClampLanguageIndex(
+                         localization_language_index_)]
+                     .code
+                     .c_str());
 
         // Video quality
         if (video_quality_button_value_ == 0) {

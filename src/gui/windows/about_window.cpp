@@ -49,8 +49,9 @@ bool Render::OpenUrl(const std::string& url) {
 void Render::Hyperlink(const std::string& label, const std::string& url,
                        const float window_width) {
   ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 255, 255));
-  ImGui::SetCursorPosX(window_width * 0.1f);
-  ImGui::Text("%s", label.c_str());
+  ImGui::SetCursorPosX((window_width - ImGui::CalcTextSize(label.c_str()).x) /
+                       2.0f);
+  ImGui::TextUnformatted(label.c_str());
   ImGui::PopStyleColor();
 
   if (ImGui::IsItemHovered()) {
@@ -71,7 +72,7 @@ int Render::AboutWindow() {
     float about_window_width = title_bar_button_width_ * 7.5f;
     float about_window_height = latest_version_.empty()
                                     ? title_bar_button_width_ * 4.0f
-                                    : title_bar_button_width_ * 4.6f;
+                                    : title_bar_button_width_ * 4.9f;
 
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(ImVec2(
@@ -106,12 +107,14 @@ int Render::AboutWindow() {
     ImGui::Text("%s", text.c_str());
 
     if (update_available_) {
-      std::string latest_version =
+      std::string new_version_available =
           localization::new_version_available[localization_language_index_] +
-          ": " + latest_version_;
+          ": ";
+      ImGui::SetCursorPosX(about_window_width * 0.1f);
+      ImGui::Text("%s", new_version_available.c_str());
       std::string access_website =
           localization::access_website[localization_language_index_];
-      Hyperlink(latest_version, "https://crossdesk.cn", about_window_width);
+      Hyperlink(latest_version_, "https://crossdesk.cn", about_window_width);
     }
 
     ImGui::Text("");
@@ -124,7 +127,7 @@ int Render::AboutWindow() {
     ImGui::Text("%s", license_text.c_str());
 
     ImGui::SetCursorPosX(about_window_width * 0.445f);
-    ImGui::SetCursorPosY(about_window_height * 0.75f);
+    ImGui::SetCursorPosY(about_window_height * 0.8f);
     // OK
     if (ImGui::Button(localization::ok[localization_language_index_].c_str())) {
       show_about_window_ = false;

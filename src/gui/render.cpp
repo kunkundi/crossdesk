@@ -36,6 +36,32 @@
 namespace crossdesk {
 
 namespace {
+const ImWchar* GetMultilingualGlyphRanges() {
+  static std::vector<ImWchar> glyph_ranges;
+  if (glyph_ranges.empty()) {
+    ImGuiIO& io = ImGui::GetIO();
+    ImFontGlyphRangesBuilder builder;
+    builder.AddRanges(io.Fonts->GetGlyphRangesDefault());
+    builder.AddRanges(io.Fonts->GetGlyphRangesChineseFull());
+    builder.AddRanges(io.Fonts->GetGlyphRangesCyrillic());
+
+    ImVector<ImWchar> built_ranges;
+    builder.BuildRanges(&built_ranges);
+    glyph_ranges.assign(built_ranges.Data,
+                        built_ranges.Data + built_ranges.Size);
+  }
+  return glyph_ranges.empty() ? nullptr : glyph_ranges.data();
+}
+
+bool CanReadFontFile(const char* font_path) {
+  if (!font_path) {
+    return false;
+  }
+
+  std::ifstream font_file(font_path, std::ios::binary);
+  return font_file.good();
+}
+
 #if defined(__linux__) && !defined(__APPLE__)
 inline bool X11GetDisplayAndWindow(SDL_Window* window, Display** display_out,
                                    ::Window* x11_window_out) {
@@ -479,7 +505,8 @@ int Render::LoadSettingsFromCacheFile() {
   thumbnail_ = std::make_shared<Thumbnail>(cache_path_ + "/thumbnails/",
                                            aes128_key_, aes128_iv_);
 
-  language_button_value_ = (int)config_center_->GetLanguage();
+  language_button_value_ = localization::detail::ClampLanguageIndex(
+      (int)config_center_->GetLanguage());
   video_quality_button_value_ = (int)config_center_->GetVideoQuality();
   video_frame_rate_button_value_ = (int)config_center_->GetVideoFrameRate();
   video_encode_format_button_value_ =
@@ -1195,78 +1222,88 @@ int Render::SetupFontAndStyle(ImFont** system_chinese_font_out) {
 
   io.IniFilename = NULL;  // disable imgui.ini
 
-  // Load Fonts
+  // Build one merged atlas: UI font + icon font + multilingual fallback fonts.
   ImFontConfig config;
   config.FontDataOwnedByAtlas = false;
-  io.Fonts->AddFontFromMemoryTTF(OPPOSans_Regular_ttf, OPPOSans_Regular_ttf_len,
-                                 font_size, &config,
-                                 io.Fonts->GetGlyphRangesChineseFull());
-  config.MergeMode = true;
-  static const ImWchar icon_ranges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
-  io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len, 30.0f,
-                                 &config, icon_ranges);
-
-  // Load system Chinese font as fallback
   config.MergeMode = false;
-  config.FontDataOwnedByAtlas = false;
+
   if (system_chinese_font_out) {
     *system_chinese_font_out = nullptr;
   }
 
+  ImFont* ui_font = io.Fonts->AddFontFromMemoryTTF(
+      OPPOSans_Regular_ttf, OPPOSans_Regular_ttf_len, font_size, &config,
+      io.Fonts->GetGlyphRangesDefault());
+  if (!ui_font) {
+    ui_font = io.Fonts->AddFontDefault(&config);
+  }
+
+  if (!ui_font) {
+    LOG_WARN("Failed to initialize base UI font");
+    ImGui::StyleColorsLight();
+    return 0;
+  }
+
+  ImFontConfig icon_config = config;
+  icon_config.MergeMode = true;
+  static const ImWchar icon_ranges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
+  io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len,
+                                 font_size, &icon_config, icon_ranges);
+
 #if defined(_WIN32)
-  // Windows: Try Microsoft YaHei (微软雅黑) first, then SimSun (宋体)
-  const char* font_paths[] = {"C:/Windows/Fonts/msyh.ttc",
-                              "C:/Windows/Fonts/msyhbd.ttc",
-                              "C:/Windows/Fonts/simsun.ttc", nullptr};
+  // Cover CJK + Cyrillic on Windows.
+  const char* fallback_font_paths[] = {
+      "C:/Windows/Fonts/msyh.ttc",    "C:/Windows/Fonts/msyhbd.ttc",
+      "C:/Windows/Fonts/simsun.ttc",  "C:/Windows/Fonts/arial.ttf",
+      "C:/Windows/Fonts/segoeui.ttf", nullptr};
 #elif defined(__APPLE__)
-  // macOS: Try PingFang SC first, then STHeiti
-  const char* font_paths[] = {"/System/Library/Fonts/PingFang.ttc",
-                              "/System/Library/Fonts/STHeiti Light.ttc",
-                              "/System/Library/Fonts/STHeiti Medium.ttc",
-                              nullptr};
+  // Cover CJK + Cyrillic on macOS.
+  const char* fallback_font_paths[] = {
+      "/System/Library/Fonts/PingFang.ttc",
+      "/System/Library/Fonts/Hiragino Sans GB.ttc",
+      "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+      "/System/Library/Fonts/Supplemental/Arial.ttf", nullptr};
 #else
-  // Linux: Try common Chinese fonts
-  const char* font_paths[] = {
+  // Cover CJK + Cyrillic on Linux.
+  const char* fallback_font_paths[] = {
       "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
       "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-      "/usr/share/fonts/truetype/arphic/uming.ttc",
-      "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc", nullptr};
+      "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+      "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+      "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+      nullptr};
 #endif
 
-  for (int i = 0; font_paths[i] != nullptr; i++) {
-    std::ifstream font_file(font_paths[i], std::ios::binary);
-    if (font_file.good()) {
-      font_file.close();
-      if (!system_chinese_font_out) {
-        break;
-      }
+  ImFontConfig fallback_config = config;
+  fallback_config.MergeMode = true;
+  const ImWchar* multilingual_ranges = GetMultilingualGlyphRanges();
+  bool merged_multilingual_font = false;
 
-      *system_chinese_font_out =
-          io.Fonts->AddFontFromFileTTF(font_paths[i], font_size, &config,
-                                       io.Fonts->GetGlyphRangesChineseFull());
-      if (*system_chinese_font_out != nullptr) {
-        // Merge FontAwesome icons into the Chinese font
-        config.MergeMode = true;
-        static const ImWchar icon_ranges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
-        io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len,
-                                       font_size, &config, icon_ranges);
-        config.MergeMode = false;
-        LOG_INFO("Loaded system Chinese font with icons: {}", font_paths[i]);
-        break;
+  for (int i = 0; fallback_font_paths[i] != nullptr; ++i) {
+    const char* font_path = fallback_font_paths[i];
+    if (!CanReadFontFile(font_path)) {
+      continue;
+    }
+
+    ImFont* merged_font = io.Fonts->AddFontFromFileTTF(
+        font_path, font_size, &fallback_config, multilingual_ranges);
+    if (merged_font != nullptr) {
+      merged_multilingual_font = true;
+      if (system_chinese_font_out && *system_chinese_font_out == nullptr) {
+        *system_chinese_font_out = merged_font;
       }
+      LOG_INFO("Merged multilingual fallback font: {}", font_path);
     }
   }
 
-  // If no system font found, use default font
+  if (!merged_multilingual_font) {
+    LOG_WARN(
+        "No multilingual fallback fonts found, non-ASCII text may not render");
+  }
+
+  io.FontDefault = ui_font;
   if (system_chinese_font_out && *system_chinese_font_out == nullptr) {
-    *system_chinese_font_out = io.Fonts->AddFontDefault(&config);
-    // Merge FontAwesome icons into the default font
-    config.MergeMode = true;
-    static const ImWchar icon_ranges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
-    io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len,
-                                   font_size, &config, icon_ranges);
-    config.MergeMode = false;
-    LOG_WARN("System Chinese font not found, using default font with icons");
+    *system_chinese_font_out = ui_font;
   }
 
   ImGui::StyleColorsLight();
@@ -1439,10 +1476,10 @@ int Render::Run() {
   if (!latest_version_info_.empty() &&
       latest_version_info_.contains("version") &&
       latest_version_info_["version"].is_string()) {
-    latest_version_ = latest_version_info_["version"];
+    latest_version_ = 'v' + latest_version_info_["version"].get<std::string>();
     if (latest_version_info_.contains("releaseNotes") &&
         latest_version_info_["releaseNotes"].is_string()) {
-      release_notes_ = latest_version_info_["releaseNotes"];
+      release_notes_ = latest_version_info_["releaseNotes"].get<std::string>();
     } else {
       release_notes_ = "";
     }
@@ -1503,12 +1540,16 @@ void Render::InitializeLogger() { InitLogger(exec_log_path_); }
 void Render::InitializeSettings() {
   LoadSettingsFromCacheFile();
 
-  localization_language_ = (ConfigCenter::LANGUAGE)language_button_value_;
-  localization_language_index_ = language_button_value_;
-  if (localization_language_index_ != 0 && localization_language_index_ != 1) {
-    localization_language_index_ = 0;
-    LOG_ERROR("Invalid language index: [{}], use [0] by default",
-              localization_language_index_);
+  localization_language_index_ =
+      localization::detail::ClampLanguageIndex(language_button_value_);
+  language_button_value_ = localization_language_index_;
+
+  if (localization_language_index_ == 0) {
+    localization_language_ = ConfigCenter::LANGUAGE::CHINESE;
+  } else if (localization_language_index_ == 1) {
+    localization_language_ = ConfigCenter::LANGUAGE::ENGLISH;
+  } else {
+    localization_language_ = ConfigCenter::LANGUAGE::RUSSIAN;
   }
 }
 

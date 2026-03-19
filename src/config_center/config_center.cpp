@@ -20,8 +20,14 @@ int ConfigCenter::Load() {
     return -1;
   }
 
-  language_ = static_cast<LANGUAGE>(
-      ini_.GetLongValue(section_, "language", static_cast<long>(language_)));
+  const long language_value =
+      ini_.GetLongValue(section_, "language", static_cast<long>(language_));
+  if (language_value < static_cast<long>(LANGUAGE::CHINESE) ||
+      language_value > static_cast<long>(LANGUAGE::RUSSIAN)) {
+    language_ = LANGUAGE::ENGLISH;
+  } else {
+    language_ = static_cast<LANGUAGE>(language_value);
+  }
 
   video_quality_ = static_cast<VIDEO_QUALITY>(ini_.GetLongValue(
       section_, "video_quality", static_cast<long>(video_quality_)));

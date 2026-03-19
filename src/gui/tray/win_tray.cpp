@@ -89,7 +89,7 @@ bool WinTray::HandleTrayMessage(MSG* msg) {
       GetCursorPos(&pt);
       HMENU menu = CreatePopupMenu();
       AppendMenuW(menu, MF_STRING, 1001,
-                  localization::exit_program[language_index_]);
+                  localization::GetExitProgramLabel(language_index_));
 
       SetForegroundWindow(hwnd_message_only_);
       int cmd =
