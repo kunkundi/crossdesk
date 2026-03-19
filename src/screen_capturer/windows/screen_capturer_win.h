@@ -38,6 +38,7 @@ class ScreenCapturerWin : public ScreenCapturer {
 
  private:
   std::unique_ptr<ScreenCapturer> impl_;
+  bool impl_is_wgc_plugin_ = false;
   int fps_ = 60;
   cb_desktop_data cb_;
   cb_desktop_data cb_orig_;

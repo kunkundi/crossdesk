@@ -4,15 +4,14 @@
 
 #include <atomic>
 #include <functional>
-#include <iostream>
 #include <memory>
 
 #include "rd_log.h"
 
-#define CHECK_INIT                            \
-  if (!is_initialized_) {                     \
-    std::cout << "AE_NEED_INIT" << std::endl; \
-    return 4;                                 \
+#define CHECK_INIT             \
+  if (!is_initialized_) {      \
+    LOG_ERROR("AE_NEED_INIT"); \
+    return 4;                  \
   }
 
 #define CHECK_CLOSED                         \
@@ -324,7 +323,7 @@ int WgcSessionImpl::Initialize() {
   if (is_initialized_) return 0;
 
   if (!(d3d11_direct_device_ = CreateD3D11Device())) {
-    std::cout << "AE_D3D_CREATE_DEVICE_FAILED" << std::endl;
+    LOG_ERROR("AE_D3D_CREATE_DEVICE_FAILED");
     return 1;
   }
 

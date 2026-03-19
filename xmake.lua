@@ -37,7 +37,7 @@ add_requires("tinyfiledialogs 3.15.1")
 
 if is_os("windows") then
     add_requires("libyuv", "miniaudio 0.11.21")
-    add_links("Shell32", "windowsapp", "dwmapi", "User32", "kernel32",
+    add_links("Shell32", "dwmapi", "User32", "kernel32",
         "SDL3-static", "gdi32", "winmm", "setupapi", "version",
         "Imm32", "iphlpapi", "d3d11", "dxgi")
     add_cxflags("/WX")
@@ -88,7 +88,9 @@ target("screen_capturer")
     add_includedirs("src/screen_capturer", {public = true})
     if is_os("windows") then
         add_packages("libyuv")
-        add_files("src/screen_capturer/windows/*.cpp")
+        add_files("src/screen_capturer/windows/screen_capturer_dxgi.cpp",
+            "src/screen_capturer/windows/screen_capturer_gdi.cpp",
+            "src/screen_capturer/windows/screen_capturer_win.cpp")
         add_includedirs("src/screen_capturer/windows", {public = true})
     elseif is_os("macosx") then
         add_files("src/screen_capturer/macosx/*.cpp",
@@ -198,6 +200,20 @@ target("gui")
     elseif is_os("macosx") then
         add_files("src/gui/windows/*.mm")
     end
+
+if is_os("windows") then
+target("wgc_plugin")
+    set_kind("shared")
+    add_packages("libyuv")
+    add_deps("rd_log")
+    add_defines("CROSSDESK_WGC_PLUGIN_BUILD=1")
+    add_links("windowsapp")
+    add_files("src/screen_capturer/windows/screen_capturer_wgc.cpp",
+        "src/screen_capturer/windows/wgc_session_impl.cpp",
+        "src/screen_capturer/windows/wgc_plugin_entry.cpp")
+    add_includedirs("src/common", "src/screen_capturer",
+        "src/screen_capturer/windows")
+end
 
 target("crossdesk")
     set_kind("binary")

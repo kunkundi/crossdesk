@@ -1,16 +1,107 @@
 #include "screen_capturer_win.h"
 
+#include <Windows.h>
+
 #include <cmath>
+#include <filesystem>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "rd_log.h"
 #include "screen_capturer_dxgi.h"
 #include "screen_capturer_gdi.h"
-#include "screen_capturer_wgc.h"
+#include "wgc_plugin_api.h"
 
 namespace crossdesk {
+
+namespace {
+
+class WgcPluginCapturer final : public ScreenCapturer {
+ public:
+  using CreateFn = ScreenCapturer* (*)();
+  using DestroyFn = void (*)(ScreenCapturer*);
+
+  static std::unique_ptr<ScreenCapturer> Create() {
+    std::filesystem::path plugin_path;
+    wchar_t module_path[MAX_PATH] = {0};
+    const DWORD len = GetModuleFileNameW(nullptr, module_path, MAX_PATH);
+    if (len == 0 || len >= MAX_PATH) {
+      return nullptr;
+    }
+    plugin_path =
+        std::filesystem::path(module_path).parent_path() / L"wgc_plugin.dll";
+
+    HMODULE module = LoadLibraryW(plugin_path.c_str());
+    if (!module) {
+      return nullptr;
+    }
+
+    auto create_fn = reinterpret_cast<CreateFn>(
+        GetProcAddress(module, "CrossDeskCreateWgcCapturer"));
+    auto destroy_fn = reinterpret_cast<DestroyFn>(
+        GetProcAddress(module, "CrossDeskDestroyWgcCapturer"));
+    if (!create_fn || !destroy_fn) {
+      FreeLibrary(module);
+      return nullptr;
+    }
+
+    ScreenCapturer* impl = create_fn();
+    if (!impl) {
+      FreeLibrary(module);
+      return nullptr;
+    }
+
+    return std::unique_ptr<ScreenCapturer>(
+        new WgcPluginCapturer(module, impl, destroy_fn));
+  }
+
+  ~WgcPluginCapturer() override {
+    if (impl_) {
+      destroy_fn_(impl_);
+      impl_ = nullptr;
+    }
+    if (module_) {
+      FreeLibrary(module_);
+      module_ = nullptr;
+    }
+  }
+
+  int Init(const int fps, cb_desktop_data cb) override {
+    return impl_ ? impl_->Init(fps, std::move(cb)) : -1;
+  }
+  int Destroy() override { return impl_ ? impl_->Destroy() : 0; }
+  int Start(bool show_cursor) override {
+    return impl_ ? impl_->Start(show_cursor) : -1;
+  }
+  int Stop() override { return impl_ ? impl_->Stop() : 0; }
+  int Pause(int monitor_index) override {
+    return impl_ ? impl_->Pause(monitor_index) : -1;
+  }
+  int Resume(int monitor_index) override {
+    return impl_ ? impl_->Resume(monitor_index) : -1;
+  }
+  std::vector<DisplayInfo> GetDisplayInfoList() override {
+    return impl_ ? impl_->GetDisplayInfoList() : std::vector<DisplayInfo>{};
+  }
+  int SwitchTo(int monitor_index) override {
+    return impl_ ? impl_->SwitchTo(monitor_index) : -1;
+  }
+  int ResetToInitialMonitor() override {
+    return impl_ ? impl_->ResetToInitialMonitor() : -1;
+  }
+
+ private:
+  WgcPluginCapturer(HMODULE module, ScreenCapturer* impl, DestroyFn destroy_fn)
+      : module_(module), impl_(impl), destroy_fn_(destroy_fn) {}
+
+  HMODULE module_ = nullptr;
+  ScreenCapturer* impl_ = nullptr;
+  DestroyFn destroy_fn_ = nullptr;
+};
+
+}  // namespace
 
 ScreenCapturerWin::ScreenCapturerWin() {}
 ScreenCapturerWin::~ScreenCapturerWin() { Destroy(); }
@@ -40,18 +131,21 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
 
   int ret = -1;
 
-  impl_ = std::make_unique<ScreenCapturerWgc>();
-  ret = impl_->Init(fps_, cb_);
+  impl_ = WgcPluginCapturer::Create();
+  impl_is_wgc_plugin_ = (impl_ != nullptr);
+  ret = impl_ ? impl_->Init(fps_, cb_) : -1;
   if (ret == 0) {
-    LOG_INFO("Windows capturer: using WGC");
+    LOG_INFO("Windows capturer: using WGC plugin");
     BuildCanonicalFromImpl();
     return 0;
   }
 
-  LOG_WARN("Windows capturer: WGC init failed (ret={}), try DXGI", ret);
+  LOG_WARN("Windows capturer: WGC plugin init failed (ret={}), try DXGI", ret);
   impl_.reset();
+  impl_is_wgc_plugin_ = false;
 
   impl_ = std::make_unique<ScreenCapturerDxgi>();
+  impl_is_wgc_plugin_ = false;
   ret = impl_->Init(fps_, cb_);
   if (ret == 0) {
     LOG_INFO("Windows capturer: using DXGI Desktop Duplication");
@@ -63,6 +157,7 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
   impl_.reset();
 
   impl_ = std::make_unique<ScreenCapturerGdi>();
+  impl_is_wgc_plugin_ = false;
   ret = impl_->Init(fps_, cb_);
   if (ret == 0) {
     LOG_INFO("Windows capturer: using GDI BitBlt");
@@ -79,6 +174,7 @@ int ScreenCapturerWin::Destroy() {
   if (impl_) {
     impl_->Destroy();
     impl_.reset();
+    impl_is_wgc_plugin_ = false;
   }
   {
     std::lock_guard<std::mutex> lock(alias_mutex_);
@@ -102,13 +198,14 @@ int ScreenCapturerWin::Start(bool show_cursor) {
     int s = cand->Start(show_cursor);
     if (s == 0) {
       impl_ = std::move(cand);
+      impl_is_wgc_plugin_ = false;
       RebuildAliasesFromImpl();
       return true;
     }
     return false;
   };
 
-  if (dynamic_cast<ScreenCapturerWgc*>(impl_.get())) {
+  if (impl_is_wgc_plugin_) {
     if (try_init_start(std::make_unique<ScreenCapturerDxgi>())) {
       LOG_INFO("Windows capturer: fallback to DXGI");
       return 0;

@@ -108,7 +108,7 @@ std::string GetHostName() {
 #ifdef _WIN32
   WSADATA wsaData;
   if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-    std::cerr << "WSAStartup failed." << std::endl;
+    LOG_ERROR("WSAStartup failed");
     return "";
   }
   if (gethostname(hostname, sizeof(hostname)) == SOCKET_ERROR) {
