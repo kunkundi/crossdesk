@@ -28,6 +28,7 @@ if is_mode("debug") then
     add_defines("CROSSDESK_DEBUG")
 end
 
+add_requireconfs("*.python", {version = "3.12", override = true, configs = {pgo = false}})
 add_requires("spdlog 1.14.1", {system = false})
 add_requires("imgui v1.92.1-docking", {configs = {sdl3 = true, sdl3_renderer = true}})
 add_requires("openssl3 3.3.2", {system = false})
