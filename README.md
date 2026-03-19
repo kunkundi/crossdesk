@@ -181,7 +181,7 @@ sudo docker run -d \
   -e MAX_PORT=xxxxx \
   -v /var/lib/crossdesk:/var/lib/crossdesk \
   -v /var/log/crossdesk:/var/log/crossdesk \
-  crossdesk/crossdesk-server:v1.1.3
+  crossdesk/crossdesk-server:v1.1.6
 ```
 
 上述命令中，用户需注意的参数如下：
@@ -208,7 +208,7 @@ sudo docker run -d \
   -e MAX_PORT=60000 \
   -v /var/lib/crossdesk:/var/lib/crossdesk \
   -v /var/log/crossdesk:/var/log/crossdesk \
-  crossdesk/crossdesk-server:v1.1.3
+  crossdesk/crossdesk-server:v1.1.6
 ```
 
 **注意**：
