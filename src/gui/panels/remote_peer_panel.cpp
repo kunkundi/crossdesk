@@ -48,7 +48,7 @@ int Render::RemoteWindow() {
     ImGui::BeginChild(
         "RemoteDesktopWindow_1",
         ImVec2(remote_window_width * 0.8f, remote_window_height * 0.43f),
-        ImGuiChildFlags_Border,
+        ImGuiChildFlags_Borders,
         ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
             ImGuiWindowFlags_NoBringToFrontOnFocus);
     ImGui::PopStyleVar();

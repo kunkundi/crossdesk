@@ -16,7 +16,7 @@ int Render::StatusBar() {
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 0.0f));
   ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1.0f, 1.0f, 1.0f, 0.0f));
   ImGui::BeginChild("StatusBar", ImVec2(status_bar_width, status_bar_height),
-                    ImGuiChildFlags_Border,
+                    ImGuiChildFlags_Borders,
                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                         ImGuiWindowFlags_NoBringToFrontOnFocus);
   ImGui::PopStyleColor(2);

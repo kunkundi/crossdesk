@@ -130,7 +130,7 @@ int Render::FileTransferWindow(
       ImGui::SetWindowFontScale(0.5f);
       ImGui::BeginChild(
           "FileList", ImVec2(0, file_transfer_window_height * 0.75f),
-          ImGuiChildFlags_Border, ImGuiWindowFlags_HorizontalScrollbar);
+          ImGuiChildFlags_Borders, ImGuiWindowFlags_HorizontalScrollbar);
       ImGui::SetWindowFontScale(1.0f);
       ImGui::SetWindowFontScale(0.5f);
 
@@ -242,3 +242,4 @@ int Render::FileTransferWindow(
 }
 
 }  // namespace crossdesk
+

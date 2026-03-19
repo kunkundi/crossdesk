@@ -66,7 +66,7 @@ int Render::ServerWindow() {
   ImGui::BeginChild(
       "ServerTitleBar",
       ImVec2(server_window_width_, server_window_title_bar_height_),
-      ImGuiChildFlags_Border,
+      ImGuiChildFlags_Borders,
       ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
           ImGuiWindowFlags_NoBringToFrontOnFocus);
 
@@ -140,7 +140,7 @@ int Render::RemoteClientInfoWindow() {
   ImGui::BeginChild(
       "RemoteClientInfoWindow",
       ImVec2(remote_client_info_window_width, remote_client_info_window_height),
-      ImGuiChildFlags_Border,
+      ImGuiChildFlags_Borders,
       ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
           ImGuiWindowFlags_NoBringToFrontOnFocus);
   ImGui::PopStyleVar();

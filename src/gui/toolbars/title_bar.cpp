@@ -51,7 +51,7 @@ int Render::TitleBar(bool main_window) {
   ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
   ImGui::BeginChild(main_window ? "MainTitleBar" : "StreamTitleBar",
                     ImVec2(title_bar_width, title_bar_height_padding),
-                    ImGuiChildFlags_Border,
+                    ImGuiChildFlags_Borders,
                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                         ImGuiWindowFlags_NoBringToFrontOnFocus);
   ImGui::PopStyleVar();

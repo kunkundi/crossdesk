@@ -120,7 +120,7 @@ int Render::UpdateNotificationWindow() {
     ImGui::BeginChild(
         "ScrollableContent",
         ImVec2(update_notification_window_width * 0.9f, scrollable_height),
-        ImGuiChildFlags_Border, ImGuiWindowFlags_None);
+        ImGuiChildFlags_Borders, ImGuiWindowFlags_None);
     ImGui::SetWindowFontScale(0.5f);
     // set text wrap position to current available width (accounts for
     // scrollbar)
@@ -204,3 +204,4 @@ int Render::UpdateNotificationWindow() {
 }
 
 }  // namespace crossdesk
+

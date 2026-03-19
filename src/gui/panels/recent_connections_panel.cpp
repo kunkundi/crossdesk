@@ -17,7 +17,7 @@ int Render::RecentConnectionsWindow() {
   ImGui::BeginChild(
       "RecentConnectionsWindow",
       ImVec2(recent_connection_window_width, recent_connection_window_height),
-      ImGuiChildFlags_Border,
+      ImGuiChildFlags_Borders,
       ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
           ImGuiWindowFlags_NoBringToFrontOnFocus);
   ImGui::PopStyleVar();
@@ -64,7 +64,7 @@ int Render::ShowRecentConnections() {
   ImGui::BeginChild(
       "RecentConnectionsContainer",
       ImVec2(recent_connection_panel_width, recent_connection_panel_height),
-      ImGuiChildFlags_Border,
+      ImGuiChildFlags_Borders,
       ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
           ImGuiWindowFlags_NoBringToFrontOnFocus |
           ImGuiWindowFlags_AlwaysHorizontalScrollbar |

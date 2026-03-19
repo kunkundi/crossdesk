@@ -19,7 +19,7 @@ int Render::MainWindow() {
   ImGui::BeginChild(
       "DeskWindow",
       ImVec2(local_remote_window_width, local_remote_window_height),
-      ImGuiChildFlags_Border,
+      ImGuiChildFlags_Borders,
       ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
           ImGuiWindowFlags_NoBringToFrontOnFocus);
   ImGui::PopStyleVar();

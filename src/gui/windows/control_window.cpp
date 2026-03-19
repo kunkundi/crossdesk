@@ -224,7 +224,7 @@ int Render::ControlWindow(std::shared_ptr<SubStreamWindowProperties>& props) {
   ImGui::BeginChild(
       control_child_window_title.c_str(),
       ImVec2(props->control_window_width_, props->control_window_height_),
-      ImGuiChildFlags_Border, ImGuiWindowFlags_NoDecoration);
+      ImGuiChildFlags_Borders, ImGuiWindowFlags_NoDecoration);
   ImGui::PopStyleColor();
 
   props->control_window_pos_ = ImGui::GetWindowPos();
@@ -257,3 +257,4 @@ int Render::ControlWindow(std::shared_ptr<SubStreamWindowProperties>& props) {
   return 0;
 }
 }  // namespace crossdesk
+

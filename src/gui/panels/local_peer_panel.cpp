@@ -46,7 +46,7 @@ int Render::LocalWindow() {
     ImGui::BeginChild(
         "LocalDesktopPanel",
         ImVec2(local_window_width * 0.8f, local_window_height * 0.43f),
-        ImGuiChildFlags_Border,
+        ImGuiChildFlags_Borders,
         ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
             ImGuiWindowFlags_NoBringToFrontOnFocus);
     ImGui::PopStyleVar();
