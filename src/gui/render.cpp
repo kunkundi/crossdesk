@@ -14,7 +14,6 @@
 #include <string>
 #include <thread>
 
-#include "OPPOSans_Regular.h"
 #include "clipboard.h"
 #include "device_controller_factory.h"
 #include "fa_regular_400.h"
@@ -1231,9 +1230,40 @@ int Render::SetupFontAndStyle(ImFont** system_chinese_font_out) {
     *system_chinese_font_out = nullptr;
   }
 
-  ImFont* ui_font = io.Fonts->AddFontFromMemoryTTF(
-      OPPOSans_Regular_ttf, OPPOSans_Regular_ttf_len, font_size, &config,
-      io.Fonts->GetGlyphRangesDefault());
+  ImFont* ui_font = nullptr;
+  const ImWchar* multilingual_ranges = GetMultilingualGlyphRanges();
+
+#if defined(_WIN32)
+  const char* base_font_paths[] = {
+      "C:/Windows/Fonts/msyh.ttc",    "C:/Windows/Fonts/msyhbd.ttc",
+      "C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf",
+      "C:/Windows/Fonts/simsun.ttc",  nullptr};
+#elif defined(__APPLE__)
+  const char* base_font_paths[] = {
+      "/System/Library/Fonts/PingFang.ttc",
+      "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+      "/System/Library/Fonts/Supplemental/Arial.ttf",
+      "/System/Library/Fonts/SFNS.ttf", nullptr};
+#else
+  const char* base_font_paths[] = {
+      "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+      "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+      "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+      "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+      "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+      nullptr};
+#endif
+
+  for (int i = 0; base_font_paths[i] != nullptr && ui_font == nullptr; ++i) {
+    if (!CanReadFontFile(base_font_paths[i])) {
+      continue;
+    }
+    ui_font = io.Fonts->AddFontFromFileTTF(base_font_paths[i], font_size,
+                                           &config, multilingual_ranges);
+    if (ui_font != nullptr) {
+      LOG_INFO("Loaded base UI font: {}", base_font_paths[i]);
+    }
+  }
   if (!ui_font) {
     ui_font = io.Fonts->AddFontDefault(&config);
   }
@@ -1250,59 +1280,8 @@ int Render::SetupFontAndStyle(ImFont** system_chinese_font_out) {
   io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len,
                                  font_size, &icon_config, icon_ranges);
 
-#if defined(_WIN32)
-  // Cover CJK + Cyrillic on Windows.
-  const char* fallback_font_paths[] = {
-      "C:/Windows/Fonts/msyh.ttc",    "C:/Windows/Fonts/msyhbd.ttc",
-      "C:/Windows/Fonts/simsun.ttc",  "C:/Windows/Fonts/arial.ttf",
-      "C:/Windows/Fonts/segoeui.ttf", nullptr};
-#elif defined(__APPLE__)
-  // Cover CJK + Cyrillic on macOS.
-  const char* fallback_font_paths[] = {
-      "/System/Library/Fonts/PingFang.ttc",
-      "/System/Library/Fonts/Hiragino Sans GB.ttc",
-      "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
-      "/System/Library/Fonts/Supplemental/Arial.ttf", nullptr};
-#else
-  // Cover CJK + Cyrillic on Linux.
-  const char* fallback_font_paths[] = {
-      "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-      "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-      "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-      "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-      "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-      nullptr};
-#endif
-
-  ImFontConfig fallback_config = config;
-  fallback_config.MergeMode = true;
-  const ImWchar* multilingual_ranges = GetMultilingualGlyphRanges();
-  bool merged_multilingual_font = false;
-
-  for (int i = 0; fallback_font_paths[i] != nullptr; ++i) {
-    const char* font_path = fallback_font_paths[i];
-    if (!CanReadFontFile(font_path)) {
-      continue;
-    }
-
-    ImFont* merged_font = io.Fonts->AddFontFromFileTTF(
-        font_path, font_size, &fallback_config, multilingual_ranges);
-    if (merged_font != nullptr) {
-      merged_multilingual_font = true;
-      if (system_chinese_font_out && *system_chinese_font_out == nullptr) {
-        *system_chinese_font_out = merged_font;
-      }
-      LOG_INFO("Merged multilingual fallback font: {}", font_path);
-    }
-  }
-
-  if (!merged_multilingual_font) {
-    LOG_WARN(
-        "No multilingual fallback fonts found, non-ASCII text may not render");
-  }
-
   io.FontDefault = ui_font;
-  if (system_chinese_font_out && *system_chinese_font_out == nullptr) {
+  if (system_chinese_font_out) {
     *system_chinese_font_out = ui_font;
   }
 
