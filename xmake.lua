@@ -221,5 +221,6 @@ target("crossdesk")
     add_files("src/app/*.cpp")
     add_includedirs("src/app", {public = true})
     if is_os("windows") then
+        add_deps("wgc_plugin")
         add_files("scripts/windows/crossdesk.rc")
     end
