@@ -58,7 +58,7 @@ jobs:
           echo "BUILD_DATE=${BUILD_DATE}" >> $GITHUB_ENV
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -76,7 +76,7 @@ jobs:
           ${{ matrix.package_script }} ${LEGAL_VERSION}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: crossdesk-linux-${{ matrix.arch }}-${{ env.LEGAL_VERSION }}
           path: ${{ github.workspace }}/crossdesk-linux-${{ matrix.arch }}-${{ env.LEGAL_VERSION }}.deb
@@ -112,7 +112,7 @@ jobs:
           echo "BUILD_DATE=${BUILD_DATE}" >> $GITHUB_ENV
 
       - name: Cache xmake dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.xmake/packages
           key: ${{ runner.os }}-xmake-deps-${{ matrix.cache-key }}-${{ github.sha }}
@@ -123,7 +123,7 @@ jobs:
         run: brew install xmake
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Initialize submodules
         run: git submodule update --init --recursive
@@ -139,7 +139,7 @@ jobs:
           ${{ matrix.package_script }} ${VERSION_NUM}
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: crossdesk-macos-${{ matrix.arch }}-${{ env.VERSION_NUM }}
           path: crossdesk-macos-${{ matrix.arch }}-${{ env.VERSION_NUM }}.pkg
@@ -169,7 +169,7 @@ jobs:
           echo "BUILD_DATE=$BUILD_DATE" >> $env:GITHUB_ENV
 
       - name: Cache xmake dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: D:\xmake_global\.xmake\packages
           key: ${{ runner.os }}-xmake-deps-intel-${{ github.sha }}
@@ -221,7 +221,7 @@ jobs:
           Copy-Item $source $target -Force
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Initialize submodules
         run: git submodule update --init --recursive
@@ -251,13 +251,13 @@ jobs:
           Compress-Archive -Path "$portableDir\*" -DestinationPath "${{ github.workspace }}\crossdesk-win-x64-portable-${{ env.VERSION_NUM }}.zip"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: crossdesk-win-x64-${{ env.VERSION_NUM }}
           path: ${{ github.workspace }}/scripts/windows/crossdesk-win-x64-${{ env.VERSION_NUM }}.exe
 
       - name: Upload portable artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: crossdesk-win-x64-portable-${{ env.VERSION_NUM }}
           path: ${{ github.workspace }}/crossdesk-win-x64-portable-${{ env.VERSION_NUM }}.zip
@@ -271,10 +271,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
