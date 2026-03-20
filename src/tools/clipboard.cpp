@@ -452,11 +452,17 @@ static void MonitorThreadFunc() {
   LOG_INFO("Clipboard event monitoring started (Linux XFixes)");
 
   XEvent event;
+  constexpr int kEventPollIntervalMs = 20;
   while (g_monitoring.load()) {
-    XNextEvent(g_x11_display, &event);
-    if (event.type == event_base + XFixesSelectionNotify) {
-      HandleClipboardChange();
+    // Avoid blocking on XNextEvent so StopMonitoring() can stop quickly.
+    while (g_monitoring.load() && XPending(g_x11_display) > 0) {
+      XNextEvent(g_x11_display, &event);
+      if (event.type == event_base + XFixesSelectionNotify) {
+        HandleClipboardChange();
+      }
     }
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds(kEventPollIntervalMs));
   }
 
   XFixesSelectSelectionInput(g_x11_display, event_window, g_clipboard_atom, 0);
