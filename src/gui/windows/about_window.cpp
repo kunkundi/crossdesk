@@ -49,8 +49,6 @@ bool Render::OpenUrl(const std::string& url) {
 void Render::Hyperlink(const std::string& label, const std::string& url,
                        const float window_width) {
   ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 255, 255));
-  ImGui::SetCursorPosX((window_width - ImGui::CalcTextSize(label.c_str()).x) /
-                       2.0f);
   ImGui::TextUnformatted(label.c_str());
   ImGui::PopStyleColor();
 
@@ -106,7 +104,7 @@ int Render::AboutWindow() {
     ImGui::SetCursorPosX(about_window_width * 0.1f);
     ImGui::Text("%s", text.c_str());
 
-    if (update_available_) {
+    if (0) {
       std::string new_version_available =
           localization::new_version_available[localization_language_index_] +
           ": ";
@@ -114,10 +112,15 @@ int Render::AboutWindow() {
       ImGui::Text("%s", new_version_available.c_str());
       std::string access_website =
           localization::access_website[localization_language_index_];
+      ImGui::SetCursorPosX((about_window_width -
+                            ImGui::CalcTextSize(latest_version_.c_str()).x) /
+                           2.0f);
       Hyperlink(latest_version_, "https://crossdesk.cn", about_window_width);
-    }
 
-    ImGui::Text("");
+      ImGui::Spacing();
+    } else {
+      ImGui::Text("%s", "");
+    }
 
     std::string copyright_text = "© 2025 by JUNKUN DI. All rights reserved.";
     std::string license_text = "Licensed under GNU LGPL v3.";

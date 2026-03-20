@@ -103,6 +103,7 @@ int Render::UpdateNotificationWindow() {
         localization::access_website[localization_language_index_] +
         "https://crossdesk.cn";
     ImGui::SetWindowFontScale(0.5f);
+    ImGui::SetCursorPosX(update_notification_window_width * 0.1f);
     Hyperlink(download_text, "https://crossdesk.cn",
               update_notification_window_width);
     ImGui::SetWindowFontScale(1.0f);
@@ -204,4 +205,3 @@ int Render::UpdateNotificationWindow() {
 }
 
 }  // namespace crossdesk
-
