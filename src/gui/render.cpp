@@ -7,6 +7,7 @@
 #include <X11/Xlib.h>
 #endif
 
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -874,11 +875,38 @@ int Render::AudioDeviceInit() {
   desired_out.format = SDL_AUDIO_S16;
   desired_out.channels = 1;
 
-  output_stream_ = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
-                                             &desired_out, nullptr, nullptr);
-  if (!output_stream_) {
+  auto open_stream = [&]() -> bool {
+    output_stream_ = SDL_OpenAudioDeviceStream(
+        SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &desired_out, nullptr, nullptr);
+    return output_stream_ != nullptr;
+  };
+
+  if (!open_stream()) {
+#if defined(__linux__) && !defined(__APPLE__)
+    LOG_WARN(
+        "Failed to open output stream with driver [{}]: {}",
+        getenv("SDL_AUDIODRIVER") ? getenv("SDL_AUDIODRIVER") : "(default)",
+        SDL_GetError());
+
+    setenv("SDL_AUDIODRIVER", "dummy", 1);
+    SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+      LOG_ERROR("Failed to reinitialize SDL audio with dummy driver: {}",
+                SDL_GetError());
+      return -1;
+    }
+
+    if (!open_stream()) {
+      LOG_ERROR("Failed to open output stream with dummy driver: {}",
+                SDL_GetError());
+      return -1;
+    }
+
+    LOG_WARN("Audio output disabled, using SDL dummy audio driver");
+#else
     LOG_ERROR("Failed to open output stream: {}", SDL_GetError());
     return -1;
+#endif
   }
 
   SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(output_stream_));
@@ -1533,6 +1561,13 @@ void Render::InitializeSettings() {
 }
 
 void Render::InitializeSDL() {
+#if defined(__linux__) && !defined(__APPLE__)
+  if (!getenv("SDL_AUDIODRIVER")) {
+    // Prefer PulseAudio first on Linux to avoid hard ALSA plugin dependency.
+    setenv("SDL_AUDIODRIVER", "pulseaudio", 0);
+  }
+#endif
+
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
     LOG_ERROR("Error: {}", SDL_GetError());
     return;
