@@ -11,6 +11,9 @@
 #include <X11/extensions/XTest.h>
 #include <X11/keysym.h>
 
+#include <atomic>
+#include <thread>
+
 #include "device_controller.h"
 
 namespace crossdesk {
@@ -28,7 +31,8 @@ class KeyboardCapturer : public DeviceController {
  private:
   Display* display_;
   Window root_;
-  bool running_;
+  std::atomic<bool> running_;
+  std::thread event_thread_;
 };
 }  // namespace crossdesk
 #endif
