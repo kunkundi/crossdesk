@@ -7,10 +7,10 @@
 #ifndef _DAEMON_H_
 #define _DAEMON_H_
 
+#include <atomic>
+#include <csignal>
 #include <functional>
 #include <string>
-
-#define DAEMON_DEFAULT_RESTART_DELAY_MS 1000
 
 class Daemon {
  public:
@@ -28,12 +28,10 @@ class Daemon {
   std::string name_;
   bool runWithRestart(MainLoopFunc loop);
 
-#ifdef _WIN32
-  bool running_;
-#else
-  static Daemon* instance_;
-  volatile bool running_;
+#ifndef _WIN32
+  static volatile std::sig_atomic_t stop_requested_;
 #endif
+  std::atomic<bool> running_;
 };
 
 #endif

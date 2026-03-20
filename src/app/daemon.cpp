@@ -34,8 +34,15 @@
 #endif
 
 #ifndef _WIN32
-Daemon* Daemon::instance_ = nullptr;
+volatile std::sig_atomic_t Daemon::stop_requested_ = 0;
 #endif
+
+namespace {
+constexpr int kRestartDelayMs = 1000;
+#ifndef _WIN32
+constexpr int kWaitPollIntervalMs = 200;
+#endif
+}  // namespace
 
 // get executable file path
 static std::string GetExecutablePath() {
@@ -66,33 +73,35 @@ static std::string GetExecutablePath() {
   return "";
 }
 
-Daemon::Daemon(const std::string& name)
-    : name_(name)
-#ifdef _WIN32
-      ,
-      running_(false)
-#else
-      ,
-      running_(true)
+Daemon::Daemon(const std::string& name) : name_(name), running_(false) {}
+
+void Daemon::stop() {
+  running_.store(false);
+#ifndef _WIN32
+  stop_requested_ = 1;
 #endif
-{
 }
 
-void Daemon::stop() { running_ = false; }
-
-bool Daemon::isRunning() const { return running_; }
+bool Daemon::isRunning() const {
+#ifndef _WIN32
+  return running_.load() && (stop_requested_ == 0);
+#else
+  return running_.load();
+#endif
+}
 
 bool Daemon::start(MainLoopFunc loop) {
 #ifdef _WIN32
-  running_ = true;
+  running_.store(true);
   return runWithRestart(loop);
 #elif __APPLE__
   // macOS: Use child process monitoring (like Windows) to preserve GUI
-  running_ = true;
+  stop_requested_ = 0;
+  running_.store(true);
   return runWithRestart(loop);
 #else
   // linux: Daemonize first, then run with restart monitoring
-  instance_ = this;
+  stop_requested_ = 0;
 
   // check if running from terminal before fork
   bool from_terminal =
@@ -134,29 +143,13 @@ bool Daemon::start(MainLoopFunc loop) {
   }
 
   // set up signal handlers
-  signal(SIGTERM, [](int) {
-    if (instance_) instance_->stop();
-  });
-  signal(SIGINT, [](int) {
-    if (instance_) instance_->stop();
-  });
+  signal(SIGTERM, [](int) { stop_requested_ = 1; });
+  signal(SIGINT, [](int) { stop_requested_ = 1; });
 
   // ignore SIGPIPE
   signal(SIGPIPE, SIG_IGN);
 
-  // set up SIGCHLD handler to reap zombie processes
-  struct sigaction sa_chld;
-  sa_chld.sa_handler = [](int) {
-    // reap zombie processes
-    while (waitpid(-1, nullptr, WNOHANG) > 0) {
-      // continue until no more zombie children
-    }
-  };
-  sigemptyset(&sa_chld.sa_mask);
-  sa_chld.sa_flags = SA_RESTART | SA_NOCLDSTOP;
-  sigaction(SIGCHLD, &sa_chld, nullptr);
-
-  running_ = true;
+  running_.store(true);
   return runWithRestart(loop);
 #endif
 }
@@ -204,8 +197,7 @@ bool Daemon::runWithRestart(MainLoopFunc loop) {
         restart_count++;
         std::cerr << "Exception caught, restarting... (attempt "
                   << restart_count << ")" << std::endl;
-        std::this_thread::sleep_for(
-            std::chrono::milliseconds(DAEMON_DEFAULT_RESTART_DELAY_MS));
+        std::this_thread::sleep_for(std::chrono::milliseconds(kRestartDelayMs));
       }
     }
     return true;
@@ -237,27 +229,41 @@ bool Daemon::runWithRestart(MainLoopFunc loop) {
     if (!success) {
       std::cerr << "Failed to create child process, error: " << GetLastError()
                 << std::endl;
-      std::this_thread::sleep_for(
-          std::chrono::milliseconds(DAEMON_DEFAULT_RESTART_DELAY_MS));
+      std::this_thread::sleep_for(std::chrono::milliseconds(kRestartDelayMs));
       restart_count++;
       continue;
     }
 
+    while (isRunning()) {
+      DWORD wait_result = WaitForSingleObject(pi.hProcess, 200);
+      if (wait_result == WAIT_OBJECT_0) {
+        break;
+      }
+      if (wait_result == WAIT_FAILED) {
+        std::cerr << "Failed waiting child process, error: " << GetLastError()
+                  << std::endl;
+        break;
+      }
+    }
+
+    if (!isRunning()) {
+      TerminateProcess(pi.hProcess, 1);
+      WaitForSingleObject(pi.hProcess, 3000);
+    }
+
     DWORD exit_code = 0;
-    WaitForSingleObject(pi.hProcess, INFINITE);
     GetExitCodeProcess(pi.hProcess, &exit_code);
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
 
-    if (exit_code == 0) {
+    if (!isRunning() || exit_code == 0) {
       break;  // normal exit
     }
     restart_count++;
     std::cerr << "Child process exited with code " << exit_code
               << ", restarting... (attempt " << restart_count << ")"
               << std::endl;
-    std::this_thread::sleep_for(
-        std::chrono::milliseconds(DAEMON_DEFAULT_RESTART_DELAY_MS));
+    std::this_thread::sleep_for(std::chrono::milliseconds(kRestartDelayMs));
 #else
     // linux: use fork + exec to create child process
     pid_t pid = fork();
@@ -266,21 +272,39 @@ bool Daemon::runWithRestart(MainLoopFunc loop) {
       _exit(1);  // exec failed
     } else if (pid > 0) {
       int status = 0;
-      pid_t waited_pid = waitpid(pid, &status, 0);
+      pid_t waited_pid = -1;
+      while (isRunning()) {
+        waited_pid = waitpid(pid, &status, WNOHANG);
+        if (waited_pid == pid) {
+          break;
+        }
+        if (waited_pid < 0 && errno != EINTR) {
+          break;
+        }
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(kWaitPollIntervalMs));
+      }
+
+      if (!isRunning() && waited_pid != pid) {
+        kill(pid, SIGTERM);
+        waited_pid = waitpid(pid, &status, 0);
+      }
 
       if (waited_pid < 0) {
+        if (!isRunning()) {
+          break;
+        }
         restart_count++;
         std::cerr << "waitpid failed, errno: " << errno
                   << ", restarting... (attempt " << restart_count << ")"
                   << std::endl;
-        std::this_thread::sleep_for(
-            std::chrono::milliseconds(DAEMON_DEFAULT_RESTART_DELAY_MS));
+        std::this_thread::sleep_for(std::chrono::milliseconds(kRestartDelayMs));
         continue;
       }
 
       if (WIFEXITED(status)) {
         int exit_code = WEXITSTATUS(status);
-        if (exit_code == 0) {
+        if (!isRunning() || exit_code == 0) {
           break;  // normal exit
         }
         restart_count++;
@@ -288,6 +312,9 @@ bool Daemon::runWithRestart(MainLoopFunc loop) {
                   << ", restarting... (attempt " << restart_count << ")"
                   << std::endl;
       } else if (WIFSIGNALED(status)) {
+        if (!isRunning()) {
+          break;
+        }
         restart_count++;
         std::cerr << "Child process crashed with signal " << WTERMSIG(status)
                   << ", restarting... (attempt " << restart_count << ")"
@@ -298,12 +325,10 @@ bool Daemon::runWithRestart(MainLoopFunc loop) {
                      "(attempt "
                   << restart_count << ")" << std::endl;
       }
-      std::this_thread::sleep_for(
-          std::chrono::milliseconds(DAEMON_DEFAULT_RESTART_DELAY_MS));
+      std::this_thread::sleep_for(std::chrono::milliseconds(kRestartDelayMs));
     } else {
       std::cerr << "Failed to fork child process" << std::endl;
-      std::this_thread::sleep_for(
-          std::chrono::milliseconds(DAEMON_DEFAULT_RESTART_DELAY_MS));
+      std::this_thread::sleep_for(std::chrono::milliseconds(kRestartDelayMs));
       restart_count++;
     }
 #endif
