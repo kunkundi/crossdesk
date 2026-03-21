@@ -1276,9 +1276,9 @@ int Render::SetupFontAndStyle(ImFont** system_chinese_font_out) {
   const char* base_font_paths[] = {
       "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
       "/usr/share/fonts/opentype/noto/NotoSans-Regular.ttf",
-      "/usr/share/fonts/opentype/wqy/wqy-microhei.ttc",
-      "/usr/share/fonts/opentype/wqy/wqy-zenhei.ttc",
-      "/usr/share/fonts/opentype/dejavu/DejaVuSans.ttf",
+      "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+      "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+      "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
       nullptr};
 #endif
 
