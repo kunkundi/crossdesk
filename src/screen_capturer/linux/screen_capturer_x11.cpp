@@ -5,7 +5,9 @@
 #include <X11/extensions/Xfixes.h>
 #include <X11/extensions/Xrandr.h>
 
+#include <algorithm>
 #include <chrono>
+#include <mutex>
 #include <thread>
 
 #include "libyuv.h"
@@ -13,11 +15,58 @@
 
 namespace crossdesk {
 
+namespace {
+
+std::atomic<int> g_x11_last_error_code{0};
+std::mutex g_x11_error_handler_mutex;
+
+int CaptureX11ErrorHandler([[maybe_unused]] Display* display,
+                           XErrorEvent* error_event) {
+  if (error_event) {
+    g_x11_last_error_code.store(error_event->error_code);
+  } else {
+    g_x11_last_error_code.store(-1);
+  }
+  return 0;
+}
+
+class ScopedX11ErrorTrap {
+ public:
+  explicit ScopedX11ErrorTrap(Display* display)
+      : display_(display), lock_(g_x11_error_handler_mutex) {
+    g_x11_last_error_code.store(0);
+    previous_handler_ = XSetErrorHandler(CaptureX11ErrorHandler);
+  }
+
+  ~ScopedX11ErrorTrap() {
+    if (display_) {
+      XSync(display_, False);
+    }
+    XSetErrorHandler(previous_handler_);
+  }
+
+  int SyncAndGetError() const {
+    if (display_) {
+      XSync(display_, False);
+    }
+    return g_x11_last_error_code.load();
+  }
+
+ private:
+  Display* display_ = nullptr;
+  int (*previous_handler_)(Display*, XErrorEvent*) = nullptr;
+  std::unique_lock<std::mutex> lock_;
+};
+
+}  // namespace
+
 ScreenCapturerX11::ScreenCapturerX11() {}
 
 ScreenCapturerX11::~ScreenCapturerX11() { Destroy(); }
 
 int ScreenCapturerX11::Init(const int fps, cb_desktop_data cb) {
+  Destroy();
+
   display_ = XOpenDisplay(nullptr);
   if (!display_) {
     LOG_ERROR("Cannot connect to X server");
@@ -29,6 +78,7 @@ int ScreenCapturerX11::Init(const int fps, cb_desktop_data cb) {
   if (!screen_res_) {
     LOG_ERROR("Failed to get screen resources");
     XCloseDisplay(display_);
+    display_ = nullptr;
     return 1;
   }
 
@@ -82,6 +132,11 @@ int ScreenCapturerX11::Init(const int fps, cb_desktop_data cb) {
   y_plane_.resize(width_ * height_);
   uv_plane_.resize((width_ / 2) * (height_ / 2) * 2);
 
+  if (!ProbeCapture()) {
+    LOG_ERROR("X11 backend probe failed, XGetImage is not usable");
+    return -3;
+  }
+
   return 0;
 }
 
@@ -108,9 +163,23 @@ int ScreenCapturerX11::Start(bool show_cursor) {
   show_cursor_ = show_cursor;
   running_ = true;
   paused_ = false;
+  capture_error_count_ = 0;
   thread_ = std::thread([this]() {
+    using clock = std::chrono::steady_clock;
+    const auto frame_interval =
+        std::chrono::milliseconds(std::max(1, 1000 / std::max(1, fps_)));
+
     while (running_) {
-      if (!paused_) OnFrame();
+      const auto frame_start = clock::now();
+      if (!paused_) {
+        OnFrame();
+      }
+
+      const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+          clock::now() - frame_start);
+      if (elapsed < frame_interval) {
+        std::this_thread::sleep_for(frame_interval - elapsed);
+      }
     }
   });
   return 0;
@@ -152,19 +221,44 @@ void ScreenCapturerX11::OnFrame() {
     return;
   }
 
-  if (monitor_index_ < 0 || monitor_index_ >= display_info_list_.size()) {
-    LOG_ERROR("Invalid monitor index: {}", monitor_index_.load());
+  const int monitor_index = monitor_index_.load();
+  if (monitor_index < 0 ||
+      monitor_index >= static_cast<int>(display_info_list_.size())) {
+    LOG_ERROR("Invalid monitor index: {}", monitor_index);
     return;
   }
 
-  left_ = display_info_list_[monitor_index_].left;
-  top_ = display_info_list_[monitor_index_].top;
-  width_ = display_info_list_[monitor_index_].width;
-  height_ = display_info_list_[monitor_index_].height;
+  left_ = display_info_list_[monitor_index].left;
+  top_ = display_info_list_[monitor_index].top;
+  width_ = display_info_list_[monitor_index].width & ~1;
+  height_ = display_info_list_[monitor_index].height & ~1;
 
-  XImage* image = XGetImage(display_, root_, left_, top_, width_, height_,
-                            AllPlanes, ZPixmap);
-  if (!image) return;
+  if (width_ <= 1 || height_ <= 1) {
+    LOG_ERROR("Invalid capture size: {}x{}", width_, height_);
+    return;
+  }
+
+  XImage* image = nullptr;
+  int x11_error = 0;
+  {
+    ScopedX11ErrorTrap trap(display_);
+    image = XGetImage(display_, root_, left_, top_, width_, height_, AllPlanes,
+                      ZPixmap);
+    x11_error = trap.SyncAndGetError();
+  }
+
+  if (x11_error != 0 || !image) {
+    if (image) {
+      XDestroyImage(image);
+    }
+    ++capture_error_count_;
+    if (capture_error_count_ == 1 || capture_error_count_ % 120 == 0) {
+      LOG_WARN("X11 capture failed: x11_error={}, image={}, consecutive={}",
+               x11_error, image ? "valid" : "null", capture_error_count_);
+    }
+    return;
+  }
+  capture_error_count_ = 0;
 
   // if enable show cursor, draw cursor
   if (show_cursor_) {
@@ -205,7 +299,7 @@ void ScreenCapturerX11::OnFrame() {
 
   if (callback_) {
     callback_(nv12.data(), width_ * height_ * 3 / 2, width_, height_,
-              display_info_list_[monitor_index_].name.c_str());
+              display_info_list_[monitor_index].name.c_str());
   }
 
   XDestroyImage(image);
@@ -287,5 +381,33 @@ void ScreenCapturerX11::DrawCursor(XImage* image, int x, int y) {
   }
 
   XFree(cursor_image);
+}
+
+bool ScreenCapturerX11::ProbeCapture() {
+  if (!display_ || display_info_list_.empty()) {
+    return false;
+  }
+
+  const auto& first_display = display_info_list_[0];
+  XImage* probe_image = nullptr;
+  int x11_error = 0;
+  {
+    ScopedX11ErrorTrap trap(display_);
+    probe_image = XGetImage(display_, root_, first_display.left,
+                            first_display.top, 1, 1, AllPlanes, ZPixmap);
+    x11_error = trap.SyncAndGetError();
+  }
+
+  if (probe_image) {
+    XDestroyImage(probe_image);
+  }
+
+  if (x11_error != 0 || !probe_image) {
+    LOG_WARN("X11 probe XGetImage failed: x11_error={}, image={}", x11_error,
+             probe_image ? "valid" : "null");
+    return false;
+  }
+
+  return true;
 }
 }  // namespace crossdesk

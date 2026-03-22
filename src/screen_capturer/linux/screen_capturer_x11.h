@@ -17,6 +17,7 @@ struct _XImage;
 typedef struct _XImage XImage;
 
 #include <atomic>
+#include <cctype>
 #include <cstring>
 #include <functional>
 #include <iostream>
@@ -50,6 +51,7 @@ class ScreenCapturerX11 : public ScreenCapturer {
 
  private:
   void DrawCursor(XImage* image, int x, int y);
+  bool ProbeCapture();
 
  private:
   Display* display_ = nullptr;
@@ -68,6 +70,7 @@ class ScreenCapturerX11 : public ScreenCapturer {
   int fps_ = 60;
   cb_desktop_data callback_;
   std::vector<DisplayInfo> display_info_list_;
+  int capture_error_count_ = 0;
 
   std::vector<uint8_t> y_plane_;
   std::vector<uint8_t> uv_plane_;

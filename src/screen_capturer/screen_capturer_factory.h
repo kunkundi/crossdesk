@@ -10,7 +10,7 @@
 #ifdef _WIN32
 #include "screen_capturer_win.h"
 #elif __linux__
-#include "screen_capturer_x11.h"
+#include "screen_capturer_linux.h"
 #elif __APPLE__
 // #include "screen_capturer_avf.h"
 #include "screen_capturer_sck.h"
@@ -27,7 +27,7 @@ class ScreenCapturerFactory {
 #ifdef _WIN32
     return new ScreenCapturerWin();
 #elif __linux__
-    return new ScreenCapturerX11();
+    return new ScreenCapturerLinux();
 #elif __APPLE__
     // return new ScreenCapturerAvf();
     return new ScreenCapturerSck();
