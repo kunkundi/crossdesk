@@ -1,6 +1,7 @@
 #include "screen_capturer_wayland.h"
 
 #include "screen_capturer_wayland_build.h"
+#include "wayland_portal_shared.h"
 
 #if CROSSDESK_WAYLAND_BUILD_ENABLED
 
@@ -18,6 +19,8 @@ namespace {
 
 constexpr const char* kPortalBusName = "org.freedesktop.portal.Desktop";
 constexpr const char* kPortalObjectPath = "/org/freedesktop/portal/desktop";
+constexpr const char* kPortalRemoteDesktopInterface =
+    "org.freedesktop.portal.RemoteDesktop";
 constexpr const char* kPortalScreenCastInterface =
     "org.freedesktop.portal.ScreenCast";
 constexpr const char* kPortalRequestInterface =
@@ -32,6 +35,7 @@ constexpr const char* kPortalSessionPathPrefix =
 constexpr uint32_t kScreenCastSourceMonitor = 1u;
 constexpr uint32_t kCursorModeHidden = 1u;
 constexpr uint32_t kCursorModeEmbedded = 2u;
+constexpr uint32_t kRemoteDesktopDevicePointer = 2u;
 
 std::string MakeToken(const char* prefix) {
   const auto now = std::chrono::steady_clock::now().time_since_epoch().count();
@@ -279,19 +283,21 @@ bool ExtractPortalResponse(DBusMessage* message, uint32_t* response_code,
 }
 
 bool SendPortalRequestAndHandleResponse(
-    DBusConnection* connection, const char* method_name,
+    DBusConnection* connection, const char* interface_name,
+    const char* method_name,
     const char* action_name,
     const std::function<bool(DBusMessage*)>& append_message_args,
     const std::atomic<bool>& running,
     const std::function<bool(uint32_t, DBusMessageIter*)>& handle_results,
     std::string* request_path_out = nullptr) {
-  if (!connection || !method_name || method_name[0] == '\0') {
+  if (!connection || !interface_name || interface_name[0] == '\0' ||
+      !method_name || method_name[0] == '\0') {
     return false;
   }
 
   DBusMessage* message =
       dbus_message_new_method_call(kPortalBusName, kPortalObjectPath,
-                                   kPortalScreenCastInterface, method_name);
+                                   interface_name, method_name);
   if (!message) {
     LOG_ERROR("Failed to allocate {} message", method_name);
     return false;
@@ -399,7 +405,8 @@ bool ScreenCapturerWayland::CreatePortalSession() {
   const std::string session_handle_token = MakeToken("crossdesk_session");
   std::string request_path;
   const bool ok = SendPortalRequestAndHandleResponse(
-      dbus_connection_, "CreateSession", "CreateSession",
+      dbus_connection_, kPortalRemoteDesktopInterface, "CreateSession",
+      "CreateSession",
       [&](DBusMessage* message) {
         DBusMessageIter iter;
         DBusMessageIter options;
@@ -478,7 +485,8 @@ bool ScreenCapturerWayland::SelectPortalSource() {
 
   const char* session_handle = session_handle_.c_str();
   return SendPortalRequestAndHandleResponse(
-      dbus_connection_, "SelectSources", "SelectSources",
+      dbus_connection_, kPortalScreenCastInterface, "SelectSources",
+      "SelectSources",
       [&](DBusMessage* message) {
         DBusMessageIter iter;
         DBusMessageIter options;
@@ -507,6 +515,39 @@ bool ScreenCapturerWayland::SelectPortalSource() {
       });
 }
 
+bool ScreenCapturerWayland::SelectPortalDevices() {
+  if (!dbus_connection_ || session_handle_.empty()) {
+    return false;
+  }
+
+  const char* session_handle = session_handle_.c_str();
+  return SendPortalRequestAndHandleResponse(
+      dbus_connection_, kPortalRemoteDesktopInterface, "SelectDevices",
+      "SelectDevices",
+      [&](DBusMessage* message) {
+        DBusMessageIter iter;
+        DBusMessageIter options;
+        dbus_message_iter_init_append(message, &iter);
+        dbus_message_iter_append_basic(&iter, DBUS_TYPE_OBJECT_PATH,
+                                       &session_handle);
+        dbus_message_iter_open_container(&iter, DBUS_TYPE_ARRAY, "{sv}",
+                                         &options);
+        AppendDictEntryUint32(&options, "types", kRemoteDesktopDevicePointer);
+        AppendDictEntryString(&options, "handle_token",
+                              MakeToken("crossdesk_req"));
+        dbus_message_iter_close_container(&iter, &options);
+        return true;
+      },
+      running_, [](uint32_t response_code, DBusMessageIter*) {
+        if (response_code != 0) {
+          LOG_ERROR("SelectDevices was denied or malformed, response={}",
+                    response_code);
+          return false;
+        }
+        return true;
+      });
+}
+
 bool ScreenCapturerWayland::StartPortalSession() {
   if (!dbus_connection_ || session_handle_.empty()) {
     return false;
@@ -514,8 +555,9 @@ bool ScreenCapturerWayland::StartPortalSession() {
 
   const char* session_handle = session_handle_.c_str();
   const char* parent_window = "";
+  pointer_granted_ = false;
   const bool ok = SendPortalRequestAndHandleResponse(
-      dbus_connection_, "Start", "Start",
+      dbus_connection_, kPortalRemoteDesktopInterface, "Start", "Start",
       [&](DBusMessage* message) {
         DBusMessageIter iter;
         DBusMessageIter options;
@@ -536,6 +578,7 @@ bool ScreenCapturerWayland::StartPortalSession() {
           return false;
         }
 
+        uint32_t granted_devices = 0;
         DBusMessageIter dict;
         dbus_message_iter_recurse(results, &dict);
         while (dbus_message_iter_get_arg_type(&dict) != DBUS_TYPE_INVALID) {
@@ -546,55 +589,91 @@ bool ScreenCapturerWayland::StartPortalSession() {
             const char* key = nullptr;
             dbus_message_iter_get_basic(&entry, &key);
             if (key && dbus_message_iter_next(&entry) &&
-                dbus_message_iter_get_arg_type(&entry) == DBUS_TYPE_VARIANT &&
-                strcmp(key, "streams") == 0) {
+                dbus_message_iter_get_arg_type(&entry) == DBUS_TYPE_VARIANT) {
               DBusMessageIter variant;
-              DBusMessageIter streams;
               dbus_message_iter_recurse(&entry, &variant);
-              dbus_message_iter_recurse(&variant, &streams);
-
-              if (dbus_message_iter_get_arg_type(&streams) == DBUS_TYPE_STRUCT) {
-                DBusMessageIter stream;
-                dbus_message_iter_recurse(&streams, &stream);
-
-                if (dbus_message_iter_get_arg_type(&stream) == DBUS_TYPE_UINT32) {
-                  dbus_message_iter_get_basic(&stream, &pipewire_node_id_);
+              if (strcmp(key, "devices") == 0) {
+                int granted_devices_int = 0;
+                if (ReadIntLike(&variant, &granted_devices_int) &&
+                    granted_devices_int >= 0) {
+                  granted_devices = static_cast<uint32_t>(granted_devices_int);
                 }
+              } else if (strcmp(key, "streams") == 0) {
+                DBusMessageIter streams;
+                dbus_message_iter_recurse(&variant, &streams);
 
-                if (dbus_message_iter_next(&stream) &&
-                    dbus_message_iter_get_arg_type(&stream) == DBUS_TYPE_ARRAY) {
-                  DBusMessageIter props;
-                  dbus_message_iter_recurse(&stream, &props);
-                  while (dbus_message_iter_get_arg_type(&props) !=
-                         DBUS_TYPE_INVALID) {
-                    if (dbus_message_iter_get_arg_type(&props) ==
-                        DBUS_TYPE_DICT_ENTRY) {
-                      DBusMessageIter prop_entry;
-                      dbus_message_iter_recurse(&props, &prop_entry);
+                if (dbus_message_iter_get_arg_type(&streams) == DBUS_TYPE_STRUCT) {
+                  DBusMessageIter stream;
+                  dbus_message_iter_recurse(&streams, &stream);
 
-                      const char* prop_key = nullptr;
-                      dbus_message_iter_get_basic(&prop_entry, &prop_key);
-                      if (prop_key && dbus_message_iter_next(&prop_entry) &&
-                          dbus_message_iter_get_arg_type(&prop_entry) ==
-                              DBUS_TYPE_VARIANT &&
-                          strcmp(prop_key, "size") == 0) {
-                        DBusMessageIter prop_variant;
-                        dbus_message_iter_recurse(&prop_entry, &prop_variant);
-                        if (dbus_message_iter_get_arg_type(&prop_variant) ==
-                            DBUS_TYPE_STRUCT) {
-                          DBusMessageIter size_iter;
-                          int width = 0;
-                          int height = 0;
-                          dbus_message_iter_recurse(&prop_variant, &size_iter);
-                          if (ReadIntLike(&size_iter, &width) &&
-                              dbus_message_iter_next(&size_iter) &&
-                              ReadIntLike(&size_iter, &height)) {
-                            UpdateDisplayGeometry(width, height);
+                  if (dbus_message_iter_get_arg_type(&stream) == DBUS_TYPE_UINT32) {
+                    dbus_message_iter_get_basic(&stream, &pipewire_node_id_);
+                  }
+
+                  if (dbus_message_iter_next(&stream) &&
+                      dbus_message_iter_get_arg_type(&stream) == DBUS_TYPE_ARRAY) {
+                    DBusMessageIter props;
+                    int stream_width = 0;
+                    int stream_height = 0;
+                    int logical_width = 0;
+                    int logical_height = 0;
+                    dbus_message_iter_recurse(&stream, &props);
+                    while (dbus_message_iter_get_arg_type(&props) !=
+                           DBUS_TYPE_INVALID) {
+                      if (dbus_message_iter_get_arg_type(&props) ==
+                          DBUS_TYPE_DICT_ENTRY) {
+                        DBusMessageIter prop_entry;
+                        dbus_message_iter_recurse(&props, &prop_entry);
+
+                        const char* prop_key = nullptr;
+                        dbus_message_iter_get_basic(&prop_entry, &prop_key);
+                        if (prop_key && dbus_message_iter_next(&prop_entry) &&
+                            dbus_message_iter_get_arg_type(&prop_entry) ==
+                                DBUS_TYPE_VARIANT) {
+                          DBusMessageIter prop_variant;
+                          dbus_message_iter_recurse(&prop_entry, &prop_variant);
+                          if (dbus_message_iter_get_arg_type(&prop_variant) ==
+                              DBUS_TYPE_STRUCT) {
+                            DBusMessageIter size_iter;
+                            int width = 0;
+                            int height = 0;
+                            dbus_message_iter_recurse(&prop_variant, &size_iter);
+                            if (ReadIntLike(&size_iter, &width) &&
+                                dbus_message_iter_next(&size_iter) &&
+                                ReadIntLike(&size_iter, &height)) {
+                              if (strcmp(prop_key, "logical_size") == 0) {
+                                logical_width = width;
+                                logical_height = height;
+                              } else if (strcmp(prop_key, "size") == 0) {
+                                stream_width = width;
+                                stream_height = height;
+                              }
+                            }
                           }
                         }
                       }
+                      dbus_message_iter_next(&props);
                     }
-                    dbus_message_iter_next(&props);
+
+                    const int picked_width =
+                        logical_width > 0 ? logical_width : stream_width;
+                    const int picked_height =
+                        logical_height > 0 ? logical_height : stream_height;
+                    LOG_INFO(
+                        "Wayland portal stream geometry: stream_size={}x{}, "
+                        "logical_size={}x{}, pointer_space={}x{}",
+                        stream_width, stream_height, logical_width,
+                        logical_height, picked_width, picked_height);
+
+                    if (logical_width > 0 && logical_height > 0) {
+                      logical_width_ = logical_width;
+                      logical_height_ = logical_height;
+                      UpdateDisplayGeometry(logical_width_, logical_height_);
+                    } else if (stream_width > 0 && stream_height > 0) {
+                      logical_width_ = stream_width;
+                      logical_height_ = stream_height;
+                      UpdateDisplayGeometry(logical_width_, logical_height_);
+                    }
                   }
                 }
               }
@@ -603,6 +682,8 @@ bool ScreenCapturerWayland::StartPortalSession() {
 
           dbus_message_iter_next(&dict);
         }
+        pointer_granted_ =
+            (granted_devices & kRemoteDesktopDevicePointer) != 0;
         return true;
       });
   if (!ok) {
@@ -612,6 +693,18 @@ bool ScreenCapturerWayland::StartPortalSession() {
   if (pipewire_node_id_ == 0) {
     LOG_ERROR("Start response did not include a PipeWire node id");
     return false;
+  }
+  if (!pointer_granted_) {
+    LOG_ERROR("Start response did not grant pointer control");
+    return false;
+  }
+
+  shared_session_registered_ = PublishSharedWaylandPortalSession(
+      SharedWaylandPortalSessionInfo{
+          dbus_connection_, session_handle_, pipewire_node_id_, logical_width_,
+          logical_height_, pointer_granted_});
+  if (!shared_session_registered_) {
+    LOG_WARN("Failed to publish shared Wayland portal session");
   }
 
   LOG_INFO("Wayland screencast ready, node_id={}", pipewire_node_id_);
@@ -683,37 +776,39 @@ void ScreenCapturerWayland::CleanupDbus() {
     return;
   }
 
+  if (shared_session_registered_) {
+    return;
+  }
+
   dbus_connection_close(dbus_connection_);
   dbus_connection_unref(dbus_connection_);
   dbus_connection_ = nullptr;
 }
 
 void ScreenCapturerWayland::ClosePortalSession() {
-  if (!dbus_connection_ || session_handle_.empty()) {
-    return;
-  }
-
-  DBusMessage* message = dbus_message_new_method_call(
-      kPortalBusName, session_handle_.c_str(), kPortalSessionInterface,
-      "Close");
-  if (message) {
-    DBusError error;
-    dbus_error_init(&error);
-    DBusMessage* reply =
-        dbus_connection_send_with_reply_and_block(dbus_connection_, message,
-                                                  1000, &error);
-    if (!reply && dbus_error_is_set(&error)) {
-      LogDbusError("Session.Close", &error);
-      dbus_error_free(&error);
+  if (shared_session_registered_) {
+    DBusConnection* close_connection = nullptr;
+    std::string close_session_handle;
+    ReleaseSharedWaylandPortalSession(&close_connection, &close_session_handle);
+    shared_session_registered_ = false;
+    if (close_connection) {
+      CloseWaylandPortalSessionAndConnection(close_connection,
+                                             close_session_handle,
+                                             "Session.Close");
     }
-    if (reply) {
-      dbus_message_unref(reply);
-    }
-    dbus_message_unref(message);
+    dbus_connection_ = nullptr;
+  } else if (dbus_connection_ && !session_handle_.empty()) {
+    CloseWaylandPortalSessionAndConnection(dbus_connection_, session_handle_,
+                                           "Session.Close");
+    dbus_connection_ = nullptr;
   }
 
   session_handle_.clear();
   pipewire_node_id_ = 0;
+  UpdateDisplayGeometry(logical_width_ > 0 ? logical_width_ : kFallbackWidth,
+                        logical_height_ > 0 ? logical_height_
+                                            : kFallbackHeight);
+  pointer_granted_ = false;
 }
 
 }  // namespace crossdesk

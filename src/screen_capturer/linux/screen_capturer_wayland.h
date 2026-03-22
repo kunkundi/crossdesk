@@ -25,6 +25,9 @@ namespace crossdesk {
 
 class ScreenCapturerWayland : public ScreenCapturer {
  public:
+  enum class PipeWireConnectMode { kTargetObject, kNodeId, kAny };
+
+ public:
   ScreenCapturerWayland();
   ~ScreenCapturerWayland();
 
@@ -46,10 +49,11 @@ class ScreenCapturerWayland : public ScreenCapturer {
   bool CheckPortalAvailability() const;
   bool ConnectSessionBus();
   bool CreatePortalSession();
+  bool SelectPortalDevices();
   bool SelectPortalSource();
   bool StartPortalSession();
   bool OpenPipeWireRemote();
-  bool SetupPipeWireStream();
+  bool SetupPipeWireStream(bool relaxed_connect, PipeWireConnectMode mode);
 
   void Run();
   void CleanupPipeWire();
@@ -66,6 +70,9 @@ class ScreenCapturerWayland : public ScreenCapturer {
   std::atomic<bool> running_{false};
   std::atomic<bool> paused_{false};
   std::atomic<int> monitor_index_{0};
+  std::atomic<bool> pipewire_format_ready_{false};
+  std::atomic<int64_t> pipewire_stream_start_ms_{0};
+  std::atomic<int64_t> pipewire_last_frame_ms_{0};
   int initial_monitor_index_ = 0;
   std::atomic<bool> show_cursor_{true};
   int fps_ = 60;
@@ -85,10 +92,14 @@ class ScreenCapturerWayland : public ScreenCapturer {
   void* stream_listener_ = nullptr;
   bool pipewire_initialized_ = false;
   bool pipewire_thread_loop_started_ = false;
+  bool pointer_granted_ = false;
+  bool shared_session_registered_ = false;
   uint32_t spa_video_format_ = 0;
   int frame_width_ = 0;
   int frame_height_ = 0;
   int frame_stride_ = 0;
+  int logical_width_ = 0;
+  int logical_height_ = 0;
 
   std::vector<uint8_t> y_plane_;
   std::vector<uint8_t> uv_plane_;

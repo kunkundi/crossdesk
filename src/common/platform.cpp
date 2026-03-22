@@ -1,5 +1,8 @@
 #include "platform.h"
 
+#include <cstdlib>
+#include <cstring>
+
 #include "rd_log.h"
 
 #ifdef _WIN32
@@ -124,5 +127,26 @@ std::string GetHostName() {
   }
 #endif
   return hostname;
+}
+
+bool IsWaylandSession() {
+#if defined(__linux__) && !defined(__APPLE__)
+  const char* session_type = std::getenv("XDG_SESSION_TYPE");
+  if (session_type) {
+    if (std::strcmp(session_type, "wayland") == 0 ||
+        std::strcmp(session_type, "Wayland") == 0) {
+      return true;
+    }
+    if (std::strcmp(session_type, "x11") == 0 ||
+        std::strcmp(session_type, "X11") == 0) {
+      return false;
+    }
+  }
+
+  const char* wayland_display = std::getenv("WAYLAND_DISPLAY");
+  return wayland_display && wayland_display[0] != '\0';
+#else
+  return false;
+#endif
 }
 }  // namespace crossdesk

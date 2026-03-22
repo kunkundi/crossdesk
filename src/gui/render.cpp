@@ -8,6 +8,7 @@
 #endif
 
 #include <cstdlib>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -580,8 +581,9 @@ int Render::ScreenCapturerInit() {
 
   if (0 == screen_capturer_init_ret) {
     LOG_INFO("Init screen capturer success");
-    if (display_info_list_.empty()) {
-      display_info_list_ = screen_capturer_->GetDisplayInfoList();
+    const auto latest_display_info = screen_capturer_->GetDisplayInfoList();
+    if (!latest_display_info.empty()) {
+      display_info_list_ = latest_display_info;
     }
     return 0;
   } else {
@@ -594,10 +596,22 @@ int Render::ScreenCapturerInit() {
 }
 
 int Render::StartScreenCapturer() {
+  if (!screen_capturer_) {
+    LOG_INFO("Screen capturer instance missing, recreating before start");
+    if (0 != ScreenCapturerInit()) {
+      LOG_ERROR("Recreate screen capturer failed");
+      return -1;
+    }
+  }
+
   if (screen_capturer_) {
     LOG_INFO("Start screen capturer, show cursor: {}", show_cursor_);
 
-    screen_capturer_->Start(show_cursor_);
+    const int ret = screen_capturer_->Start(show_cursor_);
+    if (ret != 0) {
+      LOG_ERROR("Start screen capturer failed: {}", ret);
+      return ret;
+    }
   }
 
   return 0;
@@ -650,14 +664,42 @@ int Render::StartMouseController() {
     LOG_INFO("Device controller factory is nullptr");
     return -1;
   }
+
+#if defined(__linux__) && !defined(__APPLE__)
+  if (IsWaylandSession()) {
+    if (!screen_capturer_) {
+      return 1;
+    }
+
+    const auto latest_display_info = screen_capturer_->GetDisplayInfoList();
+    if (latest_display_info.empty() ||
+        latest_display_info[0].handle == nullptr) {
+      return 1;
+    }
+  }
+
+  if (screen_capturer_) {
+    const auto latest_display_info = screen_capturer_->GetDisplayInfoList();
+    if (!latest_display_info.empty()) {
+      display_info_list_ = latest_display_info;
+    }
+  }
+#endif
+
   mouse_controller_ = (MouseController*)device_controller_factory_->Create(
       DeviceControllerFactory::Device::Mouse);
+  if (!mouse_controller_) {
+    LOG_ERROR("Create mouse controller failed");
+    return -1;
+  }
 
   int mouse_controller_init_ret = mouse_controller_->Init(display_info_list_);
   if (0 != mouse_controller_init_ret) {
     LOG_INFO("Destroy mouse controller");
     mouse_controller_->Destroy();
+    delete mouse_controller_;
     mouse_controller_ = nullptr;
+    return mouse_controller_init_ret;
   }
 
   return 0;
@@ -924,9 +966,24 @@ int Render::AudioDeviceDestroy() {
 }
 
 void Render::UpdateInteractions() {
+#if defined(__linux__) && !defined(__APPLE__)
+  const bool is_wayland_session = IsWaylandSession();
+  const bool stop_wayland_mouse_before_screen =
+      is_wayland_session && !start_screen_capturer_ &&
+      screen_capturer_is_started_ && !start_mouse_controller_ &&
+      mouse_controller_is_started_;
+  if (stop_wayland_mouse_before_screen) {
+    LOG_INFO("Stopping Wayland mouse controller before screen capturer to "
+             "cleanly release the shared portal session");
+    StopMouseController();
+    mouse_controller_is_started_ = false;
+  }
+#endif
+
   if (start_screen_capturer_ && !screen_capturer_is_started_) {
-    StartScreenCapturer();
-    screen_capturer_is_started_ = true;
+    if (0 == StartScreenCapturer()) {
+      screen_capturer_is_started_ = true;
+    }
   } else if (!start_screen_capturer_ && screen_capturer_is_started_) {
     StopScreenCapturer();
     screen_capturer_is_started_ = false;
@@ -941,12 +998,23 @@ void Render::UpdateInteractions() {
   }
 
   if (start_mouse_controller_ && !mouse_controller_is_started_) {
-    StartMouseController();
-    mouse_controller_is_started_ = true;
+    if (0 == StartMouseController()) {
+      mouse_controller_is_started_ = true;
+    }
   } else if (!start_mouse_controller_ && mouse_controller_is_started_) {
     StopMouseController();
     mouse_controller_is_started_ = false;
   }
+
+#if defined(__linux__) && !defined(__APPLE__)
+  if (screen_capturer_is_started_ && screen_capturer_ && mouse_controller_) {
+    const auto latest_display_info = screen_capturer_->GetDisplayInfoList();
+    if (!latest_display_info.empty()) {
+      display_info_list_ = latest_display_info;
+      mouse_controller_->UpdateDisplayInfoList(display_info_list_);
+    }
+  }
+#endif
 
   if (start_keyboard_capturer_ && focus_on_stream_window_) {
     if (!keyboard_capturer_is_started_) {
@@ -1439,10 +1507,8 @@ int Render::DrawStreamWindow() {
     auto props = it.second;
     if (props->tab_selected_) {
       SDL_FRect render_rect_f = {
-          static_cast<float>(props->stream_render_rect_.x),
-          static_cast<float>(props->stream_render_rect_.y),
-          static_cast<float>(props->stream_render_rect_.w),
-          static_cast<float>(props->stream_render_rect_.h)};
+          props->stream_render_rect_f_.x, props->stream_render_rect_f_.y,
+          props->stream_render_rect_f_.w, props->stream_render_rect_f_.h};
       SDL_RenderTexture(stream_renderer_, props->stream_texture_, NULL,
                         &render_rect_f);
     }
@@ -1850,6 +1916,12 @@ void Render::HandleServerWindow() {
 void Render::Cleanup() {
   Clipboard::StopMonitoring();
 
+  if (mouse_controller_) {
+    mouse_controller_->Destroy();
+    delete mouse_controller_;
+    mouse_controller_ = nullptr;
+  }
+
   if (screen_capturer_) {
     screen_capturer_->Destroy();
     delete screen_capturer_;
@@ -1860,12 +1932,6 @@ void Render::Cleanup() {
     speaker_capturer_->Destroy();
     delete speaker_capturer_;
     speaker_capturer_ = nullptr;
-  }
-
-  if (mouse_controller_) {
-    mouse_controller_->Destroy();
-    delete mouse_controller_;
-    mouse_controller_ = nullptr;
   }
 
   if (keyboard_capturer_) {
@@ -1949,9 +2015,9 @@ void Render::CleanupPeers() {
     LOG_INFO("[{}] Leave connection [{}]", client_id_, client_id_);
     LeaveConnection(peer_, client_id_);
     is_client_mode_ = false;
+    StopMouseController();
     StopScreenCapturer();
     StopSpeakerCapturer();
-    StopMouseController();
     StopKeyboardCapturer();
     LOG_INFO("Destroy peer [{}]", client_id_);
     DestroyPeer(&peer_);
@@ -2229,26 +2295,36 @@ void Render::UpdateRenderRect() {
     float render_area_height = props->render_window_height_;
 
     props->stream_render_rect_last_ = props->stream_render_rect_;
+
+    SDL_FRect rect_f{props->render_window_x_, props->render_window_y_,
+                     render_area_width, render_area_height};
     if (render_area_width < render_area_height * video_ratio) {
-      props->stream_render_rect_ = {
-          (int)props->render_window_x_,
-          (int)(abs(render_area_height -
-                    render_area_width * video_ratio_reverse) /
-                    2 +
-                (int)props->render_window_y_),
-          (int)render_area_width,
-          (int)(render_area_width * video_ratio_reverse)};
+      rect_f.x = props->render_window_x_;
+      rect_f.y = std::abs(render_area_height -
+                          render_area_width * video_ratio_reverse) /
+                     2.0f +
+                 props->render_window_y_;
+      rect_f.w = render_area_width;
+      rect_f.h = render_area_width * video_ratio_reverse;
     } else if (render_area_width > render_area_height * video_ratio) {
-      props->stream_render_rect_ = {
-          (int)abs(render_area_width - render_area_height * video_ratio) / 2 +
-              (int)props->render_window_x_,
-          (int)props->render_window_y_, (int)(render_area_height * video_ratio),
-          (int)render_area_height};
+      rect_f.x =
+          std::abs(render_area_width - render_area_height * video_ratio) / 2.0f +
+          props->render_window_x_;
+      rect_f.y = props->render_window_y_;
+      rect_f.w = render_area_height * video_ratio;
+      rect_f.h = render_area_height;
     } else {
-      props->stream_render_rect_ = {
-          (int)props->render_window_x_, (int)props->render_window_y_,
-          (int)render_area_width, (int)render_area_height};
+      rect_f.x = props->render_window_x_;
+      rect_f.y = props->render_window_y_;
+      rect_f.w = render_area_width;
+      rect_f.h = render_area_height;
     }
+
+    props->stream_render_rect_f_ = rect_f;
+    props->stream_render_rect_ = {static_cast<int>(std::lround(rect_f.x)),
+                                  static_cast<int>(std::lround(rect_f.y)),
+                                  static_cast<int>(std::lround(rect_f.w)),
+                                  static_cast<int>(std::lround(rect_f.h))};
   }
 }
 
@@ -2389,12 +2465,23 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
     case SDL_EVENT_MOUSE_MOTION:
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
     case SDL_EVENT_MOUSE_BUTTON_UP:
-    case SDL_EVENT_MOUSE_WHEEL:
+    case SDL_EVENT_MOUSE_WHEEL: {
+      Uint32 mouse_window_id = 0;
+      if (event.type == SDL_EVENT_MOUSE_MOTION) {
+        mouse_window_id = event.motion.windowID;
+      } else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+                 event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
+        mouse_window_id = event.button.windowID;
+      } else if (event.type == SDL_EVENT_MOUSE_WHEEL) {
+        mouse_window_id = event.wheel.windowID;
+      }
+
       if (focus_on_stream_window_ && stream_window_ &&
-          SDL_GetWindowID(stream_window_) == event.motion.windowID) {
+          SDL_GetWindowID(stream_window_) == mouse_window_id) {
         ProcessMouseEvent(event);
       }
       break;
+    }
 
     default:
       if (event.type == STREAM_REFRESH_EVENT) {

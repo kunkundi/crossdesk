@@ -13,6 +13,7 @@ namespace crossdesk {
 
 std::string GetMac();
 std::string GetHostName();
+bool IsWaylandSession();
 
 }  // namespace crossdesk
 #endif

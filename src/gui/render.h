@@ -160,6 +160,7 @@ class Render {
     SDL_Texture* stream_texture_ = nullptr;
     uint8_t* argb_buffer_ = nullptr;
     int argb_buffer_size_ = 0;
+    SDL_FRect stream_render_rect_f_ = {0.0f, 0.0f, 0.0f, 0.0f};
     SDL_Rect stream_render_rect_;
     SDL_Rect stream_render_rect_last_;
     ImVec2 control_window_pos_;

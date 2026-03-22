@@ -43,6 +43,7 @@ class ScreenCapturerLinux : public ScreenCapturer {
   int InitX11();
   int InitDrm();
   int InitWayland();
+  int RefreshWaylandBackend();
   bool TryFallbackToDrm(bool show_cursor);
   bool TryFallbackToX11(bool show_cursor);
   bool TryFallbackToWayland(bool show_cursor);

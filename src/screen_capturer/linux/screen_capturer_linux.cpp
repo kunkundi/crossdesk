@@ -6,6 +6,7 @@
 #include <string>
 #include <utility>
 
+#include "platform.h"
 #include "rd_log.h"
 #if defined(CROSSDESK_HAS_DRM) && CROSSDESK_HAS_DRM
 #include "screen_capturer_drm.h"
@@ -18,16 +19,6 @@
 namespace crossdesk {
 
 namespace {
-
-bool IsWaylandSession() {
-  const char* session_type = getenv("XDG_SESSION_TYPE");
-  if (session_type && strcmp(session_type, "wayland") == 0) {
-    return true;
-  }
-
-  const char* wayland_display = getenv("WAYLAND_DISPLAY");
-  return wayland_display && wayland_display[0] != '\0';
-}
 
 #if defined(CROSSDESK_HAS_DRM) && CROSSDESK_HAS_DRM
 constexpr bool kDrmBuildEnabled = true;
@@ -162,6 +153,16 @@ int ScreenCapturerLinux::Start(bool show_cursor) {
     return -1;
   }
 
+#if defined(CROSSDESK_HAS_WAYLAND_CAPTURER) && CROSSDESK_HAS_WAYLAND_CAPTURER
+  if (backend_ == BackendType::kWayland) {
+    const int refresh_ret = RefreshWaylandBackend();
+    if (refresh_ret != 0) {
+      LOG_WARN("Linux screen capturer Wayland backend refresh failed: {}",
+               refresh_ret);
+    }
+  }
+#endif
+
   const int ret = impl_->Start(show_cursor);
   if (ret == 0) {
     return 0;
@@ -211,7 +212,9 @@ int ScreenCapturerLinux::Stop() {
   if (!impl_) {
     return 0;
   }
-  return impl_->Stop();
+  const int ret = impl_->Stop();
+  UpdateAliasesFromBackend(impl_.get());
+  return ret;
 }
 
 int ScreenCapturerLinux::Pause(int monitor_index) {
@@ -243,16 +246,19 @@ int ScreenCapturerLinux::ResetToInitialMonitor() {
 }
 
 std::vector<DisplayInfo> ScreenCapturerLinux::GetDisplayInfoList() {
-  {
-    std::lock_guard<std::mutex> lock(alias_mutex_);
-    if (!canonical_displays_.empty()) {
-      return canonical_displays_;
-    }
-  }
-
   if (!impl_) {
     return std::vector<DisplayInfo>();
   }
+
+  // Wayland backend may update display geometry/stream handle asynchronously
+  // after Start(). Refresh aliases every time to keep canonical displays fresh.
+  UpdateAliasesFromBackend(impl_.get());
+
+  std::lock_guard<std::mutex> lock(alias_mutex_);
+  if (!canonical_displays_.empty()) {
+    return canonical_displays_;
+  }
+
   return impl_->GetDisplayInfoList();
 }
 
@@ -310,6 +316,29 @@ int ScreenCapturerLinux::InitWayland() {
   return 0;
 #else
   LOG_WARN("Linux screen capturer Wayland backend is disabled at build time");
+  return -1;
+#endif
+}
+
+int ScreenCapturerLinux::RefreshWaylandBackend() {
+#if defined(CROSSDESK_HAS_WAYLAND_CAPTURER) && CROSSDESK_HAS_WAYLAND_CAPTURER
+  auto backend = std::make_unique<ScreenCapturerWayland>();
+  const int ret = backend->Init(fps_, callback_);
+  if (ret != 0) {
+    backend->Destroy();
+    return ret;
+  }
+
+  if (impl_) {
+    impl_->Destroy();
+  }
+
+  UpdateAliasesFromBackend(backend.get());
+  impl_ = std::move(backend);
+  backend_ = BackendType::kWayland;
+  LOG_INFO("Linux screen capturer Wayland backend refreshed before start");
+  return 0;
+#else
   return -1;
 #endif
 }
@@ -443,6 +472,8 @@ void ScreenCapturerLinux::UpdateAliasesFromBackend(ScreenCapturer* backend) {
 
     if (i < canonical_displays_.size()) {
       // Keep original stable names, but refresh geometry from active backend.
+      canonical_displays_[i].handle = backend_displays[i].handle;
+      canonical_displays_[i].is_primary = backend_displays[i].is_primary;
       canonical_displays_[i].left = backend_displays[i].left;
       canonical_displays_[i].top = backend_displays[i].top;
       canonical_displays_[i].right = backend_displays[i].right;

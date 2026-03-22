@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -109,10 +110,67 @@ int Render::SendKeyCommand(int key_code, bool is_down) {
 
 int Render::ProcessMouseEvent(const SDL_Event& event) {
   controlled_remote_id_ = "";
-  int video_width, video_height = 0;
-  int render_width, render_height = 0;
-  float ratio_x, ratio_y = 0;
   RemoteAction remote_action;
+  float cursor_x = last_mouse_event.motion.x;
+  float cursor_y = last_mouse_event.motion.y;
+
+  auto normalize_cursor_to_window_space = [&](float* x, float* y) {
+    if (!x || !y || !stream_window_) {
+      return;
+    }
+
+    int window_width = 0;
+    int window_height = 0;
+    int pixel_width = 0;
+    int pixel_height = 0;
+    SDL_GetWindowSize(stream_window_, &window_width, &window_height);
+    SDL_GetWindowSizeInPixels(stream_window_, &pixel_width, &pixel_height);
+
+    if (window_width <= 0 || window_height <= 0 || pixel_width <= 0 ||
+        pixel_height <= 0) {
+      return;
+    }
+
+    if ((window_width != pixel_width || window_height != pixel_height) &&
+        (*x > static_cast<float>(window_width) + 1.0f ||
+         *y > static_cast<float>(window_height) + 1.0f)) {
+      const float scale_x =
+          static_cast<float>(window_width) / static_cast<float>(pixel_width);
+      const float scale_y =
+          static_cast<float>(window_height) / static_cast<float>(pixel_height);
+      *x *= scale_x;
+      *y *= scale_y;
+
+      static bool logged_pixel_to_window_conversion = false;
+      if (!logged_pixel_to_window_conversion) {
+        LOG_INFO(
+            "Mouse coordinate space converted from pixels to window units: "
+            "window={}x{}, pixels={}x{}, scale=({:.4f},{:.4f})",
+            window_width, window_height, pixel_width, pixel_height, scale_x,
+            scale_y);
+        logged_pixel_to_window_conversion = true;
+      }
+    }
+  };
+
+  if (event.type == SDL_EVENT_MOUSE_MOTION) {
+    cursor_x = event.motion.x;
+    cursor_y = event.motion.y;
+    normalize_cursor_to_window_space(&cursor_x, &cursor_y);
+  } else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+             event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
+    cursor_x = event.button.x;
+    cursor_y = event.button.y;
+    normalize_cursor_to_window_space(&cursor_x, &cursor_y);
+  } else if (event.type == SDL_EVENT_MOUSE_WHEEL) {
+    cursor_x = last_mouse_event.motion.x;
+    cursor_y = last_mouse_event.motion.y;
+  }
+
+  const bool is_pointer_position_event =
+      (event.type == SDL_EVENT_MOUSE_MOTION ||
+       event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+       event.type == SDL_EVENT_MOUSE_BUTTON_UP);
 
   // std::shared_lock lock(client_properties_mutex_);
   for (auto& it : client_properties_) {
@@ -121,23 +179,24 @@ int Render::ProcessMouseEvent(const SDL_Event& event) {
       continue;
     }
 
-    if (event.button.x >= props->stream_render_rect_.x &&
-        event.button.x <=
-            props->stream_render_rect_.x + props->stream_render_rect_.w &&
-        event.button.y >= props->stream_render_rect_.y &&
-        event.button.y <=
-            props->stream_render_rect_.y + props->stream_render_rect_.h) {
-      controlled_remote_id_ = it.first;
-      render_width = props->stream_render_rect_.w;
-      render_height = props->stream_render_rect_.h;
-      last_mouse_event.button.x = event.button.x;
-      last_mouse_event.button.y = event.button.y;
+    const SDL_FRect render_rect = props->stream_render_rect_f_;
+    if (render_rect.w <= 1.0f || render_rect.h <= 1.0f) {
+      continue;
+    }
 
-      remote_action.m.x =
-          (float)(event.button.x - props->stream_render_rect_.x) / render_width;
-      remote_action.m.y =
-          (float)(event.button.y - props->stream_render_rect_.y) /
-          render_height;
+    if (is_pointer_position_event && cursor_x >= render_rect.x &&
+        cursor_x <= render_rect.x + render_rect.w && cursor_y >= render_rect.y &&
+        cursor_y <= render_rect.y + render_rect.h) {
+      controlled_remote_id_ = it.first;
+      last_mouse_event.motion.x = cursor_x;
+      last_mouse_event.motion.y = cursor_y;
+      last_mouse_event.button.x = cursor_x;
+      last_mouse_event.button.y = cursor_y;
+
+      remote_action.m.x = (cursor_x - render_rect.x) / render_rect.w;
+      remote_action.m.y = (cursor_y - render_rect.y) / render_rect.h;
+      remote_action.m.x = std::clamp(remote_action.m.x, 0.0f, 1.0f);
+      remote_action.m.y = std::clamp(remote_action.m.y, 0.0f, 1.0f);
 
       if (SDL_EVENT_MOUSE_BUTTON_DOWN == event.type) {
         remote_action.type = ControlType::mouse;
@@ -171,12 +230,10 @@ int Render::ProcessMouseEvent(const SDL_Event& event) {
                       props->data_label_.c_str());
       }
     } else if (SDL_EVENT_MOUSE_WHEEL == event.type &&
-               last_mouse_event.button.x >= props->stream_render_rect_.x &&
-               last_mouse_event.button.x <= props->stream_render_rect_.x +
-                                                props->stream_render_rect_.w &&
-               last_mouse_event.button.y >= props->stream_render_rect_.y &&
-               last_mouse_event.button.y <= props->stream_render_rect_.y +
-                                                props->stream_render_rect_.h) {
+               last_mouse_event.button.x >= render_rect.x &&
+               last_mouse_event.button.x <= render_rect.x + render_rect.w &&
+               last_mouse_event.button.y >= render_rect.y &&
+               last_mouse_event.button.y <= render_rect.y + render_rect.h) {
       float scroll_x = event.wheel.x;
       float scroll_y = event.wheel.y;
       if (event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {
@@ -203,14 +260,12 @@ int Render::ProcessMouseEvent(const SDL_Event& event) {
         remote_action.m.s = roundUp(scroll_x);
       }
 
-      render_width = props->stream_render_rect_.w;
-      render_height = props->stream_render_rect_.h;
-      remote_action.m.x =
-          (float)(last_mouse_event.button.x - props->stream_render_rect_.x) /
-          render_width;
-      remote_action.m.y =
-          (float)(last_mouse_event.button.y - props->stream_render_rect_.y) /
-          render_height;
+      remote_action.m.x = (last_mouse_event.button.x - render_rect.x) /
+                          (std::max)(render_rect.w, 1.0f);
+      remote_action.m.y = (last_mouse_event.button.y - render_rect.y) /
+                          (std::max)(render_rect.h, 1.0f);
+      remote_action.m.x = std::clamp(remote_action.m.x, 0.0f, 1.0f);
+      remote_action.m.y = std::clamp(remote_action.m.y, 0.0f, 1.0f);
 
       if (props->control_bar_hovered_) {
         continue;
@@ -783,6 +838,9 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
             0, (int)render->title_bar_height_,
             (int)render->stream_window_width_,
             (int)(render->stream_window_height_ - render->title_bar_height_)};
+        props->stream_render_rect_f_ = {
+            0.0f, render->title_bar_height_, render->stream_window_width_,
+            render->stream_window_height_ - render->title_bar_height_};
         render->start_keyboard_capturer_ = true;
         break;
       }
@@ -910,7 +968,19 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
                         })) {
           render->need_to_destroy_server_window_ = true;
           render->is_server_mode_ = false;
+#if defined(__linux__) && !defined(__APPLE__)
+          if (IsWaylandSession()) {
+            // Keep Wayland capture session warm to avoid black screen on
+            // subsequent reconnects.
+            render->start_screen_capturer_ = true;
+            LOG_INFO("Keeping Wayland screen capturer running after "
+                     "disconnect to preserve reconnect stability");
+          } else {
+            render->start_screen_capturer_ = false;
+          }
+#else
           render->start_screen_capturer_ = false;
+#endif
           render->start_speaker_capturer_ = false;
           render->start_mouse_controller_ = false;
           render->start_keyboard_capturer_ = false;
