@@ -81,6 +81,55 @@ void Render::OnSignalMessageCb(const char* message, size_t size,
   }
 }
 
+bool Render::IsModifierVkKey(int key_code) {
+  switch (key_code) {
+    case 0x10:  // VK_SHIFT
+    case 0x11:  // VK_CONTROL
+    case 0x12:  // VK_MENU(ALT)
+    case 0x5B:  // VK_LWIN
+    case 0x5C:  // VK_RWIN
+    case 0xA0:  // VK_LSHIFT
+    case 0xA1:  // VK_RSHIFT
+    case 0xA2:  // VK_LCONTROL
+    case 0xA3:  // VK_RCONTROL
+    case 0xA4:  // VK_LMENU
+    case 0xA5:  // VK_RMENU
+      return true;
+    default:
+      return false;
+  }
+}
+
+void Render::UpdatePressedModifierState(int key_code, bool is_down) {
+  if (!IsModifierVkKey(key_code)) {
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock(pressed_modifier_keys_mutex_);
+  if (is_down) {
+    pressed_modifier_keys_.insert(key_code);
+  } else {
+    pressed_modifier_keys_.erase(key_code);
+  }
+}
+
+void Render::ForceReleasePressedModifiers() {
+  std::vector<int> pressed_keys;
+  {
+    std::lock_guard<std::mutex> lock(pressed_modifier_keys_mutex_);
+    if (pressed_modifier_keys_.empty()) {
+      return;
+    }
+    pressed_keys.assign(pressed_modifier_keys_.begin(),
+                        pressed_modifier_keys_.end());
+    pressed_modifier_keys_.clear();
+  }
+
+  for (int key_code : pressed_keys) {
+    SendKeyCommand(key_code, false);
+  }
+}
+
 int Render::SendKeyCommand(int key_code, bool is_down) {
   RemoteAction remote_action;
   remote_action.type = ControlType::keyboard;
@@ -108,6 +157,8 @@ int Render::SendKeyCommand(int key_code, bool is_down) {
       }
     }
   }
+
+  UpdatePressedModifierState(key_code, is_down);
 
   return 0;
 }

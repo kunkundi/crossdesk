@@ -20,6 +20,7 @@
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "IconsFontAwesome6.h"
@@ -322,6 +323,9 @@ class Render {
 
  private:
   int SendKeyCommand(int key_code, bool is_down);
+  static bool IsModifierVkKey(int key_code);
+  void UpdatePressedModifierState(int key_code, bool is_down);
+  void ForceReleasePressedModifiers();
   int ProcessMouseEvent(const SDL_Event& event);
 
   static void SdlCaptureAudioIn(void* userdata, Uint8* stream, int len);
@@ -506,6 +510,8 @@ class Render {
   std::string controlled_remote_id_ = "";
   std::string focused_remote_id_ = "";
   std::string remote_client_id_ = "";
+  std::unordered_set<int> pressed_modifier_keys_;
+  std::mutex pressed_modifier_keys_mutex_;
   SDL_Event last_mouse_event;
   SDL_AudioStream* output_stream_;
   uint32_t STREAM_REFRESH_EVENT = 0;

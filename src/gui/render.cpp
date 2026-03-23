@@ -2455,6 +2455,7 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
     case SDL_EVENT_WINDOW_FOCUS_LOST:
       if (stream_window_ &&
           SDL_GetWindowID(stream_window_) == event.window.windowID) {
+        ForceReleasePressedModifiers();
         focus_on_stream_window_ = false;
       } else if (main_window_ &&
                  SDL_GetWindowID(main_window_) == event.window.windowID) {
