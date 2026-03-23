@@ -4,6 +4,7 @@
 #include <poll.h>
 
 #include "keyboard_converter.h"
+#include "platform.h"
 #include "rd_log.h"
 
 namespace crossdesk {
@@ -43,7 +44,12 @@ static int KeyboardEventHandler(Display* display, XEvent* event) {
 }
 
 KeyboardCapturer::KeyboardCapturer()
-    : display_(nullptr), root_(0), running_(false) {
+    : display_(nullptr),
+      root_(0),
+      running_(false),
+      use_wayland_portal_(false),
+      wayland_init_attempted_(false),
+      dbus_connection_(nullptr) {
   XInitThreads();
   display_ = XOpenDisplay(nullptr);
   if (!display_) {
@@ -53,6 +59,7 @@ KeyboardCapturer::KeyboardCapturer()
 
 KeyboardCapturer::~KeyboardCapturer() {
   Unhook();
+  CleanupWaylandPortal();
 
   if (display_) {
     XCloseDisplay(display_);
@@ -140,6 +147,22 @@ int KeyboardCapturer::Unhook() {
 }
 
 int KeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down) {
+  if (IsWaylandSession()) {
+    if (!use_wayland_portal_ && !wayland_init_attempted_) {
+      wayland_init_attempted_ = true;
+      if (InitWaylandPortal()) {
+        use_wayland_portal_ = true;
+        LOG_INFO("Keyboard controller initialized with Wayland portal backend");
+      } else {
+        LOG_WARN("Wayland keyboard control init failed, falling back to X11/XTest backend");
+      }
+    }
+
+    if (use_wayland_portal_) {
+      return SendWaylandKeyboardCommand(key_code, is_down);
+    }
+  }
+
   if (!display_) {
     LOG_ERROR("Display not initialized.");
     return -1;
