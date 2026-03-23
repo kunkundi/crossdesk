@@ -99,8 +99,12 @@ int Render::SendKeyCommand(int key_code, bool is_down) {
       if (props->connection_status_ == ConnectionStatus::Connected &&
           props->peer_) {
         std::string msg = remote_action.to_json();
-        SendDataFrame(props->peer_, msg.c_str(), msg.size(),
-                      props->data_label_.c_str());
+        int ret = SendReliableDataFrame(props->peer_, msg.c_str(), msg.size(),
+                                        props->keyboard_label_.c_str());
+        if (ret != 0) {
+          LOG_WARN("Send keyboard command failed, remote_id={}, ret={}",
+                   target_id, ret);
+        }
       }
     }
   }
@@ -227,7 +231,7 @@ int Render::ProcessMouseEvent(const SDL_Event& event) {
       if (props->peer_) {
         std::string msg = remote_action.to_json();
         SendDataFrame(props->peer_, msg.c_str(), msg.size(),
-                      props->data_label_.c_str());
+                      props->mouse_label_.c_str());
       }
     } else if (SDL_EVENT_MOUSE_WHEEL == event.type &&
                last_mouse_event.button.x >= render_rect.x &&
@@ -273,7 +277,7 @@ int Render::ProcessMouseEvent(const SDL_Event& event) {
       if (props->peer_) {
         std::string msg = remote_action.to_json();
         SendDataFrame(props->peer_, msg.c_str(), msg.size(),
-                      props->data_label_.c_str());
+                      props->mouse_label_.c_str());
       }
     }
   }

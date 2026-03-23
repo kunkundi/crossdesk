@@ -901,6 +901,8 @@ int Render::CreateConnectionPeer() {
 
     AddAudioStream(peer_, audio_label_.c_str());
     AddDataStream(peer_, data_label_.c_str(), false);
+    AddDataStream(peer_, mouse_label_.c_str(), false);
+    AddDataStream(peer_, keyboard_label_.c_str(), true);
     AddDataStream(peer_, control_data_label_.c_str(), true);
     AddDataStream(peer_, file_label_.c_str(), true);
     AddDataStream(peer_, file_feedback_label_.c_str(), true);

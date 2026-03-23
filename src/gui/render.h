@@ -83,6 +83,8 @@ class Render {
     PeerPtr* peer_ = nullptr;
     std::string audio_label_ = "control_audio";
     std::string data_label_ = "data";
+    std::string mouse_label_ = "mouse";
+    std::string keyboard_label_ = "keyboard";
     std::string file_label_ = "file";
     std::string control_data_label_ = "control_data";
     std::string file_feedback_label_ = "file_feedback";
@@ -603,6 +605,8 @@ class Render {
   std::string video_secondary_label_ = "secondary_display";
   std::string audio_label_ = "audio";
   std::string data_label_ = "data";
+  std::string mouse_label_ = "mouse";
+  std::string keyboard_label_ = "keyboard";
   std::string info_label_ = "info";
   std::string control_data_label_ = "control_data";
   std::string file_label_ = "file";
