@@ -121,8 +121,16 @@ int ScreenCapturerX11::Init(const int fps, cb_desktop_data cb) {
   width_ = attr.width;
   height_ = attr.height;
 
-  if (width_ % 2 != 0 || height_ % 2 != 0) {
-    LOG_ERROR("Width and height must be even numbers");
+  if ((width_ & 1) != 0 || (height_ & 1) != 0) {
+    LOG_WARN(
+        "X11 root size {}x{} is not even, aligning down to {}x{} for NV12",
+        width_, height_, width_ & ~1, height_ & ~1);
+    width_ &= ~1;
+    height_ &= ~1;
+  }
+
+  if (width_ <= 1 || height_ <= 1) {
+    LOG_ERROR("Invalid capture size after alignment: {}x{}", width_, height_);
     return -2;
   }
 
@@ -287,6 +295,16 @@ void ScreenCapturerX11::OnFrame() {
     src_argb = argb_buf.data();
   } else {
     src_argb = reinterpret_cast<uint8_t*>(image->data);
+  }
+
+  const size_t y_size =
+      static_cast<size_t>(width_) * static_cast<size_t>(height_);
+  const size_t uv_size = y_size / 2;
+  if (y_plane_.size() != y_size) {
+    y_plane_.resize(y_size);
+  }
+  if (uv_plane_.size() != uv_size) {
+    uv_plane_.resize(uv_size);
   }
 
   libyuv::ARGBToNV12(src_argb, width_ * 4, y_plane_.data(), width_,
