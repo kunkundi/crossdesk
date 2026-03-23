@@ -54,10 +54,27 @@ int KeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down) {
   input.type = INPUT_KEYBOARD;
   input.ki.wVk = (WORD)key_code;
 
-  if (!is_down) {
-    input.ki.dwFlags = KEYEVENTF_KEYUP;
+  const UINT scan_code =
+      MapVirtualKeyW(static_cast<UINT>(key_code), MAPVK_VK_TO_VSC_EX);
+  if (scan_code != 0) {
+    input.ki.wVk = 0;
+    input.ki.wScan = static_cast<WORD>(scan_code & 0xFF);
+    input.ki.dwFlags |= KEYEVENTF_SCANCODE;
+    if ((scan_code & 0xFF00) != 0) {
+      input.ki.dwFlags |= KEYEVENTF_EXTENDEDKEY;
+    }
   }
-  SendInput(1, &input, sizeof(INPUT));
+
+  if (!is_down) {
+    input.ki.dwFlags |= KEYEVENTF_KEYUP;
+  }
+
+  UINT sent = SendInput(1, &input, sizeof(INPUT));
+  if (sent != 1) {
+    LOG_WARN("SendInput failed for key_code={}, is_down={}, err={}", key_code,
+             is_down, GetLastError());
+    return -1;
+  }
 
   return 0;
 }
