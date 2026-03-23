@@ -11,10 +11,28 @@ namespace crossdesk {
 static OnKeyAction g_on_key_action = nullptr;
 static void* g_user_ptr = nullptr;
 
+static KeySym NormalizeKeySym(KeySym key_sym) {
+  if (key_sym >= XK_a && key_sym <= XK_z) {
+    return key_sym - XK_a + XK_A;
+  }
+  return key_sym;
+}
+
 static int KeyboardEventHandler(Display* display, XEvent* event) {
+  (void)display;
   if (event->xkey.type == KeyPress || event->xkey.type == KeyRelease) {
-    KeySym keySym = XLookupKeysym(&event->xkey, 0);
-    int key_code = XKeysymToKeycode(display, keySym);
+    KeySym key_sym = NormalizeKeySym(XLookupKeysym(&event->xkey, 0));
+    auto key_it = x11KeySymToVkCode.find(static_cast<int>(key_sym));
+    if (key_it == x11KeySymToVkCode.end()) {
+      key_sym = NormalizeKeySym(XLookupKeysym(&event->xkey, 1));
+      key_it = x11KeySymToVkCode.find(static_cast<int>(key_sym));
+    }
+
+    if (key_it == x11KeySymToVkCode.end()) {
+      return 0;
+    }
+
+    int key_code = key_it->second;
     bool is_key_down = (event->xkey.type == KeyPress);
 
     if (g_on_key_action) {

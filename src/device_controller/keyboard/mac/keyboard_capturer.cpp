@@ -10,6 +10,7 @@ static void* g_user_ptr = nullptr;
 
 CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type,
                          CGEventRef event, void* userInfo) {
+  (void)proxy;
   if (!g_on_key_action) {
     return event;
   }
@@ -20,84 +21,72 @@ CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type,
     return event;
   }
 
-  int vk_code = 0;
-
   if (type == kCGEventKeyDown || type == kCGEventKeyUp) {
     CGKeyCode key_code = static_cast<CGKeyCode>(
         CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode));
-    if (CGKeyCodeToVkCode.find(key_code) != CGKeyCodeToVkCode.end()) {
-      g_on_key_action(CGKeyCodeToVkCode[key_code], type == kCGEventKeyDown,
-                      g_user_ptr);
+    auto key_it = CGKeyCodeToVkCode.find(key_code);
+    if (key_it != CGKeyCodeToVkCode.end()) {
+      g_on_key_action(key_it->second, type == kCGEventKeyDown, g_user_ptr);
     }
   } else if (type == kCGEventFlagsChanged) {
     CGEventFlags current_flags = CGEventGetFlags(event);
     CGKeyCode key_code = static_cast<CGKeyCode>(
         CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode));
+    auto key_it = CGKeyCodeToVkCode.find(key_code);
+    if (key_it == CGKeyCodeToVkCode.end()) {
+      return nullptr;
+    }
+    const int vk_code = key_it->second;
 
     // caps lock
     bool caps_lock_state = (current_flags & kCGEventFlagMaskAlphaShift) != 0;
     if (caps_lock_state != keyboard_capturer->caps_lock_flag_) {
       keyboard_capturer->caps_lock_flag_ = caps_lock_state;
-      if (keyboard_capturer->caps_lock_flag_) {
-        g_on_key_action(CGKeyCodeToVkCode[key_code], true, g_user_ptr);
-      } else {
-        g_on_key_action(CGKeyCodeToVkCode[key_code], false, g_user_ptr);
-      }
+      g_on_key_action(vk_code, keyboard_capturer->caps_lock_flag_, g_user_ptr);
     }
 
     // shift
     bool shift_state = (current_flags & kCGEventFlagMaskShift) != 0;
     if (shift_state != keyboard_capturer->shift_flag_) {
       keyboard_capturer->shift_flag_ = shift_state;
-      if (keyboard_capturer->shift_flag_) {
-        g_on_key_action(CGKeyCodeToVkCode[key_code], true, g_user_ptr);
-      } else {
-        g_on_key_action(CGKeyCodeToVkCode[key_code], false, g_user_ptr);
-      }
+      g_on_key_action(vk_code, keyboard_capturer->shift_flag_, g_user_ptr);
     }
 
     // control
     bool control_state = (current_flags & kCGEventFlagMaskControl) != 0;
     if (control_state != keyboard_capturer->control_flag_) {
       keyboard_capturer->control_flag_ = control_state;
-      if (keyboard_capturer->control_flag_) {
-        g_on_key_action(CGKeyCodeToVkCode[key_code], true, g_user_ptr);
-      } else {
-        g_on_key_action(CGKeyCodeToVkCode[key_code], false, g_user_ptr);
-      }
+      g_on_key_action(vk_code, keyboard_capturer->control_flag_, g_user_ptr);
     }
 
     // option
     bool option_state = (current_flags & kCGEventFlagMaskAlternate) != 0;
     if (option_state != keyboard_capturer->option_flag_) {
       keyboard_capturer->option_flag_ = option_state;
-      if (keyboard_capturer->option_flag_) {
-        g_on_key_action(CGKeyCodeToVkCode[key_code], true, g_user_ptr);
-      } else {
-        g_on_key_action(CGKeyCodeToVkCode[key_code], false, g_user_ptr);
-      }
+      g_on_key_action(vk_code, keyboard_capturer->option_flag_, g_user_ptr);
     }
 
     // command
     bool command_state = (current_flags & kCGEventFlagMaskCommand) != 0;
     if (command_state != keyboard_capturer->command_flag_) {
       keyboard_capturer->command_flag_ = command_state;
-      if (keyboard_capturer->command_flag_) {
-        g_on_key_action(CGKeyCodeToVkCode[key_code], true, g_user_ptr);
-      } else {
-        g_on_key_action(CGKeyCodeToVkCode[key_code], false, g_user_ptr);
-      }
+      g_on_key_action(vk_code, keyboard_capturer->command_flag_, g_user_ptr);
     }
   }
 
   return nullptr;
 }
 
-KeyboardCapturer::KeyboardCapturer() {}
+KeyboardCapturer::KeyboardCapturer()
+    : event_tap_(nullptr), run_loop_source_(nullptr) {}
 
-KeyboardCapturer::~KeyboardCapturer() {}
+KeyboardCapturer::~KeyboardCapturer() { Unhook(); }
 
 int KeyboardCapturer::Hook(OnKeyAction on_key_action, void* user_ptr) {
+  if (event_tap_) {
+    return 0;
+  }
+
   g_on_key_action = on_key_action;
   g_user_ptr = user_ptr;
 
@@ -115,9 +104,23 @@ int KeyboardCapturer::Hook(OnKeyAction on_key_action, void* user_ptr) {
 
   run_loop_source_ =
       CFMachPortCreateRunLoopSource(kCFAllocatorDefault, event_tap_, 0);
+  if (!run_loop_source_) {
+    LOG_ERROR("CFMachPortCreateRunLoopSource failed");
+    CFRelease(event_tap_);
+    event_tap_ = nullptr;
+    return -1;
+  }
 
   CFRunLoopAddSource(CFRunLoopGetCurrent(), run_loop_source_,
                      kCFRunLoopCommonModes);
+
+  const CGEventFlags current_flags =
+      CGEventSourceFlagsState(kCGEventSourceStateCombinedSessionState);
+  caps_lock_flag_ = (current_flags & kCGEventFlagMaskAlphaShift) != 0;
+  shift_flag_ = (current_flags & kCGEventFlagMaskShift) != 0;
+  control_flag_ = (current_flags & kCGEventFlagMaskControl) != 0;
+  option_flag_ = (current_flags & kCGEventFlagMaskAlternate) != 0;
+  command_flag_ = (current_flags & kCGEventFlagMaskCommand) != 0;
 
   CGEventTapEnable(event_tap_, true);
   return 0;
@@ -170,9 +173,12 @@ int KeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down) {
   if (vkCodeToCGKeyCode.find(key_code) != vkCodeToCGKeyCode.end()) {
     CGKeyCode cg_key_code = vkCodeToCGKeyCode[key_code];
     CGEventRef event = CGEventCreateKeyboardEvent(NULL, cg_key_code, is_down);
-    CGEventRef clearFlags =
-        CGEventCreateKeyboardEvent(NULL, (CGKeyCode)0, true);
-    CGEventSetFlags(clearFlags, 0);
+    if (!event) {
+      LOG_ERROR("CGEventCreateKeyboardEvent failed");
+      return -1;
+    }
+
+    CGEventSetFlags(event, 0);
     CGEventPost(kCGHIDEventTap, event);
     CFRelease(event);
 

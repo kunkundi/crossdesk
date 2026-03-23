@@ -734,7 +734,7 @@ int Render::StartKeyboardCapturer() {
     LOG_INFO("Start keyboard capturer");
   }
 
-  return 0;
+  return keyboard_capturer_init_ret;
 }
 
 int Render::StopKeyboardCapturer() {
@@ -1018,8 +1018,9 @@ void Render::UpdateInteractions() {
 
   if (start_keyboard_capturer_ && focus_on_stream_window_) {
     if (!keyboard_capturer_is_started_) {
-      StartKeyboardCapturer();
-      keyboard_capturer_is_started_ = true;
+      if (StartKeyboardCapturer() == 0) {
+        keyboard_capturer_is_started_ = true;
+      }
     }
   } else if (keyboard_capturer_is_started_) {
     StopKeyboardCapturer();
