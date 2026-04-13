@@ -1,2 +1,2 @@
-// Application icon (IDI_ICON1 = 1, which is the default app icon resource ID)
+// Application icon resource; load by the resource name IDI_ICON1.
 IDI_ICON1 ICON "..\\..\\icons\\windows\\crossdesk.ico"

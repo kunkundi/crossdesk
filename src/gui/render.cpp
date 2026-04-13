@@ -7,8 +7,8 @@
 #include <X11/Xlib.h>
 #endif
 
-#include <cstdlib>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -27,6 +27,7 @@
 #include "rd_log.h"
 #include "screen_capturer_factory.h"
 #include "version_checker.h"
+
 
 #if defined(__APPLE__)
 #include "window_util_mac.h"
@@ -62,6 +63,19 @@ bool CanReadFontFile(const char* font_path) {
   std::ifstream font_file(font_path, std::ios::binary);
   return font_file.good();
 }
+
+#if _WIN32
+HICON LoadTrayIcon() {
+  HMODULE module = GetModuleHandleW(nullptr);
+  HICON icon = reinterpret_cast<HICON>(
+      LoadImageW(module, L"IDI_ICON1", IMAGE_ICON, 0, 0, LR_DEFAULTSIZE));
+  if (icon) {
+    return icon;
+  }
+
+  return LoadIconW(nullptr, IDI_APPLICATION);
+}
+#endif
 
 #if defined(__linux__) && !defined(__APPLE__)
 inline bool X11GetDisplayAndWindow(SDL_Window* window, Display** display_out,
@@ -975,8 +989,9 @@ void Render::UpdateInteractions() {
       screen_capturer_is_started_ && !start_mouse_controller_ &&
       mouse_controller_is_started_;
   if (stop_wayland_mouse_before_screen) {
-    LOG_INFO("Stopping Wayland mouse controller before screen capturer to "
-             "cleanly release the shared portal session");
+    LOG_INFO(
+        "Stopping Wayland mouse controller before screen capturer to "
+        "cleanly release the shared portal session");
     StopMouseController();
     mouse_controller_is_started_ = false;
   }
@@ -1087,8 +1102,7 @@ int Render::CreateMainWindow() {
   HWND main_hwnd = (HWND)SDL_GetPointerProperty(
       props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
 
-  HICON tray_icon = (HICON)LoadImageW(NULL, L"crossdesk.ico", IMAGE_ICON, 0, 0,
-                                      LR_LOADFROMFILE | LR_DEFAULTSIZE);
+  HICON tray_icon = LoadTrayIcon();
   tray_ = std::make_unique<WinTray>(main_hwnd, tray_icon, L"CrossDesk",
                                     localization_language_index_);
 #endif
@@ -2311,7 +2325,8 @@ void Render::UpdateRenderRect() {
       rect_f.h = render_area_width * video_ratio_reverse;
     } else if (render_area_width > render_area_height * video_ratio) {
       rect_f.x =
-          std::abs(render_area_width - render_area_height * video_ratio) / 2.0f +
+          std::abs(render_area_width - render_area_height * video_ratio) /
+              2.0f +
           props->render_window_x_;
       rect_f.y = props->render_window_y_;
       rect_f.w = render_area_height * video_ratio;
