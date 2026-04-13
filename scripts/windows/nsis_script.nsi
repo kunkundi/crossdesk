@@ -73,6 +73,8 @@ installApp:
 
     ; Main application executable path
     File /oname=CrossDesk.exe "..\..\build\windows\x64\release\crossdesk.exe"
+    ; Bundle runtime DLLs from the release output directory
+    File "..\..\build\windows\x64\release\*.dll"
 
     ; Write uninstall information
     WriteUninstaller "$INSTDIR\uninstall.exe"

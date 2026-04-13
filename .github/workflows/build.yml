@@ -248,6 +248,7 @@ jobs:
           $portableDir = "${{ github.workspace }}\portable"
           New-Item -ItemType Directory -Force -Path $portableDir
           Copy-Item "${{ github.workspace }}\build\windows\x64\release\crossdesk.exe" "$portableDir\CrossDesk.exe"
+          Copy-Item "${{ github.workspace }}\build\windows\x64\release\*.dll" $portableDir -Force
           Compress-Archive -Path "$portableDir\*" -DestinationPath "${{ github.workspace }}\crossdesk-win-x64-portable-${{ env.VERSION_NUM }}.zip"
 
       - name: Upload artifact
