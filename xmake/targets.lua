@@ -155,7 +155,7 @@ function setup_targets()
         target("wgc_plugin")
             set_kind("shared")
             add_packages("libyuv")
-            add_deps("rd_log")
+            add_deps("rd_log", "path_manager")
             add_defines("CROSSDESK_WGC_PLUGIN_BUILD=1")
             add_links("windowsapp")
             add_files("src/screen_capturer/windows/screen_capturer_wgc.cpp",
