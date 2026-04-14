@@ -31,6 +31,7 @@ int BitrateDisplay(int bitrate) {
 int Render::FileTransferWindow(
     std::shared_ptr<SubStreamWindowProperties>& props) {
   FileTransferState* state = props ? &props->file_transfer_ : &file_transfer_;
+  state->file_transfer_window_hovered_ = false;
 
   // Only show window if there are files in transfer list or currently
   // transferring
@@ -72,8 +73,6 @@ int Render::FileTransferWindow(
     return 0;
   }
 
-  ImGuiIO& io = ImGui::GetIO();
-
   // Position window at bottom-left of stream window
   // Adjust window size based on number of files
   float file_transfer_window_width = main_window_width_ * 0.6f;
@@ -82,15 +81,25 @@ int Render::FileTransferWindow(
   float pos_x = file_transfer_window_width * 0.05f;
   float pos_y = stream_window_height_ - file_transfer_window_height -
                 file_transfer_window_width * 0.05;
-  float same_line_width = file_transfer_window_width * 0.1f;
+
+  const ImVec2 mouse_pos = ImGui::GetMousePos();
+  const bool mouse_in_window_rect =
+      mouse_pos.x >= pos_x &&
+      mouse_pos.x <= pos_x + file_transfer_window_width &&
+      mouse_pos.y >= pos_y &&
+      mouse_pos.y <= pos_y + file_transfer_window_height;
 
   ImGui::SetNextWindowPos(ImVec2(pos_x, pos_y), ImGuiCond_Always);
   ImGui::SetNextWindowSize(
       ImVec2(file_transfer_window_width, file_transfer_window_height),
       ImGuiCond_Always);
+  if (mouse_in_window_rect) {
+    ImGui::SetNextWindowFocus();
+  }
 
   // Set Chinese font for proper display
-  if (stream_windows_system_chinese_font_) {
+  const bool has_chinese_font = stream_windows_system_chinese_font_ != nullptr;
+  if (has_chinese_font) {
     ImGui::PushFont(stream_windows_system_chinese_font_);
   }
 
@@ -103,24 +112,27 @@ int Render::FileTransferWindow(
 
   ImGui::SetWindowFontScale(0.5f);
   bool window_opened = true;
-  if (ImGui::Begin(
-          localization::file_transfer_progress[localization_language_index_]
-              .c_str(),
-          &window_opened,
-          ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
-              ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
-              ImGuiWindowFlags_NoScrollbar)) {
+  const bool show_contents = ImGui::Begin(
+      localization::file_transfer_progress[localization_language_index_]
+          .c_str(),
+      &window_opened,
+      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
+          ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+          ImGuiWindowFlags_NoScrollbar);
+  ImGui::PopStyleColor(4);
+  ImGui::PopStyleVar(2);
+
+  state->file_transfer_window_hovered_ =
+      mouse_in_window_rect ||
+      ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
+
+  if (!window_opened) {
+    state->file_transfer_window_visible_ = false;
+  }
+
+  if (show_contents && window_opened) {
     ImGui::SetWindowFontScale(1.0f);
     ImGui::SetWindowFontScale(0.5f);
-    ImGui::PopStyleColor(4);
-    ImGui::PopStyleVar(2);
-
-    // Close button handling
-    if (!window_opened) {
-      state->file_transfer_window_visible_ = false;
-      ImGui::End();
-      return 0;
-    }
 
     // Display file list
     if (file_list.empty()) {
@@ -225,21 +237,16 @@ int Render::FileTransferWindow(
     }
     ImGui::SetWindowFontScale(1.0f);
     ImGui::SetWindowFontScale(0.5f);
-    ImGui::End();
-    ImGui::SetWindowFontScale(1.0f);
-
-    // Pop Chinese font if it was pushed
-    if (stream_windows_system_chinese_font_) {
-      ImGui::PopFont();
-    }
-  } else {
-    ImGui::PopStyleColor(4);
-    ImGui::PopStyleVar(2);
   }
+
+  ImGui::End();
   ImGui::SetWindowFontScale(1.0f);
+
+  if (has_chinese_font) {
+    ImGui::PopFont();
+  }
 
   return 0;
 }
 
 }  // namespace crossdesk
-

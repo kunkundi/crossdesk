@@ -54,6 +54,7 @@ class Render {
     std::chrono::steady_clock::time_point file_send_last_update_time_;
     uint64_t file_send_last_bytes_ = 0;
     bool file_transfer_window_visible_ = false;
+    bool file_transfer_window_hovered_ = false;
     std::atomic<uint32_t> current_file_id_{0};
 
     struct QueuedFile {

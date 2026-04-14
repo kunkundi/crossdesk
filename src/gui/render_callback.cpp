@@ -234,13 +234,20 @@ int Render::ProcessMouseEvent(const SDL_Event& event) {
       continue;
     }
 
+    const bool file_transfer_window_hovered =
+        props->file_transfer_.file_transfer_window_hovered_;
+    const bool overlay_hovered = props->control_bar_hovered_ ||
+                                 props->display_selectable_hovered_ ||
+                                 file_transfer_window_hovered;
+
     const SDL_FRect render_rect = props->stream_render_rect_f_;
     if (render_rect.w <= 1.0f || render_rect.h <= 1.0f) {
       continue;
     }
 
     if (is_pointer_position_event && cursor_x >= render_rect.x &&
-        cursor_x <= render_rect.x + render_rect.w && cursor_y >= render_rect.y &&
+        cursor_x <= render_rect.x + render_rect.w &&
+        cursor_y >= render_rect.y &&
         cursor_y <= render_rect.y + render_rect.h) {
       controlled_remote_id_ = it.first;
       last_mouse_event.motion.x = cursor_x;
@@ -276,7 +283,7 @@ int Render::ProcessMouseEvent(const SDL_Event& event) {
         remote_action.m.flag = MouseFlag::move;
       }
 
-      if (props->control_bar_hovered_ || props->display_selectable_hovered_) {
+      if (overlay_hovered) {
         break;
       }
       if (props->peer_) {
@@ -322,7 +329,7 @@ int Render::ProcessMouseEvent(const SDL_Event& event) {
       remote_action.m.x = std::clamp(remote_action.m.x, 0.0f, 1.0f);
       remote_action.m.y = std::clamp(remote_action.m.y, 0.0f, 1.0f);
 
-      if (props->control_bar_hovered_) {
+      if (overlay_hovered) {
         continue;
       }
       if (props->peer_) {
@@ -1028,8 +1035,9 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
             // Keep Wayland capture session warm to avoid black screen on
             // subsequent reconnects.
             render->start_screen_capturer_ = true;
-            LOG_INFO("Keeping Wayland screen capturer running after "
-                     "disconnect to preserve reconnect stability");
+            LOG_INFO(
+                "Keeping Wayland screen capturer running after "
+                "disconnect to preserve reconnect stability");
           } else {
             render->start_screen_capturer_ = false;
           }
