@@ -274,3 +274,8 @@ See [CrossDesk Web Client](https://github.com/kunkundi/crossdesk-web-client)。
 
 # FAQ
 See [FAQ](https://github.com/kunkundi/crosssesk/blob/self-hosted-server/docs/FAQ.md) .
+
+# Acknowledgements
+- Thanks to [HelloGitHub](https://hellogithub.com/) for the recommendation and exposure.
+- Thanks to [Ruanyf Weekly](https://github.com/ruanyf/weekly) for featuring CrossDesk.
+- Thanks to the [LinuxDo](https://linux.do) community for the attention, discussions, and support that helped improve CrossDesk.
