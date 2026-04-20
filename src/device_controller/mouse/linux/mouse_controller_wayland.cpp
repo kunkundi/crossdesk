@@ -1,11 +1,11 @@
-#include "mouse_controller.h"
-
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <thread>
+
+#include "mouse_controller.h"
 
 #if defined(CROSSDESK_HAS_WAYLAND_CAPTURER) && CROSSDESK_HAS_WAYLAND_CAPTURER
 #include <dbus/dbus.h>
@@ -22,7 +22,8 @@ void MouseController::OnWaylandDisplayInfoListUpdated() {
       display_info_list_.empty()
           ? 0
           : reinterpret_cast<uintptr_t>(display_info_list_[0].handle);
-  const int width0 = display_info_list_.empty() ? 0 : display_info_list_[0].width;
+  const int width0 =
+      display_info_list_.empty() ? 0 : display_info_list_[0].width;
   const int height0 =
       display_info_list_.empty() ? 0 : display_info_list_[0].height;
   const bool should_log = !logged_wayland_display_info_ ||
@@ -43,8 +44,7 @@ void MouseController::OnWaylandDisplayInfoListUpdated() {
     const auto& display = display_info_list_[i];
     LOG_INFO(
         "Wayland mouse display info [{}]: name={}, rect=({},{})->({},{}) "
-        "size={}x{}, stream={}"
-        ,
+        "size={}x{}, stream={}",
         i, display.name, display.left, display.top, display.right,
         display.bottom, display.width, display.height,
         reinterpret_cast<uintptr_t>(display.handle));
@@ -88,6 +88,13 @@ std::string MakeToken(const char* prefix) {
 }
 
 void LogDbusError(const char* action, DBusError* error) {
+  if (action && error && dbus_error_is_set(error) &&
+      strcmp(action, "NotifyPointerMotionAbsolute") == 0 && error->name &&
+      strcmp(error->name, "org.freedesktop.DBus.Error.Failed") == 0 &&
+      error->message && strcmp(error->message, "Invalid position") == 0) {
+    return;
+  }
+
   if (error && dbus_error_is_set(error)) {
     LOG_ERROR("{} failed: {} ({})", action,
               error->message ? error->message : "unknown",
@@ -190,6 +197,27 @@ bool ReadUint32Like(DBusMessageIter* iter, uint32_t* value) {
   return false;
 }
 
+bool ReadIntLike(DBusMessageIter* iter, int* value) {
+  if (!iter || !value) {
+    return false;
+  }
+
+  if (dbus_message_iter_get_arg_type(iter) == DBUS_TYPE_INT32) {
+    int32_t temp = 0;
+    dbus_message_iter_get_basic(iter, &temp);
+    *value = static_cast<int>(temp);
+    return true;
+  }
+
+  uint32_t temp = 0;
+  if (ReadUint32Like(iter, &temp)) {
+    *value = static_cast<int>(temp);
+    return true;
+  }
+
+  return false;
+}
+
 bool ReadFirstStreamId(DBusMessageIter* variant, uint32_t* stream_id) {
   if (!variant || !stream_id) {
     return false;
@@ -212,6 +240,85 @@ bool ReadFirstStreamId(DBusMessageIter* variant, uint32_t* stream_id) {
     }
     dbus_message_iter_next(&streams);
   }
+  return false;
+}
+
+bool ReadFirstStreamGeometry(DBusMessageIter* variant, int* width,
+                             int* height) {
+  if (!variant || !width || !height) {
+    return false;
+  }
+  if (dbus_message_iter_get_arg_type(variant) != DBUS_TYPE_ARRAY) {
+    return false;
+  }
+
+  int parsed_width = 0;
+  int parsed_height = 0;
+  DBusMessageIter streams;
+  dbus_message_iter_recurse(variant, &streams);
+  while (dbus_message_iter_get_arg_type(&streams) != DBUS_TYPE_INVALID) {
+    if (dbus_message_iter_get_arg_type(&streams) == DBUS_TYPE_STRUCT) {
+      DBusMessageIter stream;
+      dbus_message_iter_recurse(&streams, &stream);
+
+      if (dbus_message_iter_get_arg_type(&stream) == DBUS_TYPE_UINT32) {
+        dbus_message_iter_next(&stream);
+      }
+
+      if (dbus_message_iter_get_arg_type(&stream) == DBUS_TYPE_ARRAY) {
+        int stream_width = 0;
+        int stream_height = 0;
+        int logical_width = 0;
+        int logical_height = 0;
+        DBusMessageIter props;
+        dbus_message_iter_recurse(&stream, &props);
+        while (dbus_message_iter_get_arg_type(&props) != DBUS_TYPE_INVALID) {
+          if (dbus_message_iter_get_arg_type(&props) == DBUS_TYPE_DICT_ENTRY) {
+            DBusMessageIter prop_entry;
+            dbus_message_iter_recurse(&props, &prop_entry);
+
+            const char* prop_key = nullptr;
+            dbus_message_iter_get_basic(&prop_entry, &prop_key);
+            if (prop_key && dbus_message_iter_next(&prop_entry) &&
+                dbus_message_iter_get_arg_type(&prop_entry) ==
+                    DBUS_TYPE_VARIANT) {
+              DBusMessageIter prop_variant;
+              dbus_message_iter_recurse(&prop_entry, &prop_variant);
+              if (dbus_message_iter_get_arg_type(&prop_variant) ==
+                  DBUS_TYPE_STRUCT) {
+                DBusMessageIter size_iter;
+                int candidate_width = 0;
+                int candidate_height = 0;
+                dbus_message_iter_recurse(&prop_variant, &size_iter);
+                if (ReadIntLike(&size_iter, &candidate_width) &&
+                    dbus_message_iter_next(&size_iter) &&
+                    ReadIntLike(&size_iter, &candidate_height)) {
+                  if (strcmp(prop_key, "logical_size") == 0) {
+                    logical_width = candidate_width;
+                    logical_height = candidate_height;
+                  } else if (strcmp(prop_key, "size") == 0) {
+                    stream_width = candidate_width;
+                    stream_height = candidate_height;
+                  }
+                }
+              }
+            }
+          }
+          dbus_message_iter_next(&props);
+        }
+
+        parsed_width = logical_width > 0 ? logical_width : stream_width;
+        parsed_height = logical_height > 0 ? logical_height : stream_height;
+        if (parsed_width > 0 && parsed_height > 0) {
+          *width = parsed_width;
+          *height = parsed_height;
+          return true;
+        }
+      }
+    }
+    dbus_message_iter_next(&streams);
+  }
+
   return false;
 }
 
@@ -361,8 +468,7 @@ bool ExtractPortalResponse(DBusMessage* message, uint32_t* response_code,
 
 bool SendPortalRequestAndHandleResponse(
     DBusConnection* connection, const char* interface_name,
-    const char* method_name,
-    const char* action_name,
+    const char* method_name, const char* action_name,
     const std::function<bool(DBusMessage*)>& append_message_args,
     const std::function<bool(uint32_t, DBusMessageIter*)>& handle_results,
     std::string* request_path_out = nullptr) {
@@ -386,8 +492,8 @@ bool SendPortalRequestAndHandleResponse(
 
   DBusError error;
   dbus_error_init(&error);
-  DBusMessage* reply =
-      dbus_connection_send_with_reply_and_block(connection, message, -1, &error);
+  DBusMessage* reply = dbus_connection_send_with_reply_and_block(
+      connection, message, -1, &error);
   dbus_message_unref(message);
   if (!reply) {
     LogDbusError(action_name ? action_name : method_name, &error);
@@ -438,6 +544,8 @@ bool MouseController::InitWaylandPortal() {
         dbus_connection_ = shared_session.connection;
         wayland_session_handle_ = shared_session.session_handle;
         wayland_absolute_stream_id_ = shared_session.stream_id;
+        wayland_portal_space_width_ = shared_session.width;
+        wayland_portal_space_height_ = shared_session.height;
         last_display_index_ = -1;
         last_norm_x_ = -1.0;
         last_norm_y_ = -1.0;
@@ -448,9 +556,11 @@ bool MouseController::InitWaylandPortal() {
         wayland_absolute_mode_ = WaylandAbsoluteMode::kUnknown;
         wayland_absolute_disabled_logged_ = false;
         using_shared_wayland_session_ = true;
-        LOG_INFO("Mouse controller attached to shared Wayland portal session, "
-                 "stream_id={}",
-                 wayland_absolute_stream_id_);
+        LOG_INFO(
+            "Mouse controller attached to shared Wayland portal session, "
+            "stream_id={}, portal_space={}x{}",
+            wayland_absolute_stream_id_, wayland_portal_space_width_,
+            wayland_portal_space_height_);
         return true;
       };
 
@@ -469,16 +579,18 @@ bool MouseController::InitWaylandPortal() {
 
     if (!waiting_logged) {
       waiting_logged = true;
-      LOG_INFO("Waiting for shared Wayland portal session from screen "
-               "capturer before creating a standalone mouse session");
+      LOG_INFO(
+          "Waiting for shared Wayland portal session from screen "
+          "capturer before creating a standalone mouse session");
     }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 
   if (waiting_logged) {
-    LOG_WARN("Shared Wayland portal session did not appear in time; falling "
-             "back to standalone mouse portal session");
+    LOG_WARN(
+        "Shared Wayland portal session did not appear in time; falling "
+        "back to standalone mouse portal session");
   }
 
   if (AcquireSharedWaylandPortalSession(true, &shared_session)) {
@@ -677,6 +789,8 @@ bool MouseController::InitWaylandPortal() {
 
         uint32_t granted_devices = 0;
         uint32_t absolute_stream_id = 0;
+        int absolute_space_width = 0;
+        int absolute_space_height = 0;
         DBusMessageIter dict;
         dbus_message_iter_recurse(results, &dict);
         while (dbus_message_iter_get_arg_type(&dict) != DBUS_TYPE_INVALID) {
@@ -694,6 +808,8 @@ bool MouseController::InitWaylandPortal() {
                 ReadUint32Like(&variant, &granted_devices);
               } else if (strcmp(key, "streams") == 0) {
                 ReadFirstStreamId(&variant, &absolute_stream_id);
+                ReadFirstStreamGeometry(&variant, &absolute_space_width,
+                                        &absolute_space_height);
               }
             }
           }
@@ -703,19 +819,24 @@ bool MouseController::InitWaylandPortal() {
         pointer_granted = (granted_devices & kRemoteDesktopDevicePointer) != 0;
         if (!pointer_granted) {
           LOG_ERROR(
-              "RemoteDesktop.Start granted devices mask={}, pointer not allowed",
+              "RemoteDesktop.Start granted devices mask={}, pointer not "
+              "allowed",
               granted_devices);
           return false;
         }
         if (absolute_stream_id == 0) {
-          LOG_ERROR("RemoteDesktop.Start did not return a screencast stream id");
+          LOG_ERROR(
+              "RemoteDesktop.Start did not return a screencast stream id");
           return false;
         }
         wayland_absolute_stream_id_ = absolute_stream_id;
+        wayland_portal_space_width_ = absolute_space_width;
+        wayland_portal_space_height_ = absolute_space_height;
         wayland_absolute_mode_ = WaylandAbsoluteMode::kUnknown;
         wayland_absolute_disabled_logged_ = false;
-        LOG_INFO("Wayland mouse absolute stream id={}",
-                 wayland_absolute_stream_id_);
+        LOG_INFO("Wayland mouse absolute stream id={}, portal_space={}x{}",
+                 wayland_absolute_stream_id_, wayland_portal_space_width_,
+                 wayland_portal_space_height_);
         return true;
       });
 
@@ -782,6 +903,8 @@ void MouseController::CleanupWaylandPortal() {
   wayland_absolute_mode_ = WaylandAbsoluteMode::kUnknown;
   wayland_absolute_disabled_logged_ = false;
   wayland_absolute_stream_id_ = 0;
+  wayland_portal_space_width_ = 0;
+  wayland_portal_space_height_ = 0;
   using_shared_wayland_session_ = false;
 }
 
@@ -835,49 +958,80 @@ int MouseController::SendWaylandMouseCommand(RemoteAction remote_action,
       }
 
       const uint32_t stream = wayland_absolute_stream_id_;
-      const double abs_x = norm_x * std::max(width - 1, 1);
-      const double abs_y = norm_y * std::max(height - 1, 1);
+      const int portal_width =
+          wayland_portal_space_width_ > 0 ? wayland_portal_space_width_ : width;
+      const int portal_height = wayland_portal_space_height_ > 0
+                                    ? wayland_portal_space_height_
+                                    : height;
+      const double abs_x = norm_x * static_cast<double>(width);
+      const double abs_y = norm_y * static_cast<double>(height);
+      const double max_x = std::nextafter(static_cast<double>(width), 0.0);
+      const double max_y = std::nextafter(static_cast<double>(height), 0.0);
+      const double send_x = std::clamp(abs_x, 0.0, std::max(max_x, 0.0));
+      const double send_y = std::clamp(abs_y, 0.0, std::max(max_y, 0.0));
+      const bool can_use_relative = last_display_index_ == display_index &&
+                                    last_norm_x_ >= 0.0 && last_norm_y_ >= 0.0;
+      const double rel_dx =
+          (norm_x - last_norm_x_) * static_cast<double>(portal_width);
+      const double rel_dy =
+          (norm_y - last_norm_y_) * static_cast<double>(portal_height);
 
-      auto accept_absolute = [&]() {
+      auto accept_motion = [&]() {
         last_display_index_ = display_index;
         last_norm_x_ = norm_x;
         last_norm_y_ = norm_y;
+        wayland_absolute_disabled_logged_ = false;
         return 0;
       };
 
+      auto try_relative_fallback = [&]() -> bool {
+        if (!can_use_relative) {
+          return false;
+        }
+        if (std::abs(rel_dx) < 1e-6 && std::abs(rel_dy) < 1e-6) {
+          return false;
+        }
+        if (NotifyWaylandPointerMotion(rel_dx, rel_dy)) {
+          return true;
+        }
+        return false;
+      };
+
+      if (wayland_absolute_mode_ == WaylandAbsoluteMode::kDisabled) {
+        if (try_relative_fallback()) {
+          return accept_motion();
+        }
+        if (!wayland_absolute_disabled_logged_) {
+          wayland_absolute_disabled_logged_ = true;
+          LOG_ERROR("NotifyPointerMotionAbsolute rejected by portal backend");
+        }
+        return -3;
+      }
+
       if (wayland_absolute_mode_ == WaylandAbsoluteMode::kPixels) {
-        if (NotifyWaylandPointerMotionAbsolute(stream, abs_x, abs_y)) {
-          return accept_absolute();
+        if (NotifyWaylandPointerMotionAbsolute(stream, send_x, send_y)) {
+          return accept_motion();
         }
-        wayland_absolute_mode_ = WaylandAbsoluteMode::kDisabled;
-      } else if (wayland_absolute_mode_ == WaylandAbsoluteMode::kNormalized) {
-        if (NotifyWaylandPointerMotionAbsolute(stream, norm_x, norm_y)) {
-          return accept_absolute();
+        if (try_relative_fallback()) {
+          return accept_motion();
         }
-        wayland_absolute_mode_ = WaylandAbsoluteMode::kDisabled;
-      } else {
-        if (NotifyWaylandPointerMotionAbsolute(stream, abs_x, abs_y)) {
+      } else if (wayland_absolute_mode_ == WaylandAbsoluteMode::kUnknown) {
+        if (NotifyWaylandPointerMotionAbsolute(stream, send_x, send_y)) {
           wayland_absolute_mode_ = WaylandAbsoluteMode::kPixels;
-          LOG_INFO("Wayland absolute pointer mode selected: pixel coordinates");
-          return accept_absolute();
-        }
-
-        if (NotifyWaylandPointerMotionAbsolute(stream, norm_x, norm_y)) {
-          wayland_absolute_mode_ = WaylandAbsoluteMode::kNormalized;
           LOG_INFO(
-              "Wayland absolute pointer mode selected: normalized "
-              "coordinates");
-          return accept_absolute();
+              "Wayland absolute pointer mode selected: pixel coordinates "
+              "(pointer space {}x{})",
+              width, height);
+          return accept_motion();
         }
-
-        wayland_absolute_mode_ = WaylandAbsoluteMode::kDisabled;
+        if (try_relative_fallback()) {
+          return accept_motion();
+        }
       }
 
       if (!wayland_absolute_disabled_logged_) {
         wayland_absolute_disabled_logged_ = true;
-        LOG_ERROR(
-            "NotifyPointerMotionAbsolute rejected by portal backend in both "
-            "pixel and normalized modes");
+        LOG_ERROR("NotifyPointerMotionAbsolute rejected by portal backend");
       }
       return -3;
     }
@@ -1030,9 +1184,9 @@ bool MouseController::SendWaylandPortalVoidCall(
     return false;
   }
 
-  DBusMessage* message = dbus_message_new_method_call(
-      kPortalBusName, kPortalObjectPath, kPortalRemoteDesktopInterface,
-      method_name);
+  DBusMessage* message =
+      dbus_message_new_method_call(kPortalBusName, kPortalObjectPath,
+                                   kPortalRemoteDesktopInterface, method_name);
   if (!message) {
     LOG_ERROR("Failed to allocate {} message", method_name);
     return false;

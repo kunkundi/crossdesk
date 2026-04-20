@@ -1,14 +1,16 @@
 #include "screen_capturer_wayland.h"
-
 #include "screen_capturer_wayland_build.h"
 
 #if CROSSDESK_WAYLAND_BUILD_ENABLED
 
-#include <chrono>
-#include <cstdint>
-#include <thread>
 #include <unistd.h>
 
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <thread>
 #include <vector>
 
 #include "libyuv.h"
@@ -57,6 +59,22 @@ int64_t NowMs() {
       .count();
 }
 
+double SnapLikelyFractionalScale(double observed_scale) {
+  static constexpr double kCandidates[] = {
+      1.0, 1.25, 1.3333333333, 1.5, 1.6666666667, 1.75, 2.0, 2.25, 2.5, 3.0};
+  double best = observed_scale;
+  double best_error = std::numeric_limits<double>::max();
+  for (double candidate : kCandidates) {
+    const double error = std::abs(candidate - observed_scale);
+    if (error < best_error) {
+      best = candidate;
+      best_error = error;
+    }
+  }
+
+  return best_error <= 0.08 ? best : observed_scale;
+}
+
 struct PipeWireTargetLookupState {
   pw_thread_loop* loop = nullptr;
   uint32_t target_node_id = 0;
@@ -87,30 +105,30 @@ std::string LookupPipeWireTargetObjectSerial(pw_core* core,
 
   pw_registry_events registry_events{};
   registry_events.version = PW_VERSION_REGISTRY_EVENTS;
-  registry_events.global =
-      [](void* userdata, uint32_t id, uint32_t permissions, const char* type,
-         uint32_t version, const spa_dict* props) {
-        (void)permissions;
-        (void)version;
-        auto* state = static_cast<PipeWireTargetLookupState*>(userdata);
-        if (!state || !props || id != state->target_node_id || !type) {
-          return;
-        }
-        if (strcmp(type, PW_TYPE_INTERFACE_Node) != 0) {
-          return;
-        }
+  registry_events.global = [](void* userdata, uint32_t id, uint32_t permissions,
+                              const char* type, uint32_t version,
+                              const spa_dict* props) {
+    (void)permissions;
+    (void)version;
+    auto* state = static_cast<PipeWireTargetLookupState*>(userdata);
+    if (!state || !props || id != state->target_node_id || !type) {
+      return;
+    }
+    if (strcmp(type, PW_TYPE_INTERFACE_Node) != 0) {
+      return;
+    }
 
-        const char* object_serial = spa_dict_lookup(props, PW_KEY_OBJECT_SERIAL);
-        if (!object_serial || object_serial[0] == '\0') {
-          object_serial = spa_dict_lookup(props, "object.serial");
-        }
-        if (!object_serial || object_serial[0] == '\0') {
-          return;
-        }
+    const char* object_serial = spa_dict_lookup(props, PW_KEY_OBJECT_SERIAL);
+    if (!object_serial || object_serial[0] == '\0') {
+      object_serial = spa_dict_lookup(props, "object.serial");
+    }
+    if (!object_serial || object_serial[0] == '\0') {
+      return;
+    }
 
-        state->object_serial = object_serial;
-        state->found = true;
-      };
+    state->object_serial = object_serial;
+    state->found = true;
+  };
 
   pw_core_events core_events{};
   core_events.version = PW_VERSION_CORE_EVENTS;
@@ -226,23 +244,23 @@ bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
 
   std::string target_object_serial;
   if (mode == PipeWireConnectMode::kTargetObject) {
-    target_object_serial =
-        LookupPipeWireTargetObjectSerial(pw_core_, pw_thread_loop_,
-                                         pipewire_node_id_);
+    target_object_serial = LookupPipeWireTargetObjectSerial(
+        pw_core_, pw_thread_loop_, pipewire_node_id_);
     if (!target_object_serial.empty()) {
       pw_properties_set(stream_props, PW_KEY_TARGET_OBJECT,
                         target_object_serial.c_str());
       LOG_INFO("PipeWire target object serial for node {} is {}",
                pipewire_node_id_, target_object_serial);
     } else {
-      LOG_WARN("PipeWire target object serial lookup failed for node {}, "
-               "falling back to direct target id in target-object mode",
-               pipewire_node_id_);
+      LOG_WARN(
+          "PipeWire target object serial lookup failed for node {}, "
+          "falling back to direct target id in target-object mode",
+          pipewire_node_id_);
     }
   }
 
-  pw_stream_ = pw_stream_new(pw_core_, "CrossDesk Wayland Capture",
-                             stream_props);
+  pw_stream_ =
+      pw_stream_new(pw_core_, "CrossDesk Wayland Capture", stream_props);
   if (!pw_stream_) {
     LOG_ERROR("Failed to create PipeWire stream");
     pw_thread_loop_unlock(pw_thread_loop_);
@@ -256,123 +274,180 @@ bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
   static const pw_stream_events stream_events = [] {
     pw_stream_events events{};
     events.version = PW_VERSION_STREAM_EVENTS;
-    events.state_changed =
-        [](void* userdata, enum pw_stream_state old_state,
-           enum pw_stream_state state, const char* error_message) {
-          auto* self = static_cast<ScreenCapturerWayland*>(userdata);
-          if (!self) {
-            return;
-          }
+    events.state_changed = [](void* userdata, enum pw_stream_state old_state,
+                              enum pw_stream_state state,
+                              const char* error_message) {
+      auto* self = static_cast<ScreenCapturerWayland*>(userdata);
+      if (!self) {
+        return;
+      }
 
-          if (state == PW_STREAM_STATE_ERROR) {
-            LOG_ERROR("PipeWire stream error: {}",
-                      error_message ? error_message : "unknown");
-            self->running_ = false;
-            return;
-          }
+      if (state == PW_STREAM_STATE_ERROR) {
+        LOG_ERROR("PipeWire stream error: {}",
+                  error_message ? error_message : "unknown");
+        self->running_ = false;
+        return;
+      }
 
-          LOG_INFO("PipeWire stream state: {} -> {}",
-                   pw_stream_state_as_string(old_state),
-                   pw_stream_state_as_string(state));
+      LOG_INFO("PipeWire stream state: {} -> {}",
+               pw_stream_state_as_string(old_state),
+               pw_stream_state_as_string(state));
+    };
+    events.param_changed = [](void* userdata, uint32_t id,
+                              const struct spa_pod* param) {
+      auto* self = static_cast<ScreenCapturerWayland*>(userdata);
+      if (!self || id != SPA_PARAM_Format || !param) {
+        return;
+      }
 
-        };
-    events.param_changed =
-        [](void* userdata, uint32_t id, const struct spa_pod* param) {
-          auto* self = static_cast<ScreenCapturerWayland*>(userdata);
-          if (!self || id != SPA_PARAM_Format || !param) {
-            return;
-          }
+      spa_video_info_raw info{};
+      if (spa_format_video_raw_parse(param, &info) < 0) {
+        LOG_ERROR("Failed to parse PipeWire video format");
+        return;
+      }
 
-          spa_video_info_raw info{};
-          if (spa_format_video_raw_parse(param, &info) < 0) {
-            LOG_ERROR("Failed to parse PipeWire video format");
-            return;
-          }
+      self->spa_video_format_ = info.format;
+      self->frame_width_ = static_cast<int>(info.size.width);
+      self->frame_height_ = static_cast<int>(info.size.height);
+      self->frame_stride_ = static_cast<int>(info.size.width) * 4;
 
-          self->spa_video_format_ = info.format;
-          self->frame_width_ = static_cast<int>(info.size.width);
-          self->frame_height_ = static_cast<int>(info.size.height);
-          self->frame_stride_ = static_cast<int>(info.size.width) * 4;
-
-          bool supported_format =
-              (self->spa_video_format_ == SPA_VIDEO_FORMAT_BGRx) ||
-              (self->spa_video_format_ == SPA_VIDEO_FORMAT_BGRA);
+      bool supported_format =
+          (self->spa_video_format_ == SPA_VIDEO_FORMAT_BGRx) ||
+          (self->spa_video_format_ == SPA_VIDEO_FORMAT_BGRA);
 #ifdef SPA_VIDEO_FORMAT_RGBx
-          supported_format =
-              supported_format ||
-              (self->spa_video_format_ == SPA_VIDEO_FORMAT_RGBx);
+      supported_format = supported_format ||
+                         (self->spa_video_format_ == SPA_VIDEO_FORMAT_RGBx);
 #endif
 #ifdef SPA_VIDEO_FORMAT_RGBA
-          supported_format =
-              supported_format ||
-              (self->spa_video_format_ == SPA_VIDEO_FORMAT_RGBA);
+      supported_format = supported_format ||
+                         (self->spa_video_format_ == SPA_VIDEO_FORMAT_RGBA);
 #endif
-          if (!supported_format) {
-            LOG_ERROR("Unsupported PipeWire pixel format: {}",
-                      PipeWireFormatName(self->spa_video_format_));
-            self->running_ = false;
-            return;
-          }
+      if (!supported_format) {
+        LOG_ERROR("Unsupported PipeWire pixel format: {}",
+                  PipeWireFormatName(self->spa_video_format_));
+        self->running_ = false;
+        return;
+      }
 
-          const int bytes_per_pixel = BytesPerPixel(self->spa_video_format_);
-          if (bytes_per_pixel <= 0 || self->frame_width_ <= 0 ||
-              self->frame_height_ <= 0) {
-            LOG_ERROR("Invalid PipeWire frame layout: format={}, size={}x{}",
-                      PipeWireFormatName(self->spa_video_format_),
-                      self->frame_width_, self->frame_height_);
-            self->running_ = false;
-            return;
-          }
+      const int bytes_per_pixel = BytesPerPixel(self->spa_video_format_);
+      if (bytes_per_pixel <= 0 || self->frame_width_ <= 0 ||
+          self->frame_height_ <= 0) {
+        LOG_ERROR("Invalid PipeWire frame layout: format={}, size={}x{}",
+                  PipeWireFormatName(self->spa_video_format_),
+                  self->frame_width_, self->frame_height_);
+        self->running_ = false;
+        return;
+      }
 
-          self->frame_stride_ = self->frame_width_ * bytes_per_pixel;
+      self->frame_stride_ = self->frame_width_ * bytes_per_pixel;
 
-          uint8_t buffer[1024];
-          spa_pod_builder builder = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
-          const spa_pod* params[2];
-          uint32_t param_count = 0;
+      uint8_t buffer[1024];
+      spa_pod_builder builder = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
+      const spa_pod* params[2];
+      uint32_t param_count = 0;
 
-          params[param_count++] = reinterpret_cast<const spa_pod*>(
-              spa_pod_builder_add_object(
-                  &builder, SPA_TYPE_OBJECT_ParamBuffers, SPA_PARAM_Buffers,
-                  CROSSDESK_SPA_PARAM_BUFFERS_BUFFERS,
-                  SPA_POD_CHOICE_RANGE_Int(8, 4, 16),
-                  CROSSDESK_SPA_PARAM_BUFFERS_BLOCKS, SPA_POD_Int(1),
-                  CROSSDESK_SPA_PARAM_BUFFERS_SIZE,
-                  SPA_POD_CHOICE_RANGE_Int(self->frame_stride_ *
-                                               self->frame_height_,
-                                           self->frame_stride_ *
-                                               self->frame_height_,
-                                           self->frame_stride_ *
-                                               self->frame_height_),
-                  CROSSDESK_SPA_PARAM_BUFFERS_STRIDE,
-                  SPA_POD_CHOICE_RANGE_Int(self->frame_stride_,
-                                           self->frame_stride_,
-                                           self->frame_stride_)));
+      params[param_count++] =
+          reinterpret_cast<const spa_pod*>(spa_pod_builder_add_object(
+              &builder, SPA_TYPE_OBJECT_ParamBuffers, SPA_PARAM_Buffers,
+              CROSSDESK_SPA_PARAM_BUFFERS_BUFFERS,
+              SPA_POD_CHOICE_RANGE_Int(8, 4, 16),
+              CROSSDESK_SPA_PARAM_BUFFERS_BLOCKS, SPA_POD_Int(1),
+              CROSSDESK_SPA_PARAM_BUFFERS_SIZE,
+              SPA_POD_CHOICE_RANGE_Int(
+                  self->frame_stride_ * self->frame_height_,
+                  self->frame_stride_ * self->frame_height_,
+                  self->frame_stride_ * self->frame_height_),
+              CROSSDESK_SPA_PARAM_BUFFERS_STRIDE,
+              SPA_POD_CHOICE_RANGE_Int(self->frame_stride_, self->frame_stride_,
+                                       self->frame_stride_)));
 
-          params[param_count++] = reinterpret_cast<const spa_pod*>(
-              spa_pod_builder_add_object(
-                  &builder, SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta,
-                  CROSSDESK_SPA_PARAM_META_TYPE, SPA_POD_Id(SPA_META_Header),
-                  CROSSDESK_SPA_PARAM_META_SIZE,
-                  SPA_POD_Int(sizeof(struct spa_meta_header))));
+      params[param_count++] =
+          reinterpret_cast<const spa_pod*>(spa_pod_builder_add_object(
+              &builder, SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta,
+              CROSSDESK_SPA_PARAM_META_TYPE, SPA_POD_Id(SPA_META_Header),
+              CROSSDESK_SPA_PARAM_META_SIZE,
+              SPA_POD_Int(sizeof(struct spa_meta_header))));
 
-          if (self->pw_stream_) {
-            pw_stream_update_params(self->pw_stream_, params, param_count);
-          }
-          self->pipewire_format_ready_.store(true);
+      if (self->pw_stream_) {
+        pw_stream_update_params(self->pw_stream_, params, param_count);
+      }
+      self->pipewire_format_ready_.store(true);
 
-          const int pointer_width =
-              self->logical_width_ > 0 ? self->logical_width_ : self->frame_width_;
-          const int pointer_height = self->logical_height_ > 0
-                                         ? self->logical_height_
-                                         : self->frame_height_;
-          self->UpdateDisplayGeometry(pointer_width, pointer_height);
-          LOG_INFO(
-              "PipeWire video format: {}, {}x{} stride={} (pointer space {}x{})",
-                   PipeWireFormatName(self->spa_video_format_),
-                   self->frame_width_, self->frame_height_, self->frame_stride_,
-                   pointer_width, pointer_height);
-        };
+      int pointer_width =
+          self->logical_width_ > 0 ? self->logical_width_ : self->frame_width_;
+      int pointer_height = self->logical_height_ > 0 ? self->logical_height_
+                                                     : self->frame_height_;
+      double observed_scale_x = pointer_width > 0
+                                    ? static_cast<double>(self->frame_width_) /
+                                          static_cast<double>(pointer_width)
+                                    : 1.0;
+      double observed_scale_y = pointer_height > 0
+                                    ? static_cast<double>(self->frame_height_) /
+                                          static_cast<double>(pointer_height)
+                                    : 1.0;
+      double snapped_scale = 1.0;
+      bool derived_pointer_space = false;
+
+      if (!self->portal_has_logical_size_ && self->portal_stream_width_ > 0 &&
+          self->portal_stream_height_ > 0 && self->frame_width_ > 0 &&
+          self->frame_height_ > 0) {
+        const double raw_scale_x =
+            static_cast<double>(self->frame_width_) /
+            static_cast<double>(self->portal_stream_width_);
+        const double raw_scale_y =
+            static_cast<double>(self->frame_height_) /
+            static_cast<double>(self->portal_stream_height_);
+        const double average_scale = (raw_scale_x + raw_scale_y) * 0.5;
+        snapped_scale = SnapLikelyFractionalScale(average_scale);
+
+        const bool scales_are_consistent =
+            std::abs(raw_scale_x - raw_scale_y) <= 0.05;
+        const bool scale_was_snapped =
+            std::abs(snapped_scale - average_scale) <= 0.08;
+        if (scales_are_consistent && scale_was_snapped &&
+            snapped_scale > 1.05) {
+          pointer_width =
+              std::max(1, static_cast<int>(std::floor(
+                              static_cast<double>(self->portal_stream_width_) *
+                                  snapped_scale +
+                              1e-6)));
+          pointer_height =
+              std::max(1, static_cast<int>(std::floor(
+                              static_cast<double>(self->portal_stream_height_) *
+                                  snapped_scale +
+                              1e-6)));
+          observed_scale_x = pointer_width > 0
+                                 ? static_cast<double>(self->frame_width_) /
+                                       static_cast<double>(pointer_width)
+                                 : 1.0;
+          observed_scale_y = pointer_height > 0
+                                 ? static_cast<double>(self->frame_height_) /
+                                       static_cast<double>(pointer_height)
+                                 : 1.0;
+          derived_pointer_space = true;
+        }
+      }
+
+      self->UpdateDisplayGeometry(pointer_width, pointer_height);
+      if (derived_pointer_space) {
+        LOG_INFO(
+            "PipeWire video format: {}, {}x{} stride={} (pointer space {}x{}, "
+            "derived from portal stream {}x{} with compositor scale {:.4f}, "
+            "effective scale {:.4f}x{:.4f})",
+            PipeWireFormatName(self->spa_video_format_), self->frame_width_,
+            self->frame_height_, self->frame_stride_, pointer_width,
+            pointer_height, self->portal_stream_width_,
+            self->portal_stream_height_, snapped_scale, observed_scale_x,
+            observed_scale_y);
+      } else {
+        LOG_INFO(
+            "PipeWire video format: {}, {}x{} stride={} (pointer space {}x{}, "
+            "scale {:.4f}x{:.4f})",
+            PipeWireFormatName(self->spa_video_format_), self->frame_width_,
+            self->frame_height_, self->frame_stride_, pointer_width,
+            pointer_height, observed_scale_x, observed_scale_y);
+      }
+    };
     events.process = [](void* userdata) {
       auto* self = static_cast<ScreenCapturerWayland*>(userdata);
       if (self) {
@@ -392,7 +467,8 @@ bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
   const spa_pod* params[8];
   int param_count = 0;
   const spa_rectangle fixed_size{
-      static_cast<uint32_t>(logical_width_ > 0 ? logical_width_ : kFallbackWidth),
+      static_cast<uint32_t>(logical_width_ > 0 ? logical_width_
+                                               : kFallbackWidth),
       static_cast<uint32_t>(logical_height_ > 0 ? logical_height_
                                                 : kFallbackHeight)};
   const spa_rectangle min_size{1u, 1u};
@@ -463,9 +539,9 @@ bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
 }
 
 void ScreenCapturerWayland::CleanupPipeWire() {
-  const bool need_lock = pw_thread_loop_ &&
-                         (pw_stream_ != nullptr || pw_core_ != nullptr ||
-                          pw_context_ != nullptr);
+  const bool need_lock =
+      pw_thread_loop_ &&
+      (pw_stream_ != nullptr || pw_core_ != nullptr || pw_context_ != nullptr);
   if (need_lock) {
     pw_thread_loop_lock(pw_thread_loop_);
   }
@@ -584,8 +660,8 @@ void ScreenCapturerWayland::HandlePipeWireBuffer() {
     uv_plane_.resize(uv_size);
   }
 
-  libyuv::ARGBToNV12(src, stride, y_plane_.data(), even_width,
-                     uv_plane_.data(), even_width, even_width, even_height);
+  libyuv::ARGBToNV12(src, stride, y_plane_.data(), even_width, uv_plane_.data(),
+                     even_width, even_width, even_height);
 
   std::vector<uint8_t> nv12;
   nv12.reserve(y_plane_.size() + uv_plane_.size());

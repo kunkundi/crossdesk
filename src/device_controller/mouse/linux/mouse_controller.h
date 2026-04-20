@@ -11,8 +11,8 @@
 #include <X11/Xutil.h>
 #include <unistd.h>
 
-#include <functional>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -47,9 +47,9 @@ class MouseController : public DeviceController {
   bool NotifyWaylandPointerMotionAbsolute(uint32_t stream, double x, double y);
   bool NotifyWaylandPointerButton(int button, uint32_t state);
   bool NotifyWaylandPointerAxisDiscrete(uint32_t axis, int32_t steps);
-  bool SendWaylandPortalVoidCall(const char* method_name,
-                                 const std::function<void(DBusMessageIter*)>&
-                                     append_args);
+  bool SendWaylandPortalVoidCall(
+      const char* method_name,
+      const std::function<void(DBusMessageIter*)>& append_args);
 
   enum class WaylandAbsoluteMode { kUnknown, kPixels, kNormalized, kDisabled };
 
@@ -72,6 +72,8 @@ class MouseController : public DeviceController {
   WaylandAbsoluteMode wayland_absolute_mode_ = WaylandAbsoluteMode::kUnknown;
   bool wayland_absolute_disabled_logged_ = false;
   uint32_t wayland_absolute_stream_id_ = 0;
+  int wayland_portal_space_width_ = 0;
+  int wayland_portal_space_height_ = 0;
   bool using_shared_wayland_session_ = false;
 };
 }  // namespace crossdesk

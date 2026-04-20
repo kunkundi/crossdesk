@@ -1,15 +1,15 @@
 #include "screen_capturer_wayland.h"
-
 #include "screen_capturer_wayland_build.h"
 #include "wayland_portal_shared.h"
 
 #if CROSSDESK_WAYLAND_BUILD_ENABLED
 
+#include <unistd.h>
+
 #include <chrono>
 #include <cstring>
 #include <functional>
 #include <string>
-#include <unistd.h>
 
 #include "rd_log.h"
 
@@ -149,8 +149,8 @@ std::string BuildSessionHandleFromRequestPath(
     return "";
   }
 
-  const std::string sender = request_path.substr(sender_start,
-                                                 token_sep - sender_start);
+  const std::string sender =
+      request_path.substr(sender_start, token_sep - sender_start);
   if (sender.empty()) {
     return "";
   }
@@ -284,8 +284,7 @@ bool ExtractPortalResponse(DBusMessage* message, uint32_t* response_code,
 
 bool SendPortalRequestAndHandleResponse(
     DBusConnection* connection, const char* interface_name,
-    const char* method_name,
-    const char* action_name,
+    const char* method_name, const char* action_name,
     const std::function<bool(DBusMessage*)>& append_message_args,
     const std::atomic<bool>& running,
     const std::function<bool(uint32_t, DBusMessageIter*)>& handle_results,
@@ -295,9 +294,8 @@ bool SendPortalRequestAndHandleResponse(
     return false;
   }
 
-  DBusMessage* message =
-      dbus_message_new_method_call(kPortalBusName, kPortalObjectPath,
-                                   interface_name, method_name);
+  DBusMessage* message = dbus_message_new_method_call(
+      kPortalBusName, kPortalObjectPath, interface_name, method_name);
   if (!message) {
     LOG_ERROR("Failed to allocate {} message", method_name);
     return false;
@@ -311,8 +309,8 @@ bool SendPortalRequestAndHandleResponse(
 
   DBusError error;
   dbus_error_init(&error);
-  DBusMessage* reply =
-      dbus_connection_send_with_reply_and_block(connection, message, -1, &error);
+  DBusMessage* reply = dbus_connection_send_with_reply_and_block(
+      connection, message, -1, &error);
   dbus_message_unref(message);
   if (!reply) {
     LogDbusError(action_name ? action_name : method_name, &error);
@@ -365,8 +363,8 @@ bool ScreenCapturerWayland::CheckPortalAvailability() const {
     return false;
   }
 
-  const dbus_bool_t has_owner = dbus_bus_name_has_owner(
-      connection, kPortalBusName, &error);
+  const dbus_bool_t has_owner =
+      dbus_bus_name_has_owner(connection, kPortalBusName, &error);
   if (dbus_error_is_set(&error)) {
     LogDbusError("dbus_bus_name_has_owner", &error);
     dbus_error_free(&error);
@@ -415,7 +413,8 @@ bool ScreenCapturerWayland::CreatePortalSession() {
                                          &options);
         AppendDictEntryString(&options, "session_handle_token",
                               session_handle_token);
-        AppendDictEntryString(&options, "handle_token", MakeToken("crossdesk_req"));
+        AppendDictEntryString(&options, "handle_token",
+                              MakeToken("crossdesk_req"));
         dbus_message_iter_close_container(&iter, &options);
         return true;
       },
@@ -459,8 +458,8 @@ bool ScreenCapturerWayland::CreatePortalSession() {
   }
 
   if (session_handle_.empty()) {
-    const std::string fallback_handle = BuildSessionHandleFromRequestPath(
-        request_path, session_handle_token);
+    const std::string fallback_handle =
+        BuildSessionHandleFromRequestPath(request_path, session_handle_token);
     if (!fallback_handle.empty()) {
       LOG_WARN(
           "CreateSession response missing session_handle, using derived handle "
@@ -505,7 +504,8 @@ bool ScreenCapturerWayland::SelectPortalSource() {
         dbus_message_iter_close_container(&iter, &options);
         return true;
       },
-      running_, [](uint32_t response_code, DBusMessageIter*) {
+      running_,
+      [](uint32_t response_code, DBusMessageIter*) {
         if (response_code != 0) {
           LOG_ERROR("SelectSources was denied or malformed, response={}",
                     response_code);
@@ -538,7 +538,8 @@ bool ScreenCapturerWayland::SelectPortalDevices() {
         dbus_message_iter_close_container(&iter, &options);
         return true;
       },
-      running_, [](uint32_t response_code, DBusMessageIter*) {
+      running_,
+      [](uint32_t response_code, DBusMessageIter*) {
         if (response_code != 0) {
           LOG_ERROR("SelectDevices was denied or malformed, response={}",
                     response_code);
@@ -567,14 +568,16 @@ bool ScreenCapturerWayland::StartPortalSession() {
         dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &parent_window);
         dbus_message_iter_open_container(&iter, DBUS_TYPE_ARRAY, "{sv}",
                                          &options);
-        AppendDictEntryString(&options, "handle_token", MakeToken("crossdesk_req"));
+        AppendDictEntryString(&options, "handle_token",
+                              MakeToken("crossdesk_req"));
         dbus_message_iter_close_container(&iter, &options);
         return true;
       },
       running_,
       [&](uint32_t response_code, DBusMessageIter* results) {
         if (response_code != 0) {
-          LOG_ERROR("Start was denied or malformed, response={}", response_code);
+          LOG_ERROR("Start was denied or malformed, response={}",
+                    response_code);
           return false;
         }
 
@@ -602,16 +605,19 @@ bool ScreenCapturerWayland::StartPortalSession() {
                 DBusMessageIter streams;
                 dbus_message_iter_recurse(&variant, &streams);
 
-                if (dbus_message_iter_get_arg_type(&streams) == DBUS_TYPE_STRUCT) {
+                if (dbus_message_iter_get_arg_type(&streams) ==
+                    DBUS_TYPE_STRUCT) {
                   DBusMessageIter stream;
                   dbus_message_iter_recurse(&streams, &stream);
 
-                  if (dbus_message_iter_get_arg_type(&stream) == DBUS_TYPE_UINT32) {
+                  if (dbus_message_iter_get_arg_type(&stream) ==
+                      DBUS_TYPE_UINT32) {
                     dbus_message_iter_get_basic(&stream, &pipewire_node_id_);
                   }
 
                   if (dbus_message_iter_next(&stream) &&
-                      dbus_message_iter_get_arg_type(&stream) == DBUS_TYPE_ARRAY) {
+                      dbus_message_iter_get_arg_type(&stream) ==
+                          DBUS_TYPE_ARRAY) {
                     DBusMessageIter props;
                     int stream_width = 0;
                     int stream_height = 0;
@@ -637,7 +643,8 @@ bool ScreenCapturerWayland::StartPortalSession() {
                             DBusMessageIter size_iter;
                             int width = 0;
                             int height = 0;
-                            dbus_message_iter_recurse(&prop_variant, &size_iter);
+                            dbus_message_iter_recurse(&prop_variant,
+                                                      &size_iter);
                             if (ReadIntLike(&size_iter, &width) &&
                                 dbus_message_iter_next(&size_iter) &&
                                 ReadIntLike(&size_iter, &height)) {
@@ -665,6 +672,11 @@ bool ScreenCapturerWayland::StartPortalSession() {
                         stream_width, stream_height, logical_width,
                         logical_height, picked_width, picked_height);
 
+                    portal_stream_width_ = stream_width;
+                    portal_stream_height_ = stream_height;
+                    portal_has_logical_size_ =
+                        logical_width > 0 && logical_height > 0;
+
                     if (logical_width > 0 && logical_height > 0) {
                       logical_width_ = logical_width;
                       logical_height_ = logical_height;
@@ -682,8 +694,7 @@ bool ScreenCapturerWayland::StartPortalSession() {
 
           dbus_message_iter_next(&dict);
         }
-        pointer_granted_ =
-            (granted_devices & kRemoteDesktopDevicePointer) != 0;
+        pointer_granted_ = (granted_devices & kRemoteDesktopDevicePointer) != 0;
         return true;
       });
   if (!ok) {
@@ -699,8 +710,8 @@ bool ScreenCapturerWayland::StartPortalSession() {
     return false;
   }
 
-  shared_session_registered_ = PublishSharedWaylandPortalSession(
-      SharedWaylandPortalSessionInfo{
+  shared_session_registered_ =
+      PublishSharedWaylandPortalSession(SharedWaylandPortalSessionInfo{
           dbus_connection_, session_handle_, pipewire_node_id_, logical_width_,
           logical_height_, pointer_granted_});
   if (!shared_session_registered_) {
@@ -728,16 +739,14 @@ bool ScreenCapturerWayland::OpenPipeWireRemote() {
   DBusMessageIter options;
   const char* session_handle = session_handle_.c_str();
   dbus_message_iter_init_append(message, &iter);
-  dbus_message_iter_append_basic(&iter, DBUS_TYPE_OBJECT_PATH,
-                                 &session_handle);
+  dbus_message_iter_append_basic(&iter, DBUS_TYPE_OBJECT_PATH, &session_handle);
   dbus_message_iter_open_container(&iter, DBUS_TYPE_ARRAY, "{sv}", &options);
   dbus_message_iter_close_container(&iter, &options);
 
   DBusError error;
   dbus_error_init(&error);
-  DBusMessage* reply =
-      dbus_connection_send_with_reply_and_block(dbus_connection_, message, -1,
-                                                &error);
+  DBusMessage* reply = dbus_connection_send_with_reply_and_block(
+      dbus_connection_, message, -1, &error);
   dbus_message_unref(message);
   if (!reply) {
     LogDbusError("OpenPipeWireRemote", &error);
@@ -792,9 +801,8 @@ void ScreenCapturerWayland::ClosePortalSession() {
     ReleaseSharedWaylandPortalSession(&close_connection, &close_session_handle);
     shared_session_registered_ = false;
     if (close_connection) {
-      CloseWaylandPortalSessionAndConnection(close_connection,
-                                             close_session_handle,
-                                             "Session.Close");
+      CloseWaylandPortalSessionAndConnection(
+          close_connection, close_session_handle, "Session.Close");
     }
     dbus_connection_ = nullptr;
   } else if (dbus_connection_ && !session_handle_.empty()) {
@@ -805,9 +813,9 @@ void ScreenCapturerWayland::ClosePortalSession() {
 
   session_handle_.clear();
   pipewire_node_id_ = 0;
-  UpdateDisplayGeometry(logical_width_ > 0 ? logical_width_ : kFallbackWidth,
-                        logical_height_ > 0 ? logical_height_
-                                            : kFallbackHeight);
+  UpdateDisplayGeometry(
+      logical_width_ > 0 ? logical_width_ : kFallbackWidth,
+      logical_height_ > 0 ? logical_height_ : kFallbackHeight);
   pointer_granted_ = false;
 }
 
