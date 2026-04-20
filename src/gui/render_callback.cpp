@@ -17,10 +17,62 @@
 #include "platform.h"
 #include "rd_log.h"
 #include "render.h"
+#if _WIN32
+#include "interactive_state.h"
+#include "service_host.h"
+#endif
 
 #define NV12_BUFFER_SIZE 1280 * 720 * 3 / 2
 
 namespace crossdesk {
+
+namespace {
+
+#if _WIN32
+constexpr uint32_t kSecureDesktopInputLogIntervalMs = 2000;
+
+bool BuildAbsoluteMousePosition(const std::vector<DisplayInfo>& displays,
+                                int display_index, float normalized_x,
+                                float normalized_y, int* absolute_x_out,
+                                int* absolute_y_out) {
+  if (absolute_x_out == nullptr || absolute_y_out == nullptr ||
+      display_index < 0 ||
+      display_index >= static_cast<int>(displays.size())) {
+    return false;
+  }
+
+  const DisplayInfo& display = displays[display_index];
+  if (display.width <= 0 || display.height <= 0) {
+    return false;
+  }
+
+  const float clamped_x = std::clamp(normalized_x, 0.0f, 1.0f);
+  const float clamped_y = std::clamp(normalized_y, 0.0f, 1.0f);
+  *absolute_x_out = static_cast<int>(clamped_x * display.width) + display.left;
+  *absolute_y_out = static_cast<int>(clamped_y * display.height) + display.top;
+  return true;
+}
+
+void LogSecureDesktopInputBlocked(uint32_t* last_tick, const char* side,
+                                  const char* stage) {
+  if (last_tick == nullptr) {
+    return;
+  }
+
+  const uint32_t now = static_cast<uint32_t>(SDL_GetTicks());
+  if (*last_tick != 0 && now - *last_tick < kSecureDesktopInputLogIntervalMs) {
+    return;
+  }
+
+  *last_tick = now;
+  LOG_WARN(
+      "{} secure-desktop input blocked, stage={}, normal SendInput path "
+      "cannot drive the Windows password UI",
+      side != nullptr ? side : "unknown", stage != nullptr ? stage : "");
+}
+#endif
+
+}  // namespace
 
 void Render::OnSignalMessageCb(const char* message, size_t size,
                                void* user_data) {
@@ -709,16 +761,31 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
   }
 
   std::string json_str(data, size);
-  RemoteAction remote_action;
-
-  try {
-    remote_action.from_json(json_str);
-  } catch (const std::exception& e) {
-    LOG_ERROR("Failed to parse RemoteAction JSON: {}", e.what());
+  RemoteAction remote_action{};
+  if (!remote_action.from_json(json_str)) {
+    LOG_ERROR("Failed to parse RemoteAction JSON payload");
     return;
   }
 
   std::string remote_id(user_id, user_id_size);
+  if (remote_action.type == ControlType::service_status) {
+    auto props_it = render->client_properties_.find(remote_id);
+    if (props_it != render->client_properties_.end()) {
+      render->ApplyRemoteServiceStatus(*props_it->second, remote_action.ss);
+    }
+    return;
+  }
+
+  if (remote_action.type == ControlType::service_command) {
+#if _WIN32
+    if (remote_action.c.flag == ServiceCommandFlag::send_sas) {
+      render->pending_windows_service_sas_.store(true,
+                                                 std::memory_order_relaxed);
+    }
+#endif
+    return;
+  }
+
   // std::shared_lock lock(render->client_properties_mutex_);
   if (remote_action.type == ControlType::host_infomation) {
     if (render->client_properties_.find(remote_id) !=
@@ -748,6 +815,59 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
     }
   } else {
     // remote
+#if _WIN32
+    if (render->local_service_status_received_ &&
+        render->local_service_available_ &&
+        IsSecureDesktopInteractionRequired(render->local_interactive_stage_)) {
+      if (remote_action.type == ControlType::mouse) {
+        int absolute_x = 0;
+        int absolute_y = 0;
+        if (!BuildAbsoluteMousePosition(render->display_info_list_,
+                                        render->selected_display_,
+                                        remote_action.m.x, remote_action.m.y,
+                                        &absolute_x, &absolute_y)) {
+          LOG_WARN(
+              "Secure desktop mouse injection skipped, invalid display mapping: display_index={}, x={}, y={}",
+              render->selected_display_, remote_action.m.x,
+              remote_action.m.y);
+          return;
+        }
+
+        const std::string response = SendCrossDeskSecureDesktopMouseInput(
+            absolute_x, absolute_y, remote_action.m.s,
+            static_cast<int>(remote_action.m.flag), 1000);
+        auto json = nlohmann::json::parse(response, nullptr, false);
+        if (json.is_discarded() || !json.value("ok", false)) {
+          LogSecureDesktopInputBlocked(
+              &render->last_local_secure_input_block_log_tick_, "local",
+              render->local_interactive_stage_.c_str());
+          LOG_WARN(
+              "Secure desktop mouse injection failed, x={}, y={}, wheel={}, flag={}, response={}",
+              absolute_x, absolute_y, remote_action.m.s,
+              static_cast<int>(remote_action.m.flag), response);
+        }
+        return;
+      }
+
+      if (remote_action.type == ControlType::keyboard) {
+        const int key_code = static_cast<int>(remote_action.k.key_value);
+        const bool is_down = remote_action.k.flag == KeyFlag::key_down;
+        const std::string response =
+            SendCrossDeskSecureDesktopKeyInput(key_code, is_down, 1000);
+        auto json = nlohmann::json::parse(response, nullptr, false);
+        if (json.is_discarded() || !json.value("ok", false)) {
+          LogSecureDesktopInputBlocked(
+              &render->last_local_secure_input_block_log_tick_, "local",
+              render->local_interactive_stage_.c_str());
+          LOG_WARN(
+              "Secure desktop keyboard injection failed, key_code={}, "
+              "is_down={}, response={}",
+              key_code, is_down, response);
+        }
+        return;
+      }
+    }
+#endif
     if (remote_action.type == ControlType::mouse && render->mouse_controller_) {
       render->mouse_controller_->SendMouseCommand(remote_action,
                                                   render->selected_display_);
@@ -841,6 +961,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
 
     switch (status) {
       case ConnectionStatus::Connected: {
+        render->ResetRemoteServiceStatus(*props);
         {
           RemoteAction remote_action;
           remote_action.i.display_num = render->display_info_list_.size();
@@ -904,6 +1025,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
       case ConnectionStatus::Closed: {
         props->connection_established_ = false;
         props->enable_mouse_control_ = false;
+        render->ResetRemoteServiceStatus(*props);
 
         {
           std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
@@ -954,6 +1076,9 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
 
     switch (status) {
       case ConnectionStatus::Connected: {
+#if _WIN32
+        render->last_windows_service_status_tick_ = 0;
+#endif
         {
           RemoteAction remote_action;
           remote_action.i.display_num = render->display_info_list_.size();

@@ -51,6 +51,22 @@ struct TranslationRow {
   X(release_mouse, u8"释放", "Release", u8"Освободить")                        \
   X(audio_capture, u8"声音", "Audio", u8"Звук")                                \
   X(mute, u8" 静音", " Mute", u8"Без звука")                                   \
+  X(send_sas, u8"发送SAS", "Send SAS", u8"Отправить SAS")                     \
+  X(remote_password_box_visible, u8"远端密码框已出现",                            \
+    "Remote password box visible", u8"Окно ввода пароля видно")                 \
+  X(remote_lock_screen_hint, u8"远端处于锁屏封面，可发送SAS",                     \
+    "Remote lock screen visible, send SAS",                                     \
+    u8"Видна блокировка, отправьте SAS")                                         \
+  X(remote_secure_desktop_active, u8"远端已进入安全桌面",                         \
+    "Remote secure desktop active",                                              \
+    u8"Активен защищенный рабочий стол")                                         \
+  X(remote_service_unavailable, u8"远端Windows服务不可用",                        \
+    "Remote Windows service unavailable",                                        \
+    u8"Служба Windows на удаленной стороне недоступна")                          \
+  X(remote_unlock_requires_secure_desktop,                                        \
+    u8"当前仍需要安全桌面专用采集/输入",                                         \
+    "Secure desktop capture/input is still required",                            \
+    u8"По-прежнему нужен отдельный захват/ввод для защищенного рабочего стола")   \
   X(settings, u8"设置", "Settings", u8"Настройки")                             \
   X(language, u8"语言:", "Language:", u8"Язык:")                               \
   X(video_quality, u8"视频质量:", "Video Quality:", u8"Качество видео:")       \

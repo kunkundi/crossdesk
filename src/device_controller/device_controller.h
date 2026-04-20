@@ -7,6 +7,7 @@
 #ifndef _DEVICE_CONTROLLER_H_
 #define _DEVICE_CONTROLLER_H_
 
+#include <cstring>
 #include <stdio.h>
 
 #include <nlohmann/json.hpp>
@@ -23,6 +24,8 @@ typedef enum {
   audio_capture,
   host_infomation,
   display_id,
+  service_status,
+  service_command,
 } ControlType;
 typedef enum {
   move = 0,
@@ -36,6 +39,7 @@ typedef enum {
   wheel_horizontal
 } MouseFlag;
 typedef enum { key_down = 0, key_up } KeyFlag;
+typedef enum { send_sas = 0 } ServiceCommandFlag;
 typedef struct {
   float x;
   float y;
@@ -59,6 +63,15 @@ typedef struct {
   int* bottom;
 } HostInfo;
 
+typedef struct {
+  bool available;
+  char interactive_stage[32];
+} ServiceStatus;
+
+typedef struct {
+  ServiceCommandFlag flag;
+} ServiceCommand;
+
 struct RemoteAction {
   ControlType type;
   union {
@@ -67,6 +80,8 @@ struct RemoteAction {
     HostInfo i;
     bool a;
     int d;
+    ServiceStatus ss;
+    ServiceCommand c;
   };
 
   // parse
@@ -95,6 +110,14 @@ struct RemoteAction {
         break;
       case ControlType::display_id:
         j["display_id"] = a.d;
+        break;
+      case ControlType::service_status:
+        j["service_status"] = {{"available", a.ss.available},
+                               {"interactive_stage",
+                                a.ss.interactive_stage}};
+        break;
+      case ControlType::service_command:
+        j["service_command"] = {{"flag", a.c.flag}};
         break;
       case ControlType::host_infomation: {
         json displays = json::array();
@@ -136,6 +159,21 @@ struct RemoteAction {
           break;
         case ControlType::display_id:
           out.d = j.at("display_id").get<int>();
+          break;
+        case ControlType::service_status: {
+          const auto& service_status_json = j.at("service_status");
+          out.ss.available = service_status_json.value("available", false);
+          std::string interactive_stage =
+            service_status_json.value("interactive_stage", std::string());
+          std::strncpy(out.ss.interactive_stage, interactive_stage.c_str(),
+                 sizeof(out.ss.interactive_stage) - 1);
+          out.ss.interactive_stage[sizeof(out.ss.interactive_stage) - 1] =
+            '\0';
+          break;
+        }
+        case ControlType::service_command:
+          out.c.flag = static_cast<ServiceCommandFlag>(
+            j.at("service_command").at("flag").get<int>());
           break;
         case ControlType::host_infomation: {
           std::string host_name =
