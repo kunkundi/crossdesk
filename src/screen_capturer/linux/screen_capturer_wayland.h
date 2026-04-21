@@ -94,10 +94,13 @@ class ScreenCapturerWayland : public ScreenCapturer {
   bool pipewire_thread_loop_started_ = false;
   bool pointer_granted_ = false;
   bool shared_session_registered_ = false;
+  bool portal_has_logical_size_ = false;
   uint32_t spa_video_format_ = 0;
   int frame_width_ = 0;
   int frame_height_ = 0;
   int frame_stride_ = 0;
+  int portal_stream_width_ = 0;
+  int portal_stream_height_ = 0;
   int logical_width_ = 0;
   int logical_height_ = 0;
 

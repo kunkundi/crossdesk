@@ -177,8 +177,8 @@ int ScreenCapturerLinux::Start(bool show_cursor) {
     backend_name = "Wayland";
   }
 
-  LOG_WARN("Linux screen capturer backend {} start failed: {}",
-           backend_name, ret);
+  LOG_WARN("Linux screen capturer backend {} start failed: {}", backend_name,
+           ret);
 
   if (backend_ == BackendType::kX11 && kDrmBuildEnabled &&
       TryFallbackToDrm(show_cursor)) {
@@ -484,7 +484,8 @@ void ScreenCapturerLinux::UpdateAliasesFromBackend(ScreenCapturer* backend) {
   }
 }
 
-std::string ScreenCapturerLinux::MapDisplayName(const char* display_name) const {
+std::string ScreenCapturerLinux::MapDisplayName(
+    const char* display_name) const {
   std::string input_name = display_name ? display_name : "";
   if (input_name.empty()) {
     return input_name;

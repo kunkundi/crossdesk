@@ -3,13 +3,13 @@
 #include "screen_capturer_wayland_build.h"
 
 #if !CROSSDESK_WAYLAND_BUILD_ENABLED
-#error "Wayland capturer requires USE_WAYLAND=true and Wayland development headers"
+#error \
+    "Wayland capturer requires USE_WAYLAND=true and Wayland development headers"
 #endif
 
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
-
-#include <chrono>
 #include <thread>
 
 #include "platform.h"
@@ -69,6 +69,9 @@ int ScreenCapturerWayland::Init(const int fps, cb_desktop_data cb) {
   frame_width_ = kFallbackWidth;
   frame_height_ = kFallbackHeight;
   frame_stride_ = kFallbackWidth * 4;
+  portal_has_logical_size_ = false;
+  portal_stream_width_ = 0;
+  portal_stream_height_ = 0;
   logical_width_ = kFallbackWidth;
   logical_height_ = kFallbackHeight;
   y_plane_.resize(kFallbackWidth * kFallbackHeight);
@@ -94,9 +97,9 @@ int ScreenCapturerWayland::Start(bool show_cursor) {
   show_cursor_ = show_cursor;
   paused_ = false;
   pipewire_node_id_ = 0;
-  UpdateDisplayGeometry(logical_width_ > 0 ? logical_width_ : kFallbackWidth,
-                        logical_height_ > 0 ? logical_height_
-                                            : kFallbackHeight);
+  UpdateDisplayGeometry(
+      logical_width_ > 0 ? logical_width_ : kFallbackWidth,
+      logical_height_ > 0 ? logical_height_ : kFallbackHeight);
   pipewire_format_ready_.store(false);
   pipewire_stream_start_ms_.store(0);
   pipewire_last_frame_ms_.store(0);
@@ -111,9 +114,9 @@ int ScreenCapturerWayland::Stop() {
     thread_.join();
   }
   pipewire_node_id_ = 0;
-  UpdateDisplayGeometry(logical_width_ > 0 ? logical_width_ : kFallbackWidth,
-                        logical_height_ > 0 ? logical_height_
-                                            : kFallbackHeight);
+  UpdateDisplayGeometry(
+      logical_width_ > 0 ? logical_width_ : kFallbackWidth,
+      logical_height_ > 0 ? logical_height_ : kFallbackHeight);
   return 0;
 }
 
@@ -182,9 +185,9 @@ void ScreenCapturerWayland::Run() {
 
       const bool format_timeout =
           stream_start > 0 && !format_ready && (now - stream_start) > 1200;
-      const bool first_frame_timeout =
-          stream_start > 0 && format_ready && last_frame == 0 &&
-          (now - stream_start) > 4000;
+      const bool first_frame_timeout = stream_start > 0 && format_ready &&
+                                       last_frame == 0 &&
+                                       (now - stream_start) > 4000;
       const bool frame_stall = last_frame > 0 && (now - last_frame) > 5000;
 
       if (format_timeout || first_frame_timeout || frame_stall) {
@@ -200,10 +203,10 @@ void ScreenCapturerWayland::Run() {
         }
 
         ++recovery_index;
-        const char* reason = format_timeout
-                                 ? "format-timeout"
-                                 : (first_frame_timeout ? "first-frame-timeout"
-                                                        : "frame-stall");
+        const char* reason =
+            format_timeout
+                ? "format-timeout"
+                : (first_frame_timeout ? "first-frame-timeout" : "frame-stall");
         const auto& config = kRecoveryConfigs[recovery_index];
         LOG_WARN(
             "Wayland capture stalled ({}) - retrying PipeWire only, "
