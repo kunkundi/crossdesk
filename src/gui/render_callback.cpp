@@ -28,6 +28,178 @@ namespace crossdesk {
 
 namespace {
 
+int TranslateSdlKeypadScancodeToVk(SDL_Scancode scancode) {
+  switch (scancode) {
+    case SDL_SCANCODE_NUMLOCKCLEAR:
+      return 0x90;
+    case SDL_SCANCODE_KP_ENTER:
+      return 0x0D;
+    case SDL_SCANCODE_KP_0:
+      return 0x60;
+    case SDL_SCANCODE_KP_1:
+      return 0x61;
+    case SDL_SCANCODE_KP_2:
+      return 0x62;
+    case SDL_SCANCODE_KP_3:
+      return 0x63;
+    case SDL_SCANCODE_KP_4:
+      return 0x64;
+    case SDL_SCANCODE_KP_5:
+      return 0x65;
+    case SDL_SCANCODE_KP_6:
+      return 0x66;
+    case SDL_SCANCODE_KP_7:
+      return 0x67;
+    case SDL_SCANCODE_KP_8:
+      return 0x68;
+    case SDL_SCANCODE_KP_9:
+      return 0x69;
+    case SDL_SCANCODE_KP_PERIOD:
+    case SDL_SCANCODE_KP_COMMA:
+      return 0x6E;
+    case SDL_SCANCODE_KP_DIVIDE:
+      return 0x6F;
+    case SDL_SCANCODE_KP_MULTIPLY:
+      return 0x6A;
+    case SDL_SCANCODE_KP_MINUS:
+      return 0x6D;
+    case SDL_SCANCODE_KP_PLUS:
+      return 0x6B;
+    case SDL_SCANCODE_KP_EQUALS:
+      return 0xBB;
+    default:
+      return -1;
+  }
+}
+
+int TranslateSdlKeyboardEventToVk(const SDL_KeyboardEvent& event) {
+  const int keypad_key_code = TranslateSdlKeypadScancodeToVk(event.scancode);
+  if (keypad_key_code >= 0) {
+    return keypad_key_code;
+  }
+
+  const int key = static_cast<int>(event.key);
+  if (key >= 'a' && key <= 'z') {
+    return key - 'a' + 0x41;
+  }
+  if (key >= 'A' && key <= 'Z') {
+    return key;
+  }
+  if (key >= '0' && key <= '9') {
+    return key;
+  }
+
+  switch (key) {
+    case ';':
+      return 0xBA;
+    case '\'':
+      return 0xDE;
+    case '`':
+      return 0xC0;
+    case ',':
+      return 0xBC;
+    case '.':
+      return 0xBE;
+    case '/':
+      return 0xBF;
+    case '\\':
+      return 0xDC;
+    case '[':
+      return 0xDB;
+    case ']':
+      return 0xDD;
+    case '-':
+      return 0xBD;
+    case '=':
+      return 0xBB;
+    default:
+      break;
+  }
+
+  switch (event.scancode) {
+    case SDL_SCANCODE_ESCAPE:
+      return 0x1B;
+    case SDL_SCANCODE_RETURN:
+      return 0x0D;
+    case SDL_SCANCODE_SPACE:
+      return 0x20;
+    case SDL_SCANCODE_BACKSPACE:
+      return 0x08;
+    case SDL_SCANCODE_TAB:
+      return 0x09;
+    case SDL_SCANCODE_PRINTSCREEN:
+      return 0x2C;
+    case SDL_SCANCODE_SCROLLLOCK:
+      return 0x91;
+    case SDL_SCANCODE_PAUSE:
+      return 0x13;
+    case SDL_SCANCODE_INSERT:
+      return 0x2D;
+    case SDL_SCANCODE_DELETE:
+      return 0x2E;
+    case SDL_SCANCODE_HOME:
+      return 0x24;
+    case SDL_SCANCODE_END:
+      return 0x23;
+    case SDL_SCANCODE_PAGEUP:
+      return 0x21;
+    case SDL_SCANCODE_PAGEDOWN:
+      return 0x22;
+    case SDL_SCANCODE_LEFT:
+      return 0x25;
+    case SDL_SCANCODE_RIGHT:
+      return 0x27;
+    case SDL_SCANCODE_UP:
+      return 0x26;
+    case SDL_SCANCODE_DOWN:
+      return 0x28;
+    case SDL_SCANCODE_F1:
+      return 0x70;
+    case SDL_SCANCODE_F2:
+      return 0x71;
+    case SDL_SCANCODE_F3:
+      return 0x72;
+    case SDL_SCANCODE_F4:
+      return 0x73;
+    case SDL_SCANCODE_F5:
+      return 0x74;
+    case SDL_SCANCODE_F6:
+      return 0x75;
+    case SDL_SCANCODE_F7:
+      return 0x76;
+    case SDL_SCANCODE_F8:
+      return 0x77;
+    case SDL_SCANCODE_F9:
+      return 0x78;
+    case SDL_SCANCODE_F10:
+      return 0x79;
+    case SDL_SCANCODE_F11:
+      return 0x7A;
+    case SDL_SCANCODE_F12:
+      return 0x7B;
+    case SDL_SCANCODE_CAPSLOCK:
+      return 0x14;
+    case SDL_SCANCODE_LSHIFT:
+      return 0xA0;
+    case SDL_SCANCODE_RSHIFT:
+      return 0xA1;
+    case SDL_SCANCODE_LCTRL:
+      return 0xA2;
+    case SDL_SCANCODE_RCTRL:
+      return 0xA3;
+    case SDL_SCANCODE_LALT:
+      return 0xA4;
+    case SDL_SCANCODE_RALT:
+      return 0xA5;
+    case SDL_SCANCODE_LGUI:
+      return 0x5B;
+    case SDL_SCANCODE_RGUI:
+      return 0x5C;
+    default:
+      return -1;
+  }
+}
+
 #if _WIN32
 constexpr uint32_t kSecureDesktopInputLogIntervalMs = 2000;
 
@@ -36,8 +208,7 @@ bool BuildAbsoluteMousePosition(const std::vector<DisplayInfo>& displays,
                                 float normalized_y, int* absolute_x_out,
                                 int* absolute_y_out) {
   if (absolute_x_out == nullptr || absolute_y_out == nullptr ||
-      display_index < 0 ||
-      display_index >= static_cast<int>(displays.size())) {
+      display_index < 0 || display_index >= static_cast<int>(displays.size())) {
     return false;
   }
 
@@ -152,29 +323,29 @@ bool Render::IsModifierVkKey(int key_code) {
   }
 }
 
-void Render::UpdatePressedModifierState(int key_code, bool is_down) {
-  if (!IsModifierVkKey(key_code)) {
+void Render::TrackPressedKeyState(int key_code, bool is_down) {
+  if (!IsWaylandSession() && !IsModifierVkKey(key_code)) {
     return;
   }
 
-  std::lock_guard<std::mutex> lock(pressed_modifier_keys_mutex_);
+  std::lock_guard<std::mutex> lock(pressed_keyboard_keys_mutex_);
   if (is_down) {
-    pressed_modifier_keys_.insert(key_code);
+    pressed_keyboard_keys_.insert(key_code);
   } else {
-    pressed_modifier_keys_.erase(key_code);
+    pressed_keyboard_keys_.erase(key_code);
   }
 }
 
-void Render::ForceReleasePressedModifiers() {
+void Render::ForceReleasePressedKeys() {
   std::vector<int> pressed_keys;
   {
-    std::lock_guard<std::mutex> lock(pressed_modifier_keys_mutex_);
-    if (pressed_modifier_keys_.empty()) {
+    std::lock_guard<std::mutex> lock(pressed_keyboard_keys_mutex_);
+    if (pressed_keyboard_keys_.empty()) {
       return;
     }
-    pressed_keys.assign(pressed_modifier_keys_.begin(),
-                        pressed_modifier_keys_.end());
-    pressed_modifier_keys_.clear();
+    pressed_keys.assign(pressed_keyboard_keys_.begin(),
+                        pressed_keyboard_keys_.end());
+    pressed_keyboard_keys_.clear();
   }
 
   for (int key_code : pressed_keys) {
@@ -210,9 +381,26 @@ int Render::SendKeyCommand(int key_code, bool is_down) {
     }
   }
 
-  UpdatePressedModifierState(key_code, is_down);
+  TrackPressedKeyState(key_code, is_down);
 
   return 0;
+}
+
+int Render::ProcessKeyboardEvent(const SDL_Event& event) {
+  if (event.type != SDL_EVENT_KEY_DOWN && event.type != SDL_EVENT_KEY_UP) {
+    return -1;
+  }
+
+  if (event.type == SDL_EVENT_KEY_DOWN && event.key.repeat) {
+    return 0;
+  }
+
+  const int key_code = TranslateSdlKeyboardEventToVk(event.key);
+  if (key_code < 0) {
+    return 0;
+  }
+
+  return SendKeyCommand(key_code, event.type == SDL_EVENT_KEY_DOWN);
 }
 
 int Render::ProcessMouseEvent(const SDL_Event& event) {
@@ -292,7 +480,8 @@ int Render::ProcessMouseEvent(const SDL_Event& event) {
     }
 
     if (is_pointer_position_event && cursor_x >= render_rect.x &&
-        cursor_x <= render_rect.x + render_rect.w && cursor_y >= render_rect.y &&
+        cursor_x <= render_rect.x + render_rect.w &&
+        cursor_y >= render_rect.y &&
         cursor_y <= render_rect.y + render_rect.h) {
       controlled_remote_id_ = it.first;
       last_mouse_event.motion.x = cursor_x;
@@ -827,9 +1016,9 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
                                         remote_action.m.x, remote_action.m.y,
                                         &absolute_x, &absolute_y)) {
           LOG_WARN(
-              "Secure desktop mouse injection skipped, invalid display mapping: display_index={}, x={}, y={}",
-              render->selected_display_, remote_action.m.x,
-              remote_action.m.y);
+              "Secure desktop mouse injection skipped, invalid display "
+              "mapping: display_index={}, x={}, y={}",
+              render->selected_display_, remote_action.m.x, remote_action.m.y);
           return;
         }
 
@@ -842,7 +1031,8 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
               &render->last_local_secure_input_block_log_tick_, "local",
               render->local_interactive_stage_.c_str());
           LOG_WARN(
-              "Secure desktop mouse injection failed, x={}, y={}, wheel={}, flag={}, response={}",
+              "Secure desktop mouse injection failed, x={}, y={}, wheel={}, "
+              "flag={}, response={}",
               absolute_x, absolute_y, remote_action.m.s,
               static_cast<int>(remote_action.m.flag), response);
         }
@@ -1153,8 +1343,9 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
             // Keep Wayland capture session warm to avoid black screen on
             // subsequent reconnects.
             render->start_screen_capturer_ = true;
-            LOG_INFO("Keeping Wayland screen capturer running after "
-                     "disconnect to preserve reconnect stability");
+            LOG_INFO(
+                "Keeping Wayland screen capturer running after "
+                "disconnect to preserve reconnect stability");
           } else {
             render->start_screen_capturer_ = false;
           }

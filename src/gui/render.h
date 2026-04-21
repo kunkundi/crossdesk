@@ -287,7 +287,7 @@ class Render {
   void ResetRemoteServiceStatus(SubStreamWindowProperties& props);
   void ApplyRemoteServiceStatus(SubStreamWindowProperties& props,
                                 const ServiceStatus& status);
-    RemoteUnlockState GetRemoteUnlockState(
+  RemoteUnlockState GetRemoteUnlockState(
       const SubStreamWindowProperties& props) const;
 #ifdef __APPLE__
   int RequestPermissionWindow();
@@ -342,8 +342,9 @@ class Render {
  private:
   int SendKeyCommand(int key_code, bool is_down);
   static bool IsModifierVkKey(int key_code);
-  void UpdatePressedModifierState(int key_code, bool is_down);
-  void ForceReleasePressedModifiers();
+  void TrackPressedKeyState(int key_code, bool is_down);
+  void ForceReleasePressedKeys();
+  int ProcessKeyboardEvent(const SDL_Event& event);
   int ProcessMouseEvent(const SDL_Event& event);
 
   static void SdlCaptureAudioIn(void* userdata, Uint8* stream, int len);
@@ -532,8 +533,8 @@ class Render {
   std::string controlled_remote_id_ = "";
   std::string focused_remote_id_ = "";
   std::string remote_client_id_ = "";
-  std::unordered_set<int> pressed_modifier_keys_;
-  std::mutex pressed_modifier_keys_mutex_;
+  std::unordered_set<int> pressed_keyboard_keys_;
+  std::mutex pressed_keyboard_keys_mutex_;
   SDL_Event last_mouse_event;
   SDL_AudioStream* output_stream_;
   uint32_t STREAM_REFRESH_EVENT = 0;
