@@ -130,7 +130,7 @@ cancelUninstall:
     Abort
 
 uninstallApp:
-    Call UnregisterInstalledService
+    Call un.UnregisterInstalledService
 
     ; Delete main executable and uninstaller
     Delete "$INSTDIR\CrossDesk.exe"
@@ -211,7 +211,7 @@ missing_service_binary:
     Abort
 FunctionEnd
 
-Function UnregisterInstalledService
+Function un.UnregisterInstalledService
     IfFileExists "$INSTDIR\CrossDesk.exe" 0 unregister_with_sc
 
     DetailPrint "Stopping CrossDesk service"
