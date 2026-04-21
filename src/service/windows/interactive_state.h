@@ -12,11 +12,11 @@ inline bool IsSecureDesktopInteractionRequired(
 }
 
 inline bool ShouldNormalizeUnlockToUserDesktop(
-    bool interactive_lock_screen_visible,
-    const std::string& interactive_stage, bool session_locked,
-    bool interactive_logon_ui_visible, bool interactive_secure_desktop_active,
-    bool credential_ui_visible, bool password_box_visible,
-    bool unlock_ui_visible, const std::string& last_session_event) {
+    bool interactive_lock_screen_visible, const std::string& interactive_stage,
+    bool session_locked, bool interactive_logon_ui_visible,
+    bool interactive_secure_desktop_active, bool credential_ui_visible,
+    bool password_box_visible, bool unlock_ui_visible,
+    const std::string& last_session_event) {
   if (!interactive_lock_screen_visible && interactive_stage != "lock-screen") {
     return false;
   }

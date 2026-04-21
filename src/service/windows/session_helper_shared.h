@@ -11,16 +11,13 @@ namespace crossdesk {
 inline constexpr wchar_t kCrossDeskSessionHelperPipePrefix[] =
     L"\\\\.\\pipe\\CrossDeskSessionHelper-";
 inline constexpr wchar_t kCrossDeskSecureInputHelperPipePrefix[] =
-  L"\\\\.\\pipe\\CrossDeskSecureInputHelper-";
+    L"\\\\.\\pipe\\CrossDeskSecureInputHelper-";
 inline constexpr char kCrossDeskSessionHelperStatusCommand[] = "status";
 inline constexpr char kCrossDeskSecureInputKeyboardCommandPrefix[] =
-  "keyboard:";
-inline constexpr char kCrossDeskSecureInputMouseCommandPrefix[] =
-  "mouse:";
-inline constexpr char kCrossDeskSecureInputCaptureCommandPrefix[] =
-    "capture:";
-inline constexpr DWORD kCrossDeskSecureInputPipeBufferBytes =
-    16 * 1024 * 1024;
+    "keyboard:";
+inline constexpr char kCrossDeskSecureInputMouseCommandPrefix[] = "mouse:";
+inline constexpr char kCrossDeskSecureInputCaptureCommandPrefix[] = "capture:";
+inline constexpr DWORD kCrossDeskSecureInputPipeBufferBytes = 16 * 1024 * 1024;
 inline constexpr uint32_t kCrossDeskSecureDesktopFrameMagic = 0x50444358;
 inline constexpr uint32_t kCrossDeskSecureDesktopFrameVersion = 1;
 
@@ -43,7 +40,7 @@ inline std::wstring GetCrossDeskSessionHelperPipeName(DWORD session_id) {
 
 inline std::wstring GetCrossDeskSecureInputHelperPipeName(DWORD session_id) {
   return std::wstring(kCrossDeskSecureInputHelperPipePrefix) +
-     std::to_wstring(session_id);
+         std::to_wstring(session_id);
 }
 
 }  // namespace crossdesk

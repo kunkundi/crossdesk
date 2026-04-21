@@ -10,8 +10,7 @@
 namespace crossdesk {
 
 inline constexpr wchar_t kCrossDeskServiceName[] = L"CrossDeskService";
-inline constexpr wchar_t kCrossDeskServiceDisplayName[] =
-    L"CrossDesk Service";
+inline constexpr wchar_t kCrossDeskServiceDisplayName[] = L"CrossDesk Service";
 inline constexpr wchar_t kCrossDeskServicePipeName[] =
     L"\\\\.\\pipe\\CrossDeskService";
 
@@ -59,8 +58,7 @@ class CrossDeskServiceHost {
   static void WINAPI ServiceMain(DWORD argc, LPWSTR* argv);
   static BOOL WINAPI ConsoleControlHandler(DWORD control_type);
   static DWORD WINAPI ServiceControlHandler(DWORD control, DWORD event_type,
-                                            LPVOID event_data,
-                                            LPVOID context);
+                                            LPVOID event_data, LPVOID context);
 
  private:
   SERVICE_STATUS_HANDLE status_handle_ = nullptr;
@@ -98,7 +96,7 @@ class CrossDeskServiceHost {
   bool input_desktop_available_ = false;
   bool session_helper_running_ = false;
   bool session_helper_status_ok_ = false;
-    bool session_helper_report_session_locked_ = false;
+  bool session_helper_report_session_locked_ = false;
   bool session_helper_report_input_desktop_available_ = false;
   bool session_helper_report_lock_app_visible_ = false;
   bool session_helper_report_logon_ui_visible_ = false;

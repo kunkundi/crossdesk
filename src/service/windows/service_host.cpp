@@ -1,17 +1,16 @@
 #include "service_host.h"
 
-#include <nlohmann/json.hpp>
-
+#include <TlHelp32.h>
 #include <Userenv.h>
 #include <WtsApi32.h>
 #include <sddl.h>
-#include <TlHelp32.h>
 
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
 #include <iostream>
 #include <mutex>
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -26,10 +25,8 @@ namespace {
 
 using Json = nlohmann::json;
 
-constexpr char kSecureDesktopKeyboardIpcCommandPrefix[] =
-  "secure-input-key:";
-constexpr char kSecureDesktopMouseIpcCommandPrefix[] =
-  "secure-input-mouse:";
+constexpr char kSecureDesktopKeyboardIpcCommandPrefix[] = "secure-input-key:";
+constexpr char kSecureDesktopMouseIpcCommandPrefix[] = "secure-input-mouse:";
 
 using SendSasFunction = VOID(WINAPI*)(BOOL);
 
@@ -231,13 +228,12 @@ std::string BuildSecureDesktopKeyboardIpcCommand(int key_code, bool is_down) {
 std::string BuildSecureDesktopMouseIpcCommand(int x, int y, int wheel,
                                               int flag) {
   std::ostringstream stream;
-  stream << kSecureDesktopMouseIpcCommandPrefix << x << ":" << y << ":"
-         << wheel << ":" << flag;
+  stream << kSecureDesktopMouseIpcCommandPrefix << x << ":" << y << ":" << wheel
+         << ":" << flag;
   return stream.str();
 }
 
-std::string BuildSecureInputHelperKeyboardCommand(int key_code,
-                                                  bool is_down) {
+std::string BuildSecureInputHelperKeyboardCommand(int key_code, bool is_down) {
   std::ostringstream stream;
   stream << kCrossDeskSecureInputKeyboardCommandPrefix << key_code << ":"
          << (is_down ? 1 : 0);
@@ -487,15 +483,15 @@ std::string WideToUtf8(const std::wstring& value) {
     return {};
   }
 
-  int size_needed = WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1,
-                                        nullptr, 0, nullptr, nullptr);
+  int size_needed = WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, nullptr,
+                                        0, nullptr, nullptr);
   if (size_needed <= 1) {
     return {};
   }
 
   std::string result(static_cast<size_t>(size_needed), '\0');
-  WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, result.data(),
-                      size_needed, nullptr, nullptr);
+  WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, result.data(), size_needed,
+                      nullptr, nullptr);
   result.pop_back();
   return result;
 }
@@ -519,8 +515,7 @@ bool QuerySoftwareSasGeneration(DWORD* value_out, bool* existed_out) {
   DWORD value_size = sizeof(value);
   DWORD type = REG_DWORD;
   LONG result = RegQueryValueExW(key, L"SoftwareSASGeneration", nullptr, &type,
-                                 reinterpret_cast<LPBYTE>(&value),
-                                 &value_size);
+                                 reinterpret_cast<LPBYTE>(&value), &value_size);
   if (result == ERROR_SUCCESS && type == REG_DWORD) {
     *value_out = value;
     *existed_out = true;
@@ -542,8 +537,7 @@ bool SetSoftwareSasGeneration(DWORD value) {
   }
 
   result = RegSetValueExW(key, L"SoftwareSASGeneration", 0, REG_DWORD,
-                          reinterpret_cast<const BYTE*>(&value),
-                          sizeof(value));
+                          reinterpret_cast<const BYTE*>(&value), sizeof(value));
   RegCloseKey(key);
   return result == ERROR_SUCCESS;
 }
@@ -552,8 +546,8 @@ bool RestoreSoftwareSasGeneration(DWORD original_value, bool existed_before) {
   HKEY key = nullptr;
   constexpr wchar_t kPolicyKey[] =
       L"Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System";
-  LONG result = RegOpenKeyExW(HKEY_LOCAL_MACHINE, kPolicyKey, 0, KEY_SET_VALUE,
-                              &key);
+  LONG result =
+      RegOpenKeyExW(HKEY_LOCAL_MACHINE, kPolicyKey, 0, KEY_SET_VALUE, &key);
   if (result != ERROR_SUCCESS) {
     return false;
   }
@@ -580,8 +574,8 @@ SasResult SendSasNow() {
     return result;
   }
 
-  auto* send_sas = reinterpret_cast<SendSasFunction>(
-      GetProcAddress(sas_module, "SendSAS"));
+  auto* send_sas =
+      reinterpret_cast<SendSasFunction>(GetProcAddress(sas_module, "SendSAS"));
   if (send_sas == nullptr) {
     result.error = "send_sas_proc_missing";
     result.error_code = GetLastError();
@@ -625,8 +619,7 @@ struct PipeSecurityAttributes {
   }
 
   bool Initialize() {
-    constexpr wchar_t kPipeSddl[] =
-        L"D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;AU)";
+    constexpr wchar_t kPipeSddl[] = L"D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;AU)";
     if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
             kPipeSddl, SDDL_REVISION_1, &security_descriptor_, nullptr)) {
       return false;
@@ -654,8 +647,7 @@ struct KernelObjectSecurityAttributes {
   }
 
   bool Initialize() {
-    constexpr wchar_t kObjectSddl[] =
-        L"D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;AU)";
+    constexpr wchar_t kObjectSddl[] = L"D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;AU)";
     if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
             kObjectSddl, SDDL_REVISION_1, &security_descriptor_, nullptr)) {
       return false;
@@ -726,8 +718,7 @@ DWORD WINAPI CrossDeskServiceHost::ServiceControlHandler(
     case SERVICE_CONTROL_SESSIONCHANGE: {
       DWORD session_id = 0xFFFFFFFF;
       if (event_data != nullptr) {
-        auto* session =
-            reinterpret_cast<WTSSESSION_NOTIFICATION*>(event_data);
+        auto* session = reinterpret_cast<WTSSESSION_NOTIFICATION*>(event_data);
         session_id = session->dwSessionId;
       }
       instance_->RecordSessionEvent(event_type, session_id);
@@ -742,7 +733,8 @@ int CrossDeskServiceHost::RunAsService() {
   instance_ = this;
 
   SERVICE_TABLE_ENTRYW service_table[] = {
-      {const_cast<LPWSTR>(kCrossDeskServiceName), &CrossDeskServiceHost::ServiceMain},
+      {const_cast<LPWSTR>(kCrossDeskServiceName),
+       &CrossDeskServiceHost::ServiceMain},
       {nullptr, nullptr}};
 
   if (!StartServiceCtrlDispatcherW(service_table)) {
@@ -897,7 +889,8 @@ int CrossDeskServiceHost::RunServiceLoop(bool as_service) {
 
   if (console_mode_) {
     SetConsoleCtrlHandler(&CrossDeskServiceHost::ConsoleControlHandler, TRUE);
-    std::cout << "CrossDesk service skeleton running in console mode. Press Ctrl+C to stop."
+    std::cout << "CrossDesk service skeleton running in console mode. Press "
+                 "Ctrl+C to stop."
               << std::endl;
   }
 
@@ -932,10 +925,9 @@ void CrossDeskServiceHost::IpcServerLoop() {
   while (stop_event_ != nullptr &&
          WaitForSingleObject(stop_event_, 0) != WAIT_OBJECT_0) {
     HANDLE pipe = CreateNamedPipeW(
-        kCrossDeskServicePipeName,
-        PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
-        PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
-        1, 4096, 4096, 0, pipe_attributes);
+        kCrossDeskServicePipeName, PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+        PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, 1, 4096, 4096, 0,
+        pipe_attributes);
     if (pipe == INVALID_HANDLE_VALUE) {
       DWORD error = GetLastError();
       LOG_ERROR("CreateNamedPipeW failed, error={}", error);
@@ -1068,9 +1060,8 @@ bool CrossDeskServiceHost::ShouldKeepSecureInputHelperLocked(
     return false;
   }
 
-  return HasSecureInputUiLocked() ||
-         (GetEffectiveSessionLockedLocked() &&
-          IsHelperReportingLockScreenLocked());
+  return HasSecureInputUiLocked() || (GetEffectiveSessionLockedLocked() &&
+                                      IsHelperReportingLockScreenLocked());
 }
 
 std::wstring CrossDeskServiceHost::GetSessionHelperPath() const {
@@ -1257,8 +1248,8 @@ bool CrossDeskServiceHost::LaunchSessionHelper(DWORD session_id) {
     event_attributes = event_security.get();
   }
 
-  HANDLE stop_event_handle = CreateEventW(event_attributes, TRUE, FALSE,
-                                          stop_event_name.c_str());
+  HANDLE stop_event_handle =
+      CreateEventW(event_attributes, TRUE, FALSE, stop_event_name.c_str());
   if (stop_event_handle == nullptr) {
     std::lock_guard<std::mutex> lock(state_mutex_);
     session_helper_last_error_ = "create_helper_stop_event_failed";
@@ -1280,8 +1271,8 @@ bool CrossDeskServiceHost::LaunchSessionHelper(DWORD session_id) {
 
   if (console_mode_ && process_session_id_ == session_id) {
     created = CreateProcessW(helper_path.c_str(), mutable_command_line.data(),
-                             nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
-                             nullptr, nullptr, &startup_info, &process_info);
+                             nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr,
+                             nullptr, &startup_info, &process_info);
   } else {
     HANDLE user_token = nullptr;
     HANDLE primary_token = nullptr;
@@ -1315,8 +1306,7 @@ bool CrossDeskServiceHost::LaunchSessionHelper(DWORD session_id) {
                            FALSE);
     created = CreateProcessAsUserW(
         primary_token, helper_path.c_str(), mutable_command_line.data(),
-        nullptr, nullptr, FALSE,
-        CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW,
+        nullptr, nullptr, FALSE, CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW,
         environment_block.environment, nullptr, &startup_info, &process_info);
     DWORD error = created ? ERROR_SUCCESS : GetLastError();
     CloseHandle(primary_token);
@@ -1364,8 +1354,8 @@ bool CrossDeskServiceHost::LaunchSecureInputHelper(DWORD session_id) {
     event_attributes = event_security.get();
   }
 
-  HANDLE stop_event_handle = CreateEventW(event_attributes, TRUE, FALSE,
-                                          stop_event_name.c_str());
+  HANDLE stop_event_handle =
+      CreateEventW(event_attributes, TRUE, FALSE, stop_event_name.c_str());
   if (stop_event_handle == nullptr) {
     std::lock_guard<std::mutex> lock(state_mutex_);
     secure_input_helper_last_error_ =
@@ -1388,8 +1378,8 @@ bool CrossDeskServiceHost::LaunchSecureInputHelper(DWORD session_id) {
 
   if (console_mode_ && process_session_id_ == session_id) {
     created = CreateProcessW(helper_path.c_str(), mutable_command_line.data(),
-                             nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
-                             nullptr, nullptr, &startup_info, &process_info);
+                             nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr,
+                             nullptr, &startup_info, &process_info);
   } else {
     HANDLE primary_token = nullptr;
     ScopedEnvironmentBlock environment_block;
@@ -1397,8 +1387,7 @@ bool CrossDeskServiceHost::LaunchSecureInputHelper(DWORD session_id) {
     if (!CreateSessionSystemToken(session_id, &primary_token, &error)) {
       CloseHandle(stop_event_handle);
       std::lock_guard<std::mutex> lock(state_mutex_);
-      secure_input_helper_last_error_ =
-          "create_session_system_token_failed";
+      secure_input_helper_last_error_ = "create_session_system_token_failed";
       secure_input_helper_last_error_code_ = error;
       return false;
     }
@@ -1407,16 +1396,14 @@ bool CrossDeskServiceHost::LaunchSecureInputHelper(DWORD session_id) {
                            FALSE);
     created = CreateProcessAsUserW(
         primary_token, helper_path.c_str(), mutable_command_line.data(),
-        nullptr, nullptr, FALSE,
-        CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW,
+        nullptr, nullptr, FALSE, CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW,
         environment_block.environment, nullptr, &startup_info, &process_info);
     error = created ? ERROR_SUCCESS : GetLastError();
     CloseHandle(primary_token);
     if (!created) {
       CloseHandle(stop_event_handle);
       std::lock_guard<std::mutex> lock(state_mutex_);
-      secure_input_helper_last_error_ =
-          "create_secure_input_helper_failed";
+      secure_input_helper_last_error_ = "create_secure_input_helper_failed";
       secure_input_helper_last_error_code_ = error;
       return false;
     }
@@ -1515,25 +1502,24 @@ void CrossDeskServiceHost::RefreshSessionHelperReportedState() {
   session_helper_report_session_id_ =
       json.value("session_id", static_cast<DWORD>(0xFFFFFFFF));
   session_helper_report_process_id_ = json.value("process_id", 0u);
-    session_helper_report_session_locked_ =
-      json.value("session_locked", false);
+  session_helper_report_session_locked_ = json.value("session_locked", false);
   session_helper_report_input_desktop_available_ =
       json.value("input_desktop_available", false);
   session_helper_report_input_desktop_error_code_ =
       json.value("input_desktop_error_code", 0u);
   session_helper_report_input_desktop_ =
       json.value("input_desktop", std::string());
-    session_helper_report_lock_app_visible_ =
+  session_helper_report_lock_app_visible_ =
       json.value("lock_app_visible", false);
   session_helper_report_logon_ui_visible_ =
       json.value("logon_ui_visible", false);
   session_helper_report_secure_desktop_active_ =
       json.value("secure_desktop_active", false);
-    session_helper_report_credential_ui_visible_ =
+  session_helper_report_credential_ui_visible_ =
       json.value("credential_ui_visible", false);
-    session_helper_report_unlock_ui_visible_ =
+  session_helper_report_unlock_ui_visible_ =
       json.value("unlock_ui_visible", false);
-    session_helper_report_interactive_stage_ =
+  session_helper_report_interactive_stage_ =
       json.value("interactive_stage", std::string());
   session_helper_report_state_age_ms_ = json.value("state_age_ms", 0ull);
   session_helper_report_uptime_ms_ = json.value("uptime_ms", 0ull);
@@ -1582,8 +1568,7 @@ void CrossDeskServiceHost::RecordSessionEvent(DWORD event_type,
   }
 }
 
-std::string CrossDeskServiceHost::HandleIpcCommand(
-    const std::string& command) {
+std::string CrossDeskServiceHost::HandleIpcCommand(const std::string& command) {
   std::string normalized = ToLower(Trim(command));
   if (normalized == "ping") {
     return "{\"ok\":true,\"reply\":\"pong\"}";
@@ -1596,8 +1581,7 @@ std::string CrossDeskServiceHost::HandleIpcCommand(
   }
   int key_code = 0;
   bool is_down = false;
-  if (ParseSecureDesktopKeyboardIpcCommand(normalized, &key_code,
-                                           &is_down)) {
+  if (ParseSecureDesktopKeyboardIpcCommand(normalized, &key_code, &is_down)) {
     return SendSecureDesktopKeyboardInput(key_code, is_down);
   }
   return BuildErrorJson("unknown_command");
@@ -1639,16 +1623,16 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
   std::string input_desktop = EscapeJsonString(input_desktop_name_);
   std::string last_sas_error = EscapeJsonString(last_sas_error_);
   std::string session_helper_last_error =
-    EscapeJsonString(session_helper_last_error_);
+      EscapeJsonString(session_helper_last_error_);
   std::string session_helper_status_error =
       EscapeJsonString(session_helper_status_error_);
   std::string session_helper_path =
       EscapeJsonString(WideToUtf8(GetSessionHelperPath()));
-    std::string secure_input_helper_path =
+  std::string secure_input_helper_path =
       EscapeJsonString(WideToUtf8(GetSecureInputHelperPath()));
   std::string helper_input_desktop =
       EscapeJsonString(session_helper_report_input_desktop_);
-    std::string secure_input_helper_last_error =
+  std::string secure_input_helper_last_error =
       EscapeJsonString(secure_input_helper_last_error_);
   bool interactive_state_ready = session_helper_status_ok_;
   const char* interactive_state_source =
@@ -1658,9 +1642,9 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
       interactive_state_ready
           ? (effective_session_locked && IsHelperReportingLockScreenLocked())
           : false;
-  bool credential_ui_visible = interactive_state_ready
-                                   ? session_helper_report_credential_ui_visible_
-                                   : logon_ui_visible_;
+  bool credential_ui_visible =
+      interactive_state_ready ? session_helper_report_credential_ui_visible_
+                              : logon_ui_visible_;
   bool unlock_ui_visible = interactive_state_ready
                                ? session_helper_report_unlock_ui_visible_
                                : (logon_ui_visible_ || secure_desktop_active_);
@@ -1670,121 +1654,113 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
   bool interactive_logon_ui_visible =
       interactive_state_ready ? session_helper_report_logon_ui_visible_
                               : logon_ui_visible_;
-  bool interactive_session_locked =
-      effective_session_locked || interactive_lock_screen_visible ||
-      unlock_ui_visible;
+  bool interactive_session_locked = effective_session_locked ||
+                                    interactive_lock_screen_visible ||
+                                    unlock_ui_visible;
   std::string interactive_input_desktop = EscapeJsonString(
       interactive_state_ready ? session_helper_report_input_desktop_
                               : input_desktop_name_);
-  std::string interactive_stage = EscapeJsonString(
-      DetermineInteractiveStage(interactive_lock_screen_visible,
-                                credential_ui_visible,
-                                interactive_secure_desktop_active));
+  std::string interactive_stage = EscapeJsonString(DetermineInteractiveStage(
+      interactive_lock_screen_visible, credential_ui_visible,
+      interactive_secure_desktop_active));
   std::ostringstream stream;
   stream << "{\"ok\":true,\"service\":\"CrossDeskService\""
          << ",\"active_session_id\":" << active_session_id_
-      << ",\"process_session_id\":" << process_session_id_
+         << ",\"process_session_id\":" << process_session_id_
          << ",\"session_locked\":" << (session_locked_ ? "true" : "false")
-       << ",\"interactive_state_ready\":"
-       << (interactive_state_ready ? "true" : "false")
-       << ",\"interactive_state_source\":\""
-       << interactive_state_source << "\""
-       << ",\"interactive_session_locked\":"
-       << (interactive_session_locked ? "true" : "false")
-       << ",\"interactive_stage\":\"" << interactive_stage << "\""
-       << ",\"interactive_input_desktop\":\""
-       << interactive_input_desktop << "\""
-       << ",\"interactive_lock_screen_visible\":"
-       << (interactive_lock_screen_visible ? "true" : "false")
-       << ",\"interactive_logon_ui_visible\":"
-       << (interactive_logon_ui_visible ? "true" : "false")
-       << ",\"interactive_secure_desktop_active\":"
-       << (interactive_secure_desktop_active ? "true" : "false")
-       << ",\"unlock_ui_visible\":"
-       << (unlock_ui_visible ? "true" : "false")
-       << ",\"credential_ui_visible\":"
-       << (credential_ui_visible ? "true" : "false")
-       << ",\"password_box_visible\":"
-       << (credential_ui_visible ? "true" : "false")
-         << ",\"logon_ui_visible\":"
-         << (logon_ui_visible_ ? "true" : "false")
+         << ",\"interactive_state_ready\":"
+         << (interactive_state_ready ? "true" : "false")
+         << ",\"interactive_state_source\":\"" << interactive_state_source
+         << "\""
+         << ",\"interactive_session_locked\":"
+         << (interactive_session_locked ? "true" : "false")
+         << ",\"interactive_stage\":\"" << interactive_stage << "\""
+         << ",\"interactive_input_desktop\":\"" << interactive_input_desktop
+         << "\""
+         << ",\"interactive_lock_screen_visible\":"
+         << (interactive_lock_screen_visible ? "true" : "false")
+         << ",\"interactive_logon_ui_visible\":"
+         << (interactive_logon_ui_visible ? "true" : "false")
+         << ",\"interactive_secure_desktop_active\":"
+         << (interactive_secure_desktop_active ? "true" : "false")
+         << ",\"unlock_ui_visible\":" << (unlock_ui_visible ? "true" : "false")
+         << ",\"credential_ui_visible\":"
+         << (credential_ui_visible ? "true" : "false")
+         << ",\"password_box_visible\":"
+         << (credential_ui_visible ? "true" : "false")
+         << ",\"logon_ui_visible\":" << (logon_ui_visible_ ? "true" : "false")
          << ",\"secure_desktop_active\":"
          << (secure_desktop_active_ ? "true" : "false")
-      << ",\"input_desktop_available\":"
-      << (input_desktop_available_ ? "true" : "false")
-      << ",\"input_desktop_error_code\":" << input_desktop_error_code_
+         << ",\"input_desktop_available\":"
+         << (input_desktop_available_ ? "true" : "false")
+         << ",\"input_desktop_error_code\":" << input_desktop_error_code_
          << ",\"input_desktop\":\"" << input_desktop << "\""
          << ",\"prelogin\":" << (prelogin_ ? "true" : "false")
          << ",\"session_user\":\"" << username_utf8 << "\""
-      << ",\"session_helper_path\":\"" << session_helper_path << "\""
-      << ",\"session_helper_running\":"
-      << (session_helper_running_ ? "true" : "false")
-      << ",\"session_helper_pid\":" << session_helper_process_id_
-      << ",\"session_helper_session_id\":"
-      << session_helper_session_id_
-      << ",\"session_helper_exit_code\":" << session_helper_exit_code_
-      << ",\"session_helper_last_error\":\""
-      << session_helper_last_error << "\""
-      << ",\"session_helper_last_error_code\":"
-      << session_helper_last_error_code_
-      << ",\"session_helper_status_ok\":"
-      << (session_helper_status_ok_ ? "true" : "false")
-      << ",\"session_helper_status_error\":\""
-      << session_helper_status_error << "\""
-      << ",\"session_helper_status_error_code\":"
-      << session_helper_status_error_code_
-      << ",\"session_helper_report_session_id\":"
-      << session_helper_report_session_id_
-      << ",\"session_helper_report_process_id\":"
-      << session_helper_report_process_id_
-      << ",\"session_helper_report_session_locked\":"
-      << (session_helper_report_session_locked_ ? "true" : "false")
-      << ",\"session_helper_report_input_desktop_available\":"
-      << (session_helper_report_input_desktop_available_ ? "true" : "false")
-      << ",\"session_helper_report_input_desktop_error_code\":"
-      << session_helper_report_input_desktop_error_code_
-      << ",\"session_helper_report_input_desktop\":\""
-      << helper_input_desktop << "\""
-      << ",\"session_helper_report_lock_app_visible\":"
-      << (session_helper_report_lock_app_visible_ ? "true" : "false")
-      << ",\"session_helper_report_logon_ui_visible\":"
-      << (session_helper_report_logon_ui_visible_ ? "true" : "false")
-      << ",\"session_helper_report_secure_desktop_active\":"
-      << (session_helper_report_secure_desktop_active_ ? "true" : "false")
-      << ",\"session_helper_report_credential_ui_visible\":"
-      << (session_helper_report_credential_ui_visible_ ? "true" : "false")
-      << ",\"session_helper_report_unlock_ui_visible\":"
-      << (session_helper_report_unlock_ui_visible_ ? "true" : "false")
-      << ",\"session_helper_report_interactive_stage\":\""
-      << EscapeJsonString(session_helper_report_interactive_stage_) << "\""
-      << ",\"session_helper_report_state_age_ms\":"
-      << session_helper_report_state_age_ms_
-      << ",\"session_helper_report_uptime_ms\":"
-      << session_helper_report_uptime_ms_
-      << ",\"session_helper_uptime_ms\":"
-      << (session_helper_started_at_tick_ >= started_at_tick_
-            ? (GetTickCount64() - session_helper_started_at_tick_)
-            : 0)
-      << ",\"secure_input_helper_path\":\""
-      << secure_input_helper_path << "\""
-      << ",\"secure_input_helper_running\":"
-      << (secure_input_helper_running_ ? "true" : "false")
-      << ",\"secure_input_helper_pid\":"
-      << secure_input_helper_process_id_
-      << ",\"secure_input_helper_session_id\":"
-      << secure_input_helper_session_id_
-      << ",\"secure_input_helper_exit_code\":"
-      << secure_input_helper_exit_code_
-      << ",\"secure_input_helper_last_error\":\""
-      << secure_input_helper_last_error << "\""
-      << ",\"secure_input_helper_last_error_code\":"
-      << secure_input_helper_last_error_code_
-      << ",\"secure_input_helper_uptime_ms\":"
-      << (secure_input_helper_started_at_tick_ >= started_at_tick_
-          ? (GetTickCount64() - secure_input_helper_started_at_tick_)
-          : 0)
-         << ",\"last_sas_success\":"
-         << (last_sas_success_ ? "true" : "false")
+         << ",\"session_helper_path\":\"" << session_helper_path << "\""
+         << ",\"session_helper_running\":"
+         << (session_helper_running_ ? "true" : "false")
+         << ",\"session_helper_pid\":" << session_helper_process_id_
+         << ",\"session_helper_session_id\":" << session_helper_session_id_
+         << ",\"session_helper_exit_code\":" << session_helper_exit_code_
+         << ",\"session_helper_last_error\":\"" << session_helper_last_error
+         << "\""
+         << ",\"session_helper_last_error_code\":"
+         << session_helper_last_error_code_ << ",\"session_helper_status_ok\":"
+         << (session_helper_status_ok_ ? "true" : "false")
+         << ",\"session_helper_status_error\":\"" << session_helper_status_error
+         << "\""
+         << ",\"session_helper_status_error_code\":"
+         << session_helper_status_error_code_
+         << ",\"session_helper_report_session_id\":"
+         << session_helper_report_session_id_
+         << ",\"session_helper_report_process_id\":"
+         << session_helper_report_process_id_
+         << ",\"session_helper_report_session_locked\":"
+         << (session_helper_report_session_locked_ ? "true" : "false")
+         << ",\"session_helper_report_input_desktop_available\":"
+         << (session_helper_report_input_desktop_available_ ? "true" : "false")
+         << ",\"session_helper_report_input_desktop_error_code\":"
+         << session_helper_report_input_desktop_error_code_
+         << ",\"session_helper_report_input_desktop\":\""
+         << helper_input_desktop << "\""
+         << ",\"session_helper_report_lock_app_visible\":"
+         << (session_helper_report_lock_app_visible_ ? "true" : "false")
+         << ",\"session_helper_report_logon_ui_visible\":"
+         << (session_helper_report_logon_ui_visible_ ? "true" : "false")
+         << ",\"session_helper_report_secure_desktop_active\":"
+         << (session_helper_report_secure_desktop_active_ ? "true" : "false")
+         << ",\"session_helper_report_credential_ui_visible\":"
+         << (session_helper_report_credential_ui_visible_ ? "true" : "false")
+         << ",\"session_helper_report_unlock_ui_visible\":"
+         << (session_helper_report_unlock_ui_visible_ ? "true" : "false")
+         << ",\"session_helper_report_interactive_stage\":\""
+         << EscapeJsonString(session_helper_report_interactive_stage_) << "\""
+         << ",\"session_helper_report_state_age_ms\":"
+         << session_helper_report_state_age_ms_
+         << ",\"session_helper_report_uptime_ms\":"
+         << session_helper_report_uptime_ms_ << ",\"session_helper_uptime_ms\":"
+         << (session_helper_started_at_tick_ >= started_at_tick_
+                 ? (GetTickCount64() - session_helper_started_at_tick_)
+                 : 0)
+         << ",\"secure_input_helper_path\":\"" << secure_input_helper_path
+         << "\""
+         << ",\"secure_input_helper_running\":"
+         << (secure_input_helper_running_ ? "true" : "false")
+         << ",\"secure_input_helper_pid\":" << secure_input_helper_process_id_
+         << ",\"secure_input_helper_session_id\":"
+         << secure_input_helper_session_id_
+         << ",\"secure_input_helper_exit_code\":"
+         << secure_input_helper_exit_code_
+         << ",\"secure_input_helper_last_error\":\""
+         << secure_input_helper_last_error << "\""
+         << ",\"secure_input_helper_last_error_code\":"
+         << secure_input_helper_last_error_code_
+         << ",\"secure_input_helper_uptime_ms\":"
+         << (secure_input_helper_started_at_tick_ >= started_at_tick_
+                 ? (GetTickCount64() - secure_input_helper_started_at_tick_)
+                 : 0)
+         << ",\"last_sas_success\":" << (last_sas_success_ ? "true" : "false")
          << ",\"last_sas_error\":\"" << last_sas_error << "\""
          << ",\"last_sas_error_code\":" << last_sas_error_code_
          << ",\"last_sas_uptime_ms\":"
@@ -1889,10 +1865,10 @@ bool InstallCrossDeskService(const std::wstring& binary_path) {
       return false;
     }
 
-    if (!ChangeServiceConfigW(
-            service, SERVICE_NO_CHANGE, SERVICE_AUTO_START,
-            SERVICE_NO_CHANGE, service_command.c_str(), nullptr, nullptr,
-            nullptr, nullptr, nullptr, kCrossDeskServiceDisplayName)) {
+    if (!ChangeServiceConfigW(service, SERVICE_NO_CHANGE, SERVICE_AUTO_START,
+                              SERVICE_NO_CHANGE, service_command.c_str(),
+                              nullptr, nullptr, nullptr, nullptr, nullptr,
+                              kCrossDeskServiceDisplayName)) {
       LOG_ERROR("ChangeServiceConfigW failed, error={}", GetLastError());
       CloseServiceHandle(service);
       CloseServiceHandle(manager);
@@ -1973,8 +1949,8 @@ bool StopCrossDeskService(DWORD timeout_ms) {
   DWORD deadline = GetTickCount() + timeout_ms;
   while (GetTickCount() < deadline) {
     if (!QueryServiceStatusEx(service, SC_STATUS_PROCESS_INFO,
-                              reinterpret_cast<LPBYTE>(&status),
-                              sizeof(status), &bytes_needed)) {
+                              reinterpret_cast<LPBYTE>(&status), sizeof(status),
+                              &bytes_needed)) {
       LOG_ERROR("QueryServiceStatusEx failed, error={}", GetLastError());
       CloseServiceHandle(service);
       CloseServiceHandle(manager);
@@ -2001,8 +1977,9 @@ bool UninstallCrossDeskService() {
     return false;
   }
 
-  SC_HANDLE service = OpenServiceW(manager, kCrossDeskServiceName,
-                                   DELETE | SERVICE_STOP | SERVICE_QUERY_STATUS);
+  SC_HANDLE service =
+      OpenServiceW(manager, kCrossDeskServiceName,
+                   DELETE | SERVICE_STOP | SERVICE_QUERY_STATUS);
   if (service == nullptr) {
     DWORD error = GetLastError();
     CloseServiceHandle(manager);
@@ -2037,9 +2014,9 @@ std::string SendCrossDeskSecureDesktopKeyInput(int key_code, bool is_down,
 }
 
 std::string SendCrossDeskSecureDesktopMouseInput(int x, int y, int wheel,
-                         int flag, DWORD timeout_ms) {
+                                                 int flag, DWORD timeout_ms) {
   return QueryCrossDeskService(
-    BuildSecureDesktopMouseIpcCommand(x, y, wheel, flag), timeout_ms);
+      BuildSecureDesktopMouseIpcCommand(x, y, wheel, flag), timeout_ms);
 }
 
 }  // namespace crossdesk

@@ -2,23 +2,22 @@
 
 #include <Windows.h>
 
-#include <nlohmann/json.hpp>
-
-#include <cmath>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
 
+#include "interactive_state.h"
 #include "rd_log.h"
 #include "screen_capturer_dxgi.h"
 #include "screen_capturer_gdi.h"
-#include "interactive_state.h"
 #include "service_host.h"
 #include "session_helper_shared.h"
 #include "wgc_plugin_api.h"
@@ -146,8 +145,7 @@ std::string ExtractPipeTextResponse(const std::vector<uint8_t>& response) {
 
 bool IsTransientSecureDesktopFrameError(const std::string& error_message) {
   return error_message.rfind("pipe_unavailable:", 0) == 0 ||
-         error_message.find("\"error\":\"bitblt_failed\"") !=
-             std::string::npos;
+         error_message.find("\"error\":\"bitblt_failed\"") != std::string::npos;
 }
 
 bool ReadPipeMessage(HANDLE pipe, std::vector<uint8_t>* response_out,
@@ -266,9 +264,9 @@ bool QuerySecureDesktopServiceStatus(SecureDesktopServiceStatus* status) {
   status->active_session_id = json.value("active_session_id", 0xFFFFFFFFu);
   status->helper_running = json.value("secure_input_helper_running", false);
   status->interactive_stage = json.value("interactive_stage", std::string());
-  const bool secure_desktop_active = json.value(
-      "interactive_secure_desktop_active",
-      json.value("secure_desktop_active", false));
+  const bool secure_desktop_active =
+      json.value("interactive_secure_desktop_active",
+                 json.value("secure_desktop_active", false));
   status->capture_active =
       status->active_session_id != 0xFFFFFFFF &&
       (secure_desktop_active ||
@@ -287,7 +285,8 @@ bool QuerySecureDesktopHelperFrame(DWORD session_id, int left, int top,
     return false;
   }
 
-  const std::wstring pipe_name = GetCrossDeskSecureInputHelperPipeName(session_id);
+  const std::wstring pipe_name =
+      GetCrossDeskSecureInputHelperPipeName(session_id);
   if (!WaitNamedPipeW(pipe_name.c_str(), kSecureDesktopHelperPipeTimeoutMs)) {
     if (error_out != nullptr) {
       *error_out = "pipe_unavailable:" + std::to_string(GetLastError());
@@ -416,10 +415,8 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
 }
 
 int ScreenCapturerWin::Destroy() {
-  StopSecureCaptureThread();
-  running_.store(false, std::memory_order_relaxed);
+  Stop();
   paused_.store(false, std::memory_order_relaxed);
-  secure_desktop_capture_active_.store(false, std::memory_order_relaxed);
   if (impl_) {
     impl_->Destroy();
     impl_.reset();
@@ -585,8 +582,8 @@ void ScreenCapturerWin::StopSecureCaptureThread() {
   }
 }
 
-bool ScreenCapturerWin::GetCurrentCaptureRegion(int* left, int* top,
-                                                int* width, int* height,
+bool ScreenCapturerWin::GetCurrentCaptureRegion(int* left, int* top, int* width,
+                                                int* height,
                                                 std::string* display_name) {
   if (left == nullptr || top == nullptr || width == nullptr ||
       height == nullptr || display_name == nullptr) {
@@ -653,11 +650,13 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
         if (service_changed || service_error_changed) {
           if (status.service_available) {
             LOG_INFO(
-                "Windows capturer secure desktop service available, polling session_id={}",
+                "Windows capturer secure desktop service available, polling "
+                "session_id={}",
                 status.active_session_id);
           } else {
             LOG_WARN(
-                "Windows capturer secure desktop service unavailable: error={}, code={}",
+                "Windows capturer secure desktop service unavailable: "
+                "error={}, code={}",
                 status.error, status.error_code);
           }
           last_service_available = status.service_available;
@@ -665,8 +664,7 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
         }
       } else if (last_service_available ||
                  last_service_error != "invalid_service_status_json") {
-        LOG_WARN(
-            "Windows capturer secure desktop service status query failed");
+        LOG_WARN("Windows capturer secure desktop service status query failed");
         last_service_available = false;
         last_service_error = "invalid_service_status_json";
       }
@@ -677,7 +675,8 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
           status.interactive_stage != last_stage) {
         capture_stage_started_tick = now;
         LOG_INFO(
-            "Windows capturer secure desktop state: active={}, stage='{}', session_id={}",
+            "Windows capturer secure desktop state: active={}, stage='{}', "
+            "session_id={}",
             status.capture_active, status.interactive_stage,
             status.active_session_id);
         last_capture_active = status.capture_active;
@@ -687,8 +686,8 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
     }
 
     if (!status.capture_active || status.active_session_id == 0xFFFFFFFF) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(
-          status.service_available ? 50 : 200));
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(status.service_available ? 50 : 200));
       continue;
     }
 
@@ -721,22 +720,22 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
     } else {
       const bool transient_error =
           IsTransientSecureDesktopFrameError(error_message);
-      const bool in_grace_period =
-          capture_stage_started_tick != 0 &&
-          now - capture_stage_started_tick < kSecureDesktopTransientErrorGraceMs;
-      const DWORD log_interval = transient_error
-                                     ? kSecureDesktopTransientErrorLogIntervalMs
-                                     : 1000;
+      const bool in_grace_period = capture_stage_started_tick != 0 &&
+                                   now - capture_stage_started_tick <
+                                       kSecureDesktopTransientErrorGraceMs;
+      const DWORD log_interval =
+          transient_error ? kSecureDesktopTransientErrorLogIntervalMs : 1000;
       if (transient_error && in_grace_period) {
         std::this_thread::sleep_for(
             std::chrono::milliseconds(frame_interval_ms));
         continue;
       }
       if (now - last_error_tick >= log_interval) {
-      LOG_WARN(
-          "Windows capturer secure desktop frame query failed, stage='{}', session_id={}, error={}",
-          status.interactive_stage, status.active_session_id, error_message);
-      last_error_tick = now;
+        LOG_WARN(
+            "Windows capturer secure desktop frame query failed, stage='{}', "
+            "session_id={}, error={}",
+            status.interactive_stage, status.active_session_id, error_message);
+        last_error_tick = now;
       }
     }
 

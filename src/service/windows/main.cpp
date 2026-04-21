@@ -17,16 +17,17 @@ std::wstring GetExecutablePath() {
 }
 
 void PrintUsage() {
-  std::cout << "CrossDesk Windows service skeleton\n"
-            << "  --service    Run under the Windows Service Control Manager\n"
-            << "  --console    Run the service loop in console mode\n"
-            << "  --install    Install the service for the current executable\n"
-            << "  --uninstall  Remove the installed service\n"
-            << "  --start      Start the installed service\n"
-            << "  --stop       Stop the installed service\n"
-            << "  --sas        Ask the service to send Secure Attention Sequence\n"
-            << "  --ping       Ping the running service over named pipe IPC\n"
-            << "  --status     Query runtime status over named pipe IPC\n";
+  std::cout
+      << "CrossDesk Windows service skeleton\n"
+      << "  --service    Run under the Windows Service Control Manager\n"
+      << "  --console    Run the service loop in console mode\n"
+      << "  --install    Install the service for the current executable\n"
+      << "  --uninstall  Remove the installed service\n"
+      << "  --start      Start the installed service\n"
+      << "  --stop       Stop the installed service\n"
+      << "  --sas        Ask the service to send Secure Attention Sequence\n"
+      << "  --ping       Ping the running service over named pipe IPC\n"
+      << "  --status     Query runtime status over named pipe IPC\n";
 }
 
 }  // namespace
@@ -55,8 +56,7 @@ int main(int argc, char* argv[]) {
   }
   if (command == "--uninstall") {
     bool success = crossdesk::UninstallCrossDeskService();
-    std::cout << (success ? "uninstall ok" : "uninstall failed")
-              << std::endl;
+    std::cout << (success ? "uninstall ok" : "uninstall failed") << std::endl;
     return success ? 0 : 1;
   }
   if (command == "--start") {

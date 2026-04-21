@@ -1,17 +1,14 @@
-#include <Windows.h>
-
-#include <nlohmann/json.hpp>
-
-#include <libyuv.h>
-
 #include <TlHelp32.h>
+#include <Windows.h>
 #include <WtsApi32.h>
+#include <libyuv.h>
 #include <sddl.h>
 
 #include <cstring>
 #include <filesystem>
 #include <iostream>
 #include <mutex>
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -23,8 +20,8 @@
 
 namespace {
 
-using crossdesk::InitLogger;
 using crossdesk::get_logger;
+using crossdesk::InitLogger;
 using Json = nlohmann::json;
 
 struct InputDesktopInfo {
@@ -76,8 +73,7 @@ struct PipeSecurityAttributes {
   }
 
   bool Initialize() {
-    constexpr wchar_t kPipeSddl[] =
-        L"D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;AU)";
+    constexpr wchar_t kPipeSddl[] = L"D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;AU)";
     if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
             kPipeSddl, SDDL_REVISION_1, &security_descriptor_, nullptr)) {
       return false;
@@ -100,7 +96,8 @@ void InitializeHelperLogger() {
   static std::once_flag once_flag;
   std::call_once(once_flag, []() {
     crossdesk::PathManager path_manager("CrossDesk");
-    std::filesystem::path log_path = path_manager.GetLogPath() / "session_helper";
+    std::filesystem::path log_path =
+        path_manager.GetLogPath() / "session_helper";
     if (!log_path.empty() && path_manager.CreateDirectories(log_path)) {
       InitLogger(log_path.string());
       return;
@@ -114,8 +111,8 @@ std::wstring Utf8ToWide(const std::string& value) {
     return {};
   }
 
-  int size_needed = MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1,
-                                        nullptr, 0);
+  int size_needed =
+      MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, nullptr, 0);
   if (size_needed <= 1) {
     return {};
   }
@@ -132,15 +129,15 @@ std::string WideToUtf8(const std::wstring& value) {
     return {};
   }
 
-  int size_needed = WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1,
-                                        nullptr, 0, nullptr, nullptr);
+  int size_needed = WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, nullptr,
+                                        0, nullptr, nullptr);
   if (size_needed <= 1) {
     return {};
   }
 
   std::string result(static_cast<size_t>(size_needed), '\0');
-  WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, result.data(),
-                      size_needed, nullptr, nullptr);
+  WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, result.data(), size_needed,
+                      nullptr, nullptr);
   result.pop_back();
   return result;
 }
@@ -179,7 +176,7 @@ InputDesktopInfo GetInputDesktopInfo() {
 }
 
 bool IsProcessRunningInCurrentSession(const wchar_t* executable_name,
-                                     DWORD session_id) {
+                                      DWORD session_id) {
   HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
   if (snapshot == INVALID_HANDLE_VALUE) {
     return false;
@@ -325,15 +322,14 @@ std::string BuildHelperStatusResponse(HelperState* helper_state) {
   json["lock_app_visible"] = helper_state->lock_app_visible;
   json["logon_ui_visible"] = helper_state->logon_ui_visible;
   json["secure_desktop_active"] = helper_state->secure_desktop_active;
-    json["credential_ui_visible"] = credential_ui_visible;
-    json["unlock_ui_visible"] = unlock_ui_visible;
+  json["credential_ui_visible"] = credential_ui_visible;
+  json["unlock_ui_visible"] = unlock_ui_visible;
   json["interactive_stage"] = DetermineInteractiveStage(
       helper_state->lock_app_visible, credential_ui_visible,
       helper_state->secure_desktop_active);
-  json["uptime_ms"] =
-      GetTickCount64() >= helper_state->started_at_tick
-          ? (GetTickCount64() - helper_state->started_at_tick)
-          : 0;
+  json["uptime_ms"] = GetTickCount64() >= helper_state->started_at_tick
+                          ? (GetTickCount64() - helper_state->started_at_tick)
+                          : 0;
   json["state_age_ms"] =
       GetTickCount64() >= helper_state->last_update_tick
           ? (GetTickCount64() - helper_state->last_update_tick)
@@ -349,12 +345,14 @@ void HelperIpcServerLoop(HANDLE stop_event, DWORD session_id,
     pipe_attributes = security_attributes.get();
   }
 
-  std::wstring pipe_name = crossdesk::GetCrossDeskSessionHelperPipeName(session_id);
-  while (stop_event == nullptr || WaitForSingleObject(stop_event, 0) != WAIT_OBJECT_0) {
+  std::wstring pipe_name =
+      crossdesk::GetCrossDeskSessionHelperPipeName(session_id);
+  while (stop_event == nullptr ||
+         WaitForSingleObject(stop_event, 0) != WAIT_OBJECT_0) {
     HANDLE pipe = CreateNamedPipeW(
         pipe_name.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
-        PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, 1, 4096, 4096,
-        0, pipe_attributes);
+        PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, 1, 4096, 4096, 0,
+        pipe_attributes);
     if (pipe == INVALID_HANDLE_VALUE) {
       LOG_ERROR("CreateNamedPipeW failed in helper, error={}", GetLastError());
       if (stop_event != nullptr) {
@@ -465,10 +463,9 @@ bool EnsureThreadDesktop(const wchar_t* desktop_name,
     return true;
   }
 
-  HDESK desktop = OpenDesktopW(
-      desktop_name, 0, FALSE,
-      DESKTOP_CREATEWINDOW | DESKTOP_WRITEOBJECTS | DESKTOP_READOBJECTS |
-          DESKTOP_SWITCHDESKTOP);
+  HDESK desktop = OpenDesktopW(desktop_name, 0, FALSE,
+                               DESKTOP_CREATEWINDOW | DESKTOP_WRITEOBJECTS |
+                                   DESKTOP_READOBJECTS | DESKTOP_SWITCHDESKTOP);
   if (desktop == nullptr) {
     return false;
   }
@@ -515,14 +512,13 @@ int InjectKeyboardInput(int key_code, bool is_down) {
 }
 
 bool ParseSecureInputKeyboardCommand(const std::string& command,
-                                     int* key_code_out,
-                                     bool* is_down_out) {
+                                     int* key_code_out, bool* is_down_out) {
   if (key_code_out == nullptr || is_down_out == nullptr) {
     return false;
   }
 
-  if (command.rfind(crossdesk::kCrossDeskSecureInputKeyboardCommandPrefix,
-                    0) != 0) {
+  if (command.rfind(crossdesk::kCrossDeskSecureInputKeyboardCommandPrefix, 0) !=
+      0) {
     return false;
   }
 
@@ -552,7 +548,7 @@ bool ParseSecureInputKeyboardCommand(const std::string& command,
 }
 
 bool ParseSecureInputMouseCommand(const std::string& command,
-                                   SecureMouseRequest* request_out) {
+                                  SecureMouseRequest* request_out) {
   if (request_out == nullptr) {
     return false;
   }
@@ -622,8 +618,7 @@ bool ParseSecureInputCaptureCommand(const std::string& command,
   for (int index = 0; index < 5; ++index) {
     const size_t separator = command.find(':', token_begin);
     const bool is_last = index == 4;
-    const size_t token_end =
-        is_last ? command.size() : separator;
+    const size_t token_end = is_last ? command.size() : separator;
     if (token_end == std::string::npos || token_end <= token_begin) {
       return false;
     }
@@ -734,8 +729,7 @@ std::vector<uint8_t> CaptureSecureDesktopFrame(
     const DWORD error = GetLastError();
     DeleteDC(mem_dc);
     ReleaseDC(nullptr, screen_dc);
-    return BuildTextResponseBytes(
-        BuildErrorJson("create_dib_failed", error));
+    return BuildTextResponseBytes(BuildErrorJson("create_dib_failed", error));
   }
 
   HGDIOBJ old_bitmap = SelectObject(mem_dc, dib);
@@ -746,8 +740,7 @@ std::vector<uint8_t> CaptureSecureDesktopFrame(
     DeleteObject(dib);
     DeleteDC(mem_dc);
     ReleaseDC(nullptr, screen_dc);
-    return BuildTextResponseBytes(
-        BuildErrorJson("bitblt_failed", error));
+    return BuildTextResponseBytes(BuildErrorJson("bitblt_failed", error));
   }
 
   if (request.show_cursor) {
@@ -757,8 +750,8 @@ std::vector<uint8_t> CaptureSecureDesktopFrame(
         cursor_info.hCursor != nullptr) {
       const int cursor_x = cursor_info.ptScreenPos.x - request.left;
       const int cursor_y = cursor_info.ptScreenPos.y - request.top;
-      if (cursor_x >= -64 && cursor_y >= -64 &&
-          cursor_x < request.width + 64 && cursor_y < request.height + 64) {
+      if (cursor_x >= -64 && cursor_y >= -64 && cursor_x < request.width + 64 &&
+          cursor_y < request.height + 64) {
         DrawIconEx(mem_dc, cursor_x, cursor_y, cursor_info.hCursor, 0, 0, 0,
                    nullptr, DI_NORMAL);
       }
@@ -790,7 +783,8 @@ std::vector<uint8_t> CaptureSecureDesktopFrame(
   header.top = request.top;
   header.width = static_cast<uint32_t>(request.width);
   header.height = static_cast<uint32_t>(request.height);
-  header.payload_size = static_cast<uint32_t>(capture_buffers->nv12_frame.size());
+  header.payload_size =
+      static_cast<uint32_t>(capture_buffers->nv12_frame.size());
 
   std::vector<uint8_t> response(sizeof(header) +
                                 capture_buffers->nv12_frame.size());
@@ -804,8 +798,7 @@ std::vector<uint8_t> CaptureSecureDesktopFrame(
 }
 
 std::vector<uint8_t> HandleSecureInputHelperCommand(
-    const std::string& command,
-    SecureCaptureBuffers* capture_buffers) {
+    const std::string& command, SecureCaptureBuffers* capture_buffers) {
   if (command == "ping") {
     return BuildTextResponseBytes("{\"ok\":true,\"reply\":\"pong\"}");
   }
@@ -816,7 +809,8 @@ std::vector<uint8_t> HandleSecureInputHelperCommand(
     const int inject_result = InjectKeyboardInput(key_code, is_down);
     if (inject_result != 0) {
       LOG_WARN(
-          "Secure input helper SendInput failed for key_code={}, is_down={}, err={}",
+          "Secure input helper SendInput failed for key_code={}, is_down={}, "
+          "err={}",
           key_code, is_down, inject_result);
       return BuildTextResponseBytes(BuildErrorJson(
           "send_input_failed", static_cast<DWORD>(inject_result)));
@@ -836,7 +830,8 @@ std::vector<uint8_t> HandleSecureInputHelperCommand(
     const int inject_result = InjectMouseInput(mouse_request);
     if (inject_result != 0) {
       LOG_WARN(
-          "Secure input helper SendInput failed for mouse x={}, y={}, wheel={}, flag={}, err={}",
+          "Secure input helper SendInput failed for mouse x={}, y={}, "
+          "wheel={}, flag={}, err={}",
           mouse_request.x, mouse_request.y, mouse_request.wheel,
           mouse_request.flag, inject_result);
       return BuildTextResponseBytes(BuildErrorJson(
@@ -898,10 +893,10 @@ void SecureInputHelperIpcServerLoop(HANDLE stop_event, DWORD session_id) {
          WaitForSingleObject(stop_event, 0) != WAIT_OBJECT_0) {
     HANDLE pipe = CreateNamedPipeW(
         pipe_name.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
-      PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
-      PIPE_UNLIMITED_INSTANCES,
-      crossdesk::kCrossDeskSecureInputPipeBufferBytes, 4096, 0,
-      pipe_attributes);
+        PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
+        PIPE_UNLIMITED_INSTANCES,
+        crossdesk::kCrossDeskSecureInputPipeBufferBytes, 4096, 0,
+        pipe_attributes);
     if (pipe == INVALID_HANDLE_VALUE) {
       LOG_ERROR("CreateNamedPipeW failed in secure input helper, error={}",
                 GetLastError());
@@ -1010,8 +1005,10 @@ int main(int argc, char* argv[]) {
   }
 
   if (run_secure_input_helper) {
-    LOG_INFO("Secure input helper starting: pid={}, current_session_id={}, expected_session_id={}",
-             GetCurrentProcessId(), current_session_id, expected_session_id);
+    LOG_INFO(
+        "Secure input helper starting: pid={}, current_session_id={}, "
+        "expected_session_id={}",
+        GetCurrentProcessId(), current_session_id, expected_session_id);
     if (expected_session_id != 0xFFFFFFFF &&
         expected_session_id != current_session_id) {
       LOG_WARN("Secure input helper session mismatch: expected={}, current={}",
@@ -1020,15 +1017,16 @@ int main(int argc, char* argv[]) {
 
     HDESK secure_desktop = nullptr;
     if (!EnsureThreadDesktop(L"Winlogon", &secure_desktop)) {
-      LOG_ERROR("Failed to switch secure input helper to Winlogon desktop, error={}",
-                GetLastError());
+      LOG_ERROR(
+          "Failed to switch secure input helper to Winlogon desktop, error={}",
+          GetLastError());
       if (stop_event != nullptr) {
         CloseHandle(stop_event);
       }
       return 1;
     }
 
-    LOG_INFO("Secure input helper desktop: '{}'", 
+    LOG_INFO("Secure input helper desktop: '{}'",
              WideToUtf8(GetCurrentThreadDesktopNameW()));
     SecureInputHelperIpcServerLoop(stop_event, current_session_id);
 
@@ -1042,8 +1040,10 @@ int main(int argc, char* argv[]) {
     return 0;
   }
 
-  LOG_INFO("Session helper starting: pid={}, current_session_id={}, expected_session_id={}",
-           GetCurrentProcessId(), current_session_id, expected_session_id);
+  LOG_INFO(
+      "Session helper starting: pid={}, current_session_id={}, "
+      "expected_session_id={}",
+      GetCurrentProcessId(), current_session_id, expected_session_id);
 
   HelperState helper_state;
   helper_state.session_id = current_session_id;
@@ -1087,11 +1087,13 @@ int main(int argc, char* argv[]) {
         session_locked != last_session_locked ||
         lock_app_visible != last_lock_app ||
         logon_ui_running != last_logon_ui ||
-        secure_desktop_active != last_secure_desktop ||
-        stage != last_stage) {
-      LOG_INFO("Session helper state: session_id={}, input_desktop='{}', session_locked={}, lock_app_visible={}, logon_ui_running={}, secure_desktop_active={}, stage={}",
-               current_session_id, desktop_name, session_locked, lock_app_visible,
-               logon_ui_running, secure_desktop_active, stage);
+        secure_desktop_active != last_secure_desktop || stage != last_stage) {
+      LOG_INFO(
+          "Session helper state: session_id={}, input_desktop='{}', "
+          "session_locked={}, lock_app_visible={}, logon_ui_running={}, "
+          "secure_desktop_active={}, stage={}",
+          current_session_id, desktop_name, session_locked, lock_app_visible,
+          logon_ui_running, secure_desktop_active, stage);
       last_desktop_name = desktop_name;
       last_session_locked = session_locked;
       last_lock_app = lock_app_visible;
@@ -1100,8 +1102,9 @@ int main(int argc, char* argv[]) {
       last_stage = stage;
     }
 
-    DWORD wait_result =
-        stop_event != nullptr ? WaitForSingleObject(stop_event, 1000) : WAIT_TIMEOUT;
+    DWORD wait_result = stop_event != nullptr
+                            ? WaitForSingleObject(stop_event, 1000)
+                            : WAIT_TIMEOUT;
     if (wait_result == WAIT_OBJECT_0) {
       break;
     }
