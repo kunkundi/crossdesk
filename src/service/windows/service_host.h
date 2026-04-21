@@ -1,5 +1,11 @@
-#ifndef _CROSSDESK_SERVICE_HOST_H_
-#define _CROSSDESK_SERVICE_HOST_H_
+/*
+ * @Author: DI JUNKUN
+ * @Date: 2026-04-21
+ * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
+ */
+
+#ifndef _SERVICE_HOST_H_
+#define _SERVICE_HOST_H_
 
 #include <Windows.h>
 

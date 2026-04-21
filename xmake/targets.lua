@@ -192,7 +192,7 @@ function setup_targets()
             add_files("src/service/windows/service_host.cpp")
             add_includedirs("src/service/windows", {public = true})
             add_links("Advapi32", "Wtsapi32", "Ole32", "Userenv")
-            add_deps("wgc_plugin")
+            add_deps("wgc_plugin", "crossdesk_service", "crossdesk_session_helper")
             add_files("scripts/windows/crossdesk.rc")
         end
 end

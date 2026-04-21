@@ -1,5 +1,11 @@
-#ifndef _CROSSDESK_INTERACTIVE_STATE_H_
-#define _CROSSDESK_INTERACTIVE_STATE_H_
+/*
+ * @Author: DI JUNKUN
+ * @Date: 2026-04-21
+ * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
+ */
+
+#ifndef _INTERACTIVE_STATE_H_
+#define _INTERACTIVE_STATE_H_
 
 #include <string>
 

@@ -1,5 +1,11 @@
-#ifndef _CROSSDESK_SESSION_HELPER_SHARED_H_
-#define _CROSSDESK_SESSION_HELPER_SHARED_H_
+/*
+ * @Author: DI JUNKUN
+ * @Date: 2026-04-21
+ * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
+ */
+
+#ifndef _SESSION_HELPER_SHARED_H_
+#define _SESSION_HELPER_SHARED_H_
 
 #include <Windows.h>
 

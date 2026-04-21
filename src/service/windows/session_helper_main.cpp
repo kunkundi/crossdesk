@@ -1,5 +1,7 @@
-#include <TlHelp32.h>
+// clang-format off
 #include <Windows.h>
+#include <TlHelp32.h>
+// clang-format on
 #include <WtsApi32.h>
 #include <libyuv.h>
 #include <sddl.h>
