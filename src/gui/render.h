@@ -282,8 +282,6 @@ class Render {
       std::shared_ptr<SubStreamWindowProperties>& props);
   void DrawReceivingScreenText(
       std::shared_ptr<SubStreamWindowProperties>& props);
-  void DrawRemoteUnlockStateText(
-      std::shared_ptr<SubStreamWindowProperties>& props);
   void ResetRemoteServiceStatus(SubStreamWindowProperties& props);
   void ApplyRemoteServiceStatus(SubStreamWindowProperties& props,
                                 const ServiceStatus& status);
@@ -478,6 +476,7 @@ class Render {
   bool start_keyboard_capturer_ = false;
   bool show_cursor_ = false;
   bool keyboard_capturer_is_started_ = false;
+  bool keyboard_capturer_uses_sdl_events_ = false;
   bool foucs_on_main_window_ = false;
   bool focus_on_stream_window_ = false;
   bool main_window_minimized_ = false;

@@ -59,62 +59,6 @@ void Render::DrawReceivingScreenText(
   ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 0.92f), "%s", text.c_str());
 }
 
-void Render::DrawRemoteUnlockStateText(
-    std::shared_ptr<SubStreamWindowProperties>& props) {
-  if (!props->remote_service_status_received_ ||
-      !props->connection_established_ ||
-      props->connection_status_ != ConnectionStatus::Connected) {
-    return;
-  }
-
-  const RemoteUnlockState unlock_state = GetRemoteUnlockState(*props);
-  std::string text;
-  ImU32 background_color = IM_COL32(37, 99, 235, 220);
-
-  switch (unlock_state) {
-    case RemoteUnlockState::service_unavailable:
-      text = localization::remote_service_unavailable
-          [localization_language_index_];
-      background_color = IM_COL32(185, 28, 28, 220);
-      break;
-    case RemoteUnlockState::credential_ui:
-      text = localization::remote_password_box_visible
-          [localization_language_index_];
-      background_color = IM_COL32(22, 163, 74, 220);
-      break;
-    case RemoteUnlockState::lock_screen:
-      text = localization::remote_lock_screen_hint
-          [localization_language_index_];
-      background_color = IM_COL32(202, 138, 4, 220);
-      break;
-    case RemoteUnlockState::secure_desktop:
-      text = localization::remote_secure_desktop_active
-          [localization_language_index_];
-      background_color = IM_COL32(147, 51, 234, 220);
-      break;
-    default:
-      return;
-  }
-
-  ImDrawList* draw_list = ImGui::GetWindowDrawList();
-  ImVec2 window_pos = ImGui::GetWindowPos();
-  ImVec2 window_size = ImGui::GetWindowSize();
-  ImVec2 text_size = ImGui::CalcTextSize(text.c_str());
-  float padding_x = title_bar_height_ * 0.45f;
-  float padding_y = title_bar_height_ * 0.18f;
-  float top_margin = fullscreen_button_pressed_ ? title_bar_height_ * 0.35f
-                                                : title_bar_height_ * 0.18f;
-  ImVec2 text_pos(window_pos.x + (window_size.x - text_size.x) * 0.5f,
-                  window_pos.y + top_margin + padding_y);
-  ImVec2 rect_min(text_pos.x - padding_x, text_pos.y - padding_y);
-  ImVec2 rect_max(text_pos.x + text_size.x + padding_x,
-                  text_pos.y + text_size.y + padding_y);
-
-  draw_list->AddRectFilled(rect_min, rect_max, background_color,
-                           window_rounding_ * 0.9f);
-  draw_list->AddText(text_pos, IM_COL32(255, 255, 255, 255), text.c_str());
-}
-
 void Render::CloseTab(decltype(client_properties_)::iterator& it) {
   // std::unique_lock lock(client_properties_mutex_);
   if (it != client_properties_.end()) {
@@ -229,7 +173,6 @@ int Render::StreamWindow() {
           FileTransferWindow(props);
 
           DrawReceivingScreenText(props);
-          DrawRemoteUnlockStateText(props);
 
           focused_remote_id_ = props->remote_id_;
 
@@ -332,7 +275,6 @@ int Render::StreamWindow() {
         FileTransferWindow(props);
 
         DrawReceivingScreenText(props);
-        DrawRemoteUnlockStateText(props);
 
         ImGui::End();
 

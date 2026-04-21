@@ -257,4 +257,3 @@ int Render::ControlWindow(std::shared_ptr<SubStreamWindowProperties>& props) {
   return 0;
 }
 }  // namespace crossdesk
-

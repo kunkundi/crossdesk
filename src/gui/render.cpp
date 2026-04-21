@@ -794,16 +794,21 @@ int Render::StopMouseController() {
 }
 
 int Render::StartKeyboardCapturer() {
+  keyboard_capturer_uses_sdl_events_ = false;
+
 #if defined(__linux__) && !defined(__APPLE__)
   if (IsWaylandSession()) {
+    keyboard_capturer_uses_sdl_events_ = true;
     LOG_INFO("Start keyboard capturer with SDL Wayland backend");
     return 0;
   }
 #endif
 
   if (!keyboard_capturer_) {
-    LOG_INFO("keyboard capturer is nullptr");
-    return -1;
+    keyboard_capturer_uses_sdl_events_ = true;
+    LOG_WARN(
+        "keyboard capturer is nullptr, falling back to SDL keyboard events");
+    return 0;
   }
 
   int keyboard_capturer_init_ret = keyboard_capturer_->Hook(
@@ -815,21 +820,23 @@ int Render::StartKeyboardCapturer() {
       },
       this);
   if (0 != keyboard_capturer_init_ret) {
-    LOG_ERROR("Start keyboard capturer failed");
+    keyboard_capturer_uses_sdl_events_ = true;
+    LOG_WARN(
+        "Start keyboard capturer failed, falling back to SDL keyboard "
+        "events");
   } else {
-    LOG_INFO("Start keyboard capturer");
+    LOG_INFO("Start keyboard capturer with native hook");
   }
 
-  return keyboard_capturer_init_ret;
+  return 0;
 }
 
 int Render::StopKeyboardCapturer() {
-#if defined(__linux__) && !defined(__APPLE__)
-  if (IsWaylandSession()) {
-    LOG_INFO("Stop keyboard capturer with SDL Wayland backend");
+  if (keyboard_capturer_uses_sdl_events_) {
+    keyboard_capturer_uses_sdl_events_ = false;
+    LOG_INFO("Stop keyboard capturer with SDL keyboard backend");
     return 0;
   }
-#endif
 
   if (keyboard_capturer_) {
     keyboard_capturer_->Unhook();
@@ -2719,8 +2726,8 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
 
     case SDL_EVENT_KEY_DOWN:
     case SDL_EVENT_KEY_UP:
-      if (keyboard_capturer_is_started_ && focus_on_stream_window_ &&
-          stream_window_ &&
+      if (keyboard_capturer_is_started_ && keyboard_capturer_uses_sdl_events_ &&
+          focus_on_stream_window_ && stream_window_ &&
           SDL_GetWindowID(stream_window_) == event.key.windowID) {
         ProcessKeyboardEvent(event);
       }
