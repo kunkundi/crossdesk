@@ -122,9 +122,8 @@ int ScreenCapturerX11::Init(const int fps, cb_desktop_data cb) {
   height_ = attr.height;
 
   if ((width_ & 1) != 0 || (height_ & 1) != 0) {
-    LOG_WARN(
-        "X11 root size {}x{} is not even, aligning down to {}x{} for NV12",
-        width_, height_, width_ & ~1, height_ & ~1);
+    LOG_WARN("X11 root size {}x{} is not even, aligning down to {}x{} for NV12",
+             width_, height_, width_ & ~1, height_ & ~1);
     width_ &= ~1;
     height_ &= ~1;
   }
@@ -183,8 +182,9 @@ int ScreenCapturerX11::Start(bool show_cursor) {
         OnFrame();
       }
 
-      const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-          clock::now() - frame_start);
+      const auto elapsed =
+          std::chrono::duration_cast<std::chrono::milliseconds>(clock::now() -
+                                                                frame_start);
       if (elapsed < frame_interval) {
         std::this_thread::sleep_for(frame_interval - elapsed);
       }
@@ -282,20 +282,16 @@ void ScreenCapturerX11::OnFrame() {
     }
   }
 
-  bool needs_copy = image->bytes_per_line != width_ * 4;
-  std::vector<uint8_t> argb_buf;
-  uint8_t* src_argb = nullptr;
-
-  if (needs_copy) {
-    argb_buf.resize(width_ * height_ * 4);
-    for (int y = 0; y < height_; ++y) {
-      memcpy(&argb_buf[y * width_ * 4], image->data + y * image->bytes_per_line,
-             width_ * 4);
-    }
-    src_argb = argb_buf.data();
-  } else {
-    src_argb = reinterpret_cast<uint8_t*>(image->data);
+  if (image->bits_per_pixel != 32 || image->bytes_per_line <= 0) {
+    LOG_WARN(
+        "Unsupported X11 image layout: bits_per_pixel={}, bytes_per_line={}",
+        image->bits_per_pixel, image->bytes_per_line);
+    XDestroyImage(image);
+    return;
   }
+
+  const uint8_t* src_argb = reinterpret_cast<const uint8_t*>(image->data);
+  const int src_stride_argb = image->bytes_per_line;
 
   const size_t y_size =
       static_cast<size_t>(width_) * static_cast<size_t>(height_);
@@ -307,8 +303,20 @@ void ScreenCapturerX11::OnFrame() {
     uv_plane_.resize(uv_size);
   }
 
-  libyuv::ARGBToNV12(src_argb, width_ * 4, y_plane_.data(), width_,
-                     uv_plane_.data(), width_, width_, height_);
+  const int convert_ret =
+      use_abgr_to_nv12_
+          ? libyuv::ABGRToNV12(src_argb, src_stride_argb, y_plane_.data(),
+                               width_, uv_plane_.data(), width_, width_,
+                               height_)
+          : libyuv::ARGBToNV12(src_argb, src_stride_argb, y_plane_.data(),
+                               width_, uv_plane_.data(), width_, width_,
+                               height_);
+  if (convert_ret != 0) {
+    LOG_WARN("X11 {} failed: {}",
+             use_abgr_to_nv12_ ? "ABGRToNV12" : "ARGBToNV12", convert_ret);
+    XDestroyImage(image);
+    return;
+  }
 
   std::vector<uint8_t> nv12;
   nv12.reserve(y_plane_.size() + uv_plane_.size());
@@ -416,15 +424,17 @@ bool ScreenCapturerX11::ProbeCapture() {
     x11_error = trap.SyncAndGetError();
   }
 
-  if (probe_image) {
-    XDestroyImage(probe_image);
-  }
-
   if (x11_error != 0 || !probe_image) {
     LOG_WARN("X11 probe XGetImage failed: x11_error={}, image={}", x11_error,
              probe_image ? "valid" : "null");
     return false;
   }
+
+  const bool red_in_low_byte = (probe_image->red_mask & 0x000000FFu) != 0;
+  const bool blue_in_low_byte = (probe_image->blue_mask & 0x000000FFu) != 0;
+  use_abgr_to_nv12_ = red_in_low_byte && !blue_in_low_byte;
+
+  XDestroyImage(probe_image);
 
   return true;
 }

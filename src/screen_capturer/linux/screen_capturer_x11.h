@@ -71,6 +71,7 @@ class ScreenCapturerX11 : public ScreenCapturer {
   cb_desktop_data callback_;
   std::vector<DisplayInfo> display_info_list_;
   int capture_error_count_ = 0;
+  bool use_abgr_to_nv12_ = false;
 
   std::vector<uint8_t> y_plane_;
   std::vector<uint8_t> uv_plane_;
