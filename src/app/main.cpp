@@ -14,6 +14,7 @@
 
 #ifdef _WIN32
 #include <cstdio>
+
 #include "service_host.h"
 #endif
 
@@ -53,7 +54,8 @@ void PrintServiceCliUsage() {
       << "  --service-uninstall  Remove the installed Windows service\n"
       << "  --service-start      Start the Windows service\n"
       << "  --service-stop       Stop the Windows service\n"
-  << "  --service-sas        Ask the service to send Secure Attention Sequence\n"
+      << "  --service-sas        Ask the service to send Secure Attention "
+         "Sequence\n"
       << "  --service-ping       Ping the service over named pipe IPC\n"
       << "  --service-status     Query service runtime status\n"
       << "  --service-help       Show this help\n";
@@ -87,10 +89,23 @@ bool IsServiceCliCommand(const char* arg) {
          std::strcmp(arg, "--service-uninstall") == 0 ||
          std::strcmp(arg, "--service-start") == 0 ||
          std::strcmp(arg, "--service-stop") == 0 ||
-      std::strcmp(arg, "--service-sas") == 0 ||
+         std::strcmp(arg, "--service-sas") == 0 ||
          std::strcmp(arg, "--service-ping") == 0 ||
          std::strcmp(arg, "--service-status") == 0 ||
          std::strcmp(arg, "--service-help") == 0;
+}
+
+void TryStartManagedWindowsService() {
+  std::filesystem::path service_path = GetSiblingServiceExecutablePath();
+  if (service_path.empty() || !std::filesystem::exists(service_path)) {
+    return;
+  }
+
+  if (!crossdesk::IsCrossDeskServiceInstalled()) {
+    return;
+  }
+
+  crossdesk::StartCrossDeskService();
 }
 
 int HandleServiceCliCommand(const std::string& command) {
@@ -120,8 +135,7 @@ int HandleServiceCliCommand(const std::string& command) {
 
   if (command == "--service-uninstall") {
     bool success = crossdesk::UninstallCrossDeskService();
-    std::cout << (success ? "uninstall ok" : "uninstall failed")
-              << std::endl;
+    std::cout << (success ? "uninstall ok" : "uninstall failed") << std::endl;
     return success ? 0 : 1;
   }
 
@@ -181,6 +195,10 @@ int main(int argc, char* argv[]) {
     render.Run();
     return 0;
   }
+
+#ifdef _WIN32
+  TryStartManagedWindowsService();
+#endif
 
   bool enable_daemon = false;
   auto path_manager = std::make_unique<crossdesk::PathManager>("CrossDesk");

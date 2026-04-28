@@ -195,14 +195,7 @@ Function RegisterInstalledService
         Abort
     ${EndIf}
 
-    DetailPrint "Starting CrossDesk service"
-    ExecWait '"$INSTDIR\CrossDesk.exe" --service-start' $0
-    ${If} $0 != 0
-        ExecWait '"$INSTDIR\CrossDesk.exe" --service-uninstall' $1
-        ExecWait '"$SYSDIR\sc.exe" delete ${PRODUCT_SERVICE_NAME}' $1
-        MessageBox MB_ICONSTOP|MB_OK "The CrossDesk service was registered but could not be started. The installation will be aborted."
-        Abort
-    ${EndIf}
+    DetailPrint "CrossDesk service registered for on-demand start"
 
     Return
 

@@ -33,6 +33,7 @@ class CrossDeskServiceHost {
   int InitializeRuntime();
   void ShutdownRuntime();
   void RequestStop();
+  void ClientProcessMonitorLoop();
   void ReportServiceStatus(DWORD current_state, DWORD win32_exit_code,
                            DWORD wait_hint);
   void IpcServerLoop();
@@ -71,6 +72,7 @@ class CrossDeskServiceHost {
   SERVICE_STATUS service_status_{};
   HANDLE stop_event_ = nullptr;
   std::thread ipc_thread_;
+  std::thread client_process_monitor_thread_;
   std::mutex state_mutex_;
   DWORD active_session_id_ = 0xFFFFFFFF;
   DWORD process_session_id_ = 0xFFFFFFFF;
@@ -128,6 +130,7 @@ class CrossDeskServiceHost {
   static CrossDeskServiceHost* instance_;
 };
 
+bool IsCrossDeskServiceInstalled();
 bool InstallCrossDeskService(const std::wstring& binary_path);
 bool UninstallCrossDeskService();
 bool StartCrossDeskService();

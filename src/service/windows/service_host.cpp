@@ -1,5 +1,6 @@
 #include "service_host.h"
 
+#include <Aclapi.h>
 #include <TlHelp32.h>
 #include <Userenv.h>
 #include <WtsApi32.h>
@@ -27,6 +28,9 @@ using Json = nlohmann::json;
 
 constexpr char kSecureDesktopKeyboardIpcCommandPrefix[] = "secure-input-key:";
 constexpr char kSecureDesktopMouseIpcCommandPrefix[] = "secure-input-mouse:";
+constexpr wchar_t kCrossDeskClientProcessName[] = L"crossdesk.exe";
+constexpr DWORD kCrossDeskClientMonitorIntervalMs = 1000;
+constexpr ULONGLONG kCrossDeskClientMonitorStartupGraceMs = 5000;
 
 using SendSasFunction = VOID(WINAPI*)(BOOL);
 
@@ -155,6 +159,97 @@ std::string BuildErrorJson(const char* error, DWORD error_code = 0) {
   }
   stream << "}";
   return stream.str();
+}
+
+bool HasRunningCrossDeskClientProcess() {
+  HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snapshot == INVALID_HANDLE_VALUE) {
+    LOG_ERROR("CreateToolhelp32Snapshot failed, error={}", GetLastError());
+    return true;
+  }
+
+  PROCESSENTRY32W entry{};
+  entry.dwSize = sizeof(entry);
+  if (!Process32FirstW(snapshot, &entry)) {
+    DWORD error = GetLastError();
+    CloseHandle(snapshot);
+    if (error != ERROR_NO_MORE_FILES) {
+      LOG_ERROR("Process32FirstW failed, error={}", error);
+      return true;
+    }
+    return false;
+  }
+
+  do {
+    if (_wcsicmp(entry.szExeFile, kCrossDeskClientProcessName) == 0) {
+      CloseHandle(snapshot);
+      return true;
+    }
+  } while (Process32NextW(snapshot, &entry));
+
+  DWORD error = GetLastError();
+  CloseHandle(snapshot);
+  if (error != ERROR_NO_MORE_FILES) {
+    LOG_ERROR("Process32NextW failed, error={}", error);
+    return true;
+  }
+
+  return false;
+}
+
+bool GrantCrossDeskServiceStartAccessToAuthenticatedUsers(SC_HANDLE service) {
+  if (service == nullptr) {
+    return false;
+  }
+
+  PACL existing_dacl = nullptr;
+  PACL updated_dacl = nullptr;
+  PSECURITY_DESCRIPTOR security_descriptor = nullptr;
+  DWORD error =
+      GetSecurityInfo(service, SE_SERVICE, DACL_SECURITY_INFORMATION, nullptr,
+                      nullptr, &existing_dacl, nullptr, &security_descriptor);
+  if (error != ERROR_SUCCESS) {
+    LOG_ERROR("GetSecurityInfo failed, error={}", error);
+    return false;
+  }
+
+  BYTE sid_buffer[SECURITY_MAX_SID_SIZE] = {0};
+  DWORD sid_size = sizeof(sid_buffer);
+  if (!CreateWellKnownSid(WinAuthenticatedUserSid, nullptr, sid_buffer,
+                          &sid_size)) {
+    error = GetLastError();
+    LOG_ERROR("CreateWellKnownSid failed, error={}", error);
+    LocalFree(security_descriptor);
+    return false;
+  }
+
+  EXPLICIT_ACCESSW access{};
+  access.grfAccessPermissions = SERVICE_START | SERVICE_QUERY_STATUS;
+  access.grfAccessMode = SET_ACCESS;
+  access.grfInheritance = NO_INHERITANCE;
+  access.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+  access.Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
+  access.Trustee.ptstrName = reinterpret_cast<LPWSTR>(sid_buffer);
+
+  error = SetEntriesInAclW(1, &access, existing_dacl, &updated_dacl);
+  if (error != ERROR_SUCCESS) {
+    LOG_ERROR("SetEntriesInAclW failed, error={}", error);
+    LocalFree(security_descriptor);
+    return false;
+  }
+
+  error = SetSecurityInfo(service, SE_SERVICE, DACL_SECURITY_INFORMATION,
+                          nullptr, nullptr, updated_dacl, nullptr);
+  if (error != ERROR_SUCCESS) {
+    LOG_ERROR("SetSecurityInfo failed, error={}", error);
+    LocalFree(updated_dacl);
+    LocalFree(security_descriptor);
+    return false;
+  }
+
+  LocalFree(updated_dacl);
+  LocalFree(security_descriptor);
+  return true;
 }
 
 std::string QueryNamedPipeMessage(const std::wstring& pipe_name,
@@ -812,6 +907,10 @@ int CrossDeskServiceHost::InitializeRuntime() {
   RefreshSessionState();
   EnsureSessionHelper();
   ipc_thread_ = std::thread(&CrossDeskServiceHost::IpcServerLoop, this);
+  if (!console_mode_) {
+    client_process_monitor_thread_ =
+        std::thread(&CrossDeskServiceHost::ClientProcessMonitorLoop, this);
+  }
   LOG_INFO("CrossDesk service runtime initialized, session_id={}",
            active_session_id_);
   return 0;
@@ -823,6 +922,10 @@ void CrossDeskServiceHost::ShutdownRuntime() {
 
   if (stop_event_ != nullptr) {
     SetEvent(stop_event_);
+  }
+
+  if (client_process_monitor_thread_.joinable()) {
+    client_process_monitor_thread_.join();
   }
 
   if (ipc_thread_.joinable()) {
@@ -838,6 +941,34 @@ void CrossDeskServiceHost::ShutdownRuntime() {
 void CrossDeskServiceHost::RequestStop() {
   if (stop_event_ != nullptr) {
     SetEvent(stop_event_);
+  }
+}
+
+void CrossDeskServiceHost::ClientProcessMonitorLoop() {
+  const ULONGLONG monitor_started_at = GetTickCount64();
+
+  while (stop_event_ != nullptr) {
+    DWORD wait_result =
+        WaitForSingleObject(stop_event_, kCrossDeskClientMonitorIntervalMs);
+    if (wait_result == WAIT_OBJECT_0) {
+      return;
+    }
+    if (wait_result != WAIT_TIMEOUT) {
+      continue;
+    }
+
+    if (GetTickCount64() - monitor_started_at <
+        kCrossDeskClientMonitorStartupGraceMs) {
+      continue;
+    }
+
+    if (HasRunningCrossDeskClientProcess()) {
+      continue;
+    }
+
+    LOG_INFO("No crossdesk client process detected, stopping service");
+    RequestStop();
+    return;
   }
 }
 
@@ -1845,7 +1976,7 @@ bool InstallCrossDeskService(const std::wstring& binary_path) {
   std::wstring service_command = L"\"" + binary_path + L"\" --service";
   SC_HANDLE service = CreateServiceW(
       manager, kCrossDeskServiceName, kCrossDeskServiceDisplayName,
-      SERVICE_ALL_ACCESS, SERVICE_WIN32_OWN_PROCESS, SERVICE_AUTO_START,
+      SERVICE_ALL_ACCESS, SERVICE_WIN32_OWN_PROCESS, SERVICE_DEMAND_START,
       SERVICE_ERROR_NORMAL, service_command.c_str(), nullptr, nullptr, nullptr,
       nullptr, nullptr);
 
@@ -1858,14 +1989,15 @@ bool InstallCrossDeskService(const std::wstring& binary_path) {
     }
 
     service = OpenServiceW(manager, kCrossDeskServiceName,
-                           SERVICE_CHANGE_CONFIG | SERVICE_QUERY_STATUS);
+                           SERVICE_CHANGE_CONFIG | SERVICE_QUERY_STATUS |
+                               READ_CONTROL | WRITE_DAC);
     if (service == nullptr) {
       LOG_ERROR("OpenServiceW failed, error={}", GetLastError());
       CloseServiceHandle(manager);
       return false;
     }
 
-    if (!ChangeServiceConfigW(service, SERVICE_NO_CHANGE, SERVICE_AUTO_START,
+    if (!ChangeServiceConfigW(service, SERVICE_NO_CHANGE, SERVICE_DEMAND_START,
                               SERVICE_NO_CHANGE, service_command.c_str(),
                               nullptr, nullptr, nullptr, nullptr, nullptr,
                               kCrossDeskServiceDisplayName)) {
@@ -1874,6 +2006,39 @@ bool InstallCrossDeskService(const std::wstring& binary_path) {
       CloseServiceHandle(manager);
       return false;
     }
+  }
+
+  if (!GrantCrossDeskServiceStartAccessToAuthenticatedUsers(service)) {
+    CloseServiceHandle(service);
+    CloseServiceHandle(manager);
+    return false;
+  }
+
+  CloseServiceHandle(service);
+  CloseServiceHandle(manager);
+  return true;
+}
+
+bool IsCrossDeskServiceInstalled() {
+  SC_HANDLE manager = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT);
+  if (manager == nullptr) {
+    LOG_ERROR("OpenSCManagerW failed, error={}", GetLastError());
+    return false;
+  }
+
+  SC_HANDLE service =
+      OpenServiceW(manager, kCrossDeskServiceName, SERVICE_QUERY_STATUS);
+  if (service == nullptr) {
+    DWORD error = GetLastError();
+    CloseServiceHandle(manager);
+    if (error == ERROR_SERVICE_DOES_NOT_EXIST) {
+      return false;
+    }
+    if (error == ERROR_ACCESS_DENIED) {
+      return true;
+    }
+    LOG_ERROR("OpenServiceW failed, error={}", error);
+    return false;
   }
 
   CloseServiceHandle(service);
@@ -1891,7 +2056,10 @@ bool StartCrossDeskService() {
   SC_HANDLE service =
       OpenServiceW(manager, kCrossDeskServiceName, SERVICE_START);
   if (service == nullptr) {
-    LOG_ERROR("OpenServiceW failed, error={}", GetLastError());
+    DWORD error = GetLastError();
+    if (error != ERROR_SERVICE_DOES_NOT_EXIST) {
+      LOG_ERROR("OpenServiceW failed, error={}", error);
+    }
     CloseServiceHandle(manager);
     return false;
   }
