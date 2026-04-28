@@ -49,7 +49,7 @@ function setup_platform_settings()
         end
 
         if is_config("USE_WAYLAND", true) then
-            add_links("dbus-1", "pipewire-0.3")
+            add_links("dbus-1")
             add_defines("CROSSDESK_HAS_WAYLAND_CAPTURER=1")
             add_existing_include_dirs({
                 "/usr/include/dbus-1.0",

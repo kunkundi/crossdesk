@@ -3,6 +3,7 @@
 
 #if CROSSDESK_WAYLAND_BUILD_ENABLED
 
+#include <dlfcn.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -10,6 +11,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -19,6 +21,143 @@
 namespace crossdesk {
 
 namespace {
+
+struct PipeWireDynamicApi {
+  void* library = nullptr;
+  bool available = false;
+
+  decltype(&::pw_init) init = nullptr;
+  decltype(&::pw_deinit) deinit = nullptr;
+  decltype(&::pw_thread_loop_new) thread_loop_new = nullptr;
+  decltype(&::pw_thread_loop_destroy) thread_loop_destroy = nullptr;
+  decltype(&::pw_thread_loop_get_loop) thread_loop_get_loop = nullptr;
+  decltype(&::pw_thread_loop_start) thread_loop_start = nullptr;
+  decltype(&::pw_thread_loop_stop) thread_loop_stop = nullptr;
+  decltype(&::pw_thread_loop_lock) thread_loop_lock = nullptr;
+  decltype(&::pw_thread_loop_unlock) thread_loop_unlock = nullptr;
+  decltype(&::pw_thread_loop_wait) thread_loop_wait = nullptr;
+  decltype(&::pw_thread_loop_signal) thread_loop_signal = nullptr;
+  decltype(&::pw_context_new) context_new = nullptr;
+  decltype(&::pw_context_destroy) context_destroy = nullptr;
+  decltype(&::pw_context_connect_fd) context_connect_fd = nullptr;
+  decltype(&::pw_properties_new) properties_new = nullptr;
+  decltype(&::pw_properties_set) properties_set = nullptr;
+  decltype(&::pw_stream_new) stream_new = nullptr;
+  decltype(&::pw_stream_add_listener) stream_add_listener = nullptr;
+  decltype(&::pw_stream_state_as_string) stream_state_as_string = nullptr;
+  decltype(&::pw_stream_connect) stream_connect = nullptr;
+  decltype(&::pw_stream_update_params) stream_update_params = nullptr;
+  decltype(&::pw_stream_set_active) stream_set_active = nullptr;
+  decltype(&::pw_stream_disconnect) stream_disconnect = nullptr;
+  decltype(&::pw_stream_destroy) stream_destroy = nullptr;
+  decltype(&::pw_stream_dequeue_buffer) stream_dequeue_buffer = nullptr;
+  decltype(&::pw_stream_queue_buffer) stream_queue_buffer = nullptr;
+  decltype(&::pw_core_disconnect) core_disconnect = nullptr;
+  decltype(&::pw_proxy_destroy) proxy_destroy = nullptr;
+};
+
+template <typename T>
+bool LoadPipeWireSymbol(void* library, T* function, const char* symbol_name) {
+  *function = reinterpret_cast<T>(dlsym(library, symbol_name));
+  if (*function != nullptr) {
+    return true;
+  }
+
+  LOG_ERROR("Unable to find PipeWire symbol {}", symbol_name);
+  return false;
+}
+
+void UnloadPipeWireApi(PipeWireDynamicApi* api) {
+  if (api->library != nullptr) {
+    dlclose(api->library);
+  }
+  *api = PipeWireDynamicApi{};
+}
+
+bool LoadPipeWireApi(PipeWireDynamicApi* api) {
+  static constexpr const char* kPipeWireLibraries[] = {
+      "libpipewire-0.3.so.0",
+      "libpipewire-0.3.so",
+  };
+
+  for (const char* library_name : kPipeWireLibraries) {
+    api->library = dlopen(library_name, RTLD_LAZY | RTLD_LOCAL);
+    if (api->library != nullptr) {
+      break;
+    }
+  }
+
+  if (api->library == nullptr) {
+    LOG_WARN("PipeWire 0.3 runtime library is unavailable");
+    return false;
+  }
+
+  if (!LoadPipeWireSymbol(api->library, &api->init, "pw_init") ||
+      !LoadPipeWireSymbol(api->library, &api->deinit, "pw_deinit") ||
+      !LoadPipeWireSymbol(api->library, &api->thread_loop_new,
+                          "pw_thread_loop_new") ||
+      !LoadPipeWireSymbol(api->library, &api->thread_loop_destroy,
+                          "pw_thread_loop_destroy") ||
+      !LoadPipeWireSymbol(api->library, &api->thread_loop_get_loop,
+                          "pw_thread_loop_get_loop") ||
+      !LoadPipeWireSymbol(api->library, &api->thread_loop_start,
+                          "pw_thread_loop_start") ||
+      !LoadPipeWireSymbol(api->library, &api->thread_loop_stop,
+                          "pw_thread_loop_stop") ||
+      !LoadPipeWireSymbol(api->library, &api->thread_loop_lock,
+                          "pw_thread_loop_lock") ||
+      !LoadPipeWireSymbol(api->library, &api->thread_loop_unlock,
+                          "pw_thread_loop_unlock") ||
+      !LoadPipeWireSymbol(api->library, &api->thread_loop_wait,
+                          "pw_thread_loop_wait") ||
+      !LoadPipeWireSymbol(api->library, &api->thread_loop_signal,
+                          "pw_thread_loop_signal") ||
+      !LoadPipeWireSymbol(api->library, &api->context_new, "pw_context_new") ||
+      !LoadPipeWireSymbol(api->library, &api->context_destroy,
+                          "pw_context_destroy") ||
+      !LoadPipeWireSymbol(api->library, &api->context_connect_fd,
+                          "pw_context_connect_fd") ||
+      !LoadPipeWireSymbol(api->library, &api->properties_new,
+                          "pw_properties_new") ||
+      !LoadPipeWireSymbol(api->library, &api->properties_set,
+                          "pw_properties_set") ||
+      !LoadPipeWireSymbol(api->library, &api->stream_new, "pw_stream_new") ||
+      !LoadPipeWireSymbol(api->library, &api->stream_add_listener,
+                          "pw_stream_add_listener") ||
+      !LoadPipeWireSymbol(api->library, &api->stream_state_as_string,
+                          "pw_stream_state_as_string") ||
+      !LoadPipeWireSymbol(api->library, &api->stream_connect,
+                          "pw_stream_connect") ||
+      !LoadPipeWireSymbol(api->library, &api->stream_update_params,
+                          "pw_stream_update_params") ||
+      !LoadPipeWireSymbol(api->library, &api->stream_set_active,
+                          "pw_stream_set_active") ||
+      !LoadPipeWireSymbol(api->library, &api->stream_disconnect,
+                          "pw_stream_disconnect") ||
+      !LoadPipeWireSymbol(api->library, &api->stream_destroy,
+                          "pw_stream_destroy") ||
+      !LoadPipeWireSymbol(api->library, &api->stream_dequeue_buffer,
+                          "pw_stream_dequeue_buffer") ||
+      !LoadPipeWireSymbol(api->library, &api->stream_queue_buffer,
+                          "pw_stream_queue_buffer") ||
+      !LoadPipeWireSymbol(api->library, &api->core_disconnect,
+                          "pw_core_disconnect") ||
+      !LoadPipeWireSymbol(api->library, &api->proxy_destroy,
+                          "pw_proxy_destroy")) {
+    UnloadPipeWireApi(api);
+    return false;
+  }
+
+  api->available = true;
+  return true;
+}
+
+const PipeWireDynamicApi* GetPipeWireApi() {
+  static PipeWireDynamicApi api;
+  static std::once_flag once;
+  std::call_once(once, []() { LoadPipeWireApi(&api); });
+  return api.available ? &api : nullptr;
+}
 
 const char* PipeWireFormatName(uint32_t spa_format) {
   switch (spa_format) {
@@ -76,6 +215,7 @@ double SnapLikelyFractionalScale(double observed_scale) {
 }
 
 struct PipeWireTargetLookupState {
+  const PipeWireDynamicApi* pipewire = nullptr;
   pw_thread_loop* loop = nullptr;
   uint32_t target_node_id = 0;
   int sync_seq = -1;
@@ -87,11 +227,13 @@ struct PipeWireTargetLookupState {
 std::string LookupPipeWireTargetObjectSerial(pw_core* core,
                                              pw_thread_loop* loop,
                                              uint32_t node_id) {
-  if (!core || !loop || node_id == 0) {
+  const PipeWireDynamicApi* pipewire = GetPipeWireApi();
+  if (!pipewire || !core || !loop || node_id == 0) {
     return "";
   }
 
   PipeWireTargetLookupState state;
+  state.pipewire = pipewire;
   state.loop = loop;
   state.target_node_id = node_id;
 
@@ -138,7 +280,7 @@ std::string LookupPipeWireTargetObjectSerial(pw_core* core,
       return;
     }
     state->done = true;
-    pw_thread_loop_signal(state->loop, false);
+    state->pipewire->thread_loop_signal(state->loop, false);
   };
   core_events.error = [](void* userdata, uint32_t id, int seq, int res,
                          const char* message) {
@@ -152,7 +294,7 @@ std::string LookupPipeWireTargetObjectSerial(pw_core* core,
     LOG_WARN("PipeWire registry lookup error: {}",
              message ? message : "unknown");
     state->done = true;
-    pw_thread_loop_signal(state->loop, false);
+    state->pipewire->thread_loop_signal(state->loop, false);
   };
 
   pw_registry_add_listener(registry, &registry_listener, &registry_events,
@@ -161,12 +303,12 @@ std::string LookupPipeWireTargetObjectSerial(pw_core* core,
   state.sync_seq = pw_core_sync(core, PW_ID_CORE, 0);
 
   while (!state.done) {
-    pw_thread_loop_wait(loop);
+    pipewire->thread_loop_wait(loop);
   }
 
   spa_hook_remove(&registry_listener);
   spa_hook_remove(&core_listener);
-  pw_proxy_destroy(reinterpret_cast<pw_proxy*>(registry));
+  pipewire->proxy_destroy(reinterpret_cast<pw_proxy*>(registry));
   return state.found ? state.object_serial : "";
 }
 
@@ -188,56 +330,68 @@ int BytesPerPixel(uint32_t spa_format) {
 
 }  // namespace
 
+bool ScreenCapturerWayland::EnsurePipeWireRuntimeAvailable() const {
+  return GetPipeWireApi() != nullptr;
+}
+
 bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
                                                 PipeWireConnectMode mode) {
+  const PipeWireDynamicApi* pipewire = GetPipeWireApi();
+  if (!pipewire) {
+    LOG_ERROR("PipeWire 0.3 runtime library is unavailable");
+    return false;
+  }
+
   if (pipewire_fd_ < 0 || pipewire_node_id_ == 0) {
     return false;
   }
 
   if (!pipewire_initialized_) {
-    pw_init(nullptr, nullptr);
+    pipewire->init(nullptr, nullptr);
     pipewire_initialized_ = true;
   }
 
-  pw_thread_loop_ = pw_thread_loop_new("crossdesk-wayland-capture", nullptr);
+  pw_thread_loop_ =
+      pipewire->thread_loop_new("crossdesk-wayland-capture", nullptr);
   if (!pw_thread_loop_) {
     LOG_ERROR("Failed to create PipeWire thread loop");
     return false;
   }
 
-  if (pw_thread_loop_start(pw_thread_loop_) < 0) {
+  if (pipewire->thread_loop_start(pw_thread_loop_) < 0) {
     LOG_ERROR("Failed to start PipeWire thread loop");
     CleanupPipeWire();
     return false;
   }
   pipewire_thread_loop_started_ = true;
 
-  pw_thread_loop_lock(pw_thread_loop_);
+  pipewire->thread_loop_lock(pw_thread_loop_);
 
-  pw_context_ =
-      pw_context_new(pw_thread_loop_get_loop(pw_thread_loop_), nullptr, 0);
+  pw_context_ = pipewire->context_new(
+      pipewire->thread_loop_get_loop(pw_thread_loop_), nullptr, 0);
   if (!pw_context_) {
     LOG_ERROR("Failed to create PipeWire context");
-    pw_thread_loop_unlock(pw_thread_loop_);
+    pipewire->thread_loop_unlock(pw_thread_loop_);
     CleanupPipeWire();
     return false;
   }
 
-  pw_core_ = pw_context_connect_fd(pw_context_, pipewire_fd_, nullptr, 0);
+  pw_core_ =
+      pipewire->context_connect_fd(pw_context_, pipewire_fd_, nullptr, 0);
   if (!pw_core_) {
     LOG_ERROR("Failed to connect to PipeWire remote");
-    pw_thread_loop_unlock(pw_thread_loop_);
+    pipewire->thread_loop_unlock(pw_thread_loop_);
     CleanupPipeWire();
     return false;
   }
   pipewire_fd_ = -1;
 
-  pw_properties* stream_props =
-      pw_properties_new(PW_KEY_MEDIA_TYPE, "Video", PW_KEY_MEDIA_CATEGORY,
-                        "Capture", PW_KEY_MEDIA_ROLE, "Screen", nullptr);
+  pw_properties* stream_props = pipewire->properties_new(
+      PW_KEY_MEDIA_TYPE, "Video", PW_KEY_MEDIA_CATEGORY, "Capture",
+      PW_KEY_MEDIA_ROLE, "Screen", nullptr);
   if (!stream_props) {
     LOG_ERROR("Failed to allocate PipeWire stream properties");
-    pw_thread_loop_unlock(pw_thread_loop_);
+    pipewire->thread_loop_unlock(pw_thread_loop_);
     CleanupPipeWire();
     return false;
   }
@@ -247,8 +401,8 @@ bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
     target_object_serial = LookupPipeWireTargetObjectSerial(
         pw_core_, pw_thread_loop_, pipewire_node_id_);
     if (!target_object_serial.empty()) {
-      pw_properties_set(stream_props, PW_KEY_TARGET_OBJECT,
-                        target_object_serial.c_str());
+      pipewire->properties_set(stream_props, PW_KEY_TARGET_OBJECT,
+                               target_object_serial.c_str());
       LOG_INFO("PipeWire target object serial for node {} is {}",
                pipewire_node_id_, target_object_serial);
     } else {
@@ -260,10 +414,10 @@ bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
   }
 
   pw_stream_ =
-      pw_stream_new(pw_core_, "CrossDesk Wayland Capture", stream_props);
+      pipewire->stream_new(pw_core_, "CrossDesk Wayland Capture", stream_props);
   if (!pw_stream_) {
     LOG_ERROR("Failed to create PipeWire stream");
-    pw_thread_loop_unlock(pw_thread_loop_);
+    pipewire->thread_loop_unlock(pw_thread_loop_);
     CleanupPipeWire();
     return false;
   }
@@ -289,9 +443,11 @@ bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
         return;
       }
 
-      LOG_INFO("PipeWire stream state: {} -> {}",
-               pw_stream_state_as_string(old_state),
-               pw_stream_state_as_string(state));
+      const PipeWireDynamicApi* pipewire = GetPipeWireApi();
+      LOG_INFO(
+          "PipeWire stream state: {} -> {}",
+          pipewire ? pipewire->stream_state_as_string(old_state) : "unknown",
+          pipewire ? pipewire->stream_state_as_string(state) : "unknown");
     };
     events.param_changed = [](void* userdata, uint32_t id,
                               const struct spa_pod* param) {
@@ -369,7 +525,10 @@ bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
               SPA_POD_Int(sizeof(struct spa_meta_header))));
 
       if (self->pw_stream_) {
-        pw_stream_update_params(self->pw_stream_, params, param_count);
+        const PipeWireDynamicApi* pipewire = GetPipeWireApi();
+        if (pipewire) {
+          pipewire->stream_update_params(self->pw_stream_, params, param_count);
+        }
       }
       self->pipewire_format_ready_.store(true);
 
@@ -457,7 +616,7 @@ bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
     return events;
   }();
 
-  pw_stream_add_listener(pw_stream_, listener, &stream_events, this);
+  pipewire->stream_add_listener(pw_stream_, listener, &stream_events, this);
   pipewire_format_ready_.store(false);
   pipewire_stream_start_ms_.store(NowMs());
   pipewire_last_frame_ms_.store(0);
@@ -501,7 +660,7 @@ bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
 
     if (param_count == 0) {
       LOG_ERROR("No valid PipeWire format params were built");
-      pw_thread_loop_unlock(pw_thread_loop_);
+      pipewire->thread_loop_unlock(pw_thread_loop_);
       CleanupPipeWire();
       return false;
     }
@@ -522,12 +681,12 @@ bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
       PipeWireConnectModeName(mode), pipewire_node_id_, target_id,
       target_object_serial.empty() ? "none" : target_object_serial.c_str(),
       relaxed_connect, param_count, fixed_size.width, fixed_size.height);
-  const int ret = pw_stream_connect(
+  const int ret = pipewire->stream_connect(
       pw_stream_, PW_DIRECTION_INPUT, target_id,
       static_cast<pw_stream_flags>(PW_STREAM_FLAG_AUTOCONNECT |
                                    PW_STREAM_FLAG_MAP_BUFFERS),
       param_count > 0 ? params : nullptr, static_cast<uint32_t>(param_count));
-  pw_thread_loop_unlock(pw_thread_loop_);
+  pipewire->thread_loop_unlock(pw_thread_loop_);
 
   if (ret < 0) {
     LOG_ERROR("pw_stream_connect failed: {}", spa_strerror(ret));
@@ -539,16 +698,17 @@ bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
 }
 
 void ScreenCapturerWayland::CleanupPipeWire() {
+  const PipeWireDynamicApi* pipewire = GetPipeWireApi();
   const bool need_lock =
-      pw_thread_loop_ &&
+      pipewire && pw_thread_loop_ &&
       (pw_stream_ != nullptr || pw_core_ != nullptr || pw_context_ != nullptr);
   if (need_lock) {
-    pw_thread_loop_lock(pw_thread_loop_);
+    pipewire->thread_loop_lock(pw_thread_loop_);
   }
 
-  if (pw_stream_) {
-    pw_stream_set_active(pw_stream_, false);
-    pw_stream_disconnect(pw_stream_);
+  if (pw_stream_ && pipewire) {
+    pipewire->stream_set_active(pw_stream_, false);
+    pipewire->stream_disconnect(pw_stream_);
   }
 
   if (stream_listener_) {
@@ -557,33 +717,34 @@ void ScreenCapturerWayland::CleanupPipeWire() {
     stream_listener_ = nullptr;
   }
 
-  if (pw_stream_) {
-    pw_stream_destroy(pw_stream_);
-    pw_stream_ = nullptr;
+  if (pw_stream_ && pipewire) {
+    pipewire->stream_destroy(pw_stream_);
   }
+  pw_stream_ = nullptr;
 
-  if (pw_core_) {
-    pw_core_disconnect(pw_core_);
-    pw_core_ = nullptr;
+  if (pw_core_ && pipewire) {
+    pipewire->core_disconnect(pw_core_);
   }
+  pw_core_ = nullptr;
 
-  if (pw_context_) {
-    pw_context_destroy(pw_context_);
-    pw_context_ = nullptr;
+  if (pw_context_ && pipewire) {
+    pipewire->context_destroy(pw_context_);
   }
+  pw_context_ = nullptr;
 
   if (need_lock) {
-    pw_thread_loop_unlock(pw_thread_loop_);
+    pipewire->thread_loop_unlock(pw_thread_loop_);
   }
 
-  if (pw_thread_loop_) {
+  if (pw_thread_loop_ && pipewire) {
     if (pipewire_thread_loop_started_) {
-      pw_thread_loop_stop(pw_thread_loop_);
+      pipewire->thread_loop_stop(pw_thread_loop_);
       pipewire_thread_loop_started_ = false;
     }
-    pw_thread_loop_destroy(pw_thread_loop_);
-    pw_thread_loop_ = nullptr;
+    pipewire->thread_loop_destroy(pw_thread_loop_);
   }
+  pw_thread_loop_ = nullptr;
+  pipewire_thread_loop_started_ = false;
 
   if (pipewire_fd_ >= 0) {
     close(pipewire_fd_);
@@ -594,23 +755,24 @@ void ScreenCapturerWayland::CleanupPipeWire() {
   pipewire_stream_start_ms_.store(0);
   pipewire_last_frame_ms_.store(0);
 
-  if (pipewire_initialized_) {
-    pw_deinit();
-    pipewire_initialized_ = false;
+  if (pipewire_initialized_ && pipewire) {
+    pipewire->deinit();
   }
+  pipewire_initialized_ = false;
 }
 
 void ScreenCapturerWayland::HandlePipeWireBuffer() {
-  if (!pw_stream_) {
+  const PipeWireDynamicApi* pipewire = GetPipeWireApi();
+  if (!pw_stream_ || !pipewire) {
     return;
   }
 
-  pw_buffer* buffer = pw_stream_dequeue_buffer(pw_stream_);
+  pw_buffer* buffer = pipewire->stream_dequeue_buffer(pw_stream_);
   if (!buffer) {
     return;
   }
 
-  auto requeue = [&]() { pw_stream_queue_buffer(pw_stream_, buffer); };
+  auto requeue = [&]() { pipewire->stream_queue_buffer(pw_stream_, buffer); };
 
   if (paused_) {
     requeue();

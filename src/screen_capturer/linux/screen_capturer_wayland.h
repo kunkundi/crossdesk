@@ -52,6 +52,7 @@ class ScreenCapturerWayland : public ScreenCapturer {
   bool SelectPortalDevices();
   bool SelectPortalSource();
   bool StartPortalSession();
+  bool EnsurePipeWireRuntimeAvailable() const;
   bool OpenPipeWireRemote();
   bool SetupPipeWireStream(bool relaxed_connect, PipeWireConnectMode mode);
 

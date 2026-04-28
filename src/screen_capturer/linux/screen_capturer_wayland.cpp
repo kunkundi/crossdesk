@@ -57,6 +57,11 @@ int ScreenCapturerWayland::Init(const int fps, cb_desktop_data cb) {
     return -1;
   }
 
+  if (!EnsurePipeWireRuntimeAvailable()) {
+    LOG_ERROR("Wayland screen capturer requires PipeWire 0.3 runtime");
+    return -1;
+  }
+
   fps_ = fps;
   callback_ = cb;
   pointer_granted_ = false;
