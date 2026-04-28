@@ -34,7 +34,8 @@ function setup_targets()
             add_files("src/screen_capturer/windows/screen_capturer_dxgi.cpp",
                 "src/screen_capturer/windows/screen_capturer_gdi.cpp",
                 "src/screen_capturer/windows/screen_capturer_win.cpp")
-            add_includedirs("src/screen_capturer/windows", {public = true})
+            add_includedirs("src/screen_capturer/windows", "src/service/windows",
+                {public = true})
         elseif is_os("macosx") then
             add_files("src/screen_capturer/macosx/*.cpp",
                 "src/screen_capturer/macosx/*.mm")
@@ -146,7 +147,8 @@ function setup_targets()
             "src/gui/windows", {public = true})
         if is_os("windows") then
             add_files("src/gui/tray/*.cpp")
-            add_includedirs("src/gui/tray", {public = true})
+            add_includedirs("src/gui/tray", "src/service/windows",
+                {public = true})
         elseif is_os("macosx") then
             add_files("src/gui/windows/*.mm")
         end
@@ -163,6 +165,22 @@ function setup_targets()
                 "src/screen_capturer/windows/wgc_plugin_entry.cpp")
             add_includedirs("src/common", "src/screen_capturer",
                 "src/screen_capturer/windows")
+
+        target("crossdesk_service")
+            set_kind("binary")
+            add_deps("rd_log", "path_manager")
+            add_links("Advapi32", "Wtsapi32", "Ole32", "Userenv")
+            add_files("src/service/windows/main.cpp",
+                "src/service/windows/service_host.cpp")
+            add_includedirs("src/service/windows", {public = true})
+
+        target("crossdesk_session_helper")
+            set_kind("binary")
+            add_packages("libyuv")
+            add_deps("rd_log", "path_manager")
+            add_links("Advapi32", "User32", "Wtsapi32", "Gdi32")
+            add_files("src/service/windows/session_helper_main.cpp")
+            add_includedirs("src/service/windows", {public = true})
     end
 
     target("crossdesk")
@@ -171,7 +189,10 @@ function setup_targets()
         add_files("src/app/*.cpp")
         add_includedirs("src/app", {public = true})
         if is_os("windows") then
-            add_deps("wgc_plugin")
+            add_files("src/service/windows/service_host.cpp")
+            add_includedirs("src/service/windows", {public = true})
+            add_links("Advapi32", "Wtsapi32", "Ole32", "Userenv")
+            add_deps("wgc_plugin", "crossdesk_service", "crossdesk_session_helper")
             add_files("scripts/windows/crossdesk.rc")
         end
 end

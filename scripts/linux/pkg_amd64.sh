@@ -8,6 +8,8 @@ APP_VERSION="$1"
 ARCHITECTURE="amd64"
 MAINTAINER="Junkun Di <junkun.di@hotmail.com>"
 DESCRIPTION="A simple cross-platform remote desktop client."
+ALSA_RUNTIME_DEP="libasound2 | libasound2t64"
+PIPEWIRE_RUNTIME_DEP="libpipewire-0.3-0 | libpipewire-0.3-0t64"
 
 # Remove 'v' prefix from version for Debian package (Debian version must start with digit)
 DEB_VERSION="${APP_VERSION#v}"
@@ -41,9 +43,9 @@ Maintainer: $MAINTAINER
 Description: $DESCRIPTION
 Depends: libc6 (>= 2.29), libstdc++6 (>= 9), libx11-6, libxcb1,
  libxcb-randr0, libxcb-xtest0, libxcb-xinerama0, libxcb-shape0,
- libxcb-xkb1, libxcb-xfixes0, libxv1, libxtst6, libasound2,
+ libxcb-xkb1, libxcb-xfixes0, libxv1, libxtst6, $ALSA_RUNTIME_DEP,
  libsndio7.0, libxcb-shm0, libpulse0, libdrm2, libdbus-1-3,
- libpipewire-0.3-0, xdg-desktop-portal,
+ $PIPEWIRE_RUNTIME_DEP, xdg-desktop-portal,
  xdg-desktop-portal-gtk | xdg-desktop-portal-kde | xdg-desktop-portal-wlr
 Recommends: nvidia-cuda-toolkit
 Priority: optional

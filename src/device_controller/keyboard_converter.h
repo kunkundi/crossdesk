@@ -98,6 +98,7 @@ std::map<int, int> vkCodeToCGKeyCode = {
     {0x67, 0x59},  // Numpad 7
     {0x68, 0x5B},  // Numpad 8
     {0x69, 0x5C},  // Numpad 9
+    {0x90, 0x47},  // Num Lock / Keypad Clear
     {0x6E, 0x41},  // Numpad .
     {0x6F, 0x4B},  // Numpad /
     {0x6A, 0x43},  // Numpad *
@@ -216,6 +217,7 @@ std::map<int, int> CGKeyCodeToVkCode = {
     {0x59, 0x67},  // Numpad 7
     {0x5B, 0x68},  // Numpad 8
     {0x5C, 0x69},  // Numpad 9
+    {0x47, 0x90},  // Num Lock / Keypad Clear
     {0x41, 0x6E},  // Numpad .
     {0x4B, 0x6F},  // Numpad /
     {0x43, 0x6A},  // Numpad *
@@ -336,6 +338,7 @@ std::map<int, int> vkCodeToX11KeySym = {
     {0x67, 0xFFB7},  // Numpad 7
     {0x68, 0xFFB8},  // Numpad 8
     {0x69, 0xFFB9},  // Numpad 9
+    {0x90, 0xFF7F},  // Num Lock
     {0x6E, 0xFFAE},  // Numpad .
     {0x6F, 0xFFAF},  // Numpad /
     {0x6A, 0xFFAA},  // Numpad *
@@ -464,6 +467,7 @@ std::map<int, int> x11KeySymToVkCode = {
     {0xFFB7, 0x67},  // Numpad 7
     {0xFFB8, 0x68},  // Numpad 8
     {0xFFB9, 0x69},  // Numpad 9
+    {0xFF7F, 0x90},  // Num Lock
     {0xFFAE, 0x6E},  // Numpad .
     {0xFFAF, 0x6F},  // Numpad /
     {0xFFAA, 0x6A},  // Numpad *
@@ -582,6 +586,7 @@ std::map<int, int> cgKeyCodeToX11KeySym = {
     {0x59, 0xFFB7},  // Numpad 7
     {0x5B, 0xFFB8},  // Numpad 8
     {0x5C, 0xFFB9},  // Numpad 9
+    {0x47, 0xFF7F},  // Num Lock / Keypad Clear
     {0x41, 0xFFAE},  // Numpad .
     {0x4B, 0xFFAF},  // Numpad /
     {0x43, 0xFFAA},  // Numpad *
@@ -708,6 +713,7 @@ std::map<int, int> x11KeySymToCgKeyCode = {
     {0xFFB7, 0x59},  // Numpad 7
     {0xFFB8, 0x5B},  // Numpad 8
     {0xFFB9, 0x5C},  // Numpad 9
+    {0xFF7F, 0x47},  // Num Lock / Keypad Clear
     {0xFFAE, 0x41},  // Numpad .
     {0xFFAF, 0x4B},  // Numpad /
     {0xFFAA, 0x43},  // Numpad *

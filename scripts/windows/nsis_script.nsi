@@ -8,6 +8,7 @@
 !define PRODUCT_WEB_SITE "https://www.crossdesk.cn/"
 !define APP_NAME "CrossDesk"
 !define UNINSTALL_REG_KEY "CrossDesk"
+!define PRODUCT_SERVICE_NAME "CrossDeskService"
 
 ; Installer icon path
 !define MUI_ICON "${__FILEDIR__}\..\..\icons\windows\crossdesk.ico"
@@ -68,13 +69,20 @@ cancelInstall:
     Abort
 
 installApp:
+    Call StopInstalledService
+
     SetOutPath "$INSTDIR"
     SetOverwrite ifnewer
 
     ; Main application executable path
     File /oname=CrossDesk.exe "..\..\build\windows\x64\release\crossdesk.exe"
+    ; Bundle service-side binaries required by the Windows service flow
+    File "..\..\build\windows\x64\release\crossdesk_service.exe"
+    File "..\..\build\windows\x64\release\crossdesk_session_helper.exe"
     ; Bundle runtime DLLs from the release output directory
     File "..\..\build\windows\x64\release\*.dll"
+
+    Call RegisterInstalledService
 
     ; Write uninstall information
     WriteUninstaller "$INSTDIR\uninstall.exe"
@@ -122,8 +130,12 @@ cancelUninstall:
     Abort
 
 uninstallApp:
+    Call un.UnregisterInstalledService
+
     ; Delete main executable and uninstaller
     Delete "$INSTDIR\CrossDesk.exe"
+    Delete "$INSTDIR\crossdesk_service.exe"
+    Delete "$INSTDIR\crossdesk_session_helper.exe"
     Delete "$INSTDIR\uninstall.exe"
 
     ; Recursively delete installation directory
@@ -147,4 +159,79 @@ SectionEnd
 ; ------ Functions ------
 Function LaunchApp
     Exec "$INSTDIR\CrossDesk.exe"
+FunctionEnd
+
+Function StopInstalledService
+    IfFileExists "$INSTDIR\CrossDesk.exe" 0 stop_with_sc
+    IfFileExists "$INSTDIR\crossdesk_service.exe" 0 stop_with_sc
+
+    DetailPrint "Stopping existing CrossDesk service"
+    ExecWait '"$INSTDIR\CrossDesk.exe" --service-stop' $0
+    ${If} $0 = 0
+        Return
+    ${EndIf}
+
+stop_with_sc:
+    DetailPrint "Stopping existing CrossDesk service via Service Control Manager"
+    ExecWait '"$SYSDIR\sc.exe" stop ${PRODUCT_SERVICE_NAME}' $0
+    ${If} $0 != 0
+    ${AndIf} $0 != 1060
+    ${AndIf} $0 != 1062
+        MessageBox MB_ICONSTOP|MB_OK "Failed to stop the existing CrossDesk service. The installation will be aborted."
+        Abort
+    ${EndIf}
+    Sleep 1500
+FunctionEnd
+
+Function RegisterInstalledService
+    IfFileExists "$INSTDIR\CrossDesk.exe" 0 missing_service_binary
+    IfFileExists "$INSTDIR\crossdesk_service.exe" 0 missing_service_binary
+    IfFileExists "$INSTDIR\crossdesk_session_helper.exe" 0 missing_service_binary
+
+    DetailPrint "Registering CrossDesk service"
+    ExecWait '"$INSTDIR\CrossDesk.exe" --service-install' $0
+    ${If} $0 != 0
+        MessageBox MB_ICONSTOP|MB_OK "Failed to register the CrossDesk service. The installation will be aborted."
+        Abort
+    ${EndIf}
+
+    DetailPrint "CrossDesk service registered for on-demand start"
+
+    Return
+
+missing_service_binary:
+    MessageBox MB_ICONSTOP|MB_OK "CrossDesk service files are missing from the installer package. The installation will be aborted."
+    Abort
+FunctionEnd
+
+Function un.UnregisterInstalledService
+    IfFileExists "$INSTDIR\CrossDesk.exe" 0 unregister_with_sc
+
+    DetailPrint "Stopping CrossDesk service"
+    ExecWait '"$INSTDIR\CrossDesk.exe" --service-stop' $0
+    ${If} $0 = 0
+        DetailPrint "Removing CrossDesk service"
+        ExecWait '"$INSTDIR\CrossDesk.exe" --service-uninstall' $0
+        ${If} $0 = 0
+            Return
+        ${EndIf}
+    ${EndIf}
+
+unregister_with_sc:
+    DetailPrint "Removing CrossDesk service via Service Control Manager"
+    ExecWait '"$SYSDIR\sc.exe" stop ${PRODUCT_SERVICE_NAME}' $0
+    ${If} $0 != 0
+    ${AndIf} $0 != 1060
+    ${AndIf} $0 != 1062
+        MessageBox MB_ICONSTOP|MB_OK "Failed to stop the CrossDesk service. Uninstall will be aborted."
+        Abort
+    ${EndIf}
+    Sleep 1500
+
+    ExecWait '"$SYSDIR\sc.exe" delete ${PRODUCT_SERVICE_NAME}' $0
+    ${If} $0 != 0
+    ${AndIf} $0 != 1060
+        MessageBox MB_ICONSTOP|MB_OK "Failed to remove the CrossDesk service. Uninstall will be aborted."
+        Abort
+    ${EndIf}
 FunctionEnd

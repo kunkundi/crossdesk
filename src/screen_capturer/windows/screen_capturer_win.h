@@ -7,8 +7,12 @@
 #ifndef _SCREEN_CAPTURER_WIN_H_
 #define _SCREEN_CAPTURER_WIN_H_
 
+#include <Windows.h>
+
+#include <atomic>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -48,9 +52,20 @@ class ScreenCapturerWin : public ScreenCapturer {
   std::mutex alias_mutex_;
   std::vector<DisplayInfo> canonical_displays_;
   std::unordered_set<std::string> canonical_labels_;
+  std::atomic<bool> running_{false};
+  std::atomic<bool> paused_{false};
+  std::atomic<bool> show_cursor_{true};
+  std::atomic<int> monitor_index_{0};
+  int initial_monitor_index_ = 0;
+  std::atomic<bool> secure_desktop_capture_active_{false};
+  std::thread secure_capture_thread_;
 
   void BuildCanonicalFromImpl();
   void RebuildAliasesFromImpl();
+  void StopSecureCaptureThread();
+  void SecureDesktopCaptureLoop();
+  bool GetCurrentCaptureRegion(int* left, int* top, int* width, int* height,
+                               std::string* display_name);
 };
 }  // namespace crossdesk
 #endif

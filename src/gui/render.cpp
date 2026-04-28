@@ -28,6 +28,10 @@
 #include "screen_capturer_factory.h"
 #include "version_checker.h"
 
+#if _WIN32
+#include "interactive_state.h"
+#include "service_host.h"
+#endif
 
 #if defined(__APPLE__)
 #include "window_util_mac.h"
@@ -74,6 +78,67 @@ HICON LoadTrayIcon() {
   }
 
   return LoadIconW(nullptr, IDI_APPLICATION);
+}
+
+struct WindowsServiceInteractiveStatus {
+  bool available = false;
+  unsigned int error_code = 0;
+  std::string interactive_stage;
+  std::string error;
+};
+
+constexpr uint32_t kWindowsServiceStatusIntervalMs = 1000;
+constexpr DWORD kWindowsServiceQueryTimeoutMs = 100;
+constexpr DWORD kWindowsServiceSasTimeoutMs = 500;
+
+RemoteAction BuildWindowsServiceStatusAction(
+    const WindowsServiceInteractiveStatus& status) {
+  RemoteAction action{};
+  action.type = ControlType::service_status;
+  action.ss.available = status.available;
+  std::strncpy(action.ss.interactive_stage, status.interactive_stage.c_str(),
+               sizeof(action.ss.interactive_stage) - 1);
+  action.ss.interactive_stage[sizeof(action.ss.interactive_stage) - 1] = '\0';
+  return action;
+}
+
+bool QueryWindowsServiceInteractiveStatus(
+    WindowsServiceInteractiveStatus* status) {
+  if (status == nullptr) {
+    return false;
+  }
+
+  *status = WindowsServiceInteractiveStatus{};
+  const std::string response =
+      QueryCrossDeskService("status", kWindowsServiceQueryTimeoutMs);
+  auto json = nlohmann::json::parse(response, nullptr, false);
+  if (json.is_discarded() || !json.is_object()) {
+    status->error = "invalid_service_status_json";
+    return false;
+  }
+
+  status->available = json.value("ok", false);
+  if (!status->available) {
+    status->error = json.value("error", std::string("service_unavailable"));
+    status->error_code = json.value("code", 0u);
+    return true;
+  }
+
+  status->interactive_stage = json.value("interactive_stage", std::string());
+
+  if (ShouldNormalizeUnlockToUserDesktop(
+          json.value("interactive_lock_screen_visible", false),
+          status->interactive_stage, json.value("session_locked", false),
+          json.value("interactive_logon_ui_visible", false),
+          json.value("interactive_secure_desktop_active",
+                     json.value("secure_desktop_active", false)),
+          json.value("credential_ui_visible", false),
+          json.value("password_box_visible", false),
+          json.value("unlock_ui_visible", false),
+          json.value("last_session_event", std::string()))) {
+    status->interactive_stage = "user-desktop";
+  }
+  return true;
 }
 #endif
 
@@ -729,9 +794,21 @@ int Render::StopMouseController() {
 }
 
 int Render::StartKeyboardCapturer() {
+  keyboard_capturer_uses_sdl_events_ = false;
+
+#if defined(__linux__) && !defined(__APPLE__)
+  if (IsWaylandSession()) {
+    keyboard_capturer_uses_sdl_events_ = true;
+    LOG_INFO("Start keyboard capturer with SDL Wayland backend");
+    return 0;
+  }
+#endif
+
   if (!keyboard_capturer_) {
-    LOG_INFO("keyboard capturer is nullptr");
-    return -1;
+    keyboard_capturer_uses_sdl_events_ = true;
+    LOG_WARN(
+        "keyboard capturer is nullptr, falling back to SDL keyboard events");
+    return 0;
   }
 
   int keyboard_capturer_init_ret = keyboard_capturer_->Hook(
@@ -743,15 +820,24 @@ int Render::StartKeyboardCapturer() {
       },
       this);
   if (0 != keyboard_capturer_init_ret) {
-    LOG_ERROR("Start keyboard capturer failed");
+    keyboard_capturer_uses_sdl_events_ = true;
+    LOG_WARN(
+        "Start keyboard capturer failed, falling back to SDL keyboard "
+        "events");
   } else {
-    LOG_INFO("Start keyboard capturer");
+    LOG_INFO("Start keyboard capturer with native hook");
   }
 
-  return keyboard_capturer_init_ret;
+  return 0;
 }
 
 int Render::StopKeyboardCapturer() {
+  if (keyboard_capturer_uses_sdl_events_) {
+    keyboard_capturer_uses_sdl_events_ = false;
+    LOG_INFO("Stop keyboard capturer with SDL keyboard backend");
+    return 0;
+  }
+
   if (keyboard_capturer_) {
     keyboard_capturer_->Unhook();
     LOG_INFO("Stop keyboard capturer");
@@ -1746,6 +1832,7 @@ void Render::MainLoop() {
     HandlePendingPresenceProbe();
     HandleStreamWindow();
     HandleServerWindow();
+    HandleWindowsServiceIntegration();
 
     DrawMainWindow();
     if (stream_window_inited_) {
@@ -1771,6 +1858,141 @@ void Render::UpdateLabels() {
     localization_language_index_last_ = localization_language_index_;
   }
 }
+
+void Render::ResetRemoteServiceStatus(SubStreamWindowProperties& props) {
+  props.remote_service_status_received_ = false;
+  props.remote_service_available_ = false;
+  props.remote_interactive_stage_.clear();
+}
+
+void Render::ApplyRemoteServiceStatus(SubStreamWindowProperties& props,
+                                      const ServiceStatus& status) {
+  props.remote_service_status_received_ = true;
+  props.remote_service_available_ = status.available;
+  props.remote_interactive_stage_ = status.interactive_stage;
+}
+
+Render::RemoteUnlockState Render::GetRemoteUnlockState(
+    const SubStreamWindowProperties& props) const {
+  if (!props.remote_service_status_received_) {
+    return RemoteUnlockState::none;
+  }
+  if (!props.remote_service_available_) {
+    return RemoteUnlockState::service_unavailable;
+  }
+  if (props.remote_interactive_stage_ == "credential-ui") {
+    return RemoteUnlockState::credential_ui;
+  }
+  if (props.remote_interactive_stage_ == "lock-screen") {
+    return RemoteUnlockState::lock_screen;
+  }
+  if (props.remote_interactive_stage_ == "secure-desktop") {
+    return RemoteUnlockState::secure_desktop;
+  }
+  return RemoteUnlockState::none;
+}
+
+void Render::HandleWindowsServiceIntegration() {
+#if _WIN32
+  static bool last_logged_service_available = true;
+  static unsigned int last_logged_service_error_code = 0;
+  static std::string last_logged_service_error;
+
+  if (!is_server_mode_ || peer_ == nullptr) {
+    ResetLocalWindowsServiceState(true);
+    return;
+  }
+
+  const bool has_connected_remote =
+      std::any_of(connection_status_.begin(), connection_status_.end(),
+                  [](const auto& entry) {
+                    return entry.second == ConnectionStatus::Connected;
+                  });
+  if (!has_connected_remote) {
+    ResetLocalWindowsServiceState(false);
+    return;
+  }
+
+  bool force_broadcast = false;
+  if (pending_windows_service_sas_.exchange(false, std::memory_order_relaxed)) {
+    const std::string response =
+        QueryCrossDeskService("sas", kWindowsServiceSasTimeoutMs);
+    auto json = nlohmann::json::parse(response, nullptr, false);
+    if (json.is_discarded() || !json.value("ok", false)) {
+      LOG_WARN("Remote SAS request failed: {}", response);
+    } else {
+      LOG_INFO("Remote SAS request forwarded to local Windows service");
+    }
+    last_windows_service_status_tick_ = 0;
+    force_broadcast = true;
+  }
+
+  const uint32_t now = static_cast<uint32_t>(SDL_GetTicks());
+  if (!force_broadcast && last_windows_service_status_tick_ != 0 &&
+      now - last_windows_service_status_tick_ <
+          kWindowsServiceStatusIntervalMs) {
+    return;
+  }
+  last_windows_service_status_tick_ = now;
+
+  WindowsServiceInteractiveStatus status;
+  const bool status_ok = QueryWindowsServiceInteractiveStatus(&status);
+  local_service_status_received_ = status_ok;
+  local_service_available_ = status.available;
+  local_interactive_stage_ = status.available ? status.interactive_stage : "";
+
+  if (status_ok) {
+    const bool availability_changed =
+        status.available != last_logged_service_available;
+    const bool error_changed =
+        !status.available &&
+        (status.error != last_logged_service_error ||
+         status.error_code != last_logged_service_error_code);
+    if (availability_changed || error_changed) {
+      if (status.available) {
+        LOG_INFO(
+            "Local Windows service available for secure desktop integration");
+      } else {
+        LOG_WARN(
+            "Local Windows service unavailable, secure desktop integration "
+            "disabled: error={}, code={}",
+            status.error, status.error_code);
+      }
+      last_logged_service_available = status.available;
+      last_logged_service_error = status.error;
+      last_logged_service_error_code = status.error_code;
+    }
+  } else if (last_logged_service_available ||
+             last_logged_service_error != "invalid_service_status_json") {
+    LOG_WARN(
+        "Local Windows service status query failed, secure desktop integration "
+        "disabled");
+    last_logged_service_available = false;
+    last_logged_service_error = "invalid_service_status_json";
+    last_logged_service_error_code = 0;
+  }
+
+  RemoteAction remote_action = BuildWindowsServiceStatusAction(status);
+  std::string msg = remote_action.to_json();
+  int ret = SendReliableDataFrame(peer_, msg.data(), msg.size(),
+                                  control_data_label_.c_str());
+  if (ret != 0) {
+    LOG_WARN("Broadcast Windows service status failed, ret={}", ret);
+  }
+#endif
+}
+
+#if _WIN32
+void Render::ResetLocalWindowsServiceState(bool clear_pending_sas) {
+  last_windows_service_status_tick_ = 0;
+  if (clear_pending_sas) {
+    pending_windows_service_sas_.store(false, std::memory_order_relaxed);
+  }
+  local_service_status_received_ = false;
+  local_service_available_ = false;
+  local_interactive_stage_.clear();
+}
+#endif
 
 void Render::HandleRecentConnections() {
   if (reload_recent_connections_ && main_renderer_) {
@@ -2470,7 +2692,7 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
     case SDL_EVENT_WINDOW_FOCUS_LOST:
       if (stream_window_ &&
           SDL_GetWindowID(stream_window_) == event.window.windowID) {
-        ForceReleasePressedModifiers();
+        ForceReleasePressedKeys();
         focus_on_stream_window_ = false;
       } else if (main_window_ &&
                  SDL_GetWindowID(main_window_) == event.window.windowID) {
@@ -2501,6 +2723,15 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
       }
       break;
     }
+
+    case SDL_EVENT_KEY_DOWN:
+    case SDL_EVENT_KEY_UP:
+      if (keyboard_capturer_is_started_ && keyboard_capturer_uses_sdl_events_ &&
+          focus_on_stream_window_ && stream_window_ &&
+          SDL_GetWindowID(stream_window_) == event.key.windowID) {
+        ProcessKeyboardEvent(event);
+      }
+      break;
 
     default:
       if (event.type == STREAM_REFRESH_EVENT) {

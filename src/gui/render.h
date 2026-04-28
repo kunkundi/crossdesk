@@ -44,6 +44,14 @@
 namespace crossdesk {
 class Render {
  public:
+  enum class RemoteUnlockState {
+    none,
+    service_unavailable,
+    lock_screen,
+    credential_ui,
+    secure_desktop,
+  };
+
   struct FileTransferState {
     std::atomic<bool> file_sending_ = false;
     std::atomic<uint64_t> file_sent_bytes_ = 0;
@@ -160,6 +168,9 @@ class Render {
     std::string mouse_control_button_label_ = "Mouse Control";
     std::string audio_capture_button_label_ = "Audio Capture";
     std::string remote_host_name_ = "";
+    bool remote_service_status_received_ = false;
+    bool remote_service_available_ = false;
+    std::string remote_interactive_stage_ = "";
     std::vector<DisplayInfo> display_info_list_;
     SDL_Texture* stream_texture_ = nullptr;
     uint8_t* argb_buffer_ = nullptr;
@@ -272,6 +283,11 @@ class Render {
       std::shared_ptr<SubStreamWindowProperties>& props);
   void DrawReceivingScreenText(
       std::shared_ptr<SubStreamWindowProperties>& props);
+  void ResetRemoteServiceStatus(SubStreamWindowProperties& props);
+  void ApplyRemoteServiceStatus(SubStreamWindowProperties& props,
+                                const ServiceStatus& status);
+  RemoteUnlockState GetRemoteUnlockState(
+      const SubStreamWindowProperties& props) const;
 #ifdef __APPLE__
   int RequestPermissionWindow();
   bool CheckScreenRecordingPermission();
@@ -325,8 +341,9 @@ class Render {
  private:
   int SendKeyCommand(int key_code, bool is_down);
   static bool IsModifierVkKey(int key_code);
-  void UpdatePressedModifierState(int key_code, bool is_down);
-  void ForceReleasePressedModifiers();
+  void TrackPressedKeyState(int key_code, bool is_down);
+  void ForceReleasePressedKeys();
+  int ProcessKeyboardEvent(const SDL_Event& event);
   int ProcessMouseEvent(const SDL_Event& event);
 
   static void SdlCaptureAudioIn(void* userdata, Uint8* stream, int len);
@@ -360,6 +377,10 @@ class Render {
 
   int AudioDeviceInit();
   int AudioDeviceDestroy();
+  void HandleWindowsServiceIntegration();
+#if _WIN32
+  void ResetLocalWindowsServiceState(bool clear_pending_sas);
+#endif
 
  private:
   struct CDCache {
@@ -456,6 +477,7 @@ class Render {
   bool start_keyboard_capturer_ = false;
   bool show_cursor_ = false;
   bool keyboard_capturer_is_started_ = false;
+  bool keyboard_capturer_uses_sdl_events_ = false;
   bool foucs_on_main_window_ = false;
   bool focus_on_stream_window_ = false;
   bool main_window_minimized_ = false;
@@ -511,11 +533,19 @@ class Render {
   std::string controlled_remote_id_ = "";
   std::string focused_remote_id_ = "";
   std::string remote_client_id_ = "";
-  std::unordered_set<int> pressed_modifier_keys_;
-  std::mutex pressed_modifier_keys_mutex_;
+  std::unordered_set<int> pressed_keyboard_keys_;
+  std::mutex pressed_keyboard_keys_mutex_;
   SDL_Event last_mouse_event;
   SDL_AudioStream* output_stream_;
   uint32_t STREAM_REFRESH_EVENT = 0;
+#if _WIN32
+  std::atomic<bool> pending_windows_service_sas_{false};
+  bool local_service_status_received_ = false;
+  bool local_service_available_ = false;
+  std::string local_interactive_stage_;
+  uint32_t last_local_secure_input_block_log_tick_ = 0;
+  uint32_t last_windows_service_status_tick_ = 0;
+#endif
 
   // stream window render
   SDL_Window* stream_window_ = nullptr;
