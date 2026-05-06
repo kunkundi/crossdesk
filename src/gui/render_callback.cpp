@@ -201,6 +201,40 @@ int TranslateSdlKeyboardEventToVk(const SDL_KeyboardEvent& event) {
 }
 
 #if _WIN32
+int NormalizeWindowsModifierVk(int key_code, uint32_t scan_code,
+                               bool extended) {
+  if (key_code != 0x10 && key_code != 0x11 && key_code != 0x12) {
+    return key_code;
+  }
+
+  UINT scan_code_with_prefix = static_cast<UINT>(scan_code & 0xFF);
+  if (extended) {
+    scan_code_with_prefix |= 0xE000;
+  }
+
+  const UINT normalized_vk =
+      MapVirtualKeyW(scan_code_with_prefix, MAPVK_VSC_TO_VK_EX);
+  return normalized_vk != 0 ? static_cast<int>(normalized_vk) : key_code;
+}
+
+void PopulateWindowsKeyMetadataFromVk(int key_code, uint32_t* scan_code_out,
+                                      bool* extended_out) {
+  if (scan_code_out == nullptr || extended_out == nullptr) {
+    return;
+  }
+
+  const UINT scan_code =
+      MapVirtualKeyW(static_cast<UINT>(key_code), MAPVK_VK_TO_VSC_EX);
+  if (scan_code == 0) {
+    return;
+  }
+
+  *scan_code_out = static_cast<uint32_t>(scan_code & 0xFF);
+  *extended_out = (scan_code & 0xFF00) != 0;
+}
+#endif
+
+#if _WIN32
 constexpr uint32_t kSecureDesktopInputLogIntervalMs = 2000;
 
 bool BuildAbsoluteMousePosition(const std::vector<DisplayInfo>& displays,
@@ -353,15 +387,26 @@ void Render::ForceReleasePressedKeys() {
   }
 }
 
-int Render::SendKeyCommand(int key_code, bool is_down) {
-  RemoteAction remote_action;
+int Render::SendKeyCommand(int key_code, bool is_down, uint32_t scan_code,
+                           bool extended) {
+  RemoteAction remote_action{};
   remote_action.type = ControlType::keyboard;
   if (is_down) {
     remote_action.k.flag = KeyFlag::key_down;
   } else {
     remote_action.k.flag = KeyFlag::key_up;
   }
+
+#if _WIN32
+  if (scan_code == 0) {
+    PopulateWindowsKeyMetadataFromVk(key_code, &scan_code, &extended);
+  }
+  key_code = NormalizeWindowsModifierVk(key_code, scan_code, extended);
+#endif
+
   remote_action.k.key_value = key_code;
+  remote_action.k.scan_code = scan_code;
+  remote_action.k.extended = extended;
 
   std::string target_id = controlled_remote_id_.empty() ? focused_remote_id_
                                                         : controlled_remote_id_;
@@ -1048,8 +1093,9 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
       if (remote_action.type == ControlType::keyboard) {
         const int key_code = static_cast<int>(remote_action.k.key_value);
         const bool is_down = remote_action.k.flag == KeyFlag::key_down;
-        const std::string response =
-            SendCrossDeskSecureDesktopKeyInput(key_code, is_down, 1000);
+        const std::string response = SendCrossDeskSecureDesktopKeyInput(
+            key_code, is_down, remote_action.k.scan_code,
+            remote_action.k.extended, 1000);
         auto json = nlohmann::json::parse(response, nullptr, false);
         if (json.is_discarded() || !json.value("ok", false)) {
           LogSecureDesktopInputBlocked(
@@ -1076,7 +1122,8 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
                render->keyboard_capturer_) {
       render->keyboard_capturer_->SendKeyboardCommand(
           (int)remote_action.k.key_value,
-          remote_action.k.flag == KeyFlag::key_down);
+          remote_action.k.flag == KeyFlag::key_down, remote_action.k.scan_code,
+          remote_action.k.extended);
     } else if (remote_action.type == ControlType::display_id &&
                render->screen_capturer_) {
       render->selected_display_ = remote_action.d;

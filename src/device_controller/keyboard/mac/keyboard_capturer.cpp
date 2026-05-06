@@ -119,7 +119,7 @@ CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type,
         CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode));
     int vk_code = ResolveVkCodeFromMacEvent(event, key_code, is_key_down);
     if (vk_code >= 0) {
-      g_on_key_action(vk_code, is_key_down, g_user_ptr);
+      g_on_key_action(vk_code, is_key_down, 0, false, g_user_ptr);
     }
   } else if (type == kCGEventFlagsChanged) {
     CGEventFlags current_flags = CGEventGetFlags(event);
@@ -135,35 +135,40 @@ CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type,
     bool caps_lock_state = (current_flags & kCGEventFlagMaskAlphaShift) != 0;
     if (caps_lock_state != keyboard_capturer->caps_lock_flag_) {
       keyboard_capturer->caps_lock_flag_ = caps_lock_state;
-      g_on_key_action(vk_code, keyboard_capturer->caps_lock_flag_, g_user_ptr);
+      g_on_key_action(vk_code, keyboard_capturer->caps_lock_flag_, 0, false,
+                      g_user_ptr);
     }
 
     // shift
     bool shift_state = (current_flags & kCGEventFlagMaskShift) != 0;
     if (shift_state != keyboard_capturer->shift_flag_) {
       keyboard_capturer->shift_flag_ = shift_state;
-      g_on_key_action(vk_code, keyboard_capturer->shift_flag_, g_user_ptr);
+      g_on_key_action(vk_code, keyboard_capturer->shift_flag_, 0, false,
+                      g_user_ptr);
     }
 
     // control
     bool control_state = (current_flags & kCGEventFlagMaskControl) != 0;
     if (control_state != keyboard_capturer->control_flag_) {
       keyboard_capturer->control_flag_ = control_state;
-      g_on_key_action(vk_code, keyboard_capturer->control_flag_, g_user_ptr);
+      g_on_key_action(vk_code, keyboard_capturer->control_flag_, 0, false,
+                      g_user_ptr);
     }
 
     // option
     bool option_state = (current_flags & kCGEventFlagMaskAlternate) != 0;
     if (option_state != keyboard_capturer->option_flag_) {
       keyboard_capturer->option_flag_ = option_state;
-      g_on_key_action(vk_code, keyboard_capturer->option_flag_, g_user_ptr);
+      g_on_key_action(vk_code, keyboard_capturer->option_flag_, 0, false,
+                      g_user_ptr);
     }
 
     // command
     bool command_state = (current_flags & kCGEventFlagMaskCommand) != 0;
     if (command_state != keyboard_capturer->command_flag_) {
       keyboard_capturer->command_flag_ = command_state;
-      g_on_key_action(vk_code, keyboard_capturer->command_flag_, g_user_ptr);
+      g_on_key_action(vk_code, keyboard_capturer->command_flag_, 0, false,
+                      g_user_ptr);
     }
   }
 
@@ -264,7 +269,10 @@ inline bool IsFunctionKey(int key_code) {
   }
 }
 
-int KeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down) {
+int KeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down,
+                                          uint32_t scan_code, bool extended) {
+  (void)scan_code;
+  (void)extended;
   if (vkCodeToCGKeyCode.find(key_code) != vkCodeToCGKeyCode.end()) {
     CGKeyCode cg_key_code = vkCodeToCGKeyCode[key_code];
     CGEventRef event = CGEventCreateKeyboardEvent(NULL, cg_key_code, is_down);

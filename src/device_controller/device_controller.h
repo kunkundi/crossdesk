@@ -7,9 +7,10 @@
 #ifndef _DEVICE_CONTROLLER_H_
 #define _DEVICE_CONTROLLER_H_
 
-#include <cstring>
 #include <stdio.h>
 
+#include <cstdint>
+#include <cstring>
 #include <nlohmann/json.hpp>
 #include <string>
 
@@ -49,6 +50,8 @@ typedef struct {
 
 typedef struct {
   size_t key_value;
+  uint32_t scan_code;
+  bool extended;
   KeyFlag flag;
 } Key;
 
@@ -103,7 +106,10 @@ struct RemoteAction {
             {"x", a.m.x}, {"y", a.m.y}, {"s", a.m.s}, {"flag", a.m.flag}};
         break;
       case ControlType::keyboard:
-        j["keyboard"] = {{"key_value", a.k.key_value}, {"flag", a.k.flag}};
+        j["keyboard"] = {{"key_value", a.k.key_value},
+                         {"scan_code", a.k.scan_code},
+                         {"extended", a.k.extended},
+                         {"flag", a.k.flag}};
         break;
       case ControlType::audio_capture:
         j["audio_capture"] = a.a;
@@ -113,8 +119,7 @@ struct RemoteAction {
         break;
       case ControlType::service_status:
         j["service_status"] = {{"available", a.ss.available},
-                               {"interactive_stage",
-                                a.ss.interactive_stage}};
+                               {"interactive_stage", a.ss.interactive_stage}};
         break;
       case ControlType::service_command:
         j["service_command"] = {{"flag", a.c.flag}};
@@ -152,6 +157,9 @@ struct RemoteAction {
           break;
         case ControlType::keyboard:
           out.k.key_value = j.at("keyboard").at("key_value").get<size_t>();
+          out.k.scan_code =
+              j.at("keyboard").value("scan_code", static_cast<uint32_t>(0));
+          out.k.extended = j.at("keyboard").value("extended", false);
           out.k.flag = (KeyFlag)j.at("keyboard").at("flag").get<int>();
           break;
         case ControlType::audio_capture:
@@ -164,16 +172,15 @@ struct RemoteAction {
           const auto& service_status_json = j.at("service_status");
           out.ss.available = service_status_json.value("available", false);
           std::string interactive_stage =
-            service_status_json.value("interactive_stage", std::string());
+              service_status_json.value("interactive_stage", std::string());
           std::strncpy(out.ss.interactive_stage, interactive_stage.c_str(),
-                 sizeof(out.ss.interactive_stage) - 1);
-          out.ss.interactive_stage[sizeof(out.ss.interactive_stage) - 1] =
-            '\0';
+                       sizeof(out.ss.interactive_stage) - 1);
+          out.ss.interactive_stage[sizeof(out.ss.interactive_stage) - 1] = '\0';
           break;
         }
         case ControlType::service_command:
           out.c.flag = static_cast<ServiceCommandFlag>(
-            j.at("service_command").at("flag").get<int>());
+              j.at("service_command").at("flag").get<int>());
           break;
         case ControlType::host_infomation: {
           std::string host_name =
@@ -212,8 +219,8 @@ struct RemoteAction {
   }
 };
 
-// int key_code, bool is_down
-typedef void (*OnKeyAction)(int, bool, void*);
+// int key_code, bool is_down, uint32_t scan_code, bool extended
+typedef void (*OnKeyAction)(int, bool, uint32_t, bool, void*);
 
 class DeviceController {
  public:

@@ -37,7 +37,7 @@ static int KeyboardEventHandler(Display* display, XEvent* event) {
     bool is_key_down = (event->xkey.type == KeyPress);
 
     if (g_on_key_action) {
-      g_on_key_action(key_code, is_key_down, g_user_ptr);
+      g_on_key_action(key_code, is_key_down, 0, false, g_user_ptr);
     }
   }
   return 0;
@@ -146,7 +146,10 @@ int KeyboardCapturer::Unhook() {
   return 0;
 }
 
-int KeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down) {
+int KeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down,
+                                          uint32_t scan_code, bool extended) {
+  (void)scan_code;
+  (void)extended;
   if (IsWaylandSession()) {
     if (!use_wayland_portal_ && !wayland_init_attempted_) {
       wayland_init_attempted_ = true;
@@ -159,7 +162,7 @@ int KeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down) {
     }
 
     if (use_wayland_portal_) {
-      return SendWaylandKeyboardCommand(key_code, is_down);
+      return SendWaylandKeyboardCommand(key_code, is_down, scan_code, extended);
     }
   }
 

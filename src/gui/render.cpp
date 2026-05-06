@@ -812,10 +812,11 @@ int Render::StartKeyboardCapturer() {
   }
 
   int keyboard_capturer_init_ret = keyboard_capturer_->Hook(
-      [](int key_code, bool is_down, void* user_ptr) {
+      [](int key_code, bool is_down, uint32_t scan_code, bool extended,
+         void* user_ptr) {
         if (user_ptr) {
           Render* render = (Render*)user_ptr;
-          render->SendKeyCommand(key_code, is_down);
+          render->SendKeyCommand(key_code, is_down, scan_code, extended);
         }
       },
       this);

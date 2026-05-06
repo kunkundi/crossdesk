@@ -485,19 +485,55 @@ bool EnsureThreadDesktop(const wchar_t* desktop_name,
   return true;
 }
 
-int InjectKeyboardInput(int key_code, bool is_down) {
+bool PreferSideSpecificVkInjection(int key_code) {
+  switch (key_code) {
+    case VK_LSHIFT:
+    case VK_RSHIFT:
+    case VK_LCONTROL:
+    case VK_RCONTROL:
+    case VK_LMENU:
+    case VK_RMENU:
+    case VK_LWIN:
+    case VK_RWIN:
+      return true;
+    default:
+      return false;
+  }
+}
+
+int InjectKeyboardInput(int key_code, bool is_down, uint32_t scan_code,
+                        bool extended) {
   INPUT input = {0};
   input.type = INPUT_KEYBOARD;
-  input.ki.wVk = static_cast<WORD>(key_code);
 
-  const UINT scan_code =
-      MapVirtualKeyW(static_cast<UINT>(key_code), MAPVK_VK_TO_VSC_EX);
-  if (scan_code != 0) {
+  const bool prefer_vk = PreferSideSpecificVkInjection(key_code);
+  const UINT resolved_scan_code =
+      scan_code != 0
+          ? static_cast<UINT>(scan_code & 0xFF) | (extended ? 0xE000u : 0u)
+          : MapVirtualKeyW(static_cast<UINT>(key_code), MAPVK_VK_TO_VSC_EX);
+
+  if (scan_code != 0 && !prefer_vk) {
     input.ki.wVk = 0;
     input.ki.wScan = static_cast<WORD>(scan_code & 0xFF);
     input.ki.dwFlags |= KEYEVENTF_SCANCODE;
-    if ((scan_code & 0xFF00) != 0) {
+    if (extended) {
       input.ki.dwFlags |= KEYEVENTF_EXTENDEDKEY;
+    }
+  } else {
+    input.ki.wVk = static_cast<WORD>(key_code);
+
+    if (prefer_vk && resolved_scan_code != 0) {
+      input.ki.wScan = static_cast<WORD>(resolved_scan_code & 0xFF);
+      if ((resolved_scan_code & 0xFF00) != 0) {
+        input.ki.dwFlags |= KEYEVENTF_EXTENDEDKEY;
+      }
+    } else if (resolved_scan_code != 0) {
+      input.ki.wVk = 0;
+      input.ki.wScan = static_cast<WORD>(resolved_scan_code & 0xFF);
+      input.ki.dwFlags |= KEYEVENTF_SCANCODE;
+      if ((resolved_scan_code & 0xFF00) != 0) {
+        input.ki.dwFlags |= KEYEVENTF_EXTENDEDKEY;
+      }
     }
   }
 
@@ -514,10 +550,16 @@ int InjectKeyboardInput(int key_code, bool is_down) {
 }
 
 bool ParseSecureInputKeyboardCommand(const std::string& command,
-                                     int* key_code_out, bool* is_down_out) {
-  if (key_code_out == nullptr || is_down_out == nullptr) {
+                                     int* key_code_out, bool* is_down_out,
+                                     uint32_t* scan_code_out,
+                                     bool* extended_out) {
+  if (key_code_out == nullptr || is_down_out == nullptr ||
+      scan_code_out == nullptr || extended_out == nullptr) {
     return false;
   }
+
+  *scan_code_out = 0;
+  *extended_out = false;
 
   if (command.rfind(crossdesk::kCrossDeskSecureInputKeyboardCommandPrefix, 0) !=
       0) {
@@ -537,13 +579,46 @@ bool ParseSecureInputKeyboardCommand(const std::string& command,
     return false;
   }
 
-  const std::string state = command.substr(separator + 1);
+  const size_t scan_separator = command.find(':', separator + 1);
+  const std::string state =
+      scan_separator == std::string::npos
+          ? command.substr(separator + 1)
+          : command.substr(separator + 1, scan_separator - separator - 1);
   if (state == "1" || state == "down") {
     *is_down_out = true;
+  } else if (state == "0" || state == "up") {
+    *is_down_out = false;
+  } else {
+    return false;
+  }
+
+  if (scan_separator == std::string::npos) {
     return true;
   }
-  if (state == "0" || state == "up") {
-    *is_down_out = false;
+
+  const size_t extended_separator = command.find(':', scan_separator + 1);
+  const std::string scan_code_str =
+      extended_separator == std::string::npos
+          ? command.substr(scan_separator + 1)
+          : command.substr(scan_separator + 1,
+                           extended_separator - scan_separator - 1);
+  try {
+    *scan_code_out = static_cast<uint32_t>(std::stoul(scan_code_str));
+  } catch (...) {
+    return false;
+  }
+
+  if (extended_separator == std::string::npos) {
+    return true;
+  }
+
+  const std::string extended_str = command.substr(extended_separator + 1);
+  if (extended_str == "1" || extended_str == "true") {
+    *extended_out = true;
+    return true;
+  }
+  if (extended_str == "0" || extended_str == "false") {
+    *extended_out = false;
     return true;
   }
   return false;
@@ -807,13 +882,17 @@ std::vector<uint8_t> HandleSecureInputHelperCommand(
 
   int key_code = 0;
   bool is_down = false;
-  if (ParseSecureInputKeyboardCommand(command, &key_code, &is_down)) {
-    const int inject_result = InjectKeyboardInput(key_code, is_down);
+  uint32_t scan_code = 0;
+  bool extended = false;
+  if (ParseSecureInputKeyboardCommand(command, &key_code, &is_down, &scan_code,
+                                      &extended)) {
+    const int inject_result =
+        InjectKeyboardInput(key_code, is_down, scan_code, extended);
     if (inject_result != 0) {
       LOG_WARN(
           "Secure input helper SendInput failed for key_code={}, is_down={}, "
-          "err={}",
-          key_code, is_down, inject_result);
+          "scan_code={}, extended={}, err={}",
+          key_code, is_down, scan_code, extended, inject_result);
       return BuildTextResponseBytes(BuildErrorJson(
           "send_input_failed", static_cast<DWORD>(inject_result)));
     }
@@ -823,6 +902,8 @@ std::vector<uint8_t> HandleSecureInputHelperCommand(
     json["injected"] = "keyboard";
     json["key_code"] = key_code;
     json["is_down"] = is_down;
+    json["scan_code"] = scan_code;
+    json["extended"] = extended;
     json["desktop"] = WideToUtf8(GetCurrentThreadDesktopNameW());
     return BuildTextResponseBytes(json.dump());
   }

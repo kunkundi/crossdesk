@@ -339,7 +339,8 @@ class Render {
   static void FreeRemoteAction(RemoteAction& action);
 
  private:
-  int SendKeyCommand(int key_code, bool is_down);
+  int SendKeyCommand(int key_code, bool is_down, uint32_t scan_code = 0,
+                     bool extended = false);
   static bool IsModifierVkKey(int key_code);
   void TrackPressedKeyState(int key_code, bool is_down);
   void ForceReleasePressedKeys();

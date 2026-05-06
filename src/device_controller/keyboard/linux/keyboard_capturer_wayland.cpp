@@ -575,8 +575,12 @@ void KeyboardCapturer::CleanupWaylandPortal() {
   wayland_session_handle_.clear();
 }
 
-int KeyboardCapturer::SendWaylandKeyboardCommand(int key_code, bool is_down) {
+int KeyboardCapturer::SendWaylandKeyboardCommand(int key_code, bool is_down,
+                                                 uint32_t scan_code,
+                                                 bool extended) {
 #if defined(CROSSDESK_HAS_WAYLAND_CAPTURER) && CROSSDESK_HAS_WAYLAND_CAPTURER
+  (void)scan_code;
+  (void)extended;
   if (!dbus_connection_ || wayland_session_handle_.empty()) {
     return -1;
   }
@@ -613,6 +617,8 @@ int KeyboardCapturer::SendWaylandKeyboardCommand(int key_code, bool is_down) {
 #else
   (void)key_code;
   (void)is_down;
+  (void)scan_code;
+  (void)extended;
   return -1;
 #endif
 }

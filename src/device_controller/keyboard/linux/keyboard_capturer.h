@@ -32,12 +32,15 @@ class KeyboardCapturer : public DeviceController {
  public:
   virtual int Hook(OnKeyAction on_key_action, void* user_ptr);
   virtual int Unhook();
-  virtual int SendKeyboardCommand(int key_code, bool is_down);
+  virtual int SendKeyboardCommand(int key_code, bool is_down,
+                                  uint32_t scan_code = 0,
+                                  bool extended = false);
 
  private:
   bool InitWaylandPortal();
   void CleanupWaylandPortal();
-  int SendWaylandKeyboardCommand(int key_code, bool is_down);
+  int SendWaylandKeyboardCommand(int key_code, bool is_down, uint32_t scan_code,
+                                 bool extended);
   bool NotifyWaylandKeyboardKeysym(int keysym, uint32_t state);
   bool NotifyWaylandKeyboardKeycode(int keycode, uint32_t state);
   bool SendWaylandPortalVoidCall(const char* method_name,

@@ -9,6 +9,7 @@
 
 #include <Windows.h>
 
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -60,7 +61,9 @@ class CrossDeskServiceHost {
   std::string HandleIpcCommand(const std::string& command);
   std::string BuildStatusResponse();
   std::string SendSecureAttentionSequence();
-  std::string SendSecureDesktopKeyboardInput(int key_code, bool is_down);
+  std::string SendSecureDesktopKeyboardInput(int key_code, bool is_down,
+                                             uint32_t scan_code = 0,
+                                             bool extended = false);
 
   static void WINAPI ServiceMain(DWORD argc, LPWSTR* argv);
   static BOOL WINAPI ConsoleControlHandler(DWORD control_type);
@@ -138,6 +141,8 @@ bool StopCrossDeskService(DWORD timeout_ms = 5000);
 std::string QueryCrossDeskService(const std::string& command,
                                   DWORD timeout_ms = 1000);
 std::string SendCrossDeskSecureDesktopKeyInput(int key_code, bool is_down,
+                                               uint32_t scan_code = 0,
+                                               bool extended = false,
                                                DWORD timeout_ms = 1000);
 std::string SendCrossDeskSecureDesktopMouseInput(int x, int y, int wheel,
                                                  int flag,

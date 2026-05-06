@@ -313,10 +313,12 @@ std::string QueryNamedPipeMessage(const std::wstring& pipe_name,
   return std::string(buffer, buffer + bytes_read);
 }
 
-std::string BuildSecureDesktopKeyboardIpcCommand(int key_code, bool is_down) {
+std::string BuildSecureDesktopKeyboardIpcCommand(int key_code, bool is_down,
+                                                 uint32_t scan_code,
+                                                 bool extended) {
   std::ostringstream stream;
   stream << kSecureDesktopKeyboardIpcCommandPrefix << key_code << ":"
-         << (is_down ? 1 : 0);
+         << (is_down ? 1 : 0) << ":" << scan_code << ":" << (extended ? 1 : 0);
   return stream.str();
 }
 
@@ -328,19 +330,26 @@ std::string BuildSecureDesktopMouseIpcCommand(int x, int y, int wheel,
   return stream.str();
 }
 
-std::string BuildSecureInputHelperKeyboardCommand(int key_code, bool is_down) {
+std::string BuildSecureInputHelperKeyboardCommand(int key_code, bool is_down,
+                                                  uint32_t scan_code,
+                                                  bool extended) {
   std::ostringstream stream;
   stream << kCrossDeskSecureInputKeyboardCommandPrefix << key_code << ":"
-         << (is_down ? 1 : 0);
+         << (is_down ? 1 : 0) << ":" << scan_code << ":" << (extended ? 1 : 0);
   return stream.str();
 }
 
 bool ParseSecureDesktopKeyboardIpcCommand(const std::string& command,
-                                          int* key_code_out,
-                                          bool* is_down_out) {
-  if (key_code_out == nullptr || is_down_out == nullptr) {
+                                          int* key_code_out, bool* is_down_out,
+                                          uint32_t* scan_code_out,
+                                          bool* extended_out) {
+  if (key_code_out == nullptr || is_down_out == nullptr ||
+      scan_code_out == nullptr || extended_out == nullptr) {
     return false;
   }
+
+  *scan_code_out = 0;
+  *extended_out = false;
 
   if (command.rfind(kSecureDesktopKeyboardIpcCommandPrefix, 0) != 0) {
     return false;
@@ -358,13 +367,46 @@ bool ParseSecureDesktopKeyboardIpcCommand(const std::string& command,
     return false;
   }
 
-  const std::string state = command.substr(separator + 1);
+  const size_t scan_separator = command.find(':', separator + 1);
+  const std::string state =
+      scan_separator == std::string::npos
+          ? command.substr(separator + 1)
+          : command.substr(separator + 1, scan_separator - separator - 1);
   if (state == "1" || state == "down") {
     *is_down_out = true;
+  } else if (state == "0" || state == "up") {
+    *is_down_out = false;
+  } else {
+    return false;
+  }
+
+  if (scan_separator == std::string::npos) {
     return true;
   }
-  if (state == "0" || state == "up") {
-    *is_down_out = false;
+
+  const size_t extended_separator = command.find(':', scan_separator + 1);
+  const std::string scan_code_str =
+      extended_separator == std::string::npos
+          ? command.substr(scan_separator + 1)
+          : command.substr(scan_separator + 1,
+                           extended_separator - scan_separator - 1);
+  try {
+    *scan_code_out = static_cast<uint32_t>(std::stoul(scan_code_str));
+  } catch (...) {
+    return false;
+  }
+
+  if (extended_separator == std::string::npos) {
+    return true;
+  }
+
+  const std::string extended_str = command.substr(extended_separator + 1);
+  if (extended_str == "1" || extended_str == "true") {
+    *extended_out = true;
+    return true;
+  }
+  if (extended_str == "0" || extended_str == "false") {
+    *extended_out = false;
     return true;
   }
   return false;
@@ -1712,8 +1754,12 @@ std::string CrossDeskServiceHost::HandleIpcCommand(const std::string& command) {
   }
   int key_code = 0;
   bool is_down = false;
-  if (ParseSecureDesktopKeyboardIpcCommand(normalized, &key_code, &is_down)) {
-    return SendSecureDesktopKeyboardInput(key_code, is_down);
+  uint32_t scan_code = 0;
+  bool extended = false;
+  if (ParseSecureDesktopKeyboardIpcCommand(normalized, &key_code, &is_down,
+                                           &scan_code, &extended)) {
+    return SendSecureDesktopKeyboardInput(key_code, is_down, scan_code,
+                                          extended);
   }
   return BuildErrorJson("unknown_command");
 }
@@ -1928,8 +1974,8 @@ std::string CrossDeskServiceHost::SendSecureAttentionSequence() {
   return "{\"ok\":true,\"sent\":\"sas\"}";
 }
 
-std::string CrossDeskServiceHost::SendSecureDesktopKeyboardInput(int key_code,
-                                                                 bool is_down) {
+std::string CrossDeskServiceHost::SendSecureDesktopKeyboardInput(
+    int key_code, bool is_down, uint32_t scan_code, bool extended) {
   RefreshSessionState();
   ReapSecureInputHelper();
   EnsureSessionHelper();
@@ -1963,7 +2009,9 @@ std::string CrossDeskServiceHost::SendSecureDesktopKeyboardInput(int key_code,
 
   return QueryNamedPipeMessage(
       GetCrossDeskSecureInputHelperPipeName(target_session_id),
-      BuildSecureInputHelperKeyboardCommand(key_code, is_down), 1000);
+      BuildSecureInputHelperKeyboardCommand(key_code, is_down, scan_code,
+                                            extended),
+      1000);
 }
 
 bool InstallCrossDeskService(const std::wstring& binary_path) {
@@ -2176,9 +2224,12 @@ std::string QueryCrossDeskService(const std::string& command,
 }
 
 std::string SendCrossDeskSecureDesktopKeyInput(int key_code, bool is_down,
+                                               uint32_t scan_code,
+                                               bool extended,
                                                DWORD timeout_ms) {
-  return QueryCrossDeskService(
-      BuildSecureDesktopKeyboardIpcCommand(key_code, is_down), timeout_ms);
+  return QueryCrossDeskService(BuildSecureDesktopKeyboardIpcCommand(
+                                   key_code, is_down, scan_code, extended),
+                               timeout_ms);
 }
 
 std::string SendCrossDeskSecureDesktopMouseInput(int x, int y, int wheel,
