@@ -17,6 +17,7 @@
 #include "platform.h"
 #include "rd_log.h"
 #include "render.h"
+#include "windows_key_metadata.h"
 #if _WIN32
 #include "interactive_state.h"
 #include "service_host.h"
@@ -28,34 +29,66 @@ namespace crossdesk {
 
 namespace {
 
-int TranslateSdlKeypadScancodeToVk(SDL_Scancode scancode) {
-  switch (scancode) {
+int TranslateSdlKeypadScancodeToVk(const SDL_KeyboardEvent& event) {
+  const bool numlock_enabled = (event.mod & SDL_KMOD_NUM) != 0;
+
+  switch (event.scancode) {
     case SDL_SCANCODE_NUMLOCKCLEAR:
       return 0x90;
     case SDL_SCANCODE_KP_ENTER:
       return 0x0D;
     case SDL_SCANCODE_KP_0:
+      if (!numlock_enabled) {
+        return 0x2D;
+      }
       return 0x60;
     case SDL_SCANCODE_KP_1:
+      if (!numlock_enabled) {
+        return 0x23;
+      }
       return 0x61;
     case SDL_SCANCODE_KP_2:
+      if (!numlock_enabled) {
+        return 0x28;
+      }
       return 0x62;
     case SDL_SCANCODE_KP_3:
+      if (!numlock_enabled) {
+        return 0x22;
+      }
       return 0x63;
     case SDL_SCANCODE_KP_4:
+      if (!numlock_enabled) {
+        return 0x25;
+      }
       return 0x64;
     case SDL_SCANCODE_KP_5:
       return 0x65;
     case SDL_SCANCODE_KP_6:
+      if (!numlock_enabled) {
+        return 0x27;
+      }
       return 0x66;
     case SDL_SCANCODE_KP_7:
+      if (!numlock_enabled) {
+        return 0x24;
+      }
       return 0x67;
     case SDL_SCANCODE_KP_8:
+      if (!numlock_enabled) {
+        return 0x26;
+      }
       return 0x68;
     case SDL_SCANCODE_KP_9:
+      if (!numlock_enabled) {
+        return 0x21;
+      }
       return 0x69;
     case SDL_SCANCODE_KP_PERIOD:
     case SDL_SCANCODE_KP_COMMA:
+      if (!numlock_enabled) {
+        return 0x2E;
+      }
       return 0x6E;
     case SDL_SCANCODE_KP_DIVIDE:
       return 0x6F;
@@ -73,7 +106,7 @@ int TranslateSdlKeypadScancodeToVk(SDL_Scancode scancode) {
 }
 
 int TranslateSdlKeyboardEventToVk(const SDL_KeyboardEvent& event) {
-  const int keypad_key_code = TranslateSdlKeypadScancodeToVk(event.scancode);
+  const int keypad_key_code = TranslateSdlKeypadScancodeToVk(event);
   if (keypad_key_code >= 0) {
     return keypad_key_code;
   }
@@ -200,9 +233,9 @@ int TranslateSdlKeyboardEventToVk(const SDL_KeyboardEvent& event) {
   }
 }
 
-#if _WIN32
 int NormalizeWindowsModifierVk(int key_code, uint32_t scan_code,
                                bool extended) {
+#if _WIN32
   if (key_code != 0x10 && key_code != 0x11 && key_code != 0x12) {
     return key_code;
   }
@@ -215,6 +248,11 @@ int NormalizeWindowsModifierVk(int key_code, uint32_t scan_code,
   const UINT normalized_vk =
       MapVirtualKeyW(scan_code_with_prefix, MAPVK_VSC_TO_VK_EX);
   return normalized_vk != 0 ? static_cast<int>(normalized_vk) : key_code;
+#else
+  (void)scan_code;
+  (void)extended;
+  return key_code;
+#endif
 }
 
 void PopulateWindowsKeyMetadataFromVk(int key_code, uint32_t* scan_code_out,
@@ -223,16 +261,20 @@ void PopulateWindowsKeyMetadataFromVk(int key_code, uint32_t* scan_code_out,
     return;
   }
 
+#if _WIN32
   const UINT scan_code =
       MapVirtualKeyW(static_cast<UINT>(key_code), MAPVK_VK_TO_VSC_EX);
   if (scan_code == 0) {
+    LookupWindowsKeyMetadataFromVk(key_code, scan_code_out, extended_out);
     return;
   }
 
   *scan_code_out = static_cast<uint32_t>(scan_code & 0xFF);
   *extended_out = (scan_code & 0xFF00) != 0;
-}
+#else
+  LookupWindowsKeyMetadataFromVk(key_code, scan_code_out, extended_out);
 #endif
+}
 
 #if _WIN32
 constexpr uint32_t kSecureDesktopInputLogIntervalMs = 2000;
@@ -397,10 +439,10 @@ int Render::SendKeyCommand(int key_code, bool is_down, uint32_t scan_code,
     remote_action.k.flag = KeyFlag::key_up;
   }
 
-#if _WIN32
   if (scan_code == 0) {
     PopulateWindowsKeyMetadataFromVk(key_code, &scan_code, &extended);
   }
+#if _WIN32
   key_code = NormalizeWindowsModifierVk(key_code, scan_code, extended);
 #endif
 

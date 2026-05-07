@@ -6,6 +6,7 @@
 #include "keyboard_converter.h"
 #include "platform.h"
 #include "rd_log.h"
+#include "windows_key_metadata.h"
 
 namespace crossdesk {
 
@@ -35,9 +36,12 @@ static int KeyboardEventHandler(Display* display, XEvent* event) {
 
     int key_code = key_it->second;
     bool is_key_down = (event->xkey.type == KeyPress);
+    uint32_t scan_code = 0;
+    bool extended = false;
+    LookupWindowsKeyMetadataFromVk(key_code, &scan_code, &extended);
 
     if (g_on_key_action) {
-      g_on_key_action(key_code, is_key_down, 0, false, g_user_ptr);
+      g_on_key_action(key_code, is_key_down, scan_code, extended, g_user_ptr);
     }
   }
   return 0;
@@ -157,7 +161,9 @@ int KeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down,
         use_wayland_portal_ = true;
         LOG_INFO("Keyboard controller initialized with Wayland portal backend");
       } else {
-        LOG_WARN("Wayland keyboard control init failed, falling back to X11/XTest backend");
+        LOG_WARN(
+            "Wayland keyboard control init failed, falling back to X11/XTest "
+            "backend");
       }
     }
 
