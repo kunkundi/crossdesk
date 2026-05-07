@@ -92,7 +92,7 @@ int Render::UpdateNotificationWindow() {
     ImGui::SetWindowFontScale(0.55f);
     std::string title =
         localization::new_version_available[localization_language_index_] +
-        ": v" + latest_version_;
+        ": " + latest_version_;
     ImGui::Text("%s", title.c_str());
     ImGui::SetWindowFontScale(0.1f);
 

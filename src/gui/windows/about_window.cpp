@@ -104,7 +104,7 @@ int Render::AboutWindow() {
     ImGui::SetCursorPosX(about_window_width * 0.1f);
     ImGui::Text("%s", text.c_str());
 
-    if (0) {
+    if (update_available_ && show_new_version_icon_in_menu_) {
       std::string new_version_available =
           localization::new_version_available[localization_language_index_] +
           ": ";
