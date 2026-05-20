@@ -23,6 +23,12 @@ function setup_options_and_dependencies()
         set_description("Enable DRM capture on Linux (assumes dependencies are installed)")
     option_end()
 
+    option("CROSSDESK_PORTABLE")
+        set_default(false)
+        set_showmenu(true)
+        set_description("Build CrossDesk as a portable package that stores data beside the executable")
+    option_end()
+
     add_rules("mode.release", "mode.debug")
     set_languages("c++17")
     set_encodings("utf-8")
@@ -35,6 +41,7 @@ function setup_options_and_dependencies()
     add_defines("USE_CUDA=" .. (is_config("USE_CUDA", true) and "1" or "0"))
     add_defines("USE_WAYLAND=" .. (is_config("USE_WAYLAND", true) and "1" or "0"))
     add_defines("USE_DRM=" .. (is_config("USE_DRM", true) and "1" or "0"))
+    add_defines("CROSSDESK_PORTABLE=" .. (is_config("CROSSDESK_PORTABLE", true) and "1" or "0"))
 
     if is_mode("debug") then
         add_defines("CROSSDESK_DEBUG")

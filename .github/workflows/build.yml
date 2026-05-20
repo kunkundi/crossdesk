@@ -242,6 +242,11 @@ jobs:
           cd "${{ github.workspace }}\scripts\windows"
           makensis /DVERSION=$env:VERSION_NUM nsis_script.nsi
 
+      - name: Build Portable CrossDesk
+        run: |
+          xmake f --CROSSDESK_VERSION=${{ env.VERSION_NUM }} --USE_CUDA=true --CROSSDESK_PORTABLE=true -y
+          xmake b -vy crossdesk
+
       - name: Package Portable
         shell: pwsh
         run: |

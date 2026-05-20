@@ -25,6 +25,14 @@ function setup_targets()
         add_files("src/path_manager/*.cpp")
         add_includedirs("src/path_manager", {public = true})
 
+    target("path_manager_portable_test")
+        set_kind("binary")
+        set_default(false)
+        add_defines("CROSSDESK_PORTABLE=1")
+        add_includedirs("src/path_manager")
+        add_files("tests/path_manager_portable_test.cpp",
+            "src/path_manager/path_manager.cpp")
+
     target("screen_capturer")
         set_kind("object")
         add_deps("rd_log", "common")
