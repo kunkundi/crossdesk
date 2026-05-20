@@ -269,10 +269,30 @@ inline bool IsFunctionKey(int key_code) {
   }
 }
 
+CGEventFlags ToCGEventFlags(uint32_t injected_flags) {
+  CGEventFlags flags = 0;
+  if ((injected_flags & kMacInjectedModifierShift) != 0) {
+    flags |= kCGEventFlagMaskShift;
+  }
+  if ((injected_flags & kMacInjectedModifierControl) != 0) {
+    flags |= kCGEventFlagMaskControl;
+  }
+  if ((injected_flags & kMacInjectedModifierOption) != 0) {
+    flags |= kCGEventFlagMaskAlternate;
+  }
+  if ((injected_flags & kMacInjectedModifierCommand) != 0) {
+    flags |= kCGEventFlagMaskCommand;
+  }
+  return flags;
+}
+
 int KeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down,
                                           uint32_t scan_code, bool extended) {
   (void)scan_code;
   (void)extended;
+  const uint32_t injected_flags =
+      injected_modifier_state_.Update(key_code, is_down);
+
   if (vkCodeToCGKeyCode.find(key_code) != vkCodeToCGKeyCode.end()) {
     CGKeyCode cg_key_code = vkCodeToCGKeyCode[key_code];
     CGEventRef event = CGEventCreateKeyboardEvent(NULL, cg_key_code, is_down);
@@ -281,7 +301,7 @@ int KeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down,
       return -1;
     }
 
-    CGEventSetFlags(event, 0);
+    CGEventSetFlags(event, ToCGEventFlags(injected_flags));
     CGEventPost(kCGHIDEventTap, event);
     CFRelease(event);
 

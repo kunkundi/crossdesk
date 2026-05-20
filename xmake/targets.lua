@@ -33,6 +33,12 @@ function setup_targets()
         add_files("tests/path_manager_portable_test.cpp",
             "src/path_manager/path_manager.cpp")
 
+    target("macos_keyboard_modifier_state_test")
+        set_kind("binary")
+        set_default(false)
+        add_includedirs("src/device_controller")
+        add_files("tests/macos_keyboard_modifier_state_test.cpp")
+
     target("screen_capturer")
         set_kind("object")
         add_deps("rd_log", "common")

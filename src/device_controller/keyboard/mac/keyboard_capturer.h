@@ -10,6 +10,7 @@
 #include <ApplicationServices/ApplicationServices.h>
 
 #include "device_controller.h"
+#include "macos_keyboard_modifier_state.h"
 
 namespace crossdesk {
 
@@ -36,6 +37,7 @@ class KeyboardCapturer : public DeviceController {
   bool option_flag_ = false;
   bool command_flag_ = false;
   int fn_key_code_ = 0x3F;
+  MacKeyboardModifierState injected_modifier_state_;
 };
 }  // namespace crossdesk
 #endif
