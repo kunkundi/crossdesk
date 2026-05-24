@@ -1,5 +1,7 @@
 #include "mouse_controller.h"
 
+#include <Windows.h>
+
 #include "rd_log.h"
 
 namespace crossdesk {
@@ -18,7 +20,14 @@ int MouseController::Destroy() { return 0; }
 
 int MouseController::SendMouseCommand(RemoteAction remote_action,
                                       int display_index) {
-  INPUT ip;
+  if (display_index < 0 ||
+      display_index >= static_cast<int>(display_info_list_.size())) {
+    LOG_WARN("Mouse command skipped, invalid display_index={}, displays={}",
+             display_index, display_info_list_.size());
+    return -1;
+  }
+
+  INPUT ip = {0};
 
   if (remote_action.type == ControlType::mouse) {
     ip.type = INPUT_MOUSE;
@@ -63,10 +72,22 @@ int MouseController::SendMouseCommand(RemoteAction remote_action,
 
     ip.mi.time = 0;
 
-    SetCursorPos(ip.mi.dx, ip.mi.dy);
+    if (!SetCursorPos(ip.mi.dx, ip.mi.dy)) {
+      LOG_WARN("SetCursorPos failed for mouse x={}, y={}, flag={}, err={}",
+               ip.mi.dx, ip.mi.dy, static_cast<int>(remote_action.m.flag),
+               GetLastError());
+      return -1;
+    }
 
     if (ip.mi.dwFlags != MOUSEEVENTF_MOVE) {
-      SendInput(1, &ip, sizeof(INPUT));
+      UINT sent = SendInput(1, &ip, sizeof(INPUT));
+      if (sent != 1) {
+        LOG_WARN(
+            "SendInput failed for mouse x={}, y={}, wheel={}, flag={}, err={}",
+            ip.mi.dx, ip.mi.dy, remote_action.m.s,
+            static_cast<int>(remote_action.m.flag), GetLastError());
+        return -1;
+      }
     }
   }
 

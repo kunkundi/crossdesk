@@ -46,6 +46,13 @@ struct InputDesktopInfo {
   std::string name;
 };
 
+struct SecureDesktopMouseRequest {
+  int x = 0;
+  int y = 0;
+  int wheel = 0;
+  int flag = 0;
+};
+
 struct ScopedEnvironmentBlock {
   ~ScopedEnvironmentBlock() {
     if (environment != nullptr) {
@@ -339,6 +346,14 @@ std::string BuildSecureInputHelperKeyboardCommand(int key_code, bool is_down,
   return stream.str();
 }
 
+std::string BuildSecureInputHelperMouseCommand(int x, int y, int wheel,
+                                               int flag) {
+  std::ostringstream stream;
+  stream << kCrossDeskSecureInputMouseCommandPrefix << x << ":" << y << ":"
+         << wheel << ":" << flag;
+  return stream.str();
+}
+
 bool ParseSecureDesktopKeyboardIpcCommand(const std::string& command,
                                           int* key_code_out, bool* is_down_out,
                                           uint32_t* scan_code_out,
@@ -410,6 +425,57 @@ bool ParseSecureDesktopKeyboardIpcCommand(const std::string& command,
     return true;
   }
   return false;
+}
+
+bool ParseSecureDesktopMouseIpcCommand(const std::string& command,
+                                       SecureDesktopMouseRequest* request_out) {
+  if (request_out == nullptr) {
+    return false;
+  }
+
+  if (command.rfind(kSecureDesktopMouseIpcCommandPrefix, 0) != 0) {
+    return false;
+  }
+
+  const size_t x_begin = sizeof(kSecureDesktopMouseIpcCommandPrefix) - 1;
+  size_t separator = command.find(':', x_begin);
+  if (separator == std::string::npos) {
+    return false;
+  }
+
+  try {
+    request_out->x = std::stoi(command.substr(x_begin, separator - x_begin));
+  } catch (...) {
+    return false;
+  }
+
+  const size_t y_begin = separator + 1;
+  separator = command.find(':', y_begin);
+  if (separator == std::string::npos) {
+    return false;
+  }
+
+  try {
+    request_out->y = std::stoi(command.substr(y_begin, separator - y_begin));
+  } catch (...) {
+    return false;
+  }
+
+  const size_t wheel_begin = separator + 1;
+  separator = command.find(':', wheel_begin);
+  if (separator == std::string::npos) {
+    return false;
+  }
+
+  try {
+    request_out->wheel =
+        std::stoi(command.substr(wheel_begin, separator - wheel_begin));
+    request_out->flag = std::stoi(command.substr(separator + 1));
+  } catch (...) {
+    return false;
+  }
+
+  return true;
 }
 
 bool CreateSessionSystemToken(DWORD session_id, HANDLE* token_out,
@@ -1759,7 +1825,13 @@ std::string CrossDeskServiceHost::HandleIpcCommand(const std::string& command) {
   if (ParseSecureDesktopKeyboardIpcCommand(normalized, &key_code, &is_down,
                                            &scan_code, &extended)) {
     return SendSecureDesktopKeyboardInput(key_code, is_down, scan_code,
-                                          extended);
+                                           extended);
+  }
+  SecureDesktopMouseRequest mouse_request;
+  if (ParseSecureDesktopMouseIpcCommand(normalized, &mouse_request)) {
+    return SendSecureDesktopMouseInput(mouse_request.x, mouse_request.y,
+                                       mouse_request.wheel,
+                                       mouse_request.flag);
   }
   return BuildErrorJson("unknown_command");
 }
@@ -2012,6 +2084,45 @@ std::string CrossDeskServiceHost::SendSecureDesktopKeyboardInput(
       BuildSecureInputHelperKeyboardCommand(key_code, is_down, scan_code,
                                             extended),
       1000);
+}
+
+std::string CrossDeskServiceHost::SendSecureDesktopMouseInput(int x, int y,
+                                                              int wheel,
+                                                              int flag) {
+  RefreshSessionState();
+  ReapSecureInputHelper();
+  EnsureSessionHelper();
+
+  DWORD target_session_id = 0xFFFFFFFF;
+  bool helper_running = false;
+  bool can_inject = false;
+  {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    target_session_id = active_session_id_;
+    helper_running = secure_input_helper_running_ &&
+                     secure_input_helper_session_id_ == target_session_id;
+    can_inject = GetEffectiveSessionLockedLocked() || HasSecureInputUiLocked();
+  }
+
+  if (target_session_id == 0xFFFFFFFF) {
+    return BuildErrorJson("no_active_console_session");
+  }
+  if (!can_inject) {
+    return BuildErrorJson("secure_input_not_active");
+  }
+
+  if (!helper_running) {
+    StopSecureInputHelper();
+    if (!LaunchSecureInputHelper(target_session_id)) {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      return BuildErrorJson(secure_input_helper_last_error_.c_str(),
+                            secure_input_helper_last_error_code_);
+    }
+  }
+
+  return QueryNamedPipeMessage(
+      GetCrossDeskSecureInputHelperPipeName(target_session_id),
+      BuildSecureInputHelperMouseCommand(x, y, wheel, flag), 1000);
 }
 
 bool InstallCrossDeskService(const std::wstring& binary_path) {

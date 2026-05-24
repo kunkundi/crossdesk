@@ -64,6 +64,7 @@ class CrossDeskServiceHost {
   std::string SendSecureDesktopKeyboardInput(int key_code, bool is_down,
                                              uint32_t scan_code = 0,
                                              bool extended = false);
+  std::string SendSecureDesktopMouseInput(int x, int y, int wheel, int flag);
 
   static void WINAPI ServiceMain(DWORD argc, LPWSTR* argv);
   static BOOL WINAPI ConsoleControlHandler(DWORD control_type);

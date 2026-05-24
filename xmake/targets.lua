@@ -39,6 +39,21 @@ function setup_targets()
         add_includedirs("src/device_controller")
         add_files("tests/macos_keyboard_modifier_state_test.cpp")
 
+    target("windows_manifest_resource_test")
+        set_kind("binary")
+        set_default(false)
+        add_files("tests/windows_manifest_resource_test.cpp")
+
+    target("windows_service_mouse_ipc_test")
+        set_kind("binary")
+        set_default(false)
+        add_files("tests/windows_service_mouse_ipc_test.cpp")
+
+    target("windows_mouse_controller_safety_test")
+        set_kind("binary")
+        set_default(false)
+        add_files("tests/windows_mouse_controller_safety_test.cpp")
+
     target("screen_capturer")
         set_kind("object")
         add_deps("rd_log", "common")
