@@ -163,6 +163,7 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
     ImVec2 btn_min = ImGui::GetItemRectMin();
     ImVec2 btn_size_actual = ImGui::GetItemRectSize();
 
+    props->display_selectable_hovered_ = false;
     if (ImGui::BeginPopup("display")) {
       ImGui::SetWindowFontScale(0.5f);
       for (int i = 0; i < props->display_info_list_.size(); i++) {
@@ -178,8 +179,9 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
                                   props->control_data_label_.c_str());
           }
         }
-        props->display_selectable_hovered_ = ImGui::IsWindowHovered();
       }
+      props->display_selectable_hovered_ =
+          ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
       ImGui::EndPopup();
     }
 
