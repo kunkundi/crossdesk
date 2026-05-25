@@ -56,6 +56,8 @@ class CrossDeskServiceHost {
   bool GetEffectiveSessionLockedLocked() const;
   bool IsHelperReportingLockScreenLocked() const;
   bool HasSecureInputUiLocked() const;
+  void UpdateSasSecureDesktopGraceLocked(const std::string& observed_stage);
+  bool IsSasSecureDesktopGraceActiveLocked() const;
   bool ShouldKeepSecureInputHelperLocked(DWORD target_session_id) const;
   std::string ResolveInteractiveStageLocked() const;
   void RefreshSessionHelperReportedState();
@@ -103,6 +105,7 @@ class CrossDeskServiceHost {
   ULONGLONG session_helper_report_state_age_ms_ = 0;
   ULONGLONG session_helper_report_uptime_ms_ = 0;
   ULONGLONG secure_input_helper_started_at_tick_ = 0;
+  ULONGLONG sas_secure_desktop_until_tick_ = 0;
   bool session_locked_ = false;
   bool logon_ui_visible_ = false;
   bool prelogin_ = false;
@@ -119,6 +122,7 @@ class CrossDeskServiceHost {
   bool session_helper_report_unlock_ui_visible_ = false;
   bool secure_input_helper_running_ = false;
   bool console_mode_ = false;
+  bool sas_secure_desktop_seen_ = false;
   DWORD last_sas_error_code_ = 0;
   bool last_sas_success_ = false;
   HANDLE session_helper_process_handle_ = nullptr;

@@ -547,6 +547,7 @@ class Render {
   std::string local_interactive_stage_;
   uint32_t last_local_secure_input_block_log_tick_ = 0;
   uint32_t last_windows_service_status_tick_ = 0;
+  uint32_t optimistic_windows_secure_desktop_until_tick_ = 0;
 #endif
 
   // stream window render

@@ -82,12 +82,14 @@ HICON LoadTrayIcon() {
 
 struct WindowsServiceInteractiveStatus {
   bool available = false;
+  bool sas_secure_desktop_grace_active = false;
   unsigned int error_code = 0;
   std::string interactive_stage;
   std::string error;
 };
 
 constexpr uint32_t kWindowsServiceStatusIntervalMs = 1000;
+constexpr uint32_t kWindowsServiceSasSecureDesktopGraceMs = 2000;
 constexpr DWORD kWindowsServiceQueryTimeoutMs = 500;
 constexpr DWORD kWindowsServiceSasTimeoutMs = 500;
 
@@ -130,6 +132,8 @@ bool QueryWindowsServiceInteractiveStatus(
   }
 
   status->interactive_stage = json.value("interactive_stage", std::string());
+  status->sas_secure_desktop_grace_active =
+      json.value("sas_secure_desktop_grace_active", false);
 
   if (ShouldNormalizeUnlockToUserDesktop(
           json.value("interactive_lock_screen_visible", false),
@@ -1928,6 +1932,12 @@ void Render::HandleWindowsServiceIntegration() {
       LOG_WARN("Remote SAS request failed: {}", response);
     } else {
       LOG_INFO("Remote SAS request forwarded to local Windows service");
+      optimistic_windows_secure_desktop_until_tick_ =
+          static_cast<uint32_t>(SDL_GetTicks()) +
+          kWindowsServiceSasSecureDesktopGraceMs;
+      local_service_status_received_ = true;
+      local_service_available_ = true;
+      local_interactive_stage_ = "secure-desktop";
     }
     last_windows_service_status_tick_ = 0;
     force_broadcast = true;
@@ -1943,15 +1953,31 @@ void Render::HandleWindowsServiceIntegration() {
 
   WindowsServiceInteractiveStatus status;
   const bool status_ok = QueryWindowsServiceInteractiveStatus(&status);
+  WindowsServiceInteractiveStatus broadcast_status = status;
   const bool previous_secure_desktop_interaction =
       IsSecureDesktopInteractionRequired(local_interactive_stage_);
+  const bool optimistic_secure_desktop_active =
+      optimistic_windows_secure_desktop_until_tick_ != 0 &&
+      static_cast<int32_t>(optimistic_windows_secure_desktop_until_tick_ -
+                           now) > 0;
+  const bool keep_optimistic_secure_desktop =
+      status_ok && status.available && optimistic_secure_desktop_active &&
+      status.sas_secure_desktop_grace_active &&
+      status.interactive_stage == "user-desktop";
   local_service_status_received_ =
       status_ok || previous_secure_desktop_interaction;
   local_service_available_ = status.available;
   if (status.available) {
-    local_interactive_stage_ = status.interactive_stage;
+    if (keep_optimistic_secure_desktop) {
+      local_interactive_stage_ = "secure-desktop";
+      broadcast_status.interactive_stage = local_interactive_stage_;
+    } else {
+      local_interactive_stage_ = status.interactive_stage;
+      optimistic_windows_secure_desktop_until_tick_ = 0;
+    }
   } else if (!previous_secure_desktop_interaction) {
     local_interactive_stage_.clear();
+    optimistic_windows_secure_desktop_until_tick_ = 0;
   }
 
   if (status_ok) {
@@ -1990,7 +2016,7 @@ void Render::HandleWindowsServiceIntegration() {
     last_logged_service_error_code = 0;
   }
 
-  RemoteAction remote_action = BuildWindowsServiceStatusAction(status);
+  RemoteAction remote_action = BuildWindowsServiceStatusAction(broadcast_status);
   std::string msg = remote_action.to_json();
   int ret = SendReliableDataFrame(peer_, msg.data(), msg.size(),
                                   control_data_label_.c_str());
@@ -2009,6 +2035,7 @@ void Render::ResetLocalWindowsServiceState(bool clear_pending_sas) {
   local_service_status_received_ = false;
   local_service_available_ = false;
   local_interactive_stage_.clear();
+  optimistic_windows_secure_desktop_until_tick_ = 0;
 }
 #endif
 

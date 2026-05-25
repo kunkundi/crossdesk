@@ -31,6 +31,7 @@ constexpr char kSecureDesktopMouseIpcCommandPrefix[] = "secure-input-mouse:";
 constexpr wchar_t kCrossDeskClientProcessName[] = L"crossdesk.exe";
 constexpr DWORD kCrossDeskClientMonitorIntervalMs = 1000;
 constexpr ULONGLONG kCrossDeskClientMonitorStartupGraceMs = 5000;
+constexpr ULONGLONG kSasSecureDesktopGraceMs = 15000;
 
 using SendSasFunction = VOID(WINAPI*)(BOOL);
 
@@ -1027,12 +1028,14 @@ int CrossDeskServiceHost::InitializeRuntime() {
   session_helper_report_credential_ui_visible_ = false;
   session_helper_report_unlock_ui_visible_ = false;
   secure_input_helper_running_ = false;
+  sas_secure_desktop_seen_ = false;
   last_sas_error_code_ = 0;
   last_sas_success_ = false;
   session_helper_started_at_tick_ = 0;
   session_helper_report_state_age_ms_ = 0;
   session_helper_report_uptime_ms_ = 0;
   secure_input_helper_started_at_tick_ = 0;
+  sas_secure_desktop_until_tick_ = 0;
   session_helper_process_handle_ = nullptr;
   session_helper_stop_event_ = nullptr;
   secure_input_helper_process_handle_ = nullptr;
@@ -1320,12 +1323,37 @@ bool CrossDeskServiceHost::IsHelperReportingLockScreenLocked() const {
 }
 
 bool CrossDeskServiceHost::HasSecureInputUiLocked() const {
-  return prelogin_ || secure_desktop_active_ || logon_ui_visible_ ||
+  return IsSasSecureDesktopGraceActiveLocked() || prelogin_ ||
+         secure_desktop_active_ || logon_ui_visible_ ||
          session_helper_report_credential_ui_visible_ ||
          session_helper_report_secure_desktop_active_ ||
          session_helper_report_unlock_ui_visible_ ||
          session_helper_report_interactive_stage_ == "credential-ui" ||
          session_helper_report_interactive_stage_ == "secure-desktop";
+}
+
+void CrossDeskServiceHost::UpdateSasSecureDesktopGraceLocked(
+    const std::string& observed_stage) {
+  if (sas_secure_desktop_until_tick_ == 0) {
+    sas_secure_desktop_seen_ = false;
+    return;
+  }
+
+  if (observed_stage == "credential-ui" || observed_stage == "secure-desktop" ||
+      observed_stage == "lock-screen") {
+    sas_secure_desktop_seen_ = true;
+    return;
+  }
+
+  if (sas_secure_desktop_seen_ && observed_stage == "user-desktop") {
+    sas_secure_desktop_until_tick_ = 0;
+    sas_secure_desktop_seen_ = false;
+  }
+}
+
+bool CrossDeskServiceHost::IsSasSecureDesktopGraceActiveLocked() const {
+  return last_sas_success_ && sas_secure_desktop_until_tick_ != 0 &&
+         GetTickCount64() < sas_secure_desktop_until_tick_;
 }
 
 bool CrossDeskServiceHost::ShouldKeepSecureInputHelperLocked(
@@ -1339,6 +1367,12 @@ bool CrossDeskServiceHost::ShouldKeepSecureInputHelperLocked(
 }
 
 std::string CrossDeskServiceHost::ResolveInteractiveStageLocked() const {
+  if (IsSasSecureDesktopGraceActiveLocked() &&
+      (session_helper_report_interactive_stage_.empty() ||
+       session_helper_report_interactive_stage_ == "user-desktop")) {
+    return "secure-desktop";
+  }
+
   if (!session_helper_report_interactive_stage_.empty()) {
     return session_helper_report_interactive_stage_;
   }
@@ -1818,6 +1852,7 @@ void CrossDeskServiceHost::RefreshSessionHelperReportedState() {
       json.value("interactive_stage", std::string());
   session_helper_report_state_age_ms_ = json.value("state_age_ms", 0ull);
   session_helper_report_uptime_ms_ = json.value("uptime_ms", 0ull);
+  UpdateSasSecureDesktopGraceLocked(session_helper_report_interactive_stage_);
 }
 
 void CrossDeskServiceHost::RecordSessionEvent(DWORD event_type,
@@ -1947,6 +1982,8 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
   std::string secure_input_helper_interactive_stage =
       EscapeJsonString(secure_input_helper_interactive_stage_);
   bool interactive_state_ready = session_helper_status_ok_;
+  const bool sas_secure_desktop_grace_active =
+      IsSasSecureDesktopGraceActiveLocked();
   const char* interactive_state_source =
       interactive_state_ready ? "session-helper" : "service-host";
   const bool effective_session_locked = GetEffectiveSessionLockedLocked();
@@ -1960,21 +1997,23 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
   bool unlock_ui_visible = interactive_state_ready
                                ? session_helper_report_unlock_ui_visible_
                                : (logon_ui_visible_ || secure_desktop_active_);
+  unlock_ui_visible = unlock_ui_visible || sas_secure_desktop_grace_active;
   bool interactive_secure_desktop_active =
       interactive_state_ready ? session_helper_report_secure_desktop_active_
                               : secure_desktop_active_;
+  interactive_secure_desktop_active =
+      interactive_secure_desktop_active || sas_secure_desktop_grace_active;
   bool interactive_logon_ui_visible =
       interactive_state_ready ? session_helper_report_logon_ui_visible_
                               : logon_ui_visible_;
   bool interactive_session_locked = effective_session_locked ||
                                     interactive_lock_screen_visible ||
-                                    unlock_ui_visible;
+                                    unlock_ui_visible ||
+                                    sas_secure_desktop_grace_active;
   std::string interactive_input_desktop = EscapeJsonString(
       interactive_state_ready ? session_helper_report_input_desktop_
                               : input_desktop_name_);
-  std::string raw_interactive_stage = DetermineInteractiveStage(
-      interactive_lock_screen_visible, credential_ui_visible,
-      interactive_secure_desktop_active);
+  std::string raw_interactive_stage = ResolveInteractiveStageLocked();
   std::string interactive_stage = EscapeJsonString(raw_interactive_stage);
   std::ostringstream stream;
   stream << "{\"ok\":true,\"service\":\"CrossDeskService\""
@@ -1996,6 +2035,8 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
          << (interactive_logon_ui_visible ? "true" : "false")
          << ",\"interactive_secure_desktop_active\":"
          << (interactive_secure_desktop_active ? "true" : "false")
+         << ",\"sas_secure_desktop_grace_active\":"
+         << (sas_secure_desktop_grace_active ? "true" : "false")
          << ",\"unlock_ui_visible\":" << (unlock_ui_visible ? "true" : "false")
          << ",\"credential_ui_visible\":"
          << (credential_ui_visible ? "true" : "false")
@@ -2100,10 +2141,14 @@ std::string CrossDeskServiceHost::SendSecureAttentionSequence() {
   SasResult result = SendSasNow();
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    last_sas_tick_ = GetTickCount64();
+    const ULONGLONG now = GetTickCount64();
+    last_sas_tick_ = now;
     last_sas_success_ = result.success;
     last_sas_error_code_ = result.error_code;
     last_sas_error_ = result.error;
+    sas_secure_desktop_until_tick_ =
+        result.success ? now + kSasSecureDesktopGraceMs : 0;
+    sas_secure_desktop_seen_ = false;
   }
 
   if (!result.success) {

@@ -31,6 +31,10 @@ using crossdesk::get_logger;
 using crossdesk::InitLogger;
 using Json = nlohmann::json;
 
+constexpr DWORD kSessionHelperStatePollMs = 1000;
+
+std::atomic<HANDLE> g_session_helper_desktop_switch_event{nullptr};
+
 struct InputDesktopInfo {
   bool available = false;
   DWORD error_code = 0;
@@ -132,6 +136,54 @@ void InitializeHelperLogger() {
 void EnablePerMonitorDpiAwareness() {
   SetProcessDpiAwarenessContext(
       DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+}
+
+void CALLBACK SessionHelperDesktopSwitchWinEventProc(
+    HWINEVENTHOOK, DWORD event, HWND, LONG, LONG, DWORD, DWORD) {
+  if (event != EVENT_SYSTEM_DESKTOPSWITCH) {
+    return;
+  }
+
+  HANDLE event_handle =
+      g_session_helper_desktop_switch_event.load(std::memory_order_relaxed);
+  if (event_handle != nullptr) {
+    SetEvent(event_handle);
+  }
+}
+
+void EnsureSessionHelperMessageQueue() {
+  MSG message{};
+  PeekMessageW(&message, nullptr, WM_USER, WM_USER, PM_NOREMOVE);
+}
+
+void PumpSessionHelperMessages() {
+  MSG message{};
+  while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+    TranslateMessage(&message);
+    DispatchMessageW(&message);
+  }
+}
+
+DWORD WaitForSessionHelperStateChange(HANDLE stop_event,
+                                      HANDLE desktop_switch_event) {
+  std::vector<HANDLE> wait_handles;
+  if (stop_event != nullptr) {
+    wait_handles.push_back(stop_event);
+  }
+  if (desktop_switch_event != nullptr) {
+    wait_handles.push_back(desktop_switch_event);
+  }
+
+  const DWORD handle_count = static_cast<DWORD>(wait_handles.size());
+  const DWORD wait_result = MsgWaitForMultipleObjects(
+      handle_count, wait_handles.empty() ? nullptr : wait_handles.data(), FALSE,
+      kSessionHelperStatePollMs, QS_ALLINPUT);
+  if (wait_result == WAIT_OBJECT_0 + handle_count) {
+    PumpSessionHelperMessages();
+    return WAIT_TIMEOUT;
+  }
+
+  return wait_result;
 }
 
 std::wstring Utf8ToWide(const std::string& value) {
@@ -308,8 +360,13 @@ void UpdateHelperState(HelperState* helper_state) {
       IsLockAppRunningInCurrentSession(helper_state->session_id);
   bool logon_ui_visible =
       IsLogonUiRunningInCurrentSession(helper_state->session_id);
-  const bool secure_desktop_active =
+  const bool input_desktop_is_winlogon =
       _stricmp(desktop_info.name.c_str(), "Winlogon") == 0;
+  const bool inaccessible_secure_input_desktop =
+      !desktop_info.available &&
+      desktop_info.error_code == ERROR_ACCESS_DENIED && !logon_ui_visible;
+  const bool secure_desktop_active = input_desktop_is_winlogon ||
+                                     inaccessible_secure_input_desktop;
   bool session_locked = false;
   if (!QuerySessionLockState(helper_state->session_id, &session_locked)) {
     session_locked =
@@ -1796,6 +1853,26 @@ int main(int argc, char* argv[]) {
   helper_state.started_at_tick = GetTickCount64();
   UpdateHelperState(&helper_state);
 
+  EnsureSessionHelperMessageQueue();
+  HANDLE desktop_switch_event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  HWINEVENTHOOK desktop_switch_hook = nullptr;
+  if (desktop_switch_event != nullptr) {
+    g_session_helper_desktop_switch_event.store(
+        desktop_switch_event, std::memory_order_relaxed);
+    desktop_switch_hook = SetWinEventHook(
+        EVENT_SYSTEM_DESKTOPSWITCH, EVENT_SYSTEM_DESKTOPSWITCH, nullptr,
+        SessionHelperDesktopSwitchWinEventProc, 0, 0,
+        WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+    if (desktop_switch_hook == nullptr) {
+      LOG_WARN(
+          "SetWinEventHook(EVENT_SYSTEM_DESKTOPSWITCH) failed, error={}",
+          GetLastError());
+    }
+  } else {
+    LOG_WARN("CreateEventW failed for desktop switch watcher, error={}",
+             GetLastError());
+  }
+
   std::thread ipc_thread(HelperIpcServerLoop, stop_event, current_session_id,
                          &helper_state);
 
@@ -1847,19 +1924,32 @@ int main(int argc, char* argv[]) {
       last_stage = stage;
     }
 
-    DWORD wait_result = stop_event != nullptr
-                            ? WaitForSingleObject(stop_event, 1000)
-                            : WAIT_TIMEOUT;
-    if (wait_result == WAIT_OBJECT_0) {
+    DWORD wait_result =
+        WaitForSessionHelperStateChange(stop_event, desktop_switch_event);
+    if (stop_event != nullptr && wait_result == WAIT_OBJECT_0) {
       break;
     }
-    if (wait_result != WAIT_TIMEOUT && wait_result != WAIT_FAILED) {
+    if (wait_result == WAIT_FAILED) {
+      LOG_WARN("Session helper wait failed, error={}", GetLastError());
+      break;
+    }
+    if (wait_result != WAIT_TIMEOUT && wait_result != WAIT_OBJECT_0 &&
+        wait_result != WAIT_OBJECT_0 + 1) {
       break;
     }
   }
 
   if (ipc_thread.joinable()) {
     ipc_thread.join();
+  }
+
+  if (desktop_switch_hook != nullptr) {
+    UnhookWinEvent(desktop_switch_hook);
+  }
+  g_session_helper_desktop_switch_event.store(nullptr,
+                                              std::memory_order_relaxed);
+  if (desktop_switch_event != nullptr) {
+    CloseHandle(desktop_switch_event);
   }
 
   if (stop_event != nullptr) {

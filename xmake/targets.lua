@@ -54,6 +54,12 @@ function setup_targets()
         set_default(false)
         add_files("tests/windows_mouse_controller_safety_test.cpp")
 
+    target("windows_sas_guard_test")
+        set_kind("binary")
+        set_default(false)
+        add_includedirs("src/service/windows")
+        add_files("tests/windows_sas_guard_test.cpp")
+
     target("display_popup_hover_state_test")
         set_kind("binary")
         set_default(false)
