@@ -10,6 +10,7 @@
 #include <Windows.h>
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -59,6 +60,18 @@ class ScreenCapturerWin : public ScreenCapturer {
   int initial_monitor_index_ = 0;
   std::atomic<bool> secure_desktop_capture_active_{false};
   std::thread secure_capture_thread_;
+  HANDLE secure_frame_mapping_ = nullptr;
+  HANDLE secure_frame_ready_event_ = nullptr;
+  uint8_t* secure_frame_view_ = nullptr;
+  size_t secure_frame_view_size_ = 0;
+  DWORD secure_shared_session_id_ = 0xFFFFFFFF;
+  int secure_shared_left_ = 0;
+  int secure_shared_top_ = 0;
+  int secure_shared_width_ = 0;
+  int secure_shared_height_ = 0;
+  int secure_shared_fps_ = 0;
+  bool secure_shared_show_cursor_ = true;
+  bool secure_shared_capture_started_ = false;
 
   void BuildCanonicalFromImpl();
   void RebuildAliasesFromImpl();
@@ -66,6 +79,18 @@ class ScreenCapturerWin : public ScreenCapturer {
   void SecureDesktopCaptureLoop();
   bool GetCurrentCaptureRegion(int* left, int* top, int* width, int* height,
                                std::string* display_name);
+  bool StartSecureDesktopSharedCapture(DWORD session_id, int left, int top,
+                                       int width, int height,
+                                       bool show_cursor, int fps,
+                                       std::string* error_out);
+  void StopSecureDesktopSharedCapture(DWORD session_id);
+  bool OpenSecureDesktopSharedFrame(DWORD session_id, size_t min_size,
+                                    std::string* error_out);
+  bool ReadSecureDesktopSharedFrame(DWORD wait_ms,
+                                    std::vector<uint8_t>* nv12_frame_out,
+                                    int* width_out, int* height_out,
+                                    std::string* error_out);
+  void CloseSecureDesktopSharedFrame();
 };
 }  // namespace crossdesk
 #endif

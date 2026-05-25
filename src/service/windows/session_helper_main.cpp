@@ -6,9 +6,13 @@
 #include <libyuv.h>
 #include <sddl.h>
 
+#include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <sstream>
@@ -53,6 +57,7 @@ struct SecureCaptureRequest {
   int width = 0;
   int height = 0;
   bool show_cursor = true;
+  int fps = 30;
 };
 
 struct SecureMouseRequest {
@@ -64,6 +69,19 @@ struct SecureMouseRequest {
 
 struct SecureCaptureBuffers {
   std::vector<uint8_t> nv12_frame;
+};
+
+struct SecureSharedCaptureState {
+  std::mutex mutex;
+  std::thread capture_thread;
+  std::atomic<bool> stop_requested{false};
+  DWORD session_id = 0xFFFFFFFF;
+  SecureCaptureRequest request;
+  HANDLE frame_mapping = nullptr;
+  HANDLE frame_ready_event = nullptr;
+  uint8_t* frame_view = nullptr;
+  size_t frame_view_size = 0;
+  uint32_t sequence = 0;
 };
 
 struct PipeSecurityAttributes {
@@ -718,6 +736,48 @@ bool ParseSecureInputCaptureCommand(const std::string& command,
   return request_out->width > 0 && request_out->height > 0;
 }
 
+bool ParseSecureInputCaptureStartCommand(const std::string& command,
+                                         SecureCaptureRequest* request_out) {
+  if (request_out == nullptr) {
+    return false;
+  }
+
+  if (command.rfind(
+          crossdesk::kCrossDeskSecureInputCaptureStartCommandPrefix, 0) != 0) {
+    return false;
+  }
+
+  const size_t values_begin = std::strlen(
+      crossdesk::kCrossDeskSecureInputCaptureStartCommandPrefix);
+  int parsed_values[6] = {0};
+  size_t token_begin = values_begin;
+  for (int index = 0; index < 6; ++index) {
+    const size_t separator = command.find(':', token_begin);
+    const bool is_last = index == 5;
+    const size_t token_end = is_last ? command.size() : separator;
+    if (token_end == std::string::npos || token_end <= token_begin) {
+      return false;
+    }
+
+    try {
+      parsed_values[index] =
+          std::stoi(command.substr(token_begin, token_end - token_begin));
+    } catch (...) {
+      return false;
+    }
+
+    token_begin = token_end + 1;
+  }
+
+  request_out->left = parsed_values[0];
+  request_out->top = parsed_values[1];
+  request_out->width = parsed_values[2] & ~1;
+  request_out->height = parsed_values[3] & ~1;
+  request_out->show_cursor = parsed_values[4] != 0;
+  request_out->fps = parsed_values[5] > 0 ? parsed_values[5] : 30;
+  return request_out->width > 0 && request_out->height > 0;
+}
+
 int InjectMouseInput(const SecureMouseRequest& request) {
   SetCursorPos(request.x, request.y);
 
@@ -874,10 +934,290 @@ std::vector<uint8_t> CaptureSecureDesktopFrame(
   return response;
 }
 
+void CloseSecureDesktopSharedCaptureResourcesLocked(
+    SecureSharedCaptureState* capture_state) {
+  if (capture_state == nullptr) {
+    return;
+  }
+
+  if (capture_state->frame_view != nullptr) {
+    UnmapViewOfFile(capture_state->frame_view);
+    capture_state->frame_view = nullptr;
+  }
+  if (capture_state->frame_ready_event != nullptr) {
+    CloseHandle(capture_state->frame_ready_event);
+    capture_state->frame_ready_event = nullptr;
+  }
+  if (capture_state->frame_mapping != nullptr) {
+    CloseHandle(capture_state->frame_mapping);
+    capture_state->frame_mapping = nullptr;
+  }
+  capture_state->frame_view_size = 0;
+}
+
+void SecureDesktopSharedCaptureThread(
+    SecureSharedCaptureState* capture_state) {
+  if (capture_state == nullptr) {
+    return;
+  }
+
+  SecureCaptureRequest request;
+  uint8_t* frame_view = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(capture_state->mutex);
+    request = capture_state->request;
+    frame_view = capture_state->frame_view;
+  }
+
+  if (frame_view == nullptr || request.width <= 0 || request.height <= 0) {
+    return;
+  }
+
+  const int interval_ms =
+      request.fps > 0 ? (std::max)(1, 1000 / request.fps) : 33;
+  const size_t nv12_size =
+      static_cast<size_t>(request.width) * request.height * 3 / 2;
+  std::vector<uint8_t> nv12_frame(nv12_size);
+
+  HDC screen_dc = GetDC(nullptr);
+  if (screen_dc == nullptr) {
+    LOG_ERROR("Secure shared capture GetDC failed, error={}", GetLastError());
+    return;
+  }
+
+  HDC mem_dc = CreateCompatibleDC(screen_dc);
+  if (mem_dc == nullptr) {
+    LOG_ERROR("Secure shared capture CreateCompatibleDC failed, error={}",
+              GetLastError());
+    ReleaseDC(nullptr, screen_dc);
+    return;
+  }
+
+  BITMAPINFO bmi{};
+  bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  bmi.bmiHeader.biWidth = request.width;
+  bmi.bmiHeader.biHeight = -request.height;
+  bmi.bmiHeader.biPlanes = 1;
+  bmi.bmiHeader.biBitCount = 32;
+  bmi.bmiHeader.biCompression = BI_RGB;
+
+  void* bits = nullptr;
+  HBITMAP dib =
+      CreateDIBSection(mem_dc, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+  if (dib == nullptr || bits == nullptr) {
+    LOG_ERROR("Secure shared capture CreateDIBSection failed, error={}",
+              GetLastError());
+    DeleteDC(mem_dc);
+    ReleaseDC(nullptr, screen_dc);
+    return;
+  }
+
+  HGDIOBJ old_bitmap = SelectObject(mem_dc, dib);
+  while (!capture_state->stop_requested.load(std::memory_order_relaxed)) {
+    const auto frame_started = std::chrono::steady_clock::now();
+    if (BitBlt(mem_dc, 0, 0, request.width, request.height, screen_dc,
+               request.left, request.top, SRCCOPY | CAPTUREBLT)) {
+      if (request.show_cursor) {
+        CURSORINFO cursor_info{};
+        cursor_info.cbSize = sizeof(CURSORINFO);
+        if (GetCursorInfo(&cursor_info) &&
+            cursor_info.flags == CURSOR_SHOWING &&
+            cursor_info.hCursor != nullptr) {
+          const int cursor_x = cursor_info.ptScreenPos.x - request.left;
+          const int cursor_y = cursor_info.ptScreenPos.y - request.top;
+          if (cursor_x >= -64 && cursor_y >= -64 &&
+              cursor_x < request.width + 64 &&
+              cursor_y < request.height + 64) {
+            DrawIconEx(mem_dc, cursor_x, cursor_y, cursor_info.hCursor, 0, 0,
+                       0, nullptr, DI_NORMAL);
+          }
+        }
+      }
+
+      const int convert_result = libyuv::ARGBToNV12(
+          static_cast<const uint8_t*>(bits), request.width * 4,
+          nv12_frame.data(), request.width,
+          nv12_frame.data() + request.width * request.height, request.width,
+          request.width, request.height);
+      if (convert_result == 0) {
+        auto* header =
+            reinterpret_cast<crossdesk::CrossDeskSecureDesktopSharedFrameHeader*>(
+                frame_view);
+        uint8_t* payload = frame_view + sizeof(*header);
+        header->writing = 1;
+        MemoryBarrier();
+        header->magic = crossdesk::kCrossDeskSecureDesktopFrameMagic;
+        header->version = crossdesk::kCrossDeskSecureDesktopFrameVersion;
+        header->left = request.left;
+        header->top = request.top;
+        header->width = static_cast<uint32_t>(request.width);
+        header->height = static_cast<uint32_t>(request.height);
+        header->payload_size = static_cast<uint32_t>(nv12_frame.size());
+        std::memcpy(payload, nv12_frame.data(), nv12_frame.size());
+        header->sequence = ++capture_state->sequence;
+        MemoryBarrier();
+        header->writing = 0;
+        SetEvent(capture_state->frame_ready_event);
+      }
+    } else {
+      LOG_WARN("Secure shared capture BitBlt failed, error={}", GetLastError());
+    }
+
+    const auto elapsed_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - frame_started)
+            .count();
+    if (elapsed_ms < interval_ms) {
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(interval_ms - elapsed_ms));
+    }
+  }
+
+  SelectObject(mem_dc, old_bitmap);
+  DeleteObject(dib);
+  DeleteDC(mem_dc);
+  ReleaseDC(nullptr, screen_dc);
+}
+
+std::vector<uint8_t> StopSecureDesktopSharedCapture(
+    SecureSharedCaptureState* capture_state) {
+  if (capture_state == nullptr) {
+    return BuildTextResponseBytes(BuildErrorJson("invalid_capture_state"));
+  }
+
+  std::thread thread_to_join;
+  {
+    std::lock_guard<std::mutex> lock(capture_state->mutex);
+    capture_state->stop_requested.store(true, std::memory_order_relaxed);
+    if (capture_state->frame_ready_event != nullptr) {
+      SetEvent(capture_state->frame_ready_event);
+    }
+    if (capture_state->capture_thread.joinable()) {
+      thread_to_join = std::move(capture_state->capture_thread);
+    }
+  }
+
+  if (thread_to_join.joinable()) {
+    thread_to_join.join();
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(capture_state->mutex);
+    CloseSecureDesktopSharedCaptureResourcesLocked(capture_state);
+    capture_state->stop_requested.store(false, std::memory_order_relaxed);
+    capture_state->sequence = 0;
+  }
+
+  return BuildTextResponseBytes("{\"ok\":true,\"shared_capture\":\"stopped\"}");
+}
+
+std::vector<uint8_t> StartSecureDesktopSharedCapture(
+    const SecureCaptureRequest& request,
+    SecureSharedCaptureState* capture_state) {
+  if (capture_state == nullptr) {
+    return BuildTextResponseBytes(BuildErrorJson("invalid_capture_state"));
+  }
+
+  StopSecureDesktopSharedCapture(capture_state);
+
+  const size_t payload_size =
+      static_cast<size_t>(request.width) * request.height * 3 / 2;
+  const size_t mapping_size =
+      sizeof(crossdesk::CrossDeskSecureDesktopSharedFrameHeader) + payload_size;
+  if (payload_size == 0 || mapping_size > MAXDWORD) {
+    return BuildTextResponseBytes(BuildErrorJson("invalid_capture_size"));
+  }
+
+  PipeSecurityAttributes security_attributes;
+  SECURITY_ATTRIBUTES* attributes = nullptr;
+  if (security_attributes.Initialize()) {
+    attributes = security_attributes.get();
+  }
+
+  const std::wstring mapping_name =
+      crossdesk::GetCrossDeskSecureDesktopFrameMappingName(
+          capture_state->session_id);
+  const std::wstring event_name =
+      crossdesk::GetCrossDeskSecureDesktopFrameReadyEventName(
+          capture_state->session_id);
+
+  HANDLE frame_mapping =
+      CreateFileMappingW(INVALID_HANDLE_VALUE, attributes, PAGE_READWRITE, 0,
+                         static_cast<DWORD>(mapping_size),
+                         mapping_name.c_str());
+  if (frame_mapping == nullptr) {
+    return BuildTextResponseBytes(
+        BuildErrorJson("create_frame_mapping_failed", GetLastError()));
+  }
+
+  auto* frame_view = static_cast<uint8_t*>(
+      MapViewOfFile(frame_mapping, FILE_MAP_ALL_ACCESS, 0, 0, mapping_size));
+  if (frame_view == nullptr) {
+    const DWORD error = GetLastError();
+    CloseHandle(frame_mapping);
+    return BuildTextResponseBytes(BuildErrorJson("map_frame_view_failed",
+                                                 error));
+  }
+
+  HANDLE frame_ready_event =
+      CreateEventW(attributes, FALSE, FALSE, event_name.c_str());
+  if (frame_ready_event == nullptr) {
+    const DWORD error = GetLastError();
+    UnmapViewOfFile(frame_view);
+    CloseHandle(frame_mapping);
+    return BuildTextResponseBytes(
+        BuildErrorJson("create_frame_event_failed", error));
+  }
+
+  std::memset(frame_view, 0, mapping_size);
+  auto* header =
+      reinterpret_cast<crossdesk::CrossDeskSecureDesktopSharedFrameHeader*>(
+          frame_view);
+  header->magic = crossdesk::kCrossDeskSecureDesktopFrameMagic;
+  header->version = crossdesk::kCrossDeskSecureDesktopFrameVersion;
+  header->left = request.left;
+  header->top = request.top;
+  header->width = static_cast<uint32_t>(request.width);
+  header->height = static_cast<uint32_t>(request.height);
+  header->buffer_size = static_cast<uint32_t>(payload_size);
+
+  {
+    std::lock_guard<std::mutex> lock(capture_state->mutex);
+    capture_state->request = request;
+    capture_state->frame_mapping = frame_mapping;
+    capture_state->frame_ready_event = frame_ready_event;
+    capture_state->frame_view = frame_view;
+    capture_state->frame_view_size = mapping_size;
+    capture_state->sequence = 0;
+    capture_state->stop_requested.store(false, std::memory_order_relaxed);
+    capture_state->capture_thread =
+        std::thread(SecureDesktopSharedCaptureThread, capture_state);
+  }
+
+  Json json;
+  json["ok"] = true;
+  json["shared_capture"] = "started";
+  json["width"] = request.width;
+  json["height"] = request.height;
+  json["fps"] = request.fps;
+  return BuildTextResponseBytes(json.dump());
+}
+
 std::vector<uint8_t> HandleSecureInputHelperCommand(
-    const std::string& command, SecureCaptureBuffers* capture_buffers) {
+    const std::string& command, SecureCaptureBuffers* capture_buffers,
+    SecureSharedCaptureState* capture_state) {
   if (command == "ping") {
     return BuildTextResponseBytes("{\"ok\":true,\"reply\":\"pong\"}");
+  }
+
+  if (command == crossdesk::kCrossDeskSecureInputCaptureStopCommand) {
+    return StopSecureDesktopSharedCapture(capture_state);
+  }
+
+  SecureCaptureRequest capture_start_request;
+  if (ParseSecureInputCaptureStartCommand(command, &capture_start_request)) {
+    return StartSecureDesktopSharedCapture(capture_start_request,
+                                           capture_state);
   }
 
   int key_code = 0;
@@ -940,14 +1280,17 @@ std::vector<uint8_t> HandleSecureInputHelperCommand(
   return BuildTextResponseBytes(BuildErrorJson("unknown_command"));
 }
 
-void HandleSecureInputHelperPipeClient(HANDLE pipe, HANDLE event_handle) {
+void HandleSecureInputHelperPipeClient(
+    HANDLE pipe, HANDLE event_handle,
+    std::shared_ptr<SecureSharedCaptureState> capture_state) {
   SecureCaptureBuffers capture_buffers;
   char buffer[1024] = {0};
   DWORD bytes_read = 0;
   if (ReadFile(pipe, buffer, sizeof(buffer) - 1, &bytes_read, nullptr) &&
       bytes_read > 0) {
     std::vector<uint8_t> response = HandleSecureInputHelperCommand(
-        std::string(buffer, buffer + bytes_read), &capture_buffers);
+        std::string(buffer, buffer + bytes_read), &capture_buffers,
+        capture_state.get());
     DWORD bytes_written = 0;
     if (!response.empty()) {
       WriteFile(pipe, response.data(), static_cast<DWORD>(response.size()),
@@ -964,6 +1307,9 @@ void HandleSecureInputHelperPipeClient(HANDLE pipe, HANDLE event_handle) {
 }
 
 void SecureInputHelperIpcServerLoop(HANDLE stop_event, DWORD session_id) {
+  auto capture_state = std::make_shared<SecureSharedCaptureState>();
+  capture_state->session_id = session_id;
+
   PipeSecurityAttributes security_attributes;
   SECURITY_ATTRIBUTES* pipe_attributes = nullptr;
   if (security_attributes.Initialize()) {
@@ -1029,9 +1375,12 @@ void SecureInputHelperIpcServerLoop(HANDLE stop_event, DWORD session_id) {
       }
     }
 
-    std::thread(HandleSecureInputHelperPipeClient, pipe, overlapped.hEvent)
+    std::thread(HandleSecureInputHelperPipeClient, pipe, overlapped.hEvent,
+                capture_state)
         .detach();
   }
+
+  StopSecureDesktopSharedCapture(capture_state.get());
 }
 
 void PrintUsage() {

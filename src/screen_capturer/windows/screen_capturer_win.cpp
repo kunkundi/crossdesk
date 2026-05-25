@@ -33,7 +33,9 @@ constexpr DWORD kSecureDesktopStatusPipeTimeoutMs = 150;
 constexpr DWORD kSecureDesktopHelperPipeTimeoutMs = 120;
 constexpr DWORD kSecureDesktopTransientErrorGraceMs = 1500;
 constexpr DWORD kSecureDesktopTransientErrorLogIntervalMs = 5000;
-constexpr int kSecureDesktopCaptureMinIntervalMs = 100;
+constexpr int kSecureDesktopCaptureMinFps = 30;
+constexpr int kSecureDesktopCaptureMaxIntervalMs =
+    1000 / kSecureDesktopCaptureMinFps;
 
 struct SecureDesktopServiceStatus {
   bool service_available = false;
@@ -133,6 +135,16 @@ std::string BuildSecureCaptureCommand(int left, int top, int width, int height,
   std::ostringstream stream;
   stream << kCrossDeskSecureInputCaptureCommandPrefix << left << ":" << top
          << ":" << width << ":" << height << ":" << (show_cursor ? 1 : 0);
+  return stream.str();
+}
+
+std::string BuildSecureCaptureStartCommand(int left, int top, int width,
+                                           int height, bool show_cursor,
+                                           int fps) {
+  std::ostringstream stream;
+  stream << kCrossDeskSecureInputCaptureStartCommandPrefix << left << ":" << top
+         << ":" << width << ":" << height << ":" << (show_cursor ? 1 : 0)
+         << ":" << fps;
   return stream.str();
 }
 
@@ -274,17 +286,15 @@ bool QuerySecureDesktopServiceStatus(SecureDesktopServiceStatus* status) {
   return true;
 }
 
-bool QuerySecureDesktopHelperFrame(DWORD session_id, int left, int top,
-                                   int width, int height, bool show_cursor,
-                                   std::vector<uint8_t>* nv12_frame_out,
-                                   int* captured_width_out,
-                                   int* captured_height_out,
-                                   std::string* error_out) {
-  if (nv12_frame_out == nullptr || captured_width_out == nullptr ||
-      captured_height_out == nullptr) {
+bool QuerySecureDesktopHelperCommand(DWORD session_id,
+                                     const std::string& command,
+                                     std::vector<uint8_t>* response_out,
+                                     std::string* error_out) {
+  if (response_out == nullptr) {
     return false;
   }
 
+  response_out->clear();
   const std::wstring pipe_name =
       GetCrossDeskSecureInputHelperPipeName(session_id);
   if (!WaitNamedPipeW(pipe_name.c_str(), kSecureDesktopHelperPipeTimeoutMs)) {
@@ -306,8 +316,6 @@ bool QuerySecureDesktopHelperFrame(DWORD session_id, int left, int top,
   DWORD pipe_mode = PIPE_READMODE_MESSAGE;
   SetNamedPipeHandleState(pipe, &pipe_mode, nullptr, nullptr);
 
-  const std::string command =
-      BuildSecureCaptureCommand(left, top, width, height, show_cursor);
   DWORD bytes_written = 0;
   if (!WriteFile(pipe, command.data(), static_cast<DWORD>(command.size()),
                  &bytes_written, nullptr)) {
@@ -319,14 +327,35 @@ bool QuerySecureDesktopHelperFrame(DWORD session_id, int left, int top,
     return false;
   }
 
-  std::vector<uint8_t> response;
   DWORD read_error = 0;
-  const bool read_ok = ReadPipeMessage(pipe, &response, &read_error);
+  const bool read_ok = ReadPipeMessage(pipe, response_out, &read_error);
   CloseHandle(pipe);
   if (!read_ok) {
     if (error_out != nullptr) {
       *error_out = "pipe_read_failed:" + std::to_string(read_error);
     }
+    return false;
+  }
+
+  return true;
+}
+
+bool QuerySecureDesktopHelperFrame(DWORD session_id, int left, int top,
+                                   int width, int height, bool show_cursor,
+                                   std::vector<uint8_t>* nv12_frame_out,
+                                   int* captured_width_out,
+                                   int* captured_height_out,
+                                   std::string* error_out) {
+  if (nv12_frame_out == nullptr || captured_width_out == nullptr ||
+      captured_height_out == nullptr) {
+    return false;
+  }
+
+  const std::string command =
+      BuildSecureCaptureCommand(left, top, width, height, show_cursor);
+  std::vector<uint8_t> response;
+  if (!QuerySecureDesktopHelperCommand(session_id, command, &response,
+                                       error_out)) {
     return false;
   }
 
@@ -496,6 +525,7 @@ int ScreenCapturerWin::Stop() {
     ret = impl_->Stop();
   }
   StopSecureCaptureThread();
+  StopSecureDesktopSharedCapture(secure_shared_session_id_);
   return ret;
 }
 
@@ -616,10 +646,234 @@ bool ScreenCapturerWin::GetCurrentCaptureRegion(int* left, int* top, int* width,
   return true;
 }
 
+void ScreenCapturerWin::CloseSecureDesktopSharedFrame() {
+  if (secure_frame_view_ != nullptr) {
+    UnmapViewOfFile(secure_frame_view_);
+    secure_frame_view_ = nullptr;
+  }
+  if (secure_frame_ready_event_ != nullptr) {
+    CloseHandle(secure_frame_ready_event_);
+    secure_frame_ready_event_ = nullptr;
+  }
+  if (secure_frame_mapping_ != nullptr) {
+    CloseHandle(secure_frame_mapping_);
+    secure_frame_mapping_ = nullptr;
+  }
+  secure_frame_view_size_ = 0;
+}
+
+void ScreenCapturerWin::StopSecureDesktopSharedCapture(DWORD session_id) {
+  DWORD target_session_id = session_id;
+  if (target_session_id == 0xFFFFFFFF) {
+    target_session_id = secure_shared_session_id_;
+  }
+
+  if (secure_shared_capture_started_ &&
+      target_session_id != 0xFFFFFFFF) {
+    std::vector<uint8_t> response;
+    std::string error_message;
+    QuerySecureDesktopHelperCommand(
+        target_session_id, kCrossDeskSecureInputCaptureStopCommand, &response,
+        &error_message);
+  }
+
+  CloseSecureDesktopSharedFrame();
+  secure_shared_capture_started_ = false;
+  secure_shared_session_id_ = 0xFFFFFFFF;
+  secure_shared_left_ = 0;
+  secure_shared_top_ = 0;
+  secure_shared_width_ = 0;
+  secure_shared_height_ = 0;
+  secure_shared_fps_ = 0;
+  secure_shared_show_cursor_ = true;
+}
+
+bool ScreenCapturerWin::OpenSecureDesktopSharedFrame(DWORD session_id,
+                                                     size_t min_size,
+                                                     std::string* error_out) {
+  if (secure_frame_view_ != nullptr &&
+      secure_shared_session_id_ == session_id &&
+      secure_frame_view_size_ >= min_size) {
+    return true;
+  }
+
+  CloseSecureDesktopSharedFrame();
+
+  const std::wstring mapping_name =
+      GetCrossDeskSecureDesktopFrameMappingName(session_id);
+  HANDLE frame_mapping =
+      OpenFileMappingW(FILE_MAP_READ, FALSE, mapping_name.c_str());
+  if (frame_mapping == nullptr) {
+    if (error_out != nullptr) {
+      *error_out = "open_frame_mapping_failed:" +
+                   std::to_string(GetLastError());
+    }
+    return false;
+  }
+
+  auto* frame_view =
+      static_cast<uint8_t*>(MapViewOfFile(frame_mapping, FILE_MAP_READ, 0, 0, 0));
+  if (frame_view == nullptr) {
+    const DWORD error = GetLastError();
+    CloseHandle(frame_mapping);
+    if (error_out != nullptr) {
+      *error_out = "map_frame_view_failed:" + std::to_string(error);
+    }
+    return false;
+  }
+
+  const std::wstring event_name =
+      GetCrossDeskSecureDesktopFrameReadyEventName(session_id);
+  HANDLE frame_ready_event =
+      OpenEventW(SYNCHRONIZE, FALSE, event_name.c_str());
+  if (frame_ready_event == nullptr) {
+    const DWORD error = GetLastError();
+    UnmapViewOfFile(frame_view);
+    CloseHandle(frame_mapping);
+    if (error_out != nullptr) {
+      *error_out = "open_frame_event_failed:" + std::to_string(error);
+    }
+    return false;
+  }
+
+  secure_frame_mapping_ = frame_mapping;
+  secure_frame_ready_event_ = frame_ready_event;
+  secure_frame_view_ = frame_view;
+  secure_frame_view_size_ = min_size;
+  secure_shared_session_id_ = session_id;
+  return true;
+}
+
+bool ScreenCapturerWin::ReadSecureDesktopSharedFrame(
+    DWORD wait_ms, std::vector<uint8_t>* nv12_frame_out, int* width_out,
+    int* height_out, std::string* error_out) {
+  if (nv12_frame_out == nullptr || width_out == nullptr ||
+      height_out == nullptr || secure_frame_view_ == nullptr ||
+      secure_frame_ready_event_ == nullptr) {
+    return false;
+  }
+
+  const DWORD wait_result = WaitForSingleObject(secure_frame_ready_event_,
+                                                wait_ms);
+  if (wait_result == WAIT_TIMEOUT) {
+    if (error_out != nullptr) {
+      *error_out = "frame_wait_timeout";
+    }
+    return false;
+  }
+  if (wait_result != WAIT_OBJECT_0) {
+    if (error_out != nullptr) {
+      *error_out = "frame_wait_failed:" + std::to_string(GetLastError());
+    }
+    return false;
+  }
+
+  auto* header =
+      reinterpret_cast<CrossDeskSecureDesktopSharedFrameHeader*>(
+          secure_frame_view_);
+  if (header->magic != kCrossDeskSecureDesktopFrameMagic ||
+      header->version != kCrossDeskSecureDesktopFrameVersion) {
+    if (error_out != nullptr) {
+      *error_out = "invalid_shared_frame_header";
+    }
+    return false;
+  }
+  if (header->writing != 0) {
+    if (error_out != nullptr) {
+      *error_out = "shared_frame_write_in_progress";
+    }
+    return false;
+  }
+
+  const uint32_t sequence = header->sequence;
+  const uint32_t payload_size = header->payload_size;
+  const uint32_t buffer_size = header->buffer_size;
+  if (payload_size == 0 || payload_size > buffer_size ||
+      sizeof(*header) + static_cast<size_t>(payload_size) >
+          secure_frame_view_size_) {
+    if (error_out != nullptr) {
+      *error_out = "invalid_shared_frame_size";
+    }
+    return false;
+  }
+
+  nv12_frame_out->resize(payload_size);
+  std::memcpy(nv12_frame_out->data(), secure_frame_view_ + sizeof(*header),
+              payload_size);
+  MemoryBarrier();
+  if (header->writing != 0 || header->sequence != sequence) {
+    if (error_out != nullptr) {
+      *error_out = "shared_frame_changed_during_read";
+    }
+    return false;
+  }
+
+  *width_out = static_cast<int>(header->width);
+  *height_out = static_cast<int>(header->height);
+  return true;
+}
+
+bool ScreenCapturerWin::StartSecureDesktopSharedCapture(
+    DWORD session_id, int left, int top, int width, int height,
+    bool show_cursor, int fps, std::string* error_out) {
+  const size_t payload_size = static_cast<size_t>(width) * height * 3 / 2;
+  const size_t mapping_size =
+      sizeof(CrossDeskSecureDesktopSharedFrameHeader) + payload_size;
+  if (payload_size == 0) {
+    if (error_out != nullptr) {
+      *error_out = "invalid_capture_size";
+    }
+    return false;
+  }
+
+  if (secure_shared_capture_started_ &&
+      secure_shared_session_id_ == session_id &&
+      secure_shared_left_ == left && secure_shared_top_ == top &&
+      secure_shared_width_ == width && secure_shared_height_ == height &&
+      secure_shared_show_cursor_ == show_cursor && secure_shared_fps_ == fps &&
+      OpenSecureDesktopSharedFrame(session_id, mapping_size, error_out)) {
+    return true;
+  }
+
+  StopSecureDesktopSharedCapture(secure_shared_session_id_);
+
+  const std::string command =
+      BuildSecureCaptureStartCommand(left, top, width, height, show_cursor, fps);
+  std::vector<uint8_t> response;
+  if (!QuerySecureDesktopHelperCommand(session_id, command, &response,
+                                       error_out)) {
+    return false;
+  }
+
+  Json json = Json::parse(response.begin(), response.end(), nullptr, false);
+  if (json.is_discarded() || !json.value("ok", false)) {
+    if (error_out != nullptr) {
+      *error_out = ExtractPipeTextResponse(response);
+    }
+    return false;
+  }
+
+  secure_shared_capture_started_ = true;
+  secure_shared_session_id_ = session_id;
+  secure_shared_left_ = left;
+  secure_shared_top_ = top;
+  secure_shared_width_ = width;
+  secure_shared_height_ = height;
+  secure_shared_show_cursor_ = show_cursor;
+  secure_shared_fps_ = fps;
+
+  if (!OpenSecureDesktopSharedFrame(session_id, mapping_size, error_out)) {
+    StopSecureDesktopSharedCapture(session_id);
+    return false;
+  }
+
+  return true;
+}
+
 void ScreenCapturerWin::SecureDesktopCaptureLoop() {
   const int frame_interval_ms =
-      fps_ > 0 ? (std::max)(kSecureDesktopCaptureMinIntervalMs, 1000 / fps_)
-               : kSecureDesktopCaptureMinIntervalMs;
+      fps_ > 0 ? (std::min)(kSecureDesktopCaptureMaxIntervalMs, 1000 / fps_)
+               : kSecureDesktopCaptureMaxIntervalMs;
   ULONGLONG last_status_tick = 0;
   ULONGLONG last_error_tick = 0;
   bool last_capture_active = false;
@@ -686,12 +940,14 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
     }
 
     if (!status.capture_active || status.active_session_id == 0xFFFFFFFF) {
+      StopSecureDesktopSharedCapture(secure_shared_session_id_);
       std::this_thread::sleep_for(
           std::chrono::milliseconds(status.service_available ? 50 : 200));
       continue;
     }
 
     if (!status.helper_running) {
+      StopSecureDesktopSharedCapture(secure_shared_session_id_);
       std::this_thread::sleep_for(std::chrono::milliseconds(30));
       continue;
     }
@@ -702,6 +958,7 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
     int height = 0;
     std::string display_name;
     if (!GetCurrentCaptureRegion(&left, &top, &width, &height, &display_name)) {
+      StopSecureDesktopSharedCapture(secure_shared_session_id_);
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
       continue;
     }
@@ -709,15 +966,38 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
     int captured_width = 0;
     int captured_height = 0;
     std::string error_message;
-    if (QuerySecureDesktopHelperFrame(
-            status.active_session_id, left, top, width, height,
-            show_cursor_.load(std::memory_order_relaxed), &secure_frame,
+    bool frame_delivered = false;
+    const bool show_cursor = show_cursor_.load(std::memory_order_relaxed);
+    const int shared_fps =
+        fps_ > 0 ? (std::max)(kSecureDesktopCaptureMinFps, fps_)
+                 : kSecureDesktopCaptureMinFps;
+
+    if (StartSecureDesktopSharedCapture(status.active_session_id, left, top,
+                                        width, height, show_cursor, shared_fps,
+                                        &error_message) &&
+        ReadSecureDesktopSharedFrame(
+            static_cast<DWORD>(frame_interval_ms + 20), &secure_frame,
             &captured_width, &captured_height, &error_message)) {
       if (cb_orig_ && !secure_frame.empty()) {
         cb_orig_(secure_frame.data(), static_cast<int>(secure_frame.size()),
                  captured_width, captured_height, display_name.c_str());
       }
-    } else {
+      frame_delivered = true;
+    }
+
+    if (!frame_delivered &&
+        QuerySecureDesktopHelperFrame(status.active_session_id, left, top,
+                                      width, height, show_cursor,
+                                      &secure_frame, &captured_width,
+                                      &captured_height, &error_message)) {
+      if (cb_orig_ && !secure_frame.empty()) {
+        cb_orig_(secure_frame.data(), static_cast<int>(secure_frame.size()),
+                 captured_width, captured_height, display_name.c_str());
+      }
+      frame_delivered = true;
+    }
+
+    if (!frame_delivered) {
       const bool transient_error =
           IsTransientSecureDesktopFrameError(error_message);
       const bool in_grace_period = capture_stage_started_tick != 0 &&
@@ -742,6 +1022,7 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
     std::this_thread::sleep_for(std::chrono::milliseconds(frame_interval_ms));
   }
 
+  StopSecureDesktopSharedCapture(secure_shared_session_id_);
   secure_desktop_capture_active_.store(false, std::memory_order_relaxed);
 }
 

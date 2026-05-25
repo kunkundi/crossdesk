@@ -23,7 +23,15 @@ inline constexpr char kCrossDeskSecureInputKeyboardCommandPrefix[] =
     "keyboard:";
 inline constexpr char kCrossDeskSecureInputMouseCommandPrefix[] = "mouse:";
 inline constexpr char kCrossDeskSecureInputCaptureCommandPrefix[] = "capture:";
+inline constexpr char kCrossDeskSecureInputCaptureStartCommandPrefix[] =
+    "capture-start:";
+inline constexpr char kCrossDeskSecureInputCaptureStopCommand[] =
+    "capture-stop";
 inline constexpr DWORD kCrossDeskSecureInputPipeBufferBytes = 16 * 1024 * 1024;
+inline constexpr wchar_t kCrossDeskSecureDesktopFrameMappingPrefix[] =
+    L"Global\\CrossDeskSecureDesktopFrame-";
+inline constexpr wchar_t kCrossDeskSecureDesktopFrameReadyEventPrefix[] =
+    L"Global\\CrossDeskSecureDesktopFrameReady-";
 inline constexpr uint32_t kCrossDeskSecureDesktopFrameMagic = 0x50444358;
 inline constexpr uint32_t kCrossDeskSecureDesktopFrameVersion = 1;
 
@@ -37,6 +45,19 @@ struct CrossDeskSecureDesktopFrameHeader {
   uint32_t height;
   uint32_t payload_size;
 };
+
+struct CrossDeskSecureDesktopSharedFrameHeader {
+  uint32_t magic;
+  uint32_t version;
+  volatile uint32_t writing;
+  uint32_t sequence;
+  int32_t left;
+  int32_t top;
+  uint32_t width;
+  uint32_t height;
+  uint32_t payload_size;
+  uint32_t buffer_size;
+};
 #pragma pack(pop)
 
 inline std::wstring GetCrossDeskSessionHelperPipeName(DWORD session_id) {
@@ -46,6 +67,18 @@ inline std::wstring GetCrossDeskSessionHelperPipeName(DWORD session_id) {
 
 inline std::wstring GetCrossDeskSecureInputHelperPipeName(DWORD session_id) {
   return std::wstring(kCrossDeskSecureInputHelperPipePrefix) +
+         std::to_wstring(session_id);
+}
+
+inline std::wstring GetCrossDeskSecureDesktopFrameMappingName(
+    DWORD session_id) {
+  return std::wstring(kCrossDeskSecureDesktopFrameMappingPrefix) +
+         std::to_wstring(session_id);
+}
+
+inline std::wstring GetCrossDeskSecureDesktopFrameReadyEventName(
+    DWORD session_id) {
+  return std::wstring(kCrossDeskSecureDesktopFrameReadyEventPrefix) +
          std::to_wstring(session_id);
 }
 
