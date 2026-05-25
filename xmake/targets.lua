@@ -193,6 +193,9 @@ function setup_targets()
             add_packages("libyuv")
             add_deps("rd_log", "path_manager")
             add_defines("CROSSDESK_WGC_PLUGIN_BUILD=1")
+            -- Keep the project on C++17 while C++/WinRT still falls back to
+            -- MSVC's deprecated experimental coroutine header.
+            add_defines("_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS")
             add_links("windowsapp")
             add_files("src/screen_capturer/windows/screen_capturer_wgc.cpp",
                 "src/screen_capturer/windows/wgc_session_impl.cpp",
