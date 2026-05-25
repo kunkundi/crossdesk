@@ -204,11 +204,11 @@ int Render::ConnectTo(const std::string& remote_id, const char* password,
         props->params_.user_id = props->local_id_.c_str();
         props->peer_ = CreatePeer(&props->params_);
 
-        props->control_window_width_ = title_bar_height_ * 9.0f;
+        props->control_window_width_ = title_bar_height_ * 10.0f;
         props->control_window_height_ = title_bar_height_ * 1.3f;
         props->control_window_min_width_ = title_bar_height_ * 0.65f;
         props->control_window_min_height_ = title_bar_height_ * 1.3f;
-        props->control_window_max_width_ = title_bar_height_ * 9.0f;
+        props->control_window_max_width_ = title_bar_height_ * 10.0f;
         props->control_window_max_height_ = title_bar_height_ * 7.0f;
 
         props->connection_status_ = ConnectionStatus::Connecting;

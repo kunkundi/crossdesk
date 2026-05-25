@@ -55,6 +55,22 @@ bool ExpectResetBeforeDisplayPopup(const std::string& value) {
   return false;
 }
 
+bool ExpectResetBeforeShortcutPopup(const std::string& value) {
+  const std::string reset = "props->shortcut_selectable_hovered_ = false;";
+  const std::string popup = "ImGui::BeginPopup(\"shortcut\")";
+  const size_t reset_pos = value.find(reset);
+  const size_t popup_pos = value.find(popup);
+
+  if (reset_pos != std::string::npos && popup_pos != std::string::npos &&
+      reset_pos < popup_pos) {
+    return true;
+  }
+
+  std::cerr << "control_bar.cpp must clear shortcut_selectable_hovered_ before "
+               "checking the shortcut popup\n";
+  return false;
+}
+
 }  // namespace
 
 int main() {
@@ -74,5 +90,8 @@ int main() {
                        "ImGui::IsWindowHovered("
                        "ImGuiHoveredFlags_RootAndChildWindows)");
   ok &= ExpectResetBeforeDisplayPopup(control_bar);
+  ok &= ExpectContains("control_bar.cpp", control_bar,
+                       "props->shortcut_selectable_hovered_ =");
+  ok &= ExpectResetBeforeShortcutPopup(control_bar);
   return ok ? 0 : 1;
 }

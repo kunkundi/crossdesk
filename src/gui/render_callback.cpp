@@ -563,9 +563,9 @@ int Render::ProcessMouseEvent(const SDL_Event& event) {
 
     const bool file_transfer_window_hovered =
         props->file_transfer_.file_transfer_window_hovered_;
-    const bool overlay_hovered = props->control_bar_hovered_ ||
-                                 props->display_selectable_hovered_ ||
-                                 file_transfer_window_hovered;
+    const bool overlay_hovered =
+        props->control_bar_hovered_ || props->display_selectable_hovered_ ||
+        props->shortcut_selectable_hovered_ || file_transfer_window_hovered;
 
     const SDL_FRect render_rect = props->stream_render_rect_f_;
     if (render_rect.w <= 1.0f || render_rect.h <= 1.0f) {
@@ -1063,6 +1063,11 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
     if (remote_action.c.flag == ServiceCommandFlag::send_sas) {
       render->pending_windows_service_sas_.store(true,
                                                  std::memory_order_relaxed);
+    } else if (remote_action.c.flag == ServiceCommandFlag::lock_workstation) {
+      if (!LockWorkStation()) {
+        LOG_WARN("Remote lock workstation request failed, error={}",
+                 GetLastError());
+      }
     }
 #endif
     return;

@@ -40,7 +40,7 @@ typedef enum {
   wheel_horizontal
 } MouseFlag;
 typedef enum { key_down = 0, key_up } KeyFlag;
-typedef enum { send_sas = 0 } ServiceCommandFlag;
+typedef enum { send_sas = 0, lock_workstation } ServiceCommandFlag;
 typedef struct {
   float x;
   float y;

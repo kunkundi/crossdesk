@@ -115,6 +115,7 @@ class Render {
     bool is_control_bar_in_left_ = true;
     bool control_bar_hovered_ = false;
     bool display_selectable_hovered_ = false;
+    bool shortcut_selectable_hovered_ = false;
     bool control_bar_expand_ = true;
     bool reset_control_bar_pos_ = false;
     bool control_window_width_is_changing_ = false;
@@ -125,10 +126,10 @@ class Render {
     float sub_stream_window_width_ = 1280;
     float sub_stream_window_height_ = 720;
     float control_window_min_width_ = 20;
-    float control_window_max_width_ = 230;
+    float control_window_max_width_ = 300;
     float control_window_min_height_ = 38;
     float control_window_max_height_ = 180;
-    float control_window_width_ = 230;
+    float control_window_width_ = 300;
     float control_window_height_ = 38;
     float control_bar_pos_x_ = 0;
     float control_bar_pos_y_ = 30;

@@ -195,6 +195,61 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
         text_pos, IM_COL32(0, 0, 0, 255),
         std::to_string(props->selected_display_ + 1).c_str());
 
+    auto send_service_command = [&](ServiceCommandFlag flag,
+                                    const char* log_action) {
+      if (props->connection_status_ == ConnectionStatus::Connected &&
+          props->peer_) {
+        RemoteAction remote_action;
+        remote_action.type = ControlType::service_command;
+        remote_action.c.flag = flag;
+        std::string msg = remote_action.to_json();
+        int ret = SendReliableDataFrame(props->peer_, msg.c_str(), msg.size(),
+                                        props->control_data_label_.c_str());
+        if (ret != 0) {
+          LOG_WARN("Send {} command failed, remote_id={}, ret={}", log_action,
+                   props->remote_id_, ret);
+        }
+      }
+    };
+
+    ImGui::SameLine();
+    std::string shortcut = ICON_FA_KEYBOARD;
+    ImGui::SetWindowFontScale(0.5f);
+    if (ImGui::Button(shortcut.c_str(), ImVec2(button_width, button_height))) {
+      ImGui::OpenPopup("shortcut");
+    }
+
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      ImGui::SetWindowFontScale(0.5f);
+      ImGui::Text(
+          "%s",
+          localization::send_shortcut[localization_language_index_].c_str());
+      ImGui::SetWindowFontScale(1.0f);
+      ImGui::EndTooltip();
+    }
+
+    props->shortcut_selectable_hovered_ = false;
+    if (ImGui::BeginPopup("shortcut")) {
+      ImGui::SetWindowFontScale(0.5f);
+      std::string sas_label =
+          "Ctrl+Alt+Del - " +
+          localization::send_sas[localization_language_index_];
+      std::string lock_label =
+          "Win+L - " + localization::lock_remote[localization_language_index_];
+      if (ImGui::Selectable(sas_label.c_str())) {
+        send_service_command(ServiceCommandFlag::send_sas, "SAS");
+      }
+      if (ImGui::Selectable(lock_label.c_str())) {
+        send_service_command(ServiceCommandFlag::lock_workstation,
+                             "remote lock");
+      }
+      props->shortcut_selectable_hovered_ =
+          ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
+      ImGui::SetWindowFontScale(1.0f);
+      ImGui::EndPopup();
+    }
+
     ImGui::SameLine();
     float mouse_x = ImGui::GetCursorScreenPos().x;
     float mouse_y = ImGui::GetCursorScreenPos().y;

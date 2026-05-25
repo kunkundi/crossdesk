@@ -51,7 +51,9 @@ struct TranslationRow {
   X(release_mouse, u8"释放", "Release", u8"Освободить")                        \
   X(audio_capture, u8"声音", "Audio", u8"Звук")                                \
   X(mute, u8" 静音", " Mute", u8"Без звука")                                   \
+  X(send_shortcut, u8"发送组合键", "Send Shortcut", u8"Сочетания клавиш")       \
   X(send_sas, u8"发送SAS", "Send SAS", u8"Отправить SAS")                     \
+  X(lock_remote, u8"锁定远端", "Lock Remote", u8"Заблокировать")             \
   X(remote_password_box_visible, u8"远端密码框已出现",                            \
     "Remote password box visible", u8"Окно ввода пароля видно")                 \
   X(remote_lock_screen_hint, u8"远端处于锁屏封面，可发送SAS",                     \
