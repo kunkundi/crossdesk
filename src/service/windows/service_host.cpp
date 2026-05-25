@@ -262,8 +262,8 @@ bool GrantCrossDeskServiceStartAccessToAuthenticatedUsers(SC_HANDLE service) {
 std::string QueryNamedPipeMessage(const std::wstring& pipe_name,
                                   const std::string& command,
                                   DWORD timeout_ms) {
-  constexpr int kPipeConnectRetryCount = 3;
   constexpr DWORD kPipeConnectRetryDelayMs = 15;
+  const ULONGLONG deadline_tick = GetTickCount64() + timeout_ms;
 
   auto is_transient_pipe_error = [](DWORD error) {
     return error == ERROR_FILE_NOT_FOUND || error == ERROR_PIPE_BUSY ||
@@ -271,12 +271,23 @@ std::string QueryNamedPipeMessage(const std::wstring& pipe_name,
   };
 
   HANDLE pipe = INVALID_HANDLE_VALUE;
-  for (int attempt = 0; attempt < kPipeConnectRetryCount; ++attempt) {
-    if (!WaitNamedPipeW(pipe_name.c_str(), timeout_ms)) {
+  DWORD last_error = ERROR_SEM_TIMEOUT;
+  while (GetTickCount64() <= deadline_tick) {
+    const ULONGLONG now = GetTickCount64();
+    const DWORD wait_timeout =
+        deadline_tick > now
+            ? static_cast<DWORD>((std::min)(
+                  deadline_tick - now, static_cast<ULONGLONG>(MAXDWORD)))
+            : 0;
+
+    if (!WaitNamedPipeW(pipe_name.c_str(), wait_timeout)) {
       const DWORD error = GetLastError();
-      if (attempt + 1 < kPipeConnectRetryCount &&
-          is_transient_pipe_error(error)) {
-        Sleep(kPipeConnectRetryDelayMs);
+      last_error = error;
+      const ULONGLONG retry_tick = GetTickCount64();
+      if (is_transient_pipe_error(error) && retry_tick < deadline_tick) {
+        Sleep(static_cast<DWORD>((std::min)(
+            static_cast<ULONGLONG>(kPipeConnectRetryDelayMs),
+            deadline_tick - retry_tick)));
         continue;
       }
       return BuildErrorJson("pipe_unavailable", error);
@@ -289,12 +300,19 @@ std::string QueryNamedPipeMessage(const std::wstring& pipe_name,
     }
 
     const DWORD error = GetLastError();
-    if (attempt + 1 < kPipeConnectRetryCount &&
-        is_transient_pipe_error(error)) {
-      Sleep(kPipeConnectRetryDelayMs);
+    last_error = error;
+    const ULONGLONG retry_tick = GetTickCount64();
+    if (is_transient_pipe_error(error) && retry_tick < deadline_tick) {
+      Sleep(static_cast<DWORD>((std::min)(
+          static_cast<ULONGLONG>(kPipeConnectRetryDelayMs),
+          deadline_tick - retry_tick)));
       continue;
     }
     return BuildErrorJson("pipe_connect_failed", error);
+  }
+
+  if (pipe == INVALID_HANDLE_VALUE) {
+    return BuildErrorJson("pipe_unavailable", last_error);
   }
 
   DWORD pipe_mode = PIPE_READMODE_MESSAGE;
@@ -337,20 +355,27 @@ std::string BuildSecureDesktopMouseIpcCommand(int x, int y, int wheel,
   return stream.str();
 }
 
-std::string BuildSecureInputHelperKeyboardCommand(int key_code, bool is_down,
-                                                  uint32_t scan_code,
-                                                  bool extended) {
+std::string BuildSecureInputHelperKeyboardCommand(
+    int key_code, bool is_down, uint32_t scan_code, bool extended,
+    const std::string& interactive_stage) {
   std::ostringstream stream;
   stream << kCrossDeskSecureInputKeyboardCommandPrefix << key_code << ":"
          << (is_down ? 1 : 0) << ":" << scan_code << ":" << (extended ? 1 : 0);
+  if (!interactive_stage.empty()) {
+    stream << ":" << interactive_stage;
+  }
   return stream.str();
 }
 
-std::string BuildSecureInputHelperMouseCommand(int x, int y, int wheel,
-                                               int flag) {
+std::string BuildSecureInputHelperMouseCommand(
+    int x, int y, int wheel, int flag,
+    const std::string& interactive_stage) {
   std::ostringstream stream;
   stream << kCrossDeskSecureInputMouseCommandPrefix << x << ":" << y << ":"
          << wheel << ":" << flag;
+  if (!interactive_stage.empty()) {
+    stream << ":" << interactive_stage;
+  }
   return stream.str();
 }
 
@@ -563,6 +588,15 @@ const char* DetermineInteractiveStage(bool lock_app_visible,
     return "secure-desktop";
   }
   return "user-desktop";
+}
+
+std::wstring SecureInputHelperDesktopForStage(
+    const std::string& interactive_stage) {
+  if (interactive_stage == "credential-ui" ||
+      interactive_stage == "secure-desktop") {
+    return L"winsta0\\Winlogon";
+  }
+  return L"winsta0\\default";
 }
 
 bool GetSessionUserName(DWORD session_id, std::wstring* username_out) {
@@ -1010,6 +1044,7 @@ int CrossDeskServiceHost::InitializeRuntime() {
   session_helper_report_input_desktop_.clear();
   session_helper_report_interactive_stage_.clear();
   secure_input_helper_last_error_.clear();
+  secure_input_helper_interactive_stage_.clear();
   last_session_event_type_ = 0;
   last_session_event_session_id_ = active_session_id_;
   RefreshSessionState();
@@ -1303,6 +1338,17 @@ bool CrossDeskServiceHost::ShouldKeepSecureInputHelperLocked(
                                       IsHelperReportingLockScreenLocked());
 }
 
+std::string CrossDeskServiceHost::ResolveInteractiveStageLocked() const {
+  if (!session_helper_report_interactive_stage_.empty()) {
+    return session_helper_report_interactive_stage_;
+  }
+
+  return DetermineInteractiveStage(
+      IsHelperReportingLockScreenLocked(),
+      session_helper_report_credential_ui_visible_ || logon_ui_visible_,
+      session_helper_report_secure_desktop_active_ || secure_desktop_active_);
+}
+
 std::wstring CrossDeskServiceHost::GetSessionHelperPath() const {
   std::wstring current_executable = GetCurrentExecutablePathW();
   if (current_executable.empty()) {
@@ -1392,6 +1438,7 @@ void CrossDeskServiceHost::ReapSecureInputHelper() {
     secure_input_helper_process_id_ = 0;
     secure_input_helper_exit_code_ = exit_code;
     secure_input_helper_started_at_tick_ = 0;
+    secure_input_helper_interactive_stage_.clear();
   }
 
   if (process_handle != nullptr) {
@@ -1450,6 +1497,7 @@ void CrossDeskServiceHost::StopSecureInputHelper() {
     secure_input_helper_running_ = false;
     secure_input_helper_process_id_ = 0;
     secure_input_helper_started_at_tick_ = 0;
+    secure_input_helper_interactive_stage_.clear();
   }
 
   if (stop_event_handle != nullptr) {
@@ -1577,7 +1625,8 @@ bool CrossDeskServiceHost::LaunchSessionHelper(DWORD session_id) {
   return true;
 }
 
-bool CrossDeskServiceHost::LaunchSecureInputHelper(DWORD session_id) {
+bool CrossDeskServiceHost::LaunchSecureInputHelper(
+    DWORD session_id, const std::string& interactive_stage) {
   std::wstring helper_path = GetSecureInputHelperPath();
   if (helper_path.empty() || !std::filesystem::exists(helper_path)) {
     std::lock_guard<std::mutex> lock(state_mutex_);
@@ -1611,7 +1660,10 @@ bool CrossDeskServiceHost::LaunchSecureInputHelper(DWORD session_id) {
 
   STARTUPINFOW startup_info{};
   startup_info.cb = sizeof(startup_info);
-  startup_info.lpDesktop = const_cast<LPWSTR>(L"winsta0\\Winlogon");
+  std::wstring secure_input_helper_desktop =
+      SecureInputHelperDesktopForStage(interactive_stage);
+  startup_info.lpDesktop =
+      const_cast<LPWSTR>(secure_input_helper_desktop.c_str());
   PROCESS_INFORMATION process_info{};
   BOOL created = FALSE;
 
@@ -1660,10 +1712,14 @@ bool CrossDeskServiceHost::LaunchSecureInputHelper(DWORD session_id) {
     secure_input_helper_last_error_.clear();
     secure_input_helper_running_ = true;
     secure_input_helper_started_at_tick_ = GetTickCount64();
+    secure_input_helper_interactive_stage_ = interactive_stage;
   }
 
-  LOG_INFO("Secure input helper started: session_id={}, pid={}", session_id,
-           process_info.dwProcessId);
+  LOG_INFO(
+      "Secure input helper started: session_id={}, pid={}, stage='{}', "
+      "desktop='{}'",
+      session_id, process_info.dwProcessId, interactive_stage,
+      WideToUtf8(secure_input_helper_desktop));
   return true;
 }
 
@@ -1845,21 +1901,26 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
   bool keep_secure_input_helper = false;
   bool launch_secure_input_helper = false;
   DWORD secure_input_target_session_id = 0xFFFFFFFF;
+  std::string secure_input_interactive_stage;
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
     secure_input_target_session_id = active_session_id_;
+    secure_input_interactive_stage = ResolveInteractiveStageLocked();
     keep_secure_input_helper =
         ShouldKeepSecureInputHelperLocked(secure_input_target_session_id);
     launch_secure_input_helper =
         keep_secure_input_helper &&
         (!secure_input_helper_running_ ||
-         secure_input_helper_session_id_ != secure_input_target_session_id);
+         secure_input_helper_session_id_ != secure_input_target_session_id ||
+         secure_input_helper_interactive_stage_ !=
+             secure_input_interactive_stage);
   }
 
   if (keep_secure_input_helper) {
     if (launch_secure_input_helper) {
       StopSecureInputHelper();
-      LaunchSecureInputHelper(secure_input_target_session_id);
+      LaunchSecureInputHelper(secure_input_target_session_id,
+                              secure_input_interactive_stage);
     }
   } else {
     StopSecureInputHelper();
@@ -1883,6 +1944,8 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
       EscapeJsonString(session_helper_report_input_desktop_);
   std::string secure_input_helper_last_error =
       EscapeJsonString(secure_input_helper_last_error_);
+  std::string secure_input_helper_interactive_stage =
+      EscapeJsonString(secure_input_helper_interactive_stage_);
   bool interactive_state_ready = session_helper_status_ok_;
   const char* interactive_state_source =
       interactive_state_ready ? "session-helper" : "service-host";
@@ -1909,9 +1972,10 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
   std::string interactive_input_desktop = EscapeJsonString(
       interactive_state_ready ? session_helper_report_input_desktop_
                               : input_desktop_name_);
-  std::string interactive_stage = EscapeJsonString(DetermineInteractiveStage(
+  std::string raw_interactive_stage = DetermineInteractiveStage(
       interactive_lock_screen_visible, credential_ui_visible,
-      interactive_secure_desktop_active));
+      interactive_secure_desktop_active);
+  std::string interactive_stage = EscapeJsonString(raw_interactive_stage);
   std::ostringstream stream;
   stream << "{\"ok\":true,\"service\":\"CrossDeskService\""
          << ",\"active_session_id\":" << active_session_id_
@@ -2005,6 +2069,8 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
          << secure_input_helper_last_error << "\""
          << ",\"secure_input_helper_last_error_code\":"
          << secure_input_helper_last_error_code_
+         << ",\"secure_input_helper_stage\":\""
+         << secure_input_helper_interactive_stage << "\""
          << ",\"secure_input_helper_uptime_ms\":"
          << (secure_input_helper_started_at_tick_ >= started_at_tick_
                  ? (GetTickCount64() - secure_input_helper_started_at_tick_)
@@ -2051,15 +2117,21 @@ std::string CrossDeskServiceHost::SendSecureDesktopKeyboardInput(
   RefreshSessionState();
   ReapSecureInputHelper();
   EnsureSessionHelper();
+  RefreshSessionHelperReportedState();
 
   DWORD target_session_id = 0xFFFFFFFF;
   bool helper_running = false;
   bool can_inject = false;
+  std::string interactive_stage;
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
     target_session_id = active_session_id_;
+    interactive_stage = ResolveInteractiveStageLocked();
+    const bool helper_stage_matches =
+        secure_input_helper_interactive_stage_ == interactive_stage;
     helper_running = secure_input_helper_running_ &&
-                     secure_input_helper_session_id_ == target_session_id;
+                     secure_input_helper_session_id_ == target_session_id &&
+                     helper_stage_matches;
     can_inject = GetEffectiveSessionLockedLocked() || HasSecureInputUiLocked();
   }
 
@@ -2072,7 +2144,7 @@ std::string CrossDeskServiceHost::SendSecureDesktopKeyboardInput(
 
   if (!helper_running) {
     StopSecureInputHelper();
-    if (!LaunchSecureInputHelper(target_session_id)) {
+    if (!LaunchSecureInputHelper(target_session_id, interactive_stage)) {
       std::lock_guard<std::mutex> lock(state_mutex_);
       return BuildErrorJson(secure_input_helper_last_error_.c_str(),
                             secure_input_helper_last_error_code_);
@@ -2082,7 +2154,7 @@ std::string CrossDeskServiceHost::SendSecureDesktopKeyboardInput(
   return QueryNamedPipeMessage(
       GetCrossDeskSecureInputHelperPipeName(target_session_id),
       BuildSecureInputHelperKeyboardCommand(key_code, is_down, scan_code,
-                                            extended),
+                                            extended, interactive_stage),
       1000);
 }
 
@@ -2092,15 +2164,21 @@ std::string CrossDeskServiceHost::SendSecureDesktopMouseInput(int x, int y,
   RefreshSessionState();
   ReapSecureInputHelper();
   EnsureSessionHelper();
+  RefreshSessionHelperReportedState();
 
   DWORD target_session_id = 0xFFFFFFFF;
   bool helper_running = false;
   bool can_inject = false;
+  std::string interactive_stage;
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
     target_session_id = active_session_id_;
+    interactive_stage = ResolveInteractiveStageLocked();
+    const bool helper_stage_matches =
+        secure_input_helper_interactive_stage_ == interactive_stage;
     helper_running = secure_input_helper_running_ &&
-                     secure_input_helper_session_id_ == target_session_id;
+                     secure_input_helper_session_id_ == target_session_id &&
+                     helper_stage_matches;
     can_inject = GetEffectiveSessionLockedLocked() || HasSecureInputUiLocked();
   }
 
@@ -2113,7 +2191,7 @@ std::string CrossDeskServiceHost::SendSecureDesktopMouseInput(int x, int y,
 
   if (!helper_running) {
     StopSecureInputHelper();
-    if (!LaunchSecureInputHelper(target_session_id)) {
+    if (!LaunchSecureInputHelper(target_session_id, interactive_stage)) {
       std::lock_guard<std::mutex> lock(state_mutex_);
       return BuildErrorJson(secure_input_helper_last_error_.c_str(),
                             secure_input_helper_last_error_code_);
@@ -2122,7 +2200,8 @@ std::string CrossDeskServiceHost::SendSecureDesktopMouseInput(int x, int y,
 
   return QueryNamedPipeMessage(
       GetCrossDeskSecureInputHelperPipeName(target_session_id),
-      BuildSecureInputHelperMouseCommand(x, y, wheel, flag), 1000);
+      BuildSecureInputHelperMouseCommand(x, y, wheel, flag, interactive_stage),
+      1000);
 }
 
 bool InstallCrossDeskService(const std::wstring& binary_path) {

@@ -88,8 +88,13 @@ struct WindowsServiceInteractiveStatus {
 };
 
 constexpr uint32_t kWindowsServiceStatusIntervalMs = 1000;
-constexpr DWORD kWindowsServiceQueryTimeoutMs = 100;
+constexpr DWORD kWindowsServiceQueryTimeoutMs = 500;
 constexpr DWORD kWindowsServiceSasTimeoutMs = 500;
+
+bool IsTransientWindowsServiceStatusError(const std::string& error) {
+  return error == "pipe_unavailable" || error == "pipe_connect_failed" ||
+         error == "pipe_read_failed";
+}
 
 RemoteAction BuildWindowsServiceStatusAction(
     const WindowsServiceInteractiveStatus& status) {
@@ -1938,9 +1943,16 @@ void Render::HandleWindowsServiceIntegration() {
 
   WindowsServiceInteractiveStatus status;
   const bool status_ok = QueryWindowsServiceInteractiveStatus(&status);
-  local_service_status_received_ = status_ok;
+  const bool previous_secure_desktop_interaction =
+      IsSecureDesktopInteractionRequired(local_interactive_stage_);
+  local_service_status_received_ =
+      status_ok || previous_secure_desktop_interaction;
   local_service_available_ = status.available;
-  local_interactive_stage_ = status.available ? status.interactive_stage : "";
+  if (status.available) {
+    local_interactive_stage_ = status.interactive_stage;
+  } else if (!previous_secure_desktop_interaction) {
+    local_interactive_stage_.clear();
+  }
 
   if (status_ok) {
     const bool availability_changed =
@@ -1953,6 +1965,11 @@ void Render::HandleWindowsServiceIntegration() {
       if (status.available) {
         LOG_INFO(
             "Local Windows service available for secure desktop integration");
+      } else if (IsTransientWindowsServiceStatusError(status.error)) {
+        LOG_INFO(
+            "Local Windows service temporarily unavailable, keeping last "
+            "secure desktop state: error={}, code={}",
+            status.error, status.error_code);
       } else {
         LOG_WARN(
             "Local Windows service unavailable, secure desktop integration "

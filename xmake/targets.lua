@@ -217,6 +217,7 @@ function setup_targets()
             add_deps("rd_log", "path_manager")
             add_links("Advapi32", "User32", "Wtsapi32", "Gdi32")
             add_files("src/service/windows/session_helper_main.cpp")
+            add_files("scripts/windows/crossdesk.rc")
             add_includedirs("src/service/windows", {public = true})
     end
 

@@ -45,7 +45,8 @@ class CrossDeskServiceHost {
   bool LaunchSessionHelper(DWORD session_id);
   void ReapSecureInputHelper();
   void StopSecureInputHelper();
-  bool LaunchSecureInputHelper(DWORD session_id);
+  bool LaunchSecureInputHelper(DWORD session_id,
+                               const std::string& interactive_stage);
   std::wstring GetSessionHelperPath() const;
   std::wstring GetSessionHelperStopEventName(DWORD session_id) const;
   std::wstring GetSecureInputHelperPath() const;
@@ -56,6 +57,7 @@ class CrossDeskServiceHost {
   bool IsHelperReportingLockScreenLocked() const;
   bool HasSecureInputUiLocked() const;
   bool ShouldKeepSecureInputHelperLocked(DWORD target_session_id) const;
+  std::string ResolveInteractiveStageLocked() const;
   void RefreshSessionHelperReportedState();
   void RecordSessionEvent(DWORD event_type, DWORD session_id);
   std::string HandleIpcCommand(const std::string& command);
@@ -130,6 +132,7 @@ class CrossDeskServiceHost {
   std::string session_helper_report_input_desktop_;
   std::string session_helper_report_interactive_stage_;
   std::string secure_input_helper_last_error_;
+  std::string secure_input_helper_interactive_stage_;
 
   static CrossDeskServiceHost* instance_;
 };

@@ -317,6 +317,22 @@ void LogSecureDesktopInputBlocked(uint32_t* last_tick, const char* side,
       "cannot drive the Windows password UI",
       side != nullptr ? side : "unknown", stage != nullptr ? stage : "");
 }
+
+bool IsTransientSecureDesktopInputFailure(const nlohmann::json& response,
+                                          const RemoteAction& action) {
+  if (!response.is_object()) {
+    return false;
+  }
+  if (response.value("error", std::string()) != "send_input_failed") {
+    return false;
+  }
+  if (response.value("code", 0u) != ERROR_ACCESS_DENIED) {
+    return false;
+  }
+
+  return action.type == ControlType::keyboard &&
+         action.k.flag == KeyFlag::key_up;
+}
 #endif
 
 }  // namespace
@@ -492,7 +508,7 @@ int Render::ProcessKeyboardEvent(const SDL_Event& event) {
 
 int Render::ProcessMouseEvent(const SDL_Event& event) {
   controlled_remote_id_ = "";
-  RemoteAction remote_action;
+  RemoteAction remote_action{};
   float cursor_x = last_mouse_event.motion.x;
   float cursor_y = last_mouse_event.motion.y;
 
@@ -1104,7 +1120,6 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
     // remote
 #if _WIN32
     if (render->local_service_status_received_ &&
-        render->local_service_available_ &&
         IsSecureDesktopInteractionRequired(render->local_interactive_stage_)) {
       if (remote_action.type == ControlType::mouse) {
         int absolute_x = 0;
@@ -1145,6 +1160,14 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
             remote_action.k.extended, 1000);
         auto json = nlohmann::json::parse(response, nullptr, false);
         if (json.is_discarded() || !json.value("ok", false)) {
+          if (!json.is_discarded() &&
+              IsTransientSecureDesktopInputFailure(json, remote_action)) {
+            LOG_INFO(
+                "Secure desktop keyboard injection transient failure, "
+                "key_code={}, is_down={}, response={}",
+                key_code, is_down, response);
+            return;
+          }
           LogSecureDesktopInputBlocked(
               &render->last_local_secure_input_block_log_tick_, "local",
               render->local_interactive_stage_.c_str());

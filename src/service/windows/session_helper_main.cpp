@@ -18,6 +18,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "path_manager.h"
@@ -58,6 +59,7 @@ struct SecureCaptureRequest {
   int height = 0;
   bool show_cursor = true;
   int fps = 30;
+  std::string interactive_stage;
 };
 
 struct SecureMouseRequest {
@@ -65,6 +67,7 @@ struct SecureMouseRequest {
   int y = 0;
   int wheel = 0;
   int flag = 0;
+  std::string interactive_stage;
 };
 
 struct SecureCaptureBuffers {
@@ -124,6 +127,11 @@ void InitializeHelperLogger() {
     }
     InitLogger("logs/session_helper");
   });
+}
+
+void EnablePerMonitorDpiAwareness() {
+  SetProcessDpiAwarenessContext(
+      DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 }
 
 std::wstring Utf8ToWide(const std::string& value) {
@@ -447,8 +455,7 @@ void HelperIpcServerLoop(HANDLE stop_event, DWORD session_id,
   }
 }
 
-std::wstring GetCurrentThreadDesktopNameW() {
-  HDESK desktop = GetThreadDesktop(GetCurrentThreadId());
+std::wstring GetDesktopNameW(HDESK desktop) {
   if (desktop == nullptr) {
     return L"";
   }
@@ -471,6 +478,14 @@ std::wstring GetCurrentThreadDesktopNameW() {
   return desktop_name;
 }
 
+std::wstring GetCurrentThreadDesktopNameW() {
+  return GetDesktopNameW(GetThreadDesktop(GetCurrentThreadId()));
+}
+
+constexpr ACCESS_MASK kCrossDeskInteractiveDesktopAccess =
+    DESKTOP_CREATEWINDOW | DESKTOP_WRITEOBJECTS | DESKTOP_READOBJECTS |
+    DESKTOP_SWITCHDESKTOP;
+
 bool EnsureThreadDesktop(const wchar_t* desktop_name,
                          HDESK* opened_desktop_out = nullptr) {
   if (desktop_name == nullptr) {
@@ -483,9 +498,8 @@ bool EnsureThreadDesktop(const wchar_t* desktop_name,
     return true;
   }
 
-  HDESK desktop = OpenDesktopW(desktop_name, 0, FALSE,
-                               DESKTOP_CREATEWINDOW | DESKTOP_WRITEOBJECTS |
-                                   DESKTOP_READOBJECTS | DESKTOP_SWITCHDESKTOP);
+  HDESK desktop =
+      OpenDesktopW(desktop_name, 0, FALSE, kCrossDeskInteractiveDesktopAccess);
   if (desktop == nullptr) {
     return false;
   }
@@ -503,6 +517,196 @@ bool EnsureThreadDesktop(const wchar_t* desktop_name,
   return true;
 }
 
+bool EnsureThreadInputDesktop(HDESK* opened_desktop_out = nullptr) {
+  HDESK desktop =
+      OpenInputDesktop(0, FALSE, kCrossDeskInteractiveDesktopAccess);
+  if (desktop == nullptr) {
+    return false;
+  }
+
+  const std::wstring input_desktop = GetDesktopNameW(desktop);
+  const std::wstring current_desktop = GetCurrentThreadDesktopNameW();
+  if (!input_desktop.empty() && !current_desktop.empty() &&
+      _wcsicmp(input_desktop.c_str(), current_desktop.c_str()) == 0) {
+    if (opened_desktop_out != nullptr) {
+      *opened_desktop_out = desktop;
+    } else {
+      CloseDesktop(desktop);
+    }
+    return true;
+  }
+
+  if (!SetThreadDesktop(desktop)) {
+    CloseDesktop(desktop);
+    return false;
+  }
+
+  if (opened_desktop_out != nullptr) {
+    *opened_desktop_out = desktop;
+  } else {
+    CloseDesktop(desktop);
+  }
+  return true;
+}
+
+bool EnsureThreadInteractiveDesktop(HDESK* opened_desktop_out = nullptr) {
+  if (opened_desktop_out != nullptr) {
+    *opened_desktop_out = nullptr;
+  }
+
+  if (EnsureThreadInputDesktop(opened_desktop_out)) {
+    return true;
+  }
+  const DWORD input_desktop_error = GetLastError();
+
+  if (EnsureThreadDesktop(L"Winlogon", opened_desktop_out)) {
+    return true;
+  }
+  const DWORD winlogon_error = GetLastError();
+
+  LOG_WARN(
+      "Failed to switch secure input helper desktop, input_error={}, "
+      "winlogon_error={}, current='{}'",
+      input_desktop_error, winlogon_error,
+      WideToUtf8(GetCurrentThreadDesktopNameW()));
+  SetLastError(winlogon_error != ERROR_SUCCESS ? winlogon_error
+                                               : input_desktop_error);
+  return false;
+}
+
+const wchar_t* DesktopNameForInteractiveStage(
+    const std::string& interactive_stage) {
+  if (interactive_stage == "credential-ui" ||
+      interactive_stage == "secure-desktop") {
+    return L"Winlogon";
+  }
+  if (interactive_stage == "lock-screen") {
+    return L"Default";
+  }
+  return nullptr;
+}
+
+struct DesktopSwitchDetails {
+  std::string stage;
+  std::string target_desktop;
+  std::string current_desktop;
+  DWORD error_code = ERROR_SUCCESS;
+};
+
+struct InputInjectionResult {
+  bool ok = true;
+  std::string error;
+  DWORD error_code = ERROR_SUCCESS;
+  DesktopSwitchDetails desktop;
+};
+
+DesktopSwitchDetails BuildDesktopSwitchDetails(
+    const std::string& interactive_stage) {
+  DesktopSwitchDetails details;
+  details.stage = interactive_stage;
+  const wchar_t* desktop_name =
+      DesktopNameForInteractiveStage(interactive_stage);
+  details.target_desktop =
+      desktop_name != nullptr ? WideToUtf8(std::wstring(desktop_name))
+                              : "input-or-Winlogon";
+  details.current_desktop = WideToUtf8(GetCurrentThreadDesktopNameW());
+  return details;
+}
+
+InputInjectionResult BuildInputSuccess() {
+  return {};
+}
+
+InputInjectionResult BuildInputFailure(const char* error, DWORD error_code,
+                                       DesktopSwitchDetails desktop) {
+  desktop.error_code = error_code;
+  desktop.current_desktop = WideToUtf8(GetCurrentThreadDesktopNameW());
+
+  InputInjectionResult result;
+  result.ok = false;
+  result.error = error != nullptr ? error : "input_failed";
+  result.error_code =
+      error_code != ERROR_SUCCESS ? error_code : ERROR_GEN_FAILURE;
+  result.desktop = std::move(desktop);
+  return result;
+}
+
+Json BuildInputFailureJson(const InputInjectionResult& result) {
+  Json json;
+  json["ok"] = false;
+  json["error"] = result.error;
+  json["code"] = result.error_code;
+  json["stage"] = result.desktop.stage;
+  json["target_desktop"] = result.desktop.target_desktop;
+  json["current_desktop"] = result.desktop.current_desktop;
+  return json;
+}
+
+bool EnsureThreadInteractiveDesktopForStage(
+    const std::string& interactive_stage,
+    HDESK* opened_desktop_out = nullptr,
+    DesktopSwitchDetails* switch_details = nullptr) {
+  if (opened_desktop_out != nullptr) {
+    *opened_desktop_out = nullptr;
+  }
+
+  DesktopSwitchDetails local_details =
+      BuildDesktopSwitchDetails(interactive_stage);
+  if (switch_details != nullptr) {
+    *switch_details = local_details;
+  }
+
+  const wchar_t* desktop_name =
+      DesktopNameForInteractiveStage(interactive_stage);
+  if (desktop_name != nullptr) {
+    if (EnsureThreadDesktop(desktop_name, opened_desktop_out)) {
+      if (switch_details != nullptr) {
+        switch_details->current_desktop =
+            WideToUtf8(GetCurrentThreadDesktopNameW());
+      }
+      return true;
+    }
+
+    const DWORD error = GetLastError();
+    if (switch_details != nullptr) {
+      switch_details->error_code = error;
+      switch_details->current_desktop =
+          WideToUtf8(GetCurrentThreadDesktopNameW());
+    }
+    LOG_WARN(
+        "Failed to switch secure input helper to stage desktop, stage='{}', "
+        "desktop='{}', error={}, current='{}'",
+        interactive_stage, WideToUtf8(std::wstring(desktop_name)),
+        error,
+        WideToUtf8(GetCurrentThreadDesktopNameW()));
+    SetLastError(error);
+    return false;
+  }
+
+  if (EnsureThreadInteractiveDesktop(opened_desktop_out)) {
+    if (switch_details != nullptr) {
+      switch_details->current_desktop = WideToUtf8(GetCurrentThreadDesktopNameW());
+    }
+    return true;
+  }
+
+  const DWORD error = GetLastError();
+  if (switch_details != nullptr) {
+    switch_details->error_code = error;
+    switch_details->current_desktop = WideToUtf8(GetCurrentThreadDesktopNameW());
+  }
+  return false;
+}
+
+struct ScopedDesktopHandle {
+  HDESK handle = nullptr;
+  ~ScopedDesktopHandle() {
+    if (handle != nullptr) {
+      CloseDesktop(handle);
+    }
+  }
+};
+
 bool PreferSideSpecificVkInjection(int key_code) {
   switch (key_code) {
     case VK_LSHIFT:
@@ -519,8 +723,20 @@ bool PreferSideSpecificVkInjection(int key_code) {
   }
 }
 
-int InjectKeyboardInput(int key_code, bool is_down, uint32_t scan_code,
-                        bool extended) {
+InputInjectionResult InjectKeyboardInput(
+    int key_code, bool is_down, uint32_t scan_code, bool extended,
+    const std::string& interactive_stage) {
+  ScopedDesktopHandle desktop;
+  DesktopSwitchDetails desktop_switch;
+  if (!EnsureThreadInteractiveDesktopForStage(interactive_stage,
+                                              &desktop.handle,
+                                              &desktop_switch)) {
+    const DWORD error = GetLastError();
+    return BuildInputFailure("switch_interactive_desktop_failed",
+                             error != ERROR_SUCCESS ? error : ERROR_GEN_FAILURE,
+                             desktop_switch);
+  }
+
   INPUT input = {0};
   input.type = INPUT_KEYBOARD;
 
@@ -561,16 +777,21 @@ int InjectKeyboardInput(int key_code, bool is_down, uint32_t scan_code,
 
   UINT sent = SendInput(1, &input, sizeof(INPUT));
   if (sent != 1) {
-    return static_cast<int>(GetLastError());
+    const DWORD error = GetLastError();
+    return BuildInputFailure("send_input_failed",
+                             error != ERROR_SUCCESS ? error : ERROR_GEN_FAILURE,
+                             desktop_switch);
   }
 
-  return 0;
+  return BuildInputSuccess();
 }
 
 bool ParseSecureInputKeyboardCommand(const std::string& command,
                                      int* key_code_out, bool* is_down_out,
                                      uint32_t* scan_code_out,
-                                     bool* extended_out) {
+                                     bool* extended_out,
+                                     std::string* interactive_stage_out =
+                                         nullptr) {
   if (key_code_out == nullptr || is_down_out == nullptr ||
       scan_code_out == nullptr || extended_out == nullptr) {
     return false;
@@ -578,6 +799,9 @@ bool ParseSecureInputKeyboardCommand(const std::string& command,
 
   *scan_code_out = 0;
   *extended_out = false;
+  if (interactive_stage_out != nullptr) {
+    interactive_stage_out->clear();
+  }
 
   if (command.rfind(crossdesk::kCrossDeskSecureInputKeyboardCommandPrefix, 0) !=
       0) {
@@ -630,7 +854,16 @@ bool ParseSecureInputKeyboardCommand(const std::string& command,
     return true;
   }
 
-  const std::string extended_str = command.substr(extended_separator + 1);
+  const size_t stage_separator = command.find(':', extended_separator + 1);
+  const std::string extended_str =
+      stage_separator == std::string::npos
+          ? command.substr(extended_separator + 1)
+          : command.substr(extended_separator + 1,
+                           stage_separator - extended_separator - 1);
+  if (stage_separator != std::string::npos &&
+      interactive_stage_out != nullptr) {
+    *interactive_stage_out = command.substr(stage_separator + 1);
+  }
   if (extended_str == "1" || extended_str == "true") {
     *extended_out = true;
     return true;
@@ -652,6 +885,7 @@ bool ParseSecureInputMouseCommand(const std::string& command,
       0) {
     return false;
   }
+  request_out->interactive_stage.clear();
 
   const size_t x_begin =
       std::strlen(crossdesk::kCrossDeskSecureInputMouseCommandPrefix);
@@ -687,7 +921,15 @@ bool ParseSecureInputMouseCommand(const std::string& command,
   try {
     request_out->wheel =
         std::stoi(command.substr(wheel_begin, separator - wheel_begin));
-    request_out->flag = std::stoi(command.substr(separator + 1));
+    const size_t flag_begin = separator + 1;
+    const size_t stage_separator = command.find(':', flag_begin);
+    request_out->flag = std::stoi(
+        stage_separator == std::string::npos
+            ? command.substr(flag_begin)
+            : command.substr(flag_begin, stage_separator - flag_begin));
+    if (stage_separator != std::string::npos) {
+      request_out->interactive_stage = command.substr(stage_separator + 1);
+    }
   } catch (...) {
     return false;
   }
@@ -705,15 +947,17 @@ bool ParseSecureInputCaptureCommand(const std::string& command,
       0) {
     return false;
   }
+  request_out->interactive_stage.clear();
 
   const size_t values_begin =
       std::strlen(crossdesk::kCrossDeskSecureInputCaptureCommandPrefix);
   int parsed_values[5] = {0};
   size_t token_begin = values_begin;
+  size_t separator = std::string::npos;
   for (int index = 0; index < 5; ++index) {
-    const size_t separator = command.find(':', token_begin);
-    const bool is_last = index == 4;
-    const size_t token_end = is_last ? command.size() : separator;
+    separator = command.find(':', token_begin);
+    const size_t token_end =
+        separator == std::string::npos ? command.size() : separator;
     if (token_end == std::string::npos || token_end <= token_begin) {
       return false;
     }
@@ -733,6 +977,9 @@ bool ParseSecureInputCaptureCommand(const std::string& command,
   request_out->width = parsed_values[2] & ~1;
   request_out->height = parsed_values[3] & ~1;
   request_out->show_cursor = parsed_values[4] != 0;
+  request_out->interactive_stage =
+      separator == std::string::npos ? std::string()
+                                     : command.substr(token_begin);
   return request_out->width > 0 && request_out->height > 0;
 }
 
@@ -746,15 +993,17 @@ bool ParseSecureInputCaptureStartCommand(const std::string& command,
           crossdesk::kCrossDeskSecureInputCaptureStartCommandPrefix, 0) != 0) {
     return false;
   }
+  request_out->interactive_stage.clear();
 
   const size_t values_begin = std::strlen(
       crossdesk::kCrossDeskSecureInputCaptureStartCommandPrefix);
   int parsed_values[6] = {0};
   size_t token_begin = values_begin;
+  size_t separator = std::string::npos;
   for (int index = 0; index < 6; ++index) {
-    const size_t separator = command.find(':', token_begin);
-    const bool is_last = index == 5;
-    const size_t token_end = is_last ? command.size() : separator;
+    separator = command.find(':', token_begin);
+    const size_t token_end =
+        separator == std::string::npos ? command.size() : separator;
     if (token_end == std::string::npos || token_end <= token_begin) {
       return false;
     }
@@ -775,56 +1024,107 @@ bool ParseSecureInputCaptureStartCommand(const std::string& command,
   request_out->height = parsed_values[3] & ~1;
   request_out->show_cursor = parsed_values[4] != 0;
   request_out->fps = parsed_values[5] > 0 ? parsed_values[5] : 30;
+  request_out->interactive_stage =
+      separator == std::string::npos ? std::string()
+                                     : command.substr(token_begin);
   return request_out->width > 0 && request_out->height > 0;
 }
 
-int InjectMouseInput(const SecureMouseRequest& request) {
-  SetCursorPos(request.x, request.y);
-
-  INPUT input = {0};
-  input.type = INPUT_MOUSE;
-  switch (request.flag) {
-    case 1:
-      input.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
-      break;
-    case 2:
-      input.mi.dwFlags = MOUSEEVENTF_LEFTUP;
-      break;
-    case 3:
-      input.mi.dwFlags = MOUSEEVENTF_RIGHTDOWN;
-      break;
-    case 4:
-      input.mi.dwFlags = MOUSEEVENTF_RIGHTUP;
-      break;
-    case 5:
-      input.mi.dwFlags = MOUSEEVENTF_MIDDLEDOWN;
-      break;
-    case 6:
-      input.mi.dwFlags = MOUSEEVENTF_MIDDLEUP;
-      break;
-    case 7:
-      input.mi.dwFlags = MOUSEEVENTF_WHEEL;
-      input.mi.mouseData = request.wheel * 120;
-      break;
-    case 8:
-      input.mi.dwFlags = MOUSEEVENTF_HWHEEL;
-      input.mi.mouseData = request.wheel * 120;
-      break;
-    default:
-      input.mi.dwFlags = 0;
-      break;
-  }
-
-  if (input.mi.dwFlags == 0) {
+LONG NormalizeAbsoluteMouseCoordinate(int value, int origin, int size) {
+  if (size <= 1) {
     return 0;
   }
 
-  UINT sent = SendInput(1, &input, sizeof(INPUT));
-  if (sent != 1) {
-    return static_cast<int>(GetLastError());
+  const int clamped_value =
+      (std::max)(origin, (std::min)(value, origin + size - 1));
+  const long long relative_value =
+      static_cast<long long>(clamped_value - origin) * 65535;
+  return static_cast<LONG>(relative_value / (size - 1));
+}
+
+INPUT BuildAbsoluteMouseMoveInput(int x, int y) {
+  INPUT input = {0};
+  input.type = INPUT_MOUSE;
+
+  const int virtual_left = GetSystemMetrics(SM_XVIRTUALSCREEN);
+  const int virtual_top = GetSystemMetrics(SM_YVIRTUALSCREEN);
+  const int virtual_width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+  const int virtual_height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+
+  input.mi.dx =
+      NormalizeAbsoluteMouseCoordinate(x, virtual_left, virtual_width);
+  input.mi.dy =
+      NormalizeAbsoluteMouseCoordinate(y, virtual_top, virtual_height);
+  input.mi.dwFlags =
+      MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
+  return input;
+}
+
+InputInjectionResult InjectMouseInput(const SecureMouseRequest& request) {
+  ScopedDesktopHandle desktop;
+  DesktopSwitchDetails desktop_switch;
+  if (!EnsureThreadInteractiveDesktopForStage(request.interactive_stage,
+                                              &desktop.handle,
+                                              &desktop_switch)) {
+    const DWORD error = GetLastError();
+    return BuildInputFailure("switch_interactive_desktop_failed",
+                             error != ERROR_SUCCESS ? error : ERROR_GEN_FAILURE,
+                             desktop_switch);
   }
 
-  return 0;
+  std::vector<INPUT> inputs;
+  inputs.push_back(BuildAbsoluteMouseMoveInput(request.x, request.y));
+
+  INPUT action_input = {0};
+  action_input.type = INPUT_MOUSE;
+  switch (request.flag) {
+    case 0:
+      break;
+    case 1:
+      action_input.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+      break;
+    case 2:
+      action_input.mi.dwFlags = MOUSEEVENTF_LEFTUP;
+      break;
+    case 3:
+      action_input.mi.dwFlags = MOUSEEVENTF_RIGHTDOWN;
+      break;
+    case 4:
+      action_input.mi.dwFlags = MOUSEEVENTF_RIGHTUP;
+      break;
+    case 5:
+      action_input.mi.dwFlags = MOUSEEVENTF_MIDDLEDOWN;
+      break;
+    case 6:
+      action_input.mi.dwFlags = MOUSEEVENTF_MIDDLEUP;
+      break;
+    case 7:
+      action_input.mi.dwFlags = MOUSEEVENTF_WHEEL;
+      action_input.mi.mouseData = request.wheel * 120;
+      break;
+    case 8:
+      action_input.mi.dwFlags = MOUSEEVENTF_HWHEEL;
+      action_input.mi.mouseData = request.wheel * 120;
+      break;
+    default:
+      action_input.mi.dwFlags = 0;
+      break;
+  }
+
+  if (action_input.mi.dwFlags != 0) {
+    inputs.push_back(action_input);
+  }
+
+  UINT sent =
+      SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT));
+  if (sent != inputs.size()) {
+    const DWORD error = GetLastError();
+    return BuildInputFailure("send_input_failed",
+                             error != ERROR_SUCCESS ? error : ERROR_GEN_FAILURE,
+                             desktop_switch);
+  }
+
+  return BuildInputSuccess();
 }
 
 std::vector<uint8_t> BuildTextResponseBytes(const std::string& response) {
@@ -836,6 +1136,15 @@ std::vector<uint8_t> CaptureSecureDesktopFrame(
     SecureCaptureBuffers* capture_buffers) {
   if (capture_buffers == nullptr) {
     return BuildTextResponseBytes(BuildErrorJson("invalid_capture_buffers"));
+  }
+
+  ScopedDesktopHandle desktop;
+  if (!EnsureThreadInteractiveDesktopForStage(request.interactive_stage,
+                                              &desktop.handle)) {
+    const DWORD error = GetLastError();
+    return BuildTextResponseBytes(BuildErrorJson(
+        "switch_interactive_desktop_failed",
+        error != ERROR_SUCCESS ? error : ERROR_GEN_FAILURE));
   }
 
   HDC screen_dc = GetDC(nullptr);
@@ -978,6 +1287,14 @@ void SecureDesktopSharedCaptureThread(
   const size_t nv12_size =
       static_cast<size_t>(request.width) * request.height * 3 / 2;
   std::vector<uint8_t> nv12_frame(nv12_size);
+
+  ScopedDesktopHandle desktop;
+  if (!EnsureThreadInteractiveDesktopForStage(request.interactive_stage,
+                                              &desktop.handle)) {
+    LOG_ERROR("Secure shared capture desktop switch failed, error={}",
+              GetLastError());
+    return;
+  }
 
   HDC screen_dc = GetDC(nullptr);
   if (screen_dc == nullptr) {
@@ -1224,17 +1541,21 @@ std::vector<uint8_t> HandleSecureInputHelperCommand(
   bool is_down = false;
   uint32_t scan_code = 0;
   bool extended = false;
+  std::string interactive_stage;
   if (ParseSecureInputKeyboardCommand(command, &key_code, &is_down, &scan_code,
-                                      &extended)) {
-    const int inject_result =
-        InjectKeyboardInput(key_code, is_down, scan_code, extended);
-    if (inject_result != 0) {
+                                      &extended, &interactive_stage)) {
+    const InputInjectionResult inject_result =
+        InjectKeyboardInput(key_code, is_down, scan_code, extended,
+                            interactive_stage);
+    if (!inject_result.ok) {
       LOG_WARN(
-          "Secure input helper SendInput failed for key_code={}, is_down={}, "
-          "scan_code={}, extended={}, err={}",
-          key_code, is_down, scan_code, extended, inject_result);
-      return BuildTextResponseBytes(BuildErrorJson(
-          "send_input_failed", static_cast<DWORD>(inject_result)));
+          "Secure input helper input failed for key_code={}, is_down={}, "
+          "scan_code={}, extended={}, error='{}', stage='{}', target='{}', "
+          "current='{}', code={}",
+          key_code, is_down, scan_code, extended, inject_result.error,
+          interactive_stage, inject_result.desktop.target_desktop,
+          inject_result.desktop.current_desktop, inject_result.error_code);
+      return BuildTextResponseBytes(BuildInputFailureJson(inject_result).dump());
     }
 
     Json json;
@@ -1244,21 +1565,24 @@ std::vector<uint8_t> HandleSecureInputHelperCommand(
     json["is_down"] = is_down;
     json["scan_code"] = scan_code;
     json["extended"] = extended;
+    json["stage"] = interactive_stage;
     json["desktop"] = WideToUtf8(GetCurrentThreadDesktopNameW());
     return BuildTextResponseBytes(json.dump());
   }
 
   SecureMouseRequest mouse_request;
   if (ParseSecureInputMouseCommand(command, &mouse_request)) {
-    const int inject_result = InjectMouseInput(mouse_request);
-    if (inject_result != 0) {
+    const InputInjectionResult inject_result = InjectMouseInput(mouse_request);
+    if (!inject_result.ok) {
       LOG_WARN(
-          "Secure input helper SendInput failed for mouse x={}, y={}, "
-          "wheel={}, flag={}, err={}",
+          "Secure input helper input failed for mouse x={}, y={}, "
+          "wheel={}, flag={}, error='{}', stage='{}', target='{}', "
+          "current='{}', code={}",
           mouse_request.x, mouse_request.y, mouse_request.wheel,
-          mouse_request.flag, inject_result);
-      return BuildTextResponseBytes(BuildErrorJson(
-          "send_input_failed", static_cast<DWORD>(inject_result)));
+          mouse_request.flag, inject_result.error,
+          mouse_request.interactive_stage, inject_result.desktop.target_desktop,
+          inject_result.desktop.current_desktop, inject_result.error_code);
+      return BuildTextResponseBytes(BuildInputFailureJson(inject_result).dump());
     }
 
     Json json;
@@ -1268,6 +1592,7 @@ std::vector<uint8_t> HandleSecureInputHelperCommand(
     json["y"] = mouse_request.y;
     json["wheel"] = mouse_request.wheel;
     json["flag"] = mouse_request.flag;
+    json["stage"] = mouse_request.interactive_stage;
     json["desktop"] = WideToUtf8(GetCurrentThreadDesktopNameW());
     return BuildTextResponseBytes(json.dump());
   }
@@ -1394,6 +1719,8 @@ void PrintUsage() {
 }  // namespace
 
 int main(int argc, char* argv[]) {
+  EnablePerMonitorDpiAwareness();
+
   InitializeHelperLogger();
 
   bool run_helper = false;
@@ -1447,24 +1774,10 @@ int main(int argc, char* argv[]) {
                expected_session_id, current_session_id);
     }
 
-    HDESK secure_desktop = nullptr;
-    if (!EnsureThreadDesktop(L"Winlogon", &secure_desktop)) {
-      LOG_ERROR(
-          "Failed to switch secure input helper to Winlogon desktop, error={}",
-          GetLastError());
-      if (stop_event != nullptr) {
-        CloseHandle(stop_event);
-      }
-      return 1;
-    }
-
-    LOG_INFO("Secure input helper desktop: '{}'",
+    LOG_INFO("Secure input helper initial desktop: '{}'",
              WideToUtf8(GetCurrentThreadDesktopNameW()));
     SecureInputHelperIpcServerLoop(stop_event, current_session_id);
 
-    if (secure_desktop != nullptr) {
-      CloseDesktop(secure_desktop);
-    }
     if (stop_event != nullptr) {
       CloseHandle(stop_event);
     }

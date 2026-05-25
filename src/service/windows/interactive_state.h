@@ -13,7 +13,8 @@ namespace crossdesk {
 
 inline bool IsSecureDesktopInteractionRequired(
     const std::string& interactive_stage) {
-  return interactive_stage == "credential-ui" ||
+  return interactive_stage == "lock-screen" ||
+         interactive_stage == "credential-ui" ||
          interactive_stage == "secure-desktop";
 }
 

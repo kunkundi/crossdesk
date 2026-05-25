@@ -29,7 +29,7 @@ namespace {
 using Json = nlohmann::json;
 
 constexpr DWORD kSecureDesktopStatusIntervalMs = 250;
-constexpr DWORD kSecureDesktopStatusPipeTimeoutMs = 150;
+constexpr DWORD kSecureDesktopStatusPipeTimeoutMs = 500;
 constexpr DWORD kSecureDesktopHelperPipeTimeoutMs = 120;
 constexpr DWORD kSecureDesktopTransientErrorGraceMs = 1500;
 constexpr DWORD kSecureDesktopTransientErrorLogIntervalMs = 5000;
@@ -131,20 +131,28 @@ class WgcPluginCapturer final : public ScreenCapturer {
 };
 
 std::string BuildSecureCaptureCommand(int left, int top, int width, int height,
-                                      bool show_cursor) {
+                                      bool show_cursor,
+                                      const std::string& stage) {
   std::ostringstream stream;
   stream << kCrossDeskSecureInputCaptureCommandPrefix << left << ":" << top
          << ":" << width << ":" << height << ":" << (show_cursor ? 1 : 0);
+  if (!stage.empty()) {
+    stream << ":" << stage;
+  }
   return stream.str();
 }
 
 std::string BuildSecureCaptureStartCommand(int left, int top, int width,
                                            int height, bool show_cursor,
-                                           int fps) {
+                                           int fps,
+                                           const std::string& stage) {
   std::ostringstream stream;
   stream << kCrossDeskSecureInputCaptureStartCommandPrefix << left << ":" << top
          << ":" << width << ":" << height << ":" << (show_cursor ? 1 : 0)
          << ":" << fps;
+  if (!stage.empty()) {
+    stream << ":" << stage;
+  }
   return stream.str();
 }
 
@@ -158,6 +166,11 @@ std::string ExtractPipeTextResponse(const std::vector<uint8_t>& response) {
 bool IsTransientSecureDesktopFrameError(const std::string& error_message) {
   return error_message.rfind("pipe_unavailable:", 0) == 0 ||
          error_message.find("\"error\":\"bitblt_failed\"") != std::string::npos;
+}
+
+bool IsTransientWindowsServiceStatusError(const std::string& error) {
+  return error == "pipe_unavailable" || error == "pipe_connect_failed" ||
+         error == "pipe_read_failed";
 }
 
 bool ReadPipeMessage(HANDLE pipe, std::vector<uint8_t>* response_out,
@@ -342,6 +355,7 @@ bool QuerySecureDesktopHelperCommand(DWORD session_id,
 
 bool QuerySecureDesktopHelperFrame(DWORD session_id, int left, int top,
                                    int width, int height, bool show_cursor,
+                                   const std::string& stage,
                                    std::vector<uint8_t>* nv12_frame_out,
                                    int* captured_width_out,
                                    int* captured_height_out,
@@ -352,7 +366,7 @@ bool QuerySecureDesktopHelperFrame(DWORD session_id, int left, int top,
   }
 
   const std::string command =
-      BuildSecureCaptureCommand(left, top, width, height, show_cursor);
+      BuildSecureCaptureCommand(left, top, width, height, show_cursor, stage);
   std::vector<uint8_t> response;
   if (!QuerySecureDesktopHelperCommand(session_id, command, &response,
                                        error_out)) {
@@ -686,6 +700,7 @@ void ScreenCapturerWin::StopSecureDesktopSharedCapture(DWORD session_id) {
   secure_shared_height_ = 0;
   secure_shared_fps_ = 0;
   secure_shared_show_cursor_ = true;
+  secure_shared_stage_.clear();
 }
 
 bool ScreenCapturerWin::OpenSecureDesktopSharedFrame(DWORD session_id,
@@ -815,7 +830,8 @@ bool ScreenCapturerWin::ReadSecureDesktopSharedFrame(
 
 bool ScreenCapturerWin::StartSecureDesktopSharedCapture(
     DWORD session_id, int left, int top, int width, int height,
-    bool show_cursor, int fps, std::string* error_out) {
+    const std::string& stage, bool show_cursor, int fps,
+    std::string* error_out) {
   const size_t payload_size = static_cast<size_t>(width) * height * 3 / 2;
   const size_t mapping_size =
       sizeof(CrossDeskSecureDesktopSharedFrameHeader) + payload_size;
@@ -830,6 +846,7 @@ bool ScreenCapturerWin::StartSecureDesktopSharedCapture(
       secure_shared_session_id_ == session_id &&
       secure_shared_left_ == left && secure_shared_top_ == top &&
       secure_shared_width_ == width && secure_shared_height_ == height &&
+      secure_shared_stage_ == stage &&
       secure_shared_show_cursor_ == show_cursor && secure_shared_fps_ == fps &&
       OpenSecureDesktopSharedFrame(session_id, mapping_size, error_out)) {
     return true;
@@ -838,7 +855,8 @@ bool ScreenCapturerWin::StartSecureDesktopSharedCapture(
   StopSecureDesktopSharedCapture(secure_shared_session_id_);
 
   const std::string command =
-      BuildSecureCaptureStartCommand(left, top, width, height, show_cursor, fps);
+      BuildSecureCaptureStartCommand(left, top, width, height, show_cursor, fps,
+                                     stage);
   std::vector<uint8_t> response;
   if (!QuerySecureDesktopHelperCommand(session_id, command, &response,
                                        error_out)) {
@@ -861,6 +879,7 @@ bool ScreenCapturerWin::StartSecureDesktopSharedCapture(
   secure_shared_height_ = height;
   secure_shared_show_cursor_ = show_cursor;
   secure_shared_fps_ = fps;
+  secure_shared_stage_ = stage;
 
   if (!OpenSecureDesktopSharedFrame(session_id, mapping_size, error_out)) {
     StopSecureDesktopSharedCapture(session_id);
@@ -907,6 +926,11 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
                 "Windows capturer secure desktop service available, polling "
                 "session_id={}",
                 status.active_session_id);
+          } else if (IsTransientWindowsServiceStatusError(status.error)) {
+            LOG_INFO(
+                "Windows capturer secure desktop service temporarily unavailable: "
+                "error={}, code={}",
+                status.error, status.error_code);
           } else {
             LOG_WARN(
                 "Windows capturer secure desktop service unavailable: "
@@ -973,8 +997,9 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
                  : kSecureDesktopCaptureMinFps;
 
     if (StartSecureDesktopSharedCapture(status.active_session_id, left, top,
-                                        width, height, show_cursor, shared_fps,
-                                        &error_message) &&
+                                        width, height,
+                                        status.interactive_stage, show_cursor,
+                                        shared_fps, &error_message) &&
         ReadSecureDesktopSharedFrame(
             static_cast<DWORD>(frame_interval_ms + 20), &secure_frame,
             &captured_width, &captured_height, &error_message)) {
@@ -988,6 +1013,7 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
     if (!frame_delivered &&
         QuerySecureDesktopHelperFrame(status.active_session_id, left, top,
                                       width, height, show_cursor,
+                                      status.interactive_stage,
                                       &secure_frame, &captured_width,
                                       &captured_height, &error_message)) {
       if (cb_orig_ && !secure_frame.empty()) {
@@ -1011,10 +1037,19 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
         continue;
       }
       if (now - last_error_tick >= log_interval) {
-        LOG_WARN(
-            "Windows capturer secure desktop frame query failed, stage='{}', "
-            "session_id={}, error={}",
-            status.interactive_stage, status.active_session_id, error_message);
+        if (transient_error) {
+          LOG_INFO(
+              "Windows capturer secure desktop transient frame query failed, "
+              "stage='{}', session_id={}, error={}",
+              status.interactive_stage, status.active_session_id,
+              error_message);
+        } else {
+          LOG_WARN(
+              "Windows capturer secure desktop frame query failed, stage='{}', "
+              "session_id={}, error={}",
+              status.interactive_stage, status.active_session_id,
+              error_message);
+        }
         last_error_tick = now;
       }
     }
