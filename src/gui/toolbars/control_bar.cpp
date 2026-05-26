@@ -15,6 +15,22 @@
 
 namespace crossdesk {
 
+namespace {
+
+void ShowControlBarTooltip(const std::string& text) {
+  if (!ImGui::IsItemHovered() || text.empty()) {
+    return;
+  }
+
+  ImGui::BeginTooltip();
+  ImGui::SetWindowFontScale(0.5f);
+  ImGui::Text("%s", text.c_str());
+  ImGui::SetWindowFontScale(1.0f);
+  ImGui::EndTooltip();
+}
+
+}  // namespace
+
 int CountDigits(int number) {
   if (number == 0) return 1;
   return (int)std::floor(std::log10(std::abs(number))) + 1;
@@ -162,6 +178,8 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
 
     ImVec2 btn_min = ImGui::GetItemRectMin();
     ImVec2 btn_size_actual = ImGui::GetItemRectSize();
+    ShowControlBarTooltip(
+        localization::select_display[localization_language_index_]);
 
     props->display_selectable_hovered_ = false;
     if (ImGui::BeginPopup("display")) {
@@ -185,12 +203,12 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
       ImGui::EndPopup();
     }
 
-    ImGui::SetWindowFontScale(0.5f);
+    ImGui::SetWindowFontScale(0.4f);
     ImVec2 text_size = ImGui::CalcTextSize(
         std::to_string(props->selected_display_ + 1).c_str());
     ImVec2 text_pos =
-        ImVec2(btn_min.x + (btn_size_actual.x - text_size.x) * 0.5f,
-               btn_min.y + (btn_size_actual.y - text_size.y) * 0.35f);
+        ImVec2(btn_min.x + (btn_size_actual.x - text_size.x) * 0.53f,
+               btn_min.y + (btn_size_actual.y - text_size.y) * 0.33f);
     ImGui::GetWindowDrawList()->AddText(
         text_pos, IM_COL32(0, 0, 0, 255),
         std::to_string(props->selected_display_ + 1).c_str());
@@ -218,25 +236,14 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
     if (ImGui::Button(shortcut.c_str(), ImVec2(button_width, button_height))) {
       ImGui::OpenPopup("shortcut");
     }
-
-    if (ImGui::IsItemHovered()) {
-      ImGui::BeginTooltip();
-      ImGui::SetWindowFontScale(0.5f);
-      ImGui::Text(
-          "%s",
-          localization::send_shortcut[localization_language_index_].c_str());
-      ImGui::SetWindowFontScale(1.0f);
-      ImGui::EndTooltip();
-    }
+    ShowControlBarTooltip(
+        localization::send_shortcut[localization_language_index_]);
 
     props->shortcut_selectable_hovered_ = false;
     if (ImGui::BeginPopup("shortcut")) {
       ImGui::SetWindowFontScale(0.5f);
-      std::string sas_label =
-          "Ctrl+Alt+Del - " +
-          localization::send_sas[localization_language_index_];
-      std::string lock_label =
-          "Win+L - " + localization::lock_remote[localization_language_index_];
+      std::string sas_label = "Ctrl+Alt+Del";
+      std::string lock_label = "Win+L";
       if (ImGui::Selectable(sas_label.c_str())) {
         send_service_command(ServiceCommandFlag::send_sas, "SAS");
       }
@@ -268,6 +275,12 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
                 : localization::control_mouse[localization_language_index_];
       }
     }
+    const bool mouse_button_hovered = ImGui::IsItemHovered();
+    const std::string mouse_tooltip =
+        props->enable_mouse_control_
+            ? localization::release_mouse[localization_language_index_]
+            : localization::control_mouse[localization_language_index_];
+    ShowControlBarTooltip(mouse_tooltip);
 
     if (!props->enable_mouse_control_) {
       draw_list->AddLine(ImVec2(disable_mouse_x, disable_mouse_y),
@@ -280,8 +293,8 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
           ImVec2(
               mouse_x + button_width - line_padding - line_thickness * 0.7f,
               mouse_y + button_height - line_padding + line_thickness * 0.7f),
-          ImGui::IsItemHovered() ? IM_COL32(66, 150, 250, 255)
-                                 : IM_COL32(179, 213, 253, 255),
+          mouse_button_hovered ? IM_COL32(66, 150, 250, 255)
+                               : IM_COL32(179, 213, 253, 255),
           line_thickness);
     }
 
@@ -313,6 +326,12 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
                               props->control_data_label_.c_str());
       }
     }
+    const bool audio_button_hovered = ImGui::IsItemHovered();
+    const std::string audio_tooltip =
+        props->audio_capture_button_pressed_
+            ? localization::mute[localization_language_index_]
+            : localization::audio_capture[localization_language_index_];
+    ShowControlBarTooltip(audio_tooltip);
 
     if (!props->audio_capture_button_pressed_) {
       draw_list->AddLine(ImVec2(disable_audio_x, disable_audio_y),
@@ -325,8 +344,8 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
           ImVec2(
               audio_x + button_width - line_padding - line_thickness * 0.7f,
               audio_y + button_height - line_padding + line_thickness * 0.7f),
-          ImGui::IsItemHovered() ? IM_COL32(66, 150, 250, 255)
-                                 : IM_COL32(179, 213, 253, 255),
+          audio_button_hovered ? IM_COL32(66, 150, 250, 255)
+                               : IM_COL32(179, 213, 253, 255),
           line_thickness);
     }
 
@@ -339,6 +358,8 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
       std::string path = OpenFileDialog(title);
       ProcessSelectedFile(path, props, file_label_);
     }
+    ShowControlBarTooltip(
+        localization::select_file[localization_language_index_]);
 
     ImGui::SameLine();
     // net traffic stats button
@@ -363,6 +384,12 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
               : localization::show_net_traffic_stats
                     [localization_language_index_];
     }
+    const std::string net_traffic_stats_tooltip =
+        props->net_traffic_stats_button_pressed_
+            ? localization::hide_net_traffic_stats[localization_language_index_]
+            : localization::show_net_traffic_stats
+                  [localization_language_index_];
+    ShowControlBarTooltip(net_traffic_stats_tooltip);
 
     if (button_color_style_pushed) {
       ImGui::PopStyleColor();
@@ -389,6 +416,11 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
       }
       props->reset_control_bar_pos_ = true;
     }
+    const std::string fullscreen_tooltip =
+        fullscreen_button_pressed_
+            ? localization::exit_fullscreen[localization_language_index_]
+            : localization::fullscreen[localization_language_index_];
+    ShowControlBarTooltip(fullscreen_tooltip);
 
     ImGui::SameLine();
     // close button
@@ -398,6 +430,8 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
                       ImVec2(button_width, button_height))) {
       CleanupPeer(props);
     }
+    ShowControlBarTooltip(
+        localization::disconnect[localization_language_index_]);
 
     ImGui::SameLine();
 
@@ -427,6 +461,10 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
                                             : ICON_FA_ANGLE_RIGHT)
           : (props->is_control_bar_in_left_ ? ICON_FA_ANGLE_RIGHT
                                             : ICON_FA_ANGLE_LEFT);
+  const std::string control_bar_tooltip =
+      props->control_bar_expand_
+          ? localization::collapse_control_bar[localization_language_index_]
+          : localization::expand_control_bar[localization_language_index_];
   if (ImGui::Button(control_bar.c_str(),
                     ImVec2(button_height * 0.6f, button_height))) {
     props->control_bar_expand_ = !props->control_bar_expand_;
@@ -438,6 +476,7 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
       props->net_traffic_stats_button_pressed_ = false;
     }
   }
+  ShowControlBarTooltip(control_bar_tooltip);
 
   if (props->net_traffic_stats_button_pressed_ && props->control_bar_expand_) {
     NetTrafficStats(props);

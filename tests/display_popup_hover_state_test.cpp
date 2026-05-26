@@ -39,6 +39,35 @@ bool ExpectContains(const char* name, const std::string& value,
   return false;
 }
 
+bool ExpectNotContains(const char* name, const std::string& value,
+                       const std::string& unexpected) {
+  if (value.find(unexpected) == std::string::npos) {
+    return true;
+  }
+
+  std::cerr << name << " contains unexpected text: " << unexpected << "\n";
+  return false;
+}
+
+bool ExpectContainsAtLeast(const char* name, const std::string& value,
+                           const std::string& expected, size_t min_count) {
+  size_t count = 0;
+  size_t pos = 0;
+  while ((pos = value.find(expected, pos)) != std::string::npos) {
+    ++count;
+    pos += expected.size();
+  }
+
+  if (count >= min_count) {
+    return true;
+  }
+
+  std::cerr << name << " expected at least " << min_count
+            << " occurrences of: " << expected << ", found " << count
+            << "\n";
+  return false;
+}
+
 bool ExpectResetBeforeDisplayPopup(const std::string& value) {
   const std::string reset = "props->display_selectable_hovered_ = false;";
   const std::string popup = "ImGui::BeginPopup(\"display\")";
@@ -93,5 +122,62 @@ int main() {
   ok &= ExpectContains("control_bar.cpp", control_bar,
                        "props->shortcut_selectable_hovered_ =");
   ok &= ExpectResetBeforeShortcutPopup(control_bar);
+  ok &= ExpectContains("control_bar.cpp", control_bar,
+                       "void ShowControlBarTooltip(const std::string& text)");
+  ok &= ExpectContainsAtLeast("control_bar.cpp", control_bar,
+                              "ShowControlBarTooltip(", 10);
+  ok &= ExpectContains("control_bar.cpp", control_bar,
+                       "localization::select_display"
+                       "[localization_language_index_]");
+  ok &= ExpectContains("control_bar.cpp", control_bar,
+                       "localization::send_shortcut"
+                       "[localization_language_index_]");
+  ok &= ExpectNotContains("control_bar.cpp", control_bar,
+                          "ShowControlBarTooltip("
+                          "props->mouse_control_button_label_)");
+  ok &= ExpectNotContains("control_bar.cpp", control_bar,
+                          "ShowControlBarTooltip("
+                          "props->audio_capture_button_label_)");
+  ok &= ExpectContains("control_bar.cpp", control_bar,
+                       "localization::select_file"
+                       "[localization_language_index_]");
+  ok &= ExpectNotContains("control_bar.cpp", control_bar,
+                          "ShowControlBarTooltip("
+                          "props->net_traffic_stats_button_label_)");
+  ok &= ExpectNotContains("control_bar.cpp", control_bar,
+                          "ShowControlBarTooltip("
+                          "props->fullscreen_button_label_)");
+  ok &= ExpectContains("control_bar.cpp", control_bar,
+                       "localization::release_mouse"
+                       "[localization_language_index_]");
+  ok &= ExpectContains("control_bar.cpp", control_bar,
+                       "localization::control_mouse"
+                       "[localization_language_index_]");
+  ok &= ExpectContains("control_bar.cpp", control_bar,
+                       "localization::audio_capture"
+                       "[localization_language_index_]");
+  ok &= ExpectContains("control_bar.cpp", control_bar,
+                       "localization::mute[localization_language_index_]");
+  ok &= ExpectContains("control_bar.cpp", control_bar,
+                       "localization::hide_net_traffic_stats"
+                       "[localization_language_index_]");
+  ok &= ExpectContains("control_bar.cpp", control_bar,
+                       "localization::show_net_traffic_stats"
+                       "[localization_language_index_]");
+  ok &= ExpectContains("control_bar.cpp", control_bar,
+                       "localization::exit_fullscreen"
+                       "[localization_language_index_]");
+  ok &= ExpectContains("control_bar.cpp", control_bar,
+                       "localization::fullscreen"
+                       "[localization_language_index_]");
+  ok &= ExpectContains("control_bar.cpp", control_bar,
+                       "localization::disconnect"
+                       "[localization_language_index_]");
+  ok &= ExpectContains("control_bar.cpp", control_bar,
+                       "localization::expand_control_bar"
+                       "[localization_language_index_]");
+  ok &= ExpectContains("control_bar.cpp", control_bar,
+                       "localization::collapse_control_bar"
+                       "[localization_language_index_]");
   return ok ? 0 : 1;
 }
