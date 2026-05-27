@@ -15,6 +15,7 @@ APP_BUNDLE="${APP_NAME_UPPER}.app"
 CONTENTS_DIR="${APP_BUNDLE}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
 RESOURCES_DIR="${CONTENTS_DIR}/Resources"
+INSTALLER_TITLE="${APP_NAME_UPPER} ${APP_VERSION}"
 
 PKG_NAME="${APP_NAME}-${PLATFORM}-${ARCH}-${APP_VERSION}.pkg"
 DMG_NAME="${APP_NAME}-${PLATFORM}-${ARCH}-${APP_VERSION}.dmg"
@@ -73,7 +74,49 @@ cat > "${CONTENTS_DIR}/Info.plist" <<EOF
 </plist>
 EOF
 
+xattr -cr "${APP_BUNDLE}" 2>/dev/null || true
+find "${APP_BUNDLE}" -name '._*' -delete
+
 echo ".app created successfully."
+
+mkdir -p build_pkg_scripts
+cp scripts/macosx/tcc_postinstall.sh build_pkg_scripts/postinstall
+chmod +x build_pkg_scripts/postinstall
+
+mkdir -p build_pkg_resources
+cat > build_pkg_resources/welcome.html <<EOF
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #222;
+            margin: 0;
+            padding: 0;
+        }
+        h1 {
+            font-size: 20px;
+            font-weight: 600;
+            margin: 0 0 12px;
+        }
+        p {
+            margin: 0 0 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>欢迎安装 ${INSTALLER_TITLE}</h1>
+    <p>CrossDesk 将安装到“应用程序”文件夹。</p>
+    <p>首次启动时，CrossDesk 会引导你在系统设置中授予必要权限，包括辅助功能、录屏与系统录音等。</p>
+    <p>为避免旧版本授权残留造成状态误判，安装后可能需要重新授权。</p>
+    <p>安装完成后，请从“应用程序”文件夹启动 CrossDesk。</p>
+</body>
+</html>
+EOF
 
 echo "building pkg..."
 pkgbuild \
@@ -81,59 +124,32 @@ pkgbuild \
   --version "${APP_VERSION}" \
   --install-location "/Applications" \
   --component "${APP_BUNDLE}" \
+  --scripts build_pkg_scripts \
   build_pkg_temp/${APP_NAME}-component.pkg
 
-mkdir -p build_pkg_scripts
-
-cat > build_pkg_scripts/postinstall <<'EOF'
-#!/bin/bash
-set -e
-
-IDENTIFIER="cn.crossdesk.app"
-
-# 获取当前登录用户
-USER_HOME=$( /usr/bin/stat -f "%Su" /dev/console )
-HOME_DIR=$( /usr/bin/dscl . -read /Users/$USER_HOME NFSHomeDirectory | awk '{print $2}' )
-
-# 清除应用的权限授权，以便重新授权
-# 使用 tccutil 重置录屏权限和辅助功能权限
-if command -v tccutil >/dev/null 2>&1; then
-    # 重置录屏权限
-    tccutil reset ScreenCapture "$IDENTIFIER" 2>/dev/null || true
-    # 重置辅助功能权限
-    tccutil reset Accessibility "$IDENTIFIER" 2>/dev/null || true
-    # 重置摄像头权限（如果需要）
-    tccutil reset Camera "$IDENTIFIER" 2>/dev/null || true
-    # 重置麦克风权限（如果需要）
-    tccutil reset Microphone "$IDENTIFIER" 2>/dev/null || true
-fi
-
-# 为所有用户清除权限（可选，如果需要）
-# 遍历所有用户目录并清除权限
-for USER_DIR in /Users/*; do
-    if [ -d "$USER_DIR" ] && [ "$USER_DIR" != "/Users/Shared" ]; then
-        USER_NAME=$(basename "$USER_DIR")
-        # 跳过系统用户
-        if [ "$USER_NAME" != "Shared" ] && [ -d "$USER_DIR/Library" ]; then
-            # 删除 TCC 数据库中的相关条目（需要管理员权限）
-            TCC_DB="$USER_DIR/Library/Application Support/com.apple.TCC/TCC.db"
-            if [ -f "$TCC_DB" ]; then
-                # 使用 sqlite3 删除相关权限记录（如果可用）
-                if command -v sqlite3 >/dev/null 2>&1; then
-                    sqlite3 "$TCC_DB" "DELETE FROM access WHERE client='$IDENTIFIER' AND service IN ('kTCCServiceScreenCapture', 'kTCCServiceAccessibility');" 2>/dev/null || true
-                fi
-            fi
-        fi
-    fi
-done
-
-exit 0
+cat > build_pkg_temp/Distribution <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="1">
+    <title>${INSTALLER_TITLE}</title>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <options customize="never" require-scripts="false" hostArchitectures="x86_64"/>
+    <choices-outline>
+        <line choice="default">
+            <line choice="${IDENTIFIER}"/>
+        </line>
+    </choices-outline>
+    <choice id="default" title="${INSTALLER_TITLE}"/>
+    <choice id="${IDENTIFIER}" title="${INSTALLER_TITLE}" visible="false">
+        <pkg-ref id="${IDENTIFIER}"/>
+    </choice>
+    <pkg-ref id="${IDENTIFIER}" version="${APP_VERSION}" onConclusion="none">crossdesk-component.pkg</pkg-ref>
+</installer-gui-script>
 EOF
 
-chmod +x build_pkg_scripts/postinstall
-
 productbuild \
-  --package build_pkg_temp/${APP_NAME}-component.pkg \
+  --distribution build_pkg_temp/Distribution \
+  --package-path build_pkg_temp \
+  --resources build_pkg_resources \
   "${PKG_NAME}"
 
 echo "PKG package created: ${PKG_NAME}"
@@ -171,7 +187,7 @@ APPLESCRIPT
 fi
 echo "Set icon finished"
 
-rm -rf build_pkg_temp build_pkg_scripts ${APP_BUNDLE}
+rm -rf build_pkg_temp build_pkg_scripts build_pkg_resources ${APP_BUNDLE}
 
 echo "PKG package created successfully."
 echo "package ${APP_BUNDLE}"
