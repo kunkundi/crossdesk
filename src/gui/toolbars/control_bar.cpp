@@ -203,11 +203,11 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
       ImGui::EndPopup();
     }
 
-    ImGui::SetWindowFontScale(0.4f);
+    ImGui::SetWindowFontScale(0.35f);
     ImVec2 text_size = ImGui::CalcTextSize(
         std::to_string(props->selected_display_ + 1).c_str());
     ImVec2 text_pos =
-        ImVec2(btn_min.x + (btn_size_actual.x - text_size.x) * 0.53f,
+        ImVec2(btn_min.x + (btn_size_actual.x - text_size.x) * 0.55f,
                btn_min.y + (btn_size_actual.y - text_size.y) * 0.33f);
     ImGui::GetWindowDrawList()->AddText(
         text_pos, IM_COL32(0, 0, 0, 255),
