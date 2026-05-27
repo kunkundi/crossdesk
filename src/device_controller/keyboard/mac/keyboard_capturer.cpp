@@ -310,6 +310,10 @@ int KeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down,
     if (IsFunctionKey(cg_key_code) && !is_down) {
       CGEventRef fn_release_event =
           CGEventCreateKeyboardEvent(NULL, fn_key_code_, false);
+      if (!fn_release_event) {
+        LOG_ERROR("CGEventCreateKeyboardEvent failed for fn release");
+        return -1;
+      }
       CGEventPost(kCGHIDEventTap, fn_release_event);
       CFRelease(fn_release_event);
     }

@@ -1196,8 +1196,13 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
           remote_action.k.extended);
     } else if (remote_action.type == ControlType::display_id &&
                render->screen_capturer_) {
-      render->selected_display_ = remote_action.d;
-      render->screen_capturer_->SwitchTo(remote_action.d);
+      const int ret = render->screen_capturer_->SwitchTo(remote_action.d);
+      if (ret == 0) {
+        render->selected_display_ = remote_action.d;
+      } else {
+        LOG_WARN("Display switch skipped, invalid display_id={}",
+                 remote_action.d);
+      }
     }
   }
 }
