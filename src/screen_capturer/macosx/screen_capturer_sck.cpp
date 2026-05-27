@@ -16,7 +16,11 @@ int ScreenCapturerSck::Init(const int fps, cb_desktop_data cb) {
   }
 
   screen_capturer_sck_impl_ = CreateScreenCapturerSck();
-  screen_capturer_sck_impl_->Init(fps, on_data_);
+  const int ret = screen_capturer_sck_impl_->Init(fps, on_data_);
+  if (ret != 0) {
+    screen_capturer_sck_impl_.reset();
+    return ret;
+  }
 
   return 0;
 }
@@ -29,8 +33,11 @@ int ScreenCapturerSck::Destroy() {
 }
 
 int ScreenCapturerSck::Start(bool show_cursor) {
-  screen_capturer_sck_impl_->Start(show_cursor);
-  return 0;
+  if (!screen_capturer_sck_impl_) {
+    return -1;
+  }
+
+  return screen_capturer_sck_impl_->Start(show_cursor);
 }
 
 int ScreenCapturerSck::Stop() {
