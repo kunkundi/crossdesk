@@ -672,6 +672,7 @@ class Render {
   KeyboardCapturer* keyboard_capturer_ = nullptr;
   std::vector<DisplayInfo> display_info_list_;
   uint64_t last_frame_time_;
+  std::string last_video_frame_stream_id_;
   bool show_new_version_icon_ = false;
   bool show_new_version_icon_in_menu_ = true;
   double new_version_icon_last_trigger_time_ = 0.0;

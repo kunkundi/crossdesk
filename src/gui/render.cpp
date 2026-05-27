@@ -42,6 +42,8 @@
 namespace crossdesk {
 
 namespace {
+constexpr uint64_t kCaptureResumeKeyFrameGapMs = 500;
+
 const ImWchar* GetMultilingualGlyphRanges() {
   static std::vector<ImWchar> glyph_ranges;
   if (glyph_ranges.empty()) {
@@ -651,18 +653,37 @@ int Render::ScreenCapturerInit() {
       fps,
       [this, fps](unsigned char* data, int size, int width, int height,
                   const char* display_name) -> void {
-        auto now_time = std::chrono::duration_cast<std::chrono::milliseconds>(
-                            std::chrono::steady_clock::now().time_since_epoch())
-                            .count();
+        const auto now_time =
+            static_cast<uint64_t>(std::chrono::duration_cast<
+                                  std::chrono::milliseconds>(
+                                      std::chrono::steady_clock::now()
+                                          .time_since_epoch())
+                                      .count());
         auto duration = now_time - last_frame_time_;
         if (duration * fps >= 1000) {  // ~60 FPS
+          const std::string stream_id = display_name ? display_name : "";
+          const bool resumed_after_gap =
+              last_frame_time_ != 0 &&
+              duration >= kCaptureResumeKeyFrameGapMs;
+          const bool stream_changed =
+              !last_video_frame_stream_id_.empty() &&
+              last_video_frame_stream_id_ != stream_id;
+          if (resumed_after_gap || stream_changed) {
+            if (RequestVideoKeyFrame(peer_, stream_id.c_str()) == 0) {
+              LOG_INFO(
+                  "Request video key frame before sending captured frame, "
+                  "stream='{}', gap_ms={}, stream_changed={}",
+                  stream_id, duration, stream_changed);
+            }
+          }
           XVideoFrame frame;
           frame.data = (const char*)data;
           frame.size = size;
           frame.width = width;
           frame.height = height;
           frame.captured_timestamp = GetSystemTimeMicros(peer_);
-          SendVideoFrame(peer_, &frame, display_name);
+          SendVideoFrame(peer_, &frame, stream_id.c_str());
+          last_video_frame_stream_id_ = stream_id;
           last_frame_time_ = now_time;
         }
       });
