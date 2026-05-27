@@ -59,6 +59,9 @@ class ScreenCapturerWin : public ScreenCapturer {
   std::atomic<int> monitor_index_{0};
   int initial_monitor_index_ = 0;
   std::atomic<bool> secure_desktop_capture_active_{false};
+  std::atomic<bool> post_secure_desktop_waiting_for_frame_{false};
+  std::atomic<bool> post_secure_desktop_drop_logged_{false};
+  std::atomic<ULONGLONG> post_secure_desktop_started_tick_{0};
   std::thread secure_capture_thread_;
   HANDLE secure_frame_mapping_ = nullptr;
   HANDLE secure_frame_ready_event_ = nullptr;
@@ -77,6 +80,7 @@ class ScreenCapturerWin : public ScreenCapturer {
   void BuildCanonicalFromImpl();
   void RebuildAliasesFromImpl();
   void StopSecureCaptureThread();
+  bool RestartCaptureBackendAfterSecureDesktop();
   void SecureDesktopCaptureLoop();
   bool GetCurrentCaptureRegion(int* left, int* top, int* width, int* height,
                                std::string* display_name);

@@ -40,6 +40,8 @@ class ScreenCapturerWgc : public ScreenCapturer,
 
  protected:
   void CleanUp();
+  int RebuildSessions(int preferred_monitor_index);
+  int StartSessions(bool show_cursor);
 
  private:
   HMONITOR monitor_;

@@ -244,6 +244,31 @@ bool ScreenCapturerDxgi::CreateDuplicationForMonitor(int monitor_index) {
   return true;
 }
 
+bool ScreenCapturerDxgi::RecreateDuplicationForCurrentMonitor() {
+  ReleaseDuplication();
+  int current_monitor = monitor_index_.load();
+  if (CreateDuplicationForMonitor(current_monitor)) {
+    return true;
+  }
+
+  EnumerateDisplays();
+  if (display_info_list_.empty()) {
+    LOG_ERROR("DXGI: no displays found while recreating duplication");
+    return false;
+  }
+  if (current_monitor < 0 ||
+      current_monitor >= static_cast<int>(display_info_list_.size())) {
+    current_monitor = 0;
+    monitor_index_ = 0;
+  }
+  if (CreateDuplicationForMonitor(current_monitor)) {
+    LOG_INFO("DXGI: recreated duplication for monitor {}",
+             monitor_index_.load());
+    return true;
+  }
+  return false;
+}
+
 void ScreenCapturerDxgi::ReleaseDuplication() {
   staging_.Reset();
   if (duplication_) {
@@ -254,6 +279,8 @@ void ScreenCapturerDxgi::ReleaseDuplication() {
 
 void ScreenCapturerDxgi::CaptureLoop() {
   const int timeout_ms = 33;
+  auto last_duplication_retry =
+      std::chrono::steady_clock::now() - std::chrono::milliseconds(1000);
   while (running_) {
     if (paused_) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -261,6 +288,11 @@ void ScreenCapturerDxgi::CaptureLoop() {
     }
 
     if (!duplication_) {
+      const auto now = std::chrono::steady_clock::now();
+      if (now - last_duplication_retry >= std::chrono::milliseconds(500)) {
+        last_duplication_retry = now;
+        RecreateDuplicationForCurrentMonitor();
+      }
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
       continue;
     }
@@ -274,9 +306,7 @@ void ScreenCapturerDxgi::CaptureLoop() {
     }
     if (FAILED(hr)) {
       LOG_ERROR("DXGI: AcquireNextFrame failed, hr={}", (int)hr);
-      // attempt to recreate duplication
-      ReleaseDuplication();
-      CreateDuplicationForMonitor(monitor_index_);
+      RecreateDuplicationForCurrentMonitor();
       continue;
     }
 

@@ -100,8 +100,7 @@ bool ScreenCapturerWgc::IsWgcSupported() {
 }
 
 int ScreenCapturerWgc::Init(const int fps, cb_desktop_data cb) {
-  int error = 0;
-  if (inited_ == true) return error;
+  if (inited_ == true) return 0;
 
   // nv12_frame_ = new unsigned char[rect.right * rect.bottom * 3 / 2];
   // nv12_frame_scaled_ = new unsigned char[1280 * 720 * 3 / 2];
@@ -112,8 +111,18 @@ int ScreenCapturerWgc::Init(const int fps, cb_desktop_data cb) {
 
   if (!IsWgcSupported()) {
     LOG_ERROR("WGC not supported");
-    error = 2;
-    return error;
+    return 2;
+  }
+
+  return RebuildSessions(monitor_index_);
+}
+
+int ScreenCapturerWgc::RebuildSessions(int preferred_monitor_index) {
+  CleanUp();
+
+  if (!IsWgcSupported()) {
+    LOG_ERROR("WGC not supported");
+    return 2;
   }
 
   monitor_ = GetPrimaryMonitor();
@@ -125,6 +134,13 @@ int ScreenCapturerWgc::Init(const int fps, cb_desktop_data cb) {
     return -1;
   }
 
+  if (preferred_monitor_index < 0 ||
+      preferred_monitor_index >= static_cast<int>(display_info_list_.size())) {
+    preferred_monitor_index = 0;
+  }
+  monitor_index_ = preferred_monitor_index;
+
+  int error = 0;
   for (int i = 0; i < display_info_list_.size(); i++) {
     const auto& display = display_info_list_[i];
     LOG_INFO(
@@ -138,20 +154,28 @@ int ScreenCapturerWgc::Init(const int fps, cb_desktop_data cb) {
     sessions_.back().session_->RegisterObserver(this);
     error = sessions_.back().session_->Initialize((HMONITOR)display.handle);
     if (error != 0) {
+      LOG_ERROR("WGC: initialize session {} failed, ret={}", i, error);
+      CleanUp();
       return error;
     }
     sessions_[i].inited_ = true;
-    inited_ = true;
   }
 
   LOG_INFO("Default on monitor {}:{}", monitor_index_,
            display_info_list_[monitor_index_].name);
 
-  initial_monitor_index_ = monitor_index_;
+  if (initial_monitor_index_ < 0 ||
+      initial_monitor_index_ >= static_cast<int>(display_info_list_.size())) {
+    initial_monitor_index_ = monitor_index_;
+  }
+  inited_ = true;
   return 0;
 }
 
-int ScreenCapturerWgc::Destroy() { return 0; }
+int ScreenCapturerWgc::Destroy() {
+  CleanUp();
+  return 0;
+}
 
 int ScreenCapturerWgc::Start(bool show_cursor) {
   if (running_ == true) {
@@ -160,13 +184,37 @@ int ScreenCapturerWgc::Start(bool show_cursor) {
   }
 
   if (inited_ == false) {
-    LOG_ERROR("Screen capturer not inited");
-    return 4;
+    const int ret = RebuildSessions(monitor_index_);
+    if (ret != 0) {
+      LOG_ERROR("Screen capturer not inited");
+      return ret;
+    }
   }
 
+  int ret = StartSessions(show_cursor);
+  if (ret == 0) {
+    return 0;
+  }
+
+  LOG_WARN("WGC: start failed, rebuilding sessions");
+  ret = RebuildSessions(monitor_index_);
+  if (ret != 0) {
+    return ret;
+  }
+  return StartSessions(show_cursor);
+}
+
+int ScreenCapturerWgc::StartSessions(bool show_cursor) {
   bool any_started = false;
+  bool active_started = false;
   int last_error = 0;
-  for (int i = 0; i < sessions_.size(); i++) {
+  int active_monitor = monitor_index_;
+  if (active_monitor < 0 ||
+      active_monitor >= static_cast<int>(sessions_.size())) {
+    active_monitor = 0;
+    monitor_index_ = 0;
+  }
+  for (int i = 0; i < static_cast<int>(sessions_.size()); i++) {
     if (sessions_[i].inited_ == false) {
       LOG_ERROR("Session {} not inited", i);
       continue;
@@ -182,16 +230,27 @@ int ScreenCapturerWgc::Start(bool show_cursor) {
         continue;
       }
 
-      if (i != 0) {
+      if (i != active_monitor) {
         sessions_[i].session_->Pause();
         sessions_[i].paused_ = true;
+      } else {
+        sessions_[i].session_->Resume();
+        sessions_[i].paused_ = false;
       }
       sessions_[i].running_ = true;
       any_started = true;
+      if (i == active_monitor) {
+        active_started = true;
+      }
     }
-    running_ = running_ || any_started;
   }
 
+  running_ = active_started;
+  if (!active_started) {
+    LOG_ERROR("WGC: active session did not start successfully");
+    Stop();
+    return last_error != 0 ? last_error : -1;
+  }
   if (!any_started) {
     LOG_ERROR("WGC: no session started successfully");
     return last_error != 0 ? last_error : -1;
@@ -349,13 +408,16 @@ void ScreenCapturerWgc::OnFrame(const WgcSession::wgc_session_frame& frame,
 }
 
 void ScreenCapturerWgc::CleanUp() {
-  if (inited_) {
-    for (auto& session : sessions_) {
-      if (session.session_) {
-        session.session_->Stop();
-      }
+  running_ = false;
+  for (auto& session : sessions_) {
+    if (session.session_) {
+      session.session_->Stop();
     }
-    sessions_.clear();
   }
+  sessions_.clear();
+  display_info_list_.clear();
+  gs_display_list.clear();
+  monitor_ = nullptr;
+  inited_ = false;
 }
 }  // namespace crossdesk

@@ -33,6 +33,8 @@ constexpr DWORD kSecureDesktopStatusPipeTimeoutMs = 500;
 constexpr DWORD kSecureDesktopHelperPipeTimeoutMs = 120;
 constexpr DWORD kSecureDesktopTransientErrorGraceMs = 1500;
 constexpr DWORD kSecureDesktopTransientErrorLogIntervalMs = 5000;
+constexpr DWORD kPostSecureDesktopRestartRetryMs = 500;
+constexpr DWORD kPostSecureDesktopRestartTimeoutMs = 10000;
 constexpr int kSecureDesktopCaptureMinFps = 30;
 constexpr int kSecureDesktopCaptureMaxIntervalMs =
     1000 / kSecureDesktopCaptureMinFps;
@@ -392,20 +394,45 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
       return;
     }
 
+    const char* raw_display_name = display_name ? display_name : "";
     std::string mapped_name;
     {
       std::lock_guard<std::mutex> lock(alias_mutex_);
-      auto it = label_alias_.find(display_name);
+      auto it = label_alias_.find(raw_display_name);
       if (it != label_alias_.end())
         mapped_name = it->second;
       else
-        mapped_name = display_name;
+        mapped_name = raw_display_name;
     }
     {
       std::lock_guard<std::mutex> lock(alias_mutex_);
       if (canonical_labels_.find(mapped_name) == canonical_labels_.end()) {
+        if (post_secure_desktop_waiting_for_frame_.load(
+                std::memory_order_relaxed) &&
+            !post_secure_desktop_drop_logged_.exchange(
+                true, std::memory_order_relaxed)) {
+          LOG_WARN(
+              "Windows capturer dropping post-secure-desktop frame from "
+              "unknown display: display='{}', mapped='{}', size={}x{}, "
+              "bytes={}",
+              raw_display_name, mapped_name, w, h, size);
+        }
         return;
       }
+    }
+    if (post_secure_desktop_waiting_for_frame_.exchange(
+            false, std::memory_order_relaxed)) {
+      const ULONGLONG start_tick =
+          post_secure_desktop_started_tick_.exchange(
+              0, std::memory_order_relaxed);
+      const ULONGLONG elapsed_ms =
+          start_tick == 0 ? 0 : GetTickCount64() - start_tick;
+      post_secure_desktop_drop_logged_.store(false,
+                                             std::memory_order_relaxed);
+      LOG_INFO(
+          "Windows capturer first normal frame after secure desktop: "
+          "display='{}', mapped='{}', size={}x{}, bytes={}, elapsed_ms={}",
+          raw_display_name, mapped_name, w, h, size, elapsed_ms);
     }
     if (cb_orig_) cb_orig_(data, size, w, h, mapped_name.c_str());
   };
@@ -524,6 +551,10 @@ int ScreenCapturerWin::Start(bool show_cursor) {
 
   running_.store(true, std::memory_order_relaxed);
   secure_desktop_capture_active_.store(false, std::memory_order_relaxed);
+  post_secure_desktop_waiting_for_frame_.store(false,
+                                               std::memory_order_relaxed);
+  post_secure_desktop_drop_logged_.store(false, std::memory_order_relaxed);
+  post_secure_desktop_started_tick_.store(0, std::memory_order_relaxed);
   if (!secure_capture_thread_.joinable()) {
     secure_capture_thread_ =
         std::thread([this]() { SecureDesktopCaptureLoop(); });
@@ -534,6 +565,10 @@ int ScreenCapturerWin::Start(bool show_cursor) {
 int ScreenCapturerWin::Stop() {
   running_.store(false, std::memory_order_relaxed);
   secure_desktop_capture_active_.store(false, std::memory_order_relaxed);
+  post_secure_desktop_waiting_for_frame_.store(false,
+                                               std::memory_order_relaxed);
+  post_secure_desktop_drop_logged_.store(false, std::memory_order_relaxed);
+  post_secure_desktop_started_tick_.store(0, std::memory_order_relaxed);
   int ret = 0;
   if (impl_) {
     ret = impl_->Stop();
@@ -624,6 +659,93 @@ void ScreenCapturerWin::StopSecureCaptureThread() {
   if (secure_capture_thread_.joinable()) {
     secure_capture_thread_.join();
   }
+}
+
+bool ScreenCapturerWin::RestartCaptureBackendAfterSecureDesktop() {
+  if (!impl_ || !running_.load(std::memory_order_relaxed)) {
+    return false;
+  }
+
+  const bool show_cursor = show_cursor_.load(std::memory_order_relaxed);
+  const int current_monitor = monitor_index_.load(std::memory_order_relaxed);
+  auto restore_monitor = [&]() {
+    RebuildAliasesFromImpl();
+    if (current_monitor > 0 && impl_->SwitchTo(current_monitor) != 0) {
+      monitor_index_.store(0, std::memory_order_relaxed);
+    }
+  };
+  auto try_started_backend = [&](std::unique_ptr<ScreenCapturer> cand,
+                                 const char* name,
+                                 bool is_wgc_plugin) -> bool {
+    if (!cand) {
+      return false;
+    }
+    const int init_ret = cand->Init(fps_, cb_);
+    if (init_ret != 0) {
+      LOG_WARN("Windows capturer: {} init after secure desktop failed (ret={})",
+               name, init_ret);
+      return false;
+    }
+    const int start_ret = cand->Start(show_cursor);
+    if (start_ret != 0) {
+      LOG_WARN(
+          "Windows capturer: {} start after secure desktop failed (ret={})",
+          name, start_ret);
+      cand->Destroy();
+      return false;
+    }
+    if (impl_) {
+      impl_->Destroy();
+    }
+    impl_ = std::move(cand);
+    impl_is_wgc_plugin_ = is_wgc_plugin;
+    restore_monitor();
+    LOG_INFO("Windows capturer: restarted {} after secure desktop", name);
+    return true;
+  };
+
+  LOG_INFO("Windows capturer: restarting capture backend after secure desktop");
+  impl_->Stop();
+  int ret = impl_->Start(show_cursor);
+  if (ret == 0) {
+    restore_monitor();
+    return true;
+  }
+
+  LOG_WARN(
+      "Windows capturer: capture backend restart after secure desktop failed "
+      "(ret={}), rebuilding backend",
+      ret);
+  impl_->Destroy();
+  ret = impl_->Init(fps_, cb_);
+  if (ret == 0) {
+    ret = impl_->Start(show_cursor);
+  }
+  if (ret == 0) {
+    restore_monitor();
+    return true;
+  }
+
+  if (impl_is_wgc_plugin_ &&
+      try_started_backend(WgcPluginCapturer::Create(), "WGC plugin", true)) {
+    return true;
+  }
+  if (try_started_backend(std::make_unique<ScreenCapturerDxgi>(), "DXGI",
+                          false)) {
+    return true;
+  }
+  if (try_started_backend(std::make_unique<ScreenCapturerGdi>(), "GDI",
+                          false)) {
+    return true;
+  }
+
+  if (impl_) {
+    LOG_WARN(
+        "Windows capturer: all backend restart attempts after secure desktop "
+        "failed (last_ret={})",
+        ret);
+  }
+  return false;
 }
 
 bool ScreenCapturerWin::GetCurrentCaptureRegion(int* left, int* top, int* width,
@@ -900,6 +1022,9 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
   std::string last_stage;
   std::string last_service_error;
   ULONGLONG capture_stage_started_tick = 0;
+  bool post_secure_restart_pending = false;
+  ULONGLONG post_secure_restart_deadline_tick = 0;
+  ULONGLONG last_post_secure_restart_tick = 0;
   SecureDesktopServiceStatus status;
   std::vector<uint8_t> secure_frame;
 
@@ -951,6 +1076,10 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
                                            std::memory_order_relaxed);
       if (status.capture_active != last_capture_active ||
           status.interactive_stage != last_stage) {
+        const bool secure_capture_started =
+            !last_capture_active && status.capture_active;
+        const bool secure_capture_ended =
+            last_capture_active && !status.capture_active;
         capture_stage_started_tick = now;
         LOG_INFO(
             "Windows capturer secure desktop state: active={}, stage='{}', "
@@ -959,12 +1088,46 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
             status.active_session_id);
         last_capture_active = status.capture_active;
         last_stage = status.interactive_stage;
+        if (secure_capture_started) {
+          post_secure_restart_pending = false;
+          post_secure_desktop_waiting_for_frame_.store(
+              false, std::memory_order_relaxed);
+          post_secure_desktop_drop_logged_.store(
+              false, std::memory_order_relaxed);
+          post_secure_desktop_started_tick_.store(
+              0, std::memory_order_relaxed);
+        } else if (secure_capture_ended) {
+          post_secure_restart_pending = true;
+          post_secure_restart_deadline_tick =
+              now + kPostSecureDesktopRestartTimeoutMs;
+          last_post_secure_restart_tick = 0;
+          post_secure_desktop_waiting_for_frame_.store(
+              true, std::memory_order_relaxed);
+          post_secure_desktop_drop_logged_.store(
+              false, std::memory_order_relaxed);
+          post_secure_desktop_started_tick_.store(
+              now, std::memory_order_relaxed);
+        }
       }
       last_status_tick = now;
     }
 
     if (!status.capture_active || status.active_session_id == 0xFFFFFFFF) {
       StopSecureDesktopSharedCapture(secure_shared_session_id_);
+      if (post_secure_restart_pending) {
+        if (now >= post_secure_restart_deadline_tick) {
+          LOG_WARN(
+              "Windows capturer: capture backend restart after secure desktop "
+              "timed out");
+          post_secure_restart_pending = false;
+        } else if (last_post_secure_restart_tick == 0 ||
+                   now - last_post_secure_restart_tick >=
+                       kPostSecureDesktopRestartRetryMs) {
+          last_post_secure_restart_tick = now;
+          post_secure_restart_pending =
+              !RestartCaptureBackendAfterSecureDesktop();
+        }
+      }
       std::this_thread::sleep_for(
           std::chrono::milliseconds(status.service_available ? 50 : 200));
       continue;

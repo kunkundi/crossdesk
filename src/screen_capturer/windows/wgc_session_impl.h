@@ -68,8 +68,12 @@ class WgcSessionImpl : public WgcSession {
   void OnClosed(winrt::Windows::Graphics::Capture::GraphicsCaptureItem const&,
                 winrt::Windows::Foundation::IInspectable const&);
 
-  int Initialize();
+  int InitializeLocked();
+  int StartLocked(bool show_cursor);
+  int StartCaptureLocked(bool show_cursor);
+  void StopLocked();
   void CleanUp();
+  void CleanUpLocked();
 
   // void message_func();
 
@@ -94,7 +98,6 @@ class WgcSessionImpl : public WgcSession {
   winrt::com_ptr<ID3D11DeviceContext> d3d11_device_context_{nullptr};
   winrt::com_ptr<ID3D11Texture2D> d3d11_texture_mapped_{nullptr};
 
-  std::atomic<bool> cleaned_ = false;
   winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool
       capture_framepool_{nullptr};
   winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::

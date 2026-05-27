@@ -2,22 +2,9 @@
 
 #include <Windows.Graphics.Capture.Interop.h>
 
-#include <atomic>
-#include <functional>
-#include <memory>
+#include <string>
 
 #include "rd_log.h"
-
-#define CHECK_INIT             \
-  if (!is_initialized_) {      \
-    LOG_ERROR("AE_NEED_INIT"); \
-    return 4;                  \
-  }
-
-#define CHECK_CLOSED                         \
-  if (cleaned_.load() == true) {             \
-    throw winrt::hresult_error(RO_E_CLOSED); \
-  }
 
 namespace crossdesk {
 
@@ -40,7 +27,7 @@ int WgcSessionImpl::Initialize(HWND hwnd) {
 
   target_.hwnd = hwnd;
   target_.is_window = true;
-  return Initialize();
+  return InitializeLocked();
 }
 
 int WgcSessionImpl::Initialize(HMONITOR hmonitor) {
@@ -48,7 +35,7 @@ int WgcSessionImpl::Initialize(HMONITOR hmonitor) {
 
   target_.hmonitor = hmonitor;
   target_.is_window = false;
-  return Initialize();
+  return InitializeLocked();
 }
 
 void WgcSessionImpl::RegisterObserver(wgc_session_observer* observer) {
@@ -59,68 +46,13 @@ void WgcSessionImpl::RegisterObserver(wgc_session_observer* observer) {
 int WgcSessionImpl::Start(bool show_cursor) {
   std::lock_guard locker(lock_);
 
-  if (is_running_) return 0;
-
-  int error = 1;
-
-  CHECK_INIT;
-  try {
-    last_show_cursor_ = show_cursor;
-    if (!capture_session_) {
-      auto current_size = capture_item_.Size();
-      capture_framepool_ =
-          winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::
-              CreateFreeThreaded(d3d11_direct_device_,
-                                 winrt::Windows::Graphics::DirectX::
-                                     DirectXPixelFormat::B8G8R8A8UIntNormalized,
-                                 2, current_size);
-      capture_session_ = capture_framepool_.CreateCaptureSession(capture_item_);
-      capture_frame_size_ = current_size;
-      capture_framepool_trigger_ = capture_framepool_.FrameArrived(
-          winrt::auto_revoke, {this, &WgcSessionImpl::OnFrame});
-      capture_close_trigger_ = capture_item_.Closed(
-          winrt::auto_revoke, {this, &WgcSessionImpl::OnClosed});
-    }
-
-    if (!capture_framepool_) throw std::exception();
-
-    is_running_ = true;
-
-    // we do not need to crate a thread to enter a message loop coz we use
-    // CreateFreeThreaded instead of Create to create a capture frame pool,
-    // we need to test the performance later
-    // loop_ = std::thread(std::bind(&WgcSessionImpl::message_func, this));
-
-    capture_session_.IsCursorCaptureEnabled(show_cursor);
-    capture_session_.StartCapture();
-
-    error = 0;
-  } catch (winrt::hresult_error) {
-    LOG_ERROR("AE_WGC_CREATE_CAPTURER_FAILED");
-    return 86;
-  } catch (...) {
-    return 86;
-  }
-
-  return error;
+  return StartLocked(show_cursor);
 }
 
 int WgcSessionImpl::Stop() {
   std::lock_guard locker(lock_);
 
-  CHECK_INIT;
-
-  is_running_ = false;
-
-  // if (loop_.joinable()) loop_.join();
-
-  if (capture_framepool_trigger_) capture_framepool_trigger_.revoke();
-
-  if (capture_session_) {
-    capture_session_.Close();
-    capture_session_ = nullptr;
-  }
-
+  CleanUpLocked();
   return 0;
 }
 
@@ -129,7 +61,10 @@ int WgcSessionImpl::Pause() {
 
   is_paused_ = true;
 
-  CHECK_INIT;
+  if (!is_initialized_) {
+    LOG_ERROR("AE_NEED_INIT");
+    return 4;
+  }
   return 0;
 }
 
@@ -138,7 +73,10 @@ int WgcSessionImpl::Resume() {
 
   is_paused_ = false;
 
-  CHECK_INIT;
+  if (!is_initialized_) {
+    LOG_ERROR("AE_NEED_INIT");
+    return 4;
+  }
   return 0;
 }
 
@@ -175,10 +113,10 @@ auto WgcSessionImpl::CreateCaptureItemForWindow(HWND hwnd) {
       winrt::Windows::Graphics::Capture::GraphicsCaptureItem>();
   auto interop_factory = activation_factory.as<IGraphicsCaptureItemInterop>();
   winrt::Windows::Graphics::Capture::GraphicsCaptureItem item = {nullptr};
-  interop_factory->CreateForWindow(
+  winrt::check_hresult(interop_factory->CreateForWindow(
       hwnd,
       winrt::guid_of<ABI::Windows::Graphics::Capture::IGraphicsCaptureItem>(),
-      reinterpret_cast<void**>(winrt::put_abi(item)));
+      reinterpret_cast<void**>(winrt::put_abi(item))));
   return item;
 }
 
@@ -187,10 +125,10 @@ auto WgcSessionImpl::CreateCaptureItemForMonitor(HMONITOR hmonitor) {
       winrt::Windows::Graphics::Capture::GraphicsCaptureItem>();
   auto interop_factory = activation_factory.as<IGraphicsCaptureItemInterop>();
   winrt::Windows::Graphics::Capture::GraphicsCaptureItem item = {nullptr};
-  interop_factory->CreateForMonitor(
+  winrt::check_hresult(interop_factory->CreateForMonitor(
       hmonitor,
       winrt::guid_of<ABI::Windows::Graphics::Capture::IGraphicsCaptureItem>(),
-      reinterpret_cast<void**>(winrt::put_abi(item)));
+      reinterpret_cast<void**>(winrt::put_abi(item))));
   return item;
 }
 
@@ -218,6 +156,104 @@ HRESULT WgcSessionImpl::CreateMappedTexture(
                                     d3d11_texture_mapped_.put());
 }
 
+int WgcSessionImpl::StartCaptureLocked(bool show_cursor) {
+  if (!is_initialized_) {
+    LOG_ERROR("AE_NEED_INIT");
+    return 4;
+  }
+  if (!capture_item_) {
+    LOG_ERROR("WGC: capture item is null");
+    return 4;
+  }
+
+  try {
+    if (!capture_session_) {
+      auto current_size = capture_item_.Size();
+      capture_framepool_ =
+          winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::
+              CreateFreeThreaded(d3d11_direct_device_,
+                                 winrt::Windows::Graphics::DirectX::
+                                     DirectXPixelFormat::B8G8R8A8UIntNormalized,
+                                 2, current_size);
+      capture_session_ = capture_framepool_.CreateCaptureSession(capture_item_);
+      capture_frame_size_ = current_size;
+      capture_framepool_trigger_ = capture_framepool_.FrameArrived(
+          winrt::auto_revoke, {this, &WgcSessionImpl::OnFrame});
+      capture_close_trigger_ = capture_item_.Closed(
+          winrt::auto_revoke, {this, &WgcSessionImpl::OnClosed});
+    }
+
+    if (!capture_framepool_ || !capture_session_) {
+      throw std::exception();
+    }
+
+    capture_session_.IsCursorCaptureEnabled(show_cursor);
+    capture_session_.StartCapture();
+    is_running_ = true;
+    return 0;
+  } catch (const winrt::hresult_error&) {
+    LOG_ERROR("AE_WGC_CREATE_CAPTURER_FAILED");
+    return 86;
+  } catch (...) {
+    LOG_ERROR("AE_WGC_CREATE_CAPTURER_FAILED");
+    return 86;
+  }
+}
+
+int WgcSessionImpl::StartLocked(bool show_cursor) {
+  if (is_running_) return 0;
+
+  last_show_cursor_ = show_cursor;
+  if (!is_initialized_) {
+    const int init_ret = InitializeLocked();
+    if (init_ret != 0) {
+      return init_ret;
+    }
+  }
+
+  int ret = StartCaptureLocked(show_cursor);
+  if (ret == 0) {
+    return 0;
+  }
+
+  LOG_WARN("WGC: start capture failed, rebuilding capture item");
+  CleanUpLocked();
+  ret = InitializeLocked();
+  if (ret != 0) {
+    return ret;
+  }
+  return StartCaptureLocked(show_cursor);
+}
+
+void WgcSessionImpl::StopLocked() {
+  is_running_ = false;
+
+  // if (loop_.joinable()) loop_.join();
+
+  if (capture_framepool_trigger_) capture_framepool_trigger_.revoke();
+  if (capture_close_trigger_) capture_close_trigger_.revoke();
+
+  if (capture_session_) {
+    try {
+      capture_session_.Close();
+    } catch (...) {
+      LOG_WARN("WGC: capture session close failed");
+    }
+    capture_session_ = nullptr;
+  }
+
+  if (capture_framepool_) {
+    try {
+      capture_framepool_.Close();
+    } catch (...) {
+      LOG_WARN("WGC: frame pool close failed");
+    }
+    capture_framepool_ = nullptr;
+  }
+
+  d3d11_texture_mapped_ = nullptr;
+}
+
 void WgcSessionImpl::OnFrame(
     winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const& sender,
     [[maybe_unused]] winrt::Windows::Foundation::IInspectable const& args) {
@@ -225,7 +261,7 @@ void WgcSessionImpl::OnFrame(
 
   auto is_new_size = false;
 
-  {
+  try {
     auto frame = sender.TryGetNextFrame();
     auto frame_size = frame.ContentSize();
 
@@ -239,60 +275,63 @@ void WgcSessionImpl::OnFrame(
     }
 
     // copy to mapped texture
-    {
-      if (is_paused_) {
-        return;
-      }
-
-      auto frame_captured =
-          GetDXGIInterfaceFromObject<ID3D11Texture2D>(frame.Surface());
-
-      if (!d3d11_texture_mapped_ || is_new_size) {
-        HRESULT tex_hr = CreateMappedTexture(frame_captured);
-        if (FAILED(tex_hr)) {
-          OutputDebugStringW(
-              (L"CreateMappedTexture failed: " + std::to_wstring(tex_hr))
-                  .c_str());
-          return;
-        }
-      }
-
-      d3d11_device_context_->CopyResource(d3d11_texture_mapped_.get(),
-                                          frame_captured.get());
-
-      D3D11_MAPPED_SUBRESOURCE map_result;
-      HRESULT hr = d3d11_device_context_->Map(
-          d3d11_texture_mapped_.get(), 0, D3D11_MAP_READ,
-          0 /*coz we use CreateFreeThreaded, so we cant use flags
-               D3D11_MAP_FLAG_DO_NOT_WAIT*/
-          ,
-          &map_result);
-      if (FAILED(hr)) {
-        OutputDebugStringW(
-            (L"map resource failed: " + std::to_wstring(hr)).c_str());
-        return;
-      }
-
-      // copy data from map_result.pData
-      if (map_result.pData && observer_) {
-        observer_->OnFrame(
-            wgc_session_frame{static_cast<unsigned int>(frame_size.Width),
-                              static_cast<unsigned int>(frame_size.Height),
-                              map_result.RowPitch,
-                              const_cast<const unsigned char*>(
-                                  (unsigned char*)map_result.pData)},
-            id_);
-      }
-
-      d3d11_device_context_->Unmap(d3d11_texture_mapped_.get(), 0);
+    if (is_paused_) {
+      return;
     }
-  }
 
-  if (is_new_size) {
-    capture_framepool_.Recreate(d3d11_direct_device_,
-                                winrt::Windows::Graphics::DirectX::
-                                    DirectXPixelFormat::B8G8R8A8UIntNormalized,
-                                2, capture_frame_size_);
+    auto frame_captured =
+        GetDXGIInterfaceFromObject<ID3D11Texture2D>(frame.Surface());
+
+    if (!d3d11_texture_mapped_ || is_new_size) {
+      HRESULT tex_hr = CreateMappedTexture(frame_captured);
+      if (FAILED(tex_hr)) {
+        OutputDebugStringW(
+            (L"CreateMappedTexture failed: " + std::to_wstring(tex_hr))
+                .c_str());
+        return;
+      }
+    }
+
+    d3d11_device_context_->CopyResource(d3d11_texture_mapped_.get(),
+                                        frame_captured.get());
+
+    D3D11_MAPPED_SUBRESOURCE map_result;
+    HRESULT hr = d3d11_device_context_->Map(
+        d3d11_texture_mapped_.get(), 0, D3D11_MAP_READ,
+        0 /*coz we use CreateFreeThreaded, so we cant use flags
+             D3D11_MAP_FLAG_DO_NOT_WAIT*/
+        ,
+        &map_result);
+    if (FAILED(hr)) {
+      OutputDebugStringW(
+          (L"map resource failed: " + std::to_wstring(hr)).c_str());
+      return;
+    }
+
+    // copy data from map_result.pData
+    if (map_result.pData && observer_) {
+      observer_->OnFrame(
+          wgc_session_frame{static_cast<unsigned int>(frame_size.Width),
+                            static_cast<unsigned int>(frame_size.Height),
+                            map_result.RowPitch,
+                            const_cast<const unsigned char*>(
+                                (unsigned char*)map_result.pData)},
+          id_);
+    }
+
+    d3d11_device_context_->Unmap(d3d11_texture_mapped_.get(), 0);
+
+    if (is_new_size) {
+      capture_framepool_.Recreate(
+          d3d11_direct_device_,
+          winrt::Windows::Graphics::DirectX::
+              DirectXPixelFormat::B8G8R8A8UIntNormalized,
+          2, capture_frame_size_);
+    }
+  } catch (const winrt::hresult_error&) {
+    LOG_WARN("WGC: frame processing failed");
+  } catch (...) {
+    LOG_WARN("WGC: frame processing failed");
   }
 }
 
@@ -300,11 +339,13 @@ void WgcSessionImpl::OnClosed(
     winrt::Windows::Graphics::Capture::GraphicsCaptureItem const&,
     winrt::Windows::Foundation::IInspectable const&) {
   std::lock_guard locker(lock_);
+  const bool was_running = is_running_;
+  const bool was_paused = is_paused_;
   try {
-    CleanUp();
-    is_initialized_ = false;
-    if (Initialize() == 0) {
-      int ret = Start(last_show_cursor_);
+    CleanUpLocked();
+    is_paused_ = was_paused;
+    if (InitializeLocked() == 0) {
+      int ret = was_running ? StartCaptureLocked(last_show_cursor_) : 0;
       if (ret == 0) {
         OutputDebugStringW(L"WgcSessionImpl::OnClosed: auto recovered");
       } else {
@@ -319,8 +360,13 @@ void WgcSessionImpl::OnClosed(
   }
 }
 
-int WgcSessionImpl::Initialize() {
+int WgcSessionImpl::InitializeLocked() {
   if (is_initialized_) return 0;
+
+  d3d11_texture_mapped_ = nullptr;
+  d3d11_device_context_ = nullptr;
+  d3d11_direct_device_ = nullptr;
+  capture_frame_size_ = {};
 
   if (!(d3d11_direct_device_ = CreateD3D11Device())) {
     LOG_ERROR("AE_D3D_CREATE_DEVICE_FAILED");
@@ -332,6 +378,10 @@ int WgcSessionImpl::Initialize() {
       capture_item_ = CreateCaptureItemForWindow(target_.hwnd);
     else
       capture_item_ = CreateCaptureItemForMonitor(target_.hmonitor);
+    if (!capture_item_) {
+      LOG_ERROR("WGC: create capture item returned null");
+      return 86;
+    }
 
     // Set up
     auto d3d11_device =
@@ -353,21 +403,18 @@ int WgcSessionImpl::Initialize() {
 void WgcSessionImpl::CleanUp() {
   std::lock_guard locker(lock_);
 
-  auto expected = false;
-  if (cleaned_.compare_exchange_strong(expected, true)) {
-    capture_close_trigger_.revoke();
-    capture_framepool_trigger_.revoke();
+  CleanUpLocked();
+}
 
-    if (capture_framepool_) capture_framepool_.Close();
+void WgcSessionImpl::CleanUpLocked() {
+  StopLocked();
 
-    if (capture_session_) capture_session_.Close();
-
-    capture_framepool_ = nullptr;
-    capture_session_ = nullptr;
-    capture_item_ = nullptr;
-
-    is_initialized_ = false;
-  }
+  capture_item_ = nullptr;
+  d3d11_device_context_ = nullptr;
+  d3d11_direct_device_ = nullptr;
+  capture_frame_size_ = {};
+  is_initialized_ = false;
+  is_paused_ = false;
 }
 
 LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM w_param,

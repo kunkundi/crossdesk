@@ -50,6 +50,7 @@ class ScreenCapturerDxgi : public ScreenCapturer {
   bool InitializeDxgi();
   void EnumerateDisplays();
   bool CreateDuplicationForMonitor(int monitor_index);
+  bool RecreateDuplicationForCurrentMonitor();
   void CaptureLoop();
   void ReleaseDuplication();
 
