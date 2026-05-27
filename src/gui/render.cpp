@@ -1570,6 +1570,10 @@ int Render::DrawMainWindow() {
 
   UpdateNotificationWindow();
 
+#if _WIN32 && CROSSDESK_PORTABLE
+  PortableServiceInstallWindow();
+#endif
+
 #ifdef __APPLE__
   if (show_request_permission_window_) {
     RequestPermissionWindow();
@@ -1731,6 +1735,10 @@ int Render::Run() {
   InitializeSDL();
   InitializeModules();
   InitializeMainWindow();
+
+#if _WIN32 && CROSSDESK_PORTABLE
+  CheckPortableWindowsService();
+#endif
 
   const int scaled_video_width_ = 160;
   const int scaled_video_height_ = 90;
@@ -2246,6 +2254,10 @@ void Render::Cleanup() {
 
   CleanupFactories();
   CleanupPeers();
+
+#if _WIN32 && CROSSDESK_PORTABLE
+  JoinPortableWindowsServiceInstallThread();
+#endif
 
   WaitForThumbnailSaveTasks();
 

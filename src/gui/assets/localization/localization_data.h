@@ -69,6 +69,21 @@ struct TranslationRow {
   X(remote_service_unavailable, u8"远端Windows服务不可用",                                                                        \
     "Remote Windows service unavailable",                                                                                         \
     u8"Служба Windows на удаленной стороне недоступна")                                                                           \
+  X(windows_service_setup_title, u8"安装 CrossDesk Service",                                                                      \
+    "Install CrossDesk Service", u8"Установить CrossDesk Service")                                                               \
+  X(windows_service_setup_message,                                                                                                \
+    u8"便携版需要安装本机Windows服务，以便在锁屏/登录界面/安全桌面下完整控制此电脑。检测到服务尚未安装，可点击安装并允许相关系统权限。", \
+    "The portable version needs the local Windows service for full control on the lock screen, sign-in UI, and secure desktop. The service is not installed. Click Install and approve the system prompt.", \
+    u8"Портативной версии нужна локальная служба Windows для полного управления на экране блокировки, входа и защищенном рабочем столе. Служба не установлена. Нажмите Установить и подтвердите системный запрос.") \
+  X(install_windows_service, u8"安装", "Install",                                                                     \
+    u8"Установить службу")                                                                                                        \
+  X(installing_windows_service, u8"正在安装服务...", "Installing service...",                                                     \
+    u8"Установка службы...")                                                                                                      \
+  X(windows_service_install_success, u8"服务已安装并启动",                                                                        \
+    "Service installed and started", u8"Служба установлена и запущена")                                                          \
+  X(windows_service_install_failed, u8"服务安装失败，请确认便携目录内服务文件完整，并允许管理员权限。",                            \
+    "Service installation failed. Check that the portable folder contains all service files and approve administrator permission.", \
+    u8"Не удалось установить службу. Проверьте файлы службы в папке портативной версии и подтвердите права администратора.")       \
   X(remote_unlock_requires_secure_desktop,                                                                                        \
     u8"当前仍需要安全桌面专用采集/输入",                                                                                          \
     "Secure desktop capture/input is still required",                                                                             \

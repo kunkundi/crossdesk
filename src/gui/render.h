@@ -382,6 +382,19 @@ class Render {
   void HandleWindowsServiceIntegration();
 #if _WIN32
   void ResetLocalWindowsServiceState(bool clear_pending_sas);
+#if CROSSDESK_PORTABLE
+  enum class PortableServiceInstallState {
+    idle,
+    installing,
+    succeeded,
+    failed,
+  };
+
+  void CheckPortableWindowsService();
+  int PortableServiceInstallWindow();
+  void StartPortableWindowsServiceInstall();
+  void JoinPortableWindowsServiceInstallThread();
+#endif
 #endif
 
  private:
@@ -548,6 +561,13 @@ class Render {
   uint32_t last_local_secure_input_block_log_tick_ = 0;
   uint32_t last_windows_service_status_tick_ = 0;
   uint32_t optimistic_windows_secure_desktop_until_tick_ = 0;
+#if CROSSDESK_PORTABLE
+  bool portable_service_prompt_checked_ = false;
+  bool show_portable_service_install_window_ = false;
+  std::atomic<PortableServiceInstallState> portable_service_install_state_{
+      PortableServiceInstallState::idle};
+  std::thread portable_service_install_thread_;
+#endif
 #endif
 
   // stream window render
