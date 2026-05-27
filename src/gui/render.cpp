@@ -764,11 +764,16 @@ int Render::StartSpeakerCapturer() {
   }
 
   if (speaker_capturer_) {
-    speaker_capturer_->Start();
+    const int ret = speaker_capturer_->Start();
+    if (ret != 0) {
+      LOG_ERROR("Start speaker capturer failed: {}", ret);
+      return ret;
+    }
     start_speaker_capturer_ = true;
+    return 0;
   }
 
-  return 0;
+  return -1;
 }
 
 int Render::StopSpeakerCapturer() {
@@ -1149,8 +1154,9 @@ void Render::UpdateInteractions() {
   }
 
   if (start_speaker_capturer_ && !speaker_capturer_is_started_) {
-    StartSpeakerCapturer();
-    speaker_capturer_is_started_ = true;
+    if (0 == StartSpeakerCapturer()) {
+      speaker_capturer_is_started_ = true;
+    }
   } else if (!start_speaker_capturer_ && speaker_capturer_is_started_) {
     StopSpeakerCapturer();
     speaker_capturer_is_started_ = false;

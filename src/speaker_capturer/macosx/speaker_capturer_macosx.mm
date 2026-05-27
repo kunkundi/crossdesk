@@ -9,6 +9,17 @@ namespace crossdesk {
 class SpeakerCapturerMacosx;
 }
 
+namespace {
+std::string NSErrorToString(NSError* error) {
+  if (!error) {
+    return "";
+  }
+
+  const char* description = [error.localizedDescription UTF8String];
+  return description ? description : "";
+}
+}  // namespace
+
 @interface SpeakerCaptureDelegate : NSObject <SCStreamDelegate, SCStreamOutput>
 @property(nonatomic, assign) crossdesk::SpeakerCapturerMacosx* owner;
 - (instancetype)initWithOwner:(crossdesk::SpeakerCapturerMacosx*)owner;
@@ -28,15 +39,36 @@ class SpeakerCapturerMacosx;
                    ofType:(SCStreamOutputType)type {
   if (type != SCStreamOutputTypeAudio) return;
 
+  crossdesk::SpeakerCapturerMacosx* owner = _owner;
+  if (!owner || !owner->cb_) {
+    return;
+  }
+
   CMBlockBufferRef blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer);
+  if (!blockBuffer) {
+    return;
+  }
+
   size_t length = CMBlockBufferGetDataLength(blockBuffer);
   char* dataPtr = NULL;
-  CMBlockBufferGetDataPointer(blockBuffer, 0, NULL, NULL, &dataPtr);
+  OSStatus dataStatus =
+      CMBlockBufferGetDataPointer(blockBuffer, 0, NULL, NULL, &dataPtr);
+  if (dataStatus != noErr || dataPtr == nullptr || length == 0) {
+    return;
+  }
+
   CMAudioFormatDescriptionRef formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer);
+  if (!formatDesc) {
+    return;
+  }
+
   const AudioStreamBasicDescription* asbd =
       CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc);
+  if (!asbd || asbd->mChannelsPerFrame == 0) {
+    return;
+  }
 
-  if (_owner->cb_ && dataPtr && length > 0 && asbd) {
+  if (owner->cb_) {
     std::vector<short> out_pcm16;
     if (asbd->mFormatFlags & kAudioFormatFlagIsFloat) {
       int channels = asbd->mChannelsPerFrame;
@@ -86,7 +118,10 @@ class SpeakerCapturerMacosx;
     size_t total_bytes = out_pcm16.size() * sizeof(short);
     unsigned char* p = (unsigned char*)out_pcm16.data();
     for (size_t offset = 0; offset + frame_bytes <= total_bytes; offset += frame_bytes) {
-      _owner->cb_(p + offset, frame_bytes, "audio");
+      if (!owner->cb_) {
+        return;
+      }
+      owner->cb_(p + offset, frame_bytes, "audio");
     }
   }
 }
@@ -155,7 +190,7 @@ int SpeakerCapturerMacosx::Init(speaker_data_cb cb) {
 
   if (error || !impl_->content) {
     LOG_ERROR("Failed to get shareable content: {}",
-              std::string([error.localizedDescription UTF8String]));
+              NSErrorToString(error));
     return -1;
   }
 
@@ -209,7 +244,7 @@ int SpeakerCapturerMacosx::Start() {
                                      error:&addOutputError];
   if (!ok || addOutputError) {
     LOG_ERROR("addStreamOutput error: {}",
-              std::string([addOutputError.localizedDescription UTF8String]));
+              NSErrorToString(addOutputError));
     impl_->stream = nil;
     impl_->delegate = nil;
     return -1;
@@ -220,7 +255,7 @@ int SpeakerCapturerMacosx::Start() {
   [impl_->stream startCaptureWithCompletionHandler:^(NSError* _Nullable error) {
     if (error) {
       LOG_ERROR("startCaptureWithCompletionHandler error: {}",
-                std::string([error.localizedDescription UTF8String]));
+                NSErrorToString(error));
       ret = -1;
     }
     dispatch_semaphore_signal(semaStart);
@@ -238,13 +273,14 @@ int SpeakerCapturerMacosx::Stop() {
   [impl_->stream stopCaptureWithCompletionHandler:^(NSError* error) {
     if (error) {
       LOG_ERROR("stopCaptureWithCompletionHandler error: {}",
-                std::string([error.localizedDescription UTF8String]));
+                NSErrorToString(error));
     }
     dispatch_semaphore_signal(sema);
   }];
   dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
 
   impl_->stream = nil;
+  impl_->delegate.owner = nullptr;
   impl_->delegate = nil;
 
   return 0;
