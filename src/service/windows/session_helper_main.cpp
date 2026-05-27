@@ -340,6 +340,13 @@ const char* DetermineInteractiveStage(bool lock_app_visible,
   return "user-desktop";
 }
 
+bool IsCredentialUiVisible(bool session_locked, bool logon_ui_running,
+                           bool input_desktop_available,
+                           bool secure_desktop_active) {
+  return (session_locked || secure_desktop_active) &&
+         (logon_ui_running || !input_desktop_available);
+}
+
 std::string BuildErrorJson(const char* error, DWORD error_code = 0) {
   Json json;
   json["ok"] = false;
@@ -392,9 +399,10 @@ std::string BuildHelperStatusResponse(HelperState* helper_state) {
 
   Json json;
   std::lock_guard<std::mutex> lock(helper_state->mutex);
-  const bool credential_ui_visible =
-      helper_state->logon_ui_visible ||
-      (helper_state->session_locked && !helper_state->input_desktop_available);
+  const bool credential_ui_visible = IsCredentialUiVisible(
+      helper_state->session_locked, helper_state->logon_ui_visible,
+      helper_state->input_desktop_available,
+      helper_state->secure_desktop_active);
   const bool unlock_ui_visible =
       credential_ui_visible || helper_state->secure_desktop_active;
   json["ok"] = true;
@@ -1901,7 +1909,9 @@ int main(int argc, char* argv[]) {
       secure_desktop_active = helper_state.secure_desktop_active;
     }
     const bool credential_ui_visible =
-        logon_ui_running || (session_locked && !input_desktop_available);
+        IsCredentialUiVisible(session_locked, logon_ui_running,
+                              input_desktop_available,
+                              secure_desktop_active);
     std::string stage = DetermineInteractiveStage(
         lock_app_visible, credential_ui_visible, secure_desktop_active);
 

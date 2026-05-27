@@ -591,6 +591,14 @@ const char* DetermineInteractiveStage(bool lock_app_visible,
   return "user-desktop";
 }
 
+bool IsCredentialUiVisible(bool prelogin, bool session_locked,
+                           bool logon_ui_running,
+                           bool input_desktop_available,
+                           bool secure_desktop_active) {
+  return (prelogin || session_locked || secure_desktop_active) &&
+         (logon_ui_running || !input_desktop_available);
+}
+
 std::wstring SecureInputHelperDesktopForStage(
     const std::string& interactive_stage) {
   if (interactive_stage == "credential-ui" ||
@@ -1323,8 +1331,13 @@ bool CrossDeskServiceHost::IsHelperReportingLockScreenLocked() const {
 }
 
 bool CrossDeskServiceHost::HasSecureInputUiLocked() const {
+  const bool service_host_credential_ui_visible =
+      !session_helper_status_ok_ &&
+      IsCredentialUiVisible(prelogin_, session_locked_, logon_ui_visible_,
+                            input_desktop_available_,
+                            secure_desktop_active_);
   return IsSasSecureDesktopGraceActiveLocked() || prelogin_ ||
-         secure_desktop_active_ || logon_ui_visible_ ||
+         secure_desktop_active_ || service_host_credential_ui_visible ||
          session_helper_report_credential_ui_visible_ ||
          session_helper_report_secure_desktop_active_ ||
          session_helper_report_unlock_ui_visible_ ||
@@ -1377,9 +1390,14 @@ std::string CrossDeskServiceHost::ResolveInteractiveStageLocked() const {
     return session_helper_report_interactive_stage_;
   }
 
+  const bool service_host_credential_ui_visible =
+      IsCredentialUiVisible(prelogin_, session_locked_, logon_ui_visible_,
+                            input_desktop_available_,
+                            secure_desktop_active_);
   return DetermineInteractiveStage(
       IsHelperReportingLockScreenLocked(),
-      session_helper_report_credential_ui_visible_ || logon_ui_visible_,
+      session_helper_report_credential_ui_visible_ ||
+          service_host_credential_ui_visible,
       session_helper_report_secure_desktop_active_ || secure_desktop_active_);
 }
 
@@ -1991,12 +2009,17 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
       interactive_state_ready
           ? (effective_session_locked && IsHelperReportingLockScreenLocked())
           : false;
+  const bool service_host_credential_ui_visible =
+      IsCredentialUiVisible(prelogin_, session_locked_, logon_ui_visible_,
+                            input_desktop_available_,
+                            secure_desktop_active_);
   bool credential_ui_visible =
       interactive_state_ready ? session_helper_report_credential_ui_visible_
-                              : logon_ui_visible_;
+                              : service_host_credential_ui_visible;
   bool unlock_ui_visible = interactive_state_ready
                                ? session_helper_report_unlock_ui_visible_
-                               : (logon_ui_visible_ || secure_desktop_active_);
+                               : (credential_ui_visible ||
+                                  secure_desktop_active_);
   unlock_ui_visible = unlock_ui_visible || sas_secure_desktop_grace_active;
   bool interactive_secure_desktop_active =
       interactive_state_ready ? session_helper_report_secure_desktop_active_
@@ -2004,8 +2027,7 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
   interactive_secure_desktop_active =
       interactive_secure_desktop_active || sas_secure_desktop_grace_active;
   bool interactive_logon_ui_visible =
-      interactive_state_ready ? session_helper_report_logon_ui_visible_
-                              : logon_ui_visible_;
+      credential_ui_visible;
   bool interactive_session_locked = effective_session_locked ||
                                     interactive_lock_screen_visible ||
                                     unlock_ui_visible ||
