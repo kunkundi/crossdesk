@@ -53,6 +53,29 @@ CrossDesk 是 [MiniRTC](https://github.com/kunkundi/minirtc.git) 实时音视频
 
 <img width="645" height="300" alt="_cgi-bin_mmwebwx-bin_webwxgetmsgimg__ MsgID=932911462648581698 skey=@crypt_1f5153b1_b550ca7462b5009ce03c991cca2a92a7 mmweb_appid=wx_webfilehelper" src="https://github.com/user-attachments/assets/a5109e6f-752c-4654-9f4e-7e161bddf43e" />
 
+### Windows 服务（CrossDesk Service）
+CrossDesk 在 Windows 平台提供本地辅助服务 **CrossDesk Service**，服务名为 `CrossDeskService`。该服务用于锁屏、登录界面和安全桌面等受保护场景下的远程控制增强能力，包括：
+- 上报远端当前是否处于锁屏、登录、凭据输入或安全桌面状态；
+- 支持从控制端发送 `Ctrl+Alt+Del`（SAS）；
+- 在锁屏、登录和安全桌面阶段转发键盘、鼠标输入。
+
+Windows 安装包会自动打包 `crossdesk_service.exe` 和 `crossdesk_session_helper.exe`，并在安装时注册为按需启动的 Windows 服务。CrossDesk 客户端启动时会尝试启动已安装的服务；当本机没有 CrossDesk 客户端进程运行时，服务会自动退出。卸载客户端时会同步停止并移除该服务。
+
+如果是手动编译或手动部署 Windows 版本，请确保 `CrossDesk.exe`、`crossdesk_service.exe` 和 `crossdesk_session_helper.exe` 位于同一目录。安装或卸载服务需要使用管理员权限打开 PowerShell：
+```
+# 安装
+.\CrossDesk.exe --service-install
+# 启动
+.\CrossDesk.exe --service-start
+# 查看状态
+.\CrossDesk.exe --service-status
+.\CrossDesk.exe --service-stop
+# 卸载
+.\CrossDesk.exe --service-uninstall
+```
+
+如果远端 Windows 服务未安装、未启动或暂时不可用，基础远程桌面连接仍可使用，但锁屏、登录界面和安全桌面阶段的控制能力会受限，客户端会提示“远端Windows服务不可用”。
+
 ## 如何编译
 
 依赖：

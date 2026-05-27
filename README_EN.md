@@ -56,6 +56,31 @@ Enter the **Remote Device ID** and **Password**, then click Connect to access th
 
 <img width="645" height="300" alt="_cgi-bin_mmwebwx-bin_webwxgetmsgimg__ MsgID=932911462648581698 skey=@crypt_1f5153b1_b550ca7462b5009ce03c991cca2a92a7 mmweb_appid=wx_webfilehelper" src="https://github.com/user-attachments/assets/a5109e6f-752c-4654-9f4e-7e161bddf43e" />
 
+### Windows Service (CrossDesk Service)
+CrossDesk provides a local helper service on Windows named **CrossDesk Service**. Its service name is `CrossDeskService`. The service improves remote control in protected Windows states such as the lock screen, sign-in UI, credential UI, and secure desktop. It provides:
+- Remote status reporting for lock screen, sign-in, credential, and secure desktop states.
+- Remote `Ctrl+Alt+Del` (SAS) delivery.
+- Keyboard and mouse input forwarding while the remote Windows device is on the lock screen, sign-in UI, or secure desktop.
+
+The Windows installer bundles `crossdesk_service.exe` and `crossdesk_session_helper.exe`, then registers the service as an on-demand Windows service during installation. When the CrossDesk client starts, it tries to start the installed service automatically. When no CrossDesk client process is running on the machine, the service exits automatically. Uninstalling the client also stops and removes the service.
+
+For manual Windows builds or deployments, make sure `CrossDesk.exe`, `crossdesk_service.exe`, and `crossdesk_session_helper.exe` are placed in the same directory. Open PowerShell with administrator privileges to install or uninstall the service:
+```
+# install
+.\CrossDesk.exe --service-install
+# start
+.\CrossDesk.exe --service-start
+# check status
+.\CrossDesk.exe --service-status
+.\CrossDesk.exe --service-ping
+# stop
+.\CrossDesk.exe --service-stop
+# uninstall
+.\CrossDesk.exe --service-uninstall
+```
+
+If the remote Windows service is not installed, not running, or temporarily unavailable, the basic remote desktop connection still works, but remote control on the lock screen, sign-in UI, and secure desktop is limited. The client will show “Remote Windows service unavailable”.
+
 ## How to build
 
 Requirements:
