@@ -296,6 +296,9 @@ class Render {
   void OpenScreenRecordingPreferences();
   void OpenAccessibilityPreferences();
   bool DrawToggleSwitch(const char* id, bool active, bool enabled);
+  void RefreshMacPermissionStatus(bool force);
+  bool EnsureMacScreenRecordingPermission();
+  bool EnsureMacAccessibilityPermission();
 #endif
 
  public:
@@ -699,6 +702,12 @@ class Render {
   double new_version_icon_render_start_time_ = 0.0;
 #ifdef __APPLE__
   bool show_request_permission_window_ = true;
+  bool mac_permission_status_initialized_ = false;
+  uint32_t mac_permission_last_check_tick_ = 0;
+  bool mac_screen_recording_permission_granted_ = false;
+  bool mac_accessibility_permission_granted_ = false;
+  bool mac_screen_recording_permission_requested_ = false;
+  bool mac_accessibility_permission_requested_ = false;
 #endif
   char client_id_[10] = "";
   char client_id_display_[12] = "";

@@ -6,10 +6,26 @@
 #include <ApplicationServices/ApplicationServices.h>
 #include <CoreGraphics/CoreGraphics.h>
 #import <Foundation/Foundation.h>
-#include <unistd.h>
 #include <cstdlib>
+#include <string>
 
 namespace crossdesk {
+
+namespace {
+constexpr uint32_t kPermissionRefreshIntervalVisibleMs = 500;
+
+void OpenPrivacyPreferences(const char* pane) {
+  if (pane == nullptr || pane[0] == '\0') {
+    return;
+  }
+
+  std::string command =
+      "open \"x-apple.systempreferences:com.apple.preference.security?";
+  command += pane;
+  command += "\"";
+  system(command.c_str());
+}
+}  // namespace
 
 bool Render::DrawToggleSwitch(const char* id, bool active, bool enabled) {
   const float TRACK_HEIGHT = ImGui::GetFrameHeight();
@@ -35,16 +51,19 @@ bool Render::DrawToggleSwitch(const char* id, bool active, bool enabled) {
   bool hovered = ImGui::IsItemHovered();
   bool clicked = ImGui::IsItemClicked() && enabled;
 
-  ImVec4 track_color = active ? (hovered && enabled ? COLOR_ACTIVE_HOVER : COLOR_ACTIVE)
-                              : (hovered && enabled ? COLOR_INACTIVE_HOVER : COLOR_INACTIVE);
+  ImVec4 track_color =
+      active ? (hovered && enabled ? COLOR_ACTIVE_HOVER : COLOR_ACTIVE)
+             : (hovered && enabled ? COLOR_INACTIVE_HOVER : COLOR_INACTIVE);
 
   if (!enabled) {
     track_color.w *= DISABLED_ALPHA;
   }
 
   ImVec2 track_min = ImVec2(track_pos.x, track_pos.y + 0.5f);
-  ImVec2 track_max = ImVec2(track_pos.x + TRACK_WIDTH, track_pos.y + TRACK_HEIGHT - 0.5f);
-  draw_list->AddRectFilled(track_min, track_max, ImGui::GetColorU32(track_color), TRACK_RADIUS);
+  ImVec2 track_max = ImVec2(track_pos.x + TRACK_WIDTH,
+                            track_pos.y + TRACK_HEIGHT - 0.5f);
+  draw_list->AddRectFilled(track_min, track_max,
+                           ImGui::GetColorU32(track_color), TRACK_RADIUS);
 
   float knob_position = active ? 1.0f : 0.0f;
   float knob_min_x = track_pos.x + KNOB_PADDING;
@@ -59,7 +78,8 @@ bool Render::DrawToggleSwitch(const char* id, bool active, bool enabled) {
 
   ImVec2 knob_min = ImVec2(knob_x, knob_y);
   ImVec2 knob_max = ImVec2(knob_x + KNOB_WIDTH, knob_y + KNOB_HEIGHT);
-  draw_list->AddRectFilled(knob_min, knob_max, ImGui::GetColorU32(knob_color), KNOB_RADIUS);
+  draw_list->AddRectFilled(knob_min, knob_max,
+                           ImGui::GetColorU32(knob_color), KNOB_RADIUS);
 
   return clicked;
 }
@@ -81,29 +101,82 @@ bool Render::CheckAccessibilityPermission() {
 }
 
 void Render::OpenAccessibilityPreferences() {
-  NSDictionary* options = @{(__bridge id)kAXTrustedCheckOptionPrompt : @YES};
-  AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
-
-  system("open "
-         "\"x-apple.systempreferences:com.apple.preference.security?Privacy_"
-         "Accessibility\"");
+  if (!mac_accessibility_permission_requested_) {
+    NSDictionary* options = @{(__bridge id)kAXTrustedCheckOptionPrompt : @YES};
+    AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
+  } else {
+    OpenPrivacyPreferences("Privacy_Accessibility");
+  }
 }
 
 void Render::OpenScreenRecordingPreferences() {
   if (@available(macOS 10.15, *)) {
-    CGRequestScreenCaptureAccess();
+    if (!mac_screen_recording_permission_requested_) {
+      CGRequestScreenCaptureAccess();
+    } else {
+      OpenPrivacyPreferences("Privacy_ScreenCapture");
+    }
+  } else {
+    OpenPrivacyPreferences("Privacy_ScreenCapture");
+  }
+}
+
+void Render::RefreshMacPermissionStatus(bool force) {
+  const uint32_t now = static_cast<uint32_t>(SDL_GetTicks());
+  if (!force && mac_permission_status_initialized_ &&
+      now - mac_permission_last_check_tick_ <
+          kPermissionRefreshIntervalVisibleMs) {
+    return;
   }
 
-  system("open "
-         "\"x-apple.systempreferences:com.apple.preference.security?Privacy_"
-         "ScreenCapture\"");
+  const bool old_screen_recording_granted =
+      mac_screen_recording_permission_granted_;
+  const bool old_accessibility_granted = mac_accessibility_permission_granted_;
+
+  mac_screen_recording_permission_granted_ =
+      CheckScreenRecordingPermission();
+  mac_accessibility_permission_granted_ = CheckAccessibilityPermission();
+  mac_permission_last_check_tick_ = now;
+  mac_permission_status_initialized_ = true;
+
+  if (old_screen_recording_granted !=
+          mac_screen_recording_permission_granted_ ||
+      old_accessibility_granted != mac_accessibility_permission_granted_) {
+    LOG_INFO("macOS permission status: screen_recording={}, accessibility={}",
+             mac_screen_recording_permission_granted_,
+             mac_accessibility_permission_granted_);
+  }
+}
+
+bool Render::EnsureMacScreenRecordingPermission() {
+  RefreshMacPermissionStatus(false);
+  if (mac_screen_recording_permission_granted_) {
+    return true;
+  }
+
+  show_request_permission_window_ = true;
+  return false;
+}
+
+bool Render::EnsureMacAccessibilityPermission() {
+  RefreshMacPermissionStatus(false);
+  if (mac_accessibility_permission_granted_) {
+    return true;
+  }
+
+  show_request_permission_window_ = true;
+  return false;
 }
 
 int Render::RequestPermissionWindow() {
-  bool screen_recording_granted = CheckScreenRecordingPermission();
-  bool accessibility_granted = CheckAccessibilityPermission();
+  RefreshMacPermissionStatus(false);
 
-  show_request_permission_window_ = !screen_recording_granted || !accessibility_granted;
+  const bool screen_recording_granted =
+      mac_screen_recording_permission_granted_;
+  const bool accessibility_granted = mac_accessibility_permission_granted_;
+
+  show_request_permission_window_ =
+      !screen_recording_granted || !accessibility_granted;
 
   if (!show_request_permission_window_) {
     return 0;
@@ -162,8 +235,10 @@ int Render::RequestPermissionWindow() {
   if (accessibility_granted) {
     DrawToggleSwitch("accessibility_toggle_on", true, false);
   } else {
-    if (DrawToggleSwitch("accessibility_toggle", accessibility_granted, !accessibility_granted)) {
+    if (DrawToggleSwitch("accessibility_toggle", false, true)) {
       OpenAccessibilityPreferences();
+      mac_accessibility_permission_requested_ = true;
+      RefreshMacPermissionStatus(true);
     }
   }
 
@@ -178,12 +253,12 @@ int Render::RequestPermissionWindow() {
   ImGui::AlignTextToFramePadding();
   ImGui::SetCursorPosX(checkbox_padding);
   if (screen_recording_granted) {
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 10.0f);
     DrawToggleSwitch("screen_recording_toggle_on", true, false);
   } else {
-    if (DrawToggleSwitch("screen_recording_toggle", screen_recording_granted,
-                         !screen_recording_granted)) {
+    if (DrawToggleSwitch("screen_recording_toggle", false, true)) {
       OpenScreenRecordingPreferences();
+      mac_screen_recording_permission_requested_ = true;
+      RefreshMacPermissionStatus(true);
     }
   }
 

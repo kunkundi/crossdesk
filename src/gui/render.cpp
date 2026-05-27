@@ -636,6 +636,12 @@ int Render::LoadSettingsFromCacheFile() {
 }
 
 int Render::ScreenCapturerInit() {
+#ifdef __APPLE__
+  if (!EnsureMacScreenRecordingPermission()) {
+    return -1;
+  }
+#endif
+
   if (!screen_capturer_) {
     screen_capturer_ = (ScreenCapturer*)screen_capturer_factory_->Create();
   }
@@ -705,6 +711,12 @@ int Render::ScreenCapturerInit() {
 }
 
 int Render::StartScreenCapturer() {
+#ifdef __APPLE__
+  if (!EnsureMacScreenRecordingPermission()) {
+    return -1;
+  }
+#endif
+
   if (!screen_capturer_) {
     LOG_INFO("Screen capturer instance missing, recreating before start");
     if (0 != ScreenCapturerInit()) {
@@ -769,6 +781,12 @@ int Render::StopSpeakerCapturer() {
 }
 
 int Render::StartMouseController() {
+#ifdef __APPLE__
+  if (!EnsureMacAccessibilityPermission()) {
+    return -1;
+  }
+#endif
+
   if (!device_controller_factory_) {
     LOG_INFO("Device controller factory is nullptr");
     return -1;
@@ -825,6 +843,13 @@ int Render::StopMouseController() {
 
 int Render::StartKeyboardCapturer() {
   keyboard_capturer_uses_sdl_events_ = false;
+
+#ifdef __APPLE__
+  if (!EnsureMacAccessibilityPermission()) {
+    keyboard_capturer_uses_sdl_events_ = true;
+    return 0;
+  }
+#endif
 
 #if defined(__linux__) && !defined(__APPLE__)
   if (IsWaylandSession()) {
