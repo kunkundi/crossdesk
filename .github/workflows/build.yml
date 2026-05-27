@@ -250,10 +250,34 @@ jobs:
       - name: Package Portable
         shell: pwsh
         run: |
+          $buildDir = "${{ github.workspace }}\build\windows\x64\release"
           $portableDir = "${{ github.workspace }}\portable"
           New-Item -ItemType Directory -Force -Path $portableDir
-          Copy-Item "${{ github.workspace }}\build\windows\x64\release\crossdesk.exe" "$portableDir\CrossDesk.exe"
-          Copy-Item "${{ github.workspace }}\build\windows\x64\release\*.dll" $portableDir -Force
+
+          $portableFiles = @(
+            @("crossdesk.exe", "CrossDesk.exe"),
+            @("crossdesk_service.exe", "crossdesk_service.exe"),
+            @("crossdesk_session_helper.exe", "crossdesk_session_helper.exe")
+          )
+
+          foreach ($file in $portableFiles) {
+            $source = Join-Path $buildDir $file[0]
+            $destination = Join-Path $portableDir $file[1]
+            if (!(Test-Path $source)) {
+              throw "Missing portable package file: $source"
+            }
+            Copy-Item $source $destination -Force
+          }
+
+          Copy-Item (Join-Path $buildDir "*.dll") $portableDir -Force
+
+          foreach ($file in $portableFiles) {
+            $packagedFile = Join-Path $portableDir $file[1]
+            if (!(Test-Path $packagedFile)) {
+              throw "Portable package is missing: $packagedFile"
+            }
+          }
+
           Compress-Archive -Path "$portableDir\*" -DestinationPath "${{ github.workspace }}\crossdesk-win-x64-portable-${{ env.VERSION_NUM }}.zip"
 
       - name: Upload artifact
