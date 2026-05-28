@@ -7,6 +7,11 @@ on:
     tags:
       - "*"
   workflow_dispatch:
+    inputs:
+      patch:
+        description: "Hotfix patch number, for example 1 or 2. Use 0 for a normal build."
+        required: false
+        default: "0"
 
 permissions:
   contents: write
@@ -38,20 +43,47 @@ jobs:
     steps:
       - name: Extract version number
         run: |
-          VERSION="${GITHUB_REF##*/}"
-          VERSION_NUM="${VERSION#v}"
-          echo "VERSION_NUM=${VERSION_NUM}" >> $GITHUB_ENV
+          VERSION_REF="${GITHUB_REF##*/}"
+          VERSION_BASE="${VERSION_REF#v}"
+          PATCH_NUMBER="${{ github.event.inputs.patch }}"
+          BUILD_DATE_OVERRIDE=""
+
+          if [[ ! "${PATCH_NUMBER}" =~ ^[0-9]+$ ]]; then
+            PATCH_NUMBER=0
+          fi
+
+          if [[ "${VERSION_BASE}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})-([0-9]+)$ ]]; then
+            VERSION_BASE="${BASH_REMATCH[1]}"
+            BUILD_DATE_OVERRIDE="${BASH_REMATCH[3]}"
+            PATCH_NUMBER="${BASH_REMATCH[4]}"
+          elif [[ "${VERSION_BASE}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})$ ]]; then
+            VERSION_BASE="${BASH_REMATCH[1]}"
+            BUILD_DATE_OVERRIDE="${BASH_REMATCH[3]}"
+          elif [[ "${VERSION_BASE}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]+)$ && "${PATCH_NUMBER}" == "0" ]]; then
+            VERSION_BASE="${BASH_REMATCH[1]}"
+            PATCH_NUMBER="${BASH_REMATCH[3]}"
+          fi
+
+          echo "VERSION_BASE=${VERSION_BASE}" >> $GITHUB_ENV
+          echo "PATCH_NUMBER=${PATCH_NUMBER}" >> $GITHUB_ENV
+          echo "BUILD_DATE_OVERRIDE=${BUILD_DATE_OVERRIDE}" >> $GITHUB_ENV
 
       - name: Set legal Debian version
         shell: bash
         run: |
-          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          BUILD_DATE=$(TZ=Asia/Shanghai date +%Y%m%d)
+          BUILD_DATE="${BUILD_DATE_OVERRIDE}"
+          if [[ -z "${BUILD_DATE}" ]]; then
+            BUILD_DATE=$(TZ=Asia/Shanghai date +%Y%m%d)
+          fi
 
-          if [[ ! "${VERSION_NUM}" =~ ^[0-9] ]]; then
-            LEGAL_VERSION="v0.0.0-${VERSION_NUM}-${BUILD_DATE}-${SHORT_SHA}"
+          if [[ ! "${VERSION_BASE}" =~ ^[0-9] ]]; then
+            VERSION_BASE="0.0.0-${VERSION_BASE}"
+          fi
+
+          if [[ "${PATCH_NUMBER}" != "0" ]]; then
+            LEGAL_VERSION="v${VERSION_BASE}-${BUILD_DATE}-${PATCH_NUMBER}"
           else
-            LEGAL_VERSION="v${VERSION_NUM}-${BUILD_DATE}-${SHORT_SHA}"
+            LEGAL_VERSION="v${VERSION_BASE}-${BUILD_DATE}"
           fi
 
           echo "LEGAL_VERSION=${LEGAL_VERSION}" >> $GITHUB_ENV
@@ -103,13 +135,37 @@ jobs:
       - name: Extract version number
         id: version
         run: |
-          VERSION="${GITHUB_REF##*/}"
-          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          VERSION_REF="${GITHUB_REF##*/}"
+          VERSION_BASE="${VERSION_REF#v}"
           BUILD_DATE=$(TZ=Asia/Shanghai date +%Y%m%d)
-          VERSION_NUM="v${VERSION#v}-${BUILD_DATE}-${SHORT_SHA}"
+          PATCH_NUMBER="${{ github.event.inputs.patch }}"
+
+          if [[ ! "${PATCH_NUMBER}" =~ ^[0-9]+$ ]]; then
+            PATCH_NUMBER=0
+          fi
+
+          if [[ "${VERSION_BASE}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})-([0-9]+)$ ]]; then
+            VERSION_BASE="${BASH_REMATCH[1]}"
+            BUILD_DATE="${BASH_REMATCH[3]}"
+            PATCH_NUMBER="${BASH_REMATCH[4]}"
+          elif [[ "${VERSION_BASE}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})$ ]]; then
+            VERSION_BASE="${BASH_REMATCH[1]}"
+            BUILD_DATE="${BASH_REMATCH[3]}"
+          elif [[ "${VERSION_BASE}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]+)$ && "${PATCH_NUMBER}" == "0" ]]; then
+            VERSION_BASE="${BASH_REMATCH[1]}"
+            PATCH_NUMBER="${BASH_REMATCH[3]}"
+          fi
+
+          if [[ "${PATCH_NUMBER}" != "0" ]]; then
+            VERSION_NUM="v${VERSION_BASE}-${BUILD_DATE}-${PATCH_NUMBER}"
+          else
+            VERSION_NUM="v${VERSION_BASE}-${BUILD_DATE}"
+          fi
+
           echo "VERSION_NUM=${VERSION_NUM}" >> $GITHUB_ENV
           echo "VERSION_NUM=${VERSION_NUM}"
           echo "BUILD_DATE=${BUILD_DATE}" >> $GITHUB_ENV
+          echo "PATCH_NUMBER=${PATCH_NUMBER}" >> $GITHUB_ENV
 
       - name: Cache xmake dependencies
         uses: actions/cache@v5
@@ -163,10 +219,34 @@ jobs:
           $version = $ref -replace '^refs/(tags|heads)/', ''
           $version = $version -replace '^v', ''
           $version = $version -replace '/', '-'
-          $SHORT_SHA = $env:GITHUB_SHA.Substring(0,7)
           $BUILD_DATE = ([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId((Get-Date), "China Standard Time")).ToString("yyyyMMdd")
-          echo "VERSION_NUM=v$version-$BUILD_DATE-$SHORT_SHA" >> $env:GITHUB_ENV
+          $PATCH_NUMBER = "${{ github.event.inputs.patch }}"
+
+          if ($PATCH_NUMBER -notmatch '^[0-9]+$') {
+            $PATCH_NUMBER = "0"
+          }
+
+          if ($version -match '^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})-([0-9]+)$') {
+            $version = $Matches[1]
+            $BUILD_DATE = $Matches[3]
+            $PATCH_NUMBER = $Matches[4]
+          } elseif ($version -match '^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})$') {
+            $version = $Matches[1]
+            $BUILD_DATE = $Matches[3]
+          } elseif ($version -match '^([0-9]+(\.[0-9]+){1,3})-([0-9]+)$' -and $PATCH_NUMBER -eq "0") {
+            $version = $Matches[1]
+            $PATCH_NUMBER = $Matches[3]
+          }
+
+          if ($PATCH_NUMBER -ne "0") {
+            $VERSION_NUM = "v$version-$BUILD_DATE-$PATCH_NUMBER"
+          } else {
+            $VERSION_NUM = "v$version-$BUILD_DATE"
+          }
+
+          echo "VERSION_NUM=$VERSION_NUM" >> $env:GITHUB_ENV
           echo "BUILD_DATE=$BUILD_DATE" >> $env:GITHUB_ENV
+          echo "PATCH_NUMBER=$PATCH_NUMBER" >> $env:GITHUB_ENV
 
       - name: Cache xmake dependencies
         uses: actions/cache@v5
@@ -311,18 +391,41 @@ jobs:
       - name: Extract version number
         id: version
         run: |
-          VERSION="${GITHUB_REF##*/}"
-          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          VERSION_REF="${GITHUB_REF##*/}"
+          VERSION_BASE="${VERSION_REF#v}"
           BUILD_DATE=$(TZ=Asia/Shanghai date +%Y%m%d)
-          BUILD_DATE_ISO=$(TZ=Asia/Shanghai date +%Y-%m-%d)
-          VERSION_NUM="${VERSION#v}-${BUILD_DATE}-${SHORT_SHA}"
+          PATCH_NUMBER="${{ github.event.inputs.patch }}"
+
+          if [[ ! "${PATCH_NUMBER}" =~ ^[0-9]+$ ]]; then
+            PATCH_NUMBER=0
+          fi
+
+          if [[ "${VERSION_BASE}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})-([0-9]+)$ ]]; then
+            VERSION_BASE="${BASH_REMATCH[1]}"
+            BUILD_DATE="${BASH_REMATCH[3]}"
+            PATCH_NUMBER="${BASH_REMATCH[4]}"
+          elif [[ "${VERSION_BASE}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})$ ]]; then
+            VERSION_BASE="${BASH_REMATCH[1]}"
+            BUILD_DATE="${BASH_REMATCH[3]}"
+          elif [[ "${VERSION_BASE}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]+)$ && "${PATCH_NUMBER}" == "0" ]]; then
+            VERSION_BASE="${BASH_REMATCH[1]}"
+            PATCH_NUMBER="${BASH_REMATCH[3]}"
+          fi
+
+          BUILD_DATE_ISO="${BUILD_DATE:0:4}-${BUILD_DATE:4:2}-${BUILD_DATE:6:2}"
+          if [[ "${PATCH_NUMBER}" != "0" ]]; then
+            VERSION_NUM="${VERSION_BASE}-${BUILD_DATE}-${PATCH_NUMBER}"
+          else
+            VERSION_NUM="${VERSION_BASE}-${BUILD_DATE}"
+          fi
+
           VERSION_WITH_V="v${VERSION_NUM}"
-          VERSION_ONLY="${VERSION#v}"
           echo "VERSION_NUM=${VERSION_NUM}" >> $GITHUB_OUTPUT
           echo "VERSION_WITH_V=${VERSION_WITH_V}" >> $GITHUB_OUTPUT
-          echo "VERSION_ONLY=${VERSION_ONLY}" >> $GITHUB_OUTPUT
+          echo "VERSION_BASE=${VERSION_BASE}" >> $GITHUB_OUTPUT
           echo "BUILD_DATE=${BUILD_DATE}" >> $GITHUB_OUTPUT
           echo "BUILD_DATE_ISO=${BUILD_DATE_ISO}" >> $GITHUB_OUTPUT
+          echo "PATCH_NUMBER=${PATCH_NUMBER}" >> $GITHUB_OUTPUT
 
       - name: Rename artifacts
         run: |
@@ -380,8 +483,9 @@ jobs:
         run: |
           cat > version.json << EOF
           {
-            "version": "${{ steps.version.outputs.VERSION_ONLY }}",
+            "version": "${{ steps.version.outputs.VERSION_NUM }}",
             "releaseDate": "${{ steps.version.outputs.BUILD_DATE_ISO }}",
+            "patch": ${{ steps.version.outputs.PATCH_NUMBER }},
             "releaseName": "",
             "releaseNotes": "",
             "tagName": "${{ steps.version.outputs.VERSION_WITH_V }}",

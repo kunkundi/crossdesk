@@ -65,6 +65,14 @@ function setup_targets()
         set_default(false)
         add_files("tests/display_popup_hover_state_test.cpp")
 
+    target("version_checker_test")
+        set_kind("binary")
+        set_default(false)
+        add_packages("cpp-httplib", "nlohmann_json")
+        add_includedirs("src/version_checker")
+        add_files("tests/version_checker_test.cpp",
+            "src/version_checker/version_checker.cpp")
+
     target("screen_capturer")
         set_kind("object")
         add_deps("rd_log", "common")

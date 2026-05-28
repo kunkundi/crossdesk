@@ -8,7 +8,10 @@
 
 #include <httplib.h>
 
+#include <algorithm>
+#include <cctype>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -16,12 +19,219 @@
 namespace crossdesk {
 
 static std::string latest_release_date_ = "";
+static bool latest_patch_available_ = false;
+static int latest_patch_ = 0;
+
+std::vector<int> SplitVersion(const std::string& ver);
+
+namespace {
+
+constexpr size_t kMaxInlinePatchDigits = 4;
+
+struct ParsedVersion {
+  std::vector<int> numbers;
+  std::string date;
+  bool has_patch = false;
+  int patch = 0;
+};
+
+bool IsDigit(char c) {
+  return std::isdigit(static_cast<unsigned char>(c)) != 0;
+}
+
+bool IsAlphaNumeric(char c) {
+  return std::isalnum(static_cast<unsigned char>(c)) != 0;
+}
+
+bool IsAllDigits(const std::string& value) {
+  if (value.empty()) {
+    return false;
+  }
+
+  for (char c : value) {
+    if (!IsDigit(c)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool TryParseNonNegativeInt(const std::string& value, int* result) {
+  if (!IsAllDigits(value)) {
+    return false;
+  }
+
+  try {
+    const long long parsed = std::stoll(value);
+    if (parsed > std::numeric_limits<int>::max()) {
+      return false;
+    }
+    *result = static_cast<int>(parsed);
+    return true;
+  } catch (...) {
+    return false;
+  }
+}
+
+bool TryParseInlinePatch(const std::string& value, int* result) {
+  if (value.size() > kMaxInlinePatchDigits) {
+    return false;
+  }
+
+  return TryParseNonNegativeInt(value, result);
+}
+
+size_t FindNumericStart(const std::string& version) {
+  size_t start = 0;
+  while (start < version.size() && !IsDigit(version[start])) {
+    start++;
+  }
+  return start;
+}
+
+size_t FindNumericEnd(const std::string& version, size_t start) {
+  size_t end = start;
+  while (end < version.size() &&
+         (IsDigit(version[end]) || version[end] == '.')) {
+    end++;
+  }
+  return end;
+}
+
+bool HasDigitBoundary(const std::string& value, size_t pos, size_t len) {
+  const bool before_ok = pos == 0 || !IsDigit(value[pos - 1]);
+  const size_t end = pos + len;
+  const bool after_ok = end >= value.size() || !IsDigit(value[end]);
+  return before_ok && after_ok;
+}
+
+bool IsCompactDateAt(const std::string& value, size_t pos) {
+  if (pos + 8 > value.size() || !HasDigitBoundary(value, pos, 8)) {
+    return false;
+  }
+
+  for (size_t i = 0; i < 8; ++i) {
+    if (!IsDigit(value[pos + i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::string CompactDateToIso(const std::string& compact_date) {
+  return compact_date.substr(0, 4) + "-" + compact_date.substr(4, 2) + "-" +
+         compact_date.substr(6, 2);
+}
+
+bool ExtractDateFromText(const std::string& value,
+                         std::string* date,
+                         size_t* date_end) {
+  for (size_t i = 0; i < value.size(); ++i) {
+    if (IsCompactDateAt(value, i)) {
+      *date = CompactDateToIso(value.substr(i, 8));
+      *date_end = i + 8;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool ExtractPatchAfterDate(const std::string& value,
+                           size_t start,
+                           int* patch) {
+  size_t pos = start;
+  while (pos < value.size() && !IsAlphaNumeric(value[pos])) {
+    pos++;
+  }
+
+  const size_t token_start = pos;
+  while (pos < value.size() && IsAlphaNumeric(value[pos])) {
+    pos++;
+  }
+
+  if (token_start == pos) {
+    return false;
+  }
+
+  return TryParseInlinePatch(value.substr(token_start, pos - token_start),
+                             patch);
+}
+
+ParsedVersion ParseVersion(const std::string& version) {
+  const size_t numeric_start = FindNumericStart(version);
+  const size_t numeric_end = FindNumericEnd(version, numeric_start);
+
+  ParsedVersion parsed;
+  parsed.numbers = SplitVersion(version.substr(numeric_start,
+                                               numeric_end - numeric_start));
+
+  const std::string suffix = version.substr(numeric_end);
+  size_t date_end = 0;
+  if (ExtractDateFromText(suffix, &parsed.date, &date_end)) {
+    int patch = 0;
+    if (ExtractPatchAfterDate(suffix, date_end, &patch)) {
+      parsed.has_patch = true;
+      parsed.patch = patch;
+    }
+  }
+
+  return parsed;
+}
+
+int CompareNumericVersion(const std::vector<int>& current,
+                          const std::vector<int>& latest) {
+  std::vector<int> current_parts = current;
+  std::vector<int> latest_parts = latest;
+  const size_t len = std::max(current_parts.size(), latest_parts.size());
+  current_parts.resize(len, 0);
+  latest_parts.resize(len, 0);
+
+  for (size_t i = 0; i < len; ++i) {
+    if (latest_parts[i] > current_parts[i]) {
+      return 1;
+    }
+    if (latest_parts[i] < current_parts[i]) {
+      return -1;
+    }
+  }
+
+  return 0;
+}
+
+void ResetLatestMetadata() {
+  latest_release_date_ = "";
+  latest_patch_available_ = false;
+  latest_patch_ = 0;
+}
+
+bool ReadPatchField(const nlohmann::json& json, int* patch) {
+  if (!json.contains("patch")) {
+    return false;
+  }
+
+  const auto& patch_value = json["patch"];
+  if (patch_value.is_number_integer()) {
+    const long long parsed = patch_value.get<long long>();
+    if (parsed < 0 || parsed > std::numeric_limits<int>::max()) {
+      return false;
+    }
+    *patch = static_cast<int>(parsed);
+    return true;
+  }
+
+  if (patch_value.is_string()) {
+    return TryParseNonNegativeInt(patch_value.get<std::string>(), patch);
+  }
+
+  return false;
+}
+
+}  // namespace
 
 std::string ExtractNumericPart(const std::string& ver) {
-  size_t start = 0;
-  while (start < ver.size() && !std::isdigit(ver[start])) start++;
-  size_t end = start;
-  while (end < ver.size() && (std::isdigit(ver[end]) || ver[end] == '.')) end++;
+  const size_t start = FindNumericStart(ver);
+  const size_t end = FindNumericEnd(ver, start);
   return ver.substr(start, end - start);
 }
 
@@ -42,25 +252,13 @@ std::vector<int> SplitVersion(const std::string& ver) {
 // extract date from version string (format: v1.2.3-20251113-abc
 // or 1.2.3-20251113-abc)
 std::string ExtractDateFromVersion(const std::string& version) {
-  size_t dash1 = version.find('-');
-  if (dash1 != std::string::npos) {
-    size_t dash2 = version.find('-', dash1 + 1);
-    if (dash2 != std::string::npos) {
-      std::string date_part = version.substr(dash1 + 1, dash2 - dash1 - 1);
-
-      bool is_date = true;
-      for (char c : date_part) {
-        if (!std::isdigit(c)) {
-          is_date = false;
-          break;
-        }
-      }
-      if (is_date) {
-        // convert YYYYMMDD to YYYY-MM-DD
-        return date_part.substr(0, 4) + "-" + date_part.substr(4, 2) + "-" +
-               date_part.substr(6, 2);
-      }
-    }
+  const size_t numeric_start = FindNumericStart(version);
+  const size_t numeric_end = FindNumericEnd(version, numeric_start);
+  const std::string suffix = version.substr(numeric_end);
+  std::string date;
+  size_t date_end = 0;
+  if (ExtractDateFromText(suffix, &date, &date_end)) {
+    return date;
   }
   return "";
 }
@@ -73,55 +271,54 @@ bool IsNewerDate(const std::string& date1, const std::string& date2) {
 }
 
 bool IsNewerVersion(const std::string& current, const std::string& latest) {
-  auto v1 = SplitVersion(ExtractNumericPart(current));
-  auto v2 = SplitVersion(ExtractNumericPart(latest));
-
-  size_t len = std::max(v1.size(), v2.size());
-  v1.resize(len, 0);
-  v2.resize(len, 0);
-
-  for (size_t i = 0; i < len; ++i) {
-    if (v2[i] > v1[i]) return true;
-    if (v2[i] < v1[i]) return false;
-  }
-
-  // if versions are equal, compare by release date
-  if (!latest_release_date_.empty()) {
-    // try to extract date from current version string
-    std::string current_date = ExtractDateFromVersion(current);
-    if (!current_date.empty()) {
-      return IsNewerDate(current_date, latest_release_date_);
-    } else {
-      return true;
-    }
-  }
-
-  return false;
+  return IsNewerVersionWithMetadata(
+      current, latest, latest_release_date_,
+      latest_patch_available_ ? latest_patch_ : -1);
 }
 
-bool IsNewerVersionWithDate(const std::string& current_version,
-                            const std::string& current_date,
-                            const std::string& latest_version,
-                            const std::string& latest_date) {
-  // compare versions
-  auto v1 = SplitVersion(ExtractNumericPart(current_version));
-  auto v2 = SplitVersion(ExtractNumericPart(latest_version));
+bool IsNewerVersionWithMetadata(const std::string& current,
+                                const std::string& latest,
+                                const std::string& latest_date,
+                                int latest_patch) {
+  const ParsedVersion current_version = ParseVersion(current);
+  const ParsedVersion latest_version = ParseVersion(latest);
 
-  size_t len = std::max(v1.size(), v2.size());
-  v1.resize(len, 0);
-  v2.resize(len, 0);
-
-  for (size_t i = 0; i < len; ++i) {
-    if (v2[i] > v1[i]) return true;
-    if (v2[i] < v1[i]) return false;
+  const int numeric_compare =
+      CompareNumericVersion(current_version.numbers, latest_version.numbers);
+  if (numeric_compare > 0) {
+    return true;
+  }
+  if (numeric_compare < 0) {
+    return false;
   }
 
-  // if versions are equal, compare by release date
-  if (!current_date.empty() && !latest_date.empty()) {
-    return IsNewerDate(current_date, latest_date);
+  const std::string resolved_latest_date =
+      !latest_date.empty() ? latest_date : latest_version.date;
+  if (!resolved_latest_date.empty() && !current_version.date.empty()) {
+    if (resolved_latest_date > current_version.date) {
+      return true;
+    }
+    if (resolved_latest_date < current_version.date) {
+      return false;
+    }
+  } else if (!resolved_latest_date.empty() && current_version.date.empty()) {
+    return true;
+  } else if (resolved_latest_date.empty() && !current_version.date.empty()) {
+    return false;
   }
 
-  // if dates are not available, versions are equal
+  const bool metadata_has_patch = latest_patch >= 0;
+  const bool latest_has_patch = metadata_has_patch || latest_version.has_patch;
+  if (latest_has_patch || current_version.has_patch) {
+    const int resolved_latest_patch =
+        metadata_has_patch ? latest_patch
+                           : (latest_version.has_patch ? latest_version.patch
+                                                       : 0);
+    const int resolved_current_patch =
+        current_version.has_patch ? current_version.patch : 0;
+    return resolved_latest_patch > resolved_current_patch;
+  }
+
   return false;
 }
 
@@ -140,17 +337,19 @@ nlohmann::json CheckUpdate() {
         } else {
           latest_release_date_ = "";
         }
+        latest_patch_ = 0;
+        latest_patch_available_ = ReadPatchField(j, &latest_patch_);
         return j;
       } catch (std::exception&) {
-        latest_release_date_ = "";
+        ResetLatestMetadata();
         return nlohmann::json{};
       }
     } else {
-      latest_release_date_ = "";
+      ResetLatestMetadata();
       return nlohmann::json{};
     }
   } else {
-    latest_release_date_ = "";
+    ResetLatestMetadata();
     return nlohmann::json{};
   }
 }
