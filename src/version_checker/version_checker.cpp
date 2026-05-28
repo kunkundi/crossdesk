@@ -8,6 +8,8 @@
 
 #include <httplib.h>
 
+#include "rd_log.h"
+
 #include <algorithm>
 #include <cctype>
 #include <iostream>
@@ -225,6 +227,15 @@ bool ReadPatchField(const nlohmann::json& json, int* patch) {
   return false;
 }
 
+void LogHttpError(const httplib::Result& result) {
+  LOG_WARN("Failed to fetch version.json: error={}, message={}",
+           static_cast<int>(result.error()), httplib::to_string(result.error()));
+#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
+  LOG_WARN("version.json SSL error={}, OpenSSL error={}", result.ssl_error(),
+           result.ssl_openssl_error());
+#endif
+}
+
 }  // namespace
 
 std::string ExtractNumericPart(const std::string& ver) {
@@ -312,8 +323,10 @@ nlohmann::json CheckUpdate() {
 
   cli.set_connection_timeout(5);
   cli.set_read_timeout(5);
+  cli.set_follow_location(true);
 
-  if (auto res = cli.Get("/version.json")) {
+  auto res = cli.Get("/version.json");
+  if (res) {
     if (res->status == 200) {
       try {
         auto j = nlohmann::json::parse(res->body);
@@ -324,16 +337,22 @@ nlohmann::json CheckUpdate() {
         }
         latest_patch_ = 0;
         latest_patch_available_ = ReadPatchField(j, &latest_patch_);
+        LOG_INFO("Fetched version.json: version={}, releaseDate={}, patch={}",
+                 j.value("version", ""), j.value("releaseDate", ""),
+                 latest_patch_available_ ? latest_patch_ : -1);
         return j;
-      } catch (std::exception&) {
+      } catch (const std::exception& e) {
+        LOG_WARN("Failed to parse version.json: {}", e.what());
         ResetLatestMetadata();
         return nlohmann::json{};
       }
     } else {
+      LOG_WARN("Failed to fetch version.json: HTTP status={}", res->status);
       ResetLatestMetadata();
       return nlohmann::json{};
     }
   } else {
+    LogHttpError(res);
     ResetLatestMetadata();
     return nlohmann::json{};
   }

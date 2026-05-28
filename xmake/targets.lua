@@ -74,9 +74,14 @@ function setup_targets()
         set_kind("binary")
         set_default(false)
         add_packages("cpp-httplib")
+        add_deps("rd_log")
         add_includedirs("src/version_checker")
         add_files("tests/version_checker_test.cpp",
             "src/version_checker/version_checker.cpp")
+        if is_os("macosx") then
+            add_defines("CPPHTTPLIB_USE_CERTS_FROM_MACOSX_KEYCHAIN")
+            add_frameworks("Security", "CoreFoundation")
+        end
 
     target("screen_capturer")
         set_kind("object")
@@ -177,6 +182,10 @@ function setup_targets()
         add_deps("rd_log")
         add_files("src/version_checker/*.cpp")
         add_includedirs("src/version_checker", {public = true})
+        if is_os("macosx") then
+            add_defines("CPPHTTPLIB_USE_CERTS_FROM_MACOSX_KEYCHAIN")
+            add_frameworks("Security", "CoreFoundation")
+        end
 
     target("tools")
         set_kind("object")

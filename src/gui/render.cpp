@@ -1719,26 +1719,6 @@ int Render::DrawServerWindow() {
 }
 
 int Render::Run() {
-  latest_version_info_ = CheckUpdate();
-  if (!latest_version_info_.empty() &&
-      latest_version_info_.contains("version") &&
-      latest_version_info_["version"].is_string()) {
-    latest_version_ = 'v' + latest_version_info_["version"].get<std::string>();
-    if (latest_version_info_.contains("releaseNotes") &&
-        latest_version_info_["releaseNotes"].is_string()) {
-      release_notes_ = latest_version_info_["releaseNotes"].get<std::string>();
-    } else {
-      release_notes_ = "";
-    }
-    update_available_ = IsNewerVersion(CROSSDESK_VERSION, latest_version_);
-    if (update_available_) {
-      show_update_notification_window_ = true;
-    }
-  } else {
-    latest_version_ = "";
-    update_available_ = false;
-  }
-
   path_manager_ = std::make_unique<PathManager>("CrossDesk");
   if (path_manager_) {
     exec_log_path_ = path_manager_->GetLogPath().string();
@@ -1766,6 +1746,29 @@ int Render::Run() {
 
   InitializeLogger();
   LOG_INFO("CrossDesk version: {}", CROSSDESK_VERSION);
+
+  latest_version_info_ = CheckUpdate();
+  if (!latest_version_info_.empty() &&
+      latest_version_info_.contains("version") &&
+      latest_version_info_["version"].is_string()) {
+    latest_version_ = 'v' + latest_version_info_["version"].get<std::string>();
+    if (latest_version_info_.contains("releaseNotes") &&
+        latest_version_info_["releaseNotes"].is_string()) {
+      release_notes_ = latest_version_info_["releaseNotes"].get<std::string>();
+    } else {
+      release_notes_ = "";
+    }
+    update_available_ = IsNewerVersion(CROSSDESK_VERSION, latest_version_);
+    LOG_INFO("Update check: current={}, latest={}, available={}",
+             CROSSDESK_VERSION, latest_version_, update_available_);
+    if (update_available_) {
+      show_update_notification_window_ = true;
+    }
+  } else {
+    latest_version_ = "";
+    update_available_ = false;
+    LOG_WARN("Update check skipped: version.json is empty or missing version");
+  }
 
   InitializeSettings();
   InitializeSDL();
