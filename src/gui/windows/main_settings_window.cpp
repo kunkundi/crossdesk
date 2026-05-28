@@ -521,7 +521,7 @@ int Render::SettingWindow() {
       }
 
       settings_items_offset +=
-          settings_items_padding + title_bar_button_width_ * 0.3f;
+          settings_items_padding + title_bar_button_width_ * 0.15f;
       ImGui::SetCursorPosY(settings_items_offset);
 
       ImGui::PopStyleVar();
