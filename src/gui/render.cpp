@@ -1748,17 +1748,29 @@ int Render::Run() {
   LOG_INFO("CrossDesk version: {}", CROSSDESK_VERSION);
 
   latest_version_info_ = CheckUpdate();
-  if (!latest_version_info_.empty() &&
-      latest_version_info_.contains("version") &&
-      latest_version_info_["version"].is_string()) {
-    latest_version_ = 'v' + latest_version_info_["version"].get<std::string>();
+  if (!latest_version_info_.empty()) {
+    std::string version;
+    if (latest_version_info_.contains("latest_version") &&
+        latest_version_info_["latest_version"].is_string()) {
+      version = latest_version_info_["latest_version"].get<std::string>();
+    } else if (latest_version_info_.contains("version") &&
+               latest_version_info_["version"].is_string()) {
+      version = latest_version_info_["version"].get<std::string>();
+    }
+
+    if (!version.empty()) {
+      latest_version_ = 'v' + version;
+    } else {
+      latest_version_ = "";
+    }
     if (latest_version_info_.contains("releaseNotes") &&
         latest_version_info_["releaseNotes"].is_string()) {
       release_notes_ = latest_version_info_["releaseNotes"].get<std::string>();
     } else {
       release_notes_ = "";
     }
-    update_available_ = IsNewerVersion(CROSSDESK_VERSION, latest_version_);
+    update_available_ =
+        !version.empty() && IsNewerVersion(CROSSDESK_VERSION, latest_version_);
     LOG_INFO("Update check: current={}, latest={}, available={}",
              CROSSDESK_VERSION, latest_version_, update_available_);
     if (update_available_) {
@@ -1767,7 +1779,7 @@ int Render::Run() {
   } else {
     latest_version_ = "";
     update_available_ = false;
-    LOG_WARN("Update check skipped: version.json is empty or missing version");
+    LOG_WARN("Update check skipped: version.json is empty or missing latest_version");
   }
 
   InitializeSettings();

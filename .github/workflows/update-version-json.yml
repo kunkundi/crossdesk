@@ -140,7 +140,7 @@ jobs:
           # Generate version.json using cat and heredoc
           cat > version.json << EOF
           {
-            "version": "${{ steps.version.outputs.VERSION_FULL }}",
+            "latest_version": "${{ steps.version.outputs.VERSION_FULL }}",
             "releaseDate": "${{ steps.version.outputs.BUILD_DATE_ISO }}",
             "patch": ${{ steps.version.outputs.PATCH_NUMBER }},
             "releaseName": ${{ steps.release_info.outputs.RELEASE_NAME }},

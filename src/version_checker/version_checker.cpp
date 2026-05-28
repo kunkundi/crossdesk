@@ -337,8 +337,9 @@ nlohmann::json CheckUpdate() {
         }
         latest_patch_ = 0;
         latest_patch_available_ = ReadPatchField(j, &latest_patch_);
-        LOG_INFO("Fetched version.json: version={}, releaseDate={}, patch={}",
-                 j.value("version", ""), j.value("releaseDate", ""),
+        LOG_INFO("Fetched version.json: latest_version={}, releaseDate={}, patch={}",
+                 j.value("latest_version", j.value("version", "")),
+                 j.value("releaseDate", ""),
                  latest_patch_available_ ? latest_patch_ : -1);
         return j;
       } catch (const std::exception& e) {
