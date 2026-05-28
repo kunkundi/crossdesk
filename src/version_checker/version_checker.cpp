@@ -137,27 +137,6 @@ bool ExtractDateFromText(const std::string& value,
   return false;
 }
 
-bool ExtractPatchAfterDate(const std::string& value,
-                           size_t start,
-                           int* patch) {
-  size_t pos = start;
-  while (pos < value.size() && !IsAlphaNumeric(value[pos])) {
-    pos++;
-  }
-
-  const size_t token_start = pos;
-  while (pos < value.size() && IsAlphaNumeric(value[pos])) {
-    pos++;
-  }
-
-  if (token_start == pos) {
-    return false;
-  }
-
-  return TryParseInlinePatch(value.substr(token_start, pos - token_start),
-                             patch);
-}
-
 ParsedVersion ParseVersion(const std::string& version) {
   const size_t numeric_start = FindNumericStart(version);
   const size_t numeric_end = FindNumericEnd(version, numeric_start);
@@ -167,10 +146,29 @@ ParsedVersion ParseVersion(const std::string& version) {
                                                numeric_end - numeric_start));
 
   const std::string suffix = version.substr(numeric_end);
-  size_t date_end = 0;
-  if (ExtractDateFromText(suffix, &parsed.date, &date_end)) {
+  size_t pos = 0;
+  while (pos < suffix.size()) {
+    while (pos < suffix.size() && !IsAlphaNumeric(suffix[pos])) {
+      pos++;
+    }
+
+    const size_t token_start = pos;
+    while (pos < suffix.size() && IsAlphaNumeric(suffix[pos])) {
+      pos++;
+    }
+
+    if (token_start == pos) {
+      continue;
+    }
+
+    const std::string token = suffix.substr(token_start, pos - token_start);
+    if (parsed.date.empty() && IsCompactDateAt(token, 0)) {
+      parsed.date = CompactDateToIso(token);
+      continue;
+    }
+
     int patch = 0;
-    if (ExtractPatchAfterDate(suffix, date_end, &patch)) {
+    if (!parsed.has_patch && TryParseInlinePatch(token, &patch)) {
       parsed.has_patch = true;
       parsed.patch = patch;
     }
@@ -280,6 +278,8 @@ bool IsNewerVersionWithMetadata(const std::string& current,
                                 const std::string& latest,
                                 const std::string& latest_date,
                                 int latest_patch) {
+  (void)latest_date;
+
   const ParsedVersion current_version = ParseVersion(current);
   const ParsedVersion latest_version = ParseVersion(latest);
 
@@ -289,21 +289,6 @@ bool IsNewerVersionWithMetadata(const std::string& current,
     return true;
   }
   if (numeric_compare < 0) {
-    return false;
-  }
-
-  const std::string resolved_latest_date =
-      !latest_date.empty() ? latest_date : latest_version.date;
-  if (!resolved_latest_date.empty() && !current_version.date.empty()) {
-    if (resolved_latest_date > current_version.date) {
-      return true;
-    }
-    if (resolved_latest_date < current_version.date) {
-      return false;
-    }
-  } else if (!resolved_latest_date.empty() && current_version.date.empty()) {
-    return true;
-  } else if (resolved_latest_date.empty() && !current_version.date.empty()) {
     return false;
   }
 

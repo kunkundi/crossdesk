@@ -53,7 +53,11 @@ jobs:
             PATCH_NUMBER=0
           fi
 
-          if [[ "${VERSION_BASE}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})-([0-9]+)$ ]]; then
+          if [[ "${VERSION_BASE}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]+)-([0-9]{8})$ ]]; then
+            VERSION_BASE="${BASH_REMATCH[1]}"
+            PATCH_NUMBER="${BASH_REMATCH[3]}"
+            BUILD_DATE_OVERRIDE="${BASH_REMATCH[4]}"
+          elif [[ "${VERSION_BASE}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})-([0-9]+)$ ]]; then
             VERSION_BASE="${BASH_REMATCH[1]}"
             BUILD_DATE_OVERRIDE="${BASH_REMATCH[3]}"
             PATCH_NUMBER="${BASH_REMATCH[4]}"
@@ -82,7 +86,7 @@ jobs:
           fi
 
           if [[ "${PATCH_NUMBER}" != "0" ]]; then
-            LEGAL_VERSION="v${VERSION_BASE}-${BUILD_DATE}-${PATCH_NUMBER}"
+            LEGAL_VERSION="v${VERSION_BASE}-${PATCH_NUMBER}-${BUILD_DATE}"
           else
             LEGAL_VERSION="v${VERSION_BASE}-${BUILD_DATE}"
           fi
@@ -146,7 +150,11 @@ jobs:
             PATCH_NUMBER=0
           fi
 
-          if [[ "${VERSION_BASE}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})-([0-9]+)$ ]]; then
+          if [[ "${VERSION_BASE}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]+)-([0-9]{8})$ ]]; then
+            VERSION_BASE="${BASH_REMATCH[1]}"
+            PATCH_NUMBER="${BASH_REMATCH[3]}"
+            BUILD_DATE="${BASH_REMATCH[4]}"
+          elif [[ "${VERSION_BASE}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})-([0-9]+)$ ]]; then
             VERSION_BASE="${BASH_REMATCH[1]}"
             BUILD_DATE="${BASH_REMATCH[3]}"
             PATCH_NUMBER="${BASH_REMATCH[4]}"
@@ -159,7 +167,7 @@ jobs:
           fi
 
           if [[ "${PATCH_NUMBER}" != "0" ]]; then
-            VERSION_NUM="v${VERSION_BASE}-${BUILD_DATE}-${PATCH_NUMBER}"
+            VERSION_NUM="v${VERSION_BASE}-${PATCH_NUMBER}-${BUILD_DATE}"
           else
             VERSION_NUM="v${VERSION_BASE}-${BUILD_DATE}"
           fi
@@ -228,7 +236,11 @@ jobs:
             $PATCH_NUMBER = "0"
           }
 
-          if ($version -match '^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})-([0-9]+)$') {
+          if ($version -match '^([0-9]+(\.[0-9]+){1,3})-([0-9]+)-([0-9]{8})$') {
+            $version = $Matches[1]
+            $PATCH_NUMBER = $Matches[3]
+            $BUILD_DATE = $Matches[4]
+          } elseif ($version -match '^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})-([0-9]+)$') {
             $version = $Matches[1]
             $BUILD_DATE = $Matches[3]
             $PATCH_NUMBER = $Matches[4]
@@ -241,7 +253,7 @@ jobs:
           }
 
           if ($PATCH_NUMBER -ne "0") {
-            $VERSION_NUM = "v$version-$BUILD_DATE-$PATCH_NUMBER"
+            $VERSION_NUM = "v$version-$PATCH_NUMBER-$BUILD_DATE"
           } else {
             $VERSION_NUM = "v$version-$BUILD_DATE"
           }
@@ -321,8 +333,7 @@ jobs:
       - name: Package
         shell: pwsh
         run: |
-          cd "${{ github.workspace }}\scripts\windows"
-          makensis /DVERSION=$env:VERSION_NUM nsis_script.nsi
+          & "${{ github.workspace }}\scripts\windows\pkg_x64.ps1" $env:VERSION_NUM
 
       - name: Build Portable CrossDesk
         run: |
@@ -403,7 +414,11 @@ jobs:
             PATCH_NUMBER=0
           fi
 
-          if [[ "${VERSION_BASE}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})-([0-9]+)$ ]]; then
+          if [[ "${VERSION_BASE}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]+)-([0-9]{8})$ ]]; then
+            VERSION_BASE="${BASH_REMATCH[1]}"
+            PATCH_NUMBER="${BASH_REMATCH[3]}"
+            BUILD_DATE="${BASH_REMATCH[4]}"
+          elif [[ "${VERSION_BASE}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})-([0-9]+)$ ]]; then
             VERSION_BASE="${BASH_REMATCH[1]}"
             BUILD_DATE="${BASH_REMATCH[3]}"
             PATCH_NUMBER="${BASH_REMATCH[4]}"
@@ -417,7 +432,7 @@ jobs:
 
           BUILD_DATE_ISO="${BUILD_DATE:0:4}-${BUILD_DATE:4:2}-${BUILD_DATE:6:2}"
           if [[ "${PATCH_NUMBER}" != "0" ]]; then
-            VERSION_NUM="${VERSION_BASE}-${BUILD_DATE}-${PATCH_NUMBER}"
+            VERSION_NUM="${VERSION_BASE}-${PATCH_NUMBER}-${BUILD_DATE}"
           else
             VERSION_NUM="${VERSION_BASE}-${BUILD_DATE}"
           fi

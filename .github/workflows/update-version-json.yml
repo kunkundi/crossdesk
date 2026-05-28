@@ -28,8 +28,13 @@ jobs:
           VERSION_BASE="${TAG_VERSION}"
           PATCH_NUMBER=0
 
-          # Extract date and patch from tags such as v1.2.3-20251113-1.
-          if [[ "${TAG_VERSION}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})-([0-9]+)$ ]]; then
+          # Extract date and patch from tags such as v1.2.3-1-20251113.
+          if [[ "${TAG_VERSION}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]+)-([0-9]{8})$ ]]; then
+            VERSION_BASE="${BASH_REMATCH[1]}"
+            PATCH_NUMBER="${BASH_REMATCH[3]}"
+            DATE_STR="${BASH_REMATCH[4]}"
+            BUILD_DATE_ISO="${DATE_STR:0:4}-${DATE_STR:4:2}-${DATE_STR:6:2}"
+          elif [[ "${TAG_VERSION}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})-([0-9]+)$ ]]; then
             VERSION_BASE="${BASH_REMATCH[1]}"
             DATE_STR="${BASH_REMATCH[3]}"
             PATCH_NUMBER="${BASH_REMATCH[4]}"
