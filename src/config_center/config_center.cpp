@@ -79,6 +79,9 @@ int ConfigCenter::Load() {
   enable_daemon_ = ini_.GetBoolValue(section_, "enable_daemon", enable_daemon_);
   enable_minimize_to_tray_ = ini_.GetBoolValue(
       section_, "enable_minimize_to_tray", enable_minimize_to_tray_);
+  portable_service_prompt_suppressed_ =
+      ini_.GetBoolValue(section_, "portable_service_prompt_suppressed",
+                        portable_service_prompt_suppressed_);
 
   const char* file_transfer_save_path_value =
       ini_.GetValue(section_, "file_transfer_save_path", nullptr);
@@ -118,6 +121,8 @@ int ConfigCenter::Save() {
   ini_.SetBoolValue(section_, "enable_daemon", enable_daemon_);
   ini_.SetBoolValue(section_, "enable_minimize_to_tray",
                     enable_minimize_to_tray_);
+  ini_.SetBoolValue(section_, "portable_service_prompt_suppressed",
+                    portable_service_prompt_suppressed_);
 
   ini_.SetValue(section_, "file_transfer_save_path",
                 file_transfer_save_path_.c_str());
@@ -325,6 +330,18 @@ int ConfigCenter::SetDaemon(bool enable_daemon) {
   return 0;
 }
 
+int ConfigCenter::SetPortableServicePromptSuppressed(bool suppressed) {
+  portable_service_prompt_suppressed_ = suppressed;
+  ini_.SetBoolValue(section_, "portable_service_prompt_suppressed",
+                    portable_service_prompt_suppressed_);
+  SI_Error rc = ini_.SaveFile(config_path_.c_str());
+  if (rc < 0) {
+    return -1;
+  }
+
+  return 0;
+}
+
 // getters
 
 ConfigCenter::LANGUAGE ConfigCenter::GetLanguage() const { return language_; }
@@ -376,6 +393,10 @@ bool ConfigCenter::IsMinimizeToTray() const { return enable_minimize_to_tray_; }
 bool ConfigCenter::IsEnableAutostart() const { return enable_autostart_; }
 
 bool ConfigCenter::IsEnableDaemon() const { return enable_daemon_; }
+
+bool ConfigCenter::IsPortableServicePromptSuppressed() const {
+  return portable_service_prompt_suppressed_;
+}
 
 int ConfigCenter::SetFileTransferSavePath(const std::string& path) {
   file_transfer_save_path_ = path;

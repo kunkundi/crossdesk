@@ -567,6 +567,9 @@ class Render {
 #if CROSSDESK_PORTABLE
   bool portable_service_prompt_checked_ = false;
   bool show_portable_service_install_window_ = false;
+  bool show_portable_service_prompt_suppressed_window_ = false;
+  bool portable_service_do_not_remind_ = false;
+  bool portable_service_prompt_suppressed_ = false;
   std::atomic<PortableServiceInstallState> portable_service_install_state_{
       PortableServiceInstallState::idle};
   std::thread portable_service_install_thread_;

@@ -609,6 +609,11 @@ int Render::LoadSettingsFromCacheFile() {
   enable_autostart_ = config_center_->IsEnableAutostart();
   enable_daemon_ = config_center_->IsEnableDaemon();
   enable_minimize_to_tray_ = config_center_->IsMinimizeToTray();
+#if _WIN32 && CROSSDESK_PORTABLE
+  portable_service_prompt_suppressed_ =
+      config_center_->IsPortableServicePromptSuppressed();
+  portable_service_do_not_remind_ = portable_service_prompt_suppressed_;
+#endif
 
   // File transfer save path
   {

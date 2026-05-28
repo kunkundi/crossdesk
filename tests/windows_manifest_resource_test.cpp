@@ -82,16 +82,27 @@ int main() {
   }
 
   const std::string rc = ReadFile(repo_root / "scripts/windows/crossdesk.rc");
+  const std::string portable_rc =
+      ReadFile(repo_root / "scripts/windows/crossdesk_portable.rc");
   const std::string manifest =
       ReadFile(repo_root / "scripts/windows/crossdesk.manifest");
   const std::string debug_manifest =
       ReadFile(repo_root / "scripts/windows/crossdesk_debug.manifest");
+  const std::string portable_manifest =
+      ReadFile(repo_root / "scripts/windows/crossdesk_portable.manifest");
+  const std::string targets = ReadFile(repo_root / "xmake/targets.lua");
 
   bool ok = true;
   ok &= ExpectContains("crossdesk.rc", rc, "crossdesk.manifest");
   ok &= ExpectContains("crossdesk.rc", rc, "crossdesk_debug.manifest");
   ok &= ExpectContains("crossdesk.rc", rc, "CROSSDESK_DEBUG");
   ok &= ExpectContains("crossdesk.rc", rc, "RT_MANIFEST");
+  ok &= ExpectContains("crossdesk_portable.rc", portable_rc,
+                       "crossdesk_portable.manifest");
+  ok &= ExpectContains("crossdesk_portable.rc", portable_rc, "RT_MANIFEST");
+  ok &= ExpectContains("xmake/targets.lua", targets,
+                       "scripts/windows/crossdesk_portable.rc");
+  ok &= ExpectContains("xmake/targets.lua", targets, "CROSSDESK_PORTABLE");
   ok &= ExpectContains("crossdesk.manifest", manifest,
                        "level=\"requireAdministrator\"");
   ok &= ExpectContains("crossdesk.manifest", manifest,
@@ -108,10 +119,22 @@ int main() {
                        "http://schemas.microsoft.com/SMI/2016/WindowsSettings");
   ok &= ExpectNotContains("crossdesk_debug.manifest", debug_manifest,
                           "processorArchitecture=\"*\"");
+  ok &= ExpectContains("crossdesk_portable.manifest", portable_manifest,
+                       "level=\"asInvoker\"");
+  ok &= ExpectNotContains("crossdesk_portable.manifest", portable_manifest,
+                          "level=\"requireAdministrator\"");
+  ok &= ExpectContains("crossdesk_portable.manifest", portable_manifest,
+                       "http://schemas.microsoft.com/SMI/2005/WindowsSettings");
+  ok &= ExpectContains("crossdesk_portable.manifest", portable_manifest,
+                       "http://schemas.microsoft.com/SMI/2016/WindowsSettings");
+  ok &= ExpectNotContains("crossdesk_portable.manifest", portable_manifest,
+                          "processorArchitecture=\"*\"");
 #ifdef _WIN32
   ok &= ExpectActivationContext(repo_root / "scripts/windows/crossdesk.manifest");
   ok &= ExpectActivationContext(
       repo_root / "scripts/windows/crossdesk_debug.manifest");
+  ok &= ExpectActivationContext(
+      repo_root / "scripts/windows/crossdesk_portable.manifest");
 #endif
   return ok ? 0 : 1;
 }
