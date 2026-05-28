@@ -42,6 +42,7 @@ jobs:
 
     steps:
       - name: Extract version number
+        shell: bash
         run: |
           VERSION_REF="${GITHUB_REF##*/}"
           VERSION_BASE="${VERSION_REF#v}"
@@ -134,6 +135,7 @@ jobs:
     steps:
       - name: Extract version number
         id: version
+        shell: bash
         run: |
           VERSION_REF="${GITHUB_REF##*/}"
           VERSION_BASE="${VERSION_REF#v}"
@@ -390,6 +392,7 @@ jobs:
 
       - name: Extract version number
         id: version
+        shell: bash
         run: |
           VERSION_REF="${GITHUB_REF##*/}"
           VERSION_BASE="${VERSION_REF#v}"
