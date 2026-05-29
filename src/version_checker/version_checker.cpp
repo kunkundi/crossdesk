@@ -11,7 +11,10 @@
 #include "rd_log.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <limits>
 #include <sstream>
@@ -236,6 +239,76 @@ void LogHttpError(const httplib::Result& result) {
 #endif
 }
 
+#if defined(CPPHTTPLIB_OPENSSL_SUPPORT) && defined(__linux__)
+bool PathExists(const std::string& path) {
+  if (path.empty()) {
+    return false;
+  }
+
+  std::error_code ec;
+  return std::filesystem::exists(path, ec);
+}
+
+std::string GetEnvPathIfExists(const char* key) {
+  const char* value = std::getenv(key);
+  if (!value) {
+    return "";
+  }
+
+  const std::string path = value;
+  return PathExists(path) ? path : "";
+}
+
+std::string FindFirstExistingPath(
+    const std::vector<std::string>& candidates) {
+  for (const auto& candidate : candidates) {
+    if (PathExists(candidate)) {
+      return candidate;
+    }
+  }
+  return "";
+}
+
+void ConfigureLinuxCaCerts(httplib::Client* cli) {
+  const std::string ca_file = [&]() {
+    const std::string env_path = GetEnvPathIfExists("SSL_CERT_FILE");
+    if (!env_path.empty()) {
+      return env_path;
+    }
+
+    return FindFirstExistingPath({
+        "/etc/ssl/certs/ca-certificates.crt",
+        "/etc/pki/tls/certs/ca-bundle.crt",
+        "/etc/ssl/cert.pem",
+        "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
+    });
+  }();
+
+  const std::string ca_dir = [&]() {
+    const std::string env_path = GetEnvPathIfExists("SSL_CERT_DIR");
+    if (!env_path.empty()) {
+      return env_path;
+    }
+
+    return FindFirstExistingPath({
+        "/etc/ssl/certs",
+        "/etc/pki/tls/certs",
+        "/etc/openssl/certs",
+    });
+  }();
+
+  if (ca_file.empty() && ca_dir.empty()) {
+    LOG_WARN("No Linux CA bundle found for version.json request; relying on OpenSSL defaults");
+    return;
+  }
+
+  cli->set_ca_cert_path(ca_file, ca_dir);
+  LOG_INFO("Configured version.json TLS CA bundle: file={}, dir={}",
+           ca_file.empty() ? "<none>" : ca_file,
+           ca_dir.empty() ? "<none>" : ca_dir);
+}
+#endif
+
 }  // namespace
 
 std::string ExtractNumericPart(const std::string& ver) {
@@ -324,6 +397,10 @@ nlohmann::json CheckUpdate() {
   cli.set_connection_timeout(5);
   cli.set_read_timeout(5);
   cli.set_follow_location(true);
+
+#if defined(CPPHTTPLIB_OPENSSL_SUPPORT) && defined(__linux__)
+  ConfigureLinuxCaCerts(&cli);
+#endif
 
   auto res = cli.Get("/version.json");
   if (res) {
