@@ -502,6 +502,7 @@ jobs:
           cat > version.json << EOF
           {
             "latest_version": "${{ steps.version.outputs.VERSION_NUM }}",
+            "version": "${{ steps.version.outputs.VERSION_NUM }}",
             "releaseDate": "${{ steps.version.outputs.BUILD_DATE_ISO }}",
             "patch": ${{ steps.version.outputs.PATCH_NUMBER }},
             "releaseName": "",

@@ -141,6 +141,7 @@ jobs:
           cat > version.json << EOF
           {
             "latest_version": "${{ steps.version.outputs.VERSION_FULL }}",
+            "version": "${{ steps.version.outputs.VERSION_FULL }}",
             "releaseDate": "${{ steps.version.outputs.BUILD_DATE_ISO }}",
             "patch": ${{ steps.version.outputs.PATCH_NUMBER }},
             "releaseName": ${{ steps.release_info.outputs.RELEASE_NAME }},
