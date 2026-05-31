@@ -20,21 +20,39 @@ jobs:
 
       - name: Extract version from tag
         id: version
+        shell: bash
         run: |
           TAG_NAME="${{ github.event.release.tag_name }}"
-          VERSION_ONLY="${TAG_NAME#v}"
-          echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_OUTPUT
-          echo "VERSION_ONLY=${VERSION_ONLY}" >> $GITHUB_OUTPUT
+          TAG_VERSION="${TAG_NAME#v}"
+          VERSION_FULL="${TAG_VERSION}"
+          VERSION_BASE="${TAG_VERSION}"
+          PATCH_NUMBER=0
 
-          # Extract date from tag if available (format: v1.2.3-20251113-abc)
-          if [[ "${TAG_NAME}" =~ -([0-9]{8})- ]]; then
-            DATE_STR="${BASH_REMATCH[1]}"
+          # Extract date and patch from tags such as v1.2.3-1-20251113.
+          if [[ "${TAG_VERSION}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]+)-([0-9]{8})$ ]]; then
+            VERSION_BASE="${BASH_REMATCH[1]}"
+            PATCH_NUMBER="${BASH_REMATCH[3]}"
+            DATE_STR="${BASH_REMATCH[4]}"
+            BUILD_DATE_ISO="${DATE_STR:0:4}-${DATE_STR:4:2}-${DATE_STR:6:2}"
+          elif [[ "${TAG_VERSION}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})-([0-9]+)$ ]]; then
+            VERSION_BASE="${BASH_REMATCH[1]}"
+            DATE_STR="${BASH_REMATCH[3]}"
+            PATCH_NUMBER="${BASH_REMATCH[4]}"
+            BUILD_DATE_ISO="${DATE_STR:0:4}-${DATE_STR:4:2}-${DATE_STR:6:2}"
+          elif [[ "${TAG_VERSION}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})$ ]]; then
+            VERSION_BASE="${BASH_REMATCH[1]}"
+            DATE_STR="${BASH_REMATCH[3]}"
             BUILD_DATE_ISO="${DATE_STR:0:4}-${DATE_STR:4:2}-${DATE_STR:6:2}"
           else
             # Use release published date
             BUILD_DATE_ISO=$(echo "${{ github.event.release.published_at }}" | cut -d'T' -f1)
           fi
+
+          echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "VERSION_FULL=${VERSION_FULL}" >> $GITHUB_OUTPUT
+          echo "VERSION_BASE=${VERSION_BASE}" >> $GITHUB_OUTPUT
           echo "BUILD_DATE_ISO=${BUILD_DATE_ISO}" >> $GITHUB_OUTPUT
+          echo "PATCH_NUMBER=${PATCH_NUMBER}" >> $GITHUB_OUTPUT
 
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
@@ -122,8 +140,10 @@ jobs:
           # Generate version.json using cat and heredoc
           cat > version.json << EOF
           {
-            "version": "${{ steps.version.outputs.VERSION_ONLY }}",
+            "latest_version": "${{ steps.version.outputs.VERSION_FULL }}",
+            "version": "${{ steps.version.outputs.VERSION_FULL }}",
             "releaseDate": "${{ steps.version.outputs.BUILD_DATE_ISO }}",
+            "patch": ${{ steps.version.outputs.PATCH_NUMBER }},
             "releaseName": ${{ steps.release_info.outputs.RELEASE_NAME }},
             "releaseNotes": ${{ steps.release_info.outputs.RELEASE_BODY }},
             "tagName": "${{ steps.version.outputs.TAG_NAME }}",

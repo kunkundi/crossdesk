@@ -4,12 +4,30 @@ set -e
 PKG_NAME="crossdesk"
 APP_NAME="CrossDesk"
 
-APP_VERSION="$1"
 ARCHITECTURE="arm64"
 MAINTAINER="Junkun Di <junkun.di@hotmail.com>"
 DESCRIPTION="A simple cross-platform remote desktop client."
 ALSA_RUNTIME_DEP="libasound2 | libasound2t64"
 PORTAL_RUNTIME_RECOMMENDS="xdg-desktop-portal, xdg-desktop-portal-gtk | xdg-desktop-portal-kde | xdg-desktop-portal-wlr"
+
+normalize_app_version() {
+    local input="$1"
+    local prefix=""
+    local body="$input"
+
+    if [[ "$body" == v* ]]; then
+        prefix="v"
+        body="${body#v}"
+    fi
+
+    if [[ "$body" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})-([0-9]+)$ ]]; then
+        echo "${prefix}${BASH_REMATCH[1]}-${BASH_REMATCH[4]}-${BASH_REMATCH[3]}"
+    else
+        echo "$input"
+    fi
+}
+
+APP_VERSION="$(normalize_app_version "$1")"
 
 # Remove 'v' prefix from version for Debian package (Debian version must start with digit)
 DEB_VERSION="${APP_VERSION#v}"

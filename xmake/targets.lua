@@ -3,6 +3,11 @@ function setup_targets()
 
     includes("submodules", "thirdparty")
 
+    local crossdesk_windows_resource = "scripts/windows/crossdesk.rc"
+    if is_config("CROSSDESK_PORTABLE", true) then
+        crossdesk_windows_resource = "scripts/windows/crossdesk_portable.rc"
+    end
+
     target("rd_log")
         set_kind("object")
         add_packages("spdlog")
@@ -64,6 +69,19 @@ function setup_targets()
         set_kind("binary")
         set_default(false)
         add_files("tests/display_popup_hover_state_test.cpp")
+
+    target("version_checker_test")
+        set_kind("binary")
+        set_default(false)
+        add_packages("cpp-httplib")
+        add_deps("rd_log")
+        add_includedirs("src/version_checker")
+        add_files("tests/version_checker_test.cpp",
+            "src/version_checker/version_checker.cpp")
+        if is_os("macosx") then
+            add_defines("CPPHTTPLIB_USE_CERTS_FROM_MACOSX_KEYCHAIN")
+            add_frameworks("Security", "CoreFoundation")
+        end
 
     target("screen_capturer")
         set_kind("object")
@@ -164,6 +182,10 @@ function setup_targets()
         add_deps("rd_log")
         add_files("src/version_checker/*.cpp")
         add_includedirs("src/version_checker", {public = true})
+        if is_os("macosx") then
+            add_defines("CPPHTTPLIB_USE_CERTS_FROM_MACOSX_KEYCHAIN")
+            add_frameworks("Security", "CoreFoundation")
+        end
 
     target("tools")
         set_kind("object")
@@ -223,7 +245,7 @@ function setup_targets()
             add_deps("rd_log", "path_manager")
             add_links("Advapi32", "User32", "Wtsapi32", "Gdi32")
             add_files("src/service/windows/session_helper_main.cpp")
-            add_files("scripts/windows/crossdesk.rc")
+            add_files(crossdesk_windows_resource)
             add_includedirs("src/service/windows", {public = true})
     end
 
@@ -237,6 +259,6 @@ function setup_targets()
             add_includedirs("src/service/windows", {public = true})
             add_links("Advapi32", "Wtsapi32", "Ole32", "Userenv")
             add_deps("wgc_plugin", "crossdesk_service", "crossdesk_session_helper")
-            add_files("scripts/windows/crossdesk.rc")
+            add_files(crossdesk_windows_resource)
         end
 end

@@ -609,6 +609,11 @@ int Render::LoadSettingsFromCacheFile() {
   enable_autostart_ = config_center_->IsEnableAutostart();
   enable_daemon_ = config_center_->IsEnableDaemon();
   enable_minimize_to_tray_ = config_center_->IsMinimizeToTray();
+#if _WIN32 && CROSSDESK_PORTABLE
+  portable_service_prompt_suppressed_ =
+      config_center_->IsPortableServicePromptSuppressed();
+  portable_service_do_not_remind_ = portable_service_prompt_suppressed_;
+#endif
 
   // File transfer save path
   {
@@ -764,11 +769,16 @@ int Render::StartSpeakerCapturer() {
   }
 
   if (speaker_capturer_) {
-    speaker_capturer_->Start();
+    const int ret = speaker_capturer_->Start();
+    if (ret != 0) {
+      LOG_ERROR("Start speaker capturer failed: {}", ret);
+      return ret;
+    }
     start_speaker_capturer_ = true;
+    return 0;
   }
 
-  return 0;
+  return -1;
 }
 
 int Render::StopSpeakerCapturer() {
@@ -1149,8 +1159,9 @@ void Render::UpdateInteractions() {
   }
 
   if (start_speaker_capturer_ && !speaker_capturer_is_started_) {
-    StartSpeakerCapturer();
-    speaker_capturer_is_started_ = true;
+    if (0 == StartSpeakerCapturer()) {
+      speaker_capturer_is_started_ = true;
+    }
   } else if (!start_speaker_capturer_ && speaker_capturer_is_started_) {
     StopSpeakerCapturer();
     speaker_capturer_is_started_ = false;
@@ -1708,26 +1719,6 @@ int Render::DrawServerWindow() {
 }
 
 int Render::Run() {
-  latest_version_info_ = CheckUpdate();
-  if (!latest_version_info_.empty() &&
-      latest_version_info_.contains("version") &&
-      latest_version_info_["version"].is_string()) {
-    latest_version_ = 'v' + latest_version_info_["version"].get<std::string>();
-    if (latest_version_info_.contains("releaseNotes") &&
-        latest_version_info_["releaseNotes"].is_string()) {
-      release_notes_ = latest_version_info_["releaseNotes"].get<std::string>();
-    } else {
-      release_notes_ = "";
-    }
-    update_available_ = IsNewerVersion(CROSSDESK_VERSION, latest_version_);
-    if (update_available_) {
-      show_update_notification_window_ = true;
-    }
-  } else {
-    latest_version_ = "";
-    update_available_ = false;
-  }
-
   path_manager_ = std::make_unique<PathManager>("CrossDesk");
   if (path_manager_) {
     exec_log_path_ = path_manager_->GetLogPath().string();
@@ -1755,6 +1746,41 @@ int Render::Run() {
 
   InitializeLogger();
   LOG_INFO("CrossDesk version: {}", CROSSDESK_VERSION);
+
+  latest_version_info_ = CheckUpdate();
+  if (!latest_version_info_.empty()) {
+    std::string version;
+    if (latest_version_info_.contains("latest_version") &&
+        latest_version_info_["latest_version"].is_string()) {
+      version = latest_version_info_["latest_version"].get<std::string>();
+    } else if (latest_version_info_.contains("version") &&
+               latest_version_info_["version"].is_string()) {
+      version = latest_version_info_["version"].get<std::string>();
+    }
+
+    if (!version.empty()) {
+      latest_version_ = 'v' + version;
+    } else {
+      latest_version_ = "";
+    }
+    if (latest_version_info_.contains("releaseNotes") &&
+        latest_version_info_["releaseNotes"].is_string()) {
+      release_notes_ = latest_version_info_["releaseNotes"].get<std::string>();
+    } else {
+      release_notes_ = "";
+    }
+    update_available_ =
+        !version.empty() && IsNewerVersion(CROSSDESK_VERSION, latest_version_);
+    LOG_INFO("Update check: current={}, latest={}, available={}",
+             CROSSDESK_VERSION, latest_version_, update_available_);
+    if (update_available_) {
+      show_update_notification_window_ = true;
+    }
+  } else {
+    latest_version_ = "";
+    update_available_ = false;
+    LOG_WARN("Update check skipped: version.json is empty or missing latest_version");
+  }
 
   InitializeSettings();
   InitializeSDL();

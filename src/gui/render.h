@@ -553,8 +553,8 @@ class Render {
   std::string remote_client_id_ = "";
   std::unordered_set<int> pressed_keyboard_keys_;
   std::mutex pressed_keyboard_keys_mutex_;
-  SDL_Event last_mouse_event;
-  SDL_AudioStream* output_stream_;
+  SDL_Event last_mouse_event{};
+  SDL_AudioStream* output_stream_ = nullptr;
   uint32_t STREAM_REFRESH_EVENT = 0;
 #if _WIN32
   std::atomic<bool> pending_windows_service_sas_{false};
@@ -567,6 +567,9 @@ class Render {
 #if CROSSDESK_PORTABLE
   bool portable_service_prompt_checked_ = false;
   bool show_portable_service_install_window_ = false;
+  bool show_portable_service_prompt_suppressed_window_ = false;
+  bool portable_service_do_not_remind_ = false;
+  bool portable_service_prompt_suppressed_ = false;
   std::atomic<PortableServiceInstallState> portable_service_install_state_{
       PortableServiceInstallState::idle};
   std::thread portable_service_install_thread_;
@@ -684,8 +687,8 @@ class Render {
   // Map file_id to FileTransferState for global file transfer (props == null)
   std::unordered_map<uint32_t, FileTransferState*> file_id_to_transfer_state_;
   std::shared_mutex file_id_to_transfer_state_mutex_;
-  SDL_AudioDeviceID input_dev_;
-  SDL_AudioDeviceID output_dev_;
+  SDL_AudioDeviceID input_dev_ = 0;
+  SDL_AudioDeviceID output_dev_ = 0;
   ScreenCapturerFactory* screen_capturer_factory_ = nullptr;
   ScreenCapturer* screen_capturer_ = nullptr;
   SpeakerCapturerFactory* speaker_capturer_factory_ = nullptr;
@@ -694,7 +697,7 @@ class Render {
   MouseController* mouse_controller_ = nullptr;
   KeyboardCapturer* keyboard_capturer_ = nullptr;
   std::vector<DisplayInfo> display_info_list_;
-  uint64_t last_frame_time_;
+  uint64_t last_frame_time_ = 0;
   std::string last_video_frame_stream_id_;
   bool show_new_version_icon_ = false;
   bool show_new_version_icon_in_menu_ = true;

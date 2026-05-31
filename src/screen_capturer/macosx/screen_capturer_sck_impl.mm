@@ -16,7 +16,12 @@
 #include <IOKit/graphics/IOGraphicsLib.h>
 #include <IOSurface/IOSurface.h>
 #include <ScreenCaptureKit/ScreenCaptureKit.h>
+#include <algorithm>
 #include <atomic>
+#include <cctype>
+#include <cstring>
+#include <limits>
+#include <map>
 #include <mutex>
 #include <vector>
 #include "display_info.h"
@@ -27,6 +32,15 @@ using namespace crossdesk;
 class ScreenCapturerSckImpl;
 
 static const int kFullDesktopScreenId = -1;
+
+static std::string NSErrorToString(NSError *error) {
+  if (!error) {
+    return "";
+  }
+
+  const char *description = [error.localizedDescription UTF8String];
+  return description ? description : "";
+}
 
 // The ScreenCaptureKit API was available in macOS 12.3, but full-screen capture
 // was reported to be broken before macOS 13 - see http://crbug.com/40234870.
@@ -78,6 +92,7 @@ class API_AVAILABLE(macos(14.0)) ScreenCapturerSckImpl : public ScreenCapturer {
   std::map<CGDirectDisplayID, int> display_id_map_reverse_;
   std::map<CGDirectDisplayID, std::string> display_id_name_map_;
   unsigned char *nv12_frame_ = nullptr;
+  size_t nv12_frame_size_ = 0;
   int width_ = 0;
   int height_ = 0;
   int fps_ = 60;
@@ -100,7 +115,7 @@ class API_AVAILABLE(macos(14.0)) ScreenCapturerSckImpl : public ScreenCapturer {
   // Helper object to receive Objective-C callbacks from ScreenCaptureKit and call into this C++
   // object. The helper may outlive this C++ instance, if a completion-handler is passed to
   // ScreenCaptureKit APIs and the C++ object is deleted before the handler executes.
-  SckHelper *__strong helper_;
+  SckHelper *__strong helper_ = nil;
   // Callback for returning captured frames, or errors, to the caller. Only used on the caller's
   // thread.
   cb_desktop_data _on_data = nullptr;
@@ -110,7 +125,7 @@ class API_AVAILABLE(macos(14.0)) ScreenCapturerSckImpl : public ScreenCapturer {
   // Guards some variables that may be accessed on different threads.
   std::mutex lock_;
   // Provides captured desktop frames.
-  SCStream *__strong stream_;
+  SCStream *__strong stream_ = nil;
   // Currently selected display, or 0 if the full desktop is selected. This capturer does not
   // support full-desktop capture, and will fall back to the first display.
   CGDirectDisplayID current_display_ = 0;
@@ -182,6 +197,19 @@ ScreenCapturerSckImpl::ScreenCapturerSckImpl() {
 }
 
 ScreenCapturerSckImpl::~ScreenCapturerSckImpl() {
+  SckHelper *helper_to_release = nil;
+  {
+    std::lock_guard<std::mutex> lock(lock_);
+    if (stream_) {
+      [stream_ stopCaptureWithCompletionHandler:nil];
+      stream_ = nil;
+    }
+    _on_data = nullptr;
+    helper_to_release = helper_;
+    helper_ = nil;
+  }
+  [helper_to_release releaseCapturer];
+
   display_info_list_.clear();
   display_id_map_.clear();
   display_id_map_reverse_.clear();
@@ -190,15 +218,22 @@ ScreenCapturerSckImpl::~ScreenCapturerSckImpl() {
   if (nv12_frame_) {
     delete[] nv12_frame_;
     nv12_frame_ = nullptr;
+    nv12_frame_size_ = 0;
   }
-
-  [stream_ stopCaptureWithCompletionHandler:nil];
-  [helper_ releaseCapturer];
 }
 
 int ScreenCapturerSckImpl::Init(const int fps, cb_desktop_data cb) {
+  if (!cb) {
+    LOG_ERROR("Screen capturer callback is null");
+    return -1;
+  }
+
   _on_data = cb;
-  fps_ = fps;
+  fps_ = fps > 0 ? fps : 60;
+  display_info_list_.clear();
+  display_id_map_.clear();
+  display_id_map_reverse_.clear();
+  display_id_name_map_.clear();
 
   if (@available(macOS 10.15, *)) {
     bool has_permission = CGPreflightScreenCaptureAccess();
@@ -216,8 +251,7 @@ int ScreenCapturerSckImpl::Init(const int fps, cb_desktop_data cb) {
       getShareableContentWithCompletionHandler:^(SCShareableContent *result, NSError *error) {
         if (error) {
           capture_error = error;
-          LOG_ERROR("Failed to get shareable content: {}",
-                    std::string([error.localizedDescription UTF8String]));
+          LOG_ERROR("Failed to get shareable content: {}", NSErrorToString(error));
         } else {
           content = result;
         }
@@ -227,7 +261,7 @@ int ScreenCapturerSckImpl::Init(const int fps, cb_desktop_data cb) {
 
   if (capture_error || !content || content.displays.count == 0) {
     LOG_ERROR("Failed to get display info, error: {}",
-              std::string([capture_error.localizedDescription UTF8String]));
+              NSErrorToString(capture_error));
     return -1;
   }
 
@@ -284,51 +318,58 @@ int ScreenCapturerSckImpl::Start(bool show_cursor) {
 }
 
 int ScreenCapturerSckImpl::SwitchTo(int monitor_index) {
-  if (stream_) {
-    [stream_ stopCaptureWithCompletionHandler:^(NSError *error) {
-      std::lock_guard<std::mutex> lock(lock_);
-      stream_ = nil;
-      current_display_ = display_id_map_[monitor_index];
-      StartOrReconfigureCapturer();
-    }];
-  } else {
-    current_display_ = display_id_map_[monitor_index];
-    StartOrReconfigureCapturer();
+  auto display_it = display_id_map_.find(monitor_index);
+  if (display_it == display_id_map_.end()) {
+    LOG_WARN("SwitchTo skipped, invalid monitor_index={}, displays={}",
+             monitor_index, display_id_map_.size());
+    return -1;
   }
+
+  const CGDirectDisplayID target_display = display_it->second;
+  {
+    std::lock_guard<std::mutex> lock(lock_);
+    current_display_ = target_display;
+  }
+  StartOrReconfigureCapturer();
   return 0;
 }
 
 int ScreenCapturerSckImpl::ResetToInitialMonitor() {
   int target = initial_monitor_index_;
   if (display_info_list_.empty()) return -1;
-  CGDirectDisplayID target_display = display_id_map_[target];
-  if (current_display_ == target_display) return 0;
-  if (stream_) {
-    [stream_ stopCaptureWithCompletionHandler:^(NSError *error) {
-      std::lock_guard<std::mutex> lock(lock_);
-      stream_ = nil;
-      current_display_ = target_display;
-      StartOrReconfigureCapturer();
-    }];
-  } else {
-    current_display_ = target_display;
-    StartOrReconfigureCapturer();
+  auto display_it = display_id_map_.find(target);
+  if (display_it == display_id_map_.end()) {
+    LOG_WARN("ResetToInitialMonitor skipped, invalid monitor_index={}", target);
+    return -1;
   }
+
+  CGDirectDisplayID target_display = display_it->second;
+  if (current_display_ == target_display) return 0;
+  {
+    std::lock_guard<std::mutex> lock(lock_);
+    current_display_ = target_display;
+  }
+  StartOrReconfigureCapturer();
   return 0;
 }
 
 int ScreenCapturerSckImpl::Destroy() {
-  std::lock_guard<std::mutex> lock(lock_);
-  if (stream_) {
-    LOG_INFO("Destroying stream");
-    [stream_ stopCaptureWithCompletionHandler:nil];
-    stream_ = nil;
+  SckHelper *helper_to_release = nil;
+  {
+    std::lock_guard<std::mutex> lock(lock_);
+    if (stream_) {
+      LOG_INFO("Destroying stream");
+      [stream_ stopCaptureWithCompletionHandler:nil];
+      stream_ = nil;
+    }
+    current_display_ = 0;
+    permanent_error_ = false;
+    _on_data = nullptr;
+    helper_to_release = helper_;
+    helper_ = nil;
   }
-  current_display_ = 0;
-  permanent_error_ = false;
-  _on_data = nullptr;
-  [helper_ releaseCapturer];
-  helper_ = nil;
+
+  [helper_to_release releaseCapturer];
 
   return 0;
 }
@@ -416,7 +457,7 @@ void ScreenCapturerSckImpl::OnShareableContentCreated(SCShareableContent *conten
 
     // TODO: crbug.com/327458809 - Choose an appropriate sampleHandlerQueue for
     // best performance.
-    NSError *add_stream_output_error;
+    NSError *add_stream_output_error = nil;
     dispatch_queue_t queue = dispatch_queue_create("ScreenCaptureKit.Queue", DISPATCH_QUEUE_SERIAL);
     bool add_stream_output_result = [stream_ addStreamOutput:helper_
                                                         type:SCStreamOutputTypeScreen
@@ -425,7 +466,7 @@ void ScreenCapturerSckImpl::OnShareableContentCreated(SCShareableContent *conten
 
     if (!add_stream_output_result) {
       stream_ = nil;
-      LOG_ERROR("addStreamOutput failed");
+      LOG_ERROR("addStreamOutput failed: {}", NSErrorToString(add_stream_output_error));
       permanent_error_ = true;
       return;
     }
@@ -436,7 +477,7 @@ void ScreenCapturerSckImpl::OnShareableContentCreated(SCShareableContent *conten
         // calls stopCaptureWithCompletionHandler on the stream, which cancels
         // this handler.
         permanent_error_ = true;
-        LOG_ERROR("startCaptureWithCompletionHandler failed");
+        LOG_ERROR("startCaptureWithCompletionHandler failed: {}", NSErrorToString(error));
       } else {
         LOG_INFO("Capture started");
       }
@@ -448,8 +489,18 @@ void ScreenCapturerSckImpl::OnShareableContentCreated(SCShareableContent *conten
 
 void ScreenCapturerSckImpl::OnNewCVPixelBuffer(CVPixelBufferRef pixelBuffer,
                                                CFDictionaryRef attachment) {
+  (void)attachment;
+  if (!pixelBuffer) {
+    return;
+  }
+
   size_t width = CVPixelBufferGetWidth(pixelBuffer);
   size_t height = CVPixelBufferGetHeight(pixelBuffer);
+  if (width == 0 || height == 0 || CVPixelBufferGetPlaneCount(pixelBuffer) < 2) {
+    LOG_ERROR("Invalid CVPixelBuffer: width={}, height={}, planes={}", width, height,
+              CVPixelBufferGetPlaneCount(pixelBuffer));
+    return;
+  }
 
   CVReturn status = CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
   if (status != kCVReturnSuccess) {
@@ -458,18 +509,37 @@ void ScreenCapturerSckImpl::OnNewCVPixelBuffer(CVPixelBufferRef pixelBuffer,
   }
 
   size_t required_size = width * height * 3 / 2;
-  if (!nv12_frame_ || (width_ * height_ * 3 / 2 < required_size)) {
+  if (required_size > static_cast<size_t>((std::numeric_limits<int>::max)())) {
+    LOG_ERROR("Captured frame is too large: {} bytes", required_size);
+    CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock(lock_);
+  if (!_on_data) {
+    CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+    return;
+  }
+
+  if (!nv12_frame_ || nv12_frame_size_ < required_size) {
     delete[] nv12_frame_;
     nv12_frame_ = new unsigned char[required_size];
-    width_ = width;
-    height_ = height;
+    nv12_frame_size_ = required_size;
   }
+  width_ = static_cast<int>(width);
+  height_ = static_cast<int>(height);
 
   void *base_y = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0);
   size_t stride_y = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0);
 
   void *base_uv = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1);
   size_t stride_uv = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1);
+  if (!base_y || !base_uv || stride_y < width || stride_uv < width) {
+    LOG_ERROR("Invalid CVPixelBuffer planes: base_y={}, base_uv={}, stride_y={}, stride_uv={}",
+              base_y != nullptr, base_uv != nullptr, stride_y, stride_uv);
+    CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+    return;
+  }
 
   unsigned char *dst_y = nv12_frame_;
   for (size_t row = 0; row < height; ++row) {
@@ -481,7 +551,8 @@ void ScreenCapturerSckImpl::OnNewCVPixelBuffer(CVPixelBufferRef pixelBuffer,
     memcpy(dst_uv + row * width, static_cast<unsigned char *>(base_uv) + row * stride_uv, width);
   }
 
-  _on_data(nv12_frame_, width * height * 3 / 2, width, height,
+  _on_data(nv12_frame_, static_cast<int>(required_size), static_cast<int>(width),
+           static_cast<int>(height),
            display_id_name_map_[current_display_].c_str());
 
   CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
@@ -503,10 +574,14 @@ void ScreenCapturerSckImpl::StartOrReconfigureCapturer() {
   }
 
   SckHelper *local_helper = helper_;
+  if (!local_helper) {
+    LOG_ERROR("Cannot reconfigure capturer: helper is null");
+    return;
+  }
+
   auto handler = ^(SCShareableContent *content, NSError *error) {
     if (error) {
-      LOG_ERROR("getShareableContent failed: {}",
-                std::string([error.localizedDescription UTF8String]));
+      LOG_ERROR("getShareableContent failed: {}", NSErrorToString(error));
       [local_helper onShareableContentCreated:nil];
       return;
     }

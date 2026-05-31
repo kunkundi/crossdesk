@@ -4,12 +4,30 @@ set -e
 APP_NAME="crossdesk"
 APP_NAME_UPPER="CrossDesk"
 EXECUTABLE_PATH="./build/macosx/arm64/release/crossdesk"
-APP_VERSION="$1"
 PLATFORM="macos"
 ARCH="arm64"
 IDENTIFIER="cn.crossdesk.app"
 ICON_PATH="icons/macos/crossdesk.icns"
 MACOS_MIN_VERSION="10.12"
+
+normalize_app_version() {
+    local input="$1"
+    local prefix=""
+    local body="$input"
+
+    if [[ "$body" == v* ]]; then
+        prefix="v"
+        body="${body#v}"
+    fi
+
+    if [[ "$body" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})-([0-9]+)$ ]]; then
+        echo "${prefix}${BASH_REMATCH[1]}-${BASH_REMATCH[4]}-${BASH_REMATCH[3]}"
+    else
+        echo "$input"
+    fi
+}
+
+APP_VERSION="$(normalize_app_version "$1")"
 
 APP_BUNDLE="${APP_NAME_UPPER}.app"
 CONTENTS_DIR="${APP_BUNDLE}/Contents"

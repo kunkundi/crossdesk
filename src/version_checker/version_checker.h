@@ -16,6 +16,12 @@ nlohmann::json CheckUpdate();
 
 bool IsNewerVersion(const std::string& current, const std::string& latest);
 
+// Pass latest_patch < 0 when patch metadata is unavailable.
+bool IsNewerVersionWithMetadata(const std::string& current,
+                                const std::string& latest,
+                                const std::string& latest_date,
+                                int latest_patch);
+
 }  // namespace crossdesk
 
 #endif
