@@ -158,6 +158,9 @@ struct TranslationRow {
   X(signal_connected, u8"已连接服务器", "Connected", u8"Подключено к серверу") \
   X(signal_disconnected, u8"未连接服务器", "Disconnected",                     \
     u8"Нет подключения к серверу")                                             \
+  X(signal_tls_cert_error, u8"证书验证失败，请重新安装自托管根证书",           \
+    "Certificate verification failed. Reinstall the self-hosted root certificate.", \
+    u8"Ошибка проверки сертификата. Переустановите корневой сертификат.")      \
   X(p2p_connected, u8"对等连接已建立", "P2P Connected", u8"P2P подключено")    \
   X(p2p_disconnected, u8"对等连接已断开", "P2P Disconnected",                  \
     u8"P2P отключено")                                                         \

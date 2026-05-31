@@ -1231,6 +1231,8 @@ void Render::OnSignalStatusCb(SignalStatus status, const char* user_id,
       render->signal_connected_ = false;
     } else if (SignalStatus::SignalServerClosed == status) {
       render->signal_connected_ = false;
+    } else if (SignalStatus::SignalTlsCertError == status) {
+      render->signal_connected_ = false;
     }
   } else {
     if (client_id.rfind("C-", 0) != 0) {
@@ -1257,6 +1259,8 @@ void Render::OnSignalStatusCb(SignalStatus status, const char* user_id,
     } else if (SignalStatus::SignalReconnecting == status) {
       props->signal_connected_ = false;
     } else if (SignalStatus::SignalServerClosed == status) {
+      props->signal_connected_ = false;
+    } else if (SignalStatus::SignalTlsCertError == status) {
       props->signal_connected_ = false;
     }
   }
