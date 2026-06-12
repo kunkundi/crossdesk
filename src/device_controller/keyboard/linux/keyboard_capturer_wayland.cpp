@@ -8,6 +8,7 @@
 #include <dbus/dbus.h>
 #endif
 
+#include "linux_evdev_keycode.h"
 #include "rd_log.h"
 #include "wayland_portal_shared.h"
 
@@ -579,33 +580,46 @@ int KeyboardCapturer::SendWaylandKeyboardCommand(int key_code, bool is_down,
                                                  uint32_t scan_code,
                                                  bool extended) {
 #if defined(CROSSDESK_HAS_WAYLAND_CAPTURER) && CROSSDESK_HAS_WAYLAND_CAPTURER
-  (void)scan_code;
-  (void)extended;
   if (!dbus_connection_ || wayland_session_handle_.empty()) {
     return -1;
   }
 
-  const auto key_it = vkCodeToX11KeySym.find(key_code);
-  if (key_it == vkCodeToX11KeySym.end()) {
+  const uint32_t key_state = is_down ? kKeyboardPressed : kKeyboardReleased;
+
+  const int evdev_keycode =
+      ResolveLinuxEvdevKeycodeFromWindowsKey(key_code, scan_code, extended);
+  if (evdev_keycode >= 0 &&
+      NotifyWaylandKeyboardKeycode(evdev_keycode, key_state)) {
     return 0;
   }
 
-  const uint32_t key_state = is_down ? kKeyboardPressed : kKeyboardReleased;
-  const int keysym = key_it->second;
+  const auto key_it = vkCodeToX11KeySym.find(key_code);
+  if (key_it == vkCodeToX11KeySym.end()) {
+    if (evdev_keycode >= 0) {
+      LOG_ERROR(
+          "Failed to send Wayland keyboard keycode event, vk_code={}, "
+          "evdev_keycode={}, is_down={}",
+          key_code, evdev_keycode, is_down);
+      return -3;
+    }
+    return 0;
+  }
 
   // Prefer keycode injection to preserve physical-key semantics and avoid
   // implicit Shift interpretation for uppercase keysyms.
   if (display_) {
+    const int keysym = key_it->second;
     const KeyCode x11_keycode =
         XKeysymToKeycode(display_, static_cast<KeySym>(keysym));
     if (x11_keycode > 8) {
-      const int evdev_keycode = static_cast<int>(x11_keycode) - 8;
-      if (NotifyWaylandKeyboardKeycode(evdev_keycode, key_state)) {
+      const int x11_evdev_keycode = static_cast<int>(x11_keycode) - 8;
+      if (NotifyWaylandKeyboardKeycode(x11_evdev_keycode, key_state)) {
         return 0;
       }
     }
   }
 
+  const int keysym = key_it->second;
   const int fallback_keysym = NormalizeFallbackKeysym(keysym);
   if (NotifyWaylandKeyboardKeysym(fallback_keysym, key_state)) {
     return 0;
