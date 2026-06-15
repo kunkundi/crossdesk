@@ -44,6 +44,12 @@ function setup_targets()
         add_includedirs("src/device_controller")
         add_files("tests/macos_keyboard_modifier_state_test.cpp")
 
+    target("keyboard_state_protocol_test")
+        set_kind("binary")
+        set_default(false)
+        add_includedirs("src/device_controller", "src/common")
+        add_files("tests/keyboard_state_protocol_test.cpp")
+
     target("windows_manifest_resource_test")
         set_kind("binary")
         set_default(false)

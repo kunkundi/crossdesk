@@ -21,12 +21,13 @@ namespace crossdesk {
 
 typedef enum {
   mouse = 0,
-  keyboard,
-  audio_capture,
-  host_infomation,
-  display_id,
-  service_status,
-  service_command,
+  keyboard = 1,
+  audio_capture = 2,
+  host_infomation = 3,
+  display_id = 4,
+  service_status = 5,
+  service_command = 6,
+  keyboard_state = 7,
 } ControlType;
 typedef enum {
   move = 0,
@@ -55,6 +56,20 @@ typedef struct {
   KeyFlag flag;
 } Key;
 
+inline constexpr size_t kMaxKeyboardStateKeys = 32;
+
+typedef struct {
+  size_t key_value;
+  uint32_t scan_code;
+  bool extended;
+} KeyboardStateKey;
+
+typedef struct {
+  uint32_t seq;
+  size_t pressed_count;
+  KeyboardStateKey pressed_keys[kMaxKeyboardStateKeys];
+} KeyboardState;
+
 typedef struct {
   char host_name[64];
   size_t host_name_size;
@@ -80,6 +95,7 @@ struct RemoteAction {
   union {
     Mouse m;
     Key k;
+    KeyboardState ks;
     HostInfo i;
     bool a;
     int d;
@@ -111,6 +127,20 @@ struct RemoteAction {
                          {"extended", a.k.extended},
                          {"flag", a.k.flag}};
         break;
+      case ControlType::keyboard_state: {
+        json keys = json::array();
+        const size_t pressed_count =
+            a.ks.pressed_count < kMaxKeyboardStateKeys
+                ? a.ks.pressed_count
+                : kMaxKeyboardStateKeys;
+        for (size_t idx = 0; idx < pressed_count; ++idx) {
+          keys.push_back({{"key_value", a.ks.pressed_keys[idx].key_value},
+                          {"scan_code", a.ks.pressed_keys[idx].scan_code},
+                          {"extended", a.ks.pressed_keys[idx].extended}});
+        }
+        j["keyboard_state"] = {{"seq", a.ks.seq}, {"pressed_keys", keys}};
+        break;
+      }
       case ControlType::audio_capture:
         j["audio_capture"] = a.a;
         break;
@@ -162,6 +192,33 @@ struct RemoteAction {
           out.k.extended = j.at("keyboard").value("extended", false);
           out.k.flag = (KeyFlag)j.at("keyboard").at("flag").get<int>();
           break;
+        case ControlType::keyboard_state: {
+          const auto& keyboard_state_json = j.at("keyboard_state");
+          out.ks.seq = keyboard_state_json.value("seq", 0u);
+          out.ks.pressed_count = 0;
+
+          const auto keys_json =
+              keyboard_state_json.value("pressed_keys", json::array());
+          if (!keys_json.is_array()) {
+            break;
+          }
+
+          const size_t count =
+              keys_json.size() < kMaxKeyboardStateKeys
+                  ? keys_json.size()
+                  : kMaxKeyboardStateKeys;
+          for (size_t idx = 0; idx < count; ++idx) {
+            const auto& key_json = keys_json[idx];
+            out.ks.pressed_keys[idx].key_value =
+                key_json.at("key_value").get<size_t>();
+            out.ks.pressed_keys[idx].scan_code =
+                key_json.value("scan_code", static_cast<uint32_t>(0));
+            out.ks.pressed_keys[idx].extended =
+                key_json.value("extended", false);
+          }
+          out.ks.pressed_count = count;
+          break;
+        }
         case ControlType::audio_capture:
           out.a = j.at("audio_capture").get<bool>();
           break;

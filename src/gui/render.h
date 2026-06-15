@@ -343,11 +343,35 @@ class Render {
   static void FreeRemoteAction(RemoteAction& action);
 
  private:
+  struct PressedKeyboardKey {
+    int key_code = 0;
+    uint32_t scan_code = 0;
+    bool extended = false;
+  };
+
+  struct RemoteKeyboardState {
+    std::unordered_map<int, PressedKeyboardKey> pressed_keys;
+    uint32_t last_seq = 0;
+    uint32_t last_seen_tick = 0;
+    bool keyboard_state_seen = false;
+  };
+
   int SendKeyCommand(int key_code, bool is_down, uint32_t scan_code = 0,
                      bool extended = false);
   static bool IsModifierVkKey(int key_code);
-  void TrackPressedKeyState(int key_code, bool is_down);
+  void TrackPressedKeyState(int key_code, bool is_down, uint32_t scan_code,
+                            bool extended);
   void ForceReleasePressedKeys();
+  void SendKeyboardHeartbeat(bool force);
+  void ApplyRemoteKeyboardEvent(const std::string& remote_id,
+                                const RemoteAction& remote_action);
+  void ApplyRemoteKeyboardState(const std::string& remote_id,
+                                const RemoteAction& remote_action);
+  bool InjectRemoteKeyboardKey(int key_code, bool is_down, uint32_t scan_code,
+                               bool extended);
+  void ReleaseRemotePressedKeys(const std::string& remote_id,
+                                const char* reason);
+  void CheckRemoteKeyboardTimeouts();
   int ProcessKeyboardEvent(const SDL_Event& event);
   int ProcessMouseEvent(const SDL_Event& event);
 
@@ -551,8 +575,12 @@ class Render {
   std::string controlled_remote_id_ = "";
   std::string focused_remote_id_ = "";
   std::string remote_client_id_ = "";
-  std::unordered_set<int> pressed_keyboard_keys_;
+  std::unordered_map<int, PressedKeyboardKey> pressed_keyboard_keys_;
   std::mutex pressed_keyboard_keys_mutex_;
+  uint32_t keyboard_state_seq_ = 0;
+  uint32_t last_keyboard_heartbeat_tick_ = 0;
+  std::unordered_map<std::string, RemoteKeyboardState> remote_keyboard_states_;
+  std::mutex remote_keyboard_states_mutex_;
   SDL_Event last_mouse_event{};
   SDL_AudioStream* output_stream_ = nullptr;
   uint32_t STREAM_REFRESH_EVENT = 0;

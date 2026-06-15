@@ -28,6 +28,8 @@
 namespace crossdesk {
 
 namespace {
+constexpr uint32_t kKeyboardHeartbeatIntervalMs = 500;
+constexpr uint32_t kRemoteKeyboardReleaseTimeoutMs = 2500;
 
 int TranslateSdlKeypadScancodeToVk(const SDL_KeyboardEvent& event) {
   const bool numlock_enabled = (event.mod & SDL_KMOD_NUM) != 0;
@@ -415,34 +417,92 @@ bool Render::IsModifierVkKey(int key_code) {
   }
 }
 
-void Render::TrackPressedKeyState(int key_code, bool is_down) {
-  if (!IsWaylandSession() && !IsModifierVkKey(key_code)) {
-    return;
-  }
-
+void Render::TrackPressedKeyState(int key_code, bool is_down,
+                                  uint32_t scan_code, bool extended) {
   std::lock_guard<std::mutex> lock(pressed_keyboard_keys_mutex_);
   if (is_down) {
-    pressed_keyboard_keys_.insert(key_code);
+    pressed_keyboard_keys_[key_code] =
+        PressedKeyboardKey{key_code, scan_code, extended};
   } else {
     pressed_keyboard_keys_.erase(key_code);
   }
 }
 
 void Render::ForceReleasePressedKeys() {
-  std::vector<int> pressed_keys;
+  std::vector<PressedKeyboardKey> pressed_keys;
   {
     std::lock_guard<std::mutex> lock(pressed_keyboard_keys_mutex_);
-    if (pressed_keyboard_keys_.empty()) {
-      return;
+    pressed_keys.reserve(pressed_keyboard_keys_.size());
+    for (const auto& [_, key] : pressed_keyboard_keys_) {
+      pressed_keys.push_back(key);
     }
-    pressed_keys.assign(pressed_keyboard_keys_.begin(),
-                        pressed_keyboard_keys_.end());
     pressed_keyboard_keys_.clear();
   }
 
-  for (int key_code : pressed_keys) {
-    SendKeyCommand(key_code, false);
+  for (const PressedKeyboardKey& key : pressed_keys) {
+    SendKeyCommand(key.key_code, false, key.scan_code, key.extended);
   }
+  SendKeyboardHeartbeat(true);
+}
+
+void Render::SendKeyboardHeartbeat(bool force) {
+  const uint32_t now = static_cast<uint32_t>(SDL_GetTicks());
+  if (!force && now - last_keyboard_heartbeat_tick_ <
+                    kKeyboardHeartbeatIntervalMs) {
+    return;
+  }
+
+  RemoteAction remote_action{};
+  remote_action.type = ControlType::keyboard_state;
+  remote_action.ks.seq = ++keyboard_state_seq_;
+
+  {
+    std::lock_guard<std::mutex> lock(pressed_keyboard_keys_mutex_);
+    size_t idx = 0;
+    for (const auto& [_, key] : pressed_keyboard_keys_) {
+      if (idx >= kMaxKeyboardStateKeys) {
+        LOG_WARN("Keyboard heartbeat truncated, pressed_keys={}",
+                 pressed_keyboard_keys_.size());
+        break;
+      }
+      remote_action.ks.pressed_keys[idx].key_value =
+          static_cast<size_t>(key.key_code);
+      remote_action.ks.pressed_keys[idx].scan_code = key.scan_code;
+      remote_action.ks.pressed_keys[idx].extended = key.extended;
+      ++idx;
+    }
+    remote_action.ks.pressed_count = idx;
+  }
+
+  const std::string target_id = controlled_remote_id_.empty()
+                                    ? focused_remote_id_
+                                    : controlled_remote_id_;
+  if (target_id.empty()) {
+    last_keyboard_heartbeat_tick_ = now;
+    return;
+  }
+
+  auto props_it = client_properties_.find(target_id);
+  if (props_it == client_properties_.end()) {
+    last_keyboard_heartbeat_tick_ = now;
+    return;
+  }
+
+  const auto props = props_it->second;
+  if (props->connection_status_ != ConnectionStatus::Connected ||
+      !props->peer_) {
+    last_keyboard_heartbeat_tick_ = now;
+    return;
+  }
+
+  const std::string msg = remote_action.to_json();
+  const int ret = SendReliableDataFrame(props->peer_, msg.c_str(), msg.size(),
+                                        props->keyboard_label_.c_str());
+  if (ret != 0) {
+    LOG_WARN("Send keyboard heartbeat failed, remote_id={}, ret={}", target_id,
+             ret);
+  }
+  last_keyboard_heartbeat_tick_ = now;
 }
 
 int Render::SendKeyCommand(int key_code, bool is_down, uint32_t scan_code,
@@ -484,7 +544,7 @@ int Render::SendKeyCommand(int key_code, bool is_down, uint32_t scan_code,
     }
   }
 
-  TrackPressedKeyState(key_code, is_down);
+  TrackPressedKeyState(key_code, is_down, scan_code, extended);
 
   return 0;
 }
@@ -504,6 +564,181 @@ int Render::ProcessKeyboardEvent(const SDL_Event& event) {
   }
 
   return SendKeyCommand(key_code, event.type == SDL_EVENT_KEY_DOWN);
+}
+
+bool Render::InjectRemoteKeyboardKey(int key_code, bool is_down,
+                                     uint32_t scan_code, bool extended) {
+#if _WIN32
+  if (local_service_status_received_ &&
+      IsSecureDesktopInteractionRequired(local_interactive_stage_)) {
+    const std::string response = SendCrossDeskSecureDesktopKeyInput(
+        key_code, is_down, scan_code, extended, 1000);
+    auto json = nlohmann::json::parse(response, nullptr, false);
+    if (json.is_discarded() || !json.value("ok", false)) {
+      RemoteAction action{};
+      action.type = ControlType::keyboard;
+      action.k.key_value = static_cast<size_t>(key_code);
+      action.k.scan_code = scan_code;
+      action.k.extended = extended;
+      action.k.flag = is_down ? KeyFlag::key_down : KeyFlag::key_up;
+      if (!json.is_discarded() &&
+          IsTransientSecureDesktopInputFailure(json, action)) {
+        LOG_INFO(
+            "Secure desktop keyboard injection transient failure, "
+            "key_code={}, is_down={}, response={}",
+            key_code, is_down, response);
+        return true;
+      }
+
+      LogSecureDesktopInputBlocked(&last_local_secure_input_block_log_tick_,
+                                   "local",
+                                   local_interactive_stage_.c_str());
+      LOG_WARN(
+          "Secure desktop keyboard injection failed, key_code={}, is_down={}, "
+          "response={}",
+          key_code, is_down, response);
+      return false;
+    }
+    return true;
+  }
+#endif
+
+  if (!keyboard_capturer_) {
+    return false;
+  }
+
+  return keyboard_capturer_->SendKeyboardCommand(key_code, is_down, scan_code,
+                                                 extended) == 0;
+}
+
+void Render::ApplyRemoteKeyboardEvent(const std::string& remote_id,
+                                      const RemoteAction& remote_action) {
+  const int key_code = static_cast<int>(remote_action.k.key_value);
+  const bool is_down = remote_action.k.flag == KeyFlag::key_down;
+  const uint32_t scan_code = remote_action.k.scan_code;
+  const bool extended = remote_action.k.extended;
+  const bool injected =
+      InjectRemoteKeyboardKey(key_code, is_down, scan_code, extended);
+
+  std::lock_guard<std::mutex> lock(remote_keyboard_states_mutex_);
+  auto& state = remote_keyboard_states_[remote_id];
+  state.last_seen_tick = static_cast<uint32_t>(SDL_GetTicks());
+  if (is_down) {
+    if (injected) {
+      state.pressed_keys[key_code] =
+          PressedKeyboardKey{key_code, scan_code, extended};
+    }
+  } else if (injected) {
+    state.pressed_keys.erase(key_code);
+  }
+}
+
+void Render::ApplyRemoteKeyboardState(const std::string& remote_id,
+                                      const RemoteAction& remote_action) {
+  std::vector<PressedKeyboardKey> keys_to_release;
+  std::vector<PressedKeyboardKey> keys_to_press;
+
+  {
+    std::lock_guard<std::mutex> lock(remote_keyboard_states_mutex_);
+    auto& state = remote_keyboard_states_[remote_id];
+    if (remote_action.ks.seq != 0 && state.last_seq != 0 &&
+        static_cast<int32_t>(remote_action.ks.seq - state.last_seq) <= 0) {
+      return;
+    }
+
+    state.last_seq = remote_action.ks.seq;
+    state.last_seen_tick = static_cast<uint32_t>(SDL_GetTicks());
+    state.keyboard_state_seen = true;
+
+    std::unordered_map<int, PressedKeyboardKey> desired_keys;
+    const size_t pressed_count =
+        remote_action.ks.pressed_count < kMaxKeyboardStateKeys
+            ? remote_action.ks.pressed_count
+            : kMaxKeyboardStateKeys;
+    for (size_t idx = 0; idx < pressed_count; ++idx) {
+      const auto& key = remote_action.ks.pressed_keys[idx];
+      const int key_code = static_cast<int>(key.key_value);
+      desired_keys[key_code] =
+          PressedKeyboardKey{key_code, key.scan_code, key.extended};
+    }
+
+    for (const auto& [key_code, key] : state.pressed_keys) {
+      if (desired_keys.find(key_code) == desired_keys.end()) {
+        keys_to_release.push_back(key);
+      }
+    }
+
+    for (const auto& [key_code, key] : desired_keys) {
+      if (state.pressed_keys.find(key_code) == state.pressed_keys.end()) {
+        keys_to_press.push_back(key);
+      }
+    }
+  }
+
+  for (const PressedKeyboardKey& key : keys_to_release) {
+    if (InjectRemoteKeyboardKey(key.key_code, false, key.scan_code,
+                                key.extended)) {
+      std::lock_guard<std::mutex> lock(remote_keyboard_states_mutex_);
+      auto state_it = remote_keyboard_states_.find(remote_id);
+      if (state_it != remote_keyboard_states_.end()) {
+        state_it->second.pressed_keys.erase(key.key_code);
+      }
+    }
+  }
+
+  for (const PressedKeyboardKey& key : keys_to_press) {
+    if (InjectRemoteKeyboardKey(key.key_code, true, key.scan_code,
+                                key.extended)) {
+      std::lock_guard<std::mutex> lock(remote_keyboard_states_mutex_);
+      auto& state = remote_keyboard_states_[remote_id];
+      state.pressed_keys[key.key_code] = key;
+    }
+  }
+}
+
+void Render::ReleaseRemotePressedKeys(const std::string& remote_id,
+                                      const char* reason) {
+  std::vector<PressedKeyboardKey> keys_to_release;
+  {
+    std::lock_guard<std::mutex> lock(remote_keyboard_states_mutex_);
+    auto state_it = remote_keyboard_states_.find(remote_id);
+    if (state_it == remote_keyboard_states_.end()) {
+      return;
+    }
+
+    keys_to_release.reserve(state_it->second.pressed_keys.size());
+    for (const auto& [_, key] : state_it->second.pressed_keys) {
+      keys_to_release.push_back(key);
+    }
+    remote_keyboard_states_.erase(state_it);
+  }
+
+  if (!keys_to_release.empty()) {
+    LOG_WARN("Releasing {} remote keyboard keys for remote_id={}, reason={}",
+             keys_to_release.size(), remote_id, reason ? reason : "unknown");
+  }
+  for (const PressedKeyboardKey& key : keys_to_release) {
+    InjectRemoteKeyboardKey(key.key_code, false, key.scan_code, key.extended);
+  }
+}
+
+void Render::CheckRemoteKeyboardTimeouts() {
+  const uint32_t now = static_cast<uint32_t>(SDL_GetTicks());
+  std::vector<std::string> timed_out_remotes;
+  {
+    std::lock_guard<std::mutex> lock(remote_keyboard_states_mutex_);
+    for (const auto& [remote_id, state] : remote_keyboard_states_) {
+      if (state.keyboard_state_seen && !state.pressed_keys.empty() &&
+          state.last_seen_tick != 0 &&
+          now - state.last_seen_tick > kRemoteKeyboardReleaseTimeoutMs) {
+        timed_out_remotes.push_back(remote_id);
+      }
+    }
+  }
+
+  for (const std::string& remote_id : timed_out_remotes) {
+    ReleaseRemotePressedKeys(remote_id, "keyboard_heartbeat_timeout");
+  }
 }
 
 int Render::ProcessMouseEvent(const SDL_Event& event) {
@@ -1120,7 +1355,9 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
     // remote
 #if _WIN32
     if (render->local_service_status_received_ &&
-        IsSecureDesktopInteractionRequired(render->local_interactive_stage_)) {
+        IsSecureDesktopInteractionRequired(render->local_interactive_stage_) &&
+        remote_action.type != ControlType::keyboard &&
+        remote_action.type != ControlType::keyboard_state) {
       if (remote_action.type == ControlType::mouse) {
         int absolute_x = 0;
         int absolute_y = 0;
@@ -1151,33 +1388,6 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
         }
         return;
       }
-
-      if (remote_action.type == ControlType::keyboard) {
-        const int key_code = static_cast<int>(remote_action.k.key_value);
-        const bool is_down = remote_action.k.flag == KeyFlag::key_down;
-        const std::string response = SendCrossDeskSecureDesktopKeyInput(
-            key_code, is_down, remote_action.k.scan_code,
-            remote_action.k.extended, 1000);
-        auto json = nlohmann::json::parse(response, nullptr, false);
-        if (json.is_discarded() || !json.value("ok", false)) {
-          if (!json.is_discarded() &&
-              IsTransientSecureDesktopInputFailure(json, remote_action)) {
-            LOG_INFO(
-                "Secure desktop keyboard injection transient failure, "
-                "key_code={}, is_down={}, response={}",
-                key_code, is_down, response);
-            return;
-          }
-          LogSecureDesktopInputBlocked(
-              &render->last_local_secure_input_block_log_tick_, "local",
-              render->local_interactive_stage_.c_str());
-          LOG_WARN(
-              "Secure desktop keyboard injection failed, key_code={}, "
-              "is_down={}, response={}",
-              key_code, is_down, response);
-        }
-        return;
-      }
     }
 #endif
     if (remote_action.type == ControlType::mouse && render->mouse_controller_) {
@@ -1188,12 +1398,10 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
         render->StartSpeakerCapturer();
       else if (!remote_action.a && render->start_speaker_capturer_)
         render->StopSpeakerCapturer();
-    } else if (remote_action.type == ControlType::keyboard &&
-               render->keyboard_capturer_) {
-      render->keyboard_capturer_->SendKeyboardCommand(
-          (int)remote_action.k.key_value,
-          remote_action.k.flag == KeyFlag::key_down, remote_action.k.scan_code,
-          remote_action.k.extended);
+    } else if (remote_action.type == ControlType::keyboard) {
+      render->ApplyRemoteKeyboardEvent(remote_id, remote_action);
+    } else if (remote_action.type == ControlType::keyboard_state) {
+      render->ApplyRemoteKeyboardState(remote_id, remote_action);
     } else if (remote_action.type == ControlType::display_id &&
                render->screen_capturer_) {
       const int ret = render->screen_capturer_->SwitchTo(remote_action.d);
@@ -1345,6 +1553,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
       case ConnectionStatus::Disconnected:
       case ConnectionStatus::Failed:
       case ConnectionStatus::Closed: {
+        render->ReleaseRemotePressedKeys(remote_id, "connection_closed");
         props->connection_established_ = false;
         props->enable_mouse_control_ = false;
         render->ResetRemoteServiceStatus(*props);
@@ -1462,6 +1671,7 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
       case ConnectionStatus::Disconnected:
       case ConnectionStatus::Failed:
       case ConnectionStatus::Closed: {
+        render->ReleaseRemotePressedKeys(remote_id, "connection_closed");
         if (std::all_of(render->connection_status_.begin(),
                         render->connection_status_.end(), [](const auto& kv) {
                           return kv.second == ConnectionStatus::Closed ||

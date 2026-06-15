@@ -1192,10 +1192,16 @@ void Render::UpdateInteractions() {
         keyboard_capturer_is_started_ = true;
       }
     }
+    if (keyboard_capturer_is_started_) {
+      SendKeyboardHeartbeat(false);
+    }
   } else if (keyboard_capturer_is_started_) {
+    ForceReleasePressedKeys();
     StopKeyboardCapturer();
     keyboard_capturer_is_started_ = false;
   }
+
+  CheckRemoteKeyboardTimeouts();
 }
 
 int Render::CreateMainWindow() {
