@@ -278,6 +278,7 @@ class Render {
   int DrawStreamWindow();
   int DrawServerWindow();
   int ConfirmDeleteConnection();
+  int EditRecentConnectionAliasWindow();
   int OfflineWarningWindow();
   int NetTrafficStats(std::shared_ptr<SubStreamWindowProperties>& props);
   void DrawConnectionStatusText(
@@ -381,6 +382,12 @@ class Render {
  private:
   int SaveSettingsIntoCacheFile();
   int LoadSettingsFromCacheFile();
+  int LoadRecentConnectionAliases();
+  int SaveRecentConnectionAliases() const;
+  std::string GetRecentConnectionDisplayName(
+      const Thumbnail::RecentConnection& connection) const;
+  void BeginEditRecentConnectionAlias(
+      const Thumbnail::RecentConnection& connection);
 
   int ScreenCapturerInit();
   int StartScreenCapturer();
@@ -683,10 +690,14 @@ class Render {
   bool is_server_mode_ = false;
   bool reload_recent_connections_ = true;
   bool show_confirm_delete_connection_ = false;
+  bool show_edit_connection_alias_window_ = false;
   bool show_offline_warning_window_ = false;
   bool delete_connection_ = false;
   bool is_tab_bar_hovered_ = false;
   std::string delete_connection_name_ = "";
+  std::unordered_map<std::string, std::string> recent_connection_aliases_;
+  std::string edit_connection_alias_remote_id_ = "";
+  char edit_connection_alias_[128] = "";
   std::string offline_warning_text_ = "";
   bool re_enter_remote_id_ = false;
   double copy_start_time_ = 0;

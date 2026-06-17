@@ -225,9 +225,12 @@ int Thumbnail::LoadThumbnail(
       std::string remote_id;
       std::string cipher_password;
       std::string remote_host_name;
+      std::string password;
       std::string original_image_name;
+      bool remember_password = false;
 
-      if ('Y' == cipher_image_name[9] && cipher_image_name.size() >= 16) {
+      if (cipher_image_name.size() > 9 && 'Y' == cipher_image_name[9] &&
+          cipher_image_name.size() >= 16) {
         size_t pos_y = cipher_image_name.find('Y');
         size_t pos_at = cipher_image_name.find('@');
 
@@ -241,10 +244,11 @@ int Thumbnail::LoadThumbnail(
         remote_host_name =
             cipher_image_name.substr(pos_y + 1, pos_at - pos_y - 1);
         cipher_password = cipher_image_name.substr(pos_at + 1);
+        password = AES_decrypt(cipher_password, aes128_key_, aes128_iv_);
+        remember_password = true;
 
-        original_image_name =
-            remote_id + 'Y' + remote_host_name + "@" +
-            AES_decrypt(cipher_password, aes128_key_, aes128_iv_);
+        original_image_name = remote_id + 'Y' + remote_host_name + "@" +
+                              password;
       } else {
         size_t pos_n = cipher_image_name.find('N');
         // size_t pos_at = cipher_image_name.find('@');
@@ -257,16 +261,19 @@ int Thumbnail::LoadThumbnail(
         remote_id = cipher_image_name.substr(0, pos_n);
         remote_host_name = cipher_image_name.substr(pos_n + 1);
 
-        original_image_name =
-            remote_id + 'N' + remote_host_name + "@" +
-            AES_decrypt(cipher_password, aes128_key_, aes128_iv_);
+        original_image_name = remote_id + 'N' + remote_host_name;
       }
 
       std::string image_path = save_path_ + cipher_image_name;
+      Thumbnail::RecentConnection recent_connection;
+      recent_connection.remote_id = remote_id;
+      recent_connection.remote_host_name = remote_host_name;
+      recent_connection.password = password;
+      recent_connection.remember_password = remember_password;
       recent_connections.emplace_back(
-          std::make_pair(original_image_name, Thumbnail::RecentConnection()));
+          std::make_pair(original_image_name, recent_connection));
       LoadTextureFromFile(image_path.c_str(), renderer,
-                          &(recent_connections[i].second.texture), width,
+                          &(recent_connections.back().second.texture), width,
                           height);
     }
     return 0;

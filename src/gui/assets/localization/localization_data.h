@@ -87,7 +87,7 @@ struct TranslationRow {
   X(install_windows_service, u8"安装", "Install", u8"Установить")              \
   X(windows_service_settings_label, u8"锁屏控制服务:",                         \
     "Lock Screen Service:", u8"Служба блокировки экрана:")                     \
-  X(windows_service_installed, u8"已安装", "Installed", u8"Установлена")      \
+  X(windows_service_installed, u8"已安装", "Installed", u8"Установлена")       \
   X(do_not_remind_again, u8"不再提醒", "Do not remind again",                  \
     u8"Больше не напоминать")                                                  \
   X(windows_service_prompt_suppressed_message,                                 \
@@ -159,7 +159,8 @@ struct TranslationRow {
   X(signal_disconnected, u8"未连接服务器", "Disconnected",                     \
     u8"Нет подключения к серверу")                                             \
   X(signal_tls_cert_error, u8"证书验证失败，请重新安装自托管根证书",           \
-    "Certificate verification failed. Reinstall the self-hosted root certificate.", \
+    "Certificate verification failed. Reinstall the self-hosted root "         \
+    "certificate.",                                                            \
     u8"Ошибка проверки сертификата. Переустановите корневой сертификат.")      \
   X(p2p_connected, u8"对等连接已建立", "P2P Connected", u8"P2P подключено")    \
   X(p2p_disconnected, u8"对等连接已断开", "P2P Disconnected",                  \
@@ -180,6 +181,14 @@ struct TranslationRow {
   X(access_website, u8"访问官网: ",                                            \
     "Access Website: ", u8"Официальный сайт: ")                                \
   X(update, u8"更新", "Update", u8"Обновить")                                  \
+  X(connection_alias, u8"修改名称", "Edit Alias",                              \
+    u8"Изменить имя подключения")                                              \
+  X(delete_connection, u8"删除连接", "Delete Connection",                      \
+    u8"Удалить подключение")                                                   \
+  X(connect_to_this_connection, u8"发起连接", "Connect to this connection",    \
+    u8"Подключиться")                                                          \
+  X(input_connection_alias, u8"请输入连接名称:",                               \
+    "Please input connection name:", u8"Введите имя подключения:")             \
   X(confirm_delete_connection, u8"确认删除此连接",                             \
     "Confirm to delete this connection", u8"Удалить это подключение?")         \
   X(enable_autostart, u8"开机自启:", "Auto Start:", u8"Автозапуск:")           \

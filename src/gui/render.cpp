@@ -640,6 +640,113 @@ int Render::LoadSettingsFromCacheFile() {
   return 0;
 }
 
+int Render::LoadRecentConnectionAliases() {
+  recent_connection_aliases_.clear();
+
+  std::ifstream alias_file(cache_path_ + "/recent_connection_aliases.json");
+  if (!alias_file.good()) {
+    return 0;
+  }
+
+  try {
+    nlohmann::json alias_json;
+    alias_file >> alias_json;
+
+    const nlohmann::json* aliases = &alias_json;
+    if (alias_json.contains("aliases") && alias_json["aliases"].is_object()) {
+      aliases = &alias_json["aliases"];
+    }
+
+    if (!aliases->is_object()) {
+      LOG_WARN("Invalid recent connection alias file");
+      return -1;
+    }
+
+    for (auto it = aliases->begin(); it != aliases->end(); ++it) {
+      if (!it.value().is_string()) {
+        continue;
+      }
+
+      std::string remote_id = it.key();
+      std::string alias = it.value().get<std::string>();
+      if (!remote_id.empty() && !alias.empty()) {
+        recent_connection_aliases_[remote_id] = alias;
+      }
+    }
+  } catch (const std::exception& e) {
+    LOG_WARN("Load recent connection aliases failed: {}", e.what());
+    return -1;
+  }
+
+  return 0;
+}
+
+int Render::SaveRecentConnectionAliases() const {
+  std::error_code ec;
+  std::filesystem::create_directories(cache_path_, ec);
+  if (ec) {
+    LOG_WARN("Create cache directory failed while saving aliases: {}",
+             ec.message());
+    return -1;
+  }
+
+  nlohmann::json alias_json;
+  alias_json["aliases"] = nlohmann::json::object();
+
+  for (const auto& [remote_id, alias] : recent_connection_aliases_) {
+    if (!remote_id.empty() && !alias.empty()) {
+      alias_json["aliases"][remote_id] = alias;
+    }
+  }
+
+  std::ofstream alias_file(cache_path_ + "/recent_connection_aliases.json",
+                           std::ios::trunc);
+  if (!alias_file.good()) {
+    LOG_WARN("Open recent connection alias file failed");
+    return -1;
+  }
+
+  alias_file << alias_json.dump(2);
+  return 0;
+}
+
+std::string Render::GetRecentConnectionDisplayName(
+    const Thumbnail::RecentConnection& connection) const {
+  const auto alias_it = recent_connection_aliases_.find(connection.remote_id);
+  if (alias_it != recent_connection_aliases_.end() &&
+      !alias_it->second.empty()) {
+    return alias_it->second;
+  }
+
+  if (!connection.remote_host_name.empty() &&
+      connection.remote_host_name != "unknown") {
+    return connection.remote_host_name;
+  }
+
+  return connection.remote_id;
+}
+
+void Render::BeginEditRecentConnectionAlias(
+    const Thumbnail::RecentConnection& connection) {
+  edit_connection_alias_remote_id_ = connection.remote_id;
+  memset(edit_connection_alias_, 0, sizeof(edit_connection_alias_));
+
+  const auto alias_it = recent_connection_aliases_.find(connection.remote_id);
+  std::string alias =
+      alias_it != recent_connection_aliases_.end()
+          ? alias_it->second
+          : GetRecentConnectionDisplayName(connection);
+
+  if (!alias.empty()) {
+    strncpy(edit_connection_alias_, alias.c_str(),
+            sizeof(edit_connection_alias_) - 1);
+    edit_connection_alias_[sizeof(edit_connection_alias_) - 1] = '\0';
+  }
+
+  focus_on_input_widget_ = true;
+  show_edit_connection_alias_window_ = true;
+}
+
 int Render::ScreenCapturerInit() {
 #ifdef __APPLE__
   if (!EnsureMacScreenRecordingPermission()) {
@@ -1811,6 +1918,7 @@ void Render::InitializeLogger() { InitLogger(exec_log_path_); }
 
 void Render::InitializeSettings() {
   LoadSettingsFromCacheFile();
+  LoadRecentConnectionAliases();
 
   localization_language_index_ =
       localization::detail::ClampLanguageIndex(language_button_value_);
