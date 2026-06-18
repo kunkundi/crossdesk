@@ -164,15 +164,12 @@ int Render::ShowRecentConnections() {
     std::string display_name = GetRecentConnectionDisplayName(it.second);
     bool online = device_presence_.IsOnline(it.second.remote_id);
 
-    ImVec2 image_screen_pos = ImVec2(
-        ImGui::GetCursorScreenPos().x + recent_connection_image_width * 0.04f,
-        ImGui::GetCursorScreenPos().y + recent_connection_image_height * 0.08f);
-
     ImVec2 image_pos =
         ImVec2(ImGui::GetCursorPosX() + recent_connection_image_width * 0.05f,
                ImGui::GetCursorPosY() + recent_connection_image_height * 0.08f);
 
     ImGui::SetCursorPos(image_pos);
+    ImVec2 image_screen_pos = ImGui::GetCursorScreenPos();
     ImGui::Image(
         (ImTextureID)(intptr_t)it.second.texture,
         ImVec2(recent_connection_image_width, recent_connection_image_height));
