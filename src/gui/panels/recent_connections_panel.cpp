@@ -174,7 +174,6 @@ int Render::ShowRecentConnections() {
         (ImTextureID)(intptr_t)it.second.texture,
         ImVec2(recent_connection_image_width, recent_connection_image_height));
 
-    // 必须在 ImGui::Image 后立刻保存 hovered 状态
     const bool image_item_hovered = ImGui::IsItemHovered();
 
     ImVec2 card_screen_min = image_screen_pos;
@@ -186,7 +185,6 @@ int Render::ShowRecentConnections() {
     const bool card_hovered =
         ImGui::IsMouseHoveringRect(card_screen_min, card_screen_max, true);
 
-    // 预先计算 toolbar 区域，即三个按钮所在区域
     const float recent_connection_toolbar_width =
         3.0f * recent_connection_button_width;
 
@@ -211,7 +209,6 @@ int Render::ShowRecentConnections() {
         card_hovered && ImGui::IsMouseHoveringRect(toolbar_screen_pos,
                                                    toolbar_screen_end, true);
 
-    // 关键：鼠标在三个按钮区域时，不显示背景图 tooltip
     const bool show_image_tooltip = image_item_hovered && !toolbar_hovered;
 
     if (show_image_tooltip) {
@@ -242,11 +239,6 @@ int Render::ShowRecentConnections() {
 
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
 
-    ImU32 fill_color =
-        online ? IM_COL32(0, 255, 0, 255) : IM_COL32(140, 140, 140, 255);
-
-    ImU32 border_color = IM_COL32(255, 255, 255, 255);
-
     // connection name footer
     {
       ImVec2 footer_pos =
@@ -266,19 +258,51 @@ int Render::ShowRecentConnections() {
                                IM_COL32(0, 0, 0, 40), footer_rounding,
                                ImDrawFlags_RoundCornersBottom);
 
-      float dot_radius = recent_connection_footer_height * 0.16f;
+      const char* status_text =
+          (online ? localization::online[localization_language_index_]
+                  : localization::offline[localization_language_index_])
+              .c_str();
 
-      ImVec2 footer_dot_pos =
-          ImVec2(footer_screen_pos.x + recent_connection_footer_height * 0.45f,
-                 footer_screen_pos.y + recent_connection_footer_height * 0.5f);
+      ImGui::SetWindowFontScale(0.45f);
+      const ImVec2 status_text_size = ImGui::CalcTextSize(status_text);
 
-      draw_list->AddCircleFilled(footer_dot_pos, dot_radius * 1.45f,
-                                 border_color, 100);
+      const float status_padding_x = recent_connection_footer_height * 0.3f;
+      const float status_padding_y = recent_connection_footer_height * 0.19f;
+      const float status_left_margin = recent_connection_footer_height * 0.18f;
+      const float status_gap =
+          recent_connection_footer_height * (online ? 0.16f : 0.22f);
+      const float status_text_width =
+          status_text_size.x + status_padding_x * 1.9f;
+      const float status_text_height =
+          status_text_size.y + status_padding_y * 0.4f;
 
-      draw_list->AddCircleFilled(footer_dot_pos, dot_radius, fill_color, 100);
+      const ImVec2 status_badge_min = ImVec2(
+          footer_screen_pos.x + status_left_margin,
+          footer_screen_pos.y +
+              (recent_connection_footer_height - status_text_height) * 0.5f);
+      const ImVec2 status_badge_max =
+          ImVec2(status_badge_min.x + status_text_width,
+                 status_badge_min.y + status_text_height);
+
+      const ImU32 status_badge_bg =
+          online ? IM_COL32(220, 252, 231, 245) : IM_COL32(229, 231, 235, 245);
+      const ImU32 status_badge_border =
+          online ? IM_COL32(74, 222, 128, 255) : IM_COL32(156, 163, 175, 255);
+      const ImU32 status_text_color =
+          online ? IM_COL32(21, 128, 61, 255) : IM_COL32(55, 65, 81, 255);
+
+      draw_list->AddRectFilled(status_badge_min, status_badge_max,
+                               status_badge_bg, status_text_height * 0.5f);
+      draw_list->AddRect(status_badge_min, status_badge_max,
+                         status_badge_border, status_text_height * 0.5f);
+
+      const ImVec2 status_text_pos =
+          ImVec2(status_badge_min.x + status_padding_x, status_badge_min.y);
+
+      draw_list->AddText(status_text_pos, status_text_color, status_text);
 
       ImVec2 text_min =
-          ImVec2(footer_dot_pos.x + dot_radius * 2.2f, footer_screen_pos.y);
+          ImVec2(status_badge_max.x + status_gap, footer_screen_pos.y);
 
       ImVec2 text_max =
           ImVec2(footer_screen_end.x - recent_connection_name_width * 0.05f,
