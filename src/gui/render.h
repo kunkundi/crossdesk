@@ -39,6 +39,8 @@
 
 #if _WIN32
 #include "win_tray.h"
+#elif defined(__APPLE__)
+#include "mac_tray.h"
 #endif
 
 namespace crossdesk {
@@ -414,6 +416,7 @@ class Render {
   int AudioDeviceInit();
   int AudioDeviceDestroy();
   void HandleWindowsServiceIntegration();
+  bool MinimizeMainWindowToTray();
 #if _WIN32
   void ResetLocalWindowsServiceState(bool clear_pending_sas);
 #if CROSSDESK_PORTABLE
@@ -510,6 +513,8 @@ class Render {
   const int sdl_refresh_ms_ = 16;  // ~60 FPS
 #if _WIN32
   std::unique_ptr<WinTray> tray_;
+#elif defined(__APPLE__)
+  std::unique_ptr<MacTray> tray_;
 #endif
 
   // main window properties

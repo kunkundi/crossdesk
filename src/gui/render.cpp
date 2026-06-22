@@ -1371,6 +1371,9 @@ int Render::CreateMainWindow() {
   HICON tray_icon = LoadTrayIcon();
   tray_ = std::make_unique<WinTray>(main_hwnd, tray_icon, L"CrossDesk",
                                     localization_language_index_);
+#elif defined(__APPLE__)
+  tray_ = std::make_unique<MacTray>(main_window_, "CrossDesk",
+                                    localization_language_index_);
 #endif
 
   ImGui_ImplSDL3_InitForSDLRenderer(main_window_, main_renderer_);
@@ -2049,6 +2052,23 @@ void Render::MainLoop() {
 
     UpdateInteractions();
   }
+}
+
+bool Render::MinimizeMainWindowToTray() {
+  if (!enable_minimize_to_tray_ || !main_window_) {
+    return false;
+  }
+
+#if defined(_WIN32) || defined(__APPLE__)
+  if (!tray_) {
+    return false;
+  }
+
+  tray_->MinimizeToTray();
+  return true;
+#else
+  return false;
+#endif
 }
 
 void Render::UpdateLabels() {
@@ -2910,9 +2930,18 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
       break;
 
     case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-      if (event.window.windowID != SDL_GetWindowID(stream_window_)) {
-        exit_ = true;
+      if (stream_window_ &&
+          event.window.windowID == SDL_GetWindowID(stream_window_)) {
+        break;
       }
+
+      if (main_window_ &&
+          event.window.windowID == SDL_GetWindowID(main_window_) &&
+          MinimizeMainWindowToTray()) {
+        break;
+      }
+
+      exit_ = true;
       break;
 
     case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:

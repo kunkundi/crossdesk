@@ -300,17 +300,13 @@ int Render::TitleBar(bool main_window) {
   }
 
   if (close_button_clicked) {
-#if _WIN32
-    if (enable_minimize_to_tray_) {
-      tray_->MinimizeToTray();
-    } else {
-#endif
-      SDL_Event event;
-      event.type = SDL_EVENT_QUIT;
-      SDL_PushEvent(&event);
-#if _WIN32
+    if (main_window && MinimizeMainWindowToTray()) {
+      return 0;
     }
-#endif
+
+    SDL_Event event;
+    event.type = SDL_EVENT_QUIT;
+    SDL_PushEvent(&event);
   }
 
   draw_list->AddLine(ImVec2(xmark_pos_x - xmark_size / 2 - 0.25f,

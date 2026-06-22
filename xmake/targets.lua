@@ -218,7 +218,8 @@ function setup_targets()
             add_includedirs("src/gui/tray", "src/service/windows",
                 {public = true})
         elseif is_os("macosx") then
-            add_files("src/gui/windows/*.mm")
+            add_files("src/gui/windows/*.mm", "src/gui/tray/*.mm")
+            add_includedirs("src/gui/tray", {public = true})
         end
 
     if is_os("windows") then

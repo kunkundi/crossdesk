@@ -75,7 +75,8 @@ function setup_platform_settings()
         add_links("SDL3")
         add_ldflags("-Wl,-ld_classic")
         add_cxflags("-Wno-unused-variable")
-        add_frameworks("OpenGL", "IOSurface", "ScreenCaptureKit", "AVFoundation",
-            "CoreMedia", "CoreVideo", "CoreAudio", "AudioToolbox")
+        add_frameworks("Cocoa", "OpenGL", "IOSurface", "ScreenCaptureKit",
+            "AVFoundation", "CoreMedia", "CoreVideo", "CoreAudio",
+            "AudioToolbox")
     end
 end
