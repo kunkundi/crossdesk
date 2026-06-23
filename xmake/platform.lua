@@ -35,7 +35,12 @@ function setup_platform_settings()
         add_links("pulse-simple", "pulse")
         add_requires("libyuv")
         add_syslinks("pthread", "dl")
-        add_links("SDL3", "asound", "X11", "Xtst", "Xrandr", "Xfixes")
+        add_links("SDL3", "asound", "X11", "Xext", "Xrender", "Xft", "Xtst",
+            "Xrandr", "Xfixes")
+        add_existing_include_dirs({
+            "/usr/include/freetype2",
+            "/usr/local/include/freetype2"
+        }, {system = true})
 
         if is_config("USE_DRM", true) then
             add_links("drm")

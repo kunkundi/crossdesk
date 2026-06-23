@@ -214,11 +214,14 @@ function setup_targets()
         add_includedirs("src/gui", "src/gui/panels", "src/gui/toolbars",
             "src/gui/windows", {public = true})
         if is_os("windows") then
-            add_files("src/gui/tray/*.cpp")
+            add_files("src/gui/tray/win_tray.cpp")
             add_includedirs("src/gui/tray", "src/service/windows",
                 {public = true})
         elseif is_os("macosx") then
             add_files("src/gui/windows/*.mm", "src/gui/tray/*.mm")
+            add_includedirs("src/gui/tray", {public = true})
+        elseif is_os("linux") then
+            add_files("src/gui/tray/linux_tray.cpp")
             add_includedirs("src/gui/tray", {public = true})
         end
 

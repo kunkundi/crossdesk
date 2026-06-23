@@ -1374,6 +1374,10 @@ int Render::CreateMainWindow() {
 #elif defined(__APPLE__)
   tray_ = std::make_unique<MacTray>(main_window_, "CrossDesk",
                                     localization_language_index_);
+#elif defined(__linux__) && !defined(__APPLE__)
+  tray_ = std::make_unique<LinuxTray>(main_window_, "CrossDesk",
+                                      localization_language_index_,
+                                      APP_EXIT_EVENT);
 #endif
 
   ImGui_ImplSDL3_InitForSDLRenderer(main_window_, main_renderer_);
@@ -1673,20 +1677,47 @@ int Render::SetupFontAndStyle(ImFont** system_chinese_font_out) {
 }
 
 int Render::DestroyMainWindowContext() {
+  if (!main_ctx_) {
+    return 0;
+  }
+
   ImGui::SetCurrentContext(main_ctx_);
   ImGui_ImplSDLRenderer3_Shutdown();
   ImGui_ImplSDL3_Shutdown();
   ImGui::DestroyContext(main_ctx_);
+  main_ctx_ = nullptr;
 
   return 0;
 }
 
 int Render::DestroyStreamWindowContext() {
+  if (!stream_ctx_) {
+    stream_window_inited_ = false;
+    return 0;
+  }
+
   stream_window_inited_ = false;
   ImGui::SetCurrentContext(stream_ctx_);
   ImGui_ImplSDLRenderer3_Shutdown();
   ImGui_ImplSDL3_Shutdown();
   ImGui::DestroyContext(stream_ctx_);
+  stream_ctx_ = nullptr;
+
+  return 0;
+}
+
+int Render::DestroyServerWindowContext() {
+  if (!server_ctx_) {
+    server_window_inited_ = false;
+    return 0;
+  }
+
+  server_window_inited_ = false;
+  ImGui::SetCurrentContext(server_ctx_);
+  ImGui_ImplSDLRenderer3_Shutdown();
+  ImGui_ImplSDL3_Shutdown();
+  ImGui::DestroyContext(server_ctx_);
+  server_ctx_ = nullptr;
 
   return 0;
 }
@@ -1955,9 +1986,12 @@ void Render::InitializeSDL() {
     screen_height_ = dm->h;
   }
 
-  STREAM_REFRESH_EVENT = SDL_RegisterEvents(1);
-  if (STREAM_REFRESH_EVENT == (uint32_t)-1) {
-    LOG_ERROR("Failed to register custom SDL event");
+  const uint32_t custom_event_base = SDL_RegisterEvents(2);
+  if (custom_event_base == static_cast<uint32_t>(-1)) {
+    LOG_ERROR("Failed to register custom SDL events");
+  } else {
+    STREAM_REFRESH_EVENT = custom_event_base;
+    APP_EXIT_EVENT = custom_event_base + 1;
   }
 
   LOG_INFO("Screen resolution: [{}x{}]", screen_width_, screen_height_);
@@ -2031,6 +2065,10 @@ void Render::MainLoop() {
       TranslateMessage(&msg);
       DispatchMessage(&msg);
     }
+#elif defined(__linux__) && !defined(__APPLE__)
+    if (tray_) {
+      tray_->ProcessEvents();
+    }
 #endif
 
     UpdateLabels();
@@ -2041,7 +2079,11 @@ void Render::MainLoop() {
     HandleServerWindow();
     HandleWindowsServiceIntegration();
 
-    DrawMainWindow();
+    const bool main_window_visible =
+        main_window_ && !(SDL_GetWindowFlags(main_window_) & SDL_WINDOW_HIDDEN);
+    if (main_window_visible) {
+      DrawMainWindow();
+    }
     if (stream_window_inited_) {
       DrawStreamWindow();
     }
@@ -2066,6 +2108,12 @@ bool Render::MinimizeMainWindowToTray() {
 
   tray_->MinimizeToTray();
   return true;
+#elif defined(__linux__) && !defined(__APPLE__)
+  if (!tray_) {
+    return false;
+  }
+
+  return tray_->MinimizeToTray();
 #else
   return false;
 #endif
@@ -2407,6 +2455,7 @@ void Render::HandleServerWindow() {
 
   if (need_to_destroy_server_window_) {
     DestroyServerWindow();
+    DestroyServerWindowContext();
     need_to_destroy_server_window_ = false;
   }
 }
@@ -2447,6 +2496,27 @@ void Render::Cleanup() {
   WaitForThumbnailSaveTasks();
 
   AudioDeviceDestroy();
+#if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
+  tray_.reset();
+#endif
+
+  if (stream_window_created_) {
+    if (stream_window_) {
+      SDL_SetWindowMouseGrab(stream_window_, false);
+    }
+    DestroyStreamWindow();
+  }
+  if (stream_ctx_) {
+    DestroyStreamWindowContext();
+  }
+
+  if (server_window_created_) {
+    DestroyServerWindow();
+  }
+  if (server_ctx_) {
+    DestroyServerWindowContext();
+  }
+
   DestroyMainWindowContext();
   DestroyMainWindow();
   SDL_Quit();
@@ -2858,6 +2928,20 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
       LOG_ERROR("Server context is null");
       return;
     }
+  }
+
+  if (APP_EXIT_EVENT != 0 && event.type == APP_EXIT_EVENT) {
+    LOG_INFO("Quit program from system tray");
+    if (stream_window_) {
+      SDL_SetWindowMouseGrab(stream_window_, false);
+    }
+#if defined(__linux__) && !defined(__APPLE__)
+    if (tray_) {
+      tray_->RemoveTrayIcon();
+    }
+#endif
+    exit_ = true;
+    return;
   }
 
   switch (event.type) {

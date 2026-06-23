@@ -128,7 +128,11 @@ bool Daemon::start(MainLoopFunc loop) {
   if (pid > 0) _exit(0);
 
   umask(0);
-  chdir("/");
+  if (chdir("/") != 0) {
+    std::cerr << "Failed to change daemon working directory to /: "
+              << std::strerror(errno) << std::endl;
+    return false;
+  }
 
   // redirect file descriptors: keep stdout/stderr if from terminal, else
   // redirect to /dev/null

@@ -356,10 +356,6 @@ int Render::SettingWindow() {
       ImGui::Separator();
 
       {
-#if !defined(_WIN32) && !defined(__APPLE__)
-        ImGui::BeginDisabled();
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
-#endif
         settings_items_offset += settings_items_padding;
         ImGui::SetCursorPosY(settings_items_offset);
         ImGui::AlignTextToFramePadding();
@@ -375,10 +371,6 @@ int Render::SettingWindow() {
 
         ImGui::Checkbox("##enable_minimize_to_tray_",
                         &enable_minimize_to_tray_);
-#if !defined(_WIN32) && !defined(__APPLE__)
-        ImGui::PopStyleColor();
-        ImGui::EndDisabled();
-#endif
       }
 
       ImGui::Separator();
@@ -626,14 +618,12 @@ int Render::SettingWindow() {
         }
         enable_daemon_last_ = enable_daemon_;
 
-#if defined(_WIN32) || defined(__APPLE__)
         if (enable_minimize_to_tray_) {
           config_center_->SetMinimizeToTray(true);
         } else {
           config_center_->SetMinimizeToTray(false);
         }
         enable_minimize_to_tray_last_ = enable_minimize_to_tray_;
-#endif
 
         // File transfer save path
         config_center_->SetFileTransferSavePath(file_transfer_save_path_buf_);

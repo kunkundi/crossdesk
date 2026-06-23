@@ -41,6 +41,8 @@
 #include "win_tray.h"
 #elif defined(__APPLE__)
 #include "mac_tray.h"
+#elif defined(__linux__)
+#include "linux_tray.h"
 #endif
 
 namespace crossdesk {
@@ -515,6 +517,8 @@ class Render {
   std::unique_ptr<WinTray> tray_;
 #elif defined(__APPLE__)
   std::unique_ptr<MacTray> tray_;
+#elif defined(__linux__)
+  std::unique_ptr<LinuxTray> tray_;
 #endif
 
   // main window properties
@@ -596,6 +600,7 @@ class Render {
   SDL_Event last_mouse_event{};
   SDL_AudioStream* output_stream_ = nullptr;
   uint32_t STREAM_REFRESH_EVENT = 0;
+  uint32_t APP_EXIT_EVENT = 0;
 #if _WIN32
   std::atomic<bool> pending_windows_service_sas_{false};
   bool local_service_status_received_ = false;
