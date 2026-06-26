@@ -167,6 +167,8 @@ struct TranslationRow {
     u8"P2P отключено")                                                         \
   X(p2p_connecting, u8"正在建立对等连接...", "P2P Connecting ...",             \
     u8"Подключение P2P...")                                                    \
+  X(p2p_gathering, u8"正在收集候选地址...", "Gathering candidates ...",         \
+    u8"Сбор кандидатов...")                                                    \
   X(receiving_screen, u8"画面接收中...", "Receiving screen...",                \
     u8"Получение изображения...")                                              \
   X(p2p_failed, u8"对等连接失败", "P2P Failed", u8"Сбой P2P")                  \
