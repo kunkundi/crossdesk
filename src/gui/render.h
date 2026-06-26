@@ -184,7 +184,11 @@ class Render {
     SDL_Rect stream_render_rect_;
     SDL_Rect stream_render_rect_last_;
     ImVec2 control_window_pos_;
-    ConnectionStatus connection_status_ = ConnectionStatus::Closed;
+    // Written from the minirtc/libnice callback thread (OnConnectionStatusCb)
+    // and the SDL main thread (remote_peer_panel connect button); read from
+    // the SDL main render thread (stream/control windows) and the SDL audio
+    // thread (SdlCaptureAudioIn). Atomic so those reads/writes are defined.
+    std::atomic<ConnectionStatus> connection_status_ = ConnectionStatus::Closed;
     TraversalMode traversal_mode_ = TraversalMode::UnknownMode;
     int fps_ = 0;
     int frame_count_ = 0;
@@ -816,6 +820,11 @@ class Render {
   void WaitForThumbnailSaveTasks();
 
   /* ------ server mode ------ */
+  // connection_status_ / connection_host_names_ are read on the main
+  // render thread (DrawServerWindow, HandleWindowsServiceIntegration) and
+  // written from minirtc/libnice callback threads (OnConnectionStatusCb,
+  // OnReceiveDataBufferCb). Guard every access with this shared mutex.
+  std::shared_mutex connection_status_mutex_;
   std::unordered_map<std::string, ConnectionStatus> connection_status_;
   std::unordered_map<std::string, std::string> connection_host_names_;
   std::string selected_server_remote_id_ = "";

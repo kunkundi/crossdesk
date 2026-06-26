@@ -6,6 +6,9 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <memory>
+#include <mutex>
+#include <shared_mutex>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -489,7 +492,7 @@ void Render::SendKeyboardHeartbeat(bool force) {
   }
 
   const auto props = props_it->second;
-  if (props->connection_status_ != ConnectionStatus::Connected ||
+  if (props->connection_status_.load() != ConnectionStatus::Connected ||
       !props->peer_) {
     last_keyboard_heartbeat_tick_ = now;
     return;
@@ -531,7 +534,7 @@ int Render::SendKeyCommand(int key_code, bool is_down, uint32_t scan_code,
   if (!target_id.empty()) {
     if (client_properties_.find(target_id) != client_properties_.end()) {
       auto props = client_properties_[target_id];
-      if (props->connection_status_ == ConnectionStatus::Connected &&
+      if (props->connection_status_.load() == ConnectionStatus::Connected &&
           props->peer_) {
         std::string msg = remote_action.to_json();
         int ret = SendReliableDataFrame(props->peer_, msg.c_str(), msg.size(),
@@ -928,10 +931,10 @@ void Render::SdlCaptureAudioIn(void* userdata, Uint8* stream, int len) {
   }
 
   if (1) {
-    // std::shared_lock lock(render->client_properties_mutex_);
+    std::shared_lock lock(render->client_properties_mutex_);
     for (const auto& it : render->client_properties_) {
       auto props = it.second;
-      if (props->connection_status_ == ConnectionStatus::Connected) {
+      if (props->connection_status_.load() == ConnectionStatus::Connected) {
         if (props->peer_) {
           SendAudioFrame(props->peer_, (const char*)stream, len,
                          render->audio_label_.c_str());
@@ -1324,12 +1327,20 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
     return;
   }
 
-  // std::shared_lock lock(render->client_properties_mutex_);
   if (remote_action.type == ControlType::host_infomation) {
-    if (render->client_properties_.find(remote_id) !=
-        render->client_properties_.end()) {
+    bool is_client_mode = false;
+    std::shared_ptr<SubStreamWindowProperties> props;
+    {
+      std::shared_lock lock(render->client_properties_mutex_);
+      auto props_it = render->client_properties_.find(remote_id);
+      if (props_it != render->client_properties_.end()) {
+        is_client_mode = true;
+        props = props_it->second;
+      }
+    }
+
+    if (is_client_mode) {
       // client mode
-      auto props = render->client_properties_.find(remote_id)->second;
       if (props && props->remote_host_name_.empty()) {
         props->remote_host_name_ = std::string(remote_action.i.host_name,
                                                remote_action.i.host_name_size);
@@ -1345,10 +1356,13 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
       FreeRemoteAction(remote_action);
     } else {
       // server mode
-      render->connection_host_names_[remote_id] = std::string(
-          remote_action.i.host_name, remote_action.i.host_name_size);
-      LOG_INFO("Remote hostname: [{}]",
-               render->connection_host_names_[remote_id]);
+      std::string host_name(remote_action.i.host_name,
+                            remote_action.i.host_name_size);
+      {
+        std::unique_lock lock(render->connection_status_mutex_);
+        render->connection_host_names_[remote_id] = host_name;
+      }
+      LOG_INFO("Remote hostname: [{}]", host_name);
       FreeRemoteAction(remote_action);
     }
   } else {
@@ -1480,14 +1494,19 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
   if (!render) return;
 
   std::string remote_id(user_id, user_id_size);
-  // std::shared_lock lock(render->client_properties_mutex_);
-  auto it = render->client_properties_.find(remote_id);
-  auto props = (it != render->client_properties_.end()) ? it->second : nullptr;
+  std::shared_ptr<SubStreamWindowProperties> props;
+  {
+    std::shared_lock lock(render->client_properties_mutex_);
+    auto it = render->client_properties_.find(remote_id);
+    if (it != render->client_properties_.end()) {
+      props = it->second;
+    }
+  }
 
   if (props) {
     render->is_client_mode_ = true;
     render->show_connection_status_window_ = true;
-    props->connection_status_ = status;
+    props->connection_status_.store(status);
 
     switch (status) {
       case ConnectionStatus::Connected: {
@@ -1603,7 +1622,10 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
   } else {
     render->is_client_mode_ = false;
     render->show_connection_status_window_ = true;
-    render->connection_status_[remote_id] = status;
+    {
+      std::unique_lock lock(render->connection_status_mutex_);
+      render->connection_status_[remote_id] = status;
+    }
 
     switch (status) {
       case ConnectionStatus::Connected: {
@@ -1659,11 +1681,14 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
         render->start_speaker_capturer_ = true;
         render->remote_client_id_ = remote_id;
         render->start_mouse_controller_ = true;
-        if (std::all_of(render->connection_status_.begin(),
-                        render->connection_status_.end(), [](const auto& kv) {
-                          return kv.first.find("web") != std::string::npos;
-                        })) {
-          render->show_cursor_ = true;
+        {
+          std::shared_lock lock(render->connection_status_mutex_);
+          if (std::all_of(render->connection_status_.begin(),
+                          render->connection_status_.end(), [](const auto& kv) {
+                            return kv.first.find("web") != std::string::npos;
+                          })) {
+            render->show_cursor_ = true;
+          }
         }
 
         break;
@@ -1672,12 +1697,18 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
       case ConnectionStatus::Failed:
       case ConnectionStatus::Closed: {
         render->ReleaseRemotePressedKeys(remote_id, "connection_closed");
-        if (std::all_of(render->connection_status_.begin(),
-                        render->connection_status_.end(), [](const auto& kv) {
-                          return kv.second == ConnectionStatus::Closed ||
-                                 kv.second == ConnectionStatus::Failed ||
-                                 kv.second == ConnectionStatus::Disconnected;
-                        })) {
+        bool all_disconnected = false;
+        {
+          std::shared_lock lock(render->connection_status_mutex_);
+          all_disconnected = std::all_of(
+              render->connection_status_.begin(),
+              render->connection_status_.end(), [](const auto& kv) {
+                return kv.second == ConnectionStatus::Closed ||
+                       kv.second == ConnectionStatus::Failed ||
+                       kv.second == ConnectionStatus::Disconnected;
+              });
+        }
+        if (all_disconnected) {
           render->need_to_destroy_server_window_ = true;
           render->is_server_mode_ = false;
 #if defined(__linux__) && !defined(__APPLE__)
@@ -1704,18 +1735,24 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
             render->audio_capture_ = false;
           }
 
-          render->connection_status_.erase(remote_id);
-          render->connection_host_names_.erase(remote_id);
+          {
+            std::unique_lock lock(render->connection_status_mutex_);
+            render->connection_status_.erase(remote_id);
+            render->connection_host_names_.erase(remote_id);
+          }
           if (render->screen_capturer_) {
             render->screen_capturer_->ResetToInitialMonitor();
           }
         }
 
-        if (std::all_of(render->connection_status_.begin(),
-                        render->connection_status_.end(), [](const auto& kv) {
-                          return kv.first.find("web") == std::string::npos;
-                        })) {
-          render->show_cursor_ = false;
+        {
+          std::shared_lock lock(render->connection_status_mutex_);
+          if (std::all_of(render->connection_status_.begin(),
+                          render->connection_status_.end(), [](const auto& kv) {
+                            return kv.first.find("web") == std::string::npos;
+                          })) {
+            render->show_cursor_ = false;
+          }
         }
 
         break;

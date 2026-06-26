@@ -31,8 +31,9 @@ bool Render::ConnectionStatusWindow(
 
   ImGui::SetWindowFontScale(0.5f);
   std::string text;
+  const ConnectionStatus status = props->connection_status_.load();
 
-  if (ConnectionStatus::Connecting == props->connection_status_) {
+  if (ConnectionStatus::Connecting == status) {
     text = localization::p2p_connecting[localization_language_index_];
     ImGui::SetCursorPosX(connection_status_window_width * 0.43f);
     ImGui::SetCursorPosY(connection_status_window_height * 0.67f);
@@ -48,7 +49,7 @@ bool Render::ConnectionStatusWindow(
       }
       ret_flag = true;
     }
-  } else if (ConnectionStatus::Gathering == props->connection_status_) {
+  } else if (ConnectionStatus::Gathering == status) {
     text = localization::p2p_gathering[localization_language_index_];
     ImGui::SetCursorPosX(connection_status_window_width * 0.43f);
     ImGui::SetCursorPosY(connection_status_window_height * 0.67f);
@@ -64,7 +65,7 @@ bool Render::ConnectionStatusWindow(
       }
       ret_flag = true;
     }
-  } else if (ConnectionStatus::Connected == props->connection_status_) {
+  } else if (ConnectionStatus::Connected == status) {
     text = localization::p2p_connected[localization_language_index_];
     ImGui::SetCursorPosX(connection_status_window_width * 0.43f);
     ImGui::SetCursorPosY(connection_status_window_height * 0.67f);
@@ -74,7 +75,7 @@ bool Render::ConnectionStatusWindow(
         ImGui::IsKeyPressed(ImGuiKey_Escape)) {
       show_connection_status_window_ = false;
     }
-  } else if (ConnectionStatus::Disconnected == props->connection_status_) {
+  } else if (ConnectionStatus::Disconnected == status) {
     text = localization::p2p_disconnected[localization_language_index_];
     ImGui::SetCursorPosX(connection_status_window_width * 0.43f);
     ImGui::SetCursorPosY(connection_status_window_height * 0.67f);
@@ -84,7 +85,7 @@ bool Render::ConnectionStatusWindow(
         ImGui::IsKeyPressed(ImGuiKey_Escape)) {
       show_connection_status_window_ = false;
     }
-  } else if (ConnectionStatus::Failed == props->connection_status_) {
+  } else if (ConnectionStatus::Failed == status) {
     text = localization::p2p_failed[localization_language_index_];
     ImGui::SetCursorPosX(connection_status_window_width * 0.43f);
     ImGui::SetCursorPosY(connection_status_window_height * 0.67f);
@@ -94,7 +95,7 @@ bool Render::ConnectionStatusWindow(
         ImGui::IsKeyPressed(ImGuiKey_Escape)) {
       show_connection_status_window_ = false;
     }
-  } else if (ConnectionStatus::Closed == props->connection_status_) {
+  } else if (ConnectionStatus::Closed == status) {
     text = localization::p2p_closed[localization_language_index_];
     ImGui::SetCursorPosX(connection_status_window_width * 0.43f);
     ImGui::SetCursorPosY(connection_status_window_height * 0.67f);
@@ -104,7 +105,7 @@ bool Render::ConnectionStatusWindow(
         ImGui::IsKeyPressed(ImGuiKey_Escape)) {
       show_connection_status_window_ = false;
     }
-  } else if (ConnectionStatus::IncorrectPassword == props->connection_status_) {
+  } else if (ConnectionStatus::IncorrectPassword == status) {
     if (!password_validating_) {
       if (password_validating_time_ == 1) {
         text = localization::input_password[localization_language_index_];
@@ -167,8 +168,7 @@ bool Render::ConnectionStatusWindow(
       ImGui::SetCursorPosX(connection_status_window_width * 0.43f);
       ImGui::SetCursorPosY(connection_status_window_height * 0.67f);
     }
-  } else if (ConnectionStatus::NoSuchTransmissionId ==
-             props->connection_status_) {
+  } else if (ConnectionStatus::NoSuchTransmissionId == status) {
     text = localization::no_such_id[localization_language_index_];
     ImGui::SetCursorPosX(connection_status_window_width * 0.43f);
     ImGui::SetCursorPosY(connection_status_window_height * 0.67f);

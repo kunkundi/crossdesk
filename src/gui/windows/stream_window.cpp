@@ -7,7 +7,7 @@ namespace crossdesk {
 void Render::DrawConnectionStatusText(
     std::shared_ptr<SubStreamWindowProperties>& props) {
   std::string text;
-  switch (props->connection_status_) {
+  switch (props->connection_status_.load()) {
     case ConnectionStatus::Disconnected:
       text = localization::p2p_disconnected[localization_language_index_];
       break;
@@ -34,7 +34,7 @@ void Render::DrawConnectionStatusText(
 void Render::DrawReceivingScreenText(
     std::shared_ptr<SubStreamWindowProperties>& props) {
   if (!props->connection_established_ ||
-      props->connection_status_ != ConnectionStatus::Connected) {
+      props->connection_status_.load() != ConnectionStatus::Connected) {
     return;
   }
 

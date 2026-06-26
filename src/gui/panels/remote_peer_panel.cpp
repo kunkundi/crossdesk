@@ -211,7 +211,7 @@ int Render::ConnectTo(const std::string& remote_id, const char* password,
         props->control_window_max_width_ = title_bar_height_ * 10.0f;
         props->control_window_max_height_ = title_bar_height_ * 7.0f;
 
-        props->connection_status_ = ConnectionStatus::Connecting;
+        props->connection_status_.store(ConnectionStatus::Connecting);
         show_connection_status_window_ = true;
 
         if (!props->peer_) {
@@ -231,7 +231,7 @@ int Render::ConnectTo(const std::string& remote_id, const char* password,
         AddDataStream(props->peer_, props->file_feedback_label_.c_str(), true);
         AddDataStream(props->peer_, props->clipboard_label_.c_str(), true);
 
-        props->connection_status_ = ConnectionStatus::Connecting;
+        props->connection_status_.store(ConnectionStatus::Connecting);
 
         peer_to_init = props->peer_;
         local_id = props->local_id_;

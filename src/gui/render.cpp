@@ -13,6 +13,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
+#include <mutex>
+#include <shared_mutex>
 #include <string>
 #include <thread>
 
@@ -2175,11 +2178,13 @@ void Render::HandleWindowsServiceIntegration() {
     return;
   }
 
-  const bool has_connected_remote =
-      std::any_of(connection_status_.begin(), connection_status_.end(),
-                  [](const auto& entry) {
-                    return entry.second == ConnectionStatus::Connected;
-                  });
+  const bool has_connected_remote = [&] {
+    std::shared_lock lock(connection_status_mutex_);
+    return std::any_of(connection_status_.begin(), connection_status_.end(),
+                       [](const auto& entry) {
+                         return entry.second == ConnectionStatus::Connected;
+                       });
+  }();
   if (!has_connected_remote) {
     ResetLocalWindowsServiceState(false);
     return;

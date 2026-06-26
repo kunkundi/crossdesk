@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <memory>
+#include <shared_mutex>
 #include <string>
 #include <vector>
 
@@ -149,14 +151,17 @@ int Render::RemoteClientInfoWindow() {
   float font_scale = localization_language_index_ == 0 ? 0.5f : 0.45f;
 
   std::vector<std::pair<std::string, std::string>> remote_entries;
-  remote_entries.reserve(connection_status_.size());
-  for (const auto& kv : connection_status_) {
-    const auto host_it = connection_host_names_.find(kv.first);
-    const std::string display_name =
-        (host_it != connection_host_names_.end() && !host_it->second.empty())
-            ? host_it->second
-            : kv.first;
-    remote_entries.emplace_back(kv.first, display_name);
+  {
+    std::shared_lock lock(connection_status_mutex_);
+    remote_entries.reserve(connection_status_.size());
+    for (const auto& kv : connection_status_) {
+      const auto host_it = connection_host_names_.find(kv.first);
+      const std::string display_name =
+          (host_it != connection_host_names_.end() && !host_it->second.empty())
+              ? host_it->second
+              : kv.first;
+      remote_entries.emplace_back(kv.first, display_name);
+    }
   }
 
   auto find_display_name_by_remote_id =
@@ -220,10 +225,14 @@ int Render::RemoteClientInfoWindow() {
   ImGui::SetWindowFontScale(font_scale);
 
   if (!selected_server_remote_id_.empty()) {
-    auto it = connection_status_.find(selected_server_remote_id_);
-    const ConnectionStatus status = (it == connection_status_.end())
-                                        ? ConnectionStatus::Closed
-                                        : it->second;
+    ConnectionStatus status = ConnectionStatus::Closed;
+    {
+      std::shared_lock lock(connection_status_mutex_);
+      auto it = connection_status_.find(selected_server_remote_id_);
+      if (it != connection_status_.end()) {
+        status = it->second;
+      }
+    }
 
     ImGui::Text(
         "%s",

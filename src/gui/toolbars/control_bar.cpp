@@ -191,7 +191,7 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
           RemoteAction remote_action;
           remote_action.type = ControlType::display_id;
           remote_action.d = i;
-          if (props->connection_status_ == ConnectionStatus::Connected) {
+          if (props->connection_status_.load() == ConnectionStatus::Connected) {
             std::string msg = remote_action.to_json();
             SendReliableDataFrame(props->peer_, msg.c_str(), msg.size(),
                                   props->control_data_label_.c_str());
@@ -215,7 +215,7 @@ int Render::ControlBar(std::shared_ptr<SubStreamWindowProperties>& props) {
 
     auto send_service_command = [&](ServiceCommandFlag flag,
                                     const char* log_action) {
-      if (props->connection_status_ == ConnectionStatus::Connected &&
+      if (props->connection_status_.load() == ConnectionStatus::Connected &&
           props->peer_) {
         RemoteAction remote_action;
         remote_action.type = ControlType::service_command;
