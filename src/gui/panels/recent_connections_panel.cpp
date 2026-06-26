@@ -90,14 +90,16 @@ int Render::ShowRecentConnections() {
   ImGui::PushStyleColor(ImGuiCol_ChildBg,
                         ImVec4(239.0f / 255, 240.0f / 255, 242.0f / 255, 1.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
+  const ImGuiWindowFlags container_flags =
+      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+      ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollWithMouse |
+      (recent_connections_.empty()
+           ? ImGuiWindowFlags_None
+           : ImGuiWindowFlags_AlwaysHorizontalScrollbar);
   ImGui::BeginChild(
       "RecentConnectionsContainer",
       ImVec2(recent_connection_panel_width, recent_connection_panel_height),
-      ImGuiChildFlags_Borders,
-      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-          ImGuiWindowFlags_NoBringToFrontOnFocus |
-          ImGuiWindowFlags_AlwaysHorizontalScrollbar |
-          ImGuiWindowFlags_NoScrollWithMouse);
+      ImGuiChildFlags_Borders, container_flags);
   ImGui::PopStyleVar();
   ImGui::PopStyleColor();
   size_t recent_connections_count = recent_connections_.size();
