@@ -72,6 +72,7 @@ class ScreenCapturerDxgi : public ScreenCapturer {
   std::thread thread_;
   int fps_ = 60;
   cb_desktop_data callback_ = nullptr;
+  std::mutex switch_mutex_;
 
   unsigned char* nv12_frame_ = nullptr;
   int nv12_width_ = 0;

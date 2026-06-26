@@ -306,7 +306,7 @@ int ScreenCapturerWgc::SwitchTo(int monitor_index) {
     return 0;
   }
 
-  if (monitor_index >= display_info_list_.size()) {
+  if (monitor_index < 0 || monitor_index >= static_cast<int>(display_info_list_.size())) {
     LOG_ERROR("Invalid monitor index: {}", monitor_index);
     return -1;
   }

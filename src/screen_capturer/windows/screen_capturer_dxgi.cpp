@@ -111,6 +111,7 @@ int ScreenCapturerDxgi::Resume(int monitor_index) {
 }
 
 int ScreenCapturerDxgi::SwitchTo(int monitor_index) {
+  std::lock_guard<std::mutex> lock(switch_mutex_);
   if (monitor_index < 0 || monitor_index >= (int)display_info_list_.size()) {
     LOG_ERROR("DXGI: invalid monitor index {}", monitor_index);
     return -1;
@@ -121,6 +122,7 @@ int ScreenCapturerDxgi::SwitchTo(int monitor_index) {
   if (!CreateDuplicationForMonitor(monitor_index_)) {
     LOG_ERROR("DXGI: create duplication failed for monitor {}",
               monitor_index_.load());
+    paused_ = false;  // Reset paused_ on failure
     return -2;
   }
   paused_ = false;
@@ -130,6 +132,7 @@ int ScreenCapturerDxgi::SwitchTo(int monitor_index) {
 }
 
 int ScreenCapturerDxgi::ResetToInitialMonitor() {
+  std::lock_guard<std::mutex> lock(switch_mutex_);
   if (display_info_list_.empty()) return -1;
   int target = initial_monitor_index_;
   if (target < 0 || target >= (int)display_info_list_.size()) return -1;
@@ -245,6 +248,7 @@ bool ScreenCapturerDxgi::CreateDuplicationForMonitor(int monitor_index) {
 }
 
 bool ScreenCapturerDxgi::RecreateDuplicationForCurrentMonitor() {
+  std::lock_guard<std::mutex> lock(switch_mutex_);
   ReleaseDuplication();
   int current_monitor = monitor_index_.load();
   if (CreateDuplicationForMonitor(current_monitor)) {
@@ -374,8 +378,14 @@ void ScreenCapturerDxgi::CaptureLoop() {
                        even_width, even_width, even_height);
 
     if (callback_) {
-      callback_(nv12_frame_, nv12_size, even_width, even_height,
-                display_info_list_[monitor_index_].name.c_str());
+      int idx = monitor_index_.load();
+      if (idx >= 0 && idx < static_cast<int>(display_info_list_.size())) {
+        callback_(nv12_frame_, nv12_size, even_width, even_height,
+                  display_info_list_[idx].name.c_str());
+      } else {
+        LOG_ERROR("DXGI: CaptureLoop invalid monitor_index {} (list size {})",
+                  idx, display_info_list_.size());
+      }
     }
 
     d3d_context_->Unmap(staging_.Get(), 0);

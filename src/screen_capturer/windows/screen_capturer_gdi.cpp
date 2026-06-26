@@ -148,7 +148,14 @@ void ScreenCapturerGdi::CaptureLoop() {
       continue;
     }
 
-    const auto& di = display_info_list_[monitor_index_];
+    int idx = monitor_index_.load();
+    if (idx < 0 || idx >= static_cast<int>(display_info_list_.size())) {
+      LOG_ERROR("GDI: CaptureLoop invalid monitor_index {} (list size {})",
+                idx, display_info_list_.size());
+      std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
+      continue;
+    }
+    const auto& di = display_info_list_[idx];
     int left = di.left;
     int top = di.top;
     int width = di.width & ~1;
