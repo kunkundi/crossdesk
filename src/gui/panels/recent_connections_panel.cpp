@@ -258,51 +258,34 @@ int Render::ShowRecentConnections() {
                                IM_COL32(0, 0, 0, 40), footer_rounding,
                                ImDrawFlags_RoundCornersBottom);
 
-      const char* status_text =
-          (online ? localization::online[localization_language_index_]
-                  : localization::offline[localization_language_index_])
-              .c_str();
+      const float status_left_margin = recent_connection_footer_height * 0.22f;
+      const float status_gap = recent_connection_footer_height * 0.20f;
+      const float dot_radius = recent_connection_footer_height * 0.18f;
 
-      ImGui::SetWindowFontScale(0.45f);
-      const ImVec2 status_text_size = ImGui::CalcTextSize(status_text);
+      const ImVec2 dot_center(
+          footer_screen_pos.x + status_left_margin + dot_radius,
+          footer_screen_pos.y + recent_connection_footer_height * 0.5f);
+      const ImU32 dot_color =
+          online ? IM_COL32(34, 197, 94, 255) : IM_COL32(156, 163, 175, 255);
 
-      const float status_padding_x = recent_connection_footer_height * 0.3f;
-      const float status_padding_y = recent_connection_footer_height * 0.19f;
-      const float status_left_margin = recent_connection_footer_height * 0.18f;
-      const float status_gap =
-          recent_connection_footer_height * (online ? 0.16f : 0.22f);
-      const float status_text_width =
-          status_text_size.x + status_padding_x * 1.9f;
-      const float status_text_height =
-          status_text_size.y + status_padding_y * 0.4f;
+      // Layered halo simulates a radial gradient glow for the online state.
+      if (online) {
+        const float halo_radius = dot_radius * 2.2f;
+        const int halo_layers = 8;
+        for (int i = halo_layers; i > 0; --i) {
+          const float t = static_cast<float>(i) / halo_layers;
+          const float r = dot_radius + (halo_radius - dot_radius) * t;
+          const int alpha = static_cast<int>(14.0f * (1.0f - t) + 4.0f);
+          draw_list->AddCircleFilled(
+              dot_center, r, IM_COL32(74, 222, 128, alpha));
+        }
+      }
+      draw_list->AddCircleFilled(dot_center, dot_radius, dot_color);
 
-      const ImVec2 status_badge_min = ImVec2(
-          footer_screen_pos.x + status_left_margin,
-          footer_screen_pos.y +
-              (recent_connection_footer_height - status_text_height) * 0.5f);
-      const ImVec2 status_badge_max =
-          ImVec2(status_badge_min.x + status_text_width,
-                 status_badge_min.y + status_text_height);
-
-      const ImU32 status_badge_bg =
-          online ? IM_COL32(220, 252, 231, 245) : IM_COL32(229, 231, 235, 245);
-      const ImU32 status_badge_border =
-          online ? IM_COL32(74, 222, 128, 255) : IM_COL32(156, 163, 175, 255);
-      const ImU32 status_text_color =
-          online ? IM_COL32(21, 128, 61, 255) : IM_COL32(55, 65, 81, 255);
-
-      draw_list->AddRectFilled(status_badge_min, status_badge_max,
-                               status_badge_bg, status_text_height * 0.5f);
-      draw_list->AddRect(status_badge_min, status_badge_max,
-                         status_badge_border, status_text_height * 0.5f);
-
-      const ImVec2 status_text_pos =
-          ImVec2(status_badge_min.x + status_padding_x, status_badge_min.y);
-
-      draw_list->AddText(status_text_pos, status_text_color, status_text);
+      const float status_block_end_x = dot_center.x + dot_radius;
 
       ImVec2 text_min =
-          ImVec2(status_badge_max.x + status_gap, footer_screen_pos.y);
+          ImVec2(status_block_end_x + status_gap, footer_screen_pos.y);
 
       ImVec2 text_max =
           ImVec2(footer_screen_end.x - recent_connection_name_width * 0.05f,
