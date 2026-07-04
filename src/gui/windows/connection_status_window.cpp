@@ -180,6 +180,19 @@ bool Render::ConnectionStatusWindow(
       DestroyPeer(&props->peer_);
       ret_flag = true;
     }
+  } else if (ConnectionStatus::RemoteUnavailable == status) {
+    text = localization::device_offline[localization_language_index_];
+    ImGui::SetCursorPosX(connection_status_window_width * 0.43f);
+    ImGui::SetCursorPosY(connection_status_window_height * 0.67f);
+    // ok
+    if (ImGui::Button(localization::ok[localization_language_index_].c_str()) ||
+        ImGui::IsKeyPressed(ImGuiKey_Enter) ||
+        ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+      show_connection_status_window_ = false;
+      re_enter_remote_id_ = true;
+      DestroyPeer(&props->peer_);
+      ret_flag = true;
+    }
   }
 
   auto text_width = ImGui::CalcTextSize(text.c_str()).x;

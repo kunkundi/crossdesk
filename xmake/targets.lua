@@ -50,6 +50,11 @@ function setup_targets()
         add_includedirs("src/device_controller", "src/common")
         add_files("tests/keyboard_state_protocol_test.cpp")
 
+    target("connection_status_protocol_test")
+        set_kind("binary")
+        set_default(false)
+        add_files("tests/connection_status_protocol_test.cpp")
+
     target("windows_manifest_resource_test")
         set_kind("binary")
         set_default(false)

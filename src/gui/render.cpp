@@ -46,6 +46,13 @@ namespace crossdesk {
 
 namespace {
 constexpr uint64_t kCaptureResumeKeyFrameGapMs = 500;
+constexpr auto kPresenceProbeTimeout = std::chrono::seconds(5);
+constexpr auto kConnectionAttemptTimeout = std::chrono::seconds(20);
+
+bool IsConnectionAttemptPending(ConnectionStatus status) {
+  return status == ConnectionStatus::Connecting ||
+         status == ConnectionStatus::Gathering;
+}
 
 const ImWchar* GetMultilingualGlyphRanges() {
   static std::vector<ImWchar> glyph_ranges;
@@ -2078,6 +2085,7 @@ void Render::MainLoop() {
     HandleRecentConnections();
     HandleConnectionStatusChange();
     HandlePendingPresenceProbe();
+    HandleConnectionTimeouts();
     HandleStreamWindow();
     HandleServerWindow();
     HandleWindowsServiceIntegration();
@@ -2398,6 +2406,72 @@ void Render::HandlePendingPresenceProbe() {
   show_offline_warning_window_ = true;
 }
 
+void Render::HandleConnectionTimeouts() {
+  const auto now = std::chrono::steady_clock::now();
+
+  bool presence_probe_timed_out = false;
+  std::string presence_remote_id;
+  {
+    std::lock_guard<std::mutex> lock(pending_presence_probe_mutex_);
+    if (pending_presence_probe_ && !pending_presence_result_ready_ &&
+        now - pending_presence_probe_started_at_ >= kPresenceProbeTimeout) {
+      presence_probe_timed_out = true;
+      presence_remote_id = pending_presence_remote_id_;
+      pending_presence_probe_ = false;
+      pending_presence_result_ready_ = false;
+      pending_presence_online_ = false;
+      pending_presence_remote_id_.clear();
+      pending_presence_password_.clear();
+      pending_presence_remember_password_ = false;
+    }
+  }
+
+  if (presence_probe_timed_out) {
+    offline_warning_text_ =
+        localization::device_offline[localization_language_index_];
+    show_offline_warning_window_ = true;
+    LOG_WARN("Presence probe timed out for [{}]", presence_remote_id);
+  }
+
+  bool rejoin_state_changed = false;
+  for (auto& [_, props] : client_properties_) {
+    if (!props || !props->connection_attempt_active_.load()) {
+      continue;
+    }
+
+    const ConnectionStatus status = props->connection_status_.load();
+    if (!IsConnectionAttemptPending(status)) {
+      props->connection_attempt_active_.store(false);
+      continue;
+    }
+
+    if (now - props->connection_attempt_started_at_ <
+        kConnectionAttemptTimeout) {
+      continue;
+    }
+
+    LOG_WARN("Connection to [{}] timed out, status={}", props->remote_id_,
+             static_cast<int>(status));
+    props->connection_attempt_active_.store(false);
+    props->connection_established_ = false;
+    props->rejoin_ = false;
+    props->connection_status_.store(ConnectionStatus::Failed);
+    focused_remote_id_ = props->remote_id_;
+    show_connection_status_window_ = true;
+    rejoin_state_changed = true;
+  }
+
+  if (rejoin_state_changed) {
+    need_to_rejoin_ = false;
+    for (const auto& [_, props] : client_properties_) {
+      if (props && props->rejoin_) {
+        need_to_rejoin_ = true;
+        break;
+      }
+    }
+  }
+}
+
 int Render::RequestSingleDevicePresence(const std::string& remote_id,
                                         const char* password,
                                         bool remember_password) {
@@ -2410,6 +2484,7 @@ int Render::RequestSingleDevicePresence(const std::string& remote_id,
     pending_presence_probe_ = true;
     pending_presence_result_ready_ = false;
     pending_presence_online_ = false;
+    pending_presence_probe_started_at_ = std::chrono::steady_clock::now();
     pending_presence_remote_id_ = remote_id;
     pending_presence_password_ = password ? password : "";
     pending_presence_remember_password_ = remember_password;

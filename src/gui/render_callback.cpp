@@ -1507,6 +1507,10 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
     render->is_client_mode_ = true;
     render->show_connection_status_window_ = true;
     props->connection_status_.store(status);
+    if (status != ConnectionStatus::Connecting &&
+        status != ConnectionStatus::Gathering) {
+      props->connection_attempt_active_.store(false);
+    }
 
     switch (status) {
       case ConnectionStatus::Connected: {
@@ -1608,7 +1612,8 @@ void Render::OnConnectionStatusCb(ConnectionStatus status, const char* user_id,
         }
         break;
       }
-      case ConnectionStatus::NoSuchTransmissionId: {
+      case ConnectionStatus::NoSuchTransmissionId:
+      case ConnectionStatus::RemoteUnavailable: {
         if (render->connect_button_pressed_) {
           props->connection_established_ = false;
           render->connect_button_label_ =

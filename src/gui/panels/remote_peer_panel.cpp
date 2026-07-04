@@ -249,6 +249,11 @@ int Render::ConnectTo(const std::string& remote_id, const char* password,
   // std::shared_lock read_lock(client_properties_mutex_);
   auto props = client_properties_[remote_id];
   if (!props->connection_established_) {
+    props->connection_status_.store(ConnectionStatus::Connecting);
+    props->connection_attempt_active_.store(true);
+    props->connection_attempt_started_at_ = std::chrono::steady_clock::now();
+    show_connection_status_window_ = true;
+
     props->remember_password_ = remember_password;
     if (strcmp(password, "") != 0 &&
         strcmp(password, props->remote_password_) != 0) {

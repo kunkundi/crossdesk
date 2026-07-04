@@ -110,6 +110,8 @@ class Render {
     SignalStatus signal_status_ = SignalStatus::SignalClosed;
     bool connection_established_ = false;
     bool rejoin_ = false;
+    std::atomic<bool> connection_attempt_active_ = false;
+    std::chrono::steady_clock::time_point connection_attempt_started_at_;
     bool net_traffic_stats_button_pressed_ = false;
     bool enable_mouse_control_ = true;
     bool mouse_controller_is_started_ = false;
@@ -220,6 +222,7 @@ class Render {
   void HandleRecentConnections();
   void HandleConnectionStatusChange();
   void HandlePendingPresenceProbe();
+  void HandleConnectionTimeouts();
   void HandleStreamWindow();
   void HandleServerWindow();
   void Cleanup();
@@ -833,6 +836,7 @@ class Render {
   bool pending_presence_probe_ = false;
   bool pending_presence_result_ready_ = false;
   bool pending_presence_online_ = false;
+  std::chrono::steady_clock::time_point pending_presence_probe_started_at_;
   std::string pending_presence_remote_id_ = "";
   std::string pending_presence_password_ = "";
   bool pending_presence_remember_password_ = false;
