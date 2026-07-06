@@ -64,6 +64,7 @@ struct ScopedEnvironmentBlock {
   LPVOID environment = nullptr;
 };
 
+std::wstring Utf8ToWide(const std::string& value);
 std::string WideToUtf8(const std::wstring& value);
 
 std::wstring GetCurrentExecutablePathW() {
@@ -358,24 +359,32 @@ std::string BuildSecureDesktopMouseIpcCommand(int x, int y, int wheel,
 
 std::string BuildSecureInputHelperKeyboardCommand(
     int key_code, bool is_down, uint32_t scan_code, bool extended,
-    const std::string& interactive_stage) {
+    const std::string& interactive_stage,
+    const std::string& interactive_desktop) {
   std::ostringstream stream;
   stream << kCrossDeskSecureInputKeyboardCommandPrefix << key_code << ":"
          << (is_down ? 1 : 0) << ":" << scan_code << ":" << (extended ? 1 : 0);
   if (!interactive_stage.empty()) {
     stream << ":" << interactive_stage;
+    if (!interactive_desktop.empty()) {
+      stream << ":" << interactive_desktop;
+    }
   }
   return stream.str();
 }
 
 std::string BuildSecureInputHelperMouseCommand(
     int x, int y, int wheel, int flag,
-    const std::string& interactive_stage) {
+    const std::string& interactive_stage,
+    const std::string& interactive_desktop) {
   std::ostringstream stream;
   stream << kCrossDeskSecureInputMouseCommandPrefix << x << ":" << y << ":"
          << wheel << ":" << flag;
   if (!interactive_stage.empty()) {
     stream << ":" << interactive_stage;
+    if (!interactive_desktop.empty()) {
+      stream << ":" << interactive_desktop;
+    }
   }
   return stream.str();
 }
@@ -592,15 +601,23 @@ const char* DetermineInteractiveStage(bool lock_app_visible,
 }
 
 bool IsCredentialUiVisible(bool prelogin, bool session_locked,
-                           bool logon_ui_running,
+                           bool logon_ui_running, bool consent_ui_visible,
                            bool input_desktop_available,
                            bool secure_desktop_active) {
-  return (prelogin || session_locked || secure_desktop_active) &&
-         (logon_ui_running || !input_desktop_available);
+  return consent_ui_visible ||
+         ((prelogin || session_locked || secure_desktop_active) &&
+          (logon_ui_running || !input_desktop_available));
 }
 
 std::wstring SecureInputHelperDesktopForStage(
-    const std::string& interactive_stage) {
+    const std::string& interactive_stage,
+    const std::string& interactive_desktop) {
+  if (!interactive_desktop.empty()) {
+    std::wstring interactive_desktop_w = Utf8ToWide(interactive_desktop);
+    if (!interactive_desktop_w.empty()) {
+      return L"winsta0\\" + interactive_desktop_w;
+    }
+  }
   if (interactive_stage == "credential-ui" ||
       interactive_stage == "secure-desktop") {
     return L"winsta0\\Winlogon";
@@ -663,7 +680,12 @@ bool QuerySessionLockState(DWORD session_id, bool* session_locked_out) {
   return success;
 }
 
-bool IsLogonUiRunningInSession(DWORD session_id) {
+bool IsProcessRunningInSession(const wchar_t* executable_name,
+                               DWORD session_id) {
+  if (executable_name == nullptr || executable_name[0] == L'\0') {
+    return false;
+  }
+
   HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
   if (snapshot == INVALID_HANDLE_VALUE) {
     return false;
@@ -674,7 +696,7 @@ bool IsLogonUiRunningInSession(DWORD session_id) {
   bool found = false;
   if (Process32FirstW(snapshot, &entry)) {
     do {
-      if (_wcsicmp(entry.szExeFile, L"LogonUI.exe") != 0) {
+      if (_wcsicmp(entry.szExeFile, executable_name) != 0) {
         continue;
       }
 
@@ -689,6 +711,14 @@ bool IsLogonUiRunningInSession(DWORD session_id) {
 
   CloseHandle(snapshot);
   return found;
+}
+
+bool IsLogonUiRunningInSession(DWORD session_id) {
+  return IsProcessRunningInSession(L"LogonUI.exe", session_id);
+}
+
+bool IsConsentUiRunningInSession(DWORD session_id) {
+  return IsProcessRunningInSession(L"Consent.exe", session_id);
 }
 
 InputDesktopInfo GetInputDesktopInfo() {
@@ -722,6 +752,24 @@ InputDesktopInfo GetInputDesktopInfo() {
   info.available = true;
   info.name = WideToUtf8(desktop_name);
   return info;
+}
+
+std::wstring Utf8ToWide(const std::string& value) {
+  if (value.empty()) {
+    return {};
+  }
+
+  int size_needed =
+      MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, nullptr, 0);
+  if (size_needed <= 1) {
+    return {};
+  }
+
+  std::wstring result(static_cast<size_t>(size_needed), L'\0');
+  MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, result.data(),
+                      size_needed);
+  result.pop_back();
+  return result;
 }
 
 std::string WideToUtf8(const std::wstring& value) {
@@ -1024,6 +1072,7 @@ int CrossDeskServiceHost::InitializeRuntime() {
   secure_input_helper_last_error_code_ = 0;
   session_locked_ = false;
   logon_ui_visible_ = false;
+  consent_ui_visible_ = false;
   prelogin_ = false;
   secure_desktop_active_ = false;
   input_desktop_available_ = false;
@@ -1032,6 +1081,7 @@ int CrossDeskServiceHost::InitializeRuntime() {
   session_helper_report_input_desktop_available_ = false;
   session_helper_report_lock_app_visible_ = false;
   session_helper_report_logon_ui_visible_ = false;
+  session_helper_report_consent_ui_visible_ = false;
   session_helper_report_secure_desktop_active_ = false;
   session_helper_report_credential_ui_visible_ = false;
   session_helper_report_unlock_ui_visible_ = false;
@@ -1056,6 +1106,7 @@ int CrossDeskServiceHost::InitializeRuntime() {
   session_helper_report_interactive_stage_.clear();
   secure_input_helper_last_error_.clear();
   secure_input_helper_interactive_stage_.clear();
+  secure_input_helper_interactive_desktop_.clear();
   last_session_event_type_ = 0;
   last_session_event_session_id_ = active_session_id_;
   RefreshSessionState();
@@ -1283,6 +1334,7 @@ void CrossDeskServiceHost::RefreshSessionState() {
     process_session_id_ = process_session_id;
   }
   logon_ui_visible_ = IsLogonUiRunningInSession(active_session_id_);
+  consent_ui_visible_ = IsConsentUiRunningInSession(active_session_id_);
   InputDesktopInfo desktop_info = GetInputDesktopInfo();
   input_desktop_available_ = desktop_info.available;
   input_desktop_error_code_ = desktop_info.error_code;
@@ -1312,6 +1364,7 @@ void CrossDeskServiceHost::ResetSessionHelperReportedStateLocked(
   session_helper_report_input_desktop_.clear();
   session_helper_report_lock_app_visible_ = false;
   session_helper_report_logon_ui_visible_ = false;
+  session_helper_report_consent_ui_visible_ = false;
   session_helper_report_secure_desktop_active_ = false;
   session_helper_report_credential_ui_visible_ = false;
   session_helper_report_unlock_ui_visible_ = false;
@@ -1334,10 +1387,12 @@ bool CrossDeskServiceHost::HasSecureInputUiLocked() const {
   const bool service_host_credential_ui_visible =
       !session_helper_status_ok_ &&
       IsCredentialUiVisible(prelogin_, session_locked_, logon_ui_visible_,
+                            consent_ui_visible_,
                             input_desktop_available_,
                             secure_desktop_active_);
   return IsSasSecureDesktopGraceActiveLocked() || prelogin_ ||
          secure_desktop_active_ || service_host_credential_ui_visible ||
+         session_helper_report_consent_ui_visible_ ||
          session_helper_report_credential_ui_visible_ ||
          session_helper_report_secure_desktop_active_ ||
          session_helper_report_unlock_ui_visible_ ||
@@ -1392,6 +1447,7 @@ std::string CrossDeskServiceHost::ResolveInteractiveStageLocked() const {
 
   const bool service_host_credential_ui_visible =
       IsCredentialUiVisible(prelogin_, session_locked_, logon_ui_visible_,
+                            consent_ui_visible_,
                             input_desktop_available_,
                             secure_desktop_active_);
   return DetermineInteractiveStage(
@@ -1399,6 +1455,33 @@ std::string CrossDeskServiceHost::ResolveInteractiveStageLocked() const {
       session_helper_report_credential_ui_visible_ ||
           service_host_credential_ui_visible,
       session_helper_report_secure_desktop_active_ || secure_desktop_active_);
+}
+
+std::string CrossDeskServiceHost::ResolveInteractiveDesktopLocked(
+    const std::string& interactive_stage) const {
+  if (interactive_stage == "lock-screen") {
+    return "Default";
+  }
+
+  if (session_helper_status_ok_ &&
+      session_helper_report_input_desktop_available_ &&
+      !session_helper_report_input_desktop_.empty() &&
+      (interactive_stage == "credential-ui" ||
+       session_helper_report_consent_ui_visible_)) {
+    return session_helper_report_input_desktop_;
+  }
+
+  if (input_desktop_available_ && !input_desktop_name_.empty() &&
+      (interactive_stage == "credential-ui" || consent_ui_visible_)) {
+    return input_desktop_name_;
+  }
+
+  if (interactive_stage == "credential-ui" ||
+      interactive_stage == "secure-desktop") {
+    return "Winlogon";
+  }
+
+  return "";
 }
 
 std::wstring CrossDeskServiceHost::GetSessionHelperPath() const {
@@ -1491,6 +1574,7 @@ void CrossDeskServiceHost::ReapSecureInputHelper() {
     secure_input_helper_exit_code_ = exit_code;
     secure_input_helper_started_at_tick_ = 0;
     secure_input_helper_interactive_stage_.clear();
+    secure_input_helper_interactive_desktop_.clear();
   }
 
   if (process_handle != nullptr) {
@@ -1550,6 +1634,7 @@ void CrossDeskServiceHost::StopSecureInputHelper() {
     secure_input_helper_process_id_ = 0;
     secure_input_helper_started_at_tick_ = 0;
     secure_input_helper_interactive_stage_.clear();
+    secure_input_helper_interactive_desktop_.clear();
   }
 
   if (stop_event_handle != nullptr) {
@@ -1678,7 +1763,8 @@ bool CrossDeskServiceHost::LaunchSessionHelper(DWORD session_id) {
 }
 
 bool CrossDeskServiceHost::LaunchSecureInputHelper(
-    DWORD session_id, const std::string& interactive_stage) {
+    DWORD session_id, const std::string& interactive_stage,
+    const std::string& interactive_desktop) {
   std::wstring helper_path = GetSecureInputHelperPath();
   if (helper_path.empty() || !std::filesystem::exists(helper_path)) {
     std::lock_guard<std::mutex> lock(state_mutex_);
@@ -1713,7 +1799,7 @@ bool CrossDeskServiceHost::LaunchSecureInputHelper(
   STARTUPINFOW startup_info{};
   startup_info.cb = sizeof(startup_info);
   std::wstring secure_input_helper_desktop =
-      SecureInputHelperDesktopForStage(interactive_stage);
+      SecureInputHelperDesktopForStage(interactive_stage, interactive_desktop);
   startup_info.lpDesktop =
       const_cast<LPWSTR>(secure_input_helper_desktop.c_str());
   PROCESS_INFORMATION process_info{};
@@ -1765,13 +1851,14 @@ bool CrossDeskServiceHost::LaunchSecureInputHelper(
     secure_input_helper_running_ = true;
     secure_input_helper_started_at_tick_ = GetTickCount64();
     secure_input_helper_interactive_stage_ = interactive_stage;
+    secure_input_helper_interactive_desktop_ = interactive_desktop;
   }
 
   LOG_INFO(
       "Secure input helper started: session_id={}, pid={}, stage='{}', "
-      "desktop='{}'",
+      "interactive_desktop='{}', desktop='{}'",
       session_id, process_info.dwProcessId, interactive_stage,
-      WideToUtf8(secure_input_helper_desktop));
+      interactive_desktop, WideToUtf8(secure_input_helper_desktop));
   return true;
 }
 
@@ -1860,6 +1947,8 @@ void CrossDeskServiceHost::RefreshSessionHelperReportedState() {
       json.value("lock_app_visible", false);
   session_helper_report_logon_ui_visible_ =
       json.value("logon_ui_visible", false);
+  session_helper_report_consent_ui_visible_ =
+      json.value("consent_ui_visible", false);
   session_helper_report_secure_desktop_active_ =
       json.value("secure_desktop_active", false);
   session_helper_report_credential_ui_visible_ =
@@ -1885,6 +1974,7 @@ void CrossDeskServiceHost::RecordSessionEvent(DWORD event_type,
       process_session_id_ = process_session_id;
     }
     logon_ui_visible_ = IsLogonUiRunningInSession(active_session_id_);
+    consent_ui_visible_ = IsConsentUiRunningInSession(active_session_id_);
     InputDesktopInfo desktop_info = GetInputDesktopInfo();
     input_desktop_available_ = desktop_info.available;
     input_desktop_error_code_ = desktop_info.error_code;
@@ -1911,7 +2001,7 @@ void CrossDeskServiceHost::RecordSessionEvent(DWORD event_type,
   LOG_INFO("Session event: type={}, session_id={}, active_session_id={}",
            SessionEventToString(event_type), session_id, active_session_id_);
   EnsureSessionHelper();
-  if (!secure_desktop_active_ && !logon_ui_visible_) {
+  if (!secure_desktop_active_ && !logon_ui_visible_ && !consent_ui_visible_) {
     StopSecureInputHelper();
   }
 }
@@ -1955,10 +2045,13 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
   bool launch_secure_input_helper = false;
   DWORD secure_input_target_session_id = 0xFFFFFFFF;
   std::string secure_input_interactive_stage;
+  std::string secure_input_interactive_desktop;
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
     secure_input_target_session_id = active_session_id_;
     secure_input_interactive_stage = ResolveInteractiveStageLocked();
+    secure_input_interactive_desktop =
+        ResolveInteractiveDesktopLocked(secure_input_interactive_stage);
     keep_secure_input_helper =
         ShouldKeepSecureInputHelperLocked(secure_input_target_session_id);
     launch_secure_input_helper =
@@ -1966,14 +2059,17 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
         (!secure_input_helper_running_ ||
          secure_input_helper_session_id_ != secure_input_target_session_id ||
          secure_input_helper_interactive_stage_ !=
-             secure_input_interactive_stage);
+             secure_input_interactive_stage ||
+         secure_input_helper_interactive_desktop_ !=
+             secure_input_interactive_desktop);
   }
 
   if (keep_secure_input_helper) {
     if (launch_secure_input_helper) {
       StopSecureInputHelper();
       LaunchSecureInputHelper(secure_input_target_session_id,
-                              secure_input_interactive_stage);
+                              secure_input_interactive_stage,
+                              secure_input_interactive_desktop);
     }
   } else {
     StopSecureInputHelper();
@@ -1999,6 +2095,8 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
       EscapeJsonString(secure_input_helper_last_error_);
   std::string secure_input_helper_interactive_stage =
       EscapeJsonString(secure_input_helper_interactive_stage_);
+  std::string secure_input_helper_interactive_desktop =
+      EscapeJsonString(secure_input_helper_interactive_desktop_);
   bool interactive_state_ready = session_helper_status_ok_;
   const bool sas_secure_desktop_grace_active =
       IsSasSecureDesktopGraceActiveLocked();
@@ -2011,6 +2109,7 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
           : false;
   const bool service_host_credential_ui_visible =
       IsCredentialUiVisible(prelogin_, session_locked_, logon_ui_visible_,
+                            consent_ui_visible_,
                             input_desktop_available_,
                             secure_desktop_active_);
   bool credential_ui_visible =
@@ -2062,6 +2161,8 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
          << ",\"unlock_ui_visible\":" << (unlock_ui_visible ? "true" : "false")
          << ",\"credential_ui_visible\":"
          << (credential_ui_visible ? "true" : "false")
+         << ",\"consent_ui_visible\":"
+         << (consent_ui_visible_ ? "true" : "false")
          << ",\"password_box_visible\":"
          << (credential_ui_visible ? "true" : "false")
          << ",\"logon_ui_visible\":" << (logon_ui_visible_ ? "true" : "false")
@@ -2104,6 +2205,8 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
          << (session_helper_report_lock_app_visible_ ? "true" : "false")
          << ",\"session_helper_report_logon_ui_visible\":"
          << (session_helper_report_logon_ui_visible_ ? "true" : "false")
+         << ",\"session_helper_report_consent_ui_visible\":"
+         << (session_helper_report_consent_ui_visible_ ? "true" : "false")
          << ",\"session_helper_report_secure_desktop_active\":"
          << (session_helper_report_secure_desktop_active_ ? "true" : "false")
          << ",\"session_helper_report_credential_ui_visible\":"
@@ -2134,6 +2237,8 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
          << secure_input_helper_last_error_code_
          << ",\"secure_input_helper_stage\":\""
          << secure_input_helper_interactive_stage << "\""
+         << ",\"secure_input_helper_desktop\":\""
+         << secure_input_helper_interactive_desktop << "\""
          << ",\"secure_input_helper_uptime_ms\":"
          << (secure_input_helper_started_at_tick_ >= started_at_tick_
                  ? (GetTickCount64() - secure_input_helper_started_at_tick_)
@@ -2190,12 +2295,15 @@ std::string CrossDeskServiceHost::SendSecureDesktopKeyboardInput(
   bool helper_running = false;
   bool can_inject = false;
   std::string interactive_stage;
+  std::string interactive_desktop;
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
     target_session_id = active_session_id_;
     interactive_stage = ResolveInteractiveStageLocked();
+    interactive_desktop = ResolveInteractiveDesktopLocked(interactive_stage);
     const bool helper_stage_matches =
-        secure_input_helper_interactive_stage_ == interactive_stage;
+        secure_input_helper_interactive_stage_ == interactive_stage &&
+        secure_input_helper_interactive_desktop_ == interactive_desktop;
     helper_running = secure_input_helper_running_ &&
                      secure_input_helper_session_id_ == target_session_id &&
                      helper_stage_matches;
@@ -2211,7 +2319,8 @@ std::string CrossDeskServiceHost::SendSecureDesktopKeyboardInput(
 
   if (!helper_running) {
     StopSecureInputHelper();
-    if (!LaunchSecureInputHelper(target_session_id, interactive_stage)) {
+    if (!LaunchSecureInputHelper(target_session_id, interactive_stage,
+                                 interactive_desktop)) {
       std::lock_guard<std::mutex> lock(state_mutex_);
       return BuildErrorJson(secure_input_helper_last_error_.c_str(),
                             secure_input_helper_last_error_code_);
@@ -2221,7 +2330,8 @@ std::string CrossDeskServiceHost::SendSecureDesktopKeyboardInput(
   return QueryNamedPipeMessage(
       GetCrossDeskSecureInputHelperPipeName(target_session_id),
       BuildSecureInputHelperKeyboardCommand(key_code, is_down, scan_code,
-                                            extended, interactive_stage),
+                                            extended, interactive_stage,
+                                            interactive_desktop),
       1000);
 }
 
@@ -2237,12 +2347,15 @@ std::string CrossDeskServiceHost::SendSecureDesktopMouseInput(int x, int y,
   bool helper_running = false;
   bool can_inject = false;
   std::string interactive_stage;
+  std::string interactive_desktop;
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
     target_session_id = active_session_id_;
     interactive_stage = ResolveInteractiveStageLocked();
+    interactive_desktop = ResolveInteractiveDesktopLocked(interactive_stage);
     const bool helper_stage_matches =
-        secure_input_helper_interactive_stage_ == interactive_stage;
+        secure_input_helper_interactive_stage_ == interactive_stage &&
+        secure_input_helper_interactive_desktop_ == interactive_desktop;
     helper_running = secure_input_helper_running_ &&
                      secure_input_helper_session_id_ == target_session_id &&
                      helper_stage_matches;
@@ -2258,7 +2371,8 @@ std::string CrossDeskServiceHost::SendSecureDesktopMouseInput(int x, int y,
 
   if (!helper_running) {
     StopSecureInputHelper();
-    if (!LaunchSecureInputHelper(target_session_id, interactive_stage)) {
+    if (!LaunchSecureInputHelper(target_session_id, interactive_stage,
+                                 interactive_desktop)) {
       std::lock_guard<std::mutex> lock(state_mutex_);
       return BuildErrorJson(secure_input_helper_last_error_.c_str(),
                             secure_input_helper_last_error_code_);
@@ -2267,7 +2381,8 @@ std::string CrossDeskServiceHost::SendSecureDesktopMouseInput(int x, int y,
 
   return QueryNamedPipeMessage(
       GetCrossDeskSecureInputHelperPipeName(target_session_id),
-      BuildSecureInputHelperMouseCommand(x, y, wheel, flag, interactive_stage),
+      BuildSecureInputHelperMouseCommand(x, y, wheel, flag, interactive_stage,
+                                         interactive_desktop),
       1000);
 }
 

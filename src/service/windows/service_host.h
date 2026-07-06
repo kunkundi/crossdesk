@@ -46,7 +46,8 @@ class CrossDeskServiceHost {
   void ReapSecureInputHelper();
   void StopSecureInputHelper();
   bool LaunchSecureInputHelper(DWORD session_id,
-                               const std::string& interactive_stage);
+                               const std::string& interactive_stage,
+                               const std::string& interactive_desktop);
   std::wstring GetSessionHelperPath() const;
   std::wstring GetSessionHelperStopEventName(DWORD session_id) const;
   std::wstring GetSecureInputHelperPath() const;
@@ -60,6 +61,8 @@ class CrossDeskServiceHost {
   bool IsSasSecureDesktopGraceActiveLocked() const;
   bool ShouldKeepSecureInputHelperLocked(DWORD target_session_id) const;
   std::string ResolveInteractiveStageLocked() const;
+  std::string ResolveInteractiveDesktopLocked(
+      const std::string& interactive_stage) const;
   void RefreshSessionHelperReportedState();
   void RecordSessionEvent(DWORD event_type, DWORD session_id);
   std::string HandleIpcCommand(const std::string& command);
@@ -108,6 +111,7 @@ class CrossDeskServiceHost {
   ULONGLONG sas_secure_desktop_until_tick_ = 0;
   bool session_locked_ = false;
   bool logon_ui_visible_ = false;
+  bool consent_ui_visible_ = false;
   bool prelogin_ = false;
   bool secure_desktop_active_ = false;
   bool input_desktop_available_ = false;
@@ -117,6 +121,7 @@ class CrossDeskServiceHost {
   bool session_helper_report_input_desktop_available_ = false;
   bool session_helper_report_lock_app_visible_ = false;
   bool session_helper_report_logon_ui_visible_ = false;
+  bool session_helper_report_consent_ui_visible_ = false;
   bool session_helper_report_secure_desktop_active_ = false;
   bool session_helper_report_credential_ui_visible_ = false;
   bool session_helper_report_unlock_ui_visible_ = false;
@@ -137,6 +142,7 @@ class CrossDeskServiceHost {
   std::string session_helper_report_interactive_stage_;
   std::string secure_input_helper_last_error_;
   std::string secure_input_helper_interactive_stage_;
+  std::string secure_input_helper_interactive_desktop_;
 
   static CrossDeskServiceHost* instance_;
 };

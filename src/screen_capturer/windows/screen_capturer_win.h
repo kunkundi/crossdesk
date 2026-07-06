@@ -75,6 +75,7 @@ class ScreenCapturerWin : public ScreenCapturer {
   int secure_shared_fps_ = 0;
   bool secure_shared_show_cursor_ = true;
   std::string secure_shared_stage_;
+  std::string secure_shared_desktop_;
   bool secure_shared_capture_started_ = false;
 
   void BuildCanonicalFromImpl();
@@ -87,6 +88,7 @@ class ScreenCapturerWin : public ScreenCapturer {
   bool StartSecureDesktopSharedCapture(DWORD session_id, int left, int top,
                                        int width, int height,
                                        const std::string& stage,
+                                       const std::string& desktop,
                                        bool show_cursor, int fps,
                                        std::string* error_out);
   void StopSecureDesktopSharedCapture(DWORD session_id);

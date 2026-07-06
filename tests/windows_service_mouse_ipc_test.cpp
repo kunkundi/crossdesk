@@ -84,7 +84,7 @@ int main() {
   ok &= ExpectContains("targets.lua", targets,
                        "target(\"crossdesk_session_helper\")");
   ok &= ExpectContains("targets.lua", targets,
-                       "add_files(\"scripts/windows/crossdesk.rc\")");
+                       "add_files(crossdesk_windows_resource)");
   ok &= ExpectContains("session_helper_main.cpp", session_helper,
                        "EnablePerMonitorDpiAwareness");
   ok &= ExpectContains("session_helper_main.cpp", session_helper,
@@ -105,11 +105,33 @@ int main() {
                        "const std::string& interactive_stage");
   ok &= ExpectContains("service_host.h", service_host_h,
                        "bool LaunchSecureInputHelper(DWORD session_id,\n"
-                       "                               const std::string& interactive_stage)");
+                       "                               const std::string& interactive_stage,\n"
+                       "                               const std::string& interactive_desktop)");
   ok &= ExpectContains("service_host.h", service_host_h,
                        "std::string secure_input_helper_interactive_stage_");
   ok &= ExpectContains("service_host.cpp", service_host,
                        "SecureInputHelperDesktopForStage");
+  ok &= ExpectContains("service_host.cpp", service_host,
+                       "IsConsentUiRunningInSession");
+  ok &= ExpectContains("service_host.cpp", service_host,
+                       "L\"Consent.exe\"");
+  ok &= ExpectContains("session_helper_main.cpp", session_helper,
+                       "IsConsentUiRunningInCurrentSession");
+  ok &= ExpectContains("session_helper_main.cpp", session_helper,
+                       "L\"Consent.exe\"");
+  ok &= ExpectContains("session_helper_main.cpp", session_helper,
+                       "desktop_info.available && consent_ui_visible");
+  ok &= ExpectContains("service_host.cpp", service_host,
+                       "session_helper_report_input_desktop_available_ &&");
+  ok &= ExpectContains("service_host.cpp", service_host,
+                       "session_helper_report_consent_ui_visible_");
+  ok &= ExpectContains("service_host.cpp", service_host,
+                       "secure_input_helper_interactive_desktop_");
+  ok &= ExpectContains("service_host.cpp", service_host,
+                       "SecureInputHelperDesktopForStage("
+                       "interactive_stage, interactive_desktop)");
+  ok &= ExpectContains("service_host.cpp", service_host,
+                       "return L\"winsta0\\\\\" + interactive_desktop_w");
   ok &= ExpectContains("service_host.cpp", service_host,
                        "return L\"winsta0\\\\Winlogon\"");
   ok &= ExpectContains("service_host.cpp", service_host,
@@ -121,7 +143,8 @@ int main() {
   ok &= ExpectContains("service_host.cpp", service_host,
                        "secure_input_helper_interactive_stage_.clear()");
   ok &= ExpectContains("service_host.cpp", service_host,
-                       "LaunchSecureInputHelper(target_session_id, interactive_stage)");
+                       "LaunchSecureInputHelper(target_session_id, interactive_stage,\n"
+                       "                                 interactive_desktop)");
   ok &= ExpectContains("service_host.cpp", service_host,
                        "\\\"secure_input_helper_stage\\\":\\\"");
   ok &= ExpectContains("service_host.cpp", service_host,
@@ -189,10 +212,11 @@ int main() {
                        "json[\"stage\"]");
   ok &= ExpectContains("session_helper_main.cpp", session_helper,
                        "ParseSecureInputKeyboardCommand(command, &key_code, &is_down, &scan_code,\n"
-                       "                                      &extended, &interactive_stage)");
+                       "                                      &extended, &interactive_stage,\n"
+                       "                                      &interactive_desktop)");
   ok &= ExpectContains("session_helper_main.cpp", session_helper,
                        "InjectKeyboardInput(key_code, is_down, scan_code, extended,\n"
-                       "                            interactive_stage)");
+                       "                            interactive_stage, interactive_desktop)");
   ok &= ExpectContains("session_helper_main.cpp", session_helper,
                        "InjectMouseInput(mouse_request)");
   ok &= ExpectNotContains("session_helper_main.cpp", session_helper,

@@ -51,6 +51,7 @@ struct HelperState {
   std::string input_desktop_name;
   bool lock_app_visible = false;
   bool logon_ui_visible = false;
+  bool consent_ui_visible = false;
   bool secure_desktop_active = false;
   ULONGLONG started_at_tick = 0;
   ULONGLONG last_update_tick = 0;
@@ -64,6 +65,7 @@ struct SecureCaptureRequest {
   bool show_cursor = true;
   int fps = 30;
   std::string interactive_stage;
+  std::string interactive_desktop;
 };
 
 struct SecureMouseRequest {
@@ -72,6 +74,7 @@ struct SecureMouseRequest {
   int wheel = 0;
   int flag = 0;
   std::string interactive_stage;
+  std::string interactive_desktop;
 };
 
 struct SecureCaptureBuffers {
@@ -288,6 +291,10 @@ bool IsLogonUiRunningInCurrentSession(DWORD session_id) {
   return IsProcessRunningInCurrentSession(L"LogonUI.exe", session_id);
 }
 
+bool IsConsentUiRunningInCurrentSession(DWORD session_id) {
+  return IsProcessRunningInCurrentSession(L"Consent.exe", session_id);
+}
+
 bool IsLockAppRunningInCurrentSession(DWORD session_id) {
   return IsProcessRunningInCurrentSession(L"LockApp.exe", session_id);
 }
@@ -341,10 +348,12 @@ const char* DetermineInteractiveStage(bool lock_app_visible,
 }
 
 bool IsCredentialUiVisible(bool session_locked, bool logon_ui_running,
+                           bool consent_ui_visible,
                            bool input_desktop_available,
                            bool secure_desktop_active) {
-  return (session_locked || secure_desktop_active) &&
-         (logon_ui_running || !input_desktop_available);
+  return consent_ui_visible ||
+         ((session_locked || secure_desktop_active) &&
+          (logon_ui_running || !input_desktop_available));
 }
 
 std::string BuildErrorJson(const char* error, DWORD error_code = 0) {
@@ -367,6 +376,10 @@ void UpdateHelperState(HelperState* helper_state) {
       IsLockAppRunningInCurrentSession(helper_state->session_id);
   bool logon_ui_visible =
       IsLogonUiRunningInCurrentSession(helper_state->session_id);
+  bool consent_ui_visible =
+      IsConsentUiRunningInCurrentSession(helper_state->session_id);
+  const bool consent_on_input_desktop =
+      desktop_info.available && consent_ui_visible;
   const bool input_desktop_is_winlogon =
       _stricmp(desktop_info.name.c_str(), "Winlogon") == 0;
   const bool inaccessible_secure_input_desktop =
@@ -388,6 +401,8 @@ void UpdateHelperState(HelperState* helper_state) {
   helper_state->input_desktop_name = desktop_info.name;
   helper_state->lock_app_visible = lock_app_visible;
   helper_state->logon_ui_visible = logon_ui_visible;
+  helper_state->consent_ui_visible =
+      consent_on_input_desktop || consent_ui_visible;
   helper_state->secure_desktop_active = secure_desktop_active;
   helper_state->last_update_tick = GetTickCount64();
 }
@@ -401,6 +416,7 @@ std::string BuildHelperStatusResponse(HelperState* helper_state) {
   std::lock_guard<std::mutex> lock(helper_state->mutex);
   const bool credential_ui_visible = IsCredentialUiVisible(
       helper_state->session_locked, helper_state->logon_ui_visible,
+      helper_state->consent_ui_visible,
       helper_state->input_desktop_available,
       helper_state->secure_desktop_active);
   const bool unlock_ui_visible =
@@ -414,6 +430,7 @@ std::string BuildHelperStatusResponse(HelperState* helper_state) {
   json["input_desktop"] = helper_state->input_desktop_name;
   json["lock_app_visible"] = helper_state->lock_app_visible;
   json["logon_ui_visible"] = helper_state->logon_ui_visible;
+  json["consent_ui_visible"] = helper_state->consent_ui_visible;
   json["secure_desktop_active"] = helper_state->secure_desktop_active;
   json["credential_ui_visible"] = credential_ui_visible;
   json["unlock_ui_visible"] = unlock_ui_visible;
@@ -639,8 +656,12 @@ bool EnsureThreadInteractiveDesktop(HDESK* opened_desktop_out = nullptr) {
   return false;
 }
 
-const wchar_t* DesktopNameForInteractiveStage(
-    const std::string& interactive_stage) {
+std::wstring DesktopNameForInteractiveStage(
+    const std::string& interactive_stage,
+    const std::string& interactive_desktop) {
+  if (!interactive_desktop.empty()) {
+    return Utf8ToWide(interactive_desktop);
+  }
   if (interactive_stage == "credential-ui" ||
       interactive_stage == "secure-desktop") {
     return L"Winlogon";
@@ -648,7 +669,7 @@ const wchar_t* DesktopNameForInteractiveStage(
   if (interactive_stage == "lock-screen") {
     return L"Default";
   }
-  return nullptr;
+  return {};
 }
 
 struct DesktopSwitchDetails {
@@ -666,14 +687,14 @@ struct InputInjectionResult {
 };
 
 DesktopSwitchDetails BuildDesktopSwitchDetails(
-    const std::string& interactive_stage) {
+    const std::string& interactive_stage,
+    const std::string& interactive_desktop) {
   DesktopSwitchDetails details;
   details.stage = interactive_stage;
-  const wchar_t* desktop_name =
-      DesktopNameForInteractiveStage(interactive_stage);
+  const std::wstring desktop_name =
+      DesktopNameForInteractiveStage(interactive_stage, interactive_desktop);
   details.target_desktop =
-      desktop_name != nullptr ? WideToUtf8(std::wstring(desktop_name))
-                              : "input-or-Winlogon";
+      !desktop_name.empty() ? WideToUtf8(desktop_name) : "input-or-Winlogon";
   details.current_desktop = WideToUtf8(GetCurrentThreadDesktopNameW());
   return details;
 }
@@ -709,6 +730,7 @@ Json BuildInputFailureJson(const InputInjectionResult& result) {
 
 bool EnsureThreadInteractiveDesktopForStage(
     const std::string& interactive_stage,
+    const std::string& interactive_desktop,
     HDESK* opened_desktop_out = nullptr,
     DesktopSwitchDetails* switch_details = nullptr) {
   if (opened_desktop_out != nullptr) {
@@ -716,15 +738,15 @@ bool EnsureThreadInteractiveDesktopForStage(
   }
 
   DesktopSwitchDetails local_details =
-      BuildDesktopSwitchDetails(interactive_stage);
+      BuildDesktopSwitchDetails(interactive_stage, interactive_desktop);
   if (switch_details != nullptr) {
     *switch_details = local_details;
   }
 
-  const wchar_t* desktop_name =
-      DesktopNameForInteractiveStage(interactive_stage);
-  if (desktop_name != nullptr) {
-    if (EnsureThreadDesktop(desktop_name, opened_desktop_out)) {
+  const std::wstring desktop_name =
+      DesktopNameForInteractiveStage(interactive_stage, interactive_desktop);
+  if (!desktop_name.empty()) {
+    if (EnsureThreadDesktop(desktop_name.c_str(), opened_desktop_out)) {
       if (switch_details != nullptr) {
         switch_details->current_desktop =
             WideToUtf8(GetCurrentThreadDesktopNameW());
@@ -741,7 +763,7 @@ bool EnsureThreadInteractiveDesktopForStage(
     LOG_WARN(
         "Failed to switch secure input helper to stage desktop, stage='{}', "
         "desktop='{}', error={}, current='{}'",
-        interactive_stage, WideToUtf8(std::wstring(desktop_name)),
+        interactive_stage, WideToUtf8(desktop_name),
         error,
         WideToUtf8(GetCurrentThreadDesktopNameW()));
     SetLastError(error);
@@ -790,10 +812,12 @@ bool PreferSideSpecificVkInjection(int key_code) {
 
 InputInjectionResult InjectKeyboardInput(
     int key_code, bool is_down, uint32_t scan_code, bool extended,
-    const std::string& interactive_stage) {
+    const std::string& interactive_stage,
+    const std::string& interactive_desktop) {
   ScopedDesktopHandle desktop;
   DesktopSwitchDetails desktop_switch;
   if (!EnsureThreadInteractiveDesktopForStage(interactive_stage,
+                                              interactive_desktop,
                                               &desktop.handle,
                                               &desktop_switch)) {
     const DWORD error = GetLastError();
@@ -851,11 +875,37 @@ InputInjectionResult InjectKeyboardInput(
   return BuildInputSuccess();
 }
 
+void ParseInteractionTail(const std::string& tail,
+                          std::string* interactive_stage_out,
+                          std::string* interactive_desktop_out) {
+  if (interactive_stage_out != nullptr) {
+    interactive_stage_out->clear();
+  }
+  if (interactive_desktop_out != nullptr) {
+    interactive_desktop_out->clear();
+  }
+  if (tail.empty()) {
+    return;
+  }
+
+  const size_t separator = tail.find(':');
+  if (interactive_stage_out != nullptr) {
+    *interactive_stage_out = separator == std::string::npos
+                                 ? tail
+                                 : tail.substr(0, separator);
+  }
+  if (separator != std::string::npos && interactive_desktop_out != nullptr) {
+    *interactive_desktop_out = tail.substr(separator + 1);
+  }
+}
+
 bool ParseSecureInputKeyboardCommand(const std::string& command,
                                      int* key_code_out, bool* is_down_out,
                                      uint32_t* scan_code_out,
                                      bool* extended_out,
                                      std::string* interactive_stage_out =
+                                         nullptr,
+                                     std::string* interactive_desktop_out =
                                          nullptr) {
   if (key_code_out == nullptr || is_down_out == nullptr ||
       scan_code_out == nullptr || extended_out == nullptr) {
@@ -866,6 +916,9 @@ bool ParseSecureInputKeyboardCommand(const std::string& command,
   *extended_out = false;
   if (interactive_stage_out != nullptr) {
     interactive_stage_out->clear();
+  }
+  if (interactive_desktop_out != nullptr) {
+    interactive_desktop_out->clear();
   }
 
   if (command.rfind(crossdesk::kCrossDeskSecureInputKeyboardCommandPrefix, 0) !=
@@ -926,8 +979,9 @@ bool ParseSecureInputKeyboardCommand(const std::string& command,
           : command.substr(extended_separator + 1,
                            stage_separator - extended_separator - 1);
   if (stage_separator != std::string::npos &&
-      interactive_stage_out != nullptr) {
-    *interactive_stage_out = command.substr(stage_separator + 1);
+      (interactive_stage_out != nullptr || interactive_desktop_out != nullptr)) {
+    ParseInteractionTail(command.substr(stage_separator + 1),
+                         interactive_stage_out, interactive_desktop_out);
   }
   if (extended_str == "1" || extended_str == "true") {
     *extended_out = true;
@@ -951,6 +1005,7 @@ bool ParseSecureInputMouseCommand(const std::string& command,
     return false;
   }
   request_out->interactive_stage.clear();
+  request_out->interactive_desktop.clear();
 
   const size_t x_begin =
       std::strlen(crossdesk::kCrossDeskSecureInputMouseCommandPrefix);
@@ -993,7 +1048,9 @@ bool ParseSecureInputMouseCommand(const std::string& command,
             ? command.substr(flag_begin)
             : command.substr(flag_begin, stage_separator - flag_begin));
     if (stage_separator != std::string::npos) {
-      request_out->interactive_stage = command.substr(stage_separator + 1);
+      ParseInteractionTail(command.substr(stage_separator + 1),
+                           &request_out->interactive_stage,
+                           &request_out->interactive_desktop);
     }
   } catch (...) {
     return false;
@@ -1013,6 +1070,7 @@ bool ParseSecureInputCaptureCommand(const std::string& command,
     return false;
   }
   request_out->interactive_stage.clear();
+  request_out->interactive_desktop.clear();
 
   const size_t values_begin =
       std::strlen(crossdesk::kCrossDeskSecureInputCaptureCommandPrefix);
@@ -1042,9 +1100,11 @@ bool ParseSecureInputCaptureCommand(const std::string& command,
   request_out->width = parsed_values[2] & ~1;
   request_out->height = parsed_values[3] & ~1;
   request_out->show_cursor = parsed_values[4] != 0;
-  request_out->interactive_stage =
-      separator == std::string::npos ? std::string()
-                                     : command.substr(token_begin);
+  if (separator != std::string::npos) {
+    ParseInteractionTail(command.substr(token_begin),
+                         &request_out->interactive_stage,
+                         &request_out->interactive_desktop);
+  }
   return request_out->width > 0 && request_out->height > 0;
 }
 
@@ -1059,6 +1119,7 @@ bool ParseSecureInputCaptureStartCommand(const std::string& command,
     return false;
   }
   request_out->interactive_stage.clear();
+  request_out->interactive_desktop.clear();
 
   const size_t values_begin = std::strlen(
       crossdesk::kCrossDeskSecureInputCaptureStartCommandPrefix);
@@ -1089,9 +1150,11 @@ bool ParseSecureInputCaptureStartCommand(const std::string& command,
   request_out->height = parsed_values[3] & ~1;
   request_out->show_cursor = parsed_values[4] != 0;
   request_out->fps = parsed_values[5] > 0 ? parsed_values[5] : 30;
-  request_out->interactive_stage =
-      separator == std::string::npos ? std::string()
-                                     : command.substr(token_begin);
+  if (separator != std::string::npos) {
+    ParseInteractionTail(command.substr(token_begin),
+                         &request_out->interactive_stage,
+                         &request_out->interactive_desktop);
+  }
   return request_out->width > 0 && request_out->height > 0;
 }
 
@@ -1129,6 +1192,7 @@ InputInjectionResult InjectMouseInput(const SecureMouseRequest& request) {
   ScopedDesktopHandle desktop;
   DesktopSwitchDetails desktop_switch;
   if (!EnsureThreadInteractiveDesktopForStage(request.interactive_stage,
+                                              request.interactive_desktop,
                                               &desktop.handle,
                                               &desktop_switch)) {
     const DWORD error = GetLastError();
@@ -1205,6 +1269,7 @@ std::vector<uint8_t> CaptureSecureDesktopFrame(
 
   ScopedDesktopHandle desktop;
   if (!EnsureThreadInteractiveDesktopForStage(request.interactive_stage,
+                                              request.interactive_desktop,
                                               &desktop.handle)) {
     const DWORD error = GetLastError();
     return BuildTextResponseBytes(BuildErrorJson(
@@ -1355,6 +1420,7 @@ void SecureDesktopSharedCaptureThread(
 
   ScopedDesktopHandle desktop;
   if (!EnsureThreadInteractiveDesktopForStage(request.interactive_stage,
+                                              request.interactive_desktop,
                                               &desktop.handle)) {
     LOG_ERROR("Secure shared capture desktop switch failed, error={}",
               GetLastError());
@@ -1607,11 +1673,13 @@ std::vector<uint8_t> HandleSecureInputHelperCommand(
   uint32_t scan_code = 0;
   bool extended = false;
   std::string interactive_stage;
+  std::string interactive_desktop;
   if (ParseSecureInputKeyboardCommand(command, &key_code, &is_down, &scan_code,
-                                      &extended, &interactive_stage)) {
+                                      &extended, &interactive_stage,
+                                      &interactive_desktop)) {
     const InputInjectionResult inject_result =
         InjectKeyboardInput(key_code, is_down, scan_code, extended,
-                            interactive_stage);
+                            interactive_stage, interactive_desktop);
     if (!inject_result.ok) {
       LOG_WARN(
           "Secure input helper input failed for key_code={}, is_down={}, "
@@ -1631,6 +1699,7 @@ std::vector<uint8_t> HandleSecureInputHelperCommand(
     json["scan_code"] = scan_code;
     json["extended"] = extended;
     json["stage"] = interactive_stage;
+    json["interactive_desktop"] = interactive_desktop;
     json["desktop"] = WideToUtf8(GetCurrentThreadDesktopNameW());
     return BuildTextResponseBytes(json.dump());
   }
@@ -1658,6 +1727,7 @@ std::vector<uint8_t> HandleSecureInputHelperCommand(
     json["wheel"] = mouse_request.wheel;
     json["flag"] = mouse_request.flag;
     json["stage"] = mouse_request.interactive_stage;
+    json["interactive_desktop"] = mouse_request.interactive_desktop;
     json["desktop"] = WideToUtf8(GetCurrentThreadDesktopNameW());
     return BuildTextResponseBytes(json.dump());
   }
@@ -1887,6 +1957,7 @@ int main(int argc, char* argv[]) {
   std::string last_desktop_name;
   bool last_lock_app = false;
   bool last_logon_ui = false;
+  bool last_consent_ui = false;
   bool last_secure_desktop = false;
   bool last_session_locked = false;
   std::string last_stage;
@@ -1898,6 +1969,7 @@ int main(int argc, char* argv[]) {
     bool input_desktop_available = false;
     bool lock_app_visible = false;
     bool logon_ui_running = false;
+    bool consent_ui_visible = false;
     bool secure_desktop_active = false;
     {
       std::lock_guard<std::mutex> lock(helper_state.mutex);
@@ -1906,10 +1978,12 @@ int main(int argc, char* argv[]) {
       input_desktop_available = helper_state.input_desktop_available;
       lock_app_visible = helper_state.lock_app_visible;
       logon_ui_running = helper_state.logon_ui_visible;
+      consent_ui_visible = helper_state.consent_ui_visible;
       secure_desktop_active = helper_state.secure_desktop_active;
     }
     const bool credential_ui_visible =
         IsCredentialUiVisible(session_locked, logon_ui_running,
+                              consent_ui_visible,
                               input_desktop_available,
                               secure_desktop_active);
     std::string stage = DetermineInteractiveStage(
@@ -1919,17 +1993,19 @@ int main(int argc, char* argv[]) {
         session_locked != last_session_locked ||
         lock_app_visible != last_lock_app ||
         logon_ui_running != last_logon_ui ||
+        consent_ui_visible != last_consent_ui ||
         secure_desktop_active != last_secure_desktop || stage != last_stage) {
       LOG_INFO(
           "Session helper state: session_id={}, input_desktop='{}', "
           "session_locked={}, lock_app_visible={}, logon_ui_running={}, "
-          "secure_desktop_active={}, stage={}",
+          "consent_ui_visible={}, secure_desktop_active={}, stage={}",
           current_session_id, desktop_name, session_locked, lock_app_visible,
-          logon_ui_running, secure_desktop_active, stage);
+          logon_ui_running, consent_ui_visible, secure_desktop_active, stage);
       last_desktop_name = desktop_name;
       last_session_locked = session_locked;
       last_lock_app = lock_app_visible;
       last_logon_ui = logon_ui_running;
+      last_consent_ui = consent_ui_visible;
       last_secure_desktop = secure_desktop_active;
       last_stage = stage;
     }

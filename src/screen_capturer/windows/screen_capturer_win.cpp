@@ -46,6 +46,7 @@ struct SecureDesktopServiceStatus {
   DWORD active_session_id = 0xFFFFFFFF;
   DWORD error_code = 0;
   std::string interactive_stage;
+  std::string interactive_desktop;
   std::string error;
 };
 
@@ -134,12 +135,16 @@ class WgcPluginCapturer final : public ScreenCapturer {
 
 std::string BuildSecureCaptureCommand(int left, int top, int width, int height,
                                       bool show_cursor,
-                                      const std::string& stage) {
+                                      const std::string& stage,
+                                      const std::string& desktop) {
   std::ostringstream stream;
   stream << kCrossDeskSecureInputCaptureCommandPrefix << left << ":" << top
          << ":" << width << ":" << height << ":" << (show_cursor ? 1 : 0);
   if (!stage.empty()) {
     stream << ":" << stage;
+    if (!desktop.empty()) {
+      stream << ":" << desktop;
+    }
   }
   return stream.str();
 }
@@ -147,13 +152,17 @@ std::string BuildSecureCaptureCommand(int left, int top, int width, int height,
 std::string BuildSecureCaptureStartCommand(int left, int top, int width,
                                            int height, bool show_cursor,
                                            int fps,
-                                           const std::string& stage) {
+                                           const std::string& stage,
+                                           const std::string& desktop) {
   std::ostringstream stream;
   stream << kCrossDeskSecureInputCaptureStartCommandPrefix << left << ":" << top
          << ":" << width << ":" << height << ":" << (show_cursor ? 1 : 0)
          << ":" << fps;
   if (!stage.empty()) {
     stream << ":" << stage;
+    if (!desktop.empty()) {
+      stream << ":" << desktop;
+    }
   }
   return stream.str();
 }
@@ -284,6 +293,7 @@ bool QuerySecureDesktopServiceStatus(SecureDesktopServiceStatus* status) {
           json.value("last_session_event", std::string()))) {
     status->active_session_id = json.value("active_session_id", 0xFFFFFFFFu);
     status->interactive_stage = "user-desktop";
+    status->interactive_desktop.clear();
     status->capture_active = false;
     return true;
   }
@@ -291,6 +301,8 @@ bool QuerySecureDesktopServiceStatus(SecureDesktopServiceStatus* status) {
   status->active_session_id = json.value("active_session_id", 0xFFFFFFFFu);
   status->helper_running = json.value("secure_input_helper_running", false);
   status->interactive_stage = json.value("interactive_stage", std::string());
+  status->interactive_desktop =
+      json.value("interactive_input_desktop", std::string());
   const bool secure_desktop_active =
       json.value("interactive_secure_desktop_active",
                  json.value("secure_desktop_active", false));
@@ -358,6 +370,7 @@ bool QuerySecureDesktopHelperCommand(DWORD session_id,
 bool QuerySecureDesktopHelperFrame(DWORD session_id, int left, int top,
                                    int width, int height, bool show_cursor,
                                    const std::string& stage,
+                                   const std::string& desktop,
                                    std::vector<uint8_t>* nv12_frame_out,
                                    int* captured_width_out,
                                    int* captured_height_out,
@@ -368,7 +381,8 @@ bool QuerySecureDesktopHelperFrame(DWORD session_id, int left, int top,
   }
 
   const std::string command =
-      BuildSecureCaptureCommand(left, top, width, height, show_cursor, stage);
+      BuildSecureCaptureCommand(left, top, width, height, show_cursor, stage,
+                                desktop);
   std::vector<uint8_t> response;
   if (!QuerySecureDesktopHelperCommand(session_id, command, &response,
                                        error_out)) {
@@ -823,6 +837,7 @@ void ScreenCapturerWin::StopSecureDesktopSharedCapture(DWORD session_id) {
   secure_shared_fps_ = 0;
   secure_shared_show_cursor_ = true;
   secure_shared_stage_.clear();
+  secure_shared_desktop_.clear();
 }
 
 bool ScreenCapturerWin::OpenSecureDesktopSharedFrame(DWORD session_id,
@@ -952,7 +967,8 @@ bool ScreenCapturerWin::ReadSecureDesktopSharedFrame(
 
 bool ScreenCapturerWin::StartSecureDesktopSharedCapture(
     DWORD session_id, int left, int top, int width, int height,
-    const std::string& stage, bool show_cursor, int fps,
+    const std::string& stage, const std::string& desktop, bool show_cursor,
+    int fps,
     std::string* error_out) {
   const size_t payload_size = static_cast<size_t>(width) * height * 3 / 2;
   const size_t mapping_size =
@@ -968,7 +984,7 @@ bool ScreenCapturerWin::StartSecureDesktopSharedCapture(
       secure_shared_session_id_ == session_id &&
       secure_shared_left_ == left && secure_shared_top_ == top &&
       secure_shared_width_ == width && secure_shared_height_ == height &&
-      secure_shared_stage_ == stage &&
+      secure_shared_stage_ == stage && secure_shared_desktop_ == desktop &&
       secure_shared_show_cursor_ == show_cursor && secure_shared_fps_ == fps &&
       OpenSecureDesktopSharedFrame(session_id, mapping_size, error_out)) {
     return true;
@@ -978,7 +994,7 @@ bool ScreenCapturerWin::StartSecureDesktopSharedCapture(
 
   const std::string command =
       BuildSecureCaptureStartCommand(left, top, width, height, show_cursor, fps,
-                                     stage);
+                                     stage, desktop);
   std::vector<uint8_t> response;
   if (!QuerySecureDesktopHelperCommand(session_id, command, &response,
                                        error_out)) {
@@ -1002,6 +1018,7 @@ bool ScreenCapturerWin::StartSecureDesktopSharedCapture(
   secure_shared_show_cursor_ = show_cursor;
   secure_shared_fps_ = fps;
   secure_shared_stage_ = stage;
+  secure_shared_desktop_ = desktop;
 
   if (!OpenSecureDesktopSharedFrame(session_id, mapping_size, error_out)) {
     StopSecureDesktopSharedCapture(session_id);
@@ -1161,8 +1178,10 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
 
     if (StartSecureDesktopSharedCapture(status.active_session_id, left, top,
                                         width, height,
-                                        status.interactive_stage, show_cursor,
-                                        shared_fps, &error_message) &&
+                                        status.interactive_stage,
+                                        status.interactive_desktop,
+                                        show_cursor, shared_fps,
+                                        &error_message) &&
         ReadSecureDesktopSharedFrame(
             static_cast<DWORD>(frame_interval_ms + 20), &secure_frame,
             &captured_width, &captured_height, &error_message)) {
@@ -1177,6 +1196,7 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
         QuerySecureDesktopHelperFrame(status.active_session_id, left, top,
                                       width, height, show_cursor,
                                       status.interactive_stage,
+                                      status.interactive_desktop,
                                       &secure_frame, &captured_width,
                                       &captured_height, &error_message)) {
       if (cb_orig_ && !secure_frame.empty()) {
