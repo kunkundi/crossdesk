@@ -28,6 +28,7 @@ struct TranslationRow {
   X(max_password_len, u8"最大6个字符", "Max 6 chars", u8"Макс. 6 символов")    \
   X(remote_desktop, u8"远程桌面", "Remote Desktop",                            \
     u8"Удаленный рабочий стол")                                                \
+  X(device_name, u8"设备名称", "Device Name", u8"Имя устройства")             \
   X(remote_id, u8"对端ID", "Remote ID", u8"Удаленный ID")                      \
   X(connect, u8"连接", "Connect", u8"Подключиться")                            \
   X(recent_connections, u8"近期连接", "Recent Connections",                    \

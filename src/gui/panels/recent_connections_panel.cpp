@@ -196,12 +196,18 @@ int Render::ShowRecentConnections() {
     const ImVec2 toolbar_pos = ImVec2(
         image_pos.x + recent_connection_image_width -
             recent_connection_toolbar_width - recent_connection_toolbar_padding,
-        image_pos.y + recent_connection_toolbar_padding);
+        image_pos.y + recent_connection_image_height +
+            (recent_connection_footer_height -
+             recent_connection_button_height) *
+                0.5f);
 
     const ImVec2 toolbar_screen_pos = ImVec2(
         image_screen_pos.x + recent_connection_image_width -
             recent_connection_toolbar_width - recent_connection_toolbar_padding,
-        image_screen_pos.y + recent_connection_toolbar_padding);
+        image_screen_pos.y + recent_connection_image_height +
+            (recent_connection_footer_height -
+             recent_connection_button_height) *
+                0.5f);
 
     const ImVec2 toolbar_screen_end =
         ImVec2(toolbar_screen_pos.x + recent_connection_toolbar_width,
@@ -214,11 +220,22 @@ int Render::ShowRecentConnections() {
     const bool show_image_tooltip = image_item_hovered && !toolbar_hovered;
 
     if (show_image_tooltip) {
+      const ImVec2 mouse_pos = ImGui::GetMousePos();
+      const bool place_tooltip_on_left =
+          mouse_pos.x > io.DisplaySize.x * 0.7f;
+      ImGui::SetNextWindowPos(
+          ImVec2(mouse_pos.x + (place_tooltip_on_left ? -12.0f : 12.0f),
+                 mouse_pos.y - 8.0f),
+          ImGuiCond_Always,
+          ImVec2(place_tooltip_on_left ? 1.0f : 0.0f, 1.0f));
       ImGui::BeginTooltip();
 
-      ImGui::SetWindowFontScale(0.5f);
+      ImGui::SetWindowFontScale(0.4f);
 
-      ImGui::Text("%s", display_name.c_str());
+      ImGui::Text("%s: %s",
+                  localization::device_name[localization_language_index_]
+                      .c_str(),
+                  display_name.c_str());
 
       if (!it.second.remote_host_name.empty() &&
           it.second.remote_host_name != display_name) {
@@ -290,7 +307,10 @@ int Render::ShowRecentConnections() {
           ImVec2(status_block_end_x + status_gap, footer_screen_pos.y);
 
       ImVec2 text_max =
-          ImVec2(footer_screen_end.x - recent_connection_name_width * 0.05f,
+          ImVec2(card_hovered
+                     ? toolbar_screen_pos.x - status_gap
+                     : footer_screen_end.x -
+                           recent_connection_name_width * 0.05f,
                  footer_screen_end.y);
 
       ImGui::SetWindowFontScale(0.52f);
@@ -301,7 +321,7 @@ int Render::ShowRecentConnections() {
       ImGui::SetWindowFontScale(1.0f);
     }
 
-    // toolbar / three buttons
+    // Toolbar / three buttons, right-aligned in the connection name footer.
     if (card_hovered) {
       float toolbar_rounding = recent_connection_button_height * 0.22f;
 
@@ -311,7 +331,7 @@ int Render::ShowRecentConnections() {
           IM_COL32(0, 0, 0, 70), toolbar_rounding);
 
       draw_list->AddRectFilled(toolbar_screen_pos, toolbar_screen_end,
-                               IM_COL32(20, 24, 30, 170), toolbar_rounding);
+                               IM_COL32(96, 100, 106, 140), toolbar_rounding);
 
       draw_list->AddRect(toolbar_screen_pos, toolbar_screen_end,
                          IM_COL32(255, 255, 255, 48), toolbar_rounding);
