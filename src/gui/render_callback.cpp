@@ -12,7 +12,6 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "clipboard.h"
 #include "device_controller.h"
 #include "file_transfer.h"
 #include "localization.h"
@@ -1118,10 +1117,7 @@ void Render::OnReceiveDataBufferCb(const char* data, size_t size,
         return;
       }
 
-      std::string clipboard_text(data, size);
-      if (!Clipboard::SetText(clipboard_text)) {
-        LOG_ERROR("Failed to set clipboard content from remote");
-      }
+      render->QueueRemoteClipboardText(data, size);
     }
     return;
   } else if (source_id == render->file_feedback_label_) {

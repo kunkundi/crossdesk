@@ -19,7 +19,6 @@
 #include <string>
 #include <thread>
 
-#include "clipboard.h"
 #include "device_controller_factory.h"
 #include "fa_regular_400.h"
 #include "fa_solid_900.h"
@@ -48,6 +47,9 @@ namespace {
 constexpr uint64_t kCaptureResumeKeyFrameGapMs = 500;
 constexpr auto kPresenceProbeTimeout = std::chrono::seconds(5);
 constexpr auto kConnectionAttemptTimeout = std::chrono::seconds(20);
+// Keep a reliable clipboard message within MiniRTC/KCP's single-message
+// fragmentation window (MTU is configured to 1200 bytes).
+constexpr size_t kMaxClipboardTextBytes = 128 * 1024;
 
 bool IsConnectionAttemptPending(ConnectionStatus status) {
   return status == ConnectionStatus::Connecting ||
@@ -1992,12 +1994,13 @@ void Render::InitializeSDL() {
     screen_height_ = dm->h;
   }
 
-  const uint32_t custom_event_base = SDL_RegisterEvents(2);
+  const uint32_t custom_event_base = SDL_RegisterEvents(3);
   if (custom_event_base == static_cast<uint32_t>(-1)) {
     LOG_ERROR("Failed to register custom SDL events");
   } else {
     STREAM_REFRESH_EVENT = custom_event_base;
     APP_EXIT_EVENT = custom_event_base + 1;
+    REMOTE_CLIPBOARD_EVENT = custom_event_base + 2;
   }
 
   LOG_INFO("Screen resolution: [{}x{}]", screen_width_, screen_height_);
@@ -2013,42 +2016,161 @@ void Render::InitializeModules() {
         DeviceControllerFactory::Device::Keyboard);
     CreateConnectionPeer();
 
-    // start clipboard monitoring with callback to send data to peers
-    Clipboard::StartMonitoring(
-        100, [this](const char* data, size_t size) -> int {
-          // send clipboard data to all connected peers
-          std::shared_lock lock(client_properties_mutex_);
-          int ret = -1;
-          for (const auto& [remote_id, props] : client_properties_) {
-            if (props && props->peer_ && props->connection_established_ &&
-                props->enable_mouse_control_) {
-              ret = SendReliableDataFrame(props->peer_, data, size,
-                                          props->clipboard_label_.c_str());
-              if (ret != 0) {
-                LOG_WARN("Failed to send clipboard data to peer [{}], ret={}",
-                         remote_id.c_str(), ret);
-                return ret;
-              }
-            }
-          }
-
-          ret = SendReliableDataFrame(peer_, data, size,
-                                      clipboard_label_.c_str());
-          if (ret != 0) {
-            LOG_WARN("Failed to send clipboard data to peer [{}], ret={}",
-                     remote_id_display_, ret);
-            return ret;
-          }
-
-          return 0;
-        });
-
     modules_inited_ = true;
   }
 }
 
+void Render::InitializeClipboard() {
+  last_clipboard_text_.clear();
+
+  char* clipboard_text = SDL_GetClipboardText();
+  if (clipboard_text) {
+    last_clipboard_text_.assign(clipboard_text);
+    SDL_free(clipboard_text);
+  }
+
+  if (REMOTE_CLIPBOARD_EVENT == 0) {
+    LOG_ERROR("Clipboard synchronization disabled: SDL event is unavailable");
+    return;
+  }
+
+  clipboard_events_enabled_.store(true, std::memory_order_release);
+}
+
+void Render::ShutdownClipboard() {
+  clipboard_events_enabled_.store(false, std::memory_order_release);
+  std::lock_guard<std::mutex> lock(pending_clipboard_mutex_);
+  pending_remote_clipboard_text_.reset();
+}
+
+void Render::QueueRemoteClipboardText(const char* data, size_t size) {
+  if (!clipboard_events_enabled_.load(std::memory_order_acquire)) {
+    return;
+  }
+  if (!data || size == 0) {
+    return;
+  }
+  if (size > kMaxClipboardTextBytes) {
+    LOG_WARN("Ignore oversized remote clipboard text: {} bytes", size);
+    return;
+  }
+  if (std::memchr(data, '\0', size) != nullptr) {
+    LOG_WARN("Ignore remote clipboard text containing an embedded NUL byte");
+    return;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(pending_clipboard_mutex_);
+    if (!clipboard_events_enabled_.load(std::memory_order_relaxed)) {
+      return;
+    }
+    // Only the newest clipboard value matters. Replacing it also bounds the
+    // amount of memory a busy or malicious peer can queue.
+    pending_remote_clipboard_text_ = std::string(data, size);
+  }
+
+  SDL_Event event{};
+  event.type = REMOTE_CLIPBOARD_EVENT;
+  if (!SDL_PushEvent(&event)) {
+    // MainLoop also drains the pending value after its wait timeout.
+    LOG_WARN("Failed to wake SDL loop for remote clipboard text: {}",
+             SDL_GetError());
+  }
+}
+
+void Render::ApplyPendingRemoteClipboardText() {
+  if (!clipboard_events_enabled_.load(std::memory_order_acquire)) {
+    return;
+  }
+
+  std::optional<std::string> pending_text;
+  {
+    std::lock_guard<std::mutex> lock(pending_clipboard_mutex_);
+    pending_text.swap(pending_remote_clipboard_text_);
+  }
+  if (!pending_text || *pending_text == last_clipboard_text_) {
+    return;
+  }
+
+  // SDL clipboard functions must run on the thread that initialized SDL.
+  if (!SDL_SetClipboardText(pending_text->c_str())) {
+    LOG_ERROR("Failed to set remote clipboard text: {}", SDL_GetError());
+    return;
+  }
+
+  // SDL will normally emit SDL_EVENT_CLIPBOARD_UPDATE for this write. Update
+  // the baseline first so that event cannot echo the text back to the sender.
+  last_clipboard_text_ = std::move(*pending_text);
+}
+
+void Render::HandleClipboardUpdate() {
+  if (!clipboard_events_enabled_.load(std::memory_order_acquire)) {
+    return;
+  }
+  if (!SDL_HasClipboardText()) {
+    last_clipboard_text_.clear();
+    return;
+  }
+
+  char* clipboard_text = SDL_GetClipboardText();
+  if (!clipboard_text) {
+    LOG_WARN("Failed to read local clipboard text: {}", SDL_GetError());
+    return;
+  }
+
+  std::string text(clipboard_text);
+  SDL_free(clipboard_text);
+  if (text == last_clipboard_text_) {
+    return;
+  }
+
+  // Record the value before sending. Duplicate SDL notifications and a
+  // remote write of the same value must not create a clipboard feedback loop.
+  last_clipboard_text_ = text;
+  if (text.empty()) {
+    return;
+  }
+  if (text.size() > kMaxClipboardTextBytes) {
+    LOG_WARN("Ignore oversized local clipboard text: {} bytes", text.size());
+    return;
+  }
+
+  SendClipboardTextToPeers(text);
+}
+
+int Render::SendClipboardTextToPeers(const std::string& text) {
+  std::shared_lock lock(client_properties_mutex_);
+  for (const auto& [remote_id, props] : client_properties_) {
+    if (!props || !props->peer_ || !props->connection_established_ ||
+        !props->enable_mouse_control_) {
+      continue;
+    }
+
+    const int ret = SendReliableDataFrame(
+        props->peer_, text.data(), text.size(), props->clipboard_label_.c_str());
+    if (ret != 0) {
+      LOG_WARN("Failed to send clipboard data to peer [{}], ret={}",
+               remote_id.c_str(), ret);
+      return ret;
+    }
+  }
+
+  if (peer_) {
+    const int ret = SendReliableDataFrame(peer_, text.data(), text.size(),
+                                          clipboard_label_.c_str());
+    if (ret != 0) {
+      LOG_WARN("Failed to send clipboard data to peer [{}], ret={}",
+               remote_id_display_, ret);
+      return ret;
+    }
+  }
+
+  return 0;
+}
+
 void Render::InitializeMainWindow() {
   CreateMainWindow();
+  InitializeClipboard();
   if (SDL_WINDOW_HIDDEN & SDL_GetWindowFlags(main_window_)) {
     SDL_ShowWindow(main_window_);
   }
@@ -2064,6 +2186,9 @@ void Render::MainLoop() {
     if (SDL_WaitEventTimeout(&event, sdl_refresh_ms_)) {
       ProcessSdlEvent(event);
     }
+    // Also drain the pending value after a timeout so a full SDL event queue
+    // cannot indefinitely delay a clipboard update received from the network.
+    ApplyPendingRemoteClipboardText();
 
 #if _WIN32
     MSG msg;
@@ -2538,7 +2663,7 @@ void Render::HandleServerWindow() {
 }
 
 void Render::Cleanup() {
-  Clipboard::StopMonitoring();
+  ShutdownClipboard();
 
   if (mouse_controller_) {
     mouse_controller_->Destroy();
@@ -3021,6 +3146,12 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
     return;
   }
 
+  if (REMOTE_CLIPBOARD_EVENT != 0 &&
+      event.type == REMOTE_CLIPBOARD_EVENT) {
+    ApplyPendingRemoteClipboardText();
+    return;
+  }
+
   switch (event.type) {
     case SDL_EVENT_QUIT:
       if (stream_window_inited_) {
@@ -3134,6 +3265,10 @@ void Render::ProcessSdlEvent(const SDL_Event& event) {
       break;
     case SDL_EVENT_DROP_FILE:
       ProcessFileDropEvent(event);
+      break;
+
+    case SDL_EVENT_CLIPBOARD_UPDATE:
+      HandleClipboardUpdate();
       break;
 
     case SDL_EVENT_MOUSE_MOTION:

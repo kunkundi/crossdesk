@@ -233,6 +233,12 @@ class Render {
       std::shared_ptr<SubStreamWindowProperties> props);
   void UpdateRenderRect();
   void ProcessSdlEvent(const SDL_Event& event);
+  void InitializeClipboard();
+  void ShutdownClipboard();
+  void QueueRemoteClipboardText(const char* data, size_t size);
+  void ApplyPendingRemoteClipboardText();
+  void HandleClipboardUpdate();
+  int SendClipboardTextToPeers(const std::string& text);
 
   void ProcessFileDropEvent(const SDL_Event& event);
 
@@ -608,6 +614,11 @@ class Render {
   SDL_AudioStream* output_stream_ = nullptr;
   uint32_t STREAM_REFRESH_EVENT = 0;
   uint32_t APP_EXIT_EVENT = 0;
+  uint32_t REMOTE_CLIPBOARD_EVENT = 0;
+  std::atomic<bool> clipboard_events_enabled_{false};
+  std::mutex pending_clipboard_mutex_;
+  std::optional<std::string> pending_remote_clipboard_text_;
+  std::string last_clipboard_text_;
 #if _WIN32
   std::atomic<bool> pending_windows_service_sas_{false};
   bool local_service_status_received_ = false;
