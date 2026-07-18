@@ -5,6 +5,15 @@
 
 namespace crossdesk {
 
+namespace {
+
+bool IsValidTurnModeValue(long value) {
+  return value >= static_cast<long>(ConfigCenter::TURN_MODE::DISABLED) &&
+         value <= static_cast<long>(ConfigCenter::TURN_MODE::FORCE_TCP);
+}
+
+}  // namespace
+
 ConfigCenter::ConfigCenter(const std::string& config_path)
     : config_path_(config_path) {
   ini_.SetUnicode(true);
@@ -19,6 +28,8 @@ int ConfigCenter::Load() {
     Save();
     return -1;
   }
+
+  bool persist_turn_mode_migration = false;
 
   const long language_value =
       ini_.GetLongValue(section_, "language", static_cast<long>(language_));
@@ -42,7 +53,25 @@ int ConfigCenter::Load() {
   hardware_video_codec_ = ini_.GetBoolValue(section_, "hardware_video_codec",
                                             hardware_video_codec_);
 
-  enable_turn_ = ini_.GetBoolValue(section_, "enable_turn", enable_turn_);
+  const char* turn_mode_value = ini_.GetValue(section_, "turn_mode", nullptr);
+  if (turn_mode_value != nullptr && strlen(turn_mode_value) > 0) {
+    const long parsed_turn_mode = ini_.GetLongValue(
+        section_, "turn_mode", static_cast<long>(turn_mode_));
+    if (IsValidTurnModeValue(parsed_turn_mode)) {
+      turn_mode_ = static_cast<TURN_MODE>(parsed_turn_mode);
+    } else {
+      LOG_WARN("Invalid TURN mode [{}], using auto UDP/TCP",
+               parsed_turn_mode);
+      turn_mode_ = TURN_MODE::AUTO_UDP_TCP;
+    }
+  } else {
+    const bool legacy_enable_turn = ini_.GetBoolValue(
+        section_, "enable_turn", turn_mode_ != TURN_MODE::DISABLED);
+    turn_mode_ = legacy_enable_turn ? TURN_MODE::AUTO_UDP_TCP
+                                    : TURN_MODE::DISABLED;
+    ini_.SetLongValue(section_, "turn_mode", static_cast<long>(turn_mode_));
+    persist_turn_mode_migration = true;
+  }
   enable_srtp_ = ini_.GetBoolValue(section_, "enable_srtp", enable_srtp_);
   enable_self_hosted_ =
       ini_.GetBoolValue(section_, "enable_self_hosted", enable_self_hosted_);
@@ -92,6 +121,11 @@ int ConfigCenter::Load() {
     file_transfer_save_path_ = "";
   }
 
+  if (persist_turn_mode_migration &&
+      ini_.SaveFile(config_path_.c_str()) < 0) {
+    return -1;
+  }
+
   return 0;
 }
 
@@ -104,7 +138,9 @@ int ConfigCenter::Save() {
   ini_.SetLongValue(section_, "video_encode_format",
                     static_cast<long>(video_encode_format_));
   ini_.SetBoolValue(section_, "hardware_video_codec", hardware_video_codec_);
-  ini_.SetBoolValue(section_, "enable_turn", enable_turn_);
+  ini_.SetLongValue(section_, "turn_mode", static_cast<long>(turn_mode_));
+  ini_.SetBoolValue(section_, "enable_turn",
+                    turn_mode_ != TURN_MODE::DISABLED);
   ini_.SetBoolValue(section_, "enable_srtp", enable_srtp_);
   ini_.SetBoolValue(section_, "enable_self_hosted", enable_self_hosted_);
 
@@ -191,14 +227,30 @@ int ConfigCenter::SetHardwareVideoCodec(bool hardware_video_codec) {
   return 0;
 }
 
-int ConfigCenter::SetTurn(bool enable_turn) {
-  enable_turn_ = enable_turn;
-  ini_.SetBoolValue(section_, "enable_turn", enable_turn_);
+int ConfigCenter::SetTurnMode(TURN_MODE turn_mode) {
+  if (!IsValidTurnModeValue(static_cast<long>(turn_mode))) {
+    return -1;
+  }
+
+  turn_mode_ = turn_mode;
+  ini_.SetLongValue(section_, "turn_mode", static_cast<long>(turn_mode_));
+  ini_.SetBoolValue(section_, "enable_turn",
+                    turn_mode_ != TURN_MODE::DISABLED);
   SI_Error rc = ini_.SaveFile(config_path_.c_str());
   if (rc < 0) {
     return -1;
   }
   return 0;
+}
+
+int ConfigCenter::SetTurn(bool enable_turn) {
+  if (!enable_turn) {
+    return SetTurnMode(TURN_MODE::DISABLED);
+  }
+  if (turn_mode_ == TURN_MODE::DISABLED) {
+    return SetTurnMode(TURN_MODE::AUTO_UDP_TCP);
+  }
+  return SetTurnMode(turn_mode_);
 }
 
 int ConfigCenter::SetSrtp(bool enable_srtp) {
@@ -362,7 +414,13 @@ bool ConfigCenter::IsHardwareVideoCodec() const {
   return hardware_video_codec_;
 }
 
-bool ConfigCenter::IsEnableTurn() const { return enable_turn_; }
+ConfigCenter::TURN_MODE ConfigCenter::GetTurnMode() const {
+  return turn_mode_;
+}
+
+bool ConfigCenter::IsEnableTurn() const {
+  return turn_mode_ != TURN_MODE::DISABLED;
+}
 
 bool ConfigCenter::IsEnableSrtp() const { return enable_srtp_; }
 

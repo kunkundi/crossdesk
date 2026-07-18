@@ -19,6 +19,12 @@ class ConfigCenter {
   enum class VIDEO_QUALITY { LOW = 0, MEDIUM = 1, HIGH = 2 };
   enum class VIDEO_FRAME_RATE { FPS_30 = 0, FPS_60 = 1 };
   enum class VIDEO_ENCODE_FORMAT { H264 = 0, AV1 = 1 };
+  enum class TURN_MODE {
+    DISABLED = 0,
+    AUTO_UDP_TCP = 1,
+    FORCE_UDP = 2,
+    FORCE_TCP = 3
+  };
 
  public:
   explicit ConfigCenter(const std::string& config_path = "config.ini");
@@ -30,6 +36,7 @@ class ConfigCenter {
   int SetVideoFrameRate(VIDEO_FRAME_RATE video_frame_rate);
   int SetVideoEncodeFormat(VIDEO_ENCODE_FORMAT video_encode_format);
   int SetHardwareVideoCodec(bool hardware_video_codec);
+  int SetTurnMode(TURN_MODE turn_mode);
   int SetTurn(bool enable_turn);
   int SetSrtp(bool enable_srtp);
   int SetServerHost(const std::string& signal_server_host);
@@ -49,6 +56,7 @@ class ConfigCenter {
   VIDEO_FRAME_RATE GetVideoFrameRate() const;
   VIDEO_ENCODE_FORMAT GetVideoEncodeFormat() const;
   bool IsHardwareVideoCodec() const;
+  TURN_MODE GetTurnMode() const;
   bool IsEnableTurn() const;
   bool IsEnableSrtp() const;
   std::string GetSignalServerHost() const;
@@ -77,7 +85,7 @@ class ConfigCenter {
   VIDEO_FRAME_RATE video_frame_rate_ = VIDEO_FRAME_RATE::FPS_60;
   VIDEO_ENCODE_FORMAT video_encode_format_ = VIDEO_ENCODE_FORMAT::H264;
   bool hardware_video_codec_ = false;
-  bool enable_turn_ = true;
+  TURN_MODE turn_mode_ = TURN_MODE::AUTO_UDP_TCP;
   bool enable_srtp_ = false;
   std::string signal_server_host_ = "";
   std::string signal_server_host_default_ = "api.crossdesk.cn";

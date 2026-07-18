@@ -1151,7 +1151,8 @@ int Render::CreateConnectionPeer() {
                                  ConfigCenter::VIDEO_ENCODE_FORMAT::AV1
                              ? true
                              : false;
-  params_.enable_turn = config_center_->IsEnableTurn();
+  params_.turn_mode =
+      static_cast<TurnMode>(config_center_->GetTurnMode());
   params_.enable_srtp = config_center_->IsEnableSrtp();
   params_.video_quality =
       static_cast<VideoQuality>(config_center_->GetVideoQuality());
