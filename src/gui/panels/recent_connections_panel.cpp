@@ -82,6 +82,16 @@ int Render::ShowRecentConnections() {
   float recent_connection_footer_height =
       recent_connection_button_height * 1.18f;
   float recent_connection_name_width = recent_connection_image_width;
+  const float recent_connection_spacing = recent_connection_image_width * 0.16f;
+  const float recent_connections_content_width =
+      recent_connections_.empty()
+          ? 0.0f
+          : recent_connections_.size() * recent_connection_sub_container_width +
+                (recent_connections_.size() - 1) * recent_connection_spacing;
+  const float recent_connections_available_width =
+      recent_connection_panel_width - 2.0f * ImGui::GetStyle().WindowPadding.x;
+  const bool has_horizontal_overflow =
+      recent_connections_content_width > recent_connections_available_width;
 
   ImGui::SetCursorPos(
       ImVec2(io.DisplaySize.x * 0.045f, io.DisplaySize.y * 0.1f));
@@ -92,10 +102,10 @@ int Render::ShowRecentConnections() {
   ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
   const ImGuiWindowFlags container_flags =
       ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-      ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollWithMouse |
-      (recent_connections_.empty()
-           ? ImGuiWindowFlags_None
-           : ImGuiWindowFlags_AlwaysHorizontalScrollbar);
+      ImGuiWindowFlags_NoBringToFrontOnFocus |
+      ImGuiWindowFlags_NoScrollWithMouse |
+      (has_horizontal_overflow ? ImGuiWindowFlags_AlwaysHorizontalScrollbar
+                               : ImGuiWindowFlags_None);
   ImGui::BeginChild(
       "RecentConnectionsContainer",
       ImVec2(recent_connection_panel_width, recent_connection_panel_height),
@@ -221,21 +231,19 @@ int Render::ShowRecentConnections() {
 
     if (show_image_tooltip) {
       const ImVec2 mouse_pos = ImGui::GetMousePos();
-      const bool place_tooltip_on_left =
-          mouse_pos.x > io.DisplaySize.x * 0.7f;
+      const bool place_tooltip_on_left = mouse_pos.x > io.DisplaySize.x * 0.7f;
       ImGui::SetNextWindowPos(
           ImVec2(mouse_pos.x + (place_tooltip_on_left ? -12.0f : 12.0f),
                  mouse_pos.y - 8.0f),
-          ImGuiCond_Always,
-          ImVec2(place_tooltip_on_left ? 1.0f : 0.0f, 1.0f));
+          ImGuiCond_Always, ImVec2(place_tooltip_on_left ? 1.0f : 0.0f, 1.0f));
       ImGui::BeginTooltip();
 
       ImGui::SetWindowFontScale(0.4f);
 
-      ImGui::Text("%s: %s",
-                  localization::device_name[localization_language_index_]
-                      .c_str(),
-                  display_name.c_str());
+      ImGui::Text(
+          "%s: %s",
+          localization::device_name[localization_language_index_].c_str(),
+          display_name.c_str());
 
       if (!it.second.remote_host_name.empty() &&
           it.second.remote_host_name != display_name) {
@@ -295,8 +303,8 @@ int Render::ShowRecentConnections() {
           const float t = static_cast<float>(i) / halo_layers;
           const float r = dot_radius + (halo_radius - dot_radius) * t;
           const int alpha = static_cast<int>(14.0f * (1.0f - t) + 4.0f);
-          draw_list->AddCircleFilled(
-              dot_center, r, IM_COL32(74, 222, 128, alpha));
+          draw_list->AddCircleFilled(dot_center, r,
+                                     IM_COL32(74, 222, 128, alpha));
         }
       }
       draw_list->AddCircleFilled(dot_center, dot_radius, dot_color);
@@ -306,12 +314,11 @@ int Render::ShowRecentConnections() {
       ImVec2 text_min =
           ImVec2(status_block_end_x + status_gap, footer_screen_pos.y);
 
-      ImVec2 text_max =
-          ImVec2(card_hovered
-                     ? toolbar_screen_pos.x - status_gap
-                     : footer_screen_end.x -
-                           recent_connection_name_width * 0.05f,
-                 footer_screen_end.y);
+      ImVec2 text_max = ImVec2(
+          card_hovered
+              ? toolbar_screen_pos.x - status_gap
+              : footer_screen_end.x - recent_connection_name_width * 0.05f,
+          footer_screen_end.y);
 
       ImGui::SetWindowFontScale(0.52f);
 
@@ -424,20 +431,6 @@ int Render::ShowRecentConnections() {
       ImGui::PopStyleVar(3);
     }
 
-    if (count != recent_connections_count - 1) {
-      ImVec2 line_start =
-          ImVec2(image_screen_pos.x + recent_connection_image_width * 1.19f,
-                 image_screen_pos.y);
-
-      ImVec2 line_end =
-          ImVec2(image_screen_pos.x + recent_connection_image_width * 1.19f,
-                 image_screen_pos.y + recent_connection_image_height +
-                     recent_connection_footer_height);
-
-      ImGui::GetWindowDrawList()->AddLine(line_start, line_end,
-                                          IM_COL32(0, 0, 0, 122), 1.0f);
-    }
-
     if (delete_connection_ && delete_connection_name_ == it.first) {
       if (!thumbnail_->DeleteThumbnail(it.first)) {
         recent_connection_aliases_.erase(it.second.remote_id);
@@ -451,10 +444,10 @@ int Render::ShowRecentConnections() {
 
     if (count != recent_connections_count - 1) {
       ImVec2 line_start =
-          ImVec2(image_screen_pos.x + recent_connection_image_width * 1.19f,
+          ImVec2(image_screen_pos.x + recent_connection_image_width * 1.18f,
                  image_screen_pos.y);
       ImVec2 line_end =
-          ImVec2(image_screen_pos.x + recent_connection_image_width * 1.19f,
+          ImVec2(image_screen_pos.x + recent_connection_image_width * 1.18f,
                  image_screen_pos.y + recent_connection_image_height +
                      recent_connection_footer_height);
       ImGui::GetWindowDrawList()->AddLine(line_start, line_end,
@@ -463,7 +456,7 @@ int Render::ShowRecentConnections() {
 
     count++;
     ImGui::SameLine(0, count != recent_connections_count
-                           ? (recent_connection_image_width * 0.165f)
+                           ? recent_connection_spacing
                            : 0.0f);
   }
 

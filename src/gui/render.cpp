@@ -742,10 +742,9 @@ void Render::BeginEditRecentConnectionAlias(
   memset(edit_connection_alias_, 0, sizeof(edit_connection_alias_));
 
   const auto alias_it = recent_connection_aliases_.find(connection.remote_id);
-  std::string alias =
-      alias_it != recent_connection_aliases_.end()
-          ? alias_it->second
-          : GetRecentConnectionDisplayName(connection);
+  std::string alias = alias_it != recent_connection_aliases_.end()
+                          ? alias_it->second
+                          : GetRecentConnectionDisplayName(connection);
 
   if (!alias.empty()) {
     strncpy(edit_connection_alias_, alias.c_str(),
@@ -781,21 +780,17 @@ int Render::ScreenCapturerInit() {
       fps,
       [this, fps](unsigned char* data, int size, int width, int height,
                   const char* display_name) -> void {
-        const auto now_time =
-            static_cast<uint64_t>(std::chrono::duration_cast<
-                                  std::chrono::milliseconds>(
-                                      std::chrono::steady_clock::now()
-                                          .time_since_epoch())
-                                      .count());
+        const auto now_time = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch())
+                .count());
         auto duration = now_time - last_frame_time_;
         if (duration * fps >= 1000) {  // ~60 FPS
           const std::string stream_id = display_name ? display_name : "";
           const bool resumed_after_gap =
-              last_frame_time_ != 0 &&
-              duration >= kCaptureResumeKeyFrameGapMs;
-          const bool stream_changed =
-              !last_video_frame_stream_id_.empty() &&
-              last_video_frame_stream_id_ != stream_id;
+              last_frame_time_ != 0 && duration >= kCaptureResumeKeyFrameGapMs;
+          const bool stream_changed = !last_video_frame_stream_id_.empty() &&
+                                      last_video_frame_stream_id_ != stream_id;
           if (resumed_after_gap || stream_changed) {
             if (RequestVideoKeyFrame(peer_, stream_id.c_str()) == 0) {
               LOG_INFO(
@@ -1151,8 +1146,7 @@ int Render::CreateConnectionPeer() {
                                  ConfigCenter::VIDEO_ENCODE_FORMAT::AV1
                              ? true
                              : false;
-  params_.turn_mode =
-      static_cast<TurnMode>(config_center_->GetTurnMode());
+  params_.turn_mode = static_cast<TurnMode>(config_center_->GetTurnMode());
   params_.enable_srtp = config_center_->IsEnableSrtp();
   params_.video_quality =
       static_cast<VideoQuality>(config_center_->GetVideoQuality());
@@ -1386,9 +1380,8 @@ int Render::CreateMainWindow() {
   tray_ = std::make_unique<MacTray>(main_window_, "CrossDesk",
                                     localization_language_index_);
 #elif defined(__linux__) && !defined(__APPLE__)
-  tray_ = std::make_unique<LinuxTray>(main_window_, "CrossDesk",
-                                      localization_language_index_,
-                                      APP_EXIT_EVENT);
+  tray_ = std::make_unique<LinuxTray>(
+      main_window_, "CrossDesk", localization_language_index_, APP_EXIT_EVENT);
 #endif
 
   ImGui_ImplSDL3_InitForSDLRenderer(main_window_, main_renderer_);
@@ -1937,7 +1930,9 @@ int Render::Run() {
   } else {
     latest_version_ = "";
     update_available_ = false;
-    LOG_WARN("Update check skipped: version.json is empty or missing latest_version");
+    LOG_WARN(
+        "Update check skipped: version.json is empty or missing "
+        "latest_version");
   }
 
   InitializeSettings();
@@ -2292,7 +2287,8 @@ void Render::HandleWindowsServiceIntegration() {
     last_logged_service_error_code = 0;
   }
 
-  RemoteAction remote_action = BuildWindowsServiceStatusAction(broadcast_status);
+  RemoteAction remote_action =
+      BuildWindowsServiceStatusAction(broadcast_status);
   std::string msg = remote_action.to_json();
   int ret = SendReliableDataFrame(peer_, msg.data(), msg.size(),
                                   control_data_label_.c_str());
