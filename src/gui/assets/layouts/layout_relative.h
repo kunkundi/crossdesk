@@ -7,8 +7,6 @@
 #ifndef _LAYOUT_STYLE_H_
 #define _LAYOUT_STYLE_H_
 
-#include "render.h"
-
 #define TITLE_BAR_HEIGHT 0.0625f
 #define TITLE_BAR_BUTTON_WIDTH 0.0625f
 #define TITLE_BAR_BUTTON_HEIGHT 0.0625f

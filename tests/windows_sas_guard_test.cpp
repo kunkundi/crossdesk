@@ -12,8 +12,8 @@ std::filesystem::path FindRepoRoot() {
   std::filesystem::path current = std::filesystem::current_path();
   while (!current.empty()) {
     if (std::filesystem::exists(current / "xmake.lua") &&
-        std::filesystem::exists(
-            current / "src/service/windows/service_host.cpp")) {
+        std::filesystem::exists(current /
+                                "src/service/windows/service_host.cpp")) {
       return current;
     }
     current = current.parent_path();
@@ -21,7 +21,7 @@ std::filesystem::path FindRepoRoot() {
   return {};
 }
 
-std::string ReadFile(const std::filesystem::path& path) {
+std::string ReadFile(const std::filesystem::path &path) {
   std::ifstream file(path, std::ios::binary);
   if (!file) {
     return {};
@@ -32,8 +32,8 @@ std::string ReadFile(const std::filesystem::path& path) {
   return stream.str();
 }
 
-bool ExpectContains(const char* name, const std::string& value,
-                    const std::string& expected) {
+bool ExpectContains(const char *name, const std::string &value,
+                    const std::string &expected) {
   if (value.find(expected) != std::string::npos) {
     return true;
   }
@@ -42,8 +42,8 @@ bool ExpectContains(const char* name, const std::string& value,
   return false;
 }
 
-bool ExpectNotContains(const char* name, const std::string& value,
-                       const std::string& unexpected) {
+bool ExpectNotContains(const char *name, const std::string &value,
+                       const std::string &unexpected) {
   if (value.find(unexpected) == std::string::npos) {
     return true;
   }
@@ -52,7 +52,7 @@ bool ExpectNotContains(const char* name, const std::string& value,
   return false;
 }
 
-bool ExpectTrue(const char* name, bool value) {
+bool ExpectTrue(const char *name, bool value) {
   if (value) {
     return true;
   }
@@ -71,9 +71,11 @@ int main() {
   }
 
   const std::string control_bar =
-      ReadFile(repo_root / "src/gui/toolbars/control_bar.cpp");
-  const std::string render = ReadFile(repo_root / "src/gui/render.cpp");
-  const std::string render_h = ReadFile(repo_root / "src/gui/render.h");
+      ReadFile(repo_root / "src/gui/views/toolbars/control_bar.cpp");
+  const std::string windows_service_runtime =
+      ReadFile(repo_root / "src/gui/runtime/windows_service_runtime.cpp");
+  const std::string runtime_state_h =
+      ReadFile(repo_root / "src/gui/runtime/runtime_state.h");
   const std::string service_host =
       ReadFile(repo_root / "src/service/windows/service_host.cpp");
   const std::string service_host_h =
@@ -82,9 +84,9 @@ int main() {
       ReadFile(repo_root / "src/service/windows/session_helper_main.cpp");
 
   bool ok = true;
-  ok &= ExpectTrue("secure desktop input routing",
-                   crossdesk::IsSecureDesktopInteractionRequired(
-                       "secure-desktop"));
+  ok &= ExpectTrue(
+      "secure desktop input routing",
+      crossdesk::IsSecureDesktopInteractionRequired("secure-desktop"));
   ok &= ExpectNotContains("control_bar.cpp", control_bar,
                           "CanSendSecureAttentionSequence("
                           "props->remote_interactive_stage_)");
@@ -92,18 +94,20 @@ int main() {
                           "ImGui::BeginDisabled();\n"
                           "      }\n"
                           "      if (ImGui::Selectable(sas_label.c_str()))");
-  ok &= ExpectNotContains("render.cpp", render, "sas_requires_lock_screen");
-  ok &= ExpectContains("render.h", render_h,
+  ok &= ExpectNotContains("windows_service_runtime.cpp",
+                          windows_service_runtime, "sas_requires_lock_screen");
+  ok &= ExpectContains("runtime_state.h", runtime_state_h,
                        "optimistic_windows_secure_desktop_until_tick_");
-  ok &= ExpectContains("render.cpp", render,
+  ok &= ExpectContains("windows_service_runtime.cpp", windows_service_runtime,
                        "kWindowsServiceSasSecureDesktopGraceMs");
-  ok &= ExpectContains("render.cpp", render,
+  ok &= ExpectContains("windows_service_runtime.cpp", windows_service_runtime,
                        "status->sas_secure_desktop_grace_active");
-  ok &= ExpectContains("render.cpp", render,
-                       "json.value(\"sas_secure_desktop_grace_active\", false)");
-  ok &= ExpectContains("render.cpp", render,
+  ok &=
+      ExpectContains("windows_service_runtime.cpp", windows_service_runtime,
+                     "json.value(\"sas_secure_desktop_grace_active\", false)");
+  ok &= ExpectContains("windows_service_runtime.cpp", windows_service_runtime,
                        "status.sas_secure_desktop_grace_active");
-  ok &= ExpectContains("render.cpp", render,
+  ok &= ExpectContains("windows_service_runtime.cpp", windows_service_runtime,
                        "local_interactive_stage_ = \"secure-desktop\"");
   ok &= ExpectContains("service_host.h", service_host_h,
                        "sas_secure_desktop_until_tick_");
@@ -126,8 +130,9 @@ int main() {
                        "now + kSasSecureDesktopGraceMs");
   ok &= ExpectContains("service_host.cpp", service_host,
                        "\\\"sas_secure_desktop_grace_active\\\"");
-  ok &= ExpectContains("service_host.cpp", service_host,
-                       "raw_interactive_stage = ResolveInteractiveStageLocked()");
+  ok &=
+      ExpectContains("service_host.cpp", service_host,
+                     "raw_interactive_stage = ResolveInteractiveStageLocked()");
   ok &= ExpectContains("session_helper_main.cpp", session_helper,
                        "kSessionHelperStatePollMs = 1000");
   ok &= ExpectContains("session_helper_main.cpp", session_helper,

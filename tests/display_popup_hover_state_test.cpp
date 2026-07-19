@@ -10,7 +10,8 @@ std::filesystem::path FindRepoRoot() {
   std::filesystem::path current = std::filesystem::current_path();
   while (!current.empty()) {
     if (std::filesystem::exists(current / "xmake.lua") &&
-        std::filesystem::exists(current / "src/gui/toolbars/control_bar.cpp")) {
+        std::filesystem::exists(current /
+                                "src/gui/views/toolbars/control_bar.cpp")) {
       return current;
     }
     current = current.parent_path();
@@ -63,8 +64,7 @@ bool ExpectContainsAtLeast(const char* name, const std::string& value,
   }
 
   std::cerr << name << " expected at least " << min_count
-            << " occurrences of: " << expected << ", found " << count
-            << "\n";
+            << " occurrences of: " << expected << ", found " << count << "\n";
   return false;
 }
 
@@ -110,7 +110,7 @@ int main() {
   }
 
   const std::string control_bar =
-      ReadFile(repo_root / "src/gui/toolbars/control_bar.cpp");
+      ReadFile(repo_root / "src/gui/views/toolbars/control_bar.cpp");
 
   bool ok = true;
   ok &= ExpectContains("control_bar.cpp", control_bar,

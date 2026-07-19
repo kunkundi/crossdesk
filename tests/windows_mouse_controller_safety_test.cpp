@@ -11,7 +11,8 @@ std::filesystem::path FindRepoRoot() {
   while (!current.empty()) {
     if (std::filesystem::exists(current / "xmake.lua") &&
         std::filesystem::exists(
-            current / "src/device_controller/mouse/windows/mouse_controller.cpp")) {
+            current /
+            "src/device_controller/mouse/windows/mouse_controller.cpp")) {
       return current;
     }
     current = current.parent_path();

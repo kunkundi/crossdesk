@@ -10,7 +10,8 @@ std::filesystem::path FindRepoRoot() {
   std::filesystem::path current = std::filesystem::current_path();
   while (!current.empty()) {
     if (std::filesystem::exists(current / "xmake.lua") &&
-        std::filesystem::exists(current / "src/service/windows/service_host.cpp")) {
+        std::filesystem::exists(current /
+                                "src/service/windows/service_host.cpp")) {
       return current;
     }
     current = current.parent_path();
@@ -18,7 +19,7 @@ std::filesystem::path FindRepoRoot() {
   return {};
 }
 
-std::string ReadFile(const std::filesystem::path& path) {
+std::string ReadFile(const std::filesystem::path &path) {
   std::ifstream file(path, std::ios::binary);
   if (!file) {
     return {};
@@ -29,8 +30,8 @@ std::string ReadFile(const std::filesystem::path& path) {
   return stream.str();
 }
 
-bool ExpectContains(const char* name, const std::string& value,
-                    const std::string& expected) {
+bool ExpectContains(const char *name, const std::string &value,
+                    const std::string &expected) {
   if (value.find(expected) != std::string::npos) {
     return true;
   }
@@ -39,8 +40,8 @@ bool ExpectContains(const char* name, const std::string& value,
   return false;
 }
 
-bool ExpectNotContains(const char* name, const std::string& value,
-                       const std::string& unexpected) {
+bool ExpectNotContains(const char *name, const std::string &value,
+                       const std::string &unexpected) {
   if (value.find(unexpected) == std::string::npos) {
     return true;
   }
@@ -64,17 +65,18 @@ int main() {
       ReadFile(repo_root / "src/service/windows/service_host.h");
   const std::string session_helper =
       ReadFile(repo_root / "src/service/windows/session_helper_main.cpp");
-  const std::string targets =
-      ReadFile(repo_root / "xmake/targets.lua");
+  const std::string targets = ReadFile(repo_root / "xmake/targets.lua");
   const std::string interactive_state =
       ReadFile(repo_root / "src/service/windows/interactive_state.h");
-  const std::string render_callback =
-      ReadFile(repo_root / "src/gui/render_callback.cpp");
-  const std::string render = ReadFile(repo_root / "src/gui/render.cpp");
+  const std::string gui_input_sources =
+      ReadFile(repo_root / "src/gui/runtime/peer_data_callbacks.cpp") + "\n" +
+      ReadFile(repo_root / "src/gui/features/input/keyboard_controller.cpp");
+  const std::string windows_service_runtime =
+      ReadFile(repo_root / "src/gui/runtime/windows_service_runtime.cpp");
   const std::string screen_capturer_h =
       ReadFile(repo_root / "src/screen_capturer/windows/screen_capturer_win.h");
-  const std::string screen_capturer_cpp =
-      ReadFile(repo_root / "src/screen_capturer/windows/screen_capturer_win.cpp");
+  const std::string screen_capturer_cpp = ReadFile(
+      repo_root / "src/screen_capturer/windows/screen_capturer_win.cpp");
 
   bool ok = true;
   ok &= ExpectContains("service_host.cpp", service_host,
@@ -93,8 +95,9 @@ int main() {
   ok &= ExpectContains("session_helper_main.cpp", session_helper,
                        "EnablePerMonitorDpiAwareness();\n\n"
                        "  InitializeHelperLogger();");
-  ok &= ExpectContains("service_host.cpp", service_host,
-                       "const ULONGLONG deadline_tick = GetTickCount64() + timeout_ms");
+  ok &= ExpectContains(
+      "service_host.cpp", service_host,
+      "const ULONGLONG deadline_tick = GetTickCount64() + timeout_ms");
   ok &= ExpectContains("service_host.cpp", service_host,
                        "while (GetTickCount64() <= deadline_tick)");
   ok &= ExpectNotContains("service_host.cpp", service_host,
@@ -103,18 +106,18 @@ int main() {
                        "BuildSecureInputHelperKeyboardCommand(");
   ok &= ExpectContains("service_host.cpp", service_host,
                        "const std::string& interactive_stage");
-  ok &= ExpectContains("service_host.h", service_host_h,
-                       "bool LaunchSecureInputHelper(DWORD session_id,\n"
-                       "                               const std::string& interactive_stage,\n"
-                       "                               const std::string& interactive_desktop)");
+  ok &= ExpectContains(
+      "service_host.h", service_host_h,
+      "bool LaunchSecureInputHelper(DWORD session_id,\n"
+      "                               const std::string& interactive_stage,\n"
+      "                               const std::string& interactive_desktop)");
   ok &= ExpectContains("service_host.h", service_host_h,
                        "std::string secure_input_helper_interactive_stage_");
   ok &= ExpectContains("service_host.cpp", service_host,
                        "SecureInputHelperDesktopForStage");
   ok &= ExpectContains("service_host.cpp", service_host,
                        "IsConsentUiRunningInSession");
-  ok &= ExpectContains("service_host.cpp", service_host,
-                       "L\"Consent.exe\"");
+  ok &= ExpectContains("service_host.cpp", service_host, "L\"Consent.exe\"");
   ok &= ExpectContains("session_helper_main.cpp", session_helper,
                        "IsConsentUiRunningInCurrentSession");
   ok &= ExpectContains("session_helper_main.cpp", session_helper,
@@ -136,41 +139,47 @@ int main() {
                        "return L\"winsta0\\\\Winlogon\"");
   ok &= ExpectContains("service_host.cpp", service_host,
                        "return L\"winsta0\\\\default\"");
-  ok &= ExpectContains("service_host.cpp", service_host,
-                       "secure_input_helper_interactive_stage_ == interactive_stage");
-  ok &= ExpectContains("service_host.cpp", service_host,
-                       "secure_input_helper_interactive_stage_ = interactive_stage");
+  ok &= ExpectContains(
+      "service_host.cpp", service_host,
+      "secure_input_helper_interactive_stage_ == interactive_stage");
+  ok &= ExpectContains(
+      "service_host.cpp", service_host,
+      "secure_input_helper_interactive_stage_ = interactive_stage");
   ok &= ExpectContains("service_host.cpp", service_host,
                        "secure_input_helper_interactive_stage_.clear()");
-  ok &= ExpectContains("service_host.cpp", service_host,
-                       "LaunchSecureInputHelper(target_session_id, interactive_stage,\n"
-                       "                                 interactive_desktop)");
+  ok &= ExpectContains(
+      "service_host.cpp", service_host,
+      "LaunchSecureInputHelper(target_session_id, interactive_stage,\n"
+      "                                 interactive_desktop)");
   ok &= ExpectContains("service_host.cpp", service_host,
                        "\\\"secure_input_helper_stage\\\":\\\"");
   ok &= ExpectContains("service_host.cpp", service_host,
                        "session_helper_report_interactive_stage_");
   ok &= ExpectContains("service_host.cpp", service_host,
                        "return SendSecureDesktopMouseInput");
-  ok &= ExpectContains("render.cpp", render,
+  ok &= ExpectContains("windows_service_runtime.cpp", windows_service_runtime,
                        "constexpr DWORD kWindowsServiceQueryTimeoutMs = 500");
-  ok &= ExpectContains("screen_capturer_win.cpp", screen_capturer_cpp,
-                       "constexpr DWORD kSecureDesktopStatusPipeTimeoutMs = 500");
-  ok &= ExpectContains("render.cpp", render,
+  ok &=
+      ExpectContains("screen_capturer_win.cpp", screen_capturer_cpp,
+                     "constexpr DWORD kSecureDesktopStatusPipeTimeoutMs = 500");
+  ok &= ExpectContains("windows_service_runtime.cpp", windows_service_runtime,
                        "IsTransientWindowsServiceStatusError(status.error)");
   ok &= ExpectContains("screen_capturer_win.cpp", screen_capturer_cpp,
                        "IsTransientWindowsServiceStatusError(status.error)");
-  ok &= ExpectContains("render.cpp", render,
+  ok &= ExpectContains("windows_service_runtime.cpp", windows_service_runtime,
                        "Local Windows service temporarily unavailable");
-  ok &= ExpectContains("screen_capturer_win.cpp", screen_capturer_cpp,
-                       "Windows capturer secure desktop service temporarily unavailable");
-  ok &= ExpectContains("screen_capturer_win.cpp", screen_capturer_cpp,
-                       "Windows capturer secure desktop transient frame query failed");
+  ok &= ExpectContains(
+      "screen_capturer_win.cpp", screen_capturer_cpp,
+      "Windows capturer secure desktop service temporarily unavailable");
+  ok &= ExpectContains(
+      "screen_capturer_win.cpp", screen_capturer_cpp,
+      "Windows capturer secure desktop transient frame query failed");
   ok &= ExpectContains("screen_capturer_win.cpp", screen_capturer_cpp,
                        "if (transient_error) {\n"
                        "          LOG_INFO(");
-  ok &= ExpectContains("render_callback.cpp", render_callback,
+  ok &= ExpectContains("gui_input_sources.cpp", gui_input_sources,
                        "IsTransientSecureDesktopInputFailure");
-  ok &= ExpectContains("render_callback.cpp", render_callback,
+  ok &= ExpectContains("gui_input_sources.cpp", gui_input_sources,
                        "Secure desktop keyboard injection transient failure");
   ok &= ExpectContains("session_helper_main.cpp", session_helper,
                        "MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE");
@@ -210,31 +219,36 @@ int main() {
                        "json[\"current_desktop\"]");
   ok &= ExpectContains("session_helper_main.cpp", session_helper,
                        "json[\"stage\"]");
-  ok &= ExpectContains("session_helper_main.cpp", session_helper,
-                       "ParseSecureInputKeyboardCommand(command, &key_code, &is_down, &scan_code,\n"
-                       "                                      &extended, &interactive_stage,\n"
-                       "                                      &interactive_desktop)");
-  ok &= ExpectContains("session_helper_main.cpp", session_helper,
-                       "InjectKeyboardInput(key_code, is_down, scan_code, extended,\n"
-                       "                            interactive_stage, interactive_desktop)");
+  ok &= ExpectContains(
+      "session_helper_main.cpp", session_helper,
+      "ParseSecureInputKeyboardCommand(command, &key_code, &is_down, "
+      "&scan_code,\n"
+      "                                      &extended, &interactive_stage,\n"
+      "                                      &interactive_desktop)");
+  ok &= ExpectContains(
+      "session_helper_main.cpp", session_helper,
+      "InjectKeyboardInput(key_code, is_down, scan_code, extended,\n"
+      "                            interactive_stage, interactive_desktop)");
   ok &= ExpectContains("session_helper_main.cpp", session_helper,
                        "InjectMouseInput(mouse_request)");
-  ok &= ExpectNotContains("session_helper_main.cpp", session_helper,
-                          "EnsureThreadDesktop(L\"Winlogon\", &secure_desktop)");
-  ok &= ExpectContains("service_host.cpp", service_host,
-                       "winsta0\\\\default");
-  ok &= ExpectNotContains("service_host.cpp", service_host,
-                          "startup_info.lpDesktop = const_cast<LPWSTR>(L\"winsta0\\\\Winlogon\")");
+  ok &=
+      ExpectNotContains("session_helper_main.cpp", session_helper,
+                        "EnsureThreadDesktop(L\"Winlogon\", &secure_desktop)");
+  ok &= ExpectContains("service_host.cpp", service_host, "winsta0\\\\default");
+  ok &= ExpectNotContains(
+      "service_host.cpp", service_host,
+      "startup_info.lpDesktop = const_cast<LPWSTR>(L\"winsta0\\\\Winlogon\")");
   ok &= ExpectContains("interactive_state.h", interactive_state,
                        "interactive_stage == \"lock-screen\"");
-  ok &= ExpectContains("render_callback.cpp", render_callback,
+  ok &= ExpectContains("gui_input_sources.cpp", gui_input_sources,
                        "RemoteAction remote_action{};");
-  ok &= ExpectContains("render.cpp", render,
+  ok &= ExpectContains("windows_service_runtime.cpp", windows_service_runtime,
                        "previous_secure_desktop_interaction");
   ok &= ExpectNotContains(
-      "render_callback.cpp", render_callback,
-      "render->local_service_available_ &&\n"
-      "        IsSecureDesktopInteractionRequired(render->local_interactive_stage_)");
+      "gui_input_sources.cpp", gui_input_sources,
+      "runtime->local_service_available_ &&\n"
+      "        "
+      "IsSecureDesktopInteractionRequired(runtime->local_interactive_stage_)");
   ok &= ExpectContains("screen_capturer_win.h", screen_capturer_h,
                        "std::string secure_shared_stage_;");
   ok &= ExpectContains("screen_capturer_win.cpp", screen_capturer_cpp,

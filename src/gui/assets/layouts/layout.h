@@ -7,8 +7,6 @@
 #ifndef _LAYOUT_STYLE_H_
 #define _LAYOUT_STYLE_H_
 
-#include "render.h"
-
 #define MENU_WINDOW_WIDTH_CN 300 * dpi_scale_
 #define MENU_WINDOW_HEIGHT_CN 280 * dpi_scale_
 #define LOCAL_WINDOW_WIDTH_CN 300 * dpi_scale_

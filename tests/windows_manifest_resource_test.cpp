@@ -130,11 +130,12 @@ int main() {
   ok &= ExpectNotContains("crossdesk_portable.manifest", portable_manifest,
                           "processorArchitecture=\"*\"");
 #ifdef _WIN32
-  ok &= ExpectActivationContext(repo_root / "scripts/windows/crossdesk.manifest");
-  ok &= ExpectActivationContext(
-      repo_root / "scripts/windows/crossdesk_debug.manifest");
-  ok &= ExpectActivationContext(
-      repo_root / "scripts/windows/crossdesk_portable.manifest");
+  ok &=
+      ExpectActivationContext(repo_root / "scripts/windows/crossdesk.manifest");
+  ok &= ExpectActivationContext(repo_root /
+                                "scripts/windows/crossdesk_debug.manifest");
+  ok &= ExpectActivationContext(repo_root /
+                                "scripts/windows/crossdesk_portable.manifest");
 #endif
   return ok ? 0 : 1;
 }

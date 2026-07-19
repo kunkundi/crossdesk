@@ -1,15 +1,15 @@
-#include "path_manager.h"
-
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
 #include <string>
 
+#include "path_manager.h"
+
 #ifdef _WIN32
 #include <windows.h>
 #elif defined(__APPLE__)
-#include <mach-o/dyld.h>
 #include <limits.h>
+#include <mach-o/dyld.h>
 #else
 #include <limits.h>
 #include <unistd.h>
@@ -43,8 +43,7 @@ std::filesystem::path GetExecutableDirectory() {
 #endif
 }
 
-bool ExpectEqual(const char* name,
-                 const std::filesystem::path& actual,
+bool ExpectEqual(const char* name, const std::filesystem::path& actual,
                  const std::filesystem::path& expected) {
   if (actual.lexically_normal() == expected.lexically_normal()) {
     return true;

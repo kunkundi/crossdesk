@@ -1,7 +1,7 @@
-#include "device_controller.h"
-
 #include <iostream>
 #include <string>
+
+#include "device_controller.h"
 
 namespace {
 
@@ -60,10 +60,8 @@ int main() {
   ok &= ExpectEqual("parsed pressed_count", parsed.ks.pressed_count, 2);
   ok &= ExpectEqual("parsed key 0", parsed.ks.pressed_keys[0].key_value, 65);
   ok &= ExpectEqual("parsed scan 0", parsed.ks.pressed_keys[0].scan_code, 30);
-  ok &= ExpectTrue("parsed extended 0",
-                   !parsed.ks.pressed_keys[0].extended);
-  ok &= ExpectEqual("parsed key 1", parsed.ks.pressed_keys[1].key_value,
-                    0xA3);
+  ok &= ExpectTrue("parsed extended 0", !parsed.ks.pressed_keys[0].extended);
+  ok &= ExpectEqual("parsed key 1", parsed.ks.pressed_keys[1].key_value, 0xA3);
   ok &= ExpectEqual("parsed scan 1", parsed.ks.pressed_keys[1].scan_code, 29);
   ok &= ExpectTrue("parsed extended 1", parsed.ks.pressed_keys[1].extended);
 

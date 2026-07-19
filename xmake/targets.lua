@@ -214,20 +214,21 @@ function setup_targets()
         add_deps("rd_log", "common", "assets", "config_center", "minirtc",
             "path_manager", "screen_capturer", "speaker_capturer",
             "device_controller", "thumbnail", "version_checker", "tools")
-        add_files("src/gui/*.cpp", "src/gui/panels/*.cpp", "src/gui/toolbars/*.cpp",
-            "src/gui/windows/*.cpp")
-        add_includedirs("src/gui", "src/gui/panels", "src/gui/toolbars",
-            "src/gui/windows", {public = true})
+        add_files("src/gui/render.cpp", "src/gui/application/*.cpp",
+            "src/gui/runtime/*.cpp",
+            "src/gui/features/devices/*.cpp", "src/gui/features/input/*.cpp",
+            "src/gui/features/clipboard/*.cpp", "src/gui/features/file_transfer/*.cpp",
+            "src/gui/features/settings/*.cpp", "src/gui/views/panels/*.cpp",
+            "src/gui/views/toolbars/*.cpp", "src/gui/views/windows/*.cpp")
+        add_includedirs("src/gui", {public = true})
         if is_os("windows") then
-            add_files("src/gui/tray/win_tray.cpp")
-            add_includedirs("src/gui/tray", "src/service/windows",
-                {public = true})
+            add_files("src/gui/platform/tray/win_tray.cpp")
+            add_includedirs("src/service/windows", {public = true})
         elseif is_os("macosx") then
-            add_files("src/gui/windows/*.mm", "src/gui/tray/*.mm")
-            add_includedirs("src/gui/tray", {public = true})
+            add_files("src/gui/runtime/*.mm", "src/gui/views/windows/*.mm",
+                "src/gui/platform/tray/*.mm")
         elseif is_os("linux") then
-            add_files("src/gui/tray/linux_tray.cpp")
-            add_includedirs("src/gui/tray", {public = true})
+            add_files("src/gui/platform/tray/linux_tray.cpp")
         end
 
     if is_os("windows") then
