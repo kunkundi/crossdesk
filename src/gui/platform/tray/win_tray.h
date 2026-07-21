@@ -10,6 +10,7 @@
 #include <Windows.h>
 #include <shellapi.h>
 
+#include <functional>
 #include <string>
 
 #define WM_TRAY_CALLBACK (WM_USER + 1)
@@ -20,6 +21,9 @@ class WinTray {
  public:
   WinTray(HWND app_hwnd, HICON icon, const std::wstring& tooltip,
           int language_index);
+  WinTray(std::function<void()> show_window,
+          std::function<void()> hide_window, std::function<void()> exit_app,
+          HICON icon, const std::wstring& tooltip, int language_index);
   ~WinTray();
 
   void MinimizeToTray();
@@ -27,12 +31,17 @@ class WinTray {
   bool HandleTrayMessage(MSG* msg);
 
  private:
+  void ShowApplicationWindow();
+
   HWND app_hwnd_;
   HWND hwnd_message_only_;
   HICON icon_;
   std::wstring tip_;
   int language_index_;
   NOTIFYICONDATA nid_;
+  std::function<void()> show_window_;
+  std::function<void()> hide_window_;
+  std::function<void()> exit_app_;
 };
 }  // namespace crossdesk
 #endif

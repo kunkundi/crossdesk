@@ -1,0 +1,62 @@
+package("slint")
+    set_homepage("https://slint.dev")
+    set_description("Declarative GUI toolkit for C++")
+    set_license("GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0")
+
+    add_urls("https://github.com/slint-ui/slint/archive/refs/tags/v$(version).tar.gz",
+             "https://github.com/slint-ui/slint.git")
+    add_versions("1.17.1", "68222567f8c70ff677cd4a98cd94fb4765ac0f797eb8f8608a646911c908dc2a")
+
+    add_configs("shared", {description = "Build the Slint runtime as a shared library", default = true, type = "boolean", readonly = true})
+
+    add_deps("cmake")
+
+    on_load(function(package)
+        package:add("includedirs", "include/slint")
+        package:add("links", "slint_cpp")
+    end)
+
+    on_install("windows", "linux", "macosx", function(package)
+        local configs = {
+            "-DSLINT_BUILD_TESTING=OFF",
+            "-DSLINT_BUILD_EXAMPLES=OFF",
+            "-DSLINT_COMPILER=download",
+            "-DSLINT_FEATURE_INTERPRETER=OFF",
+            "-DSLINT_FEATURE_LIVE_PREVIEW=OFF",
+            "-DSLINT_FEATURE_TESTING=OFF",
+            "-DSLINT_FEATURE_SYSTEM_TESTING=OFF",
+            "-DSLINT_FEATURE_MCP=OFF",
+            "-DSLINT_FEATURE_BACKEND_QT=OFF",
+            "-DSLINT_FEATURE_RENDERER_SKIA=OFF",
+            "-DSLINT_FEATURE_RENDERER_SKIA_OPENGL=OFF",
+            "-DSLINT_FEATURE_RENDERER_SKIA_VULKAN=OFF",
+            "-DSLINT_FEATURE_RENDERER_FEMTOVG=ON",
+            "-DSLINT_FEATURE_RENDERER_SOFTWARE=ON",
+            "-DSLINT_STYLE=fluent",
+            "-DBUILD_SHARED_LIBS=ON"
+        }
+        import("package.tools.cmake").install(package, configs)
+
+        -- SLINT_COMPILER=download only configures downstream CMake projects.
+        -- xmake's native Slint rule needs the matching host executable here.
+        import("net.http")
+        import("utils.archive")
+        local host_system = is_host("windows") and "windows" or (is_host("macosx") and "Darwin" or "Linux")
+        local host_arch = os.arch()
+        if host_arch == "x64" then
+            host_arch = "x86_64"
+        end
+        local suffix = host_system .. "-" .. host_arch
+        local archive_name = "slint-compiler-" .. suffix .. ".tar.gz"
+        local archive_file = path.join(package:builddir(), archive_name)
+        local download_url = "https://github.com/slint-ui/slint/releases/download/v" .. package:version_str() .. "/" .. archive_name
+        http.download(download_url, archive_file)
+        os.mkdir(path.join(package:installdir(), "bin"))
+        archive.extract(archive_file, package:installdir())
+    end)
+
+    on_test(function(package)
+        assert(package:has_cxxincludes("slint.h", {configs = {languages = "c++20"}}), "Slint C++ headers are unusable")
+        assert(os.isfile(path.join(package:installdir(), "bin", is_host("windows") and "slint-compiler.exe" or "slint-compiler")), "slint-compiler was not installed")
+    end)
+package_end()

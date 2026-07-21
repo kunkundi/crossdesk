@@ -70,12 +70,9 @@ void PeerEventHandler::OnReceiveVideoBuffer(
       props->video_size_ = video_frame->size;
 
       props->front_frame_.swap(props->back_frame_);
+      ++props->video_frame_sequence_;
     }
 
-    SDL_Event event;
-    event.type = runtime->STREAM_REFRESH_EVENT;
-    event.user.data1 = props;
-    SDL_PushEvent(&event);
     props->streaming_ = true;
 
     if (props->net_traffic_stats_button_pressed_) {

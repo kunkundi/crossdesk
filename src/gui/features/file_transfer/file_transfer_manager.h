@@ -1,8 +1,6 @@
 #ifndef CROSSDESK_GUI_FILE_TRANSFER_MANAGER_H_
 #define CROSSDESK_GUI_FILE_TRANSFER_MANAGER_H_
 
-#include <SDL3/SDL.h>
-
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -33,7 +31,6 @@ public:
                       const std::shared_ptr<RemoteSession> &props,
                       const std::string &file_label,
                       const std::string &remote_id = "");
-  void HandleDropEvent(const SDL_Event &event);
   void HandleAck(const char *data, size_t size);
 
 private:

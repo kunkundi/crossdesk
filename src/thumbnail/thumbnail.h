@@ -7,8 +7,6 @@
 #ifndef _THUMBNAIL_H_
 #define _THUMBNAIL_H_
 
-#include <SDL3/SDL.h>
-
 #include <filesystem>
 #include <map>
 #include <unordered_map>
@@ -19,7 +17,7 @@ namespace crossdesk {
 class Thumbnail {
  public:
   struct RecentConnection {
-    SDL_Texture* texture = nullptr;
+    std::filesystem::path image_path;
     std::string remote_id;
     std::string remote_host_name;
     std::string password;
@@ -41,10 +39,13 @@ class Thumbnail {
                       const std::string& password);
 
   int LoadThumbnail(
-      SDL_Renderer* renderer,
       std::vector<std::pair<std::string, Thumbnail::RecentConnection>>&
           recent_connections,
       int* width, int* height);
+
+  bool DecodeImage(const std::filesystem::path& image_path,
+                   std::vector<unsigned char>* rgba, int* width,
+                   int* height) const;
 
   int DeleteThumbnail(const std::string& filename_keyword);
 

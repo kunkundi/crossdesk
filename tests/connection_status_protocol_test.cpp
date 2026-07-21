@@ -63,8 +63,10 @@ int main() {
       ReadFile(repo_root / "submodules/minirtc/src/api/minirtc.h");
   const std::string peer_connection =
       ReadFile(repo_root / "submodules/minirtc/src/pc/peer_connection.cpp");
-  const std::string connection_status_window = ReadFile(
-      repo_root / "src/gui/views/windows/connection_status_window.cpp");
+  const std::string main_window =
+      ReadFile(repo_root / "src/gui/ui/main_window.slint");
+  const std::string gui_application =
+      ReadFile(repo_root / "src/gui/application/gui_application.cpp");
   const std::string runtime_state_h =
       ReadFile(repo_root / "src/gui/runtime/runtime_state.h");
   const std::string remote_session_h =
@@ -83,8 +85,14 @@ int main() {
                           "\"Device offline\"");
   ok &= ExpectNotContains("peer_connection.cpp", peer_connection,
                           "ConnectionStatus::DeviceOffline");
-  ok &= ExpectContains("connection_status_window.cpp", connection_status_window,
-                       "localization::device_offline");
+  ok &= ExpectContains("main_window.slint", main_window,
+                       "in property <bool> connection-dialog-open: false;");
+  ok &= ExpectContains("main_window.slint", main_window,
+                       "text: root.connection-status-text;");
+  ok &= ExpectContains("gui_application.cpp", gui_application,
+                       "case ConnectionStatus::RemoteUnavailable:");
+  ok &= ExpectContains("gui_application.cpp", gui_application,
+                       "return localization::device_offline[language];");
   ok &= ExpectContains("runtime_state.h", runtime_state_h,
                        "pending_presence_probe_started_at_");
   ok &= ExpectContains("remote_session.h", remote_session_h,

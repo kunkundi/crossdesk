@@ -1,0 +1,5 @@
+// Single AOT entry point. Generating one header for the entire UI avoids
+// duplicate imported-component definitions when C++ uses all three windows.
+export { MainWindow, RecentConnection, UiStrings } from "main_window.slint";
+export { StreamWindow, StreamTab, FileTransferEntry, NetworkStatsRow, StreamStrings } from "stream_window.slint";
+export { ServerWindow, ControllerEntry } from "server_window.slint";

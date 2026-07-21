@@ -1,5 +1,5 @@
 function setup_targets()
-    add_packages("spdlog", "imgui", "nlohmann_json")
+    add_packages("spdlog", "libsdl3", "nlohmann_json")
 
     includes("submodules", "thirdparty")
 
@@ -18,6 +18,7 @@ function setup_targets()
         set_kind("object")
         add_deps("rd_log")
         add_files("src/common/*.cpp")
+        remove_files("src/common/rounded_corner_button.cpp")
         if is_os("macosx") then
             add_files("src/common/*.mm")
         end
@@ -33,6 +34,7 @@ function setup_targets()
     target("path_manager_portable_test")
         set_kind("binary")
         set_default(false)
+        set_policy("build.ccache", false)
         add_defines("CROSSDESK_PORTABLE=1")
         add_includedirs("src/path_manager")
         add_files("tests/path_manager_portable_test.cpp",
@@ -80,6 +82,15 @@ function setup_targets()
         set_kind("binary")
         set_default(false)
         add_files("tests/display_popup_hover_state_test.cpp")
+
+    target("slint_ui_smoke_test")
+        set_kind("binary")
+        set_languages("c++20")
+        set_default(false)
+        add_packages("slint")
+        add_rules("slint")
+        add_files("src/gui/ui/crossdesk_ui.slint")
+        add_files("tests/slint_ui_smoke_test.cpp")
 
     target("version_checker_test")
         set_kind("binary")
@@ -209,24 +220,31 @@ function setup_targets()
 
     target("gui")
         set_kind("object")
+        set_languages("c++20")
+        -- spdlog 1.14 bundles fmt 10, whose consteval parser is rejected by
+        -- current Apple Clang in C++20 mode. Keep the established dependency
+        -- version and use fmt's supported runtime-parser fallback here.
+        add_defines("FMT_CONSTEVAL=")
+        add_packages("slint", {public = true})
         add_packages("libyuv", "tinyfiledialogs")
+        add_rules("slint")
         add_defines("CROSSDESK_VERSION=\"" .. (get_config("CROSSDESK_VERSION") or "Unknown") .. "\"")
         add_deps("rd_log", "common", "assets", "config_center", "minirtc",
             "path_manager", "screen_capturer", "speaker_capturer",
             "device_controller", "thumbnail", "version_checker", "tools")
-        add_files("src/gui/render.cpp", "src/gui/application/*.cpp",
+        add_files("src/gui/render.cpp", "src/gui/application/gui_application.cpp",
+            "src/gui/application/portable_service_integration.cpp",
             "src/gui/runtime/*.cpp",
             "src/gui/features/devices/*.cpp", "src/gui/features/input/*.cpp",
             "src/gui/features/clipboard/*.cpp", "src/gui/features/file_transfer/*.cpp",
-            "src/gui/features/settings/*.cpp", "src/gui/views/panels/*.cpp",
-            "src/gui/views/toolbars/*.cpp", "src/gui/views/windows/*.cpp")
+            "src/gui/features/settings/*.cpp", "src/gui/ui/crossdesk_ui.slint")
         add_includedirs("src/gui", {public = true})
         if is_os("windows") then
             add_files("src/gui/platform/tray/win_tray.cpp")
             add_includedirs("src/service/windows", {public = true})
         elseif is_os("macosx") then
-            add_files("src/gui/runtime/*.mm", "src/gui/views/windows/*.mm",
-                "src/gui/platform/tray/*.mm")
+            add_files("src/gui/runtime/*.mm", "src/gui/platform/tray/*.mm",
+                "src/gui/platform/window_drag_mac.mm")
         elseif is_os("linux") then
             add_files("src/gui/platform/tray/linux_tray.cpp")
         end

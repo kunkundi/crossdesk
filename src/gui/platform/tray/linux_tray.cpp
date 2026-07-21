@@ -190,6 +190,18 @@ struct LinuxTrayImpl {
         menu_label(GetMenuLabel(language_index_value)),
         menu_ascii_label(IsAsciiPrintable(menu_label) ? menu_label : "Exit") {}
 
+  explicit LinuxTrayImpl(std::function<void()> show_window_callback,
+                         std::function<void()> hide_window_callback,
+                         std::function<void()> exit_callback,
+                         std::string tray_tooltip, int language_index_value)
+      : show_window(std::move(show_window_callback)),
+        hide_window(std::move(hide_window_callback)),
+        exit_app(std::move(exit_callback)),
+        tooltip(std::move(tray_tooltip)),
+        language_index(language_index_value),
+        menu_label(GetMenuLabel(language_index_value)),
+        menu_ascii_label(IsAsciiPrintable(menu_label) ? menu_label : "Exit") {}
+
   ~LinuxTrayImpl() { RemoveTrayIcon(); }
 
   bool MinimizeToTray() {
@@ -197,7 +209,9 @@ struct LinuxTrayImpl {
       return false;
     }
 
-    if (app_window) {
+    if (hide_window) {
+      hide_window();
+    } else if (app_window) {
       SDL_HideWindow(app_window);
     }
     return true;
@@ -939,16 +953,20 @@ struct LinuxTrayImpl {
   }
 
   void ShowWindow() {
-    if (!app_window) {
-      return;
+    if (show_window) {
+      show_window();
+    } else if (app_window) {
+      SDL_ShowWindow(app_window);
+      SDL_RestoreWindow(app_window);
+      SDL_RaiseWindow(app_window);
     }
-
-    SDL_ShowWindow(app_window);
-    SDL_RestoreWindow(app_window);
-    SDL_RaiseWindow(app_window);
   }
 
   void RequestExit() {
+    if (exit_app) {
+      exit_app();
+      return;
+    }
     SDL_Event event{};
     event.type =
         exit_event_type == 0 || exit_event_type == static_cast<uint32_t>(-1)
@@ -958,6 +976,9 @@ struct LinuxTrayImpl {
   }
 
   ::SDL_Window* app_window = nullptr;
+  std::function<void()> show_window;
+  std::function<void()> hide_window;
+  std::function<void()> exit_app;
   std::string tooltip;
   int language_index = 0;
   uint32_t exit_event_type = 0;
@@ -1004,6 +1025,14 @@ LinuxTray::LinuxTray(::SDL_Window* app_window, const std::string& tooltip,
                      int language_index, uint32_t exit_event_type)
     : impl_(std::make_unique<LinuxTrayImpl>(app_window, tooltip, language_index,
                                             exit_event_type)) {}
+
+LinuxTray::LinuxTray(std::function<void()> show_window,
+                     std::function<void()> hide_window,
+                     std::function<void()> exit_app,
+                     const std::string& tooltip, int language_index)
+    : impl_(std::make_unique<LinuxTrayImpl>(
+          std::move(show_window), std::move(hide_window), std::move(exit_app),
+          tooltip, language_index)) {}
 
 LinuxTray::~LinuxTray() = default;
 

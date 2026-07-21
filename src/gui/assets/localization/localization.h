@@ -58,7 +58,7 @@ using TranslationTable =
 inline std::unordered_map<std::string, std::string> MakeLocalizedValues(
     const TranslationRow& row) {
   return {{"zh-CN", reinterpret_cast<const char*>(row.zh)},
-          {"en-US", row.en},
+          {"en-US", reinterpret_cast<const char*>(row.en)},
           {"ru-RU", reinterpret_cast<const char*>(row.ru)}};
 }
 

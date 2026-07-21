@@ -13,9 +13,9 @@ namespace detail {
 
 struct TranslationRow {
   const char* key;
-  const char* zh;
-  const char* en;
-  const char* ru;
+  const void* zh;
+  const void* en;
+  const void* ru;
 };
 
 // Single source of truth for all UI strings.

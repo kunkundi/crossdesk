@@ -30,6 +30,8 @@ function setup_options_and_dependencies()
     option_end()
 
     add_rules("mode.release", "mode.debug")
+    -- Preserve the existing codebase/toolchain contract. Slint targets opt in to
+    -- C++20 locally because its generated C++ API requires it.
     set_languages("c++17")
     set_encodings("utf-8")
 
@@ -41,7 +43,9 @@ function setup_options_and_dependencies()
     add_defines("USE_CUDA=" .. (is_config("USE_CUDA", true) and "1" or "0"))
     add_defines("USE_WAYLAND=" .. (is_config("USE_WAYLAND", true) and "1" or "0"))
     add_defines("USE_DRM=" .. (is_config("USE_DRM", true) and "1" or "0"))
-    add_defines("CROSSDESK_PORTABLE=" .. (is_config("CROSSDESK_PORTABLE", true) and "1" or "0"))
+    if is_config("CROSSDESK_PORTABLE", true) then
+        add_defines("CROSSDESK_PORTABLE=1")
+    end
 
     if is_mode("debug") then
         add_defines("CROSSDESK_DEBUG")
@@ -49,7 +53,8 @@ function setup_options_and_dependencies()
 
     add_requireconfs("*.python", {version = "3.12", override = true, configs = {pgo = false}})
     add_requires("spdlog 1.14.1", {system = false})
-    add_requires("imgui v1.92.1-docking", {configs = {sdl3 = true, sdl3_renderer = true}})
+    add_requires("slint 1.17.1", {configs = {shared = true}})
+    add_requires("libsdl3 3.2.26", {configs = {shared = false}})
     add_requires("openssl3 3.3.2", {system = false})
     add_requires("nlohmann_json 3.11.3")
     add_requires("cpp-httplib v0.26.0", {configs = {ssl = true}})

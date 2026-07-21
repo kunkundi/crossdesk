@@ -1,23 +1,11 @@
 #ifndef CROSSDESK_GUI_APPLICATION_STATE_H_
 #define CROSSDESK_GUI_APPLICATION_STATE_H_
 
-#include <SDL3/SDL.h>
-
 #include <chrono>
 #include <cstdint>
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <string>
-
-#include "imgui.h"
-
-#if _WIN32
-#include "platform/tray/win_tray.h"
-#elif defined(__APPLE__)
-#include "platform/tray/mac_tray.h"
-#elif defined(__linux__)
-#include "platform/tray/linux_tray.h"
-#endif
 
 namespace crossdesk::gui_detail {
 
@@ -27,25 +15,10 @@ struct MainWindowState {
   float title_bar_button_width_ = 30;
   float title_bar_button_height_ = 30;
 
-  SDL_Window *main_window_ = nullptr;
-  SDL_Renderer *main_renderer_ = nullptr;
-  ImGuiContext *main_ctx_ = nullptr;
-  ImFont *main_windows_system_chinese_font_ = nullptr;
-  ImFont *stream_windows_system_chinese_font_ = nullptr;
-  ImFont *server_windows_system_chinese_font_ = nullptr;
   bool exit_ = false;
   const int sdl_refresh_ms_ = 16;
-#if _WIN32
-  std::unique_ptr<WinTray> tray_;
-#elif defined(__APPLE__)
-  std::unique_ptr<MacTray> tray_;
-#elif defined(__linux__)
-  std::unique_ptr<LinuxTray> tray_;
-#endif
 
   bool main_window_minimized_ = false;
-  uint32_t last_main_minimize_request_tick_ = 0;
-  uint32_t last_stream_minimize_request_tick_ = 0;
   int main_window_width_real_ = 720;
   int main_window_height_real_ = 540;
   float main_window_dpi_scaling_w_ = 1.0f;
@@ -77,8 +50,6 @@ struct MainWindowState {
   float about_window_height_ = 170;
   float update_notification_window_width_ = 400;
   float update_notification_window_height_ = 320;
-  uint32_t STREAM_REFRESH_EVENT = 0;
-  uint32_t APP_EXIT_EVENT = 0;
 };
 
 // Application-global interaction flags that coordinate SDL events with media
@@ -116,14 +87,15 @@ struct InteractionState {
   std::string controlled_remote_id_;
   std::string focused_remote_id_;
   std::string remote_client_id_;
-  SDL_Event last_mouse_event{};
 };
 
 struct UpdateState {
   nlohmann::json latest_version_info_ = nlohmann::json{};
   bool update_available_ = false;
   std::string latest_version_;
+  std::string release_name_;
   std::string release_notes_;
+  std::string release_date_;
   bool show_new_version_icon_ = false;
   bool show_new_version_icon_in_menu_ = true;
   double new_version_icon_last_trigger_time_ = 0.0;
@@ -131,20 +103,15 @@ struct UpdateState {
 };
 
 struct StreamWindowState {
-  SDL_Window *stream_window_ = nullptr;
-  SDL_Renderer *stream_renderer_ = nullptr;
-  ImGuiContext *stream_ctx_ = nullptr;
   bool need_to_create_stream_window_ = false;
   bool stream_window_created_ = false;
   bool stream_window_inited_ = false;
   bool window_maximized_ = false;
-  bool stream_window_grabbed_ = false;
   bool control_mouse_ = false;
   int stream_window_width_default_ = 1280;
   int stream_window_height_default_ = 720;
   float stream_window_width_ = 1280;
   float stream_window_height_ = 720;
-  SDL_PixelFormat stream_pixformat_ = SDL_PIXELFORMAT_NV12;
   int stream_window_width_real_ = 1280;
   int stream_window_height_real_ = 720;
   float stream_window_dpi_scaling_w_ = 1.0f;
@@ -152,9 +119,6 @@ struct StreamWindowState {
 };
 
 struct ServerWindowState {
-  SDL_Window *server_window_ = nullptr;
-  SDL_Renderer *server_renderer_ = nullptr;
-  ImGuiContext *server_ctx_ = nullptr;
   bool need_to_create_server_window_ = false;
   bool need_to_destroy_server_window_ = false;
   bool server_window_created_ = false;
@@ -164,7 +128,6 @@ struct ServerWindowState {
   float server_window_width_ = 250;
   float server_window_height_ = 150;
   float server_window_title_bar_height_ = 30.0f;
-  SDL_PixelFormat server_pixformat_ = SDL_PIXELFORMAT_NV12;
   int server_window_normal_width_ = 250;
   int server_window_normal_height_ = 150;
   float server_window_dpi_scaling_w_ = 1.0f;

@@ -200,8 +200,6 @@ int GuiRuntime::RequestSingleDevicePresence(const std::string &remote_id,
 }
 
 void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
-  SDL_FlushEvent(STREAM_REFRESH_EVENT);
-
   std::shared_ptr<std::vector<unsigned char>> frame_snapshot;
   int video_width = 0;
   int video_height = 0;
@@ -290,11 +288,6 @@ void GuiRuntime::WaitForThumbnailSaveTasks() {
 
 void GuiRuntime::ResetRemoteSessionResources(
     std::shared_ptr<RemoteSession> props) {
-  if (props->stream_texture_) {
-    SDL_DestroyTexture(props->stream_texture_);
-    props->stream_texture_ = nullptr;
-  }
-
   {
     std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
     props->front_frame_.reset();

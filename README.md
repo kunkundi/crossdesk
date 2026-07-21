@@ -2,7 +2,7 @@
 
 <a href="https://hellogithub.com/repository/kunkundi/crossdesk" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=55d41367570345f1838e02fd12be7961&claim_uid=cb0OpZRrBuGVAfL&theme=small" alt="Featured｜HelloGitHub" /></a>
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-brightgreen.svg)]()
-[![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
+[![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![GitHub last commit](https://img.shields.io/github/last-commit/kunkundi/crossdesk)](https://github.com/kunkundi/crossdesk/commits/web-client)
 [![Build Status](https://github.com/kunkundi/crossdesk/actions/workflows/build.yml/badge.svg)](https://github.com/kunkundi/crossdesk/actions)  
 [![Docker Pulls](https://img.shields.io/docker/pulls/crossdesk/crossdesk-server)](https://hub.docker.com/r/crossdesk/crossdesk-server/tags)
@@ -82,34 +82,77 @@ Windows 安装包会自动打包 `crossdesk_service.exe` 和 `crossdesk_session_
 - [xmake](https://xmake.io/#/guide/installation)
 - [cmake](https://cmake.org/download/)
 
-Linux环境下需安装以下包：
+### Linux
 
-```
-sudo apt-get install -y software-properties-common git curl unzip build-essential libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev libxcb-shape0-dev libxcb-xkb-dev libxcb-xfixes0-dev libxfixes-dev libxv-dev libxtst-dev libasound2-dev libsndio-dev libxcb-shm0-dev libasound2-dev libpulse-dev
+Linux 构建目前支持 Ubuntu 22.04 及以上版本的 amd64 和 arm64。先安装基础编译依赖：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  git curl unzip build-essential cmake pkg-config binutils dpkg-dev \
+  libx11-dev libxext-dev libxrender-dev libxft-dev libxrandr-dev \
+  libxinerama-dev libxcursor-dev libxi-dev libxfixes-dev libxv-dev \
+  libxtst-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev \
+  libxcb-shape0-dev libxcb-xkb-dev libxcb-xfixes0-dev libxcb-shm0-dev \
+  libasound2-dev libsndio-dev libpulse-dev
 ```
 
-编译
-```
-git clone https://github.com/kunkundi/crossdesk.git
+需要启用 Wayland 捕获或 DRM 捕获时，再安装对应依赖：
 
+```bash
+sudo apt-get install -y libdbus-1-dev libpipewire-0.3-dev libdrm-dev
+```
+
+下载子模块并编译 Release 版本：
+
+```bash
+git clone --recurse-submodules https://github.com/kunkundi/crossdesk.git
 cd crossdesk
 
-git submodule init 
+# 已经克隆过仓库时执行这一行
+git submodule update --init --recursive
 
-git submodule update
-
+xmake f -m release --USE_CUDA=false -y
 xmake b -vy crossdesk
 ```
-编译选项
+
+amd64 构建结果位于 `build/linux/x86_64/release/crossdesk`，arm64 构建结果位于 `build/linux/arm64/release/crossdesk`。
+
+启用 Wayland 和 DRM 的配置示例：
+
+```bash
+xmake f -m release --USE_WAYLAND=true --USE_DRM=true --USE_CUDA=false -y
+xmake b -vy crossdesk
 ```
+
+生成 Debian 安装包（必须在对应架构上先完成 Release 编译）：
+
+```bash
+# amd64
+./scripts/linux/pkg_amd64.sh 1.0.0
+
+# arm64
+./scripts/linux/pkg_arm64.sh 1.0.0
+```
+
+打包脚本会将 Slint 共享运行库安装到软件包私有目录 `/usr/lib/crossdesk`，无需用户另外安装 `libslint_cpp.so`。
+
+### 通用编译选项
+
+```text
 --USE_CUDA=true/false: 启用 CUDA 硬件编解码，默认不启用
+--USE_WAYLAND=true/false: 在 Linux 上启用 Wayland/PipeWire 捕获，默认不启用
+--USE_DRM=true/false: 在 Linux 上启用 DRM 捕获，默认不启用
+--CROSSDESK_PORTABLE=true/false: 构建便携版本，默认不启用
 --CROSSDESK_VERSION=xxx: 指定 CrossDesk 的版本
 
 # 示例
 xmake f --CROSSDESK_VERSION=1.0.0 --USE_CUDA=true
 ```
-运行
-```
+
+运行：
+
+```bash
 xmake r crossdesk
 ```
 

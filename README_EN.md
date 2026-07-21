@@ -2,7 +2,7 @@
 
 <a href="https://hellogithub.com/repository/kunkundi/crossdesk" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=55d41367570345f1838e02fd12be7961&claim_uid=cb0OpZRrBuGVAfL&theme=small" alt="Featured｜HelloGitHub" /></a>
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-brightgreen.svg)]()
-[![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
+[![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![GitHub last commit](https://img.shields.io/github/last-commit/kunkundi/crossdesk)](https://github.com/kunkundi/crossdesk/commits/web-client)
 [![Build Status](https://github.com/kunkundi/crossdesk/actions/workflows/build.yml/badge.svg)](https://github.com/kunkundi/crossdesk/actions)  
 [![Docker Pulls](https://img.shields.io/docker/pulls/crossdesk/crossdesk-server)](https://hub.docker.com/r/crossdesk/crossdesk-server/tags)
@@ -87,34 +87,77 @@ Requirements:
 - [xmake](https://xmake.io/#/guide/installation)
 - [cmake](https://cmake.org/download/)
 
-Following packages need to be installed on Linux:
+### Linux
 
-```
-sudo apt-get install -y software-properties-common git curl unzip build-essential libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev libxcb-shape0-dev libxcb-xkb-dev libxcb-xfixes0-dev libxfixes-dev libxv-dev libxtst-dev libasound2-dev libsndio-dev libxcb-shm0-dev libasound2-dev libpulse-dev
+Linux builds currently support Ubuntu 22.04 or later on amd64 and arm64. Install the base build dependencies first:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  git curl unzip build-essential cmake pkg-config binutils dpkg-dev \
+  libx11-dev libxext-dev libxrender-dev libxft-dev libxrandr-dev \
+  libxinerama-dev libxcursor-dev libxi-dev libxfixes-dev libxv-dev \
+  libxtst-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev \
+  libxcb-shape0-dev libxcb-xkb-dev libxcb-xfixes0-dev libxcb-shm0-dev \
+  libasound2-dev libsndio-dev libpulse-dev
 ```
 
-Build:
-```
-git clone https://github.com/kunkundi/crossdesk.git
+Install the optional dependencies when Wayland capture or DRM capture is enabled:
 
+```bash
+sudo apt-get install -y libdbus-1-dev libpipewire-0.3-dev libdrm-dev
+```
+
+Clone the submodules and build a release binary:
+
+```bash
+git clone --recurse-submodules https://github.com/kunkundi/crossdesk.git
 cd crossdesk
 
-git submodule init 
+# Run this when the repository has already been cloned
+git submodule update --init --recursive
 
-git submodule update
-
+xmake f -m release --USE_CUDA=false -y
 xmake b -vy crossdesk
 ```
-Build options:
-```
---USE_CUDA=true/false: enable CUDA acceleration codec, default: false
---CROSSDESK_VERSION=xxx: set the version number
 
-# example:
+The amd64 binary is written to `build/linux/x86_64/release/crossdesk`; the arm64 binary is written to `build/linux/arm64/release/crossdesk`.
+
+Example configuration with Wayland and DRM capture enabled:
+
+```bash
+xmake f -m release --USE_WAYLAND=true --USE_DRM=true --USE_CUDA=false -y
+xmake b -vy crossdesk
+```
+
+Build a Debian package after compiling a release binary on the matching architecture:
+
+```bash
+# amd64
+./scripts/linux/pkg_amd64.sh 1.0.0
+
+# arm64
+./scripts/linux/pkg_arm64.sh 1.0.0
+```
+
+The package scripts install the shared Slint runtime in the private `/usr/lib/crossdesk` directory, so users do not need to install `libslint_cpp.so` separately.
+
+### Common build options
+
+```text
+--USE_CUDA=true/false: Enable CUDA hardware codec acceleration, disabled by default
+--USE_WAYLAND=true/false: Enable Wayland/PipeWire capture on Linux, disabled by default
+--USE_DRM=true/false: Enable DRM capture on Linux, disabled by default
+--CROSSDESK_PORTABLE=true/false: Build the portable variant, disabled by default
+--CROSSDESK_VERSION=xxx: Set the CrossDesk version
+
+# Example
 xmake f --CROSSDESK_VERSION=1.0.0 --USE_CUDA=true
 ```
+
 Run:
-```
+
+```bash
 xmake r crossdesk
 ```
 

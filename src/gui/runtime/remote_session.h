@@ -1,8 +1,6 @@
 #ifndef CROSSDESK_GUI_REMOTE_SESSION_H_
 #define CROSSDESK_GUI_REMOTE_SESSION_H_
 
-#include <SDL3/SDL.h>
-
 #include <atomic>
 #include <chrono>
 #include <cstddef>
@@ -16,7 +14,6 @@
 #include <vector>
 
 #include "display_info.h"
-#include "imgui.h"
 #include "minirtc.h"
 
 namespace crossdesk::gui_detail {
@@ -111,7 +108,7 @@ struct RemoteSession {
   double control_bar_button_pressed_time_ = 0;
   double net_traffic_stats_button_pressed_time_ = 0;
 
-  // Written by the decode callback thread and consumed by the SDL thread.
+  // Written by the decode callback thread and consumed by the UI thread.
   std::mutex video_frame_mutex_;
   std::shared_ptr<std::vector<unsigned char>> front_frame_;
   std::shared_ptr<std::vector<unsigned char>> back_frame_;
@@ -129,6 +126,7 @@ struct RemoteSession {
   int video_height_last_ = 0;
   int selected_display_ = 0;
   size_t video_size_ = 0;
+  uint64_t video_frame_sequence_ = 0;
   bool tab_selected_ = false;
   bool tab_opened_ = true;
   std::optional<float> pos_x_before_docked_;
@@ -146,15 +144,7 @@ struct RemoteSession {
   bool remote_service_available_ = false;
   std::string remote_interactive_stage_;
   std::vector<DisplayInfo> display_info_list_;
-  SDL_Texture *stream_texture_ = nullptr;
-  uint8_t *argb_buffer_ = nullptr;
-  int argb_buffer_size_ = 0;
-  SDL_FRect stream_render_rect_f_ = {0.0f, 0.0f, 0.0f, 0.0f};
-  SDL_Rect stream_render_rect_{};
-  SDL_Rect stream_render_rect_last_{};
-  ImVec2 control_window_pos_{};
-
-  // Shared by minirtc callbacks, SDL rendering and SDL audio callbacks.
+  // Shared by minirtc callbacks, Slint rendering and SDL audio callbacks.
   std::atomic<ConnectionStatus> connection_status_ = ConnectionStatus::Closed;
   TraversalMode traversal_mode_ = TraversalMode::UnknownMode;
   int fps_ = 0;

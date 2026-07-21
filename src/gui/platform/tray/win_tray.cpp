@@ -4,6 +4,8 @@
 
 #include "localization.h"
 
+#include <utility>
+
 namespace crossdesk {
 
 // callback for the message-only window that handles tray icon messages
@@ -60,6 +62,16 @@ WinTray::WinTray(HWND app_hwnd, HICON icon, const std::wstring& tooltip,
   wcsncpy_s(nid_.szTip, tip_.c_str(), _TRUNCATE);
 }
 
+WinTray::WinTray(std::function<void()> show_window,
+                 std::function<void()> hide_window,
+                 std::function<void()> exit_app, HICON icon,
+                 const std::wstring& tooltip, int language_index)
+    : WinTray(nullptr, icon, tooltip, language_index) {
+  show_window_ = std::move(show_window);
+  hide_window_ = std::move(hide_window);
+  exit_app_ = std::move(exit_app);
+}
+
 WinTray::~WinTray() {
   RemoveTrayIcon();
   if (hwnd_message_only_) DestroyWindow(hwnd_message_only_);
@@ -67,11 +79,23 @@ WinTray::~WinTray() {
 
 void WinTray::MinimizeToTray() {
   Shell_NotifyIcon(NIM_ADD, &nid_);
-  // hide application window
-  ShowWindow(app_hwnd_, SW_HIDE);
+  if (hide_window_) {
+    hide_window_();
+  } else if (app_hwnd_) {
+    ShowWindow(app_hwnd_, SW_HIDE);
+  }
 }
 
 void WinTray::RemoveTrayIcon() { Shell_NotifyIcon(NIM_DELETE, &nid_); }
+
+void WinTray::ShowApplicationWindow() {
+  if (show_window_) {
+    show_window_();
+  } else if (app_hwnd_) {
+    ShowWindow(app_hwnd_, SW_SHOW);
+    SetForegroundWindow(app_hwnd_);
+  }
+}
 
 bool WinTray::HandleTrayMessage(MSG* msg) {
   if (!msg || msg->message != WM_TRAY_CALLBACK) return false;
@@ -79,8 +103,7 @@ bool WinTray::HandleTrayMessage(MSG* msg) {
   switch (LOWORD(msg->lParam)) {
     case WM_LBUTTONDBLCLK:
     case WM_LBUTTONUP: {
-      ShowWindow(app_hwnd_, SW_SHOW);
-      SetForegroundWindow(app_hwnd_);
+      ShowApplicationWindow();
       break;
     }
 
@@ -99,13 +122,15 @@ bool WinTray::HandleTrayMessage(MSG* msg) {
 
       // handle menu command
       if (cmd == 1001) {
-        // exit application
-        SDL_Event event;
-        event.type = SDL_EVENT_QUIT;
-        SDL_PushEvent(&event);
+        if (exit_app_) {
+          exit_app_();
+        } else {
+          SDL_Event event;
+          event.type = SDL_EVENT_QUIT;
+          SDL_PushEvent(&event);
+        }
       } else if (cmd == 1002) {
-        ShowWindow(app_hwnd_, SW_SHOW);  // show main window
-        SetForegroundWindow(app_hwnd_);
+        ShowApplicationWindow();
       }
       break;
     }

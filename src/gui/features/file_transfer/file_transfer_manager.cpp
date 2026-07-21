@@ -13,6 +13,7 @@
 #include <utility>
 
 #include "file_transfer.h"
+#include "filesystem_utf8.h"
 #include "rd_log.h"
 #include "runtime/gui_runtime.h"
 
@@ -40,7 +41,7 @@ void FileTransferManager::ProcessSelectedFile(
   FileTransferState &state = state_for(props);
   LOG_INFO("Selected file: {}", path.c_str());
 
-  const std::filesystem::path file_path = std::filesystem::u8path(path);
+  const std::filesystem::path file_path = PathFromUtf8(path);
   std::error_code ec;
   if (!std::filesystem::is_regular_file(file_path, ec)) {
     LOG_ERROR("Selected path is not a regular file: {}", path);
@@ -55,7 +56,9 @@ void FileTransferManager::ProcessSelectedFile(
   {
     std::lock_guard<std::mutex> lock(state.file_transfer_list_mutex_);
     FileTransferState::FileTransferInfo info;
-    info.file_name = file_path.filename().u8string();
+    const auto utf8_name = file_path.filename().u8string();
+    info.file_name.assign(reinterpret_cast<const char *>(utf8_name.data()),
+                          utf8_name.size());
     info.file_path = file_path;
     info.file_size = file_size;
     info.status = FileTransferState::FileTransferStatus::Queued;
@@ -339,41 +342,6 @@ void FileTransferManager::HandleAck(const char *data, size_t size) {
   state->file_sending_ = false;
   Unregister(ack.file_id, props != nullptr);
   ProcessQueue(props);
-}
-
-void FileTransferManager::HandleDropEvent(const SDL_Event &event) {
-  if (event.type != SDL_EVENT_DROP_FILE ||
-      !((owner_.stream_window_ &&
-         SDL_GetWindowID(owner_.stream_window_) == event.window.windowID) ||
-        (owner_.server_window_ &&
-         SDL_GetWindowID(owner_.server_window_) == event.window.windowID))) {
-    return;
-  }
-
-  if (owner_.stream_window_ &&
-      SDL_GetWindowID(owner_.stream_window_) == event.window.windowID) {
-    if (!owner_.stream_window_inited_ || !event.drop.data) {
-      return;
-    }
-    std::shared_lock lock(owner_.remote_sessions_mutex_);
-    for (const auto &[remote_id, props] : owner_.remote_sessions_) {
-      if (props && props->tab_selected_ && props->peer_) {
-        ProcessSelectedFile(static_cast<const char *>(event.drop.data), props,
-                            props->file_label_);
-        break;
-      }
-    }
-    return;
-  }
-
-  if (owner_.server_window_inited_ && event.drop.data) {
-    const auto file_path = std::filesystem::u8path(event.drop.data);
-    std::error_code ec;
-    if (std::filesystem::is_regular_file(file_path, ec)) {
-      LOG_INFO("Drop file [{}] on server window (size: {} bytes)",
-               event.drop.data, std::filesystem::file_size(file_path, ec));
-    }
-  }
 }
 
 } // namespace crossdesk

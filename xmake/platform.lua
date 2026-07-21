@@ -27,7 +27,7 @@ function setup_platform_settings()
     if is_os("windows") then
         add_requires("libyuv", "miniaudio 0.11.21")
         add_links("Shell32", "dwmapi", "User32", "kernel32",
-            "SDL3-static", "gdi32", "winmm", "setupapi", "version",
+            "gdi32", "winmm", "setupapi", "version",
             "Imm32", "iphlpapi", "d3d11", "dxgi")
         add_cxflags("/WX")
         set_runtimes("MT")
@@ -35,7 +35,7 @@ function setup_platform_settings()
         add_links("pulse-simple", "pulse")
         add_requires("libyuv")
         add_syslinks("pthread", "dl")
-        add_links("SDL3", "asound", "X11", "Xext", "Xrender", "Xft", "Xtst",
+        add_links("asound", "X11", "Xext", "Xrender", "Xft", "Xtst",
             "Xrandr", "Xfixes")
         add_existing_include_dirs({
             "/usr/include/freetype2",
@@ -77,7 +77,6 @@ function setup_platform_settings()
 
         add_cxflags("-Wno-unused-variable")
     elseif is_os("macosx") then
-        add_links("SDL3")
         add_ldflags("-Wl,-ld_classic")
         add_cxflags("-Wno-unused-variable")
         add_frameworks("Cocoa", "OpenGL", "IOSurface", "ScreenCaptureKit",

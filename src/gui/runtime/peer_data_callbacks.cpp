@@ -14,6 +14,7 @@
 #include "device_controller.h"
 #include "file_transfer.h"
 #include "localization.h"
+#include "filesystem_utf8.h"
 #include "platform.h"
 #include "rd_log.h"
 #include "runtime/gui_runtime.h"
@@ -90,7 +91,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
     std::string configured_path =
         runtime->config_center_->GetFileTransferSavePath();
     if (!configured_path.empty()) {
-      receiver.SetOutputDir(std::filesystem::u8path(configured_path));
+      receiver.SetOutputDir(PathFromUtf8(configured_path));
     } else if (receiver.OutputDir().empty()) {
       receiver = FileReceiver(); // re-init with default desktop path
     }

@@ -18,70 +18,11 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
 namespace crossdesk {
-
-bool LoadTextureFromMemory(const void* data, size_t data_size,
-                           SDL_Renderer* renderer, SDL_Texture** out_texture,
-                           int* out_width, int* out_height) {
-  int image_width = 0;
-  int image_height = 0;
-  int channels = 4;
-  unsigned char* image_data =
-      stbi_load_from_memory((const unsigned char*)data, (int)data_size,
-                            &image_width, &image_height, NULL, 4);
-  if (image_data == nullptr) {
-    LOG_ERROR("Failed to load image: [{}]", stbi_failure_reason());
-    return false;
-  }
-
-  // ABGR
-  int pitch = image_width * channels;
-  SDL_Surface* surface =
-      SDL_CreateSurfaceFrom(image_width, image_height, SDL_PIXELFORMAT_RGBA32,
-                            (void*)image_data, pitch);
-  if (surface == nullptr) {
-    LOG_ERROR("Failed to create SDL surface: [{}]", SDL_GetError());
-    return false;
-  }
-
-  SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
-  if (texture == nullptr) {
-    LOG_ERROR("Failed to create SDL texture: [{}]", SDL_GetError());
-  }
-
-  *out_texture = texture;
-  *out_width = image_width;
-  *out_height = image_height;
-
-  SDL_DestroySurface(surface);
-  stbi_image_free(image_data);
-
-  return true;
-}
-
-bool LoadTextureFromFile(const char* file_name, SDL_Renderer* renderer,
-                         SDL_Texture** out_texture, int* out_width,
-                         int* out_height) {
-  std::filesystem::path file_path(file_name);
-  if (!std::filesystem::exists(file_path)) return false;
-  std::ifstream file(file_path, std::ios::binary);
-  if (!file) return false;
-  file.seekg(0, std::ios::end);
-  size_t file_size = file.tellg();
-  file.seekg(0, std::ios::beg);
-  if (file_size == -1) return false;
-  char* file_data = new char[file_size];
-  if (!file_data) return false;
-  file.read(file_data, file_size);
-  bool ret = LoadTextureFromMemory(file_data, file_size, renderer, out_texture,
-                                   out_width, out_height);
-  delete[] file_data;
-
-  return ret;
-}
 
 void ScaleNv12ToABGR(char* src, int src_w, int src_h, int dst_w, int dst_h,
                      char* dst_rgba) {
@@ -201,17 +142,12 @@ int Thumbnail::SaveToThumbnail(const char* yuv420p, int width, int height,
 }
 
 int Thumbnail::LoadThumbnail(
-    SDL_Renderer* renderer,
     std::vector<std::pair<std::string, Thumbnail::RecentConnection>>&
         recent_connections,
     int* width, int* height) {
-  for (auto& it : recent_connections) {
-    if (it.second.texture != nullptr) {
-      SDL_DestroyTexture(it.second.texture);
-      it.second.texture = nullptr;
-    }
-  }
   recent_connections.clear();
+  if (width) *width = thumbnail_width_;
+  if (height) *height = thumbnail_height_;
 
   std::vector<std::filesystem::path> image_paths =
       FindThumbnailPath(save_path_);
@@ -270,15 +206,38 @@ int Thumbnail::LoadThumbnail(
       recent_connection.remote_host_name = remote_host_name;
       recent_connection.password = password;
       recent_connection.remember_password = remember_password;
+      recent_connection.image_path = image_path;
       recent_connections.emplace_back(
           std::make_pair(original_image_name, recent_connection));
-      LoadTextureFromFile(image_path.c_str(), renderer,
-                          &(recent_connections.back().second.texture), width,
-                          height);
     }
     return 0;
   }
   return 0;
+}
+
+bool Thumbnail::DecodeImage(const std::filesystem::path& image_path,
+                            std::vector<unsigned char>* rgba, int* width,
+                            int* height) const {
+  if (!rgba || !width || !height) {
+    return false;
+  }
+
+  int channels = 0;
+  unsigned char* pixels =
+      stbi_load(image_path.string().c_str(), width, height, &channels, 4);
+  if (!pixels || *width <= 0 || *height <= 0) {
+    if (pixels) {
+      stbi_image_free(pixels);
+    }
+    rgba->clear();
+    return false;
+  }
+
+  const size_t byte_count =
+      static_cast<size_t>(*width) * static_cast<size_t>(*height) * 4;
+  rgba->assign(pixels, pixels + byte_count);
+  stbi_image_free(pixels);
+  return true;
 }
 
 int Thumbnail::DeleteThumbnail(const std::string& filename_keyword) {

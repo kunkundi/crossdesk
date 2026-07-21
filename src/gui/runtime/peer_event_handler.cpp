@@ -230,12 +230,6 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         runtime->need_to_create_stream_window_ = true;
       }
       props->connection_established_ = true;
-      props->stream_render_rect_ = {
-          0, (int)runtime->title_bar_height_, (int)runtime->stream_window_width_,
-          (int)(runtime->stream_window_height_ - runtime->title_bar_height_)};
-      props->stream_render_rect_f_ = {
-          0.0f, runtime->title_bar_height_, runtime->stream_window_width_,
-          runtime->stream_window_height_ - runtime->title_bar_height_};
       runtime->start_keyboard_capturer_ = true;
       break;
     }
@@ -258,11 +252,6 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         props->render_rect_dirty_ = true;
         props->stream_cleanup_pending_ = true;
       }
-
-      SDL_Event event;
-      event.type = runtime->STREAM_REFRESH_EVENT;
-      event.user.data1 = props.get();
-      SDL_PushEvent(&event);
 
       runtime->focus_on_stream_window_ = false;
 

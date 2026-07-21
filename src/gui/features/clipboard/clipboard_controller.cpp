@@ -33,11 +33,6 @@ void ClipboardController::Initialize() {
     SDL_free(clipboard_text);
   }
 
-  if (event_type_ == 0) {
-    LOG_ERROR("Clipboard synchronization disabled: SDL event is unavailable");
-    return;
-  }
-
   events_enabled_.store(true, std::memory_order_release);
 }
 
@@ -75,7 +70,7 @@ void ClipboardController::QueueRemoteText(const char *data, size_t size) {
 
   SDL_Event event{};
   event.type = event_type_;
-  if (!SDL_PushEvent(&event)) {
+  if (event_type_ != 0 && !SDL_PushEvent(&event)) {
     // MainLoop also drains the pending value after its wait timeout.
     LOG_WARN("Failed to wake SDL loop for remote clipboard text: {}",
              SDL_GetError());

@@ -1,0 +1,149 @@
+import { CompactComboBox, FontAwesomeIcons, IconButton, SecondaryButton, ImGuiLineStyle, ImGuiFontStyle } from "common.slint";
+
+export struct ControllerEntry {
+    remote-id: string,
+    display-name: string,
+}
+
+export component ServerWindow inherits Window {
+    title: "CrossDesk";
+    preferred-width: root.language-index == 0 ? 250px : root.language-index == 1 ? 330px : 430px;
+    preferred-height: 150px;
+    min-width: root.language-index == 0 ? 250px : root.language-index == 1 ? 330px : 430px;
+    max-width: root.language-index == 0 ? 250px : root.language-index == 1 ? 330px : 430px;
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+    default-font-size: ImGuiFontStyle.base;
+
+    in property <[ControllerEntry]> controllers;
+    in property <[string]> controller-names;
+    in property <int> language-index: 0;
+    in-out property <int> selected-controller: 0;
+    in property <string> connection-label: "Connection status";
+    in property <string> connection-status: "";
+    in property <string> controller-label: "Controller";
+    in property <string> file-transfer-label: "File transfer";
+    in property <string> select-file-label: "Select file";
+    in property <bool> sending-file: false;
+    in property <bool> file-transfer-visible: false;
+    in property <float> file-progress: 0;
+    in property <string> file-progress-text: "";
+    in property <string> current-file-name: "";
+    in property <string> file-size-text: "";
+
+    callback title-drag(int, length, length);
+    callback toggle-collapsed(bool);
+    callback controller-selected(int);
+    callback select-file;
+    callback disconnect-controller;
+
+    private property <bool> collapsed: false;
+    private property <bool> transfer-hovered: false;
+
+    Rectangle {
+        width: root.width;
+        height: root.height;
+        background: white;
+        border-width: 1px;
+        border-color: ImGuiLineStyle.border;
+        border-radius: 8px;
+        clip: true;
+
+        Rectangle {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: 30px;
+            background: #f8f9fb;
+            Rectangle { y: parent.height - 1px; height: 1px; background: ImGuiLineStyle.border; }
+            IconButton {
+                x: 0px;
+                y: 0px;
+                width: 30px; height: 30px;
+                icon: root.collapsed ? FontAwesomeIcons.angle-down : FontAwesomeIcons.angle-up;
+                icon-size: 12px;
+                clicked => { root.collapsed = !root.collapsed; root.toggle-collapsed(root.collapsed); }
+            }
+            drag := TouchArea {
+                x: 30px; width: parent.width - 30px;
+                property <int> phase: self.pressed ? 1 : 0;
+                changed phase => { root.title-drag(phase, self.mouse-x, self.mouse-y); }
+                moved => { if (self.pressed) { root.title-drag(2, self.mouse-x, self.mouse-y); } }
+            }
+        }
+
+        if !root.collapsed: Rectangle {
+            x: 12px; y: 38px; width: parent.width - 52px; height: 101px;
+            background: white; border-width: 1px; border-color: ImGuiLineStyle.border; border-radius: 5px;
+            VerticalLayout {
+                padding: 8px; spacing: 3px; alignment: start;
+                HorizontalLayout {
+                    height: 24px; spacing: 5px;
+                    Text { width: root.language-index == 0 ? 69px : 110px; text: root.controller-label; color: #434953; font-size: ImGuiFontStyle.body; vertical-alignment: center; overflow: elide; }
+                    CompactComboBox {
+                        width: root.language-index == 0 ? 108px : root.language-index == 1 ? 147px : 247px;
+                        model: root.controller-names;
+                        current-index <=> root.selected-controller;
+                        selected(index) => { root.controller-selected(index); }
+                    }
+                }
+                Rectangle { height: 1px; background: ImGuiLineStyle.separator; }
+                HorizontalLayout {
+                    height: 24px; spacing: 5px;
+                    Text { width: root.language-index == 0 ? 69px : 110px; text: root.connection-label; color: #434953; font-size: ImGuiFontStyle.body; vertical-alignment: center; overflow: elide; }
+                    Text { text: root.connection-status; color: #2463c7; font-size: ImGuiFontStyle.body; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                }
+                Rectangle { height: 1px; background: ImGuiLineStyle.separator; }
+                Rectangle {
+                    height: 24px;
+                    HorizontalLayout {
+                        y: 0px;
+                        width: parent.width;
+                        height: 24px;
+                        spacing: 5px;
+                        Text { width: root.language-index == 0 ? 69px : 110px; text: root.file-transfer-label; color: #434953; font-size: ImGuiFontStyle.body; vertical-alignment: center; overflow: elide; }
+                        SecondaryButton { width: root.language-index == 0 ? 78px : root.language-index == 1 ? 140px : 205px; height: 24px; text: root.select-file-label; clicked => { root.select-file(); } }
+                        Rectangle {
+                            visible: root.file-transfer-visible;
+                            width: 35px;
+                            Text {
+                                text: root.sending-file ? "↑ " + round(root.file-progress * 100) + "%" : "✓";
+                                color: root.sending-file ? #2463c7 : #25874b;
+                                font-size: ImGuiFontStyle.small;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            transfer-touch := TouchArea {
+                                changed has-hover => { root.transfer-hovered = self.has-hover; }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if !root.collapsed: IconButton {
+            x: parent.width - 34px; y: 38px; width: 24px; height: 101px;
+            icon: FontAwesomeIcons.xmark;
+            icon-size: 13px;
+            icon-color: white;
+            normal-background: #ef2b2d;
+            hover-background: #d92d20;
+            pressed-background: #b42318;
+            border-radius: 5px;
+            clicked => { root.disconnect-controller(); }
+        }
+        if root.file-transfer-visible && root.transfer-hovered: Rectangle {
+            x: 15px; y: 67px; width: root.width - 30px; height: 70px;
+            background: #22252bf2;
+            border-radius: 5px;
+            z: 20;
+            VerticalLayout {
+                padding: 8px; spacing: 3px;
+                Text { text: root.current-file-name; color: white; font-size: ImGuiFontStyle.small; overflow: elide; }
+                Text { text: root.file-size-text; color: #e1e4e8; font-size: ImGuiFontStyle.small; }
+                Text { text: round(root.file-progress * 100) + "%  " + root.file-progress-text; color: #e1e4e8; font-size: ImGuiFontStyle.small; }
+            }
+        }
+    }
+}

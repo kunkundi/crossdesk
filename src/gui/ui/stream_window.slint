@@ -1,0 +1,649 @@
+import { ComboBox, ScrollView } from "std-widgets.slint";
+import { FontAwesomeIcons, IconButton, PrimaryButton, ImGuiLineStyle, ImGuiFontStyle } from "common.slint";
+
+export struct StreamTab {
+    remote-id: string,
+    title: string,
+    connected: bool,
+}
+
+export struct FileTransferEntry {
+    name: string,
+    status: string,
+    progress: float,
+    speed: string,
+    size: string,
+}
+
+export struct NetworkStatsRow {
+    label: string,
+    inbound: string,
+    outbound: string,
+    loss-rate: string,
+}
+
+export global StreamStrings {
+    in-out property <string> select-display: "Select Display";
+    in-out property <string> send-shortcut: "Send Shortcut";
+    in-out property <string> control-mouse: "Control Mouse";
+    in-out property <string> release-mouse: "Release Mouse";
+    in-out property <string> audio: "Audio Capture";
+    in-out property <string> mute: "Mute";
+    in-out property <string> select-file: "Select File to Send";
+    in-out property <string> show-stats: "Show Net Traffic Stats";
+    in-out property <string> hide-stats: "Hide Net Traffic Stats";
+    in-out property <string> fullscreen: "Fullscreen";
+    in-out property <string> exit-fullscreen: "Exit fullscreen";
+    in-out property <string> disconnect: "Disconnect";
+    in-out property <string> file-transfer: "File Transfer Progress";
+    in-out property <string> expand-control: "Expand Control Bar";
+    in-out property <string> collapse-control: "Collapse Control Bar";
+    in-out property <string> stats-in: "In";
+    in-out property <string> stats-out: "Out";
+    in-out property <string> stats-loss-rate: "Loss Rate";
+    in-out property <string> stats-resolution: "Res";
+    in-out property <string> stats-connection-mode: "Mode";
+}
+
+// The legacy ImGui control bar uses 24px buttons with Font Awesome rendered
+// at half of the 32px atlas size.  Keep this local to the stream window: the
+// shared IconButton is intentionally larger and is used by the other windows.
+component ControlBarButton inherits Rectangle {
+    in property <string> icon;
+    in property <string> badge: "";
+    in property <string> tooltip: "";
+    in property <bool> selected: false;
+    in property <bool> slashed: false;
+    in property <length> icon-size: 16px;
+    callback clicked;
+
+    width: 24px;
+    height: 24px;
+    background: touch.pressed ? #0f87fa
+                              : touch.has-hover ? #4296fa
+                                                : root.selected ? #4296fa : #4296fa66;
+    border-radius: 3px;
+
+    Text {
+        text: root.icon;
+        color: #24272d;
+        font-family: "Font Awesome 6 Free";
+        font-weight: 900;
+        font-size: root.icon-size;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    // Draw the selected display number over the center of the monitor glyph.
+    if root.badge != "": Text {
+        // Use the rendered badge size so one- and multi-digit IDs share the
+        // exact horizontal and vertical center of the button.
+        x: (parent.width - self.preferred-width) / 2 + 0.5px;
+        y: (parent.height - self.preferred-height) / 2 - 0.5px;
+        text: root.badge;
+        color: black;
+        font-size: 11px;
+    }
+
+    // Match the two offset diagonal strokes used by the ImGui mouse/audio
+    // disabled state instead of covering the glyph with a full-width slash.
+    if root.slashed: Rectangle {
+        x: 11px;
+        y: 0px;
+        width: 2px;
+        height: 24px;
+        background: black;
+        transform-rotation: -45deg;
+    }
+    if root.slashed: Rectangle {
+        x: 9.5px;
+        y: 1.5px;
+        width: 2px;
+        height: 24px;
+        background: touch.has-hover ? #4296fa : #b3d5fd;
+        transform-rotation: -45deg;
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+export component StreamWindow inherits Window {
+    title: "CrossDesk";
+    preferred-width: 1280px;
+    preferred-height: 720px;
+    min-width: 640px;
+    min-height: 360px;
+    no-frame: false;
+    background: black;
+    default-font-size: ImGuiFontStyle.base;
+
+    in property <[StreamTab]> tabs;
+    in-out property <int> selected-tab: 0;
+    in property <image> frame;
+    in property <bool> has-frame: false;
+    in property <string> status-text: "";
+    in property <string> receiving-text: "";
+    in property <[string]> displays;
+    in-out property <int> selected-display: 0;
+    in property <bool> mouse-control-enabled: true;
+    in property <bool> audio-enabled: true;
+    in property <bool> srtp-enabled: false;
+    in property <bool> fullscreen-enabled: false;
+    in property <bool> stats-visible: false;
+    in property <[NetworkStatsRow]> stats-rows;
+    in property <string> stats-fps: "0";
+    in property <string> stats-resolution: "";
+    in property <string> stats-connection-mode: "";
+    in property <bool> file-transfer-visible: false;
+    in property <[FileTransferEntry]> file-transfers;
+
+    callback select-tab(int);
+    callback reorder-tab(int, length, length);
+    callback close-tab(string);
+    callback switch-display(int);
+    callback send-shortcut(string);
+    callback toggle-mouse-control;
+    callback toggle-audio;
+    callback select-file;
+    callback close-file-transfer;
+    pure callback can-drop-file(data-transfer) -> bool;
+    callback file-dropped(data-transfer);
+    callback toggle-stats;
+    callback toggle-fullscreen;
+    callback disconnect;
+    callback pointer-input(PointerEventButton, PointerEventKind, length, length);
+    callback scroll-input(length, length, length, length);
+    callback key-input(string, bool, bool, bool, bool, bool);
+
+    private property <bool> control-expanded: true;
+    private property <bool> display-menu-open: false;
+    private property <bool> shortcut-menu-open: false;
+    private property <bool> control-docked-left: true;
+    private property <bool> control-dragging: false;
+    private property <length> control-drag-x: 0px;
+    // Start flush against the title/tab strip. This remains mutable so a
+    // manually dragged control bar keeps its chosen vertical position.
+    private property <length> control-pos-y: 0px;
+    private property <length> control-press-x: 0px;
+    private property <length> control-press-y: 0px;
+    private property <int> dragging-tab: -1;
+    callback begin-control-drag(length, length);
+    callback move-control-drag(length, length);
+    callback end-control-drag;
+
+    begin-control-drag(press-x, press-y) => {
+        // Capture the snapped position before switching x to control-drag-x.
+        // Otherwise a second press briefly restores the previous drag target
+        // and makes a plain click move the control bar.
+        let current-x = control.x;
+        let current-y = control.y;
+        root.control-drag-x = current-x;
+        // Store the pointer offset in the control bar, while all following
+        // pointer positions remain relative to the stationary video surface.
+        root.control-press-x = press-x - current-x;
+        root.control-press-y = press-y - current-y;
+        root.display-menu-open = false;
+        root.shortcut-menu-open = false;
+        root.control-dragging = true;
+    }
+    move-control-drag(pointer-x, pointer-y) => {
+        if root.control-dragging {
+            root.control-drag-x = min(max(0px, pointer-x - root.control-press-x), video.width - control.width);
+            root.control-pos-y = min(max(0px, pointer-y - root.control-press-y), video.height - control.height);
+        }
+    }
+    end-control-drag() => {
+        if root.control-dragging {
+            root.control-docked-left = root.control-drag-x + control.width / 2 < video.width / 2;
+            root.control-pos-y = min(max(0px, control.y), video.height - control.height);
+            root.control-dragging = false;
+        }
+    }
+
+    Rectangle {
+        width: root.width;
+        height: root.height;
+        background: black;
+
+        // Keep the ImGui tab strip behavior, including pointer-drag reordering.
+        Rectangle {
+            y: 0px;
+            height: root.tabs.length > 1 ? 30px : 0px;
+            visible: !root.fullscreen-enabled && root.tabs.length > 1;
+            background: #f1f2f4;
+            z: 10;
+            HorizontalLayout {
+                spacing: 1px;
+                for tab[index] in root.tabs: tab-item := Rectangle {
+                    width: min(190px, max(110px, (parent.width - 12px) / root.tabs.length));
+                    background: index == root.selected-tab ? white : tab-touch.has-hover || root.dragging-tab == index ? #e5e7eb : #d8dbe0;
+                    border-width: root.dragging-tab == index ? 1px : 0px;
+                    border-color: #2463c7;
+                    Rectangle {
+                        width: parent.width - 27px;
+                        height: parent.height;
+                        background: transparent;
+                        if root.srtp-enabled: Text {
+                            x: 0px;
+                            width: 12px;
+                            height: parent.height;
+                            text: FontAwesomeIcons.shield-halved;
+                            color: #30343b;
+                            font-family: "Font Awesome 6 Free";
+                            font-weight: 900;
+                            font-size: ImGuiFontStyle.base;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            x: root.srtp-enabled ? 16px : 0px;
+                            width: parent.width - self.x;
+                            height: parent.height;
+                            text: tab.title;
+                            color: #30343b;
+                            font-size: ImGuiFontStyle.base;
+                            overflow: elide;
+                            vertical-alignment: center;
+                        }
+                    }
+                    Rectangle {
+                        y: parent.height - 2px;
+                        height: 2px;
+                        background: index == root.selected-tab ? #3b82f6 : transparent;
+                    }
+                    tab-touch := TouchArea {
+                        width: parent.width - 27px;
+                        changed pressed => {
+                            if (self.pressed) {
+                                root.dragging-tab = index;
+                            } else if (root.dragging-tab == index) {
+                                root.reorder-tab(index, tab-item.x + self.mouse-x, tab-item.width);
+                                root.dragging-tab = -1;
+                            }
+                        }
+                        clicked => { root.selected-tab = index; root.select-tab(index); }
+                    }
+                    IconButton {
+                        x: parent.width - 27px;
+                        y: 1px;
+                        width: 27px;
+                        height: 27px;
+                        z: 2;
+                        icon: FontAwesomeIcons.xmark;
+                        icon-size: 11px;
+                        icon-color: #555c66;
+                        danger: true;
+                        clicked => { root.close-tab(tab.remote-id); }
+                    }
+                }
+            }
+        }
+
+        video := Rectangle {
+            y: root.fullscreen-enabled ? 0px : (root.tabs.length > 1 ? 30px : 0px);
+            height: parent.height - self.y;
+            background: black;
+            clip: true;
+
+            frame-image := Image {
+                width: parent.width;
+                height: parent.height;
+                source: root.frame;
+                image-fit: contain;
+                visible: root.has-frame;
+            }
+
+            Text {
+                // A connection state and the frame-waiting state may change in
+                // the same UI tick. Render them through one text item so two
+                // independent labels can never occupy the center together.
+                visible: !root.has-frame && (root.receiving-text != "" || root.status-text != "");
+                text: root.receiving-text != "" ? root.receiving-text : root.status-text;
+                color: root.receiving-text != "" ? #ffffffea : white;
+                font-size: root.receiving-text != "" ? 14px : ImGuiFontStyle.prominent;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            drop-zone := DropArea {
+                can-drop(event) => {
+                    return root.can-drop-file(event.data) ? DragAction.copy : DragAction.none;
+                }
+                dropped(event) => {
+                    root.file-dropped(event.data);
+                    return DragAction.copy;
+                }
+            }
+
+            input-focus := FocusScope {
+                focus-on-click: true;
+                key-pressed(event) => {
+                    root.key-input(event.text, true, event.modifiers.control, event.modifiers.alt, event.modifiers.shift, event.modifiers.meta);
+                    accept
+                }
+                key-released(event) => {
+                    root.key-input(event.text, false, event.modifiers.control, event.modifiers.alt, event.modifiers.shift, event.modifiers.meta);
+                    accept
+                }
+                pointer := TouchArea {
+                    pointer-event(event) => {
+                        let over-control = self.mouse-x >= control.x
+                            && self.mouse-x <= control.x + control.width
+                            && self.mouse-y >= control.y
+                            && self.mouse-y <= control.y + control.height;
+                        if event.kind == PointerEventKind.down
+                            && event.button == PointerEventButton.left
+                            && over-control {
+                            root.begin-control-drag(self.mouse-x, self.mouse-y);
+                        } else if root.control-dragging
+                            && (event.kind == PointerEventKind.up
+                                || event.kind == PointerEventKind.cancel) {
+                            root.end-control-drag();
+                        } else if !root.control-dragging {
+                            root.pointer-input(event.button, event.kind, self.mouse-x, self.mouse-y);
+                        }
+                    }
+                    moved => {
+                        if root.control-dragging {
+                            root.move-control-drag(self.mouse-x, self.mouse-y);
+                        }
+                    }
+                    scroll-event(event) => {
+                        if self.mouse-x < control.x
+                            || self.mouse-x > control.x + control.width
+                            || self.mouse-y < control.y
+                            || self.mouse-y > control.y + control.height {
+                            root.scroll-input(event.delta-x, event.delta-y, self.mouse-x, self.mouse-y);
+                        }
+                        accept
+                    }
+                }
+            }
+
+            // Floating control bar, matching the original top-left overlay.
+            control := Rectangle {
+                x: root.control-dragging ? root.control-drag-x : root.control-docked-left ? 0px : parent.width - self.width;
+                y: min(max(0px, root.control-pos-y), parent.height - self.height);
+                width: root.control-expanded ? min(300px, parent.width) : 20px;
+                height: root.stats-visible && root.control-expanded ? min(180px, parent.height) : 38px;
+                background: white;
+                border-width: 1px;
+                border-color: ImGuiLineStyle.border;
+                border-radius: 6px;
+                z: 8;
+                clip: true;
+                // Keep width changes atomic. When docked right, animating both
+                // x and the clip width can leave newly revealed buttons outside
+                // Slint's damage region until they receive a hover repaint.
+                animate height { duration: 60ms; easing: ease-out; }
+
+                if root.control-expanded && !root.control-docked-left: Rectangle {
+                    x: 31px; y: 12px; width: 2px; height: 15px;
+                    background: ImGuiLineStyle.control-separator;
+                }
+
+                if root.control-expanded: display-button := ControlBarButton {
+                    x: root.control-docked-left ? 9px : 42px; y: 7px;
+                    icon: FontAwesomeIcons.display;
+                    badge: root.selected-display + 1;
+                    tooltip: StreamStrings.select-display;
+                    clicked => { root.display-menu-open = !root.display-menu-open; root.shortcut-menu-open = false; }
+                }
+                if root.control-expanded: shortcut-button := ControlBarButton {
+                    x: root.control-docked-left ? 41px : 74px; y: 7px;
+                    icon: FontAwesomeIcons.keyboard; tooltip: StreamStrings.send-shortcut;
+                    clicked => { root.shortcut-menu-open = !root.shortcut-menu-open; root.display-menu-open = false; }
+                }
+                if root.control-expanded: mouse-button := ControlBarButton {
+                    x: root.control-docked-left ? 73px : 106px; y: 7px;
+                    icon: FontAwesomeIcons.computer-mouse; slashed: !root.mouse-control-enabled;
+                    tooltip: root.mouse-control-enabled ? StreamStrings.release-mouse : StreamStrings.control-mouse;
+                    clicked => { root.toggle-mouse-control(); }
+                }
+                if root.control-expanded: audio-button := ControlBarButton {
+                    x: root.control-docked-left ? 105px : 138px; y: 7px;
+                    icon: FontAwesomeIcons.volume-high; slashed: !root.audio-enabled;
+                    tooltip: root.audio-enabled ? StreamStrings.mute : StreamStrings.audio;
+                    clicked => { root.toggle-audio(); }
+                }
+                if root.control-expanded: file-button := ControlBarButton {
+                    x: root.control-docked-left ? 137px : 170px; y: 7px;
+                    icon: FontAwesomeIcons.folder-open; tooltip: StreamStrings.select-file;
+                    clicked => { root.select-file(); }
+                }
+                if root.control-expanded: stats-button := ControlBarButton {
+                    x: root.control-docked-left ? 169px : 202px; y: 7px;
+                    icon: FontAwesomeIcons.signal; selected: root.stats-visible;
+                    tooltip: root.stats-visible ? StreamStrings.hide-stats : StreamStrings.show-stats;
+                    clicked => { root.toggle-stats(); }
+                }
+                if root.control-expanded: fullscreen-button := ControlBarButton {
+                    x: root.control-docked-left ? 201px : 234px; y: 7px;
+                    icon: root.fullscreen-enabled ? FontAwesomeIcons.compress : FontAwesomeIcons.expand;
+                    tooltip: root.fullscreen-enabled ? StreamStrings.exit-fullscreen : StreamStrings.fullscreen;
+                    clicked => { root.toggle-fullscreen(); }
+                }
+                if root.control-expanded: close-button := ControlBarButton {
+                    x: root.control-docked-left ? 233px : 266px; y: 7px;
+                    icon: FontAwesomeIcons.xmark; tooltip: StreamStrings.disconnect;
+                    clicked => { root.disconnect(); }
+                }
+
+                if root.control-expanded && root.control-docked-left: Rectangle {
+                    x: 267px; y: 12px; width: 2px; height: 15px;
+                    background: ImGuiLineStyle.control-separator;
+                }
+                collapse-button := ControlBarButton {
+                    x: root.control-expanded ? (root.control-docked-left ? 275px : 10px) : 2px;
+                    y: 7px;
+                    width: 15px;
+                    icon: root.control-expanded
+                          ? (root.control-docked-left ? FontAwesomeIcons.angle-left : FontAwesomeIcons.angle-right)
+                          : (root.control-docked-left ? FontAwesomeIcons.angle-right : FontAwesomeIcons.angle-left);
+                    tooltip: root.control-expanded ? StreamStrings.collapse-control : StreamStrings.expand-control;
+                    clicked => { root.control-expanded = !root.control-expanded; }
+                }
+
+                if root.stats-visible && root.control-expanded: stats-table := Rectangle {
+                    x: 14px;
+                    y: 38px;
+                    width: parent.width - 28px;
+                    height: 128px;
+                    background: transparent;
+                    private property <length> row-height: 16px;
+                    private property <length> label-column-width: 60px;
+                    private property <length> loss-column-width: 66px;
+                    private property <length> value-column-width:
+                        (self.width - self.label-column-width - self.loss-column-width) / 2;
+
+                    Rectangle {
+                        y: 0px;
+                        height: 1px;
+                        background: ImGuiLineStyle.border;
+                    }
+
+                    Rectangle {
+                        y: 0px;
+                        height: stats-table.row-height;
+                        Text {
+                            x: stats-table.label-column-width + 4px;
+                            width: stats-table.value-column-width - 8px;
+                            text: StreamStrings.stats-in;
+                            color: #30343b;
+                            font-size: ImGuiFontStyle.small;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            x: stats-table.label-column-width + stats-table.value-column-width + 4px;
+                            width: stats-table.value-column-width - 8px;
+                            text: StreamStrings.stats-out;
+                            color: #30343b;
+                            font-size: ImGuiFontStyle.small;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            x: stats-table.label-column-width + stats-table.value-column-width * 2 + 4px;
+                            width: stats-table.loss-column-width - 8px;
+                            text: StreamStrings.stats-loss-rate;
+                            color: #30343b;
+                            font-size: ImGuiFontStyle.small;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Rectangle {
+                            y: parent.height - 1px;
+                            height: 1px;
+                            background: ImGuiLineStyle.border;
+                        }
+                    }
+
+                    for row[index] in root.stats-rows: Rectangle {
+                        y: (index + 1) * stats-table.row-height;
+                        height: stats-table.row-height;
+                        Text {
+                            x: 4px;
+                            width: stats-table.label-column-width - 8px;
+                            text: row.label;
+                            color: #30343b;
+                            font-size: ImGuiFontStyle.small;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            x: stats-table.label-column-width + 4px;
+                            width: stats-table.value-column-width - 8px;
+                            text: row.inbound;
+                            color: #30343b;
+                            font-size: ImGuiFontStyle.small;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Text {
+                            x: stats-table.label-column-width + stats-table.value-column-width + 4px;
+                            width: stats-table.value-column-width - 8px;
+                            text: row.outbound;
+                            color: #30343b;
+                            font-size: ImGuiFontStyle.small;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Text {
+                            x: stats-table.label-column-width + stats-table.value-column-width * 2 + 4px;
+                            width: stats-table.loss-column-width - 8px;
+                            text: row.loss-rate;
+                            color: #30343b;
+                            font-size: ImGuiFontStyle.small;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Rectangle {
+                            y: parent.height - 1px;
+                            height: 1px;
+                            background: ImGuiLineStyle.border;
+                        }
+                    }
+
+                    for metric[index] in [
+                        { label: "FPS:", value: root.stats-fps },
+                        { label: StreamStrings.stats-resolution + ":", value: root.stats-resolution },
+                        { label: StreamStrings.stats-connection-mode + ":", value: root.stats-connection-mode },
+                    ]: Rectangle {
+                        y: (index + 5) * stats-table.row-height;
+                        height: stats-table.row-height;
+                        Text {
+                            x: 4px;
+                            width: stats-table.label-column-width - 8px;
+                            text: metric.label;
+                            color: #30343b;
+                            font-size: ImGuiFontStyle.small;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            x: stats-table.label-column-width + 4px;
+                            width: stats-table.value-column-width - 8px;
+                            text: metric.value;
+                            color: #30343b;
+                            font-size: ImGuiFontStyle.small;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Rectangle {
+                            y: parent.height - 1px;
+                            height: 1px;
+                            background: ImGuiLineStyle.border;
+                        }
+                    }
+                }
+            }
+
+            if root.display-menu-open: Rectangle {
+                x: control.x + (root.control-docked-left ? 9px : 42px); y: control.y + 40px; width: 180px; height: min(180px, root.displays.length * 30px + 8px);
+                background: white; border-width: 1px; border-color: ImGuiLineStyle.border; border-radius: 5px; z: 11;
+                VerticalLayout {
+                    padding: 4px; spacing: 1px;
+                    for display[index] in root.displays: Rectangle {
+                        height: 29px;
+                        background: display-touch.has-hover || index == root.selected-display ? #e8eef9 : transparent;
+                        Text { x: 8px; text: display; color: #30343b; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
+                        display-touch := TouchArea { clicked => { root.selected-display = index; root.switch-display(index); root.display-menu-open = false; } }
+                    }
+                }
+            }
+
+            if root.shortcut-menu-open: Rectangle {
+                x: control.x + (root.control-docked-left ? 41px : 74px); y: control.y + 40px; width: 150px; height: 68px;
+                background: white; border-width: 1px; border-color: ImGuiLineStyle.border; border-radius: 5px; z: 11;
+                VerticalLayout {
+                    padding: 4px; spacing: 1px;
+                    for shortcut in ["Ctrl+Alt+Del", "Win+L"]: Rectangle {
+                        height: 29px; background: shortcut-touch.has-hover ? #e8eef9 : transparent;
+                        Text { x: 8px; text: shortcut; color: #30343b; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
+                        shortcut-touch := TouchArea { clicked => { root.send-shortcut(shortcut); root.shortcut-menu-open = false; } }
+                    }
+                }
+            }
+
+            // Transfer progress overlay at bottom-left.
+            if root.file-transfer-visible: Rectangle {
+                x: 18px; y: parent.height - min(210px, parent.height * 0.35); width: min(430px, parent.width * 0.6); height: min(190px, parent.height * 0.32);
+                background: #fffffff0; border-width: 1px; border-color: ImGuiLineStyle.border; border-radius: 6px; z: 7;
+                Text { x: 12px; y: 8px; text: StreamStrings.file-transfer; color: #2d3138; font-weight: 600; }
+                IconButton { x: parent.width - 32px; y: 1px; icon: FontAwesomeIcons.xmark; icon-size: 13px; clicked => { root.close-file-transfer(); } }
+                ScrollView {
+                    x: 10px; y: 32px; width: parent.width - 20px; height: parent.height - 42px;
+                    VerticalLayout {
+                        // Slint's ScrollView draws its vertical scrollbar over
+                        // the viewport. Reserve a gutter so transfer content
+                        // never extends underneath it.
+                        padding-right: 16px;
+                        spacing: 8px;
+                        for entry in root.file-transfers: VerticalLayout {
+                            spacing: 3px;
+                            HorizontalLayout { height: 18px; Text { text: entry.name; color: #30343b; font-size: ImGuiFontStyle.body; overflow: elide; } Text { width: 80px; text: entry.status; color: #5c6470; font-size: ImGuiFontStyle.body; horizontal-alignment: right; } }
+                            Rectangle {
+                                height: 7px;
+                                background: #dfe3e8;
+                                border-radius: 3px;
+
+                                Rectangle {
+                                    x: 0px;
+                                    y: 0px;
+                                    width: parent.width * max(0, min(1, entry.progress));
+                                    height: parent.height;
+                                    background: #2463c7;
+                                    border-radius: 3px;
+                                }
+                            }
+                            HorizontalLayout {
+                                height: 14px;
+                                Text { text: round(entry.progress * 100) + "%  " + entry.speed; color: #6a717c; font-size: ImGuiFontStyle.small; }
+                                Text { text: entry.size; color: #6a717c; font-size: ImGuiFontStyle.small; horizontal-alignment: right; }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

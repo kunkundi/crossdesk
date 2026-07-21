@@ -13,6 +13,7 @@
 @interface CrossDeskMacTrayTarget : NSObject
 - (instancetype)initWithOwner:(crossdesk::MacTrayImpl *)owner;
 - (void)statusItemClicked:(id)sender;
+- (void)openSettings:(id)sender;
 - (void)exitApplication:(id)sender;
 @end
 
@@ -24,7 +25,24 @@ struct MacTrayImpl {
       : app_window(window),
         tooltip(std::move(tray_tooltip)),
         language_index(language_index_value),
-        target([[CrossDeskMacTrayTarget alloc] initWithOwner:this]) {}
+        target([[CrossDeskMacTrayTarget alloc] initWithOwner:this]) {
+    EnsureStatusItem();
+  }
+
+  explicit MacTrayImpl(std::function<void()> show_window_callback,
+                       std::function<void()> hide_window_callback,
+                       std::function<void()> open_settings_callback,
+                       std::function<void()> exit_callback,
+                       std::string tray_tooltip, int language_index_value)
+      : show_window(std::move(show_window_callback)),
+        hide_window(std::move(hide_window_callback)),
+        open_settings(std::move(open_settings_callback)),
+        exit_app(std::move(exit_callback)),
+        tooltip(std::move(tray_tooltip)),
+        language_index(language_index_value),
+        target([[CrossDeskMacTrayTarget alloc] initWithOwner:this]) {
+    EnsureStatusItem();
+  }
 
   ~MacTrayImpl() {
     RemoveTrayIcon();
@@ -33,7 +51,9 @@ struct MacTrayImpl {
 
   void MinimizeToTray() {
     EnsureStatusItem();
-    if (app_window) {
+    if (hide_window) {
+      hide_window();
+    } else if (app_window) {
       SDL_HideWindow(app_window);
     }
   }
@@ -48,12 +68,12 @@ struct MacTrayImpl {
   }
 
   void ShowWindow() {
-    if (!app_window) {
-      return;
+    if (show_window) {
+      show_window();
+    } else if (app_window) {
+      SDL_ShowWindow(app_window);
+      SDL_RaiseWindow(app_window);
     }
-
-    SDL_ShowWindow(app_window);
-    SDL_RaiseWindow(app_window);
     [NSApp activateIgnoringOtherApps:YES];
   }
 
@@ -64,6 +84,18 @@ struct MacTrayImpl {
     }
 
     NSMenu *menu = [[NSMenu alloc] initWithTitle:@"CrossDesk"];
+    NSString *settings_title =
+        NSStringFromUtf8(localization::settings
+                             [localization::detail::ClampLanguageIndex(
+                                 language_index)]);
+    NSMenuItem *settings_item =
+        [[NSMenuItem alloc] initWithTitle:settings_title
+                                  action:@selector(openSettings:)
+                           keyEquivalent:@""];
+    [settings_item setTarget:target];
+    [menu addItem:settings_item];
+    [menu addItem:[NSMenuItem separatorItem]];
+
     NSString *exit_title =
         NSStringFromUtf8(localization::exit_program
                              [localization::detail::ClampLanguageIndex(
@@ -86,9 +118,23 @@ struct MacTrayImpl {
   }
 
   void RequestExit() {
+    if (exit_app) {
+      exit_app();
+      return;
+    }
     SDL_Event event;
     event.type = SDL_EVENT_QUIT;
     SDL_PushEvent(&event);
+  }
+
+  void OpenSettings() {
+    if (open_settings) {
+      open_settings();
+    } else {
+      ShowWindow();
+      return;
+    }
+    [NSApp activateIgnoringOtherApps:YES];
   }
 
  private:
@@ -191,6 +237,10 @@ struct MacTrayImpl {
   }
 
   ::SDL_Window *app_window = nullptr;
+  std::function<void()> show_window;
+  std::function<void()> hide_window;
+  std::function<void()> open_settings;
+  std::function<void()> exit_app;
   std::string tooltip;
   int language_index = 0;
   NSStatusItem *status_item = nil;
@@ -201,6 +251,16 @@ MacTray::MacTray(::SDL_Window *app_window, const std::string &tooltip,
                  int language_index)
     : impl_(
           std::make_unique<MacTrayImpl>(app_window, tooltip, language_index)) {}
+
+MacTray::MacTray(std::function<void()> show_window,
+                 std::function<void()> hide_window,
+                 std::function<void()> open_settings,
+                 std::function<void()> exit_app, const std::string &tooltip,
+                 int language_index)
+    : impl_(std::make_unique<MacTrayImpl>(
+          std::move(show_window), std::move(hide_window),
+          std::move(open_settings), std::move(exit_app), tooltip,
+          language_index)) {}
 
 MacTray::~MacTray() = default;
 
@@ -241,6 +301,13 @@ void MacTray::RemoveTrayIcon() { impl_->RemoveTrayIcon(); }
   (void)sender;
   if (owner_) {
     owner_->RequestExit();
+  }
+}
+
+- (void)openSettings:(id)sender {
+  (void)sender;
+  if (owner_) {
+    owner_->OpenSettings();
   }
 }
 

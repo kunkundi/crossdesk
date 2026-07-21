@@ -1,0 +1,458 @@
+// The legacy client uses ImGui::StyleColorsLight(). Keep the structural line
+// colors in one place so the Slint renderer produces the same visual weight.
+export global ImGuiLineStyle {
+    out property <color> border: #0000004d;
+    out property <color> separator: #6363639e;
+    out property <color> divider: #0000007a;
+    out property <color> control-separator: #b2b2b2;
+}
+
+// ImGui loads a 32px font atlas and applies per-window font scales. These
+// logical sizes reproduce those visual tiers on Slint's HiDPI renderer.
+export global ImGuiFontStyle {
+    out property <length> base: 12px;
+    out property <length> section-title: 18px;
+    out property <length> panel-label: 17px;
+    out property <length> field-value: 22px;
+    out property <length> prominent: 16px;
+    out property <length> body: 11px;
+    out property <length> small: 10px;
+}
+
+// Font Awesome 6 Free Solid glyphs used by the legacy ImGui client. The font
+// data is registered for every Slint window by GuiApplication before show().
+export global FontAwesomeIcons {
+    out property <string> angle-down: "\u{f107}";
+    out property <string> angle-left: "\u{f104}";
+    out property <string> angle-right: "\u{f105}";
+    out property <string> angle-up: "\u{f106}";
+    out property <string> arrow-right-long: "\u{f178}";
+    out property <string> bars: "\u{f0c9}";
+    out property <string> check: "\u{f00c}";
+    out property <string> circle-arrow-up: "\u{f0aa}";
+    out property <string> compress: "\u{f066}";
+    out property <string> computer-mouse: "\u{f8cc}";
+    out property <string> copy: "\u{f0c5}";
+    out property <string> display: "\u{e163}";
+    out property <string> expand: "\u{f065}";
+    out property <string> eye: "\u{f06e}";
+    out property <string> eye-slash: "\u{f070}";
+    out property <string> folder-open: "\u{f07c}";
+    out property <string> keyboard: "\u{f11c}";
+    out property <string> minus: "\u{f068}";
+    out property <string> pen: "\u{f304}";
+    out property <string> signal: "\u{f012}";
+    out property <string> shield-halved: "\u{f3ed}";
+    out property <string> square-full: "\u{f45c}";
+    out property <string> trash-can: "\u{f2ed}";
+    out property <string> volume-high: "\u{f028}";
+    out property <string> volume-xmark: "\u{f6a9}";
+    out property <string> xmark: "\u{f00d}";
+}
+
+export component IconButton inherits Rectangle {
+    in property <string> icon;
+    in property <string> tooltip;
+    in property <bool> danger: false;
+    in property <length> icon-size: 16px;
+    in property <color> icon-color: #24272d;
+    in property <color> normal-background: transparent;
+    in property <color> hover-background: #edf0f5;
+    in property <color> pressed-background: #d9dde5;
+    in property <bool> slashed: false;
+    callback clicked;
+
+    width: 30px;
+    height: 30px;
+    background: touch.pressed ? (danger ? #d92d20 : root.pressed-background)
+                              : touch.has-hover ? (danger ? #f04438 : root.hover-background)
+                                                : root.normal-background;
+    border-radius: 4px;
+
+    Text {
+        text: root.icon;
+        color: touch.has-hover && root.danger ? white : root.icon-color;
+        font-family: "Font Awesome 6 Free";
+        font-weight: 900;
+        font-size: root.icon-size;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    if root.slashed: Text {
+        text: "／";
+        color: touch.has-hover && root.danger ? white : root.icon-color;
+        font-size: root.icon-size + 7px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    if touch.has-hover && root.tooltip != "": Rectangle {
+        x: min(root.width - self.width, 0px);
+        y: root.height + 3px;
+        width: tip.preferred-width + 12px;
+        height: 24px;
+        background: #22252be8;
+        border-radius: 4px;
+        z: 20;
+        tip := Text {
+            text: root.tooltip;
+            color: white;
+            font-size: ImGuiFontStyle.small;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// Retained for non-font artwork. UI action icons use IconButton so the Slint
+// and ImGui clients share Font Awesome's glyph geometry.
+export component ImageButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> tooltip;
+    in property <bool> danger: false;
+    in property <length> icon-width: 16px;
+    in property <length> icon-height: 16px;
+    callback clicked;
+
+    width: 30px;
+    height: 30px;
+    background: touch.pressed ? (danger ? #d92d20 : #d9dde5)
+                              : touch.has-hover ? (danger ? #f04438 : #edf0f5)
+                                                : transparent;
+    border-radius: 4px;
+
+    Image {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: root.icon-width;
+        height: root.icon-height;
+        source: root.icon;
+        image-fit: contain;
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    if touch.has-hover && root.tooltip != "": Rectangle {
+        x: min(root.width - self.width, 0px);
+        y: root.height + 3px;
+        width: tip.preferred-width + 12px;
+        height: 24px;
+        background: #22252be8;
+        border-radius: 4px;
+        z: 20;
+        tip := Text {
+            text: root.tooltip;
+            color: white;
+            font-size: ImGuiFontStyle.small;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component CompactComboBox inherits Rectangle {
+    in property <[string]> model;
+    in-out property <int> current-index: 0;
+    in property <bool> enabled: true;
+    property <bool> popup-animation-enabled: false;
+    property <float> popup-progress: 0.0;
+    callback selected(int);
+
+    animate popup-progress {
+        duration: 160ms;
+        easing: ease-out;
+        enabled: root.popup-animation-enabled;
+    }
+
+    width: 73px;
+    height: 24px;
+    background: root.enabled ? white : #f1f1f1;
+    border-width: 1px;
+    border-color: #bfc2c7;
+    border-radius: 3px;
+
+    Text {
+        x: 5px;
+        width: parent.width - 24px;
+        text: root.model[root.current-index];
+        color: root.enabled ? #202124 : #8b8f95;
+        font-size: ImGuiFontStyle.body;
+        overflow: elide;
+        vertical-alignment: center;
+    }
+    Rectangle {
+        x: parent.width - 21px;
+        width: 20px;
+        height: parent.height - 2px;
+        y: 1px;
+        background: root.enabled ? #9bc9f8 : #d7d9dc;
+        Text {
+            text: FontAwesomeIcons.angle-down;
+            color: #202124;
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            font-size: 10px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            transform-rotation: combo-popup.is-open ? 180deg : 0deg;
+            animate transform-rotation {
+                duration: 140ms;
+                easing: ease-out;
+                enabled: combo-popup.is-open;
+            }
+        }
+    }
+    TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.popup-animation-enabled = false;
+            root.popup-progress = 0.0;
+            combo-popup.show();
+            popup-open-timer.running = true;
+        }
+    }
+
+    // Start on the next frame so the native popup first renders at zero
+    // height, making the downward expansion visible on every backend.
+    popup-open-timer := Timer {
+        interval: 16ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            if combo-popup.is-open {
+                root.popup-animation-enabled = true;
+                root.popup-progress = 1.0;
+            }
+        }
+    }
+
+    combo-popup := PopupWindow {
+        x: 0px;
+        y: root.height;
+        width: root.width;
+        height: root.model.length * 23px;
+        close-policy: close-on-click-outside;
+
+        Rectangle {
+            // Keep the reveal anchored to the popup's top edge while the
+            // content settles downward into its final position.
+            y: (1.0 - root.popup-progress) * -8px;
+            width: parent.width;
+            height: parent.height * root.popup-progress;
+            opacity: root.popup-progress;
+            background: white;
+            border-width: 1px;
+            border-color: #bfc2c7;
+            border-radius: 3px;
+            clip: true;
+            for choice[index] in root.model: Rectangle {
+                y: index * 23px;
+                width: parent.width;
+                height: 23px;
+                background: option-touch.has-hover ? #dbeafb : index == root.current-index ? #eef5fd : white;
+                Text { x: 5px; width: parent.width - 10px; text: choice; color: #202124; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
+                option-touch := TouchArea {
+                    clicked => {
+                        popup-open-timer.running = false;
+                        root.popup-animation-enabled = false;
+                        root.popup-progress = 0.0;
+                        root.current-index = index;
+                        root.selected(index);
+                        combo-popup.close();
+                    }
+                }
+            }
+            Rectangle {
+                width: parent.width;
+                height: parent.height;
+                background: transparent;
+                border-width: 1px;
+                border-color: #bfc2c7;
+                border-radius: 3px;
+                z: 2;
+            }
+        }
+    }
+}
+
+export component ImGuiCheckBox inherits Rectangle {
+    in-out property <bool> checked;
+    in property <bool> enabled: true;
+
+    width: 21px;
+    height: 21px;
+    background: root.enabled ? white : #f1f1f1;
+    border-width: 1px;
+    border-color: check-touch.has-hover && root.enabled ? #8cbef2 : #b9bdc2;
+    border-radius: 4px;
+    if root.checked: Text {
+        text: FontAwesomeIcons.check;
+        color: #2e86de;
+        font-family: "Font Awesome 6 Free";
+        font-weight: 900;
+        font-size: 16px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    check-touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.checked = !root.checked; }
+    }
+}
+
+export component MiniToggleSwitch inherits Rectangle {
+    in-out property <bool> checked;
+    in property <bool> enabled: true;
+    callback toggled(bool);
+
+    width: 29px;
+    height: 16px;
+    background: !root.enabled ? (root.checked ? #6e9ddacc : #9a9a9acc)
+              : root.checked ? #2463c7 : #9a9a9a;
+    border-radius: 8px;
+    Rectangle {
+        x: root.checked ? parent.width - self.width - 2px : 2px;
+        y: 2px;
+        width: 12px;
+        height: 12px;
+        border-radius: 6px;
+        background: white;
+    }
+    TouchArea {
+        enabled: root.enabled;
+        clicked => { root.checked = !root.checked; root.toggled(root.checked); }
+    }
+}
+
+export component CompactButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary: false;
+    in property <bool> enabled: true;
+    callback clicked;
+
+    width: 34px;
+    height: 24px;
+    background: !root.enabled ? #eceef0
+              : button-touch.pressed ? (root.primary ? #82b8f2 : #d8dadd)
+              : button-touch.has-hover ? (root.primary ? #b8d9fb : #f0f1f2)
+              : root.primary ? #a8d0fa : #e2e4e7;
+    border-width: 1px;
+    border-color: root.primary ? #9bc3ed : #c8cbd0;
+    border-radius: 3px;
+    Text {
+        text: root.text;
+        color: root.enabled ? #24272d : #8e9298;
+        font-size: ImGuiFontStyle.body;
+        overflow: elide;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    button-touch := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+}
+
+export component PrimaryButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback clicked;
+
+    min-width: 72px;
+    height: 30px;
+    background: !root.enabled ? #b8c1d1
+              : touch.pressed ? #1849a9
+              : touch.has-hover ? #2970d6
+              : #2463c7;
+    border-radius: 5px;
+
+    Text {
+        text: root.text;
+        color: white;
+        font-size: ImGuiFontStyle.body;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component SecondaryButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback clicked;
+
+    min-width: 72px;
+    height: 30px;
+    background: !root.enabled ? #f1f2f4
+              : touch.pressed ? #dfe3e9
+              : touch.has-hover ? #f3f4f6 : white;
+    border-width: 1px;
+    border-color: #c9ced7;
+    border-radius: 5px;
+    clip: true;
+
+    Text {
+        text: root.text;
+        color: root.enabled ? #24272d : #949aa5;
+        font-size: ImGuiFontStyle.body;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component ToggleSwitch inherits Rectangle {
+    in-out property <bool> checked;
+    in property <bool> enabled: true;
+    callback toggled(bool);
+
+    width: 36px;
+    height: 20px;
+    background: !root.enabled ? #d0d5dd : root.checked ? #2463c7 : #98a2b3;
+    border-radius: self.height / 2;
+
+    Rectangle {
+        x: root.checked ? parent.width - self.width - 3px : 3px;
+        y: 3px;
+        width: 14px;
+        height: 14px;
+        border-radius: 7px;
+        background: white;
+        animate x { duration: 100ms; easing: ease-in-out; }
+    }
+
+    TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
+}
+
+export component SectionTitle inherits Text {
+    color: #00000080;
+    font-size: ImGuiFontStyle.section-title;
+    font-weight: 500;
+    vertical-alignment: center;
+}
+
+export component DialogSurface inherits Rectangle {
+    background: white;
+    border-width: 1px;
+    border-color: ImGuiLineStyle.border;
+    border-radius: 8px;
+}

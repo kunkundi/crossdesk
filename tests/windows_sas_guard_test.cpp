@@ -70,8 +70,10 @@ int main() {
     return 1;
   }
 
-  const std::string control_bar =
-      ReadFile(repo_root / "src/gui/views/toolbars/control_bar.cpp");
+  const std::string stream_window =
+      ReadFile(repo_root / "src/gui/ui/stream_window.slint");
+  const std::string gui_application =
+      ReadFile(repo_root / "src/gui/application/gui_application.cpp");
   const std::string windows_service_runtime =
       ReadFile(repo_root / "src/gui/runtime/windows_service_runtime.cpp");
   const std::string runtime_state_h =
@@ -87,13 +89,16 @@ int main() {
   ok &= ExpectTrue(
       "secure desktop input routing",
       crossdesk::IsSecureDesktopInteractionRequired("secure-desktop"));
-  ok &= ExpectNotContains("control_bar.cpp", control_bar,
-                          "CanSendSecureAttentionSequence("
-                          "props->remote_interactive_stage_)");
-  ok &= ExpectNotContains("control_bar.cpp", control_bar,
-                          "ImGui::BeginDisabled();\n"
-                          "      }\n"
-                          "      if (ImGui::Selectable(sas_label.c_str()))");
+  ok &= ExpectContains("stream_window.slint", stream_window,
+                       "for shortcut in [\"Ctrl+Alt+Del\", \"Win+L\"]");
+  ok &= ExpectContains("stream_window.slint", stream_window,
+                       "root.send-shortcut(shortcut)");
+  ok &= ExpectContains("gui_application.cpp", gui_application,
+                       "std::string(shortcut) == \"Ctrl+Alt+Del\"");
+  ok &= ExpectContains("gui_application.cpp", gui_application,
+                       "ServiceCommandFlag::send_sas");
+  ok &= ExpectContains("gui_application.cpp", gui_application,
+                       "ServiceCommandFlag::lock_workstation");
   ok &= ExpectNotContains("windows_service_runtime.cpp",
                           windows_service_runtime, "sas_requires_lock_screen");
   ok &= ExpectContains("runtime_state.h", runtime_state_h,

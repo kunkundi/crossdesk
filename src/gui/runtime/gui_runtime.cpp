@@ -168,10 +168,10 @@ void GuiRuntime::UpdateLabels() {
 
 
 void GuiRuntime::HandleRecentConnections() {
-  if (reload_recent_connections_ && main_renderer_) {
+  if (reload_recent_connections_ && thumbnail_) {
     uint32_t now_time = SDL_GetTicks();
     if (now_time - recent_connection_image_save_time_ >= 50) {
-      int ret = thumbnail_->LoadThumbnail(main_renderer_, recent_connections_,
+      int ret = thumbnail_->LoadThumbnail(recent_connections_,
                                           &recent_connection_image_width_,
                                           &recent_connection_image_height_);
       if (!ret) {

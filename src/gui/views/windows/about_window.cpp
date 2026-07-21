@@ -123,7 +123,7 @@ int GuiApplication::AboutWindow() {
     }
 
     std::string copyright_text = "© 2025 by JUNKUN DI. All rights reserved.";
-    std::string license_text = "Licensed under GNU LGPL v3.";
+    std::string license_text = "Licensed under GNU GPL v3.";
     ImGui::SetCursorPosX(about_window_width * 0.1f);
     ImGui::Text("%s", copyright_text.c_str());
     ImGui::SetCursorPosX(about_window_width * 0.1f);
