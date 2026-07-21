@@ -13,14 +13,17 @@ package("slint")
 
     on_load(function(package)
         package:add("includedirs", "include/slint")
-        package:add("links", "slint_cpp")
+        if package:is_plat("windows") then
+            package:add("links", "slint_cpp.dll")
+        else
+            package:add("links", "slint_cpp")
+        end
     end)
 
     on_install("windows", "linux", "macosx", function(package)
         local configs = {
             "-DSLINT_BUILD_TESTING=OFF",
             "-DSLINT_BUILD_EXAMPLES=OFF",
-            "-DSLINT_COMPILER=download",
             "-DSLINT_FEATURE_INTERPRETER=OFF",
             "-DSLINT_FEATURE_LIVE_PREVIEW=OFF",
             "-DSLINT_FEATURE_TESTING=OFF",
@@ -36,23 +39,6 @@ package("slint")
             "-DBUILD_SHARED_LIBS=ON"
         }
         import("package.tools.cmake").install(package, configs)
-
-        -- SLINT_COMPILER=download only configures downstream CMake projects.
-        -- xmake's native Slint rule needs the matching host executable here.
-        import("net.http")
-        import("utils.archive")
-        local host_system = is_host("windows") and "windows" or (is_host("macosx") and "Darwin" or "Linux")
-        local host_arch = os.arch()
-        if host_arch == "x64" then
-            host_arch = "x86_64"
-        end
-        local suffix = host_system .. "-" .. host_arch
-        local archive_name = "slint-compiler-" .. suffix .. ".tar.gz"
-        local archive_file = path.join(package:builddir(), archive_name)
-        local download_url = "https://github.com/slint-ui/slint/releases/download/v" .. package:version_str() .. "/" .. archive_name
-        http.download(download_url, archive_file)
-        os.mkdir(path.join(package:installdir(), "bin"))
-        archive.extract(archive_file, package:installdir())
     end)
 
     on_test(function(package)

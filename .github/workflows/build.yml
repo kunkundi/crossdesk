@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - "**"
+      - "!ci/linux-build-image"
     tags:
       - "*"
   workflow_dispatch:
@@ -27,13 +28,13 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-22.04
-            image: crossdesk/ubuntu20.04:latest
+            runner: ubuntu-24.04
+            image: crossdesk/ubuntu22.04:buildenv-cuda12.6.3-xmake3.0.9-rust1.92.0
             package_script: ./scripts/linux/pkg_amd64.sh
 
           - arch: arm64
-            runner: ubuntu-22.04-arm
-            image: crossdesk/ubuntu20.04-arm64v8:latest
+            runner: ubuntu-24.04-arm
+            image: crossdesk/ubuntu22.04:buildenv-cuda12.6.3-xmake3.0.9-rust1.92.0
             package_script: ./scripts/linux/pkg_arm64.sh
 
     container:
@@ -99,12 +100,14 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Verify Linux build image
+        run: verify-crossdesk-build-image
+
       - name: Build CrossDesk
         env:
           CUDA_PATH: /usr/local/cuda
           XMAKE_GLOBALDIR: /data
         run: |
-          apt install -y libxft-dev
           xmake f --CROSSDESK_VERSION=${LEGAL_VERSION} --USE_CUDA=true --root -y
           xmake b -vy --root crossdesk
 
@@ -112,6 +115,14 @@ jobs:
         run: |
           chmod +x ${{ matrix.package_script }}
           ${{ matrix.package_script }} ${LEGAL_VERSION}
+
+      - name: Verify packaged Ubuntu 22.04 glibc baseline
+        run: |
+          PACKAGE_FILE="${GITHUB_WORKSPACE}/crossdesk-linux-${{ matrix.arch }}-${LEGAL_VERSION}.deb"
+          VERIFY_DIR="${RUNNER_TEMP}/crossdesk-glibc-${{ matrix.arch }}"
+          install -d "${VERIFY_DIR}"
+          dpkg-deb --extract "${PACKAGE_FILE}" "${VERIFY_DIR}"
+          verify-crossdesk-glibc-baseline "${VERIFY_DIR}" 2.35
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
@@ -188,6 +199,9 @@ jobs:
 
       - name: Install xmake
         run: brew install xmake
+
+      - name: Update xmake repositories
+        run: xmake repo -u
 
       - name: Checkout code
         uses: actions/checkout@v5
@@ -275,6 +289,7 @@ jobs:
         run: |
           Invoke-Expression (Invoke-Webrequest 'https://raw.githubusercontent.com/tboox/xmake/master/scripts/get.ps1' -UseBasicParsing).Content
           echo "C:\Users\runneradmin\xmake" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          xmake repo -u
           xmake create cuda
           Set-Location cuda
           xmake g --theme=plain
