@@ -1,6 +1,9 @@
 #include "mouse_controller.h"
 
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
 #include <X11/extensions/XTest.h>
+#include <unistd.h>
 
 #include "platform.h"
 #include "rd_log.h"

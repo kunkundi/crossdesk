@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - "**"
+      - "!ci/linux-build-image"
     tags:
       - "*"
   workflow_dispatch:
@@ -27,13 +28,13 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-22.04
-            image: crossdesk/ubuntu20.04:latest
+            runner: ubuntu-24.04
+            image: crossdesk/ubuntu22.04:buildenv-cuda12.6.3-xmake3.0.9-rust1.92.0
             package_script: ./scripts/linux/pkg_amd64.sh
 
           - arch: arm64
-            runner: ubuntu-22.04-arm
-            image: crossdesk/ubuntu20.04-arm64v8:latest
+            runner: ubuntu-24.04-arm
+            image: crossdesk/ubuntu22.04:buildenv-cuda12.6.3-xmake3.0.9-rust1.92.0
             package_script: ./scripts/linux/pkg_arm64.sh
 
     container:
@@ -99,12 +100,14 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Verify Linux build image
+        run: verify-crossdesk-build-image
+
       - name: Build CrossDesk
         env:
           CUDA_PATH: /usr/local/cuda
           XMAKE_GLOBALDIR: /data
         run: |
-          apt install -y libxft-dev
           xmake f --CROSSDESK_VERSION=${LEGAL_VERSION} --USE_CUDA=true --root -y
           xmake b -vy --root crossdesk
 
@@ -112,6 +115,14 @@ jobs:
         run: |
           chmod +x ${{ matrix.package_script }}
           ${{ matrix.package_script }} ${LEGAL_VERSION}
+
+      - name: Verify packaged Ubuntu 22.04 glibc baseline
+        run: |
+          PACKAGE_FILE="${GITHUB_WORKSPACE}/crossdesk-linux-${{ matrix.arch }}-${LEGAL_VERSION}.deb"
+          VERIFY_DIR="${RUNNER_TEMP}/crossdesk-glibc-${{ matrix.arch }}"
+          install -d "${VERIFY_DIR}"
+          dpkg-deb --extract "${PACKAGE_FILE}" "${VERIFY_DIR}"
+          verify-crossdesk-glibc-baseline "${VERIFY_DIR}" 2.35
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
@@ -123,17 +134,21 @@ jobs:
   build-macos:
     name: Build on macOS
     runs-on: ${{ matrix.runner }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
     strategy:
       matrix:
         include:
           - arch: x64
+            binary_arch: x86_64
             runner: macos-15-intel
-            cache-key: intel
+            cache-key: intel-macos14
             out-dir: ./build/macosx/x86_64/release/crossdesk
             package_script: ./scripts/macosx/pkg_x64.sh
           - arch: arm64
+            binary_arch: arm64
             runner: macos-14
-            cache-key: arm
+            cache-key: arm-macos14
             out-dir: ./build/macosx/arm64/release/crossdesk
             package_script: ./scripts/macosx/pkg_arm64.sh
 
@@ -189,6 +204,9 @@ jobs:
       - name: Install xmake
         run: brew install xmake
 
+      - name: Update xmake repositories
+        run: xmake repo -u
+
       - name: Checkout code
         uses: actions/checkout@v5
 
@@ -197,13 +215,29 @@ jobs:
 
       - name: Build CrossDesk
         run: |
-          xmake f --CROSSDESK_VERSION=${VERSION_NUM} --USE_CUDA=true -y
+          xmake f --target_minver=${MACOSX_DEPLOYMENT_TARGET} --CROSSDESK_VERSION=${VERSION_NUM} --USE_CUDA=true -y
           xmake b -vy crossdesk
 
       - name: Package CrossDesk app
         run: |
           chmod +x ${{ matrix.package_script }}
           ${{ matrix.package_script }} ${VERSION_NUM}
+
+      - name: Verify packaged app
+        shell: bash
+        run: |
+          PACKAGE_FILE="${GITHUB_WORKSPACE}/crossdesk-macos-${{ matrix.arch }}-${VERSION_NUM}.pkg"
+          VERIFY_DIR="$(mktemp -d "${RUNNER_TEMP}/crossdesk-macos-pkg.XXXXXX")"
+          trap 'rm -rf "${VERIFY_DIR}"' EXIT
+
+          pkgutil --expand-full "${PACKAGE_FILE}" "${VERIFY_DIR}/expanded"
+          APP_PATH="$(find "${VERIFY_DIR}/expanded" -type d -name 'CrossDesk.app' -print -quit)"
+          if [[ -z "${APP_PATH}" ]]; then
+            echo "CrossDesk.app is missing from ${PACKAGE_FILE}" >&2
+            exit 1
+          fi
+
+          ./scripts/macosx/verify_app.sh "${APP_PATH}" "${{ matrix.binary_arch }}"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
@@ -275,6 +309,7 @@ jobs:
         run: |
           Invoke-Expression (Invoke-Webrequest 'https://raw.githubusercontent.com/tboox/xmake/master/scripts/get.ps1' -UseBasicParsing).Content
           echo "C:\Users\runneradmin\xmake" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          xmake repo -u
           xmake create cuda
           Set-Location cuda
           xmake g --theme=plain

@@ -240,6 +240,7 @@ function setup_targets()
             "src/gui/features/settings/*.cpp", "src/gui/ui/crossdesk_ui.slint")
         add_includedirs("src/gui", {public = true})
         if is_os("windows") then
+            add_cxxflags("/bigobj")
             add_files("src/gui/platform/tray/win_tray.cpp")
             add_includedirs("src/service/windows", {public = true})
         elseif is_os("macosx") then

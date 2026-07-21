@@ -7,10 +7,6 @@
 #ifndef _MOUSE_CONTROLLER_H_
 #define _MOUSE_CONTROLLER_H_
 
-#include <X11/Xlib.h>
-#include <X11/Xutil.h>
-#include <unistd.h>
-
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -20,6 +16,7 @@
 
 struct DBusConnection;
 struct DBusMessageIter;
+struct _XDisplay;
 
 namespace crossdesk {
 
@@ -53,8 +50,8 @@ class MouseController : public DeviceController {
 
   enum class WaylandAbsoluteMode { kUnknown, kPixels, kNormalized, kDisabled };
 
-  Display* display_ = nullptr;
-  Window root_ = 0;
+  _XDisplay* display_ = nullptr;
+  unsigned long root_ = 0;
   std::vector<DisplayInfo> display_info_list_;
   int screen_width_ = 0;
   int screen_height_ = 0;

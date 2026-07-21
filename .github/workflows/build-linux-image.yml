@@ -1,0 +1,155 @@
+name: Build Linux Build Image
+
+on:
+  push:
+    branches:
+      - ci/linux-build-image
+    paths:
+      - .dockerignore
+      - .gitmodules
+      - .github/workflows/build-linux-image.yml
+      - docker/linux-build/**
+      - xmake.lua
+      - xmake/**
+      - thirdparty/**
+      - submodules/xmake.lua
+      - submodules/minirtc
+      - submodules/minirtc/xmake.lua
+      - submodules/minirtc/thirdparty/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-build-image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: crossdesk/ubuntu22.04
+  STACK_TAG: buildenv-cuda12.6.3-xmake3.0.9-rust1.92.0
+  XMAKE_VERSION: 3.0.9
+  RUST_VERSION: 1.92.0
+  RUSTUP_VERSION: 1.28.2
+
+jobs:
+  build:
+    name: Build candidate (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04
+            base_image: nvidia/cuda:12.6.3-devel-ubuntu22.04
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            base_image: ubuntu:22.04
+    steps:
+      - name: Set candidate tag
+        id: image
+        run: |
+          CANDIDATE_TAG="${IMAGE_NAME}:${STACK_TAG}-${GITHUB_SHA}-${{ matrix.arch }}"
+          echo "CANDIDATE_TAG=${CANDIDATE_TAG}" >> "${GITHUB_ENV}"
+          echo "candidate=${CANDIDATE_TAG}" >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout source
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push candidate
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/linux-build/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          pull: true
+          tags: ${{ steps.image.outputs.candidate }}
+          cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:${{ env.STACK_TAG }}
+          cache-to: type=inline
+          provenance: false
+          sbom: false
+          build-args: |
+            BASE_IMAGE=${{ matrix.base_image }}
+            XMAKE_VERSION=${{ env.XMAKE_VERSION }}
+            RUST_VERSION=${{ env.RUST_VERSION }}
+            RUSTUP_VERSION=${{ env.RUSTUP_VERSION }}
+
+  verify:
+    name: Verify candidate (${{ matrix.arch }})
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Set candidate tag
+        run: |
+          CANDIDATE_TAG="${IMAGE_NAME}:${STACK_TAG}-${GITHUB_SHA}-${{ matrix.arch }}"
+          echo "CANDIDATE_TAG=${CANDIDATE_TAG}" >> "${GITHUB_ENV}"
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Verify tools, architecture, and Ubuntu baseline
+        run: |
+          docker pull "${CANDIDATE_TAG}"
+          docker run --rm \
+            --env EXPECTED_ARCH="${{ matrix.arch }}" \
+            "${CANDIDATE_TAG}" \
+            verify-crossdesk-build-image
+
+  publish:
+    name: Publish multi-arch image
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Promote verified candidates
+        run: |
+          AMD64_IMAGE="${IMAGE_NAME}:${STACK_TAG}-${GITHUB_SHA}-amd64"
+          ARM64_IMAGE="${IMAGE_NAME}:${STACK_TAG}-${GITHUB_SHA}-arm64"
+
+          docker buildx imagetools create \
+            --tag "${IMAGE_NAME}:${STACK_TAG}" \
+            --tag "${IMAGE_NAME}:sha-${GITHUB_SHA}" \
+            --tag "${IMAGE_NAME}:latest" \
+            "${AMD64_IMAGE}" \
+            "${ARM64_IMAGE}"
+
+      - name: Inspect published manifest
+        run: |
+          docker buildx imagetools inspect "${IMAGE_NAME}:${STACK_TAG}"

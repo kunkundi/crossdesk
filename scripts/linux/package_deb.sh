@@ -147,7 +147,7 @@ Version: $DEB_VERSION
 Architecture: $DEBIAN_ARCH
 Maintainer: $MAINTAINER
 Description: $DESCRIPTION
-Depends: libc6 (>= 2.29), libstdc++6 (>= 9), libx11-6, libxext6,
+Depends: libc6 (>= 2.35), libstdc++6 (>= 9), libx11-6, libxext6,
  libxrender1, libxft2, libxrandr2, libxfixes3, libxcb1, libxcb-randr0,
  libxcb-xtest0, libxcb-xinerama0, libxcb-shape0, libxcb-xkb1,
  libxcb-xfixes0, libxv1, libxtst6, $ALSA_RUNTIME_DEP, libsndio7.0,

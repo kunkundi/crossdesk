@@ -26,6 +26,7 @@ end
 function setup_platform_settings()
     if is_os("windows") then
         add_requires("libyuv", "miniaudio 0.11.21")
+        add_defines("NOMINMAX")
         add_links("Shell32", "dwmapi", "User32", "kernel32",
             "gdi32", "winmm", "setupapi", "version",
             "Imm32", "iphlpapi", "d3d11", "dxgi")

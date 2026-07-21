@@ -1,14 +1,16 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
 APP_NAME="crossdesk"
 APP_NAME_UPPER="CrossDesk"
 EXECUTABLE_PATH="./build/macosx/arm64/release/crossdesk"
 PLATFORM="macos"
 ARCH="arm64"
+BINARY_ARCH="arm64"
 IDENTIFIER="cn.crossdesk.app"
 ICON_PATH="icons/macos/crossdesk.icns"
-MACOS_MIN_VERSION="10.12"
+MACOS_MIN_VERSION="14.0"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 normalize_app_version() {
     local input="$1"
@@ -94,6 +96,9 @@ EOF
 
 xattr -cr "${APP_BUNDLE}" 2>/dev/null || true
 find "${APP_BUNDLE}" -name '._*' -delete
+
+"${SCRIPT_DIR}/bundle_app.sh" "${APP_BUNDLE}" "${BINARY_ARCH}"
+"${SCRIPT_DIR}/verify_app.sh" "${APP_BUNDLE}" "${BINARY_ARCH}"
 
 echo ".app created successfully."
 
