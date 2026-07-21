@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <string>
 
 #include "application/gui_application.h"
@@ -8,51 +7,9 @@
 
 namespace crossdesk {
 
-std::string CleanMarkdown(const std::string &markdown) {
-  std::string result = markdown;
-
-  // remove # title mark
-  size_t pos = 0;
-  while (pos < result.length()) {
-    if (result[pos] == '\n' || pos == 0) {
-      size_t line_start = (result[pos] == '\n') ? pos + 1 : pos;
-      if (line_start < result.length() && result[line_start] == '#') {
-        size_t hash_end = line_start;
-        while (hash_end < result.length() &&
-               (result[hash_end] == '#' || result[hash_end] == ' ')) {
-          hash_end++;
-        }
-
-        result.erase(line_start, hash_end - line_start);
-        pos = line_start;
-        continue;
-      }
-    }
-    pos++;
-  }
-
-  // remove ** bold mark
-  pos = 0;
-  while ((pos = result.find("**", pos)) != std::string::npos) {
-    result.erase(pos, 2);
-  }
-
-  // remove all spaces
-  result.erase(std::remove(result.begin(), result.end(), ' '), result.end());
-
-  // replace . with 、
-  pos = 0;
-  while ((pos = result.find('.', pos)) != std::string::npos) {
-    result.replace(pos, 1, "、");
-    pos += 1; // Move to next position after the replacement
-  }
-
-  return result;
-}
-
 int GuiApplication::UpdateNotificationWindow() {
   if (show_update_notification_window_ && update_available_) {
-    const ImGuiViewport *viewport = ImGui::GetMainViewport();
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
 
     float update_notification_window_width = title_bar_button_width_ * 10.0f;
     float update_notification_window_height = title_bar_button_width_ * 8.0f;
@@ -142,8 +99,7 @@ int GuiApplication::UpdateNotificationWindow() {
     // release notes
     if (!release_notes_.empty()) {
       ImGui::SetCursorPosX(update_notification_window_width * 0.05f);
-      std::string cleaned_notes = CleanMarkdown(release_notes_);
-      ImGui::TextWrapped("%s", cleaned_notes.c_str());
+      ImGui::TextWrapped("%s", release_notes_.c_str());
       ImGui::Spacing();
     }
 
@@ -204,4 +160,4 @@ int GuiApplication::UpdateNotificationWindow() {
   return 0;
 }
 
-} // namespace crossdesk
+}  // namespace crossdesk

@@ -186,6 +186,6 @@ struct ApplicationState : MainWindowState,
                           ServerWindowState,
                           UiState {};
 
-} // namespace crossdesk::gui_detail
+}  // namespace crossdesk::gui_detail
 
-#endif // CROSSDESK_GUI_APPLICATION_STATE_H_
+#endif  // CROSSDESK_GUI_APPLICATION_STATE_H_

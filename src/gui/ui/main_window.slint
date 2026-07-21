@@ -9,6 +9,11 @@ export struct RecentConnection {
     thumbnail: image,
 }
 
+export struct ReleaseNoteBlock {
+    content: styled-text,
+    section-gap: bool,
+}
+
 export global UiStrings {
     in-out property <string> local-desktop: "Local Desktop";
     in-out property <string> remote-desktop: "Remote Desktop";
@@ -48,8 +53,8 @@ export global UiStrings {
     in-out property <string> server-port: "Signal port";
     in-out property <string> coturn-port: "TURN port";
     in-out property <string> version: "Version";
-    in-out property <string> copyright: "Copyright © CrossDesk contributors";
-    in-out property <string> license: "Licensed under GPL-3.0-only";
+    in-out property <string> copyright: "© 2026 by JUNKUN DI. All right reserved.";
+    in-out property <string> license: "Licensed under GNU GPL v3.";
     in-out property <string> signal-connected: "Signal server connected";
     in-out property <string> signal-disconnected: "Signal server disconnected";
     in-out property <string> tls-error: "Signal server TLS certificate error";
@@ -199,7 +204,7 @@ export component MainWindow inherits Window {
     in property <string> current-version: "";
     in property <string> latest-version: "";
     in property <string> release-name: "";
-    in property <string> release-notes: "";
+    in property <[ReleaseNoteBlock]> release-note-blocks;
     in property <string> release-date: "";
     in-out property <string> offline-warning: "";
     in property <bool> connection-dialog-open: false;
@@ -1341,19 +1346,19 @@ export component MainWindow inherits Window {
                 Rectangle { y: parent.height - 7px; height: 7px; background: #d3d3d3; }
                 Text { x: 6px; text: UiStrings.about; font-size: ImGuiFontStyle.base; font-weight: 600; color: #202124; vertical-alignment: center; }
             }
-            Text { x: 30px; y: 29px; width: 240px; height: 20px; text: UiStrings.version + ": CrossDesk " + root.current-version; color: #202124; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
-            if root.update-available: Text { x: 30px; y: 51px; width: 240px; height: 20px; text: UiStrings.update-available + ":"; color: #202124; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
+            Text { x: 30px; y: 40px; width: 240px; height: 20px; text: UiStrings.version + ": CrossDesk " + root.current-version; color: #202124; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
+            if root.update-available: Text { x: 30px; y: 60px; width: 240px; height: 20px; text: UiStrings.update-available + ":"; color: #202124; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
             if root.update-available: Rectangle {
                 x: 30px;
-                y: 70px;
+                y: 60px;
                 width: 240px;
                 height: 20px;
                 version-link := Text { text: root.latest-version; color: version-touch.has-hover ? #174ea6 : #334fd1; font-size: ImGuiFontStyle.body; horizontal-alignment: center; vertical-alignment: center; }
                 version-touch := TouchArea { mouse-cursor: pointer; clicked => { root.open-download(); } }
             }
-            Text { x: 30px; y: 96px; width: 240px; height: 20px; text: UiStrings.copyright; color: #202124; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
-            Text { x: 30px; y: 118px; width: 240px; height: 20px; text: UiStrings.license; color: #202124; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
-            CompactButton { x: 133px; y: 157px; primary: true; text: UiStrings.ok; clicked => { root.about-open = false; } }
+            Text { x: 30px; y: 85px; width: 240px; height: 20px; text: UiStrings.copyright; color: #202124; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
+            Text { x: 30px; y: 105px; width: 240px; height: 20px; text: UiStrings.license; color: #202124; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
+            CompactButton { x: 133px; y: 145px; primary: true; text: UiStrings.ok; clicked => { root.about-open = false; } }
         }
     }
 
@@ -1364,24 +1369,43 @@ export component MainWindow inherits Window {
         TouchArea { clicked => { focus-sink.focus(); } }
         DialogSurface {
             x: 120px;
-            y: 65px;
+            y: 52px;
             width: 400px;
-            height: 320px;
+            height: 346px;
             border-radius: 7px;
-            Text { x: 40px; y: 22px; width: 320px; height: 24px; text: UiStrings.update-available + ": " + root.latest-version; color: #202124; font-size: ImGuiFontStyle.prominent; vertical-alignment: center; }
+            Text { x: 30px; y: 22px; width: 320px; height: 24px; text: UiStrings.update-available + ": " + root.latest-version; color: #202124; font-size: ImGuiFontStyle.prominent; vertical-alignment: center; }
             Rectangle {
-                x: 40px;
+                x: 30px;
                 y: 47px;
                 width: 320px;
                 height: 22px;
-                Text { text: UiStrings.access-website + "https://crossdesk.cn"; color: website-touch.has-hover ? #174ea6 : #334fd1; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
+                Text {
+                    x: 0px;
+                    width: parent.width;
+                    height: parent.height;
+                    text: UiStrings.access-website + "https://crossdesk.cn";
+                    color: website-touch.has-hover ? #174ea6 : #334fd1;
+                    font-size: ImGuiFontStyle.body;
+                    horizontal-alignment: left;
+                    vertical-alignment: center;
+                }
                 website-touch := TouchArea { mouse-cursor: pointer; clicked => { root.open-download(); } }
             }
+            Text {
+                x: 30px;
+                y: 75px;
+                width: 320px;
+                height: 20px;
+                text: UiStrings.release-notes;
+                color: #202124;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
             Rectangle {
-                x: 20px;
-                y: 74px;
+                x: 30px;
+                y: 105px;
                 width: 360px;
-                height: 200px;
+                height: 190px;
                 background: white;
                 border-width: 1px;
                 border-color: #b9bdc3;
@@ -1392,19 +1416,24 @@ export component MainWindow inherits Window {
                     height: parent.height - 2px;
                     VerticalLayout {
                         width: 340px;
-                        padding-left: 19px;
+                        padding-left: 8px;
                         padding-right: 8px;
                         padding-top: 8px;
                         padding-bottom: 8px;
                         spacing: 7px;
-                        if root.release-name != "": Text { width: 312px; text: root.release-name; color: #202124; font-size: ImGuiFontStyle.body; wrap: word-wrap; }
-                        Text { width: 312px; text: root.release-notes; color: #202124; font-size: ImGuiFontStyle.body; wrap: word-wrap; }
-                        if root.release-date != "": Text { width: 312px; text: UiStrings.release-date-label + root.release-date; color: #4f555e; font-size: ImGuiFontStyle.small; wrap: word-wrap; }
+                        VerticalLayout {
+                            width: 312px;
+                            spacing: 10px;
+                            for block in root.release-note-blocks: VerticalLayout {
+                                padding-top: block.section-gap ? 10px : 0px;
+                                StyledText { width: 312px; text: block.content; default-color: #202124; default-font-size: ImGuiFontStyle.body; }
+                            }
+                        }
                     }
                 }
             }
-            CompactButton { x: root.compact-language ? 163px : 130px; y: 283px; width: root.compact-language ? 34px : 70px; primary: true; text: UiStrings.download; clicked => { root.open-download(); root.update-open = false; } }
-            CompactButton { x: root.compact-language ? 204px : 207px; y: 283px; width: root.compact-language ? 34px : 56px; text: UiStrings.later; clicked => { root.update-open = false; } }
+            CompactButton { x: root.compact-language ? 163px : 130px; y: 309px; width: root.compact-language ? 34px : 70px; primary: true; text: UiStrings.download; clicked => { root.open-download(); root.update-open = false; } }
+            CompactButton { x: root.compact-language ? 204px : 207px; y: 309px; width: root.compact-language ? 34px : 56px; text: UiStrings.later; clicked => { root.update-open = false; } }
         }
     }
 
