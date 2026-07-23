@@ -87,6 +87,9 @@ function setup_targets()
         set_kind("binary")
         set_languages("c++20")
         set_default(false)
+        if is_os("windows") then
+            add_cxxflags("/bigobj")
+        end
         add_packages("slint")
         add_rules("slint")
         add_files("src/gui/ui/crossdesk_ui.slint")

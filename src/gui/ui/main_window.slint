@@ -242,7 +242,9 @@ export component MainWindow inherits Window {
     in-out property <string> server-port: "";
     in-out property <string> coturn-port: "";
     in property <bool> settings-session-active: false;
-    in property <bool> hardware-codec-visible: true;
+    // Keep the setting visible on every platform. Unsupported builds expose it
+    // as disabled so the fixed settings layout never turns into a blank row.
+    in property <bool> hardware-codec-available: true;
 
     callback copy-local-id;
     callback toggle-password-visibility;
@@ -1218,8 +1220,8 @@ export component MainWindow inherits Window {
             CompactComboBox { x: root.compact-language ? 120px : 188px; y: 120px; enabled: !root.settings-session-active; model: [UiStrings.codec-h264, UiStrings.codec-av1]; current-index <=> root.codec-index; }
             Rectangle { x: 7px; y: 147px; width: parent.width - 14px; height: 1px; background: ImGuiLineStyle.separator; }
 
-            if root.hardware-codec-visible: Text { x: 8px; y: 151px; width: root.compact-language ? 155px : 225px; height: 24px; text: UiStrings.hardware-codec; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
-            if root.hardware-codec-visible: ImGuiCheckBox { x: root.compact-language ? 171px : 238px; y: 151px; checked <=> root.hardware-codec-enabled; enabled: !root.settings-session-active; }
+            Text { x: 8px; y: 151px; width: root.compact-language ? 155px : 225px; height: 24px; text: UiStrings.hardware-codec; color: root.hardware-codec-available ? #202124 : #8b8f95; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
+            ImGuiCheckBox { x: root.compact-language ? 171px : 238px; y: 151px; checked <=> root.hardware-codec-enabled; enabled: root.hardware-codec-available && !root.settings-session-active; }
             Rectangle { x: 7px; y: 177px; width: parent.width - 14px; height: 1px; background: ImGuiLineStyle.separator; }
 
             Text { x: 8px; y: 181px; width: root.compact-language ? 155px : 225px; height: 24px; text: UiStrings.turn-relay; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }

@@ -295,7 +295,7 @@ export component ImGuiCheckBox inherits Rectangle {
     border-radius: 4px;
     if root.checked: Text {
         text: FontAwesomeIcons.check;
-        color: #2e86de;
+        color: root.enabled ? #2e86de : #8b8f95;
         font-family: "Font Awesome 6 Free";
         font-weight: 900;
         font-size: 16px;

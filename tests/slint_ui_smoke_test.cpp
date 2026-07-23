@@ -14,11 +14,13 @@ int main() {
   window->set_connection_dialog_open(true);
   window->set_connection_password_required(true);
   window->set_settings_session_active(true);
+  window->set_hardware_codec_available(false);
   window->set_portable_service_settings_visible(true);
   assert(std::string(window->get_local_id()) == "123 456 789");
   assert(window->get_connection_dialog_open());
   assert(window->get_connection_password_required());
   assert(window->get_settings_session_active());
+  assert(!window->get_hardware_codec_available());
   assert(window->get_portable_service_settings_visible());
   window->set_settings_open(true);
   window->set_about_open(true);

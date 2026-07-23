@@ -1782,9 +1782,9 @@ void GuiApplication::SyncMainWindow() {
 #if (((defined(_WIN32) || defined(__linux__)) && !defined(__aarch64__) && \
       !defined(__arm__) && USE_CUDA) ||                                   \
      defined(__APPLE__))
-  ui_->main->set_hardware_codec_visible(true);
+  ui_->main->set_hardware_codec_available(true);
 #else
-  ui_->main->set_hardware_codec_visible(false);
+  ui_->main->set_hardware_codec_available(false);
 #endif
 
   if (show_offline_warning_window_) {
