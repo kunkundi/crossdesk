@@ -184,15 +184,16 @@ component ConnectionDialogButton inherits Rectangle {
 export component MainWindow inherits Window {
     title: "CrossDesk";
     preferred-width: 640px;
-    preferred-height: 450px;
+    preferred-height: root.custom-titlebar ? 481px : 450px;
     min-width: 640px;
     max-width: 640px;
-    min-height: 450px;
-    max-height: 450px;
-    no-frame: false;
+    min-height: root.custom-titlebar ? 481px : 450px;
+    max-height: root.custom-titlebar ? 481px : 450px;
+    no-frame: root.custom-titlebar;
     background: white;
     default-font-size: ImGuiFontStyle.base;
 
+    in property <bool> custom-titlebar: false;
     in property <string> local-id: "";
     in property <string> local-password: "";
     in-out property <string> remote-id-input: "";
@@ -270,6 +271,9 @@ export component MainWindow inherits Window {
     callback cancel-portable-service;
     callback acknowledge-portable-service;
     callback acknowledge-portable-service-suppressed;
+    callback main-title-drag(int, length, length);
+    callback minimize-main-window;
+    callback close-main-window;
 
     private property <bool> menu-open: false;
     in-out property <bool> settings-open: false;
@@ -306,7 +310,7 @@ export component MainWindow inherits Window {
                 ? root.recent-tooltip-pointer-x - root.recent-tooltip-width - 12px
                 : root.recent-tooltip-pointer-x + 12px));
     private property <length> recent-tooltip-y: min(
-        root.height - root.recent-tooltip-height - 8px,
+        root.height - (root.custom-titlebar ? 31px : 0px) - root.recent-tooltip-height - 8px,
         max(8px, root.recent-tooltip-pointer-y - root.recent-tooltip-height - 8px));
 
     reset-remote-id => {
@@ -314,9 +318,100 @@ export component MainWindow inherits Window {
         remote-id-editor.focus();
     }
 
-    Rectangle {
+    if root.custom-titlebar: Rectangle {
+        x: 0px;
+        y: 0px;
         width: root.width;
-        height: root.height;
+        height: 31px;
+        background: #f9f9f9;
+        z: 100;
+
+        Image {
+            x: 8px;
+            y: 7px;
+            width: 16px;
+            height: 16px;
+            source: @image-url("../../../icons/linux/crossdesk_16x16.png");
+            image-fit: contain;
+        }
+        Text {
+            x: 30px;
+            width: parent.width - 122px;
+            height: parent.height;
+            text: "CrossDesk";
+            color: #202124;
+            font-size: 12px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        title-drag := TouchArea {
+            x: 0px;
+            width: parent.width - 92px;
+            property <int> phase: self.pressed ? 1 : 0;
+            changed phase => { root.main-title-drag(phase, self.mouse-x, self.mouse-y); }
+            moved => { if (self.pressed) { root.main-title-drag(2, self.mouse-x, self.mouse-y); } }
+        }
+        minimize-button := Rectangle {
+            x: parent.width - 92px;
+            width: 46px;
+            height: parent.height;
+            background: minimize-touch.pressed ? #c7c7c7
+                      : minimize-touch.has-hover ? #e5e5e5
+                                                 : transparent;
+            accessible-role: button;
+            accessible-label: "Minimize";
+            accessible-action-default => { minimize-touch.clicked(); }
+            Text {
+                text: FontAwesomeIcons.minus;
+                color: #202124;
+                font-family: "Font Awesome 6 Free";
+                font-weight: 900;
+                font-size: 10px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+            minimize-touch := TouchArea { clicked => { root.minimize-main-window(); } }
+        }
+        close-button := Rectangle {
+            x: parent.width - 46px;
+            width: 46px;
+            height: parent.height;
+            background: close-touch.pressed ? #b3251b
+                      : close-touch.has-hover ? #c42b1c
+                                              : transparent;
+            accessible-role: button;
+            accessible-label: "Close";
+            accessible-action-default => { close-touch.clicked(); }
+            Text {
+                text: FontAwesomeIcons.xmark;
+                color: close-touch.has-hover || close-touch.pressed ? white : #202124;
+                font-family: "Font Awesome 6 Free";
+                font-weight: 900;
+                font-size: 12px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+            close-touch := TouchArea { clicked => { root.close-main-window(); } }
+        }
+        Rectangle {
+            y: parent.height - 1px;
+            height: 1px;
+            background: #d4d4d4;
+        }
+    }
+
+    content-layer := Rectangle {
+        x: 0px;
+        y: root.custom-titlebar ? 31px : 0px;
+        width: root.width;
+        height: root.height - self.y;
+        clip: true;
+
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
         background: white;
         border-width: 0px;
         border-radius: 0px;
@@ -336,8 +431,8 @@ export component MainWindow inherits Window {
             z: 7;
         }
 
-        // App actions live in the content header; native window controls and
-        // dragging are provided by the system title bar.
+        // App actions live in the content header; window controls and dragging
+        // remain in the native or Windows-specific title bar above it.
         menu-button := IconButton {
             x: parent.width - 40px;
             y: 4px;
@@ -782,8 +877,8 @@ export component MainWindow inherits Window {
     if root.menu-open: TouchArea {
         x: 0px;
         y: 0px;
-        width: root.width;
-        height: root.height;
+        width: parent.width;
+        height: parent.height;
         z: 9;
         clicked => {
             root.menu-open = false;
@@ -1508,5 +1603,17 @@ export component MainWindow inherits Window {
                 PrimaryButton { text: UiStrings.ok; clicked => { root.acknowledge-portable-service-suppressed(); } }
             }
         }
+    }
+    }
+
+    if root.custom-titlebar: Rectangle {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        background: transparent;
+        border-width: 1px;
+        border-color: #8b8b8b;
+        z: 200;
     }
 }

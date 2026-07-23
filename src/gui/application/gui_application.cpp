@@ -681,6 +681,7 @@ struct GuiApplication::SlintUi {
   bool portable_service_dialog_initialized = false;
   std::string recent_model_signature;
   slint::Timer timer;
+  WindowDragState main_drag;
   WindowDragState server_drag;
   int main_native_titlebar_attempts = 30;
   int stream_live_resize_configuration_attempts = 0;
@@ -816,6 +817,9 @@ void GuiApplication::InitializeModules() {
 
 void GuiApplication::InitializeUi() {
   ui_ = std::make_unique<SlintUi>();
+#if _WIN32
+  ui_->main->set_custom_titlebar(true);
+#endif
   std::vector<ui::ReleaseNoteBlock> release_note_blocks;
   for (const auto& parsed :
        ParseReleaseNotesMarkdownForSlint(release_notes_)) {
@@ -1108,6 +1112,27 @@ void GuiApplication::BindMainCallbacks() {
     }
     exit_ = true;
     return slint::CloseRequestResponse::HideWindow;
+  });
+  main->on_main_title_drag([this](int phase, float x, float y) {
+    if (ui_) {
+      DragWindow(ui_->main, phase, x, y, ui_->main_drag);
+    }
+  });
+  main->on_minimize_main_window([this] {
+    if (ui_) {
+      ui_->main->window().set_minimized(true);
+    }
+  });
+  main->on_close_main_window([this] {
+    if (!ui_) {
+      return;
+    }
+    if (MinimizeMainWindowToTray()) {
+      ui_->main->hide();
+      return;
+    }
+    exit_ = true;
+    ui_->main->hide();
   });
   main->on_copy_local_id([this] {
     if (!SDL_SetClipboardText(client_id_)) {
