@@ -3,6 +3,22 @@ function setup_targets()
 
     includes("submodules", "thirdparty")
 
+    local function copy_slint_runtime(target)
+        if not target:is_plat("windows") then
+            return
+        end
+
+        local slint = target:pkg("slint")
+        if not slint and target:dep("gui") then
+            slint = target:dep("gui"):pkg("slint")
+        end
+        assert(slint, "the Slint package is required to copy its Windows runtime")
+        local runtime_dir = path.join(slint:installdir(), "lib")
+        local runtime_dll = path.join(runtime_dir, "slint_cpp.dll")
+        assert(os.isfile(runtime_dll), "Slint runtime not found: " .. runtime_dll)
+        os.cp(runtime_dll, target:targetdir())
+    end
+
     local crossdesk_windows_resource = "scripts/windows/crossdesk.rc"
     if is_config("CROSSDESK_PORTABLE", true) then
         crossdesk_windows_resource = "scripts/windows/crossdesk_portable.rc"
@@ -94,6 +110,7 @@ function setup_targets()
         add_rules("slint")
         add_files("src/gui/ui/crossdesk_ui.slint")
         add_files("tests/slint_ui_smoke_test.cpp")
+        after_build(copy_slint_runtime)
 
     target("version_checker_test")
         set_kind("binary")
@@ -299,4 +316,5 @@ function setup_targets()
             add_deps("wgc_plugin", "crossdesk_service", "crossdesk_session_helper")
             add_files(crossdesk_windows_resource)
         end
+        after_build(copy_slint_runtime)
 end
