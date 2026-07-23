@@ -184,16 +184,21 @@ component ConnectionDialogButton inherits Rectangle {
 export component MainWindow inherits Window {
     title: "CrossDesk";
     preferred-width: 640px;
-    preferred-height: root.custom-titlebar ? 481px : 450px;
+    preferred-height: 450px + root.titlebar-height;
     min-width: 640px;
     max-width: 640px;
-    min-height: root.custom-titlebar ? 481px : 450px;
-    max-height: root.custom-titlebar ? 481px : 450px;
+    min-height: 450px + root.titlebar-height;
+    max-height: 450px + root.titlebar-height;
     no-frame: root.custom-titlebar;
-    background: white;
+    background: root.wayland-titlebar ? transparent : white;
     default-font-size: ImGuiFontStyle.base;
 
     in property <bool> custom-titlebar: false;
+    in property <bool> wayland-titlebar: false;
+    in property <bool> window-active: true;
+    private property <length> titlebar-height:
+        root.custom-titlebar ? (root.wayland-titlebar ? 32px : 31px) : 0px;
+    private property <length> wayland-corner-radius: 12px;
     in property <string> local-id: "";
     in property <string> local-password: "";
     in-out property <string> remote-id-input: "";
@@ -310,7 +315,7 @@ export component MainWindow inherits Window {
                 ? root.recent-tooltip-pointer-x - root.recent-tooltip-width - 12px
                 : root.recent-tooltip-pointer-x + 12px));
     private property <length> recent-tooltip-y: min(
-        root.height - (root.custom-titlebar ? 31px : 0px) - root.recent-tooltip-height - 8px,
+        root.height - root.titlebar-height - root.recent-tooltip-height - 8px,
         max(8px, root.recent-tooltip-pointer-y - root.recent-tooltip-height - 8px));
 
     reset-remote-id => {
@@ -318,7 +323,108 @@ export component MainWindow inherits Window {
         remote-id-editor.focus();
     }
 
-    if root.custom-titlebar: Rectangle {
+    window-surface := Rectangle {
+        width: root.width;
+        height: root.height;
+        background: root.wayland-titlebar ? #f6f5f4 : transparent;
+        border-radius:
+            root.wayland-titlebar ? root.wayland-corner-radius : 0px;
+        clip: root.wayland-titlebar;
+
+        if root.custom-titlebar && root.wayland-titlebar: Rectangle {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: root.titlebar-height;
+            background: #f6f5f4;
+            z: 100;
+
+            Text {
+                x: 80px;
+                width: parent.width - 160px;
+                height: parent.height;
+                text: "CrossDesk";
+                color: root.window-active ? #3d3d3d : #747474;
+                font-size: 12px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            wayland-title-drag := TouchArea {
+                width: parent.width - 80px;
+                property <int> phase: self.pressed ? 1 : 0;
+                changed phase => {
+                    root.main-title-drag(phase, self.mouse-x, self.mouse-y);
+                }
+                moved => {
+                    if (self.pressed) {
+                        root.main-title-drag(2, self.mouse-x, self.mouse-y);
+                    }
+                }
+            }
+            wayland-minimize-button := Rectangle {
+                x: parent.width - 74px;
+                y: 4px;
+                width: 24px;
+                height: 24px;
+                border-radius: 12px;
+                background: wayland-minimize-touch.pressed ? #c0bfbc
+                          : wayland-minimize-touch.has-hover ? #deddda
+                          : root.window-active ? #e6e6e6
+                                               : transparent;
+                accessible-role: button;
+                accessible-label: "Minimize";
+                accessible-action-default => { wayland-minimize-touch.clicked(); }
+                Rectangle {
+                    x: 8px;
+                    y: 13px;
+                    width: 8px;
+                    height: 0.75px;
+                    background: root.window-active
+                        || wayland-minimize-touch.has-hover
+                        || wayland-minimize-touch.pressed ? #454545 : #898989;
+                }
+                wayland-minimize-touch := TouchArea {
+                    clicked => { root.minimize-main-window(); }
+                }
+            }
+            wayland-close-button := Rectangle {
+                x: parent.width - 34px;
+                y: 4px;
+                width: 24px;
+                height: 24px;
+                border-radius: 12px;
+                background: wayland-close-touch.pressed ? #b2161d
+                          : wayland-close-touch.has-hover ? #e01b24
+                          : root.window-active ? #e6e6e6
+                                               : transparent;
+                accessible-role: button;
+                accessible-label: "Close";
+                accessible-action-default => { wayland-close-touch.clicked(); }
+                Path {
+                    width: parent.width;
+                    height: parent.height;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: "M 14.75 14.75 L 8.25 8.25 M 14.75 8.25 L 8.25 14.75";
+                    stroke: wayland-close-touch.has-hover
+                        || wayland-close-touch.pressed ? white
+                        : root.window-active ? #454545 : #898989;
+                    stroke-width: 1px;
+                }
+                wayland-close-touch := TouchArea {
+                    clicked => { root.close-main-window(); }
+                }
+            }
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: #d5d3d0;
+            }
+        }
+
+    if root.custom-titlebar && !root.wayland-titlebar: Rectangle {
         x: 0px;
         y: 0px;
         width: root.width;
@@ -404,7 +510,7 @@ export component MainWindow inherits Window {
 
     content-layer := Rectangle {
         x: 0px;
-        y: root.custom-titlebar ? 31px : 0px;
+        y: root.titlebar-height;
         width: root.width;
         height: root.height - self.y;
         clip: true;
@@ -1613,7 +1719,10 @@ export component MainWindow inherits Window {
         height: root.height;
         background: transparent;
         border-width: 1px;
-        border-color: #8b8b8b;
+        border-color: root.wayland-titlebar ? #aaa8a6 : #8b8b8b;
+        border-radius:
+            root.wayland-titlebar ? root.wayland-corner-radius : 0px;
         z: 200;
+    }
     }
 }

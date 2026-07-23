@@ -28,12 +28,17 @@
 #include "crossdesk_ui.h"
 #include "fa_solid_900.h"
 #include "localization.h"
+#include "platform.h"
 #if _WIN32
 #include "platform/tray/win_tray.h"
 #elif defined(__APPLE__)
 #include "platform/tray/mac_tray.h"
 #include "platform/window_drag.h"
 #elif defined(__linux__)
+#include <X11/Xatom.h>
+#include <X11/Xlib.h>
+#include <unistd.h>
+
 #include "platform/tray/linux_tray.h"
 #endif
 #include "rd_log.h"
@@ -43,6 +48,140 @@ namespace crossdesk {
 namespace {
 
 using namespace std::chrono_literals;
+
+#if defined(__linux__) && !defined(__APPLE__)
+bool HasNonEmptyEnvironmentVariable(const char* name) {
+  const char* value = std::getenv(name);
+  return value != nullptr && value[0] != '\0';
+}
+
+class ScopedUnsetEnvironmentVariable {
+public:
+  explicit ScopedUnsetEnvironmentVariable(const char* name) : name_(name) {
+    if (const char* value = std::getenv(name_)) {
+      original_value_ = value;
+    }
+    unsetenv(name_);
+  }
+
+  ~ScopedUnsetEnvironmentVariable() {
+    if (original_value_) {
+      setenv(name_, original_value_->c_str(), 1);
+    } else {
+      unsetenv(name_);
+    }
+  }
+
+  ScopedUnsetEnvironmentVariable(const ScopedUnsetEnvironmentVariable&) =
+      delete;
+  ScopedUnsetEnvironmentVariable& operator=(
+      const ScopedUnsetEnvironmentVariable&) = delete;
+
+private:
+  const char* name_;
+  std::optional<std::string> original_value_;
+};
+
+::Window X11GetActiveWindow(Display* display) {
+  if (!display) {
+    return 0;
+  }
+
+  const ::Window root = DefaultRootWindow(display);
+  const Atom active_window_atom =
+      XInternAtom(display, "_NET_ACTIVE_WINDOW", True);
+  if (active_window_atom != None) {
+    Atom actual_type = None;
+    int actual_format = 0;
+    unsigned long item_count = 0;
+    unsigned long bytes_after = 0;
+    unsigned char* data = nullptr;
+    if (XGetWindowProperty(display, root, active_window_atom, 0, 1, False,
+                           XA_WINDOW, &actual_type, &actual_format, &item_count,
+                           &bytes_after, &data) == Success &&
+        actual_type == XA_WINDOW && actual_format == 32 && item_count == 1 &&
+        data) {
+      const ::Window active_window =
+          *reinterpret_cast<const ::Window*>(data);
+      XFree(data);
+      return active_window;
+    }
+    if (data) {
+      XFree(data);
+    }
+  }
+
+  ::Window focused_window = 0;
+  int revert_to = RevertToNone;
+  XGetInputFocus(display, &focused_window, &revert_to);
+  return focused_window == None || focused_window == PointerRoot
+             ? 0
+             : focused_window;
+}
+
+std::optional<unsigned long> X11GetWindowProcessId(Display* display,
+                                                   ::Window x11_window) {
+  if (!display || !x11_window) {
+    return std::nullopt;
+  }
+
+  const Atom process_id_atom = XInternAtom(display, "_NET_WM_PID", True);
+  if (process_id_atom == None) {
+    return std::nullopt;
+  }
+
+  Atom actual_type = None;
+  int actual_format = 0;
+  unsigned long item_count = 0;
+  unsigned long bytes_after = 0;
+  unsigned char* data = nullptr;
+  const int status = XGetWindowProperty(
+      display, x11_window, process_id_atom, 0, 1, False, XA_CARDINAL,
+      &actual_type, &actual_format, &item_count, &bytes_after, &data);
+  if (status != Success || actual_type != XA_CARDINAL || actual_format != 32 ||
+      item_count != 1 || !data) {
+    if (data) {
+      XFree(data);
+    }
+    return std::nullopt;
+  }
+
+  const auto process_id = *reinterpret_cast<const unsigned long*>(data);
+  XFree(data);
+  return process_id;
+}
+
+bool X11WindowMatches(Display* display, ::Window x11_window,
+                      const slint::Window& slint_window) {
+  if (!display || !x11_window) {
+    return false;
+  }
+
+  XWindowAttributes attributes;
+  if (!XGetWindowAttributes(display, x11_window, &attributes)) {
+    return false;
+  }
+
+  int root_x = 0;
+  int root_y = 0;
+  ::Window child = 0;
+  if (!XTranslateCoordinates(display, x11_window,
+                             DefaultRootWindow(display), 0, 0, &root_x,
+                             &root_y, &child)) {
+    return false;
+  }
+
+  const auto position = slint_window.position();
+  const auto size = slint_window.size();
+  constexpr int kGeometryTolerance = 4;
+  return std::abs(root_x - position.x) <= kGeometryTolerance &&
+         std::abs(root_y - position.y) <= kGeometryTolerance &&
+         std::abs(attributes.width - static_cast<int>(size.width)) <=
+             kGeometryTolerance &&
+         std::abs(attributes.height - static_cast<int>(size.height)) <=
+             kGeometryTolerance;
+}
+#endif
 
 #if _WIN32
 HICON LoadSlintTrayIcon() {
@@ -496,6 +635,12 @@ float ServerWindowLogicalHeight(bool collapsed) {
 
 constexpr float kStreamWindowLogicalWidth = 1280.0f;
 constexpr float kStreamWindowLogicalHeight = 720.0f;
+constexpr float kWaylandTitlebarLogicalHeight = 32.0f;
+
+float StreamWindowLogicalHeight(bool custom_titlebar) {
+  return kStreamWindowLogicalHeight +
+         (custom_titlebar ? kWaylandTitlebarLogicalHeight : 0.0f);
+}
 
 SDL_DisplayID DisplayForSlintWindow(const slint::Window& window) {
   const float scale = std::max(window.scale_factor(), 0.01f);
@@ -682,6 +827,7 @@ struct GuiApplication::SlintUi {
   std::string recent_model_signature;
   slint::Timer timer;
   WindowDragState main_drag;
+  WindowDragState stream_drag;
   WindowDragState server_drag;
   int main_native_titlebar_attempts = 30;
   int stream_live_resize_configuration_attempts = 0;
@@ -697,7 +843,17 @@ struct GuiApplication::SlintUi {
   std::unique_ptr<MacTray> tray;
 #elif defined(__linux__)
   std::unique_ptr<LinuxTray> tray;
+  Display* x11_focus_display = nullptr;
+  std::chrono::steady_clock::time_point last_x11_activation_poll{};
 #endif
+
+  ~SlintUi() {
+#if defined(__linux__) && !defined(__APPLE__)
+    if (x11_focus_display) {
+      XCloseDisplay(x11_focus_display);
+    }
+#endif
+  }
 };
 
 GuiApplication::GuiApplication() = default;
@@ -792,6 +948,24 @@ bool GuiApplication::InitializeSDL() {
   if (!getenv("SDL_AUDIODRIVER")) {
     setenv("SDL_AUDIODRIVER", "pulseaudio", 0);
   }
+
+  // Standard Wayland top-level windows cannot choose an absolute screen
+  // position. Use the session's XWayland compatibility server for the GUI so
+  // auxiliary windows such as the controlled-side status window can be
+  // placed deterministically. Capture and input still detect the surrounding
+  // Wayland session through XDG_SESSION_TYPE and continue to use the portal.
+  const char* requested_video_driver = std::getenv("SDL_VIDEODRIVER");
+  const bool video_driver_allows_x11 =
+      requested_video_driver == nullptr || requested_video_driver[0] == '\0' ||
+      std::strcmp(requested_video_driver, "x11") == 0;
+  use_xwayland_gui_ =
+      IsWaylandSession() && HasNonEmptyEnvironmentVariable("DISPLAY") &&
+      video_driver_allows_x11;
+  if (use_xwayland_gui_) {
+    setenv("SDL_VIDEODRIVER", "x11", 1);
+    LOG_INFO("Wayland session detected; using XWayland for positioned GUI "
+             "windows while retaining Wayland portal capture and input");
+  }
 #endif
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
     LOG_ERROR("SDL initialization failed: {}", SDL_GetError());
@@ -816,9 +990,25 @@ void GuiApplication::InitializeModules() {
 }
 
 void GuiApplication::InitializeUi() {
+#if defined(__linux__) && !defined(__APPLE__)
+  // Winit prefers Wayland whenever WAYLAND_DISPLAY/WAYLAND_SOCKET is present.
+  // Hide them only while Slint selects its process-wide window backend, then
+  // restore the environment before the rest of the application starts.
+  std::optional<ScopedUnsetEnvironmentVariable> wayland_display_guard;
+  std::optional<ScopedUnsetEnvironmentVariable> wayland_socket_guard;
+  if (use_xwayland_gui_) {
+    wayland_display_guard.emplace("WAYLAND_DISPLAY");
+    wayland_socket_guard.emplace("WAYLAND_SOCKET");
+  }
+#endif
   ui_ = std::make_unique<SlintUi>();
 #if _WIN32
   ui_->main->set_custom_titlebar(true);
+#elif defined(__linux__)
+  if (use_xwayland_gui_) {
+    ui_->main->set_custom_titlebar(true);
+    ui_->main->set_wayland_titlebar(true);
+  }
 #endif
   std::vector<ui::ReleaseNoteBlock> release_note_blocks;
   for (const auto& parsed :
@@ -924,6 +1114,9 @@ void GuiApplication::InitializeUi() {
 
   if (ui_->capture_mode && ui_->capture_page == "stream") {
     ui_->stream.emplace(ui::StreamWindow::create());
+#if defined(__linux__)
+    (*ui_->stream)->set_custom_titlebar(use_xwayland_gui_);
+#endif
     RegisterFontAwesome((*ui_->stream)->window());
     (*ui_->stream)->set_tabs(ui_->tab_model);
     (*ui_->stream)->set_displays(ui_->display_model);
@@ -968,7 +1161,8 @@ void GuiApplication::InitializeUi() {
     (*ui_->stream)->show();
     PositionWindowAtCenter((*ui_->stream)->window(), ui_->main->window(),
                            kStreamWindowLogicalWidth,
-                           kStreamWindowLogicalHeight);
+                           StreamWindowLogicalHeight(
+                               (*ui_->stream)->get_custom_titlebar()));
     ui_->main->hide();
   } else if (ui_->capture_mode && ui_->capture_page == "server") {
     ui_->server.emplace(ui::ServerWindow::create());
@@ -1362,7 +1556,7 @@ void GuiApplication::BindStreamCallbacks() {
     return;
   }
   auto& stream = *ui_->stream;
-  stream->window().on_close_requested([this] {
+  auto close_stream_sessions = [this] {
     std::vector<std::string> ids;
     {
       std::shared_lock lock(remote_sessions_mutex_);
@@ -1373,8 +1567,35 @@ void GuiApplication::BindStreamCallbacks() {
     for (const auto& id : ids) {
       CloseStreamTab(id);
     }
+    if (ui_ && ui_->stream) {
+      (*ui_->stream)->hide();
+    }
+  };
+  stream->window().on_close_requested([close_stream_sessions] {
+    close_stream_sessions();
     return slint::CloseRequestResponse::HideWindow;
   });
+  stream->on_stream_title_drag([this](int phase, float x, float y) {
+    if (ui_ && ui_->stream) {
+      DragWindow(*ui_->stream, phase, x, y, ui_->stream_drag);
+    }
+  });
+  stream->on_minimize_stream_window([this] {
+    if (ui_ && ui_->stream) {
+      (*ui_->stream)->window().set_minimized(true);
+    }
+  });
+  stream->on_toggle_maximize_stream_window([this] {
+    if (!ui_ || !ui_->stream) {
+      return;
+    }
+    auto& stream = *ui_->stream;
+    auto& window = stream->window();
+    const bool maximize = !window.is_maximized();
+    stream->set_window_maximized(maximize);
+    window.set_maximized(maximize);
+  });
+  stream->on_close_stream_window(close_stream_sessions);
   stream->on_select_tab([this](int index) { SelectStreamTab(index); });
   stream->on_reorder_tab([this](int from, float drop_x, float tab_width) {
     ReorderStreamTab(from, drop_x, tab_width);
@@ -1622,6 +1843,9 @@ void GuiApplication::Tick() {
   SyncPlatformDialogs();
   SyncStreamWindow();
   SyncServerWindow();
+#if defined(__linux__) && !defined(__APPLE__)
+  SyncXWaylandWindowActivation();
+#endif
 }
 
 void GuiApplication::UpdateLocalization() {
@@ -1985,6 +2209,47 @@ void GuiApplication::SyncPlatformDialogs() {
 #endif
 }
 
+#if defined(__linux__) && !defined(__APPLE__)
+void GuiApplication::SyncXWaylandWindowActivation() {
+  if (!ui_ || !use_xwayland_gui_) {
+    return;
+  }
+
+  const auto now = std::chrono::steady_clock::now();
+  if (now - ui_->last_x11_activation_poll < 100ms) {
+    return;
+  }
+  ui_->last_x11_activation_poll = now;
+
+  if (!ui_->x11_focus_display) {
+    ui_->x11_focus_display = XOpenDisplay(nullptr);
+  }
+  Display* display = ui_->x11_focus_display;
+  const ::Window active_window = X11GetActiveWindow(display);
+  if (!active_window) {
+    return;
+  }
+
+  if (const auto process_id =
+          X11GetWindowProcessId(display, active_window);
+      process_id && *process_id != static_cast<unsigned long>(getpid())) {
+    ui_->main->set_window_active(false);
+    if (ui_->stream) {
+      (*ui_->stream)->set_window_active(false);
+    }
+    return;
+  }
+
+  ui_->main->set_window_active(
+      X11WindowMatches(display, active_window, ui_->main->window()));
+  if (ui_->stream) {
+    (*ui_->stream)
+        ->set_window_active(X11WindowMatches(
+            display, active_window, (*ui_->stream)->window()));
+  }
+}
+#endif
+
 void GuiApplication::SyncStreamWindow() {
   bool has_sessions = false;
   {
@@ -1993,6 +2258,9 @@ void GuiApplication::SyncStreamWindow() {
   }
   if (need_to_create_stream_window_ && !ui_->stream) {
     ui_->stream.emplace(ui::StreamWindow::create());
+#if defined(__linux__)
+    (*ui_->stream)->set_custom_titlebar(use_xwayland_gui_);
+#endif
     RegisterFontAwesome((*ui_->stream)->window());
     // Slint globals belong to a component tree. Force the next localization
     // pass to initialize the newly-created, independent stream window tree.
@@ -2016,6 +2284,8 @@ void GuiApplication::SyncStreamWindow() {
   if (!ui_->stream) {
     return;
   }
+  (*ui_->stream)
+      ->set_window_maximized((*ui_->stream)->window().is_maximized());
   (*ui_->stream)->set_srtp_enabled(enable_srtp_);
 #if defined(__APPLE__)
   if (ui_->stream_live_resize_configuration_attempts > 0) {
@@ -2029,7 +2299,8 @@ void GuiApplication::SyncStreamWindow() {
   if (ui_->stream_initial_position_attempts > 0) {
     if (PositionWindowAtCenter((*ui_->stream)->window(), ui_->main->window(),
                                kStreamWindowLogicalWidth,
-                               kStreamWindowLogicalHeight)) {
+                               StreamWindowLogicalHeight(
+                                   (*ui_->stream)->get_custom_titlebar()))) {
       --ui_->stream_initial_position_attempts;
     } else {
       ui_->stream_initial_position_attempts = 0;
@@ -2586,10 +2857,15 @@ void GuiApplication::SendPointerInput(int button, int kind, float x, float y) {
   const auto size = (*ui_->stream)->window().size();
   const float scale = (*ui_->stream)->window().scale_factor();
   const float available_width = size.width / scale;
+  const float titlebar_height =
+      !fullscreen_button_pressed_ && (*ui_->stream)->get_custom_titlebar()
+          ? kWaylandTitlebarLogicalHeight
+          : 0.0f;
   const float available_height =
-      size.height / scale - (fullscreen_button_pressed_
-                                 ? 0.0f
-                                 : (ui_->tab_ids.size() > 1 ? 30.0f : 0.0f));
+      size.height / scale - titlebar_height -
+      (fullscreen_button_pressed_
+           ? 0.0f
+           : (ui_->tab_ids.size() > 1 ? 30.0f : 0.0f));
   float render_width = available_width;
   float render_height = available_height;
   float offset_x = 0;
@@ -2657,10 +2933,15 @@ void GuiApplication::SendScrollInput(float delta_x, float delta_y, float x,
   const auto size = (*ui_->stream)->window().size();
   const float scale = (*ui_->stream)->window().scale_factor();
   const float width = size.width / scale;
+  const float titlebar_height =
+      !fullscreen_button_pressed_ && (*ui_->stream)->get_custom_titlebar()
+          ? kWaylandTitlebarLogicalHeight
+          : 0.0f;
   const float height =
-      size.height / scale - (fullscreen_button_pressed_
-                                 ? 0.0f
-                                 : (ui_->tab_ids.size() > 1 ? 30.0f : 0.0f));
+      size.height / scale - titlebar_height -
+      (fullscreen_button_pressed_
+           ? 0.0f
+           : (ui_->tab_ids.size() > 1 ? 30.0f : 0.0f));
   if (width <= 0 || height <= 0) {
     return;
   }

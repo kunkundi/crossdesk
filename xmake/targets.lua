@@ -107,6 +107,7 @@ function setup_targets()
             add_cxxflags("/bigobj")
         end
         add_packages("slint")
+        add_includedirs("src/gui/assets/fonts")
         add_rules("slint")
         add_files("src/gui/ui/crossdesk_ui.slint")
         add_files("tests/slint_ui_smoke_test.cpp")

@@ -1,19 +1,58 @@
 #include "crossdesk_ui.h"
+#include "fa_solid_900.h"
 
 #include <cassert>
+#include <cstdlib>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
+
+namespace {
+
+// Set the CROSSDESK_*_UI_SNAPSHOT variables while using Slint's software
+// renderer to export deterministic active and inactive visual-check images.
+bool WriteWindowSnapshot(const slint::Window &window, const char *path) {
+  const auto snapshot = window.take_snapshot();
+  if (!snapshot) {
+    return false;
+  }
+
+  std::ofstream output(path, std::ios::binary);
+  output << "P6\n"
+         << snapshot->width() << ' ' << snapshot->height() << "\n255\n";
+  for (const auto &pixel : *snapshot) {
+    output.put(static_cast<char>(pixel.r));
+    output.put(static_cast<char>(pixel.g));
+    output.put(static_cast<char>(pixel.b));
+  }
+  return output.good();
+}
+
+bool RegisterFontAwesome(slint::Window &window) {
+  return !window.window_handle()
+              .register_font_from_data(fa_solid_900_ttf,
+                                       fa_solid_900_ttf_len)
+              .has_value();
+}
+
+} // namespace
 
 int main() {
   auto window = crossdesk::ui::MainWindow::create();
   auto stream = crossdesk::ui::StreamWindow::create();
   auto server = crossdesk::ui::ServerWindow::create();
+  if (!RegisterFontAwesome(window->window()) ||
+      !RegisterFontAwesome(stream->window()) ||
+      !RegisterFontAwesome(server->window())) {
+    return 1;
+  }
   window->set_local_id("123 456 789");
   window->set_local_password("123456");
   window->set_connection_dialog_open(true);
   window->set_connection_password_required(true);
   window->set_custom_titlebar(true);
+  window->set_wayland_titlebar(true);
   window->set_settings_session_active(true);
   window->set_hardware_codec_available(false);
   window->set_portable_service_settings_visible(true);
@@ -21,9 +60,32 @@ int main() {
   assert(window->get_connection_dialog_open());
   assert(window->get_connection_password_required());
   assert(window->get_custom_titlebar());
+  assert(window->get_wayland_titlebar());
   assert(window->get_settings_session_active());
   assert(!window->get_hardware_codec_available());
   assert(window->get_portable_service_settings_visible());
+  if (const char *snapshot_path =
+          std::getenv("CROSSDESK_MAIN_UI_SNAPSHOT")) {
+    window->show();
+    const bool snapshot_written =
+        WriteWindowSnapshot(window->window(), snapshot_path);
+    window->hide();
+    if (!snapshot_written) {
+      return 2;
+    }
+  }
+  if (const char *snapshot_path =
+          std::getenv("CROSSDESK_MAIN_INACTIVE_UI_SNAPSHOT")) {
+    window->set_window_active(false);
+    window->show();
+    const bool snapshot_written =
+        WriteWindowSnapshot(window->window(), snapshot_path);
+    window->hide();
+    window->set_window_active(true);
+    if (!snapshot_written) {
+      return 3;
+    }
+  }
   window->set_settings_open(true);
   window->set_about_open(true);
   assert(window->get_settings_open());
@@ -66,7 +128,37 @@ int main() {
   stream->set_tabs(
       std::make_shared<slint::VectorModel<crossdesk::ui::StreamTab>>(
           std::vector{tab}));
+  stream->set_custom_titlebar(true);
+  stream->set_window_maximized(true);
   assert(stream->get_tabs()->row_count() == 1);
+  assert(stream->get_custom_titlebar());
+  assert(stream->get_window_maximized());
+  if (const char *snapshot_path =
+          std::getenv("CROSSDESK_STREAM_UI_SNAPSHOT")) {
+    stream->set_window_maximized(false);
+    stream->show();
+    const bool snapshot_written =
+        WriteWindowSnapshot(stream->window(), snapshot_path);
+    stream->hide();
+    stream->set_window_maximized(true);
+    if (!snapshot_written) {
+      return 4;
+    }
+  }
+  if (const char *snapshot_path =
+          std::getenv("CROSSDESK_STREAM_INACTIVE_UI_SNAPSHOT")) {
+    stream->set_window_maximized(false);
+    stream->set_window_active(false);
+    stream->show();
+    const bool snapshot_written =
+        WriteWindowSnapshot(stream->window(), snapshot_path);
+    stream->hide();
+    stream->set_window_active(true);
+    stream->set_window_maximized(true);
+    if (!snapshot_written) {
+      return 5;
+    }
+  }
 
   bool tab_reordered = false;
   stream->on_reorder_tab([&](int index, float x, float width) {
@@ -74,6 +166,12 @@ int main() {
   });
   stream->invoke_reorder_tab(0, 120.0f, 110.0f);
   assert(tab_reordered);
+
+  bool maximize_requested = false;
+  stream->on_toggle_maximize_stream_window(
+      [&] { maximize_requested = true; });
+  stream->invoke_toggle_maximize_stream_window();
+  assert(maximize_requested);
 
   crossdesk::ui::FileTransferEntry transfer;
   transfer.name = "archive.zip";

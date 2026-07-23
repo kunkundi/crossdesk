@@ -112,13 +112,16 @@ component ControlBarButton inherits Rectangle {
 export component StreamWindow inherits Window {
     title: "CrossDesk";
     preferred-width: 1280px;
-    preferred-height: 720px;
+    preferred-height: 720px + (root.custom-titlebar ? 32px : 0px);
     min-width: 640px;
-    min-height: 360px;
-    no-frame: false;
-    background: black;
+    min-height: 360px + (root.custom-titlebar ? 32px : 0px);
+    no-frame: root.custom-titlebar;
+    background: root.custom-titlebar ? transparent : black;
     default-font-size: ImGuiFontStyle.base;
 
+    in property <bool> custom-titlebar: false;
+    in property <bool> window-active: true;
+    in property <bool> window-maximized: false;
     in property <[StreamTab]> tabs;
     in-out property <int> selected-tab: 0;
     in property <image> frame;
@@ -153,6 +156,10 @@ export component StreamWindow inherits Window {
     callback toggle-stats;
     callback toggle-fullscreen;
     callback disconnect;
+    callback stream-title-drag(int, length, length);
+    callback minimize-stream-window;
+    callback toggle-maximize-stream-window;
+    callback close-stream-window;
     callback pointer-input(PointerEventButton, PointerEventKind, length, length);
     callback scroll-input(length, length, length, length);
     callback key-input(string, bool, bool, bool, bool, bool);
@@ -169,6 +176,9 @@ export component StreamWindow inherits Window {
     private property <length> control-press-x: 0px;
     private property <length> control-press-y: 0px;
     private property <int> dragging-tab: -1;
+    private property <length> titlebar-height:
+        root.custom-titlebar && !root.fullscreen-enabled ? 32px : 0px;
+    private property <length> window-corner-radius: 12px;
     callback begin-control-drag(length, length);
     callback move-control-drag(length, length);
     callback end-control-drag;
@@ -202,10 +212,167 @@ export component StreamWindow inherits Window {
         }
     }
 
-    Rectangle {
+    window-surface := Rectangle {
         width: root.width;
         height: root.height;
         background: black;
+        border-radius:
+            root.custom-titlebar && !root.fullscreen-enabled && !root.window-maximized
+                ? root.window-corner-radius : 0px;
+        clip: root.custom-titlebar && !root.fullscreen-enabled;
+
+        if root.custom-titlebar && !root.fullscreen-enabled: Rectangle {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: root.titlebar-height;
+            background: #f6f5f4;
+            z: 100;
+
+            Text {
+                x: 120px;
+                width: parent.width - 240px;
+                height: parent.height;
+                text: "CrossDesk";
+                color: root.window-active ? #3d3d3d : #747474;
+                font-size: 12px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            stream-title-drag-area := TouchArea {
+                width: parent.width - 120px;
+                property <int> phase: self.pressed ? 1 : 0;
+                changed phase => {
+                    root.stream-title-drag(phase, self.mouse-x, self.mouse-y);
+                }
+                moved => {
+                    if (self.pressed) {
+                        root.stream-title-drag(2, self.mouse-x, self.mouse-y);
+                    }
+                }
+                double-clicked => {
+                    root.toggle-maximize-stream-window();
+                }
+            }
+            stream-minimize-button := Rectangle {
+                x: parent.width - 114px;
+                y: 4px;
+                width: 24px;
+                height: 24px;
+                border-radius: 12px;
+                background: stream-minimize-touch.pressed ? #c0bfbc
+                          : stream-minimize-touch.has-hover ? #deddda
+                          : root.window-active ? #e6e6e6
+                                               : transparent;
+                accessible-role: button;
+                accessible-label: "Minimize";
+                accessible-action-default => { stream-minimize-touch.clicked(); }
+                Rectangle {
+                    x: 8px;
+                    y: 13px;
+                    width: 8px;
+                    height: 0.75px;
+                    background: root.window-active
+                        || stream-minimize-touch.has-hover
+                        || stream-minimize-touch.pressed ? #454545 : #898989;
+                }
+                stream-minimize-touch := TouchArea {
+                    clicked => { root.minimize-stream-window(); }
+                }
+            }
+            stream-maximize-button := Rectangle {
+                x: parent.width - 74px;
+                y: 4px;
+                width: 24px;
+                height: 24px;
+                border-radius: 12px;
+                background: stream-maximize-touch.pressed ? #c0bfbc
+                          : stream-maximize-touch.has-hover ? #deddda
+                          : root.window-active ? #e6e6e6
+                                               : transparent;
+                accessible-role: button;
+                accessible-label: root.window-maximized ? "Restore" : "Maximize";
+                accessible-action-default => { stream-maximize-touch.clicked(); }
+                if !root.window-maximized: Rectangle {
+                    x: 8px;
+                    y: 8px;
+                    width: 8px;
+                    height: 8px;
+                    background: transparent;
+                    border-width: 1px;
+                    border-color: root.window-active
+                        || stream-maximize-touch.has-hover
+                        || stream-maximize-touch.pressed ? #454545 : #898989;
+                }
+                if root.window-maximized: Rectangle {
+                    x: 9px;
+                    y: 7px;
+                    width: 8px;
+                    height: 8px;
+                    background: transparent;
+                    border-width: 1px;
+                    border-color: root.window-active
+                        || stream-maximize-touch.has-hover
+                        || stream-maximize-touch.pressed ? #454545 : #898989;
+                }
+                if root.window-maximized: Rectangle {
+                    x: 7px;
+                    y: 9px;
+                    width: 8px;
+                    height: 8px;
+                    background: stream-maximize-button.background;
+                    border-width: 1px;
+                    border-color: root.window-active
+                        || stream-maximize-touch.has-hover
+                        || stream-maximize-touch.pressed ? #454545 : #898989;
+                }
+                stream-maximize-touch := TouchArea {
+                    clicked => { root.toggle-maximize-stream-window(); }
+                }
+            }
+            stream-close-button := Rectangle {
+                x: parent.width - 34px;
+                y: 4px;
+                width: 24px;
+                height: 24px;
+                border-radius: 12px;
+                background: stream-close-touch.pressed ? #b2161d
+                          : stream-close-touch.has-hover ? #e01b24
+                          : root.window-active ? #e6e6e6
+                                               : transparent;
+                accessible-role: button;
+                accessible-label: "Close";
+                accessible-action-default => { stream-close-touch.clicked(); }
+                Path {
+                    width: parent.width;
+                    height: parent.height;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: "M 14.75 14.75 L 8.25 8.25 M 14.75 8.25 L 8.25 14.75";
+                    stroke: stream-close-touch.has-hover
+                        || stream-close-touch.pressed ? white
+                        : root.window-active ? #454545 : #898989;
+                    stroke-width: 1px;
+                }
+                stream-close-touch := TouchArea {
+                    clicked => { root.close-stream-window(); }
+                }
+            }
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: #d5d3d0;
+            }
+        }
+
+        content-layer := Rectangle {
+            y: root.titlebar-height;
+            width: parent.width;
+            height: parent.height - self.y;
+            background: black;
+            clip: true;
 
         // Keep the ImGui tab strip behavior, including pointer-drag reordering.
         Rectangle {
@@ -644,6 +811,18 @@ export component StreamWindow inherits Window {
                     }
                 }
             }
+        }
+        }
+
+        if root.custom-titlebar && !root.fullscreen-enabled: Rectangle {
+            width: parent.width;
+            height: parent.height;
+            background: transparent;
+            border-width: 1px;
+            border-color: #aaa8a6;
+            border-radius:
+                root.window-maximized ? 0px : root.window-corner-radius;
+            z: 200;
         }
     }
 }
