@@ -18,7 +18,7 @@ std::filesystem::path FindRepoRoot() {
   return {};
 }
 
-std::string ReadFile(const std::filesystem::path &path) {
+std::string ReadFile(const std::filesystem::path& path) {
   std::ifstream file(path, std::ios::binary);
   if (!file) {
     return {};
@@ -28,8 +28,8 @@ std::string ReadFile(const std::filesystem::path &path) {
   return stream.str();
 }
 
-bool ExpectContains(const char *name, const std::string &value,
-                    const std::string &expected) {
+bool ExpectContains(const char* name, const std::string& value,
+                    const std::string& expected) {
   if (value.find(expected) != std::string::npos) {
     return true;
   }
@@ -37,8 +37,8 @@ bool ExpectContains(const char *name, const std::string &value,
   return false;
 }
 
-bool ExpectNotContains(const char *name, const std::string &value,
-                       const std::string &unexpected) {
+bool ExpectNotContains(const char* name, const std::string& value,
+                       const std::string& unexpected) {
   if (value.find(unexpected) == std::string::npos) {
     return true;
   }
@@ -46,8 +46,8 @@ bool ExpectNotContains(const char *name, const std::string &value,
   return false;
 }
 
-bool ExpectContainsAtLeast(const char *name, const std::string &value,
-                           const std::string &expected, size_t min_count) {
+bool ExpectContainsAtLeast(const char* name, const std::string& value,
+                           const std::string& expected, size_t min_count) {
   size_t count = 0;
   size_t pos = 0;
   while ((pos = value.find(expected, pos)) != std::string::npos) {
@@ -62,7 +62,7 @@ bool ExpectContainsAtLeast(const char *name, const std::string &value,
   return false;
 }
 
-} // namespace
+}  // namespace
 
 int main() {
   const std::filesystem::path repo_root = FindRepoRoot();
@@ -84,14 +84,16 @@ int main() {
                        "root.shortcut-menu-open = false;");
   ok &= ExpectContains("stream_window.slint", stream,
                        "if root.display-menu-open: Rectangle");
-  ok &= ExpectContains("stream_window.slint", stream,
-                       "display-touch.has-hover");
+  ok &=
+      ExpectContains("stream_window.slint", stream, "display-touch.has-hover");
   ok &= ExpectContains("stream_window.slint", stream,
                        "root.switch-display(index)");
   ok &= ExpectContains("stream_window.slint", stream,
                        "if root.shortcut-menu-open: Rectangle");
+  ok &=
+      ExpectContains("stream_window.slint", stream, "shortcut-touch.has-hover");
   ok &= ExpectContains("stream_window.slint", stream,
-                       "shortcut-touch.has-hover");
+                       "} else if !root.control-dragging && !over-control {");
 
   ok &= ExpectContains("common.slint", common,
                        "if touch.has-hover && root.tooltip != \"\": Rectangle");
@@ -100,32 +102,38 @@ int main() {
                        "tooltip: StreamStrings.select-display");
   ok &= ExpectContains("stream_window.slint", stream,
                        "tooltip: StreamStrings.send-shortcut");
-  ok &= ExpectContains("stream_window.slint", stream,
-                       "root.mouse-control-enabled ? StreamStrings.release-mouse : StreamStrings.control-mouse");
-  ok &= ExpectContains("stream_window.slint", stream,
-                       "root.audio-enabled ? StreamStrings.mute : StreamStrings.audio");
+  ok &=
+      ExpectContains("stream_window.slint", stream,
+                     "root.mouse-control-enabled ? StreamStrings.release-mouse "
+                     ": StreamStrings.control-mouse");
+  ok &= ExpectContains(
+      "stream_window.slint", stream,
+      "root.audio-enabled ? StreamStrings.mute : StreamStrings.audio");
   ok &= ExpectContains("stream_window.slint", stream,
                        "tooltip: StreamStrings.select-file");
   ok &= ExpectContains("stream_window.slint", stream,
-                       "root.stats-visible ? StreamStrings.hide-stats : StreamStrings.show-stats");
-  ok &= ExpectContains("stream_window.slint", stream,
-                       "root.fullscreen-enabled ? StreamStrings.exit-fullscreen : StreamStrings.fullscreen");
+                       "root.stats-visible ? StreamStrings.hide-stats : "
+                       "StreamStrings.show-stats");
+  ok &=
+      ExpectContains("stream_window.slint", stream,
+                     "root.fullscreen-enabled ? StreamStrings.exit-fullscreen "
+                     ": StreamStrings.fullscreen");
   ok &= ExpectContains("stream_window.slint", stream,
                        "tooltip: StreamStrings.disconnect");
   ok &= ExpectContains("stream_window.slint", stream,
-                       "root.control-expanded ? StreamStrings.collapse-control : StreamStrings.expand-control");
+                       "root.control-expanded ? StreamStrings.collapse-control "
+                       ": StreamStrings.expand-control");
 
-  ok &= ExpectContains("gui_application.cpp", application,
-                       "set_select_display(");
-  ok &= ExpectContains("gui_application.cpp", application,
-                       "set_show_stats(");
-  ok &= ExpectContains("gui_application.cpp", application,
-                       "set_expand_control(");
+  ok &=
+      ExpectContains("gui_application.cpp", application, "set_select_display(");
+  ok &= ExpectContains("gui_application.cpp", application, "set_show_stats(");
+  ok &=
+      ExpectContains("gui_application.cpp", application, "set_expand_control(");
   ok &= ExpectContains("gui_application.cpp", application,
                        "set_collapse_control(");
   ok &= ExpectContains("gui_application.cpp", application,
                        "(*ui_->stream)->global<ui::StreamStrings>()");
-  ok &= ExpectNotContains("gui_application.cpp", application,
-                          "#include <imgui");
+  ok &=
+      ExpectNotContains("gui_application.cpp", application, "#include <imgui");
   return ok ? 0 : 1;
 }

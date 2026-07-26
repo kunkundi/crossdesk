@@ -508,7 +508,10 @@ export component StreamWindow inherits Window {
                             && (event.kind == PointerEventKind.up
                                 || event.kind == PointerEventKind.cancel) {
                             root.end-control-drag();
-                        } else if !root.control-dragging {
+                        // The control bar overlays the remote video. Events in
+                        // its full rectangle (including gaps between buttons)
+                        // are local UI input and must never reach the peer.
+                        } else if !root.control-dragging && !over-control {
                             root.pointer-input(event.button, event.kind, self.mouse-x, self.mouse-y);
                         }
                     }
