@@ -220,10 +220,8 @@ int GuiApplication::ProcessKeyboardEvent(const SDL_Event &event) {
     return -1;
   }
 
-  if (event.type == SDL_EVENT_KEY_DOWN && event.key.repeat) {
-    return 0;
-  }
-
+  // SDL represents key auto-repeat as additional key-down events. Forward
+  // them so the fallback path has the same long-press behavior as native hooks.
   const int key_code = TranslateSdlKeyboardEventToVk(event.key);
   if (key_code < 0) {
     return 0;
