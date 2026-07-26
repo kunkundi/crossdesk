@@ -2078,6 +2078,11 @@ void GuiApplication::SyncMainWindow() {
     }
     model.push_back(std::move(item));
   }
+  // LoadThumbnail already orders connections by last update time. Keep that
+  // order within each presence group while placing online devices first.
+  std::stable_partition(
+      model.begin(), model.end(),
+      [](const ui::RecentConnection& connection) { return connection.online; });
   ui_->recent_model->set_vector(std::move(model));
 }
 
