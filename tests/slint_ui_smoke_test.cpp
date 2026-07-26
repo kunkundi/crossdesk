@@ -90,6 +90,20 @@ int main() {
   window->set_about_open(true);
   assert(window->get_settings_open());
   assert(window->get_about_open());
+  if (const char *snapshot_path =
+          std::getenv("CROSSDESK_SETTINGS_UI_SNAPSHOT")) {
+    window->set_about_open(false);
+    window->set_connection_dialog_open(false);
+    window->show();
+    const bool snapshot_written =
+        WriteWindowSnapshot(window->window(), snapshot_path);
+    window->hide();
+    if (!snapshot_written) {
+      return 6;
+    }
+    window->set_connection_dialog_open(true);
+    window->set_about_open(true);
+  }
   window->set_remote_id_input("987654321");
   window->invoke_reset_remote_id();
   assert(std::string(window->get_remote_id_input()).empty());

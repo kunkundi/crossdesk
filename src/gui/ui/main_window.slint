@@ -282,6 +282,7 @@ export component MainWindow inherits Window {
 
     private property <bool> menu-open: false;
     in-out property <bool> settings-open: false;
+    private property <length> settings-scroll-y: 0px;
     in-out property <bool> self-host-settings-open: false;
     in-out property <bool> about-open: false;
     in-out property <bool> update-open: root.update-available;
@@ -317,6 +318,13 @@ export component MainWindow inherits Window {
     private property <length> recent-tooltip-y: min(
         root.height - root.titlebar-height - root.recent-tooltip-height - 8px,
         max(8px, root.recent-tooltip-pointer-y - root.recent-tooltip-height - 8px));
+
+    changed settings-open => {
+        if root.settings-open {
+            root.settings-scroll-y = 0px;
+            focus-sink.focus();
+        }
+    }
 
     reset-remote-id => {
         root.remote-id-input = "";
@@ -1388,9 +1396,9 @@ export component MainWindow inherits Window {
         TouchArea { clicked => { focus-sink.focus(); } }
         DialogSurface {
             x: root.compact-language ? 219px : 190px;
-            y: 9px;
+            y: 60px;
             width: root.compact-language ? 202px : 269px;
-            height: 432px;
+            height: 330px;
             border-radius: 7px;
 
             Rectangle {
@@ -1405,55 +1413,86 @@ export component MainWindow inherits Window {
                 Text { x: 6px; text: UiStrings.settings; font-size: ImGuiFontStyle.base; font-weight: 600; color: #202124; vertical-alignment: center; }
             }
 
-            Text { x: 8px; y: 31px; width: root.compact-language ? 108px : 176px; height: 24px; text: UiStrings.language; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
-            CompactComboBox { x: root.compact-language ? 120px : 188px; y: 30px; model: ["中文", "English", "Русский"]; current-index <=> root.language-index; }
-            Rectangle { x: 7px; y: 57px; width: parent.width - 14px; height: 1px; background: ImGuiLineStyle.separator; }
+            settings-scroll := ScrollView {
+                x: 0px;
+                y: 21px;
+                width: parent.width;
+                height: 265px;
+                viewport-y <=> root.settings-scroll-y;
 
-            Text { x: 8px; y: 61px; width: root.compact-language ? 108px : 176px; height: 24px; text: UiStrings.video-quality; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
-            CompactComboBox { x: root.compact-language ? 120px : 188px; y: 60px; enabled: !root.settings-session-active; model: [UiStrings.quality-low, UiStrings.quality-medium, UiStrings.quality-high]; current-index <=> root.video-quality-index; }
-            Rectangle { x: 7px; y: 87px; width: parent.width - 14px; height: 1px; background: ImGuiLineStyle.separator; }
+                settings-content := VerticalLayout {
+                    // Reserve space for the overlaid vertical scrollbar.
+                    width: settings-scroll.width;
+                    padding-top: 8px;
+                    padding-bottom: 8px;
+                    spacing: 0px;
 
-            Text { x: 8px; y: 91px; width: root.compact-language ? 108px : 176px; height: 24px; text: UiStrings.frame-rate; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
-            CompactComboBox { x: root.compact-language ? 120px : 188px; y: 90px; enabled: !root.settings-session-active; model: ["30 fps", "60 fps"]; current-index <=> root.frame-rate-index; }
-            Rectangle { x: 7px; y: 117px; width: parent.width - 14px; height: 1px; background: ImGuiLineStyle.separator; }
+                    Rectangle {
+                        height: 30px;
+                        Text { x: 8px; y: 3px; width: root.compact-language ? 94px : 162px; height: 24px; text: UiStrings.language; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
+                        CompactComboBox { x: root.compact-language ? 106px : 174px; y: 2px; model: ["中文", "English", "Русский"]; current-index <=> root.language-index; }
+                    }
+                    Rectangle {
+                        height: 30px;
+                        Text { x: 8px; y: 3px; width: root.compact-language ? 94px : 162px; height: 24px; text: UiStrings.video-quality; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
+                        CompactComboBox { x: root.compact-language ? 106px : 174px; y: 2px; enabled: !root.settings-session-active; model: [UiStrings.quality-low, UiStrings.quality-medium, UiStrings.quality-high]; current-index <=> root.video-quality-index; }
+                    }
+                    Rectangle {
+                        height: 30px;
+                        Text { x: 8px; y: 3px; width: root.compact-language ? 94px : 162px; height: 24px; text: UiStrings.frame-rate; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
+                        CompactComboBox { x: root.compact-language ? 106px : 174px; y: 2px; enabled: !root.settings-session-active; model: ["30 fps", "60 fps"]; current-index <=> root.frame-rate-index; }
+                    }
+                    Rectangle {
+                        height: 30px;
+                        Text { x: 8px; y: 3px; width: root.compact-language ? 94px : 162px; height: 24px; text: UiStrings.codec; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
+                        CompactComboBox { x: root.compact-language ? 106px : 174px; y: 2px; enabled: !root.settings-session-active; model: [UiStrings.codec-h264, UiStrings.codec-av1]; current-index <=> root.codec-index; }
+                    }
+                    Rectangle {
+                        height: 30px;
+                        Text { x: 8px; y: 3px; width: root.compact-language ? 145px : 212px; height: 24px; text: UiStrings.hardware-codec; color: root.hardware-codec-available ? #202124 : #8b8f95; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
+                        ImGuiCheckBox { x: root.compact-language ? 157px : 224px; y: 3px; checked <=> root.hardware-codec-enabled; enabled: root.hardware-codec-available && !root.settings-session-active; }
+                    }
+                    Rectangle {
+                        height: 30px;
+                        Text { x: 8px; y: 3px; width: root.compact-language ? 145px : 212px; height: 24px; text: UiStrings.turn-relay; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
+                        ImGuiCheckBox { x: root.compact-language ? 157px : 224px; y: 3px; checked <=> root.turn-enabled; enabled: !root.settings-session-active; }
+                    }
+                    Rectangle {
+                        height: 30px;
+                        Text { x: 8px; y: 3px; width: root.compact-language ? 145px : 212px; height: 24px; text: UiStrings.srtp; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
+                        ImGuiCheckBox { x: root.compact-language ? 157px : 224px; y: 3px; checked <=> root.srtp-enabled; enabled: !root.settings-session-active; }
+                    }
+                    Rectangle {
+                        height: 30px;
+                        CompactButton { x: 8px; y: 3px; width: root.compact-language ? 70px : 206px; text: UiStrings.self-hosted; enabled: !root.settings-session-active; clicked => { root.self-host-settings-open = true; } }
+                        ImGuiCheckBox { x: root.compact-language ? 157px : 224px; y: 3px; checked <=> root.self-hosted-enabled; enabled: !root.settings-session-active; }
+                    }
+                    Rectangle {
+                        height: 30px;
+                        Text { x: 8px; y: 3px; width: root.compact-language ? 145px : 212px; height: 24px; text: UiStrings.autostart; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
+                        ImGuiCheckBox { x: root.compact-language ? 157px : 224px; y: 3px; checked <=> root.autostart-enabled; enabled: !root.settings-session-active; }
+                    }
+                    Rectangle {
+                        height: 30px;
+                        Text { x: 8px; y: 3px; width: root.compact-language ? 145px : 212px; height: 24px; text: UiStrings.daemon; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
+                        ImGuiCheckBox { x: root.compact-language ? 157px : 224px; y: 3px; checked <=> root.daemon-enabled; enabled: !root.settings-session-active; }
+                    }
+                    Rectangle {
+                        height: 30px;
+                        Text { x: 8px; y: 3px; width: root.compact-language ? 145px : 212px; height: 24px; text: UiStrings.minimize-to-tray; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
+                        ImGuiCheckBox { x: root.compact-language ? 157px : 224px; y: 3px; checked <=> root.minimize-to-tray-enabled; enabled: !root.settings-session-active; }
+                    }
+                    Rectangle {
+                        height: 30px;
+                        Text { x: 8px; y: 3px; width: root.compact-language ? 94px : 154px; height: 24px; text: UiStrings.file-save-path; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
+                        CompactButton { x: root.compact-language ? 106px : 166px; y: 3px; width: root.compact-language ? 73px : 80px; text: root.file-save-path == "" ? UiStrings.default-desktop : root.file-save-path; enabled: !root.settings-session-active; clicked => { root.browse-save-path(); } }
+                    }
+                }
+            }
 
-            Text { x: 8px; y: 121px; width: root.compact-language ? 108px : 176px; height: 24px; text: UiStrings.codec; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
-            CompactComboBox { x: root.compact-language ? 120px : 188px; y: 120px; enabled: !root.settings-session-active; model: [UiStrings.codec-h264, UiStrings.codec-av1]; current-index <=> root.codec-index; }
-            Rectangle { x: 7px; y: 147px; width: parent.width - 14px; height: 1px; background: ImGuiLineStyle.separator; }
-
-            Text { x: 8px; y: 151px; width: root.compact-language ? 155px : 225px; height: 24px; text: UiStrings.hardware-codec; color: root.hardware-codec-available ? #202124 : #8b8f95; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
-            ImGuiCheckBox { x: root.compact-language ? 171px : 238px; y: 151px; checked <=> root.hardware-codec-enabled; enabled: root.hardware-codec-available && !root.settings-session-active; }
-            Rectangle { x: 7px; y: 177px; width: parent.width - 14px; height: 1px; background: ImGuiLineStyle.separator; }
-
-            Text { x: 8px; y: 181px; width: root.compact-language ? 155px : 225px; height: 24px; text: UiStrings.turn-relay; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
-            ImGuiCheckBox { x: root.compact-language ? 171px : 238px; y: 181px; checked <=> root.turn-enabled; enabled: !root.settings-session-active; }
-            Rectangle { x: 7px; y: 207px; width: parent.width - 14px; height: 1px; background: ImGuiLineStyle.separator; }
-
-            Text { x: 8px; y: 211px; width: root.compact-language ? 155px : 225px; height: 24px; text: UiStrings.srtp; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
-            ImGuiCheckBox { x: root.compact-language ? 171px : 238px; y: 211px; checked <=> root.srtp-enabled; enabled: !root.settings-session-active; }
-            Rectangle { x: 7px; y: 237px; width: parent.width - 14px; height: 1px; background: ImGuiLineStyle.separator; }
-
-            CompactButton { x: 8px; y: 241px; width: root.compact-language ? 70px : 220px; text: UiStrings.self-hosted; enabled: !root.settings-session-active; clicked => { root.self-host-settings-open = true; } }
-            ImGuiCheckBox { x: root.compact-language ? 171px : 238px; y: 241px; checked <=> root.self-hosted-enabled; enabled: !root.settings-session-active; }
-            Rectangle { x: 7px; y: 267px; width: parent.width - 14px; height: 1px; background: ImGuiLineStyle.separator; }
-
-            Text { x: 8px; y: 271px; width: root.compact-language ? 155px : 225px; height: 24px; text: UiStrings.autostart; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
-            ImGuiCheckBox { x: root.compact-language ? 171px : 238px; y: 271px; checked <=> root.autostart-enabled; enabled: !root.settings-session-active; }
-            Rectangle { x: 7px; y: 297px; width: parent.width - 14px; height: 1px; background: ImGuiLineStyle.separator; }
-
-            Text { x: 8px; y: 301px; width: root.compact-language ? 155px : 225px; height: 24px; text: UiStrings.daemon; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
-            ImGuiCheckBox { x: root.compact-language ? 171px : 238px; y: 301px; checked <=> root.daemon-enabled; enabled: !root.settings-session-active; }
-            Rectangle { x: 7px; y: 327px; width: parent.width - 14px; height: 1px; background: ImGuiLineStyle.separator; }
-
-            Text { x: 8px; y: 331px; width: root.compact-language ? 155px : 225px; height: 24px; text: UiStrings.minimize-to-tray; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
-            ImGuiCheckBox { x: root.compact-language ? 171px : 238px; y: 331px; checked <=> root.minimize-to-tray-enabled; enabled: !root.settings-session-active; }
-            Rectangle { x: 7px; y: 357px; width: parent.width - 14px; height: 1px; background: ImGuiLineStyle.separator; }
-
-            Text { x: 8px; y: 361px; width: root.compact-language ? 108px : 168px; height: 24px; text: UiStrings.file-save-path; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
-            CompactButton { x: root.compact-language ? 120px : 180px; y: 361px; width: root.compact-language ? 73px : 80px; text: root.file-save-path == "" ? UiStrings.default-desktop : root.file-save-path; enabled: !root.settings-session-active; clicked => { root.browse-save-path(); } }
-
-            CompactButton { x: root.compact-language ? 63px : 89px; y: 396px; primary: true; text: UiStrings.ok; clicked => { root.save-settings(); root.settings-open = false; root.self-host-settings-open = false; } }
-            CompactButton { x: root.compact-language ? 104px : 130px; y: 396px; width: root.compact-language ? 34px : 56px; text: UiStrings.cancel; clicked => { root.cancel-settings(); root.settings-open = false; root.self-host-settings-open = false; } }
+            Rectangle { x: 7px; y: 286px; width: parent.width - 14px; height: 1px; background: ImGuiLineStyle.separator; }
+            CompactButton { x: root.compact-language ? 63px : 89px; y: 297px; primary: true; text: UiStrings.ok; clicked => { root.save-settings(); root.settings-open = false; root.self-host-settings-open = false; } }
+            CompactButton { x: root.compact-language ? 104px : 130px; y: 297px; width: root.compact-language ? 34px : 56px; text: UiStrings.cancel; clicked => { root.cancel-settings(); root.settings-open = false; root.self-host-settings-open = false; } }
         }
     }
 
@@ -1492,7 +1531,6 @@ export component MainWindow inherits Window {
                 LineEdit { x: 1px; y: 1.5px; width: parent.width - 2px; height: parent.height - 2px; text <=> root.server-host; font-size: ImGuiFontStyle.body; }
                 LineEditFocusUnderlineMask { x: 5px; y: parent.height - 3px; width: parent.width - 10px; }
             }
-            Rectangle { x: 7px; y: 57px; width: parent.width - 14px; height: 1px; background: ImGuiLineStyle.separator; }
             Text { x: 8px; y: 61px; width: root.compact-language ? 88px : 165px; height: 24px; text: UiStrings.server-port; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
             Rectangle {
                 x: root.compact-language ? 100px : 173px;
@@ -1506,7 +1544,6 @@ export component MainWindow inherits Window {
                 LineEdit { x: 1px; y: 1.5px; width: parent.width - 2px; height: parent.height - 2px; text <=> root.server-port; input-type: InputType.number; font-size: ImGuiFontStyle.body; }
                 LineEditFocusUnderlineMask { x: 5px; y: parent.height - 3px; width: parent.width - 10px; }
             }
-            Rectangle { x: 7px; y: 87px; width: parent.width - 14px; height: 1px; background: ImGuiLineStyle.separator; }
             Text { x: 8px; y: 91px; width: root.compact-language ? 88px : 165px; height: 24px; text: UiStrings.coturn-port; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
             Rectangle {
                 x: root.compact-language ? 100px : 173px;
@@ -1520,7 +1557,6 @@ export component MainWindow inherits Window {
                 LineEdit { x: 1px; y: 1.5px; width: parent.width - 2px; height: parent.height - 2px; text <=> root.coturn-port; input-type: InputType.number; font-size: ImGuiFontStyle.body; }
                 LineEditFocusUnderlineMask { x: 5px; y: parent.height - 3px; width: parent.width - 10px; }
             }
-            Rectangle { x: 7px; y: 117px; width: parent.width - 14px; height: 1px; background: ImGuiLineStyle.separator; }
             CompactButton { x: root.compact-language ? 93px : 135px; y: 130px; primary: true; text: UiStrings.ok; clicked => { root.save-self-hosted-settings(); root.self-host-settings-open = false; } }
             CompactButton { x: root.compact-language ? 134px : 176px; y: 130px; width: root.compact-language ? 34px : 56px; text: UiStrings.cancel; clicked => { root.cancel-self-hosted-settings(); root.self-host-settings-open = false; } }
         }
