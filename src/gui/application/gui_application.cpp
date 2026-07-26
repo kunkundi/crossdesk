@@ -56,7 +56,7 @@ bool HasNonEmptyEnvironmentVariable(const char* name) {
 }
 
 class ScopedUnsetEnvironmentVariable {
-public:
+ public:
   explicit ScopedUnsetEnvironmentVariable(const char* name) : name_(name) {
     if (const char* value = std::getenv(name_)) {
       original_value_ = value;
@@ -77,7 +77,7 @@ public:
   ScopedUnsetEnvironmentVariable& operator=(
       const ScopedUnsetEnvironmentVariable&) = delete;
 
-private:
+ private:
   const char* name_;
   std::optional<std::string> original_value_;
 };
@@ -101,8 +101,7 @@ private:
                            &bytes_after, &data) == Success &&
         actual_type == XA_WINDOW && actual_format == 32 && item_count == 1 &&
         data) {
-      const ::Window active_window =
-          *reinterpret_cast<const ::Window*>(data);
+      const ::Window active_window = *reinterpret_cast<const ::Window*>(data);
       XFree(data);
       return active_window;
     }
@@ -165,9 +164,8 @@ bool X11WindowMatches(Display* display, ::Window x11_window,
   int root_x = 0;
   int root_y = 0;
   ::Window child = 0;
-  if (!XTranslateCoordinates(display, x11_window,
-                             DefaultRootWindow(display), 0, 0, &root_x,
-                             &root_y, &child)) {
+  if (!XTranslateCoordinates(display, x11_window, DefaultRootWindow(display), 0,
+                             0, &root_x, &root_y, &child)) {
     return false;
   }
 
@@ -269,17 +267,15 @@ std::vector<ParsedReleaseNoteBlock> ParseReleaseNotesMarkdownForSlint(
   size_t line_start = 0;
   while (line_start < markdown.size()) {
     const size_t newline = markdown.find('\n', line_start);
-    const size_t line_end = newline == std::string_view::npos
-                                ? markdown.size()
-                                : newline;
+    const size_t line_end =
+        newline == std::string_view::npos ? markdown.size() : newline;
     std::string_view line = markdown.substr(line_start, line_end - line_start);
     if (!line.empty() && line.back() == '\r') {
       line.remove_suffix(1);
     }
 
-    if (std::all_of(line.begin(), line.end(), [](unsigned char ch) {
-          return std::isspace(ch) != 0;
-        })) {
+    if (std::all_of(line.begin(), line.end(),
+                    [](unsigned char ch) { return std::isspace(ch) != 0; })) {
       section_gap = !blocks.empty();
       if (newline == std::string_view::npos) {
         break;
@@ -306,11 +302,11 @@ std::vector<ParsedReleaseNoteBlock> ParseReleaseNotesMarkdownForSlint(
 
     const std::string block_markdown(line);
     ParsedReleaseNoteBlock block;
-    if (const auto parsed =
-            slint::StyledText::from_markdown(block_markdown)) {
+    if (const auto parsed = slint::StyledText::from_markdown(block_markdown)) {
       block.content = *parsed;
     } else {
-      LOG_WARN("Failed to parse a release-note Markdown block; using plain text");
+      LOG_WARN(
+          "Failed to parse a release-note Markdown block; using plain text");
       block.content = slint::StyledText::from_plain_text(block_markdown);
     }
     block.section_gap = section_gap;
@@ -958,13 +954,14 @@ bool GuiApplication::InitializeSDL() {
   const bool video_driver_allows_x11 =
       requested_video_driver == nullptr || requested_video_driver[0] == '\0' ||
       std::strcmp(requested_video_driver, "x11") == 0;
-  use_xwayland_gui_ =
-      IsWaylandSession() && HasNonEmptyEnvironmentVariable("DISPLAY") &&
-      video_driver_allows_x11;
+  use_xwayland_gui_ = IsWaylandSession() &&
+                      HasNonEmptyEnvironmentVariable("DISPLAY") &&
+                      video_driver_allows_x11;
   if (use_xwayland_gui_) {
     setenv("SDL_VIDEODRIVER", "x11", 1);
-    LOG_INFO("Wayland session detected; using XWayland for positioned GUI "
-             "windows while retaining Wayland portal capture and input");
+    LOG_INFO(
+        "Wayland session detected; using XWayland for positioned GUI "
+        "windows while retaining Wayland portal capture and input");
   }
 #endif
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
@@ -1011,8 +1008,7 @@ void GuiApplication::InitializeUi() {
   }
 #endif
   std::vector<ui::ReleaseNoteBlock> release_note_blocks;
-  for (const auto& parsed :
-       ParseReleaseNotesMarkdownForSlint(release_notes_)) {
+  for (const auto& parsed : ParseReleaseNotesMarkdownForSlint(release_notes_)) {
     ui::ReleaseNoteBlock block;
     block.content = parsed.content;
     block.section_gap = parsed.section_gap;
@@ -1159,10 +1155,10 @@ void GuiApplication::InitializeUi() {
 #endif
     BindStreamCallbacks();
     (*ui_->stream)->show();
-    PositionWindowAtCenter((*ui_->stream)->window(), ui_->main->window(),
-                           kStreamWindowLogicalWidth,
-                           StreamWindowLogicalHeight(
-                               (*ui_->stream)->get_custom_titlebar()));
+    PositionWindowAtCenter(
+        (*ui_->stream)->window(), ui_->main->window(),
+        kStreamWindowLogicalWidth,
+        StreamWindowLogicalHeight((*ui_->stream)->get_custom_titlebar()));
     ui_->main->hide();
   } else if (ui_->capture_mode && ui_->capture_page == "server") {
     ui_->server.emplace(ui::ServerWindow::create());
@@ -2235,8 +2231,7 @@ void GuiApplication::SyncXWaylandWindowActivation() {
     return;
   }
 
-  if (const auto process_id =
-          X11GetWindowProcessId(display, active_window);
+  if (const auto process_id = X11GetWindowProcessId(display, active_window);
       process_id && *process_id != static_cast<unsigned long>(getpid())) {
     ui_->main->set_window_active(false);
     if (ui_->stream) {
@@ -2249,8 +2244,8 @@ void GuiApplication::SyncXWaylandWindowActivation() {
       X11WindowMatches(display, active_window, ui_->main->window()));
   if (ui_->stream) {
     (*ui_->stream)
-        ->set_window_active(X11WindowMatches(
-            display, active_window, (*ui_->stream)->window()));
+        ->set_window_active(
+            X11WindowMatches(display, active_window, (*ui_->stream)->window()));
   }
 }
 #endif
@@ -2289,8 +2284,7 @@ void GuiApplication::SyncStreamWindow() {
   if (!ui_->stream) {
     return;
   }
-  (*ui_->stream)
-      ->set_window_maximized((*ui_->stream)->window().is_maximized());
+  (*ui_->stream)->set_window_maximized((*ui_->stream)->window().is_maximized());
   (*ui_->stream)->set_srtp_enabled(enable_srtp_);
 #if defined(__APPLE__)
   if (ui_->stream_live_resize_configuration_attempts > 0) {
@@ -2302,10 +2296,10 @@ void GuiApplication::SyncStreamWindow() {
   }
 #endif
   if (ui_->stream_initial_position_attempts > 0) {
-    if (PositionWindowAtCenter((*ui_->stream)->window(), ui_->main->window(),
-                               kStreamWindowLogicalWidth,
-                               StreamWindowLogicalHeight(
-                                   (*ui_->stream)->get_custom_titlebar()))) {
+    if (PositionWindowAtCenter(
+            (*ui_->stream)->window(), ui_->main->window(),
+            kStreamWindowLogicalWidth,
+            StreamWindowLogicalHeight((*ui_->stream)->get_custom_titlebar()))) {
       --ui_->stream_initial_position_attempts;
     } else {
       ui_->stream_initial_position_attempts = 0;
@@ -2539,7 +2533,22 @@ void GuiApplication::SyncStreamWindow() {
 }
 
 void GuiApplication::SyncServerWindow() {
-  if (need_to_create_server_window_ && !ui_->server) {
+  // The connection map is authoritative. Lifecycle flags record callback
+  // intent, but callbacks for different controllers can cross each other, so
+  // the final decision must reflect the current connected-controller set.
+  need_to_create_server_window_.exchange(false, std::memory_order_acq_rel);
+  need_to_destroy_server_window_.exchange(false, std::memory_order_acq_rel);
+  bool has_connected_controller = false;
+  {
+    std::shared_lock lock(connection_status_mutex_);
+    has_connected_controller =
+        std::any_of(connection_status_.begin(), connection_status_.end(),
+                    [](const auto& entry) {
+                      return entry.second == ConnectionStatus::Connected;
+                    });
+  }
+
+  if (has_connected_controller && !ui_->server) {
     ui_->server.emplace(ui::ServerWindow::create());
     RegisterFontAwesome((*ui_->server)->window());
     (*ui_->server)->set_controllers(ui_->controller_model);
@@ -2559,15 +2568,13 @@ void GuiApplication::SyncServerWindow() {
     ui_->server_initial_position_attempts = 2;
     server_window_created_ = true;
     server_window_inited_ = true;
-    need_to_create_server_window_ = false;
   }
-  if (need_to_destroy_server_window_ && ui_->server) {
+  if (!has_connected_controller && ui_->server) {
     (*ui_->server)->hide();
     ui_->server.reset();
     server_window_created_ = false;
     server_window_inited_ = false;
     ui_->server_initial_position_attempts = 0;
-    need_to_destroy_server_window_ = false;
   }
   if (!ui_->server) {
     return;
@@ -2868,9 +2875,8 @@ void GuiApplication::SendPointerInput(int button, int kind, float x, float y) {
           : 0.0f;
   const float available_height =
       size.height / scale - titlebar_height -
-      (fullscreen_button_pressed_
-           ? 0.0f
-           : (ui_->tab_ids.size() > 1 ? 30.0f : 0.0f));
+      (fullscreen_button_pressed_ ? 0.0f
+                                  : (ui_->tab_ids.size() > 1 ? 30.0f : 0.0f));
   float render_width = available_width;
   float render_height = available_height;
   float offset_x = 0;
@@ -2944,9 +2950,8 @@ void GuiApplication::SendScrollInput(float delta_x, float delta_y, float x,
           : 0.0f;
   const float height =
       size.height / scale - titlebar_height -
-      (fullscreen_button_pressed_
-           ? 0.0f
-           : (ui_->tab_ids.size() > 1 ? 30.0f : 0.0f));
+      (fullscreen_button_pressed_ ? 0.0f
+                                  : (ui_->tab_ids.size() > 1 ? 30.0f : 0.0f));
   if (width <= 0 || height <= 0) {
     return;
   }

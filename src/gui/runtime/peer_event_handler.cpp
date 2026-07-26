@@ -26,12 +26,12 @@
 
 namespace crossdesk {
 
-PeerEventHandler::PeerEventHandler(GuiRuntime &owner) : owner_(owner) {}
+PeerEventHandler::PeerEventHandler(GuiRuntime& owner) : owner_(owner) {}
 
-void PeerEventHandler::OnSignalMessage(const char *message, size_t size,
-                                       void *user_data) {
-  auto *handler = static_cast<PeerEventHandler *>(user_data);
-  GuiRuntime *runtime = handler ? &handler->owner_ : nullptr;
+void PeerEventHandler::OnSignalMessage(const char* message, size_t size,
+                                       void* user_data) {
+  auto* handler = static_cast<PeerEventHandler*>(user_data);
+  GuiRuntime* runtime = handler ? &handler->owner_ : nullptr;
   if (!runtime || !message || size == 0) {
     return;
   }
@@ -43,7 +43,7 @@ void PeerEventHandler::OnSignalMessage(const char *message, size_t size,
   std::string type = j["type"].get<std::string>();
   if (type == "presence") {
     if (j.contains("devices") && j["devices"].is_array()) {
-      for (auto &dev : j["devices"]) {
+      for (auto& dev : j["devices"]) {
         if (!dev.is_object()) {
           continue;
         }
@@ -88,11 +88,10 @@ void PeerEventHandler::OnSignalMessage(const char *message, size_t size,
   }
 }
 
-
-void PeerEventHandler::OnSignalStatus(SignalStatus status, const char *user_id,
-                                      size_t user_id_size, void *user_data) {
-  auto *handler = static_cast<PeerEventHandler *>(user_data);
-  GuiRuntime *runtime = handler ? &handler->owner_ : nullptr;
+void PeerEventHandler::OnSignalStatus(SignalStatus status, const char* user_id,
+                                      size_t user_id_size, void* user_data) {
+  auto* handler = static_cast<PeerEventHandler*>(user_data);
+  GuiRuntime* runtime = handler ? &handler->owner_ : nullptr;
   if (!runtime) {
     return;
   }
@@ -150,13 +149,12 @@ void PeerEventHandler::OnSignalStatus(SignalStatus status, const char *user_id,
 }
 
 void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
-                                          const char *user_id,
+                                          const char* user_id,
                                           const size_t user_id_size,
-                                          void *user_data) {
-  auto *handler = static_cast<PeerEventHandler *>(user_data);
-  GuiRuntime *runtime = handler ? &handler->owner_ : nullptr;
-  if (!runtime)
-    return;
+                                          void* user_data) {
+  auto* handler = static_cast<PeerEventHandler*>(user_data);
+  GuiRuntime* runtime = handler ? &handler->owner_ : nullptr;
+  if (!runtime) return;
 
   std::string remote_id(user_id, user_id_size);
   std::shared_ptr<GuiRuntime::RemoteSession> props;
@@ -178,107 +176,110 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
     }
 
     switch (status) {
-    case ConnectionStatus::Connected: {
-      runtime->ResetRemoteServiceStatus(*props);
-      {
-        RemoteAction remote_action;
-        remote_action.i.display_num =
-            runtime->devices_.display_info_list().size();
-        remote_action.i.display_list =
-            (char **)malloc(remote_action.i.display_num * sizeof(char *));
-        remote_action.i.left =
-            (int *)malloc(remote_action.i.display_num * sizeof(int));
-        remote_action.i.top =
-            (int *)malloc(remote_action.i.display_num * sizeof(int));
-        remote_action.i.right =
-            (int *)malloc(remote_action.i.display_num * sizeof(int));
-        remote_action.i.bottom =
-            (int *)malloc(remote_action.i.display_num * sizeof(int));
-        for (int i = 0; i < remote_action.i.display_num; i++) {
-          LOG_INFO("Local display [{}:{}]", i + 1,
-                   runtime->devices_.display_info_list()[i].name);
-          remote_action.i.display_list[i] = (char *)malloc(
-              runtime->devices_.display_info_list()[i].name.length() + 1);
-          strncpy(remote_action.i.display_list[i],
-                  runtime->devices_.display_info_list()[i].name.c_str(),
-                  runtime->devices_.display_info_list()[i].name.length());
-          remote_action.i.display_list
-              [i][runtime->devices_.display_info_list()[i].name.length()] = '\0';
-          remote_action.i.left[i] =
-              runtime->devices_.display_info_list()[i].left;
-          remote_action.i.top[i] = runtime->devices_.display_info_list()[i].top;
-          remote_action.i.right[i] =
-              runtime->devices_.display_info_list()[i].right;
-          remote_action.i.bottom[i] =
-              runtime->devices_.display_info_list()[i].bottom;
+      case ConnectionStatus::Connected: {
+        runtime->ResetRemoteServiceStatus(*props);
+        {
+          RemoteAction remote_action;
+          remote_action.i.display_num =
+              runtime->devices_.display_info_list().size();
+          remote_action.i.display_list =
+              (char**)malloc(remote_action.i.display_num * sizeof(char*));
+          remote_action.i.left =
+              (int*)malloc(remote_action.i.display_num * sizeof(int));
+          remote_action.i.top =
+              (int*)malloc(remote_action.i.display_num * sizeof(int));
+          remote_action.i.right =
+              (int*)malloc(remote_action.i.display_num * sizeof(int));
+          remote_action.i.bottom =
+              (int*)malloc(remote_action.i.display_num * sizeof(int));
+          for (int i = 0; i < remote_action.i.display_num; i++) {
+            LOG_INFO("Local display [{}:{}]", i + 1,
+                     runtime->devices_.display_info_list()[i].name);
+            remote_action.i.display_list[i] = (char*)malloc(
+                runtime->devices_.display_info_list()[i].name.length() + 1);
+            strncpy(remote_action.i.display_list[i],
+                    runtime->devices_.display_info_list()[i].name.c_str(),
+                    runtime->devices_.display_info_list()[i].name.length());
+            remote_action.i
+                .display_list[i][runtime->devices_.display_info_list()[i]
+                                     .name.length()] = '\0';
+            remote_action.i.left[i] =
+                runtime->devices_.display_info_list()[i].left;
+            remote_action.i.top[i] =
+                runtime->devices_.display_info_list()[i].top;
+            remote_action.i.right[i] =
+                runtime->devices_.display_info_list()[i].right;
+            remote_action.i.bottom[i] =
+                runtime->devices_.display_info_list()[i].bottom;
+          }
+
+          std::string host_name = GetHostName();
+          remote_action.type = ControlType::host_infomation;
+          memcpy(&remote_action.i.host_name, host_name.data(),
+                 host_name.size());
+          remote_action.i.host_name[host_name.size()] = '\0';
+          remote_action.i.host_name_size = host_name.size();
+
+          std::string msg = remote_action.to_json();
+          int ret = SendReliableDataFrame(props->peer_, msg.data(), msg.size(),
+                                          runtime->control_data_label_.c_str());
+          remote_action_codec::Free(remote_action);
         }
 
-        std::string host_name = GetHostName();
-        remote_action.type = ControlType::host_infomation;
-        memcpy(&remote_action.i.host_name, host_name.data(), host_name.size());
-        remote_action.i.host_name[host_name.size()] = '\0';
-        remote_action.i.host_name_size = host_name.size();
-
-        std::string msg = remote_action.to_json();
-        int ret = SendReliableDataFrame(props->peer_, msg.data(), msg.size(),
-                                        runtime->control_data_label_.c_str());
-        remote_action_codec::Free(remote_action);
+        if (!runtime->need_to_create_stream_window_ &&
+            !runtime->remote_sessions_.empty()) {
+          runtime->need_to_create_stream_window_ = true;
+        }
+        props->connection_established_ = true;
+        runtime->start_keyboard_capturer_ = true;
+        break;
       }
-
-      if (!runtime->need_to_create_stream_window_ &&
-          !runtime->remote_sessions_.empty()) {
-        runtime->need_to_create_stream_window_ = true;
-      }
-      props->connection_established_ = true;
-      runtime->start_keyboard_capturer_ = true;
-      break;
-    }
-    case ConnectionStatus::Disconnected:
-    case ConnectionStatus::Failed:
-    case ConnectionStatus::Closed: {
-      runtime->keyboard_.ReleaseRemotePressedKeys(remote_id,
-                                                 "connection_closed");
-      props->connection_established_ = false;
-      props->enable_mouse_control_ = false;
-      runtime->ResetRemoteServiceStatus(*props);
-
-      {
-        std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
-        props->front_frame_.reset();
-        props->back_frame_.reset();
-        props->video_width_ = 0;
-        props->video_height_ = 0;
-        props->video_size_ = 0;
-        props->render_rect_dirty_ = true;
-        props->stream_cleanup_pending_ = true;
-      }
-
-      runtime->focus_on_stream_window_ = false;
-
-      break;
-    }
-    case ConnectionStatus::IncorrectPassword: {
-      runtime->password_validating_ = false;
-      runtime->password_validating_time_++;
-      if (runtime->connect_button_pressed_) {
-        runtime->connect_button_pressed_ = false;
+      case ConnectionStatus::Disconnected:
+      case ConnectionStatus::Failed:
+      case ConnectionStatus::Closed: {
+        runtime->keyboard_.ReleaseRemotePressedKeys(remote_id,
+                                                    "connection_closed");
         props->connection_established_ = false;
-        runtime->connect_button_label_ =
-            localization::connect[runtime->localization_language_index_];
+        props->enable_mouse_control_ = false;
+        runtime->ResetRemoteServiceStatus(*props);
+
+        {
+          std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
+          props->front_frame_.reset();
+          props->back_frame_.reset();
+          props->video_width_ = 0;
+          props->video_height_ = 0;
+          props->video_size_ = 0;
+          props->render_rect_dirty_ = true;
+          props->stream_cleanup_pending_ = true;
+        }
+
+        runtime->focus_on_stream_window_ = false;
+
+        break;
       }
-      break;
-    }
-    case ConnectionStatus::NoSuchTransmissionId:
-    case ConnectionStatus::RemoteUnavailable: {
-      if (runtime->connect_button_pressed_) {
-        props->connection_established_ = false;
-        runtime->connect_button_label_ =
-            localization::connect[runtime->localization_language_index_];
+      case ConnectionStatus::IncorrectPassword: {
+        runtime->password_validating_ = false;
+        runtime->password_validating_time_++;
+        if (runtime->connect_button_pressed_) {
+          runtime->connect_button_pressed_ = false;
+          props->connection_established_ = false;
+          runtime->connect_button_label_ =
+              localization::connect[runtime->localization_language_index_];
+        }
+        break;
       }
-      break;
-    }
-    default:
-      break;
+      case ConnectionStatus::NoSuchTransmissionId:
+      case ConnectionStatus::RemoteUnavailable: {
+        if (runtime->connect_button_pressed_) {
+          props->connection_established_ = false;
+          runtime->connect_button_label_ =
+              localization::connect[runtime->localization_language_index_];
+        }
+        break;
+      }
+      default:
+        break;
     }
   } else {
     runtime->is_client_mode_ = false;
@@ -289,155 +290,107 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
     }
 
     switch (status) {
-    case ConnectionStatus::Connected: {
+      case ConnectionStatus::Connected: {
 #if _WIN32
-      runtime->last_windows_service_status_tick_ = 0;
+        runtime->last_windows_service_status_tick_ = 0;
 #endif
-      {
-        RemoteAction remote_action;
-        remote_action.i.display_num =
-            runtime->devices_.display_info_list().size();
-        remote_action.i.display_list =
-            (char **)malloc(remote_action.i.display_num * sizeof(char *));
-        remote_action.i.left =
-            (int *)malloc(remote_action.i.display_num * sizeof(int));
-        remote_action.i.top =
-            (int *)malloc(remote_action.i.display_num * sizeof(int));
-        remote_action.i.right =
-            (int *)malloc(remote_action.i.display_num * sizeof(int));
-        remote_action.i.bottom =
-            (int *)malloc(remote_action.i.display_num * sizeof(int));
-        for (int i = 0; i < remote_action.i.display_num; i++) {
-          LOG_INFO("Local display [{}:{}]", i + 1,
-                   runtime->devices_.display_info_list()[i].name);
-          remote_action.i.display_list[i] = (char *)malloc(
-              runtime->devices_.display_info_list()[i].name.length() + 1);
-          strncpy(remote_action.i.display_list[i],
-                  runtime->devices_.display_info_list()[i].name.c_str(),
-                  runtime->devices_.display_info_list()[i].name.length());
-          remote_action.i.display_list
-              [i][runtime->devices_.display_info_list()[i].name.length()] = '\0';
-          remote_action.i.left[i] =
-              runtime->devices_.display_info_list()[i].left;
-          remote_action.i.top[i] = runtime->devices_.display_info_list()[i].top;
-          remote_action.i.right[i] =
-              runtime->devices_.display_info_list()[i].right;
-          remote_action.i.bottom[i] =
-              runtime->devices_.display_info_list()[i].bottom;
-        }
-
-        std::string host_name = GetHostName();
-        remote_action.type = ControlType::host_infomation;
-        memcpy(&remote_action.i.host_name, host_name.data(), host_name.size());
-        remote_action.i.host_name[host_name.size()] = '\0';
-        remote_action.i.host_name_size = host_name.size();
-
-        std::string msg = remote_action.to_json();
-        int ret = SendReliableDataFrame(runtime->peer_, msg.data(), msg.size(),
-                                        runtime->control_data_label_.c_str());
-        remote_action_codec::Free(remote_action);
-      }
-
-      runtime->need_to_create_server_window_ = true;
-      runtime->is_server_mode_ = true;
-      runtime->start_screen_capturer_ = true;
-      runtime->start_speaker_capturer_ = true;
-      runtime->remote_client_id_ = remote_id;
-      runtime->start_mouse_controller_ = true;
-      {
-        std::shared_lock lock(runtime->connection_status_mutex_);
-        if (std::all_of(runtime->connection_status_.begin(),
-                        runtime->connection_status_.end(), [](const auto &kv) {
-                          return kv.first.find("web") != std::string::npos;
-                        })) {
-          runtime->show_cursor_ = true;
-        }
-      }
-
-      break;
-    }
-    case ConnectionStatus::Disconnected:
-    case ConnectionStatus::Failed:
-    case ConnectionStatus::Closed: {
-      runtime->keyboard_.ReleaseRemotePressedKeys(remote_id,
-                                                 "connection_closed");
-      bool all_disconnected = false;
-      {
-        std::shared_lock lock(runtime->connection_status_mutex_);
-        all_disconnected =
-            std::all_of(runtime->connection_status_.begin(),
-                        runtime->connection_status_.end(), [](const auto &kv) {
-                          return kv.second == ConnectionStatus::Closed ||
-                                 kv.second == ConnectionStatus::Failed ||
-                                 kv.second == ConnectionStatus::Disconnected;
-                        });
-      }
-      if (all_disconnected) {
-        runtime->need_to_destroy_server_window_ = true;
-        runtime->is_server_mode_ = false;
-#if defined(__linux__) && !defined(__APPLE__)
-        if (IsWaylandSession()) {
-          // Keep Wayland capture session warm to avoid black screen on
-          // subsequent reconnects.
-          runtime->start_screen_capturer_ = true;
-          LOG_INFO("Keeping Wayland screen capturer running after "
-                   "disconnect to preserve reconnect stability");
-        } else {
-          runtime->start_screen_capturer_ = false;
-        }
-#else
-        runtime->start_screen_capturer_ = false;
-#endif
-        runtime->start_speaker_capturer_ = false;
-        runtime->start_mouse_controller_ = false;
-        runtime->start_keyboard_capturer_ = false;
-        runtime->remote_client_id_ = "";
-        if (props)
-          props->connection_established_ = false;
-        if (runtime->audio_capture_) {
-          runtime->devices_.StopSpeakerCapturer();
-          runtime->audio_capture_ = false;
-        }
-
         {
-          std::unique_lock lock(runtime->connection_status_mutex_);
-          runtime->connection_status_.erase(remote_id);
-          runtime->connection_host_names_.erase(remote_id);
-        }
-        runtime->devices_.ResetToInitialDisplay();
-      }
+          RemoteAction remote_action;
+          remote_action.i.display_num =
+              runtime->devices_.display_info_list().size();
+          remote_action.i.display_list =
+              (char**)malloc(remote_action.i.display_num * sizeof(char*));
+          remote_action.i.left =
+              (int*)malloc(remote_action.i.display_num * sizeof(int));
+          remote_action.i.top =
+              (int*)malloc(remote_action.i.display_num * sizeof(int));
+          remote_action.i.right =
+              (int*)malloc(remote_action.i.display_num * sizeof(int));
+          remote_action.i.bottom =
+              (int*)malloc(remote_action.i.display_num * sizeof(int));
+          for (int i = 0; i < remote_action.i.display_num; i++) {
+            LOG_INFO("Local display [{}:{}]", i + 1,
+                     runtime->devices_.display_info_list()[i].name);
+            remote_action.i.display_list[i] = (char*)malloc(
+                runtime->devices_.display_info_list()[i].name.length() + 1);
+            strncpy(remote_action.i.display_list[i],
+                    runtime->devices_.display_info_list()[i].name.c_str(),
+                    runtime->devices_.display_info_list()[i].name.length());
+            remote_action.i
+                .display_list[i][runtime->devices_.display_info_list()[i]
+                                     .name.length()] = '\0';
+            remote_action.i.left[i] =
+                runtime->devices_.display_info_list()[i].left;
+            remote_action.i.top[i] =
+                runtime->devices_.display_info_list()[i].top;
+            remote_action.i.right[i] =
+                runtime->devices_.display_info_list()[i].right;
+            remote_action.i.bottom[i] =
+                runtime->devices_.display_info_list()[i].bottom;
+          }
 
-      {
-        std::shared_lock lock(runtime->connection_status_mutex_);
-        if (std::all_of(runtime->connection_status_.begin(),
-                        runtime->connection_status_.end(), [](const auto &kv) {
-                          return kv.first.find("web") == std::string::npos;
-                        })) {
-          runtime->show_cursor_ = false;
-        }
-      }
+          std::string host_name = GetHostName();
+          remote_action.type = ControlType::host_infomation;
+          memcpy(&remote_action.i.host_name, host_name.data(),
+                 host_name.size());
+          remote_action.i.host_name[host_name.size()] = '\0';
+          remote_action.i.host_name_size = host_name.size();
 
-      break;
-    }
-    default:
-      break;
+          std::string msg = remote_action.to_json();
+          int ret =
+              SendReliableDataFrame(runtime->peer_, msg.data(), msg.size(),
+                                    runtime->control_data_label_.c_str());
+          remote_action_codec::Free(remote_action);
+        }
+
+        runtime->need_to_destroy_server_window_.store(
+            false, std::memory_order_release);
+        runtime->need_to_create_server_window_.store(true,
+                                                     std::memory_order_release);
+        runtime->is_server_mode_ = true;
+        runtime->start_screen_capturer_ = true;
+        runtime->start_speaker_capturer_ = true;
+        runtime->remote_client_id_ = remote_id;
+        runtime->start_mouse_controller_ = true;
+        {
+          std::shared_lock lock(runtime->connection_status_mutex_);
+          if (std::all_of(runtime->connection_status_.begin(),
+                          runtime->connection_status_.end(),
+                          [](const auto& kv) {
+                            return kv.first.find("web") != std::string::npos;
+                          })) {
+            runtime->show_cursor_ = true;
+          }
+        }
+
+        break;
+      }
+      case ConnectionStatus::Disconnected:
+      case ConnectionStatus::Failed:
+      case ConnectionStatus::Closed: {
+        runtime->HandleServerControllerDisconnected(remote_id,
+                                                    "connection_closed");
+        break;
+      }
+      default:
+        break;
     }
   }
 }
 
 void PeerEventHandler::OnNetStatusReport(
-    const char *client_id, size_t client_id_size, TraversalMode mode,
-    const XNetTrafficStats *net_traffic_stats, const char *user_id,
-    const size_t user_id_size, void *user_data) {
-  auto *handler = static_cast<PeerEventHandler *>(user_data);
-  GuiRuntime *runtime = handler ? &handler->owner_ : nullptr;
+    const char* client_id, size_t client_id_size, TraversalMode mode,
+    const XNetTrafficStats* net_traffic_stats, const char* user_id,
+    const size_t user_id_size, void* user_data) {
+  auto* handler = static_cast<PeerEventHandler*>(user_data);
+  GuiRuntime* runtime = handler ? &handler->owner_ : nullptr;
   if (!runtime) {
     return;
   }
 
   if (strchr(client_id, '@') != nullptr && strchr(user_id, '-') == nullptr) {
     std::string id, password;
-    const char *at_pos = strchr(client_id, '@');
+    const char* at_pos = strchr(client_id, '@');
     if (at_pos == nullptr) {
       id = client_id;
       password.clear();
@@ -510,4 +463,4 @@ void PeerEventHandler::OnNetStatusReport(
     props->net_traffic_stats_ = *net_traffic_stats;
   }
 }
-} // namespace crossdesk
+}  // namespace crossdesk

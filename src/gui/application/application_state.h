@@ -1,6 +1,7 @@
 #ifndef CROSSDESK_GUI_APPLICATION_STATE_H_
 #define CROSSDESK_GUI_APPLICATION_STATE_H_
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <memory>
@@ -119,8 +120,11 @@ struct StreamWindowState {
 };
 
 struct ServerWindowState {
-  bool need_to_create_server_window_ = false;
-  bool need_to_destroy_server_window_ = false;
+  // Transport callbacks run outside the UI thread. Keep the two lifecycle
+  // requests atomic so a disconnect cannot be lost while the Slint timer is
+  // deciding whether to create or destroy the controlled-side window.
+  std::atomic<bool> need_to_create_server_window_{false};
+  std::atomic<bool> need_to_destroy_server_window_{false};
   bool server_window_created_ = false;
   bool server_window_inited_ = false;
   int server_window_width_default_ = 250;
