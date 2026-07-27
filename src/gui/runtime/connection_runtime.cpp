@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "localization.h"
+#include "platform.h"
 #include "rd_log.h"
 #include "runtime/gui_runtime.h"
 
