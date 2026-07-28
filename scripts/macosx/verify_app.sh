@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 2 ]]; then
-    echo "Usage: $0 <app-bundle> <expected-architecture>" >&2
+if [[ $# -lt 2 || $# -gt 3 ]]; then
+    echo "Usage: $0 <app-bundle> <expected-architecture> [expected-sdk-version]" >&2
     exit 2
 fi
 
 APP_BUNDLE="$1"
 EXPECTED_ARCH="$2"
+EXPECTED_SDK_VERSION="${3:-}"
 APP_EXECUTABLE="$APP_BUNDLE/Contents/MacOS/CrossDesk"
 FRAMEWORKS_DIR="$APP_BUNDLE/Contents/Frameworks"
 INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
@@ -92,6 +93,23 @@ BINARY_MIN_VERSION="$(otool -l "$APP_EXECUTABLE" | awk '
 if [[ -z "$BINARY_MIN_VERSION" || "$PLIST_MIN_VERSION" != "$BINARY_MIN_VERSION" ]]; then
     echo "Minimum macOS version mismatch: plist=$PLIST_MIN_VERSION binary=${BINARY_MIN_VERSION:-unknown}" >&2
     exit 1
+fi
+
+if [[ -n "$EXPECTED_SDK_VERSION" ]]; then
+    verify_sdk_version() {
+        local macho="$1"
+        local actual_sdk=""
+        actual_sdk="$(otool -l "$macho" | awk '
+            $1 == "cmd" { build_version = ($2 == "LC_BUILD_VERSION"); next }
+            build_version && $1 == "sdk" { print $2; exit }')"
+        if [[ "$actual_sdk" != "$EXPECTED_SDK_VERSION" ]]; then
+            echo "Unexpected macOS SDK in $macho: expected $EXPECTED_SDK_VERSION, got ${actual_sdk:-unknown}" >&2
+            return 1
+        fi
+    }
+
+    verify_sdk_version "$APP_EXECUTABLE"
+    verify_sdk_version "$SLINT_LIBRARY"
 fi
 
 codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"

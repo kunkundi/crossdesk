@@ -136,19 +136,20 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       MACOSX_DEPLOYMENT_TARGET: "14.0"
+      EXPECTED_MACOS_SDK: "26.5"
     strategy:
       matrix:
         include:
           - arch: x64
             binary_arch: x86_64
-            runner: macos-15-intel
-            cache-key: intel-macos14
+            runner: macos-26-intel
+            cache-key: intel-macos26-xcode26.6-min14
             out-dir: ./build/macosx/x86_64/release/crossdesk
             package_script: ./scripts/macosx/pkg_x64.sh
           - arch: arm64
             binary_arch: arm64
-            runner: macos-14
-            cache-key: arm-macos14
+            runner: macos-26
+            cache-key: arm-macos26-xcode26.6-min14
             out-dir: ./build/macosx/arm64/release/crossdesk
             package_script: ./scripts/macosx/pkg_arm64.sh
 
@@ -192,6 +193,17 @@ jobs:
           echo "VERSION_NUM=${VERSION_NUM}"
           echo "BUILD_DATE=${BUILD_DATE}" >> $GITHUB_ENV
           echo "PATCH_NUMBER=${PATCH_NUMBER}" >> $GITHUB_ENV
+
+      - name: Select Xcode 26.6
+        shell: bash
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+          SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
+          if [[ "${SDK_VERSION}" != "${EXPECTED_MACOS_SDK}" ]]; then
+            echo "Unexpected macOS SDK: expected ${EXPECTED_MACOS_SDK}, got ${SDK_VERSION}" >&2
+            exit 1
+          fi
 
       - name: Cache xmake dependencies
         uses: actions/cache@v5
@@ -237,7 +249,7 @@ jobs:
             exit 1
           fi
 
-          ./scripts/macosx/verify_app.sh "${APP_PATH}" "${{ matrix.binary_arch }}"
+          ./scripts/macosx/verify_app.sh "${APP_PATH}" "${{ matrix.binary_arch }}" "${EXPECTED_MACOS_SDK}"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
@@ -424,8 +436,7 @@ jobs:
   release:
     name: Publish Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs:
-      [build-linux, build-macos, build-windows-x64]
+    needs: [build-linux, build-macos, build-windows-x64]
     runs-on: ubuntu-latest
 
     steps:
