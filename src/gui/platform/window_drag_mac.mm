@@ -146,6 +146,13 @@ bool ConfigureStreamWindowLiveResize() {
   }
 }
 
+bool IsStreamWindowActive() {
+  @autoreleasepool {
+    return stream_window != nil && [NSApp isActive] &&
+           [stream_window isKeyWindow];
+  }
+}
+
 bool SetStreamWindowFullscreen(bool fullscreen) {
   @autoreleasepool {
     if (stream_window == nil || stream_fullscreen == fullscreen) {

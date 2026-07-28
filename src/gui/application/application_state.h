@@ -65,7 +65,7 @@ struct InteractionState {
   bool start_keyboard_capturer_ = false;
   bool show_cursor_ = false;
   bool keyboard_capturer_is_started_ = false;
-  bool keyboard_capturer_uses_sdl_events_ = false;
+  bool keyboard_capturer_uses_window_events_ = false;
   bool foucs_on_main_window_ = false;
   bool focus_on_stream_window_ = false;
   bool audio_capture_ = false;

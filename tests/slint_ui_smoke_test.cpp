@@ -187,6 +187,26 @@ int main() {
   stream->invoke_toggle_maximize_stream_window();
   assert(maximize_requested);
 
+  bool keyboard_focus_changed = false;
+  bool keyboard_input_received = false;
+  stream->on_keyboard_focus_changed(
+      [&](bool focused) { keyboard_focus_changed = focused; });
+  stream->on_key_input(
+      [&](slint::SharedString text, bool pressed, bool, bool, bool, bool) {
+        keyboard_input_received = std::string(text) == "a" && pressed;
+      });
+  stream->window().set_size(
+      slint::LogicalSize(slint::Size<float>{1280.0f, 720.0f}));
+  stream->window().dispatch_pointer_press_event(
+      slint::LogicalPosition(slint::Point<float>{640.0f, 360.0f}),
+      slint::PointerEventButton::Left);
+  stream->window().dispatch_pointer_release_event(
+      slint::LogicalPosition(slint::Point<float>{640.0f, 360.0f}),
+      slint::PointerEventButton::Left);
+  stream->window().dispatch_key_press_event("a");
+  assert(keyboard_focus_changed);
+  assert(keyboard_input_received);
+
   crossdesk::ui::FileTransferEntry transfer;
   transfer.name = "archive.zip";
   transfer.status = "Sending";

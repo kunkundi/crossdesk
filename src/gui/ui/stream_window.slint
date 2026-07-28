@@ -163,6 +163,7 @@ export component StreamWindow inherits Window {
     callback pointer-input(PointerEventButton, PointerEventKind, length, length);
     callback scroll-input(length, length, length, length);
     callback key-input(string, bool, bool, bool, bool, bool);
+    callback keyboard-focus-changed(bool);
 
     private property <bool> control-expanded: true;
     private property <bool> display-menu-open: false;
@@ -486,6 +487,8 @@ export component StreamWindow inherits Window {
 
             input-focus := FocusScope {
                 focus-on-click: true;
+                focus-gained => { root.keyboard-focus-changed(true); }
+                focus-lost => { root.keyboard-focus-changed(false); }
                 key-pressed(event) => {
                     root.key-input(event.text, true, event.modifiers.control, event.modifiers.alt, event.modifiers.shift, event.modifiers.meta);
                     accept
@@ -500,6 +503,9 @@ export component StreamWindow inherits Window {
                             && self.mouse-x <= control.x + control.width
                             && self.mouse-y >= control.y
                             && self.mouse-y <= control.y + control.height;
+                        if event.kind == PointerEventKind.down && !over-control {
+                            input-focus.focus();
+                        }
                         if event.kind == PointerEventKind.down
                             && event.button == PointerEventButton.left
                             && over-control {

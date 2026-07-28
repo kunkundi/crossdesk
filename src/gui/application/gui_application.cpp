@@ -30,6 +30,8 @@
 #include "localization.h"
 #include "platform.h"
 #if _WIN32
+#include <windows.h>
+
 #include "platform/tray/win_tray.h"
 #elif defined(__APPLE__)
 #include "platform/tray/mac_tray.h"
@@ -1726,6 +1728,8 @@ void GuiApplication::BindStreamCallbacks() {
                               bool control, bool alt, bool shift, bool meta) {
     SendKeyInput(std::string(text), pressed, control, alt, shift, meta);
   });
+  stream->on_keyboard_focus_changed(
+      [this](bool focused) { SetStreamKeyboardFocus(focused); });
 }
 
 void GuiApplication::BindServerCallbacks() {
@@ -1831,6 +1835,11 @@ void GuiApplication::Tick() {
   HandlePendingPresenceProbe();
   HandleConnectionTimeouts();
   HandleWindowsServiceIntegration();
+#if defined(__linux__) && !defined(__APPLE__)
+  SyncXWaylandWindowActivation();
+#else
+  SyncStreamKeyboardFocus();
+#endif
   devices_.UpdateInteractions();
 
   UpdateLocalization();
@@ -1839,9 +1848,6 @@ void GuiApplication::Tick() {
   SyncPlatformDialogs();
   SyncStreamWindow();
   SyncServerWindow();
-#if defined(__linux__) && !defined(__APPLE__)
-  SyncXWaylandWindowActivation();
-#endif
 }
 
 void GuiApplication::UpdateLocalization() {
@@ -2228,6 +2234,7 @@ void GuiApplication::SyncXWaylandWindowActivation() {
   Display* display = ui_->x11_focus_display;
   const ::Window active_window = X11GetActiveWindow(display);
   if (!active_window) {
+    SetStreamKeyboardFocus(false);
     return;
   }
 
@@ -2237,18 +2244,48 @@ void GuiApplication::SyncXWaylandWindowActivation() {
     if (ui_->stream) {
       (*ui_->stream)->set_window_active(false);
     }
+    SetStreamKeyboardFocus(false);
     return;
   }
 
   ui_->main->set_window_active(
       X11WindowMatches(display, active_window, ui_->main->window()));
   if (ui_->stream) {
-    (*ui_->stream)
-        ->set_window_active(
-            X11WindowMatches(display, active_window, (*ui_->stream)->window()));
+    const bool stream_active =
+        X11WindowMatches(display, active_window, (*ui_->stream)->window());
+    (*ui_->stream)->set_window_active(stream_active);
+    SetStreamKeyboardFocus(stream_active);
+  } else {
+    SetStreamKeyboardFocus(false);
   }
 }
 #endif
+
+void GuiApplication::SetStreamKeyboardFocus(bool focused) {
+  if (focus_on_stream_window_ == focused) {
+    return;
+  }
+
+  focus_on_stream_window_ = focused;
+  if (!focused) {
+    keyboard_.ForceReleasePressedKeys();
+  }
+}
+
+void GuiApplication::SyncStreamKeyboardFocus() {
+  if (!ui_ || !ui_->stream || !(*ui_->stream)->window().is_visible()) {
+    SetStreamKeyboardFocus(false);
+    return;
+  }
+
+#if _WIN32
+  const HWND stream_hwnd = (*ui_->stream)->window().win32_hwnd();
+  SetStreamKeyboardFocus(stream_hwnd != nullptr &&
+                         GetForegroundWindow() == stream_hwnd);
+#elif defined(__APPLE__)
+  SetStreamKeyboardFocus(IsStreamWindowActive());
+#endif
+}
 
 void GuiApplication::SyncStreamWindow() {
   bool has_sessions = false;
@@ -2306,6 +2343,7 @@ void GuiApplication::SyncStreamWindow() {
     }
   }
   if (!has_sessions) {
+    SetStreamKeyboardFocus(false);
 #if defined(__APPLE__)
     SetStreamWindowFullscreen(false);
 #endif
@@ -2787,14 +2825,25 @@ void GuiApplication::SelectStreamTab(int index) {
   if (!ui_ || index < 0 || index >= static_cast<int>(ui_->tab_ids.size())) {
     return;
   }
-  focused_remote_id_ = ui_->tab_ids[index];
-  controlled_remote_id_ = focused_remote_id_;
+  const std::string selected_remote_id = ui_->tab_ids[index];
+  if (!controlled_remote_id_.empty() &&
+      controlled_remote_id_ != selected_remote_id) {
+    keyboard_.ForceReleasePressedKeys();
+  }
+  focused_remote_id_ = selected_remote_id;
+  controlled_remote_id_ = selected_remote_id;
   std::shared_lock lock(remote_sessions_mutex_);
   for (auto& [id, props] : remote_sessions_) {
     if (props) {
       props->tab_selected_ = id == focused_remote_id_;
     }
   }
+  const auto selected = remote_sessions_.find(selected_remote_id);
+  start_keyboard_capturer_ =
+      selected != remote_sessions_.end() && selected->second &&
+      selected->second->control_mouse_ &&
+      selected->second->connection_status_.load() ==
+          ConnectionStatus::Connected;
 }
 
 void GuiApplication::ReorderStreamTab(int from, float drop_x, float tab_width) {
@@ -2982,10 +3031,23 @@ void GuiApplication::SendKeyInput(const std::string& text, bool pressed,
   (void)alt;
   (void)shift;
   (void)meta;
-  if (auto props = SelectedSession()) {
-    controlled_remote_id_ = props->remote_id_;
-    focused_remote_id_ = props->remote_id_;
+  auto props = SelectedSession();
+  if (!props || !props->peer_ || !props->control_mouse_ ||
+      props->connection_status_.load() != ConnectionStatus::Connected) {
+    return;
   }
+
+  controlled_remote_id_ = props->remote_id_;
+  focused_remote_id_ = props->remote_id_;
+
+  // Native hooks see the same physical key before Slint does. When a native
+  // hook is active, forwarding the FocusScope callback as well would duplicate
+  // the event on platforms whose hook does not consume the local key.
+  if (keyboard_capturer_is_started_ &&
+      !keyboard_capturer_uses_window_events_) {
+    return;
+  }
+
   const int virtual_key = SlintKeyToWindowsVk(text);
   if (virtual_key >= 0) {
     keyboard_.SendKeyCommand(virtual_key, pressed);

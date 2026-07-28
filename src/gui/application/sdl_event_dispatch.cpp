@@ -200,7 +200,8 @@ void GuiApplication::ProcessSdlEvent(const SDL_Event &event) {
 
   case SDL_EVENT_KEY_DOWN:
   case SDL_EVENT_KEY_UP:
-    if (keyboard_capturer_is_started_ && keyboard_capturer_uses_sdl_events_ &&
+    if (keyboard_capturer_is_started_ &&
+        keyboard_capturer_uses_window_events_ &&
         focus_on_stream_window_ && stream_window_ &&
         SDL_GetWindowID(stream_window_) == event.key.windowID) {
       ProcessKeyboardEvent(event);

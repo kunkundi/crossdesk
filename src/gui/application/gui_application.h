@@ -35,6 +35,8 @@ private:
   void SyncConnectionDialog();
   void SyncPlatformDialogs();
   void SyncStreamWindow();
+  void SyncStreamKeyboardFocus();
+  void SetStreamKeyboardFocus(bool focused);
   void SyncServerWindow();
 #if defined(__linux__) && !defined(__APPLE__)
   void SyncXWaylandWindowActivation();

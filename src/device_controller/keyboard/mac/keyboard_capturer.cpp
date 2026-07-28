@@ -1,5 +1,6 @@
 #include "keyboard_capturer.h"
 
+#include <cstdint>
 #include <unordered_map>
 
 #include "keyboard_converter.h"
@@ -10,6 +11,7 @@ namespace crossdesk {
 static OnKeyAction g_on_key_action = nullptr;
 static void* g_user_ptr = nullptr;
 static std::unordered_map<int, int> g_unmapped_keycode_to_vk;
+constexpr int64_t kCrossDeskInjectedKeyboardEvent = 0x43524f5353444553;
 
 static int VkCodeFromUnicode(UniChar ch) {
   if (ch >= 'a' && ch <= 'z') {
@@ -103,6 +105,10 @@ static int ResolveVkCodeFromMacEvent(CGEventRef event, CGKeyCode key_code,
 CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type,
                          CGEventRef event, void* userInfo) {
   (void)proxy;
+  if (CGEventGetIntegerValueField(event, kCGEventSourceUserData) ==
+      kCrossDeskInjectedKeyboardEvent) {
+    return event;
+  }
   if (!g_on_key_action) {
     return event;
   }
@@ -302,6 +308,8 @@ int KeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down,
     }
 
     CGEventSetFlags(event, ToCGEventFlags(injected_flags));
+    CGEventSetIntegerValueField(event, kCGEventSourceUserData,
+                               kCrossDeskInjectedKeyboardEvent);
     CGEventPost(kCGHIDEventTap, event);
     CFRelease(event);
 
@@ -314,6 +322,8 @@ int KeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down,
         LOG_ERROR("CGEventCreateKeyboardEvent failed for fn release");
         return -1;
       }
+      CGEventSetIntegerValueField(fn_release_event, kCGEventSourceUserData,
+                                 kCrossDeskInjectedKeyboardEvent);
       CGEventPost(kCGHIDEventTap, fn_release_event);
       CFRelease(fn_release_event);
     }

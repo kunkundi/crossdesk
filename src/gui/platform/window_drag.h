@@ -16,6 +16,10 @@ bool HideDisabledMainWindowZoomButton();
 // fullscreen action with an immediate, single-window fullscreen transition.
 bool ConfigureStreamWindowLiveResize();
 
+// Returns whether the configured stream window is currently the active AppKit
+// key window.
+bool IsStreamWindowActive();
+
 // Enters or leaves the stream window's animation-free fullscreen mode.
 bool SetStreamWindowFullscreen(bool fullscreen);
 bool IsStreamWindowFullscreen();

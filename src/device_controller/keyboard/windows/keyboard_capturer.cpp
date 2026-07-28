@@ -49,6 +49,9 @@ static bool PreferSideSpecificVkInjection(int key_code) {
 LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
   if (nCode == HC_ACTION && g_on_key_action) {
     KBDLLHOOKSTRUCT* kbData = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
+    if ((kbData->flags & LLKHF_INJECTED) != 0) {
+      return CallNextHookEx(NULL, nCode, wParam, lParam);
+    }
     const int key_code = NormalizeModifierVkCode(kbData);
 
     if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
