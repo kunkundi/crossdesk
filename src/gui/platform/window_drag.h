@@ -8,9 +8,10 @@ namespace crossdesk {
 // left-mouse-down event. Returns false when no suitable native event exists.
 bool StartNativeWindowDrag();
 
-// Hides the disabled native zoom button on CrossDesk's fixed-size main
-// window. Returns true once the matching AppKit window has been configured.
-bool HideDisabledMainWindowZoomButton();
+// Normalizes the native title bar and hides the disabled zoom button on
+// CrossDesk's fixed-size main window. Returns true once the matching AppKit
+// window has been configured.
+bool ConfigureMainWindowTitlebar();
 
 // Configures live resize and replaces the stream window's native Space
 // fullscreen action with an immediate, single-window fullscreen transition.

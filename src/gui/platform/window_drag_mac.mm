@@ -79,7 +79,7 @@ bool StartNativeWindowDrag() {
   }
 }
 
-bool HideDisabledMainWindowZoomButton() {
+bool ConfigureMainWindowTitlebar() {
   @autoreleasepool {
     for (NSWindow *window in [NSApp windows]) {
       if (![window.title isEqualToString:@"CrossDesk"]) {
@@ -94,6 +94,17 @@ bool HideDisabledMainWindowZoomButton() {
         continue;
       }
 
+      // Slint creates its winit windows with transparency enabled. That makes
+      // the native title-bar material depend on the SDK used to build the
+      // Slint runtime. The main window paints an opaque white surface, so make
+      // the corresponding AppKit window opaque as well and explicitly retain
+      // the standard, non-overlay title bar.
+      window.styleMask =
+          window.styleMask & ~NSWindowStyleMaskFullSizeContentView;
+      window.titleVisibility = NSWindowTitleVisible;
+      window.titlebarAppearsTransparent = NO;
+      window.backgroundColor = NSColor.whiteColor;
+      window.opaque = YES;
       zoom_button.hidden = YES;
       return true;
     }

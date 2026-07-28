@@ -2007,7 +2007,7 @@ void GuiApplication::SyncMainWindow() {
   }
 #if defined(__APPLE__)
   if (ui_->main_native_titlebar_attempts > 0) {
-    if (HideDisabledMainWindowZoomButton()) {
+    if (ConfigureMainWindowTitlebar()) {
       ui_->main_native_titlebar_attempts = 0;
     } else {
       --ui_->main_native_titlebar_attempts;
