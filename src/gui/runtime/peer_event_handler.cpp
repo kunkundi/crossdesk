@@ -170,10 +170,6 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
     runtime->is_client_mode_ = true;
     runtime->show_connection_status_window_ = true;
     props->connection_status_.store(status);
-    if (status != ConnectionStatus::Connecting &&
-        status != ConnectionStatus::Gathering) {
-      props->connection_attempt_active_.store(false);
-    }
 
     switch (status) {
       case ConnectionStatus::Connected: {

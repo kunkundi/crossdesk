@@ -17,11 +17,6 @@ namespace crossdesk {
 
 namespace {
 constexpr auto kPresenceProbeTimeout = std::chrono::seconds(5);
-constexpr auto kConnectionAttemptTimeout = std::chrono::seconds(20);
-bool IsConnectionAttemptPending(ConnectionStatus status) {
-  return status == ConnectionStatus::Connecting ||
-         status == ConnectionStatus::Gathering;
-}
 }  // namespace
 
 void GuiRuntime::HandleConnectionStatusChange() {
@@ -95,7 +90,7 @@ void GuiRuntime::HandlePendingPresenceProbe() {
   show_offline_warning_window_ = true;
 }
 
-void GuiRuntime::HandleConnectionTimeouts() {
+void GuiRuntime::HandlePresenceProbeTimeout() {
   const auto now = std::chrono::steady_clock::now();
 
   bool presence_probe_timed_out = false;
@@ -120,44 +115,6 @@ void GuiRuntime::HandleConnectionTimeouts() {
         localization::device_offline[localization_language_index_];
     show_offline_warning_window_ = true;
     LOG_WARN("Presence probe timed out for [{}]", presence_remote_id);
-  }
-
-  bool rejoin_state_changed = false;
-  for (auto& [_, props] : remote_sessions_) {
-    if (!props || !props->connection_attempt_active_.load()) {
-      continue;
-    }
-
-    const ConnectionStatus status = props->connection_status_.load();
-    if (!IsConnectionAttemptPending(status)) {
-      props->connection_attempt_active_.store(false);
-      continue;
-    }
-
-    if (now - props->connection_attempt_started_at_ <
-        kConnectionAttemptTimeout) {
-      continue;
-    }
-
-    LOG_WARN("Connection to [{}] timed out, status={}", props->remote_id_,
-             static_cast<int>(status));
-    props->connection_attempt_active_.store(false);
-    props->connection_established_ = false;
-    props->rejoin_ = false;
-    props->connection_status_.store(ConnectionStatus::Failed);
-    focused_remote_id_ = props->remote_id_;
-    show_connection_status_window_ = true;
-    rejoin_state_changed = true;
-  }
-
-  if (rejoin_state_changed) {
-    need_to_rejoin_ = false;
-    for (const auto& [_, props] : remote_sessions_) {
-      if (props && props->rejoin_) {
-        need_to_rejoin_ = true;
-        break;
-      }
-    }
   }
 }
 
@@ -455,8 +412,6 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
   auto props = remote_sessions_[remote_id];
   if (!props->connection_established_) {
     props->connection_status_.store(ConnectionStatus::Connecting);
-    props->connection_attempt_active_.store(true);
-    props->connection_attempt_started_at_ = std::chrono::steady_clock::now();
     show_connection_status_window_ = true;
 
     props->remember_password_ = remember_password;

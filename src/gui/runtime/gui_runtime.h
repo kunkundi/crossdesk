@@ -45,7 +45,7 @@ class GuiRuntime : protected gui_detail::GuiState {
   void HandleRecentConnections();
   void HandleConnectionStatusChange();
   void HandlePendingPresenceProbe();
-  void HandleConnectionTimeouts();
+  void HandlePresenceProbeTimeout();
   void HandleServerControllerDisconnected(const std::string& remote_id,
                                           const char* reason);
   void HandleWindowsServiceIntegration();

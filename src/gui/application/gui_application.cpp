@@ -1833,7 +1833,7 @@ void GuiApplication::Tick() {
   }
   HandleConnectionStatusChange();
   HandlePendingPresenceProbe();
-  HandleConnectionTimeouts();
+  HandlePresenceProbeTimeout();
   HandleWindowsServiceIntegration();
 #if defined(__linux__) && !defined(__APPLE__)
   SyncXWaylandWindowActivation();
@@ -2839,11 +2839,11 @@ void GuiApplication::SelectStreamTab(int index) {
     }
   }
   const auto selected = remote_sessions_.find(selected_remote_id);
-  start_keyboard_capturer_ =
-      selected != remote_sessions_.end() && selected->second &&
-      selected->second->control_mouse_ &&
-      selected->second->connection_status_.load() ==
-          ConnectionStatus::Connected;
+  start_keyboard_capturer_ = selected != remote_sessions_.end() &&
+                             selected->second &&
+                             selected->second->control_mouse_ &&
+                             selected->second->connection_status_.load() ==
+                                 ConnectionStatus::Connected;
 }
 
 void GuiApplication::ReorderStreamTab(int from, float drop_x, float tab_width) {
@@ -3043,8 +3043,7 @@ void GuiApplication::SendKeyInput(const std::string& text, bool pressed,
   // Native hooks see the same physical key before Slint does. When a native
   // hook is active, forwarding the FocusScope callback as well would duplicate
   // the event on platforms whose hook does not consume the local key.
-  if (keyboard_capturer_is_started_ &&
-      !keyboard_capturer_uses_window_events_) {
+  if (keyboard_capturer_is_started_ && !keyboard_capturer_uses_window_events_) {
     return;
   }
 

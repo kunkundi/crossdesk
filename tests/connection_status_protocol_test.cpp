@@ -104,16 +104,22 @@ int main() {
                        "return localization::device_offline[language];");
   ok &= ExpectContains("runtime_state.h", runtime_state_h,
                        "pending_presence_probe_started_at_");
-  ok &= ExpectContains("remote_session.h", remote_session_h,
-                       "connection_attempt_started_at_");
   ok &= ExpectContains("connection_runtime.cpp", connection_runtime_cpp,
-                       "HandleConnectionTimeouts");
+                       "HandlePresenceProbeTimeout");
   ok &= ExpectContains("connection_runtime.cpp", connection_runtime_cpp,
                        "kPresenceProbeTimeout");
-  ok &= ExpectContains("connection_runtime.cpp", connection_runtime_cpp,
-                       "kConnectionAttemptTimeout");
-  ok &= ExpectContains("connection_runtime.cpp", connection_runtime_cpp,
-                       "connection_attempt_started_at_");
+  ok &= ExpectNotContains("remote_session.h", remote_session_h,
+                          "connection_attempt_started_at_");
+  ok &= ExpectNotContains("remote_session.h", remote_session_h,
+                          "connection_attempt_active_");
+  ok &= ExpectNotContains("connection_runtime.cpp", connection_runtime_cpp,
+                          "kConnectionAttemptTimeout");
+  ok &= ExpectNotContains("connection_runtime.cpp", connection_runtime_cpp,
+                          "ConnectionStatus::Failed");
+  ok &= ExpectContains("peer_event_handler.cpp", peer_event_handler_cpp,
+                       "props->connection_status_.store(status);");
+  ok &= ExpectContains("peer_event_handler.cpp", peer_event_handler_cpp,
+                       "case ConnectionStatus::Failed:");
   ok &= ExpectContains("connection_runtime.cpp", connection_runtime_cpp,
                        "HandleServerControllerDisconnected");
   ok &= ExpectContains("peer_event_handler.cpp", peer_event_handler_cpp,
