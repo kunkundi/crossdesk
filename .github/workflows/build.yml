@@ -108,7 +108,7 @@ jobs:
           CUDA_PATH: /usr/local/cuda
           XMAKE_GLOBALDIR: /data
         run: |
-          xmake f --CROSSDESK_VERSION=${LEGAL_VERSION} --USE_CUDA=true --root -y
+          xmake f --CROSSDESK_VERSION=${LEGAL_VERSION} --USE_CUDA=true --USE_WAYLAND=true --root -y
           xmake b -vy --root crossdesk
 
       - name: Package
