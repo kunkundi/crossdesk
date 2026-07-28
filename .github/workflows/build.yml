@@ -103,6 +103,23 @@ jobs:
       - name: Verify Linux build image
         run: verify-crossdesk-build-image
 
+      - name: Ensure Wayland build dependencies
+        shell: bash
+        run: |
+          if pkg-config --exists dbus-1 libdrm libpipewire-0.3 libspa-0.2; then
+            exit 0
+          fi
+
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            libdbus-1-dev \
+            libdrm-dev \
+            libpipewire-0.3-dev \
+            libspa-0.2-dev
+          rm -rf /var/lib/apt/lists/*
+
+          pkg-config --exists dbus-1 libdrm libpipewire-0.3 libspa-0.2
+
       - name: Build CrossDesk
         env:
           CUDA_PATH: /usr/local/cuda

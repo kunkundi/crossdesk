@@ -52,9 +52,11 @@ RUN apt-get update \
         libfreetype6-dev \
         libgl1-mesa-dev \
         libmount-dev \
+        libpipewire-0.3-dev \
         libpulse-dev \
         libreadline-dev \
         libsndio-dev \
+        libspa-0.2-dev \
         libssl-dev \
         libtool \
         libx11-dev \
@@ -134,7 +136,7 @@ COPY submodules/minirtc/thirdparty ./submodules/minirtc/thirdparty
 # CrossDesk's exact dependency graph. Source files are intentionally excluded
 # from the Docker context; source-only changes therefore reuse this layer.
 RUN xmake repo -u --root \
-    && xmake f -m release --USE_CUDA=true --root -y \
+    && xmake f -m release --USE_CUDA=true --USE_WAYLAND=true --root -y \
     && rm -rf /data/.xmake/cache /tmp/crossdesk-dependencies \
     && mkdir -p /workspace
 

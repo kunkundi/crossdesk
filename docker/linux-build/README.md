@@ -1,7 +1,8 @@
 # CrossDesk Linux 构建镜像
 
 这个目录维护 CrossDesk 专用的 Ubuntu 22.04 构建环境。镜像包含 xmake、
-Rust、Linux 开发库以及根据项目 `xmake.lua` 提前编译好的依赖。
+Rust、Linux 开发库（包括 D-Bus、DRM、PipeWire 和 SPA）以及根据项目
+`xmake.lua` 提前编译好的依赖。
 
 ## 发布方式
 

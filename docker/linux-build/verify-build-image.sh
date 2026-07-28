@@ -30,7 +30,17 @@ rustc --version | grep -F "rustc ${EXPECTED_RUST_VERSION}" >/dev/null
 cargo --version >/dev/null
 cmake --version >/dev/null
 g++ --version >/dev/null
-pkg-config --exists xft
+for pkg_config_package in \
+    dbus-1 \
+    libdrm \
+    libpipewire-0.3 \
+    libspa-0.2 \
+    xft; do
+    if ! pkg-config --exists "${pkg_config_package}"; then
+        echo "Required pkg-config package is missing: ${pkg_config_package}" >&2
+        exit 1
+    fi
+done
 
 for package_path in \
     "s/slint" \
