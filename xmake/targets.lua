@@ -73,6 +73,11 @@ function setup_targets()
         set_default(false)
         add_files("tests/connection_status_protocol_test.cpp")
 
+    target("video_callback_lifetime_test")
+        set_kind("binary")
+        set_default(false)
+        add_files("tests/video_callback_lifetime_test.cpp")
+
     target("windows_manifest_resource_test")
         set_kind("binary")
         set_default(false)
