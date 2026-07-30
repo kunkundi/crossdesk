@@ -64,10 +64,12 @@ function setup_platform_settings()
                 "/usr/local/include/pipewire-0.3",
                 "/usr/include/pipewire",
                 "/usr/local/include/pipewire",
+                "/opt/crossdesk-pipewire-sdk/include/pipewire-0.3",
                 "/usr/include/spa-0.2",
                 "/usr/local/include/spa-0.2",
                 "/usr/include/spa",
-                "/usr/local/include/spa"
+                "/usr/local/include/spa",
+                "/opt/crossdesk-pipewire-sdk/include/spa-0.2"
             }, {system = true})
             for _, include_dir in ipairs(collect_dbus_arch_include_dirs()) do
                 add_includedirs(include_dir, {system = true})

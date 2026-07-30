@@ -7,7 +7,7 @@ if [[ $# -lt 1 || $# -gt 2 ]]; then
 fi
 
 INPUT_PATH="$1"
-MAXIMUM_VERSION="${2:-2.35}"
+MAXIMUM_VERSION="${2:-2.31}"
 
 verify_elf() {
     local elf_file="$1"

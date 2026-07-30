@@ -26,8 +26,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IMAGE_NAME: crossdesk/ubuntu22.04
-  STACK_TAG: buildenv-cuda12.6.3-xmake3.0.9-rust1.92.0
+  IMAGE_NAME: crossdesk/ubuntu20.04
+  STACK_TAG: buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.0.9-rust1.92.0
+  CMAKE_VERSION: 3.31.6
   XMAKE_VERSION: 3.0.9
   RUST_VERSION: 1.92.0
   RUSTUP_VERSION: 1.28.2
@@ -44,11 +45,11 @@ jobs:
           - arch: amd64
             platform: linux/amd64
             runner: ubuntu-24.04
-            base_image: nvidia/cuda:12.6.3-devel-ubuntu22.04
+            base_image: nvidia/cuda:12.6.3-devel-ubuntu20.04
           - arch: arm64
             platform: linux/arm64
             runner: ubuntu-24.04-arm
-            base_image: ubuntu:22.04
+            base_image: ubuntu:20.04
     steps:
       - name: Set candidate tag
         id: image
@@ -86,6 +87,7 @@ jobs:
           sbom: false
           build-args: |
             BASE_IMAGE=${{ matrix.base_image }}
+            CMAKE_VERSION=${{ env.CMAKE_VERSION }}
             XMAKE_VERSION=${{ env.XMAKE_VERSION }}
             RUST_VERSION=${{ env.RUST_VERSION }}
             RUSTUP_VERSION=${{ env.RUSTUP_VERSION }}

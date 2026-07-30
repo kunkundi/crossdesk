@@ -104,6 +104,15 @@ OUTPUT_FILE="$PROJECT_ROOT/${PKG_NAME}-linux-${DEBIAN_ARCH}-${APP_VERSION}.deb"
 install -d "$DEBIAN_DIR" "$BIN_DIR" "$PRIVATE_DIR" "$DESKTOP_DIR"
 install -m 0755 "$BUILD_BINARY" "$PRIVATE_DIR/crossdesk-bin"
 
+# PipeWire is deliberately optional. The Wayland capturer resolves PipeWire
+# 0.3 with dlopen() so the same package can run on Ubuntu 20.04 without the
+# runtime while using the host runtime on newer Ubuntu releases.
+if readelf -d "$BUILD_BINARY" \
+    | grep -qE 'Shared library: \[libpipewire-0\.3\.so'; then
+    echo "CrossDesk must not link directly to the optional PipeWire runtime" >&2
+    exit 1
+fi
+
 # Slint is intentionally built as a shared library. Keep that runtime private
 # to CrossDesk instead of relying on a non-existent distribution package.
 SLINT_NEEDED="$(readelf -d "$BUILD_BINARY" | sed -n \
@@ -147,7 +156,7 @@ Version: $DEB_VERSION
 Architecture: $DEBIAN_ARCH
 Maintainer: $MAINTAINER
 Description: $DESCRIPTION
-Depends: libc6 (>= 2.35), libstdc++6 (>= 9), libx11-6, libxext6,
+Depends: libc6 (>= 2.31), libstdc++6 (>= 10), libx11-6, libxext6,
  libxrender1, libxft2, libxrandr2, libxfixes3, libxcb1, libxcb-randr0,
  libxcb-xtest0, libxcb-xinerama0, libxcb-shape0, libxcb-xkb1,
  libxcb-xfixes0, libxv1, libxtst6, $ALSA_RUNTIME_DEP, libsndio7.0,
