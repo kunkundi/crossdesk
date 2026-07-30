@@ -32,7 +32,7 @@ CrossDesk is an experimental application of [MiniRTC](https://github.com/kunkund
 |-----------|-----------------|
 | **Windows** | Windows 10 or later (64-bit) |
 | **macOS** | macOS Intel 15.0 or later *(versions between 14.0 and 15.0 can be built manually for compatibility)*<br>macOS Apple Silicon 14.0 or later |
-| **Linux** | Ubuntu 22.04 or later *(older versions can be built manually for compatibility)* |
+| **Linux** | Ubuntu 20.04 or later |
 
 
 ## Usage
@@ -85,27 +85,41 @@ If the remote Windows service is not installed, not running, or temporarily unav
 
 Requirements:
 - [xmake](https://xmake.io/#/guide/installation)
-- [cmake](https://cmake.org/download/)
+- [cmake](https://cmake.org/download/) 3.21 or later
 
 ### Linux
 
-Linux builds currently support Ubuntu 22.04 or later on amd64 and arm64. Install the base build dependencies first:
+Linux builds support Ubuntu 20.04 or later on amd64 and arm64. Release packages
+use Ubuntu 20.04/glibc 2.31 as their compatibility baseline. Install the base
+build dependencies first:
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
-  git curl unzip build-essential cmake pkg-config binutils dpkg-dev \
+  git curl unzip build-essential gcc-10 g++-10 python3-pip \
+  pkg-config binutils dpkg-dev \
   libx11-dev libxext-dev libxrender-dev libxft-dev libxrandr-dev \
   libxinerama-dev libxcursor-dev libxi-dev libxfixes-dev libxv-dev \
   libxtst-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev \
   libxcb-shape0-dev libxcb-xkb-dev libxcb-xfixes0-dev libxcb-shm0-dev \
   libasound2-dev libsndio-dev libpulse-dev
+
+# Ubuntu 20.04's CMake 3.16 is too old for Slint 1.17.
+python3 -m pip install --user cmake==3.31.6
+export PATH="$HOME/.local/bin:$PATH"
 ```
+
+Ubuntu 20.04's default GCC 9 lacks parts of the C++20 standard library needed
+by Slint's C++ API, so the commands above install GCC 10 and the configuration
+below selects it explicitly.
 
 Install the optional dependencies when Wayland capture or DRM capture is enabled:
 
 ```bash
-sudo apt-get install -y libdbus-1-dev libpipewire-0.3-dev libdrm-dev
+sudo apt-get install -y libdbus-1-dev libdrm-dev
+
+# Ubuntu 22.04 and later can alternatively use the distribution packages.
+# sudo apt-get install -y libpipewire-0.3-dev libspa-0.2-dev
 ```
 
 Clone the submodules and build a release binary:
@@ -117,7 +131,12 @@ cd crossdesk
 # Run this when the repository has already been cloned
 git submodule update --init --recursive
 
-xmake f -m release --USE_CUDA=false -y
+# Ubuntu 20.04 has no PipeWire 0.3 development package. Install the
+# header-only SDK used during compilation. Skip this when the distribution's
+# PipeWire 0.3 development packages are already installed.
+sudo ./docker/linux-build/install-pipewire-sdk.sh
+
+xmake f -m release --USE_CUDA=false --cc=gcc-10 --cxx=g++-10 -y
 xmake b -vy crossdesk
 ```
 
@@ -126,7 +145,8 @@ The amd64 binary is written to `build/linux/x86_64/release/crossdesk`; the arm64
 Example configuration with Wayland and DRM capture enabled:
 
 ```bash
-xmake f -m release --USE_WAYLAND=true --USE_DRM=true --USE_CUDA=false -y
+xmake f -m release --USE_WAYLAND=true --USE_DRM=true --USE_CUDA=false \
+  --cc=gcc-10 --cxx=g++-10 -y
 xmake b -vy crossdesk
 ```
 
@@ -141,6 +161,9 @@ Build a Debian package after compiling a release binary on the matching architec
 ```
 
 The package scripts install the shared Slint runtime in the private `/usr/lib/crossdesk` directory, so users do not need to install `libslint_cpp.so` separately.
+PipeWire is not a mandatory runtime dependency. CrossDesk detects the host's
+PipeWire 0.3 runtime dynamically and can still use X11 capture (and DRM when
+enabled at build time) when it is unavailable.
 
 ### Common build options
 
@@ -163,8 +186,8 @@ xmake r crossdesk
 
 #### Development Without CUDA Environment
 
-For **Linux developers who do not have a CUDA environment installed and want to enable hardware codec feature**, a preconfigured [Ubuntu 22.04 Docker image](https://hub.docker.com/r/crossdesk/ubuntu22.04) is provided.  
-This image comes with all required build dependencies and allows you to build the project directly inside the container without any additional setup.
+For **Linux developers who do not have a CUDA environment installed and want to enable hardware codec feature**, a preconfigured [Ubuntu 20.04 compatibility build image](https://hub.docker.com/r/crossdesk/ubuntu20.04) is provided.
+This image contains the required build dependencies and produces a single Linux package compatible with the glibc 2.31 baseline.
 
 After entering the container, download the project and run:
 ```

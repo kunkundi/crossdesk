@@ -29,12 +29,12 @@ jobs:
         include:
           - arch: amd64
             runner: ubuntu-24.04
-            image: crossdesk/ubuntu22.04:buildenv-cuda12.6.3-xmake3.0.9-rust1.92.0
+            image: crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.0.9-rust1.92.0
             package_script: ./scripts/linux/pkg_amd64.sh
 
           - arch: arm64
             runner: ubuntu-24.04-arm
-            image: crossdesk/ubuntu22.04:buildenv-cuda12.6.3-xmake3.0.9-rust1.92.0
+            image: crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.0.9-rust1.92.0
             package_script: ./scripts/linux/pkg_arm64.sh
 
     container:
@@ -106,26 +106,30 @@ jobs:
       - name: Ensure Wayland build dependencies
         shell: bash
         run: |
-          if pkg-config --exists dbus-1 libdrm libpipewire-0.3 libspa-0.2; then
+          if pkg-config --exists dbus-1 libdrm && \
+             test -f /opt/crossdesk-pipewire-sdk/include/pipewire-0.3/pipewire/pipewire.h && \
+             test -f /opt/crossdesk-pipewire-sdk/include/spa-0.2/spa/param/video/format-utils.h; then
             exit 0
           fi
 
           apt-get update
           apt-get install -y --no-install-recommends \
             libdbus-1-dev \
-            libdrm-dev \
-            libpipewire-0.3-dev \
-            libspa-0.2-dev
+            libdrm-dev
           rm -rf /var/lib/apt/lists/*
 
-          pkg-config --exists dbus-1 libdrm libpipewire-0.3 libspa-0.2
+          install-crossdesk-pipewire-sdk
+          pkg-config --exists dbus-1 libdrm
+          test -f /opt/crossdesk-pipewire-sdk/include/pipewire-0.3/pipewire/pipewire.h
+          test -f /opt/crossdesk-pipewire-sdk/include/spa-0.2/spa/param/video/format-utils.h
 
       - name: Build CrossDesk
         env:
           CUDA_PATH: /usr/local/cuda
           XMAKE_GLOBALDIR: /data
         run: |
-          xmake f --CROSSDESK_VERSION=${LEGAL_VERSION} --USE_CUDA=true --USE_WAYLAND=true --root -y
+          xmake f --CROSSDESK_VERSION=${LEGAL_VERSION} --USE_CUDA=true --USE_WAYLAND=true \
+            --cc=gcc-10 --cxx=g++-10 --root -y
           xmake b -vy --root crossdesk
 
       - name: Package
@@ -133,13 +137,19 @@ jobs:
           chmod +x ${{ matrix.package_script }}
           ${{ matrix.package_script }} ${LEGAL_VERSION}
 
-      - name: Verify packaged Ubuntu 22.04 glibc baseline
+      - name: Verify Ubuntu 20.04 package dependency resolution
+        run: |
+          PACKAGE_FILE="${GITHUB_WORKSPACE}/crossdesk-linux-${{ matrix.arch }}-${LEGAL_VERSION}.deb"
+          apt-get update
+          apt-get install --simulate "${PACKAGE_FILE}"
+
+      - name: Verify packaged Ubuntu 20.04 glibc baseline
         run: |
           PACKAGE_FILE="${GITHUB_WORKSPACE}/crossdesk-linux-${{ matrix.arch }}-${LEGAL_VERSION}.deb"
           VERIFY_DIR="${RUNNER_TEMP}/crossdesk-glibc-${{ matrix.arch }}"
           install -d "${VERIFY_DIR}"
           dpkg-deb --extract "${PACKAGE_FILE}" "${VERIFY_DIR}"
-          verify-crossdesk-glibc-baseline "${VERIFY_DIR}" 2.35
+          verify-crossdesk-glibc-baseline "${VERIFY_DIR}" 2.31
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
