@@ -136,17 +136,23 @@ git submodule update --init --recursive
 # PipeWire 0.3 development packages are already installed.
 sudo ./docker/linux-build/install-pipewire-sdk.sh
 
-xmake f -m release --USE_CUDA=false --cc=gcc-10 --cxx=g++-10 -y
+xmake f -c -m release --USE_CUDA=false --toolchain=gcc-10 -y
 xmake b -vy crossdesk
 ```
+
+Use `--toolchain=gcc-10` so that both CrossDesk and third-party packages such
+as libyuv, which xmake builds during configuration, use GCC 10. Specifying only
+`--cc`/`--cxx` may still let dependency builds fall back to the system
+`/bin/cc` and `/bin/c++`. Keep `-c` when switching compilers to clear the old
+configuration.
 
 The amd64 binary is written to `build/linux/x86_64/release/crossdesk`; the arm64 binary is written to `build/linux/arm64/release/crossdesk`.
 
 Example configuration with Wayland and DRM capture enabled:
 
 ```bash
-xmake f -m release --USE_WAYLAND=true --USE_DRM=true --USE_CUDA=false \
-  --cc=gcc-10 --cxx=g++-10 -y
+xmake f -c -m release --USE_WAYLAND=true --USE_DRM=true --USE_CUDA=false \
+  --toolchain=gcc-10 -y
 xmake b -vy crossdesk
 ```
 

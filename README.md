@@ -127,17 +127,21 @@ git submodule update --init --recursive
 # 已安装发行版 PipeWire 0.3 开发包时可跳过此步骤。
 sudo ./docker/linux-build/install-pipewire-sdk.sh
 
-xmake f -m release --USE_CUDA=false --cc=gcc-10 --cxx=g++-10 -y
+xmake f -c -m release --USE_CUDA=false --toolchain=gcc-10 -y
 xmake b -vy crossdesk
 ```
+
+这里应使用 `--toolchain=gcc-10`，以确保 CrossDesk 及 xmake 在配置阶段构建的
+libyuv 等第三方包都使用 GCC 10。只指定 `--cc`/`--cxx` 时，依赖安装可能仍回退到
+系统默认的 `/bin/cc` 和 `/bin/c++`。`-c` 会清除旧配置，切换编译器时必须保留。
 
 amd64 构建结果位于 `build/linux/x86_64/release/crossdesk`，arm64 构建结果位于 `build/linux/arm64/release/crossdesk`。
 
 启用 Wayland 和 DRM 的配置示例：
 
 ```bash
-xmake f -m release --USE_WAYLAND=true --USE_DRM=true --USE_CUDA=false \
-  --cc=gcc-10 --cxx=g++-10 -y
+xmake f -c -m release --USE_WAYLAND=true --USE_DRM=true --USE_CUDA=false \
+  --toolchain=gcc-10 -y
 xmake b -vy crossdesk
 ```
 
