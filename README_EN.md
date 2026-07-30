@@ -85,7 +85,7 @@ If the remote Windows service is not installed, not running, or temporarily unav
 
 Requirements:
 - [xmake](https://xmake.io/#/guide/installation)
-- [cmake](https://cmake.org/download/) 3.21 or later
+- [cmake](https://cmake.org/download/) 3.21 or later (installed automatically by xmake when the system version is too old)
 
 ### Linux
 
@@ -103,11 +103,11 @@ sudo apt-get install -y \
   libxtst-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev \
   libxcb-shape0-dev libxcb-xkb-dev libxcb-xfixes0-dev libxcb-shm0-dev \
   libasound2-dev libsndio-dev libpulse-dev
-
-# Ubuntu 20.04's CMake 3.16 is too old for Slint 1.17.
-python3 -m pip install --user cmake==3.31.6
-export PATH="$HOME/.local/bin:$PATH"
 ```
+
+When Ubuntu 20.04's bundled CMake 3.16 is too old, xmake automatically
+downloads and uses CMake 3.21 or later; replacing the system CMake manually is
+not required.
 
 Ubuntu 20.04's default GCC 9 lacks parts of the C++20 standard library needed
 by Slint's C++ API, so the commands above install GCC 10 and the configuration

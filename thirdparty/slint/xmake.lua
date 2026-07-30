@@ -9,7 +9,7 @@ package("slint")
 
     add_configs("shared", {description = "Build the Slint runtime as a shared library", default = true, type = "boolean", readonly = true})
 
-    add_deps("cmake")
+    add_deps("cmake >=3.21 <4.0")
     add_deps("rust 1.92.0", {host = true, private = true, system = false})
 
     on_load(function(package)

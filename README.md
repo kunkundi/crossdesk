@@ -80,7 +80,7 @@ Windows 安装包会自动打包 `crossdesk_service.exe` 和 `crossdesk_session_
 
 依赖：
 - [xmake](https://xmake.io/#/guide/installation)
-- [cmake](https://cmake.org/download/) 3.21 及以上
+- [cmake](https://cmake.org/download/) 3.21 及以上（系统版本过低时由 xmake 自动安装）
 
 ### Linux
 
@@ -97,11 +97,10 @@ sudo apt-get install -y \
   libxtst-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev \
   libxcb-shape0-dev libxcb-xkb-dev libxcb-xfixes0-dev libxcb-shm0-dev \
   libasound2-dev libsndio-dev libpulse-dev
-
-# Ubuntu 20.04 自带的 CMake 3.16 不满足 Slint 1.17 的要求
-python3 -m pip install --user cmake==3.31.6
-export PATH="$HOME/.local/bin:$PATH"
 ```
+
+Ubuntu 20.04 自带的 CMake 3.16 不满足要求时，xmake 会自动下载并使用
+CMake 3.21 或更高版本，无需手动替换系统 CMake。
 
 Ubuntu 20.04 默认的 GCC 9 缺少 Slint C++ API 所需的部分 C++20 标准库，
 因此上述命令同时安装并在后续配置中指定 GCC 10。
