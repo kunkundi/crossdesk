@@ -3,6 +3,22 @@ function setup_targets()
 
     includes("submodules", "thirdparty")
 
+    local function copy_slint_runtime(target)
+        if not target:is_plat("windows") then
+            return
+        end
+
+        local slint = target:pkg("slint")
+        if not slint and target:dep("gui") then
+            slint = target:dep("gui"):pkg("slint")
+        end
+        assert(slint, "the Slint package is required to copy its Windows runtime")
+        local runtime_dir = path.join(slint:installdir(), "lib")
+        local runtime_dll = path.join(runtime_dir, "slint_cpp.dll")
+        assert(os.isfile(runtime_dll), "Slint runtime not found: " .. runtime_dll)
+        os.cp(runtime_dll, target:targetdir())
+    end
+
     local crossdesk_windows_resource = "scripts/windows/crossdesk.rc"
     if is_config("CROSSDESK_PORTABLE", true) then
         crossdesk_windows_resource = "scripts/windows/crossdesk_portable.rc"
@@ -57,6 +73,11 @@ function setup_targets()
         set_default(false)
         add_files("tests/connection_status_protocol_test.cpp")
 
+    target("video_callback_lifetime_test")
+        set_kind("binary")
+        set_default(false)
+        add_files("tests/video_callback_lifetime_test.cpp")
+
     target("windows_manifest_resource_test")
         set_kind("binary")
         set_default(false)
@@ -87,10 +108,15 @@ function setup_targets()
         set_kind("binary")
         set_languages("c++20")
         set_default(false)
+        if is_os("windows") then
+            add_cxxflags("/bigobj")
+        end
         add_packages("slint")
+        add_includedirs("src/gui/assets/fonts")
         add_rules("slint")
         add_files("src/gui/ui/crossdesk_ui.slint")
         add_files("tests/slint_ui_smoke_test.cpp")
+        after_build(copy_slint_runtime)
 
     target("version_checker_test")
         set_kind("binary")
@@ -240,6 +266,7 @@ function setup_targets()
             "src/gui/features/settings/*.cpp", "src/gui/ui/crossdesk_ui.slint")
         add_includedirs("src/gui", {public = true})
         if is_os("windows") then
+            add_cxxflags("/bigobj")
             add_files("src/gui/platform/tray/win_tray.cpp")
             add_includedirs("src/service/windows", {public = true})
         elseif is_os("macosx") then
@@ -295,4 +322,5 @@ function setup_targets()
             add_deps("wgc_plugin", "crossdesk_service", "crossdesk_session_helper")
             add_files(crossdesk_windows_resource)
         end
+        after_build(copy_slint_runtime)
 end

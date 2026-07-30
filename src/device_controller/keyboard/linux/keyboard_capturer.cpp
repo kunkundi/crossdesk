@@ -1,5 +1,9 @@
 #include "keyboard_capturer.h"
 
+#include <X11/Xlib.h>
+#include <X11/extensions/XTest.h>
+#include <X11/keysym.h>
+
 #include <errno.h>
 #include <poll.h>
 

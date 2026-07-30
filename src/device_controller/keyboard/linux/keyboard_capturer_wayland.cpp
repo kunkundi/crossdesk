@@ -5,6 +5,9 @@
 #include <map>
 
 #if defined(CROSSDESK_HAS_WAYLAND_CAPTURER) && CROSSDESK_HAS_WAYLAND_CAPTURER
+#include <X11/Xlib.h>
+#include <X11/keysym.h>
+
 #include <dbus/dbus.h>
 #endif
 

@@ -29,12 +29,12 @@ jobs:
         include:
           - arch: amd64
             runner: ubuntu-24.04
-            image: crossdesk/ubuntu22.04:buildenv-cuda12.6.3-xmake3.0.9-rust1.92.0
+            image: crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.0.9-rust1.92.0
             package_script: ./scripts/linux/pkg_amd64.sh
 
           - arch: arm64
             runner: ubuntu-24.04-arm
-            image: crossdesk/ubuntu22.04:buildenv-cuda12.6.3-xmake3.0.9-rust1.92.0
+            image: crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.0.9-rust1.92.0
             package_script: ./scripts/linux/pkg_arm64.sh
 
     container:
@@ -103,12 +103,33 @@ jobs:
       - name: Verify Linux build image
         run: verify-crossdesk-build-image
 
+      - name: Ensure Wayland build dependencies
+        shell: bash
+        run: |
+          if pkg-config --exists dbus-1 libdrm && \
+             test -f /opt/crossdesk-pipewire-sdk/include/pipewire-0.3/pipewire/pipewire.h && \
+             test -f /opt/crossdesk-pipewire-sdk/include/spa-0.2/spa/param/video/format-utils.h; then
+            exit 0
+          fi
+
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            libdbus-1-dev \
+            libdrm-dev
+          rm -rf /var/lib/apt/lists/*
+
+          install-crossdesk-pipewire-sdk
+          pkg-config --exists dbus-1 libdrm
+          test -f /opt/crossdesk-pipewire-sdk/include/pipewire-0.3/pipewire/pipewire.h
+          test -f /opt/crossdesk-pipewire-sdk/include/spa-0.2/spa/param/video/format-utils.h
+
       - name: Build CrossDesk
         env:
           CUDA_PATH: /usr/local/cuda
           XMAKE_GLOBALDIR: /data
         run: |
-          xmake f --CROSSDESK_VERSION=${LEGAL_VERSION} --USE_CUDA=true --root -y
+          xmake f --CROSSDESK_VERSION=${LEGAL_VERSION} --USE_CUDA=true --USE_WAYLAND=true \
+            --cc=gcc-10 --cxx=g++-10 --root -y
           xmake b -vy --root crossdesk
 
       - name: Package
@@ -116,13 +137,19 @@ jobs:
           chmod +x ${{ matrix.package_script }}
           ${{ matrix.package_script }} ${LEGAL_VERSION}
 
-      - name: Verify packaged Ubuntu 22.04 glibc baseline
+      - name: Verify Ubuntu 20.04 package dependency resolution
+        run: |
+          PACKAGE_FILE="${GITHUB_WORKSPACE}/crossdesk-linux-${{ matrix.arch }}-${LEGAL_VERSION}.deb"
+          apt-get update
+          apt-get install --simulate "${PACKAGE_FILE}"
+
+      - name: Verify packaged Ubuntu 20.04 glibc baseline
         run: |
           PACKAGE_FILE="${GITHUB_WORKSPACE}/crossdesk-linux-${{ matrix.arch }}-${LEGAL_VERSION}.deb"
           VERIFY_DIR="${RUNNER_TEMP}/crossdesk-glibc-${{ matrix.arch }}"
           install -d "${VERIFY_DIR}"
           dpkg-deb --extract "${PACKAGE_FILE}" "${VERIFY_DIR}"
-          verify-crossdesk-glibc-baseline "${VERIFY_DIR}" 2.35
+          verify-crossdesk-glibc-baseline "${VERIFY_DIR}" 2.31
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
@@ -134,17 +161,22 @@ jobs:
   build-macos:
     name: Build on macOS
     runs-on: ${{ matrix.runner }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+      EXPECTED_MACOS_SDK: "26.5"
     strategy:
       matrix:
         include:
           - arch: x64
-            runner: macos-15-intel
-            cache-key: intel
+            binary_arch: x86_64
+            runner: macos-26-intel
+            cache-key: intel-macos26-xcode26.6-min14
             out-dir: ./build/macosx/x86_64/release/crossdesk
             package_script: ./scripts/macosx/pkg_x64.sh
           - arch: arm64
-            runner: macos-14
-            cache-key: arm
+            binary_arch: arm64
+            runner: macos-26
+            cache-key: arm-macos26-xcode26.6-min14
             out-dir: ./build/macosx/arm64/release/crossdesk
             package_script: ./scripts/macosx/pkg_arm64.sh
 
@@ -189,6 +221,17 @@ jobs:
           echo "BUILD_DATE=${BUILD_DATE}" >> $GITHUB_ENV
           echo "PATCH_NUMBER=${PATCH_NUMBER}" >> $GITHUB_ENV
 
+      - name: Select Xcode 26.6
+        shell: bash
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+          SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
+          if [[ "${SDK_VERSION}" != "${EXPECTED_MACOS_SDK}" ]]; then
+            echo "Unexpected macOS SDK: expected ${EXPECTED_MACOS_SDK}, got ${SDK_VERSION}" >&2
+            exit 1
+          fi
+
       - name: Cache xmake dependencies
         uses: actions/cache@v5
         with:
@@ -211,13 +254,29 @@ jobs:
 
       - name: Build CrossDesk
         run: |
-          xmake f --CROSSDESK_VERSION=${VERSION_NUM} --USE_CUDA=true -y
+          xmake f --target_minver=${MACOSX_DEPLOYMENT_TARGET} --CROSSDESK_VERSION=${VERSION_NUM} --USE_CUDA=true -y
           xmake b -vy crossdesk
 
       - name: Package CrossDesk app
         run: |
           chmod +x ${{ matrix.package_script }}
           ${{ matrix.package_script }} ${VERSION_NUM}
+
+      - name: Verify packaged app
+        shell: bash
+        run: |
+          PACKAGE_FILE="${GITHUB_WORKSPACE}/crossdesk-macos-${{ matrix.arch }}-${VERSION_NUM}.pkg"
+          VERIFY_DIR="$(mktemp -d "${RUNNER_TEMP}/crossdesk-macos-pkg.XXXXXX")"
+          trap 'rm -rf "${VERIFY_DIR}"' EXIT
+
+          pkgutil --expand-full "${PACKAGE_FILE}" "${VERIFY_DIR}/expanded"
+          APP_PATH="$(find "${VERIFY_DIR}/expanded" -type d -name 'CrossDesk.app' -print -quit)"
+          if [[ -z "${APP_PATH}" ]]; then
+            echo "CrossDesk.app is missing from ${PACKAGE_FILE}" >&2
+            exit 1
+          fi
+
+          ./scripts/macosx/verify_app.sh "${APP_PATH}" "${{ matrix.binary_arch }}" "${EXPECTED_MACOS_SDK}"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
@@ -404,8 +463,7 @@ jobs:
   release:
     name: Publish Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs:
-      [build-linux, build-macos, build-windows-x64]
+    needs: [build-linux, build-macos, build-windows-x64]
     runs-on: ubuntu-latest
 
     steps:

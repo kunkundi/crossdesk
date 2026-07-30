@@ -228,27 +228,27 @@ int SessionDeviceManager::StopMouseController() {
 }
 
 int SessionDeviceManager::StartKeyboardCapturer() {
-  owner_.keyboard_capturer_uses_sdl_events_ = false;
+  owner_.keyboard_capturer_uses_window_events_ = false;
 
 #ifdef __APPLE__
   if (!owner_.EnsureMacAccessibilityPermission()) {
-    owner_.keyboard_capturer_uses_sdl_events_ = true;
+    owner_.keyboard_capturer_uses_window_events_ = true;
     return 0;
   }
 #endif
 
 #if defined(__linux__) && !defined(__APPLE__)
   if (IsWaylandSession()) {
-    owner_.keyboard_capturer_uses_sdl_events_ = true;
-    LOG_INFO("Start keyboard capturer with SDL Wayland backend");
+    owner_.keyboard_capturer_uses_window_events_ = true;
+    LOG_INFO("Start keyboard capturer with Slint Wayland backend");
     return 0;
   }
 #endif
 
   if (!keyboard_capturer_) {
-    owner_.keyboard_capturer_uses_sdl_events_ = true;
+    owner_.keyboard_capturer_uses_window_events_ = true;
     LOG_WARN(
-        "keyboard capturer is nullptr, falling back to SDL keyboard events");
+        "keyboard capturer is nullptr, falling back to Slint keyboard events");
     return 0;
   }
 
@@ -263,9 +263,9 @@ int SessionDeviceManager::StartKeyboardCapturer() {
       },
       &owner_);
   if (hook_ret != 0) {
-    owner_.keyboard_capturer_uses_sdl_events_ = true;
+    owner_.keyboard_capturer_uses_window_events_ = true;
     LOG_WARN(
-        "Start keyboard capturer failed, falling back to SDL keyboard events");
+        "Start keyboard capturer failed, falling back to Slint keyboard events");
   } else {
     LOG_INFO("Start keyboard capturer with native hook");
   }
@@ -273,9 +273,9 @@ int SessionDeviceManager::StartKeyboardCapturer() {
 }
 
 int SessionDeviceManager::StopKeyboardCapturer() {
-  if (owner_.keyboard_capturer_uses_sdl_events_) {
-    owner_.keyboard_capturer_uses_sdl_events_ = false;
-    LOG_INFO("Stop keyboard capturer with SDL keyboard backend");
+  if (owner_.keyboard_capturer_uses_window_events_) {
+    owner_.keyboard_capturer_uses_window_events_ = false;
+    LOG_INFO("Stop keyboard capturer with Slint keyboard backend");
     return 0;
   }
 

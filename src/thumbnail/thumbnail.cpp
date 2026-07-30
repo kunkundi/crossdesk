@@ -57,7 +57,7 @@ void ScaleNv12ToABGR(char* src, int src_w, int src_h, int dst_w, int dst_h,
                      v_fit.data(), (fit_w + 1) / 2, abgr.data(), fit_w * 4,
                      fit_w, fit_h);
 
-  memset(dst_rgba, 0, dst_w * dst_h * 4);
+  std::memset(dst_rgba, 0, dst_w * dst_h * 4);
   for (int i = 0; i < dst_w * dst_h; ++i) {
     dst_rgba[i * 4 + 3] = static_cast<char>(0xFF);
   }
@@ -65,7 +65,8 @@ void ScaleNv12ToABGR(char* src, int src_w, int src_h, int dst_w, int dst_h,
   for (int row = 0; row < fit_h; ++row) {
     int dst_offset =
         ((row + (dst_h - fit_h) / 2) * dst_w + (dst_w - fit_w) / 2) * 4;
-    memcpy(dst_rgba + dst_offset, abgr.data() + row * fit_w * 4, fit_w * 4);
+    std::memcpy(dst_rgba + dst_offset, abgr.data() + row * fit_w * 4,
+                fit_w * 4);
   }
 }
 
@@ -85,8 +86,8 @@ Thumbnail::Thumbnail(std::string save_path, unsigned char* aes128_key,
     save_path_ = save_path;
   }
 
-  memcpy(aes128_key_, aes128_key, sizeof(aes128_key_));
-  memcpy(aes128_iv_, aes128_iv, sizeof(aes128_iv_));
+  std::memcpy(aes128_key_, aes128_key, sizeof(aes128_key_));
+  std::memcpy(aes128_iv_, aes128_iv, sizeof(aes128_iv_));
   std::filesystem::create_directories(save_path_);
 }
 
@@ -116,7 +117,7 @@ int Thumbnail::SaveToThumbnail(const char* yuv420p, int width, int height,
                     thumbnail_height_, rgba_buffer_);
   } else {
     // If yuv420p is null, fill the buffer with black pixels
-    memset(rgba_buffer_, 0x00, thumbnail_width_ * thumbnail_height_ * 4);
+    std::memset(rgba_buffer_, 0x00, thumbnail_width_ * thumbnail_height_ * 4);
     for (int i = 0; i < thumbnail_width_ * thumbnail_height_; ++i) {
       // Set alpha channel to opaque
       rgba_buffer_[i * 4 + 3] = static_cast<char>(0xFF);

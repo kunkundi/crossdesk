@@ -7,10 +7,6 @@
 #ifndef _KEYBOARD_CAPTURER_H_
 #define _KEYBOARD_CAPTURER_H_
 
-#include <X11/Xlib.h>
-#include <X11/extensions/XTest.h>
-#include <X11/keysym.h>
-
 #include <atomic>
 #include <cstdint>
 #include <functional>
@@ -21,6 +17,7 @@
 
 struct DBusConnection;
 struct DBusMessageIter;
+struct _XDisplay;
 
 namespace crossdesk {
 
@@ -48,8 +45,8 @@ class KeyboardCapturer : public DeviceController {
                                      append_args);
 
  private:
-  Display* display_;
-  Window root_;
+  _XDisplay* display_;
+  unsigned long root_;
   std::atomic<bool> running_;
   std::thread event_thread_;
   bool use_wayland_portal_ = false;

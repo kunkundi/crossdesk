@@ -19,7 +19,7 @@ std::filesystem::path FindRepoRoot() {
   return {};
 }
 
-std::string ReadFile(const std::filesystem::path &path) {
+std::string ReadFile(const std::filesystem::path& path) {
   std::ifstream file(path, std::ios::binary);
   if (!file) {
     return {};
@@ -30,8 +30,8 @@ std::string ReadFile(const std::filesystem::path &path) {
   return stream.str();
 }
 
-bool ExpectContains(const char *name, const std::string &value,
-                    const std::string &expected) {
+bool ExpectContains(const char* name, const std::string& value,
+                    const std::string& expected) {
   if (value.find(expected) != std::string::npos) {
     return true;
   }
@@ -40,8 +40,8 @@ bool ExpectContains(const char *name, const std::string &value,
   return false;
 }
 
-bool ExpectNotContains(const char *name, const std::string &value,
-                       const std::string &unexpected) {
+bool ExpectNotContains(const char* name, const std::string& value,
+                       const std::string& unexpected) {
   if (value.find(unexpected) == std::string::npos) {
     return true;
   }
@@ -73,6 +73,10 @@ int main() {
       ReadFile(repo_root / "src/gui/runtime/remote_session.h");
   const std::string connection_runtime_cpp =
       ReadFile(repo_root / "src/gui/runtime/connection_runtime.cpp");
+  const std::string peer_event_handler_cpp =
+      ReadFile(repo_root / "src/gui/runtime/peer_event_handler.cpp");
+  const std::string application_state_h =
+      ReadFile(repo_root / "src/gui/application/application_state.h");
 
   bool ok = true;
   ok &= ExpectContains("minirtc.h", minirtc_api, "RemoteUnavailable");
@@ -81,6 +85,11 @@ int main() {
                        "\"Remote unavailable\"");
   ok &= ExpectContains("peer_connection.cpp", peer_connection,
                        "ConnectionStatus::RemoteUnavailable");
+  ok &= ExpectContains("peer_connection.cpp", peer_connection,
+                       "IsCurrentPeerConnection");
+  ok &= ExpectContains(
+      "peer_connection.cpp", peer_connection,
+      "on_connection_status_(ConnectionStatus::Closed, remote_user_id.data()");
   ok &= ExpectNotContains("peer_connection.cpp", peer_connection,
                           "\"Device offline\"");
   ok &= ExpectNotContains("peer_connection.cpp", peer_connection,
@@ -95,16 +104,30 @@ int main() {
                        "return localization::device_offline[language];");
   ok &= ExpectContains("runtime_state.h", runtime_state_h,
                        "pending_presence_probe_started_at_");
-  ok &= ExpectContains("remote_session.h", remote_session_h,
-                       "connection_attempt_started_at_");
   ok &= ExpectContains("connection_runtime.cpp", connection_runtime_cpp,
-                       "HandleConnectionTimeouts");
+                       "HandlePresenceProbeTimeout");
   ok &= ExpectContains("connection_runtime.cpp", connection_runtime_cpp,
                        "kPresenceProbeTimeout");
+  ok &= ExpectNotContains("remote_session.h", remote_session_h,
+                          "connection_attempt_started_at_");
+  ok &= ExpectNotContains("remote_session.h", remote_session_h,
+                          "connection_attempt_active_");
+  ok &= ExpectNotContains("connection_runtime.cpp", connection_runtime_cpp,
+                          "kConnectionAttemptTimeout");
+  ok &= ExpectNotContains("connection_runtime.cpp", connection_runtime_cpp,
+                          "ConnectionStatus::Failed");
+  ok &= ExpectContains("peer_event_handler.cpp", peer_event_handler_cpp,
+                       "props->connection_status_.store(status);");
+  ok &= ExpectContains("peer_event_handler.cpp", peer_event_handler_cpp,
+                       "case ConnectionStatus::Failed:");
   ok &= ExpectContains("connection_runtime.cpp", connection_runtime_cpp,
-                       "kConnectionAttemptTimeout");
-  ok &= ExpectContains("connection_runtime.cpp", connection_runtime_cpp,
-                       "connection_attempt_started_at_");
+                       "HandleServerControllerDisconnected");
+  ok &= ExpectContains("peer_event_handler.cpp", peer_event_handler_cpp,
+                       "HandleServerControllerDisconnected(remote_id");
+  ok &= ExpectNotContains("connection_runtime.cpp", connection_runtime_cpp,
+                          "ControllerHeartbeat");
+  ok &= ExpectContains("application_state.h", application_state_h,
+                       "std::atomic<bool> need_to_destroy_server_window_");
 
   return ok ? 0 : 1;
 }

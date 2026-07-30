@@ -1,15 +1,16 @@
 # syntax=docker/dockerfile:1.7
 
-ARG BASE_IMAGE=nvidia/cuda:12.6.3-devel-ubuntu22.04
+ARG BASE_IMAGE=nvidia/cuda:12.6.3-devel-ubuntu20.04
 FROM ${BASE_IMAGE}
 
 ARG TARGETARCH
+ARG CMAKE_VERSION=3.31.6
 ARG XMAKE_VERSION=3.0.9
 ARG RUST_VERSION=1.92.0
 ARG RUSTUP_VERSION=1.28.2
 
 LABEL org.opencontainers.image.title="CrossDesk Linux build environment" \
-      org.opencontainers.image.description="Ubuntu 22.04 build environment for CrossDesk" \
+      org.opencontainers.image.description="Ubuntu 20.04 compatibility build environment for CrossDesk" \
       org.opencontainers.image.source="https://github.com/kunkundi/crossdesk" \
       org.opencontainers.image.licenses="GPL-3.0-only"
 
@@ -22,6 +23,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     XMAKE_GLOBALDIR=/data \
     XMAKE_ROOT=y \
     CUDA_PATH=/usr/local/cuda \
+    CC=/usr/bin/gcc-10 \
+    CXX=/usr/bin/g++-10 \
     PATH=/root/.local/bin:/opt/cargo/bin:/usr/local/bin:${PATH}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -35,13 +38,14 @@ RUN apt-get update \
         build-essential \
         ca-certificates \
         ccache \
-        cmake \
         curl \
         dbus \
         dpkg-dev \
         file \
         flex \
         gettext \
+        gcc-10 \
+        g++-10 \
         git \
         libasound2-dev \
         libdbus-1-dev \
@@ -93,6 +97,22 @@ RUN apt-get update \
         zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Slint 1.17 requires CMake 3.21 or newer, while Ubuntu 20.04 provides 3.16.
+# PyPI publishes pinned manylinux2014 wheels for both amd64 and arm64.
+RUN python3 -m pip install --no-cache-dir "cmake==${CMAKE_VERSION}" \
+    && cmake --version | grep -F "cmake version ${CMAKE_VERSION}"
+
+# Ubuntu 20.04 only ships PipeWire 0.2. Install the Ubuntu 22.04-era 0.3.48
+# headers as a build-only SDK. CrossDesk loads the host's PipeWire 0.3 runtime
+# with dlopen(), so no PipeWire shared library is copied into release packages.
+COPY docker/linux-build/install-pipewire-sdk.sh \
+    /usr/local/bin/install-crossdesk-pipewire-sdk
+
+RUN chmod 0755 /usr/local/bin/install-crossdesk-pipewire-sdk \
+    && install-crossdesk-pipewire-sdk \
+    && grep -F "#define PW_MICRO 48" \
+        /opt/crossdesk-pipewire-sdk/include/pipewire-0.3/pipewire/version.h
+
 RUN export GITHUB_ACTIONS=true \
     && curl -fsSL https://xmake.io/shget.text \
         | bash -s -- "v${XMAKE_VERSION}" \
@@ -134,7 +154,8 @@ COPY submodules/minirtc/thirdparty ./submodules/minirtc/thirdparty
 # CrossDesk's exact dependency graph. Source files are intentionally excluded
 # from the Docker context; source-only changes therefore reuse this layer.
 RUN xmake repo -u --root \
-    && xmake f -m release --USE_CUDA=true --root -y \
+    && xmake f -m release --USE_CUDA=true --USE_WAYLAND=true \
+        --cc=gcc-10 --cxx=g++-10 --root -y \
     && rm -rf /data/.xmake/cache /tmp/crossdesk-dependencies \
     && mkdir -p /workspace
 

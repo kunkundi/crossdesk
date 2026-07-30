@@ -28,12 +28,19 @@
 #include "crossdesk_ui.h"
 #include "fa_solid_900.h"
 #include "localization.h"
+#include "platform.h"
 #if _WIN32
+#include <windows.h>
+
 #include "platform/tray/win_tray.h"
 #elif defined(__APPLE__)
 #include "platform/tray/mac_tray.h"
 #include "platform/window_drag.h"
 #elif defined(__linux__)
+#include <X11/Xatom.h>
+#include <X11/Xlib.h>
+#include <unistd.h>
+
 #include "platform/tray/linux_tray.h"
 #endif
 #include "rd_log.h"
@@ -43,6 +50,138 @@ namespace crossdesk {
 namespace {
 
 using namespace std::chrono_literals;
+
+#if defined(__linux__) && !defined(__APPLE__)
+bool HasNonEmptyEnvironmentVariable(const char* name) {
+  const char* value = std::getenv(name);
+  return value != nullptr && value[0] != '\0';
+}
+
+class ScopedUnsetEnvironmentVariable {
+ public:
+  explicit ScopedUnsetEnvironmentVariable(const char* name) : name_(name) {
+    if (const char* value = std::getenv(name_)) {
+      original_value_ = value;
+    }
+    unsetenv(name_);
+  }
+
+  ~ScopedUnsetEnvironmentVariable() {
+    if (original_value_) {
+      setenv(name_, original_value_->c_str(), 1);
+    } else {
+      unsetenv(name_);
+    }
+  }
+
+  ScopedUnsetEnvironmentVariable(const ScopedUnsetEnvironmentVariable&) =
+      delete;
+  ScopedUnsetEnvironmentVariable& operator=(
+      const ScopedUnsetEnvironmentVariable&) = delete;
+
+ private:
+  const char* name_;
+  std::optional<std::string> original_value_;
+};
+
+::Window X11GetActiveWindow(Display* display) {
+  if (!display) {
+    return 0;
+  }
+
+  const ::Window root = DefaultRootWindow(display);
+  const Atom active_window_atom =
+      XInternAtom(display, "_NET_ACTIVE_WINDOW", True);
+  if (active_window_atom != None) {
+    Atom actual_type = None;
+    int actual_format = 0;
+    unsigned long item_count = 0;
+    unsigned long bytes_after = 0;
+    unsigned char* data = nullptr;
+    if (XGetWindowProperty(display, root, active_window_atom, 0, 1, False,
+                           XA_WINDOW, &actual_type, &actual_format, &item_count,
+                           &bytes_after, &data) == Success &&
+        actual_type == XA_WINDOW && actual_format == 32 && item_count == 1 &&
+        data) {
+      const ::Window active_window = *reinterpret_cast<const ::Window*>(data);
+      XFree(data);
+      return active_window;
+    }
+    if (data) {
+      XFree(data);
+    }
+  }
+
+  ::Window focused_window = 0;
+  int revert_to = RevertToNone;
+  XGetInputFocus(display, &focused_window, &revert_to);
+  return focused_window == None || focused_window == PointerRoot
+             ? 0
+             : focused_window;
+}
+
+std::optional<unsigned long> X11GetWindowProcessId(Display* display,
+                                                   ::Window x11_window) {
+  if (!display || !x11_window) {
+    return std::nullopt;
+  }
+
+  const Atom process_id_atom = XInternAtom(display, "_NET_WM_PID", True);
+  if (process_id_atom == None) {
+    return std::nullopt;
+  }
+
+  Atom actual_type = None;
+  int actual_format = 0;
+  unsigned long item_count = 0;
+  unsigned long bytes_after = 0;
+  unsigned char* data = nullptr;
+  const int status = XGetWindowProperty(
+      display, x11_window, process_id_atom, 0, 1, False, XA_CARDINAL,
+      &actual_type, &actual_format, &item_count, &bytes_after, &data);
+  if (status != Success || actual_type != XA_CARDINAL || actual_format != 32 ||
+      item_count != 1 || !data) {
+    if (data) {
+      XFree(data);
+    }
+    return std::nullopt;
+  }
+
+  const auto process_id = *reinterpret_cast<const unsigned long*>(data);
+  XFree(data);
+  return process_id;
+}
+
+bool X11WindowMatches(Display* display, ::Window x11_window,
+                      const slint::Window& slint_window) {
+  if (!display || !x11_window) {
+    return false;
+  }
+
+  XWindowAttributes attributes;
+  if (!XGetWindowAttributes(display, x11_window, &attributes)) {
+    return false;
+  }
+
+  int root_x = 0;
+  int root_y = 0;
+  ::Window child = 0;
+  if (!XTranslateCoordinates(display, x11_window, DefaultRootWindow(display), 0,
+                             0, &root_x, &root_y, &child)) {
+    return false;
+  }
+
+  const auto position = slint_window.position();
+  const auto size = slint_window.size();
+  constexpr int kGeometryTolerance = 4;
+  return std::abs(root_x - position.x) <= kGeometryTolerance &&
+         std::abs(root_y - position.y) <= kGeometryTolerance &&
+         std::abs(attributes.width - static_cast<int>(size.width)) <=
+             kGeometryTolerance &&
+         std::abs(attributes.height - static_cast<int>(size.height)) <=
+             kGeometryTolerance;
+}
+#endif
 
 #if _WIN32
 HICON LoadSlintTrayIcon() {
@@ -57,7 +196,7 @@ slint::SharedString UiText(std::string_view value) {
   return slint::SharedString(value);
 }
 
-void RegisterFontAwesome(slint::Window &window) {
+void RegisterFontAwesome(slint::Window& window) {
   if (const auto error = window.window_handle().register_font_from_data(
           fa_solid_900_ttf, fa_solid_900_ttf_len)) {
     LOG_ERROR("Failed to register Font Awesome for Slint window: {}",
@@ -65,7 +204,7 @@ void RegisterFontAwesome(slint::Window &window) {
   }
 }
 
-std::string FormatPeerId(const char *id) {
+std::string FormatPeerId(const char* id) {
   if (!id) {
     return {};
   }
@@ -96,54 +235,92 @@ std::string FormatRemotePeerIdInput(std::string_view input) {
 }
 
 std::string CompactPeerId(std::string id) {
-  id.erase(std::remove_if(id.begin(), id.end(), [](unsigned char ch) {
-             return std::isspace(ch) != 0;
-           }),
-           id.end());
+  id.erase(
+      std::remove_if(id.begin(), id.end(),
+                     [](unsigned char ch) { return std::isspace(ch) != 0; }),
+      id.end());
   return id;
 }
 
 std::string Trim(std::string value) {
-  const auto first = std::find_if_not(value.begin(), value.end(),
-                                      [](unsigned char ch) {
-                                        return std::isspace(ch) != 0;
-                                      });
-  const auto last = std::find_if_not(value.rbegin(), value.rend(),
-                                     [](unsigned char ch) {
-                                       return std::isspace(ch) != 0;
-                                     })
-                        .base();
+  const auto first =
+      std::find_if_not(value.begin(), value.end(),
+                       [](unsigned char ch) { return std::isspace(ch) != 0; });
+  const auto last =
+      std::find_if_not(value.rbegin(), value.rend(), [](unsigned char ch) {
+        return std::isspace(ch) != 0;
+      }).base();
   if (first >= last) {
     return {};
   }
   return std::string(first, last);
 }
 
-std::string CleanReleaseNotesForUi(std::string markdown) {
+struct ParsedReleaseNoteBlock {
+  slint::StyledText content;
+  bool section_gap = false;
+};
+
+std::vector<ParsedReleaseNoteBlock> ParseReleaseNotesMarkdownForSlint(
+    std::string_view markdown) {
+  std::vector<ParsedReleaseNoteBlock> blocks;
+  bool section_gap = false;
+
   size_t line_start = 0;
   while (line_start < markdown.size()) {
-    size_t content_start = line_start;
-    while (content_start < markdown.size() && markdown[content_start] == '#') {
-      ++content_start;
-    }
-    if (content_start > line_start && content_start < markdown.size() &&
-        markdown[content_start] == ' ') {
-      ++content_start;
-    }
-    if (content_start > line_start) {
-      markdown.erase(line_start, content_start - line_start);
-    }
     const size_t newline = markdown.find('\n', line_start);
-    if (newline == std::string::npos) {
+    const size_t line_end =
+        newline == std::string_view::npos ? markdown.size() : newline;
+    std::string_view line = markdown.substr(line_start, line_end - line_start);
+    if (!line.empty() && line.back() == '\r') {
+      line.remove_suffix(1);
+    }
+
+    if (std::all_of(line.begin(), line.end(),
+                    [](unsigned char ch) { return std::isspace(ch) != 0; })) {
+      section_gap = !blocks.empty();
+      if (newline == std::string_view::npos) {
+        break;
+      }
+      line_start = newline + 1;
+      continue;
+    }
+
+    size_t heading_end = 0;
+    while (heading_end < line.size() && heading_end < 6 &&
+           line[heading_end] == '#') {
+      ++heading_end;
+    }
+    const bool is_heading =
+        heading_end > 0 && heading_end < line.size() &&
+        std::isspace(static_cast<unsigned char>(line[heading_end])) != 0;
+    if (is_heading) {
+      if (newline == std::string_view::npos) {
+        break;
+      }
+      line_start = newline + 1;
+      continue;
+    }
+
+    const std::string block_markdown(line);
+    ParsedReleaseNoteBlock block;
+    if (const auto parsed = slint::StyledText::from_markdown(block_markdown)) {
+      block.content = *parsed;
+    } else {
+      LOG_WARN(
+          "Failed to parse a release-note Markdown block; using plain text");
+      block.content = slint::StyledText::from_plain_text(block_markdown);
+    }
+    block.section_gap = section_gap;
+    blocks.push_back(std::move(block));
+    section_gap = false;
+
+    if (newline == std::string_view::npos) {
       break;
     }
     line_start = newline + 1;
   }
-  size_t marker = 0;
-  while ((marker = markdown.find("**", marker)) != std::string::npos) {
-    markdown.erase(marker, 2);
-  }
-  return markdown;
+  return blocks;
 }
 
 std::string DecodeDroppedPath(std::string text) {
@@ -189,7 +366,7 @@ std::string DecodeDroppedPath(std::string text) {
   return decoded;
 }
 
-std::optional<int> ParsePort(const slint::SharedString &text) {
+std::optional<int> ParsePort(const slint::SharedString& text) {
   const std::string value(text);
   int port = 0;
   const auto [end, error] =
@@ -203,25 +380,25 @@ std::optional<int> ParsePort(const slint::SharedString &text) {
 
 std::string ConnectionStatusText(ConnectionStatus status, int language) {
   switch (status) {
-  case ConnectionStatus::Connected:
-    return localization::p2p_connected[language];
-  case ConnectionStatus::Connecting:
-    return localization::p2p_connecting[language];
-  case ConnectionStatus::Gathering:
-    return localization::p2p_gathering[language];
-  case ConnectionStatus::Disconnected:
-    return localization::p2p_disconnected[language];
-  case ConnectionStatus::NoSuchTransmissionId:
-    return localization::no_such_id[language];
-  case ConnectionStatus::IncorrectPassword:
-    return localization::reinput_password[language];
-  case ConnectionStatus::Closed:
-    return localization::p2p_closed[language];
-  case ConnectionStatus::RemoteUnavailable:
-    return localization::device_offline[language];
-  case ConnectionStatus::Failed:
-  default:
-    return localization::p2p_failed[language];
+    case ConnectionStatus::Connected:
+      return localization::p2p_connected[language];
+    case ConnectionStatus::Connecting:
+      return localization::p2p_connecting[language];
+    case ConnectionStatus::Gathering:
+      return localization::p2p_gathering[language];
+    case ConnectionStatus::Disconnected:
+      return localization::p2p_disconnected[language];
+    case ConnectionStatus::NoSuchTransmissionId:
+      return localization::no_such_id[language];
+    case ConnectionStatus::IncorrectPassword:
+      return localization::reinput_password[language];
+    case ConnectionStatus::Closed:
+      return localization::p2p_closed[language];
+    case ConnectionStatus::RemoteUnavailable:
+      return localization::device_offline[language];
+    case ConnectionStatus::Failed:
+    default:
+      return localization::p2p_failed[language];
   }
 }
 
@@ -232,8 +409,7 @@ std::string FormatBitrate(uint32_t bits_per_second) {
   } else if (bits_per_second < 1000000) {
     std::snprintf(text, sizeof(text), "%u kbps", bits_per_second / 1000);
   } else {
-    std::snprintf(text, sizeof(text), "%.1f mbps",
-                  bits_per_second / 1000000.0);
+    std::snprintf(text, sizeof(text), "%.1f mbps", bits_per_second / 1000000.0);
   }
   return text;
 }
@@ -259,8 +435,7 @@ std::string FormatFileSize(uint64_t bytes) {
   } else if (bytes < 1024 * 1024) {
     std::snprintf(text, sizeof(text), "%.2f KB", bytes / 1024.0);
   } else if (bytes < 1024ULL * 1024ULL * 1024ULL) {
-    std::snprintf(text, sizeof(text), "%.2f MB",
-                  bytes / (1024.0 * 1024.0));
+    std::snprintf(text, sizeof(text), "%.2f MB", bytes / (1024.0 * 1024.0));
   } else {
     std::snprintf(text, sizeof(text), "%.2f GB",
                   bytes / (1024.0 * 1024.0 * 1024.0));
@@ -268,11 +443,11 @@ std::string FormatFileSize(uint64_t bytes) {
   return text;
 }
 
-uint32_t DecodeFirstUtf8CodePoint(const std::string &text) {
+uint32_t DecodeFirstUtf8CodePoint(const std::string& text) {
   if (text.empty()) {
     return 0;
   }
-  const auto *bytes = reinterpret_cast<const unsigned char *>(text.data());
+  const auto* bytes = reinterpret_cast<const unsigned char*>(text.data());
   if (bytes[0] < 0x80) {
     return bytes[0];
   }
@@ -290,7 +465,7 @@ uint32_t DecodeFirstUtf8CodePoint(const std::string &text) {
   return 0;
 }
 
-int SlintKeyToWindowsVk(const std::string &text) {
+int SlintKeyToWindowsVk(const std::string& text) {
   const uint32_t key = DecodeFirstUtf8CodePoint(text);
   if (key >= 'a' && key <= 'z') {
     return static_cast<int>(key - 'a' + 'A');
@@ -303,122 +478,122 @@ int SlintKeyToWindowsVk(const std::string &text) {
   }
 
   switch (key) {
-  case 0x08:
-    return 0x08;
-  case 0x09:
-  case 0x19:
-    return 0x09;
-  case 0x0A:
-    return 0x0D;
-  case 0x1B:
-    return 0x1B;
-  case 0x7F:
-    return 0x2E;
-  case 0x10:
-    return 0xA0;
-  case 0x15:
-    return 0xA1;
-  case 0x11:
-    return 0xA2;
-  case 0x16:
-    return 0xA3;
-  case 0x12:
-    return 0xA4;
-  case 0x13:
-    return 0xA5;
-  case 0x17:
-    return 0x5B;
-  case 0x18:
-    return 0x5C;
-  case 0x14:
-    return 0x14;
-  case 0x20:
-    return 0x20;
-  case 0xF700:
-    return 0x26;
-  case 0xF701:
-    return 0x28;
-  case 0xF702:
-    return 0x25;
-  case 0xF703:
-    return 0x27;
-  case 0xF727:
-    return 0x2D;
-  case 0xF729:
-    return 0x24;
-  case 0xF72B:
-    return 0x23;
-  case 0xF72C:
-    return 0x21;
-  case 0xF72D:
-    return 0x22;
-  case 0xF72F:
-    return 0x91;
-  case 0xF730:
-    return 0x13;
-  case 0xF731:
-    return 0x2C;
-  case 0xF734:
-    return 0xB2;
-  case 0xF735:
-    return 0x5D;
-  case 0xF748:
-    return 0xA6;
-  case ';':
-  case ':':
-    return 0xBA;
-  case '\'':
-  case '"':
-    return 0xDE;
-  case '`':
-  case '~':
-    return 0xC0;
-  case ',':
-  case '<':
-    return 0xBC;
-  case '.':
-  case '>':
-    return 0xBE;
-  case '/':
-  case '?':
-    return 0xBF;
-  case '\\':
-  case '|':
-    return 0xDC;
-  case '[':
-  case '{':
-    return 0xDB;
-  case ']':
-  case '}':
-    return 0xDD;
-  case '-':
-  case '_':
-    return 0xBD;
-  case '=':
-  case '+':
-    return 0xBB;
-  case '!':
-    return '1';
-  case '@':
-    return '2';
-  case '#':
-    return '3';
-  case '$':
-    return '4';
-  case '%':
-    return '5';
-  case '^':
-    return '6';
-  case '&':
-    return '7';
-  case '*':
-    return '8';
-  case '(':
-    return '9';
-  case ')':
-    return '0';
-  default:
-    return -1;
+    case 0x08:
+      return 0x08;
+    case 0x09:
+    case 0x19:
+      return 0x09;
+    case 0x0A:
+      return 0x0D;
+    case 0x1B:
+      return 0x1B;
+    case 0x7F:
+      return 0x2E;
+    case 0x10:
+      return 0xA0;
+    case 0x15:
+      return 0xA1;
+    case 0x11:
+      return 0xA2;
+    case 0x16:
+      return 0xA3;
+    case 0x12:
+      return 0xA4;
+    case 0x13:
+      return 0xA5;
+    case 0x17:
+      return 0x5B;
+    case 0x18:
+      return 0x5C;
+    case 0x14:
+      return 0x14;
+    case 0x20:
+      return 0x20;
+    case 0xF700:
+      return 0x26;
+    case 0xF701:
+      return 0x28;
+    case 0xF702:
+      return 0x25;
+    case 0xF703:
+      return 0x27;
+    case 0xF727:
+      return 0x2D;
+    case 0xF729:
+      return 0x24;
+    case 0xF72B:
+      return 0x23;
+    case 0xF72C:
+      return 0x21;
+    case 0xF72D:
+      return 0x22;
+    case 0xF72F:
+      return 0x91;
+    case 0xF730:
+      return 0x13;
+    case 0xF731:
+      return 0x2C;
+    case 0xF734:
+      return 0xB2;
+    case 0xF735:
+      return 0x5D;
+    case 0xF748:
+      return 0xA6;
+    case ';':
+    case ':':
+      return 0xBA;
+    case '\'':
+    case '"':
+      return 0xDE;
+    case '`':
+    case '~':
+      return 0xC0;
+    case ',':
+    case '<':
+      return 0xBC;
+    case '.':
+    case '>':
+      return 0xBE;
+    case '/':
+    case '?':
+      return 0xBF;
+    case '\\':
+    case '|':
+      return 0xDC;
+    case '[':
+    case '{':
+      return 0xDB;
+    case ']':
+    case '}':
+      return 0xDD;
+    case '-':
+    case '_':
+      return 0xBD;
+    case '=':
+    case '+':
+      return 0xBB;
+    case '!':
+      return '1';
+    case '@':
+      return '2';
+    case '#':
+      return '3';
+    case '$':
+      return '4';
+    case '%':
+      return '5';
+    case '^':
+      return '6';
+    case '&':
+      return '7';
+    case '*':
+      return '8';
+    case '(':
+      return '9';
+    case ')':
+      return '0';
+    default:
+      return -1;
   }
 }
 
@@ -435,7 +610,7 @@ struct WindowDragState {
 };
 
 bool CanUseGlobalPointerPosition() {
-  const char *driver = SDL_GetCurrentVideoDriver();
+  const char* driver = SDL_GetCurrentVideoDriver();
   if (driver == nullptr) {
     return false;
   }
@@ -458,22 +633,27 @@ float ServerWindowLogicalHeight(bool collapsed) {
 
 constexpr float kStreamWindowLogicalWidth = 1280.0f;
 constexpr float kStreamWindowLogicalHeight = 720.0f;
+constexpr float kWaylandTitlebarLogicalHeight = 32.0f;
 
-SDL_DisplayID DisplayForSlintWindow(const slint::Window &window) {
+float StreamWindowLogicalHeight(bool custom_titlebar) {
+  return kStreamWindowLogicalHeight +
+         (custom_titlebar ? kWaylandTitlebarLogicalHeight : 0.0f);
+}
+
+SDL_DisplayID DisplayForSlintWindow(const slint::Window& window) {
   const float scale = std::max(window.scale_factor(), 0.01f);
   const auto position = window.position();
   const auto size = window.size();
   const SDL_Point center{
-      static_cast<int>(std::lround(position.x / scale +
-                                   size.width / (2.0f * scale))),
-      static_cast<int>(std::lround(position.y / scale +
-                                   size.height / (2.0f * scale)))};
+      static_cast<int>(
+          std::lround(position.x / scale + size.width / (2.0f * scale))),
+      static_cast<int>(
+          std::lround(position.y / scale + size.height / (2.0f * scale)))};
   const SDL_DisplayID display = SDL_GetDisplayForPoint(&center);
   return display != 0 ? display : SDL_GetPrimaryDisplay();
 }
 
-bool PositionWindowAtCenter(slint::Window &window,
-                            const slint::Window &anchor,
+bool PositionWindowAtCenter(slint::Window& window, const slint::Window& anchor,
                             float logical_width, float logical_height) {
   if (!CanUseGlobalPointerPosition()) {
     return false;
@@ -481,25 +661,24 @@ bool PositionWindowAtCenter(slint::Window &window,
 
   const SDL_DisplayID display = DisplayForSlintWindow(anchor);
   SDL_Rect usable_bounds{};
-  if (display == 0 ||
-      !SDL_GetDisplayUsableBounds(display, &usable_bounds)) {
+  if (display == 0 || !SDL_GetDisplayUsableBounds(display, &usable_bounds)) {
     LOG_WARN("Unable to obtain usable display bounds for stream window: {}",
              SDL_GetError());
     return false;
   }
 
-  const float target_x = static_cast<float>(usable_bounds.x) +
-                         (static_cast<float>(usable_bounds.w) - logical_width) /
-                             2.0f;
-  const float target_y = static_cast<float>(usable_bounds.y) +
-                         (static_cast<float>(usable_bounds.h) - logical_height) /
-                             2.0f;
-  window.set_position(slint::LogicalPosition(
-      slint::Point<float>{target_x, target_y}));
+  const float target_x =
+      static_cast<float>(usable_bounds.x) +
+      (static_cast<float>(usable_bounds.w) - logical_width) / 2.0f;
+  const float target_y =
+      static_cast<float>(usable_bounds.y) +
+      (static_cast<float>(usable_bounds.h) - logical_height) / 2.0f;
+  window.set_position(
+      slint::LogicalPosition(slint::Point<float>{target_x, target_y}));
   return true;
 }
 
-bool PositionWindowAtBottomRight(slint::Window &window, float logical_width,
+bool PositionWindowAtBottomRight(slint::Window& window, float logical_width,
                                  float logical_height) {
   if (!CanUseGlobalPointerPosition()) {
     return false;
@@ -510,18 +689,17 @@ bool PositionWindowAtBottomRight(slint::Window &window, float logical_width,
   const auto position = window.position();
   const auto size = window.size();
   const SDL_Point center{
-      static_cast<int>(std::lround(position.x / scale +
-                                   size.width / (2.0f * scale))),
-      static_cast<int>(std::lround(position.y / scale +
-                                   size.height / (2.0f * scale)))};
+      static_cast<int>(
+          std::lround(position.x / scale + size.width / (2.0f * scale))),
+      static_cast<int>(
+          std::lround(position.y / scale + size.height / (2.0f * scale)))};
   display = SDL_GetDisplayForPoint(&center);
   if (display == 0) {
     display = SDL_GetPrimaryDisplay();
   }
 
   SDL_Rect usable_bounds{};
-  if (display == 0 ||
-      !SDL_GetDisplayUsableBounds(display, &usable_bounds)) {
+  if (display == 0 || !SDL_GetDisplayUsableBounds(display, &usable_bounds)) {
     LOG_WARN("Unable to obtain usable display bounds for server window: {}",
              SDL_GetError());
     return false;
@@ -533,14 +711,14 @@ bool PositionWindowAtBottomRight(slint::Window &window, float logical_width,
   const float target_y =
       static_cast<float>(usable_bounds.y) +
       std::max(0.0f, static_cast<float>(usable_bounds.h) - logical_height);
-  window.set_position(slint::LogicalPosition(
-      slint::Point<float>{target_x, target_y}));
+  window.set_position(
+      slint::LogicalPosition(slint::Point<float>{target_x, target_y}));
   return true;
 }
 
 template <typename WindowHandle>
-void DragWindow(WindowHandle &component, int phase, float mouse_x,
-                float mouse_y, WindowDragState &state) {
+void DragWindow(WindowHandle& component, int phase, float mouse_x,
+                float mouse_y, WindowDragState& state) {
   if (phase == 1) {
 #if defined(__APPLE__)
     // Let AppKit run the native move loop. This preserves macOS window
@@ -552,7 +730,7 @@ void DragWindow(WindowHandle &component, int phase, float mouse_x,
     state.active = false;
     return;
 #endif
-    auto &window = component->window();
+    auto& window = component->window();
     state.active = true;
     state.last_local_x = mouse_x;
     state.last_local_y = mouse_y;
@@ -579,17 +757,15 @@ void DragWindow(WindowHandle &component, int phase, float mouse_x,
     return;
   }
 
-  auto &window = component->window();
+  auto& window = component->window();
   if (state.use_global_pointer) {
     float pointer_x = 0;
     float pointer_y = 0;
     SDL_GetGlobalMouseState(&pointer_x, &pointer_y);
     const int delta_x = static_cast<int>(std::lround(
-        (pointer_x - state.pointer_start_x) *
-        state.global_to_physical_scale));
+        (pointer_x - state.pointer_start_x) * state.global_to_physical_scale));
     const int delta_y = static_cast<int>(std::lround(
-        (pointer_y - state.pointer_start_y) *
-        state.global_to_physical_scale));
+        (pointer_y - state.pointer_start_y) * state.global_to_physical_scale));
     const slint::PhysicalPosition target(slint::Point<int32_t>{
         state.window_start.x + delta_x, state.window_start.y + delta_y});
     if (target.x != state.last_target.x || target.y != state.last_target.y) {
@@ -602,23 +778,25 @@ void DragWindow(WindowHandle &component, int phase, float mouse_x,
   // Retain the previous behavior for backends without global pointer access.
   const float scale = window.scale_factor();
   const auto position = window.position();
-  const int delta_x = static_cast<int>(
-      std::lround((mouse_x - state.last_local_x) * scale));
-  const int delta_y = static_cast<int>(
-      std::lround((mouse_y - state.last_local_y) * scale));
+  const int delta_x =
+      static_cast<int>(std::lround((mouse_x - state.last_local_x) * scale));
+  const int delta_y =
+      static_cast<int>(std::lround((mouse_y - state.last_local_y) * scale));
   if (delta_x != 0 || delta_y != 0) {
-    window.set_position(
-        slint::PhysicalPosition(slint::Point<int32_t>{
-            position.x + delta_x, position.y + delta_y}));
+    window.set_position(slint::PhysicalPosition(
+        slint::Point<int32_t>{position.x + delta_x, position.y + delta_y}));
   }
   state.last_local_x = mouse_x;
   state.last_local_y = mouse_y;
 }
 
-} // namespace
+}  // namespace
 
 struct GuiApplication::SlintUi {
   slint::ComponentHandle<ui::MainWindow> main = ui::MainWindow::create();
+  std::shared_ptr<slint::VectorModel<ui::ReleaseNoteBlock>>
+      release_note_blocks_model =
+          std::make_shared<slint::VectorModel<ui::ReleaseNoteBlock>>();
   std::optional<slint::ComponentHandle<ui::StreamWindow>> stream;
   std::optional<slint::ComponentHandle<ui::ServerWindow>> server;
   std::shared_ptr<slint::VectorModel<ui::RecentConnection>> recent_model =
@@ -633,8 +811,9 @@ struct GuiApplication::SlintUi {
       std::make_shared<slint::VectorModel<ui::NetworkStatsRow>>();
   std::shared_ptr<slint::VectorModel<ui::ControllerEntry>> controller_model =
       std::make_shared<slint::VectorModel<ui::ControllerEntry>>();
-  std::shared_ptr<slint::VectorModel<slint::SharedString>> controller_name_model =
-      std::make_shared<slint::VectorModel<slint::SharedString>>();
+  std::shared_ptr<slint::VectorModel<slint::SharedString>>
+      controller_name_model =
+          std::make_shared<slint::VectorModel<slint::SharedString>>();
   std::unordered_map<std::string, uint64_t> displayed_frame_sequence;
   std::vector<std::string> tab_order;
   std::vector<std::string> tab_ids;
@@ -645,6 +824,8 @@ struct GuiApplication::SlintUi {
   bool portable_service_dialog_initialized = false;
   std::string recent_model_signature;
   slint::Timer timer;
+  WindowDragState main_drag;
+  WindowDragState stream_drag;
   WindowDragState server_drag;
   int main_native_titlebar_attempts = 30;
   int stream_live_resize_configuration_attempts = 0;
@@ -660,7 +841,17 @@ struct GuiApplication::SlintUi {
   std::unique_ptr<MacTray> tray;
 #elif defined(__linux__)
   std::unique_ptr<LinuxTray> tray;
+  Display* x11_focus_display = nullptr;
+  std::chrono::steady_clock::time_point last_x11_activation_poll{};
 #endif
+
+  ~SlintUi() {
+#if defined(__linux__) && !defined(__APPLE__)
+    if (x11_focus_display) {
+      XCloseDisplay(x11_focus_display);
+    }
+#endif
+  }
 };
 
 GuiApplication::GuiApplication() = default;
@@ -674,8 +865,7 @@ int GuiApplication::Run() {
   exec_log_path_ = path_manager_->GetLogPath().string();
   dll_log_path_ = exec_log_path_;
   cache_path_ = path_manager_->GetCachePath().string();
-  config_center_ =
-      std::make_unique<ConfigCenter>(cache_path_ + "/config.ini");
+  config_center_ = std::make_unique<ConfigCenter>(cache_path_ + "/config.ini");
 
   InitializeLogger();
   LOG_INFO("CrossDesk version: {} (Slint UI)", CROSSDESK_VERSION);
@@ -701,8 +891,7 @@ int GuiApplication::Run() {
     latest_version_ = version.empty() ? std::string{} : "v" + version;
     if (latest_version_info_.contains("releaseNotes") &&
         latest_version_info_["releaseNotes"].is_string()) {
-      release_notes_ =
-          latest_version_info_["releaseNotes"].get<std::string>();
+      release_notes_ = latest_version_info_["releaseNotes"].get<std::string>();
     }
     if (latest_version_info_.contains("releaseName") &&
         latest_version_info_["releaseName"].is_string()) {
@@ -757,13 +946,32 @@ bool GuiApplication::InitializeSDL() {
   if (!getenv("SDL_AUDIODRIVER")) {
     setenv("SDL_AUDIODRIVER", "pulseaudio", 0);
   }
+
+  // Standard Wayland top-level windows cannot choose an absolute screen
+  // position. Use the session's XWayland compatibility server for the GUI so
+  // auxiliary windows such as the controlled-side status window can be
+  // placed deterministically. Capture and input still detect the surrounding
+  // Wayland session through XDG_SESSION_TYPE and continue to use the portal.
+  const char* requested_video_driver = std::getenv("SDL_VIDEODRIVER");
+  const bool video_driver_allows_x11 =
+      requested_video_driver == nullptr || requested_video_driver[0] == '\0' ||
+      std::strcmp(requested_video_driver, "x11") == 0;
+  use_xwayland_gui_ = IsWaylandSession() &&
+                      HasNonEmptyEnvironmentVariable("DISPLAY") &&
+                      video_driver_allows_x11;
+  if (use_xwayland_gui_) {
+    setenv("SDL_VIDEODRIVER", "x11", 1);
+    LOG_INFO(
+        "Wayland session detected; using XWayland for positioned GUI "
+        "windows while retaining Wayland portal capture and input");
+  }
 #endif
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
     LOG_ERROR("SDL initialization failed: {}", SDL_GetError());
     return false;
   }
 
-  if (const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(0)) {
+  if (const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(0)) {
     screen_width_ = mode->w;
     screen_height_ = mode->h;
   }
@@ -781,32 +989,60 @@ void GuiApplication::InitializeModules() {
 }
 
 void GuiApplication::InitializeUi() {
+#if defined(__linux__) && !defined(__APPLE__)
+  // Winit prefers Wayland whenever WAYLAND_DISPLAY/WAYLAND_SOCKET is present.
+  // Hide them only while Slint selects its process-wide window backend, then
+  // restore the environment before the rest of the application starts.
+  std::optional<ScopedUnsetEnvironmentVariable> wayland_display_guard;
+  std::optional<ScopedUnsetEnvironmentVariable> wayland_socket_guard;
+  if (use_xwayland_gui_) {
+    wayland_display_guard.emplace("WAYLAND_DISPLAY");
+    wayland_socket_guard.emplace("WAYLAND_SOCKET");
+  }
+#endif
   ui_ = std::make_unique<SlintUi>();
+#if _WIN32
+  ui_->main->set_custom_titlebar(true);
+#elif defined(__linux__)
+  if (use_xwayland_gui_) {
+    ui_->main->set_custom_titlebar(true);
+    ui_->main->set_wayland_titlebar(true);
+  }
+#endif
+  std::vector<ui::ReleaseNoteBlock> release_note_blocks;
+  for (const auto& parsed : ParseReleaseNotesMarkdownForSlint(release_notes_)) {
+    ui::ReleaseNoteBlock block;
+    block.content = parsed.content;
+    block.section_gap = parsed.section_gap;
+    release_note_blocks.push_back(std::move(block));
+  }
+  ui_->release_note_blocks_model->set_vector(std::move(release_note_blocks));
+  ui_->main->set_release_note_blocks(ui_->release_note_blocks_model);
   RegisterFontAwesome(ui_->main->window());
 #ifdef CROSSDESK_DEBUG
-  auto read_capture_override = [](const char *path) -> std::string {
+  auto read_capture_override = [](const char* path) -> std::string {
     std::ifstream input(path);
     std::string value;
     std::getline(input, value);
     return value;
   };
-  if (const char *capture = std::getenv("CROSSDESK_UI_CAPTURE")) {
+  if (const char* capture = std::getenv("CROSSDESK_UI_CAPTURE")) {
     ui_->capture_mode = std::string_view(capture) != "0";
   }
-  if (const char *page = std::getenv("CROSSDESK_UI_CAPTURE_PAGE")) {
+  if (const char* page = std::getenv("CROSSDESK_UI_CAPTURE_PAGE")) {
     ui_->capture_page = page;
   }
   std::string capture_language_override;
   if (ui_->capture_mode) {
-    if (const auto page = read_capture_override(
-            "/tmp/crossdesk-ui-capture-page");
+    if (const auto page =
+            read_capture_override("/tmp/crossdesk-ui-capture-page");
         !page.empty()) {
       ui_->capture_page = page;
     }
-    capture_language_override = read_capture_override(
-        "/tmp/crossdesk-ui-capture-language");
+    capture_language_override =
+        read_capture_override("/tmp/crossdesk-ui-capture-language");
   }
-  const char *language = capture_language_override.empty()
+  const char* language = capture_language_override.empty()
                              ? std::getenv("CROSSDESK_UI_CAPTURE_LANGUAGE")
                              : capture_language_override.c_str();
   if (language) {
@@ -817,8 +1053,8 @@ void GuiApplication::InitializeUi() {
       localization_language_index_ =
           localization::detail::ClampLanguageIndex(capture_language);
       language_button_value_ = localization_language_index_;
-      localization_language_ = static_cast<ConfigCenter::LANGUAGE>(
-          localization_language_index_);
+      localization_language_ =
+          static_cast<ConfigCenter::LANGUAGE>(localization_language_index_);
     }
   }
 #endif
@@ -876,6 +1112,9 @@ void GuiApplication::InitializeUi() {
 
   if (ui_->capture_mode && ui_->capture_page == "stream") {
     ui_->stream.emplace(ui::StreamWindow::create());
+#if defined(__linux__)
+    (*ui_->stream)->set_custom_titlebar(use_xwayland_gui_);
+#endif
     RegisterFontAwesome((*ui_->stream)->window());
     (*ui_->stream)->set_tabs(ui_->tab_model);
     (*ui_->stream)->set_displays(ui_->display_model);
@@ -889,8 +1128,9 @@ void GuiApplication::InitializeUi() {
     ui_->display_model->set_vector({slint::SharedString("Display 1")});
     ui_->localized_language = -1;
     UpdateLocalization();
-    (*ui_->stream)->set_status_text(
-        UiText(localization::p2p_connected[localization_language_index_]));
+    (*ui_->stream)
+        ->set_status_text(
+            UiText(localization::p2p_connected[localization_language_index_]));
 #ifdef CROSSDESK_DEBUG
     // A bordered 16:9 frame makes stream scaling/cropping regressions visible
     // in the existing capture mode without requiring a live remote session.
@@ -898,20 +1138,16 @@ void GuiApplication::InitializeUi() {
     constexpr int preview_height = 360;
     slint::SharedPixelBuffer<slint::Rgb8Pixel> preview_pixels(preview_width,
                                                               preview_height);
-    auto *preview_data =
-        reinterpret_cast<uint8_t *>(preview_pixels.begin());
+    auto* preview_data = reinterpret_cast<uint8_t*>(preview_pixels.begin());
     for (int y = 0; y < preview_height; ++y) {
       for (int x = 0; x < preview_width; ++x) {
-        const bool border = x < 8 || y < 8 || x >= preview_width - 8 ||
-                            y >= preview_height - 8;
-        const size_t offset =
-            (static_cast<size_t>(y) * preview_width + x) * 3;
-        preview_data[offset] = border ? 240 : static_cast<uint8_t>(
-                                                   35 + 150 * x /
-                                                            preview_width);
-        preview_data[offset + 1] = border ? 70 : static_cast<uint8_t>(
-                                                      35 + 150 * y /
-                                                               preview_height);
+        const bool border =
+            x < 8 || y < 8 || x >= preview_width - 8 || y >= preview_height - 8;
+        const size_t offset = (static_cast<size_t>(y) * preview_width + x) * 3;
+        preview_data[offset] =
+            border ? 240 : static_cast<uint8_t>(35 + 150 * x / preview_width);
+        preview_data[offset + 1] =
+            border ? 70 : static_cast<uint8_t>(35 + 150 * y / preview_height);
         preview_data[offset + 2] = border ? 70 : 90;
       }
     }
@@ -921,9 +1157,10 @@ void GuiApplication::InitializeUi() {
 #endif
     BindStreamCallbacks();
     (*ui_->stream)->show();
-    PositionWindowAtCenter((*ui_->stream)->window(), ui_->main->window(),
-                           kStreamWindowLogicalWidth,
-                           kStreamWindowLogicalHeight);
+    PositionWindowAtCenter(
+        (*ui_->stream)->window(), ui_->main->window(),
+        kStreamWindowLogicalWidth,
+        StreamWindowLogicalHeight((*ui_->stream)->get_custom_titlebar()));
     ui_->main->hide();
   } else if (ui_->capture_mode && ui_->capture_page == "server") {
     ui_->server.emplace(ui::ServerWindow::create());
@@ -934,23 +1171,30 @@ void GuiApplication::InitializeUi() {
     const float server_width =
         ServerWindowLogicalWidth(localization_language_index_);
     const float server_height = ServerWindowLogicalHeight(false);
-    (*ui_->server)->window().set_size(slint::LogicalSize(
-        slint::Size<float>{server_width, server_height}));
+    (*ui_->server)
+        ->window()
+        .set_size(slint::LogicalSize(
+            slint::Size<float>{server_width, server_height}));
     ui::ControllerEntry preview_controller;
     preview_controller.remote_id = "589173341";
     preview_controller.display_name = "Mac";
     ui_->controller_model->set_vector({preview_controller});
     ui_->controller_name_model->set_vector({slint::SharedString("Mac")});
-    (*ui_->server)->set_controller_label(
-        UiText(localization::controller[localization_language_index_]));
-    (*ui_->server)->set_connection_label(
-        UiText(localization::connection_status[localization_language_index_]));
-    (*ui_->server)->set_connection_status(
-        UiText(localization::p2p_connected[localization_language_index_]));
-    (*ui_->server)->set_file_transfer_label(
-        UiText(localization::file_transfer[localization_language_index_]));
-    (*ui_->server)->set_select_file_label(
-        UiText(localization::select_file[localization_language_index_]));
+    (*ui_->server)
+        ->set_controller_label(
+            UiText(localization::controller[localization_language_index_]));
+    (*ui_->server)
+        ->set_connection_label(UiText(
+            localization::connection_status[localization_language_index_]));
+    (*ui_->server)
+        ->set_connection_status(
+            UiText(localization::p2p_connected[localization_language_index_]));
+    (*ui_->server)
+        ->set_file_transfer_label(
+            UiText(localization::file_transfer[localization_language_index_]));
+    (*ui_->server)
+        ->set_select_file_label(
+            UiText(localization::select_file[localization_language_index_]));
     BindServerCallbacks();
     (*ui_->server)->show();
     PositionWindowAtBottomRight((*ui_->server)->window(), server_width,
@@ -1002,9 +1246,8 @@ void GuiApplication::InitializeSystemTray() {
       LoadSlintTrayIcon(), L"CrossDesk", localization_language_index_);
 #elif defined(__APPLE__)
   ui_->tray = std::make_unique<MacTray>(
-      std::move(show_window), std::move(hide_window),
-      std::move(open_settings), std::move(exit_app), "CrossDesk",
-      localization_language_index_);
+      std::move(show_window), std::move(hide_window), std::move(open_settings),
+      std::move(exit_app), "CrossDesk", localization_language_index_);
 #elif defined(__linux__)
   ui_->tray = std::make_unique<LinuxTray>(
       std::move(show_window), std::move(hide_window), std::move(exit_app),
@@ -1052,7 +1295,7 @@ void GuiApplication::ResetSettingsUi() {
 }
 
 void GuiApplication::BindMainCallbacks() {
-  auto &main = ui_->main;
+  auto& main = ui_->main;
   main->window().on_close_requested([this] {
     if (MinimizeMainWindowToTray()) {
       // MinimizeMainWindowToTray() ensures the tray icon exists. Let Slint
@@ -1061,6 +1304,27 @@ void GuiApplication::BindMainCallbacks() {
     }
     exit_ = true;
     return slint::CloseRequestResponse::HideWindow;
+  });
+  main->on_main_title_drag([this](int phase, float x, float y) {
+    if (ui_) {
+      DragWindow(ui_->main, phase, x, y, ui_->main_drag);
+    }
+  });
+  main->on_minimize_main_window([this] {
+    if (ui_) {
+      ui_->main->window().set_minimized(true);
+    }
+  });
+  main->on_close_main_window([this] {
+    if (!ui_) {
+      return;
+    }
+    if (MinimizeMainWindowToTray()) {
+      ui_->main->hide();
+      return;
+    }
+    exit_ = true;
+    ui_->main->hide();
   });
   main->on_copy_local_id([this] {
     if (!SDL_SetClipboardText(client_id_)) {
@@ -1106,15 +1370,13 @@ void GuiApplication::BindMainCallbacks() {
     }
     return true;
   });
-  main->on_connect_requested([this](slint::SharedString id) {
-    ConnectFromUi(std::string(id));
-  });
+  main->on_connect_requested(
+      [this](slint::SharedString id) { ConnectFromUi(std::string(id)); });
   main->on_format_remote_id([](slint::SharedString value) {
     return UiText(FormatRemotePeerIdInput(std::string_view(value)));
   });
-  main->on_recent_connect([this](slint::SharedString id) {
-    ConnectFromUi(std::string(id));
-  });
+  main->on_recent_connect(
+      [this](slint::SharedString id) { ConnectFromUi(std::string(id)); });
   main->on_recent_edit_alias(
       [this](slint::SharedString id, slint::SharedString alias) {
         const std::string remote_id(id);
@@ -1131,7 +1393,7 @@ void GuiApplication::BindMainCallbacks() {
     const std::string remote_id(id);
     const auto connection = std::find_if(
         recent_connections_.begin(), recent_connections_.end(),
-        [&](const auto &entry) { return entry.second.remote_id == remote_id; });
+        [&](const auto& entry) { return entry.second.remote_id == remote_id; });
     if (connection != recent_connections_.end()) {
       thumbnail_->DeleteThumbnail(connection->first);
       settings_.EraseRecentConnectionAlias(remote_id);
@@ -1140,10 +1402,11 @@ void GuiApplication::BindMainCallbacks() {
     }
   });
   main->on_browse_save_path([this] {
-    const char *folder = tinyfd_selectFolderDialog(
+    const char* folder = tinyfd_selectFolderDialog(
         localization::file_transfer_save_path[localization_language_index_]
             .c_str(),
-        file_transfer_save_path_buf_[0] ? file_transfer_save_path_buf_ : nullptr);
+        file_transfer_save_path_buf_[0] ? file_transfer_save_path_buf_
+                                        : nullptr);
     if (folder) {
       ui_->main->set_file_save_path(folder);
     }
@@ -1172,8 +1435,8 @@ void GuiApplication::BindMainCallbacks() {
     }
     if (coturn_port) {
       config_center_->SetCoturnServerPort(*coturn_port);
-      std::snprintf(coturn_server_port_self_,
-                    sizeof(coturn_server_port_self_), "%d", *coturn_port);
+      std::snprintf(coturn_server_port_self_, sizeof(coturn_server_port_self_),
+                    "%d", *coturn_port);
       std::snprintf(coturn_server_port_, sizeof(coturn_server_port_), "%d",
                     *coturn_port);
     }
@@ -1183,12 +1446,12 @@ void GuiApplication::BindMainCallbacks() {
     ui_->main->set_server_host(UiText(host));
     const int signal_port = config_center_->GetSignalServerPort();
     const int coturn_port = config_center_->GetCoturnServerPort();
-    ui_->main->set_server_port(
-        signal_port > 0 ? UiText(std::to_string(signal_port))
-                        : slint::SharedString{});
-    ui_->main->set_coturn_port(
-        coturn_port > 0 ? UiText(std::to_string(coturn_port))
-                        : slint::SharedString{});
+    ui_->main->set_server_port(signal_port > 0
+                                   ? UiText(std::to_string(signal_port))
+                                   : slint::SharedString{});
+    ui_->main->set_coturn_port(coturn_port > 0
+                                   ? UiText(std::to_string(coturn_port))
+                                   : slint::SharedString{});
   });
   main->on_open_download([this] { OpenUrl("https://crossdesk.cn"); });
   main->on_connection_cancel([this] {
@@ -1219,20 +1482,20 @@ void GuiApplication::BindMainCallbacks() {
     }
     show_connection_status_window_ = false;
   });
-  main->on_connection_submit_password(
-      [this](slint::SharedString value, bool remember) {
-        const auto props = FindRemoteSession(ui_->connection_dialog_remote_id);
-        const std::string password(value);
-        if (!props || password.empty() || password.size() > 6) {
-          return;
-        }
-        std::memset(props->remote_password_, 0, sizeof(props->remote_password_));
-        std::memcpy(props->remote_password_, password.data(), password.size());
-        props->remember_password_ = remember;
-        props->rejoin_ = true;
-        password_validating_ = true;
-        need_to_rejoin_ = true;
-      });
+  main->on_connection_submit_password([this](slint::SharedString value,
+                                             bool remember) {
+    const auto props = FindRemoteSession(ui_->connection_dialog_remote_id);
+    const std::string password(value);
+    if (!props || password.empty() || password.size() > 6) {
+      return;
+    }
+    std::memset(props->remote_password_, 0, sizeof(props->remote_password_));
+    std::memcpy(props->remote_password_, password.data(), password.size());
+    props->remember_password_ = remember;
+    props->rejoin_ = true;
+    password_validating_ = true;
+    need_to_rejoin_ = true;
+  });
   main->on_request_screen_recording_permission([this] {
 #ifdef __APPLE__
     OpenScreenRecordingPreferences();
@@ -1290,27 +1553,53 @@ void GuiApplication::BindStreamCallbacks() {
   if (!ui_->stream) {
     return;
   }
-  auto &stream = *ui_->stream;
-  stream->window().on_close_requested([this] {
+  auto& stream = *ui_->stream;
+  auto close_stream_sessions = [this] {
     std::vector<std::string> ids;
     {
       std::shared_lock lock(remote_sessions_mutex_);
-      for (const auto &[id, _] : remote_sessions_) {
+      for (const auto& [id, _] : remote_sessions_) {
         ids.push_back(id);
       }
     }
-    for (const auto &id : ids) {
+    for (const auto& id : ids) {
       CloseStreamTab(id);
     }
+    if (ui_ && ui_->stream) {
+      (*ui_->stream)->hide();
+    }
+  };
+  stream->window().on_close_requested([close_stream_sessions] {
+    close_stream_sessions();
     return slint::CloseRequestResponse::HideWindow;
   });
+  stream->on_stream_title_drag([this](int phase, float x, float y) {
+    if (ui_ && ui_->stream) {
+      DragWindow(*ui_->stream, phase, x, y, ui_->stream_drag);
+    }
+  });
+  stream->on_minimize_stream_window([this] {
+    if (ui_ && ui_->stream) {
+      (*ui_->stream)->window().set_minimized(true);
+    }
+  });
+  stream->on_toggle_maximize_stream_window([this] {
+    if (!ui_ || !ui_->stream) {
+      return;
+    }
+    auto& stream = *ui_->stream;
+    auto& window = stream->window();
+    const bool maximize = !window.is_maximized();
+    stream->set_window_maximized(maximize);
+    window.set_maximized(maximize);
+  });
+  stream->on_close_stream_window(close_stream_sessions);
   stream->on_select_tab([this](int index) { SelectStreamTab(index); });
   stream->on_reorder_tab([this](int from, float drop_x, float tab_width) {
     ReorderStreamTab(from, drop_x, tab_width);
   });
-  stream->on_close_tab([this](slint::SharedString id) {
-    CloseStreamTab(std::string(id));
-  });
+  stream->on_close_tab(
+      [this](slint::SharedString id) { CloseStreamTab(std::string(id)); });
   stream->on_switch_display([this](int index) {
     auto props = SelectedSession();
     if (!props || index < 0 ||
@@ -1379,10 +1668,9 @@ void GuiApplication::BindStreamCallbacks() {
       props->file_transfer_.file_transfer_window_visible_ = false;
     }
   });
-  stream->on_can_drop_file([](const slint::DataTransfer &data) {
-    return data.has_plain_text();
-  });
-  stream->on_file_dropped([this](const slint::DataTransfer &data) {
+  stream->on_can_drop_file(
+      [](const slint::DataTransfer& data) { return data.has_plain_text(); });
+  stream->on_file_dropped([this](const slint::DataTransfer& data) {
     const auto text = data.plain_text();
     auto props = SelectedSession();
     if (!text || !props) {
@@ -1401,7 +1689,7 @@ void GuiApplication::BindStreamCallbacks() {
     }
   });
   stream->on_toggle_fullscreen([this] {
-    auto &stream = *ui_->stream;
+    auto& stream = *ui_->stream;
 #if defined(__APPLE__)
     const bool enter_fullscreen = !IsStreamWindowFullscreen();
     // Update Slint's fullscreen layout before AppKit applies the new frame so
@@ -1412,7 +1700,7 @@ void GuiApplication::BindStreamCallbacks() {
       return;
     }
 #else
-    auto &window = stream->window();
+    auto& window = stream->window();
     const bool enter_fullscreen = !window.is_fullscreen();
 #endif
     fullscreen_button_pressed_ = enter_fullscreen;
@@ -1436,29 +1724,31 @@ void GuiApplication::BindStreamCallbacks() {
   stream->on_scroll_input([this](float dx, float dy, float x, float y) {
     SendScrollInput(dx, dy, x, y);
   });
-  stream->on_key_input(
-      [this](slint::SharedString text, bool pressed, bool control, bool alt,
-             bool shift, bool meta) {
-        SendKeyInput(std::string(text), pressed, control, alt, shift, meta);
-      });
+  stream->on_key_input([this](slint::SharedString text, bool pressed,
+                              bool control, bool alt, bool shift, bool meta) {
+    SendKeyInput(std::string(text), pressed, control, alt, shift, meta);
+  });
+  stream->on_keyboard_focus_changed(
+      [this](bool focused) { SetStreamKeyboardFocus(focused); });
 }
 
 void GuiApplication::BindServerCallbacks() {
   if (!ui_->server) {
     return;
   }
-  auto &server = *ui_->server;
+  auto& server = *ui_->server;
   server->on_title_drag([this](int phase, float x, float y) {
-    auto &drag = ui_->server_drag;
+    auto& drag = ui_->server_drag;
     DragWindow(*ui_->server, phase, x, y, drag);
   });
   server->on_toggle_collapsed([this](bool collapsed) {
     server_window_collapsed_ = collapsed;
     const int language = (*ui_->server)->get_language_index();
     const float width = ServerWindowLogicalWidth(language);
-    (*ui_->server)->window().set_size(
-        slint::LogicalSize(slint::Size<float>{
-            width, ServerWindowLogicalHeight(collapsed)}));
+    (*ui_->server)
+        ->window()
+        .set_size(slint::LogicalSize(
+            slint::Size<float>{width, ServerWindowLogicalHeight(collapsed)}));
   });
   server->on_controller_selected([this](int index) {
     if (index < 0 || index >= static_cast<int>(ui_->controller_ids.size())) {
@@ -1527,7 +1817,7 @@ void GuiApplication::Tick() {
   if (need_to_rejoin_ && now - last_rejoin_check_time_ >= 1s) {
     last_rejoin_check_time_ = now;
     need_to_rejoin_ = false;
-    for (const auto &[_, props] : remote_sessions_) {
+    for (const auto& [_, props] : remote_sessions_) {
       if (props && props->rejoin_) {
         ConnectTo(props->remote_id_, props->remote_password_,
                   props->remember_password_);
@@ -1543,8 +1833,13 @@ void GuiApplication::Tick() {
   }
   HandleConnectionStatusChange();
   HandlePendingPresenceProbe();
-  HandleConnectionTimeouts();
+  HandlePresenceProbeTimeout();
   HandleWindowsServiceIntegration();
+#if defined(__linux__) && !defined(__APPLE__)
+  SyncXWaylandWindowActivation();
+#else
+  SyncStreamKeyboardFocus();
+#endif
   devices_.UpdateInteractions();
 
   UpdateLocalization();
@@ -1561,7 +1856,7 @@ void GuiApplication::UpdateLocalization() {
   if (!ui_ || ui_->localized_language == language) {
     return;
   }
-  auto &strings = ui_->main->global<ui::UiStrings>();
+  auto& strings = ui_->main->global<ui::UiStrings>();
   strings.set_local_desktop(UiText(localization::local_desktop[language]));
   strings.set_remote_desktop(UiText(localization::remote_desktop[language]));
   strings.set_recent_connections(
@@ -1580,7 +1875,8 @@ void GuiApplication::UpdateLocalization() {
   strings.set_ok(UiText(localization::ok[language]));
   strings.set_cancel(UiText(localization::cancel[language]));
   strings.set_new_password(UiText(localization::new_password[language]));
-  strings.set_invalid_password(UiText(localization::max_password_len[language]));
+  strings.set_invalid_password(
+      UiText(localization::max_password_len[language]));
   strings.set_edit_alias(
       UiText(localization::input_connection_alias[language]));
   strings.set_delete_connection(
@@ -1618,6 +1914,7 @@ void GuiApplication::UpdateLocalization() {
   strings.set_tls_error(UiText(localization::signal_tls_cert_error[language]));
   strings.set_update_available(
       UiText(localization::new_version_available[language]));
+  strings.set_release_notes(UiText(localization::release_notes[language]));
   strings.set_download(UiText(localization::update[language]));
   strings.set_input_password(UiText(localization::input_password[language]));
   strings.set_reinput_password(
@@ -1647,8 +1944,8 @@ void GuiApplication::UpdateLocalization() {
   strings.set_do_not_remind(
       UiText(localization::do_not_remind_again[language]));
   strings.set_notification(UiText(localization::notification[language]));
-  strings.set_service_suppressed_message(
-      UiText(localization::windows_service_prompt_suppressed_message[language]));
+  strings.set_service_suppressed_message(UiText(
+      localization::windows_service_prompt_suppressed_message[language]));
   strings.set_quality_low(UiText(localization::video_quality_low[language]));
   strings.set_quality_medium(
       UiText(localization::video_quality_medium[language]));
@@ -1660,7 +1957,7 @@ void GuiApplication::UpdateLocalization() {
   strings.set_access_website(UiText(localization::access_website[language]));
   strings.set_release_date_label(UiText(localization::release_date[language]));
   strings.set_later(UiText(localization::cancel[language]));
-  const auto apply_stream_strings = [language](auto &stream_strings) {
+  const auto apply_stream_strings = [language](auto& stream_strings) {
     stream_strings.set_select_display(
         UiText(localization::select_display[language]));
     stream_strings.set_send_shortcut(
@@ -1671,8 +1968,7 @@ void GuiApplication::UpdateLocalization() {
         UiText(localization::release_mouse[language]));
     stream_strings.set_audio(UiText(localization::audio_capture[language]));
     stream_strings.set_mute(UiText(localization::mute[language]));
-    stream_strings.set_select_file(
-        UiText(localization::select_file[language]));
+    stream_strings.set_select_file(UiText(localization::select_file[language]));
     stream_strings.set_show_stats(
         UiText(localization::show_net_traffic_stats[language]));
     stream_strings.set_hide_stats(
@@ -1680,8 +1976,7 @@ void GuiApplication::UpdateLocalization() {
     stream_strings.set_fullscreen(UiText(localization::fullscreen[language]));
     stream_strings.set_exit_fullscreen(
         UiText(localization::exit_fullscreen[language]));
-    stream_strings.set_disconnect(
-        UiText(localization::disconnect[language]));
+    stream_strings.set_disconnect(UiText(localization::disconnect[language]));
     stream_strings.set_file_transfer(
         UiText(localization::file_transfer_progress[language]));
     stream_strings.set_expand_control(
@@ -1697,11 +1992,10 @@ void GuiApplication::UpdateLocalization() {
     stream_strings.set_stats_connection_mode(
         UiText(localization::connection_mode[language]));
   };
-  auto &main_stream_strings = ui_->main->global<ui::StreamStrings>();
+  auto& main_stream_strings = ui_->main->global<ui::StreamStrings>();
   apply_stream_strings(main_stream_strings);
   if (ui_->stream) {
-    auto &active_stream_strings =
-        (*ui_->stream)->global<ui::StreamStrings>();
+    auto& active_stream_strings = (*ui_->stream)->global<ui::StreamStrings>();
     apply_stream_strings(active_stream_strings);
   }
   ui_->localized_language = language;
@@ -1728,21 +2022,20 @@ void GuiApplication::SyncMainWindow() {
   ui_->main->set_local_password(password_saved_);
   ui_->main->set_password_visible(show_password_);
   ui_->main->set_signal_connected(signal_connected_);
-  ui_->main->set_signal_tls_error(
-      signal_status_ == SignalStatus::SignalTlsCertError);
+  ui_->main->set_signal_tls_error(signal_status_ ==
+                                  SignalStatus::SignalTlsCertError);
   ui_->main->set_update_available(update_available_);
   ui_->main->set_current_version(CROSSDESK_VERSION);
   ui_->main->set_latest_version(UiText(latest_version_));
   ui_->main->set_release_name(UiText(release_name_));
-  ui_->main->set_release_notes(UiText(CleanReleaseNotesForUi(release_notes_)));
   ui_->main->set_release_date(UiText(release_date_));
   ui_->main->set_settings_session_active(stream_window_inited_);
-#if (((defined(_WIN32) || defined(__linux__)) && !defined(__aarch64__) &&     \
-      !defined(__arm__) && USE_CUDA) ||                                      \
+#if (((defined(_WIN32) || defined(__linux__)) && !defined(__aarch64__) && \
+      !defined(__arm__) && USE_CUDA) ||                                   \
      defined(__APPLE__))
-  ui_->main->set_hardware_codec_visible(true);
+  ui_->main->set_hardware_codec_available(true);
 #else
-  ui_->main->set_hardware_codec_visible(false);
+  ui_->main->set_hardware_codec_available(false);
 #endif
 
   if (show_offline_warning_window_) {
@@ -1751,7 +2044,7 @@ void GuiApplication::SyncMainWindow() {
   }
 
   std::ostringstream signature_builder;
-  for (const auto &[key, connection] : recent_connections_) {
+  for (const auto& [key, connection] : recent_connections_) {
     signature_builder << key << '\0' << connection.remote_id << '\0'
                       << connection.remote_host_name << '\0'
                       << settings_.RecentConnectionDisplayName(connection)
@@ -1767,7 +2060,7 @@ void GuiApplication::SyncMainWindow() {
 
   std::vector<ui::RecentConnection> model;
   model.reserve(recent_connections_.size());
-  for (const auto &[_, connection] : recent_connections_) {
+  for (const auto& [_, connection] : recent_connections_) {
     ui::RecentConnection item;
     item.remote_id = UiText(connection.remote_id);
     item.host_name = UiText(connection.remote_host_name);
@@ -1787,6 +2080,11 @@ void GuiApplication::SyncMainWindow() {
     }
     model.push_back(std::move(item));
   }
+  // LoadThumbnail already orders connections by last update time. Keep that
+  // order within each presence group while placing online devices first.
+  std::stable_partition(
+      model.begin(), model.end(),
+      [](const ui::RecentConnection& connection) { return connection.online; });
   ui_->recent_model->set_vector(std::move(model));
 }
 
@@ -1824,9 +2122,9 @@ void GuiApplication::SyncConnectionDialog() {
   if (password_required) {
     text = password_validating_
                ? localization::validate_password[localization_language_index_]
-               : password_validating_time_ <= 1
-                     ? localization::input_password[localization_language_index_]
-                     : localization::reinput_password[localization_language_index_];
+           : password_validating_time_ <= 1
+               ? localization::input_password[localization_language_index_]
+               : localization::reinput_password[localization_language_index_];
   } else {
     text = ConnectionStatusText(status, localization_language_index_);
   }
@@ -1871,19 +2169,19 @@ void GuiApplication::SyncPlatformDialogs() {
       state == PortableServiceInstallState::installing);
   ui_->main->set_portable_service_succeeded(
       state == PortableServiceInstallState::succeeded);
-  const std::string *status = nullptr;
+  const std::string* status = nullptr;
   if (state == PortableServiceInstallState::installing) {
-    status = &localization::installing_windows_service
-                  [localization_language_index_];
+    status =
+        &localization::installing_windows_service[localization_language_index_];
   } else if (state == PortableServiceInstallState::succeeded) {
     status = &localization::windows_service_install_success
-                  [localization_language_index_];
+                 [localization_language_index_];
   } else if (state == PortableServiceInstallState::failed) {
     status = &localization::windows_service_install_failed
-                  [localization_language_index_];
+                 [localization_language_index_];
   }
-  ui_->main->set_portable_service_status(
-      status ? UiText(*status) : slint::SharedString{});
+  ui_->main->set_portable_service_status(status ? UiText(*status)
+                                                : slint::SharedString{});
   if (show_portable_service_install_window_) {
     if (!ui_->portable_service_dialog_initialized) {
       ui_->main->set_portable_service_do_not_remind(
@@ -1907,16 +2205,85 @@ void GuiApplication::SyncPlatformDialogs() {
     return;
   }
   RefreshMacPermissionStatus(false);
-  show_request_permission_window_ =
-      !mac_screen_recording_permission_granted_ ||
-      !mac_accessibility_permission_granted_;
+  show_request_permission_window_ = !mac_screen_recording_permission_granted_ ||
+                                    !mac_accessibility_permission_granted_;
   ui_->main->set_permission_dialog_open(show_request_permission_window_);
   ui_->main->set_screen_recording_granted(
       mac_screen_recording_permission_granted_);
-  ui_->main->set_accessibility_granted(
-      mac_accessibility_permission_granted_);
+  ui_->main->set_accessibility_granted(mac_accessibility_permission_granted_);
 #else
   ui_->main->set_permission_dialog_open(false);
+#endif
+}
+
+#if defined(__linux__) && !defined(__APPLE__)
+void GuiApplication::SyncXWaylandWindowActivation() {
+  if (!ui_ || !use_xwayland_gui_) {
+    return;
+  }
+
+  const auto now = std::chrono::steady_clock::now();
+  if (now - ui_->last_x11_activation_poll < 100ms) {
+    return;
+  }
+  ui_->last_x11_activation_poll = now;
+
+  if (!ui_->x11_focus_display) {
+    ui_->x11_focus_display = XOpenDisplay(nullptr);
+  }
+  Display* display = ui_->x11_focus_display;
+  const ::Window active_window = X11GetActiveWindow(display);
+  if (!active_window) {
+    SetStreamKeyboardFocus(false);
+    return;
+  }
+
+  if (const auto process_id = X11GetWindowProcessId(display, active_window);
+      process_id && *process_id != static_cast<unsigned long>(getpid())) {
+    ui_->main->set_window_active(false);
+    if (ui_->stream) {
+      (*ui_->stream)->set_window_active(false);
+    }
+    SetStreamKeyboardFocus(false);
+    return;
+  }
+
+  ui_->main->set_window_active(
+      X11WindowMatches(display, active_window, ui_->main->window()));
+  if (ui_->stream) {
+    const bool stream_active =
+        X11WindowMatches(display, active_window, (*ui_->stream)->window());
+    (*ui_->stream)->set_window_active(stream_active);
+    SetStreamKeyboardFocus(stream_active);
+  } else {
+    SetStreamKeyboardFocus(false);
+  }
+}
+#endif
+
+void GuiApplication::SetStreamKeyboardFocus(bool focused) {
+  if (focus_on_stream_window_ == focused) {
+    return;
+  }
+
+  focus_on_stream_window_ = focused;
+  if (!focused) {
+    keyboard_.ForceReleasePressedKeys();
+  }
+}
+
+void GuiApplication::SyncStreamKeyboardFocus() {
+  if (!ui_ || !ui_->stream || !(*ui_->stream)->window().is_visible()) {
+    SetStreamKeyboardFocus(false);
+    return;
+  }
+
+#if _WIN32
+  const HWND stream_hwnd = (*ui_->stream)->window().win32_hwnd();
+  SetStreamKeyboardFocus(stream_hwnd != nullptr &&
+                         GetForegroundWindow() == stream_hwnd);
+#elif defined(__APPLE__)
+  SetStreamKeyboardFocus(IsStreamWindowActive());
 #endif
 }
 
@@ -1928,6 +2295,9 @@ void GuiApplication::SyncStreamWindow() {
   }
   if (need_to_create_stream_window_ && !ui_->stream) {
     ui_->stream.emplace(ui::StreamWindow::create());
+#if defined(__linux__)
+    (*ui_->stream)->set_custom_titlebar(use_xwayland_gui_);
+#endif
     RegisterFontAwesome((*ui_->stream)->window());
     // Slint globals belong to a component tree. Force the next localization
     // pass to initialize the newly-created, independent stream window tree.
@@ -1951,6 +2321,7 @@ void GuiApplication::SyncStreamWindow() {
   if (!ui_->stream) {
     return;
   }
+  (*ui_->stream)->set_window_maximized((*ui_->stream)->window().is_maximized());
   (*ui_->stream)->set_srtp_enabled(enable_srtp_);
 #if defined(__APPLE__)
   if (ui_->stream_live_resize_configuration_attempts > 0) {
@@ -1962,15 +2333,17 @@ void GuiApplication::SyncStreamWindow() {
   }
 #endif
   if (ui_->stream_initial_position_attempts > 0) {
-    if (PositionWindowAtCenter((*ui_->stream)->window(), ui_->main->window(),
-                               kStreamWindowLogicalWidth,
-                               kStreamWindowLogicalHeight)) {
+    if (PositionWindowAtCenter(
+            (*ui_->stream)->window(), ui_->main->window(),
+            kStreamWindowLogicalWidth,
+            StreamWindowLogicalHeight((*ui_->stream)->get_custom_titlebar()))) {
       --ui_->stream_initial_position_attempts;
     } else {
       ui_->stream_initial_position_attempts = 0;
     }
   }
   if (!has_sessions) {
+    SetStreamKeyboardFocus(false);
 #if defined(__APPLE__)
     SetStreamWindowFullscreen(false);
 #endif
@@ -1993,24 +2366,23 @@ void GuiApplication::SyncStreamWindow() {
   {
     std::shared_lock lock(remote_sessions_mutex_);
     tabs_by_id.reserve(remote_sessions_.size());
-    for (const auto &[id, props] : remote_sessions_) {
+    for (const auto& [id, props] : remote_sessions_) {
       if (!props || !props->tab_opened_) {
         continue;
       }
       ui::StreamTab tab;
       tab.remote_id = UiText(id);
-      tab.title = UiText(props->remote_host_name_.empty()
-                             ? id
-                             : props->remote_host_name_);
-      tab.connected = props->connection_status_.load() ==
-                      ConnectionStatus::Connected;
+      tab.title = UiText(
+          props->remote_host_name_.empty() ? id : props->remote_host_name_);
+      tab.connected =
+          props->connection_status_.load() == ConnectionStatus::Connected;
       tabs_by_id.emplace(id, std::move(tab));
     }
   }
-  std::erase_if(ui_->tab_order, [&tabs_by_id](const std::string &id) {
+  std::erase_if(ui_->tab_order, [&tabs_by_id](const std::string& id) {
     return !tabs_by_id.contains(id);
   });
-  for (const auto &[id, _] : tabs_by_id) {
+  for (const auto& [id, _] : tabs_by_id) {
     if (std::find(ui_->tab_order.begin(), ui_->tab_order.end(), id) ==
         ui_->tab_order.end()) {
       ui_->tab_order.push_back(id);
@@ -2019,7 +2391,7 @@ void GuiApplication::SyncStreamWindow() {
   ui_->tab_ids = ui_->tab_order;
   tabs.reserve(ui_->tab_ids.size());
   std::ostringstream tab_signature_builder;
-  for (const auto &id : ui_->tab_ids) {
+  for (const auto& id : ui_->tab_ids) {
     if (auto found = tabs_by_id.find(id); found != tabs_by_id.end()) {
       tab_signature_builder << id << '\0' << std::string(found->second.title)
                             << '\0' << found->second.connected << '\n';
@@ -2053,14 +2425,16 @@ void GuiApplication::SyncStreamWindow() {
   // Once the peer is connected, the frame-waiting hint replaces the
   // connection status. Keeping these states mutually exclusive also avoids a
   // transient overlap when both properties are synchronized in one tick.
-  (*ui_->stream)->set_status_text(UiText(
-      status == ConnectionStatus::Connected
-          ? std::string{}
-          : ConnectionStatusText(status, localization_language_index_)));
-  (*ui_->stream)->set_receiving_text(
-      UiText(status == ConnectionStatus::Connected
-                 ? localization::receiving_screen[localization_language_index_]
-                 : std::string{}));
+  (*ui_->stream)
+      ->set_status_text(UiText(
+          status == ConnectionStatus::Connected
+              ? std::string{}
+              : ConnectionStatusText(status, localization_language_index_)));
+  (*ui_->stream)
+      ->set_receiving_text(UiText(
+          status == ConnectionStatus::Connected
+              ? localization::receiving_screen[localization_language_index_]
+              : std::string{}));
   (*ui_->stream)->set_mouse_control_enabled(props->control_mouse_);
   (*ui_->stream)->set_audio_enabled(props->audio_capture_button_pressed_);
 #if defined(__APPLE__)
@@ -2069,23 +2443,21 @@ void GuiApplication::SyncStreamWindow() {
   fullscreen_button_pressed_ = (*ui_->stream)->window().is_fullscreen();
 #endif
   (*ui_->stream)->set_fullscreen_enabled(fullscreen_button_pressed_);
-  (*ui_->stream)->set_stats_visible(
-      props->net_traffic_stats_button_pressed_);
+  (*ui_->stream)->set_stats_visible(props->net_traffic_stats_button_pressed_);
 
   std::vector<slint::SharedString> displays;
   displays.reserve(props->display_info_list_.size());
-  for (const auto &display : props->display_info_list_) {
+  for (const auto& display : props->display_info_list_) {
     displays.emplace_back(UiText(display.name));
   }
   ui_->display_model->set_vector(std::move(displays));
   (*ui_->stream)->set_selected_display(props->selected_display_);
 
-  const auto &net = props->net_traffic_stats_;
+  const auto& net = props->net_traffic_stats_;
   std::vector<ui::NetworkStatsRow> stats_rows;
   stats_rows.reserve(4);
-  const auto append_stats_row = [&](const std::string &label,
-                                    const auto &inbound,
-                                    const auto &outbound) {
+  const auto append_stats_row = [&](const std::string& label,
+                                    const auto& inbound, const auto& outbound) {
     ui::NetworkStatsRow row;
     row.label = UiText(label);
     row.inbound = UiText(FormatBitrate(inbound.bitrate));
@@ -2103,13 +2475,16 @@ void GuiApplication::SyncStreamWindow() {
                    net.total_inbound_stats, net.total_outbound_stats);
   ui_->stats_model->set_vector(std::move(stats_rows));
   (*ui_->stream)->set_stats_fps(UiText(std::to_string(props->fps_)));
-  (*ui_->stream)->set_stats_resolution(UiText(
-      std::to_string(props->video_width_) + "x" +
-      std::to_string(props->video_height_)));
-  (*ui_->stream)->set_stats_connection_mode(UiText(
-      props->traversal_mode_ == TraversalMode::P2P
-          ? localization::connection_mode_direct[localization_language_index_]
-          : localization::connection_mode_relay[localization_language_index_]));
+  (*ui_->stream)
+      ->set_stats_resolution(UiText(std::to_string(props->video_width_) + "x" +
+                                    std::to_string(props->video_height_)));
+  (*ui_->stream)
+      ->set_stats_connection_mode(
+          UiText(props->traversal_mode_ == TraversalMode::P2P
+                     ? localization::connection_mode_direct
+                           [localization_language_index_]
+                     : localization::connection_mode_relay
+                           [localization_language_index_]));
 
   std::vector<RemoteSession::FileTransferInfo> file_list;
   {
@@ -2118,26 +2493,26 @@ void GuiApplication::SyncStreamWindow() {
   }
   const auto transfer_priority = [](RemoteSession::FileTransferStatus status) {
     switch (status) {
-    case RemoteSession::FileTransferStatus::Sending:
-      return 0;
-    case RemoteSession::FileTransferStatus::Completed:
-      return 1;
-    case RemoteSession::FileTransferStatus::Queued:
-      return 2;
-    case RemoteSession::FileTransferStatus::Failed:
-      return 3;
+      case RemoteSession::FileTransferStatus::Sending:
+        return 0;
+      case RemoteSession::FileTransferStatus::Completed:
+        return 1;
+      case RemoteSession::FileTransferStatus::Queued:
+        return 2;
+      case RemoteSession::FileTransferStatus::Failed:
+        return 3;
     }
     return 3;
   };
   std::stable_sort(file_list.begin(), file_list.end(),
-                   [&](const auto &left, const auto &right) {
+                   [&](const auto& left, const auto& right) {
                      return transfer_priority(left.status) <
                             transfer_priority(right.status);
                    });
 
   std::vector<ui::FileTransferEntry> transfers;
   transfers.reserve(file_list.size());
-  for (const auto &info : file_list) {
+  for (const auto& info : file_list) {
     ui::FileTransferEntry item;
     item.name = UiText(info.file_name);
     const auto status_index = static_cast<int>(info.status);
@@ -2146,24 +2521,24 @@ void GuiApplication::SyncStreamWindow() {
     if (status_index == 1)
       item.status = UiText(localization::sending[localization_language_index_]);
     if (status_index == 2)
-      item.status = UiText(localization::completed[localization_language_index_]);
+      item.status =
+          UiText(localization::completed[localization_language_index_]);
     if (status_index == 3)
       item.status = UiText(localization::failed[localization_language_index_]);
-    item.progress = status_index == 2
-                        ? 1.0f
-                        : info.file_size == 0
-                              ? 0.0f
-                              : std::clamp(
-                                    static_cast<float>(info.sent_bytes) /
-                                        static_cast<float>(info.file_size),
-                                    0.0f, 1.0f);
+    item.progress = status_index == 2 ? 1.0f
+                    : info.file_size == 0
+                        ? 0.0f
+                        : std::clamp(static_cast<float>(info.sent_bytes) /
+                                         static_cast<float>(info.file_size),
+                                     0.0f, 1.0f);
     item.speed = UiText(FormatTransferRate(info.rate_bps));
     item.size = UiText(FormatFileSize(info.file_size));
     transfers.push_back(std::move(item));
   }
   ui_->transfer_model->set_vector(std::move(transfers));
-  (*ui_->stream)->set_file_transfer_visible(
-      props->file_transfer_.file_transfer_window_visible_);
+  (*ui_->stream)
+      ->set_file_transfer_visible(
+          props->file_transfer_.file_transfer_window_visible_);
 
   std::shared_ptr<std::vector<unsigned char>> frame;
   int width = 0;
@@ -2181,9 +2556,9 @@ void GuiApplication::SyncStreamWindow() {
       ui_->displayed_frame_sequence[props->remote_id_] != sequence) {
     slint::SharedPixelBuffer<slint::Rgb8Pixel> pixels(width, height);
     const int result = libyuv::NV12ToRAW(
-        frame->data(), width, frame->data() + static_cast<size_t>(width) * height,
-        width, reinterpret_cast<uint8_t *>(pixels.begin()), width * 3, width,
-        height);
+        frame->data(), width,
+        frame->data() + static_cast<size_t>(width) * height, width,
+        reinterpret_cast<uint8_t*>(pixels.begin()), width * 3, width, height);
     if (result == 0) {
       (*ui_->stream)->set_frame(slint::Image(std::move(pixels)));
       (*ui_->stream)->set_has_frame(true);
@@ -2196,16 +2571,33 @@ void GuiApplication::SyncStreamWindow() {
 }
 
 void GuiApplication::SyncServerWindow() {
-  if (need_to_create_server_window_ && !ui_->server) {
+  // The connection map is authoritative. Lifecycle flags record callback
+  // intent, but callbacks for different controllers can cross each other, so
+  // the final decision must reflect the current connected-controller set.
+  need_to_create_server_window_.exchange(false, std::memory_order_acq_rel);
+  need_to_destroy_server_window_.exchange(false, std::memory_order_acq_rel);
+  bool has_connected_controller = false;
+  {
+    std::shared_lock lock(connection_status_mutex_);
+    has_connected_controller =
+        std::any_of(connection_status_.begin(), connection_status_.end(),
+                    [](const auto& entry) {
+                      return entry.second == ConnectionStatus::Connected;
+                    });
+  }
+
+  if (has_connected_controller && !ui_->server) {
     ui_->server.emplace(ui::ServerWindow::create());
     RegisterFontAwesome((*ui_->server)->window());
     (*ui_->server)->set_controllers(ui_->controller_model);
     (*ui_->server)->set_controller_names(ui_->controller_name_model);
     (*ui_->server)->set_language_index(localization_language_index_);
     server_window_collapsed_ = false;
-    (*ui_->server)->window().set_size(slint::LogicalSize(slint::Size<float>{
-        ServerWindowLogicalWidth(localization_language_index_),
-        ServerWindowLogicalHeight(false)}));
+    (*ui_->server)
+        ->window()
+        .set_size(slint::LogicalSize(slint::Size<float>{
+            ServerWindowLogicalWidth(localization_language_index_),
+            ServerWindowLogicalHeight(false)}));
     BindServerCallbacks();
     (*ui_->server)->show();
     // Apply once immediately and once after the next layout pass. This keeps
@@ -2214,15 +2606,13 @@ void GuiApplication::SyncServerWindow() {
     ui_->server_initial_position_attempts = 2;
     server_window_created_ = true;
     server_window_inited_ = true;
-    need_to_create_server_window_ = false;
   }
-  if (need_to_destroy_server_window_ && ui_->server) {
+  if (!has_connected_controller && ui_->server) {
     (*ui_->server)->hide();
     ui_->server.reset();
     server_window_created_ = false;
     server_window_inited_ = false;
     ui_->server_initial_position_attempts = 0;
-    need_to_destroy_server_window_ = false;
   }
   if (!ui_->server) {
     return;
@@ -2234,7 +2624,7 @@ void GuiApplication::SyncServerWindow() {
   {
     std::shared_lock lock(connection_status_mutex_);
     controllers.reserve(connection_status_.size());
-    for (const auto &[id, _] : connection_status_) {
+    for (const auto& [id, _] : connection_status_) {
       const auto host = connection_host_names_.find(id);
       const std::string name =
           host != connection_host_names_.end() && !host->second.empty()
@@ -2267,8 +2657,10 @@ void GuiApplication::SyncServerWindow() {
         ServerWindowLogicalWidth(localization_language_index_);
     const float server_height =
         ServerWindowLogicalHeight(server_window_collapsed_);
-    (*ui_->server)->window().set_size(slint::LogicalSize(
-        slint::Size<float>{server_width, server_height}));
+    (*ui_->server)
+        ->window()
+        .set_size(slint::LogicalSize(
+            slint::Size<float>{server_width, server_height}));
     if (PositionWindowAtBottomRight((*ui_->server)->window(), server_width,
                                     server_height)) {
       --ui_->server_initial_position_attempts;
@@ -2276,14 +2668,18 @@ void GuiApplication::SyncServerWindow() {
       ui_->server_initial_position_attempts = 0;
     }
   }
-  (*ui_->server)->set_controller_label(
-      UiText(localization::controller[localization_language_index_]));
-  (*ui_->server)->set_connection_label(
-      UiText(localization::connection_status[localization_language_index_]));
-  (*ui_->server)->set_file_transfer_label(
-      UiText(localization::file_transfer[localization_language_index_]));
-  (*ui_->server)->set_select_file_label(
-      UiText(localization::select_file[localization_language_index_]));
+  (*ui_->server)
+      ->set_controller_label(
+          UiText(localization::controller[localization_language_index_]));
+  (*ui_->server)
+      ->set_connection_label(UiText(
+          localization::connection_status[localization_language_index_]));
+  (*ui_->server)
+      ->set_file_transfer_label(
+          UiText(localization::file_transfer[localization_language_index_]));
+  (*ui_->server)
+      ->set_select_file_label(
+          UiText(localization::select_file[localization_language_index_]));
 
   ConnectionStatus status = ConnectionStatus::Closed;
   {
@@ -2293,27 +2689,29 @@ void GuiApplication::SyncServerWindow() {
       status = found->second;
     }
   }
-  (*ui_->server)->set_connection_status(UiText(
-      ConnectionStatusText(status, localization_language_index_)));
+  (*ui_->server)
+      ->set_connection_status(
+          UiText(ConnectionStatusText(status, localization_language_index_)));
 
-  auto &transfer = transfers_.global_state();
+  auto& transfer = transfers_.global_state();
   const auto sent = transfer.file_sent_bytes_.load();
   const auto total = transfer.file_total_bytes_.load();
-  (*ui_->server)->set_file_transfer_visible(
-      transfer.file_transfer_window_visible_);
+  (*ui_->server)
+      ->set_file_transfer_visible(transfer.file_transfer_window_visible_);
   (*ui_->server)->set_sending_file(transfer.file_sending_.load());
-  (*ui_->server)->set_file_progress(
-      total == 0 ? 0.0f
-                 : std::clamp(static_cast<float>(sent) /
-                                  static_cast<float>(total),
-                              0.0f, 1.0f));
-  (*ui_->server)->set_file_progress_text(
-      UiText(FormatTransferRate(transfer.file_send_rate_bps_.load())));
+  (*ui_->server)
+      ->set_file_progress(total == 0 ? 0.0f
+                                     : std::clamp(static_cast<float>(sent) /
+                                                      static_cast<float>(total),
+                                                  0.0f, 1.0f));
+  (*ui_->server)
+      ->set_file_progress_text(
+          UiText(FormatTransferRate(transfer.file_send_rate_bps_.load())));
   std::string current_file_name;
   const uint32_t current_file_id = transfer.current_file_id_.load();
   if (current_file_id != 0) {
     std::lock_guard lock(transfer.file_transfer_list_mutex_);
-    for (const auto &info : transfer.file_transfer_list_) {
+    for (const auto& info : transfer.file_transfer_list_) {
       if (info.file_id == current_file_id) {
         current_file_name = info.file_name;
         break;
@@ -2321,22 +2719,21 @@ void GuiApplication::SyncServerWindow() {
     }
   }
   (*ui_->server)->set_current_file_name(UiText(current_file_name));
-  (*ui_->server)->set_file_size_text(
-      total == 0 ? slint::SharedString{}
-                 : UiText(FormatFileSize(sent) + " / " +
-                          FormatFileSize(total)));
+  (*ui_->server)
+      ->set_file_size_text(total == 0 ? slint::SharedString{}
+                                      : UiText(FormatFileSize(sent) + " / " +
+                                               FormatFileSize(total)));
 }
 
 void GuiApplication::SaveSettingsFromUi() {
-  auto &main = ui_->main;
-  language_button_value_ = localization::detail::ClampLanguageIndex(
-      main->get_language_index());
+  auto& main = ui_->main;
+  language_button_value_ =
+      localization::detail::ClampLanguageIndex(main->get_language_index());
   video_quality_button_value_ =
       std::clamp(main->get_video_quality_index(), 0, 2);
   video_frame_rate_button_value_ =
       std::clamp(main->get_frame_rate_index(), 0, 1);
-  video_encode_format_button_value_ =
-      std::clamp(main->get_codec_index(), 0, 1);
+  video_encode_format_button_value_ = std::clamp(main->get_codec_index(), 0, 1);
   enable_hardware_video_codec_ = main->get_hardware_codec_enabled();
   enable_turn_ = main->get_turn_enabled();
   enable_srtp_ = main->get_srtp_enabled();
@@ -2385,8 +2782,7 @@ void GuiApplication::SaveSettingsFromUi() {
   language_button_value_last_ = language_button_value_;
   video_quality_button_value_last_ = video_quality_button_value_;
   video_frame_rate_button_value_last_ = video_frame_rate_button_value_;
-  video_encode_format_button_value_last_ =
-      video_encode_format_button_value_;
+  video_encode_format_button_value_last_ = video_encode_format_button_value_;
   enable_hardware_video_codec_last_ = enable_hardware_video_codec_;
   enable_turn_last_ = enable_turn_;
   enable_srtp_last_ = enable_srtp_;
@@ -2403,7 +2799,7 @@ void GuiApplication::SaveSettingsFromUi() {
   }
 }
 
-void GuiApplication::ConnectFromUi(const std::string &input) {
+void GuiApplication::ConnectFromUi(const std::string& input) {
   const std::string remote_id = CompactPeerId(input);
   if (remote_id.empty()) {
     return;
@@ -2415,7 +2811,7 @@ void GuiApplication::ConnectFromUi(const std::string &input) {
     return;
   }
 
-  for (const auto &[_, connection] : recent_connections_) {
+  for (const auto& [_, connection] : recent_connections_) {
     if (connection.remote_id == remote_id) {
       ConnectTo(remote_id, connection.password.c_str(),
                 connection.remember_password);
@@ -2429,26 +2825,36 @@ void GuiApplication::SelectStreamTab(int index) {
   if (!ui_ || index < 0 || index >= static_cast<int>(ui_->tab_ids.size())) {
     return;
   }
-  focused_remote_id_ = ui_->tab_ids[index];
-  controlled_remote_id_ = focused_remote_id_;
+  const std::string selected_remote_id = ui_->tab_ids[index];
+  if (!controlled_remote_id_.empty() &&
+      controlled_remote_id_ != selected_remote_id) {
+    keyboard_.ForceReleasePressedKeys();
+  }
+  focused_remote_id_ = selected_remote_id;
+  controlled_remote_id_ = selected_remote_id;
   std::shared_lock lock(remote_sessions_mutex_);
-  for (auto &[id, props] : remote_sessions_) {
+  for (auto& [id, props] : remote_sessions_) {
     if (props) {
       props->tab_selected_ = id == focused_remote_id_;
     }
   }
+  const auto selected = remote_sessions_.find(selected_remote_id);
+  start_keyboard_capturer_ = selected != remote_sessions_.end() &&
+                             selected->second &&
+                             selected->second->control_mouse_ &&
+                             selected->second->connection_status_.load() ==
+                                 ConnectionStatus::Connected;
 }
 
-void GuiApplication::ReorderStreamTab(int from, float drop_x,
-                                      float tab_width) {
-  if (!ui_ || from < 0 ||
-      from >= static_cast<int>(ui_->tab_order.size()) || tab_width <= 0.0f) {
+void GuiApplication::ReorderStreamTab(int from, float drop_x, float tab_width) {
+  if (!ui_ || from < 0 || from >= static_cast<int>(ui_->tab_order.size()) ||
+      tab_width <= 0.0f) {
     return;
   }
   const float slot_width = tab_width + 1.0f;
-  const int target = std::clamp(static_cast<int>(std::floor(drop_x / slot_width)),
-                                0,
-                                static_cast<int>(ui_->tab_order.size()) - 1);
+  const int target =
+      std::clamp(static_cast<int>(std::floor(drop_x / slot_width)), 0,
+                 static_cast<int>(ui_->tab_order.size()) - 1);
   if (target == from) {
     return;
   }
@@ -2459,7 +2865,7 @@ void GuiApplication::ReorderStreamTab(int from, float drop_x,
   SelectStreamTab(target);
 }
 
-void GuiApplication::CloseStreamTab(const std::string &remote_id) {
+void GuiApplication::CloseStreamTab(const std::string& remote_id) {
   std::shared_ptr<RemoteSession> props;
   {
     std::shared_lock lock(remote_sessions_mutex_);
@@ -2495,7 +2901,7 @@ GuiApplication::SelectedSession() {
   if (found != remote_sessions_.end()) {
     return found->second;
   }
-  for (const auto &[_, props] : remote_sessions_) {
+  for (const auto& [_, props] : remote_sessions_) {
     if (props && props->tab_selected_) {
       return props;
     }
@@ -2512,11 +2918,14 @@ void GuiApplication::SendPointerInput(int button, int kind, float x, float y) {
   const auto size = (*ui_->stream)->window().size();
   const float scale = (*ui_->stream)->window().scale_factor();
   const float available_width = size.width / scale;
+  const float titlebar_height =
+      !fullscreen_button_pressed_ && (*ui_->stream)->get_custom_titlebar()
+          ? kWaylandTitlebarLogicalHeight
+          : 0.0f;
   const float available_height =
-      size.height / scale -
-      (fullscreen_button_pressed_
-           ? 0.0f
-           : (ui_->tab_ids.size() > 1 ? 30.0f : 0.0f));
+      size.height / scale - titlebar_height -
+      (fullscreen_button_pressed_ ? 0.0f
+                                  : (ui_->tab_ids.size() > 1 ? 30.0f : 0.0f));
   float render_width = available_width;
   float render_height = available_height;
   float offset_x = 0;
@@ -2548,15 +2957,23 @@ void GuiApplication::SendPointerInput(int button, int kind, float x, float y) {
   if (kind == 3) {
     action.m.flag = MouseFlag::move;
   } else if (kind == 1) {
-    if (button == 1) action.m.flag = MouseFlag::left_down;
-    else if (button == 2) action.m.flag = MouseFlag::right_down;
-    else if (button == 3) action.m.flag = MouseFlag::middle_down;
-    else return;
+    if (button == 1)
+      action.m.flag = MouseFlag::left_down;
+    else if (button == 2)
+      action.m.flag = MouseFlag::right_down;
+    else if (button == 3)
+      action.m.flag = MouseFlag::middle_down;
+    else
+      return;
   } else if (kind == 2) {
-    if (button == 1) action.m.flag = MouseFlag::left_up;
-    else if (button == 2) action.m.flag = MouseFlag::right_up;
-    else if (button == 3) action.m.flag = MouseFlag::middle_up;
-    else return;
+    if (button == 1)
+      action.m.flag = MouseFlag::left_up;
+    else if (button == 2)
+      action.m.flag = MouseFlag::right_up;
+    else if (button == 3)
+      action.m.flag = MouseFlag::middle_up;
+    else
+      return;
   } else {
     return;
   }
@@ -2576,11 +2993,14 @@ void GuiApplication::SendScrollInput(float delta_x, float delta_y, float x,
   const auto size = (*ui_->stream)->window().size();
   const float scale = (*ui_->stream)->window().scale_factor();
   const float width = size.width / scale;
+  const float titlebar_height =
+      !fullscreen_button_pressed_ && (*ui_->stream)->get_custom_titlebar()
+          ? kWaylandTitlebarLogicalHeight
+          : 0.0f;
   const float height =
-      size.height / scale -
-      (fullscreen_button_pressed_
-           ? 0.0f
-           : (ui_->tab_ids.size() > 1 ? 30.0f : 0.0f));
+      size.height / scale - titlebar_height -
+      (fullscreen_button_pressed_ ? 0.0f
+                                  : (ui_->tab_ids.size() > 1 ? 30.0f : 0.0f));
   if (width <= 0 || height <= 0) {
     return;
   }
@@ -2604,34 +3024,46 @@ void GuiApplication::SendScrollInput(float delta_x, float delta_y, float x,
                 props->mouse_label_.c_str());
 }
 
-void GuiApplication::SendKeyInput(const std::string &text, bool pressed,
+void GuiApplication::SendKeyInput(const std::string& text, bool pressed,
                                   bool control, bool alt, bool shift,
                                   bool meta) {
   (void)control;
   (void)alt;
   (void)shift;
   (void)meta;
-  if (auto props = SelectedSession()) {
-    controlled_remote_id_ = props->remote_id_;
-    focused_remote_id_ = props->remote_id_;
+  auto props = SelectedSession();
+  if (!props || !props->peer_ || !props->control_mouse_ ||
+      props->connection_status_.load() != ConnectionStatus::Connected) {
+    return;
   }
+
+  controlled_remote_id_ = props->remote_id_;
+  focused_remote_id_ = props->remote_id_;
+
+  // Native hooks see the same physical key before Slint does. When a native
+  // hook is active, forwarding the FocusScope callback as well would duplicate
+  // the event on platforms whose hook does not consume the local key.
+  if (keyboard_capturer_is_started_ && !keyboard_capturer_uses_window_events_) {
+    return;
+  }
+
   const int virtual_key = SlintKeyToWindowsVk(text);
   if (virtual_key >= 0) {
     keyboard_.SendKeyCommand(virtual_key, pressed);
   }
 }
 
-std::string GuiApplication::OpenFileDialog(const std::string &title) {
+std::string GuiApplication::OpenFileDialog(const std::string& title) {
 #if defined(__APPLE__)
   return OpenNativeFileDialog(title);
 #else
-  const char *path =
+  const char* path =
       tinyfd_openFileDialog(title.c_str(), "", 0, nullptr, nullptr, 0);
   return path ? path : "";
 #endif
 }
 
-bool GuiApplication::OpenUrl(const std::string &url) {
+bool GuiApplication::OpenUrl(const std::string& url) {
   return SDL_OpenURL(url.c_str());
 }
 
@@ -2667,4 +3099,4 @@ void GuiApplication::Cleanup() {
   SDL_Quit();
 }
 
-} // namespace crossdesk
+}  // namespace crossdesk

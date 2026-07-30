@@ -179,6 +179,7 @@ struct TranslationRow {
   X(notification, u8"通知", "Notification", u8"Уведомление")                   \
   X(new_version_available, u8"新版本可用", "New Version Available",            \
     u8"Доступна новая версия")                                                 \
+  X(release_notes, u8"更新内容", "Release Notes", u8"Содержание обновления") \
   X(version, u8"版本", "Version", u8"Версия")                                  \
   X(release_date, u8"发布日期: ", "Release Date: ", u8"Дата релиза: ")         \
   X(access_website, u8"访问官网: ",                                            \

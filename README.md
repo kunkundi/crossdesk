@@ -32,7 +32,7 @@ CrossDesk 是 [MiniRTC](https://github.com/kunkundi/minirtc.git) 实时音视频
 |----------------|---------------------------|
 | **Windows** | Windows 10 及以上 (64 位) |
 | **macOS** | macOS Intel 15.0 及以上 ( 大于 14.0 小于 15.0 的版本可自行编译实现兼容 )<br> macOS Apple Silicon 14.0 及以上 |
-| **Linux** | Ubuntu 22.04 及以上 ( 低版本可自行编译实现兼容 ) |
+| **Linux** | Ubuntu 20.04 及以上 |
 
 ## 使用
 
@@ -80,27 +80,39 @@ Windows 安装包会自动打包 `crossdesk_service.exe` 和 `crossdesk_session_
 
 依赖：
 - [xmake](https://xmake.io/#/guide/installation)
-- [cmake](https://cmake.org/download/)
+- [cmake](https://cmake.org/download/) 3.21 及以上
 
 ### Linux
 
-Linux 构建目前支持 Ubuntu 22.04 及以上版本的 amd64 和 arm64。先安装基础编译依赖：
+Linux 构建支持 Ubuntu 20.04 及以上版本的 amd64 和 arm64。发布安装包以
+Ubuntu 20.04/glibc 2.31 为兼容基线。先安装基础编译依赖：
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
-  git curl unzip build-essential cmake pkg-config binutils dpkg-dev \
+  git curl unzip build-essential gcc-10 g++-10 python3-pip \
+  pkg-config binutils dpkg-dev \
   libx11-dev libxext-dev libxrender-dev libxft-dev libxrandr-dev \
   libxinerama-dev libxcursor-dev libxi-dev libxfixes-dev libxv-dev \
   libxtst-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev \
   libxcb-shape0-dev libxcb-xkb-dev libxcb-xfixes0-dev libxcb-shm0-dev \
   libasound2-dev libsndio-dev libpulse-dev
+
+# Ubuntu 20.04 自带的 CMake 3.16 不满足 Slint 1.17 的要求
+python3 -m pip install --user cmake==3.31.6
+export PATH="$HOME/.local/bin:$PATH"
 ```
+
+Ubuntu 20.04 默认的 GCC 9 缺少 Slint C++ API 所需的部分 C++20 标准库，
+因此上述命令同时安装并在后续配置中指定 GCC 10。
 
 需要启用 Wayland 捕获或 DRM 捕获时，再安装对应依赖：
 
 ```bash
-sudo apt-get install -y libdbus-1-dev libpipewire-0.3-dev libdrm-dev
+sudo apt-get install -y libdbus-1-dev libdrm-dev
+
+# Ubuntu 22.04 及以上也可以直接安装系统开发包
+# sudo apt-get install -y libpipewire-0.3-dev libspa-0.2-dev
 ```
 
 下载子模块并编译 Release 版本：
@@ -112,7 +124,11 @@ cd crossdesk
 # 已经克隆过仓库时执行这一行
 git submodule update --init --recursive
 
-xmake f -m release --USE_CUDA=false -y
+# Ubuntu 20.04 没有 PipeWire 0.3 开发包，安装仅用于编译的头文件 SDK。
+# 已安装发行版 PipeWire 0.3 开发包时可跳过此步骤。
+sudo ./docker/linux-build/install-pipewire-sdk.sh
+
+xmake f -m release --USE_CUDA=false --cc=gcc-10 --cxx=g++-10 -y
 xmake b -vy crossdesk
 ```
 
@@ -121,7 +137,8 @@ amd64 构建结果位于 `build/linux/x86_64/release/crossdesk`，arm64 构建�
 启用 Wayland 和 DRM 的配置示例：
 
 ```bash
-xmake f -m release --USE_WAYLAND=true --USE_DRM=true --USE_CUDA=false -y
+xmake f -m release --USE_WAYLAND=true --USE_DRM=true --USE_CUDA=false \
+  --cc=gcc-10 --cxx=g++-10 -y
 xmake b -vy crossdesk
 ```
 
@@ -136,6 +153,8 @@ xmake b -vy crossdesk
 ```
 
 打包脚本会将 Slint 共享运行库安装到软件包私有目录 `/usr/lib/crossdesk`，无需用户另外安装 `libslint_cpp.so`。
+PipeWire 不属于强制运行时依赖：程序在运行时检测宿主系统的 PipeWire 0.3，
+没有该运行库时仍可使用 X11（以及构建时启用的 DRM）捕获。
 
 ### 通用编译选项
 
@@ -158,7 +177,7 @@ xmake r crossdesk
 
 ### 无 CUDA 环境下的开发支持
 
-对于**未安装 CUDA 环境的 Linux 开发者，如果希望编译后的成果物拥有硬件编解码能力**，这里提供了预配置的 [Ubuntu 22.04 Docker 镜像](https://hub.docker.com/r/crossdesk/ubuntu22.04)。该镜像内置必要的构建依赖，可在容器中开箱即用，无需额外配置即可直接编译项目。
+对于**未安装 CUDA 环境的 Linux 开发者，如果希望编译后的成果物拥有硬件编解码能力**，这里提供了预配置的 [Ubuntu 20.04 兼容构建镜像](https://hub.docker.com/r/crossdesk/ubuntu20.04)。该镜像内置必要的构建依赖，可生成兼容 glibc 2.31 的单一 Linux 安装包。
 
 进入容器，下载工程后执行：
 ```

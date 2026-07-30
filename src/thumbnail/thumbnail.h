@@ -7,6 +7,7 @@
 #ifndef _THUMBNAIL_H_
 #define _THUMBNAIL_H_
 
+#include <cstring>
 #include <filesystem>
 #include <map>
 #include <unordered_map>
@@ -52,18 +53,18 @@ class Thumbnail {
   int DeleteAllFilesInDirectory();
 
   int GetKey(unsigned char* aes128_key) {
-    memcpy(aes128_key, aes128_key_, sizeof(aes128_key_));
+    std::memcpy(aes128_key, aes128_key_, sizeof(aes128_key_));
     return sizeof(aes128_key_);
   }
 
   int GetIv(unsigned char* aes128_iv) {
-    memcpy(aes128_iv, aes128_iv_, sizeof(aes128_iv_));
+    std::memcpy(aes128_iv, aes128_iv_, sizeof(aes128_iv_));
     return sizeof(aes128_iv_);
   }
 
   int GetKeyAndIv(unsigned char* aes128_key, unsigned char* aes128_iv) {
-    memcpy(aes128_key, aes128_key_, sizeof(aes128_key_));
-    memcpy(aes128_iv, aes128_iv_, sizeof(aes128_iv_));
+    std::memcpy(aes128_key, aes128_key_, sizeof(aes128_key_));
+    std::memcpy(aes128_iv, aes128_iv_, sizeof(aes128_iv_));
     return 0;
   }
 

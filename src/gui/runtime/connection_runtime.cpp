@@ -1,5 +1,3 @@
-#include "runtime/gui_runtime.h"
-
 #include <algorithm>
 #include <chrono>
 #include <cstring>
@@ -11,18 +9,15 @@
 #include <vector>
 
 #include "localization.h"
+#include "platform.h"
 #include "rd_log.h"
+#include "runtime/gui_runtime.h"
 
 namespace crossdesk {
 
 namespace {
 constexpr auto kPresenceProbeTimeout = std::chrono::seconds(5);
-constexpr auto kConnectionAttemptTimeout = std::chrono::seconds(20);
-bool IsConnectionAttemptPending(ConnectionStatus status) {
-  return status == ConnectionStatus::Connecting ||
-         status == ConnectionStatus::Gathering;
-}
-} // namespace
+}  // namespace
 
 void GuiRuntime::HandleConnectionStatusChange() {
   if (signal_connected_ && peer_ && need_to_send_recent_connections_) {
@@ -31,7 +26,7 @@ void GuiRuntime::HandleConnectionStatusChange() {
       j["type"] = "recent_connections_presence";
       j["user_id"] = client_id_;
       j["devices"] = nlohmann::json::array();
-      for (const auto &id : recent_connection_ids_) {
+      for (const auto& id : recent_connection_ids_) {
         std::string pure_id = id;
         size_t pos_y = pure_id.find('Y');
         size_t pos_n = pure_id.find('N');
@@ -95,7 +90,7 @@ void GuiRuntime::HandlePendingPresenceProbe() {
   show_offline_warning_window_ = true;
 }
 
-void GuiRuntime::HandleConnectionTimeouts() {
+void GuiRuntime::HandlePresenceProbeTimeout() {
   const auto now = std::chrono::steady_clock::now();
 
   bool presence_probe_timed_out = false;
@@ -121,48 +116,67 @@ void GuiRuntime::HandleConnectionTimeouts() {
     show_offline_warning_window_ = true;
     LOG_WARN("Presence probe timed out for [{}]", presence_remote_id);
   }
+}
 
-  bool rejoin_state_changed = false;
-  for (auto &[_, props] : remote_sessions_) {
-    if (!props || !props->connection_attempt_active_.load()) {
-      continue;
-    }
+void GuiRuntime::HandleServerControllerDisconnected(
+    const std::string& remote_id, const char* reason) {
+  keyboard_.ReleaseRemotePressedKeys(remote_id, reason);
 
-    const ConnectionStatus status = props->connection_status_.load();
-    if (!IsConnectionAttemptPending(status)) {
-      props->connection_attempt_active_.store(false);
-      continue;
-    }
-
-    if (now - props->connection_attempt_started_at_ <
-        kConnectionAttemptTimeout) {
-      continue;
-    }
-
-    LOG_WARN("Connection to [{}] timed out, status={}", props->remote_id_,
-             static_cast<int>(status));
-    props->connection_attempt_active_.store(false);
-    props->connection_established_ = false;
-    props->rejoin_ = false;
-    props->connection_status_.store(ConnectionStatus::Failed);
-    focused_remote_id_ = props->remote_id_;
-    show_connection_status_window_ = true;
-    rejoin_state_changed = true;
-  }
-
-  if (rejoin_state_changed) {
-    need_to_rejoin_ = false;
-    for (const auto &[_, props] : remote_sessions_) {
-      if (props && props->rejoin_) {
-        need_to_rejoin_ = true;
-        break;
+  bool has_connected_controller = false;
+  bool has_web_controller = false;
+  std::string remaining_controller_id;
+  {
+    std::unique_lock lock(connection_status_mutex_);
+    connection_status_.erase(remote_id);
+    connection_host_names_.erase(remote_id);
+    for (const auto& [id, status] : connection_status_) {
+      if (status != ConnectionStatus::Connected) {
+        continue;
+      }
+      has_connected_controller = true;
+      has_web_controller =
+          has_web_controller || id.find("web") != std::string::npos;
+      if (remaining_controller_id.empty()) {
+        remaining_controller_id = id;
       }
     }
   }
+  show_cursor_ = has_web_controller;
+  if (has_connected_controller) {
+    remote_client_id_ = remaining_controller_id;
+    return;
+  }
+
+  need_to_create_server_window_.store(false, std::memory_order_release);
+  need_to_destroy_server_window_.store(true, std::memory_order_release);
+  is_server_mode_ = false;
+#if defined(__linux__) && !defined(__APPLE__)
+  if (IsWaylandSession()) {
+    // Keep Wayland capture session warm to avoid black screen on subsequent
+    // reconnects.
+    start_screen_capturer_ = true;
+    LOG_INFO(
+        "Keeping Wayland screen capturer running after disconnect to "
+        "preserve reconnect stability");
+  } else {
+    start_screen_capturer_ = false;
+  }
+#else
+  start_screen_capturer_ = false;
+#endif
+  start_speaker_capturer_ = false;
+  start_mouse_controller_ = false;
+  start_keyboard_capturer_ = false;
+  remote_client_id_.clear();
+  if (audio_capture_) {
+    devices_.StopSpeakerCapturer();
+    audio_capture_ = false;
+  }
+  devices_.ResetToInitialDisplay();
 }
 
-int GuiRuntime::RequestSingleDevicePresence(const std::string &remote_id,
-                                            const char *password,
+int GuiRuntime::RequestSingleDevicePresence(const std::string& remote_id,
+                                            const char* password,
                                             bool remember_password) {
   if (!signal_connected_ || !peer_) {
     return -1;
@@ -221,7 +235,7 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
     std::thread save_thread([buffer_copy, video_width, video_height, remote_id,
                              remote_host_name, password,
                              thumbnail = thumbnail_]() {
-      thumbnail->SaveToThumbnail((char *)buffer_copy.data(), video_width,
+      thumbnail->SaveToThumbnail((char*)buffer_copy.data(), video_width,
                                  video_height, remote_id, remote_host_name,
                                  password);
     });
@@ -255,7 +269,7 @@ void GuiRuntime::CloseAllRemoteSessions() {
 
   {
     // std::shared_lock lock(remote_sessions_mutex_);
-    for (auto &it : remote_sessions_) {
+    for (auto& it : remote_sessions_) {
       auto props = it.second;
       CloseRemoteSession(props);
     }
@@ -279,7 +293,7 @@ void GuiRuntime::WaitForThumbnailSaveTasks() {
     return;
   }
 
-  for (auto &thread : threads_to_join) {
+  for (auto& thread : threads_to_join) {
     if (thread.joinable()) {
       thread.join();
     }
@@ -300,9 +314,8 @@ void GuiRuntime::ResetRemoteSessionResources(
   }
 }
 
-std::shared_ptr<GuiRuntime::RemoteSession>
-GuiRuntime::FindRemoteSession(
-    const std::string &remote_id) {
+std::shared_ptr<GuiRuntime::RemoteSession> GuiRuntime::FindRemoteSession(
+    const std::string& remote_id) {
   if (remote_id.empty()) {
     return nullptr;
   }
@@ -315,8 +328,7 @@ GuiRuntime::FindRemoteSession(
   return it->second;
 }
 
-
-int GuiRuntime::ConnectTo(const std::string &remote_id, const char *password,
+int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
                           bool remember_password, bool bypass_presence_check) {
   if (!bypass_presence_check && !device_presence_cache_.IsOnline(remote_id)) {
     int ret =
@@ -336,19 +348,17 @@ int GuiRuntime::ConnectTo(const std::string &remote_id, const char *password,
   focused_remote_id_ = remote_id;
 
   // std::shared_lock shared_lock(remote_sessions_mutex_);
-  bool exists =
-      (remote_sessions_.find(remote_id) != remote_sessions_.end());
+  bool exists = (remote_sessions_.find(remote_id) != remote_sessions_.end());
   // shared_lock.unlock();
 
   if (!exists) {
-    PeerPtr *peer_to_init = nullptr;
+    PeerPtr* peer_to_init = nullptr;
     std::string local_id;
 
     {
       // std::unique_lock unique_lock(remote_sessions_mutex_);
       if (remote_sessions_.find(remote_id) == remote_sessions_.end()) {
-        remote_sessions_[remote_id] =
-            std::make_shared<RemoteSession>();
+        remote_sessions_[remote_id] = std::make_shared<RemoteSession>();
         auto props = remote_sessions_[remote_id];
         props->local_id_ = "C-" + std::string(client_id_);
         props->remote_id_ = remote_id;
@@ -371,7 +381,7 @@ int GuiRuntime::ConnectTo(const std::string &remote_id, const char *password,
           return -1;
         }
 
-        for (const auto &display_info : devices_.display_info_list()) {
+        for (const auto& display_info : devices_.display_info_list()) {
           AddVideoStream(props->peer_, display_info.name.c_str());
         }
         AddAudioStream(props->peer_, props->audio_label_.c_str());
@@ -402,8 +412,6 @@ int GuiRuntime::ConnectTo(const std::string &remote_id, const char *password,
   auto props = remote_sessions_[remote_id];
   if (!props->connection_established_) {
     props->connection_status_.store(ConnectionStatus::Connecting);
-    props->connection_attempt_active_.store(true);
-    props->connection_attempt_started_at_ = std::chrono::steady_clock::now();
     show_connection_status_window_ = true;
 
     props->remember_password_ = remember_password;
@@ -429,4 +437,4 @@ int GuiRuntime::ConnectTo(const std::string &remote_id, const char *password,
 
   return 0;
 }
-} // namespace crossdesk
+}  // namespace crossdesk

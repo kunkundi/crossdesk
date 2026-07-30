@@ -58,7 +58,7 @@ struct FileTransferState {
 // connection, media, input, window and transfer data that share one lifetime.
 struct RemoteSession {
   Params params_;
-  PeerPtr *peer_ = nullptr;
+  PeerPtr* peer_ = nullptr;
   std::string audio_label_ = "control_audio";
   std::string data_label_ = "data";
   std::string mouse_label_ = "mouse";
@@ -74,8 +74,6 @@ struct RemoteSession {
   SignalStatus signal_status_ = SignalStatus::SignalClosed;
   bool connection_established_ = false;
   bool rejoin_ = false;
-  std::atomic<bool> connection_attempt_active_ = false;
-  std::chrono::steady_clock::time_point connection_attempt_started_at_;
   bool net_traffic_stats_button_pressed_ = false;
   bool enable_mouse_control_ = true;
   bool mouse_controller_is_started_ = false;
@@ -160,6 +158,6 @@ struct RemoteSession {
 
 using RemoteSessionPtr = std::shared_ptr<RemoteSession>;
 
-} // namespace crossdesk::gui_detail
+}  // namespace crossdesk::gui_detail
 
-#endif // CROSSDESK_GUI_REMOTE_SESSION_H_
+#endif  // CROSSDESK_GUI_REMOTE_SESSION_H_

@@ -35,7 +35,12 @@ private:
   void SyncConnectionDialog();
   void SyncPlatformDialogs();
   void SyncStreamWindow();
+  void SyncStreamKeyboardFocus();
+  void SetStreamKeyboardFocus(bool focused);
   void SyncServerWindow();
+#if defined(__linux__) && !defined(__APPLE__)
+  void SyncXWaylandWindowActivation();
+#endif
   void UpdateLocalization();
   void ResetSettingsUi();
   void SaveSettingsFromUi();
@@ -59,6 +64,9 @@ private:
   bool OpenUrl(const std::string &url);
 
   std::unique_ptr<SlintUi> ui_;
+#if defined(__linux__) && !defined(__APPLE__)
+  bool use_xwayland_gui_ = false;
+#endif
 };
 
 } // namespace crossdesk
