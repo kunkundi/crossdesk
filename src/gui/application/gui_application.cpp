@@ -970,6 +970,14 @@ bool GuiApplication::InitializeSDL() {
     LOG_ERROR("SDL initialization failed: {}", SDL_GetError());
     return false;
   }
+#if defined(__linux__) && !defined(__APPLE__)
+  const char* active_video_driver = SDL_GetCurrentVideoDriver();
+  // X11 permits the manual move/position operations used by the frameless
+  // main window. Keep native Wayland decorations as a compatibility fallback.
+  use_x11_custom_titlebar_ =
+      active_video_driver != nullptr &&
+      std::strcmp(active_video_driver, "x11") == 0;
+#endif
 
   if (const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(0)) {
     screen_width_ = mode->w;
@@ -1004,10 +1012,8 @@ void GuiApplication::InitializeUi() {
 #if _WIN32
   ui_->main->set_custom_titlebar(true);
 #elif defined(__linux__)
-  if (use_xwayland_gui_) {
-    ui_->main->set_custom_titlebar(true);
-    ui_->main->set_wayland_titlebar(true);
-  }
+  ui_->main->set_custom_titlebar(use_x11_custom_titlebar_);
+  ui_->main->set_wayland_titlebar(use_xwayland_gui_);
 #endif
   std::vector<ui::ReleaseNoteBlock> release_note_blocks;
   for (const auto& parsed : ParseReleaseNotesMarkdownForSlint(release_notes_)) {

@@ -66,6 +66,7 @@ private:
   std::unique_ptr<SlintUi> ui_;
 #if defined(__linux__) && !defined(__APPLE__)
   bool use_xwayland_gui_ = false;
+  bool use_x11_custom_titlebar_ = false;
 #endif
 };
 
