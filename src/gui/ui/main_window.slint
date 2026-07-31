@@ -601,6 +601,15 @@ export component MainWindow inherits Window {
                                 border-width: 1px;
                                 border-color: ImGuiLineStyle.border;
                                 border-radius: 4px;
+                                // Measure the ID using the preferred field size.
+                                // The visible text can then scale only on systems
+                                // whose font metrics would otherwise clip it.
+                                local-id-width-probe := Text {
+                                    visible: false;
+                                    text: root.local-id;
+                                    font-size: ImGuiFontStyle.field-value;
+                                    letter-spacing: 1px;
+                                }
                                 Text {
                                     x: 8px;
                                     // Compensate for the font's ascender-heavy
@@ -610,7 +619,9 @@ export component MainWindow inherits Window {
                                     height: parent.height - 4px;
                                     text: root.local-id;
                                     color: #20242a;
-                                    font-size: ImGuiFontStyle.field-value;
+                                    font-size: max(18px,
+                                        ImGuiFontStyle.field-value *
+                                        (self.width / max(self.width, local-id-width-probe.preferred-width)));
                                     letter-spacing: 1px;
                                     horizontal-alignment: left;
                                     vertical-alignment: center;
