@@ -943,10 +943,6 @@ void GuiApplication::InitializeSettings() {
 
 bool GuiApplication::InitializeSDL() {
 #if defined(__linux__) && !defined(__APPLE__)
-  if (!getenv("SDL_AUDIODRIVER")) {
-    setenv("SDL_AUDIODRIVER", "pulseaudio", 0);
-  }
-
   // Standard Wayland top-level windows cannot choose an absolute screen
   // position. Use the session's XWayland compatibility server for the GUI so
   // auxiliary windows such as the controlled-side status window can be
