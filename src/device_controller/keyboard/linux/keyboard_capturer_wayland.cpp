@@ -611,6 +611,7 @@ int KeyboardCapturer::SendWaylandKeyboardCommand(int key_code, bool is_down,
   // Prefer keycode injection to preserve physical-key semantics and avoid
   // implicit Shift interpretation for uppercase keysyms.
   if (display_) {
+    std::lock_guard<std::mutex> lock(x11_injection_mutex_);
     const int keysym = key_it->second;
     const KeyCode x11_keycode =
         XKeysymToKeycode(display_, static_cast<KeySym>(keysym));

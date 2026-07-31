@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -49,6 +50,8 @@ class KeyboardCapturer : public DeviceController {
   unsigned long root_;
   std::atomic<bool> running_;
   std::thread event_thread_;
+  std::mutex x11_injection_mutex_;
+  bool x11_xtest_available_ = false;
   bool use_wayland_portal_ = false;
   bool wayland_init_attempted_ = false;
   DBusConnection* dbus_connection_ = nullptr;

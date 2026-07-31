@@ -197,6 +197,14 @@ function setup_targets()
                 "src/device_controller/keyboard/linux", {public = true})
         end
 
+    if is_os("linux") then
+        target("linux_keyboard_x11_integration_test")
+            set_kind("binary")
+            set_default(false)
+            add_deps("device_controller")
+            add_files("tests/linux_keyboard_x11_integration_test.cpp")
+    end
+
     target("thumbnail")
         set_kind("object")
         add_packages("libyuv", "openssl3")

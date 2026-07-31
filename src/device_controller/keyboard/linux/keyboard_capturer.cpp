@@ -8,6 +8,7 @@
 #include <poll.h>
 
 #include "keyboard_converter.h"
+#include "linux_evdev_keycode.h"
 #include "platform.h"
 #include "rd_log.h"
 #include "windows_key_metadata.h"
@@ -16,6 +17,40 @@ namespace crossdesk {
 
 static OnKeyAction g_on_key_action = nullptr;
 static void* g_user_ptr = nullptr;
+
+static KeyCode ResolveX11Keycode(Display* display, int key_code,
+                                 uint32_t scan_code, bool extended) {
+  if (!display) {
+    return 0;
+  }
+
+  const auto key_it = vkCodeToX11KeySym.find(key_code);
+  if (key_it != vkCodeToX11KeySym.end()) {
+    const KeyCode x11_keycode =
+        XKeysymToKeycode(display, static_cast<KeySym>(key_it->second));
+    if (x11_keycode != 0) {
+      return x11_keycode;
+    }
+  }
+
+  // Some controllers can preserve the physical Windows scan code even when
+  // they cannot resolve a Windows virtual-key value. Xorg's evdev keycodes use
+  // the Linux input code plus the protocol-reserved offset of 8.
+  const int evdev_keycode =
+      ResolveLinuxEvdevKeycodeFromWindowsKey(key_code, scan_code, extended);
+  if (evdev_keycode < 0) {
+    return 0;
+  }
+
+  int min_keycode = 0;
+  int max_keycode = 0;
+  XDisplayKeycodes(display, &min_keycode, &max_keycode);
+  const int x11_keycode = evdev_keycode + 8;
+  if (x11_keycode < min_keycode || x11_keycode > max_keycode) {
+    return 0;
+  }
+  return static_cast<KeyCode>(x11_keycode);
+}
 
 static KeySym NormalizeKeySym(KeySym key_sym) {
   if (key_sym >= XK_a && key_sym <= XK_z) {
@@ -62,7 +97,16 @@ KeyboardCapturer::KeyboardCapturer()
   display_ = XOpenDisplay(nullptr);
   if (!display_) {
     LOG_ERROR("Failed to open X display.");
+    return;
   }
+
+  int event_base = 0;
+  int error_base = 0;
+  int major_version = 0;
+  int minor_version = 0;
+  x11_xtest_available_ =
+      XTestQueryExtension(display_, &event_base, &error_base, &major_version,
+                          &minor_version) != 0;
 }
 
 KeyboardCapturer::~KeyboardCapturer() {
@@ -70,8 +114,10 @@ KeyboardCapturer::~KeyboardCapturer() {
   CleanupWaylandPortal();
 
   if (display_) {
+    std::lock_guard<std::mutex> lock(x11_injection_mutex_);
     XCloseDisplay(display_);
     display_ = nullptr;
+    x11_xtest_available_ = false;
   }
 }
 
@@ -156,8 +202,6 @@ int KeyboardCapturer::Unhook() {
 
 int KeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down,
                                           uint32_t scan_code, bool extended) {
-  (void)scan_code;
-  (void)extended;
   if (IsWaylandSession()) {
     if (!use_wayland_portal_ && !wayland_init_attempted_) {
       wayland_init_attempted_ = true;
@@ -181,12 +225,33 @@ int KeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down,
     return -1;
   }
 
-  if (vkCodeToX11KeySym.find(key_code) != vkCodeToX11KeySym.end()) {
-    int x11_key_code = vkCodeToX11KeySym[key_code];
-    KeyCode keycode = XKeysymToKeycode(display_, x11_key_code);
-    XTestFakeKeyEvent(display_, keycode, is_down, CurrentTime);
-    XFlush(display_);
+  std::lock_guard<std::mutex> lock(x11_injection_mutex_);
+  if (!x11_xtest_available_) {
+    LOG_ERROR("XTest extension not available for keyboard injection");
+    return -2;
   }
+
+  const KeyCode x11_keycode =
+      ResolveX11Keycode(display_, key_code, scan_code, extended);
+  if (x11_keycode == 0) {
+    LOG_WARN(
+        "Cannot map remote keyboard event to X11 keycode, vk_code={}, "
+        "scan_code={}, extended={}",
+        key_code, scan_code, extended);
+    return -3;
+  }
+
+  if (!XTestFakeKeyEvent(display_, x11_keycode, is_down, CurrentTime)) {
+    LOG_ERROR(
+        "XTest keyboard injection failed, vk_code={}, scan_code={}, "
+        "extended={}, x11_keycode={}, is_down={}",
+        key_code, scan_code, extended, static_cast<int>(x11_keycode), is_down);
+    return -4;
+  }
+
+  // Complete the request before reporting success to the keyboard-state
+  // reconciler. This also makes X11 protocol errors observable immediately.
+  XSync(display_, False);
   return 0;
 }
 }  // namespace crossdesk
