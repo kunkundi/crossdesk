@@ -49,6 +49,12 @@ package("slint")
             "-DSLINT_STYLE=fluent",
             "-DBUILD_SHARED_LIBS=ON"
         }
+        if package:is_plat("windows") then
+            local rc = assert(package:build_getenv("mrc"),
+                "failed to find the Windows resource compiler")
+            rc = rc:gsub("\\", "/")
+            table.insert(configs, "-DCMAKE_RC_COMPILER=" .. rc)
+        end
         import("package.tools.cmake").install(package, configs)
     end)
 
