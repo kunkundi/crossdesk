@@ -51,7 +51,7 @@ function setup_options_and_dependencies()
         add_defines("CROSSDESK_DEBUG")
     end
 
-    add_requireconfs("*.python", {version = "3.12", override = true, configs = {pgo = false}})
+    add_requireconfs("**.python", {version = "3.12", override = true, configs = {pgo = false}})
     add_requires("spdlog 1.14.1", {system = false})
     add_requires("slint 1.17.1", {configs = {shared = true}})
     add_requires("libsdl3 3.2.26", {configs = {shared = false}})

@@ -9,10 +9,13 @@ package("slint")
 
     add_configs("shared", {description = "Build the Slint runtime as a shared library", default = true, type = "boolean", readonly = true})
 
-    add_deps("cmake >=3.21 <4.0")
+    add_deps("cmake~slint >=3.21 <4.0", {host = true, private = true, system = false})
     add_deps("rust 1.92.0", {host = true, private = true, system = false})
 
     on_load(function(package)
+        if package:is_plat("linux") then
+            package:add("deps", "fontconfig", {private = true, system = false})
+        end
         package:add("includedirs", "include/slint")
         if package:is_plat("windows") then
             package:add("links", "slint_cpp.dll")
@@ -22,6 +25,13 @@ package("slint")
     end)
 
     on_install("windows", "linux", "macosx", function(package)
+        for _, dep in ipairs(package:orderdeps()) do
+            if dep:name() == "cmake" and dep:label() == "slint" then
+                os.addenv("PATH", dep:installdir("bin"))
+                import("core.cache.detectcache"):set2("find_program", "cmake", nil)
+                break
+            end
+        end
         local configs = {
             "-DSLINT_BUILD_TESTING=OFF",
             "-DSLINT_BUILD_EXAMPLES=OFF",
