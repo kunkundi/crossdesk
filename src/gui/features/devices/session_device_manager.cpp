@@ -11,6 +11,7 @@ namespace crossdesk {
 namespace {
 
 constexpr uint64_t kCaptureResumeKeyFrameGapMs = 500;
+constexpr size_t kMaxCapturedKeyboardInputs = 512;
 
 } // namespace
 
@@ -256,18 +257,18 @@ int SessionDeviceManager::StartKeyboardCapturer() {
       [](int key_code, bool is_down, uint32_t scan_code, bool extended,
          void *user_ptr) {
         if (user_ptr) {
-          auto *runtime = static_cast<GuiRuntime *>(user_ptr);
-          runtime->keyboard_.SendKeyCommand(key_code, is_down, scan_code,
-                                           extended);
+          auto *devices = static_cast<SessionDeviceManager *>(user_ptr);
+          devices->QueueCapturedKeyboardInput(key_code, is_down, scan_code,
+                                              extended);
         }
       },
-      &owner_);
+      this);
   if (hook_ret != 0) {
     owner_.keyboard_capturer_uses_window_events_ = true;
     LOG_WARN(
         "Start keyboard capturer failed, falling back to Slint keyboard events");
   } else {
-    LOG_INFO("Start keyboard capturer with native hook");
+    LOG_INFO("Start keyboard capturer with native input");
   }
   return 0;
 }
@@ -281,6 +282,7 @@ int SessionDeviceManager::StopKeyboardCapturer() {
 
   if (keyboard_capturer_) {
     keyboard_capturer_->Unhook();
+    ClearCapturedKeyboardInput();
     LOG_INFO("Stop keyboard capturer");
   }
   return 0;
@@ -410,6 +412,7 @@ void SessionDeviceManager::UpdateInteractions() {
       owner_.keyboard_capturer_is_started_ = true;
     }
     if (owner_.keyboard_capturer_is_started_) {
+      DrainCapturedKeyboardInput();
       owner_.keyboard_.SendHeartbeat(false);
     }
   } else if (owner_.keyboard_capturer_is_started_) {
@@ -419,6 +422,36 @@ void SessionDeviceManager::UpdateInteractions() {
   }
 
   owner_.keyboard_.CheckRemoteTimeouts();
+}
+
+void SessionDeviceManager::QueueCapturedKeyboardInput(int key_code,
+                                                       bool is_down,
+                                                       uint32_t scan_code,
+                                                       bool extended) {
+  std::lock_guard<std::mutex> lock(captured_keyboard_inputs_mutex_);
+  if (captured_keyboard_inputs_.size() >= kMaxCapturedKeyboardInputs) {
+    captured_keyboard_inputs_.pop_front();
+    LOG_WARN("Captured keyboard input queue overflow, dropping oldest event");
+  }
+  captured_keyboard_inputs_.push_back(
+      CapturedKeyboardInput{key_code, is_down, scan_code, extended});
+}
+
+void SessionDeviceManager::DrainCapturedKeyboardInput() {
+  std::deque<CapturedKeyboardInput> inputs;
+  {
+    std::lock_guard<std::mutex> lock(captured_keyboard_inputs_mutex_);
+    inputs.swap(captured_keyboard_inputs_);
+  }
+  for (const CapturedKeyboardInput &input : inputs) {
+    owner_.keyboard_.SendKeyCommand(input.key_code, input.is_down,
+                                    input.scan_code, input.extended);
+  }
+}
+
+void SessionDeviceManager::ClearCapturedKeyboardInput() {
+  std::lock_guard<std::mutex> lock(captured_keyboard_inputs_mutex_);
+  captured_keyboard_inputs_.clear();
 }
 
 bool SessionDeviceManager::SendKeyboardCommand(int key_code, bool is_down,

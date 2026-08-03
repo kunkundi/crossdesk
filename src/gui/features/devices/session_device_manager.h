@@ -5,6 +5,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -53,6 +55,18 @@ public:
   const std::vector<DisplayInfo> &display_info_list() const;
 
 private:
+  struct CapturedKeyboardInput {
+    int key_code = 0;
+    bool is_down = false;
+    uint32_t scan_code = 0;
+    bool extended = false;
+  };
+
+  void QueueCapturedKeyboardInput(int key_code, bool is_down,
+                                  uint32_t scan_code, bool extended);
+  void DrainCapturedKeyboardInput();
+  void ClearCapturedKeyboardInput();
+
   GuiRuntime &owner_;
   SDL_AudioStream *output_stream_ = nullptr;
   ScreenCapturerFactory *screen_capturer_factory_ = nullptr;
@@ -63,6 +77,8 @@ private:
   MouseController *mouse_controller_ = nullptr;
   KeyboardCapturer *keyboard_capturer_ = nullptr;
   std::vector<DisplayInfo> display_info_list_;
+  std::deque<CapturedKeyboardInput> captured_keyboard_inputs_;
+  std::mutex captured_keyboard_inputs_mutex_;
   uint64_t last_frame_time_ = 0;
   std::string last_video_frame_stream_id_;
 };

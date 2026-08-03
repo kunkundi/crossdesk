@@ -24,6 +24,7 @@
 #include "path_manager.h"
 #include "rd_log.h"
 #include "session_helper_shared.h"
+#include "windows_input_marker.h"
 
 namespace {
 
@@ -828,6 +829,8 @@ InputInjectionResult InjectKeyboardInput(
 
   INPUT input = {0};
   input.type = INPUT_KEYBOARD;
+  input.ki.dwExtraInfo = static_cast<ULONG_PTR>(
+      crossdesk::kInjectedKeyboardInputMarker);
 
   const bool prefer_vk = PreferSideSpecificVkInjection(key_code);
   const UINT resolved_scan_code =

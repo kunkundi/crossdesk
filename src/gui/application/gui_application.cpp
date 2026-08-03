@@ -3042,9 +3042,8 @@ void GuiApplication::SendKeyInput(const std::string& text, bool pressed,
   controlled_remote_id_ = props->remote_id_;
   focused_remote_id_ = props->remote_id_;
 
-  // Native hooks see the same physical key before Slint does. When a native
-  // hook is active, forwarding the FocusScope callback as well would duplicate
-  // the event on platforms whose hook does not consume the local key.
+  // Native capture forwards the event independently. Slint keyboard events
+  // are used only by platforms whose native capture backend is unavailable.
   if (keyboard_capturer_is_started_ && !keyboard_capturer_uses_window_events_) {
     return;
   }
