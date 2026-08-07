@@ -10,6 +10,14 @@
 [![GitHub stars](https://img.shields.io/github/stars/kunkundi/crossdesk.svg?style=social)]()
 [![GitHub forks](https://img.shields.io/github/forks/kunkundi/crossdesk.svg?style=social)]()
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+- Committers and reviewers: [kunkundi](https://github.com/kunkundi)
+- Approvers: [kunkundi](https://github.com/kunkundi)
+- Privacy policy: CrossDesk will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
+
 [ [English](README_EN.md) / 中文 ]
 
 PC 客户端

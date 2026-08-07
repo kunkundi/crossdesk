@@ -84,6 +84,14 @@ int main() {
   const std::string rc = ReadFile(repo_root / "scripts/windows/crossdesk.rc");
   const std::string portable_rc =
       ReadFile(repo_root / "scripts/windows/crossdesk_portable.rc");
+  const std::string service_rc =
+      ReadFile(repo_root / "scripts/windows/crossdesk_service.rc");
+  const std::string session_helper_rc =
+      ReadFile(repo_root / "scripts/windows/crossdesk_session_helper.rc");
+  const std::string wgc_plugin_rc =
+      ReadFile(repo_root / "scripts/windows/wgc_plugin.rc");
+  const std::string version_info =
+      ReadFile(repo_root / "scripts/windows/version_info.rcinc");
   const std::string manifest =
       ReadFile(repo_root / "scripts/windows/crossdesk.manifest");
   const std::string debug_manifest =
@@ -100,8 +108,31 @@ int main() {
   ok &= ExpectContains("crossdesk_portable.rc", portable_rc,
                        "crossdesk_portable.manifest");
   ok &= ExpectContains("crossdesk_portable.rc", portable_rc, "RT_MANIFEST");
+  ok &= ExpectContains("crossdesk.rc", rc, "version_info.rcinc");
+  ok &= ExpectContains("crossdesk_portable.rc", portable_rc,
+                       "version_info.rcinc");
+  ok &= ExpectContains("crossdesk_service.rc", service_rc,
+                       "crossdesk_service.exe");
+  ok &= ExpectContains("crossdesk_session_helper.rc", session_helper_rc,
+                       "crossdesk_session_helper.exe");
+  ok &= ExpectContains("crossdesk_session_helper.rc", session_helper_rc,
+                       "CROSSDESK_PORTABLE");
+  ok &= ExpectContains("crossdesk_session_helper.rc", session_helper_rc,
+                       "crossdesk_portable.manifest");
+  ok &= ExpectContains("wgc_plugin.rc", wgc_plugin_rc, "wgc_plugin.dll");
+  ok &= ExpectContains("version_info.rcinc", version_info, "ProductName");
+  ok &= ExpectContains("version_info.rcinc", version_info,
+                       "ProductVersion");
+  ok &= ExpectContains("version_info.rcinc", version_info,
+                       "OriginalFilename");
   ok &= ExpectContains("xmake/targets.lua", targets,
                        "scripts/windows/crossdesk_portable.rc");
+  ok &= ExpectContains("xmake/targets.lua", targets,
+                       "scripts/windows/crossdesk_service.rc");
+  ok &= ExpectContains("xmake/targets.lua", targets,
+                       "scripts/windows/crossdesk_session_helper.rc");
+  ok &= ExpectContains("xmake/targets.lua", targets,
+                       "scripts/windows/wgc_plugin.rc");
   ok &= ExpectContains("xmake/targets.lua", targets, "CROSSDESK_PORTABLE");
   ok &= ExpectContains("crossdesk.manifest", manifest,
                        "level=\"requireAdministrator\"");

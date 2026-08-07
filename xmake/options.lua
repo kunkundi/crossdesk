@@ -35,6 +35,28 @@ function setup_options_and_dependencies()
     set_languages("c++17")
     set_encodings("utf-8")
 
+    local crossdesk_version = get_config("CROSSDESK_VERSION") or "0.0.0"
+    local version_base = crossdesk_version:gsub("^v", ""):match("^(%d[%d%.]*)") or "0.0.0"
+    local version_parts = {}
+    for part in version_base:gmatch("%d+") do
+        local value = tonumber(part) or 0
+        if value > 65535 then
+            value = 0
+        end
+        table.insert(version_parts, value)
+        if #version_parts == 4 then
+            break
+        end
+    end
+    while #version_parts < 4 do
+        table.insert(version_parts, 0)
+    end
+
+    add_defines("CROSSDESK_VERSION_STRING=\"" .. crossdesk_version .. "\"")
+    if is_os("windows") then
+        add_defines("CROSSDESK_VERSION_NUMERIC=" .. table.concat(version_parts, ","))
+    end
+
     -- set_policy("build.warning", true)
     -- set_warnings("all", "extra")
     -- add_cxxflags("/W4", "/WX")

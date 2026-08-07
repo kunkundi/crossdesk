@@ -1,0 +1,54 @@
+#include <winver.h>
+
+#ifndef CROSSDESK_VERSION_STRING
+#define CROSSDESK_VERSION_STRING "0.0.0"
+#endif
+
+#ifndef CROSSDESK_VERSION_NUMERIC
+#define CROSSDESK_VERSION_NUMERIC 0,0,0,0
+#endif
+
+#ifndef CROSSDESK_FILE_DESCRIPTION
+#define CROSSDESK_FILE_DESCRIPTION "CrossDesk"
+#endif
+
+#ifndef CROSSDESK_ORIGINAL_FILENAME
+#define CROSSDESK_ORIGINAL_FILENAME "CrossDesk.exe"
+#endif
+
+#ifndef CROSSDESK_FILE_TYPE
+#define CROSSDESK_FILE_TYPE VFT_APP
+#endif
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION CROSSDESK_VERSION_NUMERIC
+ PRODUCTVERSION CROSSDESK_VERSION_NUMERIC
+ FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+#ifdef CROSSDESK_DEBUG
+ FILEFLAGS VS_FF_DEBUG
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE CROSSDESK_FILE_TYPE
+ FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName", "CrossDesk\0"
+            VALUE "FileDescription", CROSSDESK_FILE_DESCRIPTION "\0"
+            VALUE "FileVersion", CROSSDESK_VERSION_STRING "\0"
+            VALUE "InternalName", CROSSDESK_ORIGINAL_FILENAME "\0"
+            VALUE "LegalCopyright", "Copyright (C) CrossDesk contributors\0"
+            VALUE "OriginalFilename", CROSSDESK_ORIGINAL_FILENAME "\0"
+            VALUE "ProductName", "CrossDesk\0"
+            VALUE "ProductVersion", CROSSDESK_VERSION_STRING "\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END

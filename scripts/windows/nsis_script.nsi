@@ -4,6 +4,7 @@
 ; Installer initial constants
 !define PRODUCT_NAME "CrossDesk"
 !define PRODUCT_VERSION "${VERSION}"
+!define PRODUCT_VERSION_NUMERIC "${VERSION_NUMERIC}"
 !define PRODUCT_PUBLISHER "CrossDesk"
 !define PRODUCT_WEB_SITE "https://www.crossdesk.cn/"
 !define APP_NAME "CrossDesk"
@@ -41,6 +42,14 @@ RequestExecutionLevel admin
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
 OutFile "crossdesk-win-x64-${PRODUCT_VERSION}.exe"
+VIProductVersion "${PRODUCT_VERSION_NUMERIC}"
+VIAddVersionKey /LANG=2052 "CompanyName" "CrossDesk"
+VIAddVersionKey /LANG=2052 "FileDescription" "CrossDesk Installer"
+VIAddVersionKey /LANG=2052 "FileVersion" "${PRODUCT_VERSION}"
+VIAddVersionKey /LANG=2052 "LegalCopyright" "Copyright (C) CrossDesk contributors"
+VIAddVersionKey /LANG=2052 "OriginalFilename" "crossdesk-win-x64-${PRODUCT_VERSION}.exe"
+VIAddVersionKey /LANG=2052 "ProductName" "${PRODUCT_NAME}"
+VIAddVersionKey /LANG=2052 "ProductVersion" "${PRODUCT_VERSION}"
 InstallDir "$PROGRAMFILES\CrossDesk"
 InstallDirRegKey HKCU "Software\${PRODUCT_NAME}" "InstallDir"
 ShowInstDetails show

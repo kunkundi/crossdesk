@@ -297,6 +297,7 @@ function setup_targets()
             add_files("src/screen_capturer/windows/screen_capturer_wgc.cpp",
                 "src/screen_capturer/windows/wgc_session_impl.cpp",
                 "src/screen_capturer/windows/wgc_plugin_entry.cpp")
+            add_files("scripts/windows/wgc_plugin.rc")
             add_includedirs("src/common", "src/screen_capturer",
                 "src/screen_capturer/windows")
 
@@ -306,6 +307,7 @@ function setup_targets()
             add_links("Advapi32", "Wtsapi32", "Ole32", "Userenv")
             add_files("src/service/windows/main.cpp",
                 "src/service/windows/service_host.cpp")
+            add_files("scripts/windows/crossdesk_service.rc")
             add_includedirs("src/service/windows", {public = true})
 
         target("crossdesk_session_helper")
@@ -314,7 +316,7 @@ function setup_targets()
             add_deps("rd_log", "path_manager")
             add_links("Advapi32", "User32", "Wtsapi32", "Gdi32")
             add_files("src/service/windows/session_helper_main.cpp")
-            add_files(crossdesk_windows_resource)
+            add_files("scripts/windows/crossdesk_session_helper.rc")
             add_includedirs("src/common", "src/service/windows", {public = true})
     end
 

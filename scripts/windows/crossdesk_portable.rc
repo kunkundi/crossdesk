@@ -6,3 +6,8 @@ IDI_ICON1 ICON "..\\..\\icons\\windows\\crossdesk.ico"
 #define RT_MANIFEST 24
 
 CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "crossdesk_portable.manifest"
+
+#define CROSSDESK_FILE_DESCRIPTION "CrossDesk Portable"
+#define CROSSDESK_ORIGINAL_FILENAME "CrossDesk.exe"
+
+#include "version_info.rcinc"

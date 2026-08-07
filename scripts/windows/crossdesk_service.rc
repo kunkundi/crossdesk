@@ -1,0 +1,4 @@
+#define CROSSDESK_FILE_DESCRIPTION "CrossDesk Service"
+#define CROSSDESK_ORIGINAL_FILENAME "crossdesk_service.exe"
+
+#include "version_info.rcinc"

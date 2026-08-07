@@ -13,8 +13,14 @@ on:
         description: "Hotfix patch number, for example 1 or 2. Use 0 for a normal build."
         required: false
         default: "0"
+      sign_windows_test:
+        description: "Submit the Windows installer to SignPath using test-signing."
+        required: false
+        type: boolean
+        default: false
 
 permissions:
+  actions: read
   contents: write
 
 env:
@@ -410,6 +416,52 @@ jobs:
         run: |
           & "${{ github.workspace }}\scripts\windows\pkg_x64.ps1" $env:VERSION_NUM
 
+      - name: Upload unsigned Windows installer for test signing
+        if: github.event_name == 'workflow_dispatch' && inputs.sign_windows_test
+        id: upload-unsigned-windows-installer
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ github.workspace }}/scripts/windows/crossdesk-win-x64-${{ env.VERSION_NUM }}.exe
+          archive: false
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign Windows installer with SignPath test certificate
+        if: github.event_name == 'workflow_dispatch' && inputs.sign_windows_test
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: crossdesk
+          signing-policy-slug: test-signing
+          github-artifact-id: ${{ steps.upload-unsigned-windows-installer.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: ${{ github.workspace }}\signpath\signed-installer
+          skip-decompress: true
+          parameters: |
+            version: ${{ toJSON(env.VERSION_NUM) }}
+
+      - name: Verify and use test-signed Windows installer
+        if: github.event_name == 'workflow_dispatch' && inputs.sign_windows_test
+        shell: pwsh
+        run: |
+          $installerName = "crossdesk-win-x64-${{ env.VERSION_NUM }}.exe"
+          $signedInstaller = Join-Path "${{ github.workspace }}\signpath\signed-installer" $installerName
+          $destination = Join-Path "${{ github.workspace }}\scripts\windows" $installerName
+
+          if (!(Test-Path $signedInstaller)) {
+            throw "SignPath did not return the signed installer: $signedInstaller"
+          }
+
+          $signature = Get-AuthenticodeSignature $signedInstaller
+          if (!$signature.SignerCertificate -or $signature.Status -eq "NotSigned") {
+            throw "SignPath returned an installer without an Authenticode signature."
+          }
+
+          Write-Host "Signer: $($signature.SignerCertificate.Subject)"
+          Write-Host "Signature status: $($signature.Status)"
+          Copy-Item $signedInstaller $destination -Force
+
       - name: Build Portable CrossDesk
         run: |
           xmake f --CROSSDESK_VERSION=${{ env.VERSION_NUM }} --USE_CUDA=true --CROSSDESK_PORTABLE=true -y
@@ -544,6 +596,10 @@ jobs:
           body: |
             Binary release only. Source code is not included.
 
+            ## Code signing policy
+
+            Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
       - name: Create or update 'latest' tag
         run: |
           git config user.name "github-actions[bot]"
@@ -560,6 +616,12 @@ jobs:
           prerelease: false
           files: release/*
           generate_release_notes: false
+          body: |
+            Binary release only. Source code is not included.
+
+            ## Code signing policy
+
+            Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
 
       - name: Upload artifacts to server
         uses: burnett01/rsync-deployments@5.2
