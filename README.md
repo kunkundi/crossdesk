@@ -430,4 +430,4 @@ CrossDesk 使用 SignPath.io 为本仓库构建的官方 Windows 发布包提供
 
 - **Committers and reviewers（代码提交与审核）：** [kunkundi](https://github.com/kunkundi)
 - **Approvers（签名审批）：** [kunkundi](https://github.com/kunkundi)
-- **Privacy policy（隐私政策）：** 除非用户或安装、运行 CrossDesk 的人员明确要求，否则 CrossDesk 不会向其他联网系统传输任何信息。
+- **隐私政策：** [查看 CrossDesk 隐私政策](PRIVACY.md#中文)

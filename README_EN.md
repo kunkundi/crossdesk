@@ -447,4 +447,4 @@ CrossDesk uses SignPath.io to code-sign official Windows releases built from thi
 
 - **Committers and reviewers:** [kunkundi](https://github.com/kunkundi)
 - **Approvers:** [kunkundi](https://github.com/kunkundi)
-- **Privacy policy:** CrossDesk will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
+- **Privacy policy:** [Read the CrossDesk Privacy Policy](PRIVACY.md#english)
