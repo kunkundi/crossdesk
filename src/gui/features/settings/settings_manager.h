@@ -33,6 +33,10 @@ public:
   // Loads the cached self-hosted identity into the owner's active connection
   // fields. Returns true only when a non-empty identity was restored.
   bool LoadCachedSelfHostedIdentity();
+  // Restores the public-server identity kept in the in-memory cache fields.
+  // This must run when switching away from a self-hosted server so signal
+  // callbacks are matched against the identity used by the replacement peer.
+  bool ActivateCachedPublicIdentity();
   void PersistSelfHostedIdentity(const char *client_id);
 
 private:

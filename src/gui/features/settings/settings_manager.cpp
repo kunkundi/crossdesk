@@ -134,14 +134,7 @@ int SettingsManager::Load() {
 
   lock.unlock();
 
-  const char *at_pos = std::strchr(owner_.client_id_with_password_, '@');
-  if (at_pos != nullptr) {
-    const std::string id(owner_.client_id_with_password_,
-                         at_pos - owner_.client_id_with_password_);
-    const std::string password(at_pos + 1);
-    CopyString(owner_.client_id_, id.c_str());
-    CopyString(owner_.password_saved_, password.c_str());
-  }
+  ActivateCachedPublicIdentity();
 
   owner_.thumbnail_ =
       std::make_shared<Thumbnail>(owner_.cache_path_ + "/thumbnails/",
@@ -195,6 +188,8 @@ bool SettingsManager::LoadCachedSelfHostedIdentity() {
   std::lock_guard<std::mutex> lock(cache_mutex_);
   if (!ReadV2Locked() || cache_v2_.self_hosted_id[0] == '\0') {
     std::memset(owner_.self_hosted_id_, 0, sizeof(owner_.self_hosted_id_));
+    std::memset(owner_.client_id_, 0, sizeof(owner_.client_id_));
+    std::memset(owner_.password_saved_, 0, sizeof(owner_.password_saved_));
     return false;
   }
 
@@ -210,6 +205,26 @@ bool SettingsManager::LoadCachedSelfHostedIdentity() {
     CopyString(owner_.password_saved_, at_pos + 1);
   }
   return true;
+}
+
+bool SettingsManager::ActivateCachedPublicIdentity() {
+  if (owner_.client_id_with_password_[0] == '\0') {
+    std::memset(owner_.client_id_, 0, sizeof(owner_.client_id_));
+    std::memset(owner_.password_saved_, 0, sizeof(owner_.password_saved_));
+    return false;
+  }
+
+  const char *at_pos = std::strchr(owner_.client_id_with_password_, '@');
+  if (at_pos == nullptr) {
+    CopyString(owner_.client_id_, owner_.client_id_with_password_);
+    std::memset(owner_.password_saved_, 0, sizeof(owner_.password_saved_));
+  } else {
+    const std::string id(owner_.client_id_with_password_,
+                         at_pos - owner_.client_id_with_password_);
+    CopyString(owner_.client_id_, id.c_str());
+    CopyString(owner_.password_saved_, at_pos + 1);
+  }
+  return owner_.client_id_[0] != '\0';
 }
 
 void SettingsManager::PersistSelfHostedIdentity(const char *client_id) {

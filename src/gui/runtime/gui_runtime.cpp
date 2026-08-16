@@ -57,6 +57,7 @@ int GuiRuntime::CreateConnectionPeer() {
     signal_server_ip = config_center_->GetDefaultServerHost();
     signal_server_port = config_center_->GetDefaultSignalServerPort();
     coturn_server_port = config_center_->GetDefaultCoturnServerPort();
+    settings_.ActivateCachedPublicIdentity();
     params_.user_id = client_id_with_password_;
   }
 
@@ -124,6 +125,11 @@ int GuiRuntime::CreateConnectionPeer() {
   params_.on_net_status_report = PeerEventHandler::OnNetStatusReport;
 
   params_.user_data = &peer_events_;
+
+  // The previous peer may have left a terminal status behind. Reset it before
+  // Init() starts emitting callbacks for the newly selected server.
+  signal_connected_ = false;
+  signal_status_ = SignalStatus::SignalConnecting;
 
   peer_ = CreatePeer(&params_);
   if (peer_) {
