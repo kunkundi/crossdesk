@@ -260,7 +260,7 @@ jobs:
 
       - name: Build CrossDesk
         run: |
-          xmake f --target_minver=${MACOSX_DEPLOYMENT_TARGET} --CROSSDESK_VERSION=${VERSION_NUM} --USE_CUDA=true -y
+          xmake f --target_minver=${MACOSX_DEPLOYMENT_TARGET} --CROSSDESK_VERSION=${VERSION_NUM} --USE_CUDA=false -y
           xmake b -vy crossdesk
 
       - name: Package CrossDesk app
