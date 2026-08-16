@@ -31,6 +31,7 @@ private:
   void BindStreamCallbacks();
   void BindServerCallbacks();
   void Tick();
+  void HandlePasswordChangeResult();
   void SyncMainWindow();
   void SyncConnectionDialog();
   void SyncPlatformDialogs();

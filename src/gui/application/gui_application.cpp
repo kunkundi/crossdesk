@@ -1342,33 +1342,42 @@ void GuiApplication::BindMainCallbacks() {
     if (password.size() != 6) {
       return false;
     }
-    std::memset(password_saved_, 0, sizeof(password_saved_));
-    std::strncpy(password_saved_, password.c_str(),
-                 sizeof(password_saved_) - 1);
 
-    if (config_center_->IsSelfHosted()) {
-      std::string identity = self_hosted_id_;
-      if (const auto at = identity.find('@'); at != std::string::npos) {
-        identity.resize(at);
-      }
-      if (identity.empty()) {
-        identity = client_id_;
-      }
-      identity += "@" + password;
-      std::memset(self_hosted_id_, 0, sizeof(self_hosted_id_));
-      std::strncpy(self_hosted_id_, identity.c_str(),
-                   sizeof(self_hosted_id_) - 1);
-    } else {
-      const std::string identity = std::string(client_id_) + "@" + password;
-      std::memset(client_id_with_password_, 0,
-                  sizeof(client_id_with_password_));
-      std::strncpy(client_id_with_password_, identity.c_str(),
-                   sizeof(client_id_with_password_) - 1);
+    if (!peer_ || !signal_connected_) {
+      offline_warning_text_ =
+          localization::signal_disconnected[localization_language_index_];
+      show_offline_warning_window_ = true;
+      return true;
     }
-    settings_.Save();
-    if (peer_) {
-      LeaveConnection(peer_, client_id_);
-      DestroyPeer(&peer_);
+
+    std::string request_id;
+    {
+      std::lock_guard<std::mutex> lock(password_change_mutex_);
+      if (password_change_pending_) {
+        return true;
+      }
+      request_id = std::to_string(++next_password_change_request_id_);
+      password_change_pending_ = true;
+      password_change_result_ready_ = false;
+      password_change_succeeded_ = false;
+      password_change_requested_at_ = std::chrono::steady_clock::now();
+      pending_password_change_request_id_ = request_id;
+      pending_local_password_ = password;
+      password_change_error_.clear();
+    }
+
+    const nlohmann::json request = {{"type", "change_password"},
+                                    {"request_id", request_id},
+                                    {"new_password", password}};
+    const std::string message = request.dump();
+    if (SendSignalMessage(peer_, message.data(), message.size()) != 0) {
+      std::lock_guard<std::mutex> lock(password_change_mutex_);
+      password_change_pending_ = false;
+      pending_password_change_request_id_.clear();
+      pending_local_password_.clear();
+      offline_warning_text_ =
+          localization::signal_disconnected[localization_language_index_];
+      show_offline_warning_window_ = true;
     }
     return true;
   });
@@ -1778,6 +1787,7 @@ void GuiApplication::Tick() {
     slint::quit_event_loop();
     return;
   }
+  HandlePasswordChangeResult();
   if (!peer_) {
     CreateConnectionPeer();
   }
@@ -1850,6 +1860,76 @@ void GuiApplication::Tick() {
   SyncPlatformDialogs();
   SyncStreamWindow();
   SyncServerWindow();
+}
+
+void GuiApplication::HandlePasswordChangeResult() {
+  bool succeeded = false;
+  std::string new_password;
+  std::string error;
+
+  {
+    std::lock_guard<std::mutex> lock(password_change_mutex_);
+    if (password_change_pending_ && !password_change_result_ready_ &&
+        std::chrono::steady_clock::now() - password_change_requested_at_ >=
+            std::chrono::seconds(10)) {
+      password_change_result_ready_ = true;
+      password_change_succeeded_ = false;
+      password_change_error_ = "Server did not respond";
+    }
+
+    if (!password_change_result_ready_) {
+      return;
+    }
+
+    succeeded = password_change_succeeded_;
+    new_password = pending_local_password_;
+    error = password_change_error_;
+    password_change_pending_ = false;
+    password_change_result_ready_ = false;
+    password_change_succeeded_ = false;
+    pending_password_change_request_id_.clear();
+    pending_local_password_.clear();
+    password_change_error_.clear();
+  }
+
+  if (!succeeded) {
+    LOG_WARN("Password change failed: {}", error);
+    offline_warning_text_ = localization::failed[localization_language_index_];
+    if (!error.empty()) {
+      offline_warning_text_ += ": " + error;
+    }
+    show_offline_warning_window_ = true;
+    return;
+  }
+
+  std::memset(password_saved_, 0, sizeof(password_saved_));
+  std::strncpy(password_saved_, new_password.c_str(),
+               sizeof(password_saved_) - 1);
+
+  const std::string identity = std::string(client_id_) + "@" + new_password;
+  if (config_center_->IsSelfHosted()) {
+    std::memset(self_hosted_id_, 0, sizeof(self_hosted_id_));
+    std::strncpy(self_hosted_id_, identity.c_str(),
+                 sizeof(self_hosted_id_) - 1);
+  } else {
+    std::memset(client_id_with_password_, 0,
+                sizeof(client_id_with_password_));
+    std::strncpy(client_id_with_password_, identity.c_str(),
+                 sizeof(client_id_with_password_) - 1);
+  }
+
+  if (settings_.Save() != 0) {
+    LOG_ERROR("Password changed on server but could not be saved locally");
+    offline_warning_text_ = localization::failed[localization_language_index_];
+    show_offline_warning_window_ = true;
+    return;
+  }
+
+  LOG_INFO("Password changed successfully for [{}]", client_id_);
+  if (peer_) {
+    LeaveConnection(peer_, client_id_);
+    DestroyPeer(&peer_);
+  }
 }
 
 void GuiApplication::UpdateLocalization() {

@@ -85,6 +85,38 @@ void PeerEventHandler::OnSignalMessage(const char* message, size_t size,
         }
       }
     }
+  } else if (type == "change_password") {
+    std::lock_guard<std::mutex> lock(runtime->password_change_mutex_);
+    if (!runtime->password_change_pending_) {
+      LOG_WARN("Ignore unexpected password change response");
+      return;
+    }
+
+    if (!j.contains("request_id") || !j["request_id"].is_string() ||
+        j["request_id"].get<std::string>() !=
+            runtime->pending_password_change_request_id_) {
+      LOG_WARN("Ignore password change response with unexpected request id");
+      return;
+    }
+
+    if (j.contains("user_id") && j["user_id"].is_string()) {
+      const std::string response_user_id = j["user_id"].get<std::string>();
+      if (!response_user_id.empty() &&
+          response_user_id != runtime->client_id_) {
+        LOG_WARN("Ignore password change response for unexpected id [{}]",
+                 response_user_id);
+        return;
+      }
+    }
+
+    runtime->password_change_succeeded_ =
+        j.contains("status") && j["status"].is_string() &&
+        j["status"].get<std::string>() == "success";
+    runtime->password_change_error_ =
+        j.contains("reason") && j["reason"].is_string()
+            ? j["reason"].get<std::string>()
+            : "Password change failed";
+    runtime->password_change_result_ready_ = true;
   }
 }
 

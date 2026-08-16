@@ -152,6 +152,18 @@ struct UserSettingsState {
   bool show_file_browser_ = true;
 };
 
+struct PasswordChangeState {
+  std::mutex password_change_mutex_;
+  uint64_t next_password_change_request_id_ = 0;
+  bool password_change_pending_ = false;
+  bool password_change_result_ready_ = false;
+  bool password_change_succeeded_ = false;
+  std::chrono::steady_clock::time_point password_change_requested_at_;
+  std::string pending_password_change_request_id_;
+  std::string pending_local_password_;
+  std::string password_change_error_;
+};
+
 struct ConnectionState {
   using RemoteSessionMap =
       std::unordered_map<std::string, RemoteSessionPtr>;
@@ -180,6 +192,7 @@ struct RuntimeState : InfrastructureState,
                       PeerState,
                       PlatformIntegrationState,
                       UserSettingsState,
+                      PasswordChangeState,
                       ConnectionState {};
 
 } // namespace crossdesk::gui_detail
