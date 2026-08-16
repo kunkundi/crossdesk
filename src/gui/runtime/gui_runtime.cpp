@@ -94,12 +94,11 @@ int GuiRuntime::CreateConnectionPeer() {
           sizeof(params_.turn_server_ip) - 1);
   params_.turn_server_ip[sizeof(params_.turn_server_ip) - 1] = '\0';
   params_.turn_server_port = coturn_server_port;
-  strncpy((char *)params_.turn_server_username, "crossdesk",
-          sizeof(params_.turn_server_username) - 1);
-  params_.turn_server_username[sizeof(params_.turn_server_username) - 1] = '\0';
-  strncpy((char *)params_.turn_server_password, "crossdeskpw",
-          sizeof(params_.turn_server_password) - 1);
-  params_.turn_server_password[sizeof(params_.turn_server_password) - 1] = '\0';
+  // TURN credentials are issued by the signaling server after login. Keep the
+  // initial values empty so a reusable static password is never embedded in
+  // the client binary.
+  params_.turn_server_username[0] = '\0';
+  params_.turn_server_password[0] = '\0';
 
   strncpy(params_.log_path, dll_log_path_.c_str(),
           sizeof(params_.log_path) - 1);
