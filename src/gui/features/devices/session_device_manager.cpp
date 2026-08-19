@@ -60,6 +60,26 @@ int SessionDeviceManager::InitializeScreenCapturer() {
           return;
         }
 
+        std::vector<std::string> connected_remote_ids;
+        {
+          std::shared_lock lock(owner_.connection_status_mutex_);
+          connected_remote_ids.reserve(owner_.connection_status_.size());
+          for (const auto &[remote_id, status] : owner_.connection_status_) {
+            if (status == ConnectionStatus::Connected) {
+              connected_remote_ids.push_back(remote_id);
+            }
+          }
+        }
+
+        // Capture can still deliver frames while ICE is gathering or after
+        // the final controller disconnects. Do not broadcast those frames to
+        // MiniRTC: a broadcast also reaches newly joining peers whose ICE
+        // transport is not ready yet.
+        if (connected_remote_ids.empty()) {
+          last_frame_time_ = now_time;
+          return;
+        }
+
         const std::string stream_id = display_name ? display_name : "";
         const bool resumed_after_gap =
             last_frame_time_ != 0 && duration >= kCaptureResumeKeyFrameGapMs;
@@ -79,7 +99,10 @@ int SessionDeviceManager::InitializeScreenCapturer() {
         frame.width = width;
         frame.height = height;
         frame.captured_timestamp = GetSystemTimeMicros(owner_.peer_);
-        SendVideoFrame(owner_.peer_, &frame, stream_id.c_str());
+        for (const std::string &remote_id : connected_remote_ids) {
+          SendVideoFrameToPeer(owner_.peer_, &frame, stream_id.c_str(),
+                               remote_id.data(), remote_id.size());
+        }
         last_video_frame_stream_id_ = stream_id;
         last_frame_time_ = now_time;
       });

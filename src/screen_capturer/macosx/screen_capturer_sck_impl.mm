@@ -335,7 +335,7 @@ int ScreenCapturerSckImpl::SwitchTo(int monitor_index) {
 }
 
 int ScreenCapturerSckImpl::ResetToInitialMonitor() {
-  int target = initial_monitor_index_;
+  const int target = initial_monitor_index_;
   if (display_info_list_.empty()) return -1;
   auto display_it = display_id_map_.find(target);
   if (display_it == display_id_map_.end()) {
@@ -343,13 +343,20 @@ int ScreenCapturerSckImpl::ResetToInitialMonitor() {
     return -1;
   }
 
-  CGDirectDisplayID target_display = display_it->second;
-  if (current_display_ == target_display) return 0;
+  const CGDirectDisplayID target_display = display_it->second;
+  bool should_reconfigure = false;
   {
     std::lock_guard<std::mutex> lock(lock_);
+    if (current_display_ == target_display) return 0;
     current_display_ = target_display;
+    should_reconfigure = stream_ != nil;
   }
-  StartOrReconfigureCapturer();
+
+  // Resetting session state must not create a capture stream. Preserve the
+  // selected monitor for the next Start(), and only reconfigure an active one.
+  if (should_reconfigure) {
+    StartOrReconfigureCapturer();
+  }
   return 0;
 }
 
