@@ -111,8 +111,14 @@ int GuiRuntime::CreateConnectionPeer() {
                              : false;
   params_.turn_mode = static_cast<TurnMode>(config_center_->GetTurnMode());
   params_.enable_srtp = config_center_->IsEnableSrtp();
+  params_.video_content_type = VideoContentType::ScreenContent;
   params_.video_quality =
       static_cast<VideoQuality>(config_center_->GetVideoQuality());
+  params_.video_frame_rate =
+      config_center_->GetVideoFrameRate() ==
+              ConfigCenter::VIDEO_FRAME_RATE::FPS_30
+          ? 30
+          : 60;
   params_.on_receive_video_buffer = nullptr;
   params_.on_receive_audio_buffer = PeerEventHandler::OnReceiveAudioBuffer;
   params_.on_receive_data_buffer = PeerEventHandler::OnReceiveDataBuffer;

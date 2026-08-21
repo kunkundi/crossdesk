@@ -29,7 +29,11 @@ int ConfigCenter::Load() {
     return -1;
   }
 
-  bool persist_turn_mode_migration = false;
+  bool persist_config_migration = false;
+  persist_config_migration |= ini_.Delete(section_, "video_content_type");
+  persist_config_migration |= ini_.Delete(section_, "screen_content");
+  persist_config_migration |=
+      ini_.Delete(section_, "enable_desktop_quality_optimization");
 
   const long language_value =
       ini_.GetLongValue(section_, "language", static_cast<long>(language_));
@@ -52,7 +56,6 @@ int ConfigCenter::Load() {
 
   hardware_video_codec_ = ini_.GetBoolValue(section_, "hardware_video_codec",
                                             hardware_video_codec_);
-
   const char* turn_mode_value = ini_.GetValue(section_, "turn_mode", nullptr);
   if (turn_mode_value != nullptr && strlen(turn_mode_value) > 0) {
     const long parsed_turn_mode = ini_.GetLongValue(
@@ -70,7 +73,7 @@ int ConfigCenter::Load() {
     turn_mode_ = legacy_enable_turn ? TURN_MODE::AUTO_UDP_TCP
                                     : TURN_MODE::DISABLED;
     ini_.SetLongValue(section_, "turn_mode", static_cast<long>(turn_mode_));
-    persist_turn_mode_migration = true;
+    persist_config_migration = true;
   }
   enable_srtp_ = ini_.GetBoolValue(section_, "enable_srtp", enable_srtp_);
   enable_self_hosted_ =
@@ -121,8 +124,7 @@ int ConfigCenter::Load() {
     file_transfer_save_path_ = "";
   }
 
-  if (persist_turn_mode_migration &&
-      ini_.SaveFile(config_path_.c_str()) < 0) {
+  if (persist_config_migration && ini_.SaveFile(config_path_.c_str()) < 0) {
     return -1;
   }
 
