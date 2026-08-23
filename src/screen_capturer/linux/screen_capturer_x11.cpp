@@ -10,6 +10,7 @@
 #include <mutex>
 #include <thread>
 
+#include "display_stream_id.h"
 #include "libyuv.h"
 #include "rd_log.h"
 
@@ -96,12 +97,6 @@ int ScreenCapturerX11::Init(const int fps, cb_desktop_data cb) {
       if (name.empty()) {
         name = "Display" + std::to_string(i + 1);
       }
-
-      // clean display name, remove non-alphanumeric characters
-      name.erase(
-          std::remove_if(name.begin(), name.end(),
-                         [](unsigned char c) { return !std::isalnum(c); }),
-          name.end());
 
       display_info_list_.push_back(DisplayInfo(
           (void*)display_, name, true, crtc_info->x, crtc_info->y,
@@ -324,8 +319,9 @@ void ScreenCapturerX11::OnFrame() {
   nv12.insert(nv12.end(), uv_plane_.begin(), uv_plane_.end());
 
   if (callback_) {
+    const std::string stream_id = MakeDisplayStreamId(monitor_index);
     callback_(nv12.data(), width_ * height_ * 3 / 2, width_, height_,
-              display_info_list_[monitor_index].name.c_str());
+              stream_id.c_str());
   }
 
   XDestroyImage(image);

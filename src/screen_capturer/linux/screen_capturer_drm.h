@@ -47,6 +47,7 @@ class ScreenCapturerDrm : public ScreenCapturer {
     uint32_t connector_id = 0;
     uint32_t crtc_id = 0;
     std::string name;
+    std::string stream_id;
     int left = 0;
     int top = 0;
     int width = 0;

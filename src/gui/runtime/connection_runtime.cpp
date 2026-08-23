@@ -8,6 +8,7 @@
 #include <thread>
 #include <vector>
 
+#include "display_stream_id.h"
 #include "localization.h"
 #include "platform.h"
 #include "rd_log.h"
@@ -381,8 +382,10 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
           return -1;
         }
 
-        for (const auto& display_info : devices_.display_info_list()) {
-          AddVideoStream(props->peer_, display_info.name.c_str());
+        const auto& displays = devices_.display_info_list();
+        for (size_t index = 0; index < displays.size(); ++index) {
+          const std::string stream_id = MakeDisplayStreamId(index);
+          AddVideoStream(props->peer_, stream_id.c_str());
         }
         AddAudioStream(props->peer_, props->audio_label_.c_str());
         AddDataStream(props->peer_, props->data_label_.c_str(), false);

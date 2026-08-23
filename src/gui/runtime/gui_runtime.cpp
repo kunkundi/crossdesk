@@ -10,6 +10,7 @@
 #include <thread>
 #include <vector>
 
+#include "display_stream_id.h"
 #include "localization.h"
 #include "rd_log.h"
 
@@ -181,8 +182,10 @@ int GuiRuntime::CreateConnectionPeer() {
   }
 
   if (0 == devices_.InitializeScreenCapturer()) {
-    for (const auto &display_info : devices_.display_info_list()) {
-      AddVideoStream(peer_, display_info.name.c_str());
+    const auto &displays = devices_.display_info_list();
+    for (size_t index = 0; index < displays.size(); ++index) {
+      const std::string stream_id = MakeDisplayStreamId(index);
+      AddVideoStream(peer_, stream_id.c_str());
     }
 
     AddAudioStream(peer_, audio_label_.c_str());

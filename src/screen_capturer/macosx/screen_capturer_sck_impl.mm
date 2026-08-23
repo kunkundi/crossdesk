@@ -10,21 +10,21 @@
 
 #include "screen_capturer_sck.h"
 
+#include <AppKit/AppKit.h>
 #include <ApplicationServices/ApplicationServices.h>
 #include <CoreGraphics/CoreGraphics.h>
 #include <IOKit/IOKitLib.h>
 #include <IOKit/graphics/IOGraphicsLib.h>
 #include <IOSurface/IOSurface.h>
 #include <ScreenCaptureKit/ScreenCaptureKit.h>
-#include <algorithm>
 #include <atomic>
-#include <cctype>
 #include <cstring>
 #include <limits>
 #include <map>
 #include <mutex>
 #include <vector>
 #include "display_info.h"
+#include "display_stream_id.h"
 #include "rd_log.h"
 
 using namespace crossdesk;
@@ -83,20 +83,23 @@ class API_AVAILABLE(macos(14.0)) ScreenCapturerSckImpl : public ScreenCapturer {
 
   int Resume(int monitor_index) override { return 0; }
 
-  std::vector<DisplayInfo> GetDisplayInfoList() override { return display_info_list_; }
+  std::vector<DisplayInfo> GetDisplayInfoList() override {
+    std::lock_guard<std::mutex> lock(lock_);
+    return display_info_list_;
+  }
   int ResetToInitialMonitor() override;
 
  private:
   std::vector<DisplayInfo> display_info_list_;
   std::map<int, CGDirectDisplayID> display_id_map_;
-  std::map<CGDirectDisplayID, int> display_id_map_reverse_;
-  std::map<CGDirectDisplayID, std::string> display_id_name_map_;
   unsigned char *nv12_frame_ = nullptr;
   size_t nv12_frame_size_ = 0;
   int width_ = 0;
   int height_ = 0;
   int fps_ = 60;
   bool show_cursor_ = false;
+  bool capture_requested_ = false;
+  bool invalid_stream_id_logged_ = false;
 
  public:
   // Called by SckHelper when shareable content is returned by ScreenCaptureKit. `content` will be
@@ -130,9 +133,38 @@ class API_AVAILABLE(macos(14.0)) ScreenCapturerSckImpl : public ScreenCapturer {
   // support full-desktop capture, and will fall back to the first display.
   CGDirectDisplayID current_display_ = 0;
   int initial_monitor_index_ = 0;
+  int current_monitor_index_ = 0;
+  std::string current_stream_id_;
 };
 
+static std::string NSStringToUtf8(NSString *value) {
+  if (!value || value.length == 0) return "";
+  const char *utf8 = value.UTF8String;
+  return utf8 ? utf8 : "";
+}
+
+static std::string GetAppKitDisplayName(CGDirectDisplayID display_id) {
+  if (@available(macOS 10.15, *)) {
+    @autoreleasepool {
+      for (NSScreen *screen in NSScreen.screens) {
+        NSNumber *screen_number = screen.deviceDescription[@"NSScreenNumber"];
+        if (screen_number && screen_number.unsignedIntValue == display_id) {
+          return NSStringToUtf8(screen.localizedName);
+        }
+      }
+    }
+  }
+  return "";
+}
+
 std::string GetDisplayName(CGDirectDisplayID display_id) {
+  // IODisplayConnect is no longer exposed for some external displays on
+  // modern Apple Silicon Macs. NSScreen is the system-owned source for the
+  // user-visible name and maps directly to CGDirectDisplayID.
+  std::string appkit_name = GetAppKitDisplayName(display_id);
+  if (!appkit_name.empty()) return appkit_name;
+
+  // Keep the IOKit path for older macOS versions and display drivers.
   io_iterator_t iter;
   io_service_t serv = 0, matched_serv = 0;
 
@@ -212,8 +244,6 @@ ScreenCapturerSckImpl::~ScreenCapturerSckImpl() {
 
   display_info_list_.clear();
   display_id_map_.clear();
-  display_id_map_reverse_.clear();
-  display_id_name_map_.clear();
 
   if (nv12_frame_) {
     delete[] nv12_frame_;
@@ -232,8 +262,6 @@ int ScreenCapturerSckImpl::Init(const int fps, cb_desktop_data cb) {
   fps_ = fps > 0 ? fps : 60;
   display_info_list_.clear();
   display_id_map_.clear();
-  display_id_map_reverse_.clear();
-  display_id_name_map_.clear();
 
   if (@available(macOS 10.15, *)) {
     bool has_permission = CGPreflightScreenCaptureAccess();
@@ -265,26 +293,18 @@ int ScreenCapturerSckImpl::Init(const int fps, cb_desktop_data cb) {
     return -1;
   }
 
-  CGDirectDisplayID displays[10];
-  uint32_t count;
-  CGGetActiveDisplayList(10, displays, &count);
-
-  int unnamed_count = 1;
   for (SCDisplay *display in content.displays) {
     CGDirectDisplayID display_id = display.displayID;
     CGRect bounds = CGDisplayBounds(display_id);
     bool is_primary = CGDisplayIsMain(display_id);
 
     std::string name = GetDisplayName(display_id);
-
     if (name.empty()) {
-      name = "Display" + std::to_string(unnamed_count++);
+      name = MakeDisplayStreamId(display_info_list_.size());
     }
 
-    // clean display name, remove non-alphanumeric characters
-    name.erase(
-        std::remove_if(name.begin(), name.end(), [](unsigned char c) { return !std::isalnum(c); }),
-        name.end());
+    LOG_INFO("macOS display discovered: index={}, display_id={}, name='{}'",
+             display_info_list_.size(), display_id, name);
 
     DisplayInfo info((void *)(uintptr_t)display_id, name, is_primary,
                      static_cast<int>(bounds.origin.x), static_cast<int>(bounds.origin.y),
@@ -293,11 +313,12 @@ int ScreenCapturerSckImpl::Init(const int fps, cb_desktop_data cb) {
 
     display_info_list_.push_back(info);
     display_id_map_[display_info_list_.size() - 1] = display_id;
-    display_id_map_reverse_[display_id] = display_info_list_.size() - 1;
-    display_id_name_map_[display_id] = name;
   }
 
   initial_monitor_index_ = 0;
+  current_monitor_index_ = initial_monitor_index_;
+  current_display_ = display_id_map_[current_monitor_index_];
+  current_stream_id_ = MakeDisplayStreamId(current_monitor_index_);
   return 0;
 }
 
@@ -307,49 +328,62 @@ int ScreenCapturerSckImpl::Start(bool show_cursor) {
     return -1;
   }
 
-  if (display_info_list_.empty()) {
-    LOG_ERROR("Cannot start capturer: display info not initialized");
-    return -1;
+  {
+    std::lock_guard<std::mutex> lock(lock_);
+    if (display_info_list_.empty()) {
+      LOG_ERROR("Cannot start capturer: display info not initialized");
+      return -1;
+    }
+    show_cursor_ = show_cursor;
+    capture_requested_ = true;
+    invalid_stream_id_logged_ = false;
   }
-
-  show_cursor_ = show_cursor;
   StartOrReconfigureCapturer();
   return 0;
 }
 
 int ScreenCapturerSckImpl::SwitchTo(int monitor_index) {
-  auto display_it = display_id_map_.find(monitor_index);
-  if (display_it == display_id_map_.end()) {
-    LOG_WARN("SwitchTo skipped, invalid monitor_index={}, displays={}",
-             monitor_index, display_id_map_.size());
-    return -1;
-  }
-
-  const CGDirectDisplayID target_display = display_it->second;
+  bool should_reconfigure = false;
   {
     std::lock_guard<std::mutex> lock(lock_);
-    current_display_ = target_display;
+    auto display_it = display_id_map_.find(monitor_index);
+    if (display_it == display_id_map_.end() || monitor_index < 0 ||
+        monitor_index >= static_cast<int>(display_info_list_.size())) {
+      LOG_WARN("SwitchTo skipped, invalid monitor_index={}, displays={}",
+               monitor_index, display_id_map_.size());
+      return -1;
+    }
+    current_monitor_index_ = monitor_index;
+    current_display_ = display_it->second;
+    current_stream_id_ = MakeDisplayStreamId(monitor_index);
+    should_reconfigure = capture_requested_;
   }
-  StartOrReconfigureCapturer();
+  if (should_reconfigure) {
+    StartOrReconfigureCapturer();
+  }
   return 0;
 }
 
 int ScreenCapturerSckImpl::ResetToInitialMonitor() {
   const int target = initial_monitor_index_;
-  if (display_info_list_.empty()) return -1;
-  auto display_it = display_id_map_.find(target);
-  if (display_it == display_id_map_.end()) {
-    LOG_WARN("ResetToInitialMonitor skipped, invalid monitor_index={}", target);
-    return -1;
-  }
-
-  const CGDirectDisplayID target_display = display_it->second;
   bool should_reconfigure = false;
   {
     std::lock_guard<std::mutex> lock(lock_);
-    if (current_display_ == target_display) return 0;
+    if (display_info_list_.empty()) return -1;
+    auto display_it = display_id_map_.find(target);
+    if (display_it == display_id_map_.end()) {
+      LOG_WARN("ResetToInitialMonitor skipped, invalid monitor_index={}", target);
+      return -1;
+    }
+    const CGDirectDisplayID target_display = display_it->second;
+    if (current_display_ == target_display &&
+        current_monitor_index_ == target) {
+      return 0;
+    }
+    current_monitor_index_ = target;
     current_display_ = target_display;
-    should_reconfigure = stream_ != nil;
+    current_stream_id_ = MakeDisplayStreamId(target);
+    should_reconfigure = capture_requested_ && stream_ != nil;
   }
 
   // Resetting session state must not create a capture stream. Preserve the
@@ -369,7 +403,9 @@ int ScreenCapturerSckImpl::Destroy() {
       [stream_ stopCaptureWithCompletionHandler:nil];
       stream_ = nil;
     }
+    capture_requested_ = false;
     current_display_ = 0;
+    current_stream_id_.clear();
     permanent_error_ = false;
     _on_data = nullptr;
     helper_to_release = helper_;
@@ -383,6 +419,7 @@ int ScreenCapturerSckImpl::Destroy() {
 
 int ScreenCapturerSckImpl::Stop() {
   std::lock_guard<std::mutex> lock(lock_);
+  capture_requested_ = false;
   if (stream_) {
     LOG_INFO("Stopping stream");
     [stream_ stopCaptureWithCompletionHandler:nil];
@@ -394,6 +431,14 @@ int ScreenCapturerSckImpl::Stop() {
 }
 
 void ScreenCapturerSckImpl::OnShareableContentCreated(SCShareableContent *content) {
+  {
+    std::lock_guard<std::mutex> lock(lock_);
+    if (!capture_requested_) {
+      LOG_INFO("Ignoring stale ScreenCaptureKit display refresh after stop");
+      return;
+    }
+  }
+
   if (!content) {
     LOG_ERROR("getShareableContent failed");
     permanent_error_ = true;
@@ -407,22 +452,71 @@ void ScreenCapturerSckImpl::OnShareableContentCreated(SCShareableContent *conten
   }
 
   SCDisplay *captured_display = nil;
+  bool show_cursor = false;
   {
     std::lock_guard<std::mutex> lock(lock_);
+    if (!capture_requested_) return;
+
+    int logical_index = current_monitor_index_;
+    if (logical_index < 0 ||
+        logical_index >= static_cast<int>(display_info_list_.size())) {
+      logical_index = 0;
+    }
+
+    SCDisplay *logical_fallback = nil;
+    int display_index = 0;
     for (SCDisplay *display in content.displays) {
+      if (display_index == logical_index) logical_fallback = display;
       if (current_display_ != 0 && current_display_ == display.displayID) {
-        LOG_WARN("current display: {}, name: {}", current_display_,
-                 display_id_name_map_[current_display_]);
         captured_display = display;
         break;
       }
+      ++display_index;
     }
     if (!captured_display) {
-      captured_display = content.displays.firstObject;
-      if (captured_display) {
-        current_display_ = captured_display.displayID;
+      captured_display = logical_fallback ? logical_fallback
+                                          : content.displays.firstObject;
+      if (!logical_fallback) logical_index = 0;
+    }
+
+    if (captured_display) {
+      const CGDirectDisplayID old_display = current_display_;
+      const CGDirectDisplayID new_display = captured_display.displayID;
+      const std::string stable_stream_id = ResolveDisplayStreamId(
+          current_stream_id_.c_str(), display_info_list_.size(), logical_index);
+      if (stable_stream_id.empty()) {
+        LOG_ERROR("Cannot map macOS display {} to a registered video stream",
+                  new_display);
+        return;
+      }
+
+      current_monitor_index_ = logical_index;
+      current_display_ = new_display;
+      current_stream_id_ = stable_stream_id;
+      display_id_map_[logical_index] = new_display;
+
+      CGRect bounds = CGDisplayBounds(new_display);
+      auto& info = display_info_list_[logical_index];
+      info.handle = (void *)(uintptr_t)new_display;
+      info.is_primary = CGDisplayIsMain(new_display);
+      info.left = static_cast<int>(bounds.origin.x);
+      info.top = static_cast<int>(bounds.origin.y);
+      info.right = static_cast<int>(bounds.origin.x + bounds.size.width);
+      info.bottom = static_cast<int>(bounds.origin.y + bounds.size.height);
+      info.width = info.right - info.left;
+      info.height = info.bottom - info.top;
+      const std::string refreshed_name = GetDisplayName(new_display);
+      if (!refreshed_name.empty()) {
+        info.name = refreshed_name;
+      }
+
+      if (old_display != new_display) {
+        LOG_INFO("macOS display mapping refreshed: slot={}, old_id={}, "
+                 "new_id={}, stream='{}'",
+                 logical_index, old_display, new_display, stable_stream_id);
       }
     }
+    show_cursor = show_cursor_;
   }
 
   if (!captured_display) {
@@ -447,13 +541,14 @@ void ScreenCapturerSckImpl::OnShareableContentCreated(SCShareableContent *conten
   }
 
   config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
-  config.showsCursor = show_cursor_;
+  config.showsCursor = show_cursor;
   config.width = filter.contentRect.size.width * filter.pointPixelScale;
   config.height = filter.contentRect.size.height * filter.pointPixelScale;
   config.captureResolution = SCCaptureResolutionAutomatic;
   config.minimumFrameInterval = CMTimeMake(1, fps_);
 
   std::lock_guard<std::mutex> lock(lock_);
+  if (!capture_requested_) return;
 
   if (stream_) {
     LOG_INFO("Updating stream configuration");
@@ -523,7 +618,7 @@ void ScreenCapturerSckImpl::OnNewCVPixelBuffer(CVPixelBufferRef pixelBuffer,
   }
 
   std::lock_guard<std::mutex> lock(lock_);
-  if (!_on_data) {
+  if (!_on_data || !capture_requested_) {
     CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
     return;
   }
@@ -558,9 +653,22 @@ void ScreenCapturerSckImpl::OnNewCVPixelBuffer(CVPixelBufferRef pixelBuffer,
     memcpy(dst_uv + row * width, static_cast<unsigned char *>(base_uv) + row * stride_uv, width);
   }
 
+  const std::string stream_id = ResolveDisplayStreamId(
+      current_stream_id_.c_str(), display_info_list_.size(),
+      current_monitor_index_);
+  if (stream_id.empty()) {
+    if (!invalid_stream_id_logged_) {
+      LOG_ERROR("Dropping macOS frames without a registered stream id, "
+                "display_id={}",
+                current_display_);
+      invalid_stream_id_logged_ = true;
+    }
+    CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+    return;
+  }
+  invalid_stream_id_logged_ = false;
   _on_data(nv12_frame_, static_cast<int>(required_size), static_cast<int>(width),
-           static_cast<int>(height),
-           display_id_name_map_[current_display_].c_str());
+           static_cast<int>(height), stream_id.c_str());
 
   CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
 }

@@ -108,7 +108,10 @@ int GuiApplication::ControlBar(
     if (ImGui::BeginPopup("display")) {
       ImGui::SetWindowFontScale(0.5f);
       for (int i = 0; i < props->display_info_list_.size(); i++) {
-        if (ImGui::Selectable(props->display_info_list_[i].name.c_str())) {
+        const std::string display_label = localization::FormatDisplayLabel(
+            static_cast<size_t>(i), props->display_info_list_[i].name,
+            localization_language_index_);
+        if (ImGui::Selectable(display_label.c_str())) {
           props->selected_display_ = i;
 
           RemoteAction remote_action;

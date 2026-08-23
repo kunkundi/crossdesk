@@ -35,6 +35,7 @@ struct TranslationRow {
     u8"Недавние подключения")                                                  \
   X(disconnect, u8"断开连接", "Disconnect", u8"Отключить")                     \
   X(select_display, u8"选择显示器", "Select Display", u8"Выбрать дисплей")     \
+  X(display_screen, u8"显示屏", "Display", u8"Экран")                        \
   X(expand_control_bar, u8"展开控制栏", "Expand Control Bar",                  \
     u8"Развернуть панель управления")                                          \
   X(collapse_control_bar, u8"收起控制栏", "Collapse Control Bar",              \

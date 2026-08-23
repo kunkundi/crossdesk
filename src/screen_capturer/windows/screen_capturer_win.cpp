@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "display_stream_id.h"
 #include "interactive_state.h"
 #include "rd_log.h"
 #include "screen_capturer_dxgi.h"
@@ -403,37 +404,37 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
   fps_ = fps;
   cb_orig_ = cb;
   cb_ = [this](unsigned char* data, int size, int w, int h,
-               const char* display_name) {
+               const char* reported_stream_id) {
     if (secure_desktop_capture_active_.load(std::memory_order_relaxed)) {
       return;
     }
 
-    const char* raw_display_name = display_name ? display_name : "";
-    std::string mapped_name;
+    const char* raw_stream_id = reported_stream_id ? reported_stream_id : "";
+    std::string mapped_stream_id;
     {
       std::lock_guard<std::mutex> lock(alias_mutex_);
-      auto it = label_alias_.find(raw_display_name);
-      if (it != label_alias_.end())
-        mapped_name = it->second;
-      else
-        mapped_name = raw_display_name;
-    }
-    {
-      std::lock_guard<std::mutex> lock(alias_mutex_);
-      if (canonical_labels_.find(mapped_name) == canonical_labels_.end()) {
-        if (post_secure_desktop_waiting_for_frame_.load(
-                std::memory_order_relaxed) &&
-            !post_secure_desktop_drop_logged_.exchange(
-                true, std::memory_order_relaxed)) {
-          LOG_WARN(
-              "Windows capturer dropping post-secure-desktop frame from "
-              "unknown display: display='{}', mapped='{}', size={}x{}, "
-              "bytes={}",
-              raw_display_name, mapped_name, w, h, size);
-        }
-        return;
+      auto it = stream_id_alias_.find(raw_stream_id);
+      if (it != stream_id_alias_.end()) {
+        mapped_stream_id = it->second;
+      } else {
+        // Unknown backend labels are presentation data, not protocol IDs.
+        // Resolve them through the selected logical display instead.
+        mapped_stream_id.clear();
       }
+      mapped_stream_id = ResolveDisplayStreamId(
+          mapped_stream_id.c_str(), canonical_displays_.size(),
+          monitor_index_.load(std::memory_order_relaxed));
     }
+    if (mapped_stream_id.empty()) {
+      if (!invalid_stream_id_logged_.exchange(true,
+                                              std::memory_order_relaxed)) {
+        LOG_WARN("Windows capturer dropping frame without a registered stream "
+                 "id: reported='{}', size={}x{}, bytes={}",
+                 raw_stream_id, w, h, size);
+      }
+      return;
+    }
+    invalid_stream_id_logged_.store(false, std::memory_order_relaxed);
     if (post_secure_desktop_waiting_for_frame_.exchange(
             false, std::memory_order_relaxed)) {
       const ULONGLONG start_tick =
@@ -445,10 +446,11 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
                                              std::memory_order_relaxed);
       LOG_INFO(
           "Windows capturer first normal frame after secure desktop: "
-          "display='{}', mapped='{}', size={}x{}, bytes={}, elapsed_ms={}",
-          raw_display_name, mapped_name, w, h, size, elapsed_ms);
+          "reported_stream='{}', mapped_stream='{}', size={}x{}, bytes={}, "
+          "elapsed_ms={}",
+          raw_stream_id, mapped_stream_id, w, h, size, elapsed_ms);
     }
-    if (cb_orig_) cb_orig_(data, size, w, h, mapped_name.c_str());
+    if (cb_orig_) cb_orig_(data, size, w, h, mapped_stream_id.c_str());
   };
 
   int ret = -1;
@@ -508,9 +510,8 @@ int ScreenCapturerWin::Destroy() {
   }
   {
     std::lock_guard<std::mutex> lock(alias_mutex_);
-    label_alias_.clear();
-    handle_to_canonical_.clear();
-    canonical_labels_.clear();
+    stream_id_alias_.clear();
+    handle_to_canonical_index_.clear();
   }
   return 0;
 }
@@ -523,10 +524,26 @@ int ScreenCapturerWin::Start(bool show_cursor) {
 
   show_cursor_.store(show_cursor, std::memory_order_relaxed);
   paused_.store(false, std::memory_order_relaxed);
+  invalid_stream_id_logged_.store(false, std::memory_order_relaxed);
 
-  int ret = impl_->Start(show_cursor);
+  // Refresh physical monitor identities before every session. HMONITOR and
+  // DXGI output handles may change after an HDMI hotplug while CrossDesk stays
+  // open; logical stream IDs must remain stable.
+  const int requested_monitor =
+      monitor_index_.load(std::memory_order_relaxed);
+  impl_->Destroy();
+  int ret = impl_->Init(fps_, cb_);
+  if (ret == 0) {
+    RebuildAliasesFromImpl();
+    ret = impl_->Start(show_cursor);
+    if (ret == 0 && requested_monitor > 0 &&
+        impl_->SwitchTo(requested_monitor) != 0) {
+      monitor_index_.store(0, std::memory_order_relaxed);
+    }
+  }
   if (ret != 0) {
-    LOG_WARN("Windows capturer: Start failed (ret={}), trying fallback", ret);
+    LOG_WARN("Windows capturer: refresh/start failed (ret={}), trying fallback",
+             ret);
 
     auto try_init_start = [&](std::unique_ptr<ScreenCapturer> cand) -> bool {
       int r = cand->Init(fps_, cb_);
@@ -536,6 +553,10 @@ int ScreenCapturerWin::Start(bool show_cursor) {
         impl_ = std::move(cand);
         impl_is_wgc_plugin_ = false;
         RebuildAliasesFromImpl();
+        if (requested_monitor > 0 &&
+            impl_->SwitchTo(requested_monitor) != 0) {
+          monitor_index_.store(0, std::memory_order_relaxed);
+        }
         return true;
       }
       return false;
@@ -624,25 +645,49 @@ int ScreenCapturerWin::ResetToInitialMonitor() {
 
 std::vector<DisplayInfo> ScreenCapturerWin::GetDisplayInfoList() {
   if (!impl_) return {};
-  return impl_->GetDisplayInfoList();
+  std::lock_guard<std::mutex> lock(alias_mutex_);
+  return canonical_displays_;
 }
 
 void ScreenCapturerWin::BuildCanonicalFromImpl() {
   std::lock_guard<std::mutex> lock(alias_mutex_);
-  handle_to_canonical_.clear();
-  label_alias_.clear();
+  handle_to_canonical_index_.clear();
+  stream_id_alias_.clear();
   canonical_displays_ = impl_->GetDisplayInfoList();
-  canonical_labels_.clear();
-  for (const auto& di : canonical_displays_) {
-    handle_to_canonical_[di.handle] = di.name;
-    canonical_labels_.insert(di.name);
+  std::unordered_map<std::string, size_t> name_counts;
+  for (const auto& display : canonical_displays_) {
+    if (!display.name.empty()) {
+      ++name_counts[display.name];
+    }
+  }
+  for (size_t i = 0; i < canonical_displays_.size(); ++i) {
+    auto& di = canonical_displays_[i];
+    const std::string stream_id = MakeDisplayStreamId(i);
+    if (di.name.empty()) {
+      di.name = stream_id;
+    }
+    handle_to_canonical_index_[di.handle] = i;
+    stream_id_alias_[stream_id] = stream_id;
+    if (name_counts[di.name] == 1) {
+      // Compatibility with an older WGC plugin that reports display names.
+      stream_id_alias_[di.name] = stream_id;
+    }
   }
 }
 
 void ScreenCapturerWin::RebuildAliasesFromImpl() {
   std::lock_guard<std::mutex> lock(alias_mutex_);
-  label_alias_.clear();
+  stream_id_alias_.clear();
   auto current = impl_->GetDisplayInfoList();
+  if (current.empty() || canonical_displays_.empty()) return;
+  const auto previous_handles = handle_to_canonical_index_;
+  handle_to_canonical_index_.clear();
+  std::unordered_map<std::string, size_t> name_counts;
+  for (const auto& display : current) {
+    if (!display.name.empty()) {
+      ++name_counts[display.name];
+    }
+  }
   auto similar = [&](const DisplayInfo& a, const DisplayInfo& b) {
     int dl = std::abs(a.left - b.left);
     int dt = std::abs(a.top - b.top);
@@ -650,21 +695,52 @@ void ScreenCapturerWin::RebuildAliasesFromImpl() {
     int dh = std::abs(a.height - b.height);
     return dl <= 10 && dt <= 10 && dw <= 20 && dh <= 20;
   };
-  for (const auto& di : current) {
-    std::string canonical;
-    auto it = handle_to_canonical_.find(di.handle);
-    if (it != handle_to_canonical_.end()) {
-      canonical = it->second;
-    } else {
-      for (const auto& c : canonical_displays_) {
-        if (similar(di, c) || (di.is_primary && c.is_primary)) {
-          canonical = c.name;
+  std::vector<bool> used(canonical_displays_.size(), false);
+  for (size_t current_index = 0; current_index < current.size();
+       ++current_index) {
+    const auto& di = current[current_index];
+    int canonical_index = -1;
+    auto old_handle = previous_handles.find(di.handle);
+    if (old_handle != previous_handles.end() &&
+        old_handle->second < canonical_displays_.size() &&
+        !used[old_handle->second]) {
+      canonical_index = static_cast<int>(old_handle->second);
+    }
+    if (canonical_index < 0) {
+      for (size_t i = 0; i < canonical_displays_.size(); ++i) {
+        if (!used[i] && (similar(di, canonical_displays_[i]) ||
+                         (di.is_primary && canonical_displays_[i].is_primary))) {
+          canonical_index = static_cast<int>(i);
           break;
         }
       }
     }
-    if (!canonical.empty() && canonical != di.name) {
-      label_alias_[di.name] = canonical;
+    if (canonical_index < 0 && current_index < canonical_displays_.size() &&
+        !used[current_index]) {
+      canonical_index = static_cast<int>(current_index);
+    }
+    if (canonical_index < 0) {
+      LOG_WARN("Windows capturer ignoring unregistered display after topology "
+               "change: display='{}', index={}",
+               di.name, current_index);
+      continue;
+    }
+
+    used[canonical_index] = true;
+    auto& canonical = canonical_displays_[canonical_index];
+    const std::string backend_stream_id =
+        MakeDisplayStreamId(current_index);
+    const std::string stable_stream_id =
+        MakeDisplayStreamId(static_cast<size_t>(canonical_index));
+    stream_id_alias_[backend_stream_id] = stable_stream_id;
+    if (!di.name.empty() && name_counts[di.name] == 1) {
+      stream_id_alias_[di.name] = stable_stream_id;
+    }
+    handle_to_canonical_index_[di.handle] =
+        static_cast<size_t>(canonical_index);
+    canonical = di;
+    if (canonical.name.empty()) {
+      canonical.name = stable_stream_id;
     }
   }
 }
@@ -792,7 +868,7 @@ bool ScreenCapturerWin::GetCurrentCaptureRegion(int* left, int* top, int* width,
   *top = display.top;
   *width = capture_width;
   *height = capture_height;
-  *display_name = display.name;
+  *display_name = MakeDisplayStreamId(static_cast<size_t>(current_monitor));
   return true;
 }
 

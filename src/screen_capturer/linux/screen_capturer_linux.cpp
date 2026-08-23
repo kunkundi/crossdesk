@@ -6,6 +6,7 @@
 #include <string>
 #include <utility>
 
+#include "display_stream_id.h"
 #include "platform.h"
 #include "rd_log.h"
 #if defined(CROSSDESK_HAS_DRM) && CROSSDESK_HAS_DRM
@@ -49,10 +50,21 @@ int ScreenCapturerLinux::Init(const int fps, cb_desktop_data cb) {
   fps_ = fps;
   callback_orig_ = std::move(cb);
   callback_ = [this](unsigned char* data, int size, int width, int height,
-                     const char* display_name) {
-    const std::string mapped_name = MapDisplayName(display_name);
+                     const char* reported_stream_id) {
+    const std::string mapped_stream_id = MapStreamId(reported_stream_id);
+    if (mapped_stream_id.empty()) {
+      if (!invalid_stream_id_logged_.exchange(true,
+                                              std::memory_order_relaxed)) {
+        LOG_WARN("Linux capturer dropping frame without a registered stream "
+                 "id: reported='{}', size={}x{}, bytes={}",
+                 reported_stream_id ? reported_stream_id : "", width, height,
+                 size);
+      }
+      return;
+    }
+    invalid_stream_id_logged_.store(false, std::memory_order_relaxed);
     if (callback_orig_) {
-      callback_orig_(data, size, width, height, mapped_name.c_str());
+      callback_orig_(data, size, width, height, mapped_stream_id.c_str());
     }
   };
 
@@ -139,10 +151,12 @@ int ScreenCapturerLinux::Destroy() {
   backend_ = BackendType::kNone;
   callback_ = nullptr;
   callback_orig_ = nullptr;
+  current_monitor_index_.store(0, std::memory_order_relaxed);
+  invalid_stream_id_logged_.store(false, std::memory_order_relaxed);
   {
     std::lock_guard<std::mutex> lock(alias_mutex_);
     canonical_displays_.clear();
-    label_alias_.clear();
+    stream_id_alias_.clear();
   }
   return 0;
 }
@@ -153,15 +167,12 @@ int ScreenCapturerLinux::Start(bool show_cursor) {
     return -1;
   }
 
-#if defined(CROSSDESK_HAS_WAYLAND_CAPTURER) && CROSSDESK_HAS_WAYLAND_CAPTURER
-  if (backend_ == BackendType::kWayland) {
-    const int refresh_ret = RefreshWaylandBackend();
-    if (refresh_ret != 0) {
-      LOG_WARN("Linux screen capturer Wayland backend refresh failed: {}",
-               refresh_ret);
-    }
+  // X11 output names, DRM connectors and Wayland stream handles may all change
+  // after an HDMI hotplug, so rebuild the current backend before each session.
+  const int refresh_ret = RefreshCurrentBackend();
+  if (refresh_ret != 0) {
+    LOG_WARN("Linux screen capturer backend refresh failed: {}", refresh_ret);
   }
-#endif
 
   const int ret = impl_->Start(show_cursor);
   if (ret == 0) {
@@ -235,14 +246,23 @@ int ScreenCapturerLinux::SwitchTo(int monitor_index) {
   if (!impl_) {
     return -1;
   }
-  return impl_->SwitchTo(monitor_index);
+  const int ret = impl_->SwitchTo(monitor_index);
+  if (ret == 0) {
+    current_monitor_index_.store(monitor_index, std::memory_order_relaxed);
+  }
+  return ret;
 }
 
 int ScreenCapturerLinux::ResetToInitialMonitor() {
   if (!impl_) {
     return -1;
   }
-  return impl_->ResetToInitialMonitor();
+  const int ret = impl_->ResetToInitialMonitor();
+  if (ret == 0) {
+    current_monitor_index_.store(initial_monitor_index_,
+                                 std::memory_order_relaxed);
+  }
+  return ret;
 }
 
 std::vector<DisplayInfo> ScreenCapturerLinux::GetDisplayInfoList() {
@@ -320,27 +340,55 @@ int ScreenCapturerLinux::InitWayland() {
 #endif
 }
 
-int ScreenCapturerLinux::RefreshWaylandBackend() {
+int ScreenCapturerLinux::RefreshCurrentBackend() {
+  std::unique_ptr<ScreenCapturer> backend;
+  const char* backend_name = "unknown";
+  switch (backend_) {
+    case BackendType::kX11:
+      backend = std::make_unique<ScreenCapturerX11>();
+      backend_name = "X11";
+      break;
+    case BackendType::kDrm:
+#if defined(CROSSDESK_HAS_DRM) && CROSSDESK_HAS_DRM
+      backend = std::make_unique<ScreenCapturerDrm>();
+      backend_name = "DRM";
+      break;
+#else
+      return -1;
+#endif
+    case BackendType::kWayland:
 #if defined(CROSSDESK_HAS_WAYLAND_CAPTURER) && CROSSDESK_HAS_WAYLAND_CAPTURER
-  auto backend = std::make_unique<ScreenCapturerWayland>();
+      backend = std::make_unique<ScreenCapturerWayland>();
+      backend_name = "Wayland";
+      break;
+#else
+      return -1;
+#endif
+    case BackendType::kNone:
+      return -1;
+  }
+
   const int ret = backend->Init(fps_, callback_);
   if (ret != 0) {
     backend->Destroy();
     return ret;
   }
 
+  const int requested_monitor =
+      current_monitor_index_.load(std::memory_order_relaxed);
+  UpdateAliasesFromBackend(backend.get());
+  if (requested_monitor > 0 && backend->SwitchTo(requested_monitor) != 0) {
+    current_monitor_index_.store(0, std::memory_order_relaxed);
+  }
+
   if (impl_) {
     impl_->Destroy();
   }
 
-  UpdateAliasesFromBackend(backend.get());
   impl_ = std::move(backend);
-  backend_ = BackendType::kWayland;
-  LOG_INFO("Linux screen capturer Wayland backend refreshed before start");
+  LOG_INFO("Linux screen capturer {} backend refreshed before start",
+           backend_name);
   return 0;
-#else
-  return -1;
-#endif
 }
 
 bool ScreenCapturerLinux::TryFallbackToDrm(bool show_cursor) {
@@ -447,61 +495,82 @@ void ScreenCapturerLinux::UpdateAliasesFromBackend(ScreenCapturer* backend) {
   }
 
   std::lock_guard<std::mutex> lock(alias_mutex_);
-  label_alias_.clear();
+  stream_id_alias_.clear();
 
   if (canonical_displays_.empty()) {
     canonical_displays_ = backend_displays;
-    for (const auto& display : backend_displays) {
-      label_alias_[display.name] = display.name;
+    for (size_t i = 0; i < backend_displays.size(); ++i) {
+      auto& canonical = canonical_displays_[i];
+      const std::string stream_id = MakeDisplayStreamId(i);
+      if (canonical.name.empty()) {
+        canonical.name = stream_id;
+      }
+      stream_id_alias_[stream_id] = stream_id;
     }
     return;
   }
 
   if (canonical_displays_.size() < backend_displays.size()) {
-    for (size_t i = canonical_displays_.size(); i < backend_displays.size();
-         ++i) {
-      canonical_displays_.push_back(backend_displays[i]);
-    }
+    LOG_WARN("Linux capturer detected {} additional display(s); they remain "
+             "unavailable until peer streams are reinitialized",
+             backend_displays.size() - canonical_displays_.size());
   }
 
-  for (size_t i = 0; i < backend_displays.size(); ++i) {
-    const std::string mapped_name = i < canonical_displays_.size()
-                                        ? canonical_displays_[i].name
-                                        : backend_displays[i].name;
-    label_alias_[backend_displays[i].name] = mapped_name;
+  auto similar = [](const DisplayInfo& current, const DisplayInfo& canonical) {
+    return std::abs(current.left - canonical.left) <= 10 &&
+           std::abs(current.top - canonical.top) <= 10 &&
+           std::abs(current.width - canonical.width) <= 20 &&
+           std::abs(current.height - canonical.height) <= 20;
+  };
+  std::vector<bool> used(canonical_displays_.size(), false);
+  for (size_t current_index = 0; current_index < backend_displays.size();
+       ++current_index) {
+    const auto& backend_display = backend_displays[current_index];
+    int canonical_index = -1;
+    for (size_t i = 0; i < canonical_displays_.size(); ++i) {
+      if (!used[i] && similar(backend_display, canonical_displays_[i])) {
+        canonical_index = static_cast<int>(i);
+        break;
+      }
+    }
+    if (canonical_index < 0 && current_index < canonical_displays_.size() &&
+        !used[current_index]) {
+      canonical_index = static_cast<int>(current_index);
+    }
+    if (canonical_index < 0) {
+      continue;
+    }
 
-    if (i < canonical_displays_.size()) {
-      // Keep original stable names, but refresh geometry from active backend.
-      canonical_displays_[i].handle = backend_displays[i].handle;
-      canonical_displays_[i].is_primary = backend_displays[i].is_primary;
-      canonical_displays_[i].left = backend_displays[i].left;
-      canonical_displays_[i].top = backend_displays[i].top;
-      canonical_displays_[i].right = backend_displays[i].right;
-      canonical_displays_[i].bottom = backend_displays[i].bottom;
-      canonical_displays_[i].width = backend_displays[i].width;
-      canonical_displays_[i].height = backend_displays[i].height;
+    used[canonical_index] = true;
+    const std::string backend_stream_id =
+        MakeDisplayStreamId(current_index);
+    const std::string stable_stream_id =
+        MakeDisplayStreamId(static_cast<size_t>(canonical_index));
+    stream_id_alias_[backend_stream_id] = stable_stream_id;
+
+    // Refresh the user-visible label and geometry. The MiniRTC stream ID is
+    // derived independently from this stable logical index.
+    canonical_displays_[canonical_index] = backend_display;
+    if (canonical_displays_[canonical_index].name.empty()) {
+      canonical_displays_[canonical_index].name = stable_stream_id;
     }
   }
 }
 
-std::string ScreenCapturerLinux::MapDisplayName(
-    const char* display_name) const {
-  std::string input_name = display_name ? display_name : "";
-  if (input_name.empty()) {
-    return input_name;
-  }
-
+std::string ScreenCapturerLinux::MapStreamId(
+    const char* reported_stream_id) const {
+  std::string input_id = reported_stream_id ? reported_stream_id : "";
   std::lock_guard<std::mutex> lock(alias_mutex_);
-  auto it = label_alias_.find(input_name);
-  if (it != label_alias_.end()) {
-    return it->second;
+  auto it = stream_id_alias_.find(input_id);
+  if (it != stream_id_alias_.end()) {
+    input_id = it->second;
+  } else {
+    input_id.clear();
   }
 
-  if (canonical_displays_.size() == 1) {
-    return canonical_displays_[0].name;
-  }
-
-  return input_name;
+  return ResolveDisplayStreamId(
+      input_id.c_str(), canonical_displays_.size(),
+      current_monitor_index_.load(std::memory_order_relaxed));
 }
 
 }  // namespace crossdesk

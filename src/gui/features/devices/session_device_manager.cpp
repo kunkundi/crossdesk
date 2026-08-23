@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdlib>
 
+#include "display_stream_id.h"
 #include "platform.h"
 #include "rd_log.h"
 #include "runtime/gui_runtime.h"
@@ -47,6 +48,10 @@ int SessionDeviceManager::InitializeScreenCapturer() {
                       ? 30
                       : 60;
   LOG_INFO("Init screen capturer with {} fps", fps);
+  display_info_list_.clear();
+  registered_display_stream_count_ = 0;
+  last_video_frame_stream_id_.clear();
+  invalid_video_stream_id_logged_ = false;
 
   const int init_ret = screen_capturer_->Init(
       fps, [this, fps](unsigned char *data, int size, int width, int height,
@@ -80,7 +85,21 @@ int SessionDeviceManager::InitializeScreenCapturer() {
           return;
         }
 
-        const std::string stream_id = display_name ? display_name : "";
+        const std::string stream_id = ResolveDisplayStreamId(
+            display_name, registered_display_stream_count_, -1,
+            last_video_frame_stream_id_);
+        if (stream_id.empty()) {
+          if (!invalid_video_stream_id_logged_) {
+            LOG_ERROR(
+                "Drop captured frames with an empty or unregistered video "
+                "stream id, reported='{}', registered_streams={}",
+                display_name ? display_name : "",
+                registered_display_stream_count_);
+            invalid_video_stream_id_logged_ = true;
+          }
+          return;
+        }
+        invalid_video_stream_id_logged_ = false;
         const bool resumed_after_gap =
             last_frame_time_ != 0 && duration >= kCaptureResumeKeyFrameGapMs;
         const bool stream_changed = !last_video_frame_stream_id_.empty() &&
@@ -113,6 +132,7 @@ int SessionDeviceManager::InitializeScreenCapturer() {
     if (!latest_display_info.empty()) {
       display_info_list_ = latest_display_info;
     }
+    registered_display_stream_count_ = display_info_list_.size();
     return 0;
   }
 

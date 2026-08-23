@@ -2614,8 +2614,10 @@ void GuiApplication::SyncStreamWindow() {
 
   std::vector<slint::SharedString> displays;
   displays.reserve(props->display_info_list_.size());
-  for (const auto& display : props->display_info_list_) {
-    displays.emplace_back(UiText(display.name));
+  for (size_t index = 0; index < props->display_info_list_.size(); ++index) {
+    displays.emplace_back(UiText(localization::FormatDisplayLabel(
+        index, props->display_info_list_[index].name,
+        localization_language_index_)));
   }
   ui_->display_model->set_vector(std::move(displays));
   (*ui_->stream)->set_selected_display(props->selected_display_);

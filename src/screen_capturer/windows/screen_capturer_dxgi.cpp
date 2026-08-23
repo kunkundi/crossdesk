@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "display_stream_id.h"
 #include "libyuv.h"
 #include "rd_log.h"
 
@@ -21,11 +22,12 @@ std::string WideToUtf8(const std::wstring& wstr) {
   return result;
 }
 
-std::string CleanDisplayName(const std::wstring& wide_name) {
+std::string GetDisplayLabel(const std::wstring& wide_name) {
   std::string name = WideToUtf8(wide_name);
-  name.erase(std::remove_if(name.begin(), name.end(),
-                            [](unsigned char c) { return !std::isalnum(c); }),
-             name.end());
+  constexpr char kDevicePrefix[] = "\\\\.\\";
+  if (name.rfind(kDevicePrefix, 0) == 0) {
+    name.erase(0, sizeof(kDevicePrefix) - 1);
+  }
   return name;
 }
 }  // namespace
@@ -207,7 +209,7 @@ void ScreenCapturerDxgi::EnumerateDisplays() {
       if (FAILED(output->GetDesc(&desc))) {
         continue;
       }
-      std::string name = CleanDisplayName(desc.DeviceName);
+      std::string name = GetDisplayLabel(desc.DeviceName);
       MONITORINFOEX mi{};
       mi.cbSize = sizeof(MONITORINFOEX);
       if (GetMonitorInfo(desc.Monitor, &mi)) {
@@ -380,8 +382,9 @@ void ScreenCapturerDxgi::CaptureLoop() {
     if (callback_) {
       int idx = monitor_index_.load();
       if (idx >= 0 && idx < static_cast<int>(display_info_list_.size())) {
+        const std::string stream_id = MakeDisplayStreamId(idx);
         callback_(nv12_frame_, nv12_size, even_width, even_height,
-                  display_info_list_[idx].name.c_str());
+                  stream_id.c_str());
       } else {
         LOG_ERROR("DXGI: CaptureLoop invalid monitor_index {} (list size {})",
                   idx, display_info_list_.size());

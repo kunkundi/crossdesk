@@ -15,6 +15,7 @@
 #include <thread>
 #include <vector>
 
+#include "display_stream_id.h"
 #include "libyuv.h"
 #include "rd_log.h"
 
@@ -831,8 +832,9 @@ void ScreenCapturerWayland::HandlePipeWireBuffer() {
   nv12.insert(nv12.end(), uv_plane_.begin(), uv_plane_.end());
 
   if (callback_) {
+    const std::string stream_id = MakeDisplayStreamId(0);
     callback_(nv12.data(), static_cast<int>(nv12.size()), even_width,
-              even_height, display_name_.c_str());
+              even_height, stream_id.c_str());
   }
   pipewire_last_frame_ms_.store(NowMs());
 

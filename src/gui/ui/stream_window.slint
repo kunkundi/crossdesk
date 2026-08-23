@@ -167,6 +167,8 @@ export component StreamWindow inherits Window {
 
     private property <bool> control-expanded: true;
     private property <bool> display-menu-open: false;
+    private property <bool> display-menu-animation-enabled: false;
+    private property <float> display-menu-progress: 0.0;
     private property <bool> shortcut-menu-open: false;
     private property <bool> control-docked-left: true;
     private property <bool> control-dragging: false;
@@ -183,6 +185,48 @@ export component StreamWindow inherits Window {
     callback begin-control-drag(length, length);
     callback move-control-drag(length, length);
     callback end-control-drag;
+    pure callback is-local-control-area(length, length) -> bool;
+
+    animate display-menu-progress {
+        duration: 120ms;
+        easing: ease-out;
+        enabled: root.display-menu-animation-enabled;
+    }
+
+    display-menu-open-timer := Timer {
+        interval: 16ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            if root.display-menu-open {
+                root.display-menu-animation-enabled = true;
+                root.display-menu-progress = 1.0;
+            }
+        }
+    }
+
+    is-local-control-area(pointer-x, pointer-y) => {
+        let over-control = pointer-x >= control.x
+            && pointer-x <= control.x + control.width
+            && pointer-y >= control.y
+            && pointer-y <= control.y + control.height;
+        let display-menu-x = control.x + (root.control-docked-left ? 9px : 42px);
+        let display-menu-y = control.y + control.height - 1px;
+        let display-menu-height = min(180px, root.displays.length * 30px + 8px);
+        let over-display-menu = root.display-menu-open
+            && pointer-x >= display-menu-x
+            && pointer-x <= display-menu-x + 180px
+            && pointer-y >= display-menu-y
+            && pointer-y <= display-menu-y + display-menu-height;
+        let shortcut-menu-x = control.x + (root.control-docked-left ? 41px : 74px);
+        let shortcut-menu-y = control.y + 40px;
+        let over-shortcut-menu = root.shortcut-menu-open
+            && pointer-x >= shortcut-menu-x
+            && pointer-x <= shortcut-menu-x + 150px
+            && pointer-y >= shortcut-menu-y
+            && pointer-y <= shortcut-menu-y + 68px;
+        return over-control || over-display-menu || over-shortcut-menu;
+    }
 
     begin-control-drag(press-x, press-y) => {
         // Capture the snapped position before switching x to control-drag-x.
@@ -195,6 +239,9 @@ export component StreamWindow inherits Window {
         // pointer positions remain relative to the stationary video surface.
         root.control-press-x = press-x - current-x;
         root.control-press-y = press-y - current-y;
+        display-menu-open-timer.running = false;
+        root.display-menu-animation-enabled = false;
+        root.display-menu-progress = 0.0;
         root.display-menu-open = false;
         root.shortcut-menu-open = false;
         root.control-dragging = true;
@@ -503,7 +550,9 @@ export component StreamWindow inherits Window {
                             && self.mouse-x <= control.x + control.width
                             && self.mouse-y >= control.y
                             && self.mouse-y <= control.y + control.height;
-                        if event.kind == PointerEventKind.down && !over-control {
+                        let over-local-ui = root.is-local-control-area(
+                            self.mouse-x, self.mouse-y);
+                        if event.kind == PointerEventKind.down && !over-local-ui {
                             input-focus.focus();
                         }
                         if event.kind == PointerEventKind.down
@@ -515,9 +564,9 @@ export component StreamWindow inherits Window {
                                 || event.kind == PointerEventKind.cancel) {
                             root.end-control-drag();
                         // The control bar overlays the remote video. Events in
-                        // its full rectangle (including gaps between buttons)
+                        // it and its attached menus (including padding and gaps)
                         // are local UI input and must never reach the peer.
-                        } else if !root.control-dragging && !over-control {
+                        } else if !root.control-dragging && !over-local-ui {
                             root.pointer-input(event.button, event.kind, self.mouse-x, self.mouse-y);
                         }
                     }
@@ -527,10 +576,7 @@ export component StreamWindow inherits Window {
                         }
                     }
                     scroll-event(event) => {
-                        if self.mouse-x < control.x
-                            || self.mouse-x > control.x + control.width
-                            || self.mouse-y < control.y
-                            || self.mouse-y > control.y + control.height {
+                        if !root.is-local-control-area(self.mouse-x, self.mouse-y) {
                             root.scroll-input(event.delta-x, event.delta-y, self.mouse-x, self.mouse-y);
                         }
                         accept
@@ -565,12 +611,27 @@ export component StreamWindow inherits Window {
                     icon: FontAwesomeIcons.display;
                     badge: root.selected-display + 1;
                     tooltip: StreamStrings.select-display;
-                    clicked => { root.display-menu-open = !root.display-menu-open; root.shortcut-menu-open = false; }
+                    clicked => {
+                        display-menu-open-timer.running = false;
+                        root.display-menu-animation-enabled = false;
+                        root.display-menu-progress = 0.0;
+                        root.display-menu-open = !root.display-menu-open;
+                        root.shortcut-menu-open = false;
+                        if root.display-menu-open {
+                            display-menu-open-timer.running = true;
+                        }
+                    }
                 }
                 if root.control-expanded: shortcut-button := ControlBarButton {
                     x: root.control-docked-left ? 41px : 74px; y: 7px;
                     icon: FontAwesomeIcons.keyboard; tooltip: StreamStrings.send-shortcut;
-                    clicked => { root.shortcut-menu-open = !root.shortcut-menu-open; root.display-menu-open = false; }
+                    clicked => {
+                        display-menu-open-timer.running = false;
+                        root.display-menu-animation-enabled = false;
+                        root.display-menu-progress = 0.0;
+                        root.shortcut-menu-open = !root.shortcut-menu-open;
+                        root.display-menu-open = false;
+                    }
                 }
                 if root.control-expanded: mouse-button := ControlBarButton {
                     x: root.control-docked-left ? 73px : 106px; y: 7px;
@@ -753,17 +814,75 @@ export component StreamWindow inherits Window {
                 }
             }
 
-            if root.display-menu-open: Rectangle {
-                x: control.x + (root.control-docked-left ? 9px : 42px); y: control.y + 40px; width: 180px; height: min(180px, root.displays.length * 30px + 8px);
-                background: white; border-width: 1px; border-color: ImGuiLineStyle.border; border-radius: 5px; z: 11;
+            if root.display-menu-open: display-menu := Rectangle {
+                private property <length> expanded-height: min(180px, root.displays.length * 30px + 8px);
+                private property <int> hovered-index:
+                    display-touch.has-hover && display-touch.mouse-y >= 4px
+                        && floor((display-touch.mouse-y - 4px) / 30px) < root.displays.length
+                    ? floor((display-touch.mouse-y - 4px) / 30px) : -1;
+                x: control.x + (root.control-docked-left ? 9px : 42px);
+                // Overlap the control border by one pixel so the menu reads as
+                // an attached panel growing downward from the display button.
+                y: control.y + control.height - 1px;
+                width: 180px;
+                height: self.expanded-height * root.display-menu-progress;
+                opacity: root.display-menu-progress;
+                background: white;
+                border-width: 1px;
+                border-color: ImGuiLineStyle.border;
+                border-radius: 5px;
+                clip: true;
+                z: 11;
+
                 VerticalLayout {
                     padding: 4px; spacing: 1px;
                     for display[index] in root.displays: Rectangle {
                         height: 29px;
-                        background: display-touch.has-hover || index == root.selected-display ? #e8eef9 : transparent;
-                        Text { x: 8px; text: display; color: #30343b; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
-                        display-touch := TouchArea { clicked => { root.selected-display = index; root.switch-display(index); root.display-menu-open = false; } }
+                        background: index == display-menu.hovered-index && display-touch.pressed ? #bfd4f2
+                                  : index == display-menu.hovered-index ? #d8e6f8
+                                  : index == root.selected-display ? #e8eef9
+                                                                   : transparent;
+                        border-radius: 3px;
+                        Text {
+                            x: 8px;
+                            width: parent.width - 34px;
+                            text: display;
+                            color: #30343b;
+                            font-size: ImGuiFontStyle.body;
+                            overflow: elide;
+                            vertical-alignment: center;
+                        }
+                        if index == root.selected-display: Text {
+                            x: parent.width - 24px;
+                            width: 16px;
+                            text: FontAwesomeIcons.check;
+                            color: #2463c7;
+                            font-family: "Font Awesome 6 Free";
+                            font-weight: 900;
+                            font-size: 10px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
                     }
+                }
+                // Use one hit target for the whole popup. A single owner keeps
+                // hover stable while still consuming padding, gaps and scroll
+                // events locally instead of forwarding them to the peer.
+                display-touch := TouchArea {
+                    clicked => {
+                        let index = floor((self.mouse-y - 4px) / 30px);
+                        let row-y = self.mouse-y - 4px - index * 30px;
+                        if self.mouse-y >= 4px && row-y < 29px
+                            && index >= 0 && index < root.displays.length {
+                            display-menu-open-timer.running = false;
+                            root.display-menu-animation-enabled = false;
+                            root.display-menu-progress = 0.0;
+                            root.selected-display = index;
+                            root.switch-display(index);
+                            root.display-menu-open = false;
+                        }
+                    }
+                    scroll-event(event) => { accept }
                 }
             }
 

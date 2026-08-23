@@ -77,10 +77,12 @@ private:
   MouseController *mouse_controller_ = nullptr;
   KeyboardCapturer *keyboard_capturer_ = nullptr;
   std::vector<DisplayInfo> display_info_list_;
+  size_t registered_display_stream_count_ = 0;
   std::deque<CapturedKeyboardInput> captured_keyboard_inputs_;
   std::mutex captured_keyboard_inputs_mutex_;
   uint64_t last_frame_time_ = 0;
   std::string last_video_frame_stream_id_;
+  bool invalid_video_stream_id_logged_ = false;
 };
 
 } // namespace crossdesk

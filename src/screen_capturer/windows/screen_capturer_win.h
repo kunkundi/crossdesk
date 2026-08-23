@@ -10,12 +10,12 @@
 #include <Windows.h>
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <mutex>
 #include <thread>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "screen_capturer.h"
@@ -48,11 +48,11 @@ class ScreenCapturerWin : public ScreenCapturer {
   cb_desktop_data cb_;
   cb_desktop_data cb_orig_;
 
-  std::unordered_map<void*, std::string> handle_to_canonical_;
-  std::unordered_map<std::string, std::string> label_alias_;
+  std::unordered_map<void*, size_t> handle_to_canonical_index_;
+  std::unordered_map<std::string, std::string> stream_id_alias_;
   std::mutex alias_mutex_;
   std::vector<DisplayInfo> canonical_displays_;
-  std::unordered_set<std::string> canonical_labels_;
+  std::atomic<bool> invalid_stream_id_logged_{false};
   std::atomic<bool> running_{false};
   std::atomic<bool> paused_{false};
   std::atomic<bool> show_cursor_{true};

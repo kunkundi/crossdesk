@@ -7,6 +7,7 @@
 
 #include <iostream>
 
+#include "display_stream_id.h"
 #include "libyuv.h"
 #include "rd_log.h"
 
@@ -24,11 +25,12 @@ std::string WideToUtf8(const std::wstring& wstr) {
   return result;
 }
 
-std::string CleanDisplayName(const std::wstring& wide_name) {
+std::string GetDisplayLabel(const std::wstring& wide_name) {
   std::string name = WideToUtf8(wide_name);
-  name.erase(std::remove_if(name.begin(), name.end(),
-                            [](unsigned char c) { return !std::isalnum(c); }),
-             name.end());
+  constexpr char kDevicePrefix[] = "\\\\.\\";
+  if (name.rfind(kDevicePrefix, 0) == 0) {
+    name.erase(0, sizeof(kDevicePrefix) - 1);
+  }
   return name;
 }
 
@@ -38,7 +40,7 @@ BOOL WINAPI EnumMonitorProc(HMONITOR hmonitor, [[maybe_unused]] HDC hdc,
   monitor_info_.cbSize = sizeof(MONITORINFOEX);
 
   if (GetMonitorInfo(hmonitor, &monitor_info_)) {
-    std::string display_name = CleanDisplayName(monitor_info_.szDevice);
+    std::string display_name = GetDisplayLabel(monitor_info_.szDevice);
     if (monitor_info_.dwFlags & MONITORINFOF_PRIMARY) {
       gs_display_list.insert(
           gs_display_list.begin(),
@@ -402,8 +404,9 @@ void ScreenCapturerWgc::OnFrame(const WgcSession::wgc_session_frame& frame,
                        (uint8_t*)(nv12_frame_ + even_width * even_height),
                        even_width, even_width, even_height);
 
+    const std::string stream_id = MakeDisplayStreamId(id);
     on_data_(nv12_frame_, nv12_size, even_width, even_height,
-             display_info_list_[id].name.c_str());
+             stream_id.c_str());
   }
 }
 

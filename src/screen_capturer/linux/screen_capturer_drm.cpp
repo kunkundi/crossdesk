@@ -26,6 +26,7 @@
 #include <chrono>
 #include <thread>
 
+#include "display_stream_id.h"
 #include "libyuv.h"
 #include "rd_log.h"
 
@@ -262,6 +263,7 @@ bool ScreenCapturerDrm::DiscoverOutputs() {
       output.height = static_cast<int>(crtc->height);
       output.name = std::string(ConnectorTypeName(connector->connector_type)) +
                     std::to_string(connector->connector_type_id);
+      output.stream_id = MakeDisplayStreamId(outputs_.size());
 
       outputs_.push_back(output);
       display_info_list_.push_back(
@@ -427,7 +429,7 @@ bool ScreenCapturerDrm::CaptureOutputFrame(const DrmOutput& output,
 
   if (emit_callback && callback_) {
     callback_(nv12.data(), static_cast<int>(nv12.size()), capture_width,
-              capture_height, output.name.c_str());
+              capture_height, output.stream_id.c_str());
   }
 
   UnmapFramebuffer(mapped_ptr, mapped_size, prime_fd);

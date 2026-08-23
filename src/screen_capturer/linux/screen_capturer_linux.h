@@ -7,6 +7,7 @@
 #ifndef _SCREEN_CAPTURER_LINUX_H_
 #define _SCREEN_CAPTURER_LINUX_H_
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -43,12 +44,12 @@ class ScreenCapturerLinux : public ScreenCapturer {
   int InitX11();
   int InitDrm();
   int InitWayland();
-  int RefreshWaylandBackend();
+  int RefreshCurrentBackend();
   bool TryFallbackToDrm(bool show_cursor);
   bool TryFallbackToX11(bool show_cursor);
   bool TryFallbackToWayland(bool show_cursor);
   void UpdateAliasesFromBackend(ScreenCapturer* backend);
-  std::string MapDisplayName(const char* display_name) const;
+  std::string MapStreamId(const char* reported_stream_id) const;
 
  private:
   std::unique_ptr<ScreenCapturer> impl_;
@@ -58,7 +59,10 @@ class ScreenCapturerLinux : public ScreenCapturer {
   cb_desktop_data callback_orig_;
   std::vector<DisplayInfo> canonical_displays_;
   mutable std::mutex alias_mutex_;
-  std::unordered_map<std::string, std::string> label_alias_;
+  std::unordered_map<std::string, std::string> stream_id_alias_;
+  std::atomic<int> current_monitor_index_{0};
+  int initial_monitor_index_ = 0;
+  mutable std::atomic<bool> invalid_stream_id_logged_{false};
 };
 
 }  // namespace crossdesk

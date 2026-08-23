@@ -15,6 +15,8 @@ namespace crossdesk {
 
 class ScreenCapturer {
  public:
+  // The final callback argument is a logical MiniRTC stream ID (DisplayN),
+  // not a platform display name or physical handle.
   typedef std::function<void(unsigned char*, int, int, int, const char*)>
       cb_desktop_data;
 

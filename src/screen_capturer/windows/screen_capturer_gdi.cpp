@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "display_stream_id.h"
 #include "libyuv.h"
 #include "rd_log.h"
 
@@ -21,11 +22,12 @@ std::string WideToUtf8(const std::wstring& wstr) {
   return result;
 }
 
-std::string CleanDisplayName(const std::wstring& wide_name) {
+std::string GetDisplayLabel(const std::wstring& wide_name) {
   std::string name = WideToUtf8(wide_name);
-  name.erase(std::remove_if(name.begin(), name.end(),
-                            [](unsigned char c) { return !std::isalnum(c); }),
-             name.end());
+  constexpr char kDevicePrefix[] = "\\\\.\\";
+  if (name.rfind(kDevicePrefix, 0) == 0) {
+    name.erase(0, sizeof(kDevicePrefix) - 1);
+  }
   return name;
 }
 }  // namespace
@@ -42,7 +44,7 @@ BOOL CALLBACK ScreenCapturerGdi::EnumMonitorProc(HMONITOR hMonitor, HDC, LPRECT,
   MONITORINFOEX mi{};
   mi.cbSize = sizeof(MONITORINFOEX);
   if (GetMonitorInfo(hMonitor, &mi)) {
-    std::string name = CleanDisplayName(mi.szDevice);
+    std::string name = GetDisplayLabel(mi.szDevice);
     bool is_primary = (mi.dwFlags & MONITORINFOF_PRIMARY) ? true : false;
     DisplayInfo info((void*)hMonitor, name, is_primary, mi.rcMonitor.left,
                      mi.rcMonitor.top, mi.rcMonitor.right, mi.rcMonitor.bottom);
@@ -209,7 +211,8 @@ void ScreenCapturerGdi::CaptureLoop() {
                        width, height);
 
     if (callback_) {
-      callback_(nv12_frame_, nv12_size, width, height, di.name.c_str());
+      const std::string stream_id = MakeDisplayStreamId(idx);
+      callback_(nv12_frame_, nv12_size, width, height, stream_id.c_str());
     }
 
     SelectObject(mem_dc, old);

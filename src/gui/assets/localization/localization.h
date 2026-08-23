@@ -6,6 +6,7 @@
 #ifndef _LOCALIZATION_H_
 #define _LOCALIZATION_H_
 
+#include <cstddef>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -113,6 +114,20 @@ inline const std::string& GetTranslatedText(const std::string& key,
 inline const std::string& LocalizedString::operator[](
     int language_index) const {
   return detail::GetTranslatedText(key_, language_index);
+}
+
+inline std::string FormatDisplayLabel(size_t display_index,
+                                      const std::string& display_name,
+                                      int language_index) {
+  const std::string number = std::to_string(display_index + 1);
+  std::string label =
+      detail::GetTranslatedText("display_screen", language_index) + " " +
+      number;
+  const std::string fallback_name = "Display" + number;
+  if (!display_name.empty() && display_name != fallback_name) {
+    label += " (" + display_name + ")";
+  }
+  return label;
 }
 
 #define CROSSDESK_DECLARE_LOCALIZED_STRING(name, zh, en, ru) \
