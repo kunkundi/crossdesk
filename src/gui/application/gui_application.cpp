@@ -17,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <random>
 #include <shared_mutex>
 #include <sstream>
 #include <string>
@@ -50,6 +51,15 @@ namespace crossdesk {
 namespace {
 
 using namespace std::chrono_literals;
+
+std::string CreatePasswordChangeRequestId(uint64_t sequence) {
+  const auto timestamp = std::chrono::system_clock::now()
+                             .time_since_epoch()
+                             .count();
+  std::random_device random;
+  return std::to_string(timestamp) + "-" + std::to_string(random()) + "-" +
+         std::to_string(sequence);
+}
 
 #if defined(__linux__) && !defined(__APPLE__)
 bool HasNonEmptyEnvironmentVariable(const char* name) {
@@ -1356,14 +1366,39 @@ void GuiApplication::BindMainCallbacks() {
       if (password_change_pending_) {
         return true;
       }
-      request_id = std::to_string(++next_password_change_request_id_);
+      request_id =
+          CreatePasswordChangeRequestId(++next_password_change_request_id_);
       password_change_pending_ = true;
       password_change_result_ready_ = false;
       password_change_succeeded_ = false;
+      password_change_result_uncertain_ = false;
       password_change_requested_at_ = std::chrono::steady_clock::now();
       pending_password_change_request_id_ = request_id;
       pending_local_password_ = password;
       password_change_error_.clear();
+    }
+
+    const bool self_hosted = config_center_->IsSelfHosted();
+    const std::string server_host =
+        self_hosted ? config_center_->GetSignalServerHost()
+                    : config_center_->GetDefaultServerHost();
+    const int server_port =
+        self_hosted ? config_center_->GetSignalServerPort()
+                    : config_center_->GetDefaultSignalServerPort();
+    const std::string pending_identity =
+        std::string(client_id_) + "@" + password;
+    if (!settings_.StagePendingPasswordChange(
+            pending_identity, self_hosted, server_host, server_port,
+            request_id)) {
+      std::lock_guard<std::mutex> lock(password_change_mutex_);
+      password_change_pending_ = false;
+      pending_password_change_request_id_.clear();
+      pending_local_password_.clear();
+      password_change_error_.clear();
+      offline_warning_text_ = localization::failed[localization_language_index_];
+      show_offline_warning_window_ = true;
+      LOG_ERROR("Could not durably stage password change");
+      return true;
     }
 
     const nlohmann::json request = {{"type", "change_password"},
@@ -1371,13 +1406,18 @@ void GuiApplication::BindMainCallbacks() {
                                     {"new_password", password}};
     const std::string message = request.dump();
     if (SendSignalMessage(peer_, message.data(), message.size()) != 0) {
-      std::lock_guard<std::mutex> lock(password_change_mutex_);
-      password_change_pending_ = false;
-      pending_password_change_request_id_.clear();
-      pending_local_password_.clear();
-      offline_warning_text_ =
-          localization::signal_disconnected[localization_language_index_];
-      show_offline_warning_window_ = true;
+      {
+        std::lock_guard<std::mutex> lock(password_change_mutex_);
+        password_change_pending_ = false;
+        pending_password_change_request_id_.clear();
+        pending_local_password_.clear();
+        offline_warning_text_ =
+            localization::signal_disconnected[localization_language_index_];
+        show_offline_warning_window_ = true;
+      }
+      if (!settings_.ClearPendingPasswordChange()) {
+        LOG_WARN("Could not clear unsent pending password change");
+      }
     }
     return true;
   });
@@ -1788,6 +1828,7 @@ void GuiApplication::Tick() {
     return;
   }
   HandlePasswordChangeResult();
+  HandleCredentialRecovery();
   if (!peer_) {
     CreateConnectionPeer();
   }
@@ -1864,7 +1905,7 @@ void GuiApplication::Tick() {
 
 void GuiApplication::HandlePasswordChangeResult() {
   bool succeeded = false;
-  std::string new_password;
+  bool uncertain = false;
   std::string error;
 
   {
@@ -1874,6 +1915,7 @@ void GuiApplication::HandlePasswordChangeResult() {
             std::chrono::seconds(10)) {
       password_change_result_ready_ = true;
       password_change_succeeded_ = false;
+      password_change_result_uncertain_ = true;
       password_change_error_ = "Server did not respond";
     }
 
@@ -1882,47 +1924,43 @@ void GuiApplication::HandlePasswordChangeResult() {
     }
 
     succeeded = password_change_succeeded_;
-    new_password = pending_local_password_;
+    uncertain = password_change_result_uncertain_;
     error = password_change_error_;
     password_change_pending_ = false;
     password_change_result_ready_ = false;
     password_change_succeeded_ = false;
+    password_change_result_uncertain_ = false;
     pending_password_change_request_id_.clear();
     pending_local_password_.clear();
     password_change_error_.clear();
   }
 
   if (!succeeded) {
-    LOG_WARN("Password change failed: {}", error);
+    if (uncertain) {
+      LOG_WARN("Password change outcome is unknown: {}; re-authenticating",
+               error);
+    } else {
+      LOG_WARN("Password change failed: {}", error);
+      if (!settings_.ClearPendingPasswordChange()) {
+        LOG_WARN("Could not clear rejected pending password change");
+      }
+    }
     offline_warning_text_ = localization::failed[localization_language_index_];
     if (!error.empty()) {
       offline_warning_text_ += ": " + error;
     }
     show_offline_warning_window_ = true;
+    if (uncertain && peer_) {
+      LeaveConnection(peer_, client_id_);
+      DestroyPeer(&peer_);
+    }
     return;
   }
 
-  std::memset(password_saved_, 0, sizeof(password_saved_));
-  std::strncpy(password_saved_, new_password.c_str(),
-               sizeof(password_saved_) - 1);
-
-  const std::string identity = std::string(client_id_) + "@" + new_password;
-  if (config_center_->IsSelfHosted()) {
-    std::memset(self_hosted_id_, 0, sizeof(self_hosted_id_));
-    std::strncpy(self_hosted_id_, identity.c_str(),
-                 sizeof(self_hosted_id_) - 1);
-  } else {
-    std::memset(client_id_with_password_, 0,
-                sizeof(client_id_with_password_));
-    std::strncpy(client_id_with_password_, identity.c_str(),
-                 sizeof(client_id_with_password_) - 1);
-  }
-
-  if (settings_.Save() != 0) {
-    LOG_ERROR("Password changed on server but could not be saved locally");
-    offline_warning_text_ = localization::failed[localization_language_index_];
-    show_offline_warning_window_ = true;
-    return;
+  if (!settings_.PromotePendingPasswordChange()) {
+    // The pending credential was persisted before the request was sent, so it
+    // remains sufficient for recovery even when promotion cannot be written.
+    LOG_WARN("Password changed on server; pending recovery record retained");
   }
 
   LOG_INFO("Password changed successfully for [{}]", client_id_);
@@ -1930,6 +1968,53 @@ void GuiApplication::HandlePasswordChangeResult() {
     LeaveConnection(peer_, client_id_);
     DestroyPeer(&peer_);
   }
+}
+
+void GuiApplication::HandleCredentialRecovery() {
+  bool retry_active = false;
+  bool promote_pending = false;
+  bool clear_pending = false;
+  {
+    std::lock_guard<std::mutex> lock(password_change_mutex_);
+    retry_active = credential_recovery_retry_active_;
+    promote_pending = credential_recovery_promote_pending_;
+    clear_pending = credential_recovery_clear_pending_;
+    credential_recovery_retry_active_ = false;
+    credential_recovery_promote_pending_ = false;
+    credential_recovery_clear_pending_ = false;
+    if (retry_active) {
+      credential_recovery_attempt_pending_ = false;
+    }
+  }
+
+  if (retry_active) {
+    LOG_INFO("Pending credential was not accepted; retrying active credential");
+    if (peer_) {
+      DestroyPeer(&peer_);
+    }
+    return;
+  }
+
+  if (promote_pending) {
+    if (!settings_.PromotePendingPasswordChange()) {
+      LOG_WARN("Recovered credential is active but promotion remains pending");
+    } else {
+      LOG_INFO("Recovered password change with pending credential");
+    }
+  } else if (clear_pending) {
+    if (!settings_.ClearPendingPasswordChange()) {
+      LOG_WARN("Active credential recovered but pending record could not be "
+               "cleared");
+    } else {
+      LOG_INFO("Password change was not committed; retained active credential");
+    }
+  } else {
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock(password_change_mutex_);
+  credential_recovery_in_progress_ = false;
+  credential_recovery_attempt_pending_ = false;
 }
 
 void GuiApplication::UpdateLocalization() {

@@ -116,6 +116,7 @@ void PeerEventHandler::OnSignalMessage(const char* message, size_t size,
         j.contains("reason") && j["reason"].is_string()
             ? j["reason"].get<std::string>()
             : "Password change failed";
+    runtime->password_change_result_uncertain_ = false;
     runtime->password_change_result_ready_ = true;
   }
 }
@@ -137,8 +138,21 @@ void PeerEventHandler::OnSignalStatus(SignalStatus status, const char* user_id,
       runtime->signal_connected_ = true;
       runtime->need_to_send_recent_connections_ = true;
       LOG_INFO("[{}] connected to signal server", client_id);
+      std::lock_guard<std::mutex> lock(runtime->password_change_mutex_);
+      if (runtime->credential_recovery_in_progress_) {
+        if (runtime->credential_recovery_attempt_pending_) {
+          runtime->credential_recovery_promote_pending_ = true;
+        } else {
+          runtime->credential_recovery_clear_pending_ = true;
+        }
+      }
     } else if (SignalStatus::SignalFailed == status) {
       runtime->signal_connected_ = false;
+      std::lock_guard<std::mutex> lock(runtime->password_change_mutex_);
+      if (runtime->credential_recovery_in_progress_ &&
+          runtime->credential_recovery_attempt_pending_) {
+        runtime->credential_recovery_retry_active_ = true;
+      }
     } else if (SignalStatus::SignalClosed == status) {
       runtime->signal_connected_ = false;
     } else if (SignalStatus::SignalReconnecting == status) {

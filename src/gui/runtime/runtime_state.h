@@ -116,6 +116,7 @@ struct UserSettingsState {
   char password_saved_[7] = "";
   char self_hosted_id_[17] = "";
   char self_hosted_user_id_[17] = "";
+  char connection_login_identity_[17] = "";
   int language_button_value_ = 0;
   int video_quality_button_value_ = 2;
   int video_frame_rate_button_value_ = 1;
@@ -158,10 +159,16 @@ struct PasswordChangeState {
   bool password_change_pending_ = false;
   bool password_change_result_ready_ = false;
   bool password_change_succeeded_ = false;
+  bool password_change_result_uncertain_ = false;
   std::chrono::steady_clock::time_point password_change_requested_at_;
   std::string pending_password_change_request_id_;
   std::string pending_local_password_;
   std::string password_change_error_;
+  bool credential_recovery_in_progress_ = false;
+  bool credential_recovery_attempt_pending_ = false;
+  bool credential_recovery_retry_active_ = false;
+  bool credential_recovery_promote_pending_ = false;
+  bool credential_recovery_clear_pending_ = false;
 };
 
 struct ConnectionState {

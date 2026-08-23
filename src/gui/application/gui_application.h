@@ -32,6 +32,7 @@ private:
   void BindServerCallbacks();
   void Tick();
   void HandlePasswordChangeResult();
+  void HandleCredentialRecovery();
   void SyncMainWindow();
   void SyncConnectionDialog();
   void SyncPlatformDialogs();

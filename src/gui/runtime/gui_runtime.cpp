@@ -61,6 +61,40 @@ int GuiRuntime::CreateConnectionPeer() {
     params_.user_id = client_id_with_password_;
   }
 
+  const bool self_hosted = config_center_->IsSelfHosted();
+  const std::string pending_identity =
+      settings_.PendingPasswordChangeIdentity(
+          self_hosted, signal_server_ip, signal_server_port);
+  bool try_pending_identity = false;
+  {
+    std::lock_guard<std::mutex> lock(password_change_mutex_);
+    if (pending_identity.empty()) {
+      credential_recovery_in_progress_ = false;
+      credential_recovery_attempt_pending_ = false;
+      credential_recovery_retry_active_ = false;
+      credential_recovery_promote_pending_ = false;
+      credential_recovery_clear_pending_ = false;
+    } else if (!credential_recovery_in_progress_) {
+      credential_recovery_in_progress_ = true;
+      credential_recovery_attempt_pending_ = true;
+      LOG_INFO("Recovering an interrupted password change for [{}]",
+               client_id_);
+    }
+    try_pending_identity = credential_recovery_in_progress_ &&
+                           credential_recovery_attempt_pending_ &&
+                           !pending_identity.empty();
+  }
+
+  const char *active_identity =
+      self_hosted ? self_hosted_user_id_ : client_id_with_password_;
+  const std::string login_identity =
+      try_pending_identity ? pending_identity : std::string(active_identity);
+  std::memset(connection_login_identity_, 0,
+              sizeof(connection_login_identity_));
+  std::strncpy(connection_login_identity_, login_identity.c_str(),
+               sizeof(connection_login_identity_) - 1);
+  params_.user_id = connection_login_identity_;
+
   // self hosted server config
   strncpy(signal_server_ip_self_, config_center_->GetSignalServerHost().c_str(),
           sizeof(signal_server_ip_self_) - 1);
