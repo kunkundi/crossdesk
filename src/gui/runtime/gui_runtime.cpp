@@ -154,6 +154,8 @@ int GuiRuntime::CreateConnectionPeer() {
               ConfigCenter::VIDEO_FRAME_RATE::FPS_30
           ? 30
           : 60;
+  params_.video_degradation_preference =
+      VideoDegradationPreference::MaintainFrameRate;
   params_.on_receive_video_buffer = nullptr;
   params_.on_receive_audio_buffer = PeerEventHandler::OnReceiveAudioBuffer;
   params_.on_receive_data_buffer = PeerEventHandler::OnReceiveDataBuffer;
