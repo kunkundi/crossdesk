@@ -50,8 +50,10 @@
 #include "platform/tray/linux_tray.h"
 #endif
 #include "rd_log.h"
+#include "server_window_state.h"
 #include "ui/ui_localization.h"
 #include "version_checker.h"
+#include "window_geometry.h"
 
 namespace crossdesk {
 namespace {
@@ -692,17 +694,42 @@ float StreamWindowLogicalHeight(bool custom_titlebar) {
 }
 
 SDL_DisplayID DisplayForSlintWindow(const slint::Window& window) {
-  const float scale = std::max(window.scale_factor(), 0.01f);
   const auto position = window.position();
   const auto size = window.size();
+#if defined(__APPLE__)
+  const float scale = std::max(window.scale_factor(), 0.01f);
   const SDL_Point center{
       static_cast<int>(
           std::lround(position.x / scale + size.width / (2.0f * scale))),
       static_cast<int>(
           std::lround(position.y / scale + size.height / (2.0f * scale)))};
+#else
+  const SDL_Point center{
+      position.x + static_cast<int>(size.width / 2),
+      position.y + static_cast<int>(size.height / 2)};
+#endif
   const SDL_DisplayID display = SDL_GetDisplayForPoint(&center);
   return display != 0 ? display : SDL_GetPrimaryDisplay();
 }
+
+#if !defined(__APPLE__)
+window_geometry::PhysicalSize PhysicalWindowSize(const slint::Window& window,
+                                                 float logical_width,
+                                                 float logical_height) {
+  const auto size = window.size();
+  if (size.width > 0 && size.height > 0) {
+    return {static_cast<int>(size.width), static_cast<int>(size.height)};
+  }
+
+  const float scale = std::max(window.scale_factor(), 0.01f);
+  return {std::max(1, static_cast<int>(std::lround(logical_width * scale))),
+          std::max(1, static_cast<int>(std::lround(logical_height * scale)))};
+}
+
+window_geometry::PhysicalRect PhysicalDisplayBounds(const SDL_Rect& bounds) {
+  return {bounds.x, bounds.y, bounds.w, bounds.h};
+}
+#endif
 
 bool PositionWindowAtCenter(slint::Window& window, const slint::Window& anchor,
                             float logical_width, float logical_height) {
@@ -718,6 +745,7 @@ bool PositionWindowAtCenter(slint::Window& window, const slint::Window& anchor,
     return false;
   }
 
+#if defined(__APPLE__)
   const float target_x =
       static_cast<float>(usable_bounds.x) +
       (static_cast<float>(usable_bounds.w) - logical_width) / 2.0f;
@@ -726,6 +754,13 @@ bool PositionWindowAtCenter(slint::Window& window, const slint::Window& anchor,
       (static_cast<float>(usable_bounds.h) - logical_height) / 2.0f;
   window.set_position(
       slint::LogicalPosition(slint::Point<float>{target_x, target_y}));
+#else
+  const auto target = window_geometry::CenteredPosition(
+      PhysicalDisplayBounds(usable_bounds),
+      PhysicalWindowSize(window, logical_width, logical_height));
+  window.set_position(slint::PhysicalPosition(
+      slint::Point<int32_t>{target.x, target.y}));
+#endif
   return true;
 }
 
@@ -735,16 +770,21 @@ bool PositionWindowAtBottomRight(slint::Window& window, float logical_width,
     return false;
   }
 
-  SDL_DisplayID display = 0;
-  const float scale = std::max(window.scale_factor(), 0.01f);
   const auto position = window.position();
   const auto size = window.size();
+#if defined(__APPLE__)
+  const float scale = std::max(window.scale_factor(), 0.01f);
   const SDL_Point center{
       static_cast<int>(
           std::lround(position.x / scale + size.width / (2.0f * scale))),
       static_cast<int>(
           std::lround(position.y / scale + size.height / (2.0f * scale)))};
-  display = SDL_GetDisplayForPoint(&center);
+#else
+  const SDL_Point center{
+      position.x + static_cast<int>(size.width / 2),
+      position.y + static_cast<int>(size.height / 2)};
+#endif
+  SDL_DisplayID display = SDL_GetDisplayForPoint(&center);
   if (display == 0) {
     display = SDL_GetPrimaryDisplay();
   }
@@ -756,6 +796,7 @@ bool PositionWindowAtBottomRight(slint::Window& window, float logical_width,
     return false;
   }
 
+#if defined(__APPLE__)
   const float target_x =
       static_cast<float>(usable_bounds.x) +
       std::max(0.0f, static_cast<float>(usable_bounds.w) - logical_width);
@@ -764,8 +805,32 @@ bool PositionWindowAtBottomRight(slint::Window& window, float logical_width,
       std::max(0.0f, static_cast<float>(usable_bounds.h) - logical_height);
   window.set_position(
       slint::LogicalPosition(slint::Point<float>{target_x, target_y}));
+#else
+  const auto target = window_geometry::BottomRightPosition(
+      PhysicalDisplayBounds(usable_bounds),
+      PhysicalWindowSize(window, logical_width, logical_height));
+  window.set_position(slint::PhysicalPosition(
+      slint::Point<int32_t>{target.x, target.y}));
+#endif
   return true;
 }
+
+#if _WIN32
+bool ConfigureWindowsServerWindow(slint::Window& window) {
+  const HWND hwnd = window.win32_hwnd();
+  if (!hwnd) {
+    return false;
+  }
+
+  LONG_PTR ex_style = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+  ex_style |= WS_EX_TOOLWINDOW;
+  ex_style &= ~WS_EX_APPWINDOW;
+  SetWindowLongPtr(hwnd, GWL_EXSTYLE, ex_style);
+  return SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                      SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED |
+                          SWP_NOACTIVATE) != FALSE;
+}
+#endif
 
 template <typename WindowHandle>
 void DragWindow(WindowHandle& component, int phase, float mouse_x,
@@ -897,6 +962,9 @@ struct GuiApplication::SlintUi {
 #endif
   int stream_initial_position_attempts = 0;
   int server_initial_position_attempts = 0;
+#if _WIN32
+  int server_native_window_attempts = 0;
+#endif
   int localized_language = -1;
   std::chrono::steady_clock::time_point last_clipboard_poll{};
   slint::Timer video_timer;
@@ -3024,6 +3092,9 @@ void GuiApplication::SyncServerWindow() {
     // the right and bottom edges correct when the backend resolves DPI and
     // language-dependent preferred width asynchronously on first show.
     ui_->server_initial_position_attempts = 2;
+#if _WIN32
+    ui_->server_native_window_attempts = 30;
+#endif
     server_window_created_ = true;
     server_window_inited_ = true;
   }
@@ -3033,6 +3104,9 @@ void GuiApplication::SyncServerWindow() {
     server_window_created_ = false;
     server_window_inited_ = false;
     ui_->server_initial_position_attempts = 0;
+#if _WIN32
+    ui_->server_native_window_attempts = 0;
+#endif
   }
   if (!ui_->server) {
     return;
@@ -3060,18 +3134,19 @@ void GuiApplication::SyncServerWindow() {
   }
   ui_->controller_model->set_vector(std::move(controllers));
   ui_->controller_name_model->set_vector(std::move(names));
-  if (selected_server_remote_id_.empty() && !ui_->controller_ids.empty()) {
-    selected_server_remote_id_ = ui_->controller_ids.front();
-  }
-  int selected = 0;
-  for (int i = 0; i < static_cast<int>(ui_->controller_ids.size()); ++i) {
-    if (ui_->controller_ids[i] == selected_server_remote_id_) {
-      selected = i;
-      break;
-    }
-  }
+  const int selected = server_window_state::ReconcileSelectedController(
+      ui_->controller_ids, &selected_server_remote_id_);
   (*ui_->server)->set_selected_controller(selected);
   (*ui_->server)->set_language_index(localization_language_index_);
+#if _WIN32
+  if (ui_->server_native_window_attempts > 0) {
+    if (ConfigureWindowsServerWindow((*ui_->server)->window())) {
+      ui_->server_native_window_attempts = 0;
+    } else {
+      --ui_->server_native_window_attempts;
+    }
+  }
+#endif
   if (ui_->server_initial_position_attempts > 0) {
     const float server_width =
         ServerWindowLogicalWidth(localization_language_index_);
