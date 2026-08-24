@@ -117,7 +117,8 @@ sudo apt-get install -y \
   libxinerama-dev libxcursor-dev libxi-dev libxfixes-dev libxv-dev \
   libxtst-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev \
   libxcb-shape0-dev libxcb-xkb-dev libxcb-xfixes0-dev libxcb-shm0-dev \
-  libasound2-dev libsndio-dev libpulse-dev
+  libasound2-dev libsndio-dev libpulse-dev \
+  libgl1-mesa-dev
 ```
 
 Ubuntu 20.04 自带的 CMake 3.16 不满足要求时，xmake 会自动下载并使用

@@ -282,6 +282,7 @@ function setup_targets()
             add_files("src/gui/runtime/*.mm", "src/gui/platform/tray/*.mm",
                 "src/gui/platform/window_drag_mac.mm")
         elseif is_os("linux") then
+            add_links("GL")
             add_files("src/gui/platform/tray/linux_tray.cpp")
         end
 

@@ -120,7 +120,8 @@ sudo apt-get install -y \
   libxinerama-dev libxcursor-dev libxi-dev libxfixes-dev libxv-dev \
   libxtst-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev \
   libxcb-shape0-dev libxcb-xkb-dev libxcb-xfixes0-dev libxcb-shm0-dev \
-  libasound2-dev libsndio-dev libpulse-dev
+  libasound2-dev libsndio-dev libpulse-dev \
+  libgl1-mesa-dev
 ```
 
 When Ubuntu 20.04's bundled CMake 3.16 is too old, xmake automatically

@@ -36,9 +36,15 @@
 
 #include "platform/tray/win_tray.h"
 #elif defined(__APPLE__)
+#ifndef GL_SILENCE_DEPRECATION
+#define GL_SILENCE_DEPRECATION
+#endif
+#include <OpenGL/gl.h>
+
 #include "platform/tray/mac_tray.h"
 #include "platform/window_drag.h"
 #elif defined(__linux__)
+#include <GL/gl.h>
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <unistd.h>
@@ -53,9 +59,7 @@ namespace {
 
 using namespace std::chrono_literals;
 
-#if _WIN32
 constexpr GLint kGlClampToEdge = 0x812F;
-#endif
 
 struct VideoRenderSize {
   int width = 0;
@@ -860,7 +864,6 @@ struct GuiApplication::SlintUi {
           std::make_shared<slint::VectorModel<slint::SharedString>>();
   std::unordered_map<std::string, uint64_t> displayed_frame_sequence;
   std::vector<uint8_t> scaled_video_frame;
-#if _WIN32
   std::mutex video_gl_mutex;
   std::vector<uint8_t> video_gl_conversion_frame;
   std::vector<uint8_t> video_gl_pending_frame;
@@ -869,7 +872,6 @@ struct GuiApplication::SlintUi {
   VideoRenderSize video_gl_image_size;
   VideoRenderSize video_gl_pending_size;
   bool video_gl_pending_dirty = false;
-#endif
   std::vector<std::string> tab_order;
   std::vector<std::string> tab_ids;
   std::string tab_model_signature;
@@ -2837,7 +2839,6 @@ void GuiApplication::SyncStreamVideoFrame() {
     }
   }
 
-#if _WIN32
   uint32_t texture_id = 0;
   {
     std::lock_guard lock(ui_->video_gl_mutex);
@@ -2878,7 +2879,6 @@ void GuiApplication::SyncStreamVideoFrame() {
     ++props->frame_count_;
     return;
   }
-#endif
 
   slint::SharedPixelBuffer<slint::Rgb8Pixel> pixels(output_width,
                                                     output_height);
@@ -2897,7 +2897,6 @@ void GuiApplication::SyncStreamVideoFrame() {
 }
 
 void GuiApplication::ConfigureStreamVideoRenderer() {
-#if _WIN32
   if (!ui_ || !ui_->stream) {
     return;
   }
@@ -2972,7 +2971,6 @@ void GuiApplication::ConfigureStreamVideoRenderer() {
   if (error.has_value()) {
     LOG_WARN("Slint OpenGL video renderer unavailable, using pixel buffers");
   }
-#endif
 }
 
 void GuiApplication::ScheduleNextVideoFrame() {
