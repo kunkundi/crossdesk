@@ -1,28 +1,12 @@
 #include "runtime/peer_event_handler.h"
 
-#include <algorithm>
-#include <chrono>
 #include <cstring>
-#include <filesystem>
 #include <memory>
 #include <mutex>
-#include <shared_mutex>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
+#include <vector>
 
-#include "device_controller.h"
-#include "file_transfer.h"
-#include "localization.h"
-#include "platform.h"
-#include "rd_log.h"
 #include "runtime/gui_runtime.h"
-#include "runtime/remote_action_codec.h"
-
-#if _WIN32
-#include "interactive_state.h"
-#include "service_host.h"
-#endif
 
 namespace crossdesk {
 
@@ -48,7 +32,8 @@ void PeerEventHandler::OnReceiveVideoBuffer(
     {
       std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
 
-      if (!props->back_frame_) {
+      // Allocate a third buffer only while the UI still owns the old snapshot.
+      if (!props->back_frame_ || props->back_frame_.use_count() != 1) {
         props->back_frame_ =
             std::make_shared<std::vector<unsigned char>>(video_frame->size);
       }
@@ -74,20 +59,7 @@ void PeerEventHandler::OnReceiveVideoBuffer(
     }
 
     props->streaming_ = true;
-
-    if (props->net_traffic_stats_button_pressed_) {
-      props->frame_count_++;
-      auto now = std::chrono::steady_clock::now();
-      auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                         now - props->last_time_)
-                         .count();
-
-      if (elapsed >= 1000) {
-        props->fps_ = props->frame_count_ * 1000 / elapsed;
-        props->frame_count_ = 0;
-        props->last_time_ = now;
-      }
-    }
+    runtime->video_frame_dirty_.store(true, std::memory_order_release);
   }
 }
 

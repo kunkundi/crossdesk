@@ -275,6 +275,7 @@ function setup_targets()
         add_includedirs("src/gui", {public = true})
         if is_os("windows") then
             add_cxxflags("/bigobj")
+            add_links("opengl32")
             add_files("src/gui/platform/tray/win_tray.cpp")
             add_includedirs("src/service/windows", {public = true})
         elseif is_os("macosx") then

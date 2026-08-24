@@ -1,6 +1,7 @@
 #ifndef CROSSDESK_GUI_RUNTIME_H_
 #define CROSSDESK_GUI_RUNTIME_H_
 
+#include <atomic>
 #include <memory>
 #include <string>
 
@@ -81,6 +82,7 @@ class GuiRuntime : protected gui_detail::GuiState {
   SettingsManager settings_;
   KeyboardController keyboard_;
   PeerEventHandler peer_events_;
+  std::atomic<bool> video_frame_dirty_{false};
 
  private:
   friend class ClipboardController;

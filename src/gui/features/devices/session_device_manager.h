@@ -3,6 +3,7 @@
 
 #include <SDL3/SDL.h>
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -66,6 +67,8 @@ private:
                                   uint32_t scan_code, bool extended);
   void DrainCapturedKeyboardInput();
   void ClearCapturedKeyboardInput();
+  bool ShouldSendCapturedFrame(std::chrono::steady_clock::time_point now,
+                               int fps);
 
   GuiRuntime &owner_;
   SDL_AudioStream *output_stream_ = nullptr;
@@ -80,7 +83,8 @@ private:
   size_t registered_display_stream_count_ = 0;
   std::deque<CapturedKeyboardInput> captured_keyboard_inputs_;
   std::mutex captured_keyboard_inputs_mutex_;
-  uint64_t last_frame_time_ = 0;
+  std::chrono::steady_clock::time_point last_frame_time_{};
+  std::chrono::steady_clock::time_point next_frame_deadline_{};
   std::string last_video_frame_stream_id_;
   bool invalid_video_stream_id_logged_ = false;
 };

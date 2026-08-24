@@ -32,6 +32,7 @@
 #include "platform.h"
 #if _WIN32
 #include <windows.h>
+#include <GL/gl.h>
 
 #include "platform/tray/win_tray.h"
 #elif defined(__APPLE__)
@@ -51,6 +52,39 @@ namespace crossdesk {
 namespace {
 
 using namespace std::chrono_literals;
+
+#if _WIN32
+constexpr GLint kGlClampToEdge = 0x812F;
+#endif
+
+struct VideoRenderSize {
+  int width = 0;
+  int height = 0;
+
+  bool operator==(const VideoRenderSize&) const = default;
+};
+
+VideoRenderSize FitVideoToRenderArea(int source_width, int source_height,
+                                     int area_width, int area_height) {
+  if (source_width <= 0 || source_height <= 0 || area_width <= 0 ||
+      area_height <= 0) {
+    return {};
+  }
+
+  const double scale =
+      std::min({1.0, static_cast<double>(area_width) / source_width,
+                static_cast<double>(area_height) / source_height});
+  int width = std::max(2, static_cast<int>(std::floor(source_width * scale)));
+  int height =
+      std::max(2, static_cast<int>(std::floor(source_height * scale)));
+
+  // NV12 chroma samples cover 2x2 pixels. Keep the render buffer even-sized
+  // so libyuv never needs to read a partial chroma sample at the edge.
+  width &= ~1;
+  height &= ~1;
+  return {std::min(width, source_width & ~1),
+          std::min(height, source_height & ~1)};
+}
 
 std::string CreatePasswordChangeRequestId(uint64_t sequence) {
   const auto timestamp = std::chrono::system_clock::now()
@@ -825,6 +859,17 @@ struct GuiApplication::SlintUi {
       controller_name_model =
           std::make_shared<slint::VectorModel<slint::SharedString>>();
   std::unordered_map<std::string, uint64_t> displayed_frame_sequence;
+  std::vector<uint8_t> scaled_video_frame;
+#if _WIN32
+  std::mutex video_gl_mutex;
+  std::vector<uint8_t> video_gl_conversion_frame;
+  std::vector<uint8_t> video_gl_pending_frame;
+  uint32_t video_gl_texture = 0;
+  VideoRenderSize video_gl_texture_size;
+  VideoRenderSize video_gl_image_size;
+  VideoRenderSize video_gl_pending_size;
+  bool video_gl_pending_dirty = false;
+#endif
   std::vector<std::string> tab_order;
   std::vector<std::string> tab_ids;
   std::string tab_model_signature;
@@ -845,6 +890,7 @@ struct GuiApplication::SlintUi {
   bool capture_mode = false;
   std::string capture_page;
   std::chrono::steady_clock::time_point last_clipboard_poll{};
+  slint::Timer video_timer;
 #if _WIN32
   std::unique_ptr<WinTray> tray;
 #elif defined(__APPLE__)
@@ -923,6 +969,7 @@ int GuiApplication::Run() {
   InitializeUi();
 
   ui_->timer.start(slint::TimerMode::Repeated, 16ms, [this] { Tick(); });
+  ScheduleNextVideoFrame();
   if (ui_->capture_mode &&
       (ui_->capture_page == "stream" || ui_->capture_page == "server")) {
     slint::run_event_loop();
@@ -1128,6 +1175,7 @@ void GuiApplication::InitializeUi() {
     (*ui_->stream)->set_custom_titlebar(use_xwayland_gui_);
 #endif
     RegisterFontAwesome((*ui_->stream)->window());
+    ConfigureStreamVideoRenderer();
     (*ui_->stream)->set_tabs(ui_->tab_model);
     (*ui_->stream)->set_displays(ui_->display_model);
     (*ui_->stream)->set_file_transfers(ui_->transfer_model);
@@ -2466,6 +2514,7 @@ void GuiApplication::SyncStreamWindow() {
     (*ui_->stream)->set_custom_titlebar(use_xwayland_gui_);
 #endif
     RegisterFontAwesome((*ui_->stream)->window());
+    ConfigureStreamVideoRenderer();
     // Slint globals belong to a component tree. Force the next localization
     // pass to initialize the newly-created, independent stream window tree.
     ui_->localized_language = -1;
@@ -2643,7 +2692,6 @@ void GuiApplication::SyncStreamWindow() {
   append_stats_row(localization::total[localization_language_index_],
                    net.total_inbound_stats, net.total_outbound_stats);
   ui_->stats_model->set_vector(std::move(stats_rows));
-  (*ui_->stream)->set_stats_fps(UiText(std::to_string(props->fps_)));
   (*ui_->stream)
       ->set_stats_resolution(UiText(std::to_string(props->video_width_) + "x" +
                                     std::to_string(props->video_height_)));
@@ -2709,6 +2757,35 @@ void GuiApplication::SyncStreamWindow() {
       ->set_file_transfer_visible(
           props->file_transfer_.file_transfer_window_visible_);
 
+  const auto fps_now = std::chrono::steady_clock::now();
+  if (!props->net_traffic_stats_button_pressed_) {
+    props->fps_ = 0;
+    props->frame_count_ = 0;
+    props->last_time_ = {};
+  } else if (props->last_time_.time_since_epoch().count() == 0) {
+    props->last_time_ = fps_now;
+  } else {
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             fps_now - props->last_time_)
+                             .count();
+    if (elapsed >= 1000) {
+      props->fps_ = static_cast<int>(props->frame_count_ * 1000 / elapsed);
+      props->frame_count_ = 0;
+      props->last_time_ = fps_now;
+    }
+  }
+  (*ui_->stream)->set_stats_fps(UiText(std::to_string(props->fps_)));
+}
+
+void GuiApplication::SyncStreamVideoFrame() {
+  if (!ui_ || !ui_->stream) {
+    return;
+  }
+  auto props = SelectedSession();
+  if (!props) {
+    return;
+  }
+
   std::shared_ptr<std::vector<unsigned char>> frame;
   int width = 0;
   int height = 0;
@@ -2720,23 +2797,215 @@ void GuiApplication::SyncStreamWindow() {
     height = props->video_height_;
     sequence = props->video_frame_sequence_;
   }
+
   const size_t nv12_size = static_cast<size_t>(width) * height * 3 / 2;
-  if (frame && width > 0 && height > 0 && frame->size() >= nv12_size &&
-      ui_->displayed_frame_sequence[props->remote_id_] != sequence) {
-    slint::SharedPixelBuffer<slint::Rgb8Pixel> pixels(width, height);
-    const int result = libyuv::NV12ToRAW(
-        frame->data(), width,
-        frame->data() + static_cast<size_t>(width) * height, width,
-        reinterpret_cast<uint8_t*>(pixels.begin()), width * 3, width, height);
-    if (result == 0) {
-      (*ui_->stream)->set_frame(slint::Image(std::move(pixels)));
-      (*ui_->stream)->set_has_frame(true);
-      (*ui_->stream)->set_receiving_text("");
-      ui_->displayed_frame_sequence[props->remote_id_] = sequence;
-    }
-  } else if (!frame) {
+  if (!frame || width <= 0 || height <= 0 || frame->size() < nv12_size) {
     (*ui_->stream)->set_has_frame(false);
+    return;
   }
+  if (ui_->displayed_frame_sequence[props->remote_id_] == sequence) {
+    return;
+  }
+
+  const auto window_size = (*ui_->stream)->window().size();
+  const VideoRenderSize render_size = FitVideoToRenderArea(
+      width, height, static_cast<int>(window_size.width),
+      static_cast<int>(window_size.height));
+  const uint8_t* y_plane = frame->data();
+  const uint8_t* uv_plane =
+      frame->data() + static_cast<size_t>(width) * height;
+  int output_width = width;
+  int output_height = height;
+
+  if (render_size.width > 0 && render_size.height > 0 &&
+      (render_size.width != width || render_size.height != height)) {
+    const size_t scaled_nv12_size =
+        static_cast<size_t>(render_size.width) * render_size.height * 3 / 2;
+    ui_->scaled_video_frame.resize(scaled_nv12_size);
+    uint8_t* scaled_y = ui_->scaled_video_frame.data();
+    uint8_t* scaled_uv =
+        scaled_y +
+        static_cast<size_t>(render_size.width) * render_size.height;
+    if (libyuv::NV12Scale(y_plane, width, uv_plane, width, width, height,
+                         scaled_y, render_size.width, scaled_uv,
+                         render_size.width, render_size.width,
+                         render_size.height, libyuv::kFilterBox) == 0) {
+      y_plane = scaled_y;
+      uv_plane = scaled_uv;
+      output_width = render_size.width;
+      output_height = render_size.height;
+    }
+  }
+
+#if _WIN32
+  uint32_t texture_id = 0;
+  {
+    std::lock_guard lock(ui_->video_gl_mutex);
+    texture_id = ui_->video_gl_texture;
+  }
+  if (texture_id != 0) {
+    ui_->video_gl_conversion_frame.resize(
+        static_cast<size_t>(output_width) * output_height * 4);
+    if (libyuv::NV12ToABGR(
+            y_plane, output_width, uv_plane, output_width,
+            ui_->video_gl_conversion_frame.data(), output_width * 4,
+            output_width, output_height) != 0) {
+      return;
+    }
+    {
+      std::lock_guard lock(ui_->video_gl_mutex);
+      if (ui_->video_gl_texture == 0) {
+        return;
+      }
+      texture_id = ui_->video_gl_texture;
+      ui_->video_gl_pending_frame.swap(ui_->video_gl_conversion_frame);
+      ui_->video_gl_pending_size = {output_width, output_height};
+      ui_->video_gl_pending_dirty = true;
+    }
+    const VideoRenderSize output_size{output_width, output_height};
+    if (ui_->video_gl_image_size != output_size) {
+      (*ui_->stream)
+          ->set_frame(slint::Image::create_from_borrowed_gl_2d_rgba_texture(
+              texture_id,
+              slint::Size<uint32_t>{static_cast<uint32_t>(output_width),
+                                    static_cast<uint32_t>(output_height)}));
+      ui_->video_gl_image_size = output_size;
+    }
+    (*ui_->stream)->set_has_frame(true);
+    (*ui_->stream)->set_receiving_text("");
+    (*ui_->stream)->window().request_redraw();
+    ui_->displayed_frame_sequence[props->remote_id_] = sequence;
+    ++props->frame_count_;
+    return;
+  }
+#endif
+
+  slint::SharedPixelBuffer<slint::Rgb8Pixel> pixels(output_width,
+                                                    output_height);
+  if (libyuv::NV12ToRAW(
+          y_plane, output_width, uv_plane, output_width,
+          reinterpret_cast<uint8_t*>(pixels.begin()), output_width * 3,
+          output_width, output_height) != 0) {
+    return;
+  }
+
+  (*ui_->stream)->set_frame(slint::Image(std::move(pixels)));
+  (*ui_->stream)->set_has_frame(true);
+  (*ui_->stream)->set_receiving_text("");
+  ui_->displayed_frame_sequence[props->remote_id_] = sequence;
+  ++props->frame_count_;
+}
+
+void GuiApplication::ConfigureStreamVideoRenderer() {
+#if _WIN32
+  if (!ui_ || !ui_->stream) {
+    return;
+  }
+  const auto error = (*ui_->stream)->window().set_rendering_notifier(
+      [this](slint::RenderingState state, slint::GraphicsAPI graphics_api) {
+        if (!ui_ || graphics_api != slint::GraphicsAPI::NativeOpenGL) {
+          return;
+        }
+
+        std::lock_guard lock(ui_->video_gl_mutex);
+        if (state == slint::RenderingState::RenderingSetup) {
+          GLuint texture = 0;
+          glGenTextures(1, &texture);
+          if (texture == 0) {
+            return;
+          }
+          GLint previous_texture = 0;
+          glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous_texture);
+          glBindTexture(GL_TEXTURE_2D, texture);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, kGlClampToEdge);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, kGlClampToEdge);
+          glBindTexture(GL_TEXTURE_2D,
+                        static_cast<GLuint>(previous_texture));
+          ui_->video_gl_texture = texture;
+          return;
+        }
+
+        if (state == slint::RenderingState::BeforeRendering &&
+            ui_->video_gl_texture != 0 && ui_->video_gl_pending_dirty &&
+            !ui_->video_gl_pending_frame.empty()) {
+          GLint previous_texture = 0;
+          GLint previous_unpack_alignment = 0;
+          glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous_texture);
+          glGetIntegerv(GL_UNPACK_ALIGNMENT, &previous_unpack_alignment);
+          glBindTexture(GL_TEXTURE_2D, ui_->video_gl_texture);
+          glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+          if (ui_->video_gl_texture_size != ui_->video_gl_pending_size) {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+                         ui_->video_gl_pending_size.width,
+                         ui_->video_gl_pending_size.height, 0, GL_RGBA,
+                         GL_UNSIGNED_BYTE, ui_->video_gl_pending_frame.data());
+            ui_->video_gl_texture_size = ui_->video_gl_pending_size;
+          } else {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                            ui_->video_gl_pending_size.width,
+                            ui_->video_gl_pending_size.height, GL_RGBA,
+                            GL_UNSIGNED_BYTE,
+                            ui_->video_gl_pending_frame.data());
+          }
+          glPixelStorei(GL_UNPACK_ALIGNMENT, previous_unpack_alignment);
+          glBindTexture(GL_TEXTURE_2D,
+                        static_cast<GLuint>(previous_texture));
+          ui_->video_gl_pending_dirty = false;
+          return;
+        }
+
+        if (state == slint::RenderingState::RenderingTeardown) {
+          if (ui_->video_gl_texture != 0) {
+            const GLuint texture = ui_->video_gl_texture;
+            glDeleteTextures(1, &texture);
+          }
+          ui_->video_gl_texture = 0;
+          ui_->video_gl_texture_size = {};
+          ui_->video_gl_image_size = {};
+          ui_->video_gl_pending_size = {};
+          ui_->video_gl_pending_dirty = false;
+          ui_->video_gl_pending_frame.clear();
+        }
+      });
+  if (error.has_value()) {
+    LOG_WARN("Slint OpenGL video renderer unavailable, using pixel buffers");
+  }
+#endif
+}
+
+void GuiApplication::ScheduleNextVideoFrame() {
+  if (!ui_) {
+    return;
+  }
+
+  constexpr auto frame_interval = std::chrono::nanoseconds(1'000'000'000 / 60);
+  const auto now = std::chrono::steady_clock::now();
+  if (next_video_frame_time_ == std::chrono::steady_clock::time_point{} ||
+      now - next_video_frame_time_ > 250ms) {
+    next_video_frame_time_ = now;
+  }
+
+  if (now >= next_video_frame_time_) {
+    if (video_frame_dirty_.exchange(false, std::memory_order_acq_rel)) {
+      SyncStreamVideoFrame();
+    }
+    do {
+      next_video_frame_time_ += frame_interval;
+    } while (next_video_frame_time_ <= now);
+  }
+
+  const auto after_render = std::chrono::steady_clock::now();
+  const auto remaining =
+      std::max(next_video_frame_time_ - after_render,
+               std::chrono::steady_clock::duration::zero());
+  const auto delay_ns =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(remaining).count();
+  const auto delay_ms = std::max<int64_t>(1, (delay_ns + 999'999) / 1'000'000);
+  ui_->video_timer.start(slint::TimerMode::SingleShot,
+                         std::chrono::milliseconds(delay_ms),
+                         [this] { ScheduleNextVideoFrame(); });
 }
 
 void GuiApplication::SyncServerWindow() {
@@ -3241,6 +3510,7 @@ void GuiApplication::Cleanup() {
     return;
   }
   ui_->timer.stop();
+  ui_->video_timer.stop();
 #if _WIN32 && CROSSDESK_PORTABLE
   JoinPortableWindowsServiceInstallThread();
 #endif
@@ -3253,6 +3523,7 @@ void GuiApplication::Cleanup() {
   devices_.DestroyAudioOutput();
   if (ui_->stream) {
     (*ui_->stream)->hide();
+    ui_->stream.reset();
   }
   if (ui_->server) {
     (*ui_->server)->hide();

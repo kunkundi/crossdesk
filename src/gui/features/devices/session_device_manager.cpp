@@ -13,10 +13,28 @@ namespace {
 
 constexpr uint64_t kCaptureResumeKeyFrameGapMs = 500;
 constexpr size_t kMaxCapturedKeyboardInputs = 512;
+constexpr auto kFrameDeadlineTolerance = std::chrono::milliseconds(1);
 
 } // namespace
 
 SessionDeviceManager::SessionDeviceManager(GuiRuntime &owner) : owner_(owner) {}
+
+bool SessionDeviceManager::ShouldSendCapturedFrame(
+    std::chrono::steady_clock::time_point now, int fps) {
+  const auto interval =
+      std::chrono::nanoseconds(std::chrono::seconds(1)) / (fps > 0 ? fps : 1);
+  if (next_frame_deadline_ == std::chrono::steady_clock::time_point{}) {
+    next_frame_deadline_ = now;
+  }
+  if (now + kFrameDeadlineTolerance < next_frame_deadline_) {
+    return false;
+  }
+  next_frame_deadline_ += interval;
+  if (next_frame_deadline_ <= now) {
+    next_frame_deadline_ = now + interval;
+  }
+  return true;
+}
 
 void SessionDeviceManager::Initialize() {
   InitializeAudioOutput();
@@ -40,9 +58,8 @@ int SessionDeviceManager::InitializeScreenCapturer() {
         static_cast<ScreenCapturer *>(screen_capturer_factory_->Create());
   }
 
-  last_frame_time_ = std::chrono::duration_cast<std::chrono::milliseconds>(
-                         std::chrono::steady_clock::now().time_since_epoch())
-                         .count();
+  last_frame_time_ = {};
+  next_frame_deadline_ = {};
   const int fps = owner_.config_center_->GetVideoFrameRate() ==
                           ConfigCenter::VIDEO_FRAME_RATE::FPS_30
                       ? 30
@@ -56,14 +73,19 @@ int SessionDeviceManager::InitializeScreenCapturer() {
   const int init_ret = screen_capturer_->Init(
       fps, [this, fps](unsigned char *data, int size, int width, int height,
                        const char *display_name) {
-        const auto now_time = static_cast<uint64_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now().time_since_epoch())
-                .count());
-        const auto duration = now_time - last_frame_time_;
-        if (duration * fps < 1000) {
+        const auto now_time = std::chrono::steady_clock::now();
+        if (!ShouldSendCapturedFrame(now_time, fps)) {
           return;
         }
+
+        const bool has_previous_frame =
+            last_frame_time_.time_since_epoch().count() != 0;
+        const auto duration_ms =
+            has_previous_frame
+                ? std::chrono::duration_cast<std::chrono::milliseconds>(
+                      now_time - last_frame_time_)
+                      .count()
+                : 0;
 
         std::vector<std::string> connected_remote_ids;
         {
@@ -101,14 +123,14 @@ int SessionDeviceManager::InitializeScreenCapturer() {
         }
         invalid_video_stream_id_logged_ = false;
         const bool resumed_after_gap =
-            last_frame_time_ != 0 && duration >= kCaptureResumeKeyFrameGapMs;
+            has_previous_frame && duration_ms >= kCaptureResumeKeyFrameGapMs;
         const bool stream_changed = !last_video_frame_stream_id_.empty() &&
                                     last_video_frame_stream_id_ != stream_id;
         if (resumed_after_gap || stream_changed) {
           if (RequestVideoKeyFrame(owner_.peer_, stream_id.c_str()) == 0) {
             LOG_INFO("Request video key frame before sending captured frame, "
                      "stream='{}', gap_ms={}, stream_changed={}",
-                     stream_id, duration, stream_changed);
+                     stream_id, duration_ms, stream_changed);
           }
         }
 

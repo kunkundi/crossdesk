@@ -1,6 +1,7 @@
 #ifndef CROSSDESK_GUI_APPLICATION_H_
 #define CROSSDESK_GUI_APPLICATION_H_
 
+#include <chrono>
 #include <memory>
 #include <string>
 
@@ -37,6 +38,9 @@ private:
   void SyncConnectionDialog();
   void SyncPlatformDialogs();
   void SyncStreamWindow();
+  void SyncStreamVideoFrame();
+  void ScheduleNextVideoFrame();
+  void ConfigureStreamVideoRenderer();
   void SyncStreamKeyboardFocus();
   void SetStreamKeyboardFocus(bool focused);
   void SyncServerWindow();
@@ -66,6 +70,7 @@ private:
   bool OpenUrl(const std::string &url);
 
   std::unique_ptr<SlintUi> ui_;
+  std::chrono::steady_clock::time_point next_video_frame_time_{};
 #if defined(__linux__) && !defined(__APPLE__)
   bool use_xwayland_gui_ = false;
   bool use_x11_custom_titlebar_ = false;
