@@ -33,6 +33,7 @@ function setup_targets()
     target("common")
         set_kind("object")
         add_deps("rd_log")
+        add_packages("libyuv")
         add_files("src/common/*.cpp")
         remove_files("src/common/rounded_corner_button.cpp")
         if is_os("macosx") then

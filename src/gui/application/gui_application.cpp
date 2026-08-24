@@ -29,6 +29,7 @@
 #include "crossdesk_ui.h"
 #include "fa_solid_900.h"
 #include "localization.h"
+#include "nv12_scaler.h"
 #include "platform.h"
 #if _WIN32
 #include <windows.h>
@@ -866,6 +867,7 @@ struct GuiApplication::SlintUi {
           std::make_shared<slint::VectorModel<slint::SharedString>>();
   std::unordered_map<std::string, uint64_t> displayed_frame_sequence;
   std::vector<uint8_t> scaled_video_frame;
+  std::vector<uint8_t> scaled_video_frame_scratch;
 #if !defined(__APPLE__)
   std::mutex video_gl_mutex;
   std::vector<uint8_t> video_gl_conversion_frame;
@@ -2651,10 +2653,11 @@ void GuiApplication::SyncStreamVideoFrame() {
     uint8_t* scaled_uv =
         scaled_y +
         static_cast<size_t>(render_size.width) * render_size.height;
-    if (libyuv::NV12Scale(y_plane, width, uv_plane, width, width, height,
-                         scaled_y, render_size.width, scaled_uv,
-                         render_size.width, render_size.width,
-                         render_size.height, libyuv::kFilterBox) == 0) {
+    if (ScaleNv12ViaI420(
+            y_plane, width, uv_plane, width, width, height, scaled_y,
+            render_size.width, scaled_uv, render_size.width, render_size.width,
+            render_size.height, libyuv::kFilterBox,
+            &ui_->scaled_video_frame_scratch) == 0) {
       y_plane = scaled_y;
       uv_plane = scaled_uv;
       output_width = render_size.width;
