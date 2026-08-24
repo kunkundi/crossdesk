@@ -2,6 +2,7 @@
 #define CROSSDESK_GUI_PEER_EVENT_HANDLER_H_
 
 #include <cstddef>
+#include <string>
 
 #include "minirtc.h"
 
@@ -39,6 +40,8 @@ public:
                                 void *user_data);
 
 private:
+  static void SendClientInfo(PeerPtr *peer, const std::string &client_id);
+
   GuiRuntime &owner_;
 };
 

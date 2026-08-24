@@ -26,6 +26,31 @@
 
 namespace crossdesk {
 
+void PeerEventHandler::SendClientInfo(PeerPtr* peer,
+                                      const std::string& client_id) {
+  if (!peer) {
+    return;
+  }
+
+#if defined(_WIN32)
+  constexpr const char* kClientPlatform = "windows";
+#elif defined(__APPLE__)
+  constexpr const char* kClientPlatform = "macos";
+#elif defined(__linux__)
+  constexpr const char* kClientPlatform = "linux";
+#else
+  constexpr const char* kClientPlatform = "unknown";
+#endif
+
+  const nlohmann::json message = {{"type", "client_info"},
+                                  {"version", CROSSDESK_VERSION},
+                                  {"platform", kClientPlatform}};
+  const std::string payload = message.dump();
+  if (SendSignalMessage(peer, payload.data(), payload.size()) != 0) {
+    LOG_WARN("[{}] failed to report client information", client_id);
+  }
+}
+
 PeerEventHandler::PeerEventHandler(GuiRuntime& owner) : owner_(owner) {}
 
 void PeerEventHandler::OnSignalMessage(const char* message, size_t size,
@@ -138,6 +163,7 @@ void PeerEventHandler::OnSignalStatus(SignalStatus status, const char* user_id,
       runtime->signal_connected_ = true;
       runtime->need_to_send_recent_connections_ = true;
       LOG_INFO("[{}] connected to signal server", client_id);
+      SendClientInfo(runtime->peer_, client_id);
       std::lock_guard<std::mutex> lock(runtime->password_change_mutex_);
       if (runtime->credential_recovery_in_progress_) {
         if (runtime->credential_recovery_attempt_pending_) {
@@ -180,6 +206,7 @@ void PeerEventHandler::OnSignalStatus(SignalStatus status, const char* user_id,
     } else if (SignalStatus::SignalConnected == status) {
       props->signal_connected_ = true;
       LOG_INFO("[{}] connected to signal server", remote_id);
+      SendClientInfo(props->peer_, client_id);
     } else if (SignalStatus::SignalFailed == status) {
       props->signal_connected_ = false;
     } else if (SignalStatus::SignalClosed == status) {
