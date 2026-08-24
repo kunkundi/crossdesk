@@ -15,6 +15,9 @@
 
 namespace crossdesk {
 
+#if defined(_WIN32)
+class WindowsOpenGlVideoRenderer;
+#endif
 #ifdef __APPLE__
 class MacMetalVideoRenderer;
 #endif
@@ -87,6 +90,9 @@ class GuiRuntime : protected gui_detail::GuiState {
   KeyboardController keyboard_;
   PeerEventHandler peer_events_;
   std::atomic<bool> video_frame_dirty_{false};
+#if defined(_WIN32)
+  std::unique_ptr<WindowsOpenGlVideoRenderer> windows_opengl_video_renderer_;
+#endif
 #ifdef __APPLE__
   std::unique_ptr<MacMetalVideoRenderer> mac_metal_video_renderer_;
 #endif

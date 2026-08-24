@@ -16,6 +16,9 @@
 #include "file_transfer.h"
 #include "localization.h"
 #include "platform.h"
+#if defined(_WIN32)
+#include "platform/windows_opengl_video_renderer.h"
+#endif
 #ifdef __APPLE__
 #include "platform/metal_video_renderer.h"
 #endif
@@ -316,22 +319,29 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         props->enable_mouse_control_ = false;
         runtime->ResetRemoteServiceStatus(*props);
 
-#ifdef __APPLE__
-        std::shared_ptr<std::vector<unsigned char>> metal_snapshot;
-        int metal_snapshot_width = 0;
-        int metal_snapshot_height = 0;
-        bool needs_metal_snapshot = false;
+#if defined(__APPLE__) || defined(_WIN32)
+        std::shared_ptr<std::vector<unsigned char>> native_snapshot;
+        int native_snapshot_width = 0;
+        int native_snapshot_height = 0;
+        bool needs_native_snapshot = false;
         {
           std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
-          needs_metal_snapshot = !props->thumbnail_frame_ ||
-                                 props->thumbnail_frame_->empty();
+          needs_native_snapshot = !props->thumbnail_frame_ ||
+                                  props->thumbnail_frame_->empty();
         }
-        if (needs_metal_snapshot && runtime->mac_metal_video_renderer_) {
+        if (needs_native_snapshot) {
+#if defined(_WIN32)
+          auto* native_renderer =
+              runtime->windows_opengl_video_renderer_.get();
+#else
+          auto* native_renderer = runtime->mac_metal_video_renderer_.get();
+#endif
           auto snapshot = std::make_shared<std::vector<unsigned char>>();
-          if (runtime->mac_metal_video_renderer_->CopyLatestNv12(
-                  remote_id, snapshot.get(), &metal_snapshot_width,
-                  &metal_snapshot_height)) {
-            metal_snapshot = std::move(snapshot);
+          if (native_renderer && native_renderer->CopyLatestNv12(
+                                     remote_id, snapshot.get(),
+                                     &native_snapshot_width,
+                                     &native_snapshot_height)) {
+            native_snapshot = std::move(snapshot);
           }
         }
 #endif
@@ -339,12 +349,12 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
           std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
           props->front_frame_.reset();
           props->back_frame_.reset();
-#ifdef __APPLE__
-          if (metal_snapshot &&
+#if defined(__APPLE__) || defined(_WIN32)
+          if (native_snapshot &&
               (!props->thumbnail_frame_ || props->thumbnail_frame_->empty())) {
-            props->thumbnail_frame_ = std::move(metal_snapshot);
-            props->thumbnail_width_ = metal_snapshot_width;
-            props->thumbnail_height_ = metal_snapshot_height;
+            props->thumbnail_frame_ = std::move(native_snapshot);
+            props->thumbnail_width_ = native_snapshot_width;
+            props->thumbnail_height_ = native_snapshot_height;
           }
 #endif
           props->video_width_ = 0;
@@ -353,9 +363,14 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
           props->render_rect_dirty_ = true;
           props->stream_cleanup_pending_ = true;
         }
-#ifdef __APPLE__
-        if (runtime->mac_metal_video_renderer_) {
-          runtime->mac_metal_video_renderer_->DiscardStream(remote_id);
+#if defined(__APPLE__) || defined(_WIN32)
+#if defined(_WIN32)
+        auto* native_renderer = runtime->windows_opengl_video_renderer_.get();
+#else
+        auto* native_renderer = runtime->mac_metal_video_renderer_.get();
+#endif
+        if (native_renderer) {
+          native_renderer->DiscardStream(remote_id);
           runtime->video_frame_dirty_.store(true,
                                             std::memory_order_release);
         }

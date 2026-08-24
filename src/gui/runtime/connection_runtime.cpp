@@ -11,6 +11,9 @@
 #include "display_stream_id.h"
 #include "localization.h"
 #include "platform.h"
+#if defined(_WIN32)
+#include "platform/windows_opengl_video_renderer.h"
+#endif
 #ifdef __APPLE__
 #include "platform/metal_video_renderer.h"
 #endif
@@ -226,7 +229,7 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
     frame_snapshot = props->front_frame_;
     video_width = props->video_width_;
     video_height = props->video_height_;
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(_WIN32)
     if ((!frame_snapshot || frame_snapshot->empty()) &&
         props->thumbnail_frame_ && !props->thumbnail_frame_->empty()) {
       frame_snapshot = props->thumbnail_frame_;
@@ -235,15 +238,18 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
     }
 #endif
   }
-#ifdef __APPLE__
-  if ((!frame_snapshot || frame_snapshot->empty()) &&
-      mac_metal_video_renderer_) {
-    auto metal_snapshot =
-        std::make_shared<std::vector<unsigned char>>();
-    if (mac_metal_video_renderer_->CopyLatestNv12(
-            props->remote_id_, metal_snapshot.get(), &video_width,
-            &video_height)) {
-      frame_snapshot = std::move(metal_snapshot);
+#if defined(__APPLE__) || defined(_WIN32)
+#if defined(_WIN32)
+  auto* native_renderer = windows_opengl_video_renderer_.get();
+#else
+  auto* native_renderer = mac_metal_video_renderer_.get();
+#endif
+  if ((!frame_snapshot || frame_snapshot->empty()) && native_renderer) {
+    auto native_snapshot = std::make_shared<std::vector<unsigned char>>();
+    if (native_renderer->CopyLatestNv12(props->remote_id_,
+                                        native_snapshot.get(), &video_width,
+                                        &video_height)) {
+      frame_snapshot = std::move(native_snapshot);
     }
   }
 #endif
@@ -270,9 +276,9 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
     }
   }
 
-#ifdef __APPLE__
-  if (mac_metal_video_renderer_) {
-    mac_metal_video_renderer_->DiscardStream(props->remote_id_);
+#if defined(__APPLE__) || defined(_WIN32)
+  if (native_renderer) {
+    native_renderer->DiscardStream(props->remote_id_);
     video_frame_dirty_.store(true, std::memory_order_release);
   }
 #endif
@@ -337,7 +343,7 @@ void GuiRuntime::ResetRemoteSessionResources(
     std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
     props->front_frame_.reset();
     props->back_frame_.reset();
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(_WIN32)
     props->thumbnail_frame_.reset();
     props->thumbnail_width_ = 0;
     props->thumbnail_height_ = 0;

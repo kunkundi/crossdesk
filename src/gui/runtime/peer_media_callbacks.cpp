@@ -7,14 +7,18 @@
 #include <vector>
 
 #include "runtime/gui_runtime.h"
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(_WIN32)
 #include <chrono>
 
+#if defined(_WIN32)
+#include "platform/windows_opengl_video_renderer.h"
+#else
 #include "platform/metal_video_renderer.h"
+#endif
 #endif
 
 namespace crossdesk {
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(_WIN32)
 namespace {
 
 constexpr auto kBackgroundSnapshotInterval = std::chrono::seconds(1);
@@ -41,17 +45,24 @@ void PeerEventHandler::OnReceiveVideoBuffer(
       runtime->remote_sessions_.find(remote_id)->second.get();
 
   if (props->connection_established_) {
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(_WIN32)
     bool background_snapshot_only = false;
-    if (runtime->mac_metal_video_renderer_ &&
-        runtime->mac_metal_video_renderer_->IsReady() &&
-        runtime->mac_metal_video_renderer_->IsAttached()) {
-      const auto submit_result =
-          runtime->mac_metal_video_renderer_->SubmitNv12(
-              remote_id,
-              reinterpret_cast<const uint8_t*>(video_frame->data),
-              video_frame->size, video_frame->width, video_frame->height);
-      if (submit_result == MacMetalVideoRenderer::SubmitResult::submitted) {
+#if defined(_WIN32)
+    auto* native_renderer = runtime->windows_opengl_video_renderer_.get();
+    using NativeVideoRenderer = WindowsOpenGlVideoRenderer;
+#else
+    auto* native_renderer = runtime->mac_metal_video_renderer_.get();
+    using NativeVideoRenderer = MacMetalVideoRenderer;
+#endif
+    if (native_renderer && native_renderer->IsReady()
+#if defined(__APPLE__)
+        && native_renderer->IsAttached()
+#endif
+    ) {
+      const auto submit_result = native_renderer->SubmitNv12(
+          remote_id, reinterpret_cast<const uint8_t*>(video_frame->data),
+          video_frame->size, video_frame->width, video_frame->height);
+      if (submit_result == NativeVideoRenderer::SubmitResult::submitted) {
         std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
         const bool size_changed =
             (props->video_width_ != video_frame->width) ||
@@ -63,7 +74,7 @@ void PeerEventHandler::OnReceiveVideoBuffer(
         props->video_height_ = video_frame->height;
         props->video_size_ = video_frame->size;
         // Once the native renderer owns the current stream, do not leave an
-        // older CPU frame ahead of the Metal close snapshot.
+        // older CPU frame ahead of the renderer's close snapshot.
         props->front_frame_.reset();
         props->back_frame_.reset();
         props->thumbnail_frame_.reset();
@@ -75,21 +86,22 @@ void PeerEventHandler::OnReceiveVideoBuffer(
         runtime->video_frame_dirty_.store(true, std::memory_order_release);
         return;
       }
-      if (submit_result == MacMetalVideoRenderer::SubmitResult::dropped ||
-          submit_result == MacMetalVideoRenderer::SubmitResult::failed) {
-        // Keep presenting the last Metal frame. A later decoded frame can
+      if (submit_result == NativeVideoRenderer::SubmitResult::dropped ||
+          submit_result == NativeVideoRenderer::SubmitResult::failed) {
+        // Keep presenting the last native frame. A later decoded frame can
         // reuse the renderer without changing ownership mid-window.
         props->streaming_ = true;
         return;
       }
-      if (submit_result == MacMetalVideoRenderer::SubmitResult::not_selected) {
+      if (submit_result ==
+          NativeVideoRenderer::SubmitResult::not_selected) {
         background_snapshot_only = true;
       }
     }
 #endif
     {
       std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(_WIN32)
       const auto now = std::chrono::steady_clock::now();
       if (background_snapshot_only && props->thumbnail_frame_ &&
           !props->thumbnail_frame_->empty() &&
@@ -125,7 +137,7 @@ void PeerEventHandler::OnReceiveVideoBuffer(
       props->video_size_ = video_frame->size;
 
       props->front_frame_.swap(props->back_frame_);
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(_WIN32)
       props->thumbnail_frame_ = props->front_frame_;
       props->thumbnail_width_ = video_frame->width;
       props->thumbnail_height_ = video_frame->height;
@@ -137,7 +149,7 @@ void PeerEventHandler::OnReceiveVideoBuffer(
     }
 
     props->streaming_ = true;
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(_WIN32)
     if (background_snapshot_only) {
       return;
     }
