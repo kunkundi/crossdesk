@@ -116,10 +116,12 @@ export component StreamWindow inherits Window {
     min-width: 640px;
     min-height: 360px + (root.custom-titlebar ? 32px : 0px);
     no-frame: root.custom-titlebar;
-    background: root.custom-titlebar ? transparent : black;
+    background: root.native-video-enabled
+        ? transparent : root.custom-titlebar ? transparent : black;
     default-font-size: ImGuiFontStyle.base;
 
     in property <bool> custom-titlebar: false;
+    in property <bool> native-video-enabled: false;
     in property <bool> window-active: true;
     in property <bool> window-maximized: false;
     in property <[StreamTab]> tabs;
@@ -263,7 +265,7 @@ export component StreamWindow inherits Window {
     window-surface := Rectangle {
         width: root.width;
         height: root.height;
-        background: black;
+        background: root.native-video-enabled ? transparent : black;
         border-radius:
             root.custom-titlebar && !root.fullscreen-enabled && !root.window-maximized
                 ? root.window-corner-radius : 0px;
@@ -419,7 +421,7 @@ export component StreamWindow inherits Window {
             y: root.titlebar-height;
             width: parent.width;
             height: parent.height - self.y;
-            background: black;
+            background: root.native-video-enabled ? transparent : black;
             clip: true;
 
         // Keep the ImGui tab strip behavior, including pointer-drag reordering.
@@ -499,7 +501,7 @@ export component StreamWindow inherits Window {
         video := Rectangle {
             y: root.fullscreen-enabled ? 0px : (root.tabs.length > 1 ? 30px : 0px);
             height: parent.height - self.y;
-            background: black;
+            background: root.native-video-enabled ? transparent : black;
             clip: true;
 
             frame-image := Image {
@@ -507,7 +509,7 @@ export component StreamWindow inherits Window {
                 height: parent.height;
                 source: root.frame;
                 image-fit: contain;
-                visible: root.has-frame;
+                visible: root.has-frame && !root.native-video-enabled;
             }
 
             Text {

@@ -11,9 +11,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -36,11 +36,7 @@
 
 #include "platform/tray/win_tray.h"
 #elif defined(__APPLE__)
-#ifndef GL_SILENCE_DEPRECATION
-#define GL_SILENCE_DEPRECATION
-#endif
-#include <OpenGL/gl.h>
-
+#include "platform/metal_video_renderer.h"
 #include "platform/tray/mac_tray.h"
 #include "platform/window_drag.h"
 #elif defined(__linux__)
@@ -52,6 +48,7 @@
 #include "platform/tray/linux_tray.h"
 #endif
 #include "rd_log.h"
+#include "ui/ui_localization.h"
 #include "version_checker.h"
 
 namespace crossdesk {
@@ -59,7 +56,11 @@ namespace {
 
 using namespace std::chrono_literals;
 
+#if !defined(__APPLE__)
 constexpr GLint kGlClampToEdge = 0x812F;
+#else
+constexpr int kMetalAttachmentAttemptLimit = 30;
+#endif
 
 struct VideoRenderSize {
   int width = 0;
@@ -864,6 +865,7 @@ struct GuiApplication::SlintUi {
           std::make_shared<slint::VectorModel<slint::SharedString>>();
   std::unordered_map<std::string, uint64_t> displayed_frame_sequence;
   std::vector<uint8_t> scaled_video_frame;
+#if !defined(__APPLE__)
   std::mutex video_gl_mutex;
   std::vector<uint8_t> video_gl_conversion_frame;
   std::vector<uint8_t> video_gl_pending_frame;
@@ -872,6 +874,7 @@ struct GuiApplication::SlintUi {
   VideoRenderSize video_gl_image_size;
   VideoRenderSize video_gl_pending_size;
   bool video_gl_pending_dirty = false;
+#endif
   std::vector<std::string> tab_order;
   std::vector<std::string> tab_ids;
   std::string tab_model_signature;
@@ -886,11 +889,12 @@ struct GuiApplication::SlintUi {
   WindowDragState server_drag;
   int main_native_titlebar_attempts = 30;
   int stream_live_resize_configuration_attempts = 0;
+#if defined(__APPLE__)
+  int stream_video_attachment_attempts = 0;
+#endif
   int stream_initial_position_attempts = 0;
   int server_initial_position_attempts = 0;
   int localized_language = -1;
-  bool capture_mode = false;
-  std::string capture_page;
   std::chrono::steady_clock::time_point last_clipboard_poll{};
   slint::Timer video_timer;
 #if _WIN32
@@ -972,18 +976,11 @@ int GuiApplication::Run() {
 
   ui_->timer.start(slint::TimerMode::Repeated, 16ms, [this] { Tick(); });
   ScheduleNextVideoFrame();
-  if (ui_->capture_mode &&
-      (ui_->capture_page == "stream" || ui_->capture_page == "server")) {
-    slint::run_event_loop();
-  } else if (ui_->capture_mode) {
-    ui_->main->run();
-  } else {
-    // The native tray icon is managed outside Slint, so Slint cannot count it
-    // when deciding whether the last hidden window should stop the event loop.
-    // Keep the loop alive until the tray's explicit Exit action requests quit.
-    ui_->main->show();
-    slint::run_event_loop(slint::EventLoopMode::RunUntilQuit);
-  }
+  // The native tray icon is managed outside Slint, so Slint cannot count it
+  // when deciding whether the last hidden window should stop the event loop.
+  // Keep the loop alive until the tray's explicit Exit action requests quit.
+  ui_->main->show();
+  slint::run_event_loop(slint::EventLoopMode::RunUntilQuit);
   Cleanup();
   return 0;
 }
@@ -1046,12 +1043,34 @@ void GuiApplication::InitializeModules() {
   if (modules_inited_) {
     return;
   }
+#if defined(__APPLE__)
+  // Metal setup can log device, shader, or pipeline failures. Initialize it
+  // here, after Run() has selected the application's log directory, rather
+  // than from GuiRuntime's constructor before InitializeLogger().
+  mac_metal_video_renderer_ = std::make_unique<MacMetalVideoRenderer>();
+#endif
   devices_.Initialize();
   CreateConnectionPeer();
   modules_inited_ = true;
 }
 
 void GuiApplication::InitializeUi() {
+#if defined(__APPLE__)
+  // Slint's renderer must be selected before the first component creates the
+  // process-wide backend. The macOS package contains Skia (Metal) and the
+  // software fallback, but no OpenGL window renderer.
+  const char* requested_slint_backend = std::getenv("SLINT_BACKEND");
+  if (requested_slint_backend == nullptr ||
+      requested_slint_backend[0] == '\0') {
+    if (setenv("SLINT_BACKEND", "winit-skia", 1) == 0) {
+      LOG_INFO("Using Slint winit-skia renderer with the macOS Metal backend");
+    } else {
+      LOG_WARN("Unable to select the Slint Metal backend through SLINT_BACKEND");
+    }
+  } else {
+    LOG_INFO("Using requested Slint backend: {}", requested_slint_backend);
+  }
+#endif
 #if defined(__linux__) && !defined(__APPLE__)
   // Winit prefers Wayland whenever WAYLAND_DISPLAY/WAYLAND_SOCKET is present.
   // Hide them only while Slint selects its process-wide window backend, then
@@ -1080,189 +1099,12 @@ void GuiApplication::InitializeUi() {
   ui_->release_note_blocks_model->set_vector(std::move(release_note_blocks));
   ui_->main->set_release_note_blocks(ui_->release_note_blocks_model);
   RegisterFontAwesome(ui_->main->window());
-#ifdef CROSSDESK_DEBUG
-  auto read_capture_override = [](const char* path) -> std::string {
-    std::ifstream input(path);
-    std::string value;
-    std::getline(input, value);
-    return value;
-  };
-  if (const char* capture = std::getenv("CROSSDESK_UI_CAPTURE")) {
-    ui_->capture_mode = std::string_view(capture) != "0";
-  }
-  if (const char* page = std::getenv("CROSSDESK_UI_CAPTURE_PAGE")) {
-    ui_->capture_page = page;
-  }
-  std::string capture_language_override;
-  if (ui_->capture_mode) {
-    if (const auto page =
-            read_capture_override("/tmp/crossdesk-ui-capture-page");
-        !page.empty()) {
-      ui_->capture_page = page;
-    }
-    capture_language_override =
-        read_capture_override("/tmp/crossdesk-ui-capture-language");
-  }
-  const char* language = capture_language_override.empty()
-                             ? std::getenv("CROSSDESK_UI_CAPTURE_LANGUAGE")
-                             : capture_language_override.c_str();
-  if (language) {
-    int capture_language = 0;
-    const auto [end, error] = std::from_chars(
-        language, language + std::strlen(language), capture_language);
-    if (error == std::errc{} && end == language + std::strlen(language)) {
-      localization_language_index_ =
-          localization::detail::ClampLanguageIndex(capture_language);
-      language_button_value_ = localization_language_index_;
-      localization_language_ =
-          static_cast<ConfigCenter::LANGUAGE>(localization_language_index_);
-    }
-  }
-#endif
   ui_->main->set_recent_connections(ui_->recent_model);
   ResetSettingsUi();
   BindMainCallbacks();
   InitializeSystemTray();
   UpdateLocalization();
-  if (ui_->capture_mode) {
-    const bool detected_update = update_available_;
-    update_available_ = false;
-    if (ui_->capture_page == "settings") {
-      ui_->main->set_settings_open(true);
-    } else if (ui_->capture_page == "self-hosted") {
-      ui_->main->set_settings_open(true);
-      ui_->main->set_self_host_settings_open(true);
-    } else if (ui_->capture_page == "about") {
-      update_available_ = detected_update;
-      ui_->main->set_update_open(false);
-      ui_->main->set_about_open(true);
-    } else if (ui_->capture_page == "update") {
-      update_available_ = detected_update;
-      ui_->main->set_update_open(true);
-    } else if (ui_->capture_page == "reset-password") {
-      ui_->main->set_reset_password_open(true);
-    } else if (ui_->capture_page == "reset-password-invalid") {
-      ui_->main->set_reset_password_open(true);
-      ui_->main->set_reset_password_invalid(true);
-      ui_->main->set_new_password_input("123");
-    } else if (ui_->capture_page == "alias") {
-      ui_->main->set_alias_input("Office workstation");
-      ui_->main->set_alias_open(true);
-    } else if (ui_->capture_page == "delete") {
-      ui_->main->set_delete_open(true);
-    } else if (ui_->capture_page == "offline") {
-      ui_->main->set_offline_warning(
-          UiText(localization::device_offline[localization_language_index_]));
-    } else if (ui_->capture_page == "connection") {
-      ui_->main->set_connection_status_text(
-          UiText(localization::p2p_connecting[localization_language_index_]));
-      ui_->main->set_connection_pending(true);
-      ui_->main->set_connection_dialog_open(true);
-    } else if (ui_->capture_page == "connection-password") {
-      ui_->main->set_connection_status_text(
-          UiText(localization::reinput_password[localization_language_index_]));
-      ui_->main->set_connection_password_required(true);
-      ui_->main->set_connection_dialog_open(true);
-    } else if (ui_->capture_page == "service") {
-      ui_->main->set_portable_service_dialog_open(true);
-    } else if (ui_->capture_page == "service-notice") {
-      ui_->main->set_portable_service_suppressed_notice_open(true);
-    }
-  }
   SyncMainWindow();
-
-  if (ui_->capture_mode && ui_->capture_page == "stream") {
-    ui_->stream.emplace(ui::StreamWindow::create());
-#if defined(__linux__)
-    (*ui_->stream)->set_custom_titlebar(use_xwayland_gui_);
-#endif
-    RegisterFontAwesome((*ui_->stream)->window());
-    ConfigureStreamVideoRenderer();
-    (*ui_->stream)->set_tabs(ui_->tab_model);
-    (*ui_->stream)->set_displays(ui_->display_model);
-    (*ui_->stream)->set_file_transfers(ui_->transfer_model);
-    (*ui_->stream)->set_stats_rows(ui_->stats_model);
-    ui::StreamTab preview_tab;
-    preview_tab.remote_id = "589173341";
-    preview_tab.title = "Mac";
-    preview_tab.connected = true;
-    ui_->tab_model->set_vector({preview_tab});
-    ui_->display_model->set_vector({slint::SharedString("Display 1")});
-    ui_->localized_language = -1;
-    UpdateLocalization();
-    (*ui_->stream)
-        ->set_status_text(
-            UiText(localization::p2p_connected[localization_language_index_]));
-#ifdef CROSSDESK_DEBUG
-    // A bordered 16:9 frame makes stream scaling/cropping regressions visible
-    // in the existing capture mode without requiring a live remote session.
-    constexpr int preview_width = 640;
-    constexpr int preview_height = 360;
-    slint::SharedPixelBuffer<slint::Rgb8Pixel> preview_pixels(preview_width,
-                                                              preview_height);
-    auto* preview_data = reinterpret_cast<uint8_t*>(preview_pixels.begin());
-    for (int y = 0; y < preview_height; ++y) {
-      for (int x = 0; x < preview_width; ++x) {
-        const bool border =
-            x < 8 || y < 8 || x >= preview_width - 8 || y >= preview_height - 8;
-        const size_t offset = (static_cast<size_t>(y) * preview_width + x) * 3;
-        preview_data[offset] =
-            border ? 240 : static_cast<uint8_t>(35 + 150 * x / preview_width);
-        preview_data[offset + 1] =
-            border ? 70 : static_cast<uint8_t>(35 + 150 * y / preview_height);
-        preview_data[offset + 2] = border ? 70 : 90;
-      }
-    }
-    (*ui_->stream)->set_frame(slint::Image(std::move(preview_pixels)));
-    (*ui_->stream)->set_has_frame(true);
-    (*ui_->stream)->set_status_text("");
-#endif
-    BindStreamCallbacks();
-    (*ui_->stream)->show();
-    PositionWindowAtCenter(
-        (*ui_->stream)->window(), ui_->main->window(),
-        kStreamWindowLogicalWidth,
-        StreamWindowLogicalHeight((*ui_->stream)->get_custom_titlebar()));
-    ui_->main->hide();
-  } else if (ui_->capture_mode && ui_->capture_page == "server") {
-    ui_->server.emplace(ui::ServerWindow::create());
-    RegisterFontAwesome((*ui_->server)->window());
-    (*ui_->server)->set_controllers(ui_->controller_model);
-    (*ui_->server)->set_controller_names(ui_->controller_name_model);
-    (*ui_->server)->set_language_index(localization_language_index_);
-    const float server_width =
-        ServerWindowLogicalWidth(localization_language_index_);
-    const float server_height = ServerWindowLogicalHeight(false);
-    (*ui_->server)
-        ->window()
-        .set_size(slint::LogicalSize(
-            slint::Size<float>{server_width, server_height}));
-    ui::ControllerEntry preview_controller;
-    preview_controller.remote_id = "589173341";
-    preview_controller.display_name = "Mac";
-    ui_->controller_model->set_vector({preview_controller});
-    ui_->controller_name_model->set_vector({slint::SharedString("Mac")});
-    (*ui_->server)
-        ->set_controller_label(
-            UiText(localization::controller[localization_language_index_]));
-    (*ui_->server)
-        ->set_connection_label(UiText(
-            localization::connection_status[localization_language_index_]));
-    (*ui_->server)
-        ->set_connection_status(
-            UiText(localization::p2p_connected[localization_language_index_]));
-    (*ui_->server)
-        ->set_file_transfer_label(
-            UiText(localization::file_transfer[localization_language_index_]));
-    (*ui_->server)
-        ->set_select_file_label(
-            UiText(localization::select_file[localization_language_index_]));
-    BindServerCallbacks();
-    (*ui_->server)->show();
-    PositionWindowAtBottomRight((*ui_->server)->window(), server_width,
-                                server_height);
-    ui_->main->hide();
-  }
 }
 
 void GuiApplication::InitializeSystemTray() {
@@ -1806,7 +1648,9 @@ void GuiApplication::BindStreamCallbacks() {
 #endif
     fullscreen_button_pressed_ = enter_fullscreen;
 
-#if !defined(__APPLE__)
+#if defined(__APPLE__)
+    video_frame_dirty_.store(true, std::memory_order_release);
+#else
     stream->set_fullscreen_enabled(enter_fullscreen);
     window.request_redraw();
     window.set_fullscreen(enter_fullscreen);
@@ -1900,10 +1744,6 @@ void GuiApplication::Tick() {
     } else if (event.type == SDL_EVENT_CLIPBOARD_UPDATE) {
       clipboard_.HandleLocalUpdate();
     }
-  }
-  if (ui_->capture_mode &&
-      (ui_->capture_page == "stream" || ui_->capture_page == "server")) {
-    return;
   }
   clipboard_.ApplyPendingRemoteText();
 #if defined(__linux__) && !defined(__APPLE__)
@@ -2073,147 +1913,10 @@ void GuiApplication::UpdateLocalization() {
   if (!ui_ || ui_->localized_language == language) {
     return;
   }
-  auto& strings = ui_->main->global<ui::UiStrings>();
-  strings.set_local_desktop(UiText(localization::local_desktop[language]));
-  strings.set_remote_desktop(UiText(localization::remote_desktop[language]));
-  strings.set_recent_connections(
-      UiText(localization::recent_connections[language]));
-  strings.set_local_id(UiText(localization::local_id[language]));
-  strings.set_device_name(UiText(localization::device_name[language]));
-  strings.set_remote_id(UiText(localization::remote_id[language]));
-  strings.set_online(UiText(localization::online[language]));
-  strings.set_offline(UiText(localization::offline[language]));
-  strings.set_password(UiText(localization::password[language]));
-  strings.set_copied(
-      UiText(localization::local_id_copied_to_clipboard[language]));
-  strings.set_connect(UiText(localization::connect[language]));
-  strings.set_settings(UiText(localization::settings[language]));
-  strings.set_about(UiText(localization::about[language]));
-  strings.set_ok(UiText(localization::ok[language]));
-  strings.set_cancel(UiText(localization::cancel[language]));
-  strings.set_new_password(UiText(localization::new_password[language]));
-  strings.set_invalid_password(
-      UiText(localization::max_password_len[language]));
-  strings.set_edit_alias(
-      UiText(localization::input_connection_alias[language]));
-  strings.set_delete_connection(
-      UiText(localization::delete_connection[language]));
-  strings.set_confirm_delete(
-      UiText(localization::confirm_delete_connection[language]));
-  strings.set_language(UiText(localization::language[language]));
-  strings.set_video_quality(UiText(localization::video_quality[language]));
-  strings.set_frame_rate(UiText(localization::video_frame_rate[language]));
-  strings.set_codec(UiText(localization::video_encode_format[language]));
-  strings.set_hardware_codec(
-      UiText(localization::enable_hardware_video_codec[language]));
-  strings.set_turn_relay(UiText(localization::enable_turn[language]));
-  strings.set_srtp(UiText(localization::enable_srtp[language]));
-  strings.set_self_hosted(
-      UiText(localization::self_hosted_server_config[language]));
-  strings.set_autostart(UiText(localization::enable_autostart[language]));
-  strings.set_daemon(UiText(localization::enable_daemon[language]));
-  strings.set_minimize_to_tray(
-      UiText(localization::minimize_to_tray[language]));
-  strings.set_file_save_path(
-      UiText(localization::file_transfer_save_path[language]));
-  strings.set_default_desktop(UiText(localization::default_desktop[language]));
-  strings.set_server_host(
-      UiText(localization::self_hosted_server_address[language]));
-  strings.set_server_port(
-      UiText(localization::self_hosted_server_port[language]));
-  strings.set_coturn_port(
-      UiText(localization::self_hosted_server_coturn_server_port[language]));
-  strings.set_version(UiText(localization::version[language]));
-  strings.set_signal_connected(
-      UiText(localization::signal_connected[language]));
-  strings.set_signal_disconnected(
-      UiText(localization::signal_disconnected[language]));
-  strings.set_tls_error(UiText(localization::signal_tls_cert_error[language]));
-  strings.set_update_available(
-      UiText(localization::new_version_available[language]));
-  strings.set_release_notes(UiText(localization::release_notes[language]));
-  strings.set_download(UiText(localization::update[language]));
-  strings.set_input_password(UiText(localization::input_password[language]));
-  strings.set_reinput_password(
-      UiText(localization::reinput_password[language]));
-  strings.set_remember_password(
-      UiText(localization::remember_password[language]));
-  strings.set_validate_password(
-      UiText(localization::validate_password[language]));
-  strings.set_request_permissions(
-      UiText(localization::request_permissions[language]));
-  strings.set_permission_required(
-      UiText(localization::permission_required_message[language]));
-  strings.set_screen_recording_permission(
-      UiText(localization::screen_recording_permission[language]));
-  strings.set_accessibility_permission(
-      UiText(localization::accessibility_permission[language]));
-  strings.set_service_setup_title(
-      UiText(localization::windows_service_setup_title[language]));
-  strings.set_service_setup_message(
-      UiText(localization::windows_service_setup_message[language]));
-  strings.set_service_settings_label(
-      UiText(localization::windows_service_settings_label[language]));
-  strings.set_install_service(
-      UiText(localization::install_windows_service[language]));
-  strings.set_service_installed(
-      UiText(localization::windows_service_installed[language]));
-  strings.set_do_not_remind(
-      UiText(localization::do_not_remind_again[language]));
-  strings.set_notification(UiText(localization::notification[language]));
-  strings.set_service_suppressed_message(UiText(
-      localization::windows_service_prompt_suppressed_message[language]));
-  strings.set_quality_low(UiText(localization::video_quality_low[language]));
-  strings.set_quality_medium(
-      UiText(localization::video_quality_medium[language]));
-  strings.set_quality_high(UiText(localization::video_quality_high[language]));
-  strings.set_codec_h264(UiText(localization::h264[language]));
-  strings.set_codec_av1(UiText(localization::av1[language]));
-  strings.set_self_hosted_settings(
-      UiText(localization::self_hosted_server_settings[language]));
-  strings.set_access_website(UiText(localization::access_website[language]));
-  strings.set_release_date_label(UiText(localization::release_date[language]));
-  strings.set_later(UiText(localization::cancel[language]));
-  const auto apply_stream_strings = [language](auto& stream_strings) {
-    stream_strings.set_select_display(
-        UiText(localization::select_display[language]));
-    stream_strings.set_send_shortcut(
-        UiText(localization::send_shortcut[language]));
-    stream_strings.set_control_mouse(
-        UiText(localization::control_mouse[language]));
-    stream_strings.set_release_mouse(
-        UiText(localization::release_mouse[language]));
-    stream_strings.set_audio(UiText(localization::audio_capture[language]));
-    stream_strings.set_mute(UiText(localization::mute[language]));
-    stream_strings.set_select_file(UiText(localization::select_file[language]));
-    stream_strings.set_show_stats(
-        UiText(localization::show_net_traffic_stats[language]));
-    stream_strings.set_hide_stats(
-        UiText(localization::hide_net_traffic_stats[language]));
-    stream_strings.set_fullscreen(UiText(localization::fullscreen[language]));
-    stream_strings.set_exit_fullscreen(
-        UiText(localization::exit_fullscreen[language]));
-    stream_strings.set_disconnect(UiText(localization::disconnect[language]));
-    stream_strings.set_file_transfer(
-        UiText(localization::file_transfer_progress[language]));
-    stream_strings.set_expand_control(
-        UiText(localization::expand_control_bar[language]));
-    stream_strings.set_collapse_control(
-        UiText(localization::collapse_control_bar[language]));
-    stream_strings.set_stats_in(UiText(localization::in[language]));
-    stream_strings.set_stats_out(UiText(localization::out[language]));
-    stream_strings.set_stats_loss_rate(
-        UiText(localization::loss_rate[language]));
-    stream_strings.set_stats_resolution(
-        UiText(localization::resolution[language]));
-    stream_strings.set_stats_connection_mode(
-        UiText(localization::connection_mode[language]));
-  };
-  auto& main_stream_strings = ui_->main->global<ui::StreamStrings>();
-  apply_stream_strings(main_stream_strings);
+  ui_localization::ApplyMainWindowStrings(ui_->main, language);
+  ui_localization::ApplyStreamWindowStrings(ui_->main, language);
   if (ui_->stream) {
-    auto& active_stream_strings = (*ui_->stream)->global<ui::StreamStrings>();
-    apply_stream_strings(active_stream_strings);
+    ui_localization::ApplyStreamWindowStrings(*ui_->stream, language);
   }
   ui_->localized_language = language;
 }
@@ -2306,13 +2009,6 @@ void GuiApplication::SyncMainWindow() {
 }
 
 void GuiApplication::SyncConnectionDialog() {
-#ifdef CROSSDESK_DEBUG
-  if (ui_ && ui_->capture_mode &&
-      (ui_->capture_page == "connection" ||
-       ui_->capture_page == "connection-password")) {
-    return;
-  }
-#endif
   if (!ui_ || !show_connection_status_window_) {
     if (ui_) {
       ui_->main->set_connection_dialog_open(false);
@@ -2362,13 +2058,6 @@ void GuiApplication::SyncConnectionDialog() {
 }
 
 void GuiApplication::SyncPlatformDialogs() {
-#ifdef CROSSDESK_DEBUG
-  if (ui_ && ui_->capture_mode &&
-      (ui_->capture_page == "service" ||
-       ui_->capture_page == "service-notice")) {
-    return;
-  }
-#endif
 #if _WIN32 && CROSSDESK_PORTABLE
   CheckPortableWindowsService();
   const PortableServiceInstallState state =
@@ -2414,13 +2103,6 @@ void GuiApplication::SyncPlatformDialogs() {
   ui_->main->set_portable_service_suppressed_notice_open(false);
 #endif
 #ifdef __APPLE__
-  if (ui_->capture_mode) {
-    const bool show_permission = ui_->capture_page == "permission";
-    ui_->main->set_permission_dialog_open(show_permission);
-    ui_->main->set_screen_recording_granted(!show_permission);
-    ui_->main->set_accessibility_granted(!show_permission);
-    return;
-  }
   RefreshMacPermissionStatus(false);
   show_request_permission_window_ = !mac_screen_recording_permission_granted_ ||
                                     !mac_accessibility_permission_granted_;
@@ -2505,6 +2187,9 @@ void GuiApplication::SyncStreamKeyboardFocus() {
 }
 
 void GuiApplication::SyncStreamWindow() {
+#if defined(__APPLE__)
+  bool stream_window_created_this_sync = false;
+#endif
   bool has_sessions = false;
   {
     std::shared_lock lock(remote_sessions_mutex_);
@@ -2516,7 +2201,15 @@ void GuiApplication::SyncStreamWindow() {
     (*ui_->stream)->set_custom_titlebar(use_xwayland_gui_);
 #endif
     RegisterFontAwesome((*ui_->stream)->window());
+#if defined(__APPLE__)
+    // Commit the first visible AppKit window as an ordinary opaque window.
+    // The process-wide Slint event loop is already running here, so
+    // appkit_view() may exist before show(); that does not mean the native
+    // titlebar style has been committed yet.
+    (*ui_->stream)->set_native_video_enabled(false);
+#else
     ConfigureStreamVideoRenderer();
+#endif
     // Slint globals belong to a component tree. Force the next localization
     // pass to initialize the newly-created, independent stream window tree.
     ui_->localized_language = -1;
@@ -2526,11 +2219,15 @@ void GuiApplication::SyncStreamWindow() {
     (*ui_->stream)->set_stats_rows(ui_->stats_model);
     BindStreamCallbacks();
     (*ui_->stream)->show();
+#if defined(__APPLE__)
+    stream_window_created_this_sync = true;
+#endif
     // Repeat after the next layout pass because the backend resolves the
     // initial DPI and preferred size asynchronously on some platforms.
     ui_->stream_initial_position_attempts = 2;
 #if defined(__APPLE__)
     ui_->stream_live_resize_configuration_attempts = 30;
+    ui_->stream_video_attachment_attempts = kMetalAttachmentAttemptLimit;
 #endif
     stream_window_created_ = true;
     stream_window_inited_ = true;
@@ -2543,10 +2240,28 @@ void GuiApplication::SyncStreamWindow() {
   (*ui_->stream)->set_srtp_enabled(enable_srtp_);
 #if defined(__APPLE__)
   if (ui_->stream_live_resize_configuration_attempts > 0) {
-    if (ConfigureStreamWindowLiveResize()) {
+    if (ConfigureStreamWindowLiveResize(
+            (*ui_->stream)->window().appkit_view())) {
       ui_->stream_live_resize_configuration_attempts = 0;
     } else {
       --ui_->stream_live_resize_configuration_attempts;
+    }
+  }
+  if (ui_->stream_video_attachment_attempts > 0 &&
+      !stream_window_created_this_sync) {
+    ConfigureStreamVideoRenderer();
+    const bool metal_unavailable =
+        !mac_metal_video_renderer_ || !mac_metal_video_renderer_->IsReady();
+    const bool metal_attached =
+        mac_metal_video_renderer_ && mac_metal_video_renderer_->IsAttached();
+    if (metal_unavailable) {
+      ui_->stream_video_attachment_attempts = 0;
+    } else if (metal_attached) {
+      video_frame_dirty_.store(true, std::memory_order_release);
+      ui_->stream_video_attachment_attempts = 0;
+    } else if (--ui_->stream_video_attachment_attempts == 0) {
+      (*ui_->stream)->set_native_video_enabled(false);
+      LOG_WARN("Unable to attach the Metal video surface; using CPU rendering");
     }
   }
 #endif
@@ -2563,7 +2278,13 @@ void GuiApplication::SyncStreamWindow() {
   if (!has_sessions) {
     SetStreamKeyboardFocus(false);
 #if defined(__APPLE__)
+    void* stream_view = (*ui_->stream)->window().appkit_view();
     SetStreamWindowFullscreen(false);
+    UnregisterStreamWindow(stream_view);
+    if (mac_metal_video_renderer_) {
+      mac_metal_video_renderer_->SetSelectedStream({});
+      mac_metal_video_renderer_->Detach();
+    }
 #endif
     (*ui_->stream)->hide();
     ui_->stream.reset();
@@ -2571,6 +2292,9 @@ void GuiApplication::SyncStreamWindow() {
     stream_window_inited_ = false;
     ui_->stream_initial_position_attempts = 0;
     ui_->stream_live_resize_configuration_attempts = 0;
+#if defined(__APPLE__)
+    ui_->stream_video_attachment_attempts = 0;
+#endif
     focused_remote_id_.clear();
     controlled_remote_id_.clear();
     ui_->tab_order.clear();
@@ -2620,6 +2344,10 @@ void GuiApplication::SyncStreamWindow() {
   if (ui_->tab_model_signature != tab_signature) {
     ui_->tab_model_signature = tab_signature;
     ui_->tab_model->set_vector(std::move(tabs));
+#if defined(__APPLE__)
+    // Adding or removing a tab changes the native video's top inset.
+    video_frame_dirty_.store(true, std::memory_order_release);
+#endif
   }
 
   int selected_index = 0;
@@ -2640,6 +2368,9 @@ void GuiApplication::SyncStreamWindow() {
     return;
   }
   const ConnectionStatus status = props->connection_status_.load();
+  const bool waiting_for_frame =
+      status == ConnectionStatus::Connected &&
+      !(*ui_->stream)->get_has_frame();
   // Once the peer is connected, the frame-waiting hint replaces the
   // connection status. Keeping these states mutually exclusive also avoids a
   // transient overlap when both properties are synchronized in one tick.
@@ -2650,7 +2381,7 @@ void GuiApplication::SyncStreamWindow() {
               : ConnectionStatusText(status, localization_language_index_)));
   (*ui_->stream)
       ->set_receiving_text(UiText(
-          status == ConnectionStatus::Connected
+          waiting_for_frame
               ? localization::receiving_screen[localization_language_index_]
               : std::string{}));
   (*ui_->stream)->set_mouse_control_enabled(props->control_mouse_);
@@ -2788,6 +2519,51 @@ void GuiApplication::SyncStreamVideoFrame() {
     return;
   }
 
+#if defined(__APPLE__)
+  if (mac_metal_video_renderer_ && mac_metal_video_renderer_->IsReady() &&
+      mac_metal_video_renderer_->IsAttached()) {
+    const double top_inset =
+        !fullscreen_button_pressed_ && ui_->tab_ids.size() > 1 ? 30.0 : 0.0;
+    const auto render_outcome = mac_metal_video_renderer_->RenderLatest(
+        props->remote_id_, top_inset, !fullscreen_button_pressed_);
+    if (render_outcome.result ==
+        MacMetalVideoRenderer::RenderResult::rendered) {
+      if (!(*ui_->stream)->get_has_frame()) {
+        (*ui_->stream)->set_has_frame(true);
+      }
+      if (!(*ui_->stream)->get_receiving_text().empty()) {
+        (*ui_->stream)->set_receiving_text("");
+      }
+      if (render_outcome.width > 0 && render_outcome.height > 0 &&
+          render_outcome.sequence > 0) {
+        (*ui_->stream)
+            ->set_stats_resolution(
+                UiText(std::to_string(render_outcome.width) + "x" +
+                       std::to_string(render_outcome.height)));
+        if (ui_->displayed_frame_sequence[props->remote_id_] !=
+            render_outcome.sequence) {
+          ui_->displayed_frame_sequence[props->remote_id_] =
+              render_outcome.sequence;
+          ++props->frame_count_;
+        }
+      }
+      return;
+    }
+    if (render_outcome.result == MacMetalVideoRenderer::RenderResult::empty) {
+      if ((*ui_->stream)->get_has_frame()) {
+        (*ui_->stream)->set_has_frame(false);
+      }
+      return;
+    }
+    if (render_outcome.result == MacMetalVideoRenderer::RenderResult::idle) {
+      return;
+    }
+    // A transient Metal error must not change renderer ownership mid-window.
+    // Keep the last frame and retry on the next UI tick.
+    return;
+  }
+#endif
+
   std::shared_ptr<std::vector<unsigned char>> frame;
   int width = 0;
   int height = 0;
@@ -2839,6 +2615,7 @@ void GuiApplication::SyncStreamVideoFrame() {
     }
   }
 
+#if !defined(__APPLE__)
   uint32_t texture_id = 0;
   {
     std::lock_guard lock(ui_->video_gl_mutex);
@@ -2879,6 +2656,7 @@ void GuiApplication::SyncStreamVideoFrame() {
     ++props->frame_count_;
     return;
   }
+#endif
 
   slint::SharedPixelBuffer<slint::Rgb8Pixel> pixels(output_width,
                                                     output_height);
@@ -2897,6 +2675,41 @@ void GuiApplication::SyncStreamVideoFrame() {
 }
 
 void GuiApplication::ConfigureStreamVideoRenderer() {
+#if defined(__APPLE__)
+  if (!ui_ || !ui_->stream) {
+    return;
+  }
+  const bool native_video_enabled =
+      mac_metal_video_renderer_ && mac_metal_video_renderer_->IsReady();
+  if (!native_video_enabled) {
+    (*ui_->stream)->set_native_video_enabled(false);
+    return;
+  }
+  if (void* view = (*ui_->stream)->window().appkit_view()) {
+    // Slint applies transparency through a property binding. Set it before
+    // restoring the AppKit titlebar so the later operation wins regardless of
+    // whether the backend commits the binding synchronously or next tick.
+    (*ui_->stream)->set_native_video_enabled(true);
+    if (!mac_metal_video_renderer_->Attach(view)) {
+      (*ui_->stream)->set_native_video_enabled(false);
+    } else if (auto selected_session = SelectedSession()) {
+      // Metal owns a separate monotonic sequence, so discard a CPU-renderer
+      // sequence recorded during the short window-attachment gap.
+      ui_->displayed_frame_sequence.erase(selected_session->remote_id_);
+      if (mac_metal_video_renderer_->SetSelectedStream(
+              selected_session->remote_id_)) {
+        video_frame_dirty_.store(true, std::memory_order_release);
+      }
+      SubmitCachedFrameToMetal(selected_session);
+    }
+  } else {
+    // Keep the initial window opaque until winit has created its native
+    // NSWindow. Creating it transparent opts into a full-size titlebar whose
+    // title field sits underneath the standard traffic-light buttons.
+    (*ui_->stream)->set_native_video_enabled(false);
+  }
+  return;
+#else
   if (!ui_ || !ui_->stream) {
     return;
   }
@@ -2971,7 +2784,44 @@ void GuiApplication::ConfigureStreamVideoRenderer() {
   if (error.has_value()) {
     LOG_WARN("Slint OpenGL video renderer unavailable, using pixel buffers");
   }
+#endif
 }
+
+#if defined(__APPLE__)
+void GuiApplication::SubmitCachedFrameToMetal(
+    const std::shared_ptr<RemoteSession>& session) {
+  if (!session || !mac_metal_video_renderer_ ||
+      !mac_metal_video_renderer_->IsReady() ||
+      session->connection_status_.load() != ConnectionStatus::Connected) {
+    return;
+  }
+
+  std::shared_ptr<std::vector<unsigned char>> cached_frame;
+  int cached_width = 0;
+  int cached_height = 0;
+  {
+    std::lock_guard lock(session->video_frame_mutex_);
+    if (session->front_frame_ && !session->front_frame_->empty()) {
+      cached_frame = session->front_frame_;
+      cached_width = session->video_width_;
+      cached_height = session->video_height_;
+    } else if (session->thumbnail_frame_ &&
+               !session->thumbnail_frame_->empty()) {
+      cached_frame = session->thumbnail_frame_;
+      cached_width = session->thumbnail_width_;
+      cached_height = session->thumbnail_height_;
+    }
+  }
+
+  if (cached_frame && cached_width > 0 && cached_height > 0 &&
+      mac_metal_video_renderer_->SubmitCachedNv12(
+          session->remote_id_, cached_frame->data(), cached_frame->size(),
+          cached_width, cached_height) ==
+          MacMetalVideoRenderer::SubmitResult::submitted) {
+    video_frame_dirty_.store(true, std::memory_order_release);
+  }
+}
+#endif
 
 void GuiApplication::ScheduleNextVideoFrame() {
   if (!ui_) {
@@ -2986,9 +2836,21 @@ void GuiApplication::ScheduleNextVideoFrame() {
   }
 
   if (now >= next_video_frame_time_) {
-    if (video_frame_dirty_.exchange(false, std::memory_order_acq_rel)) {
+    const bool frame_dirty =
+        video_frame_dirty_.exchange(false, std::memory_order_acq_rel);
+#if defined(__APPLE__)
+    const bool native_render_needed =
+        mac_metal_video_renderer_ && mac_metal_video_renderer_->IsReady() &&
+        mac_metal_video_renderer_->IsAttached() && ui_->stream &&
+        mac_metal_video_renderer_->NeedsSurfaceRedraw();
+    if (frame_dirty || native_render_needed) {
       SyncStreamVideoFrame();
     }
+#else
+    if (frame_dirty) {
+      SyncStreamVideoFrame();
+    }
+#endif
     do {
       next_video_frame_time_ += frame_interval;
     } while (next_video_frame_time_ <= now);
@@ -3262,24 +3124,50 @@ void GuiApplication::SelectStreamTab(int index) {
     return;
   }
   const std::string selected_remote_id = ui_->tab_ids[index];
+#if defined(__APPLE__)
+  const bool selection_changed = focused_remote_id_ != selected_remote_id;
+  bool renderer_selection_changed = false;
+#endif
   if (!controlled_remote_id_.empty() &&
       controlled_remote_id_ != selected_remote_id) {
     keyboard_.ForceReleasePressedKeys();
   }
   focused_remote_id_ = selected_remote_id;
   controlled_remote_id_ = selected_remote_id;
-  std::shared_lock lock(remote_sessions_mutex_);
-  for (auto& [id, props] : remote_sessions_) {
-    if (props) {
-      props->tab_selected_ = id == focused_remote_id_;
-    }
+#if defined(__APPLE__)
+  if (mac_metal_video_renderer_) {
+    renderer_selection_changed =
+        mac_metal_video_renderer_->SetSelectedStream(selected_remote_id);
   }
-  const auto selected = remote_sessions_.find(selected_remote_id);
-  start_keyboard_capturer_ = selected != remote_sessions_.end() &&
-                             selected->second &&
-                             selected->second->control_mouse_ &&
-                             selected->second->connection_status_.load() ==
-                                 ConnectionStatus::Connected;
+  if (renderer_selection_changed) {
+    video_frame_dirty_.store(true, std::memory_order_release);
+  }
+  if (selection_changed && ui_->stream) {
+    (*ui_->stream)->set_has_frame(false);
+  }
+#endif
+  std::shared_ptr<RemoteSession> selected_session;
+  {
+    std::shared_lock lock(remote_sessions_mutex_);
+    for (auto& [id, props] : remote_sessions_) {
+      if (props) {
+        props->tab_selected_ = id == focused_remote_id_;
+      }
+    }
+    const auto selected = remote_sessions_.find(selected_remote_id);
+    if (selected != remote_sessions_.end()) {
+      selected_session = selected->second;
+    }
+    start_keyboard_capturer_ =
+        selected_session && selected_session->control_mouse_ &&
+        selected_session->connection_status_.load() ==
+            ConnectionStatus::Connected;
+  }
+#if defined(__APPLE__)
+  if (renderer_selection_changed) {
+    SubmitCachedFrameToMetal(selected_session);
+  }
+#endif
 }
 
 void GuiApplication::ReorderStreamTab(int from, float drop_x, float tab_width) {
@@ -3327,6 +3215,12 @@ void GuiApplication::CloseStreamTab(const std::string& remote_id) {
   if (focused_remote_id_ == remote_id) {
     focused_remote_id_.clear();
     controlled_remote_id_.clear();
+#if defined(__APPLE__)
+    if (mac_metal_video_renderer_ &&
+        mac_metal_video_renderer_->SetSelectedStream({})) {
+      video_frame_dirty_.store(true, std::memory_order_release);
+    }
+#endif
   }
 }
 
@@ -3520,6 +3414,15 @@ void GuiApplication::Cleanup() {
   WaitForThumbnailSaveTasks();
   devices_.DestroyAudioOutput();
   if (ui_->stream) {
+#if defined(__APPLE__)
+    void* stream_view = (*ui_->stream)->window().appkit_view();
+    SetStreamWindowFullscreen(false);
+    UnregisterStreamWindow(stream_view);
+    if (mac_metal_video_renderer_) {
+      mac_metal_video_renderer_->SetSelectedStream({});
+      mac_metal_video_renderer_->Detach();
+    }
+#endif
     (*ui_->stream)->hide();
     ui_->stream.reset();
   }

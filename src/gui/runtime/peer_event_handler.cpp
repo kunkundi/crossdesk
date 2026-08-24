@@ -10,11 +10,15 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "device_controller.h"
 #include "file_transfer.h"
 #include "localization.h"
 #include "platform.h"
+#ifdef __APPLE__
+#include "platform/metal_video_renderer.h"
+#endif
 #include "rd_log.h"
 #include "runtime/gui_runtime.h"
 #include "runtime/remote_action_codec.h"
@@ -312,16 +316,50 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         props->enable_mouse_control_ = false;
         runtime->ResetRemoteServiceStatus(*props);
 
+#ifdef __APPLE__
+        std::shared_ptr<std::vector<unsigned char>> metal_snapshot;
+        int metal_snapshot_width = 0;
+        int metal_snapshot_height = 0;
+        bool needs_metal_snapshot = false;
+        {
+          std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
+          needs_metal_snapshot = !props->thumbnail_frame_ ||
+                                 props->thumbnail_frame_->empty();
+        }
+        if (needs_metal_snapshot && runtime->mac_metal_video_renderer_) {
+          auto snapshot = std::make_shared<std::vector<unsigned char>>();
+          if (runtime->mac_metal_video_renderer_->CopyLatestNv12(
+                  remote_id, snapshot.get(), &metal_snapshot_width,
+                  &metal_snapshot_height)) {
+            metal_snapshot = std::move(snapshot);
+          }
+        }
+#endif
         {
           std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
           props->front_frame_.reset();
           props->back_frame_.reset();
+#ifdef __APPLE__
+          if (metal_snapshot &&
+              (!props->thumbnail_frame_ || props->thumbnail_frame_->empty())) {
+            props->thumbnail_frame_ = std::move(metal_snapshot);
+            props->thumbnail_width_ = metal_snapshot_width;
+            props->thumbnail_height_ = metal_snapshot_height;
+          }
+#endif
           props->video_width_ = 0;
           props->video_height_ = 0;
           props->video_size_ = 0;
           props->render_rect_dirty_ = true;
           props->stream_cleanup_pending_ = true;
         }
+#ifdef __APPLE__
+        if (runtime->mac_metal_video_renderer_) {
+          runtime->mac_metal_video_renderer_->DiscardStream(remote_id);
+          runtime->video_frame_dirty_.store(true,
+                                            std::memory_order_release);
+        }
+#endif
 
         runtime->focus_on_stream_window_ = false;
 

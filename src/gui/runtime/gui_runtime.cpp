@@ -12,6 +12,9 @@
 
 #include "display_stream_id.h"
 #include "localization.h"
+#ifdef __APPLE__
+#include "platform/metal_video_renderer.h"
+#endif
 #include "rd_log.h"
 
 namespace crossdesk {

@@ -32,6 +32,7 @@ package("slint")
                 break
             end
         end
+        local use_macos_metal = package:is_plat("macosx")
         local configs = {
             "-DSLINT_BUILD_TESTING=OFF",
             "-DSLINT_BUILD_EXAMPLES=OFF",
@@ -41,10 +42,11 @@ package("slint")
             "-DSLINT_FEATURE_SYSTEM_TESTING=OFF",
             "-DSLINT_FEATURE_MCP=OFF",
             "-DSLINT_FEATURE_BACKEND_QT=OFF",
-            "-DSLINT_FEATURE_RENDERER_SKIA=OFF",
+            "-DSLINT_FEATURE_RENDERER_SKIA=" .. (use_macos_metal and "ON" or "OFF"),
             "-DSLINT_FEATURE_RENDERER_SKIA_OPENGL=OFF",
             "-DSLINT_FEATURE_RENDERER_SKIA_VULKAN=OFF",
-            "-DSLINT_FEATURE_RENDERER_FEMTOVG=ON",
+            "-DSLINT_FEATURE_RENDERER_FEMTOVG=" .. (use_macos_metal and "OFF" or "ON"),
+            "-DSLINT_FEATURE_RENDERER_FEMTOVG_WGPU=OFF",
             "-DSLINT_FEATURE_RENDERER_SOFTWARE=ON",
             "-DSLINT_STYLE=fluent",
             "-DBUILD_SHARED_LIBS=ON"

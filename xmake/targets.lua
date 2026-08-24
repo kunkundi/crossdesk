@@ -112,7 +112,8 @@ function setup_targets()
             add_cxxflags("/bigobj")
         end
         add_packages("slint")
-        add_includedirs("src/gui/assets/fonts")
+        add_includedirs("src/gui", "src/gui/assets/fonts",
+            "src/gui/assets/localization")
         add_rules("slint")
         add_files("src/gui/ui/crossdesk_ui.slint")
         add_files("tests/slint_ui_smoke_test.cpp")
@@ -280,7 +281,8 @@ function setup_targets()
             add_includedirs("src/service/windows", {public = true})
         elseif is_os("macosx") then
             add_files("src/gui/runtime/*.mm", "src/gui/platform/tray/*.mm",
-                "src/gui/platform/window_drag_mac.mm")
+                "src/gui/platform/window_drag_mac.mm",
+                "src/gui/platform/metal_video_renderer.mm")
         elseif is_os("linux") then
             add_links("GL")
             add_files("src/gui/platform/tray/linux_tray.cpp")

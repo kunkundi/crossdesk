@@ -11,6 +11,9 @@
 #include "display_stream_id.h"
 #include "localization.h"
 #include "platform.h"
+#ifdef __APPLE__
+#include "platform/metal_video_renderer.h"
+#endif
 #include "rd_log.h"
 #include "runtime/gui_runtime.h"
 
@@ -223,7 +226,27 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
     frame_snapshot = props->front_frame_;
     video_width = props->video_width_;
     video_height = props->video_height_;
+#ifdef __APPLE__
+    if ((!frame_snapshot || frame_snapshot->empty()) &&
+        props->thumbnail_frame_ && !props->thumbnail_frame_->empty()) {
+      frame_snapshot = props->thumbnail_frame_;
+      video_width = props->thumbnail_width_;
+      video_height = props->thumbnail_height_;
+    }
+#endif
   }
+#ifdef __APPLE__
+  if ((!frame_snapshot || frame_snapshot->empty()) &&
+      mac_metal_video_renderer_) {
+    auto metal_snapshot =
+        std::make_shared<std::vector<unsigned char>>();
+    if (mac_metal_video_renderer_->CopyLatestNv12(
+            props->remote_id_, metal_snapshot.get(), &video_width,
+            &video_height)) {
+      frame_snapshot = std::move(metal_snapshot);
+    }
+  }
+#endif
 
   if (frame_snapshot && !frame_snapshot->empty() && video_width > 0 &&
       video_height > 0) {
@@ -246,6 +269,13 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
       thumbnail_save_threads_.emplace_back(std::move(save_thread));
     }
   }
+
+#ifdef __APPLE__
+  if (mac_metal_video_renderer_) {
+    mac_metal_video_renderer_->DiscardStream(props->remote_id_);
+    video_frame_dirty_.store(true, std::memory_order_release);
+  }
+#endif
 
   if (props->peer_) {
     LOG_INFO("[{}] Leave connection [{}]", props->local_id_, props->remote_id_);
@@ -307,6 +337,12 @@ void GuiRuntime::ResetRemoteSessionResources(
     std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
     props->front_frame_.reset();
     props->back_frame_.reset();
+#ifdef __APPLE__
+    props->thumbnail_frame_.reset();
+    props->thumbnail_width_ = 0;
+    props->thumbnail_height_ = 0;
+    props->background_snapshot_time_ = {};
+#endif
     props->video_width_ = 0;
     props->video_height_ = 0;
     props->video_size_ = 0;

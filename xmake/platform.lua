@@ -84,8 +84,8 @@ function setup_platform_settings()
             add_ldflags("-Wl,-ld_classic")
         end
         add_cxflags("-Wno-unused-variable")
-        add_frameworks("Cocoa", "OpenGL", "IOSurface", "ScreenCaptureKit",
-            "AVFoundation", "CoreMedia", "CoreVideo", "CoreAudio",
-            "AudioToolbox")
+        add_frameworks("Cocoa", "Metal", "QuartzCore", "IOSurface",
+            "ScreenCaptureKit", "AVFoundation", "CoreMedia", "CoreVideo",
+            "CoreAudio", "AudioToolbox")
     end
 end

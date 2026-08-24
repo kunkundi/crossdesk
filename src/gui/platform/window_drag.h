@@ -14,7 +14,14 @@ bool HideDisabledMainWindowZoomButton();
 
 // Configures live resize and replaces the stream window's native Space
 // fullscreen action with an immediate, single-window fullscreen transition.
-bool ConfigureStreamWindowLiveResize();
+// |slint_view| is the current stream window's AppKit NSView*. Passing the
+// identity explicitly prevents a closing window with the same title from
+// being selected during a later connection.
+bool ConfigureStreamWindowLiveResize(void* slint_view);
+
+// Drops the native stream-window reference if it belongs to |slint_view|.
+// This must run before the corresponding Slint component is destroyed.
+void UnregisterStreamWindow(void* slint_view);
 
 // Returns whether the configured stream window is currently the active AppKit
 // key window.

@@ -17,7 +17,8 @@
 namespace crossdesk {
 namespace {
 
-NSWindow *stream_window = nil;
+__weak NSWindow *stream_window = nil;
+__weak NSView *stream_slint_view = nil;
 CrossDeskStreamFullscreenTarget *stream_fullscreen_target = nil;
 bool stream_fullscreen = false;
 NSRect stream_restore_frame = NSZeroRect;
@@ -101,48 +102,63 @@ bool HideDisabledMainWindowZoomButton() {
   }
 }
 
-bool ConfigureStreamWindowLiveResize() {
+bool ConfigureStreamWindowLiveResize(void *opaque_slint_view) {
   @autoreleasepool {
-    for (NSWindow *window in [NSApp windows]) {
-      if (![window.title isEqualToString:@"CrossDesk"]) {
-        continue;
-      }
-
-      NSButton *zoom_button =
-          [window standardWindowButton:NSWindowZoomButton];
-      // The stream window is resizable and therefore keeps an enabled native
-      // zoom button. The fixed-size main window's zoom button is disabled.
-      if (zoom_button == nil || !zoom_button.enabled) {
-        continue;
-      }
-
-      NSView *content_view = window.contentView;
-      if (content_view == nil) {
-        return false;
-      }
-
-      // During an ordinary edge resize, scale one cached frame and redraw once
-      // the new window size has settled.
-      window.preservesContentDuringLiveResize = YES;
-      content_view.layerContentsRedrawPolicy =
-          NSViewLayerContentsRedrawBeforeViewResize;
-      content_view.layerContentsPlacement =
-          NSViewLayerContentsPlacementScaleProportionallyToFit;
-      stream_window = window;
-      // Native Space fullscreen cross-fades an AppKit source snapshot over a
-      // separately rendered destination window. Disable that path for the
-      // stream window and route the green button to the immediate transition.
-      window.collectionBehavior =
-          (window.collectionBehavior &
-           ~(NSWindowCollectionBehaviorFullScreenPrimary |
-             NSWindowCollectionBehaviorFullScreenAuxiliary |
-             NSWindowCollectionBehaviorFullScreenAllowsTiling)) |
-          NSWindowCollectionBehaviorFullScreenNone;
-      InstallStreamFullscreenButton(window);
-      content_view.needsDisplay = YES;
-      return true;
+    NSView *slint_view = (__bridge NSView *)opaque_slint_view;
+    NSWindow *window = slint_view.window;
+    if (window == nil) {
+      return false;
     }
-    return false;
+
+    NSButton *zoom_button =
+        [window standardWindowButton:NSWindowZoomButton];
+    NSView *content_view = window.contentView;
+    if (zoom_button == nil || !zoom_button.enabled || content_view == nil) {
+      return false;
+    }
+
+    // During an ordinary edge resize, scale one cached frame and redraw once
+    // the new window size has settled.
+    window.preservesContentDuringLiveResize = YES;
+    content_view.layerContentsRedrawPolicy =
+        NSViewLayerContentsRedrawBeforeViewResize;
+    content_view.layerContentsPlacement =
+        NSViewLayerContentsPlacementScaleProportionallyToFit;
+    stream_window = window;
+    stream_slint_view = slint_view;
+    // Native Space fullscreen cross-fades an AppKit source snapshot over a
+    // separately rendered destination window. Disable that path for the
+    // stream window and route the green button to the immediate transition.
+    window.collectionBehavior =
+        (window.collectionBehavior &
+         ~(NSWindowCollectionBehaviorFullScreenPrimary |
+           NSWindowCollectionBehaviorFullScreenAuxiliary |
+           NSWindowCollectionBehaviorFullScreenAllowsTiling)) |
+        NSWindowCollectionBehaviorFullScreenNone;
+    InstallStreamFullscreenButton(window);
+    content_view.needsDisplay = YES;
+    return true;
+  }
+}
+
+void UnregisterStreamWindow(void *opaque_slint_view) {
+  @autoreleasepool {
+    NSView *slint_view = (__bridge NSView *)opaque_slint_view;
+    if (slint_view == nil || slint_view != stream_slint_view) {
+      return;
+    }
+    stream_window = nil;
+    stream_slint_view = nil;
+    stream_fullscreen = false;
+    stream_restore_frame = NSZeroRect;
+    stream_restore_style_mask = NSWindowStyleMaskTitled;
+    stream_restore_title_visibility = NSWindowTitleVisible;
+    stream_restore_titlebar_transparent = NO;
+    stream_restore_movable = YES;
+    stream_restore_close_hidden = NO;
+    stream_restore_miniaturize_hidden = NO;
+    stream_restore_zoom_hidden = NO;
+    stream_restore_presentation_options = NSApplicationPresentationDefault;
   }
 }
 
