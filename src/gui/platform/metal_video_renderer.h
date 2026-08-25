@@ -8,6 +8,8 @@
 #include <string_view>
 #include <vector>
 
+#include "platform/video_renderer.h"
+
 namespace crossdesk {
 
 // macOS video compositor used by CrossDesk only. MiniRTC continues to expose
@@ -15,51 +17,31 @@ namespace crossdesk {
 // copy into shared Metal buffers and converts NV12 to RGB in the fragment
 // shader. AppKit attachment and rendering are main-thread operations, while
 // SubmitNv12() is safe to call from MiniRTC's decode callback thread.
-class MacMetalVideoRenderer {
+class MacMetalVideoRenderer final : public VideoRenderer {
  public:
-  enum class SubmitResult {
-    submitted,
-    not_selected,
-    dropped,
-    failed,
-  };
-
-  enum class RenderResult {
-    rendered,
-    idle,
-    empty,
-    failed,
-  };
-
-  struct RenderOutcome {
-    RenderResult result = RenderResult::failed;
-    int width = 0;
-    int height = 0;
-    uint64_t sequence = 0;
-  };
-
   MacMetalVideoRenderer();
-  ~MacMetalVideoRenderer();
+  ~MacMetalVideoRenderer() override;
 
   MacMetalVideoRenderer(const MacMetalVideoRenderer&) = delete;
   MacMetalVideoRenderer& operator=(const MacMetalVideoRenderer&) = delete;
 
-  bool IsReady() const;
+  bool IsReady() const override;
+  bool IsActive() const override;
 
   // The selected stream is the only stream uploaded. Frames for background
   // tabs are intentionally dropped to avoid wasting memory bandwidth.
-  bool SetSelectedStream(std::string remote_id);
-  void DiscardStream(std::string_view remote_id);
+  bool SetSelectedStream(std::string remote_id) override;
+  void DiscardStream(std::string_view remote_id) override;
 
   // Copies one tightly packed NV12 frame into a free shared Metal slot.
   SubmitResult SubmitNv12(std::string_view remote_id, const uint8_t* data,
-                          size_t size, int width, int height);
+                          size_t size, int width, int height) override;
 
   // Seeds a newly selected stream from its retained CPU snapshot without
   // replacing a newer decoded frame that is already queued or rendering.
   SubmitResult SubmitCachedNv12(std::string_view remote_id,
                                 const uint8_t* data, size_t size, int width,
-                                int height);
+                                int height) override;
 
   // Attaches a native CAMetalLayer-backed sibling below Slint's NSView and
   // restores the containing AppKit window's ordinary opaque titlebar.
@@ -84,7 +66,7 @@ class MacMetalVideoRenderer {
   // a second per-frame CPU copy during normal playback.
   bool CopyLatestNv12(std::string_view remote_id,
                       std::vector<unsigned char>* output, int* width,
-                      int* height) const;
+                      int* height) const override;
 
  private:
   SubmitResult SubmitNv12Internal(std::string_view remote_id,

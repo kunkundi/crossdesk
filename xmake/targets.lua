@@ -270,6 +270,7 @@ function setup_targets()
             "device_controller", "thumbnail", "version_checker", "tools")
         add_files("src/gui/render.cpp", "src/gui/application/gui_application.cpp",
             "src/gui/application/portable_service_integration.cpp",
+            "src/gui/rendering/*.cpp",
             "src/gui/runtime/*.cpp",
             "src/gui/features/devices/*.cpp", "src/gui/features/input/*.cpp",
             "src/gui/features/clipboard/*.cpp", "src/gui/features/file_transfer/*.cpp",
@@ -279,16 +280,19 @@ function setup_targets()
             add_cxxflags("/bigobj")
             add_links("opengl32")
             add_files("src/gui/platform/tray/win_tray.cpp",
-                "src/gui/platform/opengl_video_renderer.cpp")
+                "src/gui/platform/opengl_video_renderer.cpp",
+                "src/gui/platform/video_renderer_factory_opengl.cpp")
             add_includedirs("src/service/windows", {public = true})
         elseif is_os("macosx") then
             add_files("src/gui/runtime/*.mm", "src/gui/platform/tray/*.mm",
                 "src/gui/platform/window_drag_mac.mm",
-                "src/gui/platform/metal_video_renderer.mm")
+                "src/gui/platform/metal_video_renderer.mm",
+                "src/gui/platform/video_renderer_factory_metal.mm")
         elseif is_os("linux") then
             add_links("GL")
             add_files("src/gui/platform/tray/linux_tray.cpp",
-                "src/gui/platform/opengl_video_renderer.cpp")
+                "src/gui/platform/opengl_video_renderer.cpp",
+                "src/gui/platform/video_renderer_factory_opengl.cpp")
         end
 
     if is_os("windows") then

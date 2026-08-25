@@ -602,6 +602,10 @@ bool MacMetalVideoRenderer::IsReady() const {
   return impl_ && impl_->Ready();
 }
 
+bool MacMetalVideoRenderer::IsActive() const {
+  return IsReady() && IsAttached();
+}
+
 bool MacMetalVideoRenderer::SetSelectedStream(std::string remote_id) {
   if (!impl_) {
     return false;

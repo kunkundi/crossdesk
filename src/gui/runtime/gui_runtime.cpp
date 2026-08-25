@@ -12,12 +12,7 @@
 
 #include "display_stream_id.h"
 #include "localization.h"
-#if defined(_WIN32) || defined(__linux__)
-#include "platform/opengl_video_renderer.h"
-#endif
-#ifdef __APPLE__
-#include "platform/metal_video_renderer.h"
-#endif
+#include "platform/video_renderer.h"
 #include "rd_log.h"
 
 namespace crossdesk {

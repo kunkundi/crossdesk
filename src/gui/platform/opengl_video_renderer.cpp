@@ -541,6 +541,8 @@ bool OpenGlVideoRenderer::IsReady() const {
   return impl_->ready.load(std::memory_order_acquire);
 }
 
+bool OpenGlVideoRenderer::IsActive() const { return IsReady(); }
+
 bool OpenGlVideoRenderer::SetSelectedStream(std::string remote_id) {
   std::lock_guard lock(impl_->frames->mutex);
   if (impl_->frames->selected_stream == remote_id) {

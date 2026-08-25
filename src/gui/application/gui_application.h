@@ -41,14 +41,6 @@ private:
   void SyncStreamVideoFrame();
   void ScheduleNextVideoFrame();
   void ConfigureStreamVideoRenderer();
-#if defined(_WIN32) || defined(__linux__)
-  void SubmitCachedFrameToOpenGl(
-      const std::shared_ptr<RemoteSession>& session);
-#endif
-#if defined(__APPLE__)
-  void SubmitCachedFrameToMetal(
-      const std::shared_ptr<RemoteSession>& session);
-#endif
   void SyncStreamKeyboardFocus();
   void SetStreamKeyboardFocus(bool focused);
   void SyncServerWindow();

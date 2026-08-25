@@ -8,6 +8,8 @@
 #include <string_view>
 #include <vector>
 
+#include "platform/video_renderer.h"
+
 namespace crossdesk {
 
 // NV12 underlay for Slint's FemtoVG OpenGL renderer on Windows and Linux.
@@ -15,31 +17,10 @@ namespace crossdesk {
 // thread. The Slint UI thread uploads the newest frame as Y and UV textures and
 // performs color conversion and scaling in a fragment shader before Slint
 // draws its overlay.
-class OpenGlVideoRenderer {
+class OpenGlVideoRenderer final : public VideoRenderer {
 public:
-  enum class SubmitResult {
-    submitted,
-    not_selected,
-    dropped,
-    failed,
-  };
-
-  enum class RenderResult {
-    rendered,
-    idle,
-    empty,
-    failed,
-  };
-
-  struct RenderOutcome {
-    RenderResult result = RenderResult::failed;
-    int width = 0;
-    int height = 0;
-    uint64_t sequence = 0;
-  };
-
   OpenGlVideoRenderer();
-  ~OpenGlVideoRenderer();
+  ~OpenGlVideoRenderer() override;
 
   OpenGlVideoRenderer(const OpenGlVideoRenderer &) = delete;
   OpenGlVideoRenderer &operator=(const OpenGlVideoRenderer &) = delete;
@@ -48,18 +29,19 @@ public:
   // RenderingSetup and RenderingTeardown notifier states respectively.
   bool Setup();
   void Teardown();
-  bool IsReady() const;
+  bool IsReady() const override;
+  bool IsActive() const override;
 
   // Only the selected stream is queued for upload. Frames for other tabs are
   // retained by GuiRuntime at a throttled rate for thumbnail/tab restoration.
-  bool SetSelectedStream(std::string remote_id);
-  void DiscardStream(std::string_view remote_id);
+  bool SetSelectedStream(std::string remote_id) override;
+  void DiscardStream(std::string_view remote_id) override;
 
   // Thread-safe; called from MiniRTC's decode callback thread.
   SubmitResult SubmitNv12(std::string_view remote_id, const uint8_t *data,
-                          size_t size, int width, int height);
+                          size_t size, int width, int height) override;
   SubmitResult SubmitCachedNv12(std::string_view remote_id, const uint8_t *data,
-                                size_t size, int width, int height);
+                                size_t size, int width, int height) override;
 
   // Draws below Slint while its OpenGL context is current. All dimensions are
   // physical pixels in the window client area. corner_radius_pixels clips the
@@ -72,7 +54,7 @@ public:
   // second per-frame CPU copy during normal playback.
   bool CopyLatestNv12(std::string_view remote_id,
                       std::vector<unsigned char> *output, int *width,
-                      int *height) const;
+                      int *height) const override;
 
 private:
   SubmitResult SubmitNv12Internal(std::string_view remote_id,

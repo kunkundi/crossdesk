@@ -1,7 +1,6 @@
 #include "application/gui_application.h"
 
 #include <SDL3/SDL.h>
-#include <libyuv.h>
 #include <slint.h>
 #include <tinyfiledialogs.h>
 
@@ -29,15 +28,14 @@
 #include "crossdesk_ui.h"
 #include "fa_solid_900.h"
 #include "localization.h"
-#include "nv12_scaler.h"
 #include "platform.h"
+#include "platform/video_renderer.h"
+#include "rendering/slint_video_presenter.h"
 #if _WIN32
 #include <windows.h>
-#include <GL/gl.h>
 
 #include "platform/tray/win_tray.h"
 #elif defined(__APPLE__)
-#include "platform/metal_video_renderer.h"
 #include "platform/tray/mac_tray.h"
 #include "platform/window_drag.h"
 #elif defined(__linux__)
@@ -47,9 +45,6 @@
 #include <unistd.h>
 
 #include "platform/tray/linux_tray.h"
-#endif
-#if defined(_WIN32) || defined(__linux__)
-#include "platform/opengl_video_renderer.h"
 #endif
 #include "rd_log.h"
 #include "server_window_state.h"
@@ -61,42 +56,6 @@ namespace crossdesk {
 namespace {
 
 using namespace std::chrono_literals;
-
-#if !defined(__APPLE__)
-constexpr GLint kGlClampToEdge = 0x812F;
-constexpr float kStreamWindowCornerRadius = 12.0f;
-#else
-constexpr int kMetalAttachmentAttemptLimit = 30;
-#endif
-
-struct VideoRenderSize {
-  int width = 0;
-  int height = 0;
-
-  bool operator==(const VideoRenderSize&) const = default;
-};
-
-VideoRenderSize FitVideoToRenderArea(int source_width, int source_height,
-                                     int area_width, int area_height) {
-  if (source_width <= 0 || source_height <= 0 || area_width <= 0 ||
-      area_height <= 0) {
-    return {};
-  }
-
-  const double scale =
-      std::min({1.0, static_cast<double>(area_width) / source_width,
-                static_cast<double>(area_height) / source_height});
-  int width = std::max(2, static_cast<int>(std::floor(source_width * scale)));
-  int height =
-      std::max(2, static_cast<int>(std::floor(source_height * scale)));
-
-  // NV12 chroma samples cover 2x2 pixels. Keep the render buffer even-sized
-  // so libyuv never needs to read a partial chroma sample at the edge.
-  width &= ~1;
-  height &= ~1;
-  return {std::min(width, source_width & ~1),
-          std::min(height, source_height & ~1)};
-}
 
 std::string CreatePasswordChangeRequestId(uint64_t sequence) {
   const auto timestamp = std::chrono::system_clock::now()
@@ -933,19 +892,7 @@ struct GuiApplication::SlintUi {
   std::shared_ptr<slint::VectorModel<slint::SharedString>>
       controller_name_model =
           std::make_shared<slint::VectorModel<slint::SharedString>>();
-  std::unordered_map<std::string, uint64_t> displayed_frame_sequence;
-  std::vector<uint8_t> scaled_video_frame;
-  std::vector<uint8_t> scaled_video_frame_scratch;
-#if !defined(__APPLE__)
-  std::mutex video_gl_mutex;
-  std::vector<uint8_t> video_gl_conversion_frame;
-  std::vector<uint8_t> video_gl_pending_frame;
-  uint32_t video_gl_texture = 0;
-  VideoRenderSize video_gl_texture_size;
-  VideoRenderSize video_gl_image_size;
-  VideoRenderSize video_gl_pending_size;
-  bool video_gl_pending_dirty = false;
-#endif
+  std::unique_ptr<SlintVideoPresenter> video_presenter;
   std::vector<std::string> tab_order;
   std::vector<std::string> tab_ids;
   std::string tab_model_signature;
@@ -960,9 +907,6 @@ struct GuiApplication::SlintUi {
   WindowDragState server_drag;
   int main_native_titlebar_attempts = 30;
   int stream_live_resize_configuration_attempts = 0;
-#if defined(__APPLE__)
-  int stream_video_attachment_attempts = 0;
-#endif
   int stream_initial_position_attempts = 0;
   int server_initial_position_attempts = 0;
 #if _WIN32
@@ -1117,14 +1061,9 @@ void GuiApplication::InitializeModules() {
   if (modules_inited_) {
     return;
   }
-#if defined(_WIN32) || defined(__linux__)
-  opengl_video_renderer_ = std::make_unique<OpenGlVideoRenderer>();
-#elif defined(__APPLE__)
-  // Metal setup can log device, shader, or pipeline failures. Initialize it
-  // here, after Run() has selected the application's log directory, rather
-  // than from GuiRuntime's constructor before InitializeLogger().
-  mac_metal_video_renderer_ = std::make_unique<MacMetalVideoRenderer>();
-#endif
+  // Renderer construction can log device, shader, or pipeline failures.
+  // Initialize it after Run() has selected the application's log directory.
+  video_renderer_ = CreateVideoRenderer();
   devices_.Initialize();
   CreateConnectionPeer();
   modules_inited_ = true;
@@ -1159,6 +1098,8 @@ void GuiApplication::InitializeUi() {
   }
 #endif
   ui_ = std::make_unique<SlintUi>();
+  ui_->video_presenter =
+      std::make_unique<SlintVideoPresenter>(*video_renderer_);
 #if _WIN32
   ui_->main->set_custom_titlebar(true);
 #elif defined(__linux__)
@@ -2263,9 +2204,6 @@ void GuiApplication::SyncStreamKeyboardFocus() {
 }
 
 void GuiApplication::SyncStreamWindow() {
-#if defined(__APPLE__)
-  bool stream_window_created_this_sync = false;
-#endif
   bool has_sessions = false;
   {
     std::shared_lock lock(remote_sessions_mutex_);
@@ -2277,15 +2215,7 @@ void GuiApplication::SyncStreamWindow() {
     (*ui_->stream)->set_custom_titlebar(use_xwayland_gui_);
 #endif
     RegisterFontAwesome((*ui_->stream)->window());
-#if defined(__APPLE__)
-    // Commit the first visible AppKit window as an ordinary opaque window.
-    // The process-wide Slint event loop is already running here, so
-    // appkit_view() may exist before show(); that does not mean the native
-    // titlebar style has been committed yet.
-    (*ui_->stream)->set_native_video_enabled(false);
-#else
     ConfigureStreamVideoRenderer();
-#endif
     // Slint globals belong to a component tree. Force the next localization
     // pass to initialize the newly-created, independent stream window tree.
     ui_->localized_language = -1;
@@ -2295,15 +2225,11 @@ void GuiApplication::SyncStreamWindow() {
     (*ui_->stream)->set_stats_rows(ui_->stats_model);
     BindStreamCallbacks();
     (*ui_->stream)->show();
-#if defined(__APPLE__)
-    stream_window_created_this_sync = true;
-#endif
     // Repeat after the next layout pass because the backend resolves the
     // initial DPI and preferred size asynchronously on some platforms.
     ui_->stream_initial_position_attempts = 2;
 #if defined(__APPLE__)
     ui_->stream_live_resize_configuration_attempts = 30;
-    ui_->stream_video_attachment_attempts = kMetalAttachmentAttemptLimit;
 #endif
     stream_window_created_ = true;
     stream_window_inited_ = true;
@@ -2323,24 +2249,10 @@ void GuiApplication::SyncStreamWindow() {
       --ui_->stream_live_resize_configuration_attempts;
     }
   }
-  if (ui_->stream_video_attachment_attempts > 0 &&
-      !stream_window_created_this_sync) {
-    ConfigureStreamVideoRenderer();
-    const bool metal_unavailable =
-        !mac_metal_video_renderer_ || !mac_metal_video_renderer_->IsReady();
-    const bool metal_attached =
-        mac_metal_video_renderer_ && mac_metal_video_renderer_->IsAttached();
-    if (metal_unavailable) {
-      ui_->stream_video_attachment_attempts = 0;
-    } else if (metal_attached) {
-      video_frame_dirty_.store(true, std::memory_order_release);
-      ui_->stream_video_attachment_attempts = 0;
-    } else if (--ui_->stream_video_attachment_attempts == 0) {
-      (*ui_->stream)->set_native_video_enabled(false);
-      LOG_WARN("Unable to attach the Metal video surface; using CPU rendering");
-    }
-  }
 #endif
+  if (ui_->video_presenter && ui_->video_presenter->EnsureAttached()) {
+    video_frame_dirty_.store(true, std::memory_order_release);
+  }
   if (ui_->stream_initial_position_attempts > 0) {
     if (PositionWindowAtCenter(
             (*ui_->stream)->window(), ui_->main->window(),
@@ -2353,29 +2265,20 @@ void GuiApplication::SyncStreamWindow() {
   }
   if (!has_sessions) {
     SetStreamKeyboardFocus(false);
-#if defined(_WIN32) || defined(__linux__)
-    if (opengl_video_renderer_) {
-      opengl_video_renderer_->SetSelectedStream({});
-    }
-#endif
 #if defined(__APPLE__)
     void* stream_view = (*ui_->stream)->window().appkit_view();
     SetStreamWindowFullscreen(false);
     UnregisterStreamWindow(stream_view);
-    if (mac_metal_video_renderer_) {
-      mac_metal_video_renderer_->SetSelectedStream({});
-      mac_metal_video_renderer_->Detach();
-    }
 #endif
+    if (ui_->video_presenter) {
+      ui_->video_presenter->Detach();
+    }
     (*ui_->stream)->hide();
     ui_->stream.reset();
     stream_window_created_ = false;
     stream_window_inited_ = false;
     ui_->stream_initial_position_attempts = 0;
     ui_->stream_live_resize_configuration_attempts = 0;
-#if defined(__APPLE__)
-    ui_->stream_video_attachment_attempts = 0;
-#endif
     focused_remote_id_.clear();
     controlled_remote_id_.clear();
     ui_->tab_order.clear();
@@ -2592,7 +2495,7 @@ void GuiApplication::SyncStreamWindow() {
 }
 
 void GuiApplication::SyncStreamVideoFrame() {
-  if (!ui_ || !ui_->stream) {
+  if (!ui_ || !ui_->stream || !ui_->video_presenter) {
     return;
   }
   auto props = SelectedSession();
@@ -2600,429 +2503,45 @@ void GuiApplication::SyncStreamVideoFrame() {
     return;
   }
 
-#if defined(__APPLE__)
-  if (mac_metal_video_renderer_ && mac_metal_video_renderer_->IsReady() &&
-      mac_metal_video_renderer_->IsAttached()) {
-    const double top_inset =
-        !fullscreen_button_pressed_ && ui_->tab_ids.size() > 1 ? 30.0 : 0.0;
-    const auto render_outcome = mac_metal_video_renderer_->RenderLatest(
-        props->remote_id_, top_inset, !fullscreen_button_pressed_);
-    if (render_outcome.result ==
-        MacMetalVideoRenderer::RenderResult::rendered) {
-      if (!(*ui_->stream)->get_has_frame()) {
-        (*ui_->stream)->set_has_frame(true);
-      }
-      if (!(*ui_->stream)->get_receiving_text().empty()) {
-        (*ui_->stream)->set_receiving_text("");
-      }
-      if (render_outcome.width > 0 && render_outcome.height > 0 &&
-          render_outcome.sequence > 0) {
-        (*ui_->stream)
-            ->set_stats_resolution(
-                UiText(std::to_string(render_outcome.width) + "x" +
-                       std::to_string(render_outcome.height)));
-        if (ui_->displayed_frame_sequence[props->remote_id_] !=
-            render_outcome.sequence) {
-          ui_->displayed_frame_sequence[props->remote_id_] =
-              render_outcome.sequence;
-          ++props->frame_count_;
-        }
-      }
-      return;
-    }
-    if (render_outcome.result == MacMetalVideoRenderer::RenderResult::empty) {
-      if ((*ui_->stream)->get_has_frame()) {
-        (*ui_->stream)->set_has_frame(false);
-      }
-      return;
-    }
-    if (render_outcome.result == MacMetalVideoRenderer::RenderResult::idle) {
-      return;
-    }
-    // A transient Metal error must not change renderer ownership mid-window.
-    // Keep the last frame and retry on the next UI tick.
-    return;
-  }
-#endif
-
-#if defined(_WIN32) || defined(__linux__)
-  if (opengl_video_renderer_ &&
-      opengl_video_renderer_->IsReady()) {
-    opengl_video_renderer_->SetSelectedStream(props->remote_id_);
-    SubmitCachedFrameToOpenGl(props);
-    if (!(*ui_->stream)->get_native_video_enabled()) {
-      (*ui_->stream)->set_native_video_enabled(true);
-    }
-
-    int width = 0;
-    int height = 0;
-    uint64_t sequence = 0;
-    {
-      std::lock_guard lock(props->video_frame_mutex_);
-      width = props->video_width_;
-      height = props->video_height_;
-      sequence = props->video_frame_sequence_;
-    }
-    const bool has_frame = width > 0 && height > 0 && sequence > 0;
-    (*ui_->stream)->set_has_frame(has_frame);
-    if (has_frame) {
-      (*ui_->stream)->set_receiving_text("");
-      (*ui_->stream)
-          ->set_stats_resolution(UiText(std::to_string(width) + "x" +
-                                        std::to_string(height)));
-      if (ui_->displayed_frame_sequence[props->remote_id_] != sequence) {
-        ui_->displayed_frame_sequence[props->remote_id_] = sequence;
-        ++props->frame_count_;
-      }
-    }
-    (*ui_->stream)->window().request_redraw();
-    return;
-  }
-  if ((*ui_->stream)->get_native_video_enabled()) {
-    (*ui_->stream)->set_native_video_enabled(false);
-  }
-#endif
-
-  std::shared_ptr<std::vector<unsigned char>> frame;
-  int width = 0;
-  int height = 0;
-  uint64_t sequence = 0;
+  SlintVideoPresenter::Frame frame;
+  frame.remote_id = props->remote_id_;
   {
     std::lock_guard lock(props->video_frame_mutex_);
-    frame = props->front_frame_;
-    width = props->video_width_;
-    height = props->video_height_;
-    sequence = props->video_frame_sequence_;
+    frame.nv12 = props->front_frame_;
+    frame.width = props->video_width_;
+    frame.height = props->video_height_;
+    frame.sequence = props->video_frame_sequence_;
   }
 
-  const size_t nv12_size = static_cast<size_t>(width) * height * 3 / 2;
-  if (!frame || width <= 0 || height <= 0 || frame->size() < nv12_size) {
-    (*ui_->stream)->set_has_frame(false);
-    return;
+  const auto result = ui_->video_presenter->Present(frame);
+  if (result.width > 0 && result.height > 0) {
+    (*ui_->stream)
+        ->set_stats_resolution(UiText(std::to_string(result.width) + "x" +
+                                      std::to_string(result.height)));
   }
-  if (ui_->displayed_frame_sequence[props->remote_id_] == sequence) {
-    return;
-  }
-
-  const auto window_size = (*ui_->stream)->window().size();
-  const VideoRenderSize render_size = FitVideoToRenderArea(
-      width, height, static_cast<int>(window_size.width),
-      static_cast<int>(window_size.height));
-  const uint8_t* y_plane = frame->data();
-  const uint8_t* uv_plane =
-      frame->data() + static_cast<size_t>(width) * height;
-  int output_width = width;
-  int output_height = height;
-
-  if (render_size.width > 0 && render_size.height > 0 &&
-      (render_size.width != width || render_size.height != height)) {
-    const size_t scaled_nv12_size =
-        static_cast<size_t>(render_size.width) * render_size.height * 3 / 2;
-    ui_->scaled_video_frame.resize(scaled_nv12_size);
-    uint8_t* scaled_y = ui_->scaled_video_frame.data();
-    uint8_t* scaled_uv =
-        scaled_y +
-        static_cast<size_t>(render_size.width) * render_size.height;
-    if (ScaleNv12ViaI420(
-            y_plane, width, uv_plane, width, width, height, scaled_y,
-            render_size.width, scaled_uv, render_size.width, render_size.width,
-            render_size.height, libyuv::kFilterBox,
-            &ui_->scaled_video_frame_scratch) == 0) {
-      y_plane = scaled_y;
-      uv_plane = scaled_uv;
-      output_width = render_size.width;
-      output_height = render_size.height;
-    }
-  }
-
-#if !defined(__APPLE__)
-  uint32_t texture_id = 0;
-  {
-    std::lock_guard lock(ui_->video_gl_mutex);
-    texture_id = ui_->video_gl_texture;
-  }
-  if (texture_id != 0) {
-    ui_->video_gl_conversion_frame.resize(
-        static_cast<size_t>(output_width) * output_height * 4);
-    if (libyuv::NV12ToABGR(
-            y_plane, output_width, uv_plane, output_width,
-            ui_->video_gl_conversion_frame.data(), output_width * 4,
-            output_width, output_height) != 0) {
-      return;
-    }
-    {
-      std::lock_guard lock(ui_->video_gl_mutex);
-      if (ui_->video_gl_texture == 0) {
-        return;
-      }
-      texture_id = ui_->video_gl_texture;
-      ui_->video_gl_pending_frame.swap(ui_->video_gl_conversion_frame);
-      ui_->video_gl_pending_size = {output_width, output_height};
-      ui_->video_gl_pending_dirty = true;
-    }
-    const VideoRenderSize output_size{output_width, output_height};
-    if (ui_->video_gl_image_size != output_size) {
-      (*ui_->stream)
-          ->set_frame(slint::Image::create_from_borrowed_gl_2d_rgba_texture(
-              texture_id,
-              slint::Size<uint32_t>{static_cast<uint32_t>(output_width),
-                                    static_cast<uint32_t>(output_height)}));
-      ui_->video_gl_image_size = output_size;
-    }
-    (*ui_->stream)->set_has_frame(true);
-    (*ui_->stream)->set_receiving_text("");
-    (*ui_->stream)->window().request_redraw();
-    ui_->displayed_frame_sequence[props->remote_id_] = sequence;
+  if (result.new_frame) {
     ++props->frame_count_;
-    return;
   }
-#endif
-
-  slint::SharedPixelBuffer<slint::Rgb8Pixel> pixels(output_width,
-                                                    output_height);
-  if (libyuv::NV12ToRAW(
-          y_plane, output_width, uv_plane, output_width,
-          reinterpret_cast<uint8_t*>(pixels.begin()), output_width * 3,
-          output_width, output_height) != 0) {
-    return;
-  }
-
-  (*ui_->stream)->set_frame(slint::Image(std::move(pixels)));
-  (*ui_->stream)->set_has_frame(true);
-  (*ui_->stream)->set_receiving_text("");
-  ui_->displayed_frame_sequence[props->remote_id_] = sequence;
-  ++props->frame_count_;
 }
 
 void GuiApplication::ConfigureStreamVideoRenderer() {
-#if defined(__APPLE__)
-  if (!ui_ || !ui_->stream) {
+  if (!ui_ || !ui_->stream || !ui_->video_presenter) {
     return;
   }
-  const bool native_video_enabled =
-      mac_metal_video_renderer_ && mac_metal_video_renderer_->IsReady();
-  if (!native_video_enabled) {
-    (*ui_->stream)->set_native_video_enabled(false);
-    return;
-  }
-  if (void* view = (*ui_->stream)->window().appkit_view()) {
-    // Slint applies transparency through a property binding. Set it before
-    // restoring the AppKit titlebar so the later operation wins regardless of
-    // whether the backend commits the binding synchronously or next tick.
-    (*ui_->stream)->set_native_video_enabled(true);
-    if (!mac_metal_video_renderer_->Attach(view)) {
-      (*ui_->stream)->set_native_video_enabled(false);
-    } else if (auto selected_session = SelectedSession()) {
-      // Metal owns a separate monotonic sequence, so discard a CPU-renderer
-      // sequence recorded during the short window-attachment gap.
-      ui_->displayed_frame_sequence.erase(selected_session->remote_id_);
-      if (mac_metal_video_renderer_->SetSelectedStream(
-              selected_session->remote_id_)) {
-        video_frame_dirty_.store(true, std::memory_order_release);
-      }
-      SubmitCachedFrameToMetal(selected_session);
-    }
-  } else {
-    // Keep the initial window opaque until winit has created its native
-    // NSWindow. Creating it transparent opts into a full-size titlebar whose
-    // title field sits underneath the standard traffic-light buttons.
-    (*ui_->stream)->set_native_video_enabled(false);
-  }
-  return;
-#else
-  if (!ui_ || !ui_->stream) {
-    return;
-  }
-  const auto error = (*ui_->stream)->window().set_rendering_notifier(
-      [this](slint::RenderingState state, slint::GraphicsAPI graphics_api) {
-        if (!ui_ || graphics_api != slint::GraphicsAPI::NativeOpenGL) {
-          return;
-        }
 
-        std::lock_guard lock(ui_->video_gl_mutex);
-        if (state == slint::RenderingState::RenderingSetup) {
-          GLuint texture = 0;
-          glGenTextures(1, &texture);
-          if (texture == 0) {
-            return;
-          }
-          GLint previous_texture = 0;
-          glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous_texture);
-          glBindTexture(GL_TEXTURE_2D, texture);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, kGlClampToEdge);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, kGlClampToEdge);
-          glBindTexture(GL_TEXTURE_2D,
-                        static_cast<GLuint>(previous_texture));
-          ui_->video_gl_texture = texture;
-#if defined(_WIN32) || defined(__linux__)
-          if (opengl_video_renderer_ &&
-              opengl_video_renderer_->Setup()) {
-            opengl_video_renderer_->SetSelectedStream(
-                focused_remote_id_);
-            video_frame_dirty_.store(true, std::memory_order_release);
-          }
-#endif
-          return;
+  ui_->video_presenter->PrepareWindow(
+      *ui_->stream,
+      [this] {
+        SlintVideoPresenter::SurfaceState state;
+        state.selected_stream = focused_remote_id_;
+        state.fullscreen = fullscreen_button_pressed_;
+        if (ui_) {
+          state.tab_count = ui_->tab_ids.size();
         }
-
-#if defined(_WIN32) || defined(__linux__)
-        if (state == slint::RenderingState::BeforeRendering &&
-            opengl_video_renderer_ &&
-            opengl_video_renderer_->IsReady() && ui_->stream &&
-            (*ui_->stream)->get_native_video_enabled()) {
-          const auto window_size = (*ui_->stream)->window().size();
-          const float scale_factor =
-              std::max(1.0f, (*ui_->stream)->window().scale_factor());
-          const int top_inset =
-              !fullscreen_button_pressed_ && ui_->tab_ids.size() > 1
-                  ? static_cast<int>(std::lround(30.0f * scale_factor))
-                  : 0;
-          const bool rounded_window =
-              (*ui_->stream)->get_custom_titlebar() &&
-              !fullscreen_button_pressed_ &&
-              !(*ui_->stream)->window().is_maximized();
-          const int corner_radius =
-              rounded_window
-                  ? static_cast<int>(std::lround(
-                        kStreamWindowCornerRadius * scale_factor))
-                  : 0;
-          opengl_video_renderer_->RenderLatest(
-              focused_remote_id_, static_cast<int>(window_size.width),
-              static_cast<int>(window_size.height), top_inset, corner_radius);
-          return;
-        }
-#endif
-
-        if (state == slint::RenderingState::BeforeRendering &&
-            ui_->video_gl_texture != 0 && ui_->video_gl_pending_dirty &&
-            !ui_->video_gl_pending_frame.empty()) {
-          GLint previous_texture = 0;
-          GLint previous_unpack_alignment = 0;
-          glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous_texture);
-          glGetIntegerv(GL_UNPACK_ALIGNMENT, &previous_unpack_alignment);
-          glBindTexture(GL_TEXTURE_2D, ui_->video_gl_texture);
-          glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-          if (ui_->video_gl_texture_size != ui_->video_gl_pending_size) {
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                         ui_->video_gl_pending_size.width,
-                         ui_->video_gl_pending_size.height, 0, GL_RGBA,
-                         GL_UNSIGNED_BYTE, ui_->video_gl_pending_frame.data());
-            ui_->video_gl_texture_size = ui_->video_gl_pending_size;
-          } else {
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
-                            ui_->video_gl_pending_size.width,
-                            ui_->video_gl_pending_size.height, GL_RGBA,
-                            GL_UNSIGNED_BYTE,
-                            ui_->video_gl_pending_frame.data());
-          }
-          glPixelStorei(GL_UNPACK_ALIGNMENT, previous_unpack_alignment);
-          glBindTexture(GL_TEXTURE_2D,
-                        static_cast<GLuint>(previous_texture));
-          ui_->video_gl_pending_dirty = false;
-          return;
-        }
-
-        if (state == slint::RenderingState::RenderingTeardown) {
-#if defined(_WIN32) || defined(__linux__)
-          if (opengl_video_renderer_) {
-            opengl_video_renderer_->Teardown();
-          }
-#endif
-          if (ui_->video_gl_texture != 0) {
-            const GLuint texture = ui_->video_gl_texture;
-            glDeleteTextures(1, &texture);
-          }
-          ui_->video_gl_texture = 0;
-          ui_->video_gl_texture_size = {};
-          ui_->video_gl_image_size = {};
-          ui_->video_gl_pending_size = {};
-          ui_->video_gl_pending_dirty = false;
-          ui_->video_gl_pending_frame.clear();
-        }
-      });
-  if (error.has_value()) {
-    LOG_WARN("Slint OpenGL video renderer unavailable, using pixel buffers");
-#if defined(_WIN32) || defined(__linux__)
-  } else if (opengl_video_renderer_) {
-    opengl_video_renderer_->SetSelectedStream(focused_remote_id_);
-#endif
-  }
-#endif
+        return state;
+      },
+      [this] { video_frame_dirty_.store(true, std::memory_order_release); });
 }
-
-#if defined(_WIN32) || defined(__linux__)
-void GuiApplication::SubmitCachedFrameToOpenGl(
-    const std::shared_ptr<RemoteSession>& session) {
-  if (!session || !opengl_video_renderer_ ||
-      !opengl_video_renderer_->IsReady() ||
-      session->connection_status_.load() != ConnectionStatus::Connected) {
-    return;
-  }
-
-  std::shared_ptr<std::vector<unsigned char>> cached_frame;
-  int cached_width = 0;
-  int cached_height = 0;
-  {
-    std::lock_guard lock(session->video_frame_mutex_);
-    if (session->front_frame_ && !session->front_frame_->empty()) {
-      cached_frame = session->front_frame_;
-      cached_width = session->video_width_;
-      cached_height = session->video_height_;
-    } else if (session->thumbnail_frame_ &&
-               !session->thumbnail_frame_->empty()) {
-      cached_frame = session->thumbnail_frame_;
-      cached_width = session->thumbnail_width_;
-      cached_height = session->thumbnail_height_;
-    }
-  }
-
-  if (cached_frame && cached_width > 0 && cached_height > 0 &&
-      opengl_video_renderer_->SubmitCachedNv12(
-          session->remote_id_, cached_frame->data(), cached_frame->size(),
-          cached_width, cached_height) ==
-          OpenGlVideoRenderer::SubmitResult::submitted) {
-    video_frame_dirty_.store(true, std::memory_order_release);
-  }
-}
-#endif
-
-#if defined(__APPLE__)
-void GuiApplication::SubmitCachedFrameToMetal(
-    const std::shared_ptr<RemoteSession>& session) {
-  if (!session || !mac_metal_video_renderer_ ||
-      !mac_metal_video_renderer_->IsReady() ||
-      session->connection_status_.load() != ConnectionStatus::Connected) {
-    return;
-  }
-
-  std::shared_ptr<std::vector<unsigned char>> cached_frame;
-  int cached_width = 0;
-  int cached_height = 0;
-  {
-    std::lock_guard lock(session->video_frame_mutex_);
-    if (session->front_frame_ && !session->front_frame_->empty()) {
-      cached_frame = session->front_frame_;
-      cached_width = session->video_width_;
-      cached_height = session->video_height_;
-    } else if (session->thumbnail_frame_ &&
-               !session->thumbnail_frame_->empty()) {
-      cached_frame = session->thumbnail_frame_;
-      cached_width = session->thumbnail_width_;
-      cached_height = session->thumbnail_height_;
-    }
-  }
-
-  if (cached_frame && cached_width > 0 && cached_height > 0 &&
-      mac_metal_video_renderer_->SubmitCachedNv12(
-          session->remote_id_, cached_frame->data(), cached_frame->size(),
-          cached_width, cached_height) ==
-          MacMetalVideoRenderer::SubmitResult::submitted) {
-    video_frame_dirty_.store(true, std::memory_order_release);
-  }
-}
-#endif
 
 void GuiApplication::ScheduleNextVideoFrame() {
   if (!ui_) {
@@ -3039,28 +2558,19 @@ void GuiApplication::ScheduleNextVideoFrame() {
   if (now >= next_video_frame_time_) {
     const bool frame_dirty =
         video_frame_dirty_.exchange(false, std::memory_order_acq_rel);
-#if defined(__APPLE__)
-    const bool native_render_needed =
-        mac_metal_video_renderer_ && mac_metal_video_renderer_->IsReady() &&
-        mac_metal_video_renderer_->IsAttached() && ui_->stream &&
-        mac_metal_video_renderer_->NeedsSurfaceRedraw();
+    const bool native_render_needed = ui_->stream && ui_->video_presenter &&
+                                      ui_->video_presenter->NeedsRedraw();
     if (frame_dirty || native_render_needed) {
       SyncStreamVideoFrame();
     }
-#else
-    if (frame_dirty) {
-      SyncStreamVideoFrame();
-    }
-#endif
     do {
       next_video_frame_time_ += frame_interval;
     } while (next_video_frame_time_ <= now);
   }
 
   const auto after_render = std::chrono::steady_clock::now();
-  const auto remaining =
-      std::max(next_video_frame_time_ - after_render,
-               std::chrono::steady_clock::duration::zero());
+  const auto remaining = std::max(next_video_frame_time_ - after_render,
+                                  std::chrono::steady_clock::duration::zero());
   const auto delay_ns =
       std::chrono::duration_cast<std::chrono::nanoseconds>(remaining).count();
   const auto delay_ms = std::max<int64_t>(1, (delay_ns + 999'999) / 1'000'000);
@@ -3332,20 +2842,17 @@ void GuiApplication::SelectStreamTab(int index) {
     return;
   }
   const std::string selected_remote_id = ui_->tab_ids[index];
-#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
   const bool selection_changed = focused_remote_id_ != selected_remote_id;
   bool renderer_selection_changed = false;
-#endif
   if (!controlled_remote_id_.empty() &&
       controlled_remote_id_ != selected_remote_id) {
     keyboard_.ForceReleasePressedKeys();
   }
   focused_remote_id_ = selected_remote_id;
   controlled_remote_id_ = selected_remote_id;
-#if defined(_WIN32) || defined(__linux__)
-  if (opengl_video_renderer_) {
+  if (ui_->video_presenter) {
     renderer_selection_changed =
-        opengl_video_renderer_->SetSelectedStream(selected_remote_id);
+        ui_->video_presenter->SelectStream(selected_remote_id);
   }
   if (renderer_selection_changed) {
     video_frame_dirty_.store(true, std::memory_order_release);
@@ -3353,18 +2860,6 @@ void GuiApplication::SelectStreamTab(int index) {
   if (selection_changed && ui_->stream) {
     (*ui_->stream)->set_has_frame(false);
   }
-#elif defined(__APPLE__)
-  if (mac_metal_video_renderer_) {
-    renderer_selection_changed =
-        mac_metal_video_renderer_->SetSelectedStream(selected_remote_id);
-  }
-  if (renderer_selection_changed) {
-    video_frame_dirty_.store(true, std::memory_order_release);
-  }
-  if (selection_changed && ui_->stream) {
-    (*ui_->stream)->set_has_frame(false);
-  }
-#endif
   std::shared_ptr<RemoteSession> selected_session;
   {
     std::shared_lock lock(remote_sessions_mutex_);
@@ -3377,20 +2872,11 @@ void GuiApplication::SelectStreamTab(int index) {
     if (selected != remote_sessions_.end()) {
       selected_session = selected->second;
     }
-    start_keyboard_capturer_ =
-        selected_session && selected_session->control_mouse_ &&
-        selected_session->connection_status_.load() ==
-            ConnectionStatus::Connected;
+    start_keyboard_capturer_ = selected_session &&
+                               selected_session->control_mouse_ &&
+                               selected_session->connection_status_.load() ==
+                                   ConnectionStatus::Connected;
   }
-#if defined(_WIN32) || defined(__linux__)
-  if (renderer_selection_changed) {
-    SubmitCachedFrameToOpenGl(selected_session);
-  }
-#elif defined(__APPLE__)
-  if (renderer_selection_changed) {
-    SubmitCachedFrameToMetal(selected_session);
-  }
-#endif
 }
 
 void GuiApplication::ReorderStreamTab(int from, float drop_x, float tab_width) {
@@ -3434,21 +2920,15 @@ void GuiApplication::CloseStreamTab(const std::string& remote_id) {
     std::unique_lock lock(remote_sessions_mutex_);
     remote_sessions_.erase(remote_id);
   }
-  ui_->displayed_frame_sequence.erase(remote_id);
+  if (ui_->video_presenter) {
+    ui_->video_presenter->ForgetStream(remote_id);
+  }
   if (focused_remote_id_ == remote_id) {
     focused_remote_id_.clear();
     controlled_remote_id_.clear();
-#if defined(_WIN32) || defined(__linux__)
-    if (opengl_video_renderer_ &&
-        opengl_video_renderer_->SetSelectedStream({})) {
+    if (ui_->video_presenter && ui_->video_presenter->SelectStream({})) {
       video_frame_dirty_.store(true, std::memory_order_release);
     }
-#elif defined(__APPLE__)
-    if (mac_metal_video_renderer_ &&
-        mac_metal_video_renderer_->SetSelectedStream({})) {
-      video_frame_dirty_.store(true, std::memory_order_release);
-    }
-#endif
   }
 }
 
@@ -3642,20 +3122,14 @@ void GuiApplication::Cleanup() {
   WaitForThumbnailSaveTasks();
   devices_.DestroyAudioOutput();
   if (ui_->stream) {
-#if defined(_WIN32) || defined(__linux__)
-    if (opengl_video_renderer_) {
-      opengl_video_renderer_->SetSelectedStream({});
-    }
-#endif
 #if defined(__APPLE__)
     void* stream_view = (*ui_->stream)->window().appkit_view();
     SetStreamWindowFullscreen(false);
     UnregisterStreamWindow(stream_view);
-    if (mac_metal_video_renderer_) {
-      mac_metal_video_renderer_->SetSelectedStream({});
-      mac_metal_video_renderer_->Detach();
-    }
 #endif
+    if (ui_->video_presenter) {
+      ui_->video_presenter->Detach();
+    }
     (*ui_->stream)->hide();
     ui_->stream.reset();
   }

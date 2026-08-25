@@ -1,36 +1,26 @@
-#include "runtime/peer_event_handler.h"
-
+#include <chrono>
 #include <cstring>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
 
+#include "platform/video_renderer.h"
 #include "runtime/gui_runtime.h"
-#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
-#include <chrono>
-
-#if defined(__APPLE__)
-#include "platform/metal_video_renderer.h"
-#else
-#include "platform/opengl_video_renderer.h"
-#endif
-#endif
+#include "runtime/peer_event_handler.h"
 
 namespace crossdesk {
-#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
 namespace {
 
 constexpr auto kBackgroundSnapshotInterval = std::chrono::seconds(1);
 
 }  // namespace
-#endif
 
 void PeerEventHandler::OnReceiveVideoBuffer(
-    const XVideoFrame *video_frame, const char *user_id, size_t user_id_size,
-    const char *src_id, size_t src_id_size, void *user_data) {
-  auto *handler = static_cast<PeerEventHandler *>(user_data);
-  GuiRuntime *runtime = handler ? &handler->owner_ : nullptr;
+    const XVideoFrame* video_frame, const char* user_id, size_t user_id_size,
+    const char* src_id, size_t src_id_size, void* user_data) {
+  auto* handler = static_cast<PeerEventHandler*>(user_data);
+  GuiRuntime* runtime = handler ? &handler->owner_ : nullptr;
   if (!runtime) {
     return;
   }
@@ -41,32 +31,20 @@ void PeerEventHandler::OnReceiveVideoBuffer(
       runtime->remote_sessions_.end()) {
     return;
   }
-  GuiRuntime::RemoteSession *props =
+  GuiRuntime::RemoteSession* props =
       runtime->remote_sessions_.find(remote_id)->second.get();
 
   if (props->connection_established_) {
-#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
     bool background_snapshot_only = false;
-#if defined(__APPLE__)
-    auto* native_renderer = runtime->mac_metal_video_renderer_.get();
-    using NativeVideoRenderer = MacMetalVideoRenderer;
-#else
-    auto* native_renderer = runtime->opengl_video_renderer_.get();
-    using NativeVideoRenderer = OpenGlVideoRenderer;
-#endif
-    if (native_renderer && native_renderer->IsReady()
-#if defined(__APPLE__)
-        && native_renderer->IsAttached()
-#endif
-    ) {
+    auto* native_renderer = runtime->video_renderer_.get();
+    if (native_renderer && native_renderer->IsActive()) {
       const auto submit_result = native_renderer->SubmitNv12(
           remote_id, reinterpret_cast<const uint8_t*>(video_frame->data),
           video_frame->size, video_frame->width, video_frame->height);
-      if (submit_result == NativeVideoRenderer::SubmitResult::submitted) {
+      if (submit_result == VideoRenderer::SubmitResult::submitted) {
         std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
-        const bool size_changed =
-            (props->video_width_ != video_frame->width) ||
-            (props->video_height_ != video_frame->height);
+        const bool size_changed = (props->video_width_ != video_frame->width) ||
+                                  (props->video_height_ != video_frame->height);
         if (size_changed) {
           props->render_rect_dirty_ = true;
         }
@@ -86,22 +64,19 @@ void PeerEventHandler::OnReceiveVideoBuffer(
         runtime->video_frame_dirty_.store(true, std::memory_order_release);
         return;
       }
-      if (submit_result == NativeVideoRenderer::SubmitResult::dropped ||
-          submit_result == NativeVideoRenderer::SubmitResult::failed) {
+      if (submit_result == VideoRenderer::SubmitResult::dropped ||
+          submit_result == VideoRenderer::SubmitResult::failed) {
         // Keep presenting the last native frame. A later decoded frame can
         // reuse the renderer without changing ownership mid-window.
         props->streaming_ = true;
         return;
       }
-      if (submit_result ==
-          NativeVideoRenderer::SubmitResult::not_selected) {
+      if (submit_result == VideoRenderer::SubmitResult::not_selected) {
         background_snapshot_only = true;
       }
     }
-#endif
     {
       std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
-#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
       const auto now = std::chrono::steady_clock::now();
       if (background_snapshot_only && props->thumbnail_frame_ &&
           !props->thumbnail_frame_->empty() &&
@@ -112,7 +87,6 @@ void PeerEventHandler::OnReceiveVideoBuffer(
         props->streaming_ = true;
         return;
       }
-#endif
 
       // Allocate a third buffer only while the UI still owns the old snapshot.
       if (!props->back_frame_ || props->back_frame_.use_count() != 1) {
@@ -137,32 +111,28 @@ void PeerEventHandler::OnReceiveVideoBuffer(
       props->video_size_ = video_frame->size;
 
       props->front_frame_.swap(props->back_frame_);
-#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
       props->thumbnail_frame_ = props->front_frame_;
       props->thumbnail_width_ = video_frame->width;
       props->thumbnail_height_ = video_frame->height;
       if (background_snapshot_only) {
         props->background_snapshot_time_ = now;
       }
-#endif
       ++props->video_frame_sequence_;
     }
 
     props->streaming_ = true;
-#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
     if (background_snapshot_only) {
       return;
     }
-#endif
     runtime->video_frame_dirty_.store(true, std::memory_order_release);
   }
 }
 
 void PeerEventHandler::OnReceiveAudioBuffer(
-    const char *data, size_t size, const char *user_id, size_t user_id_size,
-    const char *src_id, size_t src_id_size, void *user_data) {
-  auto *handler = static_cast<PeerEventHandler *>(user_data);
-  GuiRuntime *runtime = handler ? &handler->owner_ : nullptr;
+    const char* data, size_t size, const char* user_id, size_t user_id_size,
+    const char* src_id, size_t src_id_size, void* user_data) {
+  auto* handler = static_cast<PeerEventHandler*>(user_data);
+  GuiRuntime* runtime = handler ? &handler->owner_ : nullptr;
   if (!runtime) {
     return;
   }
@@ -172,4 +142,4 @@ void PeerEventHandler::OnReceiveAudioBuffer(
   runtime->devices_.PushAudio(data, size);
 }
 
-} // namespace crossdesk
+}  // namespace crossdesk

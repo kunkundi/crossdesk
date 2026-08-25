@@ -15,12 +15,7 @@
 
 namespace crossdesk {
 
-#if defined(_WIN32) || defined(__linux__)
-class OpenGlVideoRenderer;
-#endif
-#ifdef __APPLE__
-class MacMetalVideoRenderer;
-#endif
+class VideoRenderer;
 
 // Shared GUI runtime. It owns subsystem controllers and cross-cutting session
 // state, but no window lifecycle, ImGui view, or transport callback methods.
@@ -90,12 +85,7 @@ class GuiRuntime : protected gui_detail::GuiState {
   KeyboardController keyboard_;
   PeerEventHandler peer_events_;
   std::atomic<bool> video_frame_dirty_{false};
-#if defined(_WIN32) || defined(__linux__)
-  std::unique_ptr<OpenGlVideoRenderer> opengl_video_renderer_;
-#endif
-#ifdef __APPLE__
-  std::unique_ptr<MacMetalVideoRenderer> mac_metal_video_renderer_;
-#endif
+  std::unique_ptr<VideoRenderer> video_renderer_;
 
  private:
   friend class ClipboardController;

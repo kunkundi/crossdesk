@@ -11,12 +11,7 @@
 #include "display_stream_id.h"
 #include "localization.h"
 #include "platform.h"
-#if defined(_WIN32) || defined(__linux__)
-#include "platform/opengl_video_renderer.h"
-#endif
-#ifdef __APPLE__
-#include "platform/metal_video_renderer.h"
-#endif
+#include "platform/video_renderer.h"
 #include "rd_log.h"
 #include "runtime/gui_runtime.h"
 
@@ -229,21 +224,14 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
     frame_snapshot = props->front_frame_;
     video_width = props->video_width_;
     video_height = props->video_height_;
-#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
     if ((!frame_snapshot || frame_snapshot->empty()) &&
         props->thumbnail_frame_ && !props->thumbnail_frame_->empty()) {
       frame_snapshot = props->thumbnail_frame_;
       video_width = props->thumbnail_width_;
       video_height = props->thumbnail_height_;
     }
-#endif
   }
-#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
-#if defined(__APPLE__)
-  auto* native_renderer = mac_metal_video_renderer_.get();
-#else
-  auto* native_renderer = opengl_video_renderer_.get();
-#endif
+  auto* native_renderer = video_renderer_.get();
   if ((!frame_snapshot || frame_snapshot->empty()) && native_renderer) {
     auto native_snapshot = std::make_shared<std::vector<unsigned char>>();
     if (native_renderer->CopyLatestNv12(props->remote_id_,
@@ -252,7 +240,6 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
       frame_snapshot = std::move(native_snapshot);
     }
   }
-#endif
 
   if (frame_snapshot && !frame_snapshot->empty() && video_width > 0 &&
       video_height > 0) {
@@ -276,12 +263,10 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
     }
   }
 
-#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
   if (native_renderer) {
     native_renderer->DiscardStream(props->remote_id_);
     video_frame_dirty_.store(true, std::memory_order_release);
   }
-#endif
 
   if (props->peer_) {
     LOG_INFO("[{}] Leave connection [{}]", props->local_id_, props->remote_id_);
@@ -343,12 +328,10 @@ void GuiRuntime::ResetRemoteSessionResources(
     std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
     props->front_frame_.reset();
     props->back_frame_.reset();
-#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
     props->thumbnail_frame_.reset();
     props->thumbnail_width_ = 0;
     props->thumbnail_height_ = 0;
     props->background_snapshot_time_ = {};
-#endif
     props->video_width_ = 0;
     props->video_height_ = 0;
     props->video_size_ = 0;
