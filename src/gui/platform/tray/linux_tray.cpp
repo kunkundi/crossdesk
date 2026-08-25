@@ -9,6 +9,7 @@
 #include <X11/Xutil.h>
 #include <X11/extensions/shape.h>
 #include <X11/extensions/Xrender.h>
+#include <dlfcn.h>
 
 #include <algorithm>
 #include <chrono>
@@ -34,14 +35,119 @@ namespace {
 constexpr int kTrayIconSize = 24;
 constexpr int kMenuItemHeight = 28;
 constexpr int kMenuItemCount = 3;
-constexpr int kMenuHeight = kMenuItemHeight * kMenuItemCount;
+constexpr int kMenuVerticalPadding = 4;
+constexpr int kMenuHeight =
+    kMenuItemHeight * kMenuItemCount + kMenuVerticalPadding * 2;
 constexpr int kMenuHorizontalPadding = 12;
+constexpr int kMenuCornerRadius = 8;
+constexpr int kMenuBorderWidth = 1;
+constexpr int kMenuItemHorizontalInset = 4;
+constexpr int kMenuItemVerticalInset = 2;
+constexpr int kMenuItemCornerRadius = 5;
+constexpr int kMenuSeparatorHorizontalInset = 8;
 constexpr int kDockTimeoutMs = 800;
 constexpr int kMaxTrayEventsPerTick = 32;
 constexpr int kMaxTrayEventsDuringEmbed = 16;
 constexpr long kSystemTrayRequestDock = 0;
 constexpr long kXEmbedMapped = 1;
 constexpr long kXEmbedEmbeddedNotify = 0;
+constexpr int kAppIndicatorCategoryApplicationStatus = 0;
+constexpr int kAppIndicatorStatusPassive = 0;
+constexpr int kAppIndicatorStatusActive = 1;
+
+// AppIndicator exports the menu to the desktop shell, which lets GNOME, KDE,
+// and compatible panels render it with their own theme. Load either maintained
+// implementation dynamically so the legacy XEmbed path remains available.
+struct DesktopIndicatorApi {
+  using SignalCallback = void (*)(void*, void*);
+  using SignalDestroyNotify = void (*)(void*, void*);
+
+  void* library = nullptr;
+  void* (*indicator_new_with_path)(const char*, const char*, int,
+                                   const char*) = nullptr;
+  void (*indicator_set_status)(void*, int) = nullptr;
+  void (*indicator_set_menu)(void*, void*) = nullptr;
+  void (*indicator_set_title)(void*, const char*) = nullptr;
+  int (*gtk_init_check)(int*, char***) = nullptr;
+  void* (*gtk_menu_new)() = nullptr;
+  void* (*gtk_menu_item_new_with_label)(const char*) = nullptr;
+  void* (*gtk_separator_menu_item_new)() = nullptr;
+  void (*gtk_menu_shell_append)(void*, void*) = nullptr;
+  void (*gtk_widget_show_all)(void*) = nullptr;
+  void (*gtk_widget_destroy)(void*) = nullptr;
+  int (*gtk_events_pending)() = nullptr;
+  int (*gtk_main_iteration_do)(int) = nullptr;
+  unsigned long (*signal_connect_data)(void*, const char*, SignalCallback,
+                                       void*, SignalDestroyNotify,
+                                       int) = nullptr;
+  void (*object_unref)(void*) = nullptr;
+};
+
+template <typename T>
+bool LoadDesktopIndicatorSymbol(void* library, T* function,
+                                const char* symbol_name) {
+  *function = reinterpret_cast<T>(dlsym(library, symbol_name));
+  return *function != nullptr;
+}
+
+void UnloadDesktopIndicatorApi(DesktopIndicatorApi* api) {
+  if (api->library) {
+    dlclose(api->library);
+  }
+  *api = DesktopIndicatorApi{};
+}
+
+bool LoadDesktopIndicatorApi(DesktopIndicatorApi* api) {
+  for (const char* library_name : {"libayatana-appindicator3.so.1",
+                                   "libappindicator3.so.1"}) {
+    api->library = dlopen(library_name, RTLD_NOW | RTLD_LOCAL);
+    if (api->library) {
+      break;
+    }
+  }
+  if (!api->library) {
+    return false;
+  }
+
+  const bool loaded =
+      LoadDesktopIndicatorSymbol(api->library,
+                                 &api->indicator_new_with_path,
+                                 "app_indicator_new_with_path") &&
+      LoadDesktopIndicatorSymbol(api->library, &api->indicator_set_status,
+                                 "app_indicator_set_status") &&
+      LoadDesktopIndicatorSymbol(api->library, &api->indicator_set_menu,
+                                 "app_indicator_set_menu") &&
+      LoadDesktopIndicatorSymbol(api->library, &api->indicator_set_title,
+                                 "app_indicator_set_title") &&
+      LoadDesktopIndicatorSymbol(api->library, &api->gtk_init_check,
+                                 "gtk_init_check") &&
+      LoadDesktopIndicatorSymbol(api->library, &api->gtk_menu_new,
+                                 "gtk_menu_new") &&
+      LoadDesktopIndicatorSymbol(api->library,
+                                 &api->gtk_menu_item_new_with_label,
+                                 "gtk_menu_item_new_with_label") &&
+      LoadDesktopIndicatorSymbol(api->library,
+                                 &api->gtk_separator_menu_item_new,
+                                 "gtk_separator_menu_item_new") &&
+      LoadDesktopIndicatorSymbol(api->library, &api->gtk_menu_shell_append,
+                                 "gtk_menu_shell_append") &&
+      LoadDesktopIndicatorSymbol(api->library, &api->gtk_widget_show_all,
+                                 "gtk_widget_show_all") &&
+      LoadDesktopIndicatorSymbol(api->library, &api->gtk_widget_destroy,
+                                 "gtk_widget_destroy") &&
+      LoadDesktopIndicatorSymbol(api->library, &api->gtk_events_pending,
+                                 "gtk_events_pending") &&
+      LoadDesktopIndicatorSymbol(api->library, &api->gtk_main_iteration_do,
+                                 "gtk_main_iteration_do") &&
+      LoadDesktopIndicatorSymbol(api->library, &api->signal_connect_data,
+                                 "g_signal_connect_data") &&
+      LoadDesktopIndicatorSymbol(api->library, &api->object_unref,
+                                 "g_object_unref");
+  if (!loaded) {
+    UnloadDesktopIndicatorApi(api);
+  }
+  return loaded;
+}
 
 bool IsAsciiPrintable(const std::string& text) {
   for (unsigned char ch : text) {
@@ -89,6 +195,62 @@ unsigned long AllocateColor(Display* display, int screen, const char* name,
   return fallback;
 }
 
+void FillRoundedRectangle(Display* display, Drawable drawable, GC gc, int x,
+                          int y, int width, int height, int radius) {
+  if (!display || !drawable || !gc || width <= 0 || height <= 0) {
+    return;
+  }
+
+  const int clamped_radius =
+      std::clamp(radius, 0, std::min(width, height) / 2);
+  if (clamped_radius == 0) {
+    XFillRectangle(display, drawable, gc, x, y, width, height);
+    return;
+  }
+
+  const int diameter = clamped_radius * 2;
+  XFillRectangle(display, drawable, gc, x + clamped_radius, y,
+                 width - diameter, height);
+  XFillRectangle(display, drawable, gc, x, y + clamped_radius, width,
+                 height - diameter);
+  XFillArc(display, drawable, gc, x, y, diameter, diameter, 0, 360 * 64);
+  XFillArc(display, drawable, gc, x + width - diameter, y, diameter, diameter,
+           0, 360 * 64);
+  XFillArc(display, drawable, gc, x, y + height - diameter, diameter, diameter,
+           0, 360 * 64);
+  XFillArc(display, drawable, gc, x + width - diameter,
+           y + height - diameter, diameter, diameter, 0, 360 * 64);
+}
+
+bool IsPointInsideRoundedRectangle(int point_x, int point_y, int x, int y,
+                                   int width, int height, int radius) {
+  if (point_x < x || point_y < y || point_x >= x + width ||
+      point_y >= y + height) {
+    return false;
+  }
+
+  const int clamped_radius =
+      std::clamp(radius, 0, std::min(width, height) / 2);
+  if (clamped_radius == 0 ||
+      (point_x >= x + clamped_radius &&
+       point_x < x + width - clamped_radius) ||
+      (point_y >= y + clamped_radius &&
+       point_y < y + height - clamped_radius)) {
+    return true;
+  }
+
+  const int center_x = point_x < x + clamped_radius
+                           ? x + clamped_radius
+                           : x + width - clamped_radius - 1;
+  const int center_y = point_y < y + clamped_radius
+                           ? y + clamped_radius
+                           : y + height - clamped_radius - 1;
+  const int delta_x = point_x - center_x;
+  const int delta_y = point_y - center_y;
+  return delta_x * delta_x + delta_y * delta_y <=
+         clamped_radius * clamped_radius;
+}
+
 std::vector<std::filesystem::path> BuildIconCandidatePaths() {
   std::vector<std::filesystem::path> paths = {
       "icons/linux/crossdesk_32x32.png",
@@ -131,6 +293,22 @@ std::vector<std::filesystem::path> BuildIconCandidatePaths() {
   }
 
   return paths;
+}
+
+std::pair<std::string, std::string> ResolveDesktopIndicatorIcon() {
+  for (const auto& candidate : BuildIconCandidatePaths()) {
+    std::error_code error;
+    if (!std::filesystem::exists(candidate, error) || error) {
+      continue;
+    }
+
+    const auto absolute_path = std::filesystem::absolute(candidate, error);
+    if (!error) {
+      return {absolute_path.stem().string(),
+              absolute_path.parent_path().string()};
+    }
+  }
+  return {"crossdesk", {}};
 }
 
 int CountMaskBits(unsigned long mask) {
@@ -256,6 +434,7 @@ struct LinuxTrayImpl {
   }
 
   void RemoveTrayIcon() {
+    RemoveDesktopIndicator();
     HideMenu();
 
     if (display && icon_window) {
@@ -302,9 +481,137 @@ struct LinuxTrayImpl {
     tray_manager_window = 0;
   }
 
-  void ProcessEvents() { ProcessPendingEvents(kMaxTrayEventsPerTick); }
+  void ProcessEvents() {
+    ProcessDesktopIndicatorEvents();
+    ProcessPendingEvents(kMaxTrayEventsPerTick);
+  }
 
  private:
+  static void OnDesktopShowWindow(void*, void* user_data) {
+    auto* self = static_cast<LinuxTrayImpl*>(user_data);
+    if (self) {
+      self->ShowWindow();
+    }
+  }
+
+  static void OnDesktopOpenSettings(void*, void* user_data) {
+    auto* self = static_cast<LinuxTrayImpl*>(user_data);
+    if (self) {
+      self->OpenSettings();
+    }
+  }
+
+  static void OnDesktopExit(void*, void* user_data) {
+    auto* self = static_cast<LinuxTrayImpl*>(user_data);
+    if (self) {
+      self->RequestExit();
+    }
+  }
+
+  bool EnsureDesktopIndicator() {
+    if (desktop_indicator) {
+      return true;
+    }
+    if (desktop_indicator_attempted) {
+      return false;
+    }
+    desktop_indicator_attempted = true;
+
+    if (!LoadDesktopIndicatorApi(&desktop_indicator_api)) {
+      LOG_INFO(
+          "Desktop AppIndicator runtime unavailable; using XEmbed tray "
+          "fallback");
+      return false;
+    }
+    if (!desktop_indicator_api.gtk_init_check(nullptr, nullptr)) {
+      LOG_INFO(
+          "GTK could not connect to the desktop; using XEmbed tray fallback");
+      return false;
+    }
+
+    desktop_menu = desktop_indicator_api.gtk_menu_new();
+    void* show_item = desktop_indicator_api.gtk_menu_item_new_with_label(
+        show_menu_label.c_str());
+    void* settings_item = desktop_indicator_api.gtk_menu_item_new_with_label(
+        settings_menu_label.c_str());
+    void* separator = desktop_indicator_api.gtk_separator_menu_item_new();
+    void* exit_item = desktop_indicator_api.gtk_menu_item_new_with_label(
+        exit_menu_label.c_str());
+    if (!desktop_menu || !show_item || !settings_item || !separator ||
+        !exit_item) {
+      if (desktop_menu) {
+        desktop_indicator_api.gtk_widget_destroy(desktop_menu);
+        desktop_menu = nullptr;
+      }
+      return false;
+    }
+
+    desktop_indicator_api.signal_connect_data(
+        show_item, "activate", &LinuxTrayImpl::OnDesktopShowWindow, this,
+        nullptr, 0);
+    desktop_indicator_api.signal_connect_data(
+        settings_item, "activate", &LinuxTrayImpl::OnDesktopOpenSettings, this,
+        nullptr, 0);
+    desktop_indicator_api.signal_connect_data(
+        exit_item, "activate", &LinuxTrayImpl::OnDesktopExit, this, nullptr, 0);
+    desktop_indicator_api.gtk_menu_shell_append(desktop_menu, show_item);
+    desktop_indicator_api.gtk_menu_shell_append(desktop_menu, settings_item);
+    desktop_indicator_api.gtk_menu_shell_append(desktop_menu, separator);
+    desktop_indicator_api.gtk_menu_shell_append(desktop_menu, exit_item);
+    desktop_indicator_api.gtk_widget_show_all(desktop_menu);
+
+    const auto [icon_name, icon_path] = ResolveDesktopIndicatorIcon();
+    desktop_indicator = desktop_indicator_api.indicator_new_with_path(
+        "crossdesk", icon_name.c_str(),
+        kAppIndicatorCategoryApplicationStatus,
+        icon_path.empty() ? nullptr : icon_path.c_str());
+    if (!desktop_indicator) {
+      desktop_indicator_api.gtk_widget_destroy(desktop_menu);
+      desktop_menu = nullptr;
+      return false;
+    }
+
+    desktop_indicator_api.indicator_set_title(desktop_indicator,
+                                               tooltip.c_str());
+    desktop_indicator_api.indicator_set_menu(desktop_indicator, desktop_menu);
+    desktop_indicator_api.indicator_set_status(desktop_indicator,
+                                               kAppIndicatorStatusActive);
+    ProcessDesktopIndicatorEvents();
+    LOG_INFO("Linux tray registered through the desktop AppIndicator service");
+    return true;
+  }
+
+  void RemoveDesktopIndicator() {
+    if (desktop_indicator) {
+      desktop_indicator_api.indicator_set_status(
+          desktop_indicator, kAppIndicatorStatusPassive);
+    }
+    if (desktop_menu) {
+      desktop_indicator_api.gtk_widget_destroy(desktop_menu);
+      desktop_menu = nullptr;
+    }
+    if (desktop_indicator) {
+      desktop_indicator_api.object_unref(desktop_indicator);
+      desktop_indicator = nullptr;
+    }
+    // GTK registers process-wide types and callbacks. Keep the dynamically
+    // loaded module resident after initialization and let process teardown
+    // release it, instead of invalidating those registrations with dlclose().
+  }
+
+  void ProcessDesktopIndicatorEvents() {
+    if (!desktop_indicator) {
+      return;
+    }
+
+    int processed = 0;
+    while (processed < kMaxTrayEventsPerTick &&
+           desktop_indicator_api.gtk_events_pending()) {
+      desktop_indicator_api.gtk_main_iteration_do(0);
+      ++processed;
+    }
+  }
+
   int ProcessPendingEvents(int max_events) {
     if (!display) {
       return 0;
@@ -352,6 +659,8 @@ struct LinuxTrayImpl {
     SelectArgbVisual();
     brand_pixel = AllocateColor(display, screen, "#2563eb", black_pixel);
     hover_pixel = AllocateColor(display, screen, "#e5e7eb", white_pixel);
+    menu_border_pixel =
+        AllocateColor(display, screen, "#d1d5db", black_pixel);
     int shape_event_base = 0;
     int shape_error_base = 0;
     shape_available =
@@ -366,6 +675,10 @@ struct LinuxTrayImpl {
     xembed_info_atom = XInternAtom(display, "_XEMBED_INFO", False);
     utf8_string_atom = XInternAtom(display, "UTF8_STRING", False);
     net_wm_name_atom = XInternAtom(display, "_NET_WM_NAME", False);
+    net_wm_window_type_atom =
+        XInternAtom(display, "_NET_WM_WINDOW_TYPE", False);
+    net_wm_window_type_popup_menu_atom =
+        XInternAtom(display, "_NET_WM_WINDOW_TYPE_POPUP_MENU", False);
 
     char** missing_charset_list = nullptr;
     int missing_charset_count = 0;
@@ -424,6 +737,9 @@ struct LinuxTrayImpl {
   }
 
   bool EnsureTrayIcon() {
+    if (EnsureDesktopIndicator()) {
+      return true;
+    }
     if (docked && icon_window) {
       return true;
     }
@@ -581,10 +897,7 @@ struct LinuxTrayImpl {
       case MotionNotify:
         if (event.xmotion.window == menu_window) {
           const int hovered_item =
-              event.xmotion.x >= 0 && event.xmotion.x < menu_width &&
-                      event.xmotion.y >= 0 && event.xmotion.y < kMenuHeight
-                  ? event.xmotion.y / kMenuItemHeight
-                  : -1;
+              MenuItemAt(event.xmotion.x, event.xmotion.y);
           if (hovered_item != hovered_menu_item) {
             hovered_menu_item = hovered_item;
             DrawMenu();
@@ -605,12 +918,8 @@ struct LinuxTrayImpl {
 
   void HandleButtonRelease(const XButtonEvent& event) {
     if (menu_window && event.window == menu_window) {
-      const bool inside_menu =
-          event.x >= 0 && event.y >= 0 && event.x < menu_width &&
-          event.y < kMenuHeight;
-      const int selected_item = inside_menu && event.button == Button1
-                                    ? event.y / kMenuItemHeight
-                                    : -1;
+      const int selected_item =
+          event.button == Button1 ? MenuItemAt(event.x, event.y) : -1;
       HideMenu();
       if (selected_item == 0) {
         ShowWindow();
@@ -906,6 +1215,52 @@ struct LinuxTrayImpl {
     return static_cast<int>(ascii_label.size()) * 8;
   }
 
+  int MenuItemAt(int x, int y) const {
+    if (!IsPointInsideRoundedRectangle(x, y, 0, 0, menu_width, kMenuHeight,
+                                       kMenuCornerRadius)) {
+      return -1;
+    }
+
+    const int content_y = y - kMenuVerticalPadding;
+    if (content_y < 0 ||
+        content_y >= kMenuItemHeight * kMenuItemCount) {
+      return -1;
+    }
+    return content_y / kMenuItemHeight;
+  }
+
+  void ApplyMenuShape() {
+    if (!shape_available || !display || !menu_window) {
+      return;
+    }
+
+    Pixmap shape_mask =
+        XCreatePixmap(display, menu_window, menu_width, kMenuHeight, 1);
+    if (!shape_mask) {
+      return;
+    }
+
+    GC shape_gc = XCreateGC(display, shape_mask, 0, nullptr);
+    if (!shape_gc) {
+      XFreePixmap(display, shape_mask);
+      return;
+    }
+
+    XSetForeground(display, shape_gc, 0);
+    XFillRectangle(display, shape_mask, shape_gc, 0, 0, menu_width,
+                   kMenuHeight);
+    XSetForeground(display, shape_gc, 1);
+    FillRoundedRectangle(display, shape_mask, shape_gc, 0, 0, menu_width,
+                         kMenuHeight, kMenuCornerRadius);
+    XShapeCombineMask(display, menu_window, ShapeBounding, 0, 0, shape_mask,
+                      ShapeSet);
+    XShapeCombineMask(display, menu_window, ShapeInput, 0, 0, shape_mask,
+                      ShapeSet);
+
+    XFreeGC(display, shape_gc);
+    XFreePixmap(display, shape_mask);
+  }
+
   void ShowMenu(int root_x, int root_y) {
     if (!display) {
       return;
@@ -930,17 +1285,24 @@ struct LinuxTrayImpl {
 
     XSetWindowAttributes attrs{};
     attrs.override_redirect = True;
-    attrs.background_pixel = white_pixel;
-    attrs.border_pixel = black_pixel;
+    attrs.background_pixel = menu_border_pixel;
     attrs.event_mask = ExposureMask | ButtonPressMask | ButtonReleaseMask |
                        PointerMotionMask | LeaveWindowMask;
     menu_window = XCreateWindow(
-        display, root_window, x, y, menu_width, kMenuHeight, 1, CopyFromParent,
+        display, root_window, x, y, menu_width, kMenuHeight, 0, CopyFromParent,
         InputOutput, CopyFromParent,
-        CWOverrideRedirect | CWBackPixel | CWBorderPixel | CWEventMask, &attrs);
+        CWOverrideRedirect | CWBackPixel | CWEventMask, &attrs);
     if (!menu_window) {
       return;
     }
+
+    if (net_wm_window_type_atom && net_wm_window_type_popup_menu_atom) {
+      const Atom window_type = net_wm_window_type_popup_menu_atom;
+      XChangeProperty(display, menu_window, net_wm_window_type_atom, XA_ATOM,
+                      32, PropModeReplace,
+                      reinterpret_cast<const unsigned char*>(&window_type), 1);
+    }
+    ApplyMenuShape();
 
     menu_visible = true;
     hovered_menu_item = -1;
@@ -973,17 +1335,30 @@ struct LinuxTrayImpl {
     }
 
     GC gc = XCreateGC(display, menu_window, 0, nullptr);
+    XSetForeground(display, gc, menu_border_pixel);
+    FillRoundedRectangle(display, menu_window, gc, 0, 0, menu_width,
+                         kMenuHeight, kMenuCornerRadius);
     XSetForeground(display, gc, white_pixel);
-    XFillRectangle(display, menu_window, gc, 0, 0, menu_width, kMenuHeight);
+    FillRoundedRectangle(
+        display, menu_window, gc, kMenuBorderWidth, kMenuBorderWidth,
+        menu_width - kMenuBorderWidth * 2,
+        kMenuHeight - kMenuBorderWidth * 2,
+        kMenuCornerRadius - kMenuBorderWidth);
     if (hovered_menu_item >= 0 && hovered_menu_item < kMenuItemCount) {
       XSetForeground(display, gc, hover_pixel);
-      XFillRectangle(display, menu_window, gc, 1,
-                     hovered_menu_item * kMenuItemHeight + 1, menu_width - 2,
-                     kMenuItemHeight - 2);
+      FillRoundedRectangle(
+          display, menu_window, gc, kMenuItemHorizontalInset,
+          kMenuVerticalPadding + hovered_menu_item * kMenuItemHeight +
+              kMenuItemVerticalInset,
+          menu_width - kMenuItemHorizontalInset * 2,
+          kMenuItemHeight - kMenuItemVerticalInset * 2,
+          kMenuItemCornerRadius);
     }
     XSetForeground(display, gc, hover_pixel);
-    XDrawLine(display, menu_window, gc, 1, kMenuItemHeight * 2,
-              menu_width - 2, kMenuItemHeight * 2);
+    XDrawLine(display, menu_window, gc, kMenuSeparatorHorizontalInset,
+              kMenuVerticalPadding + kMenuItemHeight * 2,
+              menu_width - kMenuSeparatorHorizontalInset,
+              kMenuVerticalPadding + kMenuItemHeight * 2);
     XSetForeground(display, gc, black_pixel);
 
     XftDraw* xft_draw = menu_font && menu_text_color_allocated
@@ -993,7 +1368,8 @@ struct LinuxTrayImpl {
                             : nullptr;
     auto draw_label = [&](int item_index, const std::string& label,
                           const std::string& ascii_label) {
-      const int item_y = item_index * kMenuItemHeight;
+      const int item_y =
+          kMenuVerticalPadding + item_index * kMenuItemHeight;
       int baseline = item_y + kMenuItemHeight / 2 + 5;
       if (xft_draw) {
         baseline = item_y +
@@ -1086,6 +1462,10 @@ struct LinuxTrayImpl {
   std::string settings_menu_ascii_label;
   std::string exit_menu_label;
   std::string exit_menu_ascii_label;
+  DesktopIndicatorApi desktop_indicator_api;
+  void* desktop_indicator = nullptr;
+  void* desktop_menu = nullptr;
+  bool desktop_indicator_attempted = false;
   Display* display = nullptr;
   int screen = 0;
   ::Window root_window = 0;
@@ -1098,10 +1478,13 @@ struct LinuxTrayImpl {
   Atom xembed_info_atom = None;
   Atom utf8_string_atom = None;
   Atom net_wm_name_atom = None;
+  Atom net_wm_window_type_atom = None;
+  Atom net_wm_window_type_popup_menu_atom = None;
   unsigned long black_pixel = 0;
   unsigned long white_pixel = 0;
   unsigned long brand_pixel = 0;
   unsigned long hover_pixel = 0;
+  unsigned long menu_border_pixel = 0;
   Visual* icon_visual = nullptr;
   int icon_depth = 0;
   Colormap icon_colormap = 0;

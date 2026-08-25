@@ -17,6 +17,7 @@ MAINTAINER="Junkun Di <junkun.di@hotmail.com>"
 DESCRIPTION="A simple cross-platform remote desktop client."
 ALSA_RUNTIME_DEP="libasound2 | libasound2t64"
 PORTAL_RUNTIME_RECOMMENDS="xdg-desktop-portal, xdg-desktop-portal-gtk | xdg-desktop-portal-kde | xdg-desktop-portal-wlr"
+TRAY_RUNTIME_RECOMMENDS="libayatana-appindicator3-1 | libappindicator3-1"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -145,7 +146,7 @@ for size in 16 24 32 48 64 96 128 256; do
         "$ICON_BASE_DIR/${size}x${size}/apps/${PKG_NAME}.png"
 done
 
-RECOMMENDS="$PORTAL_RUNTIME_RECOMMENDS"
+RECOMMENDS="$PORTAL_RUNTIME_RECOMMENDS, $TRAY_RUNTIME_RECOMMENDS"
 if [[ -n "$EXTRA_RECOMMENDATION" ]]; then
     RECOMMENDS="$RECOMMENDS, $EXTRA_RECOMMENDATION"
 fi
