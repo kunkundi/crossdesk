@@ -16,8 +16,8 @@
 #include "file_transfer.h"
 #include "localization.h"
 #include "platform.h"
-#if defined(_WIN32)
-#include "platform/windows_opengl_video_renderer.h"
+#if defined(_WIN32) || defined(__linux__)
+#include "platform/opengl_video_renderer.h"
 #endif
 #ifdef __APPLE__
 #include "platform/metal_video_renderer.h"
@@ -319,7 +319,7 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         props->enable_mouse_control_ = false;
         runtime->ResetRemoteServiceStatus(*props);
 
-#if defined(__APPLE__) || defined(_WIN32)
+#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
         std::shared_ptr<std::vector<unsigned char>> native_snapshot;
         int native_snapshot_width = 0;
         int native_snapshot_height = 0;
@@ -330,11 +330,10 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
                                   props->thumbnail_frame_->empty();
         }
         if (needs_native_snapshot) {
-#if defined(_WIN32)
-          auto* native_renderer =
-              runtime->windows_opengl_video_renderer_.get();
-#else
+#if defined(__APPLE__)
           auto* native_renderer = runtime->mac_metal_video_renderer_.get();
+#else
+          auto* native_renderer = runtime->opengl_video_renderer_.get();
 #endif
           auto snapshot = std::make_shared<std::vector<unsigned char>>();
           if (native_renderer && native_renderer->CopyLatestNv12(
@@ -349,7 +348,7 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
           std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
           props->front_frame_.reset();
           props->back_frame_.reset();
-#if defined(__APPLE__) || defined(_WIN32)
+#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
           if (native_snapshot &&
               (!props->thumbnail_frame_ || props->thumbnail_frame_->empty())) {
             props->thumbnail_frame_ = std::move(native_snapshot);
@@ -363,11 +362,11 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
           props->render_rect_dirty_ = true;
           props->stream_cleanup_pending_ = true;
         }
-#if defined(__APPLE__) || defined(_WIN32)
-#if defined(_WIN32)
-        auto* native_renderer = runtime->windows_opengl_video_renderer_.get();
-#else
+#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
+#if defined(__APPLE__)
         auto* native_renderer = runtime->mac_metal_video_renderer_.get();
+#else
+        auto* native_renderer = runtime->opengl_video_renderer_.get();
 #endif
         if (native_renderer) {
           native_renderer->DiscardStream(remote_id);

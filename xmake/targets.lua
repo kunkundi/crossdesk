@@ -279,7 +279,7 @@ function setup_targets()
             add_cxxflags("/bigobj")
             add_links("opengl32")
             add_files("src/gui/platform/tray/win_tray.cpp",
-                "src/gui/platform/windows_opengl_video_renderer.cpp")
+                "src/gui/platform/opengl_video_renderer.cpp")
             add_includedirs("src/service/windows", {public = true})
         elseif is_os("macosx") then
             add_files("src/gui/runtime/*.mm", "src/gui/platform/tray/*.mm",
@@ -287,7 +287,8 @@ function setup_targets()
                 "src/gui/platform/metal_video_renderer.mm")
         elseif is_os("linux") then
             add_links("GL")
-            add_files("src/gui/platform/tray/linux_tray.cpp")
+            add_files("src/gui/platform/tray/linux_tray.cpp",
+                "src/gui/platform/opengl_video_renderer.cpp")
         end
 
     if is_os("windows") then

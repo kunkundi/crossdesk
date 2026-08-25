@@ -1,13 +1,20 @@
-#include "platform/windows_opengl_video_renderer.h"
+#include "platform/opengl_video_renderer.h"
 
-#if !defined(_WIN32)
-#error "WindowsOpenGlVideoRenderer is only available on Windows"
+#if !defined(_WIN32) && !defined(__linux__)
+#error "OpenGlVideoRenderer is only available on Windows and Linux"
 #endif
 
+#if defined(_WIN32)
 #include <windows.h>
+#elif defined(__linux__)
+#include <dlfcn.h>
+#endif
 
 #include <GL/gl.h>
 #include <GL/glext.h>
+#if defined(__linux__)
+#include <GL/glx.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -49,6 +56,7 @@ struct SharedFrameState {
 };
 
 template <typename T> bool LoadOpenGlFunction(T *function, const char *name) {
+#if defined(_WIN32)
   PROC address = wglGetProcAddress(name);
   if (address == nullptr || address == reinterpret_cast<PROC>(1) ||
       address == reinterpret_cast<PROC>(2) ||
@@ -58,6 +66,14 @@ template <typename T> bool LoadOpenGlFunction(T *function, const char *name) {
     address = module ? GetProcAddress(module, name) : nullptr;
   }
   *function = reinterpret_cast<T>(address);
+#elif defined(__linux__)
+  void *address = dlsym(RTLD_DEFAULT, name);
+  if (address == nullptr) {
+    address = reinterpret_cast<void *>(
+        glXGetProcAddressARB(reinterpret_cast<const GLubyte *>(name)));
+  }
+  *function = reinterpret_cast<T>(address);
+#endif
   return *function != nullptr;
 }
 
@@ -85,7 +101,10 @@ struct OpenGlFunctions {
   PFNGLGETVERTEXATTRIBPOINTERVPROC get_vertex_attrib_pointer_v = nullptr;
   PFNGLLINKPROGRAMPROC link_program = nullptr;
   PFNGLSHADERSOURCEPROC shader_source = nullptr;
+  PFNGLUNIFORM1FPROC uniform_1f = nullptr;
   PFNGLUNIFORM1IPROC uniform_1i = nullptr;
+  PFNGLUNIFORM2FPROC uniform_2f = nullptr;
+  PFNGLUNIFORM4FPROC uniform_4f = nullptr;
   PFNGLUSEPROGRAMPROC use_program = nullptr;
   PFNGLVERTEXATTRIBPOINTERPROC vertex_attrib_pointer = nullptr;
 
@@ -116,7 +135,10 @@ struct OpenGlFunctions {
                               "glGetVertexAttribPointerv") &&
            LoadOpenGlFunction(&link_program, "glLinkProgram") &&
            LoadOpenGlFunction(&shader_source, "glShaderSource") &&
+           LoadOpenGlFunction(&uniform_1f, "glUniform1f") &&
            LoadOpenGlFunction(&uniform_1i, "glUniform1i") &&
+           LoadOpenGlFunction(&uniform_2f, "glUniform2f") &&
+           LoadOpenGlFunction(&uniform_4f, "glUniform4f") &&
            LoadOpenGlFunction(&use_program, "glUseProgram") &&
            LoadOpenGlFunction(&vertex_attrib_pointer, "glVertexAttribPointer");
   }
@@ -205,7 +227,7 @@ void RestoreVertexAttrib(const OpenGlFunctions &gl, GLuint index,
 
 } // namespace
 
-struct WindowsOpenGlVideoRenderer::Impl {
+struct OpenGlVideoRenderer::Impl {
   OpenGlFunctions gl;
   std::shared_ptr<SharedFrameState> frames =
       std::make_shared<SharedFrameState>();
@@ -218,6 +240,10 @@ struct WindowsOpenGlVideoRenderer::Impl {
   GLint texcoord_location = -1;
   GLint y_texture_location = -1;
   GLint uv_texture_location = -1;
+  GLint target_size_location = -1;
+  GLint video_rect_location = -1;
+  GLint corner_radius_location = -1;
+  GLint video_enabled_location = -1;
   int texture_width = 0;
   int texture_height = 0;
   std::string uploaded_stream;
@@ -232,6 +258,10 @@ struct WindowsOpenGlVideoRenderer::Impl {
     texcoord_location = -1;
     y_texture_location = -1;
     uv_texture_location = -1;
+    target_size_location = -1;
+    video_rect_location = -1;
+    corner_radius_location = -1;
+    video_enabled_location = -1;
     texture_width = 0;
     texture_height = 0;
     uploaded_stream.clear();
@@ -239,12 +269,12 @@ struct WindowsOpenGlVideoRenderer::Impl {
   }
 };
 
-WindowsOpenGlVideoRenderer::WindowsOpenGlVideoRenderer()
+OpenGlVideoRenderer::OpenGlVideoRenderer()
     : impl_(std::make_unique<Impl>()) {}
 
-WindowsOpenGlVideoRenderer::~WindowsOpenGlVideoRenderer() = default;
+OpenGlVideoRenderer::~OpenGlVideoRenderer() = default;
 
-bool WindowsOpenGlVideoRenderer::Setup() {
+bool OpenGlVideoRenderer::Setup() {
   if (IsReady()) {
     return true;
   }
@@ -274,15 +304,41 @@ precision mediump float;
 #endif
 uniform sampler2D y_texture;
 uniform sampler2D uv_texture;
+uniform vec2 target_size;
+uniform vec4 video_rect;
+uniform float corner_radius;
+uniform float video_enabled;
 varying vec2 video_texcoord;
 void main() {
-  float y = 1.16438356 *
-            (texture2D(y_texture, video_texcoord).r - 16.0 / 255.0);
-  vec2 uv = texture2D(uv_texture, video_texcoord).ra - vec2(0.5, 0.5);
-  vec3 rgb = vec3(y + 1.59602678 * uv.y,
-                  y - 0.39176229 * uv.x - 0.81296764 * uv.y,
-                  y + 2.01723214 * uv.x);
-  gl_FragColor = vec4(clamp(rgb, 0.0, 1.0), 1.0);
+  vec2 surface_point = video_texcoord * target_size;
+  vec3 rgb = vec3(0.0);
+  if (video_enabled > 0.5 &&
+      surface_point.x >= video_rect.x &&
+      surface_point.x <= video_rect.x + video_rect.z &&
+      surface_point.y >= video_rect.y &&
+      surface_point.y <= video_rect.y + video_rect.w) {
+    vec2 frame_texcoord =
+        (surface_point - video_rect.xy) / video_rect.zw;
+    float y = 1.16438356 *
+              (texture2D(y_texture, frame_texcoord).r - 16.0 / 255.0);
+    vec2 uv =
+        texture2D(uv_texture, frame_texcoord).ra - vec2(0.5, 0.5);
+    rgb = clamp(vec3(y + 1.59602678 * uv.y,
+                     y - 0.39176229 * uv.x - 0.81296764 * uv.y,
+                     y + 2.01723214 * uv.x),
+                0.0, 1.0);
+  }
+  float coverage = 1.0;
+  if (corner_radius > 0.0) {
+    vec2 half_size = target_size * 0.5;
+    vec2 corner = abs(surface_point - half_size) -
+                  (half_size - vec2(corner_radius));
+    float distance_to_edge =
+        length(max(corner, vec2(0.0))) +
+        min(max(corner.x, corner.y), 0.0) - corner_radius;
+    coverage = clamp(0.5 - distance_to_edge, 0.0, 1.0);
+  }
+  gl_FragColor = vec4(rgb * coverage, coverage);
 }
 )glsl";
   static constexpr char kDesktopVertexShader[] = R"glsl(
@@ -299,15 +355,41 @@ void main() {
 #version 110
 uniform sampler2D y_texture;
 uniform sampler2D uv_texture;
+uniform vec2 target_size;
+uniform vec4 video_rect;
+uniform float corner_radius;
+uniform float video_enabled;
 varying vec2 video_texcoord;
 void main() {
-  float y = 1.16438356 *
-            (texture2D(y_texture, video_texcoord).r - 16.0 / 255.0);
-  vec2 uv = texture2D(uv_texture, video_texcoord).ra - vec2(0.5, 0.5);
-  vec3 rgb = vec3(y + 1.59602678 * uv.y,
-                  y - 0.39176229 * uv.x - 0.81296764 * uv.y,
-                  y + 2.01723214 * uv.x);
-  gl_FragColor = vec4(clamp(rgb, 0.0, 1.0), 1.0);
+  vec2 surface_point = video_texcoord * target_size;
+  vec3 rgb = vec3(0.0);
+  if (video_enabled > 0.5 &&
+      surface_point.x >= video_rect.x &&
+      surface_point.x <= video_rect.x + video_rect.z &&
+      surface_point.y >= video_rect.y &&
+      surface_point.y <= video_rect.y + video_rect.w) {
+    vec2 frame_texcoord =
+        (surface_point - video_rect.xy) / video_rect.zw;
+    float y = 1.16438356 *
+              (texture2D(y_texture, frame_texcoord).r - 16.0 / 255.0);
+    vec2 uv =
+        texture2D(uv_texture, frame_texcoord).ra - vec2(0.5, 0.5);
+    rgb = clamp(vec3(y + 1.59602678 * uv.y,
+                     y - 0.39176229 * uv.x - 0.81296764 * uv.y,
+                     y + 2.01723214 * uv.x),
+                0.0, 1.0);
+  }
+  float coverage = 1.0;
+  if (corner_radius > 0.0) {
+    vec2 half_size = target_size * 0.5;
+    vec2 corner = abs(surface_point - half_size) -
+                  (half_size - vec2(corner_radius));
+    float distance_to_edge =
+        length(max(corner, vec2(0.0))) +
+        min(max(corner.x, corner.y), 0.0) - corner_radius;
+    coverage = clamp(0.5 - distance_to_edge, 0.0, 1.0);
+  }
+  gl_FragColor = vec4(rgb * coverage, coverage);
 }
 )glsl";
 
@@ -363,8 +445,19 @@ void main() {
       impl_->gl.get_uniform_location(impl_->program, "y_texture");
   impl_->uv_texture_location =
       impl_->gl.get_uniform_location(impl_->program, "uv_texture");
+  impl_->target_size_location =
+      impl_->gl.get_uniform_location(impl_->program, "target_size");
+  impl_->video_rect_location =
+      impl_->gl.get_uniform_location(impl_->program, "video_rect");
+  impl_->corner_radius_location =
+      impl_->gl.get_uniform_location(impl_->program, "corner_radius");
+  impl_->video_enabled_location =
+      impl_->gl.get_uniform_location(impl_->program, "video_enabled");
   if (impl_->position_location < 0 || impl_->texcoord_location < 0 ||
-      impl_->y_texture_location < 0 || impl_->uv_texture_location < 0) {
+      impl_->y_texture_location < 0 || impl_->uv_texture_location < 0 ||
+      impl_->target_size_location < 0 || impl_->video_rect_location < 0 ||
+      impl_->corner_radius_location < 0 ||
+      impl_->video_enabled_location < 0) {
     LOG_ERROR("OpenGL NV12 program is missing required shader bindings");
     impl_->gl.delete_program(impl_->program);
     impl_->ResetGlHandles();
@@ -429,7 +522,7 @@ void main() {
   return true;
 }
 
-void WindowsOpenGlVideoRenderer::Teardown() {
+void OpenGlVideoRenderer::Teardown() {
   impl_->ready.store(false, std::memory_order_release);
   if (impl_->y_texture != 0)
     glDeleteTextures(1, &impl_->y_texture);
@@ -444,11 +537,11 @@ void WindowsOpenGlVideoRenderer::Teardown() {
   impl_->ResetGlHandles();
 }
 
-bool WindowsOpenGlVideoRenderer::IsReady() const {
+bool OpenGlVideoRenderer::IsReady() const {
   return impl_->ready.load(std::memory_order_acquire);
 }
 
-bool WindowsOpenGlVideoRenderer::SetSelectedStream(std::string remote_id) {
+bool OpenGlVideoRenderer::SetSelectedStream(std::string remote_id) {
   std::lock_guard lock(impl_->frames->mutex);
   if (impl_->frames->selected_stream == remote_id) {
     return false;
@@ -463,7 +556,7 @@ bool WindowsOpenGlVideoRenderer::SetSelectedStream(std::string remote_id) {
   return true;
 }
 
-void WindowsOpenGlVideoRenderer::DiscardStream(std::string_view remote_id) {
+void OpenGlVideoRenderer::DiscardStream(std::string_view remote_id) {
   std::lock_guard lock(impl_->frames->mutex);
   for (auto &slot : impl_->frames->slots) {
     if (slot.remote_id == remote_id && slot.use != SlotUse::uploading) {
@@ -477,22 +570,22 @@ void WindowsOpenGlVideoRenderer::DiscardStream(std::string_view remote_id) {
   }
 }
 
-WindowsOpenGlVideoRenderer::SubmitResult
-WindowsOpenGlVideoRenderer::SubmitNv12(std::string_view remote_id,
+OpenGlVideoRenderer::SubmitResult
+OpenGlVideoRenderer::SubmitNv12(std::string_view remote_id,
                                        const uint8_t *data, size_t size,
                                        int width, int height) {
   return SubmitNv12Internal(remote_id, data, size, width, height, true);
 }
 
-WindowsOpenGlVideoRenderer::SubmitResult
-WindowsOpenGlVideoRenderer::SubmitCachedNv12(std::string_view remote_id,
+OpenGlVideoRenderer::SubmitResult
+OpenGlVideoRenderer::SubmitCachedNv12(std::string_view remote_id,
                                              const uint8_t *data, size_t size,
                                              int width, int height) {
   return SubmitNv12Internal(remote_id, data, size, width, height, false);
 }
 
-WindowsOpenGlVideoRenderer::SubmitResult
-WindowsOpenGlVideoRenderer::SubmitNv12Internal(std::string_view remote_id,
+OpenGlVideoRenderer::SubmitResult
+OpenGlVideoRenderer::SubmitNv12Internal(std::string_view remote_id,
                                                const uint8_t *data, size_t size,
                                                int width, int height,
                                                bool replace_pending) {
@@ -562,10 +655,11 @@ WindowsOpenGlVideoRenderer::SubmitNv12Internal(std::string_view remote_id,
   return SubmitResult::submitted;
 }
 
-WindowsOpenGlVideoRenderer::RenderOutcome
-WindowsOpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
-                                         int target_width, int target_height,
-                                         int top_inset_pixels) {
+OpenGlVideoRenderer::RenderOutcome
+OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
+                                  int target_width, int target_height,
+                                  int top_inset_pixels,
+                                  int corner_radius_pixels) {
   if (!IsReady() || target_width <= 0 || target_height <= 0) {
     return {RenderResult::failed};
   }
@@ -643,7 +737,10 @@ WindowsOpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
   glDisable(GL_STENCIL_TEST);
   glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
   glViewport(0, 0, target_width, target_height);
-  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+  // The Slint items above this underlay are transparent around the custom
+  // window corners. Keep those pixels transparent so the compositor can show
+  // the desktop instead of an opaque black framebuffer clear.
+  glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
   glClear(GL_COLOR_BUFFER_BIT);
 
   bool upload_succeeded = true;
@@ -696,59 +793,76 @@ WindowsOpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
     }
   }
 
-  RenderOutcome outcome{RenderResult::empty};
-  if (upload_succeeded && impl_->uploaded_stream == remote_id &&
-      impl_->texture_width > 0 && impl_->texture_height > 0) {
+  const int content_y = std::clamp(top_inset_pixels, 0, target_height);
+  const int content_height = target_height - content_y;
+  const bool has_video =
+      upload_succeeded && impl_->uploaded_stream == remote_id &&
+      impl_->texture_width > 0 && impl_->texture_height > 0 &&
+      content_height > 0;
+  int video_x = 0;
+  int video_y = content_y;
+  int video_width = target_width;
+  int video_height = content_height;
+  if (has_video) {
     source_width = impl_->texture_width;
     source_height = impl_->texture_height;
     sequence = impl_->uploaded_sequence;
-    const int video_height = std::max(
-        0, target_height - std::clamp(top_inset_pixels, 0, target_height));
-    if (video_height > 0) {
-      const double source_aspect =
-          static_cast<double>(source_width) / source_height;
-      const double target_aspect =
-          static_cast<double>(target_width) / video_height;
-      int viewport_width = target_width;
-      int viewport_height = video_height;
-      int viewport_x = 0;
-      int viewport_y = 0;
-      if (source_aspect > target_aspect) {
-        viewport_height =
-            std::max(1, static_cast<int>(target_width / source_aspect + 0.5));
-        viewport_y = (video_height - viewport_height) / 2;
-      } else {
-        viewport_width =
-            std::max(1, static_cast<int>(video_height * source_aspect + 0.5));
-        viewport_x = (target_width - viewport_width) / 2;
-      }
-
-      glViewport(viewport_x, viewport_y, viewport_width, viewport_height);
-      impl_->gl.use_program(impl_->program);
-      impl_->gl.active_texture(GL_TEXTURE0);
-      glBindTexture(GL_TEXTURE_2D, impl_->y_texture);
-      impl_->gl.uniform_1i(impl_->y_texture_location, 0);
-      impl_->gl.active_texture(GL_TEXTURE1);
-      glBindTexture(GL_TEXTURE_2D, impl_->uv_texture);
-      impl_->gl.uniform_1i(impl_->uv_texture_location, 1);
-      impl_->gl.bind_buffer(GL_ARRAY_BUFFER, impl_->vertex_buffer);
-      impl_->gl.vertex_attrib_pointer(
-          static_cast<GLuint>(impl_->position_location), 2, GL_FLOAT, GL_FALSE,
-          4 * static_cast<GLsizei>(sizeof(GLfloat)), nullptr);
-      impl_->gl.vertex_attrib_pointer(
-          static_cast<GLuint>(impl_->texcoord_location), 2, GL_FLOAT, GL_FALSE,
-          4 * static_cast<GLsizei>(sizeof(GLfloat)),
-          reinterpret_cast<const void *>(2 * sizeof(GLfloat)));
-      impl_->gl.enable_vertex_attrib_array(
-          static_cast<GLuint>(impl_->position_location));
-      impl_->gl.enable_vertex_attrib_array(
-          static_cast<GLuint>(impl_->texcoord_location));
-      glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-      outcome = {glGetError() == GL_NO_ERROR ? RenderResult::rendered
-                                             : RenderResult::failed,
-                 source_width, source_height, sequence};
+    const double source_aspect =
+        static_cast<double>(source_width) / source_height;
+    const double target_aspect =
+        static_cast<double>(target_width) / content_height;
+    if (source_aspect > target_aspect) {
+      video_height =
+          std::max(1, static_cast<int>(target_width / source_aspect + 0.5));
+      video_y = content_y + (content_height - video_height) / 2;
+    } else {
+      video_width =
+          std::max(1, static_cast<int>(content_height * source_aspect + 0.5));
+      video_x = (target_width - video_width) / 2;
     }
   }
+
+  while (glGetError() != GL_NO_ERROR) {
+  }
+  impl_->gl.use_program(impl_->program);
+  impl_->gl.active_texture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, impl_->y_texture);
+  impl_->gl.uniform_1i(impl_->y_texture_location, 0);
+  impl_->gl.active_texture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, impl_->uv_texture);
+  impl_->gl.uniform_1i(impl_->uv_texture_location, 1);
+  impl_->gl.uniform_2f(impl_->target_size_location,
+                       static_cast<GLfloat>(target_width),
+                       static_cast<GLfloat>(target_height));
+  impl_->gl.uniform_4f(
+      impl_->video_rect_location, static_cast<GLfloat>(video_x),
+      static_cast<GLfloat>(video_y), static_cast<GLfloat>(video_width),
+      static_cast<GLfloat>(video_height));
+  impl_->gl.uniform_1f(
+      impl_->corner_radius_location,
+      static_cast<GLfloat>(std::clamp(
+          corner_radius_pixels, 0, std::min(target_width, target_height) / 2)));
+  impl_->gl.uniform_1f(impl_->video_enabled_location, has_video ? 1.0f : 0.0f);
+  impl_->gl.bind_buffer(GL_ARRAY_BUFFER, impl_->vertex_buffer);
+  impl_->gl.vertex_attrib_pointer(
+      static_cast<GLuint>(impl_->position_location), 2, GL_FLOAT, GL_FALSE,
+      4 * static_cast<GLsizei>(sizeof(GLfloat)), nullptr);
+  impl_->gl.vertex_attrib_pointer(
+      static_cast<GLuint>(impl_->texcoord_location), 2, GL_FLOAT, GL_FALSE,
+      4 * static_cast<GLsizei>(sizeof(GLfloat)),
+      reinterpret_cast<const void *>(2 * sizeof(GLfloat)));
+  impl_->gl.enable_vertex_attrib_array(
+      static_cast<GLuint>(impl_->position_location));
+  impl_->gl.enable_vertex_attrib_array(
+      static_cast<GLuint>(impl_->texcoord_location));
+  glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+  const GLenum draw_error = glGetError();
+  RenderOutcome outcome{
+      !upload_succeeded || draw_error != GL_NO_ERROR
+          ? RenderResult::failed
+          : has_video ? RenderResult::rendered : RenderResult::empty,
+      has_video ? source_width : 0, has_video ? source_height : 0,
+      has_video ? sequence : 0};
 
   RestoreVertexAttrib(impl_->gl, static_cast<GLuint>(impl_->position_location),
                       position_state);
@@ -786,7 +900,7 @@ WindowsOpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
   return outcome;
 }
 
-bool WindowsOpenGlVideoRenderer::CopyLatestNv12(
+bool OpenGlVideoRenderer::CopyLatestNv12(
     std::string_view remote_id, std::vector<unsigned char> *output, int *width,
     int *height) const {
   if (!output || !width || !height) {

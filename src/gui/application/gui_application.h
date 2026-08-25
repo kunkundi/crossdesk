@@ -41,7 +41,7 @@ private:
   void SyncStreamVideoFrame();
   void ScheduleNextVideoFrame();
   void ConfigureStreamVideoRenderer();
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__linux__)
   void SubmitCachedFrameToOpenGl(
       const std::shared_ptr<RemoteSession>& session);
 #endif

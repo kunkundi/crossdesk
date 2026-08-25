@@ -11,8 +11,8 @@
 #include "display_stream_id.h"
 #include "localization.h"
 #include "platform.h"
-#if defined(_WIN32)
-#include "platform/windows_opengl_video_renderer.h"
+#if defined(_WIN32) || defined(__linux__)
+#include "platform/opengl_video_renderer.h"
 #endif
 #ifdef __APPLE__
 #include "platform/metal_video_renderer.h"
@@ -229,7 +229,7 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
     frame_snapshot = props->front_frame_;
     video_width = props->video_width_;
     video_height = props->video_height_;
-#if defined(__APPLE__) || defined(_WIN32)
+#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
     if ((!frame_snapshot || frame_snapshot->empty()) &&
         props->thumbnail_frame_ && !props->thumbnail_frame_->empty()) {
       frame_snapshot = props->thumbnail_frame_;
@@ -238,11 +238,11 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
     }
 #endif
   }
-#if defined(__APPLE__) || defined(_WIN32)
-#if defined(_WIN32)
-  auto* native_renderer = windows_opengl_video_renderer_.get();
-#else
+#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
+#if defined(__APPLE__)
   auto* native_renderer = mac_metal_video_renderer_.get();
+#else
+  auto* native_renderer = opengl_video_renderer_.get();
 #endif
   if ((!frame_snapshot || frame_snapshot->empty()) && native_renderer) {
     auto native_snapshot = std::make_shared<std::vector<unsigned char>>();
@@ -276,7 +276,7 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
     }
   }
 
-#if defined(__APPLE__) || defined(_WIN32)
+#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
   if (native_renderer) {
     native_renderer->DiscardStream(props->remote_id_);
     video_frame_dirty_.store(true, std::memory_order_release);
@@ -343,7 +343,7 @@ void GuiRuntime::ResetRemoteSessionResources(
     std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
     props->front_frame_.reset();
     props->back_frame_.reset();
-#if defined(__APPLE__) || defined(_WIN32)
+#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
     props->thumbnail_frame_.reset();
     props->thumbnail_width_ = 0;
     props->thumbnail_height_ = 0;

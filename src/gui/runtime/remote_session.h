@@ -110,7 +110,7 @@ struct RemoteSession {
   std::mutex video_frame_mutex_;
   std::shared_ptr<std::vector<unsigned char>> front_frame_;
   std::shared_ptr<std::vector<unsigned char>> back_frame_;
-#if defined(__APPLE__) || defined(_WIN32)
+#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
   // Retains the most recent background CPU frame across disconnect cleanup
   // so closing an unselected tab can still update its recent-item thumbnail.
   std::shared_ptr<std::vector<unsigned char>> thumbnail_frame_;

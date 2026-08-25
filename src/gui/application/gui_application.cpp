@@ -36,7 +36,6 @@
 #include <GL/gl.h>
 
 #include "platform/tray/win_tray.h"
-#include "platform/windows_opengl_video_renderer.h"
 #elif defined(__APPLE__)
 #include "platform/metal_video_renderer.h"
 #include "platform/tray/mac_tray.h"
@@ -48,6 +47,9 @@
 #include <unistd.h>
 
 #include "platform/tray/linux_tray.h"
+#endif
+#if defined(_WIN32) || defined(__linux__)
+#include "platform/opengl_video_renderer.h"
 #endif
 #include "rd_log.h"
 #include "server_window_state.h"
@@ -62,6 +64,7 @@ using namespace std::chrono_literals;
 
 #if !defined(__APPLE__)
 constexpr GLint kGlClampToEdge = 0x812F;
+constexpr float kStreamWindowCornerRadius = 12.0f;
 #else
 constexpr int kMetalAttachmentAttemptLimit = 30;
 #endif
@@ -1114,9 +1117,8 @@ void GuiApplication::InitializeModules() {
   if (modules_inited_) {
     return;
   }
-#if defined(_WIN32)
-  windows_opengl_video_renderer_ =
-      std::make_unique<WindowsOpenGlVideoRenderer>();
+#if defined(_WIN32) || defined(__linux__)
+  opengl_video_renderer_ = std::make_unique<OpenGlVideoRenderer>();
 #elif defined(__APPLE__)
   // Metal setup can log device, shader, or pipeline failures. Initialize it
   // here, after Run() has selected the application's log directory, rather
@@ -2351,9 +2353,9 @@ void GuiApplication::SyncStreamWindow() {
   }
   if (!has_sessions) {
     SetStreamKeyboardFocus(false);
-#if defined(_WIN32)
-    if (windows_opengl_video_renderer_) {
-      windows_opengl_video_renderer_->SetSelectedStream({});
+#if defined(_WIN32) || defined(__linux__)
+    if (opengl_video_renderer_) {
+      opengl_video_renderer_->SetSelectedStream({});
     }
 #endif
 #if defined(__APPLE__)
@@ -2643,10 +2645,10 @@ void GuiApplication::SyncStreamVideoFrame() {
   }
 #endif
 
-#if defined(_WIN32)
-  if (windows_opengl_video_renderer_ &&
-      windows_opengl_video_renderer_->IsReady()) {
-    windows_opengl_video_renderer_->SetSelectedStream(props->remote_id_);
+#if defined(_WIN32) || defined(__linux__)
+  if (opengl_video_renderer_ &&
+      opengl_video_renderer_->IsReady()) {
+    opengl_video_renderer_->SetSelectedStream(props->remote_id_);
     SubmitCachedFrameToOpenGl(props);
     if (!(*ui_->stream)->get_native_video_enabled()) {
       (*ui_->stream)->set_native_video_enabled(true);
@@ -2854,10 +2856,10 @@ void GuiApplication::ConfigureStreamVideoRenderer() {
           glBindTexture(GL_TEXTURE_2D,
                         static_cast<GLuint>(previous_texture));
           ui_->video_gl_texture = texture;
-#if defined(_WIN32)
-          if (windows_opengl_video_renderer_ &&
-              windows_opengl_video_renderer_->Setup()) {
-            windows_opengl_video_renderer_->SetSelectedStream(
+#if defined(_WIN32) || defined(__linux__)
+          if (opengl_video_renderer_ &&
+              opengl_video_renderer_->Setup()) {
+            opengl_video_renderer_->SetSelectedStream(
                 focused_remote_id_);
             video_frame_dirty_.store(true, std::memory_order_release);
           }
@@ -2865,10 +2867,10 @@ void GuiApplication::ConfigureStreamVideoRenderer() {
           return;
         }
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__linux__)
         if (state == slint::RenderingState::BeforeRendering &&
-            windows_opengl_video_renderer_ &&
-            windows_opengl_video_renderer_->IsReady() && ui_->stream &&
+            opengl_video_renderer_ &&
+            opengl_video_renderer_->IsReady() && ui_->stream &&
             (*ui_->stream)->get_native_video_enabled()) {
           const auto window_size = (*ui_->stream)->window().size();
           const float scale_factor =
@@ -2877,9 +2879,18 @@ void GuiApplication::ConfigureStreamVideoRenderer() {
               !fullscreen_button_pressed_ && ui_->tab_ids.size() > 1
                   ? static_cast<int>(std::lround(30.0f * scale_factor))
                   : 0;
-          windows_opengl_video_renderer_->RenderLatest(
+          const bool rounded_window =
+              (*ui_->stream)->get_custom_titlebar() &&
+              !fullscreen_button_pressed_ &&
+              !(*ui_->stream)->window().is_maximized();
+          const int corner_radius =
+              rounded_window
+                  ? static_cast<int>(std::lround(
+                        kStreamWindowCornerRadius * scale_factor))
+                  : 0;
+          opengl_video_renderer_->RenderLatest(
               focused_remote_id_, static_cast<int>(window_size.width),
-              static_cast<int>(window_size.height), top_inset);
+              static_cast<int>(window_size.height), top_inset, corner_radius);
           return;
         }
 #endif
@@ -2914,9 +2925,9 @@ void GuiApplication::ConfigureStreamVideoRenderer() {
         }
 
         if (state == slint::RenderingState::RenderingTeardown) {
-#if defined(_WIN32)
-          if (windows_opengl_video_renderer_) {
-            windows_opengl_video_renderer_->Teardown();
+#if defined(_WIN32) || defined(__linux__)
+          if (opengl_video_renderer_) {
+            opengl_video_renderer_->Teardown();
           }
 #endif
           if (ui_->video_gl_texture != 0) {
@@ -2933,19 +2944,19 @@ void GuiApplication::ConfigureStreamVideoRenderer() {
       });
   if (error.has_value()) {
     LOG_WARN("Slint OpenGL video renderer unavailable, using pixel buffers");
-#if defined(_WIN32)
-  } else if (windows_opengl_video_renderer_) {
-    windows_opengl_video_renderer_->SetSelectedStream(focused_remote_id_);
+#if defined(_WIN32) || defined(__linux__)
+  } else if (opengl_video_renderer_) {
+    opengl_video_renderer_->SetSelectedStream(focused_remote_id_);
 #endif
   }
 #endif
 }
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__linux__)
 void GuiApplication::SubmitCachedFrameToOpenGl(
     const std::shared_ptr<RemoteSession>& session) {
-  if (!session || !windows_opengl_video_renderer_ ||
-      !windows_opengl_video_renderer_->IsReady() ||
+  if (!session || !opengl_video_renderer_ ||
+      !opengl_video_renderer_->IsReady() ||
       session->connection_status_.load() != ConnectionStatus::Connected) {
     return;
   }
@@ -2968,10 +2979,10 @@ void GuiApplication::SubmitCachedFrameToOpenGl(
   }
 
   if (cached_frame && cached_width > 0 && cached_height > 0 &&
-      windows_opengl_video_renderer_->SubmitCachedNv12(
+      opengl_video_renderer_->SubmitCachedNv12(
           session->remote_id_, cached_frame->data(), cached_frame->size(),
           cached_width, cached_height) ==
-          WindowsOpenGlVideoRenderer::SubmitResult::submitted) {
+          OpenGlVideoRenderer::SubmitResult::submitted) {
     video_frame_dirty_.store(true, std::memory_order_release);
   }
 }
@@ -3321,7 +3332,7 @@ void GuiApplication::SelectStreamTab(int index) {
     return;
   }
   const std::string selected_remote_id = ui_->tab_ids[index];
-#if defined(__APPLE__) || defined(_WIN32)
+#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
   const bool selection_changed = focused_remote_id_ != selected_remote_id;
   bool renderer_selection_changed = false;
 #endif
@@ -3331,10 +3342,10 @@ void GuiApplication::SelectStreamTab(int index) {
   }
   focused_remote_id_ = selected_remote_id;
   controlled_remote_id_ = selected_remote_id;
-#if defined(_WIN32)
-  if (windows_opengl_video_renderer_) {
+#if defined(_WIN32) || defined(__linux__)
+  if (opengl_video_renderer_) {
     renderer_selection_changed =
-        windows_opengl_video_renderer_->SetSelectedStream(selected_remote_id);
+        opengl_video_renderer_->SetSelectedStream(selected_remote_id);
   }
   if (renderer_selection_changed) {
     video_frame_dirty_.store(true, std::memory_order_release);
@@ -3371,7 +3382,7 @@ void GuiApplication::SelectStreamTab(int index) {
         selected_session->connection_status_.load() ==
             ConnectionStatus::Connected;
   }
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__linux__)
   if (renderer_selection_changed) {
     SubmitCachedFrameToOpenGl(selected_session);
   }
@@ -3427,9 +3438,9 @@ void GuiApplication::CloseStreamTab(const std::string& remote_id) {
   if (focused_remote_id_ == remote_id) {
     focused_remote_id_.clear();
     controlled_remote_id_.clear();
-#if defined(_WIN32)
-    if (windows_opengl_video_renderer_ &&
-        windows_opengl_video_renderer_->SetSelectedStream({})) {
+#if defined(_WIN32) || defined(__linux__)
+    if (opengl_video_renderer_ &&
+        opengl_video_renderer_->SetSelectedStream({})) {
       video_frame_dirty_.store(true, std::memory_order_release);
     }
 #elif defined(__APPLE__)
@@ -3631,9 +3642,9 @@ void GuiApplication::Cleanup() {
   WaitForThumbnailSaveTasks();
   devices_.DestroyAudioOutput();
   if (ui_->stream) {
-#if defined(_WIN32)
-    if (windows_opengl_video_renderer_) {
-      windows_opengl_video_renderer_->SetSelectedStream({});
+#if defined(_WIN32) || defined(__linux__)
+    if (opengl_video_renderer_) {
+      opengl_video_renderer_->SetSelectedStream({});
     }
 #endif
 #if defined(__APPLE__)

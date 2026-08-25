@@ -1,5 +1,5 @@
-#ifndef CROSSDESK_GUI_PLATFORM_WINDOWS_OPENGL_VIDEO_RENDERER_H_
-#define CROSSDESK_GUI_PLATFORM_WINDOWS_OPENGL_VIDEO_RENDERER_H_
+#ifndef CROSSDESK_GUI_PLATFORM_OPENGL_VIDEO_RENDERER_H_
+#define CROSSDESK_GUI_PLATFORM_OPENGL_VIDEO_RENDERER_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -10,11 +10,12 @@
 
 namespace crossdesk {
 
-// Windows NV12 underlay for Slint's FemtoVG OpenGL renderer. MiniRTC submits
-// tightly packed CPU NV12 frames from its decode callback thread. The Slint UI
-// thread uploads the newest frame as Y and UV textures and performs color
-// conversion and scaling in a fragment shader before Slint draws its overlay.
-class WindowsOpenGlVideoRenderer {
+// NV12 underlay for Slint's FemtoVG OpenGL renderer on Windows and Linux.
+// MiniRTC submits tightly packed CPU NV12 frames from its decode callback
+// thread. The Slint UI thread uploads the newest frame as Y and UV textures and
+// performs color conversion and scaling in a fragment shader before Slint
+// draws its overlay.
+class OpenGlVideoRenderer {
 public:
   enum class SubmitResult {
     submitted,
@@ -37,12 +38,11 @@ public:
     uint64_t sequence = 0;
   };
 
-  WindowsOpenGlVideoRenderer();
-  ~WindowsOpenGlVideoRenderer();
+  OpenGlVideoRenderer();
+  ~OpenGlVideoRenderer();
 
-  WindowsOpenGlVideoRenderer(const WindowsOpenGlVideoRenderer &) = delete;
-  WindowsOpenGlVideoRenderer &
-  operator=(const WindowsOpenGlVideoRenderer &) = delete;
+  OpenGlVideoRenderer(const OpenGlVideoRenderer &) = delete;
+  OpenGlVideoRenderer &operator=(const OpenGlVideoRenderer &) = delete;
 
   // These methods must run while Slint's OpenGL context is current, from the
   // RenderingSetup and RenderingTeardown notifier states respectively.
@@ -61,10 +61,12 @@ public:
   SubmitResult SubmitCachedNv12(std::string_view remote_id, const uint8_t *data,
                                 size_t size, int width, int height);
 
-  // Draws below Slint while its OpenGL context is current. target dimensions
-  // and top_inset_pixels are physical pixels in the window client area.
+  // Draws below Slint while its OpenGL context is current. All dimensions are
+  // physical pixels in the window client area. corner_radius_pixels clips the
+  // underlay to Slint's custom rounded window surface.
   RenderOutcome RenderLatest(std::string_view remote_id, int target_width,
-                             int target_height, int top_inset_pixels);
+                             int target_height, int top_inset_pixels,
+                             int corner_radius_pixels);
 
   // Used during disconnect cleanup so thumbnail generation does not require a
   // second per-frame CPU copy during normal playback.
@@ -83,4 +85,4 @@ private:
 
 } // namespace crossdesk
 
-#endif // CROSSDESK_GUI_PLATFORM_WINDOWS_OPENGL_VIDEO_RENDERER_H_
+#endif // CROSSDESK_GUI_PLATFORM_OPENGL_VIDEO_RENDERER_H_
