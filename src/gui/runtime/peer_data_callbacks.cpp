@@ -164,6 +164,31 @@ void PeerEventHandler::OnReceiveDataBuffer(
     return;
   }
 
+  if (remote_action.type == ControlType::cursor_state) {
+    std::shared_ptr<GuiRuntime::RemoteSession> props;
+    {
+      std::shared_lock lock(runtime->remote_sessions_mutex_);
+      auto props_it = runtime->remote_sessions_.find(remote_id);
+      if (props_it != runtime->remote_sessions_.end()) {
+        props = props_it->second;
+      }
+    }
+    if (!props) {
+      return;
+    }
+
+    std::lock_guard lock(props->remote_cursor_state_mutex_);
+    const uint32_t previous_seq = props->remote_cursor_state_.seq;
+    const bool is_newer =
+        !props->remote_cursor_state_received_ ||
+        static_cast<int32_t>(remote_action.cs.seq - previous_seq) > 0;
+    if (is_newer) {
+      props->remote_cursor_state_ = remote_action.cs;
+      props->remote_cursor_state_received_ = true;
+    }
+    return;
+  }
+
   if (remote_action.type == ControlType::host_infomation) {
     bool is_client_mode = false;
     std::shared_ptr<GuiRuntime::RemoteSession> props;

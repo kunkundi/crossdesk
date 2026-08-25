@@ -250,6 +250,11 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
       case ConnectionStatus::Connected: {
         runtime->ResetRemoteServiceStatus(*props);
         {
+          std::lock_guard lock(props->remote_cursor_state_mutex_);
+          props->remote_cursor_state_ = {};
+          props->remote_cursor_state_received_ = false;
+        }
+        {
           RemoteAction remote_action;
           remote_action.i.display_num =
               runtime->devices_.display_info_list().size();
@@ -313,6 +318,11 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         props->connection_established_ = false;
         props->enable_mouse_control_ = false;
         runtime->ResetRemoteServiceStatus(*props);
+        {
+          std::lock_guard lock(props->remote_cursor_state_mutex_);
+          props->remote_cursor_state_ = {};
+          props->remote_cursor_state_received_ = false;
+        }
 
         std::shared_ptr<std::vector<unsigned char>> native_snapshot;
         int native_snapshot_width = 0;

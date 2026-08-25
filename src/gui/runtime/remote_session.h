@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "device_controller.h"
 #include "display_info.h"
 #include "minirtc.h"
 
@@ -148,6 +149,12 @@ struct RemoteSession {
   bool remote_service_available_ = false;
   std::string remote_interactive_stage_;
   std::vector<DisplayInfo> display_info_list_;
+  // Cursor snapshots arrive on the transport callback thread and are applied
+  // by the Slint UI thread. Keep the snapshot atomic as a unit so visibility
+  // and shape cannot briefly come from different protocol messages.
+  std::mutex remote_cursor_state_mutex_;
+  CursorState remote_cursor_state_{};
+  bool remote_cursor_state_received_ = false;
   // Shared by minirtc callbacks, Slint rendering and SDL audio callbacks.
   std::atomic<ConnectionStatus> connection_status_ = ConnectionStatus::Closed;
   TraversalMode traversal_mode_ = TraversalMode::UnknownMode;

@@ -28,6 +28,7 @@ typedef enum {
   service_status = 5,
   service_command = 6,
   keyboard_state = 7,
+  cursor_state = 8,
 } ControlType;
 typedef enum {
   move = 0,
@@ -70,6 +71,47 @@ typedef struct {
   KeyboardStateKey pressed_keys[kMaxKeyboardStateKeys];
 } KeyboardState;
 
+// Keep these values aligned with Slint's MouseCursor enum. The wire protocol
+// intentionally carries a semantic cursor instead of a platform handle so a
+// Windows, macOS or Linux host can control a different desktop platform.
+enum class CursorShape : uint8_t {
+  default_cursor = 0,
+  none,
+  help,
+  pointer,
+  progress,
+  wait,
+  crosshair,
+  text,
+  alias,
+  copy,
+  move,
+  no_drop,
+  not_allowed,
+  grab,
+  grabbing,
+  col_resize,
+  row_resize,
+  n_resize,
+  e_resize,
+  s_resize,
+  w_resize,
+  ne_resize,
+  nw_resize,
+  se_resize,
+  sw_resize,
+  ew_resize,
+  ns_resize,
+  nesw_resize,
+  nwse_resize,
+};
+
+typedef struct {
+  uint32_t seq;
+  bool visible;
+  CursorShape shape;
+} CursorState;
+
 typedef struct {
   char host_name[64];
   size_t host_name_size;
@@ -96,6 +138,7 @@ struct RemoteAction {
     Mouse m;
     Key k;
     KeyboardState ks;
+    CursorState cs;
     HostInfo i;
     bool a;
     int d;
@@ -141,6 +184,11 @@ struct RemoteAction {
         j["keyboard_state"] = {{"seq", a.ks.seq}, {"pressed_keys", keys}};
         break;
       }
+      case ControlType::cursor_state:
+        j["cursor_state"] = {{"seq", a.cs.seq},
+                             {"visible", a.cs.visible},
+                             {"shape", static_cast<int>(a.cs.shape)}};
+        break;
       case ControlType::audio_capture:
         j["audio_capture"] = a.a;
         break;
@@ -217,6 +265,18 @@ struct RemoteAction {
                 key_json.value("extended", false);
           }
           out.ks.pressed_count = count;
+          break;
+        }
+        case ControlType::cursor_state: {
+          const auto& cursor_state_json = j.at("cursor_state");
+          const int shape = cursor_state_json.at("shape").get<int>();
+          if (shape < static_cast<int>(CursorShape::default_cursor) ||
+              shape > static_cast<int>(CursorShape::nwse_resize)) {
+            return false;
+          }
+          out.cs.seq = cursor_state_json.at("seq").get<uint32_t>();
+          out.cs.visible = cursor_state_json.at("visible").get<bool>();
+          out.cs.shape = static_cast<CursorShape>(shape);
           break;
         }
         case ControlType::audio_capture:

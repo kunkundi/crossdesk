@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 
+#include "runtime/cursor_state_provider.h"
 #include "runtime/gui_runtime.h"
 
 namespace crossdesk {
@@ -32,6 +33,7 @@ private:
   void BindStreamCallbacks();
   void BindServerCallbacks();
   void Tick();
+  void ShareLocalCursorState();
   void HandlePasswordChangeResult();
   void HandleCredentialRecovery();
   void SyncMainWindow();
@@ -70,6 +72,11 @@ private:
   bool OpenUrl(const std::string &url);
 
   std::unique_ptr<SlintUi> ui_;
+  CursorStateProvider cursor_state_provider_;
+  CursorState last_shared_cursor_state_{};
+  bool has_shared_cursor_state_ = false;
+  uint32_t cursor_state_sequence_ = 0;
+  std::chrono::steady_clock::time_point last_cursor_state_share_time_{};
   std::chrono::steady_clock::time_point next_video_frame_time_{};
 #if defined(__linux__) && !defined(__APPLE__)
   bool use_xwayland_gui_ = false;

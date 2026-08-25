@@ -133,6 +133,9 @@ export component StreamWindow inherits Window {
     in property <[string]> displays;
     in-out property <int> selected-display: 0;
     in property <bool> mouse-control-enabled: true;
+    // Numeric values mirror crossdesk::CursorShape and Slint's MouseCursor.
+    in property <bool> remote-cursor-active: false;
+    in property <int> remote-cursor-shape: 0;
     in property <bool> audio-enabled: true;
     in property <bool> srtp-enabled: false;
     in property <bool> fullscreen-enabled: false;
@@ -551,6 +554,36 @@ export component StreamWindow inherits Window {
                     accept
                 }
                 pointer := TouchArea {
+                    mouse-cursor: !root.remote-cursor-active ? MouseCursor.default
+                        : root.remote-cursor-shape == 1 ? MouseCursor.none
+                        : root.remote-cursor-shape == 2 ? MouseCursor.help
+                        : root.remote-cursor-shape == 3 ? MouseCursor.pointer
+                        : root.remote-cursor-shape == 4 ? MouseCursor.progress
+                        : root.remote-cursor-shape == 5 ? MouseCursor.wait
+                        : root.remote-cursor-shape == 6 ? MouseCursor.crosshair
+                        : root.remote-cursor-shape == 7 ? MouseCursor.text
+                        : root.remote-cursor-shape == 8 ? MouseCursor.alias
+                        : root.remote-cursor-shape == 9 ? MouseCursor.copy
+                        : root.remote-cursor-shape == 10 ? MouseCursor.move
+                        : root.remote-cursor-shape == 11 ? MouseCursor.no-drop
+                        : root.remote-cursor-shape == 12 ? MouseCursor.not-allowed
+                        : root.remote-cursor-shape == 13 ? MouseCursor.grab
+                        : root.remote-cursor-shape == 14 ? MouseCursor.grabbing
+                        : root.remote-cursor-shape == 15 ? MouseCursor.col-resize
+                        : root.remote-cursor-shape == 16 ? MouseCursor.row-resize
+                        : root.remote-cursor-shape == 17 ? MouseCursor.n-resize
+                        : root.remote-cursor-shape == 18 ? MouseCursor.e-resize
+                        : root.remote-cursor-shape == 19 ? MouseCursor.s-resize
+                        : root.remote-cursor-shape == 20 ? MouseCursor.w-resize
+                        : root.remote-cursor-shape == 21 ? MouseCursor.ne-resize
+                        : root.remote-cursor-shape == 22 ? MouseCursor.nw-resize
+                        : root.remote-cursor-shape == 23 ? MouseCursor.se-resize
+                        : root.remote-cursor-shape == 24 ? MouseCursor.sw-resize
+                        : root.remote-cursor-shape == 25 ? MouseCursor.ew-resize
+                        : root.remote-cursor-shape == 26 ? MouseCursor.ns-resize
+                        : root.remote-cursor-shape == 27 ? MouseCursor.nesw-resize
+                        : root.remote-cursor-shape == 28 ? MouseCursor.nwse-resize
+                        : MouseCursor.default;
                     pointer-event(event) => {
                         let over-control = self.mouse-x >= control.x
                             && self.mouse-x <= control.x + control.width

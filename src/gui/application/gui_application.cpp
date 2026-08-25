@@ -1796,6 +1796,7 @@ void GuiApplication::Tick() {
   SyncStreamKeyboardFocus();
 #endif
   devices_.UpdateInteractions();
+  ShareLocalCursorState();
 
   UpdateLocalization();
   SyncMainWindow();
@@ -1803,6 +1804,58 @@ void GuiApplication::Tick() {
   SyncPlatformDialogs();
   SyncStreamWindow();
   SyncServerWindow();
+}
+
+void GuiApplication::ShareLocalCursorState() {
+  constexpr auto kCursorStateHeartbeatInterval = 500ms;
+
+  bool has_connected_controller = false;
+  {
+    std::shared_lock lock(connection_status_mutex_);
+    has_connected_controller =
+        std::any_of(connection_status_.begin(), connection_status_.end(),
+                    [](const auto& entry) {
+                      return entry.second == ConnectionStatus::Connected;
+                    });
+  }
+  if (!is_server_mode_ || !peer_ || !has_connected_controller) {
+    has_shared_cursor_state_ = false;
+    last_cursor_state_share_time_ = {};
+    return;
+  }
+
+  CursorState sampled{};
+  if (!cursor_state_provider_.Sample(&sampled)) {
+    return;
+  }
+
+  const auto now = std::chrono::steady_clock::now();
+  const bool changed =
+      !has_shared_cursor_state_ ||
+      sampled.visible != last_shared_cursor_state_.visible ||
+      sampled.shape != last_shared_cursor_state_.shape;
+  const bool heartbeat_due =
+      last_cursor_state_share_time_.time_since_epoch().count() == 0 ||
+      now - last_cursor_state_share_time_ >= kCursorStateHeartbeatInterval;
+  if (!changed && !heartbeat_due) {
+    return;
+  }
+
+  sampled.seq = ++cursor_state_sequence_;
+  RemoteAction action{};
+  action.type = ControlType::cursor_state;
+  action.cs = sampled;
+  const std::string message = action.to_json();
+  const int result = SendDataFrame(peer_, message.c_str(), message.size(),
+                                   mouse_label_.c_str());
+  if (result != 0) {
+    LOG_WARN("Send cursor state failed, ret={}", result);
+    return;
+  }
+
+  last_shared_cursor_state_ = sampled;
+  has_shared_cursor_state_ = true;
+  last_cursor_state_share_time_ = now;
 }
 
 void GuiApplication::HandlePasswordChangeResult() {
@@ -2364,6 +2417,23 @@ void GuiApplication::SyncStreamWindow() {
               ? localization::receiving_screen[localization_language_index_]
               : std::string{}));
   (*ui_->stream)->set_mouse_control_enabled(props->control_mouse_);
+  int remote_cursor_shape =
+      static_cast<int>(CursorShape::default_cursor);
+  bool remote_cursor_active = false;
+  {
+    std::lock_guard lock(props->remote_cursor_state_mutex_);
+    remote_cursor_active =
+        status == ConnectionStatus::Connected && props->control_mouse_ &&
+        props->remote_cursor_state_received_;
+    if (remote_cursor_active) {
+      remote_cursor_shape = static_cast<int>(
+          props->remote_cursor_state_.visible
+              ? props->remote_cursor_state_.shape
+              : CursorShape::none);
+    }
+  }
+  (*ui_->stream)->set_remote_cursor_active(remote_cursor_active);
+  (*ui_->stream)->set_remote_cursor_shape(remote_cursor_shape);
   (*ui_->stream)->set_audio_enabled(props->audio_capture_button_pressed_);
 #if defined(__APPLE__)
   fullscreen_button_pressed_ = IsStreamWindowFullscreen();

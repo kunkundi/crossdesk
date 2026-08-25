@@ -338,6 +338,11 @@ void GuiRuntime::ResetRemoteSessionResources(
     props->render_rect_dirty_ = true;
     props->stream_cleanup_pending_ = false;
   }
+  {
+    std::lock_guard<std::mutex> lock(props->remote_cursor_state_mutex_);
+    props->remote_cursor_state_ = {};
+    props->remote_cursor_state_received_ = false;
+  }
 }
 
 std::shared_ptr<GuiRuntime::RemoteSession> GuiRuntime::FindRemoteSession(
