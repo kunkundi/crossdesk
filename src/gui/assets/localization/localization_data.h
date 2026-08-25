@@ -215,8 +215,6 @@ struct TranslationRow {
   X(file_transfer_save_path, u8"文件接收保存路径:",                            \
     "File Transfer Save Path:", u8"Путь сохранения файлов:")                   \
   X(default_desktop, u8"桌面", "Desktop", u8"Рабочий стол")                    \
-  X(minimize_to_tray, u8"退出时最小化到系统托盘:",                             \
-    "Minimize on Exit:", u8"Сворачивать в трей при выходе:")                   \
   X(resolution, u8"分辨率", "Res", u8"Разрешение")                             \
   X(connection_mode, u8"连接模式", "Mode", u8"Режим")                          \
   X(connection_mode_direct, u8"直连", "Direct", u8"Прямой")                    \
@@ -233,6 +231,8 @@ struct TranslationRow {
   X(permission_required_message, u8"该应用需要授权以下权限:",                  \
     "The application requires the following permissions:",                     \
     u8"Для работы приложения требуются следующие разрешения:")                 \
+  X(show_main_window, u8"显示主界面", "Show Main Window",                    \
+    u8"Показать главное окно")                                                \
   X(exit_program, u8"退出", "Exit", u8"Выход")
 
 inline constexpr TranslationRow kTranslationRows[] = {

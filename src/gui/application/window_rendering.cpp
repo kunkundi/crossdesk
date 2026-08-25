@@ -150,7 +150,7 @@ int GuiApplication::DrawServerWindow() {
 }
 
 bool GuiApplication::MinimizeMainWindowToTray() {
-  if (!enable_minimize_to_tray_ || !main_window_) {
+  if (!main_window_) {
     return false;
   }
 

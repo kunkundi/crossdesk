@@ -1163,22 +1163,24 @@ void GuiApplication::InitializeSystemTray() {
   };
 #if _WIN32
   ui_->tray = std::make_unique<WinTray>(
-      std::move(show_window), std::move(hide_window), std::move(exit_app),
-      LoadSlintTrayIcon(), L"CrossDesk", localization_language_index_);
+      std::move(show_window), std::move(hide_window),
+      std::move(open_settings), std::move(exit_app), LoadSlintTrayIcon(),
+      L"CrossDesk", localization_language_index_);
 #elif defined(__APPLE__)
   ui_->tray = std::make_unique<MacTray>(
       std::move(show_window), std::move(hide_window), std::move(open_settings),
       std::move(exit_app), "CrossDesk", localization_language_index_);
 #elif defined(__linux__)
   ui_->tray = std::make_unique<LinuxTray>(
-      std::move(show_window), std::move(hide_window), std::move(exit_app),
-      "CrossDesk", localization_language_index_);
+      std::move(show_window), std::move(hide_window),
+      std::move(open_settings), std::move(exit_app), "CrossDesk",
+      localization_language_index_);
 #endif
 #endif
 }
 
 bool GuiApplication::MinimizeMainWindowToTray() {
-  if (!enable_minimize_to_tray_ || !ui_) {
+  if (!ui_) {
     return false;
   }
 #if _WIN32 || defined(__APPLE__)
@@ -1208,7 +1210,6 @@ void GuiApplication::ResetSettingsUi() {
   ui_->main->set_self_hosted_enabled(enable_self_hosted_);
   ui_->main->set_autostart_enabled(enable_autostart_);
   ui_->main->set_daemon_enabled(enable_daemon_);
-  ui_->main->set_minimize_to_tray_enabled(enable_minimize_to_tray_);
   ui_->main->set_file_save_path(file_transfer_save_path_buf_);
   ui_->main->set_server_host(signal_server_ip_self_);
   ui_->main->set_server_port(signal_server_port_self_);
@@ -1218,12 +1219,10 @@ void GuiApplication::ResetSettingsUi() {
 void GuiApplication::BindMainCallbacks() {
   auto& main = ui_->main;
   main->window().on_close_requested([this] {
-    if (MinimizeMainWindowToTray()) {
-      // MinimizeMainWindowToTray() ensures the tray icon exists. Let Slint
-      // complete the close request by hiding the main window as well.
-      return slint::CloseRequestResponse::HideWindow;
-    }
-    exit_ = true;
+    // Keep the application and all active sessions alive. The tray helper
+    // ensures that supported platforms still provide a way to restore the
+    // main window; Slint hides it regardless of tray availability.
+    MinimizeMainWindowToTray();
     return slint::CloseRequestResponse::HideWindow;
   });
   main->on_main_title_drag([this](int phase, float x, float y) {
@@ -1240,11 +1239,7 @@ void GuiApplication::BindMainCallbacks() {
     if (!ui_) {
       return;
     }
-    if (MinimizeMainWindowToTray()) {
-      ui_->main->hide();
-      return;
-    }
-    exit_ = true;
+    MinimizeMainWindowToTray();
     ui_->main->hide();
   });
   main->on_copy_local_id([this] {
@@ -2756,7 +2751,6 @@ void GuiApplication::SaveSettingsFromUi() {
   enable_self_hosted_ = main->get_self_hosted_enabled();
   enable_autostart_ = main->get_autostart_enabled();
   enable_daemon_ = main->get_daemon_enabled();
-  enable_minimize_to_tray_ = main->get_minimize_to_tray_enabled();
 
   localization_language_ =
       static_cast<ConfigCenter::LANGUAGE>(language_button_value_);
@@ -2775,7 +2769,6 @@ void GuiApplication::SaveSettingsFromUi() {
   config_center_->SetSelfHosted(enable_self_hosted_);
   config_center_->SetAutostart(enable_autostart_);
   config_center_->SetDaemon(enable_daemon_);
-  config_center_->SetMinimizeToTray(enable_minimize_to_tray_);
 
   const std::string path(main->get_file_save_path());
   std::memset(file_transfer_save_path_buf_, 0,
@@ -2805,7 +2798,6 @@ void GuiApplication::SaveSettingsFromUi() {
   enable_self_hosted_last_ = enable_self_hosted_;
   enable_autostart_last_ = enable_autostart_;
   enable_daemon_last_ = enable_daemon_;
-  enable_minimize_to_tray_last_ = enable_minimize_to_tray_;
   file_transfer_save_path_last_ = path;
   ui_->localized_language = -1;
 

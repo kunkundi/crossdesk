@@ -32,7 +32,9 @@ namespace crossdesk {
 namespace {
 
 constexpr int kTrayIconSize = 24;
-constexpr int kMenuHeight = 28;
+constexpr int kMenuItemHeight = 28;
+constexpr int kMenuItemCount = 3;
+constexpr int kMenuHeight = kMenuItemHeight * kMenuItemCount;
 constexpr int kMenuHorizontalPadding = 12;
 constexpr int kDockTimeoutMs = 800;
 constexpr int kMaxTrayEventsPerTick = 32;
@@ -50,7 +52,21 @@ bool IsAsciiPrintable(const std::string& text) {
   return true;
 }
 
-std::string GetMenuLabel(int language_index) {
+std::string GetShowMainWindowMenuLabel(int language_index) {
+  const int normalized_index = localization::detail::ClampLanguageIndex(
+      language_index);
+  const std::string& label = localization::show_main_window[normalized_index];
+  return label.empty() ? "Show Main Window" : label;
+}
+
+std::string GetSettingsMenuLabel(int language_index) {
+  const int normalized_index = localization::detail::ClampLanguageIndex(
+      language_index);
+  const std::string& label = localization::settings[normalized_index];
+  return label.empty() ? "Settings" : label;
+}
+
+std::string GetExitMenuLabel(int language_index) {
   const int normalized_index = localization::detail::ClampLanguageIndex(
       language_index);
   const std::string& label = localization::exit_program[normalized_index];
@@ -187,20 +203,42 @@ struct LinuxTrayImpl {
         tooltip(std::move(tray_tooltip)),
         language_index(language_index_value),
         exit_event_type(tray_exit_event_type),
-        menu_label(GetMenuLabel(language_index_value)),
-        menu_ascii_label(IsAsciiPrintable(menu_label) ? menu_label : "Exit") {}
+        show_menu_label(GetShowMainWindowMenuLabel(language_index_value)),
+        show_menu_ascii_label(IsAsciiPrintable(show_menu_label)
+                                  ? show_menu_label
+                                  : "Show Main Window"),
+        settings_menu_label(GetSettingsMenuLabel(language_index_value)),
+        settings_menu_ascii_label(IsAsciiPrintable(settings_menu_label)
+                                      ? settings_menu_label
+                                      : "Settings"),
+        exit_menu_label(GetExitMenuLabel(language_index_value)),
+        exit_menu_ascii_label(IsAsciiPrintable(exit_menu_label)
+                                  ? exit_menu_label
+                                  : "Exit") {}
 
   explicit LinuxTrayImpl(std::function<void()> show_window_callback,
                          std::function<void()> hide_window_callback,
+                         std::function<void()> open_settings_callback,
                          std::function<void()> exit_callback,
                          std::string tray_tooltip, int language_index_value)
       : show_window(std::move(show_window_callback)),
         hide_window(std::move(hide_window_callback)),
+        open_settings(std::move(open_settings_callback)),
         exit_app(std::move(exit_callback)),
         tooltip(std::move(tray_tooltip)),
         language_index(language_index_value),
-        menu_label(GetMenuLabel(language_index_value)),
-        menu_ascii_label(IsAsciiPrintable(menu_label) ? menu_label : "Exit") {}
+        show_menu_label(GetShowMainWindowMenuLabel(language_index_value)),
+        show_menu_ascii_label(IsAsciiPrintable(show_menu_label)
+                                  ? show_menu_label
+                                  : "Show Main Window"),
+        settings_menu_label(GetSettingsMenuLabel(language_index_value)),
+        settings_menu_ascii_label(IsAsciiPrintable(settings_menu_label)
+                                      ? settings_menu_label
+                                      : "Settings"),
+        exit_menu_label(GetExitMenuLabel(language_index_value)),
+        exit_menu_ascii_label(IsAsciiPrintable(exit_menu_label)
+                                  ? exit_menu_label
+                                  : "Exit") {}
 
   ~LinuxTrayImpl() { RemoveTrayIcon(); }
 
@@ -540,6 +578,20 @@ struct LinuxTrayImpl {
         HandleButtonRelease(event.xbutton);
         break;
 
+      case MotionNotify:
+        if (event.xmotion.window == menu_window) {
+          const int hovered_item =
+              event.xmotion.x >= 0 && event.xmotion.x < menu_width &&
+                      event.xmotion.y >= 0 && event.xmotion.y < kMenuHeight
+                  ? event.xmotion.y / kMenuItemHeight
+                  : -1;
+          if (hovered_item != hovered_menu_item) {
+            hovered_menu_item = hovered_item;
+            DrawMenu();
+          }
+        }
+        break;
+
       case LeaveNotify:
         if (event.xcrossing.window == menu_window) {
           HideMenu();
@@ -556,9 +608,15 @@ struct LinuxTrayImpl {
       const bool inside_menu =
           event.x >= 0 && event.y >= 0 && event.x < menu_width &&
           event.y < kMenuHeight;
-      const bool activate_exit = inside_menu && event.button == Button1;
+      const int selected_item = inside_menu && event.button == Button1
+                                    ? event.y / kMenuItemHeight
+                                    : -1;
       HideMenu();
-      if (activate_exit) {
+      if (selected_item == 0) {
+        ShowWindow();
+      } else if (selected_item == 1) {
+        OpenSettings();
+      } else if (selected_item == 2) {
         RequestExit();
       }
       return;
@@ -571,9 +629,7 @@ struct LinuxTrayImpl {
       return;
     }
 
-    if (event.button == Button1) {
-      ShowWindow();
-    } else if (event.button == Button3) {
+    if (event.button == Button1 || event.button == Button3) {
       ShowMenu(event.x_root, event.y_root);
     }
   }
@@ -824,29 +880,30 @@ struct LinuxTrayImpl {
     return false;
   }
 
-  int MenuTextWidth() const {
+  int MenuTextWidth(const std::string& label,
+                    const std::string& ascii_label) const {
     if (menu_font) {
       XGlyphInfo extents{};
       XftTextExtentsUtf8(display, menu_font,
-                         reinterpret_cast<const FcChar8*>(menu_label.c_str()),
-                         static_cast<int>(menu_label.size()), &extents);
+                         reinterpret_cast<const FcChar8*>(label.c_str()),
+                         static_cast<int>(label.size()), &extents);
       return extents.xOff;
     }
 
     if (font_set) {
       XRectangle ink{};
       XRectangle logical{};
-      Xutf8TextExtents(font_set, menu_label.c_str(),
-                       static_cast<int>(menu_label.size()), &ink, &logical);
+      Xutf8TextExtents(font_set, label.c_str(), static_cast<int>(label.size()),
+                       &ink, &logical);
       return logical.width;
     }
 
     if (fallback_font) {
-      return XTextWidth(fallback_font, menu_ascii_label.c_str(),
-                        static_cast<int>(menu_ascii_label.size()));
+      return XTextWidth(fallback_font, ascii_label.c_str(),
+                        static_cast<int>(ascii_label.size()));
     }
 
-    return static_cast<int>(menu_ascii_label.size()) * 8;
+    return static_cast<int>(ascii_label.size()) * 8;
   }
 
   void ShowMenu(int root_x, int root_y) {
@@ -856,7 +913,15 @@ struct LinuxTrayImpl {
 
     HideMenu();
 
-    menu_width = std::max(72, MenuTextWidth() + kMenuHorizontalPadding * 2);
+    menu_width =
+        std::max({72,
+                  MenuTextWidth(show_menu_label, show_menu_ascii_label) +
+                      kMenuHorizontalPadding * 2,
+                  MenuTextWidth(settings_menu_label,
+                                settings_menu_ascii_label) +
+                      kMenuHorizontalPadding * 2,
+                  MenuTextWidth(exit_menu_label, exit_menu_ascii_label) +
+                      kMenuHorizontalPadding * 2});
     const int display_width = DisplayWidth(display, screen);
     const int display_height = DisplayHeight(display, screen);
     const int x = std::clamp(root_x, 0, std::max(0, display_width - menu_width));
@@ -868,7 +933,7 @@ struct LinuxTrayImpl {
     attrs.background_pixel = white_pixel;
     attrs.border_pixel = black_pixel;
     attrs.event_mask = ExposureMask | ButtonPressMask | ButtonReleaseMask |
-                       LeaveWindowMask;
+                       PointerMotionMask | LeaveWindowMask;
     menu_window = XCreateWindow(
         display, root_window, x, y, menu_width, kMenuHeight, 1, CopyFromParent,
         InputOutput, CopyFromParent,
@@ -878,10 +943,11 @@ struct LinuxTrayImpl {
     }
 
     menu_visible = true;
+    hovered_menu_item = -1;
     XMapRaised(display, menu_window);
     XGrabPointer(display, menu_window, False,
-                 ButtonPressMask | ButtonReleaseMask, GrabModeAsync,
-                 GrabModeAsync, None, None, CurrentTime);
+                 ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
+                 GrabModeAsync, GrabModeAsync, None, None, CurrentTime);
     DrawMenu();
     XFlush(display);
   }
@@ -889,6 +955,7 @@ struct LinuxTrayImpl {
   void HideMenu() {
     if (!display || !menu_window) {
       menu_visible = false;
+      hovered_menu_item = -1;
       return;
     }
 
@@ -896,6 +963,7 @@ struct LinuxTrayImpl {
     XDestroyWindow(display, menu_window);
     menu_window = 0;
     menu_visible = false;
+    hovered_menu_item = -1;
     XFlush(display);
   }
 
@@ -907,45 +975,66 @@ struct LinuxTrayImpl {
     GC gc = XCreateGC(display, menu_window, 0, nullptr);
     XSetForeground(display, gc, white_pixel);
     XFillRectangle(display, menu_window, gc, 0, 0, menu_width, kMenuHeight);
+    if (hovered_menu_item >= 0 && hovered_menu_item < kMenuItemCount) {
+      XSetForeground(display, gc, hover_pixel);
+      XFillRectangle(display, menu_window, gc, 1,
+                     hovered_menu_item * kMenuItemHeight + 1, menu_width - 2,
+                     kMenuItemHeight - 2);
+    }
     XSetForeground(display, gc, hover_pixel);
-    XFillRectangle(display, menu_window, gc, 1, 1, menu_width - 2,
-                   kMenuHeight - 2);
+    XDrawLine(display, menu_window, gc, 1, kMenuItemHeight * 2,
+              menu_width - 2, kMenuItemHeight * 2);
     XSetForeground(display, gc, black_pixel);
 
-    int baseline = kMenuHeight / 2 + 5;
-    if (menu_font && menu_text_color_allocated) {
-      XftDraw* draw = XftDrawCreate(display, menu_window,
-                                    DefaultVisual(display, screen),
-                                    DefaultColormap(display, screen));
-      if (draw) {
-        baseline = (kMenuHeight - (menu_font->ascent + menu_font->descent)) /
+    XftDraw* xft_draw = menu_font && menu_text_color_allocated
+                            ? XftDrawCreate(display, menu_window,
+                                            DefaultVisual(display, screen),
+                                            DefaultColormap(display, screen))
+                            : nullptr;
+    auto draw_label = [&](int item_index, const std::string& label,
+                          const std::string& ascii_label) {
+      const int item_y = item_index * kMenuItemHeight;
+      int baseline = item_y + kMenuItemHeight / 2 + 5;
+      if (xft_draw) {
+        baseline = item_y +
+                   (kMenuItemHeight -
+                    (menu_font->ascent + menu_font->descent)) /
                        2 +
                    menu_font->ascent;
         XftDrawStringUtf8(
-            draw, &menu_text_color, menu_font, kMenuHorizontalPadding, baseline,
-            reinterpret_cast<const FcChar8*>(menu_label.c_str()),
-            static_cast<int>(menu_label.size()));
-        XftDrawDestroy(draw);
+            xft_draw, &menu_text_color, menu_font, kMenuHorizontalPadding,
+            baseline, reinterpret_cast<const FcChar8*>(label.c_str()),
+            static_cast<int>(label.size()));
+      } else if (font_set) {
+        XFontSetExtents* extents = XExtentsOfFontSet(font_set);
+        if (extents) {
+          baseline = item_y +
+                     (kMenuItemHeight -
+                      extents->max_logical_extent.height) /
+                         2 -
+                     extents->max_logical_extent.y;
+        }
+        Xutf8DrawString(display, menu_window, font_set, gc,
+                        kMenuHorizontalPadding, baseline, label.c_str(),
+                        static_cast<int>(label.size()));
+      } else {
+        if (fallback_font) {
+          XSetFont(display, gc, fallback_font->fid);
+          baseline = item_y +
+                     (kMenuItemHeight + fallback_font->ascent -
+                      fallback_font->descent) /
+                         2;
+        }
+        XDrawString(display, menu_window, gc, kMenuHorizontalPadding, baseline,
+                    ascii_label.c_str(),
+                    static_cast<int>(ascii_label.size()));
       }
-    } else if (font_set) {
-      XFontSetExtents* extents = XExtentsOfFontSet(font_set);
-      if (extents) {
-        baseline = (kMenuHeight - extents->max_logical_extent.height) / 2 -
-                   extents->max_logical_extent.y;
-      }
-      Xutf8DrawString(display, menu_window, font_set, gc,
-                      kMenuHorizontalPadding, baseline, menu_label.c_str(),
-                      static_cast<int>(menu_label.size()));
-    } else {
-      if (fallback_font) {
-        XSetFont(display, gc, fallback_font->fid);
-        baseline = (kMenuHeight + fallback_font->ascent -
-                    fallback_font->descent) /
-                   2;
-      }
-      XDrawString(display, menu_window, gc, kMenuHorizontalPadding, baseline,
-                  menu_ascii_label.c_str(),
-                  static_cast<int>(menu_ascii_label.size()));
+    };
+    draw_label(0, show_menu_label, show_menu_ascii_label);
+    draw_label(1, settings_menu_label, settings_menu_ascii_label);
+    draw_label(2, exit_menu_label, exit_menu_ascii_label);
+    if (xft_draw) {
+      XftDrawDestroy(xft_draw);
     }
 
     XFreeGC(display, gc);
@@ -959,6 +1048,14 @@ struct LinuxTrayImpl {
       SDL_ShowWindow(app_window);
       SDL_RestoreWindow(app_window);
       SDL_RaiseWindow(app_window);
+    }
+  }
+
+  void OpenSettings() {
+    if (open_settings) {
+      open_settings();
+    } else {
+      ShowWindow();
     }
   }
 
@@ -978,12 +1075,17 @@ struct LinuxTrayImpl {
   ::SDL_Window* app_window = nullptr;
   std::function<void()> show_window;
   std::function<void()> hide_window;
+  std::function<void()> open_settings;
   std::function<void()> exit_app;
   std::string tooltip;
   int language_index = 0;
   uint32_t exit_event_type = 0;
-  std::string menu_label;
-  std::string menu_ascii_label;
+  std::string show_menu_label;
+  std::string show_menu_ascii_label;
+  std::string settings_menu_label;
+  std::string settings_menu_ascii_label;
+  std::string exit_menu_label;
+  std::string exit_menu_ascii_label;
   Display* display = nullptr;
   int screen = 0;
   ::Window root_window = 0;
@@ -1014,6 +1116,7 @@ struct LinuxTrayImpl {
   int icon_width = 0;
   int icon_height = 0;
   int menu_width = 72;
+  int hovered_menu_item = -1;
   bool docked = false;
   bool embedded = false;
   bool menu_visible = false;
@@ -1028,11 +1131,13 @@ LinuxTray::LinuxTray(::SDL_Window* app_window, const std::string& tooltip,
 
 LinuxTray::LinuxTray(std::function<void()> show_window,
                      std::function<void()> hide_window,
+                     std::function<void()> open_settings,
                      std::function<void()> exit_app,
                      const std::string& tooltip, int language_index)
     : impl_(std::make_unique<LinuxTrayImpl>(
-          std::move(show_window), std::move(hide_window), std::move(exit_app),
-          tooltip, language_index)) {}
+          std::move(show_window), std::move(hide_window),
+          std::move(open_settings), std::move(exit_app), tooltip,
+          language_index)) {}
 
 LinuxTray::~LinuxTray() = default;
 

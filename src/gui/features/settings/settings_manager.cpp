@@ -310,7 +310,6 @@ int SettingsManager::Load() {
   owner_.enable_self_hosted_ = owner_.config_center_->IsSelfHosted();
   owner_.enable_autostart_ = owner_.config_center_->IsEnableAutostart();
   owner_.enable_daemon_ = owner_.config_center_->IsEnableDaemon();
-  owner_.enable_minimize_to_tray_ = owner_.config_center_->IsMinimizeToTray();
 #if _WIN32 && CROSSDESK_PORTABLE
   owner_.portable_service_prompt_suppressed_ =
       owner_.config_center_->IsPortableServicePromptSuppressed();
@@ -333,7 +332,6 @@ int SettingsManager::Load() {
   owner_.enable_srtp_last_ = owner_.enable_srtp_;
   owner_.enable_self_hosted_last_ = owner_.enable_self_hosted_;
   owner_.enable_autostart_last_ = owner_.enable_autostart_;
-  owner_.enable_minimize_to_tray_last_ = owner_.enable_minimize_to_tray_;
 
   LOG_INFO("Load settings from cache file");
   return 0;

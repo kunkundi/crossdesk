@@ -299,8 +299,11 @@ int GuiApplication::TitleBar(bool main_window) {
   }
 
   if (close_button_clicked) {
-    const bool minimized_to_tray = main_window && MinimizeMainWindowToTray();
-    if (!minimized_to_tray) {
+    if (main_window) {
+      if (!MinimizeMainWindowToTray()) {
+        SDL_HideWindow(main_window_);
+      }
+    } else {
       SDL_Event event;
       event.type = SDL_EVENT_QUIT;
       SDL_PushEvent(&event);

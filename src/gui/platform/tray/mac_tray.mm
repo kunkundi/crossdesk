@@ -13,6 +13,7 @@
 @interface CrossDeskMacTrayTarget : NSObject
 - (instancetype)initWithOwner:(crossdesk::MacTrayImpl *)owner;
 - (void)statusItemClicked:(id)sender;
+- (void)showMainWindow:(id)sender;
 - (void)openSettings:(id)sender;
 - (void)exitApplication:(id)sender;
 @end
@@ -84,6 +85,19 @@ struct MacTrayImpl {
     }
 
     NSMenu *menu = [[NSMenu alloc] initWithTitle:@"CrossDesk"];
+    [menu setAppearance:[NSAppearance appearanceNamed:NSAppearanceNameAqua]];
+
+    NSString *show_main_window_title =
+        NSStringFromUtf8(localization::show_main_window
+                             [localization::detail::ClampLanguageIndex(
+                                 language_index)]);
+    NSMenuItem *show_main_window_item =
+        [[NSMenuItem alloc] initWithTitle:show_main_window_title
+                                  action:@selector(showMainWindow:)
+                           keyEquivalent:@""];
+    [show_main_window_item setTarget:target];
+    [menu addItem:show_main_window_item];
+
     NSString *settings_title =
         NSStringFromUtf8(localization::settings
                              [localization::detail::ClampLanguageIndex(
@@ -287,20 +301,20 @@ void MacTray::RemoveTrayIcon() { impl_->RemoveTrayIcon(); }
   if (!owner_) {
     return;
   }
-
-  NSEvent *event = [NSApp currentEvent];
-  if (event && [event type] == NSEventTypeRightMouseUp) {
-    owner_->ShowMenu();
-    return;
-  }
-
-  owner_->ShowWindow();
+  owner_->ShowMenu();
 }
 
 - (void)exitApplication:(id)sender {
   (void)sender;
   if (owner_) {
     owner_->RequestExit();
+  }
+}
+
+- (void)showMainWindow:(id)sender {
+  (void)sender;
+  if (owner_) {
+    owner_->ShowWindow();
   }
 }
 

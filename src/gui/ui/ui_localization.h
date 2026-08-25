@@ -57,8 +57,6 @@ inline int ApplyMainWindowStrings(
       Text(localization::self_hosted_server_config[language]));
   strings.set_autostart(Text(localization::enable_autostart[language]));
   strings.set_daemon(Text(localization::enable_daemon[language]));
-  strings.set_minimize_to_tray(
-      Text(localization::minimize_to_tray[language]));
   strings.set_file_save_path(
       Text(localization::file_transfer_save_path[language]));
   strings.set_default_desktop(Text(localization::default_desktop[language]));

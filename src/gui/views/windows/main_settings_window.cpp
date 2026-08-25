@@ -359,26 +359,6 @@ int GuiApplication::SettingWindow() {
         settings_items_offset += settings_items_padding;
         ImGui::SetCursorPosY(settings_items_offset);
         ImGui::AlignTextToFramePadding();
-        ImGui::Text("%s",
-                    localization::minimize_to_tray[localization_language_index_]
-                        .c_str());
-        ImGui::SameLine();
-        if (ConfigCenter::LANGUAGE::CHINESE == localization_language_) {
-          ImGui::SetCursorPosX(title_bar_button_width_ * 4.275f);
-        } else {
-          ImGui::SetCursorPosX(title_bar_button_width_ * 5.955f);
-        }
-
-        ImGui::Checkbox("##enable_minimize_to_tray_",
-                        &enable_minimize_to_tray_);
-      }
-
-      ImGui::Separator();
-
-      {
-        settings_items_offset += settings_items_padding;
-        ImGui::SetCursorPosY(settings_items_offset);
-        ImGui::AlignTextToFramePadding();
         ImGui::Text(
             "%s",
             localization::file_transfer_save_path[localization_language_index_]
@@ -617,13 +597,6 @@ int GuiApplication::SettingWindow() {
           config_center_->SetDaemon(false);
         }
         enable_daemon_last_ = enable_daemon_;
-
-        if (enable_minimize_to_tray_) {
-          config_center_->SetMinimizeToTray(true);
-        } else {
-          config_center_->SetMinimizeToTray(false);
-        }
-        enable_minimize_to_tray_last_ = enable_minimize_to_tray_;
 
         // File transfer save path
         config_center_->SetFileTransferSavePath(file_transfer_save_path_buf_);

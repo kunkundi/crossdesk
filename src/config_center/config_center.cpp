@@ -34,6 +34,8 @@ int ConfigCenter::Load() {
   persist_config_migration |= ini_.Delete(section_, "screen_content");
   persist_config_migration |=
       ini_.Delete(section_, "enable_desktop_quality_optimization");
+  persist_config_migration |=
+      ini_.Delete(section_, "enable_minimize_to_tray");
 
   const long language_value =
       ini_.GetLongValue(section_, "language", static_cast<long>(language_));
@@ -109,8 +111,6 @@ int ConfigCenter::Load() {
   enable_autostart_ =
       ini_.GetBoolValue(section_, "enable_autostart", enable_autostart_);
   enable_daemon_ = ini_.GetBoolValue(section_, "enable_daemon", enable_daemon_);
-  enable_minimize_to_tray_ = ini_.GetBoolValue(
-      section_, "enable_minimize_to_tray", enable_minimize_to_tray_);
   portable_service_prompt_suppressed_ =
       ini_.GetBoolValue(section_, "portable_service_prompt_suppressed",
                         portable_service_prompt_suppressed_);
@@ -157,8 +157,6 @@ int ConfigCenter::Save() {
 
   ini_.SetBoolValue(section_, "enable_autostart", enable_autostart_);
   ini_.SetBoolValue(section_, "enable_daemon", enable_daemon_);
-  ini_.SetBoolValue(section_, "enable_minimize_to_tray",
-                    enable_minimize_to_tray_);
   ini_.SetBoolValue(section_, "portable_service_prompt_suppressed",
                     portable_service_prompt_suppressed_);
 
@@ -338,17 +336,6 @@ int ConfigCenter::SetSelfHosted(bool enable_self_hosted) {
   return 0;
 }
 
-int ConfigCenter::SetMinimizeToTray(bool enable_minimize_to_tray) {
-  enable_minimize_to_tray_ = enable_minimize_to_tray;
-  ini_.SetBoolValue(section_, "enable_minimize_to_tray",
-                    enable_minimize_to_tray_);
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
-  return 0;
-}
-
 int ConfigCenter::SetAutostart(bool enable_autostart) {
   enable_autostart_ = enable_autostart;
   bool success = false;
@@ -447,8 +434,6 @@ int ConfigCenter::GetDefaultCoturnServerPort() const {
 }
 
 bool ConfigCenter::IsSelfHosted() const { return enable_self_hosted_; }
-
-bool ConfigCenter::IsMinimizeToTray() const { return enable_minimize_to_tray_; }
 
 bool ConfigCenter::IsEnableAutostart() const { return enable_autostart_; }
 

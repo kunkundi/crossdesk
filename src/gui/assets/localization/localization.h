@@ -136,8 +136,9 @@ CROSSDESK_LOCALIZATION_ALL(CROSSDESK_DECLARE_LOCALIZED_STRING)
 #undef CROSSDESK_DECLARE_LOCALIZED_STRING
 
 #if _WIN32
-inline const wchar_t* GetExitProgramLabel(int language_index) {
-  static std::vector<std::wstring> cache(GetSupportedLanguages().size());
+inline const wchar_t* GetWindowsLocalizedLabel(
+    int language_index, const char* key, const wchar_t* fallback,
+    std::vector<std::wstring>& cache) {
   const int normalized_index = detail::ClampLanguageIndex(language_index);
   std::wstring& cached_text = cache[normalized_index];
   if (!cached_text.empty()) {
@@ -145,23 +146,45 @@ inline const wchar_t* GetExitProgramLabel(int language_index) {
   }
 
   const std::string& utf8_text =
-      detail::GetTranslatedText("exit_program", normalized_index);
+      detail::GetTranslatedText(key, normalized_index);
   if (utf8_text.empty()) {
-    cached_text = L"Exit";
+    cached_text = fallback;
     return cached_text.c_str();
   }
 
   int wide_length =
       MultiByteToWideChar(CP_UTF8, 0, utf8_text.c_str(), -1, nullptr, 0);
   if (wide_length <= 0) {
-    cached_text = L"Exit";
+    cached_text = fallback;
     return cached_text.c_str();
   }
 
-  cached_text.resize(static_cast<size_t>(wide_length - 1));
-  MultiByteToWideChar(CP_UTF8, 0, utf8_text.c_str(), -1, cached_text.data(),
-                      wide_length);
+  cached_text.resize(static_cast<size_t>(wide_length));
+  if (MultiByteToWideChar(CP_UTF8, 0, utf8_text.c_str(), -1,
+                          cached_text.data(), wide_length) <= 0) {
+    cached_text = fallback;
+    return cached_text.c_str();
+  }
+  cached_text.pop_back();
   return cached_text.c_str();
+}
+
+inline const wchar_t* GetShowMainWindowLabel(int language_index) {
+  static std::vector<std::wstring> cache(GetSupportedLanguages().size());
+  return GetWindowsLocalizedLabel(language_index, "show_main_window",
+                                  L"Show Main Window", cache);
+}
+
+inline const wchar_t* GetSettingsLabel(int language_index) {
+  static std::vector<std::wstring> cache(GetSupportedLanguages().size());
+  return GetWindowsLocalizedLabel(language_index, "settings", L"Settings",
+                                  cache);
+}
+
+inline const wchar_t* GetExitProgramLabel(int language_index) {
+  static std::vector<std::wstring> cache(GetSupportedLanguages().size());
+  return GetWindowsLocalizedLabel(language_index, "exit_program", L"Exit",
+                                  cache);
 }
 #endif
 

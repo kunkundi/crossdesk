@@ -64,11 +64,13 @@ WinTray::WinTray(HWND app_hwnd, HICON icon, const std::wstring& tooltip,
 
 WinTray::WinTray(std::function<void()> show_window,
                  std::function<void()> hide_window,
+                 std::function<void()> open_settings,
                  std::function<void()> exit_app, HICON icon,
                  const std::wstring& tooltip, int language_index)
     : WinTray(nullptr, icon, tooltip, language_index) {
   show_window_ = std::move(show_window);
   hide_window_ = std::move(hide_window);
+  open_settings_ = std::move(open_settings);
   exit_app_ = std::move(exit_app);
 }
 
@@ -97,6 +99,14 @@ void WinTray::ShowApplicationWindow() {
   }
 }
 
+void WinTray::OpenSettings() {
+  if (open_settings_) {
+    open_settings_();
+  } else {
+    ShowApplicationWindow();
+  }
+}
+
 bool WinTray::HandleTrayMessage(MSG* msg) {
   if (!msg || msg->message != WM_TRAY_CALLBACK) return false;
 
@@ -111,6 +121,20 @@ bool WinTray::HandleTrayMessage(MSG* msg) {
       POINT pt;
       GetCursorPos(&pt);
       HMENU menu = CreatePopupMenu();
+      HBRUSH menu_background = CreateSolidBrush(RGB(255, 255, 255));
+      if (menu_background) {
+        MENUINFO menu_info{};
+        menu_info.cbSize = sizeof(menu_info);
+        menu_info.fMask = MIM_BACKGROUND | MIM_APPLYTOSUBMENUS;
+        menu_info.hbrBack = menu_background;
+        SetMenuInfo(menu, &menu_info);
+      }
+
+      AppendMenuW(menu, MF_STRING, 1002,
+                  localization::GetShowMainWindowLabel(language_index_));
+      AppendMenuW(menu, MF_STRING, 1003,
+                  localization::GetSettingsLabel(language_index_));
+      AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
       AppendMenuW(menu, MF_STRING, 1001,
                   localization::GetExitProgramLabel(language_index_));
 
@@ -119,6 +143,9 @@ bool WinTray::HandleTrayMessage(MSG* msg) {
           TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_LEFTALIGN,
                          pt.x, pt.y, 0, hwnd_message_only_, nullptr);
       DestroyMenu(menu);
+      if (menu_background) {
+        DeleteObject(menu_background);
+      }
 
       // handle menu command
       if (cmd == 1001) {
@@ -131,6 +158,8 @@ bool WinTray::HandleTrayMessage(MSG* msg) {
         }
       } else if (cmd == 1002) {
         ShowApplicationWindow();
+      } else if (cmd == 1003) {
+        OpenSettings();
       }
       break;
     }

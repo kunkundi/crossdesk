@@ -22,7 +22,9 @@ class WinTray {
   WinTray(HWND app_hwnd, HICON icon, const std::wstring& tooltip,
           int language_index);
   WinTray(std::function<void()> show_window,
-          std::function<void()> hide_window, std::function<void()> exit_app,
+          std::function<void()> hide_window,
+          std::function<void()> open_settings,
+          std::function<void()> exit_app,
           HICON icon, const std::wstring& tooltip, int language_index);
   ~WinTray();
 
@@ -32,6 +34,7 @@ class WinTray {
 
  private:
   void ShowApplicationWindow();
+  void OpenSettings();
 
   HWND app_hwnd_;
   HWND hwnd_message_only_;
@@ -41,6 +44,7 @@ class WinTray {
   NOTIFYICONDATA nid_;
   std::function<void()> show_window_;
   std::function<void()> hide_window_;
+  std::function<void()> open_settings_;
   std::function<void()> exit_app_;
 };
 }  // namespace crossdesk

@@ -134,8 +134,10 @@ void GuiApplication::ProcessSdlEvent(const SDL_Event &event) {
     }
 
     if (main_window_ &&
-        event.window.windowID == SDL_GetWindowID(main_window_) &&
-        MinimizeMainWindowToTray()) {
+        event.window.windowID == SDL_GetWindowID(main_window_)) {
+      if (!MinimizeMainWindowToTray()) {
+        SDL_HideWindow(main_window_);
+      }
       break;
     }
 

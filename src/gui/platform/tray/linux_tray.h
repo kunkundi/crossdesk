@@ -25,7 +25,9 @@ class LinuxTray {
   LinuxTray(::SDL_Window* app_window, const std::string& tooltip,
             int language_index, uint32_t exit_event_type);
   LinuxTray(std::function<void()> show_window,
-            std::function<void()> hide_window, std::function<void()> exit_app,
+            std::function<void()> hide_window,
+            std::function<void()> open_settings,
+            std::function<void()> exit_app,
             const std::string& tooltip, int language_index);
   ~LinuxTray();
 
