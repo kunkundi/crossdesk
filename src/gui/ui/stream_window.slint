@@ -172,6 +172,10 @@ export component StreamWindow inherits Window {
     private property <bool> display-menu-animation-enabled: false;
     private property <float> display-menu-progress: 0.0;
     private property <bool> shortcut-menu-open: false;
+    // A popup can remove itself from the scene in its clicked callback before
+    // the video input layer observes the same pointer release. Remember that
+    // the press belonged to local UI so that release cannot reach the peer.
+    private property <bool> suppress-next-remote-pointer-release: false;
     private property <bool> control-docked-left: true;
     private property <bool> control-dragging: false;
     private property <length> control-drag-x: 0px;
@@ -554,7 +558,14 @@ export component StreamWindow inherits Window {
                             && self.mouse-y <= control.y + control.height;
                         let over-local-ui = root.is-local-control-area(
                             self.mouse-x, self.mouse-y);
+                        let suppress-remote-release =
+                            root.suppress-next-remote-pointer-release
+                            && (event.kind == PointerEventKind.up
+                                || event.kind == PointerEventKind.cancel);
                         if event.kind == PointerEventKind.down && !over-local-ui {
+                            // Discard a stale marker if a popup consumed the
+                            // whole previous gesture, including its release.
+                            root.suppress-next-remote-pointer-release = false;
                             input-focus.focus();
                         }
                         if event.kind == PointerEventKind.down
@@ -568,8 +579,12 @@ export component StreamWindow inherits Window {
                         // The control bar overlays the remote video. Events in
                         // it and its attached menus (including padding and gaps)
                         // are local UI input and must never reach the peer.
-                        } else if !root.control-dragging && !over-local-ui {
+                        } else if !root.control-dragging && !over-local-ui
+                            && !suppress-remote-release {
                             root.pointer-input(event.button, event.kind, self.mouse-x, self.mouse-y);
+                        }
+                        if suppress-remote-release {
+                            root.suppress-next-remote-pointer-release = false;
                         }
                     }
                     moved => {
@@ -871,6 +886,11 @@ export component StreamWindow inherits Window {
                 // hover stable while still consuming padding, gaps and scroll
                 // events locally instead of forwarding them to the peer.
                 display-touch := TouchArea {
+                    pointer-event(event) => {
+                        if event.kind == PointerEventKind.down {
+                            root.suppress-next-remote-pointer-release = true;
+                        }
+                    }
                     clicked => {
                         let index = floor((self.mouse-y - 4px) / 30px);
                         let row-y = self.mouse-y - 4px - index * 30px;
@@ -896,7 +916,14 @@ export component StreamWindow inherits Window {
                     for shortcut in ["Ctrl+Alt+Del", "Win+L"]: Rectangle {
                         height: 29px; background: shortcut-touch.has-hover ? #e8eef9 : transparent;
                         Text { x: 8px; text: shortcut; color: #30343b; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
-                        shortcut-touch := TouchArea { clicked => { root.send-shortcut(shortcut); root.shortcut-menu-open = false; } }
+                        shortcut-touch := TouchArea {
+                            pointer-event(event) => {
+                                if event.kind == PointerEventKind.down {
+                                    root.suppress-next-remote-pointer-release = true;
+                                }
+                            }
+                            clicked => { root.send-shortcut(shortcut); root.shortcut-menu-open = false; }
+                        }
                     }
                 }
             }

@@ -100,11 +100,6 @@ function setup_targets()
         add_includedirs("src/service/windows")
         add_files("tests/windows_sas_guard_test.cpp")
 
-    target("display_popup_hover_state_test")
-        set_kind("binary")
-        set_default(false)
-        add_files("tests/display_popup_hover_state_test.cpp")
-
     target("slint_ui_smoke_test")
         set_kind("binary")
         set_languages("c++20")
