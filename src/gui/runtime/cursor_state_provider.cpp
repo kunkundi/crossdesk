@@ -56,6 +56,12 @@ bool CursorStateProvider::Sample(CursorState* state) {
 #include <X11/Xlib.h>
 #include <X11/extensions/Xfixes.h>
 
+// X11/X.h defines CursorShape as a protocol request opcode, which conflicts
+// with CrossDesk's CursorShape enum.
+#ifdef CursorShape
+#undef CursorShape
+#endif
+
 #include <algorithm>
 #include <cctype>
 #include <string>
@@ -158,17 +164,10 @@ CursorStateProvider::~CursorStateProvider() = default;
 bool CursorStateProvider::Sample(CursorState* state) {
   if (!state || !impl_ || !impl_->display) return false;
 
-  XFixesCursorImage* image = XFixesGetCursorImageAndName(impl_->display);
+  XFixesCursorImage* image = XFixesGetCursorImage(impl_->display);
   if (!image) return false;
 
-  std::string name;
-  if (image->atom != None) {
-    char* atom_name = XGetAtomName(impl_->display, image->atom);
-    if (atom_name) {
-      name = atom_name;
-      XFree(atom_name);
-    }
-  }
+  const std::string name = image->name ? image->name : "";
 
   state->seq = 0;
   state->visible = CursorHasVisiblePixel(*image);
