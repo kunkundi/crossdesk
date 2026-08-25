@@ -74,7 +74,7 @@ typedef struct {
 // Keep these values aligned with Slint's MouseCursor enum. The wire protocol
 // intentionally carries a semantic cursor instead of a platform handle so a
 // Windows, macOS or Linux host can control a different desktop platform.
-enum class CursorShape : uint8_t {
+enum class RemoteCursorShape : uint8_t {
   default_cursor = 0,
   none,
   help,
@@ -109,7 +109,7 @@ enum class CursorShape : uint8_t {
 typedef struct {
   uint32_t seq;
   bool visible;
-  CursorShape shape;
+  RemoteCursorShape shape;
 } CursorState;
 
 typedef struct {
@@ -270,13 +270,13 @@ struct RemoteAction {
         case ControlType::cursor_state: {
           const auto& cursor_state_json = j.at("cursor_state");
           const int shape = cursor_state_json.at("shape").get<int>();
-          if (shape < static_cast<int>(CursorShape::default_cursor) ||
-              shape > static_cast<int>(CursorShape::nwse_resize)) {
+          if (shape < static_cast<int>(RemoteCursorShape::default_cursor) ||
+              shape > static_cast<int>(RemoteCursorShape::nwse_resize)) {
             return false;
           }
           out.cs.seq = cursor_state_json.at("seq").get<uint32_t>();
           out.cs.visible = cursor_state_json.at("visible").get<bool>();
-          out.cs.shape = static_cast<CursorShape>(shape);
+          out.cs.shape = static_cast<RemoteCursorShape>(shape);
           break;
         }
         case ControlType::audio_capture:

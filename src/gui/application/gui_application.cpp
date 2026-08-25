@@ -2418,7 +2418,7 @@ void GuiApplication::SyncStreamWindow() {
               : std::string{}));
   (*ui_->stream)->set_mouse_control_enabled(props->control_mouse_);
   int remote_cursor_shape =
-      static_cast<int>(CursorShape::default_cursor);
+      static_cast<int>(RemoteCursorShape::default_cursor);
   bool remote_cursor_active = false;
   {
     std::lock_guard lock(props->remote_cursor_state_mutex_);
@@ -2429,7 +2429,7 @@ void GuiApplication::SyncStreamWindow() {
       remote_cursor_shape = static_cast<int>(
           props->remote_cursor_state_.visible
               ? props->remote_cursor_state_.shape
-              : CursorShape::none);
+              : RemoteCursorShape::none);
     }
   }
   (*ui_->stream)->set_remote_cursor_active(remote_cursor_active);

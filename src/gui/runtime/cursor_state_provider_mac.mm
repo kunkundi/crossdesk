@@ -22,7 +22,7 @@ struct CursorFingerprint {
 
 struct KnownCursor {
   CursorFingerprint fingerprint;
-  CursorShape shape = CursorShape::default_cursor;
+  RemoteCursorShape shape = RemoteCursorShape::default_cursor;
 };
 
 bool FingerprintCursor(NSCursor* cursor, CursorFingerprint* fingerprint) {
@@ -75,7 +75,7 @@ bool SameCursor(const CursorFingerprint& left,
 }
 
 void AddKnownCursor(std::vector<KnownCursor>* cursors, NSCursor* cursor,
-                    CursorShape shape) {
+                    RemoteCursorShape shape) {
   CursorFingerprint fingerprint;
   if (FingerprintCursor(cursor, &fingerprint)) {
     cursors->push_back({fingerprint, shape});
@@ -88,34 +88,43 @@ std::vector<KnownCursor> BuildKnownCursors() {
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-  AddKnownCursor(&cursors, NSCursor.arrowCursor, CursorShape::default_cursor);
-  AddKnownCursor(&cursors, NSCursor.pointingHandCursor, CursorShape::pointer);
-  AddKnownCursor(&cursors, NSCursor.crosshairCursor, CursorShape::crosshair);
-  AddKnownCursor(&cursors, NSCursor.IBeamCursor, CursorShape::text);
+  AddKnownCursor(&cursors, NSCursor.arrowCursor,
+                 RemoteCursorShape::default_cursor);
+  AddKnownCursor(&cursors, NSCursor.pointingHandCursor,
+                 RemoteCursorShape::pointer);
+  AddKnownCursor(&cursors, NSCursor.crosshairCursor,
+                 RemoteCursorShape::crosshair);
+  AddKnownCursor(&cursors, NSCursor.IBeamCursor, RemoteCursorShape::text);
   AddKnownCursor(&cursors, NSCursor.IBeamCursorForVerticalLayout,
-                 CursorShape::text);
+                 RemoteCursorShape::text);
   AddKnownCursor(&cursors, NSCursor.operationNotAllowedCursor,
-                 CursorShape::not_allowed);
-  AddKnownCursor(&cursors, NSCursor.dragLinkCursor, CursorShape::alias);
-  AddKnownCursor(&cursors, NSCursor.dragCopyCursor, CursorShape::copy);
-  AddKnownCursor(&cursors, NSCursor.openHandCursor, CursorShape::grab);
-  AddKnownCursor(&cursors, NSCursor.closedHandCursor, CursorShape::grabbing);
+                 RemoteCursorShape::not_allowed);
+  AddKnownCursor(&cursors, NSCursor.dragLinkCursor, RemoteCursorShape::alias);
+  AddKnownCursor(&cursors, NSCursor.dragCopyCursor, RemoteCursorShape::copy);
+  AddKnownCursor(&cursors, NSCursor.openHandCursor, RemoteCursorShape::grab);
+  AddKnownCursor(&cursors, NSCursor.closedHandCursor,
+                 RemoteCursorShape::grabbing);
   AddKnownCursor(&cursors, NSCursor.resizeLeftRightCursor,
-                 CursorShape::ew_resize);
-  AddKnownCursor(&cursors, NSCursor.resizeUpDownCursor, CursorShape::ns_resize);
-  AddKnownCursor(&cursors, NSCursor.resizeUpCursor, CursorShape::n_resize);
-  AddKnownCursor(&cursors, NSCursor.resizeRightCursor, CursorShape::e_resize);
-  AddKnownCursor(&cursors, NSCursor.resizeDownCursor, CursorShape::s_resize);
-  AddKnownCursor(&cursors, NSCursor.resizeLeftCursor, CursorShape::w_resize);
+                 RemoteCursorShape::ew_resize);
+  AddKnownCursor(&cursors, NSCursor.resizeUpDownCursor,
+                 RemoteCursorShape::ns_resize);
+  AddKnownCursor(&cursors, NSCursor.resizeUpCursor,
+                 RemoteCursorShape::n_resize);
+  AddKnownCursor(&cursors, NSCursor.resizeRightCursor,
+                 RemoteCursorShape::e_resize);
+  AddKnownCursor(&cursors, NSCursor.resizeDownCursor,
+                 RemoteCursorShape::s_resize);
+  AddKnownCursor(&cursors, NSCursor.resizeLeftCursor,
+                 RemoteCursorShape::w_resize);
 #pragma clang diagnostic pop
 
   return cursors;
 }
 
-CursorShape ShapeFromMacCursor(NSCursor* cursor) {
+RemoteCursorShape ShapeFromMacCursor(NSCursor* cursor) {
   CursorFingerprint fingerprint;
   if (!FingerprintCursor(cursor, &fingerprint)) {
-    return CursorShape::default_cursor;
+    return RemoteCursorShape::default_cursor;
   }
 
   // Sampling begins from the UI tick, after AppKit has initialized its cursor
@@ -125,7 +134,7 @@ CursorShape ShapeFromMacCursor(NSCursor* cursor) {
   for (const KnownCursor& known : known_cursors) {
     if (SameCursor(fingerprint, known.fingerprint)) return known.shape;
   }
-  return CursorShape::default_cursor;
+  return RemoteCursorShape::default_cursor;
 }
 
 }  // namespace
@@ -146,7 +155,8 @@ bool CursorStateProvider::Sample(CursorState* state) {
 
   state->seq = 0;
   state->visible = visible && cursor != nil;
-  state->shape = state->visible ? ShapeFromMacCursor(cursor) : CursorShape::none;
+  state->shape = state->visible ? ShapeFromMacCursor(cursor)
+                                : RemoteCursorShape::none;
   return true;
 }
 

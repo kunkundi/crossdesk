@@ -11,21 +11,25 @@ bool IsSystemCursor(HCURSOR cursor, LPCWSTR resource) {
   return cursor != nullptr && cursor == LoadCursorW(nullptr, resource);
 }
 
-CursorShape ShapeFromWindowsCursor(HCURSOR cursor) {
-  if (IsSystemCursor(cursor, IDC_HELP)) return CursorShape::help;
-  if (IsSystemCursor(cursor, IDC_HAND)) return CursorShape::pointer;
-  if (IsSystemCursor(cursor, IDC_APPSTARTING)) return CursorShape::progress;
-  if (IsSystemCursor(cursor, IDC_WAIT)) return CursorShape::wait;
-  if (IsSystemCursor(cursor, IDC_CROSS)) return CursorShape::crosshair;
-  if (IsSystemCursor(cursor, IDC_IBEAM)) return CursorShape::text;
-  if (IsSystemCursor(cursor, IDC_NO)) return CursorShape::not_allowed;
-  if (IsSystemCursor(cursor, IDC_SIZEALL)) return CursorShape::move;
-  if (IsSystemCursor(cursor, IDC_SIZEWE)) return CursorShape::ew_resize;
-  if (IsSystemCursor(cursor, IDC_SIZENS)) return CursorShape::ns_resize;
-  if (IsSystemCursor(cursor, IDC_SIZENESW)) return CursorShape::nesw_resize;
-  if (IsSystemCursor(cursor, IDC_SIZENWSE)) return CursorShape::nwse_resize;
-  if (IsSystemCursor(cursor, IDC_UPARROW)) return CursorShape::n_resize;
-  return CursorShape::default_cursor;
+RemoteCursorShape ShapeFromWindowsCursor(HCURSOR cursor) {
+  if (IsSystemCursor(cursor, IDC_HELP)) return RemoteCursorShape::help;
+  if (IsSystemCursor(cursor, IDC_HAND)) return RemoteCursorShape::pointer;
+  if (IsSystemCursor(cursor, IDC_APPSTARTING))
+    return RemoteCursorShape::progress;
+  if (IsSystemCursor(cursor, IDC_WAIT)) return RemoteCursorShape::wait;
+  if (IsSystemCursor(cursor, IDC_CROSS)) return RemoteCursorShape::crosshair;
+  if (IsSystemCursor(cursor, IDC_IBEAM)) return RemoteCursorShape::text;
+  if (IsSystemCursor(cursor, IDC_NO))
+    return RemoteCursorShape::not_allowed;
+  if (IsSystemCursor(cursor, IDC_SIZEALL)) return RemoteCursorShape::move;
+  if (IsSystemCursor(cursor, IDC_SIZEWE)) return RemoteCursorShape::ew_resize;
+  if (IsSystemCursor(cursor, IDC_SIZENS)) return RemoteCursorShape::ns_resize;
+  if (IsSystemCursor(cursor, IDC_SIZENESW))
+    return RemoteCursorShape::nesw_resize;
+  if (IsSystemCursor(cursor, IDC_SIZENWSE))
+    return RemoteCursorShape::nwse_resize;
+  if (IsSystemCursor(cursor, IDC_UPARROW)) return RemoteCursorShape::n_resize;
+  return RemoteCursorShape::default_cursor;
 }
 
 }  // namespace
@@ -45,7 +49,7 @@ bool CursorStateProvider::Sample(CursorState* state) {
   state->seq = 0;
   state->visible = (info.flags & CURSOR_SHOWING) != 0;
   state->shape = state->visible ? ShapeFromWindowsCursor(info.hCursor)
-                                : CursorShape::none;
+                                : RemoteCursorShape::none;
   return true;
 }
 
@@ -55,12 +59,6 @@ bool CursorStateProvider::Sample(CursorState* state) {
 
 #include <X11/Xlib.h>
 #include <X11/extensions/Xfixes.h>
-
-// X11/X.h defines CursorShape as a protocol request opcode, which conflicts
-// with CrossDesk's CursorShape enum.
-#ifdef CursorShape
-#undef CursorShape
-#endif
 
 #include <algorithm>
 #include <cctype>
@@ -79,64 +77,64 @@ bool Contains(const std::string& value, const char* token) {
   return value.find(token) != std::string::npos;
 }
 
-CursorShape ShapeFromXCursorName(const std::string& raw_name) {
+RemoteCursorShape ShapeFromXCursorName(const std::string& raw_name) {
   const std::string name = Lowercase(raw_name);
   if (Contains(name, "left_ptr_watch") || Contains(name, "progress"))
-    return CursorShape::progress;
+    return RemoteCursorShape::progress;
   if (Contains(name, "watch") || Contains(name, "wait"))
-    return CursorShape::wait;
+    return RemoteCursorShape::wait;
   if (Contains(name, "question") || Contains(name, "help"))
-    return CursorShape::help;
+    return RemoteCursorShape::help;
   if (Contains(name, "xterm") || Contains(name, "vertical-text") ||
       name == "text")
-    return CursorShape::text;
+    return RemoteCursorShape::text;
   if (Contains(name, "crosshair") || name == "cross" || name == "tcross")
-    return CursorShape::crosshair;
+    return RemoteCursorShape::crosshair;
   if (Contains(name, "closedhand") || Contains(name, "grabbing"))
-    return CursorShape::grabbing;
+    return RemoteCursorShape::grabbing;
   if (Contains(name, "openhand") || Contains(name, "grab"))
-    return CursorShape::grab;
+    return RemoteCursorShape::grab;
   if (Contains(name, "dnd-link") || name == "alias")
-    return CursorShape::alias;
+    return RemoteCursorShape::alias;
   if (Contains(name, "hand") || Contains(name, "pointer") ||
       Contains(name, "link"))
-    return CursorShape::pointer;
+    return RemoteCursorShape::pointer;
   if (Contains(name, "dnd-copy") || name == "copy")
-    return CursorShape::copy;
-  if (Contains(name, "no-drop")) return CursorShape::no_drop;
+    return RemoteCursorShape::copy;
+  if (Contains(name, "no-drop")) return RemoteCursorShape::no_drop;
   if (Contains(name, "not-allowed") || Contains(name, "crossed_circle"))
-    return CursorShape::not_allowed;
+    return RemoteCursorShape::not_allowed;
   if (name == "fleur" || Contains(name, "size_all") || name == "move")
-    return CursorShape::move;
+    return RemoteCursorShape::move;
   if (Contains(name, "top_left_corner") ||
       Contains(name, "bottom_right_corner") ||
       Contains(name, "nwse-resize") || Contains(name, "size_fdiag"))
-    return CursorShape::nwse_resize;
+    return RemoteCursorShape::nwse_resize;
   if (Contains(name, "top_right_corner") ||
       Contains(name, "bottom_left_corner") ||
       Contains(name, "nesw-resize") || Contains(name, "size_bdiag"))
-    return CursorShape::nesw_resize;
+    return RemoteCursorShape::nesw_resize;
   if (Contains(name, "sb_h_double_arrow") || Contains(name, "ew-resize") ||
       Contains(name, "size_hor"))
-    return CursorShape::ew_resize;
+    return RemoteCursorShape::ew_resize;
   if (Contains(name, "sb_v_double_arrow") || Contains(name, "ns-resize") ||
       Contains(name, "size_ver"))
-    return CursorShape::ns_resize;
-  if (Contains(name, "col-resize")) return CursorShape::col_resize;
-  if (Contains(name, "row-resize")) return CursorShape::row_resize;
-  if (Contains(name, "ne-resize")) return CursorShape::ne_resize;
-  if (Contains(name, "nw-resize")) return CursorShape::nw_resize;
-  if (Contains(name, "se-resize")) return CursorShape::se_resize;
-  if (Contains(name, "sw-resize")) return CursorShape::sw_resize;
+    return RemoteCursorShape::ns_resize;
+  if (Contains(name, "col-resize")) return RemoteCursorShape::col_resize;
+  if (Contains(name, "row-resize")) return RemoteCursorShape::row_resize;
+  if (Contains(name, "ne-resize")) return RemoteCursorShape::ne_resize;
+  if (Contains(name, "nw-resize")) return RemoteCursorShape::nw_resize;
+  if (Contains(name, "se-resize")) return RemoteCursorShape::se_resize;
+  if (Contains(name, "sw-resize")) return RemoteCursorShape::sw_resize;
   if (Contains(name, "top_side") || name == "n-resize")
-    return CursorShape::n_resize;
+    return RemoteCursorShape::n_resize;
   if (Contains(name, "right_side") || name == "e-resize")
-    return CursorShape::e_resize;
+    return RemoteCursorShape::e_resize;
   if (Contains(name, "bottom_side") || name == "s-resize")
-    return CursorShape::s_resize;
+    return RemoteCursorShape::s_resize;
   if (Contains(name, "left_side") || name == "w-resize")
-    return CursorShape::w_resize;
-  return CursorShape::default_cursor;
+    return RemoteCursorShape::w_resize;
+  return RemoteCursorShape::default_cursor;
 }
 
 bool CursorHasVisiblePixel(const XFixesCursorImage& image) {
@@ -172,7 +170,7 @@ bool CursorStateProvider::Sample(CursorState* state) {
   state->seq = 0;
   state->visible = CursorHasVisiblePixel(*image);
   state->shape = state->visible ? ShapeFromXCursorName(name)
-                                : CursorShape::none;
+                                : RemoteCursorShape::none;
   XFree(image);
   return true;
 }
