@@ -15,6 +15,7 @@ struct pw_thread_loop;
 
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -22,6 +23,8 @@ struct pw_thread_loop;
 #include "screen_capturer.h"
 
 namespace crossdesk {
+
+class LinuxCursorThemeMatcher;
 
 class ScreenCapturerWayland : public ScreenCapturer {
  public:
@@ -51,6 +54,7 @@ class ScreenCapturerWayland : public ScreenCapturer {
   bool CreatePortalSession();
   bool SelectPortalDevices();
   bool SelectPortalSource();
+  bool GetAvailableCursorModes(uint32_t* modes) const;
   bool StartPortalSession();
   bool EnsurePipeWireRuntimeAvailable() const;
   bool OpenPipeWireRemote();
@@ -95,6 +99,9 @@ class ScreenCapturerWayland : public ScreenCapturer {
   bool pipewire_thread_loop_started_ = false;
   bool pointer_granted_ = false;
   bool shared_session_registered_ = false;
+  bool cursor_metadata_enabled_ = false;
+  bool cursor_metadata_seen_ = false;
+  uint32_t cursor_metadata_missing_buffers_ = 0;
   bool portal_has_logical_size_ = false;
   uint32_t spa_video_format_ = 0;
   int frame_width_ = 0;
@@ -104,6 +111,7 @@ class ScreenCapturerWayland : public ScreenCapturer {
   int portal_stream_height_ = 0;
   int logical_width_ = 0;
   int logical_height_ = 0;
+  std::unique_ptr<LinuxCursorThemeMatcher> cursor_theme_matcher_;
 
   std::vector<uint8_t> y_plane_;
   std::vector<uint8_t> uv_plane_;

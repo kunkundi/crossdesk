@@ -158,7 +158,7 @@ Architecture: $DEBIAN_ARCH
 Maintainer: $MAINTAINER
 Description: $DESCRIPTION
 Depends: libc6 (>= 2.31), libstdc++6 (>= 10), libx11-6, libxext6,
- libxrender1, libxft2, libxrandr2, libxfixes3, libxcb1, libxcb-randr0,
+ libxrender1, libxft2, libxrandr2, libxfixes3, libxcursor1, libxcb1, libxcb-randr0,
  libxcb-xtest0, libxcb-xinerama0, libxcb-shape0, libxcb-xkb1,
  libxcb-xfixes0, libxv1, libxtst6, $ALSA_RUNTIME_DEP, libsndio7.0,
  libxcb-shm0, libpulse0, libdrm2, libdbus-1-3, libgl1

@@ -60,82 +60,14 @@ bool CursorStateProvider::Sample(CursorState* state) {
 #include <X11/Xlib.h>
 #include <X11/extensions/Xfixes.h>
 
-#include <algorithm>
-#include <cctype>
 #include <string>
+
+#include "linux_cursor_shape.h"
+#include "platform.h"
+#include "shared_cursor_state.h"
 
 namespace crossdesk {
 namespace {
-
-std::string Lowercase(std::string value) {
-  std::transform(value.begin(), value.end(), value.begin(),
-                 [](unsigned char ch) { return std::tolower(ch); });
-  return value;
-}
-
-bool Contains(const std::string& value, const char* token) {
-  return value.find(token) != std::string::npos;
-}
-
-RemoteCursorShape ShapeFromXCursorName(const std::string& raw_name) {
-  const std::string name = Lowercase(raw_name);
-  if (Contains(name, "left_ptr_watch") || Contains(name, "progress"))
-    return RemoteCursorShape::progress;
-  if (Contains(name, "watch") || Contains(name, "wait"))
-    return RemoteCursorShape::wait;
-  if (Contains(name, "question") || Contains(name, "help"))
-    return RemoteCursorShape::help;
-  if (Contains(name, "xterm") || Contains(name, "vertical-text") ||
-      name == "text")
-    return RemoteCursorShape::text;
-  if (Contains(name, "crosshair") || name == "cross" || name == "tcross")
-    return RemoteCursorShape::crosshair;
-  if (Contains(name, "closedhand") || Contains(name, "grabbing"))
-    return RemoteCursorShape::grabbing;
-  if (Contains(name, "openhand") || Contains(name, "grab"))
-    return RemoteCursorShape::grab;
-  if (Contains(name, "dnd-link") || name == "alias")
-    return RemoteCursorShape::alias;
-  if (Contains(name, "hand") || Contains(name, "pointer") ||
-      Contains(name, "link"))
-    return RemoteCursorShape::pointer;
-  if (Contains(name, "dnd-copy") || name == "copy")
-    return RemoteCursorShape::copy;
-  if (Contains(name, "no-drop")) return RemoteCursorShape::no_drop;
-  if (Contains(name, "not-allowed") || Contains(name, "crossed_circle"))
-    return RemoteCursorShape::not_allowed;
-  if (name == "fleur" || Contains(name, "size_all") || name == "move")
-    return RemoteCursorShape::move;
-  if (Contains(name, "top_left_corner") ||
-      Contains(name, "bottom_right_corner") ||
-      Contains(name, "nwse-resize") || Contains(name, "size_fdiag"))
-    return RemoteCursorShape::nwse_resize;
-  if (Contains(name, "top_right_corner") ||
-      Contains(name, "bottom_left_corner") ||
-      Contains(name, "nesw-resize") || Contains(name, "size_bdiag"))
-    return RemoteCursorShape::nesw_resize;
-  if (Contains(name, "sb_h_double_arrow") || Contains(name, "ew-resize") ||
-      Contains(name, "size_hor"))
-    return RemoteCursorShape::ew_resize;
-  if (Contains(name, "sb_v_double_arrow") || Contains(name, "ns-resize") ||
-      Contains(name, "size_ver"))
-    return RemoteCursorShape::ns_resize;
-  if (Contains(name, "col-resize")) return RemoteCursorShape::col_resize;
-  if (Contains(name, "row-resize")) return RemoteCursorShape::row_resize;
-  if (Contains(name, "ne-resize")) return RemoteCursorShape::ne_resize;
-  if (Contains(name, "nw-resize")) return RemoteCursorShape::nw_resize;
-  if (Contains(name, "se-resize")) return RemoteCursorShape::se_resize;
-  if (Contains(name, "sw-resize")) return RemoteCursorShape::sw_resize;
-  if (Contains(name, "top_side") || name == "n-resize")
-    return RemoteCursorShape::n_resize;
-  if (Contains(name, "right_side") || name == "e-resize")
-    return RemoteCursorShape::e_resize;
-  if (Contains(name, "bottom_side") || name == "s-resize")
-    return RemoteCursorShape::s_resize;
-  if (Contains(name, "left_side") || name == "w-resize")
-    return RemoteCursorShape::w_resize;
-  return RemoteCursorShape::default_cursor;
-}
 
 bool CursorHasVisiblePixel(const XFixesCursorImage& image) {
   const size_t pixel_count =
@@ -160,7 +92,19 @@ CursorStateProvider::CursorStateProvider() : impl_(std::make_unique<Impl>()) {}
 CursorStateProvider::~CursorStateProvider() = default;
 
 bool CursorStateProvider::Sample(CursorState* state) {
-  if (!state || !impl_ || !impl_->display) return false;
+  if (!state || !impl_) return false;
+
+  if (IsWaylandSession()) {
+    SharedCursorState shared{};
+    if (GetSharedCursorState(&shared)) {
+      state->seq = 0;
+      state->visible = shared.visible;
+      state->shape = shared.visible ? shared.shape : RemoteCursorShape::none;
+      return true;
+    }
+  }
+
+  if (!impl_->display) return false;
 
   XFixesCursorImage* image = XFixesGetCursorImage(impl_->display);
   if (!image) return false;
@@ -169,7 +113,7 @@ bool CursorStateProvider::Sample(CursorState* state) {
 
   state->seq = 0;
   state->visible = CursorHasVisiblePixel(*image);
-  state->shape = state->visible ? ShapeFromXCursorName(name)
+  state->shape = state->visible ? ShapeFromLinuxCursorName(name)
                                 : RemoteCursorShape::none;
   XFree(image);
   return true;

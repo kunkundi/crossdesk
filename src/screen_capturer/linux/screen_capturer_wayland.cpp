@@ -12,8 +12,10 @@
 #include <cstring>
 #include <thread>
 
+#include "linux_cursor_shape.h"
 #include "platform.h"
 #include "rd_log.h"
+#include "shared_cursor_state.h"
 #include "wayland_portal_shared.h"
 
 namespace crossdesk {
@@ -35,7 +37,8 @@ constexpr auto kPipeWireCloseSettleDelay = std::chrono::milliseconds(200);
 
 }  // namespace
 
-ScreenCapturerWayland::ScreenCapturerWayland() {}
+ScreenCapturerWayland::ScreenCapturerWayland()
+    : cursor_theme_matcher_(std::make_unique<LinuxCursorThemeMatcher>()) {}
 
 ScreenCapturerWayland::~ScreenCapturerWayland() { Destroy(); }
 
@@ -66,6 +69,10 @@ int ScreenCapturerWayland::Init(const int fps, cb_desktop_data cb) {
   callback_ = cb;
   pointer_granted_ = false;
   shared_session_registered_ = false;
+  cursor_metadata_enabled_ = false;
+  cursor_metadata_seen_ = false;
+  cursor_metadata_missing_buffers_ = 0;
+  ClearSharedCursorState();
   display_info_list_.clear();
   display_info_list_.push_back(
       DisplayInfo(display_name_, 0, 0, kFallbackWidth, kFallbackHeight));
@@ -100,6 +107,10 @@ int ScreenCapturerWayland::Start(bool show_cursor) {
   }
 
   show_cursor_ = show_cursor;
+  cursor_metadata_enabled_ = false;
+  cursor_metadata_seen_ = false;
+  cursor_metadata_missing_buffers_ = 0;
+  ClearSharedCursorState();
   paused_ = false;
   pipewire_node_id_ = 0;
   UpdateDisplayGeometry(
@@ -119,6 +130,10 @@ int ScreenCapturerWayland::Stop() {
     thread_.join();
   }
   pipewire_node_id_ = 0;
+  cursor_metadata_enabled_ = false;
+  cursor_metadata_seen_ = false;
+  cursor_metadata_missing_buffers_ = 0;
+  ClearSharedCursorState();
   UpdateDisplayGeometry(
       logical_width_ > 0 ? logical_width_ : kFallbackWidth,
       logical_height_ > 0 ? logical_height_ : kFallbackHeight);

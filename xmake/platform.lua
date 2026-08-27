@@ -37,7 +37,7 @@ function setup_platform_settings()
         add_requires("libyuv")
         add_syslinks("pthread", "dl")
         add_links("asound", "X11", "Xext", "Xrender", "Xft", "Xtst",
-            "Xrandr", "Xfixes")
+            "Xrandr", "Xfixes", "Xcursor")
         add_existing_include_dirs({
             "/usr/include/freetype2",
             "/usr/local/include/freetype2"

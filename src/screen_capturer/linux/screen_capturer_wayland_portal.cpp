@@ -12,6 +12,7 @@
 #include <string>
 
 #include "rd_log.h"
+#include "shared_cursor_state.h"
 
 namespace crossdesk {
 
@@ -35,6 +36,7 @@ constexpr const char* kPortalSessionPathPrefix =
 constexpr uint32_t kScreenCastSourceMonitor = 1u;
 constexpr uint32_t kCursorModeHidden = 1u;
 constexpr uint32_t kCursorModeEmbedded = 2u;
+constexpr uint32_t kCursorModeMetadata = 4u;
 constexpr uint32_t kRemoteDesktopDevicePointer = 2u;
 
 std::string MakeToken(const char* prefix) {
@@ -482,6 +484,47 @@ bool ScreenCapturerWayland::SelectPortalSource() {
     return false;
   }
 
+  uint32_t available_cursor_modes = kCursorModeHidden | kCursorModeEmbedded;
+  if (!GetAvailableCursorModes(&available_cursor_modes)) {
+    LOG_WARN(
+        "Unable to query portal cursor modes; using embedded cursor fallback");
+  }
+
+  uint32_t cursor_mode = 0;
+  cursor_metadata_enabled_ = false;
+  if (!show_cursor_ && (available_cursor_modes & kCursorModeMetadata) != 0) {
+    cursor_mode = kCursorModeMetadata;
+    cursor_metadata_enabled_ = true;
+  } else if ((available_cursor_modes & kCursorModeEmbedded) != 0) {
+    cursor_mode = kCursorModeEmbedded;
+  } else if ((available_cursor_modes & kCursorModeMetadata) != 0) {
+    cursor_mode = kCursorModeMetadata;
+    cursor_metadata_enabled_ = true;
+  } else if ((available_cursor_modes & kCursorModeHidden) != 0) {
+    cursor_mode = kCursorModeHidden;
+  }
+
+  if (cursor_mode == 0) {
+    LOG_ERROR("Wayland portal reports no supported cursor mode");
+    return false;
+  }
+
+  if (cursor_mode == kCursorModeEmbedded) {
+    // When metadata is unavailable, embedding is the only way to preserve the
+    // exact Wayland cursor. Hide the controller-side cursor to avoid a double
+    // cursor over the video stream.
+    PublishSharedCursorState(false, RemoteCursorShape::none);
+  } else if (!cursor_metadata_enabled_) {
+    // A portal without metadata or embedded cursor support cannot expose the
+    // native Wayland shape. Keep a visible default cursor on the controller.
+    PublishSharedCursorState(true, RemoteCursorShape::default_cursor);
+  }
+
+  LOG_INFO("Wayland portal cursor mode: {}",
+           cursor_mode == kCursorModeMetadata
+               ? "metadata"
+               : (cursor_mode == kCursorModeEmbedded ? "embedded" : "hidden"));
+
   const char* session_handle = session_handle_.c_str();
   return SendPortalRequestAndHandleResponse(
       dbus_connection_, kPortalScreenCastInterface, "SelectSources",
@@ -496,9 +539,7 @@ bool ScreenCapturerWayland::SelectPortalSource() {
                                          &options);
         AppendDictEntryUint32(&options, "types", kScreenCastSourceMonitor);
         AppendDictEntryBool(&options, "multiple", false);
-        AppendDictEntryUint32(
-            &options, "cursor_mode",
-            show_cursor_ ? kCursorModeEmbedded : kCursorModeHidden);
+        AppendDictEntryUint32(&options, "cursor_mode", cursor_mode);
         AppendDictEntryString(&options, "handle_token",
                               MakeToken("crossdesk_req"));
         dbus_message_iter_close_container(&iter, &options);
@@ -513,6 +554,50 @@ bool ScreenCapturerWayland::SelectPortalSource() {
         }
         return true;
       });
+}
+
+bool ScreenCapturerWayland::GetAvailableCursorModes(uint32_t* modes) const {
+  if (!dbus_connection_ || !modes) {
+    return false;
+  }
+
+  DBusMessage* message = dbus_message_new_method_call(
+      kPortalBusName, kPortalObjectPath, "org.freedesktop.DBus.Properties",
+      "Get");
+  if (!message) {
+    return false;
+  }
+
+  const char* interface_name = kPortalScreenCastInterface;
+  const char* property_name = "AvailableCursorModes";
+  dbus_message_append_args(message, DBUS_TYPE_STRING, &interface_name,
+                           DBUS_TYPE_STRING, &property_name,
+                           DBUS_TYPE_INVALID);
+
+  DBusError error;
+  dbus_error_init(&error);
+  DBusMessage* reply = dbus_connection_send_with_reply_and_block(
+      dbus_connection_, message, -1, &error);
+  dbus_message_unref(message);
+  if (!reply) {
+    LogDbusError("Get AvailableCursorModes", &error);
+    dbus_error_free(&error);
+    return false;
+  }
+
+  DBusMessageIter iter;
+  bool parsed = false;
+  if (dbus_message_iter_init(reply, &iter) &&
+      dbus_message_iter_get_arg_type(&iter) == DBUS_TYPE_VARIANT) {
+    DBusMessageIter variant;
+    dbus_message_iter_recurse(&iter, &variant);
+    if (dbus_message_iter_get_arg_type(&variant) == DBUS_TYPE_UINT32) {
+      dbus_message_iter_get_basic(&variant, modes);
+      parsed = true;
+    }
+  }
+  dbus_message_unref(reply);
+  return parsed;
 }
 
 bool ScreenCapturerWayland::SelectPortalDevices() {

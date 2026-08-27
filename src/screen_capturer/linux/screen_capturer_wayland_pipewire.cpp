@@ -17,7 +17,9 @@
 
 #include "display_stream_id.h"
 #include "libyuv.h"
+#include "linux_cursor_shape.h"
 #include "rd_log.h"
+#include "shared_cursor_state.h"
 
 namespace crossdesk {
 
@@ -197,6 +199,145 @@ int64_t NowMs() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(
              std::chrono::steady_clock::now().time_since_epoch())
       .count();
+}
+
+constexpr uint32_t kMaxCursorDimension = 512;
+constexpr int kCursorMetadataSize =
+    static_cast<int>(sizeof(spa_meta_cursor) + sizeof(spa_meta_bitmap) +
+                     64u + kMaxCursorDimension * kMaxCursorDimension * 4u);
+
+enum class CursorBitmapResult { kNoUpdate, kInvisible, kImage, kInvalid };
+
+CursorBitmapResult ReadCursorBitmap(const spa_meta& metadata,
+                                    const spa_meta_cursor& cursor,
+                                    std::vector<uint32_t>* argb,
+                                    LinuxCursorImageView* view) {
+  if (!metadata.data || !argb || !view || cursor.bitmap_offset == 0) {
+    return CursorBitmapResult::kNoUpdate;
+  }
+
+  const size_t bitmap_offset = cursor.bitmap_offset;
+  if (bitmap_offset > metadata.size ||
+      metadata.size - bitmap_offset < sizeof(spa_meta_bitmap)) {
+    return CursorBitmapResult::kInvalid;
+  }
+
+  const auto* metadata_bytes = static_cast<const uint8_t*>(metadata.data);
+  const auto* bitmap = reinterpret_cast<const spa_meta_bitmap*>(
+      metadata_bytes + bitmap_offset);
+  if (bitmap->format == 0) {
+    return CursorBitmapResult::kNoUpdate;
+  }
+  if (bitmap->offset == 0) {
+    return CursorBitmapResult::kInvisible;
+  }
+
+  const uint32_t width = bitmap->size.width;
+  const uint32_t height = bitmap->size.height;
+  if (width == 0 || height == 0 || width > kMaxCursorDimension ||
+      height > kMaxCursorDimension || bitmap->stride < 0 ||
+      static_cast<uint32_t>(bitmap->stride) < width * 4u) {
+    return CursorBitmapResult::kInvalid;
+  }
+
+  const size_t pixel_offset = bitmap_offset + bitmap->offset;
+  const size_t required_size =
+      static_cast<size_t>(bitmap->stride) * (height - 1u) + width * 4u;
+  if (pixel_offset > metadata.size ||
+      required_size > metadata.size - pixel_offset) {
+    return CursorBitmapResult::kInvalid;
+  }
+
+  enum class ChannelOrder { kBgra, kRgba, kArgb, kAbgr, kBgrx, kRgbx };
+  ChannelOrder channel_order;
+  switch (bitmap->format) {
+    case SPA_VIDEO_FORMAT_BGRA:
+      channel_order = ChannelOrder::kBgra;
+      break;
+    case SPA_VIDEO_FORMAT_RGBA:
+      channel_order = ChannelOrder::kRgba;
+      break;
+    case SPA_VIDEO_FORMAT_ARGB:
+      channel_order = ChannelOrder::kArgb;
+      break;
+    case SPA_VIDEO_FORMAT_ABGR:
+      channel_order = ChannelOrder::kAbgr;
+      break;
+    case SPA_VIDEO_FORMAT_BGRx:
+      channel_order = ChannelOrder::kBgrx;
+      break;
+    case SPA_VIDEO_FORMAT_RGBx:
+      channel_order = ChannelOrder::kRgbx;
+      break;
+    default:
+      return CursorBitmapResult::kInvalid;
+  }
+
+  argb->resize(static_cast<size_t>(width) * height);
+  const uint8_t* pixels = metadata_bytes + pixel_offset;
+  bool has_visible_pixel = false;
+  for (uint32_t y = 0; y < height; ++y) {
+    const uint8_t* row = pixels + static_cast<size_t>(y) * bitmap->stride;
+    for (uint32_t x = 0; x < width; ++x) {
+      const uint8_t* pixel = row + static_cast<size_t>(x) * 4u;
+      uint8_t red = 0;
+      uint8_t green = 0;
+      uint8_t blue = 0;
+      uint8_t alpha = 0xff;
+      switch (channel_order) {
+        case ChannelOrder::kBgra:
+          blue = pixel[0];
+          green = pixel[1];
+          red = pixel[2];
+          alpha = pixel[3];
+          break;
+        case ChannelOrder::kRgba:
+          red = pixel[0];
+          green = pixel[1];
+          blue = pixel[2];
+          alpha = pixel[3];
+          break;
+        case ChannelOrder::kArgb:
+          alpha = pixel[0];
+          red = pixel[1];
+          green = pixel[2];
+          blue = pixel[3];
+          break;
+        case ChannelOrder::kAbgr:
+          alpha = pixel[0];
+          blue = pixel[1];
+          green = pixel[2];
+          red = pixel[3];
+          break;
+        case ChannelOrder::kBgrx:
+          blue = pixel[0];
+          green = pixel[1];
+          red = pixel[2];
+          break;
+        case ChannelOrder::kRgbx:
+          red = pixel[0];
+          green = pixel[1];
+          blue = pixel[2];
+          break;
+      }
+      has_visible_pixel = has_visible_pixel || alpha != 0;
+      (*argb)[static_cast<size_t>(y) * width + x] =
+          (static_cast<uint32_t>(alpha) << 24U) |
+          (static_cast<uint32_t>(red) << 16U) |
+          (static_cast<uint32_t>(green) << 8U) | blue;
+    }
+  }
+
+  if (!has_visible_pixel) {
+    return CursorBitmapResult::kInvisible;
+  }
+
+  view->width = width;
+  view->height = height;
+  view->xhot = static_cast<uint32_t>(std::max(0, cursor.hotspot.x));
+  view->yhot = static_cast<uint32_t>(std::max(0, cursor.hotspot.y));
+  view->argb = argb->data();
+  return CursorBitmapResult::kImage;
 }
 
 double SnapLikelyFractionalScale(double observed_scale) {
@@ -500,7 +641,7 @@ bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
 
       uint8_t buffer[1024];
       spa_pod_builder builder = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
-      const spa_pod* params[2];
+      const spa_pod* params[3];
       uint32_t param_count = 0;
 
       params[param_count++] =
@@ -525,10 +666,29 @@ bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
               CROSSDESK_SPA_PARAM_META_SIZE,
               SPA_POD_Int(sizeof(struct spa_meta_header))));
 
+      if (self->cursor_metadata_enabled_) {
+        params[param_count++] =
+            reinterpret_cast<const spa_pod*>(spa_pod_builder_add_object(
+                &builder, SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta,
+                CROSSDESK_SPA_PARAM_META_TYPE, SPA_POD_Id(SPA_META_Cursor),
+                CROSSDESK_SPA_PARAM_META_SIZE,
+                SPA_POD_CHOICE_RANGE_Int(
+                    kCursorMetadataSize,
+                    static_cast<int>(sizeof(struct spa_meta_cursor)),
+                    kCursorMetadataSize)));
+      }
+
       if (self->pw_stream_) {
         const PipeWireDynamicApi* pipewire = GetPipeWireApi();
         if (pipewire) {
-          pipewire->stream_update_params(self->pw_stream_, params, param_count);
+          const int update_result = pipewire->stream_update_params(
+              self->pw_stream_, params, param_count);
+          LOG_INFO(
+              "PipeWire buffer parameters updated: cursor_metadata={}, "
+              "cursor_meta_max_size={}, result={}",
+              self->cursor_metadata_enabled_,
+              self->cursor_metadata_enabled_ ? kCursorMetadataSize : 0,
+              update_result);
         }
       }
       self->pipewire_format_ready_.store(true);
@@ -784,6 +944,57 @@ void ScreenCapturerWayland::HandlePipeWireBuffer() {
   if (!spa_buffer || spa_buffer->n_datas == 0 || !spa_buffer->datas[0].data) {
     requeue();
     return;
+  }
+
+  if (cursor_metadata_enabled_) {
+    spa_meta* cursor_metadata =
+        spa_buffer_find_meta(spa_buffer, SPA_META_Cursor);
+    if (!cursor_metadata) {
+      ++cursor_metadata_missing_buffers_;
+      if (cursor_metadata_missing_buffers_ == 120) {
+        LOG_WARN(
+            "PipeWire stream has not attached SPA_META_Cursor after 120 "
+            "buffers; cursor metadata negotiation was not accepted");
+      }
+    } else {
+      cursor_metadata_missing_buffers_ = 0;
+      if (!cursor_metadata_seen_) {
+        cursor_metadata_seen_ = true;
+        LOG_INFO("PipeWire cursor metadata attached, size={}",
+                 cursor_metadata->size);
+      }
+    }
+    if (cursor_metadata && cursor_metadata->data &&
+        cursor_metadata->size >= sizeof(spa_meta_cursor)) {
+      const auto* cursor =
+          static_cast<const spa_meta_cursor*>(cursor_metadata->data);
+      if (spa_meta_cursor_is_valid(cursor)) {
+        std::vector<uint32_t> cursor_argb;
+        LinuxCursorImageView cursor_view;
+        const CursorBitmapResult cursor_result = ReadCursorBitmap(
+            *cursor_metadata, *cursor, &cursor_argb, &cursor_view);
+        if (cursor_result == CursorBitmapResult::kInvisible) {
+          PublishSharedCursorState(false, RemoteCursorShape::none);
+          LOG_INFO("PipeWire cursor became invisible, id={}", cursor->id);
+        } else if (cursor_result == CursorBitmapResult::kImage) {
+          const RemoteCursorShape shape =
+              cursor_theme_matcher_
+                  ? cursor_theme_matcher_->Match(cursor_view)
+                  : RemoteCursorShape::default_cursor;
+          PublishSharedCursorState(true, shape);
+          LOG_INFO(
+              "PipeWire cursor shape update: id={}, size={}x{}, "
+              "hotspot=({},{}), shape={}",
+              cursor->id, cursor_view.width, cursor_view.height,
+              cursor_view.xhot, cursor_view.yhot, static_cast<int>(shape));
+        } else if (cursor_result == CursorBitmapResult::kInvalid) {
+          PublishSharedCursorState(true, RemoteCursorShape::default_cursor);
+          LOG_WARN("Using default shape for malformed PipeWire cursor "
+                   "metadata, id={}",
+                   cursor->id);
+        }
+      }
+    }
   }
 
   const spa_data& data = spa_buffer->datas[0];

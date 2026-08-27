@@ -183,8 +183,17 @@ void PeerEventHandler::OnReceiveDataBuffer(
         !props->remote_cursor_state_received_ ||
         static_cast<int32_t>(remote_action.cs.seq - previous_seq) > 0;
     if (is_newer) {
+      const bool changed =
+          !props->remote_cursor_state_received_ ||
+          props->remote_cursor_state_.visible != remote_action.cs.visible ||
+          props->remote_cursor_state_.shape != remote_action.cs.shape;
       props->remote_cursor_state_ = remote_action.cs;
       props->remote_cursor_state_received_ = true;
+      if (changed) {
+        LOG_INFO("Received cursor state: seq={}, visible={}, shape={}",
+                 remote_action.cs.seq, remote_action.cs.visible,
+                 static_cast<int>(remote_action.cs.shape));
+      }
     }
     return;
   }

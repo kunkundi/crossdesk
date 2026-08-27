@@ -1853,6 +1853,11 @@ void GuiApplication::ShareLocalCursorState() {
     return;
   }
 
+  if (changed) {
+    LOG_INFO("Sent cursor state: seq={}, visible={}, shape={}", sampled.seq,
+             sampled.visible, static_cast<int>(sampled.shape));
+  }
+
   last_shared_cursor_state_ = sampled;
   has_shared_cursor_state_ = true;
   last_cursor_state_share_time_ = now;
