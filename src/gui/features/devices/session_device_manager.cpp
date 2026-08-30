@@ -461,7 +461,7 @@ void SessionDeviceManager::UpdateInteractions() {
     owner_.mouse_controller_is_started_ = false;
   }
 
-#if defined(__linux__) && !defined(__APPLE__)
+#if defined(__linux__) || defined(__APPLE__)
   if (owner_.screen_capturer_is_started_ && screen_capturer_ &&
       mouse_controller_) {
     const auto latest_display_info = screen_capturer_->GetDisplayInfoList();

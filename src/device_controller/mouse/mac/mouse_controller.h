@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "device_controller.h"
+#include "display_info.h"
 
 namespace crossdesk {
 
@@ -23,6 +24,8 @@ class MouseController : public DeviceController {
   virtual int Init(std::vector<DisplayInfo> display_info_list);
   virtual int Destroy();
   virtual int SendMouseCommand(RemoteAction remote_action, int display_index);
+  void UpdateDisplayInfoList(
+      const std::vector<DisplayInfo>& display_info_list);
 
  private:
   struct ClickTracker {

@@ -1,0 +1,388 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		100000000000000000000001 /* CrossDeskMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* CrossDeskMobileApp.swift */; };
+		100000000000000000000002 /* RemoteSessionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000002 /* RemoteSessionModel.swift */; };
+		100000000000000000000003 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000003 /* ContentView.swift */; };
+		100000000000000000000004 /* RemoteSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000004 /* RemoteSessionView.swift */; };
+		100000000000000000000005 /* CrossDeskRTCBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000006 /* CrossDeskRTCBridge.mm */; };
+		100000000000000000000006 /* NativeMetalVideoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000009 /* NativeMetalVideoView.swift */; };
+		100000000000000000000007 /* RemoteTouchInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* RemoteTouchInputView.swift */; };
+		100000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000D /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		200000000000000000000001 /* CrossDeskMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossDeskMobileApp.swift; sourceTree = "<group>"; };
+		200000000000000000000002 /* RemoteSessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSessionModel.swift; sourceTree = "<group>"; };
+		200000000000000000000003 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		200000000000000000000004 /* RemoteSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSessionView.swift; sourceTree = "<group>"; };
+		200000000000000000000005 /* CrossDeskRTCBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CrossDeskRTCBridge.h; sourceTree = "<group>"; };
+		200000000000000000000006 /* CrossDeskRTCBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = CrossDeskRTCBridge.mm; sourceTree = "<group>"; };
+		200000000000000000000007 /* CrossDeskMobile-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "CrossDeskMobile-Bridging-Header.h"; sourceTree = "<group>"; };
+		200000000000000000000008 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		200000000000000000000009 /* NativeMetalVideoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMetalVideoView.swift; sourceTree = "<group>"; };
+		20000000000000000000000A /* RemoteTouchInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTouchInputView.swift; sourceTree = "<group>"; };
+		20000000000000000000000B /* CrossDeskMobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CrossDeskMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		20000000000000000000000C /* build_minirtc_ios.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build_minirtc_ios.sh; sourceTree = "<group>"; };
+		20000000000000000000000D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		300000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		400000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				400000000000000000000002 /* CrossDeskMobile */,
+				400000000000000000000006 /* scripts */,
+				400000000000000000000007 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		400000000000000000000002 /* CrossDeskMobile */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000001 /* CrossDeskMobileApp.swift */,
+				200000000000000000000002 /* RemoteSessionModel.swift */,
+				200000000000000000000003 /* ContentView.swift */,
+				200000000000000000000004 /* RemoteSessionView.swift */,
+				400000000000000000000003 /* Bridge */,
+				400000000000000000000004 /* Rendering */,
+				400000000000000000000005 /* Input */,
+				20000000000000000000000D /* Assets.xcassets */,
+				200000000000000000000007 /* CrossDeskMobile-Bridging-Header.h */,
+				200000000000000000000008 /* Info.plist */,
+			);
+			path = CrossDeskMobile;
+			sourceTree = "<group>";
+		};
+		400000000000000000000003 /* Bridge */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000005 /* CrossDeskRTCBridge.h */,
+				200000000000000000000006 /* CrossDeskRTCBridge.mm */,
+			);
+			path = Bridge;
+			sourceTree = "<group>";
+		};
+		400000000000000000000004 /* Rendering */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000009 /* NativeMetalVideoView.swift */,
+			);
+			path = Rendering;
+			sourceTree = "<group>";
+		};
+		400000000000000000000005 /* Input */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000000A /* RemoteTouchInputView.swift */,
+			);
+			path = Input;
+			sourceTree = "<group>";
+		};
+		400000000000000000000006 /* scripts */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000000C /* build_minirtc_ios.sh */,
+			);
+			path = scripts;
+			sourceTree = "<group>";
+		};
+		400000000000000000000007 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000000B /* CrossDeskMobile.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		500000000000000000000001 /* CrossDeskMobile */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 900000000000000000000002 /* Build configuration list for PBXNativeTarget "CrossDeskMobile" */;
+			buildPhases = (
+				700000000000000000000001 /* Build native MiniRTC */,
+				600000000000000000000001 /* Sources */,
+				300000000000000000000001 /* Frameworks */,
+				600000000000000000000002 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CrossDeskMobile;
+			productName = CrossDeskMobile;
+			productReference = 20000000000000000000000B /* CrossDeskMobile.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		800000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					500000000000000000000001 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+				};
+			};
+			buildConfigurationList = 900000000000000000000001 /* Build configuration list for PBXProject "CrossDeskMobile" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = zh_CN;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+				zh_CN,
+			);
+			mainGroup = 400000000000000000000001;
+			productRefGroup = 400000000000000000000007 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				500000000000000000000001 /* CrossDeskMobile */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		600000000000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000008 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		700000000000000000000001 /* Build native MiniRTC */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build native MiniRTC";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(PROJECT_DIR)/Vendor/iphoneos/$(CONFIGURATION)/libCrossDeskMiniRTC.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/zsh;
+			shellScript = "\"${PROJECT_DIR}/scripts/build_minirtc_ios.sh\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		600000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000001 /* CrossDeskMobileApp.swift in Sources */,
+				100000000000000000000002 /* RemoteSessionModel.swift in Sources */,
+				100000000000000000000003 /* ContentView.swift in Sources */,
+				100000000000000000000004 /* RemoteSessionView.swift in Sources */,
+				100000000000000000000005 /* CrossDeskRTCBridge.mm in Sources */,
+				100000000000000000000006 /* NativeMetalVideoView.swift in Sources */,
+				100000000000000000000007 /* RemoteTouchInputView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A00000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A00000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A00000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8DNC3SZ86S;
+				ENABLE_BITCODE = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/../submodules/minirtc/src/api",
+					"$(PROJECT_DIR)/../src/device_controller",
+					"$(PROJECT_DIR)/../src/common",
+					"$(PROJECT_DIR)/../src/tools",
+				);
+				INFOPLIST_FILE = CrossDeskMobile/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Vendor/iphoneos/$(CONFIGURATION)/libCrossDeskMiniRTC.a",
+					"-liconv",
+					"-lresolv",
+					"-framework",
+					VideoToolbox,
+					"-framework",
+					CoreMedia,
+					"-framework",
+					CoreVideo,
+					"-framework",
+					Security,
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					CoreFoundation,
+					"-framework",
+					Foundation,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = cn.crossdesk.mobile;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "CrossDeskMobile/CrossDeskMobile-Bridging-Header.h";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A00000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8DNC3SZ86S;
+				ENABLE_BITCODE = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/../submodules/minirtc/src/api",
+					"$(PROJECT_DIR)/../src/device_controller",
+					"$(PROJECT_DIR)/../src/common",
+					"$(PROJECT_DIR)/../src/tools",
+				);
+				INFOPLIST_FILE = CrossDeskMobile/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Vendor/iphoneos/$(CONFIGURATION)/libCrossDeskMiniRTC.a",
+					"-liconv",
+					"-lresolv",
+					"-framework",
+					VideoToolbox,
+					"-framework",
+					CoreMedia,
+					"-framework",
+					CoreVideo,
+					"-framework",
+					Security,
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					CoreFoundation,
+					"-framework",
+					Foundation,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = cn.crossdesk.mobile;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "CrossDeskMobile/CrossDeskMobile-Bridging-Header.h";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		900000000000000000000001 /* Build configuration list for PBXProject "CrossDeskMobile" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000001 /* Debug */,
+				A00000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		900000000000000000000002 /* Build configuration list for PBXNativeTarget "CrossDeskMobile" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000003 /* Debug */,
+				A00000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 800000000000000000000001 /* Project object */;
+}

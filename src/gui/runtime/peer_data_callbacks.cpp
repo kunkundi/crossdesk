@@ -97,6 +97,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
     }
     receiver.SetOnSendAck([runtime,
                            remote_user_id](const FileTransferAck &ack) -> int {
+      const auto encoded_ack = protocol::EncodeFileTransferAck(ack);
       bool is_server_sending = remote_user_id.rfind("C-", 0) != 0;
       if (is_server_sending) {
         auto props =
@@ -104,14 +105,14 @@ void PeerEventHandler::OnReceiveDataBuffer(
         if (props) {
           PeerPtr *peer = props->peer_;
           return SendReliableDataFrame(
-              peer, reinterpret_cast<const char *>(&ack),
-              sizeof(FileTransferAck), runtime->file_feedback_label_.c_str());
+              peer, encoded_ack.data(), encoded_ack.size(),
+              runtime->file_feedback_label_.c_str());
         }
       }
 
       return SendReliableDataFrame(
-          runtime->peer_, reinterpret_cast<const char *>(&ack),
-          sizeof(FileTransferAck), runtime->file_feedback_label_.c_str());
+          runtime->peer_, encoded_ack.data(), encoded_ack.size(),
+          runtime->file_feedback_label_.c_str());
     });
 
     receiver.OnData(data, size);
@@ -187,7 +188,15 @@ void PeerEventHandler::OnReceiveDataBuffer(
           !props->remote_cursor_state_received_ ||
           props->remote_cursor_state_.visible != remote_action.cs.visible ||
           props->remote_cursor_state_.shape != remote_action.cs.shape;
-      props->remote_cursor_state_ = remote_action.cs;
+      CursorState merged = remote_action.cs;
+      if (!remote_action.cs.position_update &&
+          props->remote_cursor_state_received_) {
+        merged.position_valid = props->remote_cursor_state_.position_valid;
+        merged.x = props->remote_cursor_state_.x;
+        merged.y = props->remote_cursor_state_.y;
+        merged.display_id = props->remote_cursor_state_.display_id;
+      }
+      props->remote_cursor_state_ = merged;
       props->remote_cursor_state_received_ = true;
       if (changed) {
         LOG_INFO("Received cursor state: seq={}, visible={}, shape={}",
@@ -238,6 +247,12 @@ void PeerEventHandler::OnReceiveDataBuffer(
     }
   } else {
     // remote
+    if (runtime->is_server_mode_ &&
+        remote_action.type == ControlType::mouse) {
+      std::lock_guard lock(runtime->remote_pointer_input_mutex_);
+      runtime->last_remote_pointer_input_time_[remote_id] =
+          std::chrono::steady_clock::now();
+    }
 #if _WIN32
     if (runtime->local_service_status_received_ &&
         IsSecureDesktopInteractionRequired(runtime->local_interactive_stage_) &&

@@ -1,9 +1,10 @@
-#ifndef CROSSDESK_GUI_APPLICATION_H_
-#define CROSSDESK_GUI_APPLICATION_H_
+#ifndef _GUI_APPLICATION_H_
+#define _GUI_APPLICATION_H_
 
 #include <chrono>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 #include "runtime/cursor_state_provider.h"
 #include "runtime/gui_runtime.h"
@@ -21,6 +22,12 @@ public:
 
 private:
   struct SlintUi;
+  struct CursorDeliveryState {
+    CursorState last_sent{};
+    bool has_sent = false;
+    bool feedback_pending = false;
+    std::chrono::steady_clock::time_point last_sent_time{};
+  };
 
   void InitializeLogger();
   void InitializeSettings();
@@ -73,10 +80,9 @@ private:
 
   std::unique_ptr<SlintUi> ui_;
   CursorStateProvider cursor_state_provider_;
-  CursorState last_shared_cursor_state_{};
-  bool has_shared_cursor_state_ = false;
+  std::unordered_map<std::string, CursorDeliveryState>
+      cursor_delivery_states_;
   uint32_t cursor_state_sequence_ = 0;
-  std::chrono::steady_clock::time_point last_cursor_state_share_time_{};
   std::chrono::steady_clock::time_point next_video_frame_time_{};
 #if defined(__linux__) && !defined(__APPLE__)
   bool use_xwayland_gui_ = false;
@@ -86,4 +92,4 @@ private:
 
 } // namespace crossdesk
 
-#endif // CROSSDESK_GUI_APPLICATION_H_
+#endif

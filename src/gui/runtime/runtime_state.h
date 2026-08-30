@@ -1,5 +1,5 @@
-#ifndef CROSSDESK_GUI_RUNTIME_STATE_H_
-#define CROSSDESK_GUI_RUNTIME_STATE_H_
+#ifndef _RUNTIME_STATE_H_
+#define _RUNTIME_STATE_H_
 
 #include <atomic>
 #include <chrono>
@@ -57,14 +57,14 @@ struct PeerState {
   std::string video_primary_label_ = "primary_display";
   std::string video_secondary_label_ = "secondary_display";
   std::string audio_label_ = "audio";
-  std::string data_label_ = "data";
-  std::string mouse_label_ = "mouse";
-  std::string keyboard_label_ = "keyboard";
+  std::string data_label_ = protocol::kDataStream;
+  std::string mouse_label_ = protocol::kMouseStream;
+  std::string keyboard_label_ = protocol::kKeyboardStream;
   std::string info_label_ = "info";
-  std::string control_data_label_ = "control_data";
-  std::string file_label_ = "file";
-  std::string file_feedback_label_ = "file_feedback";
-  std::string clipboard_label_ = "clipboard";
+  std::string control_data_label_ = protocol::kControlStream;
+  std::string file_label_ = protocol::kFileStream;
+  std::string file_feedback_label_ = protocol::kFileFeedbackStream;
+  std::string clipboard_label_ = protocol::kClipboardStream;
   Params params_;
 };
 
@@ -180,6 +180,12 @@ struct ConnectionState {
   std::shared_mutex connection_status_mutex_;
   std::unordered_map<std::string, ConnectionStatus> connection_status_;
   std::unordered_map<std::string, std::string> connection_host_names_;
+  // Cursor position is sampled asynchronously after remote mouse input has
+  // been injected. Remember the input source so the sampled position is not
+  // immediately echoed back to that same controller as stale feedback.
+  std::mutex remote_pointer_input_mutex_;
+  std::unordered_map<std::string, std::chrono::steady_clock::time_point>
+      last_remote_pointer_input_time_;
   std::string selected_server_remote_id_;
   std::string selected_server_remote_hostname_;
   std::mutex pending_presence_probe_mutex_;
@@ -202,4 +208,4 @@ struct RuntimeState : InfrastructureState,
 
 } // namespace crossdesk::gui_detail
 
-#endif // CROSSDESK_GUI_RUNTIME_STATE_H_
+#endif

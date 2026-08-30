@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 
 #include "rd_log.h"
@@ -43,6 +44,13 @@ int MouseController::Init(std::vector<DisplayInfo> display_info_list) {
 }
 
 int MouseController::Destroy() { return 0; }
+
+void MouseController::UpdateDisplayInfoList(
+    const std::vector<DisplayInfo>& display_info_list) {
+  if (!display_info_list.empty()) {
+    display_info_list_ = display_info_list;
+  }
+}
 
 int MouseController::BeginClick(ClickTracker& tracker, int x, int y) {
   const auto now = std::chrono::steady_clock::now();
@@ -94,10 +102,26 @@ int MouseController::SendMouseCommand(RemoteAction remote_action,
     return -1;
   }
 
-  const float normalized_x = std::clamp(remote_action.m.x, 0.0f, 1.0f);
-  const float normalized_y = std::clamp(remote_action.m.y, 0.0f, 1.0f);
-  int mouse_pos_x = normalized_x * display_info.width + display_info.left;
-  int mouse_pos_y = normalized_y * display_info.height + display_info.top;
+  const double normalized_x =
+      std::clamp(static_cast<double>(remote_action.m.x), 0.0, 1.0);
+  const double normalized_y =
+      std::clamp(static_cast<double>(remote_action.m.y), 0.0, 1.0);
+  // Keep the coordinate continuous until it reaches Core Graphics. This
+  // avoids turning a one-pixel rounding error into a visible offset when the
+  // client zooms the remote image. The upper bound remains just inside the
+  // display because CG display rectangles use an exclusive right/bottom edge.
+  const double max_x = std::nextafter(static_cast<double>(display_info.right),
+                                      static_cast<double>(display_info.left));
+  const double max_y = std::nextafter(static_cast<double>(display_info.bottom),
+                                      static_cast<double>(display_info.top));
+  const double mouse_pos_x = std::clamp(
+      display_info.left + normalized_x * display_info.width,
+      static_cast<double>(display_info.left), max_x);
+  const double mouse_pos_y = std::clamp(
+      display_info.top + normalized_y * display_info.height,
+      static_cast<double>(display_info.top), max_y);
+  const int tracked_mouse_pos_x = static_cast<int>(std::lround(mouse_pos_x));
+  const int tracked_mouse_pos_y = static_cast<int>(std::lround(mouse_pos_y));
 
   CGEventRef mouse_event = nullptr;
   CGEventType mouse_type;
@@ -109,7 +133,8 @@ int MouseController::SendMouseCommand(RemoteAction remote_action,
     case MouseFlag::left_down:
       mouse_type = kCGEventLeftMouseDown;
       left_dragging_ = true;
-      click_state = BeginClick(left_click_tracker_, mouse_pos_x, mouse_pos_y);
+      click_state = BeginClick(left_click_tracker_, tracked_mouse_pos_x,
+                               tracked_mouse_pos_y);
       mouse_event = CGEventCreateMouseEvent(NULL, mouse_type, mouse_point,
                                             kCGMouseButtonLeft);
       SetClickState(mouse_event, click_state);
@@ -117,7 +142,8 @@ int MouseController::SendMouseCommand(RemoteAction remote_action,
     case MouseFlag::left_up:
       mouse_type = kCGEventLeftMouseUp;
       left_dragging_ = false;
-      click_state = EndClick(left_click_tracker_, mouse_pos_x, mouse_pos_y);
+      click_state = EndClick(left_click_tracker_, tracked_mouse_pos_x,
+                             tracked_mouse_pos_y);
       mouse_event = CGEventCreateMouseEvent(NULL, mouse_type, mouse_point,
                                             kCGMouseButtonLeft);
       SetClickState(mouse_event, click_state);
@@ -125,7 +151,8 @@ int MouseController::SendMouseCommand(RemoteAction remote_action,
     case MouseFlag::right_down:
       mouse_type = kCGEventRightMouseDown;
       right_dragging_ = true;
-      click_state = BeginClick(right_click_tracker_, mouse_pos_x, mouse_pos_y);
+      click_state = BeginClick(right_click_tracker_, tracked_mouse_pos_x,
+                               tracked_mouse_pos_y);
       mouse_event = CGEventCreateMouseEvent(NULL, mouse_type, mouse_point,
                                             kCGMouseButtonRight);
       SetClickState(mouse_event, click_state);
@@ -133,21 +160,24 @@ int MouseController::SendMouseCommand(RemoteAction remote_action,
     case MouseFlag::right_up:
       mouse_type = kCGEventRightMouseUp;
       right_dragging_ = false;
-      click_state = EndClick(right_click_tracker_, mouse_pos_x, mouse_pos_y);
+      click_state = EndClick(right_click_tracker_, tracked_mouse_pos_x,
+                             tracked_mouse_pos_y);
       mouse_event = CGEventCreateMouseEvent(NULL, mouse_type, mouse_point,
                                             kCGMouseButtonRight);
       SetClickState(mouse_event, click_state);
       break;
     case MouseFlag::middle_down:
       mouse_type = kCGEventOtherMouseDown;
-      click_state = BeginClick(middle_click_tracker_, mouse_pos_x, mouse_pos_y);
+      click_state = BeginClick(middle_click_tracker_, tracked_mouse_pos_x,
+                               tracked_mouse_pos_y);
       mouse_event = CGEventCreateMouseEvent(NULL, mouse_type, mouse_point,
                                             kCGMouseButtonCenter);
       SetClickState(mouse_event, click_state);
       break;
     case MouseFlag::middle_up:
       mouse_type = kCGEventOtherMouseUp;
-      click_state = EndClick(middle_click_tracker_, mouse_pos_x, mouse_pos_y);
+      click_state = EndClick(middle_click_tracker_, tracked_mouse_pos_x,
+                             tracked_mouse_pos_y);
       mouse_event = CGEventCreateMouseEvent(NULL, mouse_type, mouse_point,
                                             kCGMouseButtonCenter);
       SetClickState(mouse_event, click_state);

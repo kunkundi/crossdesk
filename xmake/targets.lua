@@ -66,8 +66,20 @@ function setup_targets()
     target("keyboard_state_protocol_test")
         set_kind("binary")
         set_default(false)
+        add_packages("nlohmann_json")
         add_includedirs("src/device_controller", "src/common")
-        add_files("tests/keyboard_state_protocol_test.cpp")
+        add_files("tests/keyboard_state_protocol_test.cpp",
+            "src/device_controller/remote_action.cpp")
+
+    target("crossdesk_protocol_test")
+        set_kind("binary")
+        set_default(false)
+        add_packages("nlohmann_json")
+        add_includedirs("src/device_controller", "src/common", "src/tools",
+            "src/gui/runtime")
+        add_files("tests/protocol_test.cpp",
+            "src/device_controller/remote_action.cpp",
+            "src/tools/file_transfer_protocol.cpp")
 
     target("connection_status_protocol_test")
         set_kind("binary")
@@ -177,6 +189,7 @@ function setup_targets()
         set_kind("object")
         add_deps("rd_log", "common")
         add_includedirs("src/device_controller", {public = true})
+        add_files("src/device_controller/remote_action.cpp")
         if is_os("windows") then
             add_files("src/device_controller/mouse/windows/*.cpp",
                 "src/device_controller/keyboard/windows/*.cpp")
@@ -242,7 +255,7 @@ function setup_targets()
 
     target("tools")
         set_kind("object")
-        add_deps("rd_log")
+        add_deps("rd_log", "common")
         add_files("src/tools/*.cpp")
         if is_os("macosx") then
             add_files("src/tools/*.mm")

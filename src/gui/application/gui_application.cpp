@@ -22,6 +22,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -1807,60 +1808,142 @@ void GuiApplication::Tick() {
 }
 
 void GuiApplication::ShareLocalCursorState() {
+  constexpr auto kCursorEchoSuppressionInterval = 300ms;
   constexpr auto kCursorStateHeartbeatInterval = 500ms;
+  constexpr auto kCursorPositionShareInterval = 16ms;
+  constexpr float kCursorPositionEpsilon = 0.00005f;
 
-  bool has_connected_controller = false;
+  std::vector<std::string> connected_controllers;
   {
     std::shared_lock lock(connection_status_mutex_);
-    has_connected_controller =
-        std::any_of(connection_status_.begin(), connection_status_.end(),
-                    [](const auto& entry) {
-                      return entry.second == ConnectionStatus::Connected;
-                    });
+    connected_controllers.reserve(connection_status_.size());
+    for (const auto& [remote_id, status] : connection_status_) {
+      if (status == ConnectionStatus::Connected) {
+        connected_controllers.push_back(remote_id);
+      }
+    }
   }
-  if (!is_server_mode_ || !peer_ || !has_connected_controller) {
-    has_shared_cursor_state_ = false;
-    last_cursor_state_share_time_ = {};
+  if (!is_server_mode_ || !peer_ || connected_controllers.empty()) {
+    cursor_delivery_states_.clear();
     return;
   }
 
   CursorState sampled{};
-  if (!cursor_state_provider_.Sample(&sampled)) {
+  if (!cursor_state_provider_.Sample(devices_.display_info_list(),
+                                     selected_display_, &sampled)) {
     return;
   }
 
   const auto now = std::chrono::steady_clock::now();
-  const bool changed =
-      !has_shared_cursor_state_ ||
-      sampled.visible != last_shared_cursor_state_.visible ||
-      sampled.shape != last_shared_cursor_state_.shape;
-  const bool heartbeat_due =
-      last_cursor_state_share_time_.time_since_epoch().count() == 0 ||
-      now - last_cursor_state_share_time_ >= kCursorStateHeartbeatInterval;
-  if (!changed && !heartbeat_due) {
-    return;
+
+  std::unordered_map<std::string, std::chrono::steady_clock::time_point>
+      last_input_times;
+  {
+    std::lock_guard lock(remote_pointer_input_mutex_);
+    for (const auto& remote_id : connected_controllers) {
+      const auto input_it = last_remote_pointer_input_time_.find(remote_id);
+      if (input_it != last_remote_pointer_input_time_.end()) {
+        last_input_times.emplace(remote_id, input_it->second);
+      }
+    }
   }
+
+  std::unordered_set<std::string> connected_ids(connected_controllers.begin(),
+                                                connected_controllers.end());
+  std::erase_if(cursor_delivery_states_, [&](const auto& entry) {
+    return connected_ids.find(entry.first) == connected_ids.end();
+  });
+
+  struct CursorRecipient {
+    std::string remote_id;
+    bool include_position = true;
+  };
+  std::vector<CursorRecipient> recipients;
+  for (const auto& remote_id : connected_controllers) {
+    auto& delivery = cursor_delivery_states_[remote_id];
+    const auto input_it = last_input_times.find(remote_id);
+    const bool suppress_position =
+        input_it != last_input_times.end() &&
+        now - input_it->second < kCursorEchoSuppressionInterval;
+    delivery.feedback_pending =
+        delivery.feedback_pending || suppress_position;
+
+    const CursorState& previous = delivery.last_sent;
+    const bool shape_changed =
+        !delivery.has_sent || sampled.visible != previous.visible ||
+        sampled.shape != previous.shape ||
+        std::abs(sampled.visual_offset_x - previous.visual_offset_x) >
+            kCursorPositionEpsilon ||
+        std::abs(sampled.visual_offset_y - previous.visual_offset_y) >
+            kCursorPositionEpsilon;
+    // Preserve sub-point cursor motion. At 10x client zoom, the old roughly
+    // one-logical-pixel threshold became several visible phone points.
+    const bool position_changed =
+        !delivery.has_sent ||
+        sampled.position_valid != previous.position_valid ||
+        sampled.display_id != previous.display_id ||
+        (sampled.position_valid && previous.position_valid &&
+         (std::abs(sampled.x - previous.x) > kCursorPositionEpsilon ||
+          std::abs(sampled.y - previous.y) > kCursorPositionEpsilon));
+    const bool position_update_due =
+        position_changed &&
+        (delivery.last_sent_time.time_since_epoch().count() == 0 ||
+         now - delivery.last_sent_time >= kCursorPositionShareInterval);
+    const bool heartbeat_due =
+        delivery.last_sent_time.time_since_epoch().count() == 0 ||
+        now - delivery.last_sent_time >= kCursorStateHeartbeatInterval;
+    if (suppress_position) {
+      // Cursor appearance is independent of cursor position. Continue sending
+      // shape changes to every controller while withholding only the sampled
+      // position from the connection that originated recent input.
+      if (shape_changed || heartbeat_due) {
+        recipients.push_back({remote_id, false});
+      }
+    } else if (delivery.feedback_pending || shape_changed ||
+               position_update_due || heartbeat_due) {
+      recipients.push_back({remote_id, true});
+    }
+  }
+  if (recipients.empty()) return;
 
   sampled.seq = ++cursor_state_sequence_;
-  RemoteAction action{};
-  action.type = ControlType::cursor_state;
-  action.cs = sampled;
-  const std::string message = action.to_json();
-  const int result = SendDataFrame(peer_, message.c_str(), message.size(),
-                                   mouse_label_.c_str());
-  if (result != 0) {
-    LOG_WARN("Send cursor state failed, ret={}", result);
-    return;
-  }
+  for (const auto& recipient : recipients) {
+    auto& delivery = cursor_delivery_states_[recipient.remote_id];
+    CursorState outgoing = sampled;
+    outgoing.position_update = recipient.include_position;
+    if (!recipient.include_position) {
+      // Keep legacy receivers at their last acknowledged position as well.
+      // New receivers honor position_update=false and leave their optimistic
+      // local position untouched.
+      outgoing.position_valid =
+          delivery.has_sent && delivery.last_sent.position_valid;
+      outgoing.x = delivery.has_sent ? delivery.last_sent.x : 0.5f;
+      outgoing.y = delivery.has_sent ? delivery.last_sent.y : 0.5f;
+      outgoing.display_id = delivery.has_sent
+                                ? delivery.last_sent.display_id
+                                : -1;
+    }
 
-  if (changed) {
-    LOG_INFO("Sent cursor state: seq={}, visible={}, shape={}", sampled.seq,
-             sampled.visible, static_cast<int>(sampled.shape));
-  }
+    RemoteAction action{};
+    action.type = ControlType::cursor_state;
+    action.cs = outgoing;
+    const std::string message = action.to_json();
+    const int result = SendDataFrameToPeer(
+        peer_, message.c_str(), message.size(), mouse_label_.c_str(),
+        recipient.remote_id.c_str(), recipient.remote_id.size());
+    if (result != 0) {
+      LOG_WARN("Send cursor state to [{}] failed, ret={}",
+               recipient.remote_id, result);
+      continue;
+    }
 
-  last_shared_cursor_state_ = sampled;
-  has_shared_cursor_state_ = true;
-  last_cursor_state_share_time_ = now;
+    delivery.last_sent = outgoing;
+    delivery.has_sent = true;
+    if (recipient.include_position) {
+      delivery.feedback_pending = false;
+    }
+    delivery.last_sent_time = now;
+  }
 }
 
 void GuiApplication::HandlePasswordChangeResult() {

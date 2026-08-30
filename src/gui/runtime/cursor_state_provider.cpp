@@ -4,6 +4,8 @@
 
 #include <windows.h>
 
+#include "runtime/cursor_position.h"
+
 namespace crossdesk {
 namespace {
 
@@ -39,7 +41,8 @@ struct CursorStateProvider::Impl {};
 CursorStateProvider::CursorStateProvider() : impl_(std::make_unique<Impl>()) {}
 CursorStateProvider::~CursorStateProvider() = default;
 
-bool CursorStateProvider::Sample(CursorState* state) {
+bool CursorStateProvider::Sample(const std::vector<DisplayInfo>& displays,
+                                 int preferred_display, CursorState* state) {
   if (!state) return false;
 
   CURSORINFO info{};
@@ -50,6 +53,8 @@ bool CursorStateProvider::Sample(CursorState* state) {
   state->visible = (info.flags & CURSOR_SHOWING) != 0;
   state->shape = state->visible ? ShapeFromWindowsCursor(info.hCursor)
                                 : RemoteCursorShape::none;
+  NormalizeCursorPosition(info.ptScreenPos.x, info.ptScreenPos.y, displays,
+                          preferred_display, state);
   return true;
 }
 
@@ -65,6 +70,7 @@ bool CursorStateProvider::Sample(CursorState* state) {
 #include "linux_cursor_shape.h"
 #include "platform.h"
 #include "shared_cursor_state.h"
+#include "runtime/cursor_position.h"
 
 namespace crossdesk {
 namespace {
@@ -91,8 +97,10 @@ struct CursorStateProvider::Impl {
 CursorStateProvider::CursorStateProvider() : impl_(std::make_unique<Impl>()) {}
 CursorStateProvider::~CursorStateProvider() = default;
 
-bool CursorStateProvider::Sample(CursorState* state) {
+bool CursorStateProvider::Sample(const std::vector<DisplayInfo>& displays,
+                                 int preferred_display, CursorState* state) {
   if (!state || !impl_) return false;
+  ResetCursorPosition(state);
 
   if (IsWaylandSession()) {
     SharedCursorState shared{};
@@ -115,6 +123,8 @@ bool CursorStateProvider::Sample(CursorState* state) {
   state->visible = CursorHasVisiblePixel(*image);
   state->shape = state->visible ? ShapeFromLinuxCursorName(name)
                                 : RemoteCursorShape::none;
+  NormalizeCursorPosition(image->x, image->y, displays, preferred_display,
+                          state);
   XFree(image);
   return true;
 }

@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "device_controller.h"
+#include "display_info.h"
 
 namespace crossdesk {
 

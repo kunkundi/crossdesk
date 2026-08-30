@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cstring>
 #include <filesystem>
 #include <limits>
 #include <memory>
@@ -236,15 +235,9 @@ void FileTransferManager::Unregister(uint32_t file_id, bool per_peer) {
 }
 
 void FileTransferManager::HandleAck(const char *data, size_t size) {
-  if (size < sizeof(FileTransferAck)) {
-    LOG_ERROR("FileTransferAck: buffer too small, size={}", size);
-    return;
-  }
-
   FileTransferAck ack{};
-  std::memcpy(&ack, data, sizeof(ack));
-  if (ack.magic != kFileAckMagic) {
-    LOG_ERROR("FileTransferAck: invalid magic, got 0x{:08X}", ack.magic);
+  if (!protocol::DecodeFileTransferAck(data, size, &ack)) {
+    LOG_ERROR("FileTransferAck: invalid payload, size={}", size);
     return;
   }
 

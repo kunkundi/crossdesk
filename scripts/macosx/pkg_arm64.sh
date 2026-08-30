@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 APP_NAME="crossdesk"
 APP_NAME_UPPER="CrossDesk"
-EXECUTABLE_PATH="./build/macosx/arm64/release/crossdesk"
+EXECUTABLE_PATH="${PROJECT_ROOT}/build/macosx/arm64/release/crossdesk"
 PLATFORM="macos"
 ARCH="arm64"
 BINARY_ARCH="arm64"
 IDENTIFIER="cn.crossdesk.app"
-ICON_PATH="icons/macos/crossdesk.icns"
+ICON_PATH="${PROJECT_ROOT}/icons/macos/crossdesk.icns"
 MACOS_MIN_VERSION="14.0"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+cd "$PROJECT_ROOT"
 
 normalize_app_version() {
     local input="$1"
@@ -103,7 +106,7 @@ find "${APP_BUNDLE}" -name '._*' -delete
 echo ".app created successfully."
 
 mkdir -p build_pkg_scripts
-cp scripts/macosx/tcc_postinstall.sh build_pkg_scripts/postinstall
+cp "${SCRIPT_DIR}/tcc_postinstall.sh" build_pkg_scripts/postinstall
 chmod +x build_pkg_scripts/postinstall
 
 mkdir -p build_pkg_resources

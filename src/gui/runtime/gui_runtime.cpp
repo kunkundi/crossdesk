@@ -141,6 +141,9 @@ int GuiRuntime::CreateConnectionPeer() {
           sizeof(params_.log_path) - 1);
   params_.log_path[sizeof(params_.log_path) - 1] = '\0';
   params_.hardware_acceleration = config_center_->IsHardwareVideoCodec();
+  // The Slint desktop renderer currently consumes packed CPU frames. Native
+  // renderers can opt into platform-native frame output independently.
+  params_.native_video_output = false;
   params_.av1_encoding = config_center_->GetVideoEncodeFormat() ==
                                  ConfigCenter::VIDEO_ENCODE_FORMAT::AV1
                              ? true

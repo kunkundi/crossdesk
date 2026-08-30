@@ -69,6 +69,8 @@ Render
 
 底层功能模块不应反向依赖具体面板、工具栏或窗口。
 
+桌面端与 iOS Bridge 复用 `src/` 中的协议定义：`device_controller/` 保存控制消息，`common/` 保存数据流名称和鼠标指针类型，`tools/` 保存文件传输线格式。操作系统输入注入、剪贴板、文件读写以及界面状态仍由各自应用实现。
+
 ## 核心类型
 
 ### Render
@@ -196,7 +198,8 @@ SDL quit / tray exit
 | SDL 初始化、事件循环、窗口生命周期 | `application/` |
 | 连接、会话、Peer 回调和平台运行时 | `runtime/` |
 | 视频、音频、鼠标、键盘设备生命周期 | `features/devices/` |
-| 键盘协议和按键状态 | `features/input/` |
+| 键盘状态与桌面输入处理 | `features/input/` |
+| 控制消息和线格式 | `device_controller/`、`common/`、`tools/` |
 | 剪贴板同步 | `features/clipboard/` |
 | 文件传输 | `features/file_transfer/` |
 | 配置持久化 | `features/settings/` |

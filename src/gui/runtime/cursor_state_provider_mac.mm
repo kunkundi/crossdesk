@@ -8,8 +8,16 @@
 #include <cstdint>
 #include <vector>
 
+#include "runtime/cursor_position.h"
+
 namespace crossdesk {
 namespace {
+
+// Quartz reports the arrow cursor's event hotspot. The visible apex in the
+// current macOS system artwork is about 1.6 logical points above that hotspot
+// (NSCursor.arrowCursor has a (5, 5) hotspot). Send this as presentation-only
+// metadata so controllers can align their glyph without changing input.
+constexpr double kDefaultArrowVisualTipYOffset = -1.6;
 
 struct CursorFingerprint {
   uint64_t pixel_hash = 0;
@@ -144,7 +152,8 @@ struct CursorStateProvider::Impl {};
 CursorStateProvider::CursorStateProvider() : impl_(std::make_unique<Impl>()) {}
 CursorStateProvider::~CursorStateProvider() = default;
 
-bool CursorStateProvider::Sample(CursorState* state) {
+bool CursorStateProvider::Sample(const std::vector<DisplayInfo>& displays,
+                                 int preferred_display, CursorState* state) {
   if (!state) return false;
 
 #pragma clang diagnostic push
@@ -157,6 +166,23 @@ bool CursorStateProvider::Sample(CursorState* state) {
   state->visible = visible && cursor != nil;
   state->shape = state->visible ? ShapeFromMacCursor(cursor)
                                 : RemoteCursorShape::none;
+  ResetCursorPosition(state);
+  CGEventRef event = CGEventCreate(nullptr);
+  if (event) {
+    const CGPoint location = CGEventGetLocation(event);
+    NormalizeCursorPosition(location.x, location.y, displays,
+                            preferred_display, state);
+    if (state->position_valid && state->visible &&
+        state->shape == RemoteCursorShape::default_cursor &&
+        state->display_id >= 0 &&
+        state->display_id < static_cast<int>(displays.size())) {
+      const double display_height =
+          std::max(displays[state->display_id].height, 1);
+      state->visual_offset_y = static_cast<float>(
+          kDefaultArrowVisualTipYOffset / display_height);
+    }
+    CFRelease(event);
+  }
   return true;
 }
 

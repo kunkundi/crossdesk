@@ -1,9 +1,11 @@
-#ifndef CROSSDESK_GUI_CURSOR_STATE_PROVIDER_H_
-#define CROSSDESK_GUI_CURSOR_STATE_PROVIDER_H_
+#ifndef _CURSOR_STATE_PROVIDER_H_
+#define _CURSOR_STATE_PROVIDER_H_
 
 #include <memory>
+#include <vector>
 
 #include "device_controller.h"
+#include "display_info.h"
 
 namespace crossdesk {
 
@@ -17,7 +19,8 @@ class CursorStateProvider {
   CursorStateProvider(const CursorStateProvider&) = delete;
   CursorStateProvider& operator=(const CursorStateProvider&) = delete;
 
-  bool Sample(CursorState* state);
+  bool Sample(const std::vector<DisplayInfo>& displays,
+              int preferred_display, CursorState* state);
 
  private:
   struct Impl;
@@ -26,4 +29,4 @@ class CursorStateProvider {
 
 }  // namespace crossdesk
 
-#endif  // CROSSDESK_GUI_CURSOR_STATE_PROVIDER_H_
+#endif

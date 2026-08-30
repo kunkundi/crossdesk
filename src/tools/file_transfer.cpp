@@ -93,38 +93,8 @@ std::vector<char> FileSender::BuildChunk(uint32_t file_id, uint64_t offset,
                                          uint32_t data_size,
                                          const std::string* file_name,
                                          bool is_first, bool is_last) {
-  FileChunkHeader header{};
-  header.magic = kFileChunkMagic;
-  header.file_id = file_id;
-  header.offset = offset;
-  header.total_size = total_size;
-  header.chunk_size = data_size;
-  header.name_len =
-      (file_name && is_first) ? static_cast<uint16_t>(file_name->size()) : 0;
-  header.flags = 0;
-  if (is_first) header.flags |= 0x01;
-  if (is_last) header.flags |= 0x02;
-
-  std::size_t total_size_bytes =
-      sizeof(FileChunkHeader) + header.name_len + header.chunk_size;
-
-  std::vector<char> buffer;
-  buffer.resize(total_size_bytes);
-
-  std::size_t offset_bytes = 0;
-  memcpy(buffer.data() + offset_bytes, &header, sizeof(FileChunkHeader));
-  offset_bytes += sizeof(FileChunkHeader);
-
-  if (header.name_len > 0 && file_name) {
-    memcpy(buffer.data() + offset_bytes, file_name->data(), header.name_len);
-    offset_bytes += header.name_len;
-  }
-
-  if (header.chunk_size > 0 && data) {
-    memcpy(buffer.data() + offset_bytes, data, header.chunk_size);
-  }
-
-  return buffer;
+  return protocol::EncodeFileChunk(file_id, offset, total_size, data,
+                                   data_size, file_name, is_first, is_last);
 }
 
 // ---------- FileReceiver ----------
@@ -167,40 +137,15 @@ std::filesystem::path FileReceiver::GetDefaultDesktopPath() {
 }
 
 bool FileReceiver::OnData(const char* data, size_t size) {
-  if (!data || size < sizeof(FileChunkHeader)) {
+  protocol::FileChunkView chunk;
+  if (!protocol::DecodeFileChunk(data, size, &chunk)) {
     LOG_ERROR("FileReceiver::OnData: invalid buffer");
     return false;
   }
-
-  FileChunkHeader header{};
-  memcpy(&header, data, sizeof(FileChunkHeader));
-
-  if (header.magic != kFileChunkMagic) {
-    return false;
-  }
-
-  std::size_t header_and_name =
-      sizeof(FileChunkHeader) + static_cast<std::size_t>(header.name_len);
-  if (size < header_and_name ||
-      size < header_and_name + static_cast<std::size_t>(header.chunk_size)) {
-    LOG_ERROR("FileReceiver::OnData: buffer too small for header + payload");
-    return false;
-  }
-
-  const char* name_ptr = data + sizeof(FileChunkHeader);
-  std::string file_name;
-  const std::string* file_name_ptr = nullptr;
-  if (header.name_len > 0) {
-    file_name.assign(name_ptr,
-                     name_ptr + static_cast<std::size_t>(header.name_len));
-    file_name_ptr = &file_name;
-  }
-
-  const char* payload = data + header_and_name;
-  std::size_t payload_size =
-      static_cast<std::size_t>(header.chunk_size);  // may be 0
-
-  return HandleChunk(header, payload, payload_size, file_name_ptr);
+  const std::string* file_name =
+      chunk.file_name.empty() ? nullptr : &chunk.file_name;
+  return HandleChunk(chunk.header, chunk.payload, chunk.payload_size,
+                     file_name);
 }
 
 bool FileReceiver::HandleChunk(const FileChunkHeader& header,

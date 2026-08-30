@@ -233,6 +233,15 @@ int GuiApplication::ProcessKeyboardEvent(const SDL_Event &event) {
 int GuiApplication::ProcessMouseEvent(const SDL_Event &event) {
   controlled_remote_id_ = "";
   RemoteAction remote_action{};
+
+  if ((event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+       event.type == SDL_EVENT_MOUSE_BUTTON_UP) &&
+      event.button.button != SDL_BUTTON_LEFT &&
+      event.button.button != SDL_BUTTON_RIGHT &&
+      event.button.button != SDL_BUTTON_MIDDLE) {
+    return 0;
+  }
+
   float cursor_x = last_mouse_event.motion.x;
   float cursor_y = last_mouse_event.motion.y;
 

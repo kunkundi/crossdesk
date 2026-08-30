@@ -7,7 +7,6 @@
 #ifndef _FILE_TRANSFER_H_
 #define _FILE_TRANSFER_H_
 
-#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -15,31 +14,10 @@
 #include <unordered_map>
 #include <vector>
 
+#include "file_transfer_protocol.h"
+#include "stream_names.h"
+
 namespace crossdesk {
-
-// Magic constants for file transfer protocol
-constexpr uint32_t kFileChunkMagic = 0x4A4E544D;  // 'JNTM'
-constexpr uint32_t kFileAckMagic = 0x4A4E5443;    // 'JNTC'
-
-#pragma pack(push, 1)
-struct FileChunkHeader {
-  uint32_t magic;       // magic to identify file-transfer chunks
-  uint32_t file_id;     // unique id per file transfer
-  uint64_t offset;      // offset in file
-  uint64_t total_size;  // total file size
-  uint32_t chunk_size;  // payload size in this chunk
-  uint16_t name_len;    // filename length (bytes), only set on first chunk
-  uint8_t flags;        // bit0: is_first, bit1: is_last, others reserved
-};
-
-struct FileTransferAck {
-  uint32_t magic;         // magic to identify file-transfer ack
-  uint32_t file_id;       // must match FileChunkHeader.file_id
-  uint64_t acked_offset;  // received offset
-  uint64_t total_size;    // total file size
-  uint32_t flags;         // bit0: completed, bit1: error
-};
-#pragma pack(pop)
 
 class FileSender {
  public:
@@ -58,7 +36,8 @@ class FileSender {
   // `file_id` : file id to use (0 means auto-generate).
   // Return 0 on success, <0 on error.
   int SendFile(const std::filesystem::path& path, const std::string& label,
-               const SendFunc& send, std::size_t chunk_size = 64 * 1024,
+               const SendFunc& send,
+               std::size_t chunk_size = protocol::kFileChunkSize,
                uint32_t file_id = 0);
 
   // build a single encoded chunk buffer according to FileChunkHeader protocol.

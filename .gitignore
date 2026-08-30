@@ -1,6 +1,11 @@
 # Xmake cache
 .xmake/
 build/
+ios/Vendor/
+ios/DerivedData/
+ios/.xmake/
+xcuserdata/
+*.xcuserstate
 
 # MacOS Cache
 .DS_Store

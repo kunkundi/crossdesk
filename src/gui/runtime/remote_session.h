@@ -1,5 +1,5 @@
-#ifndef CROSSDESK_GUI_REMOTE_SESSION_H_
-#define CROSSDESK_GUI_REMOTE_SESSION_H_
+#ifndef _REMOTE_SESSION_H_
+#define _REMOTE_SESSION_H_
 
 #include <atomic>
 #include <chrono>
@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "stream_names.h"
 #include "device_controller.h"
 #include "display_info.h"
 #include "minirtc.h"
@@ -60,14 +61,14 @@ struct FileTransferState {
 struct RemoteSession {
   Params params_;
   PeerPtr* peer_ = nullptr;
-  std::string audio_label_ = "control_audio";
-  std::string data_label_ = "data";
-  std::string mouse_label_ = "mouse";
-  std::string keyboard_label_ = "keyboard";
-  std::string file_label_ = "file";
-  std::string control_data_label_ = "control_data";
-  std::string file_feedback_label_ = "file_feedback";
-  std::string clipboard_label_ = "clipboard";
+  std::string audio_label_ = protocol::kAudioStream;
+  std::string data_label_ = protocol::kDataStream;
+  std::string mouse_label_ = protocol::kMouseStream;
+  std::string keyboard_label_ = protocol::kKeyboardStream;
+  std::string file_label_ = protocol::kFileStream;
+  std::string control_data_label_ = protocol::kControlStream;
+  std::string file_feedback_label_ = protocol::kFileFeedbackStream;
+  std::string clipboard_label_ = protocol::kClipboardStream;
   std::string local_id_;
   std::string remote_id_;
   bool exit_ = false;
@@ -173,4 +174,4 @@ using RemoteSessionPtr = std::shared_ptr<RemoteSession>;
 
 }  // namespace crossdesk::gui_detail
 
-#endif  // CROSSDESK_GUI_REMOTE_SESSION_H_
+#endif

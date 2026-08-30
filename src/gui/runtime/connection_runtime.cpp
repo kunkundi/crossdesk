@@ -123,6 +123,10 @@ void GuiRuntime::HandlePresenceProbeTimeout() {
 void GuiRuntime::HandleServerControllerDisconnected(
     const std::string& remote_id, const char* reason) {
   keyboard_.ReleaseRemotePressedKeys(remote_id, reason);
+  {
+    std::lock_guard lock(remote_pointer_input_mutex_);
+    last_remote_pointer_input_time_.erase(remote_id);
+  }
 
   bool has_connected_controller = false;
   bool has_web_controller = false;
