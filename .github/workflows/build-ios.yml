@@ -86,9 +86,14 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ios/.xmake/packages
-          key: "${{ runner.os }}-xmake-deps-ios-arm64-xcode26.6-min16-${{ github.run_id }}"
+          key: "${{ runner.os }}-xmake-deps-ios-arm64-xcode26.6-python3.13-min16-${{ github.run_id }}"
           restore-keys: |
-            ${{ runner.os }}-xmake-deps-ios-arm64-xcode26.6-min16-
+            ${{ runner.os }}-xmake-deps-ios-arm64-xcode26.6-python3.13-min16-
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
 
       - name: Install xmake
         run: brew install xmake
