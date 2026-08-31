@@ -2,7 +2,8 @@ set_project("crossdesk")
 set_license("GPL-3.0-only")
 
 local source_dir = os.getenv("CROSSDESK_SOURCE_DIR") or os.scriptdir()
-local desktop_platform = is_plat("windows", "macosx", "linux")
+local desktop_platform = is_plat("windows", "macosx", "linux") or
+    (not is_plat("iphoneos") and is_host("windows", "macosx", "linux"))
 
 add_rules("mode.release", "mode.debug")
 set_languages("c++17")
