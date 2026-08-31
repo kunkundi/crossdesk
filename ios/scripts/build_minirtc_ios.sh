@@ -44,6 +44,28 @@ if [[ -z "${XMAKE_BIN}" || ! -x "${XMAKE_BIN}" ]]; then
   exit 69
 fi
 
+# Xcode build phases export the iOS SDK, compiler and linker settings into the
+# script environment. Letting Xmake inherit those variables also targets its
+# build-machine tools (for example NASM and Meson helpers) at iOS, so they
+# cannot run on the macOS build host. Give Xmake a clean host environment and
+# pass the iOS target exclusively through its command-line configuration.
+XMAKE_DEVELOPER_DIR="${DEVELOPER_DIR:-$(xcode-select -p)}"
+XMAKE_TOOLCHAIN_BIN="${XMAKE_DEVELOPER_DIR}/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+run_xmake() {
+  /usr/bin/env -i \
+    HOME="${HOME}" \
+    PATH="${XMAKE_TOOLCHAIN_BIN}:${PATH}" \
+    TMPDIR="${TMPDIR:-/tmp}" \
+    USER="${USER:-}" \
+    LOGNAME="${LOGNAME:-${USER:-}}" \
+    LANG="${LANG:-en_US.UTF-8}" \
+    TERM="${TERM:-dumb}" \
+    NO_COLOR="${NO_COLOR:-}" \
+    DEVELOPER_DIR="${XMAKE_DEVELOPER_DIR}" \
+    XMAKE_PKG_INSTALLDIR="${XMAKE_PKG_INSTALLDIR}" \
+    "${XMAKE_BIN}" "$@"
+}
+
 OUTPUT_DIR="${IOS_DIR}/Vendor/iphoneos/${CONFIG_NAME}"
 OUTPUT_LIBRARY="${OUTPUT_DIR}/libCrossDeskMiniRTC.a"
 MINIRTC_BUILD_DIR="${IOS_DIR}/.xmake/minirtc-build"
@@ -58,10 +80,11 @@ mkdir -p "${OUTPUT_DIR}"
 # configuration, compilation and inspection anchored to the MiniRTC project.
 (
   cd "${MINIRTC_DIR}"
-  "${XMAKE_BIN}" f -P "${MINIRTC_DIR}" -c -o "${MINIRTC_BUILD_DIR}" \
+  run_xmake f -P "${MINIRTC_DIR}" -c -o "${MINIRTC_BUILD_DIR}" \
     -p iphoneos -a arm64 -m "${MODE}" \
+    --as="${XMAKE_TOOLCHAIN_BIN}/clang" \
     --target_minver=16.0 --USE_CUDA=false -y
-  "${XMAKE_BIN}" b -P "${MINIRTC_DIR}" minirtc
+  run_xmake b -P "${MINIRTC_DIR}" minirtc
 )
 
 if [[ ! -f "${MINIRTC_LIBRARY}" ]]; then
@@ -72,7 +95,7 @@ fi
 # Xmake owns the package hashes, so query its resolved target instead of
 # embedding machine-specific ~/.xmake paths in the Xcode project.
 TARGET_INFO="$(cd "${MINIRTC_DIR}" && TERM=dumb NO_COLOR=1 \
-  "${XMAKE_BIN}" show -P "${MINIRTC_DIR}" -t minirtc)"
+  run_xmake show -P "${MINIRTC_DIR}" -t minirtc)"
 CLEAN_INFO="$(print -r -- "${TARGET_INFO}" | sed $'s/\033\\[[0-9;]*[[:alpha:]]//g')"
 LINK_DIRS=("${(@f)$(print -r -- "${CLEAN_INFO}" | sed -nE 's|.*-> (/.*)/lib -> package.*|\1/lib|p' | sort -u)}")
 
