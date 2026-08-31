@@ -20,6 +20,7 @@ permissions:
 env:
   IOS_DEPLOYMENT_TARGET: "16.0"
   EXPECTED_IOS_SDK: "26.5"
+  XMAKE_REPO_REVISION: "121109352da272cd1a3d4ed52f2dcda34f839955"
 
 jobs:
   build-ios:
@@ -86,9 +87,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ios/.xmake/packages
-          key: "${{ runner.os }}-xmake-deps-ios-arm64-xcode26.6-python3.13-min16-${{ github.run_id }}"
+          key: "${{ runner.os }}-xmake-deps-ios-arm64-xcode26.6-xrepo1211093-min16-${{ github.run_id }}"
           restore-keys: |
-            ${{ runner.os }}-xmake-deps-ios-arm64-xcode26.6-python3.13-min16-
+            ${{ runner.os }}-xmake-deps-ios-arm64-xcode26.6-xrepo1211093-min16-
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -98,8 +99,14 @@ jobs:
       - name: Install xmake
         run: brew install xmake
 
-      - name: Update xmake repositories
-        run: xmake repo -u
+      - name: Pin xmake package repository
+        shell: bash
+        run: |
+          xmake repo -u
+          XMAKE_REPO_DIR="${HOME}/.xmake/repositories/xmake-repo"
+          git -C "${XMAKE_REPO_DIR}" fetch --depth=1 origin "${XMAKE_REPO_REVISION}"
+          git -C "${XMAKE_REPO_DIR}" checkout --detach "${XMAKE_REPO_REVISION}"
+          test "$(git -C "${XMAKE_REPO_DIR}" rev-parse HEAD)" = "${XMAKE_REPO_REVISION}"
 
       - name: Build CrossDesk Mobile
         shell: bash
