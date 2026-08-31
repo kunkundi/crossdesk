@@ -171,10 +171,10 @@ xmake b -vy crossdesk
 
 ```bash
 # amd64
-./scripts/linux/pkg_amd64.sh 1.0.0
+./apps/desktop/scripts/linux/pkg_amd64.sh 1.0.0
 
 # arm64
-./scripts/linux/pkg_arm64.sh 1.0.0
+./apps/desktop/scripts/linux/pkg_arm64.sh 1.0.0
 ```
 
 打包脚本会将 Slint 共享运行库安装到软件包私有目录 `/usr/lib/crossdesk`，无需用户另外安装 `libslint_cpp.so`。

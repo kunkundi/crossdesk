@@ -1,11 +1,11 @@
 # GUI 目录结构与职责说明
 
-本文档说明 `src/gui` 的目录结构、核心类型、依赖方向和代码归属规则，用于避免 `Render`、`GuiApplication` 或 `GuiRuntime` 再次演变成职责混杂的大类。
+本文档说明 `apps/desktop/src/gui` 的目录结构、核心类型、依赖方向和代码归属规则，用于避免 `Render`、`GuiApplication` 或 `GuiRuntime` 再次演变成职责混杂的大类。
 
 ## 目录结构
 
 ```text
-src/gui/
+apps/desktop/src/gui/
 ├── render.h                         # 对外稳定入口 Render
 ├── render.cpp                       # 创建 GuiApplication 并转发 Run
 ├── application/                     # SDL/ImGui 应用外壳
@@ -19,8 +19,6 @@ src/gui/
 ├── runtime/                         # 非界面的 GUI 运行时
 │   ├── gui_runtime.h/.cpp           # 运行时协调接口与公共实现
 │   ├── connection_runtime.cpp       # 连接、在线探测、超时及会话清理
-│   ├── windows_service_runtime.cpp  # Windows 服务和安全桌面集成
-│   ├── mac_permission_runtime.mm    # macOS 权限检查和系统设置调用
 │   ├── gui_state.h                  # ApplicationState 与 RuntimeState 组合点
 │   ├── runtime_state.h              # 配置、连接、平台和通信状态
 │   ├── remote_session.h             # 单个远端会话 RemoteSession
@@ -39,10 +37,10 @@ src/gui/
 │   ├── panels/                      # 主窗口内嵌面板
 │   ├── toolbars/                    # 标题栏、状态栏和控制栏
 │   └── windows/                     # 独立窗口和模态对话框
-├── platform/                        # 原生桌面平台适配
-│   └── tray/                        # Windows、macOS 和 Linux 托盘
 └── assets/                          # 字体、图标、布局和本地化资源
 ```
+
+平台私有 GUI 实现统一位于 `apps/desktop/src/platform/<os>/gui/`，包括托盘、macOS Metal 渲染与权限、Windows 服务运行时等；Windows 与 Linux 共用的 OpenGL 渲染器位于 `apps/desktop/src/platform/common/gui/`。
 
 ## 分层关系
 
@@ -69,7 +67,7 @@ Render
 
 底层功能模块不应反向依赖具体面板、工具栏或窗口。
 
-桌面端与 iOS Bridge 复用 `src/` 中的协议定义：`device_controller/` 保存控制消息，`common/` 保存数据流名称和鼠标指针类型，`tools/` 保存文件传输线格式。操作系统输入注入、剪贴板、文件读写以及界面状态仍由各自应用实现。
+桌面端与 iOS Bridge 统一依赖静态库 `crossdesk_wire`。线上契约头位于 `libs/wire/include/`，包含控制消息、鼠标指针类型、显示流 ID、数据流名称和文件传输线格式。操作系统输入注入、剪贴板、文件读写以及界面状态仍由各自应用实现，`libs/wire/` 不得依赖桌面端或操作系统专用头文件。
 
 ## 核心类型
 
@@ -199,12 +197,12 @@ SDL quit / tray exit
 | 连接、会话、Peer 回调和平台运行时 | `runtime/` |
 | 视频、音频、鼠标、键盘设备生命周期 | `features/devices/` |
 | 键盘状态与桌面输入处理 | `features/input/` |
-| 控制消息和线格式 | `device_controller/`、`common/`、`tools/` |
+| 线上控制消息和线格式 | `libs/wire/` |
 | 剪贴板同步 | `features/clipboard/` |
 | 文件传输 | `features/file_transfer/` |
 | 配置持久化 | `features/settings/` |
 | 主窗口内嵌区域 | `views/panels/` |
 | 标题栏、状态栏、控制栏 | `views/toolbars/` |
 | 独立窗口和对话框 | `views/windows/` |
-| 系统托盘 | `platform/tray/` |
+| 系统托盘 | `apps/desktop/src/platform/<os>/gui/tray/` |
 | 字体、图标、布局和本地化数据 | `assets/` |

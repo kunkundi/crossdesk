@@ -8,13 +8,15 @@
 # Dependency manifests and local xmake package recipes are the only project
 # files needed while pre-warming the build image.
 !xmake.lua
-!xmake/
-!xmake/**
-!thirdparty/
-!thirdparty/**
-!submodules/
-!submodules/xmake.lua
-!submodules/minirtc/
-!submodules/minirtc/xmake.lua
-!submodules/minirtc/thirdparty/
-!submodules/minirtc/thirdparty/**
+!apps/
+!apps/desktop/
+!apps/desktop/xmake/
+!apps/desktop/xmake/**
+!deps/thirdparty/
+!deps/thirdparty/**
+!deps/submodules/
+!deps/submodules/xmake.lua
+!deps/submodules/minirtc/
+!deps/submodules/minirtc/xmake.lua
+!deps/submodules/minirtc/thirdparty/
+!deps/submodules/minirtc/thirdparty/**

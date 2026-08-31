@@ -179,10 +179,10 @@ Build a Debian package after compiling a release binary on the matching architec
 
 ```bash
 # amd64
-./scripts/linux/pkg_amd64.sh 1.0.0
+./apps/desktop/scripts/linux/pkg_amd64.sh 1.0.0
 
 # arm64
-./scripts/linux/pkg_arm64.sh 1.0.0
+./apps/desktop/scripts/linux/pkg_arm64.sh 1.0.0
 ```
 
 The package scripts install the shared Slint runtime in the private `/usr/lib/crossdesk` directory, so users do not need to install `libslint_cpp.so` separately.

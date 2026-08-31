@@ -144,11 +144,11 @@ RUN case "${TARGETARCH}" in \
 WORKDIR /tmp/crossdesk-dependencies
 
 COPY xmake.lua ./xmake.lua
-COPY xmake ./xmake
-COPY thirdparty ./thirdparty
-COPY submodules/xmake.lua ./submodules/xmake.lua
-COPY submodules/minirtc/xmake.lua ./submodules/minirtc/xmake.lua
-COPY submodules/minirtc/thirdparty ./submodules/minirtc/thirdparty
+COPY apps/desktop/xmake ./apps/desktop/xmake
+COPY deps/thirdparty ./deps/thirdparty
+COPY deps/submodules/xmake.lua ./deps/submodules/xmake.lua
+COPY deps/submodules/minirtc/xmake.lua ./deps/submodules/minirtc/xmake.lua
+COPY deps/submodules/minirtc/thirdparty ./deps/submodules/minirtc/thirdparty
 
 # Configure the real project manifests so the image cache stays aligned with
 # CrossDesk's exact dependency graph. Source files are intentionally excluded

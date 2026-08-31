@@ -1,0 +1,133 @@
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <string>
+
+namespace {
+
+std::filesystem::path FindRepoRoot() {
+  std::filesystem::path current = std::filesystem::current_path();
+  while (!current.empty()) {
+    if (std::filesystem::exists(current / "xmake.lua") &&
+        std::filesystem::exists(current /
+                                "deps/submodules/minirtc/src/api/minirtc.h")) {
+      return current;
+    }
+    current = current.parent_path();
+  }
+  return {};
+}
+
+std::string ReadFile(const std::filesystem::path& path) {
+  std::ifstream file(path, std::ios::binary);
+  if (!file) {
+    return {};
+  }
+
+  std::ostringstream stream;
+  stream << file.rdbuf();
+  return stream.str();
+}
+
+bool ExpectContains(const char* name, const std::string& value,
+                    const std::string& expected) {
+  if (value.find(expected) != std::string::npos) {
+    return true;
+  }
+
+  std::cerr << name << " missing expected text: " << expected << "\n";
+  return false;
+}
+
+bool ExpectNotContains(const char* name, const std::string& value,
+                       const std::string& unexpected) {
+  if (value.find(unexpected) == std::string::npos) {
+    return true;
+  }
+
+  std::cerr << name << " contains unexpected text: " << unexpected << "\n";
+  return false;
+}
+
+}  // namespace
+
+int main() {
+  const std::filesystem::path repo_root = FindRepoRoot();
+  if (repo_root.empty()) {
+    std::cerr << "failed to locate repository root\n";
+    return 1;
+  }
+
+  const std::string minirtc_api =
+      ReadFile(repo_root / "deps/submodules/minirtc/src/api/minirtc.h");
+  const std::string peer_connection =
+      ReadFile(repo_root / "deps/submodules/minirtc/src/pc/peer_connection.cpp");
+  const std::string main_window =
+      ReadFile(repo_root / "apps/desktop/src/gui/ui/main_window.slint");
+  const std::string gui_application =
+      ReadFile(repo_root / "apps/desktop/src/gui/application/gui_application.cpp");
+  const std::string runtime_state_h =
+      ReadFile(repo_root / "apps/desktop/src/gui/runtime/runtime_state.h");
+  const std::string remote_session_h =
+      ReadFile(repo_root / "apps/desktop/src/gui/runtime/remote_session.h");
+  const std::string connection_runtime_cpp =
+      ReadFile(repo_root / "apps/desktop/src/gui/runtime/connection_runtime.cpp");
+  const std::string peer_event_handler_cpp =
+      ReadFile(repo_root / "apps/desktop/src/gui/runtime/peer_event_handler.cpp");
+  const std::string application_state_h =
+      ReadFile(repo_root / "apps/desktop/src/gui/application/application_state.h");
+
+  bool ok = true;
+  ok &= ExpectContains("minirtc.h", minirtc_api, "RemoteUnavailable");
+  ok &= ExpectNotContains("minirtc.h", minirtc_api, "DeviceOffline");
+  ok &= ExpectContains("peer_connection.cpp", peer_connection,
+                       "\"Remote unavailable\"");
+  ok &= ExpectContains("peer_connection.cpp", peer_connection,
+                       "ConnectionStatus::RemoteUnavailable");
+  ok &= ExpectContains("peer_connection.cpp", peer_connection,
+                       "IsCurrentPeerConnection");
+  ok &= ExpectContains(
+      "peer_connection.cpp", peer_connection,
+      "on_connection_status_(ConnectionStatus::Closed, remote_user_id.data()");
+  ok &= ExpectNotContains("peer_connection.cpp", peer_connection,
+                          "\"Device offline\"");
+  ok &= ExpectNotContains("peer_connection.cpp", peer_connection,
+                          "ConnectionStatus::DeviceOffline");
+  ok &= ExpectContains("main_window.slint", main_window,
+                       "in property <bool> connection-dialog-open: false;");
+  ok &= ExpectContains("main_window.slint", main_window,
+                       "text: root.connection-status-text;");
+  ok &= ExpectContains("gui_application.cpp", gui_application,
+                       "case ConnectionStatus::RemoteUnavailable:");
+  ok &= ExpectContains("gui_application.cpp", gui_application,
+                       "return localization::device_offline[language];");
+  ok &= ExpectContains("runtime_state.h", runtime_state_h,
+                       "pending_presence_probe_started_at_");
+  ok &= ExpectContains("connection_runtime.cpp", connection_runtime_cpp,
+                       "HandlePresenceProbeTimeout");
+  ok &= ExpectContains("connection_runtime.cpp", connection_runtime_cpp,
+                       "kPresenceProbeTimeout");
+  ok &= ExpectNotContains("remote_session.h", remote_session_h,
+                          "connection_attempt_started_at_");
+  ok &= ExpectNotContains("remote_session.h", remote_session_h,
+                          "connection_attempt_active_");
+  ok &= ExpectNotContains("connection_runtime.cpp", connection_runtime_cpp,
+                          "kConnectionAttemptTimeout");
+  ok &= ExpectNotContains("connection_runtime.cpp", connection_runtime_cpp,
+                          "ConnectionStatus::Failed");
+  ok &= ExpectContains("peer_event_handler.cpp", peer_event_handler_cpp,
+                       "props->connection_status_.store(status);");
+  ok &= ExpectContains("peer_event_handler.cpp", peer_event_handler_cpp,
+                       "case ConnectionStatus::Failed:");
+  ok &= ExpectContains("connection_runtime.cpp", connection_runtime_cpp,
+                       "HandleServerControllerDisconnected");
+  ok &= ExpectContains("peer_event_handler.cpp", peer_event_handler_cpp,
+                       "HandleServerControllerDisconnected(remote_id");
+  ok &= ExpectNotContains("connection_runtime.cpp", connection_runtime_cpp,
+                          "ControllerHeartbeat");
+  ok &= ExpectContains("application_state.h", application_state_h,
+                       "std::atomic<bool> need_to_destroy_server_window_");
+
+  return ok ? 0 : 1;
+}

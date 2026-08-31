@@ -1,9 +1,9 @@
 # Xmake cache
 .xmake/
 build/
-ios/Vendor/
-ios/DerivedData/
-ios/.xmake/
+apps/ios/Vendor/
+apps/ios/DerivedData*/
+apps/ios/.xmake/
 xcuserdata/
 *.xcuserstate
 

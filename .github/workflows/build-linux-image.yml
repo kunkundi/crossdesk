@@ -11,11 +11,11 @@ on:
       - docker/linux-build/**
       - xmake.lua
       - xmake/**
-      - thirdparty/**
-      - submodules/xmake.lua
-      - submodules/minirtc
-      - submodules/minirtc/xmake.lua
-      - submodules/minirtc/thirdparty/**
+      - deps/thirdparty/**
+      - deps/submodules/xmake.lua
+      - deps/submodules/minirtc
+      - deps/submodules/minirtc/xmake.lua
+      - deps/submodules/minirtc/thirdparty/**
   workflow_dispatch:
 
 permissions:

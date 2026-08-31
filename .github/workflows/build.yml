@@ -36,12 +36,12 @@ jobs:
           - arch: amd64
             runner: ubuntu-24.04
             image: crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.0.9-rust1.92.0
-            package_script: ./scripts/linux/pkg_amd64.sh
+            package_script: ./apps/desktop/scripts/linux/pkg_amd64.sh
 
           - arch: arm64
             runner: ubuntu-24.04-arm
             image: crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.0.9-rust1.92.0
-            package_script: ./scripts/linux/pkg_arm64.sh
+            package_script: ./apps/desktop/scripts/linux/pkg_arm64.sh
 
     container:
       image: ${{ matrix.image }}
@@ -138,6 +138,15 @@ jobs:
             --cc=gcc-10 --cxx=g++-10 --root -y
           xmake b -vy --root crossdesk
 
+      - name: Verify repository and wire boundaries
+        env:
+          XMAKE_GLOBALDIR: /data
+        run: |
+          xmake b -vy --root repository_structure_test crossdesk_wire_test keyboard_state_wire_test
+          xmake run --root repository_structure_test
+          xmake run --root crossdesk_wire_test
+          xmake run --root keyboard_state_wire_test
+
       - name: Package
         run: |
           chmod +x ${{ matrix.package_script }}
@@ -178,13 +187,13 @@ jobs:
             runner: macos-26-intel
             cache-key: intel-macos26-xcode26.6-min14
             out-dir: ./build/macosx/x86_64/release/crossdesk
-            package_script: ./scripts/macosx/pkg_x64.sh
+            package_script: ./apps/desktop/scripts/macos/pkg_x64.sh
           - arch: arm64
             binary_arch: arm64
             runner: macos-26
             cache-key: arm-macos26-xcode26.6-min14
             out-dir: ./build/macosx/arm64/release/crossdesk
-            package_script: ./scripts/macosx/pkg_arm64.sh
+            package_script: ./apps/desktop/scripts/macos/pkg_arm64.sh
 
     steps:
       - name: Extract version number
@@ -282,7 +291,7 @@ jobs:
             exit 1
           fi
 
-          ./scripts/macosx/verify_app.sh "${APP_PATH}" "${{ matrix.binary_arch }}" "${EXPECTED_MACOS_SDK}"
+          ./apps/desktop/scripts/macos/verify_app.sh "${APP_PATH}" "${{ matrix.binary_arch }}" "${EXPECTED_MACOS_SDK}"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
@@ -364,7 +373,7 @@ jobs:
       - name: Cache xmake dependencies
         uses: actions/cache@v5
         with:
-          path: ios/.xmake/packages
+          path: apps/ios/.xmake/packages
           key: "${{ runner.os }}-xmake${{ env.XMAKE_VERSION }}-deps-ios-arm64-xcode26.6-xrepo1211093-min16-${{ github.run_id }}"
           restore-keys: |
             ${{ runner.os }}-xmake${{ env.XMAKE_VERSION }}-deps-ios-arm64-xcode26.6-xrepo1211093-min16-
@@ -404,7 +413,7 @@ jobs:
           DERIVED_DATA="${RUNNER_TEMP}/CrossDeskMobileDerivedData"
           echo "DERIVED_DATA=${DERIVED_DATA}" >> "${GITHUB_ENV}"
           xcodebuild \
-            -project ios/CrossDeskMobile.xcodeproj \
+            -project apps/ios/CrossDeskMobile.xcodeproj \
             -scheme CrossDeskMobile \
             -configuration Release \
             -destination 'generic/platform=iOS' \
@@ -571,7 +580,7 @@ jobs:
       - name: Copy nsProcess plugin to NSIS folder
         run: |
           $nsisPluginDir = "C:\Program Files (x86)\NSIS\Plugins\x86-unicode"
-          copy "${{ github.workspace }}\scripts\windows\nsProcess.dll" $nsisPluginDir
+          copy "${{ github.workspace }}\apps\desktop\scripts\windows\nsProcess.dll" $nsisPluginDir
 
       - name: Build CrossDesk
         run: |
@@ -581,14 +590,14 @@ jobs:
       - name: Package
         shell: pwsh
         run: |
-          & "${{ github.workspace }}\scripts\windows\pkg_x64.ps1" $env:VERSION_NUM
+          & "${{ github.workspace }}\apps\desktop\scripts\windows\pkg_x64.ps1" $env:VERSION_NUM
 
       - name: Upload unsigned Windows installer for test signing
         if: github.event_name == 'workflow_dispatch' && inputs.sign_windows_test
         id: upload-unsigned-windows-installer
         uses: actions/upload-artifact@v7
         with:
-          path: ${{ github.workspace }}/scripts/windows/crossdesk-win-x64-${{ env.VERSION_NUM }}.exe
+          path: ${{ github.workspace }}/apps/desktop/scripts/windows/crossdesk-win-x64-${{ env.VERSION_NUM }}.exe
           archive: false
           if-no-files-found: error
           retention-days: 1
@@ -614,7 +623,7 @@ jobs:
         run: |
           $installerName = "crossdesk-win-x64-${{ env.VERSION_NUM }}.exe"
           $signedInstaller = Join-Path "${{ github.workspace }}\signpath\signed-installer" $installerName
-          $destination = Join-Path "${{ github.workspace }}\scripts\windows" $installerName
+          $destination = Join-Path "${{ github.workspace }}\apps\desktop\scripts\windows" $installerName
 
           if (!(Test-Path $signedInstaller)) {
             throw "SignPath did not return the signed installer: $signedInstaller"
@@ -671,7 +680,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: crossdesk-win-x64-${{ env.VERSION_NUM }}
-          path: ${{ github.workspace }}/scripts/windows/crossdesk-win-x64-${{ env.VERSION_NUM }}.exe
+          path: ${{ github.workspace }}/apps/desktop/scripts/windows/crossdesk-win-x64-${{ env.VERSION_NUM }}.exe
 
       - name: Upload portable artifact
         uses: actions/upload-artifact@v6

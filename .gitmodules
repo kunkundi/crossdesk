@@ -1,3 +1,3 @@
-[submodule "submodules/minirtc"]
-	path = submodules/minirtc
+[submodule "deps/submodules/minirtc"]
+	path = deps/submodules/minirtc
 	url = https://github.com/kunkundi/minirtc.git
