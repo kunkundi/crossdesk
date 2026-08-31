@@ -303,6 +303,7 @@ jobs:
     env:
       IOS_DEPLOYMENT_TARGET: "16.0"
       EXPECTED_IOS_SDK: "26.5"
+      XMAKE_VERSION: "3.1.1"
       XMAKE_REPO_REVISION: "121109352da272cd1a3d4ed52f2dcda34f839955"
 
     steps:
@@ -364,9 +365,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ios/.xmake/packages
-          key: "${{ runner.os }}-xmake-deps-ios-arm64-xcode26.6-xrepo1211093-min16-${{ github.run_id }}"
+          key: "${{ runner.os }}-xmake${{ env.XMAKE_VERSION }}-deps-ios-arm64-xcode26.6-xrepo1211093-min16-${{ github.run_id }}"
           restore-keys: |
-            ${{ runner.os }}-xmake-deps-ios-arm64-xcode26.6-xrepo1211093-min16-
+            ${{ runner.os }}-xmake${{ env.XMAKE_VERSION }}-deps-ios-arm64-xcode26.6-xrepo1211093-min16-
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -374,7 +375,19 @@ jobs:
           python-version: "3.13"
 
       - name: Install xmake
-        run: brew install xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: "${{ env.XMAKE_VERSION }}"
+
+      - name: Verify xmake version
+        shell: bash
+        run: |
+          XMAKE_VERSION_OUTPUT="$(xmake --version)"
+          echo "${XMAKE_VERSION_OUTPUT}"
+          if [[ "${XMAKE_VERSION_OUTPUT}" != *"xmake v${XMAKE_VERSION}"* ]]; then
+            echo "Unexpected xmake version: expected ${XMAKE_VERSION}" >&2
+            exit 1
+          fi
 
       - name: Pin xmake package repository
         shell: bash
