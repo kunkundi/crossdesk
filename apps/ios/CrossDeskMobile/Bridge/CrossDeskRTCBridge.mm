@@ -335,7 +335,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   params.video_quality = VideoQuality::QualityHigh;
   params.video_frame_rate = 60;
   params.video_degradation_preference =
-      VideoDegradationPreference::MaintainFrameRate;
+      VideoDegradationPreference::MaintainResolution;
   params.on_receive_video_buffer = nullptr;
   params.on_receive_audio_buffer = OnAudioBuffer;
   params.on_receive_data_buffer = OnDataBuffer;
