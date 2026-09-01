@@ -48,6 +48,14 @@ inline int ApplyMainWindowStrings(
   strings.set_language(Text(localization::language[language]));
   strings.set_video_quality(Text(localization::video_quality[language]));
   strings.set_frame_rate(Text(localization::video_frame_rate[language]));
+  strings.set_adaptation_policy(
+      Text(localization::video_adaptation_policy[language]));
+  strings.set_priority_frame_rate(
+      Text(localization::video_priority_frame_rate[language]));
+  strings.set_priority_quality(
+      Text(localization::video_priority_quality[language]));
+  strings.set_priority_balanced(
+      Text(localization::video_priority_balanced[language]));
   strings.set_codec(Text(localization::video_encode_format[language]));
   strings.set_hardware_codec(
       Text(localization::enable_hardware_video_codec[language]));

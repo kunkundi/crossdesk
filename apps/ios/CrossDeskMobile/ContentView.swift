@@ -689,6 +689,22 @@ private struct ServerSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
+                Section("画面偏好") {
+                    Picker("偏好模式", selection: $session.videoAdaptationPolicy) {
+                        ForEach(VideoAdaptationPolicy.allCases) { policy in
+                            Text(policy.title).tag(policy)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text(session.videoAdaptationPolicy.detail)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    Text("修改后从下一次连接开始生效。")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
                 Section("服务器") {
                     TextField("信令服务器", text: $session.signalHost)
                         .textInputAutocapitalization(.never)

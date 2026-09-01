@@ -1206,6 +1206,8 @@ void GuiApplication::ResetSettingsUi() {
   ui_->main->set_language_index(language_button_value_);
   ui_->main->set_video_quality_index(video_quality_button_value_);
   ui_->main->set_frame_rate_index(video_frame_rate_button_value_);
+  ui_->main->set_adaptation_policy_index(
+      video_adaptation_policy_button_value_);
   ui_->main->set_codec_index(video_encode_format_button_value_);
   ui_->main->set_hardware_codec_enabled(enable_hardware_video_codec_);
   ui_->main->set_turn_enabled(enable_turn_);
@@ -2904,6 +2906,8 @@ void GuiApplication::SaveSettingsFromUi() {
       std::clamp(main->get_video_quality_index(), 0, 2);
   video_frame_rate_button_value_ =
       std::clamp(main->get_frame_rate_index(), 0, 1);
+  video_adaptation_policy_button_value_ =
+      std::clamp(main->get_adaptation_policy_index(), 0, 2);
   video_encode_format_button_value_ = std::clamp(main->get_codec_index(), 0, 1);
   enable_hardware_video_codec_ = main->get_hardware_codec_enabled();
   enable_turn_ = main->get_turn_enabled();
@@ -2920,6 +2924,9 @@ void GuiApplication::SaveSettingsFromUi() {
       static_cast<ConfigCenter::VIDEO_QUALITY>(video_quality_button_value_));
   config_center_->SetVideoFrameRate(static_cast<ConfigCenter::VIDEO_FRAME_RATE>(
       video_frame_rate_button_value_));
+  config_center_->SetVideoAdaptationPolicy(
+      static_cast<ConfigCenter::VIDEO_ADAPTATION_POLICY>(
+          video_adaptation_policy_button_value_));
   config_center_->SetVideoEncodeFormat(
       static_cast<ConfigCenter::VIDEO_ENCODE_FORMAT>(
           video_encode_format_button_value_));
@@ -2951,6 +2958,8 @@ void GuiApplication::SaveSettingsFromUi() {
   language_button_value_last_ = language_button_value_;
   video_quality_button_value_last_ = video_quality_button_value_;
   video_frame_rate_button_value_last_ = video_frame_rate_button_value_;
+  video_adaptation_policy_button_value_last_ =
+      video_adaptation_policy_button_value_;
   video_encode_format_button_value_last_ = video_encode_format_button_value_;
   enable_hardware_video_codec_last_ = enable_hardware_video_codec_;
   enable_turn_last_ = enable_turn_;

@@ -120,9 +120,15 @@ struct TranslationRow {
     u8"стола")                                                                 \
   X(settings, u8"设置", "Settings", u8"Настройки")                             \
   X(language, u8"语言:", "Language:", u8"Язык:")                               \
-  X(video_quality, u8"视频质量:", "Video Quality:", u8"Качество видео:")       \
+  X(video_quality, u8"画面质量:", "Video Quality:", u8"Качество видео:")       \
   X(video_frame_rate, u8"画面采集帧率:",                                       \
     "Video Capture Frame Rate:", u8"Частота захвата видео:")                   \
+  X(video_adaptation_policy, u8"画面偏好:", "Video Preference:",              \
+    u8"Режим видео:")                                                           \
+  X(video_priority_frame_rate, u8"帧率优先", "Frame Rate",                   \
+    u8"Частота кадров")                                                         \
+  X(video_priority_quality, u8"画质优先", "Quality", u8"Качество")          \
+  X(video_priority_balanced, u8"平衡", "Balanced", u8"Баланс")              \
   X(video_quality_high, u8"高", "High", u8"Высокое")                           \
   X(video_quality_medium, u8"中", "Medium", u8"Среднее")                       \
   X(video_quality_low, u8"低", "Low", u8"Низкое")                              \

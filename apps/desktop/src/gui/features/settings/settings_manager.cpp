@@ -301,6 +301,8 @@ int SettingsManager::Load() {
       static_cast<int>(owner_.config_center_->GetVideoQuality());
   owner_.video_frame_rate_button_value_ =
       static_cast<int>(owner_.config_center_->GetVideoFrameRate());
+  owner_.video_adaptation_policy_button_value_ =
+      static_cast<int>(owner_.config_center_->GetVideoAdaptationPolicy());
   owner_.video_encode_format_button_value_ =
       static_cast<int>(owner_.config_center_->GetVideoEncodeFormat());
   owner_.enable_hardware_video_codec_ =
@@ -324,6 +326,10 @@ int SettingsManager::Load() {
 
   owner_.language_button_value_last_ = owner_.language_button_value_;
   owner_.video_quality_button_value_last_ = owner_.video_quality_button_value_;
+  owner_.video_frame_rate_button_value_last_ =
+      owner_.video_frame_rate_button_value_;
+  owner_.video_adaptation_policy_button_value_last_ =
+      owner_.video_adaptation_policy_button_value_;
   owner_.video_encode_format_button_value_last_ =
       owner_.video_encode_format_button_value_;
   owner_.enable_hardware_video_codec_last_ =

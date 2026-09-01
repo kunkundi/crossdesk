@@ -18,6 +18,11 @@ class ConfigCenter {
   enum class LANGUAGE { CHINESE = 0, ENGLISH = 1, RUSSIAN = 2 };
   enum class VIDEO_QUALITY { LOW = 0, MEDIUM = 1, HIGH = 2 };
   enum class VIDEO_FRAME_RATE { FPS_30 = 0, FPS_60 = 1 };
+  enum class VIDEO_ADAPTATION_POLICY {
+    FRAME_RATE_PRIORITY = 0,
+    QUALITY_PRIORITY = 1,
+    BALANCED = 2
+  };
   enum class VIDEO_ENCODE_FORMAT { H264 = 0, AV1 = 1 };
   enum class TURN_MODE {
     DISABLED = 0,
@@ -34,6 +39,7 @@ class ConfigCenter {
   int SetLanguage(LANGUAGE language);
   int SetVideoQuality(VIDEO_QUALITY video_quality);
   int SetVideoFrameRate(VIDEO_FRAME_RATE video_frame_rate);
+  int SetVideoAdaptationPolicy(VIDEO_ADAPTATION_POLICY policy);
   int SetVideoEncodeFormat(VIDEO_ENCODE_FORMAT video_encode_format);
   int SetHardwareVideoCodec(bool hardware_video_codec);
   int SetTurnMode(TURN_MODE turn_mode);
@@ -53,6 +59,7 @@ class ConfigCenter {
   LANGUAGE GetLanguage() const;
   VIDEO_QUALITY GetVideoQuality() const;
   VIDEO_FRAME_RATE GetVideoFrameRate() const;
+  VIDEO_ADAPTATION_POLICY GetVideoAdaptationPolicy() const;
   VIDEO_ENCODE_FORMAT GetVideoEncodeFormat() const;
   bool IsHardwareVideoCodec() const;
   TURN_MODE GetTurnMode() const;
@@ -81,6 +88,8 @@ class ConfigCenter {
   LANGUAGE language_ = LANGUAGE::CHINESE;
   VIDEO_QUALITY video_quality_ = VIDEO_QUALITY::HIGH;
   VIDEO_FRAME_RATE video_frame_rate_ = VIDEO_FRAME_RATE::FPS_60;
+  VIDEO_ADAPTATION_POLICY video_adaptation_policy_ =
+      VIDEO_ADAPTATION_POLICY::QUALITY_PRIORITY;
   VIDEO_ENCODE_FORMAT video_encode_format_ = VIDEO_ENCODE_FORMAT::H264;
   bool hardware_video_codec_ = false;
   TURN_MODE turn_mode_ = TURN_MODE::AUTO_UDP_TCP;

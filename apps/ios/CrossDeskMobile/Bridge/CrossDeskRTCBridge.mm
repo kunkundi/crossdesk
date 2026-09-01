@@ -72,6 +72,8 @@ struct RTCState {
   int turn_port = 0;
   bool enable_srtp = false;
   bool hardware_acceleration = true;
+  VideoDegradationPreference video_adaptation_policy =
+      VideoDegradationPreference::MaintainResolution;
   bool identity_ready = false;
   bool identity_recovery_attempted = false;
   std::string identity_with_password;
@@ -334,8 +336,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   params.video_content_type = VideoContentType::ScreenContent;
   params.video_quality = VideoQuality::QualityHigh;
   params.video_frame_rate = 60;
-  params.video_degradation_preference =
-      VideoDegradationPreference::MaintainResolution;
+  params.video_degradation_preference = state.video_adaptation_policy;
   params.on_receive_video_buffer = nullptr;
   params.on_receive_audio_buffer = OnAudioBuffer;
   params.on_receive_data_buffer = OnDataBuffer;
@@ -493,6 +494,26 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
 - (void)setHardwareAccelerationEnabled:(BOOL)enabled {
   dispatch_async(_rtcQueue, ^{
     self->_state->hardware_acceleration = enabled;
+  });
+}
+
+- (void)setVideoAdaptationPolicy:(CrossDeskVideoAdaptationPolicy)policy {
+  dispatch_async(_rtcQueue, ^{
+    switch (policy) {
+      case CrossDeskVideoAdaptationPolicyFrameRatePriority:
+        self->_state->video_adaptation_policy =
+            VideoDegradationPreference::MaintainFrameRate;
+        break;
+      case CrossDeskVideoAdaptationPolicyBalanced:
+        self->_state->video_adaptation_policy =
+            VideoDegradationPreference::Balanced;
+        break;
+      case CrossDeskVideoAdaptationPolicyQualityPriority:
+      default:
+        self->_state->video_adaptation_policy =
+            VideoDegradationPreference::MaintainResolution;
+        break;
+    }
   });
 }
 

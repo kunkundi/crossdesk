@@ -79,6 +79,55 @@ enum VideoCodecMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum VideoAdaptationPolicy: String, CaseIterable, Identifiable {
+    case frameRatePriority
+    case qualityPriority
+    case balanced
+
+    private static let defaultsKey = "crossdesk.mobile.video-adaptation-policy"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .frameRatePriority: return "帧率优先"
+        case .qualityPriority: return "画质优先"
+        case .balanced: return "平衡"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .frameRatePriority:
+            return "优先保持画面流畅，带宽或编码压力较大时会更积极地降低分辨率。"
+        case .qualityPriority:
+            return "始终保持较高分辨率，带宽不足时通过降低帧率来保证画面清晰度。"
+        case .balanced:
+            return "兼顾清晰度和流畅度，只在持续压力下逐步降低分辨率。"
+        }
+    }
+
+    var bridgeValue: CrossDeskVideoAdaptationPolicy {
+        switch self {
+        case .frameRatePriority: return .frameRatePriority
+        case .qualityPriority: return .qualityPriority
+        case .balanced: return .balanced
+        }
+    }
+
+    static var saved: VideoAdaptationPolicy {
+        guard let rawValue = UserDefaults.standard.string(forKey: defaultsKey),
+              let policy = VideoAdaptationPolicy(rawValue: rawValue) else {
+            return .qualityPriority
+        }
+        return policy
+    }
+
+    func save() {
+        UserDefaults.standard.set(rawValue, forKey: Self.defaultsKey)
+    }
+}
+
 private struct RemoteVideoFrame {
     let pixelBuffer: CVPixelBuffer
     let encodedSize: CGSize
@@ -317,6 +366,9 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     @Published var videoCodecMode = VideoCodecMode.saved {
         didSet { videoCodecMode.save() }
     }
+    @Published var videoAdaptationPolicy = VideoAdaptationPolicy.saved {
+        didSet { videoAdaptationPolicy.save() }
+    }
     @Published var remoteID = ""
     @Published var password = ""
     @Published private(set) var signalStatus = "正在连接信令服务"
@@ -381,6 +433,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             return
         }
         bridge.setHardwareAccelerationEnabled(videoCodecMode == .hardware)
+        bridge.setVideoAdaptationPolicy(videoAdaptationPolicy.bridgeValue)
         bridge.configure(withSignalHost: signalHost,
                          signalPort: signal,
                          turnPort: turn,

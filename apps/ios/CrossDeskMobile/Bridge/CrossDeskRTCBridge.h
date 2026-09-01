@@ -35,6 +35,12 @@ typedef NS_ENUM(NSInteger, CrossDeskPointerAction) {
   CrossDeskPointerActionMiddleUp,
 };
 
+typedef NS_ENUM(NSInteger, CrossDeskVideoAdaptationPolicy) {
+  CrossDeskVideoAdaptationPolicyFrameRatePriority = 0,
+  CrossDeskVideoAdaptationPolicyQualityPriority,
+  CrossDeskVideoAdaptationPolicyBalanced,
+};
+
 @class CrossDeskRTCBridge;
 
 @protocol CrossDeskRTCBridgeDelegate <NSObject>
@@ -96,6 +102,7 @@ typedef NS_ENUM(NSInteger, CrossDeskPointerAction) {
                        turnPort:(NSInteger)turnPort
                      enableSRTP:(BOOL)enableSRTP;
 - (void)setHardwareAccelerationEnabled:(BOOL)enabled;
+- (void)setVideoAdaptationPolicy:(CrossDeskVideoAdaptationPolicy)policy;
 - (void)requestPresenceForRemoteIDs:(NSArray<NSString *> *)remoteIDs
     NS_SWIFT_NAME(requestPresence(remoteIDs:));
 

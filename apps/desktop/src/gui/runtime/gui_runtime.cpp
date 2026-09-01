@@ -158,8 +158,21 @@ int GuiRuntime::CreateConnectionPeer() {
               ConfigCenter::VIDEO_FRAME_RATE::FPS_30
           ? 30
           : 60;
-  params_.video_degradation_preference =
-      VideoDegradationPreference::MaintainResolution;
+  switch (config_center_->GetVideoAdaptationPolicy()) {
+    case ConfigCenter::VIDEO_ADAPTATION_POLICY::FRAME_RATE_PRIORITY:
+      params_.video_degradation_preference =
+          VideoDegradationPreference::MaintainFrameRate;
+      break;
+    case ConfigCenter::VIDEO_ADAPTATION_POLICY::BALANCED:
+      params_.video_degradation_preference =
+          VideoDegradationPreference::Balanced;
+      break;
+    case ConfigCenter::VIDEO_ADAPTATION_POLICY::QUALITY_PRIORITY:
+    default:
+      params_.video_degradation_preference =
+          VideoDegradationPreference::MaintainResolution;
+      break;
+  }
   params_.on_receive_video_buffer = nullptr;
   params_.on_receive_audio_buffer = PeerEventHandler::OnReceiveAudioBuffer;
   params_.on_receive_data_buffer = PeerEventHandler::OnReceiveDataBuffer;

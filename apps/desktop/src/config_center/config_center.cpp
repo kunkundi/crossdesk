@@ -12,6 +12,12 @@ bool IsValidTurnModeValue(long value) {
          value <= static_cast<long>(ConfigCenter::TURN_MODE::FORCE_TCP);
 }
 
+bool IsValidVideoAdaptationPolicyValue(long value) {
+  using Policy = ConfigCenter::VIDEO_ADAPTATION_POLICY;
+  return value >= static_cast<long>(Policy::FRAME_RATE_PRIORITY) &&
+         value <= static_cast<long>(Policy::BALANCED);
+}
+
 }  // namespace
 
 ConfigCenter::ConfigCenter(const std::string& config_path)
@@ -51,6 +57,18 @@ int ConfigCenter::Load() {
 
   video_frame_rate_ = static_cast<VIDEO_FRAME_RATE>(ini_.GetLongValue(
       section_, "video_frame_rate", static_cast<long>(video_frame_rate_)));
+
+  const long video_adaptation_policy_value = ini_.GetLongValue(
+      section_, "video_adaptation_policy",
+      static_cast<long>(video_adaptation_policy_));
+  if (IsValidVideoAdaptationPolicyValue(video_adaptation_policy_value)) {
+    video_adaptation_policy_ =
+        static_cast<VIDEO_ADAPTATION_POLICY>(video_adaptation_policy_value);
+  } else {
+    LOG_WARN("Invalid video adaptation policy [{}], using quality priority",
+             video_adaptation_policy_value);
+    video_adaptation_policy_ = VIDEO_ADAPTATION_POLICY::QUALITY_PRIORITY;
+  }
 
   video_encode_format_ = static_cast<VIDEO_ENCODE_FORMAT>(
       ini_.GetLongValue(section_, "video_encode_format",
@@ -137,6 +155,8 @@ int ConfigCenter::Save() {
                     static_cast<long>(video_quality_));
   ini_.SetLongValue(section_, "video_frame_rate",
                     static_cast<long>(video_frame_rate_));
+  ini_.SetLongValue(section_, "video_adaptation_policy",
+                    static_cast<long>(video_adaptation_policy_));
   ini_.SetLongValue(section_, "video_encode_format",
                     static_cast<long>(video_encode_format_));
   ini_.SetBoolValue(section_, "hardware_video_codec", hardware_video_codec_);
@@ -198,6 +218,18 @@ int ConfigCenter::SetVideoFrameRate(VIDEO_FRAME_RATE video_frame_rate) {
   video_frame_rate_ = video_frame_rate;
   ini_.SetLongValue(section_, "video_frame_rate",
                     static_cast<long>(video_frame_rate_));
+  SI_Error rc = ini_.SaveFile(config_path_.c_str());
+  if (rc < 0) {
+    return -1;
+  }
+  return 0;
+}
+
+int ConfigCenter::SetVideoAdaptationPolicy(
+    VIDEO_ADAPTATION_POLICY policy) {
+  video_adaptation_policy_ = policy;
+  ini_.SetLongValue(section_, "video_adaptation_policy",
+                    static_cast<long>(video_adaptation_policy_));
   SI_Error rc = ini_.SaveFile(config_path_.c_str());
   if (rc < 0) {
     return -1;
@@ -393,6 +425,11 @@ ConfigCenter::VIDEO_QUALITY ConfigCenter::GetVideoQuality() const {
 
 ConfigCenter::VIDEO_FRAME_RATE ConfigCenter::GetVideoFrameRate() const {
   return video_frame_rate_;
+}
+
+ConfigCenter::VIDEO_ADAPTATION_POLICY
+ConfigCenter::GetVideoAdaptationPolicy() const {
+  return video_adaptation_policy_;
 }
 
 ConfigCenter::VIDEO_ENCODE_FORMAT ConfigCenter::GetVideoEncodeFormat() const {
