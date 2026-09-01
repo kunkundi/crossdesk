@@ -142,7 +142,9 @@ jobs:
         env:
           XMAKE_GLOBALDIR: /data
         run: |
-          xmake b -vy --root repository_structure_test crossdesk_wire_test keyboard_state_wire_test
+          xmake b -vy --root repository_structure_test
+          xmake b -vy --root crossdesk_wire_test
+          xmake b -vy --root keyboard_state_wire_test
           xmake run --root repository_structure_test
           xmake run --root crossdesk_wire_test
           xmake run --root keyboard_state_wire_test
