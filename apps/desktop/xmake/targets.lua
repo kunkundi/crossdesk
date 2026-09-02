@@ -106,6 +106,18 @@ function setup_targets()
         set_default(false)
         add_files("apps/desktop/tests/video_callback_lifetime_test.cpp")
 
+    target("video_receive_scheduler_test")
+        set_kind("binary")
+        set_default(false)
+        add_deps("minirtc")
+        add_files("apps/desktop/tests/video_receive_scheduler_test.cpp")
+
+    target("video_rtp_timestamp_test")
+        set_kind("binary")
+        set_default(false)
+        add_deps("minirtc")
+        add_files("apps/desktop/tests/video_rtp_timestamp_test.cpp")
+
     target("windows_manifest_resource_test")
         set_kind("binary")
         set_default(false)

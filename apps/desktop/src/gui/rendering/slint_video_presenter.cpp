@@ -119,9 +119,21 @@ struct SlintVideoPresenter::Impl {
             return;
           }
 
-          std::lock_guard lock(gl_mutex);
           auto* opengl_renderer =
               dynamic_cast<OpenGlVideoRenderer*>(&renderer);
+          if (state == slint::RenderingState::AfterRendering && stream &&
+              opengl_renderer &&
+              (*stream)->get_native_video_enabled() &&
+              opengl_renderer->ShouldContinueRendering()) {
+            // Queue the next frame directly from the display callback. A
+            // 16/17 ms polling timer can drift across vsync and make Windows
+            // coalesce every second request, effectively capping video near
+            // 30 fps even when decode and submission stay near 60 fps.
+            (*stream)->window().request_redraw();
+            return;
+          }
+
+          std::lock_guard lock(gl_mutex);
           if (state == slint::RenderingState::RenderingSetup) {
             GLuint texture = 0;
             glGenTextures(1, &texture);

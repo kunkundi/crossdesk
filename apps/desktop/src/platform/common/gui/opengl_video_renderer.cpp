@@ -19,6 +19,8 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
+#include <climits>
 #include <cstring>
 #include <limits>
 #include <mutex>
@@ -26,11 +28,88 @@
 #include <utility>
 
 #include "rd_log.h"
+#if defined(_WIN32) && USE_CUDA
+#include "nvcodec_api.h"
+#endif
 
 namespace crossdesk {
 namespace {
 
 constexpr size_t kFrameSlotCount = 3;
+constexpr size_t kMaxPendingFrames = 2;
+constexpr auto kActiveRenderWindow = std::chrono::milliseconds(250);
+
+#if defined(_WIN32)
+class WindowsNativeFrameRef {
+public:
+  WindowsNativeFrameRef() = default;
+
+  explicit WindowsNativeFrameRef(const XWindowsVideoFrame *frame)
+      : frame_(frame) {
+    if (frame_ && frame_->owner && frame_->retain) {
+      frame_->retain(frame_->owner);
+    } else {
+      frame_ = nullptr;
+    }
+  }
+
+  WindowsNativeFrameRef(const WindowsNativeFrameRef &other)
+      : WindowsNativeFrameRef(other.frame_) {}
+
+  WindowsNativeFrameRef(WindowsNativeFrameRef &&other) noexcept
+      : frame_(std::exchange(other.frame_, nullptr)) {}
+
+  WindowsNativeFrameRef &operator=(WindowsNativeFrameRef other) noexcept {
+    Swap(other);
+    return *this;
+  }
+
+  ~WindowsNativeFrameRef() { Reset(); }
+
+  void Reset() {
+    if (frame_ && frame_->owner && frame_->release) {
+      frame_->release(frame_->owner);
+    }
+    frame_ = nullptr;
+  }
+
+  void Swap(WindowsNativeFrameRef &other) noexcept {
+    std::swap(frame_, other.frame_);
+  }
+
+  const XWindowsVideoFrame *Get() const { return frame_; }
+  explicit operator bool() const { return frame_ != nullptr; }
+
+private:
+  const XWindowsVideoFrame *frame_ = nullptr;
+};
+
+const XWindowsVideoFrame *GetWindowsNativeFrame(const XVideoFrame &frame) {
+  if (frame.native_handle_type != XVideoFrameNativeHandleWindowsNv12 ||
+      !frame.native_handle) {
+    return nullptr;
+  }
+  const auto *native =
+      static_cast<const XWindowsVideoFrame *>(frame.native_handle);
+  if (native->struct_size < static_cast<uint32_t>(sizeof(XWindowsVideoFrame)) ||
+      !native->owner || !native->retain || !native->release ||
+      !native->copy_to_cpu || native->width == 0 || native->height == 0 ||
+      (native->width & 1U) != 0 || (native->height & 1U) != 0 ||
+      native->y_stride < native->width || native->uv_stride < native->width) {
+    return nullptr;
+  }
+  if (native->memory_type == XWindowsVideoFrameMemoryCpu) {
+    return native->y_plane && native->uv_plane ? native : nullptr;
+  }
+  if (native->memory_type == XWindowsVideoFrameMemoryCuda) {
+    return native->y_device_pointer != 0 && native->uv_device_pointer != 0 &&
+                   native->device_context
+               ? native
+               : nullptr;
+  }
+  return nullptr;
+}
+#endif
 
 enum class SlotUse {
   available,
@@ -40,6 +119,10 @@ enum class SlotUse {
 
 struct FrameSlot {
   std::vector<unsigned char> bytes;
+#if defined(_WIN32)
+  WindowsNativeFrameRef native_frame;
+#endif
+  std::chrono::steady_clock::time_point submitted_at;
   int width = 0;
   int height = 0;
   std::string remote_id;
@@ -54,6 +137,76 @@ struct SharedFrameState {
   std::string selected_stream;
   uint64_t next_sequence = 1;
 };
+
+FrameSlot *SelectSubmissionSlot(SharedFrameState &frames,
+                                std::string_view remote_id,
+                                bool replace_pending,
+                                VideoRenderer::SubmitResult *result) {
+  if (frames.selected_stream != remote_id) {
+    *result = VideoRenderer::SubmitResult::not_selected;
+    return nullptr;
+  }
+
+  FrameSlot *target = nullptr;
+  if (replace_pending) {
+    size_t pending_count = 0;
+    FrameSlot *oldest_pending = nullptr;
+    for (auto &slot : frames.slots) {
+      if (slot.use == SlotUse::pending && slot.remote_id == remote_id) {
+        ++pending_count;
+        if (!oldest_pending || slot.sequence < oldest_pending->sequence) {
+          oldest_pending = &slot;
+        }
+      }
+    }
+    // Keep a two-frame jitter queue. A second frame that arrives before the
+    // next display callback is preserved instead of replacing the first one.
+    // Once the queue is full, replace its oldest frame to keep latency bounded.
+    if (pending_count >= kMaxPendingFrames) {
+      target = oldest_pending;
+    }
+  } else {
+    for (const auto &slot : frames.slots) {
+      if (slot.valid && slot.remote_id == remote_id &&
+          (slot.use == SlotUse::pending || slot.use == SlotUse::uploading)) {
+        *result = VideoRenderer::SubmitResult::dropped;
+        return nullptr;
+      }
+    }
+  }
+  if (!target) {
+    uint64_t oldest_sequence = std::numeric_limits<uint64_t>::max();
+    for (auto &slot : frames.slots) {
+      if (slot.use != SlotUse::available) {
+        continue;
+      }
+      if (!slot.valid) {
+        target = &slot;
+        break;
+      }
+      if (slot.sequence < oldest_sequence) {
+        oldest_sequence = slot.sequence;
+        target = &slot;
+      }
+    }
+  }
+  if (!target && replace_pending) {
+    // An upload can temporarily own one slot. If no available slot remains,
+    // prefer replacing the oldest queued frame over blocking the decode thread.
+    for (auto &slot : frames.slots) {
+      if (slot.use == SlotUse::pending && slot.remote_id == remote_id &&
+          (!target || slot.sequence < target->sequence)) {
+        target = &slot;
+      }
+    }
+  }
+  if (!target) {
+    *result = VideoRenderer::SubmitResult::dropped;
+    return nullptr;
+  }
+  *result = VideoRenderer::SubmitResult::submitted;
+  return target;
+}
 
 template <typename T> bool LoadOpenGlFunction(T *function, const char *name) {
 #if defined(_WIN32)
@@ -248,6 +401,388 @@ struct OpenGlVideoRenderer::Impl {
   int texture_height = 0;
   std::string uploaded_stream;
   uint64_t uploaded_sequence = 0;
+  GLuint cuda_upload_buffer = 0;
+  std::atomic<uint64_t> submitted_frame_total{0};
+  std::atomic<uint64_t> presented_frame_total{0};
+  std::atomic<uint64_t> superseded_frame_total{0};
+  std::atomic<uint64_t> dropped_frame_total{0};
+  std::atomic<uint64_t> failed_submit_total{0};
+  std::atomic<uint64_t> render_failed_total{0};
+  std::atomic<uint64_t> not_selected_total{0};
+  std::atomic<int64_t> last_submit_time_ns{0};
+  uint64_t render_callback_total = 0;
+  uint64_t render_time_total_us = 0;
+  uint64_t upload_sample_total = 0;
+  uint64_t upload_time_total_us = 0;
+  uint64_t queue_wait_sample_total = 0;
+  uint64_t queue_wait_time_total_us = 0;
+  uint64_t render_gap_sample_total = 0;
+  uint64_t render_gap_time_total_us = 0;
+  uint64_t render_time_window_max_us = 0;
+  uint64_t upload_time_window_max_us = 0;
+  uint64_t queue_wait_window_max_us = 0;
+  size_t queue_depth_window_max = 0;
+  uint64_t render_gap_window_min_us = std::numeric_limits<uint64_t>::max();
+  uint64_t render_gap_window_max_us = 0;
+  std::chrono::steady_clock::time_point last_render_started;
+  std::chrono::steady_clock::time_point pipeline_window_started;
+  uint64_t pipeline_window_submit_start = 0;
+  uint64_t pipeline_window_present_start = 0;
+  uint64_t pipeline_window_render_start = 0;
+  uint64_t pipeline_window_render_time_start_us = 0;
+  uint64_t pipeline_window_upload_sample_start = 0;
+  uint64_t pipeline_window_upload_time_start_us = 0;
+  uint64_t pipeline_window_queue_wait_sample_start = 0;
+  uint64_t pipeline_window_queue_wait_time_start_us = 0;
+  uint64_t pipeline_window_render_gap_sample_start = 0;
+  uint64_t pipeline_window_render_gap_time_start_us = 0;
+
+  void ResetVideoPipeline() {
+    submitted_frame_total.store(0, std::memory_order_relaxed);
+    presented_frame_total.store(0, std::memory_order_relaxed);
+    superseded_frame_total.store(0, std::memory_order_relaxed);
+    dropped_frame_total.store(0, std::memory_order_relaxed);
+    failed_submit_total.store(0, std::memory_order_relaxed);
+    render_failed_total.store(0, std::memory_order_relaxed);
+    not_selected_total.store(0, std::memory_order_relaxed);
+    last_submit_time_ns.store(0, std::memory_order_relaxed);
+    render_callback_total = 0;
+    render_time_total_us = 0;
+    upload_sample_total = 0;
+    upload_time_total_us = 0;
+    queue_wait_sample_total = 0;
+    queue_wait_time_total_us = 0;
+    render_gap_sample_total = 0;
+    render_gap_time_total_us = 0;
+    render_time_window_max_us = 0;
+    upload_time_window_max_us = 0;
+    queue_wait_window_max_us = 0;
+    queue_depth_window_max = 0;
+    render_gap_window_min_us = std::numeric_limits<uint64_t>::max();
+    render_gap_window_max_us = 0;
+    last_render_started = {};
+    pipeline_window_started = {};
+    pipeline_window_submit_start = 0;
+    pipeline_window_present_start = 0;
+    pipeline_window_render_start = 0;
+    pipeline_window_render_time_start_us = 0;
+    pipeline_window_upload_sample_start = 0;
+    pipeline_window_upload_time_start_us = 0;
+    pipeline_window_queue_wait_sample_start = 0;
+    pipeline_window_queue_wait_time_start_us = 0;
+    pipeline_window_render_gap_sample_start = 0;
+    pipeline_window_render_gap_time_start_us = 0;
+  }
+
+  void RecordRenderStart(std::chrono::steady_clock::time_point now) {
+    if (last_render_started != std::chrono::steady_clock::time_point{}) {
+      const uint64_t gap_us = static_cast<uint64_t>(
+          std::chrono::duration_cast<std::chrono::microseconds>(
+              now - last_render_started)
+              .count());
+      ++render_gap_sample_total;
+      render_gap_time_total_us += gap_us;
+      render_gap_window_min_us = std::min(render_gap_window_min_us, gap_us);
+      render_gap_window_max_us = std::max(render_gap_window_max_us, gap_us);
+    }
+    last_render_started = now;
+  }
+
+  void MaybeLogVideoPipeline(std::string_view remote_id) {
+    const auto now = std::chrono::steady_clock::now();
+    const uint64_t submitted =
+        submitted_frame_total.load(std::memory_order_relaxed);
+    const uint64_t presented =
+        presented_frame_total.load(std::memory_order_relaxed);
+    if (pipeline_window_started == std::chrono::steady_clock::time_point{}) {
+      pipeline_window_started = now;
+      pipeline_window_submit_start = 0;
+      pipeline_window_present_start = 0;
+      return;
+    }
+
+    const auto elapsed_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - pipeline_window_started)
+            .count();
+    if (elapsed_ms < 1000) {
+      return;
+    }
+
+    const uint64_t submit_delta = submitted - pipeline_window_submit_start;
+    const uint64_t present_delta = presented - pipeline_window_present_start;
+    const uint64_t render_delta =
+        render_callback_total - pipeline_window_render_start;
+    const uint64_t render_time_delta_us =
+        render_time_total_us - pipeline_window_render_time_start_us;
+    const uint64_t upload_sample_delta =
+        upload_sample_total - pipeline_window_upload_sample_start;
+    const uint64_t upload_time_delta_us =
+        upload_time_total_us - pipeline_window_upload_time_start_us;
+    const uint64_t queue_wait_sample_delta =
+        queue_wait_sample_total - pipeline_window_queue_wait_sample_start;
+    const uint64_t queue_wait_time_delta_us =
+        queue_wait_time_total_us - pipeline_window_queue_wait_time_start_us;
+    const uint64_t render_gap_sample_delta =
+        render_gap_sample_total - pipeline_window_render_gap_sample_start;
+    const uint64_t render_gap_time_delta_us =
+        render_gap_time_total_us - pipeline_window_render_gap_time_start_us;
+    const uint64_t submit_fps = submit_delta * 1000 / elapsed_ms;
+    const uint64_t present_fps = present_delta * 1000 / elapsed_ms;
+    const uint64_t render_fps = render_delta * 1000 / elapsed_ms;
+    const uint64_t render_avg_us =
+        render_delta > 0 ? render_time_delta_us / render_delta : 0;
+    const uint64_t upload_avg_us = upload_sample_delta > 0
+                                       ? upload_time_delta_us / upload_sample_delta
+                                       : 0;
+    const uint64_t queue_wait_avg_us =
+        queue_wait_sample_delta > 0
+            ? queue_wait_time_delta_us / queue_wait_sample_delta
+            : 0;
+    const uint64_t render_gap_avg_us =
+        render_gap_sample_delta > 0
+            ? render_gap_time_delta_us / render_gap_sample_delta
+            : 0;
+    const uint64_t render_gap_min_us =
+        render_gap_window_min_us == std::numeric_limits<uint64_t>::max()
+            ? 0
+            : render_gap_window_min_us;
+    LOG_INFO("VIDEO_PIPELINE_RENDER stream=[{}] interval_ms={} submit_fps={} "
+             "present_fps={} submit_total={} present_total={} "
+             "superseded_total={} dropped_total={} failed_submit_total={} "
+             "render_failed_total={} not_selected_total={} render_fps={} "
+             "render_avg_us={} render_max_us={} upload_avg_us={} "
+             "upload_max_us={} queue_wait_avg_us={} queue_wait_max_us={} "
+             "queue_depth_max={} render_gap_avg_us={} render_gap_min_us={} "
+             "render_gap_max_us={}",
+             remote_id, elapsed_ms, submit_fps, present_fps, submitted,
+             presented, superseded_frame_total.load(std::memory_order_relaxed),
+             dropped_frame_total.load(std::memory_order_relaxed),
+             failed_submit_total.load(std::memory_order_relaxed),
+             render_failed_total.load(std::memory_order_relaxed),
+             not_selected_total.load(std::memory_order_relaxed), render_fps,
+             render_avg_us, render_time_window_max_us, upload_avg_us,
+             upload_time_window_max_us, queue_wait_avg_us,
+             queue_wait_window_max_us, queue_depth_window_max,
+             render_gap_avg_us, render_gap_min_us, render_gap_window_max_us);
+
+    pipeline_window_started = now;
+    pipeline_window_submit_start = submitted;
+    pipeline_window_present_start = presented;
+    pipeline_window_render_start = render_callback_total;
+    pipeline_window_render_time_start_us = render_time_total_us;
+    pipeline_window_upload_sample_start = upload_sample_total;
+    pipeline_window_upload_time_start_us = upload_time_total_us;
+    pipeline_window_queue_wait_sample_start = queue_wait_sample_total;
+    pipeline_window_queue_wait_time_start_us = queue_wait_time_total_us;
+    pipeline_window_render_gap_sample_start = render_gap_sample_total;
+    pipeline_window_render_gap_time_start_us = render_gap_time_total_us;
+    render_time_window_max_us = 0;
+    upload_time_window_max_us = 0;
+    queue_wait_window_max_us = 0;
+    queue_depth_window_max = 0;
+    render_gap_window_min_us = std::numeric_limits<uint64_t>::max();
+    render_gap_window_max_us = 0;
+  }
+
+  VideoRenderer::SubmitResult
+  RecordSubmitResult(std::string_view remote_id,
+                     VideoRenderer::SubmitResult result,
+                     bool superseded = false) {
+    switch (result) {
+    case VideoRenderer::SubmitResult::submitted:
+      submitted_frame_total.fetch_add(1, std::memory_order_relaxed);
+      last_submit_time_ns.store(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+              std::chrono::steady_clock::now().time_since_epoch())
+              .count(),
+          std::memory_order_release);
+      if (superseded) {
+        superseded_frame_total.fetch_add(1, std::memory_order_relaxed);
+      }
+      break;
+    case VideoRenderer::SubmitResult::dropped:
+      dropped_frame_total.fetch_add(1, std::memory_order_relaxed);
+      break;
+    case VideoRenderer::SubmitResult::failed:
+      failed_submit_total.fetch_add(1, std::memory_order_relaxed);
+      break;
+    case VideoRenderer::SubmitResult::not_selected:
+      not_selected_total.fetch_add(1, std::memory_order_relaxed);
+      break;
+    }
+    return result;
+  }
+
+  void RecordRenderResult(std::string_view remote_id, bool presented_new_frame,
+                          bool failed_new_frame, uint64_t render_time_us,
+                          uint64_t upload_time_us, uint64_t queue_wait_us,
+                          size_t queue_depth, bool sampled_upload) {
+    ++render_callback_total;
+    render_time_total_us += render_time_us;
+    render_time_window_max_us =
+        std::max(render_time_window_max_us, render_time_us);
+    if (sampled_upload) {
+      ++upload_sample_total;
+      upload_time_total_us += upload_time_us;
+      upload_time_window_max_us =
+          std::max(upload_time_window_max_us, upload_time_us);
+      ++queue_wait_sample_total;
+      queue_wait_time_total_us += queue_wait_us;
+      queue_wait_window_max_us =
+          std::max(queue_wait_window_max_us, queue_wait_us);
+      queue_depth_window_max = std::max(queue_depth_window_max, queue_depth);
+    }
+    if (presented_new_frame) {
+      presented_frame_total.fetch_add(1, std::memory_order_relaxed);
+    }
+    if (failed_new_frame) {
+      render_failed_total.fetch_add(1, std::memory_order_relaxed);
+    }
+    MaybeLogVideoPipeline(remote_id);
+  }
+
+#if defined(_WIN32) && USE_CUDA
+  size_t cuda_upload_capacity = 0;
+  CUgraphicsResource cuda_upload_resource = nullptr;
+  CUcontext cuda_context = nullptr;
+  WindowsNativeFrameRef cuda_context_owner;
+  bool cuda_interop_disabled = false;
+  bool cuda_fallback_logged = false;
+  bool cuda_native_logged = false;
+
+  void ReleaseCudaRegistration() {
+    if (cuda_upload_resource && cuda_context &&
+        minirtc::cuCtxPushCurrent_ld(cuda_context) == CUDA_SUCCESS) {
+      const CUresult unregister_result =
+          minirtc::cuGraphicsUnregisterResource_ld(cuda_upload_resource);
+      CUcontext popped_context = nullptr;
+      const CUresult pop_result = minirtc::cuCtxPopCurrent_ld(&popped_context);
+      if (unregister_result != CUDA_SUCCESS || pop_result != CUDA_SUCCESS) {
+        LOG_WARN("CUDA/OpenGL unregister failed, cuda={}, pop={}",
+                 static_cast<int>(unregister_result),
+                 static_cast<int>(pop_result));
+      }
+    }
+    cuda_upload_resource = nullptr;
+    cuda_context = nullptr;
+    cuda_context_owner.Reset();
+  }
+
+  bool EnsureCudaUploadBuffer(const XWindowsVideoFrame &frame) {
+    if (cuda_interop_disabled || !frame.device_context || frame.size == 0 ||
+        minirtc::LoadCudaGraphicsInterop() != 0) {
+      cuda_interop_disabled = true;
+      return false;
+    }
+
+    auto frame_context = static_cast<CUcontext>(frame.device_context);
+    if (cuda_upload_resource && cuda_context != frame_context) {
+      ReleaseCudaRegistration();
+    }
+
+    if (cuda_upload_buffer == 0) {
+      gl.gen_buffers(1, &cuda_upload_buffer);
+    }
+    if (cuda_upload_buffer == 0) {
+      cuda_interop_disabled = true;
+      return false;
+    }
+
+    if (cuda_upload_capacity < frame.size) {
+      ReleaseCudaRegistration();
+      GLint previous_unpack_buffer = 0;
+      glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &previous_unpack_buffer);
+      gl.bind_buffer(GL_PIXEL_UNPACK_BUFFER, cuda_upload_buffer);
+      gl.buffer_data(GL_PIXEL_UNPACK_BUFFER,
+                     static_cast<GLsizeiptr>(frame.size), nullptr,
+                     GL_STREAM_DRAW);
+      gl.bind_buffer(GL_PIXEL_UNPACK_BUFFER,
+                     static_cast<GLuint>(previous_unpack_buffer));
+      if (glGetError() != GL_NO_ERROR) {
+        cuda_interop_disabled = true;
+        return false;
+      }
+      cuda_upload_capacity = frame.size;
+    }
+
+    if (!cuda_upload_resource) {
+      if (minirtc::cuCtxPushCurrent_ld(frame_context) != CUDA_SUCCESS) {
+        return false;
+      }
+      const CUresult register_result = minirtc::cuGraphicsGLRegisterBuffer_ld(
+          &cuda_upload_resource, cuda_upload_buffer,
+          CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD);
+      CUcontext popped_context = nullptr;
+      const CUresult pop_result = minirtc::cuCtxPopCurrent_ld(&popped_context);
+      if (register_result != CUDA_SUCCESS || pop_result != CUDA_SUCCESS) {
+        cuda_upload_resource = nullptr;
+        cuda_interop_disabled = true;
+        LOG_WARN("CUDA/OpenGL buffer registration failed, cuda={}, pop={}",
+                 static_cast<int>(register_result),
+                 static_cast<int>(pop_result));
+        return false;
+      }
+      cuda_context = frame_context;
+    }
+    return true;
+  }
+
+  bool CopyCudaFrameToUploadBuffer(const WindowsNativeFrameRef &native_frame) {
+    const XWindowsVideoFrame *frame = native_frame.Get();
+    if (!frame || !EnsureCudaUploadBuffer(*frame)) {
+      return false;
+    }
+    cuda_context_owner = native_frame;
+
+    if (minirtc::cuCtxPushCurrent_ld(cuda_context) != CUDA_SUCCESS) {
+      return false;
+    }
+
+    CUgraphicsResource resource = cuda_upload_resource;
+    CUresult result = minirtc::cuGraphicsMapResources_ld(1, &resource, nullptr);
+    bool mapped = result == CUDA_SUCCESS;
+    CUdeviceptr destination = 0;
+    size_t mapped_size = 0;
+    if (mapped) {
+      result = minirtc::cuGraphicsResourceGetMappedPointer_ld(
+          &destination, &mapped_size, cuda_upload_resource);
+    }
+    if (result == CUDA_SUCCESS && mapped_size < frame->size) {
+      result = CUDA_ERROR_INVALID_VALUE;
+    }
+    if (result == CUDA_SUCCESS) {
+      CUDA_MEMCPY2D copy{};
+      copy.srcMemoryType = CU_MEMORYTYPE_DEVICE;
+      copy.srcDevice = static_cast<CUdeviceptr>(frame->y_device_pointer);
+      copy.srcPitch = frame->y_stride;
+      copy.dstMemoryType = CU_MEMORYTYPE_DEVICE;
+      copy.dstDevice = destination;
+      copy.dstPitch = frame->width;
+      copy.WidthInBytes = frame->width;
+      copy.Height = frame->height;
+      result = minirtc::cuMemcpy2DAsync_ld(&copy, nullptr);
+      if (result == CUDA_SUCCESS) {
+        copy.srcDevice = static_cast<CUdeviceptr>(frame->uv_device_pointer);
+        copy.srcPitch = frame->uv_stride;
+        copy.dstDevice = destination +
+                         static_cast<CUdeviceptr>(frame->width) * frame->height;
+        copy.Height = frame->height / 2U;
+        result = minirtc::cuMemcpy2DAsync_ld(&copy, nullptr);
+      }
+    }
+    if (mapped) {
+      const CUresult unmap_result =
+          minirtc::cuGraphicsUnmapResources_ld(1, &resource, nullptr);
+      if (result == CUDA_SUCCESS) {
+        result = unmap_result;
+      }
+    }
+    CUcontext popped_context = nullptr;
+    const CUresult pop_result = minirtc::cuCtxPopCurrent_ld(&popped_context);
+    return result == CUDA_SUCCESS && pop_result == CUDA_SUCCESS;
+  }
+#endif
 
   void ResetGlHandles() {
     program = 0;
@@ -269,8 +804,7 @@ struct OpenGlVideoRenderer::Impl {
   }
 };
 
-OpenGlVideoRenderer::OpenGlVideoRenderer()
-    : impl_(std::make_unique<Impl>()) {}
+OpenGlVideoRenderer::OpenGlVideoRenderer() : impl_(std::make_unique<Impl>()) {}
 
 OpenGlVideoRenderer::~OpenGlVideoRenderer() = default;
 
@@ -456,8 +990,7 @@ void main() {
   if (impl_->position_location < 0 || impl_->texcoord_location < 0 ||
       impl_->y_texture_location < 0 || impl_->uv_texture_location < 0 ||
       impl_->target_size_location < 0 || impl_->video_rect_location < 0 ||
-      impl_->corner_radius_location < 0 ||
-      impl_->video_enabled_location < 0) {
+      impl_->corner_radius_location < 0 || impl_->video_enabled_location < 0) {
     LOG_ERROR("OpenGL NV12 program is missing required shader bindings");
     impl_->gl.delete_program(impl_->program);
     impl_->ResetGlHandles();
@@ -524,6 +1057,17 @@ void main() {
 
 void OpenGlVideoRenderer::Teardown() {
   impl_->ready.store(false, std::memory_order_release);
+#if defined(_WIN32) && USE_CUDA
+  impl_->ReleaseCudaRegistration();
+  if (impl_->cuda_upload_buffer != 0 && impl_->gl.delete_buffers) {
+    impl_->gl.delete_buffers(1, &impl_->cuda_upload_buffer);
+  }
+  impl_->cuda_upload_buffer = 0;
+  impl_->cuda_upload_capacity = 0;
+  impl_->cuda_interop_disabled = false;
+  impl_->cuda_fallback_logged = false;
+  impl_->cuda_native_logged = false;
+#endif
   if (impl_->y_texture != 0)
     glDeleteTextures(1, &impl_->y_texture);
   if (impl_->uv_texture != 0)
@@ -534,6 +1078,17 @@ void OpenGlVideoRenderer::Teardown() {
   if (impl_->program != 0 && impl_->gl.delete_program) {
     impl_->gl.delete_program(impl_->program);
   }
+  {
+    std::lock_guard lock(impl_->frames->mutex);
+    for (auto &slot : impl_->frames->slots) {
+      slot.bytes.clear();
+#if defined(_WIN32)
+      slot.native_frame.Reset();
+#endif
+      slot.valid = false;
+      slot.use = SlotUse::available;
+    }
+  }
   impl_->ResetGlHandles();
 }
 
@@ -542,6 +1097,25 @@ bool OpenGlVideoRenderer::IsReady() const {
 }
 
 bool OpenGlVideoRenderer::IsActive() const { return IsReady(); }
+
+bool OpenGlVideoRenderer::ShouldContinueRendering() const {
+  if (!IsReady()) {
+    return false;
+  }
+  const int64_t last_submit_ns =
+      impl_->last_submit_time_ns.load(std::memory_order_acquire);
+  if (last_submit_ns == 0) {
+    return false;
+  }
+  const int64_t now_ns =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now().time_since_epoch())
+          .count();
+  return now_ns - last_submit_ns <=
+         std::chrono::duration_cast<std::chrono::nanoseconds>(
+             kActiveRenderWindow)
+             .count();
+}
 
 bool OpenGlVideoRenderer::SetSelectedStream(std::string remote_id) {
   std::lock_guard lock(impl_->frames->mutex);
@@ -555,6 +1129,7 @@ bool OpenGlVideoRenderer::SetSelectedStream(std::string remote_id) {
       slot.use = SlotUse::available;
     }
   }
+  impl_->ResetVideoPipeline();
   return true;
 }
 
@@ -565,6 +1140,10 @@ void OpenGlVideoRenderer::DiscardStream(std::string_view remote_id) {
       slot.valid = false;
       slot.use = SlotUse::available;
       slot.remote_id.clear();
+      slot.bytes.clear();
+#if defined(_WIN32)
+      slot.native_frame.Reset();
+#endif
     }
   }
   if (impl_->frames->selected_stream == remote_id) {
@@ -573,113 +1152,143 @@ void OpenGlVideoRenderer::DiscardStream(std::string_view remote_id) {
 }
 
 OpenGlVideoRenderer::SubmitResult
-OpenGlVideoRenderer::SubmitNv12(std::string_view remote_id,
-                                       const uint8_t *data, size_t size,
-                                       int width, int height) {
+OpenGlVideoRenderer::SubmitNv12(std::string_view remote_id, const uint8_t *data,
+                                size_t size, int width, int height) {
   return SubmitNv12Internal(remote_id, data, size, width, height, true);
 }
 
 OpenGlVideoRenderer::SubmitResult
 OpenGlVideoRenderer::SubmitCachedNv12(std::string_view remote_id,
-                                             const uint8_t *data, size_t size,
-                                             int width, int height) {
+                                      const uint8_t *data, size_t size,
+                                      int width, int height) {
   return SubmitNv12Internal(remote_id, data, size, width, height, false);
 }
 
-OpenGlVideoRenderer::SubmitResult
-OpenGlVideoRenderer::SubmitNv12Internal(std::string_view remote_id,
-                                               const uint8_t *data, size_t size,
-                                               int width, int height,
-                                               bool replace_pending) {
+OpenGlVideoRenderer::SubmitResult OpenGlVideoRenderer::SubmitNv12Internal(
+    std::string_view remote_id, const uint8_t *data, size_t size, int width,
+    int height, bool replace_pending) {
   if (!IsReady()) {
-    return SubmitResult::failed;
+    return impl_->RecordSubmitResult(remote_id, SubmitResult::failed);
   }
   if (data == nullptr || width <= 0 || height <= 0 || (width & 1) != 0 ||
       (height & 1) != 0) {
-    return SubmitResult::failed;
+    return impl_->RecordSubmitResult(remote_id, SubmitResult::failed);
   }
   const size_t y_size = static_cast<size_t>(width) * height;
   const size_t required_size = y_size + y_size / 2;
   if (size < required_size) {
-    return SubmitResult::failed;
+    return impl_->RecordSubmitResult(remote_id, SubmitResult::failed);
   }
 
   auto &frames = *impl_->frames;
   std::lock_guard lock(frames.mutex);
-  if (frames.selected_stream != remote_id) {
-    return SubmitResult::not_selected;
+  if (!IsReady()) {
+    return impl_->RecordSubmitResult(remote_id, SubmitResult::failed);
   }
-
-  FrameSlot *target = nullptr;
-  if (replace_pending) {
-    for (auto &slot : frames.slots) {
-      if (slot.use == SlotUse::pending) {
-        target = &slot;
-        break;
-      }
-    }
-  } else {
-    for (const auto &slot : frames.slots) {
-      if (slot.valid && slot.remote_id == remote_id &&
-          (slot.use == SlotUse::pending || slot.use == SlotUse::uploading)) {
-        return SubmitResult::dropped;
-      }
-    }
+  SubmitResult selection_result = SubmitResult::failed;
+  FrameSlot *target = SelectSubmissionSlot(frames, remote_id, replace_pending,
+                                           &selection_result);
+  if (!target) {
+    return impl_->RecordSubmitResult(remote_id, selection_result);
   }
-  if (target == nullptr) {
-    uint64_t oldest_sequence = std::numeric_limits<uint64_t>::max();
-    for (auto &slot : frames.slots) {
-      if (slot.use != SlotUse::available) {
-        continue;
-      }
-      if (!slot.valid) {
-        target = &slot;
-        break;
-      }
-      if (slot.sequence < oldest_sequence) {
-        oldest_sequence = slot.sequence;
-        target = &slot;
-      }
-    }
-  }
-  if (target == nullptr) {
-    return SubmitResult::dropped;
-  }
+  const bool superseded = target->use == SlotUse::pending;
 
   target->bytes.resize(required_size);
   std::memcpy(target->bytes.data(), data, required_size);
+#if defined(_WIN32)
+  target->native_frame.Reset();
+#endif
   target->width = width;
   target->height = height;
   target->remote_id.assign(remote_id);
   target->sequence = frames.next_sequence++;
+  target->submitted_at = std::chrono::steady_clock::now();
   target->use = SlotUse::pending;
   target->valid = true;
-  return SubmitResult::submitted;
+  return impl_->RecordSubmitResult(remote_id, SubmitResult::submitted,
+                                   superseded);
+}
+
+OpenGlVideoRenderer::SubmitResult
+OpenGlVideoRenderer::SubmitNativeFrame(std::string_view remote_id,
+                                       const XVideoFrame &frame) {
+#if defined(_WIN32)
+  if (!IsReady()) {
+    return impl_->RecordSubmitResult(remote_id, SubmitResult::failed);
+  }
+  const XWindowsVideoFrame *native = GetWindowsNativeFrame(frame);
+  if (!native || native->width > static_cast<uint32_t>(INT_MAX) ||
+      native->height > static_cast<uint32_t>(INT_MAX)) {
+    return impl_->RecordSubmitResult(remote_id, SubmitResult::failed);
+  }
+
+  auto &frames = *impl_->frames;
+  std::lock_guard lock(frames.mutex);
+  if (!IsReady()) {
+    return impl_->RecordSubmitResult(remote_id, SubmitResult::failed);
+  }
+  SubmitResult selection_result = SubmitResult::failed;
+  FrameSlot *target =
+      SelectSubmissionSlot(frames, remote_id, true, &selection_result);
+  if (!target) {
+    return impl_->RecordSubmitResult(remote_id, selection_result);
+  }
+  const bool superseded = target->use == SlotUse::pending;
+
+  WindowsNativeFrameRef retained(native);
+  if (!retained) {
+    return impl_->RecordSubmitResult(remote_id, SubmitResult::failed);
+  }
+  target->bytes.clear();
+  target->native_frame = std::move(retained);
+  target->width = static_cast<int>(native->width);
+  target->height = static_cast<int>(native->height);
+  target->remote_id.assign(remote_id);
+  target->sequence = frames.next_sequence++;
+  target->submitted_at = std::chrono::steady_clock::now();
+  target->use = SlotUse::pending;
+  target->valid = true;
+  return impl_->RecordSubmitResult(remote_id, SubmitResult::submitted,
+                                   superseded);
+#else
+  (void)remote_id;
+  (void)frame;
+  return SubmitResult::failed;
+#endif
 }
 
 OpenGlVideoRenderer::RenderOutcome
-OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
-                                  int target_width, int target_height,
-                                  int top_inset_pixels,
+OpenGlVideoRenderer::RenderLatest(std::string_view remote_id, int target_width,
+                                  int target_height, int top_inset_pixels,
                                   int corner_radius_pixels) {
   if (!IsReady() || target_width <= 0 || target_height <= 0) {
     return {RenderResult::failed};
   }
+  const auto render_started = std::chrono::steady_clock::now();
+  impl_->RecordRenderStart(render_started);
 
   size_t slot_index = kFrameSlotCount;
   uint64_t sequence = 0;
+  uint64_t queue_wait_us = 0;
+  size_t queue_depth = 0;
   int source_width = 0;
   int source_height = 0;
-  const unsigned char *frame_data = nullptr;
+  const unsigned char *y_data = nullptr;
+  const unsigned char *uv_data = nullptr;
+#if defined(_WIN32)
+  WindowsNativeFrameRef active_native_frame;
+#endif
   {
     std::lock_guard lock(impl_->frames->mutex);
     for (size_t index = 0; index < impl_->frames->slots.size(); ++index) {
       const auto &slot = impl_->frames->slots[index];
       if (slot.valid && slot.use == SlotUse::pending &&
-          slot.remote_id == remote_id &&
-          (slot_index == kFrameSlotCount || slot.sequence > sequence)) {
-        slot_index = index;
-        sequence = slot.sequence;
+          slot.remote_id == remote_id) {
+        ++queue_depth;
+        if (slot_index == kFrameSlotCount || slot.sequence < sequence) {
+          slot_index = index;
+          sequence = slot.sequence;
+        }
       }
     }
     if (slot_index != kFrameSlotCount) {
@@ -687,13 +1296,20 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
       selected.use = SlotUse::uploading;
       source_width = selected.width;
       source_height = selected.height;
-      frame_data = selected.bytes.data();
-      for (size_t index = 0; index < impl_->frames->slots.size(); ++index) {
-        auto &slot = impl_->frames->slots[index];
-        if (index != slot_index && slot.use == SlotUse::pending &&
-            slot.remote_id == remote_id) {
-          slot.use = SlotUse::available;
-        }
+      if (selected.submitted_at !=
+          std::chrono::steady_clock::time_point{}) {
+        queue_wait_us = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - selected.submitted_at)
+                .count());
+      }
+#if defined(_WIN32)
+      active_native_frame = selected.native_frame;
+#endif
+      if (!selected.bytes.empty()) {
+        const size_t y_size = static_cast<size_t>(source_width) * source_height;
+        y_data = selected.bytes.data();
+        uv_data = selected.bytes.data() + y_size;
       }
     }
   }
@@ -701,6 +1317,7 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
   GLint previous_program = 0;
   GLint previous_active_texture = GL_TEXTURE0;
   GLint previous_array_buffer = 0;
+  GLint previous_unpack_buffer = 0;
   GLint previous_unpack_alignment = 4;
   GLint previous_viewport[4] = {};
   GLint previous_scissor_box[4] = {};
@@ -709,6 +1326,7 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
   glGetIntegerv(GL_CURRENT_PROGRAM, &previous_program);
   glGetIntegerv(GL_ACTIVE_TEXTURE, &previous_active_texture);
   glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previous_array_buffer);
+  glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &previous_unpack_buffer);
   glGetIntegerv(GL_UNPACK_ALIGNMENT, &previous_unpack_alignment);
   glGetIntegerv(GL_VIEWPORT, previous_viewport);
   glGetIntegerv(GL_SCISSOR_BOX, previous_scissor_box);
@@ -746,35 +1364,93 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
   glClear(GL_COLOR_BUFFER_BIT);
 
   bool upload_succeeded = true;
+  uint64_t upload_time_us = 0;
   if (slot_index != kFrameSlotCount) {
+    const auto upload_started = std::chrono::steady_clock::now();
     while (glGetError() != GL_NO_ERROR) {
     }
     const size_t y_size = static_cast<size_t>(source_width) * source_height;
+    const size_t required_size = y_size + y_size / 2U;
+    bool use_pixel_unpack_buffer = false;
+    std::vector<unsigned char> cpu_fallback;
+#if defined(_WIN32)
+    if (const XWindowsVideoFrame *native = active_native_frame.Get()) {
+      if (native->memory_type == XWindowsVideoFrameMemoryCpu &&
+          native->y_stride == native->width &&
+          native->uv_stride == native->width) {
+        y_data = native->y_plane;
+        uv_data = native->uv_plane;
+      } else if (native->memory_type == XWindowsVideoFrameMemoryCuda) {
+#if USE_CUDA
+        use_pixel_unpack_buffer =
+            impl_->CopyCudaFrameToUploadBuffer(active_native_frame);
+        if (use_pixel_unpack_buffer && !impl_->cuda_native_logged) {
+          LOG_INFO("Windows native NV12 using CUDA/OpenGL device upload");
+          impl_->cuda_native_logged = true;
+        }
+        if (!use_pixel_unpack_buffer && !impl_->cuda_fallback_logged) {
+          LOG_WARN("CUDA/OpenGL native upload unavailable; falling back to "
+                   "CUDA-to-CPU copy");
+          impl_->cuda_fallback_logged = true;
+        }
+#endif
+      }
+
+      if (!use_pixel_unpack_buffer && (!y_data || !uv_data)) {
+        cpu_fallback.resize(required_size);
+        if (native->copy_to_cpu(native->owner, cpu_fallback.data(),
+                                cpu_fallback.size()) == 0) {
+          y_data = cpu_fallback.data();
+          uv_data = cpu_fallback.data() + y_size;
+        } else {
+          upload_succeeded = false;
+          LOG_WARN("Windows native NV12 CPU fallback failed");
+        }
+      }
+    }
+#endif
+    if (!use_pixel_unpack_buffer && (!y_data || !uv_data)) {
+      upload_succeeded = false;
+    }
+
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     impl_->gl.active_texture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, impl_->y_texture);
     impl_->gl.active_texture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, impl_->uv_texture);
-    if (impl_->texture_width != source_width ||
-        impl_->texture_height != source_height) {
+    if (use_pixel_unpack_buffer) {
+      impl_->gl.bind_buffer(GL_PIXEL_UNPACK_BUFFER, impl_->cuda_upload_buffer);
+    }
+    const void *y_pixels =
+        use_pixel_unpack_buffer ? nullptr : static_cast<const void *>(y_data);
+    const void *uv_pixels =
+        use_pixel_unpack_buffer
+            ? reinterpret_cast<const void *>(static_cast<uintptr_t>(y_size))
+            : static_cast<const void *>(uv_data);
+    if (upload_succeeded && (impl_->texture_width != source_width ||
+                             impl_->texture_height != source_height)) {
       impl_->gl.active_texture(GL_TEXTURE0);
       glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, source_width, source_height,
-                   0, GL_LUMINANCE, GL_UNSIGNED_BYTE, frame_data);
+                   0, GL_LUMINANCE, GL_UNSIGNED_BYTE, y_pixels);
       impl_->gl.active_texture(GL_TEXTURE1);
       glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, source_width / 2,
                    source_height / 2, 0, GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE,
-                   frame_data + y_size);
-    } else {
+                   uv_pixels);
+    } else if (upload_succeeded) {
       impl_->gl.active_texture(GL_TEXTURE0);
       glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, source_width, source_height,
-                      GL_LUMINANCE, GL_UNSIGNED_BYTE, frame_data);
+                      GL_LUMINANCE, GL_UNSIGNED_BYTE, y_pixels);
       impl_->gl.active_texture(GL_TEXTURE1);
       glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, source_width / 2,
                       source_height / 2, GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE,
-                      frame_data + y_size);
+                      uv_pixels);
+    }
+    if (use_pixel_unpack_buffer) {
+      impl_->gl.bind_buffer(GL_PIXEL_UNPACK_BUFFER,
+                            static_cast<GLuint>(previous_unpack_buffer));
     }
     const GLenum upload_error = glGetError();
-    upload_succeeded = upload_error == GL_NO_ERROR;
+    upload_succeeded = upload_succeeded && upload_error == GL_NO_ERROR;
     if (upload_succeeded) {
       impl_->texture_width = source_width;
       impl_->texture_height = source_height;
@@ -783,6 +1459,10 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
     } else {
       LOG_WARN("OpenGL NV12 texture upload failed, error={}", upload_error);
     }
+    upload_time_us = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - upload_started)
+            .count());
   }
 
   {
@@ -797,10 +1477,10 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
 
   const int content_y = std::clamp(top_inset_pixels, 0, target_height);
   const int content_height = target_height - content_y;
-  const bool has_video =
-      upload_succeeded && impl_->uploaded_stream == remote_id &&
-      impl_->texture_width > 0 && impl_->texture_height > 0 &&
-      content_height > 0;
+  const bool has_video = upload_succeeded &&
+                         impl_->uploaded_stream == remote_id &&
+                         impl_->texture_width > 0 &&
+                         impl_->texture_height > 0 && content_height > 0;
   int video_x = 0;
   int video_y = content_y;
   int video_width = target_width;
@@ -860,9 +1540,9 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
   glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
   const GLenum draw_error = glGetError();
   RenderOutcome outcome{
-      !upload_succeeded || draw_error != GL_NO_ERROR
-          ? RenderResult::failed
-          : has_video ? RenderResult::rendered : RenderResult::empty,
+      !upload_succeeded || draw_error != GL_NO_ERROR ? RenderResult::failed
+      : has_video                                    ? RenderResult::rendered
+                                                     : RenderResult::empty,
       has_video ? source_width : 0, has_video ? source_height : 0,
       has_video ? sequence : 0};
 
@@ -872,6 +1552,8 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
                       texcoord_state);
   impl_->gl.bind_buffer(GL_ARRAY_BUFFER,
                         static_cast<GLuint>(previous_array_buffer));
+  impl_->gl.bind_buffer(GL_PIXEL_UNPACK_BUFFER,
+                        static_cast<GLuint>(previous_unpack_buffer));
   impl_->gl.active_texture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previous_texture_0));
   impl_->gl.active_texture(GL_TEXTURE1);
@@ -899,30 +1581,62 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
       outcome.result = RenderResult::failed;
     }
   }
+  const bool had_new_frame = slot_index != kFrameSlotCount;
+  const uint64_t render_time_us = static_cast<uint64_t>(
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::steady_clock::now() - render_started)
+          .count());
+  impl_->RecordRenderResult(
+      remote_id, had_new_frame && outcome.result == RenderResult::rendered,
+      had_new_frame && outcome.result == RenderResult::failed, render_time_us,
+      upload_time_us, queue_wait_us, queue_depth, had_new_frame);
   return outcome;
 }
 
-bool OpenGlVideoRenderer::CopyLatestNv12(
-    std::string_view remote_id, std::vector<unsigned char> *output, int *width,
-    int *height) const {
+bool OpenGlVideoRenderer::CopyLatestNv12(std::string_view remote_id,
+                                         std::vector<unsigned char> *output,
+                                         int *width, int *height) const {
   if (!output || !width || !height) {
     return false;
   }
-  std::lock_guard lock(impl_->frames->mutex);
-  const FrameSlot *newest = nullptr;
-  for (const auto &slot : impl_->frames->slots) {
-    if (slot.valid && slot.remote_id == remote_id &&
-        (!newest || slot.sequence > newest->sequence)) {
-      newest = &slot;
+  std::vector<unsigned char> cpu_frame;
+#if defined(_WIN32)
+  WindowsNativeFrameRef native_frame;
+#endif
+  {
+    std::lock_guard lock(impl_->frames->mutex);
+    const FrameSlot *newest = nullptr;
+    for (const auto &slot : impl_->frames->slots) {
+      if (slot.valid && slot.remote_id == remote_id &&
+          (!newest || slot.sequence > newest->sequence)) {
+        newest = &slot;
+      }
     }
+    if (!newest) {
+      return false;
+    }
+    *width = newest->width;
+    *height = newest->height;
+    cpu_frame = newest->bytes;
+#if defined(_WIN32)
+    native_frame = newest->native_frame;
+#endif
   }
-  if (!newest || newest->bytes.empty()) {
-    return false;
+
+  if (!cpu_frame.empty()) {
+    *output = std::move(cpu_frame);
+    return true;
   }
-  *output = newest->bytes;
-  *width = newest->width;
-  *height = newest->height;
-  return true;
+#if defined(_WIN32)
+  if (const XWindowsVideoFrame *native = native_frame.Get()) {
+    const size_t required_size =
+        static_cast<size_t>(native->width) * native->height * 3U / 2U;
+    output->resize(required_size);
+    return native->copy_to_cpu(native->owner, output->data(), output->size()) ==
+           0;
+  }
+#endif
+  return false;
 }
 
 } // namespace crossdesk

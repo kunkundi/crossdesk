@@ -8,6 +8,8 @@
 #include <string_view>
 #include <vector>
 
+#include "minirtc.h"
+
 namespace crossdesk {
 
 // Platform-independent contract for the native stream video renderer.
@@ -56,6 +58,10 @@ public:
   virtual SubmitResult SubmitCachedNv12(std::string_view remote_id,
                                         const uint8_t* data, size_t size,
                                         int width, int height) = 0;
+  virtual SubmitResult SubmitNativeFrame(std::string_view,
+                                         const XVideoFrame&) {
+    return SubmitResult::failed;
+  }
 
   virtual bool CopyLatestNv12(std::string_view remote_id,
                               std::vector<unsigned char>* output, int* width,

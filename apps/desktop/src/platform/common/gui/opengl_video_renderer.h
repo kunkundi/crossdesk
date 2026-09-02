@@ -13,10 +13,11 @@
 namespace crossdesk {
 
 // NV12 underlay for Slint's FemtoVG OpenGL renderer on Windows and Linux.
-// MiniRTC submits tightly packed CPU NV12 frames from its decode callback
-// thread. The Slint UI thread uploads the newest frame as Y and UV textures and
-// performs color conversion and scaling in a fragment shader before Slint
-// draws its overlay.
+// MiniRTC submits either ref-counted Windows native NV12 frames or packed CPU
+// NV12 fallback frames from its decode callback thread. CUDA-backed frames use
+// CUDA/OpenGL interop; CPU-backed frames are retained without an intermediate
+// queue copy. The Slint UI thread updates Y and UV textures and performs color
+// conversion and scaling before Slint draws its overlay.
 class OpenGlVideoRenderer final : public VideoRenderer {
 public:
   OpenGlVideoRenderer();
@@ -32,6 +33,11 @@ public:
   bool IsReady() const override;
   bool IsActive() const override;
 
+  // Keeps Slint's native surface on a display-driven redraw loop while decoded
+  // frames are arriving. This avoids timer/vsync phase drift that otherwise
+  // causes every second redraw request to be coalesced on Windows.
+  bool ShouldContinueRendering() const;
+
   // Only the selected stream is queued for upload. Frames for other tabs are
   // retained by GuiRuntime at a throttled rate for thumbnail/tab restoration.
   bool SetSelectedStream(std::string remote_id) override;
@@ -42,6 +48,8 @@ public:
                           size_t size, int width, int height) override;
   SubmitResult SubmitCachedNv12(std::string_view remote_id, const uint8_t *data,
                                 size_t size, int width, int height) override;
+  SubmitResult SubmitNativeFrame(std::string_view remote_id,
+                                 const XVideoFrame &frame) override;
 
   // Draws below Slint while its OpenGL context is current. All dimensions are
   // physical pixels in the window client area. corner_radius_pixels clips the
