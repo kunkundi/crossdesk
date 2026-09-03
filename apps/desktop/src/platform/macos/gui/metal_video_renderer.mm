@@ -1,6 +1,7 @@
 #include "platform/macos/gui/metal_video_renderer.h"
 
 #import <AppKit/AppKit.h>
+#import <CoreVideo/CVMetalTextureCache.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 
@@ -194,6 +195,74 @@ namespace {
 
 constexpr size_t kFrameSlotCount = 3;
 
+class NativeVideoFrameRef {
+ public:
+  NativeVideoFrameRef() = default;
+
+  explicit NativeVideoFrameRef(const XNativeVideoFrame* frame) {
+    if (frame && frame->owner && frame->retain && frame->release) {
+      frame_ = *frame;
+      frame_.struct_size = sizeof(frame_);
+      frame_.retain(frame_.owner);
+      valid_ = true;
+    }
+  }
+
+  NativeVideoFrameRef(const NativeVideoFrameRef& other)
+      : NativeVideoFrameRef(other.Get()) {}
+
+  NativeVideoFrameRef(NativeVideoFrameRef&& other) noexcept
+      : frame_(other.frame_), valid_(std::exchange(other.valid_, false)) {
+    other.frame_ = {};
+  }
+
+  NativeVideoFrameRef& operator=(NativeVideoFrameRef other) noexcept {
+    Swap(other);
+    return *this;
+  }
+
+  ~NativeVideoFrameRef() { Reset(); }
+
+  void Reset() {
+    if (valid_ && frame_.owner && frame_.release) {
+      frame_.release(frame_.owner);
+    }
+    frame_ = {};
+    valid_ = false;
+  }
+
+  void Swap(NativeVideoFrameRef& other) noexcept {
+    std::swap(frame_, other.frame_);
+    std::swap(valid_, other.valid_);
+  }
+
+  const XNativeVideoFrame* Get() const {
+    return valid_ ? &frame_ : nullptr;
+  }
+  explicit operator bool() const { return valid_; }
+
+ private:
+  XNativeVideoFrame frame_{};
+  bool valid_ = false;
+};
+
+const XNativeVideoFrame* GetMacNativeFrame(
+    const XNativeVideoFrame& frame) {
+  const XNativeVideoFrame* native = &frame;
+  if (native->struct_size < static_cast<uint32_t>(sizeof(*native)) ||
+      native->type != XNativeVideoFrameCVPixelBuffer ||
+      !native->payload.cv_pixel_buffer || !native->owner || !native->retain ||
+      !native->release || !native->copy_to_nv12 || native->width == 0 ||
+      native->height == 0 || (native->width & 1U) != 0 ||
+      (native->height & 1U) != 0 ||
+      native->width > static_cast<uint32_t>(std::numeric_limits<int>::max()) ||
+      native->height >
+          static_cast<uint32_t>(std::numeric_limits<int>::max())) {
+    return nullptr;
+  }
+  return native;
+}
+
 // Slint's winit backend creates AppKit windows with transparent backing so
 // transparent Slint items can be composited. Keep the content out of the
 // titlebar and choose whether AppKit's material or the semantic window color
@@ -262,6 +331,9 @@ struct FrameSlot {
   id<MTLBuffer> uv_buffer = nil;
   id<MTLTexture> y_texture = nil;
   id<MTLTexture> uv_texture = nil;
+  CVMetalTextureRef y_cv_texture = nullptr;
+  CVMetalTextureRef uv_cv_texture = nullptr;
+  NativeVideoFrameRef native_frame;
   size_t y_stride = 0;
   size_t uv_stride = 0;
   int width = 0;
@@ -274,6 +346,15 @@ struct FrameSlot {
   void ReleaseResources() {
     y_texture = nil;
     uv_texture = nil;
+    if (y_cv_texture) {
+      CFRelease(y_cv_texture);
+      y_cv_texture = nullptr;
+    }
+    if (uv_cv_texture) {
+      CFRelease(uv_cv_texture);
+      uv_cv_texture = nullptr;
+    }
+    native_frame.Reset();
     y_buffer = nil;
     uv_buffer = nil;
     y_stride = 0;
@@ -406,6 +487,7 @@ struct MacMetalVideoRenderer::Impl {
   id<MTLDevice> device = nil;
   id<MTLCommandQueue> command_queue = nil;
   id<MTLRenderPipelineState> pipeline = nil;
+  CVMetalTextureCacheRef texture_cache = nullptr;
   std::shared_ptr<SharedFrameState> frames =
       std::make_shared<SharedFrameState>();
   NSView* slint_view = nil;
@@ -417,6 +499,8 @@ struct MacMetalVideoRenderer::Impl {
   uint64_t rendered_content_generation = 0;
   std::shared_ptr<std::atomic<bool>> native_surface_needs_redraw =
       std::make_shared<std::atomic<bool>>(true);
+  std::atomic<bool> native_path_logged{false};
+  std::atomic<bool> native_fallback_logged{false};
 
   Impl() {
     @autoreleasepool {
@@ -429,6 +513,12 @@ struct MacMetalVideoRenderer::Impl {
       if (command_queue == nil) {
         LOG_ERROR("Metal video renderer unavailable: command queue creation failed");
         return;
+      }
+      const CVReturn cache_status = CVMetalTextureCacheCreate(
+          kCFAllocatorDefault, nullptr, device, nullptr, &texture_cache);
+      if (cache_status != kCVReturnSuccess || !texture_cache) {
+        LOG_WARN("Metal video renderer could not create CV texture cache: {}",
+                 cache_status);
       }
 
       NSError* library_error = nil;
@@ -466,6 +556,11 @@ struct MacMetalVideoRenderer::Impl {
   ~Impl() {
     DetachViews();
     frames.reset();
+    if (texture_cache) {
+      CVMetalTextureCacheFlush(texture_cache, 0);
+      CFRelease(texture_cache);
+      texture_cache = nullptr;
+    }
   }
 
   bool Ready() const {
@@ -653,6 +748,142 @@ MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitNv12(
     std::string_view remote_id, const uint8_t* data, size_t size, int width,
     int height) {
   return SubmitNv12Internal(remote_id, data, size, width, height, true);
+}
+
+MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitNativeFrame(
+    std::string_view remote_id, const XNativeVideoFrame& frame) {
+  if (!IsReady()) {
+    return SubmitResult::failed;
+  }
+  const XNativeVideoFrame* native = GetMacNativeFrame(frame);
+  if (!native) {
+    return SubmitResult::failed;
+  }
+
+  {
+    std::lock_guard lock(impl_->frames->mutex);
+    if (impl_->frames->selected_stream != remote_id) {
+      return SubmitResult::not_selected;
+    }
+  }
+
+  const int width = static_cast<int>(native->width);
+  const int height = static_cast<int>(native->height);
+  const auto submit_cpu_fallback = [&]() {
+    if (!impl_->native_fallback_logged.exchange(true,
+                                                std::memory_order_acq_rel)) {
+      LOG_WARN("macOS native CVPixelBuffer upload unavailable; using CPU NV12 "
+               "fallback");
+    }
+    const size_t y_size = static_cast<size_t>(width) * height;
+    std::vector<unsigned char> packed_nv12(y_size + y_size / 2);
+    if (native->copy_to_nv12(native->owner, packed_nv12.data(),
+                             packed_nv12.size()) != 0) {
+      return SubmitResult::failed;
+    }
+    return SubmitNv12(remote_id, packed_nv12.data(), packed_nv12.size(), width,
+                      height);
+  };
+
+  CVPixelBufferRef pixel_buffer =
+      static_cast<CVPixelBufferRef>(native->payload.cv_pixel_buffer);
+  const OSType pixel_format = CVPixelBufferGetPixelFormatType(pixel_buffer);
+  if (!CVPixelBufferIsPlanar(pixel_buffer) ||
+      CVPixelBufferGetPlaneCount(pixel_buffer) < 2 ||
+      CVPixelBufferGetWidth(pixel_buffer) != native->width ||
+      CVPixelBufferGetHeight(pixel_buffer) != native->height ||
+      (pixel_format != kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange &&
+       pixel_format != kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)) {
+    return submit_cpu_fallback();
+  }
+
+  NativeVideoFrameRef retained(native);
+  if (!retained || !impl_->texture_cache) {
+    return submit_cpu_fallback();
+  }
+
+  CVMetalTextureRef y_cv_texture = nullptr;
+  CVReturn y_status = CVMetalTextureCacheCreateTextureFromImage(
+      kCFAllocatorDefault, impl_->texture_cache, pixel_buffer, nullptr,
+      MTLPixelFormatR8Unorm, native->width, native->height, 0,
+      &y_cv_texture);
+  if (y_status != kCVReturnSuccess || !y_cv_texture) {
+    return submit_cpu_fallback();
+  }
+
+  CVMetalTextureRef uv_cv_texture = nullptr;
+  CVReturn uv_status = CVMetalTextureCacheCreateTextureFromImage(
+      kCFAllocatorDefault, impl_->texture_cache, pixel_buffer, nullptr,
+      MTLPixelFormatRG8Unorm, native->width / 2U, native->height / 2U, 1,
+      &uv_cv_texture);
+  if (uv_status != kCVReturnSuccess || !uv_cv_texture) {
+    CFRelease(y_cv_texture);
+    return submit_cpu_fallback();
+  }
+
+  id<MTLTexture> y_texture = CVMetalTextureGetTexture(y_cv_texture);
+  id<MTLTexture> uv_texture = CVMetalTextureGetTexture(uv_cv_texture);
+  if (y_texture == nil || uv_texture == nil) {
+    CFRelease(y_cv_texture);
+    CFRelease(uv_cv_texture);
+    return submit_cpu_fallback();
+  }
+
+  auto& frames = *impl_->frames;
+  std::lock_guard lock(frames.mutex);
+  if (frames.selected_stream != remote_id) {
+    CFRelease(y_cv_texture);
+    CFRelease(uv_cv_texture);
+    return SubmitResult::not_selected;
+  }
+
+  // Latest-frame-only queue: replace an unconsumed decoded frame to bound
+  // latency, while never recycling a frame still referenced by the GPU.
+  FrameSlot* target = nullptr;
+  for (auto& slot : frames.slots) {
+    if (slot.use == SlotUse::pending) {
+      target = &slot;
+      break;
+    }
+  }
+  if (!target) {
+    uint64_t oldest_sequence = std::numeric_limits<uint64_t>::max();
+    for (auto& slot : frames.slots) {
+      if (slot.use != SlotUse::available) {
+        continue;
+      }
+      if (!slot.valid) {
+        target = &slot;
+        break;
+      }
+      if (slot.sequence < oldest_sequence) {
+        oldest_sequence = slot.sequence;
+        target = &slot;
+      }
+    }
+  }
+  if (!target) {
+    CFRelease(y_cv_texture);
+    CFRelease(uv_cv_texture);
+    return SubmitResult::dropped;
+  }
+
+  target->ReleaseResources();
+  target->y_cv_texture = y_cv_texture;
+  target->uv_cv_texture = uv_cv_texture;
+  target->y_texture = y_texture;
+  target->uv_texture = uv_texture;
+  target->native_frame = std::move(retained);
+  target->width = width;
+  target->height = height;
+  target->remote_id.assign(remote_id);
+  target->sequence = frames.next_sequence++;
+  target->use = SlotUse::pending;
+  target->valid = true;
+  if (!impl_->native_path_logged.exchange(true, std::memory_order_acq_rel)) {
+    LOG_INFO("macOS VideoToolbox-to-Metal native NV12 path enabled");
+  }
+  return SubmitResult::submitted;
 }
 
 MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitCachedNv12(
@@ -1045,40 +1276,57 @@ bool MacMetalVideoRenderer::CopyLatestNv12(
     return false;
   }
 
-  std::lock_guard lock(impl_->frames->mutex);
-  const FrameSlot* newest = nullptr;
-  for (const auto& slot : impl_->frames->slots) {
-    if (!slot.valid || slot.remote_id != remote_id || slot.y_buffer == nil ||
-        slot.uv_buffer == nil || slot.sequence == 0) {
-      continue;
+  NativeVideoFrameRef native_frame;
+  {
+    std::lock_guard lock(impl_->frames->mutex);
+    const FrameSlot* newest = nullptr;
+    for (const auto& slot : impl_->frames->slots) {
+      if (!slot.valid || slot.remote_id != remote_id || slot.sequence == 0 ||
+          (!slot.native_frame &&
+           (slot.y_buffer == nil || slot.uv_buffer == nil))) {
+        continue;
+      }
+      if (newest == nullptr || slot.sequence > newest->sequence) {
+        newest = &slot;
+      }
     }
-    if (newest == nullptr || slot.sequence > newest->sequence) {
-      newest = &slot;
+    if (newest == nullptr || newest->width <= 0 || newest->height <= 0) {
+      return false;
     }
-  }
-  if (newest == nullptr || newest->width <= 0 || newest->height <= 0) {
-    return false;
+
+    *width = newest->width;
+    *height = newest->height;
+    native_frame = newest->native_frame;
+    if (!native_frame) {
+      const size_t y_size =
+          static_cast<size_t>(newest->width) * newest->height;
+      output->resize(y_size + y_size / 2);
+      auto* y_source =
+          static_cast<const uint8_t*>(newest->y_buffer.contents);
+      auto* uv_source =
+          static_cast<const uint8_t*>(newest->uv_buffer.contents);
+      for (int row = 0; row < newest->height; ++row) {
+        std::memcpy(output->data() +
+                        static_cast<size_t>(row) * newest->width,
+                    y_source + static_cast<size_t>(row) * newest->y_stride,
+                    newest->width);
+      }
+      uint8_t* uv_destination = output->data() + y_size;
+      for (int row = 0; row < newest->height / 2; ++row) {
+        std::memcpy(uv_destination +
+                        static_cast<size_t>(row) * newest->width,
+                    uv_source + static_cast<size_t>(row) * newest->uv_stride,
+                    newest->width);
+      }
+      return true;
+    }
   }
 
-  const size_t y_size =
-      static_cast<size_t>(newest->width) * newest->height;
+  const XNativeVideoFrame* native = native_frame.Get();
+  const size_t y_size = static_cast<size_t>(native->width) * native->height;
   output->resize(y_size + y_size / 2);
-  auto* y_source = static_cast<const uint8_t*>(newest->y_buffer.contents);
-  auto* uv_source = static_cast<const uint8_t*>(newest->uv_buffer.contents);
-  for (int row = 0; row < newest->height; ++row) {
-    std::memcpy(output->data() + static_cast<size_t>(row) * newest->width,
-                y_source + static_cast<size_t>(row) * newest->y_stride,
-                newest->width);
-  }
-  uint8_t* uv_destination = output->data() + y_size;
-  for (int row = 0; row < newest->height / 2; ++row) {
-    std::memcpy(uv_destination + static_cast<size_t>(row) * newest->width,
-                uv_source + static_cast<size_t>(row) * newest->uv_stride,
-                newest->width);
-  }
-  *width = newest->width;
-  *height = newest->height;
-  return true;
+  return native->copy_to_nv12(native->owner, output->data(), output->size()) ==
+         0;
 }
 
 }  // namespace crossdesk

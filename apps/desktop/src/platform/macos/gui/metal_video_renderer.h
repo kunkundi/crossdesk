@@ -12,11 +12,11 @@
 
 namespace crossdesk {
 
-// macOS video compositor used by CrossDesk only. MiniRTC continues to expose
-// tightly packed CPU NV12 frames; this renderer performs the single required
-// copy into shared Metal buffers and converts NV12 to RGB in the fragment
-// shader. AppKit attachment and rendering are main-thread operations, while
-// SubmitNv12() is safe to call from MiniRTC's decode callback thread.
+// macOS video compositor used by CrossDesk only. VideoToolbox CVPixelBuffers
+// are sampled directly through CVMetalTextureCache; packed CPU NV12 remains a
+// fallback for software decoding and cached snapshots. AppKit attachment and
+// rendering are main-thread operations, while frame submission is safe from
+// MiniRTC's decode callback thread.
 class MacMetalVideoRenderer final : public VideoRenderer {
  public:
   MacMetalVideoRenderer();
@@ -36,6 +36,11 @@ class MacMetalVideoRenderer final : public VideoRenderer {
   // Copies one tightly packed NV12 frame into a free shared Metal slot.
   SubmitResult SubmitNv12(std::string_view remote_id, const uint8_t* data,
                           size_t size, int width, int height) override;
+
+  // Retains an IOSurface-backed VideoToolbox CVPixelBuffer until the Metal
+  // command buffer using it has completed.
+  SubmitResult SubmitNativeFrame(std::string_view remote_id,
+                                 const XNativeVideoFrame& frame) override;
 
   // Seeds a newly selected stream from its retained CPU snapshot without
   // replacing a newer decoded frame that is already queued or rendering.
