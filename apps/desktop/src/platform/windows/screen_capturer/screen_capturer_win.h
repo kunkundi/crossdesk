@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -21,6 +22,8 @@
 #include "screen_capturer.h"
 
 namespace crossdesk {
+
+class CapturedNv12FramePool;
 
 class ScreenCapturerWin : public ScreenCapturer {
  public:
@@ -53,6 +56,8 @@ class ScreenCapturerWin : public ScreenCapturer {
   std::mutex alias_mutex_;
   std::vector<DisplayInfo> canonical_displays_;
   std::atomic<bool> invalid_stream_id_logged_{false};
+  std::atomic<bool> native_output_logged_{false};
+  std::atomic<bool> native_output_error_logged_{false};
   std::atomic<bool> running_{false};
   std::atomic<bool> paused_{false};
   std::atomic<bool> show_cursor_{true};
@@ -77,9 +82,13 @@ class ScreenCapturerWin : public ScreenCapturer {
   std::string secure_shared_stage_;
   std::string secure_shared_desktop_;
   bool secure_shared_capture_started_ = false;
+  std::shared_ptr<CapturedNv12FramePool> native_frame_pool_;
 
   void BuildCanonicalFromImpl();
   void RebuildAliasesFromImpl();
+  void EmitCapturedFrame(unsigned char* data, int size, int width, int height,
+                         const char* stream_id,
+                         const XNativeVideoFrame* native_frame = nullptr);
   void StopSecureCaptureThread();
   bool RestartCaptureBackendAfterSecureDesktop();
   void SecureDesktopCaptureLoop();

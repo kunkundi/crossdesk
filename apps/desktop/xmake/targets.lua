@@ -162,6 +162,7 @@ function setup_targets()
         add_includedirs("deps/submodules/minirtc/src/api", {public = true})
         if is_os("windows") then
             add_packages("libyuv")
+            add_files("apps/desktop/src/screen_capturer/captured_nv12_frame.cpp")
             add_files("apps/desktop/src/platform/windows/screen_capturer/screen_capturer_dxgi.cpp",
                 "apps/desktop/src/platform/windows/screen_capturer/screen_capturer_gdi.cpp",
                 "apps/desktop/src/platform/windows/screen_capturer/screen_capturer_win.cpp",

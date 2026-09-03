@@ -15,6 +15,7 @@
 #include <vector>
 
 #include <display_stream_id.h>
+#include "captured_nv12_frame.h"
 #include "interactive_state.h"
 #include "rd_log.h"
 #include "screen_capturer_dxgi.h"
@@ -403,6 +404,14 @@ ScreenCapturerWin::~ScreenCapturerWin() { Destroy(); }
 int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
   fps_ = fps;
   cb_orig_ = cb;
+  native_output_logged_.store(false, std::memory_order_relaxed);
+  native_output_error_logged_.store(false, std::memory_order_relaxed);
+  try {
+    native_frame_pool_ = CapturedNv12FramePool::Create();
+  } catch (...) {
+    LOG_ERROR("Windows capturer: failed to create native NV12 frame pool");
+    return -1;
+  }
   cb_ = [this](unsigned char* data, int size, int w, int h,
                const char* reported_stream_id,
                const XNativeVideoFrame* native_frame) {
@@ -451,9 +460,8 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
           "elapsed_ms={}",
           raw_stream_id, mapped_stream_id, w, h, size, elapsed_ms);
     }
-    if (cb_orig_) {
-      cb_orig_(data, size, w, h, mapped_stream_id.c_str(), native_frame);
-    }
+    EmitCapturedFrame(data, size, w, h, mapped_stream_id.c_str(),
+                      native_frame);
   };
 
   int ret = -1;
@@ -516,7 +524,50 @@ int ScreenCapturerWin::Destroy() {
     stream_id_alias_.clear();
     handle_to_canonical_index_.clear();
   }
+  native_frame_pool_.reset();
   return 0;
+}
+
+void ScreenCapturerWin::EmitCapturedFrame(
+    unsigned char* data, int size, int width, int height,
+    const char* stream_id, const XNativeVideoFrame* native_frame) {
+  if (!cb_orig_) {
+    return;
+  }
+
+  if (native_frame) {
+    if (!native_output_logged_.exchange(true, std::memory_order_relaxed)) {
+      LOG_INFO("Windows capturer native frame output enabled (type={})",
+               static_cast<uint32_t>(native_frame->type));
+    }
+    cb_orig_(data, size, width, height, stream_id, native_frame);
+    return;
+  }
+
+  CapturedNv12Frame* owned_frame = nullptr;
+  if (native_frame_pool_ && data && size > 0 && width > 0 && height > 0) {
+    owned_frame = native_frame_pool_->CopyFrom(
+        data, static_cast<size_t>(size), static_cast<uint32_t>(width),
+        static_cast<uint32_t>(height));
+  }
+  if (!owned_frame) {
+    if (!native_output_error_logged_.exchange(true,
+                                               std::memory_order_relaxed)) {
+      LOG_WARN(
+          "Windows capturer could not retain a native NV12 frame; falling "
+          "back to copied CPU input (size={}x{}, bytes={})",
+          width, height, size);
+    }
+    cb_orig_(data, size, width, height, stream_id, nullptr);
+    return;
+  }
+
+  if (!native_output_logged_.exchange(true, std::memory_order_relaxed)) {
+    LOG_INFO("Windows capturer native NV12 output enabled");
+  }
+  cb_orig_(nullptr, static_cast<int>(owned_frame->Size()), width, height,
+           stream_id, owned_frame->Descriptor());
+  owned_frame->Release();
 }
 
 int ScreenCapturerWin::Start(bool show_cursor) {
@@ -1264,10 +1315,11 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
         ReadSecureDesktopSharedFrame(
             static_cast<DWORD>(frame_interval_ms + 20), &secure_frame,
             &captured_width, &captured_height, &error_message)) {
-      if (cb_orig_ && !secure_frame.empty()) {
-        cb_orig_(secure_frame.data(), static_cast<int>(secure_frame.size()),
-                 captured_width, captured_height, display_name.c_str(),
-                 nullptr);
+      if (!secure_frame.empty()) {
+        EmitCapturedFrame(secure_frame.data(),
+                          static_cast<int>(secure_frame.size()),
+                          captured_width, captured_height,
+                          display_name.c_str());
       }
       frame_delivered = true;
     }
@@ -1279,10 +1331,11 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
                                       status.interactive_desktop,
                                       &secure_frame, &captured_width,
                                       &captured_height, &error_message)) {
-      if (cb_orig_ && !secure_frame.empty()) {
-        cb_orig_(secure_frame.data(), static_cast<int>(secure_frame.size()),
-                 captured_width, captured_height, display_name.c_str(),
-                 nullptr);
+      if (!secure_frame.empty()) {
+        EmitCapturedFrame(secure_frame.data(),
+                          static_cast<int>(secure_frame.size()),
+                          captured_width, captured_height,
+                          display_name.c_str());
       }
       frame_delivered = true;
     }
