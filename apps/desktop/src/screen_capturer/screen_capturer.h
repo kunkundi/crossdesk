@@ -10,14 +10,18 @@
 #include <functional>
 
 #include "display_info.h"
+#include "minirtc.h"
 
 namespace crossdesk {
 
 class ScreenCapturer {
  public:
-  // The final callback argument is a logical MiniRTC stream ID (DisplayN),
-  // not a platform display name or physical handle.
-  typedef std::function<void(unsigned char*, int, int, int, const char*)>
+  // |stream_id| is a logical MiniRTC stream ID (DisplayN), not a platform
+  // display name or physical handle. |native_frame| is borrowed for the
+  // duration of the callback; retain its owner before using it asynchronously.
+  typedef std::function<void(unsigned char* data, int size, int width,
+                             int height, const char* stream_id,
+                             const XNativeVideoFrame* native_frame)>
       cb_desktop_data;
 
  public:

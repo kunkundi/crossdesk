@@ -404,7 +404,8 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
   fps_ = fps;
   cb_orig_ = cb;
   cb_ = [this](unsigned char* data, int size, int w, int h,
-               const char* reported_stream_id) {
+               const char* reported_stream_id,
+               const XNativeVideoFrame* native_frame) {
     if (secure_desktop_capture_active_.load(std::memory_order_relaxed)) {
       return;
     }
@@ -450,7 +451,9 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
           "elapsed_ms={}",
           raw_stream_id, mapped_stream_id, w, h, size, elapsed_ms);
     }
-    if (cb_orig_) cb_orig_(data, size, w, h, mapped_stream_id.c_str());
+    if (cb_orig_) {
+      cb_orig_(data, size, w, h, mapped_stream_id.c_str(), native_frame);
+    }
   };
 
   int ret = -1;
@@ -1263,7 +1266,8 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
             &captured_width, &captured_height, &error_message)) {
       if (cb_orig_ && !secure_frame.empty()) {
         cb_orig_(secure_frame.data(), static_cast<int>(secure_frame.size()),
-                 captured_width, captured_height, display_name.c_str());
+                 captured_width, captured_height, display_name.c_str(),
+                 nullptr);
       }
       frame_delivered = true;
     }
@@ -1277,7 +1281,8 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
                                       &captured_height, &error_message)) {
       if (cb_orig_ && !secure_frame.empty()) {
         cb_orig_(secure_frame.data(), static_cast<int>(secure_frame.size()),
-                 captured_width, captured_height, display_name.c_str());
+                 captured_width, captured_height, display_name.c_str(),
+                 nullptr);
       }
       frame_delivered = true;
     }

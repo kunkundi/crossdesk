@@ -384,7 +384,7 @@ void ScreenCapturerDxgi::CaptureLoop() {
       if (idx >= 0 && idx < static_cast<int>(display_info_list_.size())) {
         const std::string stream_id = MakeDisplayStreamId(idx);
         callback_(nv12_frame_, nv12_size, even_width, even_height,
-                  stream_id.c_str());
+                  stream_id.c_str(), nullptr);
       } else {
         LOG_ERROR("DXGI: CaptureLoop invalid monitor_index {} (list size {})",
                   idx, display_info_list_.size());

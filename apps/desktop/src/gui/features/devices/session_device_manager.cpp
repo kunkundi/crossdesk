@@ -74,7 +74,8 @@ int SessionDeviceManager::InitializeScreenCapturer() {
 
   const int init_ret = screen_capturer_->Init(
       fps, [this, fps](unsigned char *data, int size, int width, int height,
-                       const char *display_name) {
+                       const char *display_name,
+                       const XNativeVideoFrame *native_frame) {
         const auto now_time = std::chrono::steady_clock::now();
         if (!ShouldSendCapturedFrame(now_time, fps)) {
           return;
@@ -142,6 +143,7 @@ int SessionDeviceManager::InitializeScreenCapturer() {
         frame.width = width;
         frame.height = height;
         frame.captured_timestamp = GetSystemTimeMicros(owner_.peer_);
+        frame.native_frame = native_frame;
         for (const std::string &remote_id : connected_remote_ids) {
           SendVideoFrameToPeer(owner_.peer_, &frame, stream_id.c_str(),
                                remote_id.data(), remote_id.size());

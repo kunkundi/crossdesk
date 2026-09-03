@@ -406,7 +406,7 @@ void ScreenCapturerWgc::OnFrame(const WgcSession::wgc_session_frame& frame,
 
     const std::string stream_id = MakeDisplayStreamId(id);
     on_data_(nv12_frame_, nv12_size, even_width, even_height,
-             stream_id.c_str());
+             stream_id.c_str(), nullptr);
   }
 }
 

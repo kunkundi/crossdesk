@@ -212,7 +212,8 @@ void ScreenCapturerGdi::CaptureLoop() {
 
     if (callback_) {
       const std::string stream_id = MakeDisplayStreamId(idx);
-      callback_(nv12_frame_, nv12_size, width, height, stream_id.c_str());
+      callback_(nv12_frame_, nv12_size, width, height, stream_id.c_str(),
+                nullptr);
     }
 
     SelectObject(mem_dc, old);

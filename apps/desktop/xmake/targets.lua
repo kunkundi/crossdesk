@@ -159,6 +159,7 @@ function setup_targets()
         set_kind("object")
         add_deps("rd_log", "common", "crossdesk_wire")
         add_includedirs("apps/desktop/src/screen_capturer", {public = true})
+        add_includedirs("deps/submodules/minirtc/src/api", {public = true})
         if is_os("windows") then
             add_packages("libyuv")
             add_files("apps/desktop/src/platform/windows/screen_capturer/screen_capturer_dxgi.cpp",
@@ -367,7 +368,8 @@ function setup_targets()
                 "apps/desktop/src/platform/windows/screen_capturer/wgc_plugin_entry.cpp")
             add_files("apps/desktop/resources/windows/wgc_plugin.rc")
             add_includedirs("apps/desktop/src/common", "apps/desktop/src/screen_capturer",
-                "apps/desktop/src/platform/windows/screen_capturer")
+                "apps/desktop/src/platform/windows/screen_capturer",
+                "deps/submodules/minirtc/src/api")
 
         target("crossdesk_service")
             set_kind("binary")

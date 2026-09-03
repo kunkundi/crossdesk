@@ -50,7 +50,8 @@ int ScreenCapturerLinux::Init(const int fps, cb_desktop_data cb) {
   fps_ = fps;
   callback_orig_ = std::move(cb);
   callback_ = [this](unsigned char* data, int size, int width, int height,
-                     const char* reported_stream_id) {
+                     const char* reported_stream_id,
+                     const XNativeVideoFrame* native_frame) {
     const std::string mapped_stream_id = MapStreamId(reported_stream_id);
     if (mapped_stream_id.empty()) {
       if (!invalid_stream_id_logged_.exchange(true,
@@ -64,7 +65,8 @@ int ScreenCapturerLinux::Init(const int fps, cb_desktop_data cb) {
     }
     invalid_stream_id_logged_.store(false, std::memory_order_relaxed);
     if (callback_orig_) {
-      callback_orig_(data, size, width, height, mapped_stream_id.c_str());
+      callback_orig_(data, size, width, height, mapped_stream_id.c_str(),
+                     native_frame);
     }
   };
 

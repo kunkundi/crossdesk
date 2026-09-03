@@ -321,7 +321,7 @@ void ScreenCapturerX11::OnFrame() {
   if (callback_) {
     const std::string stream_id = MakeDisplayStreamId(monitor_index);
     callback_(nv12.data(), width_ * height_ * 3 / 2, width_, height_,
-              stream_id.c_str());
+              stream_id.c_str(), nullptr);
   }
 
   XDestroyImage(image);

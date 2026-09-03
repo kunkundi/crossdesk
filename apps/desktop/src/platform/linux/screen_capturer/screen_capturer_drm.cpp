@@ -429,7 +429,7 @@ bool ScreenCapturerDrm::CaptureOutputFrame(const DrmOutput& output,
 
   if (emit_callback && callback_) {
     callback_(nv12.data(), static_cast<int>(nv12.size()), capture_width,
-              capture_height, output.stream_id.c_str());
+              capture_height, output.stream_id.c_str(), nullptr);
   }
 
   UnmapFramebuffer(mapped_ptr, mapped_size, prime_fd);

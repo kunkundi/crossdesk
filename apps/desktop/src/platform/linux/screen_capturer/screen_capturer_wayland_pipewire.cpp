@@ -1047,7 +1047,7 @@ void ScreenCapturerWayland::HandlePipeWireBuffer() {
   if (callback_) {
     const std::string stream_id = MakeDisplayStreamId(0);
     callback_(nv12.data(), static_cast<int>(nv12.size()), even_width,
-              even_height, stream_id.c_str());
+              even_height, stream_id.c_str(), nullptr);
   }
   pipewire_last_frame_ms_.store(NowMs());
 
