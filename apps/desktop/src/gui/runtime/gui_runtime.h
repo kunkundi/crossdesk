@@ -1,5 +1,11 @@
-#ifndef CROSSDESK_GUI_RUNTIME_H_
-#define CROSSDESK_GUI_RUNTIME_H_
+/*
+ * @Author: DI JUNKUN
+ * @Date: 2026-09-04
+ * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
+ */
+
+#ifndef _GUI_RUNTIME_H_
+#define _GUI_RUNTIME_H_
 
 #include <atomic>
 #include <memory>
@@ -98,4 +104,4 @@ class GuiRuntime : protected gui_detail::GuiState {
 
 }  // namespace crossdesk
 
-#endif  // CROSSDESK_GUI_RUNTIME_H_
+#endif

@@ -1,3 +1,12 @@
+/*
+ * @Author: DI JUNKUN
+ * @Date: 2026-09-04
+ * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
+ */
+
+#ifndef _SYSTEM_INFO_H_
+#define _SYSTEM_INFO_H_
+
 #include "platform.h"
 
 #include <ifaddrs.h>
@@ -53,3 +62,6 @@ std::string GetHostName() {
 bool IsWaylandSession() { return false; }
 
 }  // namespace crossdesk
+
+
+#endif

@@ -1,5 +1,11 @@
-#ifndef CROSSDESK_GUI_PEER_EVENT_HANDLER_H_
-#define CROSSDESK_GUI_PEER_EVENT_HANDLER_H_
+/*
+ * @Author: DI JUNKUN
+ * @Date: 2026-09-04
+ * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
+ */
+
+#ifndef _PEER_EVENT_HANDLER_H_
+#define _PEER_EVENT_HANDLER_H_
 
 #include <cstddef>
 #include <string>
@@ -47,4 +53,4 @@ private:
 
 } // namespace crossdesk
 
-#endif // CROSSDESK_GUI_PEER_EVENT_HANDLER_H_
+#endif

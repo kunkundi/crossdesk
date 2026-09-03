@@ -1,11 +1,11 @@
 /*
  * @Author: DI JUNKUN
- * @Date: 2026-02-28
+ * @Date: 2026-09-04
  * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
  */
 
-#ifndef CROSSDESK_GUI_DEVICE_PRESENCE_CACHE_H_
-#define CROSSDESK_GUI_DEVICE_PRESENCE_CACHE_H_
+#ifndef _DEVICE_PRESENCE_CACHE_H_
+#define _DEVICE_PRESENCE_CACHE_H_
 
 #include <mutex>
 #include <string>
@@ -38,4 +38,4 @@ private:
 
 } // namespace crossdesk
 
-#endif // CROSSDESK_GUI_DEVICE_PRESENCE_CACHE_H_
+#endif

@@ -1,5 +1,11 @@
-#ifndef CROSSDESK_GUI_RENDERING_SLINT_VIDEO_PRESENTER_H_
-#define CROSSDESK_GUI_RENDERING_SLINT_VIDEO_PRESENTER_H_
+/*
+ * @Author: DI JUNKUN
+ * @Date: 2026-09-04
+ * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
+ */
+
+#ifndef _SLINT_VIDEO_PRESENTER_H_
+#define _SLINT_VIDEO_PRESENTER_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -72,4 +78,4 @@ private:
 
 }  // namespace crossdesk
 
-#endif  // CROSSDESK_GUI_RENDERING_SLINT_VIDEO_PRESENTER_H_
+#endif

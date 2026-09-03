@@ -1,5 +1,11 @@
-#ifndef CROSSDESK_GUI_APPLICATION_STATE_H_
-#define CROSSDESK_GUI_APPLICATION_STATE_H_
+/*
+ * @Author: DI JUNKUN
+ * @Date: 2026-09-04
+ * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
+ */
+
+#ifndef _APPLICATION_STATE_H_
+#define _APPLICATION_STATE_H_
 
 #include <atomic>
 #include <chrono>
@@ -192,4 +198,4 @@ struct ApplicationState : MainWindowState,
 
 }  // namespace crossdesk::gui_detail
 
-#endif  // CROSSDESK_GUI_APPLICATION_STATE_H_
+#endif

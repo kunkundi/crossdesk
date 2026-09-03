@@ -1,5 +1,11 @@
-#ifndef CROSSDESK_GUI_REMOTE_ACTION_CODEC_H_
-#define CROSSDESK_GUI_REMOTE_ACTION_CODEC_H_
+/*
+ * @Author: DI JUNKUN
+ * @Date: 2026-09-04
+ * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
+ */
+
+#ifndef _REMOTE_ACTION_CODEC_H_
+#define _REMOTE_ACTION_CODEC_H_
 
 #include <cstddef>
 #include <vector>
@@ -14,4 +20,4 @@ void Free(RemoteAction &action);
 
 } // namespace crossdesk::remote_action_codec
 
-#endif // CROSSDESK_GUI_REMOTE_ACTION_CODEC_H_
+#endif
