@@ -26,11 +26,97 @@
 #include <utility>
 
 #include "rd_log.h"
+#if defined(_WIN32) && USE_CUDA
+#include "nvcodec_api.h"
+#endif
 
 namespace crossdesk {
 namespace {
 
 constexpr size_t kFrameSlotCount = 3;
+#if defined(_WIN32) && USE_CUDA
+constexpr size_t kCudaUploadSlotCount = 3;
+#endif
+
+class NativeVideoFrameRef {
+public:
+  NativeVideoFrameRef() = default;
+
+  explicit NativeVideoFrameRef(const XNativeVideoFrame *frame) {
+    if (frame && frame->owner && frame->retain && frame->release) {
+      frame_ = *frame;
+      frame_.struct_size = sizeof(frame_);
+      frame_.retain(frame_.owner);
+      valid_ = true;
+    }
+  }
+
+  NativeVideoFrameRef(const NativeVideoFrameRef &other)
+      : NativeVideoFrameRef(other.Get()) {}
+
+  NativeVideoFrameRef(NativeVideoFrameRef &&other) noexcept
+      : frame_(other.frame_), valid_(std::exchange(other.valid_, false)) {
+    other.frame_ = {};
+  }
+
+  NativeVideoFrameRef &operator=(NativeVideoFrameRef other) noexcept {
+    Swap(other);
+    return *this;
+  }
+
+  ~NativeVideoFrameRef() { Reset(); }
+
+  void Reset() {
+    if (valid_ && frame_.owner && frame_.release) {
+      frame_.release(frame_.owner);
+    }
+    frame_ = {};
+    valid_ = false;
+  }
+
+  void Swap(NativeVideoFrameRef &other) noexcept {
+    std::swap(frame_, other.frame_);
+    std::swap(valid_, other.valid_);
+  }
+
+  const XNativeVideoFrame *Get() const { return valid_ ? &frame_ : nullptr; }
+  explicit operator bool() const { return valid_; }
+
+private:
+  XNativeVideoFrame frame_{};
+  bool valid_ = false;
+};
+
+const XNativeVideoFrame *GetOpenGlNativeFrame(
+    const XNativeVideoFrame &frame) {
+  const XNativeVideoFrame *native = &frame;
+  if (native->struct_size < static_cast<uint32_t>(sizeof(XNativeVideoFrame)) ||
+      !native->owner || !native->retain || !native->release ||
+      !native->copy_to_nv12 || native->width == 0 || native->height == 0 ||
+      (native->width & 1U) != 0 || (native->height & 1U) != 0 ||
+      native->width > static_cast<uint32_t>(std::numeric_limits<int>::max()) ||
+      native->height > static_cast<uint32_t>(std::numeric_limits<int>::max())) {
+    return nullptr;
+  }
+  if (native->type == XNativeVideoFrameCpuNv12) {
+    return native->payload.cpu_nv12.y_plane &&
+                   native->payload.cpu_nv12.uv_plane &&
+                   native->payload.cpu_nv12.y_stride >= native->width &&
+                   native->payload.cpu_nv12.uv_stride >= native->width
+               ? native
+               : nullptr;
+  }
+  if (native->type == XNativeVideoFrameCudaNv12) {
+    return native->payload.cuda_nv12.y_device_pointer != 0 &&
+                   native->payload.cuda_nv12.uv_device_pointer != 0 &&
+                   native->payload.cuda_nv12.y_stride >= native->width &&
+                   native->payload.cuda_nv12.uv_stride >= native->width &&
+                   native->payload.cuda_nv12.context
+               ? native
+               : nullptr;
+  }
+  return nullptr;
+}
 
 enum class SlotUse {
   available,
@@ -40,6 +126,7 @@ enum class SlotUse {
 
 struct FrameSlot {
   std::vector<unsigned char> bytes;
+  NativeVideoFrameRef native_frame;
   int width = 0;
   int height = 0;
   std::string remote_id;
@@ -107,6 +194,11 @@ struct OpenGlFunctions {
   PFNGLUNIFORM4FPROC uniform_4f = nullptr;
   PFNGLUSEPROGRAMPROC use_program = nullptr;
   PFNGLVERTEXATTRIBPOINTERPROC vertex_attrib_pointer = nullptr;
+#if defined(_WIN32) && USE_CUDA
+  PFNGLFENCESYNCPROC fence_sync = nullptr;
+  PFNGLCLIENTWAITSYNCPROC client_wait_sync = nullptr;
+  PFNGLDELETESYNCPROC delete_sync = nullptr;
+#endif
 
   bool Load() {
     return LoadOpenGlFunction(&active_texture, "glActiveTexture") &&
@@ -142,6 +234,14 @@ struct OpenGlFunctions {
            LoadOpenGlFunction(&use_program, "glUseProgram") &&
            LoadOpenGlFunction(&vertex_attrib_pointer, "glVertexAttribPointer");
   }
+
+#if defined(_WIN32) && USE_CUDA
+  bool LoadSyncFunctions() {
+    return LoadOpenGlFunction(&fence_sync, "glFenceSync") &&
+           LoadOpenGlFunction(&client_wait_sync, "glClientWaitSync") &&
+           LoadOpenGlFunction(&delete_sync, "glDeleteSync");
+  }
+#endif
 };
 
 GLuint CompileShader(const OpenGlFunctions &gl, GLenum type,
@@ -249,6 +349,316 @@ struct OpenGlVideoRenderer::Impl {
   std::string uploaded_stream;
   uint64_t uploaded_sequence = 0;
 
+#if defined(_WIN32) && USE_CUDA
+  enum class CudaUploadResult {
+    ready,
+    busy,
+    unavailable,
+  };
+
+  struct CudaUploadSlot {
+    GLuint buffer = 0;
+    GLuint y_texture = 0;
+    GLuint uv_texture = 0;
+    size_t capacity = 0;
+    int texture_width = 0;
+    int texture_height = 0;
+    CUgraphicsResource resource = nullptr;
+    GLsync fence = nullptr;
+  };
+
+  std::array<CudaUploadSlot, kCudaUploadSlotCount> cuda_upload_slots;
+  size_t next_cuda_upload_slot = 0;
+  size_t displayed_cuda_upload_slot = kCudaUploadSlotCount;
+  CUcontext cuda_context = nullptr;
+  CUstream cuda_upload_stream = nullptr;
+  NativeVideoFrameRef cuda_context_owner;
+  bool cuda_sync_functions_available = false;
+  bool cuda_interop_disabled = false;
+  std::atomic<bool> cuda_cpu_fallback{false};
+  bool cuda_native_logged = false;
+  bool cuda_fallback_logged = false;
+  uint64_t cuda_busy_drop_count = 0;
+
+  void DisableCudaInterop() {
+    cuda_interop_disabled = true;
+    cuda_cpu_fallback.store(true, std::memory_order_release);
+  }
+
+  bool IsCudaSlotAvailable(CudaUploadSlot &slot) {
+    if (!slot.fence) {
+      return true;
+    }
+    const GLenum wait_result =
+        gl.client_wait_sync(slot.fence, 0, 0);
+    if (wait_result == GL_WAIT_FAILED) {
+      DisableCudaInterop();
+      return false;
+    }
+    if (wait_result != GL_ALREADY_SIGNALED &&
+        wait_result != GL_CONDITION_SATISFIED) {
+      return false;
+    }
+    gl.delete_sync(slot.fence);
+    slot.fence = nullptr;
+    return true;
+  }
+
+  void ReleaseCudaInterop() {
+    bool has_gl_resources = false;
+    for (const auto &slot : cuda_upload_slots) {
+      has_gl_resources = has_gl_resources || slot.buffer != 0 || slot.fence;
+    }
+    if (has_gl_resources) {
+      glFinish();
+    }
+    for (auto &slot : cuda_upload_slots) {
+      if (slot.fence && gl.delete_sync) {
+        gl.delete_sync(slot.fence);
+        slot.fence = nullptr;
+      }
+    }
+
+    if (cuda_context && minirtc::cuCtxPushCurrent_ld &&
+        minirtc::cuCtxPushCurrent_ld(cuda_context) == CUDA_SUCCESS) {
+      if (cuda_upload_stream && minirtc::cuStreamSynchronize_ld) {
+        minirtc::cuStreamSynchronize_ld(cuda_upload_stream);
+      }
+      for (auto &slot : cuda_upload_slots) {
+        if (slot.resource && minirtc::cuGraphicsUnregisterResource_ld) {
+          minirtc::cuGraphicsUnregisterResource_ld(slot.resource);
+          slot.resource = nullptr;
+        }
+      }
+      if (cuda_upload_stream && minirtc::cuStreamDestroy_ld) {
+        minirtc::cuStreamDestroy_ld(cuda_upload_stream);
+      }
+      CUcontext popped_context = nullptr;
+      minirtc::cuCtxPopCurrent_ld(&popped_context);
+    }
+    cuda_upload_stream = nullptr;
+    cuda_context = nullptr;
+    cuda_context_owner.Reset();
+
+    for (auto &slot : cuda_upload_slots) {
+      if (slot.buffer != 0 && gl.delete_buffers) {
+        gl.delete_buffers(1, &slot.buffer);
+      }
+      if (slot.y_texture != 0) {
+        glDeleteTextures(1, &slot.y_texture);
+      }
+      if (slot.uv_texture != 0) {
+        glDeleteTextures(1, &slot.uv_texture);
+      }
+      slot = {};
+    }
+    next_cuda_upload_slot = 0;
+    displayed_cuda_upload_slot = kCudaUploadSlotCount;
+  }
+
+  bool PrepareCudaContext(const NativeVideoFrameRef &native_frame) {
+    const XNativeVideoFrame *frame = native_frame.Get();
+    if (!frame || !frame->payload.cuda_nv12.context ||
+        cuda_interop_disabled ||
+        !cuda_sync_functions_available ||
+        minirtc::LoadCudaGraphicsInterop() != 0) {
+      DisableCudaInterop();
+      return false;
+    }
+
+    auto frame_context =
+        static_cast<CUcontext>(frame->payload.cuda_nv12.context);
+    if (cuda_context && cuda_context != frame_context) {
+      ReleaseCudaInterop();
+    }
+    if (!cuda_context) {
+      cuda_context_owner = native_frame;
+      cuda_context = frame_context;
+      if (minirtc::cuCtxPushCurrent_ld(cuda_context) != CUDA_SUCCESS) {
+        ReleaseCudaInterop();
+        DisableCudaInterop();
+        return false;
+      }
+      const CUresult create_result = minirtc::cuStreamCreate_ld(
+          &cuda_upload_stream, CU_STREAM_NON_BLOCKING);
+      CUcontext popped_context = nullptr;
+      const CUresult pop_result =
+          minirtc::cuCtxPopCurrent_ld(&popped_context);
+      if (create_result != CUDA_SUCCESS || pop_result != CUDA_SUCCESS) {
+        ReleaseCudaInterop();
+        DisableCudaInterop();
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool PrepareCudaSlot(CudaUploadSlot &slot, size_t required_size) {
+    if (slot.buffer == 0) {
+      gl.gen_buffers(1, &slot.buffer);
+    }
+    if (slot.buffer == 0) {
+      return false;
+    }
+
+    if (slot.capacity < required_size) {
+      if (slot.resource) {
+        if (minirtc::cuGraphicsUnregisterResource_ld(slot.resource) !=
+            CUDA_SUCCESS) {
+          return false;
+        }
+        slot.resource = nullptr;
+      }
+      GLint previous_unpack_buffer = 0;
+      glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &previous_unpack_buffer);
+      gl.bind_buffer(GL_PIXEL_UNPACK_BUFFER, slot.buffer);
+      gl.buffer_data(GL_PIXEL_UNPACK_BUFFER,
+                     static_cast<GLsizeiptr>(required_size), nullptr,
+                     GL_STREAM_DRAW);
+      gl.bind_buffer(GL_PIXEL_UNPACK_BUFFER,
+                     static_cast<GLuint>(previous_unpack_buffer));
+      if (glGetError() != GL_NO_ERROR) {
+        return false;
+      }
+      slot.capacity = required_size;
+    }
+
+    if (!slot.resource) {
+      if (minirtc::cuGraphicsGLRegisterBuffer_ld(
+              &slot.resource, slot.buffer,
+              CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) != CUDA_SUCCESS) {
+        slot.resource = nullptr;
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool PrepareCudaTextures(CudaUploadSlot &slot) {
+    const bool needs_configuration =
+        slot.y_texture == 0 || slot.uv_texture == 0;
+    if (slot.y_texture == 0) {
+      glGenTextures(1, &slot.y_texture);
+    }
+    if (slot.uv_texture == 0) {
+      glGenTextures(1, &slot.uv_texture);
+    }
+    if (slot.y_texture == 0 || slot.uv_texture == 0) {
+      return false;
+    }
+    if (!needs_configuration) {
+      return true;
+    }
+    for (const auto [unit, texture] :
+         {std::pair{GL_TEXTURE0, slot.y_texture},
+          std::pair{GL_TEXTURE1, slot.uv_texture}}) {
+      gl.active_texture(unit);
+      glBindTexture(GL_TEXTURE_2D, texture);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
+    return glGetError() == GL_NO_ERROR;
+  }
+
+  CudaUploadResult CopyCudaFrameToUploadBuffer(
+      const NativeVideoFrameRef &native_frame, size_t *upload_slot_index) {
+    const XNativeVideoFrame *frame = native_frame.Get();
+    if (!upload_slot_index || !PrepareCudaContext(native_frame)) {
+      return CudaUploadResult::unavailable;
+    }
+
+    size_t selected_index = kCudaUploadSlotCount;
+    for (size_t offset = 0; offset < cuda_upload_slots.size(); ++offset) {
+      const size_t index =
+          (next_cuda_upload_slot + offset) % cuda_upload_slots.size();
+      if (IsCudaSlotAvailable(cuda_upload_slots[index])) {
+        selected_index = index;
+        break;
+      }
+    }
+    if (selected_index == kCudaUploadSlotCount) {
+      ++cuda_busy_drop_count;
+      if (cuda_busy_drop_count == 1 || cuda_busy_drop_count % 300 == 0) {
+        LOG_WARN("CUDA/OpenGL upload ring busy; dropped {} display frames",
+                 cuda_busy_drop_count);
+      }
+      return CudaUploadResult::busy;
+    }
+
+    if (minirtc::cuCtxPushCurrent_ld(cuda_context) != CUDA_SUCCESS) {
+      DisableCudaInterop();
+      return CudaUploadResult::unavailable;
+    }
+
+    CudaUploadSlot &slot = cuda_upload_slots[selected_index];
+    const size_t packed_size =
+        static_cast<size_t>(frame->width) * frame->height * 3U / 2U;
+    CUresult result = PrepareCudaSlot(slot, packed_size)
+                          ? CUDA_SUCCESS
+                          : CUDA_ERROR_INVALID_VALUE;
+    CUgraphicsResource resource = slot.resource;
+    bool mapped = false;
+    CUdeviceptr destination = 0;
+    size_t mapped_size = 0;
+    if (result == CUDA_SUCCESS) {
+      result = minirtc::cuGraphicsMapResources_ld(
+          1, &resource, cuda_upload_stream);
+      mapped = result == CUDA_SUCCESS;
+    }
+    if (result == CUDA_SUCCESS) {
+      result = minirtc::cuGraphicsResourceGetMappedPointer_ld(
+          &destination, &mapped_size, slot.resource);
+    }
+    if (result == CUDA_SUCCESS && mapped_size < packed_size) {
+      result = CUDA_ERROR_INVALID_VALUE;
+    }
+    if (result == CUDA_SUCCESS) {
+      CUDA_MEMCPY2D copy{};
+      copy.srcMemoryType = CU_MEMORYTYPE_DEVICE;
+      copy.srcDevice =
+          static_cast<CUdeviceptr>(
+              frame->payload.cuda_nv12.y_device_pointer);
+      copy.srcPitch = frame->payload.cuda_nv12.y_stride;
+      copy.dstMemoryType = CU_MEMORYTYPE_DEVICE;
+      copy.dstDevice = destination;
+      copy.dstPitch = frame->width;
+      copy.WidthInBytes = frame->width;
+      copy.Height = frame->height;
+      result = minirtc::cuMemcpy2DAsync_ld(&copy, cuda_upload_stream);
+      if (result == CUDA_SUCCESS) {
+        copy.srcDevice =
+            static_cast<CUdeviceptr>(
+                frame->payload.cuda_nv12.uv_device_pointer);
+        copy.srcPitch = frame->payload.cuda_nv12.uv_stride;
+        copy.dstDevice = destination +
+                         static_cast<CUdeviceptr>(frame->width) * frame->height;
+        copy.Height = frame->height / 2U;
+        result = minirtc::cuMemcpy2DAsync_ld(&copy, cuda_upload_stream);
+      }
+    }
+    if (mapped) {
+      const CUresult unmap_result = minirtc::cuGraphicsUnmapResources_ld(
+          1, &resource, cuda_upload_stream);
+      if (result == CUDA_SUCCESS) {
+        result = unmap_result;
+      }
+    }
+    CUcontext popped_context = nullptr;
+    const CUresult pop_result =
+        minirtc::cuCtxPopCurrent_ld(&popped_context);
+    if (result != CUDA_SUCCESS || pop_result != CUDA_SUCCESS) {
+      DisableCudaInterop();
+      return CudaUploadResult::unavailable;
+    }
+
+    *upload_slot_index = selected_index;
+    next_cuda_upload_slot = (selected_index + 1) % cuda_upload_slots.size();
+    return CudaUploadResult::ready;
+  }
+#endif
+
   void ResetGlHandles() {
     program = 0;
     vertex_buffer = 0;
@@ -266,6 +676,9 @@ struct OpenGlVideoRenderer::Impl {
     texture_height = 0;
     uploaded_stream.clear();
     uploaded_sequence = 0;
+#if defined(_WIN32) && USE_CUDA
+    displayed_cuda_upload_slot = kCudaUploadSlotCount;
+#endif
   }
 };
 
@@ -284,6 +697,15 @@ bool OpenGlVideoRenderer::Setup() {
     LOG_WARN("OpenGL NV12 underlay unavailable: required functions missing");
     return false;
   }
+#if defined(_WIN32) && USE_CUDA
+  impl_->cuda_sync_functions_available = impl_->gl.LoadSyncFunctions();
+  impl_->cuda_interop_disabled = !impl_->cuda_sync_functions_available;
+  impl_->cuda_cpu_fallback.store(!impl_->cuda_sync_functions_available,
+                                 std::memory_order_release);
+  impl_->cuda_native_logged = false;
+  impl_->cuda_fallback_logged = false;
+  impl_->cuda_busy_drop_count = 0;
+#endif
 
   static constexpr char kGlesVertexShader[] = R"glsl(
 #version 100
@@ -524,6 +946,9 @@ void main() {
 
 void OpenGlVideoRenderer::Teardown() {
   impl_->ready.store(false, std::memory_order_release);
+#if defined(_WIN32) && USE_CUDA
+  impl_->ReleaseCudaInterop();
+#endif
   if (impl_->y_texture != 0)
     glDeleteTextures(1, &impl_->y_texture);
   if (impl_->uv_texture != 0)
@@ -533,6 +958,14 @@ void OpenGlVideoRenderer::Teardown() {
   }
   if (impl_->program != 0 && impl_->gl.delete_program) {
     impl_->gl.delete_program(impl_->program);
+  }
+  {
+    std::lock_guard lock(impl_->frames->mutex);
+    for (auto &slot : impl_->frames->slots) {
+      slot.native_frame.Reset();
+      slot.valid = false;
+      slot.use = SlotUse::available;
+    }
   }
   impl_->ResetGlHandles();
 }
@@ -553,6 +986,8 @@ bool OpenGlVideoRenderer::SetSelectedStream(std::string remote_id) {
     if (slot.use == SlotUse::pending &&
         slot.remote_id != impl_->frames->selected_stream) {
       slot.use = SlotUse::available;
+      slot.valid = false;
+      slot.native_frame.Reset();
     }
   }
   return true;
@@ -565,6 +1000,7 @@ void OpenGlVideoRenderer::DiscardStream(std::string_view remote_id) {
       slot.valid = false;
       slot.use = SlotUse::available;
       slot.remote_id.clear();
+      slot.native_frame.Reset();
     }
   }
   if (impl_->frames->selected_stream == remote_id) {
@@ -648,8 +1084,97 @@ OpenGlVideoRenderer::SubmitNv12Internal(std::string_view remote_id,
 
   target->bytes.resize(required_size);
   std::memcpy(target->bytes.data(), data, required_size);
+  target->native_frame.Reset();
   target->width = width;
   target->height = height;
+  target->remote_id.assign(remote_id);
+  target->sequence = frames.next_sequence++;
+  target->use = SlotUse::pending;
+  target->valid = true;
+  return SubmitResult::submitted;
+}
+
+OpenGlVideoRenderer::SubmitResult
+OpenGlVideoRenderer::SubmitNativeFrame(std::string_view remote_id,
+                                       const XNativeVideoFrame &frame) {
+  if (!IsReady()) {
+    return SubmitResult::failed;
+  }
+  const XNativeVideoFrame *native = GetOpenGlNativeFrame(frame);
+  if (!native) {
+    return SubmitResult::failed;
+  }
+
+  auto &frames = *impl_->frames;
+  std::lock_guard lock(frames.mutex);
+  if (!IsReady()) {
+    return SubmitResult::failed;
+  }
+  if (frames.selected_stream != remote_id) {
+    return SubmitResult::not_selected;
+  }
+
+  // Latest-frame-only queue: replacing an unconsumed decoded frame bounds
+  // latency without dropping compressed delta frames before decode.
+  FrameSlot *target = nullptr;
+  for (auto &slot : frames.slots) {
+    if (slot.use == SlotUse::pending) {
+      target = &slot;
+      break;
+    }
+  }
+  if (!target) {
+    uint64_t oldest_sequence = std::numeric_limits<uint64_t>::max();
+    for (auto &slot : frames.slots) {
+      if (slot.use != SlotUse::available) {
+        continue;
+      }
+      if (!slot.valid) {
+        target = &slot;
+        break;
+      }
+      if (slot.sequence < oldest_sequence) {
+        oldest_sequence = slot.sequence;
+        target = &slot;
+      }
+    }
+  }
+  if (!target) {
+    return SubmitResult::dropped;
+  }
+
+#if defined(_WIN32) && USE_CUDA
+  if (native->type == XNativeVideoFrameCudaNv12 &&
+      impl_->cuda_cpu_fallback.load(std::memory_order_acquire)) {
+    const size_t required_size =
+        static_cast<size_t>(native->width) * native->height * 3U / 2U;
+    target->bytes.resize(required_size);
+    if (native->copy_to_nv12(native->owner, target->bytes.data(),
+                             target->bytes.size()) != 0) {
+      target->bytes.clear();
+      target->valid = false;
+      target->use = SlotUse::available;
+      return SubmitResult::failed;
+    }
+    target->native_frame.Reset();
+    target->width = static_cast<int>(native->width);
+    target->height = static_cast<int>(native->height);
+    target->remote_id.assign(remote_id);
+    target->sequence = frames.next_sequence++;
+    target->use = SlotUse::pending;
+    target->valid = true;
+    return SubmitResult::submitted;
+  }
+#endif
+
+  NativeVideoFrameRef retained(native);
+  if (!retained) {
+    return SubmitResult::failed;
+  }
+  target->bytes.clear();
+  target->native_frame = std::move(retained);
+  target->width = static_cast<int>(native->width);
+  target->height = static_cast<int>(native->height);
   target->remote_id.assign(remote_id);
   target->sequence = frames.next_sequence++;
   target->use = SlotUse::pending;
@@ -670,7 +1195,9 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
   uint64_t sequence = 0;
   int source_width = 0;
   int source_height = 0;
-  const unsigned char *frame_data = nullptr;
+  const unsigned char *y_data = nullptr;
+  const unsigned char *uv_data = nullptr;
+  NativeVideoFrameRef active_native_frame;
   {
     std::lock_guard lock(impl_->frames->mutex);
     for (size_t index = 0; index < impl_->frames->slots.size(); ++index) {
@@ -687,12 +1214,19 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
       selected.use = SlotUse::uploading;
       source_width = selected.width;
       source_height = selected.height;
-      frame_data = selected.bytes.data();
+      active_native_frame = selected.native_frame;
+      if (!selected.bytes.empty()) {
+        const size_t y_size = static_cast<size_t>(source_width) * source_height;
+        y_data = selected.bytes.data();
+        uv_data = selected.bytes.data() + y_size;
+      }
       for (size_t index = 0; index < impl_->frames->slots.size(); ++index) {
         auto &slot = impl_->frames->slots[index];
         if (index != slot_index && slot.use == SlotUse::pending &&
             slot.remote_id == remote_id) {
           slot.use = SlotUse::available;
+          slot.valid = false;
+          slot.native_frame.Reset();
         }
       }
     }
@@ -701,6 +1235,9 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
   GLint previous_program = 0;
   GLint previous_active_texture = GL_TEXTURE0;
   GLint previous_array_buffer = 0;
+#if defined(_WIN32) && USE_CUDA
+  GLint previous_unpack_buffer = 0;
+#endif
   GLint previous_unpack_alignment = 4;
   GLint previous_viewport[4] = {};
   GLint previous_scissor_box[4] = {};
@@ -709,6 +1246,9 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
   glGetIntegerv(GL_CURRENT_PROGRAM, &previous_program);
   glGetIntegerv(GL_ACTIVE_TEXTURE, &previous_active_texture);
   glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previous_array_buffer);
+#if defined(_WIN32) && USE_CUDA
+  glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &previous_unpack_buffer);
+#endif
   glGetIntegerv(GL_UNPACK_ALIGNMENT, &previous_unpack_alignment);
   glGetIntegerv(GL_VIEWPORT, previous_viewport);
   glGetIntegerv(GL_SCISSOR_BOX, previous_scissor_box);
@@ -750,38 +1290,140 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
     while (glGetError() != GL_NO_ERROR) {
     }
     const size_t y_size = static_cast<size_t>(source_width) * source_height;
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    impl_->gl.active_texture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, impl_->y_texture);
-    impl_->gl.active_texture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, impl_->uv_texture);
-    if (impl_->texture_width != source_width ||
-        impl_->texture_height != source_height) {
-      impl_->gl.active_texture(GL_TEXTURE0);
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, source_width, source_height,
-                   0, GL_LUMINANCE, GL_UNSIGNED_BYTE, frame_data);
-      impl_->gl.active_texture(GL_TEXTURE1);
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, source_width / 2,
-                   source_height / 2, 0, GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE,
-                   frame_data + y_size);
-    } else {
-      impl_->gl.active_texture(GL_TEXTURE0);
-      glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, source_width, source_height,
-                      GL_LUMINANCE, GL_UNSIGNED_BYTE, frame_data);
-      impl_->gl.active_texture(GL_TEXTURE1);
-      glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, source_width / 2,
-                      source_height / 2, GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE,
-                      frame_data + y_size);
+    const size_t required_size = y_size + y_size / 2U;
+    bool should_upload = true;
+    bool use_pixel_unpack_buffer = false;
+    size_t cuda_upload_slot = 0;
+    std::vector<unsigned char> cpu_fallback;
+    if (const XNativeVideoFrame *native = active_native_frame.Get()) {
+      if (native->type == XNativeVideoFrameCpuNv12 &&
+          native->payload.cpu_nv12.y_stride == native->width &&
+          native->payload.cpu_nv12.uv_stride == native->width) {
+        y_data = native->payload.cpu_nv12.y_plane;
+        uv_data = native->payload.cpu_nv12.uv_plane;
+      } else if (native->type == XNativeVideoFrameCudaNv12) {
+#if defined(_WIN32) && USE_CUDA
+        const auto cuda_result = impl_->CopyCudaFrameToUploadBuffer(
+            active_native_frame, &cuda_upload_slot);
+        use_pixel_unpack_buffer =
+            cuda_result == OpenGlVideoRenderer::Impl::CudaUploadResult::ready;
+        should_upload =
+            cuda_result != OpenGlVideoRenderer::Impl::CudaUploadResult::busy;
+        if (use_pixel_unpack_buffer && !impl_->cuda_native_logged) {
+          LOG_INFO("Windows native NV12 using asynchronous CUDA/OpenGL ring");
+          impl_->cuda_native_logged = true;
+        }
+        if (should_upload && !use_pixel_unpack_buffer &&
+            !impl_->cuda_fallback_logged) {
+          LOG_WARN("CUDA/OpenGL native upload unavailable; using CPU fallback");
+          impl_->cuda_fallback_logged = true;
+        }
+#endif
+      }
+
+      if (should_upload && !use_pixel_unpack_buffer && (!y_data || !uv_data)) {
+        cpu_fallback.resize(required_size);
+        if (native->copy_to_nv12(native->owner, cpu_fallback.data(),
+                                 cpu_fallback.size()) == 0) {
+          y_data = cpu_fallback.data();
+          uv_data = cpu_fallback.data() + y_size;
+        } else {
+          upload_succeeded = false;
+        }
+      }
     }
-    const GLenum upload_error = glGetError();
-    upload_succeeded = upload_error == GL_NO_ERROR;
-    if (upload_succeeded) {
-      impl_->texture_width = source_width;
-      impl_->texture_height = source_height;
-      impl_->uploaded_stream.assign(remote_id);
-      impl_->uploaded_sequence = sequence;
-    } else {
-      LOG_WARN("OpenGL NV12 texture upload failed, error={}", upload_error);
+    if (should_upload && !use_pixel_unpack_buffer && (!y_data || !uv_data)) {
+      upload_succeeded = false;
+    }
+
+    GLuint upload_y_texture = impl_->y_texture;
+    GLuint upload_uv_texture = impl_->uv_texture;
+#if defined(_WIN32) && USE_CUDA
+    if (should_upload && upload_succeeded && use_pixel_unpack_buffer) {
+      auto &cuda_slot = impl_->cuda_upload_slots[cuda_upload_slot];
+      upload_succeeded = impl_->PrepareCudaTextures(cuda_slot);
+      upload_y_texture = cuda_slot.y_texture;
+      upload_uv_texture = cuda_slot.uv_texture;
+      if (!upload_succeeded) {
+        impl_->DisableCudaInterop();
+      }
+    }
+#endif
+    if (should_upload && upload_succeeded) {
+      glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+      impl_->gl.active_texture(GL_TEXTURE0);
+      glBindTexture(GL_TEXTURE_2D, upload_y_texture);
+      impl_->gl.active_texture(GL_TEXTURE1);
+      glBindTexture(GL_TEXTURE_2D, upload_uv_texture);
+      if (use_pixel_unpack_buffer) {
+#if defined(_WIN32) && USE_CUDA
+        impl_->gl.bind_buffer(
+            GL_PIXEL_UNPACK_BUFFER,
+            impl_->cuda_upload_slots[cuda_upload_slot].buffer);
+#endif
+      }
+      const void *y_pixels = use_pixel_unpack_buffer
+                                 ? nullptr
+                                 : static_cast<const void *>(y_data);
+      const void *uv_pixels =
+          use_pixel_unpack_buffer
+              ? reinterpret_cast<const void *>(static_cast<uintptr_t>(y_size))
+              : static_cast<const void *>(uv_data);
+      int uploaded_texture_width = impl_->texture_width;
+      int uploaded_texture_height = impl_->texture_height;
+#if defined(_WIN32) && USE_CUDA
+      if (use_pixel_unpack_buffer) {
+        uploaded_texture_width =
+            impl_->cuda_upload_slots[cuda_upload_slot].texture_width;
+        uploaded_texture_height =
+            impl_->cuda_upload_slots[cuda_upload_slot].texture_height;
+      }
+#endif
+      if (uploaded_texture_width != source_width ||
+          uploaded_texture_height != source_height) {
+        impl_->gl.active_texture(GL_TEXTURE0);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, source_width,
+                     source_height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
+                     y_pixels);
+        impl_->gl.active_texture(GL_TEXTURE1);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, source_width / 2,
+                     source_height / 2, 0, GL_LUMINANCE_ALPHA,
+                     GL_UNSIGNED_BYTE, uv_pixels);
+      } else {
+        impl_->gl.active_texture(GL_TEXTURE0);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, source_width, source_height,
+                        GL_LUMINANCE, GL_UNSIGNED_BYTE, y_pixels);
+        impl_->gl.active_texture(GL_TEXTURE1);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, source_width / 2,
+                        source_height / 2, GL_LUMINANCE_ALPHA,
+                        GL_UNSIGNED_BYTE, uv_pixels);
+      }
+      if (use_pixel_unpack_buffer) {
+#if defined(_WIN32) && USE_CUDA
+        impl_->gl.bind_buffer(GL_PIXEL_UNPACK_BUFFER,
+                              static_cast<GLuint>(previous_unpack_buffer));
+#endif
+      }
+      const GLenum upload_error = glGetError();
+      upload_succeeded = upload_error == GL_NO_ERROR;
+      if (upload_succeeded) {
+        impl_->texture_width = source_width;
+        impl_->texture_height = source_height;
+        impl_->uploaded_stream.assign(remote_id);
+        impl_->uploaded_sequence = sequence;
+#if defined(_WIN32) && USE_CUDA
+        if (use_pixel_unpack_buffer) {
+          auto &cuda_slot = impl_->cuda_upload_slots[cuda_upload_slot];
+          cuda_slot.texture_width = source_width;
+          cuda_slot.texture_height = source_height;
+          impl_->displayed_cuda_upload_slot = cuda_upload_slot;
+        } else {
+          impl_->displayed_cuda_upload_slot = kCudaUploadSlotCount;
+        }
+#endif
+      } else {
+        LOG_WARN("OpenGL NV12 texture upload failed, error={}", upload_error);
+      }
     }
   }
 
@@ -826,12 +1468,22 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
 
   while (glGetError() != GL_NO_ERROR) {
   }
+  GLuint displayed_y_texture = impl_->y_texture;
+  GLuint displayed_uv_texture = impl_->uv_texture;
+#if defined(_WIN32) && USE_CUDA
+  if (impl_->displayed_cuda_upload_slot < impl_->cuda_upload_slots.size()) {
+    const auto &cuda_slot =
+        impl_->cuda_upload_slots[impl_->displayed_cuda_upload_slot];
+    displayed_y_texture = cuda_slot.y_texture;
+    displayed_uv_texture = cuda_slot.uv_texture;
+  }
+#endif
   impl_->gl.use_program(impl_->program);
   impl_->gl.active_texture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, impl_->y_texture);
+  glBindTexture(GL_TEXTURE_2D, displayed_y_texture);
   impl_->gl.uniform_1i(impl_->y_texture_location, 0);
   impl_->gl.active_texture(GL_TEXTURE1);
-  glBindTexture(GL_TEXTURE_2D, impl_->uv_texture);
+  glBindTexture(GL_TEXTURE_2D, displayed_uv_texture);
   impl_->gl.uniform_1i(impl_->uv_texture_location, 1);
   impl_->gl.uniform_2f(impl_->target_size_location,
                        static_cast<GLfloat>(target_width),
@@ -858,6 +1510,21 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
   impl_->gl.enable_vertex_attrib_array(
       static_cast<GLuint>(impl_->texcoord_location));
   glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+#if defined(_WIN32) && USE_CUDA
+  if (impl_->displayed_cuda_upload_slot < impl_->cuda_upload_slots.size()) {
+    auto &cuda_slot =
+        impl_->cuda_upload_slots[impl_->displayed_cuda_upload_slot];
+    if (cuda_slot.fence) {
+      impl_->gl.delete_sync(cuda_slot.fence);
+    }
+    cuda_slot.fence =
+        impl_->gl.fence_sync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    if (!cuda_slot.fence) {
+      glFinish();
+      impl_->DisableCudaInterop();
+    }
+  }
+#endif
   const GLenum draw_error = glGetError();
   RenderOutcome outcome{
       !upload_succeeded || draw_error != GL_NO_ERROR
@@ -872,6 +1539,10 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
                       texcoord_state);
   impl_->gl.bind_buffer(GL_ARRAY_BUFFER,
                         static_cast<GLuint>(previous_array_buffer));
+#if defined(_WIN32) && USE_CUDA
+  impl_->gl.bind_buffer(GL_PIXEL_UNPACK_BUFFER,
+                        static_cast<GLuint>(previous_unpack_buffer));
+#endif
   impl_->gl.active_texture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previous_texture_0));
   impl_->gl.active_texture(GL_TEXTURE1);
@@ -908,21 +1579,38 @@ bool OpenGlVideoRenderer::CopyLatestNv12(
   if (!output || !width || !height) {
     return false;
   }
-  std::lock_guard lock(impl_->frames->mutex);
-  const FrameSlot *newest = nullptr;
-  for (const auto &slot : impl_->frames->slots) {
-    if (slot.valid && slot.remote_id == remote_id &&
-        (!newest || slot.sequence > newest->sequence)) {
-      newest = &slot;
+  std::vector<unsigned char> cpu_frame;
+  NativeVideoFrameRef native_frame;
+  {
+    std::lock_guard lock(impl_->frames->mutex);
+    const FrameSlot *newest = nullptr;
+    for (const auto &slot : impl_->frames->slots) {
+      if (slot.valid && slot.remote_id == remote_id &&
+          (!newest || slot.sequence > newest->sequence)) {
+        newest = &slot;
+      }
     }
+    if (!newest) {
+      return false;
+    }
+    *width = newest->width;
+    *height = newest->height;
+    cpu_frame = newest->bytes;
+    native_frame = newest->native_frame;
   }
-  if (!newest || newest->bytes.empty()) {
-    return false;
+
+  if (!cpu_frame.empty()) {
+    *output = std::move(cpu_frame);
+    return true;
   }
-  *output = newest->bytes;
-  *width = newest->width;
-  *height = newest->height;
-  return true;
+  if (const XNativeVideoFrame *native = native_frame.Get()) {
+    const size_t required_size =
+        static_cast<size_t>(native->width) * native->height * 3U / 2U;
+    output->resize(required_size);
+    return native->copy_to_nv12(native->owner, output->data(),
+                                output->size()) == 0;
+  }
+  return false;
 }
 
 } // namespace crossdesk

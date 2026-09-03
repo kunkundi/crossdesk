@@ -14,6 +14,18 @@ namespace {
 
 constexpr auto kBackgroundSnapshotInterval = std::chrono::seconds(1);
 
+const XNativeVideoFrame* GetNativeVideoFrame(const XVideoFrame* frame) {
+  if (!frame || !frame->native_frame) {
+    return nullptr;
+  }
+  const auto* native = frame->native_frame;
+  return native->struct_size >=
+                     static_cast<uint32_t>(sizeof(XNativeVideoFrame)) &&
+                 native->owner && native->copy_to_nv12
+             ? native
+             : nullptr;
+}
+
 }  // namespace
 
 void PeerEventHandler::OnReceiveVideoBuffer(
@@ -38,9 +50,17 @@ void PeerEventHandler::OnReceiveVideoBuffer(
     bool background_snapshot_only = false;
     auto* native_renderer = runtime->video_renderer_.get();
     if (native_renderer && native_renderer->IsActive()) {
-      const auto submit_result = native_renderer->SubmitNv12(
-          remote_id, reinterpret_cast<const uint8_t*>(video_frame->data),
-          video_frame->size, video_frame->width, video_frame->height);
+      VideoRenderer::SubmitResult submit_result =
+          VideoRenderer::SubmitResult::failed;
+      if (GetNativeVideoFrame(video_frame)) {
+        submit_result = native_renderer->SubmitNativeFrame(
+            remote_id, *video_frame->native_frame);
+      } else
+      {
+        submit_result = native_renderer->SubmitNv12(
+            remote_id, reinterpret_cast<const uint8_t*>(video_frame->data),
+            video_frame->size, video_frame->width, video_frame->height);
+      }
       if (submit_result == VideoRenderer::SubmitResult::submitted) {
         std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
         const bool size_changed = (props->video_width_ != video_frame->width) ||
@@ -88,17 +108,39 @@ void PeerEventHandler::OnReceiveVideoBuffer(
         return;
       }
 
+      size_t frame_size = video_frame->size;
+      const XNativeVideoFrame* native_frame =
+          GetNativeVideoFrame(video_frame);
+      if (native_frame) {
+        frame_size = static_cast<size_t>(native_frame->width) *
+                     native_frame->height * 3U / 2U;
+      }
+      if (frame_size == 0) {
+        return;
+      }
+
       // Allocate a third buffer only while the UI still owns the old snapshot.
       if (!props->back_frame_ || props->back_frame_.use_count() != 1) {
         props->back_frame_ =
-            std::make_shared<std::vector<unsigned char>>(video_frame->size);
+            std::make_shared<std::vector<unsigned char>>(frame_size);
       }
-      if (props->back_frame_->size() != video_frame->size) {
-        props->back_frame_->resize(video_frame->size);
+      if (props->back_frame_->size() != frame_size) {
+        props->back_frame_->resize(frame_size);
       }
 
-      std::memcpy(props->back_frame_->data(), video_frame->data,
-                  video_frame->size);
+      if (native_frame) {
+        if (native_frame->copy_to_nv12(
+                native_frame->owner, props->back_frame_->data(),
+                props->back_frame_->size()) != 0) {
+          return;
+        }
+      } else
+      {
+        if (!video_frame->data || video_frame->size < frame_size) {
+          return;
+        }
+        std::memcpy(props->back_frame_->data(), video_frame->data, frame_size);
+      }
 
       const bool size_changed = (props->video_width_ != video_frame->width) ||
                                 (props->video_height_ != video_frame->height);
@@ -108,7 +150,7 @@ void PeerEventHandler::OnReceiveVideoBuffer(
 
       props->video_width_ = video_frame->width;
       props->video_height_ = video_frame->height;
-      props->video_size_ = video_frame->size;
+      props->video_size_ = frame_size;
 
       props->front_frame_.swap(props->back_frame_);
       props->thumbnail_frame_ = props->front_frame_;

@@ -1124,12 +1124,17 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
         static_cast<size_t>(_selectedDisplay.load()));
     if (source != expected) return;
   }
+  const XNativeVideoFrame *native_frame = frame->native_frame;
   const bool has_native_pixel_buffer =
-      frame->native_handle &&
-      frame->native_handle_type == XVideoFrameNativeHandleCVPixelBuffer;
+      native_frame &&
+      native_frame->struct_size >=
+          static_cast<uint32_t>(sizeof(XNativeVideoFrame)) &&
+      native_frame->type == XNativeVideoFrameCVPixelBuffer &&
+      native_frame->payload.cv_pixel_buffer;
   if (has_native_pixel_buffer) {
     CVPixelBufferRef pixel_buffer =
-        static_cast<CVPixelBufferRef>(frame->native_handle);
+        static_cast<CVPixelBufferRef>(
+            native_frame->payload.cv_pixel_buffer);
     [self enqueueVideoPixelBuffer:pixel_buffer
                             width:frame->width
                            height:frame->height];
