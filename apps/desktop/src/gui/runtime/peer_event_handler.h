@@ -21,7 +21,7 @@ class PeerEventHandler {
 public:
   explicit PeerEventHandler(GuiRuntime &owner);
 
-  static void OnReceiveVideoBuffer(const XVideoFrame *video_frame,
+  static void OnReceiveVideoBuffer(const MiniRtcVideoFrame *video_frame,
                                    const char *user_id, size_t user_id_size,
                                    const char *src_id, size_t src_id_size,
                                    void *user_data);
@@ -41,7 +41,7 @@ public:
                                  size_t user_id_size, void *user_data);
   static void OnNetStatusReport(const char *client_id, size_t client_id_size,
                                 TraversalMode mode,
-                                const XNetTrafficStats *net_traffic_stats,
+                                const MiniRtcNetTrafficStats *net_traffic_stats,
                                 const char *user_id, size_t user_id_size,
                                 void *user_data);
 

@@ -42,7 +42,7 @@ class NativeVideoFrameRef {
 public:
   NativeVideoFrameRef() = default;
 
-  explicit NativeVideoFrameRef(const XNativeVideoFrame *frame) {
+  explicit NativeVideoFrameRef(const MiniRtcNativeVideoFrame *frame) {
     if (frame && frame->owner && frame->retain && frame->release) {
       frame_ = *frame;
       frame_.struct_size = sizeof(frame_);
@@ -79,18 +79,18 @@ public:
     std::swap(valid_, other.valid_);
   }
 
-  const XNativeVideoFrame *Get() const { return valid_ ? &frame_ : nullptr; }
+  const MiniRtcNativeVideoFrame *Get() const { return valid_ ? &frame_ : nullptr; }
   explicit operator bool() const { return valid_; }
 
 private:
-  XNativeVideoFrame frame_{};
+  MiniRtcNativeVideoFrame frame_{};
   bool valid_ = false;
 };
 
-const XNativeVideoFrame *GetOpenGlNativeFrame(
-    const XNativeVideoFrame &frame) {
-  const XNativeVideoFrame *native = &frame;
-  if (native->struct_size < static_cast<uint32_t>(sizeof(XNativeVideoFrame)) ||
+const MiniRtcNativeVideoFrame *GetOpenGlNativeFrame(
+    const MiniRtcNativeVideoFrame &frame) {
+  const MiniRtcNativeVideoFrame *native = &frame;
+  if (native->struct_size < static_cast<uint32_t>(sizeof(MiniRtcNativeVideoFrame)) ||
       !native->owner || !native->retain || !native->release ||
       !native->copy_to_nv12 || native->width == 0 || native->height == 0 ||
       (native->width & 1U) != 0 || (native->height & 1U) != 0 ||
@@ -98,7 +98,7 @@ const XNativeVideoFrame *GetOpenGlNativeFrame(
       native->height > static_cast<uint32_t>(std::numeric_limits<int>::max())) {
     return nullptr;
   }
-  if (native->type == XNativeVideoFrameCpuNv12) {
+  if (native->type == MiniRtcNativeVideoFrameCpuNv12) {
     return native->payload.cpu_nv12.y_plane &&
                    native->payload.cpu_nv12.uv_plane &&
                    native->payload.cpu_nv12.y_stride >= native->width &&
@@ -106,7 +106,7 @@ const XNativeVideoFrame *GetOpenGlNativeFrame(
                ? native
                : nullptr;
   }
-  if (native->type == XNativeVideoFrameCudaNv12) {
+  if (native->type == MiniRtcNativeVideoFrameCudaNv12) {
     return native->payload.cuda_nv12.y_device_pointer != 0 &&
                    native->payload.cuda_nv12.uv_device_pointer != 0 &&
                    native->payload.cuda_nv12.y_stride >= native->width &&
@@ -457,7 +457,7 @@ struct OpenGlVideoRenderer::Impl {
   }
 
   bool PrepareCudaContext(const NativeVideoFrameRef &native_frame) {
-    const XNativeVideoFrame *frame = native_frame.Get();
+    const MiniRtcNativeVideoFrame *frame = native_frame.Get();
     if (!frame || !frame->payload.cuda_nv12.context ||
         cuda_interop_disabled ||
         !cuda_sync_functions_available ||
@@ -564,7 +564,7 @@ struct OpenGlVideoRenderer::Impl {
 
   CudaUploadResult CopyCudaFrameToUploadBuffer(
       const NativeVideoFrameRef &native_frame, size_t *upload_slot_index) {
-    const XNativeVideoFrame *frame = native_frame.Get();
+    const MiniRtcNativeVideoFrame *frame = native_frame.Get();
     if (!upload_slot_index || !PrepareCudaContext(native_frame)) {
       return CudaUploadResult::unavailable;
     }
@@ -1096,11 +1096,11 @@ OpenGlVideoRenderer::SubmitNv12Internal(std::string_view remote_id,
 
 OpenGlVideoRenderer::SubmitResult
 OpenGlVideoRenderer::SubmitNativeFrame(std::string_view remote_id,
-                                       const XNativeVideoFrame &frame) {
+                                       const MiniRtcNativeVideoFrame &frame) {
   if (!IsReady()) {
     return SubmitResult::failed;
   }
-  const XNativeVideoFrame *native = GetOpenGlNativeFrame(frame);
+  const MiniRtcNativeVideoFrame *native = GetOpenGlNativeFrame(frame);
   if (!native) {
     return SubmitResult::failed;
   }
@@ -1144,7 +1144,7 @@ OpenGlVideoRenderer::SubmitNativeFrame(std::string_view remote_id,
   }
 
 #if defined(_WIN32) && USE_CUDA
-  if (native->type == XNativeVideoFrameCudaNv12 &&
+  if (native->type == MiniRtcNativeVideoFrameCudaNv12 &&
       impl_->cuda_cpu_fallback.load(std::memory_order_acquire)) {
     const size_t required_size =
         static_cast<size_t>(native->width) * native->height * 3U / 2U;
@@ -1295,13 +1295,13 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
     bool use_pixel_unpack_buffer = false;
     size_t cuda_upload_slot = 0;
     std::vector<unsigned char> cpu_fallback;
-    if (const XNativeVideoFrame *native = active_native_frame.Get()) {
-      if (native->type == XNativeVideoFrameCpuNv12 &&
+    if (const MiniRtcNativeVideoFrame *native = active_native_frame.Get()) {
+      if (native->type == MiniRtcNativeVideoFrameCpuNv12 &&
           native->payload.cpu_nv12.y_stride == native->width &&
           native->payload.cpu_nv12.uv_stride == native->width) {
         y_data = native->payload.cpu_nv12.y_plane;
         uv_data = native->payload.cpu_nv12.uv_plane;
-      } else if (native->type == XNativeVideoFrameCudaNv12) {
+      } else if (native->type == MiniRtcNativeVideoFrameCudaNv12) {
 #if defined(_WIN32) && USE_CUDA
         const auto cuda_result = impl_->CopyCudaFrameToUploadBuffer(
             active_native_frame, &cuda_upload_slot);
@@ -1603,7 +1603,7 @@ bool OpenGlVideoRenderer::CopyLatestNv12(
     *output = std::move(cpu_frame);
     return true;
   }
-  if (const XNativeVideoFrame *native = native_frame.Get()) {
+  if (const MiniRtcNativeVideoFrame *native = native_frame.Get()) {
     const size_t required_size =
         static_cast<size_t>(native->width) * native->height * 3U / 2U;
     output->resize(required_size);

@@ -695,9 +695,9 @@ void ScreenCapturerSckImpl::OnNewCVPixelBuffer(CVPixelBufferRef pixelBuffer,
     }
   }
 
-  XNativeVideoFrame native_frame{};
+  MiniRtcNativeVideoFrame native_frame{};
   native_frame.struct_size = sizeof(native_frame);
-  native_frame.type = XNativeVideoFrameCVPixelBuffer;
+  native_frame.type = MiniRtcNativeVideoFrameCVPixelBuffer;
   native_frame.width = static_cast<uint32_t>(width);
   native_frame.height = static_cast<uint32_t>(height);
   native_frame.payload.cv_pixel_buffer = pixelBuffer;

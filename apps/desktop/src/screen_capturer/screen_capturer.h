@@ -21,7 +21,7 @@ class ScreenCapturer {
   // duration of the callback; retain its owner before using it asynchronously.
   typedef std::function<void(unsigned char* data, int size, int width,
                              int height, const char* stream_id,
-                             const XNativeVideoFrame* native_frame)>
+                             const MiniRtcNativeVideoFrame* native_frame)>
       cb_desktop_data;
 
  public:

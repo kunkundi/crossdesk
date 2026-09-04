@@ -269,11 +269,22 @@ void GuiRuntime::SdlCaptureAudioIn(void *userdata, Uint8 *stream, int len) {
 
   if (1) {
     std::shared_lock lock(runtime->remote_sessions_mutex_);
+    uint64_t captured_timestamp = 0;
     for (const auto &it : runtime->remote_sessions_) {
       auto props = it.second;
       if (props->connection_status_.load() == ConnectionStatus::Connected) {
         if (props->peer_) {
-          SendAudioFrame(props->peer_, (const char *)stream, len,
+          if (captured_timestamp == 0) {
+            const int64_t timestamp_us = GetSystemTimeMicros(props->peer_);
+            if (timestamp_us > 0) {
+              captured_timestamp = static_cast<uint64_t>(timestamp_us);
+            }
+          }
+          MiniRtcAudioFrame frame{};
+          frame.data = reinterpret_cast<const char *>(stream);
+          frame.size = static_cast<size_t>(len);
+          frame.captured_timestamp = captured_timestamp;
+          SendAudioFrame(props->peer_, &frame,
                          runtime->audio_label_.c_str());
         }
       }
@@ -290,29 +301,6 @@ void GuiRuntime::SdlCaptureAudioIn(void *userdata, Uint8 *stream, int len) {
 void GuiRuntime::SdlCaptureAudioOut([[maybe_unused]] void *userdata,
                                     [[maybe_unused]] Uint8 *stream,
                                     [[maybe_unused]] int len) {
-  // GuiApplication *runtime = (GuiApplication *)userdata;
-  // for (auto it : runtime->remote_sessions_) {
-  //   auto props = it.second;
-  //   if (props->connection_status_ == SignalStatus::SignalConnected) {
-  //     SendAudioFrame(props->peer_, (const char *)stream, len);
-  //   }
-  // }
-
-  // if (!runtime->audio_buffer_fresh_) {
-  //   return;
-  // }
-
-  // SDL_memset(stream, 0, len);
-
-  // if (runtime->audio_len_ == 0) {
-  //   return;
-  // } else {
-  // }
-
-  // len = (len > runtime->audio_len_ ? runtime->audio_len_ : len);
-  // SDL_MixAudioFormat(stream, runtime->audio_buffer_, AUDIO_S16LSB, len,
-  //                    SDL_MIX_MAXVOLUME);
-  // runtime->audio_buffer_fresh_ = false;
 }
 
 } // namespace crossdesk

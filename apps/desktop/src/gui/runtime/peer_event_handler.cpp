@@ -493,7 +493,7 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
 
 void PeerEventHandler::OnNetStatusReport(
     const char* client_id, size_t client_id_size, TraversalMode mode,
-    const XNetTrafficStats* net_traffic_stats, const char* user_id,
+    const MiniRtcNetTrafficStats* net_traffic_stats, const char* user_id,
     const size_t user_id_size, void* user_data) {
   auto* handler = static_cast<PeerEventHandler*>(user_data);
   GuiRuntime* runtime = handler ? &handler->owner_ : nullptr;

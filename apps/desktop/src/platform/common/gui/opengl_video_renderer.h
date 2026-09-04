@@ -43,7 +43,7 @@ public:
   SubmitResult SubmitCachedNv12(std::string_view remote_id, const uint8_t *data,
                                 size_t size, int width, int height) override;
   SubmitResult SubmitNativeFrame(std::string_view remote_id,
-                                 const XNativeVideoFrame &frame) override;
+                                 const MiniRtcNativeVideoFrame &frame) override;
 
   // Draws below Slint while its OpenGL context is current. All dimensions are
   // physical pixels in the window client area. corner_radius_pixels clips the

@@ -199,7 +199,7 @@ class NativeVideoFrameRef {
  public:
   NativeVideoFrameRef() = default;
 
-  explicit NativeVideoFrameRef(const XNativeVideoFrame* frame) {
+  explicit NativeVideoFrameRef(const MiniRtcNativeVideoFrame* frame) {
     if (frame && frame->owner && frame->retain && frame->release) {
       frame_ = *frame;
       frame_.struct_size = sizeof(frame_);
@@ -236,21 +236,21 @@ class NativeVideoFrameRef {
     std::swap(valid_, other.valid_);
   }
 
-  const XNativeVideoFrame* Get() const {
+  const MiniRtcNativeVideoFrame* Get() const {
     return valid_ ? &frame_ : nullptr;
   }
   explicit operator bool() const { return valid_; }
 
  private:
-  XNativeVideoFrame frame_{};
+  MiniRtcNativeVideoFrame frame_{};
   bool valid_ = false;
 };
 
-const XNativeVideoFrame* GetMacNativeFrame(
-    const XNativeVideoFrame& frame) {
-  const XNativeVideoFrame* native = &frame;
+const MiniRtcNativeVideoFrame* GetMacNativeFrame(
+    const MiniRtcNativeVideoFrame& frame) {
+  const MiniRtcNativeVideoFrame* native = &frame;
   if (native->struct_size < static_cast<uint32_t>(sizeof(*native)) ||
-      native->type != XNativeVideoFrameCVPixelBuffer ||
+      native->type != MiniRtcNativeVideoFrameCVPixelBuffer ||
       !native->payload.cv_pixel_buffer || !native->owner || !native->retain ||
       !native->release || !native->copy_to_nv12 || native->width == 0 ||
       native->height == 0 || (native->width & 1U) != 0 ||
@@ -471,7 +471,7 @@ fragment half4 nv12_fragment(
                                 - 16.0 / 255.0);
   const float2 uv = uv_texture.sample(video_sampler, in.texcoord).rg - 0.5;
   // BT.601 limited-range NV12, matching the previous libyuv NV12ToABGR/RAW
-  // path. MiniRTC's current XVideoFrame API does not carry color metadata, so
+  // path. MiniRTC's current MiniRtcVideoFrame API does not carry color metadata, so
   // retaining the established matrix avoids a platform-only color change.
   const float3 rgb = float3(y + 1.59602678 * uv.y,
                             y - 0.39176229 * uv.x - 0.81296764 * uv.y,
@@ -751,11 +751,11 @@ MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitNv12(
 }
 
 MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitNativeFrame(
-    std::string_view remote_id, const XNativeVideoFrame& frame) {
+    std::string_view remote_id, const MiniRtcNativeVideoFrame& frame) {
   if (!IsReady()) {
     return SubmitResult::failed;
   }
-  const XNativeVideoFrame* native = GetMacNativeFrame(frame);
+  const MiniRtcNativeVideoFrame* native = GetMacNativeFrame(frame);
   if (!native) {
     return SubmitResult::failed;
   }
@@ -1322,7 +1322,7 @@ bool MacMetalVideoRenderer::CopyLatestNv12(
     }
   }
 
-  const XNativeVideoFrame* native = native_frame.Get();
+  const MiniRtcNativeVideoFrame* native = native_frame.Get();
   const size_t y_size = static_cast<size_t>(native->width) * native->height;
   output->resize(y_size + y_size / 2);
   return native->copy_to_nv12(native->owner, output->data(), output->size()) ==

@@ -88,7 +88,7 @@ class ScreenCapturerWin : public ScreenCapturer {
   void RebuildAliasesFromImpl();
   void EmitCapturedFrame(unsigned char* data, int size, int width, int height,
                          const char* stream_id,
-                         const XNativeVideoFrame* native_frame = nullptr);
+                         const MiniRtcNativeVideoFrame* native_frame = nullptr);
   void StopSecureCaptureThread();
   bool RestartCaptureBackendAfterSecureDesktop();
   void SecureDesktopCaptureLoop();

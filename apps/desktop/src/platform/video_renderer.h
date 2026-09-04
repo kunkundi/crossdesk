@@ -61,7 +61,7 @@ public:
   // Retains a platform-native decoded frame when the backend supports its
   // storage and handle types. Unsupported backends keep the default fallback.
   virtual SubmitResult SubmitNativeFrame(std::string_view,
-                                         const XNativeVideoFrame&) {
+                                         const MiniRtcNativeVideoFrame&) {
     return SubmitResult::failed;
   }
 

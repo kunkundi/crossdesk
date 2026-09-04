@@ -414,7 +414,7 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
   }
   cb_ = [this](unsigned char* data, int size, int w, int h,
                const char* reported_stream_id,
-               const XNativeVideoFrame* native_frame) {
+               const MiniRtcNativeVideoFrame* native_frame) {
     if (secure_desktop_capture_active_.load(std::memory_order_relaxed)) {
       return;
     }
@@ -530,7 +530,7 @@ int ScreenCapturerWin::Destroy() {
 
 void ScreenCapturerWin::EmitCapturedFrame(
     unsigned char* data, int size, int width, int height,
-    const char* stream_id, const XNativeVideoFrame* native_frame) {
+    const char* stream_id, const MiniRtcNativeVideoFrame* native_frame) {
   if (!cb_orig_) {
     return;
   }

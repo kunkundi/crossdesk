@@ -168,7 +168,7 @@ struct RemoteSession {
   int fps_ = 0;
   int frame_count_ = 0;
   std::chrono::steady_clock::time_point last_time_;
-  XNetTrafficStats net_traffic_stats_{};
+  MiniRtcNetTrafficStats net_traffic_stats_{};
 
   using QueuedFile = FileTransferState::QueuedFile;
   using FileTransferStatus = FileTransferState::FileTransferStatus;

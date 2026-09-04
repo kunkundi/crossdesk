@@ -14,13 +14,13 @@ namespace {
 
 constexpr auto kBackgroundSnapshotInterval = std::chrono::seconds(1);
 
-const XNativeVideoFrame* GetNativeVideoFrame(const XVideoFrame* frame) {
+const MiniRtcNativeVideoFrame* GetNativeVideoFrame(const MiniRtcVideoFrame* frame) {
   if (!frame || !frame->native_frame) {
     return nullptr;
   }
   const auto* native = frame->native_frame;
   return native->struct_size >=
-                     static_cast<uint32_t>(sizeof(XNativeVideoFrame)) &&
+                     static_cast<uint32_t>(sizeof(MiniRtcNativeVideoFrame)) &&
                  native->owner && native->copy_to_nv12
              ? native
              : nullptr;
@@ -29,7 +29,7 @@ const XNativeVideoFrame* GetNativeVideoFrame(const XVideoFrame* frame) {
 }  // namespace
 
 void PeerEventHandler::OnReceiveVideoBuffer(
-    const XVideoFrame* video_frame, const char* user_id, size_t user_id_size,
+    const MiniRtcVideoFrame* video_frame, const char* user_id, size_t user_id_size,
     const char* src_id, size_t src_id_size, void* user_data) {
   auto* handler = static_cast<PeerEventHandler*>(user_data);
   GuiRuntime* runtime = handler ? &handler->owner_ : nullptr;
@@ -109,7 +109,7 @@ void PeerEventHandler::OnReceiveVideoBuffer(
       }
 
       size_t frame_size = video_frame->size;
-      const XNativeVideoFrame* native_frame =
+      const MiniRtcNativeVideoFrame* native_frame =
           GetNativeVideoFrame(video_frame);
       if (native_frame) {
         frame_size = static_cast<size_t>(native_frame->width) *

@@ -40,7 +40,7 @@ class MacMetalVideoRenderer final : public VideoRenderer {
   // Retains an IOSurface-backed VideoToolbox CVPixelBuffer until the Metal
   // command buffer using it has completed.
   SubmitResult SubmitNativeFrame(std::string_view remote_id,
-                                 const XNativeVideoFrame& frame) override;
+                                 const MiniRtcNativeVideoFrame& frame) override;
 
   // Seeds a newly selected stream from its retained CPU snapshot without
   // replacing a newer decoded frame that is already queued or rendering.

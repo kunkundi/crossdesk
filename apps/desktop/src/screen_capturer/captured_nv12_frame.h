@@ -46,7 +46,7 @@ class CapturedNv12FramePool final
 
 class CapturedNv12Frame final {
  public:
-  const XNativeVideoFrame* Descriptor() const { return &descriptor_; }
+  const MiniRtcNativeVideoFrame* Descriptor() const { return &descriptor_; }
   size_t Size() const { return storage_.size(); }
 
   void AddRef();
@@ -70,7 +70,7 @@ class CapturedNv12Frame final {
   std::vector<uint8_t> storage_;
   uint32_t width_ = 0;
   uint32_t height_ = 0;
-  XNativeVideoFrame descriptor_{};
+  MiniRtcNativeVideoFrame descriptor_{};
 };
 
 }  // namespace crossdesk

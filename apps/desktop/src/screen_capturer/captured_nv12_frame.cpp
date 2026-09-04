@@ -116,7 +116,7 @@ CapturedNv12Frame::CapturedNv12Frame(
       width_(width),
       height_(height) {
   descriptor_.struct_size = sizeof(descriptor_);
-  descriptor_.type = XNativeVideoFrameCpuNv12;
+  descriptor_.type = MiniRtcNativeVideoFrameCpuNv12;
   descriptor_.width = width_;
   descriptor_.height = height_;
   descriptor_.payload.cpu_nv12 = {

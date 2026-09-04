@@ -202,7 +202,7 @@ void DispatchMain(dispatch_block_t block) {
                     generation:(uint64_t)generation;
 - (BOOL)isControllerGenerationActive:(uint64_t)generation;
 - (BOOL)isControllerGenerationCurrent:(uint64_t)generation;
-- (void)handleVideoFrame:(const XVideoFrame *)frame
+- (void)handleVideoFrame:(const MiniRtcVideoFrame *)frame
                 sourceID:(const char *)sourceID
             sourceIDSize:(size_t)sourceIDSize;
 - (void)enqueueVideoPixelBuffer:(CVPixelBufferRef)pixelBuffer
@@ -214,7 +214,7 @@ void DispatchMain(dispatch_block_t block) {
               size:(size_t)size
           sourceID:(const char *)sourceID
       sourceIDSize:(size_t)sourceIDSize;
-- (void)handleStats:(const XNetTrafficStats *)stats mode:(TraversalMode)mode;
+- (void)handleStats:(const MiniRtcNetTrafficStats *)stats mode:(TraversalMode)mode;
 - (void)sendMessage:(const std::string &)message
             reliable:(BOOL)reliable
               stream:(const char *)stream;
@@ -227,7 +227,7 @@ void DispatchMain(dispatch_block_t block) {
 
 namespace {
 
-void OnVideoFrame(const XVideoFrame *frame, const char *, size_t,
+void OnVideoFrame(const MiniRtcVideoFrame *frame, const char *, size_t,
                   const char *source_id, size_t source_id_size,
                   void *user_data) {
   auto *context = static_cast<CallbackContext *>(user_data);
@@ -298,7 +298,7 @@ void OnConnectionState(ConnectionStatus status, const char *remote_id,
 }
 
 void OnNetworkStats(const char *peer_id, size_t peer_id_size,
-                    TraversalMode mode, const XNetTrafficStats *stats,
+                    TraversalMode mode, const MiniRtcNetTrafficStats *stats,
                     const char *, size_t, void *user_data) {
   auto *context = static_cast<CallbackContext *>(user_data);
   CrossDeskRTCBridge *owner = context ? context->owner : nil;
@@ -1114,7 +1114,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   return active == 0 || active == generation;
 }
 
-- (void)handleVideoFrame:(const XVideoFrame *)frame
+- (void)handleVideoFrame:(const MiniRtcVideoFrame *)frame
                 sourceID:(const char *)sourceID
             sourceIDSize:(size_t)sourceIDSize {
   if (!frame || frame->width == 0 || frame->height == 0) return;
@@ -1124,12 +1124,12 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
         static_cast<size_t>(_selectedDisplay.load()));
     if (source != expected) return;
   }
-  const XNativeVideoFrame *native_frame = frame->native_frame;
+  const MiniRtcNativeVideoFrame *native_frame = frame->native_frame;
   const bool has_native_pixel_buffer =
       native_frame &&
       native_frame->struct_size >=
-          static_cast<uint32_t>(sizeof(XNativeVideoFrame)) &&
-      native_frame->type == XNativeVideoFrameCVPixelBuffer &&
+          static_cast<uint32_t>(sizeof(MiniRtcNativeVideoFrame)) &&
+      native_frame->type == MiniRtcNativeVideoFrameCVPixelBuffer &&
       native_frame->payload.cv_pixel_buffer;
   if (has_native_pixel_buffer) {
     CVPixelBufferRef pixel_buffer =
@@ -1584,7 +1584,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   }
 }
 
-- (void)handleStats:(const XNetTrafficStats *)stats mode:(TraversalMode)mode {
+- (void)handleStats:(const MiniRtcNetTrafficStats *)stats mode:(TraversalMode)mode {
   if (!stats) return;
   const NSUInteger bitrate = stats->total_inbound_stats.bitrate;
   const float loss = stats->video_inbound_stats.loss_rate;

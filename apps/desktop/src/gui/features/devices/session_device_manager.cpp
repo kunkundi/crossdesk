@@ -75,7 +75,7 @@ int SessionDeviceManager::InitializeScreenCapturer() {
   const int init_ret = screen_capturer_->Init(
       fps, [this, fps](unsigned char *data, int size, int width, int height,
                        const char *display_name,
-                       const XNativeVideoFrame *native_frame) {
+                       const MiniRtcNativeVideoFrame *native_frame) {
         const auto now_time = std::chrono::steady_clock::now();
         if (!ShouldSendCapturedFrame(now_time, fps)) {
           return;
@@ -137,7 +137,7 @@ int SessionDeviceManager::InitializeScreenCapturer() {
           }
         }
 
-        XVideoFrame frame{};
+        MiniRtcVideoFrame frame{};
         frame.data = reinterpret_cast<const char *>(data);
         frame.size = size;
         frame.width = width;
@@ -206,8 +206,11 @@ int SessionDeviceManager::StartSpeakerCapturer() {
         static_cast<SpeakerCapturer *>(speaker_capturer_factory_->Create());
     const int init_ret = speaker_capturer_->Init(
         [this](unsigned char *data, size_t size, const char *audio_name) {
-          SendAudioFrame(owner_.peer_, reinterpret_cast<const char *>(data),
-                         size, owner_.audio_label_.c_str());
+          MiniRtcAudioFrame frame{};
+          frame.data = reinterpret_cast<const char *>(data);
+          frame.size = size;
+          frame.captured_timestamp = GetSystemTimeMicros(owner_.peer_);
+          SendAudioFrame(owner_.peer_, &frame, owner_.audio_label_.c_str());
         });
 
     if (init_ret != 0) {
