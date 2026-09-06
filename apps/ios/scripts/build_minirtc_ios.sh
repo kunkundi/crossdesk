@@ -121,6 +121,7 @@ LINK_DIRS=("${(@f)$(print -r -- "${CLEAN_INFO}" | sed -nE 's|.*-> (/.*)/lib -> p
 
 REQUIRED_LINKS=(
   nice glib-2.0 gobject-2.0 gmodule-2.0 gio-2.0 gthread-2.0 intl
+  gupnp-igd-1.6 gupnp-1.6 gssdp-1.6 soup-3.0 nghttp2 sqlite3 psl xml2
   ffi pcre2-8 pcre2-posix z ssl crypto srtp2 openfec opus yuv kcp
   datachannel usrsctp openh264 dav1d aom SvtAv1Enc
 )
