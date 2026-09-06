@@ -329,6 +329,8 @@ function setup_targets()
             add_cxxflags("/bigobj")
             add_links("opengl32")
             add_files("apps/desktop/src/platform/windows/gui/tray/win_tray.cpp",
+                "apps/desktop/src/platform/windows/gui/slint_backend.cpp",
+                "apps/desktop/src/platform/windows/gui/slint_renderer_probe.cpp",
                 "apps/desktop/src/platform/common/gui/opengl_video_renderer.cpp",
                 "apps/desktop/src/platform/common/gui/video_renderer_factory_opengl.cpp",
                 "apps/desktop/src/platform/windows/gui/runtime/windows_service_runtime.cpp",

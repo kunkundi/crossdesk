@@ -37,6 +37,7 @@
 #if _WIN32
 #include <windows.h>
 
+#include "platform/windows/gui/slint_backend.h"
 #include "platform/windows/gui/tray/win_tray.h"
 #elif defined(__APPLE__)
 #include "platform/macos/gui/tray/mac_tray.h"
@@ -992,6 +993,15 @@ int GuiApplication::Run() {
   if (!InitializeSDL()) {
     return -1;
   }
+#if _WIN32
+  const auto backend = ConfigureWindowsSlintBackend();
+  if (!backend.success) {
+    LOG_ERROR("{}", backend.diagnostic);
+    SDL_Quit();
+    return -1;
+  }
+  LOG_INFO("Slint backend: {}; {}", backend.backend, backend.diagnostic);
+#endif
   InitializeModules();
   InitializeUi();
 

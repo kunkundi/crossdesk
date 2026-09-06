@@ -15,6 +15,7 @@
 #ifdef _WIN32
 #include <cstdio>
 
+#include "platform/windows/gui/slint_backend.h"
 #include "service_host.h"
 #endif
 
@@ -175,6 +176,10 @@ int HandleServiceCliCommand(const std::string& command) {
 
 int main(int argc, char* argv[]) {
 #ifdef _WIN32
+  if (argc == 2 &&
+      std::strcmp(argv[1], crossdesk::kSlintRendererProbeArgument) == 0) {
+    return crossdesk::RunSlintRendererProbe();
+  }
   if (argc > 1 && IsServiceCliCommand(argv[1])) {
     return HandleServiceCliCommand(argv[1]);
   }
