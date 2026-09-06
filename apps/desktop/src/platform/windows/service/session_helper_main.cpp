@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "interactive_desktop.h"
 #include "path_manager.h"
 #include "rd_log.h"
 #include "session_helper_shared.h"
@@ -30,6 +31,7 @@ namespace {
 
 using crossdesk::get_logger;
 using crossdesk::InitLogger;
+using crossdesk::ScopedInteractiveDesktop;
 using Json = nlohmann::json;
 
 constexpr DWORD kSessionHelperStatePollMs = 1000;
@@ -538,123 +540,8 @@ void HelperIpcServerLoop(HANDLE stop_event, DWORD session_id,
   }
 }
 
-std::wstring GetDesktopNameW(HDESK desktop) {
-  if (desktop == nullptr) {
-    return L"";
-  }
-
-  DWORD bytes_needed = 0;
-  GetUserObjectInformationW(desktop, UOI_NAME, nullptr, 0, &bytes_needed);
-  if (bytes_needed == 0) {
-    return L"";
-  }
-
-  std::wstring desktop_name(bytes_needed / sizeof(wchar_t), L'\0');
-  if (!GetUserObjectInformationW(desktop, UOI_NAME, desktop_name.data(),
-                                 bytes_needed, &bytes_needed)) {
-    return L"";
-  }
-
-  while (!desktop_name.empty() && desktop_name.back() == L'\0') {
-    desktop_name.pop_back();
-  }
-  return desktop_name;
-}
-
 std::wstring GetCurrentThreadDesktopNameW() {
-  return GetDesktopNameW(GetThreadDesktop(GetCurrentThreadId()));
-}
-
-constexpr ACCESS_MASK kCrossDeskInteractiveDesktopAccess =
-    DESKTOP_CREATEWINDOW | DESKTOP_WRITEOBJECTS | DESKTOP_READOBJECTS |
-    DESKTOP_SWITCHDESKTOP;
-
-bool EnsureThreadDesktop(const wchar_t* desktop_name,
-                         HDESK* opened_desktop_out = nullptr) {
-  if (desktop_name == nullptr) {
-    return false;
-  }
-
-  std::wstring current_desktop = GetCurrentThreadDesktopNameW();
-  if (!current_desktop.empty() &&
-      _wcsicmp(current_desktop.c_str(), desktop_name) == 0) {
-    return true;
-  }
-
-  HDESK desktop =
-      OpenDesktopW(desktop_name, 0, FALSE, kCrossDeskInteractiveDesktopAccess);
-  if (desktop == nullptr) {
-    return false;
-  }
-
-  if (!SetThreadDesktop(desktop)) {
-    CloseDesktop(desktop);
-    return false;
-  }
-
-  if (opened_desktop_out != nullptr) {
-    *opened_desktop_out = desktop;
-  } else {
-    CloseDesktop(desktop);
-  }
-  return true;
-}
-
-bool EnsureThreadInputDesktop(HDESK* opened_desktop_out = nullptr) {
-  HDESK desktop =
-      OpenInputDesktop(0, FALSE, kCrossDeskInteractiveDesktopAccess);
-  if (desktop == nullptr) {
-    return false;
-  }
-
-  const std::wstring input_desktop = GetDesktopNameW(desktop);
-  const std::wstring current_desktop = GetCurrentThreadDesktopNameW();
-  if (!input_desktop.empty() && !current_desktop.empty() &&
-      _wcsicmp(input_desktop.c_str(), current_desktop.c_str()) == 0) {
-    if (opened_desktop_out != nullptr) {
-      *opened_desktop_out = desktop;
-    } else {
-      CloseDesktop(desktop);
-    }
-    return true;
-  }
-
-  if (!SetThreadDesktop(desktop)) {
-    CloseDesktop(desktop);
-    return false;
-  }
-
-  if (opened_desktop_out != nullptr) {
-    *opened_desktop_out = desktop;
-  } else {
-    CloseDesktop(desktop);
-  }
-  return true;
-}
-
-bool EnsureThreadInteractiveDesktop(HDESK* opened_desktop_out = nullptr) {
-  if (opened_desktop_out != nullptr) {
-    *opened_desktop_out = nullptr;
-  }
-
-  if (EnsureThreadInputDesktop(opened_desktop_out)) {
-    return true;
-  }
-  const DWORD input_desktop_error = GetLastError();
-
-  if (EnsureThreadDesktop(L"Winlogon", opened_desktop_out)) {
-    return true;
-  }
-  const DWORD winlogon_error = GetLastError();
-
-  LOG_WARN(
-      "Failed to switch secure input helper desktop, input_error={}, "
-      "winlogon_error={}, current='{}'",
-      input_desktop_error, winlogon_error,
-      WideToUtf8(GetCurrentThreadDesktopNameW()));
-  SetLastError(winlogon_error != ERROR_SUCCESS ? winlogon_error
-                                               : input_desktop_error);
-  return false;
+  return crossdesk::GetDesktopNameW(GetThreadDesktop(GetCurrentThreadId()));
 }
 
 std::wstring DesktopNameForInteractiveStage(
@@ -700,8 +587,10 @@ DesktopSwitchDetails BuildDesktopSwitchDetails(
   return details;
 }
 
-InputInjectionResult BuildInputSuccess() {
-  return {};
+InputInjectionResult BuildInputSuccess(DesktopSwitchDetails desktop) {
+  InputInjectionResult result;
+  result.desktop = std::move(desktop);
+  return result;
 }
 
 InputInjectionResult BuildInputFailure(const char* error, DWORD error_code,
@@ -732,48 +621,23 @@ Json BuildInputFailureJson(const InputInjectionResult& result) {
 bool EnsureThreadInteractiveDesktopForStage(
     const std::string& interactive_stage,
     const std::string& interactive_desktop,
-    HDESK* opened_desktop_out = nullptr,
+    ScopedInteractiveDesktop* desktop,
     DesktopSwitchDetails* switch_details = nullptr) {
-  if (opened_desktop_out != nullptr) {
-    *opened_desktop_out = nullptr;
-  }
-
   DesktopSwitchDetails local_details =
       BuildDesktopSwitchDetails(interactive_stage, interactive_desktop);
   if (switch_details != nullptr) {
     *switch_details = local_details;
   }
 
-  const std::wstring desktop_name =
+  std::wstring desktop_name =
       DesktopNameForInteractiveStage(interactive_stage, interactive_desktop);
-  if (!desktop_name.empty()) {
-    if (EnsureThreadDesktop(desktop_name.c_str(), opened_desktop_out)) {
-      if (switch_details != nullptr) {
-        switch_details->current_desktop =
-            WideToUtf8(GetCurrentThreadDesktopNameW());
-      }
-      return true;
-    }
-
-    const DWORD error = GetLastError();
-    if (switch_details != nullptr) {
-      switch_details->error_code = error;
-      switch_details->current_desktop =
-          WideToUtf8(GetCurrentThreadDesktopNameW());
-    }
-    LOG_WARN(
-        "Failed to switch secure input helper to stage desktop, stage='{}', "
-        "desktop='{}', error={}, current='{}'",
-        interactive_stage, WideToUtf8(desktop_name),
-        error,
-        WideToUtf8(GetCurrentThreadDesktopNameW()));
-    SetLastError(error);
-    return false;
+  if (desktop_name.empty()) {
+    desktop_name = L"Winlogon";
   }
-
-  if (EnsureThreadInteractiveDesktop(opened_desktop_out)) {
+  if (desktop->Bind(desktop_name)) {
     if (switch_details != nullptr) {
-      switch_details->current_desktop = WideToUtf8(GetCurrentThreadDesktopNameW());
+      switch_details->target_desktop = WideToUtf8(desktop->name());
+      switch_details->current_desktop = switch_details->target_desktop;
     }
     return true;
   }
@@ -783,17 +647,14 @@ bool EnsureThreadInteractiveDesktopForStage(
     switch_details->error_code = error;
     switch_details->current_desktop = WideToUtf8(GetCurrentThreadDesktopNameW());
   }
+  LOG_WARN(
+      "Failed to switch secure input helper desktop, stage='{}', "
+      "fallback='{}', error={}, current='{}'",
+      interactive_stage, WideToUtf8(desktop_name), error,
+      WideToUtf8(GetCurrentThreadDesktopNameW()));
+  SetLastError(error);
   return false;
 }
-
-struct ScopedDesktopHandle {
-  HDESK handle = nullptr;
-  ~ScopedDesktopHandle() {
-    if (handle != nullptr) {
-      CloseDesktop(handle);
-    }
-  }
-};
 
 bool PreferSideSpecificVkInjection(int key_code) {
   switch (key_code) {
@@ -815,11 +676,11 @@ InputInjectionResult InjectKeyboardInput(
     int key_code, bool is_down, uint32_t scan_code, bool extended,
     const std::string& interactive_stage,
     const std::string& interactive_desktop) {
-  ScopedDesktopHandle desktop;
+  ScopedInteractiveDesktop desktop;
   DesktopSwitchDetails desktop_switch;
   if (!EnsureThreadInteractiveDesktopForStage(interactive_stage,
                                               interactive_desktop,
-                                              &desktop.handle,
+                                              &desktop,
                                               &desktop_switch)) {
     const DWORD error = GetLastError();
     return BuildInputFailure("switch_interactive_desktop_failed",
@@ -875,7 +736,7 @@ InputInjectionResult InjectKeyboardInput(
                              desktop_switch);
   }
 
-  return BuildInputSuccess();
+  return BuildInputSuccess(std::move(desktop_switch));
 }
 
 void ParseInteractionTail(const std::string& tail,
@@ -1192,11 +1053,11 @@ INPUT BuildAbsoluteMouseMoveInput(int x, int y) {
 }
 
 InputInjectionResult InjectMouseInput(const SecureMouseRequest& request) {
-  ScopedDesktopHandle desktop;
+  ScopedInteractiveDesktop desktop;
   DesktopSwitchDetails desktop_switch;
   if (!EnsureThreadInteractiveDesktopForStage(request.interactive_stage,
                                               request.interactive_desktop,
-                                              &desktop.handle,
+                                              &desktop,
                                               &desktop_switch)) {
     const DWORD error = GetLastError();
     return BuildInputFailure("switch_interactive_desktop_failed",
@@ -1256,12 +1117,90 @@ InputInjectionResult InjectMouseInput(const SecureMouseRequest& request) {
                              desktop_switch);
   }
 
-  return BuildInputSuccess();
+  return BuildInputSuccess(std::move(desktop_switch));
 }
 
 std::vector<uint8_t> BuildTextResponseBytes(const std::string& response) {
   return std::vector<uint8_t>(response.begin(), response.end());
 }
+
+// Own the desktop before its GDI objects, and release those objects before
+// restoring the original desktop. Both capture paths use the same lifecycle.
+struct SecureDesktopGdiResources {
+  ScopedInteractiveDesktop desktop;
+  HDC screen_dc = nullptr;
+  HDC mem_dc = nullptr;
+  HBITMAP dib = nullptr;
+  HGDIOBJ old_bitmap = nullptr;
+  void* bits = nullptr;
+  const char* error = nullptr;
+  DWORD error_code = ERROR_SUCCESS;
+
+  ~SecureDesktopGdiResources() {
+    if (old_bitmap != nullptr && old_bitmap != HGDI_ERROR) {
+      SelectObject(mem_dc, old_bitmap);
+    }
+    if (dib != nullptr) DeleteObject(dib);
+    if (mem_dc != nullptr) DeleteDC(mem_dc);
+    if (screen_dc != nullptr) ReleaseDC(nullptr, screen_dc);
+  }
+
+  bool Fail(const char* reason) {
+    error = reason;
+    error_code = GetLastError();
+    if (error_code == ERROR_SUCCESS) error_code = ERROR_GEN_FAILURE;
+    return false;
+  }
+
+  bool Initialize(const SecureCaptureRequest& request) {
+    const auto fallback = DesktopNameForInteractiveStage(
+        request.interactive_stage, request.interactive_desktop);
+    if (!desktop.Bind(fallback.empty() ? L"Winlogon" : fallback)) {
+      return Fail("switch_interactive_desktop_failed");
+    }
+    screen_dc = GetDC(nullptr);
+    if (screen_dc == nullptr) return Fail("get_dc_failed");
+    mem_dc = CreateCompatibleDC(screen_dc);
+    if (mem_dc == nullptr) return Fail("create_dc_failed");
+    BITMAPINFO bmi{};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = request.width;
+    bmi.bmiHeader.biHeight = -request.height;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+    dib = CreateDIBSection(mem_dc, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (dib == nullptr || bits == nullptr) return Fail("create_dib_failed");
+    old_bitmap = SelectObject(mem_dc, dib);
+    if (old_bitmap == nullptr || old_bitmap == HGDI_ERROR) {
+      return Fail("select_bitmap_failed");
+    }
+    return true;
+  }
+
+  bool Capture(const SecureCaptureRequest& request) {
+    if (!BitBlt(mem_dc, 0, 0, request.width, request.height, screen_dc,
+                request.left, request.top, SRCCOPY | CAPTUREBLT)) {
+      return Fail("bitblt_failed");
+    }
+    if (request.show_cursor) {
+      CURSORINFO cursor{};
+      cursor.cbSize = sizeof(cursor);
+      if (GetCursorInfo(&cursor) && cursor.flags == CURSOR_SHOWING &&
+          cursor.hCursor != nullptr) {
+        const int x = cursor.ptScreenPos.x - request.left;
+        const int y = cursor.ptScreenPos.y - request.top;
+        if (x >= -64 && y >= -64 && x < request.width + 64 &&
+            y < request.height + 64) {
+          DrawIconEx(mem_dc, x, y, cursor.hCursor, 0, 0, 0, nullptr, DI_NORMAL);
+        }
+      }
+    }
+    // Complete GDI writes before libyuv reads the DIB's pixel memory.
+    GdiFlush();
+    return true;
+  }
+};
 
 std::vector<uint8_t> CaptureSecureDesktopFrame(
     const SecureCaptureRequest& request,
@@ -1270,86 +1209,20 @@ std::vector<uint8_t> CaptureSecureDesktopFrame(
     return BuildTextResponseBytes(BuildErrorJson("invalid_capture_buffers"));
   }
 
-  ScopedDesktopHandle desktop;
-  if (!EnsureThreadInteractiveDesktopForStage(request.interactive_stage,
-                                              request.interactive_desktop,
-                                              &desktop.handle)) {
-    const DWORD error = GetLastError();
-    return BuildTextResponseBytes(BuildErrorJson(
-        "switch_interactive_desktop_failed",
-        error != ERROR_SUCCESS ? error : ERROR_GEN_FAILURE));
-  }
-
-  HDC screen_dc = GetDC(nullptr);
-  if (screen_dc == nullptr) {
+  SecureDesktopGdiResources capture;
+  if (!capture.Initialize(request) || !capture.Capture(request)) {
     return BuildTextResponseBytes(
-        BuildErrorJson("get_dc_failed", GetLastError()));
-  }
-
-  HDC mem_dc = CreateCompatibleDC(screen_dc);
-  if (mem_dc == nullptr) {
-    const DWORD error = GetLastError();
-    ReleaseDC(nullptr, screen_dc);
-    return BuildTextResponseBytes(BuildErrorJson("create_dc_failed", error));
-  }
-
-  BITMAPINFO bmi{};
-  bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-  bmi.bmiHeader.biWidth = request.width;
-  bmi.bmiHeader.biHeight = -request.height;
-  bmi.bmiHeader.biPlanes = 1;
-  bmi.bmiHeader.biBitCount = 32;
-  bmi.bmiHeader.biCompression = BI_RGB;
-
-  void* bits = nullptr;
-  HBITMAP dib =
-      CreateDIBSection(mem_dc, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
-  if (dib == nullptr || bits == nullptr) {
-    const DWORD error = GetLastError();
-    DeleteDC(mem_dc);
-    ReleaseDC(nullptr, screen_dc);
-    return BuildTextResponseBytes(BuildErrorJson("create_dib_failed", error));
-  }
-
-  HGDIOBJ old_bitmap = SelectObject(mem_dc, dib);
-  if (!BitBlt(mem_dc, 0, 0, request.width, request.height, screen_dc,
-              request.left, request.top, SRCCOPY | CAPTUREBLT)) {
-    const DWORD error = GetLastError();
-    SelectObject(mem_dc, old_bitmap);
-    DeleteObject(dib);
-    DeleteDC(mem_dc);
-    ReleaseDC(nullptr, screen_dc);
-    return BuildTextResponseBytes(BuildErrorJson("bitblt_failed", error));
-  }
-
-  if (request.show_cursor) {
-    CURSORINFO cursor_info{};
-    cursor_info.cbSize = sizeof(CURSORINFO);
-    if (GetCursorInfo(&cursor_info) && cursor_info.flags == CURSOR_SHOWING &&
-        cursor_info.hCursor != nullptr) {
-      const int cursor_x = cursor_info.ptScreenPos.x - request.left;
-      const int cursor_y = cursor_info.ptScreenPos.y - request.top;
-      if (cursor_x >= -64 && cursor_y >= -64 && cursor_x < request.width + 64 &&
-          cursor_y < request.height + 64) {
-        DrawIconEx(mem_dc, cursor_x, cursor_y, cursor_info.hCursor, 0, 0, 0,
-                   nullptr, DI_NORMAL);
-      }
-    }
+        BuildErrorJson(capture.error, capture.error_code));
   }
 
   const size_t nv12_size =
       static_cast<size_t>(request.width) * request.height * 3 / 2;
   capture_buffers->nv12_frame.resize(nv12_size);
   const int convert_result = libyuv::ARGBToNV12(
-      static_cast<const uint8_t*>(bits), request.width * 4,
+      static_cast<const uint8_t*>(capture.bits), request.width * 4,
       capture_buffers->nv12_frame.data(), request.width,
       capture_buffers->nv12_frame.data() + request.width * request.height,
       request.width, request.width, request.height);
-
-  SelectObject(mem_dc, old_bitmap);
-  DeleteObject(dib);
-  DeleteDC(mem_dc);
-  ReleaseDC(nullptr, screen_dc);
 
   if (convert_result != 0) {
     return BuildTextResponseBytes(BuildErrorJson("argb_to_nv12_failed"));
@@ -1397,8 +1270,7 @@ void CloseSecureDesktopSharedCaptureResourcesLocked(
   capture_state->frame_view_size = 0;
 }
 
-void SecureDesktopSharedCaptureThread(
-    SecureSharedCaptureState* capture_state) {
+void SecureDesktopSharedCaptureThread(SecureSharedCaptureState* capture_state) {
   if (capture_state == nullptr) {
     return;
   }
@@ -1421,79 +1293,65 @@ void SecureDesktopSharedCaptureThread(
       static_cast<size_t>(request.width) * request.height * 3 / 2;
   std::vector<uint8_t> nv12_frame(nv12_size);
 
-  ScopedDesktopHandle desktop;
-  if (!EnsureThreadInteractiveDesktopForStage(request.interactive_stage,
-                                              request.interactive_desktop,
-                                              &desktop.handle)) {
-    LOG_ERROR("Secure shared capture desktop switch failed, error={}",
-              GetLastError());
-    return;
-  }
-
-  HDC screen_dc = GetDC(nullptr);
-  if (screen_dc == nullptr) {
-    LOG_ERROR("Secure shared capture GetDC failed, error={}", GetLastError());
-    return;
-  }
-
-  HDC mem_dc = CreateCompatibleDC(screen_dc);
-  if (mem_dc == nullptr) {
-    LOG_ERROR("Secure shared capture CreateCompatibleDC failed, error={}",
-              GetLastError());
-    ReleaseDC(nullptr, screen_dc);
-    return;
-  }
-
-  BITMAPINFO bmi{};
-  bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-  bmi.bmiHeader.biWidth = request.width;
-  bmi.bmiHeader.biHeight = -request.height;
-  bmi.bmiHeader.biPlanes = 1;
-  bmi.bmiHeader.biBitCount = 32;
-  bmi.bmiHeader.biCompression = BI_RGB;
-
-  void* bits = nullptr;
-  HBITMAP dib =
-      CreateDIBSection(mem_dc, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
-  if (dib == nullptr || bits == nullptr) {
-    LOG_ERROR("Secure shared capture CreateDIBSection failed, error={}",
-              GetLastError());
-    DeleteDC(mem_dc);
-    ReleaseDC(nullptr, screen_dc);
-    return;
-  }
-
-  HGDIOBJ old_bitmap = SelectObject(mem_dc, dib);
+  std::unique_ptr<SecureDesktopGdiResources> capture;
+  ULONGLONG last_error_tick = 0;
+  auto stats_started = std::chrono::steady_clock::now();
+  unsigned frame_count = 0;
+  double capture_ms = 0, convert_ms = 0, publish_ms = 0;
+  auto report_stats = [&](bool force) {
+    const auto elapsed = std::chrono::duration<double>(
+                             std::chrono::steady_clock::now() - stats_started)
+                             .count();
+    if (elapsed <= 0 || (!force && elapsed < 5.0)) return;
+    if (frame_count > 0) {
+      LOG_INFO(
+          "Secure capture producer: fps={:.1f}, capture_avg_ms={:.1f}, "
+          "convert_avg_ms={:.1f}, publish_avg_ms={:.1f}, size={}x{}",
+          frame_count / elapsed, capture_ms / frame_count,
+          convert_ms / frame_count, publish_ms / frame_count, request.width,
+          request.height);
+    }
+    stats_started = std::chrono::steady_clock::now();
+    frame_count = 0;
+    capture_ms = convert_ms = publish_ms = 0;
+  };
   while (!capture_state->stop_requested.load(std::memory_order_relaxed)) {
     const auto frame_started = std::chrono::steady_clock::now();
-    if (BitBlt(mem_dc, 0, 0, request.width, request.height, screen_dc,
-               request.left, request.top, SRCCOPY | CAPTUREBLT)) {
-      if (request.show_cursor) {
-        CURSORINFO cursor_info{};
-        cursor_info.cbSize = sizeof(CURSORINFO);
-        if (GetCursorInfo(&cursor_info) &&
-            cursor_info.flags == CURSOR_SHOWING &&
-            cursor_info.hCursor != nullptr) {
-          const int cursor_x = cursor_info.ptScreenPos.x - request.left;
-          const int cursor_y = cursor_info.ptScreenPos.y - request.top;
-          if (cursor_x >= -64 && cursor_y >= -64 &&
-              cursor_x < request.width + 64 &&
-              cursor_y < request.height + 64) {
-            DrawIconEx(mem_dc, cursor_x, cursor_y, cursor_info.hCursor, 0, 0,
-                       0, nullptr, DI_NORMAL);
-          }
+    report_stats(false);
+    // A lock/credential/UAC transition can change the desktop before the
+    // service's next status poll. Release its DCs before binding the new one.
+    if (capture && !capture->desktop.IsInputDesktop()) {
+      capture.reset();
+    }
+    if (!capture) {
+      capture = std::make_unique<SecureDesktopGdiResources>();
+      if (!capture->Initialize(request)) {
+        const DWORD error = capture->error_code;
+        capture.reset();
+        const ULONGLONG now = GetTickCount64();
+        if (last_error_tick == 0 || now - last_error_tick >= 5000) {
+          LOG_WARN(
+              "Secure shared capture initialization failed; retrying, "
+              "error={}",
+              error);
+          last_error_tick = now;
         }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        continue;
       }
+    }
 
+    if (capture->Capture(request)) {
+      const auto captured_at = std::chrono::steady_clock::now();
       const int convert_result = libyuv::ARGBToNV12(
-          static_cast<const uint8_t*>(bits), request.width * 4,
+          static_cast<const uint8_t*>(capture->bits), request.width * 4,
           nv12_frame.data(), request.width,
           nv12_frame.data() + request.width * request.height, request.width,
           request.width, request.height);
       if (convert_result == 0) {
-        auto* header =
-            reinterpret_cast<crossdesk::CrossDeskSecureDesktopSharedFrameHeader*>(
-                frame_view);
+        const auto converted_at = std::chrono::steady_clock::now();
+        auto* header = reinterpret_cast<
+            crossdesk::CrossDeskSecureDesktopSharedFrameHeader*>(frame_view);
         uint8_t* payload = frame_view + sizeof(*header);
         header->writing = 1;
         MemoryBarrier();
@@ -1509,25 +1367,41 @@ void SecureDesktopSharedCaptureThread(
         MemoryBarrier();
         header->writing = 0;
         SetEvent(capture_state->frame_ready_event);
+        ++frame_count;
+        capture_ms += std::chrono::duration<double, std::milli>(captured_at -
+                                                                frame_started)
+                          .count();
+        convert_ms += std::chrono::duration<double, std::milli>(converted_at -
+                                                                captured_at)
+                          .count();
+        publish_ms += std::chrono::duration<double, std::milli>(
+                          std::chrono::steady_clock::now() - converted_at)
+                          .count();
       }
     } else {
-      LOG_WARN("Secure shared capture BitBlt failed, error={}", GetLastError());
+      const DWORD error = capture->error_code;
+      capture.reset();
+      const ULONGLONG now = GetTickCount64();
+      if (last_error_tick == 0 || now - last_error_tick >= 5000) {
+        LOG_WARN(
+            "Secure shared capture BitBlt failed; recreating capture, "
+            "error={}",
+            error);
+        last_error_tick = now;
+      }
     }
 
     const auto elapsed_ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - frame_started)
             .count();
-    if (elapsed_ms < interval_ms) {
+    const int retry_interval_ms = capture ? interval_ms : 100;
+    if (elapsed_ms < retry_interval_ms) {
       std::this_thread::sleep_for(
-          std::chrono::milliseconds(interval_ms - elapsed_ms));
+          std::chrono::milliseconds(retry_interval_ms - elapsed_ms));
     }
   }
-
-  SelectObject(mem_dc, old_bitmap);
-  DeleteObject(dib);
-  DeleteDC(mem_dc);
-  ReleaseDC(nullptr, screen_dc);
+  report_stats(true);
 }
 
 std::vector<uint8_t> StopSecureDesktopSharedCapture(
@@ -1703,7 +1577,7 @@ std::vector<uint8_t> HandleSecureInputHelperCommand(
     json["extended"] = extended;
     json["stage"] = interactive_stage;
     json["interactive_desktop"] = interactive_desktop;
-    json["desktop"] = WideToUtf8(GetCurrentThreadDesktopNameW());
+    json["desktop"] = inject_result.desktop.current_desktop;
     return BuildTextResponseBytes(json.dump());
   }
 
@@ -1731,7 +1605,7 @@ std::vector<uint8_t> HandleSecureInputHelperCommand(
     json["flag"] = mouse_request.flag;
     json["stage"] = mouse_request.interactive_stage;
     json["interactive_desktop"] = mouse_request.interactive_desktop;
-    json["desktop"] = WideToUtf8(GetCurrentThreadDesktopNameW());
+    json["desktop"] = inject_result.desktop.current_desktop;
     return BuildTextResponseBytes(json.dump());
   }
 

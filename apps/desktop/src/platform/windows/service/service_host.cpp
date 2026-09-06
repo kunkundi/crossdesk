@@ -16,6 +16,7 @@
 #include <string>
 #include <thread>
 
+#include "interactive_state.h"
 #include "path_manager.h"
 #include "rd_log.h"
 #include "session_helper_shared.h"
@@ -1459,16 +1460,16 @@ std::string CrossDeskServiceHost::ResolveInteractiveStageLocked() const {
 
 std::string CrossDeskServiceHost::ResolveInteractiveDesktopLocked(
     const std::string& interactive_stage) const {
-  if (interactive_stage == "lock-screen") {
-    return "Default";
-  }
-
   if (session_helper_status_ok_ &&
       session_helper_report_input_desktop_available_ &&
       !session_helper_report_input_desktop_.empty() &&
-      (interactive_stage == "credential-ui" ||
+      (IsSecureDesktopInteractionRequired(interactive_stage) ||
        session_helper_report_consent_ui_visible_)) {
     return session_helper_report_input_desktop_;
+  }
+
+  if (interactive_stage == "lock-screen") {
+    return "Default";
   }
 
   if (input_desktop_available_ && !input_desktop_name_.empty() &&
