@@ -75,7 +75,6 @@ struct RTCState {
   CallbackContext controller_context;
   std::string signal_host;
   int signal_port = 0;
-  bool enable_srtp = false;
   bool hardware_acceleration = true;
   VideoDegradationPreference video_adaptation_policy =
       VideoDegradationPreference::MaintainResolution;
@@ -86,6 +85,7 @@ struct RTCState {
   std::string identity_base;
   std::string controller_login;
   std::string pending_remote_id;
+  uint64_t pending_controller_generation = 0;
   std::string pending_password;
   std::string transmission_id;
   std::string log_path;
@@ -336,7 +336,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   params.native_video_output = true;
   params.av1_encoding = false;
   params.turn_mode = TurnMode::TurnAutoUdpTcp;
-  params.enable_srtp = state.enable_srtp;
+  params.enable_srtp = true;
   params.video_content_type = VideoContentType::ScreenContent;
   params.video_quality = VideoQuality::QualityHigh;
   params.video_frame_rate = 60;
@@ -432,8 +432,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
 }
 
 - (void)configureWithSignalHost:(NSString *)host
-                     signalPort:(NSInteger)signalPort
-                     enableSRTP:(BOOL)enableSRTP {
+                     signalPort:(NSInteger)signalPort {
   NSString *trimmed = [host stringByTrimmingCharactersInSet:
                                 NSCharacterSet.whitespaceAndNewlineCharacterSet];
   const char *host_c_string = trimmed.UTF8String;
@@ -455,7 +454,6 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   dispatch_async(_rtcQueue, ^{
     const bool unchanged = self->_state->signal_host == host_value &&
                            self->_state->signal_port == signalPort &&
-                           self->_state->enable_srtp == enableSRTP &&
                            self->_state->identity_peer != nullptr;
     if (unchanged) return;
 
@@ -463,7 +461,6 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     [self destroyIdentityPeer];
     self->_state->signal_host = host_value;
     self->_state->signal_port = static_cast<int>(signalPort);
-    self->_state->enable_srtp = enableSRTP;
     self->_state->log_path = log_path;
     self->_state->identity_ready = false;
     self->_state->identity_recovery_attempted = false;
@@ -583,8 +580,14 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
       password_c_string ? password_c_string : "";
   if (identifier.empty()) return;
 
+  // Invalidate queued callbacks immediately, before asynchronous teardown. A
+  // canceled attempt for the same remote must not close a newly started one.
+  const uint64_t generation = _controllerGenerationCounter.fetch_add(1) + 1;
+  _activeControllerGeneration.store(0);
   dispatch_async(_rtcQueue, ^{
+    if (generation != self->_controllerGenerationCounter.load()) return;
     self->_state->pending_remote_id = identifier;
+    self->_state->pending_controller_generation = generation;
     self->_state->pending_password = password_value;
     [self destroyControllerPeer];
     if (self->_state->identity_ready &&
@@ -595,6 +598,8 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
 }
 
 - (void)disconnect {
+  _controllerGenerationCounter.fetch_add(1);
+  _activeControllerGeneration.store(0);
   dispatch_async(_rtcQueue, ^{
     self->_state->pending_remote_id.clear();
     self->_state->pending_password.clear();
@@ -868,7 +873,8 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
       _state->identity_base.empty()) {
     return;
   }
-  const uint64_t generation = _controllerGenerationCounter.fetch_add(1) + 1;
+  const uint64_t generation = _state->pending_controller_generation;
+  if (generation == 0 || generation != _controllerGenerationCounter.load()) return;
   _state->controller_context.generation = generation;
   _activeControllerGeneration.store(generation);
   _state->controller_login = "C-" + _state->identity_base;
@@ -1112,6 +1118,8 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
                       remoteID:(const std::string &)remoteID
                     generation:(uint64_t)generation {
   if (![self isControllerGenerationCurrent:generation]) return;
+  if (state != CrossDeskConnectionStateFailed &&
+      ![self isControllerGenerationActive:generation]) return;
   const std::string remote_copy = remoteID;
   if (state == CrossDeskConnectionStateConnected) {
     dispatch_async(_rtcQueue, ^{
@@ -1149,7 +1157,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   }
   DispatchMain(^{
     if (![self isControllerGenerationCurrent:generation]) return;
-    if (state == CrossDeskConnectionStateConnected &&
+    if (state != CrossDeskConnectionStateFailed &&
         ![self isControllerGenerationActive:generation]) {
       return;
     }
@@ -1164,6 +1172,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
 
 - (BOOL)isControllerGenerationActive:(uint64_t)generation {
   return generation != 0 &&
+         _controllerGenerationCounter.load() == generation &&
          _activeControllerGeneration.load() == generation;
 }
 

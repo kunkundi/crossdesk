@@ -17,6 +17,14 @@ struct ContentView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: session.sessionVisible)
         .preferredColorScheme(session.sessionVisible ? .dark : .light)
+        .alert("连接提示", isPresented: Binding(
+            get: { session.connectionFailureMessage != nil },
+            set: { if !$0 { session.dismissConnectionFailure() } }
+        )) {
+            Button("确定", role: .cancel) { session.dismissConnectionFailure() }
+        } message: {
+            Text(session.connectionFailureMessage ?? "")
+        }
         .onAppear {
             if !session.sessionVisible {
                 AppOrientation.update(to: .portrait)
@@ -710,17 +718,14 @@ private struct ServerSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
-                Section("服务器") {
+                Section {
                     TextField("信令服务器", text: $session.signalHost)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     TextField("信令端口", text: $session.signalPort)
                         .keyboardType(.numberPad)
-                }
-                Section {
-                    Toggle("启用 SRTP", isOn: $session.enableSRTP)
                 } header: {
-                    Text("传输")
+                    Text("服务器")
                 } footer: {
                     Text(session.localIdentity.isEmpty
                          ? "正在获取本机 ID…"

@@ -358,7 +358,6 @@ private final class RemoteAudioPlayer {
 final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDelegate {
     @Published var signalHost = "api.crossdesk.cn"
     @Published var signalPort = "9099"
-    @Published var enableSRTP = false
     @Published var mouseControlMode = MouseControlMode.saved {
         didSet { mouseControlMode.save() }
     }
@@ -398,6 +397,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     @Published private(set) var recentConnections = RecentConnectionStore.load()
     @Published private(set) var recentConnectionPresence: [String: Bool] = [:]
     @Published private(set) var deviceOfflineAlertVisible = false
+    @Published private(set) var connectionFailureMessage: String?
 
     let bridge = CrossDeskRTCBridge()
     private let audioPlayer = RemoteAudioPlayer()
@@ -424,7 +424,6 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     private struct BridgeConfiguration: Equatable {
         let host: String
         let signalPort: Int
-        let enableSRTP: Bool
     }
     private var bridgeConfiguration: BridgeConfiguration?
 
@@ -457,8 +456,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             signalStatus = "服务器配置无效"
             return false
         }
-        let configuration = BridgeConfiguration(host: host, signalPort: signal,
-                                                enableSRTP: enableSRTP)
+        let configuration = BridgeConfiguration(host: host, signalPort: signal)
         if bridgeConfiguration != configuration {
             bridgeConfiguration = configuration
             signalConnected = false
@@ -472,8 +470,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         bridge.setHardwareAccelerationEnabled(videoCodecMode == .hardware)
         bridge.setVideoAdaptationPolicy(videoAdaptationPolicy.bridgeValue)
         bridge.configure(withSignalHost: host,
-                         signalPort: signal,
-                         enableSRTP: enableSRTP)
+                         signalPort: signal)
         return true
     }
 
@@ -484,6 +481,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     func connect() {
+        connectionFailureMessage = nil
         let identifier = remoteID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !identifier.isEmpty else {
             connectionStatus = "请输入远程设备 ID"
@@ -576,7 +574,25 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         deviceOfflineAlertVisible = false
     }
 
+    func dismissConnectionFailure() {
+        guard connectionFailureMessage != nil else { return }
+        connectionFailureMessage = nil
+    }
+
+    private func finishConnection(withError message: String) {
+        // Cleanup may emit Closed. Preserve the terminal reason independently
+        // of the progress view and invalidate those callbacks in the bridge.
+        resetConnection()
+        connectionStatus = message
+        connectionFailureMessage = message
+    }
+
     func disconnect() {
+        resetConnection()
+    }
+
+    private func resetConnection() {
+        connectionFailureMessage = nil
         cancelVideoRecovery()
         let wasCheckingPresence = pendingPresenceRemoteID != nil
         cancelPresenceProbe()
@@ -882,6 +898,10 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     func rtcBridge(_ bridge: CrossDeskRTCBridge,
                    didChange state: CrossDeskConnectionState,
                    remoteID: String) {
+        guard isConnecting || isConnected || sessionVisible,
+              remoteID.isEmpty || remoteID == activeRemoteID else {
+            return
+        }
         isConnected = state.rawValue == 1
         if !isConnected {
             cancelVideoRecovery()
@@ -897,35 +917,25 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             bridge.setAudioEnabled(audioEnabled)
             AppOrientation.update(to: .allButUpsideDown)
         case 2: connectionStatus = "正在收集 ICE 候选"
-        case 3: connectionStatus = "网络连接已中断"
+        case 3: finishConnection(withError: "网络连接已中断，请重新连接。")
         case 4:
-            connectionStatus = "P2P/TURN 建链失败"
-            sessionVisible = false
-            AppOrientation.update(to: .portrait)
+            finishConnection(withError: "P2P/TURN 建链失败，请检查网络后重试。")
         case 5:
-            connectionStatus = "未连接"
-            sessionVisible = false
-            AppOrientation.update(to: .portrait)
+            finishConnection(withError: "远程连接已结束。")
         case 6:
-            connectionStatus = "访问密码错误"
-            sessionVisible = false
-            AppOrientation.update(to: .portrait)
+            finishConnection(withError: "访问密码错误，请重新输入。")
         case 7:
-            connectionStatus = "远程设备 ID 不存在"
             if !remoteID.isEmpty {
                 recentConnectionPresence[remoteID] = false
                 presenceUpdatedAt.removeValue(forKey: remoteID)
             }
-            sessionVisible = false
-            AppOrientation.update(to: .portrait)
+            finishConnection(withError: "远程设备 ID 不存在，请检查设备 ID。")
         case 8:
-            connectionStatus = "远程设备当前不可用"
             if !remoteID.isEmpty {
                 recentConnectionPresence[remoteID] = false
                 presenceUpdatedAt.removeValue(forKey: remoteID)
             }
-            sessionVisible = false
-            AppOrientation.update(to: .portrait)
+            finishConnection(withError: "远程设备当前不可用，请稍后重试。")
         default: connectionStatus = "未知连接状态"
         }
     }

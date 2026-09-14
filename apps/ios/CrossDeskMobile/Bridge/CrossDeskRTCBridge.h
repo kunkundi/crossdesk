@@ -99,8 +99,7 @@ typedef NS_ENUM(NSInteger, CrossDeskVideoAdaptationPolicy) {
 @property(nonatomic, weak, nullable) id<CrossDeskRTCBridgeDelegate> delegate;
 
 - (void)configureWithSignalHost:(NSString *)host
-                     signalPort:(NSInteger)signalPort
-                     enableSRTP:(BOOL)enableSRTP;
+                     signalPort:(NSInteger)signalPort;
 - (void)setHardwareAccelerationEnabled:(BOOL)enabled;
 - (void)setVideoAdaptationPolicy:(CrossDeskVideoAdaptationPolicy)policy;
 - (void)requestPresenceForRemoteIDs:(NSArray<NSString *> *)remoteIDs
