@@ -48,7 +48,6 @@ export global UiStrings {
     in-out property <string> codec: "Video codec";
     in-out property <string> hardware-codec: "Hardware video codec";
     in-out property <string> turn-relay: "TURN relay";
-    in-out property <string> srtp: "SRTP encryption";
     in-out property <string> self-hosted: "Self-hosted server";
     in-out property <string> autostart: "Start with system";
     in-out property <string> daemon: "Run in background";
@@ -247,7 +246,6 @@ export component MainWindow inherits Window {
     in-out property <int> codec-index: 0;
     in-out property <bool> hardware-codec-enabled: true;
     in-out property <bool> turn-enabled: true;
-    in-out property <bool> srtp-enabled: false;
     in-out property <bool> self-hosted-enabled: false;
     in-out property <bool> autostart-enabled: false;
     in-out property <bool> daemon-enabled: false;
@@ -1487,11 +1485,6 @@ export component MainWindow inherits Window {
                         height: 30px;
                         Text { x: 8px; y: 3px; width: root.compact-language ? 145px : 212px; height: 24px; text: UiStrings.turn-relay; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
                         ImGuiCheckBox { x: root.compact-language ? 157px : 224px; y: 3px; checked <=> root.turn-enabled; enabled: !root.settings-session-active; }
-                    }
-                    Rectangle {
-                        height: 30px;
-                        Text { x: 8px; y: 3px; width: root.compact-language ? 145px : 212px; height: 24px; text: UiStrings.srtp; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
-                        ImGuiCheckBox { x: root.compact-language ? 157px : 224px; y: 3px; checked <=> root.srtp-enabled; enabled: !root.settings-session-active; }
                     }
                     Rectangle {
                         height: 30px;

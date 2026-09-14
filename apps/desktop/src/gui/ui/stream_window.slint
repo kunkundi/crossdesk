@@ -160,7 +160,6 @@ export component StreamWindow inherits Window {
     in property <bool> remote-cursor-active: false;
     in property <int> remote-cursor-shape: 0;
     in property <bool> audio-enabled: true;
-    in property <bool> srtp-enabled: false;
     in property <bool> fullscreen-enabled: false;
     in property <bool> stats-visible: false;
     in property <[NetworkStatsRow]> stats-rows;
@@ -506,20 +505,8 @@ export component StreamWindow inherits Window {
                         width: parent.width - 27px;
                         height: parent.height;
                         background: transparent;
-                        if root.srtp-enabled: Text {
-                            x: 0px;
-                            width: 12px;
-                            height: parent.height;
-                            text: FontAwesomeIcons.shield-halved;
-                            color: #30343b;
-                            font-family: "Font Awesome 6 Free";
-                            font-weight: 900;
-                            font-size: ImGuiFontStyle.base;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
                         Text {
-                            x: root.srtp-enabled ? 16px : 0px;
+                            x: 0px;
                             width: parent.width - self.x;
                             height: parent.height;
                             text: tab.title;

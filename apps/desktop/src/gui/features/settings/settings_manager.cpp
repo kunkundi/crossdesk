@@ -308,7 +308,6 @@ int SettingsManager::Load() {
   owner_.enable_hardware_video_codec_ =
       owner_.config_center_->IsHardwareVideoCodec();
   owner_.enable_turn_ = owner_.config_center_->IsEnableTurn();
-  owner_.enable_srtp_ = owner_.config_center_->IsEnableSrtp();
   owner_.enable_self_hosted_ = owner_.config_center_->IsSelfHosted();
   owner_.enable_autostart_ = owner_.config_center_->IsEnableAutostart();
   owner_.enable_daemon_ = owner_.config_center_->IsEnableDaemon();
@@ -335,7 +334,6 @@ int SettingsManager::Load() {
   owner_.enable_hardware_video_codec_last_ =
       owner_.enable_hardware_video_codec_;
   owner_.enable_turn_last_ = owner_.enable_turn_;
-  owner_.enable_srtp_last_ = owner_.enable_srtp_;
   owner_.enable_self_hosted_last_ = owner_.enable_self_hosted_;
   owner_.enable_autostart_last_ = owner_.enable_autostart_;
 

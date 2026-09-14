@@ -270,25 +270,6 @@ int GuiApplication::SettingWindow() {
 
       {
         settings_items_offset += settings_items_padding;
-        ImGui::SetCursorPosY(settings_items_offset);
-        ImGui::AlignTextToFramePadding();
-        ImGui::Text(
-            "%s",
-            localization::enable_srtp[localization_language_index_].c_str());
-        ImGui::SameLine();
-        if (ConfigCenter::LANGUAGE::CHINESE == localization_language_) {
-          ImGui::SetCursorPosX(title_bar_button_width_ * 4.275f);
-        } else {
-          ImGui::SetCursorPosX(title_bar_button_width_ * 5.955f);
-        }
-
-        ImGui::Checkbox("##enable_srtp", &enable_srtp_);
-      }
-
-      ImGui::Separator();
-
-      {
-        settings_items_offset += settings_items_padding;
         ImGui::SetCursorPosY(settings_items_offset + 1);
         ImGui::AlignTextToFramePadding();
         if (ImGui::Button(localization::self_hosted_server_config
@@ -568,14 +549,6 @@ int GuiApplication::SettingWindow() {
           config_center_->SetTurn(false);
         }
         enable_turn_last_ = enable_turn_;
-
-        // SRTP
-        if (enable_srtp_) {
-          config_center_->SetSrtp(true);
-        } else {
-          config_center_->SetSrtp(false);
-        }
-        enable_srtp_last_ = enable_srtp_;
 
         if (enable_self_hosted_) {
           config_center_->SetSelfHosted(true);

@@ -1230,7 +1230,6 @@ void GuiApplication::ResetSettingsUi() {
   ui_->main->set_hardware_codec_enabled(hardware_codec_available &&
                                        enable_hardware_video_codec_);
   ui_->main->set_turn_enabled(enable_turn_);
-  ui_->main->set_srtp_enabled(enable_srtp_);
   ui_->main->set_self_hosted_enabled(enable_self_hosted_);
   ui_->main->set_autostart_enabled(enable_autostart_);
   ui_->main->set_daemon_enabled(enable_daemon_);
@@ -2419,7 +2418,6 @@ void GuiApplication::SyncStreamWindow() {
     return;
   }
   (*ui_->stream)->set_window_maximized((*ui_->stream)->window().is_maximized());
-  (*ui_->stream)->set_srtp_enabled(enable_srtp_);
 #if defined(__APPLE__)
   if (ui_->stream_live_resize_configuration_attempts > 0) {
     if (ConfigureStreamWindowLiveResize(
@@ -2987,7 +2985,6 @@ void GuiApplication::SaveSettingsFromUi() {
   enable_hardware_video_codec_ = ConfigCenter::IsHardwareVideoCodecAvailable() &&
                                   main->get_hardware_codec_enabled();
   enable_turn_ = main->get_turn_enabled();
-  enable_srtp_ = main->get_srtp_enabled();
   enable_self_hosted_ = main->get_self_hosted_enabled();
   enable_autostart_ = main->get_autostart_enabled();
   enable_daemon_ = main->get_daemon_enabled();
@@ -3010,7 +3007,6 @@ void GuiApplication::SaveSettingsFromUi() {
           video_encode_format_button_value_));
   config_center_->SetHardwareVideoCodec(enable_hardware_video_codec_);
   config_center_->SetTurn(enable_turn_);
-  config_center_->SetSrtp(enable_srtp_);
   config_center_->SetSelfHosted(enable_self_hosted_);
   config_center_->SetAutostart(enable_autostart_);
   config_center_->SetDaemon(enable_daemon_);
@@ -3056,7 +3052,6 @@ void GuiApplication::SaveSettingsFromUi() {
   video_encode_format_button_value_last_ = video_encode_format_button_value_;
   enable_hardware_video_codec_last_ = enable_hardware_video_codec_;
   enable_turn_last_ = enable_turn_;
-  enable_srtp_last_ = enable_srtp_;
   enable_self_hosted_last_ = enable_self_hosted_;
   enable_autostart_last_ = enable_autostart_;
   enable_daemon_last_ = enable_daemon_;

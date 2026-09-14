@@ -47,7 +47,6 @@ class ConfigCenter {
   int SetHardwareVideoCodec(bool hardware_video_codec);
   int SetTurnMode(TURN_MODE turn_mode);
   int SetTurn(bool enable_turn);
-  int SetSrtp(bool enable_srtp);
   int SetServerHost(const std::string& signal_server_host);
   int SetServerPort(int signal_server_port);
   int SetSelfHosted(bool enable_self_hosted);
@@ -99,7 +98,6 @@ class ConfigCenter {
   VIDEO_ENCODE_FORMAT video_encode_format_ = VIDEO_ENCODE_FORMAT::H264;
   bool hardware_video_codec_ = false;
   TURN_MODE turn_mode_ = TURN_MODE::AUTO_UDP_TCP;
-  bool enable_srtp_ = false;
   std::string signal_server_host_ = "";
   std::string signal_server_host_default_ = "api.crossdesk.cn";
   int signal_server_port_ = 0;

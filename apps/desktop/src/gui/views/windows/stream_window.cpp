@@ -136,10 +136,7 @@ int GuiApplication::StreamWindow() {
           continue;
         }
 
-        std::string tab_label =
-            enable_srtp_
-                ? std::string(ICON_FA_SHIELD_HALVED) + " " + props->remote_id_
-                : props->remote_id_;
+        const std::string& tab_label = props->remote_id_;
         if (ImGui::BeginTabItem(tab_label.c_str(), &props->tab_opened_)) {
           props->tab_selected_ = true;
           ImGui::SetWindowFontScale(0.6f);

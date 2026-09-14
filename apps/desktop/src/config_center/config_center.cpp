@@ -103,7 +103,12 @@ int ConfigCenter::Load() {
     ini_.SetLongValue(section_, "turn_mode", static_cast<long>(turn_mode_));
     persist_config_migration = true;
   }
-  enable_srtp_ = ini_.GetBoolValue(section_, "enable_srtp", enable_srtp_);
+  // Migrate the former user switch. Keep true in the file for older builds,
+  // while the current application always requests encrypted native media.
+  if (!ini_.GetBoolValue(section_, "enable_srtp", false)) {
+    ini_.SetBoolValue(section_, "enable_srtp", true);
+    persist_config_migration = true;
+  }
   enable_self_hosted_ =
       ini_.GetBoolValue(section_, "enable_self_hosted", enable_self_hosted_);
 
@@ -165,7 +170,7 @@ int ConfigCenter::Save() {
   ini_.SetLongValue(section_, "turn_mode", static_cast<long>(turn_mode_));
   ini_.SetBoolValue(section_, "enable_turn",
                     turn_mode_ != TURN_MODE::DISABLED);
-  ini_.SetBoolValue(section_, "enable_srtp", enable_srtp_);
+  ini_.SetBoolValue(section_, "enable_srtp", true);
   ini_.SetBoolValue(section_, "enable_self_hosted", enable_self_hosted_);
 
   // only save when self hosted
@@ -299,16 +304,6 @@ int ConfigCenter::SetTurn(bool enable_turn) {
     return SetTurnMode(TURN_MODE::AUTO_UDP_TCP);
   }
   return SetTurnMode(turn_mode_);
-}
-
-int ConfigCenter::SetSrtp(bool enable_srtp) {
-  enable_srtp_ = enable_srtp;
-  ini_.SetBoolValue(section_, "enable_srtp", enable_srtp_);
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
-  return 0;
 }
 
 int ConfigCenter::SetServerHost(const std::string& signal_server_host) {
@@ -472,7 +467,7 @@ bool ConfigCenter::IsEnableTurn() const {
   return turn_mode_ != TURN_MODE::DISABLED;
 }
 
-bool ConfigCenter::IsEnableSrtp() const { return enable_srtp_; }
+bool ConfigCenter::IsEnableSrtp() const { return true; }
 
 std::string ConfigCenter::GetSignalServerHost() const {
   return signal_server_host_;

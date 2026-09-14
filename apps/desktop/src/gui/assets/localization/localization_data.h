@@ -149,7 +149,6 @@ struct TranslationRow {
     "Enable Hardware Video Codec:", u8"Использовать аппаратный кодек:")        \
   X(enable_turn, u8"启用中继服务:",                                            \
     "Enable TURN Service:", u8"Включить TURN-сервис:")                         \
-  X(enable_srtp, u8"启用SRTP:", "Enable SRTP:", u8"Включить SRTP:")            \
   X(self_hosted_server_config, u8"自托管配置", "Self-Hosted Config",           \
     u8"Конфигурация self-hosted")                                              \
   X(self_hosted_server_settings, u8"自托管设置", "Self-Hosted Settings",       \
