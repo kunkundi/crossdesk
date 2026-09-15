@@ -95,7 +95,7 @@ void AddKnownCursor(std::vector<KnownCursor>* cursors, NSCursor* cursor,
 
 std::vector<KnownCursor> BuildKnownCursors() {
   std::vector<KnownCursor> cursors;
-  cursors.reserve(16);
+  cursors.reserve(40);
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -128,6 +128,55 @@ std::vector<KnownCursor> BuildKnownCursors() {
   AddKnownCursor(&cursors, NSCursor.resizeLeftCursor,
                  RemoteCursorShape::w_resize);
 #pragma clang diagnostic pop
+
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 150000
+  if (@available(macOS 15.0, *)) {
+    // Window-frame resize artwork differs from the legacy divider cursors
+    // above. Include every edge/corner and both one-way variants. Inward
+    // arrows point toward the frame's center; outward arrows point away.
+    struct FrameResizeCursorMapping {
+      NSCursorFrameResizePosition position;
+      RemoteCursorShape bidirectional;
+      RemoteCursorShape inward;
+      RemoteCursorShape outward;
+    };
+    constexpr FrameResizeCursorMapping mappings[] = {
+        {NSCursorFrameResizePositionTop, RemoteCursorShape::ns_resize,
+         RemoteCursorShape::s_resize, RemoteCursorShape::n_resize},
+        {NSCursorFrameResizePositionLeft, RemoteCursorShape::ew_resize,
+         RemoteCursorShape::e_resize, RemoteCursorShape::w_resize},
+        {NSCursorFrameResizePositionBottom, RemoteCursorShape::ns_resize,
+         RemoteCursorShape::n_resize, RemoteCursorShape::s_resize},
+        {NSCursorFrameResizePositionRight, RemoteCursorShape::ew_resize,
+         RemoteCursorShape::w_resize, RemoteCursorShape::e_resize},
+        {NSCursorFrameResizePositionTopLeft, RemoteCursorShape::nwse_resize,
+         RemoteCursorShape::se_resize, RemoteCursorShape::nw_resize},
+        {NSCursorFrameResizePositionTopRight, RemoteCursorShape::nesw_resize,
+         RemoteCursorShape::sw_resize, RemoteCursorShape::ne_resize},
+        {NSCursorFrameResizePositionBottomLeft, RemoteCursorShape::nesw_resize,
+         RemoteCursorShape::ne_resize, RemoteCursorShape::sw_resize},
+        {NSCursorFrameResizePositionBottomRight, RemoteCursorShape::nwse_resize,
+         RemoteCursorShape::nw_resize, RemoteCursorShape::se_resize},
+    };
+    for (const FrameResizeCursorMapping& mapping : mappings) {
+      AddKnownCursor(
+          &cursors,
+          [NSCursor frameResizeCursorFromPosition:mapping.position
+                                    inDirections:NSCursorFrameResizeDirectionsAll],
+          mapping.bidirectional);
+      AddKnownCursor(
+          &cursors,
+          [NSCursor frameResizeCursorFromPosition:mapping.position
+                                    inDirections:NSCursorFrameResizeDirectionsInward],
+          mapping.inward);
+      AddKnownCursor(
+          &cursors,
+          [NSCursor frameResizeCursorFromPosition:mapping.position
+                                    inDirections:NSCursorFrameResizeDirectionsOutward],
+          mapping.outward);
+    }
+  }
+#endif
 
   return cursors;
 }
