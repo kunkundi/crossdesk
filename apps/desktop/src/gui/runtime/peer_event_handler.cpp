@@ -264,7 +264,8 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
           props->remote_cursor_state_received_ = false;
         }
         {
-          RemoteAction remote_action;
+          RemoteAction remote_action{};
+          remote_action.i.supports_privacy_screen = true;
           remote_action.i.display_num =
               runtime->devices_.display_info_list().size();
           remote_action.i.display_list =
@@ -405,20 +406,16 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
     runtime->show_connection_status_window_ = true;
     {
       std::unique_lock lock(runtime->connection_status_mutex_);
-#if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
-      if (status == ConnectionStatus::Connected &&
-          runtime->config_center_->IsEnablePrivacyScreen() &&
-          std::none_of(runtime->connection_status_.begin(),
-                       runtime->connection_status_.end(), [](const auto& entry) {
-                         return entry.second == ConnectionStatus::Connected;
-                       })) {
-        // Request optional privacy without delaying connection or capture.
-        // Only the first controller takes over local input. A later join must
-        // not release an existing controller's keys or re-enable privacy that
-        // the current session explicitly turned off.
-        runtime->privacy_.EnableOnConnection();
+      if (status == ConnectionStatus::Connected) {
+        // Wait for explicit desktop capability before enabling privacy or
+        // sending privacy messages. Legacy and web controllers never opt in.
+        runtime->privacy_sessions_.Connected(
+            remote_id, runtime->config_center_->IsEnablePrivacyScreen());
+        if (!runtime->privacy_sessions_.CanEnable() &&
+            runtime->privacy_.Engaged()) {
+          runtime->privacy_.Disable();
+        }
       }
-#endif
       runtime->connection_status_[remote_id] = status;
     }
 
@@ -428,7 +425,8 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         runtime->last_windows_service_status_tick_ = 0;
 #endif
         {
-          RemoteAction remote_action;
+          RemoteAction remote_action{};
+          remote_action.i.supports_privacy_screen = true;
           remote_action.i.display_num =
               runtime->devices_.display_info_list().size();
           remote_action.i.display_list =

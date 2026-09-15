@@ -146,6 +146,7 @@ void GuiRuntime::HandleServerControllerDisconnected(
     std::unique_lock lock(connection_status_mutex_);
     connection_status_.erase(remote_id);
     connection_host_names_.erase(remote_id);
+    privacy_sessions_.Disconnected(remote_id);
     for (const auto& [id, status] : connection_status_) {
       if (status != ConnectionStatus::Connected) {
         continue;

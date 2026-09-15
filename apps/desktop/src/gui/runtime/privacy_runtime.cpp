@@ -4,6 +4,7 @@
  * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
  */
 
+#include <cstring>
 #include <shared_mutex>
 
 #include "rd_log.h"
@@ -20,9 +21,29 @@ bool GuiRuntime::IsAuthorizedController(const std::string& remote_id) {
          found->second == ConnectionStatus::Connected;
 }
 
+void GuiRuntime::SetControllerPrivacySupport(const std::string& remote_id,
+                                           bool supported) {
+  std::unique_lock lock(connection_status_mutex_);
+  const auto found = connection_status_.find(remote_id);
+  if (found == connection_status_.end() ||
+      found->second != ConnectionStatus::Connected) return;
+
+  const bool automatic_enable =
+      privacy_sessions_.SetSupported(remote_id, supported);
+  if (!privacy_sessions_.CanEnable()) {
+    if (privacy_.Engaged()) privacy_.Disable();
+  } else if (automatic_enable && config_center_->IsEnablePrivacyScreen()) {
+    privacy_.EnableOnConnection();
+  }
+}
+
 void GuiRuntime::QueuePrivacyCommand(const std::string& remote_id,
                                      const PrivacyCommand& command) {
-  if (!IsAuthorizedController(remote_id)) return;
+  std::shared_lock session_lock(connection_status_mutex_);
+  const auto found = connection_status_.find(remote_id);
+  if (found == connection_status_.end() ||
+      found->second != ConnectionStatus::Connected ||
+      !privacy_sessions_.Supports(remote_id)) return;
   std::lock_guard lock(privacy_commands_mutex_);
   if (privacy_commands_.size() < 32)
     privacy_commands_.emplace_back(remote_id, command);
@@ -35,15 +56,22 @@ void GuiRuntime::HandlePrivacy() {
     commands.swap(privacy_commands_);
   }
   for (const auto& [remote_id, command] : commands) {
-    if (!IsAuthorizedController(remote_id)) continue;
+    // Keep admission and activation under the connection lock so an unknown
+    // controller cannot join between the capability check and enabling.
+    std::shared_lock lock(connection_status_mutex_);
+    const auto found = connection_status_.find(remote_id);
+    if (found == connection_status_.end() ||
+        found->second != ConnectionStatus::Connected ||
+        !privacy_sessions_.Supports(remote_id)) continue;
     if (command.flag == PrivacyCommandFlag::enable) {
-      privacy_.Enable(command.block_local_input);
+      if (privacy_sessions_.CanEnable())
+        privacy_.Enable(command.block_local_input);
     } else if (command.flag == PrivacyCommandFlag::disable) {
       privacy_.Disable();
     }
     last_privacy_status_tick_ = 0;
   }
-  const auto status = privacy_.Snapshot();
+  auto status = privacy_.Snapshot();
   const uint64_t now = SDL_GetTicks();
   if (!peer_ || (last_privacy_status_tick_ != 0 &&
                  status.revision == last_privacy_revision_ &&
@@ -53,7 +81,15 @@ void GuiRuntime::HandlePrivacy() {
   {
     std::shared_lock lock(connection_status_mutex_);
     for (const auto& [id, state] : connection_status_)
-      if (state == ConnectionStatus::Connected) controllers.push_back(id);
+      if (state == ConnectionStatus::Connected && privacy_sessions_.Supports(id))
+        controllers.push_back(id);
+    if (!privacy_sessions_.CanEnable()) {
+      status.state = PrivacyState::unsupported;
+      status.supported = false;
+      status.input_block_supported = false;
+      std::strcpy(status.reason,
+                  "A connected controller does not support privacy screen");
+    }
   }
   RemoteAction action{};
   action.type = ControlType::privacy_status;

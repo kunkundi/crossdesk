@@ -100,6 +100,8 @@ struct HostInfo {
   int* top;
   int* right;
   int* bottom;
+  // Optional capability; absent in legacy desktop and web host information.
+  bool supports_privacy_screen;
 };
 
 struct ServiceStatus {

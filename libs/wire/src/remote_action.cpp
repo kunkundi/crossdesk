@@ -22,6 +22,7 @@ void ResetHostInfo(HostInfo& info) {
   info.top = nullptr;
   info.right = nullptr;
   info.bottom = nullptr;
+  info.supports_privacy_screen = false;
 }
 
 bool AllocateHostDisplays(HostInfo& info, std::size_t count) {
@@ -132,7 +133,9 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
       }
       object["host_info"] = {{"host_name", action.i.host_name},
                              {"display_num", action.i.display_num},
-                             {"displays", displays}};
+                             {"displays", displays},
+                             {"supports_privacy_screen",
+                              action.i.supports_privacy_screen}};
       break;
     }
     case ControlType::invalid:
@@ -272,6 +275,11 @@ bool RemoteAction::FromJson(const std::string& json_string,
         ResetHostInfo(output.i);
         owns_host_info = true;
         const auto& host_info_object = object.at("host_info");
+        const auto privacy_support =
+            host_info_object.find("supports_privacy_screen");
+        output.i.supports_privacy_screen =
+            privacy_support != host_info_object.end() &&
+            privacy_support->is_boolean() && privacy_support->get<bool>();
         const std::string host_name =
             host_info_object.at("host_name").get<std::string>();
         std::strncpy(output.i.host_name, host_name.c_str(),

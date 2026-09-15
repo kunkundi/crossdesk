@@ -290,6 +290,10 @@ void PeerEventHandler::OnReceiveDataBuffer(
         runtime->connection_host_names_[remote_id] = host_name;
       }
       LOG_INFO("Remote hostname: [{}]", host_name);
+      if (source_id == runtime->control_data_label_) {
+        runtime->SetControllerPrivacySupport(
+            remote_id, remote_action.i.supports_privacy_screen);
+      }
       remote_action_codec::Free(remote_action);
     }
   } else {

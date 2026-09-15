@@ -55,6 +55,7 @@ bool Deserialize(const char *data, size_t size, RemoteAction &out) {
   out.type = static_cast<ControlType>(data[offset++]);
 
   if (out.type == ControlType::host_infomation) {
+    out.i.supports_privacy_screen = false;
     size_t name_len;
     if (!read(&name_len, sizeof(size_t)) ||
         name_len >= sizeof(out.i.host_name)) {
