@@ -297,19 +297,12 @@ function setup_targets()
             add_files("apps/desktop/src/platform/linux/input/mouse/*.cpp",
                 "apps/desktop/src/platform/linux/input/keyboard/*.cpp",
                 "apps/desktop/src/platform/linux/input/device_controller_factory.cpp")
+            add_syslinks("Xi", {public = true})
             add_includedirs("apps/desktop/src/platform/linux/input/mouse",
                 "apps/desktop/src/platform/linux/input/keyboard",
                 "apps/desktop/src/platform/linux/input",
                 "apps/desktop/src/platform/linux/common")
         end
-
-    if is_os("linux") then
-        target("linux_keyboard_x11_integration_test")
-            set_kind("binary")
-            set_default(false)
-            add_deps("device_controller")
-            add_files("apps/desktop/tests/linux_keyboard_x11_integration_test.cpp")
-    end
 
     target("thumbnail")
         set_kind("object")

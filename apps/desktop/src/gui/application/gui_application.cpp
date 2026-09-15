@@ -1644,6 +1644,7 @@ void GuiApplication::BindStreamCallbacks() {
     props->enable_mouse_control_ = props->control_mouse_;
     start_keyboard_capturer_ = props->control_mouse_;
     if (!props->control_mouse_) {
+      devices_.StopKeyboardCapturer();
       keyboard_.ForceReleasePressedKeys();
     }
   });
@@ -2363,6 +2364,7 @@ void GuiApplication::SetStreamKeyboardFocus(bool focused) {
 
   focus_on_stream_window_ = focused;
   if (!focused) {
+    devices_.StopKeyboardCapturer();
     keyboard_.ForceReleasePressedKeys();
   }
 }
@@ -3095,6 +3097,7 @@ void GuiApplication::SelectStreamTab(int index) {
   bool renderer_selection_changed = false;
   if (!controlled_remote_id_.empty() &&
       controlled_remote_id_ != selected_remote_id) {
+    devices_.StopKeyboardCapturer();
     keyboard_.ForceReleasePressedKeys();
   }
   focused_remote_id_ = selected_remote_id;

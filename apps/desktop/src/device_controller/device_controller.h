@@ -42,6 +42,9 @@ class KeyboardCapturer : public DeviceController {
 
   virtual int Hook(OnKeyAction on_key_action, void* user_ptr) = 0;
   virtual int Unhook() = 0;
+  // Backends with an asynchronous capture loop override this so the UI can
+  // fall back to window events if that loop stops unexpectedly.
+  virtual bool IsHookActive() const { return true; }
   virtual int SendKeyboardCommand(int key_code, bool is_down,
                                   uint32_t scan_code = 0,
                                   bool extended = false) = 0;

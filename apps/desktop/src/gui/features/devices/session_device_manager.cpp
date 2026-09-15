@@ -301,6 +301,7 @@ int SessionDeviceManager::StopMouseController() {
 }
 
 int SessionDeviceManager::StartKeyboardCapturer() {
+  ClearCapturedKeyboardInput();
   owner_.keyboard_capturer_uses_window_events_ = false;
 
 #ifdef __APPLE__
@@ -336,6 +337,7 @@ int SessionDeviceManager::StartKeyboardCapturer() {
       },
       this);
   if (hook_ret != 0) {
+    keyboard_capturer_->Unhook();
     owner_.keyboard_capturer_uses_window_events_ = true;
     LOG_WARN(
         "Start keyboard capturer failed, falling back to Slint keyboard events");
@@ -346,6 +348,9 @@ int SessionDeviceManager::StartKeyboardCapturer() {
 }
 
 int SessionDeviceManager::StopKeyboardCapturer() {
+  owner_.keyboard_capturer_is_started_ = false;
+  if (keyboard_capturer_) keyboard_capturer_->Unhook();
+  ClearCapturedKeyboardInput();
   if (owner_.keyboard_capturer_uses_window_events_) {
     owner_.keyboard_capturer_uses_window_events_ = false;
     LOG_INFO("Stop keyboard capturer with Slint keyboard backend");
@@ -353,8 +358,6 @@ int SessionDeviceManager::StopKeyboardCapturer() {
   }
 
   if (keyboard_capturer_) {
-    keyboard_capturer_->Unhook();
-    ClearCapturedKeyboardInput();
     LOG_INFO("Stop keyboard capturer");
   }
   return 0;
@@ -474,6 +477,14 @@ void SessionDeviceManager::UpdateInteractions() {
       owner_.keyboard_capturer_is_started_ = true;
     }
     if (owner_.keyboard_capturer_is_started_) {
+      if (!owner_.keyboard_capturer_uses_window_events_ &&
+          (!keyboard_capturer_ || !keyboard_capturer_->IsHookActive())) {
+        StopKeyboardCapturer();
+        owner_.keyboard_.ForceReleasePressedKeys();
+        owner_.keyboard_capturer_uses_window_events_ = true;
+        owner_.keyboard_capturer_is_started_ = true;
+        LOG_WARN("Native keyboard capture stopped; using Slint keyboard events");
+      }
       DrainCapturedKeyboardInput();
       owner_.keyboard_.SendHeartbeat(false);
     }
