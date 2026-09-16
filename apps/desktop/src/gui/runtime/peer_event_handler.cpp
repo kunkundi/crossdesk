@@ -419,6 +419,7 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         }
       }
       runtime->connection_status_[remote_id] = status;
+      runtime->devices_.OnControllerConnectionsChanged();
     }
 
     switch (status) {
@@ -485,16 +486,6 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         runtime->devices_.StartSpeakerCapturer();
         runtime->remote_client_id_ = remote_id;
         runtime->start_mouse_controller_ = true;
-        {
-          std::shared_lock lock(runtime->connection_status_mutex_);
-          if (std::all_of(runtime->connection_status_.begin(),
-                          runtime->connection_status_.end(),
-                          [](const auto& kv) {
-                            return kv.first.find("web") != std::string::npos;
-                          })) {
-            runtime->show_cursor_ = true;
-          }
-        }
 
         break;
       }

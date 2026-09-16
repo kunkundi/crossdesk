@@ -271,6 +271,15 @@ int SessionDeviceManager::InitializeScreenCapturer() {
   return -1;
 }
 
+bool SessionDeviceManager::ShouldCaptureCursor() const {
+  std::shared_lock lock(owner_.connection_status_mutex_);
+  return std::any_of(owner_.connection_status_.begin(),
+                     owner_.connection_status_.end(), [](const auto& entry) {
+    return entry.second == ConnectionStatus::Connected &&
+           entry.first.find("web") != std::string::npos;
+  });
+}
+
 int SessionDeviceManager::StartScreenCapturer() {
 #ifdef __APPLE__
   if (!owner_.EnsureMacScreenRecordingPermission()) {
@@ -286,8 +295,11 @@ int SessionDeviceManager::StartScreenCapturer() {
     }
   }
 
-  LOG_INFO("Start screen capturer, show cursor: {}", owner_.show_cursor_);
-  const int ret = screen_capturer_->Start(owner_.show_cursor_);
+  // Clear before sampling, so a change arriving after the sample remains pending.
+  cursor_capture_dirty_.store(false, std::memory_order_relaxed);
+  const bool show_cursor = ShouldCaptureCursor();
+  LOG_INFO("Start screen capturer, show cursor: {}", show_cursor);
+  const int ret = screen_capturer_->Start(show_cursor);
   if (ret != 0) {
     LOG_ERROR("Start screen capturer failed: {}", ret);
   }
@@ -503,6 +515,15 @@ void SessionDeviceManager::PushAudio(const char *data, size_t size) {
 }
 
 void SessionDeviceManager::UpdateInteractions() {
+#ifdef _WIN32
+  if (owner_.screen_capturer_is_started_ &&
+      cursor_capture_dirty_.load(std::memory_order_relaxed)) {
+    if (auto* windows = dynamic_cast<ScreenCapturerWin*>(screen_capturer_)) {
+      cursor_capture_dirty_.store(false, std::memory_order_relaxed);
+      windows->SetCursorCapture(ShouldCaptureCursor());
+    }
+  }
+#endif
 #if defined(__linux__) && !defined(__APPLE__)
   const bool is_wayland_session = IsWaylandSession();
   const bool stop_wayland_mouse_before_screen =

@@ -140,11 +140,11 @@ void GuiRuntime::HandleServerControllerDisconnected(
   }
 
   bool has_connected_controller = false;
-  bool has_web_controller = false;
   std::string remaining_controller_id;
   {
     std::unique_lock lock(connection_status_mutex_);
     connection_status_.erase(remote_id);
+    devices_.OnControllerConnectionsChanged();
     connection_host_names_.erase(remote_id);
     privacy_sessions_.Disconnected(remote_id);
     for (const auto& [id, status] : connection_status_) {
@@ -152,14 +152,11 @@ void GuiRuntime::HandleServerControllerDisconnected(
         continue;
       }
       has_connected_controller = true;
-      has_web_controller =
-          has_web_controller || id.find("web") != std::string::npos;
       if (remaining_controller_id.empty()) {
         remaining_controller_id = id;
       }
     }
   }
-  show_cursor_ = has_web_controller;
   if (has_connected_controller) {
     remote_client_id_ = remaining_controller_id;
     return;

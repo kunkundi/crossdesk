@@ -24,14 +24,14 @@ class WindowsCursorState {
  public:
   void Sample(const CURSORINFO& info, bool embedded, CursorState* state) {
     const bool showing = (info.flags & CURSOR_SHOWING) != 0;
-    state->render_mode = showing ? (embedded ? CursorRenderMode::embedded
-                                             : CursorRenderMode::separate)
-                                 : CursorRenderMode::hidden;
+    state->render_mode = embedded ? CursorRenderMode::embedded
+                         : showing ? CursorRenderMode::separate
+                                   : CursorRenderMode::hidden;
     state->visible = state->render_mode == CursorRenderMode::separate;
     state->shape = state->visible ? ShapeFromWindowsCursor(info.hCursor)
                                   : RemoteCursorShape::none;
     state->hidden_reason = CursorHiddenReason::unspecified;
-    if (!showing) {
+    if (!showing && !embedded) {
       state->hidden_reason = (info.flags & CURSOR_SUPPRESSED)
                                  ? CursorHiddenReason::system_suppressed
                              : info.hCursor && NoPointingDevice()

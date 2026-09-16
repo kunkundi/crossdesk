@@ -13,6 +13,7 @@ class WgcSession {
     unsigned int row_pitch;
 
     const unsigned char* data;
+    bool cursor_captured;
   };
 
   class wgc_session_observer {

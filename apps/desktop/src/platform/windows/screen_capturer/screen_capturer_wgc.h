@@ -27,6 +27,7 @@ class ScreenCapturerWgc : public ScreenCapturer,
   int Destroy() override;
   int Start(bool show_cursor) override;
   int Stop() override;
+  int SetCursorCapture(bool enabled);
 
   int Pause(int monitor_index) override;
   int Resume(int monitor_index) override;

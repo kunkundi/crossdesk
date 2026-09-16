@@ -16,6 +16,7 @@
 
 #include <display_stream_id.h>
 #include "captured_nv12_frame.h"
+#include "captured_cursor_state.h"
 #include "dxgi_cursor_state.h"
 #include "interactive_state.h"
 #include "named_pipe_deadline.h"
@@ -52,6 +53,8 @@ class WgcPluginCapturer final : public ScreenCapturer {
  public:
   using CreateFn = ScreenCapturer* (*)();
   using DestroyFn = void (*)(ScreenCapturer*);
+  using SetCursorFn = decltype(&CrossDeskSetWgcCursorCapture);
+  using FrameCursorFn = decltype(&CrossDeskWgcFrameCapturesCursor);
 
   static std::unique_ptr<ScreenCapturer> Create() {
     std::filesystem::path plugin_path;
@@ -99,11 +102,37 @@ class WgcPluginCapturer final : public ScreenCapturer {
   }
 
   int Init(const int fps, cb_desktop_data cb) override {
-    return impl_ ? impl_->Init(fps, std::move(cb)) : -1;
+    if (!impl_) return -1;
+    return impl_->Init(fps, [this, cb = std::move(cb)](
+        unsigned char* data, int size, int width, int height,
+        const char* stream_id, const MiniRtcNativeVideoFrame* native_frame) {
+      bool embedded = false;
+      if (frame_cursor_fn_) {
+        embedded = frame_cursor_fn_();
+      } else if (legacy_capture_cursor_.load(std::memory_order_relaxed)) {
+        CURSORINFO info{};
+        info.cbSize = sizeof(info);
+        embedded = GetCursorInfo(&info) && (info.flags & CURSOR_SHOWING) != 0;
+      }
+      // The plugin has its own globals. Bridge only this callback's metadata
+      // into the executable before the wrapper accepts/publishes the frame.
+      CapturedCursorFrameScope cursor_scope(embedded);
+      cb(data, size, width, height, stream_id, native_frame);
+    });
   }
   int Destroy() override { return impl_ ? impl_->Destroy() : 0; }
   int Start(bool show_cursor) override {
+    if (!frame_cursor_fn_) {
+      legacy_capture_cursor_.store(show_cursor, std::memory_order_relaxed);
+    }
     return impl_ ? impl_->Start(show_cursor) : -1;
+  }
+  int SetCursorCapture(bool enabled) {
+    if (!impl_) return -1;
+    if (set_cursor_fn_) return set_cursor_fn_(impl_, enabled);
+    // Older plugins only apply the cursor setting at startup.
+    const int ret = impl_->Stop();
+    return ret == 0 ? Start(enabled) : ret;
   }
   int Stop() override { return impl_ ? impl_->Stop() : 0; }
   int Pause(int monitor_index) override {
@@ -124,11 +153,21 @@ class WgcPluginCapturer final : public ScreenCapturer {
 
  private:
   WgcPluginCapturer(HMODULE module, ScreenCapturer* impl, DestroyFn destroy_fn)
-      : module_(module), impl_(impl), destroy_fn_(destroy_fn) {}
+      : module_(module), impl_(impl), destroy_fn_(destroy_fn) {
+    set_cursor_fn_ = reinterpret_cast<SetCursorFn>(
+        GetProcAddress(module, "CrossDeskSetWgcCursorCapture"));
+    frame_cursor_fn_ = reinterpret_cast<FrameCursorFn>(
+        GetProcAddress(module, "CrossDeskWgcFrameCapturesCursor"));
+    // Use the legacy restart path unless both parts of the extension exist.
+    if (!frame_cursor_fn_) set_cursor_fn_ = nullptr;
+  }
 
   HMODULE module_ = nullptr;
   ScreenCapturer* impl_ = nullptr;
   DestroyFn destroy_fn_ = nullptr;
+  SetCursorFn set_cursor_fn_ = nullptr;
+  FrameCursorFn frame_cursor_fn_ = nullptr;
+  std::atomic<bool> legacy_capture_cursor_{false};
 };
 
 const char* CaptureBackendName(const ScreenCapturer* capturer) {
@@ -363,16 +402,19 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
                const char* reported_stream_id,
                const MiniRtcNativeVideoFrame* native_frame) {
     if (size == ScreenCapturer::kBackendReset) {
+      SharedCapturedCursorState().Reset();
       if (privacy_) privacy_->Fail("Capture restarted; privacy screen will turn off");
       return;
     }
     if (secure_desktop_capture_active_.load(std::memory_order_relaxed)) {
       SharedDxgiCursorState().Reset();
+      SharedCapturedCursorState().Reset();
       return;
     }
 
     const char* raw_stream_id = reported_stream_id ? reported_stream_id : "";
     std::string mapped_stream_id;
+    void* frame_monitor = nullptr;
     {
       std::lock_guard<std::mutex> lock(alias_mutex_);
       auto it = stream_id_alias_.find(raw_stream_id);
@@ -386,6 +428,14 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
       mapped_stream_id = ResolveDisplayStreamId(
           mapped_stream_id.c_str(), canonical_displays_.size(),
           monitor_index_.load(std::memory_order_relaxed));
+      if (current_frame_has_cursor) {
+        for (size_t index = 0; index < canonical_displays_.size(); ++index) {
+          if (mapped_stream_id == MakeDisplayStreamId(index)) {
+            frame_monitor = canonical_displays_[index].handle;
+            break;
+          }
+        }
+      }
     }
     if (privacy_ && privacy_->Engaged() && !IsWindowsPrivacyDesktopAvailable()) {
       privacy_->Fail("Secure or unavailable desktop; privacy screen will turn off");
@@ -400,6 +450,7 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
       return;
     }
     invalid_stream_id_logged_.store(false, std::memory_order_relaxed);
+    SharedCapturedCursorState().Update(current_frame_has_cursor, frame_monitor);
     if (post_secure_desktop_waiting_for_frame_.exchange(
             false, std::memory_order_relaxed)) {
       const ULONGLONG start_tick =
@@ -476,7 +527,10 @@ void ScreenCapturerWin::EmitCapturedFrame(
     bool from_secure_desktop) {
   // Helper frames do not use DXGI's pointer plane. Do not carry normal-desktop
   // cursor suppression into the lock screen or UAC desktop.
-  if (from_secure_desktop) SharedDxgiCursorState().Reset();
+  if (from_secure_desktop) {
+    SharedDxgiCursorState().Reset();
+    SharedCapturedCursorState().Reset();
+  }
   // Secure-desktop capture takes priority; remove privacy without dropping
   // the helper frame or delaying the remote session.
   if (from_secure_desktop && privacy_ && privacy_->Engaged()) {
@@ -543,9 +597,10 @@ bool ScreenCapturerWin::TryStartBackend(
     return false;
   }
   const char* name = CaptureBackendName(candidate.get());
+  const bool show_cursor = show_cursor_.load(std::memory_order_relaxed);
   int ret = candidate->Init(fps_, cb_);
   if (ret == 0)
-    ret = candidate->Start(show_cursor_.load(std::memory_order_relaxed));
+    ret = candidate->Start(show_cursor);
   if (ret != 0) {
     LOG_WARN("Windows capturer: {} initialization/start failed (ret={})", name,
              ret);
@@ -555,6 +610,7 @@ bool ScreenCapturerWin::TryStartBackend(
   // Commit only after the replacement is running. Failed candidates release
   // their resources without replacing the current backend.
   impl_ = std::move(candidate);
+  applied_show_cursor_ = show_cursor;
   RestoreMonitor(monitor_index);
   LOG_INFO("Windows capturer: started {}", name);
   return true;
@@ -568,6 +624,8 @@ int ScreenCapturerWin::Start(bool show_cursor) {
   NotifyPrivacyCapture(false);
 
   show_cursor_.store(show_cursor, std::memory_order_relaxed);
+  applied_show_cursor_ = show_cursor;
+  SharedCapturedCursorState().Reset();
   paused_.store(false, std::memory_order_relaxed);
   invalid_stream_id_logged_.store(false, std::memory_order_relaxed);
 
@@ -636,10 +694,12 @@ int ScreenCapturerWin::Stop() {
   post_secure_desktop_drop_logged_.store(false, std::memory_order_relaxed);
   post_secure_desktop_started_tick_.store(0, std::memory_order_relaxed);
   int ret = 0;
+  // Drain management operations before stopping/replacing their backend.
+  StopSecureCaptureThread();
   if (impl_) {
     ret = impl_->Stop();
   }
-  StopSecureCaptureThread();
+  SharedCapturedCursorState().Reset();
   SharedSecureDesktopCursorState().SetActive(false);
   StopSecureDesktopSharedCapture(secure_shared_session_id_);
   return ret;
@@ -798,6 +858,7 @@ bool ScreenCapturerWin::RestartCaptureBackendAfterSecureDesktop() {
   impl_->Stop();
   int ret = impl_->Start(show_cursor);
   if (ret == 0) {
+    applied_show_cursor_ = show_cursor;
     RestoreMonitor(current_monitor);
     return true;
   }
@@ -812,6 +873,7 @@ bool ScreenCapturerWin::RestartCaptureBackendAfterSecureDesktop() {
     ret = impl_->Start(show_cursor);
   }
   if (ret == 0) {
+    applied_show_cursor_ = show_cursor;
     RestoreMonitor(current_monitor);
     return true;
   }
@@ -832,6 +894,24 @@ bool ScreenCapturerWin::RestartCaptureBackendAfterSecureDesktop() {
         ret);
   }
   return false;
+}
+
+void ScreenCapturerWin::ApplyCursorCaptureSetting() {
+  const bool requested = show_cursor_.load(std::memory_order_relaxed);
+  if (!impl_ || requested == applied_show_cursor_) return;
+  int ret = 0;
+  if (auto* gdi = dynamic_cast<ScreenCapturerGdi*>(impl_.get())) {
+    gdi->SetCursorCapture(requested);
+  } else if (auto* wgc = dynamic_cast<WgcPluginCapturer*>(impl_.get())) {
+    ret = wgc->SetCursorCapture(requested);
+  }
+  if (ret == 0) {
+    applied_show_cursor_ = requested;
+    LOG_INFO("Windows capturer cursor capture updated: backend={}, enabled={}",
+             CaptureBackendName(impl_.get()), requested);
+  } else {
+    LOG_WARN("Windows capturer cursor update failed, ret={}; will retry", ret);
+  }
 }
 
 bool ScreenCapturerWin::GetCurrentCaptureRegion(int* left, int* top, int* width,
@@ -1113,6 +1193,7 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
   bool post_secure_restart_pending = false;
   ULONGLONG post_secure_restart_deadline_tick = 0;
   ULONGLONG last_post_secure_restart_tick = 0;
+  ULONGLONG next_cursor_update_tick = 0;
   SecureDesktopServiceStatus status;
   SecureDesktopStatusPoller status_poller(
       QuerySecureDesktopServiceStatus,
@@ -1249,6 +1330,10 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
           post_secure_restart_pending =
               !RestartCaptureBackendAfterSecureDesktop();
         }
+      }
+      if (!post_secure_restart_pending && now >= next_cursor_update_tick) {
+        next_cursor_update_tick = now + 500;
+        ApplyCursorCaptureSetting();
       }
       std::this_thread::sleep_for(
           std::chrono::milliseconds(status.service_available ? 50 : 200));

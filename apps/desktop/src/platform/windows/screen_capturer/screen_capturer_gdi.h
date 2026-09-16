@@ -31,6 +31,9 @@ class ScreenCapturerGdi : public ScreenCapturer {
   int Destroy() override;
   int Start(bool show_cursor) override;
   int Stop() override;
+  void SetCursorCapture(bool enabled) {
+    show_cursor_.store(enabled, std::memory_order_relaxed);
+  }
 
   int Pause(int monitor_index) override;
   int Resume(int monitor_index) override;

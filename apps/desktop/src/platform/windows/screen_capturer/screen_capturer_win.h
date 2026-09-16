@@ -37,6 +37,10 @@ class ScreenCapturerWin : public ScreenCapturer {
   int Destroy() override;
   int Start(bool show_cursor) override;
   int Stop() override;
+  // Applied on the capture-management thread, including secure-desktop capture.
+  void SetCursorCapture(bool enabled) {
+    show_cursor_.store(enabled, std::memory_order_relaxed);
+  }
 
   int Pause(int monitor_index) override;
   int Resume(int monitor_index) override;
@@ -75,6 +79,7 @@ class ScreenCapturerWin : public ScreenCapturer {
   std::atomic<bool> running_{false};
   std::atomic<bool> paused_{false};
   std::atomic<bool> show_cursor_{true};
+  bool applied_show_cursor_ = true;
   std::atomic<int> monitor_index_{0};
   int initial_monitor_index_ = 0;
   std::atomic<bool> secure_desktop_capture_active_{false};
@@ -109,6 +114,7 @@ class ScreenCapturerWin : public ScreenCapturer {
                          bool from_secure_desktop = false);
   void StopSecureCaptureThread();
   bool RestartCaptureBackendAfterSecureDesktop();
+  void ApplyCursorCaptureSetting();
   void SecureDesktopCaptureLoop();
   bool GetCurrentCaptureRegion(int* left, int* top, int* width, int* height,
                                std::string* display_name);

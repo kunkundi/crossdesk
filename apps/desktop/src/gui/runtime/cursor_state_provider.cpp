@@ -7,6 +7,7 @@
 #include <windows.h>
 
 #include "platform/windows/input/windows_cursor_state.h"
+#include "platform/windows/screen_capturer/captured_cursor_state.h"
 #include "platform/windows/screen_capturer/dxgi_cursor_state.h"
 #include "platform/windows/screen_capturer/secure_desktop_cursor_state.h"
 #include "runtime/cursor_position.h"
@@ -53,8 +54,9 @@ bool CursorStateProvider::Sample(const std::vector<DisplayInfo>& displays,
   void* cursor_monitor = state->position_valid
                              ? displays[state->display_id].handle
                              : nullptr;
-  const bool embedded = (info.flags & CURSOR_SHOWING) != 0 &&
-      !SharedDxgiCursorState().ShouldDrawCursor(true, cursor_monitor);
+  const bool embedded = SharedCapturedCursorState().IsEmbedded(cursor_monitor) ||
+      ((info.flags & CURSOR_SHOWING) != 0 &&
+       !SharedDxgiCursorState().ShouldDrawCursor(true, cursor_monitor));
   impl_->cursor.Sample(info, embedded, state);
   return true;
 }

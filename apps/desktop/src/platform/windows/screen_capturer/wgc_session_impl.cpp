@@ -201,7 +201,13 @@ int WgcSessionImpl::StartCaptureLocked(bool show_cursor) {
 }
 
 int WgcSessionImpl::StartLocked(bool show_cursor) {
-  if (is_running_) return 0;
+  const bool was_paused = is_paused_;
+  if (is_running_) {
+    if (last_show_cursor_ == show_cursor) return 0;
+    // Replace the pool along with the setting, so buffered frames from the
+    // previous cursor mode cannot be labeled with the new mode.
+    StopLocked();
+  }
 
   last_show_cursor_ = show_cursor;
   if (!is_initialized_) {
@@ -218,6 +224,7 @@ int WgcSessionImpl::StartLocked(bool show_cursor) {
 
   LOG_WARN("WGC: start capture failed, rebuilding capture item");
   CleanUpLocked();
+  is_paused_ = was_paused;
   ret = InitializeLocked();
   if (ret != 0) {
     return ret;
@@ -259,10 +266,12 @@ void WgcSessionImpl::OnFrame(
     [[maybe_unused]] winrt::Windows::Foundation::IInspectable const& args) {
   std::lock_guard locker(lock_);
 
+  if (!is_running_ || sender != capture_framepool_) return;
   auto is_new_size = false;
 
   try {
     auto frame = sender.TryGetNextFrame();
+    if (!frame) return;
     auto frame_size = frame.ContentSize();
 
     if (frame_size.Width != capture_frame_size_.Width ||
@@ -310,12 +319,21 @@ void WgcSessionImpl::OnFrame(
 
     // copy data from map_result.pData
     if (map_result.pData && observer_) {
+      CURSORINFO cursor{};
+      cursor.cbSize = sizeof(cursor);
+      const bool cursor_captured =
+          last_show_cursor_ && GetCursorInfo(&cursor) && cursor.hCursor &&
+          (cursor.flags & CURSOR_SHOWING) != 0 &&
+          (target_.is_window ||
+           MonitorFromPoint(cursor.ptScreenPos, MONITOR_DEFAULTTONULL) ==
+               target_.hmonitor);
       observer_->OnFrame(
           wgc_session_frame{static_cast<unsigned int>(frame_size.Width),
                             static_cast<unsigned int>(frame_size.Height),
                             map_result.RowPitch,
                             const_cast<const unsigned char*>(
-                                (unsigned char*)map_result.pData)},
+                                (unsigned char*)map_result.pData),
+                            cursor_captured},
           id_);
     }
 

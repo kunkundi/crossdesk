@@ -10,6 +10,7 @@
 
 #include <SDL3/SDL.h>
 
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -40,6 +41,11 @@ public:
 
   void Initialize();
   void UpdateInteractions();
+  // Call after changing the controller map. UpdateInteractions consumes this
+  // notification on the UI thread before reading the map under its mutex.
+  void OnControllerConnectionsChanged() {
+    cursor_capture_dirty_.store(true, std::memory_order_relaxed);
+  }
   void DestroyDevices();
   void DestroyFactories();
 
@@ -84,6 +90,7 @@ private:
   void ClearCapturedKeyboardInput();
   bool ShouldSendCapturedFrame(std::chrono::steady_clock::time_point now,
                                int fps);
+  bool ShouldCaptureCursor() const;
   void RecordCaptureCadence(std::chrono::steady_clock::time_point now, int fps,
                             bool from_secure_desktop);
 
@@ -91,6 +98,7 @@ private:
   SDL_AudioStream *output_stream_ = nullptr;
   ScreenCapturerFactory *screen_capturer_factory_ = nullptr;
   ScreenCapturer *screen_capturer_ = nullptr;
+  std::atomic<bool> cursor_capture_dirty_{true};
   SpeakerCaptureController speaker_capture_;
   DeviceControllerFactory *device_controller_factory_ = nullptr;
   MouseController *mouse_controller_ = nullptr;

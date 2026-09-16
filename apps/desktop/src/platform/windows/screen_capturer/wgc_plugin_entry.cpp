@@ -1,5 +1,6 @@
 #include <mutex>
 
+#include "captured_cursor_state.h"
 #include "path_manager.h"
 #include "rd_log.h"
 #include "screen_capturer_wgc.h"
@@ -26,5 +27,13 @@ crossdesk::ScreenCapturer* CrossDeskCreateWgcCapturer() {
 
 void CrossDeskDestroyWgcCapturer(crossdesk::ScreenCapturer* capturer) {
   delete capturer;
+}
+
+int CrossDeskSetWgcCursorCapture(crossdesk::ScreenCapturer* capturer, bool enabled) {
+  return static_cast<crossdesk::ScreenCapturerWgc*>(capturer)->SetCursorCapture(enabled);
+}
+
+bool CrossDeskWgcFrameCapturesCursor() {
+  return crossdesk::current_frame_has_cursor;
 }
 }

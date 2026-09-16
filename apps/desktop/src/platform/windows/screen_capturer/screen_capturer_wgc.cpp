@@ -8,6 +8,7 @@
 #include <iostream>
 
 #include <display_stream_id.h>
+#include "captured_cursor_state.h"
 #include "libyuv.h"
 #include "rd_log.h"
 
@@ -71,6 +72,16 @@ HMONITOR GetPrimaryMonitor() {
 }
 
 ScreenCapturerWgc::ScreenCapturerWgc() : monitor_(nullptr) {}
+
+int ScreenCapturerWgc::SetCursorCapture(bool enabled) {
+  int result = 0;
+  for (auto& session : sessions_) {
+    if (!session.inited_ || !session.running_) continue;
+    const int ret = session.session_->Start(enabled);
+    if (ret != 0) result = ret;
+  }
+  return result;
+}
 
 ScreenCapturerWgc::~ScreenCapturerWgc() {
   Stop();
@@ -409,6 +420,7 @@ void ScreenCapturerWgc::OnFrame(const WgcSession::wgc_session_frame& frame,
                        even_width, even_width, even_height);
 
     const std::string stream_id = MakeDisplayStreamId(id);
+    CapturedCursorFrameScope cursor_scope(frame.cursor_captured);
     on_data_(nv12_frame_, nv12_size, even_width, even_height,
              stream_id.c_str(), nullptr);
   }

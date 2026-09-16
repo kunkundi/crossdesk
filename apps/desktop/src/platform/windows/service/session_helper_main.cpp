@@ -26,6 +26,7 @@
 #include "rd_log.h"
 #include "session_helper_shared.h"
 #include "windows_cursor_state.h"
+#include "cursor_draw.h"
 #include "windows_input_marker.h"
 
 namespace {
@@ -1201,21 +1202,12 @@ struct SecureDesktopGdiResources {
       cursor_snapshot.hidden_reason = static_cast<uint32_t>(state.hidden_reason);
       cursor_snapshot.x = cursor.ptScreenPos.x;
       cursor_snapshot.y = cursor.ptScreenPos.y;
-      if (request.show_cursor && cursor_snapshot.visible &&
-          cursor.hCursor != nullptr) {
-        const int x = cursor.ptScreenPos.x - request.left;
-        const int y = cursor.ptScreenPos.y - request.top;
-        if (x >= -64 && y >= -64 && x < request.width + 64 &&
-            y < request.height + 64) {
-          if (DrawIconEx(mem_dc, x, y, cursor.hCursor, 0, 0, 0, nullptr,
-                         DI_NORMAL)) {
-            // A frame with an embedded cursor must not get a second cursor
-            // overlay from a native controller sharing the web capture path.
-            cursor_snapshot.visible = 0;
-            cursor_snapshot.render_mode =
-                static_cast<uint32_t>(crossdesk::CursorRenderMode::embedded);
-          }
-        }
+      if (request.show_cursor && crossdesk::DrawCursorInCapture(
+              mem_dc, cursor, request.left, request.top,
+              request.width, request.height)) {
+        cursor_snapshot.visible = 0;
+        cursor_snapshot.render_mode =
+            static_cast<uint32_t>(crossdesk::CursorRenderMode::embedded);
       }
     }
     // Complete GDI writes before libyuv reads the DIB's pixel memory.

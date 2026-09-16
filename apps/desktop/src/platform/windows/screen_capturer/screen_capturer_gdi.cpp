@@ -6,6 +6,8 @@
 #include <vector>
 
 #include <display_stream_id.h>
+#include "captured_cursor_state.h"
+#include "cursor_draw.h"
 #include "libyuv.h"
 #include "rd_log.h"
 
@@ -184,18 +186,15 @@ void ScreenCapturerGdi::CaptureLoop() {
     BitBlt(mem_dc, 0, 0, width, height, screen_dc, left, top,
            SRCCOPY | CAPTUREBLT);
 
+    bool cursor_embedded = false;
     if (show_cursor_) {
       CURSORINFO ci{};
       ci.cbSize = sizeof(CURSORINFO);
-      if (GetCursorInfo(&ci) && ci.flags == CURSOR_SHOWING && ci.hCursor) {
-        POINT pt = ci.ptScreenPos;
-        int cx = pt.x - left;
-        int cy = pt.y - top;
-        if (cx >= -64 && cy >= -64 && cx < width + 64 && cy < height + 64) {
-          DrawIconEx(mem_dc, cx, cy, ci.hCursor, 0, 0, 0, nullptr, DI_NORMAL);
-        }
+      if (GetCursorInfo(&ci)) {
+        cursor_embedded = DrawCursorInCapture(mem_dc, ci, left, top, width, height);
       }
     }
+    GdiFlush();
 
     int stride_argb = width * 4;
     int nv12_size = width * height * 3 / 2;
@@ -211,6 +210,7 @@ void ScreenCapturerGdi::CaptureLoop() {
                        width, height);
 
     if (callback_) {
+      CapturedCursorFrameScope cursor_scope(cursor_embedded);
       const std::string stream_id = MakeDisplayStreamId(idx);
       callback_(nv12_frame_, nv12_size, width, height, stream_id.c_str(),
                 nullptr);
