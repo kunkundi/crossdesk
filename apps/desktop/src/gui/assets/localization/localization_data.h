@@ -233,6 +233,9 @@ struct TranslationRow {
   X(connection_mode, u8"连接模式", "Mode", u8"Режим")                          \
   X(connection_mode_direct, u8"直连", "Direct", u8"Прямой")                    \
   X(connection_mode_relay, u8"中继", "Relay", u8"Релейный")                    \
+  X(transport_encryption, u8"加密传输", "Encryption", u8"Шифрование")         \
+  X(transport_encryption_enabled, u8"已开启", "Enabled", u8"Включено")         \
+  X(transport_encryption_disabled, u8"未开启", "Disabled", u8"Выключено")       \
   X(online, u8"在线", "Online", u8"Онлайн")                                    \
   X(offline, u8"离线", "Offline", u8"Офлайн")                                  \
   X(device_offline, u8"设备离线", "Device Offline", u8"Устройство офлайн")     \

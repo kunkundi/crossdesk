@@ -45,6 +45,9 @@ export global StreamStrings {
     in-out property <string> stats-loss-rate: "Loss Rate";
     in-out property <string> stats-resolution: "Res";
     in-out property <string> stats-connection-mode: "Mode";
+    in-out property <string> stats-encryption: "Encryption";
+    in-out property <string> stats-encryption-enabled: "Enabled";
+    in-out property <string> stats-encryption-disabled: "Disabled";
 }
 
 struct ControlBarTooltip {
@@ -166,6 +169,7 @@ export component StreamWindow inherits Window {
     in property <string> stats-fps: "0";
     in property <string> stats-resolution: "";
     in property <string> stats-connection-mode: "";
+    in property <bool> stats-encryption-enabled: false;
     in property <bool> file-transfer-visible: false;
     in property <[FileTransferEntry]> file-transfers;
 
@@ -684,7 +688,7 @@ export component StreamWindow inherits Window {
                 x: root.control-dragging ? root.control-drag-x : root.control-docked-left ? 0px : parent.width - self.width;
                 y: min(max(0px, root.control-pos-y), parent.height - self.height);
                 width: root.control-expanded ? min(332px, parent.width) : 20px;
-                height: root.stats-visible && root.control-expanded ? min(180px, parent.height) : root.control-toolbar-height;
+                height: root.stats-visible && root.control-expanded ? min(196px, parent.height) : root.control-toolbar-height;
                 background: white;
                 border-width: 1px;
                 border-color: ImGuiLineStyle.border;
@@ -803,13 +807,22 @@ export component StreamWindow inherits Window {
                     x: 14px;
                     y: root.control-toolbar-height;
                     width: parent.width - 28px;
-                    height: 128px;
+                    height: 144px;
                     background: transparent;
                     private property <length> row-height: 16px;
-                    private property <length> label-column-width: 60px;
+                    private property <length> label-column-width:
+                        max(60px, stats-label-width-probe.preferred-width + 8px);
                     private property <length> loss-column-width: 66px;
                     private property <length> value-column-width:
                         (self.width - self.label-column-width - self.loss-column-width) / 2;
+
+                    stats-label-width-probe := Text {
+                        visible: false;
+                        text: StreamStrings.stats-resolution + "\n"
+                            + StreamStrings.stats-connection-mode + "\n"
+                            + StreamStrings.stats-encryption;
+                        font-size: ImGuiFontStyle.small;
+                    }
 
                     Rectangle {
                         y: 0px;
@@ -898,9 +911,11 @@ export component StreamWindow inherits Window {
                     }
 
                     for metric[index] in [
-                        { label: "FPS:", value: root.stats-fps },
-                        { label: StreamStrings.stats-resolution + ":", value: root.stats-resolution },
-                        { label: StreamStrings.stats-connection-mode + ":", value: root.stats-connection-mode },
+                        { label: "FPS", value: root.stats-fps },
+                        { label: StreamStrings.stats-resolution, value: root.stats-resolution },
+                        { label: StreamStrings.stats-connection-mode, value: root.stats-connection-mode },
+                        { label: StreamStrings.stats-encryption, value: root.stats-encryption-enabled
+                            ? StreamStrings.stats-encryption-enabled : StreamStrings.stats-encryption-disabled },
                     ]: Rectangle {
                         y: (index + 5) * stats-table.row-height;
                         height: stats-table.row-height;
@@ -914,7 +929,7 @@ export component StreamWindow inherits Window {
                         }
                         Text {
                             x: stats-table.label-column-width + 4px;
-                            width: stats-table.value-column-width - 8px;
+                            width: parent.width - self.x - 4px;
                             text: metric.value;
                             color: #30343b;
                             font-size: ImGuiFontStyle.small;

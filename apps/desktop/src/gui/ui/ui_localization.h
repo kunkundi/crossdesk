@@ -166,6 +166,12 @@ inline int ApplyStreamWindowStrings(
   strings.set_stats_resolution(Text(localization::resolution[language]));
   strings.set_stats_connection_mode(
       Text(localization::connection_mode[language]));
+  strings.set_stats_encryption(
+      Text(localization::transport_encryption[language]));
+  strings.set_stats_encryption_enabled(
+      Text(localization::transport_encryption_enabled[language]));
+  strings.set_stats_encryption_disabled(
+      Text(localization::transport_encryption_disabled[language]));
   return language;
 }
 

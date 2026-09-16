@@ -2652,6 +2652,8 @@ void GuiApplication::SyncStreamWindow() {
   (*ui_->stream)->set_selected_display(props->selected_display_);
 
   const auto& net = props->net_traffic_stats_;
+  (*ui_->stream)->set_stats_encryption_enabled(
+      status == ConnectionStatus::Connected && net.srtp_active);
   std::vector<ui::NetworkStatsRow> stats_rows;
   stats_rows.reserve(4);
   const auto append_stats_row = [&](const std::string& label,
