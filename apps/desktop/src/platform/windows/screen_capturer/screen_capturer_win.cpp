@@ -22,6 +22,7 @@
 #include "rd_log.h"
 #include "screen_capturer_dxgi.h"
 #include "screen_capturer_gdi.h"
+#include "secure_desktop_cursor_state.h"
 #include "secure_desktop_frame_schedule.h"
 #include "secure_desktop_status_poller.h"
 #include "service_host.h"
@@ -225,6 +226,7 @@ bool ParseSecureDesktopFrameResponse(const std::vector<uint8_t>& response,
   *width_out = static_cast<int>(header.width);
   *height_out = static_cast<int>(header.height);
   nv12_frame_out->assign(response.begin() + sizeof(header), response.end());
+  SharedSecureDesktopCursorState().Update(header.cursor);
   return true;
 }
 
@@ -612,6 +614,7 @@ int ScreenCapturerWin::Start(bool show_cursor) {
 
   running_.store(true, std::memory_order_relaxed);
   NotifyPrivacyCapture(true);
+  SharedSecureDesktopCursorState().SetActive(false);
   secure_desktop_capture_active_.store(false, std::memory_order_relaxed);
   post_secure_desktop_waiting_for_frame_.store(false,
                                                std::memory_order_relaxed);
@@ -637,6 +640,7 @@ int ScreenCapturerWin::Stop() {
     ret = impl_->Stop();
   }
   StopSecureCaptureThread();
+  SharedSecureDesktopCursorState().SetActive(false);
   StopSecureDesktopSharedCapture(secure_shared_session_id_);
   return ret;
 }
@@ -1018,6 +1022,9 @@ bool ScreenCapturerWin::ReadSecureDesktopSharedFrame(
   }
 
   nv12_frame_out->resize(payload_size);
+  const SecureDesktopCursorSnapshot cursor = header->cursor;
+  const int captured_width = static_cast<int>(header->width);
+  const int captured_height = static_cast<int>(header->height);
   std::memcpy(nv12_frame_out->data(), secure_frame_view_ + sizeof(*header),
               payload_size);
   MemoryBarrier();
@@ -1028,8 +1035,9 @@ bool ScreenCapturerWin::ReadSecureDesktopSharedFrame(
     return false;
   }
 
-  *width_out = static_cast<int>(header->width);
-  *height_out = static_cast<int>(header->height);
+  *width_out = captured_width;
+  *height_out = captured_height;
+  SharedSecureDesktopCursorState().Update(cursor);
   return true;
 }
 
@@ -1172,6 +1180,7 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
 
       secure_desktop_capture_active_.store(status.capture_active,
                                            std::memory_order_relaxed);
+      SharedSecureDesktopCursorState().SetActive(status.capture_active);
       if (status.capture_active != previous.capture_active ||
           status.interactive_stage != previous.interactive_stage ||
           status.active_session_id != previous.active_session_id ||
@@ -1358,6 +1367,7 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
   report_stats(true);
   StopSecureDesktopSharedCapture(secure_shared_session_id_);
   secure_desktop_capture_active_.store(false, std::memory_order_relaxed);
+  SharedSecureDesktopCursorState().SetActive(false);
 }
 
 }  // namespace crossdesk

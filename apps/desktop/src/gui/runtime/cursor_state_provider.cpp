@@ -6,38 +6,12 @@
 
 #include <windows.h>
 
+#include "platform/windows/input/windows_cursor_shape.h"
 #include "platform/windows/screen_capturer/dxgi_cursor_state.h"
+#include "platform/windows/screen_capturer/secure_desktop_cursor_state.h"
 #include "runtime/cursor_position.h"
 
 namespace crossdesk {
-namespace {
-
-bool IsSystemCursor(HCURSOR cursor, LPCWSTR resource) {
-  return cursor != nullptr && cursor == LoadCursorW(nullptr, resource);
-}
-
-RemoteCursorShape ShapeFromWindowsCursor(HCURSOR cursor) {
-  if (IsSystemCursor(cursor, IDC_HELP)) return RemoteCursorShape::help;
-  if (IsSystemCursor(cursor, IDC_HAND)) return RemoteCursorShape::pointer;
-  if (IsSystemCursor(cursor, IDC_APPSTARTING))
-    return RemoteCursorShape::progress;
-  if (IsSystemCursor(cursor, IDC_WAIT)) return RemoteCursorShape::wait;
-  if (IsSystemCursor(cursor, IDC_CROSS)) return RemoteCursorShape::crosshair;
-  if (IsSystemCursor(cursor, IDC_IBEAM)) return RemoteCursorShape::text;
-  if (IsSystemCursor(cursor, IDC_NO))
-    return RemoteCursorShape::not_allowed;
-  if (IsSystemCursor(cursor, IDC_SIZEALL)) return RemoteCursorShape::move;
-  if (IsSystemCursor(cursor, IDC_SIZEWE)) return RemoteCursorShape::ew_resize;
-  if (IsSystemCursor(cursor, IDC_SIZENS)) return RemoteCursorShape::ns_resize;
-  if (IsSystemCursor(cursor, IDC_SIZENESW))
-    return RemoteCursorShape::nesw_resize;
-  if (IsSystemCursor(cursor, IDC_SIZENWSE))
-    return RemoteCursorShape::nwse_resize;
-  if (IsSystemCursor(cursor, IDC_UPARROW)) return RemoteCursorShape::n_resize;
-  return RemoteCursorShape::default_cursor;
-}
-
-}  // namespace
 
 struct CursorStateProvider::Impl {};
 
@@ -47,6 +21,19 @@ CursorStateProvider::~CursorStateProvider() = default;
 bool CursorStateProvider::Sample(const std::vector<DisplayInfo>& displays,
                                  int preferred_display, CursorState* state) {
   if (!state) return false;
+
+  SecureDesktopCursorSnapshot secure_cursor{};
+  if (SharedSecureDesktopCursorState().Get(&secure_cursor)) {
+    if (!secure_cursor.valid) return false;
+    state->seq = 0;
+    NormalizeCursorPosition(secure_cursor.x, secure_cursor.y, displays,
+                            preferred_display, state);
+    state->visible = secure_cursor.visible != 0;
+    state->shape = state->visible
+                       ? static_cast<RemoteCursorShape>(secure_cursor.shape)
+                       : RemoteCursorShape::none;
+    return true;
+  }
 
   CURSORINFO info{};
   info.cbSize = sizeof(info);

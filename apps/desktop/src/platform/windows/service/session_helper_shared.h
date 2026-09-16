@@ -12,6 +12,8 @@
 #include <cstdint>
 #include <string>
 
+#include "secure_desktop_cursor_state.h"
+
 namespace crossdesk {
 
 inline constexpr wchar_t kCrossDeskSessionHelperPipePrefix[] =
@@ -33,7 +35,9 @@ inline constexpr wchar_t kCrossDeskSecureDesktopFrameMappingPrefix[] =
 inline constexpr wchar_t kCrossDeskSecureDesktopFrameReadyEventPrefix[] =
     L"Global\\CrossDeskSecureDesktopFrameReady-";
 inline constexpr uint32_t kCrossDeskSecureDesktopFrameMagic = 0x50444358;
-inline constexpr uint32_t kCrossDeskSecureDesktopFrameVersion = 1;
+// Version 2 adds cursor metadata to both headers. The GUI and local session
+// helper must be deployed together; the remote-control wire format is unchanged.
+inline constexpr uint32_t kCrossDeskSecureDesktopFrameVersion = 2;
 
 #pragma pack(push, 1)
 struct CrossDeskSecureDesktopFrameHeader {
@@ -44,6 +48,7 @@ struct CrossDeskSecureDesktopFrameHeader {
   uint32_t width;
   uint32_t height;
   uint32_t payload_size;
+  SecureDesktopCursorSnapshot cursor;
 };
 
 struct CrossDeskSecureDesktopSharedFrameHeader {
@@ -57,6 +62,7 @@ struct CrossDeskSecureDesktopSharedFrameHeader {
   uint32_t height;
   uint32_t payload_size;
   uint32_t buffer_size;
+  SecureDesktopCursorSnapshot cursor;
 };
 #pragma pack(pop)
 

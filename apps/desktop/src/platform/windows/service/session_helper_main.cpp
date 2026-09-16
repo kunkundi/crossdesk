@@ -25,6 +25,7 @@
 #include "path_manager.h"
 #include "rd_log.h"
 #include "session_helper_shared.h"
+#include "windows_cursor_shape.h"
 #include "windows_input_marker.h"
 
 namespace {
@@ -1135,6 +1136,7 @@ struct SecureDesktopGdiResources {
   void* bits = nullptr;
   const char* error = nullptr;
   DWORD error_code = ERROR_SUCCESS;
+  crossdesk::SecureDesktopCursorSnapshot cursor_snapshot{};
 
   ~SecureDesktopGdiResources() {
     if (old_bitmap != nullptr && old_bitmap != HGDI_ERROR) {
@@ -1183,16 +1185,30 @@ struct SecureDesktopGdiResources {
                 request.left, request.top, SRCCOPY | CAPTUREBLT)) {
       return Fail("bitblt_failed");
     }
-    if (request.show_cursor) {
-      CURSORINFO cursor{};
-      cursor.cbSize = sizeof(cursor);
-      if (GetCursorInfo(&cursor) && cursor.flags == CURSOR_SHOWING &&
+    // Sample on the thread bound to the captured input desktop, including when
+    // native controllers render the cursor themselves (show_cursor == false).
+    cursor_snapshot = {};
+    CURSORINFO cursor{};
+    cursor.cbSize = sizeof(cursor);
+    if (GetCursorInfo(&cursor)) {
+      cursor_snapshot.valid = 1;
+      cursor_snapshot.visible = (cursor.flags & CURSOR_SHOWING) != 0;
+      cursor_snapshot.shape = static_cast<uint32_t>(
+          crossdesk::ShapeFromWindowsCursor(cursor.hCursor));
+      cursor_snapshot.x = cursor.ptScreenPos.x;
+      cursor_snapshot.y = cursor.ptScreenPos.y;
+      if (request.show_cursor && cursor_snapshot.visible &&
           cursor.hCursor != nullptr) {
         const int x = cursor.ptScreenPos.x - request.left;
         const int y = cursor.ptScreenPos.y - request.top;
         if (x >= -64 && y >= -64 && x < request.width + 64 &&
             y < request.height + 64) {
-          DrawIconEx(mem_dc, x, y, cursor.hCursor, 0, 0, 0, nullptr, DI_NORMAL);
+          if (DrawIconEx(mem_dc, x, y, cursor.hCursor, 0, 0, 0, nullptr,
+                         DI_NORMAL)) {
+            // A frame with an embedded cursor must not get a second cursor
+            // overlay from a native controller sharing the web capture path.
+            cursor_snapshot.visible = 0;
+          }
         }
       }
     }
@@ -1237,6 +1253,7 @@ std::vector<uint8_t> CaptureSecureDesktopFrame(
   header.height = static_cast<uint32_t>(request.height);
   header.payload_size =
       static_cast<uint32_t>(capture_buffers->nv12_frame.size());
+  header.cursor = capture.cursor_snapshot;
 
   std::vector<uint8_t> response(sizeof(header) +
                                 capture_buffers->nv12_frame.size());
@@ -1362,6 +1379,7 @@ void SecureDesktopSharedCaptureThread(SecureSharedCaptureState* capture_state) {
         header->width = static_cast<uint32_t>(request.width);
         header->height = static_cast<uint32_t>(request.height);
         header->payload_size = static_cast<uint32_t>(nv12_frame.size());
+        header->cursor = capture->cursor_snapshot;
         std::memcpy(payload, nv12_frame.data(), nv12_frame.size());
         header->sequence = ++capture_state->sequence;
         MemoryBarrier();

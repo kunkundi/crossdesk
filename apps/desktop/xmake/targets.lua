@@ -459,7 +459,8 @@ function setup_targets()
                 "apps/desktop/src/platform/windows/service/service_host.cpp")
             add_files("apps/desktop/resources/windows/crossdesk_service.rc",
                 {defines = windows_resource_defines})
-            add_includedirs("apps/desktop/src/platform/windows/service")
+            add_includedirs("apps/desktop/src/platform/windows/service",
+                "apps/desktop/src/platform/windows/screen_capturer")
 
         target("crossdesk_session_helper")
             set_kind("binary")
@@ -470,8 +471,10 @@ function setup_targets()
             add_files("apps/desktop/resources/windows/crossdesk_session_helper.rc",
                 {defines = windows_helper_resource_defines})
             add_includedirs("apps/desktop/src/common",
-                "apps/desktop/src/platform/windows/service")
+                "apps/desktop/src/platform/windows/service",
+                "apps/desktop/src/platform/windows/screen_capturer")
             add_includedirs("apps/desktop/src/platform/windows/input")
+            add_includedirs("libs/wire/include")
     end
 
     target("crossdesk")
@@ -482,7 +485,8 @@ function setup_targets()
         if is_os("windows") then
             add_files("apps/desktop/src/platform/windows/daemon_backend.cpp")
             add_files("apps/desktop/src/platform/windows/service/service_host.cpp")
-            add_includedirs("apps/desktop/src/platform/windows/service")
+            add_includedirs("apps/desktop/src/platform/windows/service",
+                "apps/desktop/src/platform/windows/screen_capturer")
             add_links("Advapi32", "Wtsapi32", "Ole32", "Userenv")
             add_deps("wgc_plugin", "crossdesk_service", "crossdesk_session_helper")
             add_files(crossdesk_windows_resource, {defines = windows_resource_defines})
