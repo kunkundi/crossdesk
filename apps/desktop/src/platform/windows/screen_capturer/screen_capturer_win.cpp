@@ -1138,6 +1138,18 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
     max_status_ms = 0;
   };
   std::vector<uint8_t> secure_frame;
+  ULONGLONG last_shared_error_tick = 0;
+  auto report_shared_error = [&](const char* operation,
+                                 const std::string& error) {
+    const ULONGLONG now = GetTickCount64();
+    if (last_shared_error_tick == 0 || now - last_shared_error_tick >= 5000) {
+      LOG_WARN(
+          "Windows capturer secure shared capture {} failed; using pipe "
+          "fallback, stage='{}', session_id={}, error={}",
+          operation, status.interactive_stage, status.active_session_id, error);
+      last_shared_error_tick = now;
+    }
+  };
 
   while (running_.load(std::memory_order_relaxed)) {
     // Privacy covers belong to the ordinary desktop. Drop privacy on a
@@ -1285,6 +1297,7 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
           status.interactive_stage, status.interactive_desktop, show_cursor,
           shared_fps, &error_message);
       if (!shared_ready) {
+        report_shared_error("start", error_message);
         frame_schedule.OnStartFailure(GetTickCount64());
       } else if (!was_started) {
         frame_schedule.Reset(GetTickCount64());
@@ -1304,6 +1317,7 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
                                IsPendingSecureDesktopFrame(error_message);
     if (frame_pending) ++shared_waits;
     if (shared_ready && !frame_delivered && !frame_pending) {
+      report_shared_error("read", error_message);
       StopSecureDesktopSharedCapture(secure_shared_session_id_);
       frame_schedule.OnStartFailure(GetTickCount64());
     }

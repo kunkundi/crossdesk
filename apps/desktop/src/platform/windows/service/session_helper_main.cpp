@@ -98,18 +98,18 @@ struct SecureSharedCaptureState {
   uint32_t sequence = 0;
 };
 
-struct PipeSecurityAttributes {
-  PipeSecurityAttributes() = default;
-  ~PipeSecurityAttributes() {
+struct IpcSecurityAttributes {
+  IpcSecurityAttributes() = default;
+  ~IpcSecurityAttributes() {
     if (security_descriptor_ != nullptr) {
       LocalFree(security_descriptor_);
     }
   }
 
-  bool Initialize() {
-    constexpr wchar_t kPipeSddl[] = L"D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;AU)";
+  bool Initialize(const wchar_t* sddl =
+                      L"D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;AU)") {
     if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
-            kPipeSddl, SDDL_REVISION_1, &security_descriptor_, nullptr)) {
+            sddl, SDDL_REVISION_1, &security_descriptor_, nullptr)) {
       return false;
     }
 
@@ -453,7 +453,7 @@ std::string BuildHelperStatusResponse(HelperState* helper_state) {
 
 void HelperIpcServerLoop(HANDLE stop_event, DWORD session_id,
                          HelperState* helper_state) {
-  PipeSecurityAttributes security_attributes;
+  IpcSecurityAttributes security_attributes;
   SECURITY_ATTRIBUTES* pipe_attributes = nullptr;
   if (security_attributes.Initialize()) {
     pipe_attributes = security_attributes.get();
@@ -1471,10 +1471,19 @@ std::vector<uint8_t> StartSecureDesktopSharedCapture(
     return BuildTextResponseBytes(BuildErrorJson("invalid_capture_size"));
   }
 
-  PipeSecurityAttributes security_attributes;
+  IpcSecurityAttributes security_attributes;
   SECURITY_ATTRIBUTES* attributes = nullptr;
   if (security_attributes.Initialize()) {
     attributes = security_attributes.get();
+  }
+
+  // Event GENERIC_READ/GENERIC_WRITE omit SYNCHRONIZE. The GUI only needs
+  // to wait for frames; the SYSTEM helper retains permission to signal them.
+  IpcSecurityAttributes event_security_attributes;
+  if (!event_security_attributes.Initialize(
+          L"D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;0x00100000;;;AU)")) {
+    return BuildTextResponseBytes(
+        BuildErrorJson("create_frame_event_security_failed", GetLastError()));
   }
 
   const std::wstring mapping_name =
@@ -1503,7 +1512,8 @@ std::vector<uint8_t> StartSecureDesktopSharedCapture(
   }
 
   HANDLE frame_ready_event =
-      CreateEventW(attributes, FALSE, FALSE, event_name.c_str());
+      CreateEventW(event_security_attributes.get(), FALSE, FALSE,
+                   event_name.c_str());
   if (frame_ready_event == nullptr) {
     const DWORD error = GetLastError();
     UnmapViewOfFile(frame_view);
@@ -1665,7 +1675,7 @@ void SecureInputHelperIpcServerLoop(HANDLE stop_event, DWORD session_id) {
   auto capture_state = std::make_shared<SecureSharedCaptureState>();
   capture_state->session_id = session_id;
 
-  PipeSecurityAttributes security_attributes;
+  IpcSecurityAttributes security_attributes;
   SECURITY_ATTRIBUTES* pipe_attributes = nullptr;
   if (security_attributes.Initialize()) {
     pipe_attributes = security_attributes.get();
