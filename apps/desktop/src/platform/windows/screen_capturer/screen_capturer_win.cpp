@@ -33,6 +33,8 @@ namespace {
 
 using Json = nlohmann::json;
 
+thread_local bool current_frame_from_secure_desktop = false;
+
 constexpr DWORD kSecureDesktopStatusIntervalMs = 250;
 constexpr DWORD kSecureDesktopStatusPipeTimeoutMs = 500;
 constexpr DWORD kSecureDesktopHelperPipeTimeoutMs = 120;
@@ -460,6 +462,10 @@ int ScreenCapturerWin::Destroy() {
   return 0;
 }
 
+bool ScreenCapturerWin::CurrentFrameIsFromSecureDesktop() {
+  return current_frame_from_secure_desktop;
+}
+
 void ScreenCapturerWin::EmitCapturedFrame(
     unsigned char* data, int size, int width, int height,
     const char* stream_id, const MiniRtcNativeVideoFrame* native_frame,
@@ -472,6 +478,14 @@ void ScreenCapturerWin::EmitCapturedFrame(
   if (!cb_orig_) {
     return;
   }
+
+  // Normal and helper callbacks can originate on different threads during
+  // desktop transitions. Keep diagnostics tied to this callback's source.
+  struct RestoreFrameSource {
+    bool previous;
+    ~RestoreFrameSource() { current_frame_from_secure_desktop = previous; }
+  } restore_source{
+      std::exchange(current_frame_from_secure_desktop, from_secure_desktop)};
 
   if (native_frame) {
     if (!native_output_logged_.exchange(true, std::memory_order_relaxed)) {

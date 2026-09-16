@@ -84,6 +84,8 @@ private:
   void ClearCapturedKeyboardInput();
   bool ShouldSendCapturedFrame(std::chrono::steady_clock::time_point now,
                                int fps);
+  void RecordCaptureCadence(std::chrono::steady_clock::time_point now, int fps,
+                            bool from_secure_desktop);
 
   GuiRuntime &owner_;
   SDL_AudioStream *output_stream_ = nullptr;
@@ -99,6 +101,14 @@ private:
   std::mutex captured_keyboard_inputs_mutex_;
   std::chrono::steady_clock::time_point last_frame_time_{};
   std::chrono::steady_clock::time_point next_frame_deadline_{};
+  std::mutex capture_metrics_mutex_;
+  std::chrono::steady_clock::time_point capture_metrics_started_{};
+  std::chrono::steady_clock::time_point last_capture_callback_{};
+  uint64_t capture_callbacks_ = 0, capture_rate_drops_ = 0;
+  uint64_t capture_secure_callbacks_ = 0;
+  uint64_t capture_forwarded_ = 0, capture_send_errors_ = 0;
+  int64_t capture_max_gap_us_ = 0;
+  int64_t capture_send_us_ = 0, capture_max_send_us_ = 0;
   std::string last_video_frame_stream_id_;
   bool invalid_video_stream_id_logged_ = false;
 };

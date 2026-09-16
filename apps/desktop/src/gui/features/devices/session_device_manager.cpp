@@ -1,11 +1,12 @@
 #include "features/devices/session_device_manager.h"
 
+#include <display_stream_id.h>
 #include <remote_action.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 
-#include <display_stream_id.h>
 #include "platform.h"
 #include "rd_log.h"
 #include "runtime/gui_runtime.h"
@@ -59,6 +60,53 @@ bool SessionDeviceManager::ShouldSendCapturedFrame(
   return true;
 }
 
+void SessionDeviceManager::RecordCaptureCadence(
+    std::chrono::steady_clock::time_point now, int fps,
+    bool from_secure_desktop) {
+  std::lock_guard<std::mutex> lock(capture_metrics_mutex_);
+  if (capture_metrics_started_ == std::chrono::steady_clock::time_point{})
+    capture_metrics_started_ = now;
+  const auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                              now - capture_metrics_started_)
+                              .count();
+  if (elapsed_us >= 2000000) {
+    if (capture_forwarded_) {
+      const char* source = capture_secure_callbacks_ == 0 ? "normal_desktop"
+                           : capture_secure_callbacks_ == capture_callbacks_
+                               ? "secure_desktop"
+                               : "mixed";
+      LOG_INFO(
+          "Capture delivery: source={} normal_callbacks={} secure_callbacks={} "
+          "target_fps={} input_fps={:.2f} "
+          "forwarded_fps={:.2f} callbacks={} rate_dropped={} "
+          "forwarded={} send_errors={} max_callback_gap_us={} "
+          "send_avg_us={} send_max_us={} window_ms={}",
+          source, capture_callbacks_ - capture_secure_callbacks_,
+          capture_secure_callbacks_, fps,
+          capture_callbacks_ * 1000000.0 / elapsed_us,
+          capture_forwarded_ * 1000000.0 / elapsed_us, capture_callbacks_,
+          capture_rate_drops_, capture_forwarded_, capture_send_errors_,
+          capture_max_gap_us_, capture_send_us_ / capture_forwarded_,
+          capture_max_send_us_, elapsed_us / 1000);
+    }
+    capture_metrics_started_ = now;
+    capture_callbacks_ = capture_rate_drops_ = capture_forwarded_ = 0;
+    capture_secure_callbacks_ = 0;
+    capture_send_errors_ = 0;
+    capture_max_gap_us_ = capture_send_us_ = capture_max_send_us_ = 0;
+  }
+  if (last_capture_callback_ != std::chrono::steady_clock::time_point{}) {
+    capture_max_gap_us_ =
+        std::max<int64_t>(capture_max_gap_us_,
+                          std::chrono::duration_cast<std::chrono::microseconds>(
+                              now - last_capture_callback_)
+                              .count());
+  }
+  last_capture_callback_ = std::max(last_capture_callback_, now);
+  ++capture_callbacks_;
+  if (from_secure_desktop) ++capture_secure_callbacks_;
+}
+
 void SessionDeviceManager::Initialize() {
   InitializeAudioOutput();
   screen_capturer_factory_ = new ScreenCapturerFactory();
@@ -88,6 +136,11 @@ int SessionDeviceManager::InitializeScreenCapturer() {
 
   last_frame_time_ = {};
   next_frame_deadline_ = {};
+  capture_metrics_started_ = last_capture_callback_ = {};
+  capture_callbacks_ = capture_rate_drops_ = capture_forwarded_ = 0;
+  capture_secure_callbacks_ = 0;
+  capture_send_errors_ = 0;
+  capture_max_gap_us_ = capture_send_us_ = capture_max_send_us_ = 0;
   const int fps = owner_.config_center_->GetVideoFrameRate() ==
                           ConfigCenter::VIDEO_FRAME_RATE::FPS_30
                       ? 30
@@ -103,7 +156,15 @@ int SessionDeviceManager::InitializeScreenCapturer() {
                        const char *display_name,
                        const MiniRtcNativeVideoFrame *native_frame) {
         const auto now_time = std::chrono::steady_clock::now();
+        bool from_secure_desktop = false;
+#ifdef _WIN32
+        from_secure_desktop =
+            ScreenCapturerWin::CurrentFrameIsFromSecureDesktop();
+#endif
+        RecordCaptureCadence(now_time, fps, from_secure_desktop);
         if (!ShouldSendCapturedFrame(now_time, fps)) {
+          std::lock_guard<std::mutex> lock(capture_metrics_mutex_);
+          ++capture_rate_drops_;
           return;
         }
 
@@ -170,9 +231,24 @@ int SessionDeviceManager::InitializeScreenCapturer() {
         frame.height = height;
         frame.captured_timestamp = GetSystemTimeMicros(owner_.peer_);
         frame.native_frame = native_frame;
+        const auto send_started = std::chrono::steady_clock::now();
+        uint64_t send_errors = 0;
         for (const std::string &remote_id : connected_remote_ids) {
-          SendVideoFrameToPeer(owner_.peer_, &frame, stream_id.c_str(),
-                               remote_id.data(), remote_id.size());
+          if (SendVideoFrameToPeer(owner_.peer_, &frame, stream_id.c_str(),
+                                   remote_id.data(), remote_id.size()) != 0)
+            ++send_errors;
+        }
+        const auto send_us =
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - send_started)
+                .count();
+        {
+          std::lock_guard<std::mutex> lock(capture_metrics_mutex_);
+          ++capture_forwarded_;
+          capture_send_errors_ += send_errors;
+          capture_send_us_ += send_us;
+          capture_max_send_us_ =
+              std::max<int64_t>(capture_max_send_us_, send_us);
         }
         last_video_frame_stream_id_ = stream_id;
         last_frame_time_ = now_time;

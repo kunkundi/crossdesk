@@ -48,6 +48,9 @@ class ScreenCapturerWin : public ScreenCapturer {
   void SetPrivacyController(PrivacyController* privacy) override { privacy_ = privacy; }
   // Set before Init(), while capture is stopped.
   void SetCaptureMethod(ScreenCaptureMethod method) { capture_method_ = method; }
+  // Query synchronously inside the frame callback, on the delivering thread.
+  // This describes the actual frame, independently of service status polling.
+  static bool CurrentFrameIsFromSecureDesktop();
 
  private:
   std::unique_ptr<ScreenCapturer> impl_;
