@@ -262,6 +262,7 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
           std::lock_guard lock(props->remote_cursor_state_mutex_);
           props->remote_cursor_state_ = {};
           props->remote_cursor_state_received_ = false;
+          props->cursor_presentation_ = {};
         }
         {
           RemoteAction remote_action{};
@@ -331,6 +332,7 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
           std::lock_guard lock(props->remote_cursor_state_mutex_);
           props->remote_cursor_state_ = {};
           props->remote_cursor_state_received_ = false;
+          props->cursor_presentation_ = {};
         }
 
         std::shared_ptr<std::vector<unsigned char>> native_snapshot;

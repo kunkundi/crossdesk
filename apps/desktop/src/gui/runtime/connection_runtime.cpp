@@ -438,6 +438,7 @@ void GuiRuntime::ResetRemoteSessionResources(
     std::lock_guard<std::mutex> lock(props->remote_cursor_state_mutex_);
     props->remote_cursor_state_ = {};
     props->remote_cursor_state_received_ = false;
+    props->cursor_presentation_ = {};
   }
 }
 

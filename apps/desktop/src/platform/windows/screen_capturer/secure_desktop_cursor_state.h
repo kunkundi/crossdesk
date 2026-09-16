@@ -1,6 +1,7 @@
 #ifndef CROSSDESK_SECURE_DESKTOP_CURSOR_STATE_H_
 #define CROSSDESK_SECURE_DESKTOP_CURSOR_STATE_H_
 
+#include <chrono>
 #include <cstdint>
 #include <mutex>
 
@@ -14,8 +15,10 @@ struct SecureDesktopCursorSnapshot {
   uint32_t shape = 0;
   int32_t x = 0;
   int32_t y = 0;
+  uint32_t render_mode = 0;
+  uint32_t hidden_reason = 0;
 };
-static_assert(sizeof(SecureDesktopCursorSnapshot) == 20);
+static_assert(sizeof(SecureDesktopCursorSnapshot) == 28);
 
 // The capture thread publishes helper samples for the GUI thread. While secure
 // capture is active, even an unavailable sample must not fall back to sampling
@@ -30,13 +33,20 @@ class SecureDesktopCursorState {
 
   void Update(const SecureDesktopCursorSnapshot& snapshot) {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (active_ && snapshot.valid) snapshot_ = snapshot;
+    if (active_) {
+      snapshot_ = snapshot;
+      updated_at_ = std::chrono::steady_clock::now();
+    }
   }
 
   bool Get(SecureDesktopCursorSnapshot* snapshot) const {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!active_ || !snapshot) return false;
     *snapshot = snapshot_;
+    if (std::chrono::steady_clock::now() - updated_at_ >=
+        std::chrono::milliseconds(1500)) {
+      snapshot->valid = 0;
+    }
     return true;
   }
 
@@ -44,6 +54,7 @@ class SecureDesktopCursorState {
   mutable std::mutex mutex_;
   bool active_ = false;
   SecureDesktopCursorSnapshot snapshot_{};
+  std::chrono::steady_clock::time_point updated_at_{};
 };
 
 inline SecureDesktopCursorState& SharedSecureDesktopCursorState() {

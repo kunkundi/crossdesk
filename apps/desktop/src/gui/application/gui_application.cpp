@@ -1584,6 +1584,10 @@ void GuiApplication::BindStreamCallbacks() {
       return;
     }
     props->selected_display_ = index;
+    {
+      std::lock_guard lock(props->remote_cursor_state_mutex_);
+      props->cursor_presentation_ = {};
+    }
     RemoteAction action{};
     action.type = ControlType::display_id;
     action.d = index;
@@ -1883,9 +1887,20 @@ void GuiApplication::ShareLocalCursorState() {
   }
 
   CursorState sampled{};
-  if (!cursor_state_provider_.Sample(devices_.display_info_list(),
-                                     selected_display_, &sampled)) {
-    return;
+  const bool sample_ok = cursor_state_provider_.Sample(
+      devices_.display_info_list(), selected_display_, &sampled);
+  if (!sample_ok) {
+    sampled.render_mode = CursorRenderMode::unknown;
+    if (sampled.hidden_reason == CursorHiddenReason::unspecified) {
+      sampled.hidden_reason = CursorHiddenReason::sampling_failed;
+    }
+  } else if (sampled.render_mode == CursorRenderMode::legacy) {
+    // Providers without platform-specific presentation metadata only need to
+    // sample visible/shape; normalize that common case once for every peer.
+    sampled.render_mode = sampled.visible ? CursorRenderMode::separate
+                                          : CursorRenderMode::hidden;
+    sampled.hidden_reason = sampled.visible ? CursorHiddenReason::unspecified
+                                            : CursorHiddenReason::system_hidden;
   }
 
   const auto now = std::chrono::steady_clock::now();
@@ -1924,21 +1939,23 @@ void GuiApplication::ShareLocalCursorState() {
 
     const CursorState& previous = delivery.last_sent;
     const bool shape_changed =
-        !delivery.has_sent || sampled.visible != previous.visible ||
-        sampled.shape != previous.shape ||
-        std::abs(sampled.visual_offset_x - previous.visual_offset_x) >
-            kCursorPositionEpsilon ||
-        std::abs(sampled.visual_offset_y - previous.visual_offset_y) >
-            kCursorPositionEpsilon;
+        !delivery.has_sent || sampled.render_mode != previous.render_mode ||
+        sampled.hidden_reason != previous.hidden_reason ||
+        (sample_ok &&
+         (sampled.visible != previous.visible || sampled.shape != previous.shape ||
+          std::abs(sampled.visual_offset_x - previous.visual_offset_x) >
+              kCursorPositionEpsilon ||
+          std::abs(sampled.visual_offset_y - previous.visual_offset_y) >
+              kCursorPositionEpsilon));
     // Preserve sub-point cursor motion. At 10x client zoom, the old roughly
     // one-logical-pixel threshold became several visible phone points.
     const bool position_changed =
-        !delivery.has_sent ||
-        sampled.position_valid != previous.position_valid ||
-        sampled.display_id != previous.display_id ||
-        (sampled.position_valid && previous.position_valid &&
-         (std::abs(sampled.x - previous.x) > kCursorPositionEpsilon ||
-          std::abs(sampled.y - previous.y) > kCursorPositionEpsilon));
+        sample_ok &&
+        (!delivery.has_sent || sampled.position_valid != previous.position_valid ||
+         sampled.display_id != previous.display_id ||
+         (sampled.position_valid && previous.position_valid &&
+          (std::abs(sampled.x - previous.x) > kCursorPositionEpsilon ||
+           std::abs(sampled.y - previous.y) > kCursorPositionEpsilon)));
     const bool position_update_due =
         position_changed &&
         (delivery.last_sent_time.time_since_epoch().count() == 0 ||
@@ -1946,16 +1963,12 @@ void GuiApplication::ShareLocalCursorState() {
     const bool heartbeat_due =
         delivery.last_sent_time.time_since_epoch().count() == 0 ||
         now - delivery.last_sent_time >= kCursorStateHeartbeatInterval;
-    if (suppress_position) {
-      // Cursor appearance is independent of cursor position. Continue sending
-      // shape changes to every controller while withholding only the sampled
-      // position from the connection that originated recent input.
-      if (shape_changed || heartbeat_due) {
-        recipients.push_back({remote_id, false});
-      }
-    } else if (delivery.feedback_pending || shape_changed ||
-               position_update_due || heartbeat_due) {
-      recipients.push_back({remote_id, true});
+    // Position feedback waits for a good sample and the echo-suppression
+    // interval. Appearance changes and heartbeats are independent of both.
+    const bool include_position = sample_ok && !suppress_position;
+    if (shape_changed || heartbeat_due ||
+        (include_position && (delivery.feedback_pending || position_update_due))) {
+      recipients.push_back({remote_id, include_position});
     }
   }
   if (recipients.empty()) return;
@@ -1964,6 +1977,18 @@ void GuiApplication::ShareLocalCursorState() {
   for (const auto& recipient : recipients) {
     auto& delivery = cursor_delivery_states_[recipient.remote_id];
     CursorState outgoing = sampled;
+    if (!sample_ok) {
+      // Explicitly report unknown to new receivers, but retain the last
+      // presentation for peers that only understand visible/shape.
+      outgoing = delivery.has_sent ? delivery.last_sent : CursorState{};
+      if (!delivery.has_sent) {
+        outgoing.visible = true;
+        outgoing.shape = RemoteCursorShape::default_cursor;
+      }
+      outgoing.seq = sampled.seq;
+      outgoing.render_mode = sampled.render_mode;
+      outgoing.hidden_reason = sampled.hidden_reason;
+    }
     outgoing.position_update = recipient.include_position;
     if (!recipient.include_position) {
       // Keep legacy receivers at their last acknowledged position as well.
@@ -1991,6 +2016,13 @@ void GuiApplication::ShareLocalCursorState() {
       continue;
     }
 
+    if (!delivery.has_sent ||
+        delivery.last_sent.render_mode != outgoing.render_mode ||
+        delivery.last_sent.hidden_reason != outgoing.hidden_reason) {
+      LOG_INFO("Send cursor presentation to [{}]: mode={}, reason={}",
+               recipient.remote_id, static_cast<int>(outgoing.render_mode),
+               static_cast<int>(outgoing.hidden_reason));
+    }
     delivery.last_sent = outgoing;
     delivery.has_sent = true;
     if (recipient.include_position) {
@@ -2582,9 +2614,7 @@ void GuiApplication::SyncStreamWindow() {
         props->remote_cursor_state_received_;
     if (remote_cursor_active) {
       remote_cursor_shape = static_cast<int>(
-          props->remote_cursor_state_.visible
-              ? props->remote_cursor_state_.shape
-              : RemoteCursorShape::none);
+          props->cursor_presentation_.Resolve(SDL_GetTicks()));
     }
   }
   (*ui_->stream)->set_remote_cursor_active(remote_cursor_active);
@@ -3267,6 +3297,10 @@ void GuiApplication::SendPointerInput(int button, int kind, float x, float y) {
 
   controlled_remote_id_ = props->remote_id_;
   const std::string message = action.to_json();
+  {
+    std::lock_guard lock(props->remote_cursor_state_mutex_);
+    props->cursor_presentation_.NoteInput(SDL_GetTicks());
+  }
   SendDataFrame(props->peer_, message.c_str(), message.size(),
                 props->mouse_label_.c_str());
 }
@@ -3304,6 +3338,10 @@ void GuiApplication::SendScrollInput(float delta_x, float delta_y, float x,
   }
   if (action.m.s == 0) {
     return;
+  }
+  {
+    std::lock_guard lock(props->remote_cursor_state_mutex_);
+    props->cursor_presentation_.NoteInput(SDL_GetTicks());
   }
   controlled_remote_id_ = props->remote_id_;
   const std::string message = action.to_json();

@@ -35,9 +35,9 @@ inline constexpr wchar_t kCrossDeskSecureDesktopFrameMappingPrefix[] =
 inline constexpr wchar_t kCrossDeskSecureDesktopFrameReadyEventPrefix[] =
     L"Global\\CrossDeskSecureDesktopFrameReady-";
 inline constexpr uint32_t kCrossDeskSecureDesktopFrameMagic = 0x50444358;
-// Version 2 adds cursor metadata to both headers. The GUI and local session
-// helper must be deployed together; the remote-control wire format is unchanged.
-inline constexpr uint32_t kCrossDeskSecureDesktopFrameVersion = 2;
+// Version 3 distinguishes embedded, hidden and unavailable cursor states.
+// The GUI and local session helper must be deployed together.
+inline constexpr uint32_t kCrossDeskSecureDesktopFrameVersion = 3;
 
 #pragma pack(push, 1)
 struct CrossDeskSecureDesktopFrameHeader {

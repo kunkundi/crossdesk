@@ -234,7 +234,11 @@ void PeerEventHandler::OnReceiveDataBuffer(
       const bool changed =
           !props->remote_cursor_state_received_ ||
           props->remote_cursor_state_.visible != remote_action.cs.visible ||
-          props->remote_cursor_state_.shape != remote_action.cs.shape;
+          props->remote_cursor_state_.shape != remote_action.cs.shape ||
+          props->remote_cursor_state_.render_mode !=
+              remote_action.cs.render_mode ||
+          props->remote_cursor_state_.hidden_reason !=
+              remote_action.cs.hidden_reason;
       CursorState merged = remote_action.cs;
       if (!remote_action.cs.position_update &&
           props->remote_cursor_state_received_) {
@@ -245,10 +249,14 @@ void PeerEventHandler::OnReceiveDataBuffer(
       }
       props->remote_cursor_state_ = merged;
       props->remote_cursor_state_received_ = true;
+      props->cursor_presentation_.Observe(merged, SDL_GetTicks());
       if (changed) {
-        LOG_INFO("Received cursor state: seq={}, visible={}, shape={}",
+        LOG_INFO("Received cursor state: seq={}, visible={}, shape={}, "
+                 "mode={}, reason={}",
                  remote_action.cs.seq, remote_action.cs.visible,
-                 static_cast<int>(remote_action.cs.shape));
+                 static_cast<int>(remote_action.cs.shape),
+                 static_cast<int>(remote_action.cs.render_mode),
+                 static_cast<int>(remote_action.cs.hidden_reason));
       }
     }
     return;

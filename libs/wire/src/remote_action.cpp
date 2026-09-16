@@ -91,7 +91,9 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
            {"visual_offset_x", action.cs.visual_offset_x},
            {"visual_offset_y", action.cs.visual_offset_y},
            {"display_id", action.cs.display_id},
-           {"position_update", action.cs.position_update}};
+           {"position_update", action.cs.position_update},
+           {"render_mode", static_cast<int>(action.cs.render_mode)},
+           {"hidden_reason", static_cast<int>(action.cs.hidden_reason)}};
       break;
     case ControlType::audio_capture:
       object["audio_capture"] = action.a;
@@ -197,6 +199,19 @@ bool RemoteAction::FromJson(const std::string& json_string,
         output.cs.seq = cursor_state_object.at("seq").get<uint32_t>();
         output.cs.visible = cursor_state_object.at("visible").get<bool>();
         output.cs.shape = static_cast<RemoteCursorShape>(shape);
+        const int mode = cursor_state_object.value("render_mode", 0);
+        const int reason = cursor_state_object.value("hidden_reason", 0);
+        // Unknown extensions from a newer peer fall back to visible/shape.
+        output.cs.render_mode =
+            mode >= 0 && mode <= static_cast<int>(CursorRenderMode::unknown)
+                ? static_cast<CursorRenderMode>(mode)
+                : CursorRenderMode::legacy;
+        output.cs.hidden_reason =
+            reason >= 0 &&
+                    reason <= static_cast<int>(
+                                  CursorHiddenReason::secure_desktop_pending)
+                ? static_cast<CursorHiddenReason>(reason)
+                : CursorHiddenReason::unspecified;
         output.cs.position_valid =
             cursor_state_object.value("position_valid", false);
         output.cs.x = cursor_state_object.value("x", 0.5f);

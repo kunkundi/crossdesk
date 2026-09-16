@@ -73,6 +73,24 @@ struct KeyboardState {
   KeyboardStateKey pressed_keys[kMaxKeyboardStateKeys];
 };
 
+// Optional presentation metadata. Zero preserves pre-metadata peers' behavior.
+enum class CursorRenderMode : uint8_t {
+  legacy = 0,
+  separate,
+  embedded,
+  hidden,
+  unknown,
+};
+
+enum class CursorHiddenReason : uint8_t {
+  unspecified = 0,
+  system_hidden,
+  system_suppressed,
+  no_pointing_device,
+  sampling_failed,
+  secure_desktop_pending,
+};
+
 struct CursorState {
   uint32_t seq;
   bool visible;
@@ -89,6 +107,10 @@ struct CursorState {
   // Shape-only updates set this to false so cursor appearance can remain
   // responsive while position feedback to the input source is suppressed.
   bool position_update;
+  // Keep visible/shape for old receivers; new receivers can distinguish an
+  // embedded pointer from a hidden pointer and an unavailable sample.
+  CursorRenderMode render_mode;
+  CursorHiddenReason hidden_reason;
 };
 
 struct HostInfo {

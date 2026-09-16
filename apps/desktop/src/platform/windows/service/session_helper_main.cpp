@@ -25,7 +25,7 @@
 #include "path_manager.h"
 #include "rd_log.h"
 #include "session_helper_shared.h"
-#include "windows_cursor_shape.h"
+#include "windows_cursor_state.h"
 #include "windows_input_marker.h"
 
 namespace {
@@ -1191,10 +1191,14 @@ struct SecureDesktopGdiResources {
     CURSORINFO cursor{};
     cursor.cbSize = sizeof(cursor);
     if (GetCursorInfo(&cursor)) {
+      static thread_local crossdesk::WindowsCursorState cursor_state;
+      crossdesk::CursorState state{};
+      cursor_state.Sample(cursor, false, &state);
       cursor_snapshot.valid = 1;
-      cursor_snapshot.visible = (cursor.flags & CURSOR_SHOWING) != 0;
-      cursor_snapshot.shape = static_cast<uint32_t>(
-          crossdesk::ShapeFromWindowsCursor(cursor.hCursor));
+      cursor_snapshot.visible = state.visible;
+      cursor_snapshot.shape = static_cast<uint32_t>(state.shape);
+      cursor_snapshot.render_mode = static_cast<uint32_t>(state.render_mode);
+      cursor_snapshot.hidden_reason = static_cast<uint32_t>(state.hidden_reason);
       cursor_snapshot.x = cursor.ptScreenPos.x;
       cursor_snapshot.y = cursor.ptScreenPos.y;
       if (request.show_cursor && cursor_snapshot.visible &&
@@ -1208,6 +1212,8 @@ struct SecureDesktopGdiResources {
             // A frame with an embedded cursor must not get a second cursor
             // overlay from a native controller sharing the web capture path.
             cursor_snapshot.visible = 0;
+            cursor_snapshot.render_mode =
+                static_cast<uint32_t>(crossdesk::CursorRenderMode::embedded);
           }
         }
       }

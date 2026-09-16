@@ -22,6 +22,7 @@
 #include <remote_action.h>
 #include <stream_names.h>
 #include "display_info.h"
+#include "cursor_presentation.h"
 #include "minirtc.h"
 
 namespace crossdesk { class PeerEventHandler; }
@@ -173,6 +174,7 @@ struct RemoteSession {
   std::mutex remote_cursor_state_mutex_;
   CursorState remote_cursor_state_{};
   bool remote_cursor_state_received_ = false;
+  CursorPresentation cursor_presentation_;
   // Shared by minirtc callbacks, Slint rendering and SDL audio callbacks.
   std::atomic<ConnectionStatus> connection_status_ = ConnectionStatus::Closed;
   TraversalMode traversal_mode_ = TraversalMode::UnknownMode;
