@@ -399,8 +399,10 @@ function setup_targets()
         if is_os("windows") then
             add_cxxflags("/bigobj")
             add_links("opengl32")
+            add_syslinks("Comctl32", {public = true})
             add_files("apps/desktop/src/platform/windows/gui/tray/win_tray.cpp",
                 "apps/desktop/src/platform/windows/gui/slint_backend.cpp",
+                "apps/desktop/src/platform/windows/gui/window_icons.cpp",
                 "apps/desktop/src/platform/windows/gui/slint_renderer_probe.cpp",
                 "apps/desktop/src/platform/common/gui/opengl_video_renderer.cpp",
                 "apps/desktop/src/platform/common/gui/cuda_driver.cpp",

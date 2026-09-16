@@ -40,6 +40,7 @@
 
 #include "platform/windows/gui/slint_backend.h"
 #include "platform/windows/gui/tray/win_tray.h"
+#include "platform/windows/gui/window_icons.h"
 #elif defined(__APPLE__)
 #include "platform/macos/gui/tray/mac_tray.h"
 #include "platform/window_drag.h"
@@ -1013,6 +1014,9 @@ int GuiApplication::Run() {
   // when deciding whether the last hidden window should stop the event loop.
   // Keep the loop alive until the tray's explicit Exit action requests quit.
   ui_->main->show();
+#if _WIN32
+  ConfigureWindowsWindowIcons(ui_->main->window().win32_hwnd());
+#endif
   slint::run_event_loop(slint::EventLoopMode::RunUntilQuit);
   Cleanup();
   return 0;
@@ -1155,6 +1159,9 @@ void GuiApplication::InitializeSystemTray() {
       return;
     }
     ui_->main->show();
+#if _WIN32
+    ConfigureWindowsWindowIcons(ui_->main->window().win32_hwnd());
+#endif
     ui_->main->window().set_minimized(false);
 #if defined(__APPLE__)
     MacActivateWindow(ui_->main->window().appkit_view());
@@ -2162,6 +2169,9 @@ void GuiApplication::SyncMainWindow() {
   if (!ui_) {
     return;
   }
+#if _WIN32
+  ConfigureWindowsWindowIcons(ui_->main->window().win32_hwnd());
+#endif
 #if defined(__APPLE__)
   if (ui_->main_native_titlebar_attempts > 0) {
     if (HideDisabledMainWindowZoomButton()) {
@@ -2451,6 +2461,9 @@ void GuiApplication::SyncStreamWindow() {
   if (!ui_->stream) {
     return;
   }
+#if _WIN32
+  ConfigureWindowsWindowIcons((*ui_->stream)->window().win32_hwnd());
+#endif
   (*ui_->stream)->set_window_maximized((*ui_->stream)->window().is_maximized());
 #if defined(__APPLE__)
   if (ui_->stream_live_resize_configuration_attempts > 0) {
@@ -2894,6 +2907,10 @@ void GuiApplication::SyncServerWindow() {
   if (!ui_->server) {
     return;
   }
+
+#if _WIN32
+  ConfigureWindowsWindowIcons((*ui_->server)->window().win32_hwnd());
+#endif
 
   std::vector<ui::ControllerEntry> controllers;
   std::vector<slint::SharedString> names;
