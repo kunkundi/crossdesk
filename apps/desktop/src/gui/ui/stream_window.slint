@@ -199,6 +199,11 @@ export component StreamWindow inherits Window {
 
     private property <bool> control-expanded: true;
     private property <length> control-toolbar-height: 38px;
+    private property <length> control-button-step: 32px;
+    private property <length> stats-row-height: 18px;
+    private property <length> stats-header-height: 18px;
+    private property <length> stats-content-height:
+        root.stats-header-height + root.stats-rows.length * root.stats-row-height + 44px;
     private property <bool> display-menu-open: false;
     private property <bool> display-menu-animation-enabled: false;
     private property <float> display-menu-progress: 0.0;
@@ -288,7 +293,7 @@ export component StreamWindow inherits Window {
             && pointer-x <= display-menu-x + 180px
             && pointer-y >= display-menu-y
             && pointer-y <= display-menu-y + display-menu-height;
-        let shortcut-menu-x = control.x + (root.control-docked-left ? 41px : 74px);
+        let shortcut-menu-x = control.x + shortcut-button.x;
         let shortcut-menu-y = control.y + 40px;
         let over-shortcut-menu = root.shortcut-menu-open
             && pointer-x >= shortcut-menu-x
@@ -687,8 +692,10 @@ export component StreamWindow inherits Window {
             control := Rectangle {
                 x: root.control-dragging ? root.control-drag-x : root.control-docked-left ? 0px : parent.width - self.width;
                 y: min(max(0px, root.control-pos-y), parent.height - self.height);
-                width: root.control-expanded ? min(332px, parent.width) : 20px;
-                height: root.stats-visible && root.control-expanded ? min(196px, parent.height) : root.control-toolbar-height;
+                width: root.control-expanded ? min(76px + 8 * root.control-button-step, parent.width) : 20px;
+                height: root.stats-visible && root.control-expanded
+                    ? min(root.control-toolbar-height + root.stats-content-height + 8px, parent.height)
+                    : root.control-toolbar-height;
                 background: white;
                 border-width: 1px;
                 border-color: ImGuiLineStyle.border;
@@ -724,7 +731,7 @@ export component StreamWindow inherits Window {
                 }
                 shortcut-button := ControlBarButton {
                     visible: root.control-expanded;
-                    x: root.control-docked-left ? 41px : 74px; y: 7px;
+                    x: (root.control-docked-left ? 9px : 42px) + root.control-button-step; y: 7px;
                     icon: FontAwesomeIcons.keyboard; tooltip: StreamStrings.send-shortcut;
                     clicked => {
                         display-menu-open-timer.running = false;
@@ -736,51 +743,51 @@ export component StreamWindow inherits Window {
                 }
                 mouse-button := ControlBarButton {
                     visible: root.control-expanded;
-                    x: root.control-docked-left ? 73px : 106px; y: 7px;
+                    x: (root.control-docked-left ? 9px : 42px) + 2 * root.control-button-step; y: 7px;
                     icon: FontAwesomeIcons.computer-mouse; slashed: !root.mouse-control-enabled;
                     tooltip: root.mouse-control-enabled ? StreamStrings.release-mouse : StreamStrings.control-mouse;
                     clicked => { root.toggle-mouse-control(); }
                 }
                 audio-button := ControlBarButton {
                     visible: root.control-expanded;
-                    x: root.control-docked-left ? 137px : 170px; y: 7px;
+                    x: (root.control-docked-left ? 9px : 42px) + 4 * root.control-button-step; y: 7px;
                     icon: FontAwesomeIcons.volume-high; slashed: !root.audio-enabled;
                     tooltip: root.audio-enabled ? StreamStrings.mute : StreamStrings.audio;
                     clicked => { root.toggle-audio(); }
                 }
                 file-button := ControlBarButton {
                     visible: root.control-expanded;
-                    x: root.control-docked-left ? 169px : 202px; y: 7px;
+                    x: (root.control-docked-left ? 9px : 42px) + 5 * root.control-button-step; y: 7px;
                     icon: FontAwesomeIcons.folder-open; tooltip: StreamStrings.select-file;
                     clicked => { root.select-file(); }
                 }
                 stats-button := ControlBarButton {
                     visible: root.control-expanded;
-                    x: root.control-docked-left ? 201px : 234px; y: 7px;
+                    x: (root.control-docked-left ? 9px : 42px) + 6 * root.control-button-step; y: 7px;
                     icon: FontAwesomeIcons.signal; selected: root.stats-visible;
                     tooltip: root.stats-visible ? StreamStrings.hide-stats : StreamStrings.show-stats;
                     clicked => { root.toggle-stats(); }
                 }
                 fullscreen-button := ControlBarButton {
                     visible: root.control-expanded;
-                    x: root.control-docked-left ? 233px : 266px; y: 7px;
+                    x: (root.control-docked-left ? 9px : 42px) + 7 * root.control-button-step; y: 7px;
                     icon: root.fullscreen-enabled ? FontAwesomeIcons.compress : FontAwesomeIcons.expand;
                     tooltip: root.fullscreen-enabled ? StreamStrings.exit-fullscreen : StreamStrings.fullscreen;
                     clicked => { root.toggle-fullscreen(); }
                 }
                 close-button := ControlBarButton {
                     visible: root.control-expanded;
-                    x: root.control-docked-left ? 265px : 298px; y: 7px;
+                    x: (root.control-docked-left ? 9px : 42px) + 8 * root.control-button-step; y: 7px;
                     icon: FontAwesomeIcons.xmark; tooltip: StreamStrings.disconnect;
                     clicked => { root.disconnect(); }
                 }
 
                 if root.control-expanded && root.control-docked-left: Rectangle {
-                    x: 299px; y: 12px; width: 2px; height: 15px;
+                    x: parent.width - 33px; y: 12px; width: 2px; height: 15px;
                     background: ImGuiLineStyle.control-separator;
                 }
                 collapse-button := ControlBarButton {
-                    x: root.control-expanded ? (root.control-docked-left ? 307px : 10px) : 2px;
+                    x: root.control-expanded ? (root.control-docked-left ? parent.width - 25px : 10px) : 2px;
                     y: 7px;
                     width: 15px;
                     icon: root.control-expanded
@@ -792,7 +799,7 @@ export component StreamWindow inherits Window {
 
                 privacy-button := ControlBarButton {
                     visible: root.control-expanded;
-                    x: root.control-docked-left ? 105px : 138px; y: 7px;
+                    x: (root.control-docked-left ? 9px : 42px) + 3 * root.control-button-step; y: 7px;
                     icon: FontAwesomeIcons.user-secret;
                     slashed: root.privacy-off && !root.privacy-unsupported;
                     muted: root.privacy-unsupported;
@@ -804,84 +811,110 @@ export component StreamWindow inherits Window {
                 }
 
                 if root.stats-visible && root.control-expanded: stats-table := Rectangle {
-                    x: 14px;
-                    y: root.control-toolbar-height;
-                    width: parent.width - 28px;
-                    height: 144px;
+                    x: 8px;
+                    y: root.control-toolbar-height + 2px;
+                    width: parent.width - 16px;
+                    height: root.stats-content-height;
                     background: transparent;
-                    private property <length> row-height: 16px;
-                    private property <length> label-column-width:
-                        max(60px, stats-label-width-probe.preferred-width + 8px);
-                    private property <length> loss-column-width: 66px;
+                    private property <length> row-height: root.stats-row-height;
+                    private property <length> label-column-width: 50px;
+                    private property <length> loss-column-width:
+                        max((self.width - self.label-column-width) / 3,
+                            stats-loss-label.preferred-width + 8px);
                     private property <length> value-column-width:
                         (self.width - self.label-column-width - self.loss-column-width) / 2;
+                    private property <length> details-right-width:
+                        right-label-width-probe.preferred-width + 6px
+                            + max(resolution-width-probe.preferred-width,
+                                encryption-width-probe.preferred-width
+                                    + (root.stats-encryption-enabled ? 14px : 0px));
+                    private property <length> details-right-x: self.width / 2;
 
-                    stats-label-width-probe := Text {
+                    left-label-width-probe := Text {
                         visible: false;
-                        text: StreamStrings.stats-resolution + "\n"
-                            + StreamStrings.stats-connection-mode + "\n"
-                            + StreamStrings.stats-encryption;
+                        text: "FPS\n" + StreamStrings.stats-connection-mode;
                         font-size: ImGuiFontStyle.small;
                     }
-
-                    Rectangle {
-                        y: 0px;
-                        height: 1px;
-                        background: ImGuiLineStyle.border;
+                    right-label-width-probe := Text {
+                        visible: false;
+                        text: StreamStrings.stats-resolution + "\n" + StreamStrings.stats-encryption;
+                        font-size: ImGuiFontStyle.small;
+                    }
+                    resolution-width-probe := Text {
+                        visible: false;
+                        text: root.stats-resolution;
+                        font-size: ImGuiFontStyle.body;
+                        font-weight: 600;
+                    }
+                    encryption-width-probe := Text {
+                        visible: false;
+                        text: root.stats-encryption-enabled
+                            ? StreamStrings.stats-encryption-enabled : StreamStrings.stats-encryption-disabled;
+                        font-size: ImGuiFontStyle.body;
+                        font-weight: 600;
                     }
 
                     Rectangle {
+                        x: 0px;
                         y: 0px;
-                        height: stats-table.row-height;
+                        width: parent.width;
+                        height: root.stats-header-height;
+                        background: #f3f5f8;
+                        border-radius: 4px;
                         Text {
                             x: stats-table.label-column-width + 4px;
                             width: stats-table.value-column-width - 8px;
                             text: StreamStrings.stats-in;
-                            color: #30343b;
+                            color: #667085;
                             font-size: ImGuiFontStyle.small;
+                            horizontal-alignment: right;
                             vertical-alignment: center;
                         }
                         Text {
                             x: stats-table.label-column-width + stats-table.value-column-width + 4px;
                             width: stats-table.value-column-width - 8px;
                             text: StreamStrings.stats-out;
-                            color: #30343b;
+                            color: #667085;
                             font-size: ImGuiFontStyle.small;
+                            horizontal-alignment: right;
                             vertical-alignment: center;
                         }
-                        Text {
+                        stats-loss-label := Text {
                             x: stats-table.label-column-width + stats-table.value-column-width * 2 + 4px;
                             width: stats-table.loss-column-width - 8px;
                             text: StreamStrings.stats-loss-rate;
-                            color: #30343b;
+                            color: #667085;
                             font-size: ImGuiFontStyle.small;
+                            horizontal-alignment: right;
                             vertical-alignment: center;
                             overflow: elide;
-                        }
-                        Rectangle {
-                            y: parent.height - 1px;
-                            height: 1px;
-                            background: ImGuiLineStyle.border;
                         }
                     }
 
                     for row[index] in root.stats-rows: Rectangle {
-                        y: (index + 1) * stats-table.row-height;
+                        x: 0px;
+                        y: root.stats-header-height + index * stats-table.row-height;
+                        width: parent.width;
                         height: stats-table.row-height;
+                        background: index == root.stats-rows.length - 1 ? #edf3fc : transparent;
+                        border-radius: 4px;
                         Text {
                             x: 4px;
                             width: stats-table.label-column-width - 8px;
                             text: row.label;
-                            color: #30343b;
-                            font-size: ImGuiFontStyle.small;
+                            color: #475467;
+                            font-size: ImGuiFontStyle.body;
+                            font-weight: index == root.stats-rows.length - 1 ? 600 : 400;
                             vertical-alignment: center;
                         }
                         Text {
                             x: stats-table.label-column-width + 4px;
                             width: stats-table.value-column-width - 8px;
                             text: row.inbound;
-                            color: #30343b;
-                            font-size: ImGuiFontStyle.small;
+                            color: #253247;
+                            font-size: ImGuiFontStyle.body;
+                            font-weight: index == root.stats-rows.length - 1 ? 600 : 400;
+                            horizontal-alignment: right;
                             vertical-alignment: center;
                             overflow: elide;
                         }
@@ -889,8 +922,10 @@ export component StreamWindow inherits Window {
                             x: stats-table.label-column-width + stats-table.value-column-width + 4px;
                             width: stats-table.value-column-width - 8px;
                             text: row.outbound;
-                            color: #30343b;
-                            font-size: ImGuiFontStyle.small;
+                            color: #253247;
+                            font-size: ImGuiFontStyle.body;
+                            font-weight: index == root.stats-rows.length - 1 ? 600 : 400;
+                            horizontal-alignment: right;
                             vertical-alignment: center;
                             overflow: elide;
                         }
@@ -898,15 +933,19 @@ export component StreamWindow inherits Window {
                             x: stats-table.label-column-width + stats-table.value-column-width * 2 + 4px;
                             width: stats-table.loss-column-width - 8px;
                             text: row.loss-rate;
-                            color: #30343b;
-                            font-size: ImGuiFontStyle.small;
+                            color: #475467;
+                            font-size: ImGuiFontStyle.body;
+                            font-weight: index == root.stats-rows.length - 1 ? 600 : 400;
+                            horizontal-alignment: right;
                             vertical-alignment: center;
                             overflow: elide;
                         }
-                        Rectangle {
+                        if index < root.stats-rows.length - 2: Rectangle {
+                            x: 4px;
                             y: parent.height - 1px;
+                            width: parent.width - 8px;
                             height: 1px;
-                            background: ImGuiLineStyle.border;
+                            background: #edf0f4;
                         }
                     }
 
@@ -917,29 +956,50 @@ export component StreamWindow inherits Window {
                         { label: StreamStrings.stats-encryption, value: root.stats-encryption-enabled
                             ? StreamStrings.stats-encryption-enabled : StreamStrings.stats-encryption-disabled },
                     ]: Rectangle {
-                        y: (index + 5) * stats-table.row-height;
-                        height: stats-table.row-height;
-                        Text {
-                            x: 4px;
-                            width: stats-table.label-column-width - 8px;
+                        private property <length> encryption-icon-width:
+                            index == 3 && root.stats-encryption-enabled ? 14px : 0px;
+                        x: mod(index, 2) == 1 ? stats-table.details-right-x : 6px;
+                        y: root.stats-header-height + root.stats-rows.length * stats-table.row-height
+                            + 2px + floor(index / 2) * 21px;
+                        width: mod(index, 2) == 1 ? stats-table.details-right-width
+                            : stats-table.details-right-x - 14px;
+                        height: 21px;
+                        metric-label := Text {
+                            x: 0px;
+                            y: 0px;
+                            width: mod(index, 2) == 1 ? right-label-width-probe.preferred-width
+                                : left-label-width-probe.preferred-width;
+                            height: parent.height;
                             text: metric.label;
-                            color: #30343b;
+                            color: #667085;
                             font-size: ImGuiFontStyle.small;
                             vertical-alignment: center;
                         }
-                        Text {
-                            x: stats-table.label-column-width + 4px;
-                            width: parent.width - self.x - 4px;
+                        metric-value := Text {
+                            x: metric-label.width + 6px;
+                            y: 0px;
+                            height: parent.height;
+                            width: parent.width - self.x - parent.encryption-icon-width;
                             text: metric.value;
-                            color: #30343b;
-                            font-size: ImGuiFontStyle.small;
+                            color: index == 3 && root.stats-encryption-enabled ? #18794e : #253247;
+                            font-size: ImGuiFontStyle.body;
+                            font-weight: 600;
+                            horizontal-alignment: left;
                             vertical-alignment: center;
                             overflow: elide;
                         }
-                        Rectangle {
-                            y: parent.height - 1px;
-                            height: 1px;
-                            background: ImGuiLineStyle.border;
+                        if index == 3 && root.stats-encryption-enabled: Text {
+                            x: metric-value.x + min(metric-value.preferred-width, metric-value.width) + 4px;
+                            y: metric-value.y + (metric-value.height - self.height) / 2;
+                            width: 10px;
+                            height: 12px;
+                            text: FontAwesomeIcons.shield-halved;
+                            font-family: "Font Awesome 6 Free";
+                            font-weight: 900;
+                            font-size: 10px;
+                            color: #238653;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
                         }
                     }
                 }
@@ -1023,7 +1083,7 @@ export component StreamWindow inherits Window {
             }
 
             if root.shortcut-menu-open: Rectangle {
-                x: control.x + (root.control-docked-left ? 41px : 74px); y: control.y + 40px; width: 180px; height: 68px;
+                x: control.x + shortcut-button.x; y: control.y + 40px; width: 180px; height: 68px;
                 background: white; border-width: 1px; border-color: ImGuiLineStyle.border; border-radius: 5px; z: 11;
                 VerticalLayout {
                     padding: 4px; spacing: 1px;
