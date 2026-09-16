@@ -194,6 +194,7 @@ export component StreamWindow inherits Window {
     callback keyboard-focus-changed(bool);
 
     private property <bool> control-expanded: true;
+    private property <length> control-toolbar-height: 38px;
     private property <bool> display-menu-open: false;
     private property <bool> display-menu-animation-enabled: false;
     private property <float> display-menu-progress: 0.0;
@@ -683,7 +684,7 @@ export component StreamWindow inherits Window {
                 x: root.control-dragging ? root.control-drag-x : root.control-docked-left ? 0px : parent.width - self.width;
                 y: min(max(0px, root.control-pos-y), parent.height - self.height);
                 width: root.control-expanded ? min(332px, parent.width) : 20px;
-                height: root.stats-visible && root.control-expanded ? min(180px, parent.height) : 38px;
+                height: root.stats-visible && root.control-expanded ? min(180px, parent.height) : root.control-toolbar-height;
                 background: white;
                 border-width: 1px;
                 border-color: ImGuiLineStyle.border;
@@ -800,7 +801,7 @@ export component StreamWindow inherits Window {
 
                 if root.stats-visible && root.control-expanded: stats-table := Rectangle {
                     x: 14px;
-                    y: 38px;
+                    y: root.control-toolbar-height;
                     width: parent.width - 28px;
                     height: 128px;
                     background: transparent;
@@ -1039,8 +1040,9 @@ export component StreamWindow inherits Window {
                 x: min(max(4px, control.x + root.hovered-control.anchor-x - self.width / 2),
                     video.width - self.width - 4px);
                 height: control-tip.preferred-height + 12px;
-                y: control.y + control.height + self.height + 8px <= video.height
-                    ? control.y + control.height + 4px : max(4px, control.y - self.height - 4px);
+                // Anchor to the button row so expanded stats stay beneath the tooltip.
+                y: control.y + root.control-toolbar-height + self.height + 8px <= video.height
+                    ? control.y + root.control-toolbar-height + 4px : max(4px, control.y - self.height - 4px);
                 background: #30343bf5; border-radius: 5px; z: 12;
                 control-tip := Text {
                     x: 8px; y: 6px; width: parent.width - 16px;
