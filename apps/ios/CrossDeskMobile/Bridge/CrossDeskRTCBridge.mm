@@ -621,21 +621,15 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
                      y:(float)y
                 action:(CrossDeskPointerAction)action {
   const std::string message = MouseJSON(x, y, 0, static_cast<int>(action));
-  // Movement is latency-sensitive and can be superseded by newer positions.
-  // Button transitions must not be lost or reordered, otherwise a tap can be
-  // applied at a stale pointer position or leave a button logically pressed.
-  // MiniRTC reliability is configured per stream, so transitions use the
-  // existing reliable control stream while movement stays on the mouse stream.
-  const BOOL is_movement = action == CrossDeskPointerActionMove;
+  // Keep movement, button transitions, and scrolling ordered on the reliable
+  // mouse stream.
 #if DEBUG
-  if (!is_movement) {
+  if (action != CrossDeskPointerActionMove) {
     NSLog(@"CrossDesk pointer action=%ld normalized=(%.5f, %.5f)",
           static_cast<long>(action), x, y);
   }
 #endif
-  [self sendMessage:message
-           reliable:!is_movement
-             stream:is_movement ? kMouseStream : kControlStream];
+  [self sendMessage:message reliable:YES stream:kMouseStream];
 }
 
 - (void)sendScrollX:(float)x
@@ -648,7 +642,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   const int flag = vertical ? 7 : 8;
   const int wheel = raw_delta > 0 ? 1 : -1;
   const std::string message = MouseJSON(x, y, wheel, flag);
-  [self sendMessage:message reliable:NO stream:kMouseStream];
+  [self sendMessage:message reliable:YES stream:kMouseStream];
 }
 
 - (void)sendWindowsKeyCode:(NSUInteger)keyCode isDown:(BOOL)isDown {
@@ -893,7 +887,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   // display. Remote display receivers are created from the host's SDP.
   AddAudioStream(_state->controller_peer, kAudioStream);
   AddDataStream(_state->controller_peer, kDataStream, false);
-  AddDataStream(_state->controller_peer, kMouseStream, false);
+  AddDataStream(_state->controller_peer, kMouseStream, true);
   AddDataStream(_state->controller_peer, kKeyboardStream, true);
   AddDataStream(_state->controller_peer, kControlStream, true);
   AddDataStream(_state->controller_peer, kFileStream, true);

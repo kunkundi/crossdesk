@@ -366,8 +366,8 @@ int GuiApplication::ProcessMouseEvent(const SDL_Event &event) {
       }
       if (props->peer_) {
         std::string msg = remote_action.to_json();
-        SendDataFrame(props->peer_, msg.c_str(), msg.size(),
-                      props->mouse_label_.c_str());
+        SendReliableDataFrame(props->peer_, msg.c_str(), msg.size(),
+                              props->mouse_label_.c_str());
       }
     } else if (SDL_EVENT_MOUSE_WHEEL == event.type &&
                last_mouse_event.button.x >= render_rect.x &&
@@ -412,8 +412,8 @@ int GuiApplication::ProcessMouseEvent(const SDL_Event &event) {
       }
       if (props->peer_) {
         std::string msg = remote_action.to_json();
-        SendDataFrame(props->peer_, msg.c_str(), msg.size(),
-                      props->mouse_label_.c_str());
+        SendReliableDataFrame(props->peer_, msg.c_str(), msg.size(),
+                              props->mouse_label_.c_str());
       }
     }
   }

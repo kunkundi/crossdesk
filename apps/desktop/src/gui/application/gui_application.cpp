@@ -2014,7 +2014,7 @@ void GuiApplication::ShareLocalCursorState() {
     action.type = ControlType::cursor_state;
     action.cs = outgoing;
     const std::string message = action.to_json();
-    const int result = SendDataFrameToPeer(
+    const int result = SendReliableDataFrameToPeer(
         peer_, message.c_str(), message.size(), mouse_label_.c_str(),
         recipient.remote_id.c_str(), recipient.remote_id.size());
     if (result != 0) {
@@ -3318,8 +3318,8 @@ void GuiApplication::SendPointerInput(int button, int kind, float x, float y) {
     std::lock_guard lock(props->remote_cursor_state_mutex_);
     props->cursor_presentation_.NoteInput(SDL_GetTicks());
   }
-  SendDataFrame(props->peer_, message.c_str(), message.size(),
-                props->mouse_label_.c_str());
+  SendReliableDataFrame(props->peer_, message.c_str(), message.size(),
+                        props->mouse_label_.c_str());
 }
 
 void GuiApplication::SendScrollInput(float delta_x, float delta_y, float x,
@@ -3362,8 +3362,8 @@ void GuiApplication::SendScrollInput(float delta_x, float delta_y, float x,
   }
   controlled_remote_id_ = props->remote_id_;
   const std::string message = action.to_json();
-  SendDataFrame(props->peer_, message.c_str(), message.size(),
-                props->mouse_label_.c_str());
+  SendReliableDataFrame(props->peer_, message.c_str(), message.size(),
+                        props->mouse_label_.c_str());
 }
 
 void GuiApplication::SendKeyInput(const std::string& text, bool pressed,
