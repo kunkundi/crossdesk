@@ -1,8 +1,8 @@
 #ifndef CROSSDESK_DXGI_CURSOR_STATE_H_
 #define CROSSDESK_DXGI_CURSOR_STATE_H_
 
-#include <atomic>
 #include <cstdint>
+#include <mutex>
 
 namespace crossdesk {
 
@@ -18,24 +18,42 @@ class DxgiCursorState {
     // PointerPosition is undefined on desktop-only updates. Retain the last
     // pointer state until DXGI actually reports another pointer update.
     if (last_mouse_update_time == 0) return;
-    embedded_monitor_.store(separate_pointer_visible ? nullptr : monitor,
-                            std::memory_order_relaxed);
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (privacy_cursor_hidden_) return;
+    embedded_monitor_ = separate_pointer_visible ? nullptr : monitor;
   }
 
   void Reset() {
-    embedded_monitor_.store(nullptr, std::memory_order_relaxed);
+    std::lock_guard<std::mutex> lock(mutex_);
+    embedded_monitor_ = nullptr;
+  }
+
+  void SetPrivacyCursorHidden(bool hidden) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (privacy_cursor_hidden_ == hidden) return;
+    privacy_cursor_hidden_ = hidden;
+    // Pointer updates from before/during suppression cannot describe whether
+    // the restored cursor is embedded. Wait for a fresh DXGI pointer update.
+    embedded_monitor_ = nullptr;
   }
 
   bool ShouldDrawCursor(bool system_cursor_visible, void* cursor_monitor) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    // MagShowSystemCursor(FALSE) hides the local pointer plane without changing
+    // CURSOR_SHOWING. DXGI Visible=false then means hidden, not embedded in the
+    // captured frame. Keep sending the application's cursor to the controller.
+    // CURSOR_SHOWING still takes precedence when the application hides it.
+    if (privacy_cursor_hidden_) return system_cursor_visible;
     // A hidden cursor or a pointer on another monitor also makes DXGI report
     // Visible=false. Only suppress a visible cursor on the captured monitor.
     return system_cursor_visible &&
-           (!cursor_monitor ||
-            embedded_monitor_.load(std::memory_order_relaxed) != cursor_monitor);
+           (!cursor_monitor || embedded_monitor_ != cursor_monitor);
   }
 
  private:
-  std::atomic<void*> embedded_monitor_{nullptr};
+  mutable std::mutex mutex_;
+  void* embedded_monitor_ = nullptr;
+  bool privacy_cursor_hidden_ = false;
 };
 
 inline DxgiCursorState& SharedDxgiCursorState() {

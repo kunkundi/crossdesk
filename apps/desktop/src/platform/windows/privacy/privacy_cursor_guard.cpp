@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <vector>
 
+#include "../screen_capturer/dxgi_cursor_state.h"
 #include "privacy_cursor_api.h"
 #include "rd_log.h"
 
@@ -105,6 +106,9 @@ bool PrivacyCursorGuard::Start(std::string& error) {
   process_ = child.hProcess;
   stop_event_ = stop.value;
   stop.value = nullptr;
+  // The helper may hide the pointer before signaling readiness. Track its
+  // entire lifetime, including startup failure and delayed restoration.
+  SharedDxgiCursorState().SetPrivacyCursorHidden(true);
   HANDLE startup_events[] = {ready.value, process_};
   const DWORD result = WaitForMultipleObjects(2, startup_events, FALSE, 2000);
   const DWORD ready_error =
@@ -127,6 +131,7 @@ bool PrivacyCursorGuard::RestoreAfterFailure(std::string& error) {
     return Failed("Restore system cursor after helper failure", error);
   }
   restore_pending_ = false;
+  SharedDxgiCursorState().SetPrivacyCursorHidden(false);
   return true;
 }
 
@@ -152,6 +157,7 @@ bool PrivacyCursorGuard::Stop(std::string& error) {
   CloseHandle(stop_event_);
   stop_event_ = nullptr;
   if (code != ERROR_SUCCESS) return RestoreAfterFailure(error);
+  SharedDxgiCursorState().SetPrivacyCursorHidden(false);
   return true;
 }
 
