@@ -950,10 +950,10 @@ int GuiApplication::Run() {
   }
   exec_log_path_ = path_manager_->GetLogPath().string();
   dll_log_path_ = exec_log_path_;
+  InitializeLogger();
   cache_path_ = path_manager_->GetCachePath().string();
   config_center_ = std::make_unique<ConfigCenter>(cache_path_ + "/config.ini");
 
-  InitializeLogger();
   LOG_INFO("CrossDesk version: {} (Slint UI)", CROSSDESK_VERSION);
 
   strncpy(signal_server_ip_self_, config_center_->GetSignalServerHost().c_str(),

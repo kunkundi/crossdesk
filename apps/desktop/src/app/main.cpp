@@ -22,6 +22,7 @@
 #include "config_center.h"
 #include "daemon.h"
 #include "path_manager.h"
+#include "rd_log.h"
 #include "render.h"
 
 #ifdef __linux__
@@ -192,6 +193,14 @@ int main(int argc, char* argv[]) {
       std::strcmp(argv[1], crossdesk::kSlintRendererProbeArgument) == 0) {
     return crossdesk::RunSlintRendererProbe();
   }
+#endif
+
+  // Service operations and config migration can log before the GUI starts.
+  // Configure the directory first, including CLI and daemon child paths.
+  auto path_manager = std::make_unique<crossdesk::PathManager>("CrossDesk");
+  crossdesk::InitLogger(path_manager->GetLogPath().string());
+
+#ifdef _WIN32
   if (argc > 1 && IsServiceCliCommand(argv[1])) {
     return HandleServiceCliCommand(argv[1]);
   }
@@ -218,7 +227,6 @@ int main(int argc, char* argv[]) {
 #endif
 
   bool enable_daemon = false;
-  auto path_manager = std::make_unique<crossdesk::PathManager>("CrossDesk");
   if (path_manager) {
     std::string cache_path = path_manager->GetCachePath().string();
     crossdesk::ConfigCenter config_center(cache_path + "/config.ini");
