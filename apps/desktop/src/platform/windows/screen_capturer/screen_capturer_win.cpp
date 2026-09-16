@@ -16,6 +16,7 @@
 
 #include <display_stream_id.h>
 #include "captured_nv12_frame.h"
+#include "dxgi_cursor_state.h"
 #include "interactive_state.h"
 #include "named_pipe_deadline.h"
 #include "rd_log.h"
@@ -364,6 +365,7 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
       return;
     }
     if (secure_desktop_capture_active_.load(std::memory_order_relaxed)) {
+      SharedDxgiCursorState().Reset();
       return;
     }
 
@@ -470,6 +472,9 @@ void ScreenCapturerWin::EmitCapturedFrame(
     unsigned char* data, int size, int width, int height,
     const char* stream_id, const MiniRtcNativeVideoFrame* native_frame,
     bool from_secure_desktop) {
+  // Helper frames do not use DXGI's pointer plane. Do not carry normal-desktop
+  // cursor suppression into the lock screen or UAC desktop.
+  if (from_secure_desktop) SharedDxgiCursorState().Reset();
   // Secure-desktop capture takes priority; remove privacy without dropping
   // the helper frame or delaying the remote session.
   if (from_secure_desktop && privacy_ && privacy_->Engaged()) {

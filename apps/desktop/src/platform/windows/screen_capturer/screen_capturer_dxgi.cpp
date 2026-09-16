@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "dxgi_cursor_state.h"
 #include "libyuv.h"
 #include "rd_log.h"
 
@@ -232,6 +233,7 @@ void ScreenCapturerDxgi::EnumerateDisplays() {
 }
 
 bool ScreenCapturerDxgi::CreateDuplicationForMonitor(int monitor_index) {
+  SharedDxgiCursorState().Reset();
   if (monitor_index < 0 || monitor_index >= (int)outputs_.size()) return false;
   Microsoft::WRL::ComPtr<IDXGIOutput1> output1;
   HRESULT hr = outputs_[monitor_index]->QueryInterface(
@@ -284,6 +286,7 @@ bool ScreenCapturerDxgi::RecreateDuplicationForCurrentMonitor() {
 }
 
 void ScreenCapturerDxgi::ReleaseDuplication() {
+  SharedDxgiCursorState().Reset();
   ++duplication_generation_;
   staging_.Reset();
   if (duplication_) {
@@ -344,12 +347,21 @@ void ScreenCapturerDxgi::CaptureLoop() {
     // a backend rebuild. Normal error/reset handling releases optional privacy.
     cached_frame_valid = false;
     if (FAILED(hr)) {
+      SharedDxgiCursorState().Reset();
       LOG_ERROR("DXGI: AcquireNextFrame failed, hr={}", (int)hr);
       capture_lock.unlock();
       if (callback_)
         callback_(nullptr, ScreenCapturer::kBackendReset, 0, 0, "", nullptr);
       RecreateDuplicationForCurrentMonitor();
       continue;
+    }
+
+    if (frame_monitor >= 0 &&
+        frame_monitor < static_cast<int>(display_info_list_.size())) {
+      SharedDxgiCursorState().Update(
+          frame_info.LastMouseUpdateTime.QuadPart,
+          frame_info.PointerPosition.Visible != FALSE,
+          display_info_list_[frame_monitor].handle);
     }
 
     Microsoft::WRL::ComPtr<ID3D11Texture2D> acquired_tex;

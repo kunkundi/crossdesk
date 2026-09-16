@@ -6,6 +6,7 @@
 
 #include <windows.h>
 
+#include "platform/windows/screen_capturer/dxgi_cursor_state.h"
 #include "runtime/cursor_position.h"
 
 namespace crossdesk {
@@ -52,11 +53,15 @@ bool CursorStateProvider::Sample(const std::vector<DisplayInfo>& displays,
   if (!GetCursorInfo(&info)) return false;
 
   state->seq = 0;
-  state->visible = (info.flags & CURSOR_SHOWING) != 0;
-  state->shape = state->visible ? ShapeFromWindowsCursor(info.hCursor)
-                                : RemoteCursorShape::none;
   NormalizeCursorPosition(info.ptScreenPos.x, info.ptScreenPos.y, displays,
                           preferred_display, state);
+  void* cursor_monitor = state->position_valid
+                             ? displays[state->display_id].handle
+                             : nullptr;
+  state->visible = SharedDxgiCursorState().ShouldDrawCursor(
+      (info.flags & CURSOR_SHOWING) != 0, cursor_monitor);
+  state->shape = state->visible ? ShapeFromWindowsCursor(info.hCursor)
+                                : RemoteCursorShape::none;
   return true;
 }
 
