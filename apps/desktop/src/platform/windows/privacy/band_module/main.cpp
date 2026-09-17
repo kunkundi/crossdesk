@@ -192,7 +192,7 @@ class Windows {
   GetPrivacyWindowBand get_band_ = nullptr;
 };
 
-DWORD WINAPI Run(void*) {
+DWORD Run() {
   wchar_t bootstrap[256]{};
   if (!GetEnvironmentVariableW(kPrivacyBandBootstrap, bootstrap, 256))
     return ERROR_INVALID_PARAMETER;
@@ -239,8 +239,8 @@ DWORD WINAPI Run(void*) {
       auto last_check = GetTickCount64();
       HANDLE watched[] = {parent, stop};
       // Once enabled, retain surviving covers on a validation/layout fault.
-      // The parent pauses the session after reading the latched error. Only
-      // an explicit stop or parent death tears the remaining windows down.
+      // The parent releases privacy after reading the latched error. Only an
+      // explicit stop or parent death tears the remaining windows down.
       while (initialized) {
         const DWORD wait = MsgWaitForMultipleObjectsEx(
             2, watched, 100, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
@@ -273,21 +273,26 @@ DWORD WINAPI Run(void*) {
   }
   UnmapViewOfFile(shared);
   for (HANDLE handle : handles) CloseHandle(handle);
-  // This module runs only in the dedicated process created for this session.
-  // Exit outside DllMain/loader lock, after HWND destruction on their UI
-  // thread.
-  ExitProcess(exit_code);
   return exit_code;
+}
+
+void CALLBACK RunBeforeBrokerEntryPoint(ULONG_PTR) {
+  // The LoadLibraryW startup APC has returned, so the loader lock is no longer
+  // held. Own the primary thread until privacy stops, including startup errors.
+  // Never return into RuntimeBroker's COM server startup: an elevated launch
+  // can fail there with CO_E_WRONG_SERVER_IDENTITY and kill healthy covers.
+  ExitProcess(Run());
 }
 }  // namespace
 
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID) {
   if (reason == DLL_PROCESS_ATTACH) {
     module = instance;
-    // Keep thread notifications enabled: this module uses the static CRT.
-    HANDLE thread = CreateThread(nullptr, 0, Run, nullptr, 0, nullptr);
-    if (!thread) return FALSE;
-    CloseHandle(thread);
+    // Loaded by the startup APC on our dedicated, suspended broker's primary
+    // thread. Queue the window loop after that APC instead of starting a worker
+    // alongside RuntimeBroker's own entry point. Do not run it under loader lock.
+    if (!QueueUserAPC(RunBeforeBrokerEntryPoint, GetCurrentThread(), 0))
+      return FALSE;
   }
   return TRUE;
 }
