@@ -154,7 +154,7 @@ COPY deps/submodules/minirtc/thirdparty ./deps/submodules/minirtc/thirdparty
 # CrossDesk's exact dependency graph. Source files are intentionally excluded
 # from the Docker context; source-only changes therefore reuse this layer.
 RUN xmake repo -u --root \
-    && xmake f -m release --USE_CUDA=true --USE_WAYLAND=true \
+    && xmake f -vD -m release --USE_CUDA=true --USE_WAYLAND=true \
         --cc=gcc-10 --cxx=g++-10 --root -y \
     && rm -rf /data/.xmake/cache /tmp/crossdesk-dependencies \
     && mkdir -p /workspace
