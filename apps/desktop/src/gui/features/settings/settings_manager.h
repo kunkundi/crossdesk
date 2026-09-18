@@ -25,8 +25,6 @@ public:
   int SaveRecentConnectionAliases() const;
   std::string RecentConnectionDisplayName(
       const Thumbnail::RecentConnection &connection) const;
-  void
-  BeginEditRecentConnectionAlias(const Thumbnail::RecentConnection &connection);
   void SetRecentConnectionAlias(const std::string &remote_id,
                                 const std::string &alias);
   void EraseRecentConnectionAlias(const std::string &remote_id);

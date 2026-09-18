@@ -60,7 +60,6 @@ function setup_targets()
         add_packages("libyuv")
         add_packages("concurrentqueue", {public = true})
         add_files("apps/desktop/src/common/*.cpp")
-        remove_files("apps/desktop/src/common/rounded_corner_button.cpp")
         if is_os("windows") then
             add_files("apps/desktop/src/platform/windows/system_info.cpp")
         elseif is_os("macosx") then
@@ -335,9 +334,7 @@ function setup_targets()
     target("assets")
         set_kind("headeronly")
         add_includedirs("apps/desktop/src/gui/assets/localization",
-            "apps/desktop/src/gui/assets/fonts",
-            "apps/desktop/src/gui/assets/icons",
-            "apps/desktop/src/gui/assets/layouts", {public = true})
+            "apps/desktop/src/gui/assets/fonts", {public = true})
 
     target("version_checker")
         set_kind("object")

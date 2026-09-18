@@ -211,19 +211,6 @@ int GuiRuntime::CreateConnectionPeer() {
   }
 }
 
-void GuiRuntime::UpdateLabels() {
-  if (!label_inited_ ||
-      localization_language_index_last_ != localization_language_index_) {
-    connect_button_label_ =
-        connect_button_pressed_
-            ? localization::disconnect[localization_language_index_]
-            : localization::connect[localization_language_index_];
-    label_inited_ = true;
-    localization_language_index_last_ = localization_language_index_;
-  }
-}
-
-
 void GuiRuntime::HandleRecentConnections() {
   if (session_cleanup_tasks_.empty() && reload_recent_connections_ && thumbnail_) {
     uint32_t now_time = SDL_GetTicks();

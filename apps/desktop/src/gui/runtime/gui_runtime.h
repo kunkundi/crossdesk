@@ -27,7 +27,7 @@ namespace crossdesk {
 class VideoRenderer;
 
 // Shared GUI runtime. It owns subsystem controllers and cross-cutting session
-// state, but no window lifecycle, ImGui view, or transport callback methods.
+// state, but no window lifecycle, UI view, or transport callback methods.
 class GuiRuntime : protected gui_detail::GuiState {
  protected:
   using FileTransferState = gui_detail::FileTransferState;
@@ -53,7 +53,6 @@ class GuiRuntime : protected gui_detail::GuiState {
   int RequestSingleDevicePresence(const std::string& remote_id,
                                   const char* password, bool remember_password);
 
-  void UpdateLabels();
   void HandleRecentConnections();
   void HandleConnectionStatusChange();
   void HandlePendingPresenceProbe();

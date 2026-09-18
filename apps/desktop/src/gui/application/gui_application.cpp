@@ -1845,7 +1845,6 @@ void GuiApplication::Tick() {
     }
   }
 
-  UpdateLabels();
   const bool was_reloading_recent_connections = reload_recent_connections_;
   HandleRecentConnections();
   if (was_reloading_recent_connections && !reload_recent_connections_) {

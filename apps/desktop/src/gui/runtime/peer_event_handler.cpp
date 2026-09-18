@@ -383,21 +383,6 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
       case ConnectionStatus::IncorrectPassword: {
         runtime->password_validating_ = false;
         runtime->password_validating_time_++;
-        if (runtime->connect_button_pressed_) {
-          runtime->connect_button_pressed_ = false;
-          props->connection_established_ = false;
-          runtime->connect_button_label_ =
-              localization::connect[runtime->localization_language_index_];
-        }
-        break;
-      }
-      case ConnectionStatus::NoSuchTransmissionId:
-      case ConnectionStatus::RemoteUnavailable: {
-        if (runtime->connect_button_pressed_) {
-          props->connection_established_ = false;
-          runtime->connect_button_label_ =
-              localization::connect[runtime->localization_language_index_];
-        }
         break;
       }
       default:

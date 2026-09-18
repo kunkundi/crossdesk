@@ -40,7 +40,6 @@ struct InfrastructureState {
   std::string dll_log_path_;
   std::string cache_path_;
   int localization_language_index_ = -1;
-  int localization_language_index_last_ = -1;
   bool modules_inited_ = false;
   unsigned char aes128_key_[16]{};
   unsigned char aes128_iv_[16]{};
@@ -123,7 +122,6 @@ struct PlatformIntegrationState {
 
 struct UserSettingsState {
   char client_id_[10] = "";
-  char client_id_display_[12] = "";
   char client_id_with_password_[17] = "";
   char password_saved_[7] = "";
   char self_hosted_id_[17] = "";
@@ -155,8 +153,6 @@ struct UserSettingsState {
   std::string file_transfer_save_path_last_;
   char signal_server_ip_self_[256] = "";
   char signal_server_port_self_[6] = "";
-  bool settings_window_pos_reset_ = true;
-  bool self_hosted_server_config_window_pos_reset_ = true;
   std::string selected_current_file_path_;
   bool show_file_browser_ = true;
 };
@@ -204,7 +200,6 @@ struct ConnectionState {
   std::unordered_map<std::string, std::chrono::steady_clock::time_point>
       last_remote_pointer_input_time_;
   std::string selected_server_remote_id_;
-  std::string selected_server_remote_hostname_;
   std::mutex pending_presence_probe_mutex_;
   bool pending_presence_probe_ = false;
   bool pending_presence_result_ready_ = false;

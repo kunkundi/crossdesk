@@ -596,22 +596,6 @@ std::string SettingsManager::RecentConnectionDisplayName(
   return connection.remote_id;
 }
 
-void SettingsManager::BeginEditRecentConnectionAlias(
-    const Thumbnail::RecentConnection &connection) {
-  owner_.edit_connection_alias_remote_id_ = connection.remote_id;
-  std::memset(owner_.edit_connection_alias_, 0,
-              sizeof(owner_.edit_connection_alias_));
-
-  const auto alias_it = recent_connection_aliases_.find(connection.remote_id);
-  const std::string alias = alias_it != recent_connection_aliases_.end()
-                                ? alias_it->second
-                                : RecentConnectionDisplayName(connection);
-  CopyString(owner_.edit_connection_alias_, alias.c_str());
-
-  owner_.focus_on_input_widget_ = true;
-  owner_.show_edit_connection_alias_window_ = true;
-}
-
 void SettingsManager::SetRecentConnectionAlias(const std::string &remote_id,
                                                const std::string &alias) {
   if (!remote_id.empty()) {

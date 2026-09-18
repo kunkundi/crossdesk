@@ -14,7 +14,6 @@
 #include <filesystem>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <queue>
 #include <string>
 #include <vector>
@@ -39,7 +38,6 @@ struct FileTransferState {
   std::chrono::steady_clock::time_point file_send_last_update_time_;
   uint64_t file_send_last_bytes_ = 0;
   bool file_transfer_window_visible_ = false;
-  bool file_transfer_window_hovered_ = false;
   std::atomic<uint32_t> current_file_id_{0};
 
   struct QueuedFile {
@@ -93,31 +91,9 @@ struct RemoteSession {
   bool audio_capture_button_pressed_ = true;
   bool control_mouse_ = true;
   bool streaming_ = false;
-  bool is_control_bar_in_left_ = true;
-  bool control_bar_hovered_ = false;
-  bool display_selectable_hovered_ = false;
-  bool shortcut_selectable_hovered_ = false;
-  bool control_bar_expand_ = true;
-  bool reset_control_bar_pos_ = false;
-  bool control_window_width_is_changing_ = false;
-  bool control_window_height_is_changing_ = false;
   bool p2p_mode_ = true;
   bool remember_password_ = false;
   char remote_password_[7] = "";
-  float sub_stream_window_width_ = 1280;
-  float sub_stream_window_height_ = 720;
-  float control_window_min_width_ = 20;
-  float control_window_max_width_ = 300;
-  float control_window_min_height_ = 38;
-  float control_window_max_height_ = 180;
-  float control_window_width_ = 300;
-  float control_window_height_ = 38;
-  float control_bar_pos_x_ = 0;
-  float control_bar_pos_y_ = 30;
-  float mouse_diff_control_bar_pos_x_ = 0;
-  float mouse_diff_control_bar_pos_y_ = 0;
-  double control_bar_button_pressed_time_ = 0;
-  double net_traffic_stats_button_pressed_time_ = 0;
 
   // Written by the decode callback thread and consumed by the UI thread.
   std::mutex video_frame_mutex_;
@@ -131,31 +107,13 @@ struct RemoteSession {
   std::chrono::steady_clock::time_point background_snapshot_time_;
   bool render_rect_dirty_ = false;
   bool stream_cleanup_pending_ = false;
-  float mouse_pos_x_ = 0;
-  float mouse_pos_y_ = 0;
-  float mouse_pos_x_last_ = 0;
-  float mouse_pos_y_last_ = 0;
-  int texture_width_ = 1280;
-  int texture_height_ = 720;
   int video_width_ = 0;
   int video_height_ = 0;
-  int video_width_last_ = 0;
-  int video_height_last_ = 0;
   int selected_display_ = 0;
   size_t video_size_ = 0;
   uint64_t video_frame_sequence_ = 0;
   bool tab_selected_ = false;
   bool tab_opened_ = true;
-  std::optional<float> pos_x_before_docked_;
-  std::optional<float> pos_y_before_docked_;
-  float render_window_x_ = 0;
-  float render_window_y_ = 0;
-  float render_window_width_ = 0;
-  float render_window_height_ = 0;
-  std::string fullscreen_button_label_ = "Fullscreen";
-  std::string net_traffic_stats_button_label_ = "Show Net Traffic Stats";
-  std::string mouse_control_button_label_ = "Mouse Control";
-  std::string audio_capture_button_label_ = "Audio Capture";
   std::string remote_host_name_;
   bool remote_service_status_received_ = false;
   std::mutex privacy_status_mutex_;

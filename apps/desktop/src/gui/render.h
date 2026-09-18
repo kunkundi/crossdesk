@@ -13,7 +13,7 @@ namespace crossdesk {
 
 class GuiApplication;
 
-// Stable application-facing facade. The SDL application and feature
+// Stable application-facing facade. The Slint application and feature
 // controllers remain private implementation details.
 class Render {
 public:
