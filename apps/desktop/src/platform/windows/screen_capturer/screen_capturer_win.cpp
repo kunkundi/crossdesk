@@ -902,6 +902,8 @@ void ScreenCapturerWin::ApplyCursorCaptureSetting() {
   int ret = 0;
   if (auto* gdi = dynamic_cast<ScreenCapturerGdi*>(impl_.get())) {
     gdi->SetCursorCapture(requested);
+  } else if (auto* dxgi = dynamic_cast<ScreenCapturerDxgi*>(impl_.get())) {
+    dxgi->SetCursorCapture(requested);
   } else if (auto* wgc = dynamic_cast<WgcPluginCapturer*>(impl_.get())) {
     ret = wgc->SetCursorCapture(requested);
   }

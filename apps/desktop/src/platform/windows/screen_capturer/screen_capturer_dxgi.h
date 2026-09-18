@@ -25,6 +25,8 @@
 
 namespace crossdesk {
 
+class CursorFrameCompositor;
+
 class ScreenCapturerDxgi : public ScreenCapturer {
  public:
   ScreenCapturerDxgi();
@@ -35,6 +37,9 @@ class ScreenCapturerDxgi : public ScreenCapturer {
   int Destroy() override;
   int Start(bool show_cursor) override;
   int Stop() override;
+  void SetCursorCapture(bool enabled) {
+    show_cursor_.store(enabled, std::memory_order_relaxed);
+  }
 
   int Pause(int monitor_index) override;
   int Resume(int monitor_index) override;
@@ -52,6 +57,8 @@ class ScreenCapturerDxgi : public ScreenCapturer {
   bool CreateDuplicationForMonitor(int monitor_index);
   bool RecreateDuplicationForCurrentMonitor();
   void CaptureLoop();
+  bool ConvertFrame(int frame_monitor, bool* cursor_embedded,
+                    CursorFrameCompositor& compositor);
   void ReleaseDuplication();
 
  private:
@@ -79,6 +86,7 @@ class ScreenCapturerDxgi : public ScreenCapturer {
   unsigned char* nv12_frame_ = nullptr;
   int nv12_width_ = 0;
   int nv12_height_ = 0;
+  std::vector<uint8_t> rotated_frame_;
 };
 }  // namespace crossdesk
 

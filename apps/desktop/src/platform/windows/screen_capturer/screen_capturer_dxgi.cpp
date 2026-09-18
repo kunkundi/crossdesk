@@ -7,9 +7,12 @@
 #include <string>
 #include <vector>
 
+#include "captured_cursor_state.h"
+#include "cursor_frame_compositor.h"
 #include "dxgi_cursor_state.h"
 #include "libyuv.h"
 #include "rd_log.h"
+#include "windows_thread_dpi.h"
 
 namespace crossdesk {
 
@@ -295,12 +298,103 @@ void ScreenCapturerDxgi::ReleaseDuplication() {
   duplication_.Reset();
 }
 
+bool ScreenCapturerDxgi::ConvertFrame(int frame_monitor, bool* cursor_embedded,
+                                      CursorFrameCompositor& compositor) {
+  *cursor_embedded = false;
+  if (!staging_) return false;
+  D3D11_TEXTURE2D_DESC src_desc{};
+  staging_->GetDesc(&src_desc);
+  D3D11_MAPPED_SUBRESOURCE mapped{};
+  const HRESULT hr =
+      d3d_context_->Map(staging_.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+  if (FAILED(hr)) {
+    return false;
+  }
+
+  auto pixels = static_cast<const uint8_t*>(mapped.pData);
+  int stride = static_cast<int>(mapped.RowPitch);
+  int logical_width = static_cast<int>(src_desc.Width);
+  int logical_height = static_cast<int>(src_desc.Height);
+  libyuv::RotationMode rotation = libyuv::kRotate0;
+  switch (rotation_) {
+    case DXGI_MODE_ROTATION_ROTATE90:
+      rotation = libyuv::kRotate90;
+      break;
+    case DXGI_MODE_ROTATION_ROTATE180:
+      rotation = libyuv::kRotate180;
+      break;
+    case DXGI_MODE_ROTATION_ROTATE270:
+      rotation = libyuv::kRotate270;
+      break;
+    default:
+      break;
+  }
+  if (rotation != libyuv::kRotate0) {
+    const bool swap_axes = rotation != libyuv::kRotate180;
+    const int rotated_width = swap_axes ? logical_height : logical_width;
+    rotated_frame_.resize(static_cast<size_t>(logical_width) * logical_height *
+                          4);
+    if (libyuv::ARGBRotate(pixels, stride, rotated_frame_.data(),
+                           rotated_width * 4, logical_width, logical_height,
+                           rotation) != 0) {
+      d3d_context_->Unmap(staging_.Get(), 0);
+      return false;
+    }
+    pixels = rotated_frame_.data();
+    stride = rotated_width * 4;
+    if (swap_axes) std::swap(logical_width, logical_height);
+  }
+  int even_width = logical_width & ~1;
+  int even_height = logical_height & ~1;
+  if (even_width <= 0 || even_height <= 0) {
+    d3d_context_->Unmap(staging_.Get(), 0);
+    return false;
+  }
+
+  if (show_cursor_.load(std::memory_order_relaxed) && frame_monitor >= 0 &&
+      frame_monitor < static_cast<int>(display_info_list_.size())) {
+    const auto& display = display_info_list_[frame_monitor];
+    CURSORINFO cursor{};
+    cursor.cbSize = sizeof(cursor);
+    if (GetCursorInfo(&cursor) &&
+        SharedDxgiCursorState().ShouldDrawCursor(
+            (cursor.flags & CURSOR_SHOWING) != 0, display.handle)) {
+      if (const auto* composited =
+              compositor.Draw(pixels, stride, even_width, even_height, cursor,
+                              display.left, display.top)) {
+        pixels = composited;
+        stride = even_width * 4;
+        *cursor_embedded = true;
+      }
+    }
+  }
+
+  int nv12_size = even_width * even_height * 3 / 2;
+  if (!nv12_frame_ || nv12_width_ != even_width ||
+      nv12_height_ != even_height) {
+    delete[] nv12_frame_;
+    nv12_frame_ = new unsigned char[nv12_size];
+    nv12_width_ = even_width;
+    nv12_height_ = even_height;
+  }
+
+  const int converted =
+      libyuv::ARGBToNV12(pixels, stride, nv12_frame_, even_width,
+                         nv12_frame_ + even_width * even_height, even_width,
+                         even_width, even_height);
+
+  d3d_context_->Unmap(staging_.Get(), 0);
+  return converted == 0;
+}
+
 void ScreenCapturerDxgi::CaptureLoop() {
+  ScopedWindowsPhysicalCoordinates physical_coordinates;
+  CursorFrameCompositor cursor_compositor;
   const int timeout_ms = (std::max)(1, 1000 / (std::max)(1, fps_));
   bool cached_frame_valid = false;
+  bool cached_cursor_embedded = false;
   int cached_monitor = -1;
   uint64_t cached_generation = 0;
-  std::vector<uint8_t> rotated_frame;
   auto last_duplication_retry =
       std::chrono::steady_clock::now() - std::chrono::milliseconds(1000);
   while (running_) {
@@ -336,8 +430,19 @@ void ScreenCapturerDxgi::CaptureLoop() {
       // successfully acquired for this monitor to keep delivering static frames.
       if (cached_frame_valid && cached_generation == duplication_generation_ &&
           cached_monitor == monitor_index_.load() && callback_ && nv12_frame_) {
+        // Recompose from the clean staging texture while showing a cursor, or
+        // once after disabling it. Never replay a baked-in stale cursor.
+        if (show_cursor_.load(std::memory_order_relaxed) ||
+            cached_cursor_embedded) {
+          if (!ConvertFrame(cached_monitor, &cached_cursor_embedded,
+                            cursor_compositor)) {
+            cached_frame_valid = false;
+            continue;
+          }
+        }
         const auto stream_id = MakeDisplayStreamId(cached_monitor);
         capture_lock.unlock();
+        CapturedCursorFrameScope cursor_scope(cached_cursor_embedded);
         callback_(nv12_frame_, nv12_width_ * nv12_height_ * 3 / 2, nv12_width_,
                   nv12_height_, stream_id.c_str(), nullptr);
       }
@@ -397,80 +502,22 @@ void ScreenCapturerDxgi::CaptureLoop() {
 
     d3d_context_->CopyResource(staging_.Get(), acquired_tex.Get());
 
-    D3D11_MAPPED_SUBRESOURCE mapped{};
-    hr = d3d_context_->Map(staging_.Get(), 0, D3D11_MAP_READ, 0, &mapped);
-    if (FAILED(hr)) {
-      duplication_->ReleaseFrame();
-      continue;
-    }
-
-    auto pixels = static_cast<const uint8_t*>(mapped.pData);
-    int stride = static_cast<int>(mapped.RowPitch);
-    int logical_width = static_cast<int>(src_desc.Width);
-    int logical_height = static_cast<int>(src_desc.Height);
-    libyuv::RotationMode rotation = libyuv::kRotate0;
-    switch (rotation_) {
-      case DXGI_MODE_ROTATION_ROTATE90:
-        rotation = libyuv::kRotate90;
-        break;
-      case DXGI_MODE_ROTATION_ROTATE180:
-        rotation = libyuv::kRotate180;
-        break;
-      case DXGI_MODE_ROTATION_ROTATE270:
-        rotation = libyuv::kRotate270;
-        break;
-      default:
-        break;
-    }
-    if (rotation != libyuv::kRotate0) {
-      const bool swap_axes = rotation != libyuv::kRotate180;
-      const int rotated_width = swap_axes ? logical_height : logical_width;
-      rotated_frame.resize(static_cast<size_t>(logical_width) * logical_height *
-                           4);
-      if (libyuv::ARGBRotate(pixels, stride, rotated_frame.data(),
-                             rotated_width * 4, logical_width, logical_height,
-                             rotation) != 0) {
-        d3d_context_->Unmap(staging_.Get(), 0);
-        duplication_->ReleaseFrame();
-        continue;
-      }
-      pixels = rotated_frame.data();
-      stride = rotated_width * 4;
-      if (swap_axes) std::swap(logical_width, logical_height);
-    }
-    int even_width = logical_width & ~1;
-    int even_height = logical_height & ~1;
-    if (even_width <= 0 || even_height <= 0) {
-      d3d_context_->Unmap(staging_.Get(), 0);
-      duplication_->ReleaseFrame();
-      continue;
-    }
-
-    int nv12_size = even_width * even_height * 3 / 2;
-    if (!nv12_frame_ || nv12_width_ != even_width ||
-        nv12_height_ != even_height) {
-      delete[] nv12_frame_;
-      nv12_frame_ = new unsigned char[nv12_size];
-      nv12_width_ = even_width;
-      nv12_height_ = even_height;
-    }
-
-    const int converted =
-        libyuv::ARGBToNV12(pixels, stride, nv12_frame_, even_width,
-                           nv12_frame_ + even_width * even_height, even_width,
-                           even_width, even_height);
+    bool cursor_embedded = false;
+    const bool converted =
+        ConvertFrame(frame_monitor, &cursor_embedded, cursor_compositor);
 
     cached_generation = duplication_generation_;
-    d3d_context_->Unmap(staging_.Get(), 0);
     duplication_->ReleaseFrame();
     capture_lock.unlock();
 
-    if (converted == 0 && frame_monitor == monitor_index_.load() && callback_) {
+    if (converted && frame_monitor == monitor_index_.load() && callback_) {
       int idx = frame_monitor;
       if (idx >= 0 && idx < static_cast<int>(display_info_list_.size())) {
         const std::string stream_id = MakeDisplayStreamId(idx);
-        callback_(nv12_frame_, nv12_size, even_width, even_height,
-                  stream_id.c_str(), nullptr);
+        CapturedCursorFrameScope cursor_scope(cursor_embedded);
+        callback_(nv12_frame_, nv12_width_ * nv12_height_ * 3 / 2, nv12_width_,
+                  nv12_height_, stream_id.c_str(), nullptr);
+        cached_cursor_embedded = cursor_embedded;
         cached_monitor = idx;
         cached_frame_valid = true;
       } else {

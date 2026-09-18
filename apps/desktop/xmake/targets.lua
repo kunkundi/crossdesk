@@ -230,7 +230,8 @@ function setup_targets()
                 "apps/desktop/src/platform/windows/screen_capturer/screen_capturer_gdi.cpp",
                 "apps/desktop/src/platform/windows/screen_capturer/screen_capturer_win.cpp",
                 "apps/desktop/src/platform/windows/screen_capturer/screen_capturer_factory.cpp")
-            add_includedirs("apps/desktop/src/platform/windows/screen_capturer",
+            add_includedirs("apps/desktop/src/platform/windows",
+                "apps/desktop/src/platform/windows/screen_capturer",
                 "apps/desktop/src/platform/windows/service")
         elseif is_os("macosx") then
             add_deps("privacy")
