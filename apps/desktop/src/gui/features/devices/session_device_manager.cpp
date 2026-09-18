@@ -644,9 +644,17 @@ int SessionDeviceManager::SwitchDisplay(int display_id) {
 }
 
 void SessionDeviceManager::ResetToInitialDisplay() {
-  if (screen_capturer_) {
-    screen_capturer_->ResetToInitialMonitor();
+  if (!screen_capturer_) {
+    return;
   }
+  const int ret = screen_capturer_->ResetToInitialMonitor();
+  if (ret != 0) {
+    LOG_WARN("Reset to initial display failed, ret={}", ret);
+    return;
+  }
+  // Capture backends start at display 0. Reset the input mapping as well so
+  // the next connection cannot show that display while controlling another.
+  owner_.selected_display_ = 0;
 }
 
 const std::vector<DisplayInfo> &
