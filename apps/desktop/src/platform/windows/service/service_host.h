@@ -65,13 +65,16 @@ class CrossDeskServiceHost {
       const std::string& interactive_stage) const;
   void RefreshSessionHelperReportedState();
   void RecordSessionEvent(DWORD event_type, DWORD session_id);
-  std::string HandleIpcCommand(const std::string& command);
-  std::string BuildStatusResponse();
-  std::string SendSecureAttentionSequence();
-  std::string SendSecureDesktopKeyboardInput(int key_code, bool is_down,
+  std::string HandleIpcCommand(const std::string& command,
+                               DWORD client_session_id);
+  std::string BuildStatusResponse(DWORD client_session_id);
+  std::string SendSecureAttentionSequence(DWORD client_session_id);
+  std::string SendSecureDesktopKeyboardInput(DWORD client_session_id,
+                                             int key_code, bool is_down,
                                              uint32_t scan_code = 0,
                                              bool extended = false);
-  std::string SendSecureDesktopMouseInput(int x, int y, int wheel, int flag);
+  std::string SendSecureDesktopMouseInput(DWORD client_session_id,
+                                          int x, int y, int wheel, int flag);
 
   static void WINAPI ServiceMain(DWORD argc, LPWSTR* argv);
   static BOOL WINAPI ConsoleControlHandler(DWORD control_type);

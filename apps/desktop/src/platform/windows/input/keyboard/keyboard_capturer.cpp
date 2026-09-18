@@ -3,7 +3,9 @@
 #include <hidusage.h>
 
 #include "rd_log.h"
+#include "windows_input_injector.h"
 #include "windows_input_marker.h"
+#include "windows_key_metadata.h"
 
 namespace crossdesk {
 namespace {
@@ -264,6 +266,11 @@ void PlatformKeyboardCapturer::HandleRawInput(HRAWINPUT raw_input_handle) {
 // Apply remote keyboard commands to the local machine.
 int PlatformKeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down,
                                           uint32_t scan_code, bool extended) {
+  if (scan_code == 0) {
+    // Some layouts omit the E0 prefix for navigation keys in MapVirtualKey.
+    // Preserve explicit metadata, including non-extended numpad navigation.
+    LookupWindowsKeyMetadataFromVk(key_code, &scan_code, &extended);
+  }
   INPUT input = {0};
   input.type = INPUT_KEYBOARD;
   input.ki.dwExtraInfo =
@@ -304,7 +311,7 @@ int PlatformKeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down,
     input.ki.dwFlags |= KEYEVENTF_KEYUP;
   }
 
-  const UINT sent = SendInput(1, &input, sizeof(INPUT));
+  const UINT sent = SendInputOnUserDesktop(input);
   if (sent != 1) {
     LOG_WARN("SendInput failed for key_code={}, is_down={}, err={}", key_code,
              is_down, GetLastError());

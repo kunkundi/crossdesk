@@ -18,6 +18,7 @@
 #include "captured_nv12_frame.h"
 #include "captured_cursor_state.h"
 #include "dxgi_cursor_state.h"
+#include "interactive_desktop.h"
 #include "interactive_state.h"
 #include "named_pipe_deadline.h"
 #include "rd_log.h"
@@ -269,7 +270,7 @@ bool ParseSecureDesktopFrameResponse(const std::vector<uint8_t>& response,
   return true;
 }
 
-SecureDesktopServiceStatus QuerySecureDesktopServiceStatus() {
+SecureDesktopServiceStatus ReadSecureDesktopServiceStatus() {
   SecureDesktopServiceStatus status;
   std::vector<uint8_t> response;
   DWORD error_code = 0;
@@ -289,6 +290,14 @@ SecureDesktopServiceStatus QuerySecureDesktopServiceStatus() {
   if (!status.service_available) {
     status.error = json.value("error", std::string("service_unavailable"));
     status.error_code = json.value("code", 0u);
+    status.desktop_state_known = status.error == "service_session_mismatch";
+    return status;
+  }
+
+  if (!IsCurrentProcessSession(json.value("active_session_id", 0xFFFFFFFFu))) {
+    status.service_available = false;
+    status.desktop_state_known = true;
+    status.error = "service_session_mismatch";
     return status;
   }
 
@@ -323,6 +332,16 @@ SecureDesktopServiceStatus QuerySecureDesktopServiceStatus() {
       status.active_session_id != 0xFFFFFFFF &&
       (secure_desktop_active ||
        IsSecureDesktopInteractionRequired(status.interactive_stage));
+  return status;
+}
+
+SecureDesktopServiceStatus QuerySecureDesktopServiceStatus() {
+  auto status = ReadSecureDesktopServiceStatus();
+  if (!status.service_available && IsCurrentSessionUserDesktopActive()) {
+    status.desktop_state_known = true;
+    status.capture_active = false;
+    status.interactive_stage = "user-desktop";
+  }
   return status;
 }
 
@@ -1262,9 +1281,8 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
         } else if (IsTransientWindowsServiceStatusError(status.error)) {
           LOG_INFO(
               "Windows capturer secure desktop service temporarily "
-              "unavailable; "
-              "keeping last capture state: error={}, code={}",
-              status.error, status.error_code);
+              "unavailable: error={}, code={}, capture_active={}",
+              status.error, status.error_code, status.capture_active);
         } else {
           LOG_WARN(
               "Windows capturer secure desktop service unavailable: "

@@ -21,6 +21,7 @@ namespace crossdesk {
 
 struct SecureDesktopServiceStatus {
   bool service_available = false;
+  bool desktop_state_known = false;
   bool capture_active = false;
   bool helper_running = false;
   uint32_t helper_process_id = 0;
@@ -31,7 +32,7 @@ struct SecureDesktopServiceStatus {
   std::string error;
 
   void UpdateFrom(SecureDesktopServiceStatus latest) {
-    if (latest.service_available) {
+    if (latest.service_available || latest.desktop_state_known) {
       *this = std::move(latest);
     } else {
       // Failed IPC says nothing about the desktop. Retain the last confirmed

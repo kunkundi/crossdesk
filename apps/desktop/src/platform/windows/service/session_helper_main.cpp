@@ -28,6 +28,7 @@
 #include "windows_cursor_state.h"
 #include "cursor_draw.h"
 #include "windows_input_marker.h"
+#include "windows_key_metadata.h"
 
 namespace {
 
@@ -637,6 +638,13 @@ bool EnsureThreadInteractiveDesktopForStage(
     desktop_name = L"Winlogon";
   }
   if (desktop->Bind(desktop_name)) {
+    if (!desktop->IsReceivingInput()) {
+      if (switch_details != nullptr) {
+        switch_details->error_code = ERROR_REQUIRES_INTERACTIVE_WINDOWSTATION;
+      }
+      SetLastError(ERROR_REQUIRES_INTERACTIVE_WINDOWSTATION);
+      return false;
+    }
     if (switch_details != nullptr) {
       switch_details->target_desktop = WideToUtf8(desktop->name());
       switch_details->current_desktop = switch_details->target_desktop;
@@ -695,6 +703,9 @@ InputInjectionResult InjectKeyboardInput(
   input.ki.dwExtraInfo = static_cast<ULONG_PTR>(
       crossdesk::kInjectedKeyboardInputMarker);
 
+  if (scan_code == 0) {
+    crossdesk::LookupWindowsKeyMetadataFromVk(key_code, &scan_code, &extended);
+  }
   const bool prefer_vk = PreferSideSpecificVkInjection(key_code);
   const UINT resolved_scan_code =
       scan_code != 0

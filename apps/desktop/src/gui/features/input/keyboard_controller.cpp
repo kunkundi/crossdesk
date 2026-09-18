@@ -52,6 +52,9 @@ void PopulateWindowsKeyMetadataFromVk(int key_code, uint32_t* scan_code_out,
   if (!scan_code_out || !extended_out) {
     return;
   }
+  if (LookupWindowsKeyMetadataFromVk(key_code, scan_code_out, extended_out)) {
+    return;
+  }
 #if _WIN32
   const UINT scan_code =
       MapVirtualKeyW(static_cast<UINT>(key_code), MAPVK_VK_TO_VSC_EX);
@@ -61,7 +64,6 @@ void PopulateWindowsKeyMetadataFromVk(int key_code, uint32_t* scan_code_out,
     return;
   }
 #endif
-  LookupWindowsKeyMetadataFromVk(key_code, scan_code_out, extended_out);
 }
 
 #if _WIN32

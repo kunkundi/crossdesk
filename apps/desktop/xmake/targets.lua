@@ -282,10 +282,14 @@ function setup_targets()
         if is_os("windows") then
             add_files("apps/desktop/src/platform/windows/input/mouse/*.cpp",
                 "apps/desktop/src/platform/windows/input/keyboard/*.cpp",
+                "apps/desktop/src/platform/windows/input/windows_input_injector.cpp",
                 "apps/desktop/src/platform/windows/input/device_controller_factory.cpp")
-            add_includedirs("apps/desktop/src/platform/windows/input/mouse",
+            add_includedirs("apps/desktop/src/platform/windows",
+                "apps/desktop/src/platform/windows/service",
+                "apps/desktop/src/platform/windows/input/mouse",
                 "apps/desktop/src/platform/windows/input/keyboard",
                 "apps/desktop/src/platform/windows/input")
+            add_syslinks("Wtsapi32", {public = true})
         elseif is_os("macosx") then
             add_files("apps/desktop/src/platform/macos/input/mouse/*.cpp",
                 "apps/desktop/src/platform/macos/input/keyboard/*.cpp",
@@ -473,7 +477,8 @@ function setup_targets()
             add_includedirs("apps/desktop/src/common",
                 "apps/desktop/src/platform/windows/service",
                 "apps/desktop/src/platform/windows/screen_capturer")
-            add_includedirs("apps/desktop/src/platform/windows/input")
+            add_includedirs("apps/desktop/src/platform/windows/input",
+                "apps/desktop/src/platform/common/input")
             add_includedirs("libs/wire/include")
     end
 

@@ -1313,8 +1313,14 @@ void CrossDeskServiceHost::IpcServerLoop() {
     DWORD bytes_read = 0;
     if (ReadFile(pipe, buffer, sizeof(buffer) - 1, &bytes_read, nullptr) &&
         bytes_read > 0) {
-      std::string response =
-          HandleIpcCommand(std::string(buffer, buffer + bytes_read));
+      ULONG client_session_id = 0xFFFFFFFF;
+      // Obtain identity from Windows, never from caller-supplied JSON. A GUI
+      // left in an RDP session must not control a different console session.
+      const std::string response =
+          GetNamedPipeClientSessionId(pipe, &client_session_id)
+              ? HandleIpcCommand(std::string(buffer, buffer + bytes_read),
+                                  client_session_id)
+              : BuildErrorJson("client_session_query_failed", GetLastError());
       DWORD bytes_written = 0;
       WriteFile(pipe, response.data(), static_cast<DWORD>(response.size()),
                 &bytes_written, nullptr);
@@ -1329,7 +1335,13 @@ void CrossDeskServiceHost::IpcServerLoop() {
 
 void CrossDeskServiceHost::RefreshSessionState() {
   std::lock_guard<std::mutex> lock(state_mutex_);
+  const DWORD previous_session_id = active_session_id_;
   active_session_id_ = WTSGetActiveConsoleSessionId();
+  if (active_session_id_ != previous_session_id) {
+    ResetSessionHelperReportedStateLocked("session_changed", 0);
+    sas_secure_desktop_until_tick_ = 0;
+    sas_secure_desktop_seen_ = false;
+  }
   DWORD process_session_id = 0xFFFFFFFF;
   if (ProcessIdToSessionId(GetCurrentProcessId(), &process_session_id)) {
     process_session_id_ = process_session_id;
@@ -1931,6 +1943,14 @@ void CrossDeskServiceHost::RefreshSessionHelperReportedState() {
   }
 
   std::lock_guard<std::mutex> lock(state_mutex_);
+  if (target_session_id != active_session_id_ ||
+      target_session_id != session_helper_session_id_ ||
+      json.value("session_id", static_cast<DWORD>(0xFFFFFFFF)) !=
+          target_session_id ||
+      json.value("process_id", 0u) != session_helper_process_id_) {
+    ResetSessionHelperReportedStateLocked("helper_session_mismatch", 0);
+    return;
+  }
   session_helper_status_ok_ = true;
   session_helper_status_error_.clear();
   session_helper_status_error_code_ = 0;
@@ -1969,7 +1989,13 @@ void CrossDeskServiceHost::RecordSessionEvent(DWORD event_type,
     std::lock_guard<std::mutex> lock(state_mutex_);
     last_session_event_type_ = event_type;
     last_session_event_session_id_ = session_id;
+    const DWORD previous_session_id = active_session_id_;
     active_session_id_ = WTSGetActiveConsoleSessionId();
+    if (active_session_id_ != previous_session_id) {
+      ResetSessionHelperReportedStateLocked("session_changed", 0);
+      sas_secure_desktop_until_tick_ = 0;
+      sas_secure_desktop_seen_ = false;
+    }
     DWORD process_session_id = 0xFFFFFFFF;
     if (ProcessIdToSessionId(GetCurrentProcessId(), &process_session_id)) {
       process_session_id_ = process_session_id;
@@ -1988,10 +2014,11 @@ void CrossDeskServiceHost::RecordSessionEvent(DWORD event_type,
     prelogin_ = !username_available || username.empty();
 
     if (!QuerySessionLockState(active_session_id_, &session_locked_)) {
-      if (event_type == WTS_SESSION_LOCK) {
+      if (session_id == active_session_id_ && event_type == WTS_SESSION_LOCK) {
         session_locked_ = true;
-      } else if (event_type == WTS_SESSION_UNLOCK ||
-                 event_type == WTS_SESSION_LOGON) {
+      } else if (session_id == active_session_id_ &&
+                 (event_type == WTS_SESSION_UNLOCK ||
+                  event_type == WTS_SESSION_LOGON)) {
         session_locked_ = false;
       } else if (logon_ui_visible_ || secure_desktop_active_) {
         session_locked_ = !prelogin_;
@@ -2007,16 +2034,17 @@ void CrossDeskServiceHost::RecordSessionEvent(DWORD event_type,
   }
 }
 
-std::string CrossDeskServiceHost::HandleIpcCommand(const std::string& command) {
+std::string CrossDeskServiceHost::HandleIpcCommand(const std::string& command,
+                                                 DWORD client_session_id) {
   std::string normalized = ToLower(Trim(command));
   if (normalized == "ping") {
     return "{\"ok\":true,\"reply\":\"pong\"}";
   }
   if (normalized == "status") {
-    return BuildStatusResponse();
+    return BuildStatusResponse(client_session_id);
   }
   if (normalized == "sas") {
-    return SendSecureAttentionSequence();
+    return SendSecureAttentionSequence(client_session_id);
   }
   int key_code = 0;
   bool is_down = false;
@@ -2024,22 +2052,29 @@ std::string CrossDeskServiceHost::HandleIpcCommand(const std::string& command) {
   bool extended = false;
   if (ParseSecureDesktopKeyboardIpcCommand(normalized, &key_code, &is_down,
                                            &scan_code, &extended)) {
-    return SendSecureDesktopKeyboardInput(key_code, is_down, scan_code,
-                                           extended);
+    return SendSecureDesktopKeyboardInput(client_session_id, key_code, is_down,
+                                           scan_code, extended);
   }
   SecureDesktopMouseRequest mouse_request;
   if (ParseSecureDesktopMouseIpcCommand(normalized, &mouse_request)) {
-    return SendSecureDesktopMouseInput(mouse_request.x, mouse_request.y,
-                                       mouse_request.wheel,
-                                       mouse_request.flag);
+    return SendSecureDesktopMouseInput(client_session_id, mouse_request.x,
+                                        mouse_request.y, mouse_request.wheel,
+                                        mouse_request.flag);
   }
   return BuildErrorJson("unknown_command");
 }
 
-std::string CrossDeskServiceHost::BuildStatusResponse() {
+std::string CrossDeskServiceHost::BuildStatusResponse(DWORD client_session_id) {
   ReapSecureInputHelper();
   ReapSessionHelper();
   RefreshSessionState();
+  {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    if (client_session_id == 0xFFFFFFFF ||
+        active_session_id_ != client_session_id) {
+      return BuildErrorJson("service_session_mismatch");
+    }
+  }
   EnsureSessionHelper();
   RefreshSessionHelperReportedState();
   bool keep_secure_input_helper = false;
@@ -2077,6 +2112,9 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
   }
 
   std::lock_guard<std::mutex> lock(state_mutex_);
+  if (active_session_id_ != client_session_id) {
+    return BuildErrorJson("service_session_mismatch");
+  }
   std::wstring username;
   GetSessionUserName(active_session_id_, &username);
   std::string username_utf8 = EscapeJsonString(WideToUtf8(username));
@@ -2263,8 +2301,13 @@ std::string CrossDeskServiceHost::BuildStatusResponse() {
   return stream.str();
 }
 
-std::string CrossDeskServiceHost::SendSecureAttentionSequence() {
+std::string CrossDeskServiceHost::SendSecureAttentionSequence(
+    DWORD client_session_id) {
   RefreshSessionState();
+  if (client_session_id == 0xFFFFFFFF ||
+      client_session_id != WTSGetActiveConsoleSessionId()) {
+    return BuildErrorJson("service_session_mismatch");
+  }
   LOG_INFO("Received SAS request for session_id={}", active_session_id_);
   SasResult result = SendSasNow();
   {
@@ -2286,7 +2329,8 @@ std::string CrossDeskServiceHost::SendSecureAttentionSequence() {
 }
 
 std::string CrossDeskServiceHost::SendSecureDesktopKeyboardInput(
-    int key_code, bool is_down, uint32_t scan_code, bool extended) {
+    DWORD client_session_id, int key_code, bool is_down,
+    uint32_t scan_code, bool extended) {
   RefreshSessionState();
   ReapSecureInputHelper();
   EnsureSessionHelper();
@@ -2313,6 +2357,9 @@ std::string CrossDeskServiceHost::SendSecureDesktopKeyboardInput(
 
   if (target_session_id == 0xFFFFFFFF) {
     return BuildErrorJson("no_active_console_session");
+  }
+  if (target_session_id != client_session_id) {
+    return BuildErrorJson("service_session_mismatch");
   }
   if (!can_inject) {
     return BuildErrorJson("secure_input_not_active");
@@ -2336,9 +2383,8 @@ std::string CrossDeskServiceHost::SendSecureDesktopKeyboardInput(
       1000);
 }
 
-std::string CrossDeskServiceHost::SendSecureDesktopMouseInput(int x, int y,
-                                                              int wheel,
-                                                              int flag) {
+std::string CrossDeskServiceHost::SendSecureDesktopMouseInput(
+    DWORD client_session_id, int x, int y, int wheel, int flag) {
   RefreshSessionState();
   ReapSecureInputHelper();
   EnsureSessionHelper();
@@ -2365,6 +2411,9 @@ std::string CrossDeskServiceHost::SendSecureDesktopMouseInput(int x, int y,
 
   if (target_session_id == 0xFFFFFFFF) {
     return BuildErrorJson("no_active_console_session");
+  }
+  if (target_session_id != client_session_id) {
+    return BuildErrorJson("service_session_mismatch");
   }
   if (!can_inject) {
     return BuildErrorJson("secure_input_not_active");

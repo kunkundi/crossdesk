@@ -10,6 +10,7 @@
 #include "rd_log.h"
 
 #if _WIN32
+#include "interactive_desktop.h"
 #include "interactive_state.h"
 #include "service_host.h"
 #endif
@@ -19,6 +20,7 @@ namespace {
 #if _WIN32
 struct WindowsServiceInteractiveStatus {
   bool available = false;
+  bool session_mismatch = false;
   bool sas_secure_desktop_grace_active = false;
   unsigned int error_code = 0;
   std::string interactive_stage;
@@ -65,6 +67,14 @@ bool QueryWindowsServiceInteractiveStatus(
   if (!status->available) {
     status->error = json.value("error", std::string("service_unavailable"));
     status->error_code = json.value("code", 0u);
+    status->session_mismatch = status->error == "service_session_mismatch";
+    return true;
+  }
+
+  if (!IsCurrentProcessSession(json.value("active_session_id", 0xFFFFFFFFu))) {
+    status->available = false;
+    status->session_mismatch = true;
+    status->error = "service_session_mismatch";
     return true;
   }
 
@@ -145,6 +155,9 @@ void GuiRuntime::HandleWindowsServiceIntegration() {
 
   WindowsServiceInteractiveStatus status;
   const bool status_ok = QueryWindowsServiceInteractiveStatus(&status);
+  const bool user_desktop_recovered =
+      !status.available && IsCurrentSessionUserDesktopActive();
+  if (user_desktop_recovered) status.interactive_stage = "user-desktop";
   WindowsServiceInteractiveStatus broadcast_status = status;
   const bool previous_secure_desktop_interaction =
       IsSecureDesktopInteractionRequired(local_interactive_stage_);
@@ -167,8 +180,11 @@ void GuiRuntime::HandleWindowsServiceIntegration() {
       local_interactive_stage_ = status.interactive_stage;
       optimistic_windows_secure_desktop_until_tick_ = 0;
     }
-  } else if (!previous_secure_desktop_interaction) {
-    local_interactive_stage_.clear();
+  } else if (status.session_mismatch || user_desktop_recovered ||
+             !previous_secure_desktop_interaction) {
+    // A verified local desktop or a different service session invalidates the
+    // cached secure stage. An unexplained IPC failure alone still does not.
+    local_interactive_stage_ = status.interactive_stage;
     optimistic_windows_secure_desktop_until_tick_ = 0;
   }
 
@@ -184,9 +200,9 @@ void GuiRuntime::HandleWindowsServiceIntegration() {
         LOG_INFO(
             "Local Windows service available for secure desktop integration");
       } else if (IsTransientWindowsServiceStatusError(status.error)) {
-        LOG_INFO("Local Windows service temporarily unavailable, keeping last "
-                 "secure desktop state: error={}, code={}",
-                 status.error, status.error_code);
+        LOG_INFO("Local Windows service temporarily unavailable: error={}, "
+                 "code={}, local_stage='{}'",
+                 status.error, status.error_code, local_interactive_stage_);
       } else {
         LOG_WARN(
             "Local Windows service unavailable, secure desktop integration "

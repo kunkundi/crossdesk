@@ -6,9 +6,10 @@
 #include <algorithm>
 #include <cmath>
 
-#include "../../windows_thread_dpi.h"
 #include "rd_log.h"
+#include "windows_input_injector.h"
 #include "windows_input_marker.h"
+#include "windows_thread_dpi.h"
 
 namespace crossdesk {
 
@@ -33,7 +34,7 @@ int PlatformMouseController::ReleasePressedButtons() {
   if (pressed & 1) input.mi.dwFlags |= MOUSEEVENTF_LEFTUP;
   if (pressed & 2) input.mi.dwFlags |= MOUSEEVENTF_RIGHTUP;
   if (pressed & 4) input.mi.dwFlags |= MOUSEEVENTF_MIDDLEUP;
-  if (SendInput(1, &input, sizeof(INPUT)) != 1) {
+  if (SendInputOnUserDesktop(input) != 1) {
     LOG_WARN("Release remote mouse buttons failed, error={}", GetLastError());
     return -1;
   }
@@ -114,7 +115,7 @@ int PlatformMouseController::SendMouseCommand(RemoteAction remote_action,
   ip.mi.dwFlags |=
       MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
   ip.mi.dwExtraInfo = kInjectedMouseInputMarker;
-  const UINT sent = SendInput(1, &ip, sizeof(INPUT));
+  const UINT sent = SendInputOnUserDesktop(ip);
   if (sent != 1) {
     LOG_WARN("SendInput failed for mouse x={}, y={}, wheel={}, flag={}, err={}",
              ip.mi.dx, ip.mi.dy, remote_action.m.s,
