@@ -21,6 +21,8 @@ class ScreenCapturer {
   // Windows backends emit a control-only callback BEFORE automatic recovery.
   // No video buffer accompanies this notification; wrappers must consume it.
   static constexpr int kBackendReset = -1;
+  // Display geometry/availability changed; keep the session and privacy intent.
+  static constexpr int kDisplayTopologyChanged = -2;
   // |stream_id| is a logical MiniRTC stream ID (DisplayN), not a platform
   // display name or physical handle. |native_frame| is borrowed for the
   // duration of the callback; retain its owner before using it asynchronously.
@@ -44,6 +46,9 @@ class ScreenCapturer {
   virtual std::vector<DisplayInfo> GetDisplayInfoList() = 0;
   virtual int SwitchTo(int monitor_index) = 0;
   virtual int ResetToInitialMonitor() = 0;
+  // Append virtual methods to preserve existing WGC plugin vtable slots.
+  // Backends without index reporting retain the default primary index.
+  virtual int GetCurrentMonitorIndex() const { return 0; }
 };
 }  // namespace crossdesk
 #endif

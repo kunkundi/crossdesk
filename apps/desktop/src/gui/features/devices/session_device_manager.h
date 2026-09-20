@@ -96,6 +96,7 @@ private:
   bool ShouldSendCapturedFrame(std::chrono::steady_clock::time_point now,
                                int fps);
   bool ShouldCaptureCursor() const;
+  bool SyncDisplayInfo();
   void SetDisplayInfoList(std::vector<DisplayInfo> displays);
   void RecordCaptureCadence(std::chrono::steady_clock::time_point now, int fps,
                             bool from_secure_desktop);

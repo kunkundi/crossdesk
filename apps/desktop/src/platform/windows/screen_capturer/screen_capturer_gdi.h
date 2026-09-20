@@ -44,6 +44,9 @@ class ScreenCapturerGdi : public ScreenCapturer {
   std::vector<DisplayInfo> GetDisplayInfoList() override {
     return display_info_list_;
   }
+  int GetCurrentMonitorIndex() const override {
+    return monitor_index_.load(std::memory_order_relaxed);
+  }
 
  private:
   static BOOL CALLBACK EnumMonitorProc(HMONITOR hMonitor, HDC, LPRECT,

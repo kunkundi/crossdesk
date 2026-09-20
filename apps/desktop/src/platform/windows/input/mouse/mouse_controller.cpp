@@ -18,9 +18,26 @@ PlatformMouseController::PlatformMouseController() {}
 PlatformMouseController::~PlatformMouseController() { Destroy(); }
 
 int PlatformMouseController::Init(std::vector<DisplayInfo> display_info_list) {
+  std::lock_guard<std::mutex> lock(display_info_mutex_);
   display_info_list_ = display_info_list;
 
   return 0;
+}
+
+void PlatformMouseController::UpdateDisplayInfoList(
+    const std::vector<DisplayInfo>& display_info_list) {
+  if (display_info_list.empty()) return;
+  std::lock_guard<std::mutex> lock(display_info_mutex_);
+  if (std::equal(display_info_list.begin(), display_info_list.end(),
+                 display_info_list_.begin(), display_info_list_.end(),
+                 [](const auto& a, const auto& b) {
+                   return a.handle == b.handle && a.left == b.left &&
+                          a.top == b.top && a.width == b.width &&
+                          a.height == b.height;
+                 })) return;
+  display_info_list_ = display_info_list;
+  LOG_INFO("Windows mouse display geometry updated: displays={}",
+           display_info_list_.size());
 }
 
 int PlatformMouseController::Destroy() { return ReleasePressedButtons(); }
@@ -44,12 +61,18 @@ int PlatformMouseController::ReleasePressedButtons() {
 
 int PlatformMouseController::SendMouseCommand(RemoteAction remote_action,
                                               int display_index) {
+  std::unique_lock<std::mutex> geometry_lock(display_info_mutex_);
   if (display_index < 0 ||
-      display_index >= static_cast<int>(display_info_list_.size())) {
+      display_index >= static_cast<int>(display_info_list_.size()) ||
+      display_info_list_[display_index].width <= 0 ||
+      display_info_list_[display_index].height <= 0) {
     LOG_WARN("Mouse command skipped, invalid display_index={}, displays={}",
              display_index, display_info_list_.size());
     return -1;
   }
+
+  const auto display = display_info_list_[display_index];
+  geometry_lock.unlock();
 
   INPUT ip = {0};
   ScopedWindowsPhysicalCoordinates physical_coordinates;
@@ -59,11 +82,9 @@ int PlatformMouseController::SendMouseCommand(RemoteAction remote_action,
     return -1;
   ip.type = INPUT_MOUSE;
   ip.mi.dx = (LONG)(std::clamp(remote_action.m.x, 0.0f, 1.0f) *
-                    (display_info_list_[display_index].width - 1)) +
-             display_info_list_[display_index].left;
+                    (display.width - 1)) + display.left;
   ip.mi.dy = (LONG)(std::clamp(remote_action.m.y, 0.0f, 1.0f) *
-                    (display_info_list_[display_index].height - 1)) +
-             display_info_list_[display_index].top;
+                    (display.height - 1)) + display.top;
 
   switch (remote_action.m.flag) {
     case MouseFlag::left_down:
@@ -106,12 +127,18 @@ int PlatformMouseController::SendMouseCommand(RemoteAction remote_action,
   }
   // Pixel centres in the virtual desktop, including negative monitor origins.
   // SetCursorPos cannot carry dwExtraInfo through the privacy mouse hook.
-  ip.mi.dx = static_cast<LONG>(
-      (static_cast<int64_t>(ip.mi.dx - virtual_left) * 65536 + 32768) /
-      virtual_width);
-  ip.mi.dy = static_cast<LONG>(
-      (static_cast<int64_t>(ip.mi.dy - virtual_top) * 65536 + 32768) /
-      virtual_height);
+  const int virtual_width_range = (std::max)(1, virtual_width - 1);
+  const int virtual_height_range = (std::max)(1, virtual_height - 1);
+  ip.mi.dx = static_cast<LONG>(std::clamp<int64_t>(
+      (static_cast<int64_t>(ip.mi.dx - virtual_left) * 65535 +
+       virtual_width_range / 2) /
+          virtual_width_range,
+      0, 65535));
+  ip.mi.dy = static_cast<LONG>(std::clamp<int64_t>(
+      (static_cast<int64_t>(ip.mi.dy - virtual_top) * 65535 +
+       virtual_height_range / 2) /
+          virtual_height_range,
+      0, 65535));
   ip.mi.dwFlags |=
       MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
   ip.mi.dwExtraInfo = kInjectedMouseInputMarker;

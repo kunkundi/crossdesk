@@ -49,6 +49,7 @@ class ScreenCapturerWin : public ScreenCapturer {
   int ResetToInitialMonitor() override;
 
   std::vector<DisplayInfo> GetDisplayInfoList() override;
+  int GetCurrentMonitorIndex() const override;
   void SetPrivacyController(PrivacyController* privacy) override { privacy_ = privacy; }
   // Set before Init(), while capture is stopped.
   void SetCaptureMethod(ScreenCaptureMethod method) { capture_method_ = method; }
@@ -58,6 +59,10 @@ class ScreenCapturerWin : public ScreenCapturer {
 
  private:
   std::unique_ptr<ScreenCapturer> impl_;
+  // Serializes backend replacement (secure-desktop recovery runs on the
+  // management thread) against the public entry points that dereference it.
+  // Lock order: impl_mutex_ before alias_mutex_; never the reverse.
+  std::mutex impl_mutex_;
   ScreenCaptureMethod capture_method_ = ScreenCaptureMethod::Auto;
   bool IsBackendEnabled(ScreenCaptureMethod method) const {
     return capture_method_ == ScreenCaptureMethod::Auto ||
@@ -73,15 +78,16 @@ class ScreenCapturerWin : public ScreenCapturer {
   std::unordered_map<std::string, std::string> stream_id_alias_;
   std::mutex alias_mutex_;
   std::vector<DisplayInfo> canonical_displays_;
+  std::vector<int> backend_to_canonical_;
   std::atomic<bool> invalid_stream_id_logged_{false};
   std::atomic<bool> native_output_logged_{false};
   std::atomic<bool> native_output_error_logged_{false};
   std::atomic<bool> running_{false};
+  std::atomic<ULONGLONG> last_capture_progress_tick_{0};
   std::atomic<bool> paused_{false};
   std::atomic<bool> show_cursor_{true};
   bool applied_show_cursor_ = true;
   std::atomic<int> monitor_index_{0};
-  int initial_monitor_index_ = 0;
   std::atomic<bool> secure_desktop_capture_active_{false};
   std::atomic<bool> post_secure_desktop_waiting_for_frame_{false};
   std::atomic<bool> post_secure_desktop_drop_logged_{false};
@@ -104,7 +110,7 @@ class ScreenCapturerWin : public ScreenCapturer {
   std::shared_ptr<CapturedNv12FramePool> native_frame_pool_;
 
   void BuildCanonicalFromImpl();
-  void RebuildAliasesFromImpl();
+  void RebuildAliasesFromImpl(bool preserve_backend_slots = false);
   void RestoreMonitor(int monitor_index);
   bool TryStartBackend(std::unique_ptr<ScreenCapturer> candidate,
                        int monitor_index);
@@ -114,6 +120,7 @@ class ScreenCapturerWin : public ScreenCapturer {
                          bool from_secure_desktop = false);
   void StopSecureCaptureThread();
   bool RestartCaptureBackendAfterSecureDesktop();
+  void CheckCaptureProgress(ULONGLONG now);
   void ApplyCursorCaptureSetting();
   void SecureDesktopCaptureLoop();
   bool GetCurrentCaptureRegion(int* left, int* top, int* width, int* height,

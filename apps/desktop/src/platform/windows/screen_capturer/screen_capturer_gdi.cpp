@@ -8,31 +8,11 @@
 #include <display_stream_id.h>
 #include "captured_cursor_state.h"
 #include "cursor_draw.h"
+#include "display_label.h"
 #include "libyuv.h"
 #include "rd_log.h"
 
 namespace crossdesk {
-
-namespace {
-std::string WideToUtf8(const std::wstring& wstr) {
-  if (wstr.empty()) return {};
-  int size_needed = WideCharToMultiByte(
-      CP_UTF8, 0, wstr.data(), (int)wstr.size(), nullptr, 0, nullptr, nullptr);
-  std::string result(size_needed, 0);
-  WideCharToMultiByte(CP_UTF8, 0, wstr.data(), (int)wstr.size(), result.data(),
-                      size_needed, nullptr, nullptr);
-  return result;
-}
-
-std::string GetDisplayLabel(const std::wstring& wide_name) {
-  std::string name = WideToUtf8(wide_name);
-  constexpr char kDevicePrefix[] = "\\\\.\\";
-  if (name.rfind(kDevicePrefix, 0) == 0) {
-    name.erase(0, sizeof(kDevicePrefix) - 1);
-  }
-  return name;
-}
-}  // namespace
 
 ScreenCapturerGdi::ScreenCapturerGdi() {}
 ScreenCapturerGdi::~ScreenCapturerGdi() {

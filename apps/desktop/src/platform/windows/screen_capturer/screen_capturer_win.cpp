@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -46,6 +47,7 @@ constexpr DWORD kSecureDesktopTransientErrorGraceMs = 1500;
 constexpr DWORD kSecureDesktopTransientErrorLogIntervalMs = 5000;
 constexpr DWORD kPostSecureDesktopRestartRetryMs = 500;
 constexpr DWORD kPostSecureDesktopRestartTimeoutMs = 10000;
+constexpr ULONGLONG kCaptureStallTimeoutMs = 3000;
 constexpr int kSecureDesktopCaptureMinFps = 30;
 constexpr int kSecureDesktopCaptureMaxIntervalMs =
     1000 / kSecureDesktopCaptureMinFps;
@@ -411,6 +413,7 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
   cb_orig_ = cb;
   native_output_logged_.store(false, std::memory_order_relaxed);
   native_output_error_logged_.store(false, std::memory_order_relaxed);
+  last_capture_progress_tick_.store(0, std::memory_order_relaxed);
   try {
     native_frame_pool_ = CapturedNv12FramePool::Create();
   } catch (...) {
@@ -418,12 +421,21 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
     return -1;
   }
   cb_ = [this](unsigned char* data, int size, int w, int h,
-               const char* reported_stream_id,
-               const MiniRtcNativeVideoFrame* native_frame) {
+              const char* reported_stream_id,
+              const MiniRtcNativeVideoFrame* native_frame) {
+    if (size == ScreenCapturer::kDisplayTopologyChanged) {
+      SharedCapturedCursorState().Reset();
+      RebuildAliasesFromImpl(true);
+      return;
+    }
     if (size == ScreenCapturer::kBackendReset) {
       SharedCapturedCursorState().Reset();
       if (privacy_) privacy_->Fail("Capture restarted; privacy screen will turn off");
       return;
+    }
+    if (data && size > 0 && w > 0 && h > 0) {
+      last_capture_progress_tick_.store(GetTickCount64(),
+                                     std::memory_order_relaxed);
     }
     if (secure_desktop_capture_active_.load(std::memory_order_relaxed)) {
       SharedDxgiCursorState().Reset();
@@ -511,7 +523,6 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
     LOG_INFO("Windows capturer: using {}", CaptureBackendName(impl_.get()));
     BuildCanonicalFromImpl();
     monitor_index_.store(0, std::memory_order_relaxed);
-    initial_monitor_index_ = 0;
     return 0;
   }
 
@@ -604,9 +615,7 @@ void ScreenCapturerWin::EmitCapturedFrame(
 
 void ScreenCapturerWin::RestoreMonitor(int monitor_index) {
   RebuildAliasesFromImpl();
-  if (monitor_index > 0 && impl_->SwitchTo(monitor_index) != 0) {
-    monitor_index_.store(0, std::memory_order_relaxed);
-  }
+  if (monitor_index >= 0) SwitchTo(monitor_index);
 }
 
 bool ScreenCapturerWin::TryStartBackend(
@@ -618,8 +627,10 @@ bool ScreenCapturerWin::TryStartBackend(
   const char* name = CaptureBackendName(candidate.get());
   const bool show_cursor = show_cursor_.load(std::memory_order_relaxed);
   int ret = candidate->Init(fps_, cb_);
-  if (ret == 0)
+  if (ret == 0) {
+    last_capture_progress_tick_.store(GetTickCount64(), std::memory_order_relaxed);
     ret = candidate->Start(show_cursor);
+  }
   if (ret != 0) {
     LOG_WARN("Windows capturer: {} initialization/start failed (ret={})", name,
              ret);
@@ -628,7 +639,10 @@ bool ScreenCapturerWin::TryStartBackend(
   }
   // Commit only after the replacement is running. Failed candidates release
   // their resources without replacing the current backend.
-  impl_ = std::move(candidate);
+  {
+    std::lock_guard<std::mutex> lock(impl_mutex_);
+    impl_ = std::move(candidate);
+  }
   applied_show_cursor_ = show_cursor;
   RestoreMonitor(monitor_index);
   LOG_INFO("Windows capturer: started {}", name);
@@ -647,6 +661,7 @@ int ScreenCapturerWin::Start(bool show_cursor) {
   SharedCapturedCursorState().Reset();
   paused_.store(false, std::memory_order_relaxed);
   invalid_stream_id_logged_.store(false, std::memory_order_relaxed);
+  last_capture_progress_tick_.store(0, std::memory_order_relaxed);
 
   // Refresh physical monitor identities before every session. HMONITOR and
   // DXGI output handles may change after an HDMI hotplug while CrossDesk stays
@@ -657,11 +672,11 @@ int ScreenCapturerWin::Start(bool show_cursor) {
   int ret = impl_->Init(fps_, cb_);
   if (ret == 0) {
     RebuildAliasesFromImpl();
+    // Canonical wire/input slots may differ from this backend's refreshed
+    // enumeration. Select through the mapping before its first callback.
+    SwitchTo(requested_monitor);
+    last_capture_progress_tick_.store(GetTickCount64(), std::memory_order_relaxed);
     ret = impl_->Start(show_cursor);
-    if (ret == 0 && requested_monitor > 0 &&
-        impl_->SwitchTo(requested_monitor) != 0) {
-      monitor_index_.store(0, std::memory_order_relaxed);
-    }
   }
   if (ret != 0) {
     if (capture_method_ != ScreenCaptureMethod::Auto) {
@@ -707,6 +722,7 @@ int ScreenCapturerWin::Start(bool show_cursor) {
 int ScreenCapturerWin::Stop() {
   NotifyPrivacyCapture(false);
   running_.store(false, std::memory_order_relaxed);
+  last_capture_progress_tick_.store(0, std::memory_order_relaxed);
   secure_desktop_capture_active_.store(false, std::memory_order_relaxed);
   post_secure_desktop_waiting_for_frame_.store(false,
                                                std::memory_order_relaxed);
@@ -726,19 +742,35 @@ int ScreenCapturerWin::Stop() {
 
 int ScreenCapturerWin::Pause(int monitor_index) {
   paused_.store(true, std::memory_order_relaxed);
+  std::lock_guard<std::mutex> lock(impl_mutex_);
   if (!impl_) return -1;
   return impl_->Pause(monitor_index);
 }
 
 int ScreenCapturerWin::Resume(int monitor_index) {
   paused_.store(false, std::memory_order_relaxed);
+  std::lock_guard<std::mutex> lock(impl_mutex_);
   if (!impl_) return -1;
   return impl_->Resume(monitor_index);
 }
 
 int ScreenCapturerWin::SwitchTo(int monitor_index) {
+  std::lock_guard<std::mutex> impl_lock(impl_mutex_);
   if (!impl_) return -1;
-  const int ret = impl_->SwitchTo(monitor_index);
+  int backend_index = -1;
+  {
+    std::lock_guard<std::mutex> lock(alias_mutex_);
+    if (monitor_index < 0 ||
+        monitor_index >= static_cast<int>(canonical_displays_.size()) ||
+        canonical_displays_[monitor_index].width <= 0 ||
+        canonical_displays_[monitor_index].height <= 0) return -1;
+    const auto found = std::find(backend_to_canonical_.begin(),
+                                  backend_to_canonical_.end(), monitor_index);
+    if (found != backend_to_canonical_.end())
+      backend_index = static_cast<int>(found - backend_to_canonical_.begin());
+  }
+  if (backend_index < 0) return -1;
+  const int ret = impl_->SwitchTo(backend_index);
   if (ret == 0) {
     monitor_index_.store(monitor_index, std::memory_order_relaxed);
   } else if (privacy_) {
@@ -748,11 +780,10 @@ int ScreenCapturerWin::SwitchTo(int monitor_index) {
 }
 
 int ScreenCapturerWin::ResetToInitialMonitor() {
+  std::lock_guard<std::mutex> lock(impl_mutex_);
   if (!impl_) return -1;
   const int ret = impl_->ResetToInitialMonitor();
-  if (ret == 0) {
-    monitor_index_.store(initial_monitor_index_, std::memory_order_relaxed);
-  }
+  RebuildAliasesFromImpl(true);
   return ret;
 }
 
@@ -762,11 +793,16 @@ std::vector<DisplayInfo> ScreenCapturerWin::GetDisplayInfoList() {
   return canonical_displays_;
 }
 
+int ScreenCapturerWin::GetCurrentMonitorIndex() const {
+  return monitor_index_.load(std::memory_order_relaxed);
+}
+
 void ScreenCapturerWin::BuildCanonicalFromImpl() {
   std::lock_guard<std::mutex> lock(alias_mutex_);
   handle_to_canonical_index_.clear();
   stream_id_alias_.clear();
   canonical_displays_ = impl_->GetDisplayInfoList();
+  backend_to_canonical_.clear();
   std::unordered_map<std::string, size_t> name_counts;
   for (const auto& display : canonical_displays_) {
     if (!display.name.empty()) {
@@ -774,6 +810,7 @@ void ScreenCapturerWin::BuildCanonicalFromImpl() {
     }
   }
   for (size_t i = 0; i < canonical_displays_.size(); ++i) {
+    backend_to_canonical_.push_back(static_cast<int>(i));
     auto& di = canonical_displays_[i];
     const std::string stream_id = MakeDisplayStreamId(i);
     if (di.name.empty()) {
@@ -788,11 +825,14 @@ void ScreenCapturerWin::BuildCanonicalFromImpl() {
   }
 }
 
-void ScreenCapturerWin::RebuildAliasesFromImpl() {
+void ScreenCapturerWin::RebuildAliasesFromImpl(bool preserve_backend_slots) {
   std::lock_guard<std::mutex> lock(alias_mutex_);
   stream_id_alias_.clear();
   auto current = impl_->GetDisplayInfoList();
   if (current.empty() || canonical_displays_.empty()) return;
+  const bool stable_slots = preserve_backend_slots &&
+                           dynamic_cast<ScreenCapturerDxgi*>(impl_.get());
+  if (!stable_slots) backend_to_canonical_.assign(current.size(), -1);
   const auto previous_handles = handle_to_canonical_index_;
   handle_to_canonical_index_.clear();
   std::unordered_map<std::string, size_t> name_counts;
@@ -813,8 +853,14 @@ void ScreenCapturerWin::RebuildAliasesFromImpl() {
        ++current_index) {
     const auto& di = current[current_index];
     int canonical_index = -1;
+    if (stable_slots) {
+      // New outputs have no registered wire stream in this session.
+      if (current_index >= backend_to_canonical_.size() ||
+          backend_to_canonical_[current_index] < 0) continue;
+      canonical_index = backend_to_canonical_[current_index];
+    }
     auto old_handle = previous_handles.find(di.handle);
-    if (old_handle != previous_handles.end() &&
+    if (canonical_index < 0 && old_handle != previous_handles.end() &&
         old_handle->second < canonical_displays_.size() &&
         !used[old_handle->second]) {
       canonical_index = static_cast<int>(old_handle->second);
@@ -840,6 +886,7 @@ void ScreenCapturerWin::RebuildAliasesFromImpl() {
     }
 
     used[canonical_index] = true;
+    backend_to_canonical_[current_index] = canonical_index;
     auto& canonical = canonical_displays_[canonical_index];
     const std::string backend_stream_id =
         MakeDisplayStreamId(current_index);
@@ -849,13 +896,18 @@ void ScreenCapturerWin::RebuildAliasesFromImpl() {
     if (!di.name.empty() && name_counts[di.name] == 1) {
       stream_id_alias_[di.name] = stable_stream_id;
     }
-    handle_to_canonical_index_[di.handle] =
-        static_cast<size_t>(canonical_index);
+    if (di.handle)
+      handle_to_canonical_index_[di.handle] =
+          static_cast<size_t>(canonical_index);
     canonical = di;
     if (canonical.name.empty()) {
       canonical.name = stable_stream_id;
     }
   }
+  const int active = impl_->GetCurrentMonitorIndex();
+  if (active >= 0 && active < static_cast<int>(backend_to_canonical_.size()) &&
+      backend_to_canonical_[active] >= 0)
+    monitor_index_.store(backend_to_canonical_[active]);
 }
 
 void ScreenCapturerWin::StopSecureCaptureThread() {
@@ -913,6 +965,22 @@ bool ScreenCapturerWin::RestartCaptureBackendAfterSecureDesktop() {
         ret);
   }
   return false;
+}
+
+void ScreenCapturerWin::CheckCaptureProgress(ULONGLONG now) {
+  if (capture_method_ != ScreenCaptureMethod::Auto || !running_.load()) return;
+  auto* dxgi = dynamic_cast<ScreenCapturerDxgi*>(impl_.get());
+  if (!dxgi) return;
+
+  const auto last_progress =
+      last_capture_progress_tick_.load(std::memory_order_relaxed);
+  // A capture callback may have advanced the tick after this loop sampled now.
+  if (last_progress == 0 || now < last_progress ||
+      now - last_progress < kCaptureStallTimeoutMs) return;
+  // Retry only the pinned output. A missing target must never trigger a
+  // backend switch or move the session onto another display.
+  dxgi->RequestTopologyRefresh();
+  last_capture_progress_tick_.store(now, std::memory_order_relaxed);
 }
 
 void ScreenCapturerWin::ApplyCursorCaptureSetting() {
@@ -1337,6 +1405,7 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
 
     if (!status.capture_active || status.active_session_id == 0xFFFFFFFF) {
       StopSecureDesktopSharedCapture(secure_shared_session_id_);
+      CheckCaptureProgress(now);
       if (post_secure_restart_pending) {
         if (now >= post_secure_restart_deadline_tick) {
           LOG_WARN(

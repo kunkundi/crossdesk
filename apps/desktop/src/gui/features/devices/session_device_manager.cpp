@@ -330,6 +330,28 @@ void SessionDeviceManager::StopSpeakerCapturer() {
   speaker_capture_.SetEnabled(false);
 }
 
+bool SessionDeviceManager::SyncDisplayInfo() {
+  if (!screen_capturer_) return false;
+  auto displays = screen_capturer_->GetDisplayInfoList();
+  if (displays.empty()) return false;
+  // Called every UI tick; replace the shared list only when geometry actually
+  // changed so readers on other threads rarely contend for the lock.
+  bool changed = false;
+  {
+    std::lock_guard<std::mutex> lock(display_info_mutex_);
+    changed = !std::equal(
+        displays.begin(), displays.end(), display_info_list_.begin(),
+        display_info_list_.end(), [](const auto &a, const auto &b) {
+          return a.handle == b.handle && a.name == b.name &&
+                 a.is_primary == b.is_primary && a.left == b.left &&
+                 a.top == b.top && a.width == b.width && a.height == b.height;
+        });
+    if (changed) display_info_list_ = displays;
+  }
+  if (changed && mouse_controller_) mouse_controller_->UpdateDisplayInfoList(displays);
+  return true;
+}
+
 void SessionDeviceManager::SetDisplayInfoList(std::vector<DisplayInfo> displays) {
   std::lock_guard<std::mutex> lock(display_info_mutex_);
   display_info_list_ = std::move(displays);
@@ -359,14 +381,9 @@ int SessionDeviceManager::StartMouseController() {
     }
   }
 
-  if (screen_capturer_) {
-    const auto latest_display_info = screen_capturer_->GetDisplayInfoList();
-    if (!latest_display_info.empty()) {
-      display_info_list_ = latest_display_info;
-    }
-  }
 #endif
 
+  SyncDisplayInfo();
   mouse_controller_ =
       static_cast<MouseController *>(device_controller_factory_->Create(
           DeviceControllerFactory::Device::Mouse));
@@ -375,7 +392,7 @@ int SessionDeviceManager::StartMouseController() {
     return -1;
   }
 
-  const int init_ret = mouse_controller_->Init(display_info_list_);
+  const int init_ret = mouse_controller_->Init(display_info_list());
   if (init_ret != 0) {
     LOG_INFO("Destroy mouse controller");
     mouse_controller_->Destroy();
@@ -564,16 +581,19 @@ void SessionDeviceManager::UpdateInteractions() {
     owner_.mouse_controller_is_started_ = false;
   }
 
-#if defined(__linux__) || defined(__APPLE__)
-  if (owner_.screen_capturer_is_started_ && screen_capturer_ &&
-      mouse_controller_) {
-    const auto latest_display_info = screen_capturer_->GetDisplayInfoList();
-    if (!latest_display_info.empty()) {
-      display_info_list_ = latest_display_info;
-      mouse_controller_->UpdateDisplayInfoList(display_info_list_);
+  if (owner_.screen_capturer_is_started_ && mouse_controller_ && SyncDisplayInfo()) {
+#ifdef _WIN32
+    const int active_display = screen_capturer_->GetCurrentMonitorIndex();
+    const auto displays = display_info_list();
+    if (active_display >= 0 &&
+        active_display < static_cast<int>(displays.size())) {
+      owner_.selected_display_ = active_display;
+      if (displays[active_display].width <= 0 ||
+          displays[active_display].height <= 0)
+        ReleaseRemoteMouseButtons();
     }
-  }
 #endif
+  }
 
   if (owner_.start_keyboard_capturer_ && owner_.focus_on_stream_window_) {
     if (!owner_.keyboard_capturer_is_started_ && StartKeyboardCapturer() == 0) {
@@ -646,7 +666,10 @@ void SessionDeviceManager::SendMouseCommand(const RemoteAction &action,
 }
 
 int SessionDeviceManager::SwitchDisplay(int display_id) {
-  return screen_capturer_ ? screen_capturer_->SwitchTo(display_id) : -1;
+  if (!screen_capturer_) return -1;
+  const int ret = screen_capturer_->SwitchTo(display_id);
+  if (ret == 0) SyncDisplayInfo();
+  return ret;
 }
 
 void SessionDeviceManager::ResetToInitialDisplay() {
@@ -661,6 +684,7 @@ void SessionDeviceManager::ResetToInitialDisplay() {
   // Capture backends start at display 0. Reset the input mapping as well so
   // the next connection cannot show that display while controlling another.
   owner_.selected_display_ = 0;
+  SyncDisplayInfo();
 }
 
 std::vector<DisplayInfo> SessionDeviceManager::display_info_list() const {

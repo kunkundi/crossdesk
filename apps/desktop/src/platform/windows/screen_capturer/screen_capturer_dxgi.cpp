@@ -9,6 +9,7 @@
 
 #include "captured_cursor_state.h"
 #include "cursor_frame_compositor.h"
+#include "display_label.h"
 #include "dxgi_cursor_state.h"
 #include "libyuv.h"
 #include "rd_log.h"
@@ -17,29 +18,18 @@
 namespace crossdesk {
 
 namespace {
-std::string WideToUtf8(const std::wstring& wstr) {
-  if (wstr.empty()) return {};
-  int size_needed = WideCharToMultiByte(
-      CP_UTF8, 0, wstr.data(), (int)wstr.size(), nullptr, 0, nullptr, nullptr);
-  std::string result(size_needed, 0);
-  WideCharToMultiByte(CP_UTF8, 0, wstr.data(), (int)wstr.size(), result.data(),
-                      size_needed, nullptr, nullptr);
-  return result;
-}
-
-std::string GetDisplayLabel(const std::wstring& wide_name) {
-  std::string name = WideToUtf8(wide_name);
-  constexpr char kDevicePrefix[] = "\\\\.\\";
-  if (name.rfind(kDevicePrefix, 0) == 0) {
-    name.erase(0, sizeof(kDevicePrefix) - 1);
+std::wstring GetOutputDeviceId(const std::wstring& device_name) {
+  DISPLAY_DEVICEW device{sizeof(device)};
+  if (!EnumDisplayDevicesW(device_name.c_str(), 0, &device,
+                           EDD_GET_DEVICE_INTERFACE_NAME)) {
+    return {};
   }
-  return name;
+  return device.DeviceID;
 }
 }  // namespace
 
 ScreenCapturerDxgi::ScreenCapturerDxgi() {}
 ScreenCapturerDxgi::~ScreenCapturerDxgi() {
-  Stop();
   Destroy();
 }
 
@@ -51,11 +41,9 @@ int ScreenCapturerDxgi::Init(const int fps, cb_desktop_data cb) {
     return -1;
   }
 
-  if (!InitializeDxgi()) {
-    LOG_ERROR("DXGI: initialize DXGI failed");
-    return -2;
-  }
-
+  display_slots_.Reset();
+  display_info_list_.clear();
+  topology_refresh_requested_.store(false);
   EnumerateDisplays();
   if (display_info_list_.empty()) {
     LOG_ERROR("DXGI: no displays found");
@@ -63,7 +51,6 @@ int ScreenCapturerDxgi::Init(const int fps, cb_desktop_data cb) {
   }
 
   monitor_index_ = 0;
-  initial_monitor_index_ = monitor_index_;
   return 0;
 }
 
@@ -71,9 +58,10 @@ int ScreenCapturerDxgi::Destroy() {
   Stop();
   ReleaseDuplication();
   outputs_.clear();
+  display_info_list_.clear();
+  display_slots_.Reset();
   d3d_context_.Reset();
   d3d_device_.Reset();
-  dxgi_factory_.Reset();
   if (nv12_frame_) {
     delete[] nv12_frame_;
     nv12_frame_ = nullptr;
@@ -123,13 +111,24 @@ int ScreenCapturerDxgi::SwitchTo(int monitor_index) {
     LOG_ERROR("DXGI: invalid monitor index {}", monitor_index);
     return -1;
   }
+  if (monitor_index == monitor_index_ && (!running_ || duplication_)) return 0;
+  // Select before Start without allocating a second D3D device/duplication.
+  if (!running_) {
+    monitor_index_ = monitor_index;
+    return 0;
+  }
   paused_ = true;
-  monitor_index_ = monitor_index;
+  const int previous = monitor_index_.exchange(monitor_index);
   ReleaseDuplication();
-  if (!CreateDuplicationForMonitor(monitor_index_)) {
-    LOG_ERROR("DXGI: create duplication failed for monitor {}",
-              monitor_index_.load());
-    paused_ = false;  // Reset paused_ on failure
+  if (!CreateDuplicationForMonitor(monitor_index)) {
+    LOG_ERROR("DXGI: create duplication failed for monitor {}", monitor_index);
+    // Keep the backend on the output it was capturing so the wrapper's index
+    // and ours do not diverge after a rejected switch.
+    monitor_index_ = previous;
+    if (!CreateDuplicationForMonitor(previous)) {
+      LOG_WARN("DXGI: could not restore duplication for monitor {}", previous);
+    }
+    paused_ = false;
     return -2;
   }
   paused_ = false;
@@ -139,107 +138,134 @@ int ScreenCapturerDxgi::SwitchTo(int monitor_index) {
 }
 
 int ScreenCapturerDxgi::ResetToInitialMonitor() {
-  std::lock_guard<std::mutex> lock(switch_mutex_);
-  if (display_info_list_.empty()) return -1;
-  int target = initial_monitor_index_;
-  if (target < 0 || target >= (int)display_info_list_.size()) return -1;
-  if (monitor_index_ == target) return 0;
-  if (running_) {
-    paused_ = true;
-    monitor_index_ = target;
-    ReleaseDuplication();
-    if (!CreateDuplicationForMonitor(monitor_index_)) {
-      paused_ = false;
-      return -2;
-    }
-    paused_ = false;
-    LOG_INFO("DXGI: reset to initial monitor {}:{}", monitor_index_.load(),
-             display_info_list_[monitor_index_].name);
-  } else {
-    monitor_index_ = target;
-  }
-  return 0;
+  return SwitchTo(0);
 }
 
-bool ScreenCapturerDxgi::InitializeDxgi() {
-  UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
-#ifdef _DEBUG
-  flags |= D3D11_CREATE_DEVICE_DEBUG;
-#endif
-
-  D3D_FEATURE_LEVEL feature_levels[] = {
-      D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1,
-      D3D_FEATURE_LEVEL_10_0};
-
-  D3D_FEATURE_LEVEL out_level{};
-  HRESULT hr = D3D11CreateDevice(
-      nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, feature_levels,
-      ARRAYSIZE(feature_levels), D3D11_SDK_VERSION, d3d_device_.GetAddressOf(),
-      &out_level, d3d_context_.GetAddressOf());
-  if (FAILED(hr)) {
-    hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, flags,
-                           feature_levels, ARRAYSIZE(feature_levels),
-                           D3D11_SDK_VERSION, d3d_device_.GetAddressOf(),
-                           &out_level, d3d_context_.GetAddressOf());
-    if (FAILED(hr)) {
-      LOG_ERROR("DXGI: D3D11CreateDevice failed, hr={}", (int)hr);
-      return false;
-    }
-  }
-
-  hr = CreateDXGIFactory1(
-      __uuidof(IDXGIFactory1),
-      reinterpret_cast<void**>(dxgi_factory_.GetAddressOf()));
-  if (FAILED(hr)) {
-    LOG_ERROR("DXGI: CreateDXGIFactory1 failed, hr={}", (int)hr);
+bool ScreenCapturerDxgi::EnumerateDisplays() {
+  ScopedWindowsPhysicalCoordinates physical_coordinates;
+  // Factories cache adapter topology. Refresh the factory as well as outputs.
+  Microsoft::WRL::ComPtr<IDXGIFactory1> factory;
+  const HRESULT factory_result =
+      CreateDXGIFactory1(IID_PPV_ARGS(factory.GetAddressOf()));
+  if (FAILED(factory_result)) {
+    LOG_ERROR("DXGI: CreateDXGIFactory1 failed, hr={}", (int)factory_result);
     return false;
   }
-  return true;
-}
-
-void ScreenCapturerDxgi::EnumerateDisplays() {
-  display_info_list_.clear();
-  outputs_.clear();
-
+  struct Output {
+    DisplayInfo display;
+    Microsoft::WRL::ComPtr<IDXGIOutput> output;
+    std::string identity;
+  };
+  std::vector<Output> current;
   Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
   for (UINT a = 0;
-       dxgi_factory_->EnumAdapters(a, adapter.ReleaseAndGetAddressOf()) !=
-       DXGI_ERROR_NOT_FOUND;
-       ++a) {
+       factory->EnumAdapters(a, adapter.ReleaseAndGetAddressOf()) !=
+       DXGI_ERROR_NOT_FOUND; ++a) {
+    if (!adapter) break;
     Microsoft::WRL::ComPtr<IDXGIOutput> output;
     for (UINT o = 0; adapter->EnumOutputs(o, output.ReleaseAndGetAddressOf()) !=
-                     DXGI_ERROR_NOT_FOUND;
-         ++o) {
+                       DXGI_ERROR_NOT_FOUND; ++o) {
+      if (!output) break;
       DXGI_OUTPUT_DESC desc{};
-      if (FAILED(output->GetDesc(&desc))) {
-        continue;
-      }
-      std::string name = GetDisplayLabel(desc.DeviceName);
+      if (FAILED(output->GetDesc(&desc)) || !desc.AttachedToDesktop) continue;
       MONITORINFOEX mi{};
-      mi.cbSize = sizeof(MONITORINFOEX);
-      if (GetMonitorInfo(desc.Monitor, &mi)) {
-        bool is_primary = (mi.dwFlags & MONITORINFOF_PRIMARY) ? true : false;
-        DisplayInfo info((void*)desc.Monitor, name, is_primary,
-                         mi.rcMonitor.left, mi.rcMonitor.top,
-                         mi.rcMonitor.right, mi.rcMonitor.bottom);
-        // primary first
-        if (is_primary) {
-          display_info_list_.insert(display_info_list_.begin(), info);
-          outputs_.insert(outputs_.begin(), output);
-        } else {
-          display_info_list_.push_back(info);
-          outputs_.push_back(output);
-        }
-      }
+      mi.cbSize = sizeof(mi);
+      if (!GetMonitorInfo(desc.Monitor, &mi)) continue;
+      const auto device_id = GetOutputDeviceId(desc.DeviceName);
+      current.push_back({
+          DisplayInfo(desc.Monitor, GetDisplayLabel(desc.DeviceName),
+                       (mi.dwFlags & MONITORINFOF_PRIMARY) != 0,
+                       mi.rcMonitor.left, mi.rcMonitor.top,
+                       mi.rcMonitor.right, mi.rcMonitor.bottom),
+          output, WideToUtf8(device_id.empty() ? desc.DeviceName : device_id)});
     }
   }
+  std::stable_partition(current.begin(), current.end(),
+                         [](const auto& item) { return item.display.is_primary; });
+  std::vector<std::string> identities;
+  for (const auto& item : current) identities.push_back(item.identity);
+  const auto slots = display_slots_.Update(identities);
+  std::vector<DisplayInfo> displays;
+  std::vector<Microsoft::WRL::ComPtr<IDXGIOutput>> outputs;
+  bool changed = slots.size() != display_info_list_.size();
+  for (size_t slot = 0; slot < slots.size(); ++slot) {
+    if (slots[slot] < 0) {
+      auto missing = display_info_list_[slot];
+      missing.handle = nullptr;
+      missing.left = missing.top = missing.right = missing.bottom = 0;
+      missing.width = missing.height = 0;
+      missing.is_primary = false;
+      displays.push_back(std::move(missing));
+      outputs.emplace_back();
+    } else {
+      const auto& item = current[slots[slot]];
+      displays.push_back(item.display);
+      outputs.push_back(item.output);
+    }
+    if (slot >= display_info_list_.size()) continue;
+    const auto& before = display_info_list_[slot];
+    const auto& after = displays.back();
+    changed = changed || before.handle != after.handle ||
+              before.left != after.left || before.top != after.top ||
+              before.right != after.right || before.bottom != after.bottom ||
+              before.is_primary != after.is_primary || before.name != after.name;
+  }
+  display_info_list_ = std::move(displays);
+  outputs_ = std::move(outputs);
+  if (changed) {
+    for (size_t slot = 0; slot < display_info_list_.size(); ++slot) {
+      const auto& display = display_info_list_[slot];
+      LOG_INFO("DXGI: session display slot={} name='{}' available={} "
+               "bounds=({},{};{},{}), selected={}",
+               slot, display.name, outputs_[slot] != nullptr,
+               display.left, display.top, display.right, display.bottom,
+               static_cast<int>(slot) == monitor_index_.load());
+    }
+  }
+  return changed;
 }
 
 bool ScreenCapturerDxgi::CreateDuplicationForMonitor(int monitor_index) {
   SharedDxgiCursorState().Reset();
-  if (monitor_index < 0 || monitor_index >= (int)outputs_.size()) return false;
+  if (monitor_index < 0 || monitor_index >= (int)outputs_.size() ||
+      !outputs_[monitor_index]) return false;
+
+  // Outputs may move between GPU adapters when the display topology changes.
+  // Desktop Duplication requires the D3D device to be created from the same
+  // adapter as the selected IDXGIOutput.
+  Microsoft::WRL::ComPtr<IDXGIAdapter> output_adapter;
+  HRESULT hr = outputs_[monitor_index]->GetParent(
+      IID_PPV_ARGS(output_adapter.GetAddressOf()));
+  if (FAILED(hr) || !output_adapter) {
+    LOG_ERROR("DXGI: get adapter for output {} failed, hr={}", monitor_index,
+              (int)hr);
+    return false;
+  }
+
+  UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+#ifdef _DEBUG
+  flags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
+  D3D_FEATURE_LEVEL feature_levels[] = {
+      D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1,
+      D3D_FEATURE_LEVEL_10_0};
+  D3D_FEATURE_LEVEL out_level{};
+  Microsoft::WRL::ComPtr<ID3D11Device> output_device;
+  Microsoft::WRL::ComPtr<ID3D11DeviceContext> output_context;
+  hr = D3D11CreateDevice(
+      output_adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, flags,
+      feature_levels, ARRAYSIZE(feature_levels), D3D11_SDK_VERSION,
+      output_device.GetAddressOf(), &out_level, output_context.GetAddressOf());
+  if (FAILED(hr)) {
+    LOG_ERROR("DXGI: create D3D device for output adapter {} failed, hr={}",
+              monitor_index, (int)hr);
+    return false;
+  }
+  d3d_context_ = std::move(output_context);
+  d3d_device_ = std::move(output_device);
+
   Microsoft::WRL::ComPtr<IDXGIOutput1> output1;
-  HRESULT hr = outputs_[monitor_index]->QueryInterface(
+  hr = outputs_[monitor_index]->QueryInterface(
       IID_PPV_ARGS(output1.GetAddressOf()));
   if (FAILED(hr)) {
     LOG_ERROR("DXGI: Query IDXGIOutput1 failed, hr={}", (int)hr);
@@ -257,35 +283,12 @@ bool ScreenCapturerDxgi::CreateDuplicationForMonitor(int monitor_index) {
   DXGI_OUTDUPL_DESC desc{};
   duplication_->GetDesc(&desc);
   rotation_ = desc.Rotation;
-  LOG_INFO("DXGI: duplication ready, monitor={}, rotation={}", monitor_index,
-           static_cast<int>(rotation_));
+  DXGI_ADAPTER_DESC adapter_desc{};
+  output_adapter->GetDesc(&adapter_desc);
+  LOG_INFO("DXGI: duplication ready, monitor={}, rotation={}, adapter='{}'",
+           monitor_index, static_cast<int>(rotation_),
+           WideToUtf8(adapter_desc.Description));
   return true;
-}
-
-bool ScreenCapturerDxgi::RecreateDuplicationForCurrentMonitor() {
-  std::lock_guard<std::mutex> lock(switch_mutex_);
-  ReleaseDuplication();
-  int current_monitor = monitor_index_.load();
-  if (CreateDuplicationForMonitor(current_monitor)) {
-    return true;
-  }
-
-  EnumerateDisplays();
-  if (display_info_list_.empty()) {
-    LOG_ERROR("DXGI: no displays found while recreating duplication");
-    return false;
-  }
-  if (current_monitor < 0 ||
-      current_monitor >= static_cast<int>(display_info_list_.size())) {
-    current_monitor = 0;
-    monitor_index_ = 0;
-  }
-  if (CreateDuplicationForMonitor(current_monitor)) {
-    LOG_INFO("DXGI: recreated duplication for monitor {}",
-             monitor_index_.load());
-    return true;
-  }
-  return false;
 }
 
 void ScreenCapturerDxgi::ReleaseDuplication() {
@@ -351,20 +354,29 @@ bool ScreenCapturerDxgi::ConvertFrame(int frame_monitor, bool* cursor_embedded,
     return false;
   }
 
-  if (show_cursor_.load(std::memory_order_relaxed) && frame_monitor >= 0 &&
+  if (frame_monitor >= 0 &&
       frame_monitor < static_cast<int>(display_info_list_.size())) {
     const auto& display = display_info_list_[frame_monitor];
     CURSORINFO cursor{};
     cursor.cbSize = sizeof(cursor);
-    if (GetCursorInfo(&cursor) &&
-        SharedDxgiCursorState().ShouldDrawCursor(
-            (cursor.flags & CURSOR_SHOWING) != 0, display.handle)) {
-      if (const auto* composited =
-              compositor.Draw(pixels, stride, even_width, even_height, cursor,
-                              display.left, display.top)) {
-        pixels = composited;
-        stride = even_width * 4;
-        *cursor_embedded = true;
+    if (GetCursorInfo(&cursor)) {
+      const bool visible = (cursor.flags & CURSOR_SHOWING) != 0;
+      const bool should_draw = SharedDxgiCursorState().ShouldDrawCursor(
+          visible, display.handle);
+      // show_cursor controls our extra composition, not cursors the OS has
+      // already put in the texture. Publish that distinction for native
+      // controllers as well, so they do not draw a second cursor.
+      *cursor_embedded = visible && !should_draw &&
+          MonitorFromPoint(cursor.ptScreenPos, MONITOR_DEFAULTTONULL) ==
+              display.handle;
+      if (show_cursor_.load(std::memory_order_relaxed) && should_draw) {
+        if (const auto* composited =
+                compositor.Draw(pixels, stride, even_width, even_height, cursor,
+                                display.left, display.top)) {
+          pixels = composited;
+          stride = even_width * 4;
+          *cursor_embedded = true;
+        }
       }
     }
   }
@@ -395,8 +407,8 @@ void ScreenCapturerDxgi::CaptureLoop() {
   bool cached_cursor_embedded = false;
   int cached_monitor = -1;
   uint64_t cached_generation = 0;
-  auto last_duplication_retry =
-      std::chrono::steady_clock::now() - std::chrono::milliseconds(1000);
+  auto next_topology_check = std::chrono::steady_clock::now();
+  unsigned acquire_failures = 0;
   while (running_) {
     if (paused_) {
       cached_frame_valid = false;
@@ -408,14 +420,25 @@ void ScreenCapturerDxgi::CaptureLoop() {
     // replace them in SwitchTo while AcquireNextFrame/Map is using them.
     std::unique_lock capture_lock(switch_mutex_);
     if (paused_ || !running_) continue;
+    const auto now = std::chrono::steady_clock::now();
+    const bool refresh = topology_refresh_requested_.exchange(false);
+    if (refresh || now >= next_topology_check) {
+      next_topology_check = now + std::chrono::milliseconds(500);
+      const bool changed = EnumerateDisplays();
+      if (changed || refresh || !duplication_) {
+        cached_frame_valid = false;
+        ReleaseDuplication();
+        CreateDuplicationForMonitor(monitor_index_.load());
+        capture_lock.unlock();
+        if (callback_)
+          callback_(nullptr, ScreenCapturer::kDisplayTopologyChanged,
+                    0, 0, "", nullptr);
+        continue;
+      }
+    }
     if (!duplication_) {
       cached_frame_valid = false;
       capture_lock.unlock();
-      const auto now = std::chrono::steady_clock::now();
-      if (now - last_duplication_retry >= std::chrono::milliseconds(500)) {
-        last_duplication_retry = now;
-        RecreateDuplicationForCurrentMonitor();
-      }
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
       continue;
     }
@@ -449,17 +472,21 @@ void ScreenCapturerDxgi::CaptureLoop() {
       continue;
     }
     // Never replay a cached image after an acquisition/conversion failure or
-    // a backend rebuild. Normal error/reset handling releases optional privacy.
+    // a backend rebuild. Display recovery retains the session privacy state.
     cached_frame_valid = false;
     if (FAILED(hr)) {
-      SharedDxgiCursorState().Reset();
       LOG_ERROR("DXGI: AcquireNextFrame failed, hr={}", (int)hr);
-      capture_lock.unlock();
-      if (callback_)
-        callback_(nullptr, ScreenCapturer::kBackendReset, 0, 0, "", nullptr);
-      RecreateDuplicationForCurrentMonitor();
+      ReleaseDuplication();
+      // A single ACCESS_LOST (mode switch, fullscreen toggle, UAC return) is
+      // rebuilt on the next iteration. Only repeated failures fall back to
+      // the 500 ms topology cadence so a broken output does not spin while
+      // recreating D3D devices.
+      if (++acquire_failures == 1) {
+        next_topology_check = std::chrono::steady_clock::now();
+      }
       continue;
     }
+    acquire_failures = 0;
 
     if (frame_monitor >= 0 &&
         frame_monitor < static_cast<int>(display_info_list_.size())) {
@@ -506,24 +533,18 @@ void ScreenCapturerDxgi::CaptureLoop() {
     const bool converted =
         ConvertFrame(frame_monitor, &cursor_embedded, cursor_compositor);
 
+    const std::string stream_id = MakeDisplayStreamId(frame_monitor);
     cached_generation = duplication_generation_;
     duplication_->ReleaseFrame();
     capture_lock.unlock();
 
     if (converted && frame_monitor == monitor_index_.load() && callback_) {
-      int idx = frame_monitor;
-      if (idx >= 0 && idx < static_cast<int>(display_info_list_.size())) {
-        const std::string stream_id = MakeDisplayStreamId(idx);
-        CapturedCursorFrameScope cursor_scope(cursor_embedded);
-        callback_(nv12_frame_, nv12_width_ * nv12_height_ * 3 / 2, nv12_width_,
-                  nv12_height_, stream_id.c_str(), nullptr);
-        cached_cursor_embedded = cursor_embedded;
-        cached_monitor = idx;
-        cached_frame_valid = true;
-      } else {
-        LOG_ERROR("DXGI: CaptureLoop invalid monitor_index {} (list size {})",
-                  idx, display_info_list_.size());
-      }
+      CapturedCursorFrameScope cursor_scope(cursor_embedded);
+      callback_(nv12_frame_, nv12_width_ * nv12_height_ * 3 / 2, nv12_width_,
+                nv12_height_, stream_id.c_str(), nullptr);
+      cached_cursor_embedded = cursor_embedded;
+      cached_monitor = frame_monitor;
+      cached_frame_valid = true;
     }
   }
 }
