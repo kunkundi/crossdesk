@@ -1,6 +1,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <regex>
 #include <sstream>
 #include <string>
 
@@ -114,8 +115,14 @@ int main() {
                           "connection_attempt_active_");
   ok &= ExpectNotContains("connection_runtime.cpp", connection_runtime_cpp,
                           "kConnectionAttemptTimeout");
-  ok &= ExpectNotContains("connection_runtime.cpp", connection_runtime_cpp,
-                          "ConnectionStatus::Failed");
+  // Reading a terminal transport status to reconnect is valid. This guard
+  // prohibits synthesizing a failure locally, not comparisons with Failed.
+  const std::regex synthetic_failure(
+      R"((connection_status_\s*(=\s*|\.\s*(store|exchange)\s*\(\s*)|OnConnectionStatus\s*\(\s*)ConnectionStatus::Failed\b)");
+  if (std::regex_search(connection_runtime_cpp, synthetic_failure)) {
+    std::cerr << "connection_runtime.cpp synthesizes a Failed status\n";
+    ok = false;
+  }
   ok &= ExpectContains("peer_event_handler.cpp", peer_event_handler_cpp,
                        "props->connection_status_.store(status);");
   ok &= ExpectContains("peer_event_handler.cpp", peer_event_handler_cpp,

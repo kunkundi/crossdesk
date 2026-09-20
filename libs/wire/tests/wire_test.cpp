@@ -31,7 +31,9 @@ int main() {
                    static_cast<int>(crossdesk::ControlType::service_status) == 5 &&
                    static_cast<int>(crossdesk::ControlType::service_command) == 6 &&
                    static_cast<int>(crossdesk::ControlType::keyboard_state) == 7 &&
-                   static_cast<int>(crossdesk::ControlType::cursor_state) == 8,
+                   static_cast<int>(crossdesk::ControlType::cursor_state) == 8 &&
+                   static_cast<int>(crossdesk::ControlType::privacy_command) == 9 &&
+                   static_cast<int>(crossdesk::ControlType::privacy_status) == 10,
                "ControlType wire values changed");
   ok &= Expect(static_cast<int>(crossdesk::RemoteCursorShape::default_cursor) ==
                        0 &&

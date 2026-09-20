@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -27,7 +28,12 @@ std::string ReadFile(const std::filesystem::path &path) {
 
   std::ostringstream stream;
   stream << file.rdbuf();
-  return stream.str();
+  std::string contents = stream.str();
+  // Normalize CRLF checkouts so multi-line expectations match on Windows
+  // hosts with core.autocrlf enabled.
+  contents.erase(std::remove(contents.begin(), contents.end(), '\r'),
+                 contents.end());
+  return contents;
 }
 
 bool ExpectContains(const char *name, const std::string &value,
@@ -86,7 +92,7 @@ int main() {
   ok &= ExpectContains("targets.lua", targets,
                        "target(\"crossdesk_session_helper\")");
   ok &= ExpectContains("targets.lua", targets,
-                       "add_files(crossdesk_windows_resource)");
+                       "add_files(crossdesk_windows_resource,");
   ok &= ExpectContains("session_helper_main.cpp", session_helper,
                        "EnablePerMonitorDpiAwareness");
   ok &= ExpectContains("session_helper_main.cpp", session_helper,
@@ -170,7 +176,8 @@ int main() {
                        "Local Windows service temporarily unavailable");
   ok &= ExpectContains(
       "screen_capturer_win.cpp", screen_capturer_cpp,
-      "Windows capturer secure desktop service temporarily unavailable");
+      "Windows capturer secure desktop service temporarily \"\n"
+      "              \"unavailable");
   ok &= ExpectContains(
       "screen_capturer_win.cpp", screen_capturer_cpp,
       "Windows capturer secure desktop transient frame query failed");

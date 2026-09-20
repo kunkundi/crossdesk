@@ -477,7 +477,42 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
   LOG_INFO("Connect to [{}]", remote_id);
   focused_remote_id_ = remote_id;
 
-  bool exists = FindRemoteSession(remote_id) != nullptr;
+  auto stale = FindRemoteSession(remote_id);
+  bool exists = stale != nullptr;
+  if (stale) {
+    // A failed CreatePeer or a completed close can leave a session record
+    // without a reusable peer. Recreate it instead of leaving the UI in
+    // Connecting forever while JoinConnection has nothing to call.
+    if (stale->peer_ == nullptr) {
+      std::unique_lock lock(remote_sessions_mutex_);
+      auto it = remote_sessions_.find(remote_id);
+      if (it != remote_sessions_.end() && it->second == stale) {
+        remote_sessions_.erase(it);
+        exists = false;
+        LOG_INFO("[{}] Recreating stale remote session before connect",
+                 remote_id);
+      }
+    }
+    if (exists && !stale->closing_.load() &&
+        !stale->connection_established_) {
+      const auto status = stale->connection_status_.load();
+      if (status == ConnectionStatus::Disconnected ||
+          status == ConnectionStatus::Failed ||
+          status == ConnectionStatus::Closed) {
+        // The recreated session starts with an empty password; callers that
+        // pass none expect the one stored by the previous attempt to be reused.
+        const bool keep_stored_password = !password || !*password;
+        pending_reconnects_[remote_id] = {
+            keep_stored_password ? std::string(stale->remote_password_)
+                                 : std::string(password),
+            remember_password};
+        CloseRemoteSession(stale);
+        LOG_INFO("[{}] Reconnecting after terminal peer status {}", remote_id,
+                 static_cast<int>(status));
+        return 0;
+      }
+    }
+  }
 
   if (!exists) {
     PeerPtr* peer_to_init = nullptr;
