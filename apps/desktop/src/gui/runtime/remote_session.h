@@ -94,6 +94,9 @@ struct RemoteSession {
   bool p2p_mode_ = true;
   bool remember_password_ = false;
   char remote_password_[7] = "";
+  // Reused across frames by the decode callback thread when a CPU NV12
+  // native frame has to be materialized for a renderer that rejects it.
+  std::vector<unsigned char> native_cpu_fallback_;
 
   // Written by the decode callback thread and consumed by the UI thread.
   std::mutex video_frame_mutex_;

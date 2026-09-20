@@ -50,9 +50,28 @@ void PeerEventHandler::OnReceiveVideoBuffer(
     if (native_renderer && native_renderer->IsActive()) {
       VideoRenderer::SubmitResult submit_result =
           VideoRenderer::SubmitResult::failed;
-      if (GetNativeVideoFrame(video_frame)) {
-        submit_result = native_renderer->SubmitNativeFrame(
-            remote_id, *video_frame->native_frame);
+      if (const auto* native = GetNativeVideoFrame(video_frame)) {
+        submit_result = native_renderer->SubmitNativeFrame(remote_id, *native);
+        // A CPU NV12 native frame is valid MiniRTC input, but the macOS Metal
+        // fast path only accepts CVPixelBuffer. Materialize it when that path
+        // rejects a software decoder's descriptor. This also supports peers
+        // using CPU decoding when their platform hardware decoder is unavailable.
+        if (submit_result == VideoRenderer::SubmitResult::failed &&
+            native->type == MiniRtcNativeVideoFrameCpuNv12) {
+          const size_t frame_size =
+              static_cast<size_t>(native->width) * native->height * 3U / 2U;
+          // One decode callback thread per session; keep the buffer across
+          // frames instead of a full-frame allocation per rejected frame.
+          auto& fallback = props->native_cpu_fallback_;
+          if (fallback.size() != frame_size) fallback.resize(frame_size);
+          if (native->copy_to_nv12(native->owner, fallback.data(),
+                                   fallback.size()) == 0) {
+            submit_result = native_renderer->SubmitNv12(
+                remote_id, fallback.data(), fallback.size(),
+                static_cast<int>(native->width),
+                static_cast<int>(native->height));
+          }
+        }
       } else
       {
         submit_result = native_renderer->SubmitNv12(
