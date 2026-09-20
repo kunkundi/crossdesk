@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -25,6 +26,8 @@
 #include "path_manager.h"
 #include "rd_log.h"
 #include "session_helper_shared.h"
+#include "usbmmidd_policy.h"
+#include "usbmmidd_virtual_display.h"
 #include "windows_cursor_state.h"
 #include "cursor_draw.h"
 #include "windows_input_marker.h"
@@ -453,8 +456,193 @@ std::string BuildHelperStatusResponse(HelperState* helper_state) {
   return json.dump();
 }
 
+// Driver install and monitor plug/unplug take seconds. They run on a worker
+// so the status pipe (polled by the service every second) stays responsive;
+// the GUI polls the status command until |busy| clears.
+struct VirtualDisplayJobState {
+  std::mutex mutex;
+  std::thread worker;
+  bool busy = false;
+  // Monitors this helper plugged and has not yet unplugged. Unplug releases
+  // only these, so a monitor the user plugged for other software survives.
+  int plugged_by_helper = 0;
+  // An unplug that arrived while a plug was running; the plug worker honours
+  // it on completion so a cancelled session never leaves a monitor behind.
+  bool unplug_queued = false;
+  std::string last_action;
+  std::string last_error;
+
+  ~VirtualDisplayJobState() {
+    if (worker.joinable()) worker.join();
+  }
+};
+
+// The helper pipe grants read/write to every authenticated user so that the
+// GUI can poll status without elevation. Plug/unplug install a driver and
+// change the interactive desktop's topology as SYSTEM, so those commands are
+// accepted only from a CrossDesk executable in this helper's own directory.
+bool IsTrustedVirtualDisplayClient(HANDLE pipe) {
+  ULONG client_pid = 0;
+  if (!GetNamedPipeClientProcessId(pipe, &client_pid)) return false;
+  HANDLE process =
+      OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, client_pid);
+  if (process == nullptr) return false;
+  wchar_t image[MAX_PATH] = {0};
+  DWORD length = MAX_PATH;
+  const bool queried =
+      QueryFullProcessImageNameW(process, 0, image, &length) && length > 0;
+  CloseHandle(process);
+  if (!queried) return false;
+
+  wchar_t own[MAX_PATH] = {0};
+  const DWORD own_length = GetModuleFileNameW(nullptr, own, MAX_PATH);
+  if (own_length == 0 || own_length >= MAX_PATH) return false;
+  std::error_code ignored;
+  const std::filesystem::path client(image);
+  if (_wcsicmp(client.filename().c_str(), L"CrossDesk.exe") != 0) return false;
+  const std::filesystem::path client_directory =
+      std::filesystem::weakly_canonical(client.parent_path(), ignored);
+  const std::filesystem::path own_directory = std::filesystem::weakly_canonical(
+      std::filesystem::path(own).parent_path(), ignored);
+  return _wcsicmp(client_directory.c_str(), own_directory.c_str()) == 0;
+}
+
+std::string BuildVirtualDisplayStatusResponse(VirtualDisplayJobState* job) {
+  const crossdesk::UsbmmiddStatus status = crossdesk::QueryUsbmmiddStatus();
+  Json json;
+  json["ok"] = true;
+  json["package_available"] = status.package_available;
+  json["package_directory"] = status.package_directory;
+  json["driver_installed"] = status.driver_installed;
+  json["plugged_monitors"] = status.plugged_monitors;
+  std::lock_guard<std::mutex> lock(job->mutex);
+  json["busy"] = job->busy;
+  json["last_action"] = job->last_action;
+  json["last_error"] = job->last_error;
+  return json.dump();
+}
+
+std::string StartVirtualDisplayJob(
+    VirtualDisplayJobState* job, const char* action,
+    std::function<bool(std::string*)> work) {
+  std::lock_guard<std::mutex> lock(job->mutex);
+  if (job->busy) return BuildErrorJson("virtual_display_busy");
+  // A finished worker no longer touches the mutex; joining under it is safe.
+  if (job->worker.joinable()) job->worker.join();
+  job->busy = true;
+  job->last_action = action;
+  job->last_error.clear();
+  LOG_INFO("Session helper virtual display job started: {}", action);
+  job->worker = std::thread([job, action, work = std::move(work)]() {
+    std::string error;
+    const bool ok = work(&error);
+    if (ok) {
+      LOG_INFO("Session helper virtual display job finished: {}", action);
+    } else {
+      LOG_WARN("Session helper virtual display job failed: {}, error={}",
+               action, error);
+    }
+    std::lock_guard<std::mutex> lock(job->mutex);
+    job->busy = false;
+    job->last_error = ok ? std::string() : (error.empty() ? "unknown" : error);
+  });
+  Json json;
+  json["ok"] = true;
+  json["pending"] = true;
+  return json.dump();
+}
+
+std::string HandleVirtualDisplayCommand(const std::string& command,
+                                       HANDLE pipe,
+                                       VirtualDisplayJobState* job,
+                                       bool* handled) {
+  *handled = true;
+  if (command == crossdesk::kCrossDeskVirtualDisplayStatusCommand) {
+    return BuildVirtualDisplayStatusResponse(job);
+  }
+  const bool mutating =
+      command == crossdesk::kCrossDeskVirtualDisplayUnplugCommand ||
+      command.rfind(crossdesk::kCrossDeskVirtualDisplayPlugCommandPrefix, 0) ==
+          0;
+  if (mutating && !IsTrustedVirtualDisplayClient(pipe)) {
+    LOG_WARN("Session helper rejected virtual display command '{}' from an "
+             "untrusted client",
+             command);
+    return BuildErrorJson("virtual_display_client_not_allowed",
+                          ERROR_ACCESS_DENIED);
+  }
+  if (command == crossdesk::kCrossDeskVirtualDisplayUnplugCommand) {
+    {
+      std::lock_guard<std::mutex> lock(job->mutex);
+      if (job->busy && job->last_action == "plug") {
+        job->unplug_queued = true;
+        Json json;
+        json["ok"] = true;
+        json["pending"] = true;
+        json["queued"] = true;
+        return json.dump();
+      }
+    }
+    return StartVirtualDisplayJob(job, "unplug", [job](std::string* error) {
+      int count = 0;
+      {
+        std::lock_guard<std::mutex> lock(job->mutex);
+        count = job->plugged_by_helper;
+      }
+      if (!crossdesk::ReleaseUsbmmiddDisplays(count, error)) return false;
+      std::lock_guard<std::mutex> lock(job->mutex);
+      job->plugged_by_helper = 0;
+      return true;
+    });
+  }
+  crossdesk::VirtualDisplayMode mode;
+  if (crossdesk::ParseVirtualDisplayPlugCommand(command, &mode)) {
+    return StartVirtualDisplayJob(job, "plug", [job, mode](std::string* error) {
+      {
+        // This job only starts when no other job runs, so any unplug queued
+        // behind an earlier plug has already been honoured.
+        std::lock_guard<std::mutex> lock(job->mutex);
+        job->unplug_queued = false;
+      }
+      int plugged = 0;
+      const bool ok = crossdesk::ProvisionUsbmmiddDisplay(mode, &plugged, error);
+      int to_release = 0;
+      {
+        std::lock_guard<std::mutex> lock(job->mutex);
+        job->plugged_by_helper += plugged;
+        if (job->unplug_queued) {
+          job->unplug_queued = false;
+          to_release = job->plugged_by_helper;
+        }
+      }
+      if (to_release > 0) {
+        LOG_INFO("Session helper virtual display: releasing {} monitor(s) "
+                 "for an unplug queued during the plug",
+                 to_release);
+        std::string release_error;
+        if (crossdesk::ReleaseUsbmmiddDisplays(to_release, &release_error)) {
+          std::lock_guard<std::mutex> lock(job->mutex);
+          job->plugged_by_helper = 0;
+        } else {
+          LOG_WARN("Session helper virtual display: queued unplug failed, "
+                   "error={}",
+                   release_error);
+        }
+      }
+      return ok;
+    });
+  }
+  if (command.rfind(crossdesk::kCrossDeskVirtualDisplayPlugCommandPrefix, 0) ==
+      0) {
+    return BuildErrorJson("invalid_virtual_display_mode");
+  }
+  *handled = false;
+  return {};
+}
+
 void HelperIpcServerLoop(HANDLE stop_event, DWORD session_id,
-                         HelperState* helper_state) {
+                         HelperState* helper_state,
+                         VirtualDisplayJobState* virtual_display_job) {
   IpcSecurityAttributes security_attributes;
   SECURITY_ATTRIBUTES* pipe_attributes = nullptr;
   if (security_attributes.Initialize()) {
@@ -523,11 +711,14 @@ void HelperIpcServerLoop(HANDLE stop_event, DWORD session_id,
         bytes_read > 0) {
       std::string command(buffer, buffer + bytes_read);
       std::string response;
+      bool handled = false;
       if (command == crossdesk::kCrossDeskSessionHelperStatusCommand) {
         response = BuildHelperStatusResponse(helper_state);
       } else if (command == "ping") {
         response = "{\"ok\":true,\"reply\":\"pong\"}";
-      } else {
+      } else if (response = HandleVirtualDisplayCommand(
+                     command, pipe, virtual_display_job, &handled);
+                 !handled) {
         response = BuildErrorJson("unknown_command");
       }
 
@@ -1865,8 +2056,9 @@ int main(int argc, char* argv[]) {
              GetLastError());
   }
 
+  VirtualDisplayJobState virtual_display_job;
   std::thread ipc_thread(HelperIpcServerLoop, stop_event, current_session_id,
-                         &helper_state);
+                         &helper_state, &virtual_display_job);
 
   std::string last_desktop_name;
   bool last_lock_app = false;

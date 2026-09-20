@@ -18,6 +18,7 @@
 #include <display_stream_id.h>
 #include "captured_nv12_frame.h"
 #include "captured_cursor_state.h"
+#include "display_presence.h"
 #include "dxgi_cursor_state.h"
 #include "interactive_desktop.h"
 #include "interactive_state.h"
@@ -30,6 +31,7 @@
 #include "secure_desktop_status_poller.h"
 #include "service_host.h"
 #include "session_helper_shared.h"
+#include "../virtual_display/usbmmidd_virtual_display.h"
 #include "wgc_plugin_api.h"
 
 namespace crossdesk {
@@ -178,6 +180,63 @@ const char* CaptureBackendName(const ScreenCapturer* capturer) {
   if (dynamic_cast<const WgcPluginCapturer*>(capturer)) return "WGC";
   if (dynamic_cast<const ScreenCapturerGdi*>(capturer)) return "GDI";
   return "unavailable";
+}
+
+// Debug aid: CROSSDESK_FORCE_HEADLESS=1 makes a host that has monitors behave
+// as if it had none until a usbmmidd monitor is plugged, so the virtual
+// display path can be exercised without unplugging cables. Once the virtual
+// monitor is attached the real probe takes over again.
+bool ForcedHeadlessForTesting() {
+  static const bool forced = [] {
+    wchar_t value[8] = {0};
+    const DWORD length =
+        GetEnvironmentVariableW(L"CROSSDESK_FORCE_HEADLESS", value, 8);
+    return length > 0 && length < 8 && value[0] == L'1';
+  }();
+  return forced && CountUsbmmiddMonitors() == 0;
+}
+
+// Headless compatibility mode: no monitor is attached, so the desktop lives on
+// a phantom target at an OS-chosen resolution. DXGI cannot duplicate it and
+// WGC has no real monitor item; GDI reads the composed desktop. This is a
+// best-effort baseline that needs no driver. Only an explicit Auto selection
+// takes this shortcut; a pinned method keeps its own failure semantics.
+bool DetectHeadlessDesktop(ScreenCaptureMethod method) {
+  if (method != ScreenCaptureMethod::Auto) return false;
+  if (ForcedHeadlessForTesting()) {
+    static std::atomic<bool> logged{false};
+    if (!logged.exchange(true)) {
+      LOG_WARN("Windows capturer: CROSSDESK_FORCE_HEADLESS=1 set; treating the "
+               "desktop as headless until a usbmmidd monitor is plugged");
+    }
+    return true;
+  }
+  const auto probe = ProbeDisplayPresence();
+  const auto presence = ClassifyDisplayPresence(probe);
+  // Sessions probe repeatedly; report transitions rather than every probe.
+  static std::atomic<int> last_logged{-1};
+  if (last_logged.exchange(static_cast<int>(presence)) !=
+      static_cast<int>(presence)) {
+    if (presence == DisplayPresence::headless) {
+      LOG_WARN(
+          "Windows capturer: no attached display (active_paths={}, "
+          "available_targets={}, desktop_devices={}, monitors={}); entering "
+          "headless compatibility mode. Resolution is fixed by Windows and "
+          "capture uses GDI. Attach a monitor or an HDMI dummy plug to "
+          "restore GPU capture.",
+          probe.active_paths, probe.available_targets, probe.desktop_devices,
+          probe.attached_monitors);
+    } else if (presence == DisplayPresence::unknown) {
+      LOG_WARN("Windows capturer: display presence unknown (query_ok={}, "
+               "desktop_devices={}); using the normal backend order",
+               probe.query_succeeded, probe.desktop_devices);
+    } else {
+      LOG_INFO("Windows capturer: attached display detected "
+               "(available_targets={}, monitors={})",
+               probe.available_targets, probe.attached_monitors);
+    }
+  }
+  return presence == DisplayPresence::headless;
 }
 
 std::string BuildSecureCaptureCommand(int left, int top, int width, int height,
@@ -502,25 +561,22 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
   };
 
   impl_.reset();
+  const bool headless = DetectHeadlessDesktop(capture_method_);
+  headless_compat_.store(headless, std::memory_order_relaxed);
   int ret = -1;
-  auto try_init = [&](std::unique_ptr<ScreenCapturer> candidate) {
+  for (const auto& create : PreferredBackends(headless)) {
+    std::unique_ptr<ScreenCapturer> candidate = create();
     ret = candidate ? candidate->Init(fps_, cb_) : -1;
-    if (ret != 0) {
-      LOG_WARN("Windows capturer: {} init failed (ret={})",
-               CaptureBackendName(candidate.get()), ret);
-      return false;
+    if (ret == 0) {
+      impl_ = std::move(candidate);
+      break;
     }
-    impl_ = std::move(candidate);
-    return true;
-  };
-  // Short-circuiting also keeps the unused WGC plugin unloaded.
-  if ((IsBackendEnabled(ScreenCaptureMethod::Dxgi) &&
-       try_init(std::make_unique<ScreenCapturerDxgi>())) ||
-      (IsBackendEnabled(ScreenCaptureMethod::Wgc) &&
-       try_init(WgcPluginCapturer::Create())) ||
-      (IsBackendEnabled(ScreenCaptureMethod::Gdi) &&
-       try_init(std::make_unique<ScreenCapturerGdi>()))) {
-    LOG_INFO("Windows capturer: using {}", CaptureBackendName(impl_.get()));
+    LOG_WARN("Windows capturer: {} init failed (ret={})",
+             CaptureBackendName(candidate.get()), ret);
+  }
+  if (impl_) {
+    LOG_INFO("Windows capturer: using {}{}", CaptureBackendName(impl_.get()),
+             headless ? " (headless compatibility mode)" : "");
     BuildCanonicalFromImpl();
     monitor_index_.store(0, std::memory_order_relaxed);
     return 0;
@@ -533,6 +589,9 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
 
 int ScreenCapturerWin::Destroy() {
   Stop();
+  // Stop() releases the virtual display on a worker; finish it here so the
+  // provisioner is idle before its owner goes away.
+  JoinVirtualDisplayThread();
   paused_.store(false, std::memory_order_relaxed);
   if (impl_) {
     impl_->Destroy();
@@ -651,6 +710,51 @@ bool ScreenCapturerWin::TryStartBackend(
   return true;
 }
 
+std::vector<ScreenCapturerWin::BackendFactory>
+ScreenCapturerWin::PreferredBackends(bool headless) const {
+  // A headless desktop goes straight to GDI: DXGI has no output to duplicate
+  // and WGC has no monitor item.
+  std::vector<BackendFactory> factories;
+  if (!headless && IsBackendEnabled(ScreenCaptureMethod::Dxgi)) {
+    factories.push_back([] { return std::make_unique<ScreenCapturerDxgi>(); });
+  }
+  if (!headless && IsBackendEnabled(ScreenCaptureMethod::Wgc)) {
+    factories.push_back([] { return WgcPluginCapturer::Create(); });
+  }
+  if (IsBackendEnabled(ScreenCaptureMethod::Gdi)) {
+    factories.push_back([] { return std::make_unique<ScreenCapturerGdi>(); });
+  }
+  return factories;
+}
+
+bool ScreenCapturerWin::StartPreferredBackend(bool headless,
+                                              int monitor_index) {
+  for (const auto& create : PreferredBackends(headless)) {
+    if (TryStartBackend(create(), monitor_index)) return true;
+  }
+  return false;
+}
+
+void ScreenCapturerWin::ResetPostSecureDesktopState() {
+  secure_desktop_capture_active_.store(false, std::memory_order_relaxed);
+  post_secure_desktop_waiting_for_frame_.store(false,
+                                               std::memory_order_relaxed);
+  post_secure_desktop_drop_logged_.store(false, std::memory_order_relaxed);
+  post_secure_desktop_started_tick_.store(0, std::memory_order_relaxed);
+  SharedSecureDesktopCursorState().SetActive(false);
+}
+
+int ScreenCapturerWin::MarkStarted() {
+  running_.store(true, std::memory_order_relaxed);
+  NotifyPrivacyCapture(true);
+  ResetPostSecureDesktopState();
+  if (!secure_capture_thread_.joinable()) {
+    secure_capture_thread_ =
+        std::thread([this]() { SecureDesktopCaptureLoop(); });
+  }
+  return 0;
+}
+
 int ScreenCapturerWin::Start(bool show_cursor) {
   if (!impl_) return -1;
   if (running_.load(std::memory_order_relaxed)) {
@@ -670,8 +774,40 @@ int ScreenCapturerWin::Start(bool show_cursor) {
   // open; logical stream IDs must remain stable.
   const int requested_monitor =
       monitor_index_.load(std::memory_order_relaxed);
+  // A monitor may have been attached or removed since the last session. Pick
+  // the backend for the desktop as it is now, not as it was at Init.
+  const bool headless = DetectHeadlessDesktop(capture_method_);
+  // The virtual display is provisioned off this thread (Start() runs on the
+  // UI thread and a driver install can take minutes). Begin in compatibility
+  // mode; MaybeAdoptVirtualDisplay() switches to a GPU backend once ready.
+  JoinVirtualDisplayThread();
+  virtual_display_ready_.store(false, std::memory_order_relaxed);
+  const bool was_headless =
+      headless_compat_.exchange(headless, std::memory_order_relaxed);
+  const bool backend_is_gdi = dynamic_cast<ScreenCapturerGdi*>(impl_.get()) != nullptr;
+  int ret = 0;
+  if (headless != was_headless || (headless && !backend_is_gdi)) {
+    LOG_INFO("Windows capturer: desktop presence changed (headless={}), "
+             "reselecting the capture backend", headless);
+    impl_->Destroy();
+    // Keep an instance around on failure so the next Start can retry.
+    std::unique_ptr<ScreenCapturer> previous;
+    {
+      std::lock_guard<std::mutex> lock(impl_mutex_);
+      previous = std::move(impl_);
+    }
+    if (!StartPreferredBackend(headless, requested_monitor)) {
+      std::lock_guard<std::mutex> lock(impl_mutex_);
+      impl_ = std::move(previous);
+      LOG_ERROR("Windows capturer: no capture backend could start");
+      return -1;
+    }
+    ret = MarkStarted();
+    if (ret == 0 && headless) BeginVirtualDisplayProvisioning();
+    return ret;
+  }
   impl_->Destroy();
-  int ret = impl_->Init(fps_, cb_);
+  ret = impl_->Init(fps_, cb_);
   if (ret == 0) {
     RebuildAliasesFromImpl();
     // Canonical wire/input slots may differ from this backend's refreshed
@@ -706,40 +842,98 @@ int ScreenCapturerWin::Start(bool show_cursor) {
     }
   }
 
-  running_.store(true, std::memory_order_relaxed);
-  NotifyPrivacyCapture(true);
-  SharedSecureDesktopCursorState().SetActive(false);
-  secure_desktop_capture_active_.store(false, std::memory_order_relaxed);
-  post_secure_desktop_waiting_for_frame_.store(false,
-                                               std::memory_order_relaxed);
-  post_secure_desktop_drop_logged_.store(false, std::memory_order_relaxed);
-  post_secure_desktop_started_tick_.store(0, std::memory_order_relaxed);
-  if (!secure_capture_thread_.joinable()) {
-    secure_capture_thread_ =
-        std::thread([this]() { SecureDesktopCaptureLoop(); });
-  }
-  return 0;
+  ret = MarkStarted();
+  if (ret == 0 && headless) BeginVirtualDisplayProvisioning();
+  return ret;
 }
 
 int ScreenCapturerWin::Stop() {
   NotifyPrivacyCapture(false);
   running_.store(false, std::memory_order_relaxed);
   last_capture_progress_tick_.store(0, std::memory_order_relaxed);
-  secure_desktop_capture_active_.store(false, std::memory_order_relaxed);
-  post_secure_desktop_waiting_for_frame_.store(false,
-                                               std::memory_order_relaxed);
-  post_secure_desktop_drop_logged_.store(false, std::memory_order_relaxed);
-  post_secure_desktop_started_tick_.store(0, std::memory_order_relaxed);
   int ret = 0;
   // Drain management operations before stopping/replacing their backend.
+  virtual_display_.RequestCancel();
   StopSecureCaptureThread();
+  JoinVirtualDisplayThread();
+  ResetPostSecureDesktopState();
   if (impl_) {
     ret = impl_->Stop();
   }
   SharedCapturedCursorState().Reset();
-  SharedSecureDesktopCursorState().SetActive(false);
   StopSecureDesktopSharedCapture(secure_shared_session_id_);
+  // After the backend released its duplication of the virtual output. The
+  // unplug itself can take seconds; do not hold the UI thread for it.
+  BeginVirtualDisplayRelease();
   return ret;
+}
+
+void ScreenCapturerWin::JoinVirtualDisplayThread() {
+  if (virtual_display_thread_.joinable()) virtual_display_thread_.join();
+}
+
+void ScreenCapturerWin::BeginVirtualDisplayProvisioning() {
+  JoinVirtualDisplayThread();
+  virtual_display_thread_ = std::thread([this] {
+    // A usbmmidd virtual monitor turns the phantom desktop into a real
+    // display target, so the GPU backends and a chosen resolution apply.
+    std::string error;
+    if (virtual_display_.Acquire(kDefaultVirtualDisplayMode, &error)) {
+      virtual_display_ready_.store(true, std::memory_order_release);
+    } else if (error != "cancelled") {
+      LOG_WARN("Windows capturer: no usbmmidd virtual display ({}); staying "
+               "in headless compatibility mode",
+               error);
+    }
+  });
+}
+
+void ScreenCapturerWin::BeginVirtualDisplayRelease() {
+  JoinVirtualDisplayThread();
+  virtual_display_ready_.store(false, std::memory_order_relaxed);
+  if (!virtual_display_.NeedsRelease()) return;
+  virtual_display_thread_ = std::thread([this] { virtual_display_.Release(); });
+}
+
+void ScreenCapturerWin::MaybeAdoptVirtualDisplay() {
+  if (!virtual_display_ready_.exchange(false, std::memory_order_acq_rel))
+    return;
+  if (!running_.load(std::memory_order_relaxed)) return;
+  if (DetectHeadlessDesktop(capture_method_)) {
+    LOG_WARN("Windows capturer: virtual display plugged but the desktop "
+             "still reports no display; staying in compatibility mode");
+    return;
+  }
+  const int current_monitor = monitor_index_.load(std::memory_order_relaxed);
+  LOG_INFO("Windows capturer: virtual display ready, switching from "
+           "compatibility mode to a GPU backend");
+  NotifyPrivacyCapture(false);
+  // Public entry points dereference impl_ under impl_mutex_; take the old
+  // backend out under the lock, then tear it down without holding it.
+  std::unique_ptr<ScreenCapturer> previous;
+  {
+    std::lock_guard<std::mutex> lock(impl_mutex_);
+    previous = std::move(impl_);
+  }
+  if (previous) previous->Destroy();
+  if (StartPreferredBackend(false, current_monitor)) {
+    headless_compat_.store(false, std::memory_order_relaxed);
+    // The owner refreshes its display list and input mapping every tick from
+    // GetDisplayInfoList(), so the new geometry is picked up without a hint.
+  } else {
+    LOG_ERROR("Windows capturer: no GPU backend started on the virtual "
+              "display; restoring compatibility capture");
+    {
+      std::lock_guard<std::mutex> lock(impl_mutex_);
+      impl_ = std::move(previous);
+    }
+    // RestoreMonitor takes impl_mutex_ itself (via SwitchTo).
+    if (impl_ && impl_->Init(fps_, cb_) == 0) {
+      RestoreMonitor(current_monitor);
+      impl_->Start(show_cursor_.load(std::memory_order_relaxed));
+    }
+  }
+  NotifyPrivacyCapture(true);
 }
 
 int ScreenCapturerWin::Pause(int monitor_index) {
@@ -949,21 +1143,15 @@ bool ScreenCapturerWin::RestartCaptureBackendAfterSecureDesktop() {
     return true;
   }
 
-  if ((IsBackendEnabled(ScreenCaptureMethod::Dxgi) &&
-       TryStartBackend(std::make_unique<ScreenCapturerDxgi>(), current_monitor)) ||
-      (IsBackendEnabled(ScreenCaptureMethod::Wgc) &&
-       TryStartBackend(WgcPluginCapturer::Create(), current_monitor)) ||
-      (IsBackendEnabled(ScreenCaptureMethod::Gdi) &&
-       TryStartBackend(std::make_unique<ScreenCapturerGdi>(), current_monitor))) {
+  if (StartPreferredBackend(headless_compat_.load(std::memory_order_relaxed),
+                            current_monitor)) {
     return true;
   }
 
-  if (impl_) {
-    LOG_WARN(
-        "Windows capturer: all backend restart attempts after secure desktop "
-        "failed (last_ret={})",
-        ret);
-  }
+  LOG_WARN(
+      "Windows capturer: all backend restart attempts after secure desktop "
+      "failed (last_ret={})",
+      ret);
   return false;
 }
 
@@ -1405,6 +1593,7 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
 
     if (!status.capture_active || status.active_session_id == 0xFFFFFFFF) {
       StopSecureDesktopSharedCapture(secure_shared_session_id_);
+      MaybeAdoptVirtualDisplay();
       CheckCaptureProgress(now);
       if (post_secure_restart_pending) {
         if (now >= post_secure_restart_deadline_tick) {

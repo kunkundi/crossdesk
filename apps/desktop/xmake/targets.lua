@@ -230,9 +230,13 @@ function setup_targets()
                 "apps/desktop/src/platform/windows/screen_capturer/screen_capturer_gdi.cpp",
                 "apps/desktop/src/platform/windows/screen_capturer/screen_capturer_win.cpp",
                 "apps/desktop/src/platform/windows/screen_capturer/screen_capturer_factory.cpp")
+            add_files("apps/desktop/src/platform/windows/virtual_display/usbmmidd_virtual_display.cpp",
+                "apps/desktop/src/platform/windows/virtual_display/virtual_display_provisioner.cpp")
             add_includedirs("apps/desktop/src/platform/windows",
                 "apps/desktop/src/platform/windows/screen_capturer",
-                "apps/desktop/src/platform/windows/service")
+                "apps/desktop/src/platform/windows/service",
+                "apps/desktop/src/platform/windows/virtual_display")
+            add_syslinks("Setupapi", {public = true})
         elseif is_os("macosx") then
             add_deps("privacy")
             add_mxxflags("-fobjc-arc")
@@ -470,13 +474,15 @@ function setup_targets()
             set_kind("binary")
             add_packages("libyuv")
             add_deps("rd_log", "path_manager")
-            add_links("Advapi32", "User32", "Wtsapi32", "Gdi32")
+            add_links("Advapi32", "User32", "Wtsapi32", "Gdi32", "Setupapi")
             add_files("apps/desktop/src/platform/windows/service/session_helper_main.cpp")
+            add_files("apps/desktop/src/platform/windows/virtual_display/usbmmidd_virtual_display.cpp")
             add_files("apps/desktop/resources/windows/crossdesk_session_helper.rc",
                 {defines = windows_helper_resource_defines})
             add_includedirs("apps/desktop/src/common",
                 "apps/desktop/src/platform/windows/service",
-                "apps/desktop/src/platform/windows/screen_capturer")
+                "apps/desktop/src/platform/windows/screen_capturer",
+                "apps/desktop/src/platform/windows/virtual_display")
             add_includedirs("apps/desktop/src/platform/windows/input",
                 "apps/desktop/src/platform/common/input")
             add_includedirs("libs/wire/include")

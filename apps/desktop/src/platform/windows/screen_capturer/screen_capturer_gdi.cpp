@@ -122,15 +122,25 @@ int ScreenCapturerGdi::ResetToInitialMonitor() {
 void ScreenCapturerGdi::CaptureLoop() {
   int interval_ms = fps_ > 0 ? (1000 / fps_) : 16;
   HDC screen_dc = GetDC(nullptr);
+  bool dc_error_logged = false;
   while (running_) {
     if (paused_) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
       continue;
     }
     if (!screen_dc) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      // The screen DC can be unavailable during a desktop switch; retry so
+      // capture resumes once the desktop is reachable again.
+      if (!dc_error_logged) {
+        LOG_WARN("GDI: GetDC(nullptr) failed, error={}; retrying",
+                 GetLastError());
+        dc_error_logged = true;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
+      screen_dc = GetDC(nullptr);
       continue;
     }
+    dc_error_logged = false;
 
     int idx = monitor_index_.load();
     if (idx < 0 || idx >= static_cast<int>(display_info_list_.size())) {
@@ -157,11 +167,22 @@ void ScreenCapturerGdi::CaptureLoop() {
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
 
+    // GDI is the only backend on a headless desktop, where odd DIB sizes and
+    // exhausted GDI handles are plausible; never dereference a failed alloc.
     void* bits = nullptr;
     HDC mem_dc = CreateCompatibleDC(screen_dc);
-    HBITMAP dib =
-        CreateDIBSection(mem_dc, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
-    HGDIOBJ old = SelectObject(mem_dc, dib);
+    HBITMAP dib = mem_dc ? CreateDIBSection(mem_dc, &bmi, DIB_RGB_COLORS,
+                                            &bits, nullptr, 0)
+                         : nullptr;
+    HGDIOBJ old = (dib && bits) ? SelectObject(mem_dc, dib) : nullptr;
+    if (!old) {
+      LOG_WARN("GDI: frame buffer allocation failed ({}x{}), error={}", width,
+               height, GetLastError());
+      if (dib) DeleteObject(dib);
+      if (mem_dc) DeleteDC(mem_dc);
+      std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
+      continue;
+    }
 
     BitBlt(mem_dc, 0, 0, width, height, screen_dc, left, top,
            SRCCOPY | CAPTUREBLT);
@@ -202,7 +223,7 @@ void ScreenCapturerGdi::CaptureLoop() {
 
     std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
   }
-  ReleaseDC(nullptr, screen_dc);
+  if (screen_dc) ReleaseDC(nullptr, screen_dc);
 }
 
 }  // namespace crossdesk

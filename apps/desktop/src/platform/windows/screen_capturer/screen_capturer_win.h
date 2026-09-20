@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -22,6 +23,8 @@
 #include "screen_capturer.h"
 #include "screen_capture_method.h"
 #include "privacy_controller.h"
+// Relative: platform include directories stay private to the capture target.
+#include "../virtual_display/virtual_display_provisioner.h"
 
 namespace crossdesk {
 
@@ -50,6 +53,8 @@ class ScreenCapturerWin : public ScreenCapturer {
 
   std::vector<DisplayInfo> GetDisplayInfoList() override;
   int GetCurrentMonitorIndex() const override;
+  // True while this session captures a usbmmidd monitor it plugged itself.
+  bool IsVirtualDisplayActive() const { return virtual_display_.active(); }
   void SetPrivacyController(PrivacyController* privacy) override { privacy_ = privacy; }
   // Set before Init(), while capture is stopped.
   void SetCaptureMethod(ScreenCaptureMethod method) { capture_method_ = method; }
@@ -58,6 +63,7 @@ class ScreenCapturerWin : public ScreenCapturer {
   static bool CurrentFrameIsFromSecureDesktop();
 
  private:
+  using BackendFactory = std::function<std::unique_ptr<ScreenCapturer>()>;
   std::unique_ptr<ScreenCapturer> impl_;
   // Serializes backend replacement (secure-desktop recovery runs on the
   // management thread) against the public entry points that dereference it.
@@ -87,6 +93,16 @@ class ScreenCapturerWin : public ScreenCapturer {
   std::atomic<bool> paused_{false};
   std::atomic<bool> show_cursor_{true};
   bool applied_show_cursor_ = true;
+  std::atomic<bool> headless_compat_{false};
+  // Session-scoped: plugged on a headless desktop after Start() returns and
+  // released after Stop(), so an attached physical monitor is never shadowed
+  // between sessions. Both run on virtual_display_thread_ because the helper
+  // may need up to two minutes to install the driver; Start() itself begins
+  // in GDI compatibility mode and the management thread adopts the virtual
+  // display (switching to a GPU backend) once virtual_display_ready_ is set.
+  VirtualDisplayProvisioner virtual_display_;
+  std::thread virtual_display_thread_;
+  std::atomic<bool> virtual_display_ready_{false};
   std::atomic<int> monitor_index_{0};
   std::atomic<bool> secure_desktop_capture_active_{false};
   std::atomic<bool> post_secure_desktop_waiting_for_frame_{false};
@@ -112,8 +128,16 @@ class ScreenCapturerWin : public ScreenCapturer {
   void BuildCanonicalFromImpl();
   void RebuildAliasesFromImpl(bool preserve_backend_slots = false);
   void RestoreMonitor(int monitor_index);
+  // Backends in preference order for the current desktop; each factory is
+  // invoked lazily so an unused WGC plugin is never loaded.
+  std::vector<BackendFactory> PreferredBackends(bool headless) const;
   bool TryStartBackend(std::unique_ptr<ScreenCapturer> candidate,
                        int monitor_index);
+  bool StartPreferredBackend(bool headless, int monitor_index);
+  void ResetPostSecureDesktopState();
+  // Common tail of every successful Start(): publish running state and
+  // launch the management thread.
+  int MarkStarted();
   void EmitCapturedFrame(unsigned char* data, int size, int width, int height,
                          const char* stream_id,
                          const MiniRtcNativeVideoFrame* native_frame = nullptr,
@@ -121,6 +145,13 @@ class ScreenCapturerWin : public ScreenCapturer {
   void StopSecureCaptureThread();
   bool RestartCaptureBackendAfterSecureDesktop();
   void CheckCaptureProgress(ULONGLONG now);
+  // Virtual display provisioning runs off the caller's thread.
+  void JoinVirtualDisplayThread();
+  void BeginVirtualDisplayProvisioning();
+  void BeginVirtualDisplayRelease();
+  // Management thread: once the worker plugged the virtual display, replace
+  // the GDI compatibility backend with a GPU backend on that display.
+  void MaybeAdoptVirtualDisplay();
   void ApplyCursorCaptureSetting();
   void SecureDesktopCaptureLoop();
   bool GetCurrentCaptureRegion(int* left, int* top, int* width, int* height,
