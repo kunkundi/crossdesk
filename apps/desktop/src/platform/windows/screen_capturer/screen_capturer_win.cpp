@@ -430,7 +430,7 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
     }
     if (size == ScreenCapturer::kBackendReset) {
       SharedCapturedCursorState().Reset();
-      if (privacy_) privacy_->Fail("Capture restarted; privacy screen will turn off");
+      // Backend recovery is not a user request to disable local privacy.
       return;
     }
     if (data && size > 0 && w > 0 && h > 0) {
@@ -578,6 +578,8 @@ void ScreenCapturerWin::EmitCapturedFrame(
   } restore_source{
       std::exchange(current_frame_from_secure_desktop, from_secure_desktop)};
 
+  // Privacy is a local, capture-excluded window. Always deliver the actual
+  // desktop pixels, including while that window is starting or stopping.
   if (native_frame) {
     if (!native_output_logged_.exchange(true, std::memory_order_relaxed)) {
       LOG_INFO("Windows capturer native frame output enabled (type={})",
@@ -773,8 +775,6 @@ int ScreenCapturerWin::SwitchTo(int monitor_index) {
   const int ret = impl_->SwitchTo(backend_index);
   if (ret == 0) {
     monitor_index_.store(monitor_index, std::memory_order_relaxed);
-  } else if (privacy_) {
-    privacy_->Fail("Display switch failed; privacy screen will turn off");
   }
   return ret;
 }

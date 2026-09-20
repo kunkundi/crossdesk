@@ -16,14 +16,12 @@
 #include "../windows_thread_dpi.h"
 #include "privacy_backend.h"
 #include "privacy_band_guard.h"
+#include "privacy_capture_exclusion.h"
 #include "privacy_cursor_guard.h"
 #include "privacy_input_guard.h"
+#include "privacy_topology.h"
 #include "privacy_window_visibility.h"
 #include "rd_log.h"
-
-#ifndef WDA_EXCLUDEFROMCAPTURE
-#define WDA_EXCLUDEFROMCAPTURE 0x00000011
-#endif
 
 namespace crossdesk {
 namespace {
@@ -44,11 +42,6 @@ bool DesktopName(HDESK desktop, wchar_t (&name)[256]) {
   DWORD needed = 0;
   return desktop && GetUserObjectInformationW(desktop, UOI_NAME, name,
                                               sizeof(name), &needed);
-}
-
-bool SameRect(const RECT& a, const RECT& b) {
-  return a.left == b.left && a.top == b.top && a.right == b.right &&
-         a.bottom == b.bottom;
 }
 
 struct MonitorEnumeration {
@@ -141,6 +134,7 @@ class WindowsPrivacyBackend final : public PrivacyBackend {
       return false;
     if (!band_guard_.Start(text, error)) return false;
     if (!ReconcileMonitors(error)) return false;
+    layout_changed_ = false;
     event_owner_ = this;
     for (DWORD event : {EVENT_OBJECT_SHOW, EVENT_OBJECT_REORDER,
                         EVENT_OBJECT_LOCATIONCHANGE}) {
@@ -193,6 +187,8 @@ class WindowsPrivacyBackend final : public PrivacyBackend {
     last_obstruction_ = nullptr;
     last_obstruction_log_ = 0;
     layout_changed_ = false;
+    topology_pending_ = false;
+    topology_pending_since_ = 0;
     coverage_dirty_ = false;
     emergency_ = false;
     health_error_.clear();
@@ -235,12 +231,14 @@ class WindowsPrivacyBackend final : public PrivacyBackend {
       std::string error;
       if (!input_guard_.Healthy(error)) return {error, false};
     }
-    if (windows_.empty()) return {health_error_, false};
+    if (band_guard_.stopped()) return {health_error_, false};
     // Input messages wake the thread immediately; expensive health queries
     // must retain their own cadence instead of running once per input event.
-    if (!layout_changed_ &&
-        GetTickCount64() - last_check_ < 100) {
-      if (coverage_dirty_ && last_health_.failure.empty()) {
+    // Window events only dirty the coverage check, which is cheap enough to
+    // run between the throttled full health passes.
+    if (!layout_changed_ && GetTickCount64() - last_check_ < 100) {
+      if (coverage_dirty_ && last_health_.failure.empty() &&
+          !topology_pending_) {
         coverage_dirty_ = false;
         last_health_ = CheckCoverage();
       }
@@ -253,6 +251,21 @@ class WindowsPrivacyBackend final : public PrivacyBackend {
   }
 
  private:
+  // The broker reconciles hotplug asynchronously; while it does, coverage
+  // cannot be verified. Preserve intent for a bounded time only: a broker that
+  // never settles must not keep privacy "on" without any verification.
+  static constexpr uint64_t kTopologyPendingLimitMs = 3000;
+
+  PrivacyHealth TopologyPending() {
+    const uint64_t now = GetTickCount64();
+    if (topology_pending_since_ == 0) topology_pending_since_ = now;
+    if (now - topology_pending_since_ >= kTopologyPendingLimitMs) {
+      return {"Privacy cover topology did not settle after a display change",
+              false};
+    }
+    return {{}, false, false};
+  }
+
   PrivacyHealth CheckHealth() {
     if (!health_error_.empty()) return {health_error_, false};
     if (!band_guard_.Healthy(health_error_)) return {health_error_, false};
@@ -273,40 +286,23 @@ class WindowsPrivacyBackend final : public PrivacyBackend {
           "Exclusive fullscreen or unknown display presentation",
           false};
     }
-    MonitorEnumeration monitors;
-    if (!EnumDisplayMonitors(nullptr, nullptr, EnumMonitor,
-                             reinterpret_cast<LPARAM>(&monitors)) ||
-        !monitors.ok) {
-      return {Error("EnumDisplayMonitors"), false};
-    }
-    const bool changed =
-        monitors.rects.size() != windows_.size() ||
-        std::any_of(monitors.rects.begin(), monitors.rects.end(),
-                    [this](const RECT& rect) {
-                      return std::none_of(windows_.begin(), windows_.end(),
-                                          [&](const auto& w) {
-                                            return SameRect(w.rect, rect);
-                                          });
-                    });
-    if (changed || layout_changed_) {
-      layout_changed_ = false;
-      // Retain old covers until the monitor check completes, then release
-      // privacy so capture can refresh its display mapping independently.
-      std::string error;
-      if (!ReconcileMonitors(error))
-        health_error_ = error;
-      else
-        health_error_ =
-            "Display layout/DPI changed; privacy screen will turn off";
-    }
-    if (!health_error_.empty()) return {health_error_, false};
+    if (!ReconcileMonitors(health_error_)) return {health_error_, false};
+    if (topology_pending_) return TopologyPending();
     BOOL composed = FALSE;
     if (FAILED(DwmIsCompositionEnabled(&composed)) || !composed) {
       return {
           "Desktop composition stopped; privacy coverage cannot be guaranteed",
           false};
     }
-    return CheckCoverage();
+    auto coverage = CheckCoverage();
+    if (!coverage.failure.empty()) {
+      // The broker may replace an HWND after the snapshot above. Refresh once
+      // before treating a stale geometry/handle as loss of privacy coverage.
+      if (!ReconcileMonitors(health_error_)) return {health_error_, false};
+      if (topology_pending_) return TopologyPending();
+      coverage = CheckCoverage();
+    }
+    return coverage;
   }
 
   PrivacyHealth CheckCoverage() {
@@ -328,7 +324,7 @@ class WindowsPrivacyBackend final : public PrivacyBackend {
                                       &layered_flags) ||
           alpha != 255 || layered_flags != LWA_ALPHA ||
           !GetWindowDisplayAffinity(w.cover, &affinity) ||
-          affinity != WDA_EXCLUDEFROMCAPTURE ||
+          affinity != kPrivacyWindowDisplayAffinity ||
           FAILED(DwmGetWindowAttribute(w.cover, DWMWA_CLOAKED, &cloaked,
                                        sizeof(cloaked))) ||
           cloaked) {
@@ -430,40 +426,42 @@ class WindowsPrivacyBackend final : public PrivacyBackend {
   }
 
   bool ReconcileMonitors(std::string& error) {
+    const auto wait_for_broker = [&] {
+      topology_pending_ = true;
+      // Preserve intent while a healthy broker reconciles hotplug. Broker
+      // failure/heartbeat checks still detect real faults independently.
+      error.clear();
+      return true;
+    };
     MonitorEnumeration monitors;
     if (!EnumDisplayMonitors(nullptr, nullptr, EnumMonitor,
-                             reinterpret_cast<LPARAM>(&monitors)) ||
-        !monitors.ok || monitors.rects.empty()) {
+                             reinterpret_cast<LPARAM>(&monitors)) || !monitors.ok) {
       error = Error("EnumDisplayMonitors");
       return false;
     }
     std::vector<PrivacyBandWindow> covers;
-    if (!band_guard_.Windows(covers, error)) return false;
-    for (const RECT& rect : monitors.rects) {
-      auto existing =
-          std::find_if(windows_.begin(), windows_.end(),
-                       [&](const auto& w) { return SameRect(w.rect, rect); });
-      if (existing != windows_.end()) continue;
-      const auto cover = std::find_if(covers.begin(), covers.end(),
-                                      [&](const auto& candidate) {
-                                        return SameRect(candidate.rect, rect);
-                                      });
-      if (cover == covers.end()) {
-        error = "High-band broker has not covered every physical monitor";
-        return false;
-      }
-      windows_.push_back({rect, reinterpret_cast<HWND>(cover->hwnd)});
-      LOG_INFO(
-          "Privacy high-band cover ready: bounds=({}, {})-({}, {}), "
-          "affinity=0x11, alpha=255",
-          rect.left, rect.top, rect.right, rect.bottom);
+    if (!band_guard_.Windows(covers, error)) {
+      if (GetLastError() == ERROR_RETRY) return wait_for_broker();
+      return false;
     }
-    // Cover windows are owned and released by the broker.
-    windows_.erase(std::remove_if(windows_.begin(), windows_.end(),
-        [&](const auto& window) {
-          return std::none_of(monitors.rects.begin(), monitors.rects.end(),
-              [&](const RECT& rect) { return SameRect(window.rect, rect); });
-        }), windows_.end());
+    if (!MatchPrivacyTopology(monitors.rects, covers)) return wait_for_broker();
+
+    std::vector<Window> updated;
+    for (const auto& cover : covers) {
+      HWND hwnd = reinterpret_cast<HWND>(cover.hwnd);
+      if (std::none_of(windows_.begin(), windows_.end(), [&](const auto& old) {
+            return old.cover == hwnd && SameRect(old.rect, cover.rect);
+          })) {
+        LOG_INFO("Privacy: reconciled local cover without changing session state: "
+                 "bounds=({}, {})-({}, {}), affinity=0x11",
+                 cover.rect.left, cover.rect.top, cover.rect.right, cover.rect.bottom);
+      }
+      updated.push_back({cover.rect, hwnd});
+    }
+    windows_ = std::move(updated);
+    layout_changed_ = false;
+    topology_pending_ = false;
+    topology_pending_since_ = 0;
     return true;
   }
 
@@ -526,6 +524,8 @@ class WindowsPrivacyBackend final : public PrivacyBackend {
   bool hotkey_ = false;
   bool emergency_ = false;
   bool layout_changed_ = false;
+  bool topology_pending_ = false;
+  uint64_t topology_pending_since_ = 0;
   bool coverage_dirty_ = false;
   uint64_t last_check_ = 0;
   PrivacyHealth last_health_;

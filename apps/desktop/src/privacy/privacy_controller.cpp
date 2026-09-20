@@ -85,7 +85,8 @@ void PrivacyController::EnableOnConnection() {
 }
 void PrivacyController::Disable() {
   std::lock_guard lock(mutex_);
-  if (quit_) return;
+  // Nothing to restore when privacy is already off and no cleanup is retrying.
+  if (quit_ || (!engaged_.load() && !disable_pending_)) return;
   enable_pending_ = false;
   failure_.clear();
   disable_pending_ = true;
@@ -118,6 +119,9 @@ void PrivacyController::CaptureChanged(bool running) {
   WakeLocked();
 }
 void PrivacyController::Run(Factory factory) {
+  // Only this thread touches backend_; Wake() is safe to call concurrently.
+  // Native enable/teardown can block for seconds, so those calls run with the
+  // mutex released to keep Snapshot()/Enable()/Disable() responsive.
   std::unique_lock lock(mutex_);
   try {
     if (factory) backend_ = factory();
@@ -134,7 +138,11 @@ void PrivacyController::Run(Factory factory) {
           SetState(caps.overlay ? PrivacyState::off : PrivacyState::unsupported, caps.reason);
       }
       if (disable_pending_) {
-        if (backend_) backend_->Recover();
+        if (backend_) {
+          lock.unlock();
+          backend_->Recover();
+          lock.lock();
+        }
         if (backend_ && backend_->RecoveryPending()) {
           lock.unlock();
           backend_->WaitForEvents(25);
@@ -145,7 +153,10 @@ void PrivacyController::Run(Factory factory) {
         if (backend_ && !backend_->IsRecovered()) {
           enable_pending_ = false;
           disable_pending_ = true; // Retry native cleanup without affecting the session.
-          SetState(PrivacyState::failed, "Could not release every privacy resource");
+          // Report the stuck cleanup once; every retry would otherwise bump
+          // the revision and rebroadcast the status to all controllers.
+          if (status_.state != PrivacyState::failed)
+            SetState(PrivacyState::failed, "Could not release every privacy resource");
         } else {
           status_.overlay_active = status_.input_blocked = false;
           if (!enable_pending_) {
@@ -166,12 +177,18 @@ void PrivacyController::Run(Factory factory) {
             FailLocked("No desktop capture available for privacy screen");
         } else {
           enable_pending_ = false;
+          const bool block_input = block_requested_;
+          const PrivacyScreenText text = text_;
           std::string error;
-          if (!backend_->Enable(block_requested_, text_, error)) {
+          lock.unlock();
+          const bool enabled = backend_->Enable(block_input, text, error);
+          lock.lock();
+          if (!enabled) {
+            // No-op if a disable arrived meanwhile; that path recovers anyway.
             FailLocked(error);
           } else {
             status_.overlay_active = true;
-            status_.input_blocked = block_requested_;
+            status_.input_blocked = block_input;
             started_ = Now();
           }
         }
@@ -203,8 +220,19 @@ void PrivacyController::Run(Factory factory) {
     }
   } catch (const std::exception& e) {
     if (!lock.owns_lock()) lock.lock();
+    // The worker is gone: nothing can resolve a later Enable(), so report the
+    // fault and stop accepting requests instead of parking them in "starting".
+    status_.supported = status_.input_block_supported = false;
+    status_.overlay_active = status_.input_blocked = false;
+    engaged_.store(false);
+    quit_ = true;
     SetState(PrivacyState::failed, std::string("Privacy component failed: ") + e.what());
   }
-  if (backend_) { backend_->Recover(); backend_.reset(); }
+  if (backend_) {
+    lock.unlock();
+    backend_->Recover();
+    lock.lock();
+    backend_.reset();
+  }
 }
 }  // namespace crossdesk

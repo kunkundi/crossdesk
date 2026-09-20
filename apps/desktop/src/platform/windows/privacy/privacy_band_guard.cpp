@@ -119,10 +119,12 @@ bool PrivacyBandGuard::Start(const PrivacyScreenText& text,
   // Keep both images immutable throughout creation/injection and the session.
   image_lock_ = CreateFileW(broker_path_.c_str(), GENERIC_READ, FILE_SHARE_READ,
                             nullptr, OPEN_EXISTING, 0, nullptr);
+  if (image_lock_ == INVALID_HANDLE_VALUE)
+    return Failed("Lock privacy broker image", error);
   dll_lock_ = CreateFileW(dll.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
                           OPEN_EXISTING, 0, nullptr);
-  if (image_lock_ == INVALID_HANDLE_VALUE || dll_lock_ == INVALID_HANDLE_VALUE)
-    return Failed("Lock privacy broker images", error);
+  if (dll_lock_ == INVALID_HANDLE_VALUE)
+    return Failed("Lock privacy window module", error);
 
   SECURITY_ATTRIBUTES inherit{sizeof(inherit), nullptr, TRUE};
   ScopedHandle parent;
@@ -131,14 +133,14 @@ bool PrivacyBandGuard::Start(const PrivacyScreenText& text,
                        SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, TRUE,
                        0))
     return Failed("Duplicate privacy parent process handle", error);
+  // Check each object as it is created so the reported error is its own.
   stop_ = CreateEventW(&inherit, TRUE, FALSE, nullptr);
+  if (!stop_) return Failed("Create high-band broker stop event", error);
   ready_ = CreateEventW(&inherit, TRUE, FALSE, nullptr);
+  if (!ready_) return Failed("Create high-band broker ready event", error);
   mapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE, &inherit, PAGE_READWRITE,
                                 0, sizeof(PrivacyBandShared), nullptr);
-  if (!stop_ || !ready_ || !mapping_) {
-    const auto code = GetLastError();
-    return Failed("Create high-band broker IPC", error, code);
-  }
+  if (!mapping_) return Failed("Create high-band broker shared memory", error);
   shared_ = static_cast<PrivacyBandShared*>(MapViewOfFile(
       mapping_, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(PrivacyBandShared)));
   if (!shared_) {
@@ -271,25 +273,30 @@ bool PrivacyBandGuard::Healthy(std::string& error) {
 bool PrivacyBandGuard::Windows(std::vector<PrivacyBandWindow>& windows,
                                std::string& error) {
   if (!Healthy(error)) return false;
+  const auto retry = [&] {
+    error = "High-band monitor snapshot is being updated";
+    SetLastError(ERROR_RETRY);
+    return false;
+  };
+  if (InterlockedCompareExchange(&shared_->topology_pending, 0, 0)) return retry();
   for (int attempt = 0; attempt < 4; ++attempt) {
     const LONG before = InterlockedCompareExchange(&shared_->sequence, 0, 0);
     if (before & 1) continue;
     const auto count = shared_->count;
-    if (count == 0 || count > kPrivacyMaxMonitors) break;
+    if (count > kPrivacyMaxMonitors) break;
     windows.assign(shared_->windows, shared_->windows + count);
-    if (before == InterlockedCompareExchange(&shared_->sequence, 0, 0)) {
+    if (before == InterlockedCompareExchange(&shared_->sequence, 0, 0) &&
+        !InterlockedCompareExchange(&shared_->topology_pending, 0, 0)) {
       for (const auto& window : windows) {
         DWORD pid = 0;
         GetWindowThreadProcessId(reinterpret_cast<HWND>(window.hwnd), &pid);
         if (pid != process_id())
-          return Failed("Invalid high-band window owner", error,
-                        ERROR_INVALID_HANDLE);
+          return retry();
       }
       return true;
     }
   }
-  return Failed("High-band monitor snapshot is changing or invalid", error,
-                ERROR_RETRY);
+  return retry();
 }
 
 bool PrivacyBandGuard::Stop(std::string& error) {

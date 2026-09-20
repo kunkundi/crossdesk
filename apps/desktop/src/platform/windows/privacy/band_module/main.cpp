@@ -14,6 +14,8 @@
 
 #include "../../windows_thread_dpi.h"
 #include "../privacy_band_ipc.h"
+#include "../privacy_capture_exclusion.h"
+#include "../privacy_topology.h"
 #include "privacy_cover_renderer.h"
 
 namespace {
@@ -23,11 +25,6 @@ constexpr DWORD kCoverStyles = WS_EX_TOPMOST | WS_EX_NOACTIVATE |
                                WS_EX_TOOLWINDOW | WS_EX_LAYERED |
                                WS_EX_TRANSPARENT;
 HMODULE module = nullptr;
-
-bool SameRect(const RECT& a, const RECT& b) {
-  return a.left == b.left && a.top == b.top && a.right == b.right &&
-         a.bottom == b.bottom;
-}
 
 class Windows {
  public:
@@ -59,6 +56,7 @@ class Windows {
     return atom_ ? Reconcile() : Fail(L"Register high-band window class");
   }
   bool Reconcile() {
+    InterlockedExchange(&shared_->topology_pending, 1);
     std::vector<RECT> monitors;
     if (!EnumDisplayMonitors(
             nullptr, nullptr,
@@ -68,16 +66,37 @@ class Windows {
               result.push_back(*rect);
               return TRUE;
             },
-            reinterpret_cast<LPARAM>(&monitors)) ||
-        monitors.empty())
+            reinterpret_cast<LPARAM>(&monitors)))
       return Fail(L"Enumerate high-band displays");
-    bool changed = monitors.size() != windows_.size();
+    const bool changed = monitors.size() != windows_.size() ||
+        std::any_of(monitors.begin(), monitors.end(), [&](const RECT& rect) {
+          return std::none_of(windows_.begin(), windows_.end(),
+                              [&](const auto& window) { return SameRect(rect, window.rect); });
+        });
+    // Mark the shared snapshot busy BEFORE replacing/destroying any HWND.
+    // Readers must not validate a stale handle from a previous topology.
+    struct PublishGuard {
+      PrivacyBandShared* shared;
+      ~PublishGuard() { InterlockedIncrement(&shared->sequence); }
+    } publishing{shared_};
+    InterlockedIncrement(&shared_->sequence);
     for (const auto& rect : monitors) {
       const auto found =
           std::find_if(windows_.begin(), windows_.end(),
                        [&](const auto& w) { return SameRect(w.rect, rect); });
-      if (found != windows_.end()) continue;
-      changed = true;
+      if (found != windows_.end()) {
+        // Windows can reposition a top-level window during DPI/hotplug before
+        // delivering WM_DISPLAYCHANGE. Restore the intended monitor bounds.
+        HWND hwnd = reinterpret_cast<HWND>(found->hwnd);
+        RECT actual{};
+        if ((!GetWindowRect(hwnd, &actual) || !SameRect(actual, rect) ||
+             !IsWindowVisible(hwnd)) &&
+            !SetWindowPos(hwnd, nullptr, rect.left, rect.top,
+                          rect.right - rect.left, rect.bottom - rect.top,
+                          SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW))
+          return Fail(L"Reposition high-band cover");
+        continue;
+      }
       HWND hwnd = create_(kCoverStyles, atom_, L"CrossDesk Privacy", WS_POPUP,
                           rect.left, rect.top, rect.right - rect.left,
                           rect.bottom - rect.top, nullptr, nullptr, module,
@@ -86,7 +105,7 @@ class Windows {
       windows_.push_back({reinterpret_cast<uint64_t>(hwnd), rect});
       if (!SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA))
         return Fail(L"Make high-band cover opaque");
-      if (!SetWindowDisplayAffinity(hwnd, 0x11))
+      if (!ExcludePrivacyWindowFromCapture(hwnd))
         return Fail(L"Exclude high-band cover from capture");
       const BOOL yes = TRUE;
       const HRESULT peek = DwmSetWindowAttribute(hwnd, DWMWA_EXCLUDED_FROM_PEEK,
@@ -114,13 +133,16 @@ class Windows {
           ++it;
       }
     }
-    if (!Validate()) return false;
-    if (changed) {
-      InterlockedIncrement(&shared_->sequence);
-      shared_->count = static_cast<uint32_t>(windows_.size());
-      std::copy(windows_.begin(), windows_.end(), shared_->windows);
-      InterlockedIncrement(&shared_->sequence);
+    if (!Validate()) {
+      // Another topology event can race enumeration/presentation. Retry while
+      // retaining every surviving cover; actual validation errors stay fatal.
+      return InterlockedCompareExchange(&shared_->error, 0, 0) == ERROR_SUCCESS;
     }
+    // A previous reconciliation may have changed windows_ but failed geometry
+    // validation. Publish on every success so retries cannot leave stale HWNDs.
+    shared_->count = static_cast<uint32_t>(windows_.size());
+    std::copy(windows_.begin(), windows_.end(), shared_->windows);
+    InterlockedExchange(&shared_->topology_pending, 0);
     return true;
   }
   bool Validate() {
@@ -130,13 +152,17 @@ class Windows {
       DWORD band = 0, affinity = 0, flags = 0, cloaked = 0;
       BYTE alpha = 0;
       RECT rect{};
+      if (!GetWindowRect(hwnd, &rect) || !SameRect(rect, w.rect)) {
+        changed = true;
+        return false;
+      }
       if ((GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & kCoverStyles) !=
               kCoverStyles ||
           !get_band_(hwnd, &band) || band != kPrivacyWindowBand ||
-          !GetWindowDisplayAffinity(hwnd, &affinity) || affinity != 0x11 ||
+          !GetWindowDisplayAffinity(hwnd, &affinity) ||
+          affinity != kPrivacyWindowDisplayAffinity ||
           !GetLayeredWindowAttributes(hwnd, nullptr, &alpha, &flags) ||
           alpha != 255 || flags != LWA_ALPHA || !IsWindowVisible(hwnd) ||
-          !GetWindowRect(hwnd, &rect) || !SameRect(rect, w.rect) ||
           FAILED(DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked,
                                        sizeof(cloaked))) ||
           cloaked)

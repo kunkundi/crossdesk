@@ -64,6 +64,9 @@ class GuiRuntime : protected gui_detail::GuiState {
   void HandlePrivacy();
   bool IsAuthorizedController(const std::string& remote_id);
   void SetControllerPrivacySupport(const std::string& remote_id, bool supported);
+  // Caller holds connection_status_mutex_ exclusively. Turns privacy off when
+  // any connected controller lacks support, or on for the first automatic one.
+  void ApplyPrivacyAdmission(bool automatic_enable);
   void QueuePrivacyCommand(const std::string& remote_id, const PrivacyCommand& command);
 
   void CloseRemoteSession(std::shared_ptr<RemoteSession> props);

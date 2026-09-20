@@ -13,19 +13,37 @@
 
 namespace crossdesk {
 
-// Guarded by GuiRuntime's connection_status_mutex_. Privacy covers the shared
-// desktop, so every connected controller must explicitly support it.
+// Guarded by GuiRuntime's connection_status_mutex_. Privacy covers the local
+// displays, so every connected controller must explicitly support its controls.
 class PrivacySessionPolicy {
  public:
-  void Connected(const std::string& remote_id, bool automatic_privacy) {
+  // Web controllers render through the browser and expose no privacy UI.
+  static bool IsWebController(const std::string& remote_id) {
+    return remote_id.find("web") != std::string::npos;
+  }
+
+  bool Connected(const std::string& remote_id, bool automatic_privacy) {
     const auto [entry, inserted] = controllers_.try_emplace(remote_id, false);
-    if (inserted && controllers_.size() == 1 && automatic_privacy) {
+    if (inserted && controllers_.size() == 1 && automatic_privacy &&
+        !IsWebController(remote_id)) {
       automatic_controller_ = remote_id;
     }
+    const auto early = early_support_.find(remote_id);
+    if (early == early_support_.end()) return false;
+    const bool supported = early->second;
+    early_support_.erase(early);
+    return SetSupported(remote_id, supported);
+  }
+
+  // Only transport-authenticated metadata from a connecting session is cached
+  // by the caller. It grants no control until Connected admits that session.
+  void RememberSupport(const std::string& remote_id, bool supported) {
+    early_support_[remote_id] = supported;
   }
 
   void Disconnected(const std::string& remote_id) {
     controllers_.erase(remote_id);
+    early_support_.erase(remote_id);
     if (automatic_controller_ == remote_id) automatic_controller_.clear();
   }
 
@@ -34,7 +52,7 @@ class PrivacySessionPolicy {
   bool SetSupported(const std::string& remote_id, bool supported) {
     const auto entry = controllers_.find(remote_id);
     if (entry == controllers_.end()) return false;
-    entry->second = supported && remote_id.find("web") == std::string::npos;
+    entry->second = supported && !IsWebController(remote_id);
     if (automatic_controller_ != remote_id) return false;
     automatic_controller_.clear();
     return CanEnable();
@@ -53,6 +71,7 @@ class PrivacySessionPolicy {
 
  private:
   std::unordered_map<std::string, bool> controllers_;
+  std::unordered_map<std::string, bool> early_support_;
   std::string automatic_controller_;
 };
 

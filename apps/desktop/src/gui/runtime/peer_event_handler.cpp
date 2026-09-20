@@ -363,14 +363,11 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
     {
       std::unique_lock lock(runtime->connection_status_mutex_);
       if (status == ConnectionStatus::Connected) {
-        // Wait for explicit desktop capability before enabling privacy or
-        // sending privacy messages. Legacy and web controllers never opt in.
-        runtime->privacy_sessions_.Connected(
+        // Local privacy requires explicit desktop capability. Host info may
+        // arrive before Connected; consume that saved capability here.
+        const bool automatic_enable = runtime->privacy_sessions_.Connected(
             remote_id, runtime->config_center_->IsEnablePrivacyScreen());
-        if (!runtime->privacy_sessions_.CanEnable() &&
-            runtime->privacy_.Engaged()) {
-          runtime->privacy_.Disable();
-        }
+        runtime->ApplyPrivacyAdmission(automatic_enable);
       }
       runtime->connection_status_[remote_id] = status;
       runtime->devices_.OnControllerConnectionsChanged();
