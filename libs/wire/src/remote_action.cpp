@@ -37,7 +37,46 @@ bool AllocateHostDisplays(HostInfo& info, std::size_t count) {
          info.bottom;
 }
 
+char* DuplicateString(const std::string& value) {
+  char* copy = static_cast<char*>(std::malloc(value.size() + 1));
+  if (copy == nullptr) return nullptr;
+  std::memcpy(copy, value.data(), value.size());
+  copy[value.size()] = '\0';
+  return copy;
+}
+
 }  // namespace
+
+RemoteAction MakeHostInformation(const std::string& host_name,
+                                 const std::vector<HostDisplay>& displays,
+                                 bool supports_privacy_screen) {
+  RemoteAction action{};
+  action.type = ControlType::host_infomation;
+  ResetHostInfo(action.i);
+
+  const std::size_t count = displays.size();
+  if (AllocateHostDisplays(action.i, count)) {
+    action.i.display_num = count;
+    for (std::size_t index = 0; index < count; ++index) {
+      const HostDisplay& display = displays[index];
+      action.i.display_list[index] = DuplicateString(display.name);
+      action.i.left[index] = display.left;
+      action.i.top[index] = display.top;
+      action.i.right[index] = display.right;
+      action.i.bottom[index] = display.bottom;
+    }
+  } else {
+    FreeRemoteAction(action);
+  }
+
+  action.i.supports_privacy_screen = supports_privacy_screen;
+  const std::size_t name_size =
+      std::min(host_name.size(), sizeof(action.i.host_name) - 1);
+  std::memcpy(action.i.host_name, host_name.data(), name_size);
+  action.i.host_name[name_size] = '\0';
+  action.i.host_name_size = name_size;
+  return action;
+}
 
 std::string RemoteAction::to_json() const { return ToJson(*this); }
 

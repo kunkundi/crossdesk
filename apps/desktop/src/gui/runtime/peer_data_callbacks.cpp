@@ -20,7 +20,6 @@
 #include "platform.h"
 #include "rd_log.h"
 #include "runtime/gui_runtime.h"
-#include "runtime/remote_action_codec.h"
 
 #if _WIN32
 #include "interactive_state.h"
@@ -288,7 +287,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
                           remote_action.i.right[i], remote_action.i.bottom[i]));
         }
       }
-      remote_action_codec::Free(remote_action);
+      FreeRemoteAction(remote_action);
     } else {
       // server mode
       std::string host_name(remote_action.i.host_name,
@@ -302,7 +301,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
         runtime->SetControllerPrivacySupport(
             remote_id, remote_action.i.supports_privacy_screen);
       }
-      remote_action_codec::Free(remote_action);
+      FreeRemoteAction(remote_action);
     }
   } else {
     // remote

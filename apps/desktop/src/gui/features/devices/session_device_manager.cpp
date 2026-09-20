@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <utility>
 
 #include "platform.h"
 #include "rd_log.h"
@@ -146,7 +147,7 @@ int SessionDeviceManager::InitializeScreenCapturer() {
                       ? 30
                       : 60;
   LOG_INFO("Init screen capturer with {} fps", fps);
-  display_info_list_.clear();
+  SetDisplayInfoList({});
   registered_display_stream_count_ = 0;
   last_video_frame_stream_id_.clear();
   invalid_video_stream_id_logged_ = false;
@@ -256,11 +257,11 @@ int SessionDeviceManager::InitializeScreenCapturer() {
 
   if (init_ret == 0) {
     LOG_INFO("Init screen capturer success");
-    const auto latest_display_info = screen_capturer_->GetDisplayInfoList();
+    auto latest_display_info = screen_capturer_->GetDisplayInfoList();
+    registered_display_stream_count_ = latest_display_info.size();
     if (!latest_display_info.empty()) {
-      display_info_list_ = latest_display_info;
+      SetDisplayInfoList(std::move(latest_display_info));
     }
-    registered_display_stream_count_ = display_info_list_.size();
     return 0;
   }
 
@@ -327,6 +328,11 @@ void SessionDeviceManager::StartSpeakerCapturer() {
 
 void SessionDeviceManager::StopSpeakerCapturer() {
   speaker_capture_.SetEnabled(false);
+}
+
+void SessionDeviceManager::SetDisplayInfoList(std::vector<DisplayInfo> displays) {
+  std::lock_guard<std::mutex> lock(display_info_mutex_);
+  display_info_list_ = std::move(displays);
 }
 
 int SessionDeviceManager::StartMouseController() {
@@ -657,9 +663,20 @@ void SessionDeviceManager::ResetToInitialDisplay() {
   owner_.selected_display_ = 0;
 }
 
-const std::vector<DisplayInfo> &
-SessionDeviceManager::display_info_list() const {
+std::vector<DisplayInfo> SessionDeviceManager::display_info_list() const {
+  std::lock_guard<std::mutex> lock(display_info_mutex_);
   return display_info_list_;
+}
+
+std::vector<HostDisplay> SessionDeviceManager::host_display_list() const {
+  std::lock_guard<std::mutex> lock(display_info_mutex_);
+  std::vector<HostDisplay> displays;
+  displays.reserve(display_info_list_.size());
+  for (const auto &display : display_info_list_) {
+    displays.push_back({display.name, display.left, display.top, display.right,
+                        display.bottom});
+  }
+  return displays;
 }
 
 void SessionDeviceManager::DestroyDevices() {

@@ -21,7 +21,6 @@
 #include "platform/video_renderer.h"
 #include "rd_log.h"
 #include "runtime/gui_runtime.h"
-#include "runtime/remote_action_codec.h"
 
 #if _WIN32
 #include "interactive_state.h"
@@ -265,52 +264,22 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
           props->cursor_presentation_ = {};
         }
         {
-          RemoteAction remote_action{};
-          remote_action.i.supports_privacy_screen = true;
-          remote_action.i.display_num =
-              runtime->devices_.display_info_list().size();
-          remote_action.i.display_list =
-              (char**)malloc(remote_action.i.display_num * sizeof(char*));
-          remote_action.i.left =
-              (int*)malloc(remote_action.i.display_num * sizeof(int));
-          remote_action.i.top =
-              (int*)malloc(remote_action.i.display_num * sizeof(int));
-          remote_action.i.right =
-              (int*)malloc(remote_action.i.display_num * sizeof(int));
-          remote_action.i.bottom =
-              (int*)malloc(remote_action.i.display_num * sizeof(int));
-          for (int i = 0; i < remote_action.i.display_num; i++) {
+          RemoteAction remote_action = MakeHostInformation(
+              GetHostName(), runtime->devices_.host_display_list(),
+              /*supports_privacy_screen=*/true);
+          for (std::size_t i = 0; i < remote_action.i.display_num; i++) {
             LOG_INFO("Local display [{}:{}]", i + 1,
-                     runtime->devices_.display_info_list()[i].name);
-            remote_action.i.display_list[i] = (char*)malloc(
-                runtime->devices_.display_info_list()[i].name.length() + 1);
-            strncpy(remote_action.i.display_list[i],
-                    runtime->devices_.display_info_list()[i].name.c_str(),
-                    runtime->devices_.display_info_list()[i].name.length());
-            remote_action.i
-                .display_list[i][runtime->devices_.display_info_list()[i]
-                                     .name.length()] = '\0';
-            remote_action.i.left[i] =
-                runtime->devices_.display_info_list()[i].left;
-            remote_action.i.top[i] =
-                runtime->devices_.display_info_list()[i].top;
-            remote_action.i.right[i] =
-                runtime->devices_.display_info_list()[i].right;
-            remote_action.i.bottom[i] =
-                runtime->devices_.display_info_list()[i].bottom;
+                     remote_action.i.display_list[i]);
           }
-
-          std::string host_name = GetHostName();
-          remote_action.type = ControlType::host_infomation;
-          memcpy(&remote_action.i.host_name, host_name.data(),
-                 host_name.size());
-          remote_action.i.host_name[host_name.size()] = '\0';
-          remote_action.i.host_name_size = host_name.size();
-
           std::string msg = remote_action.to_json();
-          int ret = SendReliableDataFrame(props->peer_, msg.data(), msg.size(),
-                                          runtime->control_data_label_.c_str());
-          remote_action_codec::Free(remote_action);
+          const int ret =
+              SendReliableDataFrame(props->peer_, msg.data(), msg.size(),
+                                    runtime->control_data_label_.c_str());
+          if (ret != 0) {
+            LOG_WARN("[{}] host information send failed, ret={}", remote_id,
+                     ret);
+          }
+          FreeRemoteAction(remote_action);
         }
 
         if (!runtime->need_to_create_stream_window_) {
@@ -413,53 +382,22 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         runtime->last_windows_service_status_tick_ = 0;
 #endif
         {
-          RemoteAction remote_action{};
-          remote_action.i.supports_privacy_screen = true;
-          remote_action.i.display_num =
-              runtime->devices_.display_info_list().size();
-          remote_action.i.display_list =
-              (char**)malloc(remote_action.i.display_num * sizeof(char*));
-          remote_action.i.left =
-              (int*)malloc(remote_action.i.display_num * sizeof(int));
-          remote_action.i.top =
-              (int*)malloc(remote_action.i.display_num * sizeof(int));
-          remote_action.i.right =
-              (int*)malloc(remote_action.i.display_num * sizeof(int));
-          remote_action.i.bottom =
-              (int*)malloc(remote_action.i.display_num * sizeof(int));
-          for (int i = 0; i < remote_action.i.display_num; i++) {
+          RemoteAction remote_action = MakeHostInformation(
+              GetHostName(), runtime->devices_.host_display_list(),
+              /*supports_privacy_screen=*/true);
+          for (std::size_t i = 0; i < remote_action.i.display_num; i++) {
             LOG_INFO("Local display [{}:{}]", i + 1,
-                     runtime->devices_.display_info_list()[i].name);
-            remote_action.i.display_list[i] = (char*)malloc(
-                runtime->devices_.display_info_list()[i].name.length() + 1);
-            strncpy(remote_action.i.display_list[i],
-                    runtime->devices_.display_info_list()[i].name.c_str(),
-                    runtime->devices_.display_info_list()[i].name.length());
-            remote_action.i
-                .display_list[i][runtime->devices_.display_info_list()[i]
-                                     .name.length()] = '\0';
-            remote_action.i.left[i] =
-                runtime->devices_.display_info_list()[i].left;
-            remote_action.i.top[i] =
-                runtime->devices_.display_info_list()[i].top;
-            remote_action.i.right[i] =
-                runtime->devices_.display_info_list()[i].right;
-            remote_action.i.bottom[i] =
-                runtime->devices_.display_info_list()[i].bottom;
+                     remote_action.i.display_list[i]);
           }
-
-          std::string host_name = GetHostName();
-          remote_action.type = ControlType::host_infomation;
-          memcpy(&remote_action.i.host_name, host_name.data(),
-                 host_name.size());
-          remote_action.i.host_name[host_name.size()] = '\0';
-          remote_action.i.host_name_size = host_name.size();
-
           std::string msg = remote_action.to_json();
-          int ret =
+          const int ret =
               SendReliableDataFrame(runtime->peer_, msg.data(), msg.size(),
                                     runtime->control_data_label_.c_str());
-          remote_action_codec::Free(remote_action);
+          if (ret != 0) {
+            LOG_WARN("[{}] host information send failed, ret={}", remote_id,
+                     ret);
+          }
+          FreeRemoteAction(remote_action);
         }
 
         runtime->need_to_destroy_server_window_.store(

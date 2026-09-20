@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include <remote_cursor_shape.h>
 
@@ -178,6 +179,25 @@ struct RemoteAction {
 // Releases the dynamically allocated display arrays held by host information.
 // Other RemoteAction variants do not own memory and are left unchanged.
 void FreeRemoteAction(RemoteAction& action);
+
+// One display as advertised in host information; bounds are virtual-desktop
+// pixel coordinates.
+struct HostDisplay {
+  std::string name;
+  int left = 0;
+  int top = 0;
+  int right = 0;
+  int bottom = 0;
+};
+
+// Builds the host_infomation message advertised on every new connection.
+// |host_name| is truncated to the wire field size. The display arrays are
+// heap-allocated with the same layout the decoder produces; release the
+// result with FreeRemoteAction. An allocation failure yields an empty display
+// list rather than a partially filled one.
+RemoteAction MakeHostInformation(const std::string& host_name,
+                                 const std::vector<HostDisplay>& displays,
+                                 bool supports_privacy_screen);
 
 }  // namespace crossdesk
 

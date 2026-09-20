@@ -25,8 +25,7 @@ apps/desktop/src/gui/
 │   ├── device_presence_cache.h      # 设备在线状态缓存
 │   ├── peer_event_handler.h/.cpp    # 信令和连接状态回调
 │   ├── peer_media_callbacks.cpp     # 视频和音频回调
-│   ├── peer_data_callbacks.cpp      # 控制、剪贴板和文件数据回调
-│   └── remote_action_codec.h/.cpp   # RemoteAction 编解码
+│   └── peer_data_callbacks.cpp      # 控制、剪贴板和文件数据回调
 ├── features/                        # 可独立演进的功能模块
 │   ├── clipboard/                   # 本地与远端剪贴板同步
 │   ├── devices/                     # 媒体及输入设备生命周期

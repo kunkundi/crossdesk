@@ -74,7 +74,12 @@ public:
   int SwitchDisplay(int display_id);
   void ResetToInitialDisplay();
 
-  const std::vector<DisplayInfo> &display_info_list() const;
+  // Snapshot of the capture displays. The UI thread refreshes the list every
+  // tick while transport threads build host information and map mouse input
+  // from it, so callers get a copy taken under the lock.
+  std::vector<DisplayInfo> display_info_list() const;
+  // The same snapshot in the wire's host information form.
+  std::vector<HostDisplay> host_display_list() const;
 
 private:
   struct CapturedKeyboardInput {
@@ -91,6 +96,7 @@ private:
   bool ShouldSendCapturedFrame(std::chrono::steady_clock::time_point now,
                                int fps);
   bool ShouldCaptureCursor() const;
+  void SetDisplayInfoList(std::vector<DisplayInfo> displays);
   void RecordCaptureCadence(std::chrono::steady_clock::time_point now, int fps,
                             bool from_secure_desktop);
 
@@ -103,6 +109,8 @@ private:
   DeviceControllerFactory *device_controller_factory_ = nullptr;
   MouseController *mouse_controller_ = nullptr;
   KeyboardCapturer *keyboard_capturer_ = nullptr;
+  // Guards display_info_list_ (UI thread writes, transport threads read).
+  mutable std::mutex display_info_mutex_;
   std::vector<DisplayInfo> display_info_list_;
   size_t registered_display_stream_count_ = 0;
   std::deque<CapturedKeyboardInput> captured_keyboard_inputs_;
