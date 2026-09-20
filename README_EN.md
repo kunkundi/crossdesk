@@ -205,6 +205,8 @@ Thanks to [HelloGitHub](https://hellogithub.com/), [Ruanyf Weekly](https://githu
 
 CrossDesk is licensed under [GPL-3.0](LICENSE). See the [Privacy Policy](PRIVACY.md#english).
 
+The Windows packages bundle the unmodified USB Mobile Monitor virtual display driver (usbmmidd_v2) by [Amyuni Technologies](https://www.amyuni.com/) for hosts without a monitor; its license is in `usbmmidd_v2\License.txt` in the install directory.
+
 ### Code signing policy
 
 CrossDesk uses SignPath.io to sign official Windows releases built from this repository.

@@ -43,6 +43,21 @@ function setup_targets()
         os.cp(runtime_dll, target:targetdir())
     end
 
+    -- Amyuni usbmmidd_v2 virtual display driver for headless Windows hosts.
+    -- The installer and the portable archive pick it up from the target
+    -- directory; the runtime looks for it next to the executables.
+    local function copy_usbmmidd_package(target)
+        if not target:is_plat("windows") then
+            return
+        end
+        local source = path.join(os.projectdir(), "apps/desktop/resources/windows/usbmmidd_v2")
+        assert(os.isfile(path.join(source, "deviceinstaller64.exe")),
+            "usbmmidd_v2 driver package not found: " .. source)
+        local destination = path.join(target:targetdir(), "usbmmidd_v2")
+        os.tryrm(destination)
+        os.cp(source, destination)
+    end
+
     local crossdesk_windows_resource = "apps/desktop/resources/windows/crossdesk.rc"
     if is_config("CROSSDESK_PORTABLE", true) then
         crossdesk_windows_resource = "apps/desktop/resources/windows/crossdesk_portable.rc"
@@ -509,4 +524,5 @@ function setup_targets()
                 "apps/desktop/src/platform/linux/daemon_backend.cpp")
         end
         after_build(copy_slint_runtime)
+        after_build(copy_usbmmidd_package)
 end

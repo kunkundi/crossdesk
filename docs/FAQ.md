@@ -28,6 +28,27 @@ Wayland 画面捕获依赖启用了 Wayland 支持的构建、宿主系统 PipeW
 
 在被控电脑检查 CrossDesk Service 是否安装、是否运行，并保持 CrossDesk 客户端运行。便携版可在“设置 → 锁屏控制服务”安装。服务状态检查命令见 [Windows 服务说明](../README.md#windows-service)。
 
+## 被控 Windows 电脑没有接显示器
+
+没有显示器时，Windows 会把桌面放在一个分辨率固定的虚拟目标上，GPU 采集路径不可用。CrossDesk 会先尝试插入内置的 usbmmidd 虚拟显示器（见下一节）；无法插入时自动进入**无屏兼容模式**：用 GDI 采集，分辨率由系统决定（常见为 1024×768），帧率和画质低于正常模式，被控端日志会记录进入兼容模式的原因。键鼠控制、隐私屏、文件传输不受影响。
+
+需要完整体验时，给显卡接一个 HDMI/DP 假负载（EDID 模拟器）或真实显示器，然后重新连接；CrossDesk 会在下一次连接时重新检测并切回 GPU 采集。兼容模式只在“采集方式”为“自动”时启用；手动指定采集方式时按所选方式工作。
+
+### 自动插入 usbmmidd 虚拟显示器（免假负载）
+
+Windows 安装包和便携包内置了 Amyuni 的 `usbmmidd_v2` 虚拟显示器驱动（位于安装目录的 `usbmmidd_v2` 文件夹，附带 Amyuni 的 License.txt）。无屏时 CrossDesk 会自动使用它，每次连接时：
+
+1. CrossDesk 检测到没有任何显示器且采集方式为“自动”；
+2. 先以兼容模式开始传输，同时在后台通过 CrossDesk Service 的会话助手（管理员权限、交互会话内）安装驱动（仅首次，驱动带微软签名，无需测试模式）、插入一块虚拟显示器并设置为 1920×1080；
+3. 虚拟显示器就绪后采集自动切到 DXGI/WGC 正常模式；
+4. 会话结束时自动拔出虚拟显示器，接入真实显示器后不会残留。
+
+未安装 CrossDesk Service 时，只有以管理员身份运行的 CrossDesk 才能自行插拔；否则日志会记录 `usbmmidd_installer_launch_failed:740` 并保持兼容模式。
+
+卸载 CrossDesk 时，安装包会移除由 CrossDesk 安装的这块驱动；如果驱动是你为其他软件事先安装的，则保持不动。便携版不带卸载程序，需要移除时在便携目录的 `usbmmidd_v2` 下以管理员身份运行 `deviceinstaller64 enableidd 0`、`deviceinstaller64 stop usbmmidd`、`deviceinstaller64 remove usbmmidd`，或在设备管理器中卸载“USB Mobile Monitor Virtual Display”。
+
+调试时不方便拔线，可以设置环境变量 `CROSSDESK_FORCE_HEADLESS=1` 再启动 CrossDesk：在没有 usbmmidd 显示器时按无屏处理，走完插屏流程后恢复真实检测。仅用于验证，不要在生产环境设置。
+
 ## 修改密码后连接失败
 
 修改密码时使用 6 位数字或英文字母，并保持连接服务器。等待修改成功、客户端重新连接后，重新复制当前密码。控制端保存的旧密码会失效，按弹窗输入新密码再连接。
@@ -64,6 +85,8 @@ Wayland 画面捕获依赖启用了 Wayland 支持的构建、宿主系统 PipeW
 | Black screen / no input on macOS | Grant Screen Recording and Accessibility, then reopen the app. A changed app path or signature may require fresh permission grants. |
 | No capture on Linux Wayland | Check the Wayland build option, host PipeWire 0.3, and desktop portal permission. Compare with an X11 session. See [Linux build instructions](BUILD_EN.md#linux). |
 | Cannot control a Windows lock screen | Install/start CrossDesk Service and keep the host client running. See [service commands](../README_EN.md#windows-service). |
+| Windows host has no monitor attached | The Windows installer and portable archive bundle Amyuni's `usbmmidd_v2` virtual display driver (in the `usbmmidd_v2` folder with its License.txt). On each connection to a host without a monitor (capture method Auto), CrossDesk starts streaming in compatibility mode and, in the background, asks the CrossDesk Service session helper to install the Microsoft-signed driver (first time only) and plug one virtual monitor at 1920×1080; capture then switches to DXGI/WGC on that monitor and it is unplugged when the session ends. Without the service only an elevated CrossDesk can plug it itself; otherwise the host stays in **headless compatibility mode**: GDI capture at an OS-fixed resolution (often 1024×768) with reduced frame rate; the host log records why. Input, privacy screen and file transfer still work. A real monitor or an HDMI/DP dummy plug also restores GPU capture. |
+| Removing the bundled virtual display driver | The uninstaller removes the driver when CrossDesk installed it and leaves a driver you installed yourself. For the portable build run `deviceinstaller64 enableidd 0`, `deviceinstaller64 stop usbmmidd` and `deviceinstaller64 remove usbmmidd` as administrator from the `usbmmidd_v2` folder, or uninstall "USB Mobile Monitor Virtual Display" in Device Manager. |
 | Saved password no longer works | Use 6 ASCII letters or digits when changing the password, with the host connected to the server. Wait for the change and reconnection to complete, then copy the current password and enter it on the controller. |
 | Cannot find received files | Check Settings → File Save Path on desktop. Native iOS stores them in `Documents/Received` and provides a share action. |
 | Main window closed but app still running | Closing hides the window. Use the tray/menu-bar exit command to quit. |

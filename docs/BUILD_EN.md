@@ -29,7 +29,7 @@ Installer packaging also uses NSIS. Copy the repository's [nsProcess.dll](../app
 .\apps\desktop\scripts\windows\pkg_x64.ps1 1.4.3
 ```
 
-See the [Windows packaging script](../apps/desktop/scripts/windows/pkg_x64.ps1) and [CI workflow](../.github/workflows/build.yml) for the full process. Manual deployment must retain the runtime libraries and both service helpers; see [Windows Service](../README_EN.md#windows-service).
+See the [Windows packaging script](../apps/desktop/scripts/windows/pkg_x64.ps1) and [CI workflow](../.github/workflows/build.yml) for the full process. Manual deployment must retain the runtime libraries, both service helpers and the `usbmmidd_v2` driver folder (copied into the output directory by xmake after the build); see [Windows Service](../README_EN.md#windows-service).
 
 ## macOS
 

@@ -205,6 +205,8 @@ sudo apt install "./crossdesk-linux-amd64-<version>.deb"
 
 CrossDesk 使用 [GPL-3.0](LICENSE) 许可。隐私说明见 [隐私政策](PRIVACY.md#中文)。
 
+Windows 安装包内置 [Amyuni Technologies](https://www.amyuni.com/) 的 USB Mobile Monitor 虚拟显示器驱动（usbmmidd_v2），用于无显示器主机；驱动未作任何修改，其许可见安装目录 `usbmmidd_v2\License.txt`。
+
 ### Code signing policy
 
 CrossDesk 使用 SignPath.io 为本仓库构建的官方 Windows 发布包提供代码签名。

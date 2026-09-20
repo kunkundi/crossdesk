@@ -92,6 +92,10 @@ installApp:
     File "..\..\..\..\build\windows\x64\release\crossdesk_privacy_window.dll"
     ; Bundle runtime DLLs from the release output directory
     File /x crossdesk_privacy_window.dll "..\..\..\..\build\windows\x64\release\*.dll"
+    ; Amyuni usbmmidd_v2 virtual display driver for headless hosts. xmake
+    ; copies apps\desktop\resources\windows\usbmmidd_v2 into the release
+    ; output directory after building crossdesk; its License.txt ships with it.
+    File /r "..\..\..\..\build\windows\x64\release\usbmmidd_v2"
 
     Call RegisterInstalledService
 
@@ -142,6 +146,7 @@ cancelUninstall:
 
 uninstallApp:
     Call un.UnregisterInstalledService
+    Call un.RemoveUsbmmiddDriver
 
     ; Delete main executable and uninstaller
     Delete "$INSTDIR\CrossDesk.exe"
@@ -150,6 +155,9 @@ uninstallApp:
     Delete "$INSTDIR\crossdesk_privacy_cursor_helper.exe"
     Delete "$INSTDIR\crossdesk_privacy_window.dll"
     Delete "$INSTDIR\uninstall.exe"
+
+    ; Leave the install directory before removing it
+    SetOutPath "$TEMP"
 
     ; Recursively delete installation directory
     RMDir /r "$INSTDIR"
@@ -247,4 +255,51 @@ unregister_with_sc:
         MessageBox MB_ICONSTOP|MB_OK "Failed to remove the CrossDesk service. Uninstall will be aborted."
         Abort
     ${EndIf}
+FunctionEnd
+
+; The session helper (or an elevated CrossDesk) installs the bundled usbmmidd
+; driver on first headless use and records HKLM\SOFTWARE\CrossDesk\
+; UsbmmiddDriverInstalled in the 64-bit registry view. Only a driver CrossDesk
+; installed is removed here; one set up by the user for other software stays.
+; deviceinstaller64.exe resolves usbmmIdd.dll relative to the working
+; directory, so run it from the driver folder. Failures are logged, not fatal:
+; the driver can still be removed from Device Manager.
+Function un.RemoveUsbmmiddDriver
+    IfFileExists "$INSTDIR\usbmmidd_v2\deviceinstaller64.exe" 0 done
+
+    SetRegView 64
+    ClearErrors
+    ReadRegDWORD $0 HKLM "Software\${PRODUCT_NAME}" "UsbmmiddDriverInstalled"
+    ${If} ${Errors}
+    ${OrIf} $0 != 1
+        SetRegView lastused
+        Return
+    ${EndIf}
+
+    DetailPrint "Removing the usbmmidd virtual display driver installed by CrossDesk"
+    SetOutPath "$INSTDIR\usbmmidd_v2"
+    ; Unplug every virtual monitor first (the driver allows up to four).
+    StrCpy $1 0
+unplug_loop:
+    nsExec::ExecToLog '"$INSTDIR\usbmmidd_v2\deviceinstaller64.exe" enableidd 0'
+    Pop $2
+    IntOp $1 $1 + 1
+    ${If} $2 = 0
+    ${AndIf} $1 < 4
+        Goto unplug_loop
+    ${EndIf}
+    nsExec::ExecToLog '"$INSTDIR\usbmmidd_v2\deviceinstaller64.exe" stop usbmmidd'
+    Pop $2
+    nsExec::ExecToLog '"$INSTDIR\usbmmidd_v2\deviceinstaller64.exe" remove usbmmidd'
+    Pop $2
+    ${If} $2 != 0
+        DetailPrint "usbmmidd driver removal returned $2; remove 'USB Mobile Monitor Virtual Display' from Device Manager if it remains"
+    ${EndIf}
+    SetOutPath "$TEMP"
+
+    DeleteRegValue HKLM "Software\${PRODUCT_NAME}" "UsbmmiddDriverInstalled"
+    DeleteRegKey /ifempty HKLM "Software\${PRODUCT_NAME}"
+    SetRegView lastused
+
+done:
 FunctionEnd

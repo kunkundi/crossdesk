@@ -29,7 +29,7 @@ xmake r crossdesk
 .\apps\desktop\scripts\windows\pkg_x64.ps1 1.4.3
 ```
 
-完整流程见 [Windows 脚本](../apps/desktop/scripts/windows/pkg_x64.ps1) 和 [CI 工作流](../.github/workflows/build.yml)。手动部署时需保留运行库及两个服务辅助程序，见 [Windows 服务说明](../README.md#windows-service)。
+完整流程见 [Windows 脚本](../apps/desktop/scripts/windows/pkg_x64.ps1) 和 [CI 工作流](../.github/workflows/build.yml)。手动部署时需保留运行库、两个服务辅助程序以及 `usbmmidd_v2` 驱动文件夹（构建后由 xmake 复制到输出目录），见 [Windows 服务说明](../README.md#windows-service)。
 
 ## macOS
 
