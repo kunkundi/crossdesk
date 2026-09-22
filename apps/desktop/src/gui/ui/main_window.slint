@@ -186,6 +186,57 @@ component ConnectionDialogButton inherits Rectangle {
     button-touch := TouchArea { clicked => { root.clicked(); } }
 }
 
+// Use the same compact, plain-text field for connection and password changes.
+component PasswordInput inherits Rectangle {
+    in-out property <string> text;
+    in property <int> max-length: 0;
+    private property <string> previous-text;
+    callback accepted;
+
+    width: 70px;
+    height: 23px;
+    background: white;
+    border-width: 1px;
+    border-color: ImGuiLineStyle.border;
+    border-radius: 3px;
+    forward-focus: editor;
+
+    init => { root.previous-text = root.text; }
+
+    editor := TextInput {
+        x: 5px; y: 1px; width: parent.width - 10px; height: parent.height - 2px;
+        text <=> root.text;
+        input-type: InputType.text;
+        single-line: true;
+        color: #202124;
+        font-size: ImGuiFontStyle.base;
+        vertical-alignment: center;
+        selection-foreground-color: white;
+        selection-background-color: #2463c7;
+        edited => {
+            // Validate the resulting text so typing, paste, and replacement
+            // all obey the limit while deletion and selection still work.
+            if (root.max-length > 0 && self.text.character-count > root.max-length) {
+                self.text = root.previous-text;
+            } else {
+                root.previous-text = self.text;
+            }
+        }
+        accepted => { root.accepted(); }
+    }
+    Timer {
+        interval: 1ms;
+        running: true;
+        triggered => {
+            self.running = false;
+            editor.focus();
+            // Place the caret after any restored password, including UTF-8.
+            editor.select-all();
+            editor.clear-selection();
+        }
+    }
+}
+
 export component MainWindow inherits Window {
     title: "CrossDesk";
     icon: @image-url("../../../resources/linux/crossdesk_256x256.png");
@@ -1159,25 +1210,11 @@ export component MainWindow inherits Window {
                 padding: 20px;
                 spacing: 12px;
                 DialogPromptText { prompt: UiStrings.new-password; }
-                Rectangle {
-                    height: 28px;
-                    background: white;
-                    border-width: 1px;
-                    border-color: ImGuiLineStyle.border;
-                    border-radius: 4px;
-
-                    LineEdit {
-                        x: 1px;
-                        y: 1.5px;
-                        width: parent.width - 2px;
-                        height: parent.height - 2px;
+                HorizontalLayout {
+                    alignment: center;
+                    PasswordInput {
                         text <=> root.new-password-input;
-                        input-type: InputType.password;
-                    }
-                    LineEditFocusUnderlineMask {
-                        x: 5px;
-                        y: parent.height - 3px;
-                        width: parent.width - 10px;
+                        max-length: 6;
                     }
                 }
                 Text { height: root.reset-password-invalid ? 18px : 0px; visible: root.reset-password-invalid; text: UiStrings.invalid-password; color: #d92d20; font-size: ImGuiFontStyle.small; horizontal-alignment: center; }
@@ -1303,37 +1340,10 @@ export component MainWindow inherits Window {
                     vertical-alignment: center;
                 }
 
-                if !root.connection-validating: Rectangle {
-                    x: 71px; y: 63px; width: 70px; height: 23px;
-                    background: white;
-                    border-width: 1px;
-                    border-color: ImGuiLineStyle.border;
-                    border-radius: 3px;
-                    connection-password-editor := TextInput {
-                        x: 5px; y: 1px; width: parent.width - 10px; height: parent.height - 2px;
-                        text <=> root.connection-password;
-                        // The legacy ImGui field uses CharsNoBlank without the
-                        // Password flag, so entered text remains visible.
-                        input-type: InputType.text;
-                        color: #202124;
-                        font-size: ImGuiFontStyle.base;
-                        vertical-alignment: center;
-                        selection-foreground-color: white;
-                        selection-background-color: #2463c7;
-                        accepted => { root.connection-submit-password(root.connection-password, root.connection-remember-password); }
-                    }
-                    Timer {
-                        interval: 1ms;
-                        running: true;
-                        triggered => {
-                            self.running = false;
-                            connection-password-editor.focus();
-                            // Collapse the selection at the end of the restored
-                            // password, including text with multi-byte characters.
-                            connection-password-editor.select-all();
-                            connection-password-editor.clear-selection();
-                        }
-                    }
+                if !root.connection-validating: PasswordInput {
+                    x: 71px; y: 63px;
+                    text <=> root.connection-password;
+                    accepted => { root.connection-submit-password(root.connection-password, root.connection-remember-password); }
                 }
 
                 if !root.connection-validating: Rectangle {
