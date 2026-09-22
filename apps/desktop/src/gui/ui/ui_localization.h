@@ -70,6 +70,7 @@ inline int ApplyMainWindowStrings(
   strings.set_hardware_codec(
       Text(localization::enable_hardware_video_codec[language]));
   strings.set_turn_relay(Text(localization::enable_turn[language]));
+  strings.set_force_relay(Text(localization::force_relay[language]));
   strings.set_self_hosted(
       Text(localization::self_hosted_server_config[language]));
   strings.set_autostart(Text(localization::enable_autostart[language]));

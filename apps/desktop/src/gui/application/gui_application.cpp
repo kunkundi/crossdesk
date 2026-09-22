@@ -1261,6 +1261,7 @@ void GuiApplication::ResetSettingsUi() {
   ui_->main->set_hardware_codec_enabled(hardware_codec_available &&
                                        enable_hardware_video_codec_);
   ui_->main->set_turn_enabled(enable_turn_);
+  ui_->main->set_force_relay_enabled(config_center_->IsForceRelay());
   ui_->main->set_self_hosted_enabled(enable_self_hosted_);
   ui_->main->set_autostart_enabled(enable_autostart_);
   ui_->main->set_daemon_enabled(enable_daemon_);
@@ -3092,7 +3093,8 @@ void GuiApplication::SaveSettingsFromUi() {
       static_cast<ConfigCenter::VIDEO_ENCODE_FORMAT>(
           video_encode_format_button_value_));
   config_center_->SetHardwareVideoCodec(enable_hardware_video_codec_);
-  config_center_->SetTurn(enable_turn_);
+  config_center_->SetTurn(enable_turn_, main->get_force_relay_enabled());
+  main->set_force_relay_enabled(config_center_->IsForceRelay());
   config_center_->SetSelfHosted(enable_self_hosted_);
   config_center_->SetAutostart(enable_autostart_);
   config_center_->SetDaemon(enable_daemon_);

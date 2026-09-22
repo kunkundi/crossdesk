@@ -46,7 +46,7 @@ class ConfigCenter {
   int SetVideoEncodeFormat(VIDEO_ENCODE_FORMAT video_encode_format);
   int SetHardwareVideoCodec(bool hardware_video_codec);
   int SetTurnMode(TURN_MODE turn_mode);
-  int SetTurn(bool enable_turn);
+  int SetTurn(bool enable_turn, bool force_relay);
   int SetServerHost(const std::string& signal_server_host);
   int SetServerPort(int signal_server_port);
   int SetSelfHosted(bool enable_self_hosted);
@@ -69,6 +69,7 @@ class ConfigCenter {
   bool IsHardwareVideoCodec() const;
   TURN_MODE GetTurnMode() const;
   bool IsEnableTurn() const;
+  bool IsForceRelay() const;
   bool IsEnableSrtp() const;
   std::string GetSignalServerHost() const;
   int GetSignalServerPort() const;

@@ -296,14 +296,16 @@ int ConfigCenter::SetTurnMode(TURN_MODE turn_mode) {
   return 0;
 }
 
-int ConfigCenter::SetTurn(bool enable_turn) {
+int ConfigCenter::SetTurn(bool enable_turn, bool force_relay) {
   if (!enable_turn) {
     return SetTurnMode(TURN_MODE::DISABLED);
   }
-  if (turn_mode_ == TURN_MODE::DISABLED) {
+  if (!force_relay) {
     return SetTurnMode(TURN_MODE::AUTO_UDP_TCP);
   }
-  return SetTurnMode(turn_mode_);
+  // Use TURN/UDP by default, preserving an explicitly configured TCP relay.
+  return SetTurnMode(turn_mode_ == TURN_MODE::FORCE_TCP ? TURN_MODE::FORCE_TCP
+                                                     : TURN_MODE::FORCE_UDP);
 }
 
 int ConfigCenter::SetServerHost(const std::string& signal_server_host) {
@@ -465,6 +467,10 @@ ConfigCenter::TURN_MODE ConfigCenter::GetTurnMode() const {
 
 bool ConfigCenter::IsEnableTurn() const {
   return turn_mode_ != TURN_MODE::DISABLED;
+}
+
+bool ConfigCenter::IsForceRelay() const {
+  return turn_mode_ == TURN_MODE::FORCE_UDP || turn_mode_ == TURN_MODE::FORCE_TCP;
 }
 
 bool ConfigCenter::IsEnableSrtp() const { return true; }
