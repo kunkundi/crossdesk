@@ -154,10 +154,8 @@ struct SlintVideoPresenter::Impl {
             const auto window_size = (*stream)->window().size();
             const float scale_factor =
                 std::max(1.0f, (*stream)->window().scale_factor());
-            const int top_inset =
-                !surface.fullscreen && surface.tab_count > 1
-                    ? static_cast<int>(std::lround(30.0f * scale_factor))
-                    : 0;
+            const int top_inset = static_cast<int>(std::lround(
+                (*stream)->get_video_area_top() * scale_factor));
             const bool rounded_window = (*stream)->get_custom_titlebar() &&
                                         !surface.fullscreen &&
                                         !(*stream)->window().is_maximized();
@@ -335,8 +333,7 @@ SlintVideoPresenter::PresentResult SlintVideoPresenter::Present(
       dynamic_cast<MacMetalVideoRenderer*>(&impl_->renderer);
   if (metal_renderer && metal_renderer->IsActive()) {
     const SurfaceState surface = impl_->CurrentState();
-    const double top_inset =
-        !surface.fullscreen && surface.tab_count > 1 ? 30.0 : 0.0;
+    const double top_inset = (*impl_->stream)->get_video_area_top();
     const auto outcome = metal_renderer->RenderLatest(
         frame.remote_id, top_inset, !surface.fullscreen);
     if (outcome.result == VideoRenderer::RenderResult::rendered) {

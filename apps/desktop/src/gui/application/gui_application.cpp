@@ -34,6 +34,7 @@
 #include "platform.h"
 #include "platform/video_renderer.h"
 #include "rendering/slint_video_presenter.h"
+#include "rendering/video_geometry.h"
 #include "runtime/privacy_control_state.h"
 #if _WIN32
 #include <windows.h>
@@ -2799,9 +2800,6 @@ void GuiApplication::ConfigureStreamVideoRenderer() {
         SlintVideoPresenter::SurfaceState state;
         state.selected_stream = focused_remote_id_;
         state.fullscreen = fullscreen_button_pressed_;
-        if (ui_) {
-          state.tab_count = ui_->tab_ids.size();
-        }
         return state;
       },
       [this] { video_frame_dirty_.store(true, std::memory_order_release); });
@@ -3250,43 +3248,21 @@ void GuiApplication::SendPointerInput(int button, int kind, float x, float y) {
     return;
   }
 
-  const auto size = (*ui_->stream)->window().size();
-  const float scale = (*ui_->stream)->window().scale_factor();
-  const float available_width = size.width / scale;
-  const float titlebar_height =
-      !fullscreen_button_pressed_ && (*ui_->stream)->get_custom_titlebar()
-          ? kWaylandTitlebarLogicalHeight
-          : 0.0f;
-  const float available_height =
-      size.height / scale - titlebar_height -
-      (fullscreen_button_pressed_ ? 0.0f
-                                  : (ui_->tab_ids.size() > 1 ? 30.0f : 0.0f));
-  float render_width = available_width;
-  float render_height = available_height;
-  float offset_x = 0;
-  float offset_y = 0;
-  if (props->video_width_ > 0 && props->video_height_ > 0 &&
-      available_width > 0 && available_height > 0) {
-    const float video_aspect =
-        static_cast<float>(props->video_width_) / props->video_height_;
-    const float area_aspect = available_width / available_height;
-    if (video_aspect > area_aspect) {
-      render_height = available_width / video_aspect;
-      offset_y = (available_height - render_height) * 0.5f;
-    } else {
-      render_width = available_height * video_aspect;
-      offset_x = (available_width - render_width) * 0.5f;
-    }
+  std::optional<VideoPoint> point;
+  {
+    std::lock_guard lock(props->video_frame_mutex_);
+    point = MapVideoPoint(x, y, (*ui_->stream)->get_video_area_width(),
+                          (*ui_->stream)->get_video_area_height(),
+                          props->video_width_, props->video_height_);
   }
-  if (x < offset_x || x > offset_x + render_width || y < offset_y ||
-      y > offset_y + render_height) {
+  if (!point) {
     return;
   }
 
   RemoteAction action{};
   action.type = ControlType::mouse;
-  action.m.x = std::clamp((x - offset_x) / render_width, 0.0f, 1.0f);
-  action.m.y = std::clamp((y - offset_y) / render_height, 0.0f, 1.0f);
+  action.m.x = point->x;
+  action.m.y = point->y;
   // Slint enum order: Cancel=0, Down=1, Up=2, Move=3 and
   // Other=0, Left=1, Right=2, Middle=3.
   if (kind == 3) {
@@ -3329,24 +3305,20 @@ void GuiApplication::SendScrollInput(float delta_x, float delta_y, float x,
   if (!props || !props->peer_ || !props->control_mouse_ || !ui_->stream) {
     return;
   }
-  const auto size = (*ui_->stream)->window().size();
-  const float scale = (*ui_->stream)->window().scale_factor();
-  const float width = size.width / scale;
-  const float titlebar_height =
-      !fullscreen_button_pressed_ && (*ui_->stream)->get_custom_titlebar()
-          ? kWaylandTitlebarLogicalHeight
-          : 0.0f;
-  const float height =
-      size.height / scale - titlebar_height -
-      (fullscreen_button_pressed_ ? 0.0f
-                                  : (ui_->tab_ids.size() > 1 ? 30.0f : 0.0f));
-  if (width <= 0 || height <= 0) {
+  std::optional<VideoPoint> point;
+  {
+    std::lock_guard lock(props->video_frame_mutex_);
+    point = MapVideoPoint(x, y, (*ui_->stream)->get_video_area_width(),
+                          (*ui_->stream)->get_video_area_height(),
+                          props->video_width_, props->video_height_);
+  }
+  if (!point) {
     return;
   }
   RemoteAction action{};
   action.type = ControlType::mouse;
-  action.m.x = std::clamp(x / width, 0.0f, 1.0f);
-  action.m.y = std::clamp(y / height, 0.0f, 1.0f);
+  action.m.x = point->x;
+  action.m.y = point->y;
   if (std::abs(delta_y) >= std::abs(delta_x)) {
     action.m.flag = MouseFlag::wheel_vertical;
     action.m.s = delta_y > 0 ? 1 : delta_y < 0 ? -1 : 0;

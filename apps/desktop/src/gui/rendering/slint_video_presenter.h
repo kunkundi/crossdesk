@@ -28,7 +28,6 @@ public:
   struct SurfaceState {
     std::string selected_stream;
     bool fullscreen = false;
-    size_t tab_count = 0;
   };
 
   struct Frame {

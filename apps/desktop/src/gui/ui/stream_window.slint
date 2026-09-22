@@ -142,6 +142,11 @@ export component StreamWindow inherits Window {
 
     in property <bool> custom-titlebar: false;
     in property <bool> native-video-enabled: false;
+    // Export the actual input surface in logical pixels. Native rendering and
+    // input mapping must follow the same layout, including title and tab bars.
+    out property <length> video-area-top: content-layer.y + video.y;
+    out property <length> video-area-width: video.width;
+    out property <length> video-area-height: video.height;
     in property <bool> window-active: true;
     in property <bool> window-maximized: false;
     in property <[StreamTab]> tabs;
