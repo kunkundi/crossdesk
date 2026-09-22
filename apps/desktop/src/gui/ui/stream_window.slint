@@ -291,7 +291,7 @@ export component StreamWindow inherits Window {
             && pointer-y >= control.y
             && pointer-y <= control.y + control.height;
         let display-menu-x = control.x + (root.control-docked-left ? 9px : 42px);
-        let display-menu-y = control.y + control.height - 1px;
+        let display-menu-y = control.y + root.control-toolbar-height - 1px;
         let display-menu-height = min(180px, root.displays.length * 30px + 8px);
         let over-display-menu = root.display-menu-open
             && pointer-x >= display-menu-x
@@ -1017,9 +1017,9 @@ export component StreamWindow inherits Window {
                         && floor((display-touch.mouse-y - 4px) / 30px) < root.displays.length
                     ? floor((display-touch.mouse-y - 4px) / 30px) : -1;
                 x: control.x + (root.control-docked-left ? 9px : 42px);
-                // Overlap the control border by one pixel so the menu reads as
-                // an attached panel growing downward from the display button.
-                y: control.y + control.height - 1px;
+                // Anchor to the button row, independent of the expanded stats.
+                // Overlap its bottom edge by one pixel to keep the menu attached.
+                y: control.y + root.control-toolbar-height - 1px;
                 width: 180px;
                 height: self.expanded-height * root.display-menu-progress;
                 opacity: root.display-menu-progress;
