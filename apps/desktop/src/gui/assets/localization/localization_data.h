@@ -31,6 +31,8 @@ struct TranslationRow {
   X(local_id_copied_to_clipboard, u8"已复制到剪贴板", "Copied to clipboard",   \
     u8"Скопировано в буфер обмена")                                            \
   X(password, u8"密码", "Password", u8"Пароль")                                \
+  X(refresh_password, u8"刷新随机密码", "Refresh random password",            \
+    u8"Обновить случайный пароль")                                           \
   X(max_password_len, u8"最大6个字符", "Max 6 chars", u8"Макс. 6 символов")    \
   X(remote_desktop, u8"远程桌面", "Remote Desktop",                            \
     u8"Удаленный рабочий стол")                                                \

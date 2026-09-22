@@ -41,6 +41,7 @@ export global FontAwesomeIcons {
     out property <string> keyboard: "\u{f11c}";
     out property <string> minus: "\u{f068}";
     out property <string> pen: "\u{f304}";
+    out property <string> rotate: "\u{f2f1}";
     out property <string> signal: "\u{f012}";
     out property <string> shield-halved: "\u{f3ed}";
     out property <string> square-full: "\u{f45c}";
@@ -54,6 +55,7 @@ export global FontAwesomeIcons {
 export component IconButton inherits Rectangle {
     in property <string> icon;
     in property <string> tooltip;
+    in property <bool> enabled: true;
     in property <bool> danger: false;
     in property <length> icon-size: 16px;
     in property <color> icon-color: #24272d;
@@ -69,6 +71,7 @@ export component IconButton inherits Rectangle {
                               : touch.has-hover ? (danger ? #f04438 : root.hover-background)
                                                 : root.normal-background;
     border-radius: 4px;
+    opacity: root.enabled ? 1 : 0.4;
 
     Text {
         text: root.icon;
@@ -90,6 +93,7 @@ export component IconButton inherits Rectangle {
     }
 
     touch := TouchArea {
+        enabled: root.enabled;
         clicked => { root.clicked(); }
     }
 

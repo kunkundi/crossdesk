@@ -3,6 +3,7 @@
 #include <remote_action.h>
 
 #include <SDL3/SDL.h>
+#include <openssl/rand.h>
 #include <slint.h>
 #include <tinyfiledialogs.h>
 
@@ -64,6 +65,28 @@ namespace crossdesk {
 namespace {
 
 using namespace std::chrono_literals;
+
+std::optional<std::string> GenerateRandomPassword(std::string_view current) {
+  constexpr std::string_view alphabet =
+      "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  constexpr auto unbiased_limit = 256 - 256 % alphabet.size();
+  std::string password;
+  do {
+    password.clear();
+    while (password.size() < 6) {
+      unsigned char value;
+      if (RAND_bytes(&value, sizeof(value)) != 1) {
+        return std::nullopt;
+      }
+      // Reject the incomplete bucket so every character is equally likely.
+      if (value < unbiased_limit) {
+        password.push_back(alphabet[value % alphabet.size()]);
+      }
+    }
+  } while (password == current ||
+           password.find_first_not_of("0123456789") == std::string::npos);
+  return password;
+}
 
 std::string CreatePasswordChangeRequestId(uint64_t sequence) {
   const auto timestamp = std::chrono::system_clock::now()
@@ -1294,78 +1317,17 @@ void GuiApplication::BindMainCallbacks() {
     ui_->main->set_password_visible(show_password_);
   });
   main->on_reset_password([this](slint::SharedString value) {
-    const std::string password(value);
-    if (password.size() != 6) {
-      return false;
-    }
-
-    if (!peer_ || !signal_connected_) {
-      offline_warning_text_ =
-          localization::signal_disconnected[localization_language_index_];
-      show_offline_warning_window_ = true;
-      return true;
-    }
-
-    std::string request_id;
-    {
-      std::lock_guard<std::mutex> lock(password_change_mutex_);
-      if (password_change_pending_) {
-        return true;
-      }
-      request_id =
-          CreatePasswordChangeRequestId(++next_password_change_request_id_);
-      password_change_pending_ = true;
-      password_change_result_ready_ = false;
-      password_change_succeeded_ = false;
-      password_change_result_uncertain_ = false;
-      password_change_requested_at_ = std::chrono::steady_clock::now();
-      pending_password_change_request_id_ = request_id;
-      pending_local_password_ = password;
-      password_change_error_.clear();
-    }
-
-    const bool self_hosted = config_center_->IsSelfHosted();
-    const std::string server_host =
-        self_hosted ? config_center_->GetSignalServerHost()
-                    : config_center_->GetDefaultServerHost();
-    const int server_port =
-        self_hosted ? config_center_->GetSignalServerPort()
-                    : config_center_->GetDefaultSignalServerPort();
-    const std::string pending_identity =
-        std::string(client_id_) + "@" + password;
-    if (!settings_.StagePendingPasswordChange(
-            pending_identity, self_hosted, server_host, server_port,
-            request_id)) {
-      std::lock_guard<std::mutex> lock(password_change_mutex_);
-      password_change_pending_ = false;
-      pending_password_change_request_id_.clear();
-      pending_local_password_.clear();
-      password_change_error_.clear();
+    return RequestPasswordChange(std::string(value));
+  });
+  main->on_refresh_password([this] {
+    const auto password = GenerateRandomPassword(password_saved_);
+    if (!password) {
+      LOG_ERROR("Could not generate a random password");
       offline_warning_text_ = localization::failed[localization_language_index_];
       show_offline_warning_window_ = true;
-      LOG_ERROR("Could not durably stage password change");
-      return true;
+      return;
     }
-
-    const nlohmann::json request = {{"type", "change_password"},
-                                    {"request_id", request_id},
-                                    {"new_password", password}};
-    const std::string message = request.dump();
-    if (SendSignalMessage(peer_, message.data(), message.size()) != 0) {
-      {
-        std::lock_guard<std::mutex> lock(password_change_mutex_);
-        password_change_pending_ = false;
-        pending_password_change_request_id_.clear();
-        pending_local_password_.clear();
-        offline_warning_text_ =
-            localization::signal_disconnected[localization_language_index_];
-        show_offline_warning_window_ = true;
-      }
-      if (!settings_.ClearPendingPasswordChange()) {
-        LOG_WARN("Could not clear unsent pending password change");
-      }
-    }
-    return true;
+    RequestPasswordChange(*password);
   });
   main->on_connect_requested(
       [this](slint::SharedString id) { ConnectFromUi(std::string(id)); });
@@ -2039,6 +2001,78 @@ void GuiApplication::ShareLocalCursorState() {
   }
 }
 
+bool GuiApplication::RequestPasswordChange(const std::string &password) {
+  if (password.size() != 6) {
+    return false;
+  }
+
+  if (!peer_ || !signal_connected_) {
+    offline_warning_text_ =
+        localization::signal_disconnected[localization_language_index_];
+    show_offline_warning_window_ = true;
+    return true;
+  }
+
+  std::string request_id;
+  {
+    std::lock_guard<std::mutex> lock(password_change_mutex_);
+    if (password_change_pending_) {
+      return true;
+    }
+    request_id =
+        CreatePasswordChangeRequestId(++next_password_change_request_id_);
+    password_change_pending_ = true;
+    password_change_result_ready_ = false;
+    password_change_succeeded_ = false;
+    password_change_result_uncertain_ = false;
+    password_change_requested_at_ = std::chrono::steady_clock::now();
+    pending_password_change_request_id_ = request_id;
+    pending_local_password_ = password;
+    password_change_error_.clear();
+  }
+
+  const bool self_hosted = config_center_->IsSelfHosted();
+  const std::string server_host =
+      self_hosted ? config_center_->GetSignalServerHost()
+                  : config_center_->GetDefaultServerHost();
+  const int server_port =
+      self_hosted ? config_center_->GetSignalServerPort()
+                  : config_center_->GetDefaultSignalServerPort();
+  const std::string pending_identity = std::string(client_id_) + "@" + password;
+  if (!settings_.StagePendingPasswordChange(
+          pending_identity, self_hosted, server_host, server_port, request_id)) {
+    std::lock_guard<std::mutex> lock(password_change_mutex_);
+    password_change_pending_ = false;
+    pending_password_change_request_id_.clear();
+    pending_local_password_.clear();
+    password_change_error_.clear();
+    offline_warning_text_ = localization::failed[localization_language_index_];
+    show_offline_warning_window_ = true;
+    LOG_ERROR("Could not durably stage password change");
+    return true;
+  }
+
+  const nlohmann::json request = {{"type", "change_password"},
+                                {"request_id", request_id},
+                                {"new_password", password}};
+  const std::string message = request.dump();
+  if (SendSignalMessage(peer_, message.data(), message.size()) != 0) {
+    {
+      std::lock_guard<std::mutex> lock(password_change_mutex_);
+      password_change_pending_ = false;
+      pending_password_change_request_id_.clear();
+      pending_local_password_.clear();
+      offline_warning_text_ =
+          localization::signal_disconnected[localization_language_index_];
+      show_offline_warning_window_ = true;
+    }
+    if (!settings_.ClearPendingPasswordChange()) {
+      LOG_WARN("Could not clear unsent pending password change");
+    }
+  }
+  return true;
+}
+
 void GuiApplication::HandlePasswordChangeResult() {
   bool succeeded = false;
   bool uncertain = false;
@@ -2188,6 +2222,10 @@ void GuiApplication::SyncMainWindow() {
   ui_->main->set_local_id(UiText(FormatPeerId(client_id_)));
   ui_->main->set_local_password(password_saved_);
   ui_->main->set_password_visible(show_password_);
+  {
+    std::lock_guard<std::mutex> lock(password_change_mutex_);
+    ui_->main->set_password_change_pending(password_change_pending_);
+  }
   ui_->main->set_signal_connected(signal_connected_);
   ui_->main->set_signal_tls_error(signal_status_ ==
                                   SignalStatus::SignalTlsCertError);

@@ -392,7 +392,7 @@ function setup_targets()
         -- version and use fmt's supported runtime-parser fallback here.
         add_defines("FMT_CONSTEVAL=")
         add_packages("slint", {public = true})
-        add_packages("libyuv", "tinyfiledialogs")
+        add_packages("libyuv", "tinyfiledialogs", "openssl3")
         add_rules("slint")
         if is_config("CROSSDESK_PORTABLE", true) then
             -- RuntimeState changes layout in portable builds. Consumers of GUI

@@ -24,6 +24,7 @@ export global UiStrings {
     in-out property <string> online: "Online";
     in-out property <string> offline: "Offline";
     in-out property <string> password: "Password";
+    in-out property <string> refresh-password: "Refresh random password";
     in-out property <string> copied: "Local ID copied to clipboard";
     in-out property <string> connect: "Connect";
     in-out property <string> settings: "Settings";
@@ -208,6 +209,7 @@ export component MainWindow inherits Window {
     in property <string> local-password: "";
     in-out property <string> remote-id-input: "";
     in property <bool> password-visible: true;
+    in property <bool> password-change-pending: false;
     in property <bool> signal-connected: false;
     in property <bool> signal-tls-error: false;
     in property <[RecentConnection]> recent-connections;
@@ -262,6 +264,7 @@ export component MainWindow inherits Window {
 
     callback copy-local-id;
     callback toggle-password-visibility;
+    callback refresh-password;
     callback reset-password(string) -> bool;
     callback format-remote-id(string) -> string;
     callback connect-requested(string);
@@ -676,19 +679,31 @@ export component MainWindow inherits Window {
                     IconButton {
                                 x: 174px;
                                 y: 133px;
-                                width: 29px;
+                                width: 24px;
                                 height: 30px;
                                 icon: root.password-visible ? FontAwesomeIcons.eye : FontAwesomeIcons.eye-slash;
                                 icon-size: 17px;
                                 clicked => { root.toggle-password-visibility(); }
                     }
                     IconButton {
-                                x: 214px;
+                                x: 198px;
                                 y: 133px;
-                                width: 29px;
+                                width: 24px;
+                                height: 30px;
+                                icon: FontAwesomeIcons.rotate;
+                                icon-size: 15px;
+                                tooltip: UiStrings.refresh-password;
+                                enabled: !root.password-change-pending;
+                                clicked => { root.refresh-password(); }
+                    }
+                    IconButton {
+                                x: 222px;
+                                y: 133px;
+                                width: 24px;
                                 height: 30px;
                                 icon: FontAwesomeIcons.pen;
                                 icon-size: 15px;
+                                enabled: !root.password-change-pending;
                                 clicked => { root.reset-password-open = true; }
                     }
             }

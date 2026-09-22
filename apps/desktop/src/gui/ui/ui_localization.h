@@ -36,6 +36,7 @@ inline int ApplyMainWindowStrings(
   strings.set_online(Text(localization::online[language]));
   strings.set_offline(Text(localization::offline[language]));
   strings.set_password(Text(localization::password[language]));
+  strings.set_refresh_password(Text(localization::refresh_password[language]));
   strings.set_copied(
       Text(localization::local_id_copied_to_clipboard[language]));
   strings.set_connect(Text(localization::connect[language]));

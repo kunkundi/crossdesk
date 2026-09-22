@@ -49,6 +49,7 @@ private:
   void BindServerCallbacks();
   void Tick();
   void ShareLocalCursorState();
+  bool RequestPasswordChange(const std::string &password);
   void HandlePasswordChangeResult();
   void HandleCredentialRecovery();
   void SyncMainWindow();
