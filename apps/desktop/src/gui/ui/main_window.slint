@@ -1325,7 +1325,14 @@ export component MainWindow inherits Window {
                     Timer {
                         interval: 1ms;
                         running: true;
-                        triggered => { connection-password-editor.focus(); }
+                        triggered => {
+                            self.running = false;
+                            connection-password-editor.focus();
+                            // Collapse the selection at the end of the restored
+                            // password, including text with multi-byte characters.
+                            connection-password-editor.select-all();
+                            connection-password-editor.clear-selection();
+                        }
                     }
                 }
 
