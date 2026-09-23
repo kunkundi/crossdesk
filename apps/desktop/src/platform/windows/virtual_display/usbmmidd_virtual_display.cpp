@@ -217,6 +217,22 @@ int CountUsbmmiddMonitors() {
   return count;
 }
 
+std::wstring FindUsbmmiddDisplayDeviceName() {
+  for (const auto& adapter : EnumerateUsbmmiddAdapters()) {
+    if (adapter.attached_to_desktop) return adapter.device_name;
+  }
+  return {};
+}
+
+bool IsUsbmmiddDisplayDevice(const std::wstring& device_name) {
+  for (const auto& adapter : EnumerateUsbmmiddAdapters()) {
+    if (adapter.attached_to_desktop &&
+        _wcsicmp(adapter.device_name.c_str(), device_name.c_str()) == 0)
+      return true;
+  }
+  return false;
+}
+
 bool IsUsbmmiddDriverInstalled() {
   const HDEVINFO device_info = SetupDiGetClassDevsW(
       &GUID_DEVCLASS_DISPLAY, nullptr, nullptr, DIGCF_PRESENT);

@@ -42,6 +42,9 @@ UsbmmiddStatus QueryUsbmmiddStatus();
 
 // Adapters attached to the desktop, i.e. monitors currently plugged in.
 int CountUsbmmiddMonitors();
+// GDI device name of an attached usbmmidd output, or empty while settling.
+std::wstring FindUsbmmiddDisplayDeviceName();
+bool IsUsbmmiddDisplayDevice(const std::wstring& device_name);
 // Root-enumerated device node present, plugged or not.
 bool IsUsbmmiddDriverInstalled();
 

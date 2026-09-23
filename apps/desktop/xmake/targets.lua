@@ -251,7 +251,7 @@ function setup_targets()
                 "apps/desktop/src/platform/windows/screen_capturer",
                 "apps/desktop/src/platform/windows/service",
                 "apps/desktop/src/platform/windows/virtual_display")
-            add_syslinks("Setupapi", {public = true})
+            add_syslinks("Setupapi", "RuntimeObject", {public = true})
         elseif is_os("macosx") then
             add_deps("privacy")
             add_mxxflags("-fobjc-arc")

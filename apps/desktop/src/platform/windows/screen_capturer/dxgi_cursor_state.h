@@ -13,6 +13,15 @@ namespace crossdesk {
 // coordinates or the wire protocol.
 class DxgiCursorState {
  public:
+  void BeginOutput(void* monitor, bool software_cursor) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    // usbmmidd can composite the cursor into the desktop without ever sending
+    // a separate pointer update. Preserve this output-specific default across
+    // privacy restoration; an explicit DXGI update can still override it.
+    software_cursor_monitor_ = software_cursor ? monitor : nullptr;
+    embedded_monitor_ = privacy_cursor_hidden_ ? nullptr : software_cursor_monitor_;
+  }
+
   void Update(int64_t last_mouse_update_time, bool separate_pointer_visible,
               void* monitor) {
     // PointerPosition is undefined on desktop-only updates. Retain the last
@@ -26,15 +35,16 @@ class DxgiCursorState {
   void Reset() {
     std::lock_guard<std::mutex> lock(mutex_);
     embedded_monitor_ = nullptr;
+    software_cursor_monitor_ = nullptr;
   }
 
   void SetPrivacyCursorHidden(bool hidden) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (privacy_cursor_hidden_ == hidden) return;
     privacy_cursor_hidden_ = hidden;
-    // Pointer updates from before/during suppression cannot describe whether
-    // the restored cursor is embedded. Wait for a fresh DXGI pointer update.
-    embedded_monitor_ = nullptr;
+    // Discard stale pointer-plane updates, then restore the output's default.
+    // A software-cursor IDD may never send a fresh pointer-plane update.
+    embedded_monitor_ = hidden ? nullptr : software_cursor_monitor_;
   }
 
   bool ShouldDrawCursor(bool system_cursor_visible, void* cursor_monitor) const {
@@ -53,6 +63,7 @@ class DxgiCursorState {
  private:
   mutable std::mutex mutex_;
   void* embedded_monitor_ = nullptr;
+  void* software_cursor_monitor_ = nullptr;
   bool privacy_cursor_hidden_ = false;
 };
 

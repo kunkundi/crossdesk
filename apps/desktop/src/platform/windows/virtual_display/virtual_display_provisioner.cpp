@@ -190,7 +190,10 @@ bool VirtualDisplayProvisioner::Acquire(VirtualDisplayMode mode,
   std::string local_error;
   if (error == nullptr) error = &local_error;
   if (active_.load(std::memory_order_relaxed)) return true;
-  cancel_.store(false, std::memory_order_relaxed);
+  if (Cancelled()) {
+    *error = "cancelled";
+    return false;
+  }
 
   bool helper_reachable = false;
   const ULONGLONG started = GetTickCount64();

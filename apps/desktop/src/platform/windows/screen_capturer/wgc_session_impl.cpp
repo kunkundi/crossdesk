@@ -188,6 +188,8 @@ int WgcSessionImpl::StartCaptureLocked(bool show_cursor) {
     }
 
     capture_session_.IsCursorCaptureEnabled(show_cursor);
+    LOG_INFO("WGC: session {} cursor capture enabled={}", id_,
+             capture_session_.IsCursorCaptureEnabled());
     capture_session_.StartCapture();
     is_running_ = true;
     return 0;

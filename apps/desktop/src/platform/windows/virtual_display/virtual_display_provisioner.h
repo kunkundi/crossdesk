@@ -29,6 +29,9 @@ class VirtualDisplayProvisioner {
       delete;
 
   bool Acquire(VirtualDisplayMode mode, std::string* error);
+  // Owner calls this before launching an Acquire worker. Clearing cancellation
+  // inside the worker would lose a Stop() racing with thread startup.
+  void PrepareAcquire() { cancel_.store(false, std::memory_order_relaxed); }
   void Release();
   bool active() const { return active_.load(std::memory_order_relaxed); }
   // True when Release() has something to undo. Read on the owner's thread
@@ -37,7 +40,7 @@ class VirtualDisplayProvisioner {
     return active() || pending_helper_release_ || plugged_locally_ > 0;
   }
   // Makes a blocking Acquire() return early with "cancelled" at its next poll
-  // (helper install/plug can take up to two minutes). Cleared by Acquire().
+  // (helper install/plug can take up to two minutes).
   void RequestCancel() { cancel_.store(true, std::memory_order_relaxed); }
 
  private:

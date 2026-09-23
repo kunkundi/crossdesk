@@ -14,6 +14,7 @@
 #include "libyuv.h"
 #include "rd_log.h"
 #include "windows_thread_dpi.h"
+#include "../virtual_display/usbmmidd_virtual_display.h"
 
 namespace crossdesk {
 
@@ -285,6 +286,13 @@ bool ScreenCapturerDxgi::CreateDuplicationForMonitor(int monitor_index) {
   rotation_ = desc.Rotation;
   DXGI_ADAPTER_DESC adapter_desc{};
   output_adapter->GetDesc(&adapter_desc);
+  DXGI_OUTPUT_DESC output_desc{};
+  software_cursor_output_ =
+      SUCCEEDED(outputs_[monitor_index]->GetDesc(&output_desc)) &&
+      IsUsbmmiddDisplayDevice(output_desc.DeviceName);
+  SharedDxgiCursorState().BeginOutput(
+      display_info_list_[monitor_index].handle, software_cursor_output_);
+  last_logged_cursor_embedding_ = -1;
   LOG_INFO("DXGI: duplication ready, monitor={}, rotation={}, adapter='{}'",
            monitor_index, static_cast<int>(rotation_),
            WideToUtf8(adapter_desc.Description));
@@ -535,6 +543,21 @@ void ScreenCapturerDxgi::CaptureLoop() {
 
     const std::string stream_id = MakeDisplayStreamId(frame_monitor);
     cached_generation = duplication_generation_;
+    if (converted && frame_monitor == monitor_index_.load() && callback_) {
+      if (last_logged_cursor_embedding_ < 0 ||
+          (software_cursor_output_ &&
+           last_logged_cursor_embedding_ != static_cast<int>(cursor_embedded))) {
+        LOG_INFO("DXGI cursor: monitor={} usbmmidd={} mouse_update={} "
+                 "separate_pointer_visible={} pointer_shape_bytes={} "
+                 "compose_cursor={} embedded={}",
+                 frame_monitor, software_cursor_output_,
+                 frame_info.LastMouseUpdateTime.QuadPart,
+                 frame_info.PointerPosition.Visible != FALSE,
+                 frame_info.PointerShapeBufferSize,
+                 show_cursor_.load(std::memory_order_relaxed), cursor_embedded);
+        last_logged_cursor_embedding_ = static_cast<int>(cursor_embedded);
+      }
+    }
     duplication_->ReleaseFrame();
     capture_lock.unlock();
 

@@ -25,6 +25,7 @@
 #include "privacy_controller.h"
 // Relative: platform include directories stay private to the capture target.
 #include "../virtual_display/virtual_display_provisioner.h"
+#include "headless_recovery.h"
 
 namespace crossdesk {
 
@@ -90,6 +91,10 @@ class ScreenCapturerWin : public ScreenCapturer {
   std::atomic<bool> native_output_error_logged_{false};
   std::atomic<bool> running_{false};
   std::atomic<ULONGLONG> last_capture_progress_tick_{0};
+  std::atomic<bool> display_probe_requested_{false};
+  ULONGLONG last_display_probe_tick_ = 0;
+  ULONGLONG last_capture_retry_tick_ = 0;
+  HeadlessRecovery headless_recovery_;
   std::atomic<bool> paused_{false};
   std::atomic<bool> show_cursor_{true};
   bool applied_show_cursor_ = true;
@@ -103,6 +108,12 @@ class ScreenCapturerWin : public ScreenCapturer {
   VirtualDisplayProvisioner virtual_display_;
   std::thread virtual_display_thread_;
   std::atomic<bool> virtual_display_ready_{false};
+  std::atomic<bool> virtual_display_busy_{false};
+  ULONGLONG last_virtual_adoption_tick_ = 0;
+  // Protected by alias_mutex_. A session-created display replaces the active
+  // wire slot explicitly, even if Windows retains the old phantom output.
+  std::string virtual_display_name_;
+  int virtual_display_slot_ = -1;
   std::atomic<int> monitor_index_{0};
   std::atomic<bool> secure_desktop_capture_active_{false};
   std::atomic<bool> post_secure_desktop_waiting_for_frame_{false};
@@ -130,10 +141,12 @@ class ScreenCapturerWin : public ScreenCapturer {
   void RestoreMonitor(int monitor_index);
   // Backends in preference order for the current desktop; each factory is
   // invoked lazily so an unused WGC plugin is never loaded.
-  std::vector<BackendFactory> PreferredBackends(bool headless) const;
+  std::vector<BackendFactory> PreferredBackends(bool headless,
+                                               bool usbmmidd = false) const;
   bool TryStartBackend(std::unique_ptr<ScreenCapturer> candidate,
                        int monitor_index);
-  bool StartPreferredBackend(bool headless, int monitor_index);
+  bool StartPreferredBackend(bool headless, int monitor_index,
+                              bool usbmmidd = false);
   void ResetPostSecureDesktopState();
   // Common tail of every successful Start(): publish running state and
   // launch the management thread.
@@ -145,6 +158,7 @@ class ScreenCapturerWin : public ScreenCapturer {
   void StopSecureCaptureThread();
   bool RestartCaptureBackendAfterSecureDesktop();
   void CheckCaptureProgress(ULONGLONG now);
+  void CheckDisplayPresence(ULONGLONG now);
   // Virtual display provisioning runs off the caller's thread.
   void JoinVirtualDisplayThread();
   void BeginVirtualDisplayProvisioning();
