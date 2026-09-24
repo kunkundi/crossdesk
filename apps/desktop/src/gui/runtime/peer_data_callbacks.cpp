@@ -146,6 +146,47 @@ void PeerEventHandler::OnReceiveDataBuffer(
   }
 
   std::string remote_id(user_id, user_id_size);
+  if (remote_action.type == ControlType::video_settings_status) {
+    if (auto props = runtime->FindRemoteSession(remote_id)) {
+      if (source_id != props->control_data_label_) return;
+      std::lock_guard lock(props->video_settings_mutex_);
+      if (!props->video_settings_supported_) return;
+      if (remote_action.vs.accepted &&
+          static_cast<int32_t>(remote_action.vs.request_id -
+                               props->applied_video_settings_.request_id) >= 0) {
+        props->applied_video_settings_ = remote_action.vs;
+      }
+      if (remote_action.vs.request_id != props->video_settings_.request_id) return;
+      props->video_settings_pending_ = false;
+      props->video_settings_failed_ = !remote_action.vs.accepted;
+      if (remote_action.vs.accepted) {
+        props->video_settings_ = remote_action.vs;
+        props->applied_video_settings_ = remote_action.vs;
+      } else {
+        const auto request_id = props->video_settings_.request_id;
+        props->video_settings_ = props->applied_video_settings_;
+        props->video_settings_.request_id = request_id;
+      }
+    }
+    return;
+  }
+  if (remote_action.type == ControlType::video_settings) {
+    if (source_id != runtime->control_data_label_ ||
+        !runtime->IsAuthorizedController(remote_id))
+      return;
+    const auto& settings = remote_action.vs;
+    remote_action.vs.accepted =
+        UpdateVideoSettings(
+            runtime->peer_, remote_id.data(), remote_id.size(),
+            static_cast<VideoQuality>(settings.quality), settings.frame_rate,
+            static_cast<VideoDegradationPreference>(settings.preference)) == 0;
+    remote_action.type = ControlType::video_settings_status;
+    const auto message = remote_action.to_json();
+    SendReliableDataFrameToPeer(runtime->peer_, message.data(), message.size(),
+                                runtime->control_data_label_.c_str(),
+                                remote_id.data(), remote_id.size());
+    return;
+  }
   if (remote_action.type == ControlType::privacy_status) {
     if (auto props = runtime->FindRemoteSession(remote_id)) {
       if (source_id != props->control_data_label_) return;
@@ -274,6 +315,25 @@ void PeerEventHandler::OnReceiveDataBuffer(
     }
 
     if (is_client_mode) {
+      // Negotiate live settings only on the reliable control stream. Old
+      // hosts omit this capability and retain their existing video behavior.
+      if (props && source_id == props->control_data_label_) {
+        std::lock_guard lock(props->video_settings_mutex_);
+        const bool first_advertisement = !props->video_settings_supported_;
+        props->video_settings_supported_ =
+            remote_action.i.supports_video_settings;
+        if (first_advertisement && props->video_settings_supported_) {
+          RemoteAction settings{};
+          settings.type = ControlType::video_settings;
+          ++props->video_settings_.request_id;
+          props->video_settings_pending_ = true;
+          props->video_settings_request_tick_ = SDL_GetTicks();
+          settings.vs = props->video_settings_;
+          const auto message = settings.to_json();
+          SendReliableDataFrame(props->peer_, message.data(), message.size(),
+                                props->control_data_label_.c_str());
+        }
+      }
       // client mode
       if (props && props->remote_host_name_.empty()) {
         props->remote_host_name_ = std::string(remote_action.i.host_name,

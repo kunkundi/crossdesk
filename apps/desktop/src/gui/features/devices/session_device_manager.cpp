@@ -142,10 +142,10 @@ int SessionDeviceManager::InitializeScreenCapturer() {
   capture_secure_callbacks_ = 0;
   capture_send_errors_ = 0;
   capture_max_gap_us_ = capture_send_us_ = capture_max_send_us_ = 0;
-  const int fps = owner_.config_center_->GetVideoFrameRate() ==
-                          ConfigCenter::VIDEO_FRAME_RATE::FPS_30
-                      ? 30
-                      : 60;
+  // Keep the shared source ready for either live rate. MiniRTC admits 30/60
+  // frames independently per viewer, so switching never restarts native
+  // capture.
+  const int fps = 60;
   LOG_INFO("Init screen capturer with {} fps", fps);
   SetDisplayInfoList({});
   registered_display_stream_count_ = 0;

@@ -58,8 +58,9 @@ private:
   struct CacheV1 {
     char client_id_with_password[17];
     int language;
-    int video_quality;
-    int video_frame_rate;
+    // Reserved legacy slots: retain the on-disk cache layout.
+    int legacy_video_quality;
+    int legacy_video_frame_rate;
     int video_encode_format;
     bool enable_hardware_video_codec;
     bool enable_turn;
@@ -71,8 +72,9 @@ private:
   struct CacheV2 {
     char client_id_with_password[17];
     int language;
-    int video_quality;
-    int video_frame_rate;
+    // Reserved legacy slots: retain the on-disk cache layout.
+    int legacy_video_quality;
+    int legacy_video_frame_rate;
     int video_encode_format;
     bool enable_hardware_video_codec;
     bool enable_turn;

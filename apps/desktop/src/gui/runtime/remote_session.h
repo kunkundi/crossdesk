@@ -119,6 +119,14 @@ struct RemoteSession {
   bool tab_opened_ = true;
   std::string remote_host_name_;
   bool remote_service_status_received_ = false;
+  std::mutex video_settings_mutex_;
+  // Requested and confirmed settings for this remote session only.
+  VideoSettings video_settings_{2, 60, 1};
+  bool video_settings_supported_ = false;
+  VideoSettings applied_video_settings_{2, 60, 1, 0, false};
+  bool video_settings_pending_ = false;
+  bool video_settings_failed_ = false;
+  uint64_t video_settings_request_tick_ = 0;
   std::mutex privacy_status_mutex_;
   PrivacyStatus privacy_status_{};
   bool privacy_status_received_ = false;

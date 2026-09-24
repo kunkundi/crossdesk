@@ -38,14 +38,8 @@ export global UiStrings {
     in-out property <string> delete-connection: "Delete connection";
     in-out property <string> confirm-delete: "Delete this recent connection?";
     in-out property <string> language: "Language";
-    in-out property <string> video-quality: "Video quality";
-    in-out property <string> frame-rate: "Frame rate";
     in-out property <string> capture-method: "Capture method";
     in-out property <string> capture-method-auto: "Auto";
-    in-out property <string> adaptation-policy: "Video preference";
-    in-out property <string> priority-frame-rate: "Frame rate";
-    in-out property <string> priority-quality: "Quality";
-    in-out property <string> priority-balanced: "Balanced";
     in-out property <string> codec: "Video codec";
     in-out property <string> hardware-codec: "Hardware video codec";
     in-out property <string> turn-relay: "TURN relay";
@@ -84,9 +78,6 @@ export global UiStrings {
     in-out property <string> do-not-remind: "Do not remind again";
     in-out property <string> notification: "Notification";
     in-out property <string> service-suppressed-message: "You will not be reminded again. You can install the service later in Settings.";
-    in-out property <string> quality-low: "Low";
-    in-out property <string> quality-medium: "Medium";
-    in-out property <string> quality-high: "High";
     in-out property <string> codec-h264: "H.264";
     in-out property <string> codec-av1: "AV1";
     in-out property <string> self-hosted-settings: "Self-hosted server settings";
@@ -292,11 +283,8 @@ export component MainWindow inherits Window {
     in-out property <bool> portable-service-do-not-remind: false;
 
     in-out property <int> language-index: 0;
-    in-out property <int> video-quality-index: 2;
-    in-out property <int> frame-rate-index: 1;
     in property <bool> capture-method-visible: false;
     in-out property <int> capture-method-index: 0;
-    in-out property <int> adaptation-policy-index: 1;
     in-out property <int> codec-index: 0;
     in-out property <bool> hardware-codec-enabled: true;
     in-out property <bool> turn-enabled: true;
@@ -1492,21 +1480,6 @@ export component MainWindow inherits Window {
                         height: 30px;
                         Text { x: 8px; y: 3px; width: root.compact-language ? 94px : 162px; height: 24px; text: UiStrings.capture-method; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
                         CompactComboBox { x: root.compact-language ? 106px : 174px; y: 2px; enabled: !root.settings-session-active; model: [UiStrings.capture-method-auto, "DXGI", "WGC", "GDI"]; current-index <=> root.capture-method-index; }
-                    }
-                    Rectangle {
-                        height: 30px;
-                        Text { x: 8px; y: 3px; width: root.compact-language ? 94px : 162px; height: 24px; text: UiStrings.video-quality; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
-                        CompactComboBox { x: root.compact-language ? 106px : 174px; y: 2px; enabled: !root.settings-session-active; model: [UiStrings.quality-low, UiStrings.quality-medium, UiStrings.quality-high]; current-index <=> root.video-quality-index; }
-                    }
-                    Rectangle {
-                        height: 30px;
-                        Text { x: 8px; y: 3px; width: root.compact-language ? 94px : 162px; height: 24px; text: UiStrings.frame-rate; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
-                        CompactComboBox { x: root.compact-language ? 106px : 174px; y: 2px; enabled: !root.settings-session-active; model: ["30 fps", "60 fps"]; current-index <=> root.frame-rate-index; }
-                    }
-                    Rectangle {
-                        height: 30px;
-                        Text { x: 8px; y: 3px; width: root.compact-language ? 94px : 162px; height: 24px; text: UiStrings.adaptation-policy; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
-                        CompactComboBox { x: root.compact-language ? 91px : 160px; y: 2px; width: root.compact-language ? 88px : 87px; enabled: !root.settings-session-active; model: [UiStrings.priority-frame-rate, UiStrings.priority-quality, UiStrings.priority-balanced]; current-index <=> root.adaptation-policy-index; }
                     }
                     Rectangle {
                         height: 30px;

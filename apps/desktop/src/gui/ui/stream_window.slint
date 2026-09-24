@@ -23,6 +23,18 @@ export struct NetworkStatsRow {
 }
 
 export global StreamStrings {
+    in-out property <string> video-settings: "Video settings";
+    in-out property <string> video-settings-unavailable: "The remote device does not support live video settings";
+    in-out property <string> video-quality: "Video quality";
+    in-out property <string> frame-rate: "Capture frame rate";
+    in-out property <string> adaptation-policy: "Video preference";
+    in-out property <string> quality-low: "Low";
+    in-out property <string> quality-medium: "Medium";
+    in-out property <string> quality-high: "High";
+    in-out property <string> priority-frame-rate: "Frame rate";
+    in-out property <string> priority-quality: "Quality";
+    in-out property <string> priority-balanced: "Balanced";
+
     in-out property <string> select-display: "Select Display";
     in-out property <string> send-shortcut: "Send Shortcut";
     in-out property <string> privacy-enable: "Enable privacy screen";
@@ -128,6 +140,35 @@ component ControlBarButton inherits Rectangle {
     }
 }
 
+component VideoSettingRow inherits VerticalLayout {
+    in property <string> label;
+    in property <[string]> options;
+    in property <int> selected;
+    in property <bool> enabled;
+    callback choose(int);
+    callback pressed;
+    spacing: 4px;
+    Text { text: root.label; color: #5c626c; font-size: 11px; height: 18px; }
+    HorizontalLayout {
+        spacing: 4px;
+        for option[index] in root.options: Rectangle {
+            height: 27px;
+            background: !root.enabled ? #f1f1f1 : root.selected == index ? #d7eaff
+                : option-touch.has-hover ? #eaf3ff : #f5f6f8;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: root.enabled && root.selected == index ? #4296fa : #dce0e6;
+            Text { text: option; color: root.enabled ? #30343b : #8b8f95;
+                font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+            option-touch := TouchArea {
+                pointer-event(event) => { if event.kind == PointerEventKind.down { root.pressed(); } }
+                clicked => { if root.enabled { root.choose(index); } }
+                scroll-event(event) => { accept }
+            }
+        }
+    }
+}
+
 export component StreamWindow inherits Window {
     title: "CrossDesk";
     icon: @image-url("../../../resources/linux/crossdesk_256x256.png");
@@ -168,6 +209,12 @@ export component StreamWindow inherits Window {
     in property <bool> remote-cursor-active: false;
     in property <int> remote-cursor-shape: 0;
     in property <bool> audio-enabled: true;
+    in property <bool> video-settings-enabled: false;
+    in property <string> video-settings-feedback: "";
+    in-out property <int> video-quality-index: 2;
+    in-out property <int> frame-rate-index: 1;
+    in-out property <int> adaptation-policy-index: 1;
+    callback change-video-settings(int, int, int);
     in property <bool> fullscreen-enabled: false;
     in property <bool> stats-visible: false;
     in property <[NetworkStatsRow]> stats-rows;
@@ -213,16 +260,26 @@ export component StreamWindow inherits Window {
     private property <bool> display-menu-animation-enabled: false;
     private property <float> display-menu-progress: 0.0;
     private property <bool> shortcut-menu-open: false;
+    in-out property <bool> video-menu-open: false;
+    private property <length> video-menu-width: min(320px, video.width - 8px);
+    private property <length> video-menu-height: root.video-settings-enabled && root.video-settings-feedback == "" ? 182px : 220px;
+    private property <length> video-menu-x: min(max(4px, control.x + video-button.x), video.width - root.video-menu-width - 4px);
+    private property <length> video-menu-y: control.y + root.control-toolbar-height + root.video-menu-height <= video.height
+        ? control.y + root.control-toolbar-height - 1px : max(0px, control.y - root.video-menu-height);
+    changed selected-tab => { root.video-menu-open = false; }
+    changed control-expanded => { if !root.control-expanded { root.video-menu-open = false; } }
+    changed window-active => { if !root.window-active { root.video-menu-open = false; } }
     private property <bool> control-tooltip-visible: false;
     private property <ControlBarTooltip> hovered-control: {
         if root.window-active && !root.control-dragging
-            && !root.display-menu-open && !root.shortcut-menu-open {
+            && !root.display-menu-open && !root.shortcut-menu-open && !root.video-menu-open {
             if collapse-button.has-hover { return collapse-button.tooltip-info; }
             if root.control-expanded {
                 if display-button.has-hover { return display-button.tooltip-info; }
                 if shortcut-button.has-hover { return shortcut-button.tooltip-info; }
                 if mouse-button.has-hover { return mouse-button.tooltip-info; }
                 if privacy-button.has-hover { return privacy-button.tooltip-info; }
+                if video-button.has-hover { return video-button.tooltip-info; }
                 if audio-button.has-hover { return audio-button.tooltip-info; }
                 if file-button.has-hover { return file-button.tooltip-info; }
                 if stats-button.has-hover { return stats-button.tooltip-info; }
@@ -305,7 +362,10 @@ export component StreamWindow inherits Window {
             && pointer-x <= shortcut-menu-x + 180px
             && pointer-y >= shortcut-menu-y
             && pointer-y <= shortcut-menu-y + 68px;
-        return over-control || over-display-menu || over-shortcut-menu;
+        let over-video-menu = root.video-menu-open
+            && pointer-x >= root.video-menu-x && pointer-x <= root.video-menu-x + root.video-menu-width
+            && pointer-y >= root.video-menu-y && pointer-y <= root.video-menu-y + root.video-menu-height;
+        return over-control || over-display-menu || over-shortcut-menu || over-video-menu;
     }
 
     begin-control-drag(press-x, press-y) => {
@@ -324,6 +384,7 @@ export component StreamWindow inherits Window {
         root.display-menu-progress = 0.0;
         root.display-menu-open = false;
         root.shortcut-menu-open = false;
+        root.video-menu-open = false;
         root.control-dragging = true;
     }
     move-control-drag(pointer-x, pointer-y) => {
@@ -697,7 +758,7 @@ export component StreamWindow inherits Window {
             control := Rectangle {
                 x: root.control-dragging ? root.control-drag-x : root.control-docked-left ? 0px : parent.width - self.width;
                 y: min(max(0px, root.control-pos-y), parent.height - self.height);
-                width: root.control-expanded ? min(76px + 8 * root.control-button-step, parent.width) : 20px;
+                width: root.control-expanded ? min(76px + 9 * root.control-button-step, parent.width) : 20px;
                 height: root.stats-visible && root.control-expanded
                     ? min(root.control-toolbar-height + root.stats-content-height + 8px, parent.height)
                     : root.control-toolbar-height;
@@ -729,6 +790,7 @@ export component StreamWindow inherits Window {
                         root.display-menu-progress = 0.0;
                         root.display-menu-open = !root.display-menu-open;
                         root.shortcut-menu-open = false;
+                        root.video-menu-open = false;
                         if root.display-menu-open {
                             display-menu-open-timer.running = true;
                         }
@@ -744,6 +806,7 @@ export component StreamWindow inherits Window {
                         root.display-menu-progress = 0.0;
                         root.shortcut-menu-open = !root.shortcut-menu-open;
                         root.display-menu-open = false;
+                        root.video-menu-open = false;
                     }
                 }
                 mouse-button := ControlBarButton {
@@ -766,23 +829,34 @@ export component StreamWindow inherits Window {
                     icon: FontAwesomeIcons.folder-open; tooltip: StreamStrings.select-file;
                     clicked => { root.select-file(); }
                 }
-                stats-button := ControlBarButton {
+                video-button := ControlBarButton {
                     visible: root.control-expanded;
                     x: (root.control-docked-left ? 9px : 42px) + 6 * root.control-button-step; y: 7px;
+                    icon: "\u{f1de}"; selected: root.video-menu-open;
+                    tooltip: StreamStrings.video-settings;
+                    clicked => {
+                        root.video-menu-open = !root.video-menu-open;
+                        root.display-menu-open = false;
+                        root.shortcut-menu-open = false;
+                    }
+                }
+                stats-button := ControlBarButton {
+                    visible: root.control-expanded;
+                    x: (root.control-docked-left ? 9px : 42px) + 7 * root.control-button-step; y: 7px;
                     icon: FontAwesomeIcons.signal; selected: root.stats-visible;
                     tooltip: root.stats-visible ? StreamStrings.hide-stats : StreamStrings.show-stats;
                     clicked => { root.toggle-stats(); }
                 }
                 fullscreen-button := ControlBarButton {
                     visible: root.control-expanded;
-                    x: (root.control-docked-left ? 9px : 42px) + 7 * root.control-button-step; y: 7px;
+                    x: (root.control-docked-left ? 9px : 42px) + 8 * root.control-button-step; y: 7px;
                     icon: root.fullscreen-enabled ? FontAwesomeIcons.compress : FontAwesomeIcons.expand;
                     tooltip: root.fullscreen-enabled ? StreamStrings.exit-fullscreen : StreamStrings.fullscreen;
                     clicked => { root.toggle-fullscreen(); }
                 }
                 close-button := ControlBarButton {
                     visible: root.control-expanded;
-                    x: (root.control-docked-left ? 9px : 42px) + 8 * root.control-button-step; y: 7px;
+                    x: (root.control-docked-left ? 9px : 42px) + 9 * root.control-button-step; y: 7px;
                     icon: FontAwesomeIcons.xmark; tooltip: StreamStrings.disconnect;
                     clicked => { root.disconnect(); }
                 }
@@ -1006,6 +1080,59 @@ export component StreamWindow inherits Window {
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
+                    }
+                }
+            }
+
+            // While the menu is open, outside gestures dismiss it locally.
+            // Keep the backdrop through pointer-up; otherwise Slint's implicit
+            // pointer move or release can reach the remote input surface.
+            if root.video-menu-open: Rectangle {
+                width: parent.width; height: parent.height; z: 9;
+                TouchArea {
+                    pointer-event(event) => {
+                        if event.kind == PointerEventKind.down {
+                            root.suppress-next-remote-pointer-release = true;
+                        }
+                    }
+                    clicked => { root.video-menu-open = false; }
+                    scroll-event(event) => { accept }
+                }
+            }
+            if root.video-menu-open: Rectangle {
+                x: root.video-menu-x; y: root.video-menu-y;
+                width: root.video-menu-width; height: root.video-menu-height;
+                background: white; border-width: 1px; border-color: ImGuiLineStyle.border;
+                border-radius: 5px; z: 11;
+                TouchArea {
+                    pointer-event(event) => { if event.kind == PointerEventKind.down { root.suppress-next-remote-pointer-release = true; } }
+                    scroll-event(event) => { accept }
+                }
+                VerticalLayout {
+                    padding: 10px; spacing: 8px;
+                    VideoSettingRow {
+                        label: StreamStrings.video-quality;
+                        options: [StreamStrings.quality-low, StreamStrings.quality-medium, StreamStrings.quality-high];
+                        selected: root.video-quality-index; enabled: root.video-settings-enabled;
+                        pressed => { root.suppress-next-remote-pointer-release = true; }
+                        choose(index) => { root.change-video-settings(index, root.frame-rate-index, root.adaptation-policy-index); }
+                    }
+                    VideoSettingRow {
+                        label: StreamStrings.frame-rate; options: ["30 fps", "60 fps"];
+                        selected: root.frame-rate-index; enabled: root.video-settings-enabled;
+                        pressed => { root.suppress-next-remote-pointer-release = true; }
+                        choose(index) => { root.change-video-settings(root.video-quality-index, index, root.adaptation-policy-index); }
+                    }
+                    VideoSettingRow {
+                        label: StreamStrings.adaptation-policy;
+                        options: [StreamStrings.priority-frame-rate, StreamStrings.priority-quality, StreamStrings.priority-balanced];
+                        selected: root.adaptation-policy-index; enabled: root.video-settings-enabled;
+                        pressed => { root.suppress-next-remote-pointer-release = true; }
+                        choose(index) => { root.change-video-settings(root.video-quality-index, root.frame-rate-index, index); }
+                    }
+                    if !root.video-settings-enabled || root.video-settings-feedback != "": Text {
+                        text: root.video-settings-enabled ? root.video-settings-feedback : StreamStrings.video-settings-unavailable; wrap: word-wrap;
+                        color: #8b8f95; font-size: 11px;
                     }
                 }
             }

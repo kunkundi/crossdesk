@@ -29,6 +29,8 @@ enum ControlType {
   cursor_state = 8,
   privacy_command = 9,
   privacy_status = 10,
+  video_settings = 11,
+  video_settings_status = 12,
 };
 
 enum MouseFlag {
@@ -125,6 +127,7 @@ struct HostInfo {
   int* bottom;
   // Optional capability; absent in legacy desktop and web host information.
   bool supports_privacy_screen;
+  bool supports_video_settings;
 };
 
 struct ServiceStatus {
@@ -153,6 +156,20 @@ struct PrivacyStatus {
   char reason[256];
 };
 
+struct VideoSettings {
+  int quality;     // 0: low, 1: medium, 2: high
+  int frame_rate;  // 30 or 60
+  int preference;  // 0: frame rate, 1: quality, 2: balanced
+  uint32_t request_id;
+  bool accepted;  // Only meaningful in video_settings_status.
+};
+
+inline bool ValidVideoSettings(const VideoSettings& settings) {
+  return settings.quality >= 0 && settings.quality <= 2 &&
+         (settings.frame_rate == 30 || settings.frame_rate == 60) &&
+         settings.preference >= 0 && settings.preference <= 2;
+}
+
 struct RemoteAction {
   ControlType type = ControlType::invalid;
   union {
@@ -167,6 +184,7 @@ struct RemoteAction {
     ServiceCommand c;
     PrivacyCommand pc;
     PrivacyStatus ps;
+    VideoSettings vs;
   };
 
   std::string to_json() const;

@@ -53,19 +53,9 @@ inline int ApplyMainWindowStrings(
   strings.set_confirm_delete(
       Text(localization::confirm_delete_connection[language]));
   strings.set_language(Text(localization::language[language]));
-  strings.set_video_quality(Text(localization::video_quality[language]));
-  strings.set_frame_rate(Text(localization::video_frame_rate[language]));
   strings.set_capture_method(Text(localization::screen_capture_method[language]));
   strings.set_capture_method_auto(
       Text(localization::screen_capture_method_auto[language]));
-  strings.set_adaptation_policy(
-      Text(localization::video_adaptation_policy[language]));
-  strings.set_priority_frame_rate(
-      Text(localization::video_priority_frame_rate[language]));
-  strings.set_priority_quality(
-      Text(localization::video_priority_quality[language]));
-  strings.set_priority_balanced(
-      Text(localization::video_priority_balanced[language]));
   strings.set_codec(Text(localization::video_encode_format[language]));
   strings.set_hardware_codec(
       Text(localization::enable_hardware_video_codec[language]));
@@ -121,10 +111,6 @@ inline int ApplyMainWindowStrings(
   strings.set_notification(Text(localization::notification[language]));
   strings.set_service_suppressed_message(
       Text(localization::windows_service_prompt_suppressed_message[language]));
-  strings.set_quality_low(Text(localization::video_quality_low[language]));
-  strings.set_quality_medium(
-      Text(localization::video_quality_medium[language]));
-  strings.set_quality_high(Text(localization::video_quality_high[language]));
   strings.set_codec_h264(Text(localization::h264[language]));
   strings.set_codec_av1(Text(localization::av1[language]));
   strings.set_self_hosted_settings(
@@ -147,6 +133,23 @@ inline int ApplyStreamWindowStrings(
   strings.set_privacy_disable(Text(localization::privacy_disable[language]));
   strings.set_control_mouse(Text(localization::control_mouse[language]));
   strings.set_release_mouse(Text(localization::release_mouse[language]));
+  strings.set_video_settings(Text(localization::video_settings[language]));
+  strings.set_video_settings_unavailable(
+      Text(localization::video_settings_unavailable[language]));
+  strings.set_video_quality(Text(localization::video_quality[language]));
+  strings.set_frame_rate(Text(localization::video_frame_rate[language]));
+  strings.set_adaptation_policy(
+      Text(localization::video_adaptation_policy[language]));
+  strings.set_quality_low(Text(localization::video_quality_low[language]));
+  strings.set_quality_medium(
+      Text(localization::video_quality_medium[language]));
+  strings.set_quality_high(Text(localization::video_quality_high[language]));
+  strings.set_priority_frame_rate(
+      Text(localization::video_priority_frame_rate[language]));
+  strings.set_priority_quality(
+      Text(localization::video_priority_quality[language]));
+  strings.set_priority_balanced(
+      Text(localization::video_priority_balanced[language]));
   strings.set_audio(Text(localization::audio_capture[language]));
   strings.set_mute(Text(localization::mute[language]));
   strings.set_select_file(Text(localization::select_file[language]));

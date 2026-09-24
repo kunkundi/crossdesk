@@ -12,12 +12,6 @@ bool IsValidTurnModeValue(long value) {
          value <= static_cast<long>(ConfigCenter::TURN_MODE::FORCE_TCP);
 }
 
-bool IsValidVideoAdaptationPolicyValue(long value) {
-  using Policy = ConfigCenter::VIDEO_ADAPTATION_POLICY;
-  return value >= static_cast<long>(Policy::FRAME_RATE_PRIORITY) &&
-         value <= static_cast<long>(Policy::BALANCED);
-}
-
 }  // namespace
 
 ConfigCenter::ConfigCenter(const std::string& config_path)
@@ -36,6 +30,11 @@ int ConfigCenter::Load() {
   }
 
   bool persist_config_migration = false;
+  // These options now belong only to the active remote connection. Discard
+  // legacy local defaults so they cannot affect this host or new connections.
+  persist_config_migration |= ini_.Delete(section_, "video_quality");
+  persist_config_migration |= ini_.Delete(section_, "video_frame_rate");
+  persist_config_migration |= ini_.Delete(section_, "video_adaptation_policy");
   persist_config_migration |= ini_.Delete(section_, "video_content_type");
   persist_config_migration |= ini_.Delete(section_, "screen_content");
   persist_config_migration |=
@@ -52,12 +51,6 @@ int ConfigCenter::Load() {
     language_ = static_cast<LANGUAGE>(language_value);
   }
 
-  video_quality_ = static_cast<VIDEO_QUALITY>(ini_.GetLongValue(
-      section_, "video_quality", static_cast<long>(video_quality_)));
-
-  video_frame_rate_ = static_cast<VIDEO_FRAME_RATE>(ini_.GetLongValue(
-      section_, "video_frame_rate", static_cast<long>(video_frame_rate_)));
-
   const long screen_capture_method_value = ini_.GetLongValue(
       section_, "screen_capture_method",
       static_cast<long>(ScreenCaptureMethod::Auto));
@@ -65,18 +58,6 @@ int ConfigCenter::Load() {
                                ? static_cast<ScreenCaptureMethod>(
                                      screen_capture_method_value)
                                : ScreenCaptureMethod::Auto;
-
-  const long video_adaptation_policy_value = ini_.GetLongValue(
-      section_, "video_adaptation_policy",
-      static_cast<long>(video_adaptation_policy_));
-  if (IsValidVideoAdaptationPolicyValue(video_adaptation_policy_value)) {
-    video_adaptation_policy_ =
-        static_cast<VIDEO_ADAPTATION_POLICY>(video_adaptation_policy_value);
-  } else {
-    LOG_WARN("Invalid video adaptation policy [{}], using quality priority",
-             video_adaptation_policy_value);
-    video_adaptation_policy_ = VIDEO_ADAPTATION_POLICY::QUALITY_PRIORITY;
-  }
 
   video_encode_format_ = static_cast<VIDEO_ENCODE_FORMAT>(
       ini_.GetLongValue(section_, "video_encode_format",
@@ -156,14 +137,8 @@ int ConfigCenter::Load() {
 
 int ConfigCenter::Save() {
   ini_.SetLongValue(section_, "language", static_cast<long>(language_));
-  ini_.SetLongValue(section_, "video_quality",
-                    static_cast<long>(video_quality_));
-  ini_.SetLongValue(section_, "video_frame_rate",
-                    static_cast<long>(video_frame_rate_));
   ini_.SetLongValue(section_, "screen_capture_method",
                     static_cast<long>(screen_capture_method_));
-  ini_.SetLongValue(section_, "video_adaptation_policy",
-                    static_cast<long>(video_adaptation_policy_));
   ini_.SetLongValue(section_, "video_encode_format",
                     static_cast<long>(video_encode_format_));
   ini_.SetBoolValue(section_, "hardware_video_codec", hardware_video_codec_);
@@ -210,28 +185,6 @@ int ConfigCenter::SetLanguage(LANGUAGE language) {
   return 0;
 }
 
-int ConfigCenter::SetVideoQuality(VIDEO_QUALITY video_quality) {
-  video_quality_ = video_quality;
-  ini_.SetLongValue(section_, "video_quality",
-                    static_cast<long>(video_quality_));
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
-  return 0;
-}
-
-int ConfigCenter::SetVideoFrameRate(VIDEO_FRAME_RATE video_frame_rate) {
-  video_frame_rate_ = video_frame_rate;
-  ini_.SetLongValue(section_, "video_frame_rate",
-                    static_cast<long>(video_frame_rate_));
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
-  return 0;
-}
-
 int ConfigCenter::SetScreenCaptureMethod(ScreenCaptureMethod method) {
   if (!IsValidScreenCaptureMethod(static_cast<long>(method))) {
     return -1;
@@ -243,18 +196,6 @@ int ConfigCenter::SetScreenCaptureMethod(ScreenCaptureMethod method) {
     return -1;
   }
   screen_capture_method_ = method;
-  return 0;
-}
-
-int ConfigCenter::SetVideoAdaptationPolicy(
-    VIDEO_ADAPTATION_POLICY policy) {
-  video_adaptation_policy_ = policy;
-  ini_.SetLongValue(section_, "video_adaptation_policy",
-                    static_cast<long>(video_adaptation_policy_));
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
   return 0;
 }
 
@@ -426,21 +367,8 @@ int ConfigCenter::SetPortableServicePromptSuppressed(bool suppressed) {
 
 ConfigCenter::LANGUAGE ConfigCenter::GetLanguage() const { return language_; }
 
-ConfigCenter::VIDEO_QUALITY ConfigCenter::GetVideoQuality() const {
-  return video_quality_;
-}
-
-ConfigCenter::VIDEO_FRAME_RATE ConfigCenter::GetVideoFrameRate() const {
-  return video_frame_rate_;
-}
-
 ScreenCaptureMethod ConfigCenter::GetScreenCaptureMethod() const {
   return screen_capture_method_;
-}
-
-ConfigCenter::VIDEO_ADAPTATION_POLICY
-ConfigCenter::GetVideoAdaptationPolicy() const {
-  return video_adaptation_policy_;
 }
 
 ConfigCenter::VIDEO_ENCODE_FORMAT ConfigCenter::GetVideoEncodeFormat() const {

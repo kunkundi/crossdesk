@@ -267,6 +267,7 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
           RemoteAction remote_action = MakeHostInformation(
               GetHostName(), runtime->devices_.host_display_list(),
               /*supports_privacy_screen=*/true);
+          remote_action.i.supports_video_settings = true;
           for (std::size_t i = 0; i < remote_action.i.display_num; i++) {
             LOG_INFO("Local display [{}:{}]", i + 1,
                      remote_action.i.display_list[i]);
@@ -297,6 +298,12 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         props->connection_established_ = false;
         props->enable_mouse_control_ = false;
         runtime->ResetRemoteServiceStatus(*props);
+        {
+          std::lock_guard lock(props->video_settings_mutex_);
+          props->video_settings_supported_ = false;
+          props->video_settings_pending_ = false;
+          props->video_settings_failed_ = false;
+        }
         {
           std::lock_guard lock(props->remote_cursor_state_mutex_);
           props->remote_cursor_state_ = {};
@@ -382,6 +389,7 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
           RemoteAction remote_action = MakeHostInformation(
               GetHostName(), runtime->devices_.host_display_list(),
               /*supports_privacy_screen=*/true);
+          remote_action.i.supports_video_settings = true;
           for (std::size_t i = 0; i < remote_action.i.display_num; i++) {
             LOG_INFO("Local display [{}:{}]", i + 1,
                      remote_action.i.display_list[i]);

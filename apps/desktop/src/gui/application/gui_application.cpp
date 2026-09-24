@@ -1250,10 +1250,6 @@ void GuiApplication::ResetSettingsUi() {
     return;
   }
   ui_->main->set_language_index(language_button_value_);
-  ui_->main->set_video_quality_index(video_quality_button_value_);
-  ui_->main->set_frame_rate_index(video_frame_rate_button_value_);
-  ui_->main->set_adaptation_policy_index(
-      video_adaptation_policy_button_value_);
   ui_->main->set_codec_index(video_encode_format_button_value_);
   const bool hardware_codec_available =
       ConfigCenter::IsHardwareVideoCodecAvailable();
@@ -1621,6 +1617,32 @@ void GuiApplication::BindStreamCallbacks() {
     if (!props->control_mouse_) {
       devices_.StopKeyboardCapturer();
       keyboard_.ForceReleasePressedKeys();
+    }
+  });
+  stream->on_change_video_settings([this](int quality, int frame_rate_index,
+                                          int preference) {
+    auto props = SelectedSession();
+    if (!props || !props->peer_ ||
+        props->connection_status_.load() != ConnectionStatus::Connected)
+      return;
+    RemoteAction action{};
+    action.type = ControlType::video_settings;
+    action.vs = {quality, frame_rate_index == 0 ? 30 : 60, preference};
+    if (frame_rate_index < 0 || frame_rate_index > 1 ||
+        !ValidVideoSettings(action.vs))
+      return;
+    {
+      std::lock_guard lock(props->video_settings_mutex_);
+      if (!props->video_settings_supported_) return;
+      action.vs.request_id = props->video_settings_.request_id + 1;
+      const auto message = action.to_json();
+      if (SendReliableDataFrame(props->peer_, message.data(), message.size(),
+                                props->control_data_label_.c_str()) != 0)
+        return;
+      props->video_settings_ = action.vs;
+      props->video_settings_pending_ = true;
+      props->video_settings_failed_ = false;
+      props->video_settings_request_tick_ = SDL_GetTicks();
     }
   });
   stream->on_toggle_audio([this] {
@@ -2672,6 +2694,33 @@ void GuiApplication::SyncStreamWindow() {
   (*ui_->stream)->set_remote_cursor_active(remote_cursor_active);
   (*ui_->stream)->set_remote_cursor_shape(remote_cursor_shape);
   (*ui_->stream)->set_audio_enabled(props->audio_capture_button_pressed_);
+  {
+    std::lock_guard lock(props->video_settings_mutex_);
+    if (props->video_settings_pending_ &&
+        SDL_GetTicks() - props->video_settings_request_tick_ > 5000) {
+      props->video_settings_pending_ = false;
+      props->video_settings_failed_ = true;
+      const auto request_id = props->video_settings_.request_id;
+      props->video_settings_ = props->applied_video_settings_;
+      props->video_settings_.request_id = request_id;
+    }
+    (*ui_->stream)
+        ->set_video_settings_enabled(status == ConnectionStatus::Connected &&
+                                     props->video_settings_supported_);
+    (*ui_->stream)
+        ->set_video_settings_feedback(UiText(
+            props->video_settings_failed_ ? localization::video_settings_failed
+                                                [localization_language_index_]
+            : props->video_settings_pending_
+                ? localization::video_settings_pending
+                      [localization_language_index_]
+                : ""));
+    (*ui_->stream)->set_video_quality_index(props->video_settings_.quality);
+    (*ui_->stream)
+        ->set_frame_rate_index(props->video_settings_.frame_rate == 30 ? 0 : 1);
+    (*ui_->stream)
+        ->set_adaptation_policy_index(props->video_settings_.preference);
+  }
 #if defined(__APPLE__)
   fullscreen_button_pressed_ = IsStreamWindowFullscreen();
 #else
@@ -3062,12 +3111,6 @@ void GuiApplication::SaveSettingsFromUi() {
   auto& main = ui_->main;
   language_button_value_ =
       localization::detail::ClampLanguageIndex(main->get_language_index());
-  video_quality_button_value_ =
-      std::clamp(main->get_video_quality_index(), 0, 2);
-  video_frame_rate_button_value_ =
-      std::clamp(main->get_frame_rate_index(), 0, 1);
-  video_adaptation_policy_button_value_ =
-      std::clamp(main->get_adaptation_policy_index(), 0, 2);
   video_encode_format_button_value_ = std::clamp(main->get_codec_index(), 0, 1);
   enable_hardware_video_codec_ = ConfigCenter::IsHardwareVideoCodecAvailable() &&
                                   main->get_hardware_codec_enabled();
@@ -3080,15 +3123,8 @@ void GuiApplication::SaveSettingsFromUi() {
       static_cast<ConfigCenter::LANGUAGE>(language_button_value_);
   localization_language_index_ = language_button_value_;
   config_center_->SetLanguage(localization_language_);
-  privacy_.SetText({
-      localization::privacy_screen_unlock_hint[localization_language_index_]});
-  config_center_->SetVideoQuality(
-      static_cast<ConfigCenter::VIDEO_QUALITY>(video_quality_button_value_));
-  config_center_->SetVideoFrameRate(static_cast<ConfigCenter::VIDEO_FRAME_RATE>(
-      video_frame_rate_button_value_));
-  config_center_->SetVideoAdaptationPolicy(
-      static_cast<ConfigCenter::VIDEO_ADAPTATION_POLICY>(
-          video_adaptation_policy_button_value_));
+  privacy_.SetText(
+      {localization::privacy_screen_unlock_hint[localization_language_index_]});
   config_center_->SetVideoEncodeFormat(
       static_cast<ConfigCenter::VIDEO_ENCODE_FORMAT>(
           video_encode_format_button_value_));
@@ -3133,10 +3169,6 @@ void GuiApplication::SaveSettingsFromUi() {
   }
 
   language_button_value_last_ = language_button_value_;
-  video_quality_button_value_last_ = video_quality_button_value_;
-  video_frame_rate_button_value_last_ = video_frame_rate_button_value_;
-  video_adaptation_policy_button_value_last_ =
-      video_adaptation_policy_button_value_;
   video_encode_format_button_value_last_ = video_encode_format_button_value_;
   enable_hardware_video_codec_last_ = enable_hardware_video_codec_;
   enable_turn_last_ = enable_turn_;

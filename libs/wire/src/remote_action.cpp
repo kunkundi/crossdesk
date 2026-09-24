@@ -23,6 +23,7 @@ void ResetHostInfo(HostInfo& info) {
   info.right = nullptr;
   info.bottom = nullptr;
   info.supports_privacy_screen = false;
+  info.supports_video_settings = false;
 }
 
 bool AllocateHostDisplays(HostInfo& info, std::size_t count) {
@@ -134,6 +135,15 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
            {"render_mode", static_cast<int>(action.cs.render_mode)},
            {"hidden_reason", static_cast<int>(action.cs.hidden_reason)}};
       break;
+    case ControlType::video_settings:
+    case ControlType::video_settings_status:
+      if (!ValidVideoSettings(action.vs)) return {};
+      object["video_settings"] = {{"quality", action.vs.quality},
+                                  {"frame_rate", action.vs.frame_rate},
+                                  {"preference", action.vs.preference},
+                                  {"request_id", action.vs.request_id},
+                                  {"accepted", action.vs.accepted}};
+      break;
     case ControlType::audio_capture:
       object["audio_capture"] = action.a;
       break;
@@ -172,11 +182,12 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
              {"right", action.i.right ? action.i.right[index] : 0},
              {"bottom", action.i.bottom ? action.i.bottom[index] : 0}});
       }
-      object["host_info"] = {{"host_name", action.i.host_name},
-                             {"display_num", action.i.display_num},
-                             {"displays", displays},
-                             {"supports_privacy_screen",
-                              action.i.supports_privacy_screen}};
+      object["host_info"] = {
+          {"host_name", action.i.host_name},
+          {"display_num", action.i.display_num},
+          {"displays", displays},
+          {"supports_privacy_screen", action.i.supports_privacy_screen},
+          {"supports_video_settings", action.i.supports_video_settings}};
       break;
     }
     case ControlType::invalid:
@@ -277,6 +288,26 @@ bool RemoteAction::FromJson(const std::string& json_string,
             std::clamp(output.cs.visual_offset_y, -1.0f, 1.0f);
         break;
       }
+      case ControlType::video_settings:
+      case ControlType::video_settings_status: {
+        const auto& settings = object.at("video_settings");
+        for (const auto* field : {"quality", "frame_rate", "preference"}) {
+          if (!settings.at(field).is_number_integer()) return false;
+          const auto value = settings.at(field).get<int64_t>();
+          if (value < 0 || value > 60) return false;
+        }
+        output.vs = {settings.at("quality").get<int>(),
+                     settings.at("frame_rate").get<int>(),
+                     settings.at("preference").get<int>()};
+        if (!ValidVideoSettings(output.vs)) return false;
+        const auto& request_id = settings.at("request_id");
+        if (!request_id.is_number_integer() || request_id.get<int64_t>() < 0 ||
+            request_id.get<uint64_t>() > UINT32_MAX)
+          return false;
+        output.vs.request_id = request_id.get<uint32_t>();
+        output.vs.accepted = settings.value("accepted", false);
+        break;
+      }
       case ControlType::audio_capture:
         output.a = object.at("audio_capture").get<bool>();
         break;
@@ -334,6 +365,8 @@ bool RemoteAction::FromJson(const std::string& json_string,
         output.i.supports_privacy_screen =
             privacy_support != host_info_object.end() &&
             privacy_support->is_boolean() && privacy_support->get<bool>();
+        output.i.supports_video_settings =
+            host_info_object.value("supports_video_settings", false);
         const std::string host_name =
             host_info_object.at("host_name").get<std::string>();
         std::strncpy(output.i.host_name, host_name.c_str(),

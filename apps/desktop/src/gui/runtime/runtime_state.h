@@ -128,9 +128,6 @@ struct UserSettingsState {
   char self_hosted_user_id_[17] = "";
   char connection_login_identity_[17] = "";
   int language_button_value_ = 0;
-  int video_quality_button_value_ = 2;
-  int video_frame_rate_button_value_ = 1;
-  int video_adaptation_policy_button_value_ = 1;
   int video_encode_format_button_value_ = 0;
   bool enable_hardware_video_codec_ = true;
   bool enable_turn_ = true;
@@ -138,9 +135,6 @@ struct UserSettingsState {
   char signal_server_port_[6] = "9099";
   bool enable_self_hosted_ = false;
   int language_button_value_last_ = 0;
-  int video_quality_button_value_last_ = 0;
-  int video_frame_rate_button_value_last_ = 0;
-  int video_adaptation_policy_button_value_last_ = 1;
   int video_encode_format_button_value_last_ = 0;
   bool enable_hardware_video_codec_last_ = false;
   bool enable_turn_last_ = true;

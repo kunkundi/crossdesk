@@ -131,6 +131,10 @@ struct TranslationRow {
   X(screen_capture_method, u8"采集方式:", "Capture Method:",                  \
     u8"Способ захвата:")                                                      \
   X(screen_capture_method_auto, u8"自动", "Auto", u8"Авто")                 \
+  X(video_settings, u8"画面设置", "Video settings", u8"Настройки видео") \
+  X(video_settings_pending, u8"正在应用…", "Applying…", u8"Применение…") \
+  X(video_settings_failed, u8"调整失败，请重试。", "Could not apply settings. Try again.", u8"Не удалось применить настройки. Повторите попытку.") \
+  X(video_settings_unavailable, u8"连接建立后可调整，需被控端支持。", "Available when connected to a supported remote device.", u8"Доступно при подключении к поддерживаемому устройству.") \
   X(video_quality, u8"画面质量:", "Video Quality:", u8"Качество видео:")       \
   X(video_frame_rate, u8"画面采集帧率:",                                       \
     "Video Capture Frame Rate:", u8"Частота захвата видео:")                   \
