@@ -48,12 +48,13 @@ See the [screenshot notes](docs/images/README.md) for image sources and refresh 
 | Capability | Current support |
 | --- | --- |
 | Cross-platform control | Windows / macOS / Linux desktop control; browser and native iOS controllers |
-| Live video and audio | H.264 / AV1, 30 / 60 fps settings, hardware codec options, and remote audio; availability depends on hardware and build configuration |
+| Live video and audio | H.264 / AV1, hardware codecs, and remote audio; adjust quality, 30 / 60 fps, and video preference during a session |
 | Devices and displays | Recent connections, device aliases, session tabs, and remote display switching |
 | Input and sharing | Keyboard/mouse input, remote cursor synchronization, shortcuts, text clipboard synchronization, and file transfer |
-| Networking and deployment | Direct P2P connections, TURN relay, SRTP media encryption, and self-hosted signaling/relay services |
+| Networking and deployment | Direct P2P connections, TURN relay and forced relay, SRTP media encryption, and self-hosted signaling/relay services |
+| Privacy screen | Enable automatically when connected to, or toggle from the session toolbar; availability depends on the host OS and capture method |
 | Windows protected desktops | CrossDesk Service forwards input on lock screens, sign-in screens, and secure desktops |
-| Linux headless operation | Reuse existing desktops and applications or create separate Xvfb desktops, with capture and input; see [setup](docs/HEADLESS_EN.md) |
+| Linux headless operation | Reuse existing desktops and applications or create separate Xvfb desktops; use the terminal console to check status and change passwords or settings; see [setup](docs/HEADLESS_EN.md) |
 
 Controls and capabilities vary by client. Desktop controls are described below; see the [iOS guide](apps/ios/README.md) for native mobile features.
 
@@ -90,7 +91,7 @@ sudo apt install "./crossdesk-linux-amd64-<version>.deb"
 3. **Verify the password.** Enter the host's current connection password when prompted and confirm. Select **Remember password** if you want to save it.
 4. **Reconnect later.** Previously connected devices appear under **Recent Connections**. Reconnect from a card, edit its alias, or remove its record.
 
-The eye button shows or hides the local password; the pencil button changes it. Use **6 ASCII letters or digits** and stay connected to the server while changing it. Wait for the change to succeed and the client to reconnect, then copy the current password. Controllers that saved the old password must enter it again.
+The eye button shows or hides the local password, the refresh button generates a new random password, and the pencil button lets you edit it. Passwords use **6 ASCII letters or digits**. Stay connected to the server when editing or refreshing a password. Wait for the change to succeed and the client to reconnect, then copy the current password. Controllers that saved the old password must enter it again.
 
 ### Connect from a browser
 
@@ -113,31 +114,51 @@ Switch devices using session tabs. Expand the control bar if it is collapsed, an
 | Mouse | Enable / release remote mouse control |
 | Speaker | Play / mute remote audio |
 | Folder | Select a file to send and view transfer progress |
-| Network statistics | Inspect traffic, packet loss, frame rate, resolution, and direct / relay mode |
+| Video settings | Adjust video quality, capture frame rate, and video preference during the current session |
+| Network statistics | Inspect traffic, packet loss, frame rate, resolution, direct / relay mode, and encryption status |
+| Privacy screen | Enable or disable the host's privacy screen; hover to see its status and available actions |
 | Fullscreen | Enter / exit fullscreen |
 | Disconnect | End the current remote session |
 
 Desktop clients synchronize text clipboard contents. Configure the receiving directory under **Settings → File Save Path**. Closing the main window hides it and keeps the app running; use the system tray or menu-bar exit command to quit completely.
 
-<a id="settings"></a>
+### Adjust video during a session
 
-## Video and connection settings
-
-Open **☰ → Settings** in the top-right corner and click **OK** to save. Configure the session before connecting; some settings are disabled during an active session. Scroll down for self-hosting, startup behavior, and the file save path.
+After connecting, open **Video settings** (the sliders icon) in the toolbar. Choose low / medium / high quality, **30 / 60 fps**, and frame-rate priority / quality priority / balanced adaptation. Changes are sent to the current host without reconnecting; actual results depend on the network, device, and encoder. For older hosts that do not support live video settings, the menu explains the limitation and disables the options.
 
 <p align="center">
-  <img src="docs/images/desktop-settings-en.png" width="720" alt="Example settings interface" />
+  <img src="docs/images/desktop-stream-video-settings-en.png" width="800" alt="Current session video menu with quality, capture frame rate, and video preference; the background is a public page used for demonstration" />
+</p>
+
+<a id="settings"></a>
+
+## Client settings and updates
+
+Open **☰ → Settings** in the top-right corner and click **OK** to save. Configure codecs and connections before connecting; some settings are disabled during an active session. Scroll down for self-hosting, startup behavior, and the file save path. Adjust quality, frame rate, and video preference from the remote session toolbar.
+
+<p align="center">
+  <img src="docs/images/desktop-settings-en.png" width="720" alt="Current client settings with codec, hardware codecs, TURN, forced relay, and automatic privacy screen options" />
 </p>
 
 | Setting | Purpose |
 | --- | --- |
-| Video Quality / Video Capture Frame Rate | Low, medium, or high quality and 30 / 60 fps; actual performance depends on the connection and device |
-| Video Preference | Choose frame-rate priority, quality priority, or balanced adaptation |
+| Language | 中文, English, Русский |
+| Capture Method (Windows) | Auto / DXGI / WGC / GDI; choose Auto for automatic headless adaptation |
 | Video Encode Format | H.264 / AV1; hardware codec availability depends on the platform, device, and build options |
 | Enable TURN Service | Allow relay-assisted connections; check this setting if P2P fails |
-| Self-Hosted Config | Set the host, signaling port, and TURN port, then enable the checkbox |
+| Force Relay | Require relay connections when TURN is enabled; turning TURN off also disables this option |
+| Privacy screen on connect | Automatically enable privacy when this computer is controlled remotely; the controller can toggle it from the session toolbar |
+| Self-Hosted Config | Set the server address and signaling port, then enable the checkbox |
 | Auto Start / Enable Daemon | Configure startup and process supervision; restart as indicated by the UI |
 | File Save Path | Choose where received files are saved |
+
+### Check for updates
+
+The client checks for updates in the background after launch. A new version adds an update indicator to the main window menu. Open **☰ → About** to view the version or click **Check for updates** to check manually. When an update is available, you can view its release notes and open the download page.
+
+<p align="center">
+  <img src="docs/images/desktop-about-en.png" width="720" alt="About dialog with the Check for updates button; version and check result are demonstration data" />
+</p>
 
 <a id="ios"></a>
 
@@ -204,8 +225,6 @@ Host your own signaling and TURN services, then enter their connection details u
 Thanks to [HelloGitHub](https://hellogithub.com/), [Ruanyf Weekly](https://github.com/ruanyf/weekly), and the [LinuxDo](https://linux.do) community for featuring CrossDesk and contributing feedback.
 
 CrossDesk is licensed under [GPL-3.0](LICENSE). See the [Privacy Policy](PRIVACY.md#english).
-
-The Windows packages bundle the unmodified USB Mobile Monitor virtual display driver (usbmmidd_v2) by [Amyuni Technologies](https://www.amyuni.com/) for hosts without a monitor; its license is in `usbmmidd_v2\License.txt` in the install directory.
 
 ### Code signing policy
 

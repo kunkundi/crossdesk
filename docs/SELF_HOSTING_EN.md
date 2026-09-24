@@ -44,12 +44,12 @@ For a self-signed deployment, complete the [certificate trust steps](#3-trust-th
 
 1. Disconnect existing sessions and open **☰ → Settings**.
 2. Scroll down and click **Self-Hosted Config**.
-3. Enter **Server Address**, **Signal Service Port**, and **Relay Service Port**, then confirm. Enter only the hostname or IP in the address field, without a URL scheme, path, or port.
+3. Enter **Server Address** and **Signal Service Port**, then confirm. Enter only the hostname or IP in the address field, without a URL scheme, path, or port.
 4. Enable the checkbox beside **Self-Hosted Config**, then click **OK** in the parent settings window.
 5. Configure both the controller and host this way. Once both report a server connection, connect using the host's currently displayed ID.
 
 <p align="center">
-  <img src="images/desktop-self-hosted-en.png" width="720" alt="Current Slint self-hosting dialog for server address, signaling port, and relay port" />
+  <img src="images/desktop-self-hosted-en.png" width="720" alt="Current Slint self-hosting dialog for server address and signaling port" />
 </p>
 
 Recheck the device ID after changing servers. Device identities belong to their server; do not assume an old ID carries over.

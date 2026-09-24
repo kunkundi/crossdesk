@@ -4,6 +4,7 @@
 
 #include <cassert>
 #include <charconv>
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -146,6 +147,12 @@ bool ConfigureDocumentationDemo(
           std::move(connections)));
   window->set_signal_connected(true);
   window->set_hardware_codec_available(true);
+#if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
+  window->set_privacy_setting_available(true);
+#endif
+  if (options.page == "about") {
+    window->set_current_version("v1.5.2");
+  }
   return true;
 }
 
@@ -373,8 +380,34 @@ int RunCaptureMode(
   server->hide();
 
   slint::Window *capture_window = &window->window();
-  if (options.page == "stream") {
+  const bool capture_stream =
+      options.page == "stream" || options.page == "stream-video-settings";
+  if (capture_stream) {
     ConfigureStreamCapturePage(stream, options.language);
+    if (!options.demo_assets_path.empty()) {
+      // Reuse a public page capture as an explicitly illustrative remote frame.
+      const auto frame = slint::Image::load_from_path(slint::SharedString(
+          (options.demo_assets_path + "/fixtures/website.png").c_str()));
+      if (frame.size().width == 0 || frame.size().height == 0) {
+        return 8;
+      }
+      stream->set_frame(frame);
+      crossdesk::ui::StreamTab tab;
+      tab.remote_id = "246813579";
+      tab.title = "Office PC";
+      tab.connected = true;
+      stream->set_tabs(
+          std::make_shared<slint::VectorModel<crossdesk::ui::StreamTab>>(
+              std::vector{tab}));
+      stream->set_privacy_can_toggle(true);
+      stream->set_privacy_off(true);
+      stream->window().set_size(
+          slint::LogicalSize(slint::Size<float>{960.0f, 600.0f}));
+    }
+    if (options.page == "stream-video-settings") {
+      stream->set_video_settings_enabled(true);
+      stream->set_video_menu_open(true);
+    }
     window->hide();
     stream->show();
     capture_window = &stream->window();
@@ -388,12 +421,21 @@ int RunCaptureMode(
   }
 
   if (!options.snapshot_path.empty()) {
-    return WriteWindowSnapshot(*capture_window, options.snapshot_path.c_str())
-               ? 0
-               : 7;
+    // Let the native backend apply its window size and display scale before
+    // taking the snapshot; capturing immediately after show() can yield 1x.
+    bool snapshot_written = false;
+    slint::Timer snapshot_timer;
+    snapshot_timer.start(slint::TimerMode::SingleShot,
+                         std::chrono::milliseconds(250), [&] {
+      snapshot_written =
+          WriteWindowSnapshot(*capture_window, options.snapshot_path.c_str());
+      slint::quit_event_loop();
+    });
+    slint::run_event_loop();
+    return snapshot_written ? 0 : 7;
   }
 
-  if (options.page == "stream" || options.page == "server") {
+  if (capture_stream || options.page == "server") {
     slint::run_event_loop();
   } else {
     window->run();
