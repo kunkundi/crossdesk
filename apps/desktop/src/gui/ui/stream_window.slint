@@ -115,23 +115,21 @@ component ControlBarButton inherits Rectangle {
         font-size: 11px;
     }
 
-    // Match the two offset diagonal strokes used by the ImGui mouse/audio
-    // disabled state instead of covering the glyph with a full-width slash.
-    if root.slashed: Rectangle {
-        x: 11px;
-        y: 0px;
-        width: 2px;
-        height: 24px;
-        background: black;
-        transform-rotation: -45deg;
+    // Draw the two offset disabled-state strokes as paths. Rotated rectangles
+    // stay vertical in the software renderer used for fallback and UI capture.
+    if root.slashed: Path {
+        width: 24px; height: 24px;
+        viewbox-width: 24; viewbox-height: 24;
+        commands: "M 3.5 3.5 L 20.5 20.5";
+        stroke: black;
+        stroke-width: 2px;
     }
-    if root.slashed: Rectangle {
-        x: 9.5px;
-        y: 1.5px;
-        width: 2px;
-        height: 24px;
-        background: touch.has-hover ? #4296fa : #b3d5fd;
-        transform-rotation: -45deg;
+    if root.slashed: Path {
+        width: 24px; height: 24px;
+        viewbox-width: 24; viewbox-height: 24;
+        commands: "M 2 5 L 19 22";
+        stroke: touch.has-hover ? #4296fa : #b3d5fd;
+        stroke-width: 2px;
     }
 
     touch := TouchArea {
