@@ -14,6 +14,7 @@
 #include "rd_log.h"
 #include "config_center.h"
 #include "localization.h"
+#include "spdlog/sinks/rotating_file_sink.h"
 
 namespace crossdesk {
 namespace {

@@ -95,6 +95,7 @@ function setup_targets()
         add_files("apps/desktop/src/path_manager/*.cpp")
         if is_os("windows") then
             add_files("apps/desktop/src/platform/windows/path_backend.cpp")
+            add_syslinks("Shell32", "Ole32", {public = true})
         elseif is_os("macosx") then
             add_files("apps/desktop/src/platform/macos/path_backend.cpp")
         elseif is_os("linux") then
@@ -113,6 +114,7 @@ function setup_targets()
             "apps/desktop/src/path_manager/path_manager.cpp")
         if is_os("windows") then
             add_files("apps/desktop/src/platform/windows/path_backend.cpp")
+            add_syslinks("Shell32", "Ole32")
         elseif is_os("macosx") then
             add_files("apps/desktop/src/platform/macos/path_backend.cpp")
         elseif is_os("linux") then

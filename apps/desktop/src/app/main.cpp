@@ -27,6 +27,7 @@
 #include "render.h"
 
 #ifdef __linux__
+#include "SimpleIni.h"
 #include "platform/linux/headless/headless_console.h"
 #include "platform/linux/headless/headless_session.h"
 #include "platform/linux/privacy/privacy_guard.h"
