@@ -1,5 +1,7 @@
 #include "task_queue_lock_free.h"
 
+#include <concurrentqueue.h>
+
 #include <exception>
 #include <new>
 #include <stdexcept>
@@ -7,8 +9,15 @@
 
 namespace crossdesk {
 
+struct TaskQueueLockFree::QueueStorage {
+  moodycamel::ConcurrentQueue<TaskItem> tasks;
+  // All submissions share one producer so different caller threads keep FIFO.
+  moodycamel::ProducerToken producer{tasks};
+};
+
 TaskQueueLockFree::TaskQueueLockFree()
-    : producer_(task_queue_), worker_([this] { WorkerThread(); }) {}
+    : queue_(std::make_unique<QueueStorage>()),
+      worker_([this] { WorkerThread(); }) {}
 
 TaskQueueLockFree::~TaskQueueLockFree() { Stop(); }
 
@@ -24,7 +33,7 @@ std::future<void> TaskQueueLockFree::PostTask(std::function<void()> task) {
 
     // Count before publishing: the worker may dequeue as soon as enqueue returns.
     ++pending_tasks_;
-    if (!task_queue_.enqueue(producer_, std::move(item))) {
+    if (!queue_->tasks.enqueue(queue_->producer, std::move(item))) {
       --pending_tasks_;
       throw std::bad_alloc();
     }
@@ -48,7 +57,7 @@ void TaskQueueLockFree::Stop() {
 void TaskQueueLockFree::WorkerThread() {
   while (true) {
     TaskItem item;
-    while (task_queue_.try_dequeue(item)) {
+    while (queue_->tasks.try_dequeue(item)) {
       --pending_tasks_;
 
       std::exception_ptr error;

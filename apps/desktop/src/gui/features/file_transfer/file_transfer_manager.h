@@ -12,7 +12,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "runtime/gui_state.h"
+#include "runtime/remote_session.h"
 
 namespace crossdesk {
 

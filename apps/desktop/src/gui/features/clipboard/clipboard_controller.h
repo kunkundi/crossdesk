@@ -1,7 +1,11 @@
-#ifndef CROSSDESK_GUI_CLIPBOARD_CONTROLLER_H_
-#define CROSSDESK_GUI_CLIPBOARD_CONTROLLER_H_
+/*
+ * @Author: DI JUNKUN
+ * @Date: 2026-09-25
+ * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
+ */
 
-#include <SDL3/SDL.h>
+#ifndef _CLIPBOARD_CONTROLLER_H_
+#define _CLIPBOARD_CONTROLLER_H_
 
 #include <atomic>
 #include <cstddef>
@@ -42,4 +46,4 @@ private:
 
 } // namespace crossdesk
 
-#endif // CROSSDESK_GUI_CLIPBOARD_CONTROLLER_H_
+#endif // _CLIPBOARD_CONTROLLER_H_

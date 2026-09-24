@@ -1,5 +1,7 @@
 #include "runtime/gui_runtime.h"
 
+#include <SDL3/SDL_timer.h>
+
 #include <remote_action.h>
 
 #include <algorithm>

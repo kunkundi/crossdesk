@@ -1,6 +1,15 @@
 #include "rd_log.h"
 
+#include <chrono>
+#include <ctime>
 #include <filesystem>
+#include <iomanip>
+#include <mutex>
+#include <sstream>
+#include <vector>
+
+#include "spdlog/sinks/rotating_file_sink.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
 
 namespace crossdesk {
 

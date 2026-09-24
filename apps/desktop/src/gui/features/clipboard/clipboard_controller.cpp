@@ -1,5 +1,9 @@
 #include "features/clipboard/clipboard_controller.h"
 
+#include <SDL3/SDL_clipboard.h>
+#include <SDL3/SDL_error.h>
+#include <SDL3/SDL_events.h>
+
 #include <cstring>
 #include <shared_mutex>
 #include <utility>

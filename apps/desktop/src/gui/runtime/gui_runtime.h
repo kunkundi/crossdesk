@@ -8,6 +8,7 @@
 #define _GUI_RUNTIME_H_
 
 #include <atomic>
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <string>
@@ -44,8 +45,8 @@ class GuiRuntime : protected gui_detail::GuiState {
   GuiRuntime();
   ~GuiRuntime();
 
-  static void SdlCaptureAudioIn(void* userdata, Uint8* stream, int len);
-  static void SdlCaptureAudioOut(void* userdata, Uint8* stream, int len);
+  static void SdlCaptureAudioIn(void* userdata, uint8_t* stream, int len);
+  static void SdlCaptureAudioOut(void* userdata, uint8_t* stream, int len);
 
   int CreateConnectionPeer();
   int ConnectTo(const std::string& remote_id, const char* password,

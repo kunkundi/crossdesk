@@ -7,20 +7,9 @@
 #ifndef _RD_LOG_H_
 #define _RD_LOG_H_
 
-#include <chrono>
-#include <iomanip>
-#include <iostream>
 #include <memory>
-#include <mutex>
-#include <sstream>
 #include <string>
-#include <vector>
 
-#include "spdlog/common.h"
-#include "spdlog/logger.h"
-#include "spdlog/sinks/base_sink.h"
-#include "spdlog/sinks/rotating_file_sink.h"
-#include "spdlog/sinks/stdout_color_sinks.h"
 #include "spdlog/spdlog.h"
 
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_INFO

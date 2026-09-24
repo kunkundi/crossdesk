@@ -1,4 +1,5 @@
 #include "rendering/slint_video_presenter.h"
+#include "crossdesk_ui.h"
 
 #include <libyuv.h>
 #include <slint.h>

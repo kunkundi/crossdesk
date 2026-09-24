@@ -24,6 +24,20 @@ local function collect_dbus_arch_include_dirs()
 end
 
 function setup_platform_settings()
+    -- Discard unreferenced functions/data without the extra build cost of LTO.
+    -- Keep debug builds unchanged for predictable debugger behavior.
+    if is_mode("release") then
+        if is_os("macosx") then
+            add_ldflags("-Wl,-dead_strip")
+        elseif is_os("linux") then
+            add_cxflags("-ffunction-sections", "-fdata-sections")
+            add_ldflags("-Wl,--gc-sections")
+        elseif is_os("windows") then
+            add_cxflags("/Gy", "/Gw")
+            add_ldflags("/OPT:REF", "/OPT:ICF")
+        end
+    end
+
     if is_os("windows") then
         add_requires("libyuv", "miniaudio 0.11.21")
         add_defines("NOMINMAX")

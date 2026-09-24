@@ -1,5 +1,6 @@
 #include "version_checker.h"
 
+#include <nlohmann/json.hpp>
 #include <iostream>
 #include <limits>
 #include <string>

@@ -1,3 +1,5 @@
+#include <SDL3/SDL_timer.h>
+
 #include "runtime/peer_event_handler.h"
 
 #include <remote_action.h>

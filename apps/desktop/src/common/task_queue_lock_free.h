@@ -12,10 +12,9 @@
 #include <cstddef>
 #include <functional>
 #include <future>
+#include <memory>
 #include <mutex>
 #include <thread>
-
-#include <concurrentqueue.h>
 
 namespace crossdesk {
 
@@ -41,9 +40,8 @@ class TaskQueueLockFree {
 
   void WorkerThread();
 
-  moodycamel::ConcurrentQueue<TaskItem> task_queue_;
-  // All submissions share one producer so different caller threads keep FIFO.
-  moodycamel::ProducerToken producer_;
+  struct QueueStorage;
+  std::unique_ptr<QueueStorage> queue_;
   std::atomic<std::size_t> pending_tasks_{0};
   std::mutex mutex_;
   std::condition_variable wake_;

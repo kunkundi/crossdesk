@@ -5,6 +5,7 @@
 #include <SDL3/SDL.h>
 #include <openssl/rand.h>
 #include <slint.h>
+#include <nlohmann/json.hpp>
 #include <tinyfiledialogs.h>
 
 #include <algorithm>

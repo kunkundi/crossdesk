@@ -9,11 +9,11 @@
 
 #include <atomic>
 #include <initializer_list>
+#include <memory>
 #include <mutex>
 #include <utility>
 #include <string>
 
-#include "SimpleIni.h"
 #include "screen_capturer/screen_capture_method.h"
 
 namespace crossdesk {
@@ -80,7 +80,8 @@ class ConfigCenter {
   int StoreValues(std::initializer_list<std::pair<const char*, std::string>> values);
   mutable std::mutex file_path_mutex_;
   std::string config_path_;
-  CSimpleIniA ini_;
+  struct IniStorage;
+  std::unique_ptr<IniStorage> ini_;
   const char* section_ = "Settings";
 
   LANGUAGE language_ = LANGUAGE::CHINESE;

@@ -14,7 +14,13 @@
 #include <string>
 #include <vector>
 
-#include "crossdesk_ui.h"
+namespace slint {
+template <typename T> class ComponentHandle;
+}
+
+namespace crossdesk::ui {
+class StreamWindow;
+}
 
 namespace crossdesk {
 

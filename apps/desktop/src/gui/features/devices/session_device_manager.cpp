@@ -1,5 +1,9 @@
 #include "features/devices/session_device_manager.h"
 
+#include <SDL3/SDL_audio.h>
+#include <SDL3/SDL_error.h>
+#include <SDL3/SDL_init.h>
+
 #include <display_stream_id.h>
 #include <remote_action.h>
 
@@ -8,6 +12,8 @@
 #include <cstdlib>
 #include <utility>
 
+#include "device_controller_factory.h"
+#include "screen_capturer_factory.h"
 #include "platform.h"
 #include "rd_log.h"
 #include "runtime/gui_runtime.h"

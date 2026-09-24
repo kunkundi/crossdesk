@@ -7,6 +7,7 @@
 #include "version_checker.h"
 
 #include <httplib.h>
+#include <nlohmann/json.hpp>
 
 #include "rd_log.h"
 

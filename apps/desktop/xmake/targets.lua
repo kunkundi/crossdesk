@@ -1,6 +1,4 @@
 function setup_targets()
-    add_packages("spdlog", "libsdl3", "nlohmann_json")
-
     includes("deps/submodules", "deps/thirdparty")
 
     local crossdesk_version = get_config("CROSSDESK_VERSION") or "0.0.0"
@@ -65,15 +63,17 @@ function setup_targets()
 
     target("rd_log")
         set_kind("object")
-        add_packages("spdlog")
+        add_packages("spdlog", {public = true})
         add_files("apps/desktop/src/log/rd_log.cpp")
         add_includedirs("apps/desktop/src/log", {public = true})
 
-    target("common")
+    -- MiniRTC owns a target named "common". Reusing it merges the two targets
+    -- and makes the media library inherit desktop sources and dependencies.
+    target("desktop_common")
         set_kind("object")
         add_deps("rd_log", "crossdesk_wire")
         add_packages("libyuv")
-        add_packages("concurrentqueue", {public = true})
+        add_packages("concurrentqueue")
         add_files("apps/desktop/src/common/*.cpp")
         if is_os("windows") then
             add_files("apps/desktop/src/platform/windows/system_info.cpp")
@@ -169,6 +169,21 @@ function setup_targets()
         add_includedirs("apps/desktop/src/platform/windows/service")
         add_files("apps/desktop/tests/windows_sas_guard_test.cpp")
 
+    target("crossdesk_ui")
+        set_kind("static")
+        set_languages("c++20")
+        -- Generated bindings are not the video/rendering hot path. Optimizing
+        -- them for size avoids expensive inlining of the large UI object tree.
+        if is_mode("release") then
+            set_optimize("smallest")
+        end
+        add_packages("slint", {public = true})
+        add_rules("slint")
+        add_files("apps/desktop/src/gui/ui/crossdesk_ui.slint")
+        if is_os("windows") then
+            add_cxxflags("/bigobj")
+        end
+
     target("slint_ui_smoke_test")
         set_kind("binary")
         set_languages("c++20")
@@ -177,17 +192,16 @@ function setup_targets()
             add_cxxflags("/bigobj")
         end
         add_packages("slint")
+        add_deps("crossdesk_ui")
         add_includedirs("apps/desktop/src/gui", "apps/desktop/src/gui/assets/fonts",
             "apps/desktop/src/gui/assets/localization")
-        add_rules("slint")
-        add_files("apps/desktop/src/gui/ui/crossdesk_ui.slint")
         add_files("apps/desktop/tests/slint_ui_smoke_test.cpp")
         after_build(copy_slint_runtime)
 
     target("version_checker_test")
         set_kind("binary")
         set_default(false)
-        add_packages("cpp-httplib")
+        add_packages("cpp-httplib", "nlohmann_json")
         add_deps("rd_log")
         add_includedirs("apps/desktop/src/version_checker")
         add_files("apps/desktop/tests/version_checker_test.cpp",
@@ -240,12 +254,12 @@ function setup_targets()
 
     target("screen_capturer")
         set_kind("object")
-        add_deps("rd_log", "common", "crossdesk_wire")
+        add_deps("rd_log", "desktop_common", "crossdesk_wire")
         add_includedirs("apps/desktop/src/screen_capturer", {public = true})
         add_includedirs("deps/submodules/minirtc/src/api", {public = true})
         if is_os("windows") then
             add_deps("privacy")
-            add_packages("libyuv")
+            add_packages("libyuv", "nlohmann_json")
             add_files("apps/desktop/src/screen_capturer/captured_nv12_frame.cpp")
             add_files("apps/desktop/src/platform/windows/screen_capturer/screen_capturer_dxgi.cpp",
                 "apps/desktop/src/platform/windows/screen_capturer/screen_capturer_gdi.cpp",
@@ -312,7 +326,7 @@ function setup_targets()
 
     target("device_controller")
         set_kind("object")
-        add_deps("rd_log", "common", "crossdesk_wire")
+        add_deps("rd_log", "desktop_common", "crossdesk_wire")
         add_includedirs("apps/desktop/src/device_controller", {public = true})
         add_includedirs("apps/desktop/src/platform/common/input")
         if is_os("windows") then
@@ -347,7 +361,7 @@ function setup_targets()
     target("thumbnail")
         set_kind("object")
         add_packages("libyuv", "openssl3")
-        add_deps("rd_log", "common")
+        add_deps("rd_log", "desktop_common")
         add_files("apps/desktop/src/thumbnail/*.cpp")
         add_includedirs("apps/desktop/src/thumbnail", {public = true})
 
@@ -380,6 +394,7 @@ function setup_targets()
     target("version_checker")
         set_kind("object")
         add_packages("cpp-httplib")
+        add_packages("nlohmann_json", {public = true})
         add_deps("rd_log")
         add_files("apps/desktop/src/version_checker/*.cpp")
         add_includedirs("apps/desktop/src/version_checker", {public = true})
@@ -390,7 +405,7 @@ function setup_targets()
 
     target("tools")
         set_kind("object")
-        add_deps("rd_log", "common", "crossdesk_wire")
+        add_deps("rd_log", "desktop_common", "crossdesk_wire")
         add_files("apps/desktop/src/tools/*.cpp")
         if is_os("windows") then
             add_files("apps/desktop/src/platform/windows/clipboard.cpp")
@@ -409,24 +424,23 @@ function setup_targets()
         -- version and use fmt's supported runtime-parser fallback here.
         add_defines("FMT_CONSTEVAL=")
         add_packages("slint", {public = true})
-        add_packages("libyuv", "tinyfiledialogs", "openssl3")
-        add_rules("slint")
+        add_packages("libyuv", "tinyfiledialogs", "openssl3", "libsdl3", "nlohmann_json")
         if is_config("CROSSDESK_PORTABLE", true) then
             -- RuntimeState changes layout in portable builds. Consumers of GUI
             -- headers must see the same definition, without affecting its deps.
             add_defines("CROSSDESK_PORTABLE=1", {public = true})
         end
-        add_deps("rd_log", "common", "assets", "config_center", "minirtc",
+        add_deps("rd_log", "desktop_common", "assets", "config_center", "minirtc",
             "path_manager", "screen_capturer", "speaker_capturer",
             "device_controller", "thumbnail", "version_checker", "tools",
-            "crossdesk_wire", "privacy")
+            "crossdesk_wire", "privacy", "crossdesk_ui")
         add_files("apps/desktop/src/gui/render.cpp", "apps/desktop/src/gui/application/gui_application.cpp",
             "apps/desktop/src/gui/rendering/*.cpp",
             "apps/desktop/src/gui/runtime/*.cpp",
             "apps/desktop/src/platform/common/gui/service_status_runtime.cpp",
             "apps/desktop/src/gui/features/devices/*.cpp", "apps/desktop/src/gui/features/input/*.cpp",
             "apps/desktop/src/gui/features/clipboard/*.cpp", "apps/desktop/src/gui/features/file_transfer/*.cpp",
-            "apps/desktop/src/gui/features/settings/*.cpp", "apps/desktop/src/gui/ui/crossdesk_ui.slint")
+            "apps/desktop/src/gui/features/settings/*.cpp")
         -- Only these translation units consume the application version. Keep
         -- version changes out of the flags for media and the rest of the GUI.
         add_files("apps/desktop/src/gui/application/gui_application.cpp",
@@ -494,6 +508,7 @@ function setup_targets()
 
         target("crossdesk_service")
             set_kind("binary")
+            add_packages("nlohmann_json")
             add_deps("rd_log", "path_manager")
             add_links("Advapi32", "Wtsapi32", "Ole32", "Userenv")
             add_files("apps/desktop/src/platform/windows/service/main.cpp",
@@ -505,7 +520,7 @@ function setup_targets()
 
         target("crossdesk_session_helper")
             set_kind("binary")
-            add_packages("libyuv")
+            add_packages("libyuv", "nlohmann_json")
             add_deps("rd_log", "path_manager")
             add_links("Advapi32", "User32", "Wtsapi32", "Gdi32", "Setupapi")
             add_files("apps/desktop/src/platform/windows/service/session_helper_main.cpp")
@@ -523,7 +538,7 @@ function setup_targets()
 
     target("crossdesk")
         set_kind("binary")
-        add_deps("rd_log", "common", "gui")
+        add_deps("rd_log", "desktop_common", "gui")
         add_files("apps/desktop/src/app/*.cpp")
         add_includedirs("apps/desktop/src", "apps/desktop/src/app", {public = true})
         if is_os("windows") then

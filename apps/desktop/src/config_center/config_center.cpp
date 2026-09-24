@@ -2,14 +2,18 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <filesystem>
 #include <optional>
 #include <vector>
 
+#include "SimpleIni.h"
 #include "autostart.h"
 #include "rd_log.h"
 
 namespace crossdesk {
+
+struct ConfigCenter::IniStorage : CSimpleIniA {};
 
 namespace {
 
@@ -21,15 +25,15 @@ bool IsValidTurnModeValue(long value) {
 }  // namespace
 
 ConfigCenter::ConfigCenter(const std::string& config_path)
-    : config_path_(config_path) {
-  ini_.SetUnicode(true);
+    : config_path_(config_path), ini_(std::make_unique<IniStorage>()) {
+  ini_->SetUnicode(true);
   Load();
 }
 
 ConfigCenter::~ConfigCenter() {}
 
 int ConfigCenter::Load() {
-  SI_Error rc = ini_.LoadFile(config_path_.c_str());
+  SI_Error rc = ini_->LoadFile(config_path_.c_str());
   if (rc < 0) {
     Save();
     return -1;
@@ -38,18 +42,18 @@ int ConfigCenter::Load() {
   bool persist_config_migration = false;
   // These options now belong only to the active remote connection. Discard
   // legacy local defaults so they cannot affect this host or new connections.
-  persist_config_migration |= ini_.Delete(section_, "video_quality");
-  persist_config_migration |= ini_.Delete(section_, "video_frame_rate");
-  persist_config_migration |= ini_.Delete(section_, "video_adaptation_policy");
-  persist_config_migration |= ini_.Delete(section_, "video_content_type");
-  persist_config_migration |= ini_.Delete(section_, "screen_content");
+  persist_config_migration |= ini_->Delete(section_, "video_quality");
+  persist_config_migration |= ini_->Delete(section_, "video_frame_rate");
+  persist_config_migration |= ini_->Delete(section_, "video_adaptation_policy");
+  persist_config_migration |= ini_->Delete(section_, "video_content_type");
+  persist_config_migration |= ini_->Delete(section_, "screen_content");
   persist_config_migration |=
-      ini_.Delete(section_, "enable_desktop_quality_optimization");
+      ini_->Delete(section_, "enable_desktop_quality_optimization");
   persist_config_migration |=
-      ini_.Delete(section_, "enable_minimize_to_tray");
+      ini_->Delete(section_, "enable_minimize_to_tray");
 
   const long language_value =
-      ini_.GetLongValue(section_, "language", static_cast<long>(language_));
+      ini_->GetLongValue(section_, "language", static_cast<long>(language_));
   if (language_value < static_cast<long>(LANGUAGE::CHINESE) ||
       language_value > static_cast<long>(LANGUAGE::RUSSIAN)) {
     language_ = LANGUAGE::ENGLISH;
@@ -57,7 +61,7 @@ int ConfigCenter::Load() {
     language_ = static_cast<LANGUAGE>(language_value);
   }
 
-  const long screen_capture_method_value = ini_.GetLongValue(
+  const long screen_capture_method_value = ini_->GetLongValue(
       section_, "screen_capture_method",
       static_cast<long>(ScreenCaptureMethod::Auto));
   screen_capture_method_ = IsValidScreenCaptureMethod(screen_capture_method_value)
@@ -66,14 +70,14 @@ int ConfigCenter::Load() {
                                : ScreenCaptureMethod::Auto;
 
   video_encode_format_ = static_cast<VIDEO_ENCODE_FORMAT>(
-      ini_.GetLongValue(section_, "video_encode_format",
+      ini_->GetLongValue(section_, "video_encode_format",
                         static_cast<long>(video_encode_format_)));
 
-  hardware_video_codec_ = ini_.GetBoolValue(section_, "hardware_video_codec",
+  hardware_video_codec_ = ini_->GetBoolValue(section_, "hardware_video_codec",
                                             hardware_video_codec_);
-  const char* turn_mode_value = ini_.GetValue(section_, "turn_mode", nullptr);
+  const char* turn_mode_value = ini_->GetValue(section_, "turn_mode", nullptr);
   if (turn_mode_value != nullptr && strlen(turn_mode_value) > 0) {
-    const long parsed_turn_mode = ini_.GetLongValue(
+    const long parsed_turn_mode = ini_->GetLongValue(
         section_, "turn_mode", static_cast<long>(turn_mode_));
     if (IsValidTurnModeValue(parsed_turn_mode)) {
       turn_mode_ = static_cast<TURN_MODE>(parsed_turn_mode);
@@ -83,24 +87,24 @@ int ConfigCenter::Load() {
       turn_mode_ = TURN_MODE::AUTO_UDP_TCP;
     }
   } else {
-    const bool legacy_enable_turn = ini_.GetBoolValue(
+    const bool legacy_enable_turn = ini_->GetBoolValue(
         section_, "enable_turn", turn_mode_ != TURN_MODE::DISABLED);
     turn_mode_ = legacy_enable_turn ? TURN_MODE::AUTO_UDP_TCP
                                     : TURN_MODE::DISABLED;
-    ini_.SetLongValue(section_, "turn_mode", static_cast<long>(turn_mode_));
+    ini_->SetLongValue(section_, "turn_mode", static_cast<long>(turn_mode_));
     persist_config_migration = true;
   }
   // Migrate the former user switch. Keep true in the file for older builds,
   // while the current application always requests encrypted native media.
-  if (!ini_.GetBoolValue(section_, "enable_srtp", false)) {
-    ini_.SetBoolValue(section_, "enable_srtp", true);
+  if (!ini_->GetBoolValue(section_, "enable_srtp", false)) {
+    ini_->SetBoolValue(section_, "enable_srtp", true);
     persist_config_migration = true;
   }
   enable_self_hosted_ =
-      ini_.GetBoolValue(section_, "enable_self_hosted", enable_self_hosted_);
+      ini_->GetBoolValue(section_, "enable_self_hosted", enable_self_hosted_);
 
   const char* signal_server_host_value =
-      ini_.GetValue(section_, "signal_server_host", nullptr);
+      ini_->GetValue(section_, "signal_server_host", nullptr);
   if (signal_server_host_value != nullptr &&
       strlen(signal_server_host_value) > 0) {
     signal_server_host_ = signal_server_host_value;
@@ -108,25 +112,25 @@ int ConfigCenter::Load() {
     signal_server_host_ = "";
   }
   const char* signal_server_port_value =
-      ini_.GetValue(section_, "signal_server_port", nullptr);
+      ini_->GetValue(section_, "signal_server_port", nullptr);
   if (signal_server_port_value != nullptr &&
       strlen(signal_server_port_value) > 0) {
     signal_server_port_ =
-        static_cast<int>(ini_.GetLongValue(section_, "signal_server_port", 0));
+        static_cast<int>(ini_->GetLongValue(section_, "signal_server_port", 0));
   } else {
     signal_server_port_ = 0;
   }
   enable_autostart_ =
-      ini_.GetBoolValue(section_, "enable_autostart", enable_autostart_);
-  enable_daemon_ = ini_.GetBoolValue(section_, "enable_daemon", enable_daemon_);
+      ini_->GetBoolValue(section_, "enable_autostart", enable_autostart_);
+  enable_daemon_ = ini_->GetBoolValue(section_, "enable_daemon", enable_daemon_);
   enable_privacy_screen_.store(
-      ini_.GetBoolValue(section_, "enable_privacy_screen", true));
+      ini_->GetBoolValue(section_, "enable_privacy_screen", true));
   portable_service_prompt_suppressed_ =
-      ini_.GetBoolValue(section_, "portable_service_prompt_suppressed",
+      ini_->GetBoolValue(section_, "portable_service_prompt_suppressed",
                         portable_service_prompt_suppressed_);
 
   const char* file_transfer_save_path_value =
-      ini_.GetValue(section_, "file_transfer_save_path", nullptr);
+      ini_->GetValue(section_, "file_transfer_save_path", nullptr);
   if (file_transfer_save_path_value != nullptr &&
       strlen(file_transfer_save_path_value) > 0) {
     file_transfer_save_path_ = file_transfer_save_path_value;
@@ -149,7 +153,7 @@ int ConfigCenter::CommitIni() {
       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
       "-" + std::to_string(sequence++);
   std::error_code error;
-  if (ini_.SaveFile(temporary.c_str()) < 0) {
+  if (ini_->SaveFile(temporary.c_str()) < 0) {
     LOG_ERROR("Failed to write configuration: {}", config_path_);
     std::filesystem::remove(temporary, error);
     return -1;
@@ -174,46 +178,46 @@ int ConfigCenter::StoreValues(
     std::initializer_list<std::pair<const char*, std::string>> values) {
   std::vector<std::pair<const char*, std::optional<std::string>>> previous;
   for (const auto& value : values) {
-    const char* old = ini_.GetValue(section_, value.first, nullptr);
+    const char* old = ini_->GetValue(section_, value.first, nullptr);
     previous.emplace_back(value.first, old ? std::optional<std::string>(old) : std::nullopt);
-    ini_.SetValue(section_, value.first, value.second.c_str());
+    ini_->SetValue(section_, value.first, value.second.c_str());
   }
   if (CommitIni() == 0) return 0;
   for (const auto& value : previous) {
-    if (value.second) ini_.SetValue(section_, value.first, value.second->c_str());
-    else ini_.Delete(section_, value.first);
+    if (value.second) ini_->SetValue(section_, value.first, value.second->c_str());
+    else ini_->Delete(section_, value.first);
   }
   return -1;
 }
 
 int ConfigCenter::Save() {
-  ini_.SetLongValue(section_, "language", static_cast<long>(language_));
-  ini_.SetLongValue(section_, "screen_capture_method",
+  ini_->SetLongValue(section_, "language", static_cast<long>(language_));
+  ini_->SetLongValue(section_, "screen_capture_method",
                     static_cast<long>(screen_capture_method_));
-  ini_.SetLongValue(section_, "video_encode_format",
+  ini_->SetLongValue(section_, "video_encode_format",
                     static_cast<long>(video_encode_format_));
-  ini_.SetBoolValue(section_, "hardware_video_codec", hardware_video_codec_);
-  ini_.SetLongValue(section_, "turn_mode", static_cast<long>(turn_mode_));
-  ini_.SetBoolValue(section_, "enable_turn",
+  ini_->SetBoolValue(section_, "hardware_video_codec", hardware_video_codec_);
+  ini_->SetLongValue(section_, "turn_mode", static_cast<long>(turn_mode_));
+  ini_->SetBoolValue(section_, "enable_turn",
                     turn_mode_ != TURN_MODE::DISABLED);
-  ini_.SetBoolValue(section_, "enable_srtp", true);
-  ini_.SetBoolValue(section_, "enable_self_hosted", enable_self_hosted_);
+  ini_->SetBoolValue(section_, "enable_srtp", true);
+  ini_->SetBoolValue(section_, "enable_self_hosted", enable_self_hosted_);
 
   // only save when self hosted
   if (enable_self_hosted_) {
-    ini_.SetValue(section_, "signal_server_host", signal_server_host_.c_str());
-    ini_.SetLongValue(section_, "signal_server_port",
+    ini_->SetValue(section_, "signal_server_host", signal_server_host_.c_str());
+    ini_->SetLongValue(section_, "signal_server_port",
                       static_cast<long>(signal_server_port_));
   }
 
-  ini_.SetBoolValue(section_, "enable_autostart", enable_autostart_);
-  ini_.SetBoolValue(section_, "enable_daemon", enable_daemon_);
-  ini_.SetBoolValue(section_, "enable_privacy_screen",
+  ini_->SetBoolValue(section_, "enable_autostart", enable_autostart_);
+  ini_->SetBoolValue(section_, "enable_daemon", enable_daemon_);
+  ini_->SetBoolValue(section_, "enable_privacy_screen",
                     enable_privacy_screen_.load());
-  ini_.SetBoolValue(section_, "portable_service_prompt_suppressed",
+  ini_->SetBoolValue(section_, "portable_service_prompt_suppressed",
                     portable_service_prompt_suppressed_);
 
-  ini_.SetValue(section_, "file_transfer_save_path",
+  ini_->SetValue(section_, "file_transfer_save_path",
                 file_transfer_save_path_.c_str());
 
   SI_Error rc = CommitIni();
@@ -237,9 +241,9 @@ int ConfigCenter::SetScreenCaptureMethod(ScreenCaptureMethod method) {
   if (!IsValidScreenCaptureMethod(static_cast<long>(method))) {
     return -1;
   }
-  ini_.SetLongValue(section_, "screen_capture_method", static_cast<long>(method));
+  ini_->SetLongValue(section_, "screen_capture_method", static_cast<long>(method));
   if (CommitIni() < 0) {
-    ini_.SetLongValue(section_, "screen_capture_method",
+    ini_->SetLongValue(section_, "screen_capture_method",
                       static_cast<long>(screen_capture_method_));
     return -1;
   }
@@ -328,9 +332,9 @@ int ConfigCenter::SetDaemon(bool enabled) {
 int ConfigCenter::SetPrivacyScreen(bool enable_privacy_screen) {
   const bool previous = enable_privacy_screen_.load();
   if (previous == enable_privacy_screen) return 0;
-  ini_.SetBoolValue(section_, "enable_privacy_screen", enable_privacy_screen);
+  ini_->SetBoolValue(section_, "enable_privacy_screen", enable_privacy_screen);
   if (CommitIni() < 0) {
-    ini_.SetBoolValue(section_, "enable_privacy_screen", previous);
+    ini_->SetBoolValue(section_, "enable_privacy_screen", previous);
     LOG_ERROR("Failed to save automatic privacy screen preference");
     return -1;
   }
@@ -342,7 +346,7 @@ int ConfigCenter::SetPrivacyScreen(bool enable_privacy_screen) {
 
 int ConfigCenter::SetPortableServicePromptSuppressed(bool suppressed) {
   portable_service_prompt_suppressed_ = suppressed;
-  ini_.SetBoolValue(section_, "portable_service_prompt_suppressed",
+  ini_->SetBoolValue(section_, "portable_service_prompt_suppressed",
                     portable_service_prompt_suppressed_);
   SI_Error rc = CommitIni();
   if (rc < 0) {

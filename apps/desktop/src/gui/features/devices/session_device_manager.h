@@ -8,8 +8,6 @@
 #define _SESSION_DEVICE_MANAGER_H_
 
 
-#include <SDL3/SDL.h>
-
 #include <atomic>
 #include <chrono>
 #include <cstddef>
@@ -22,14 +20,17 @@
 #include <remote_action.h>
 
 #include "device_controller.h"
-#include "device_controller_factory.h"
 #include "display_info.h"
-#include "screen_capturer_factory.h"
 #include "speaker_capture_controller.h"
+
+struct SDL_AudioStream;
 
 namespace crossdesk {
 
 class GuiRuntime;
+class DeviceControllerFactory;
+class ScreenCapturerFactory;
+class ScreenCapturer;
 
 // Owns media capture/playback and remote input devices for the active GUI
 // session. GuiRuntime supplies application intent; this class handles device
