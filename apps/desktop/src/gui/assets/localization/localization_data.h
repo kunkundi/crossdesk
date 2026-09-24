@@ -199,6 +199,15 @@ struct TranslationRow {
   X(notification, u8"通知", "Notification", u8"Уведомление")                   \
   X(new_version_available, u8"新版本可用", "New Version Available",            \
     u8"Доступна новая версия")                                                 \
+  X(check_for_updates, u8"检查更新", "Check for updates",                     \
+    u8"Проверить обновления")                                                   \
+  X(checking_for_updates, u8"正在检查更新…", "Checking for updates…",         \
+    u8"Проверка обновлений…")                                                  \
+  X(up_to_date, u8"已是最新版本", "You're up to date",                         \
+    u8"Установлена последняя версия")                                          \
+  X(update_check_failed, u8"检查失败，请稍后重试",                             \
+    "Check failed. Please try again later.",                                    \
+    u8"Не удалось проверить обновления. Повторите позже.")                     \
   X(release_notes, u8"更新内容", "Release Notes", u8"Содержание обновления") \
   X(version, u8"版本", "Version", u8"Версия")                                  \
   X(release_date, u8"发布日期: ", "Release Date: ", u8"Дата релиза: ")         \

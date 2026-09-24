@@ -14,6 +14,8 @@ export struct ReleaseNoteBlock {
     section-gap: bool,
 }
 
+export enum UpdateCheckStatus { idle, checking, up-to-date, available, failed }
+
 export global UiStrings {
     in-out property <string> local-desktop: "Local Desktop";
     in-out property <string> remote-desktop: "Remote Desktop";
@@ -59,6 +61,10 @@ export global UiStrings {
     in-out property <string> signal-disconnected: "Signal server disconnected";
     in-out property <string> tls-error: "Signal server TLS certificate error";
     in-out property <string> update-available: "A new version is available";
+    in-out property <string> check-for-updates: "Check for updates";
+    in-out property <string> checking-for-updates: "Checking for updates…";
+    in-out property <string> up-to-date: "You’re up to date";
+    in-out property <string> update-check-failed: "Check failed. Please try again later.";
     in-out property <string> release-notes: "Release notes";
     in-out property <string> later: "Later";
     in-out property <string> download: "Download";
@@ -257,6 +263,11 @@ export component MainWindow inherits Window {
     in property <bool> signal-tls-error: false;
     in property <[RecentConnection]> recent-connections;
     in property <bool> update-available: false;
+    in property <UpdateCheckStatus> update-check-status: idle;
+    private property <string> update-status-text:
+        root.update-check-status == UpdateCheckStatus.checking ? UiStrings.checking-for-updates :
+        root.update-check-status == UpdateCheckStatus.up-to-date ? UiStrings.up-to-date :
+        root.update-check-status == UpdateCheckStatus.failed ? UiStrings.update-check-failed : "";
     in property <string> current-version: "";
     in property <string> latest-version: "";
     in property <string> release-name: "";
@@ -321,6 +332,7 @@ export component MainWindow inherits Window {
     callback cancel-self-hosted-settings;
     callback browse-save-path;
     callback open-download;
+    callback check-for-updates;
     callback connection-cancel;
     callback connection-acknowledge;
     callback connection-submit-password(string, bool);
@@ -340,7 +352,7 @@ export component MainWindow inherits Window {
     private property <length> settings-scroll-y: 0px;
     in-out property <bool> self-host-settings-open: false;
     in-out property <bool> about-open: false;
-    in-out property <bool> update-open: root.update-available;
+    in-out property <bool> update-open: false;
     in-out property <bool> reset-password-open: false;
     in-out property <bool> reset-password-invalid: false;
     in-out property <string> new-password-input: "";
@@ -1594,10 +1606,10 @@ export component MainWindow inherits Window {
         z: 46;
         TouchArea { clicked => { focus-sink.focus(); } }
         DialogSurface {
-            x: 170px;
-            y: 127px;
-            width: 300px;
-            height: 196px;
+            x: (root.width - self.width) / 2;
+            y: (root.height - self.height) / 2;
+            width: 320px;
+            height: 216px;
             border-radius: 7px;
 
             Rectangle {
@@ -1611,19 +1623,81 @@ export component MainWindow inherits Window {
                 Rectangle { y: parent.height - 7px; height: 7px; background: #d3d3d3; }
                 Text { x: 6px; text: UiStrings.about; font-size: ImGuiFontStyle.base; font-weight: 600; color: #202124; vertical-alignment: center; }
             }
-            Text { x: 30px; y: 40px; width: 240px; height: 20px; text: UiStrings.version + ": CrossDesk " + root.current-version; color: #202124; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
-            if root.update-available: Text { x: 30px; y: 60px; width: 240px; height: 20px; text: UiStrings.update-available + ":"; color: #202124; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
-            if root.update-available: Rectangle {
-                x: 30px;
-                y: 60px;
-                width: 240px;
-                height: 20px;
-                version-link := Text { text: root.latest-version; color: version-touch.has-hover ? #174ea6 : #334fd1; font-size: ImGuiFontStyle.body; horizontal-alignment: center; vertical-alignment: center; }
-                version-touch := TouchArea { mouse-cursor: pointer; clicked => { root.open-download(); } }
+            // Keep the dialog/footer stable while visible text rows determine
+            // each group's size and the layout redistributes the space between.
+            about-content := VerticalLayout {
+                padding: 16px;
+                padding-top: 35px;
+                spacing: 12px;
+                alignment: space-between;
+
+                VerticalLayout {
+                    vertical-stretch: 0;
+                    spacing: 4px;
+                    Text {
+                        text: "CrossDesk " + root.current-version;
+                        color: #202124;
+                        font-size: ImGuiFontStyle.base;
+                        font-weight: 600;
+                        min-height: 18px;
+                        overflow: elide;
+                    }
+                    if root.update-available: Rectangle {
+                        height: max(18px, version-link.preferred-height);
+                        accessible-role: button;
+                        accessible-label: UiStrings.release-notes + " " + root.latest-version;
+                        accessible-action-default => { version-touch.clicked(); }
+                        version-link := Text {
+                            x: 0px;
+                            y: 0px;
+                            width: parent.width;
+                            height: parent.height;
+                            text: UiStrings.update-available + ": " + root.latest-version;
+                            color: version-touch.has-hover ? #174ea6 : #334fd1;
+                            font-size: ImGuiFontStyle.body;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                            wrap: word-wrap;
+                        }
+                        version-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.about-open = false; root.update-open = true; }
+                        }
+                    }
+                    if root.update-status-text != "": Text {
+                        text: root.update-status-text;
+                        color: root.update-check-status == UpdateCheckStatus.failed ? #b3261e : #61656c;
+                        font-size: ImGuiFontStyle.body;
+                        min-height: 18px;
+                        wrap: word-wrap;
+                    }
+                }
+
+                VerticalLayout {
+                    vertical-stretch: 0;
+                    spacing: 3px;
+                    Rectangle { height: 1px; background: #e6e8eb; }
+                    Text { height: 16px; text: UiStrings.copyright; color: #61656c; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
+                    Text { height: 16px; text: UiStrings.license; color: #61656c; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
+                }
+
+                HorizontalLayout {
+                    vertical-stretch: 0;
+                    alignment: end;
+                    spacing: 8px;
+                    CompactButton {
+                        width: max(76px, check-button-metrics.preferred-width + 20px);
+                        text: UiStrings.check-for-updates;
+                        enabled: root.update-check-status != UpdateCheckStatus.checking;
+                        accessible-role: button;
+                        accessible-label: self.text;
+                        accessible-action-default => { if self.enabled { root.check-for-updates(); } }
+                        clicked => { root.check-for-updates(); }
+                        check-button-metrics := Text { visible: false; text: UiStrings.check-for-updates; font-size: ImGuiFontStyle.body; }
+                    }
+                    CompactButton { width: 48px; primary: true; text: UiStrings.ok; clicked => { root.about-open = false; } }
+                }
             }
-            Text { x: 30px; y: 85px; width: 240px; height: 20px; text: UiStrings.copyright; color: #202124; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
-            Text { x: 30px; y: 105px; width: 240px; height: 20px; text: UiStrings.license; color: #202124; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
-            CompactButton { x: 133px; y: 145px; primary: true; text: UiStrings.ok; clicked => { root.about-open = false; } }
         }
     }
 

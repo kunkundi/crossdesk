@@ -58,7 +58,7 @@
 #include "rd_log.h"
 #include "server_window_state.h"
 #include "ui/ui_localization.h"
-#include "version_checker.h"
+#include "update_checker.h"
 #include "window_geometry.h"
 
 namespace crossdesk {
@@ -989,33 +989,6 @@ int GuiApplication::Run() {
                   "%d", signal_port);
   }
 
-  latest_version_info_ = CheckUpdate();
-  if (!latest_version_info_.empty()) {
-    std::string version;
-    if (latest_version_info_.contains("latest_version") &&
-        latest_version_info_["latest_version"].is_string()) {
-      version = latest_version_info_["latest_version"].get<std::string>();
-    } else if (latest_version_info_.contains("version") &&
-               latest_version_info_["version"].is_string()) {
-      version = latest_version_info_["version"].get<std::string>();
-    }
-    latest_version_ = version.empty() ? std::string{} : "v" + version;
-    if (latest_version_info_.contains("releaseNotes") &&
-        latest_version_info_["releaseNotes"].is_string()) {
-      release_notes_ = latest_version_info_["releaseNotes"].get<std::string>();
-    }
-    if (latest_version_info_.contains("releaseName") &&
-        latest_version_info_["releaseName"].is_string()) {
-      release_name_ = latest_version_info_["releaseName"].get<std::string>();
-    }
-    if (latest_version_info_.contains("releaseDate") &&
-        latest_version_info_["releaseDate"].is_string()) {
-      release_date_ = latest_version_info_["releaseDate"].get<std::string>();
-    }
-    update_available_ =
-        !version.empty() && IsNewerVersion(CROSSDESK_VERSION, latest_version_);
-  }
-
   InitializeSettings();
   if (!InitializeSDL()) {
     return -1;
@@ -1030,6 +1003,7 @@ int GuiApplication::Run() {
   LOG_INFO("Slint backend: {}; {}", backend.backend, backend.diagnostic);
 #endif
   InitializeModules();
+  update_checker_ = std::make_unique<UpdateChecker>(CROSSDESK_VERSION);
   InitializeUi();
 
   ui_->timer.start(slint::TimerMode::Repeated, 16ms, [this] { Tick(); });
@@ -1155,14 +1129,6 @@ void GuiApplication::InitializeUi() {
   ui_->main->set_custom_titlebar(use_x11_custom_titlebar_);
   ui_->main->set_wayland_titlebar(use_xwayland_gui_);
 #endif
-  std::vector<ui::ReleaseNoteBlock> release_note_blocks;
-  for (const auto& parsed : ParseReleaseNotesMarkdownForSlint(release_notes_)) {
-    ui::ReleaseNoteBlock block;
-    block.content = parsed.content;
-    block.section_gap = parsed.section_gap;
-    release_note_blocks.push_back(std::move(block));
-  }
-  ui_->release_note_blocks_model->set_vector(std::move(release_note_blocks));
   ui_->main->set_release_note_blocks(ui_->release_note_blocks_model);
   RegisterFontAwesome(ui_->main->window());
   ui_->main->set_recent_connections(ui_->recent_model);
@@ -1398,6 +1364,10 @@ void GuiApplication::BindMainCallbacks() {
                                    : slint::SharedString{});
   });
   main->on_open_download([this] { OpenUrl("https://crossdesk.cn"); });
+  main->on_check_for_updates([this] {
+    update_checker_->RequestCheck();
+    SyncMainWindow();
+  });
   main->on_connection_cancel([this] {
     const auto props = FindRemoteSession(ui_->connection_dialog_remote_id);
     if (!props) {
@@ -1783,6 +1753,7 @@ void GuiApplication::Tick() {
     slint::quit_event_loop();
     return;
   }
+  PollUpdateCheck();
   HandleSessionCleanup();
   HandlePasswordChangeResult();
   HandleCredentialRecovery();
@@ -1855,6 +1826,29 @@ void GuiApplication::Tick() {
   SyncPlatformDialogs();
   SyncStreamWindow();
   SyncServerWindow();
+}
+
+void GuiApplication::PollUpdateCheck() {
+  // The first tick runs after show()/event-loop startup. Poll never waits for
+  // networking and all application/model changes remain on this UI thread.
+  if (!update_checker_->Poll() ||
+      update_checker_->status() == UpdateChecker::Status::Failed) {
+    return;
+  }
+  const auto& info = *update_checker_->latest();
+  latest_version_ = "v" + info.version;
+  release_name_ = info.release_name;
+  release_notes_ = info.release_notes;
+  release_date_ = info.release_date;
+  update_available_ = update_checker_->update_available();
+  std::vector<ui::ReleaseNoteBlock> blocks;
+  for (const auto& parsed : ParseReleaseNotesMarkdownForSlint(release_notes_)) {
+    ui::ReleaseNoteBlock block;
+    block.content = parsed.content;
+    block.section_gap = parsed.section_gap;
+    blocks.push_back(std::move(block));
+  }
+  ui_->release_note_blocks_model->set_vector(std::move(blocks));
 }
 
 void GuiApplication::ShareLocalCursorState() {
@@ -2253,6 +2247,23 @@ void GuiApplication::SyncMainWindow() {
   ui_->main->set_signal_tls_error(signal_status_ ==
                                   SignalStatus::SignalTlsCertError);
   ui_->main->set_update_available(update_available_);
+  switch (update_checker_->status()) {
+    case UpdateChecker::Status::Idle:
+      ui_->main->set_update_check_status(ui::UpdateCheckStatus::Idle);
+      break;
+    case UpdateChecker::Status::Checking:
+      ui_->main->set_update_check_status(ui::UpdateCheckStatus::Checking);
+      break;
+    case UpdateChecker::Status::UpToDate:
+      ui_->main->set_update_check_status(ui::UpdateCheckStatus::UpToDate);
+      break;
+    case UpdateChecker::Status::Available:
+      ui_->main->set_update_check_status(ui::UpdateCheckStatus::Available);
+      break;
+    case UpdateChecker::Status::Failed:
+      ui_->main->set_update_check_status(ui::UpdateCheckStatus::Failed);
+      break;
+  }
   ui_->main->set_current_version(CROSSDESK_VERSION);
   ui_->main->set_latest_version(UiText(latest_version_));
   ui_->main->set_release_name(UiText(release_name_));
@@ -3495,6 +3506,9 @@ void GuiApplication::Cleanup() {
   }
 #endif
   ui_.reset();
+  if (update_checker_) {
+    update_checker_->Stop();
+  }
   SDL_Quit();
 }
 

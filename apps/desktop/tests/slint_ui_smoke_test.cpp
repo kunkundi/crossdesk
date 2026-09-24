@@ -161,6 +161,7 @@ void ResetMainCaptureState(
   window->set_about_open(false);
   window->set_update_open(false);
   window->set_update_available(false);
+  window->set_update_check_status(crossdesk::ui::UpdateCheckStatus::Idle);
   window->set_reset_password_open(false);
   window->set_reset_password_invalid(false);
   window->set_new_password_input("");
@@ -213,9 +214,20 @@ void ConfigureMainCapturePage(
   } else if (options.page == "self-hosted") {
     window->set_settings_open(true);
     window->set_self_host_settings_open(true);
-  } else if (options.page == "about") {
-    window->set_current_version("0.0.0");
+  } else if (options.page == "about" || options.page == "about-checking" ||
+             options.page == "about-failed" || options.page == "about-update") {
+    window->set_current_version("v1.3.5-1-20260924");
     window->set_about_open(true);
+    window->set_update_check_status(crossdesk::ui::UpdateCheckStatus::UpToDate);
+    if (options.page == "about-checking") {
+      window->set_update_check_status(crossdesk::ui::UpdateCheckStatus::Checking);
+    } else if (options.page == "about-failed" || options.page == "about-update") {
+      window->set_update_available(true);
+      window->set_latest_version("v1.3.6-1-20260924");
+      window->set_update_check_status(options.page == "about-failed"
+          ? crossdesk::ui::UpdateCheckStatus::Failed
+          : crossdesk::ui::UpdateCheckStatus::Available);
+    }
   } else if (options.page == "update") {
     window->set_update_available(true);
     window->set_latest_version("v0.0.1");
@@ -444,6 +456,24 @@ int main() {
   window->set_about_open(true);
   assert(window->get_settings_open());
   assert(window->get_about_open());
+  window->set_update_available(true);
+  if (window->get_update_open()) {
+    std::cerr << "Automatic update checks must not open the update dialog\n";
+    return 8;
+  }
+  bool update_check_requested = false;
+  window->on_check_for_updates([&] {
+    update_check_requested = true;
+    window->set_update_check_status(crossdesk::ui::UpdateCheckStatus::Checking);
+  });
+  window->invoke_check_for_updates();
+  if (!update_check_requested || window->get_update_check_status() !=
+                                     crossdesk::ui::UpdateCheckStatus::Checking) {
+    std::cerr << "Manual update check must expose the checking state\n";
+    return 8;
+  }
+  window->set_update_available(false);
+  window->set_update_check_status(crossdesk::ui::UpdateCheckStatus::Idle);
   if (const char *snapshot_path =
           std::getenv("CROSSDESK_SETTINGS_UI_SNAPSHOT")) {
     window->set_about_open(false);

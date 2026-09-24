@@ -10,7 +10,6 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
-#include <nlohmann/json.hpp>
 #include <string>
 
 namespace crossdesk::gui_detail {
@@ -47,7 +46,6 @@ struct InteractionState {
 };
 
 struct UpdateState {
-  nlohmann::json latest_version_info_ = nlohmann::json{};
   bool update_available_ = false;
   std::string latest_version_;
   std::string release_name_;

@@ -23,10 +23,6 @@
 
 namespace crossdesk {
 
-static std::string latest_release_date_ = "";
-static bool latest_patch_available_ = false;
-static int latest_patch_ = 0;
-
 std::vector<int> SplitVersion(const std::string& ver);
 
 namespace {
@@ -202,18 +198,20 @@ int CompareNumericVersion(const std::vector<int>& current,
   return 0;
 }
 
-void ResetLatestMetadata() {
-  latest_release_date_ = "";
-  latest_patch_available_ = false;
-  latest_patch_ = 0;
-}
-
 bool ReadPatchField(const nlohmann::json& json, int* patch) {
   if (!json.contains("patch")) {
     return false;
   }
 
   const auto& patch_value = json["patch"];
+  if (patch_value.is_number_unsigned()) {
+    const auto parsed = patch_value.get<unsigned long long>();
+    if (parsed > static_cast<unsigned long long>(std::numeric_limits<int>::max())) {
+      return false;
+    }
+    *patch = static_cast<int>(parsed);
+    return true;
+  }
   if (patch_value.is_number_integer()) {
     const long long parsed = patch_value.get<long long>();
     if (parsed < 0 || parsed > std::numeric_limits<int>::max()) {
@@ -353,9 +351,7 @@ bool IsNewerDate(const std::string& date1, const std::string& date2) {
 }
 
 bool IsNewerVersion(const std::string& current, const std::string& latest) {
-  return IsNewerVersionWithMetadata(
-      current, latest, latest_release_date_,
-      latest_patch_available_ ? latest_patch_ : -1);
+  return IsNewerVersionWithMetadata(current, latest, "", -1);
 }
 
 bool IsNewerVersionWithMetadata(const std::string& current,
@@ -391,11 +387,54 @@ bool IsNewerVersionWithMetadata(const std::string& current,
   return false;
 }
 
-nlohmann::json CheckUpdate() {
+std::optional<VersionInfo> ParseVersionInfo(const nlohmann::json& json) {
+  if (!json.is_object()) {
+    return std::nullopt;
+  }
+  const auto read_string = [&](const char* key) -> std::string {
+    const auto it = json.find(key);
+    return it != json.end() && it->is_string() ? it->get<std::string>()
+                                             : std::string{};
+  };
+  VersionInfo info;
+  info.version = read_string("latest_version");
+  if (info.version.empty()) {
+    info.version = read_string("version");
+  }
+  if (!info.version.empty() &&
+      (info.version.front() == 'v' || info.version.front() == 'V')) {
+    info.version.erase(0, 1);
+  }
+  // Invalid/missing version data is a failed check, never "up to date".
+  const auto numeric_end = FindNumericEnd(info.version, 0);
+  if (numeric_end == 0 || info.version[numeric_end - 1] == '.' ||
+      (numeric_end < info.version.size() &&
+       (numeric_end + 1 == info.version.size() ||
+        (info.version[numeric_end] != '-' && info.version[numeric_end] != '+')))) {
+    return std::nullopt;
+  }
+  std::istringstream parts(info.version.substr(0, numeric_end));
+  std::string part;
+  int number = 0;
+  while (std::getline(parts, part, '.')) {
+    if (!TryParseNonNegativeInt(part, &number)) {
+      return std::nullopt;
+    }
+  }
+  info.release_name = read_string("releaseName");
+  info.release_notes = read_string("releaseNotes");
+  info.release_date = read_string("releaseDate");
+  ReadPatchField(json, &info.patch);
+  return info;
+}
+
+std::optional<VersionInfo> CheckUpdate() {
   httplib::Client cli("https://version.crossdesk.cn");
 
   cli.set_connection_timeout(5);
   cli.set_read_timeout(5);
+  cli.set_write_timeout(5);
+  cli.set_max_timeout(15000);
   cli.set_follow_location(true);
 
 #if defined(CPPHTTPLIB_OPENSSL_SUPPORT) && defined(__linux__)
@@ -406,33 +445,25 @@ nlohmann::json CheckUpdate() {
   if (res) {
     if (res->status == 200) {
       try {
-        auto j = nlohmann::json::parse(res->body);
-        if (j.contains("releaseDate") && j["releaseDate"].is_string()) {
-          latest_release_date_ = j["releaseDate"];
+        auto info = ParseVersionInfo(nlohmann::json::parse(res->body));
+        if (info) {
+          LOG_INFO("Fetched version.json: latest_version={}, releaseDate={}, patch={}",
+                   info->version, info->release_date, info->patch);
         } else {
-          latest_release_date_ = "";
+          LOG_WARN("version.json does not contain a valid version");
         }
-        latest_patch_ = 0;
-        latest_patch_available_ = ReadPatchField(j, &latest_patch_);
-        LOG_INFO("Fetched version.json: latest_version={}, releaseDate={}, patch={}",
-                 j.value("latest_version", j.value("version", "")),
-                 j.value("releaseDate", ""),
-                 latest_patch_available_ ? latest_patch_ : -1);
-        return j;
+        return info;
       } catch (const std::exception& e) {
         LOG_WARN("Failed to parse version.json: {}", e.what());
-        ResetLatestMetadata();
-        return nlohmann::json{};
+        return std::nullopt;
       }
     } else {
       LOG_WARN("Failed to fetch version.json: HTTP status={}", res->status);
-      ResetLatestMetadata();
-      return nlohmann::json{};
+      return std::nullopt;
     }
   } else {
     LogHttpError(res);
-    ResetLatestMetadata();
-    return nlohmann::json{};
+    return std::nullopt;
   }
 }
 

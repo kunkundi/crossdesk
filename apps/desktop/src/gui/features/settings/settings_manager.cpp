@@ -9,6 +9,7 @@
 #include <fstream>
 #include <functional>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <thread>
 

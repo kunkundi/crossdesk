@@ -1,6 +1,7 @@
 #include "runtime/peer_event_handler.h"
 
 #include <remote_action.h>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <chrono>

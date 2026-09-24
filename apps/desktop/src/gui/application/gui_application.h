@@ -19,6 +19,8 @@
 
 namespace crossdesk {
 
+class UpdateChecker;
+
 // Slint application shell. GuiRuntime remains the owner of transport, media,
 // device, clipboard, transfer and settings behavior.
 class GuiApplication final : private GuiRuntime {
@@ -48,6 +50,7 @@ private:
   void BindStreamCallbacks();
   void BindServerCallbacks();
   void Tick();
+  void PollUpdateCheck();
   void ShareLocalCursorState();
   bool RequestPasswordChange(const std::string &password);
   void HandlePasswordChangeResult();
@@ -88,6 +91,7 @@ private:
   bool OpenUrl(const std::string &url);
 
   std::unique_ptr<SlintUi> ui_;
+  std::unique_ptr<UpdateChecker> update_checker_;
   CursorStateProvider cursor_state_provider_;
   std::unordered_map<std::string, CursorDeliveryState>
       cursor_delivery_states_;

@@ -8,11 +8,21 @@
 #define _VERSION_CHECKER_H_
 
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
 
 namespace crossdesk {
 
-nlohmann::json CheckUpdate();
+struct VersionInfo {
+  std::string version;
+  std::string release_name;
+  std::string release_notes;
+  std::string release_date;
+  int patch = -1;
+};
+
+std::optional<VersionInfo> ParseVersionInfo(const nlohmann::json& json);
+std::optional<VersionInfo> CheckUpdate();
 
 bool IsNewerVersion(const std::string& current, const std::string& latest);
 

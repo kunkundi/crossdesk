@@ -1,7 +1,9 @@
 #include "version_checker.h"
 
 #include <iostream>
+#include <limits>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -49,6 +51,50 @@ int main() {
                     crossdesk::IsNewerVersionWithMetadata(
                         "v1.3.5-9-20260529", "v1.3.6-1-20260529", "", -1),
                     true);
+
+  const auto info =
+      crossdesk::ParseVersionInfo({{"latest_version", "v1.3.5-20260529"},
+                                   {"patch", "10"},
+                                   {"releaseName", "Release"},
+                                   {"releaseNotes", "Changes"},
+                                   {"releaseDate", "2026-05-29"}});
+  ok &= ExpectEqual("valid metadata is normalized and retained",
+                    info && info->version == "1.3.5-20260529" &&
+                        info->patch == 10 && info->release_name == "Release" &&
+                        info->release_notes == "Changes" &&
+                        info->release_date == "2026-05-29",
+                    true);
+  const auto legacy = crossdesk::ParseVersionInfo({{"version", "1.3.6"}});
+  ok &= ExpectEqual("legacy version field is supported",
+                    legacy && legacy->version == "1.3.6" && legacy->patch == -1,
+                    true);
+  for (const auto& json :
+       std::vector<nlohmann::json>{nullptr,
+                                   nlohmann::json::array(),
+                                   nlohmann::json::object(),
+                                   {{"version", false}},
+                                   {{"version", ""}},
+                                   {{"version", "unknown"}},
+                                   {{"version", "1..2"}},
+                                   {{"version", ".1.2"}},
+                                   {{"version", "1.2."}},
+                                   {{"version", "1.2-"}},
+                                   {{"version", "999999999999999999999.2"}}}) {
+    ok &= ExpectEqual("invalid response is a failed check: " + json.dump(),
+                      crossdesk::ParseVersionInfo(json).has_value(), false);
+  }
+  const auto malformed_optional = crossdesk::ParseVersionInfo(
+      {{"version", "1.3.5"},
+       {"patch", std::numeric_limits<uint64_t>::max()},
+       {"releaseName", nullptr},
+       {"releaseNotes", 123}});
+  ok &= ExpectEqual("bad optional metadata does not leak into later checks",
+                    malformed_optional && malformed_optional->patch == -1 &&
+                        malformed_optional->release_name.empty() &&
+                        malformed_optional->release_notes.empty(),
+                    true);
+  ok &= ExpectEqual("plain comparison has no hidden metadata from prior checks",
+                    crossdesk::IsNewerVersion("1.3.5", "1.3.5"), false);
 
   return ok ? 0 : 1;
 }

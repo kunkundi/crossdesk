@@ -80,6 +80,12 @@ inline int ApplyMainWindowStrings(
   strings.set_tls_error(Text(localization::signal_tls_cert_error[language]));
   strings.set_update_available(
       Text(localization::new_version_available[language]));
+  strings.set_check_for_updates(Text(localization::check_for_updates[language]));
+  strings.set_checking_for_updates(
+      Text(localization::checking_for_updates[language]));
+  strings.set_up_to_date(Text(localization::up_to_date[language]));
+  strings.set_update_check_failed(
+      Text(localization::update_check_failed[language]));
   strings.set_release_notes(Text(localization::release_notes[language]));
   strings.set_download(Text(localization::update[language]));
   strings.set_input_password(Text(localization::input_password[language]));

@@ -197,6 +197,12 @@ function setup_targets()
             add_frameworks("Security", "CoreFoundation")
         end
 
+    target("update_checker_test")
+        set_kind("binary")
+        set_default(false)
+        add_deps("version_checker")
+        add_files("apps/desktop/tests/update_checker_test.cpp")
+
     target("privacy")
         set_kind("object")
         add_deps("rd_log", "crossdesk_wire")
