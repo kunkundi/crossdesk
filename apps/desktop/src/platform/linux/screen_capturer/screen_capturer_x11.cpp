@@ -67,6 +67,7 @@ ScreenCapturerX11::~ScreenCapturerX11() { Destroy(); }
 
 int ScreenCapturerX11::Init(const int fps, cb_desktop_data cb) {
   Destroy();
+  if (!cb) return -1;
 
   display_ = XOpenDisplay(nullptr);
   if (!display_) {
@@ -75,57 +76,55 @@ int ScreenCapturerX11::Init(const int fps, cb_desktop_data cb) {
   }
 
   root_ = DefaultRootWindow(display_);
-  screen_res_ = XRRGetScreenResources(display_, root_);
-  if (!screen_res_) {
-    LOG_ERROR("Failed to get screen resources");
-    XCloseDisplay(display_);
-    display_ = nullptr;
-    return 1;
+  XWindowAttributes attr{};
+  if (!XGetWindowAttributes(display_, root_, &attr)) {
+    LOG_ERROR("Failed to get X11 root window geometry");
+    Destroy();
+    return -1;
   }
-
-  for (int i = 0; i < screen_res_->noutput; ++i) {
-    RROutput output = screen_res_->outputs[i];
-    XRROutputInfo* output_info =
-        XRRGetOutputInfo(display_, screen_res_, output);
-
-    if (output_info->connection == RR_Connected && output_info->crtc != 0) {
-      XRRCrtcInfo* crtc_info =
-          XRRGetCrtcInfo(display_, screen_res_, output_info->crtc);
-
-      std::string name(output_info->name);
-
-      if (name.empty()) {
-        name = "Display" + std::to_string(i + 1);
-      }
-
-      display_info_list_.push_back(DisplayInfo(
-          (void*)display_, name, true, crtc_info->x, crtc_info->y,
-          crtc_info->x + crtc_info->width, crtc_info->y + crtc_info->height));
-
-      XRRFreeCrtcInfo(crtc_info);
-    }
-
-    if (output_info) {
-      XRRFreeOutputInfo(output_info);
-    }
-  }
-
-  XWindowAttributes attr;
-  XGetWindowAttributes(display_, root_, &attr);
-
-  width_ = attr.width;
-  height_ = attr.height;
-
-  if ((width_ & 1) != 0 || (height_ & 1) != 0) {
-    LOG_WARN("X11 root size {}x{} is not even, aligning down to {}x{} for NV12",
-             width_, height_, width_ & ~1, height_ & ~1);
-    width_ &= ~1;
-    height_ &= ~1;
-  }
-
+  width_ = attr.width & ~1;
+  height_ = attr.height & ~1;
   if (width_ <= 1 || height_ <= 1) {
     LOG_ERROR("Invalid capture size after alignment: {}x{}", width_, height_);
+    Destroy();
     return -2;
+  }
+
+  int event_base = 0, error_base = 0;
+  if (XRRQueryExtension(display_, &event_base, &error_base)) {
+    screen_res_ = XRRGetScreenResources(display_, root_);
+  }
+  if (screen_res_) {
+    for (int i = 0; i < screen_res_->noutput; ++i) {
+      XRROutputInfo* output =
+          XRRGetOutputInfo(display_, screen_res_, screen_res_->outputs[i]);
+      if (!output) continue;
+      if (output->connection == RR_Connected && output->crtc != 0) {
+        XRRCrtcInfo* crtc = XRRGetCrtcInfo(display_, screen_res_, output->crtc);
+        if (crtc) {
+          std::string name(output->name, output->nameLen);
+          if (name.empty()) name = "Display" + std::to_string(i + 1);
+          // Reject stale/offscreen CRTCs after hot-unplug. The root drawable
+          // remains a usable virtual screen even when no output is connected.
+          if (crtc->width > 1 && crtc->height > 1 && crtc->x >= 0 &&
+              crtc->y >= 0 &&
+              crtc->x + crtc->width <= static_cast<unsigned>(attr.width) &&
+              crtc->y + crtc->height <= static_cast<unsigned>(attr.height)) {
+            display_info_list_.emplace_back(
+                display_, name, true, crtc->x, crtc->y,
+                crtc->x + crtc->width, crtc->y + crtc->height);
+          }
+          XRRFreeCrtcInfo(crtc);
+        }
+      }
+      XRRFreeOutputInfo(output);
+    }
+  }
+  if (display_info_list_.empty()) {
+    display_info_list_.emplace_back(display_, "Virtual Display", true,
+                                    0, 0, width_, height_);
+    LOG_INFO("No active X11 outputs; capturing virtual root window {}x{}",
+             width_, height_);
   }
 
   fps_ = fps;
@@ -136,6 +135,7 @@ int ScreenCapturerX11::Init(const int fps, cb_desktop_data cb) {
 
   if (!ProbeCapture()) {
     LOG_ERROR("X11 backend probe failed, XGetImage is not usable");
+    Destroy();
     return -3;
   }
 
@@ -147,6 +147,10 @@ int ScreenCapturerX11::Destroy() {
 
   y_plane_.clear();
   uv_plane_.clear();
+  display_info_list_.clear();
+  monitor_index_ = initial_monitor_index_ = 0;
+  root_ = 0;
+  callback_ = nullptr;
 
   if (screen_res_) {
     XRRFreeScreenResources(screen_res_);
@@ -162,6 +166,7 @@ int ScreenCapturerX11::Destroy() {
 
 int ScreenCapturerX11::Start(bool show_cursor) {
   if (running_) return 0;
+  if (!display_ || display_info_list_.empty() || !callback_) return -1;
   show_cursor_ = show_cursor;
   running_ = true;
   paused_ = false;
@@ -206,6 +211,8 @@ int ScreenCapturerX11::Resume(int monitor_index) {
 }
 
 int ScreenCapturerX11::SwitchTo(int monitor_index) {
+  if (monitor_index < 0 ||
+      monitor_index >= static_cast<int>(display_info_list_.size())) return -1;
   monitor_index_ = monitor_index;
   return 0;
 }

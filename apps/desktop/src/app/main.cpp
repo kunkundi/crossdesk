@@ -6,6 +6,7 @@
 #endif
 #endif
 
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <iostream>
@@ -26,6 +27,8 @@
 #include "render.h"
 
 #ifdef __linux__
+#include "platform/linux/headless/headless_console.h"
+#include "platform/linux/headless/headless_session.h"
 #include "platform/linux/privacy/privacy_guard.h"
 #endif
 
@@ -179,22 +182,7 @@ int HandleServiceCliCommand(const std::string& command) {
 }  // namespace
 #endif
 
-int main(int argc, char* argv[]) {
-#ifdef __linux__
-  // Run before GUI, configuration, logging or daemon initialization. The
-  // guard owns native privacy resources and restores them if this app exits.
-  if (argc == 2 &&
-      std::strcmp(argv[1], crossdesk::kLinuxPrivacyGuardArgument) == 0) {
-    return crossdesk::RunLinuxPrivacyGuard();
-  }
-#endif
-#ifdef _WIN32
-  if (argc == 2 &&
-      std::strcmp(argv[1], crossdesk::kSlintRendererProbeArgument) == 0) {
-    return crossdesk::RunSlintRendererProbe();
-  }
-#endif
-
+static int RunApplication(int argc, char* argv[]) {
   // Service operations and config migration can log before the GUI starts.
   // Configure the directory first, including CLI and daemon child paths.
   auto path_manager = std::make_unique<crossdesk::PathManager>("CrossDesk");
@@ -218,8 +206,7 @@ int main(int argc, char* argv[]) {
   if (is_child) {
     // child process: run render directly
     crossdesk::Render render;
-    render.Run();
-    return 0;
+    return render.Run();
   }
 
 #ifdef _WIN32
@@ -232,6 +219,14 @@ int main(int argc, char* argv[]) {
     crossdesk::ConfigCenter config_center(cache_path + "/config.ini");
     enable_daemon = config_center.IsEnableDaemon();
   }
+
+#ifdef __linux__
+  // The headless supervisor owns the display and application lifetime. A
+  // detached daemon would outlive its display; systemd can restart the whole
+  // session instead.
+  if (std::getenv("CROSSDESK_HEADLESS_ACTIVE") ||
+      crossdesk::HeadlessConsole::Instance().active()) enable_daemon = false;
+#endif
 
   if (enable_daemon) {
     // start daemon with restart monitoring
@@ -251,6 +246,46 @@ int main(int argc, char* argv[]) {
 
   // run without daemon: direct execution
   crossdesk::Render render;
-  render.Run();
-  return 0;
+  return render.Run();
+}
+
+int main(int argc, char* argv[]) {
+#ifdef __linux__
+  // Run before GUI, configuration, logging or display initialization.
+  if (argc == 2 &&
+      std::strcmp(argv[1], crossdesk::kLinuxPrivacyGuardArgument) == 0) {
+    return crossdesk::RunLinuxPrivacyGuard();
+  }
+  auto& console = crossdesk::HeadlessConsole::Instance();
+  if (argc == 2 && std::strcmp(argv[1], "--headless-help") == 0) {
+    crossdesk::PathManager paths("CrossDesk");
+    CSimpleIniA config;
+    config.SetUnicode(true);
+    config.LoadFile((paths.GetCachePath() / "config.ini").string().c_str());
+    console.SetLanguage(static_cast<int>(config.GetLongValue("Settings", "language", 0)));
+    std::cout << console.Text("console_cli_help");
+    return 0;
+  }
+  const int result = crossdesk::RunWithLinuxDisplay(
+      argc, argv, [&] { return RunApplication(argc, argv); }, [&] {
+        crossdesk::PathManager paths("CrossDesk");
+        if (console.Enable(paths.GetLogPath(), paths.GetCachePath() / "config.ini")) return true;
+        std::cerr << "无法初始化日志或控制台，启动失败。\n";
+        return false;
+      });
+  if (console.active()) {
+    console.Notify(result == 0 ? console.Text("console_exited")
+        : console.Text("console_stopped") + " " + std::to_string(result) +
+          "; " + console.Text("console_log_file") + ": " + console.diagnostic_path());
+  }
+  return result;
+#else
+#ifdef _WIN32
+  if (argc == 2 &&
+      std::strcmp(argv[1], crossdesk::kSlintRendererProbeArgument) == 0) {
+    return crossdesk::RunSlintRendererProbe();
+  }
+#endif
+  return RunApplication(argc, argv);
+#endif
 }

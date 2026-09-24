@@ -22,6 +22,9 @@
 #include "platform/video_renderer.h"
 #include "rd_log.h"
 #include "runtime/gui_runtime.h"
+#ifdef __linux__
+#include "platform/linux/headless/headless_console.h"
+#endif
 
 #if _WIN32
 #include "interactive_state.h"
@@ -496,6 +499,9 @@ void PeerEventHandler::OnNetStatusReport(
       LOG_INFO("Use client id [{}] and save id into cache file", id);
       runtime->settings_.Save();
     }
+#ifdef __linux__
+    HeadlessConsole::Instance().SetIdentity(id + "@" + password);
+#endif
   }
 
   std::string remote_id(user_id, user_id_size);

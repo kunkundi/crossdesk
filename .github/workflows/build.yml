@@ -149,6 +149,11 @@ jobs:
           xmake run --root crossdesk_wire_test
           xmake run --root keyboard_state_wire_test
 
+      - name: Install Linux headless runtime dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends xvfb xfce4 dbus
+
       - name: Package
         run: |
           chmod +x ${{ matrix.package_script }}

@@ -21,6 +21,10 @@ DESCRIPTION="A simple cross-platform remote desktop client."
 ALSA_RUNTIME_DEP="libasound2 | libasound2t64"
 PORTAL_RUNTIME_RECOMMENDS="xdg-desktop-portal, xdg-desktop-portal-gtk | xdg-desktop-portal-kde | xdg-desktop-portal-wlr"
 TRAY_RUNTIME_RECOMMENDS="libayatana-appindicator3-1 | libappindicator3-1"
+# Every published package includes the prerequisites for all Linux headless
+# paths, including a complete independent desktop. Older Ubuntu releases ship
+# dbus-run-session in dbus; newer releases split it into dbus-daemon.
+HEADLESS_RUNTIME_DEPS="xvfb, xfce4, dbus-daemon | dbus"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
@@ -167,7 +171,8 @@ Depends: libc6 (>= 2.31), libstdc++6 (>= 10), libx11-6, libxext6,
  libxrender1, libxft2, libxrandr2, libxfixes3, libxcursor1, libxi6, libxcb1, libxcb-randr0,
  libxcb-xtest0, libxcb-xinerama0, libxcb-shape0, libxcb-xkb1,
  libxcb-xfixes0, libxv1, libxtst6, $ALSA_RUNTIME_DEP, libsndio7.0,
- libxcb-shm0, libpulse0, libdrm2, libdbus-1-3, libgl1
+ libxcb-shm0, libpulse0, libdrm2, libdbus-1-3, libgl1,
+ $HEADLESS_RUNTIME_DEPS
 Recommends: $RECOMMENDS
 Priority: optional
 Section: utils

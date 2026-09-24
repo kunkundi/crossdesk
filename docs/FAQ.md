@@ -24,6 +24,10 @@
 
 Wayland 画面捕获依赖启用了 Wayland 支持的构建、宿主系统 PipeWire 0.3 和桌面门户授权；无法捕获时也可在 X11 会话中对比验证。构建选项见 [Linux 构建说明](BUILD.md#linux)。
 
+## Linux 电脑未连接显示器或没有图形会话
+
+正常启动 CrossDesk 即可自动发现并选择当前用户的已有 X11 桌面，保留原来的 Dock 和应用，无需知道显示编号；多个会话会根据登录状态和活动状态自动选择。只看到 CrossDesk、背景一片黑，通常是创建了未运行桌面环境的裸 Xvfb；请改为复用原桌面。需要独立虚拟桌面时安装 `xvfb xfce4 dbus`，使用 `--headless-size 1920x1080 --headless-session startxfce4`。部署与限制见 [Linux 无头运行](HEADLESS.md)。
+
 ## Windows 锁屏后无法操作
 
 在被控电脑检查 CrossDesk Service 是否安装、是否运行，并保持 CrossDesk 客户端运行。便携版可在“设置 → 锁屏控制服务”安装。服务状态检查命令见 [Windows 服务说明](../README.md#windows-service)。
@@ -84,6 +88,7 @@ Windows 安装包和便携包内置了 Amyuni 的 `usbmmidd_v2` 虚拟显示器�
 | P2P connection failed | Enable TURN relay in Settings and reconnect. For self-hosting, check Coturn and relay/media firewall ports. Review [release compatibility notes](https://github.com/kunkundi/crossdesk/releases). |
 | Black screen / no input on macOS | Grant Screen Recording and Accessibility, then reopen the app. A changed app path or signature may require fresh permission grants. |
 | No capture on Linux Wayland | Check the Wayland build option, host PipeWire 0.3, and desktop portal permission. Compare with an X11 session. See [Linux build instructions](BUILD_EN.md#linux). |
+| Linux host has no monitor or graphical session | Start CrossDesk normally to automatically discover and select your existing desktop, preserving its Dock and apps; no display number is needed. A bare Xvfb shows only CrossDesk on a black background; use an existing session or install Xfce and specify `--headless-session startxfce4`. See [Linux headless operation](HEADLESS_EN.md). |
 | Cannot control a Windows lock screen | Install/start CrossDesk Service and keep the host client running. See [service commands](../README_EN.md#windows-service). |
 | Windows host has no monitor attached | The Windows installer and portable archive bundle Amyuni's `usbmmidd_v2` virtual display driver (in the `usbmmidd_v2` folder with its License.txt). On each connection to a host without a monitor (capture method Auto), CrossDesk starts streaming in compatibility mode and, in the background, asks the CrossDesk Service session helper to install the Microsoft-signed driver (first time only) and plug one virtual monitor at 1920×1080; capture then switches to DXGI/WGC on that monitor and it is unplugged when the session ends. Without the service only an elevated CrossDesk can plug it itself; otherwise the host stays in **headless compatibility mode**: GDI capture at an OS-fixed resolution (often 1024×768) with reduced frame rate; the host log records why. Input, privacy screen and file transfer still work. A real monitor or an HDMI/DP dummy plug also restores GPU capture. |
 | Removing the bundled virtual display driver | The uninstaller removes the driver when CrossDesk installed it and leaves a driver you installed yourself. For the portable build run `deviceinstaller64 enableidd 0`, `deviceinstaller64 stop usbmmidd` and `deviceinstaller64 remove usbmmidd` as administrator from the `usbmmidd_v2` folder, or uninstall "USB Mobile Monitor Virtual Display" in Device Manager. |

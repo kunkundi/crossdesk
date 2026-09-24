@@ -54,6 +54,9 @@
 
 #include "platform/linux/gui/cuda_graphics.h"
 #include "platform/linux/gui/tray/linux_tray.h"
+#include "platform/linux/headless/headless_console.h"
+// Xlib defines Status as a macro, which collides with UpdateChecker::Status.
+#undef Status
 #endif
 #include "rd_log.h"
 #include "server_window_state.h"
@@ -990,6 +993,15 @@ int GuiApplication::Run() {
   }
 
   InitializeSettings();
+#ifdef __linux__
+  HeadlessConsole::Instance().BindSettings(
+      config_center_.get(), [this] {
+        std::lock_guard<std::mutex> lock(password_change_mutex_);
+        return HasActiveSession() || password_change_pending_ || credential_recovery_in_progress_;
+      }, [this](SettingEffect effect) {
+        ApplySettingsFromConfig(effect == SettingEffect::reconnect);
+      });
+#endif
   if (!InitializeSDL()) {
     return -1;
   }
@@ -1760,6 +1772,17 @@ void GuiApplication::Tick() {
   if (!peer_) {
     CreateConnectionPeer();
   }
+#ifdef __linux__
+  HeadlessConsole::Instance().Poll(
+      signal_connected_.load(),
+      [this](const std::string& password) { RequestPasswordChange(password); },
+      [this] {
+        const auto password = GenerateRandomPassword(password_saved_);
+        if (password) RequestPasswordChange(*password);
+        else HeadlessConsole::Instance().NotifyKey("console_random_failed");
+      },
+      [this] { exit_ = true; });
+#endif
 
   SDL_Event event;
 #if defined(__APPLE__)
@@ -2019,7 +2042,17 @@ void GuiApplication::ShareLocalCursorState() {
 }
 
 bool GuiApplication::RequestPasswordChange(const std::string &password) {
-  if (password.size() != 6) {
+  const auto notify = [](const std::string& message) {
+#ifdef __linux__
+    HeadlessConsole::Instance().NotifyKey(message.c_str());
+#else
+    (void)message;
+#endif
+  };
+  if (password.size() != 6 ||
+      password.find_first_not_of("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz") !=
+          std::string::npos) {
+    notify("console_password_invalid");
     return false;
   }
 
@@ -2027,6 +2060,7 @@ bool GuiApplication::RequestPasswordChange(const std::string &password) {
     offline_warning_text_ =
         localization::signal_disconnected[localization_language_index_];
     show_offline_warning_window_ = true;
+    notify("console_password_offline");
     return true;
   }
 
@@ -2034,6 +2068,7 @@ bool GuiApplication::RequestPasswordChange(const std::string &password) {
   {
     std::lock_guard<std::mutex> lock(password_change_mutex_);
     if (password_change_pending_) {
+      notify("console_password_pending");
       return true;
     }
     request_id =
@@ -2066,6 +2101,7 @@ bool GuiApplication::RequestPasswordChange(const std::string &password) {
     offline_warning_text_ = localization::failed[localization_language_index_];
     show_offline_warning_window_ = true;
     LOG_ERROR("Could not durably stage password change");
+    notify("console_password_stage_failed");
     return true;
   }
 
@@ -2086,6 +2122,9 @@ bool GuiApplication::RequestPasswordChange(const std::string &password) {
     if (!settings_.ClearPendingPasswordChange()) {
       LOG_WARN("Could not clear unsent pending password change");
     }
+    notify("console_password_send_failed");
+  } else {
+    notify("console_password_submitted");
   }
   return true;
 }
@@ -2123,6 +2162,10 @@ void GuiApplication::HandlePasswordChangeResult() {
   }
 
   if (!succeeded) {
+#ifdef __linux__
+    HeadlessConsole::Instance().NotifyKey(
+        uncertain ? "console_password_uncertain" : "console_password_rejected");
+#endif
     if (uncertain) {
       LOG_WARN("Password change outcome is unknown: {}; re-authenticating",
                error);
@@ -2150,6 +2193,9 @@ void GuiApplication::HandlePasswordChangeResult() {
   }
 
   LOG_INFO("Password changed successfully for [{}]", client_id_);
+#ifdef __linux__
+  HeadlessConsole::Instance().NotifyKey("console_password_confirmed");
+#endif
   if (peer_) {
     CloseConnectionPeer();
   }
@@ -2181,12 +2227,18 @@ void GuiApplication::HandleCredentialRecovery() {
   }
 
   if (promote_pending) {
+#ifdef __linux__
+    HeadlessConsole::Instance().NotifyKey("console_password_recovered");
+#endif
     if (!settings_.PromotePendingPasswordChange()) {
       LOG_WARN("Recovered credential is active but promotion remains pending");
     } else {
       LOG_INFO("Recovered password change with pending credential");
     }
   } else if (clear_pending) {
+#ifdef __linux__
+    HeadlessConsole::Instance().NotifyKey("console_password_retained");
+#endif
     if (!settings_.ClearPendingPasswordChange()) {
       LOG_WARN("Active credential recovered but pending record could not be "
                "cleared");
@@ -3142,7 +3194,6 @@ void GuiApplication::SaveSettingsFromUi() {
   config_center_->SetHardwareVideoCodec(enable_hardware_video_codec_);
   config_center_->SetTurn(enable_turn_, main->get_force_relay_enabled());
   main->set_force_relay_enabled(config_center_->IsForceRelay());
-  config_center_->SetSelfHosted(enable_self_hosted_);
   config_center_->SetAutostart(enable_autostart_);
   config_center_->SetDaemon(enable_daemon_);
 #ifdef _WIN32
@@ -3179,6 +3230,28 @@ void GuiApplication::SaveSettingsFromUi() {
     config_center_->SetServerPort(*port);
   }
 
+  config_center_->SetSelfHosted(enable_self_hosted_);
+  ApplySettingsFromConfig(!HasActiveSession());
+}
+
+void GuiApplication::ApplySettingsFromConfig(bool reconnect) {
+  language_button_value_ = static_cast<int>(config_center_->GetLanguage());
+  localization_language_index_ = localization::detail::ClampLanguageIndex(language_button_value_);
+  localization_language_ = config_center_->GetLanguage();
+  video_encode_format_button_value_ = static_cast<int>(config_center_->GetVideoEncodeFormat());
+  enable_hardware_video_codec_ = config_center_->IsHardwareVideoCodec();
+  enable_turn_ = config_center_->IsEnableTurn();
+  enable_self_hosted_ = config_center_->IsSelfHosted();
+  enable_autostart_ = config_center_->IsEnableAutostart();
+  enable_daemon_ = config_center_->IsEnableDaemon();
+  privacy_.SetText({localization::privacy_screen_unlock_hint[localization_language_index_]});
+  const auto path = config_center_->GetFileTransferSavePath();
+  std::snprintf(file_transfer_save_path_buf_, sizeof(file_transfer_save_path_buf_), "%s", path.c_str());
+  const auto host = config_center_->GetSignalServerHost();
+  std::snprintf(signal_server_ip_self_, sizeof(signal_server_ip_self_), "%s", host.c_str());
+  const int port = config_center_->GetSignalServerPort();
+  const auto port_text = port > 0 ? std::to_string(port) : std::string{};
+  std::snprintf(signal_server_port_self_, sizeof(signal_server_port_self_), "%s", port_text.c_str());
   language_button_value_last_ = language_button_value_;
   video_encode_format_button_value_last_ = video_encode_format_button_value_;
   enable_hardware_video_codec_last_ = enable_hardware_video_codec_;
@@ -3187,11 +3260,17 @@ void GuiApplication::SaveSettingsFromUi() {
   enable_autostart_last_ = enable_autostart_;
   enable_daemon_last_ = enable_daemon_;
   file_transfer_save_path_last_ = path;
-  ui_->localized_language = -1;
-
-  if (!HasActiveSession()) {
+#ifdef __linux__
+  HeadlessConsole::Instance().SetLanguage(localization_language_index_);
+#endif
+  if (ui_) {
+    ui_->localized_language = -1;
+    ResetSettingsUi();
+  }
+  if (reconnect && !HasActiveSession()) {
+    // Tick recreates the peer after asynchronous cleanup, using the committed
+    // configuration. Keep the application and its console running throughout.
     CloseAllRemoteSessions();
-    CreateConnectionPeer();
   }
 }
 
@@ -3465,6 +3544,9 @@ bool GuiApplication::OpenUrl(const std::string& url) {
 }
 
 void GuiApplication::Cleanup() {
+#ifdef __linux__
+  HeadlessConsole::Instance().BindSettings(nullptr, {}, {});
+#endif
   if (!ui_) {
     SDL_Quit();
     return;

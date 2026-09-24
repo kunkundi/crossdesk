@@ -14,6 +14,9 @@
 #include "localization.h"
 #include "platform/video_renderer.h"
 #include "rd_log.h"
+#ifdef __linux__
+#include "platform/linux/headless/headless_console.h"
+#endif
 
 namespace crossdesk {
 
@@ -92,6 +95,11 @@ int GuiRuntime::CreateConnectionPeer() {
 
   const char *active_identity =
       self_hosted ? self_hosted_user_id_ : client_id_with_password_;
+#ifdef __linux__
+  // Publish the committed identity; an unconfirmed recovery credential must
+  // not be advertised as the current connection password.
+  HeadlessConsole::Instance().SetIdentity(active_identity);
+#endif
   const std::string login_identity =
       try_pending_identity ? pending_identity : std::string(active_identity);
   std::memset(connection_login_identity_, 0,

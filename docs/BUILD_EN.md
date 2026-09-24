@@ -60,13 +60,13 @@ Linux builds support Ubuntu 20.04 or later on amd64 and arm64. Release packages
 use Ubuntu 20.04/glibc 2.31 as their compatibility baseline. The dependency
 commands below target Ubuntu 20.04; adapt package names and toolchains for
 other distributions or newer versions, or use the build image below to
-reproduce CI. Install the base build dependencies first:
+reproduce CI. Install the base build and headless runtime dependencies first:
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
   git curl unzip build-essential gcc-10 g++-10 python3-pip \
-  pkg-config binutils dpkg-dev \
+  pkg-config binutils dpkg-dev xvfb xfce4 dbus \
   libx11-dev libxext-dev libxrender-dev libxft-dev libxrandr-dev \
   libxinerama-dev libxcursor-dev libxi-dev libxfixes-dev libxv-dev \
   libxtst-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev \

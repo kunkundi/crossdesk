@@ -71,6 +71,7 @@ private:
   void UpdateLocalization();
   void ResetSettingsUi();
   void SaveSettingsFromUi();
+  void ApplySettingsFromConfig(bool reconnect);
 #if _WIN32 && CROSSDESK_PORTABLE
   void CheckPortableWindowsService();
   void StartPortableWindowsServiceInstall();

@@ -51,8 +51,9 @@ See the [screenshot notes](docs/images/README.md) for image sources and refresh 
 | Live video and audio | H.264 / AV1, 30 / 60 fps settings, hardware codec options, and remote audio; availability depends on hardware and build configuration |
 | Devices and displays | Recent connections, device aliases, session tabs, and remote display switching |
 | Input and sharing | Keyboard/mouse input, remote cursor synchronization, shortcuts, text clipboard synchronization, and file transfer |
-| Networking and deployment | Direct P2P connections, TURN relay, an SRTP encryption option, and self-hosted signaling/relay services |
+| Networking and deployment | Direct P2P connections, TURN relay, SRTP media encryption, and self-hosted signaling/relay services |
 | Windows protected desktops | CrossDesk Service forwards input on lock screens, sign-in screens, and secure desktops |
+| Linux headless operation | Reuse existing desktops and applications or create separate Xvfb desktops, with capture and input; see [setup](docs/HEADLESS_EN.md) |
 
 Controls and capabilities vary by client. Desktop controls are described below; see the [iOS guide](apps/ios/README.md) for native mobile features.
 
@@ -93,7 +94,7 @@ The eye button shows or hides the local password; the pencil button changes it. 
 
 ### Connect from a browser
 
-1. Keep CrossDesk running and connected to the server on the host computer, with **Enable SRTP** enabled in its Settings.
+1. Keep CrossDesk running and connected to the server on the host computer.
 2. Open the [Web Client](https://web.crossdesk.cn/), enter the **Remote Device ID** and **Password**, and click **Connect**.
 3. Use the page's display, mouse-mode, and keyboard controls during the session. Phone and tablet browsers can also connect.
 
@@ -125,7 +126,7 @@ Desktop clients synchronize text clipboard contents. Configure the receiving dir
 Open **☰ → Settings** in the top-right corner and click **OK** to save. Configure the session before connecting; some settings are disabled during an active session. Scroll down for self-hosting, startup behavior, and the file save path.
 
 <p align="center">
-  <img src="docs/images/desktop-settings-en.png" width="720" alt="Current settings for quality, frame rate, video preference, codecs, relay, and SRTP" />
+  <img src="docs/images/desktop-settings-en.png" width="720" alt="Example settings interface" />
 </p>
 
 | Setting | Purpose |
@@ -134,7 +135,6 @@ Open **☰ → Settings** in the top-right corner and click **OK** to save. Conf
 | Video Preference | Choose frame-rate priority, quality priority, or balanced adaptation |
 | Video Encode Format | H.264 / AV1; hardware codec availability depends on the platform, device, and build options |
 | Enable TURN Service | Allow relay-assisted connections; check this setting if P2P fails |
-| SRTP | Media encryption option; configurations on both ends must be compatible |
 | Self-Hosted Config | Set the host, signaling port, and TURN port, then enable the checkbox |
 | Auto Start / Enable Daemon | Configure startup and process supervision; restart as indicated by the UI |
 | File Save Path | Choose where received files are saved |

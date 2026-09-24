@@ -11,6 +11,8 @@ namespace crossdesk::platform {
 namespace {
 
 std::filesystem::path AutostartPath(const std::string& app_name) {
+  const char* config = std::getenv("XDG_CONFIG_HOME");
+  if (config && *config) return std::filesystem::path(config) / "autostart" / (app_name + ".desktop");
   const char* home = std::getenv("HOME");
   if (!home || !home[0]) return {};
   return std::filesystem::path(home) / ".config" / "autostart" /

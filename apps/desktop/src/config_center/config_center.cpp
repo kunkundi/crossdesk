@@ -1,5 +1,11 @@
 #include "config_center.h"
 
+#include <algorithm>
+#include <chrono>
+#include <filesystem>
+#include <optional>
+#include <vector>
+
 #include "autostart.h"
 #include "rd_log.h"
 
@@ -128,11 +134,56 @@ int ConfigCenter::Load() {
     file_transfer_save_path_ = "";
   }
 
-  if (persist_config_migration && ini_.SaveFile(config_path_.c_str()) < 0) {
+  if (persist_config_migration && CommitIni() < 0) {
     return -1;
   }
 
   return 0;
+}
+
+int ConfigCenter::CommitIni() {
+  // Write beside the destination and rename only after a complete save. A
+  // failed write must not truncate the last usable configuration.
+  static std::atomic<unsigned long> sequence{0};
+  const std::string temporary = config_path_ + ".tmp-" +
+      std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
+      "-" + std::to_string(sequence++);
+  std::error_code error;
+  if (ini_.SaveFile(temporary.c_str()) < 0) {
+    LOG_ERROR("Failed to write configuration: {}", config_path_);
+    std::filesystem::remove(temporary, error);
+    return -1;
+  }
+  const auto previous = std::filesystem::status(config_path_, error);
+  if (!error && std::filesystem::is_regular_file(previous)) {
+    std::filesystem::permissions(temporary, previous.permissions(), error);
+    if (error) {
+      LOG_ERROR("Failed to preserve configuration permissions: {}", error.message());
+      std::filesystem::remove(temporary, error);
+      return -1;
+    }
+  }
+  std::filesystem::rename(temporary, config_path_, error);
+  if (!error) return 0;
+  LOG_ERROR("Failed to replace configuration {}: {}", config_path_, error.message());
+  std::filesystem::remove(temporary, error);
+  return -1;
+}
+
+int ConfigCenter::StoreValues(
+    std::initializer_list<std::pair<const char*, std::string>> values) {
+  std::vector<std::pair<const char*, std::optional<std::string>>> previous;
+  for (const auto& value : values) {
+    const char* old = ini_.GetValue(section_, value.first, nullptr);
+    previous.emplace_back(value.first, old ? std::optional<std::string>(old) : std::nullopt);
+    ini_.SetValue(section_, value.first, value.second.c_str());
+  }
+  if (CommitIni() == 0) return 0;
+  for (const auto& value : previous) {
+    if (value.second) ini_.SetValue(section_, value.first, value.second->c_str());
+    else ini_.Delete(section_, value.first);
+  }
+  return -1;
 }
 
 int ConfigCenter::Save() {
@@ -165,7 +216,7 @@ int ConfigCenter::Save() {
   ini_.SetValue(section_, "file_transfer_save_path",
                 file_transfer_save_path_.c_str());
 
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
+  SI_Error rc = CommitIni();
   if (rc < 0) {
     return -1;
   }
@@ -176,12 +227,9 @@ int ConfigCenter::Save() {
 // setters
 
 int ConfigCenter::SetLanguage(LANGUAGE language) {
+  const int value = static_cast<int>(language);
+  if (value < 0 || value > 2 || StoreValues({{"language", std::to_string(value)}}) != 0) return -1;
   language_ = language;
-  ini_.SetLongValue(section_, "language", static_cast<long>(language_));
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
   return 0;
 }
 
@@ -190,7 +238,7 @@ int ConfigCenter::SetScreenCaptureMethod(ScreenCaptureMethod method) {
     return -1;
   }
   ini_.SetLongValue(section_, "screen_capture_method", static_cast<long>(method));
-  if (ini_.SaveFile(config_path_.c_str()) < 0) {
+  if (CommitIni() < 0) {
     ini_.SetLongValue(section_, "screen_capture_method",
                       static_cast<long>(screen_capture_method_));
     return -1;
@@ -199,41 +247,25 @@ int ConfigCenter::SetScreenCaptureMethod(ScreenCaptureMethod method) {
   return 0;
 }
 
-int ConfigCenter::SetVideoEncodeFormat(
-    VIDEO_ENCODE_FORMAT video_encode_format) {
-  video_encode_format_ = video_encode_format;
-  ini_.SetLongValue(section_, "video_encode_format",
-                    static_cast<long>(video_encode_format_));
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
+int ConfigCenter::SetVideoEncodeFormat(VIDEO_ENCODE_FORMAT format) {
+  if (format != VIDEO_ENCODE_FORMAT::H264 && format != VIDEO_ENCODE_FORMAT::AV1) return -1;
+  if (StoreValues({{"video_encode_format", std::to_string(static_cast<int>(format))}}) != 0) return -1;
+  video_encode_format_ = format;
   return 0;
 }
 
-int ConfigCenter::SetHardwareVideoCodec(bool hardware_video_codec) {
-  hardware_video_codec_ = hardware_video_codec;
-  ini_.SetBoolValue(section_, "hardware_video_codec", hardware_video_codec_);
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
+int ConfigCenter::SetHardwareVideoCodec(bool enabled) {
+  if (enabled && !IsHardwareVideoCodecAvailable()) return -1;
+  if (StoreValues({{"hardware_video_codec", enabled ? "true" : "false"}}) != 0) return -1;
+  hardware_video_codec_ = enabled;
   return 0;
 }
 
-int ConfigCenter::SetTurnMode(TURN_MODE turn_mode) {
-  if (!IsValidTurnModeValue(static_cast<long>(turn_mode))) {
-    return -1;
-  }
-
-  turn_mode_ = turn_mode;
-  ini_.SetLongValue(section_, "turn_mode", static_cast<long>(turn_mode_));
-  ini_.SetBoolValue(section_, "enable_turn",
-                    turn_mode_ != TURN_MODE::DISABLED);
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
+int ConfigCenter::SetTurnMode(TURN_MODE mode) {
+  if (!IsValidTurnModeValue(static_cast<long>(mode))) return -1;
+  if (StoreValues({{"turn_mode", std::to_string(static_cast<int>(mode))},
+                   {"enable_turn", mode == TURN_MODE::DISABLED ? "false" : "true"}}) != 0) return -1;
+  turn_mode_ = mode;
   return 0;
 }
 
@@ -249,90 +281,47 @@ int ConfigCenter::SetTurn(bool enable_turn, bool force_relay) {
                                                      : TURN_MODE::FORCE_UDP);
 }
 
-int ConfigCenter::SetServerHost(const std::string& signal_server_host) {
-  signal_server_host_ = signal_server_host;
-  ini_.SetValue(section_, "signal_server_host", signal_server_host_.c_str());
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
+int ConfigCenter::SetServerHost(const std::string& host) {
+  if (host.empty() || host.size() > 253 || host.find_first_of("/\\@?#") != std::string::npos ||
+      std::any_of(host.begin(), host.end(), [](unsigned char c) { return c <= 32 || c == 127; })) return -1;
+  if (StoreValues({{"signal_server_host", host}}) != 0) return -1;
+  signal_server_host_ = host;
   return 0;
 }
 
-int ConfigCenter::SetServerPort(int signal_server_port) {
-  signal_server_port_ = signal_server_port;
-  ini_.SetLongValue(section_, "signal_server_port",
-                    static_cast<long>(signal_server_port_));
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
+int ConfigCenter::SetServerPort(int port) {
+  if (port < 1 || port > 65535 || StoreValues({{"signal_server_port", std::to_string(port)}}) != 0) return -1;
+  signal_server_port_ = port;
   return 0;
 }
 
-int ConfigCenter::SetSelfHosted(bool enable_self_hosted) {
-  enable_self_hosted_ = enable_self_hosted;
-  ini_.SetBoolValue(section_, "enable_self_hosted", enable_self_hosted_);
-
-  // load from config if self hosted is enabled
-  if (enable_self_hosted_) {
-    const char* signal_server_host_value =
-        ini_.GetValue(section_, "signal_server_host", nullptr);
-    if (signal_server_host_value != nullptr &&
-        strlen(signal_server_host_value) > 0) {
-      signal_server_host_ = signal_server_host_value;
-    }
-    const char* signal_server_port_value =
-        ini_.GetValue(section_, "signal_server_port", nullptr);
-    if (signal_server_port_value != nullptr &&
-        strlen(signal_server_port_value) > 0) {
-      signal_server_port_ = static_cast<int>(
-          ini_.GetLongValue(section_, "signal_server_port", 0));
-    }
-    ini_.SetValue(section_, "signal_server_host", signal_server_host_.c_str());
-    ini_.SetLongValue(section_, "signal_server_port",
-                      static_cast<long>(signal_server_port_));
-  }
-
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
+int ConfigCenter::SetSelfHosted(bool enabled) {
+  if (enabled && (signal_server_host_.empty() || signal_server_port_ < 1 || signal_server_port_ > 65535)) return -1;
+  if (StoreValues({{"enable_self_hosted", enabled ? "true" : "false"}}) != 0) return -1;
+  enable_self_hosted_ = enabled;
   return 0;
 }
 
-int ConfigCenter::SetAutostart(bool enable_autostart) {
-  enable_autostart_ = enable_autostart;
-  bool success = false;
-  if (enable_autostart) {
-    success = EnableAutostart("CrossDesk");
-  } else {
-    success = DisableAutostart("CrossDesk");
-  }
-
-  ini_.SetBoolValue(section_, "enable_autostart", enable_autostart_);
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
-
-  if (!success) {
+int ConfigCenter::SetAutostart(bool enabled) {
+  const bool previous = IsAutostartEnabled("CrossDesk");
+  if (enabled != previous && !(enabled ? EnableAutostart("CrossDesk") : DisableAutostart("CrossDesk"))) {
     LOG_ERROR("SetAutostart failed");
     return -1;
   }
-
+  if (StoreValues({{"enable_autostart", enabled ? "true" : "false"}}) != 0) {
+    if (enabled != previous) {
+      if (previous) EnableAutostart("CrossDesk");
+      else DisableAutostart("CrossDesk");
+    }
+    return -1;
+  }
+  enable_autostart_ = enabled;
   return 0;
 }
 
-int ConfigCenter::SetDaemon(bool enable_daemon) {
-  enable_daemon_ = enable_daemon;
-
-  ini_.SetBoolValue(section_, "enable_daemon", enable_daemon_);
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
-
+int ConfigCenter::SetDaemon(bool enabled) {
+  if (StoreValues({{"enable_daemon", enabled ? "true" : "false"}}) != 0) return -1;
+  enable_daemon_ = enabled;
   return 0;
 }
 
@@ -340,7 +329,7 @@ int ConfigCenter::SetPrivacyScreen(bool enable_privacy_screen) {
   const bool previous = enable_privacy_screen_.load();
   if (previous == enable_privacy_screen) return 0;
   ini_.SetBoolValue(section_, "enable_privacy_screen", enable_privacy_screen);
-  if (ini_.SaveFile(config_path_.c_str()) < 0) {
+  if (CommitIni() < 0) {
     ini_.SetBoolValue(section_, "enable_privacy_screen", previous);
     LOG_ERROR("Failed to save automatic privacy screen preference");
     return -1;
@@ -355,7 +344,7 @@ int ConfigCenter::SetPortableServicePromptSuppressed(bool suppressed) {
   portable_service_prompt_suppressed_ = suppressed;
   ini_.SetBoolValue(section_, "portable_service_prompt_suppressed",
                     portable_service_prompt_suppressed_);
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
+  SI_Error rc = CommitIni();
   if (rc < 0) {
     return -1;
   }
@@ -432,17 +421,15 @@ bool ConfigCenter::IsPortableServicePromptSuppressed() const {
 }
 
 int ConfigCenter::SetFileTransferSavePath(const std::string& path) {
+  if (path.size() >= 512 || std::any_of(path.begin(), path.end(), [](unsigned char c) { return c < 32 || c == 127; })) return -1;
+  std::lock_guard<std::mutex> lock(file_path_mutex_);
+  if (StoreValues({{"file_transfer_save_path", path}}) != 0) return -1;
   file_transfer_save_path_ = path;
-  ini_.SetValue(section_, "file_transfer_save_path",
-                file_transfer_save_path_.c_str());
-  SI_Error rc = ini_.SaveFile(config_path_.c_str());
-  if (rc < 0) {
-    return -1;
-  }
   return 0;
 }
 
 std::string ConfigCenter::GetFileTransferSavePath() const {
+  std::lock_guard<std::mutex> lock(file_path_mutex_);
   return file_transfer_save_path_;
 }
 }  // namespace crossdesk

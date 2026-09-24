@@ -280,6 +280,17 @@ function setup_targets()
                 "apps/desktop/src/platform/linux/common")
         end
 
+    if is_os("linux") then
+        target("headless_console")
+            set_kind("object")
+            add_deps("rd_log", "config_center", "assets")
+            add_includedirs("apps/desktop/src", {public = true})
+            add_files("apps/desktop/src/platform/linux/headless/headless_console.cpp",
+                "apps/desktop/src/platform/linux/headless/headless_settings.cpp")
+        target_end()
+
+    end
+
     target("speaker_capturer")
         set_kind("object")
         add_deps("rd_log", "crossdesk_wire")
@@ -450,6 +461,7 @@ function setup_targets()
                 "apps/desktop/src/platform/macos/gui/tray")
         elseif is_os("linux") then
             add_links("GL")
+            add_deps("headless_console")
             add_files("apps/desktop/src/platform/linux/gui/tray/linux_tray.cpp",
                 "apps/desktop/src/platform/linux/gui/cuda_graphics.cpp",
                 "apps/desktop/src/platform/common/gui/opengl_video_renderer.cpp",
@@ -527,7 +539,8 @@ function setup_targets()
                 "apps/desktop/src/platform/macos/daemon_backend.cpp")
         elseif is_os("linux") then
             add_files("apps/desktop/src/platform/common/posix_daemon_backend.cpp",
-                "apps/desktop/src/platform/linux/daemon_backend.cpp")
+                "apps/desktop/src/platform/linux/daemon_backend.cpp",
+                "apps/desktop/src/platform/linux/headless/headless_session.cpp")
         end
         after_build(copy_slint_runtime)
         after_build(copy_usbmmidd_package)

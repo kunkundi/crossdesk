@@ -8,6 +8,9 @@
 #define _CONFIG_CENTER_H_
 
 #include <atomic>
+#include <initializer_list>
+#include <mutex>
+#include <utility>
 #include <string>
 
 #include "SimpleIni.h"
@@ -73,6 +76,9 @@ class ConfigCenter {
   int Save();
 
  private:
+  int CommitIni();
+  int StoreValues(std::initializer_list<std::pair<const char*, std::string>> values);
+  mutable std::mutex file_path_mutex_;
   std::string config_path_;
   CSimpleIniA ini_;
   const char* section_ = "Settings";

@@ -57,13 +57,13 @@ xmake r crossdesk
 ## Linux
 
 Linux 构建支持 Ubuntu 20.04 及以上版本的 amd64 和 arm64。发布安装包以
-Ubuntu 20.04/glibc 2.31 为兼容基线。以下依赖命令以 Ubuntu 20.04 为例；其他发行版或较新版本需按其软件源调整包名和工具链，复现 CI 可使用下文的构建镜像。先安装基础编译依赖：
+Ubuntu 20.04/glibc 2.31 为兼容基线。以下依赖命令以 Ubuntu 20.04 为例；其他发行版或较新版本需按其软件源调整包名和工具链，复现 CI 可使用下文的构建镜像。先安装基础编译和无头运行依赖：
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
   git curl unzip build-essential gcc-10 g++-10 python3-pip \
-  pkg-config binutils dpkg-dev \
+  pkg-config binutils dpkg-dev xvfb xfce4 dbus \
   libx11-dev libxext-dev libxrender-dev libxft-dev libxrandr-dev \
   libxinerama-dev libxcursor-dev libxi-dev libxfixes-dev libxv-dev \
   libxtst-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev \

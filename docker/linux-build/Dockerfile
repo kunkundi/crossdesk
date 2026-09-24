@@ -90,7 +90,9 @@ RUN apt-get update \
         python3 \
         python3-pip \
         unzip \
+        xfce4 \
         xutils-dev \
+        xvfb \
         xz-utils \
         yasm \
         zip \
