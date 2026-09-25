@@ -2892,12 +2892,14 @@ void GuiApplication::SyncStreamWindow() {
           props->file_transfer_.file_transfer_window_visible_);
 
   const auto fps_now = std::chrono::steady_clock::now();
+  bool refresh_stats = false;
   if (!props->net_traffic_stats_button_pressed_) {
     props->fps_ = 0;
     props->frame_count_ = 0;
     props->last_time_ = {};
   } else if (props->last_time_.time_since_epoch().count() == 0) {
     props->last_time_ = fps_now;
+    refresh_stats = true;
   } else {
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                              fps_now - props->last_time_)
@@ -2906,9 +2908,23 @@ void GuiApplication::SyncStreamWindow() {
       props->fps_ = static_cast<int>(props->frame_count_ * 1000 / elapsed);
       props->frame_count_ = 0;
       props->last_time_ = fps_now;
+      refresh_stats = true;
     }
   }
   (*ui_->stream)->set_stats_fps(UiText(std::to_string(props->fps_)));
+  if (!props->net_traffic_stats_button_pressed_ ||
+      status != ConnectionStatus::Connected) {
+    props->video_latency_snapshot_.reset();
+  } else if (refresh_stats) {
+    props->video_latency_snapshot_ = props->video_latency_->Get(fps_now);
+  }
+  const auto& latency = props->video_latency_snapshot_;
+  (*ui_->stream)
+      ->set_stats_video_latency(UiText(
+          latency ? std::to_string(
+                        static_cast<int>(std::lround(latency->average_ms))) +
+                        " ms"
+                  : "—"));
 }
 
 void GuiApplication::SyncStreamVideoFrame() {
@@ -2928,6 +2944,7 @@ void GuiApplication::SyncStreamVideoFrame() {
     frame.width = props->video_width_;
     frame.height = props->video_height_;
     frame.sequence = props->video_frame_sequence_;
+    frame.timing = props->video_frame_timing_;
   }
 
   const auto result = ui_->video_presenter->Present(frame);

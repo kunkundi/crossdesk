@@ -336,6 +336,8 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         }
         {
           std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
+          props->video_latency_->Reset();
+          props->video_frame_timing_ = {};
           props->front_frame_.reset();
           props->back_frame_.reset();
           if (native_snapshot &&

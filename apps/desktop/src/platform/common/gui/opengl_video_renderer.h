@@ -39,11 +39,14 @@ public:
 
   // Thread-safe; called from MiniRTC's decode callback thread.
   SubmitResult SubmitNv12(std::string_view remote_id, const uint8_t *data,
-                          size_t size, int width, int height) override;
+                          size_t size, int width, int height,
+                          VideoLatencyFrame timing = {}) override;
   SubmitResult SubmitCachedNv12(std::string_view remote_id, const uint8_t *data,
-                                size_t size, int width, int height) override;
+                                size_t size, int width, int height,
+                                VideoLatencyFrame timing = {}) override;
   SubmitResult SubmitNativeFrame(std::string_view remote_id,
-                                 const MiniRtcNativeVideoFrame &frame) override;
+                                 const MiniRtcNativeVideoFrame &frame,
+                                 VideoLatencyFrame timing = {}) override;
 
   // Draws below Slint while its OpenGL context is current. All dimensions are
   // physical pixels in the window client area. corner_radius_pixels clips the
@@ -61,7 +64,8 @@ public:
 private:
   SubmitResult SubmitNv12Internal(std::string_view remote_id,
                                   const uint8_t *data, size_t size, int width,
-                                  int height, bool replace_pending);
+                                  int height, bool replace_pending,
+                                  VideoLatencyFrame timing);
 
   struct Impl;
   std::unique_ptr<Impl> impl_;

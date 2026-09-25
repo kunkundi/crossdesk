@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <queue>
 #include <string>
 #include <vector>
@@ -23,6 +24,7 @@
 #include "display_info.h"
 #include "cursor_presentation.h"
 #include "minirtc.h"
+#include "rendering/video_latency.h"
 
 namespace crossdesk { class PeerEventHandler; }
 
@@ -115,6 +117,9 @@ struct RemoteSession {
   int selected_display_ = 0;
   size_t video_size_ = 0;
   uint64_t video_frame_sequence_ = 0;
+  VideoLatencyFrame video_frame_timing_;
+  std::shared_ptr<VideoLatencyStats> video_latency_ =
+      std::make_shared<VideoLatencyStats>();
   bool tab_selected_ = false;
   bool tab_opened_ = true;
   std::string remote_host_name_;
@@ -150,6 +155,8 @@ struct RemoteSession {
   int fps_ = 0;
   int frame_count_ = 0;
   std::chrono::steady_clock::time_point last_time_;
+  // UI-thread snapshot refreshed with FPS once per second.
+  std::optional<VideoLatencyStats::Snapshot> video_latency_snapshot_;
   MiniRtcNetTrafficStats net_traffic_stats_{};
 
   using QueuedFile = FileTransferState::QueuedFile;

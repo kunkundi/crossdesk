@@ -35,18 +35,20 @@ class MacMetalVideoRenderer final : public VideoRenderer {
 
   // Copies one tightly packed NV12 frame into a free shared Metal slot.
   SubmitResult SubmitNv12(std::string_view remote_id, const uint8_t* data,
-                          size_t size, int width, int height) override;
+                          size_t size, int width, int height,
+                          VideoLatencyFrame timing = {}) override;
 
   // Retains an IOSurface-backed VideoToolbox CVPixelBuffer until the Metal
   // command buffer using it has completed.
   SubmitResult SubmitNativeFrame(std::string_view remote_id,
-                                 const MiniRtcNativeVideoFrame& frame) override;
+                                 const MiniRtcNativeVideoFrame& frame,
+                                 VideoLatencyFrame timing = {}) override;
 
   // Seeds a newly selected stream from its retained CPU snapshot without
   // replacing a newer decoded frame that is already queued or rendering.
-  SubmitResult SubmitCachedNv12(std::string_view remote_id,
-                                const uint8_t* data, size_t size, int width,
-                                int height) override;
+  SubmitResult SubmitCachedNv12(std::string_view remote_id, const uint8_t* data,
+                                size_t size, int width, int height,
+                                VideoLatencyFrame timing = {}) override;
 
   // Attaches a native CAMetalLayer-backed sibling below Slint's NSView and
   // restores the containing AppKit window's ordinary opaque titlebar.
@@ -76,7 +78,8 @@ class MacMetalVideoRenderer final : public VideoRenderer {
  private:
   SubmitResult SubmitNv12Internal(std::string_view remote_id,
                                   const uint8_t* data, size_t size, int width,
-                                  int height, bool replace_pending);
+                                  int height, bool replace_pending,
+                                  VideoLatencyFrame timing);
 
   struct Impl;
   std::unique_ptr<Impl> impl_;

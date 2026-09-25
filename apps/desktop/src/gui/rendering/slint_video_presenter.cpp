@@ -87,6 +87,7 @@ struct SlintVideoPresenter::Impl {
   VideoRenderSize gl_image_size;
   VideoRenderSize gl_pending_size;
   bool gl_pending_dirty = false;
+  VideoLatencyFrame gl_pending_timing;
 #endif
 
   SurfaceState CurrentState() const {
@@ -192,6 +193,7 @@ struct SlintVideoPresenter::Impl {
             glPixelStorei(GL_UNPACK_ALIGNMENT, previous_unpack_alignment);
             glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previous_texture));
             gl_pending_dirty = false;
+            gl_pending_timing.MarkSubmitted();
             return;
           }
 
@@ -322,7 +324,7 @@ SlintVideoPresenter::PresentResult SlintVideoPresenter::Present(
       impl_->seeded_frame_sequence[frame.remote_id] != frame.sequence) {
     const auto submit_result = impl_->renderer.SubmitCachedNv12(
         frame.remote_id, frame.nv12->data(), frame.nv12->size(), frame.width,
-        frame.height);
+        frame.height, frame.timing);
     if (submit_result == VideoRenderer::SubmitResult::submitted ||
         submit_result == VideoRenderer::SubmitResult::dropped) {
       impl_->seeded_frame_sequence[frame.remote_id] = frame.sequence;
@@ -440,6 +442,7 @@ SlintVideoPresenter::PresentResult SlintVideoPresenter::Present(
       impl_->gl_pending_frame.swap(impl_->gl_conversion_frame);
       impl_->gl_pending_size = {output_width, output_height};
       impl_->gl_pending_dirty = true;
+      impl_->gl_pending_timing = frame.timing;
     }
     const VideoRenderSize output_size{output_width, output_height};
     if (impl_->gl_image_size != output_size) {
@@ -469,6 +472,7 @@ SlintVideoPresenter::PresentResult SlintVideoPresenter::Present(
   }
 
   (*impl_->stream)->set_frame(slint::Image(std::move(pixels)));
+  frame.timing.MarkSubmitted();
   (*impl_->stream)->set_has_frame(true);
   (*impl_->stream)->set_receiving_text("");
   result.width = frame.width;

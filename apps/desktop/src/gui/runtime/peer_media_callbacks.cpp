@@ -36,7 +36,7 @@ void PeerEventHandler::OnReceiveVideoBuffer(
   auto callback = handler->EnterCallback();
   if (!callback) return;
   GuiRuntime* runtime = handler ? &handler->owner_ : nullptr;
-  if (!runtime) {
+  if (!runtime || !video_frame) {
     return;
   }
 
@@ -45,13 +45,18 @@ void PeerEventHandler::OnReceiveVideoBuffer(
   if (!props) return;
 
   if (props->connection_established_) {
+    const auto timing_now = VideoLatencyFrame::Clock::now();
+    const auto timing = props->video_latency_->Frame(
+        video_frame->captured_timestamp, GetSystemTimeMicros(props->peer_),
+        timing_now);
     bool background_snapshot_only = false;
     auto* native_renderer = runtime->video_renderer_.get();
     if (native_renderer && native_renderer->IsActive()) {
       VideoRenderer::SubmitResult submit_result =
           VideoRenderer::SubmitResult::failed;
       if (const auto* native = GetNativeVideoFrame(video_frame)) {
-        submit_result = native_renderer->SubmitNativeFrame(remote_id, *native);
+        submit_result =
+            native_renderer->SubmitNativeFrame(remote_id, *native, timing);
         // A CPU NV12 native frame is valid MiniRTC input, but the macOS Metal
         // fast path only accepts CVPixelBuffer. Materialize it when that path
         // rejects a software decoder's descriptor. This also supports peers
@@ -69,14 +74,14 @@ void PeerEventHandler::OnReceiveVideoBuffer(
             submit_result = native_renderer->SubmitNv12(
                 remote_id, fallback.data(), fallback.size(),
                 static_cast<int>(native->width),
-                static_cast<int>(native->height));
+                static_cast<int>(native->height), timing);
           }
         }
       } else
       {
         submit_result = native_renderer->SubmitNv12(
             remote_id, reinterpret_cast<const uint8_t*>(video_frame->data),
-            video_frame->size, video_frame->width, video_frame->height);
+            video_frame->size, video_frame->width, video_frame->height, timing);
       }
       if (submit_result == VideoRenderer::SubmitResult::submitted) {
         std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
@@ -170,6 +175,7 @@ void PeerEventHandler::OnReceiveVideoBuffer(
       props->video_size_ = frame_size;
 
       props->front_frame_.swap(props->back_frame_);
+      props->video_frame_timing_ = timing;
       props->thumbnail_frame_ = props->front_frame_;
       props->thumbnail_width_ = video_frame->width;
       props->thumbnail_height_ = video_frame->height;

@@ -59,6 +59,7 @@ struct FrameSlot {
   int height = 0;
   std::string remote_id;
   uint64_t sequence = 0;
+  VideoLatencyFrame timing;
   SlotUse use = SlotUse::available;
   bool valid = false;
 };
@@ -320,6 +321,7 @@ struct OpenGlVideoRenderer::Impl {
   bool unpack_subimage_available = false;
   std::string uploaded_stream;
   uint64_t uploaded_sequence = 0;
+  VideoLatencyFrame uploaded_timing;
 
 #if CROSSDESK_OPENGL_CUDA_INTEROP
   enum class CudaUploadResult {
@@ -1023,25 +1025,22 @@ void OpenGlVideoRenderer::DiscardStream(std::string_view remote_id) {
   }
 }
 
-OpenGlVideoRenderer::SubmitResult
-OpenGlVideoRenderer::SubmitNv12(std::string_view remote_id,
-                                       const uint8_t *data, size_t size,
-                                       int width, int height) {
-  return SubmitNv12Internal(remote_id, data, size, width, height, true);
+OpenGlVideoRenderer::SubmitResult OpenGlVideoRenderer::SubmitNv12(
+    std::string_view remote_id, const uint8_t *data, size_t size, int width,
+    int height, VideoLatencyFrame timing) {
+  return SubmitNv12Internal(remote_id, data, size, width, height, true, timing);
 }
 
-OpenGlVideoRenderer::SubmitResult
-OpenGlVideoRenderer::SubmitCachedNv12(std::string_view remote_id,
-                                             const uint8_t *data, size_t size,
-                                             int width, int height) {
-  return SubmitNv12Internal(remote_id, data, size, width, height, false);
+OpenGlVideoRenderer::SubmitResult OpenGlVideoRenderer::SubmitCachedNv12(
+    std::string_view remote_id, const uint8_t *data, size_t size, int width,
+    int height, VideoLatencyFrame timing) {
+  return SubmitNv12Internal(remote_id, data, size, width, height, false,
+                            timing);
 }
 
-OpenGlVideoRenderer::SubmitResult
-OpenGlVideoRenderer::SubmitNv12Internal(std::string_view remote_id,
-                                               const uint8_t *data, size_t size,
-                                               int width, int height,
-                                               bool replace_pending) {
+OpenGlVideoRenderer::SubmitResult OpenGlVideoRenderer::SubmitNv12Internal(
+    std::string_view remote_id, const uint8_t *data, size_t size, int width,
+    int height, bool replace_pending, VideoLatencyFrame timing) {
   if (!IsReady()) {
     return SubmitResult::failed;
   }
@@ -1104,14 +1103,15 @@ OpenGlVideoRenderer::SubmitNv12Internal(std::string_view remote_id,
   target->height = height;
   target->remote_id.assign(remote_id);
   target->sequence = frames.next_sequence++;
+  target->timing = timing;
   target->use = SlotUse::pending;
   target->valid = true;
   return SubmitResult::submitted;
 }
 
-OpenGlVideoRenderer::SubmitResult
-OpenGlVideoRenderer::SubmitNativeFrame(std::string_view remote_id,
-                                       const MiniRtcNativeVideoFrame &frame) {
+OpenGlVideoRenderer::SubmitResult OpenGlVideoRenderer::SubmitNativeFrame(
+    std::string_view remote_id, const MiniRtcNativeVideoFrame &frame,
+    VideoLatencyFrame timing) {
   if (!IsReady()) {
     return SubmitResult::failed;
   }
@@ -1183,6 +1183,7 @@ OpenGlVideoRenderer::SubmitNativeFrame(std::string_view remote_id,
   target->height = static_cast<int>(native->height);
   target->remote_id.assign(remote_id);
   target->sequence = frames.next_sequence++;
+  target->timing = timing;
   target->use = SlotUse::pending;
   target->valid = true;
   return SubmitResult::submitted;
@@ -1204,6 +1205,7 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
   const unsigned char *y_data = nullptr;
   const unsigned char *uv_data = nullptr;
   NativeVideoFrameRef active_native_frame;
+  VideoLatencyFrame timing;
   {
     std::lock_guard lock(impl_->frames->mutex);
     for (size_t index = 0; index < impl_->frames->slots.size(); ++index) {
@@ -1221,6 +1223,7 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
       source_width = selected.width;
       source_height = selected.height;
       active_native_frame = selected.native_frame;
+      timing = selected.timing;
       if (!selected.bytes.empty()) {
         const size_t y_size = static_cast<size_t>(source_width) * source_height;
         y_data = selected.bytes.data();
@@ -1421,6 +1424,7 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
         impl_->texture_height = source_height;
         impl_->uploaded_stream.assign(remote_id);
         impl_->uploaded_sequence = sequence;
+        impl_->uploaded_timing = timing;
         if (!use_pixel_unpack_buffer) {
           impl_->cpu_texture_width = source_width;
           impl_->cpu_texture_height = source_height;
@@ -1549,6 +1553,8 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
   }
 #endif
   const GLenum draw_error = glGetError();
+  if (has_video && draw_error == GL_NO_ERROR)
+    impl_->uploaded_timing.MarkSubmitted();
   RenderOutcome outcome{
       !upload_succeeded || draw_error != GL_NO_ERROR
           ? RenderResult::failed

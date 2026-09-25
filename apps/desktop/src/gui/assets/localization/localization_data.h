@@ -305,6 +305,7 @@ struct TranslationRow {
     "File Transfer Save Path:", u8"Путь сохранения файлов:")                   \
   X(default_desktop, u8"桌面", "Desktop", u8"Рабочий стол")                    \
   X(resolution, u8"分辨率", "Res", u8"Разрешение")                             \
+  X(video_latency, u8"视频延时", "Video delay", u8"Задержка") \
   X(connection_mode, u8"连接模式", "Mode", u8"Режим")                          \
   X(connection_mode_direct, u8"直连", "Direct", u8"Прямой")                    \
   X(connection_mode_relay, u8"中继", "Relay", u8"Релейный")                    \

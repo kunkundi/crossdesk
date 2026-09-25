@@ -340,6 +340,7 @@ struct FrameSlot {
   int height = 0;
   std::string remote_id;
   uint64_t sequence = 0;
+  VideoLatencyFrame timing;
   SlotUse use = SlotUse::available;
   bool valid = false;
 
@@ -744,14 +745,16 @@ void MacMetalVideoRenderer::DiscardStream(std::string_view remote_id) {
   }
 }
 
-MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitNv12(
-    std::string_view remote_id, const uint8_t* data, size_t size, int width,
-    int height) {
-  return SubmitNv12Internal(remote_id, data, size, width, height, true);
+MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitNv12(std::string_view remote_id,
+                                                                      const uint8_t* data,
+                                                                      size_t size, int width,
+                                                                      int height,
+                                                                      VideoLatencyFrame timing) {
+  return SubmitNv12Internal(remote_id, data, size, width, height, true, timing);
 }
 
 MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitNativeFrame(
-    std::string_view remote_id, const MiniRtcNativeVideoFrame& frame) {
+    std::string_view remote_id, const MiniRtcNativeVideoFrame& frame, VideoLatencyFrame timing) {
   if (!IsReady()) {
     return SubmitResult::failed;
   }
@@ -781,8 +784,7 @@ MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitNativeFrame(
                              packed_nv12.size()) != 0) {
       return SubmitResult::failed;
     }
-    return SubmitNv12(remote_id, packed_nv12.data(), packed_nv12.size(), width,
-                      height);
+    return SubmitNv12(remote_id, packed_nv12.data(), packed_nv12.size(), width, height, timing);
   };
 
   CVPixelBufferRef pixel_buffer =
@@ -878,6 +880,7 @@ MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitNativeFrame(
   target->height = height;
   target->remote_id.assign(remote_id);
   target->sequence = frames.next_sequence++;
+  target->timing = timing;
   target->use = SlotUse::pending;
   target->valid = true;
   if (!impl_->native_path_logged.exchange(true, std::memory_order_acq_rel)) {
@@ -887,14 +890,14 @@ MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitNativeFrame(
 }
 
 MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitCachedNv12(
-    std::string_view remote_id, const uint8_t* data, size_t size, int width,
-    int height) {
-  return SubmitNv12Internal(remote_id, data, size, width, height, false);
+    std::string_view remote_id, const uint8_t* data, size_t size, int width, int height,
+    VideoLatencyFrame timing) {
+  return SubmitNv12Internal(remote_id, data, size, width, height, false, timing);
 }
 
 MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitNv12Internal(
-    std::string_view remote_id, const uint8_t* data, size_t size, int width,
-    int height, bool replace_pending) {
+    std::string_view remote_id, const uint8_t* data, size_t size, int width, int height,
+    bool replace_pending, VideoLatencyFrame timing) {
   if (!IsReady()) {
     return SubmitResult::failed;
   }
@@ -968,6 +971,7 @@ MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitNv12Internal(
 
   target->remote_id.assign(remote_id);
   target->sequence = frames.next_sequence++;
+  target->timing = timing;
   target->use = SlotUse::pending;
   target->valid = true;
   return SubmitResult::submitted;
@@ -1189,6 +1193,7 @@ MacMetalVideoRenderer::RenderOutcome MacMetalVideoRenderer::RenderLatest(
 
     id<MTLTexture> y_texture = nil;
     id<MTLTexture> uv_texture = nil;
+    VideoLatencyFrame timing;
     {
       std::lock_guard lock(impl_->frames->mutex);
       auto& slot = impl_->frames->slots[slot_index];
@@ -1202,6 +1207,7 @@ MacMetalVideoRenderer::RenderOutcome MacMetalVideoRenderer::RenderLatest(
       slot.use = SlotUse::in_flight;
       y_texture = slot.y_texture;
       uv_texture = slot.uv_texture;
+      timing = slot.timing;
     }
 
     MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
@@ -1261,6 +1267,7 @@ MacMetalVideoRenderer::RenderOutcome MacMetalVideoRenderer::RenderLatest(
     }];
     [command_buffer presentDrawable:drawable];
     [command_buffer commit];
+    timing.MarkSubmitted();
     impl_->rendered_stream.assign(remote_id);
     impl_->rendered_content_generation = content_generation;
     impl_->native_surface_needs_redraw->store(false,

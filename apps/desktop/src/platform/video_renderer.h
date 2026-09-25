@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "minirtc.h"
+#include "rendering/video_latency.h"
 
 namespace crossdesk {
 
@@ -54,14 +55,17 @@ public:
 
   virtual SubmitResult SubmitNv12(std::string_view remote_id,
                                   const uint8_t* data, size_t size, int width,
-                                  int height) = 0;
+                                  int height,
+                                  VideoLatencyFrame timing = {}) = 0;
   virtual SubmitResult SubmitCachedNv12(std::string_view remote_id,
                                         const uint8_t* data, size_t size,
-                                        int width, int height) = 0;
+                                        int width, int height,
+                                        VideoLatencyFrame timing = {}) = 0;
   // Retains a platform-native decoded frame when the backend supports its
   // storage and handle types. Unsupported backends keep the default fallback.
   virtual SubmitResult SubmitNativeFrame(std::string_view,
-                                         const MiniRtcNativeVideoFrame&) {
+                                         const MiniRtcNativeVideoFrame&,
+                                         VideoLatencyFrame = {}) {
     return SubmitResult::failed;
   }
 

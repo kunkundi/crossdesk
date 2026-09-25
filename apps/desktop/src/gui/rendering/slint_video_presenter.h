@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+#include "rendering/video_latency.h"
+
 namespace slint {
 template <typename T> class ComponentHandle;
 }
@@ -42,6 +44,7 @@ public:
     int width = 0;
     int height = 0;
     uint64_t sequence = 0;
+    VideoLatencyFrame timing;
   };
 
   struct PresentResult {

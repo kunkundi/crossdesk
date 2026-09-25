@@ -56,6 +56,7 @@ export global StreamStrings {
     in-out property <string> stats-out: "Out";
     in-out property <string> stats-loss-rate: "Loss Rate";
     in-out property <string> stats-resolution: "Res";
+    in-out property <string> stats-video-latency: "Video delay";
     in-out property <string> stats-connection-mode: "Mode";
     in-out property <string> stats-encryption: "Encryption";
     in-out property <string> stats-encryption-enabled: "Enabled";
@@ -218,6 +219,7 @@ export component StreamWindow inherits Window {
     in property <[NetworkStatsRow]> stats-rows;
     in property <string> stats-fps: "0";
     in property <string> stats-resolution: "";
+    in property <string> stats-video-latency: "—";
     in property <string> stats-connection-mode: "";
     in property <bool> stats-encryption-enabled: false;
     in property <bool> file-transfer-visible: false;
@@ -253,7 +255,7 @@ export component StreamWindow inherits Window {
     private property <length> stats-row-height: 18px;
     private property <length> stats-header-height: 18px;
     private property <length> stats-content-height:
-        root.stats-header-height + root.stats-rows.length * root.stats-row-height + 44px;
+        root.stats-header-height + root.stats-rows.length * root.stats-row-height + 65px;
     private property <bool> display-menu-open: false;
     private property <bool> display-menu-animation-enabled: false;
     private property <float> display-menu-progress: 0.0;
@@ -1023,6 +1025,29 @@ export component StreamWindow inherits Window {
                             width: parent.width - 8px;
                             height: 1px;
                             background: #edf0f4;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        x: 6px;
+                        y: root.stats-header-height + root.stats-rows.length * stats-table.row-height + 44px;
+                        width: parent.width - 12px;
+                        height: 21px;
+                        spacing: 6px;
+                        Text {
+                            text: StreamStrings.stats-video-latency;
+                            color: #667085;
+                            font-size: ImGuiFontStyle.small;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: root.stats-video-latency;
+                            color: #253247;
+                            font-size: ImGuiFontStyle.body;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            overflow: elide;
                         }
                     }
 
