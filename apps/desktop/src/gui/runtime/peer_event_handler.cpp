@@ -300,6 +300,7 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         runtime->keyboard_.ReleaseRemotePressedKeys(remote_id,
                                                     "connection_closed");
         props->connection_established_ = false;
+        props->net_traffic_stats_.Reset();
         props->enable_mouse_control_ = false;
         runtime->ResetRemoteServiceStatus(*props);
         {
@@ -520,7 +521,7 @@ void PeerEventHandler::OnNetStatusReport(
 
   // only display client side net status if connected to itself
   if (!(runtime->peer_reserved_ && !strstr(client_id, "C-"))) {
-    props->net_traffic_stats_ = *net_traffic_stats;
+    props->net_traffic_stats_.Store(*net_traffic_stats);
   }
 }
 }  // namespace crossdesk

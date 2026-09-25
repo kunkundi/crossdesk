@@ -176,6 +176,7 @@ inline int ApplyStreamWindowStrings(
   strings.set_stats_loss_rate(Text(localization::loss_rate[language]));
   strings.set_stats_resolution(Text(localization::resolution[language]));
   strings.set_stats_video_latency(Text(localization::video_latency[language]));
+  strings.set_stats_connection_latency(Text(localization::connection_latency[language]));
   strings.set_stats_connection_mode(
       Text(localization::connection_mode[language]));
   strings.set_stats_encryption(

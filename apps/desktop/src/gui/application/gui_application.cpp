@@ -2803,7 +2803,7 @@ void GuiApplication::SyncStreamWindow() {
   ui_->display_model->set_vector(std::move(displays));
   (*ui_->stream)->set_selected_display(props->selected_display_);
 
-  const auto& net = props->net_traffic_stats_;
+  const auto net = props->net_traffic_stats_.Load();
   (*ui_->stream)->set_stats_encryption_enabled(
       status == ConnectionStatus::Connected && net.srtp_active);
   std::vector<ui::NetworkStatsRow> stats_rows;
@@ -2925,6 +2925,17 @@ void GuiApplication::SyncStreamWindow() {
                         static_cast<int>(std::lround(latency->average_ms))) +
                         " ms"
                   : "—"));
+  const bool rtt_available = props->net_traffic_stats_button_pressed_ &&
+                            status == ConnectionStatus::Connected &&
+                            net.rtt_ms >= 0;
+  std::string connection_latency = "—";
+  if (rtt_available) {
+    connection_latency =
+        net.rtt_ms < 1
+            ? "<1 ms"
+            : std::to_string(static_cast<int>(std::lround(net.rtt_ms))) + " ms";
+  }
+  (*ui_->stream)->set_stats_connection_latency(UiText(connection_latency));
 }
 
 void GuiApplication::SyncStreamVideoFrame() {

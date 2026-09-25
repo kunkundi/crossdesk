@@ -25,6 +25,7 @@
 #include "cursor_presentation.h"
 #include "minirtc.h"
 #include "rendering/video_latency.h"
+#include "runtime/net_traffic_stats_cache.h"
 
 namespace crossdesk { class PeerEventHandler; }
 
@@ -157,7 +158,7 @@ struct RemoteSession {
   std::chrono::steady_clock::time_point last_time_;
   // UI-thread snapshot refreshed with FPS once per second.
   std::optional<VideoLatencyStats::Snapshot> video_latency_snapshot_;
-  MiniRtcNetTrafficStats net_traffic_stats_{};
+  NetTrafficStatsCache net_traffic_stats_;
 
   using QueuedFile = FileTransferState::QueuedFile;
   using FileTransferStatus = FileTransferState::FileTransferStatus;

@@ -298,7 +298,7 @@ void FileTransferManager::HandleAck(const char *data, size_t size) {
   uint32_t rate_bps = 0;
   if (props) {
     const uint32_t bitrate =
-        props->net_traffic_stats_.data_outbound_stats.bitrate;
+        props->net_traffic_stats_.DataOutboundBitrate();
     if (bitrate > 0 && state->file_sending_.load()) {
       rate_bps = static_cast<uint32_t>(bitrate * 0.99f);
       const uint32_t current_rate = state->file_send_rate_bps_.load();

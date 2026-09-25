@@ -417,6 +417,7 @@ void GuiRuntime::WaitForSessionCleanup() {
 
 void GuiRuntime::ResetRemoteSessionResources(
     std::shared_ptr<RemoteSession> props) {
+  props->net_traffic_stats_.Reset();
   {
     std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
     props->video_latency_->Reset();

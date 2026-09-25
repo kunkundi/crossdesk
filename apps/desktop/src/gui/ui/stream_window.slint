@@ -57,6 +57,7 @@ export global StreamStrings {
     in-out property <string> stats-loss-rate: "Loss Rate";
     in-out property <string> stats-resolution: "Res";
     in-out property <string> stats-video-latency: "Video delay";
+    in-out property <string> stats-connection-latency: "Connection RTT";
     in-out property <string> stats-connection-mode: "Mode";
     in-out property <string> stats-encryption: "Encryption";
     in-out property <string> stats-encryption-enabled: "Enabled";
@@ -220,6 +221,7 @@ export component StreamWindow inherits Window {
     in property <string> stats-fps: "0";
     in property <string> stats-resolution: "";
     in property <string> stats-video-latency: "—";
+    in property <string> stats-connection-latency: "—";
     in property <string> stats-connection-mode: "";
     in property <bool> stats-encryption-enabled: false;
     in property <bool> file-transfer-visible: false;
@@ -905,23 +907,33 @@ export component StreamWindow inherits Window {
                     private property <length> details-right-width:
                         right-label-width-probe.preferred-width + 6px
                             + max(resolution-width-probe.preferred-width,
+                                connection-latency-width-probe.preferred-width,
                                 encryption-width-probe.preferred-width
                                     + (root.stats-encryption-enabled ? 14px : 0px));
-                    private property <length> details-right-x: self.width / 2;
+                    private property <length> details-right-x:
+                        min(self.width / 2, self.width - self.details-right-width - 6px);
 
                     left-label-width-probe := Text {
                         visible: false;
-                        text: "FPS\n" + StreamStrings.stats-connection-mode;
+                        text: "FPS\n" + StreamStrings.stats-video-latency
+                            + "\n" + StreamStrings.stats-connection-mode;
                         font-size: ImGuiFontStyle.small;
                     }
                     right-label-width-probe := Text {
                         visible: false;
-                        text: StreamStrings.stats-resolution + "\n" + StreamStrings.stats-encryption;
+                        text: StreamStrings.stats-resolution + "\n" + StreamStrings.stats-connection-latency
+                            + "\n" + StreamStrings.stats-encryption;
                         font-size: ImGuiFontStyle.small;
                     }
                     resolution-width-probe := Text {
                         visible: false;
                         text: root.stats-resolution;
+                        font-size: ImGuiFontStyle.body;
+                        font-weight: 600;
+                    }
+                    connection-latency-width-probe := Text {
+                        visible: false;
+                        text: root.stats-connection-latency;
                         font-size: ImGuiFontStyle.body;
                         font-weight: 600;
                     }
@@ -1028,38 +1040,17 @@ export component StreamWindow inherits Window {
                         }
                     }
 
-                    HorizontalLayout {
-                        x: 6px;
-                        y: root.stats-header-height + root.stats-rows.length * stats-table.row-height + 44px;
-                        width: parent.width - 12px;
-                        height: 21px;
-                        spacing: 6px;
-                        Text {
-                            text: StreamStrings.stats-video-latency;
-                            color: #667085;
-                            font-size: ImGuiFontStyle.small;
-                            vertical-alignment: center;
-                        }
-                        Text {
-                            text: root.stats-video-latency;
-                            color: #253247;
-                            font-size: ImGuiFontStyle.body;
-                            font-weight: 600;
-                            vertical-alignment: center;
-                            horizontal-stretch: 1;
-                            overflow: elide;
-                        }
-                    }
-
                     for metric[index] in [
                         { label: "FPS", value: root.stats-fps },
                         { label: StreamStrings.stats-resolution, value: root.stats-resolution },
+                        { label: StreamStrings.stats-video-latency, value: root.stats-video-latency },
+                        { label: StreamStrings.stats-connection-latency, value: root.stats-connection-latency },
                         { label: StreamStrings.stats-connection-mode, value: root.stats-connection-mode },
                         { label: StreamStrings.stats-encryption, value: root.stats-encryption-enabled
                             ? StreamStrings.stats-encryption-enabled : StreamStrings.stats-encryption-disabled },
                     ]: Rectangle {
                         private property <length> encryption-icon-width:
-                            index == 3 && root.stats-encryption-enabled ? 14px : 0px;
+                            index == 5 && root.stats-encryption-enabled ? 14px : 0px;
                         x: mod(index, 2) == 1 ? stats-table.details-right-x : 6px;
                         y: root.stats-header-height + root.stats-rows.length * stats-table.row-height
                             + 2px + floor(index / 2) * 21px;
@@ -1083,14 +1074,14 @@ export component StreamWindow inherits Window {
                             height: parent.height;
                             width: parent.width - self.x - parent.encryption-icon-width;
                             text: metric.value;
-                            color: index == 3 && root.stats-encryption-enabled ? #18794e : #253247;
+                            color: index == 5 && root.stats-encryption-enabled ? #18794e : #253247;
                             font-size: ImGuiFontStyle.body;
                             font-weight: 600;
                             horizontal-alignment: left;
                             vertical-alignment: center;
                             overflow: elide;
                         }
-                        if index == 3 && root.stats-encryption-enabled: Text {
+                        if index == 5 && root.stats-encryption-enabled: Text {
                             x: metric-value.x + min(metric-value.preferred-width, metric-value.width) + 4px;
                             y: metric-value.y + (metric-value.height - self.height) / 2;
                             width: 10px;
