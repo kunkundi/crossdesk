@@ -135,6 +135,16 @@ function setup_targets()
             "apps/desktop/src/gui/runtime")
         add_files("apps/desktop/tests/cursor_position_test.cpp")
 
+    target("single_instance")
+        set_kind("object")
+        add_includedirs("apps/desktop/src", {public = true})
+        if is_os("windows") then
+            add_files("apps/desktop/src/platform/windows/single_instance.cpp")
+            add_syslinks("Advapi32")
+        else
+            add_files("apps/desktop/src/platform/common/posix_single_instance.cpp")
+        end
+
     target("repository_structure_test")
         set_kind("binary")
         set_default(false)
@@ -540,7 +550,7 @@ function setup_targets()
 
     target("crossdesk")
         set_kind("binary")
-        add_deps("rd_log", "desktop_common", "gui")
+        add_deps("rd_log", "desktop_common", "gui", "single_instance")
         add_files("apps/desktop/src/app/*.cpp")
         add_includedirs("apps/desktop/src", "apps/desktop/src/app", {public = true})
         if is_os("windows") then

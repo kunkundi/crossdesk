@@ -1638,7 +1638,7 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
     const ULONGLONG elapsed = GetTickCount64() - stats_started;
     if (elapsed == 0 || (!force && elapsed < 5000)) return;
     if (shared_frames || fallback_frames || shared_waits || shared_restarts) {
-      LOG_INFO(
+      LOG_DEBUG(
           "Secure capture delivery: shared_fps={:.1f}, fallback_fps={:.1f}, "
           "pending_waits={}, shared_restarts={}, status_max_ms={}",
           shared_frames * 1000.0 / elapsed, fallback_frames * 1000.0 / elapsed,

@@ -78,7 +78,7 @@ bool HeadlessConsole::Enable(const std::filesystem::path& log_directory,
   error_ = err;
   interactive_ = isatty(STDIN_FILENO) && isatty(output_);
   // Initialize after redirecting output so even the logger's first message
-  // stays in its original crossdesk-YYYYMMDD-HHMMSS.log file.
+  // stays in crossdesk.log.
   try {
     InitLogger(log_directory.string());
     for (const auto& sink : get_logger()->sinks()) {

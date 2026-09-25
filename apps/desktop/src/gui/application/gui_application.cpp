@@ -2029,7 +2029,7 @@ void GuiApplication::ShareLocalCursorState() {
     if (!delivery.has_sent ||
         delivery.last_sent.render_mode != outgoing.render_mode ||
         delivery.last_sent.hidden_reason != outgoing.hidden_reason) {
-      LOG_INFO("Send cursor presentation to [{}]: mode={}, reason={}",
+      LOG_DEBUG("Send cursor presentation to [{}]: mode={}, reason={}",
                recipient.remote_id, static_cast<int>(outgoing.render_mode),
                static_cast<int>(outgoing.hidden_reason));
     }

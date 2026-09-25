@@ -82,7 +82,7 @@ void SessionDeviceManager::RecordCaptureCadence(
                            : capture_secure_callbacks_ == capture_callbacks_
                                ? "secure_desktop"
                                : "mixed";
-      LOG_INFO(
+      LOG_DEBUG(
           "Capture delivery: source={} normal_callbacks={} secure_callbacks={} "
           "target_fps={} input_fps={:.2f} "
           "forwarded_fps={:.2f} callbacks={} rate_dropped={} "
@@ -225,7 +225,7 @@ int SessionDeviceManager::InitializeScreenCapturer() {
                                     last_video_frame_stream_id_ != stream_id;
         if (resumed_after_gap || stream_changed) {
           if (RequestVideoKeyFrame(owner_.peer_, stream_id.c_str()) == 0) {
-            LOG_INFO("Request video key frame before sending captured frame, "
+            LOG_DEBUG("Request video key frame before sending captured frame, "
                      "stream='{}', gap_ms={}, stream_changed={}",
                      stream_id, duration_ms, stream_changed);
           }

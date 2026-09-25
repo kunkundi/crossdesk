@@ -294,7 +294,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
       props->remote_cursor_state_received_ = true;
       props->cursor_presentation_.Observe(merged, SDL_GetTicks());
       if (changed) {
-        LOG_INFO("Received cursor state: seq={}, visible={}, shape={}, "
+        LOG_DEBUG("Received cursor state: seq={}, visible={}, shape={}, "
                  "mode={}, reason={}",
                  remote_action.cs.seq, remote_action.cs.visible,
                  static_cast<int>(remote_action.cs.shape),

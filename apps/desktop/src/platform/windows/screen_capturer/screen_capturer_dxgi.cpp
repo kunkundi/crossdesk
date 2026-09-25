@@ -547,7 +547,7 @@ void ScreenCapturerDxgi::CaptureLoop() {
       if (last_logged_cursor_embedding_ < 0 ||
           (software_cursor_output_ &&
            last_logged_cursor_embedding_ != static_cast<int>(cursor_embedded))) {
-        LOG_INFO("DXGI cursor: monitor={} usbmmidd={} mouse_update={} "
+        LOG_DEBUG("DXGI cursor: monitor={} usbmmidd={} mouse_update={} "
                  "separate_pointer_visible={} pointer_shape_bytes={} "
                  "compose_cursor={} embedded={}",
                  frame_monitor, software_cursor_output_,

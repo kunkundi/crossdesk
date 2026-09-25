@@ -38,7 +38,9 @@ function setup_options_and_dependencies()
     add_defines("USE_WAYLAND=" .. (is_config("USE_WAYLAND", true) and "1" or "0"))
     add_defines("USE_DRM=" .. (is_config("USE_DRM", true) and "1" or "0"))
     if is_mode("debug") then
-        add_defines("CROSSDESK_DEBUG")
+        add_defines("CROSSDESK_DEBUG", "SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_DEBUG")
+    else
+        add_defines("SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_INFO")
     end
 
     add_requireconfs("**.python", {version = "3.12", override = true, configs = {pgo = false}})

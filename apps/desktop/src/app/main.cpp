@@ -23,6 +23,7 @@
 #include "config_center.h"
 #include "daemon.h"
 #include "path_manager.h"
+#include "platform/single_instance.h"
 #include "rd_log.h"
 #include "render.h"
 
@@ -183,28 +184,34 @@ int HandleServiceCliCommand(const std::string& command) {
 }  // namespace
 #endif
 
-static int RunApplication(int argc, char* argv[]) {
-  // Service operations and config migration can log before the GUI starts.
-  // Configure the directory first, including CLI and daemon child paths.
+static bool IsDaemonChild(int argc, char* argv[]) {
+  for (int i = 1; i < argc; ++i) {
+    if (std::strcmp(argv[i], "--child") == 0) return true;
+  }
+  return false;
+}
+
+static crossdesk::platform::InstanceResult AcquireInstance(
+    crossdesk::platform::SingleInstanceGuard& guard,
+    crossdesk::platform::InstanceRole role) {
+  std::string error;
+  const auto result = guard.TryAcquire(role, error);
+  if (result == crossdesk::platform::InstanceResult::kAlreadyRunning) {
+    std::cerr << "CrossDesk is already running for this user.\n";
+  } else if (result == crossdesk::platform::InstanceResult::kError) {
+    std::cerr << "CrossDesk cannot start: " << error << '\n';
+  }
+  return result;
+}
+
+static int RunApplication(
+    int argc, char* argv[],
+    crossdesk::platform::SingleInstanceGuard& client_instance) {
+  // The instance guards are held before any configuration or logger is opened.
   auto path_manager = std::make_unique<crossdesk::PathManager>("CrossDesk");
   crossdesk::InitLogger(path_manager->GetLogPath().string());
 
-#ifdef _WIN32
-  if (argc > 1 && IsServiceCliCommand(argv[1])) {
-    return HandleServiceCliCommand(argv[1]);
-  }
-#endif
-
-  // check if running as child process
-  bool is_child = false;
-  for (int i = 1; i < argc; i++) {
-    if (strcmp(argv[i], "--child") == 0) {
-      is_child = true;
-      break;
-    }
-  }
-
-  if (is_child) {
+  if (IsDaemonChild(argc, argv)) {
     // child process: run render directly
     crossdesk::Render render;
     return render.Run();
@@ -230,11 +237,23 @@ static int RunApplication(int argc, char* argv[]) {
 #endif
 
   if (enable_daemon) {
+    // The launcher lease stays in main for the supervisor's entire lifetime.
+    // Each --child must acquire its own client lease, so it is neither blocked
+    // by its supervisor nor able to bypass the single-client restriction.
+    client_instance.Release();
     // start daemon with restart monitoring
     Daemon daemon("CrossDesk");
 
     // define main loop function: run render and stop daemon on normal exit
-    Daemon::MainLoopFunc main_loop = [&daemon]() {
+    Daemon::MainLoopFunc main_loop = [&daemon, &client_instance]() {
+      // Executable discovery can fail and make the supervisor run the GUI in
+      // process. This fallback must retain the same client ownership rule.
+      if (AcquireInstance(client_instance,
+                          crossdesk::platform::InstanceRole::kClient) !=
+          crossdesk::platform::InstanceResult::kAcquired) {
+        daemon.stop();
+        return;
+      }
       crossdesk::Render render;
       render.Run();
       daemon.stop();
@@ -267,26 +286,51 @@ int main(int argc, char* argv[]) {
     std::cout << console.Text("console_cli_help");
     return 0;
   }
-  const int result = crossdesk::RunWithLinuxDisplay(
-      argc, argv, [&] { return RunApplication(argc, argv); }, [&] {
+#endif
+#ifdef _WIN32
+  if (argc == 2 &&
+      std::strcmp(argv[1], crossdesk::kSlintRendererProbeArgument) == 0) {
+    return crossdesk::RunSlintRendererProbe();
+  }
+  if (argc > 1 && IsServiceCliCommand(argv[1])) {
+    EnsureConsoleForCli();
+    crossdesk::platform::SingleInstanceGuard cli_instance;
+    if (AcquireInstance(cli_instance, crossdesk::platform::InstanceRole::kServiceCli) !=
+        crossdesk::platform::InstanceResult::kAcquired) return 1;
+    crossdesk::PathManager paths("CrossDesk");
+    crossdesk::InitLogger(paths.GetLogPath().string(), "crossdesk-service-cli");
+    return HandleServiceCliCommand(argv[1]);
+  }
+#endif
+
+  using crossdesk::platform::InstanceResult;
+  using crossdesk::platform::InstanceRole;
+  crossdesk::platform::SingleInstanceGuard launcher_instance;
+  crossdesk::platform::SingleInstanceGuard client_instance;
+  if (!IsDaemonChild(argc, argv)) {
+    const auto result = AcquireInstance(launcher_instance, InstanceRole::kLauncher);
+    if (result != InstanceResult::kAcquired)
+      return result == InstanceResult::kAlreadyRunning ? 0 : 1;
+  }
+  const auto result = AcquireInstance(client_instance, InstanceRole::kClient);
+  if (result != InstanceResult::kAcquired)
+    return result == InstanceResult::kAlreadyRunning ? 0 : 1;
+
+#ifdef __linux__
+  const int exit_code = crossdesk::RunWithLinuxDisplay(
+      argc, argv, [&] { return RunApplication(argc, argv, client_instance); }, [&] {
         crossdesk::PathManager paths("CrossDesk");
         if (console.Enable(paths.GetLogPath(), paths.GetCachePath() / "config.ini")) return true;
         std::cerr << "无法初始化日志或控制台，启动失败。\n";
         return false;
       });
   if (console.active()) {
-    console.Notify(result == 0 ? console.Text("console_exited")
-        : console.Text("console_stopped") + " " + std::to_string(result) +
+    console.Notify(exit_code == 0 ? console.Text("console_exited")
+        : console.Text("console_stopped") + " " + std::to_string(exit_code) +
           "; " + console.Text("console_log_file") + ": " + console.diagnostic_path());
   }
-  return result;
+  return exit_code;
 #else
-#ifdef _WIN32
-  if (argc == 2 &&
-      std::strcmp(argv[1], crossdesk::kSlintRendererProbeArgument) == 0) {
-    return crossdesk::RunSlintRendererProbe();
-  }
-#endif
-  return RunApplication(argc, argv);
+  return RunApplication(argc, argv, client_instance);
 #endif
 }
