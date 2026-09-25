@@ -2925,17 +2925,25 @@ void GuiApplication::SyncStreamWindow() {
                         static_cast<int>(std::lround(latency->average_ms))) +
                         " ms"
                   : "—"));
+  const auto display_rtt = props->net_traffic_stats_.SmoothedRttMs(fps_now);
   const bool rtt_available = props->net_traffic_stats_button_pressed_ &&
                             status == ConnectionStatus::Connected &&
-                            net.rtt_ms >= 0;
+                            display_rtt.has_value();
   std::string connection_latency = "—";
   if (rtt_available) {
     connection_latency =
-        net.rtt_ms < 1
+        *display_rtt < 1
             ? "<1 ms"
-            : std::to_string(static_cast<int>(std::lround(net.rtt_ms))) + " ms";
+            : std::to_string(static_cast<int>(std::lround(*display_rtt))) + " ms";
   }
   (*ui_->stream)->set_stats_connection_latency(UiText(connection_latency));
+  if (refresh_stats && status == ConnectionStatus::Connected) {
+    LOG_DEBUG("Latency stats: remote={} video_ms={} video_samples={} "
+              "rtt_raw_ms={} rtt_display_ms={}",
+              props->remote_id_, latency ? latency->average_ms : -1,
+              latency ? latency->samples : 0, net.rtt_ms,
+              display_rtt.value_or(-1));
+  }
 }
 
 void GuiApplication::SyncStreamVideoFrame() {

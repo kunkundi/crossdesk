@@ -10,6 +10,7 @@
 #include <atomic>
 
 #include "minirtc.h"
+#include "runtime/connection_latency.h"
 
 namespace crossdesk::gui_detail {
 
@@ -34,6 +35,7 @@ class NetTrafficStatsCache {
     total_outbound_stats_.Store(stats.total_outbound_stats);
     srtp_active_.store(stats.srtp_active, std::memory_order_relaxed);
     rtt_ms_.store(stats.rtt_ms, std::memory_order_relaxed);
+    connection_latency_.Update(stats.rtt_ms);
   }
 
   MiniRtcNetTrafficStats Load() const {
@@ -55,7 +57,18 @@ class NetTrafficStatsCache {
     return data_outbound_stats_.bitrate.load(std::memory_order_relaxed);
   }
 
-  void Reset() { Store(MiniRtcNetTrafficStats{}); }
+  std::optional<double> SmoothedRttMs(
+      ConnectionLatencyStats::Clock::time_point now =
+          ConnectionLatencyStats::Clock::now()) const {
+    return connection_latency_.Get(now);
+  }
+
+  void ResetLatency() { connection_latency_.Reset(); }
+
+  void Reset() {
+    Store(MiniRtcNetTrafficStats{});
+    ResetLatency();
+  }
 
  private:
   struct InboundStats {
@@ -101,6 +114,7 @@ class NetTrafficStatsCache {
   OutboundStats total_outbound_stats_;
   std::atomic<bool> srtp_active_{false};
   std::atomic<double> rtt_ms_{-1};
+  ConnectionLatencyStats connection_latency_;
 };
 
 }  // namespace crossdesk::gui_detail

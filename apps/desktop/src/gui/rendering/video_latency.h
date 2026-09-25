@@ -26,6 +26,8 @@ struct VideoLatencyFrame {
   std::shared_ptr<VideoLatencyStats> stats;
   uint64_t id = 0;
   Clock::time_point capture_time{};
+  void MarkPresented(Clock::time_point now = Clock::now()) const;
+  // Fallback for renderers which expose submission but no presentation time.
   void MarkSubmitted(Clock::time_point now = Clock::now()) const;
 };
 
@@ -97,6 +99,10 @@ class VideoLatencyStats
 };
 
 inline void VideoLatencyFrame::MarkSubmitted(Clock::time_point now) const {
+  MarkPresented(now);
+}
+
+inline void VideoLatencyFrame::MarkPresented(Clock::time_point now) const {
   if (stats) stats->Record(*this, now);
 }
 }  // namespace crossdesk

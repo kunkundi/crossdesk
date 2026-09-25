@@ -3,11 +3,13 @@
 #import <AppKit/AppKit.h>
 #import <CoreVideo/CVMetalTextureCache.h>
 #import <Metal/Metal.h>
+#import <QuartzCore/CABase.h>
 #import <QuartzCore/CAMetalLayer.h>
 
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <mutex>
@@ -1265,9 +1267,21 @@ MacMetalVideoRenderer::RenderOutcome MacMetalVideoRenderer::RenderLatest(
         slot.use = SlotUse::available;
       }
     }];
+    [drawable addPresentedHandler:^(id<MTLDrawable> presented) {
+      // presentedTime uses the Core Animation host clock. Translate its age
+      // into our steady clock, excluding callback scheduling delay. Capturing
+      // timing by value keeps this safe after a session/renderer is destroyed.
+      const double presented_time = presented.presentedTime;
+      const auto now = VideoLatencyFrame::Clock::now();
+      const double age = CACurrentMediaTime() - presented_time;
+      if (presented_time > 0 && std::isfinite(age) && age >= 0 && age <= 5) {
+        timing.MarkPresented(
+            now - std::chrono::duration_cast<VideoLatencyFrame::Clock::duration>(
+                      std::chrono::duration<double>(age)));
+      }
+    }];
     [command_buffer presentDrawable:drawable];
     [command_buffer commit];
-    timing.MarkSubmitted();
     impl_->rendered_stream.assign(remote_id);
     impl_->rendered_content_generation = content_generation;
     impl_->native_surface_needs_redraw->store(false,

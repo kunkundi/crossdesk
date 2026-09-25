@@ -511,6 +511,7 @@ void PeerEventHandler::OnNetStatusReport(
   auto props = runtime->FindRemoteSession(remote_id);
   if (!props) return;
   if (props->traversal_mode_ != mode) {
+    props->net_traffic_stats_.ResetLatency();
     props->traversal_mode_ = mode;
     LOG_INFO("Net mode: [{}]", int(props->traversal_mode_));
   }
