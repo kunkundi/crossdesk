@@ -42,8 +42,10 @@ rule("slint")
         local outputs = target:data("slint.outputs")[sourcefile]
         local depfile = outputs.header .. ".d"
         -- Slint writes the -o path literally into each generated #include.
+        -- The custom UI uses fixed light backgrounds. Keep default text and
+        -- standard widgets light as well, regardless of the system theme.
         local argv = {sourcefile, "-f", "cpp", "-o", path.absolute(outputs.header),
-            "--depfile", depfile, "--style", "fluent",
+            "--depfile", depfile, "--style", "fluent-light",
             "--embed-resources=embed-files", "--cpp-namespace", "crossdesk::ui"}
         local missing_output = not os.isfile(outputs.header)
         for _, cppfile in ipairs(outputs.sources) do
