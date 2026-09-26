@@ -689,7 +689,8 @@ jobs:
             @("crossdesk_service.exe", "crossdesk_service.exe"),
             @("crossdesk_session_helper.exe", "crossdesk_session_helper.exe"),
             @("crossdesk_privacy_cursor_helper.exe", "crossdesk_privacy_cursor_helper.exe"),
-            @("crossdesk_privacy_window.dll", "crossdesk_privacy_window.dll")
+            @("crossdesk_privacy_window.dll", "crossdesk_privacy_window.dll"),
+            @("slint_cpp.dll", "slint_cpp.dll")
           )
 
           foreach ($file in $portableFiles) {
@@ -791,23 +792,14 @@ jobs:
           echo "PATCH_NUMBER=${PATCH_NUMBER}" >> $GITHUB_OUTPUT
 
       - name: Prepare release notes
-        env:
-          RELEASE_TAG: ${{ steps.version.outputs.VERSION_WITH_V }}
-          VERSION_BASE: ${{ steps.version.outputs.VERSION_BASE }}
         run: |
-          if [[ -f "docs/releases/${RELEASE_TAG}.md" ]]; then
-            cp "docs/releases/${RELEASE_TAG}.md" release-notes.md
-          elif [[ -f "docs/releases/v${VERSION_BASE}.md" ]]; then
-            cp "docs/releases/v${VERSION_BASE}.md" release-notes.md
-          else
-            cat > release-notes.md << 'EOF'
+          cat > "$RUNNER_TEMP/release-notes.md" << 'EOF'
           Binary release only. Source code is not included.
 
           ## Code signing policy
 
           Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
           EOF
-          fi
 
       - name: Rename artifacts
         run: |
@@ -833,7 +825,7 @@ jobs:
           prerelease: false
           files: release/*
           generate_release_notes: false
-          body_path: release-notes.md
+          body_path: ${{ runner.temp }}/release-notes.md
 
       - name: Create or update 'latest' tag
         run: |
@@ -851,7 +843,7 @@ jobs:
           prerelease: false
           files: release/*
           generate_release_notes: false
-          body_path: release-notes.md
+          body_path: ${{ runner.temp }}/release-notes.md
 
       - name: Upload artifacts to server
         uses: burnett01/rsync-deployments@5.2
@@ -903,7 +895,7 @@ jobs:
           }
           EOF
           jq --arg release_name "Release ${{ steps.version.outputs.VERSION_WITH_V }}" \
-            --rawfile release_notes release-notes.md \
+            --rawfile release_notes "$RUNNER_TEMP/release-notes.md" \
             '.releaseName = $release_name | .releaseNotes = $release_notes' \
             version.json > version-with-notes.json
           mv version-with-notes.json version.json

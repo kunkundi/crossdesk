@@ -41,6 +41,11 @@ function setup_targets()
         os.cp(runtime_dll, target:targetdir())
     end
 
+    -- Keep runtime deployment independent of each target's after_build callback.
+    rule("crossdesk.slint_runtime")
+        after_build(copy_slint_runtime)
+    rule_end()
+
     -- Amyuni usbmmidd_v2 virtual display driver for headless Windows hosts.
     -- The installer and the portable archive pick it up from the target
     -- directory; the runtime looks for it next to the executables.
@@ -208,7 +213,7 @@ function setup_targets()
         add_includedirs("apps/desktop/src/gui", "apps/desktop/src/gui/assets/fonts",
             "apps/desktop/src/gui/assets/localization")
         add_files("apps/desktop/tests/slint_ui_smoke_test.cpp")
-        after_build(copy_slint_runtime)
+        add_rules("crossdesk.slint_runtime")
 
     target("version_checker_test")
         set_kind("binary")
@@ -569,6 +574,6 @@ function setup_targets()
                 "apps/desktop/src/platform/linux/daemon_backend.cpp",
                 "apps/desktop/src/platform/linux/headless/headless_session.cpp")
         end
-        after_build(copy_slint_runtime)
+        add_rules("crossdesk.slint_runtime")
         after_build(copy_usbmmidd_package)
 end

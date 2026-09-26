@@ -90,8 +90,10 @@ installApp:
     File "..\..\..\..\build\windows\x64\release\crossdesk_session_helper.exe"
     File "..\..\..\..\build\windows\x64\release\crossdesk_privacy_cursor_helper.exe"
     File "..\..\..\..\build\windows\x64\release\crossdesk_privacy_window.dll"
-    ; Bundle runtime DLLs from the release output directory
-    File /x crossdesk_privacy_window.dll "..\..\..\..\build\windows\x64\release\*.dll"
+    ; Require the Slint runtime so an incomplete build cannot be packaged.
+    File "..\..\..\..\build\windows\x64\release\slint_cpp.dll"
+    ; Bundle the remaining runtime DLLs from the release output directory
+    File /x crossdesk_privacy_window.dll /x slint_cpp.dll "..\..\..\..\build\windows\x64\release\*.dll"
     ; Amyuni usbmmidd_v2 virtual display driver for headless hosts. xmake
     ; copies apps\desktop\resources\windows\usbmmidd_v2 into the release
     ; output directory after building crossdesk; its License.txt ships with it.
