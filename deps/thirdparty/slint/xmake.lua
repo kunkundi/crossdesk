@@ -8,6 +8,10 @@ package("slint")
     add_versions("1.17.1", "68222567f8c70ff677cd4a98cd94fb4765ac0f797eb8f8608a646911c908dc2a")
 
     add_configs("shared", {description = "Build the Slint runtime as a shared library", default = true, type = "boolean", readonly = true})
+    if is_plat("windows") then
+        -- Include CRT linkage in the package hash so cached /MD builds are not reused.
+        add_configs("static_crt", {description = "Statically link the Windows C runtime", default = true, type = "boolean", readonly = true})
+    end
 
     add_deps("cmake~slint >=3.21 <4.0", {host = true, private = true, system = false})
     add_deps("rust 1.92.0", {host = true, private = true, system = false})
@@ -51,13 +55,26 @@ package("slint")
             "-DSLINT_STYLE=fluent",
             "-DBUILD_SHARED_LIBS=ON"
         }
+        local cmake = import("package.tools.cmake")
+        local envs
         if package:is_plat("windows") then
             local rc = assert(package:build_getenv("mrc"),
                 "failed to find the Windows resource compiler")
             rc = rc:gsub("\\", "/")
             table.insert(configs, "-DCMAKE_RC_COMPILER=" .. rc)
+            table.insert(configs, "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded")
+
+            -- Slint is a Rust cdylib: CMake's /MT setting alone does not affect it.
+            -- Encoded flags take precedence over RUSTFLAGS set by Corrosion.
+            envs = cmake.buildenvs(package)
+            local rustflags = os.getenv("CARGO_ENCODED_RUSTFLAGS")
+            if rustflags == nil then
+                rustflags = table.concat((os.getenv("RUSTFLAGS") or ""):split("%s+"), "\31")
+            end
+            envs.CARGO_ENCODED_RUSTFLAGS = (rustflags ~= "" and rustflags .. "\31" or "") ..
+                "-Ctarget-feature=+crt-static"
         end
-        import("package.tools.cmake").install(package, configs)
+        cmake.install(package, configs, {envs = envs})
     end)
 
     on_test(function(package)

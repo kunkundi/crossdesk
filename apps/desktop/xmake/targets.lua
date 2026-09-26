@@ -38,6 +38,15 @@ function setup_targets()
         local runtime_dir = path.join(slint:installdir(), "lib")
         local runtime_dll = path.join(runtime_dir, "slint_cpp.dll")
         assert(os.isfile(runtime_dll), "Slint runtime not found: " .. runtime_dll)
+        import("utils.binary.deplibs")
+        local dependencies = deplibs(runtime_dll, {plat = "windows", arch = target:arch()})
+        assert(dependencies and #dependencies > 0, "Cannot inspect Slint runtime dependencies: " .. runtime_dll)
+        for _, dependency in ipairs(dependencies) do
+            local name = path.filename(dependency):lower()
+            assert(not (name:match("^vcruntime%d.*%.dll$") or name:match("^msvcp%d.*%.dll$") or
+                name:match("^msvcr%d.*%.dll$") or name:match("^concrt%d.*%.dll$")),
+                "Slint runtime depends on " .. dependency .. "; rebuild the Slint package with static CRT")
+        end
         os.cp(runtime_dll, target:targetdir())
     end
 
