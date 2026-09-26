@@ -988,7 +988,7 @@ int GuiApplication::Run() {
   strncpy(signal_server_ip_self_, config_center_->GetSignalServerHost().c_str(),
           sizeof(signal_server_ip_self_) - 1);
   const int signal_port = config_center_->GetSignalServerPort();
-  if (signal_port > 0) {
+  if (signal_port > 0 && signal_port <= 65535) {
     std::snprintf(signal_server_port_self_, sizeof(signal_server_port_self_),
                   "%d", signal_port);
   }
