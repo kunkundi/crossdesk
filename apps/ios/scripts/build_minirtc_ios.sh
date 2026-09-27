@@ -152,7 +152,7 @@ REQUIRED_LINKS=(
   nice glib-2.0 gobject-2.0 gmodule-2.0 gio-2.0 gthread-2.0 intl
   gupnp-igd-1.6 gupnp-1.6 gssdp-1.6 soup-3.0 nghttp2 sqlite3 psl xml2
   ffi pcre2-8 pcre2-posix z ssl crypto srtp2 openfec opus yuv kcp
-  datachannel usrsctp openh264 dav1d SvtAv1Enc
+  datachannel usrsctp dav1d SvtAv1Enc
 )
 if [[ "${MINIRTC_ENABLE_AOM}" == "true" ]]; then
   REQUIRED_LINKS+=(aom)
@@ -180,12 +180,25 @@ MERGE_MANIFEST="${OUTPUT_LIBRARY}.inputs.sha256"
 TEMP_MANIFEST="${MERGE_MANIFEST}.tmp"
 trap 'rm -f "${TEMP_LIBRARY}" "${TEMP_MANIFEST}"' EXIT
 
+# Check the actual archive, including when reusing cached build products.
+verify_no_openh264() {
+  local symbols
+  symbols="$(DEVELOPER_DIR="${XMAKE_DEVELOPER_DIR}" xcrun nm -g "$1")"
+  if [[ "${symbols}" == *WelsCreateDecoder* || \
+        "${symbols}" == *WelsCreateSVCEncoder* || \
+        "${symbols}" == *WelsGetCodecVersion* ]]; then
+    print -u2 "OpenH264 symbols must not be present in the iOS native archive: $1"
+    exit 65
+  fi
+}
+
 # Hash contents as well as paths so same-size archives replaced within the same
 # timestamp tick cannot leave a stale merged library. Preserve the output mtime
 # on no-op builds to avoid relinking the Xcode app.
 shasum -a 256 "${SCRIPT_DIR}/build_minirtc_ios.sh" "${MINIRTC_LIBRARY}" \
   "${DEPENDENCY_ARCHIVES[@]}" "${WIRE_LIBRARY}" > "${TEMP_MANIFEST}"
 if [[ -f "${OUTPUT_LIBRARY}" ]] && cmp -s "${TEMP_MANIFEST}" "${MERGE_MANIFEST}"; then
+  verify_no_openh264 "${OUTPUT_LIBRARY}"
   print "Up to date: ${OUTPUT_LIBRARY}"
   exit 0
 fi
@@ -193,6 +206,7 @@ fi
 /usr/bin/libtool -static -o "${TEMP_LIBRARY}" \
   "${MINIRTC_LIBRARY}" "${DEPENDENCY_ARCHIVES[@]}" \
   "${WIRE_LIBRARY}"
+verify_no_openh264 "${TEMP_LIBRARY}"
 mv -f "${TEMP_LIBRARY}" "${OUTPUT_LIBRARY}"
 mv -f "${TEMP_MANIFEST}" "${MERGE_MANIFEST}"
 

@@ -100,7 +100,6 @@ typedef NS_ENUM(NSInteger, CrossDeskVideoAdaptationPolicy) {
 
 - (void)configureWithSignalHost:(NSString *)host
                      signalPort:(NSInteger)signalPort;
-- (void)setHardwareAccelerationEnabled:(BOOL)enabled;
 - (void)setVideoAdaptationPolicy:(CrossDeskVideoAdaptationPolicy)policy;
 - (void)requestPresenceForRemoteIDs:(NSArray<NSString *> *)remoteIDs
                          subscribe:(BOOL)subscribe

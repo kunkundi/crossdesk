@@ -75,7 +75,6 @@ struct RTCState {
   CallbackContext controller_context;
   std::string signal_host;
   int signal_port = 0;
-  bool hardware_acceleration = true;
   VideoDegradationPreference video_adaptation_policy =
       VideoDegradationPreference::MaintainResolution;
   bool identity_ready = false;
@@ -332,7 +331,8 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
               state.signal_host);
   params.signal_server_port = state.signal_port;
   CopyCString(params.log_path, sizeof(params.log_path), state.log_path);
-  params.hardware_acceleration = state.hardware_acceleration;
+  // iOS H.264 is provided exclusively by VideoToolbox.
+  params.hardware_acceleration = true;
   params.native_video_output = true;
   params.av1_encoding = false;
   params.turn_mode = TurnMode::TurnAutoUdpTcp;
@@ -492,12 +492,6 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
       }
     }
     [self createIdentityPeer];
-  });
-}
-
-- (void)setHardwareAccelerationEnabled:(BOOL)enabled {
-  dispatch_async(_rtcQueue, ^{
-    self->_state->hardware_acceleration = enabled;
   });
 }
 

@@ -42,43 +42,6 @@ enum MouseControlMode: String, CaseIterable, Identifiable {
     }
 }
 
-enum VideoCodecMode: String, CaseIterable, Identifiable {
-    case hardware
-    case software
-
-    private static let defaultsKey = "crossdesk.mobile.video-codec-mode"
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .hardware: return "硬件"
-        case .software: return "软件"
-        }
-    }
-
-    var detail: String {
-        switch self {
-        case .hardware:
-            return "使用 VideoToolbox，延迟和耗电更低，推荐日常使用。"
-        case .software:
-            return "使用 OpenH264 软件编解码，适合兼容性测试。"
-        }
-    }
-
-    static var saved: VideoCodecMode {
-        guard let rawValue = UserDefaults.standard.string(forKey: defaultsKey),
-              let mode = VideoCodecMode(rawValue: rawValue) else {
-            return .hardware
-        }
-        return mode
-    }
-
-    func save() {
-        UserDefaults.standard.set(rawValue, forKey: Self.defaultsKey)
-    }
-}
-
 enum VideoAdaptationPolicy: String, CaseIterable, Identifiable {
     case frameRatePriority
     case qualityPriority
@@ -361,9 +324,6 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     @Published var mouseControlMode = MouseControlMode.saved {
         didSet { mouseControlMode.save() }
     }
-    @Published var videoCodecMode = VideoCodecMode.saved {
-        didSet { videoCodecMode.save() }
-    }
     @Published var videoAdaptationPolicy = VideoAdaptationPolicy.saved {
         didSet { videoAdaptationPolicy.save() }
     }
@@ -467,7 +427,6 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         } else if signalConnected {
             signalStatus = "已连接服务器"
         }
-        bridge.setHardwareAccelerationEnabled(videoCodecMode == .hardware)
         bridge.setVideoAdaptationPolicy(videoAdaptationPolicy.bridgeValue)
         bridge.configure(withSignalHost: host,
                          signalPort: signal)

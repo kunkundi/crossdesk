@@ -686,22 +686,6 @@ private struct ServerSettingsView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                Section("视频编解码") {
-                    Picker("处理方式", selection: $session.videoCodecMode) {
-                        ForEach(VideoCodecMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    Text(session.videoCodecMode.detail)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-
-                    Text("修改后从下一次连接开始生效。")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
                 Section("画面偏好") {
                     Picker("偏好模式", selection: $session.videoAdaptationPolicy) {
                         ForEach(VideoAdaptationPolicy.allCases) { policy in
