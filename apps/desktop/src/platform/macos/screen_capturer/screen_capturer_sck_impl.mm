@@ -903,12 +903,15 @@ void ScreenCapturerSckImpl::StartOrReconfigureCapturer() {
   // method is still running on another thread.
   std::mutex _capturer_lock;
   ScreenCapturerSckImpl *_capturer;
+  dispatch_queue_t _completion_queue;
 }
 
 - (instancetype)initWithCapturer:(ScreenCapturerSckImpl *)capturer {
   self = [super init];
   if (self) {
     _capturer = capturer;
+    _completion_queue = dispatch_queue_create("CrossDesk.ScreenCaptureKit.Completions",
+                                              DISPATCH_QUEUE_SERIAL);
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(privacyCoversChanged:)
         name:@"CrossDeskPrivacyCoversChanged" object:nil];
   }
@@ -922,18 +925,25 @@ void ScreenCapturerSckImpl::StartOrReconfigureCapturer() {
 - (void)configurationFinished:(SCStream*)stream generation:(uint64_t)generation
                      revision:(uint64_t)revision complete:(BOOL)complete
                 configuration:(SCStreamConfiguration*)configuration error:(NSError*)error {
-  std::lock_guard<std::mutex> lock(_capturer_lock);
-  if (_capturer)
-    _capturer->ConfigurationFinished(stream, generation, revision, complete, configuration, error);
+  // SCK may call a completion inline (notably updateContentFilter when nothing
+  // changed). The caller can still hold both _capturer_lock and the capturer's
+  // state lock. Always defer before acquiring either lock, including errors.
+  // The block retains this helper; releaseCapturer revokes queued callbacks
+  // before the C++ capturer is destroyed.
+  dispatch_async(_completion_queue, ^{
+    std::lock_guard<std::mutex> lock(self->_capturer_lock);
+    if (self->_capturer)
+      self->_capturer->ConfigurationFinished(stream, generation, revision, complete,
+                                             configuration, error);
+  });
 }
 - (void)onShareableContentCreated:(SCShareableContent *)content generation:(uint64_t)generation
                        revision:(uint64_t)revision {
-  std::lock_guard<std::mutex> lock(_capturer_lock);
-  if (_capturer) {
-    _capturer->OnShareableContentCreated(content, generation, revision);
-  } else {
-    LOG_ERROR("Invalid capturer");
-  }
+  dispatch_async(_completion_queue, ^{
+    std::lock_guard<std::mutex> lock(self->_capturer_lock);
+    if (self->_capturer)
+      self->_capturer->OnShareableContentCreated(content, generation, revision);
+  });
 }
 
 - (void)stream:(SCStream *)stream
@@ -971,8 +981,10 @@ void ScreenCapturerSckImpl::StartOrReconfigureCapturer() {
 }
 
 - (void)stream:(SCStream*)stream didStopWithError:(NSError*)error {
-  std::lock_guard<std::mutex> lock(_capturer_lock);
-  if (_capturer) _capturer->CaptureStopped(stream, error);
+  dispatch_async(_completion_queue, ^{
+    std::lock_guard<std::mutex> lock(self->_capturer_lock);
+    if (self->_capturer) self->_capturer->CaptureStopped(stream, error);
+  });
 }
 
 @end
