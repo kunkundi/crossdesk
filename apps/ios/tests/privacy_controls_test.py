@@ -41,26 +41,56 @@ enum PrivacyTests {
                              forKey: "crossdesk.mobile.recent-connections.v1")
             }
             let preferences = PrivacyPreferences(defaults: defaults)
-            expect(!preferences.hasMadeNetworkChoice, "New/legacy install has no choice")
+            expect(PrivacyNoticeState(hasNetworkConsent: preferences.hasNetworkConsent).isVisible,
+                   "New/legacy install must show the policy")
             expect(!preferences.hasNetworkConsent, "Must not start networking")
             expect(!preferences.savesThumbnails, "Saving must default to off")
             preferences.setSavesThumbnails(true)
             expect(!preferences.savesThumbnails, "Cannot enable captures without consent")
             preferences.setNetworkConsent(false)
             let declined = PrivacyPreferences(defaults: defaults)
-            expect(declined.hasMadeNetworkChoice, "Decline must persist across launches")
             expect(!declined.hasNetworkConsent, "Decline must not allow networking")
+            expect(PrivacyNoticeState(hasNetworkConsent: declined.hasNetworkConsent).isVisible,
+                   "Relaunch after refusal must show the policy again")
             declined.setNetworkConsent(true)
             expect(!declined.savesThumbnails, "Network consent is not screenshot consent")
             declined.setSavesThumbnails(true)
             let relaunched = PrivacyPreferences(defaults: defaults)
             expect(relaunched.hasNetworkConsent && relaunched.savesThumbnails,
                    "Explicit choices must survive relaunch")
+            expect(!PrivacyNoticeState(hasNetworkConsent: relaunched.hasNetworkConsent).isVisible,
+                   "Relaunch after agreement must not prompt again")
             relaunched.setNetworkConsent(false)
             expect(!relaunched.hasNetworkConsent && !relaunched.savesThumbnails,
                    "Withdrawal revokes both permissions")
+            expect(PrivacyNoticeState(hasNetworkConsent: relaunched.hasNetworkConsent).isVisible,
+                   "Relaunch after withdrawal must show the policy")
             relaunched.setNetworkConsent(true)
             expect(!relaunched.savesThumbnails, "Re-consent must not re-enable screenshots")
+        } else if test == "notice_lifecycle" {
+            var notice = PrivacyNoticeState(hasNetworkConsent: false)
+            expect(notice.isVisible, "No consent must prompt on cold launch")
+            notice.didBecomeActive(hasNetworkConsent: false)
+            notice.dismiss()
+            notice.didBecomeActive(hasNetworkConsent: false)
+            expect(!notice.isVisible, "Refusal must not immediately reopen the notice")
+            notice.didBecomeActive(hasNetworkConsent: false)
+            expect(!notice.isVisible, "Transient inactivity or duplicate active callbacks are not another visit")
+            for _ in 0..<3 {
+                notice.didEnterBackground()
+                notice.didBecomeActive(hasNetworkConsent: false)
+                expect(notice.isVisible, "Every background/foreground round trip must prompt without consent")
+                notice.dismiss()
+            }
+            notice.show()
+            expect(notice.isVisible, "The status button can still open the policy manually")
+            notice.dismiss()
+            notice.didEnterBackground()
+            notice.didBecomeActive(hasNetworkConsent: true)
+            expect(!notice.isVisible, "Granting consent stops automatic prompts")
+            notice.didEnterBackground()
+            notice.didBecomeActive(hasNetworkConsent: false)
+            expect(notice.isVisible, "Withdrawal restores the next-visit prompt")
         } else {
             let directory = FileManager.default.temporaryDirectory
                 .appendingPathComponent("crossdesk-thumbnails-\(UUID().uuidString)")
@@ -128,6 +158,9 @@ enum PrivacyTests {
 
     def test_upgrade_requires_fresh_choices(self):
         self.run_case("upgrade")
+
+    def test_notice_on_each_unconsented_visit(self):
+        self.run_case("notice_lifecycle")
 
     def test_clear_wins_over_in_flight_capture(self):
         self.run_case("clear")

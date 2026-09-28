@@ -5,75 +5,60 @@ struct PrivacyConsentView: View {
     @State private var hasReadPolicy = false
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                Color.black.opacity(0.32).ignoresSafeArea()
-                VStack(spacing: 16) {
-                    Text("隐私政策")
-                        .font(.title3.bold())
-                    Text("请阅读以下隐私政策。同意后将处理连接所需的设备与网络信息；画面预览保存需另行开启。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    ScrollView {
-                        PrivacyPolicyDocument()
-                            .padding(14)
-                    }
-                    .frame(height: min(220, max(100, geometry.size.height - 330)))
-                    .background(Color(.secondarySystemGroupedBackground),
-                                in: RoundedRectangle(cornerRadius: 12))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color(.separator).opacity(0.3), lineWidth: 0.5)
-                    }
-
-                    Toggle(isOn: $hasReadPolicy) {
-                        Text("我已阅读并同意《隐私政策》")
-                            .font(.footnote)
-                    }
-                    .toggleStyle(ConsentCheckboxStyle())
-
-                    HStack(spacing: 12) {
-                        Button {
-                            session.declineNetworkConsent()
-                        } label: {
-                            Text("拒绝")
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                                .background(Color(.secondarySystemGroupedBackground),
-                                            in: RoundedRectangle(cornerRadius: 10))
-                                .contentShape(RoundedRectangle(cornerRadius: 10))
-                        }
-                        Button {
-                            guard hasReadPolicy else { return }
-                            session.acceptNetworkConsent()
-                        } label: {
-                            Text("同意并继续")
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                                .foregroundStyle(.white)
-                                .background(hasReadPolicy ? Color.accentColor : Color.gray.opacity(0.4),
-                                            in: RoundedRectangle(cornerRadius: 10))
-                                .contentShape(RoundedRectangle(cornerRadius: 10))
-                        }
-                        .disabled(!hasReadPolicy || !PrivacyPolicyDocument.isAvailable)
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .buttonStyle(.plain)
-                    Text("拒绝不影响本地功能；同意后可在设置中撤回。")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(20)
-                .frame(width: min(360, geometry.size.width - 40))
-                .background(Color(.systemBackground),
-                            in: RoundedRectangle(cornerRadius: 22))
-                .compositingGroup()
-                .shadow(color: .black.opacity(0.16), radius: 24, y: 8)
-                .accessibilityElement(children: .contain)
-                .accessibilityAddTraits(.isModal)
+        NavigationStack {
+            ScrollView {
+                PrivacyPolicyDocument()
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 20)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.systemBackground))
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                consentActions
+            }
+            .navigationTitle("隐私政策")
+            .navigationBarTitleDisplayMode(.inline)
         }
+    }
+
+    private var consentActions: some View {
+        VStack(spacing: 0) {
+            Divider()
+
+            VStack(spacing: 12) {
+                Toggle(isOn: $hasReadPolicy) {
+                    Text("我已阅读并同意《隐私政策》")
+                        .font(.subheadline)
+                }
+                .toggleStyle(ConsentCheckboxStyle())
+
+                Button {
+                    guard hasReadPolicy else { return }
+                    session.acceptNetworkConsent()
+                } label: {
+                    Text("同意并继续")
+                        .font(.body.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 24)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .tint(.blue)
+                .disabled(!hasReadPolicy || !PrivacyPolicyDocument.isAvailable)
+
+                Button {
+                    session.declineNetworkConsent()
+                } label: {
+                    Text("暂不同意")
+                        .font(.body)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .foregroundStyle(.secondary)
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+        }
+        .background(Color(.systemBackground))
     }
 }
 
@@ -90,7 +75,7 @@ private struct ConsentCheckboxStyle: ToggleStyle {
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.leading)
             }
-            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -214,7 +199,7 @@ private struct PrivacyPolicyDocument: View {
                 let paragraph = Self.paragraphs[index]
                 if paragraph.hasPrefix("#") {
                     Text(paragraph.trimmingCharacters(in: CharacterSet(charactersIn: "# ")))
-                        .font(.subheadline.bold())
+                        .font(.headline)
                         .padding(.top, 4)
                 } else if paragraph.hasPrefix("更新日期：") {
                     Text(paragraph)
@@ -224,8 +209,8 @@ private struct PrivacyPolicyDocument: View {
                     Text((try? AttributedString(markdown: paragraph,
                         options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
                          ?? AttributedString(paragraph))
-                        .font(.subheadline)
-                        .lineSpacing(3)
+                        .font(.body)
+                        .lineSpacing(4)
                 }
             }
         }

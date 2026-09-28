@@ -11,7 +11,6 @@ struct PrivacyPreferences {
         self.defaults = defaults
     }
 
-    var hasMadeNetworkChoice: Bool { defaults.object(forKey: networkKey) != nil }
     var hasNetworkConsent: Bool { defaults.bool(forKey: networkKey) }
     var savesThumbnails: Bool {
         hasNetworkConsent && defaults.bool(forKey: thumbnailsKey)
@@ -24,5 +23,34 @@ struct PrivacyPreferences {
 
     func setSavesThumbnails(_ allowed: Bool) {
         defaults.set(allowed && hasNetworkConsent, forKey: thumbnailsKey)
+    }
+}
+
+/// Refusal dismisses the notice for this visit only. A background/foreground
+/// round trip starts another visit; transient inactive states do not.
+struct PrivacyNoticeState {
+    private(set) var isVisible: Bool
+    private var needsPresentationOnActivation = false
+
+    init(hasNetworkConsent: Bool) {
+        isVisible = !hasNetworkConsent
+    }
+
+    mutating func show() {
+        isVisible = true
+    }
+
+    mutating func dismiss() {
+        isVisible = false
+    }
+
+    mutating func didEnterBackground() {
+        needsPresentationOnActivation = true
+    }
+
+    mutating func didBecomeActive(hasNetworkConsent: Bool) {
+        guard needsPresentationOnActivation else { return }
+        needsPresentationOnActivation = false
+        isVisible = !hasNetworkConsent
     }
 }

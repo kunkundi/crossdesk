@@ -94,6 +94,8 @@ enum VideoAdaptationPolicy: String, CaseIterable, Identifiable {
 private struct RemoteVideoFrame {
     let pixelBuffer: CVPixelBuffer
     let encodedSize: CGSize
+    let id: UInt64
+    let captureUptime: TimeInterval
 }
 
 struct RecentConnection: Codable, Identifiable, Equatable {
@@ -294,7 +296,9 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
 
     private let privacyPreferences = PrivacyPreferences()
     @Published private(set) var hasNetworkConsent = PrivacyPreferences().hasNetworkConsent
-    @Published private(set) var privacyNoticeVisible = !PrivacyPreferences().hasMadeNetworkChoice
+    @Published private var privacyNotice = PrivacyNoticeState(
+        hasNetworkConsent: PrivacyPreferences().hasNetworkConsent
+    )
     @Published private(set) var savesConnectionThumbnails = PrivacyPreferences().savesThumbnails
     @Published private(set) var thumbnailCleanupInProgress = false
     @Published private(set) var thumbnailCleanupError: String?
@@ -311,7 +315,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     @Published private(set) var videoSettings = RemoteVideoSettingsState()
     @Published var remoteID = ""
     @Published var password = ""
-    @Published private(set) var signalStatus = "尚未同意联网"
+    @Published private(set) var signalStatus = "等待隐私授权"
     @Published private(set) var connectionStatus = "未连接"
     @Published private(set) var localIdentity = ""
     @Published private(set) var identityStorageWarning: String?
@@ -325,9 +329,8 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     @Published private(set) var remoteCursorPositionRevision: UInt64 = 0
     @Published private(set) var remoteCursorVisualOffset = CGPoint.zero
     @Published private(set) var hasRemoteCursorState = false
-    @Published private(set) var bitrate: UInt = 0
-    @Published private(set) var lossRate: Float = 0
-    @Published private(set) var usingTURN = false
+    private var networkStatistics = RemoteNetworkStatistics()
+    private var videoFrameID: UInt64 = 0
     @Published private(set) var displays: [String] = ["显示器 1"]
     @Published private(set) var displaySizes: [CGSize] = []
     @Published var selectedDisplay = 0
@@ -379,6 +382,8 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     private var bridgeConfiguration: BridgeConfiguration?
 
     var pixelBuffer: CVPixelBuffer? { videoFrame?.pixelBuffer }
+    var currentVideoFrameID: UInt64 { videoFrame?.id ?? 0 }
+    var frameCaptureUptime: TimeInterval { videoFrame?.captureUptime ?? 0 }
     var frameSize: CGSize { videoFrame?.encodedSize ?? .zero }
     var displayGeometrySize: CGSize {
         guard displaySizes.indices.contains(selectedDisplay) else {
@@ -400,20 +405,38 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         remoteVersionCheckTask?.cancel()
     }
 
+    var privacyNoticeVisible: Bool { privacyNotice.isVisible }
+
+    func applicationDidBecomeActive() {
+        privacyNotice.didBecomeActive(hasNetworkConsent: hasNetworkConsent)
+        refreshRecentConnectionPresenceAfterForeground()
+        resumeVideoAfterForeground()
+    }
+
+    func applicationDidEnterBackground() {
+        privacyNotice.didEnterBackground()
+        suspendVideoForBackground()
+        suspendPresenceMonitoring()
+    }
+
     func showPrivacyNotice() {
-        privacyNoticeVisible = true
+        privacyNotice.show()
+    }
+
+    func dismissPrivacyNotice() {
+        privacyNotice.dismiss()
     }
 
     func acceptNetworkConsent() {
         privacyPreferences.setNetworkConsent(true)
         hasNetworkConsent = true
-        privacyNoticeVisible = false
+        privacyNotice.dismiss()
         configureBridge()
     }
 
     func declineNetworkConsent() {
         revokeNetworkConsent()
-        privacyNoticeVisible = false
+        privacyNotice.dismiss()
     }
 
     func revokeNetworkConsent() {
@@ -428,7 +451,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         bridge.stopNetworking()
         bridgeConfiguration = nil
         localIdentity = ""
-        signalStatus = "尚未同意联网"
+        signalStatus = "等待隐私授权"
         savesConnectionThumbnails = false
         clearConnectionThumbnails()
     }
@@ -472,7 +495,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     @discardableResult
     func configureBridge() -> Bool {
         guard hasNetworkConsent else {
-            signalStatus = "尚未同意联网"
+            signalStatus = "等待隐私授权"
             return false
         }
         let host = signalHost.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -529,6 +552,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     private func beginRemoteConnection(_ identifier: String) {
+        networkStatistics = RemoteNetworkStatistics()
         resetRemoteVersionCheck()
         cancelVideoRecovery()
         resetVideoSettings()
@@ -639,7 +663,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         videoFrame = nil
         resetRemoteCursorState()
         frameCount = 0
-        bitrate = 0
+        networkStatistics = RemoteNetworkStatistics()
         displays = ["显示器 1"]
         displaySizes = []
         selectedDisplay = 0
@@ -794,6 +818,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
 
     func suspendVideoForBackground() {
         videoWasBackgrounded = true
+        networkStatistics.resetVideo()
         cancelVideoRecovery()
     }
 
@@ -906,6 +931,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     func selectDisplay(_ index: Int) {
         guard displays.indices.contains(index) else { return }
         selectedDisplay = index
+        networkStatistics.resetVideo()
         videoFrame = nil
         resetRemoteCursorState()
         frameCount = 0
@@ -1136,15 +1162,19 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     func rtcBridge(_ bridge: CrossDeskRTCBridge,
                    didReceive pixelBuffer: CVPixelBuffer,
                    width: Int,
-                   height: Int) {
+                   height: Int,
+                   captureUptime: TimeInterval) {
         guard hasNetworkConsent, isConnected, !videoWasBackgrounded else { return }
         cancelVideoRecovery()
         // Buffer and encoded dimensions must be one observable value. Adaptive
         // resolution changes must never expose a new frame with the previous
         // frame's geometry to SwiftUI.
+        videoFrameID &+= 1
         videoFrame = RemoteVideoFrame(
             pixelBuffer: pixelBuffer,
-            encodedSize: CGSize(width: width, height: height)
+            encodedSize: CGSize(width: width, height: height),
+            id: videoFrameID,
+            captureUptime: captureUptime
         )
         frameCount &+= 1
         captureRecentThumbnailIfNeeded(pixelBuffer)
@@ -1248,22 +1278,37 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     func rtcBridge(_ bridge: CrossDeskRTCBridge,
-                   didUpdateBitrate bitsPerSecond: UInt,
-                   lossRate: Float,
-                   usingTURN: Bool) {
-        bitrate = bitsPerSecond
-        self.lossRate = lossRate
-        self.usingTURN = usingTURN
+                   didUpdateNetworkStats stats: CrossDeskNetworkStats) {
+        guard hasNetworkConsent, isConnected else { return }
+        func traffic(_ value: CrossDeskTrafficStats) -> RemoteTrafficStatistics {
+            RemoteTrafficStatistics(inboundBitrate: value.inboundBitrate,
+                                    outboundBitrate: value.outboundBitrate,
+                                    lossRate: value.lossRate)
+        }
+        let mode: RemoteNetworkReport.Mode
+        switch stats.traversalMode {
+        case .direct: mode = .direct
+        case .relay: mode = .relay
+        default: mode = .unknown
+        }
+        networkStatistics.receive(RemoteNetworkReport(
+            video: traffic(stats.video), audio: traffic(stats.audio),
+            data: traffic(stats.data), total: traffic(stats.total), mode: mode,
+            srtpActive: stats.srtpActive.boolValue, rttMilliseconds: stats.rttMilliseconds
+        ), at: ProcessInfo.processInfo.systemUptime)
     }
 
-    var formattedBitrate: String {
-        if bitrate >= 1_000_000 {
-            return String(format: "%.1f Mbps", Double(bitrate) / 1_000_000)
-        }
-        if bitrate >= 1_000 {
-            return String(format: "%.0f Kbps", Double(bitrate) / 1_000)
-        }
-        return "\(bitrate) bps"
+    // Called after the exact frame enters AVSampleBufferDisplayLayer. Keep this
+    // accumulator unpublished: submitting pixels occurs during a SwiftUI update.
+    func recordVideoFrameSubmission(id: UInt64, captureUptime: TimeInterval) {
+        guard isConnected, !videoWasBackgrounded, id == videoFrame?.id else { return }
+        networkStatistics.recordSubmittedFrame(id: id, captureUptime: captureUptime,
+                                               at: ProcessInfo.processInfo.systemUptime)
+    }
+
+    var networkSnapshot: RemoteNetworkSnapshot {
+        guard isConnected else { return RemoteNetworkSnapshot() }
+        return networkStatistics.displaySnapshot(at: ProcessInfo.processInfo.systemUptime)
     }
 
     var videoStatus: String {

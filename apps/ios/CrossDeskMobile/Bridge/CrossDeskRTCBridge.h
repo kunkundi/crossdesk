@@ -44,6 +44,29 @@ typedef NS_ENUM(NSInteger, CrossDeskVideoAdaptationPolicy) {
 
 @class CrossDeskRTCBridge;
 
+typedef NS_ENUM(NSInteger, CrossDeskTraversalMode) {
+  CrossDeskTraversalModeUnknown = 0,
+  CrossDeskTraversalModeDirect,
+  CrossDeskTraversalModeRelay,
+};
+
+typedef struct {
+  uint32_t inboundBitrate;
+  uint32_t outboundBitrate;
+  float lossRate;
+} CrossDeskTrafficStats;
+
+/// Value snapshot: no MiniRTC callback-owned memory crosses the main queue.
+typedef struct {
+  CrossDeskTrafficStats video;
+  CrossDeskTrafficStats audio;
+  CrossDeskTrafficStats data;
+  CrossDeskTrafficStats total;
+  double rttMilliseconds;
+  BOOL srtpActive;
+  CrossDeskTraversalMode traversalMode;
+} CrossDeskNetworkStats;
+
 @protocol CrossDeskRTCBridgeDelegate <NSObject>
 @optional
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
@@ -58,7 +81,8 @@ typedef NS_ENUM(NSInteger, CrossDeskVideoAdaptationPolicy) {
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didReceivePixelBuffer:(CVPixelBufferRef)pixelBuffer
                     width:(NSInteger)width
-                   height:(NSInteger)height;
+                   height:(NSInteger)height
+            captureUptime:(NSTimeInterval)captureUptime;
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didReceiveHostName:(NSString *)hostName
             appVersion:(NSString *)appVersion
@@ -96,9 +120,8 @@ typedef NS_ENUM(NSInteger, CrossDeskVideoAdaptationPolicy) {
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didReceiveFileAtURL:(NSURL *)fileURL;
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
-    didUpdateBitrate:(NSUInteger)bitsPerSecond
-            lossRate:(float)lossRate
-           usingTURN:(BOOL)usingTURN;
+    didUpdateNetworkStats:(CrossDeskNetworkStats)stats
+    NS_SWIFT_NAME(rtcBridge(_:didUpdateNetworkStats:));
 @end
 
 /// Objective-C++ boundary around the native MiniRTC C API.

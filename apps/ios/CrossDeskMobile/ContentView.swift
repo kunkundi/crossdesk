@@ -6,30 +6,30 @@ struct ContentView: View {
     @ObservedObject var session: RemoteSessionModel
 
     var body: some View {
-        ZStack {
-            Group {
-                if session.sessionVisible {
-                    RemoteSessionView(session: session)
-                        .transition(.opacity)
-                } else {
-                    NavigationStack {
-                        ConnectionHomeView(session: session)
-                            .navigationTitle("首页")
-                            .toolbar(.hidden, for: .navigationBar)
-                    }
+        Group {
+            if session.sessionVisible {
+                RemoteSessionView(session: session)
                     .transition(.opacity)
+            } else {
+                NavigationStack {
+                    ConnectionHomeView(session: session)
+                        .navigationTitle("首页")
+                        .toolbar(.hidden, for: .navigationBar)
                 }
-            }
-            .allowsHitTesting(!session.privacyNoticeVisible)
-            .accessibilityHidden(session.privacyNoticeVisible)
-
-            if session.privacyNoticeVisible {
-                PrivacyConsentView(session: session)
-                    .transition(.opacity)
+                .transition(.opacity)
             }
         }
         .animation(.easeInOut(duration: 0.2), value: session.sessionVisible)
         .preferredColorScheme(session.sessionVisible ? .dark : .light)
+        .sheet(isPresented: Binding(
+            get: { session.privacyNoticeVisible },
+            set: { if !$0 { session.dismissPrivacyNotice() } }
+        )) {
+            PrivacyConsentView(session: session)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
+                .interactiveDismissDisabled()
+        }
         .alert("连接提示", isPresented: Binding(
             get: { session.connectionFailureMessage != nil },
             set: { if !$0 { session.dismissConnectionFailure() } }
@@ -43,17 +43,14 @@ struct ContentView: View {
                 AppOrientation.update(to: .portrait)
             }
             if scenePhase == .active {
-                session.refreshRecentConnectionPresenceAfterForeground()
-                session.resumeVideoAfterForeground()
+                session.applicationDidBecomeActive()
             }
         }
         .onChange(of: scenePhase) { phase in
             if phase == .active {
-                session.refreshRecentConnectionPresenceAfterForeground()
-                session.resumeVideoAfterForeground()
+                session.applicationDidBecomeActive()
             } else if phase == .background {
-                session.suspendVideoForBackground()
-                session.suspendPresenceMonitoring()
+                session.applicationDidEnterBackground()
             }
         }
     }
@@ -182,7 +179,6 @@ private struct ConnectionHomeView: View {
     }
 
     private var signalSymbol: String {
-        if !session.hasNetworkConsent { return "hand.raised" }
         if signalIsConnected { return "checkmark.circle.fill" }
         if signalHasError { return "exclamationmark.triangle.fill" }
         return "arrow.triangle.2.circlepath"
@@ -267,21 +263,17 @@ private struct ConnectionHomeView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Label {
-                Text(session.signalStatus)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-            } icon: {
-                Image(systemName: signalSymbol)
-                    .font(.caption.weight(.bold))
-            }
-            .foregroundStyle(signalTint)
-            .padding(.horizontal, 11)
-            .frame(height: 34)
-            .background(signalTint.opacity(0.11), in: Capsule())
-            .overlay {
-                Capsule()
-                    .stroke(signalTint.opacity(0.22), lineWidth: 1)
+            if session.hasNetworkConsent {
+                signalStatusBadge
+            } else {
+                Button {
+                    remoteIDFocused = false
+                    session.showPrivacyNotice()
+                } label: {
+                    signalStatusBadge
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("打开隐私政策")
             }
 
             Spacer()
@@ -303,12 +295,29 @@ private struct ConnectionHomeView: View {
         .padding(.top, 8)
     }
 
+    private var signalStatusBadge: some View {
+        HStack(spacing: 6) {
+            if session.hasNetworkConsent {
+                Image(systemName: signalSymbol)
+                    .font(.caption.weight(.bold))
+            }
+            Text(session.signalStatus)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(signalTint)
+        .padding(.horizontal, 11)
+        .frame(height: 34)
+        .background(signalTint.opacity(0.11), in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(signalTint.opacity(0.22), lineWidth: 1)
+        }
+        .contentShape(Capsule())
+    }
+
     private var remoteConnectionPanel: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if !session.hasNetworkConsent {
-                Button("查看联网说明并选择") { session.showPrivacyNotice() }
-                    .font(.callout)
-            }
             HStack {
                 Text("远程桌面")
                     .font(.title3.weight(.bold))
@@ -777,7 +786,7 @@ private struct ServerSettingsView: View {
                     Text(warning)
                         .foregroundStyle(.orange)
                 }
-                Text(!session.hasNetworkConsent ? "同意联网后才会登记本机身份" : session.localIdentity.isEmpty
+                Text(!session.hasNetworkConsent ? "完成隐私授权后登记本机身份" : session.localIdentity.isEmpty
                      ? "正在获取本机 ID…"
                      : "本机 ID  \(session.localIdentity)")
                     .font(.caption2.monospacedDigit())

@@ -12,13 +12,18 @@ import UIKit
 struct NativeVideoView: UIViewRepresentable {
     @Environment(\.scenePhase) private var scenePhase
     let pixelBuffer: CVPixelBuffer?
+    let frameID: UInt64
+    let captureUptime: TimeInterval
+    let onFrameSubmitted: (UInt64, TimeInterval) -> Void
 
     func makeUIView(context: Context) -> SampleBufferVideoView {
         SampleBufferVideoView(frame: .zero)
     }
 
     func updateUIView(_ uiView: SampleBufferVideoView, context: Context) {
-        uiView.display(pixelBuffer, isActive: scenePhase == .active)
+        if uiView.display(pixelBuffer, isActive: scenePhase == .active) {
+            onFrameSubmitted(frameID, captureUptime)
+        }
     }
 }
 
@@ -57,7 +62,10 @@ final class SampleBufferVideoView: UIView {
         videoLayer.videoGravity = .resize
     }
 
-    func display(_ pixelBuffer: CVPixelBuffer?, isActive: Bool) {
+    /// True only when a new buffer was submitted; no presentation timestamp is
+    /// exposed by this display layer, so latency ends at submission like the
+    /// desktop renderer's submission fallback.
+    func display(_ pixelBuffer: CVPixelBuffer?, isActive: Bool) -> Bool {
         if renderingActive != isActive {
             renderingActive = isActive
             // Backgrounding can invalidate the display layer without changing
@@ -72,9 +80,9 @@ final class SampleBufferVideoView: UIView {
             submittedFrames = 0
             droppedFrames = 0
             videoLayer.flushAndRemoveImage()
-            return
+            return false
         }
-        guard renderingActive else { return }
+        guard renderingActive else { return false }
 
         // Check recovery before deduplicating frames: a failed layer may need
         // to display the same buffer again even if no new decoded frame arrives.
@@ -87,7 +95,7 @@ final class SampleBufferVideoView: UIView {
 
         // SwiftUI can refresh for unrelated status fields. Only deduplicate a
         // frame after it was actually submitted to a healthy, active layer.
-        guard lastPixelBuffer !== pixelBuffer else { return }
+        guard lastPixelBuffer !== pixelBuffer else { return false }
 
         // Never let AVSampleBufferDisplayLayer turn temporary rendering
         // pressure into seconds of latency. Its queued buffers are already
@@ -101,7 +109,7 @@ final class SampleBufferVideoView: UIView {
                       droppedFrames)
             }
         }
-        guard videoLayer.isReadyForMoreMediaData else { return }
+        guard videoLayer.isReadyForMoreMediaData else { return false }
 
         var formatDescription: CMVideoFormatDescription?
         guard CMVideoFormatDescriptionCreateForImageBuffer(
@@ -110,7 +118,7 @@ final class SampleBufferVideoView: UIView {
             formatDescriptionOut: &formatDescription
         ) == noErr, let formatDescription else {
             NSLog("CrossDesk could not create a video format description")
-            return
+            return false
         }
 
         var timing = CMSampleTimingInfo(
@@ -127,7 +135,7 @@ final class SampleBufferVideoView: UIView {
             sampleBufferOut: &sampleBuffer
         ) == noErr, let sampleBuffer else {
             NSLog("CrossDesk could not create a video sample buffer")
-            return
+            return false
         }
 
         if let attachments = CMSampleBufferGetSampleAttachmentsArray(
@@ -162,5 +170,6 @@ final class SampleBufferVideoView: UIView {
                       self.videoLayer.error?.localizedDescription ?? "none")
             }
         }
+        return true
     }
 }

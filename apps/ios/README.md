@@ -176,15 +176,22 @@ AV1 factories' choice of SVT-AV1 and dav1d.
 
 ## Privacy choices
 
-A fresh install or an upgrade without a prior choice shows the privacy notice
-before signaling registration. Declining leaves settings, local history and the
-bundled privacy policy available. Settings → Privacy → Privacy and Authorization shows consent status and can
+A launch without stored consent shows the privacy notice before signaling
+registration, including after a previous refusal or withdrawal. Returning from
+the background also shows it until consent is granted. Declining dismisses it
+for the current visit and leaves settings, local history and the bundled
+privacy policy available. Settings → Privacy → Privacy and Authorization shows consent status and can
 withdraw consent to stop both the persistent identity peer and remote session. Consent is required
 again before reconnecting; foregrounding or relaunching does not grant it.
 
+The notice opens as a native large sheet with a scrolling document above a fixed
+consent area. The agreement checkbox starts unchecked; **同意并继续** stays
+disabled until it is selected and the bundled policy is available.
+**暂不同意** dismisses the sheet for this visit. Swipe-to-dismiss is disabled
+so either action is explicit.
+
 Remote desktop previews default to off, including on upgrade. Enabling and
-confirming saving in Settings → Privacy applies from the next connection. A
-session indicator remains visible while saving is enabled. Previews stay local
+confirming saving in Settings → Privacy applies from the next connection. Previews stay local
 and are excluded from device backups. Disabling saving or withdrawing consent
 clears them; clearing is serialized after pending writes to prevent resurrection.
 Old previews saved without this choice are removed on upgrade.
@@ -196,9 +203,11 @@ build. Test the features in this order so a media problem is not confused with
 a data-channel problem:
 
 1. **Video:** after the session connects, the waiting panel should be replaced
-   by the remote desktop. Tap the floating icon to see the connection state,
-   P2P/TURN mode, decoded resolution, and bitrate. The current menu does not
-   display a frame counter.
+   by the remote desktop. Tap the floating icon, then **网络状态** (Network
+   status), to see video/audio/data/total receive and send bitrates, receive
+   loss rates, submitted FPS, decoded resolution, video delay, connection RTT,
+   P2P/TURN mode, and the actual SRTP encryption state. Scroll the panel in
+   either orientation to see all metrics.
 2. **Audio:** play continuous sound on the remote computer, then toggle the
    speaker button. Audio is Opus-decoded by MiniRTC and played as 48 kHz mono
    16-bit PCM through `AVAudioEngine`.
@@ -214,6 +223,19 @@ a data-channel problem:
    from the desktop. Progress is ACK-driven. Received files are stored in the
    app's `Documents/Received` directory and can be exported with the share
    button beside the transfer status or Finder's Files tab.
+
+Network status samples and caches displayed measurements once per second while
+the panel is open; video-frame redraws reuse that snapshot. Traffic and connection RTT
+expire after three seconds without a valid report; RTT uses the desktop's
+0.25-weight smoothing. FPS counts distinct frames submitted to the native
+display layer during the last second. Video delay averages calibrated capture
+time through display submission over that same window; it is an estimate, not
+a measurement of physical screen presentation. Missing calibration or stale
+samples show **—**, and idle video reaches zero FPS. Switching displays or
+backgrounding clears video samples; disconnecting clears all statistics.
+Receive loss rates are fractions converted to percentages. As on desktop,
+MiniRTC's total loss is the sum of the media loss rates, not a packet-weighted
+overall loss rate.
 
 For black-screen diagnosis, keep Xcode's debug console open and look for
 `CrossDesk` and `VideoToolbox` messages. With VideoToolbox H.264 decoding selected, look for

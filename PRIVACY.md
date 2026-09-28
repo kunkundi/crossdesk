@@ -40,7 +40,7 @@ CrossDesk 未集成广告投放、广告追踪或用户行为分析功能。客�
 
 **客户端本地数据。** 软件会在本机保存连接设置、用户偏好、最近连接记录及必要的运行日志，以支持后续使用和故障排查。iOS 中的本机登录凭据及您选择记住的远程连接密码保存在系统钥匙串中，不通过 iCloud 钥匙串同步；旧版偏好中的本机登录凭据在成功迁入钥匙串后删除。
 
-**远程画面预览。** iOS 默认不保存远程画面预览。只有您在“设置 → 隐私”单独开启并确认后，才会从下一次连接起，每次连接保存一张远程画面，用于最近连接预览；会话中会显示保存已开启的提示。预览仅保存在本机，不上传，并设置为不纳入设备备份。您可以单独清除预览；关闭保存或撤回隐私授权也会清除已有预览。旧版本未经此选择保存的预览会在升级后清理。
+**远程画面预览。** iOS 默认不保存远程画面预览。只有您在“设置 → 隐私”单独开启并确认后，才会从下一次连接起，每次连接保存一张远程画面，用于最近连接预览。预览仅保存在本机，不上传，并设置为不纳入设备备份。您可以单独清除预览；关闭保存或撤回隐私授权也会清除已有预览。旧版本未经此选择保存的预览会在升级后清理。
 
 **接收的文件。** iOS 接收文件保存在本应用的文件目录中，您可通过系统“文件”应用管理或删除。清除画面预览不会删除接收文件或最近连接记录。
 
@@ -112,7 +112,7 @@ Self-hosted servers are managed by the operator you choose. If you change the co
 
 **Local client data.** The software stores connection settings, preferences, recent connections and necessary operational logs on the device for subsequent use and troubleshooting. On iOS, local login credentials and remote connection passwords you choose to remember are stored in the system Keychain without iCloud Keychain synchronization. Legacy local login credentials in preferences are removed after successful migration to the Keychain.
 
-**Remote desktop previews.** Saving previews is off by default on iOS. Only after you separately enable and confirm it in Settings → Privacy will the app save one remote frame per connection, starting with the next connection, for recent-connection previews. An indicator appears during sessions while saving is enabled. Previews remain local, are not uploaded and are marked as excluded from device backups. You can clear them separately. Disabling saving or withdrawing network consent also clears them. Previews saved by older versions without this choice are cleared on upgrade.
+**Remote desktop previews.** Saving previews is off by default on iOS. Only after you separately enable and confirm it in Settings → Privacy will the app save one remote frame per connection, starting with the next connection, for recent-connection previews. Previews remain local, are not uploaded and are marked as excluded from device backups. You can clear them separately. Disabling saving or withdrawing network consent also clears them. Previews saved by older versions without this choice are cleared on upgrade.
 
 **Received files.** Received files on iOS are stored in the app's file directory and can be managed or deleted through Files. Clearing previews does not delete received files or recent-connection records.
 

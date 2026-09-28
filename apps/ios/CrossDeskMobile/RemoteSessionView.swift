@@ -53,7 +53,12 @@ struct RemoteSessionView: View {
                         videoSize: session.displayGeometrySize
                     ) {
                         ZStack(alignment: .topLeading) {
-                            NativeVideoView(pixelBuffer: session.pixelBuffer)
+                            NativeVideoView(
+                                pixelBuffer: session.pixelBuffer,
+                                frameID: session.currentVideoFrameID,
+                                captureUptime: session.frameCaptureUptime,
+                                onFrameSubmitted: session.recordVideoFrameSubmission
+                            )
 
                             if let cursorPosition,
                                session.pixelBuffer != nil {
@@ -145,17 +150,6 @@ struct RemoteSessionView: View {
             if disconnectConfirmationVisible {
                 disconnectConfirmationOverlay
                     .zIndex(50)
-            }
-        }
-        .overlay(alignment: .top) {
-            if session.savesConnectionThumbnails {
-                Label("本地画面预览保存已开启", systemImage: "photo")
-                    .font(.caption)
-                    .foregroundStyle(.white)
-                    .padding(8)
-                    .background(.black.opacity(0.65), in: Capsule())
-                    .padding(.top, 8)
-                    .allowsHitTesting(false)
             }
         }
         .alert("升级提示", isPresented: Binding(
@@ -1075,7 +1069,10 @@ private struct CrossDeskStatusOrb: View {
 
 private struct FloatingSessionMenu: View {
     @ObservedObject var session: RemoteSessionModel
-    @State private var showingVideoSettings = false
+    private enum Page { case controls, videoSettings, networkStats }
+    @State private var page: Page = .controls
+    @State private var displayedNetworkSnapshot = RemoteNetworkSnapshot()
+    @State private var displayedFrameSize = CGSize.zero
     let showKeyboard: () -> Void
     let chooseFile: () -> Void
     let close: () -> Void
@@ -1087,16 +1084,16 @@ private struct FloatingSessionMenu: View {
     var body: some View {
         VStack(spacing: 9) {
             HStack(spacing: 8) {
-                if showingVideoSettings {
+                if page != .controls {
                     Button {
-                        showingVideoSettings = false
+                        page = .controls
                     } label: {
                         Image(systemName: "chevron.left")
                             .frame(width: 28, height: 32)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("返回控制栏")
-                    Text("画面设置")
+                    Text(page == .videoSettings ? "画面设置" : "网络状态")
                         .font(.subheadline.weight(.semibold))
                 } else {
                     Circle()
@@ -1120,7 +1117,7 @@ private struct FloatingSessionMenu: View {
                 .accessibilityLabel("关闭控制栏")
             }
 
-            if showingVideoSettings, !session.videoSettingsFeedback.isEmpty {
+            if page == .videoSettings, !session.videoSettingsFeedback.isEmpty {
                 Text(session.videoSettingsFeedback)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -1128,8 +1125,11 @@ private struct FloatingSessionMenu: View {
             }
 
             ScrollView {
-                if showingVideoSettings {
+                if page == .videoSettings {
                     FloatingVideoSettings(session: session)
+                } else if page == .networkStats {
+                    FloatingNetworkStatistics(snapshot: displayedNetworkSnapshot,
+                                              frameSize: displayedFrameSize)
                 } else {
                     VStack(spacing: 9) {
                         LazyVGrid(columns: columns, spacing: 7) {
@@ -1154,7 +1154,7 @@ private struct FloatingSessionMenu: View {
                             .buttonStyle(.plain)
 
                             FloatingControlButton(title: "画面设置", symbol: "slider.horizontal.3") {
-                                showingVideoSettings = true
+                                page = .videoSettings
                             }
                             FloatingControlButton(
                                 title: session.audioEnabled ? "声音" : "静音",
@@ -1172,6 +1172,9 @@ private struct FloatingSessionMenu: View {
                             FloatingControlButton(title: "发送文件",
                                                   symbol: "folder.badge.plus",
                                                   action: chooseFile)
+                            FloatingControlButton(title: "网络状态", symbol: "chart.bar.xaxis") {
+                                page = .networkStats
+                            }
                             FloatingControlButton(title: "Ctrl+Alt+Del",
                                                   symbol: "lock.trianglebadge.exclamationmark",
                                                   action: session.bridge.sendSecureAttentionSequence)
@@ -1218,19 +1221,116 @@ private struct FloatingSessionMenu: View {
         }
         .shadow(color: .black.opacity(0.34), radius: 18, y: 7)
         .environment(\.colorScheme, .light)
+        .task(id: session.selectedDisplay) {
+            // This task survives ordinary video-frame redraws and is cancelled
+            // when the menu closes. Rendering only reads the sampled values.
+            while !Task.isCancelled {
+                displayedNetworkSnapshot = session.networkSnapshot
+                displayedFrameSize = session.frameSize
+                do {
+                    try await Task.sleep(nanoseconds: 1_000_000_000)
+                } catch {
+                    return
+                }
+            }
+        }
     }
 
     private var statusDetail: String {
-        var components = [session.usingTURN ? "TURN" : "P2P"]
-        let frameSize = session.frameSize
+        let snapshot = displayedNetworkSnapshot
+        var components = [snapshot.connectionMode]
+        let frameSize = displayedFrameSize
         if frameSize.width > 0 && frameSize.height > 0 {
             components.append("\(Int(frameSize.width))×\(Int(frameSize.height))")
         }
-        components.append(session.formattedBitrate)
-        if session.lossRate > 0 {
-            components.append(String(format: "丢包 %.1f%%", session.lossRate * 100))
+        components.append(RemoteNetworkSnapshot.bitrate(snapshot.report?.total.inboundBitrate))
+        if let loss = snapshot.report?.video.lossRate, loss > 0 {
+            components.append("丢包 \(RemoteNetworkSnapshot.lossRate(loss))")
         }
         return components.joined(separator: " · ")
+    }
+}
+
+private struct FloatingNetworkStatistics: View {
+    let snapshot: RemoteNetworkSnapshot
+    let frameSize: CGSize
+
+    var body: some View {
+        VStack(spacing: 10) {
+            VStack(spacing: 0) {
+                trafficRow("", inbound: "接收", outbound: "发送", loss: "丢包率")
+                    .foregroundStyle(.secondary)
+                trafficRow("视频", statistics: snapshot.report?.video)
+                trafficRow("音频", statistics: snapshot.report?.audio)
+                trafficRow("数据", statistics: snapshot.report?.data)
+                trafficRow("合计", statistics: snapshot.report?.total)
+                    .fontWeight(.semibold)
+                    .background(Color.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: 5))
+            }
+            .font(.caption2.monospacedDigit())
+
+            Divider()
+
+            VStack(spacing: 7) {
+                detail("帧率", value: "\(snapshot.framesPerSecond) FPS")
+                detail("分辨率", value: resolution)
+                detail("画面延时", value: RemoteNetworkSnapshot.latency(snapshot.videoLatencyMilliseconds))
+                detail("连接延时（RTT）", value: RemoteNetworkSnapshot.latency(snapshot.rttMilliseconds))
+                detail("连接方式", value: snapshot.connectionMode)
+                HStack {
+                    Text("媒体加密")
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    if let report = snapshot.report {
+                        Label(report.srtpActive ? "SRTP 已启用" : "未启用",
+                              systemImage: report.srtpActive ? "lock.shield" : "lock.open")
+                            .foregroundStyle(report.srtpActive ? Color.green : Color.secondary)
+                    } else {
+                        Text("—")
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+            .font(.caption.monospacedDigit())
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var resolution: String {
+        guard frameSize.width > 0, frameSize.height > 0 else { return "—" }
+        return "\(Int(frameSize.width)) × \(Int(frameSize.height))"
+    }
+
+    private func detail(_ title: String, value: String) -> some View {
+        HStack {
+            Text(title).foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            Text(value)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func trafficRow(_ title: String, statistics: RemoteTrafficStatistics?) -> some View {
+        trafficRow(title,
+                   inbound: RemoteNetworkSnapshot.bitrate(statistics?.inboundBitrate),
+                   outbound: RemoteNetworkSnapshot.bitrate(statistics?.outboundBitrate),
+                   loss: RemoteNetworkSnapshot.lossRate(statistics?.lossRate))
+            .accessibilityLabel("\(title)，接收 \(RemoteNetworkSnapshot.bitrate(statistics?.inboundBitrate))，发送 \(RemoteNetworkSnapshot.bitrate(statistics?.outboundBitrate))，丢包率 \(RemoteNetworkSnapshot.lossRate(statistics?.lossRate))")
+    }
+
+    private func trafficRow(_ title: String, inbound: String,
+                            outbound: String, loss: String) -> some View {
+        HStack(spacing: 4) {
+            Text(title).frame(width: 28, alignment: .leading)
+            Text(inbound).frame(maxWidth: .infinity, alignment: .trailing)
+            Text(outbound).frame(maxWidth: .infinity, alignment: .trailing)
+            Text(loss).frame(width: 46, alignment: .trailing)
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 5)
+        .accessibilityElement(children: .combine)
     }
 }
 

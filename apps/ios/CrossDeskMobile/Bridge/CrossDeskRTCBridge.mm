@@ -325,7 +325,8 @@ void DispatchMain(dispatch_block_t block) {
             sourceIDSize:(size_t)sourceIDSize;
 - (void)enqueueVideoPixelBuffer:(CVPixelBufferRef)pixelBuffer
                            width:(NSInteger)width
-                          height:(NSInteger)height;
+                          height:(NSInteger)height
+                   captureUptime:(NSTimeInterval)captureUptime;
 - (void)resetVideoDelivery;
 - (void)notifyVideoSettings:(crossdesk::VideoSettings)settings
                 generation:(uint64_t)generation;
@@ -335,7 +336,9 @@ void DispatchMain(dispatch_block_t block) {
           sourceID:(const char *)sourceID
       sourceIDSize:(size_t)sourceIDSize
         generation:(uint64_t)generation;
-- (void)handleStats:(const MiniRtcNetTrafficStats *)stats mode:(TraversalMode)mode;
+- (void)handleStats:(const MiniRtcNetTrafficStats *)stats
+               mode:(TraversalMode)mode
+         generation:(uint64_t)generation;
 - (void)sendMessage:(const std::string &)message
             reliable:(BOOL)reliable
               stream:(const char *)stream;
@@ -433,7 +436,7 @@ void OnNetworkStats(const char *peer_id, size_t peer_id_size,
                            generation:context->generation];
   } else if (context->role == PeerRole::Controller && stats &&
              [owner isControllerGenerationActive:context->generation]) {
-    [owner handleStats:stats mode:mode];
+    [owner handleStats:stats mode:mode generation:context->generation];
   }
 }
 
@@ -481,6 +484,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   CVPixelBufferRef _pendingVideoBuffer;
   NSInteger _pendingVideoWidth;
   NSInteger _pendingVideoHeight;
+  NSTimeInterval _pendingVideoCaptureUptime;
   bool _videoDeliveryScheduled;
   uint64_t _videoDeliveryGeneration;
   std::mutex _fileMutex;
@@ -522,6 +526,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     _pendingVideoBuffer = nullptr;
     _pendingVideoWidth = 0;
     _pendingVideoHeight = 0;
+    _pendingVideoCaptureUptime = 0;
     _videoDeliveryScheduled = false;
     _videoDeliveryGeneration = 0;
     _selectedDisplay.store(0);
@@ -1399,6 +1404,17 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
         static_cast<size_t>(_selectedDisplay.load()));
     if (source != expected) return;
   }
+  // Translate the transport's calibrated capture time once, while the peer is
+  // alive. Carry it with the exact pixels through coalescing and UI submission.
+  const NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
+  const int64_t peer_now = GetSystemTimeMicros(_state->controller_peer);
+  NSTimeInterval capture_uptime = 0;
+  if (frame->captured_timestamp > 0 && peer_now > 0 &&
+      frame->captured_timestamp <= static_cast<uint64_t>(peer_now) &&
+      static_cast<uint64_t>(peer_now) - frame->captured_timestamp <= 5'000'000) {
+    capture_uptime = now -
+        (static_cast<uint64_t>(peer_now) - frame->captured_timestamp) / 1'000'000.0;
+  }
   const MiniRtcNativeVideoFrame *native_frame = frame->native_frame;
   const bool has_native_pixel_buffer =
       native_frame &&
@@ -1412,7 +1428,8 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
             native_frame->payload.cv_pixel_buffer);
     [self enqueueVideoPixelBuffer:pixel_buffer
                             width:frame->width
-                           height:frame->height];
+                           height:frame->height
+                    captureUptime:capture_uptime];
     return;
   }
 
@@ -1504,13 +1521,15 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
 
   [self enqueueVideoPixelBuffer:pixel_buffer
                           width:frame_width
-                         height:frame_height];
+                         height:frame_height
+                  captureUptime:capture_uptime];
   CVPixelBufferRelease(pixel_buffer);
 }
 
 - (void)enqueueVideoPixelBuffer:(CVPixelBufferRef)pixelBuffer
                            width:(NSInteger)width
-                          height:(NSInteger)height {
+                          height:(NSInteger)height
+                   captureUptime:(NSTimeInterval)captureUptime {
   if (!pixelBuffer) return;
 
   CVPixelBufferRetain(pixelBuffer);
@@ -1524,6 +1543,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     _pendingVideoBuffer = pixelBuffer;
     _pendingVideoWidth = width;
     _pendingVideoHeight = height;
+    _pendingVideoCaptureUptime = captureUptime;
     generation = _videoDeliveryGeneration;
     if (!_videoDeliveryScheduled) {
       _videoDeliveryScheduled = true;
@@ -1536,15 +1556,18 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     CVPixelBufferRef latest_buffer = nullptr;
     NSInteger latest_width = 0;
     NSInteger latest_height = 0;
+    NSTimeInterval latest_capture_uptime = 0;
     {
       std::lock_guard<std::mutex> lock(self->_pendingVideoMutex);
       if (generation != self->_videoDeliveryGeneration) return;
       latest_buffer = self->_pendingVideoBuffer;
       latest_width = self->_pendingVideoWidth;
       latest_height = self->_pendingVideoHeight;
+      latest_capture_uptime = self->_pendingVideoCaptureUptime;
       self->_pendingVideoBuffer = nullptr;
       self->_pendingVideoWidth = 0;
       self->_pendingVideoHeight = 0;
+      self->_pendingVideoCaptureUptime = 0;
       self->_videoDeliveryScheduled = false;
     }
 
@@ -1557,11 +1580,12 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     }
     id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
     if ([delegate respondsToSelector:
-            @selector(rtcBridge:didReceivePixelBuffer:width:height:)]) {
+            @selector(rtcBridge:didReceivePixelBuffer:width:height:captureUptime:)]) {
       [delegate rtcBridge:self
           didReceivePixelBuffer:latest_buffer
                          width:latest_width
-                        height:latest_height];
+                        height:latest_height
+                  captureUptime:latest_capture_uptime];
     }
     CVPixelBufferRelease(latest_buffer);
   });
@@ -1576,6 +1600,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     _pendingVideoBuffer = nullptr;
     _pendingVideoWidth = 0;
     _pendingVideoHeight = 0;
+    _pendingVideoCaptureUptime = 0;
     _videoDeliveryScheduled = false;
   }
   if (pending_buffer) CVPixelBufferRelease(pending_buffer);
@@ -1868,19 +1893,31 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   }
 }
 
-- (void)handleStats:(const MiniRtcNetTrafficStats *)stats mode:(TraversalMode)mode {
+- (void)handleStats:(const MiniRtcNetTrafficStats *)stats
+               mode:(TraversalMode)mode
+         generation:(uint64_t)generation {
   if (!stats) return;
-  const NSUInteger bitrate = stats->total_inbound_stats.bitrate;
-  const float loss = stats->video_inbound_stats.loss_rate;
-  const BOOL using_turn = mode == TraversalMode::Relay;
+  const auto traffic = [](const MiniRtcInboundStats &inbound,
+                          const MiniRtcOutboundStats &outbound) {
+    return CrossDeskTrafficStats{inbound.bitrate, outbound.bitrate,
+                                 inbound.loss_rate};
+  };
+  const CrossDeskNetworkStats snapshot{
+      traffic(stats->video_inbound_stats, stats->video_outbound_stats),
+      traffic(stats->audio_inbound_stats, stats->audio_outbound_stats),
+      traffic(stats->data_inbound_stats, stats->data_outbound_stats),
+      traffic(stats->total_inbound_stats, stats->total_outbound_stats),
+      stats->rtt_ms, static_cast<BOOL>(stats->srtp_active),
+      mode == TraversalMode::P2P ? CrossDeskTraversalModeDirect
+      : mode == TraversalMode::Relay ? CrossDeskTraversalModeRelay
+                                    : CrossDeskTraversalModeUnknown};
   DispatchMain(^{
+    // Disconnect/reconnect can happen while this report waits on the UI queue.
+    if (![self isControllerGenerationActive:generation]) return;
     id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
     if ([delegate respondsToSelector:
-            @selector(rtcBridge:didUpdateBitrate:lossRate:usingTURN:)]) {
-      [delegate rtcBridge:self
-          didUpdateBitrate:bitrate
-                  lossRate:loss
-                 usingTURN:using_turn];
+            @selector(rtcBridge:didUpdateNetworkStats:)]) {
+      [delegate rtcBridge:self didUpdateNetworkStats:snapshot];
     }
   });
 }
