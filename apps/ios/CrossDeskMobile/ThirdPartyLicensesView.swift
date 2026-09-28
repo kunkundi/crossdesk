@@ -20,7 +20,19 @@ private struct LicensedComponent: Decodable, Identifiable {
         if id == "crossdesk" {
             return Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
         }
-        return version.count == 40 ? String(version.prefix(12)) : version
+        let currentVersion = SourceMetadata.bundled?.componentSources[id]?.version ?? version
+        return currentVersion.count == 40 ? String(currentVersion.prefix(12)) : currentVersion
+    }
+
+    var resolvedSourceURL: URL {
+        if id == "crossdesk" {
+            return SourceMetadata.bundled?.sourceURL ?? sourceURL
+        }
+        return SourceMetadata.bundled?.componentSources[id]?.sourceURL ?? sourceURL
+    }
+
+    var resolvedBuildSourceURL: URL? {
+        SourceMetadata.bundled?.componentSources[id]?.buildSourceURL ?? buildSourceURL
     }
 }
 
@@ -40,6 +52,12 @@ private struct LicenseCatalog: Decodable {
     }
 }
 
+struct ComponentSourceMetadata: Decodable {
+    let version: String?
+    let sourceURL: URL?
+    let buildSourceURL: URL?
+}
+
 struct SourceMetadata: Decodable {
     let revision: String
     let tag: String?
@@ -47,6 +65,7 @@ struct SourceMetadata: Decodable {
     let sourceURL: URL
     let buildInstructionsURL: URL
     let privacyPolicyURL: URL
+    let componentSources: [String: ComponentSourceMetadata]
 
     static let bundled: SourceMetadata? = {
         guard let url = Bundle.main.url(forResource: "SourceMetadata", withExtension: "json"),
@@ -137,10 +156,8 @@ private struct ComponentLicenseView: View {
                 Text(component.name).font(.headline)
                 Text(component.displayVersion).textSelection(.enabled)
                 Text(component.license).foregroundStyle(.secondary)
-                Link("查看源码", destination: component.id == "crossdesk"
-                     ? SourceMetadata.bundled?.sourceURL ?? component.sourceURL
-                     : component.sourceURL)
-                if let buildSourceURL = component.buildSourceURL {
+                Link("查看源码", destination: component.resolvedSourceURL)
+                if let buildSourceURL = component.resolvedBuildSourceURL {
                     Link("构建配方与项目补丁", destination: buildSourceURL)
                 }
             }

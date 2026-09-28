@@ -19,6 +19,24 @@ def git(*args, root=REPO):
     return subprocess.check_output(["git", "-C", str(root), *args], text=True).strip()
 
 
+def component_sources(lock, mini_revision):
+    """Resolve MiniRTC source and recipe links without rewriting reviewed notices."""
+    mini_url = f"{MINIRTC_URL}/tree/{mini_revision}"
+    sources = {}
+    for component in lock["components"]:
+        source = component["source"]
+        entry = {}
+        if source["kind"] == "repository" and source["url"] == MINIRTC_URL:
+            entry.update(version=mini_revision, sourceURL=mini_url)
+        recipe = component.get("recipe_path", "")
+        if recipe.startswith("deps/submodules/minirtc/"):
+            directory = Path(recipe).relative_to("deps/submodules/minirtc").parent
+            entry["buildSourceURL"] = f"{mini_url}/{directory.as_posix()}"
+        if entry:
+            sources[component["id"]] = entry
+    return sources
+
+
 def source_metadata(require_release=False, tag=None):
     revision = git("rev-parse", "HEAD")
     dirty = bool(git("status", "--porcelain", "--untracked-files=normal", "--ignore-submodules=none"))
@@ -47,6 +65,7 @@ def source_metadata(require_release=False, tag=None):
         "privacyPolicyURL": f"{REPOSITORY_URL}/blob/{ref}/PRIVACY.md",
         "miniRTCRevision": mini_revision,
         "miniRTCSourceURL": f"{MINIRTC_URL}/tree/{mini_revision}",
+        "componentSources": component_sources(lock, mini_revision),
         "licenseCatalogSHA256": lock["bundle_sha256"],
         "sourceCatalogSHA256": hashlib.sha256(lock_path.read_bytes()).hexdigest(),
         "toolchain": lock["toolchain"],

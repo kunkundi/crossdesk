@@ -178,11 +178,9 @@ def verify(lock, inputs, target_info, xmake_repository=None, xmake_version=None)
     for line in inputs.read_text().splitlines():
         sha, path = line.split(maxsplit=1)
         checked(Path(path).read_bytes(), sha, path)
-    revision = subprocess.check_output(
-        ["git", "-C", str(REPO / "deps/submodules/minirtc"), "rev-parse", "HEAD"], text=True).strip()
-    mini = next(c for c in lock["components"] if c["id"] == "minirtc")
-    if revision != mini["source"]["revision"]:
-        raise ValueError("MiniRTC revision changed; review embedded notices and update sources.json")
+    # Repository revisions identify the reviewed notices, not a required build
+    # commit. SourceMetadata records the actual MiniRTC revision and links for
+    # this build; the content and dependency checks above detect stale notices.
 
 
 def main():

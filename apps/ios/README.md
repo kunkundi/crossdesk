@@ -98,8 +98,8 @@ top of the notices page, with its INRIA copyright, CeCILL-C terms and limited
 warranty/liability notice. Its embedded BSD and CC-BY-SA notices are preserved
 in the source-notices document as well.
 
-`licenses/sources.json` pins the reviewed source archives (SHA-256), Git
-revisions, selected legal files and source-notice extraction rules.
+`licenses/sources.json` pins the reviewed source archives (SHA-256), notice-review
+Git revisions, selected legal files and source-notice extraction rules.
 `CrossDeskMobile/Resources/ThirdPartyLicenses.json` is the generated resource
 bundled by Xcode. The catalog covers 34 components for the default iOS build,
 including header-only dependencies, GLib's proxy-libintl, spdlog's bundled fmt,
@@ -122,13 +122,16 @@ collected from the reviewed runtime source directories; the catalog is an
 attribution superset, not a claim that every source file survives linker
 dead stripping.
 
-Normal Xcode builds verify the checked-in resource offline, compare all resolved
-dependency versions (including header-only packages) with the catalog, check
-the merged archive's input hashes and local package recipes, and check the
-MiniRTC revision. A missing, stale or altered catalog fails the build. When
-dependencies or MiniRTC change, review the corresponding source notices and
-update the lock before regenerating; regeneration alone does not select a new
-dependency version. `MINIRTC_ENABLE_AOM=true` also requires a reviewed AOM entry.
+Normal Xcode builds verify the checked-in resource, local license files and
+package recipes offline before compiling native code. After compilation they
+also compare all resolved dependency versions (including header-only packages)
+with the catalog and check the merged archive's input hashes and pinned
+toolchain. A missing, stale or altered catalog fails the build. Ordinary MiniRTC
+code changes do not require changing the notice-review revision or regenerating
+the catalog. Changes to dependencies, license texts or embedded third-party
+notices still require reviewing and updating the affected catalog entries;
+regeneration alone does not select a new dependency version.
+`MINIRTC_ENABLE_AOM=true` also requires a reviewed AOM entry.
 
 The source screen links to the exact application tag/commit, MiniRTC commit,
 and custom dependency recipes/patches. `SourceMetadata.json` is generated in
@@ -136,7 +139,12 @@ the app bundle, not in the checkout. Development builds with local edits are
 explicitly identified as modified. Version-tag CI builds reject an unclean
 checkout or a mismatched tag. The release archive also carries
 `ThirdPartySources.json`, `SourceMetadata.json` and the open-source rights
-notice; release notes provide the corresponding source and build links.
+notice. `ThirdPartySources.json` preserves the notice-review catalog;
+`SourceMetadata.json` records the actual build commit and per-component version,
+source and recipe links used by the license screen, including MiniRTC, inih and
+WebRTC-derived code. These links update automatically on every build without
+rewriting the checked-in license resource. Release notes provide the
+corresponding source and build links.
 Keep the source tags, submodule commits and referenced dependency source
 archives available for recipients of that release.
 
@@ -144,8 +152,9 @@ To change a library, edit MiniRTC in its submodule, or modify the relevant
 package recipe/patch under `deps/submodules/minirtc/thirdparty`. If a package
 recipe changes, change its package configuration revision (or rebuild that
 package) so Xmake does not reuse a previous binary. Review affected notices,
-update recipe hashes, commit MiniRTC, update its revision in `sources.json`,
-then regenerate the catalog. Build the application again to relink it with
+update recipe hashes, and commit MiniRTC. When the notice catalog changes,
+record the reviewed revision in `sources.json` and regenerate the catalog.
+Build the application again to relink it with
 the modified library. Use your own team and bundle identifier to install the
 modified build; the maintainer's signing credentials are not required.
 
