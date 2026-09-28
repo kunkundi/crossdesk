@@ -542,6 +542,26 @@ private struct RecentConnectionCard: View {
     let connect: () -> Void
     let delete: () -> Void
 
+    private var platformColors: [Color] {
+        switch connection.platform {
+        case .windows:
+            return [Color(red: 0.12, green: 0.38, blue: 0.70),
+                    Color(red: 0.20, green: 0.48, blue: 0.77)]
+        case .linux:
+            return [Color(red: 0.63, green: 0.31, blue: 0.08),
+                    Color(red: 0.73, green: 0.39, blue: 0.12)]
+        case .macos:
+            return [Color(red: 0.43, green: 0.29, blue: 0.68),
+                    Color(red: 0.55, green: 0.39, blue: 0.77)]
+        case .ios:
+            return [Color(red: 0.08, green: 0.43, blue: 0.40),
+                    Color(red: 0.12, green: 0.51, blue: 0.47)]
+        case .unknown:
+            return [Color(red: 0.35, green: 0.40, blue: 0.46),
+                    Color(red: 0.45, green: 0.49, blue: 0.55)]
+        }
+    }
+
     var body: some View {
         Button(action: connect) {
             VStack(alignment: .leading, spacing: 0) {
@@ -551,13 +571,16 @@ private struct RecentConnectionCard: View {
                             .resizable()
                             .scaledToFill()
                     } else {
-                        LinearGradient(colors: [
-                            Color(red: 0.18, green: 0.48, blue: 0.86),
-                            Color(red: 0.38, green: 0.68, blue: 0.96)
-                        ], startPoint: .topLeading, endPoint: .bottomTrailing)
-                        Image(systemName: "display")
-                            .font(.system(size: 34, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.9))
+                        LinearGradient(colors: platformColors,
+                                       startPoint: .topLeading,
+                                       endPoint: .bottomTrailing)
+                        Text(connection.platform.displayName)
+                            .font(.title3.weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .foregroundStyle(.white)
+                            .padding(8)
+                            .accessibilityLabel("被控端平台：\(connection.platform.displayName)")
                     }
                 }
                 .frame(maxWidth: .infinity)

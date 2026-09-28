@@ -135,6 +135,7 @@ int main() {
   host.type = crossdesk::ControlType::host_infomation;
   std::strcpy(host.i.host_name, "Test Mac");
   std::strcpy(host.i.app_version, "1.5.3-2-20260928");
+  host.i.platform = crossdesk::HostPlatform::MacOS;
   host.i.host_name_size = std::strlen(host.i.host_name);
   host.i.display_list = display_names;
   host.i.display_num = 1;
@@ -147,6 +148,7 @@ int main() {
                    parsed_host.i.display_num == 1 &&
                    std::string(parsed_host.i.host_name) == "Test Mac" &&
                    std::string(parsed_host.i.app_version) == "1.5.3-2-20260928" &&
+                   parsed_host.i.platform == crossdesk::HostPlatform::MacOS &&
                    std::string(parsed_host.i.display_list[0]) ==
                        "Built-in Display" &&
                    parsed_host.i.right[0] == 2560 &&
@@ -160,6 +162,48 @@ int main() {
                    std::string(parsed_host.i.app_version) == "1.5.3-20260928",
                "host factory should advertise the app version");
   crossdesk::FreeRemoteAction(parsed_host);
+  crossdesk::FreeRemoteAction(advertised);
+
+  // The platform is optional metadata, not a requirement for connecting.
+  for (const auto& platform : std::vector<std::string>{
+           "windows", "linux", "macos", "ios", "unknown"}) {
+    advertised = crossdesk::MakeHostInformation(
+        "Host", {}, true, "1.5.3-20260928",
+        crossdesk::ParseHostPlatform(platform));
+    const auto message = advertised.to_json();
+    ok &= Expect(message.find("\"platform\":\"" + platform + "\"") !=
+                     std::string::npos,
+                 "host factory must advertise the canonical platform string");
+    ok &= Expect(parsed_host.from_json(message) &&
+                     crossdesk::HostPlatformName(parsed_host.i.platform) == platform,
+                 "host platform must survive a JSON round trip");
+    crossdesk::FreeRemoteAction(parsed_host);
+    crossdesk::FreeRemoteAction(advertised);
+  }
+
+  for (const auto& platform_field : std::vector<std::string>{
+           "", ",\"platform\":null", ",\"platform\":123", ",\"platform\":true",
+           ",\"platform\":[]", ",\"platform\":{}", ",\"platform\":\"\"",
+           ",\"platform\":\"future-os\"", ",\"platform\":\"windows\\u0000extra\"",
+           ",\"platform\":\"" + std::string(256, 'x') + "\""}) {
+    const auto message =
+        "{\"type\":3,\"host_info\":{\"host_name\":\"Legacy\","
+        "\"display_num\":1,\"displays\":[{\"name\":\"Screen\",\"left\":0,"
+        "\"top\":0,\"right\":1920,\"bottom\":1080}]" + platform_field + "}}";
+    parsed_host.i.platform = crossdesk::HostPlatform::Windows;
+    ok &= Expect(parsed_host.from_json(message) &&
+                     parsed_host.i.platform == crossdesk::HostPlatform::Unknown &&
+                     std::string(parsed_host.i.host_name) == "Legacy" &&
+                     parsed_host.i.display_num == 1 &&
+                     parsed_host.i.right[0] == 1920 && parsed_host.i.bottom[0] == 1080,
+                 "missing or invalid platform must be unknown without losing host info");
+    crossdesk::FreeRemoteAction(parsed_host);
+  }
+  advertised = crossdesk::MakeHostInformation("Legacy", {}, false);
+  ok &= Expect(advertised.i.platform == crossdesk::HostPlatform::Unknown &&
+                   advertised.to_json().find("\"platform\":\"unknown\"") !=
+                       std::string::npos,
+               "unspecified platform must be advertised as unknown");
   crossdesk::FreeRemoteAction(advertised);
 
   // Missing and malformed optional versions must not break legacy host info.

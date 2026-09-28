@@ -32,6 +32,19 @@
 #endif
 
 namespace crossdesk {
+namespace {
+
+#if defined(_WIN32)
+constexpr HostPlatform kClientPlatform = HostPlatform::Windows;
+#elif defined(__APPLE__)
+constexpr HostPlatform kClientPlatform = HostPlatform::MacOS;
+#elif defined(__linux__)
+constexpr HostPlatform kClientPlatform = HostPlatform::Linux;
+#else
+constexpr HostPlatform kClientPlatform = HostPlatform::Unknown;
+#endif
+
+}  // namespace
 
 void PeerEventHandler::SendClientInfo(PeerPtr* peer,
                                       const std::string& client_id) {
@@ -39,19 +52,9 @@ void PeerEventHandler::SendClientInfo(PeerPtr* peer,
     return;
   }
 
-#if defined(_WIN32)
-  constexpr const char* kClientPlatform = "windows";
-#elif defined(__APPLE__)
-  constexpr const char* kClientPlatform = "macos";
-#elif defined(__linux__)
-  constexpr const char* kClientPlatform = "linux";
-#else
-  constexpr const char* kClientPlatform = "unknown";
-#endif
-
   const nlohmann::json message = {{"type", "client_info"},
                                   {"version", CROSSDESK_VERSION},
-                                  {"platform", kClientPlatform}};
+                                  {"platform", HostPlatformName(kClientPlatform)}};
   const std::string payload = message.dump();
   if (SendSignalMessage(peer, payload.data(), payload.size()) != 0) {
     LOG_WARN("[{}] failed to report client information", client_id);
@@ -270,7 +273,8 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         {
           RemoteAction remote_action = MakeHostInformation(
               GetHostName(), runtime->devices_.host_display_list(),
-              /*supports_privacy_screen=*/true, CROSSDESK_VERSION);
+              /*supports_privacy_screen=*/true, CROSSDESK_VERSION,
+              kClientPlatform);
           remote_action.i.supports_video_settings = true;
           for (std::size_t i = 0; i < remote_action.i.display_num; i++) {
             LOG_INFO("Local display [{}:{}]", i + 1,
@@ -304,6 +308,7 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
           std::lock_guard lock(props->remote_version_mutex_);
           props->remote_host_info_received_ = false;
           props->remote_app_version_.clear();
+          props->remote_platform_ = HostPlatform::Unknown;
           props->remote_update_dismissed_ = false;
         }
         props->net_traffic_stats_.Reset();
@@ -401,7 +406,8 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         {
           RemoteAction remote_action = MakeHostInformation(
               GetHostName(), runtime->devices_.host_display_list(),
-              /*supports_privacy_screen=*/true, CROSSDESK_VERSION);
+              /*supports_privacy_screen=*/true, CROSSDESK_VERSION,
+              kClientPlatform);
           remote_action.i.supports_video_settings = true;
           for (std::size_t i = 0; i < remote_action.i.display_num; i++) {
             LOG_INFO("Local display [{}:{}]", i + 1,

@@ -124,10 +124,12 @@ struct RemoteSession {
   bool tab_selected_ = false;
   bool tab_opened_ = true;
   std::string remote_host_name_;
-  // Received version and dismissal state belong to this connection.
+  // Host metadata and dismissal state belong to this connection and are
+  // protected by remote_version_mutex_.
   std::mutex remote_version_mutex_;
   bool remote_host_info_received_ = false;
   std::string remote_app_version_;
+  HostPlatform remote_platform_ = HostPlatform::Unknown;
   bool remote_update_dismissed_ = false;
   bool remote_service_status_received_ = false;
   std::mutex video_settings_mutex_;

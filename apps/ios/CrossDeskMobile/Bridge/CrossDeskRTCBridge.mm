@@ -1343,6 +1343,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
               : "iPhone-" + self->_state->identity_base;
       RemoteAction action{};
       action.type = ControlType::host_infomation;
+      action.i.platform = crossdesk::HostPlatform::IOS;
       CopyCString(action.i.host_name, sizeof(action.i.host_name),
                   controller_name);
       action.i.host_name_size = std::strlen(action.i.host_name);
@@ -1634,6 +1635,8 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     }
     if (action.type != ControlType::host_infomation) return;
     const BOOL supports_video_settings = action.i.supports_video_settings;
+    NSString *platform = [NSString stringWithUTF8String:
+        crossdesk::HostPlatformName(action.i.platform)];
     NSString *host_name = [[NSString alloc]
         initWithBytes:action.i.host_name
                length:action.i.host_name_size
@@ -1663,11 +1666,12 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
       if (![self isControllerGenerationActive:generation]) return;
       id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
       if ([delegate respondsToSelector:
-              @selector(rtcBridge:didReceiveHostName:appVersion:displayNames:
+              @selector(rtcBridge:didReceiveHostName:appVersion:platform:displayNames:
                                   displaySizes:supportsVideoSettings:)]) {
         [delegate rtcBridge:self
             didReceiveHostName:host_name ?: @""
                     appVersion:app_version ?: @""
+                      platform:platform
                   displayNames:display_names
                   displaySizes:display_sizes
          supportsVideoSettings:supports_video_settings];

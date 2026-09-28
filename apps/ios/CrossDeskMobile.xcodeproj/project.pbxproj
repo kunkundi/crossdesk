@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		100000000000000000000018 /* RecentConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000018 /* RecentConnection.swift */; };
 		100000000000000000000016 /* RemoteVideoSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000016 /* RemoteVideoSettings.swift */; };
 		100000000000000000000017 /* RemoteNetworkStatistics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000017 /* RemoteNetworkStatistics.swift */; };
 		100000000000000000000001 /* CrossDeskMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* CrossDeskMobileApp.swift */; };
@@ -29,6 +30,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		200000000000000000000018 /* RecentConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentConnection.swift; sourceTree = "<group>"; };
 		200000000000000000000016 /* RemoteVideoSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteVideoSettings.swift; sourceTree = "<group>"; };
 		200000000000000000000017 /* RemoteNetworkStatistics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteNetworkStatistics.swift; sourceTree = "<group>"; };
 		200000000000000000000001 /* CrossDeskMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossDeskMobileApp.swift; sourceTree = "<group>"; };
@@ -96,6 +98,7 @@
 				200000000000000000000013 /* ThumbnailFileStore.swift */,
 				200000000000000000000012 /* PrivacyPreferences.swift */,
 				200000000000000000000002 /* RemoteSessionModel.swift */,
+				200000000000000000000018 /* RecentConnection.swift */,
 				200000000000000000000016 /* RemoteVideoSettings.swift */,
 				200000000000000000000017 /* RemoteNetworkStatistics.swift */,
 				200000000000000000000003 /* ContentView.swift */,
@@ -261,6 +264,7 @@
 			files = (
 				100000000000000000000001 /* CrossDeskMobileApp.swift in Sources */,
 				100000000000000000000002 /* RemoteSessionModel.swift in Sources */,
+				100000000000000000000018 /* RecentConnection.swift in Sources */,
 				100000000000000000000016 /* RemoteVideoSettings.swift in Sources */,
 				100000000000000000000017 /* RemoteNetworkStatistics.swift in Sources */,
 				100000000000000000000003 /* ContentView.swift in Sources */,

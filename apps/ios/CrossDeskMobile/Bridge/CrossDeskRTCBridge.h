@@ -86,6 +86,7 @@ typedef struct {
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didReceiveHostName:(NSString *)hostName
             appVersion:(NSString *)appVersion
+              platform:(NSString *)platform
           displayNames:(NSArray<NSString *> *)displayNames
           displaySizes:(NSArray<NSValue *> *)displaySizes
  supportsVideoSettings:(BOOL)supportsVideoSettings;

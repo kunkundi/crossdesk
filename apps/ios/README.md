@@ -237,6 +237,17 @@ Receive loss rates are fractions converted to percentages. As on desktop,
 MiniRTC's total loss is the sum of the media loss rates, not a packet-weighted
 overall loss rate.
 
+The reliable control channel's `host_info` also advertises `platform` as
+`windows`, `linux`, `macos`, `ios`, or `unknown`. Desktop and iOS controllers
+retain the received platform for the current session. Missing, malformed, or
+unrecognized values from older or other peers map to unknown (`未知` on iOS),
+without rejecting the remaining host information. Reconnecting clears the
+previous peer's platform; iOS sends `ios` in its own host information.
+On iOS, the received platform is also saved with each recent connection.
+When preview saving is off or no preview is available, the thumbnail placeholder
+shows the platform name. Existing history without platform metadata shows
+`未知` until host information is received from a subsequent connection.
+
 For black-screen diagnosis, keep Xcode's debug console open and look for
 `CrossDesk` and `VideoToolbox` messages. With VideoToolbox H.264 decoding selected, look for
 `VideoToolbox decoded frame` from MiniRTC and `CrossDesk delivered latest frame`

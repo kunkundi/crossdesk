@@ -17,6 +17,7 @@ void ResetHostInfo(HostInfo& info) {
   info.host_name[0] = '\0';
   info.host_name_size = 0;
   info.app_version[0] = '\0';
+  info.platform = HostPlatform::Unknown;
   info.display_list = nullptr;
   info.display_num = 0;
   info.left = nullptr;
@@ -49,10 +50,29 @@ char* DuplicateString(const std::string& value) {
 
 }  // namespace
 
+const char* HostPlatformName(HostPlatform platform) {
+  switch (platform) {
+    case HostPlatform::Windows: return "windows";
+    case HostPlatform::MacOS: return "macos";
+    case HostPlatform::Linux: return "linux";
+    case HostPlatform::IOS: return "ios";
+    default: return "unknown";
+  }
+}
+
+HostPlatform ParseHostPlatform(const std::string& platform) {
+  if (platform == "windows") return HostPlatform::Windows;
+  if (platform == "macos") return HostPlatform::MacOS;
+  if (platform == "linux") return HostPlatform::Linux;
+  if (platform == "ios") return HostPlatform::IOS;
+  return HostPlatform::Unknown;
+}
+
 RemoteAction MakeHostInformation(const std::string& host_name,
                                  const std::vector<HostDisplay>& displays,
                                  bool supports_privacy_screen,
-                                 const std::string& app_version) {
+                                 const std::string& app_version,
+                                 HostPlatform platform) {
   RemoteAction action{};
   action.type = ControlType::host_infomation;
   ResetHostInfo(action.i);
@@ -73,6 +93,7 @@ RemoteAction MakeHostInformation(const std::string& host_name,
   }
 
   action.i.supports_privacy_screen = supports_privacy_screen;
+  action.i.platform = platform;
   const std::size_t name_size =
       std::min(host_name.size(), sizeof(action.i.host_name) - 1);
   std::memcpy(action.i.host_name, host_name.data(), name_size);
@@ -192,6 +213,7 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
       object["host_info"] = {
           {"host_name", action.i.host_name},
           {"app_version", action.i.app_version},
+          {"platform", HostPlatformName(action.i.platform)},
           {"display_num", action.i.display_num},
           {"displays", displays},
           {"supports_privacy_screen", action.i.supports_privacy_screen},
@@ -368,6 +390,11 @@ bool RemoteAction::FromJson(const std::string& json_string,
         ResetHostInfo(output.i);
         owns_host_info = true;
         const auto& host_info_object = object.at("host_info");
+        const auto platform = host_info_object.find("platform");
+        if (platform != host_info_object.end() && platform->is_string()) {
+          output.i.platform =
+              ParseHostPlatform(platform->get_ref<const std::string&>());
+        }
         const auto app_version = host_info_object.find("app_version");
         if (app_version != host_info_object.end() && app_version->is_string()) {
           const auto& version = app_version->get_ref<const std::string&>();

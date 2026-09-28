@@ -116,11 +116,18 @@ struct CursorState {
   CursorHiddenReason hidden_reason;
 };
 
+enum class HostPlatform { Unknown, Windows, MacOS, Linux, IOS };
+
+const char* HostPlatformName(HostPlatform platform);
+HostPlatform ParseHostPlatform(const std::string& platform);
+
 struct HostInfo {
   char host_name[64];
   std::size_t host_name_size;
   // Optional; an empty string means the peer version is unknown.
   char app_version[64];
+  // Optional on the wire; missing or unrecognized values are unknown.
+  HostPlatform platform;
   char** display_list;
   std::size_t display_num;
   int* left;
@@ -219,7 +226,8 @@ struct HostDisplay {
 RemoteAction MakeHostInformation(const std::string& host_name,
                                  const std::vector<HostDisplay>& displays,
                                  bool supports_privacy_screen,
-                                 const std::string& app_version = {});
+                                 const std::string& app_version = {},
+                                 HostPlatform platform = HostPlatform::Unknown);
 
 }  // namespace crossdesk
 

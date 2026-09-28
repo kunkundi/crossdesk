@@ -98,16 +98,6 @@ private struct RemoteVideoFrame {
     let captureUptime: TimeInterval
 }
 
-struct RecentConnection: Codable, Identifiable, Equatable {
-    let remoteID: String
-    var displayName: String
-    var lastConnectedAt: Date
-    var remembersPassword: Bool
-    var thumbnailFileName: String?
-
-    var id: String { remoteID }
-}
-
 private enum RecentConnectionStore {
     private static let defaultsKey = "crossdesk.mobile.recent-connections.v1"
     private static let thumbnails = ThumbnailFileStore(directory:
@@ -345,6 +335,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     @Published private(set) var deviceOfflineAlertVisible = false
     @Published private(set) var connectionFailureMessage: String?
     @Published private(set) var remoteUpdateMessage: String?
+    @Published private(set) var remotePlatform: RemoteHostPlatform = .unknown
 
     let bridge = CrossDeskRTCBridge()
     private let audioPlayer = RemoteAudioPlayer()
@@ -553,7 +544,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
 
     private func beginRemoteConnection(_ identifier: String) {
         networkStatistics = RemoteNetworkStatistics()
-        resetRemoteVersionCheck()
+        resetRemoteHostInfo()
         cancelVideoRecovery()
         resetVideoSettings()
         cancelPresenceProbe()
@@ -647,7 +638,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     private func resetConnection() {
-        resetRemoteVersionCheck()
+        resetRemoteHostInfo()
         resetVideoSettings()
         connectionFailureMessage = nil
         cancelVideoRecovery()
@@ -673,7 +664,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     func retry() {
-        resetRemoteVersionCheck()
+        resetRemoteHostInfo()
         cancelVideoRecovery()
         bridge.disconnect()
         connect()
@@ -683,12 +674,13 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         remoteUpdateMessage = nil
     }
 
-    private func resetRemoteVersionCheck() {
+    private func resetRemoteHostInfo() {
         remoteVersionCheckTask?.cancel()
         remoteVersionCheckTask = nil
         remoteVersionCheckGeneration = UUID()
         remoteVersionCheckAttempted = false
         remoteAppVersion = ""
+        remotePlatform = .unknown
         remoteHostInfoReceived = false
         remoteUpdateMessage = nil
     }
@@ -891,7 +883,8 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             displayName: title,
             lastConnectedAt: Date(),
             remembersPassword: pendingRememberPassword,
-            thumbnailFileName: previous?.thumbnailFileName
+            thumbnailFileName: previous?.thumbnailFileName,
+            platform: remoteHostInfoReceived ? remotePlatform : (previous?.platform ?? .unknown)
         )
         recentConnections.removeAll { $0.remoteID == activeRemoteID }
         recentConnections.insert(connection, at: 0)
@@ -899,14 +892,14 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         refreshRecentConnectionPresence()
     }
 
-    private func updateActiveConnectionName(_ name: String) {
+    private func updateActiveConnectionHostInfo(_ name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !activeRemoteID.isEmpty else { return }
-        activeDisplayName = trimmed
+        guard !activeRemoteID.isEmpty else { return }
+        if !trimmed.isEmpty { activeDisplayName = trimmed }
         guard let index = recentConnections.firstIndex(where: {
             $0.remoteID == activeRemoteID
         }) else { return }
-        recentConnections[index].displayName = trimmed
+        recentConnections[index].updateHostInfo(name: trimmed, platform: remotePlatform)
         RecentConnectionStore.save(recentConnections)
     }
 
@@ -1183,6 +1176,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     func rtcBridge(_ bridge: CrossDeskRTCBridge,
                    didReceiveHostName hostName: String,
                    appVersion: String,
+                   platform: String,
                    displayNames remoteDisplayNames: [String],
                    displaySizes remoteDisplaySizes: [NSValue],
                    supportsVideoSettings: Bool) {
@@ -1196,8 +1190,9 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         }
         remoteHostInfoReceived = true
         remoteAppVersion = appVersion
+        remotePlatform = RemoteHostPlatform(rawValue: platform) ?? .unknown
         checkRemoteVersionIfNeeded()
-        updateActiveConnectionName(hostName)
+        updateActiveConnectionHostInfo(hostName)
         let names = remoteDisplayNames.enumerated().map { index, displayName in
             let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
             return name.isEmpty ? "显示器 \(index + 1)" : name
