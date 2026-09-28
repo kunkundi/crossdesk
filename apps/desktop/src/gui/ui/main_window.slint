@@ -7,6 +7,8 @@ export struct RecentConnection {
     host-name: string,
     online: bool,
     thumbnail: image,
+    has-thumbnail: bool,
+    platform: string,
 }
 
 export struct ReleaseNoteBlock {
@@ -49,6 +51,8 @@ export global UiStrings {
     in-out property <string> self-hosted: "Self-hosted server";
     in-out property <string> autostart: "Start with system";
     in-out property <string> daemon: "Run in background";
+    in-out property <string> save-remote-previews: "Save remote screen previews";
+    in-out property <string> unknown-platform: "Unknown platform";
     in-out property <string> privacy-on-connect: "Privacy screen on connect";
     in-out property <string> file-save-path: "File save path";
     in-out property <string> default-desktop: "Desktop";
@@ -306,6 +310,7 @@ export component MainWindow inherits Window {
     in-out property <bool> self-hosted-enabled: false;
     in-out property <bool> autostart-enabled: false;
     in-out property <bool> daemon-enabled: false;
+    in-out property <bool> save-remote-previews: true;
     // Show the preference on every platform; only adapted hosts can change it.
     in property <bool> privacy-setting-available: false;
     in-out property <bool> privacy-on-connect-enabled: true;
@@ -864,13 +869,37 @@ export component MainWindow inherits Window {
                         private property <length> toolbar-width: 79px;
                         private property <length> toolbar-right-padding: 3px;
 
-                        Image {
+                        Rectangle {
                             x: 7px;
                             y: 7px;
                             width: connection-card.content-width;
                             height: 84px;
-                            source: connection.thumbnail;
-                            image-fit: cover;
+                            background: connection.platform == "windows" ? @linear-gradient(135deg, #1f61b3, #337ac4) :
+                                connection.platform == "macos" ? @linear-gradient(135deg, #6e4aad, #8c63c4) :
+                                connection.platform == "linux" ? @linear-gradient(135deg, #a14f14, #ba631f) :
+                                connection.platform == "ios" ? @linear-gradient(135deg, #146e66, #1f8278) :
+                                @linear-gradient(135deg, #596675, #737d8c);
+                            if connection.has-thumbnail: Image {
+                                width: parent.width;
+                                height: parent.height;
+                                source: connection.thumbnail;
+                                image-fit: cover;
+                            }
+                            if !connection.has-thumbnail: Text {
+                                x: 8px;
+                                width: parent.width - 16px;
+                                height: parent.height;
+                                text: connection.platform == "windows" ? "Windows" :
+                                    connection.platform == "macos" ? "macOS" :
+                                    connection.platform == "linux" ? "Linux" :
+                                    connection.platform == "ios" ? "iOS" : UiStrings.unknown-platform;
+                                color: white;
+                                font-size: 20px;
+                                font-weight: 600;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
                         }
                         Rectangle {
                             x: 7px;
@@ -1512,6 +1541,11 @@ export component MainWindow inherits Window {
                         height: 30px;
                         Text { x: 8px; y: 3px; width: root.compact-language ? 145px : 212px; height: 24px; text: UiStrings.force-relay; color: root.turn-enabled ? #202124 : #8b8f95; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
                         ImGuiCheckBox { x: root.compact-language ? 157px : 224px; y: 3px; checked <=> root.force-relay-enabled; enabled: root.turn-enabled && !root.settings-session-active; }
+                    }
+                    Rectangle {
+                        height: 30px;
+                        Text { x: 8px; y: 3px; width: root.compact-language ? 145px : 212px; height: 24px; text: UiStrings.save-remote-previews; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
+                        ImGuiCheckBox { x: root.compact-language ? 157px : 224px; y: 3px; checked <=> root.save-remote-previews; }
                     }
                     Rectangle {
                         height: 30px;

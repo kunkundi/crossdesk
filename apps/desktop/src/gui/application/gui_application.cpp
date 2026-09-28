@@ -1037,6 +1037,9 @@ void GuiApplication::InitializeLogger() { InitLogger(exec_log_path_); }
 
 void GuiApplication::InitializeSettings() {
   settings_.Load();
+  if (thumbnail_->SetSavePreviews(config_center_->IsSaveRemotePreviews()) != 0) {
+    LOG_ERROR("Failed to clear saved remote previews");
+  }
   settings_.LoadRecentConnectionAliases();
   localization_language_index_ =
       localization::detail::ClampLanguageIndex(language_button_value_);
@@ -1240,6 +1243,7 @@ void GuiApplication::ResetSettingsUi() {
   ui_->main->set_self_hosted_enabled(enable_self_hosted_);
   ui_->main->set_autostart_enabled(enable_autostart_);
   ui_->main->set_daemon_enabled(enable_daemon_);
+  ui_->main->set_save_remote_previews(config_center_->IsSaveRemotePreviews());
   ui_->main->set_privacy_on_connect_enabled(
       config_center_->IsEnablePrivacyScreen());
 #ifdef _WIN32
@@ -2334,9 +2338,11 @@ void GuiApplication::SyncMainWindow() {
   }
 
   std::ostringstream signature_builder;
+  signature_builder << config_center_->IsSaveRemotePreviews() << '\n';
   for (const auto& [key, connection] : recent_connections_) {
     signature_builder << key << '\0' << connection.remote_id << '\0'
                       << connection.remote_host_name << '\0'
+                      << static_cast<int>(connection.platform) << '\0'
                       << settings_.RecentConnectionDisplayName(connection)
                       << '\0'
                       << device_presence_cache_.IsOnline(connection.remote_id)
@@ -2351,22 +2357,27 @@ void GuiApplication::SyncMainWindow() {
   std::vector<ui::RecentConnection> model;
   model.reserve(recent_connections_.size());
   for (const auto& [_, connection] : recent_connections_) {
-    ui::RecentConnection item;
+    // Slint-generated scalar fields have no defaults. With no image,
+    // has_thumbnail must remain false so the remote platform is rendered.
+    ui::RecentConnection item{};
     item.remote_id = UiText(connection.remote_id);
     item.host_name = UiText(connection.remote_host_name);
     item.display_name =
         UiText(settings_.RecentConnectionDisplayName(connection));
     item.online = device_presence_cache_.IsOnline(connection.remote_id);
+    item.platform = UiText(HostPlatformName(connection.platform));
     std::vector<unsigned char> rgba;
     int image_width = 0;
     int image_height = 0;
-    if (!connection.image_path.empty() &&
+    if (config_center_->IsSaveRemotePreviews() &&
+        !connection.image_path.empty() &&
         thumbnail_->DecodeImage(connection.image_path, &rgba, &image_width,
                                 &image_height)) {
       slint::SharedPixelBuffer<slint::Rgba8Pixel> pixels(image_width,
                                                          image_height);
       std::memcpy(pixels.begin(), rgba.data(), rgba.size());
       item.thumbnail = slint::Image(std::move(pixels));
+      item.has_thumbnail = true;
     }
     model.push_back(std::move(item));
   }
@@ -3259,6 +3270,13 @@ void GuiApplication::SaveSettingsFromUi() {
   main->set_force_relay_enabled(config_center_->IsForceRelay());
   config_center_->SetAutostart(enable_autostart_);
   config_center_->SetDaemon(enable_daemon_);
+  if (config_center_->SetSaveRemotePreviews(main->get_save_remote_previews()) != 0) {
+    LOG_ERROR("Failed to save remote preview preference");
+  }
+  if (thumbnail_->SetSavePreviews(config_center_->IsSaveRemotePreviews()) != 0) {
+    LOG_ERROR("Failed to clear saved remote previews");
+  }
+  reload_recent_connections_ = true;
 #ifdef _WIN32
   if (!HasActiveSession()) {
     const auto capture_method = static_cast<ScreenCaptureMethod>(

@@ -135,12 +135,13 @@ bool ConfigureDocumentationDemo(
       std::cerr << "Missing documentation thumbnail: " << path << '\n';
       return false;
     }
-    crossdesk::ui::RecentConnection connection;
+    crossdesk::ui::RecentConnection connection{};
     connection.remote_id = device.id;
     connection.display_name = device.name;
     connection.host_name = device.name;
     connection.online = true;
     connection.thumbnail = thumbnail;
+    connection.has_thumbnail = true;
     connections.emplace_back(std::move(connection));
   }
   window->set_recent_connections(
@@ -542,7 +543,7 @@ int main() {
   assert(std::string(window->get_remote_id_input()).empty());
 
   std::vector<crossdesk::ui::RecentConnection> connections;
-  crossdesk::ui::RecentConnection connection;
+  crossdesk::ui::RecentConnection connection{};
   connection.remote_id = "987654321";
   connection.display_name = "Office PC";
   connection.host_name = "office-pc";

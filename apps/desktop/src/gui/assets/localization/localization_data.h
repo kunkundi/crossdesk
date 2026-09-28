@@ -79,6 +79,8 @@ struct TranslationRow {
   X(console_setting_files, u8"文件保存目录", "Received file directory", u8"Каталог получаемых файлов") \
   X(console_setting_autostart, u8"登录桌面时自启", "Start at desktop login", u8"Запуск при входе в систему") \
   X(console_setting_daemon, u8"守护进程（无头控制台中不生效）", "Daemon (inactive in headless console)", u8"Фоновый режим (не действует в консоли)") \
+  X(save_remote_previews, u8"保存远程画面预览", "Save remote screen previews", u8"Сохранять превью экрана") \
+  X(unknown_platform, u8"未知平台", "Unknown platform", u8"Неизвестная платформа") \
   X(privacy_screen, u8"隐私屏", "Privacy screen", u8"Приватный экран") \
   X(privacy_enable, u8"开启隐私屏", "Enable privacy screen", u8"Включить приватный экран") \
   X(privacy_disable, u8"关闭隐私屏", "Disable privacy screen", u8"Выключить приватный экран") \

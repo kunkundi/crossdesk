@@ -236,7 +236,8 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
   std::shared_ptr<std::vector<unsigned char>> frame_snapshot;
   int video_width = 0;
   int video_height = 0;
-  {
+  const bool save_preview = config_center_->IsSaveRemotePreviews();
+  if (save_preview) {
     std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
     frame_snapshot = props->front_frame_;
     video_width = props->video_width_;
@@ -249,7 +250,8 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
     }
   }
   auto* native_renderer = video_renderer_.get();
-  if ((!frame_snapshot || frame_snapshot->empty()) && native_renderer) {
+  if (save_preview && (!frame_snapshot || frame_snapshot->empty()) &&
+      native_renderer) {
     auto native_snapshot = std::make_shared<std::vector<unsigned char>>();
     if (native_renderer->CopyLatestNv12(props->remote_id_,
                                         native_snapshot.get(), &video_width,
@@ -269,9 +271,14 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
     std::unique_lock lock(remote_sessions_mutex_);
     peer = std::exchange(props->peer_, nullptr);
   }
+  HostPlatform platform;
+  {
+    std::lock_guard lock(props->remote_version_mutex_);
+    platform = props->recent_platform_;
+  }
   const auto queued_at = std::chrono::steady_clock::now();
   session_cleanup_tasks_[props->remote_id_] = session_cleanup_queue_.PostTask(
-      [props, peer, frame_snapshot, video_width, video_height,
+      [props, peer, frame_snapshot, video_width, video_height, platform,
        thumbnail = thumbnail_, queued_at]() mutable {
         if (peer) {
           LOG_INFO("[{}] Background leave connection [{}]", props->local_id_,
@@ -279,12 +286,16 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
           LeaveConnection(peer, props->remote_id_.c_str());
           DestroyPeer(&peer);
         }
-        if (thumbnail && frame_snapshot && !frame_snapshot->empty() &&
-            video_width > 0 && video_height > 0) {
-          thumbnail->SaveToThumbnail(
-              reinterpret_cast<char*>(frame_snapshot->data()), video_width,
-              video_height, props->remote_id_, props->remote_host_name_,
-              props->remember_password_ ? props->remote_password_ : "");
+        if (thumbnail && props->was_connected_) {
+          const char* nv12 = frame_snapshot && !frame_snapshot->empty()
+              ? reinterpret_cast<const char*>(frame_snapshot->data()) : nullptr;
+          if (thumbnail->SaveToThumbnail(
+                  nv12, video_width, video_height, props->remote_id_,
+                  props->remote_host_name_,
+                  props->remember_password_ ? props->remote_password_ : "",
+                  platform) != 0) {
+            LOG_ERROR("[{}] Failed to save recent connection", props->remote_id_);
+          }
         }
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - queued_at).count();

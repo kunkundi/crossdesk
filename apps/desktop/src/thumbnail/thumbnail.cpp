@@ -1,11 +1,17 @@
 #include "thumbnail.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #include <openssl/aes.h>
 #include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 
+#include <algorithm>
 #include <chrono>
+#include <nlohmann/json.hpp>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -104,116 +110,217 @@ int Thumbnail::SetThumbnailDpiScale(float dpi_scale) {
   return 0;
 }
 
-int Thumbnail::SaveToThumbnail(const char* yuv420p, int width, int height,
+namespace {
+
+bool IsRemoteId(const std::string& id) {
+  return id.size() == 9 &&
+         std::all_of(id.begin(), id.end(),
+                     [](unsigned char c) { return c >= '0' && c <= '9'; });
+}
+
+std::string ConnectionKey(const Thumbnail::RecentConnection& connection) {
+  return connection.remote_id + (connection.remember_password ? "Y" : "N") +
+         connection.remote_host_name +
+         (connection.remember_password ? "@" + connection.password : "");
+}
+
+}  // namespace
+
+bool Thumbnail::WriteRecord(const RecentConnection& connection) {
+  const auto path =
+      std::filesystem::path(save_path_) / (connection.remote_id + ".json");
+  const auto temporary = path.string() + ".tmp";
+  const nlohmann::json record = {
+      {"remote_id", connection.remote_id},
+      {"host_name", connection.remote_host_name},
+      {"password",
+       connection.remember_password
+           ? AES_encrypt(connection.password, aes128_key_, aes128_iv_)
+           : ""},
+      {"platform", HostPlatformName(connection.platform)}};
+  std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+  output << record.dump();
+  output.close();
+  if (!output) return false;
+  std::error_code error;
+#ifdef _WIN32
+  // Windows rename does not replace an existing destination.
+  if (!MoveFileExW(std::filesystem::path(temporary).c_str(), path.c_str(),
+                   MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+    std::filesystem::remove(temporary, error);
+    return false;
+  }
+#else
+  std::filesystem::rename(temporary, path, error);
+  if (error) {
+    std::filesystem::remove(temporary, error);
+    return false;
+  }
+#endif
+  return true;
+}
+
+bool Thumbnail::ReadRecord(const std::filesystem::path& path,
+                           RecentConnection* connection) {
+  std::ifstream input(path, std::ios::binary);
+  const auto record = nlohmann::json::parse(input, nullptr, false);
+  if (!record.is_object()) return false;
+  try {
+    connection->remote_id = record.value("remote_id", "");
+    if (!IsRemoteId(connection->remote_id) ||
+        path.stem() != connection->remote_id)
+      return false;
+    connection->remote_host_name = record.value("host_name", "");
+    const auto password = record.value("password", "");
+    connection->remember_password = !password.empty();
+    connection->password =
+        password.empty() ? "" : AES_decrypt(password, aes128_key_, aes128_iv_);
+    connection->platform =
+        ParseHostPlatform(record.value("platform", "unknown"));
+    const auto image = path.parent_path() / (connection->remote_id + ".png");
+    if (save_previews_ && std::filesystem::is_regular_file(image)) {
+      connection->image_path = image;
+    }
+    return true;
+  } catch (const nlohmann::json::exception&) {
+    return false;
+  }
+}
+
+int Thumbnail::SetSavePreviews(bool enabled) {
+  std::lock_guard lock(mutex_);
+  save_previews_ = enabled;
+  if (enabled) return 0;
+  // Migrate legacy filenames before removing their image contents, preserving
+  // credentials, names and recency even when previews have never been enabled.
+  std::vector<std::pair<std::string, RecentConnection>> connections;
+  return LoadThumbnailLocked(connections);
+}
+
+int Thumbnail::SaveToThumbnail(const char* nv12, int width, int height,
                                const std::string& remote_id,
                                const std::string& host_name,
-                               const std::string& password) {
-  if (!rgba_buffer_) {
-    rgba_buffer_ = new char[thumbnail_width_ * thumbnail_height_ * 4];
-  }
+                               const std::string& password,
+                               HostPlatform platform) {
+  std::lock_guard lock(mutex_);
+  // Preserve the existing opt-in via Remember password for recent connections.
+  if (password.empty()) return 0;
+  if (!IsRemoteId(remote_id)) return -1;
+  RecentConnection connection;
+  ReadRecord(std::filesystem::path(save_path_) / (remote_id + ".json"),
+             &connection);
+  connection.remote_id = remote_id;
+  connection.remote_host_name = host_name;
+  connection.password = password;
+  connection.remember_password = true;
+  if (platform != HostPlatform::Unknown) connection.platform = platform;
+  if (!WriteRecord(connection)) return -1;
 
-  if (yuv420p) {
-    ScaleNv12ToABGR((char*)yuv420p, width, height, thumbnail_width_,
-                    thumbnail_height_, rgba_buffer_);
-  } else {
-    // If yuv420p is null, fill the buffer with black pixels
-    std::memset(rgba_buffer_, 0x00, thumbnail_width_ * thumbnail_height_ * 4);
-    for (int i = 0; i < thumbnail_width_ * thumbnail_height_; ++i) {
-      // Set alpha channel to opaque
-      rgba_buffer_[i * 4 + 3] = static_cast<char>(0xFF);
+  const auto image = std::filesystem::path(save_path_) / (remote_id + ".png");
+  if (save_previews_ && nv12 && width > 0 && height > 0) {
+    if (!rgba_buffer_) {
+      rgba_buffer_ = new char[thumbnail_width_ * thumbnail_height_ * 4];
     }
+    ScaleNv12ToABGR(const_cast<char*>(nv12), width, height, thumbnail_width_,
+                    thumbnail_height_, rgba_buffer_);
+    if (!stbi_write_png(image.string().c_str(), thumbnail_width_,
+                        thumbnail_height_, 4, rgba_buffer_,
+                        thumbnail_width_ * 4))
+      return -1;
+  } else if (!save_previews_) {
+    std::error_code error;
+    std::filesystem::remove(image, error);
+    if (error) return -1;
   }
-
-  std::string image_file_name;
-  if (password.empty()) {
-    return 0;
-  } else {
-    // delete the old thumbnail
-    std::string filename_with_remote_id = remote_id;
-    DeleteThumbnail(filename_with_remote_id);
-  }
-
-  std::string cipher_password = AES_encrypt(password, aes128_key_, aes128_iv_);
-  image_file_name = remote_id + 'Y' + host_name + '@' + cipher_password;
-  std::string file_path = save_path_ + image_file_name;
-  stbi_write_png(file_path.data(), thumbnail_width_, thumbnail_height_, 4,
-                 rgba_buffer_, thumbnail_width_ * 4);
-
   return 0;
 }
 
 int Thumbnail::LoadThumbnail(
-    std::vector<std::pair<std::string, Thumbnail::RecentConnection>>&
-        recent_connections,
+    std::vector<std::pair<std::string, RecentConnection>>& recent_connections,
     int* width, int* height) {
-  recent_connections.clear();
+  std::lock_guard lock(mutex_);
   if (width) *width = thumbnail_width_;
   if (height) *height = thumbnail_height_;
+  return LoadThumbnailLocked(recent_connections);
+}
 
-  std::vector<std::filesystem::path> image_paths =
-      FindThumbnailPath(save_path_);
-
-  if (image_paths.size() == 0) {
-    return -1;
-  } else {
-    for (int i = 0; i < image_paths.size(); i++) {
-      // size_t pos1 = image_paths[i].string().find('/') + 1;
-      std::string cipher_image_name = image_paths[i].filename().string();
-      std::string remote_id;
-      std::string cipher_password;
-      std::string remote_host_name;
-      std::string password;
-      std::string original_image_name;
-      bool remember_password = false;
-
-      if (cipher_image_name.size() > 9 && 'Y' == cipher_image_name[9] &&
-          cipher_image_name.size() >= 16) {
-        size_t pos_y = cipher_image_name.find('Y');
-        size_t pos_at = cipher_image_name.find('@');
-
-        if (pos_y == std::string::npos || pos_at == std::string::npos ||
-            pos_y >= pos_at) {
-          LOG_ERROR("Invalid filename");
-          continue;
-        }
-
-        remote_id = cipher_image_name.substr(0, pos_y);
-        remote_host_name =
-            cipher_image_name.substr(pos_y + 1, pos_at - pos_y - 1);
-        cipher_password = cipher_image_name.substr(pos_at + 1);
-        password = AES_decrypt(cipher_password, aes128_key_, aes128_iv_);
-        remember_password = true;
-
-        original_image_name = remote_id + 'Y' + remote_host_name + "@" +
-                              password;
-      } else {
-        size_t pos_n = cipher_image_name.find('N');
-        // size_t pos_at = cipher_image_name.find('@');
-
-        if (pos_n == std::string::npos) {
-          LOG_ERROR("Invalid filename");
-          continue;
-        }
-
-        remote_id = cipher_image_name.substr(0, pos_n);
-        remote_host_name = cipher_image_name.substr(pos_n + 1);
-
-        original_image_name = remote_id + 'N' + remote_host_name;
-      }
-
-      std::string image_path = save_path_ + cipher_image_name;
-      Thumbnail::RecentConnection recent_connection;
-      recent_connection.remote_id = remote_id;
-      recent_connection.remote_host_name = remote_host_name;
-      recent_connection.password = password;
-      recent_connection.remember_password = remember_password;
-      recent_connection.image_path = image_path;
-      recent_connections.emplace_back(
-          std::make_pair(original_image_name, recent_connection));
-    }
-    return 0;
+int Thumbnail::LoadThumbnailLocked(
+    std::vector<std::pair<std::string, RecentConnection>>& recent_connections) {
+  recent_connections.clear();
+  int result = 0;
+  std::map<std::string, RecentConnection> records;
+  const auto paths = FindThumbnailPath(save_path_);
+  for (const auto& path : paths) {
+    if (path.extension() != ".json") continue;
+    RecentConnection connection;
+    if (ReadRecord(path, &connection))
+      records.emplace(connection.remote_id, connection);
   }
-  return 0;
+  for (const auto& path : paths) {
+    const auto filename = path.filename().string();
+    if (filename.size() < 10 || !IsRemoteId(filename.substr(0, 9)) ||
+        (filename[9] != 'Y' && filename[9] != 'N'))
+      continue;
+    const auto remote_id = filename.substr(0, 9);
+    if (!records.count(remote_id)) {
+      RecentConnection connection;
+      connection.remote_id = remote_id;
+      connection.remember_password = filename[9] == 'Y';
+      const auto separator = filename.find('@', 10);
+      if (connection.remember_password && separator == std::string::npos)
+        continue;
+      connection.remote_host_name =
+          filename.substr(10, connection.remember_password ? separator - 10
+                                                           : std::string::npos);
+      if (connection.remember_password) {
+        connection.password = AES_decrypt(filename.substr(separator + 1),
+                                          aes128_key_, aes128_iv_);
+      }
+      if (!WriteRecord(connection)) {
+        result = -1;
+        recent_connections.emplace_back(ConnectionKey(connection), connection);
+        continue;
+      }
+      const auto metadata =
+          std::filesystem::path(save_path_) / (remote_id + ".json");
+      std::filesystem::last_write_time(metadata,
+                                       std::filesystem::last_write_time(path));
+      records.emplace(remote_id, connection);
+    }
+    auto& connection = records.at(remote_id);
+    if (save_previews_ && connection.image_path.empty()) {
+      const auto image =
+          std::filesystem::path(save_path_) / (remote_id + ".png");
+      std::error_code error;
+      std::filesystem::copy_file(
+          path, image, std::filesystem::copy_options::overwrite_existing,
+          error);
+      if (error) {
+        // Keep the original preview available and retry migration next load.
+        connection.image_path = path;
+        result = -1;
+        continue;
+      }
+      connection.image_path = image;
+    }
+    std::error_code error;
+    std::filesystem::remove(path, error);
+    if (error) result = -1;
+  }
+  // Sort by metadata timestamps, unaffected by preview deletion or migration.
+  for (const auto& path : FindThumbnailPath(save_path_)) {
+    if (path.extension() == ".json") {
+      const auto it = records.find(path.stem().string());
+      if (it != records.end()) {
+        recent_connections.emplace_back(ConnectionKey(it->second), it->second);
+      }
+    } else if (!save_previews_ && path.extension() == ".png") {
+      std::error_code error;
+      std::filesystem::remove(path, error);
+      if (error) result = -1;
+    }
+  }
+  return result;
 }
 
 bool Thumbnail::DecodeImage(const std::filesystem::path& image_path,
@@ -242,16 +349,17 @@ bool Thumbnail::DecodeImage(const std::filesystem::path& image_path,
 }
 
 int Thumbnail::DeleteThumbnail(const std::string& filename_keyword) {
+  std::lock_guard lock(mutex_);
+  const auto remote_id = filename_keyword.substr(0, 9);
+  if (!IsRemoteId(remote_id)) return -1;
   for (const auto& entry : std::filesystem::directory_iterator(save_path_)) {
-    if (entry.is_regular_file()) {
-      const std::string filename = entry.path().filename().string();
-      std::string id_hostname = filename_keyword.substr(0, filename.find('@'));
-      if (filename.find(id_hostname) != std::string::npos) {
-        std::filesystem::remove(entry.path());
-      }
+    const auto name = entry.path().filename().string();
+    if (entry.is_regular_file() && name.size() > 9 &&
+        name.substr(0, 9) == remote_id &&
+        (name[9] == '.' || name[9] == 'Y' || name[9] == 'N')) {
+      std::filesystem::remove(entry.path());
     }
   }
-
   return 0;
 }
 
@@ -280,6 +388,7 @@ std::vector<std::filesystem::path> Thumbnail::FindThumbnailPath(
 }
 
 int Thumbnail::DeleteAllFilesInDirectory() {
+  std::lock_guard lock(mutex_);
   if (std::filesystem::exists(save_path_) &&
       std::filesystem::is_directory(save_path_)) {
     for (const auto& entry : std::filesystem::directory_iterator(save_path_)) {

@@ -87,6 +87,7 @@ struct RemoteSession {
   bool signal_connected_ = false;
   SignalStatus signal_status_ = SignalStatus::SignalClosed;
   bool connection_established_ = false;
+  std::atomic<bool> was_connected_{false};
   bool rejoin_ = false;
   bool net_traffic_stats_button_pressed_ = false;
   bool enable_mouse_control_ = true;
@@ -130,6 +131,8 @@ struct RemoteSession {
   bool remote_host_info_received_ = false;
   std::string remote_app_version_;
   HostPlatform remote_platform_ = HostPlatform::Unknown;
+  // Retain history metadata after disconnect resets the live capabilities.
+  HostPlatform recent_platform_ = HostPlatform::Unknown;
   bool remote_update_dismissed_ = false;
   bool remote_service_status_received_ = false;
   std::mutex video_settings_mutex_;

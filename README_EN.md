@@ -147,6 +147,7 @@ Open **☰ → Settings** in the top-right corner and click **OK** to save. Conf
 | Video Encode Format | H.264 / AV1; hardware codec availability depends on the platform, device, and build options |
 | Enable TURN Service | Allow relay-assisted connections; check this setting if P2P fails |
 | Force Relay | Require relay connections when TURN is enabled; turning TURN off also disables this option |
+| Save remote screen previews | On by default. When disabled, the thumbnail area shows the remote device’s platform and existing previews are cleared; connection records and passwords are preserved |
 | Privacy screen on connect | Automatically enable privacy when this computer is controlled remotely; the controller can toggle it from the session toolbar |
 | Self-Hosted Config | Set the server address and signaling port, then enable the checkbox |
 | Auto Start / Enable Daemon | Configure startup and process supervision; restart as indicated by the UI |

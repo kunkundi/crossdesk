@@ -323,6 +323,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
         std::lock_guard lock(props->remote_version_mutex_);
         props->remote_host_info_received_ = true;
         props->remote_platform_ = remote_action.i.platform;
+        props->recent_platform_ = remote_action.i.platform;
         props->remote_app_version_ = IsValidAppVersion(remote_action.i.app_version)
                                         ? remote_action.i.app_version : "";
       }

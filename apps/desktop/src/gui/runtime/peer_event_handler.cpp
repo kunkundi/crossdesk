@@ -295,6 +295,7 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
           runtime->need_to_create_stream_window_ = true;
         }
         props->connection_established_ = true;
+        props->was_connected_ = true;
         runtime->start_keyboard_capturer_ = true;
         break;
       }
@@ -336,7 +337,8 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
           needs_native_snapshot =
               !props->thumbnail_frame_ || props->thumbnail_frame_->empty();
         }
-        if (needs_native_snapshot) {
+        if (needs_native_snapshot &&
+            runtime->config_center_->IsSaveRemotePreviews()) {
           auto* native_renderer = runtime->video_renderer_.get();
           auto snapshot = std::make_shared<std::vector<unsigned char>>();
           if (native_renderer &&

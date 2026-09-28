@@ -386,7 +386,7 @@ function setup_targets()
 
     target("thumbnail")
         set_kind("object")
-        add_packages("libyuv", "openssl3")
+        add_packages("libyuv", "openssl3", "nlohmann_json")
         add_deps("rd_log", "desktop_common")
         add_files("apps/desktop/src/thumbnail/*.cpp")
         add_includedirs("apps/desktop/src/thumbnail", {public = true})

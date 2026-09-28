@@ -10,8 +10,11 @@
 #include <cstring>
 #include <filesystem>
 #include <map>
+#include <mutex>
 #include <unordered_map>
 #include <vector>
+
+#include "remote_action.h"
 
 namespace crossdesk {
 
@@ -23,6 +26,7 @@ class Thumbnail {
     std::string remote_host_name;
     std::string password;
     bool remember_password = false;
+    HostPlatform platform = HostPlatform::Unknown;
   };
 
  public:
@@ -34,10 +38,14 @@ class Thumbnail {
  public:
   int SetThumbnailDpiScale(float dpi_scale);
 
-  int SaveToThumbnail(const char* yuv420p, int width, int height,
+  // Serialized with writes so disabling also clears any in-flight preview.
+  int SetSavePreviews(bool enabled);
+
+  int SaveToThumbnail(const char* nv12, int width, int height,
                       const std::string& remote_id,
                       const std::string& host_name,
-                      const std::string& password);
+                      const std::string& password,
+                      HostPlatform platform = HostPlatform::Unknown);
 
   int LoadThumbnail(
       std::vector<std::pair<std::string, Thumbnail::RecentConnection>>&
@@ -69,6 +77,11 @@ class Thumbnail {
   }
 
  private:
+  int LoadThumbnailLocked(
+      std::vector<std::pair<std::string, RecentConnection>>& connections);
+  bool WriteRecord(const RecentConnection& connection);
+  bool ReadRecord(const std::filesystem::path& path, RecentConnection* connection);
+
   std::vector<std::filesystem::path> FindThumbnailPath(
       const std::filesystem::path& directory);
 
@@ -79,6 +92,8 @@ class Thumbnail {
                           unsigned char* iv);
 
  private:
+  std::mutex mutex_;
+  bool save_previews_ = true;
   int thumbnail_width_ = 160;
   int thumbnail_height_ = 90;
   char* rgba_buffer_ = nullptr;

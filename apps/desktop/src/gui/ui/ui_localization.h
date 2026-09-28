@@ -65,6 +65,8 @@ inline int ApplyMainWindowStrings(
       Text(localization::self_hosted_server_config[language]));
   strings.set_autostart(Text(localization::enable_autostart[language]));
   strings.set_daemon(Text(localization::enable_daemon[language]));
+  strings.set_save_remote_previews(Text(localization::save_remote_previews[language]));
+  strings.set_unknown_platform(Text(localization::unknown_platform[language]));
   strings.set_privacy_on_connect(Text(localization::privacy_on_connect[language]));
   strings.set_file_save_path(
       Text(localization::file_transfer_save_path[language]));
