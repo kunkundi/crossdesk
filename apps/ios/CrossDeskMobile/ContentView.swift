@@ -13,9 +13,11 @@ struct ContentView: View {
             } else {
                 NavigationStack {
                     ConnectionHomeView(session: session)
-                        .navigationTitle("首页")
-                        .toolbar(.hidden, for: .navigationBar)
+                        .navigationTitle("")
+                        .navigationBarTitleDisplayMode(.inline)
                 }
+                .toolbarBackground(Color(.systemGroupedBackground), for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
                 .transition(.opacity)
             }
         }
@@ -207,7 +209,6 @@ private struct ConnectionHomeView: View {
             Color(.systemGroupedBackground).ignoresSafeArea()
 
             VStack(spacing: 0) {
-                header
                 remoteConnectionPanel
                     .padding(.top, 24)
                 recentConnectionsPanel
@@ -221,6 +222,13 @@ private struct ConnectionHomeView: View {
                 connectionProgressOverlay
             }
 
+        }
+        .toolbar {
+            if #available(iOS 26.0, *) {
+                navigationToolbar.sharedBackgroundVisibility(.hidden)
+            } else {
+                navigationToolbar
+            }
         }
         .background {
             KeyboardDismissTapView {
@@ -261,23 +269,25 @@ private struct ConnectionHomeView: View {
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 8) {
+    @ToolbarContentBuilder
+    private var navigationToolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
             if session.hasNetworkConsent {
                 signalStatusBadge
+                    .fixedSize(horizontal: true, vertical: false)
             } else {
                 Button {
                     remoteIDFocused = false
                     session.showPrivacyNotice()
                 } label: {
                     signalStatusBadge
+                        .fixedSize(horizontal: true, vertical: false)
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint("打开隐私政策")
             }
-
-            Spacer()
-
+        }
+        ToolbarItem(placement: .navigationBarTrailing) {
             Button {
                 remoteIDFocused = false
                 settingsVisible = true
@@ -290,9 +300,9 @@ private struct ConnectionHomeView: View {
                                                      style: .continuous))
             }
             .foregroundStyle(.primary)
+            .disabled(session.isConnecting)
             .accessibilityLabel("设置")
         }
-        .padding(.top, 8)
     }
 
     private var signalStatusBadge: some View {
@@ -723,7 +733,6 @@ private struct PasswordPromptView: View {
 
 private struct ServerSettingsView: View {
     @ObservedObject var session: RemoteSessionModel
-    @Environment(\.dismiss) private var dismiss
     @State private var serverConfigurationExpanded = false
     @State private var usesCustomServer: Bool
     @State private var customServerHost: String
@@ -781,6 +790,8 @@ private struct ServerSettingsView: View {
                                 .keyboardType(.URL)
                                 .multilineTextAlignment(.trailing)
                                 .focused($focusedServerField, equals: .host)
+                                .submitLabel(.next)
+                                .onSubmit { focusedServerField = .port }
                                 .accessibilityLabel("服务器地址")
                         }
                         LabeledContent("端口") {
@@ -792,7 +803,7 @@ private struct ServerSettingsView: View {
                         }
                     }
                     if usesCustomServer {
-                        Text("返回首页时生效。关闭开关可立即切回默认配置。")
+                        Text("结束编辑后生效。关闭开关可立即切回默认配置。")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -805,6 +816,10 @@ private struct ServerSettingsView: View {
                     }
                 }
             } footer: {
+                if let serverConfigurationError {
+                    Text(serverConfigurationError)
+                        .foregroundStyle(.red)
+                }
                 if let warning = session.identityStorageWarning {
                     Text(warning)
                         .foregroundStyle(.orange)
@@ -827,33 +842,42 @@ private struct ServerSettingsView: View {
         }
         .navigationTitle("设置")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
-        .toolbar(.visible, for: .navigationBar)
+        .scrollDismissesKeyboard(.interactively)
+        .background {
+            KeyboardDismissTapView {
+                focusedServerField = nil
+            }
+            .allowsHitTesting(false)
+        }
         .onChange(of: serverConfigurationExpanded) { expanded in
-            if !expanded { focusedServerField = nil }
+            if !expanded {
+                focusedServerField = nil
+                validateAndApplyServerConfiguration()
+            }
         }
         .onChange(of: usesCustomServer) { isCustom in
             if !isCustom { useDefaultServer() }
         }
-        .alert("请检查服务器配置", isPresented: Binding(
-            get: { serverConfigurationError != nil },
-            set: { if !$0 { serverConfigurationError = nil } }
-        )) {
-            Button("确定", role: .cancel) { }
-        } message: {
-            Text(serverConfigurationError ?? "")
+        .onChange(of: focusedServerField) { field in
+            if field == nil { validateAndApplyServerConfiguration() }
+        }
+        .onDisappear {
+            // Native back navigation can remove the view before focus updates.
+            focusedServerField = nil
+            validateAndApplyServerConfiguration()
         }
         .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: returnToHome) {
-                    Label("返回首页", systemImage: "chevron.left")
-                        .labelStyle(.iconOnly)
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("完成") {
+                    focusedServerField = nil
                 }
             }
         }
     }
 
     private func useDefaultServer() {
+        serverConfigurationError = nil
         focusedServerField = nil
         customServerHost = ""
         customServerPort = ""
@@ -862,30 +886,25 @@ private struct ServerSettingsView: View {
         session.configureBridge()
     }
 
-    private func returnToHome() {
-        focusedServerField = nil
-        if usesCustomServer {
-            let host = customServerHost.trimmingCharacters(in: .whitespacesAndNewlines)
-            let port = customServerPort.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !host.isEmpty else {
-                serverConfigurationExpanded = true
-                serverConfigurationError = "请输入服务器地址，或关闭“使用自定义服务器”。"
-                return
-            }
-            guard let portNumber = Int(port), (1...65535).contains(portNumber) else {
-                serverConfigurationExpanded = true
-                serverConfigurationError = "请输入 1–65535 范围内的端口，或关闭“使用自定义服务器”。"
-                return
-            }
-            let normalizedPort = String(portNumber)
-            if session.signalHost != host || session.signalPort != normalizedPort {
-                session.signalHost = host
-                session.signalPort = normalizedPort
-                session.configureBridge()
-            }
-        } else {
-            useDefaultServer()
+    private func validateAndApplyServerConfiguration() {
+        guard usesCustomServer else { return }
+        let host = customServerHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let port = customServerPort.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty else {
+            serverConfigurationError = "请输入服务器地址，或关闭“使用自定义服务器”。"
+            return
         }
-        dismiss()
+        guard let portNumber = Int(port), (1...65535).contains(portNumber) else {
+            serverConfigurationError = "请输入 1–65535 范围内的端口，或关闭“使用自定义服务器”。"
+            return
+        }
+        serverConfigurationError = nil
+        customServerHost = host
+        customServerPort = String(portNumber)
+        if session.signalHost != host || session.signalPort != customServerPort {
+            session.signalHost = host
+            session.signalPort = customServerPort
+            session.configureBridge()
+        }
     }
 }
