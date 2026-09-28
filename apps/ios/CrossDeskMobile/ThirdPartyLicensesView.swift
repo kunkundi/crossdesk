@@ -45,7 +45,9 @@ private struct LicenseCatalog: Decodable {
             throw CocoaError(.fileNoSuchFile)
         }
         let catalog = try JSONDecoder().decode(LicenseCatalog.self, from: Data(contentsOf: url))
-        guard catalog.schemaVersion == 1, catalog.components.contains(where: { $0.id == "openfec" }) else {
+        let requiredComponents: Set<String> = ["crossdesk", "openfec"]
+        guard catalog.schemaVersion == 1,
+              requiredComponents.isSubset(of: Set(catalog.components.map(\.id))) else {
             throw CocoaError(.fileReadCorruptFile)
         }
         return catalog
@@ -80,53 +82,23 @@ struct ThirdPartyLicensesView: View {
             switch LicenseCatalog.bundled {
             case .success(let catalog):
                 List {
-                    Section("本版本源码与构建说明") {
-                        if let source = SourceMetadata.bundled {
-                            Text(source.tag ?? String(source.revision.prefix(12)))
-                                .textSelection(.enabled)
-                            if source.isModified {
-                                Text("开发版本包含尚未发布的修改，以下链接为基础版本源码。")
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Link("CrossDesk 源码", destination: source.sourceURL)
-                            Link("获取源码、修改与重新构建", destination: source.buildInstructionsURL)
-                            Link("隐私政策", destination: source.privacyPolicyURL)
+                    if let application = catalog.components.first(where: { $0.id == "crossdesk" }) {
+                        Section {
+                            LabeledContent("版本", value: application.displayVersion)
                         }
-                        Text("各组件的使用、复制、修改和再分发权利以相应开源许可证为准。普通使用条款不限制这些许可证授予的权利。")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    Section("OpenFEC 告知") {
-                        Text("本应用使用 OpenFEC \(catalog.components.first(where: { $0.id == "openfec" })?.displayVersion ?? "") 提供前向纠错功能，遵循 CeCILL-C 1.0 许可。")
-                        Text("(c) Copyright 2009 - 2012 INRIA - All rights reserved")
-                            .font(.footnote)
-                        Text("OpenFEC 按其许可提供有限保证，作者、权利人和后续许可人的责任亦受限制。完整声明、许可条款及源码见下方。")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        if let openFEC = catalog.components.first(where: { $0.id == "openfec" }) {
-                            NavigationLink("OpenFEC 许可与源码") {
-                                ComponentLicenseView(component: openFEC)
+                        Section {
+                            NavigationLink("软件许可") {
+                                ComponentLicenseView(component: application)
                             }
-                        }
-                    }
-                    Section {
-                        ForEach(catalog.components) { component in
-                            NavigationLink {
-                                ComponentLicenseView(component: component)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(component.name)
-                                    Text(component.displayVersion + " · " + component.license)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
+                            NavigationLink("开源组件") {
+                                OpenSourceComponentsView(catalog: catalog)
                             }
+                            NavigationLink("源码与构建说明") {
+                                SourceCodeView(application: application)
+                            }
+                        } footer: {
+                            Text("许可与版权声明可离线查阅。")
                         }
-                    } header: {
-                        Text("开源组件")
-                    } footer: {
-                        Text("许可全文和版权声明可离线阅读；查看源码需要网络连接。")
                     }
                 }
             case .failure:
@@ -142,7 +114,74 @@ struct ThirdPartyLicensesView: View {
                 .padding()
             }
         }
-        .navigationTitle("关于与开源许可")
+        .navigationTitle("关于 CrossDesk")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct OpenSourceComponentsView: View {
+    let catalog: LicenseCatalog
+
+    var body: some View {
+        List {
+            if let openFEC = catalog.components.first(where: { $0.id == "openfec" }) {
+                Section("OpenFEC 告知") {
+                    Text("本应用使用 OpenFEC 提供前向纠错功能，遵循 CeCILL-C 1.0 许可。该许可规定了有限保证及责任限制，详情见许可全文。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Text("(c) Copyright 2009 - 2012 INRIA - All rights reserved")
+                        .font(.footnote)
+                    NavigationLink("OpenFEC 许可与源码") {
+                        ComponentLicenseView(component: openFEC)
+                    }
+                }
+            }
+            Section {
+                ForEach(catalog.components.filter { $0.id != "crossdesk" && $0.id != "openfec" }) { component in
+                    NavigationLink {
+                        ComponentLicenseView(component: component)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(component.name)
+                            Text(component.license)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            } footer: {
+                Text("各组件遵循所列开源许可证，其授予的权利不受本应用普通使用条款限制。查看源码需要网络连接。")
+            }
+        }
+        .navigationTitle("开源组件")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct SourceCodeView: View {
+    let application: LicensedComponent
+
+    var body: some View {
+        List {
+            Section("本版本源码与构建说明") {
+                if let source = SourceMetadata.bundled {
+                    LabeledContent("源码版本", value: source.tag ?? String(source.revision.prefix(12)))
+                        .textSelection(.enabled)
+                    if source.isModified {
+                        Text("开发版本包含尚未发布的修改，以下链接为基础版本源码。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    Link("查看源码", destination: source.sourceURL)
+                    Link("构建说明", destination: source.buildInstructionsURL)
+                } else {
+                    Text("本版本源码信息暂不可用。")
+                        .foregroundStyle(.secondary)
+                    Link("项目主页", destination: application.sourceURL)
+                }
+            }
+        }
+        .navigationTitle("源码与构建说明")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -153,9 +192,9 @@ private struct ComponentLicenseView: View {
     var body: some View {
         List {
             Section {
-                Text(component.name).font(.headline)
-                Text(component.displayVersion).textSelection(.enabled)
-                Text(component.license).foregroundStyle(.secondary)
+                LabeledContent("版本", value: component.displayVersion)
+                    .textSelection(.enabled)
+                LabeledContent("许可", value: component.license)
                 Link("查看源码", destination: component.resolvedSourceURL)
                 if let buildSourceURL = component.resolvedBuildSourceURL {
                     Link("构建配方与项目补丁", destination: buildSourceURL)
@@ -165,17 +204,25 @@ private struct ComponentLicenseView: View {
                 ForEach(component.documents) { document in
                     NavigationLink {
                         LicenseTextView(text: document.text)
-                            .navigationTitle(document.title)
+                            .navigationTitle(documentTitle(document.title))
                             .navigationBarTitleDisplayMode(.inline)
                     } label: {
-                        Text(document.title == "Source copyright and license notices"
-                             ? "源码版权与许可声明" : document.title)
+                        Text(documentTitle(document.title))
                     }
                 }
             }
         }
         .navigationTitle(component.name)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func documentTitle(_ title: String) -> String {
+        switch title {
+        case "Source copyright and license notices": return "版权与许可声明"
+        case "apps/ios/licenses/OPEN_SOURCE_NOTICE.txt": return "开源软件权利说明"
+        case "LICENSE" where component.id == "crossdesk": return "GNU GPL 第 3 版"
+        default: return title
+        }
     }
 }
 

@@ -489,6 +489,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   std::atomic<uint64_t> _identityGeneration;
   std::atomic<uint64_t> _signalGeneration;
   std::atomic<uint64_t> _presenceGeneration;
+  std::atomic<uint64_t> _networkingGeneration;
 }
 
 + (nullable NSString *)availableUpdateForAppVersion:(NSString *)appVersion
@@ -528,6 +529,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     _identityGeneration.store(0);
     _signalGeneration.store(0);
     _presenceGeneration.store(0);
+    _networkingGeneration.store(0);
   }
   return self;
 }
@@ -573,7 +575,9 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   const char *log_c_string = logDirectory.UTF8String;
   const std::string log_path = log_c_string ? log_c_string : "logs";
 
+  const uint64_t networking_generation = _networkingGeneration.load();
   dispatch_async(_rtcQueue, ^{
+    if (networking_generation != self->_networkingGeneration.load()) return;
     const bool unchanged = self->_state->signal_host == host_value &&
                            self->_state->signal_port == signalPort &&
                            self->_state->identity_peer != nullptr;
@@ -726,6 +730,24 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     self->_state->pending_remote_id.clear();
     self->_state->pending_password.clear();
     [self destroyControllerPeer];
+  });
+}
+
+- (void)stopNetworking {
+  _networkingGeneration.fetch_add(1);
+  _controllerGenerationCounter.fetch_add(1);
+  _activeControllerGeneration.store(0);
+  _identityGeneration.fetch_add(1);
+  _signalGeneration.fetch_add(1);
+  _presenceGeneration.fetch_add(1);
+  dispatch_async(_rtcQueue, ^{
+    self->_state->pending_remote_id.clear();
+    self->_state->pending_password.clear();
+    [self destroyControllerPeer];
+    [self destroyIdentityPeer];
+    self->_state->signal_host.clear();
+    self->_state->identity_with_password.clear();
+    self->_state->identity_base.clear();
   });
 }
 

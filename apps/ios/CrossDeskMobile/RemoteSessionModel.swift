@@ -108,8 +108,9 @@ struct RecentConnection: Codable, Identifiable, Equatable {
 
 private enum RecentConnectionStore {
     private static let defaultsKey = "crossdesk.mobile.recent-connections.v1"
-    private static let thumbnailQueue =
-        DispatchQueue(label: "cn.crossdesk.mobile.thumbnails", qos: .utility)
+    private static let thumbnails = ThumbnailFileStore(directory:
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("RecentConnectionThumbnails", isDirectory: true))
     private static let context = CIContext(options: [.cacheIntermediates: false])
 
     static func load() -> [RecentConnection] {
@@ -126,85 +127,54 @@ private enum RecentConnectionStore {
         UserDefaults.standard.set(data, forKey: defaultsKey)
     }
 
-    static func thumbnailURL(fileName: String) -> URL? {
-        guard let directory = thumbnailDirectory() else { return nil }
-        return directory.appendingPathComponent(fileName, isDirectory: false)
+    static func thumbnailURL(fileName: String) -> URL {
+        thumbnails.url(for: fileName)
+    }
+
+    private static func thumbnailFileName(for remoteID: String) -> String {
+        let safeID = remoteID.filter { $0.isLetter || $0.isNumber || $0 == "-" }
+        return "\(safeID.isEmpty ? "remote" : safeID).jpg"
     }
 
     static func captureThumbnail(from pixelBuffer: CVPixelBuffer,
                                  remoteID: String,
                                  completion: @escaping (String?) -> Void) {
-        thumbnailQueue.async {
-            let fileName: String? = autoreleasepool {
-                let image = CIImage(cvPixelBuffer: pixelBuffer)
-                let targetSize = CGSize(width: 640, height: 360)
-                guard image.extent.width > 0, image.extent.height > 0 else {
-                    return nil
-                }
-
-                // Scale in Core Image before materializing a CGImage. Creating
-                // a full 4K bitmap and then drawing it into a thumbnail can add
-                // tens of megabytes to the first-frame memory peak.
-                let scale = max(targetSize.width / image.extent.width,
-                                targetSize.height / image.extent.height)
-                let scaled = image.transformed(by: CGAffineTransform(
-                    scaleX: scale,
-                    y: scale
-                ))
-                let cropRect = CGRect(
-                    x: scaled.extent.midX - targetSize.width / 2,
-                    y: scaled.extent.midY - targetSize.height / 2,
-                    width: targetSize.width,
-                    height: targetSize.height
-                ).integral
-                guard let thumbnailImage = context.createCGImage(
-                    scaled.cropped(to: cropRect),
-                    from: cropRect
-                ) else {
-                    return nil
-                }
-
-                let safeID = remoteID.filter {
-                    $0.isLetter || $0.isNumber || $0 == "-"
-                }
-                let name = "\(safeID.isEmpty ? "remote" : safeID).jpg"
-                guard let url = thumbnailURL(fileName: name),
-                      let data = UIImage(cgImage: thumbnailImage)
-                        .jpegData(compressionQuality: 0.78) else {
-                    return nil
-                }
-
-                do {
-                    try data.write(to: url, options: .atomic)
-                    return name
-                } catch {
-                    return nil
-                }
-            }
-            DispatchQueue.main.async { completion(fileName) }
+        let name = thumbnailFileName(for: remoteID)
+        thumbnails.save(fileName: name, makeData: {
+            let image = CIImage(cvPixelBuffer: pixelBuffer)
+            let targetSize = CGSize(width: 640, height: 360)
+            guard image.extent.width > 0, image.extent.height > 0 else { return nil }
+            // Scale before materializing a bitmap to avoid a full-size frame copy.
+            let scale = max(targetSize.width / image.extent.width,
+                            targetSize.height / image.extent.height)
+            let scaled = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+            let cropRect = CGRect(x: scaled.extent.midX - targetSize.width / 2,
+                                  y: scaled.extent.midY - targetSize.height / 2,
+                                  width: targetSize.width, height: targetSize.height).integral
+            guard let thumbnailImage = context.createCGImage(scaled.cropped(to: cropRect),
+                                                              from: cropRect) else { return nil }
+            return UIImage(cgImage: thumbnailImage).jpegData(compressionQuality: 0.78)
+        }) { name in
+            DispatchQueue.main.async { completion(name) }
         }
     }
 
-    static func removeThumbnail(fileName: String?) {
-        guard let fileName, let url = thumbnailURL(fileName: fileName) else { return }
-        try? FileManager.default.removeItem(at: url)
+    static func removeThumbnail(for connection: RecentConnection) {
+        // The first capture may still be queued, before its filename has been
+        // attached to the recent connection. Delete that pending file too.
+        let pendingFileName = thumbnailFileName(for: connection.remoteID)
+        thumbnails.remove(fileName: pendingFileName)
+        if let fileName = connection.thumbnailFileName, fileName != pendingFileName {
+            thumbnails.remove(fileName: fileName)
+        }
     }
 
-    private static func thumbnailDirectory() -> URL? {
-        guard let base = FileManager.default.urls(for: .applicationSupportDirectory,
-                                                  in: .userDomainMask).first else {
-            return nil
-        }
-        let directory = base.appendingPathComponent("RecentConnectionThumbnails",
-                                                    isDirectory: true)
-        do {
-            try FileManager.default.createDirectory(at: directory,
-                                                    withIntermediateDirectories: true)
-            return directory
-        } catch {
-            return nil
+    static func removeAllThumbnails(completion: @escaping (Bool) -> Void) {
+        thumbnails.removeAll { success in
+            DispatchQueue.main.async { completion(success) }
         }
     }
+
 }
 
 private enum ConnectionCredentialStore {
@@ -319,8 +289,19 @@ private final class RemoteAudioPlayer {
 }
 
 final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDelegate {
-    @Published var signalHost = "api.crossdesk.cn"
-    @Published var signalPort = "9099"
+    static let officialSignalHost = "api.crossdesk.cn"
+    static let officialSignalPort = "9099"
+
+    private let privacyPreferences = PrivacyPreferences()
+    @Published private(set) var hasNetworkConsent = PrivacyPreferences().hasNetworkConsent
+    @Published private(set) var privacyNoticeVisible = !PrivacyPreferences().hasMadeNetworkChoice
+    @Published private(set) var savesConnectionThumbnails = PrivacyPreferences().savesThumbnails
+    @Published private(set) var thumbnailCleanupInProgress = false
+    @Published private(set) var thumbnailCleanupError: String?
+    private var thumbnailGeneration = UUID()
+
+    @Published var signalHost = RemoteSessionModel.officialSignalHost
+    @Published var signalPort = RemoteSessionModel.officialSignalPort
     @Published var mouseControlMode = MouseControlMode.saved {
         didSet { mouseControlMode.save() }
     }
@@ -329,7 +310,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
     @Published var remoteID = ""
     @Published var password = ""
-    @Published private(set) var signalStatus = "正在连接信令服务"
+    @Published private(set) var signalStatus = "尚未同意联网"
     @Published private(set) var connectionStatus = "未连接"
     @Published private(set) var localIdentity = ""
     @Published private(set) var identityStorageWarning: String?
@@ -408,7 +389,8 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     override init() {
         super.init()
         bridge.delegate = self
-        configureBridge()
+        if !savesConnectionThumbnails { clearConnectionThumbnails() }
+        if hasNetworkConsent { configureBridge() }
     }
 
     deinit {
@@ -416,8 +398,81 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         remoteVersionCheckTask?.cancel()
     }
 
+    func showPrivacyNotice() {
+        privacyNoticeVisible = true
+    }
+
+    func acceptNetworkConsent() {
+        privacyPreferences.setNetworkConsent(true)
+        hasNetworkConsent = true
+        privacyNoticeVisible = false
+        configureBridge()
+    }
+
+    func declineNetworkConsent() {
+        revokeNetworkConsent()
+        privacyNoticeVisible = false
+    }
+
+    func revokeNetworkConsent() {
+        privacyPreferences.setNetworkConsent(false)
+        hasNetworkConsent = false
+        signalConnected = false
+        stopPresenceMonitoring()
+        invalidatePresence()
+        resetConnection()
+        // disconnect() only closes the remote session. Consent withdrawal must
+        // also destroy the persistent signaling peer and its reconnect loop.
+        bridge.stopNetworking()
+        bridgeConfiguration = nil
+        localIdentity = ""
+        signalStatus = "尚未同意联网"
+        savesConnectionThumbnails = false
+        clearConnectionThumbnails()
+    }
+
+    func setSavesConnectionThumbnails(_ allowed: Bool) {
+        privacyPreferences.setSavesThumbnails(allowed)
+        savesConnectionThumbnails = privacyPreferences.savesThumbnails
+        if !savesConnectionThumbnails { clearConnectionThumbnails() }
+        // Enabling applies on the next connection, never to a frame captured
+        // before the user opted in.
+    }
+
+    func clearConnectionThumbnails() {
+        thumbnailGeneration = UUID()
+        shouldCaptureThumbnail = false
+        for index in recentConnections.indices {
+            recentConnections[index].thumbnailFileName = nil
+        }
+        RecentConnectionStore.save(recentConnections)
+        thumbnailCleanupInProgress = true
+        thumbnailCleanupError = nil
+        let generation = thumbnailGeneration
+        RecentConnectionStore.removeAllThumbnails { [weak self] success in
+            guard let self, self.thumbnailGeneration == generation else { return }
+            self.thumbnailCleanupInProgress = false
+            self.thumbnailCleanupError = success
+                ? nil
+                : "部分预览图未能清除，请重试。"
+        }
+    }
+
+    var usesOfficialServer: Bool {
+        signalHost == Self.officialSignalHost && signalPort == Self.officialSignalPort
+    }
+
+    func restoreOfficialServerConfiguration() {
+        signalHost = Self.officialSignalHost
+        signalPort = Self.officialSignalPort
+    }
+
     @discardableResult
     func configureBridge() -> Bool {
+        guard hasNetworkConsent else {
+            signalStatus = "尚未同意联网"
+            return false
+        }
         let host = signalHost.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let signal = Int(signalPort),
               (1...65535).contains(signal),
@@ -449,6 +504,10 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     func connect() {
+        guard hasNetworkConsent else {
+            showPrivacyNotice()
+            return
+        }
         connectionFailureMessage = nil
         let identifier = remoteID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !identifier.isEmpty else {
@@ -475,7 +534,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         activeDisplayName = ""
         displaySizes = []
         connectionRecorded = false
-        shouldCaptureThumbnail = true
+        shouldCaptureThumbnail = savesConnectionThumbnails
         isConnecting = true
         isConnected = false
         sessionVisible = false
@@ -485,7 +544,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     private func beginPresenceProbe(_ identifier: String) {
-        guard signalConnected, presenceIsForeground else {
+        guard hasNetworkConsent, signalConnected, presenceIsForeground else {
             showDeviceOffline()
             return
         }
@@ -524,7 +583,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     private func requestPresenceProbe(_ identifier: String) {
-        guard signalConnected, presenceIsForeground else { return }
+        guard hasNetworkConsent, signalConnected, presenceIsForeground else { return }
         // Older servers ignore subscribe=false and replace the watched list.
         var identifiers = recentConnections.map(\.remoteID)
         if !identifiers.contains(identifier) { identifiers.append(identifier) }
@@ -607,7 +666,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     private func checkRemoteVersionIfNeeded() {
-        guard isConnected, remoteHostInfoReceived,
+        guard hasNetworkConsent, isConnected, remoteHostInfoReceived,
               !remoteVersionCheckAttempted else { return }
         remoteVersionCheckAttempted = true
         if remoteAppVersion.isEmpty {
@@ -656,11 +715,11 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     func thumbnailImage(for connection: RecentConnection) -> UIImage? {
-        guard let fileName = connection.thumbnailFileName,
-              let url = RecentConnectionStore.thumbnailURL(fileName: fileName) else {
+        guard savesConnectionThumbnails,
+              let fileName = connection.thumbnailFileName else {
             return nil
         }
-        return UIImage(contentsOfFile: url.path)
+        return UIImage(contentsOfFile: RecentConnectionStore.thumbnailURL(fileName: fileName).path)
     }
 
     func isRecentConnectionOnline(_ connection: RecentConnection) -> Bool {
@@ -668,14 +727,14 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     private func isDeviceOnline(_ identifier: String) -> Bool {
-        guard signalConnected, presenceIsForeground, !awaitingPresenceSnapshot,
+        guard hasNetworkConsent, signalConnected, presenceIsForeground, !awaitingPresenceSnapshot,
               recentConnectionPresence[identifier] == true,
               let updatedAt = presenceUpdatedAt[identifier] else { return false }
         return updatedAt.duration(to: presenceClock.now) < Self.presenceMaxAge
     }
 
     private func refreshRecentConnectionPresence() {
-        guard signalConnected, presenceIsForeground else { return }
+        guard hasNetworkConsent, signalConnected, presenceIsForeground else { return }
         lastPresenceRefreshAt = presenceClock.now
         bridge.requestPresence(remoteIDs: recentConnections.map(\.remoteID),
                                subscribe: true)
@@ -690,7 +749,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     private func startPresenceMonitoring() {
-        guard signalConnected, presenceIsForeground, presenceTimer == nil else { return }
+        guard hasNetworkConsent, signalConnected, presenceIsForeground, presenceTimer == nil else { return }
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             self?.maintainPresence()
         }
@@ -704,7 +763,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     private func maintainPresence() {
-        guard signalConnected, presenceIsForeground else { return }
+        guard hasNetworkConsent, signalConnected, presenceIsForeground else { return }
         let now = presenceClock.now
         let expired = presenceUpdatedAt.compactMap { identifier, updatedAt in
             updatedAt.duration(to: now) >= Self.presenceMaxAge ? identifier : nil
@@ -779,7 +838,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         recentConnectionPresence.removeValue(forKey: connection.remoteID)
         presenceUpdatedAt.removeValue(forKey: connection.remoteID)
         RecentConnectionStore.save(recentConnections)
-        RecentConnectionStore.removeThumbnail(fileName: connection.thumbnailFileName)
+        RecentConnectionStore.removeThumbnail(for: connection)
         ConnectionCredentialStore.removePassword(for: connection.remoteID)
         refreshRecentConnectionPresence()
     }
@@ -823,12 +882,15 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     private func captureRecentThumbnailIfNeeded(_ pixelBuffer: CVPixelBuffer) {
-        guard shouldCaptureThumbnail, !activeRemoteID.isEmpty else { return }
+        guard hasNetworkConsent, savesConnectionThumbnails,
+              shouldCaptureThumbnail, !activeRemoteID.isEmpty else { return }
         shouldCaptureThumbnail = false
+        let generation = thumbnailGeneration
         let identifier = activeRemoteID
         RecentConnectionStore.captureThumbnail(from: pixelBuffer,
                                                 remoteID: identifier) { [weak self] fileName in
-            guard let self, let fileName,
+            guard let self, let fileName, self.hasNetworkConsent,
+                  self.savesConnectionThumbnails, self.thumbnailGeneration == generation,
                   let index = self.recentConnections.firstIndex(where: {
                       $0.remoteID == identifier
                   }) else { return }
@@ -898,6 +960,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
 
     func rtcBridge(_ bridge: CrossDeskRTCBridge,
                    didChange state: CrossDeskSignalState) {
+        guard hasNetworkConsent else { return }
         signalConnected = state.rawValue == 1
         invalidatePresence()
         switch state.rawValue {
@@ -970,6 +1033,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     func rtcBridge(_ bridge: CrossDeskRTCBridge, didProvisionIdentity identity: String) {
+        guard hasNetworkConsent else { return }
         localIdentity = identity.split(separator: "@").first.map(String.init) ?? identity
         refreshRecentConnectionPresence()
         if let pendingPresenceRemoteID {
@@ -980,7 +1044,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     func rtcBridge(_ bridge: CrossDeskRTCBridge,
                    didReceivePresence presence: [String: NSNumber],
                    snapshot: Bool) {
-        guard signalConnected, presenceIsForeground,
+        guard hasNetworkConsent, signalConnected, presenceIsForeground,
               snapshot || !awaitingPresenceSnapshot else { return }
         var updated = snapshot ? [:] : recentConnectionPresence
         if snapshot {
@@ -1013,7 +1077,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
                    didReceive pixelBuffer: CVPixelBuffer,
                    width: Int,
                    height: Int) {
-        guard !videoWasBackgrounded else { return }
+        guard hasNetworkConsent, isConnected, !videoWasBackgrounded else { return }
         cancelVideoRecovery()
         // Buffer and encoded dimensions must be one observable value. Adaptive
         // resolution changes must never expose a new frame with the previous
@@ -1084,10 +1148,12 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     func rtcBridge(_ bridge: CrossDeskRTCBridge, didReceiveAudioPCM pcmData: Data) {
+        guard hasNetworkConsent, isConnected else { return }
         audioPlayer.enqueue(pcmData)
     }
 
     func rtcBridge(_ bridge: CrossDeskRTCBridge, didReceiveClipboardText text: String) {
+        guard hasNetworkConsent, isConnected else { return }
         UIPasteboard.general.string = text
         clipboardStatus = "已接收远端剪贴板"
     }

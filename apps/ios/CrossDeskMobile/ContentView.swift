@@ -6,12 +6,25 @@ struct ContentView: View {
     @ObservedObject var session: RemoteSessionModel
 
     var body: some View {
-        Group {
-            if session.sessionVisible {
-                RemoteSessionView(session: session)
+        ZStack {
+            Group {
+                if session.sessionVisible {
+                    RemoteSessionView(session: session)
+                        .transition(.opacity)
+                } else {
+                    NavigationStack {
+                        ConnectionHomeView(session: session)
+                            .navigationTitle("首页")
+                            .toolbar(.hidden, for: .navigationBar)
+                    }
                     .transition(.opacity)
-            } else {
-                ConnectionHomeView(session: session)
+                }
+            }
+            .allowsHitTesting(!session.privacyNoticeVisible)
+            .accessibilityHidden(session.privacyNoticeVisible)
+
+            if session.privacyNoticeVisible {
+                PrivacyConsentView(session: session)
                     .transition(.opacity)
             }
         }
@@ -169,6 +182,7 @@ private struct ConnectionHomeView: View {
     }
 
     private var signalSymbol: String {
+        if !session.hasNetworkConsent { return "hand.raised" }
         if signalIsConnected { return "checkmark.circle.fill" }
         if signalHasError { return "exclamationmark.triangle.fill" }
         return "arrow.triangle.2.circlepath"
@@ -230,10 +244,8 @@ private struct ConnectionHomeView: View {
             .presentationDetents([.height(340)])
             .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $settingsVisible) {
+        .navigationDestination(isPresented: $settingsVisible) {
             ServerSettingsView(session: session)
-                .presentationDetents([.fraction(0.80)])
-                .presentationDragIndicator(.visible)
         }
         .alert("设备离线", isPresented: Binding(
             get: { session.deviceOfflineAlertVisible },
@@ -275,6 +287,7 @@ private struct ConnectionHomeView: View {
             Spacer()
 
             Button {
+                remoteIDFocused = false
                 settingsVisible = true
             } label: {
                 Image(systemName: "gearshape")
@@ -292,6 +305,10 @@ private struct ConnectionHomeView: View {
 
     private var remoteConnectionPanel: some View {
         VStack(alignment: .leading, spacing: 16) {
+            if !session.hasNetworkConsent {
+                Button("查看联网说明并选择") { session.showPrivacyNotice() }
+                    .font(.callout)
+            }
             HStack {
                 Text("远程桌面")
                     .font(.title3.weight(.bold))
@@ -470,6 +487,11 @@ private struct ConnectionHomeView: View {
     }
 
     private func presentPasswordPrompt(for identifier: String) {
+        guard session.hasNetworkConsent else {
+            remoteIDFocused = false
+            session.showPrivacyNotice()
+            return
+        }
         let trimmed = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             remoteIDFocused = true
@@ -670,88 +692,168 @@ private struct PasswordPromptView: View {
 private struct ServerSettingsView: View {
     @ObservedObject var session: RemoteSessionModel
     @Environment(\.dismiss) private var dismiss
+    @State private var serverConfigurationExpanded = false
+    @State private var usesCustomServer: Bool
+    @State private var customServerHost: String
+    @State private var customServerPort: String
+    @State private var serverConfigurationError: String?
+    @FocusState private var focusedServerField: ServerField?
+
+    private enum ServerField: Hashable {
+        case host, port
+    }
+
+    init(session: RemoteSessionModel) {
+        self.session = session
+        let isCustom = !session.usesOfficialServer
+        _usesCustomServer = State(initialValue: isCustom)
+        _customServerHost = State(initialValue: isCustom ? session.signalHost : "")
+        _customServerPort = State(initialValue: isCustom ? session.signalPort : "")
+    }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("鼠标控制") {
-                    Picker("控制模式", selection: $session.mouseControlMode) {
-                        ForEach(MouseControlMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
-                        }
+        Form {
+            Section("鼠标控制") {
+                Picker("控制模式", selection: $session.mouseControlMode) {
+                    ForEach(MouseControlMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
                     }
-                    .pickerStyle(.segmented)
+                }
+                .pickerStyle(.segmented)
 
-                    Text(session.mouseControlMode.detail)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                Section("画面偏好") {
-                    Picker("偏好模式", selection: $session.videoAdaptationPolicy) {
-                        ForEach(VideoAdaptationPolicy.allCases) { policy in
-                            Text(policy.title).tag(policy)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    Text(session.videoAdaptationPolicy.detail)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-
-                    Text("修改后从下一次连接开始生效。")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                Section {
-                    TextField("信令服务器", text: $session.signalHost)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    TextField("信令端口", text: $session.signalPort)
-                        .keyboardType(.numberPad)
-                } header: {
-                    Text("服务器")
-                } footer: {
-                    if let warning = session.identityStorageWarning {
-                        Text(warning)
-                            .foregroundStyle(.orange)
-                    }
-                    Text(session.localIdentity.isEmpty
-                         ? "正在获取本机 ID…"
-                         : "本机 ID  \(session.localIdentity)")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.top, 16)
-                        .textSelection(.enabled)
-                }
-                Section {
-                    if let source = SourceMetadata.bundled {
-                        Link(destination: source.privacyPolicyURL) {
-                            Label("隐私政策", systemImage: "hand.raised")
-                        }
-                    }
-                    NavigationLink {
-                        ThirdPartyLicensesView()
-                    } label: {
-                        Label("关于与开源许可", systemImage: "doc.text")
-                    }
-                } footer: {
-                    Text("本应用使用 OpenFEC，遵循 CeCILL-C 许可。版权声明、许可全文和源码入口见“关于与开源许可”。")
-                }
+                Text(session.mouseControlMode.detail)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
-            .navigationTitle("设置")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("应用") {
-                        session.configureBridge()
-                        dismiss()
+            Section("画面偏好") {
+                Picker("偏好模式", selection: $session.videoAdaptationPolicy) {
+                    ForEach(VideoAdaptationPolicy.allCases) { policy in
+                        Text(policy.title).tag(policy)
                     }
                 }
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                .pickerStyle(.segmented)
+
+                Text(session.videoAdaptationPolicy.detail)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+            }
+            Section {
+                DisclosureGroup(isExpanded: $serverConfigurationExpanded) {
+                    Toggle("使用自定义服务器", isOn: $usesCustomServer)
+                    if usesCustomServer {
+                        LabeledContent("地址") {
+                            TextField("填写服务器地址", text: $customServerHost)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .keyboardType(.URL)
+                                .multilineTextAlignment(.trailing)
+                                .focused($focusedServerField, equals: .host)
+                                .accessibilityLabel("服务器地址")
+                        }
+                        LabeledContent("端口") {
+                            TextField("填写端口", text: $customServerPort)
+                                .keyboardType(.numberPad)
+                                .multilineTextAlignment(.trailing)
+                                .focused($focusedServerField, equals: .port)
+                                .accessibilityLabel("服务器端口")
+                        }
+                    }
+                    if usesCustomServer {
+                        Text("返回首页时生效。关闭开关可立即切回默认配置。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                } label: {
+                    HStack {
+                        Text("服务器")
+                        Spacer()
+                        Text(usesCustomServer ? "自定义" : "默认")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } footer: {
+                if let warning = session.identityStorageWarning {
+                    Text(warning)
+                        .foregroundStyle(.orange)
+                }
+                Text(!session.hasNetworkConsent ? "同意联网后才会登记本机身份" : session.localIdentity.isEmpty
+                     ? "正在获取本机 ID…"
+                     : "本机 ID  \(session.localIdentity)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 16)
+                    .textSelection(.enabled)
+            }
+            PrivacySettingsSection(session: session)
+            Section {
+                NavigationLink("关于") {
+                    ThirdPartyLicensesView()
                 }
             }
         }
+        .navigationTitle("设置")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.visible, for: .navigationBar)
+        .onChange(of: serverConfigurationExpanded) { expanded in
+            if !expanded { focusedServerField = nil }
+        }
+        .onChange(of: usesCustomServer) { isCustom in
+            if !isCustom { useDefaultServer() }
+        }
+        .alert("请检查服务器配置", isPresented: Binding(
+            get: { serverConfigurationError != nil },
+            set: { if !$0 { serverConfigurationError = nil } }
+        )) {
+            Button("确定", role: .cancel) { }
+        } message: {
+            Text(serverConfigurationError ?? "")
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: returnToHome) {
+                    Label("返回首页", systemImage: "chevron.left")
+                        .labelStyle(.iconOnly)
+                }
+            }
+        }
+    }
+
+    private func useDefaultServer() {
+        focusedServerField = nil
+        customServerHost = ""
+        customServerPort = ""
+        guard !session.usesOfficialServer else { return }
+        session.restoreOfficialServerConfiguration()
+        session.configureBridge()
+    }
+
+    private func returnToHome() {
+        focusedServerField = nil
+        if usesCustomServer {
+            let host = customServerHost.trimmingCharacters(in: .whitespacesAndNewlines)
+            let port = customServerPort.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !host.isEmpty else {
+                serverConfigurationExpanded = true
+                serverConfigurationError = "请输入服务器地址，或关闭“使用自定义服务器”。"
+                return
+            }
+            guard let portNumber = Int(port), (1...65535).contains(portNumber) else {
+                serverConfigurationExpanded = true
+                serverConfigurationError = "请输入 1–65535 范围内的端口，或关闭“使用自定义服务器”。"
+                return
+            }
+            let normalizedPort = String(portNumber)
+            if session.signalHost != host || session.signalPort != normalizedPort {
+                session.signalHost = host
+                session.signalPort = normalizedPort
+                session.configureBridge()
+            }
+        } else {
+            useDefaultServer()
+        }
+        dismiss()
     }
 }

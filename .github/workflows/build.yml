@@ -427,6 +427,9 @@ jobs:
           python3 -B -m unittest discover -s apps/ios/tests -p 'third_party_licenses_test.py' -v
           python3 -B apps/ios/scripts/generate_third_party_licenses.py
 
+      - name: Verify iOS privacy controls
+        run: python3 -B -m unittest discover -s apps/ios/tests -p 'privacy_controls_test.py' -v
+
       - name: Install xmake
         uses: xmake-io/github-action-setup-xmake@v1
         with:

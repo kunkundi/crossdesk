@@ -26,6 +26,8 @@ def verify(app, require_release=False):
     if re.search(r"\b_of_(?:hweight\w*|hw8table|popcount_3)\b", defined):
         raise ValueError("OpenFEC's optional CC-BY-SA-3.0 hamming-weight code requires a separate distribution review")
     privacy = plistlib.loads((app / "PrivacyInfo.xcprivacy").read_bytes())
+    if not (app / "PRIVACY.md").read_text().strip():
+        raise ValueError("The offline privacy policy must be bundled for pre-consent access")
     reasons = {entry["NSPrivacyAccessedAPIType"]: entry["NSPrivacyAccessedAPITypeReasons"]
                for entry in privacy["NSPrivacyAccessedAPITypes"]}
     required = {

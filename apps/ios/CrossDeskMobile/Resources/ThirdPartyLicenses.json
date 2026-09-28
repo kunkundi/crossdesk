@@ -41,7 +41,7 @@
     },
     {
       "id": "crossdesk",
-      "name": "CrossDesk / crossdesk_wire",
+      "name": "CrossDesk",
       "version": "application source",
       "license": "GPL-3.0-only",
       "sourceURL": "https://github.com/kunkundi/crossdesk",

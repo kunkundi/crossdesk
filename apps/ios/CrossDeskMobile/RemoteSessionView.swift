@@ -147,6 +147,17 @@ struct RemoteSessionView: View {
                     .zIndex(50)
             }
         }
+        .overlay(alignment: .top) {
+            if session.savesConnectionThumbnails {
+                Label("本地画面预览保存已开启", systemImage: "photo")
+                    .font(.caption)
+                    .foregroundStyle(.white)
+                    .padding(8)
+                    .background(.black.opacity(0.65), in: Capsule())
+                    .padding(.top, 8)
+                    .allowsHitTesting(false)
+            }
+        }
         .alert("升级提示", isPresented: Binding(
             get: { session.remoteUpdateMessage != nil },
             set: { if !$0 { session.dismissRemoteUpdate() } }

@@ -56,7 +56,7 @@
     },
     {
       "id": "crossdesk",
-      "name": "CrossDesk / crossdesk_wire",
+      "name": "CrossDesk",
       "version": "application source",
       "license": "GPL-3.0-only",
       "source": {
@@ -898,7 +898,7 @@
       ]
     }
   ],
-  "bundle_sha256": "58702163ac79d8821007b1ae44ef054cf1d9a3cec9d6334b852f0bbe99b5af01",
+  "bundle_sha256": "f54e5e2168bf6e91d81a413931a052d29f59e0c221df5e1de3f51bd27c662c3a",
   "toolchain": {
     "xmake_version": "3.1.1",
     "xmake_repository_revision": "121109352da272cd1a3d4ed52f2dcda34f839955"

@@ -20,6 +20,10 @@
 		10000000000000000000000B /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000010 /* PrivacyInfo.xcprivacy */; };
 		10000000000000000000000C /* OpenSSL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 200000000000000000000011 /* OpenSSL.framework */; };
 		10000000000000000000000D /* OpenSSL.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 200000000000000000000011 /* OpenSSL.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		100000000000000000000012 /* PrivacyPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000012 /* PrivacyPreferences.swift */; };
+		100000000000000000000013 /* ThumbnailFileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000013 /* ThumbnailFileStore.swift */; };
+		100000000000000000000014 /* PrivacyViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000014 /* PrivacyViews.swift */; };
+		100000000000000000000015 /* PRIVACY.md in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000015 /* PRIVACY.md */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -40,6 +44,10 @@
 		20000000000000000000000F /* ThirdPartyLicenses.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Resources/ThirdPartyLicenses.json; sourceTree = "<group>"; };
 		200000000000000000000010 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		200000000000000000000011 /* OpenSSL.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = OpenSSL.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		200000000000000000000012 /* PrivacyPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyPreferences.swift; sourceTree = "<group>"; };
+		200000000000000000000013 /* ThumbnailFileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailFileStore.swift; sourceTree = "<group>"; };
+		200000000000000000000014 /* PrivacyViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyViews.swift; sourceTree = "<group>"; };
+		200000000000000000000015 /* PRIVACY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ../../../PRIVACY.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -79,6 +87,10 @@
 			isa = PBXGroup;
 			children = (
 				200000000000000000000001 /* CrossDeskMobileApp.swift */,
+				200000000000000000000015 /* PRIVACY.md */,
+				200000000000000000000014 /* PrivacyViews.swift */,
+				200000000000000000000013 /* ThumbnailFileStore.swift */,
+				200000000000000000000012 /* PrivacyPreferences.swift */,
 				200000000000000000000002 /* RemoteSessionModel.swift */,
 				200000000000000000000003 /* ContentView.swift */,
 				20000000000000000000000E /* ThirdPartyLicensesView.swift */,
@@ -201,6 +213,7 @@
 				100000000000000000000008 /* Assets.xcassets in Resources */,
 				10000000000000000000000A /* ThirdPartyLicenses.json in Resources */,
 				10000000000000000000000B /* PrivacyInfo.xcprivacy in Resources */,
+				100000000000000000000015 /* PRIVACY.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -248,6 +261,9 @@
 				100000000000000000000005 /* CrossDeskRTCBridge.mm in Sources */,
 				100000000000000000000006 /* NativeMetalVideoView.swift in Sources */,
 				100000000000000000000007 /* RemoteTouchInputView.swift in Sources */,
+				100000000000000000000012 /* PrivacyPreferences.swift in Sources */,
+				100000000000000000000013 /* ThumbnailFileStore.swift in Sources */,
+				100000000000000000000014 /* PrivacyViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

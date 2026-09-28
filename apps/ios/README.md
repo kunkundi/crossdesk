@@ -92,16 +92,18 @@ and rejects a build if they are present, including in cached archives.
 
 ## Third-party licenses
 
-**设置 → 关于与开源许可** provides offline license texts, copyright notices,
-and source links. OpenFEC is acknowledged both on the settings page and at the
-top of the notices page, with its INRIA copyright, CeCILL-C terms and limited
+**设置 → 关于** shows the app version and links to the application's
+license, open-source components, and source/build information. `crossdesk_wire`
+is part of CrossDesk's own source and is covered by its application license,
+not a separate third-party entry. OpenFEC is acknowledged at the top of the
+open-source components page, with its INRIA copyright, CeCILL-C terms and limited
 warranty/liability notice. Its embedded BSD and CC-BY-SA notices are preserved
 in the source-notices document as well.
 
 `licenses/sources.json` pins the reviewed source archives (SHA-256), notice-review
 Git revisions, selected legal files and source-notice extraction rules.
 `CrossDeskMobile/Resources/ThirdPartyLicenses.json` is the generated resource
-bundled by Xcode. The catalog covers 34 components for the default iOS build,
+bundled by Xcode. The catalog covers CrossDesk and 33 dependency entries for the default iOS build,
 including header-only dependencies, GLib's proxy-libintl, spdlog's bundled fmt,
 WebRTC-derived code, inih, and the applicable patent notices. Host build tools,
 OpenH264, desktop-only libraries, and the disabled libpsl built-in suffix list
@@ -171,6 +173,21 @@ The unused libaom backends are excluded by default. To include them for developm
 set the `MINIRTC_ENABLE_AOM` environment variable (or Xcode user-defined build setting)
 to `true`. This includes libaom in the merged native archive without changing the
 AV1 factories' choice of SVT-AV1 and dav1d.
+
+## Privacy choices
+
+A fresh install or an upgrade without a prior choice shows the privacy notice
+before signaling registration. Declining leaves settings, local history and the
+bundled privacy policy available. Settings → Privacy → Privacy and Authorization shows consent status and can
+withdraw consent to stop both the persistent identity peer and remote session. Consent is required
+again before reconnecting; foregrounding or relaunching does not grant it.
+
+Remote desktop previews default to off, including on upgrade. Enabling and
+confirming saving in Settings → Privacy applies from the next connection. A
+session indicator remains visible while saving is enabled. Previews stay local
+and are excluded from device backups. Disabling saving or withdrawing consent
+clears them; clearing is serialized after pending writes to prevent resurrection.
+Old previews saved without this choice are removed on upgrade.
 
 ## Physical-device test checklist
 
