@@ -119,6 +119,8 @@ struct CursorState {
 struct HostInfo {
   char host_name[64];
   std::size_t host_name_size;
+  // Optional; an empty string means the peer version is unknown.
+  char app_version[64];
   char** display_list;
   std::size_t display_num;
   int* left;
@@ -213,9 +215,11 @@ struct HostDisplay {
 // heap-allocated with the same layout the decoder produces; release the
 // result with FreeRemoteAction. An allocation failure yields an empty display
 // list rather than a partially filled one.
+// Missing or oversized app versions are advertised as unknown (empty).
 RemoteAction MakeHostInformation(const std::string& host_name,
                                  const std::vector<HostDisplay>& displays,
-                                 bool supports_privacy_screen);
+                                 bool supports_privacy_screen,
+                                 const std::string& app_version = {});
 
 }  // namespace crossdesk
 

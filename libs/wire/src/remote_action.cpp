@@ -16,6 +16,7 @@ using json = nlohmann::json;
 void ResetHostInfo(HostInfo& info) {
   info.host_name[0] = '\0';
   info.host_name_size = 0;
+  info.app_version[0] = '\0';
   info.display_list = nullptr;
   info.display_num = 0;
   info.left = nullptr;
@@ -50,7 +51,8 @@ char* DuplicateString(const std::string& value) {
 
 RemoteAction MakeHostInformation(const std::string& host_name,
                                  const std::vector<HostDisplay>& displays,
-                                 bool supports_privacy_screen) {
+                                 bool supports_privacy_screen,
+                                 const std::string& app_version) {
   RemoteAction action{};
   action.type = ControlType::host_infomation;
   ResetHostInfo(action.i);
@@ -76,6 +78,11 @@ RemoteAction MakeHostInformation(const std::string& host_name,
   std::memcpy(action.i.host_name, host_name.data(), name_size);
   action.i.host_name[name_size] = '\0';
   action.i.host_name_size = name_size;
+  // Never advertise a truncated version as a different, valid release.
+  if (app_version.size() < sizeof(action.i.app_version) &&
+      app_version.find('\0') == std::string::npos) {
+    std::memcpy(action.i.app_version, app_version.c_str(), app_version.size() + 1);
+  }
   return action;
 }
 
@@ -184,6 +191,7 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
       }
       object["host_info"] = {
           {"host_name", action.i.host_name},
+          {"app_version", action.i.app_version},
           {"display_num", action.i.display_num},
           {"displays", displays},
           {"supports_privacy_screen", action.i.supports_privacy_screen},
@@ -360,6 +368,14 @@ bool RemoteAction::FromJson(const std::string& json_string,
         ResetHostInfo(output.i);
         owns_host_info = true;
         const auto& host_info_object = object.at("host_info");
+        const auto app_version = host_info_object.find("app_version");
+        if (app_version != host_info_object.end() && app_version->is_string()) {
+          const auto& version = app_version->get_ref<const std::string&>();
+          if (version.size() < sizeof(output.i.app_version) &&
+              version.find('\0') == std::string::npos) {
+            std::memcpy(output.i.app_version, version.c_str(), version.size() + 1);
+          }
+        }
         const auto privacy_support =
             host_info_object.find("supports_privacy_screen");
         output.i.supports_privacy_screen =

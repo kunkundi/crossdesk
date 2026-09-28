@@ -1,5 +1,5 @@
 import { ComboBox, ScrollView } from "std-widgets.slint";
-import { FontAwesomeIcons, IconButton, PrimaryButton, ImGuiLineStyle, ImGuiFontStyle } from "common.slint";
+import { FontAwesomeIcons, IconButton, PrimaryButton, DialogSurface, ImGuiLineStyle, ImGuiFontStyle } from "common.slint";
 
 export struct StreamTab {
     remote-id: string,
@@ -23,6 +23,9 @@ export struct NetworkStatsRow {
 }
 
 export global StreamStrings {
+    in-out property <string> remote-update-title: "Remote device needs an update";
+    in-out property <string> remote-update: "Please update to the latest version.";
+    in-out property <string> remote-update-dismiss: "Got it";
     in-out property <string> video-settings: "Video settings";
     in-out property <string> video-settings-unavailable: "The remote device does not support live video settings";
     in-out property <string> video-quality: "Video quality";
@@ -196,6 +199,8 @@ export component StreamWindow inherits Window {
     in property <bool> has-frame: false;
     in property <string> status-text: "";
     in property <string> receiving-text: "";
+    in property <bool> remote-update-visible: false;
+    callback dismiss-remote-update;
     in property <[string]> displays;
     in-out property <int> selected-display: 0;
     in property <bool> mouse-control-enabled: true;
@@ -271,6 +276,15 @@ export component StreamWindow inherits Window {
     changed selected-tab => { root.video-menu-open = false; }
     changed control-expanded => { if !root.control-expanded { root.video-menu-open = false; } }
     changed window-active => { if !root.window-active { root.video-menu-open = false; } }
+    changed remote-update-visible => {
+        if root.remote-update-visible {
+            root.video-menu-open = false;
+            root.display-menu-open = false;
+            root.shortcut-menu-open = false;
+        }
+        input-focus.focus();
+        root.keyboard-focus-changed(!root.remote-update-visible);
+    }
     private property <bool> control-tooltip-visible: false;
     private property <ControlBarTooltip> hovered-control: {
         if root.window-active && !root.control-dragging
@@ -345,6 +359,7 @@ export component StreamWindow inherits Window {
     }
 
     is-local-control-area(pointer-x, pointer-y) => {
+        if root.remote-update-visible { return true; }
         let over-control = pointer-x >= control.x
             && pointer-x <= control.x + control.width
             && pointer-y >= control.y
@@ -655,9 +670,11 @@ export component StreamWindow inherits Window {
 
             drop-zone := DropArea {
                 can-drop(event) => {
-                    return root.can-drop-file(event.data) ? DragAction.copy : DragAction.none;
+                    return !root.remote-update-visible && root.can-drop-file(event.data)
+                        ? DragAction.copy : DragAction.none;
                 }
                 dropped(event) => {
+                    if root.remote-update-visible { return DragAction.none; }
                     root.file-dropped(event.data);
                     return DragAction.copy;
                 }
@@ -668,11 +685,20 @@ export component StreamWindow inherits Window {
                 focus-gained => { root.keyboard-focus-changed(true); }
                 focus-lost => { root.keyboard-focus-changed(false); }
                 key-pressed(event) => {
-                    root.key-input(event.text, true, event.modifiers.control, event.modifiers.alt, event.modifiers.shift, event.modifiers.meta);
+                    if !root.remote-update-visible {
+                        root.key-input(event.text, true, event.modifiers.control, event.modifiers.alt, event.modifiers.shift, event.modifiers.meta);
+                    }
                     accept
                 }
                 key-released(event) => {
-                    root.key-input(event.text, false, event.modifiers.control, event.modifiers.alt, event.modifiers.shift, event.modifiers.meta);
+                    if root.remote-update-visible {
+                        // Dismiss on release so the same key cannot reach the peer.
+                        if event.text == Key.Escape || event.text == Key.Return {
+                            root.dismiss-remote-update();
+                        }
+                    } else {
+                        root.key-input(event.text, false, event.modifiers.control, event.modifiers.alt, event.modifiers.shift, event.modifiers.meta);
+                    }
                     accept
                 }
                 pointer := TouchArea {
@@ -723,7 +749,12 @@ export component StreamWindow inherits Window {
                             root.suppress-next-remote-pointer-release = false;
                             input-focus.focus();
                         }
-                        if event.kind == PointerEventKind.down
+                        // A gesture started before the modal appeared keeps
+                        // pointer capture. Let its release reach the peer.
+                        if root.remote-update-visible && !root.control-dragging
+                            && event.kind == PointerEventKind.up {
+                            root.pointer-input(event.button, event.kind, self.mouse-x, self.mouse-y);
+                        } else if event.kind == PointerEventKind.down
                             && event.button == PointerEventButton.left
                             && over-control {
                             root.begin-control-drag(self.mouse-x, self.mouse-y);
@@ -1269,6 +1300,80 @@ export component StreamWindow inherits Window {
                     x: 8px; y: 6px; width: parent.width - 16px;
                     text: root.hovered-control.text;
                     color: white; font-size: ImGuiFontStyle.body; wrap: word-wrap;
+                }
+            }
+
+            if root.remote-update-visible: Rectangle {
+                width: parent.width; height: parent.height;
+                background: #0c162c52;
+                z: 13;
+                TouchArea {
+                    mouse-cursor: default;
+                    scroll-event(event) => { accept }
+                }
+            }
+            remote-update-banner := DialogSurface {
+                visible: root.remote-update-visible;
+                x: (parent.width - self.width) / 2;
+                y: min(max(64px, parent.height * 0.18), max(16px, parent.height - self.height - 16px));
+                width: min(520px, parent.width - 48px);
+                height: max(208px, remote-update-message.y + remote-update-message.height + 92px);
+                border-color: #e5e9f0;
+                border-radius: 14px;
+                drop-shadow-color: #07142b30;
+                drop-shadow-blur: 32px;
+                drop-shadow-offset-y: 12px;
+                z: 14;
+                TouchArea {
+                    mouse-cursor: default;
+                    pointer-event(event) => {
+                        if event.kind == PointerEventKind.down {
+                            root.suppress-next-remote-pointer-release = true;
+                        }
+                    }
+                    scroll-event(event) => { accept }
+                }
+                Rectangle {
+                    x: 32px; y: 32px; width: 48px; height: 48px;
+                    background: #edf4ff; border-radius: 12px;
+                    Path {
+                        x: 12px; y: 12px; width: 24px; height: 24px;
+                        viewbox-width: 24; viewbox-height: 24;
+                        commands: "M 12 16 L 12 3 M 6.5 8.5 L 12 3 L 17.5 8.5 M 4 15 L 4 20 Q 4 21 5 21 L 19 21 Q 20 21 20 20 L 20 15";
+                        fill: transparent;
+                        stroke: #2463c7; stroke-width: 1.8px;
+                    }
+                }
+                remote-update-title := Text {
+                    x: 100px; y: 34px; width: parent.width - 144px;
+                    height: max(28px, self.preferred-height);
+                    text: StreamStrings.remote-update-title;
+                    color: #1b2433; font-size: 20px; font-weight: 600;
+                    wrap: word-wrap;
+                }
+                remote-update-message := Text {
+                    x: remote-update-title.x;
+                    y: remote-update-title.y + remote-update-title.height + 8px;
+                    width: remote-update-title.width;
+                    height: max(22px, self.preferred-height);
+                    text: StreamStrings.remote-update;
+                    color: #667085; font-size: 15px;
+                    wrap: word-wrap;
+                }
+                IconButton {
+                    x: parent.width - 44px; y: 12px; width: 32px; height: 32px;
+                    icon: FontAwesomeIcons.xmark; icon-size: 14px;
+                    icon-color: #8a93a3;
+                    hover-background: #f2f4f7;
+                    clicked => { root.dismiss-remote-update(); }
+                }
+                PrimaryButton {
+                    x: parent.width - 136px; y: parent.height - 68px;
+                    width: 104px; height: 36px;
+                    border-radius: 7px;
+                    text: StreamStrings.remote-update-dismiss;
+                    text-size: 14px;
+                    clicked => { root.dismiss-remote-update(); }
                 }
             }
 

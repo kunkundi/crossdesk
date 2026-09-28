@@ -1481,6 +1481,12 @@ void GuiApplication::BindStreamCallbacks() {
     return;
   }
   auto& stream = *ui_->stream;
+  stream->on_dismiss_remote_update([this] {
+    if (auto props = SelectedSession()) {
+      std::lock_guard lock(props->remote_version_mutex_);
+      props->remote_update_dismissed_ = true;
+    }
+  });
   auto close_stream_sessions = [this] {
     std::vector<std::string> ids;
     {
@@ -2525,6 +2531,11 @@ void GuiApplication::SyncXWaylandWindowActivation() {
 #endif
 
 void GuiApplication::SetStreamKeyboardFocus(bool focused) {
+  // The local upgrade dialog owns input even while the native window is active.
+  if (focused && ui_ && ui_->stream &&
+      (*ui_->stream)->get_remote_update_visible()) {
+    focused = false;
+  }
   if (focus_on_stream_window_ == focused) {
     return;
   }
@@ -2702,6 +2713,21 @@ void GuiApplication::SyncStreamWindow() {
     return;
   }
   const ConnectionStatus status = props->connection_status_.load();
+  bool remote_update_available = false;
+  if (status == ConnectionStatus::Connected) {
+    std::lock_guard lock(props->remote_version_mutex_);
+    // Wait for host_info: a version still in transit is not a legacy peer.
+    if (props->remote_host_info_received_ && !props->remote_update_dismissed_) {
+      remote_update_available = props->remote_app_version_.empty() ||
+          (update_checker_->latest() &&
+           AvailableAppUpdate(props->remote_app_version_,
+                              *update_checker_->latest()).has_value());
+    }
+  }
+  (*ui_->stream)->set_remote_update_visible(remote_update_available);
+  if (remote_update_available) {
+    SetStreamKeyboardFocus(false);
+  }
   const bool waiting_for_frame =
       status == ConnectionStatus::Connected &&
       !(*ui_->stream)->get_has_frame();

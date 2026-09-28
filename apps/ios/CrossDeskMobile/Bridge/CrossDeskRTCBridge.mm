@@ -18,6 +18,7 @@
 #include <vector>
 
 #include <display_stream_id.h>
+#include <app_version.h>
 #include <file_transfer_format.h>
 #include <remote_action.h>
 #include <stream_names.h>
@@ -330,7 +331,8 @@ void DispatchMain(dispatch_block_t block) {
 - (void)handleData:(const char *)data
               size:(size_t)size
           sourceID:(const char *)sourceID
-      sourceIDSize:(size_t)sourceIDSize;
+      sourceIDSize:(size_t)sourceIDSize
+        generation:(uint64_t)generation;
 - (void)handleStats:(const MiniRtcNetTrafficStats *)stats mode:(TraversalMode)mode;
 - (void)sendMessage:(const std::string &)message
             reliable:(BOOL)reliable
@@ -377,7 +379,8 @@ void OnDataBuffer(const char *data, size_t size, const char *, size_t,
     [owner handleData:data
                  size:size
              sourceID:source_id
-         sourceIDSize:source_id_size];
+         sourceIDSize:source_id_size
+           generation:context->generation];
   }
 }
 
@@ -486,6 +489,16 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   std::atomic<uint64_t> _identityGeneration;
   std::atomic<uint64_t> _signalGeneration;
   std::atomic<uint64_t> _presenceGeneration;
+}
+
++ (nullable NSString *)availableUpdateForAppVersion:(NSString *)appVersion
+                                       releaseJSON:(NSData *)releaseJSON {
+  const auto latest = crossdesk::ParseVersionInfoJSON(std::string_view(
+      static_cast<const char *>(releaseJSON.bytes), releaseJSON.length));
+  if (!latest) return nil;
+  const auto update = crossdesk::AvailableAppUpdate(appVersion.UTF8String ?: "",
+                                                   *latest);
+  return update ? [NSString stringWithUTF8String:update->c_str()] : nil;
 }
 
 - (instancetype)init {
@@ -1264,6 +1277,10 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
       CopyCString(action.i.host_name, sizeof(action.i.host_name),
                   controller_name);
       action.i.host_name_size = std::strlen(action.i.host_name);
+      NSString *appVersion = [[NSBundle mainBundle]
+          objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+      CopyCString(action.i.app_version, sizeof(action.i.app_version),
+                  appVersion.UTF8String ?: "");
       action.i.display_list = nullptr;
       action.i.display_num = 0;
       action.i.left = nullptr;
@@ -1515,7 +1532,8 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
 - (void)handleData:(const char *)data
               size:(size_t)size
           sourceID:(const char *)sourceID
-      sourceIDSize:(size_t)sourceIDSize {
+      sourceIDSize:(size_t)sourceIDSize
+        generation:(uint64_t)generation {
   if (!data || size == 0 || !sourceID) return;
   const std::string source(sourceID, sourceIDSize);
   if (source == kControlStream) {
@@ -1528,6 +1546,8 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
         initWithBytes:action.i.host_name
                length:action.i.host_name_size
              encoding:NSUTF8StringEncoding];
+    NSString *app_version = crossdesk::IsValidAppVersion(action.i.app_version)
+        ? [NSString stringWithUTF8String:action.i.app_version] : nil;
     NSMutableArray<NSString *> *display_names =
         [NSMutableArray arrayWithCapacity:action.i.display_num];
     NSMutableArray<NSValue *> *display_sizes =
@@ -1548,12 +1568,14 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     }
     crossdesk::FreeRemoteAction(action);
     DispatchMain(^{
+      if (![self isControllerGenerationActive:generation]) return;
       id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
       if ([delegate respondsToSelector:
-              @selector(rtcBridge:didReceiveHostName:displayNames:
+              @selector(rtcBridge:didReceiveHostName:appVersion:displayNames:
                                   displaySizes:)]) {
         [delegate rtcBridge:self
             didReceiveHostName:host_name ?: @""
+                    appVersion:app_version ?: @""
                   displayNames:display_names
                   displaySizes:display_sizes];
       }

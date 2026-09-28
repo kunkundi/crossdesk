@@ -270,7 +270,7 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         {
           RemoteAction remote_action = MakeHostInformation(
               GetHostName(), runtime->devices_.host_display_list(),
-              /*supports_privacy_screen=*/true);
+              /*supports_privacy_screen=*/true, CROSSDESK_VERSION);
           remote_action.i.supports_video_settings = true;
           for (std::size_t i = 0; i < remote_action.i.display_num; i++) {
             LOG_INFO("Local display [{}:{}]", i + 1,
@@ -300,6 +300,12 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         runtime->keyboard_.ReleaseRemotePressedKeys(remote_id,
                                                     "connection_closed");
         props->connection_established_ = false;
+        {
+          std::lock_guard lock(props->remote_version_mutex_);
+          props->remote_host_info_received_ = false;
+          props->remote_app_version_.clear();
+          props->remote_update_dismissed_ = false;
+        }
         props->net_traffic_stats_.Reset();
         props->enable_mouse_control_ = false;
         runtime->ResetRemoteServiceStatus(*props);
@@ -395,7 +401,7 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         {
           RemoteAction remote_action = MakeHostInformation(
               GetHostName(), runtime->devices_.host_display_list(),
-              /*supports_privacy_screen=*/true);
+              /*supports_privacy_screen=*/true, CROSSDESK_VERSION);
           remote_action.i.supports_video_settings = true;
           for (std::size_t i = 0; i < remote_action.i.display_num; i++) {
             LOG_INFO("Local display [{}:{}]", i + 1,

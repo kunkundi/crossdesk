@@ -359,10 +359,17 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     @Published private(set) var recentConnectionPresence: [String: Bool] = [:]
     @Published private(set) var deviceOfflineAlertVisible = false
     @Published private(set) var connectionFailureMessage: String?
+    @Published private(set) var remoteUpdateMessage: String?
 
     let bridge = CrossDeskRTCBridge()
     private let audioPlayer = RemoteAudioPlayer()
     private var activeRemoteID = ""
+    private var remoteAppVersion = ""
+    private var remoteHostInfoReceived = false
+    private var remoteVersionCheckAttempted = false
+    private var remoteVersionCheckGeneration = UUID()
+    private var remoteVersionCheckTask: URLSessionDataTask?
+    private static let remoteUpdateNotice = "被控端版本过低，请升级到最新版本。"
     private var pendingRememberPassword = false
     private var connectionRecorded = false
     private var shouldCaptureThumbnail = false
@@ -406,6 +413,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
 
     deinit {
         presenceTimer?.invalidate()
+        remoteVersionCheckTask?.cancel()
     }
 
     @discardableResult
@@ -460,6 +468,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     private func beginRemoteConnection(_ identifier: String) {
+        resetRemoteVersionCheck()
         cancelVideoRecovery()
         cancelPresenceProbe()
         activeRemoteID = identifier
@@ -552,6 +561,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     private func resetConnection() {
+        resetRemoteVersionCheck()
         connectionFailureMessage = nil
         cancelVideoRecovery()
         let wasCheckingPresence = pendingPresenceRemoteID != nil
@@ -576,9 +586,60 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     func retry() {
+        resetRemoteVersionCheck()
         cancelVideoRecovery()
         bridge.disconnect()
         connect()
+    }
+
+    func dismissRemoteUpdate() {
+        remoteUpdateMessage = nil
+    }
+
+    private func resetRemoteVersionCheck() {
+        remoteVersionCheckTask?.cancel()
+        remoteVersionCheckTask = nil
+        remoteVersionCheckGeneration = UUID()
+        remoteVersionCheckAttempted = false
+        remoteAppVersion = ""
+        remoteHostInfoReceived = false
+        remoteUpdateMessage = nil
+    }
+
+    private func checkRemoteVersionIfNeeded() {
+        guard isConnected, remoteHostInfoReceived,
+              !remoteVersionCheckAttempted else { return }
+        remoteVersionCheckAttempted = true
+        if remoteAppVersion.isEmpty {
+            remoteUpdateMessage = Self.remoteUpdateNotice
+            return
+        }
+        let generation = remoteVersionCheckGeneration
+        let appVersion = remoteAppVersion
+        // Only public release metadata is fetched; no peer ID or version is sent.
+        let url = URL(string: "https://version.crossdesk.cn/version.json")!
+        let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData,
+                                 timeoutInterval: 15)
+        remoteVersionCheckTask = URLSession.shared.dataTask(with: request) {
+            [weak self] data, response, error in
+            let latest: String?
+            if error == nil, let data,
+               (response as? HTTPURLResponse)?.statusCode == 200 {
+                latest = CrossDeskRTCBridge.availableUpdate(appVersion: appVersion,
+                                                            releaseJSON: data)
+            } else {
+                latest = nil
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      self.remoteVersionCheckGeneration == generation,
+                      self.isConnected else { return }
+                self.remoteVersionCheckTask = nil
+                guard latest != nil else { return }
+                self.remoteUpdateMessage = Self.remoteUpdateNotice
+            }
+        }
+        remoteVersionCheckTask?.resume()
     }
 
     func savedPassword(for remoteID: String) -> String {
@@ -879,6 +940,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         case 1:
             connectionStatus = "已连接"
             sessionVisible = true
+            checkRemoteVersionIfNeeded()
             recordSuccessfulConnectionIfNeeded()
             audioPlayer.setEnabled(audioEnabled)
             bridge.setAudioEnabled(audioEnabled)
@@ -966,8 +1028,12 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
 
     func rtcBridge(_ bridge: CrossDeskRTCBridge,
                    didReceiveHostName hostName: String,
+                   appVersion: String,
                    displayNames remoteDisplayNames: [String],
                    displaySizes remoteDisplaySizes: [NSValue]) {
+        remoteHostInfoReceived = true
+        remoteAppVersion = appVersion
+        checkRemoteVersionIfNeeded()
         updateActiveConnectionName(hostName)
         let names = remoteDisplayNames.enumerated().map { index, displayName in
             let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)

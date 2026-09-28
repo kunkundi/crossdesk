@@ -2,6 +2,7 @@
 
 #include "runtime/peer_event_handler.h"
 
+#include <app_version.h>
 #include <remote_action.h>
 #include <nlohmann/json.hpp>
 
@@ -318,6 +319,12 @@ void PeerEventHandler::OnReceiveDataBuffer(
     }
 
     if (is_client_mode) {
+      if (props && source_id == props->control_data_label_) {
+        std::lock_guard lock(props->remote_version_mutex_);
+        props->remote_host_info_received_ = true;
+        props->remote_app_version_ = IsValidAppVersion(remote_action.i.app_version)
+                                        ? remote_action.i.app_version : "";
+      }
       // Negotiate live settings only on the reliable control stream. Old
       // hosts omit this capability and retain their existing video behavior.
       if (props && source_id == props->control_data_label_) {

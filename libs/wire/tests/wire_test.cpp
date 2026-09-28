@@ -134,6 +134,7 @@ int main() {
   crossdesk::RemoteAction host{};
   host.type = crossdesk::ControlType::host_infomation;
   std::strcpy(host.i.host_name, "Test Mac");
+  std::strcpy(host.i.app_version, "1.5.3-2-20260928");
   host.i.host_name_size = std::strlen(host.i.host_name);
   host.i.display_list = display_names;
   host.i.display_num = 1;
@@ -145,12 +146,41 @@ int main() {
   ok &= Expect(parsed_host.from_json(host.to_json()) &&
                    parsed_host.i.display_num == 1 &&
                    std::string(parsed_host.i.host_name) == "Test Mac" &&
+                   std::string(parsed_host.i.app_version) == "1.5.3-2-20260928" &&
                    std::string(parsed_host.i.display_list[0]) ==
                        "Built-in Display" &&
                    parsed_host.i.right[0] == 2560 &&
                    parsed_host.i.bottom[0] == 1600,
                "host information JSON round trip failed");
   crossdesk::FreeRemoteAction(parsed_host);
+
+  auto advertised = crossdesk::MakeHostInformation("Host", {}, true,
+                                                   "1.5.3-20260928");
+  ok &= Expect(parsed_host.from_json(advertised.to_json()) &&
+                   std::string(parsed_host.i.app_version) == "1.5.3-20260928",
+               "host factory should advertise the app version");
+  crossdesk::FreeRemoteAction(parsed_host);
+  crossdesk::FreeRemoteAction(advertised);
+
+  // Missing and malformed optional versions must not break legacy host info.
+  for (const auto& version_field : std::vector<std::string>{
+           "", ",\"app_version\":null", ",\"app_version\":123",
+           ",\"app_version\":\"\"",
+           ",\"app_version\":\"1.5.3\\u0000unexpected\"",
+           ",\"app_version\":\"" + std::string(64, '1') + "\""}) {
+    const auto message =
+        "{\"type\":3,\"host_info\":{\"host_name\":\"Legacy\","
+        "\"display_num\":0,\"displays\":[]" + version_field + "}}";
+    ok &= Expect(parsed_host.from_json(message) &&
+                     parsed_host.i.app_version[0] == '\0',
+                 "unknown optional app version should remain empty");
+    crossdesk::FreeRemoteAction(parsed_host);
+  }
+  advertised = crossdesk::MakeHostInformation("Host", {}, false,
+                                              std::string(64, '1'));
+  ok &= Expect(advertised.i.app_version[0] == '\0',
+               "oversized app version must not be truncated");
+  crossdesk::FreeRemoteAction(advertised);
 
   const std::string name = "example.txt";
   const std::string payload = "CrossDesk wire";

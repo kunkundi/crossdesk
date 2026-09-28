@@ -1,6 +1,6 @@
 # CrossDesk Privacy Policy
 
-Last updated: September 27, 2026
+Last updated: September 28, 2026
 
 [中文](#中文) | [English](#english)
 
@@ -15,7 +15,7 @@ Last updated: September 27, 2026
 CrossDesk 是远程桌面软件，需要通过网络完成设备发现、连接协商及远程会话。客户端可能进行以下网络通信：
 
 - **默认服务：** 未启用自托管时，客户端会连接预配置的 CrossDesk 服务（`api.crossdesk.cn`），用于设备注册、信令、网络地址转换（NAT）穿透，并在无法建立直接连接时提供中继。
-- **版本检查：** 桌面客户端启动时会从 CrossDesk 版本服务（`version.crossdesk.cn`）获取最新版本信息。桌面端当前即使启用自托管，版本检查仍会访问 CrossDesk 版本服务。iOS 客户端不执行这项版本检查。
+- **版本检查：** 桌面客户端启动时会从 CrossDesk 版本服务（`version.crossdesk.cn`）获取最新版本信息，也会用这些信息提示升级旧版被控端。iOS 客户端在连接成功且收到被控端版本号后，会从同一服务获取最新桌面版本信息，以提示升级被控端。这些请求不携带设备 ID 或被控端版本号，启用自托管时仍会访问 CrossDesk 版本服务。
 - **远程会话：** 用户主动发起或接受远程连接后，CrossDesk 会根据使用的功能在设备之间传输屏幕画面、音频、键盘和鼠标输入、剪贴板文本以及用户选择传输的文件。剪贴板文本可能在远程会话期间自动同步。这些数据可能通过直接连接传输，也可能在必要时通过配置的中继服务器转发。
 - **自托管：** 用户可以在设置中指定自己的信令及中继服务器。自托管服务器的日志、数据保存和访问规则由其运营者决定。
 
@@ -72,7 +72,7 @@ This Privacy Policy applies to the CrossDesk desktop and iOS clients and the def
 CrossDesk is remote desktop software and requires network communications for device discovery, connection negotiation, and remote sessions. The client may perform the following communications:
 
 - **Default services:** Unless self-hosting is enabled, the client connects to preconfigured CrossDesk services (`api.crossdesk.cn`) for device registration, signaling, network address translation (NAT) traversal, and relay when a direct connection cannot be established.
-- **Update checks:** On startup, the desktop client retrieves current release information from the CrossDesk version service (`version.crossdesk.cn`). Desktop update checks currently continue to use the CrossDesk version service even when self-hosting is enabled. The iOS client does not perform this update check.
+- **Update checks:** On startup, the desktop client retrieves current release information from the CrossDesk version service (`version.crossdesk.cn`) and also uses it to suggest updating older remote hosts. After connecting and receiving a remote host's version, the iOS client retrieves the latest desktop release information from the same service to suggest updating that host. These requests do not include device IDs or the remote host's version. Both clients continue to use the CrossDesk version service when self-hosting is enabled.
 - **Remote sessions:** After a user initiates or accepts a remote connection, CrossDesk transmits the data required by enabled features between devices. This may include screen content, audio, keyboard and mouse input, clipboard text, and files selected by the user. Clipboard text may be synchronized automatically during a remote session. Data may travel over a direct connection or through the configured relay server when necessary.
 - **Self-hosting:** Users may configure their own signaling and relay servers. Logging, retention, and access policies for a self-hosted server are determined by its operator.
 

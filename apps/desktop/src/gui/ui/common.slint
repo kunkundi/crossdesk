@@ -365,6 +365,7 @@ export component CompactButton inherits Rectangle {
 
 export component PrimaryButton inherits Rectangle {
     in property <string> text;
+    in property <length> text-size: ImGuiFontStyle.body;
     in property <bool> enabled: true;
     callback clicked;
 
@@ -379,7 +380,7 @@ export component PrimaryButton inherits Rectangle {
     Text {
         text: root.text;
         color: white;
-        font-size: ImGuiFontStyle.body;
+        font-size: root.text-size;
         horizontal-alignment: center;
         vertical-alignment: center;
     }

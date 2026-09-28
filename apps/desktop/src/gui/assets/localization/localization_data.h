@@ -191,6 +191,9 @@ struct TranslationRow {
     u8"Способ захвата:")                                                      \
   X(screen_capture_method_auto, u8"自动", "Auto", u8"Авто")                 \
   X(video_settings, u8"画面设置", "Video settings", u8"Настройки видео") \
+  X(remote_update_title, u8"被控端版本过低", "Remote device needs an update", u8"Версия на удалённом устройстве устарела") \
+  X(remote_update, u8"请升级到最新版本。", "Please update to the latest version.", u8"Обновите её до последней версии.") \
+  X(remote_update_dismiss, u8"知道了", "Got it", u8"Понятно") \
   X(video_settings_pending, u8"正在应用…", "Applying…", u8"Применение…") \
   X(video_settings_failed, u8"调整失败，请重试。", "Could not apply settings. Try again.", u8"Не удалось применить настройки. Повторите попытку.") \
   X(video_settings_unavailable, u8"连接建立后可调整，需被控端支持。", "Available when connected to a supported remote device.", u8"Доступно при подключении к поддерживаемому устройству.") \

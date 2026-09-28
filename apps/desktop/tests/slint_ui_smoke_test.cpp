@@ -2,6 +2,7 @@
 #include "fa_solid_900.h"
 #include "ui/ui_localization.h"
 
+#include <algorithm>
 #include <cassert>
 #include <charconv>
 #include <chrono>
@@ -381,7 +382,8 @@ int RunCaptureMode(
 
   slint::Window *capture_window = &window->window();
   const bool capture_stream =
-      options.page == "stream" || options.page == "stream-video-settings";
+      options.page == "stream" || options.page == "stream-video-settings" ||
+      options.page == "stream-update" || options.page == "stream-update-legacy";
   if (capture_stream) {
     ConfigureStreamCapturePage(stream, options.language);
     if (!options.demo_assets_path.empty()) {
@@ -407,6 +409,11 @@ int RunCaptureMode(
     if (options.page == "stream-video-settings") {
       stream->set_video_settings_enabled(true);
       stream->set_video_menu_open(true);
+    }
+    if (options.page == "stream-update" || options.page == "stream-update-legacy") {
+      stream->set_remote_update_visible(true);
+      stream->on_dismiss_remote_update(
+          [stream] { stream->set_remote_update_visible(false); });
     }
     window->hide();
     stream->show();
@@ -637,6 +644,92 @@ int main() {
   stream->window().dispatch_key_press_event("a");
   assert(keyboard_focus_changed);
   assert(keyboard_input_received);
+
+  stream->window().dispatch_key_release_event("a");
+
+  // The modal owns keyboard and pointer input. Complete a gesture that was
+  // already sent to the peer before showing it, then block new gestures.
+  int remote_key_events = 0;
+  int remote_pointer_presses = 0;
+  int remote_pointer_releases = 0;
+  int notice_dismissals = 0;
+  stream->on_key_input(
+      [&](slint::SharedString, bool, bool, bool, bool, bool) {
+        ++remote_key_events;
+      });
+  stream->on_pointer_input(
+      [&](slint::PointerEventButton, slint::PointerEventKind kind, float, float) {
+        if (kind == slint::PointerEventKind::Down) ++remote_pointer_presses;
+        if (kind == slint::PointerEventKind::Up) ++remote_pointer_releases;
+      });
+  stream->on_dismiss_remote_update([&] {
+    ++notice_dismissals;
+    stream->set_remote_update_visible(false);
+  });
+  const auto outside_notice =
+      slint::LogicalPosition(slint::Point<float>{640.0f, 500.0f});
+  stream->window().dispatch_pointer_press_event(
+      outside_notice, slint::PointerEventButton::Left);
+  stream->set_remote_update_visible(true);
+  stream->window().dispatch_pointer_release_event(
+      outside_notice, slint::PointerEventButton::Left);
+  if (remote_pointer_presses != 1 || remote_pointer_releases != 1) {
+    std::cerr << "Showing the upgrade dialog must finish an active remote gesture\n";
+    return 9;
+  }
+  const float notice_y =
+      std::max(64.0f, stream->get_video_area_height() * 0.18f) + 24.0f;
+  if (!stream->invoke_is_local_control_area(640.0f, notice_y) ||
+      !stream->invoke_is_local_control_area(640.0f, 500.0f)) {
+    std::cerr << "Remote upgrade dialog and backdrop must consume local input\n";
+    return 9;
+  }
+  stream->window().dispatch_pointer_press_event(
+      outside_notice, slint::PointerEventButton::Left);
+  stream->window().dispatch_pointer_release_event(
+      outside_notice, slint::PointerEventButton::Left);
+  stream->window().dispatch_key_press_event("a");
+  stream->window().dispatch_key_release_event("a");
+  if (remote_pointer_presses != 1 || remote_pointer_releases != 1 ||
+      remote_key_events != 0 || notice_dismissals != 0) {
+    std::cerr << "Upgrade dialog input must stay local\n";
+    return 9;
+  }
+  stream->window().dispatch_key_press_event("\x1b");
+  stream->window().dispatch_key_release_event("\x1b");
+  if (stream->get_remote_update_visible() || notice_dismissals != 1 ||
+      remote_key_events != 0) {
+    std::cerr << "Escape must dismiss the dialog without forwarding the key\n";
+    return 9;
+  }
+  if (stream->invoke_is_local_control_area(640.0f, notice_y)) {
+    std::cerr << "Dismissed upgrade notice must release its input area\n";
+    return 9;
+  }
+  stream->window().dispatch_key_press_event("a");
+  stream->window().dispatch_key_release_event("a");
+  stream->window().dispatch_pointer_press_event(
+      outside_notice, slint::PointerEventButton::Left);
+  stream->window().dispatch_pointer_release_event(
+      outside_notice, slint::PointerEventButton::Left);
+  if (remote_key_events != 2 || remote_pointer_presses != 2 ||
+      remote_pointer_releases != 2) {
+    std::cerr << "Dismissing the upgrade dialog must restore remote input\n";
+    return 9;
+  }
+
+  stream->set_remote_update_visible(true);
+  const auto notice_button = slint::LogicalPosition(slint::Point<float>{
+      816.0f, stream->get_video_area_top() + notice_y - 24.0f + 158.0f});
+  stream->window().dispatch_pointer_press_event(
+      notice_button, slint::PointerEventButton::Left);
+  stream->window().dispatch_pointer_release_event(
+      notice_button, slint::PointerEventButton::Left);
+  if (stream->get_remote_update_visible() || notice_dismissals != 2 ||
+      remote_pointer_presses != 2 || remote_pointer_releases != 2) {
+    std::cerr << "Upgrade confirmation click must not reach the peer\n";
+    return 9;
+  }
 
   crossdesk::ui::FileTransferEntry transfer;
   transfer.name = "archive.zip";

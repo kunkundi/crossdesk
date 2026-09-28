@@ -133,6 +133,9 @@ inline int ApplyStreamWindowStrings(
   const int language =
       localization::detail::ClampLanguageIndex(language_index);
   auto& strings = window->template global<ui::StreamStrings>();
+  strings.set_remote_update_title(Text(localization::remote_update_title[language]));
+  strings.set_remote_update(Text(localization::remote_update[language]));
+  strings.set_remote_update_dismiss(Text(localization::remote_update_dismiss[language]));
   strings.set_select_display(Text(localization::select_display[language]));
   strings.set_send_shortcut(Text(localization::send_shortcut[language]));
   strings.set_privacy_enable(Text(localization::privacy_enable[language]));

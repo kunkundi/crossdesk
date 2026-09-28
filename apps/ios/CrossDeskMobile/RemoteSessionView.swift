@@ -147,6 +147,14 @@ struct RemoteSessionView: View {
                     .zIndex(50)
             }
         }
+        .alert("升级提示", isPresented: Binding(
+            get: { session.remoteUpdateMessage != nil },
+            set: { if !$0 { session.dismissRemoteUpdate() } }
+        )) {
+            Button("知道了", role: .cancel) { session.dismissRemoteUpdate() }
+        } message: {
+            Text(session.remoteUpdateMessage ?? "")
+        }
         .onDisappear {
             keyboardInputVisible = false
             viewport = RemoteViewportState()

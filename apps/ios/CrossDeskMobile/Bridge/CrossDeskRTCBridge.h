@@ -61,6 +61,7 @@ typedef NS_ENUM(NSInteger, CrossDeskVideoAdaptationPolicy) {
                    height:(NSInteger)height;
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didReceiveHostName:(NSString *)hostName
+            appVersion:(NSString *)appVersion
           displayNames:(NSArray<NSString *> *)displayNames
           displaySizes:(NSArray<NSValue *> *)displaySizes;
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
@@ -100,6 +101,11 @@ typedef NS_ENUM(NSInteger, CrossDeskVideoAdaptationPolicy) {
 @interface CrossDeskRTCBridge : NSObject
 
 @property(nonatomic, weak, nullable) id<CrossDeskRTCBridgeDelegate> delegate;
+
+// Uses the same release/patch ordering as the desktop controller.
++ (nullable NSString *)availableUpdateForAppVersion:(NSString *)appVersion
+                                       releaseJSON:(NSData *)releaseJSON
+    NS_SWIFT_NAME(availableUpdate(appVersion:releaseJSON:));
 
 - (void)configureWithSignalHost:(NSString *)host
                      signalPort:(NSInteger)signalPort;

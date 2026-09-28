@@ -241,12 +241,12 @@
     {
       "id": "inih",
       "name": "inih / INIReader",
-      "version": "6286ae6c1c015609d3070cc139e5feea900caf7c",
+      "version": "24d9d9deefb95ede2cdb18e77cb01350101f70f8",
       "license": "BSD-3-Clause",
       "source": {
         "kind": "repository",
         "url": "https://github.com/kunkundi/minirtc",
-        "revision": "6286ae6c1c015609d3070cc139e5feea900caf7c"
+        "revision": "24d9d9deefb95ede2cdb18e77cb01350101f70f8"
       },
       "documents": [
         {
@@ -527,12 +527,12 @@
     {
       "id": "minirtc",
       "name": "MiniRTC",
-      "version": "6286ae6c1c015609d3070cc139e5feea900caf7c",
+      "version": "24d9d9deefb95ede2cdb18e77cb01350101f70f8",
       "license": "LGPL-3.0-only",
       "source": {
         "kind": "repository",
         "url": "https://github.com/kunkundi/minirtc",
-        "revision": "6286ae6c1c015609d3070cc139e5feea900caf7c"
+        "revision": "24d9d9deefb95ede2cdb18e77cb01350101f70f8"
       },
       "documents": [
         {
@@ -833,12 +833,12 @@
     {
       "id": "webrtc",
       "name": "WebRTC-derived code in MiniRTC",
-      "version": "6286ae6c1c015609d3070cc139e5feea900caf7c",
+      "version": "24d9d9deefb95ede2cdb18e77cb01350101f70f8",
       "license": "BSD-3-Clause and patent grant",
       "source": {
         "kind": "repository",
         "url": "https://github.com/kunkundi/minirtc",
-        "revision": "6286ae6c1c015609d3070cc139e5feea900caf7c"
+        "revision": "24d9d9deefb95ede2cdb18e77cb01350101f70f8"
       },
       "documents": [
         {
@@ -898,7 +898,7 @@
       ]
     }
   ],
-  "bundle_sha256": "09376251bbda3f5a1f7112f15dcbb1259fef7898f85b45aacafa767348aafdc2",
+  "bundle_sha256": "58702163ac79d8821007b1ae44ef054cf1d9a3cec9d6334b852f0bbe99b5af01",
   "toolchain": {
     "xmake_version": "3.1.1",
     "xmake_repository_revision": "121109352da272cd1a3d4ed52f2dcda34f839955"
