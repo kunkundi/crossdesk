@@ -1,6 +1,6 @@
 # CrossDesk Privacy Policy
 
-Last updated: August 8, 2026
+Last updated: September 27, 2026
 
 [中文](#中文) | [English](#english)
 
@@ -8,14 +8,14 @@ Last updated: August 8, 2026
 
 ### 适用范围
 
-本隐私政策适用于 CrossDesk 桌面客户端及项目提供的默认网络服务。用户自行部署或指定的服务器由相应服务器运营者负责，其数据处理方式不在本政策控制范围内。
+本隐私政策适用于 CrossDesk 桌面客户端、iOS 客户端及项目提供的默认网络服务。用户自行部署或指定的服务器由相应服务器运营者负责，其数据处理方式不在本政策控制范围内。
 
 ### 网络通信
 
 CrossDesk 是远程桌面软件，需要通过网络完成设备发现、连接协商及远程会话。客户端可能进行以下网络通信：
 
 - **默认服务：** 未启用自托管时，客户端会连接预配置的 CrossDesk 服务（`api.crossdesk.cn`），用于设备注册、信令、网络地址转换（NAT）穿透，并在无法建立直接连接时提供中继。
-- **版本检查：** 客户端启动时会从 CrossDesk 版本服务（`version.crossdesk.cn`）获取最新版本信息。当前即使启用自托管，版本检查仍会访问 CrossDesk 版本服务。
+- **版本检查：** 桌面客户端启动时会从 CrossDesk 版本服务（`version.crossdesk.cn`）获取最新版本信息。桌面端当前即使启用自托管，版本检查仍会访问 CrossDesk 版本服务。iOS 客户端不执行这项版本检查。
 - **远程会话：** 用户主动发起或接受远程连接后，CrossDesk 会根据使用的功能在设备之间传输屏幕画面、音频、键盘和鼠标输入、剪贴板文本以及用户选择传输的文件。剪贴板文本可能在远程会话期间自动同步。这些数据可能通过直接连接传输，也可能在必要时通过配置的中继服务器转发。
 - **自托管：** 用户可以在设置中指定自己的信令及中继服务器。自托管服务器的日志、数据保存和访问规则由其运营者决定。
 
@@ -33,7 +33,7 @@ CrossDesk 是远程桌面软件，需要通过网络完成设备发现、连接�
 - 设备标识、连接设置及用户偏好会保存在本地设备上，以便后续使用。
 - 通过官方信令和中继服务处理的信息仅用于建立、维持和转发 CrossDesk 连接，以及服务运行、安全防护和故障排查。
 - 中继传输的远程会话内容仅用于实时转发，不用于广告或用户画像。
-- CrossDesk 桌面客户端不包含广告功能，也不会主动上传诊断日志、崩溃报告或用户行为分析数据。
+- CrossDesk 桌面及 iOS 客户端不包含广告功能，也不会主动上传诊断日志、崩溃报告或用户行为分析数据。
 - 自托管服务器可能保存的日志和数据由其运营者控制，请向相应运营者了解其隐私与保存政策。
 
 ### 用户选择
@@ -46,6 +46,15 @@ CrossDesk 是远程桌面软件，需要通过网络完成设备发现、连接�
 - 结束远程会话，以停止会话数据传输；
 - 删除 CrossDesk 的本地配置、缓存及日志文件。
 
+### iOS 客户端的本地数据与权限
+
+- iOS 客户端作为控制端接收远程电脑的画面和音频，不采集本机屏幕、摄像头或麦克风。
+- 局域网权限用于发现和连接局域网中的设备。客户端也可通过信令及中继服务连接远程设备。
+- 服务器配置及最近连接记录保存在应用本地；最近连接记录可以包含远程桌面的预览缩略图。本机信令登录凭据和选择记住的远程连接密码保存在系统钥匙串中，不通过 iCloud 钥匙串同步。升级时会将旧版本保存在应用偏好中的本机登录凭据迁入钥匙串，保存成功后删除旧值。删除相应最近连接记录时，也会删除其缩略图和已保存的远程连接密码。
+- 当前 iOS 界面不读取或发送本机剪贴板文本；会话收到的远程剪贴板文本可以写入本机剪贴板。
+- 发送文件需通过系统文件选择器选择文件；接收的文件保存在应用的 `Documents/Received` 目录，可通过系统“文件”应用或共享功能管理。
+- 应用及通信库使用本地文件元数据、应用偏好和计时 API 提供文件传输、配置保存及网络计时功能，不使用这些信息制作设备指纹或进行广告跟踪。
+
 ### 政策更新与联系方式
 
 本政策可能随着 CrossDesk 功能或网络服务的变化而更新。更新内容将在本文件中发布。如有隐私相关问题，请联系 [junkun.di@hotmail.com](mailto:junkun.di@hotmail.com)。
@@ -56,14 +65,14 @@ CrossDesk 是远程桌面软件，需要通过网络完成设备发现、连接�
 
 ### Scope
 
-This Privacy Policy applies to the CrossDesk desktop client and the default network services provided by the project. Servers deployed or selected by users are operated by their respective administrators, and their data-processing practices are outside the control of this policy.
+This Privacy Policy applies to the CrossDesk desktop and iOS clients and the default network services provided by the project. Servers deployed or selected by users are operated by their respective administrators, and their data-processing practices are outside the control of this policy.
 
 ### Network communications
 
 CrossDesk is remote desktop software and requires network communications for device discovery, connection negotiation, and remote sessions. The client may perform the following communications:
 
 - **Default services:** Unless self-hosting is enabled, the client connects to preconfigured CrossDesk services (`api.crossdesk.cn`) for device registration, signaling, network address translation (NAT) traversal, and relay when a direct connection cannot be established.
-- **Update checks:** On startup, the client retrieves current release information from the CrossDesk version service (`version.crossdesk.cn`). Update checks currently continue to use the CrossDesk version service even when self-hosting is enabled.
+- **Update checks:** On startup, the desktop client retrieves current release information from the CrossDesk version service (`version.crossdesk.cn`). Desktop update checks currently continue to use the CrossDesk version service even when self-hosting is enabled. The iOS client does not perform this update check.
 - **Remote sessions:** After a user initiates or accepts a remote connection, CrossDesk transmits the data required by enabled features between devices. This may include screen content, audio, keyboard and mouse input, clipboard text, and files selected by the user. Clipboard text may be synchronized automatically during a remote session. Data may travel over a direct connection or through the configured relay server when necessary.
 - **Self-hosting:** Users may configure their own signaling and relay servers. Logging, retention, and access policies for a self-hosted server are determined by its operator.
 
@@ -81,7 +90,7 @@ To provide these functions, CrossDesk may process:
 - Device identifiers, connection settings, and user preferences are stored locally for subsequent use.
 - Information processed by the official signaling and relay services is used only to establish, maintain, and relay CrossDesk connections and for service operation, security, and troubleshooting.
 - Remote-session content passing through a relay is used only for real-time forwarding and is not used for advertising or user profiling.
-- The CrossDesk desktop client does not contain advertising functionality and does not intentionally upload diagnostic logs, crash reports, or behavioral analytics.
+- The CrossDesk desktop and iOS clients do not contain advertising functionality and does not intentionally upload diagnostic logs, crash reports, or behavioral analytics.
 - Logs and data that may be retained by self-hosted servers are controlled by their operators. Contact the relevant operator for its privacy and retention practices.
 
 ### User choices
@@ -93,6 +102,15 @@ Users may:
 - choose whether to select and transfer files;
 - end a remote session to stop session-data transmission; and
 - remove local CrossDesk configuration, cache, and log files.
+
+### iOS local data and permissions
+
+- The iOS client controls remote computers and receives their screen content and audio. It does not capture the iPhone or iPad screen, camera or microphone.
+- Local network permission supports discovering and connecting to local devices. Remote connections may also use signaling and relay services.
+- Server settings and recent connections are stored locally. Recent connections may include remote desktop preview thumbnails. Local signaling credentials and remembered remote connection passwords are stored in the system Keychain without iCloud Keychain synchronization. On upgrade, legacy local login credentials stored in app preferences are migrated to the Keychain; the old values are removed only after saving succeeds. Removing a recent connection also removes its thumbnail and saved remote connection password.
+- The current iOS interface does not read or send local clipboard text. Clipboard text received during a remote session may be written to the local clipboard.
+- Sending a file requires selecting it using the system document picker. Received files are stored in the application's `Documents/Received` directory and can be managed through Files or the share action.
+- The application and its communication libraries use local file metadata, app preferences and timing APIs for file transfer, settings and network timing. This information is not used for device fingerprinting or advertising tracking.
 
 ### Changes and contact
 

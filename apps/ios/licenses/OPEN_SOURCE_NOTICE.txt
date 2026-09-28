@@ -1,0 +1,24 @@
+CrossDesk 开源软件权利说明 / Open-source software rights
+
+CrossDesk 按 GNU GPL 第 3 版发布，MiniRTC 按 GNU LGPL 第 3 版发布。
+其他组件适用各自列明的许可证。使用、复制、修改及再分发这些组件的权利，
+以相应许可证为准；本应用的普通使用条款不限制开源许可证授予你的权利。
+许可证中的保证、责任限制及其他条件仍然适用。
+
+“本版本源码与构建说明”提供与发行版本对应的源码入口、子模块信息、
+依赖配方、补丁及构建说明。可以修改相关库后重新构建和链接应用。
+在自己的 iPhone 或 iPad 上运行修改版时，需要使用自己的 Apple 开发签名，
+并按构建文档设置开发团队和 Bundle Identifier。
+
+CrossDesk is distributed under GNU GPL version 3; MiniRTC is distributed
+under GNU LGPL version 3. Other components are governed by their listed
+licenses. Your rights to use, copy, modify and redistribute those components
+are governed by the applicable licenses. The application's ordinary terms
+of use do not restrict rights granted by those open-source licenses.
+The licenses' warranty, liability and other provisions continue to apply.
+
+The version-specific source and build links identify the application source,
+submodules, dependency recipes, patches and build instructions. You can
+modify the libraries and rebuild and relink the application. Running a
+modified build on your own iPhone or iPad requires your own Apple development
+signing setup, team and bundle identifier as described in the build guide.

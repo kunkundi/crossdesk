@@ -1,6 +1,7 @@
 #import "CrossDeskRTCBridge.h"
 
 #import <CoreMedia/CoreMedia.h>
+#import <Security/Security.h>
 #import <UIKit/UIKit.h>
 
 #include <algorithm>
@@ -99,6 +100,113 @@ bool IsReusableIdentity(const std::string &identity) {
   const size_t separator = identity.find('@');
   return separator != std::string::npos && separator > 0 &&
          separator + 1 < identity.size();
+}
+
+std::string ProvisionedIdentityCredential(const std::string &received,
+                                          const std::string &current) {
+  // A successful re-login can acknowledge the ID without echoing its password.
+  // Retain the credential used to authenticate that same ID.
+  if (!IsReusableIdentity(received) && IsReusableIdentity(current) &&
+      current.substr(0, current.find('@')) == received) return current;
+  return received;
+}
+
+NSString *IdentityCredentialAccount(NSString *host, NSInteger port) {
+  // Preserve the old server-scoped key so upgrades retain the same identity.
+  return [NSString stringWithFormat:@"CrossDeskIdentity.%@.%ld", host, (long)port];
+}
+
+NSMutableDictionary *IdentityCredentialQuery(NSString *account) {
+  return [@{
+    (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+    (__bridge id)kSecAttrService: @"cn.crossdesk.mobile.signaling-identity",
+    (__bridge id)kSecAttrAccount: account,
+    (__bridge id)kSecAttrSynchronizable: @NO,
+  } mutableCopy];
+}
+
+bool IsReusableIdentityValue(NSString *value) {
+  return [value isKindOfClass:NSString.class] && value.UTF8String &&
+         IsReusableIdentity(std::string(value.UTF8String));
+}
+
+OSStatus SaveIdentityCredential(NSString *account, NSString *value) {
+  if (!IsReusableIdentityValue(value)) return errSecParam;
+  NSMutableDictionary *query = IdentityCredentialQuery(account);
+  NSDictionary *attributes = @{
+    (__bridge id)kSecValueData: [value dataUsingEncoding:NSUTF8StringEncoding],
+    (__bridge id)kSecAttrAccessible:
+        (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+  };
+  // Update in place: deleting first could lose a valid credential on failure.
+  OSStatus status = SecItemUpdate((__bridge CFDictionaryRef)query,
+                                  (__bridge CFDictionaryRef)attributes);
+  if (status == errSecItemNotFound) {
+    NSMutableDictionary *item = [query mutableCopy];
+    [item addEntriesFromDictionary:attributes];
+    status = SecItemAdd((__bridge CFDictionaryRef)item, nullptr);
+    if (status == errSecDuplicateItem) {
+      status = SecItemUpdate((__bridge CFDictionaryRef)query,
+                             (__bridge CFDictionaryRef)attributes);
+    }
+  }
+  if (status == errSecSuccess) {
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:account];
+  }
+  return status;
+}
+
+OSStatus LoadIdentityCredential(NSString *account, NSString **value) {
+  *value = nil;
+  NSMutableDictionary *query = IdentityCredentialQuery(account);
+  query[(__bridge id)kSecReturnData] = @YES;
+  query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
+  CFTypeRef result = nullptr;
+  OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
+  id object = CFBridgingRelease(result);
+  NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+  if (status == errSecSuccess) {
+    NSString *stored = [object isKindOfClass:NSData.class]
+        ? [[NSString alloc] initWithData:object encoding:NSUTF8StringEncoding] : nil;
+    if (!IsReusableIdentityValue(stored)) return errSecDecode;
+    *value = stored;
+    // A Keychain value wins over a stale copy left by an interrupted migration.
+    [defaults removeObjectForKey:account];
+    return errSecSuccess;
+  }
+  if (status != errSecItemNotFound) return status;
+
+  NSString *legacy = [defaults objectForKey:account];
+  if (!legacy) return errSecItemNotFound;
+  if (!IsReusableIdentityValue(legacy)) {
+    // Older passwordless IDs cannot authenticate on a subsequent app launch.
+    [defaults removeObjectForKey:account];
+    return errSecItemNotFound;
+  }
+  status = SaveIdentityCredential(account, legacy);
+  if (status == errSecSuccess) *value = legacy;
+  return status;
+}
+
+OSStatus MigrateLegacyIdentityCredentials() {
+  OSStatus first_error = errSecSuccess;
+  for (NSString *key in NSUserDefaults.standardUserDefaults.dictionaryRepresentation) {
+    if (![key hasPrefix:@"CrossDeskIdentity."]) continue;
+    NSString *unused = nil;
+    OSStatus status = LoadIdentityCredential(key, &unused);
+    if (status != errSecSuccess && status != errSecItemNotFound &&
+        first_error == errSecSuccess) first_error = status;
+  }
+  return first_error;
+}
+
+OSStatus RemoveIdentityCredential(NSString *account) {
+  OSStatus status = SecItemDelete((__bridge CFDictionaryRef)IdentityCredentialQuery(account));
+  if (status == errSecSuccess || status == errSecItemNotFound) {
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:account];
+    return errSecSuccess;
+  }
+  return status;
 }
 
 void CopyCString(char *destination, size_t capacity,
@@ -230,6 +338,7 @@ void DispatchMain(dispatch_block_t block) {
 - (void)createIdentityPeer;
 - (void)createControllerPeer;
 - (void)destroyIdentityPeer;
+- (void)reportIdentityStorageStatus:(OSStatus)status;
 - (void)destroyControllerPeer;
 @end
 
@@ -455,7 +564,16 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     const bool unchanged = self->_state->signal_host == host_value &&
                            self->_state->signal_port == signalPort &&
                            self->_state->identity_peer != nullptr;
-    if (unchanged) return;
+    const OSStatus migration_status = MigrateLegacyIdentityCredentials();
+    [self reportIdentityStorageStatus:migration_status];
+    if (unchanged) {
+      if (IsReusableIdentity(self->_state->identity_with_password)) {
+        NSString *value = [NSString stringWithUTF8String:self->_state->identity_with_password.c_str()];
+        [self reportIdentityStorageStatus:SaveIdentityCredential(
+            IdentityCredentialAccount(trimmed, signalPort), value)];
+      }
+      return;
+    }
 
     [self destroyControllerPeer];
     [self destroyIdentityPeer];
@@ -467,29 +585,26 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     self->_state->identity_with_password.clear();
     self->_state->identity_base.clear();
 
-    NSString *key = [NSString stringWithFormat:@"CrossDeskIdentity.%@.%ld",
-                                                trimmed, (long)signalPort];
-    NSString *cached = [[NSUserDefaults standardUserDefaults]
-        stringForKey:key];
-    if (cached.length > 0) {
-      const std::string cached_identity = cached.UTF8String ?: "";
-      if (IsReusableIdentity(cached_identity)) {
-        self->_state->identity_with_password = cached_identity;
-        self->_state->identity_base = BaseIdentity(cached_identity);
-        DispatchMain(^{
-          id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
-          if ([delegate respondsToSelector:
-                  @selector(rtcBridge:didProvisionIdentity:)]) {
-            [delegate rtcBridge:self didProvisionIdentity:cached];
-          }
-        });
-      } else {
-        // A bare ID cannot authenticate after its first signaling session.
-        // Older iOS builds stored it anyway, causing every later launch to be
-        // rejected as "Incorrect password". Drop it and request a fresh
-        // server-issued ID/password pair.
-        [[NSUserDefaults standardUserDefaults] removeObjectForKey:key];
-      }
+    NSString *cached = nil;
+    OSStatus load_status = LoadIdentityCredential(
+        IdentityCredentialAccount(trimmed, signalPort), &cached);
+    if (load_status == errSecSuccess) {
+      self->_state->identity_with_password = cached.UTF8String;
+      self->_state->identity_base = BaseIdentity(self->_state->identity_with_password);
+      NSString *identifier = [NSString stringWithUTF8String:self->_state->identity_base.c_str()];
+      DispatchMain(^{
+        id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
+        if ([delegate respondsToSelector:@selector(rtcBridge:didProvisionIdentity:)]) {
+          [delegate rtcBridge:self didProvisionIdentity:identifier];
+        }
+      });
+    } else if (load_status != errSecItemNotFound) {
+      [self reportIdentityStorageStatus:load_status];
+      // Locked/unavailable Keychain is not the same as a missing identity.
+      [self handleSignalState:CrossDeskSignalStateCredentialUnavailable
+                         role:PeerRole::Identity
+                   generation:self->_identityGeneration.load()];
+      return;
     }
     [self createIdentityPeer];
   });
@@ -842,6 +957,20 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   });
 }
 
+- (void)reportIdentityStorageStatus:(OSStatus)status {
+  const BOOL has_error = status != errSecSuccess;
+  if (has_error) {
+    // Log only the OSStatus, never an account, credential or Keychain payload.
+    NSLog(@"CrossDesk identity Keychain operation failed (%d)", (int)status);
+  }
+  DispatchMain(^{
+    id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
+    if ([delegate respondsToSelector:@selector(rtcBridge:didChangeIdentityStorageError:)]) {
+      [delegate rtcBridge:self didChangeIdentityStorageError:has_error];
+    }
+  });
+}
+
 - (void)createIdentityPeer {
   if (_state->identity_peer || _state->signal_host.empty()) return;
   _state->identity_context.generation = _identityGeneration.fetch_add(1) + 1;
@@ -962,10 +1091,16 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
         self->_state->identity_recovery_attempted = true;
         NSString *host = [NSString stringWithUTF8String:
                                   self->_state->signal_host.c_str()];
-        NSString *key = [NSString stringWithFormat:@"CrossDeskIdentity.%@.%d",
-                                                   host,
-                                                   self->_state->signal_port];
-        [[NSUserDefaults standardUserDefaults] removeObjectForKey:key];
+        OSStatus status = RemoveIdentityCredential(
+            IdentityCredentialAccount(host, self->_state->signal_port));
+        [self reportIdentityStorageStatus:status];
+        if (status != errSecSuccess) {
+          [self destroyIdentityPeer];
+          [self handleSignalState:CrossDeskSignalStateCredentialUnavailable
+                             role:PeerRole::Identity
+                       generation:self->_identityGeneration.load()];
+          return;
+        }
         [self destroyIdentityPeer];
         self->_state->identity_with_password.clear();
         self->_state->identity_base.clear();
@@ -1078,25 +1213,25 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   const std::string identity_copy = identity;
   dispatch_async(_rtcQueue, ^{
     if (generation != self->_identityGeneration.load()) return;
-    self->_state->identity_with_password = identity_copy;
-    self->_state->identity_base = BaseIdentity(identity_copy);
+    const std::string credential = ProvisionedIdentityCredential(
+        identity_copy, self->_state->identity_with_password);
+    self->_state->identity_with_password = credential;
+    self->_state->identity_base = BaseIdentity(credential);
     NSString *host = [NSString stringWithUTF8String:
                                 self->_state->signal_host.c_str()];
-    NSString *key = [NSString stringWithFormat:@"CrossDeskIdentity.%@.%d",
-                                                host, self->_state->signal_port];
-    NSString *value = [NSString stringWithUTF8String:identity_copy.c_str()];
-    if (IsReusableIdentity(identity_copy)) {
-      [[NSUserDefaults standardUserDefaults] setObject:value forKey:key];
-    } else {
-      // Keep a passwordless identity only for this process. It is valid for
-      // the current login but is not safe to reuse on the next app launch.
-      [[NSUserDefaults standardUserDefaults] removeObjectForKey:key];
-    }
+    NSString *account = IdentityCredentialAccount(host, self->_state->signal_port);
+    NSString *value = [NSString stringWithUTF8String:credential.c_str()];
+    OSStatus status = IsReusableIdentity(credential)
+        ? SaveIdentityCredential(account, value)
+        : RemoveIdentityCredential(account);
+    [self reportIdentityStorageStatus:status];
+    // Only the public device ID crosses into UI state; keep its password here.
+    NSString *identifier = [NSString stringWithUTF8String:self->_state->identity_base.c_str()];
     DispatchMain(^{
       if (generation != self->_identityGeneration.load()) return;
       id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
       if ([delegate respondsToSelector:@selector(rtcBridge:didProvisionIdentity:)]) {
-        [delegate rtcBridge:self didProvisionIdentity:value];
+        [delegate rtcBridge:self didProvisionIdentity:identifier];
       }
     });
   });

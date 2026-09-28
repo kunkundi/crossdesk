@@ -332,6 +332,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     @Published private(set) var signalStatus = "正在连接信令服务"
     @Published private(set) var connectionStatus = "未连接"
     @Published private(set) var localIdentity = ""
+    @Published private(set) var identityStorageWarning: String?
     @Published private(set) var isConnecting = false
     @Published private(set) var isConnected = false
     @Published private(set) var sessionVisible = false
@@ -828,6 +829,12 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         bridge.sendWindowsKeyCode(keyCode, isDown: isDown)
     }
 
+    func rtcBridge(_ bridge: CrossDeskRTCBridge, didChangeIdentityStorageError hasError: Bool) {
+        identityStorageWarning = hasError
+            ? "本机登录凭据暂时无法安全存取。请解锁设备后，在设置中点击“应用”重试。"
+            : nil
+    }
+
     func rtcBridge(_ bridge: CrossDeskRTCBridge,
                    didChange state: CrossDeskSignalState) {
         signalConnected = state.rawValue == 1
@@ -840,6 +847,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         case 4: signalStatus = "信令服务重连中"
         case 5: signalStatus = "信令服务器已关闭连接"
         case 6: signalStatus = "TLS 证书校验失败"
+        case 7: signalStatus = "无法访问本机登录凭据，请解锁后重试"
         default: signalStatus = "未知信令状态"
         }
         if signalConnected {

@@ -57,6 +57,10 @@ fi
 XMAKE_DEVELOPER_DIR="${DEVELOPER_DIR:-$(xcode-select -p)}"
 XMAKE_TOOLCHAIN_BIN="${XMAKE_DEVELOPER_DIR}/Toolchains/XcodeDefault.xctoolchain/usr/bin"
 run_xmake() {
+  local xmake_env=()
+  if [[ -n "${XMAKE_GLOBALDIR:-}" ]]; then
+    xmake_env+=("XMAKE_GLOBALDIR=${XMAKE_GLOBALDIR}")
+  fi
   /usr/bin/env -i \
     HOME="${HOME}" \
     PATH="${XMAKE_TOOLCHAIN_BIN}:${PATH}" \
@@ -69,11 +73,16 @@ run_xmake() {
     DEVELOPER_DIR="${XMAKE_DEVELOPER_DIR}" \
     XMAKE_PKG_INSTALLDIR="${XMAKE_PKG_INSTALLDIR}" \
     CROSSDESK_SOURCE_DIR="${REPO_DIR}" \
+    "${xmake_env[@]}" \
     "${XMAKE_BIN}" "$@"
 }
 
 OUTPUT_DIR="${IOS_DIR}/Vendor/iphoneos/${CONFIG_NAME}"
 OUTPUT_LIBRARY="${OUTPUT_DIR}/libCrossDeskMiniRTC.a"
+XMAKE_REPOSITORY_DIR="$(run_xmake lua -c 'import("core.base.global"); print(path.join(global.directory(), "repositories", "xmake-repo"))')"
+mkdir -p "${OUTPUT_DIR}"
+print -r -- "${XMAKE_REPOSITORY_DIR}" > "${OUTPUT_DIR}/xmake-repository.txt"
+run_xmake --version > "${OUTPUT_DIR}/xmake-version.txt"
 MINIRTC_BUILD_DIR="${IOS_DIR}/.xmake/minirtc-build"
 MINIRTC_LIBRARY="${MINIRTC_BUILD_DIR}/iphoneos/arm64/${MODE}/libminirtc.a"
 WIRE_BUILD_DIR="${IOS_DIR}/.xmake/wire-build"
@@ -106,7 +115,8 @@ configure_xmake() {
     clean_flags=(-c)
   fi
   run_xmake f -P "${project_dir}" "${clean_flags[@]}" -o "${build_dir}" \
-    -p iphoneos -a arm64 -m "${MODE}" --target_minver=16.0 -y "$@"
+    -p iphoneos -a arm64 -m "${MODE}" --target_minver=16.0 \
+    --policies=package.precompiled:n -y "$@"
   mkdir -p "${build_dir}"
   print -r -- "${CONFIG_SIGNATURE}" > "${stamp}"
 }
@@ -148,6 +158,8 @@ TARGET_INFO="$(cd "${MINIRTC_DIR}" && TERM=dumb NO_COLOR=1 \
 CLEAN_INFO="$(print -r -- "${TARGET_INFO}" | sed $'s/\033\\[[0-9;]*[[:alpha:]]//g')"
 LINK_DIRS=("${(@f)$(print -r -- "${CLEAN_INFO}" | sed -nE 's|.*-> (/.*)/lib -> package.*|\1/lib|p' | sort -u)}")
 
+print -r -- "${CLEAN_INFO}" > "${OUTPUT_DIR}/minirtc-target-info.txt"
+
 REQUIRED_LINKS=(
   nice glib-2.0 gobject-2.0 gmodule-2.0 gio-2.0 gthread-2.0 intl
   gupnp-igd-1.6 gupnp-1.6 gssdp-1.6 soup-3.0 nghttp2 sqlite3 psl xml2
@@ -158,6 +170,7 @@ if [[ "${MINIRTC_ENABLE_AOM}" == "true" ]]; then
   REQUIRED_LINKS+=(aom)
 fi
 DEPENDENCY_ARCHIVES=()
+MERGE_ARCHIVES=()
 
 for link_name in "${REQUIRED_LINKS[@]}"; do
   archive_path=""
@@ -173,6 +186,11 @@ for link_name in "${REQUIRED_LINKS[@]}"; do
     exit 66
   fi
   DEPENDENCY_ARCHIVES+=("${archive_path}")
+  # OpenSSL is linked separately as a static framework with its SDK privacy
+  # resources. Keep both archives in the input manifest for source validation.
+  if [[ "${link_name}" != "ssl" && "${link_name}" != "crypto" ]]; then
+    MERGE_ARCHIVES+=("${archive_path}")
+  fi
 done
 
 TEMP_LIBRARY="${OUTPUT_LIBRARY}.tmp"
@@ -204,7 +222,7 @@ if [[ -f "${OUTPUT_LIBRARY}" ]] && cmp -s "${TEMP_MANIFEST}" "${MERGE_MANIFEST}"
 fi
 
 /usr/bin/libtool -static -o "${TEMP_LIBRARY}" \
-  "${MINIRTC_LIBRARY}" "${DEPENDENCY_ARCHIVES[@]}" \
+  "${MINIRTC_LIBRARY}" "${MERGE_ARCHIVES[@]}" \
   "${WIRE_LIBRARY}"
 verify_no_openh264 "${TEMP_LIBRARY}"
 mv -f "${TEMP_LIBRARY}" "${OUTPUT_LIBRARY}"

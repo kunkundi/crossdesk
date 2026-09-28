@@ -375,6 +375,16 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Select corresponding source tag
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "CROSSDESK_SOURCE_TAG=${GITHUB_REF_NAME}" >> "${GITHUB_ENV}"
+            echo "CROSSDESK_RELEASE_BUILD=YES" >> "${GITHUB_ENV}"
+          fi
 
       - name: Read independent iOS version
         id: ios_version
@@ -403,9 +413,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: apps/ios/.xmake/packages
-          key: "${{ runner.os }}-xmake${{ env.XMAKE_VERSION }}-deps-ios-arm64-xcode26.6-xrepo1211093-min16-${{ github.run_id }}"
+          key: "${{ runner.os }}-xmake${{ env.XMAKE_VERSION }}-deps-ios-arm64-source-v1-xcode26.6-xrepo1211093-min16-${{ github.run_id }}"
           restore-keys: |
-            ${{ runner.os }}-xmake${{ env.XMAKE_VERSION }}-deps-ios-arm64-xcode26.6-xrepo1211093-min16-
+            ${{ runner.os }}-xmake${{ env.XMAKE_VERSION }}-deps-ios-arm64-source-v1-xcode26.6-xrepo1211093-min16-
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -477,6 +487,11 @@ jobs:
             exit 1
           fi
 
+          VERIFY_FLAGS=()
+          if [[ "${CROSSDESK_RELEASE_BUILD:-NO}" == "YES" ]]; then
+            VERIFY_FLAGS+=(--require-release)
+          fi
+          python3 apps/ios/scripts/verify_app_bundle.py "${APP_PATH}" "${VERIFY_FLAGS[@]}"
           xcrun lipo -info "${EXECUTABLE_PATH}"
           echo "Minimum iOS version: ${MINIMUM_OS}"
 
@@ -489,6 +504,9 @@ jobs:
 
           mkdir -p "${PACKAGE_DIR}"
           cp -R "${APP_PATH}" "${PACKAGE_DIR}/"
+          cp apps/ios/licenses/sources.json "${PACKAGE_DIR}/ThirdPartySources.json"
+          cp apps/ios/licenses/OPEN_SOURCE_NOTICE.txt "${PACKAGE_DIR}/OPEN_SOURCE_NOTICE.txt"
+          cp "${APP_PATH}/SourceMetadata.json" "${PACKAGE_DIR}/SourceMetadata.json"
 
           DSYM_PATH="${DERIVED_DATA}/Build/Products/Release-iphoneos/CrossDeskMobile.app.dSYM"
           if [[ -d "${DSYM_PATH}" ]]; then
@@ -793,8 +811,13 @@ jobs:
 
       - name: Prepare release notes
         run: |
-          cat > "$RUNNER_TEMP/release-notes.md" << 'EOF'
-          Binary release only. Source code is not included.
+          cat > "$RUNNER_TEMP/release-notes.md" << EOF
+          ## Corresponding source
+
+          Source for these binaries: [${GITHUB_REF_NAME}](https://github.com/${GITHUB_REPOSITORY}/tree/${GITHUB_SHA}).
+          Clone that version with recursive submodules. The repository includes the build scripts and dependency patches.
+          [iOS source, modification and rebuild instructions](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/apps/ios/README.md).
+          The iOS archive also contains the exact source revision and third-party source catalog with archive checksums.
 
           ## Code signing policy
 

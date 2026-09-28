@@ -1,0 +1,906 @@
+{
+  "schema_version": 1,
+  "platform": "iphoneos-arm64",
+  "components": [
+    {
+      "id": "asio",
+      "name": "Asio",
+      "version": "1.32.0",
+      "license": "BSL-1.0",
+      "source": {
+        "kind": "archive",
+        "url": "https://github.com/chriskohlhoff/asio/archive/refs/tags/asio-1-32-0.tar.gz",
+        "sha256": "f1b94b80eeb00bb63a3c8cef5047d4e409df4d8a3fe502305976965827d95672"
+      },
+      "documents": [
+        {
+          "path": "asio/COPYING",
+          "sha256": "5cc69ca9afd3417ed8e58bcd9c0bb730375e9e3e92b5aaf6483b93a2837e0cac"
+        },
+        {
+          "path": "asio/LICENSE_1_0.txt",
+          "sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566"
+        }
+      ],
+      "recipe_sha256": "52bddc12cf0837117e935ea5d71aa5c35e7fd6ae802aa7401c6dba598cae0989",
+      "recipe_path": "xmake-repo/packages/a/asio/xmake.lua",
+      "package": "asio",
+      "notice_prefixes": [
+        "asio/include/"
+      ]
+    },
+    {
+      "id": "concurrentqueue",
+      "name": "ConcurrentQueue",
+      "version": "v1.0.4",
+      "license": "(BSD-2-Clause OR BSL-1.0) / Zlib (semaphore)",
+      "source": {
+        "kind": "archive",
+        "url": "https://github.com/cameron314/concurrentqueue/archive/refs/tags/v1.0.4.tar.gz",
+        "sha256": "87fbc9884d60d0d4bf3462c18f4c0ee0a9311d0519341cac7cbd361c885e5281"
+      },
+      "documents": [
+        {
+          "path": "LICENSE.md",
+          "sha256": "22331571e5e3dbe4c79ad715e23127bdf3beabd75052c953ddabf191ef799e14"
+        }
+      ],
+      "recipe_sha256": "23c69dc09488527b0d6adf1d25f795a9f0afdc7a1d594c44603c2dd07162faa4",
+      "recipe_path": "xmake-repo/packages/c/concurrentqueue/xmake.lua",
+      "package": "concurrentqueue",
+      "notice_prefixes": [
+        "concurrentqueue.h",
+        "blockingconcurrentqueue.h",
+        "lightweightsemaphore.h"
+      ]
+    },
+    {
+      "id": "crossdesk",
+      "name": "CrossDesk / crossdesk_wire",
+      "version": "application source",
+      "license": "GPL-3.0-only",
+      "source": {
+        "kind": "repository",
+        "url": "https://github.com/kunkundi/crossdesk",
+        "revision": null
+      },
+      "documents": [
+        {
+          "path": "LICENSE",
+          "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+        },
+        {
+          "path": "apps/ios/licenses/OPEN_SOURCE_NOTICE.txt",
+          "sha256": "34720d126e6373603d0c1802a8c3276802b93f2a8fbbf2b61837c6fdefea8877"
+        }
+      ]
+    },
+    {
+      "id": "dav1d",
+      "name": "dav1d",
+      "version": "1.4.3",
+      "license": "BSD-2-Clause and patent grant",
+      "source": {
+        "kind": "archive",
+        "url": "https://code.videolan.org/videolan/dav1d/-/archive/e9986de7f4264940af6fa1df1498fd2754077de4/dav1d-e9986de7f4264940af6fa1df1498fd2754077de4.tar.gz",
+        "sha256": "ba147ff83d6c73f578a12f8eece636226e9c1f40cd55a11841a3bcb2c88cd46a",
+        "revision": "e9986de7f4264940af6fa1df1498fd2754077de4"
+      },
+      "documents": [
+        {
+          "path": "COPYING",
+          "sha256": "b327887de263238deaa80c34cdd2ff3e0ba1d35db585ce14a37ce3e74ee389e9"
+        },
+        {
+          "path": "doc/PATENTS",
+          "sha256": "335eca574598bf4ca181b12f708d6669e5a5e78c8e1513e5b35fa1f03901484b"
+        }
+      ],
+      "package": "dav1d",
+      "notice_prefixes": [
+        "src/",
+        "include/"
+      ]
+    },
+    {
+      "id": "glib",
+      "name": "GLib / GObject / GIO / GModule / GThread / GVDB",
+      "version": "2.84.1",
+      "license": "LGPL-2.1-or-later and embedded notices",
+      "source": {
+        "kind": "archive",
+        "url": "https://download.gnome.org/sources/glib/2.84/glib-2.84.1.tar.xz",
+        "sha256": "2b4bc2ec49611a5fc35f86aca855f2ed0196e69e53092bab6bb73396bf30789a"
+      },
+      "documents": [
+        {
+          "path": "COPYING",
+          "sha256": "fa6f36630bb1e0c571d34b2bbdf188d08495c9dbf58f28cac112f303fc1f58fb"
+        },
+        {
+          "path": "LICENSES/Apache-2.0.txt",
+          "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
+        },
+        {
+          "path": "LICENSES/CC0-1.0.txt",
+          "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
+        },
+        {
+          "path": "LICENSES/LGPL-2.1-only.txt",
+          "sha256": "fa6f36630bb1e0c571d34b2bbdf188d08495c9dbf58f28cac112f303fc1f58fb"
+        },
+        {
+          "path": "LICENSES/LLVM-exception.txt",
+          "sha256": "e34c58338bd89d43e709e226610d8f32b3e3c47f4ad9a99a8dc1d4ac7842488e"
+        },
+        {
+          "path": "LICENSES/MIT.txt",
+          "sha256": "b85dcd3e453d05982552c52b5fc9e0bdd6d23c6f8e844b984a88af32570b0cc0"
+        },
+        {
+          "path": "LICENSES/MPL-1.1.txt",
+          "sha256": "6214f8b1300bb9f37b16ebc146f8f61af0187e0025042ff95c8b3030744a8795"
+        },
+        {
+          "path": "subprojects/gvdb/COPYING",
+          "sha256": "bdbcdaa7858872393e9d6b216bbdc8a23e99d98dd6cdb7cda19458025b9e19fc"
+        }
+      ],
+      "recipe_sha256": "773cac2e1a5aec087abc9347c7278f3fca40e36212b33a5f01012875cfbf7e6c",
+      "recipe_path": "deps/submodules/minirtc/thirdparty/glib/xmake.lua",
+      "package": "glib",
+      "notice_prefixes": [
+        "glib/",
+        "gobject/",
+        "gio/",
+        "gmodule/",
+        "subprojects/gvdb/"
+      ]
+    },
+    {
+      "id": "gssdp",
+      "name": "GSSDP",
+      "version": "1.6.4",
+      "license": "LGPL-2.1-or-later",
+      "source": {
+        "kind": "archive",
+        "url": "https://download.gnome.org/sources/gssdp/1.6/gssdp-1.6.4.tar.xz",
+        "sha256": "ff97fdfb7f561d3e6813b4f6a2145259e7c2eff43cc0e63f3fd031d0b6266032"
+      },
+      "documents": [
+        {
+          "path": "COPYING",
+          "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
+        },
+        {
+          "path": "AUTHORS",
+          "sha256": "66b5509fcdd21acaab5d7a3856e699bada9e9ebf0485312abbe987711bc7bd27"
+        }
+      ],
+      "recipe_sha256": "52667099a445f7004b9200df4ed771dd74e73745a5c6dc7fe728168e9f8b3e7a",
+      "recipe_path": "deps/submodules/minirtc/thirdparty/gupnp/xmake.lua",
+      "package": "gssdp",
+      "notice_prefixes": [
+        "libgssdp/"
+      ]
+    },
+    {
+      "id": "gupnp",
+      "name": "GUPnP",
+      "version": "1.6.9",
+      "license": "LGPL-2.1-or-later",
+      "source": {
+        "kind": "archive",
+        "url": "https://download.gnome.org/sources/gupnp/1.6/gupnp-1.6.9.tar.xz",
+        "sha256": "2edb6ee3613558e62f538735368aee27151b7e09d4e2e2c51606833da801869b"
+      },
+      "documents": [
+        {
+          "path": "COPYING",
+          "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
+        },
+        {
+          "path": "AUTHORS",
+          "sha256": "fadd2ab40439bc89d2e9540c02aef1f23edea96983af9cceaef345a9423d3c70"
+        }
+      ],
+      "recipe_sha256": "52667099a445f7004b9200df4ed771dd74e73745a5c6dc7fe728168e9f8b3e7a",
+      "recipe_path": "deps/submodules/minirtc/thirdparty/gupnp/xmake.lua",
+      "package": "gupnp",
+      "notice_prefixes": [
+        "libgupnp/"
+      ]
+    },
+    {
+      "id": "gupnp-igd",
+      "name": "GUPnP IGD",
+      "version": "1.6.0",
+      "license": "LGPL-2.1-or-later",
+      "source": {
+        "kind": "archive",
+        "url": "https://download.gnome.org/sources/gupnp-igd/1.6/gupnp-igd-1.6.0.tar.xz",
+        "sha256": "4099978339ab22126d4968f2a332b6d094fc44c78797860781f1fc2f11771b74"
+      },
+      "documents": [
+        {
+          "path": "COPYING",
+          "sha256": "6095e9ffa777dd22839f7801aa845b31c9ed07f3d6bf8a26dc5d2dec8ccc0ef3"
+        },
+        {
+          "path": "AUTHORS",
+          "sha256": "77a943ea347578cfcffc032616707d43e5f5e03a12f864c0d421c3d632fc1582"
+        }
+      ],
+      "recipe_sha256": "52667099a445f7004b9200df4ed771dd74e73745a5c6dc7fe728168e9f8b3e7a",
+      "recipe_path": "deps/submodules/minirtc/thirdparty/gupnp/xmake.lua",
+      "package": "gupnp-igd",
+      "notice_prefixes": [
+        "libgupnp-igd/"
+      ]
+    },
+    {
+      "id": "inih",
+      "name": "inih / INIReader",
+      "version": "6286ae6c1c015609d3070cc139e5feea900caf7c",
+      "license": "BSD-3-Clause",
+      "source": {
+        "kind": "repository",
+        "url": "https://github.com/kunkundi/minirtc",
+        "revision": "6286ae6c1c015609d3070cc139e5feea900caf7c"
+      },
+      "documents": [
+        {
+          "path": "deps/submodules/minirtc/src/inih/LICENSE",
+          "sha256": "bd2a675a5a26fbff77f171f3a15afb1a9c7855be1a01c7e3fd16b8d2617acdda"
+        }
+      ]
+    },
+    {
+      "id": "nlohmann_json",
+      "name": "JSON for Modern C++ / Hedley",
+      "version": "v3.11.3",
+      "license": "MIT",
+      "source": {
+        "kind": "archive",
+        "url": "https://github.com/nlohmann/json/archive/refs/tags/v3.11.3.tar.gz",
+        "sha256": "0d8ef5af7f9794e3263480193c491549b2ba6cc74bb018906202ada498a79406"
+      },
+      "documents": [
+        {
+          "path": "LICENSE.MIT",
+          "sha256": "86b998c792894ccb911a1cb7994f7a9652894e7a094c0b5e45be2f553f45cf14"
+        }
+      ],
+      "recipe_sha256": "eadd211f0521a18207e9544c0c5a08c41dca578fce99df5c2577f6fcf2a0fdce",
+      "recipe_path": "xmake-repo/packages/n/nlohmann_json/xmake.lua",
+      "package": "nlohmann_json",
+      "notice_prefixes": [
+        "include/"
+      ]
+    },
+    {
+      "id": "kcp",
+      "name": "KCP",
+      "version": "1.7",
+      "license": "MIT",
+      "source": {
+        "kind": "archive",
+        "url": "https://github.com/skywind3000/kcp/archive/refs/tags/1.7.tar.gz",
+        "sha256": "b4d26994d95599ab0c44e1f93002f9fda275094a879d66c192d79d596529199e"
+      },
+      "documents": [
+        {
+          "path": "LICENSE",
+          "sha256": "6587fd02a924b97dbd6758b0573ddec056fb494a84f3709c5aaa33ce1f7f029c"
+        }
+      ],
+      "recipe_sha256": "f86cac2c4b884f3347a39a59f3dd8de566c257c7fd481c6e49b05f4730f12c4f",
+      "recipe_path": "xmake-repo/packages/k/kcp/xmake.lua",
+      "package": "kcp",
+      "notice_prefixes": [
+        "ikcp.c",
+        "ikcp.h"
+      ]
+    },
+    {
+      "id": "libdatachannel",
+      "name": "libdatachannel",
+      "version": "v0.24.5",
+      "license": "MPL-2.0",
+      "source": {
+        "kind": "archive",
+        "url": "https://github.com/paullouisageneau/libdatachannel/archive/refs/tags/v0.24.5.tar.gz",
+        "sha256": "454537c3cd526bed935d847bb2dff4046f266eef84d43b2a5f2f2f293c0026f4"
+      },
+      "documents": [
+        {
+          "path": "LICENSE",
+          "sha256": "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85"
+        }
+      ],
+      "recipe_sha256": "b3ec15652a47d65e0a1f85f62d02c098c5cf5b8d8c3cf7b03ff099efa7016326",
+      "recipe_path": "deps/submodules/minirtc/thirdparty/libdatachannel/xmake.lua",
+      "package": "libdatachannel",
+      "notice_prefixes": [
+        "include/",
+        "src/"
+      ]
+    },
+    {
+      "id": "libffi",
+      "name": "libffi",
+      "version": "3.4.8",
+      "license": "MIT",
+      "source": {
+        "kind": "archive",
+        "url": "https://github.com/libffi/libffi/releases/download/v3.4.8/libffi-3.4.8.tar.gz",
+        "sha256": "bc9842a18898bfacb0ed1252c4febcc7e78fa139fd27fdc7a3e30d9d9356119b"
+      },
+      "documents": [
+        {
+          "path": "LICENSE",
+          "sha256": "67894089811f93fca47a76f85e017da6f8582d4ba0905963c6e0f1ad6df7a195"
+        }
+      ],
+      "recipe_sha256": "de19ac4e3e91ef5715ac582c75e0d10404dc14ec4e33b2e764dc2637a78d24e9",
+      "recipe_path": "xmake-repo/packages/l/libffi/xmake.lua",
+      "package": "libffi",
+      "notice_prefixes": [
+        "src/",
+        "include/"
+      ]
+    },
+    {
+      "id": "libnice",
+      "name": "libnice",
+      "version": "0.1.24",
+      "license": "MPL-1.1 OR LGPL-2.1-or-later",
+      "source": {
+        "kind": "archive",
+        "url": "https://gitlab.freedesktop.org/libnice/libnice/-/archive/0.1.24/libnice-0.1.24.tar.gz",
+        "sha256": "1da5ac13ed5d4e175e0d2d46ad3748c6635244f8f3eb2b8e31578ef59aa2ddce"
+      },
+      "documents": [
+        {
+          "path": "COPYING",
+          "sha256": "e5504e5ffe894870ea1a652df957a120ead9c3f9a5e9d314ca41ba06f2d72024"
+        },
+        {
+          "path": "COPYING.LGPL",
+          "sha256": "a9bdde5616ecdd1e980b44f360600ee8783b1f99b8cc83a2beb163a0a390e861"
+        },
+        {
+          "path": "COPYING.MPL",
+          "sha256": "3b3c75ae6c663c4f93987647eb5463d33dc1602a1aded3ac479773f2c3928e3a"
+        },
+        {
+          "path": "AUTHORS",
+          "sha256": "d72eb6fa9d5e93abb11d13b6c6f04fda2ba183d0705e703887cda243f6f1eead"
+        }
+      ],
+      "recipe_sha256": "7d7c30d7d63245d0190e64b050184f6ff6933ef9133bff5329d62a7b9b685441",
+      "recipe_path": "deps/submodules/minirtc/thirdparty/libnice/xmake.lua",
+      "package": "libnice",
+      "notice_prefixes": [
+        "agent/",
+        "nice/",
+        "random/",
+        "socket/",
+        "stun/"
+      ]
+    },
+    {
+      "id": "upnp-libpsl",
+      "name": "libpsl",
+      "version": "0.21.5",
+      "license": "MIT / BSD-3-Clause",
+      "source": {
+        "kind": "archive",
+        "url": "https://github.com/rockdaboot/libpsl/releases/download/0.21.5/libpsl-0.21.5.tar.gz",
+        "sha256": "1dcc9ceae8b128f3c0b3f654decd0e1e891afc6ff81098f227ef260449dae208"
+      },
+      "documents": [
+        {
+          "path": "LICENSE",
+          "sha256": "322392e6001b2b3b0fca705dc9f11f26e12441188ecde50eb1d22909980b2925"
+        },
+        {
+          "path": "src/LICENSE.chromium",
+          "sha256": "1d7f52747a9169751cdf2641a8299c0098e9ecdf9429296ffd55bdb14c9ed5b3"
+        }
+      ],
+      "recipe_sha256": "52667099a445f7004b9200df4ed771dd74e73745a5c6dc7fe728168e9f8b3e7a",
+      "recipe_path": "deps/submodules/minirtc/thirdparty/gupnp/xmake.lua",
+      "package": "upnp-libpsl",
+      "notice_prefixes": [
+        "src/",
+        "include/"
+      ]
+    },
+    {
+      "id": "libsoup",
+      "name": "libsoup",
+      "version": "3.6.5",
+      "license": "LGPL-2.0-or-later",
+      "source": {
+        "kind": "archive",
+        "url": "https://download.gnome.org/sources/libsoup/3.6/libsoup-3.6.5.tar.xz",
+        "sha256": "6891765aac3e949017945c3eaebd8cc8216df772456dc9f460976fbdb7ada234"
+      },
+      "documents": [
+        {
+          "path": "COPYING",
+          "sha256": "b7993225104d90ddd8024fd838faf300bea5e83d91203eab98e29512acebd69c"
+        },
+        {
+          "path": "AUTHORS",
+          "sha256": "f8776285b4556368878a1b903a1f0e6d6cee342284961562a7716a2dacc28321"
+        }
+      ],
+      "recipe_sha256": "52667099a445f7004b9200df4ed771dd74e73745a5c6dc7fe728168e9f8b3e7a",
+      "recipe_path": "deps/submodules/minirtc/thirdparty/gupnp/xmake.lua",
+      "package": "libsoup",
+      "notice_prefixes": [
+        "libsoup/"
+      ]
+    },
+    {
+      "id": "libsrtp",
+      "name": "libsrtp",
+      "version": "v2.7.0",
+      "license": "BSD-3-Clause",
+      "source": {
+        "kind": "archive",
+        "url": "https://github.com/cisco/libsrtp/archive/refs/tags/v2.7.0.tar.gz",
+        "sha256": "54facb1727a557c2a76b91194dcb2d0a453aaf8e2d0cbbf1e3c2848c323e28ad"
+      },
+      "documents": [
+        {
+          "path": "LICENSE",
+          "sha256": "8e19d42a1eec9561f3f347253ddf2e385c55f392f025bb0fd41b88dbf38db5ae"
+        }
+      ],
+      "recipe_sha256": "9629edb8d395ea3017af1702cafea57173ca0a6a1ea305a6174b1936598faec6",
+      "recipe_path": "deps/submodules/minirtc/thirdparty/libsrtp/xmake.lua",
+      "package": "libsrtp",
+      "notice_prefixes": [
+        "srtp/",
+        "crypto/",
+        "include/"
+      ]
+    },
+    {
+      "id": "upnp-libxml2",
+      "name": "libxml2",
+      "version": "2.14.6",
+      "license": "MIT and embedded notices",
+      "source": {
+        "kind": "archive",
+        "url": "https://download.gnome.org/sources/libxml2/2.14/libxml2-2.14.6.tar.xz",
+        "sha256": "7ce458a0affeb83f0b55f1f4f9e0e55735dbfc1a9de124ee86fb4a66b597203a"
+      },
+      "documents": [
+        {
+          "path": "Copyright",
+          "sha256": "5d4873884a890122a4b9b20ad56ac6f7da1d796a5bfcf04a427970ac96217626"
+        }
+      ],
+      "recipe_sha256": "52667099a445f7004b9200df4ed771dd74e73745a5c6dc7fe728168e9f8b3e7a",
+      "recipe_path": "deps/submodules/minirtc/thirdparty/gupnp/xmake.lua",
+      "package": "upnp-libxml2",
+      "notice_prefixes": [
+        "include/"
+      ],
+      "notice_root_files": true
+    },
+    {
+      "id": "libyuv",
+      "name": "libyuv",
+      "version": "2025.8.14",
+      "license": "BSD-3-Clause and patent grant",
+      "source": {
+        "kind": "archive",
+        "url": "https://codeload.github.com/kunkundi/libyuv/tar.gz/ec10b61c58ee4b8fbe648d2744d9dad9ccba6430",
+        "sha256": "e6e83acefcb9322a498a04c2c417491ceab18cf9750d306110ab5ab27d84377b",
+        "revision": "ec10b61c58ee4b8fbe648d2744d9dad9ccba6430"
+      },
+      "documents": [
+        {
+          "path": "LICENSE",
+          "sha256": "2b2cc1180c7e6988328ad2033b04b80117419db9c4c584918bbb3cfec7e9364f"
+        },
+        {
+          "path": "PATENTS",
+          "sha256": "4da84211f947c6f9f7dd8fbce513e1522e01833407ae732b8c9a2bbb75fed495"
+        },
+        {
+          "path": "AUTHORS",
+          "sha256": "0c4a51c72a06b3431bb2b750e3b04dbe3694b22e2fcae6e370216424eec56d52"
+        }
+      ],
+      "package": "libyuv",
+      "notice_prefixes": [
+        "source/",
+        "include/"
+      ]
+    },
+    {
+      "id": "minirtc",
+      "name": "MiniRTC",
+      "version": "6286ae6c1c015609d3070cc139e5feea900caf7c",
+      "license": "LGPL-3.0-only",
+      "source": {
+        "kind": "repository",
+        "url": "https://github.com/kunkundi/minirtc",
+        "revision": "6286ae6c1c015609d3070cc139e5feea900caf7c"
+      },
+      "documents": [
+        {
+          "path": "deps/submodules/minirtc/LICENSE",
+          "sha256": "ea8af5e789cb2d4e9b10bce3874982ade163b749b6bfbdb32e2df21c4d106de1"
+        }
+      ]
+    },
+    {
+      "id": "nghttp2",
+      "name": "nghttp2",
+      "version": "1.68.0",
+      "license": "MIT",
+      "source": {
+        "kind": "archive",
+        "url": "https://github.com/nghttp2/nghttp2/releases/download/v1.68.0/nghttp2-1.68.0.tar.gz",
+        "sha256": "2c16ffc588ad3f9e2613c3fad72db48ecb5ce15bc362fcc85b342e48daf51013"
+      },
+      "documents": [
+        {
+          "path": "COPYING",
+          "sha256": "6b94f3abc1aabd0c72a7c7d92a77f79dda7c8a0cb3df839a97890b4116a2de2a"
+        }
+      ],
+      "recipe_sha256": "eec10214a906c663f74e3e6bf8952cddec39fec3cac710c10d8b9ea669c9ab79",
+      "recipe_path": "xmake-repo/packages/n/nghttp2/xmake.lua",
+      "package": "nghttp2",
+      "notice_prefixes": [
+        "lib/"
+      ]
+    },
+    {
+      "id": "openfec",
+      "name": "OpenFEC",
+      "version": "1.4.2",
+      "license": "CeCILL-C 1.0 / BSD / CC-BY-SA-3.0",
+      "source": {
+        "kind": "archive",
+        "url": "https://github.com/kunkundi/openfec/archive/refs/tags/1.4.2.tar.gz",
+        "sha256": "5aa19dc56038f4b19927efb53ca28e896fb05f068a4715de512f0709420f03be"
+      },
+      "documents": [
+        {
+          "path": "LICENCE_CeCILL-C_V1-en.txt",
+          "sha256": "b48f5dc16f144cd79ddaadce3cc8ef183778a0b4f75ab4362e134b347ca20f3d",
+          "encoding": "iso-8859-1"
+        }
+      ],
+      "recipe_sha256": "8644c6306ad6ba4c974dd949d56178c761b72d503fe7c4a577a23817effa6243",
+      "recipe_path": "deps/submodules/minirtc/thirdparty/openfec/xmake.lua",
+      "package": "openfec",
+      "notice_prefixes": [
+        "src/lib_common/",
+        "src/lib_stable/"
+      ],
+      "notice_encodings": {
+        "src/lib_common/linear_binary_codes_utils/binary_matrix/of_hamming_weight.c": "gb18030",
+        "src/lib_common/linear_binary_codes_utils/binary_matrix/of_hamming_weight.h": "gb18030"
+      }
+    },
+    {
+      "id": "openssl3",
+      "name": "OpenSSL",
+      "version": "3.3.2",
+      "license": "Apache-2.0 and embedded notices",
+      "source": {
+        "kind": "archive",
+        "url": "https://github.com/openssl/openssl/archive/refs/tags/openssl-3.3.2.zip",
+        "sha256": "4cda357946f9dd5541b565dba35348d614288e88aeb499045018970c789c9d61"
+      },
+      "documents": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a"
+        }
+      ],
+      "recipe_sha256": "864c308edf59fd802babd45d064d8575635ecd577e829df2b2c7ac7a4d06d4d7",
+      "recipe_path": "deps/submodules/minirtc/thirdparty/openssl/xmake.lua",
+      "package": "openssl3",
+      "notice_prefixes": [
+        "crypto/",
+        "ssl/",
+        "include/",
+        "providers/"
+      ]
+    },
+    {
+      "id": "libopus",
+      "name": "Opus",
+      "version": "1.5.1",
+      "license": "BSD-3-Clause and patent grants",
+      "source": {
+        "kind": "archive",
+        "url": "https://downloads.xiph.org/releases/opus/opus-1.5.1.tar.gz",
+        "sha256": "b84610959b8d417b611aa12a22565e0a3732097c6389d19098d844543e340f85"
+      },
+      "documents": [
+        {
+          "path": "COPYING",
+          "sha256": "01e1167d54a096d123cf6dfbbeb19587278845c6481d2d66d545669846079551"
+        }
+      ],
+      "recipe_sha256": "c965643eb4e093858c27c402e6cde544620460f2169c89d8ff2bab01111d022b",
+      "recipe_path": "xmake-repo/packages/l/libopus/xmake.lua",
+      "package": "libopus",
+      "notice_prefixes": [
+        "src/",
+        "include/",
+        "celt/",
+        "silk/",
+        "dnn/"
+      ]
+    },
+    {
+      "id": "pcre2",
+      "name": "PCRE2 / SLJIT",
+      "version": "10.47",
+      "license": "BSD-3-Clause / BSD-2-Clause",
+      "source": {
+        "kind": "archive",
+        "url": "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.47/pcre2-10.47.tar.gz",
+        "sha256": "c08ae2388ef333e8403e670ad70c0a11f1eed021fd88308d7e02f596fcd9dc16"
+      },
+      "documents": [
+        {
+          "path": "LICENCE.md",
+          "sha256": "197d8a73ffee0d6b09adba2f9c677b5f5aede24edf89258a68e48248d010d811"
+        },
+        {
+          "path": "COPYING",
+          "sha256": "99272c55f3dcfa07a8a7e15a5c1a33096e4727de74241d65fa049fccfdd59507"
+        },
+        {
+          "path": "deps/sljit/LICENSE",
+          "sha256": "5f216505c0f6ea3273caec89e766eef93cdeb7bbb0c429f9360116d7c938feeb"
+        }
+      ],
+      "recipe_sha256": "821f1fbc91434f4324be88eeea754db09c5d7be31446242764861ca2aee136b7",
+      "recipe_path": "xmake-repo/packages/p/pcre2/xmake.lua",
+      "package": "pcre2",
+      "notice_prefixes": [
+        "src/",
+        "deps/sljit/sljitLir.c",
+        "deps/sljit/sljitLir.h"
+      ]
+    },
+    {
+      "id": "plog",
+      "name": "plog",
+      "version": "1.1.11",
+      "license": "MIT",
+      "source": {
+        "kind": "archive",
+        "url": "https://github.com/SergiusTheBest/plog/archive/refs/tags/1.1.11.tar.gz",
+        "sha256": "d60b8b35f56c7c852b7f00f58cbe9c1c2e9e59566c5b200512d0cdbb6309a7c2"
+      },
+      "documents": [
+        {
+          "path": "LICENSE",
+          "sha256": "e4d01796524cbc13b1571a1f0914823c6a23b316ba039e7014f47a4eef7fd4c3"
+        }
+      ],
+      "recipe_sha256": "deb525d09b5b79351eeb524ab3bc6a3009e434974e585e5e8852c491d7fa07c8",
+      "recipe_path": "xmake-repo/packages/p/plog/xmake.lua",
+      "package": "plog",
+      "notice_prefixes": [
+        "include/"
+      ]
+    },
+    {
+      "id": "proxy-libintl",
+      "name": "proxy-libintl (GLib libintl)",
+      "version": "33934de09af6a6627eb44e310a8079df009abdbb",
+      "license": "LGPL-2.0-or-later",
+      "source": {
+        "kind": "archive",
+        "url": "https://codeload.github.com/frida/proxy-libintl/tar.gz/33934de09af6a6627eb44e310a8079df009abdbb",
+        "sha256": "4ab5af85ec6124cb526a15c58bbc0877d241807e30855779808dbf9292d861aa",
+        "revision": "33934de09af6a6627eb44e310a8079df009abdbb"
+      },
+      "documents": [
+        {
+          "path": "COPYING",
+          "sha256": "d245807f90032872d1438d741ed21e2490e1175dc8aa3afa5ddb6c8e529b58e5"
+        }
+      ],
+      "bundled_by": "glib",
+      "notice_prefixes": [
+        "src/",
+        "libintl.c",
+        "libintl.h"
+      ]
+    },
+    {
+      "id": "spdlog",
+      "name": "spdlog / fmt 10.2.1",
+      "version": "v1.14.1",
+      "license": "MIT",
+      "source": {
+        "kind": "archive",
+        "url": "https://github.com/gabime/spdlog/archive/refs/tags/v1.14.1.zip",
+        "sha256": "429dfdf3afc1984feb59e414353c21c110bc79609f6d7899d52f6aa388646f6d"
+      },
+      "documents": [
+        {
+          "path": "LICENSE",
+          "sha256": "4ccecab18d1ff0b61174fe3d6c430541625d3ddb865b0d5887db296f883c76e7"
+        }
+      ],
+      "recipe_sha256": "5b299effb366420b4920c5b89e6535b76173136d91ee01f8f7d3423486a93549",
+      "recipe_path": "xmake-repo/packages/s/spdlog/xmake.lua",
+      "package": "spdlog",
+      "notice_prefixes": [
+        "include/"
+      ]
+    },
+    {
+      "id": "sqlite3",
+      "name": "SQLite",
+      "version": "3.50.0+400",
+      "license": "Public domain",
+      "source": {
+        "kind": "archive",
+        "url": "https://sqlite.org/2025/sqlite-autoconf-3500400.tar.gz",
+        "sha256": "a3db587a1b92ee5ddac2f66b3edb41b26f9c867275782d46c3a088977d6a5b18"
+      },
+      "documents": [],
+      "recipe_sha256": "a752522259dbd722ea79beaa01e5287429ccb37643ccffbecf5fa30ec4df30fd",
+      "recipe_path": "xmake-repo/packages/s/sqlite3/xmake.lua",
+      "package": "sqlite3",
+      "notice_prefixes": [
+        "sqlite3.h"
+      ]
+    },
+    {
+      "id": "svt-av1",
+      "name": "SVT-AV1",
+      "version": "v3.0.2",
+      "license": "BSD-3-Clause-Clear / BSD-2-Clause, AOMedia patent license and embedded notices",
+      "source": {
+        "kind": "archive",
+        "url": "https://gitlab.com/AOMediaCodec/SVT-AV1/-/archive/efc905a7c2ed155b3654d7968173622734eeb0c0/SVT-AV1-efc905a7c2ed155b3654d7968173622734eeb0c0.tar.gz",
+        "sha256": "50a897d58470b06f99b386dc691ab63e802962421e6abdb75e4d234a3e73cd6a",
+        "revision": "efc905a7c2ed155b3654d7968173622734eeb0c0"
+      },
+      "documents": [
+        {
+          "path": "LICENSE.md",
+          "sha256": "0acc2fcb27472bdc9aaf8b71f37055bbdac4f54671b7d922f241bd7fcd0dd3e6"
+        },
+        {
+          "path": "LICENSE-BSD2.md",
+          "sha256": "c582fcbeb9cf972a60d298bfaf41dc5adff2dd14208946edcb9bb56a281e8438"
+        },
+        {
+          "path": "PATENTS.md",
+          "sha256": "20678ab10402659106dc4c147c97b2a6e94b5c0695415e15a8f195ebc3547922"
+        },
+        {
+          "path": "third_party/fastfeat/LICENSE",
+          "sha256": "043dcfd059386f9facd376351b2bd79325778744aa442177390cdfcca54babed"
+        },
+        {
+          "path": "third_party/safestringlib/LICENSE",
+          "sha256": "c0f99a208799ca20c9ccf31a30533d49334eb458dca5a3d14f9afe3e884e5d7d"
+        }
+      ],
+      "package": "svt-av1",
+      "notice_prefixes": [
+        "Source/",
+        "third_party/fastfeat/",
+        "third_party/safestringlib/"
+      ]
+    },
+    {
+      "id": "usrsctp",
+      "name": "usrsctp",
+      "version": "0.9.5+0",
+      "license": "BSD-3-Clause and embedded notices",
+      "source": {
+        "kind": "archive",
+        "url": "https://github.com/sctplab/usrsctp/archive/refs/tags/0.9.5.0.tar.gz",
+        "sha256": "260107caf318650a57a8caa593550e39bca6943e93f970c80d6c17e59d62cd92"
+      },
+      "documents": [
+        {
+          "path": "LICENSE.md",
+          "sha256": "fa53711b25af4b9a9b8dadfea3cb38166ec4b96760c8d62b284055554537d9ef"
+        }
+      ],
+      "recipe_sha256": "e3dac7d1db8e5bc79d99851e2486371af19962a4b8fca6eaac3156c00eb73b92",
+      "recipe_path": "xmake-repo/packages/u/usrsctp/xmake.lua",
+      "package": "usrsctp",
+      "notice_prefixes": [
+        "usrsctplib/"
+      ]
+    },
+    {
+      "id": "webrtc",
+      "name": "WebRTC-derived code in MiniRTC",
+      "version": "6286ae6c1c015609d3070cc139e5feea900caf7c",
+      "license": "BSD-3-Clause and patent grant",
+      "source": {
+        "kind": "repository",
+        "url": "https://github.com/kunkundi/minirtc",
+        "revision": "6286ae6c1c015609d3070cc139e5feea900caf7c"
+      },
+      "documents": [
+        {
+          "path": "deps/submodules/minirtc/thirdparty/webrtc/LICENSE",
+          "sha256": "ab00a482b6a3902e40211b43c5d0441962ea99b6cc7c25c0f243fa270b78d482"
+        },
+        {
+          "path": "deps/submodules/minirtc/thirdparty/webrtc/PATENTS",
+          "sha256": "01462e2068d1a04c2274f3389773014c14ed9bc3446b28303543bd3e3c064145"
+        }
+      ]
+    },
+    {
+      "id": "websocketpp",
+      "name": "WebSocket++",
+      "version": "0.8.2",
+      "license": "BSD-3-Clause and embedded notices",
+      "source": {
+        "kind": "archive",
+        "url": "https://github.com/zaphoyd/websocketpp/archive/refs/tags/0.8.2.tar.gz",
+        "sha256": "6ce889d85ecdc2d8fa07408d6787e7352510750daa66b5ad44aacb47bea76755"
+      },
+      "documents": [
+        {
+          "path": "COPYING",
+          "sha256": "b31e597bc777d884a39663c11d0557a0af40780e1f451de11ea5103924a69667"
+        }
+      ],
+      "recipe_sha256": "beac245a717c2bc3bc8d17265d9fc9b54f699f3833b11513f8723c4dbaffd539",
+      "recipe_path": "deps/submodules/minirtc/thirdparty/websocketpp/xmake.lua",
+      "package": "websocketpp",
+      "notice_prefixes": [
+        "websocketpp/"
+      ]
+    },
+    {
+      "id": "zlib",
+      "name": "zlib",
+      "version": "v1.3.2",
+      "license": "Zlib",
+      "source": {
+        "kind": "archive",
+        "url": "https://github.com/madler/zlib/archive/refs/tags/v1.3.2.tar.gz",
+        "sha256": "b99a0b86c0ba9360ec7e78c4f1e43b1cbdf1e6936c8fa0f6835c0cd694a495a1"
+      },
+      "documents": [
+        {
+          "path": "LICENSE",
+          "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2"
+        }
+      ],
+      "recipe_sha256": "7832bcb086709a0739ae1abeff035f7a103c7169dc8af61ebf91dd887fcbd054",
+      "recipe_path": "xmake-repo/packages/z/zlib/xmake.lua",
+      "package": "zlib",
+      "notice_prefixes": [
+        "zlib.h"
+      ]
+    }
+  ],
+  "bundle_sha256": "09376251bbda3f5a1f7112f15dcbb1259fef7898f85b45aacafa767348aafdc2",
+  "toolchain": {
+    "xmake_version": "3.1.1",
+    "xmake_repository_revision": "121109352da272cd1a3d4ed52f2dcda34f839955"
+  }
+}

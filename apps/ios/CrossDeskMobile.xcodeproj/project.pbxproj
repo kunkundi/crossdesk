@@ -15,6 +15,11 @@
 		100000000000000000000006 /* NativeMetalVideoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000009 /* NativeMetalVideoView.swift */; };
 		100000000000000000000007 /* RemoteTouchInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* RemoteTouchInputView.swift */; };
 		100000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000D /* Assets.xcassets */; };
+		100000000000000000000009 /* ThirdPartyLicensesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000E /* ThirdPartyLicensesView.swift */; };
+		10000000000000000000000A /* ThirdPartyLicenses.json in Resources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000F /* ThirdPartyLicenses.json */; };
+		10000000000000000000000B /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000010 /* PrivacyInfo.xcprivacy */; };
+		10000000000000000000000C /* OpenSSL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 200000000000000000000011 /* OpenSSL.framework */; };
+		10000000000000000000000D /* OpenSSL.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 200000000000000000000011 /* OpenSSL.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,13 +36,30 @@
 		20000000000000000000000B /* CrossDeskMobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CrossDeskMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		20000000000000000000000C /* build_minirtc_ios.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build_minirtc_ios.sh; sourceTree = "<group>"; };
 		20000000000000000000000D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		20000000000000000000000E /* ThirdPartyLicensesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThirdPartyLicensesView.swift; sourceTree = "<group>"; };
+		20000000000000000000000F /* ThirdPartyLicenses.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Resources/ThirdPartyLicenses.json; sourceTree = "<group>"; };
+		200000000000000000000010 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		200000000000000000000011 /* OpenSSL.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = OpenSSL.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		300000000000000000000002 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (10000000000000000000000D /* OpenSSL.framework in Embed Frameworks */, );
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		300000000000000000000001 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				10000000000000000000000C /* OpenSSL.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -59,6 +81,9 @@
 				200000000000000000000001 /* CrossDeskMobileApp.swift */,
 				200000000000000000000002 /* RemoteSessionModel.swift */,
 				200000000000000000000003 /* ContentView.swift */,
+				20000000000000000000000E /* ThirdPartyLicensesView.swift */,
+				20000000000000000000000F /* ThirdPartyLicenses.json */,
+				200000000000000000000010 /* PrivacyInfo.xcprivacy */,
 				200000000000000000000004 /* RemoteSessionView.swift */,
 				400000000000000000000003 /* Bridge */,
 				400000000000000000000004 /* Rendering */,
@@ -107,6 +132,7 @@
 			isa = PBXGroup;
 			children = (
 				20000000000000000000000B /* CrossDeskMobile.app */,
+				200000000000000000000011 /* OpenSSL.framework */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -122,6 +148,7 @@
 				600000000000000000000001 /* Sources */,
 				300000000000000000000001 /* Frameworks */,
 				600000000000000000000002 /* Resources */,
+				300000000000000000000002 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -172,6 +199,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000008 /* Assets.xcassets in Resources */,
+				10000000000000000000000A /* ThirdPartyLicenses.json in Resources */,
+				10000000000000000000000B /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -193,10 +222,16 @@
 			);
 			outputPaths = (
 				"$(PROJECT_DIR)/Vendor/iphoneos/$(CONFIGURATION)/libCrossDeskMiniRTC.a",
+				"$(BUILT_PRODUCTS_DIR)/OpenSSL.framework/OpenSSL",
+				"$(BUILT_PRODUCTS_DIR)/OpenSSL.framework/Info.plist",
+				"$(BUILT_PRODUCTS_DIR)/OpenSSL.framework/PrivacyInfo.xcprivacy",
+				"$(BUILT_PRODUCTS_DIR)/OpenSSL.framework/LICENSE.txt",
+				"$(BUILT_PRODUCTS_DIR)/OpenSSL.framework/BuildMetadata.json",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/SourceMetadata.json",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/zsh;
-			shellScript = "\"${PROJECT_DIR}/scripts/build_minirtc_ios.sh\"\n";
+			shellScript = "set -e\npython3 \"${PROJECT_DIR}/scripts/prepare_source_metadata.py\" --output \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/SourceMetadata.json\"\n\"${PROJECT_DIR}/scripts/build_minirtc_ios.sh\"\npython3 \"${PROJECT_DIR}/scripts/generate_third_party_licenses.py\" --inputs \"${PROJECT_DIR}/Vendor/iphoneos/${CONFIGURATION}/libCrossDeskMiniRTC.a.inputs.sha256\" --target-info \"${PROJECT_DIR}/Vendor/iphoneos/${CONFIGURATION}/minirtc-target-info.txt\" --xmake-version \"${PROJECT_DIR}/Vendor/iphoneos/${CONFIGURATION}/xmake-version.txt\" --xmake-repository \"$(cat \"${PROJECT_DIR}/Vendor/iphoneos/${CONFIGURATION}/xmake-repository.txt\")\"\npython3 \"${PROJECT_DIR}/scripts/package_openssl_ios.py\" --inputs \"${PROJECT_DIR}/Vendor/iphoneos/${CONFIGURATION}/libCrossDeskMiniRTC.a.inputs.sha256\" --output \"${BUILT_PRODUCTS_DIR}/OpenSSL.framework\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -208,6 +243,7 @@
 				100000000000000000000001 /* CrossDeskMobileApp.swift in Sources */,
 				100000000000000000000002 /* RemoteSessionModel.swift in Sources */,
 				100000000000000000000003 /* ContentView.swift in Sources */,
+				100000000000000000000009 /* ThirdPartyLicensesView.swift in Sources */,
 				100000000000000000000004 /* RemoteSessionView.swift in Sources */,
 				100000000000000000000005 /* CrossDeskRTCBridge.mm in Sources */,
 				100000000000000000000006 /* NativeMetalVideoView.swift in Sources */,
@@ -270,6 +306,7 @@
 				ENABLE_BITCODE = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
+				FRAMEWORK_SEARCH_PATHS = ("$(inherited)", "$(BUILT_PRODUCTS_DIR)", );
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/../../deps/submodules/minirtc/src/api",
@@ -319,6 +356,7 @@
 				ENABLE_BITCODE = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
+				FRAMEWORK_SEARCH_PATHS = ("$(inherited)", "$(BUILT_PRODUCTS_DIR)", );
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/../../deps/submodules/minirtc/src/api",

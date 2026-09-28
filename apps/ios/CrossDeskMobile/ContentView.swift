@@ -711,6 +711,10 @@ private struct ServerSettingsView: View {
                 } header: {
                     Text("服务器")
                 } footer: {
+                    if let warning = session.identityStorageWarning {
+                        Text(warning)
+                            .foregroundStyle(.orange)
+                    }
                     Text(session.localIdentity.isEmpty
                          ? "正在获取本机 ID…"
                          : "本机 ID  \(session.localIdentity)")
@@ -719,6 +723,20 @@ private struct ServerSettingsView: View {
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, 16)
                         .textSelection(.enabled)
+                }
+                Section {
+                    if let source = SourceMetadata.bundled {
+                        Link(destination: source.privacyPolicyURL) {
+                            Label("隐私政策", systemImage: "hand.raised")
+                        }
+                    }
+                    NavigationLink {
+                        ThirdPartyLicensesView()
+                    } label: {
+                        Label("关于与开源许可", systemImage: "doc.text")
+                    }
+                } footer: {
+                    Text("本应用使用 OpenFEC，遵循 CeCILL-C 许可。版权声明、许可全文和源码入口见“关于与开源许可”。")
                 }
             }
             .navigationTitle("设置")

@@ -11,6 +11,7 @@ typedef NS_ENUM(NSInteger, CrossDeskSignalState) {
   CrossDeskSignalStateReconnecting,
   CrossDeskSignalStateServerClosed,
   CrossDeskSignalStateTLSCertificateError,
+  CrossDeskSignalStateCredentialUnavailable,
 };
 
 typedef NS_ENUM(NSInteger, CrossDeskConnectionState) {
@@ -47,6 +48,8 @@ typedef NS_ENUM(NSInteger, CrossDeskVideoAdaptationPolicy) {
 @optional
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didChangeSignalState:(CrossDeskSignalState)state;
+- (void)rtcBridge:(CrossDeskRTCBridge *)bridge
+    didChangeIdentityStorageError:(BOOL)hasError;
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didChangeConnectionState:(CrossDeskConnectionState)state
                     remoteID:(NSString *)remoteID;
