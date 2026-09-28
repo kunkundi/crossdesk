@@ -63,7 +63,14 @@ typedef NS_ENUM(NSInteger, CrossDeskVideoAdaptationPolicy) {
     didReceiveHostName:(NSString *)hostName
             appVersion:(NSString *)appVersion
           displayNames:(NSArray<NSString *> *)displayNames
-          displaySizes:(NSArray<NSValue *> *)displaySizes;
+          displaySizes:(NSArray<NSValue *> *)displaySizes
+ supportsVideoSettings:(BOOL)supportsVideoSettings;
+- (void)rtcBridge:(CrossDeskRTCBridge *)bridge
+    didReceiveVideoSettingsQuality:(NSInteger)quality
+                        frameRate:(NSInteger)frameRate
+                       preference:(NSInteger)preference
+                        requestID:(uint32_t)requestID
+                         accepted:(BOOL)accepted;
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didReceivePresence:(NSDictionary<NSString *, NSNumber *> *)presence
                snapshot:(BOOL)snapshot;
@@ -110,6 +117,11 @@ typedef NS_ENUM(NSInteger, CrossDeskVideoAdaptationPolicy) {
 - (void)configureWithSignalHost:(NSString *)host
                      signalPort:(NSInteger)signalPort;
 - (void)setVideoAdaptationPolicy:(CrossDeskVideoAdaptationPolicy)policy;
+- (void)sendVideoSettingsWithQuality:(NSInteger)quality
+                          frameRate:(NSInteger)frameRate
+                         preference:(NSInteger)preference
+                          requestID:(uint32_t)requestID
+    NS_SWIFT_NAME(sendVideoSettings(quality:frameRate:preference:requestID:));
 - (void)requestPresenceForRemoteIDs:(NSArray<NSString *> *)remoteIDs
                          subscribe:(BOOL)subscribe
     NS_SWIFT_NAME(requestPresence(remoteIDs:subscribe:));

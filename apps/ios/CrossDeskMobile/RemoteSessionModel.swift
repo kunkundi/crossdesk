@@ -308,6 +308,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     @Published var videoAdaptationPolicy = VideoAdaptationPolicy.saved {
         didSet { videoAdaptationPolicy.save() }
     }
+    @Published private(set) var videoSettings = RemoteVideoSettingsState()
     @Published var remoteID = ""
     @Published var password = ""
     @Published private(set) var signalStatus = "尚未同意联网"
@@ -358,6 +359,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     private var remoteCursorSequence: UInt32?
     private var videoWasBackgrounded = false
     private var videoRecoveryTask: Task<Void, Never>?
+    private var videoSettingsTimeoutTask: Task<Void, Never>?
     private var pendingPresenceRemoteID: String?
     private var presenceProbeGeneration: UInt64 = 0
     private var signalConnected = false
@@ -529,6 +531,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     private func beginRemoteConnection(_ identifier: String) {
         resetRemoteVersionCheck()
         cancelVideoRecovery()
+        resetVideoSettings()
         cancelPresenceProbe()
         activeRemoteID = identifier
         activeDisplayName = ""
@@ -621,6 +624,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
 
     private func resetConnection() {
         resetRemoteVersionCheck()
+        resetVideoSettings()
         connectionFailureMessage = nil
         cancelVideoRecovery()
         let wasCheckingPresence = pendingPresenceRemoteID != nil
@@ -908,6 +912,61 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         bridge.switch(toDisplay: index)
     }
 
+    var canChangeVideoSettings: Bool {
+        isConnected && videoSettings.supported
+    }
+
+    var videoSettingsFeedback: String {
+        if !canChangeVideoSettings {
+            return "连接建立后可调整，需被控端支持。"
+        }
+        if videoSettings.failed { return "调整失败，请重试。" }
+        return videoSettings.pending ? "正在应用…" : ""
+    }
+
+    func updateVideoSettings(quality: Int? = nil, frameRate: Int? = nil,
+                             preference: Int? = nil) {
+        guard hasNetworkConsent, canChangeVideoSettings else { return }
+        var settings = videoSettings.selection
+        if let quality { settings.quality = quality }
+        if let frameRate { settings.frameRate = frameRate }
+        if let preference { settings.preference = preference }
+        guard let requestID = videoSettings.begin(settings) else { return }
+        videoSettingsTimeoutTask?.cancel()
+        bridge.sendVideoSettings(quality: settings.quality,
+                                 frameRate: settings.frameRate,
+                                 preference: settings.preference,
+                                 requestID: requestID)
+        videoSettingsTimeoutTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+            } catch { return }
+            self?.videoSettings.expire(requestID: requestID)
+        }
+    }
+
+    private func resetVideoSettings() {
+        videoSettingsTimeoutTask?.cancel()
+        videoSettingsTimeoutTask = nil
+        videoSettings = RemoteVideoSettingsState(
+            preference: videoAdaptationPolicy.bridgeValue.rawValue)
+    }
+
+    func rtcBridge(_ bridge: CrossDeskRTCBridge,
+                   didReceiveVideoSettingsQuality quality: Int,
+                   frameRate: Int, preference: Int,
+                   requestID: UInt32, accepted: Bool) {
+        guard hasNetworkConsent, isConnected else { return }
+        videoSettings.receive(RemoteVideoSettings(quality: quality,
+                                                  frameRate: frameRate,
+                                                  preference: preference),
+                              requestID: requestID, accepted: accepted)
+        if !videoSettings.pending {
+            videoSettingsTimeoutTask?.cancel()
+            videoSettingsTimeoutTask = nil
+        }
+    }
+
     private func resetRemoteCursorState() {
         remoteCursorVisible = true
         remoteCursorShape = 0
@@ -1003,6 +1062,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         case 1:
             connectionStatus = "已连接"
             sessionVisible = true
+            if videoSettings.requestID == 0 { updateVideoSettings() }
             checkRemoteVersionIfNeeded()
             recordSuccessfulConnectionIfNeeded()
             audioPlayer.setEnabled(audioEnabled)
@@ -1094,7 +1154,16 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
                    didReceiveHostName hostName: String,
                    appVersion: String,
                    displayNames remoteDisplayNames: [String],
-                   displaySizes remoteDisplaySizes: [NSValue]) {
+                   displaySizes remoteDisplaySizes: [NSValue],
+                   supportsVideoSettings: Bool) {
+        let previouslySupported = videoSettings.supported
+        videoSettings.setSupported(supportsVideoSettings)
+        if !supportsVideoSettings {
+            videoSettingsTimeoutTask?.cancel()
+            videoSettingsTimeoutTask = nil
+        } else if !previouslySupported {
+            updateVideoSettings()
+        }
         remoteHostInfoReceived = true
         remoteAppVersion = appVersion
         checkRemoteVersionIfNeeded()

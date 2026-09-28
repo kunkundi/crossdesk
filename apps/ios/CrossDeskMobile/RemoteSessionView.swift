@@ -277,7 +277,7 @@ struct RemoteSessionView: View {
             )
             let panelSize = CGSize(
                 width: min(340, max(280, containerSize.width - 160)),
-                height: min(250, max(220, containerSize.height - 48))
+                height: min(310, max(0, containerSize.height - 16))
             )
             let panelCenter = floatingPanelCenter(
                 orbCenter: orbCenter,
@@ -1075,6 +1075,7 @@ private struct CrossDeskStatusOrb: View {
 
 private struct FloatingSessionMenu: View {
     @ObservedObject var session: RemoteSessionModel
+    @State private var showingVideoSettings = false
     let showKeyboard: () -> Void
     let chooseFile: () -> Void
     let close: () -> Void
@@ -1086,15 +1087,28 @@ private struct FloatingSessionMenu: View {
     var body: some View {
         VStack(spacing: 9) {
             HStack(spacing: 8) {
-                Circle()
-                    .fill(session.isConnected ? Color.green : Color.orange)
-                    .frame(width: 9, height: 9)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(session.connectionStatus)
+                if showingVideoSettings {
+                    Button {
+                        showingVideoSettings = false
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .frame(width: 28, height: 32)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("返回控制栏")
+                    Text("画面设置")
                         .font(.subheadline.weight(.semibold))
-                    Text(statusDetail)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                } else {
+                    Circle()
+                        .fill(session.isConnected ? Color.green : Color.orange)
+                        .frame(width: 9, height: 9)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(session.connectionStatus)
+                            .font(.subheadline.weight(.semibold))
+                        Text(statusDetail)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
                 Button(action: close) {
@@ -1103,65 +1117,84 @@ private struct FloatingSessionMenu: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("关闭控制栏")
             }
 
-            LazyVGrid(columns: columns, spacing: 7) {
-                FloatingControlButton(title: "键盘", symbol: "keyboard",
-                                      action: showKeyboard)
+            if showingVideoSettings, !session.videoSettingsFeedback.isEmpty {
+                Text(session.videoSettingsFeedback)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
-                Menu {
-                    ForEach(Array(session.displays.enumerated()), id: \.offset) { index, name in
-                        Button {
-                            session.selectDisplay(index)
-                        } label: {
-                            if index == session.selectedDisplay {
-                                Label(name, systemImage: "checkmark")
-                            } else {
-                                Text(name)
+            ScrollView {
+                if showingVideoSettings {
+                    FloatingVideoSettings(session: session)
+                } else {
+                    VStack(spacing: 9) {
+                        LazyVGrid(columns: columns, spacing: 7) {
+                            FloatingControlButton(title: "键盘", symbol: "keyboard",
+                                                  action: showKeyboard)
+
+                            Menu {
+                                ForEach(Array(session.displays.enumerated()), id: \.offset) { index, name in
+                                    Button {
+                                        session.selectDisplay(index)
+                                    } label: {
+                                        if index == session.selectedDisplay {
+                                            Label(name, systemImage: "checkmark")
+                                        } else {
+                                            Text(name)
+                                        }
+                                    }
+                                }
+                            } label: {
+                                FloatingControlLabel(title: "显示器", symbol: "display")
                             }
+                            .buttonStyle(.plain)
+
+                            FloatingControlButton(title: "画面设置", symbol: "slider.horizontal.3") {
+                                showingVideoSettings = true
+                            }
+                            FloatingControlButton(
+                                title: session.audioEnabled ? "声音" : "静音",
+                                symbol: session.audioEnabled ? "speaker.wave.2" : "speaker.slash",
+                                action: session.toggleAudio
+                            )
+                            FloatingControlButton(
+                                title: session.mouseControlMode == .relative ? "相对鼠标" : "绝对鼠标",
+                                symbol: "computermouse",
+                                action: {
+                                    session.mouseControlMode = session.mouseControlMode == .relative
+                                        ? .absolute : .relative
+                                }
+                            )
+                            FloatingControlButton(title: "发送文件",
+                                                  symbol: "folder.badge.plus",
+                                                  action: chooseFile)
+                            FloatingControlButton(title: "Ctrl+Alt+Del",
+                                                  symbol: "lock.trianglebadge.exclamationmark",
+                                                  action: session.bridge.sendSecureAttentionSequence)
                         }
-                    }
-                } label: {
-                    FloatingControlLabel(title: "显示器", symbol: "display")
-                }
-                .buttonStyle(.plain)
 
-                FloatingControlButton(
-                    title: session.audioEnabled ? "声音" : "静音",
-                    symbol: session.audioEnabled ? "speaker.wave.2" : "speaker.slash",
-                    action: session.toggleAudio
-                )
-                FloatingControlButton(
-                    title: session.mouseControlMode == .relative ? "相对鼠标" : "绝对鼠标",
-                    symbol: "computermouse",
-                    action: {
-                        session.mouseControlMode = session.mouseControlMode == .relative
-                            ? .absolute : .relative
-                    }
-                )
-                FloatingControlButton(title: "发送文件",
-                                      symbol: "folder.badge.plus",
-                                      action: chooseFile)
-                FloatingControlButton(title: "Ctrl+Alt+Del",
-                                      symbol: "lock.trianglebadge.exclamationmark",
-                                      action: session.bridge.sendSecureAttentionSequence)
-            }
-
-            if !session.transferStatus.isEmpty || !session.clipboardStatus.isEmpty {
-                HStack(spacing: 8) {
-                    Text(!session.transferStatus.isEmpty
-                         ? session.transferStatus : session.clipboardStatus)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    if session.transferProgress > 0 && session.transferProgress < 1 {
-                        ProgressView(value: session.transferProgress)
-                            .frame(width: 60)
-                    }
-                    if let file = session.receivedFileURL {
-                        ShareLink(item: file) {
-                            Image(systemName: "square.and.arrow.up")
+                        if !session.transferStatus.isEmpty || !session.clipboardStatus.isEmpty {
+                            HStack(spacing: 8) {
+                                Text(!session.transferStatus.isEmpty
+                                     ? session.transferStatus : session.clipboardStatus)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                Spacer(minLength: 0)
+                                if session.transferProgress > 0 && session.transferProgress < 1 {
+                                    ProgressView(value: session.transferProgress)
+                                        .frame(width: 60)
+                                }
+                                if let file = session.receivedFileURL {
+                                    ShareLink(item: file) {
+                                        Image(systemName: "square.and.arrow.up")
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1198,6 +1231,48 @@ private struct FloatingSessionMenu: View {
             components.append(String(format: "丢包 %.1f%%", session.lossRate * 100))
         }
         return components.joined(separator: " · ")
+    }
+}
+
+private struct FloatingVideoSettings: View {
+    @ObservedObject var session: RemoteSessionModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            settingRow("画面质量", options: ["低", "中", "高"],
+                       values: [0, 1, 2], selection: Binding(
+                        get: { session.videoSettings.selection.quality },
+                        set: { session.updateVideoSettings(quality: $0) }
+                       ))
+            settingRow("画面采集帧率", options: ["30 fps", "60 fps"],
+                       values: [30, 60], selection: Binding(
+                        get: { session.videoSettings.selection.frameRate },
+                        set: { session.updateVideoSettings(frameRate: $0) }
+                       ))
+            settingRow("画面偏好", options: VideoAdaptationPolicy.allCases.map(\.title),
+                       values: VideoAdaptationPolicy.allCases.map { $0.bridgeValue.rawValue },
+                       selection: Binding(
+                        get: { session.videoSettings.selection.preference },
+                        set: { session.updateVideoSettings(preference: $0) }
+                       ))
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func settingRow(_ title: String, options: [String], values: [Int],
+                            selection: Binding<Int>) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Picker(title, selection: selection) {
+                ForEach(options.indices, id: \.self) { index in
+                    Text(options[index]).tag(values[index])
+                }
+            }
+            .pickerStyle(.segmented)
+            .disabled(!session.canChangeVideoSettings)
+        }
     }
 }
 

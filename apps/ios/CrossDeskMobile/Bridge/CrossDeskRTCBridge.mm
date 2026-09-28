@@ -327,6 +327,8 @@ void DispatchMain(dispatch_block_t block) {
                            width:(NSInteger)width
                           height:(NSInteger)height;
 - (void)resetVideoDelivery;
+- (void)notifyVideoSettings:(crossdesk::VideoSettings)settings
+                generation:(uint64_t)generation;
 - (void)handleAudio:(const char *)data size:(size_t)size;
 - (void)handleData:(const char *)data
               size:(size_t)size
@@ -649,6 +651,46 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
 
 - (void)invalidatePresence {
   _presenceGeneration.fetch_add(1);
+}
+
+- (void)sendVideoSettingsWithQuality:(NSInteger)quality
+                          frameRate:(NSInteger)frameRate
+                         preference:(NSInteger)preference
+                          requestID:(uint32_t)requestID {
+  if (quality < 0 || quality > 2 || (frameRate != 30 && frameRate != 60) ||
+      preference < 0 || preference > 2) return;
+  const uint64_t generation = _activeControllerGeneration.load();
+  dispatch_async(_rtcQueue, ^{
+    if (![self isControllerGenerationActive:generation] ||
+        !self->_state->controller_peer) return;
+    RemoteAction action{};
+    action.type = ControlType::video_settings;
+    action.vs = {static_cast<int>(quality), static_cast<int>(frameRate),
+                 static_cast<int>(preference), requestID, false};
+    const auto message = action.to_json();
+    if (SendReliableDataFrame(self->_state->controller_peer, message.data(),
+                              message.size(), kControlStream) != 0) {
+      [self notifyVideoSettings:action.vs generation:generation];
+    }
+  });
+}
+
+- (void)notifyVideoSettings:(crossdesk::VideoSettings)settings
+                generation:(uint64_t)generation {
+  DispatchMain(^{
+    if (![self isControllerGenerationActive:generation]) return;
+    id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
+    if ([delegate respondsToSelector:
+            @selector(rtcBridge:didReceiveVideoSettingsQuality:frameRate:
+                                preference:requestID:accepted:)]) {
+      [delegate rtcBridge:self
+          didReceiveVideoSettingsQuality:settings.quality
+                              frameRate:settings.frame_rate
+                             preference:settings.preference
+                              requestID:settings.request_id
+                               accepted:settings.accepted];
+    }
+  });
 }
 
 - (void)requestPresenceForRemoteIDs:(NSArray<NSString *> *)remoteIDs
@@ -1560,10 +1602,13 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   const std::string source(sourceID, sourceIDSize);
   if (source == kControlStream) {
     RemoteAction action{};
-    if (!action.from_json(std::string(data, size)) ||
-        action.type != ControlType::host_infomation) {
+    if (!action.from_json(std::string(data, size))) return;
+    if (action.type == ControlType::video_settings_status) {
+      [self notifyVideoSettings:action.vs generation:generation];
       return;
     }
+    if (action.type != ControlType::host_infomation) return;
+    const BOOL supports_video_settings = action.i.supports_video_settings;
     NSString *host_name = [[NSString alloc]
         initWithBytes:action.i.host_name
                length:action.i.host_name_size
@@ -1594,12 +1639,13 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
       id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
       if ([delegate respondsToSelector:
               @selector(rtcBridge:didReceiveHostName:appVersion:displayNames:
-                                  displaySizes:)]) {
+                                  displaySizes:supportsVideoSettings:)]) {
         [delegate rtcBridge:self
             didReceiveHostName:host_name ?: @""
                     appVersion:app_version ?: @""
                   displayNames:display_names
-                  displaySizes:display_sizes];
+                  displaySizes:display_sizes
+         supportsVideoSettings:supports_video_settings];
       }
     });
     return;
