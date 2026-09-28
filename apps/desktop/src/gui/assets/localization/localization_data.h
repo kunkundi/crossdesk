@@ -330,6 +330,34 @@ struct TranslationRow {
   X(permission_required_message, u8"该应用需要授权以下权限:",                  \
     "The application requires the following permissions:",                     \
     u8"Для работы приложения требуются следующие разрешения:")                 \
+  X(wayland_notice_title, u8"Wayland 会话提示", "Wayland Session Notice",        \
+    u8"Уведомление о сеансе Wayland")                                          \
+  X(wayland_notice_subtitle, u8"检测到当前桌面会话使用 Wayland。",               \
+    "The current desktop session uses Wayland.",                              \
+    u8"Текущий сеанс рабочего стола использует Wayland.")                      \
+  X(wayland_permission_title, u8"每次共享均需本机授权",                        \
+    "Local approval required each time",                                      \
+    u8"Разрешение требуется каждый раз")                                      \
+  X(wayland_notice_message,                                                    \
+    u8"受 Wayland 安全机制限制，每次启动远程桌面共享时，"                      \
+    u8"均需在本机手动授权屏幕共享与远程控制，授权后方可正常使用。",             \
+    "Wayland security restrictions require you to authorize screen sharing "  \
+    "and remote control locally each time you start sharing this desktop. "   \
+    "Remote access is available only after authorization.",                    \
+    u8"Из-за ограничений безопасности Wayland при каждом запуске общего "       \
+    u8"доступа к рабочему столу необходимо вручную разрешать на этом "           \
+    u8"компьютере показ экрана и удалённое управление. Удалённый доступ "        \
+    u8"возможен только после разрешения.")                                     \
+  X(wayland_recommendation_title, u8"建议使用 X11（Xorg）",                      \
+    "X11 (Xorg) is recommended", u8"Рекомендуем X11 (Xorg)")                    \
+  X(wayland_recommendation_message,                                            \
+    u8"为便于持续使用远程桌面，建议注销当前桌面会话，"                        \
+    u8"在登录界面选择 X11（Xorg）会话后重新登录。",                            \
+    "For ongoing remote desktop access, we recommend logging out, selecting " \
+    "an X11 (Xorg) session on the login screen, and logging in again.",         \
+    u8"Для постоянного удалённого доступа рекомендуем завершить сеанс, "        \
+    u8"выбрать X11 (Xorg) на экране входа и войти снова.")                      \
+  X(wayland_notice_acknowledge, u8"我知道了", "Got it", u8"Понятно")            \
   X(show_main_window, u8"显示主界面", "Show Main Window",                    \
     u8"Показать главное окно")                                                \
   X(privacy_screen_unlock_hint, u8"按下快捷键，解除隐私屏",                    \

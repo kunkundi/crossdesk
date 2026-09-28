@@ -80,6 +80,13 @@ export global UiStrings {
     in-out property <string> permission-required: "The application requires the following permissions:";
     in-out property <string> screen-recording-permission: "Screen recording permission";
     in-out property <string> accessibility-permission: "Accessibility permission";
+    in-out property <string> wayland-notice-title: "Wayland Session Notice";
+    in-out property <string> wayland-notice-subtitle;
+    in-out property <string> wayland-permission-title;
+    in-out property <string> wayland-notice-message;
+    in-out property <string> wayland-recommendation-title;
+    in-out property <string> wayland-recommendation-message;
+    in-out property <string> wayland-notice-acknowledge: "Got it";
     in-out property <string> service-setup-title: "Install CrossDesk Service";
     in-out property <string> service-setup-message: "Administrator permission is required to control this device while it is locked.";
     in-out property <string> service-settings-label: "Lock Screen Service:";
@@ -288,6 +295,7 @@ export component MainWindow inherits Window {
     in property <bool> permission-dialog-open: false;
     in property <bool> screen-recording-granted: true;
     in property <bool> accessibility-granted: true;
+    in-out property <bool> wayland-notice-open: false;
     in property <bool> portable-service-settings-visible: false;
     in property <bool> portable-service-dialog-open: false;
     in property <bool> portable-service-suppressed-notice-open: false;
@@ -396,6 +404,10 @@ export component MainWindow inherits Window {
             root.settings-scroll-y = 0px;
             focus-sink.focus();
         }
+    }
+
+    changed wayland-notice-open => {
+        if root.wayland-notice-open { focus-sink.focus(); }
     }
 
     reset-remote-id => {
@@ -602,7 +614,18 @@ export component MainWindow inherits Window {
         border-width: 0px;
         border-radius: 0px;
 
-        focus-sink := FocusScope { x: 0px; y: 0px; width: 0px; height: 0px; }
+        focus-sink := FocusScope {
+            x: 0px; y: 0px; width: 0px; height: 0px;
+            key-pressed(event) => {
+                if root.wayland-notice-open {
+                    if event.text == Key.Return || event.text == Key.Escape {
+                        root.wayland-notice-open = false;
+                    }
+                    return accept;
+                }
+                return reject;
+            }
+        }
         TouchArea { clicked => { focus-sink.focus(); } }
 
         // Slint owns the client area below the native macOS title bar. Draw
@@ -1807,6 +1830,105 @@ export component MainWindow inherits Window {
             }
             CompactButton { x: root.compact-language ? 163px : 130px; y: 309px; width: root.compact-language ? 34px : 70px; primary: true; text: UiStrings.download; clicked => { root.open-download(); root.update-open = false; } }
             CompactButton { x: root.compact-language ? 204px : 207px; y: 309px; width: root.compact-language ? 34px : 56px; text: UiStrings.later; clicked => { root.update-open = false; } }
+        }
+    }
+
+    // Linux Wayland sessions show this advisory once per application launch.
+    if root.wayland-notice-open: Rectangle {
+        background: #14233b66;
+        z: 50;
+        TouchArea { clicked => { focus-sink.focus(); } }
+        DialogSurface {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 512px;
+            height: wayland-notice-content.preferred-height;
+            border-radius: 14px;
+            border-color: #dce3ee;
+            drop-shadow-color: #07142b30;
+            drop-shadow-blur: 28px;
+            drop-shadow-offset-y: 10px;
+
+            wayland-notice-content := VerticalLayout {
+                padding: 24px; spacing: 18px;
+                VerticalLayout {
+                    spacing: 7px;
+                    Text {
+                        text: UiStrings.wayland-notice-title;
+                        color: #1c2b43;
+                        font-size: 20px;
+                        font-weight: 700;
+                        wrap: word-wrap;
+                    }
+                    Text {
+                        text: UiStrings.wayland-notice-subtitle;
+                        color: #68758a;
+                        font-size: ImGuiFontStyle.base;
+                        wrap: word-wrap;
+                    }
+                }
+
+                Rectangle {
+                    background: #fff8eb;
+                    border-color: #f0dfba;
+                    border-width: 1px;
+                    border-radius: 9px;
+                    VerticalLayout {
+                        padding: 14px; spacing: 8px;
+                        Text {
+                            text: UiStrings.wayland-permission-title;
+                            color: #805719;
+                            font-size: 13px;
+                            font-weight: 600;
+                            wrap: word-wrap;
+                        }
+                        Text {
+                            text: UiStrings.wayland-notice-message;
+                            color: #6c5a3d;
+                            font-size: ImGuiFontStyle.base;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    background: #f3f7fd;
+                    border-color: #dfe8f5;
+                    border-width: 1px;
+                    border-radius: 9px;
+                    VerticalLayout {
+                        padding: 14px; spacing: 8px;
+                        Text {
+                            text: UiStrings.wayland-recommendation-title;
+                            color: #244c87;
+                            font-size: 13px;
+                            font-weight: 600;
+                            wrap: word-wrap;
+                        }
+                        Text {
+                            text: UiStrings.wayland-recommendation-message;
+                            color: #59677c;
+                            font-size: ImGuiFontStyle.base;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+
+                Rectangle { height: 1px; background: #e9edf3; }
+                HorizontalLayout {
+                    height: 34px; alignment: end;
+                    PrimaryButton {
+                        width: 104px; height: 34px;
+                        border-radius: 7px;
+                        text-size: ImGuiFontStyle.base;
+                        text: UiStrings.wayland-notice-acknowledge;
+                        accessible-role: button;
+                        accessible-label: UiStrings.wayland-notice-acknowledge;
+                        accessible-action-default => { root.wayland-notice-open = false; }
+                        clicked => { root.wayland-notice-open = false; }
+                    }
+                }
+            }
         }
     }
 

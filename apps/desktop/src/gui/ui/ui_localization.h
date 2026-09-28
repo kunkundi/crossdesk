@@ -104,6 +104,20 @@ inline int ApplyMainWindowStrings(
       Text(localization::screen_recording_permission[language]));
   strings.set_accessibility_permission(
       Text(localization::accessibility_permission[language]));
+  strings.set_wayland_notice_title(
+      Text(localization::wayland_notice_title[language]));
+  strings.set_wayland_notice_subtitle(
+      Text(localization::wayland_notice_subtitle[language]));
+  strings.set_wayland_permission_title(
+      Text(localization::wayland_permission_title[language]));
+  strings.set_wayland_notice_message(
+      Text(localization::wayland_notice_message[language]));
+  strings.set_wayland_recommendation_title(
+      Text(localization::wayland_recommendation_title[language]));
+  strings.set_wayland_recommendation_message(
+      Text(localization::wayland_recommendation_message[language]));
+  strings.set_wayland_notice_acknowledge(
+      Text(localization::wayland_notice_acknowledge[language]));
   strings.set_service_setup_title(
       Text(localization::windows_service_setup_title[language]));
   strings.set_service_setup_message(

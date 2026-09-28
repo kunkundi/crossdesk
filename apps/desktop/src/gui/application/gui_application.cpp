@@ -1123,6 +1123,9 @@ void GuiApplication::InitializeUi() {
   }
 #endif
 #if defined(__linux__) && !defined(__APPLE__)
+  // Detect the desktop session before temporarily hiding Wayland variables
+  // for the XWayland GUI backend below.
+  const bool is_wayland_session = IsWaylandSession();
   // Winit prefers Wayland whenever WAYLAND_DISPLAY/WAYLAND_SOCKET is present.
   // Hide them only while Slint selects its process-wide window backend, then
   // restore the environment before the rest of the application starts.
@@ -1144,6 +1147,8 @@ void GuiApplication::InitializeUi() {
 #elif defined(__linux__)
   ui_->main->set_custom_titlebar(use_x11_custom_titlebar_);
   ui_->main->set_wayland_titlebar(use_xwayland_gui_);
+  // Set this only at startup so dismissing the notice lasts until exit.
+  ui_->main->set_wayland_notice_open(is_wayland_session);
 #endif
   ui_->main->set_release_note_blocks(ui_->release_note_blocks_model);
   RegisterFontAwesome(ui_->main->window());

@@ -186,6 +186,7 @@ void ResetMainCaptureState(
   window->set_permission_dialog_open(false);
   window->set_screen_recording_granted(true);
   window->set_accessibility_granted(true);
+  window->set_wayland_notice_open(false);
   window->set_settings_session_active(false);
   window->set_portable_service_settings_visible(false);
   window->set_portable_service_dialog_open(false);
@@ -277,6 +278,8 @@ void ConfigureMainCapturePage(
     window->set_permission_dialog_open(true);
     window->set_screen_recording_granted(false);
     window->set_accessibility_granted(false);
+  } else if (options.page == "wayland-notice") {
+    window->set_wayland_notice_open(true);
   }
 }
 
