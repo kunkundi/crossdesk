@@ -148,19 +148,50 @@ component DialogPromptText inherits Rectangle {
     }
 }
 
-// Shared online-state artwork. Both the recent-connection card and the
-// server status bar use the same pure green center and proportional glow.
+// Explicit device labels make state readable without interpreting a dot.
+// Opaque surfaces keep the badge legible over both dark and light previews.
+component ConnectionStatusBadge inherits Rectangle {
+    in property <string> label;
+    in property <bool> online: false;
+
+    preferred-width: badge-label.preferred-width + 16px;
+    width: self.preferred-width;
+    height: 20px;
+    border-radius: self.height / 2;
+    background: root.online ? #eaf8f0 : #f2f4f7;
+    border-width: 1px;
+    border-color: root.online ? #bce3cd : #d5dbe3;
+
+    badge-label := Text {
+        x: 8px;
+        width: max(0px, parent.width - 16px);
+        height: parent.height;
+        text: root.label;
+        color: root.online ? #16a34a : #596575;
+        font-size: ImGuiFontStyle.small;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+// Keep the green center and fade the surrounding glow into the status bar.
 component OnlineStatusIndicator inherits Rectangle {
     in property <length> dot-diameter: 8px;
 
     width: root.dot-diameter * 2.2;
     height: self.width;
     border-radius: self.width / 2;
+    // Slint's default radial radius is half the bounding-box diagonal.
+    // Fade out at the circle's edge (1 / sqrt(2)), before rounded clipping.
     background: @radial-gradient(
         circle,
-        #00ff0030 0%,
-        #00ff0018 48%,
-        transparent 100%
+        #00ff0040 0%,
+        #00ff0038 32%,
+        #00ff0018 50%,
+        #00ff0007 62%,
+        #00ff0000 70.7%
     );
 
     Rectangle {
@@ -1043,18 +1074,12 @@ export component MainWindow inherits Window {
                                     vertical-alignment: center;
                                 }
                             }
-                            if connection.online: OnlineStatusIndicator {
-                                x: 9px - self.width / 2;
-                                y: 9px - self.height / 2;
-                                dot-diameter: 9px;
-                            }
-                            if !connection.online: Rectangle {
-                                x: 4.5px;
-                                y: 4.5px;
-                                width: 9px;
-                                height: 9px;
-                                border-radius: 4.5px;
-                                background: #9ca3af;
+                            ConnectionStatusBadge {
+                                x: 6px;
+                                y: 6px;
+                                width: min(self.preferred-width, parent.width - 12px);
+                                label: connection.online ? UiStrings.online : UiStrings.offline;
+                                online: connection.online;
                             }
                             // The software renderer only clips rectangular bounds.
                             // This outer border masks the four corners there too.
