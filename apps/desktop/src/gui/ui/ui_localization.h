@@ -230,6 +230,8 @@ inline int ApplyStreamWindowStrings(
   strings.set_stats_connection_latency(Text(localization::connection_latency[language]));
   strings.set_stats_connection_mode(
       Text(localization::connection_mode[language]));
+  strings.set_stats_ice_path(
+      Text(localization::connection_path[language]));
   strings.set_stats_encryption(
       Text(localization::transport_encryption[language]));
   strings.set_stats_encryption_enabled(

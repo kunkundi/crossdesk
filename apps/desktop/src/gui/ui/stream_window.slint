@@ -62,6 +62,7 @@ export global StreamStrings {
     in-out property <string> stats-video-latency: "Video delay";
     in-out property <string> stats-connection-latency: "Connection RTT";
     in-out property <string> stats-connection-mode: "Mode";
+    in-out property <string> stats-ice-path: "Path";
     in-out property <string> stats-encryption: "Encryption";
     in-out property <string> stats-encryption-enabled: "Enabled";
     in-out property <string> stats-encryption-disabled: "Disabled";
@@ -228,6 +229,7 @@ export component StreamWindow inherits Window {
     in property <string> stats-video-latency: "—";
     in property <string> stats-connection-latency: "—";
     in property <string> stats-connection-mode: "";
+    in property <string> stats-ice-path: "";
     in property <bool> stats-encryption-enabled: false;
     in property <bool> file-transfer-visible: false;
     in property <[FileTransferEntry]> file-transfers;
@@ -262,7 +264,7 @@ export component StreamWindow inherits Window {
     private property <length> stats-row-height: 18px;
     private property <length> stats-header-height: 18px;
     private property <length> stats-content-height:
-        root.stats-header-height + root.stats-rows.length * root.stats-row-height + 65px;
+        root.stats-header-height + root.stats-rows.length * root.stats-row-height + 85px;
     private property <bool> display-menu-open: false;
     private property <bool> display-menu-animation-enabled: false;
     private property <float> display-menu-progress: 0.0;
@@ -959,7 +961,8 @@ export component StreamWindow inherits Window {
                     left-label-width-probe := Text {
                         visible: false;
                         text: "FPS\n" + StreamStrings.stats-video-latency
-                            + "\n" + StreamStrings.stats-connection-mode;
+                            + "\n" + StreamStrings.stats-connection-mode
+                            + "\n" + StreamStrings.stats-ice-path;
                         font-size: ImGuiFontStyle.small;
                     }
                     right-label-width-probe := Text {
@@ -1136,6 +1139,37 @@ export component StreamWindow inherits Window {
                             color: #238653;
                             horizontal-alignment: center;
                             vertical-alignment: center;
+                        }
+                    }
+
+                    // Selected ICE candidate pair, spanning the panel width so the
+                    // addresses stay readable instead of eliding into a half column.
+                    Rectangle {
+                        x: 6px;
+                        y: root.stats-header-height + root.stats-rows.length * stats-table.row-height
+                            + 2px + 63px;
+                        width: parent.width - 12px;
+                        height: stats-table.row-height;
+                        Text {
+                            x: 0px;
+                            width: left-label-width-probe.preferred-width;
+                            height: parent.height;
+                            text: StreamStrings.stats-ice-path;
+                            color: #667085;
+                            font-size: ImGuiFontStyle.small;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            x: left-label-width-probe.preferred-width + 6px;
+                            y: 0px;
+                            width: parent.width - self.x;
+                            height: parent.height;
+                            text: root.stats-ice-path;
+                            color: #253247;
+                            font-size: ImGuiFontStyle.body;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            overflow: elide;
                         }
                     }
                 }

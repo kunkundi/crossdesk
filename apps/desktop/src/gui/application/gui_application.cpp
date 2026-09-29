@@ -3055,6 +3055,20 @@ void GuiApplication::SyncStreamWindow() {
                      : localization::connection_mode_relay
                            [localization_language_index_]));
 
+  const std::string_view local_ice_path{net.local_path};
+  const std::string_view remote_ice_path{net.remote_path};
+  std::string ice_path_text =
+      local_ice_path.empty() || remote_ice_path.empty()
+          ? std::string("—")
+          : std::string(local_ice_path) + " → " + std::string(remote_ice_path);
+  if (!local_ice_path.empty() &&
+      (local_ice_path.starts_with("relay") ||
+       remote_ice_path.starts_with("relay"))) {
+    ice_path_text +=
+        localization::connection_path_relay_suffix[localization_language_index_];
+  }
+  (*ui_->stream)->set_stats_ice_path(UiText(ice_path_text));
+
   std::vector<RemoteSession::FileTransferInfo> file_list;
   {
     std::lock_guard lock(props->file_transfer_.file_transfer_list_mutex_);
