@@ -264,7 +264,7 @@ export component StreamWindow inherits Window {
     private property <length> stats-row-height: 18px;
     private property <length> stats-header-height: 18px;
     private property <length> stats-content-height:
-        root.stats-header-height + root.stats-rows.length * root.stats-row-height + 85px;
+        root.stats-header-height + root.stats-rows.length * root.stats-row-height + 103px;
     private property <bool> display-menu-open: false;
     private property <bool> display-menu-animation-enabled: false;
     private property <float> display-menu-progress: 0.0;
@@ -1142,18 +1142,18 @@ export component StreamWindow inherits Window {
                         }
                     }
 
-                    // Selected ICE candidate pair, spanning the panel width so the
-                    // addresses stay readable instead of eliding into a half column.
+                    // Selected ICE candidate pair, spanning the panel width and
+                    // wrapping so neither address gets elided away.
                     Rectangle {
                         x: 6px;
                         y: root.stats-header-height + root.stats-rows.length * stats-table.row-height
                             + 2px + 63px;
                         width: parent.width - 12px;
-                        height: stats-table.row-height;
+                        height: stats-table.row-height * 2;
                         Text {
                             x: 0px;
                             width: left-label-width-probe.preferred-width;
-                            height: parent.height;
+                            height: stats-table.row-height;
                             text: StreamStrings.stats-ice-path;
                             color: #667085;
                             font-size: ImGuiFontStyle.small;
@@ -1168,8 +1168,8 @@ export component StreamWindow inherits Window {
                             color: #253247;
                             font-size: ImGuiFontStyle.body;
                             font-weight: 600;
-                            vertical-alignment: center;
-                            overflow: elide;
+                            vertical-alignment: top;
+                            wrap: word-wrap;
                         }
                     }
                 }
