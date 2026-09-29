@@ -1,5 +1,5 @@
 import { ScrollView } from "std-widgets.slint";
-import { CompactButton, DialogSurface, IconButton, FontAwesomeIcons } from "common.slint";
+import { CompactButton, DialogSurface, IconButton, FontAwesomeIcons, ImGuiFontStyle } from "common.slint";
 
 export struct AnnouncementItem {
     id: string,
@@ -47,7 +47,8 @@ export component MessagePanel inherits DialogSurface {
     callback close;
     private property <string> notice-text: root.delete-failed ? MessageStrings.delete-error
         : root.read-save-failed ? MessageStrings.read-save-error : "";
-    private property <length> content-top: root.notice-text == "" ? 42px : 78px;
+    private property <length> content-top: title-bar.height + (root.notice-text == "" ? 14px : 50px);
+    private property <color> separator-color: #e6e8eb;
     private property <string> pending-delete-id;
     private property <string> pending-delete-revision;
     function request-delete(id: string, revision: string) {
@@ -66,109 +67,135 @@ export component MessagePanel inherits DialogSurface {
             return reject;
         }
     }
-    background: #f7f8fa;
+    background: white;
+    border-radius: 7px;
     TouchArea { }
-    Rectangle {
-        x: 1px; y: 1px; width: parent.width - 2px; height: 30px;
-        background: #e7ebf0; border-radius: 7px;
-        Rectangle { y: parent.height - 7px; height: 7px; background: #e7ebf0; }
+    title-bar := Rectangle {
+        x: 0px; y: 0px; width: parent.width; height: 21px;
+        background: #d3d3d3; border-radius: 7px;
+        Rectangle { y: parent.height - 7px; height: 7px; background: #d3d3d3; }
         message-heading := Text {
-            x: 12px; width: parent.width - 100px; height: parent.height;
+            x: 6px; width: parent.width - 100px; height: parent.height;
             text: MessageStrings.messages;
-            font-size: 14px; font-weight: 400; color: #111827;
+            font-size: ImGuiFontStyle.base; font-weight: 600; color: #202124;
             vertical-alignment: center; overflow: elide;
         }
         if root.unread-count > 0: Rectangle {
             x: message-heading.x + message-heading.preferred-width + 8px;
-            y: 5px; height: 20px;
-            width: max(20px, unread-count-label.preferred-width + 12px);
-            border-radius: 10px; background: #dbeafe;
+            y: (parent.height - self.height) / 2; height: 16px;
+            width: max(16px, unread-count-label.preferred-width + 8px);
+            border-radius: 8px; background: #eaf2ff;
             accessible-role: text;
             accessible-label: MessageStrings.unread + " " + root.unread-count;
             unread-count-label := Text {
-                text: "" + root.unread-count; color: #1d4ed8;
-                font-size: 12px; font-weight: 600;
+                text: "" + root.unread-count; color: #2563eb;
+                font-size: ImGuiFontStyle.small; font-weight: 600;
                 horizontal-alignment: center; vertical-alignment: center;
                 accessible-role: none;
             }
         }
         if root.loading: Text {
             x: parent.width - 150px; width: 110px; height: parent.height;
-            text: MessageStrings.loading; color: #4b5563; font-size: 12px;
+            text: MessageStrings.loading; color: #61656c; font-size: ImGuiFontStyle.small;
             horizontal-alignment: right; vertical-alignment: center;
         }
-        Rectangle {
-            x: parent.width - 31px; y: 3px; width: 25px; height: 24px;
+        IconButton {
+            x: parent.width - 25px; y: 2px; width: 19px; height: parent.height - 4px;
             border-radius: 3px;
-            background: close-touch.has-hover ? #d8dde5 : transparent;
+            icon: FontAwesomeIcons.xmark; icon-size: ImGuiFontStyle.base;
+            icon-color: #202124;
+            hover-background: #bfc2c7; pressed-background: #b2b2b2;
             accessible-role: button;
             accessible-label: MessageStrings.close;
             accessible-action-default => { root.close(); }
-            Text { text: "×"; font-size: 20px; color: #4a5568; horizontal-alignment: center; vertical-alignment: center; }
-            close-touch := TouchArea { mouse-cursor: pointer; clicked => { root.close(); } }
+            clicked => { root.close(); }
         }
     }
     if root.notice-text != "": Rectangle {
-        x: 12px; y: 40px; width: parent.width - 24px; height: 28px;
+        x: 16px; y: title-bar.height + 10px; width: parent.width - 32px; height: 28px;
         border-radius: 4px;
         background: #fef2f2;
         Text {
             x: 8px; width: parent.width - 16px; height: parent.height;
-            text: root.notice-text; font-size: 12px; overflow: elide;
-            color: #b42318;
+            text: root.notice-text; font-size: ImGuiFontStyle.body; overflow: elide;
+            color: #b3261e;
             vertical-alignment: center;
         }
     }
-    Rectangle {
-        x: 12px; y: root.content-top; width: 180px; height: parent.height - self.y - 12px;
-        background: white; border-width: 1px; border-color: #e2e5e9;
+    announcement-list := Rectangle {
+        x: 16px; y: root.content-top; width: 168px; height: parent.height - self.y - 16px;
         announcements-scroll := ScrollView {
             width: parent.width; height: parent.height;
             VerticalLayout {
-                width: 160px; spacing: 3px; padding: 5px;
-                for item in root.items: Rectangle {
-                    height: 56px; width: 150px;
-                    background: root.selected-id == item.id ? #eaf2ff : entry-touch.has-hover ? #f1f5fa : white;
+                width: announcements-scroll.width; spacing: 0px; padding: 0px;
+                padding-right: 8px;
+                alignment: start;
+                for item[index] in root.items: Rectangle {
+                    height: 54px;
+                    background: root.selected-id == item.id ? #eaf2ff : entry-touch.has-hover ? #f0f1f2 : transparent;
                     border-radius: 4px;
-                    Text { x: 8px; y: 5px; width: parent.width - 28px; height: 22px; text: item.title; overflow: elide; font-size: 14px; font-weight: item.read ? 400 : 600; color: item.read ? #374151 : #111827; vertical-alignment: center; }
+                    Text { x: 8px; y: 6px; width: parent.width - 32px; height: 18px; text: item.title; overflow: elide; font-size: ImGuiFontStyle.base; font-weight: item.read ? 400 : 600; color: #202124; vertical-alignment: center; }
                     if !item.read: Rectangle {
-                        x: parent.width - 18px; y: 13px; width: 6px; height: 6px;
-                        border-radius: 3px; background: #2563eb;
+                        x: parent.width - 17px; y: 13px; width: 5px; height: 5px;
+                        border-radius: 2.5px; background: #2563eb;
                         accessible-role: none;
                     }
-                    Text { x: 8px; y: 32px; width: parent.width - 42px; text: item.date; color: #4b5563; font-size: 12px; overflow: elide; }
+                    Text { x: 8px; y: 28px; width: parent.width - 36px; height: 16px; text: item.date; color: #61656c; font-size: ImGuiFontStyle.small; overflow: elide; vertical-alignment: center; }
                     accessible-role: button;
                     accessible-label: item.title + " " + (item.read ? MessageStrings.read : MessageStrings.unread);
                     accessible-action-default => { root.open-message(item.id, item.revision); }
                     entry-touch := TouchArea { mouse-cursor: pointer; clicked => { root.open-message(item.id, item.revision); } }
                     IconButton {
-                        x: parent.width - 25px; y: 29px; width: 20px; height: 20px;
-                        icon: FontAwesomeIcons.xmark; icon-size: 12px;
-                        icon-color: #667085; danger: true;
+                        x: parent.width - 24px; y: 26px; width: 20px; height: 20px;
+                        icon: FontAwesomeIcons.xmark; icon-size: ImGuiFontStyle.small;
+                        icon-color: #61656c; danger: true;
                         accessible-role: button;
                         accessible-label: MessageStrings.delete-message + " " + item.title;
                         accessible-action-default => { root.request-delete(item.id, item.revision); }
                         clicked => { root.request-delete(item.id, item.revision); }
                     }
+                    if index < root.items.length - 1: Rectangle {
+                        x: 8px; y: parent.height - 1px;
+                        width: parent.width - 16px; height: 1px;
+                        background: root.separator-color;
+                        accessible-role: none;
+                    }
                 }
             }
         }
-        if root.items.length == 0 && root.total == 0 && root.loaded && root.connected && !root.loading && !root.failed: Text { x: 8px; width: parent.width - 16px; text: MessageStrings.empty; wrap: word-wrap; color: #4b5563; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; }
     }
-    Rectangle {
-        x: 202px; y: root.content-top; width: parent.width - 214px; height: parent.height - self.y - 12px;
-        background: white; border-width: 1px; border-color: #e2e5e9;
-        if root.selected-id == "" && root.items.length > 0: Text { x: 14px; width: parent.width - 28px; text: MessageStrings.select-message; color: #4b5563; font-size: 14px; wrap: word-wrap; horizontal-alignment: center; vertical-alignment: center; }
-        if root.selected-id != "": ScrollView {
+    if root.items.length == 0 && root.total == 0 && root.loaded && root.connected && !root.loading && !root.failed: Text {
+        x: 16px; y: root.content-top; width: parent.width - 32px; height: announcement-list.height;
+        text: MessageStrings.empty; wrap: word-wrap;
+        color: #61656c; font-size: ImGuiFontStyle.body;
+        horizontal-alignment: center; vertical-alignment: center;
+    }
+    content-divider := Rectangle {
+        x: announcement-list.x + announcement-list.width + 12px;
+        y: root.content-top; width: 1px; height: announcement-list.height;
+        background: root.separator-color;
+        visible: root.items.length > 0 || root.selected-id != "";
+        accessible-role: none;
+    }
+    announcement-details := Rectangle {
+        x: content-divider.x + content-divider.width + 12px;
+        y: root.content-top; width: parent.width - self.x - 16px; height: announcement-list.height;
+        if root.selected-id == "" && root.items.length > 0: Text { x: 8px; width: parent.width - 16px; text: MessageStrings.select-message; color: #61656c; font-size: ImGuiFontStyle.body; wrap: word-wrap; horizontal-alignment: center; vertical-alignment: center; }
+        if root.selected-id != "": details-scroll := ScrollView {
             width: parent.width; height: parent.height;
             VerticalLayout {
-                width: root.width - 234px; padding: 12px; spacing: 10px; alignment: start;
-                Text { vertical-stretch: 0; text: root.selected-title; wrap: word-wrap; font-size: 16px; font-weight: 600; color: #202124; }
-                Text { vertical-stretch: 0; text: root.selected-date; accessible-label: root.selected-date + " · " + (root.selected-read ? MessageStrings.read : MessageStrings.unread); color: #4b5563; font-size: 12px; wrap: word-wrap; }
+                width: details-scroll.width; padding: 8px; padding-top: 6px; padding-right: 16px;
+                spacing: 12px; alignment: start;
+                VerticalLayout {
+                    vertical-stretch: 0; spacing: 4px;
+                    Text { vertical-stretch: 0; min-height: 18px; text: root.selected-title; wrap: word-wrap; font-size: ImGuiFontStyle.base; font-weight: 600; color: #202124; vertical-alignment: center; }
+                    Text { vertical-stretch: 0; min-height: 16px; text: root.selected-date; accessible-label: root.selected-date + " · " + (root.selected-read ? MessageStrings.read : MessageStrings.unread); color: #61656c; font-size: ImGuiFontStyle.small; wrap: word-wrap; vertical-alignment: center; }
+                }
+                Rectangle { height: 1px; background: root.separator-color; }
                 StyledText {
                     vertical-stretch: 0;
                     text: root.selected-body;
-                    default-color: #202124; default-font-size: 14px;
+                    default-color: #202124; default-font-size: ImGuiFontStyle.body;
                     link-color: #2563eb;
                     link-clicked(url) => { root.open-link(url); }
                 }
@@ -184,29 +211,30 @@ export component MessagePanel inherits DialogSurface {
         triggered => { root.load-more(); }
     }
     if root.pending-delete-id != "": Rectangle {
-        background: #00000042; border-radius: 8px; z: 30;
+        background: #00000042; border-radius: root.border-radius; z: 30;
         TouchArea { clicked => { confirmation-keys.focus(); } }
         DialogSurface {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
             width: 230px; height: confirmation-content.preferred-height;
+            border-radius: root.border-radius;
             TouchArea { clicked => { confirmation-keys.focus(); } }
             confirmation-content := VerticalLayout {
                 padding: 16px;
                 padding-top: 26px;
                 padding-bottom: 26px;
                 spacing: 20px;
-                Text { text: MessageStrings.delete-confirmation; font-size: 14px; color: #202124; wrap: word-wrap; horizontal-alignment: center; }
+                Text { text: MessageStrings.delete-confirmation; font-size: ImGuiFontStyle.base; color: #202124; wrap: word-wrap; horizontal-alignment: center; }
                 HorizontalLayout {
                     alignment: center; spacing: 8px;
                     cancel-delete-button := CompactButton {
-                        width: 72px; text-size: 13px; text: MessageStrings.cancel;
+                        width: 72px; text: MessageStrings.cancel;
                         accessible-role: button; accessible-label: MessageStrings.cancel;
                         accessible-action-default => { cancel-delete-button.clicked(); }
                         clicked => { root.pending-delete-id = ""; }
                     }
                     confirm-delete-button := CompactButton {
-                        width: 72px; text-size: 13px; text: MessageStrings.delete-message; primary: true;
+                        width: 72px; text: MessageStrings.delete-message; primary: true;
                         accessible-role: button; accessible-label: MessageStrings.delete-title;
                         accessible-action-default => { confirm-delete-button.clicked(); }
                         clicked => {
