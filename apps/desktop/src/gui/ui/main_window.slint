@@ -66,6 +66,7 @@ export global UiStrings {
     in-out property <string> signal-disconnected: "Signal server disconnected";
     in-out property <string> tls-error: "Signal server TLS certificate error";
     in-out property <string> update-available: "A new version is available";
+    in-out property <string> new-version: "New version";
     in-out property <string> check-for-updates: "Check for updates";
     in-out property <string> checking-for-updates: "Checking for updates…";
     in-out property <string> up-to-date: "You’re up to date";
@@ -276,21 +277,25 @@ export component MainWindow inherits Window {
     in property <[RecentConnection]> recent-connections;
     in property <[AnnouncementItem]> announcements;
     in property <int> announcement-unread;
+    private property <string> announcement-unread-label:
+        root.announcement-unread > 99 ? "99+" : "" + root.announcement-unread;
     in property <int> announcement-total;
-    in property <int> announcement-offset;
     in property <bool> announcement-loading;
     in property <bool> announcement-failed;
     in property <bool> announcement-read-save-failed;
+    in property <bool> announcement-delete-failed;
     in property <bool> announcement-loaded;
     in-out property <bool> messages-open: false;
     in property <string> announcement-selected-id;
     in property <string> announcement-selected-title;
-    in property <string> announcement-selected-body;
+    in property <styled-text> announcement-selected-body;
     in property <string> announcement-selected-date;
     in property <bool> announcement-selected-read;
     callback open-announcement(string, string);
+    callback open-announcement-link(string);
+    callback delete-announcement(string, string);
     callback refresh-announcements;
-    callback announcement-page(int);
+    callback load-more-announcements;
     in property <bool> update-available: false;
     in property <UpdateCheckStatus> update-check-status: idle;
     private property <string> update-status-text:
@@ -394,8 +399,6 @@ export component MainWindow inherits Window {
     private property <string> delete-remote-id: "";
     private property <bool> copy-toast: false;
     private property <bool> compact-language: root.language-index == 0;
-    private property <bool> update-icon-blink-on:
-        root.update-available && mod(animation-tick(), 2s) < 1s;
     private property <bool> recent-tooltip-visible: false;
     private property <string> recent-tooltip-name: "";
     private property <string> recent-tooltip-host: "";
@@ -677,23 +680,37 @@ export component MainWindow inherits Window {
             icon-size: 14px;
             hover-background: #e1e5eb;
             pressed-background: #cbd1d9;
-            tooltip: root.announcement-unread > 0 ? MessageStrings.unread + " " + root.announcement-unread : "";
+            tooltip: root.announcement-unread > 0
+                ? MessageStrings.unread + " " + root.announcement-unread + (root.update-available ? " · " + UiStrings.update-available : "")
+                : root.update-available ? UiStrings.update-available : "";
             z: 8;
             clicked => { root.menu-open = !root.menu-open; }
         }
-        if root.update-available && !root.menu-open && root.update-icon-blink-on: Text {
-            x: menu-button.x + (root.announcement-unread > 0 ? -18px : 16px);
-            y: menu-button.y + 1px;
+        // Unread messages take precedence so the menu has only one indicator.
+        if root.update-available && root.announcement-unread <= 0: Rectangle {
+            x: menu-button.x + menu-button.width - self.width + 4px;
+            y: menu-button.y - 1px;
             width: 16px;
             height: 16px;
-            text: FontAwesomeIcons.circle-arrow-up;
-            color: #24272d;
-            font-family: "Font Awesome 6 Free";
-            font-weight: 900;
-            font-size: 13px;
-            horizontal-alignment: center;
-            vertical-alignment: center;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: white;
+            background: #2563eb;
+            opacity: root.menu-open || mod(animation-tick(), 2s) < 1s ? 1 : 0;
             z: 9;
+            accessible-role: button;
+            accessible-label: UiStrings.update-available;
+            accessible-action-default => { root.menu-open = !root.menu-open; }
+            Text {
+                text: "!"; color: white;
+                font-size: 12px; font-weight: 700;
+                horizontal-alignment: center; vertical-alignment: center;
+                accessible-role: none;
+            }
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.menu-open = !root.menu-open; }
+            }
         }
         if root.announcement-unread > 0: Rectangle {
             x: menu-button.x + menu-button.width - self.width + 4px;
@@ -709,7 +726,7 @@ export component MainWindow inherits Window {
             accessible-label: MessageStrings.messages + " · " + MessageStrings.unread + " " + root.announcement-unread;
             accessible-action-default => { root.menu-open = !root.menu-open; }
             unread-badge-label := Text {
-                text: root.announcement-unread > 99 ? "99+" : "" + root.announcement-unread;
+                text: root.announcement-unread-label;
                 color: white;
                 font-size: 10px;
                 font-weight: 600;
@@ -1200,9 +1217,9 @@ export component MainWindow inherits Window {
     if root.menu-open: Rectangle {
         x: menu-button.x + menu-button.width - self.width;
         y: menu-button.y + menu-button.height + 2px;
-        width: max(menu-settings-label.preferred-width,
-                   max(menu-messages-label.preferred-width,
-                       menu-about-label.preferred-width + (root.update-available ? 25px : 0px))) + 28px;
+        width: max(80px, max(menu-settings-label.preferred-width,
+                   max(menu-messages-label.preferred-width + (root.announcement-unread > 0 ? menu-message-badge.width + 8px : 0px),
+                       menu-about-label.preferred-width + (root.update-available ? menu-update-badge.width + 8px : 0px))) + 24px);
         height: 93px;
         background: white;
         border-width: 1px;
@@ -1224,7 +1241,7 @@ export component MainWindow inherits Window {
                 accessible-label: UiStrings.settings;
                 accessible-action-default => { settings-touch.clicked(); }
                 menu-settings-label := Text {
-                    x: 9px;
+                    x: 7px;
                     height: parent.height;
                     text: UiStrings.settings;
                     color: #2d3138;
@@ -1242,15 +1259,31 @@ export component MainWindow inherits Window {
                           : messages-touch.has-hover ? #f0f1f2 : white;
                 border-radius: 3px;
                 accessible-role: button;
-                accessible-label: menu-messages-label.text;
+                accessible-label: MessageStrings.messages + (root.announcement-unread > 0 ? " · " + MessageStrings.unread + " " + root.announcement-unread : "");
                 accessible-action-default => { messages-touch.clicked(); }
                 menu-messages-label := Text {
-                    x: 9px;
+                    x: 7px;
                     height: parent.height;
-                    text: MessageStrings.messages + (root.announcement-unread > 0 ? " (" + root.announcement-unread + ")" : "");
+                    text: MessageStrings.messages;
                     color: #2d3138;
                     vertical-alignment: center;
                     accessible-role: none;
+                }
+                menu-message-badge := Rectangle {
+                    visible: root.announcement-unread > 0;
+                    x: parent.width - self.width - 7px;
+                    y: (parent.height - self.height) / 2;
+                    width: max(18px, menu-message-count.preferred-width + 10px);
+                    height: 18px;
+                    border-radius: 9px;
+                    background: #fee4e2;
+                    accessible-role: none;
+                    menu-message-count := Text {
+                        text: root.announcement-unread-label;
+                        font-size: 10px; font-weight: 600; color: #b42318;
+                        horizontal-alignment: center; vertical-alignment: center;
+                        accessible-role: none;
+                    }
                 }
                 messages-touch := TouchArea {
                     mouse-cursor: pointer;
@@ -1269,28 +1302,31 @@ export component MainWindow inherits Window {
                 border-width: 0px;
                 border-radius: 3px;
                 accessible-role: button;
-                accessible-label: UiStrings.about;
+                accessible-label: UiStrings.about + (root.update-available ? " · " + UiStrings.update-available : "");
                 accessible-action-default => { about-touch.clicked(); }
                 menu-about-label := Text {
-                    x: 9px;
+                    x: 7px;
                     height: parent.height;
                     text: UiStrings.about;
                     color: #2d3138;
                     vertical-alignment: center;
                     accessible-role: none;
                 }
-                if root.update-available && root.update-icon-blink-on: Text {
-                    x: menu-about-label.x + menu-about-label.preferred-width + 7px;
-                    width: 18px;
-                    height: parent.height;
-                    text: FontAwesomeIcons.circle-arrow-up;
-                    color: #2d3138;
-                    font-family: "Font Awesome 6 Free";
-                    font-weight: 900;
-                    font-size: 16px;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
+                menu-update-badge := Rectangle {
+                    visible: root.update-available;
+                    x: parent.width - self.width - 7px;
+                    y: (parent.height - self.height) / 2;
+                    width: menu-update-label.preferred-width + 12px;
+                    height: 18px;
+                    border-radius: 9px;
+                    background: #dbeafe;
                     accessible-role: none;
+                    menu-update-label := Text {
+                        text: UiStrings.new-version;
+                        font-size: 11px; font-weight: 400; color: #1d4ed8;
+                        horizontal-alignment: center; vertical-alignment: center;
+                        accessible-role: none;
+                    }
                 }
                 about-touch := TouchArea {
                     mouse-cursor: pointer;
@@ -1326,16 +1362,18 @@ export component MainWindow inherits Window {
             width: 520px;
             height: 330px;
             items: root.announcements;
-            unread-count: root.announcement-unread; total: root.announcement-total; offset: root.announcement-offset;
+            unread-count: root.announcement-unread; total: root.announcement-total;
             loading: root.announcement-loading; failed: root.announcement-failed; loaded: root.announcement-loaded;
             read-save-failed: root.announcement-read-save-failed;
+            delete-failed: root.announcement-delete-failed;
             connected: root.signal-connected;
             selected-id: root.announcement-selected-id; selected-title: root.announcement-selected-title;
             selected-body: root.announcement-selected-body; selected-date: root.announcement-selected-date;
             selected-read: root.announcement-selected-read;
             open-message(id, revision) => { root.open-announcement(id, revision); }
-            refresh => { root.refresh-announcements(); }
-            change-page(offset) => { root.announcement-page(offset); }
+            open-link(url) => { root.open-announcement-link(url); }
+            delete-message(id, revision) => { root.delete-announcement(id, revision); }
+            load-more => { root.load-more-announcements(); }
             close => { root.messages-open = false; }
         }
     }

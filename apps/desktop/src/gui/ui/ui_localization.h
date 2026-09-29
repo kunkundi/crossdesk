@@ -32,12 +32,14 @@ inline int ApplyMainWindowStrings(
   messages.set_read(Text(localization::message_read[language]));
   messages.set_empty(Text(localization::message_empty[language]));
   messages.set_select_message(Text(localization::message_select[language]));
-  messages.set_refresh(Text(localization::message_refresh[language]));
   messages.set_loading(Text(localization::message_loading[language]));
-  messages.set_unavailable(Text(localization::message_unavailable[language]));
-  messages.set_offline(Text(localization::message_offline[language]));
   messages.set_read_save_error(Text(localization::message_read_save_error[language]));
   messages.set_close(Text(localization::message_close[language]));
+  messages.set_delete_message(Text(localization::message_delete[language]));
+  messages.set_delete_title(Text(localization::message_delete_title[language]));
+  messages.set_delete_confirmation(Text(localization::message_delete_confirmation[language]));
+  messages.set_delete_error(Text(localization::message_delete_error[language]));
+  messages.set_cancel(Text(localization::cancel[language]));
 
   strings.set_local_desktop(Text(localization::local_desktop[language]));
   strings.set_remote_desktop(Text(localization::remote_desktop[language]));
@@ -95,6 +97,7 @@ inline int ApplyMainWindowStrings(
   strings.set_tls_error(Text(localization::signal_tls_cert_error[language]));
   strings.set_update_available(
       Text(localization::new_version_available[language]));
+  strings.set_new_version(Text(localization::new_version[language]));
   strings.set_check_for_updates(Text(localization::check_for_updates[language]));
   strings.set_checking_for_updates(
       Text(localization::checking_for_updates[language]));

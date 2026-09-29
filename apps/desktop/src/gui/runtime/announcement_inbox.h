@@ -14,16 +14,18 @@
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <string>
+#include <vector>
 
 namespace crossdesk {
-// Announcement data is shared; reading state only persists to the local file.
+// Announcement data is shared; read and dismissed versions stay on this device.
 class AnnouncementInbox {
  public:
   struct Snapshot {
     nlohmann::json items = nlohmann::json::array();
-    int offset = 0, total = 0, unread = 0;
+    int total = 0, unread = 0;
     bool loaded = false, loading = false, failed = false;
     bool read_save_failed = false;
+    bool delete_failed = false;
     uint64_t version = 0;
   };
   Snapshot Get() const;
@@ -33,10 +35,12 @@ class AnnouncementInbox {
   void Configure(std::string host, int port, const std::string& device_id);
   void Reset();
   void SetConnected(bool connected);
-  void Refresh(int offset = -1);
+  void Refresh();
+  void LoadMore();
   bool Read(int64_t id, int64_t revision);
+  bool Dismiss(int64_t id, int64_t revision);
   nlohmann::json TakePendingRequest(std::chrono::steady_clock::time_point now =
-                                 std::chrono::steady_clock::now());
+                                        std::chrono::steady_clock::now());
   void Failed(const std::string& request_id);
   void Receive(const nlohmann::json& message);
 
@@ -46,14 +50,22 @@ class AnnouncementInbox {
   void BeginCatalog();
   void Fail();
   void UpdateReadingState();
-  void LoadReads();
-  bool SaveReads(const Revisions& reads) const;
+  bool IsDismissed(int64_t id, int64_t revision) const;
+  void RebuildVisibleItems();
+  void LoadLocalState();
+  bool SaveLocalState(const Revisions& reads, const Revisions& dismissed) const;
 
   mutable std::mutex mutex_;
   Snapshot state_;
   std::filesystem::path directory_, read_file_;
   std::string scope_, request_id_;
-  Revisions reads_, catalog_, pending_catalog_;
+  Revisions reads_, dismissed_, catalog_, pending_catalog_;
+  // Keep bodies for the loaded list prefix. Lightweight page IDs let us skip
+  // locally deleted entries without sending deletion state upstream.
+  std::map<int, std::vector<int64_t>> page_ids_;
+  std::map<int, nlohmann::json> page_bodies_;
+  int pending_page_offset_ = 0;
+  int visible_limit_ = 20;
   int64_t catalog_revision_ = -1, pending_revision_ = -1;
   int pending_total_ = 0;
   Phase phase_ = Phase::Catalog;

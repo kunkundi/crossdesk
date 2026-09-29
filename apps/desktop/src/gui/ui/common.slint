@@ -339,6 +339,7 @@ export component MiniToggleSwitch inherits Rectangle {
 
 export component CompactButton inherits Rectangle {
     in property <string> text;
+    in property <length> text-size: ImGuiFontStyle.body;
     in property <bool> primary: false;
     in property <bool> enabled: true;
     callback clicked;
@@ -355,7 +356,7 @@ export component CompactButton inherits Rectangle {
     Text {
         text: root.text;
         color: root.enabled ? #24272d : #8e9298;
-        font-size: ImGuiFontStyle.body;
+        font-size: root.text-size;
         overflow: elide;
         horizontal-alignment: center;
         vertical-alignment: center;

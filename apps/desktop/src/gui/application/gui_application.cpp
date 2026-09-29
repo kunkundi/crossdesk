@@ -62,6 +62,7 @@
 #endif
 #include "rd_log.h"
 #include "server_window_state.h"
+#include "ui/announcement_text.h"
 #include "ui/ui_localization.h"
 #include "update_checker.h"
 #include "window_geometry.h"
@@ -1272,11 +1273,33 @@ void GuiApplication::ResetSettingsUi() {
 }
 
 void GuiApplication::BindMainCallbacks() {
+  ui_->main->on_delete_announcement([this](slint::SharedString id,
+                                          slint::SharedString revision) {
+    const auto parse = [](const slint::SharedString& value)
+        -> std::optional<int64_t> {
+      const std::string_view text(value.data());
+      int64_t number = 0;
+      const auto result =
+          std::from_chars(text.data(), text.data() + text.size(), number);
+      if (result.ec != std::errc{} ||
+          result.ptr != text.data() + text.size() || number <= 0)
+        return std::nullopt;
+      return number;
+    };
+    const auto announcement_id = parse(id);
+    const auto announcement_revision = parse(revision);
+    if (!announcement_id || !announcement_revision) return;
+    announcements_.Dismiss(*announcement_id, *announcement_revision);
+    SyncAnnouncements();
+  });
   ui_->main->on_refresh_announcements([this] { announcements_.Refresh(); });
-  ui_->main->on_announcement_page([this](int offset) {
-    ui_->announcement_selected_id.clear();
-    ui_->main->set_announcement_selected_id("");
-    announcements_.Refresh(offset);
+  ui_->main->on_open_announcement_link([this](slint::SharedString link) {
+    const std::string url(link);
+    if (announcement_text::IsWebUrl(url)) OpenUrl(url);
+  });
+  ui_->main->on_load_more_announcements([this] {
+    announcements_.LoadMore();
+    SyncAnnouncements();
   });
   ui_->main->on_open_announcement([this](slint::SharedString id,
                                          slint::SharedString revision) {
@@ -2326,10 +2349,10 @@ void GuiApplication::SyncAnnouncements() {
   ui_->announcement_version = state.version;
   ui_->main->set_announcement_unread(state.unread);
   ui_->main->set_announcement_total(state.total);
-  ui_->main->set_announcement_offset(state.offset);
   ui_->main->set_announcement_loading(state.loading);
   ui_->main->set_announcement_failed(state.failed);
   ui_->main->set_announcement_read_save_failed(state.read_save_failed);
+  ui_->main->set_announcement_delete_failed(state.delete_failed);
   ui_->main->set_announcement_loaded(state.loaded);
   std::vector<ui::AnnouncementItem> rows;
   bool selected_found = false;
@@ -2358,7 +2381,7 @@ void GuiApplication::SyncAnnouncements() {
       ui_->main->set_announcement_selected_id(row.id);
       ui_->main->set_announcement_selected_title(row.title);
       ui_->main->set_announcement_selected_body(
-          UiText(item["body"].get<std::string>()));
+          announcement_text::Format(item["body"].get<std::string>()));
       ui_->main->set_announcement_selected_date(row.date);
       ui_->main->set_announcement_selected_read(row.read);
     }
@@ -2367,7 +2390,7 @@ void GuiApplication::SyncAnnouncements() {
   if (!selected_found) {
     ui_->announcement_selected_id.clear();
     ui_->main->set_announcement_selected_id("");
-    ui_->main->set_announcement_selected_body("");
+    ui_->main->set_announcement_selected_body(slint::StyledText{});
   }
   ui_->main->set_announcements(
       std::make_shared<slint::VectorModel<ui::AnnouncementItem>>(

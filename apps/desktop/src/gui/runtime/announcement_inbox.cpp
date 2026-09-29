@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <charconv>
 #include <fstream>
+#include <set>
 #include <system_error>
 
 #ifdef _WIN32
@@ -62,7 +63,10 @@ void AnnouncementInbox::Configure(std::string host, int port,
   state_.version = version;
   catalog_.clear();
   catalog_revision_ = -1;
-  LoadReads();
+  page_ids_.clear();
+  page_bodies_.clear();
+  visible_limit_ = 20;
+  LoadLocalState();
   BeginCatalog();
 }
 void AnnouncementInbox::Reset() {
@@ -73,6 +77,10 @@ void AnnouncementInbox::Reset() {
   scope_.clear();
   read_file_.clear();
   reads_.clear();
+  dismissed_.clear();
+  page_ids_.clear();
+  page_bodies_.clear();
+  visible_limit_ = 20;
   catalog_.clear();
   catalog_revision_ = -1;
   connected_ = false;
@@ -93,20 +101,25 @@ void AnnouncementInbox::SetConnected(bool connected) {
   connected_ = connected;
   BeginCatalog();
 }
-void AnnouncementInbox::Refresh(int offset) {
+void AnnouncementInbox::Refresh() {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (offset >= 0) state_.offset = offset;
-  if (offset < 0 || catalog_revision_ < 0) {
-    BeginCatalog();
-  } else {
-    phase_ = Phase::Page;
-    request_id_.clear();
-    refresh_ = connected_;
-  }
+  BeginCatalog();
+}
+void AnnouncementInbox::LoadMore() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!connected_ || state_.loading || refresh_ || state_.failed ||
+      catalog_revision_ < 0 || visible_limit_ >= state_.total)
+    return;
+  visible_limit_ += (std::min)(20, state_.total - visible_limit_);
+  RebuildVisibleItems();
+  ++state_.version;
 }
 void AnnouncementInbox::UpdateReadingState() {
+  state_.total = 0;
   state_.unread = 0;
   for (const auto& [id, revision] : catalog_) {
+    if (IsDismissed(id, revision)) continue;
+    ++state_.total;
     const auto read = reads_.find(id);
     if (read == reads_.end() || read->second != revision) ++state_.unread;
   }
@@ -122,19 +135,127 @@ bool AnnouncementInbox::Read(int64_t id, int64_t revision) {
     if (item["read"].get<bool>()) return true;
     auto updated = reads_;
     updated[id] = revision;
-    if (!SaveReads(updated)) {
+    if (!SaveLocalState(updated, dismissed_)) {
       state_.read_save_failed = true;
       ++state_.version;
       return false;
     }
     reads_ = std::move(updated);
     state_.read_save_failed = false;
+    state_.delete_failed = false;
     UpdateReadingState();
     ++state_.version;
     return true;
   }
   return false;
 }
+bool AnnouncementInbox::IsDismissed(int64_t id, int64_t revision) const {
+  const auto found = dismissed_.find(id);
+  return found != dismissed_.end() && found->second == revision;
+}
+
+bool AnnouncementInbox::Dismiss(int64_t id, int64_t revision) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  for (const auto& item : state_.items) {
+    if (item["id"] != id || item["revision"] != revision) continue;
+    auto updated = dismissed_;
+    updated[id] = revision;
+    if (!SaveLocalState(reads_, updated)) {
+      state_.delete_failed = true;
+      ++state_.version;
+      return false;
+    }
+    dismissed_ = std::move(updated);
+    state_.delete_failed = false;
+    state_.read_save_failed = false;
+    // An index refresh already in flight must finish before reusing its order.
+    if (phase_ == Phase::Catalog && (state_.loading || refresh_)) {
+      auto visible = json::array();
+      for (const auto& current : state_.items)
+        if (!IsDismissed(current["id"], current["revision"]))
+          visible.push_back(current);
+      state_.items = std::move(visible);
+      UpdateReadingState();
+    } else {
+      request_id_.clear();
+      state_.loading = false;
+      RebuildVisibleItems();
+    }
+    ++state_.version;
+    return true;
+  }
+  // The confirmation may refer to an announcement updated while it was open.
+  state_.delete_failed = true;
+  ++state_.version;
+  return false;
+}
+
+void AnnouncementInbox::RebuildVisibleItems() {
+  UpdateReadingState();
+  const int wanted = (std::min)(visible_limit_, state_.total);
+  auto visible = json::array();
+  std::set<int> retained_pages;
+  int position = 0;
+  phase_ = Phase::Page;
+  refresh_ = false;
+  for (int physical = 0;
+       wanted > 0 && physical < static_cast<int>(catalog_.size());
+       physical += 20) {
+    const auto ids = page_ids_.find(physical);
+    if (ids == page_ids_.end()) {
+      pending_page_offset_ = physical;
+      refresh_ = connected_;
+      break;
+    }
+    std::set<int64_t> page_selection;
+    for (auto id : ids->second) {
+      const auto entry = catalog_.find(id);
+      if (entry == catalog_.end() || IsDismissed(id, entry->second)) continue;
+      if (position < wanted) page_selection.insert(id);
+      ++position;
+    }
+    if (page_selection.empty()) {
+      page_bodies_.erase(physical);
+      continue;
+    }
+    retained_pages.insert(physical);
+    const auto bodies = page_bodies_.find(physical);
+    if (bodies == page_bodies_.end()) {
+      pending_page_offset_ = physical;
+      refresh_ = connected_;
+      break;
+    }
+    for (const auto& item : bodies->second)
+      if (page_selection.count(item["id"])) visible.push_back(item);
+    if (visible.size() == static_cast<size_t>(wanted)) break;
+  }
+  if (visible.size() == static_cast<size_t>(wanted)) {
+    for (auto it = page_bodies_.begin(); it != page_bodies_.end();)
+      if (!retained_pages.count(it->first))
+        it = page_bodies_.erase(it);
+      else
+        ++it;
+  }
+  // A failed body fetch must not erase announcements already received. Keep
+  // still-published, unchanged versions until the replacement batch arrives.
+  if (visible.size() < static_cast<size_t>(wanted)) {
+    std::set<int64_t> retained_ids;
+    for (const auto& item : visible) retained_ids.insert(item["id"].get<int64_t>());
+    for (const auto& item : state_.items) {
+      const int64_t id = item["id"];
+      const auto current = catalog_.find(id);
+      if (current == catalog_.end() || current->second != item["revision"] ||
+          IsDismissed(id, current->second) || !retained_ids.insert(id).second)
+        continue;
+      visible.push_back(item);
+      if (visible.size() == static_cast<size_t>(wanted)) break;
+    }
+  }
+  state_.items = std::move(visible);
+  state_.loaded = true;
+  UpdateReadingState();
+}
+
 void AnnouncementInbox::Fail() {
   request_id_.clear();
   refresh_ = false;
@@ -159,7 +280,7 @@ nlohmann::json AnnouncementInbox::TakePendingRequest(
           {"summary_only", phase_ == Phase::Catalog},
           {"offset", phase_ == Phase::Catalog
                          ? static_cast<int>(pending_catalog_.size())
-                         : state_.offset}};
+                         : pending_page_offset_}};
 }
 void AnnouncementInbox::Failed(const std::string& request_id) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -248,75 +369,93 @@ void AnnouncementInbox::Receive(const nlohmann::json& message) {
       ++state_.version;
       return;
     }
+    if (catalog_revision_ != revision) {
+      page_ids_.clear();
+      page_bodies_.clear();
+    }
     catalog_ = std::move(pending_catalog_);
     catalog_revision_ = revision;
-    state_.total = total;
-    auto retained = json::array();
-    for (const auto& item : state_.items) {
-      const auto found = catalog_.find(item["id"]);
-      if (found != catalog_.end() && found->second == item["revision"])
-        retained.push_back(item);
-    }
-    state_.items = std::move(retained);
-    // Bound local history to published announcements; persist pruning on read.
-    for (auto it = reads_.begin(); it != reads_.end();) {
-      if (!catalog_.count(it->first))
-        it = reads_.erase(it);
-      else
-        ++it;
-    }
-    phase_ = Phase::Page;
-    refresh_ = total > 0;
-    if (!total) {
-      state_.offset = 0;
-      state_.loaded = true;
+    // Prune expired records in memory; the next local action persists them.
+    for (auto* records : {&reads_, &dismissed_}) {
+      for (auto it = records->begin(); it != records->end();)
+        if (!catalog_.count(it->first))
+          it = records->erase(it);
+        else
+          ++it;
     }
   } else {
     if (total != static_cast<int>(catalog_.size())) {
       Fail();
       return;
     }
-    state_.items = message["items"];
-    state_.offset = offset;
-    state_.loaded = true;
+    if (offset != pending_page_offset_) {
+      Fail();
+      return;
+    }
+    std::set<int64_t> unique;
+    std::vector<int64_t> ids;
+    for (const auto& item : message["items"]) {
+      const int64_t id = item["id"];
+      if (!unique.insert(id).second) {
+        Fail();
+        return;
+      }
+      ids.push_back(id);
+    }
+    page_ids_[offset] = std::move(ids);
+    page_bodies_[offset] = message["items"];
   }
-  UpdateReadingState();
+  RebuildVisibleItems();
   state_.failed = false;
   ++state_.version;
 }
 
-void AnnouncementInbox::LoadReads() {
+void AnnouncementInbox::LoadLocalState() {
   reads_.clear();
+  dismissed_.clear();
   std::error_code ec;
   const auto size = std::filesystem::file_size(read_file_, ec);
   if (ec || size > 16 * 1024 * 1024) return;
   std::ifstream input(read_file_, std::ios::binary);
   const auto data = json::parse(input, nullptr, false);
   if (!data.is_object() || !data.contains("scope") || data["scope"] != scope_ ||
-      !data.contains("version") || data["version"] != 1 ||
+      !data.contains("version") ||
+      (data["version"] != 1 && data["version"] != 2) ||
       !data.contains("reads") || !data["reads"].is_object())
     return;
-  for (const auto& entry : data["reads"].items()) {
-    int64_t id = 0;
-    const auto parsed = std::from_chars(
-        entry.key().data(), entry.key().data() + entry.key().size(), id);
-    if (parsed.ec == std::errc{} &&
-        parsed.ptr == entry.key().data() + entry.key().size() && id > 0 &&
-        entry.value().is_number_integer() && entry.value() > 0 &&
-        entry.value() <= INT64_MAX)
-      reads_[id] = entry.value();
-  }
+  const auto load = [](const json& entries, Revisions& destination) {
+    if (!entries.is_object()) return;
+    for (const auto& entry : entries.items()) {
+      int64_t id = 0;
+      const auto parsed = std::from_chars(
+          entry.key().data(), entry.key().data() + entry.key().size(), id);
+      if (parsed.ec == std::errc{} &&
+          parsed.ptr == entry.key().data() + entry.key().size() && id > 0 &&
+          entry.value().is_number_integer() && entry.value() > 0 &&
+          entry.value() <= INT64_MAX)
+        destination[id] = entry.value();
+    }
+  };
+  load(data["reads"], reads_);
+  if (data.contains("dismissed")) load(data["dismissed"], dismissed_);
 }
-bool AnnouncementInbox::SaveReads(const Revisions& reads) const {
+bool AnnouncementInbox::SaveLocalState(const Revisions& reads,
+                                       const Revisions& dismissed) const {
   if (read_file_.empty()) return false;
   std::error_code ec;
   std::filesystem::create_directories(directory_, ec);
   if (ec) return false;
-  auto entries = json::object();
-  for (const auto& [id, revision] : reads)
-    entries[std::to_string(id)] = revision;
-  const auto payload =
-      json({{"version", 1}, {"scope", scope_}, {"reads", entries}}).dump();
+  const auto encode = [](const Revisions& records) {
+    auto entries = json::object();
+    for (const auto& [id, revision] : records)
+      entries[std::to_string(id)] = revision;
+    return entries;
+  };
+  const auto payload = json({{"version", 2},
+                             {"scope", scope_},
+                             {"reads", encode(reads)},
+                             {"dismissed", encode(dismissed)}})
+                           .dump();
   auto temporary = read_file_;
   temporary += ".tmp-" +
                std::to_string(
