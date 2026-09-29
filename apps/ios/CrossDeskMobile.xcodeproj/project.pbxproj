@@ -27,6 +27,9 @@
 		100000000000000000000013 /* ThumbnailFileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000013 /* ThumbnailFileStore.swift */; };
 		100000000000000000000014 /* PrivacyViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000014 /* PrivacyViews.swift */; };
 		100000000000000000000015 /* PRIVACY.md in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000015 /* PRIVACY.md */; };
+		100000000000000000000019 /* AnnouncementInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000019 /* AnnouncementInbox.swift */; };
+		10000000000000000000001A /* AnnouncementText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001A /* AnnouncementText.swift */; };
+		10000000000000000000001B /* AnnouncementInboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001B /* AnnouncementInboxView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -54,6 +57,9 @@
 		200000000000000000000013 /* ThumbnailFileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailFileStore.swift; sourceTree = "<group>"; };
 		200000000000000000000014 /* PrivacyViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyViews.swift; sourceTree = "<group>"; };
 		200000000000000000000015 /* PRIVACY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ../../../PRIVACY.md; sourceTree = "<group>"; };
+		200000000000000000000019 /* AnnouncementInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncementInbox.swift; sourceTree = "<group>"; };
+		20000000000000000000001A /* AnnouncementText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncementText.swift; sourceTree = "<group>"; };
+		20000000000000000000001B /* AnnouncementInboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncementInboxView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -98,6 +104,9 @@
 				200000000000000000000013 /* ThumbnailFileStore.swift */,
 				200000000000000000000012 /* PrivacyPreferences.swift */,
 				200000000000000000000002 /* RemoteSessionModel.swift */,
+				200000000000000000000019 /* AnnouncementInbox.swift */,
+				20000000000000000000001A /* AnnouncementText.swift */,
+				20000000000000000000001B /* AnnouncementInboxView.swift */,
 				200000000000000000000018 /* RecentConnection.swift */,
 				200000000000000000000016 /* RemoteVideoSettings.swift */,
 				200000000000000000000017 /* RemoteNetworkStatistics.swift */,
@@ -264,6 +273,9 @@
 			files = (
 				100000000000000000000001 /* CrossDeskMobileApp.swift in Sources */,
 				100000000000000000000002 /* RemoteSessionModel.swift in Sources */,
+				100000000000000000000019 /* AnnouncementInbox.swift in Sources */,
+				10000000000000000000001A /* AnnouncementText.swift in Sources */,
+				10000000000000000000001B /* AnnouncementInboxView.swift in Sources */,
 				100000000000000000000018 /* RecentConnection.swift in Sources */,
 				100000000000000000000016 /* RemoteVideoSettings.swift in Sources */,
 				100000000000000000000017 /* RemoteNetworkStatistics.swift in Sources */,

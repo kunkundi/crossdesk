@@ -100,6 +100,10 @@ typedef struct {
     didReceivePresence:(NSDictionary<NSString *, NSNumber *> *)presence
                snapshot:(BOOL)snapshot;
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
+    didReceiveAnnouncementMessage:(NSData *)message;
+- (void)rtcBridge:(CrossDeskRTCBridge *)bridge
+    didFailAnnouncementRequest:(NSString *)requestID;
+- (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didReceiveCursorVisible:(BOOL)visible
                       shape:(NSInteger)shape
              positionUpdate:(BOOL)positionUpdate
@@ -150,6 +154,8 @@ typedef struct {
                          subscribe:(BOOL)subscribe
     NS_SWIFT_NAME(requestPresence(remoteIDs:subscribe:));
 - (void)invalidatePresence;
+- (void)sendAnnouncementRequest:(NSData *)request requestID:(NSString *)requestID
+    NS_SWIFT_NAME(sendAnnouncementRequest(_:requestID:));
 
 - (void)connectToRemoteID:(NSString *)remoteID password:(NSString *)password;
 - (void)disconnect;

@@ -615,13 +615,6 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     if (load_status == errSecSuccess) {
       self->_state->identity_with_password = cached.UTF8String;
       self->_state->identity_base = BaseIdentity(self->_state->identity_with_password);
-      NSString *identifier = [NSString stringWithUTF8String:self->_state->identity_base.c_str()];
-      DispatchMain(^{
-        id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
-        if ([delegate respondsToSelector:@selector(rtcBridge:didProvisionIdentity:)]) {
-          [delegate rtcBridge:self didProvisionIdentity:identifier];
-        }
-      });
     } else if (load_status != errSecItemNotFound) {
       [self reportIdentityStorageStatus:load_status];
       // Locked/unavailable Keychain is not the same as a missing identity.
@@ -631,6 +624,18 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
       return;
     }
     [self createIdentityPeer];
+    if (load_status == errSecSuccess) {
+      NSString *identifier = [NSString stringWithUTF8String:self->_state->identity_base.c_str()];
+      const uint64_t identity_generation = self->_identityGeneration.load();
+      DispatchMain(^{
+        if (networking_generation != self->_networkingGeneration.load() ||
+            identity_generation != self->_identityGeneration.load()) return;
+        id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
+        if ([delegate respondsToSelector:@selector(rtcBridge:didProvisionIdentity:)]) {
+          [delegate rtcBridge:self didProvisionIdentity:identifier];
+        }
+      });
+    }
   });
 }
 
@@ -656,6 +661,32 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
 
 - (void)invalidatePresence {
   _presenceGeneration.fetch_add(1);
+}
+
+- (void)sendAnnouncementRequest:(NSData *)request requestID:(NSString *)requestID {
+  NSData *payload = [request copy];
+  NSString *identifier = [requestID copy];
+  const uint64_t generation = _identityGeneration.load();
+  const uint64_t signal_generation = _signalGeneration.load();
+  const uint64_t networking_generation = _networkingGeneration.load();
+  dispatch_async(_rtcQueue, ^{
+    if (generation != self->_identityGeneration.load() ||
+        signal_generation != self->_signalGeneration.load() ||
+        networking_generation != self->_networkingGeneration.load()) return;
+    if (self->_state->identity_peer && self->_state->identity_ready &&
+        !self->_state->identity_base.empty() &&
+        SendSignalMessage(self->_state->identity_peer,
+                          static_cast<const char *>(payload.bytes), payload.length) == 0) return;
+    DispatchMain(^{
+      if (generation != self->_identityGeneration.load() ||
+          signal_generation != self->_signalGeneration.load() ||
+          networking_generation != self->_networkingGeneration.load()) return;
+      id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
+      if ([delegate respondsToSelector:@selector(rtcBridge:didFailAnnouncementRequest:)]) {
+        [delegate rtcBridge:self didFailAnnouncementRequest:identifier];
+      }
+    });
+  });
 }
 
 - (void)sendVideoSettingsWithQuality:(NSInteger)quality
@@ -1216,10 +1247,11 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
                        size:(size_t)size
                        role:(PeerRole)role
                  generation:(uint64_t)generation {
-  constexpr size_t kMaxPresenceMessageSize = 256 * 1024;
+  // Twenty 8 KiB bodies may expand substantially when JSON-escaped.
+  constexpr size_t kMaxSignalMessageSize = 1024 * 1024;
   if (role != PeerRole::Identity || generation != _identityGeneration.load() ||
       !message || size == 0 ||
-      size > kMaxPresenceMessageSize) {
+      size > kMaxSignalMessageSize) {
     return;
   }
 
@@ -1234,6 +1266,19 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   NSDictionary *object = static_cast<NSDictionary *>(decoded);
   NSString *type = object[@"type"];
   if (![type isKindOfClass:NSString.class]) return;
+
+  if ([type isEqualToString:@"announcements"] ||
+      [type isEqualToString:@"announcements_changed"]) {
+    DispatchMain(^{
+      if (generation != self->_identityGeneration.load() ||
+          signal_generation != self->_signalGeneration.load()) return;
+      id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
+      if ([delegate respondsToSelector:@selector(rtcBridge:didReceiveAnnouncementMessage:)]) {
+        [delegate rtcBridge:self didReceiveAnnouncementMessage:payload];
+      }
+    });
+    return;
+  }
 
   NSMutableDictionary<NSString *, NSNumber *> *presence =
       [NSMutableDictionary dictionary];

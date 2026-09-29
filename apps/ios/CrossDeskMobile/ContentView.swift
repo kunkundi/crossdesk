@@ -1,6 +1,12 @@
 import SwiftUI
 import UIKit
 
+enum HomeDestination: Hashable {
+    case settings
+    case announcements
+    case announcement(AnnouncementSelection)
+}
+
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var session: RemoteSessionModel
@@ -15,6 +21,19 @@ struct ContentView: View {
                     ConnectionHomeView(session: session)
                         .navigationTitle("")
                         .navigationBarTitleDisplayMode(.inline)
+                        // Keep inbox and detail in the same value-based stack.
+                        // Mixing an isPresented inbox with a value-based detail
+                        // can reinsert the inbox above the detail on updates.
+                        .navigationDestination(for: HomeDestination.self) { destination in
+                            switch destination {
+                            case .settings:
+                                ServerSettingsView(session: session)
+                            case .announcements:
+                                AnnouncementInboxView(session: session, inbox: session.announcements)
+                            case .announcement(let selection):
+                                AnnouncementDetailView(inbox: session.announcements, selection: selection)
+                            }
+                        }
                 }
                 .toolbarBackground(Color(.systemGroupedBackground), for: .navigationBar)
                 .toolbarBackground(.visible, for: .navigationBar)
@@ -142,7 +161,6 @@ private struct ConnectionHomeView: View {
     @ObservedObject var session: RemoteSessionModel
     @FocusState private var remoteIDFocused: Bool
     @State private var passwordPromptVisible = false
-    @State private var settingsVisible = false
     @State private var promptRemoteID = ""
     @State private var promptPassword = ""
     @State private var promptRememberPassword = false
@@ -248,9 +266,6 @@ private struct ConnectionHomeView: View {
             .presentationDetents([.height(340)])
             .presentationDragIndicator(.visible)
         }
-        .navigationDestination(isPresented: $settingsVisible) {
-            ServerSettingsView(session: session)
-        }
         .alert("设备离线", isPresented: Binding(
             get: { session.deviceOfflineAlertVisible },
             set: { visible in
@@ -267,6 +282,7 @@ private struct ConnectionHomeView: View {
                 session.remoteID = formatted
             }
         }
+        .onDisappear { remoteIDFocused = false }
     }
 
     @ToolbarContentBuilder
@@ -288,10 +304,14 @@ private struct ConnectionHomeView: View {
             }
         }
         ToolbarItem(placement: .navigationBarTrailing) {
-            Button {
-                remoteIDFocused = false
-                settingsVisible = true
-            } label: {
+            NavigationLink(value: HomeDestination.announcements) {
+                AnnouncementBadge(inbox: session.announcements)
+            }
+            .foregroundStyle(.primary)
+            .disabled(session.isConnecting)
+        }
+        ToolbarItem(placement: .navigationBarTrailing) {
+            NavigationLink(value: HomeDestination.settings) {
                 Image(systemName: "gearshape")
                     .font(.system(size: 18, weight: .semibold))
                     .frame(width: 40, height: 40)

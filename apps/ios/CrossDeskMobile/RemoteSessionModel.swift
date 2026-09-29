@@ -338,6 +338,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     @Published private(set) var remotePlatform: RemoteHostPlatform = .unknown
 
     let bridge = CrossDeskRTCBridge()
+    let announcements = AnnouncementInbox()
     private let audioPlayer = RemoteAudioPlayer()
     private var activeRemoteID = ""
     private var remoteAppVersion = ""
@@ -387,6 +388,9 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     override init() {
         super.init()
         bridge.delegate = self
+        announcements.send = { [weak bridge] data, requestID in
+            bridge?.sendAnnouncementRequest(data, requestID: requestID)
+        }
         if !savesConnectionThumbnails { clearConnectionThumbnails() }
         if hasNetworkConsent { configureBridge() }
     }
@@ -401,6 +405,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     func applicationDidBecomeActive() {
         privacyNotice.didBecomeActive(hasNetworkConsent: hasNetworkConsent)
         refreshRecentConnectionPresenceAfterForeground()
+        refreshAnnouncements()
         resumeVideoAfterForeground()
     }
 
@@ -440,6 +445,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         // disconnect() only closes the remote session. Consent withdrawal must
         // also destroy the persistent signaling peer and its reconnect loop.
         bridge.stopNetworking()
+        announcements.reset()
         bridgeConfiguration = nil
         localIdentity = ""
         signalStatus = "等待隐私授权"
@@ -500,6 +506,8 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         if bridgeConfiguration != configuration {
             bridgeConfiguration = configuration
             signalConnected = false
+            localIdentity = ""
+            announcements.reset()
             signalStatus = "正在连接信令服务"
             stopPresenceMonitoring()
             invalidatePresence()
@@ -1040,6 +1048,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
                    didChange state: CrossDeskSignalState) {
         guard hasNetworkConsent else { return }
         signalConnected = state.rawValue == 1
+        announcements.setConnected(signalConnected)
         invalidatePresence()
         switch state.rawValue {
         case 0: signalStatus = "正在连接信令服务"
@@ -1114,10 +1123,36 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     func rtcBridge(_ bridge: CrossDeskRTCBridge, didProvisionIdentity identity: String) {
         guard hasNetworkConsent else { return }
         localIdentity = identity.split(separator: "@").first.map(String.init) ?? identity
+        if let configuration = bridgeConfiguration {
+            announcements.configure(host: configuration.host, port: configuration.signalPort,
+                                    deviceID: localIdentity)
+        }
         refreshRecentConnectionPresence()
         if let pendingPresenceRemoteID {
             requestPresenceProbe(pendingPresenceRemoteID)
         }
+    }
+
+    var announcementsConnected: Bool { hasNetworkConsent && signalConnected }
+
+    func refreshAnnouncements() {
+        guard announcementsConnected else { return }
+        announcements.refresh()
+    }
+
+    func rtcBridge(_ bridge: CrossDeskRTCBridge, didReceiveAnnouncementMessage message: Data) {
+        guard announcementsConnected else { return }
+        let object = (try? JSONSerialization.jsonObject(with: message)) as? [String: Any]
+        if object?["type"] as? String == "announcements_changed" {
+            announcements.refresh()
+        } else {
+            announcements.receive(message)
+        }
+    }
+
+    func rtcBridge(_ bridge: CrossDeskRTCBridge, didFailAnnouncementRequest requestID: String) {
+        guard hasNetworkConsent else { return }
+        announcements.failed(requestID: requestID)
     }
 
     func rtcBridge(_ bridge: CrossDeskRTCBridge,

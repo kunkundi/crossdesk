@@ -77,6 +77,28 @@ for that server. Remote control sessions then log in as `C-<identity>` and use
 the desktop-compatible `DisplayN`, `control_audio`, `mouse`, `keyboard`,
 `control_data`, `clipboard`, `file`, and `file_feedback` streams.
 
+## Announcements
+
+The home toolbar's bell opens **通知公告** and shows the unread count (capped
+at `99+` on the badge). The persistent identity peer fetches announcements after
+signaling connects, so a remote desktop session is not required. Opening the
+inbox, returning to the foreground, reconnecting, and `announcements_changed`
+events refresh the catalog. Pull to refresh or use the refresh button to retry.
+
+The iOS inbox follows the desktop `announcements_list` protocol: summaries load
+in batches of 200 to count all unread announcements, while full bodies load in
+batches of 20 as the list scrolls. Opening a detail marks that revision read.
+Swipe or long-press a row to delete it after confirmation. Read and deleted
+revisions persist only on this device, scoped by server, port and device ID;
+updating an announcement makes its new revision visible and unread again.
+Plain text, line breaks, HTTP(S) URLs and `[label](URL)` links are supported.
+
+Local state lives in Application Support and is excluded from backups. Failed
+writes leave the item unread or undeleted and display a retry message. Failed
+requests time out after 12 seconds and retain previously loaded content.
+Changing servers or withdrawing network consent clears the displayed inbox and
+invalidates pending responses; consent is required before fetching again.
+
 ## Video codecs
 
 Every iOS build includes VideoToolbox, dav1d, and SVT-AV1. H.264 uses
