@@ -80,25 +80,36 @@ bool StartNativeWindowDrag() {
   }
 }
 
-bool HideDisabledMainWindowZoomButton() {
+bool ConfigureMainWindowChrome(void *opaque_slint_view) {
   @autoreleasepool {
-    for (NSWindow *window in [NSApp windows]) {
-      if (![window.title isEqualToString:@"CrossDesk"]) {
-        continue;
-      }
-
-      NSButton *zoom_button =
-          [window standardWindowButton:NSWindowZoomButton];
-      // The main window has a fixed size, so AppKit disables its zoom button.
-      // Stream windows remain resizable and must keep their native button.
-      if (zoom_button == nil || zoom_button.enabled) {
-        continue;
-      }
-
-      zoom_button.hidden = YES;
-      return true;
+    NSView *slint_view = (__bridge NSView *)opaque_slint_view;
+    NSWindow *window = slint_view.window;
+    if (window == nil ||
+        (window.styleMask & NSWindowStyleMaskTitled) == 0) {
+      return false;
     }
-    return false;
+
+    NSButton *zoom_button =
+        [window standardWindowButton:NSWindowZoomButton];
+    if (zoom_button == nil || zoom_button.enabled) {
+      return false;
+    }
+
+    // Winit creates a transparent AppKit backing even when Slint paints an
+    // opaque client area. macOS 27 can expose that backing in the titlebar.
+    // Use a fixed white backing instead of AppKit's theme-dependent titlebar
+    // material. Aqua keeps the native title and controls readable on white.
+    window.styleMask &= ~NSWindowStyleMaskFullSizeContentView;
+    window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+    window.titlebarAppearsTransparent = YES;
+    window.opaque = YES;
+    window.backgroundColor = NSColor.whiteColor;
+    zoom_button.hidden = YES;
+
+    NSView *frame_view = window.contentView.superview;
+    frame_view.needsLayout = YES;
+    [frame_view layoutSubtreeIfNeeded];
+    return true;
   }
 }
 

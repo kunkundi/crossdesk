@@ -1033,6 +1033,8 @@ int GuiApplication::Run() {
   ui_->main->show();
 #if _WIN32
   ConfigureWindowsWindowIcons(ui_->main->window().win32_hwnd());
+#elif defined(__APPLE__)
+  ConfigureMainWindowChrome(ui_->main->window().appkit_view());
 #endif
   slint::run_event_loop(slint::EventLoopMode::RunUntilQuit);
   Cleanup();
@@ -1181,6 +1183,7 @@ void GuiApplication::InitializeSystemTray() {
 #endif
     ui_->main->window().set_minimized(false);
 #if defined(__APPLE__)
+    ConfigureMainWindowChrome(ui_->main->window().appkit_view());
     MacActivateWindow(ui_->main->window().appkit_view());
     // A window restored from the tray may only obtain its NSWindow after the
     // callback returns, so let the regular UI tick configure it.
@@ -2407,7 +2410,7 @@ void GuiApplication::SyncMainWindow() {
 #endif
 #if defined(__APPLE__)
   if (ui_->main_native_titlebar_attempts > 0) {
-    if (HideDisabledMainWindowZoomButton()) {
+    if (ConfigureMainWindowChrome(ui_->main->window().appkit_view())) {
       ui_->main_native_titlebar_attempts = 0;
     } else {
       --ui_->main_native_titlebar_attempts;
