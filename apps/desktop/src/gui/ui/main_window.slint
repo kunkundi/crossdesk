@@ -701,11 +701,27 @@ export component MainWindow inherits Window {
             accessible-role: button;
             accessible-label: UiStrings.update-available;
             accessible-action-default => { root.menu-open = !root.menu-open; }
-            Text {
-                text: "!"; color: white;
-                font-size: 12px; font-weight: 700;
-                horizontal-alignment: center; vertical-alignment: center;
+            // Center the visible mark independently of font baseline metrics.
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 2px;
+                height: 10px;
                 accessible-role: none;
+                Rectangle {
+                    y: 0px;
+                    width: parent.width;
+                    height: 6px;
+                    border-radius: 1px;
+                    background: white;
+                }
+                Rectangle {
+                    y: 8px;
+                    width: parent.width;
+                    height: 2px;
+                    border-radius: 1px;
+                    background: white;
+                }
             }
             TouchArea {
                 mouse-cursor: pointer;
