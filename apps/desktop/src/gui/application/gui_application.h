@@ -56,6 +56,7 @@ private:
   void HandlePasswordChangeResult();
   void HandleCredentialRecovery();
   void SyncMainWindow();
+  void SyncAnnouncements();
   void SyncConnectionDialog();
   void SyncPlatformDialogs();
   void SyncStreamWindow();

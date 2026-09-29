@@ -20,6 +20,7 @@
 #include "features/settings/settings_manager.h"
 #include "privacy_controller.h"
 #include "runtime/gui_state.h"
+#include "runtime/announcement_inbox.h"
 #include "runtime/peer_event_handler.h"
 #include "runtime/privacy_session_policy.h"
 
@@ -99,6 +100,7 @@ class GuiRuntime : protected gui_detail::GuiState {
 #endif
 
   PrivacyController privacy_;
+  AnnouncementInbox announcements_;
   PrivacySessionPolicy privacy_sessions_;
   std::mutex privacy_commands_mutex_;
   std::deque<std::pair<std::string, PrivacyCommand>> privacy_commands_;

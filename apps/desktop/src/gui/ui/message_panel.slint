@@ -1,0 +1,105 @@
+import { ScrollView } from "std-widgets.slint";
+import { CompactButton, DialogSurface, ImGuiFontStyle } from "common.slint";
+
+export struct AnnouncementItem {
+    id: string,
+    revision: string,
+    title: string,
+    date: string,
+    read: bool,
+}
+
+export global MessageStrings {
+    in-out property <string> messages: "Messages";
+    in-out property <string> unread: "Unread";
+    in-out property <string> read: "Read";
+    in-out property <string> empty: "No announcements";
+    in-out property <string> select-message: "Select an announcement to read";
+    in-out property <string> refresh: "Refresh";
+    in-out property <string> loading: "Loading…";
+    in-out property <string> unavailable: "Unable to sync. Retry or check server support.";
+    in-out property <string> offline: "Offline. Reading status is saved on this device.";
+    in-out property <string> read-save-error: "Unable to save reading status locally. Open the announcement again to retry.";
+    in-out property <string> close: "Close";
+}
+
+export component MessagePanel inherits DialogSurface {
+    in property <[AnnouncementItem]> items;
+    in property <int> unread-count;
+    in property <int> total;
+    in property <int> offset;
+    in property <bool> loading;
+    in property <bool> failed;
+    in property <bool> read-save-failed;
+    in property <bool> loaded;
+    in property <bool> connected;
+    in property <string> selected-id;
+    in property <string> selected-title;
+    in property <string> selected-body;
+    in property <string> selected-date;
+    in property <bool> selected-read;
+    callback open-message(string, string);
+    callback refresh;
+    callback change-page(int);
+    callback close;
+    background: #f7f8fa;
+    TouchArea { }
+    Rectangle {
+        x: 1px; y: 1px; width: parent.width - 2px; height: 30px;
+        background: #e7ebf0; border-radius: 7px;
+        Rectangle { y: parent.height - 7px; height: 7px; background: #e7ebf0; }
+        Text { x: 12px; width: parent.width - 54px; height: parent.height; text: MessageStrings.messages + " · " + MessageStrings.unread + " " + root.unread-count; font-size: 13px; font-weight: 600; color: #202d3d; vertical-alignment: center; overflow: elide; }
+        Rectangle {
+            x: parent.width - 31px; y: 3px; width: 25px; height: 24px;
+            border-radius: 3px;
+            background: close-touch.has-hover ? #d8dde5 : transparent;
+            accessible-role: button;
+            accessible-label: MessageStrings.close;
+            accessible-action-default => { root.close(); }
+            Text { text: "×"; font-size: 20px; color: #4a5568; horizontal-alignment: center; vertical-alignment: center; }
+            close-touch := TouchArea { mouse-cursor: pointer; clicked => { root.close(); } }
+        }
+    }
+    Rectangle {
+        x: 12px; y: 42px; width: 180px; height: parent.height - 100px;
+        background: white; border-width: 1px; border-color: #e2e5e9;
+        ScrollView {
+            width: parent.width; height: parent.height;
+            VerticalLayout {
+                width: 160px; spacing: 3px; padding: 5px;
+                for item in root.items: Rectangle {
+                    height: 72px; width: 150px;
+                    background: root.selected-id == item.id ? #eaf2ff : entry-touch.has-hover ? #f1f5fa : white;
+                    border-radius: 4px;
+                    Text { x: 8px; y: 5px; width: parent.width - 16px; height: 22px; text: item.title; overflow: elide; font-weight: item.read ? 400 : 600; color: #202d3d; vertical-alignment: center; }
+                    Text { x: 8px; y: 32px; width: parent.width - 16px; text: item.read ? MessageStrings.read : MessageStrings.unread; color: item.read ? #718096 : #2463c7; font-size: 11px; overflow: elide; }
+                    Text { x: 8px; y: 50px; width: parent.width - 16px; text: item.date; color: #718096; font-size: 10px; overflow: elide; }
+                    accessible-role: button;
+                    accessible-label: item.title + " " + (item.read ? MessageStrings.read : MessageStrings.unread);
+                    accessible-action-default => { root.open-message(item.id, item.revision); }
+                    entry-touch := TouchArea { mouse-cursor: pointer; clicked => { root.open-message(item.id, item.revision); } }
+                }
+            }
+        }
+        if root.items.length == 0 && root.loaded && !root.loading: Text { text: MessageStrings.empty; color: #718096; horizontal-alignment: center; vertical-alignment: center; }
+    }
+    Rectangle {
+        x: 202px; y: 42px; width: parent.width - 214px; height: parent.height - 100px;
+        background: white; border-width: 1px; border-color: #e2e5e9;
+        if root.selected-id == "": Text { x: 14px; width: parent.width - 28px; text: MessageStrings.select-message; color: #718096; wrap: word-wrap; horizontal-alignment: center; vertical-alignment: center; }
+        if root.selected-id != "": ScrollView {
+            width: parent.width; height: parent.height;
+            VerticalLayout {
+                width: root.width - 234px; padding: 12px; spacing: 10px; alignment: start;
+                Text { vertical-stretch: 0; text: root.selected-title; wrap: word-wrap; font-size: 14px; font-weight: 600; color: #202d3d; }
+                Text { vertical-stretch: 0; text: root.selected-date + " · " + (root.selected-read ? MessageStrings.read : MessageStrings.unread); color: #718096; font-size: 11px; wrap: word-wrap; }
+                Text { vertical-stretch: 0; text: root.selected-body; wrap: word-wrap; color: #303b4a; font-size: ImGuiFontStyle.body; }
+            }
+        }
+    }
+    CompactButton { x: 12px; y: parent.height - 50px; width: 30px; text: "‹"; enabled: root.connected && root.offset > 0 && !root.loading; clicked => { root.change-page(root.offset - 20); } }
+    Text { x: 46px; y: parent.height - 50px; width: 112px; height: 24px; text: (root.total > 0 ? root.offset + 1 : 0) + "–" + min(root.offset + 20, root.total) + " / " + root.total; color: #718096; horizontal-alignment: center; vertical-alignment: center; font-size: 11px; }
+    CompactButton { x: 162px; y: parent.height - 50px; width: 30px; text: "›"; enabled: root.connected && root.offset + 20 < root.total && !root.loading; clicked => { root.change-page(root.offset + 20); } }
+    CompactButton { x: parent.width - 82px; y: parent.height - 50px; width: 70px; text: MessageStrings.refresh; enabled: root.connected && !root.loading; clicked => { root.refresh(); } }
+    Text { x: 12px; y: parent.height - 25px; width: parent.width - 24px; height: 22px; text: root.read-save-failed ? MessageStrings.read-save-error : !root.connected ? MessageStrings.offline : root.loading ? MessageStrings.loading : root.failed ? MessageStrings.unavailable : ""; color: root.failed || root.read-save-failed ? #ba342b : #718096; font-size: 11px; overflow: elide; }
+}

@@ -20,6 +20,17 @@ struct TranslationRow {
 
 // Single source of truth for all UI strings.
 #define CROSSDESK_LOCALIZATION_ALL(X)                                          \
+  X(messages, u8"消息", "Messages", u8"Сообщения") \
+  X(message_unread, u8"未读", "Unread", u8"Не прочитано") \
+  X(message_read, u8"已读", "Read", u8"Прочитано") \
+  X(message_empty, u8"暂无公告", "No announcements", u8"Нет объявлений") \
+  X(message_select, u8"选择公告查看详情", "Select an announcement to read", u8"Выберите объявление") \
+  X(message_refresh, u8"刷新", "Refresh", u8"Обновить") \
+  X(message_loading, u8"正在加载…", "Loading…", u8"Загрузка…") \
+  X(message_unavailable, u8"同步失败，请重试或检查服务端是否支持公告。", "Unable to sync. Retry or check server support.", u8"Ошибка синхронизации. Повторите или проверьте поддержку сервера.") \
+  X(message_offline, u8"当前离线，阅读状态仍保存在本机。", "Offline. Reading status is saved on this device.", u8"Нет подключения. Статус чтения сохраняется на этом устройстве.") \
+  X(message_read_save_error, u8"无法保存本地阅读状态，请重新打开公告重试。", "Unable to save reading status locally. Open the announcement again to retry.", u8"Не удалось сохранить статус чтения. Откройте объявление снова.") \
+  X(message_close, u8"关闭", "Close", u8"Закрыть") \
   X(console_cli_help, u8"Linux 无头运行选项：\n  --headless                  自动选择已有桌面并启用控制台\n  --headless-display DISPLAY  高级：指定已有显示会话\n  --headless-size WIDTHxHEIGHT 新建虚拟屏幕；默认1920x1080，偶数尺寸320..8192\n  --headless-session EXECUTABLE 启动桌面环境（startxfce4；none 仅启动裸屏幕）\n  --no-headless               禁用自动回退\n正常启动会自动选择已有桌面，无需填写显示编号。控制台输入 settings 管理设置。\n", "Linux headless options:\n  --headless                  Select an existing desktop and enable the console\n  --headless-display DISPLAY  Advanced: override desktop selection\n  --headless-size WIDTHxHEIGHT New virtual display; default 1920x1080, even 320..8192\n  --headless-session EXECUTABLE Start a desktop (startxfce4; none for a bare display)\n  --no-headless               Disable automatic fallback\nNormal startup selects your existing desktop automatically. Enter settings in the console to configure it.\n", u8"Параметры запуска без монитора:\n  --headless                  Выбрать рабочий стол и включить консоль\n  --headless-display DISPLAY  Дополнительно: указать сеанс дисплея\n  --headless-size WIDTHxHEIGHT Новый виртуальный экран; 1920x1080 по умолчанию, чётные размеры 320..8192\n  --headless-session EXECUTABLE Запустить рабочий стол (startxfce4; none — только экран)\n  --no-headless               Отключить автоматический резервный запуск\nРабочий стол выбирается автоматически. Команда settings открывает настройки консоли.\n") \
   X(console_title, u8"CrossDesk 无头控制台", "CrossDesk headless console", u8"Консоль CrossDesk") \
   X(console_log_file, u8"日志文件", "Log file", u8"Файл журнала") \

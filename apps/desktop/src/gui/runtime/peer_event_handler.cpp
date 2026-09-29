@@ -79,7 +79,11 @@ void PeerEventHandler::OnSignalMessage(const char* message, size_t size,
     return;
   }
   std::string type = j["type"].get<std::string>();
-  if (type == "presence") {
+  if (type == "announcements_changed") {
+    runtime->announcements_.Refresh();
+  } else if (type == "announcements") {
+    runtime->announcements_.Receive(j);
+  } else if (type == "presence") {
     if (j.contains("devices") && j["devices"].is_array()) {
       for (auto& dev : j["devices"]) {
         if (!dev.is_object()) {
@@ -172,6 +176,7 @@ void PeerEventHandler::OnSignalStatus(SignalStatus status, const char* user_id,
 
   std::string client_id(user_id, user_id_size);
   if (client_id == runtime->client_id_) {
+    runtime->announcements_.SetConnected(status == SignalStatus::SignalConnected);
     runtime->signal_status_ = status;
     runtime->device_presence_cache_.SetSignalConnected(
         status == SignalStatus::SignalConnected);

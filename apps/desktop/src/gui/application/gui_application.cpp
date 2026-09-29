@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -906,6 +907,8 @@ void DragWindow(WindowHandle& component, int phase, float mouse_x,
 }  // namespace
 
 struct GuiApplication::SlintUi {
+  uint64_t announcement_version = UINT64_MAX;
+  std::string announcement_selected_id, announcement_selected_revision;
   slint::ComponentHandle<ui::MainWindow> main = ui::MainWindow::create();
   std::shared_ptr<slint::VectorModel<ui::ReleaseNoteBlock>>
       release_note_blocks_model =
@@ -981,6 +984,8 @@ int GuiApplication::Run() {
   dll_log_path_ = exec_log_path_;
   InitializeLogger();
   cache_path_ = path_manager_->GetCachePath().string();
+  announcements_.SetStorageDirectory(path_manager_->GetCachePath() /
+                                     "announcement_reads");
   config_center_ = std::make_unique<ConfigCenter>(cache_path_ + "/config.ini");
 
   LOG_INFO("CrossDesk version: {} (Slint UI)", CROSSDESK_VERSION);
@@ -1267,6 +1272,27 @@ void GuiApplication::ResetSettingsUi() {
 }
 
 void GuiApplication::BindMainCallbacks() {
+  ui_->main->on_refresh_announcements([this] { announcements_.Refresh(); });
+  ui_->main->on_announcement_page([this](int offset) {
+    ui_->announcement_selected_id.clear();
+    ui_->main->set_announcement_selected_id("");
+    announcements_.Refresh(offset);
+  });
+  ui_->main->on_open_announcement([this](slint::SharedString id,
+                                         slint::SharedString revision) {
+    const auto snapshot = announcements_.Get();
+    for (const auto& item : snapshot.items) {
+      if (std::to_string(item["id"].get<int64_t>()) != id.data() ||
+          std::to_string(item["revision"].get<int64_t>()) != revision.data())
+        continue;
+      ui_->announcement_selected_id = id.data();
+      ui_->announcement_selected_revision = revision.data();
+      ui_->announcement_version = UINT64_MAX;
+      announcements_.Read(item["id"], item["revision"]);
+      SyncAnnouncements();
+      break;
+    }
+  });
   auto& main = ui_->main;
   main->window().on_close_requested([this] {
     // Keep the application and all active sessions alive. The tray helper
@@ -2284,10 +2310,75 @@ void GuiApplication::UpdateLocalization() {
   ui_->localized_language = language;
 }
 
+void GuiApplication::SyncAnnouncements() {
+  if (signal_connected_) {
+    announcements_.Configure(params_.signal_server_ip,
+                             params_.signal_server_port, client_id_);
+  }
+  const auto request = announcements_.NextRequest();
+  if (!request.is_null()) {
+    const auto payload = request.dump();
+    if (!peer_ || SendSignalMessage(peer_, payload.data(), payload.size()) != 0)
+      announcements_.Failed(request["request_id"]);
+  }
+  if (ui_->announcement_version == announcements_.Version()) return;
+  const auto state = announcements_.Get();
+  ui_->announcement_version = state.version;
+  ui_->main->set_announcement_unread(state.unread);
+  ui_->main->set_announcement_total(state.total);
+  ui_->main->set_announcement_offset(state.offset);
+  ui_->main->set_announcement_loading(state.loading);
+  ui_->main->set_announcement_failed(state.failed);
+  ui_->main->set_announcement_read_save_failed(state.read_save_failed);
+  ui_->main->set_announcement_loaded(state.loaded);
+  std::vector<ui::AnnouncementItem> rows;
+  bool selected_found = false;
+  for (const auto& item : state.items) {
+    ui::AnnouncementItem row;
+    const auto id = std::to_string(item["id"].get<int64_t>());
+    const auto revision = std::to_string(item["revision"].get<int64_t>());
+    row.id = UiText(id);
+    row.revision = UiText(revision);
+    row.title = UiText(item["title"].get<std::string>());
+    const auto timestamp =
+        static_cast<time_t>(item["updated_at"].get<int64_t>());
+    std::tm local{};
+#ifdef _WIN32
+    localtime_s(&local, &timestamp);
+#else
+    localtime_r(&timestamp, &local);
+#endif
+    char date[32]{};
+    std::strftime(date, sizeof(date), "%Y-%m-%d %H:%M", &local);
+    row.date = UiText(date);
+    row.read = item["read"].get<bool>();
+    if (id == ui_->announcement_selected_id &&
+        revision == ui_->announcement_selected_revision) {
+      selected_found = true;
+      ui_->main->set_announcement_selected_id(row.id);
+      ui_->main->set_announcement_selected_title(row.title);
+      ui_->main->set_announcement_selected_body(
+          UiText(item["body"].get<std::string>()));
+      ui_->main->set_announcement_selected_date(row.date);
+      ui_->main->set_announcement_selected_read(row.read);
+    }
+    rows.push_back(std::move(row));
+  }
+  if (!selected_found) {
+    ui_->announcement_selected_id.clear();
+    ui_->main->set_announcement_selected_id("");
+    ui_->main->set_announcement_selected_body("");
+  }
+  ui_->main->set_announcements(
+      std::make_shared<slint::VectorModel<ui::AnnouncementItem>>(
+          std::move(rows)));
+}
+
 void GuiApplication::SyncMainWindow() {
   if (!ui_) {
     return;
   }
+  SyncAnnouncements();
 #if _WIN32
   ConfigureWindowsWindowIcons(ui_->main->window().win32_hwnd());
 #endif

@@ -312,8 +312,12 @@ void GuiRuntime::CloseServerController(const std::string& remote_id) {
 }
 
 void GuiRuntime::CloseConnectionPeer() {
-  if (!peer_) return;
+  if (!peer_) {
+    announcements_.Reset();
+    return;
+  }
   peer_events_->Deactivate();
+  announcements_.Reset();
   std::vector<std::string> controllers;
   {
     std::shared_lock lock(connection_status_mutex_);

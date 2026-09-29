@@ -26,6 +26,19 @@ inline int ApplyMainWindowStrings(
   const int language =
       localization::detail::ClampLanguageIndex(language_index);
   auto& strings = window->global<ui::UiStrings>();
+  auto& messages = window->global<ui::MessageStrings>();
+  messages.set_messages(Text(localization::messages[language]));
+  messages.set_unread(Text(localization::message_unread[language]));
+  messages.set_read(Text(localization::message_read[language]));
+  messages.set_empty(Text(localization::message_empty[language]));
+  messages.set_select_message(Text(localization::message_select[language]));
+  messages.set_refresh(Text(localization::message_refresh[language]));
+  messages.set_loading(Text(localization::message_loading[language]));
+  messages.set_unavailable(Text(localization::message_unavailable[language]));
+  messages.set_offline(Text(localization::message_offline[language]));
+  messages.set_read_save_error(Text(localization::message_read_save_error[language]));
+  messages.set_close(Text(localization::message_close[language]));
+
   strings.set_local_desktop(Text(localization::local_desktop[language]));
   strings.set_remote_desktop(Text(localization::remote_desktop[language]));
   strings.set_recent_connections(
