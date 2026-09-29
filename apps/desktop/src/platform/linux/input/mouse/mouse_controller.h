@@ -54,7 +54,6 @@ class PlatformMouseController final : public MouseController {
   enum class WaylandAbsoluteMode { kUnknown, kPixels, kNormalized, kDisabled };
 
   _XDisplay* display_ = nullptr;
-  unsigned long root_ = 0;
   std::vector<DisplayInfo> display_info_list_;
   int screen_width_ = 0;
   int screen_height_ = 0;

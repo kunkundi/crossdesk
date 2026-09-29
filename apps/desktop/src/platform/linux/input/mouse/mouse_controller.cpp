@@ -35,8 +35,6 @@ int PlatformMouseController::Init(std::vector<DisplayInfo> display_info_list) {
     return -1;
   }
 
-  root_ = DefaultRootWindow(display_);
-
   int event_base, error_base, major_version, minor_version;
   if (!XTestQueryExtension(display_, &event_base, &error_base, &major_version,
                            &minor_version)) {
@@ -166,7 +164,10 @@ void PlatformMouseController::SetMousePosition(int x, int y) {
   if (!display_) {
     return;
   }
-  XWarpPointer(display_, None, root_, 0, 0, 0, 0, x, y);
+  // Inject motion through XTest so XInput2 raw-motion listeners (including
+  // SDL's global pointer cache) see the movement.
+  // XWarpPointer moves the cursor without producing those raw events.
+  XTestFakeMotionEvent(display_, DefaultScreen(display_), x, y, CurrentTime);
   XFlush(display_);
 }
 

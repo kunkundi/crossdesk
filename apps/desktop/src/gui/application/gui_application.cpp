@@ -659,6 +659,41 @@ struct WindowDragState {
   float global_to_physical_scale = 1;
   slint::PhysicalPosition window_start;
   slint::PhysicalPosition last_target;
+#if defined(__linux__) && !defined(__APPLE__)
+  std::unique_ptr<Display, decltype(&XCloseDisplay)> x11_display{nullptr,
+                                                              XCloseDisplay};
+  slint::Timer pointer_timer;
+#endif
+
+  bool ReadGlobalPointer(float* x, float* y) {
+#if defined(__linux__) && !defined(__APPLE__)
+    const char* driver = SDL_GetCurrentVideoDriver();
+    if (driver && std::strcmp(driver, "x11") == 0) {
+      // Slint can dispatch motion before SDL pumps its XInput2 events, and
+      // pointer warps do not emit raw motion at all. Query X11 directly so
+      // dragging never depends on SDL's cached global pointer position.
+      if (!x11_display) {
+        x11_display.reset(XOpenDisplay(nullptr));
+      }
+      if (!x11_display) {
+        return false;
+      }
+      ::Window root, child;
+      int root_x, root_y, local_x, local_y;
+      unsigned int buttons;
+      if (!XQueryPointer(x11_display.get(), DefaultRootWindow(x11_display.get()),
+                         &root, &child, &root_x, &root_y, &local_x, &local_y,
+                         &buttons)) {
+        return false;
+      }
+      *x = static_cast<float>(root_x);
+      *y = static_cast<float>(root_y);
+      return true;
+    }
+#endif
+    SDL_GetGlobalMouseState(x, y);
+    return true;
+  }
 };
 
 bool CanUseGlobalPointerPosition() {
@@ -851,9 +886,10 @@ void DragWindow(WindowHandle& component, int phase, float mouse_x,
     state.last_local_y = mouse_y;
     state.window_start = window.position();
     state.last_target = state.window_start;
-    state.use_global_pointer = CanUseGlobalPointerPosition();
+    state.use_global_pointer =
+        CanUseGlobalPointerPosition() &&
+        state.ReadGlobalPointer(&state.pointer_start_x, &state.pointer_start_y);
     if (state.use_global_pointer) {
-      SDL_GetGlobalMouseState(&state.pointer_start_x, &state.pointer_start_y);
 #if defined(__APPLE__)
       // Cocoa reports global pointer positions in logical screen points,
       // while Slint/winit accepts physical window positions.
@@ -862,9 +898,32 @@ void DragWindow(WindowHandle& component, int phase, float mouse_x,
       state.global_to_physical_scale = 1.0f;
 #endif
     }
+#if defined(__linux__) && !defined(__APPLE__)
+    if (state.use_global_pointer && state.x11_display) {
+      // Moving the window can leave consecutive pointer events at identical
+      // local coordinates, so Slint need not emit another TouchArea::moved.
+      // Follow the global pointer throughout the drag, including those moves.
+      state.pointer_timer.start(
+          slint::TimerMode::Repeated, std::chrono::milliseconds(16),
+          [weak = slint::ComponentWeakHandle(component), &state] {
+            if (auto window = weak.lock()) {
+              DragWindow(*window, 2, 0, 0, state);
+            } else {
+              state.active = false;
+              state.pointer_timer.stop();
+            }
+          });
+    }
+#endif
     return;
   }
   if (phase == 0) {
+#if defined(__linux__) && !defined(__APPLE__)
+    state.pointer_timer.stop();
+    if (state.use_global_pointer && state.x11_display) {
+      DragWindow(component, 2, mouse_x, mouse_y, state);
+    }
+#endif
     state.active = false;
     return;
   }
@@ -876,7 +935,9 @@ void DragWindow(WindowHandle& component, int phase, float mouse_x,
   if (state.use_global_pointer) {
     float pointer_x = 0;
     float pointer_y = 0;
-    SDL_GetGlobalMouseState(&pointer_x, &pointer_y);
+    if (!state.ReadGlobalPointer(&pointer_x, &pointer_y)) {
+      return;
+    }
     const int delta_x = static_cast<int>(std::lround(
         (pointer_x - state.pointer_start_x) * state.global_to_physical_scale));
     const int delta_y = static_cast<int>(std::lround(
