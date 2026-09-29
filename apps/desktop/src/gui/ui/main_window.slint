@@ -983,71 +983,90 @@ export component MainWindow inherits Window {
                             x: 7px;
                             y: 7px;
                             width: connection-card.content-width;
-                            height: 84px;
-                            background: connection.platform == "windows" ? @linear-gradient(135deg, #1f61b3, #337ac4) :
-                                connection.platform == "macos" ? @linear-gradient(135deg, #6e4aad, #8c63c4) :
-                                connection.platform == "linux" ? @linear-gradient(135deg, #a14f14, #ba631f) :
-                                connection.platform == "ios" ? @linear-gradient(135deg, #146e66, #1f8278) :
-                                @linear-gradient(135deg, #596675, #737d8c);
-                            if connection.has-thumbnail: Image {
+                            height: 109px;
+                            border-radius: 4px;
+                            clip: true;
+
+                            Rectangle {
+                                x: 0px;
+                                y: 0px;
                                 width: parent.width;
-                                height: parent.height;
-                                source: connection.thumbnail;
-                                image-fit: cover;
+                                height: 84px;
+                                background: connection.platform == "windows" ? @linear-gradient(135deg, #1f61b3, #337ac4) :
+                                    connection.platform == "macos" ? @linear-gradient(135deg, #6e4aad, #8c63c4) :
+                                    connection.platform == "linux" ? @linear-gradient(135deg, #a14f14, #ba631f) :
+                                    connection.platform == "ios" ? @linear-gradient(135deg, #146e66, #1f8278) :
+                                    @linear-gradient(135deg, #596675, #737d8c);
+                                if connection.has-thumbnail: Image {
+                                    width: parent.width;
+                                    height: parent.height;
+                                    source: connection.thumbnail;
+                                    image-fit: cover;
+                                }
+                                if !connection.has-thumbnail: Text {
+                                    x: 8px;
+                                    width: parent.width - 16px;
+                                    height: parent.height;
+                                    text: connection.platform == "windows" ? "Windows" :
+                                        connection.platform == "macos" ? "macOS" :
+                                        connection.platform == "linux" ? "Linux" :
+                                        connection.platform == "ios" ? "iOS" : UiStrings.unknown-platform;
+                                    color: white;
+                                    font-size: 20px;
+                                    font-weight: 600;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
                             }
-                            if !connection.has-thumbnail: Text {
-                                x: 8px;
-                                width: parent.width - 16px;
-                                height: parent.height;
-                                text: connection.platform == "windows" ? "Windows" :
-                                    connection.platform == "macos" ? "macOS" :
-                                    connection.platform == "linux" ? "Linux" :
-                                    connection.platform == "ios" ? "iOS" : UiStrings.unknown-platform;
-                                color: white;
-                                font-size: 20px;
-                                font-weight: 600;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                                overflow: elide;
+                            Rectangle {
+                                x: 0px;
+                                y: 84px;
+                                width: parent.width;
+                                height: 25px;
+                                background: #00000018;
+                                Text {
+                                    x: 4px;
+                                    y: 1px;
+                                    height: parent.height - self.y;
+                                    width: max(0px, parent.width - self.x - 4px
+                                               - (card-touch.has-hover
+                                                  ? connection-card.toolbar-width + connection-card.toolbar-right-padding
+                                                  : 0px));
+                                    text: connection.display-name;
+                                    color: #30343b;
+                                    // The ImGui card footer uses its own 0.52 font
+                                    // scale and renders slightly larger than the
+                                    // compact body text used in dialogs.
+                                    font-size: ImGuiFontStyle.base;
+                                    overflow: elide;
+                                    vertical-alignment: center;
+                                }
                             }
-                        }
-                        Rectangle {
-                            x: 7px;
-                            y: 91px;
-                            width: connection-card.content-width;
-                            height: 25px;
-                            background: #00000018;
-                            border-radius: 3px;
-                            Text {
-                                x: 4px;
-                                y: 1px;
-                                height: parent.height - self.y;
-                                width: max(0px, parent.width - self.x - 4px
-                                           - (card-touch.has-hover
-                                              ? connection-card.toolbar-width + connection-card.toolbar-right-padding
-                                              : 0px));
-                                text: connection.display-name;
-                                color: #30343b;
-                                // The ImGui card footer uses its own 0.52 font
-                                // scale and renders slightly larger than the
-                                // compact body text used in dialogs.
-                                font-size: ImGuiFontStyle.base;
-                                overflow: elide;
-                                vertical-alignment: center;
+                            if connection.online: OnlineStatusIndicator {
+                                x: 9px - self.width / 2;
+                                y: 9px - self.height / 2;
+                                dot-diameter: 9px;
                             }
-                        }
-                        if connection.online: OnlineStatusIndicator {
-                            x: 16px - self.width / 2;
-                            y: 16px - self.height / 2;
-                            dot-diameter: 9px;
-                        }
-                        if !connection.online: Rectangle {
-                            x: 11.5px;
-                            y: 11.5px;
-                            width: 9px;
-                            height: 9px;
-                            border-radius: 4.5px;
-                            background: #9ca3af;
+                            if !connection.online: Rectangle {
+                                x: 4.5px;
+                                y: 4.5px;
+                                width: 9px;
+                                height: 9px;
+                                border-radius: 4.5px;
+                                background: #9ca3af;
+                            }
+                            // The software renderer only clips rectangular bounds.
+                            // This outer border masks the four corners there too.
+                            Rectangle {
+                                x: -parent.border-radius;
+                                y: -parent.border-radius;
+                                width: parent.width + 2 * parent.border-radius;
+                                height: parent.height + 2 * parent.border-radius;
+                                border-width: parent.border-radius;
+                                border-radius: 2 * parent.border-radius;
+                                border-color: recent-list.background;
+                            }
                         }
                         card-touch := TouchArea {
                             x: 7px;
