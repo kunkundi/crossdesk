@@ -35,7 +35,7 @@ class AnnouncementInbox {
   void SetConnected(bool connected);
   void Refresh(int offset = -1);
   bool Read(int64_t id, int64_t revision);
-  nlohmann::json NextRequest(std::chrono::steady_clock::time_point now =
+  nlohmann::json TakePendingRequest(std::chrono::steady_clock::time_point now =
                                  std::chrono::steady_clock::now());
   void Failed(const std::string& request_id);
   void Receive(const nlohmann::json& message);

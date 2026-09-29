@@ -142,7 +142,7 @@ void AnnouncementInbox::Fail() {
   state_.failed = true;
   ++state_.version;
 }
-nlohmann::json AnnouncementInbox::NextRequest(
+nlohmann::json AnnouncementInbox::TakePendingRequest(
     std::chrono::steady_clock::time_point now) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!connected_ || scope_.empty()) return nullptr;

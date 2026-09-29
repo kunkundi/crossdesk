@@ -2315,7 +2315,7 @@ void GuiApplication::SyncAnnouncements() {
     announcements_.Configure(params_.signal_server_ip,
                              params_.signal_server_port, client_id_);
   }
-  const auto request = announcements_.NextRequest();
+  const auto request = announcements_.TakePendingRequest();
   if (!request.is_null()) {
     const auto payload = request.dump();
     if (!peer_ || SendSignalMessage(peer_, payload.data(), payload.size()) != 0)
