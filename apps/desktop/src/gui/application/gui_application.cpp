@@ -1622,9 +1622,14 @@ void GuiApplication::BindStreamCallbacks() {
     }
     RemoteAction action{};
     action.type = ControlType::service_command;
-    action.c.flag = std::string(shortcut) == "Ctrl+Alt+Del"
-                        ? ServiceCommandFlag::send_sas
-                        : ServiceCommandFlag::lock_workstation;
+    const std::string id = std::string(shortcut);
+    if (id == "Ctrl+Alt+Del") {
+      action.c.flag = ServiceCommandFlag::send_sas;
+    } else if (id == "cancel-consent") {
+      action.c.flag = ServiceCommandFlag::cancel_consent;
+    } else {
+      action.c.flag = ServiceCommandFlag::lock_workstation;
+    }
     const std::string message = action.to_json();
     SendReliableDataFrame(props->peer_, message.c_str(), message.size(),
                           props->control_data_label_.c_str());

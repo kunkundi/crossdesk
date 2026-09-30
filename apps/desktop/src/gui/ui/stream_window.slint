@@ -399,7 +399,7 @@ export component StreamWindow inherits Window {
             && pointer-x >= shortcut-menu-x
             && pointer-x <= shortcut-menu-x + 180px
             && pointer-y >= shortcut-menu-y
-            && pointer-y <= shortcut-menu-y + 68px;
+            && pointer-y <= shortcut-menu-y + 97px;
         let over-video-menu = root.video-menu-open
             && pointer-x >= root.video-menu-x && pointer-x <= root.video-menu-x + root.video-menu-width
             && pointer-y >= root.video-menu-y && pointer-y <= root.video-menu-y + root.video-menu-height;
@@ -1307,13 +1307,19 @@ export component StreamWindow inherits Window {
             }
 
             if root.shortcut-menu-open: Rectangle {
-                x: control.x + shortcut-button.x; y: control.y + 40px; width: 180px; height: 68px;
+                x: control.x + shortcut-button.x; y: control.y + 40px; width: 180px; height: 97px;
                 background: white; border-width: 1px; border-color: ImGuiLineStyle.border; border-radius: 5px; z: 11;
                 VerticalLayout {
                     padding: 4px; spacing: 1px;
-                    for shortcut in ["Ctrl+Alt+Del", "Win+L"]: Rectangle {
+                    for shortcut in ["Ctrl+Alt+Del", "Win+L", "cancel-consent"]: Rectangle {
                         height: 29px; background: shortcut-touch.has-hover ? #e8eef9 : transparent;
-                        Text { x: 8px; text: shortcut; color: #30343b; font-size: ImGuiFontStyle.body; vertical-alignment: center; }
+                        Text {
+                            x: 8px;
+                            text: shortcut == "cancel-consent"
+                                ? StreamStrings.cancel-remote-consent
+                                : shortcut;
+                            color: #30343b; font-size: ImGuiFontStyle.body; vertical-alignment: center;
+                        }
                         shortcut-touch := TouchArea {
                             pointer-event(event) => {
                                 if event.kind == PointerEventKind.down {
