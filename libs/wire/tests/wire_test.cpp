@@ -125,6 +125,39 @@ int main() {
                        crossdesk::ServiceCommandFlag::send_sas,
                "service command JSON round trip failed");
 
+  ok &= Expect(static_cast<int>(crossdesk::ServiceCommandFlag::cancel_consent) ==
+                   2,
+               "cancel_consent wire value changed");
+  crossdesk::RemoteAction cancel_command{};
+  cancel_command.type = crossdesk::ControlType::service_command;
+  cancel_command.c.flag = crossdesk::ServiceCommandFlag::cancel_consent;
+  crossdesk::RemoteAction parsed_cancel_command{};
+  ok &= Expect(parsed_cancel_command.from_json(cancel_command.to_json()) &&
+                   parsed_cancel_command.c.flag ==
+                       crossdesk::ServiceCommandFlag::cancel_consent,
+               "cancel consent command JSON round trip failed");
+
+  crossdesk::RemoteAction service_status{};
+  service_status.type = crossdesk::ControlType::service_status;
+  service_status.ss.available = true;
+  std::strcpy(service_status.ss.interactive_stage, "credential-ui");
+  service_status.ss.consent_pending = true;
+  crossdesk::RemoteAction parsed_service_status{};
+  ok &= Expect(parsed_service_status.from_json(service_status.to_json()) &&
+                   parsed_service_status.ss.available &&
+                   std::string(parsed_service_status.ss.interactive_stage) ==
+                       "credential-ui" &&
+                   parsed_service_status.ss.consent_pending,
+               "service status consent_pending round trip failed");
+
+  crossdesk::RemoteAction legacy_service_status{};
+  ok &= Expect(legacy_service_status.from_json(
+                   "{\"type\":5,\"service_status\":{\"available\":true,"
+                   "\"interactive_stage\":\"secure-desktop\"}}") &&
+                   !legacy_service_status.ss.consent_pending,
+               "service status from an older peer should default consent_pending "
+               "to false");
+
   char display_name[] = "Built-in Display";
   char* display_names[] = {display_name};
   int left[] = {0};

@@ -154,6 +154,7 @@ struct RemoteSession {
   uint64_t privacy_status_tick_ = 0;
   bool remote_service_available_ = false;
   std::string remote_interactive_stage_;
+  bool remote_consent_pending_ = false;
   std::vector<DisplayInfo> display_info_list_;
   // Cursor snapshots arrive on the transport callback thread and are applied
   // by the Slint UI thread. Keep the snapshot atomic as a unit so visibility

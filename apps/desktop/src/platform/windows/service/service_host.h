@@ -83,6 +83,7 @@ class CrossDeskServiceHost {
   // Returns an error response, or an empty string with a validated snapshot.
   std::string ResolveSecureInputTarget(DWORD client_session_id,
                                         SecureInputTarget& target);
+  std::string CancelPendingConsent(DWORD client_session_id);
   std::string SendSecureDesktopKeyboardInput(DWORD client_session_id,
                                              int key_code, bool is_down,
                                              uint32_t scan_code = 0,

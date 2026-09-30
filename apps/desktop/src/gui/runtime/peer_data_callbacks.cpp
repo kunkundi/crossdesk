@@ -261,6 +261,11 @@ void PeerEventHandler::OnReceiveDataBuffer(
         LOG_WARN("Remote lock workstation request failed, error={}",
                  GetLastError());
       }
+    } else if (remote_action.c.flag == ServiceCommandFlag::cancel_consent) {
+      // Only the local SYSTEM service can reach the secure desktop Consent.exe
+      // lives on, so hand it off the same way the SAS request is handled.
+      runtime->pending_windows_service_cancel_consent_.store(
+          true, std::memory_order_relaxed);
     }
 #endif
     return;

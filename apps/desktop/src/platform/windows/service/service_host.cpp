@@ -621,8 +621,8 @@ bool QuerySessionLockState(DWORD session_id, bool* session_locked_out) {
   return success;
 }
 
-bool IsProcessRunningInSession(const wchar_t* executable_name,
-                               DWORD session_id) {
+bool FindProcessInSession(const wchar_t* executable_name, DWORD session_id,
+                          DWORD* process_id_out) {
   if (executable_name == nullptr || executable_name[0] == L'\0') {
     return false;
   }
@@ -644,6 +644,9 @@ bool IsProcessRunningInSession(const wchar_t* executable_name,
       DWORD process_session_id = 0xFFFFFFFF;
       if (ProcessIdToSessionId(entry.th32ProcessID, &process_session_id) &&
           process_session_id == session_id) {
+        if (process_id_out != nullptr) {
+          *process_id_out = entry.th32ProcessID;
+        }
         found = true;
         break;
       }
@@ -654,12 +657,54 @@ bool IsProcessRunningInSession(const wchar_t* executable_name,
   return found;
 }
 
+bool IsProcessRunningInSession(const wchar_t* executable_name,
+                               DWORD session_id) {
+  return FindProcessInSession(executable_name, session_id, nullptr);
+}
+
 bool IsLogonUiRunningInSession(DWORD session_id) {
   return IsProcessRunningInSession(L"LogonUI.exe", session_id);
 }
 
 bool IsConsentUiRunningInSession(DWORD session_id) {
   return IsProcessRunningInSession(L"Consent.exe", session_id);
+}
+
+// The service runs as SYSTEM and could terminate any process, so a name match
+// alone is not enough: a user-named `Consent.exe` in their own session must not
+// become killable through the remote control channel.
+bool IsProcessInWindowsSystemDirectory(DWORD process_id) {
+  HANDLE process =
+      OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id);
+  if (process == nullptr) {
+    return false;
+  }
+
+  wchar_t image_path[MAX_PATH]{};
+  DWORD path_length = MAX_PATH;
+  const bool resolved =
+      QueryFullProcessImageNameW(process, 0, image_path, &path_length) != FALSE;
+  CloseHandle(process);
+  if (!resolved) {
+    return false;
+  }
+
+  wchar_t windows_directory[MAX_PATH]{};
+  if (GetWindowsDirectoryW(windows_directory, MAX_PATH) == 0) {
+    return false;
+  }
+  const std::wstring prefixes[] = {
+      std::wstring(windows_directory) + L"\\system32\\",
+      std::wstring(windows_directory) + L"\\sysnative\\",
+      std::wstring(windows_directory) + L"\\syswow64\\",
+  };
+  for (const auto& prefix : prefixes) {
+    if (_wcsnicmp(image_path, prefix.c_str(),
+                  static_cast<size_t>(prefix.size())) == 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 InputDesktopInfo GetInputDesktopInfo() {
@@ -2221,6 +2266,9 @@ std::string CrossDeskServiceHost::HandleIpcCommand(const std::string& command,
   if (normalized == "sas") {
     return SendSecureAttentionSequence(client_session_id);
   }
+  if (normalized == "cancel-consent") {
+    return CancelPendingConsent(client_session_id);
+  }
   int key_code = 0;
   bool is_down = false;
   uint32_t scan_code = 0;
@@ -2545,6 +2593,50 @@ std::string CrossDeskServiceHost::ResolveSecureInputTarget(
     return BuildErrorJson("secure_input_helper_not_ready", ERROR_NOT_READY);
   }
   return {};
+}
+
+std::string CrossDeskServiceHost::CancelPendingConsent(
+    DWORD client_session_id) {
+  RefreshSessionState();
+  if (client_session_id == 0xFFFFFFFF ||
+      client_session_id != WTSGetActiveConsoleSessionId()) {
+    return BuildErrorJson("service_session_mismatch");
+  }
+
+  DWORD consent_pid = 0;
+  if (!FindProcessInSession(L"Consent.exe", active_session_id_,
+                            &consent_pid)) {
+    // Nothing is waiting for a decision; report success so the caller can stop
+    // showing the prompt instead of surfacing a failure.
+    return "{\"ok\":true,\"dismissed\":false}";
+  }
+  if (!IsProcessInWindowsSystemDirectory(consent_pid)) {
+    LOG_WARN("Refusing to cancel consent: pid={} in session={} is not a system "
+             "Consent.exe",
+             consent_pid, active_session_id_);
+    return BuildErrorJson("consent_image_path_rejected");
+  }
+
+  HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, consent_pid);
+  if (process == nullptr) {
+    const DWORD error = GetLastError();
+    LOG_WARN("OpenProcess for consent pid={} failed, error={}", consent_pid,
+             error);
+    return BuildErrorJson("consent_open_failed", error);
+  }
+
+  const BOOL terminated = TerminateProcess(process, 0);
+  const DWORD error = terminated == FALSE ? GetLastError() : 0;
+  CloseHandle(process);
+  if (terminated == FALSE) {
+    LOG_WARN("TerminateProcess for consent pid={} failed, error={}",
+             consent_pid, error);
+    return BuildErrorJson("consent_terminate_failed", error);
+  }
+
+  LOG_INFO("Cancelled pending consent dialog: pid={}, session_id={}",
+           consent_pid, active_session_id_);
+  return "{\"ok\":true,\"dismissed\":true}";
 }
 
 std::string CrossDeskServiceHost::SendSecureDesktopKeyboardInput(

@@ -186,6 +186,10 @@ inline int ApplyStreamWindowStrings(
   strings.set_remote_update_dismiss(Text(localization::remote_update_dismiss[language]));
   strings.set_select_display(Text(localization::select_display[language]));
   strings.set_send_shortcut(Text(localization::send_shortcut[language]));
+  strings.set_remote_secure_desktop(
+      Text(localization::remote_secure_desktop_active[language]));
+  strings.set_cancel_remote_consent(
+      Text(localization::cancel_remote_consent[language]));
   strings.set_privacy_enable(Text(localization::privacy_enable[language]));
   strings.set_privacy_disable(Text(localization::privacy_disable[language]));
   strings.set_control_mouse(Text(localization::control_mouse[language]));

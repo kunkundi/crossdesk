@@ -40,6 +40,8 @@ export global StreamStrings {
 
     in-out property <string> select-display: "Select Display";
     in-out property <string> send-shortcut: "Send Shortcut";
+    in-out property <string> remote-secure-desktop: "Remote is on a secure desktop";
+    in-out property <string> cancel-remote-consent: "Cancel elevation";
     in-out property <string> privacy-enable: "Enable privacy screen";
     in-out property <string> privacy-disable: "Turn privacy off / recover";
     in-out property <string> control-mouse: "Control Mouse";
@@ -210,6 +212,12 @@ export component StreamWindow inherits Window {
     in property <bool> privacy-unsupported: false;
     // Privacy feedback stays on its toolbar button and hover tooltip.
     in property <string> privacy-status-text: "Privacy screen";
+    // The controlled side reports which desktop it is on; a secure desktop
+    // (UAC consent, lock screen) freezes the normal capture, so the operator
+    // needs to know before blind-sending input.
+    in property <bool> remote-secure-desktop: false;
+    in property <string> remote-secure-desktop-text: "";
+    in property <bool> remote-consent-cancel-enabled: false;
     // Numeric values mirror crossdesk::RemoteCursorShape and Slint's MouseCursor.
     in property <bool> remote-cursor-active: false;
     in property <int> remote-cursor-shape: 0;
@@ -237,6 +245,7 @@ export component StreamWindow inherits Window {
     callback close-tab(string);
     callback switch-display(int);
     callback send-shortcut(string);
+    callback cancel-remote-consent();
     callback toggle-mouse-control;
     callback toggle-privacy;
     callback toggle-audio;
@@ -1268,6 +1277,32 @@ export component StreamWindow inherits Window {
                         }
                     }
                     scroll-event(event) => { accept }
+                }
+            }
+
+            // Secure-desktop banner: the controlled side is on UAC/lock-screen,
+            // so the normal capture cannot advance and blind clicks are useless.
+            if root.remote-secure-desktop: Rectangle {
+                x: (video.width - self.width) / 2; y: 18px;
+                width: secure-desktop-banner-layout.preferred-width + 40px;
+                height: secure-desktop-banner-layout.preferred-height + 16px;
+                background: #fff4e5f7; border-width: 1px;
+                border-color: #e0a95c; border-radius: 6px; z: 13;
+                secure-desktop-banner-layout := HorizontalLayout {
+                    x: 14px; y: 8px; spacing: 12px;
+                    alignment: center;
+                    Text {
+                        text: root.remote-secure-desktop-text;
+                        color: #6b4a13; font-size: ImGuiFontStyle.body;
+                        vertical-alignment: center;
+                    }
+                    if root.remote-consent-cancel-enabled: PrimaryButton {
+                        text: StreamStrings.cancel-remote-consent;
+                        clicked => {
+                            root.suppress-next-remote-pointer-release = true;
+                            root.cancel-remote-consent();
+                        }
+                    }
                 }
             }
 
