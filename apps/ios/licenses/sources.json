@@ -146,7 +146,7 @@
           "sha256": "bdbcdaa7858872393e9d6b216bbdc8a23e99d98dd6cdb7cda19458025b9e19fc"
         }
       ],
-      "recipe_sha256": "773cac2e1a5aec087abc9347c7278f3fca40e36212b33a5f01012875cfbf7e6c",
+      "recipe_sha256": "6a220ab955e50d02928b88f469a13b2bb38774ae10258f7afa63bf8d7ec246ef",
       "recipe_path": "deps/submodules/minirtc/thirdparty/glib/xmake.lua",
       "package": "glib",
       "notice_prefixes": [
@@ -378,7 +378,7 @@
           "sha256": "d72eb6fa9d5e93abb11d13b6c6f04fda2ba183d0705e703887cda243f6f1eead"
         }
       ],
-      "recipe_sha256": "7d7c30d7d63245d0190e64b050184f6ff6933ef9133bff5329d62a7b9b685441",
+      "recipe_sha256": "bfb5f125dc57768fcfb7edadb4be69783d66f31e00e0576ea038e30ba593a811",
       "recipe_path": "deps/submodules/minirtc/thirdparty/libnice/xmake.lua",
       "package": "libnice",
       "notice_prefixes": [
@@ -581,7 +581,7 @@
           "encoding": "iso-8859-1"
         }
       ],
-      "recipe_sha256": "8644c6306ad6ba4c974dd949d56178c761b72d503fe7c4a577a23817effa6243",
+      "recipe_sha256": "a9bc4a460195c77543a91c0a2b40a094f4a3869dc917e4eb98e7e8005ea441ab",
       "recipe_path": "deps/submodules/minirtc/thirdparty/openfec/xmake.lua",
       "package": "openfec",
       "notice_prefixes": [
@@ -609,7 +609,7 @@
           "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a"
         }
       ],
-      "recipe_sha256": "864c308edf59fd802babd45d064d8575635ecd577e829df2b2c7ac7a4d06d4d7",
+      "recipe_sha256": "949e7714412f9e9930f789e0c5922a9b707a7890569094cb66af99c6563d9e58",
       "recipe_path": "deps/submodules/minirtc/thirdparty/openssl/xmake.lua",
       "package": "openssl3",
       "notice_prefixes": [

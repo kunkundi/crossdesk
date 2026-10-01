@@ -253,3 +253,7 @@ The native client has a separate Xcode project and requires an arm64 physical de
 ## Refreshing screenshots
 
 Desktop README images are rendered directly from the current Slint UI. See the [screenshot notes](images/README.md) for reproduction commands.
+
+## Android
+
+The native controller is a separate Gradle project in `apps/android`, targeting Android 8.0+ arm64 with SDK 36, NDK r28c, and Xmake 3.1.1. See the [Android development guide](../apps/android/README.md) for APK builds, installation, and emulator tests.

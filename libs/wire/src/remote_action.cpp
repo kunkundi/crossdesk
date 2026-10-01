@@ -56,6 +56,7 @@ const char* HostPlatformName(HostPlatform platform) {
     case HostPlatform::MacOS: return "macos";
     case HostPlatform::Linux: return "linux";
     case HostPlatform::IOS: return "ios";
+    case HostPlatform::Android: return "android";
     default: return "unknown";
   }
 }
@@ -65,6 +66,7 @@ HostPlatform ParseHostPlatform(const std::string& platform) {
   if (platform == "macos") return HostPlatform::MacOS;
   if (platform == "linux") return HostPlatform::Linux;
   if (platform == "ios") return HostPlatform::IOS;
+  if (platform == "android") return HostPlatform::Android;
   return HostPlatform::Unknown;
 }
 

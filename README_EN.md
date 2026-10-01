@@ -7,7 +7,7 @@
 
 <div align="center">
 
-[![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20iOS-blue)](#download)
+[![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20iOS%20%7C%20Android-blue)](#download)
 [![Release](https://img.shields.io/github/v/release/kunkundi/crossdesk)](https://github.com/kunkundi/crossdesk/releases)
 [![Build](https://github.com/kunkundi/crossdesk/actions/workflows/build.yml/badge.svg)](https://github.com/kunkundi/crossdesk/actions/workflows/build.yml)
 [![License: GPL v3](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
@@ -15,7 +15,7 @@
 
 </div>
 
-CrossDesk connects Windows, macOS, and Linux desktops, with browser and native iOS clients for controlling computers. Built on [MiniRTC](https://github.com/kunkundi/minirtc), it supports real-time video and audio, keyboard and mouse control, file transfer, and self-hosting. The project is under active development.
+CrossDesk connects Windows, macOS, and Linux desktops, with browser and native iOS / Android clients for controlling computers. Built on [MiniRTC](https://github.com/kunkundi/minirtc), it supports real-time video and audio, keyboard and mouse control, file transfer, and self-hosting. The project is under active development.
 
 > This guide follows the current repository source. Desktop screenshots render the current Slint UI with sample IDs, passwords, online statuses, and recent devices; thumbnails show public pages. Check each release's notes for the features and requirements of its binaries. Native iOS build and signing instructions are below.
 
@@ -47,7 +47,7 @@ See the [screenshot notes](docs/images/README.md) for image sources and refresh 
 
 | Capability | Current support |
 | --- | --- |
-| Cross-platform control | Windows / macOS / Linux desktop control; browser and native iOS controllers |
+| Cross-platform control | Windows / macOS / Linux desktop control; browser and native iOS / Android controllers |
 | Live video and audio | H.264 / AV1, hardware codecs, and remote audio; adjust quality, 30 / 60 fps, and video preference during a session |
 | Devices and displays | Recent connections, device aliases, session tabs, and remote display switching |
 | Input and sharing | Keyboard/mouse input, remote cursor synchronization, shortcuts, text clipboard synchronization, and file transfer |
@@ -70,6 +70,7 @@ Choose a package matching your OS and CPU architecture from [GitHub Releases](ht
 | macOS | macOS 14.0+, Intel / Apple Silicon | x64 or arm64 `.pkg` |
 | Linux | Ubuntu 20.04+, amd64 / arm64, glibc 2.31 baseline | `.deb` package |
 | iOS / iPadOS | iOS 16.0+, arm64 physical device | Native controller; build and sign with Xcode, or sign the unsigned CI app |
+| Android | Android 8.0+, arm64 | Native controller; build an APK with Gradle ([guide](apps/android/README.md)) |
 | Web | A WebRTC-capable browser | Open [web.crossdesk.cn](https://web.crossdesk.cn/) |
 
 On Linux, replace the example filename with the downloaded package name:
@@ -217,6 +218,7 @@ Host your own signaling and TURN services, then enter their connection details u
 
 - [Build from source](docs/BUILD_EN.md): Windows, macOS, Linux, optional flags, and packaging.
 - [iOS development](apps/ios/README.md): native build and physical-device checks.
+- [Android development](apps/android/README.md): APK builds, installation, and emulator checks.
 - [GUI architecture](docs/gui-architecture.md): desktop UI and platform organization.
 - [FAQ](docs/FAQ.md#english): connection failures, blank video, received files, and build issues.
 - [Report an issue](https://github.com/kunkundi/crossdesk/issues): include both operating systems, client versions, connection mode, and reproduction steps.
@@ -235,3 +237,7 @@ CrossDesk uses SignPath.io to sign official Windows releases built from this rep
 
 - **Committers and reviewers:** [kunkundi](https://github.com/kunkundi)
 - **Approvers:** [kunkundi](https://github.com/kunkundi)
+
+## Native Android controller
+
+The independent [Android project](apps/android/README.md) builds an APK for Android 8.0+ arm64 devices. It reuses MiniRTC and the desktop input protocol for remote video/audio, touch and external keyboard/mouse input, display switching, and text clipboard transfer. H.264 and AV1 currently use software decoding. Phone-as-host, file transfer, and full iOS feature parity are not included. See the [Android build guide](apps/android/README.md) for setup and validation.

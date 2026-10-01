@@ -166,7 +166,7 @@ int main() {
 
   // The platform is optional metadata, not a requirement for connecting.
   for (const auto& platform : std::vector<std::string>{
-           "windows", "linux", "macos", "ios", "unknown"}) {
+           "windows", "linux", "macos", "ios", "android", "unknown"}) {
     advertised = crossdesk::MakeHostInformation(
         "Host", {}, true, "1.5.3-20260928",
         crossdesk::ParseHostPlatform(platform));

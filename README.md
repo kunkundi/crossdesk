@@ -7,7 +7,7 @@
 
 <div align="center">
 
-[![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20iOS-blue)](#download)
+[![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20iOS%20%7C%20Android-blue)](#download)
 [![Release](https://img.shields.io/github/v/release/kunkundi/crossdesk)](https://github.com/kunkundi/crossdesk/releases)
 [![Build](https://github.com/kunkundi/crossdesk/actions/workflows/build.yml/badge.svg)](https://github.com/kunkundi/crossdesk/actions/workflows/build.yml)
 [![License: GPL v3](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
@@ -15,11 +15,11 @@
 
 </div>
 
-CrossDesk 支持 Windows、macOS、Linux 之间的远程访问，也可从浏览器或原生 iOS 客户端控制电脑。项目基于 [MiniRTC](https://github.com/kunkundi/minirtc)，提供实时音视频传输、键鼠控制、文件传输与自托管能力，仍在持续开发中。
+CrossDesk 支持 Windows、macOS、Linux 之间的远程访问，也可从浏览器或原生 iOS / Android 客户端控制电脑。项目基于 [MiniRTC](https://github.com/kunkundi/minirtc)，提供实时音视频传输、键鼠控制、文件传输与自托管能力，仍在持续开发中。
 
 > 本文按当前仓库代码整理。截图展示当前 Slint 桌面界面，使用演示 ID、密码、在线状态和连接记录；缩略图来自公开页面；下载包的功能与系统要求请同时核对对应 Release 说明。原生 iOS 客户端的构建、签名方式见下文。
 
-[界面预览](#preview) · [下载与安装](#download) · [快速连接](#quick-start) · [会话操作](#session) · [设置](#settings) · [iOS](#ios) · [自托管](#self-hosting) · [源码构建](docs/BUILD.md) · [常见问题](docs/FAQ.md)
+[界面预览](#preview) · [下载与安装](#download) · [快速连接](#quick-start) · [会话操作](#session) · [设置](#settings) · [iOS](#ios) · [Android](#android) · [自托管](#self-hosting) · [源码构建](docs/BUILD.md) · [常见问题](docs/FAQ.md)
 
 <a id="preview"></a>
 
@@ -47,7 +47,7 @@ CrossDesk 支持 Windows、macOS、Linux 之间的远程访问，也可从浏览
 
 | 能力 | 当前支持 |
 | --- | --- |
-| 跨平台控制 | Windows / macOS / Linux 桌面互控；浏览器与原生 iOS 作为控制端 |
+| 跨平台控制 | Windows / macOS / Linux 桌面互控；浏览器与原生 iOS / Android 作为控制端 |
 | 实时画面与声音 | H.264 / AV1、硬件编解码、远端声音播放；会话中可调整画质、30 / 60 fps 与画面偏好 |
 | 多设备与多显示器 | 近期连接、设备别名、会话标签与远端显示器切换 |
 | 输入与协作 | 键鼠输入、远端光标同步、组合键、文本剪贴板同步、文件传输 |
@@ -70,6 +70,7 @@ CrossDesk 支持 Windows、macOS、Linux 之间的远程访问，也可从浏览
 | macOS | macOS 14.0+，Intel / Apple Silicon | 选择 x64 或 arm64 的 `.pkg` |
 | Linux | Ubuntu 20.04+，amd64 / arm64，glibc 2.31 基线 | `.deb` 安装包 |
 | iOS / iPadOS | iOS 16.0+，arm64 真机 | 原生客户端；使用 Xcode 构建并签名，CI 产物为未签名应用 |
+| Android | Android 8.0+，arm64 | 原生控制端；使用 Gradle 构建 APK，见 [开发说明](apps/android/README.md) |
 | Web | 支持 WebRTC 的浏览器 | 访问 [web.crossdesk.cn](https://web.crossdesk.cn/) |
 
 Linux 下载后，在下载目录中将文件名替换为实际安装包名称：
@@ -176,6 +177,14 @@ sudo apt install "./crossdesk-linux-amd64-<version>.deb"
 
 当前支持单指点击、双指右键、长按拖动与捏合缩放；缩放后的双指平移用于移动视图。原生端与浏览器端分别维护，使用入口和手势可能不同。
 
+<a id="android"></a>
+
+## 原生 Android 控制端
+
+[`apps/android`](apps/android/README.md) 提供独立 Android Studio / Gradle 工程，复用 MiniRTC 和桌面键鼠协议。支持连接电脑、H.264 / AV1 画面、声音、触控/外接键鼠、多屏切换和文本剪贴板。当前面向 Android 8.0+ arm64 设备，使用软件解码；尚未提供手机被控、文件传输和 iOS 全部附加功能。
+
+按 [Android 开发说明](apps/android/README.md) 构建并安装 APK，在首页填写电脑端的设备 ID 和密码即可连接。长按右键、双指滚动，横屏可扩大画面；切换到后台会结束会话。
+
 <a id="windows-service"></a>
 
 ## Windows 锁屏与登录界面
@@ -217,6 +226,7 @@ sudo apt install "./crossdesk-linux-amd64-<version>.deb"
 
 - [源码构建](docs/BUILD.md)：Windows、macOS、Linux、可选编译参数与打包。
 - [iOS 开发说明](apps/ios/README.md)：原生端构建和真机验证。
+- [Android 开发说明](apps/android/README.md)：APK 构建、安装与模拟器验证。
 - [GUI 架构](docs/gui-architecture.md)：桌面 UI、平台实现与工程结构。
 - [常见问题](docs/FAQ.md)：连接失败、黑屏、文件位置与编译问题。
 - [提交问题](https://github.com/kunkundi/crossdesk/issues)：请附上两端系统、客户端版本、连接方式和可复现步骤。

@@ -241,3 +241,7 @@ xmake r -d crossdesk
 ## 更新界面截图
 
 README 的桌面图片直接由当前 Slint UI 渲染，复现方式见 [截图说明](images/README.md)。
+
+## Android
+
+原生控制端位于独立的 `apps/android` Gradle 工程，要求 Android 8.0+ arm64 设备，使用 SDK 36、NDK r28c 和 Xmake 3.1.1。构建、APK 安装与模拟器测试见 [Android 开发说明](../apps/android/README.md)。

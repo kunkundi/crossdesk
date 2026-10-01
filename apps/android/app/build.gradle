@@ -1,0 +1,41 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'cn.crossdesk.mobile'
+    compileSdk 36
+    ndkVersion '28.2.13676358'
+    defaultConfig {
+        applicationId 'cn.crossdesk.mobile'
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName '0.1.0'
+        ndk { abiFilters 'arm64-v8a' }
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    sourceSets.main.jniLibs.srcDirs = [layout.buildDirectory.dir('native')]
+    sourceSets.main.assets.srcDirs += [layout.buildDirectory.dir('generated/notices')]
+    buildTypes.release { minifyEnabled false }
+    packaging.jniLibs.useLegacyPackaging = false
+}
+
+dependencies {
+    androidTestImplementation 'androidx.test:runner:1.7.0'
+    androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+}
+
+tasks.register('buildMiniRtc', Exec) {
+    workingDir rootProject.projectDir
+    commandLine 'python3', 'scripts/build_native.py'
+    environment 'ANDROID_HOME', androidComponents.sdkComponents.sdkDirectory.get().asFile.absolutePath
+}
+tasks.named('preBuild').configure { dependsOn 'buildMiniRtc' }
+tasks.register('generateNotices', Exec) {
+    workingDir rootProject.projectDir
+    commandLine 'python3', 'scripts/generate_notices.py'
+}
+tasks.named('preBuild').configure { dependsOn 'generateNotices' }
