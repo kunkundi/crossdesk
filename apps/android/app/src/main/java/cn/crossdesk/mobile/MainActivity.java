@@ -63,7 +63,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private boolean foreground;
     private RemoteVideoView video;
     private SessionControls controls;
-    private Dialog passwordDialog, progressDialog;
+    private Dialog passwordDialog, progressDialog, privacyDialog;
     private AlertDialog disconnectDialog;
     private AlertDialog remoteUpdateDialog;
     private RemoteVersionCheck remoteVersionCheck;
@@ -152,7 +152,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         LinearLayout toolbar=row();toolbar.setPadding(dp(20),0,dp(20),0);root.addView(toolbar,ui.size(-1,56));
         signalBadge=text("",12,true);signalBadge.setGravity(Gravity.CENTER);signalBadge.setPadding(dp(11),0,dp(11),0);signalBadge.setSingleLine(true);
         signalBadge.setOnClickListener(v->{
-            if(!preferences.getBoolean("networkConsent",false))privacyPage();
+            if(!preferences.getBoolean("networkConsent",false))consent(this::renderSignaling);
             else if(signalState==1)toast("已连接 "+serverKey());
             else {stopSignaling();ensureSignaling();}
         });renderSignaling();toolbar.addView(signalBadge,ui.size(-2,34));toolbar.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
@@ -218,8 +218,11 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         passwordSheet(id,remember?"已保存的密码未能保留，请重新输入一次":"",remember);
     }
     private void consent(Runnable accepted){
-        new AlertDialog.Builder(this).setTitle("隐私与授权").setMessage("连接时会向所选服务器发送设备身份和认证信息，并传输远程画面、声音与操作指令。设备身份加密保存在本机；仅在你开启“保存密码”时加密保存访问密码。剪贴板内容仅在你操作时发送或写入本机。仅连接你有权访问的电脑。")
-            .setNegativeButton("暂不同意",null).setPositiveButton("同意并继续",(d,w)->{preferences.edit().putBoolean("networkConsent",true).apply();ensureSignaling();accepted.run();}).show();
+        if(privacyDialog!=null&&privacyDialog.isShowing())return;
+        Dialog dialog=new PrivacyConsentDialog(this,ui,()->{
+            preferences.edit().putBoolean("networkConsent",true).apply();renderSignaling();ensureSignaling();accepted.run();
+        });
+        privacyDialog=dialog;dialog.setOnDismissListener(d->{if(privacyDialog==dialog)privacyDialog=null;});dialog.show();
     }
     private void passwordSheet(String id,String error,boolean rememberDefault){
         Dialog dialog=new Dialog(this);passwordDialog=dialog;LinearLayout sheet=column();sheet.setPadding(dp(22),dp(10),dp(22),dp(22));sheet.setBackground(ui.background(BACKGROUND,24));
@@ -355,9 +358,13 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     }
     @Override public void announcementFailed(String requestId){announcementInbox.failed(requestId);}
     private void privacyPage(){
-        LinearLayout content=formPage("privacy","隐私与授权",this::settings);LinearLayout card=section(content,"");boolean consent=preferences.getBoolean("networkConsent",false);link(card,"授权状态",consent?"已授权":"未授权",()->{});ui.divider(card);link(card,"隐私说明","",()->consent(this::privacyPage));
+        LinearLayout content=formPage("privacy","隐私与授权",this::settings);LinearLayout card=section(content,"");boolean consent=preferences.getBoolean("networkConsent",false);link(card,"授权状态",consent?"已授权":"未授权",()->{});ui.divider(card);link(card,"隐私政策","",this::privacyPolicyPage);
         footer(content,"设备身份及选择保存的访问密码使用 Android Keystore 加密。连接记录仅保存在本机，不纳入设备备份。剪贴板内容在结束会话时清除。离开应用会结束当前会话。");
         if(consent)content.addView(ui.action("撤回联网授权",RED,()->new AlertDialog.Builder(this).setTitle("撤回联网授权？").setMessage("撤回后将停止远程连接、关闭画面预览保存并清除已有预览。连接记录和密码会保留，重新连接前需再次授权。").setNegativeButton("取消",null).setPositiveButton("撤回",(d,w)->{preferences.edit().putBoolean("networkConsent",false).apply();previews.setEnabled(false);stopSignaling();announcementInbox.reset();privacyPage();}).show()));else content.addView(ui.primary("阅读并授权",()->consent(this::privacyPage)));
+    }
+    private void privacyPolicyPage(){
+        installRoot("privacy-policy",false);navigation("隐私政策",this::privacyPage);
+        root.addView(new PrivacyPolicyDocument(this).view(ui),new LinearLayout.LayoutParams(-1,0,1));
     }
     private void about(){
         if(aboutPages==null)aboutPages=new AboutPages(this,ui,this::settings);aboutPages.show();
@@ -499,7 +506,8 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     @Override public void onWindowFocusChanged(boolean focus){super.onWindowFocusChanged(focus);if(!focus)releaseKeys();else applySystemBars(ready);}
     @android.annotation.SuppressLint("GestureBackNavigation") @Override public void onBackPressed(){back();}
     @Override public void onConfigurationChanged(Configuration config){super.onConfigurationChanged(config);if(controls!=null)controls.post(controls::constrainPanels);}
-    @Override protected void onStart(){super.onStart();foreground=true;ensureSignaling();}
-    @Override protected void onStop(){foreground=false;pageHost.finish();if(session!=null)end(isFinishing()?"":"应用已进入后台，会话已结束");stopSignaling();super.onStop();}
-    @Override protected void onDestroy(){pageHost.finish();resetRemoteVersionCheck();cancelVideoSettingsTimeout();previews.removeListener(previewChanged);if(previewDialog!=null)previewDialog.dismiss();announcementInbox.close();if(disconnectDialog!=null)disconnectDialog.dismiss();if(passwordDialog!=null)passwordDialog.dismiss();if(progressDialog!=null)progressDialog.dismiss();if(session!=null)session.close();stopSignaling();super.onDestroy();}
+    // onStart marks a new visit; focus/resume callbacks must not reopen a refused notice.
+    @Override protected void onStart(){super.onStart();foreground=true;if(!preferences.getBoolean("networkConsent",false))consent(this::renderSignaling);ensureSignaling();}
+    @Override protected void onStop(){foreground=false;if(privacyDialog!=null)privacyDialog.dismiss();pageHost.finish();if(session!=null)end(isFinishing()?"":"应用已进入后台，会话已结束");stopSignaling();super.onStop();}
+    @Override protected void onDestroy(){pageHost.finish();resetRemoteVersionCheck();cancelVideoSettingsTimeout();previews.removeListener(previewChanged);if(privacyDialog!=null)privacyDialog.dismiss();if(previewDialog!=null)previewDialog.dismiss();announcementInbox.close();if(disconnectDialog!=null)disconnectDialog.dismiss();if(passwordDialog!=null)passwordDialog.dismiss();if(progressDialog!=null)progressDialog.dismiss();if(session!=null)session.close();stopSignaling();super.onDestroy();}
 }

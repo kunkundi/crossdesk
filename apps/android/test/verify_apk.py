@@ -31,6 +31,8 @@ def verify(path):
             raise ValueError('APK native library entry is not 16 KB aligned')
         if 'assets/THIRD_PARTY_NOTICES.txt' not in archive.namelist():
             raise ValueError('Missing third-party notices')
+        if archive.read('assets/PRIVACY.md') != (Path(__file__).resolve().parents[3] / 'PRIVACY.md').read_bytes():
+            raise ValueError('Missing or outdated bundled privacy policy')
         catalog = json.loads(archive.read('assets/ThirdPartyLicenses.json'))
         source = json.loads(archive.read('assets/SourceMetadata.json'))
         components = catalog['components']
@@ -53,7 +55,7 @@ def verify(path):
         for document in source['buildDocuments']:
             if not archive.read('assets/'+document['asset']):
                 raise ValueError('Missing source build instructions')
-    print(f'PASS: {Path(path).name}: arm64, 16 KB ELF/ZIP alignment, notices, About catalog and documents')
+    print(f'PASS: {Path(path).name}: arm64, 16 KB ELF/ZIP alignment, privacy policy, notices, About catalog and documents')
 
 
 if __name__ == '__main__':

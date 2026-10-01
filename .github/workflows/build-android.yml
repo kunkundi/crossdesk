@@ -21,6 +21,7 @@ on:
       - ".github/workflows/sign-android.yml"
       - ".gitmodules"
       - "LICENSE"
+      - "PRIVACY.md"
       - "apps/android/**"
       - "apps/ios/CrossDeskMobile/Resources/ThirdPartyLicenses.json"
       - "apps/ios/licenses/**"

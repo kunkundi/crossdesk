@@ -98,6 +98,7 @@ def write_pages(output, catalog, additional, revision, minirtc):
 def main():
     output = ANDROID / 'app/build/generated/notices'
     output.mkdir(parents=True, exist_ok=True)
+    (output / 'PRIVACY.md').write_text((ROOT / 'PRIVACY.md').read_text(encoding='utf-8'), encoding='utf-8')
     catalog = json.loads((ROOT / 'apps/ios/CrossDeskMobile/Resources/ThirdPartyLicenses.json').read_text())
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     minirtc = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT / 'deps/submodules/minirtc', text=True).strip()
