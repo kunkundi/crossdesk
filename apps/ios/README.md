@@ -59,7 +59,7 @@ and builds their dependencies, then merges the iPhoneOS archives into a local li
 `Vendor/`. OpenSSL is kept separate and packaged as a static framework with SDK
 privacy resources in the Xcode products directory. This build path targets physical devices; simulator builds are
 not supported. The exact tool versions used by CI are recorded in the
-[workflow](../../.github/workflows/build.yml).
+[iOS workflow](../../.github/workflows/build-ios.yml).
 
 You can also build the target without code signing. The resulting app, like
 the unsigned CI artifact, requires signing before device installation:
@@ -76,6 +76,28 @@ The first connection to a signaling server provisions and stores an identity
 for that server. Remote control sessions then log in as `C-<identity>` and use
 the desktop-compatible `DisplayN`, `control_audio`, `mouse`, `keyboard`,
 `control_data`, `clipboard`, `file`, and `file_feedback` streams.
+
+## GitHub Actions
+
+[`Build iOS`](../../.github/workflows/build-ios.yml) can run independently from
+the Actions page. Pull requests changing the iOS app, MiniRTC, shared wire code
+or relevant build configuration also trigger it. The main
+[`Build and Release`](../../.github/workflows/build.yml) workflow calls the same
+workflow on branch/tag pushes and manual runs, and waits for its result before
+publishing a version-tag release.
+
+The workflow retains the pinned Xcode/SDK and Xmake versions, dependency cache,
+license and privacy checks, unsigned arm64 Release build, and app-bundle
+verification. It uploads `crossdesk-ios-arm64-unsigned-v<marketing-version>-<date>.zip`,
+including the app, source metadata, third-party source catalog, rights notice
+and any generated dSYM. The version comes from the iOS target; dated repository
+tags provide the build date, otherwise the date uses the Asia/Shanghai timezone.
+The main workflow collects this same ZIP for GitHub Releases and the download
+server. Standalone runs only upload the build artifact.
+
+No Apple signing secrets are needed. Sign the app yourself before installing
+it on a device. Push any referenced MiniRTC commit before the parent repository
+so the runner can check out all corresponding sources.
 
 ## Announcements
 

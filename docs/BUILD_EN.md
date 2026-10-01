@@ -250,6 +250,8 @@ For more information, please refer to the [official Xmake documentation](https:/
 
 The native client has a separate Xcode project and requires an arm64 physical device running iOS 16+. See the [iOS development guide](../apps/ios/README.md) for build and media/file-transfer checks. CI exports an unsigned app; device installation requires your own signing.
 
+[iOS CI](../.github/workflows/build-ios.yml) can run manually on its own, is called by the main build workflow, and runs for relevant pull requests. It retains the existing toolchain, license/privacy checks, app verification and ZIP packaging. Tag releases continue to collect the unsigned app archive under the same artifact name.
+
 ## Refreshing screenshots
 
 Desktop README images are rendered directly from the current Slint UI. See the [screenshot notes](images/README.md) for reproduction commands.

@@ -238,6 +238,8 @@ xmake r -d crossdesk
 
 原生客户端使用独立 Xcode 工程，要求 iOS 16+ 的 arm64 真机。构建与音视频、文件传输验证步骤见 [iOS 开发说明](../apps/ios/README.md)。当前 CI 导出未签名应用，真机安装需要自行签名。
 
+[iOS CI](../.github/workflows/build-ios.yml) 可独立手动运行，并由主构建工作流调用；相关 Pull Request 也会触发。工具链、许可证及隐私检查、应用验证和 ZIP 打包沿用现有流程，标签发布继续收集同名的未签名应用归档。
+
 ## 更新界面截图
 
 README 的桌面图片直接由当前 Slint UI 渲染，复现方式见 [截图说明](images/README.md)。
