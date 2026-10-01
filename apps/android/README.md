@@ -88,7 +88,9 @@ git push origin android-v1.6.0-20261002
 
 已有 Release 需要补传服务器或刷新下载信息时，可手动运行 `Update version.json from Release` 并填写已有 `source_tag`，无需重新构建。
 
-工作流使用 Ubuntu 24.04、JDK 17、Python 3.13、SDK 36、Build Tools 36.0.0、NDK r28c 和 Xmake 3.1.1。Gradle 使用工程内的 Wrapper，原生构建器固定 Xmake 包仓库版本。Gradle 缓存与 Android 原生依赖缓存分别管理；原生缓存按宿主架构、构建脚本及 MiniRTC 配方区分，不复用桌面或 iOS 的配置和目标文件。
+工作流使用 Ubuntu 24.04、JDK 17、Python 3.13、SDK 36、Build Tools 36.0.0、NDK r28c 和 Xmake 3.1.1。Gradle 使用工程内的 Wrapper，原生构建器固定 Xmake 包仓库版本。SDK/NDK 使用独立目录缓存，按宿主系统、架构和工具链版本区分；命中缓存时跳过 SDK 安装，未命中时在安装完成后立即保存，即使后续 APK 构建失败，下次也可复用。Xmake 可执行环境、固定版本的包仓库和 pip 下载也有各自的缓存；Ubuntu 系统工具只安装缺失项。
+
+Gradle 缓存与 Android 原生依赖缓存分别管理；原生缓存按宿主架构、构建脚本及 MiniRTC 配方区分，不复用桌面或 iOS 的配置和目标文件。GitHub 托管 runner 每次启动仍是新环境；第一次运行或缓存失效时需要安装。不同分支和标签可读取默认分支的缓存，因此建议先在默认分支运行一次 `Build Android` 预热，再创建发布标签。
 
 CI 构建 Debug、Release 和设备测试 APK，执行 Debug / Release Lint、本机 C++ 协议与画面队列测试，并校验 APK 的 arm64 ABI、16 KB ELF / ZIP 对齐、完整许可证及 Debug 签名。Ubuntu x64 构建机上不运行 arm64 设备测试；使用下面的设备验证流程在 arm64 手机或模拟器上执行。Lint 报告在构建失败时也会保留。
 

@@ -62,23 +62,72 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.13"
+          cache: pip
+          # Python build dependencies are declared in this workflow. This file
+          # also exists when source_tag checks out an older Android release.
+          cache-dependency-path: .github/workflows/build-android.yml
 
       - name: Install native build tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential cmake ninja-build pkg-config autoconf automake libtool nasm
+          crossdesk_missing_packages=()
+          for crossdesk_package in build-essential cmake ninja-build pkg-config autoconf automake libtool nasm; do
+            if [[ "$(dpkg-query -W -f='${Status}' "${crossdesk_package}" 2>/dev/null || true)" != "install ok installed" ]]; then
+              crossdesk_missing_packages+=("${crossdesk_package}")
+            fi
+          done
+          if (( ${#crossdesk_missing_packages[@]} )); then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends "${crossdesk_missing_packages[@]}"
+          fi
           python3 -m pip install setuptools wheel
 
+      # Use an isolated SDK directory so the cache contains only this toolchain,
+      # rather than every SDK/NDK version preinstalled on the runner.
+      - name: Select Android SDK directory
+        run: |
+          echo "ANDROID_HOME=${RUNNER_TEMP}/crossdesk-android-sdk" >> "${GITHUB_ENV}"
+          echo "ANDROID_SDK_ROOT=${RUNNER_TEMP}/crossdesk-android-sdk" >> "${GITHUB_ENV}"
+
+      - name: Restore Android SDK
+        id: android-sdk-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ env.ANDROID_HOME }}
+          key: ${{ runner.os }}-${{ runner.arch }}-ubuntu24.04-android-sdk-v1-cli12266719-api36-build36.0.0-ndk28.2.13676358
+
       - name: Set up Android SDK
+        if: steps.android-sdk-cache.outputs.cache-hit != 'true'
         uses: android-actions/setup-android@v3
         with:
+          cmdline-tools-version: "12266719"
+          log-accepted-android-sdk-licenses: false
           packages: "platform-tools platforms;android-36 build-tools;36.0.0 ndk;28.2.13676358"
+
+      # Save immediately after installation, even if a later APK build fails.
+      - name: Save Android SDK
+        if: steps.android-sdk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.ANDROID_HOME }}
+          key: ${{ steps.android-sdk-cache.outputs.cache-primary-key }}
+
+      - name: Add Android tools to PATH
+        run: |
+          echo "${ANDROID_HOME}/cmdline-tools/16.0/bin" >> "${GITHUB_PATH}"
+          echo "${ANDROID_HOME}/platform-tools" >> "${GITHUB_PATH}"
 
       - name: Install xmake
         uses: xmake-io/github-action-setup-xmake@v1
         with:
           xmake-version: ${{ env.XMAKE_VERSION }}
+          actions-cache-folder: .xmake-toolchain-cache
+          actions-cache-key: ${{ runner.os }}-${{ runner.arch }}-ubuntu24.04-android-xmake${{ env.XMAKE_VERSION }}
+
+      - name: Cache Xmake package repository
+        uses: actions/cache@v5
+        with:
+          path: apps/android/.native/global/.xmake/repositories/xmake-repo
+          key: ${{ runner.os }}-${{ runner.arch }}-android-xmake-repo-v1-${{ hashFiles('apps/android/scripts/build_native.py') }}
 
       # Cache installed packages only. build_native.py checks Xmake 3.1.1 and pins
       # its own package repository; never reuse another platform's build/config.
