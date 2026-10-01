@@ -68,7 +68,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private AlertDialog remoteUpdateDialog;
     private RemoteVersionCheck remoteVersionCheck;
     private String host, connectedRemote="", hostPlatform="", remoteClipboard="", pendingPassword="", page="home";
-    private int port;
+    private int port,selectedDisplay;
     private JSONArray displays=new JSONArray();
     private boolean muted,ready,rememberPassword;
     private RemoteVideoSettings videoSettings=new RemoteVideoSettings(1);
@@ -246,7 +246,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         resetRemoteVersionCheck();
         resetVideoSettings();
         previewCapture=previews.begin(serverKey(),id);previewCopying=false;previewAttempts=0;
-        connectedRemote=id;pendingPassword=rememberPassword?secret:"";ready=false;muted=false;hostPlatform="";remoteClipboard="";displays=new JSONArray();preferences.edit().putString("lastRemote",id).apply();
+        connectedRemote=id;pendingPassword=rememberPassword?secret:"";ready=false;muted=false;selectedDisplay=0;hostPlatform="";remoteClipboard="";displays=new JSONArray();preferences.edit().putString("lastRemote",id).apply();
         ensureSignaling();
         if(signaling==null){pendingPassword="";toast("请先完成联网授权");return;}
         session=signaling;showProgress();session.connect(id,secret);
@@ -376,7 +376,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private void tapKey(int code){if(session!=null){session.key(code,true);session.key(code,false);}}
     private void shortcut(int code){if(session!=null){int modifier=hostPlatform.equals("macos")?0x5B:0x11;session.key(modifier,true);tapKey(code);session.key(modifier,false);}}
     private void selectDisplay(){
-        if(!ready)return;int count=Math.min(displays.length(),8);if(count==0){toast("等待远端屏幕信息");return;}String[] labels=new String[count];for(int i=0;i<count;i++){JSONObject display=displays.optJSONObject(i);labels[i]=(i+1)+" · "+(display==null?"显示器":display.optString("name","显示器"));}new AlertDialog.Builder(this).setTitle("显示器").setItems(labels,(d,w)->{if(session!=null){session.control(4,w);if(controls!=null)controls.resetVideoStatistics();}}).show();
+        if(!ready)return;int count=Math.min(displays.length(),8);if(count==0){toast("等待远端屏幕信息");return;}String[] labels=new String[count];for(int i=0;i<count;i++){JSONObject display=displays.optJSONObject(i);labels[i]=(i+1)+" · "+(display==null?"显示器":display.optString("name","显示器"));}new AlertDialog.Builder(this).setTitle("显示器").setItems(labels,(d,w)->{if(session!=null){if(w!=selectedDisplay&&video!=null)video.resetViewport();selectedDisplay=w;session.control(4,w);if(controls!=null)controls.resetVideoStatistics();}}).show();
     }
     private void clipboard(){
         if(!ready)return;
