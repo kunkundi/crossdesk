@@ -142,7 +142,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.SOURCE_TAG }}
-          target_commitish: ${{ env.SOURCE_SHA }}
+          # prepare requires an existing tag; this does not move its source commit.
+          # Using the default branch lets GITHUB_TOKEN update older release metadata.
+          target_commitish: ${{ github.event.repository.default_branch }}
           name: ${{ env.PLATFORM == 'ios' && 'iOS' || 'Android' }} ${{ env.VERSION }}
           draft: false
           prerelease: false

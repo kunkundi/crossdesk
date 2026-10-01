@@ -671,7 +671,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.VERSION_WITH_V }}
-          target_commitish: ${{ github.sha }}
+          # The pushed tag already determines the release source commit.
+          target_commitish: ${{ github.event.repository.default_branch }}
           name: Release ${{ steps.version.outputs.VERSION_WITH_V }}
           draft: false
           prerelease: false
