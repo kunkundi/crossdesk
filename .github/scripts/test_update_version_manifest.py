@@ -93,6 +93,26 @@ class ManifestTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.merge(tag, downloads)
 
+    def test_signed_android_release_updates_existing_unsigned_download(self):
+        unsigned = self.files("crossdesk-android-arm64-unsigned-v1.6.0-20261002.apk")
+        current = self.merge("android-v1.6.0-20261002", unsigned)
+        signed = self.files("crossdesk-android-arm64-v1.6.0-20261002.apk")
+        result = self.merge("android-v1.6.0-20261002", signed, current)
+        self.assertEqual(result["downloads"]["android-arm64"]["url"],
+                         "https://downloads.crossdesk.cn/crossdesk-android-arm64-v1.6.0-20261002.apk")
+        self.assertEqual(result["version"], self.current["version"])
+        self.assertEqual(result["downloads"]["windows-x64"], self.current["downloads"]["windows-x64"])
+        self.assertNotIn("platforms", result)
+
+    def test_signed_android_is_preferred_when_release_retains_unsigned_apk(self):
+        downloads = self.files("crossdesk-android-arm64-unsigned-v1.6.0-20261002.apk",
+                               "crossdesk-android-arm64-v1.6.0-20261002.apk")
+        self.assertEqual(downloads["android-arm64"]["filename"],
+                         "crossdesk-android-arm64-v1.6.0-20261002.apk")
+        with self.assertRaises(ValueError):
+            self.files("crossdesk-android-arm64-unsigned-v1.6.0-20261001.apk",
+                       "crossdesk-android-arm64-v1.6.0-20261002.apk")
+
     def test_invalid_current_manifest_is_rejected(self):
         downloads = self.files("crossdesk-android-arm64-unsigned-v1.6.0-20261002.apk")
         for current in ([], {}, {"downloads": []}):

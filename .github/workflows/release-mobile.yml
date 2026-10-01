@@ -68,10 +68,23 @@ jobs:
     with:
       source_tag: ${{ needs.prepare.outputs.tag }}
 
+  sign-android:
+    name: Sign Android release
+    needs: [prepare, build-android]
+    if: needs.prepare.outputs.platform == 'android'
+    uses: ./.github/workflows/sign-android.yml
+    with:
+      version: ${{ needs.build-android.outputs.version }}
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
   release:
     name: Publish mobile release
-    needs: [prepare, build-ios, build-android]
-    if: ${{ !cancelled() && (needs.build-ios.result == 'success' || needs.build-android.result == 'success') }}
+    needs: [prepare, build-ios, build-android, sign-android]
+    if: ${{ !cancelled() && (needs.build-ios.result == 'success' || needs.sign-android.result == 'success') }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -102,7 +115,7 @@ jobs:
       - name: Download mobile release artifact
         uses: actions/download-artifact@v8
         with:
-          name: crossdesk-${{ env.PLATFORM }}-arm64-unsigned-${{ env.VERSION }}
+          name: crossdesk-${{ env.PLATFORM }}-arm64${{ env.PLATFORM == 'ios' && '-unsigned' || '' }}-${{ env.VERSION }}
           path: release
 
       - name: Prepare release notes
@@ -113,7 +126,7 @@ jobs:
             SIGNING_NOTE="The arm64 ZIP contains an unsigned app, source metadata, third-party sources and any generated dSYM. Sign the app before device installation."
           else
             PLATFORM_NAME="Android"
-            SIGNING_NOTE="The arm64 Release APK is unsigned. Sign it with your own key before installation. It includes source metadata, license documents and native build recipes."
+            SIGNING_NOTE="The arm64 Release APK is signed with the CrossDesk publishing key and can be installed directly. It includes source metadata, license documents and native build recipes."
           fi
           cat > "${RUNNER_TEMP}/mobile-release-notes.md" << EOF
           ${PLATFORM_NAME} ${VERSION}
@@ -179,4 +192,4 @@ jobs:
       - name: Summarize release
         shell: bash
         run: |
-          echo "Published [${SOURCE_TAG}](https://github.com/${GITHUB_REPOSITORY}/releases/tag/${SOURCE_TAG}), uploaded its unsigned ${PLATFORM} artifact to the download server, and updated version.json." >> "${GITHUB_STEP_SUMMARY}"
+          echo "Published [${SOURCE_TAG}](https://github.com/${GITHUB_REPOSITORY}/releases/tag/${SOURCE_TAG}), uploaded its ${PLATFORM} artifact to the download server, and updated version.json." >> "${GITHUB_STEP_SUMMARY}"

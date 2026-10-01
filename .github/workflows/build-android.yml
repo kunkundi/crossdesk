@@ -18,6 +18,7 @@ on:
       - ".github/workflows/build-android.yml"
       - ".github/workflows/build.yml"
       - ".github/workflows/release-mobile.yml"
+      - ".github/workflows/sign-android.yml"
       - ".gitmodules"
       - "LICENSE"
       - "apps/android/**"

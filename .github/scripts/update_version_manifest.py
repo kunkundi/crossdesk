@@ -17,7 +17,7 @@ ARTIFACTS = {
     "linux-amd64": ("linux-amd64", "deb"),
     "linux-arm64": ("linux-arm64", "deb"),
     "ios-arm64": ("ios-arm64-unsigned", "zip"),
-    "android-arm64": ("android-arm64-unsigned", "apk"),
+    "android-arm64": ("android-arm64(?:-unsigned)?", "apk"),
 }
 
 
@@ -52,9 +52,15 @@ def artifact_downloads(directory):
             match = re.fullmatch(rf"crossdesk-{prefix}-v([0-9][0-9.\-]*)\.{extension}", path.name)
             if not match:
                 continue
-            if key in downloads:
-                raise ValueError(f"Multiple release artifacts for {key}")
             metadata = version_info(match[1])
+            if key in downloads:
+                previous = downloads[key]
+                if (key != "android-arm64" or previous["version"] != metadata["version"]
+                        or ("-unsigned-" in previous["filename"]) == ("-unsigned-" in path.name)):
+                    raise ValueError(f"Multiple release artifacts for {key}")
+                # Older releases may retain their unsigned APK after adding a signed one.
+                if "-unsigned-" in path.name:
+                    continue
             downloads[key] = {"url": DOWNLOAD_BASE + path.name, "filename": path.name,
                               "version": metadata["version"], "releaseDate": metadata["releaseDate"]}
             break

@@ -1,0 +1,153 @@
+name: Sign Android Release
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Android artifact version, for example v1.6.0-20261002."
+        required: true
+        type: string
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: true
+      ANDROID_KEYSTORE_PASSWORD:
+        required: true
+      ANDROID_KEY_ALIAS:
+        required: true
+      ANDROID_KEY_PASSWORD:
+        required: true
+  workflow_dispatch:
+    inputs:
+      source_tag:
+        description: "Existing Android release to sign without rebuilding, for example android-v1.6.0-20261002."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  sign:
+    name: Sign and verify Android APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      VERSION: ${{ inputs.version }}
+      SOURCE_TAG: ${{ inputs.source_tag }}
+    steps:
+      - name: Validate signing configuration
+        shell: python
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          import os
+          names = ("ANDROID_KEYSTORE_BASE64", "ANDROID_KEYSTORE_PASSWORD",
+                   "ANDROID_KEY_ALIAS", "ANDROID_KEY_PASSWORD")
+          missing = [name for name in names if not os.environ.get(name)]
+          if missing:
+              raise ValueError("Missing repository signing secrets: " + ", ".join(missing))
+
+      - name: Resolve artifact version
+        id: version
+        shell: python
+        run: |
+          import datetime
+          import os
+          import re
+          version = os.environ["VERSION"]
+          if os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch" and not version:
+              tag = os.environ["SOURCE_TAG"]
+              if not tag.startswith("android-v"):
+                  raise ValueError("Use an existing android-v<app-version>-YYYYMMDD release")
+              version = tag.removeprefix("android-")
+          match = re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+-([0-9]{8})", version)
+          if not match:
+              raise ValueError("Invalid Android artifact version")
+          datetime.datetime.strptime(match[1], "%Y%m%d")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as stream:
+              stream.write(f"version={version}\n")
+
+      - name: Download unsigned build artifact
+        if: github.event_name != 'workflow_dispatch' || inputs.version != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: crossdesk-android-arm64-unsigned-${{ steps.version.outputs.version }}
+          path: unsigned
+
+      - name: Download unsigned APK from existing release
+        if: github.event_name == 'workflow_dispatch' && inputs.version == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release view "${SOURCE_TAG}" --repo "${GITHUB_REPOSITORY}" \
+            --json isDraft,isPrerelease > release.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          release = json.loads(Path('release.json').read_text())
+          if release['isDraft'] or release['isPrerelease']:
+              raise ValueError('Use a published stable Android release')
+          PY
+          gh release download "${SOURCE_TAG}" --repo "${GITHUB_REPOSITORY}" \
+            --pattern "crossdesk-android-arm64-unsigned-${APK_VERSION}.apk" --dir unsigned
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android signing tools
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "build-tools;36.0.0"
+
+      # This job never checks out or executes application source with the key present.
+      - name: Align, sign and verify Release APK
+        env:
+          APK_VERSION: ${{ steps.version.outputs.version }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          umask 077
+          crossdesk_signing_dir="$(mktemp -d "${RUNNER_TEMP}/crossdesk-signing.XXXXXX")"
+          trap 'rm -rf -- "${crossdesk_signing_dir}"' EXIT
+          printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${crossdesk_signing_dir}/release.keystore"
+          crossdesk_tools="${ANDROID_HOME}/build-tools/36.0.0"
+          crossdesk_output="${RUNNER_TEMP}/crossdesk-android-signed"
+          mkdir -p "${crossdesk_output}"
+          "${crossdesk_tools}/zipalign" -P 16 -f -v 4 \
+            "unsigned/crossdesk-android-arm64-unsigned-${APK_VERSION}.apk" \
+            "${crossdesk_signing_dir}/aligned.apk"
+          "${crossdesk_tools}/apksigner" sign \
+            --ks "${crossdesk_signing_dir}/release.keystore" \
+            --ks-key-alias "${ANDROID_KEY_ALIAS}" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD --key-pass env:ANDROID_KEY_PASSWORD \
+            --out "${crossdesk_output}/crossdesk-android-arm64-${APK_VERSION}.apk" \
+            "${crossdesk_signing_dir}/aligned.apk"
+          "${crossdesk_tools}/apksigner" verify --verbose --print-certs \
+            "${crossdesk_output}/crossdesk-android-arm64-${APK_VERSION}.apk"
+          "${crossdesk_tools}/zipalign" -c -P 16 -v 4 \
+            "${crossdesk_output}/crossdesk-android-arm64-${APK_VERSION}.apk"
+
+      - name: Upload signed Release APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: crossdesk-android-arm64-${{ steps.version.outputs.version }}
+          path: ${{ runner.temp }}/crossdesk-android-signed/*.apk
+          if-no-files-found: error
+
+      - name: Summarize signing
+        env:
+          APK_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          echo "Android ${APK_VERSION}: Release APK signed with the fixed publishing key; APK signature and 16 KB ZIP alignment verified." >> "${GITHUB_STEP_SUMMARY}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && -z "${VERSION}" ]]; then
+            echo "Signed an existing release without rebuilding. Download the signed Actions artifact to publish it." >> "${GITHUB_STEP_SUMMARY}"
+          fi

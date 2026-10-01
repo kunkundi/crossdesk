@@ -73,7 +73,7 @@ Release 构建使用 `./gradlew :app:assembleRelease`，默认输出未签名 AP
 
 ## GitHub Actions
 
-[`Build Android`](../../.github/workflows/build-android.yml) 可在 Actions 页面单独手动运行；修改 Android、MiniRTC、共享协议或许可证资料的 Pull Request 也会触发。仓库原有的 [`Build and Release`](../../.github/workflows/build.yml) 在分支推送、标签推送及手动运行时调用同一工作流，`v` 标签发布会等待安卓构建成功，并将未签名 Release APK 加入 GitHub Release 和现有下载服务器的产物集合。推送主仓库前，先确保它引用的 MiniRTC 提交已推送到子模块远程仓库，否则 CI 无法完成检出。
+[`Build Android`](../../.github/workflows/build-android.yml) 可在 Actions 页面单独手动运行；修改 Android、MiniRTC、共享协议或许可证资料的 Pull Request 也会触发。仓库原有的 [`Build and Release`](../../.github/workflows/build.yml) 在分支推送、标签推送及手动运行时调用同一工作流，`v` 标签发布会等待安卓构建及签名成功，并将已签名 Release APK 加入 GitHub Release 和现有下载服务器的产物集合。推送主仓库前，先确保它引用的 MiniRTC 提交已推送到子模块远程仓库，否则 CI 无法完成检出。
 
 单独发布使用 [`Release Mobile`](../../.github/workflows/release-mobile.yml)。先提交 `app/build.gradle` 中需要发布的 `versionName`，再为该提交创建 `android-v<versionName>-YYYYMMDD` 标签，例如：
 
@@ -82,7 +82,7 @@ git tag android-v1.6.0-20261002
 git push origin android-v1.6.0-20261002
 ```
 
-该标签只触发安卓构建，将未签名 Release APK 发布到独立的 GitHub Release 和现有下载服务器。标签版本必须与应用版本一致，日期必须有效。重试发布时，在 Actions 页面手动运行 `Release Mobile`，将已有标签填入 `source_tag`；即使从其他分支触发，也会检出该标签的源码。APK 的源码资料记录安卓标签及准确的应用、MiniRTC 提交。
+该标签只触发安卓构建，使用固定发布密钥签名并验证 Release APK 后，再发布到独立的 GitHub Release 和现有下载服务器。签名失败或缺少签名 Secrets 时停止发布，不回退到未签名 APK。标签版本必须与应用版本一致，日期必须有效。重试发布时，在 Actions 页面手动运行 `Release Mobile`，将已有标签填入 `source_tag`；即使从其他分支触发，也会检出该标签的源码。APK 的源码资料记录安卓标签及准确的应用、MiniRTC 提交。
 
 移动端独立发布保留桌面 `latest` 标签和 GitHub 的最新 Release 选择。APK 上传完成后，将服务器下载地址合并到共享 `https://version.crossdesk.cn/version.json` 的 `downloads.android-arm64`，并在该下载项中记录安卓版本和发布日期；保留顶层桌面版本信息和其他平台的下载项。下载服务器上传保留其他平台文件，复用仓库已有的 `SERVER_HOST`、`SERVER_USER`、`SERVER_KEY` Secrets。普通桌面版本标签仍通过 `Build and Release` 发布全部平台并更新各平台下载项；所有发布任务更新版本文件时使用同一队列。单独运行 `Build Android` 仍只上传 Actions 构建产物。
 
@@ -94,11 +94,43 @@ CI 构建 Debug、Release 和设备测试 APK，执行 Debug / Release Lint、�
 
 产物使用 Android 工程自己的 `versionName`，例如 `v1.6.0-20261002`，不跟随桌面版本号。构建日期采用上海时区；带日期的版本标签沿用标签中的日期，与 iOS 一致。Actions 提供：
 
-- `crossdesk-android-arm64-unsigned-<版本>.apk`：未签名 Release APK，标签发布只收集此 APK，安装前需自行签名。
+- `crossdesk-android-arm64-<版本>.apk`：已签名 Release APK，独立安卓发布和全平台标签发布收集此 APK，可直接安装。
+- `crossdesk-android-arm64-unsigned-<版本>.apk`：构建工作流的中间产物，也可用于自行签名和验证修改后的构建。
 - `crossdesk-android-arm64-debug-<版本>.apk` 和对应的 `-test.apk`：可安装的调试应用和设备测试包，保留 14 天。
 - `crossdesk-android-reports`：Lint 报告，保留 14 天。
 
-当前 CI 不需要签名 Secrets。Debug APK 使用每次运行的临时调试证书，可能无法覆盖手机上已有的其他签名版本；卸载原应用会清除本机连接记录和密码。需要持续覆盖升级时，应使用同一私钥签名 Release APK，并在发布新版本时递增 `app/build.gradle` 中的 `versionCode`。未签名 APK 已完成对齐，可通过 SDK 的 `apksigner sign --ks <自己的密钥库> --out <已签名.apk> <未签名.apk>` 签名，再用 `apksigner verify` 检查。
+Debug APK 使用每次运行的临时调试证书，可能无法覆盖手机上已有的其他签名版本；卸载原应用会清除本机连接记录和密码。需要持续覆盖升级时，应使用同一私钥签名 Release APK，并在发布新版本时递增 `app/build.gradle` 中的 `versionCode`。未签名 APK 已完成对齐，可通过 SDK 的 `apksigner sign --ks <自己的密钥库> --out <已签名.apk> <未签名.apk>` 签名，再用 `apksigner verify` 检查。
+
+### Release 签名
+
+[`Sign Android Release`](../../.github/workflows/sign-android.yml) 在独立 job 中签名，不检出或执行应用源码。构建 job 和 Pull Request 构建不接收发布密钥。签名 job 使用 Build Tools 36.0.0，先执行 `zipalign -P 16`，再通过环境变量向 `apksigner` 提供密码，验证签名和 16 KB 对齐后上传已签名 APK。临时密钥库在步骤结束时清理，产物中不包含密钥或密码。
+
+首次发布前，在仓库 Settings → Secrets and variables → Actions 配置：
+
+| Secret | 内容 |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | 发布密钥库文件的 Base64 内容 |
+| `ANDROID_KEYSTORE_PASSWORD` | 密钥库密码 |
+| `ANDROID_KEY_ALIAS` | 发布私钥的 alias |
+| `ANDROID_KEY_PASSWORD` | 发布私钥密码 |
+
+APK 签名不需要 Google Play 开发者账号。若没有已有发布密钥，可使用 JDK 的 `keytool` 创建一次，密钥库保存在工程之外，并备份密钥和密码：
+
+```sh
+keytool -genkeypair -storetype PKCS12 -keystore /path/outside/repo/crossdesk-release.p12 \
+  -alias crossdesk-release -keyalg RSA -keysize 4096 -validity 10000
+```
+
+PKCS12 使用同一个密钥库和私钥密码，将它配置到两个密码 Secrets。可用 `gh secret set` 从标准输入写入 Secrets，避免把密码放进命令行参数。macOS 上传密钥库示例：
+
+```sh
+base64 -i /path/outside/repo/crossdesk-release.p12 | gh secret set ANDROID_KEYSTORE_BASE64 --repo kunkundi/crossdesk
+gh secret set ANDROID_KEYSTORE_PASSWORD --repo kunkundi/crossdesk
+gh secret set ANDROID_KEY_ALIAS --repo kunkundi/crossdesk
+gh secret set ANDROID_KEY_PASSWORD --repo kunkundi/crossdesk
+```
+
+后续版本沿用这些 Secrets，不能在每次构建时生成新密钥，也不能将密钥或密码提交到 Git。已有未签名安卓 Release 可单独运行 `Sign Android Release` 并填写其 `source_tag`，无需重新构建；该手动任务只上传已签名 Actions 产物，不修改已发布 Release。普通发布流程会自动签名、上传下载服务器，并将 `downloads.android-arm64` 指向已签名 APK。旧 Release 同时保留已签名和未签名 APK 时，版本文件优先选择相同版本的已签名文件。
 
 ## 使用与连接安全
 
