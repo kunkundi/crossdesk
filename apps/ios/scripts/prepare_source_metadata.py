@@ -46,9 +46,9 @@ def source_metadata(require_release=False, tag=None):
             raise ValueError(f"Source tag {tag!r} does not point to the build commit")
     else:
         # 'latest' is a moving alias, never a corresponding-source identifier.
-        versions = sorted(t for t in tags if t.startswith("v"))
+        versions = sorted(t for t in tags if t.startswith(("v", "ios-v")))
         tag = versions[0] if versions else None
-    if require_release and (dirty or not tag or not tag.startswith("v")):
+    if require_release and (dirty or not tag or not tag.startswith(("v", "ios-v"))):
         raise ValueError("Release source must be a clean checkout of a version tag, with matching submodules")
     mini_revision = git("rev-parse", "HEAD", root=REPO / "deps/submodules/minirtc")
     lock_path = REPO / "apps/ios/licenses/sources.json"

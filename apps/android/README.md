@@ -75,6 +75,17 @@ Release 构建使用 `./gradlew :app:assembleRelease`，默认输出未签名 AP
 
 [`Build Android`](../../.github/workflows/build-android.yml) 可在 Actions 页面单独手动运行；修改 Android、MiniRTC、共享协议或许可证资料的 Pull Request 也会触发。仓库原有的 [`Build and Release`](../../.github/workflows/build.yml) 在分支推送、标签推送及手动运行时调用同一工作流，`v` 标签发布会等待安卓构建成功，并将未签名 Release APK 加入 GitHub Release 和现有下载服务器的产物集合。推送主仓库前，先确保它引用的 MiniRTC 提交已推送到子模块远程仓库，否则 CI 无法完成检出。
 
+单独发布使用 [`Release Mobile`](../../.github/workflows/release-mobile.yml)。先提交 `app/build.gradle` 中需要发布的 `versionName`，再为该提交创建 `android-v<versionName>-YYYYMMDD` 标签，例如：
+
+```sh
+git tag android-v0.1.0-20261002
+git push origin android-v0.1.0-20261002
+```
+
+该标签只触发安卓构建，将未签名 Release APK 发布到独立的 GitHub Release 和现有下载服务器。标签版本必须与应用版本一致，日期必须有效。重试发布时，在 Actions 页面手动运行 `Release Mobile`，将已有标签填入 `source_tag`；即使从其他分支触发，也会检出该标签的源码。APK 的源码资料记录安卓标签及准确的应用、MiniRTC 提交。
+
+移动端独立发布不会更新桌面 `latest` 标签、GitHub 的最新 Release 选择或桌面 `version.json`。下载服务器上传保留其他平台文件，复用仓库已有的 `SERVER_HOST`、`SERVER_USER`、`SERVER_KEY` Secrets。普通桌面版本标签仍通过 `Build and Release` 发布全部平台；单独运行 `Build Android` 仍只上传 Actions 构建产物。
+
 工作流使用 Ubuntu 24.04、JDK 17、Python 3.13、SDK 36、Build Tools 36.0.0、NDK r28c 和 Xmake 3.1.1。Gradle 使用工程内的 Wrapper，原生构建器固定 Xmake 包仓库版本。Gradle 缓存与 Android 原生依赖缓存分别管理；原生缓存按宿主架构、构建脚本及 MiniRTC 配方区分，不复用桌面或 iOS 的配置和目标文件。
 
 CI 构建 Debug、Release 和设备测试 APK，执行 Debug / Release Lint、本机 C++ 协议与画面队列测试，并校验 APK 的 arm64 ABI、16 KB ELF / ZIP 对齐、完整许可证及 Debug 签名。Ubuntu x64 构建机上不运行 arm64 设备测试；使用下面的设备验证流程在 arm64 手机或模拟器上执行。Lint 报告在构建失败时也会保留。

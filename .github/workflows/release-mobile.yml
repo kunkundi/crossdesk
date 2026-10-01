@@ -1,0 +1,149 @@
+name: Release Mobile
+
+on:
+  push:
+    tags:
+      - "ios-v*"
+      - "android-v*"
+  workflow_dispatch:
+    inputs:
+      source_tag:
+        description: "Existing tag: ios-v0.0.1-20261002 or android-v0.1.0-20261002."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Validate mobile source tag
+    runs-on: ubuntu-24.04
+    outputs:
+      platform: ${{ steps.source.outputs.platform }}
+      tag: ${{ steps.source.outputs.tag }}
+      version: ${{ steps.source.outputs.version }}
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve source tag
+        id: source
+        shell: python
+        env:
+          SOURCE_TAG: ${{ inputs.source_tag || github.ref_name }}
+        run: |
+          import datetime
+          import os
+          import re
+          import subprocess
+
+          tag = os.environ["SOURCE_TAG"]
+          match = re.fullmatch(r"(ios|android)-(v[0-9]+\.[0-9]+\.[0-9]+-([0-9]{8}))", tag)
+          if not match:
+              raise ValueError("Use an existing ios-v<app-version>-YYYYMMDD or android-v<app-version>-YYYYMMDD tag")
+          datetime.datetime.strptime(match[3], "%Y%m%d")
+          sha = subprocess.check_output(
+              ["git", "rev-parse", "--verify", f"refs/tags/{tag}^{{commit}}"], text=True).strip()
+          with open(os.environ["GITHUB_OUTPUT"], "a") as stream:
+              stream.write(f"platform={match[1]}\ntag={tag}\nversion={match[2]}\nsha={sha}\n")
+
+  build-ios:
+    name: Build iOS release
+    needs: prepare
+    if: needs.prepare.outputs.platform == 'ios'
+    uses: ./.github/workflows/build-ios.yml
+    with:
+      source_tag: ${{ needs.prepare.outputs.tag }}
+
+  build-android:
+    name: Build Android release
+    needs: prepare
+    if: needs.prepare.outputs.platform == 'android'
+    uses: ./.github/workflows/build-android.yml
+    with:
+      source_tag: ${{ needs.prepare.outputs.tag }}
+
+  release:
+    name: Publish mobile release
+    needs: [prepare, build-ios, build-android]
+    if: ${{ !cancelled() && (needs.build-ios.result == 'success' || needs.build-android.result == 'success') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    concurrency:
+      group: mobile-release-${{ needs.prepare.outputs.tag }}
+      cancel-in-progress: false
+    env:
+      PLATFORM: ${{ needs.prepare.outputs.platform }}
+      SOURCE_TAG: ${{ needs.prepare.outputs.tag }}
+      SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      BUILD_VERSION: ${{ needs.build-ios.outputs.version || needs.build-android.outputs.version }}
+    steps:
+      - name: Verify release version
+        shell: bash
+        run: |
+          if [[ "${BUILD_VERSION}" != "${VERSION}" ]]; then
+            echo "Source tag version ${VERSION} does not match the app version ${BUILD_VERSION}" >&2
+            exit 1
+          fi
+
+      - name: Download mobile release artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: crossdesk-${{ env.PLATFORM }}-arm64-unsigned-${{ env.VERSION }}
+          path: release
+
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          if [[ "${PLATFORM}" == "ios" ]]; then
+            PLATFORM_NAME="iOS"
+            SIGNING_NOTE="The arm64 ZIP contains an unsigned app, source metadata, third-party sources and any generated dSYM. Sign the app before device installation."
+          else
+            PLATFORM_NAME="Android"
+            SIGNING_NOTE="The arm64 Release APK is unsigned. Sign it with your own key before installation. It includes source metadata, license documents and native build recipes."
+          fi
+          cat > "${RUNNER_TEMP}/mobile-release-notes.md" << EOF
+          ${PLATFORM_NAME} ${VERSION}
+
+          ${SIGNING_NOTE}
+
+          Source: [${SOURCE_TAG}](https://github.com/${GITHUB_REPOSITORY}/tree/${SOURCE_SHA}).
+          Clone this tag with recursive submodules to obtain the corresponding source.
+          [Source and rebuild instructions](https://github.com/${GITHUB_REPOSITORY}/blob/${SOURCE_SHA}/apps/${PLATFORM}/README.md).
+          EOF
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.SOURCE_TAG }}
+          target_commitish: ${{ env.SOURCE_SHA }}
+          name: ${{ env.PLATFORM == 'ios' && 'iOS' || 'Android' }} ${{ env.VERSION }}
+          draft: false
+          prerelease: false
+          make_latest: "false"
+          files: release/*
+          fail_on_unmatched_files: true
+          generate_release_notes: false
+          body_path: ${{ runner.temp }}/mobile-release-notes.md
+
+      - name: Upload mobile artifact to download server
+        uses: burnett01/rsync-deployments@5.2
+        with:
+          switches: -avzr --progress
+          path: release/*
+          remote_path: /var/www/html/downloads/
+          remote_host: ${{ secrets.SERVER_HOST }}
+          remote_user: ${{ secrets.SERVER_USER }}
+          remote_key: ${{ secrets.SERVER_KEY }}
+
+      - name: Summarize release
+        shell: bash
+        run: |
+          echo "Published [${SOURCE_TAG}](https://github.com/${GITHUB_REPOSITORY}/releases/tag/${SOURCE_TAG}) and uploaded its unsigned ${PLATFORM} artifact to the download server." >> "${GITHUB_STEP_SUMMARY}"

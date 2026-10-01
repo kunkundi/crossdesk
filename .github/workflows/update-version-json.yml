@@ -10,6 +10,7 @@ permissions:
 jobs:
   update-version-json:
     name: Update version.json with release information
+    if: ${{ !startsWith(github.event.release.tag_name, 'ios-v') && !startsWith(github.event.release.tag_name, 'android-v') }}
     runs-on: ubuntu-latest
 
     steps:

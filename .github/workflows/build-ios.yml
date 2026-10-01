@@ -10,6 +10,11 @@ on:
         default: "0"
   workflow_call:
     inputs:
+      source_tag:
+        description: "Existing source tag for a standalone iOS release."
+        required: false
+        type: string
+        default: ""
       patch:
         description: "Optional patch number from the main build workflow."
         required: false
@@ -23,6 +28,7 @@ on:
     paths:
       - ".github/workflows/build-ios.yml"
       - ".github/workflows/build.yml"
+      - ".github/workflows/release-mobile.yml"
       - ".gitmodules"
       - "LICENSE"
       - "apps/ios/**"
@@ -42,6 +48,7 @@ jobs:
       version: ${{ steps.ios_version.outputs.version }}
     env:
       GITHUB_TOKEN: ${{ github.token }}
+      CROSSDESK_SOURCE_TAG: ${{ inputs.source_tag || '' }}
       IOS_DEPLOYMENT_TARGET: "16.0"
       EXPECTED_IOS_SDK: "26.5"
       XMAKE_VERSION: "3.1.1"
@@ -53,7 +60,8 @@ jobs:
         env:
           PATCH_NUMBER: ${{ inputs.patch || '0' }}
         run: |
-          VERSION_REF="${GITHUB_REF##*/}"
+          VERSION_REF="${CROSSDESK_SOURCE_TAG:-${GITHUB_REF##*/}}"
+          VERSION_REF="${VERSION_REF#ios-}"
           VERSION_BASE="${VERSION_REF#v}"
           BUILD_DATE=$(TZ=Asia/Shanghai date +%Y%m%d)
 
@@ -101,11 +109,14 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.source_tag || github.ref }}
 
       - name: Select corresponding source tag
         shell: bash
         run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+          if [[ -n "${CROSSDESK_SOURCE_TAG}" ]]; then
+            echo "CROSSDESK_RELEASE_BUILD=YES" >> "${GITHUB_ENV}"
+          elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             echo "CROSSDESK_SOURCE_TAG=${GITHUB_REF_NAME}" >> "${GITHUB_ENV}"
             echo "CROSSDESK_RELEASE_BUILD=YES" >> "${GITHUB_ENV}"
           fi
@@ -126,6 +137,10 @@ jobs:
             exit 1
           fi
           VERSION_NUM="v${IOS_VERSION_BASE}-${VERSION_NUM##*-}"
+          if [[ "${CROSSDESK_SOURCE_TAG}" == ios-v* && "${CROSSDESK_SOURCE_TAG#ios-}" != "${VERSION_NUM}" ]]; then
+            echo "iOS source tag does not match the app version: ${CROSSDESK_SOURCE_TAG} vs ${VERSION_NUM}" >&2
+            exit 1
+          fi
           echo "IOS_VERSION_BASE=${IOS_VERSION_BASE}" >> "${GITHUB_ENV}"
           echo "VERSION_NUM=${VERSION_NUM}" >> "${GITHUB_ENV}"
           echo "version=${VERSION_NUM}" >> "${GITHUB_OUTPUT}"

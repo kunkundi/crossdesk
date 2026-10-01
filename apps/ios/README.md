@@ -93,7 +93,30 @@ including the app, source metadata, third-party source catalog, rights notice
 and any generated dSYM. The version comes from the iOS target; dated repository
 tags provide the build date, otherwise the date uses the Asia/Shanghai timezone.
 The main workflow collects this same ZIP for GitHub Releases and the download
-server. Standalone runs only upload the build artifact.
+server. Standalone `Build iOS` runs only upload the build artifact.
+
+For an independent release, use the
+[`Release Mobile`](../../.github/workflows/release-mobile.yml) workflow. Commit
+the intended `MARKETING_VERSION` in the iOS target, then tag that commit with
+`ios-v<marketing-version>-YYYYMMDD`, for example:
+
+```sh
+git tag ios-v0.0.1-20261002
+git push origin ios-v0.0.1-20261002
+```
+
+The tag starts only the iOS build and publishes its unsigned ZIP to a dedicated
+GitHub Release and the existing download server. The tag version must match the
+iOS target, and its date must be valid. To retry a release, run `Release Mobile`
+manually and enter the existing tag in `source_tag`; it builds that tag's source
+even when the workflow is dispatched from a different branch. Source metadata
+records the iOS tag and exact application/MiniRTC commits.
+
+Mobile releases keep the desktop `latest` tag, GitHub's latest release selection
+and desktop `version.json` unchanged. Uploads preserve other platforms' files
+on the download server and use the existing `SERVER_HOST`, `SERVER_USER` and
+`SERVER_KEY` repository secrets. Regular desktop version tags still publish all
+platforms through `Build and Release`.
 
 No Apple signing secrets are needed. Sign the app yourself before installing
 it on a device. Push any referenced MiniRTC commit before the parent repository

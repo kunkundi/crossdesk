@@ -2,6 +2,7 @@
 """Package existing reviewed notices for the Android runtime dependency set."""
 import json
 import hashlib
+import os
 from pathlib import Path
 import subprocess
 from urllib.parse import quote
@@ -74,10 +75,19 @@ def write_pages(output, catalog, additional, revision, minirtc):
         component['documents'] = documents
     (output / 'ThirdPartyLicenses.json').write_text(json.dumps(
         {'schemaVersion': 1, 'components': components}, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
-    tags = sorted(tag for tag in git('tag', '--points-at', 'HEAD').splitlines() if tag.startswith('v'))
+    tags = git('tag', '--points-at', 'HEAD').splitlines()
+    tag = os.environ.get('CROSSDESK_SOURCE_TAG')
+    if tag and tag not in tags:
+        raise ValueError(f'Source tag {tag!r} does not point to the build commit')
+    if not tag:
+        versions = sorted(value for value in tags if value.startswith(('v', 'android-v')))
+        tag = versions[0] if versions else None
+    dirty = bool(git('status', '--porcelain', '--untracked-files=normal', '--ignore-submodules=none'))
+    if os.environ.get('CROSSDESK_RELEASE_BUILD') == 'YES' and (dirty or not tag or not tag.startswith(('v', 'android-v'))):
+        raise ValueError('Release source must be a clean checkout of a version tag, with matching submodules')
     metadata = {
-        'schemaVersion': 1, 'revision': revision, 'tag': tags[0] if tags else None,
-        'isModified': bool(git('status', '--porcelain', '--untracked-files=normal', '--ignore-submodules=none')),
+        'schemaVersion': 1, 'revision': revision, 'tag': tag,
+        'isModified': dirty,
         'sourceURL': source,
         'buildInstructionsURL': f'https://github.com/kunkundi/crossdesk/blob/{quote(revision, safe="")}/apps/android/README.md',
         'buildDocuments': build_documents, 'miniRTCRevision': minirtc,
