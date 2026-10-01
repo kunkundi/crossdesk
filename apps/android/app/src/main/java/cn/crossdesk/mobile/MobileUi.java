@@ -2,6 +2,7 @@ package cn.crossdesk.mobile;
 
 import android.content.Context;
 import android.graphics.*;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.view.*;
 import android.widget.*;
@@ -10,6 +11,8 @@ import android.widget.*;
 final class MobileUi {
     static final int BACKGROUND=0xFFF2F2F7, INK=0xFF1C1C1E, SECONDARY=0xFF737378,
             LINE=0xFFE2E2E7, BLUE=0xFF2E7ADB, RED=0xFFFF3B30, GREEN=0xFF248A3D;
+    // Match the iOS 26 Form sections and segmented Picker dimensions.
+    static final int SETTINGS_CARD_RADIUS=26, SEGMENT_HEIGHT=32, SEGMENT_INSET=2;
     final Context context;
     MobileUi(Context context) { this.context=context; }
     int dp(float value) { return Math.round(value*context.getResources().getDisplayMetrics().density); }
@@ -17,6 +20,14 @@ final class MobileUi {
         GradientDrawable shape=new GradientDrawable();shape.setColor(color);shape.setCornerRadius(dp(radius));return shape;
     }
     void card(View view,int radius) { GradientDrawable shape=background(Color.WHITE,radius);shape.setStroke(dp(.5f),LINE);view.setBackground(shape);view.setClipToOutline(true); }
+    FrameLayout shadowCard(View content,int radius) {
+        card(content,radius);
+        FrameLayout wrapper=new FrameLayout(context);
+        wrapper.setClipChildren(false);wrapper.setClipToPadding(false);
+        wrapper.setBackground(new CardShadow(dp(radius),dp(14),dp(5)));
+        wrapper.addView(content,new FrameLayout.LayoutParams(-1,-2));
+        return wrapper;
+    }
     LinearLayout column() { LinearLayout v=new LinearLayout(context);v.setOrientation(LinearLayout.VERTICAL);return v; }
     LinearLayout row() { LinearLayout v=new LinearLayout(context);v.setGravity(Gravity.CENTER_VERTICAL);return v; }
     TextView text(String title,int size,boolean bold) {
@@ -42,6 +53,34 @@ final class MobileUi {
     void gap(LinearLayout parent,int height){parent.addView(new View(context),new LinearLayout.LayoutParams(1,dp(height)));}
     void divider(LinearLayout parent){View line=new View(context);line.setBackgroundColor(LINE);parent.addView(line,new LinearLayout.LayoutParams(-1,dp(.5f)));}
     LinearLayout.LayoutParams size(int width,int height){return new LinearLayout.LayoutParams(width<0?width:dp(width),height<0?height:dp(height));}
+    /** The iOS connection panel uses black at 5.5%, blur 14, y 5, rather than elevation. */
+    private static final class CardShadow extends Drawable {
+        private final Paint bitmapPaint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+        private final float cornerRadius,blurRadius,offsetY;
+        private final int inset;
+        private Bitmap bitmap;
+        CardShadow(float cornerRadius,float blurRadius,float offsetY) {
+            this.cornerRadius=cornerRadius;this.blurRadius=blurRadius;this.offsetY=offsetY;
+            inset=(int)Math.ceil(blurRadius*2+Math.abs(offsetY));
+        }
+        @Override protected void onBoundsChange(Rect bounds) {
+            bitmap=null;
+            if(bounds.isEmpty())return;
+            // Render once on a bitmap canvas: shadow layers need software rendering on API 26.
+            bitmap=Bitmap.createBitmap(bounds.width()+inset*2,bounds.height()+inset*2,Bitmap.Config.ARGB_8888);
+            bitmap.setDensity(Bitmap.DENSITY_NONE);
+            Paint shadowPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
+            shadowPaint.setColor(Color.WHITE);
+            shadowPaint.setShadowLayer(blurRadius,0,offsetY,Color.argb(Math.round(255*.055f),0,0,0));
+            new Canvas(bitmap).drawRoundRect(inset,inset,inset+bounds.width(),inset+bounds.height(),cornerRadius,cornerRadius,shadowPaint);
+        }
+        @Override public void draw(Canvas canvas) {
+            if(bitmap!=null)canvas.drawBitmap(bitmap,getBounds().left-inset,getBounds().top-inset,bitmapPaint);
+        }
+        @Override public void setAlpha(int alpha) { bitmapPaint.setAlpha(alpha);invalidateSelf(); }
+        @Override public void setColorFilter(ColorFilter filter) { bitmapPaint.setColorFilter(filter);invalidateSelf(); }
+        @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
+    }
     @android.annotation.SuppressLint("ViewConstructor") // Programmatic icon primitive, not inflated from XML.
     static final class Icon extends View {
         private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG); private final String name;

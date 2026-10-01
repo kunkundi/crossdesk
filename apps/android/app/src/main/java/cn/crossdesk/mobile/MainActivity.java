@@ -137,8 +137,11 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         LinearLayout content=column();content.setPadding(dp(20),dp(16),dp(20),dp(28));scroll.addView(content);return content;
     }
     LinearLayout section(LinearLayout content,String title){
+        return section(content,title,12);
+    }
+    private LinearLayout section(LinearLayout content,String title,int radius){
         if(!title.isEmpty()){TextView label=text(title,13,false);label.setTextColor(SECONDARY);label.setPadding(dp(16),dp(12),0,dp(8));content.addView(label);}
-        LinearLayout card=column();ui.card(card,12);content.addView(card);return card;
+        LinearLayout card=column();ui.card(card,radius);content.addView(card);return card;
     }
     void footer(LinearLayout content,String title){TextView v=text(title,12,false);v.setTextColor(SECONDARY);v.setLineSpacing(dp(3),1);v.setPadding(dp(16),dp(8),dp(16),dp(16));content.addView(v);}
     void link(LinearLayout parent,String title,String detail,Runnable action){
@@ -160,8 +163,8 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         announcementBadge=text("",10,true);announcementBadge.setTextColor(Color.WHITE);announcementBadge.setGravity(Gravity.CENTER);announcementBadge.setMinWidth(dp(16));announcementBadge.setPadding(dp(4),0,dp(4),0);announcementBadge.setBackground(ui.background(RED,12));announcementBadge.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         FrameLayout.LayoutParams badgePosition=new FrameLayout.LayoutParams(-2,dp(16),Gravity.TOP|Gravity.END);badgePosition.topMargin=-dp(3);badgePosition.setMarginEnd(-dp(5));bell.addView(announcementBadge,badgePosition);renderAnnouncements();
         toolbar.addView(bell,ui.size(40,40));View spacer=new View(this);toolbar.addView(spacer,ui.size(12,1));toolbar.addView(ui.iconButton("settings","设置",this::settings),ui.size(40,40));
-        LinearLayout content=column();content.setPadding(dp(20),dp(24),dp(20),dp(12));root.addView(content,new LinearLayout.LayoutParams(-1,0,1));
-        LinearLayout connection=column();connection.setPadding(dp(18),dp(18),dp(18),dp(18));ui.card(connection,20);connection.setElevation(dp(2));content.addView(connection);
+        LinearLayout content=column();content.setPadding(dp(20),dp(24),dp(20),dp(12));content.setClipChildren(false);content.setClipToPadding(false);root.addView(content,new LinearLayout.LayoutParams(-1,0,1));
+        LinearLayout connection=column();connection.setPadding(dp(18),dp(18),dp(18),dp(18));content.addView(ui.shadowCard(connection,20));
         connection.addView(text("远程桌面",20,true));ui.gap(connection,16);
         LinearLayout entry=row();connection.addView(entry,ui.size(-1,54));
         remote=field("对端 ID",InputType.TYPE_CLASS_NUMBER);remote.setTextSize(20);remote.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
@@ -273,12 +276,12 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     }
     private void settings(){
         LinearLayout content=formPage("settings","设置",()->home(""));
-        LinearLayout mouse=section(content,"鼠标控制");mouse.setPadding(dp(12),dp(12),dp(12),dp(12));boolean relative=preferences.getBoolean("relativeMouse",true);
+        LinearLayout mouse=section(content,"鼠标控制",MobileUi.SETTINGS_CARD_RADIUS);mouse.setPadding(dp(12),dp(12),dp(12),dp(12));boolean relative=preferences.getBoolean("relativeMouse",true);
         TextView detail=text(relative?"像触控板一样滑动光标，点击时操作当前光标位置。":"触摸位置直接对应远端屏幕位置，适合快速定位。",13,false);detail.setTextColor(SECONDARY);
         mouse.addView(segments(new String[]{"相对位置","绝对位置"},relative?0:1,true,index->{preferences.edit().putBoolean("relativeMouse",index==0).apply();detail.setText(index==0?"像触控板一样滑动光标，点击时操作当前光标位置。":"触摸位置直接对应远端屏幕位置，适合快速定位。");}));ui.gap(mouse,10);mouse.addView(detail);
-        LinearLayout picture=section(content,"画面偏好");picture.setPadding(dp(12),dp(12),dp(12),dp(12));int preference=Math.max(0,Math.min(2,preferences.getInt("videoPreference",1)));TextView preferenceDetail=text(RemoteVideoSettings.DETAILS[preference],13,false);preferenceDetail.setTextColor(SECONDARY);
+        LinearLayout picture=section(content,"画面偏好",MobileUi.SETTINGS_CARD_RADIUS);picture.setPadding(dp(12),dp(12),dp(12),dp(12));int preference=Math.max(0,Math.min(2,preferences.getInt("videoPreference",1)));TextView preferenceDetail=text(RemoteVideoSettings.DETAILS[preference],13,false);preferenceDetail.setTextColor(SECONDARY);
         picture.addView(segments(RemoteVideoSettings.PREFERENCES,preference,true,index->{preferences.edit().putInt("videoPreference",index).apply();preferenceDetail.setText(RemoteVideoSettings.DETAILS[index]);}));ui.gap(picture,10);picture.addView(preferenceDetail);ui.gap(content,28);
-        LinearLayout server=section(content,"");LinearLayout fields=column();fields.setVisibility(View.GONE);boolean custom=!host.equals("api.crossdesk.cn")||port!=9099;
+        LinearLayout server=section(content,"",MobileUi.SETTINGS_CARD_RADIUS);LinearLayout fields=column();fields.setVisibility(View.GONE);boolean custom=!host.equals("api.crossdesk.cn")||port!=9099;
         link(server,"服务器",custom?"自定义":"默认",()->fields.setVisibility(fields.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));server.addView(fields);
         LinearLayout toggleRow=row();toggleRow.setPadding(dp(16),dp(8),dp(16),dp(8));toggleRow.addView(text("使用自定义服务器",16,false),new LinearLayout.LayoutParams(0,-2,1));Switch toggle=new Switch(this);toggle.setContentDescription("使用自定义服务器");toggle.setChecked(custom);toggleRow.addView(toggle);fields.addView(toggleRow);
         LinearLayout inputs=column();inputs.setPadding(dp(12),0,dp(12),dp(12));EditText address=field("服务器地址",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI),number=field("服务器端口",InputType.TYPE_CLASS_NUMBER);address.setText(custom?host:"");number.setText(custom?String.valueOf(port):"");inputs.addView(address,ui.size(-1,48));ui.gap(inputs,8);inputs.addView(number,ui.size(-1,48));ui.gap(inputs,8);
@@ -286,12 +289,12 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         toggle.setOnCheckedChangeListener((button,checked)->{inputs.setVisibility(checked?View.VISIBLE:View.GONE);if(!checked){host="api.crossdesk.cn";port=9099;preferences.edit().putString("host",host).putInt("port",port).apply();ensureSignaling();} });
         backAction=()->{if(toggle.isChecked()&&!saveServer(address,number))return;hideKeyboard();home("");};
         identitySummary=text("",12,false);identitySummary.setTextColor(SECONDARY);identitySummary.setGravity(Gravity.CENTER);identitySummary.setPadding(dp(16),dp(12),dp(16),dp(16));identitySummary.setTextIsSelectable(true);content.addView(identitySummary);renderSignaling();
-        LinearLayout privacy=section(content,"隐私");link(privacy,"隐私与授权",preferences.getBoolean("networkConsent",false)?"已授权":"未授权",this::privacyPage);ui.divider(privacy);
+        LinearLayout privacy=section(content,"隐私",MobileUi.SETTINGS_CARD_RADIUS);link(privacy,"隐私与授权",preferences.getBoolean("networkConsent",false)?"已授权":"未授权",this::privacyPage);ui.divider(privacy);
         LinearLayout preview=row();preview.setPadding(dp(16),dp(10),dp(16),dp(10));preview.addView(text("保存远程画面预览",16,false),new LinearLayout.LayoutParams(0,-2,1));previewSwitch=new Switch(this);previewSwitch.setContentDescription("保存远程画面预览");preview.addView(previewSwitch);privacy.addView(preview);
         previewSwitch.setOnCheckedChangeListener((button,checked)->{if(updatingPreviewSwitch)return;if(checked){renderPreviews();confirmPreviewSaving();}else previews.setEnabled(false);});
         ui.divider(privacy);clearPreviewsButton=ui.action("清除预览图",RED,this::confirmClearPreviews);clearPreviewsButton.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);clearPreviewsButton.setTypeface(Typeface.DEFAULT);clearPreviewsButton.setPadding(dp(16),0,dp(16),0);privacy.addView(clearPreviewsButton,ui.size(-1,48));
         previewCleanupError=text("",12,false);previewCleanupError.setTextColor(RED);previewCleanupError.setPadding(dp(16),dp(8),dp(16),dp(12));privacy.addView(previewCleanupError);renderPreviews();
-        footer(content,"画面预览默认关闭。开启后，从下一次连接起保存一张远程画面到本机，显示在最近连接中，不上传且不纳入设备备份。关闭开关会清除已有预览；连接记录和密码不受影响。");LinearLayout about=section(content,"");link(about,"关于","",this::about);
+        footer(content,"画面预览默认关闭。开启后，从下一次连接起保存一张远程画面到本机，显示在最近连接中，不上传且不纳入设备备份。关闭开关会清除已有预览；连接记录和密码不受影响。");LinearLayout about=section(content,"",MobileUi.SETTINGS_CARD_RADIUS);link(about,"关于","",this::about);
     }
     private void confirmPreviewSaving(){
         previewDialog=new AlertDialog.Builder(this).setTitle("保存远程画面预览？")

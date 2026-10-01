@@ -25,12 +25,14 @@ final class SegmentedControl extends LinearLayout {
     private ValueAnimator animator;
 
     SegmentedControl(MobileUi ui,String[] titles,int selection,boolean enabled,IntConsumer changed){
-        super(ui.context);this.changed=changed;selected=Math.max(0,Math.min(titles.length-1,selection));radius=ui.dp(6);
-        setGravity(Gravity.CENTER_VERTICAL);setPadding(ui.dp(3),ui.dp(3),ui.dp(3),ui.dp(3));setBackground(ui.background(0xFFE9E9EF,8));paint.setColor(Color.WHITE);
+        super(ui.context);this.changed=changed;selected=Math.max(0,Math.min(titles.length-1,selection));
+        int inset=ui.dp(MobileUi.SEGMENT_INSET),height=ui.dp(MobileUi.SEGMENT_HEIGHT)-inset*2;
+        radius=height/2f;
+        setGravity(Gravity.CENTER_VERTICAL);setPadding(inset,inset,inset,inset);setBackground(ui.background(0xFFE9E9EF,MobileUi.SEGMENT_HEIGHT/2));paint.setColor(Color.WHITE);
         for(int i=0;i<titles.length;i++){
             final int index=i;TextView choice=ui.action(titles[i],MobileUi.INK,()->select(index));
-            choice.setTextSize(13);choice.setMinHeight(ui.dp(30));choice.setSelected(i==selected);choice.setEnabled(enabled);choice.setAlpha(enabled?1:.45f);
-            addView(choice,new LayoutParams(0,ui.dp(30),1));
+            choice.setTextSize(13);choice.setMinHeight(height);choice.setSelected(i==selected);choice.setEnabled(enabled);choice.setAlpha(enabled?1:.45f);
+            addView(choice,new LayoutParams(0,height,1));
         }
     }
 
