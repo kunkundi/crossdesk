@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
 import android.os.Handler;
@@ -129,16 +130,33 @@ final class RemoteVideoView extends FrameLayout implements SurfaceHolder.Callbac
     @Override public void surfaceDestroyed(SurfaceHolder holder) { session.surface(null); }
     private final class Cursor extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        Cursor(Context context) { super(context); setClickable(true); setContentDescription("远程桌面触控区域"); }
+        private final Path arrow = new Path();
+        private final float arrowWidth = 12, arrowHeight = 15;
+        Cursor(Context context) {
+            super(context); setClickable(true); setContentDescription("远程桌面触控区域");
+            // Match the iOS RemoteCursorArrowShape in density-independent units.
+            arrow.moveTo(arrowWidth*.08f,arrowHeight*.04f);
+            arrow.lineTo(arrowWidth*.08f,arrowHeight*.78f);
+            arrow.lineTo(arrowWidth*.34f,arrowHeight*.60f);
+            arrow.lineTo(arrowWidth*.55f,arrowHeight*.94f);
+            arrow.lineTo(arrowWidth*.73f,arrowHeight*.84f);
+            arrow.lineTo(arrowWidth*.52f,arrowHeight*.51f);
+            arrow.lineTo(arrowWidth*.88f,arrowHeight*.49f);
+            arrow.close();
+        }
         // GestureDetector calls performClick only after resolving tap vs drag/long press.
         @android.annotation.SuppressLint("ClickableViewAccessibility")
         @Override public boolean onTouchEvent(MotionEvent event) { return touch(event); }
         @Override public boolean performClick() { super.performClick(); click(1, 2); return true; }
         @Override protected void onDraw(Canvas canvas) {
-            paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(3);
-            paint.setColor(Color.WHITE); canvas.drawCircle(x*getWidth(),y*getHeight(),8,paint);
-            paint.setColor(Color.rgb(36,117,232)); paint.setStrokeWidth(1);
-            canvas.drawCircle(x*getWidth(),y*getHeight(),10,paint);
+            int saved=canvas.save();
+            canvas.translate(x*getWidth(),y*getHeight());
+            float density=getResources().getDisplayMetrics().density;canvas.scale(density,density);
+            // Anchor the arrow tip to the same normalized coordinate sent to the desktop.
+            canvas.translate(-arrowWidth*.08f,-arrowHeight*.04f);
+            paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1.75f);paint.setColor(Color.BLACK);canvas.drawPath(arrow,paint);
+            paint.setStyle(Paint.Style.FILL);paint.setColor(Color.WHITE);canvas.drawPath(arrow,paint);
+            canvas.restoreToCount(saved);
         }
     }
 }
