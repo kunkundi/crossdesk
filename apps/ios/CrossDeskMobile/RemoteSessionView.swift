@@ -279,7 +279,7 @@ struct RemoteSessionView: View {
                 containerSize: containerSize
             )
 
-            ZStack {
+            ZStack(alignment: .topLeading) {
                 if statusMenuVisible {
                     Color.clear
                         .contentShape(Rectangle())
@@ -288,35 +288,44 @@ struct RemoteSessionView: View {
                                 statusMenuVisible = false
                             }
                         }
-
-                    FloatingSessionMenu(
-                        session: session,
-                        showKeyboard: {
-                            statusMenuVisible = false
-                            keyboardInputVisible.toggle()
-                        },
-                        chooseFile: {
-                            statusMenuVisible = false
-                            showingFileImporter = true
-                        },
-                        close: {
-                            withAnimation(.easeOut(duration: 0.14)) {
-                                statusMenuVisible = false
-                            }
-                        },
-                        disconnect: {
-                            statusMenuVisible = false
-                            keyboardInputVisible = false
-                            withAnimation(.easeOut(duration: 0.18)) {
-                                disconnectConfirmationVisible = true
-                            }
-                        }
-                    )
-                    .frame(width: panelSize.width, height: panelSize.height)
-                    .position(panelCenter)
-                    .transition(.scale(scale: 0.94, anchor: .topTrailing)
-                        .combined(with: .opacity))
                 }
+
+                // Position a stable container, then animate only the panel
+                // inside it. Scaling a view after .position also scales its
+                // full-screen positioning space and makes the panel drift.
+                ZStack {
+                    if statusMenuVisible {
+                        FloatingSessionMenu(
+                            session: session,
+                            showKeyboard: {
+                                statusMenuVisible = false
+                                keyboardInputVisible.toggle()
+                            },
+                            chooseFile: {
+                                statusMenuVisible = false
+                                showingFileImporter = true
+                            },
+                            close: {
+                                withAnimation(.easeOut(duration: 0.14)) {
+                                    statusMenuVisible = false
+                                }
+                            },
+                            disconnect: {
+                                statusMenuVisible = false
+                                keyboardInputVisible = false
+                                withAnimation(.easeOut(duration: 0.18)) {
+                                    disconnectConfirmationVisible = true
+                                }
+                            }
+                        )
+                        .frame(width: panelSize.width, height: panelSize.height)
+                        .transition(.scale(scale: 0.94, anchor: .topTrailing)
+                            .combined(with: .opacity))
+                    }
+                }
+                .frame(width: panelSize.width, height: panelSize.height)
+                .position(panelCenter)
+                .allowsHitTesting(statusMenuVisible)
 
                 CrossDeskStatusOrb(isExpanded: statusMenuVisible)
                     .frame(width: 54, height: 54)
@@ -347,6 +356,7 @@ struct RemoteSessionView: View {
                             }
                     )
             }
+            .frame(width: containerSize.width, height: containerSize.height)
         }
     }
 
@@ -1071,8 +1081,8 @@ private struct FloatingSessionMenu: View {
     @ObservedObject var session: RemoteSessionModel
     private enum Page { case controls, videoSettings, networkStats }
     @State private var page: Page = .controls
-    @State private var displayedNetworkSnapshot = RemoteNetworkSnapshot()
-    @State private var displayedFrameSize = CGSize.zero
+    @State private var displayedNetworkSnapshot: RemoteNetworkSnapshot
+    @State private var displayedFrameSize: CGSize
     let showKeyboard: () -> Void
     let chooseFile: () -> Void
     let close: () -> Void
@@ -1080,6 +1090,22 @@ private struct FloatingSessionMenu: View {
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 7),
                                 count: 3)
+
+    init(session: RemoteSessionModel,
+         showKeyboard: @escaping () -> Void,
+         chooseFile: @escaping () -> Void,
+         close: @escaping () -> Void,
+         disconnect: @escaping () -> Void) {
+        self.session = session
+        self.showKeyboard = showKeyboard
+        self.chooseFile = chooseFile
+        self.close = close
+        self.disconnect = disconnect
+        // Render the first frame with real values instead of replacing empty
+        // placeholders while the panel's insertion animation is running.
+        _displayedNetworkSnapshot = State(initialValue: session.networkSnapshot)
+        _displayedFrameSize = State(initialValue: session.frameSize)
+    }
 
     var body: some View {
         VStack(spacing: 9) {
@@ -1102,9 +1128,11 @@ private struct FloatingSessionMenu: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(session.connectionStatus)
                             .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
                         Text(statusDetail)
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
                 Spacer()

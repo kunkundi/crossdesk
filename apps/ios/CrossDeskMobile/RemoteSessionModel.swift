@@ -948,7 +948,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             return "连接建立后可调整，需被控端支持。"
         }
         if videoSettings.failed { return "调整失败，请重试。" }
-        return videoSettings.pending ? "正在应用…" : ""
+        return ""
     }
 
     func updateVideoSettings(quality: Int? = nil, frameRate: Int? = nil,
