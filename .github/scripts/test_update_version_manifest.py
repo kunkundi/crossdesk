@@ -45,7 +45,9 @@ class ManifestTest(unittest.TestCase):
         self.assertEqual(result["downloads"]["windows-x64"], original["downloads"]["windows-x64"])
         self.assertEqual(result["downloads"]["android-arm64"]["url"],
                          "https://downloads.crossdesk.cn/crossdesk-android-arm64-unsigned-v1.6.0-20261002.apk")
-        self.assertEqual(result["platforms"]["android"]["latest_version"], "1.6.0-20261002")
+        self.assertEqual(result["downloads"]["android-arm64"]["version"], "1.6.0-20261002")
+        self.assertEqual(result["downloads"]["android-arm64"]["releaseDate"], "2026-10-02")
+        self.assertNotIn("platforms", result)
         self.assertEqual(self.current, original)
 
     def test_sequential_platform_releases_retain_each_other(self):
@@ -55,9 +57,11 @@ class ManifestTest(unittest.TestCase):
                 version, extension = ("0.0.2", "zip") if platform == "ios" else ("1.6.0", "apk")
                 downloads = self.files(f"crossdesk-{platform}-arm64-unsigned-v{version}-20261002.{extension}")
                 result = self.merge(f"{platform}-v{version}-20261002", downloads, result)
-            self.assertEqual(set(result["platforms"]), {"ios", "android"})
+            self.assertNotIn("platforms", result)
             self.assertEqual(result["version"], self.current["version"])
             self.assertTrue({"windows-x64", "ios-arm64", "android-arm64"} <= result["downloads"].keys())
+            self.assertEqual(result["downloads"]["ios-arm64"]["version"], "0.0.2-20261002")
+            self.assertEqual(result["downloads"]["android-arm64"]["version"], "1.6.0-20261002")
 
     def test_combined_release_records_independent_mobile_versions(self):
         downloads = self.files("crossdesk-win-x64-v1.6.1-20261002.exe",
@@ -66,8 +70,22 @@ class ManifestTest(unittest.TestCase):
                                "crossdesk-android-arm64-unsigned-v1.6.0-20261002.apk")
         result = self.merge("v1.6.1-20261002", downloads)
         self.assertEqual(result["version"], "1.6.1-20261002")
-        self.assertEqual(result["platforms"]["ios"]["version"], "0.0.2-20261002")
-        self.assertEqual(result["platforms"]["android"]["version"], "1.6.0-20261002")
+        self.assertEqual(result["downloads"]["ios-arm64"]["version"], "0.0.2-20261002")
+        self.assertEqual(result["downloads"]["android-arm64"]["version"], "1.6.0-20261002")
+        self.assertNotIn("platforms", result)
+
+    def test_obsolete_platforms_are_removed_on_any_release(self):
+        for tag, artifact in (
+            ("android-v1.6.0-20261002", "crossdesk-android-arm64-unsigned-v1.6.0-20261002.apk"),
+            ("v1.6.1-20261002", "crossdesk-win-x64-v1.6.1-20261002.exe"),
+        ):
+            downloads = self.files(artifact)
+            expected = self.merge(tag, downloads)
+            for obsolete in ({"ios": {"version": "0.0.1"}}, []):
+                current = {**copy.deepcopy(self.current), "platforms": obsolete}
+                original = copy.deepcopy(current)
+                self.assertEqual(self.merge(tag, downloads, current), expected)
+                self.assertEqual(current, original)
 
     def test_mobile_tag_must_match_artifact_and_platform(self):
         downloads = self.files("crossdesk-android-arm64-unsigned-v1.6.0-20261002.apk")
@@ -77,7 +95,7 @@ class ManifestTest(unittest.TestCase):
 
     def test_invalid_current_manifest_is_rejected(self):
         downloads = self.files("crossdesk-android-arm64-unsigned-v1.6.0-20261002.apk")
-        for current in ([], {}, {"downloads": []}, {"downloads": {}, "platforms": []}):
+        for current in ([], {}, {"downloads": []}):
             with self.assertRaises(ValueError):
                 manifest.merge_release(current, "android-v1.6.0-20261002", "Android", "", downloads)
 
@@ -95,9 +113,9 @@ class ManifestTest(unittest.TestCase):
             self.assertEqual(info["releaseDate"], "2026-10-02")
 
     def test_cli_preserves_literal_notes_and_release_metadata(self):
-        self.files("crossdesk-ios-arm64-unsigned-v0.0.2-20261002.zip")
+        self.files("crossdesk-win-x64-v1.6.1-20261002.exe")
         notes = '中文 release notes\n"quoted" $(not-a-command) $HOME `literal`'
-        release = {"tagName": "ios-v0.0.2-20261002", "name": "iOS release", "body": notes}
+        release = {"tagName": "v1.6.1-20261002", "name": "Desktop release", "body": notes}
         (self.root / "current.json").write_text(json.dumps(self.current))
         (self.root / "release.json").write_text(json.dumps(release))
         output = self.root / "version.json"
@@ -106,8 +124,10 @@ class ManifestTest(unittest.TestCase):
                         "--artifacts", str(self.artifacts), "--release-json", str(self.root / "release.json")],
                        check=True, capture_output=True, text=True)
         result = json.loads(output.read_text())
-        self.assertEqual(result["platforms"]["ios"]["releaseNotes"], notes)
-        self.assertEqual(result["releaseNotes"], "Desktop notes")
+        self.assertEqual(result["releaseNotes"], notes)
+        self.assertEqual(result["releaseName"], "Desktop release")
+        self.assertEqual(result["tagName"], "v1.6.1-20261002")
+        self.assertNotIn("platforms", result)
 
 
 if __name__ == "__main__":

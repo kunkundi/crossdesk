@@ -66,8 +66,6 @@ def artifact_downloads(directory):
 def merge_release(current, tag, name, notes, downloads, published_date=None):
     if not isinstance(current, dict) or not isinstance(current.get("downloads"), dict):
         raise ValueError("Current version.json must contain a downloads object")
-    if not isinstance(current.get("platforms", {}), dict):
-        raise ValueError("Current version.json platforms must be an object")
     mobile = re.fullmatch(r"(ios|android)-(v.+)", tag)
     if mobile:
         platform, version = mobile.groups()
@@ -83,18 +81,10 @@ def merge_release(current, tag, name, notes, downloads, published_date=None):
         metadata = version_info(tag, published_date)
 
     result = dict(current)
+    result.pop("platforms", None)
     result["downloads"] = {**current["downloads"], **downloads}
-    result["platforms"] = dict(current.get("platforms", {}))
-    release = {**metadata, "releaseName": name, "releaseNotes": notes, "tagName": tag}
     if not mobile:
-        result.update(release)
-    for platform in ("ios", "android"):
-        download = downloads.get(f"{platform}-arm64")
-        if download:
-            info = version_info(download["version"])
-            result["platforms"][platform] = {
-                **info, "releaseName": name, "releaseNotes": notes, "tagName": tag,
-            }
+        result.update({**metadata, "releaseName": name, "releaseNotes": notes, "tagName": tag})
     return result
 
 
