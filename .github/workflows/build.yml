@@ -561,6 +561,9 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [build-linux, build-macos, build-ios, build-android, build-windows-x64]
     runs-on: ubuntu-latest
+    concurrency:
+      group: publish-release-metadata
+      cancel-in-progress: false
 
     steps:
       - name: Checkout repository
@@ -570,6 +573,9 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           path: artifacts
+
+      - name: Verify release manifest updates
+        run: python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
 
       - name: Extract version number
         id: version
@@ -681,63 +687,32 @@ jobs:
       - name: Upload artifacts to server
         uses: burnett01/rsync-deployments@5.2
         with:
-          switches: -avzr --progress --delete
+          switches: -avzr --progress
           path: release/*
           remote_path: /var/www/html/downloads/
           remote_host: ${{ secrets.SERVER_HOST }}
           remote_user: ${{ secrets.SERVER_USER }}
           remote_key: ${{ secrets.SERVER_KEY }}
 
-      - name: Generate version.json
+      - name: Download current version.json
         run: |
-          cat > version.json << EOF
-          {
-            "latest_version": "${{ steps.version.outputs.VERSION_NUM }}",
-            "version": "${{ steps.version.outputs.VERSION_NUM }}",
-            "releaseDate": "${{ steps.version.outputs.BUILD_DATE_ISO }}",
-            "patch": ${{ steps.version.outputs.PATCH_NUMBER }},
-            "releaseName": "",
-            "releaseNotes": "",
-            "tagName": "${{ steps.version.outputs.VERSION_WITH_V }}",
-            "downloads": {
-              "windows-x64": {
-                "url": "https://downloads.crossdesk.cn/crossdesk-win-x64-${{ steps.version.outputs.VERSION_WITH_V }}.exe",
-                "filename": "crossdesk-win-x64-${{ steps.version.outputs.VERSION_WITH_V }}.exe"
-              },
-              "windows-x64-portable": {
-                "url": "https://downloads.crossdesk.cn/crossdesk-win-x64-portable-${{ steps.version.outputs.VERSION_WITH_V }}.zip",
-                "filename": "crossdesk-win-x64-portable-${{ steps.version.outputs.VERSION_WITH_V }}.zip"
-              },
-              "macos-x64": {
-                "url": "https://downloads.crossdesk.cn/crossdesk-macos-x64-${{ steps.version.outputs.VERSION_WITH_V }}.pkg",
-                "filename": "crossdesk-macos-x64-${{ steps.version.outputs.VERSION_WITH_V }}.pkg"
-              },
-              "macos-arm64": {
-                "url": "https://downloads.crossdesk.cn/crossdesk-macos-arm64-${{ steps.version.outputs.VERSION_WITH_V }}.pkg",
-                "filename": "crossdesk-macos-arm64-${{ steps.version.outputs.VERSION_WITH_V }}.pkg"
-              },
-              "linux-amd64": {
-                "url": "https://downloads.crossdesk.cn/crossdesk-linux-amd64-${{ steps.version.outputs.VERSION_WITH_V }}.deb",
-                "filename": "crossdesk-linux-amd64-${{ steps.version.outputs.VERSION_WITH_V }}.deb"
-              },
-              "linux-arm64": {
-                "url": "https://downloads.crossdesk.cn/crossdesk-linux-arm64-${{ steps.version.outputs.VERSION_WITH_V }}.deb",
-                "filename": "crossdesk-linux-arm64-${{ steps.version.outputs.VERSION_WITH_V }}.deb"
-              }
-            }
-          }
-          EOF
-          jq --arg release_name "Release ${{ steps.version.outputs.VERSION_WITH_V }}" \
-            --rawfile release_notes "$RUNNER_TEMP/release-notes.md" \
-            '.releaseName = $release_name | .releaseNotes = $release_notes' \
-            version.json > version-with-notes.json
-          mv version-with-notes.json version.json
-          cat version.json
+          curl --fail --silent --show-error --retry 3 --max-time 30 \
+            -H 'Cache-Control: no-cache' \
+            https://version.crossdesk.cn/version.json -o current-version.json
+
+      - name: Generate version.json for all platforms
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.VERSION_WITH_V }}
+        run: |
+          python3 .github/scripts/update_version_manifest.py \
+            --current current-version.json --output version.json --artifacts release \
+            --tag "${RELEASE_TAG}" --name "Release ${RELEASE_TAG}" \
+            --notes "${RUNNER_TEMP}/release-notes.md"
 
       - name: Upload version.json to server
         uses: burnett01/rsync-deployments@5.2
         with:
-          switches: -avzr --delete
+          switches: -avzr
           path: version.json
           remote_path: /var/www/html/version/
           remote_host: ${{ secrets.SERVER_HOST }}

@@ -3,161 +3,85 @@ name: Update version.json from Release
 on:
   release:
     types: [published, edited]
+  workflow_dispatch:
+    inputs:
+      source_tag:
+        description: "Existing version tag whose assets and metadata should be uploaded to the server."
+        required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   update-version-json:
-    name: Update version.json with release information
-    if: ${{ !startsWith(github.event.release.tag_name, 'ios-v') && !startsWith(github.event.release.tag_name, 'android-v') }}
-    runs-on: ubuntu-latest
-
+    name: Upload release downloads and update version.json
+    if: github.event_name == 'workflow_dispatch' || (github.event.release.tag_name != 'latest' && !github.event.release.prerelease)
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: publish-release-metadata
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.source_tag || github.event.release.tag_name }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout publishing scripts
+        uses: actions/checkout@v5
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.event.repository.default_branch }}
 
-      - name: Extract version from tag
-        id: version
+      - name: Verify release manifest updates
+        run: python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
+
+      - name: Download release information and assets
         shell: bash
         run: |
-          TAG_NAME="${{ github.event.release.tag_name }}"
-          TAG_VERSION="${TAG_NAME#v}"
-          VERSION_FULL="${TAG_VERSION}"
-          VERSION_BASE="${TAG_VERSION}"
-          PATCH_NUMBER=0
+          python3 - <<'PY'
+          import os
+          import re
+          if not re.fullmatch(r'(?:ios-|android-)?v[0-9]+(?:\.[0-9]+){1,3}(?:-[0-9]+)*', os.environ['RELEASE_TAG']):
+              raise ValueError('Use a desktop, iOS or Android version tag')
+          PY
+          gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" \
+            --json tagName,name,body,publishedAt,isDraft,isPrerelease > release.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          release = json.loads(Path('release.json').read_text())
+          if release['isDraft'] or release['isPrerelease']:
+              raise ValueError('Only published stable releases update version.json')
+          PY
+          gh release download "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" \
+            --pattern 'crossdesk-*' --dir release
 
-          # Extract date and patch from tags such as v1.2.3-1-20251113.
-          if [[ "${TAG_VERSION}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]+)-([0-9]{8})$ ]]; then
-            VERSION_BASE="${BASH_REMATCH[1]}"
-            PATCH_NUMBER="${BASH_REMATCH[3]}"
-            DATE_STR="${BASH_REMATCH[4]}"
-            BUILD_DATE_ISO="${DATE_STR:0:4}-${DATE_STR:4:2}-${DATE_STR:6:2}"
-          elif [[ "${TAG_VERSION}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})-([0-9]+)$ ]]; then
-            VERSION_BASE="${BASH_REMATCH[1]}"
-            DATE_STR="${BASH_REMATCH[3]}"
-            PATCH_NUMBER="${BASH_REMATCH[4]}"
-            BUILD_DATE_ISO="${DATE_STR:0:4}-${DATE_STR:4:2}-${DATE_STR:6:2}"
-          elif [[ "${TAG_VERSION}" =~ ^([0-9]+(\.[0-9]+){1,3})-([0-9]{8})$ ]]; then
-            VERSION_BASE="${BASH_REMATCH[1]}"
-            DATE_STR="${BASH_REMATCH[3]}"
-            BUILD_DATE_ISO="${DATE_STR:0:4}-${DATE_STR:4:2}-${DATE_STR:6:2}"
-          else
-            # Use release published date
-            BUILD_DATE_ISO=$(echo "${{ github.event.release.published_at }}" | cut -d'T' -f1)
-          fi
+      - name: Upload release assets to download server
+        uses: burnett01/rsync-deployments@5.2
+        with:
+          switches: -avzr --progress
+          path: release/*
+          remote_path: /var/www/html/downloads/
+          remote_host: ${{ secrets.SERVER_HOST }}
+          remote_user: ${{ secrets.SERVER_USER }}
+          remote_key: ${{ secrets.SERVER_KEY }}
 
-          echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_OUTPUT
-          echo "VERSION_FULL=${VERSION_FULL}" >> $GITHUB_OUTPUT
-          echo "VERSION_BASE=${VERSION_BASE}" >> $GITHUB_OUTPUT
-          echo "BUILD_DATE_ISO=${BUILD_DATE_ISO}" >> $GITHUB_OUTPUT
-          echo "PATCH_NUMBER=${PATCH_NUMBER}" >> $GITHUB_OUTPUT
-
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: Get release information
-        id: release_info
+      - name: Download current version.json
+        shell: bash
         run: |
-          # Use jq to properly escape JSON
-          RELEASE_BODY="${{ github.event.release.body }}"
-          RELEASE_NAME="${{ github.event.release.name }}"
+          curl --fail --silent --show-error --retry 3 --max-time 30 \
+            -H 'Cache-Control: no-cache' \
+            https://version.crossdesk.cn/version.json -o current-version.json
 
-          # Handle empty values
-          if [ -z "$RELEASE_BODY" ]; then
-            RELEASE_BODY=""
-          fi
-          if [ -z "$RELEASE_NAME" ]; then
-            RELEASE_NAME=""
-          fi
-
-          # Save to temporary files for proper handling
-          echo -n "$RELEASE_BODY" > /tmp/release_body.txt
-          echo -n "$RELEASE_NAME" > /tmp/release_name.txt
-
-          # Use jq to escape JSON strings
-          RELEASE_BODY_JSON=$(jq -Rs . < /tmp/release_body.txt)
-          RELEASE_NAME_JSON=$(jq -Rs . < /tmp/release_name.txt)
-
-          echo "RELEASE_BODY=${RELEASE_BODY_JSON}" >> $GITHUB_OUTPUT
-          echo "RELEASE_NAME=${RELEASE_NAME_JSON}" >> $GITHUB_OUTPUT
-
-      - name: Download current version.json from server
-        id: download_version
-        continue-on-error: true
+      - name: Merge release version and download URLs
+        shell: bash
         run: |
-          # Try to download current version.json from server
-          curl -f -s "https://version.crossdesk.cn/version.json" -o version.json || echo "Failed to download, will create new one"
-
-      - name: Generate or update version.json
-        run: |
-          # If version.json exists, try to preserve downloads section
-          if [ -f version.json ] && jq -e '.downloads' version.json > /dev/null 2>&1; then
-            EXISTING_DOWNLOADS=$(jq -c '.downloads' version.json)
-            if [ "$EXISTING_DOWNLOADS" != "null" ] && [ "$EXISTING_DOWNLOADS" != "{}" ]; then
-              DOWNLOADS_JSON="$EXISTING_DOWNLOADS"
-            else
-              DOWNLOADS_JSON=""
-            fi
-          else
-            DOWNLOADS_JSON=""
-          fi
-
-          # If downloads is empty, use default structure
-          if [ -z "$DOWNLOADS_JSON" ]; then
-            DOWNLOADS_JSON=$(cat << DOWNLOADS_EOF
-            {
-              "windows-x64": {
-                "url": "https://downloads.crossdesk.cn/crossdesk-win-x64-${{ steps.version.outputs.TAG_NAME }}.exe",
-                "filename": "crossdesk-win-x64-${{ steps.version.outputs.TAG_NAME }}.exe"
-              },
-              "windows-x64-portable": {
-                "url": "https://downloads.crossdesk.cn/crossdesk-win-x64-portable-${{ steps.version.outputs.TAG_NAME }}.zip",
-                "filename": "crossdesk-win-x64-portable-${{ steps.version.outputs.TAG_NAME }}.zip"
-              },
-              "macos-x64": {
-                "url": "https://downloads.crossdesk.cn/crossdesk-macos-x64-${{ steps.version.outputs.TAG_NAME }}.pkg",
-                "filename": "crossdesk-macos-x64-${{ steps.version.outputs.TAG_NAME }}.pkg"
-              },
-              "macos-arm64": {
-                "url": "https://downloads.crossdesk.cn/crossdesk-macos-arm64-${{ steps.version.outputs.TAG_NAME }}.pkg",
-                "filename": "crossdesk-macos-arm64-${{ steps.version.outputs.TAG_NAME }}.pkg"
-              },
-              "linux-amd64": {
-                "url": "https://downloads.crossdesk.cn/crossdesk-linux-amd64-${{ steps.version.outputs.TAG_NAME }}.deb",
-                "filename": "crossdesk-linux-amd64-${{ steps.version.outputs.TAG_NAME }}.deb"
-              },
-              "linux-arm64": {
-                "url": "https://downloads.crossdesk.cn/crossdesk-linux-arm64-${{ steps.version.outputs.TAG_NAME }}.deb",
-                "filename": "crossdesk-linux-arm64-${{ steps.version.outputs.TAG_NAME }}.deb"
-              }
-            }
-          DOWNLOADS_EOF
-                      )
-                    fi
-
-          # Generate version.json using cat and heredoc
-          cat > version.json << EOF
-          {
-            "latest_version": "${{ steps.version.outputs.VERSION_FULL }}",
-            "version": "${{ steps.version.outputs.VERSION_FULL }}",
-            "releaseDate": "${{ steps.version.outputs.BUILD_DATE_ISO }}",
-            "patch": ${{ steps.version.outputs.PATCH_NUMBER }},
-            "releaseName": ${{ steps.release_info.outputs.RELEASE_NAME }},
-            "releaseNotes": ${{ steps.release_info.outputs.RELEASE_BODY }},
-            "tagName": "${{ steps.version.outputs.TAG_NAME }}",
-            "downloads": ${DOWNLOADS_JSON}
-          }
-          EOF
-
-          cat version.json
+          python3 .github/scripts/update_version_manifest.py \
+            --current current-version.json --output version.json --artifacts release \
+            --release-json release.json
 
       - name: Upload version.json to server
         uses: burnett01/rsync-deployments@5.2
         with:
-          switches: -avzr --delete
+          switches: -avzr
           path: version.json
           remote_path: /var/www/html/version/
           remote_host: ${{ secrets.SERVER_HOST }}

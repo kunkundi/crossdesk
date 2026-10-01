@@ -84,7 +84,9 @@ git push origin android-v1.6.0-20261002
 
 该标签只触发安卓构建，将未签名 Release APK 发布到独立的 GitHub Release 和现有下载服务器。标签版本必须与应用版本一致，日期必须有效。重试发布时，在 Actions 页面手动运行 `Release Mobile`，将已有标签填入 `source_tag`；即使从其他分支触发，也会检出该标签的源码。APK 的源码资料记录安卓标签及准确的应用、MiniRTC 提交。
 
-移动端独立发布不会更新桌面 `latest` 标签、GitHub 的最新 Release 选择或桌面 `version.json`。下载服务器上传保留其他平台文件，复用仓库已有的 `SERVER_HOST`、`SERVER_USER`、`SERVER_KEY` Secrets。普通桌面版本标签仍通过 `Build and Release` 发布全部平台；单独运行 `Build Android` 仍只上传 Actions 构建产物。
+移动端独立发布保留桌面 `latest` 标签和 GitHub 的最新 Release 选择。APK 上传完成后，将服务器下载地址合并到共享 `https://version.crossdesk.cn/version.json` 的 `downloads.android-arm64`，将安卓版本、发布日期和说明写入 `platforms.android`；保留顶层桌面版本信息和其他平台的下载项。下载服务器上传保留其他平台文件，复用仓库已有的 `SERVER_HOST`、`SERVER_USER`、`SERVER_KEY` Secrets。普通桌面版本标签仍通过 `Build and Release` 发布全部平台并更新各平台下载项；所有发布任务更新版本文件时使用同一队列。单独运行 `Build Android` 仍只上传 Actions 构建产物。
+
+已有 Release 需要补传服务器或刷新下载信息时，可手动运行 `Update version.json from Release` 并填写已有 `source_tag`，无需重新构建。
 
 工作流使用 Ubuntu 24.04、JDK 17、Python 3.13、SDK 36、Build Tools 36.0.0、NDK r28c 和 Xmake 3.1.1。Gradle 使用工程内的 Wrapper，原生构建器固定 Xmake 包仓库版本。Gradle 缓存与 Android 原生依赖缓存分别管理；原生缓存按宿主架构、构建脚本及 MiniRTC 配方区分，不复用桌面或 iOS 的配置和目标文件。
 

@@ -76,7 +76,7 @@ jobs:
     permissions:
       contents: write
     concurrency:
-      group: mobile-release-${{ needs.prepare.outputs.tag }}
+      group: publish-release-metadata
       cancel-in-progress: false
     env:
       PLATFORM: ${{ needs.prepare.outputs.platform }}
@@ -85,6 +85,12 @@ jobs:
       VERSION: ${{ needs.prepare.outputs.version }}
       BUILD_VERSION: ${{ needs.build-ios.outputs.version || needs.build-android.outputs.version }}
     steps:
+      - name: Checkout publishing scripts
+        uses: actions/checkout@v5
+
+      - name: Verify release manifest updates
+        run: python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
+
       - name: Verify release version
         shell: bash
         run: |
@@ -143,7 +149,34 @@ jobs:
           remote_user: ${{ secrets.SERVER_USER }}
           remote_key: ${{ secrets.SERVER_KEY }}
 
+      - name: Download current version.json
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --retry 3 --max-time 30 \
+            -H 'Cache-Control: no-cache' \
+            https://version.crossdesk.cn/version.json -o current-version.json
+
+      - name: Update mobile version and download URL
+        shell: bash
+        env:
+          RELEASE_NAME: ${{ env.PLATFORM == 'ios' && 'iOS' || 'Android' }} ${{ env.VERSION }}
+        run: |
+          python3 .github/scripts/update_version_manifest.py \
+            --current current-version.json --output version.json --artifacts release \
+            --tag "${SOURCE_TAG}" --name "${RELEASE_NAME}" \
+            --notes "${RUNNER_TEMP}/mobile-release-notes.md"
+
+      - name: Upload version.json to server
+        uses: burnett01/rsync-deployments@5.2
+        with:
+          switches: -avzr
+          path: version.json
+          remote_path: /var/www/html/version/
+          remote_host: ${{ secrets.SERVER_HOST }}
+          remote_user: ${{ secrets.SERVER_USER }}
+          remote_key: ${{ secrets.SERVER_KEY }}
+
       - name: Summarize release
         shell: bash
         run: |
-          echo "Published [${SOURCE_TAG}](https://github.com/${GITHUB_REPOSITORY}/releases/tag/${SOURCE_TAG}) and uploaded its unsigned ${PLATFORM} artifact to the download server." >> "${GITHUB_STEP_SUMMARY}"
+          echo "Published [${SOURCE_TAG}](https://github.com/${GITHUB_REPOSITORY}/releases/tag/${SOURCE_TAG}), uploaded its unsigned ${PLATFORM} artifact to the download server, and updated version.json." >> "${GITHUB_STEP_SUMMARY}"

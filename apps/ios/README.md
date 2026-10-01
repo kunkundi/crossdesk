@@ -112,11 +112,17 @@ manually and enter the existing tag in `source_tag`; it builds that tag's source
 even when the workflow is dispatched from a different branch. Source metadata
 records the iOS tag and exact application/MiniRTC commits.
 
-Mobile releases keep the desktop `latest` tag, GitHub's latest release selection
-and desktop `version.json` unchanged. Uploads preserve other platforms' files
-on the download server and use the existing `SERVER_HOST`, `SERVER_USER` and
-`SERVER_KEY` repository secrets. Regular desktop version tags still publish all
-platforms through `Build and Release`.
+Mobile releases keep the desktop `latest` tag and GitHub's latest release
+selection unchanged. After uploading the ZIP, the workflow merges its server
+URL into `downloads.ios-arm64` and its version, date and release notes into
+`platforms.ios` in the shared `https://version.crossdesk.cn/version.json`.
+Top-level desktop version information and other platforms' entries are retained.
+Uploads preserve other platforms' files and use the existing `SERVER_HOST`,
+`SERVER_USER` and `SERVER_KEY` repository secrets. Regular desktop version tags
+still publish all platforms and update their download entries through
+`Build and Release`. All publishing jobs share one queue when updating the manifest.
+To upload an existing release and refresh its download metadata without rebuilding,
+run `Update version.json from Release` with its existing `source_tag`.
 
 No Apple signing secrets are needed. Sign the app yourself before installing
 it on a device. Push any referenced MiniRTC commit before the parent repository
