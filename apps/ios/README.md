@@ -114,8 +114,8 @@ records the iOS tag and exact application/MiniRTC commits.
 
 Mobile releases keep the desktop `latest` tag and GitHub's latest release
 selection unchanged. After uploading the ZIP, the workflow merges its server
-URL into `downloads.ios-arm64` and its version, date and release notes into
-`platforms.ios` in the shared `https://version.crossdesk.cn/version.json`.
+URL, version and release date into `downloads.ios-arm64` in the shared
+`https://version.crossdesk.cn/version.json`.
 Top-level desktop version information and other platforms' entries are retained.
 Uploads preserve other platforms' files and use the existing `SERVER_HOST`,
 `SERVER_USER` and `SERVER_KEY` repository secrets. Regular desktop version tags
