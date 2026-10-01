@@ -11,6 +11,8 @@ target("crossdesk_android")
     add_packages("nlohmann_json", "libyuv", "spdlog")
     add_files("rtc_bridge.cpp", "../../../libs/wire/src/remote_action.cpp", "../../../libs/wire/src/app_version.cpp")
     add_includedirs("../../../deps/submodules/minirtc/src/api", "../../../libs/wire/include")
+    -- This source-level JNI adapter is the only application layer using MiniRTC internals.
+    add_includedirs("../../../deps/submodules/minirtc/src/media/mediacodec")
     add_syslinks("android", "log")
     add_shflags("-Wl,-z,max-page-size=16384", "-Wl,-z,common-page-size=16384", {force = true})
     set_targetdir("../app/build/native/arm64-v8a")

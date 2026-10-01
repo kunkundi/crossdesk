@@ -95,9 +95,9 @@ jobs:
       - name: Verify APKs and native protocol
         working-directory: apps/android
         run: |
-          python3 -B scripts/verify_apk.py app/build/outputs/apk/debug/app-debug.apk
-          python3 -B scripts/verify_apk.py app/build/outputs/apk/release/app-release-unsigned.apk
-          python3 -B scripts/test_protocol.py
+          python3 -B test/verify_apk.py app/build/outputs/apk/debug/app-debug.apk
+          python3 -B test/verify_apk.py app/build/outputs/apk/release/app-release-unsigned.apk
+          python3 -B test/run_native.py
           "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify app/build/outputs/apk/debug/app-debug.apk
           "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 

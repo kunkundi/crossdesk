@@ -19,6 +19,8 @@ android {
     }
     sourceSets.main.jniLibs.srcDirs = [layout.buildDirectory.dir('native')]
     sourceSets.main.assets.srcDirs += [layout.buildDirectory.dir('generated/notices')]
+    sourceSets.androidTest.java.srcDirs = ['../test/android/java']
+    sourceSets.androidTest.assets.srcDirs = ['../test/android/assets']
     buildTypes.release { minifyEnabled false }
     packaging.jniLibs.useLegacyPackaging = false
 }

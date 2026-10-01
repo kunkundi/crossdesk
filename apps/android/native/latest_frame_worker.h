@@ -1,4 +1,11 @@
-#pragma once
+/*
+ * @Author: DI JUNKUN
+ * @Date: 2026-10-02
+ * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
+ */
+
+#ifndef _LATEST_FRAME_WORKER_H_
+#define _LATEST_FRAME_WORKER_H_
 
 #include <condition_variable>
 #include <functional>
@@ -61,3 +68,5 @@ class LatestFrameWorker {
   std::thread thread_;
 };
 }  // namespace crossdesk::android_controller
+
+#endif

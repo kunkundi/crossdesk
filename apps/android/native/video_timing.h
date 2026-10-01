@@ -1,4 +1,11 @@
-#pragma once
+/*
+ * @Author: DI JUNKUN
+ * @Date: 2026-10-02
+ * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
+ */
+
+#ifndef _VIDEO_TIMING_H_
+#define _VIDEO_TIMING_H_
 
 #include <cstdint>
 
@@ -16,3 +23,5 @@ inline double VideoLatencyMilliseconds(uint64_t captured_us,
   return (static_cast<uint64_t>(submitted_us) - captured_us) / 1000.0;
 }
 }  // namespace crossdesk::android_controller
+
+#endif

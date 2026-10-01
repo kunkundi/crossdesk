@@ -1,4 +1,11 @@
-#pragma once
+/*
+ * @Author: DI JUNKUN
+ * @Date: 2026-10-02
+ * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
+ */
+
+#ifndef _CONTROLLER_PROTOCOL_H_
+#define _CONTROLLER_PROTOCOL_H_
 
 #include <minirtc.h>
 #include <nlohmann/json.hpp>
@@ -24,3 +31,5 @@ inline nlohmann::json NetworkReport(const MiniRtcNetTrafficStats& stats, Travers
     {"total", traffic(stats.total_inbound_stats, stats.total_outbound_stats)}};
 }
 }  // namespace crossdesk::android_controller
+
+#endif

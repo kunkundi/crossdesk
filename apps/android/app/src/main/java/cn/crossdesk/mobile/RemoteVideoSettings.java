@@ -23,8 +23,8 @@ final class RemoteVideoSettings {
     long requestId,appliedRequestId;
     RemoteVideoSettings(int preference){this(preference,1920);}
     RemoteVideoSettings(int preference,int displayLongEdge){
-        // This Android pipeline uses software decoding. A 4K/60 startup can
-        // outrun mobile CPUs before the first settings acknowledgement arrives.
+        // Start within common mobile decoder limits. Hardware availability and
+        // maximum resolution vary, and AV1 may still need software fallback.
         // Small screens need no more than 720p; larger screens start at 1080p.
         // All quality/frame-rate choices remain available for manual adjustment.
         selection=applied=new Values(displayLongEdge>0&&displayLongEdge<=1280?0:1,30,preference>=0&&preference<=2?preference:1);

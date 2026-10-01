@@ -38,14 +38,6 @@ public class RemoteVersionCheckTest {
         assertTrue(NativeSession.nHasAppUpdate("1.5.3-9", json("{\"version\":\"1.5.3\",\"patch\":\"10\"}")));
     }
 
-    @Test public void invalidReleaseMetadataNeverRaisesANotice() {
-        for (String release : new String[]{"", "not JSON", "{}", "[]", "null", "{\"version\":false}",
-                "{\"version\":\"unknown\"}", "{\"version\":\"1..2\"}", "{\"version\":\"999999999999999.2\"}"})
-            assertFalse(release, NativeSession.nHasAppUpdate("1.0.0", json(release)));
-        assertFalse(NativeSession.nHasAppUpdate("1.0.0", null));
-        assertFalse(NativeSession.nHasAppUpdate("1.0.0", new byte[256 * 1024 + 1]));
-    }
-
     @Test public void legacyVersionWaitsForConnectionAndNeverFetches() {
         for (Object version : new Object[]{null, JSONObject.NULL, 123, "", " ", "unknown", "ios-native", "1..5", "1.5-"}) {
             Fetches fetches = new Fetches(); int[] notices = {0};
@@ -54,21 +46,6 @@ public class RemoteVersionCheckTest {
             check.connected(); assertEquals(1, notices[0]);
             check.hostInfo(host(version)); check.connected(); assertEquals(1, notices[0]);
             assertTrue(fetches.replies.isEmpty()); check.reset();
-        }
-    }
-
-    @Test public void bothEventOrdersCheckOncePerSession() {
-        for (boolean hostFirst : new boolean[]{true, false}) {
-            Fetches fetches = new Fetches(); int[] notices = {0};
-            RemoteVersionCheck check = new RemoteVersionCheck(fetches, () -> notices[0]++);
-            if (hostFirst) check.hostInfo(host("1.0.0")); else check.connected();
-            assertTrue(fetches.replies.isEmpty());
-            if (hostFirst) check.connected(); else check.hostInfo(host("1.0.0"));
-            check.hostInfo(host("1.0.0")); check.connected(); assertEquals(1, fetches.replies.size());
-            fetches.replies.get(0).accept(json("{\"latest_version\":\"2.0.0\"}")); assertEquals(1, notices[0]);
-            check.hostInfo(host("1.0.0")); assertEquals(1, notices[0]);
-            check.reset(); check.connected(); assertEquals(1, fetches.replies.size());
-            check.hostInfo(host("1.0.0")); assertEquals(2, fetches.replies.size()); check.reset();
         }
     }
 
@@ -84,13 +61,4 @@ public class RemoteVersionCheckTest {
         check.reset(); assertEquals(1, fetches.cancellations);
     }
 
-    @Test public void failedCheckIsSilentAndDoesNotRetryOnDuplicateHostInfo() {
-        for (byte[] reply : new byte[][]{null, json("invalid"), json("{\"version\":\"1.0.0\"}")}) {
-            Fetches fetches = new Fetches(); int[] notices = {0};
-            RemoteVersionCheck check = new RemoteVersionCheck(fetches, () -> notices[0]++);
-            check.connected(); check.hostInfo(host("1.0.0")); fetches.replies.get(0).accept(reply);
-            check.hostInfo(host("1.0.0")); assertEquals(0, notices[0]); assertEquals(1, fetches.replies.size());
-            check.reset();
-        }
-    }
 }

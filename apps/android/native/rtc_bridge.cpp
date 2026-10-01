@@ -18,6 +18,7 @@
 #include <stdexcept>
 #include <vector>
 #include "controller_protocol.h"
+#include "android_codec_support.h"
 #include "latest_frame_worker.h"
 #include "video_picture.h"
 #include "video_timing.h"
@@ -63,6 +64,11 @@ struct Session {
   ANativeWindow* window = nullptr;
   uint32_t width = 0, height = 0;
   uint64_t frame_id = 0;
+  std::optional<VideoPicture> surface_picture;
+  void DetachDecoderSurface() {
+    if (surface_picture) surface_picture->RenderSurface(nullptr);
+    surface_picture.reset();
+  }
   std::set<int> pressed_keys;
   unsigned pressed_buttons = 0;
   float pointer_x = .5f, pointer_y = .5f;
@@ -91,6 +97,7 @@ struct Session {
     std::lock_guard<std::mutex> lock(render_mutex);
     ++video_generation;
     renderer.Clear();
+    DetachDecoderSurface();
     if (window) ANativeWindow_release(window);
     window = surface ? ANativeWindow_fromSurface(env, surface) : nullptr;
     surface_ready = window != nullptr;
@@ -193,17 +200,28 @@ void RenderVideo(Session* s, VideoPicture picture) {
   const auto w = picture.width, h = picture.height;
   std::lock_guard<std::mutex> lock(s->render_mutex);
   if (s->stopping || !s->window || picture.generation != s->video_generation) return;
-  if (s->width != w || s->height != h) {
-    if (ANativeWindow_setBuffersGeometry(s->window, w, h, WINDOW_FORMAT_RGBA_8888) != 0) return;
+  const bool size_changed = s->width != w || s->height != h;
+  if (picture.IsSurface()) {
+    if (picture.RenderSurface(s->window) != 0) return;
+    // Keep a consumed token to detach the codec before Surface destruction,
+    // monitor switching, or CPU rendering after a software fallback.
+    s->surface_picture = picture;
+  } else {
+    const bool was_surface = s->surface_picture.has_value();
+    s->DetachDecoderSurface();
+    if ((size_changed || was_surface) &&
+        ANativeWindow_setBuffersGeometry(s->window, w, h, WINDOW_FORMAT_RGBA_8888) != 0) return;
+    ANativeWindow_Buffer buffer{};
+    if (ANativeWindow_lock(s->window, &buffer, nullptr) != 0) return;
+    const bool rendered = buffer.width == static_cast<int>(w) && buffer.height == static_cast<int>(h) &&
+      libyuv::NV12ToABGR(picture.Y(), picture.YStride(), picture.UV(), picture.UVStride(),
+                       static_cast<uint8_t*>(buffer.bits), buffer.stride * 4, w, h) == 0;
+    if (ANativeWindow_unlockAndPost(s->window) != 0 || !rendered) return;
+  }
+  if (size_changed) {
     s->width = w; s->height = h;
     s->Event(5, {{"width", w}, {"height", h}});
   }
-  ANativeWindow_Buffer buffer{};
-  if (ANativeWindow_lock(s->window, &buffer, nullptr) != 0) return;
-  const bool rendered = buffer.width == static_cast<int>(w) && buffer.height == static_cast<int>(h) &&
-    libyuv::NV12ToABGR(picture.Y(), picture.YStride(), picture.UV(), picture.UVStride(),
-                     static_cast<uint8_t*>(buffer.bits), buffer.stride * 4, w, h) == 0;
-  if (ANativeWindow_unlockAndPost(s->window) != 0 || !rendered) return;
   // Measure through display submission, using MiniRTC's calibrated capture clock.
   const auto now = GetSystemTimeMicros(s->controller);
   const double latency = android_controller::VideoLatencyMilliseconds(
@@ -219,9 +237,9 @@ Params Parameters(Session* s, bool controller) {
   std::snprintf(p.signal_server_ip, sizeof(p.signal_server_ip), "%s", s->host.c_str());
   std::snprintf(p.log_path, sizeof(p.log_path), "%s", s->log_path.c_str());
   p.signal_server_port = s->port;
-  p.hardware_acceleration = false;
-  // OpenH264/dav1d expose pooled CPU NV12 buffers on Android. Retain them
-  // across display submission instead of copying full-resolution pixels.
+  p.hardware_acceleration = true;
+  // MediaCodec returns retained Surface buffers; software fallback returns
+  // pooled CPU NV12 with the same ownership contract.
   p.native_video_output = controller;
   p.turn_mode = TurnAutoUdpTcp;
   p.enable_srtp = true;
@@ -241,7 +259,9 @@ Session* From(jlong handle) { return reinterpret_cast<Session*>(handle); }
 } // namespace
 
 extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* java_vm, void*) {
-  vm = java_vm; return JNI_VERSION_1_6;
+  vm = java_vm;
+  minirtc::android::SetJavaVm(java_vm);
+  return JNI_VERSION_1_6;
 }
 #define JNI_METHOD(name) Java_cn_crossdesk_mobile_NativeSession_##name
 extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nValidAppVersion)(
@@ -274,7 +294,7 @@ extern "C" JNIEXPORT jlong JNICALL JNI_METHOD(nCreate)(
     s->host = String(env, host); s->port = port;
     s->identity_login = String(env, identity); s->log_path = String(env, log_path);
     // The bundle is exported from Android's default TrustManager, never the
-    // build machine's certificate store. The Android MiniRTC patch explicitly
+    // build machine's certificate store. MiniRTC on Android explicitly
     // loads this path: OpenSSL's default loader ignores SSL_CERT_FILE in an
     // Android app process (AT_SECURE=1). Chain and hostname checks stay enabled.
     const auto bundle = String(env, certificates);
@@ -338,7 +358,7 @@ extern "C" JNIEXPORT void JNICALL JNI_METHOD(nControl)(
   auto* s = From(handle); if (!s) return;
   RemoteAction action{};
   if (type == display_id && value >= 0 && value < 8) {
-    { std::lock_guard<std::mutex> lock(s->render_mutex); s->display = value; ++s->video_generation; s->renderer.Clear(); s->width = s->height = 0; }
+    { std::lock_guard<std::mutex> lock(s->render_mutex); s->display = value; ++s->video_generation; s->renderer.Clear(); s->DetachDecoderSurface(); s->width = s->height = 0; }
     action.type = display_id; action.d = value;
   } else if (type == audio_capture) {
     action.type = audio_capture; action.a = value != 0;
