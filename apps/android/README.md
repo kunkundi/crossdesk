@@ -71,6 +71,22 @@ Release 构建使用 `./gradlew :app:assembleRelease`，默认输出未签名 AP
 
 修改原生代码后重新运行 Gradle 即可；修改依赖版本或配方时同步检查许可证内容，必要时移除 `.native/packages` 重新构建。MiniRTC 的源码和依赖配方变更直接保存在子模块中；提交时先提交 MiniRTC，再更新主仓库的子模块引用。
 
+## GitHub Actions
+
+[`Build Android`](../../.github/workflows/build-android.yml) 可在 Actions 页面单独手动运行；修改 Android、MiniRTC、共享协议或许可证资料的 Pull Request 也会触发。仓库原有的 [`Build and Release`](../../.github/workflows/build.yml) 在分支推送、标签推送及手动运行时调用同一工作流，`v` 标签发布会等待安卓构建成功，并将未签名 Release APK 加入 GitHub Release 和现有下载服务器的产物集合。推送主仓库前，先确保它引用的 MiniRTC 提交已推送到子模块远程仓库，否则 CI 无法完成检出。
+
+工作流使用 Ubuntu 24.04、JDK 17、Python 3.13、SDK 36、Build Tools 36.0.0、NDK r28c 和 Xmake 3.1.1。Gradle 使用工程内的 Wrapper，原生构建器固定 Xmake 包仓库版本。Gradle 缓存与 Android 原生依赖缓存分别管理；原生缓存按宿主架构、构建脚本及 MiniRTC 配方区分，不复用桌面或 iOS 的配置和目标文件。
+
+CI 构建 Debug、Release 和设备测试 APK，执行 Debug / Release Lint、本机 C++ 协议与画面队列测试，并校验 APK 的 arm64 ABI、16 KB ELF / ZIP 对齐、完整许可证及 Debug 签名。Ubuntu x64 构建机上不运行 arm64 设备测试；使用下面的设备验证流程在 arm64 手机或模拟器上执行。Lint 报告在构建失败时也会保留。
+
+产物使用 Android 工程自己的 `versionName`，例如 `v0.1.0-20261001`，不跟随桌面版本号。构建日期采用上海时区；带日期的版本标签沿用标签中的日期，与 iOS 一致。Actions 提供：
+
+- `crossdesk-android-arm64-unsigned-<版本>.apk`：未签名 Release APK，标签发布只收集此 APK，安装前需自行签名。
+- `crossdesk-android-arm64-debug-<版本>.apk` 和对应的 `-test.apk`：可安装的调试应用和设备测试包，保留 14 天。
+- `crossdesk-android-reports`：Lint 报告，保留 14 天。
+
+当前 CI 不需要签名 Secrets。Debug APK 使用每次运行的临时调试证书，可能无法覆盖手机上已有的其他签名版本；卸载原应用会清除本机连接记录和密码。需要持续覆盖升级时，应使用同一私钥签名 Release APK，并在发布新版本时递增 `app/build.gradle` 中的 `versionCode`。未签名 APK 已完成对齐，可通过 SDK 的 `apksigner sign --ks <自己的密钥库> --out <已签名.apk> <未签名.apk>` 签名，再用 `apksigner verify` 检查。
+
 ## 使用与连接安全
 
 授权后首页会自动连接服务器，绿色“已连接服务器”表示信令登录完成；失败时可点击状态重试。设置页显示本机 ID。电脑端保持在线，在 Android 首页填写 9 位设备 ID，首次点击“连接”后在底部弹层输入密码，可选择加密保存密码。成功保存后，点击最近连接或再次输入相同 ID 会直接使用该服务器下保存的密码，重启应用后仍然有效；密码无法读取或被远端拒绝时会重新显示输入弹层，新密码仅在连接成功后替换，取消或连接失败不会覆盖原密码。自托管服务器从“设置 → 服务器”展开修改主机名与端口，不能填写 `https://`、路径或完整 URL。默认是 `api.crossdesk.cn:9099`。

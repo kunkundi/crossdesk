@@ -531,6 +531,13 @@ jobs:
           path: ${{ env.PACKAGE_FILE }}
           if-no-files-found: error
 
+  # Android (also available as a standalone workflow)
+  build-android:
+    name: Build Android
+    uses: ./.github/workflows/build-android.yml
+    permissions:
+      contents: read
+
   # Windows
   build-windows-x64:
     name: Build on Windows x64
@@ -761,7 +768,7 @@ jobs:
   release:
     name: Publish Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-linux, build-macos, build-ios, build-windows-x64]
+    needs: [build-linux, build-macos, build-ios, build-android, build-windows-x64]
     runs-on: ubuntu-latest
 
     steps:
@@ -826,6 +833,9 @@ jobs:
           Clone that version with recursive submodules. The repository includes the build scripts and dependency patches.
           [iOS source, modification and rebuild instructions](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/apps/ios/README.md).
           The iOS archive also contains the exact source revision and third-party source catalog with archive checksums.
+          [Android source and rebuild instructions](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/apps/android/README.md).
+          The Android arm64 Release APK is unsigned; sign it with your own key before installation.
+          It includes the exact application and MiniRTC revisions, license documents and native build recipes.
 
           ## Code signing policy
 
@@ -840,6 +850,7 @@ jobs:
           cp artifacts/crossdesk-linux-amd64-${{ steps.version.outputs.VERSION_WITH_V }}/* release/crossdesk-linux-amd64-${{ steps.version.outputs.VERSION_WITH_V }}.deb
           cp artifacts/crossdesk-linux-arm64-${{ steps.version.outputs.VERSION_WITH_V }}/* release/crossdesk-linux-arm64-${{ steps.version.outputs.VERSION_WITH_V }}.deb
           cp artifacts/crossdesk-ios-arm64-unsigned-${{ needs.build-ios.outputs.version }}/* release/crossdesk-ios-arm64-unsigned-${{ needs.build-ios.outputs.version }}.zip
+          cp artifacts/crossdesk-android-arm64-unsigned-${{ needs.build-android.outputs.version }}/*.apk release/crossdesk-android-arm64-unsigned-${{ needs.build-android.outputs.version }}.apk
           cp artifacts/crossdesk-win-x64-${{ steps.version.outputs.VERSION_WITH_V }}/* release/crossdesk-win-x64-${{ steps.version.outputs.VERSION_WITH_V }}.exe
           cp artifacts/crossdesk-win-x64-portable-${{ steps.version.outputs.VERSION_WITH_V }}/* release/crossdesk-win-x64-portable-${{ steps.version.outputs.VERSION_WITH_V }}.zip
 

@@ -1,0 +1,170 @@
+name: Build Android
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    outputs:
+      version:
+        description: "Independent Android version and build date."
+        value: ${{ jobs.build.outputs.version }}
+  pull_request:
+    paths:
+      - ".github/workflows/build-android.yml"
+      - ".github/workflows/build.yml"
+      - ".gitmodules"
+      - "LICENSE"
+      - "apps/android/**"
+      - "apps/ios/CrossDeskMobile/Resources/ThirdPartyLicenses.json"
+      - "apps/ios/licenses/**"
+      - "apps/ios/scripts/generate_third_party_licenses.py"
+      - "deps/submodules/minirtc"
+      - "libs/wire/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build on Android (arm64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+    env:
+      XMAKE_VERSION: "3.1.1"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install native build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config autoconf automake libtool nasm
+          python3 -m pip install setuptools wheel
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0 ndk;28.2.13676358"
+
+      - name: Install xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: ${{ env.XMAKE_VERSION }}
+
+      # Cache installed packages only. build_native.py checks Xmake 3.1.1 and pins
+      # its own package repository; never reuse another platform's build/config.
+      - name: Cache native dependencies
+        uses: actions/cache@v5
+        with:
+          path: apps/android/.native/packages
+          key: ${{ runner.os }}-${{ runner.arch }}-android-arm64-native-v1-${{ hashFiles('apps/android/scripts/build_native.py', 'apps/android/native/xmake.lua', 'deps/submodules/minirtc/xmake.lua', 'deps/submodules/minirtc/thirdparty/**') }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Verify shared license catalog
+        run: python3 -B apps/ios/scripts/generate_third_party_licenses.py
+
+      - name: Build APKs and run Lint
+        working-directory: apps/android
+        run: |
+          ./gradlew --no-daemon --stacktrace \
+            :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest \
+            :app:lintDebug :app:lintRelease
+
+      - name: Verify APKs and native protocol
+        working-directory: apps/android
+        run: |
+          python3 -B scripts/verify_apk.py app/build/outputs/apk/debug/app-debug.apk
+          python3 -B scripts/verify_apk.py app/build/outputs/apk/release/app-release-unsigned.apk
+          python3 -B scripts/test_protocol.py
+          "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify app/build/outputs/apk/debug/app-debug.apk
+          "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+      - name: Package APKs with the independent Android version
+        id: package
+        shell: python
+        run: |
+          import datetime
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import shutil
+          from zoneinfo import ZoneInfo
+
+          apk_dir = Path("apps/android/app/build/outputs/apk")
+          metadata = json.loads((apk_dir / "release/output-metadata.json").read_text())
+          version = metadata["elements"][0]["versionName"]
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+              raise ValueError(f"Invalid Android version: {version!r}")
+          build_date = datetime.datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d")
+          # Match the dated release tags used by the desktop and iOS jobs.
+          if os.environ["GITHUB_REF_TYPE"] == "tag":
+              tag = os.environ["GITHUB_REF_NAME"]
+              match = re.fullmatch(r"v?[0-9]+(?:\.[0-9]+){1,3}-(?:[0-9]+-)?([0-9]{8})(?:-[0-9]+)?", tag)
+              if match:
+                  build_date = match[1]
+                  datetime.datetime.strptime(build_date, "%Y%m%d")
+          version = f"v{version}-{build_date}"
+          output = Path(os.environ["RUNNER_TEMP"]) / "crossdesk-android"
+          for variant, source in (
+              ("unsigned", "release/app-release-unsigned.apk"),
+              ("debug", "debug/app-debug.apk"),
+              ("debug", "androidTest/debug/app-debug-androidTest.apk"),
+          ):
+              destination = output / variant
+              destination.mkdir(parents=True, exist_ok=True)
+              suffix = "-test" if "androidTest/" in source else ""
+              shutil.copyfile(apk_dir / source, destination / f"crossdesk-android-arm64-{variant}-{version}{suffix}.apk")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as stream:
+              stream.write(f"version={version}\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as stream:
+              stream.write(f"Android {version}: arm64, API 26+, 16 KB aligned.\n\n"
+                           "Debug APK uses an ephemeral CI debug key; it is for testing and may require uninstalling an existing build. "
+                           "The Release APK is unsigned and needs your own signing before installation.\n\n"
+                           "Lint, native protocol/frame tests and APK checks passed. Device tests were compiled, not executed.\n")
+
+      - name: Upload unsigned Release APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: crossdesk-android-arm64-unsigned-${{ steps.package.outputs.version }}
+          path: ${{ runner.temp }}/crossdesk-android/unsigned/*.apk
+          if-no-files-found: error
+
+      - name: Upload Debug and device test APKs
+        uses: actions/upload-artifact@v6
+        with:
+          name: crossdesk-android-arm64-debug-${{ steps.package.outputs.version }}
+          path: ${{ runner.temp }}/crossdesk-android/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Lint reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: crossdesk-android-reports
+          path: apps/android/app/build/reports/
+          if-no-files-found: ignore
+          retention-days: 14
