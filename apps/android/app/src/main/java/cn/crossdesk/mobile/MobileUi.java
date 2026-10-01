@@ -70,6 +70,9 @@ final class MobileUi {
                 case "folder":path(c,2,19,2,5,9,5,12,8,22,8,22,19,2,19);break;
                 case "chart":path(c,3,3,3,21,22,21);path(c,7,17,7,13);path(c,12,17,12,8);path(c,18,17,18,4);break;
                 case "lock":c.drawRoundRect(5,10,19,22,2,2,paint);c.drawArc(8,2,16,15,180,180,false,paint);c.drawPoint(12,16,paint);break;
+                case "key":
+                    paint.setStyle(Paint.Style.FILL);c.drawCircle(7,8,5,paint);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(4);path(c,10,11,19,20);path(c,15,16,18,13);path(c,18,19,21,16);
+                    paint.setStyle(Paint.Style.FILL);int keyColor=paint.getColor();paint.setColor(Color.WHITE);c.drawCircle(6,7,1.5f,paint);paint.setColor(keyColor);break;
                 case "unlock":c.drawRoundRect(5,10,19,22,2,2,paint);c.drawArc(8,2,16,15,180,150,false,paint);c.drawPoint(12,16,paint);break;
                 case "clipboard":c.drawRoundRect(4,4,20,22,2,2,paint);c.drawRoundRect(8,2,16,7,2,2,paint);break;
                 case "eye":path(c,2,12,6,7,12,5,18,7,22,12,18,17,12,19,6,17,2,12);c.drawCircle(12,12,3,paint);break;

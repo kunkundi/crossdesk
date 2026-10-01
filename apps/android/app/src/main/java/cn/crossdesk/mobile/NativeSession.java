@@ -5,6 +5,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Base64;
 import android.view.Surface;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -28,6 +29,7 @@ final class NativeSession implements AutoCloseable {
         void clipboard(String text);
         void statistics(RemoteNetworkStatistics.Snapshot value);
         default void signaling(int state, String deviceId) { }
+        default void presence(JSONObject message) { }
         default void announcement(JSONObject message) { }
         default void announcementFailed(String requestId) { }
         default void passwordRejected() { ended("远端密码错误"); }
@@ -45,6 +47,8 @@ final class NativeSession implements AutoCloseable {
     private long handle;
     private boolean signalReady, joining, connected, started;
     private int signalState;
+    private volatile long signalGeneration;
+    private boolean presenceRequested;
     private volatile boolean closed;
     private Surface surface;
     private volatile AudioPlayer audio;
@@ -146,6 +150,8 @@ final class NativeSession implements AutoCloseable {
                 if (type == 1) {
                     int status = event.getInt("status");
                     if (!event.getBoolean("controller")) {
+                        long generation=event.optLong("generation");
+                        if(signalGeneration!=generation){signalGeneration=generation;presenceRequested=false;}
                         signalState = status;
                         signalReady = status == 1;
                         if (signalReady && remote.isEmpty()) main.removeCallbacks(timeout);
@@ -177,6 +183,10 @@ final class NativeSession implements AutoCloseable {
                     ui(() -> listener.videoSize(width, height));
                 } else if (type == 7) networkStatistics.receive(new RemoteNetworkStatistics.Report(event),RemoteNetworkStatistics.now());
                 else if (type == 8 && signalReady) ui(() -> listener.announcement(event));
+                else if (type == 9 && signalReady && presenceRequested) {
+                    long generation=event.optLong("generation");
+                    if(generation==signalGeneration)ui(()->{if(generation==signalGeneration)listener.presence(event);});
+                }
             } catch (Exception error) {
                 if (type == 3) fail("设备身份保存失败，请检查安全存储");
             }
@@ -196,6 +206,18 @@ final class NativeSession implements AutoCloseable {
     void announcementRequest(JSONObject request,String requestId){
         byte[] bytes=request.toString().getBytes(StandardCharsets.UTF_8);
         execute(()->{if(!signalReady||identity.isEmpty()||!nAnnouncementRequest(handle,bytes))ui(()->listener.announcementFailed(requestId));});
+    }
+    void presenceRequest(JSONArray ids){
+        // Own the caller's list before crossing to the serialized RTC executor.
+        String devices=ids.toString();
+        execute(()->{
+            if(!signalReady||identity.isEmpty())return;
+            try{
+                JSONObject request=new JSONObject().put("type","recent_connections_presence")
+                    .put("user_id",identity.split("@",2)[0]).put("devices",new JSONArray(devices)).put("subscribe",true);
+                if(nPresenceRequest(handle,request.toString().getBytes(StandardCharsets.UTF_8)))presenceRequested=true;
+            }catch(org.json.JSONException ignored){ }
+        });
     }
     void surface(Surface value) { execute(() -> { surface = value; if (handle != 0) nSurface(handle, value); }); }
     void pointer(float x, float y, int flag, int wheel) { execute(() -> { if (connected) nPointer(handle, x, y, flag, wheel); }); }
@@ -231,6 +253,7 @@ final class NativeSession implements AutoCloseable {
     private static native void nControl(long handle, int type, int value);
     private static native boolean nVideoSettings(long handle,int quality,int frameRate,int preference,long requestId);
     private static native boolean nAnnouncementRequest(long handle,byte[] data);
+    private static native boolean nPresenceRequest(long handle,byte[] data);
     private static native void nClipboard(long handle, byte[] data);
     private static native void nSurface(long handle, Surface surface);
     private static native void nDestroy(long handle);

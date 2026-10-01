@@ -57,6 +57,8 @@ struct Session {
   std::string host, log_path, identity_login, controller_login, remote;
   int port;
   std::atomic<bool> stopping{false};
+  std::atomic<uint64_t> signal_generation{0};
+  std::atomic<int> signal_status{-1};
   std::atomic<int> display{0};
   std::atomic<bool> surface_ready{false};
   std::atomic<uint64_t> video_generation{0};
@@ -134,15 +136,23 @@ struct Session {
 
 void Signal(SignalStatus status, const char*, size_t, void* user) {
   auto* ctx = static_cast<CallbackContext*>(user);
-  ctx->owner->Event(1, {{"controller", ctx->controller}, {"status", status}});
+  if (!ctx->controller && ctx->owner->signal_status.exchange(status) != status)
+    ++ctx->owner->signal_generation;
+  const auto generation = ctx->owner->signal_generation.load();
+  ctx->owner->Event(1, {{"controller", ctx->controller}, {"status", status}, {"generation", generation}});
 }
 void SignalMessage(const char* data, size_t size, void* user) {
   auto* ctx = static_cast<CallbackContext*>(user);
   if (ctx->controller || !data || !size || size > 1024 * 1024) return;
+  const auto generation = ctx->owner->signal_generation.load();
   auto message = json::parse(data, data + size, nullptr, false);
   if (!message.is_object() || !message.contains("type") || !message["type"].is_string()) return;
   const auto type = message["type"].get<std::string>();
   if (type == "announcements" || type == "announcements_changed") ctx->owner->Event(8, data, size);
+  else if (type == "presence" || type == "presence_update") {
+    message["generation"] = generation;
+    ctx->owner->Event(9, message);
+  }
 }
 void Connection(ConnectionStatus status, const char*, size_t, void* user) {
   auto* ctx = static_cast<CallbackContext*>(user);
@@ -385,6 +395,23 @@ extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nAnnouncementRequest)(
   auto message = json::parse(bytes, nullptr, false);
   if (!message.is_object() || !message.contains("type") ||
       !message["type"].is_string() || message["type"] != "announcements_list") return false;
+  return SendSignalMessage(s->identity, bytes.data(), bytes.size()) == 0;
+}
+extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nPresenceRequest)(
+    JNIEnv* env, jclass, jlong handle, jbyteArray data) {
+  auto* s = From(handle);
+  if (!s || !s->identity || s->stopping || !data) return false;
+  const auto size = env->GetArrayLength(data);
+  if (size <= 0 || size > 4096) return false;
+  std::string bytes(size, '\0');
+  env->GetByteArrayRegion(data, 0, size, reinterpret_cast<jbyte*>(bytes.data()));
+  if (env->ExceptionCheck()) return false;
+  auto message = json::parse(bytes, nullptr, false);
+  if (!message.is_object() || !message.contains("type") || !message["type"].is_string() ||
+      message["type"] != "recent_connections_presence" ||
+      !message.contains("user_id") || !message["user_id"].is_string() ||
+      !message.contains("devices") || !message["devices"].is_array() ||
+      !message.contains("subscribe") || message["subscribe"] != true) return false;
   return SendSignalMessage(s->identity, bytes.data(), bytes.size()) == 0;
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(nClipboard)(

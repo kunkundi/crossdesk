@@ -41,6 +41,13 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private String announcementServer="";
     private SharedPreferences preferences;
     private RecentConnections history;
+    private final RecentConnectionPresence recentPresence=new RecentConnectionPresence();
+    private LinearLayout recentGrid;
+    private final Runnable presenceTick=new Runnable(){public void run(){
+        if(!recentPresence.isConnected())return;
+        recentPresence.maintain(android.os.SystemClock.elapsedRealtime());
+        mainHandler.postDelayed(this,1000);
+    }};
     private RemotePreviewStore previews;
     private RemotePreviewStore.Capture previewCapture;
     private boolean previewCopying,updatingPreviewSwitch;
@@ -74,6 +81,8 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         super.onCreate(state);ui=new MobileUi(this);history=new RecentConnections(this);
         pageHost=new PageHost(this);setContentView(pageHost);
         preferences=getSharedPreferences("settings",MODE_PRIVATE);host=preferences.getString("host","api.crossdesk.cn");port=preferences.getInt("port",9099);
+        recentPresence.sender=ids->{if(signaling!=null&&!signaling.isClosed())signaling.presenceRequest(ids);};
+        recentPresence.changed=this::renderRecentConnections;
         remoteVersionCheck=new RemoteVersionCheck(this::showRemoteUpdate);
         previews=RemotePreviewStore.get(this);previews.addListener(previewChanged);previews.enforceConsent();
         announcementInbox=new AnnouncementInbox(new java.io.File(getNoBackupFilesDir(),"AnnouncementReads"));
@@ -98,7 +107,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         }
         if(root!=null)hideKeyboard();page=nextPage;
         signalBadge=null;identitySummary=null;announcementBadge=null;announcementView=null;announcementRefresh=null;
-        previewSwitch=null;clearPreviewsButton=null;previewCleanupError=null;previewCards.clear();
+        previewSwitch=null;clearPreviewsButton=null;previewCleanupError=null;previewCards.clear();recentGrid=null;
         canvas=new FrameLayout(this);canvas.setBackgroundColor(dark?Color.BLACK:BACKGROUND);
         root=column();canvas.addView(root,new FrameLayout.LayoutParams(-1,-1));
         root.setOnApplyWindowInsetsListener((view,insets)->{
@@ -163,20 +172,25 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         Runnable update=()->{connect.setEnabled(!id().isEmpty());connect.setAlpha(id().isEmpty()?.45f:1);};update.run();
         remote.addTextChangedListener(new TextWatcher(){boolean editing;public void beforeTextChanged(CharSequence s,int start,int count,int after){}public void onTextChanged(CharSequence s,int start,int before,int count){update.run();}public void afterTextChanged(Editable value){if(editing)return;String formatted=formatId(value.toString());if(!formatted.equals(value.toString())){editing=true;int cursor=remote.getSelectionStart(),digits=value.subSequence(0,Math.max(0,cursor)).toString().replaceAll("[^0-9]","").length();remote.setText(formatted);remote.setSelection(Math.min(formatted.length(),digits+Math.max(0,digits-1)/3));editing=false;}}});
         LinearLayout recent=column();recent.setPadding(dp(16),dp(16),dp(16),dp(16));ui.card(recent,18);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,0,1);p.topMargin=dp(20);content.addView(recent,p);
-        JSONArray records=history.list(serverKey());LinearLayout heading=row();heading.addView(text("最近连接",20,true),new LinearLayout.LayoutParams(0,-2,1));
+        JSONArray records=history.list(serverKey());recentPresence.watch(records,android.os.SystemClock.elapsedRealtime());LinearLayout heading=row();heading.addView(text("最近连接",20,true),new LinearLayout.LayoutParams(0,-2,1));
         if(records.length()>0){TextView count=text(records.length()+" 台设备",12,false);count.setTextColor(SECONDARY);heading.addView(count);}recent.addView(heading);
         if(records.length()==0){
             LinearLayout empty=column();empty.setGravity(Gravity.CENTER);recent.addView(empty,new LinearLayout.LayoutParams(-1,0,1));empty.addView(ui.icon("history",0xFFB6B6BB),ui.size(34,34));ui.gap(empty,12);
             TextView emptyTitle=text("还没有连接记录",17,true);emptyTitle.setGravity(Gravity.CENTER);empty.addView(emptyTitle);ui.gap(empty,8);TextView hint=text("成功连接后，这里会显示最近的远程设备。",13,false);hint.setTextColor(SECONDARY);hint.setGravity(Gravity.CENTER);empty.addView(hint);
         }else{
-            ui.gap(recent,14);ScrollView scroll=new ScrollView(this);recent.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));LinearLayout grid=column();scroll.addView(grid);
-            for(int i=0;i<records.length();i+=2){LinearLayout line=row();line.setGravity(Gravity.TOP);grid.addView(line);for(int j=i;j<i+2;j++){View card=j<records.length()?recentCard(records.optJSONObject(j)):new View(this);LinearLayout.LayoutParams cell=new LinearLayout.LayoutParams(0,-2,1);if(j>i)cell.leftMargin=dp(12);line.addView(card,cell);}ui.gap(grid,12);}
+            ui.gap(recent,14);ScrollView scroll=new ScrollView(this);recent.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));recentGrid=column();scroll.addView(recentGrid);renderRecentConnections();
         }
         ensureSignaling();
         if(!message.isEmpty())new AlertDialog.Builder(this).setTitle("连接提示").setMessage(message).setPositiveButton("确定",null).show();
     }
     private String id(){return remote.getText().toString().replace(" ","");}
     static String formatId(String value){String digits=value.replaceAll("[^0-9]","");if(digits.length()>9)digits=digits.substring(0,9);return digits.replaceAll("(.{3})(?=.)","$1 ");}
+    private void renderRecentConnections(){
+        if(recentGrid==null)return;
+        JSONArray records=recentPresence.ordered(history.list(serverKey()),android.os.SystemClock.elapsedRealtime());
+        recentGrid.removeAllViews();previewCards.clear();
+        for(int i=0;i<records.length();i+=2){LinearLayout line=row();line.setGravity(Gravity.TOP);recentGrid.addView(line);for(int j=i;j<i+2;j++){View card=j<records.length()?recentCard(records.optJSONObject(j)):new View(this);LinearLayout.LayoutParams cell=new LinearLayout.LayoutParams(0,-2,1);if(j>i)cell.leftMargin=dp(12);line.addView(card,cell);}ui.gap(recentGrid,12);}
+    }
     private View recentCard(JSONObject item){
         if(item==null)return new View(this);String id=item.optString("id"),platform=item.optString("platform");
         LinearLayout card=column();ui.card(card,14);FrameLayout preview=new FrameLayout(this){@Override protected void onMeasure(int w,int h){super.onMeasure(w,MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(w)*9/16,MeasureSpec.EXACTLY));}};
@@ -186,8 +200,10 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         String server=serverKey();Runnable load=()->{if(!image.isAttachedToWindow())return;Object binding=new Object();image.setTag(binding);image.setImageDrawable(null);image.setVisibility(View.GONE);label.setVisibility(View.VISIBLE);
             previews.load(server,id,bitmap->{if(image.getTag()!=binding||!image.isAttachedToWindow()){if(bitmap!=null)bitmap.recycle();return;}if(bitmap!=null){image.setImageBitmap(bitmap);image.setVisibility(View.VISIBLE);label.setVisibility(View.GONE);}});};previewCards.add(load);image.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){public void onViewAttachedToWindow(View view){load.run();}public void onViewDetachedFromWindow(View view){image.setTag(null);}});if(image.isAttachedToWindow())load.run();
         LinearLayout caption=column();caption.setPadding(dp(9),dp(9),dp(9),dp(9));TextView name=text(item.optString("name",id),12,true);name.setSingleLine();name.setEllipsize(TextUtils.TruncateAt.END);caption.addView(name);ui.gap(caption,4);
-        TextView detail=text("ID "+id+(item.optBoolean("remember")?"  · 已保存密码":""),10,false);detail.setTextColor(SECONDARY);caption.addView(detail);card.addView(caption);
-        card.setContentDescription("连接 "+item.optString("name",id));card.setClickable(true);card.setFocusable(true);card.setOnClickListener(v->{remote.setText(formatId(id));promptConnection(id);});
+        LinearLayout details=row();TextView detail=text("ID "+id,10,false);detail.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));detail.setTextColor(SECONDARY);detail.setSingleLine();detail.setEllipsize(TextUtils.TruncateAt.END);details.addView(detail,new LinearLayout.LayoutParams(0,-2,1));
+        if(item.optBoolean("remember")){View key=ui.icon("key",SECONDARY);key.setContentDescription("已保存密码");LinearLayout.LayoutParams keySize=ui.size(10,10);keySize.leftMargin=dp(4);details.addView(key,keySize);}
+        boolean online=recentPresence.isOnline(id,android.os.SystemClock.elapsedRealtime());String availability=online?"在线":"离线";TextView presence=text(availability,10,true);presence.setSingleLine();presence.setTextColor(online?GREEN:SECONDARY);LinearLayout.LayoutParams presenceSize=ui.size(-2,-2);presenceSize.leftMargin=dp(5);details.addView(presence,presenceSize);caption.addView(details);card.addView(caption);
+        card.setContentDescription("连接 "+item.optString("name",id)+"，ID "+id+(item.optBoolean("remember")?"，已保存密码":"")+"，"+availability);card.setClickable(true);card.setFocusable(true);card.setOnClickListener(v->{remote.setText(formatId(id));promptConnection(id);});
         card.setOnLongClickListener(v->{new AlertDialog.Builder(this).setTitle(item.optString("name",id)).setItems(new String[]{"连接","删除记录"},(d,w)->{if(w==0)promptConnection(id);else{history.delete(serverKey(),id);home("");}}).show();return true;});return card;
     }
     private void promptConnection(String id){
@@ -386,24 +402,35 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         renderSignaling();signaling.start();
     }
     private void stopSignaling(){
+        mainHandler.removeCallbacks(presenceTick);recentPresence.setConnected(false,android.os.SystemClock.elapsedRealtime());
         announcementInbox.setConnected(false);
         if(signaling!=null)signaling.close();
         signaling=null;signalingServer="";localIdentity="";signalState=-1;signalError="";renderSignaling();
     }
     private void renderSignaling(){
         boolean consent=preferences.getBoolean("networkConsent",false);
+        boolean connected=consent&&signalError.isEmpty()&&signalState==1;
         String label;int tint,background;
         if(!consent){label="等待隐私授权";tint=0xFFB76A00;background=0xFFFFEBD2;}
         else if(!signalError.isEmpty()){label=signalError.contains("TLS")?"证书校验失败 · 点击重试":"连接失败 · 点击重试";tint=RED;background=0xFFFFE8E6;}
-        else if(signalState==1){label="✓  已连接服务器";tint=GREEN;background=0xFFE5F4E8;}
+        else if(connected){label="已连接服务器";tint=GREEN;background=0xFFE5F4E8;}
         else{label=signalState==0?"正在连接服务器…":signalState==4?"正在重连服务器…":"未连接服务器 · 点击重试";tint=0xFFB76A00;background=0xFFFFEBD2;}
-        if(signalBadge!=null){signalBadge.setText(label);signalBadge.setTextColor(tint);signalBadge.setBackground(ui.background(background,20));signalBadge.setContentDescription(signalError.isEmpty()?label:signalError+"，点击重试");}
+        if(signalBadge!=null){
+            android.graphics.drawable.Drawable icon=connected?getDrawable(R.drawable.ic_check_circle):null;
+            if(icon!=null){int size=dp(14);icon.setBounds(0,0,size,size);}
+            signalBadge.setCompoundDrawablesRelative(icon,null,null,null);signalBadge.setCompoundDrawablePadding(dp(6));
+            signalBadge.setText(label);signalBadge.setTextColor(tint);signalBadge.setBackground(ui.background(background,20));signalBadge.setContentDescription(signalError.isEmpty()?label:signalError+"，点击重试");
+        }
         if(identitySummary!=null)identitySummary.setText(!consent?"完成隐私授权后登记本机身份":!localIdentity.isEmpty()?"本机 ID  "+localIdentity:!signalError.isEmpty()?signalError:"正在获取本机 ID…");
     }
     @Override public void signaling(int state,String deviceId){
         signalState=state;localIdentity=deviceId;signalError="";renderSignaling();
+        long now=android.os.SystemClock.elapsedRealtime();recentPresence.watch(history.list(serverKey()),now);
+        recentPresence.setConnected(foreground&&preferences.getBoolean("networkConsent",false)&&state==1&&!deviceId.isEmpty(),now);
+        mainHandler.removeCallbacks(presenceTick);if(recentPresence.isConnected())mainHandler.postDelayed(presenceTick,1000);
         if(preferences.getBoolean("networkConsent",false)){announcementInbox.configure(host,port,deviceId);announcementInbox.setConnected(state==1);}
     }
+    @Override public void presence(JSONObject message){recentPresence.receive(message,android.os.SystemClock.elapsedRealtime());}
     @Override public void status(String value){if(session!=null&&status!=null)status.setText(value);}
     @Override public void connected(){
         // Transport readiness can be reported again after ICE changes its selected path.

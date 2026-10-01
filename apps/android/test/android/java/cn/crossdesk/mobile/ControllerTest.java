@@ -15,6 +15,38 @@ import static org.junit.Assert.*;
 @RunWith(AndroidJUnit4.class)
 public class ControllerTest {
 
+    @Test public void presenceCallbacksRejectDisconnectedAndPreviousSignalingGeneration()throws Exception{
+        var instrumentation=InstrumentationRegistry.getInstrumentation();
+        var delivered=new java.util.concurrent.atomic.AtomicInteger();
+        NativeSession.Listener listener=new NativeSession.Listener(){
+            public void status(String value){}public void connected(){}public void ended(String reason){}
+            public void data(JSONObject value){}public void videoSize(int width,int height){}public void clipboard(String value){}public void statistics(RemoteNetworkStatistics.Snapshot value){}
+            public void presence(JSONObject value){delivered.incrementAndGet();}
+        };
+        NativeSession session=new NativeSession(instrumentation.getTargetContext(),"127.0.0.1",1,"","",listener);
+        Field workerField=NativeSession.class.getDeclaredField("RTC"),requestedField=NativeSession.class.getDeclaredField("presenceRequested");workerField.setAccessible(true);requestedField.setAccessible(true);
+        ExecutorService worker=(ExecutorService)workerField.get(null);
+        var event=NativeSession.class.getDeclaredMethod("onNativeEvent",int.class,byte[].class);event.setAccessible(true);
+        java.util.function.BiConsumer<Integer,String> send=(type,json)->{
+            try{event.invoke(session,type,json.getBytes(java.nio.charset.StandardCharsets.UTF_8));}catch(Exception error){throw new RuntimeException(error);}
+        };
+        try{
+            send.accept(1,"{\"controller\":false,\"status\":1,\"generation\":1}");
+            worker.submit(()->{requestedField.setBoolean(session,true);return null;}).get(5,TimeUnit.SECONDS);
+            send.accept(9,"{\"type\":\"presence\",\"devices\":[],\"generation\":1}");
+            worker.submit(()->{}).get(5,TimeUnit.SECONDS);instrumentation.waitForIdleSync();assertEquals(1,delivered.get());
+            send.accept(1,"{\"controller\":false,\"status\":4,\"generation\":2}");
+            send.accept(9,"{\"type\":\"presence\",\"devices\":[],\"generation\":1}");
+            send.accept(1,"{\"controller\":false,\"status\":1,\"generation\":3}");
+            worker.submit(()->{requestedField.setBoolean(session,true);return null;}).get(5,TimeUnit.SECONDS);
+            send.accept(9,"{\"type\":\"presence\",\"devices\":[],\"generation\":1}");
+            worker.submit(()->{}).get(5,TimeUnit.SECONDS);instrumentation.waitForIdleSync();assertEquals(1,delivered.get());
+            send.accept(1,"{\"controller\":false,\"status\":1,\"generation\":3}");
+            send.accept(9,"{\"type\":\"presence_update\",\"id\":\"123456789\",\"online\":true,\"generation\":3}");
+            worker.submit(()->{}).get(5,TimeUnit.SECONDS);instrumentation.waitForIdleSync();assertEquals("Repeated login readiness keeps the current subscription",2,delivered.get());
+        }finally{session.close();worker.submit(()->{}).get(5,TimeUnit.SECONDS);}
+    }
+
     @Test public void repeatedNativeConnectedEventsNotifyAndInitializeOnlyOnce()throws Exception{
         var instrumentation=InstrumentationRegistry.getInstrumentation();
         var notifications=new java.util.concurrent.atomic.AtomicInteger();
