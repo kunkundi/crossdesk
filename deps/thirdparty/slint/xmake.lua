@@ -73,12 +73,19 @@ package("slint")
             end
             envs.CARGO_ENCODED_RUSTFLAGS = (rustflags ~= "" and rustflags .. "\31" or "") ..
                 "-Ctarget-feature=+crt-static"
+        elseif package:is_plat("macosx") then
+            -- Rust 1.92's implicit debuginfo stripping can misalign Mach-O
+            -- LINKEDIT string pools, which macOS 27 rejects (rust-lang/rust#157750).
+            -- Set both profiles explicitly, including their build dependencies.
+            envs = cmake.buildenvs(package)
+            envs.CARGO_PROFILE_RELEASE_STRIP = "none"
+            envs.CARGO_PROFILE_DEV_STRIP = "none"
         end
         cmake.install(package, configs, {envs = envs})
     end)
 
     on_test(function(package)
-        assert(package:has_cxxincludes("slint.h", {configs = {languages = "c++20"}}), "Slint C++ headers are unusable")
+        assert(package:has_cxxincludes("slint.h", {configs = {languages = "c++20"}}), "Slint C++ compile/link check failed")
         assert(os.isfile(path.join(package:installdir(), "bin", is_host("windows") and "slint-compiler.exe" or "slint-compiler")), "slint-compiler was not installed")
     end)
 package_end()
