@@ -1,5 +1,6 @@
 # Xmake cache
 .xmake/
+.xmake-toolchain-cache/
 build/
 apps/ios/Vendor/
 apps/ios/DerivedData*/
