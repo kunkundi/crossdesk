@@ -341,7 +341,7 @@ extern "C" JNIEXPORT void JNICALL JNI_METHOD(nReady)(JNIEnv*, jclass, jlong hand
   auto* s = From(handle); if (!s || !s->controller) return;
   const std::string info = R"({"type":"client_info","version":"android-native","platform":"android"})";
   SendSignalMessage(s->controller, info.data(), info.size());
-  auto action = MakeHostInformation("CrossDesk Android", {}, false, "0.1.0", HostPlatform::Android);
+  auto action = MakeHostInformation("CrossDesk Android", {}, false, "1.6.0", HostPlatform::Android);
   s->Send(kControlStream, action.to_json()); FreeRemoteAction(action);
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(nPointer)(

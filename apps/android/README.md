@@ -1,6 +1,6 @@
 # CrossDesk Android
 
-原生 Android 控制端，使用 Java 界面、JNI 和 MiniRTC，与桌面端使用相同的信令、ICE、SRTP 和输入协议。没有 WebView。当前版本为 0.1.0，支持 Android 8.0（API 26）及以上的 arm64 手机和平板。
+原生 Android 控制端，使用 Java 界面、JNI 和 MiniRTC，与桌面端使用相同的信令、ICE、SRTP 和输入协议。没有 WebView。当前版本为 1.6.0，支持 Android 8.0（API 26）及以上的 arm64 手机和平板。
 
 ## 当前功能
 
@@ -78,8 +78,8 @@ Release 构建使用 `./gradlew :app:assembleRelease`，默认输出未签名 AP
 单独发布使用 [`Release Mobile`](../../.github/workflows/release-mobile.yml)。先提交 `app/build.gradle` 中需要发布的 `versionName`，再为该提交创建 `android-v<versionName>-YYYYMMDD` 标签，例如：
 
 ```sh
-git tag android-v0.1.0-20261002
-git push origin android-v0.1.0-20261002
+git tag android-v1.6.0-20261002
+git push origin android-v1.6.0-20261002
 ```
 
 该标签只触发安卓构建，将未签名 Release APK 发布到独立的 GitHub Release 和现有下载服务器。标签版本必须与应用版本一致，日期必须有效。重试发布时，在 Actions 页面手动运行 `Release Mobile`，将已有标签填入 `source_tag`；即使从其他分支触发，也会检出该标签的源码。APK 的源码资料记录安卓标签及准确的应用、MiniRTC 提交。
@@ -90,7 +90,7 @@ git push origin android-v0.1.0-20261002
 
 CI 构建 Debug、Release 和设备测试 APK，执行 Debug / Release Lint、本机 C++ 协议与画面队列测试，并校验 APK 的 arm64 ABI、16 KB ELF / ZIP 对齐、完整许可证及 Debug 签名。Ubuntu x64 构建机上不运行 arm64 设备测试；使用下面的设备验证流程在 arm64 手机或模拟器上执行。Lint 报告在构建失败时也会保留。
 
-产物使用 Android 工程自己的 `versionName`，例如 `v0.1.0-20261001`，不跟随桌面版本号。构建日期采用上海时区；带日期的版本标签沿用标签中的日期，与 iOS 一致。Actions 提供：
+产物使用 Android 工程自己的 `versionName`，例如 `v1.6.0-20261002`，不跟随桌面版本号。构建日期采用上海时区；带日期的版本标签沿用标签中的日期，与 iOS 一致。Actions 提供：
 
 - `crossdesk-android-arm64-unsigned-<版本>.apk`：未签名 Release APK，标签发布只收集此 APK，安装前需自行签名。
 - `crossdesk-android-arm64-debug-<版本>.apk` 和对应的 `-test.apk`：可安装的调试应用和设备测试包，保留 14 天。
