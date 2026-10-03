@@ -8,7 +8,7 @@ There is no `WKWebView` or browser runtime.
 
 - Xcode 16 or newer
 - Xmake 3.1.1 available on `PATH` (or selected with `XMAKE_BIN`)
-- A physical arm64 iPhone or iPad running iOS 16 or newer
+- A physical arm64 iPhone/iPad running iOS 16 or newer, or an iOS simulator on Apple Silicon
 
 ## Build
 
@@ -57,8 +57,8 @@ package downloads disabled.
 The first build phase builds MiniRTC and the CrossDesk wire library, downloads
 and builds their dependencies, then merges the iPhoneOS archives into a local library under
 `Vendor/`. OpenSSL is kept separate and packaged as a static framework with SDK
-privacy resources in the Xcode products directory. This build path targets physical devices; simulator builds are
-not supported. The exact tool versions used by CI are recorded in the
+privacy resources in the Xcode products directory. Device and simulator builds
+use separate native archives and package caches. The exact tool versions used by CI are recorded in the
 [iOS workflow](../../.github/workflows/build-ios.yml).
 
 You can also build the target without code signing. The resulting app, like
@@ -71,6 +71,25 @@ xcodebuild -project apps/ios/CrossDeskMobile.xcodeproj \
   -destination 'generic/platform=iOS' \
   CODE_SIGNING_ALLOWED=NO build
 ```
+
+On an Apple Silicon Mac, select an iOS simulator in Xcode and run the same
+scheme. To build from the command line:
+
+```sh
+xcodebuild -project apps/ios/CrossDeskMobile.xcodeproj \
+  -scheme CrossDeskMobile -configuration Debug \
+  -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- build
+```
+
+Keep signing enabled for simulator runs. Xcode uses a local ad-hoc signature
+and supplies the application identity required by Keychain. Disabling signing
+causes identity storage to fail with `-34018` before signaling can connect.
+
+The first simulator build compiles its own MiniRTC and dependencies; later builds
+reuse `.xmake/packages-simulator` and `Vendor/iphonesimulator`. This runs the
+native application, including version checks and signaling. Validate hardware
+video behavior and performance separately on a physical device.
 
 The first connection to a signaling server provisions and stores an identity
 for that server. Remote control sessions then log in as `C-<identity>` and use
@@ -127,6 +146,24 @@ run `Update version.json from Release` with its existing `source_tag`.
 No Apple signing secrets are needed. Sign the app yourself before installing
 it on a device. Push any referenced MiniRTC commit before the parent repository
 so the runner can check out all corresponding sources.
+
+## App updates
+
+After network consent, the app checks the public version manifest once on each
+launch or return from the background, and after a remote connection ends while
+active. Concurrent triggers share the pending request. There are no periodic
+checks or automatic retries; failures retain any known update until the next
+trigger or manual check. Backgrounding or withdrawing consent cancels requests
+and ignores stale replies.
+
+Local updates read only `downloads.ios-arm64`, using the same numeric version
+and patch comparison as desktop. Build dates alone do not indicate an update;
+missing platform metadata is a failed check. New releases show a red badge with
+a white exclamation mark at the top-right edge of the home Settings button,
+matching the announcement badge's size and position.
+Settings → About shows “新版本” and a red dot. About displays the new version,
+links to the official download page, and offers **检查更新** for manual checks.
+This is independent of the remote desktop's upgrade notice.
 
 ## Announcements
 

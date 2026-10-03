@@ -508,6 +508,16 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   return update ? [NSString stringWithUTF8String:update->c_str()] : nil;
 }
 
++ (nullable NSString *)checkMobileUpdateForAppVersion:(NSString *)appVersion
+                                        releaseJSON:(NSData *)releaseJSON {
+  if (releaseJSON.length == 0 || releaseJSON.length > 256 * 1024) return nil;
+  const auto result = crossdesk::CheckPlatformAppUpdate(
+      appVersion.UTF8String ?: "", std::string_view(
+          static_cast<const char *>(releaseJSON.bytes), releaseJSON.length),
+      "ios-arm64");
+  return result ? [NSString stringWithUTF8String:result->c_str()] : nil;
+}
+
 - (instancetype)init {
   self = [super init];
   if (self) {

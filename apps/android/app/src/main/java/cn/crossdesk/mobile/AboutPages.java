@@ -17,15 +17,22 @@ final class AboutPages {
     private final MobileUi ui;
     private final Runnable settings;
     private final LicenseCatalog catalog;
+    private final AppUpdateChecker updates;
+    private TextView updateStatus, updateLink, checkButton;
+    private LinearLayout updateRow;
 
-    AboutPages(MainActivity activity,MobileUi ui,Runnable settings){
-        this.activity=activity;this.ui=ui;this.settings=settings;
+    AboutPages(MainActivity activity,MobileUi ui,Runnable settings,AppUpdateChecker updates){
+        this.activity=activity;this.ui=ui;this.settings=settings;this.updates=updates;
         LicenseCatalog loaded;try{loaded=new LicenseCatalog(activity);}catch(Exception error){loaded=null;}catalog=loaded;
     }
     void show(){
         LinearLayout content=activity.formPage("about","关于 CrossDesk",settings);
+        LinearLayout version=activity.section(content,"");value(version,"版本",applicationVersion());
+        updateRow=ui.row();updateRow.setPadding(ui.dp(16),0,ui.dp(16),0);updateRow.addView(activity.updateDot(),ui.size(8,8));
+        updateLink=ui.action("",BLUE,()->open("https://crossdesk.cn"));updateLink.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);updateLink.setPadding(ui.dp(8),ui.dp(12),0,ui.dp(12));updateRow.addView(updateLink,new LinearLayout.LayoutParams(0,-2,1));version.addView(updateRow);
+        updateStatus=ui.text("",13,false);updateStatus.setPadding(ui.dp(16),ui.dp(8),ui.dp(16),ui.dp(8));version.addView(updateStatus);
+        checkButton=ui.action("检查更新",BLUE,activity::checkAppUpdates);version.addView(checkButton);renderUpdates();ui.gap(content,28);
         if(catalog==null){unavailable(content);return;}
-        LinearLayout version=activity.section(content,"");value(version,"版本",applicationVersion());ui.gap(content,28);
         LinearLayout links=activity.section(content,"");
         activity.link(links,"软件许可","",()->component(catalog.find("crossdesk"),this::show));ui.divider(links);
         activity.link(links,"开源组件","",this::components);ui.divider(links);
@@ -33,7 +40,22 @@ final class AboutPages {
         activity.footer(content,"许可与版权声明可离线查阅。");
     }
     private String applicationVersion(){
-        try{return activity.getPackageManager().getPackageInfo(activity.getPackageName(),0).versionName;}catch(android.content.pm.PackageManager.NameNotFoundException error){return "—";}
+        return activity.applicationVersion();
+    }
+    void renderUpdates(){
+        if(updateStatus==null)return;
+        updateRow.setVisibility(updates.updateAvailable()?View.VISIBLE:View.GONE);
+        updateLink.setText("新版本可用：v"+updates.availableVersion);
+        String status=!activity.hasNetworkConsent()?"完成隐私授权后可检查更新":switch(updates.status){
+            case CHECKING -> "正在检查更新…";
+            case UP_TO_DATE -> "当前已是最新版本";
+            case FAILED -> "检查失败，请稍后重试";
+            default -> "";
+        };
+        updateStatus.setText(status);updateStatus.setVisibility(status.isEmpty()?View.GONE:View.VISIBLE);
+        updateStatus.setTextColor(updates.status==AppUpdateChecker.Status.FAILED?RED:SECONDARY);
+        checkButton.setEnabled(updates.status!=AppUpdateChecker.Status.CHECKING);
+        checkButton.setAlpha(checkButton.isEnabled()?1f:.5f);
     }
     private void components(){
         LinearLayout content=activity.formPage("open-source","开源组件",this::show);

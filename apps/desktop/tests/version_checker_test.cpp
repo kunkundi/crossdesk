@@ -129,5 +129,33 @@ int main() {
                       crossdesk::ParseVersionInfoJSON(response).has_value(), false);
   }
 
+  const auto mobile_manifest = R"({"latest_version":"99.0.0","patch":99,
+    "downloads":{"ios-arm64":{"version":"0.0.2-20261002"},
+                 "android-arm64":{"version":"1.6.0-2-20261002"}}})";
+  ok &= ExpectEqual("iOS uses its own release", crossdesk::CheckPlatformAppUpdate(
+      "0.0.1", mobile_manifest, "ios-arm64") == "0.0.2", true);
+  ok &= ExpectEqual("Android uses its own release and inline patch",
+      crossdesk::CheckPlatformAppUpdate("1.6.0", mobile_manifest, "android-arm64") == "1.6.0-2", true);
+  for (const auto& version : {"1.6.0-2", "1.6.0-3", "1.7.0"}) {
+    ok &= ExpectEqual("desktop patch cannot affect mobile comparison",
+        crossdesk::CheckPlatformAppUpdate(version, mobile_manifest, "android-arm64") == "", true);
+  }
+  ok &= ExpectEqual("mobile build date does not count as update",
+      crossdesk::CheckPlatformAppUpdate("0.0.2-20261001", mobile_manifest, "ios-arm64") == "", true);
+  ok &= ExpectEqual("invalid installed version is a failed local check",
+      crossdesk::CheckPlatformAppUpdate("", mobile_manifest, "ios-arm64").has_value(), false);
+  for (const auto& response : {"not JSON", "[]", R"({"version":"99.0.0"})",
+      R"({"downloads":[]})", R"({"downloads":{"ios-arm64":null}})",
+      R"({"downloads":{"android-arm64":{"version":"99.0.0"}}})",
+      R"({"downloads":{"ios-arm64":{"url":"https://example.com/app.zip"}}})",
+      R"({"downloads":{"ios-arm64":{"version":"invalid"}}})"}) {
+    ok &= ExpectEqual("missing mobile metadata never falls back to desktop",
+        crossdesk::CheckPlatformAppUpdate("0.0.1", response, "ios-arm64").has_value(), false);
+  }
+  ok &= ExpectEqual("platform patch metadata follows desktop rules",
+      crossdesk::CheckPlatformAppUpdate("1.6.0-2",
+          R"({"downloads":{"android-arm64":{"version":"1.6.0","patch":3}}})",
+          "android-arm64") == "1.6.0-3", true);
+
   return ok ? 0 : 1;
 }

@@ -21,7 +21,7 @@ struct VersionInfo {
   int patch = -1;
 };
 
-// Shared desktop release parsing and comparison for desktop and iOS controllers.
+// Shared release parsing and comparison for desktop and mobile controllers.
 std::optional<VersionInfo> ParseVersionInfoJSON(std::string_view json);
 bool IsValidAppVersion(const std::string& version);
 
@@ -37,6 +37,13 @@ bool IsNewerVersionWithMetadata(const std::string& current,
 // peer versions are treated as legacy; the latest release must still be valid.
 std::optional<std::string> AvailableAppUpdate(const std::string& current,
                                              const VersionInfo& latest);
+
+// Local mobile updates use downloads[platform], never the desktop release at
+// the root. nullopt means invalid/unavailable metadata; an empty string means
+// up to date, otherwise the result is the newer release's display version.
+std::optional<std::string> CheckPlatformAppUpdate(const std::string& current,
+                                                 std::string_view json,
+                                                 const std::string& platform);
 
 }  // namespace crossdesk
 

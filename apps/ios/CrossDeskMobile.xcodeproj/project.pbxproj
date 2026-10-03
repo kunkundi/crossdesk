@@ -30,6 +30,7 @@
 		100000000000000000000019 /* AnnouncementInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000019 /* AnnouncementInbox.swift */; };
 		10000000000000000000001A /* AnnouncementText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001A /* AnnouncementText.swift */; };
 		10000000000000000000001B /* AnnouncementInboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001B /* AnnouncementInboxView.swift */; };
+		10000000000000000000001C /* AppUpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001C /* AppUpdateChecker.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -60,6 +61,7 @@
 		200000000000000000000019 /* AnnouncementInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncementInbox.swift; sourceTree = "<group>"; };
 		20000000000000000000001A /* AnnouncementText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncementText.swift; sourceTree = "<group>"; };
 		20000000000000000000001B /* AnnouncementInboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncementInboxView.swift; sourceTree = "<group>"; };
+		20000000000000000000001C /* AppUpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateChecker.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -107,6 +109,7 @@
 				200000000000000000000019 /* AnnouncementInbox.swift */,
 				20000000000000000000001A /* AnnouncementText.swift */,
 				20000000000000000000001B /* AnnouncementInboxView.swift */,
+				20000000000000000000001C /* AppUpdateChecker.swift */,
 				200000000000000000000018 /* RecentConnection.swift */,
 				200000000000000000000016 /* RemoteVideoSettings.swift */,
 				200000000000000000000017 /* RemoteNetworkStatistics.swift */,
@@ -252,7 +255,7 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$(PROJECT_DIR)/Vendor/iphoneos/$(CONFIGURATION)/libCrossDeskMiniRTC.a",
+				"$(PROJECT_DIR)/Vendor/$(PLATFORM_NAME)/$(CONFIGURATION)/libCrossDeskMiniRTC.a",
 				"$(BUILT_PRODUCTS_DIR)/OpenSSL.framework/OpenSSL",
 				"$(BUILT_PRODUCTS_DIR)/OpenSSL.framework/Info.plist",
 				"$(BUILT_PRODUCTS_DIR)/OpenSSL.framework/PrivacyInfo.xcprivacy",
@@ -262,7 +265,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/zsh;
-			shellScript = "set -e\npython3 \"${PROJECT_DIR}/scripts/generate_third_party_licenses.py\"\npython3 \"${PROJECT_DIR}/scripts/prepare_source_metadata.py\" --output \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/SourceMetadata.json\"\n\"${PROJECT_DIR}/scripts/build_minirtc_ios.sh\"\npython3 \"${PROJECT_DIR}/scripts/generate_third_party_licenses.py\" --inputs \"${PROJECT_DIR}/Vendor/iphoneos/${CONFIGURATION}/libCrossDeskMiniRTC.a.inputs.sha256\" --target-info \"${PROJECT_DIR}/Vendor/iphoneos/${CONFIGURATION}/minirtc-target-info.txt\" --xmake-version \"${PROJECT_DIR}/Vendor/iphoneos/${CONFIGURATION}/xmake-version.txt\" --xmake-repository \"$(cat \"${PROJECT_DIR}/Vendor/iphoneos/${CONFIGURATION}/xmake-repository.txt\")\"\npython3 \"${PROJECT_DIR}/scripts/package_openssl_ios.py\" --inputs \"${PROJECT_DIR}/Vendor/iphoneos/${CONFIGURATION}/libCrossDeskMiniRTC.a.inputs.sha256\" --output \"${BUILT_PRODUCTS_DIR}/OpenSSL.framework\"\n";
+			shellScript = "set -e\npython3 \"${PROJECT_DIR}/scripts/generate_third_party_licenses.py\"\npython3 \"${PROJECT_DIR}/scripts/prepare_source_metadata.py\" --output \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/SourceMetadata.json\"\n\"${PROJECT_DIR}/scripts/build_minirtc_ios.sh\"\npython3 \"${PROJECT_DIR}/scripts/generate_third_party_licenses.py\" --inputs \"${PROJECT_DIR}/Vendor/${PLATFORM_NAME}/${CONFIGURATION}/libCrossDeskMiniRTC.a.inputs.sha256\" --target-info \"${PROJECT_DIR}/Vendor/${PLATFORM_NAME}/${CONFIGURATION}/minirtc-target-info.txt\" --xmake-version \"${PROJECT_DIR}/Vendor/${PLATFORM_NAME}/${CONFIGURATION}/xmake-version.txt\" --xmake-repository \"$(cat \"${PROJECT_DIR}/Vendor/${PLATFORM_NAME}/${CONFIGURATION}/xmake-repository.txt\")\"\npython3 \"${PROJECT_DIR}/scripts/package_openssl_ios.py\" --inputs \"${PROJECT_DIR}/Vendor/${PLATFORM_NAME}/${CONFIGURATION}/libCrossDeskMiniRTC.a.inputs.sha256\" --output \"${BUILT_PRODUCTS_DIR}/OpenSSL.framework\" --platform \"${PLATFORM_NAME}\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -276,6 +279,7 @@
 				100000000000000000000019 /* AnnouncementInbox.swift in Sources */,
 				10000000000000000000001A /* AnnouncementText.swift in Sources */,
 				10000000000000000000001B /* AnnouncementInboxView.swift in Sources */,
+				10000000000000000000001C /* AppUpdateChecker.swift in Sources */,
 				100000000000000000000018 /* RecentConnection.swift in Sources */,
 				100000000000000000000016 /* RemoteVideoSettings.swift in Sources */,
 				100000000000000000000017 /* RemoteNetworkStatistics.swift in Sources */,
@@ -357,7 +361,7 @@
 				MARKETING_VERSION = 0.0.1;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
-					"$(PROJECT_DIR)/Vendor/iphoneos/$(CONFIGURATION)/libCrossDeskMiniRTC.a",
+					"$(PROJECT_DIR)/Vendor/$(PLATFORM_NAME)/$(CONFIGURATION)/libCrossDeskMiniRTC.a",
 					"-liconv",
 					"-lresolv",
 					"-framework",
@@ -377,7 +381,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = cn.crossdesk.mobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_OBJC_BRIDGING_HEADER = "CrossDeskMobile/CrossDeskMobile-Bridging-Header.h";
 				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_VERSION = 5.0;
@@ -407,7 +411,7 @@
 				MARKETING_VERSION = 0.0.1;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
-					"$(PROJECT_DIR)/Vendor/iphoneos/$(CONFIGURATION)/libCrossDeskMiniRTC.a",
+					"$(PROJECT_DIR)/Vendor/$(PLATFORM_NAME)/$(CONFIGURATION)/libCrossDeskMiniRTC.a",
 					"-liconv",
 					"-lresolv",
 					"-framework",
@@ -427,7 +431,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = cn.crossdesk.mobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_OBJC_BRIDGING_HEADER = "CrossDeskMobile/CrossDeskMobile-Bridging-Header.h";
 				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_VERSION = 5.0;

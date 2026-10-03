@@ -77,28 +77,52 @@ struct SourceMetadata: Decodable {
 }
 
 struct ThirdPartyLicensesView: View {
+    @ObservedObject var session: RemoteSessionModel
+    @EnvironmentObject private var appUpdates: AppUpdateChecker
     var body: some View {
-        Group {
+        List {
+            Section {
+                LabeledContent("版本", value: appUpdates.currentVersion)
+                if appUpdates.updateAvailable {
+                    Link(destination: URL(string: "https://crossdesk.cn")!) {
+                        HStack {
+                            UpdateDot()
+                            Text("新版本可用：v\(appUpdates.availableVersion)")
+                            Spacer()
+                            Image(systemName: "arrow.up.right")
+                        }
+                    }
+                }
+                if !session.hasNetworkConsent {
+                    Text("完成隐私授权后可检查更新").foregroundStyle(.secondary)
+                } else if appUpdates.status == .checking {
+                    Text("正在检查更新…").foregroundStyle(.secondary)
+                } else if appUpdates.status == .upToDate {
+                    Text("当前已是最新版本").foregroundStyle(.secondary)
+                } else if appUpdates.status == .failed {
+                    Text("检查失败，请稍后重试").foregroundStyle(.red)
+                }
+                Button("检查更新") {
+                    if session.hasNetworkConsent { appUpdates.checkNow() }
+                    else { session.showPrivacyNotice() }
+                }
+                .disabled(appUpdates.status == .checking)
+            }
             switch LicenseCatalog.bundled {
             case .success(let catalog):
-                List {
-                    if let application = catalog.components.first(where: { $0.id == "crossdesk" }) {
-                        Section {
-                            LabeledContent("版本", value: application.displayVersion)
+                if let application = catalog.components.first(where: { $0.id == "crossdesk" }) {
+                    Section {
+                        NavigationLink("软件许可") {
+                            ComponentLicenseView(component: application)
                         }
-                        Section {
-                            NavigationLink("软件许可") {
-                                ComponentLicenseView(component: application)
-                            }
-                            NavigationLink("开源组件") {
-                                OpenSourceComponentsView(catalog: catalog)
-                            }
-                            NavigationLink("源码与构建说明") {
-                                SourceCodeView(application: application)
-                            }
-                        } footer: {
-                            Text("许可与版权声明可离线查阅。")
+                        NavigationLink("开源组件") {
+                            OpenSourceComponentsView(catalog: catalog)
                         }
+                        NavigationLink("源码与构建说明") {
+                            SourceCodeView(application: application)
+                        }
+                    } footer: {
+                        Text("许可与版权声明可离线查阅。")
                     }
                 }
             case .failure:
@@ -116,6 +140,18 @@ struct ThirdPartyLicensesView: View {
         }
         .navigationTitle("关于 CrossDesk")
         .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: session.hasNetworkConsent) { allowed in
+            if allowed { appUpdates.checkNow() }
+        }
+    }
+}
+
+struct UpdateDot: View {
+    var body: some View {
+        Circle()
+            .fill(.red)
+            .frame(width: 8, height: 8)
+            .accessibilityHidden(true)
     }
 }
 

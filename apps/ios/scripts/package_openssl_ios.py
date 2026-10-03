@@ -22,7 +22,7 @@ FORBIDDEN_APIS = {
 }
 
 
-def package(inputs, output):
+def package(inputs, output, platform="iphoneos"):
     catalog = json.loads((IOS / "CrossDeskMobile/Resources/ThirdPartyLicenses.json").read_text())
     component = next(c for c in catalog["components"] if c["id"] == "openssl3")
     archives = {}
@@ -71,7 +71,7 @@ def package(inputs, output):
                 "CFBundleInfoDictionaryVersion": "6.0",
                 "CFBundleVersion": component["version"],
                 "CFBundleShortVersionString": component["version"],
-                "CFBundleSupportedPlatforms": ["iPhoneOS"],
+                "CFBundleSupportedPlatforms": ["iPhoneSimulator" if platform == "iphonesimulator" else "iPhoneOS"],
                 "MinimumOSVersion": "16.0",
             }),
             "LICENSE.txt": "\n\n".join(d["text"] for d in component["documents"]).encode(),
@@ -94,8 +94,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--inputs", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--platform", choices=("iphoneos", "iphonesimulator"), default="iphoneos")
     args = parser.parse_args()
-    package(args.inputs, args.output)
+    package(args.inputs, args.output, args.platform)
 
 
 if __name__ == "__main__":

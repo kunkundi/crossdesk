@@ -168,7 +168,7 @@ def verify(lock, inputs, target_info, xmake_repository=None, xmake_version=None)
     seen = {}
     # Package names/versions come from resolved Xmake link and include paths,
     # never from an inventory of all packages left in the installation cache.
-    pattern = r"/packages/[^/\s]+/([^/\s]+)/([^/\s]+)/[a-f0-9]+/"
+    pattern = r"/packages(?:-simulator)?/[^/\s]+/([^/\s]+)/([^/\s]+)/[a-f0-9]+/"
     for name, version in re.findall(pattern, inputs.read_text() + target_info.read_text()):
         if name not in known or known[name] != version:
             raise ValueError(f"Unreviewed iOS dependency: {name} {version}; regenerate licenses from its source")

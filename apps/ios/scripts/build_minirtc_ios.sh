@@ -17,7 +17,17 @@ fi
 # Keep iOS dependencies isolated from desktop Xmake packages. Besides avoiding
 # cross-project cache collisions, this guarantees every archive is compiled
 # with the iOS 16 deployment target instead of the active SDK version.
-export XMAKE_PKG_INSTALLDIR="${IOS_DIR}/.xmake/packages"
+SDK_NAME="${PLATFORM_NAME:-iphoneos}"
+APPLE_DEVICE="iphone"
+CACHE_SUFFIX=""
+if [[ "${SDK_NAME}" == "iphonesimulator" ]]; then
+  APPLE_DEVICE="simulator"
+  CACHE_SUFFIX="-simulator"
+elif [[ "${SDK_NAME}" != "iphoneos" ]]; then
+  print -u2 "Unsupported iOS SDK: ${SDK_NAME}"
+  exit 64
+fi
+export XMAKE_PKG_INSTALLDIR="${IOS_DIR}/.xmake/packages${CACHE_SUFFIX}"
 
 if [[ "${MODE}" != "debug" && "${MODE}" != "release" ]]; then
   MODE="release"
@@ -28,7 +38,7 @@ if [[ "${ARCH_NAME}" == "undefined_arch" ]]; then
   ARCH_NAME="arm64"
 fi
 if [[ "${ARCH_NAME}" != "arm64" ]]; then
-  print -u2 "CrossDesk Mobile currently supports physical iOS arm64 builds only."
+  print -u2 "CrossDesk Mobile supports arm64 devices and Apple Silicon simulators."
   exit 64
 fi
 
@@ -77,16 +87,16 @@ run_xmake() {
     "${XMAKE_BIN}" "$@"
 }
 
-OUTPUT_DIR="${IOS_DIR}/Vendor/iphoneos/${CONFIG_NAME}"
+OUTPUT_DIR="${IOS_DIR}/Vendor/${SDK_NAME}/${CONFIG_NAME}"
 OUTPUT_LIBRARY="${OUTPUT_DIR}/libCrossDeskMiniRTC.a"
 XMAKE_REPOSITORY_DIR="$(run_xmake lua -c 'import("core.base.global"); print(path.join(global.directory(), "repositories", "xmake-repo"))')"
 mkdir -p "${OUTPUT_DIR}"
 print -r -- "${XMAKE_REPOSITORY_DIR}" > "${OUTPUT_DIR}/xmake-repository.txt"
 run_xmake --version > "${OUTPUT_DIR}/xmake-version.txt"
-MINIRTC_BUILD_DIR="${IOS_DIR}/.xmake/minirtc-build"
+MINIRTC_BUILD_DIR="${IOS_DIR}/.xmake/minirtc-build${CACHE_SUFFIX}"
 MINIRTC_LIBRARY="${MINIRTC_BUILD_DIR}/iphoneos/arm64/${MODE}/libminirtc.a"
-WIRE_BUILD_DIR="${IOS_DIR}/.xmake/wire-build"
-WIRE_WORK_DIR="${IOS_DIR}/.xmake/wire-work"
+WIRE_BUILD_DIR="${IOS_DIR}/.xmake/wire-build${CACHE_SUFFIX}"
+WIRE_WORK_DIR="${IOS_DIR}/.xmake/wire-work${CACHE_SUFFIX}"
 WIRE_MANIFEST_FILE="${WIRE_WORK_DIR}/xmake.lua"
 WIRE_LIBRARY="${WIRE_BUILD_DIR}/iphoneos/arm64/${MODE}/libcrossdesk_wire.a"
 
@@ -99,11 +109,11 @@ fi
 # Still configure on every invocation: Xmake must see manifest edits and restore
 # the iOS configuration if MiniRTC was built standalone for another platform.
 CONFIG_SIGNATURE="$(print -r -- "${XMAKE_BIN}" "${XMAKE_DEVELOPER_DIR}" \
-  "${MODE}" "${ARCH_NAME}" "16.0" "${XMAKE_PKG_INSTALLDIR}" "${MINIRTC_ENABLE_AOM}"
+  "${MODE}" "${ARCH_NAME}" "${SDK_NAME}" "${APPLE_DEVICE}" "16.0" "${XMAKE_PKG_INSTALLDIR}" "${MINIRTC_ENABLE_AOM}"
   run_xmake --version | sed -n '1p'
   DEVELOPER_DIR="${XMAKE_DEVELOPER_DIR}" xcodebuild -version
-  DEVELOPER_DIR="${XMAKE_DEVELOPER_DIR}" xcrun --sdk iphoneos --show-sdk-path
-  DEVELOPER_DIR="${XMAKE_DEVELOPER_DIR}" xcrun --sdk iphoneos --show-sdk-version)"
+  DEVELOPER_DIR="${XMAKE_DEVELOPER_DIR}" xcrun --sdk "${SDK_NAME}" --show-sdk-path
+  DEVELOPER_DIR="${XMAKE_DEVELOPER_DIR}" xcrun --sdk "${SDK_NAME}" --show-sdk-version)"
 
 configure_xmake() {
   local project_dir="$1"
@@ -115,7 +125,7 @@ configure_xmake() {
     clean_flags=(-c)
   fi
   run_xmake f -P "${project_dir}" "${clean_flags[@]}" -o "${build_dir}" \
-    -p iphoneos -a arm64 -m "${MODE}" --target_minver=16.0 \
+    -p iphoneos -a arm64 --appledev="${APPLE_DEVICE}" -m "${MODE}" --target_minver=16.0 \
     --policies=package.precompiled:n -y "$@"
   mkdir -p "${build_dir}"
   print -r -- "${CONFIG_SIGNATURE}" > "${stamp}"

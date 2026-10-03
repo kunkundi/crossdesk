@@ -348,6 +348,20 @@ bool IsValidAppVersion(const std::string& version) {
   return ParseVersionInfo(nlohmann::json{{"version", version}}).has_value();
 }
 
+std::optional<std::string> CheckPlatformAppUpdate(const std::string& current,
+                                                 std::string_view json,
+                                                 const std::string& platform) {
+  if (!IsValidAppVersion(current)) return std::nullopt;
+  try {
+    const auto manifest = nlohmann::json::parse(json);
+    const auto latest = ParseVersionInfo(manifest.at("downloads").at(platform));
+    if (!latest) return std::nullopt;
+    return AvailableAppUpdate(current, *latest).value_or("");
+  } catch (const nlohmann::json::exception&) {
+    return std::nullopt;
+  }
+}
+
 std::optional<std::string> AvailableAppUpdate(const std::string& current,
                                              const VersionInfo& latest) {
   if (!IsValidAppVersion(latest.version) ||

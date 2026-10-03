@@ -61,7 +61,7 @@ final class RemoteVersionCheck {
         request = null;
     }
 
-    private static final class ReleaseRequest implements Cancellation, Runnable {
+    static final class ReleaseRequest implements Cancellation, Runnable {
         private static final int MAX_BYTES = 256 * 1024;
         private final Handler main = new Handler(Looper.getMainLooper());
         private final Consumer<byte[]> completion;

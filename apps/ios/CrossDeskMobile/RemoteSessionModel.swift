@@ -339,6 +339,8 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
 
     let bridge = CrossDeskRTCBridge()
     let announcements = AnnouncementInbox()
+    let appUpdates = AppUpdateChecker()
+    private var appIsActive = false
     private let audioPlayer = RemoteAudioPlayer()
     private var activeRemoteID = ""
     private var remoteAppVersion = ""
@@ -403,6 +405,8 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     var privacyNoticeVisible: Bool { privacyNotice.isVisible }
 
     func applicationDidBecomeActive() {
+        appIsActive = true
+        appUpdates.setEnabled(hasNetworkConsent)
         privacyNotice.didBecomeActive(hasNetworkConsent: hasNetworkConsent)
         refreshRecentConnectionPresenceAfterForeground()
         refreshAnnouncements()
@@ -410,6 +414,8 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     func applicationDidEnterBackground() {
+        appIsActive = false
+        appUpdates.setEnabled(false)
         privacyNotice.didEnterBackground()
         suspendVideoForBackground()
         suspendPresenceMonitoring()
@@ -426,6 +432,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     func acceptNetworkConsent() {
         privacyPreferences.setNetworkConsent(true)
         hasNetworkConsent = true
+        appUpdates.setEnabled(appIsActive)
         privacyNotice.dismiss()
         configureBridge()
     }
@@ -438,6 +445,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     func revokeNetworkConsent() {
         privacyPreferences.setNetworkConsent(false)
         hasNetworkConsent = false
+        appUpdates.setEnabled(false)
         signalConnected = false
         stopPresenceMonitoring()
         invalidatePresence()
@@ -669,6 +677,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         connectionStatus = "未连接"
         audioPlayer.setEnabled(false)
         AppOrientation.update(to: .portrait)
+        appUpdates.checkNow()
     }
 
     func retry() {

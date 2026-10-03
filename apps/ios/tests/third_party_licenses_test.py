@@ -129,6 +129,21 @@ class LicenseValidationTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "License/build dependency mismatch; missing:.*asio"):
             self.verify()
 
+    def test_simulator_cache_keeps_dependency_and_archive_validation(self):
+        (self.root / "packages").rename(self.root / "packages-simulator")
+        self.archive = Path(str(self.archive).replace("/packages/", "/packages-simulator/"))
+        self.inputs.write_text(self.inputs.read_text().replace("/packages/", "/packages-simulator/"))
+        self.target.write_text(self.target.read_text().replace("/packages/", "/packages-simulator/"))
+        self.verify()
+        valid_target = self.target.read_text()
+        self.target.write_text(valid_target.replace("/asio/1.0/", "/asio/2.0/"))
+        with self.assertRaisesRegex(ValueError, "Unreviewed iOS dependency: asio 2.0"):
+            self.verify()
+        self.target.write_text(valid_target)
+        self.archive.write_bytes(b"changed simulator archive")
+        with self.assertRaisesRegex(ValueError, "Source checksum mismatch: .*libopus.a"):
+            self.verify()
+
     def test_changed_native_archive_is_rejected(self):
         self.archive.write_bytes(b"changed archive")
         with self.assertRaisesRegex(ValueError, "Source checksum mismatch: .*libopus.a"):

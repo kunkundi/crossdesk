@@ -41,6 +41,7 @@ struct ContentView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: session.sessionVisible)
+        .environmentObject(session.appUpdates)
         .preferredColorScheme(session.sessionVisible ? .dark : .light)
         .sheet(isPresented: Binding(
             get: { session.privacyNoticeVisible },
@@ -158,6 +159,7 @@ private struct KeyboardDismissTapView: UIViewRepresentable {
 }
 
 private struct ConnectionHomeView: View {
+    @EnvironmentObject private var appUpdates: AppUpdateChecker
     @ObservedObject var session: RemoteSessionModel
     @FocusState private var remoteIDFocused: Bool
     @State private var passwordPromptVisible = false
@@ -187,6 +189,7 @@ private struct ConnectionHomeView: View {
 
     private var signalHasError: Bool {
         session.signalStatus.contains("失败") ||
+            session.signalStatus.contains("无法") ||
             session.signalStatus.contains("无效") ||
             session.signalStatus.contains("关闭") ||
             session.signalStatus.contains("未知")
@@ -318,10 +321,21 @@ private struct ConnectionHomeView: View {
                     .background(Color(.secondarySystemGroupedBackground),
                                 in: RoundedRectangle(cornerRadius: 10,
                                                      style: .continuous))
+                    .overlay(alignment: .topTrailing) {
+                        if appUpdates.updateAvailable {
+                            Text("!")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 16, height: 16)
+                                .background(.red, in: Circle())
+                                .offset(x: 5, y: -3)
+                                .accessibilityHidden(true)
+                        }
+                    }
             }
             .foregroundStyle(.primary)
             .disabled(session.isConnecting)
-            .accessibilityLabel("设置")
+            .accessibilityLabel(appUpdates.updateAvailable ? "设置，有新版本" : "设置")
         }
     }
 
@@ -337,7 +351,8 @@ private struct ConnectionHomeView: View {
         }
         .foregroundStyle(signalTint)
         .padding(.horizontal, 11)
-        .frame(height: 34)
+        // Leave room for both toolbar actions even when the status is an error.
+        .frame(maxWidth: 160, minHeight: 34, maxHeight: 34, alignment: .leading)
         .background(signalTint.opacity(0.11), in: Capsule())
         .overlay {
             Capsule()
@@ -752,6 +767,7 @@ private struct PasswordPromptView: View {
 }
 
 private struct ServerSettingsView: View {
+    @EnvironmentObject private var appUpdates: AppUpdateChecker
     @ObservedObject var session: RemoteSessionModel
     @State private var serverConfigurationExpanded = false
     @State private var usesCustomServer: Bool
@@ -855,9 +871,19 @@ private struct ServerSettingsView: View {
             }
             PrivacySettingsSection(session: session)
             Section {
-                NavigationLink("关于") {
-                    ThirdPartyLicensesView()
+                NavigationLink {
+                    ThirdPartyLicensesView(session: session)
+                } label: {
+                    HStack {
+                        Text("关于")
+                        Spacer()
+                        if appUpdates.updateAvailable {
+                            Text("新版本").foregroundStyle(.secondary)
+                            UpdateDot()
+                        }
+                    }
                 }
+                .accessibilityLabel(appUpdates.updateAvailable ? "关于，有新版本" : "关于")
             }
         }
         .navigationTitle("设置")

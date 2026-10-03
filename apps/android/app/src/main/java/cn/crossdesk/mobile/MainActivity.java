@@ -29,6 +29,9 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private MobileUi ui;
     private PageHost pageHost;
     private AboutPages aboutPages;
+    private AppUpdateChecker appUpdates;
+    private View settingsUpdateDot, aboutUpdateDot, settingsUpdateButton, aboutUpdateRow;
+    private TextView aboutUpdateLabel;
     private boolean navigatingBack;
     private FrameLayout canvas;
     private LinearLayout root;
@@ -84,6 +87,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         recentPresence.sender=ids->{if(signaling!=null&&!signaling.isClosed())signaling.presenceRequest(ids);};
         recentPresence.changed=this::renderRecentConnections;
         remoteVersionCheck=new RemoteVersionCheck(this::showRemoteUpdate);
+        appUpdates=new AppUpdateChecker(applicationVersion(),this::renderAppUpdates);
         previews=RemotePreviewStore.get(this);previews.addListener(previewChanged);previews.enforceConsent();
         announcementInbox=new AnnouncementInbox(new java.io.File(getNoBackupFilesDir(),"AnnouncementReads"));
         announcementInbox.sender=(request,id)->{if(signaling!=null&&!signaling.isClosed())signaling.announcementRequest(request,id);else announcementInbox.failed(id);};
@@ -107,6 +111,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         }
         if(root!=null)hideKeyboard();page=nextPage;
         signalBadge=null;identitySummary=null;announcementBadge=null;announcementView=null;announcementRefresh=null;
+        settingsUpdateDot=null;aboutUpdateDot=null;settingsUpdateButton=null;aboutUpdateRow=null;aboutUpdateLabel=null;
         previewSwitch=null;clearPreviewsButton=null;previewCleanupError=null;previewCards.clear();recentGrid=null;
         canvas=new FrameLayout(this);canvas.setBackgroundColor(dark?Color.BLACK:BACKGROUND);
         root=column();canvas.addView(root,new FrameLayout.LayoutParams(-1,-1));
@@ -144,10 +149,11 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         LinearLayout card=column();ui.card(card,radius);content.addView(card);return card;
     }
     void footer(LinearLayout content,String title){TextView v=text(title,12,false);v.setTextColor(SECONDARY);v.setLineSpacing(dp(3),1);v.setPadding(dp(16),dp(8),dp(16),dp(16));content.addView(v);}
-    void link(LinearLayout parent,String title,String detail,Runnable action){
+    LinearLayout link(LinearLayout parent,String title,String detail,Runnable action){
         LinearLayout item=row();item.setPadding(dp(16),dp(14),dp(12),dp(14));item.setMinimumHeight(dp(48));
         item.addView(text(title,16,false),new LinearLayout.LayoutParams(0,-2,1));TextView value=text(detail,15,false);value.setTextColor(SECONDARY);item.addView(value);
         TextView chevron=text(" ›",23,false);chevron.setTextColor(0xFFB7B7BD);item.addView(chevron);item.setContentDescription(title+(detail.isEmpty()?"":"，"+detail));item.setClickable(true);item.setFocusable(true);item.setOnClickListener(v->action.run());parent.addView(item);
+        return item;
     }
     @android.annotation.SuppressLint("SourceLockedOrientationActivity") // Match the iOS portrait home; sessions support both orientations.
     private void home(String message){
@@ -159,10 +165,14 @@ public final class MainActivity extends Activity implements NativeSession.Listen
             else if(signalState==1)toast("已连接 "+serverKey());
             else {stopSignaling();ensureSignaling();}
         });renderSignaling();toolbar.addView(signalBadge,ui.size(-2,34));toolbar.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
-        FrameLayout bell=(FrameLayout)ui.iconButton("bell","通知公告",this::announcements);bell.setClipChildren(false);toolbar.setClipChildren(false);
+        FrameLayout bell=(FrameLayout)ui.iconButton("bell","通知公告",this::announcements);bell.setClipChildren(false);toolbar.setClipChildren(false);toolbar.setClipToPadding(false);
         announcementBadge=text("",10,true);announcementBadge.setTextColor(Color.WHITE);announcementBadge.setGravity(Gravity.CENTER);announcementBadge.setMinWidth(dp(16));announcementBadge.setPadding(dp(4),0,dp(4),0);announcementBadge.setBackground(ui.background(RED,12));announcementBadge.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         FrameLayout.LayoutParams badgePosition=new FrameLayout.LayoutParams(-2,dp(16),Gravity.TOP|Gravity.END);badgePosition.topMargin=-dp(3);badgePosition.setMarginEnd(-dp(5));bell.addView(announcementBadge,badgePosition);renderAnnouncements();
-        toolbar.addView(bell,ui.size(40,40));View spacer=new View(this);toolbar.addView(spacer,ui.size(12,1));toolbar.addView(ui.iconButton("settings","设置",this::settings),ui.size(40,40));
+        toolbar.addView(bell,ui.size(40,40));View spacer=new View(this);toolbar.addView(spacer,ui.size(12,1));
+        FrameLayout settingsButton=(FrameLayout)ui.iconButton("settings","设置",this::settings);settingsButton.setClipChildren(false);settingsUpdateButton=settingsButton;
+        TextView updateBadge=text("!",10,true);updateBadge.setTextColor(Color.WHITE);updateBadge.setGravity(Gravity.CENTER);updateBadge.setIncludeFontPadding(false);updateBadge.setBackground(ui.background(RED,8));updateBadge.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);settingsUpdateDot=updateBadge;
+        FrameLayout.LayoutParams updatePosition=new FrameLayout.LayoutParams(dp(16),dp(16),Gravity.TOP|Gravity.END);updatePosition.topMargin=-dp(3);updatePosition.setMarginEnd(-dp(5));settingsButton.addView(settingsUpdateDot,updatePosition);
+        toolbar.addView(settingsButton,ui.size(40,40));renderAppUpdates();
         LinearLayout content=column();content.setPadding(dp(20),dp(24),dp(20),dp(12));content.setClipChildren(false);content.setClipToPadding(false);root.addView(content,new LinearLayout.LayoutParams(-1,0,1));
         LinearLayout connection=column();connection.setPadding(dp(18),dp(18),dp(18),dp(18));content.addView(ui.shadowCard(connection,20));
         connection.addView(text("远程桌面",20,true));ui.gap(connection,16);
@@ -223,7 +233,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private void consent(Runnable accepted){
         if(privacyDialog!=null&&privacyDialog.isShowing())return;
         Dialog dialog=new PrivacyConsentDialog(this,ui,()->{
-            preferences.edit().putBoolean("networkConsent",true).apply();renderSignaling();ensureSignaling();accepted.run();
+            preferences.edit().putBoolean("networkConsent",true).apply();appUpdates.setEnabled(foreground);renderSignaling();ensureSignaling();accepted.run();
         });
         privacyDialog=dialog;dialog.setOnDismissListener(d->{if(privacyDialog==dialog)privacyDialog=null;});dialog.show();
     }
@@ -273,6 +283,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         resetVideoSettings();
         previewCapture=null;previewCopying=false;
         if(progressDialog!=null){progressDialog.dismiss();progressDialog=null;}if(session!=null){releaseKeys();session.close();session=null;}stopSignaling();pendingPassword="";remoteClipboard="";hostPlatform="";displays=new JSONArray();ready=false;video=null;controls=null;getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);home(reason);
+        appUpdates.checkNow();
     }
     private void settings(){
         LinearLayout content=formPage("settings","设置",()->home(""));
@@ -294,7 +305,9 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         previewSwitch.setOnCheckedChangeListener((button,checked)->{if(updatingPreviewSwitch)return;if(checked){renderPreviews();confirmPreviewSaving();}else previews.setEnabled(false);});
         ui.divider(privacy);clearPreviewsButton=ui.action("清除预览图",RED,this::confirmClearPreviews);clearPreviewsButton.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);clearPreviewsButton.setTypeface(Typeface.DEFAULT);clearPreviewsButton.setPadding(dp(16),0,dp(16),0);privacy.addView(clearPreviewsButton,ui.size(-1,48));
         previewCleanupError=text("",12,false);previewCleanupError.setTextColor(RED);previewCleanupError.setPadding(dp(16),dp(8),dp(16),dp(12));privacy.addView(previewCleanupError);renderPreviews();
-        footer(content,"画面预览默认关闭。开启后，从下一次连接起保存一张远程画面到本机，显示在最近连接中，不上传且不纳入设备备份。关闭开关会清除已有预览；连接记录和密码不受影响。");LinearLayout about=section(content,"",MobileUi.SETTINGS_CARD_RADIUS);link(about,"关于","",this::about);
+        footer(content,"画面预览默认关闭。开启后，从下一次连接起保存一张远程画面到本机，显示在最近连接中，不上传且不纳入设备备份。关闭开关会清除已有预览；连接记录和密码不受影响。");LinearLayout about=section(content,"",MobileUi.SETTINGS_CARD_RADIUS);LinearLayout aboutLink=link(about,"关于","新版本",this::about);aboutUpdateRow=aboutLink;
+        aboutUpdateLabel=(TextView)aboutLink.getChildAt(1);aboutUpdateLabel.setPadding(0,0,dp(8),0);
+        aboutUpdateDot=updateDot();LinearLayout.LayoutParams dotPosition=new LinearLayout.LayoutParams(dp(8),dp(8));dotPosition.setMarginEnd(dp(8));aboutLink.addView(aboutUpdateDot,2,dotPosition);renderAppUpdates();
     }
     private void confirmPreviewSaving(){
         previewDialog=new AlertDialog.Builder(this).setTitle("保存远程画面预览？")
@@ -363,14 +376,32 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private void privacyPage(){
         LinearLayout content=formPage("privacy","隐私与授权",this::settings);LinearLayout card=section(content,"");boolean consent=preferences.getBoolean("networkConsent",false);link(card,"授权状态",consent?"已授权":"未授权",()->{});ui.divider(card);link(card,"隐私政策","",this::privacyPolicyPage);
         footer(content,"设备身份及选择保存的访问密码使用 Android Keystore 加密。连接记录仅保存在本机，不纳入设备备份。剪贴板内容在结束会话时清除。离开应用会结束当前会话。");
-        if(consent)content.addView(ui.action("撤回联网授权",RED,()->new AlertDialog.Builder(this).setTitle("撤回联网授权？").setMessage("撤回后将停止远程连接、关闭画面预览保存并清除已有预览。连接记录和密码会保留，重新连接前需再次授权。").setNegativeButton("取消",null).setPositiveButton("撤回",(d,w)->{preferences.edit().putBoolean("networkConsent",false).apply();previews.setEnabled(false);stopSignaling();announcementInbox.reset();privacyPage();}).show()));else content.addView(ui.primary("阅读并授权",()->consent(this::privacyPage)));
+        if(consent)content.addView(ui.action("撤回联网授权",RED,()->new AlertDialog.Builder(this).setTitle("撤回联网授权？").setMessage("撤回后将停止远程连接、关闭画面预览保存并清除已有预览。连接记录和密码会保留，重新连接前需再次授权。").setNegativeButton("取消",null).setPositiveButton("撤回",(d,w)->{preferences.edit().putBoolean("networkConsent",false).apply();appUpdates.setEnabled(false);previews.setEnabled(false);stopSignaling();announcementInbox.reset();privacyPage();}).show()));else content.addView(ui.primary("阅读并授权",()->consent(this::privacyPage)));
     }
     private void privacyPolicyPage(){
         installRoot("privacy-policy",false);navigation("隐私政策",this::privacyPage);
         root.addView(new PrivacyPolicyDocument(this).view(ui),new LinearLayout.LayoutParams(-1,0,1));
     }
+    String applicationVersion(){
+        try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(android.content.pm.PackageManager.NameNotFoundException error){return "";}
+    }
+    View updateDot(){View dot=new View(this);dot.setBackground(ui.background(RED,4));dot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);return dot;}
+    boolean hasNetworkConsent(){return preferences.getBoolean("networkConsent",false);}
+    void checkAppUpdates(){
+        if(hasNetworkConsent())appUpdates.checkNow();
+        else consent(appUpdates::checkNow);
+    }
+    private void renderAppUpdates(){
+        boolean available=appUpdates.updateAvailable();
+        if(settingsUpdateDot!=null)settingsUpdateDot.setVisibility(available?View.VISIBLE:View.GONE);
+        if(aboutUpdateDot!=null)aboutUpdateDot.setVisibility(available?View.VISIBLE:View.GONE);
+        if(aboutUpdateLabel!=null)aboutUpdateLabel.setVisibility(available?View.VISIBLE:View.GONE);
+        if(settingsUpdateButton!=null)settingsUpdateButton.setContentDescription(available?"设置，有新版本":"设置");
+        if(aboutUpdateRow!=null)aboutUpdateRow.setContentDescription(available?"关于，有新版本":"关于");
+        if(aboutPages!=null&&page.equals("about"))aboutPages.renderUpdates();
+    }
     private void about(){
-        if(aboutPages==null)aboutPages=new AboutPages(this,ui,this::settings);aboutPages.show();
+        if(aboutPages==null)aboutPages=new AboutPages(this,ui,this::settings,appUpdates);aboutPages.show();
     }
     private void sendText(String value){if(session==null)return;if(value.length()>2048){toast("单次最多 2048 个字符");return;}for(char ch:value.toCharArray())if(KeyMap.ascii(ch)==0){toast("中文等文本请通过剪贴板发送，再点击粘贴");return;}for(char ch:value.toCharArray()){int code=KeyMap.ascii(ch);boolean shift=(code&0x100)!=0;if(shift)session.key(0x10,true);tapKey(code&0xFF);if(shift)session.key(0x10,false);}}
     private void tapKey(int code){if(session!=null){session.key(code,true);session.key(code,false);}}
@@ -510,7 +541,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     @android.annotation.SuppressLint("GestureBackNavigation") @Override public void onBackPressed(){back();}
     @Override public void onConfigurationChanged(Configuration config){super.onConfigurationChanged(config);if(controls!=null)controls.post(controls::constrainPanels);}
     // onStart marks a new visit; focus/resume callbacks must not reopen a refused notice.
-    @Override protected void onStart(){super.onStart();foreground=true;if(!preferences.getBoolean("networkConsent",false))consent(this::renderSignaling);ensureSignaling();}
-    @Override protected void onStop(){foreground=false;if(privacyDialog!=null)privacyDialog.dismiss();pageHost.finish();if(session!=null)end(isFinishing()?"":"应用已进入后台，会话已结束");stopSignaling();super.onStop();}
-    @Override protected void onDestroy(){pageHost.finish();resetRemoteVersionCheck();cancelVideoSettingsTimeout();previews.removeListener(previewChanged);if(privacyDialog!=null)privacyDialog.dismiss();if(previewDialog!=null)previewDialog.dismiss();announcementInbox.close();if(disconnectDialog!=null)disconnectDialog.dismiss();if(passwordDialog!=null)passwordDialog.dismiss();if(progressDialog!=null)progressDialog.dismiss();if(session!=null)session.close();stopSignaling();super.onDestroy();}
+    @Override protected void onStart(){super.onStart();foreground=true;appUpdates.setEnabled(preferences.getBoolean("networkConsent",false));if(!preferences.getBoolean("networkConsent",false))consent(this::renderSignaling);ensureSignaling();}
+    @Override protected void onStop(){foreground=false;appUpdates.setEnabled(false);if(privacyDialog!=null)privacyDialog.dismiss();pageHost.finish();if(session!=null)end(isFinishing()?"":"应用已进入后台，会话已结束");stopSignaling();super.onStop();}
+    @Override protected void onDestroy(){appUpdates.setEnabled(false);pageHost.finish();resetRemoteVersionCheck();cancelVideoSettingsTimeout();previews.removeListener(previewChanged);if(privacyDialog!=null)privacyDialog.dismiss();if(previewDialog!=null)previewDialog.dismiss();announcementInbox.close();if(disconnectDialog!=null)disconnectDialog.dismiss();if(passwordDialog!=null)passwordDialog.dismiss();if(progressDialog!=null)progressDialog.dismiss();if(session!=null)session.close();stopSignaling();super.onDestroy();}
 }

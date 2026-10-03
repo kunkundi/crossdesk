@@ -245,6 +245,7 @@ final class NativeSession implements AutoCloseable {
     }
     static native boolean nValidAppVersion(String version);
     static native boolean nHasAppUpdate(String version, byte[] releaseJson);
+    static native String nCheckMobileUpdate(String version, byte[] releaseJson);
     private static native long nCreate(NativeSession owner, String host, int port, String identity, String logs, String roots);
     private static native boolean nConnect(long handle, String identity, String remote, String password);
     private static native void nReady(long handle);

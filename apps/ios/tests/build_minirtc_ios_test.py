@@ -133,6 +133,24 @@ elif args[0] == "show":
         self.run_build()
         self.assertTrue(all("-c" in args for args in self.config_calls()))
 
+    def test_simulator_uses_separate_archives_and_switches_back_to_device(self):
+        self.run_build()
+        device_archive = self.output.read_bytes()
+        self.env["PLATFORM_NAME"] = "iphonesimulator"
+        self.run_build()
+        simulator = self.ios / "Vendor/iphonesimulator/Release/libCrossDeskMiniRTC.a"
+        self.assertTrue(simulator.exists())
+        self.assertTrue((self.ios / ".xmake/wire-work-simulator/xmake.lua").exists())
+        signature = self.ios / ".xmake/minirtc-build-simulator/ios-config-signature"
+        self.assertIn("packages-simulator", signature.read_text())
+        for args in self.config_calls()[-2:]:
+            self.assertIn("--appledev=simulator", args)
+            self.assertIn("-simulator", args[args.index("-o") + 1])
+        self.env["PLATFORM_NAME"] = "iphoneos"
+        self.run_build()
+        self.assertEqual(self.output.read_bytes(), device_archive)
+        self.assertTrue(all("--appledev=iphone" in args for args in self.config_calls()[-2:]))
+
     def test_aom_is_only_required_and_merged_when_enabled(self):
         self.run_build()
         manifest = Path(str(self.output) + ".inputs.sha256")

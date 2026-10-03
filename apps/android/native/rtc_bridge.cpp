@@ -298,6 +298,18 @@ extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nHasAppUpdate)(
   const auto latest = crossdesk::ParseVersionInfoJSON(data);
   return latest && crossdesk::AvailableAppUpdate(String(env, version), *latest).has_value();
 }
+extern "C" JNIEXPORT jstring JNICALL JNI_METHOD(nCheckMobileUpdate)(
+    JNIEnv* env, jclass, jstring version, jbyteArray release_json) {
+  if (!version || !release_json) return nullptr;
+  const auto size = env->GetArrayLength(release_json);
+  if (size <= 0 || size > 256 * 1024) return nullptr;
+  std::string data(size, '\0');
+  env->GetByteArrayRegion(release_json, 0, size, reinterpret_cast<jbyte*>(data.data()));
+  if (env->ExceptionCheck()) return nullptr;
+  const auto result = crossdesk::CheckPlatformAppUpdate(
+      String(env, version), data, "android-arm64");
+  return result ? env->NewStringUTF(result->c_str()) : nullptr;
+}
 extern "C" JNIEXPORT jlong JNICALL JNI_METHOD(nCreate)(
     JNIEnv* env, jclass, jobject owner, jstring host, jint port, jstring identity,
     jstring log_path, jstring certificates) {
