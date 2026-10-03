@@ -1195,6 +1195,15 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     self->_state->presence_requests.clear();
     if (role == PeerRole::Identity) {
       self->_state->identity_ready = state == CrossDeskSignalStateConnected;
+      if (self->_state->identity_ready && self->_state->identity_peer) {
+        // The server records client_info on the persistent identity peer,
+        // before any remote session starts and again after reconnecting.
+        constexpr char client_info[] =
+            "{\"type\":\"client_info\",\"version\":\"ios-native\","
+            "\"platform\":\"ios\"}";
+        SendSignalMessage(self->_state->identity_peer, client_info,
+                          sizeof(client_info) - 1);
+      }
       if (state == CrossDeskSignalStateFailed &&
           !self->_state->identity_with_password.empty() &&
           !self->_state->identity_recovery_attempted) {
@@ -1377,11 +1386,6 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
           !self->_state->controller_peer) {
         return;
       }
-      constexpr char client_info[] =
-          "{\"type\":\"client_info\",\"version\":\"ios-native\","
-          "\"platform\":\"ios\"}";
-      SendSignalMessage(self->_state->controller_peer, client_info,
-                        sizeof(client_info) - 1);
       const std::string controller_name =
           self->_state->identity_base.empty()
               ? "iPhone"

@@ -136,6 +136,14 @@ struct Session {
 
 void Signal(SignalStatus status, const char*, size_t, void* user) {
   auto* ctx = static_cast<CallbackContext*>(user);
+  if (!ctx->controller && status == SignalStatus::SignalConnected &&
+      !ctx->owner->stopping && ctx->owner->identity) {
+    // Report after every identity login, including reconnects. The server
+    // ignores client_info sent through the temporary C- controller peer.
+    constexpr char info[] =
+        R"({"type":"client_info","version":"android-native","platform":"android"})";
+    SendSignalMessage(ctx->owner->identity, info, sizeof(info) - 1);
+  }
   if (!ctx->controller && ctx->owner->signal_status.exchange(status) != status)
     ++ctx->owner->signal_generation;
   const auto generation = ctx->owner->signal_generation.load();
@@ -339,8 +347,6 @@ extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nConnect)(
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(nReady)(JNIEnv*, jclass, jlong handle) {
   auto* s = From(handle); if (!s || !s->controller) return;
-  const std::string info = R"({"type":"client_info","version":"android-native","platform":"android"})";
-  SendSignalMessage(s->controller, info.data(), info.size());
   auto action = MakeHostInformation("CrossDesk Android", {}, false, "1.6.0", HostPlatform::Android);
   s->Send(kControlStream, action.to_json()); FreeRemoteAction(action);
 }
