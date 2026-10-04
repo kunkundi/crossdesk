@@ -12,6 +12,19 @@ ROOT = ANDROID.parents[1]
 SOURCE = ROOT / 'deps/submodules/minirtc'
 CACHE = ANDROID / '.native'
 PACKAGE_REVISION = 'eda39de3fb99b420c168f1ab9ab2d1791e11b662'
+XMAKE_MIN_VERSION = (3, 1, 1)
+
+
+def find_xmake():
+    xmake = os.environ.get('XMAKE_BIN') or shutil.which('xmake')
+    minimum = '.'.join(map(str, XMAKE_MIN_VERSION))
+    if not xmake:
+        raise SystemExit(f'Xmake {minimum} or newer is required; install it or set XMAKE_BIN.')
+    output = subprocess.check_output([xmake, '--version'], text=True)
+    version = re.search(r'xmake v(\d+)\.(\d+)\.(\d+)(?:\+|[,\s]|$)', output)
+    if not version or tuple(map(int, version.groups())) < XMAKE_MIN_VERSION:
+        raise SystemExit(f'Use Xmake {minimum} or newer (set XMAKE_BIN to its executable).')
+    return xmake
 
 
 def main():
@@ -20,13 +33,7 @@ def main():
     ndk = sdk / 'ndk/28.2.13676358'
     if not ndk.is_dir():
         raise SystemExit('Install Android NDK 28.2.13676358 using SDK Manager.')
-    bundled = Path.home() / '.cache/crossdesk/toolchains/xmake-3.1.1/xmake'
-    xmake = os.environ.get('XMAKE_BIN') or (str(bundled) if bundled.is_file() else shutil.which('xmake'))
-    if not xmake:
-        raise SystemExit('xmake is required; install it or set XMAKE_BIN.')
-    version = subprocess.check_output([xmake, '--version'], text=True)
-    if not re.search(r'xmake v3\.1\.1(?:\+|[,\s])', version):
-        raise SystemExit('Use Xmake 3.1.1 (set XMAKE_BIN to its executable).')
+    xmake = find_xmake()
     if not (SOURCE / 'xmake.lua').is_file():
         raise SystemExit('Initialize the MiniRTC submodule before building.')
     env = os.environ.copy()

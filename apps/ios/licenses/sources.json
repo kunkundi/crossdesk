@@ -900,7 +900,7 @@
   ],
   "bundle_sha256": "f54e5e2168bf6e91d81a413931a052d29f59e0c221df5e1de3f51bd27c662c3a",
   "toolchain": {
-    "xmake_version": "3.1.1",
+    "xmake_min_version": "3.1.1",
     "xmake_repository_revision": "121109352da272cd1a3d4ed52f2dcda34f839955"
   }
 }

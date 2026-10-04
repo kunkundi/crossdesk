@@ -52,7 +52,7 @@ class LicenseValidationTest(unittest.TestCase):
         self.target.write_text(str(self.root / "packages/a/asio/1.0/abcd/include") + "\n")
         self.lock = {
             "bundle_sha256": licenses.digest(self.bundle.read_bytes()),
-            "toolchain": {"xmake_version": "3.1.1"},
+            "toolchain": {"xmake_min_version": "3.1.1"},
             "components": [
                 {
                     "id": "minirtc", "version": self.reviewed_revision,
@@ -149,11 +149,23 @@ class LicenseValidationTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Source checksum mismatch: .*libopus.a"):
             self.verify()
 
-    def test_unreviewed_toolchain_is_rejected(self):
+    def test_minimum_and_newer_xmake_versions_are_accepted(self):
         version = self.root / "xmake-version.txt"
-        version.write_text("xmake v3.1.2\n")
-        with self.assertRaisesRegex(ValueError, "Xmake version differs"):
-            self.verify(xmake_version=version)
+        for output in ("xmake v3.1.1", "xmake v3.1.2\n", "xmake v3.1.10, A build utility\n",
+                       "xmake v3.2.0\n", "xmake v3.10.0\n", "xmake v4.0.0\n",
+                       "\x1b[1mxmake v3.1.1+HEAD.3ba37a0d4, A build utility\x1b[0m\n"):
+            with self.subTest(output=output):
+                version.write_text(output)
+                self.verify(xmake_version=version)
+
+    def test_older_or_unrecognized_xmake_versions_are_rejected(self):
+        version = self.root / "xmake-version.txt"
+        for output in ("xmake v3.1.0\n", "xmake v3.0.99\n", "xmake v2.99.99\n",
+                       "xmake version unknown\n", "xmake v3.1\n", "xmake v3.1.1invalid\n", ""):
+            with self.subTest(output=output):
+                version.write_text(output)
+                with self.assertRaisesRegex(ValueError, "Xmake 3.1.1 or newer is required"):
+                    self.verify(xmake_version=version)
 
 
 class ComponentSourceTest(unittest.TestCase):

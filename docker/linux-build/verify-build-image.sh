@@ -3,7 +3,7 @@ set -euo pipefail
 
 EXPECTED_ARCH="${EXPECTED_ARCH:-}"
 EXPECTED_CMAKE_VERSION="${EXPECTED_CMAKE_VERSION:-3.31.6}"
-EXPECTED_XMAKE_VERSION="${EXPECTED_XMAKE_VERSION:-3.0.9}"
+XMAKE_MIN_VERSION="${XMAKE_MIN_VERSION:-3.1.1}"
 EXPECTED_RUST_VERSION="${EXPECTED_RUST_VERSION:-1.92.0}"
 BUILD_CC="${CC:-/usr/bin/gcc-10}"
 BUILD_CXX="${CXX:-/usr/bin/g++-10}"
@@ -28,7 +28,11 @@ if [[ -n "${EXPECTED_ARCH}" && "${ACTUAL_ARCH}" != "${EXPECTED_ARCH}" ]]; then
 fi
 
 XMAKE_VERSION_OUTPUT="$(xmake --version 2>&1)"
-grep -F "v${EXPECTED_XMAKE_VERSION}" <<<"${XMAKE_VERSION_OUTPUT}" >/dev/null
+ACTUAL_XMAKE_VERSION="$(sed -nE 's/.*xmake v([0-9]+\.[0-9]+\.[0-9]+)(\+.*|,.*|[[:space:]].*|$)/\1/p' <<<"${XMAKE_VERSION_OUTPUT}" | head -n 1)"
+if [[ -z "${ACTUAL_XMAKE_VERSION}" ]] || ! dpkg --compare-versions "${ACTUAL_XMAKE_VERSION}" ge "${XMAKE_MIN_VERSION}"; then
+    echo "Xmake ${XMAKE_MIN_VERSION} or newer is required, found ${ACTUAL_XMAKE_VERSION:-unknown}" >&2
+    exit 1
+fi
 rustc --version | grep -F "rustc ${EXPECTED_RUST_VERSION}" >/dev/null
 cargo --version >/dev/null
 cmake --version | grep -F "cmake version ${EXPECTED_CMAKE_VERSION}" >/dev/null

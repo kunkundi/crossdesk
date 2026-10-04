@@ -7,7 +7,7 @@ There is no `WKWebView` or browser runtime.
 ## Requirements
 
 - Xcode 16 or newer
-- Xmake 3.1.1 available on `PATH` (or selected with `XMAKE_BIN`)
+- Xmake 3.1.1 or newer available on `PATH` (or selected with `XMAKE_BIN`)
 - A physical arm64 iPhone/iPad running iOS 16 or newer, or an iOS simulator on Apple Silicon
 
 ## Build
@@ -27,7 +27,7 @@ licenses** when cloning: `git clone --branch <source-tag> --recurse-submodules
 https://github.com/kunkundi/crossdesk.git`. The iOS marketing version is independent
 of the repository tag; use the source tag or commit recorded in the app.
 
-Install [Xmake 3.1.1](https://github.com/xmake-io/xmake/releases/tag/v3.1.1),
+Install [Xmake](https://xmake.io/guide/quick-start.html) 3.1.1 or newer,
 CMake, and a current Python 3 with setuptools/wheel. Pin the package repository
 in a separate Xmake global directory before building:
 
@@ -41,7 +41,7 @@ git -C "$XMAKE_GLOBALDIR/.xmake/repositories/xmake-repo" checkout --detach 12110
 Keep `XMAKE_GLOBALDIR` set for command-line Xcode builds. For builds launched
 from the Xcode app, set it as a user-defined build setting on the target, or
 pin the default `~/.xmake/repositories/xmake-repo` instead. The build checks
-the tool version, package repository commit and reviewed recipe hashes.
+the minimum Xmake version, package repository commit and reviewed recipe hashes.
 Application dependencies are built from source, with Xmake precompiled
 package downloads disabled.
 
@@ -105,9 +105,10 @@ or relevant build configuration also trigger it. The main
 workflow on branch/tag pushes and manual runs, and waits for its result before
 publishing a version-tag release.
 
-The workflow retains the pinned Xcode/SDK and Xmake versions, dependency cache,
-license and privacy checks, unsigned arm64 Release build, and app-bundle
-verification. It uploads `crossdesk-ios-arm64-unsigned-v<marketing-version>-<date>.zip`,
+The workflow tests the minimum supported Xmake version (3.1.1) and retains the
+pinned Xcode/SDK, dependency cache, license and privacy checks, unsigned arm64
+Release build, and app-bundle verification. It uploads
+`crossdesk-ios-arm64-unsigned-v<marketing-version>-<date>.zip`,
 including the app, source metadata, third-party source catalog, rights notice
 and any generated dSYM. The version comes from the iOS target; dated repository
 tags provide the build date, otherwise the date uses the Asia/Shanghai timezone.

@@ -5,6 +5,9 @@ CMake 3.31、xmake、Rust、Linux 开发库（包括 D-Bus、DRM，以及仅用�
 PipeWire 0.3/SPA 头文件 SDK）以及根据项目
 `xmake.lua` 提前编译好的依赖。
 
+Xmake 最低支持 3.1.1，与移动端一致，构建环境校验允许更新版本。发布镜像的工具链 tag
+记录实际安装的版本；默认使用最低支持版本验证构建。
+
 ## 发布方式
 
 推送影响镜像的文件到 `ci/linux-build-image` 分支时，
@@ -12,7 +15,7 @@ PipeWire 0.3/SPA 头文件 SDK）以及根据项目
 全部通过后再合并为同一个 multi-arch 镜像：
 
 ```text
-crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.0.9-rust1.92.0
+crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.1.1-rust1.92.0
 ```
 
 Docker 会根据运行机器自动选择正确架构。amd64 变体以

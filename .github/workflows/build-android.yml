@@ -40,7 +40,8 @@ jobs:
     outputs:
       version: ${{ steps.package.outputs.version }}
     env:
-      XMAKE_VERSION: "3.1.1"
+      # Exercise the minimum supported version; local builds may use newer Xmake.
+      XMAKE_MIN_VERSION: "3.1.1"
       CROSSDESK_SOURCE_TAG: ${{ inputs.source_tag || '' }}
       CROSSDESK_RELEASE_BUILD: ${{ inputs.source_tag && 'YES' || 'NO' }}
     steps:
@@ -119,9 +120,9 @@ jobs:
       - name: Install xmake
         uses: xmake-io/github-action-setup-xmake@v1
         with:
-          xmake-version: ${{ env.XMAKE_VERSION }}
+          xmake-version: ${{ env.XMAKE_MIN_VERSION }}
           actions-cache-folder: .xmake-toolchain-cache
-          actions-cache-key: ${{ runner.os }}-${{ runner.arch }}-ubuntu24.04-android-xmake${{ env.XMAKE_VERSION }}
+          actions-cache-key: ${{ runner.os }}-${{ runner.arch }}-ubuntu24.04-android-xmake${{ env.XMAKE_MIN_VERSION }}
 
       - name: Cache Xmake package repository
         uses: actions/cache@v5
@@ -129,7 +130,7 @@ jobs:
           path: apps/android/.native/global/.xmake/repositories/xmake-repo
           key: ${{ runner.os }}-${{ runner.arch }}-android-xmake-repo-v1-${{ hashFiles('apps/android/scripts/build_native.py') }}
 
-      # Cache installed packages only. build_native.py checks Xmake 3.1.1 and pins
+      # Cache installed packages only. build_native.py checks Xmake >= 3.1.1 and pins
       # its own package repository; never reuse another platform's build/config.
       - name: Cache native dependencies
         uses: actions/cache@v5
@@ -145,6 +146,9 @@ jobs:
 
       - name: Verify shared license catalog
         run: python3 -B apps/ios/scripts/generate_third_party_licenses.py
+
+      - name: Verify native build tool selection
+        run: python3 -B -m unittest discover -s apps/android/test -p 'build_native_test.py' -v
 
       - name: Build APKs and run Lint
         working-directory: apps/android

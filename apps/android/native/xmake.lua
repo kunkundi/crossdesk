@@ -1,4 +1,5 @@
 set_project("crossdesk_android")
+set_xmakever("3.1.1")
 set_languages("c++17")
 add_rules("mode.release", "mode.debug")
 set_policy("package.precompiled", false)

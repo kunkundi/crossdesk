@@ -37,12 +37,12 @@ jobs:
         include:
           - arch: amd64
             runner: ubuntu-24.04
-            image: crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.0.9-rust1.92.0
+            image: crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.1.1-rust1.92.0
             package_script: ./apps/desktop/scripts/linux/pkg_amd64.sh
 
           - arch: arm64
             runner: ubuntu-24.04-arm
-            image: crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.0.9-rust1.92.0
+            image: crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.1.1-rust1.92.0
             package_script: ./apps/desktop/scripts/linux/pkg_arm64.sh
 
     container:

@@ -137,9 +137,10 @@ def generate(lock, cache):
 def verify(lock, inputs, target_info, xmake_repository=None, xmake_version=None):
     checked(OUTPUT.read_bytes(), lock["bundle_sha256"], str(OUTPUT))
     if xmake_version is not None:
-        version = re.search(r"xmake v(\d+\.\d+\.\d+)", xmake_version.read_text())
-        if not version or version[1] != lock["toolchain"]["xmake_version"]:
-            raise ValueError("Xmake version differs from the reviewed iOS toolchain; see apps/ios/README.md")
+        minimum = lock["toolchain"]["xmake_min_version"]
+        version = re.search(r"xmake v(\d+)\.(\d+)\.(\d+)(?:\+|[,\s]|$)", xmake_version.read_text())
+        if not version or tuple(map(int, version.groups())) < tuple(map(int, minimum.split("."))):
+            raise ValueError(f"Xmake {minimum} or newer is required; see apps/ios/README.md")
     if xmake_repository is not None:
         revision = subprocess.check_output(
             ["git", "-C", str(xmake_repository), "rev-parse", "HEAD"], text=True).strip()
