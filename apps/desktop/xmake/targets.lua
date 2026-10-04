@@ -184,6 +184,12 @@ function setup_targets()
         set_default(false)
         add_files("apps/desktop/tests/windows_service_mouse_ipc_test.cpp")
 
+    target("windows_unattended_policy_test")
+        set_kind("binary")
+        set_default(false)
+        add_includedirs("apps/desktop/src")
+        add_files("apps/desktop/tests/windows_unattended_policy_test.cpp")
+
     target("windows_mouse_controller_safety_test")
         set_kind("binary")
         set_default(false)
@@ -396,7 +402,11 @@ function setup_targets()
         add_deps("rd_log")
         add_files("apps/desktop/src/autostart/*.cpp")
         if is_os("windows") then
+            if is_config("CROSSDESK_PORTABLE", true) then
+                add_defines("CROSSDESK_PORTABLE=1")
+            end
             add_files("apps/desktop/src/platform/windows/autostart.cpp")
+            add_syslinks("Advapi32", "Ole32", "OleAut32", "Taskschd", {public = true})
         elseif is_os("macosx") then
             add_files("apps/desktop/src/platform/macos/autostart.cpp")
         elseif is_os("linux") then
@@ -404,6 +414,38 @@ function setup_targets()
         end
         add_includedirs("apps/desktop/src")
         add_includedirs("apps/desktop/src/autostart", {public = true})
+
+    if is_os("windows") then
+        target("windows_unattended_config")
+            set_kind("object")
+            add_packages("nlohmann_json")
+            add_files("apps/desktop/src/platform/windows/service/unattended_config.cpp")
+            add_includedirs("apps/desktop/src/platform/windows/service")
+            add_syslinks("Advapi32", "Shell32", "Ole32", {public = true})
+
+        target("windows_unattended_security_test")
+            set_kind("binary")
+            set_default(false)
+            add_deps("windows_unattended_config")
+            add_includedirs("apps/desktop/src/platform/windows/service")
+            add_files("apps/desktop/tests/windows_unattended_security_test.cpp")
+
+        target("windows_service_lifetime_test")
+            set_kind("binary")
+            set_default(false)
+            add_includedirs("apps/desktop/src/platform/windows/service")
+            add_files("apps/desktop/tests/windows_service_lifetime_test.cpp")
+
+        target("windows_autostart_test")
+            set_kind("binary")
+            set_default(false)
+            add_deps("autostart", "rd_log")
+            add_includedirs("apps/desktop/src")
+            if is_config("CROSSDESK_PORTABLE", true) then
+                add_defines("CROSSDESK_PORTABLE=1")
+            end
+            add_files("apps/desktop/tests/windows_autostart_test.cpp")
+    end
 
     target("config_center")
         set_kind("object")
@@ -476,6 +518,8 @@ function setup_targets()
         add_includedirs("apps/desktop/src/platform/common/input")
         if is_os("windows") then
             add_cxxflags("/bigobj")
+            add_deps("windows_unattended_config")
+            add_files("apps/desktop/src/platform/windows/gui/application/unattended_application.cpp")
             add_links("opengl32")
             add_syslinks("Comctl32", {public = true})
             add_files("apps/desktop/src/platform/windows/gui/tray/win_tray.cpp",
@@ -535,7 +579,7 @@ function setup_targets()
         target("crossdesk_service")
             set_kind("binary")
             add_packages("nlohmann_json")
-            add_deps("rd_log", "path_manager")
+            add_deps("rd_log", "path_manager", "windows_unattended_config")
             add_links("Advapi32", "Wtsapi32", "Ole32", "Userenv")
             add_files("apps/desktop/src/platform/windows/service/main.cpp",
                 "apps/desktop/src/platform/windows/service/service_host.cpp")

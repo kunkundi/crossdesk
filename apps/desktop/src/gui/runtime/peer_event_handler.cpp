@@ -278,8 +278,8 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         {
           RemoteAction remote_action = MakeHostInformation(
               GetHostName(), runtime->devices_.host_display_list(),
-              /*supports_privacy_screen=*/true, CROSSDESK_VERSION,
-              kClientPlatform);
+              /*supports_privacy_screen=*/!runtime->unattended_host_,
+              CROSSDESK_VERSION, kClientPlatform);
           remote_action.i.supports_video_settings = true;
           for (std::size_t i = 0; i < remote_action.i.display_num; i++) {
             LOG_INFO("Local display [{}:{}]", i + 1,
@@ -413,8 +413,8 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
         {
           RemoteAction remote_action = MakeHostInformation(
               GetHostName(), runtime->devices_.host_display_list(),
-              /*supports_privacy_screen=*/true, CROSSDESK_VERSION,
-              kClientPlatform);
+              /*supports_privacy_screen=*/!runtime->unattended_host_,
+              CROSSDESK_VERSION, kClientPlatform);
           remote_action.i.supports_video_settings = true;
           for (std::size_t i = 0; i < remote_action.i.display_num; i++) {
             LOG_INFO("Local display [{}:{}]", i + 1,

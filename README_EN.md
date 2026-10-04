@@ -183,7 +183,32 @@ Gestures include one-finger click, two-finger right-click, long-press drag, and 
 
 **CrossDesk Service** (`CrossDeskService`) reports protected desktop states and forwards `Ctrl+Alt+Del`, keyboard, and mouse input on lock screens, sign-in screens, credential prompts, and secure desktops.
 
-The installer registers an on-demand service. CrossDesk tries to start it on launch, and the service exits when no local CrossDesk client is running. Portable builds offer service installation in the prompt or **Settings → Lock Screen Service**, with administrator privileges. The service depends on a running client.
+The installer registers an on-demand service by default. CrossDesk tries to start it on launch. Unless unattended mode is enabled, the service exits when no local CrossDesk client is running. Portable builds offer service installation in the prompt or **Settings → Lock Screen Service**, with administrator privileges.
+
+On Windows, **Auto Start** launches the client after the current user signs in. Installed release builds use a logon scheduled task with highest privileges, so subsequent logons need no UAC confirmation; portable and Debug builds use a normal per-user startup entry. Upgrading the installed build or launching the new version manually migrates a legacy startup entry pointing to that executable. Turning Auto Start off removes its registration. Remote access before sign-in requires the separate unattended mode below.
+
+### Remote access before Windows sign-in
+
+The installed release supports a separate unattended host. Open an **administrator PowerShell** in the complete installation directory and enable it once:
+
+```powershell
+.\CrossDesk.exe --unattended-enable
+# After network registration, show its separate device ID, password and online state
+.\CrossDesk.exe --unattended-status
+```
+
+Connect from another device using the returned `device_id` and `password`. First-time setup copies the current client's server and codec preferences and creates separate credentials. This ID differs from the GUI client's ID and persists across reboots, logoffs and re-enabling. Subsequent enable commands retain the machine configuration. Self-hosted server root certificates must be trusted in the Local Computer certificate store.
+
+Once enabled, `CrossDeskService` starts automatically at system boot. Windows automatic login and saved Windows login passwords are unnecessary. The service launches a windowless SYSTEM host in the active console session and reuses secure-desktop capture, keyboard/mouse input and `Ctrl+Alt+Del`. Signing in, locking Windows or closing the ordinary client does not stop it. Logoff, user switching or a host crash causes the service to restart the host; the connection may drop, and you can reconnect using the same ID. Network connections retry if networking is unavailable during boot.
+
+Unattended mode supports screen viewing, keyboard/mouse input, monitor switching and secure desktops. Audio, file transfer, clipboard and privacy screens are unavailable. Portable and Debug builds cannot enable it. Configuration and credentials reside in `%ProgramData%\CrossDeskUnattended`, accessible only to SYSTEM and administrators; logs are in its `logs` subdirectory.
+
+```powershell
+# Stop the unattended host and restore on-demand service startup
+.\CrossDesk.exe --unattended-disable
+```
+
+Turning off ordinary Auto Start does not disable unattended mode. Disabling or uninstalling the service disarms unattended startup but retains the protected machine profile. To erase its credentials, stop the service and delete that directory as an administrator.
 
 <details>
 <summary>Manual deployment and service commands</summary>

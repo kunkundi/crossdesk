@@ -115,7 +115,7 @@ void SessionDeviceManager::RecordCaptureCadence(
 }
 
 void SessionDeviceManager::Initialize() {
-  InitializeAudioOutput();
+  if (!owner_.unattended_host_) InitializeAudioOutput();
   screen_capturer_factory_ = new ScreenCapturerFactory();
   device_controller_factory_ = new DeviceControllerFactory();
   keyboard_capturer_ =
@@ -329,6 +329,7 @@ void SessionDeviceManager::ReleaseRemoteMouseButtons() {
 #endif
 
 void SessionDeviceManager::StartSpeakerCapturer() {
+  if (owner_.unattended_host_) return;
   speaker_capture_.SetEnabled(true);
 }
 

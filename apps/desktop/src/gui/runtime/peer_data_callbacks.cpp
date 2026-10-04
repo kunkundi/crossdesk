@@ -91,6 +91,13 @@ void PeerEventHandler::OnReceiveDataBuffer(
   }
 
   std::string source_id = std::string(src_id, src_id_size);
+  // The service-owned host runs as SYSTEM. Do not expose filesystem or
+  // clipboard operations in that security context.
+  if (runtime->unattended_host_ &&
+      (source_id == runtime->file_label_ ||
+       source_id == runtime->file_feedback_label_ ||
+       source_id == runtime->clipboard_label_))
+    return;
   if (source_id == runtime->file_label_) {
     std::string remote_user_id = std::string(user_id, user_id_size);
 
@@ -209,6 +216,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
     return;
   }
   if (remote_action.type == ControlType::privacy_command) {
+    if (runtime->unattended_host_) return;
     if (source_id == runtime->control_data_label_)
       runtime->QueuePrivacyCommand(remote_id, remote_action.pc);
     return;

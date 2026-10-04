@@ -58,6 +58,10 @@ function main(plat, portable)
     end
 
     if plat == "windows" then
+        for _, name in ipairs({"autostart", "windows_autostart_test"}) do
+            assert(contains(effective_defines(targets[name]), "CROSSDESK_PORTABLE=1") ==
+                (portable == "true"), name .. " has inconsistent autostart privilege policy")
+        end
         local resources = {
             crossdesk = portable == "true" and "crossdesk_portable" or "crossdesk",
             crossdesk_service = "crossdesk_service",

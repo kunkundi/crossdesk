@@ -101,6 +101,15 @@ installApp:
 
     Call RegisterInstalledService
 
+    ; Replace an existing per-user Run entry only after the new binary is in
+    ; place. A fresh installation must not opt the user into auto-start.
+    ClearErrors
+    ExecWait '"$INSTDIR\CrossDesk.exe" --autostart-migrate' $0
+    ${If} ${Errors}
+    ${OrIf} $0 != 0
+        MessageBox MB_ICONEXCLAMATION|MB_OK "Could not migrate CrossDesk auto-start. Open CrossDesk and enable Auto Start again."
+    ${EndIf}
+
     ; Write uninstall information
     WriteUninstaller "$INSTDIR\uninstall.exe"
 
@@ -147,6 +156,12 @@ cancelUninstall:
     Abort
 
 uninstallApp:
+    ClearErrors
+    ExecWait '"$INSTDIR\CrossDesk.exe" --autostart-uninstall' $0
+    ${If} ${Errors}
+    ${OrIf} $0 != 0
+        MessageBox MB_ICONEXCLAMATION|MB_OK "Could not remove CrossDesk auto-start. Remove any remaining CrossDesk Autostart tasks in Task Scheduler."
+    ${EndIf}
     Call un.UnregisterInstalledService
     Call un.RemoveUsbmmiddDriver
 
@@ -218,7 +233,18 @@ Function RegisterInstalledService
         Abort
     ${EndIf}
 
-    DetailPrint "CrossDesk service registered for on-demand start"
+    ; Preserve an existing unattended opt-in and resume it after upgrades.
+    ; A fresh install still registers the ordinary on-demand lock-screen service.
+    SetRegView 64
+    ReadRegDWORD $1 HKLM "Software\CrossDesk\Unattended" "Enabled"
+    SetRegView 32
+    ${If} $1 = 1
+        ExecWait '"$INSTDIR\CrossDesk.exe" --service-start' $0
+        ${If} $0 != 0
+            MessageBox MB_ICONEXCLAMATION|MB_OK "Could not restart the unattended host. Run CrossDesk.exe --service-start from an administrator terminal."
+        ${EndIf}
+    ${EndIf}
+    DetailPrint "CrossDesk service registered"
 
     Return
 
@@ -228,6 +254,10 @@ missing_service_binary:
 FunctionEnd
 
 Function un.UnregisterInstalledService
+    ; Also disarm unattended startup when removal must fall back to sc.exe.
+    SetRegView 64
+    DeleteRegKey HKLM "Software\CrossDesk\Unattended"
+    SetRegView 32
     IfFileExists "$INSTDIR\CrossDesk.exe" 0 unregister_with_sc
 
     DetailPrint "Stopping CrossDesk service"

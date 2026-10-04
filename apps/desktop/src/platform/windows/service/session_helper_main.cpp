@@ -26,6 +26,7 @@
 #include "path_manager.h"
 #include "rd_log.h"
 #include "session_helper_shared.h"
+#include "service_lifetime.h"
 #include "usbmmidd_policy.h"
 #include "usbmmidd_virtual_display.h"
 #include "windows_cursor_state.h"
@@ -1967,6 +1968,7 @@ int main(int argc, char* argv[]) {
   bool run_secure_input_helper = false;
   DWORD expected_session_id = 0xFFFFFFFF;
   std::wstring stop_event_name;
+  std::wstring service_lifetime_name;
   for (int index = 1; index < argc; ++index) {
     std::string argument = argv[index];
     if (argument == "--session-helper") {
@@ -1985,6 +1987,10 @@ int main(int argc, char* argv[]) {
       stop_event_name = Utf8ToWide(argv[++index]);
       continue;
     }
+    if (argument == "--service-lifetime" && index + 1 < argc) {
+      service_lifetime_name = Utf8ToWide(argv[++index]);
+      continue;
+    }
   }
 
   if (!run_helper && !run_secure_input_helper) {
@@ -1993,6 +1999,9 @@ int main(int argc, char* argv[]) {
   }
 
   DWORD current_session_id = 0xFFFFFFFF;
+  crossdesk::ServiceLifetimeWatcher lifetime;
+  if (!service_lifetime_name.empty() && !lifetime.Start(service_lifetime_name))
+    return 1;
   ProcessIdToSessionId(GetCurrentProcessId(), &current_session_id);
   HANDLE stop_event = nullptr;
   if (!stop_event_name.empty()) {

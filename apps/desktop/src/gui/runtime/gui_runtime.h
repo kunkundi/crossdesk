@@ -100,6 +100,8 @@ class GuiRuntime : protected gui_detail::GuiState {
 #endif
 
   PrivacyController privacy_;
+  // Set before initializing callbacks; immutable for the process lifetime.
+  bool unattended_host_ = false;
   AnnouncementInbox announcements_;
   PrivacySessionPolicy privacy_sessions_;
   std::mutex privacy_commands_mutex_;

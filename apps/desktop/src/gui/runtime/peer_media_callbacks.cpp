@@ -201,7 +201,7 @@ void PeerEventHandler::OnReceiveAudioBuffer(
   auto callback = handler->EnterCallback();
   if (!callback) return;
   GuiRuntime* runtime = handler ? &handler->owner_ : nullptr;
-  if (!runtime) {
+  if (!runtime || runtime->unattended_host_) {
     return;
   }
 

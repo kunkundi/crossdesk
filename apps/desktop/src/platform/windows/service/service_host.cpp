@@ -20,6 +20,8 @@
 #include "path_manager.h"
 #include "rd_log.h"
 #include "session_helper_shared.h"
+#include "unattended_config.h"
+#include "unattended_policy.h"
 
 namespace crossdesk {
 
@@ -1007,7 +1009,7 @@ DWORD WINAPI CrossDeskServiceHost::ServiceControlHandler(
       return NO_ERROR;
     case SERVICE_CONTROL_STOP:
     case SERVICE_CONTROL_SHUTDOWN:
-      instance_->ReportServiceStatus(SERVICE_STOP_PENDING, NO_ERROR, 3000);
+      instance_->ReportServiceStatus(SERVICE_STOP_PENDING, NO_ERROR, 20000);
       instance_->RequestStop();
       return NO_ERROR;
     case SERVICE_CONTROL_SESSIONCHANGE: {
@@ -1053,6 +1055,28 @@ int CrossDeskServiceHost::InitializeRuntime() {
     LOG_ERROR("CreateEventW failed, error={}", error);
     return static_cast<int>(error);
   }
+
+  GUID lifetime_id{};
+  wchar_t lifetime_guid[40]{};
+  if (FAILED(CoCreateGuid(&lifetime_id)) ||
+      !StringFromGUID2(lifetime_id, lifetime_guid, 40))
+    return ERROR_GEN_FAILURE;
+  lifetime_mutex_name_ =
+      L"Global\\CrossDeskServiceLifetime-" + std::wstring(lifetime_guid);
+  PSECURITY_DESCRIPTOR lifetime_descriptor = nullptr;
+  if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
+          L"D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;0x00100000;;;AU)", SDDL_REVISION_1,
+          &lifetime_descriptor, nullptr))
+    return static_cast<int>(GetLastError());
+  SECURITY_ATTRIBUTES lifetime_attributes{sizeof(SECURITY_ATTRIBUTES),
+                                          lifetime_descriptor, FALSE};
+  // Owned by this service-main thread until every child has been stopped.
+  lifetime_mutex_ =
+      CreateMutexW(&lifetime_attributes, TRUE, lifetime_mutex_name_.c_str());
+  const DWORD lifetime_error = GetLastError();
+  LocalFree(lifetime_descriptor);
+  if (!lifetime_mutex_ || lifetime_error == ERROR_ALREADY_EXISTS)
+    return ERROR_INVALID_HANDLE;
 
   started_at_tick_ = GetTickCount64();
   last_sas_tick_ = 0;
@@ -1123,9 +1147,6 @@ int CrossDeskServiceHost::InitializeRuntime() {
 }
 
 void CrossDeskServiceHost::ShutdownRuntime() {
-  StopSecureInputHelper();
-  StopSessionHelper();
-
   if (stop_event_ != nullptr) {
     SetEvent(stop_event_);
   }
@@ -1133,9 +1154,17 @@ void CrossDeskServiceHost::ShutdownRuntime() {
   if (client_process_monitor_thread_.joinable()) {
     client_process_monitor_thread_.join();
   }
+  StopUnattendedHost();
 
   if (ipc_thread_.joinable()) {
     ipc_thread_.join();
+  }
+  StopSecureInputHelper();
+  StopSessionHelper();
+  if (lifetime_mutex_) {
+    ReleaseMutex(lifetime_mutex_);
+    CloseHandle(lifetime_mutex_);
+    lifetime_mutex_ = nullptr;
   }
 
   if (stop_event_ != nullptr) {
@@ -1152,6 +1181,7 @@ void CrossDeskServiceHost::RequestStop() {
 
 void CrossDeskServiceHost::ClientProcessMonitorLoop() {
   const ULONGLONG monitor_started_at = GetTickCount64();
+  uint64_t logoff_generation = unattended_logoff_generation_.load();
 
   while (stop_event_ != nullptr) {
     DWORD wait_result =
@@ -1162,6 +1192,34 @@ void CrossDeskServiceHost::ClientProcessMonitorLoop() {
     if (wait_result != WAIT_TIMEOUT) {
       continue;
     }
+
+    const bool enabled = IsUnattendedEnabled();
+    const uint64_t generation = unattended_logoff_generation_.load();
+    if (generation != logoff_generation) {
+      logoff_generation = generation;
+      StopUnattendedHost();
+      // Windows may destroy/recreate Default during logoff, even when the
+      // numeric console session ID does not change. Rebind on the next tick.
+      continue;
+    }
+    if (unattended_process_ &&
+        WaitForSingleObject(unattended_process_, 0) != WAIT_TIMEOUT) {
+      StopUnattendedHost();
+    }
+    const DWORD console_session = WTSGetActiveConsoleSessionId();
+    const auto action =
+        UnattendedAction(enabled, console_session,
+                         unattended_process_ != nullptr, unattended_session_);
+    if (action == UnattendedProcessAction::stop) StopUnattendedHost();
+    if (action == UnattendedProcessAction::start) {
+      if (!LaunchUnattendedHost(console_session)) {
+        // Boot can precede creation of WinSta0 or network availability.
+        WaitForSingleObject(stop_event_, 4000);
+      }
+    }
+    // An enabled host is independent of the GUI, including while Windows is
+    // between console sessions or the host is retrying startup.
+    if (enabled) continue;
 
     if (GetTickCount64() - monitor_started_at <
         kCrossDeskClientMonitorStartupGraceMs) {
@@ -1176,6 +1234,88 @@ void CrossDeskServiceHost::ClientProcessMonitorLoop() {
     RequestStop();
     return;
   }
+}
+
+bool CrossDeskServiceHost::LaunchUnattendedHost(DWORD session_id) {
+  if (!IsLocalSystemProcess() || !PrepareUnattendedDirectory(false)) {
+    LOG_ERROR("Unattended host requires SYSTEM and a private machine profile");
+    return false;
+  }
+  const auto executable =
+      std::filesystem::path(GetCurrentExecutablePathW()).parent_path() /
+      L"CrossDesk.exe";
+  GUID nonce{};
+  wchar_t guid[40]{};
+  if (FAILED(CoCreateGuid(&nonce)) || !StringFromGUID2(nonce, guid, 40))
+    return false;
+  const std::wstring event_name =
+      L"Global\\CrossDeskUnattendedStop-" + std::wstring(guid);
+  PSECURITY_DESCRIPTOR descriptor = nullptr;
+  if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
+          L"D:P(A;;GA;;;SY)", SDDL_REVISION_1, &descriptor, nullptr))
+    return false;
+  SECURITY_ATTRIBUTES attributes{sizeof(SECURITY_ATTRIBUTES), descriptor,
+                                 FALSE};
+  HANDLE event = CreateEventW(&attributes, TRUE, FALSE, event_name.c_str());
+  const DWORD event_error = GetLastError();
+  LocalFree(descriptor);
+  if (!event || event_error == ERROR_ALREADY_EXISTS) {
+    if (event) CloseHandle(event);
+    return false;
+  }
+  HANDLE token = nullptr;
+  DWORD error = 0;
+  ScopedEnvironmentBlock environment;
+  PROCESS_INFORMATION process{};
+  STARTUPINFOW startup{};
+  startup.cb = sizeof(startup);
+  wchar_t desktop[] = L"winsta0\\default";
+  startup.lpDesktop = desktop;
+  std::wstring command = QuoteWindowsArgument(executable.wstring()) +
+                         L" --unattended-host " +
+                         QuoteWindowsArgument(event_name) + L" " +
+                         QuoteWindowsArgument(lifetime_mutex_name_);
+  bool created = false;
+  if (CreateSessionSystemToken(session_id, &token, &error)) {
+    if (CreateEnvironmentBlock(&environment.environment, token, FALSE)) {
+      created = CreateProcessAsUserW(
+                    token, executable.c_str(), command.data(), nullptr, nullptr,
+                    FALSE, CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW,
+                    environment.environment, executable.parent_path().c_str(),
+                    &startup, &process) != FALSE;
+    }
+    error = created ? ERROR_SUCCESS : GetLastError();
+    CloseHandle(token);
+  }
+  if (process.hThread) CloseHandle(process.hThread);
+  if (!created) {
+    CloseHandle(event);
+    LOG_WARN("Unattended host launch failed: session={}, error={}", session_id,
+             error);
+    return false;
+  }
+  unattended_process_ = process.hProcess;
+  unattended_stop_event_ = event;
+  unattended_session_ = session_id;
+  LOG_INFO("Unattended host started: session={}, pid={}", session_id,
+           process.dwProcessId);
+  return true;
+}
+
+void CrossDeskServiceHost::StopUnattendedHost() {
+  if (unattended_stop_event_) SetEvent(unattended_stop_event_);
+  if (unattended_process_) WaitForSingleObject(unattended_process_, 5000);
+  if (unattended_process_ &&
+      WaitForSingleObject(unattended_process_, 0) == WAIT_TIMEOUT)
+    TerminateProcess(unattended_process_, ERROR_PROCESS_ABORTED);
+  if (unattended_process_) {
+    // Do not start another instance until the previous identity has exited.
+    WaitForSingleObject(unattended_process_, INFINITE);
+    CloseHandle(unattended_process_);
+  }
+  if (unattended_stop_event_) CloseHandle(unattended_stop_event_);
+  unattended_process_ = unattended_stop_event_ = nullptr;
+  unattended_session_ = 0xFFFFFFFF;
 }
 
 void CrossDeskServiceHost::ReportServiceStatus(DWORD current_state,
@@ -1226,7 +1366,7 @@ int CrossDeskServiceHost::RunServiceLoop(bool as_service) {
 
   if (console_mode_) {
     SetConsoleCtrlHandler(&CrossDeskServiceHost::ConsoleControlHandler, TRUE);
-    std::cout << "CrossDesk service skeleton running in console mode. Press "
+    std::cout << "CrossDesk service running in console mode. Press "
                  "Ctrl+C to stop."
               << std::endl;
   }
@@ -1234,7 +1374,7 @@ int CrossDeskServiceHost::RunServiceLoop(bool as_service) {
   WaitForSingleObject(stop_event_, INFINITE);
 
   if (as_service) {
-    ReportServiceStatus(SERVICE_STOP_PENDING, NO_ERROR, 3000);
+    ReportServiceStatus(SERVICE_STOP_PENDING, NO_ERROR, 20000);
   }
 
   ShutdownRuntime();
@@ -1448,6 +1588,9 @@ bool CrossDeskServiceHost::ShouldKeepSecureInputHelperLocked(
 }
 
 std::string CrossDeskServiceHost::ResolveInteractiveStageLocked() const {
+  // Session 0's input desktop cannot describe a console that has no user
+  // helper yet. Pre-login must always use the SYSTEM secure-desktop path.
+  if (prelogin_) return "credential-ui";
   if (IsSasSecureDesktopGraceActiveLocked() &&
       (session_helper_report_interactive_stage_.empty() ||
        session_helper_report_interactive_stage_ == "user-desktop")) {
@@ -1472,6 +1615,7 @@ std::string CrossDeskServiceHost::ResolveInteractiveStageLocked() const {
 
 std::string CrossDeskServiceHost::ResolveInteractiveDesktopLocked(
     const std::string& interactive_stage) const {
+  if (prelogin_) return "Winlogon";
   if (session_helper_status_ok_ &&
       session_helper_report_input_desktop_available_ &&
       !session_helper_report_input_desktop_.empty() &&
@@ -1694,10 +1838,11 @@ bool CrossDeskServiceHost::LaunchSessionHelper(DWORD session_id) {
     return false;
   }
 
-  std::wstring command_line = QuoteWindowsArgument(helper_path) +
-                              L" --session-helper --session-id " +
-                              std::to_wstring(session_id) + L" --stop-event " +
-                              QuoteWindowsArgument(stop_event_name);
+  std::wstring command_line =
+      QuoteWindowsArgument(helper_path) + L" --session-helper --session-id " +
+      std::to_wstring(session_id) + L" --stop-event " +
+      QuoteWindowsArgument(stop_event_name) + L" --service-lifetime " +
+      QuoteWindowsArgument(lifetime_mutex_name_);
   std::wstring mutable_command_line = command_line;
 
   STARTUPINFOW startup_info{};
@@ -1756,6 +1901,13 @@ bool CrossDeskServiceHost::LaunchSessionHelper(DWORD session_id) {
     }
   }
 
+  if (!created) {
+    CloseHandle(stop_event_handle);
+    LOG_ERROR("Could not launch a supervised session helper, session={}",
+              session_id);
+    return false;
+  }
+
   CloseHandle(process_info.hThread);
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
@@ -1803,10 +1955,11 @@ bool CrossDeskServiceHost::LaunchSecureInputHelper(
     return false;
   }
 
-  std::wstring command_line = QuoteWindowsArgument(helper_path) +
-                              L" --secure-input-helper --session-id " +
-                              std::to_wstring(session_id) + L" --stop-event " +
-                              QuoteWindowsArgument(stop_event_name);
+  std::wstring command_line =
+      QuoteWindowsArgument(helper_path) +
+      L" --secure-input-helper --session-id " + std::to_wstring(session_id) +
+      L" --stop-event " + QuoteWindowsArgument(stop_event_name) +
+      L" --service-lifetime " + QuoteWindowsArgument(lifetime_mutex_name_);
   std::wstring mutable_command_line = command_line;
 
   STARTUPINFOW startup_info{};
@@ -1849,6 +2002,13 @@ bool CrossDeskServiceHost::LaunchSecureInputHelper(
       secure_input_helper_last_error_code_ = error;
       return false;
     }
+  }
+
+  if (!created) {
+    CloseHandle(stop_event_handle);
+    LOG_ERROR("Could not launch a supervised session helper, session={}",
+              session_id);
+    return false;
   }
 
   CloseHandle(process_info.hThread);
@@ -1985,6 +2145,10 @@ void CrossDeskServiceHost::RefreshSessionHelperReportedState() {
 
 void CrossDeskServiceHost::RecordSessionEvent(DWORD event_type,
                                               DWORD session_id) {
+  if (event_type == WTS_SESSION_LOGOFF) {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    if (session_id == active_session_id_) ++unattended_logoff_generation_;
+  }
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
     last_session_event_type_ = event_type;
@@ -2444,9 +2608,11 @@ bool InstallCrossDeskService(const std::wstring& binary_path) {
   }
 
   std::wstring service_command = L"\"" + binary_path + L"\" --service";
+  const DWORD start_type =
+      IsUnattendedEnabled() ? SERVICE_AUTO_START : SERVICE_DEMAND_START;
   SC_HANDLE service = CreateServiceW(
       manager, kCrossDeskServiceName, kCrossDeskServiceDisplayName,
-      SERVICE_ALL_ACCESS, SERVICE_WIN32_OWN_PROCESS, SERVICE_DEMAND_START,
+      SERVICE_ALL_ACCESS, SERVICE_WIN32_OWN_PROCESS, start_type,
       SERVICE_ERROR_NORMAL, service_command.c_str(), nullptr, nullptr, nullptr,
       nullptr, nullptr);
 
@@ -2460,14 +2626,14 @@ bool InstallCrossDeskService(const std::wstring& binary_path) {
 
     service = OpenServiceW(manager, kCrossDeskServiceName,
                            SERVICE_CHANGE_CONFIG | SERVICE_QUERY_STATUS |
-                               READ_CONTROL | WRITE_DAC);
+                               SERVICE_START | READ_CONTROL | WRITE_DAC);
     if (service == nullptr) {
       LOG_ERROR("OpenServiceW failed, error={}", GetLastError());
       CloseServiceHandle(manager);
       return false;
     }
 
-    if (!ChangeServiceConfigW(service, SERVICE_NO_CHANGE, SERVICE_DEMAND_START,
+    if (!ChangeServiceConfigW(service, SERVICE_NO_CHANGE, start_type,
                               SERVICE_NO_CHANGE, service_command.c_str(),
                               nullptr, nullptr, nullptr, nullptr, nullptr,
                               kCrossDeskServiceDisplayName)) {
@@ -2479,6 +2645,21 @@ bool InstallCrossDeskService(const std::wstring& binary_path) {
   }
 
   if (!GrantCrossDeskServiceStartAccessToAuthenticatedUsers(service)) {
+    CloseServiceHandle(service);
+    CloseServiceHandle(manager);
+    return false;
+  }
+
+  SC_ACTION actions[] = {{SC_ACTION_RESTART, 5000},
+                         {SC_ACTION_RESTART, 15000},
+                         {SC_ACTION_RESTART, 60000}};
+  SERVICE_FAILURE_ACTIONSW recovery{};
+  recovery.dwResetPeriod = 86400;
+  recovery.cActions = static_cast<DWORD>(sizeof(actions) / sizeof(actions[0]));
+  recovery.lpsaActions = actions;
+  if (!ChangeServiceConfig2W(service, SERVICE_CONFIG_FAILURE_ACTIONS,
+                             &recovery)) {
+    LOG_ERROR("Could not configure service recovery, error={}", GetLastError());
     CloseServiceHandle(service);
     CloseServiceHandle(manager);
     return false;
@@ -2609,6 +2790,7 @@ bool StopCrossDeskService(DWORD timeout_ms) {
 }
 
 bool UninstallCrossDeskService() {
+  if (!SetUnattendedEnabled(false)) return false;
   SC_HANDLE manager = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ALL_ACCESS);
   if (manager == nullptr) {
     LOG_ERROR("OpenSCManagerW failed, error={}", GetLastError());
@@ -2628,7 +2810,11 @@ bool UninstallCrossDeskService() {
     return false;
   }
 
-  StopCrossDeskService();
+  if (!StopCrossDeskService()) {
+    CloseServiceHandle(service);
+    CloseServiceHandle(manager);
+    return false;
+  }
 
   bool success = DeleteService(service) != FALSE;
   if (!success) {

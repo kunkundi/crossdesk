@@ -20,6 +20,7 @@ public:
 
   int Save();
   int Load();
+  std::string ActiveIdentity() const;
 
   int LoadRecentConnectionAliases();
   int SaveRecentConnectionAliases() const;

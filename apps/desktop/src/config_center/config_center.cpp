@@ -312,7 +312,16 @@ int ConfigCenter::SetSelfHosted(bool enabled) {
 
 int ConfigCenter::SetAutostart(bool enabled) {
   const bool previous = IsAutostartEnabled("CrossDesk");
-  if (enabled != previous && !(enabled ? EnableAutostart("CrossDesk") : DisableAutostart("CrossDesk"))) {
+  // Refresh the executable path and remove legacy registrations even when the
+  // boolean state is unchanged. In particular, a Run entry no longer counts
+  // as enabled for an elevated Windows build, but still needs deleting.
+#ifdef _WIN32
+  const bool update_registration = true;
+#else
+  const bool update_registration = enabled != previous;
+#endif
+  if (update_registration &&
+      !(enabled ? EnableAutostart("CrossDesk") : DisableAutostart("CrossDesk"))) {
     LOG_ERROR("SetAutostart failed");
     return -1;
   }

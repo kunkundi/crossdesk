@@ -445,6 +445,25 @@ jobs:
           xmake f --CROSSDESK_VERSION=${{ env.VERSION_NUM }} --USE_CUDA=true -y
           xmake b -vy crossdesk
 
+      - name: Test installed Windows autostart and unattended host
+        run: |
+          xmake b -vy windows_autostart_test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          xmake run windows_autostart_test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          xmake b -vy windows_unattended_policy_test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          xmake b -vy windows_unattended_security_test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          xmake run windows_unattended_policy_test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          xmake run windows_unattended_security_test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          xmake b -vy windows_service_lifetime_test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          xmake run windows_service_lifetime_test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Package
         shell: pwsh
         run: |
@@ -500,6 +519,13 @@ jobs:
         run: |
           xmake f --CROSSDESK_VERSION=${{ env.VERSION_NUM }} --USE_CUDA=true --CROSSDESK_PORTABLE=true -y
           xmake b -vy crossdesk
+
+      - name: Test portable Windows autostart
+        run: |
+          xmake b -vy windows_autostart_test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          xmake run windows_autostart_test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Package Portable
         shell: pwsh

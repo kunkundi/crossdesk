@@ -229,6 +229,13 @@ bool SettingsManager::ReadV2Locked() {
   return true;
 }
 
+std::string SettingsManager::ActiveIdentity() const {
+  std::lock_guard<std::mutex> lock(cache_mutex_);
+  return owner_.config_center_->IsSelfHosted()
+             ? cache_v2_.self_hosted_id
+             : cache_v2_.client_id_with_password;
+}
+
 int SettingsManager::Load() {
   std::unique_lock<std::mutex> lock(cache_mutex_);
 

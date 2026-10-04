@@ -10,6 +10,7 @@
 #include <Windows.h>
 
 #include <cstdint>
+#include <atomic>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -35,6 +36,8 @@ class CrossDeskServiceHost {
   void ShutdownRuntime();
   void RequestStop();
   void ClientProcessMonitorLoop();
+  bool LaunchUnattendedHost(DWORD session_id);
+  void StopUnattendedHost();
   void ReportServiceStatus(DWORD current_state, DWORD win32_exit_code,
                            DWORD wait_hint);
   void IpcServerLoop();
@@ -87,7 +90,14 @@ class CrossDeskServiceHost {
   HANDLE stop_event_ = nullptr;
   std::thread ipc_thread_;
   std::thread client_process_monitor_thread_;
+  // Owned exclusively by the monitor, then drained after it joins.
+  HANDLE unattended_process_ = nullptr;
+  HANDLE unattended_stop_event_ = nullptr;
+  DWORD unattended_session_ = 0xFFFFFFFF;
+  std::atomic<uint64_t> unattended_logoff_generation_{0};
   std::mutex state_mutex_;
+  HANDLE lifetime_mutex_ = nullptr;
+  std::wstring lifetime_mutex_name_;
   DWORD active_session_id_ = 0xFFFFFFFF;
   DWORD process_session_id_ = 0xFFFFFFFF;
   DWORD input_desktop_error_code_ = 0;
@@ -154,7 +164,7 @@ bool IsCrossDeskServiceInstalled();
 bool InstallCrossDeskService(const std::wstring& binary_path);
 bool UninstallCrossDeskService();
 bool StartCrossDeskService();
-bool StopCrossDeskService(DWORD timeout_ms = 5000);
+bool StopCrossDeskService(DWORD timeout_ms = 20000);
 std::string QueryCrossDeskService(const std::string& command,
                                   DWORD timeout_ms = 1000);
 std::string SendCrossDeskSecureDesktopKeyInput(int key_code, bool is_down,

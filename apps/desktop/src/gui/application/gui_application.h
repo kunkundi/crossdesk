@@ -29,6 +29,9 @@ public:
   ~GuiApplication();
 
   int Run();
+#ifdef _WIN32
+  int RunUnattended(void* stop_event);
+#endif
 
 private:
   struct SlintUi;

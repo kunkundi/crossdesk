@@ -24,6 +24,9 @@ public:
   Render &operator=(const Render &) = delete;
 
   int Run();
+#ifdef _WIN32
+  int RunUnattended(void* stop_event);
+#endif
 
 private:
   std::unique_ptr<GuiApplication> application_;
