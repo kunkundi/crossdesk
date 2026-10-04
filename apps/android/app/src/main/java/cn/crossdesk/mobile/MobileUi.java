@@ -89,10 +89,19 @@ final class MobileUi {
             c.save();c.scale(getWidth()/24f,getHeight()/24f);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1.7f);paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);
             switch(name){
                 case "settings":
-                    c.drawCircle(12,12,7,paint);c.drawCircle(12,12,3,paint);
-                    for(int i=0;i<8;i++){c.save();c.rotate(i*45,12,12);c.drawLine(12,2,12,5,paint);c.restore();}break;
-                case "bell":
-                    path(c,5,17,6,14,6,9,7,6,10,4,14,4,17,6,18,9,18,14,19,17,5,17);c.drawArc(9,17,15,22,0,180,false,paint);c.drawLine(12,2,12,4,paint);break;
+                    Path gear=new Path();
+                    float[] toothAngles={-17,-10,10,17};
+                    for(int tooth=0;tooth<8;tooth++){
+                        for(int corner=0;corner<4;corner++){
+                            double angle=Math.toRadians(tooth*45-90+toothAngles[corner]);
+                            float radius=corner==0||corner==3?7.5f:10f;
+                            float x=12+radius*(float)Math.cos(angle),y=12+radius*(float)Math.sin(angle);
+                            if(tooth==0&&corner==0)gear.moveTo(x,y);else gear.lineTo(x,y);
+                        }
+                    }
+                    gear.close();c.drawPath(gear,paint);c.drawCircle(12,12,3.2f,paint);break;
+                case "envelope":
+                    c.drawRoundRect(2,5,22,19,2,2,paint);path(c,3,6,12,13,21,6);break;
                 case "history":
                     c.drawArc(4,4,21,21,215,315,false,paint);path(c,3,4,3,10,9,10);path(c,12,7,12,13,16,15);break;
                 case "back":path(c,15,4,7,12,15,20);break;

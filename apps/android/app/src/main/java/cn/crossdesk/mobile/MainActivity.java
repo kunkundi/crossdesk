@@ -165,10 +165,10 @@ public final class MainActivity extends Activity implements NativeSession.Listen
             else if(signalState==1)toast("已连接 "+serverKey());
             else {stopSignaling();ensureSignaling();}
         });renderSignaling();toolbar.addView(signalBadge,ui.size(-2,34));toolbar.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
-        FrameLayout bell=(FrameLayout)ui.iconButton("bell","通知公告",this::announcements);bell.setClipChildren(false);toolbar.setClipChildren(false);toolbar.setClipToPadding(false);
+        FrameLayout announcementButton=(FrameLayout)ui.iconButton("envelope","通知公告",this::announcements);announcementButton.setClipChildren(false);toolbar.setClipChildren(false);toolbar.setClipToPadding(false);
         announcementBadge=text("",10,true);announcementBadge.setTextColor(Color.WHITE);announcementBadge.setGravity(Gravity.CENTER);announcementBadge.setMinWidth(dp(16));announcementBadge.setPadding(dp(4),0,dp(4),0);announcementBadge.setBackground(ui.background(RED,12));announcementBadge.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        FrameLayout.LayoutParams badgePosition=new FrameLayout.LayoutParams(-2,dp(16),Gravity.TOP|Gravity.END);badgePosition.topMargin=-dp(3);badgePosition.setMarginEnd(-dp(5));bell.addView(announcementBadge,badgePosition);renderAnnouncements();
-        toolbar.addView(bell,ui.size(40,40));View spacer=new View(this);toolbar.addView(spacer,ui.size(12,1));
+        FrameLayout.LayoutParams badgePosition=new FrameLayout.LayoutParams(-2,dp(16),Gravity.TOP|Gravity.END);badgePosition.topMargin=-dp(3);badgePosition.setMarginEnd(-dp(5));announcementButton.addView(announcementBadge,badgePosition);renderAnnouncements();
+        toolbar.addView(announcementButton,ui.size(40,40));View spacer=new View(this);toolbar.addView(spacer,ui.size(12,1));
         FrameLayout settingsButton=(FrameLayout)ui.iconButton("settings","设置",this::settings);settingsButton.setClipChildren(false);settingsUpdateButton=settingsButton;
         TextView updateBadge=text("!",10,true);updateBadge.setTextColor(Color.WHITE);updateBadge.setGravity(Gravity.CENTER);updateBadge.setIncludeFontPadding(false);updateBadge.setBackground(ui.background(RED,8));updateBadge.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);settingsUpdateDot=updateBadge;
         FrameLayout.LayoutParams updatePosition=new FrameLayout.LayoutParams(dp(16),dp(16),Gravity.TOP|Gravity.END);updatePosition.topMargin=-dp(3);updatePosition.setMarginEnd(-dp(5));settingsButton.addView(settingsUpdateDot,updatePosition);

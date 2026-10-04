@@ -4,7 +4,7 @@ struct AnnouncementBadge: View {
     @ObservedObject var inbox: AnnouncementInbox
 
     var body: some View {
-        Image(systemName: "bell")
+        Image(systemName: "envelope")
             .font(.system(size: 18, weight: .semibold))
             .frame(width: 40, height: 40)
             .background(Color(.secondarySystemGroupedBackground),
