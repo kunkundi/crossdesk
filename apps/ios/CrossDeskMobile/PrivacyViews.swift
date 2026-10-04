@@ -118,8 +118,6 @@ struct PrivacySettingsSection: View {
             }
         } header: {
             Text("隐私")
-        } footer: {
-            Text("画面预览默认关闭。开启后，从下一次连接起保存一张远程画面到本机，显示在最近连接中，不上传且不纳入设备备份。关闭开关会清除已有预览；连接记录和接收的文件不受影响。")
         }
         .alert("保存远程画面预览？", isPresented: $confirmThumbnails) {
             Button("开启保存") { session.setSavesConnectionThumbnails(true) }

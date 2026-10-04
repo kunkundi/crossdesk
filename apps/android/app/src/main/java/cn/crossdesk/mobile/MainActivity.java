@@ -288,10 +288,9 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private void settings(){
         LinearLayout content=formPage("settings","设置",()->home(""));
         LinearLayout mouse=section(content,"鼠标控制",MobileUi.SETTINGS_CARD_RADIUS);mouse.setPadding(dp(12),dp(12),dp(12),dp(12));boolean relative=preferences.getBoolean("relativeMouse",true);
-        TextView detail=text(relative?"像触控板一样滑动光标，点击时操作当前光标位置。":"触摸位置直接对应远端屏幕位置，适合快速定位。",13,false);detail.setTextColor(SECONDARY);
-        mouse.addView(segments(new String[]{"相对位置","绝对位置"},relative?0:1,true,index->{preferences.edit().putBoolean("relativeMouse",index==0).apply();detail.setText(index==0?"像触控板一样滑动光标，点击时操作当前光标位置。":"触摸位置直接对应远端屏幕位置，适合快速定位。");}));ui.gap(mouse,10);mouse.addView(detail);
-        LinearLayout picture=section(content,"画面偏好",MobileUi.SETTINGS_CARD_RADIUS);picture.setPadding(dp(12),dp(12),dp(12),dp(12));int preference=Math.max(0,Math.min(2,preferences.getInt("videoPreference",1)));TextView preferenceDetail=text(RemoteVideoSettings.DETAILS[preference],13,false);preferenceDetail.setTextColor(SECONDARY);
-        picture.addView(segments(RemoteVideoSettings.PREFERENCES,preference,true,index->{preferences.edit().putInt("videoPreference",index).apply();preferenceDetail.setText(RemoteVideoSettings.DETAILS[index]);}));ui.gap(picture,10);picture.addView(preferenceDetail);ui.gap(content,28);
+        mouse.addView(segments(new String[]{"相对位置","绝对位置"},relative?0:1,true,index->preferences.edit().putBoolean("relativeMouse",index==0).apply()));
+        LinearLayout picture=section(content,"画面偏好",MobileUi.SETTINGS_CARD_RADIUS);picture.setPadding(dp(12),dp(12),dp(12),dp(12));int preference=Math.max(0,Math.min(2,preferences.getInt("videoPreference",1)));
+        picture.addView(segments(RemoteVideoSettings.PREFERENCES,preference,true,index->preferences.edit().putInt("videoPreference",index).apply()));ui.gap(content,28);
         LinearLayout server=section(content,"",MobileUi.SETTINGS_CARD_RADIUS);LinearLayout fields=column();fields.setVisibility(View.GONE);boolean custom=!host.equals("api.crossdesk.cn")||port!=9099;
         link(server,"服务器",custom?"自定义":"默认",()->fields.setVisibility(fields.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));server.addView(fields);
         LinearLayout toggleRow=row();toggleRow.setPadding(dp(16),dp(8),dp(16),dp(8));toggleRow.addView(text("使用自定义服务器",16,false),new LinearLayout.LayoutParams(0,-2,1));Switch toggle=new Switch(this);toggle.setContentDescription("使用自定义服务器");toggle.setChecked(custom);toggleRow.addView(toggle);fields.addView(toggleRow);
@@ -305,7 +304,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         previewSwitch.setOnCheckedChangeListener((button,checked)->{if(updatingPreviewSwitch)return;if(checked){renderPreviews();confirmPreviewSaving();}else previews.setEnabled(false);});
         ui.divider(privacy);clearPreviewsButton=ui.action("清除预览图",RED,this::confirmClearPreviews);clearPreviewsButton.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);clearPreviewsButton.setTypeface(Typeface.DEFAULT);clearPreviewsButton.setPadding(dp(16),0,dp(16),0);privacy.addView(clearPreviewsButton,ui.size(-1,48));
         previewCleanupError=text("",12,false);previewCleanupError.setTextColor(RED);previewCleanupError.setPadding(dp(16),dp(8),dp(16),dp(12));privacy.addView(previewCleanupError);renderPreviews();
-        footer(content,"画面预览默认关闭。开启后，从下一次连接起保存一张远程画面到本机，显示在最近连接中，不上传且不纳入设备备份。关闭开关会清除已有预览；连接记录和密码不受影响。");LinearLayout about=section(content,"",MobileUi.SETTINGS_CARD_RADIUS);LinearLayout aboutLink=link(about,"关于","新版本",this::about);aboutUpdateRow=aboutLink;
+        ui.gap(content,28);LinearLayout about=section(content,"",MobileUi.SETTINGS_CARD_RADIUS);LinearLayout aboutLink=link(about,"关于","新版本",this::about);aboutUpdateRow=aboutLink;
         aboutUpdateLabel=(TextView)aboutLink.getChildAt(1);aboutUpdateLabel.setPadding(0,0,dp(8),0);
         aboutUpdateDot=updateDot();LinearLayout.LayoutParams dotPosition=new LinearLayout.LayoutParams(dp(8),dp(8));dotPosition.setMarginEnd(dp(8));aboutLink.addView(aboutUpdateDot,2,dotPosition);renderAppUpdates();
     }

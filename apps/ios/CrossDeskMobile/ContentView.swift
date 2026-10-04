@@ -797,10 +797,6 @@ private struct ServerSettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-
-                Text(session.mouseControlMode.detail)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
             }
             Section("画面偏好") {
                 Picker("偏好模式", selection: $session.videoAdaptationPolicy) {
@@ -809,11 +805,6 @@ private struct ServerSettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-
-                Text(session.videoAdaptationPolicy.detail)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-
             }
             Section {
                 DisclosureGroup(isExpanded: $serverConfigurationExpanded) {
@@ -837,11 +828,6 @@ private struct ServerSettingsView: View {
                                 .focused($focusedServerField, equals: .port)
                                 .accessibilityLabel("服务器端口")
                         }
-                    }
-                    if usesCustomServer {
-                        Text("结束编辑后生效。关闭开关可立即切回默认配置。")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
                     }
                 } label: {
                     HStack {
