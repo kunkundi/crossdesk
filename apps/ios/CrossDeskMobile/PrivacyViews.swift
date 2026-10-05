@@ -10,6 +10,7 @@ struct PrivacyConsentView: View {
                 PrivacyPolicyDocument()
                     .padding(.horizontal, 20)
                     .padding(.vertical, 20)
+                    .readableContentWidth()
             }
             .background(Color(.systemBackground))
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -57,6 +58,7 @@ struct PrivacyConsentView: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
+            .readableContentWidth()
         }
         .background(Color(.systemBackground))
     }
@@ -161,6 +163,8 @@ private struct PrivacyAuthorizationView: View {
                 }
             }
         }
+        .readableContentWidth()
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("隐私与授权")
         .navigationBarTitleDisplayMode(.inline)
         .alert("是否撤回隐私授权？", isPresented: $confirmWithdrawal) {
@@ -220,7 +224,7 @@ private struct PrivacyPolicyDocument: View {
 struct PrivacyPolicyView: View {
     var body: some View {
         ScrollView {
-            PrivacyPolicyDocument().padding()
+            PrivacyPolicyDocument().padding().readableContentWidth()
         }
         .navigationTitle("隐私政策")
         .navigationBarTitleDisplayMode(.inline)

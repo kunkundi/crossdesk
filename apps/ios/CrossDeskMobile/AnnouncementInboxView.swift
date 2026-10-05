@@ -108,6 +108,8 @@ struct AnnouncementInboxView: View {
                 Text("共 \(inbox.state.total) 条 · \(inbox.state.unread) 条未读")
             }
         }
+        .readableContentWidth()
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("通知公告")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -174,10 +176,12 @@ struct AnnouncementDetailView: View {
                         })
                 }
                 .padding(20)
+                .readableContentWidth()
             } else {
                 Text("这条公告已更新或删除，请返回公告列表查看。")
                     .foregroundStyle(.secondary)
                     .padding(20)
+                    .readableContentWidth()
             }
         }
         .navigationTitle("公告详情")

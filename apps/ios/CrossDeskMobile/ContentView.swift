@@ -1,6 +1,19 @@
 import SwiftUI
 import UIKit
 
+enum MobileLayout {
+    static let twoColumnBreakpoint: CGFloat = 900
+    static let homeMaximumWidth: CGFloat = 1200
+    static let readableMaximumWidth: CGFloat = 720
+}
+
+extension View {
+    func readableContentWidth() -> some View {
+        frame(maxWidth: MobileLayout.readableMaximumWidth)
+            .frame(maxWidth: .infinity)
+    }
+}
+
 enum HomeDestination: Hashable {
     case settings
     case announcements
@@ -207,8 +220,11 @@ private struct ConnectionHomeView: View {
         return "arrow.triangle.2.circlepath"
     }
 
-    private var recentConnectionColumns: [GridItem] {
-        [
+    private func recentConnectionColumns(windowWidth: CGFloat) -> [GridItem] {
+        if windowWidth >= 600 {
+            return [GridItem(.adaptive(minimum: 180), spacing: 12, alignment: .top)]
+        }
+        return [
             GridItem(.flexible(), spacing: 12, alignment: .top),
             GridItem(.flexible(), spacing: 12, alignment: .top)
         ]
@@ -229,15 +245,33 @@ private struct ConnectionHomeView: View {
         ZStack {
             Color(.systemGroupedBackground).ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                remoteConnectionPanel
+            GeometryReader { proxy in
+                let isWide = proxy.size.width >= MobileLayout.twoColumnBreakpoint
+                // AnyLayout keeps the fields, focus and scroll view alive when
+                // rotation or iPad multitasking crosses the layout breakpoint.
+                let layout = isWide
+                    ? AnyLayout(HStackLayout(alignment: .top, spacing: 24))
+                    : AnyLayout(VStackLayout(spacing: 20))
+
+                ScrollView(.vertical) {
+                    layout {
+                        remoteConnectionPanel
+                            .frame(width: isWide ? 360 : nil)
+                        recentConnectionsPanel(windowWidth: proxy.size.width)
+                            .frame(maxHeight: .infinity)
+                    }
+                    .frame(maxWidth: MobileLayout.homeMaximumWidth)
+                    // Short multitasking windows and the onscreen keyboard
+                    // must not squeeze the recent list below a usable height.
+                    .frame(height: max(isWide ? 260 : 420, proxy.size.height - 36),
+                           alignment: .top)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 20)
                     .padding(.top, 24)
-                recentConnectionsPanel
-                    .padding(.top, 20)
-                    .frame(maxHeight: .infinity)
+                    .padding(.bottom, 12)
+                }
+                .scrollDismissesKeyboard(.interactively)
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 12)
 
             if session.isConnecting {
                 connectionProgressOverlay
@@ -430,7 +464,7 @@ private struct ConnectionHomeView: View {
     }
 
     @ViewBuilder
-    private var recentConnectionsPanel: some View {
+    private func recentConnectionsPanel(windowWidth: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
                 Text("最近连接")
@@ -458,7 +492,7 @@ private struct ConnectionHomeView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(.vertical) {
-                    LazyVGrid(columns: recentConnectionColumns, spacing: 12) {
+                    LazyVGrid(columns: recentConnectionColumns(windowWidth: windowWidth), spacing: 12) {
                         ForEach(orderedRecentConnections) { connection in
                             RecentConnectionCard(
                                 connection: connection,
@@ -872,6 +906,8 @@ private struct ServerSettingsView: View {
                 .accessibilityLabel(appUpdates.updateAvailable ? "关于，有新版本" : "关于")
             }
         }
+        .readableContentWidth()
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("设置")
         .navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.interactively)

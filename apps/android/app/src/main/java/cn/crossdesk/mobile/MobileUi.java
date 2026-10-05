@@ -29,6 +29,16 @@ final class MobileUi {
         return wrapper;
     }
     LinearLayout column() { LinearLayout v=new LinearLayout(context);v.setOrientation(LinearLayout.VERTICAL);return v; }
+    LinearLayout pageColumn(int maxWidth) {
+        LinearLayout v=new LinearLayout(context){
+            @Override protected void onMeasure(int widthSpec,int heightSpec){
+                if(maxWidth>0&&MeasureSpec.getSize(widthSpec)>dp(maxWidth))
+                    widthSpec=MeasureSpec.makeMeasureSpec(dp(maxWidth),MeasureSpec.EXACTLY);
+                super.onMeasure(widthSpec,heightSpec);
+            }
+        };
+        v.setOrientation(LinearLayout.VERTICAL);return v;
+    }
     LinearLayout row() { LinearLayout v=new LinearLayout(context);v.setGravity(Gravity.CENTER_VERTICAL);return v; }
     TextView text(String title,int size,boolean bold) {
         TextView v=new TextView(context);v.setText(title);v.setTextSize(size);v.setTextColor(INK);v.setIncludeFontPadding(false);

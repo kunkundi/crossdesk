@@ -46,6 +46,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private RecentConnections history;
     private final RecentConnectionPresence recentPresence=new RecentConnectionPresence();
     private LinearLayout recentGrid;
+    private int recentColumns=2;
     private final Runnable presenceTick=new Runnable(){public void run(){
         if(!recentPresence.isConnected())return;
         recentPresence.maintain(android.os.SystemClock.elapsedRealtime());
@@ -114,8 +115,10 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         settingsUpdateDot=null;aboutUpdateDot=null;settingsUpdateButton=null;aboutUpdateRow=null;aboutUpdateLabel=null;
         previewSwitch=null;clearPreviewsButton=null;previewCleanupError=null;previewCards.clear();recentGrid=null;
         canvas=new FrameLayout(this);canvas.setBackgroundColor(dark?Color.BLACK:BACKGROUND);
-        root=column();canvas.addView(root,new FrameLayout.LayoutParams(-1,-1));
-        root.setOnApplyWindowInsetsListener((view,insets)->{
+        FrameLayout safeArea=new FrameLayout(this);canvas.addView(safeArea,new FrameLayout.LayoutParams(-1,-1));
+        root=ui.pageColumn(dark?0:nextPage.equals("home")?1200:720);
+        safeArea.addView(root,new FrameLayout.LayoutParams(-1,-1,Gravity.TOP|Gravity.CENTER_HORIZONTAL));
+        safeArea.setOnApplyWindowInsetsListener((view,insets)->{
             view.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());return insets;
         });
         root.setFocusableInTouchMode(true);pageHost.show(canvas,motion);
@@ -155,9 +158,18 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         TextView chevron=text(" ›",23,false);chevron.setTextColor(0xFFB7B7BD);item.addView(chevron);item.setContentDescription(title+(detail.isEmpty()?"":"，"+detail));item.setClickable(true);item.setFocusable(true);item.setOnClickListener(v->action.run());parent.addView(item);
         return item;
     }
-    @android.annotation.SuppressLint("SourceLockedOrientationActivity") // Match the iOS portrait home; sessions support both orientations.
+    @android.annotation.SuppressLint("SourceLockedOrientationActivity") // Phones keep the portrait home; tablets and multi-window follow user rotation settings.
+    private void updateHomeOrientation(){
+        boolean tablet=getResources().getConfiguration().smallestScreenWidthDp>=600;
+        if(android.os.Build.VERSION.SDK_INT>=30){
+            android.graphics.Rect bounds=getWindowManager().getMaximumWindowMetrics().getBounds();
+            tablet|=Math.min(bounds.width(),bounds.height())>=dp(600);
+        }
+        int orientation=tablet||isInMultiWindowMode()?ActivityInfo.SCREEN_ORIENTATION_FULL_USER:ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
+        if(getRequestedOrientation()!=orientation)setRequestedOrientation(orientation);
+    }
     private void home(String message){
-        backAction=null;setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);installRoot("home",false);
+        backAction=null;updateHomeOrientation();installRoot("home",false);
         LinearLayout toolbar=row();toolbar.setPadding(dp(20),0,dp(20),0);root.addView(toolbar,ui.size(-1,56));
         signalBadge=text("",12,true);signalBadge.setGravity(Gravity.CENTER);signalBadge.setPadding(dp(11),0,dp(11),0);signalBadge.setSingleLine(true);
         signalBadge.setOnClickListener(v->{
@@ -173,7 +185,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         TextView updateBadge=text("!",10,true);updateBadge.setTextColor(Color.WHITE);updateBadge.setGravity(Gravity.CENTER);updateBadge.setIncludeFontPadding(false);updateBadge.setBackground(ui.background(RED,8));updateBadge.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);settingsUpdateDot=updateBadge;
         FrameLayout.LayoutParams updatePosition=new FrameLayout.LayoutParams(dp(16),dp(16),Gravity.TOP|Gravity.END);updatePosition.topMargin=-dp(3);updatePosition.setMarginEnd(-dp(5));settingsButton.addView(settingsUpdateDot,updatePosition);
         toolbar.addView(settingsButton,ui.size(40,40));renderAppUpdates();
-        LinearLayout content=column();content.setPadding(dp(20),dp(24),dp(20),dp(12));content.setClipChildren(false);content.setClipToPadding(false);root.addView(content,new LinearLayout.LayoutParams(-1,0,1));
+        HomeLayout layout=new HomeLayout(ui);root.addView(layout,new LinearLayout.LayoutParams(-1,0,1));LinearLayout content=layout.panels;
         LinearLayout connection=column();connection.setPadding(dp(18),dp(18),dp(18),dp(18));content.addView(ui.shadowCard(connection,20));
         connection.addView(text("远程桌面",20,true));ui.gap(connection,16);
         LinearLayout entry=row();connection.addView(entry,ui.size(-1,54));
@@ -191,7 +203,12 @@ public final class MainActivity extends Activity implements NativeSession.Listen
             LinearLayout empty=column();empty.setGravity(Gravity.CENTER);recent.addView(empty,new LinearLayout.LayoutParams(-1,0,1));empty.addView(ui.icon("history",0xFFB6B6BB),ui.size(34,34));ui.gap(empty,12);
             TextView emptyTitle=text("还没有连接记录",17,true);emptyTitle.setGravity(Gravity.CENTER);empty.addView(emptyTitle);ui.gap(empty,8);TextView hint=text("成功连接后，这里会显示最近的远程设备。",13,false);hint.setTextColor(SECONDARY);hint.setGravity(Gravity.CENTER);empty.addView(hint);
         }else{
-            ui.gap(recent,14);ScrollView scroll=new ScrollView(this);recent.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));recentGrid=column();scroll.addView(recentGrid);renderRecentConnections();
+            ui.gap(recent,14);ScrollView scroll=new ScrollView(this);recent.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));recentGrid=column();scroll.addView(recentGrid);
+            recentGrid.addOnLayoutChangeListener((view,left,top,right,bottom,oldLeft,oldTop,oldRight,oldBottom)->{
+                int width=right-left;if(width<=0)return;
+                int columns=width<dp(300)?1:Math.max(2,Math.min(4,(width+dp(12))/dp(192)));
+                if(columns!=recentColumns){recentColumns=columns;view.post(()->{if(view==recentGrid)renderRecentConnections();});}
+            });renderRecentConnections();
         }
         ensureSignaling();
         if(!message.isEmpty())new AlertDialog.Builder(this).setTitle("连接提示").setMessage(message).setPositiveButton("确定",null).show();
@@ -202,7 +219,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         if(recentGrid==null)return;
         JSONArray records=recentPresence.ordered(history.list(serverKey()),android.os.SystemClock.elapsedRealtime());
         recentGrid.removeAllViews();previewCards.clear();
-        for(int i=0;i<records.length();i+=2){LinearLayout line=row();line.setGravity(Gravity.TOP);recentGrid.addView(line);for(int j=i;j<i+2;j++){View card=j<records.length()?recentCard(records.optJSONObject(j)):new View(this);LinearLayout.LayoutParams cell=new LinearLayout.LayoutParams(0,-2,1);if(j>i)cell.leftMargin=dp(12);line.addView(card,cell);}ui.gap(recentGrid,12);}
+        for(int i=0;i<records.length();i+=recentColumns){LinearLayout line=row();line.setGravity(Gravity.TOP);recentGrid.addView(line);for(int j=i;j<i+recentColumns;j++){View card=j<records.length()?recentCard(records.optJSONObject(j)):new View(this);LinearLayout.LayoutParams cell=new LinearLayout.LayoutParams(0,-2,1);if(j>i)cell.setMarginStart(dp(12));line.addView(card,cell);}ui.gap(recentGrid,12);}
     }
     private View recentCard(JSONObject item){
         if(item==null)return new View(this);String id=item.optString("id"),platform=item.optString("platform");
@@ -249,8 +266,15 @@ public final class MainActivity extends Activity implements NativeSession.Listen
             String secret=password.getText().toString();if(secret.isEmpty()||secret.length()>128||secret.contains("@")){password.setError("请输入有效访问密码");return;}
             rememberPassword=remember.isChecked();password.setText("");dialog.dismiss();begin(id,secret);
         });connect.setContentDescription("确认连接");sheet.addView(connect,ui.size(-1,48));
-        dialog.setContentView(sheet);Window window=dialog.getWindow();if(window!=null){window.setBackgroundDrawableResource(android.R.color.transparent);window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);window.setDimAmount(.22f);}dialog.show();if(window!=null){window.setLayout(-1,-2);window.setGravity(Gravity.BOTTOM);}password.requestFocus();if(!error.isEmpty())password.setError(error);
+        ScrollView scroll=new ScrollView(this);scroll.addView(sheet);
+        dialog.setContentView(scroll);Window window=dialog.getWindow();if(window!=null){window.setBackgroundDrawableResource(android.R.color.transparent);window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);window.setDimAmount(.22f);}dialog.show();sizePasswordDialog();password.requestFocus();if(!error.isEmpty())password.setError(error);
         dialog.setOnDismissListener(d->{password.setText("");passwordDialog=null;});
+    }
+    private void sizePasswordDialog(){
+        if(passwordDialog==null||passwordDialog.getWindow()==null)return;
+        int width=getResources().getConfiguration().screenWidthDp;
+        Window window=passwordDialog.getWindow();window.setLayout(width>=600?dp(Math.min(520,width-48)):-1,-2);
+        window.setGravity(width>=600?Gravity.CENTER:Gravity.BOTTOM);
     }
     private void begin(String id,String secret){
         resetRemoteVersionCheck();
@@ -538,7 +562,14 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private void back(){pageHost.finish();if(session!=null){if(ready)confirmDisconnect();else end("");}else if(backAction!=null)navigateBack();else finish();}
     @Override public void onWindowFocusChanged(boolean focus){super.onWindowFocusChanged(focus);if(!focus)releaseKeys();else applySystemBars(ready);}
     @android.annotation.SuppressLint("GestureBackNavigation") @Override public void onBackPressed(){back();}
-    @Override public void onConfigurationChanged(Configuration config){super.onConfigurationChanged(config);if(controls!=null)controls.post(controls::constrainPanels);}
+    @Override public void onConfigurationChanged(Configuration config){
+        super.onConfigurationChanged(config);
+        releaseKeys();
+        if(!page.equals("session"))updateHomeOrientation();
+        sizePasswordDialog();
+        if(privacyDialog instanceof PrivacyConsentDialog)((PrivacyConsentDialog)privacyDialog).updateSize();
+        if(controls!=null)controls.post(controls::constrainPanels);
+    }
     // onStart marks a new visit; focus/resume callbacks must not reopen a refused notice.
     @Override protected void onStart(){super.onStart();foreground=true;appUpdates.setEnabled(preferences.getBoolean("networkConsent",false));if(!preferences.getBoolean("networkConsent",false))consent(this::renderSignaling);ensureSignaling();}
     @Override protected void onStop(){foreground=false;appUpdates.setEnabled(false);if(privacyDialog!=null)privacyDialog.dismiss();pageHost.finish();if(session!=null)end(isFinishing()?"":"应用已进入后台，会话已结束");stopSignaling();super.onStop();}

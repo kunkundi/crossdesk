@@ -20,6 +20,8 @@ final class SessionControls extends FrameLayout {
     private final LinearLayout waiting;
     private View shield;
     private LinearLayout menu,keyboard;
+    private ScrollView keyboardKeys;
+    private int keyboardPreferredHeight;
     private TextView networkLabel,videoFeedback;
     private String menuPage="controls";
     private RemoteNetworkStatistics.Snapshot network=new RemoteNetworkStatistics().snapshot(0);
@@ -136,14 +138,21 @@ final class SessionControls extends FrameLayout {
     private int panelWidth(int width){return Math.max(1,Math.min(width-ui.dp(16),Math.max(ui.dp(280),Math.min(ui.dp(340),width-ui.dp(160)))));}
     private int panelHeight(int height){return Math.min(ui.dp(310),Math.max(1,height-ui.dp(16)));}
     private void positionMenu(){if(menu==null)return;float ox=orb.getX()+orb.getWidth()/2f;float x=ox>getWidth()/2f?orb.getX()-ui.dp(12)-menu.getWidth():orb.getX()+orb.getWidth()+ui.dp(12);menu.setX(bound(x,ui.dp(8),getWidth()-menu.getWidth()-ui.dp(8)));menu.setY(bound(orb.getY(),ui.dp(8),getHeight()-menu.getHeight()-ui.dp(8)));}
-    private void closeKeyboard(){if(keyboard!=null){removeView(keyboard);keyboard=null;}}
+    private int keyboardWidth(int width){return Math.min(ui.dp(computerKeyboard?520:440),Math.max(1,width-ui.dp(16)));}
+    private int keyboardHeight(int height){return Math.min(keyboardPreferredHeight,Math.max(1,height-ui.dp(16)));}
+    private void positionKeyboard(){if(keyboard!=null){keyboard.setX(bound(keyboard.getX(),ui.dp(8),getWidth()-keyboard.getWidth()-ui.dp(8)));keyboard.setY(bound(keyboard.getY(),ui.dp(8),getHeight()-keyboard.getHeight()-ui.dp(8)));}}
+    private void closeKeyboard(){if(keyboard!=null){removeView(keyboard);keyboard=null;keyboardKeys=null;}}
     private void toggleKeyboard(){if(keyboard!=null){closeKeyboard();modifiers.clear();return;}modifiers.clear();showKeyboard();}
     private void showKeyboard(){
-        float oldX=keyboard==null?-1:keyboard.getX(),oldY=keyboard==null?-1:keyboard.getY();closeKeyboard();keyboard=ui.column();keyboard.setPadding(ui.dp(5),ui.dp(5),ui.dp(5),ui.dp(5));keyboard.setBackground(ui.background(0xFFD1D6DE,12));keyboard.setElevation(ui.dp(10));
+        float oldX=keyboard==null?-1:keyboard.getX(),oldY=keyboard==null?-1:keyboard.getY();int oldScroll=keyboardKeys==null?0:keyboardKeys.getScrollY();closeKeyboard();keyboard=ui.column();keyboard.setPadding(ui.dp(5),ui.dp(5),ui.dp(5),ui.dp(5));keyboard.setBackground(ui.background(0xFFD1D6DE,12));keyboard.setElevation(ui.dp(10));
         LinearLayout top=ui.row();TextView handle=ui.text("━",19,true);handle.setGravity(Gravity.CENTER);handle.setTextColor(SECONDARY);handle.setContentDescription("拖动键盘");top.addView(handle,new LinearLayout.LayoutParams(0,ui.dp(28),1));top.addView(ui.iconButton("close","收起键盘",this::closeKeyboard),ui.size(30,28));keyboard.addView(top);drag(handle,keyboard,()->{});
+        // Keep the drag/close row fixed while short split windows can scroll every key into view.
+        keyboardKeys=new ScrollView(getContext());keyboard.addView(keyboardKeys,new LinearLayout.LayoutParams(-1,0,1));LinearLayout keys=ui.column();keyboardKeys.addView(keys);
         String[][] rows=computerKeyboard?new String[][]{{"Esc","F1","F2","F3","F4","F5","F6"},{"Tab","Ctrl","Alt","Win","↑","⌫"},{"复制","粘贴","全选","←","↓","→"},{"ABC","空格","Enter"}}:new String[][]{{"1","2","3","4","5","6","7","8","9","0"},{"q","w","e","r","t","y","u","i","o","p"},{"a","s","d","f","g","h","j","k","l"},{"⇧","z","x","c","v","b","n","m","⌫"},{"电脑","剪贴板","空格",".","Enter"}};
-        for(String[] values:rows){LinearLayout line=ui.row();for(String value:values){String shown=shift&&value.length()==1?value.toUpperCase(java.util.Locale.ROOT):value;TextView key=ui.action(shown,INK,()->keyboardKey(value));key.setTextSize(value.length()>2?11:14);key.setMinHeight(ui.dp(31));int modifier=value.equals("Ctrl")?17:value.equals("Alt")?18:value.equals("Win")?91:0;key.setBackground(ui.background(modifiers.contains(modifier)?0xFF9BC7F7:value.length()>1||value.equals("⇧")?0xFFAFB8C5:Color.WHITE,5));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,ui.dp(31),value.equals("空格")?3:1);p.setMargins(ui.dp(1.5f),0,ui.dp(1.5f),0);line.addView(key,p);}keyboard.addView(line);ui.gap(keyboard,3);}
-        int width=Math.min(ui.dp(computerKeyboard?520:440),Math.max(1,getWidth()-ui.dp(16)));addView(keyboard,new LayoutParams(width,-2));keyboard.post(()->{if(keyboard!=null){keyboard.setX(oldX<0?(getWidth()-keyboard.getWidth())/2f:oldX);keyboard.setY(oldY<0?getHeight()-keyboard.getHeight()-ui.dp(20):oldY);constrainPanels();}});
+        for(String[] values:rows){LinearLayout line=ui.row();for(String value:values){String shown=shift&&value.length()==1?value.toUpperCase(java.util.Locale.ROOT):value;TextView key=ui.action(shown,INK,()->keyboardKey(value));key.setTextSize(value.length()>2?11:14);key.setMinHeight(ui.dp(31));int modifier=value.equals("Ctrl")?17:value.equals("Alt")?18:value.equals("Win")?91:0;key.setBackground(ui.background(modifiers.contains(modifier)?0xFF9BC7F7:value.length()>1||value.equals("⇧")?0xFFAFB8C5:Color.WHITE,5));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,ui.dp(31),value.equals("空格")?3:1);p.setMargins(ui.dp(1.5f),0,ui.dp(1.5f),0);line.addView(key,p);}keys.addView(line);ui.gap(keys,3);}
+        keyboardPreferredHeight=ui.dp(5)*2+ui.dp(28)+rows.length*(ui.dp(31)+ui.dp(3));
+        addView(keyboard,new LayoutParams(keyboardWidth(getWidth()),keyboardHeight(getHeight())));LinearLayout shownKeyboard=keyboard;ScrollView shownKeys=keyboardKeys;
+        keyboard.post(()->{if(keyboard==shownKeyboard){keyboard.setX(oldX<0?(getWidth()-keyboard.getWidth())/2f:oldX);keyboard.setY(oldY<0?getHeight()-keyboard.getHeight()-ui.dp(20):oldY);shownKeys.scrollTo(0,oldScroll);constrainPanels();}});
     }
     private void keyboardKey(String value){
         switch(value){
@@ -177,16 +186,22 @@ final class SessionControls extends FrameLayout {
     }
     void constrainPanels(){
         orb.setX(bound(orb.getX(),ui.dp(8),getWidth()-orb.getWidth()-ui.dp(8)));orb.setY(bound(orb.getY(),ui.dp(8),getHeight()-orb.getHeight()-ui.dp(8)));
-        if(menu!=null)requestLayout();
-        if(keyboard!=null){ViewGroup.LayoutParams p=keyboard.getLayoutParams();p.width=Math.min(ui.dp(computerKeyboard?520:440),Math.max(1,getWidth()-ui.dp(16)));keyboard.setLayoutParams(p);keyboard.setX(bound(keyboard.getX(),ui.dp(8),getWidth()-p.width-ui.dp(8)));keyboard.setY(bound(keyboard.getY(),ui.dp(8),getHeight()-keyboard.getHeight()-ui.dp(8)));}
+        if(menu!=null||keyboard!=null)requestLayout();
+        positionKeyboard();
     }
     @Override protected void onMeasure(int widthSpec,int heightSpec){
         super.onMeasure(widthSpec,heightSpec);
+        boolean resized=false;
         if(menu!=null){
             // Use this traversal's viewport, including rotation/inset changes, before drawing.
             ViewGroup.LayoutParams p=menu.getLayoutParams();int width=panelWidth(getMeasuredWidth()),height=panelHeight(getMeasuredHeight());
-            if(p.width!=width||p.height!=height){p.width=width;p.height=height;super.onMeasure(widthSpec,heightSpec);}
+            if(p.width!=width||p.height!=height){p.width=width;p.height=height;resized=true;}
         }
+        if(keyboard!=null){
+            ViewGroup.LayoutParams p=keyboard.getLayoutParams();int width=keyboardWidth(getMeasuredWidth()),height=keyboardHeight(getMeasuredHeight());
+            if(p.width!=width||p.height!=height){p.width=width;p.height=height;resized=true;}
+        }
+        if(resized)super.onMeasure(widthSpec,heightSpec);
     }
     @Override protected void onLayout(boolean changed,int left,int top,int right,int bottom){
         super.onLayout(changed,left,top,right,bottom);
@@ -194,6 +209,7 @@ final class SessionControls extends FrameLayout {
         orb.setX(bound(orb.getX(),ui.dp(8),getWidth()-orb.getWidth()-ui.dp(8)));orb.setY(bound(orb.getY(),ui.dp(8),getHeight()-orb.getHeight()-ui.dp(8)));
         // New/rebuilt menus have real dimensions now; position them in the same frame.
         positionMenu();
+        positionKeyboard();
     }
     @Override protected void onSizeChanged(int width,int height,int oldWidth,int oldHeight){super.onSizeChanged(width,height,oldWidth,oldHeight);post(this::constrainPanels);}
     private static float bound(float value,float min,float max){return Math.max(min,Math.min(value,Math.max(min,max)));}

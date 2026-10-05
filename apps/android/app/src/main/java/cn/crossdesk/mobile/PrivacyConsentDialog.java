@@ -12,11 +12,13 @@ import static cn.crossdesk.mobile.MobileUi.*;
 
 /** Explicit agreement is required; refusal dismisses only the current visit. */
 final class PrivacyConsentDialog extends Dialog {
+    private final Activity activity;
+    private final MobileUi ui;
     PrivacyConsentDialog(Activity activity,MobileUi ui,Runnable accepted){
         this(activity,ui,new PrivacyPolicyDocument(activity),accepted);
     }
     PrivacyConsentDialog(Activity activity,MobileUi ui,PrivacyPolicyDocument policy,Runnable accepted){
-        super(activity);requestWindowFeature(Window.FEATURE_NO_TITLE);setCancelable(false);setCanceledOnTouchOutside(false);
+        super(activity);this.activity=activity;this.ui=ui;requestWindowFeature(Window.FEATURE_NO_TITLE);setCancelable(false);setCanceledOnTouchOutside(false);
         LinearLayout sheet=ui.column();sheet.setBackground(ui.background(android.graphics.Color.WHITE,20));sheet.setClipToOutline(true);
         TextView title=ui.text("隐私政策",17,true);title.setGravity(Gravity.CENTER);sheet.addView(title,ui.size(-1,56));ui.divider(sheet);
         sheet.addView(policy.view(ui),new LinearLayout.LayoutParams(-1,0,1));ui.divider(sheet);
@@ -31,6 +33,15 @@ final class PrivacyConsentDialog extends Dialog {
         setContentView(sheet);Window window=getWindow();if(window!=null){window.setBackgroundDrawableResource(android.R.color.transparent);window.setDimAmount(.22f);}
     }
     @Override public void show(){
-        super.show();Window window=getWindow();if(window!=null){window.setLayout(-1,Math.round(getContext().getResources().getDisplayMetrics().heightPixels*.9f));window.setGravity(Gravity.BOTTOM);}
+        super.show();updateSize();
+    }
+    void updateSize(){
+        android.content.res.Configuration configuration=activity.getResources().getConfiguration();
+        boolean wide=configuration.screenWidthDp>=600;
+        Window window=getWindow();if(window!=null){
+            window.setLayout(wide?ui.dp(Math.min(640,configuration.screenWidthDp-48)):-1,
+                    Math.min(ui.dp(760),Math.round(ui.dp(configuration.screenHeightDp)*.9f)));
+            window.setGravity(wide?Gravity.CENTER:Gravity.BOTTOM);
+        }
     }
 }

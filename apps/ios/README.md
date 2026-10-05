@@ -148,6 +148,17 @@ No Apple signing secrets are needed. Sign the app yourself before installing
 it on a device. Push any referenced MiniRTC commit before the parent repository
 so the runner can check out all corresponding sources.
 
+## iPad and adaptive layout
+
+iPad supports portrait, upside-down portrait, landscape and resizable multitasking
+windows on both the home screen and an active remote session. The home screen
+uses two columns at a window width of 900 points or more, with the connection
+form beside recent connections; smaller windows use a single column. Content is
+centered at a maximum width of 1200 points, and recent-connection cards adapt to
+the available space. Settings and reading pages are limited to 720 points.
+Resizing preserves the connection fields and active session. iPhone retains its
+portrait home screen and two-column recent-connection grid.
+
 ## App updates
 
 After network consent, the app checks the public version manifest once on each

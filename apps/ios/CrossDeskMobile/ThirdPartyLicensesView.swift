@@ -138,6 +138,8 @@ struct ThirdPartyLicensesView: View {
                 .padding()
             }
         }
+        .readableContentWidth()
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("关于 CrossDesk")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: session.hasNetworkConsent) { allowed in
@@ -189,6 +191,8 @@ private struct OpenSourceComponentsView: View {
                 Text("各组件遵循所列开源许可证，其授予的权利不受本应用普通使用条款限制。查看源码需要网络连接。")
             }
         }
+        .readableContentWidth()
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("开源组件")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -217,6 +221,8 @@ private struct SourceCodeView: View {
                 }
             }
         }
+        .readableContentWidth()
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("源码与构建说明")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -240,6 +246,7 @@ private struct ComponentLicenseView: View {
                 ForEach(component.documents) { document in
                     NavigationLink {
                         LicenseTextView(text: document.text)
+                            .readableContentWidth()
                             .navigationTitle(documentTitle(document.title))
                             .navigationBarTitleDisplayMode(.inline)
                     } label: {
@@ -248,6 +255,8 @@ private struct ComponentLicenseView: View {
                 }
             }
         }
+        .readableContentWidth()
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle(component.name)
         .navigationBarTitleDisplayMode(.inline)
     }
