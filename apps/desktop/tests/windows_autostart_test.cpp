@@ -26,6 +26,49 @@ bool Expect(bool condition, const char* message) {
   return condition;
 }
 
+std::wstring SidString(PSID sid) {
+  LPWSTR text = nullptr;
+  if (!IsValidSid(sid) || !ConvertSidToStringSidW(sid, &text)) return {};
+  const std::wstring result(text);
+  LocalFree(text);
+  return result;
+}
+
+std::wstring ResolveUserSid(const wchar_t* user) {
+  if (!user || !*user) return {};
+  PSID sid = nullptr;
+  if (ConvertStringSidToSidW(user, &sid)) {
+    const auto result = SidString(sid);
+    LocalFree(sid);
+    return result;
+  }
+
+  // Task Scheduler may return DOMAIN\\user even when registered with a SID.
+  // Compare the resolved identity, not the scheduler's display format.
+  DWORD sid_size = 0, domain_size = 0;
+  SID_NAME_USE use{};
+  LookupAccountNameW(nullptr, user, nullptr, &sid_size, nullptr, &domain_size,
+                     &use);
+  if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || sid_size == 0) return {};
+  std::vector<BYTE> buffer(sid_size);
+  std::vector<wchar_t> domain(domain_size);
+  if (!LookupAccountNameW(nullptr, user, buffer.data(), &sid_size,
+                          domain.data(), &domain_size, &use))
+    return {};
+  return SidString(buffer.data());
+}
+
+bool ExpectUserSid(const wchar_t* user, const std::wstring& expected,
+                   const char* message) {
+  const auto actual = ResolveUserSid(user);
+  if (!expected.empty() && actual == expected) return true;
+  std::cerr << "FAIL: " << message << '\n';
+  std::wcerr << L"  expected SID: " << expected << L", returned UserId: "
+             << (user ? user : L"<null>") << L", resolved SID: " << actual
+             << L'\n';
+  return false;
+}
+
 std::wstring UserSid() {
   HANDLE token = nullptr;
   if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) return {};
@@ -36,13 +79,40 @@ std::wstring UserSid() {
       GetTokenInformation(token, TokenUser, data.data(), size, &size);
   CloseHandle(token);
   if (!read) return {};
-  LPWSTR sid = nullptr;
-  if (!ConvertSidToStringSidW(
-          reinterpret_cast<TOKEN_USER*>(data.data())->User.Sid, &sid))
-    return {};
-  const std::wstring result(sid);
-  LocalFree(sid);
-  return result;
+  return SidString(reinterpret_cast<TOKEN_USER*>(data.data())->User.Sid);
+}
+
+bool CheckUserIdentity(const std::wstring& sid) {
+  bool ok = Expect(ResolveUserSid(sid.c_str()) == sid,
+                   "SID-form user identity is preserved");
+  ok &= Expect(ResolveUserSid(nullptr).empty() && ResolveUserSid(L"").empty(),
+               "empty UserId must not match a user");
+  const auto other = sid == L"S-1-5-18" ? L"S-1-5-19" : L"S-1-5-18";
+  ok &= Expect(ResolveUserSid(other) != sid,
+               "another account must not match the current user");
+
+  PSID binary_sid = nullptr;
+  if (!ConvertStringSidToSidW(sid.c_str(), &binary_sid)) return false;
+  DWORD name_size = 0, domain_size = 0;
+  SID_NAME_USE use{};
+  LookupAccountSidW(nullptr, binary_sid, nullptr, &name_size, nullptr,
+                    &domain_size, &use);
+  if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || name_size == 0) {
+    LocalFree(binary_sid);
+    return Expect(false, "look up current user account name");
+  }
+  std::vector<wchar_t> name(name_size), domain(domain_size);
+  const BOOL found = LookupAccountSidW(nullptr, binary_sid, name.data(),
+                                       &name_size, domain.data(), &domain_size,
+                                       &use);
+  LocalFree(binary_sid);
+  if (!Expect(found != FALSE, "read current user account name")) return false;
+  const auto account = domain_size ? std::wstring(domain.data()) + L"\\" +
+                                        name.data()
+                                  : std::wstring(name.data());
+  ok &= ExpectUserSid(account.c_str(), sid,
+                      "account-name and SID forms identify the same user");
+  return ok;
 }
 
 bool SetRun(const std::wstring& name, const std::wstring& path) {
@@ -88,8 +158,8 @@ bool CheckTask(ITaskFolder* folder, BSTR task_name,
                    logon == TASK_LOGON_INTERACTIVE_TOKEN,
                "task uses interactive user");
   BSTR user = nullptr;
-  ok &= Expect(SUCCEEDED(principal->get_UserId(&user)) && user && sid == user,
-               "task belongs to current user SID");
+  ok &= Expect(SUCCEEDED(principal->get_UserId(&user)), "read task user");
+  ok &= ExpectUserSid(user, sid, "task belongs to current user SID");
   SysFreeString(user);
 
   ComPtr<ITriggerCollection> triggers;
@@ -100,9 +170,10 @@ bool CheckTask(ITaskFolder* folder, BSTR task_name,
       FAILED(trigger.As(&logon_trigger)))
     return false;
   user = nullptr;
-  ok &=
-      Expect(SUCCEEDED(logon_trigger->get_UserId(&user)) && user && sid == user,
-             "logon trigger is restricted to the same user");
+  ok &= Expect(SUCCEEDED(logon_trigger->get_UserId(&user)),
+               "read logon trigger user");
+  ok &= ExpectUserSid(user, sid,
+                      "logon trigger is restricted to the same user");
   SysFreeString(user);
 
   ComPtr<ITaskSettings> settings;
@@ -145,7 +216,7 @@ int RunTests(ITaskFolder* folder) {
       "CrossDeskAutostartTest-" + std::to_string(GetCurrentProcessId());
   const std::wstring name(app.begin(), app.end());
   const auto sid = UserSid();
-  if (sid.empty()) return 1;
+  if (sid.empty() || !CheckUserIdentity(sid)) return 1;
   const auto task_name = platform::AutostartTaskName(name, sid);
   BSTR task_bstr = SysAllocString(task_name.c_str());
   if (!task_bstr) return 1;
