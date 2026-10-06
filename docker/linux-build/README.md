@@ -8,6 +8,13 @@ PipeWire 0.3/SPA 头文件 SDK）以及根据项目
 Xmake 最低支持 3.1.1，与移动端一致，构建环境校验允许更新版本。发布镜像的工具链 tag
 记录实际安装的版本；默认使用最低支持版本验证构建。
 
+常规应用构建目前复用已发布的 `xmake3.0.9` 工具链镜像，并在容器启动后检查
+Xmake 版本：缺失或低于 3.1.1 时安装或升级，达标时保留现有版本，随后再次校验。
+Linux、macOS 和 Windows 桌面构建共用 `.github/actions/ensure-xmake`；Linux 还会
+执行仓库中的 `verify-build-image.sh` 校验环境。这样既保留预编译
+依赖缓存，也不依赖尚未发布的 `xmake3.1.1` 镜像。切换镜像 tag 前必须确认
+amd64 和 arm64 变体均已发布。
+
 ## 发布方式
 
 推送影响镜像的文件到 `ci/linux-build-image` 分支时，
@@ -47,5 +54,5 @@ Ubuntu 20.04 仓库只提供 PipeWire 0.2。镜像通过
 ## 更新依赖
 
 修改 Dockerfile、xmake 清单、本地包配方或子模块中的包配方后，推送该分支即可。
-升级工具链时应同时修改 Dockerfile 的版本参数、工作流中的 `STACK_TAG`，以及
-常规构建工作流引用的镜像 tag。
+升级工具链时应先修改 Dockerfile 的版本参数和镜像工作流中的 `STACK_TAG`，
+等两个架构的镜像发布成功后，再修改常规构建工作流引用的镜像 tag。

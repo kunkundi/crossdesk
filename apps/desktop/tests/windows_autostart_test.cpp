@@ -79,7 +79,7 @@ bool CheckTask(ITaskFolder* folder, BSTR task_name,
   if (FAILED(task->get_Definition(definition.GetAddressOf()))) return false;
   ComPtr<IPrincipal> principal;
   if (FAILED(definition->get_Principal(principal.GetAddressOf()))) return false;
-  TASK_RUNLEVEL level = TASK_RUNLEVEL_LUA;
+  TASK_RUNLEVEL_TYPE level = TASK_RUNLEVEL_LUA;
   TASK_LOGON_TYPE logon = TASK_LOGON_NONE;
   bool ok = Expect(SUCCEEDED(principal->get_RunLevel(&level)) &&
                        level == TASK_RUNLEVEL_HIGHEST,

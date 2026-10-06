@@ -1,0 +1,29 @@
+name: Ensure minimum Xmake version
+description: Keep a compatible Xmake installation, or install the minimum required version.
+
+inputs:
+  minimum-version:
+    description: Minimum supported Xmake version (major.minor.patch).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Check installed Xmake version
+      id: check
+      shell: bash
+      env:
+        XMAKE_MIN_VERSION: ${{ inputs.minimum-version }}
+      run: bash "$GITHUB_ACTION_PATH/check-version.sh"
+
+    - name: Install or upgrade Xmake
+      if: steps.check.outputs.needs-upgrade == 'true'
+      uses: xmake-io/github-action-setup-xmake@v1
+      with:
+        xmake-version: ${{ inputs.minimum-version }}
+
+    - name: Verify Xmake meets the minimum version
+      shell: bash
+      env:
+        XMAKE_MIN_VERSION: ${{ inputs.minimum-version }}
+      run: bash "$GITHUB_ACTION_PATH/check-version.sh" --verify

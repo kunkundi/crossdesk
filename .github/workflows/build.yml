@@ -27,6 +27,7 @@ permissions:
 
 env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  XMAKE_MIN_VERSION: "3.1.1"
 
 jobs:
   build-linux:
@@ -37,12 +38,13 @@ jobs:
         include:
           - arch: amd64
             runner: ubuntu-24.04
-            image: crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.1.1-rust1.92.0
+            # Keep using the published dependency image; upgrade Xmake if needed.
+            image: crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.0.9-rust1.92.0
             package_script: ./apps/desktop/scripts/linux/pkg_amd64.sh
 
           - arch: arm64
             runner: ubuntu-24.04-arm
-            image: crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.1.1-rust1.92.0
+            image: crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.0.9-rust1.92.0
             package_script: ./apps/desktop/scripts/linux/pkg_arm64.sh
 
     container:
@@ -108,8 +110,16 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Ensure minimum Xmake version
+        uses: ./.github/actions/ensure-xmake
+        with:
+          minimum-version: ${{ env.XMAKE_MIN_VERSION }}
+
       - name: Verify Linux build image
-        run: verify-crossdesk-build-image
+        shell: bash
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: bash docker/linux-build/verify-build-image.sh
 
       - name: Ensure Wayland build dependencies
         shell: bash
@@ -264,17 +274,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-xmake-deps-${{ matrix.cache-key }}-
 
-      - name: Install xmake
-        run: brew install xmake
-
-      - name: Update xmake repositories
-        run: xmake repo -u
-
       - name: Checkout code
         uses: actions/checkout@v5
 
       - name: Initialize submodules
         run: git submodule update --init --recursive
+
+      - name: Ensure minimum Xmake version
+        uses: ./.github/actions/ensure-xmake
+        with:
+          minimum-version: ${{ env.XMAKE_MIN_VERSION }}
+
+      - name: Update xmake repositories
+        run: xmake repo -u
 
       - name: Build CrossDesk
         run: |
@@ -384,13 +396,23 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-xmake-deps-intel-
 
-      - name: Install xmake
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Initialize submodules
+        run: git submodule update --init --recursive
+
+      - name: Ensure minimum Xmake version
+        uses: ./.github/actions/ensure-xmake
+        with:
+          minimum-version: ${{ env.XMAKE_MIN_VERSION }}
+
+      - name: Prepare CUDA dependencies
+        working-directory: ${{ runner.temp }}
         run: |
-          Invoke-Expression (Invoke-Webrequest 'https://raw.githubusercontent.com/tboox/xmake/master/scripts/get.ps1' -UseBasicParsing).Content
-          echo "C:\Users\runneradmin\xmake" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           xmake repo -u
           xmake create cuda
-          Set-Location cuda
+          Push-Location cuda
           xmake g --theme=plain
           $cudaPath = ""
           $packagesPath = "D:\xmake_global\.xmake\packages"
@@ -428,12 +450,6 @@ jobs:
 
           Write-Host "Copying $source to $target"
           Copy-Item $source $target -Force
-
-      - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Initialize submodules
-        run: git submodule update --init --recursive
 
       - name: Copy nsProcess plugin to NSIS folder
         run: |
