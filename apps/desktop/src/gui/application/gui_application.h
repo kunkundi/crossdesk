@@ -69,6 +69,8 @@ private:
   void SyncStreamKeyboardFocus();
   void SetStreamKeyboardFocus(bool focused);
   void SyncServerWindow();
+  void SetServerPanelExpanded(bool expanded);
+  void PositionServerWindows();
 #if defined(__linux__) && !defined(__APPLE__)
   void SyncXWaylandWindowActivation();
 #endif

@@ -1,5 +1,5 @@
 import { ComboBox, ScrollView } from "std-widgets.slint";
-import { FontAwesomeIcons, IconButton, PrimaryButton, DialogSurface, ImGuiLineStyle, ImGuiFontStyle } from "common.slint";
+import { FontAwesomeIcons, IconButton, PrimaryButton, DialogSurface, ImGuiLineStyle, ImGuiFontStyle, FloatingBarStyle } from "common.slint";
 
 export struct StreamTab {
     remote-id: string,
@@ -810,7 +810,7 @@ export component StreamWindow inherits Window {
                 background: white;
                 border-width: 1px;
                 border-color: ImGuiLineStyle.border;
-                border-radius: 6px;
+                border-radius: FloatingBarStyle.corner-radius;
                 z: 8;
                 clip: true;
                 // Keep width changes atomic. When docked right, animating both

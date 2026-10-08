@@ -351,25 +351,11 @@ void ConfigureServerCapturePage(
   server->set_controllers(
       std::make_shared<slint::VectorModel<crossdesk::ui::ControllerEntry>>(
           std::vector{controller}));
-  server->set_controller_names(
-      std::make_shared<slint::VectorModel<slint::SharedString>>(
-          std::vector{slint::SharedString("Mac")}));
-  server->set_language_index(language);
-  server->set_controller_label(crossdesk::ui_localization::Text(
-      crossdesk::localization::controller[language]));
-  server->set_connection_label(crossdesk::ui_localization::Text(
-      crossdesk::localization::connection_status[language]));
-  server->set_connection_status(crossdesk::ui_localization::Text(
-      crossdesk::localization::p2p_connected[language]));
-  server->set_file_transfer_label(crossdesk::ui_localization::Text(
-      crossdesk::localization::file_transfer[language]));
-  server->set_select_file_label(crossdesk::ui_localization::Text(
-      crossdesk::localization::select_file[language]));
+  crossdesk::ui_localization::ApplyServerStrings(server, language);
   server->set_file_transfer_visible(false);
   server->set_sending_file(false);
-  const float width = language == 0 ? 250.0f : language == 1 ? 330.0f : 430.0f;
-  server->window().set_size(
-      slint::LogicalSize(slint::Size<float>{width, 150.0f}));
+  server->window().set_size(slint::LogicalSize(
+      slint::Size<float>{225.0f, server->get_content_height()}));
 }
 
 int RunCaptureMode(

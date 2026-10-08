@@ -316,6 +316,13 @@ struct TranslationRow {
   X(completed, u8"已完成", "Completed", u8"Завершено")                         \
   X(failed, u8"失败", "Failed", u8"Ошибка")                                    \
   X(controller, u8"控制端:", "Controller:", u8"Контроллер:")                   \
+  X(server_controlled, u8"被控中", "Controlled", u8"Под управлением") \
+  X(server_heading, u8"此设备被控中", "This device is controlled", u8"Устройство под управлением") \
+  X(server_connected, u8"已连接", "Connected", u8"Подключено") \
+  X(server_send_file, u8"发送文件", "Send file", u8"Отправить файл") \
+  X(server_disconnect, u8"断开", "Disconnect", u8"Отключить") \
+  X(server_disconnect_all, u8"全部断开", "Disconnect all", u8"Отключить всех") \
+  X(server_confirm_disconnect, u8"断开所有控制端的连接？", "Disconnect all controllers?", u8"Отключить все контроллеры?") \
   X(file_transfer, u8"文件传输:", "File Transfer:", u8"Передача файлов:")      \
   X(connection_status, u8"连接状态:",                                          \
     "Connection Status:", u8"Состояние соединения:")                           \

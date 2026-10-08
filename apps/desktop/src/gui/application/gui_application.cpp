@@ -665,7 +665,7 @@ struct WindowDragState {
   slint::Timer pointer_timer;
 #endif
 
-  bool ReadGlobalPointer(float* x, float* y) {
+  bool ReadGlobalPointer(float* x, float* y, bool* left_pressed = nullptr) {
 #if defined(__linux__) && !defined(__APPLE__)
     const char* driver = SDL_GetCurrentVideoDriver();
     if (driver && std::strcmp(driver, "x11") == 0) {
@@ -686,12 +686,14 @@ struct WindowDragState {
                          &buttons)) {
         return false;
       }
+      if (left_pressed) *left_pressed = (buttons & Button1Mask) != 0;
       *x = static_cast<float>(root_x);
       *y = static_cast<float>(root_y);
       return true;
     }
 #endif
-    SDL_GetGlobalMouseState(x, y);
+    const auto buttons = SDL_GetGlobalMouseState(x, y);
+    if (left_pressed) *left_pressed = (buttons & SDL_BUTTON_LMASK) != 0;
     return true;
   }
 };
@@ -708,14 +710,6 @@ bool CanUseGlobalPointerPosition() {
 #else
   return true;
 #endif
-}
-
-float ServerWindowLogicalWidth(int language) {
-  return language == 0 ? 250.0f : language == 1 ? 330.0f : 430.0f;
-}
-
-float ServerWindowLogicalHeight(bool collapsed) {
-  return collapsed ? 30.0f : 150.0f;
 }
 
 constexpr float kStreamWindowLogicalWidth = 1280.0f;
@@ -790,57 +784,6 @@ bool PositionWindowAtCenter(slint::Window& window, const slint::Window& anchor,
       slint::LogicalPosition(slint::Point<float>{target_x, target_y}));
 #else
   const auto target = window_geometry::CenteredPosition(
-      PhysicalDisplayBounds(usable_bounds),
-      PhysicalWindowSize(window, logical_width, logical_height));
-  window.set_position(slint::PhysicalPosition(
-      slint::Point<int32_t>{target.x, target.y}));
-#endif
-  return true;
-}
-
-bool PositionWindowAtBottomRight(slint::Window& window, float logical_width,
-                                 float logical_height) {
-  if (!CanUseGlobalPointerPosition()) {
-    return false;
-  }
-
-  const auto position = window.position();
-  const auto size = window.size();
-#if defined(__APPLE__)
-  const float scale = std::max(window.scale_factor(), 0.01f);
-  const SDL_Point center{
-      static_cast<int>(
-          std::lround(position.x / scale + size.width / (2.0f * scale))),
-      static_cast<int>(
-          std::lround(position.y / scale + size.height / (2.0f * scale)))};
-#else
-  const SDL_Point center{
-      position.x + static_cast<int>(size.width / 2),
-      position.y + static_cast<int>(size.height / 2)};
-#endif
-  SDL_DisplayID display = SDL_GetDisplayForPoint(&center);
-  if (display == 0) {
-    display = SDL_GetPrimaryDisplay();
-  }
-
-  SDL_Rect usable_bounds{};
-  if (display == 0 || !SDL_GetDisplayUsableBounds(display, &usable_bounds)) {
-    LOG_WARN("Unable to obtain usable display bounds for server window: {}",
-             SDL_GetError());
-    return false;
-  }
-
-#if defined(__APPLE__)
-  const float target_x =
-      static_cast<float>(usable_bounds.x) +
-      std::max(0.0f, static_cast<float>(usable_bounds.w) - logical_width);
-  const float target_y =
-      static_cast<float>(usable_bounds.y) +
-      std::max(0.0f, static_cast<float>(usable_bounds.h) - logical_height);
-  window.set_position(
-      slint::LogicalPosition(slint::Point<float>{target_x, target_y}));
-#else
-  const auto target = window_geometry::BottomRightPosition(
       PhysicalDisplayBounds(usable_bounds),
       PhysicalWindowSize(window, logical_width, logical_height));
   window.set_position(slint::PhysicalPosition(
@@ -977,6 +920,7 @@ struct GuiApplication::SlintUi {
           std::make_shared<slint::VectorModel<ui::ReleaseNoteBlock>>();
   std::optional<slint::ComponentHandle<ui::StreamWindow>> stream;
   std::optional<slint::ComponentHandle<ui::ServerWindow>> server;
+  std::optional<slint::ComponentHandle<ui::ServerStatusBar>> server_bar;
   std::shared_ptr<slint::VectorModel<ui::RecentConnection>> recent_model =
       std::make_shared<slint::VectorModel<ui::RecentConnection>>();
   std::shared_ptr<slint::VectorModel<ui::StreamTab>> tab_model =
@@ -989,26 +933,32 @@ struct GuiApplication::SlintUi {
       std::make_shared<slint::VectorModel<ui::NetworkStatsRow>>();
   std::shared_ptr<slint::VectorModel<ui::ControllerEntry>> controller_model =
       std::make_shared<slint::VectorModel<ui::ControllerEntry>>();
-  std::shared_ptr<slint::VectorModel<slint::SharedString>>
-      controller_name_model =
-          std::make_shared<slint::VectorModel<slint::SharedString>>();
   std::unique_ptr<SlintVideoPresenter> video_presenter;
   std::vector<std::string> tab_order;
   std::vector<std::string> tab_ids;
   std::string tab_model_signature;
   std::vector<std::string> controller_ids;
+  std::string controller_model_signature;
   std::string connection_dialog_remote_id;
   bool connection_password_initialized = false;
   bool portable_service_dialog_initialized = false;
   std::string recent_model_signature;
   slint::Timer timer;
+  slint::Timer server_file_dialog_timer;
   WindowDragState main_drag;
   WindowDragState stream_drag;
   WindowDragState server_drag;
   int main_native_titlebar_attempts = 30;
   int stream_live_resize_configuration_attempts = 0;
   int stream_initial_position_attempts = 0;
-  int server_initial_position_attempts = 0;
+  SDL_DisplayID server_display = 0;
+  float server_anchor = 0.3f;
+  float server_drag_anchor = 0.3f;
+  bool server_drag_moved = false;
+  bool server_pointer_pressed = false;
+  bool server_file_dialog_open = false;
+  bool server_suspended_for_dialog = false;
+  server_window_state::EdgeLayout server_layout{};
 #if _WIN32
   int server_native_window_attempts = 0;
 #endif
@@ -1859,18 +1809,37 @@ void GuiApplication::BindServerCallbacks() {
     return;
   }
   auto& server = *ui_->server;
-  server->on_title_drag([this](int phase, float x, float y) {
+  auto& bar = *ui_->server_bar;
+  bar->on_title_drag([this](int phase, float, float) {
     auto& drag = ui_->server_drag;
-    DragWindow(*ui_->server, phase, x, y, drag);
+    if (phase == 1) {
+      ui_->server_drag_moved = false;
+      (*ui_->server_bar)->set_dragged(false);
+      drag.active = CanUseGlobalPointerPosition() &&
+          drag.ReadGlobalPointer(&drag.pointer_start_x, &drag.pointer_start_y);
+      ui_->server_drag_anchor = ui_->server_anchor;
+    } else if (phase == 0) {
+      PositionServerWindows();
+      drag.active = false;
+    }
   });
-  server->on_toggle_collapsed([this](bool collapsed) {
-    server_window_collapsed_ = collapsed;
-    const int language = (*ui_->server)->get_language_index();
-    const float width = ServerWindowLogicalWidth(language);
-    (*ui_->server)
-        ->window()
-        .set_size(slint::LogicalSize(
-            slint::Size<float>{width, ServerWindowLogicalHeight(collapsed)}));
+  bar->on_toggle_panel([this] {
+    SetServerPanelExpanded(server_window_collapsed_);
+  });
+  bar->on_move_anchor([this](float delta) {
+    ui_->server_anchor = std::clamp(ui_->server_anchor + delta, 0.0f, 1.0f);
+    PositionServerWindows();
+  });
+  const auto dismiss = [this] { SetServerPanelExpanded(false); };
+  bar->on_dismiss_panel(dismiss);
+  server->on_dismiss_panel(dismiss);
+  server->window().on_close_requested([dismiss] {
+    dismiss();
+    return slint::CloseRequestResponse::KeepWindowShown;
+  });
+  bar->window().on_close_requested([dismiss] {
+    dismiss();
+    return slint::CloseRequestResponse::KeepWindowShown;
   });
   server->on_controller_selected([this](int index) {
     if (index < 0 || index >= static_cast<int>(ui_->controller_ids.size())) {
@@ -1879,17 +1848,43 @@ void GuiApplication::BindServerCallbacks() {
     selected_server_remote_id_ = ui_->controller_ids[index];
   });
   server->on_select_file([this] {
-    if (selected_server_remote_id_.empty()) {
+    if (selected_server_remote_id_.empty() || ui_->server_file_dialog_open) {
       return;
     }
-    transfers_.ProcessSelectedFile(
-        OpenFileDialog(localization::select_file[localization_language_index_]),
-        nullptr, file_label_, selected_server_remote_id_);
+    // A native file picker runs a nested event loop. Keep the recipient stable
+    // if another controller connects or leaves while it is open.
+    const std::string recipient = selected_server_remote_id_;
+    ui_->server_file_dialog_open = true;
+    (*ui_->server)->window().request_redraw();
+    // TouchArea clears pressed only after its clicked callback returns. Allow
+    // that release and a repaint before entering the blocking native picker.
+    ui_->server_file_dialog_timer.start(
+        slint::TimerMode::SingleShot, std::chrono::milliseconds(32),
+        [this, recipient] {
+          const auto connected = [this, &recipient] {
+            std::shared_lock lock(connection_status_mutex_);
+            const auto found = connection_status_.find(recipient);
+            return found != connection_status_.end() &&
+                   found->second == ConnectionStatus::Connected;
+          };
+          if (!connected()) {
+            ui_->server_file_dialog_open = false;
+            return;
+          }
+          const auto path = OpenFileDialog(
+              localization::select_file[localization_language_index_]);
+          ui_->server_file_dialog_open = false;
+          if (connected() && !path.empty())
+            transfers_.ProcessSelectedFile(path, nullptr, file_label_, recipient);
+        });
   });
-  server->on_disconnect_controller([this] {
-    if (peer_ && !selected_server_remote_id_.empty()) {
-      CloseServerController(selected_server_remote_id_);
-    }
+  server->on_disconnect_controller([this](slint::SharedString id) {
+    CloseServerController(std::string(id));
+  });
+  server->on_disconnect_all([this] {
+    // Work from the confirmed UI snapshot; a later arrival is a new session.
+    const auto ids = ui_->controller_ids;
+    for (const auto& id : ids) CloseServerController(id);
   });
 }
 
@@ -3253,6 +3248,96 @@ void GuiApplication::ScheduleNextVideoFrame() {
                          [this] { ScheduleNextVideoFrame(); });
 }
 
+void GuiApplication::SetServerPanelExpanded(bool expanded) {
+  if (!ui_->server || !ui_->server_bar) return;
+  server_window_collapsed_ = !expanded;
+  (*ui_->server_bar)->set_expanded(expanded);
+  if (expanded) {
+    PositionServerWindows();
+    (*ui_->server)->show();
+#if _WIN32
+    ConfigureWindowsServerWindow((*ui_->server)->window());
+#endif
+    PositionServerWindows();
+  } else {
+    (*ui_->server)->set_confirming_disconnect(false);
+    (*ui_->server)->hide();
+  }
+}
+
+void GuiApplication::PositionServerWindows() {
+  if (!ui_->server || !ui_->server_bar) return;
+  auto& bar = *ui_->server_bar;
+  auto& panel = *ui_->server;
+  const float scale = std::max(bar->window().scale_factor(), 0.01f);
+  SDL_Rect bounds{};
+  if (!SDL_GetDisplayUsableBounds(ui_->server_display, &bounds)) {
+    ui_->server_display = SDL_GetPrimaryDisplay();
+    if (!SDL_GetDisplayUsableBounds(ui_->server_display, &bounds)) return;
+  }
+  // Cocoa/SDL uses points; Windows and X11 report desktop pixels.
+#if defined(__APPLE__)
+  const float desktop_scale = 1;
+#else
+  const float desktop_scale = scale;
+#endif
+  const server_window_state::Rect screen{
+      bounds.x / desktop_scale, bounds.y / desktop_scale,
+      bounds.w / desktop_scale, bounds.h / desktop_scale};
+  float pointer_x = 0, pointer_y = 0;
+  bool pressed = false;
+  const bool pointer_valid = CanUseGlobalPointerPosition() &&
+      ui_->server_drag.ReadGlobalPointer(&pointer_x, &pointer_y, &pressed);
+  if (pointer_valid && ui_->server_drag.active) {
+    const float delta = (pointer_y - ui_->server_drag.pointer_start_y) / desktop_scale;
+    if (std::abs(delta) >= 4) {
+      ui_->server_drag_moved = true;
+      bar->set_dragged(true);
+    }
+    if (ui_->server_drag_moved) {
+      const float travel = std::max(1.0f, screen.height - 52.0f);
+      ui_->server_anchor = std::clamp(ui_->server_drag_anchor + delta / travel, 0.0f, 1.0f);
+    }
+    if (!pressed) ui_->server_drag.active = false;
+  }
+  ui_->server_layout = server_window_state::PlacePanel(
+      screen, ui_->server_anchor, bar->get_bar_width(), panel->get_content_height());
+  const auto& layout = ui_->server_layout;
+  bar->set_opens_above(layout.above);
+  const auto apply = [scale](slint::Window& window, const server_window_state::Rect& rect) {
+    const auto size = window.size();
+    const float own_scale = std::max(window.scale_factor(), 0.01f);
+    if (std::abs(size.width / own_scale - rect.width) > 0.5f ||
+        std::abs(size.height / own_scale - rect.height) > 0.5f) {
+      window.set_size(slint::LogicalSize(slint::Size<float>{rect.width, rect.height}));
+    }
+    if (!CanUseGlobalPointerPosition()) return;
+    const auto position = window.position();
+    if (std::abs(position.x / scale - rect.x) <= 0.5f &&
+        std::abs(position.y / scale - rect.y) <= 0.5f) return;
+#if defined(__APPLE__)
+    window.set_position(slint::LogicalPosition(slint::Point<float>{rect.x, rect.y}));
+#else
+    window.set_position(slint::PhysicalPosition(slint::Point<int32_t>{
+        static_cast<int32_t>(std::lround(rect.x * scale)),
+        static_cast<int32_t>(std::lround(rect.y * scale))}));
+#endif
+  };
+  apply(bar->window(), layout.bar);
+  apply(panel->window(), layout.panel);
+  if (pointer_valid) {
+    const float x = pointer_x / desktop_scale;
+    const float y = pointer_y / desktop_scale;
+    if (pressed && !ui_->server_pointer_pressed && !server_window_collapsed_ &&
+        !ui_->server_file_dialog_open && !ui_->server_drag.active &&
+        !server_window_state::Contains(layout.bar, x, y) &&
+        !server_window_state::Contains(layout.panel, x, y)) {
+      SetServerPanelExpanded(false);
+    }
+    ui_->server_pointer_pressed = pressed;
+  }
+}
+
 void GuiApplication::SyncServerWindow() {
   // The connection map is authoritative. Lifecycle flags record callback
   // intent, but callbacks for different controllers can cross each other, so
@@ -3283,22 +3368,21 @@ void GuiApplication::SyncServerWindow() {
 #endif
   if (show_controller_window && !ui_->server) {
     ui_->server.emplace(ui::ServerWindow::create());
+    ui_->server_bar.emplace(ui::ServerStatusBar::create());
     RegisterFontAwesome((*ui_->server)->window());
+    RegisterFontAwesome((*ui_->server_bar)->window());
     (*ui_->server)->set_controllers(ui_->controller_model);
-    (*ui_->server)->set_controller_names(ui_->controller_name_model);
-    (*ui_->server)->set_language_index(localization_language_index_);
-    server_window_collapsed_ = false;
-    (*ui_->server)
-        ->window()
-        .set_size(slint::LogicalSize(slint::Size<float>{
-            ServerWindowLogicalWidth(localization_language_index_),
-            ServerWindowLogicalHeight(false)}));
+    server_window_collapsed_ = true;
+    ui_->server_display = DisplayForSlintWindow(ui_->main->window());
+    ui_->server_anchor = 0.3f;
+    ui_->server_drag.active = false;
+    ui_->server_drag_moved = false;
+    ui_->server_pointer_pressed = false;
+    ui_->server_suspended_for_dialog = false;
     BindServerCallbacks();
-    (*ui_->server)->show();
-    // Apply once immediately and once after the next layout pass. This keeps
-    // the right and bottom edges correct when the backend resolves DPI and
-    // language-dependent preferred width asynchronously on first show.
-    ui_->server_initial_position_attempts = 2;
+    ui_localization::ApplyServerStrings(*ui_->server, localization_language_index_);
+    ui_localization::ApplyServerStrings(*ui_->server_bar, localization_language_index_);
+    (*ui_->server_bar)->show();
 #if _WIN32
     ui_->server_native_window_attempts = 30;
 #endif
@@ -3307,98 +3391,75 @@ void GuiApplication::SyncServerWindow() {
   }
   if (!show_controller_window && ui_->server) {
     (*ui_->server)->hide();
+    (*ui_->server_bar)->hide();
+    // Keep handles alive through a native file dialog's nested event loop.
+    if (ui_->server_file_dialog_open) {
+      server_window_collapsed_ = true;
+      (*ui_->server_bar)->set_expanded(false);
+      (*ui_->server)->set_confirming_disconnect(false);
+      ui_->server_suspended_for_dialog = true;
+      return;
+    }
     ui_->server.reset();
+    ui_->server_bar.reset();
+    ui_->server_drag.active = false;
     server_window_created_ = false;
     server_window_inited_ = false;
-    ui_->server_initial_position_attempts = 0;
 #if _WIN32
     ui_->server_native_window_attempts = 0;
 #endif
   }
-  if (!ui_->server) {
-    return;
+  if (!ui_->server) return;
+  if (ui_->server_suspended_for_dialog) {
+    (*ui_->server_bar)->show();
+    ui_->server_suspended_for_dialog = false;
   }
 
-#if _WIN32
-  ConfigureWindowsWindowIcons((*ui_->server)->window().win32_hwnd());
-#endif
-
   std::vector<ui::ControllerEntry> controllers;
-  std::vector<slint::SharedString> names;
-  ui_->controller_ids.clear();
   {
     std::shared_lock lock(connection_status_mutex_);
     controllers.reserve(connection_status_.size());
-    for (const auto& [id, _] : connection_status_) {
+    for (const auto& [id, status] : connection_status_) {
+      if (status != ConnectionStatus::Connected) continue;
       const auto host = connection_host_names_.find(id);
       const std::string name =
           host != connection_host_names_.end() && !host->second.empty()
-              ? host->second
-              : id;
-      ui::ControllerEntry entry;
-      entry.remote_id = UiText(id);
-      entry.display_name = UiText(name);
-      controllers.push_back(entry);
-      names.emplace_back(UiText(name));
-      ui_->controller_ids.push_back(id);
+              ? host->second : id;
+      controllers.push_back({UiText(id), UiText(name)});
     }
   }
-  ui_->controller_model->set_vector(std::move(controllers));
-  ui_->controller_name_model->set_vector(std::move(names));
+  // Stable ordering and model identity preserve radio selection, hover and
+  // scrolling while the 16 ms UI timer reconciles asynchronous peer events.
+  std::sort(controllers.begin(), controllers.end(), [](const auto& a, const auto& b) {
+    return std::string(a.remote_id) < std::string(b.remote_id);
+  });
+  std::vector<std::string> ids;
+  std::string signature;
+  for (const auto& controller : controllers) {
+    ids.emplace_back(controller.remote_id);
+    signature += std::string(controller.remote_id) + '\0' +
+                 std::string(controller.display_name) + '\0';
+  }
+  if (ids != ui_->controller_ids) (*ui_->server)->set_confirming_disconnect(false);
+  ui_->controller_ids = std::move(ids);
+  if (signature != ui_->controller_model_signature) {
+    ui_->controller_model->set_vector(std::move(controllers));
+    ui_->controller_model_signature = std::move(signature);
+  }
   const int selected = server_window_state::ReconcileSelectedController(
       ui_->controller_ids, &selected_server_remote_id_);
   (*ui_->server)->set_selected_controller(selected);
-  (*ui_->server)->set_language_index(localization_language_index_);
+  (*ui_->server_bar)->set_controller_count(static_cast<int>(ui_->controller_ids.size()));
+  ui_localization::ApplyServerStrings(*ui_->server, localization_language_index_);
+  ui_localization::ApplyServerStrings(*ui_->server_bar, localization_language_index_);
 #if _WIN32
   if (ui_->server_native_window_attempts > 0) {
-    if (ConfigureWindowsServerWindow((*ui_->server)->window())) {
+    if (ConfigureWindowsServerWindow((*ui_->server_bar)->window()))
       ui_->server_native_window_attempts = 0;
-    } else {
+    else
       --ui_->server_native_window_attempts;
-    }
   }
 #endif
-  if (ui_->server_initial_position_attempts > 0) {
-    const float server_width =
-        ServerWindowLogicalWidth(localization_language_index_);
-    const float server_height =
-        ServerWindowLogicalHeight(server_window_collapsed_);
-    (*ui_->server)
-        ->window()
-        .set_size(slint::LogicalSize(
-            slint::Size<float>{server_width, server_height}));
-    if (PositionWindowAtBottomRight((*ui_->server)->window(), server_width,
-                                    server_height)) {
-      --ui_->server_initial_position_attempts;
-    } else {
-      ui_->server_initial_position_attempts = 0;
-    }
-  }
-  (*ui_->server)
-      ->set_controller_label(
-          UiText(localization::controller[localization_language_index_]));
-  (*ui_->server)
-      ->set_connection_label(UiText(
-          localization::connection_status[localization_language_index_]));
-  (*ui_->server)
-      ->set_file_transfer_label(
-          UiText(localization::file_transfer[localization_language_index_]));
-  (*ui_->server)
-      ->set_select_file_label(
-          UiText(localization::select_file[localization_language_index_]));
-
-  ConnectionStatus status = ConnectionStatus::Closed;
-  {
-    std::shared_lock lock(connection_status_mutex_);
-    if (const auto found = connection_status_.find(selected_server_remote_id_);
-        found != connection_status_.end()) {
-      status = found->second;
-    }
-  }
-  (*ui_->server)
-      ->set_connection_status(
-          UiText(ConnectionStatusText(status, localization_language_index_)));
-
   auto& transfer = transfers_.global_state();
   const auto sent = transfer.file_sent_bytes_.load();
   const auto total = transfer.file_total_bytes_.load();
@@ -3429,6 +3490,7 @@ void GuiApplication::SyncServerWindow() {
       ->set_file_size_text(total == 0 ? slint::SharedString{}
                                       : UiText(FormatFileSize(sent) + " / " +
                                                FormatFileSize(total)));
+  PositionServerWindows();
 }
 
 void GuiApplication::SaveSettingsFromUi() {
@@ -3820,6 +3882,7 @@ void GuiApplication::Cleanup() {
     return;
   }
   ui_->timer.stop();
+  ui_->server_file_dialog_timer.stop();
   ui_->video_timer.stop();
 #if _WIN32 && CROSSDESK_PORTABLE
   JoinPortableWindowsServiceInstallThread();
@@ -3848,6 +3911,7 @@ void GuiApplication::Cleanup() {
   }
   if (ui_->server) {
     (*ui_->server)->hide();
+    (*ui_->server_bar)->hide();
   }
 #if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
   if (ui_->tray) {

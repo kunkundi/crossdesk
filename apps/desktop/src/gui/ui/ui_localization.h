@@ -20,6 +20,21 @@ inline slint::SharedString Text(const std::string& value) {
   return slint::SharedString(value);
 }
 
+template <typename Component>
+void ApplyServerStrings(const Component& component, int language_index) {
+  const int language = localization::detail::ClampLanguageIndex(language_index);
+  auto& strings = component->template global<ui::ServerStrings>();
+  strings.set_controlled(Text(localization::server_controlled[language]));
+  strings.set_heading(Text(localization::server_heading[language]));
+  strings.set_connected(Text(localization::server_connected[language]));
+  strings.set_send_file(Text(localization::server_send_file[language]));
+  strings.set_disconnect(Text(localization::server_disconnect[language]));
+  strings.set_disconnect_one(Text(localization::disconnect[language]));
+  strings.set_disconnect_all(Text(localization::server_disconnect_all[language]));
+  strings.set_confirm_disconnect(Text(localization::server_confirm_disconnect[language]));
+  strings.set_cancel(Text(localization::cancel[language]));
+}
+
 inline int ApplyMainWindowStrings(
     const slint::ComponentHandle<ui::MainWindow>& window,
     int language_index) {

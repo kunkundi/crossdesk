@@ -1,150 +1,279 @@
-import { CompactComboBox, FontAwesomeIcons, IconButton, SecondaryButton, ImGuiLineStyle, ImGuiFontStyle } from "common.slint";
+import { ScrollView } from "std-widgets.slint";
+import { FontAwesomeIcons, ImGuiLineStyle, FloatingBarStyle } from "common.slint";
 
 export struct ControllerEntry {
     remote-id: string,
     display-name: string,
 }
 
-export component ServerWindow inherits Window {
+export global ServerStrings {
+    in property <string> controlled: "被控中";
+    in property <string> heading: "此设备被控中";
+    in property <string> connected: "已连接";
+    in property <string> send-file: "发送文件";
+    in property <string> disconnect: "断开";
+    in property <string> disconnect-one: "断开连接";
+    in property <string> disconnect-all: "全部断开";
+    in property <string> confirm-disconnect: "断开所有控制端的连接？";
+    in property <string> cancel: "取消";
+}
+
+component SessionButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> danger: false;
+    in property <bool> enabled: true;
+    private property <bool> keyboard-focus: false;
+    private property <bool> pointer-feedback: true;
+    callback clicked;
+    width: label.preferred-width + 20px;
+    height: 28px;
+    border-radius: 5px;
+    border-width: 1px;
+    border-color: root.danger ? #d92d20 : #c9ced7;
+    background: root.danger ? (root.pointer-feedback && touch.pressed ? #b42318 : root.pointer-feedback && touch.has-hover ? #f04438 : #d92d20)
+                           : (root.pointer-feedback && touch.pressed ? #dfe3e9 : root.pointer-feedback && touch.has-hover ? #f3f4f6 : white);
+    opacity: root.enabled ? 1 : 0.5;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-action-default => { if root.enabled { root.pointer-feedback = false; root.clicked(); } }
+    label := Text {
+        text: root.text; color: root.danger ? white : #24272d;
+        font-size: 12px; horizontal-alignment: center; vertical-alignment: center;
+    }
+    forward-focus: keyboard;
+    keyboard := FocusScope {
+        enabled: root.enabled;
+        focus-gained(reason) => {
+            if reason == FocusReason.tab-navigation {
+                root.keyboard-focus = true;
+            } else if reason == FocusReason.pointer-click {
+                root.keyboard-focus = false;
+            }
+            // Preserve the input method when returning from the file picker.
+        }
+        key-pressed(event) => {
+            root.keyboard-focus = true;
+            if root.enabled && (event.text == Key.Return || event.text == " ") {
+                root.pointer-feedback = false;
+                root.clicked(); return accept;
+            }
+            return reject;
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down || event.kind == PointerEventKind.move {
+                root.pointer-feedback = true;
+            }
+        }
+        // A native dialog may not deliver a pointer exit to the owner window.
+        // Restore hover feedback only after a fresh pointer move or press.
+        clicked => { root.pointer-feedback = false; root.keyboard-focus = false; keyboard.focus(); root.clicked(); }
+    }
+    if root.enabled && keyboard.has-focus && root.keyboard-focus: Rectangle {
+        x: 2px; y: 2px; width: parent.width - 4px; height: parent.height - 4px;
+        border-radius: 3px; border-width: 1px; border-color: root.danger ? white : #2463c7;
+    }
+}
+
+// A separate native window keeps the collapsed footprint as small as the bar.
+export component ServerStatusBar inherits Window {
     title: "CrossDesk";
-    icon: @image-url("../../../resources/linux/crossdesk_256x256.png");
-    preferred-width: root.language-index == 0 ? 250px : root.language-index == 1 ? 330px : 430px;
-    preferred-height: 150px;
-    min-width: root.language-index == 0 ? 250px : root.language-index == 1 ? 330px : 430px;
-    max-width: root.language-index == 0 ? 250px : root.language-index == 1 ? 330px : 430px;
     no-frame: true;
     always-on-top: true;
     background: transparent;
-    default-font-size: ImGuiFontStyle.base;
+    in property <int> controller-count: 1;
+    in property <bool> expanded: false;
+    in property <bool> opens-above: false;
+    in property <bool> dragged: false;
+    out property <length> bar-width: label.preferred-width + 48px;
+    preferred-width: root.bar-width;
+    preferred-height: 36px;
+    min-width: root.bar-width; max-width: root.bar-width;
+    min-height: 36px; max-height: 36px;
+    callback toggle-panel;
+    callback dismiss-panel;
+    callback title-drag(int, length, length);
+    callback move-anchor(float);
+    forward-focus: keyboard;
+    keyboard := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == " " { root.toggle-panel(); return accept; }
+            if event.text == Key.Escape { root.dismiss-panel(); return accept; }
+            if event.text == Key.UpArrow { root.move-anchor(-0.05); return accept; }
+            if event.text == Key.DownArrow { root.move-anchor(0.05); return accept; }
+            return reject;
+        }
+    }
+    Rectangle {
+        x: 0px; y: 0px; width: parent.width; height: parent.height;
+        background: touch.pressed ? #dfe3e9 : touch.has-hover ? #f3f4f6 : white;
+        border-width: 1px; border-color: ImGuiLineStyle.border;
+        border-radius: FloatingBarStyle.corner-radius;
+    }
+    label := Text {
+        x: 10px; width: root.width - 38px; height: root.height;
+        text: ServerStrings.controlled + (root.controller-count > 1 ? " · " + root.controller-count : "");
+        color: #24272d; font-size: 14px; vertical-alignment: center;
+    }
+    Text {
+        x: root.width - 26px; width: 18px; height: root.height;
+        text: root.opens-above != root.expanded ? FontAwesomeIcons.angle-up : FontAwesomeIcons.angle-down;
+        color: #24272d; font-family: "Font Awesome 6 Free"; font-weight: 900;
+        font-size: 12px; horizontal-alignment: center; vertical-alignment: center;
+    }
+    touch := TouchArea {
+        property <int> phase: self.pressed ? 1 : 0;
+        changed phase => { root.title-drag(self.phase, self.mouse-x, self.mouse-y); }
+        moved => { if self.pressed { root.title-drag(2, self.mouse-x, self.mouse-y); } }
+        clicked => { keyboard.focus(); if !root.dragged { root.toggle-panel(); } }
+    }
+    accessible-role: button;
+    accessible-label: label.text;
+    accessible-action-default => { root.toggle-panel(); }
+}
 
+export component ServerWindow inherits Window {
+    title: "CrossDesk";
+    icon: @image-url("../../../resources/linux/crossdesk_256x256.png");
+    preferred-width: 225px; min-width: 225px; max-width: 225px;
+    preferred-height: root.content-height;
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+    default-font-size: 12px;
     in property <[ControllerEntry]> controllers;
-    in property <[string]> controller-names;
-    in property <int> language-index: 0;
     in-out property <int> selected-controller: 0;
-    in property <string> connection-label: "Connection status";
-    in property <string> connection-status: "";
-    in property <string> controller-label: "Controller";
-    in property <string> file-transfer-label: "File transfer";
-    in property <string> select-file-label: "Select file";
     in property <bool> sending-file: false;
     in property <bool> file-transfer-visible: false;
     in property <float> file-progress: 0;
-    in property <string> file-progress-text: "";
-    in property <string> current-file-name: "";
-    in property <string> file-size-text: "";
-
-    callback title-drag(int, length, length);
-    callback toggle-collapsed(bool);
+    in property <string> file-progress-text;
+    in property <string> current-file-name;
+    in property <string> file-size-text;
+    in-out property <bool> confirming-disconnect: false;
+    private property <length> footer-height: send-file.width + disconnect-all.width + 6px > 205px ? 62px : 28px;
+    private property <string> hovered-name;
+    private property <length> tooltip-y;
+    out property <length> content-height: 10px + 24px + (root.controllers.length > 1 ? min(root.controllers.length, 6) * 34px : 28px) + 8px + root.footer-height + 10px + (root.confirming-disconnect ? 36px : 0px) + (root.file-transfer-visible ? 58px : 0px);
     callback controller-selected(int);
     callback select-file;
-    callback disconnect-controller;
-
-    private property <bool> collapsed: false;
-    private property <bool> transfer-hovered: false;
-
-    Rectangle {
-        width: root.width;
-        height: root.height;
-        background: white;
-        border-width: 1px;
-        border-color: ImGuiLineStyle.border;
-        border-radius: 8px;
-        clip: true;
-
-        Rectangle {
-            x: 0px;
-            y: 0px;
-            width: parent.width;
-            height: 30px;
-            background: #f8f9fb;
-            Rectangle { y: parent.height - 1px; height: 1px; background: ImGuiLineStyle.border; }
-            IconButton {
-                x: 0px;
-                y: 0px;
-                width: 30px; height: 30px;
-                icon: root.collapsed ? FontAwesomeIcons.angle-down : FontAwesomeIcons.angle-up;
-                icon-size: 12px;
-                clicked => { root.collapsed = !root.collapsed; root.toggle-collapsed(root.collapsed); }
-            }
-            drag := TouchArea {
-                x: 30px; width: parent.width - 30px;
-                property <int> phase: self.pressed ? 1 : 0;
-                changed phase => { root.title-drag(phase, self.mouse-x, self.mouse-y); }
-                moved => { if (self.pressed) { root.title-drag(2, self.mouse-x, self.mouse-y); } }
-            }
+    callback disconnect-controller(string);
+    callback disconnect-all;
+    callback dismiss-panel;
+    forward-focus: keyboard;
+    keyboard := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape { root.dismiss-panel(); return accept; }
+            return reject;
         }
-
-        if !root.collapsed: Rectangle {
-            x: 12px; y: 38px; width: parent.width - 52px; height: 101px;
-            background: white; border-width: 1px; border-color: ImGuiLineStyle.border; border-radius: 5px;
-            VerticalLayout {
-                padding: 8px; spacing: 3px; alignment: start;
-                HorizontalLayout {
-                    height: 24px; spacing: 5px;
-                    Text { width: root.language-index == 0 ? 69px : 110px; text: root.controller-label; color: #434953; font-size: ImGuiFontStyle.body; vertical-alignment: center; overflow: elide; }
-                    CompactComboBox {
-                        width: root.language-index == 0 ? 108px : root.language-index == 1 ? 147px : 247px;
-                        model: root.controller-names;
-                        current-index <=> root.selected-controller;
-                        selected(index) => { root.controller-selected(index); }
-                    }
-                }
-                Rectangle { height: 1px; background: ImGuiLineStyle.separator; }
-                HorizontalLayout {
-                    height: 24px; spacing: 5px;
-                    Text { width: root.language-index == 0 ? 69px : 110px; text: root.connection-label; color: #434953; font-size: ImGuiFontStyle.body; vertical-alignment: center; overflow: elide; }
-                    Text { text: root.connection-status; color: #2463c7; font-size: ImGuiFontStyle.body; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
-                }
-                Rectangle { height: 1px; background: ImGuiLineStyle.separator; }
-                Rectangle {
-                    height: 24px;
-                    HorizontalLayout {
-                        y: 0px;
-                        width: parent.width;
-                        height: 24px;
-                        spacing: 5px;
-                        Text { width: root.language-index == 0 ? 69px : 110px; text: root.file-transfer-label; color: #434953; font-size: ImGuiFontStyle.body; vertical-alignment: center; overflow: elide; }
-                        SecondaryButton { width: root.language-index == 0 ? 78px : root.language-index == 1 ? 140px : 205px; height: 24px; text: root.select-file-label; clicked => { root.select-file(); } }
-                        Rectangle {
-                            visible: root.file-transfer-visible;
-                            width: 35px;
-                            Text {
-                                text: root.sending-file ? "↑ " + round(root.file-progress * 100) + "%" : "✓";
-                                color: root.sending-file ? #2463c7 : #25874b;
-                                font-size: ImGuiFontStyle.small;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                            transfer-touch := TouchArea {
-                                changed has-hover => { root.transfer-hovered = self.has-hover; }
+        Rectangle {
+            width: root.width; height: root.height;
+            background: white; border-width: 1px; border-color: ImGuiLineStyle.border;
+            border-radius: 8px;
+            Text {
+                x: 10px; y: 10px; width: parent.width - 20px; height: 24px;
+                text: ServerStrings.heading + (root.controllers.length > 1 ? " · " + root.controllers.length : "");
+                color: #24272d; font-size: 13px; font-weight: 500; vertical-alignment: center; overflow: elide;
+            }
+            list := ScrollView {
+                x: 10px; y: 34px; width: parent.width - 20px;
+                height: max(0px, root.height - 34px - root.footer-height - 18px - (root.confirming-disconnect ? 36px : 0px) - (root.file-transfer-visible ? 58px : 0px));
+                viewport-width: self.visible-width;
+                viewport-height: root.controllers.length * (root.controllers.length > 1 ? 34px : 28px);
+                for controller[index] in root.controllers: row := Rectangle {
+                    x: 0px; y: index * (root.controllers.length > 1 ? 34px : 28px);
+                    width: list.visible-width; height: root.controllers.length > 1 ? 32px : 28px;
+                    select := Rectangle {
+                        x: 0px; y: 0px;
+                        width: parent.width - (root.controllers.length > 1 ? disconnect.width + 4px : status.preferred-width + 8px);
+                        height: parent.height; border-radius: 4px;
+                        background: root.controllers.length > 1 && index == root.selected-controller ? #eef5fd : select-touch.has-hover ? #f3f4f6 : transparent;
+                        if root.controllers.length > 1: Rectangle {
+                            x: 4px; y: (parent.height - 13px) / 2; width: 13px; height: 13px;
+                            border-radius: 7px; border-width: 1px; border-color: index == root.selected-controller ? #2463c7 : #8c939e;
+                            if index == root.selected-controller: Rectangle { x: 3px; y: 3px; width: 7px; height: 7px; border-radius: 4px; background: #2463c7; }
+                        }
+                        name := Text {
+                            x: root.controllers.length > 1 ? 23px : 0px; width: parent.width - self.x - 4px;
+                            height: parent.height; text: controller.display-name; color: #24272d;
+                            font-size: 13px; vertical-alignment: center; overflow: elide;
+                        }
+                        forward-focus: selection-keyboard;
+                        selection-keyboard := FocusScope {
+                            key-pressed(event) => {
+                                if event.text == Key.Return || event.text == " " {
+                                    root.selected-controller = index; root.controller-selected(index); return accept;
+                                }
+                                if event.text == Key.UpArrow || event.text == Key.DownArrow {
+                                    root.selected-controller = max(0, min(root.controllers.length - 1, root.selected-controller + (event.text == Key.UpArrow ? -1 : 1)));
+                                    root.controller-selected(root.selected-controller); return accept;
+                                }
+                                return reject;
                             }
                         }
+                        select-touch := TouchArea {
+                            clicked => { selection-keyboard.focus(); root.selected-controller = index; root.controller-selected(index); }
+                            changed has-hover => {
+                                root.hovered-name = self.has-hover && name.preferred-width > name.width ? controller.display-name : "";
+                                root.tooltip-y = max(0px, min(root.height - 52px, list.y + row.y + list.viewport-y + row.height));
+                            }
+                        }
+                        accessible-role: radio-button;
+                        accessible-label: controller.display-name;
+                        accessible-checked: index == root.selected-controller;
+                        accessible-action-default => { root.selected-controller = index; root.controller-selected(index); }
+
+                    }
+                    status := Text {
+                        visible: root.controllers.length == 1;
+                        x: parent.width - self.preferred-width; height: parent.height;
+                        text: ServerStrings.connected; color: #16a34a; font-size: 12px; vertical-alignment: center;
+                    }
+                    disconnect := SessionButton {
+                        visible: root.controllers.length > 1;
+                        x: parent.width - self.width; y: 2px;
+                        text: ServerStrings.disconnect; danger: true;
+                        clicked => { root.confirming-disconnect = false; root.disconnect-controller(controller.remote-id); }
                     }
                 }
             }
-        }
-        if !root.collapsed: IconButton {
-            x: parent.width - 34px; y: 38px; width: 24px; height: 101px;
-            icon: FontAwesomeIcons.xmark;
-            icon-size: 13px;
-            icon-color: white;
-            normal-background: #ef2b2d;
-            hover-background: #d92d20;
-            pressed-background: #b42318;
-            border-radius: 5px;
-            clicked => { root.disconnect-controller(); }
-        }
-        if root.file-transfer-visible && root.transfer-hovered: Rectangle {
-            x: 15px; y: 67px; width: root.width - 30px; height: 70px;
-            background: #22252bf2;
-            border-radius: 5px;
-            z: 20;
-            VerticalLayout {
-                padding: 8px; spacing: 3px;
-                Text { text: root.current-file-name; color: white; font-size: ImGuiFontStyle.small; overflow: elide; }
-                Text { text: root.file-size-text; color: #e1e4e8; font-size: ImGuiFontStyle.small; }
-                Text { text: round(root.file-progress * 100) + "%  " + root.file-progress-text; color: #e1e4e8; font-size: ImGuiFontStyle.small; }
+            footer := Rectangle {
+                x: 10px; y: list.y + list.height + 8px; width: parent.width - 20px; height: root.footer-height;
+                send-file := SessionButton {
+                    x: root.footer-height > 28px ? parent.width - self.width : disconnect-all.x - self.width - 6px;
+                    y: 0px;
+                    text: root.confirming-disconnect ? ServerStrings.cancel : ServerStrings.send-file;
+                    enabled: root.confirming-disconnect || !root.sending-file;
+                    clicked => { if root.confirming-disconnect { root.confirming-disconnect = false; } else { root.select-file(); } }
+                }
+                disconnect-all := SessionButton {
+                    x: parent.width - self.width; y: root.footer-height - 28px;
+                    text: root.controllers.length > 1 ? ServerStrings.disconnect-all : ServerStrings.disconnect-one;
+                    danger: true;
+                    clicked => {
+                        if root.controllers.length == 1 { root.disconnect-controller(root.controllers[0].remote-id); }
+                        else if root.confirming-disconnect { root.confirming-disconnect = false; root.disconnect-all(); }
+                        else { root.confirming-disconnect = true; }
+                    }
+                }
             }
+            if root.confirming-disconnect: Text {
+                x: 10px; y: footer.y + footer.height + 6px; width: parent.width - 20px; height: 30px;
+                text: ServerStrings.confirm-disconnect; color: #d92d20; font-size: 12px; wrap: word-wrap;
+            }
+            if root.file-transfer-visible: VerticalLayout {
+                x: 10px; y: root.height - 62px; width: parent.width - 20px; height: 52px; spacing: 2px;
+                Text { text: root.current-file-name; color: #596575; font-size: 11px; overflow: elide; }
+                Text { text: root.file-size-text; color: #596575; font-size: 11px; overflow: elide; }
+                Text { text: round(root.file-progress * 100) + "%  " + root.file-progress-text; color: #2463c7; font-size: 11px; overflow: elide; }
+            }
+        }
+        // Draw outside the scrolling list so its last row can reveal its name.
+        if root.hovered-name != "": Rectangle {
+            x: 10px; y: root.tooltip-y; width: 205px; height: tip.preferred-height + 12px; z: 20;
+            background: #24272d; border-radius: 5px;
+            tip := Text { x: 6px; y: 6px; width: parent.width - 12px; text: root.hovered-name; color: white; font-size: 12px; wrap: word-wrap; }
         }
     }
 }
