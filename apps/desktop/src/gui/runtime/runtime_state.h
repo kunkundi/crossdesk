@@ -29,6 +29,10 @@
 #include "runtime/session_lifecycle.h"
 #include "thumbnail.h"
 
+#if _WIN32
+#include "platform/windows/service/service_query_worker.h"
+#endif
+
 namespace crossdesk::gui_detail {
 
 struct InfrastructureState {
@@ -83,6 +87,11 @@ struct PeerState {
 // state so platform code does not appear to be part of the wire contract.
 struct PlatformIntegrationState {
 #if _WIN32
+  std::unique_ptr<ServiceQueryWorker> windows_service_worker_;
+  // Published by the UI, read by transport callbacks without sharing a mutable string.
+  mutable std::mutex windows_input_stage_mutex_;
+  std::string windows_input_stage_;
+  std::atomic<bool> windows_consent_ui_{false};
   std::atomic<bool> pending_windows_service_sas_{false};
   bool local_service_status_received_ = false;
   bool local_service_available_ = false;

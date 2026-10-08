@@ -14,6 +14,7 @@
 
 #if _WIN32
 #include "interactive_desktop.h"
+#include "desktop_transition_policy.h"
 #include "interactive_state.h"
 #include "service_host.h"
 #endif
@@ -25,12 +26,13 @@ struct WindowsServiceInteractiveStatus {
   bool available = false;
   bool session_mismatch = false;
   bool sas_secure_desktop_grace_active = false;
+  bool consent_ui_visible = false;
   unsigned int error_code = 0;
   std::string interactive_stage;
   std::string error;
 };
 
-constexpr uint32_t kWindowsServiceStatusIntervalMs = 1000;
+constexpr uint32_t kWindowsServiceStatusIntervalMs = 250;
 constexpr uint32_t kWindowsServiceSasSecureDesktopGraceMs = 2000;
 constexpr DWORD kWindowsServiceQueryTimeoutMs = 500;
 constexpr DWORD kWindowsServiceSasTimeoutMs = 500;
@@ -51,15 +53,13 @@ BuildWindowsServiceStatusAction(const WindowsServiceInteractiveStatus &status) {
   return action;
 }
 
-bool QueryWindowsServiceInteractiveStatus(
+bool ParseWindowsServiceInteractiveStatus(const std::string& response,
     WindowsServiceInteractiveStatus *status) {
   if (status == nullptr) {
     return false;
   }
 
   *status = WindowsServiceInteractiveStatus{};
-  const std::string response =
-      QueryCrossDeskService("status", kWindowsServiceQueryTimeoutMs);
   auto json = nlohmann::json::parse(response, nullptr, false);
   if (json.is_discarded() || !json.is_object()) {
     status->error = "invalid_service_status_json";
@@ -84,6 +84,7 @@ bool QueryWindowsServiceInteractiveStatus(
   status->interactive_stage = json.value("interactive_stage", std::string());
   status->sas_secure_desktop_grace_active =
       json.value("sas_secure_desktop_grace_active", false);
+  status->consent_ui_visible = json.value("consent_ui_visible", false);
 
   if (ShouldNormalizeUnlockToUserDesktop(
           json.value("interactive_lock_screen_visible", false),
@@ -125,13 +126,31 @@ void GuiRuntime::HandleWindowsServiceIntegration() {
     return;
   }
 
-  bool force_broadcast = false;
+  if (!windows_service_worker_) {
+    windows_service_worker_ = std::make_unique<ServiceQueryWorker>(
+        [](const std::string& command) {
+          ServiceQueryResult result;
+          result.response = QueryCrossDeskService(
+              command, command == "sas" ? kWindowsServiceSasTimeoutMs
+                                        : kWindowsServiceQueryTimeoutMs);
+          if (command == "status") {
+            // A successful service reply can still carry a pre-unlock sample.
+            result.user_desktop_recovered = IsCurrentSessionUserDesktopActive();
+          }
+          return result;
+        });
+  }
   if (pending_windows_service_sas_.exchange(false, std::memory_order_relaxed)) {
     if (privacy_.Engaged()) {
       privacy_.Fail("Security shortcut requested; privacy screen will turn off");
     }
-    const std::string response =
-        QueryCrossDeskService("sas", kWindowsServiceSasTimeoutMs);
+    windows_service_worker_->RequestSas();
+  }
+
+  const uint32_t now = static_cast<uint32_t>(SDL_GetTicks());
+  auto result = windows_service_worker_->Take();
+  if (result && result->command == "sas") {
+    const std::string& response = result->response;
     auto json = nlohmann::json::parse(response, nullptr, false);
     if (json.is_discarded() || !json.value("ok", false)) {
       LOG_WARN("Remote SAS request failed: {}", response);
@@ -145,21 +164,33 @@ void GuiRuntime::HandleWindowsServiceIntegration() {
       local_interactive_stage_ = "secure-desktop";
     }
     last_windows_service_status_tick_ = 0;
-    force_broadcast = true;
+    PublishWindowsInputStage();
+    if (local_service_status_received_) {
+      WindowsServiceInteractiveStatus optimistic;
+      optimistic.available = local_service_available_;
+      optimistic.interactive_stage = local_interactive_stage_;
+      const auto message = BuildWindowsServiceStatusAction(optimistic).to_json();
+      SendReliableDataFrame(peer_, message.data(), message.size(),
+                            control_data_label_.c_str());
+    }
+    result.reset();
   }
 
-  const uint32_t now = static_cast<uint32_t>(SDL_GetTicks());
-  if (!force_broadcast && last_windows_service_status_tick_ != 0 &&
-      now - last_windows_service_status_tick_ <
+  if (last_windows_service_status_tick_ == 0 ||
+      now - last_windows_service_status_tick_ >=
           kWindowsServiceStatusIntervalMs) {
-    return;
+    windows_service_worker_->RequestStatus();
+    last_windows_service_status_tick_ = now;
   }
-  last_windows_service_status_tick_ = now;
+  if (!result) return;
 
   WindowsServiceInteractiveStatus status;
-  const bool status_ok = QueryWindowsServiceInteractiveStatus(&status);
-  const bool user_desktop_recovered =
-      !status.available && IsCurrentSessionUserDesktopActive();
+  const bool status_ok = ParseWindowsServiceInteractiveStatus(result->response, &status);
+  const bool user_desktop_recovered = PreferUserDesktopInput(
+      result->user_desktop_recovered, status.consent_ui_visible);
+  if (status.available || status.session_mismatch) {
+    windows_consent_ui_.store(status.available && status.consent_ui_visible);
+  }
   if (user_desktop_recovered) status.interactive_stage = "user-desktop";
   WindowsServiceInteractiveStatus broadcast_status = status;
   const bool previous_secure_desktop_interaction =
@@ -169,7 +200,7 @@ void GuiRuntime::HandleWindowsServiceIntegration() {
       static_cast<int32_t>(optimistic_windows_secure_desktop_until_tick_ -
                            now) > 0;
   const bool keep_optimistic_secure_desktop =
-      status_ok && status.available && optimistic_secure_desktop_active &&
+      !user_desktop_recovered && status_ok && status.available && optimistic_secure_desktop_active &&
       status.sas_secure_desktop_grace_active &&
       status.interactive_stage == "user-desktop";
   local_service_status_received_ =
@@ -226,6 +257,7 @@ void GuiRuntime::HandleWindowsServiceIntegration() {
     last_logged_service_error_code = 0;
   }
 
+  PublishWindowsInputStage();
   RemoteAction remote_action =
       BuildWindowsServiceStatusAction(broadcast_status);
   std::string msg = remote_action.to_json();
@@ -239,14 +271,17 @@ void GuiRuntime::HandleWindowsServiceIntegration() {
 
 #if _WIN32
 void GuiRuntime::ResetLocalWindowsServiceState(bool clear_pending_sas) {
+  if (windows_service_worker_) windows_service_worker_->Reset();
   last_windows_service_status_tick_ = 0;
   if (clear_pending_sas) {
     pending_windows_service_sas_.store(false, std::memory_order_relaxed);
   }
   local_service_status_received_ = false;
   local_service_available_ = false;
+  windows_consent_ui_.store(false);
   local_interactive_stage_.clear();
   optimistic_windows_secure_desktop_until_tick_ = 0;
+  PublishWindowsInputStage();
 }
 #endif
 

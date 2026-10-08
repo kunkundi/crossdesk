@@ -16,7 +16,8 @@
 #include "runtime/gui_runtime.h"
 #include "windows_key_metadata.h"
 #if _WIN32
-#include "interactive_state.h"
+#include "desktop_transition_policy.h"
+#include "interactive_desktop.h"
 #include "service_host.h"
 #endif
 
@@ -82,12 +83,11 @@ void LogSecureDesktopInputBlocked(uint32_t* last_tick, const char* stage) {
 }
 
 bool IsTransientSecureDesktopInputFailure(const nlohmann::json& response,
-                                          const RemoteAction& action) {
+                                          bool is_down) {
   return response.is_object() &&
          response.value("error", std::string()) == "send_input_failed" &&
          response.value("code", 0u) == ERROR_ACCESS_DENIED &&
-         action.type == ControlType::keyboard &&
-         action.k.flag == KeyFlag::key_up;
+         !is_down;
 }
 #endif
 
@@ -218,40 +218,51 @@ bool KeyboardController::InjectRemoteKey(int key_code, bool is_down,
   if (owner_.privacy_.Engaged() && !IsWindowsPrivacyDesktopAvailable()) {
     owner_.privacy_.SuspendForDesktop();
   }
-  if (owner_.local_service_status_received_ &&
-      IsSecureDesktopInteractionRequired(owner_.local_interactive_stage_)) {
-    const std::string response = SendCrossDeskSecureDesktopKeyInput(
-        key_code, is_down, scan_code, extended, 1000);
-    const auto json = nlohmann::json::parse(response, nullptr, false);
-    if (json.is_discarded() || !json.value("ok", false)) {
-      RemoteAction action{};
-      action.type = ControlType::keyboard;
-      action.k.key_value = static_cast<size_t>(key_code);
-      action.k.scan_code = scan_code;
-      action.k.extended = extended;
-      action.k.flag = is_down ? KeyFlag::key_down : KeyFlag::key_up;
-      if (!json.is_discarded() &&
-          IsTransientSecureDesktopInputFailure(json, action)) {
-        LOG_INFO(
-            "Secure desktop keyboard injection transient failure, "
-            "key_code={}, is_down={}, response={}",
-            key_code, is_down, response);
-        return true;
-      }
+  if (owner_.is_server_mode_ || !owner_.WindowsInputStage().empty()) {
+    return DispatchDesktopInput(
+        [&] {
+          return PreferUserDesktopInput(IsCurrentSessionUserDesktopActive(),
+                                        owner_.windows_consent_ui_.load());
+        },
+        [&] {
+          SetLastError(ERROR_SUCCESS);
+          const bool sent = owner_.devices_.SendKeyboardCommand(
+              key_code, is_down, scan_code, extended);
+          return DesktopInputResult{
+              sent, IsDesktopTransitionInputError(GetLastError())};
+        },
+        [&]() -> DesktopInputResult {
+          const std::string response = SendCrossDeskSecureDesktopKeyInput(
+              key_code, is_down, scan_code, extended, 1000);
+          const auto json = nlohmann::json::parse(response, nullptr, false);
+          if (!json.is_object() || !json.value("ok", false)) {
+            const std::string error =
+                json.is_object() ? json.value("error", "") : "";
+            if (IsDesktopInputSetupPending(error)) {
+              return {false, true};
+            }
+            if (IsTransientSecureDesktopInputFailure(json, is_down)) {
+              LOG_INFO(
+                  "Secure desktop keyboard injection transient failure, "
+                  "key_code={}, is_down={}, response={}",
+                  key_code, is_down, response);
+              return {true, false};
+            }
 
-      LogSecureDesktopInputBlocked(
-          &owner_.last_local_secure_input_block_log_tick_,
-          owner_.local_interactive_stage_.c_str());
-      LOG_WARN(
-          "Secure desktop keyboard injection failed, key_code={}, is_down={}, "
-          "response={}",
-          key_code, is_down, response);
-      return false;
-    }
-    return true;
+            LogSecureDesktopInputBlocked(
+                &owner_.last_local_secure_input_block_log_tick_,
+                owner_.WindowsInputStage().c_str());
+            LOG_WARN(
+                "Secure desktop keyboard injection failed, key_code={}, "
+                "is_down={}, "
+                "response={}",
+                key_code, is_down, response);
+            return {};
+          }
+          return {true, false};
+        });
   }
 #endif
-  // Recheck after the desktop query; key-up cleanup remains allowed while paused.
   return owner_.devices_.SendKeyboardCommand(key_code, is_down, scan_code,
                                              extended);
 }

@@ -593,7 +593,8 @@ function setup_targets()
             set_kind("binary")
             add_packages("libyuv", "nlohmann_json")
             add_deps("rd_log", "path_manager")
-            add_links("Advapi32", "User32", "Wtsapi32", "Gdi32", "Setupapi")
+            add_links("Advapi32", "User32", "Wtsapi32", "Gdi32", "Setupapi",
+                "d3d11", "dxgi")
             add_files("apps/desktop/src/platform/windows/service/session_helper_main.cpp")
             add_files("apps/desktop/src/platform/windows/virtual_display/usbmmidd_virtual_display.cpp")
             add_files("apps/desktop/resources/windows/crossdesk_session_helper.rc",

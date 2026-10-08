@@ -71,7 +71,7 @@ public:
 
   bool SendKeyboardCommand(int key_code, bool is_down, uint32_t scan_code,
                            bool extended);
-  void SendMouseCommand(const RemoteAction &action, int selected_display);
+  bool SendMouseCommand(const RemoteAction &action, int selected_display);
   int SwitchDisplay(int display_id);
   void ResetToInitialDisplay();
 

@@ -79,8 +79,6 @@ int main() {
       ReadFile(repo_root / "apps/desktop/src/gui/features/input/keyboard_controller.cpp");
   const std::string windows_service_runtime =
       ReadFile(repo_root / "apps/desktop/src/platform/windows/gui/runtime/windows_service_runtime.cpp");
-  const std::string screen_capturer_h =
-      ReadFile(repo_root / "apps/desktop/src/platform/windows/screen_capturer/screen_capturer_win.h");
   const std::string screen_capturer_cpp = ReadFile(
       repo_root / "apps/desktop/src/platform/windows/screen_capturer/screen_capturer_win.cpp");
 
@@ -101,11 +99,8 @@ int main() {
   ok &= ExpectContains("session_helper_main.cpp", session_helper,
                        "EnablePerMonitorDpiAwareness();\n\n"
                        "  InitializeHelperLogger();");
-  ok &= ExpectContains(
-      "service_host.cpp", service_host,
-      "const ULONGLONG deadline_tick = GetTickCount64() + timeout_ms");
   ok &= ExpectContains("service_host.cpp", service_host,
-                       "while (GetTickCount64() <= deadline_tick)");
+                       "QueryNamedPipeWithDeadline(pipe_name, command, timeout_ms");
   ok &= ExpectNotContains("service_host.cpp", service_host,
                           "constexpr int kPipeConnectRetryCount = 3");
   ok &= ExpectContains("service_host.cpp", service_host,
@@ -128,8 +123,6 @@ int main() {
                        "IsConsentUiRunningInCurrentSession");
   ok &= ExpectContains("session_helper_main.cpp", session_helper,
                        "L\"Consent.exe\"");
-  ok &= ExpectContains("session_helper_main.cpp", session_helper,
-                       "desktop_info.available && consent_ui_visible");
   ok &= ExpectContains("service_host.cpp", service_host,
                        "session_helper_report_input_desktop_available_ &&");
   ok &= ExpectContains("service_host.cpp", service_host,
@@ -147,16 +140,11 @@ int main() {
                        "return L\"winsta0\\\\default\"");
   ok &= ExpectContains(
       "service_host.cpp", service_host,
-      "secure_input_helper_interactive_stage_ == interactive_stage");
-  ok &= ExpectContains(
-      "service_host.cpp", service_host,
       "secure_input_helper_interactive_stage_ = interactive_stage");
   ok &= ExpectContains("service_host.cpp", service_host,
                        "secure_input_helper_interactive_stage_.clear()");
-  ok &= ExpectContains(
-      "service_host.cpp", service_host,
-      "LaunchSecureInputHelper(target_session_id, interactive_stage,\n"
-      "                                 interactive_desktop)");
+  ok &= ExpectContains("service_host.cpp", service_host,
+                       "LaunchSecureInputHelper(secure_input_target_session_id,");
   ok &= ExpectContains("service_host.cpp", service_host,
                        "\\\"secure_input_helper_stage\\\":\\\"");
   ok &= ExpectContains("service_host.cpp", service_host,
@@ -256,15 +244,7 @@ int main() {
       "runtime->local_service_available_ &&\n"
       "        "
       "IsSecureDesktopInteractionRequired(runtime->local_interactive_stage_)");
-  ok &= ExpectContains("screen_capturer_win.h", screen_capturer_h,
-                       "std::string secure_shared_stage_;");
   ok &= ExpectContains("screen_capturer_win.cpp", screen_capturer_cpp,
                        "const std::string& stage");
-  ok &= ExpectContains("screen_capturer_win.cpp", screen_capturer_cpp,
-                       "secure_shared_stage_ == stage");
-  ok &= ExpectContains("screen_capturer_win.cpp", screen_capturer_cpp,
-                       "secure_shared_stage_ = stage");
-  ok &= ExpectContains("screen_capturer_win.cpp", screen_capturer_cpp,
-                       "secure_shared_stage_.clear()");
   return ok ? 0 : 1;
 }

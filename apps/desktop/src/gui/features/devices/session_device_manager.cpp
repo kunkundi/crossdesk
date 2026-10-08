@@ -665,11 +665,12 @@ bool SessionDeviceManager::SendKeyboardCommand(int key_code, bool is_down,
                                    key_code, is_down, scan_code, extended) == 0;
 }
 
-void SessionDeviceManager::SendMouseCommand(const RemoteAction &action,
+bool SessionDeviceManager::SendMouseCommand(const RemoteAction &action,
                                             int selected_display) {
   if (mouse_controller_) {
-    mouse_controller_->SendMouseCommand(action, selected_display);
+    return mouse_controller_->SendMouseCommand(action, selected_display) == 0;
   }
+  return false;
 }
 
 int SessionDeviceManager::SwitchDisplay(int display_id) {

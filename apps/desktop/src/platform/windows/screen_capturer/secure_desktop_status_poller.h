@@ -23,6 +23,7 @@ struct SecureDesktopServiceStatus {
   bool service_available = false;
   bool desktop_state_known = false;
   bool capture_active = false;
+  bool consent_ui_visible = false;
   bool helper_running = false;
   uint32_t helper_process_id = 0;
   uint32_t active_session_id = 0xFFFFFFFF;
@@ -30,6 +31,16 @@ struct SecureDesktopServiceStatus {
   std::string interactive_stage;
   std::string interactive_desktop;
   std::string error;
+
+  void OnUserDesktopObserved() {
+    if (consent_ui_visible) return;
+    desktop_state_known = true;
+    capture_active = false;
+    helper_running = false;
+    helper_process_id = 0;
+    interactive_stage = "user-desktop";
+    interactive_desktop.clear();
+  }
 
   void UpdateFrom(SecureDesktopServiceStatus latest) {
     if (latest.service_available || latest.desktop_state_known) {

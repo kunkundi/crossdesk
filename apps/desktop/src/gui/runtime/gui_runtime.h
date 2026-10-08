@@ -87,6 +87,15 @@ class GuiRuntime : protected gui_detail::GuiState {
   RemoteUnlockState GetRemoteUnlockState(const RemoteSession& props) const;
 #if _WIN32
   void ResetLocalWindowsServiceState(bool clear_pending_sas);
+  std::string WindowsInputStage() const {
+    std::lock_guard lock(windows_input_stage_mutex_);
+    return windows_input_stage_;
+  }
+  void PublishWindowsInputStage() {
+    std::lock_guard lock(windows_input_stage_mutex_);
+    windows_input_stage_ = local_service_status_received_
+                               ? local_interactive_stage_ : std::string{};
+  }
 #endif
 
 #ifdef __APPLE__

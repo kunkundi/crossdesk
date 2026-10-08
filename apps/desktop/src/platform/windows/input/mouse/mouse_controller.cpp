@@ -144,9 +144,11 @@ int PlatformMouseController::SendMouseCommand(RemoteAction remote_action,
   ip.mi.dwExtraInfo = kInjectedMouseInputMarker;
   const UINT sent = SendInputOnUserDesktop(ip);
   if (sent != 1) {
+    const DWORD error = GetLastError();
     LOG_WARN("SendInput failed for mouse x={}, y={}, wheel={}, flag={}, err={}",
              ip.mi.dx, ip.mi.dy, remote_action.m.s,
-             static_cast<int>(remote_action.m.flag), GetLastError());
+             static_cast<int>(remote_action.m.flag), error);
+    SetLastError(error);
     return -1;
   }
   if (ip.mi.dwFlags & MOUSEEVENTF_LEFTDOWN) pressed_buttons_.fetch_or(1);

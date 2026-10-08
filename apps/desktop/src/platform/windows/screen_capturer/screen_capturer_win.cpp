@@ -408,6 +408,7 @@ SecureDesktopServiceStatus ReadSecureDesktopServiceStatus() {
   }
 
   status.active_session_id = json.value("active_session_id", 0xFFFFFFFFu);
+  status.consent_ui_visible = json.value("consent_ui_visible", false);
   status.helper_running = json.value("secure_input_helper_running", false);
   status.helper_process_id = json.value("secure_input_helper_pid", 0u);
   status.interactive_stage = json.value("interactive_stage", std::string());
@@ -425,11 +426,7 @@ SecureDesktopServiceStatus ReadSecureDesktopServiceStatus() {
 
 SecureDesktopServiceStatus QuerySecureDesktopServiceStatus() {
   auto status = ReadSecureDesktopServiceStatus();
-  if (!status.service_available && IsCurrentSessionUserDesktopActive()) {
-    status.desktop_state_known = true;
-    status.capture_active = false;
-    status.interactive_stage = "user-desktop";
-  }
+  if (IsCurrentSessionUserDesktopActive()) status.OnUserDesktopObserved();
   return status;
 }
 
@@ -445,10 +442,11 @@ bool QuerySecureDesktopHelperCommand(DWORD session_id,
       GetCrossDeskSecureInputHelperPipeName(session_id);
   std::string error;
   DWORD code = 0;
-  // The legacy single-frame path includes a full GDI capture and a large
-  // response. Give it a separate deadline from the small control messages.
+  // Starting may have to join/release the old GPU producer first. Its reply
+  // cannot use the short deadline intended for lightweight control messages.
   const DWORD timeout_ms =
-      command.rfind(kCrossDeskSecureInputCaptureCommandPrefix, 0) == 0
+      (command.rfind(kCrossDeskSecureInputCaptureCommandPrefix, 0) == 0 ||
+       command.rfind(kCrossDeskSecureInputCaptureStartCommandPrefix, 0) == 0)
           ? 1000
           : kSecureDesktopHelperPipeTimeoutMs;
   const bool ok = QueryNamedPipeWithDeadline(pipe_name, command, timeout_ms,
@@ -579,8 +577,6 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
               0, std::memory_order_relaxed);
       const ULONGLONG elapsed_ms =
           start_tick == 0 ? 0 : GetTickCount64() - start_tick;
-      post_secure_desktop_drop_logged_.store(false,
-                                             std::memory_order_relaxed);
       LOG_INFO(
           "Windows capturer first normal frame after secure desktop: "
           "reported_stream='{}', mapped_stream='{}', size={}x{}, bytes={}, "
@@ -804,7 +800,6 @@ void ScreenCapturerWin::ResetPostSecureDesktopState() {
   secure_desktop_capture_active_.store(false, std::memory_order_relaxed);
   post_secure_desktop_waiting_for_frame_.store(false,
                                                std::memory_order_relaxed);
-  post_secure_desktop_drop_logged_.store(false, std::memory_order_relaxed);
   post_secure_desktop_started_tick_.store(0, std::memory_order_relaxed);
   SharedSecureDesktopCursorState().SetActive(false);
 }
@@ -1237,6 +1232,7 @@ bool ScreenCapturerWin::RestartCaptureBackendAfterSecureDesktop() {
 
   LOG_INFO("Windows capturer: restarting capture backend after secure desktop");
   impl_->Stop();
+  last_capture_progress_tick_.store(GetTickCount64(), std::memory_order_relaxed);
   int ret = impl_->Start(show_cursor);
   if (ret == 0) {
     applied_show_cursor_ = show_cursor;
@@ -1403,7 +1399,7 @@ void ScreenCapturerWin::StopSecureDesktopSharedCapture(DWORD session_id) {
     target_session_id = secure_shared_session_id_;
   }
 
-  if (secure_shared_capture_started_ &&
+  if ((secure_shared_capture_started_ || secure_shared_start_pending_) &&
       target_session_id != 0xFFFFFFFF) {
     std::vector<uint8_t> response;
     std::string error_message;
@@ -1414,15 +1410,9 @@ void ScreenCapturerWin::StopSecureDesktopSharedCapture(DWORD session_id) {
 
   CloseSecureDesktopSharedFrame();
   secure_shared_capture_started_ = false;
+  secure_shared_start_pending_ = false;
   secure_shared_session_id_ = 0xFFFFFFFF;
-  secure_shared_left_ = 0;
-  secure_shared_top_ = 0;
-  secure_shared_width_ = 0;
-  secure_shared_height_ = 0;
-  secure_shared_fps_ = 0;
-  secure_shared_show_cursor_ = true;
-  secure_shared_stage_.clear();
-  secure_shared_desktop_.clear();
+  secure_shared_configuration_ = {};
 }
 
 bool ScreenCapturerWin::OpenSecureDesktopSharedFrame(DWORD session_id,
@@ -1569,27 +1559,37 @@ bool ScreenCapturerWin::StartSecureDesktopSharedCapture(
     return false;
   }
 
+  const SharedCaptureConfiguration configuration{left, top, width, height,
+                                                 show_cursor, fps};
   if (secure_shared_capture_started_ &&
       secure_shared_session_id_ == session_id &&
-      secure_shared_left_ == left && secure_shared_top_ == top &&
-      secure_shared_width_ == width && secure_shared_height_ == height &&
-      secure_shared_stage_ == stage && secure_shared_desktop_ == desktop &&
-      secure_shared_show_cursor_ == show_cursor && secure_shared_fps_ == fps &&
+      secure_shared_configuration_ == configuration &&
       OpenSecureDesktopSharedFrame(session_id, mapping_size, error_out)) {
     return true;
   }
 
-  StopSecureDesktopSharedCapture(secure_shared_session_id_);
+  if (secure_shared_session_id_ != session_id) {
+    StopSecureDesktopSharedCapture(secure_shared_session_id_);
+  } else {
+    // capture-start performs the replacement atomically in the helper. Avoid
+    // a separate stop round trip and keep retries idempotent after a timeout.
+    CloseSecureDesktopSharedFrame();
+  }
+  secure_shared_capture_started_ = false;
+  secure_shared_start_pending_ = true;
+  secure_shared_session_id_ = session_id;
 
-  const std::string command =
-      BuildSecureCaptureStartCommand(left, top, width, height, show_cursor, fps,
-                                     stage, desktop);
+  const std::string command = BuildSecureCaptureStartCommand(
+      left, top, width, height, show_cursor, fps, stage, desktop);
   std::vector<uint8_t> response;
   if (!QuerySecureDesktopHelperCommand(session_id, command, &response,
                                        error_out)) {
+    secure_shared_start_pending_ =
+        error_out && IsPendingSecureCaptureStart(*error_out);
     return false;
   }
 
+  secure_shared_start_pending_ = false;
   Json json = Json::parse(response.begin(), response.end(), nullptr, false);
   if (json.is_discarded() || !json.value("ok", false)) {
     if (error_out != nullptr) {
@@ -1600,14 +1600,7 @@ bool ScreenCapturerWin::StartSecureDesktopSharedCapture(
 
   secure_shared_capture_started_ = true;
   secure_shared_session_id_ = session_id;
-  secure_shared_left_ = left;
-  secure_shared_top_ = top;
-  secure_shared_width_ = width;
-  secure_shared_height_ = height;
-  secure_shared_show_cursor_ = show_cursor;
-  secure_shared_fps_ = fps;
-  secure_shared_stage_ = stage;
-  secure_shared_desktop_ = desktop;
+  secure_shared_configuration_ = configuration;
 
   if (!OpenSecureDesktopSharedFrame(session_id, mapping_size, error_out)) {
     StopSecureDesktopSharedCapture(session_id);
@@ -1628,6 +1621,7 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
   ULONGLONG capture_stage_started_tick = 0;
   bool post_secure_restart_pending = false;
   bool desktop_was_unavailable = false;
+  bool normal_backend_suspended = false;
   ULONGLONG post_secure_restart_deadline_tick = 0;
   ULONGLONG last_post_secure_restart_tick = 0;
   ULONGLONG next_cursor_update_tick = 0;
@@ -1685,9 +1679,14 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
     const ULONGLONG now = GetTickCount64();
     const auto frame_started = std::chrono::steady_clock::now();
     report_stats(false);
-    if (auto sample = status_poller.Take()) {
-      const auto previous = std::exchange(status, std::move(sample->status));
-      max_status_ms = (std::max)(max_status_ms, sample->query_ms);
+    auto sample = status_poller.Take();
+    if (sample || (desktop_available && status.capture_active)) {
+      auto latest = sample ? std::move(sample->status) : status;
+      // Recheck when applying a queued reply, not only when querying. A local
+      // unlock must never be undone by a delayed secure-desktop snapshot.
+      if (desktop_available) latest.OnUserDesktopObserved();
+      const auto previous = std::exchange(status, std::move(latest));
+      if (sample) max_status_ms = (std::max)(max_status_ms, sample->query_ms);
       if (status.service_available != previous.service_available ||
           status.error != previous.error) {
         if (status.service_available) {
@@ -1718,8 +1717,12 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
         report_stats(true);
         // A restarted helper can leave our mapping/event handles alive, but
         // their old producer is gone. Explicitly establish a fresh stream.
-        StopSecureDesktopSharedCapture(secure_shared_session_id_);
-        frame_schedule.Reset(now);
+        if (status.capture_active != previous.capture_active ||
+            status.active_session_id != previous.active_session_id ||
+            status.helper_process_id != previous.helper_process_id) {
+          StopSecureDesktopSharedCapture(secure_shared_session_id_);
+          frame_schedule.Reset(now);
+        }
         const bool secure_capture_started =
             !previous.capture_active && status.capture_active;
         const bool secure_capture_ended =
@@ -1734,8 +1737,6 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
           post_secure_restart_pending = false;
           post_secure_desktop_waiting_for_frame_.store(
               false, std::memory_order_relaxed);
-          post_secure_desktop_drop_logged_.store(false,
-                                                 std::memory_order_relaxed);
           post_secure_desktop_started_tick_.store(0, std::memory_order_relaxed);
         } else if (secure_capture_ended) {
           post_secure_restart_pending = true;
@@ -1744,8 +1745,6 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
           last_post_secure_restart_tick = 0;
           post_secure_desktop_waiting_for_frame_.store(
               true, std::memory_order_relaxed);
-          post_secure_desktop_drop_logged_.store(false,
-                                                 std::memory_order_relaxed);
           post_secure_desktop_started_tick_.store(now,
                                                   std::memory_order_relaxed);
         }
@@ -1763,28 +1762,52 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
       last_post_secure_restart_tick = 0;
     }
 
+    if ((!desktop_available || status.capture_active) &&
+        !normal_backend_suspended) {
+      // LockApp may return to Default while the session remains locked. Merely
+      // dropping callbacks leaves a second DXGI/GDI/WGC pipeline capturing and
+      // converting the same desktop alongside the helper. Stop it once, also
+      // when local lock detection precedes the service/helper startup.
+      std::lock_guard<std::mutex> lock(impl_mutex_);
+      if (impl_) {
+        impl_->Stop();
+        normal_backend_suspended = true;
+        LOG_INFO("Windows capturer: normal backend suspended for secure desktop");
+      }
+    }
+
     if (!status.capture_active || status.active_session_id == 0xFFFFFFFF) {
       StopSecureDesktopSharedCapture(secure_shared_session_id_);
-      CheckDisplayPresence(now);
-      MaybeAdoptVirtualDisplay();
-      CheckCaptureProgress(now);
+      // Normal capture was intentionally unavailable on the secure desktop.
+      // Do not schedule a second topology/stall rebuild during its recovery.
+      if (!post_secure_restart_pending && desktop_available &&
+          !normal_backend_suspended) {
+        CheckDisplayPresence(now);
+        MaybeAdoptVirtualDisplay();
+        CheckCaptureProgress(now);
+      }
       if (post_secure_restart_pending && desktop_available) {
         if (now >= post_secure_restart_deadline_tick) {
           LOG_WARN(
               "Windows capturer: capture backend restart after secure desktop "
-              "timed out");
-          post_secure_restart_pending = false;
+              "still unavailable; retrying");
+          // The normal backend is stopped. Retain recovery ownership instead
+          // of falling back to a stall probe on a thread that is not running.
+          post_secure_restart_deadline_tick =
+              now + kPostSecureDesktopRestartTimeoutMs;
         } else if (last_post_secure_restart_tick == 0 ||
                    now - last_post_secure_restart_tick >=
                        kPostSecureDesktopRestartRetryMs) {
           last_post_secure_restart_tick = now;
           post_secure_restart_pending =
               !RestartCaptureBackendAfterSecureDesktop();
+          if (!post_secure_restart_pending) normal_backend_suspended = false;
           if (!post_secure_restart_pending && privacy_)
             privacy_->ResumeAfterDesktopRecovery();
         }
       }
-      if (!post_secure_restart_pending && now >= next_cursor_update_tick) {
+      if (!post_secure_restart_pending && !normal_backend_suspended &&
+          now >= next_cursor_update_tick) {
         next_cursor_update_tick = now + 500;
         ApplyCursorCaptureSetting();
       }
@@ -1835,7 +1858,7 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
           status.interactive_stage, status.interactive_desktop, show_cursor,
           shared_fps, &error_message);
       if (!shared_ready) {
-        report_shared_error("start", error_message);
+        if (!secure_shared_start_pending_) report_shared_error("start", error_message);
         frame_schedule.OnStartFailure(GetTickCount64());
       } else if (!was_started) {
         frame_schedule.Reset(GetTickCount64());
@@ -1851,8 +1874,8 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
       frame_schedule.OnSharedFrame(GetTickCount64());
     }
 
-    const bool frame_pending = shared_ready && !frame_delivered &&
-                               IsPendingSecureDesktopFrame(error_message);
+    const bool frame_pending = secure_shared_start_pending_ ||
+        (shared_ready && !frame_delivered && IsPendingSecureDesktopFrame(error_message));
     if (frame_pending) ++shared_waits;
     if (shared_ready && !frame_delivered && !frame_pending) {
       report_shared_error("read", error_message);
@@ -1904,6 +1927,10 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
         last_error_tick = now;
       }
     }
+
+    // The shared producer owns frame pacing. Waiting again here can miss the
+    // next publication (and overwrite a pending frame) due to timer rounding.
+    if (shared_ready && (frame_delivered || frame_pending)) continue;
 
     const auto elapsed_ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(

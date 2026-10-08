@@ -26,7 +26,8 @@
 #include "runtime/gui_runtime.h"
 
 #if _WIN32
-#include "interactive_state.h"
+#include "desktop_transition_policy.h"
+#include "interactive_desktop.h"
 #include "service_host.h"
 #endif
 
@@ -392,45 +393,60 @@ void PeerEventHandler::OnReceiveDataBuffer(
           std::chrono::steady_clock::now();
     }
 #if _WIN32
-    if (runtime->local_service_status_received_ &&
-        IsSecureDesktopInteractionRequired(runtime->local_interactive_stage_) &&
-        remote_action.type != ControlType::keyboard &&
-        remote_action.type != ControlType::keyboard_state) {
-      if (remote_action.type == ControlType::mouse) {
-        int absolute_x = 0;
-        int absolute_y = 0;
-        if (!BuildAbsoluteMousePosition(runtime->devices_.display_info_list(),
-                                        runtime->selected_display_,
-                                        remote_action.m.x, remote_action.m.y,
-                                        &absolute_x, &absolute_y)) {
-          LOG_WARN("Secure desktop mouse injection skipped, invalid display "
-                   "mapping: display_index={}, x={}, y={}",
-                   runtime->selected_display_, remote_action.m.x,
-                   remote_action.m.y);
-          return;
-        }
+    if (runtime->is_server_mode_ && remote_action.type == ControlType::mouse) {
+      std::string response;
+      const bool delivered = DispatchDesktopInput(
+          [&] {
+            return PreferUserDesktopInput(IsCurrentSessionUserDesktopActive(),
+                                          runtime->windows_consent_ui_.load());
+          },
+          [&] {
+            SetLastError(ERROR_SUCCESS);
+            const bool sent = runtime->devices_.SendMouseCommand(
+                remote_action, runtime->selected_display_);
+            return DesktopInputResult{
+                sent, IsDesktopTransitionInputError(GetLastError())};
+          },
+          [&]() -> DesktopInputResult {
+            int absolute_x = 0;
+            int absolute_y = 0;
+            if (!BuildAbsoluteMousePosition(
+                    runtime->devices_.display_info_list(),
+                    runtime->selected_display_, remote_action.m.x,
+                    remote_action.m.y, &absolute_x, &absolute_y)) {
+              LOG_WARN(
+                  "Secure desktop mouse injection skipped, invalid display "
+                  "mapping: display_index={}, x={}, y={}",
+                  runtime->selected_display_, remote_action.m.x,
+                  remote_action.m.y);
+              return {};
+            }
 
-        const std::string response = SendCrossDeskSecureDesktopMouseInput(
-            absolute_x, absolute_y, remote_action.m.s,
-            static_cast<int>(remote_action.m.flag), 1000);
-        auto json = nlohmann::json::parse(response, nullptr, false);
-        if (json.is_discarded() || !json.value("ok", false)) {
-          LogSecureDesktopInputBlocked(
-              &runtime->last_local_secure_input_block_log_tick_, "local",
-              runtime->local_interactive_stage_.c_str());
-          LOG_WARN(
-              "Secure desktop mouse injection failed, x={}, y={}, wheel={}, "
-              "flag={}, response={}",
-              absolute_x, absolute_y, remote_action.m.s,
-              static_cast<int>(remote_action.m.flag), response);
-        }
-        return;
+            response = SendCrossDeskSecureDesktopMouseInput(
+                absolute_x, absolute_y, remote_action.m.s,
+                static_cast<int>(remote_action.m.flag), 1000);
+            auto json = nlohmann::json::parse(response, nullptr, false);
+            const bool sent = json.is_object() && json.value("ok", false);
+            const std::string error =
+                json.is_object() ? json.value("error", "") : "";
+            return {sent, IsDesktopInputSetupPending(error)};
+          });
+      if (!delivered && !response.empty()) {
+        LogSecureDesktopInputBlocked(
+            &runtime->last_local_secure_input_block_log_tick_, "local",
+            runtime->WindowsInputStage().c_str());
+        LOG_WARN(
+            "Secure desktop mouse injection failed, x={}, y={}, wheel={}, "
+            "flag={}, response={}",
+            remote_action.m.x, remote_action.m.y, remote_action.m.s,
+            static_cast<int>(remote_action.m.flag), response);
       }
+      return;
     }
 #endif
     if (remote_action.type == ControlType::mouse) {
       runtime->devices_.SendMouseCommand(remote_action,
-                                        runtime->selected_display_);
+                                         runtime->selected_display_);
     } else if (remote_action.type == ControlType::audio_capture) {
       if (remote_action.a)
         runtime->devices_.StartSpeakerCapturer();

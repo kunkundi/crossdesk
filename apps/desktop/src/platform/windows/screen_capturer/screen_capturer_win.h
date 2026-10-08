@@ -25,6 +25,7 @@
 #include "privacy_controller.h"
 // Relative: platform include directories stay private to the capture target.
 #include "../virtual_display/virtual_display_provisioner.h"
+#include "../service/shared_capture_configuration.h"
 #include "headless_recovery.h"
 
 namespace crossdesk {
@@ -117,7 +118,6 @@ class ScreenCapturerWin : public ScreenCapturer {
   std::atomic<int> monitor_index_{0};
   std::atomic<bool> secure_desktop_capture_active_{false};
   std::atomic<bool> post_secure_desktop_waiting_for_frame_{false};
-  std::atomic<bool> post_secure_desktop_drop_logged_{false};
   std::atomic<ULONGLONG> post_secure_desktop_started_tick_{0};
   std::thread secure_capture_thread_;
   HANDLE secure_frame_mapping_ = nullptr;
@@ -125,15 +125,9 @@ class ScreenCapturerWin : public ScreenCapturer {
   uint8_t* secure_frame_view_ = nullptr;
   size_t secure_frame_view_size_ = 0;
   DWORD secure_shared_session_id_ = 0xFFFFFFFF;
-  int secure_shared_left_ = 0;
-  int secure_shared_top_ = 0;
-  int secure_shared_width_ = 0;
-  int secure_shared_height_ = 0;
-  int secure_shared_fps_ = 0;
-  bool secure_shared_show_cursor_ = true;
-  std::string secure_shared_stage_;
-  std::string secure_shared_desktop_;
+  SharedCaptureConfiguration secure_shared_configuration_;
   bool secure_shared_capture_started_ = false;
+  bool secure_shared_start_pending_ = false;
   std::shared_ptr<CapturedNv12FramePool> native_frame_pool_;
 
   void BuildCanonicalFromImpl();

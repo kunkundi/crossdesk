@@ -313,8 +313,10 @@ int PlatformKeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down,
 
   const UINT sent = SendInputOnUserDesktop(input);
   if (sent != 1) {
+    const DWORD error = GetLastError();
     LOG_WARN("SendInput failed for key_code={}, is_down={}, err={}", key_code,
-             is_down, GetLastError());
+             is_down, error);
+    SetLastError(error);
     return -1;
   }
 

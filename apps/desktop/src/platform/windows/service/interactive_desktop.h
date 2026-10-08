@@ -14,6 +14,11 @@
 
 namespace crossdesk {
 
+inline bool IsDesktopTransitionInputError(DWORD error) {
+  return error == ERROR_ACCESS_DENIED ||
+         error == ERROR_REQUIRES_INTERACTIVE_WINDOWSTATION;
+}
+
 inline std::wstring GetDesktopNameW(HDESK desktop) {
   DWORD bytes_needed = 0;
   if (desktop == nullptr) {

@@ -12,6 +12,12 @@
 
 namespace crossdesk {
 
+inline bool IsPendingSecureCaptureStart(const std::string& error) {
+  // Once a command was written, a lost response does not mean startup failed.
+  return error.rfind("pipe_read_failed:", 0) == 0 ||
+         error.rfind("pipe_write_failed:", 0) == 0;
+}
+
 inline bool IsPendingSecureDesktopFrame(const std::string& error) {
   return error == "frame_wait_timeout" ||
          error == "shared_frame_write_in_progress" ||

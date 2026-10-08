@@ -41,6 +41,9 @@ class CrossDeskServiceHost {
   void ReportServiceStatus(DWORD current_state, DWORD win32_exit_code,
                            DWORD wait_hint);
   void IpcServerLoop();
+  void SessionStateLoop();
+  void RefreshInteractiveState();
+  void WakeSessionState();
   void RefreshSessionState();
   void EnsureSessionHelper();
   void ReapSessionHelper();
@@ -72,6 +75,14 @@ class CrossDeskServiceHost {
                                DWORD client_session_id);
   std::string BuildStatusResponse(DWORD client_session_id);
   std::string SendSecureAttentionSequence(DWORD client_session_id);
+  struct SecureInputTarget {
+    DWORD session_id = 0xFFFFFFFF;
+    std::string stage;
+    std::string desktop;
+  };
+  // Returns an error response, or an empty string with a validated snapshot.
+  std::string ResolveSecureInputTarget(DWORD client_session_id,
+                                        SecureInputTarget& target);
   std::string SendSecureDesktopKeyboardInput(DWORD client_session_id,
                                              int key_code, bool is_down,
                                              uint32_t scan_code = 0,
@@ -89,6 +100,8 @@ class CrossDeskServiceHost {
   SERVICE_STATUS service_status_{};
   HANDLE stop_event_ = nullptr;
   std::thread ipc_thread_;
+  std::thread session_state_thread_;
+  HANDLE session_state_event_ = nullptr;
   std::thread client_process_monitor_thread_;
   // Owned exclusively by the monitor, then drained after it joins.
   HANDLE unattended_process_ = nullptr;
@@ -96,6 +109,9 @@ class CrossDeskServiceHost {
   DWORD unattended_session_ = 0xFFFFFFFF;
   std::atomic<uint64_t> unattended_logoff_generation_{0};
   std::mutex state_mutex_;
+  uint64_t session_state_generation_ = 0;
+  ULONGLONG last_session_transition_tick_ = 0;
+  bool session_lock_state_known_ = false;
   HANDLE lifetime_mutex_ = nullptr;
   std::wstring lifetime_mutex_name_;
   DWORD active_session_id_ = 0xFFFFFFFF;
@@ -148,6 +164,7 @@ class CrossDeskServiceHost {
   HANDLE secure_input_helper_process_handle_ = nullptr;
   HANDLE secure_input_helper_stop_event_ = nullptr;
   std::string input_desktop_name_;
+  std::string session_username_;
   std::string last_sas_error_;
   std::string session_helper_last_error_;
   std::string session_helper_status_error_;
