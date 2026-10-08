@@ -932,6 +932,9 @@ int ScreenCapturerWin::Stop() {
   // Drain management operations before stopping/replacing their backend.
   virtual_display_.RequestCancel();
   StopSecureCaptureThread();
+  // A recovery already in progress can publish "running" while Stop waits.
+  // Publish the final stopped state after that management thread has exited.
+  NotifyPrivacyCapture(false);
   JoinVirtualDisplayThread();
   ResetPostSecureDesktopState();
   if (impl_) {
@@ -1238,6 +1241,7 @@ bool ScreenCapturerWin::RestartCaptureBackendAfterSecureDesktop() {
   if (ret == 0) {
     applied_show_cursor_ = show_cursor;
     RestoreMonitor(current_monitor);
+    NotifyPrivacyCapture(true);
     return true;
   }
 
@@ -1253,11 +1257,13 @@ bool ScreenCapturerWin::RestartCaptureBackendAfterSecureDesktop() {
   if (ret == 0) {
     applied_show_cursor_ = show_cursor;
     RestoreMonitor(current_monitor);
+    NotifyPrivacyCapture(true);
     return true;
   }
 
   if (StartPreferredBackend(headless_compat_.load(std::memory_order_relaxed),
                             current_monitor, usbmmidd)) {
+    NotifyPrivacyCapture(true);
     return true;
   }
 

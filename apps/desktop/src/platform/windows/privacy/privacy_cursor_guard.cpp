@@ -11,6 +11,7 @@
 
 #include "../screen_capturer/dxgi_cursor_state.h"
 #include "privacy_cursor_api.h"
+#include "privacy_cursor_process.h"
 #include "rd_log.h"
 
 namespace crossdesk {
@@ -85,15 +86,13 @@ bool PrivacyCursorGuard::Start(std::string& error) {
                 startup.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
                 inherited, sizeof(inherited), nullptr, nullptr) != FALSE;
   PROCESS_INFORMATION child{};
+  bool used_job_fallback = false;
   if (ok) {
     std::wstring command = L"\"" + helper.wstring() + L"\"";
     for (HANDLE handle : inherited)
       command += L" " + std::to_wstring(reinterpret_cast<uintptr_t>(handle));
-    ok =
-        CreateProcessW(helper.c_str(), command.data(), nullptr, nullptr, TRUE,
-                       CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT |
-                           CREATE_BREAKAWAY_FROM_JOB,
-                       nullptr, nullptr, &startup.StartupInfo, &child) != FALSE;
+    ok = CreatePrivacyCursorProcess(helper.c_str(), command, startup, child,
+                                    used_job_fallback);
   }
   const DWORD start_error = GetLastError();
   DeleteProcThreadAttributeList(startup.lpAttributeList);
@@ -101,6 +100,11 @@ bool PrivacyCursorGuard::Start(std::string& error) {
     UnmapViewOfFile(shared);
     return Failed("Start crossdesk_privacy_cursor_helper.exe", error,
                   start_error);
+  }
+  if (used_job_fallback) {
+    LOG_INFO("Privacy cursor: launcher denied job breakaway; helper process={} "
+             "started without breakaway flag with parent-exit monitoring",
+             child.dwProcessId);
   }
   CloseHandle(child.hThread);
   process_ = child.hProcess;
