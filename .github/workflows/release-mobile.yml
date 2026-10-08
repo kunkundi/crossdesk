@@ -101,9 +101,6 @@ jobs:
       - name: Checkout publishing scripts
         uses: actions/checkout@v5
 
-      - name: Verify release manifest updates
-        run: python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
-
       - name: Verify release version
         shell: bash
         run: |

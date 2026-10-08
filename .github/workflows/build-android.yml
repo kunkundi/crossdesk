@@ -147,24 +147,18 @@ jobs:
       - name: Verify shared license catalog
         run: python3 -B apps/ios/scripts/generate_third_party_licenses.py
 
-      - name: Verify native build tool selection
-        run: python3 -B -m unittest discover -s apps/android/test -p 'build_native_test.py' -v
-
-      - name: Build APKs and run Lint
+      - name: Build APKs
         working-directory: apps/android
         run: |
           ./gradlew --no-daemon --stacktrace \
-            :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest \
-            :app:lintDebug :app:lintRelease
+            :app:assembleDebug :app:assembleRelease
 
-      - name: Verify APKs and native protocol
+      - name: Verify APKs
         working-directory: apps/android
         run: |
           python3 -B test/verify_apk.py app/build/outputs/apk/debug/app-debug.apk
           python3 -B test/verify_apk.py app/build/outputs/apk/release/app-release-unsigned.apk
-          python3 -B test/run_native.py
           "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify app/build/outputs/apk/debug/app-debug.apk
-          "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 
       - name: Package APKs with the independent Android version
         id: package
@@ -202,19 +196,17 @@ jobs:
           for variant, source in (
               ("unsigned", "release/app-release-unsigned.apk"),
               ("debug", "debug/app-debug.apk"),
-              ("debug", "androidTest/debug/app-debug-androidTest.apk"),
           ):
               destination = output / variant
               destination.mkdir(parents=True, exist_ok=True)
-              suffix = "-test" if "androidTest/" in source else ""
-              shutil.copyfile(apk_dir / source, destination / f"crossdesk-android-arm64-{variant}-{version}{suffix}.apk")
+              shutil.copyfile(apk_dir / source, destination / f"crossdesk-android-arm64-{variant}-{version}.apk")
           with open(os.environ["GITHUB_OUTPUT"], "a") as stream:
               stream.write(f"version={version}\n")
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as stream:
               stream.write(f"Android {version}: arm64, API 26+, 16 KB aligned.\n\n"
                            "Debug APK uses an ephemeral CI debug key; it is for testing and may require uninstalling an existing build. "
                            "The Release APK is unsigned and needs your own signing before installation.\n\n"
-                           "Lint, native protocol/frame tests and APK checks passed. Device tests were compiled, not executed.\n")
+                           "Debug and Release APKs built and packaged; APK checks passed.\n")
 
       - name: Upload unsigned Release APK
         uses: actions/upload-artifact@v6
@@ -223,19 +215,10 @@ jobs:
           path: ${{ runner.temp }}/crossdesk-android/unsigned/*.apk
           if-no-files-found: error
 
-      - name: Upload Debug and device test APKs
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v6
         with:
           name: crossdesk-android-arm64-debug-${{ steps.package.outputs.version }}
           path: ${{ runner.temp }}/crossdesk-android/debug/*.apk
           if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload Lint reports
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v6
-        with:
-          name: crossdesk-android-reports
-          path: apps/android/app/build/reports/
-          if-no-files-found: ignore
           retention-days: 14

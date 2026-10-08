@@ -105,9 +105,10 @@ or relevant build configuration also trigger it. The main
 workflow on branch/tag pushes and manual runs, and waits for its result before
 publishing a version-tag release.
 
-The workflow tests the minimum supported Xmake version (3.0.0) and retains the
-pinned Xcode/SDK, dependency cache, license and privacy checks, unsigned arm64
-Release build, and app-bundle verification. It uploads
+The workflow builds with the minimum supported Xmake version (3.0.0) and retains
+the pinned Xcode/SDK, dependency cache, license catalog validation, unsigned arm64
+Release build, and app-bundle verification. Unit tests run locally as needed.
+It uploads
 `crossdesk-ios-arm64-unsigned-v<marketing-version>-<date>.zip`,
 including the app, source metadata, third-party source catalog, rights notice
 and any generated dSYM. The version comes from the iOS target; dated repository

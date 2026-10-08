@@ -98,14 +98,13 @@ git push origin android-v1.6.0-20261002
 
 Gradle 缓存与 Android 原生依赖缓存分别管理；原生缓存按宿主架构、构建脚本及 MiniRTC 配方区分，不复用桌面或 iOS 的配置和目标文件。GitHub 托管 runner 每次启动仍是新环境；第一次运行或缓存失效时需要安装。不同分支和标签可读取默认分支的缓存，因此建议先在默认分支运行一次 `Build Android` 预热，再创建发布标签。
 
-CI 构建 Debug、Release 和设备测试 APK，执行 Debug / Release Lint、本机 C++ 协议与画面队列测试，并校验 APK 的 arm64 ABI、16 KB ELF / ZIP 对齐、完整许可证及 Debug 签名。Ubuntu x64 构建机上不运行 arm64 设备测试；使用下面的设备验证流程在 arm64 手机或模拟器上执行。Lint 报告在构建失败时也会保留。
+CI 仅构建和打包 Debug、Release APK，并校验 APK 的 arm64 ABI、16 KB ELF / ZIP 对齐、完整许可证及 Debug 签名。单元测试、本机 C++ 协议与画面队列测试、Lint 和设备测试改为按需在本地执行；设备测试使用下面的设备验证流程在 arm64 手机或模拟器上执行。
 
 产物使用 Android 工程自己的 `versionName`，例如 `v1.6.0-20261002`，不跟随桌面版本号。构建日期采用上海时区；带日期的版本标签沿用标签中的日期，与 iOS 一致。Actions 提供：
 
 - `crossdesk-android-arm64-<版本>.apk`：已签名 Release APK，独立安卓发布和全平台标签发布收集此 APK，可直接安装。
 - `crossdesk-android-arm64-unsigned-<版本>.apk`：构建工作流的中间产物，也可用于自行签名和验证修改后的构建。
-- `crossdesk-android-arm64-debug-<版本>.apk` 和对应的 `-test.apk`：可安装的调试应用和设备测试包，保留 14 天。
-- `crossdesk-android-reports`：Lint 报告，保留 14 天。
+- `crossdesk-android-arm64-debug-<版本>.apk`：可安装的调试应用，保留 14 天。
 
 Debug APK 使用每次运行的临时调试证书，可能无法覆盖手机上已有的其他签名版本；卸载原应用会清除本机连接记录和密码。需要持续覆盖升级时，应使用同一私钥签名 Release APK，并在发布新版本时递增 `app/build.gradle` 中的 `versionCode`。未签名 APK 已完成对齐，可通过 SDK 的 `apksigner sign --ks <自己的密钥库> --out <已签名.apk> <未签名.apk>` 签名，再用 `apksigner verify` 检查。
 
