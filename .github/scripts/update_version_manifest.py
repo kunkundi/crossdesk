@@ -16,6 +16,8 @@ ARTIFACTS = {
     "macos-arm64": ("macos-arm64", "pkg"),
     "linux-amd64": ("linux-amd64", "deb"),
     "linux-arm64": ("linux-arm64", "deb"),
+    "linux-amd64-virtual-desktop-xfce": ("virtual-desktop-xfce-linux-amd64", "deb"),
+    "linux-arm64-virtual-desktop-xfce": ("virtual-desktop-xfce-linux-arm64", "deb"),
     "ios-arm64": ("ios-arm64-unsigned", "zip"),
     "android-arm64": ("android-arm64(?:-unsigned)?", "apk"),
 }

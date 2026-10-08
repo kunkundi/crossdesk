@@ -68,16 +68,31 @@ Choose a package matching your OS and CPU architecture from [GitHub Releases](ht
 | --- | --- | --- |
 | Windows | Windows 10+, x64 | `.exe` installer; portable builds are also supported |
 | macOS | macOS 14.0+, Intel / Apple Silicon | x64 or arm64 `.pkg` |
-| Linux | Ubuntu 20.04+, amd64 / arm64, glibc 2.31 baseline | `.deb` package |
+| Linux | Ubuntu 20.04+, amd64 / arm64, glibc 2.31 baseline | Standard / Xfce virtual desktop `.deb` |
 | iOS / iPadOS | iOS 16.0+, arm64 physical device | Native controller; build and sign with Xcode, or sign the unsigned CI app |
 | Android | Android 8.0+, arm64 | Native controller; build an APK with Gradle ([guide](apps/android/README.md)) |
 | Web | A WebRTC-capable browser | Open [web.crossdesk.cn](https://web.crossdesk.cn/) |
 
-On Linux, replace the example filename with the downloaded package name:
+Linux provides two standalone packages per architecture. **Choose one**:
+
+| Package | Intended use |
+| --- | --- |
+| `crossdesk-linux-<arch>-<version>.deb` (recommended) | Computers with an existing desktop; does not install Xfce or Xvfb |
+| `crossdesk-virtual-desktop-xfce-linux-<arch>-<version>.deb` | Servers needing an independent desktop; APT additionally installs **Xfce, Xvfb and D-Bus session tools** |
+
+To install the standard package, replace the example filename with your download (use arm64 for that architecture):
 
 ```bash
 sudo apt install "./crossdesk-linux-amd64-<version>.deb"
 ```
+
+For the virtual desktop package, install this file instead:
+
+```bash
+sudo apt install "./crossdesk-virtual-desktop-xfce-linux-amd64-<version>.deb"
+```
+
+Both contain the same complete application, replace each other and preserve user settings. The standard package can also create virtual desktops after you install the optional dependencies. Installing the virtual desktop package does not start a session or change the default desktop; see [Linux headless operation](docs/HEADLESS_EN.md) to start one. The app's update download button selects the installed package type. Upgrading an existing installation does not automatically remove previously installed Xfce components.
 
 **First launch on macOS:** follow the app prompts to grant **Screen Recording** (called **Screen & System Audio Recording** on newer systems) and **Accessibility** under **System Settings → Privacy & Security**. Reopen the app if prompted. These permissions allow desktop capture and remote keyboard/mouse input respectively.
 

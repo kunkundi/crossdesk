@@ -60,13 +60,13 @@ Linux builds support Ubuntu 20.04 or later on amd64 and arm64. Release packages
 use Ubuntu 20.04/glibc 2.31 as their compatibility baseline. The dependency
 commands below target Ubuntu 20.04; adapt package names and toolchains for
 other distributions or newer versions, or use the build image below to
-reproduce CI. Install the base build and headless runtime dependencies first:
+reproduce CI. Install the base build dependencies first:
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
   git curl unzip build-essential gcc-10 g++-10 python3-pip \
-  pkg-config binutils dpkg-dev xvfb xfce4 dbus \
+  pkg-config binutils dpkg-dev \
   libx11-dev libxext-dev libxrender-dev libxft-dev libxrandr-dev \
   libxinerama-dev libxcursor-dev libxi-dev libxfixes-dev libxv-dev \
   libxtst-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev \
@@ -127,7 +127,9 @@ Build a Debian package after compiling a release binary on the matching architec
 ./apps/desktop/scripts/linux/pkg_arm64.sh 1.4.3
 ```
 
-The package scripts install the shared Slint runtime in the private `/usr/lib/crossdesk` directory, so users do not need to install `libslint_cpp.so` separately.
+Each packaging run uses the same compiled application to create the standard `crossdesk-linux-<arch>-<version>.deb` and `crossdesk-virtual-desktop-xfce-linux-<arch>-<version>.deb`. Both contain the complete application; only the latter requires Xvfb, Xfce and D-Bus session tools. Building and packaging need none of these optional runtime components. To run a complete virtual desktop from source, install them as described in [headless operation](HEADLESS_EN.md). The build image and CI can retain them for testing.
+
+The package scripts install the shared Slint runtime in the private `/usr/lib/crossdesk` directory, so users do not need to install `libslint_cpp.so` separately. The package-managed `package-name` file beside it identifies the update download variant without changing user settings.
 PipeWire is not a mandatory runtime dependency. CrossDesk detects the host's
 PipeWire 0.3 runtime dynamically and can still use X11 capture (and DRM when
 enabled at build time) when it is unavailable.
@@ -154,7 +156,7 @@ xmake r crossdesk
 ## Development Without CUDA Environment
 
 For **Linux developers who do not have a CUDA environment installed and want to enable hardware codec feature**, a preconfigured [Ubuntu 20.04 compatibility build image](https://hub.docker.com/r/crossdesk/ubuntu20.04) is provided.
-This image contains the required build dependencies and produces a single Linux package compatible with the glibc 2.31 baseline.
+This image contains the required build dependencies and produces both Linux package variants with the glibc 2.31 baseline.
 
 See the [build image notes](../docker/linux-build/README.md) for image tags and architecture differences. The CUDA example below targets the amd64 image. Inside the container, download the project and run:
 

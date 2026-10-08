@@ -90,9 +90,11 @@ settings set file_path /home/user/Received Files
 
 ## 创建独立虚拟桌面
 
-Debian/Ubuntu 安装包将 Xvfb、Xfce 和 D-Bus 会话工具声明为强依赖，使用 APT 安装时会自动补齐，即使指定 `--no-install-recommends` 也不会跳过。源码直接运行时，需在开发环境中准备同样的运行依赖；项目构建镜像和 CI 已包含这些组件。
+Debian/Ubuntu 的普通版 `crossdesk` 不依赖 Xvfb 或 Xfce，复用已有桌面无需额外安装它们。需要完整独立桌面时，可选择 `crossdesk-virtual-desktop-xfce` 安装包：它包含同一份 CrossDesk 程序，并通过 APT 强依赖安装 Xvfb、Xfce 和 D-Bus 会话工具（`--no-install-recommends` 也不会跳过）。这些组件由系统软件源提供，安装包不是完整的离线桌面环境。
 
-原来没有图形会话，或者希望单独开一套桌面时，可启动独立 Xfce 会话。Ubuntu / Debian 示例（安装包用户无需重复安装依赖）：
+两个包只能安装一个。先退出 CrossDesk，使用 `sudo apt install ./所选安装包.deb` 升级或切换版本，再启动程序，原有用户配置会保留。安装与切换不会自动启动虚拟会话、修改默认桌面或删除此前安装的 Xfce。更新下载按已安装的包类型选择；若对应下载尚未发布或元数据不完整，会打开 Releases 列表供选择，不会自动改用另一种包。
+
+原来没有图形会话，或者希望单独开一套桌面时，可启动独立 Xfce 会话。Ubuntu / Debian 示例（虚拟桌面版已包含这些依赖；普通版和源码运行用户按需安装）：
 
 ```bash
 sudo apt install xvfb xfce4 dbus

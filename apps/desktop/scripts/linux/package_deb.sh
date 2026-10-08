@@ -15,14 +15,15 @@ INPUT_VERSION="$3"
 EXTRA_RECOMMENDATION="${4:-}"
 
 PKG_NAME="crossdesk"
+VIRTUAL_PACKAGE_NAME="crossdesk-virtual-desktop-xfce"
 APP_NAME="CrossDesk"
 MAINTAINER="Junkun Di <junkun.di@hotmail.com>"
 DESCRIPTION="A simple cross-platform remote desktop client."
 ALSA_RUNTIME_DEP="libasound2 | libasound2t64"
 PORTAL_RUNTIME_RECOMMENDS="xdg-desktop-portal, xdg-desktop-portal-gtk | xdg-desktop-portal-kde | xdg-desktop-portal-wlr"
 TRAY_RUNTIME_RECOMMENDS="libayatana-appindicator3-1 | libappindicator3-1"
-# Every published package includes the prerequisites for all Linux headless
-# paths, including a complete independent desktop. Older Ubuntu releases ship
+# Only the virtual desktop package installs a desktop environment. Both packages
+# contain the same application, including headless support. Older Ubuntu releases ship
 # dbus-run-session in dbus; newer releases split it into dbus-daemon.
 HEADLESS_RUNTIME_DEPS="xvfb, xfce4, dbus-daemon | dbus"
 
@@ -107,7 +108,6 @@ BIN_DIR="$DEB_DIR/usr/bin"
 PRIVATE_DIR="$DEB_DIR/usr/lib/$PKG_NAME"
 ICON_BASE_DIR="$DEB_DIR/usr/share/icons/hicolor"
 DESKTOP_DIR="$DEB_DIR/usr/share/applications"
-OUTPUT_FILE="$PROJECT_ROOT/${PKG_NAME}-linux-${DEBIAN_ARCH}-${APP_VERSION}.deb"
 
 install -d "$DEBIAN_DIR" "$BIN_DIR" "$PRIVATE_DIR" "$DESKTOP_DIR"
 install -m 0755 "$BUILD_BINARY" "$PRIVATE_DIR/crossdesk-bin"
@@ -161,23 +161,6 @@ if [[ -n "$EXTRA_RECOMMENDATION" ]]; then
     RECOMMENDS="$RECOMMENDS, $EXTRA_RECOMMENDATION"
 fi
 
-cat > "$DEBIAN_DIR/control" <<EOF
-Package: $PKG_NAME
-Version: $DEB_VERSION
-Architecture: $DEBIAN_ARCH
-Maintainer: $MAINTAINER
-Description: $DESCRIPTION
-Depends: libc6 (>= 2.31), libstdc++6 (>= 10), libx11-6, libxext6,
- libxrender1, libxft2, libxrandr2, libxfixes3, libxcursor1, libxi6, libxcb1, libxcb-randr0,
- libxcb-xtest0, libxcb-xinerama0, libxcb-shape0, libxcb-xkb1,
- libxcb-xfixes0, libxv1, libxtst6, $ALSA_RUNTIME_DEP, libsndio7.0,
- libxcb-shm0, libpulse0, libdrm2, libdbus-1-3, libgl1,
- $HEADLESS_RUNTIME_DEPS
-Recommends: $RECOMMENDS
-Priority: optional
-Section: utils
-EOF
-
 cat > "$DESKTOP_DIR/$PKG_NAME.desktop" <<EOF
 [Desktop Entry]
 Version=1.0
@@ -191,15 +174,51 @@ Type=Application
 Categories=Utility;
 EOF
 
-rm -f "$OUTPUT_FILE"
-dpkg-deb --root-owner-group --build "$DEB_DIR" "$OUTPUT_FILE"
-dpkg-deb --info "$OUTPUT_FILE" >/dev/null
-dpkg-deb --contents "$OUTPUT_FILE" > "$WORK_DIR/package-contents.txt"
+# Stage and strip the application once, then package it with two dependency sets.
+# Keep the executable, launcher and configuration paths identical when switching.
+for package_name in "$PKG_NAME" "$VIRTUAL_PACKAGE_NAME"; do
+    extra_depends=""
+    description="$DESCRIPTION"
+    other_package="$VIRTUAL_PACKAGE_NAME"
+    if [[ "$package_name" == "$VIRTUAL_PACKAGE_NAME" ]]; then
+        extra_depends=", $HEADLESS_RUNTIME_DEPS"
+        description="CrossDesk with Xfce and Xvfb for independent virtual desktops."
+        other_package="$PKG_NAME"
+    fi
+    cat > "$DEBIAN_DIR/control" <<EOF
+Package: $package_name
+Version: $DEB_VERSION
+Architecture: $DEBIAN_ARCH
+Maintainer: $MAINTAINER
+Description: $description
+Depends: libc6 (>= 2.31), libstdc++6 (>= 10), libx11-6, libxext6,
+ libxrender1, libxft2, libxrandr2, libxfixes3, libxcursor1, libxi6, libxcb1, libxcb-randr0,
+ libxcb-xtest0, libxcb-xinerama0, libxcb-shape0, libxcb-xkb1,
+ libxcb-xfixes0, libxv1, libxtst6, $ALSA_RUNTIME_DEP, libsndio7.0,
+ libxcb-shm0, libpulse0, libdrm2, libdbus-1-3, libgl1$extra_depends
+Recommends: $RECOMMENDS
+Conflicts: $other_package
+Replaces: $other_package
+Priority: optional
+Section: utils
+EOF
+    if [[ "$package_name" == "$VIRTUAL_PACKAGE_NAME" ]]; then
+        echo "Provides: $PKG_NAME (= $DEB_VERSION)" >> "$DEBIAN_DIR/control"
+    fi
+    # Read beside the executable by the updater; never store this in user config.
+    echo "$package_name" > "$PRIVATE_DIR/package-name"
+    chmod 0644 "$PRIVATE_DIR/package-name"
+    OUTPUT_FILE="$PROJECT_ROOT/${package_name}-linux-${DEBIAN_ARCH}-${APP_VERSION}.deb"
+    rm -f "$OUTPUT_FILE"
+    dpkg-deb --root-owner-group --build "$DEB_DIR" "$OUTPUT_FILE"
+    dpkg-deb --info "$OUTPUT_FILE" >/dev/null
+    dpkg-deb --contents "$OUTPUT_FILE" > "$WORK_DIR/package-contents.txt"
 
-if [[ -n "$SLINT_NEEDED" ]] && \
-   ! grep -q "usr/lib/$PKG_NAME/$SLINT_NEEDED" "$WORK_DIR/package-contents.txt"; then
-    echo "Packaged artifact is missing $SLINT_NEEDED" >&2
-    exit 1
-fi
+    if [[ -n "$SLINT_NEEDED" ]] && \
+       ! grep -q "usr/lib/$PKG_NAME/$SLINT_NEEDED" "$WORK_DIR/package-contents.txt"; then
+        echo "Packaged artifact is missing $SLINT_NEEDED" >&2
+        exit 1
+    fi
 
-echo "Deb package created: $OUTPUT_FILE"
+    echo "Deb package created: $OUTPUT_FILE"
+done

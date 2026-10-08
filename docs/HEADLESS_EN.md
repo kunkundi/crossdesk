@@ -89,9 +89,11 @@ The interactive console stays in the foreground regardless of the built-in daemo
 
 ## Create a separate virtual desktop
 
-Debian/Ubuntu packages require Xvfb, Xfce and the D-Bus session tools through `Depends`. APT installs them even with `--no-install-recommends`. Source builds need the same runtime prerequisites in the development environment; the project build image and CI include them.
+The standard Debian/Ubuntu package, `crossdesk`, does not depend on Xvfb or Xfce; reusing an existing desktop needs neither. For a complete independent desktop, choose `crossdesk-virtual-desktop-xfce`. It contains the same CrossDesk application and requires Xvfb, Xfce and D-Bus session tools through `Depends`, so APT installs them even with `--no-install-recommends`. These components come from the system repositories; the package is not a complete offline desktop environment.
 
-For a host without a desktop session, or to start an independent Xfce session (package users do not need to reinstall the dependencies):
+Install only one package. Exit CrossDesk, use `sudo apt install ./chosen-package.deb` to upgrade or switch variants, then restart the app; user settings are preserved. Installation and switching do not start a virtual session, change the default desktop or remove previously installed Xfce components. Update downloads retain the installed package type. If its download is missing or incomplete, the app opens the Releases list instead of selecting another package type.
+
+For a host without a desktop session, or to start an independent Xfce session (the virtual desktop package already supplies the dependencies; standard-package and source-build users install them as needed):
 
 ```bash
 sudo apt install xvfb xfce4 dbus

@@ -1498,7 +1498,11 @@ void GuiApplication::BindMainCallbacks() {
                                    ? UiText(std::to_string(signal_port))
                                    : slint::SharedString{});
   });
-  main->on_open_download([this] { OpenUrl("https://crossdesk.cn"); });
+  main->on_open_download([this] {
+    const auto& latest = update_checker_->latest();
+    OpenUrl(latest && !latest->download_url.empty() ? latest->download_url
+                                                   : "https://crossdesk.cn");
+  });
   main->on_check_for_updates([this] {
     update_checker_->RequestCheck();
     SyncMainWindow();

@@ -57,13 +57,13 @@ xmake r crossdesk
 ## Linux
 
 Linux 构建支持 Ubuntu 20.04 及以上版本的 amd64 和 arm64。发布安装包以
-Ubuntu 20.04/glibc 2.31 为兼容基线。以下依赖命令以 Ubuntu 20.04 为例；其他发行版或较新版本需按其软件源调整包名和工具链，复现 CI 可使用下文的构建镜像。先安装基础编译和无头运行依赖：
+Ubuntu 20.04/glibc 2.31 为兼容基线。以下依赖命令以 Ubuntu 20.04 为例；其他发行版或较新版本需按其软件源调整包名和工具链，复现 CI 可使用下文的构建镜像。先安装基础编译依赖：
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
   git curl unzip build-essential gcc-10 g++-10 python3-pip \
-  pkg-config binutils dpkg-dev xvfb xfce4 dbus \
+  pkg-config binutils dpkg-dev \
   libx11-dev libxext-dev libxrender-dev libxft-dev libxrandr-dev \
   libxinerama-dev libxcursor-dev libxi-dev libxfixes-dev libxv-dev \
   libxtst-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev \
@@ -119,7 +119,9 @@ xmake b -vy crossdesk
 ./apps/desktop/scripts/linux/pkg_arm64.sh 1.4.3
 ```
 
-打包脚本会将 Slint 共享运行库安装到软件包私有目录 `/usr/lib/crossdesk`，无需用户另外安装 `libslint_cpp.so`。
+每次打包从同一份编译产物生成普通版 `crossdesk-linux-<arch>-<version>.deb` 和虚拟桌面版 `crossdesk-virtual-desktop-xfce-linux-<arch>-<version>.deb`。两者都包含完整程序，只有后者强依赖 Xvfb、Xfce 和 D-Bus 会话工具；编译和打包本身不需要安装这些组件。源码运行时如需创建完整虚拟桌面，请按 [无头运行说明](HEADLESS.md) 准备可选依赖。项目构建镜像和 CI 可保留这些组件用于测试。
+
+打包脚本会将 Slint 共享运行库安装到软件包私有目录 `/usr/lib/crossdesk`，无需用户另外安装 `libslint_cpp.so`。同目录的 `package-name` 标记由安装包管理，用于选择更新下载，不写入用户配置。
 PipeWire 不属于强制运行时依赖：程序在运行时检测宿主系统的 PipeWire 0.3，
 没有该运行库时仍可使用 X11（以及构建时启用的 DRM）捕获。
 
@@ -145,7 +147,7 @@ xmake r crossdesk
 
 ## 无 CUDA 环境下的开发支持
 
-对于**未安装 CUDA 环境的 Linux 开发者，如果希望编译后的成果物拥有硬件编解码能力**，这里提供了预配置的 [Ubuntu 20.04 兼容构建镜像](https://hub.docker.com/r/crossdesk/ubuntu20.04)。该镜像内置必要的构建依赖，可生成兼容 glibc 2.31 的单一 Linux 安装包。
+对于**未安装 CUDA 环境的 Linux 开发者，如果希望编译后的成果物拥有硬件编解码能力**，这里提供了预配置的 [Ubuntu 20.04 兼容构建镜像](https://hub.docker.com/r/crossdesk/ubuntu20.04)。该镜像内置必要的构建依赖，可生成兼容 glibc 2.31 的两种 Linux 安装包。
 
 镜像版本和 amd64 / arm64 差异见 [构建镜像说明](../docker/linux-build/README.md)。以下 CUDA 示例适用于 amd64 镜像；进入容器、下载工程后执行：
 

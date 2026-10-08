@@ -10,6 +10,7 @@
 #include <nlohmann/json.hpp>
 
 #include "rd_log.h"
+#include "linux_update_download.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -118,8 +119,22 @@ std::optional<VersionInfo> CheckUpdate() {
   if (res) {
     if (res->status == 200) {
       try {
-        auto info = ParseVersionInfo(nlohmann::json::parse(res->body));
+        const auto manifest = nlohmann::json::parse(res->body);
+        auto info = ParseVersionInfo(manifest);
         if (info) {
+#if defined(__linux__)
+          std::string architecture;
+#if defined(__x86_64__)
+          architecture = "amd64";
+#elif defined(__aarch64__)
+          architecture = "arm64";
+#endif
+          std::error_code error;
+          const auto executable = std::filesystem::read_symlink("/proc/self/exe", error);
+          info->download_url = LinuxUpdateDownloadUrl(
+              manifest, *info, architecture,
+              error ? std::filesystem::path{} : executable.parent_path());
+#endif
           LOG_INFO("Fetched version.json: latest_version={}, releaseDate={}, patch={}",
                    info->version, info->release_date, info->patch);
         } else {

@@ -68,16 +68,31 @@ CrossDesk 支持 Windows、macOS、Linux 之间的远程访问，也可从浏览
 | --- | --- | --- |
 | Windows | Windows 10+，x64 | `.exe` 安装包；便携构建也受支持 |
 | macOS | macOS 14.0+，Intel / Apple Silicon | 选择 x64 或 arm64 的 `.pkg` |
-| Linux | Ubuntu 20.04+，amd64 / arm64，glibc 2.31 基线 | `.deb` 安装包 |
+| Linux | Ubuntu 20.04+，amd64 / arm64，glibc 2.31 基线 | 普通版 / Xfce 虚拟桌面版 `.deb` |
 | iOS / iPadOS | iOS 16.0+，arm64 真机 | 原生客户端；使用 Xcode 构建并签名，CI 产物为未签名应用 |
 | Android | Android 8.0+，arm64 | 原生控制端；使用 Gradle 构建 APK，见 [开发说明](apps/android/README.md) |
 | Web | 支持 WebRTC 的浏览器 | 访问 [web.crossdesk.cn](https://web.crossdesk.cn/) |
 
-Linux 下载后，在下载目录中将文件名替换为实际安装包名称：
+Linux 每个架构提供两个可独立安装的包，**选择其中一个**：
+
+| 安装包 | 适用场景 |
+| --- | --- |
+| `crossdesk-linux-<arch>-<version>.deb`（推荐） | 已有桌面的电脑；不会额外安装 Xfce 或 Xvfb |
+| `crossdesk-virtual-desktop-xfce-linux-<arch>-<version>.deb` | 需要创建独立桌面的服务器；APT 会额外安装 **Xfce、Xvfb 和 D-Bus 会话工具** |
+
+普通版安装示例（将文件名替换为实际下载名称，arm64 选择对应架构）：
 
 ```bash
 sudo apt install "./crossdesk-linux-amd64-<version>.deb"
 ```
+
+如需虚拟桌面版，改为安装：
+
+```bash
+sudo apt install "./crossdesk-virtual-desktop-xfce-linux-amd64-<version>.deb"
+```
+
+两个包包含相同的完整程序，互相替换并保留用户配置；普通版自行补齐依赖后也能创建虚拟桌面。安装虚拟桌面版不会自动启动会话或切换默认桌面，启动方法见 [Linux 无头运行](docs/HEADLESS.md)。应用更新的下载按钮会选择已安装的包类型。已有版本升级后不会自动删除先前安装的 Xfce。
 
 **macOS 首次运行：** 按应用提示，在“系统设置 → 隐私与安全性”中授予 CrossDesk **屏幕录制**（新系统可能显示为“屏幕与系统音频录制”）及 **辅助功能**权限，再按系统提示重新打开应用。前者用于捕获桌面，后者用于远程键鼠输入。
 

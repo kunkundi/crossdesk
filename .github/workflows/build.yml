@@ -173,23 +173,29 @@ jobs:
 
       - name: Verify Ubuntu 20.04 package dependency resolution
         run: |
-          PACKAGE_FILE="${GITHUB_WORKSPACE}/crossdesk-linux-${{ matrix.arch }}-${LEGAL_VERSION}.deb"
           apt-get update
-          apt-get install --simulate "${PACKAGE_FILE}"
+          for PACKAGE in crossdesk crossdesk-virtual-desktop-xfce; do
+            apt-get install --simulate "${GITHUB_WORKSPACE}/${PACKAGE}-linux-${{ matrix.arch }}-${LEGAL_VERSION}.deb"
+          done
 
       - name: Verify packaged Ubuntu 20.04 glibc baseline
         run: |
-          PACKAGE_FILE="${GITHUB_WORKSPACE}/crossdesk-linux-${{ matrix.arch }}-${LEGAL_VERSION}.deb"
-          VERIFY_DIR="${RUNNER_TEMP}/crossdesk-glibc-${{ matrix.arch }}"
-          install -d "${VERIFY_DIR}"
-          dpkg-deb --extract "${PACKAGE_FILE}" "${VERIFY_DIR}"
-          verify-crossdesk-glibc-baseline "${VERIFY_DIR}" 2.31
+          for PACKAGE in crossdesk crossdesk-virtual-desktop-xfce; do
+            PACKAGE_FILE="${GITHUB_WORKSPACE}/${PACKAGE}-linux-${{ matrix.arch }}-${LEGAL_VERSION}.deb"
+            VERIFY_DIR="${RUNNER_TEMP}/${PACKAGE}-glibc-${{ matrix.arch }}"
+            install -d "${VERIFY_DIR}"
+            dpkg-deb --extract "${PACKAGE_FILE}" "${VERIFY_DIR}"
+            verify-crossdesk-glibc-baseline "${VERIFY_DIR}" 2.31
+          done
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
           name: crossdesk-linux-${{ matrix.arch }}-${{ env.LEGAL_VERSION }}
-          path: ${{ github.workspace }}/crossdesk-linux-${{ matrix.arch }}-${{ env.LEGAL_VERSION }}.deb
+          path: |
+            ${{ github.workspace }}/crossdesk-linux-${{ matrix.arch }}-${{ env.LEGAL_VERSION }}.deb
+            ${{ github.workspace }}/crossdesk-virtual-desktop-xfce-linux-${{ matrix.arch }}-${{ env.LEGAL_VERSION }}.deb
+          if-no-files-found: error
 
   # macOS
   build-macos:
@@ -689,6 +695,14 @@ jobs:
           The Android arm64 Release APK is signed with the CrossDesk publishing key and can be installed directly.
           It includes the exact application and MiniRTC revisions, license documents and native build recipes.
 
+          ## Linux packages
+
+          Choose one package for your architecture; both contain the complete CrossDesk application:
+          - Standard (recommended): crossdesk-linux-ARCH-VERSION.deb, for existing desktops.
+          - Virtual desktop: crossdesk-virtual-desktop-xfce-linux-ARCH-VERSION.deb, which additionally installs Xfce, Xvfb and D-Bus session tools through APT.
+          The packages replace each other and preserve user settings. Installation does not switch your default desktop or start a virtual session.
+          [Linux setup and switching packages](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/HEADLESS_EN.md).
+
           ## Code signing policy
 
           Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
@@ -699,8 +713,12 @@ jobs:
           mkdir -p release
           cp artifacts/crossdesk-macos-x64-${{ steps.version.outputs.VERSION_WITH_V }}/* release/crossdesk-macos-x64-${{ steps.version.outputs.VERSION_WITH_V }}.pkg
           cp artifacts/crossdesk-macos-arm64-${{ steps.version.outputs.VERSION_WITH_V }}/* release/crossdesk-macos-arm64-${{ steps.version.outputs.VERSION_WITH_V }}.pkg
-          cp artifacts/crossdesk-linux-amd64-${{ steps.version.outputs.VERSION_WITH_V }}/* release/crossdesk-linux-amd64-${{ steps.version.outputs.VERSION_WITH_V }}.deb
-          cp artifacts/crossdesk-linux-arm64-${{ steps.version.outputs.VERSION_WITH_V }}/* release/crossdesk-linux-arm64-${{ steps.version.outputs.VERSION_WITH_V }}.deb
+          for ARCH in amd64 arm64; do
+            for PACKAGE in crossdesk crossdesk-virtual-desktop-xfce; do
+              FILE="${PACKAGE}-linux-${ARCH}-${{ steps.version.outputs.VERSION_WITH_V }}.deb"
+              cp "artifacts/crossdesk-linux-${ARCH}-${{ steps.version.outputs.VERSION_WITH_V }}/${FILE}" "release/${FILE}"
+            done
+          done
           cp artifacts/crossdesk-ios-arm64-unsigned-${{ needs.build-ios.outputs.version }}/* release/crossdesk-ios-arm64-unsigned-${{ needs.build-ios.outputs.version }}.zip
           cp artifacts/crossdesk-android-arm64-${{ needs.build-android.outputs.version }}/*.apk release/crossdesk-android-arm64-${{ needs.build-android.outputs.version }}.apk
           cp artifacts/crossdesk-win-x64-${{ steps.version.outputs.VERSION_WITH_V }}/* release/crossdesk-win-x64-${{ steps.version.outputs.VERSION_WITH_V }}.exe

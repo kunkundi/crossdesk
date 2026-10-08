@@ -237,7 +237,8 @@ function setup_targets()
         add_deps("rd_log", "crossdesk_wire")
         add_includedirs("apps/desktop/src/version_checker")
         add_files("apps/desktop/tests/version_checker_test.cpp",
-            "apps/desktop/src/version_checker/version_checker.cpp")
+            "apps/desktop/src/version_checker/version_checker.cpp",
+            "apps/desktop/src/version_checker/linux_update_download.cpp")
         if is_os("macosx") then
             add_defines("CPPHTTPLIB_USE_CERTS_FROM_MACOSX_KEYCHAIN")
             add_frameworks("Security", "CoreFoundation")

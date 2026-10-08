@@ -524,7 +524,10 @@ int RunHeadless(const Options& options, const std::function<int()>& run) {
   const std::string xvfb = FindExecutable("Xvfb");
   if (xvfb.empty()) {
     Diagnostic() << "No usable display. Headless mode requires Xvfb; on Debian/Ubuntu "
-                 "install it with: sudo apt install xvfb\n";
+                 "install it with: sudo apt install xvfb\n"
+                 "For a complete independent desktop, install the "
+                 "crossdesk-virtual-desktop-xfce .deb and use "
+                 "--headless-session startxfce4.\n";
     return 1;
   }
   std::string session;
@@ -532,9 +535,15 @@ int RunHeadless(const Options& options, const std::function<int()>& run) {
   if (!options.session.empty() && options.session != "none") {
     session = FindExecutable(options.session);
     dbus = FindExecutable("dbus-run-session");
-    if (session.empty() || dbus.empty()) {
-      Diagnostic() << "Headless desktop requires an executable --headless-session "
-                   "and dbus-run-session (Debian/Ubuntu: dbus-daemon)\n";
+    if (session.empty()) {
+      Diagnostic() << "Desktop session executable not found: " << options.session
+                   << ". Install that desktop environment first; for Xfce use the "
+                   "crossdesk-virtual-desktop-xfce .deb.\n";
+      return 1;
+    }
+    if (dbus.empty()) {
+      Diagnostic() << "Headless desktop requires dbus-run-session. Install "
+                   "dbus-daemon (or dbus on older Debian/Ubuntu releases).\n";
       return 1;
     }
   }

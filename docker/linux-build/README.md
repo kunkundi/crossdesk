@@ -28,7 +28,7 @@ crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake
 Docker 会根据运行机器自动选择正确架构。amd64 变体以
 `nvidia/cuda:12.6.3-devel-ubuntu20.04` 为基础；arm64 变体不包含当前构建
 用不到的 CUDA SDK。两个变体都使用 Ubuntu 20.04/glibc 2.31，因此生成的
-单一 Linux 安装包可运行在 Ubuntu 20.04 及更高版本。
+普通版和 Xfce 虚拟桌面版安装包均可运行在 Ubuntu 20.04 及更高版本。
 
 Ubuntu 20.04 仓库只提供 PipeWire 0.2。镜像通过
 `install-pipewire-sdk.sh` 安装固定版本的 PipeWire 0.3.48/SPA 头文件，但不

@@ -19,6 +19,8 @@ struct VersionInfo {
   std::string release_notes;
   std::string release_date;
   int patch = -1;
+  // Filled by the desktop updater for the installed package variant.
+  std::string download_url;
 };
 
 // Shared release parsing and comparison for desktop and mobile controllers.
