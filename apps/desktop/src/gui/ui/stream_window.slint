@@ -282,8 +282,20 @@ export component StreamWindow inherits Window {
             root.display-menu-open = false;
             root.shortcut-menu-open = false;
         }
-        input-focus.focus();
+        // Changed handlers may run while Winit/AccessKit is building the
+        // accessibility tree. Changing focus there re-enters its borrowed
+        // adapter and aborts the process; defer focus to the event loop.
+        input-focus-timer.running = true;
+        input-focus-timer.restart();
         root.keyboard-focus-changed(!root.remote-update-visible);
+    }
+    input-focus-timer := Timer {
+        interval: 1ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            input-focus.focus();
+        }
     }
     private property <bool> control-tooltip-visible: false;
     private property <ControlBarTooltip> hovered-control: {

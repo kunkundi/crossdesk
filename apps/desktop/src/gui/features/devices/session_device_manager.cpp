@@ -27,8 +27,10 @@ namespace crossdesk {
 namespace {
 
 constexpr uint64_t kCaptureResumeKeyFrameGapMs = 500;
-constexpr size_t kMaxCapturedKeyboardInputs = 512;
 constexpr auto kFrameDeadlineTolerance = std::chrono::milliseconds(1);
+#ifdef _WIN32
+constexpr auto kKeyboardCaptureRetryDelay = std::chrono::seconds(1);
+#endif
 
 } // namespace
 
@@ -419,8 +421,12 @@ int SessionDeviceManager::StopMouseController() {
 }
 
 int SessionDeviceManager::StartKeyboardCapturer() {
-  ClearCapturedKeyboardInput();
+  captured_keyboard_inputs_.Clear();
   owner_.keyboard_capturer_uses_window_events_ = false;
+#ifdef _WIN32
+  next_keyboard_capture_retry_ =
+      std::chrono::steady_clock::now() + kKeyboardCaptureRetryDelay;
+#endif
 
 #ifdef __APPLE__
   if (!owner_.EnsureMacAccessibilityPermission()) {
@@ -449,8 +455,10 @@ int SessionDeviceManager::StartKeyboardCapturer() {
          void *user_ptr) {
         if (user_ptr) {
           auto *devices = static_cast<SessionDeviceManager *>(user_ptr);
-          devices->QueueCapturedKeyboardInput(key_code, is_down, scan_code,
-                                              extended);
+          // Native hooks only enqueue; forwarding and logging stay off the
+          // hook thread so they cannot trigger LowLevelHooksTimeout.
+          devices->captured_keyboard_inputs_.Push(
+              {key_code, is_down, scan_code, extended});
         }
       },
       this);
@@ -468,7 +476,7 @@ int SessionDeviceManager::StartKeyboardCapturer() {
 int SessionDeviceManager::StopKeyboardCapturer() {
   owner_.keyboard_capturer_is_started_ = false;
   if (keyboard_capturer_) keyboard_capturer_->Unhook();
-  ClearCapturedKeyboardInput();
+  captured_keyboard_inputs_.Clear();
   if (owner_.keyboard_capturer_uses_window_events_) {
     owner_.keyboard_capturer_uses_window_events_ = false;
     LOG_INFO("Stop keyboard capturer with Slint keyboard backend");
@@ -602,7 +610,18 @@ void SessionDeviceManager::UpdateInteractions() {
 #endif
   }
 
-  if (owner_.start_keyboard_capturer_ && owner_.focus_on_stream_window_) {
+  if (owner_.start_keyboard_capturer_ && owner_.focus_on_stream_window_ &&
+      !owner_.privacy_.Snapshot().input_blocked) {
+#ifdef _WIN32
+    if (owner_.keyboard_capturer_is_started_ &&
+        owner_.keyboard_capturer_uses_window_events_ && keyboard_capturer_ &&
+        std::chrono::steady_clock::now() >= next_keyboard_capture_retry_) {
+      // A transient installation failure or stalled hook must not leave
+      // system shortcuts in the window-event fallback until focus changes.
+      StopKeyboardCapturer();
+      owner_.keyboard_.ForceReleasePressedKeys();
+    }
+#endif
     if (!owner_.keyboard_capturer_is_started_ && StartKeyboardCapturer() == 0) {
       owner_.keyboard_capturer_is_started_ = true;
     }
@@ -613,6 +632,10 @@ void SessionDeviceManager::UpdateInteractions() {
         owner_.keyboard_.ForceReleasePressedKeys();
         owner_.keyboard_capturer_uses_window_events_ = true;
         owner_.keyboard_capturer_is_started_ = true;
+#ifdef _WIN32
+        next_keyboard_capture_retry_ =
+            std::chrono::steady_clock::now() + kKeyboardCaptureRetryDelay;
+#endif
         LOG_WARN("Native keyboard capture stopped; using Slint keyboard events");
       }
       DrainCapturedKeyboardInput();
@@ -621,41 +644,23 @@ void SessionDeviceManager::UpdateInteractions() {
   } else if (owner_.keyboard_capturer_is_started_) {
     owner_.keyboard_.ForceReleasePressedKeys();
     StopKeyboardCapturer();
-    owner_.keyboard_capturer_is_started_ = false;
   }
 
   owner_.keyboard_.CheckRemoteTimeouts();
 }
 
-void SessionDeviceManager::QueueCapturedKeyboardInput(int key_code,
-                                                       bool is_down,
-                                                       uint32_t scan_code,
-                                                       bool extended) {
-  std::lock_guard<std::mutex> lock(captured_keyboard_inputs_mutex_);
-  if (captured_keyboard_inputs_.size() >= kMaxCapturedKeyboardInputs) {
-    captured_keyboard_inputs_.pop_front();
-    LOG_WARN("Captured keyboard input queue overflow, dropping oldest event");
-  }
-  captured_keyboard_inputs_.push_back(
-      CapturedKeyboardInput{key_code, is_down, scan_code, extended});
-}
-
 void SessionDeviceManager::DrainCapturedKeyboardInput() {
-  std::deque<CapturedKeyboardInput> inputs;
-  {
-    std::lock_guard<std::mutex> lock(captured_keyboard_inputs_mutex_);
-    inputs.swap(captured_keyboard_inputs_);
-  }
+  const auto inputs = captured_keyboard_inputs_.Drain();
   if (owner_.privacy_.Snapshot().input_blocked) return;
-  for (const CapturedKeyboardInput &input : inputs) {
+  if (inputs.resync) {
+    LOG_WARN("Captured keyboard queue overflow; reconciling pressed keys");
+    owner_.keyboard_.RecoverCapturedState(inputs.pressed);
+    return;
+  }
+  for (const KeyboardInput &input : inputs.events) {
     owner_.keyboard_.SendKeyCommand(input.key_code, input.is_down,
                                     input.scan_code, input.extended);
   }
-}
-
-void SessionDeviceManager::ClearCapturedKeyboardInput() {
-  std::lock_guard<std::mutex> lock(captured_keyboard_inputs_mutex_);
-  captured_keyboard_inputs_.clear();
 }
 
 bool SessionDeviceManager::SendKeyboardCommand(int key_code, bool is_down,

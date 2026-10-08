@@ -9,39 +9,54 @@
 
 #include <Windows.h>
 
+#include <array>
+#include <atomic>
 #include <condition_variable>
 #include <mutex>
 #include <thread>
 
 #include "device_controller.h"
+#include "keyboard_state.h"
+#include "windows_raw_keyboard_guard.h"
 
 namespace crossdesk {
 
 class PlatformKeyboardCapturer final : public KeyboardCapturer {
  public:
-  PlatformKeyboardCapturer();
-  virtual ~PlatformKeyboardCapturer();
+  PlatformKeyboardCapturer() = default;
+  ~PlatformKeyboardCapturer() override;
 
- public:
-  virtual int Hook(OnKeyAction on_key_action, void* user_ptr);
-  virtual int Unhook();
-  virtual int SendKeyboardCommand(int key_code, bool is_down,
-                                  uint32_t scan_code = 0,
-                                  bool extended = false);
+  int Hook(OnKeyAction on_key_action, void* user_ptr) override;
+  int Unhook() override;
+  bool IsHookActive() const override;
+  int SendKeyboardCommand(int key_code, bool is_down, uint32_t scan_code = 0,
+                          bool extended = false) override;
 
  private:
-  static LRESULT CALLBACK RawInputWindowProc(HWND window, UINT message,
-                                             WPARAM w_param, LPARAM l_param);
+  static LRESULT CALLBACK KeyboardHookProc(int code, WPARAM message,
+                                           LPARAM data);
+  static thread_local PlatformKeyboardCapturer* active_capturer_;
 
-  void RawInputThreadMain();
-  bool CreateRawInputWindow();
-  void DestroyRawInputWindow();
-  void HandleRawInput(HRAWINPUT raw_input_handle);
+  void CaptureThreadMain();
+  bool RenewKeyboardHook();
+  void RemoveKeyboardHook();
+  void SnapshotLocalKeys();
+  void ForwardLocalModifiers();
+  void ReleaseCapturedKeys();
+  void ForwardKey(int code, bool down, uint32_t scan_code, bool extended);
+  bool HandleKeyboardInput(WPARAM message, const KBDLLHOOKSTRUCT& keyboard,
+                           HWND foreground_window);
 
   OnKeyAction on_key_action_ = nullptr;
   void* user_ptr_ = nullptr;
-  HWND raw_input_window_ = nullptr;
-  bool raw_input_registered_ = false;
+  HWND capture_window_ = nullptr;
+  std::atomic<bool> hook_active_{false};
+  std::atomic<ULONGLONG> last_hook_pump_tick_{0};
+  HHOOK keyboard_hook_ = nullptr;
+  WindowsRawKeyboardGuard raw_keyboard_guard_;
+  HHOOK retired_hook_ = nullptr;
+  std::array<bool, 256> local_keys_down_{};
+  std::array<KeyboardKey, 256> captured_keys_{};
   std::thread capture_thread_;
   DWORD capture_thread_id_ = 0;
   bool capture_start_complete_ = false;

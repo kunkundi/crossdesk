@@ -7,12 +7,10 @@
 #ifndef _SESSION_DEVICE_MANAGER_H_
 #define _SESSION_DEVICE_MANAGER_H_
 
-
 #include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <deque>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -21,6 +19,7 @@
 
 #include "device_controller.h"
 #include "display_info.h"
+#include "features/input/captured_keyboard_queue.h"
 #include "speaker_capture_controller.h"
 
 struct SDL_AudioStream;
@@ -83,17 +82,7 @@ public:
   std::vector<HostDisplay> host_display_list() const;
 
 private:
-  struct CapturedKeyboardInput {
-    int key_code = 0;
-    bool is_down = false;
-    uint32_t scan_code = 0;
-    bool extended = false;
-  };
-
-  void QueueCapturedKeyboardInput(int key_code, bool is_down,
-                                  uint32_t scan_code, bool extended);
   void DrainCapturedKeyboardInput();
-  void ClearCapturedKeyboardInput();
   bool ShouldSendCapturedFrame(std::chrono::steady_clock::time_point now,
                                int fps);
   bool ShouldCaptureCursor() const;
@@ -115,8 +104,10 @@ private:
   mutable std::mutex display_info_mutex_;
   std::vector<DisplayInfo> display_info_list_;
   size_t registered_display_stream_count_ = 0;
-  std::deque<CapturedKeyboardInput> captured_keyboard_inputs_;
-  std::mutex captured_keyboard_inputs_mutex_;
+  CapturedKeyboardQueue captured_keyboard_inputs_;
+#ifdef _WIN32
+  std::chrono::steady_clock::time_point next_keyboard_capture_retry_{};
+#endif
   std::chrono::steady_clock::time_point last_frame_time_{};
   std::chrono::steady_clock::time_point next_frame_deadline_{};
   std::mutex capture_metrics_mutex_;

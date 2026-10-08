@@ -8,7 +8,7 @@
 
 #include <remote_action.h>
 
-#include "device_controller.h"
+#include "keyboard_state.h"
 
 namespace crossdesk {
 
@@ -23,6 +23,7 @@ public:
   int SendKeyCommand(int key_code, bool is_down, uint32_t scan_code = 0,
                      bool extended = false);
   void ForceReleasePressedKeys();
+  void RecoverCapturedState(const PressedKeys& pressed);
   void SendHeartbeat(bool force);
   void ApplyRemoteEvent(const std::string &remote_id,
                         const RemoteAction &remote_action);
@@ -34,14 +35,8 @@ public:
   void CheckRemoteTimeouts();
 
 private:
-  struct PressedKey {
-    int key_code = 0;
-    uint32_t scan_code = 0;
-    bool extended = false;
-  };
-
   struct RemoteState {
-    std::unordered_map<int, PressedKey> pressed_keys;
+    PressedKeys pressed_keys;
     uint32_t last_seq = 0;
     uint32_t last_seen_tick = 0;
     bool keyboard_state_seen = false;
@@ -51,17 +46,20 @@ private:
                        bool extended);
   bool InjectRemoteKey(int key_code, bool is_down, uint32_t scan_code,
                        bool extended);
+  // Caller holds remote_input_mutex_. Copy the id because this erases state.
+  void ReleaseRemotePressedKeysLocked(std::string remote_id, const char* reason);
 
   GuiRuntime &owner_;
-  std::unordered_map<int, PressedKey> pressed_keys_;
+  PressedKeys pressed_keys_;
   std::mutex pressed_keys_mutex_;
   uint32_t state_sequence_ = 0;
   uint32_t last_heartbeat_tick_ = 0;
   std::unordered_map<std::string, RemoteState> remote_states_;
-  std::mutex remote_states_mutex_;
-#ifdef _WIN32
-  std::unordered_map<int, PressedKey> pending_privacy_releases_;
-#endif
+  // Guards all remote key state and serializes injection, cleanup and retries.
+  std::mutex remote_input_mutex_;
+  // Successful new input supersedes cleanup of an older press of that key.
+  PressedKeys pending_key_releases_;
+  uint32_t last_release_retry_tick_ = 0;
 };
 
 } // namespace crossdesk

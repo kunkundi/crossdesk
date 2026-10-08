@@ -1,7 +1,5 @@
 #include "keyboard_capturer.h"
 
-#include <hidusage.h>
-
 #include "rd_log.h"
 #include "windows_input_injector.h"
 #include "windows_input_marker.h"
@@ -10,8 +8,8 @@
 namespace crossdesk {
 namespace {
 
-constexpr wchar_t kRawInputWindowClassName[] =
-    L"CrossDeskKeyboardRawInputWindow";
+constexpr UINT kHookRenewIntervalMs = 500;
+constexpr ULONGLONG kHookStallTimeoutMs = 2000;
 
 bool PreferSideSpecificVkInjection(int key_code) {
   switch (key_code) {
@@ -31,15 +29,32 @@ bool PreferSideSpecificVkInjection(int key_code) {
 
 }  // namespace
 
-PlatformKeyboardCapturer::PlatformKeyboardCapturer() {}
+thread_local PlatformKeyboardCapturer*
+    PlatformKeyboardCapturer::active_capturer_ = nullptr;
 
 PlatformKeyboardCapturer::~PlatformKeyboardCapturer() { Unhook(); }
 
+bool PlatformKeyboardCapturer::IsHookActive() const {
+  if (!hook_active_.load()) return false;
+  const auto last_pump_tick = last_hook_pump_tick_.load();
+  return GetTickCount64() - last_pump_tick < kHookStallTimeoutMs;
+}
+
 int PlatformKeyboardCapturer::Hook(OnKeyAction on_key_action, void* user_ptr) {
   if (capture_thread_.joinable()) {
-    return 0;
+    return IsHookActive() ? 0 : -1;
   }
 
+  // Hook() is called only while the stream has focus. Pin capture to that
+  // window so a focus change cannot steal input before the UI stops capture.
+  const HWND foreground_window = GetForegroundWindow();
+  DWORD process_id = 0;
+  GetWindowThreadProcessId(foreground_window, &process_id);
+  if (!on_key_action || !foreground_window ||
+      process_id != GetCurrentProcessId()) {
+    return -1;
+  }
+  capture_window_ = foreground_window;
   on_key_action_ = on_key_action;
   user_ptr_ = user_ptr;
   {
@@ -49,7 +64,7 @@ int PlatformKeyboardCapturer::Hook(OnKeyAction on_key_action, void* user_ptr) {
     capture_start_succeeded_ = false;
   }
 
-  capture_thread_ = std::thread(&PlatformKeyboardCapturer::RawInputThreadMain, this);
+  capture_thread_ = std::thread(&PlatformKeyboardCapturer::CaptureThreadMain, this);
 
   std::unique_lock<std::mutex> lock(capture_state_mutex_);
   capture_start_condition_.wait(
@@ -69,6 +84,7 @@ int PlatformKeyboardCapturer::Hook(OnKeyAction on_key_action, void* user_ptr) {
 }
 
 int PlatformKeyboardCapturer::Unhook() {
+  hook_active_.store(false);
   DWORD capture_thread_id = 0;
   {
     std::lock_guard<std::mutex> lock(capture_state_mutex_);
@@ -76,7 +92,7 @@ int PlatformKeyboardCapturer::Unhook() {
   }
   if (capture_thread_id != 0 &&
       !PostThreadMessageW(capture_thread_id, WM_QUIT, 0, 0)) {
-    LOG_WARN("Failed to stop keyboard raw input thread, thread_id={}, error={}",
+    LOG_WARN("Failed to stop keyboard hook thread, thread_id={}, error={}",
              capture_thread_id, GetLastError());
   }
   if (capture_thread_.joinable()) {
@@ -85,15 +101,130 @@ int PlatformKeyboardCapturer::Unhook() {
 
   on_key_action_ = nullptr;
   user_ptr_ = nullptr;
+  capture_window_ = nullptr;
+  local_keys_down_.fill(false);
+  captured_keys_.fill({});
   return 0;
 }
 
-void PlatformKeyboardCapturer::RawInputThreadMain() {
+void PlatformKeyboardCapturer::SnapshotLocalKeys() {
+  local_keys_down_.fill(false);
+  for (int code = VK_BACK; code < 0xFF; ++code)
+    local_keys_down_[code] = (GetAsyncKeyState(code) & 0x8000) != 0;
+  ForwardLocalModifiers();
+}
+
+void PlatformKeyboardCapturer::ForwardKey(int code, bool down,
+                                         uint32_t scan_code, bool extended) {
+  captured_keys_[code] = down ? KeyboardKey{code, scan_code, extended}
+                              : KeyboardKey{};
+  on_key_action_(code, down, scan_code, extended, user_ptr_);
+}
+
+void PlatformKeyboardCapturer::ForwardLocalModifiers() {
+  // Windows already saw these presses before capture began. Forward held
+  // modifiers now, but let their eventual physical releases reach Windows
+  // too. Swallowing those releases would leave the controller's keys stuck.
+  for (const int code : {VK_LSHIFT, VK_RSHIFT, VK_LCONTROL, VK_RCONTROL,
+                         VK_LMENU, VK_RMENU, VK_LWIN, VK_RWIN}) {
+    if (!local_keys_down_[code] || captured_keys_[code].key_code != 0) continue;
+    const UINT scan = MapVirtualKeyW(code, MAPVK_VK_TO_VSC_EX);
+    ForwardKey(code, true, scan & 0xFF, (scan & 0xFF00) != 0);
+  }
+}
+
+void PlatformKeyboardCapturer::ReleaseCapturedKeys() {
+  for (const bool modifiers : {false, true}) {
+    for (const auto key : captured_keys_) {
+      if (key.key_code != 0 && IsKeyboardModifier(key.key_code) == modifiers)
+        ForwardKey(key.key_code, false, key.scan_code, key.extended);
+    }
+  }
+}
+
+bool PlatformKeyboardCapturer::RenewKeyboardHook() {
+  bool raw_keyboard_suspended = false;
+  if (!raw_keyboard_guard_.Suspend(raw_keyboard_suspended)) {
+    hook_active_.store(false);
+    LOG_WARN("Failed to suspend raw keyboard registration, error={}",
+             GetLastError());
+    return false;
+  }
+  // Windows can silently remove a timed-out hook. Renew periodically instead
+  // of relying on a bool set at startup. Install first to avoid an input gap.
+  const HHOOK replacement = SetWindowsHookExW(
+      WH_KEYBOARD_LL, &PlatformKeyboardCapturer::KeyboardHookProc,
+      GetModuleHandleW(nullptr), 0);
+  if (!replacement) {
+    hook_active_.store(false);
+    LOG_WARN("Failed to install keyboard hook, error={}", GetLastError());
+    return false;
+  }
+  const HHOOK previous = keyboard_hook_;
+  keyboard_hook_ = replacement;
+  if (raw_keyboard_suspended && !previous)
+    LOG_INFO("Suspended raw keyboard input for shortcut capture");
+  bool reset_keys = previous && raw_keyboard_suspended;
+  if (previous && !UnhookWindowsHookEx(previous)) {
+    const DWORD error = GetLastError();
+    if (error != ERROR_INVALID_HOOK_HANDLE) {
+      // Do not keep capturing through two live hooks: a passed-through
+      // inherited release could otherwise be handled twice and swallowed.
+      // Renewal stops immediately, so only this one old hook needs cleanup.
+      retired_hook_ = previous;
+      hook_active_.store(false);
+      LOG_WARN("Failed to retire keyboard hook, error={}", error);
+      return false;
+    }
+    reset_keys = true;
+    LOG_WARN("Recovered keyboard hook, error={}", error);
+  }
+  if (reset_keys) {
+    // Events may have escaped while the hook was unavailable or a backend
+    // re-enabled raw input. Cancel uncertain presses and adopt local state.
+    ReleaseCapturedKeys();
+    if (GetForegroundWindow() == capture_window_)
+      SnapshotLocalKeys();
+    else
+      local_keys_down_.fill(false);
+    LOG_WARN("Reset captured keys after keyboard capture recovery");
+  }
+  last_hook_pump_tick_.store(GetTickCount64());
+  hook_active_.store(true);
+  return true;
+}
+
+void PlatformKeyboardCapturer::RemoveKeyboardHook() {
+  if (keyboard_hook_) UnhookWindowsHookEx(keyboard_hook_);
+  keyboard_hook_ = nullptr;
+  if (retired_hook_) UnhookWindowsHookEx(retired_hook_);
+  retired_hook_ = nullptr;
+  if (!raw_keyboard_guard_.Restore())
+    LOG_WARN("Failed to restore raw keyboard registration, error={}",
+             GetLastError());
+}
+
+void PlatformKeyboardCapturer::CaptureThreadMain() {
   const DWORD thread_id = GetCurrentThreadId();
 
   MSG message{};
   PeekMessageW(&message, nullptr, WM_USER, WM_USER, PM_NOREMOVE);
-  const bool capture_started = CreateRawInputWindow();
+  active_capturer_ = this;
+  // Raw Input observes shortcuts but cannot prevent Alt+Tab, Win+D, etc.
+  // from acting on the controller. Keep the hook off the UI/network thread:
+  // its callback only queues events for SessionDeviceManager to forward.
+  const bool installed = RenewKeyboardHook();
+  const UINT_PTR timer = installed
+                             ? SetTimer(nullptr, 0, kHookRenewIntervalMs, nullptr)
+                             : 0;
+  const bool capture_started = installed && timer != 0;
+  if (installed && !timer) {
+    LOG_WARN("Failed to create keyboard hook renewal timer, error={}",
+             GetLastError());
+  }
+  hook_active_.store(capture_started);
+  if (capture_started && GetForegroundWindow() == capture_window_)
+    SnapshotLocalKeys();
   {
     std::lock_guard<std::mutex> lock(capture_state_mutex_);
     capture_thread_id_ = thread_id;
@@ -103,153 +234,78 @@ void PlatformKeyboardCapturer::RawInputThreadMain() {
   capture_start_condition_.notify_one();
 
   if (!capture_started) {
+    RemoveKeyboardHook();
+    active_capturer_ = nullptr;
     std::lock_guard<std::mutex> lock(capture_state_mutex_);
     capture_thread_id_ = 0;
     return;
   }
 
-  LOG_INFO("Keyboard raw input capture started, thread_id={}", thread_id);
+  LOG_INFO("Keyboard hook capture started, thread_id={}", thread_id);
   while (true) {
     const BOOL get_message_result = GetMessageW(&message, nullptr, 0, 0);
     if (get_message_result <= 0) {
       if (get_message_result < 0) {
-        LOG_WARN("Keyboard raw input message loop failed, thread_id={}, "
+        LOG_WARN("Keyboard hook message loop failed, thread_id={}, "
                  "error={}",
                  thread_id, GetLastError());
       }
       break;
     }
+    last_hook_pump_tick_.store(GetTickCount64());
+    if (message.message == WM_TIMER && message.wParam == timer) {
+      if (!RenewKeyboardHook()) break;
+      continue;
+    }
     TranslateMessage(&message);
     DispatchMessageW(&message);
   }
 
-  DestroyRawInputWindow();
+  hook_active_.store(false);
+  KillTimer(nullptr, timer);
+  RemoveKeyboardHook();
+  active_capturer_ = nullptr;
   {
     std::lock_guard<std::mutex> lock(capture_state_mutex_);
     capture_thread_id_ = 0;
   }
-  LOG_INFO("Keyboard raw input capture stopped, thread_id={}", thread_id);
+  LOG_INFO("Keyboard hook capture stopped, thread_id={}", thread_id);
 }
 
-bool PlatformKeyboardCapturer::CreateRawInputWindow() {
-  const HINSTANCE instance = GetModuleHandleW(nullptr);
-  WNDCLASSEXW window_class{};
-  window_class.cbSize = sizeof(window_class);
-  window_class.lpfnWndProc = &PlatformKeyboardCapturer::RawInputWindowProc;
-  window_class.hInstance = instance;
-  window_class.lpszClassName = kRawInputWindowClassName;
-
-  if (RegisterClassExW(&window_class) == 0) {
-    const DWORD error = GetLastError();
-    if (error != ERROR_CLASS_ALREADY_EXISTS) {
-      LOG_WARN("Failed to register keyboard raw input window class, error={}",
-               error);
-      return false;
-    }
+LRESULT CALLBACK PlatformKeyboardCapturer::KeyboardHookProc(
+    int code, WPARAM message, LPARAM data) {
+  if (code == HC_ACTION && active_capturer_ && data != 0 &&
+      active_capturer_->HandleKeyboardInput(
+          message, *reinterpret_cast<const KBDLLHOOKSTRUCT*>(data),
+          GetForegroundWindow())) {
+    return 1;
   }
+  return CallNextHookEx(nullptr, code, message, data);
+}
 
-  raw_input_window_ = CreateWindowExW(
-      0, kRawInputWindowClassName, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr,
-      instance, this);
-  if (!raw_input_window_) {
-    LOG_WARN("Failed to create keyboard raw input window, error={}",
-             GetLastError());
+bool PlatformKeyboardCapturer::HandleKeyboardInput(
+    WPARAM message, const KBDLLHOOKSTRUCT& keyboard, HWND foreground_window) {
+  if (!hook_active_.load() || !on_key_action_ || !capture_window_ ||
+      keyboard.vkCode < VK_BACK || keyboard.vkCode >= 0xFF ||
+      keyboard.dwExtraInfo == kInjectedKeyboardInputMarker) {
     return false;
   }
-
-  RAWINPUTDEVICE keyboard_device{};
-  keyboard_device.usUsagePage = HID_USAGE_PAGE_GENERIC;
-  keyboard_device.usUsage = HID_USAGE_GENERIC_KEYBOARD;
-  keyboard_device.dwFlags = RIDEV_DEVNOTIFY | RIDEV_INPUTSINK;
-  keyboard_device.hwndTarget = raw_input_window_;
-  if (!RegisterRawInputDevices(&keyboard_device, 1,
-                               sizeof(keyboard_device))) {
-    LOG_WARN("Failed to register keyboard raw input, error={}", GetLastError());
-    DestroyWindow(raw_input_window_);
-    raw_input_window_ = nullptr;
-    return false;
-  }
-
-  raw_input_registered_ = true;
-  return true;
-}
-
-void PlatformKeyboardCapturer::DestroyRawInputWindow() {
-  if (raw_input_registered_) {
-    RAWINPUTDEVICE keyboard_device{};
-    keyboard_device.usUsagePage = HID_USAGE_PAGE_GENERIC;
-    keyboard_device.usUsage = HID_USAGE_GENERIC_KEYBOARD;
-    keyboard_device.dwFlags = RIDEV_REMOVE;
-    keyboard_device.hwndTarget = nullptr;
-    if (!RegisterRawInputDevices(&keyboard_device, 1,
-                                 sizeof(keyboard_device))) {
-      LOG_WARN("Failed to unregister keyboard raw input, error={}",
-               GetLastError());
-    }
-    raw_input_registered_ = false;
-  }
-  if (raw_input_window_) {
-    DestroyWindow(raw_input_window_);
-    raw_input_window_ = nullptr;
-  }
-}
-
-LRESULT CALLBACK PlatformKeyboardCapturer::RawInputWindowProc(
-    HWND window, UINT message, WPARAM w_param, LPARAM l_param) {
-  PlatformKeyboardCapturer* capturer = reinterpret_cast<PlatformKeyboardCapturer*>(
-      GetWindowLongPtrW(window, GWLP_USERDATA));
-  if (message == WM_NCCREATE) {
-    auto* create = reinterpret_cast<CREATESTRUCTW*>(l_param);
-    capturer = static_cast<PlatformKeyboardCapturer*>(create->lpCreateParams);
-    SetWindowLongPtrW(window, GWLP_USERDATA,
-                      reinterpret_cast<LONG_PTR>(capturer));
-  } else if (message == WM_INPUT && capturer) {
-    capturer->HandleRawInput(reinterpret_cast<HRAWINPUT>(l_param));
-  } else if (message == WM_NCDESTROY) {
-    SetWindowLongPtrW(window, GWLP_USERDATA, 0);
-  }
-  return DefWindowProcW(window, message, w_param, l_param);
-}
-
-void PlatformKeyboardCapturer::HandleRawInput(HRAWINPUT raw_input_handle) {
-  RAWINPUT input{};
-  UINT input_size = sizeof(input);
-  const UINT bytes_read =
-      GetRawInputData(raw_input_handle, RID_INPUT, &input, &input_size,
-                      sizeof(RAWINPUTHEADER));
-  if (bytes_read == static_cast<UINT>(-1) ||
-      bytes_read < sizeof(RAWINPUTHEADER) ||
-      input.header.dwType != RIM_TYPEKEYBOARD) {
-    return;
-  }
-
-  const RAWKEYBOARD& keyboard = input.data.keyboard;
-  if (keyboard.VKey == 0xFF ||
-      keyboard.ExtraInformation ==
-          static_cast<ULONG>(kInjectedKeyboardInputMarker)) {
-    return;
-  }
+  // Do not reject LLKHF_INJECTED wholesale: an upstream remote session or
+  // accessibility tool can be the controller's keyboard source.
 
   bool is_down = false;
-  if (keyboard.Message == WM_KEYDOWN || keyboard.Message == WM_SYSKEYDOWN) {
+  if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN) {
     is_down = true;
-  } else if (keyboard.Message != WM_KEYUP &&
-             keyboard.Message != WM_SYSKEYUP) {
-    return;
+  } else if (message != WM_KEYUP && message != WM_SYSKEYUP) {
+    return false;
   }
 
-  const bool extended = (keyboard.Flags & (RI_KEY_E0 | RI_KEY_E1)) != 0;
-  UINT mapped_scan_code = keyboard.MakeCode;
-  if ((keyboard.Flags & RI_KEY_E0) != 0) {
+  const bool extended = (keyboard.flags & LLKHF_EXTENDED) != 0;
+  UINT mapped_scan_code = keyboard.scanCode & 0xFF;
+  if (extended) {
     mapped_scan_code |= 0xE000;
-  } else if ((keyboard.Flags & RI_KEY_E1) != 0) {
-    mapped_scan_code |= 0xE100;
   }
-  if (mapped_scan_code == 0xE11D || mapped_scan_code == 0xE02A) {
-    return;
-  }
-
-  int key_code = static_cast<int>(keyboard.VKey);
+  int key_code = static_cast<int>(keyboard.vkCode);
   if (key_code == VK_SHIFT || key_code == VK_CONTROL || key_code == VK_MENU) {
     const UINT normalized =
         MapVirtualKeyW(mapped_scan_code, MAPVK_VSC_TO_VK_EX);
@@ -258,9 +314,19 @@ void PlatformKeyboardCapturer::HandleRawInput(HRAWINPUT raw_input_handle) {
     }
   }
 
-  if (on_key_action_) {
-    on_key_action_(key_code, is_down, keyboard.MakeCode, extended, user_ptr_);
+  if (foreground_window != capture_window_) {
+    // This event goes to Windows, even if focus changed before the UI thread
+    // has noticed. Remember ownership in case focus returns before Unhook().
+    local_keys_down_[key_code] = is_down;
+    if (!is_down && captured_keys_[key_code].key_code != 0)
+      ForwardKey(key_code, false, keyboard.scanCode, extended);
+    return false;
   }
+  ForwardLocalModifiers();
+  const bool release_local = !is_down && local_keys_down_[key_code];
+  if (!is_down) local_keys_down_[key_code] = false;
+  ForwardKey(key_code, is_down, keyboard.scanCode, extended);
+  return !release_local;
 }
 
 // Apply remote keyboard commands to the local machine.

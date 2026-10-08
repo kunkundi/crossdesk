@@ -8,7 +8,7 @@
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <string>
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "minirtc.h"
@@ -26,6 +26,7 @@ namespace {
 
 constexpr uint32_t kHeartbeatIntervalMs = 500;
 constexpr uint32_t kRemoteReleaseTimeoutMs = 2500;
+constexpr uint32_t kReleaseRetryIntervalMs = 250;
 
 int NormalizeWindowsModifierVk(int key_code, uint32_t scan_code,
                                bool extended) {
@@ -99,25 +100,34 @@ void KeyboardController::TrackPressedKey(int key_code, bool is_down,
                                          uint32_t scan_code, bool extended) {
   std::lock_guard<std::mutex> lock(pressed_keys_mutex_);
   if (is_down) {
-    pressed_keys_[key_code] = PressedKey{key_code, scan_code, extended};
+    pressed_keys_[key_code] = KeyboardKey{key_code, scan_code, extended};
   } else {
     pressed_keys_.erase(key_code);
   }
 }
 
 void KeyboardController::ForceReleasePressedKeys() {
-  std::vector<PressedKey> pressed_keys;
+  PressedKeys pressed_keys;
   {
     std::lock_guard<std::mutex> lock(pressed_keys_mutex_);
-    pressed_keys.reserve(pressed_keys_.size());
-    for (const auto& [_, key] : pressed_keys_) {
-      pressed_keys.push_back(key);
-    }
-    pressed_keys_.clear();
+    pressed_keys.swap(pressed_keys_);
   }
 
-  for (const PressedKey& key : pressed_keys) {
+  for (const auto& [_, key] : pressed_keys) {
     SendKeyCommand(key.key_code, false, key.scan_code, key.extended);
+  }
+  SendHeartbeat(true);
+}
+
+void KeyboardController::RecoverCapturedState(const PressedKeys& pressed) {
+  std::vector<KeyboardInput> changes;
+  {
+    std::lock_guard lock(pressed_keys_mutex_);
+    changes = ReconcileKeyboardState(pressed_keys_, pressed);
+  }
+  for (const auto& event : changes) {
+    SendKeyCommand(event.key_code, event.is_down, event.scan_code,
+                    event.extended);
   }
   SendHeartbeat(true);
 }
@@ -246,7 +256,9 @@ bool KeyboardController::InjectRemoteKey(int key_code, bool is_down,
                   "Secure desktop keyboard injection transient failure, "
                   "key_code={}, is_down={}, response={}",
                   key_code, is_down, response);
-              return {true, false};
+              // The release was not injected. Keep it tracked so cleanup can
+              // retry on the ordinary desktop after the transition.
+              return {false, false};
             }
 
             LogSecureDesktopInputBlocked(
@@ -269,17 +281,18 @@ bool KeyboardController::InjectRemoteKey(int key_code, bool is_down,
 
 void KeyboardController::ApplyRemoteEvent(const std::string& remote_id,
                                           const RemoteAction& action) {
+  std::lock_guard input_lock(remote_input_mutex_);
   const int key_code = static_cast<int>(action.k.key_value);
   const bool is_down = action.k.flag == KeyFlag::key_down;
   const bool injected =
       InjectRemoteKey(key_code, is_down, action.k.scan_code, action.k.extended);
+  if (injected) pending_key_releases_.erase(key_code);
 
-  std::lock_guard<std::mutex> lock(remote_states_mutex_);
   auto& state = remote_states_[remote_id];
   state.last_seen_tick = static_cast<uint32_t>(SDL_GetTicks());
   if (is_down && injected) {
     state.pressed_keys[key_code] =
-        PressedKey{key_code, action.k.scan_code, action.k.extended};
+        KeyboardKey{key_code, action.k.scan_code, action.k.extended};
   } else if (!is_down && injected) {
     state.pressed_keys.erase(key_code);
   }
@@ -287,136 +300,117 @@ void KeyboardController::ApplyRemoteEvent(const std::string& remote_id,
 
 void KeyboardController::ApplyRemoteState(const std::string& remote_id,
                                           const RemoteAction& action) {
-  std::vector<PressedKey> keys_to_release;
-  std::vector<PressedKey> keys_to_press;
-  {
-    std::lock_guard<std::mutex> lock(remote_states_mutex_);
-    auto& state = remote_states_[remote_id];
-    if (action.ks.seq != 0 && state.last_seq != 0 &&
-        static_cast<int32_t>(action.ks.seq - state.last_seq) <= 0) {
-      return;
-    }
-
-    state.last_seq = action.ks.seq;
-    state.last_seen_tick = static_cast<uint32_t>(SDL_GetTicks());
-    state.keyboard_state_seen = true;
-
-    std::unordered_map<int, PressedKey> desired_keys;
-    const size_t count =
-        (std::min)(action.ks.pressed_count, kMaxKeyboardStateKeys);
-    for (size_t index = 0; index < count; ++index) {
-      const auto& key = action.ks.pressed_keys[index];
-      const int key_code = static_cast<int>(key.key_value);
-      desired_keys[key_code] =
-          PressedKey{key_code, key.scan_code, key.extended};
-    }
-    for (const auto& [key_code, key] : state.pressed_keys) {
-      if (desired_keys.find(key_code) == desired_keys.end()) {
-        keys_to_release.push_back(key);
-      }
-    }
-    for (const auto& [key_code, key] : desired_keys) {
-      if (state.pressed_keys.find(key_code) == state.pressed_keys.end()) {
-        keys_to_press.push_back(key);
-      }
-    }
+  std::lock_guard input_lock(remote_input_mutex_);
+  auto& state = remote_states_[remote_id];
+  if (action.ks.seq != 0 && state.last_seq != 0 &&
+      static_cast<int32_t>(action.ks.seq - state.last_seq) <= 0) {
+    return;
   }
 
-  for (const PressedKey& key : keys_to_release) {
-    if (InjectRemoteKey(key.key_code, false, key.scan_code, key.extended)) {
-      std::lock_guard<std::mutex> lock(remote_states_mutex_);
-      const auto state_it = remote_states_.find(remote_id);
-      if (state_it != remote_states_.end()) {
-        state_it->second.pressed_keys.erase(key.key_code);
-      }
-    }
+  state.last_seq = action.ks.seq;
+  state.last_seen_tick = static_cast<uint32_t>(SDL_GetTicks());
+  state.keyboard_state_seen = true;
+
+  PressedKeys desired_keys;
+  const size_t count =
+      (std::min)(action.ks.pressed_count, kMaxKeyboardStateKeys);
+  for (size_t index = 0; index < count; ++index) {
+    const auto& key = action.ks.pressed_keys[index];
+    const int key_code = static_cast<int>(key.key_value);
+    desired_keys[key_code] = {key_code, key.scan_code, key.extended};
   }
-  for (const PressedKey& key : keys_to_press) {
-    if (InjectRemoteKey(key.key_code, true, key.scan_code, key.extended)) {
-      std::lock_guard<std::mutex> lock(remote_states_mutex_);
-      remote_states_[remote_id].pressed_keys[key.key_code] = key;
+  const auto changes = ReconcileKeyboardState(state.pressed_keys, desired_keys);
+  bool can_press = true;
+  for (const auto& key : changes) {
+    if (key.is_down && !can_press) continue;
+    if (!InjectRemoteKey(key.key_code, key.is_down, key.scan_code, key.extended)) {
+      // Do not replay a shortcut with a stale/missing modifier. The next
+      // heartbeat will retry from the state that was actually injected.
+      can_press = false;
+      continue;
     }
+    pending_key_releases_.erase(key.key_code);
+    if (key.is_down)
+      state.pressed_keys[key.key_code] =
+          {key.key_code, key.scan_code, key.extended};
+    else
+      state.pressed_keys.erase(key.key_code);
   }
 }
 
 void KeyboardController::ReleaseRemotePressedKeys(const std::string& remote_id,
                                                   const char* reason) {
-  std::vector<PressedKey> keys_to_release;
-  {
-    std::lock_guard<std::mutex> lock(remote_states_mutex_);
-    const auto state_it = remote_states_.find(remote_id);
-    if (state_it == remote_states_.end()) {
-      return;
-    }
-    for (const auto& [_, key] : state_it->second.pressed_keys) {
-      keys_to_release.push_back(key);
-    }
-    remote_states_.erase(state_it);
-  }
+  std::lock_guard input_lock(remote_input_mutex_);
+  ReleaseRemotePressedKeysLocked(remote_id, reason);
+}
+
+void KeyboardController::ReleaseRemotePressedKeysLocked(
+    std::string remote_id, const char* reason) {
+  const auto state_it = remote_states_.find(remote_id);
+  if (state_it == remote_states_.end()) return;
+  auto keys_to_release = std::move(state_it->second.pressed_keys);
+  remote_states_.erase(state_it);
 
   if (!keys_to_release.empty()) {
     LOG_WARN("Releasing {} remote keyboard keys for remote_id={}, reason={}",
              keys_to_release.size(), remote_id, reason ? reason : "unknown");
   }
-  for (const PressedKey& key : keys_to_release) {
+  for (const auto& [code, key] : keys_to_release) {
     if (!InjectRemoteKey(key.key_code, false, key.scan_code, key.extended)) {
-#ifdef _WIN32
-      if (owner_.privacy_.Engaged()) {
-        std::lock_guard lock(remote_states_mutex_);
-        pending_privacy_releases_[key.key_code] = key;
-      }
-#endif
+      pending_key_releases_[code] = key;
+    } else {
+      pending_key_releases_.erase(code);
     }
   }
 }
 
 void KeyboardController::ReleaseAllRemotePressedKeys(const char* reason) {
-  std::vector<std::string> remotes;
   {
-    std::lock_guard lock(remote_states_mutex_);
-    for (const auto& [id, state] : remote_states_) remotes.push_back(id);
+    std::lock_guard input_lock(remote_input_mutex_);
+    while (!remote_states_.empty())
+      ReleaseRemotePressedKeysLocked(remote_states_.begin()->first, reason);
   }
-  for (const auto& id : remotes) ReleaseRemotePressedKeys(id, reason);
   CheckRemoteTimeouts();
 }
 
 void KeyboardController::CheckRemoteTimeouts() {
-#ifdef _WIN32
-  bool pending = false;
-  {
-    std::lock_guard lock(remote_states_mutex_);
-    pending = !pending_privacy_releases_.empty();
-  }
-  // A key-up rejected on the secure desktop is retained until the ordinary
-  // desktop returns. Never route cleanup through the security UI helper.
-  if (pending && IsWindowsPrivacyDesktopAvailable()) {
-    std::unordered_map<int, PressedKey> releases;
-    {
-      std::lock_guard lock(remote_states_mutex_);
-      releases.swap(pending_privacy_releases_);
-    }
-    for (const auto& [code, key] : releases) {
-      if (!owner_.devices_.SendKeyboardCommand(code, false, key.scan_code, key.extended)) {
-        std::lock_guard lock(remote_states_mutex_);
-        pending_privacy_releases_[code] = key;
-      }
-    }
-  }
-#endif
+  // Do not stall the UI while a transport thread waits on desktop IPC.
+  std::unique_lock input_lock(remote_input_mutex_, std::try_to_lock);
+  if (!input_lock.owns_lock()) return;
   const uint32_t now = static_cast<uint32_t>(SDL_GetTicks());
-  std::vector<std::string> timed_out_remotes;
-  {
-    std::lock_guard<std::mutex> lock(remote_states_mutex_);
-    for (const auto& [remote_id, state] : remote_states_) {
-      if (state.keyboard_state_seen && !state.pressed_keys.empty() &&
-          state.last_seen_tick != 0 &&
-          now - state.last_seen_tick > kRemoteReleaseTimeoutMs) {
-        timed_out_remotes.push_back(remote_id);
-      }
+  // Retain failed releases in ordinary mode as well as privacy mode. Retry
+  // only on the ordinary desktop, never through the security UI helper.
+  if (!pending_key_releases_.empty() &&
+      (last_release_retry_tick_ == 0 ||
+       now - last_release_retry_tick_ >= kReleaseRetryIntervalMs)
+#ifdef _WIN32
+      && IsCurrentSessionUserDesktopActive()
+#endif
+  ) {
+    last_release_retry_tick_ = now;
+    for (auto it = pending_key_releases_.begin();
+         it != pending_key_releases_.end();) {
+      const auto& key = it->second;
+      if (owner_.devices_.SendKeyboardCommand(
+              key.key_code, false, key.scan_code, key.extended))
+        it = pending_key_releases_.erase(it);
+      else
+        ++it;
     }
   }
-  for (const std::string& remote_id : timed_out_remotes) {
-    ReleaseRemotePressedKeys(remote_id, "keyboard_heartbeat_timeout");
+
+  // Keep the timeout decision and release under the same lock, so a fresh
+  // heartbeat cannot arrive between selecting a stale peer and clearing it.
+  for (auto it = remote_states_.begin(); it != remote_states_.end();) {
+    const auto& state = it->second;
+    if (state.keyboard_state_seen && !state.pressed_keys.empty() &&
+        state.last_seen_tick != 0 &&
+        now - state.last_seen_tick > kRemoteReleaseTimeoutMs) {
+      const auto expired = it++;
+      ReleaseRemotePressedKeysLocked(expired->first, "keyboard_heartbeat_timeout");
+    } else {
+      ++it;
+    }
   }
 }
 
