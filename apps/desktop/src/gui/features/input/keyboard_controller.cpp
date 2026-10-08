@@ -216,7 +216,7 @@ bool KeyboardController::InjectRemoteKey(int key_code, bool is_down,
                                          uint32_t scan_code, bool extended) {
 #if _WIN32
   if (owner_.privacy_.Engaged() && !IsWindowsPrivacyDesktopAvailable()) {
-    owner_.privacy_.Fail("Secure desktop or locked session; privacy screen will turn off");
+    owner_.privacy_.SuspendForDesktop();
   }
   if (owner_.local_service_status_received_ &&
       IsSecureDesktopInteractionRequired(owner_.local_interactive_stage_)) {

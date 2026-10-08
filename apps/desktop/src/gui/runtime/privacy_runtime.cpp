@@ -46,7 +46,7 @@ void GuiRuntime::SetControllerPrivacySupport(const std::string& remote_id,
 
 void GuiRuntime::ApplyPrivacyAdmission(bool automatic_enable) {
   if (!privacy_sessions_.CanEnable()) {
-    if (privacy_.Engaged()) privacy_.Disable();
+    privacy_.Disable();
   } else if (automatic_enable) {
     privacy_.EnableOnConnection();
   }
@@ -93,6 +93,9 @@ void GuiRuntime::HandlePrivacy() {
   std::vector<std::string> controllers;
   {
     std::shared_lock lock(connection_status_mutex_);
+    if (!privacy_sessions_.CanEnable() ||
+        !config_center_->IsEnablePrivacyScreen())
+      privacy_.CancelAutomaticResume();
     status = privacy_.Snapshot();
     for (const auto& [id, state] : connection_status_)
       if (state == ConnectionStatus::Connected &&

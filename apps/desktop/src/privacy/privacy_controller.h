@@ -25,6 +25,10 @@ class PrivacyController {
   void SetText(const PrivacyScreenText& text);
   void Enable(bool block_input);
   void EnableOnConnection();
+  // Preserve automatic session intent while Windows shows another desktop.
+  void SuspendForDesktop();
+  void ResumeAfterDesktopRecovery();
+  void CancelAutomaticResume();
   void Disable();
   void Disconnected();
   void Shutdown();
@@ -37,6 +41,8 @@ class PrivacyController {
   void WakeLocked();
   void SetState(PrivacyState state, const std::string& reason);
   void FailLocked(const std::string& reason);
+  void EnableOnConnectionLocked();
+  void DisableLocked();
   static uint64_t Now();
   mutable std::mutex mutex_;
   std::condition_variable wake_;
@@ -50,6 +56,7 @@ class PrivacyController {
   bool disable_pending_ = false;
   bool block_requested_ = false;
   bool automatic_enable_ = false;
+  bool resume_after_unlock_ = false;
   bool capture_running_ = false;
   std::string failure_;
   uint64_t started_ = 0;

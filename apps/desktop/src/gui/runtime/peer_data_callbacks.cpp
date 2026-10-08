@@ -235,7 +235,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
                                 remote_action.type == ControlType::keyboard_state;
     if (!keyboard_input && runtime->privacy_.Engaged() &&
         !IsWindowsPrivacyDesktopAvailable()) {
-      runtime->privacy_.Fail("Secure desktop or lock screen; privacy screen will turn off");
+      runtime->privacy_.SuspendForDesktop();
     }
 #endif
   }

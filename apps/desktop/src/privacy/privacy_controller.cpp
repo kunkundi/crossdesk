@@ -64,6 +64,7 @@ void PrivacyController::Enable(bool block_input) {
   engaged_.store(true);
   block_requested_ = block_input;
   automatic_enable_ = false;
+  resume_after_unlock_ = false;
   enable_pending_ = true;
   failure_.clear();
   started_ = Now();
@@ -72,11 +73,15 @@ void PrivacyController::Enable(bool block_input) {
 }
 void PrivacyController::EnableOnConnection() {
   std::lock_guard lock(mutex_);
+  EnableOnConnectionLocked();
+}
+void PrivacyController::EnableOnConnectionLocked() {
   if (quit_ || (engaged_.load() && !disable_pending_)) return;
   // A reconnect may arrive before asynchronous AppKit recovery has completed.
   engaged_.store(true);
   block_requested_ = true;
   automatic_enable_ = true;
+  resume_after_unlock_ = false;
   enable_pending_ = true;
   failure_.clear();
   started_ = Now();
@@ -85,6 +90,12 @@ void PrivacyController::EnableOnConnection() {
 }
 void PrivacyController::Disable() {
   std::lock_guard lock(mutex_);
+  DisableLocked();
+}
+void PrivacyController::DisableLocked() {
+  // A suspended session is no longer engaged, but still has automatic intent.
+  automatic_enable_ = false;
+  resume_after_unlock_ = false;
   // Nothing to restore when privacy is already off and no cleanup is retrying.
   if (quit_ || (!engaged_.load() && !disable_pending_)) return;
   enable_pending_ = false;
@@ -94,6 +105,29 @@ void PrivacyController::Disable() {
   WakeLocked();
 }
 void PrivacyController::Disconnected() { Disable(); }
+void PrivacyController::SuspendForDesktop() {
+  std::lock_guard lock(mutex_);
+  if (quit_) return;
+  if (automatic_enable_) resume_after_unlock_ = true;
+  FailLocked(automatic_enable_
+                 ? "Secure desktop or lock screen; automatic privacy will resume after desktop recovery"
+                 : "Secure desktop or lock screen; privacy screen will turn off");
+}
+void PrivacyController::ResumeAfterDesktopRecovery() {
+  std::lock_guard lock(mutex_);
+  // Wait for the entire post-unlock restart, including display selection.
+  // Other capture-running notifications can arrive earlier during recovery.
+  if (capture_running_ && resume_after_unlock_ && automatic_enable_)
+    EnableOnConnectionLocked();
+}
+void PrivacyController::CancelAutomaticResume() {
+  std::lock_guard lock(mutex_);
+  resume_after_unlock_ = false;
+  // Changing the setting cancels pending activation, but leaves an already
+  // active cover under the explicit on/off controls.
+  if (automatic_enable_ && enable_pending_) DisableLocked();
+  automatic_enable_ = false;
+}
 void PrivacyController::FailLocked(const std::string& reason) {
   if (!engaged_.load() || disable_pending_) return;
   failure_ = reason;
@@ -196,6 +230,8 @@ void PrivacyController::Run(Factory factory) {
       const auto health = backend_ ? backend_->Poll() : PrivacyHealth{};
       if (engaged_.load() && !disable_pending_) {
         if (health.emergency_exit) {
+          automatic_enable_ = false;
+          resume_after_unlock_ = false;
           failure_.clear();
           enable_pending_ = false;
           disable_pending_ = true;

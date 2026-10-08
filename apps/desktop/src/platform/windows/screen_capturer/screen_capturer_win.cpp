@@ -1627,6 +1627,7 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
   ULONGLONG last_error_tick = 0;
   ULONGLONG capture_stage_started_tick = 0;
   bool post_secure_restart_pending = false;
+  bool desktop_was_unavailable = false;
   ULONGLONG post_secure_restart_deadline_tick = 0;
   ULONGLONG last_post_secure_restart_tick = 0;
   ULONGLONG next_cursor_update_tick = 0;
@@ -1669,11 +1670,12 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
   };
 
   while (running_.load(std::memory_order_relaxed)) {
-    // Privacy covers belong to the ordinary desktop. Drop privacy on a
-    // secure desktop, while continuing the normal helper capture path.
-    if (privacy_ && privacy_->Engaged()) {
-      if (!IsWindowsPrivacyDesktopAvailable())
-        privacy_->Fail("Secure desktop or lock screen; privacy screen will turn off. Privacy cannot cover Windows security UI.");
+    // Remember automatic privacy even if the connection started while locked
+    // and its first enable attempt has already failed.
+    const bool desktop_available = IsWindowsPrivacyDesktopAvailable();
+    if (!desktop_available) {
+      desktop_was_unavailable = true;
+      if (privacy_) privacy_->SuspendForDesktop();
     }
     if (paused_.load(std::memory_order_relaxed)) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -1750,12 +1752,23 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
       }
     }
 
+    // A locked session can still report Default, and helper status can be
+    // unavailable. Observe local unlocks independently so recovery publishes
+    // a fresh capture-running notification in either case.
+    if (desktop_available && desktop_was_unavailable) {
+      desktop_was_unavailable = false;
+      post_secure_restart_pending = true;
+      post_secure_restart_deadline_tick =
+          now + kPostSecureDesktopRestartTimeoutMs;
+      last_post_secure_restart_tick = 0;
+    }
+
     if (!status.capture_active || status.active_session_id == 0xFFFFFFFF) {
       StopSecureDesktopSharedCapture(secure_shared_session_id_);
       CheckDisplayPresence(now);
       MaybeAdoptVirtualDisplay();
       CheckCaptureProgress(now);
-      if (post_secure_restart_pending) {
+      if (post_secure_restart_pending && desktop_available) {
         if (now >= post_secure_restart_deadline_tick) {
           LOG_WARN(
               "Windows capturer: capture backend restart after secure desktop "
@@ -1767,6 +1780,8 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop() {
           last_post_secure_restart_tick = now;
           post_secure_restart_pending =
               !RestartCaptureBackendAfterSecureDesktop();
+          if (!post_secure_restart_pending && privacy_)
+            privacy_->ResumeAfterDesktopRecovery();
         }
       }
       if (!post_secure_restart_pending && now >= next_cursor_update_tick) {
