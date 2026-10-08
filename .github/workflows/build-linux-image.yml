@@ -27,9 +27,9 @@ concurrency:
 
 env:
   IMAGE_NAME: crossdesk/ubuntu20.04
-  STACK_TAG: buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.0.0-rust1.92.0
+  STACK_TAG: buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.1.1-rust1.92.0
   CMAKE_VERSION: 3.31.6
-  XMAKE_VERSION: 3.0.0
+  XMAKE_VERSION: 3.1.1
   RUST_VERSION: 1.92.0
   RUSTUP_VERSION: 1.28.2
 

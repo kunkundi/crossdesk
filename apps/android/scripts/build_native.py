@@ -12,7 +12,7 @@ ROOT = ANDROID.parents[1]
 SOURCE = ROOT / 'deps/submodules/minirtc'
 CACHE = ANDROID / '.native'
 PACKAGE_REVISION = 'eda39de3fb99b420c168f1ab9ab2d1791e11b662'
-XMAKE_MIN_VERSION = (3, 0, 0)
+XMAKE_MIN_VERSION = (3, 1, 1)
 
 
 def find_xmake():

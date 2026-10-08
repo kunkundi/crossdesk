@@ -5,14 +5,14 @@ CMake 3.31、xmake、Rust、Linux 开发库（包括 D-Bus、DRM，以及仅用�
 PipeWire 0.3/SPA 头文件 SDK）以及根据项目
 `xmake.lua` 提前编译好的依赖。
 
-Xmake 最低支持 3.0.0，与移动端一致，构建环境校验允许更新版本。发布镜像的工具链 tag
+Xmake 最低支持 3.1.1，与移动端一致，构建环境校验允许更新版本。发布镜像的工具链 tag
 记录实际安装的版本；默认使用最低支持版本验证构建。
 
 常规应用构建目前复用已发布的 `xmake3.0.9` 工具链镜像，并在容器启动后检查
-Xmake 版本：缺失或低于 3.0.0 时安装或升级，达标时保留现有版本，随后再次校验。
+Xmake 版本：缺失或低于 3.1.1 时安装或升级，达标时保留现有版本，随后再次校验。
 Linux、macOS 和 Windows 桌面构建共用 `.github/actions/ensure-xmake`；Linux 还会
 执行仓库中的 `verify-build-image.sh` 校验环境。这样既保留预编译
-依赖缓存，也不依赖尚未发布的 `xmake3.0.0` 镜像。切换镜像 tag 前必须确认
+依赖缓存，也不依赖尚未发布的 `xmake3.1.1` 镜像。切换镜像 tag 前必须确认
 amd64 和 arm64 变体均已发布。
 
 ## 发布方式
@@ -22,7 +22,7 @@ amd64 和 arm64 变体均已发布。
 全部通过后再合并为同一个 multi-arch 镜像：
 
 ```text
-crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.0.0-rust1.92.0
+crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.1.1-rust1.92.0
 ```
 
 Docker 会根据运行机器自动选择正确架构。amd64 变体以

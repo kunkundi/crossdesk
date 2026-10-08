@@ -7,7 +7,7 @@ There is no `WKWebView` or browser runtime.
 ## Requirements
 
 - Xcode 16 or newer
-- Xmake 3.0.0 or newer available on `PATH` (or selected with `XMAKE_BIN`)
+- Xmake 3.1.1 or newer available on `PATH` (or selected with `XMAKE_BIN`)
 - A physical arm64 iPhone/iPad running iOS 16 or newer, or an iOS simulator on Apple Silicon
 
 ## Build
@@ -27,7 +27,7 @@ licenses** when cloning: `git clone --branch <source-tag> --recurse-submodules
 https://github.com/kunkundi/crossdesk.git`. The iOS marketing version is independent
 of the repository tag; use the source tag or commit recorded in the app.
 
-Install [Xmake](https://xmake.io/guide/quick-start.html) 3.0.0 or newer,
+Install [Xmake](https://xmake.io/guide/quick-start.html) 3.1.1 or newer,
 CMake, and a current Python 3 with setuptools/wheel. Pin the package repository
 in a separate Xmake global directory before building:
 
@@ -105,7 +105,7 @@ or relevant build configuration also trigger it. The main
 workflow on branch/tag pushes and manual runs, and waits for its result before
 publishing a version-tag release.
 
-The workflow builds with the minimum supported Xmake version (3.0.0) and retains
+The workflow builds with the minimum supported Xmake version (3.1.1) and retains
 the pinned Xcode/SDK, dependency cache, license catalog validation, unsigned arm64
 Release build, and app-bundle verification. Unit tests run locally as needed.
 It uploads

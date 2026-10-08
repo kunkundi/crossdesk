@@ -52,7 +52,7 @@ jobs:
       IOS_DEPLOYMENT_TARGET: "16.0"
       EXPECTED_IOS_SDK: "26.5"
       # Exercise the minimum supported version; local builds may use newer Xmake.
-      XMAKE_MIN_VERSION: "3.0.0"
+      XMAKE_MIN_VERSION: "3.1.1"
       XMAKE_REPO_REVISION: "121109352da272cd1a3d4ed52f2dcda34f839955"
 
     steps:

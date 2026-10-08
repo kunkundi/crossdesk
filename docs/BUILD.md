@@ -6,7 +6,7 @@
 
 ## 构建依赖
 
-- Git、[Xmake](https://xmake.io/guide/quick-start.html)（桌面端和移动端均要求 3.0.0 或更新版本）及下文对应平台的编译工具链。
+- Git、[Xmake](https://xmake.io/guide/quick-start.html)（桌面端和移动端均要求 3.1.1 或更新版本）及下文对应平台的编译工具链。
 - 构建脚本通过 Xmake 管理 **CMake 3.x（≥ 3.21、< 4.0）**、**Rust 1.92.0** 等依赖；首次构建需要下载工具与源码。具体约束见 [Slint 包配置](../deps/thirdparty/slint/xmake.lua)。
 
 ## Windows
@@ -248,6 +248,6 @@ README 的桌面图片直接由当前 Slint UI 渲染，复现方式见 [截图�
 
 ## Android
 
-原生控制端位于独立的 `apps/android` Gradle 工程，要求 Android 8.0+ arm64 设备，使用 SDK 36、NDK r28c 和 Xmake 3.0.0 或更新版本。构建、APK 安装与模拟器测试见 [Android 开发说明](../apps/android/README.md)。
+原生控制端位于独立的 `apps/android` Gradle 工程，要求 Android 8.0+ arm64 设备，使用 SDK 36、NDK r28c 和 Xmake 3.1.1 或更新版本。构建、APK 安装与模拟器测试见 [Android 开发说明](../apps/android/README.md)。
 
 [Android CI](../.github/workflows/build-android.yml) 可独立手动运行，并由主构建工作流调用。CI 提供 Debug / 设备测试 APK、未签名 Release APK 和 Lint 报告，执行原生协议测试及 16 KB 对齐、许可证检查；标签发布收集未签名 Release APK，安装前需要自行签名。设备测试需要另行在 arm64 手机或模拟器上执行。

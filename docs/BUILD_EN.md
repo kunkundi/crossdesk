@@ -6,7 +6,7 @@ After cloning, run build and packaging commands from the repository root. The [X
 
 ## Build requirements
 
-- Git, [Xmake](https://xmake.io/guide/quick-start.html) (3.0.0 or newer for both desktop and mobile), and the platform toolchain listed below.
+- Git, [Xmake](https://xmake.io/guide/quick-start.html) (3.1.1 or newer for both desktop and mobile), and the platform toolchain listed below.
 - The build scripts use Xmake to manage **CMake 3.x (≥ 3.21, < 4.0)**, **Rust 1.92.0**, and other dependencies. The first build downloads tools and source archives. See the [Slint package configuration](../deps/thirdparty/slint/xmake.lua) for the constraints.
 
 ## Windows
@@ -260,6 +260,6 @@ Desktop README images are rendered directly from the current Slint UI. See the [
 
 ## Android
 
-The native controller is a separate Gradle project in `apps/android`, targeting Android 8.0+ arm64 with SDK 36, NDK r28c, and Xmake 3.0.0 or newer. See the [Android development guide](../apps/android/README.md) for APK builds, installation, and emulator tests.
+The native controller is a separate Gradle project in `apps/android`, targeting Android 8.0+ arm64 with SDK 36, NDK r28c, and Xmake 3.1.1 or newer. See the [Android development guide](../apps/android/README.md) for APK builds, installation, and emulator tests.
 
 [Android CI](../.github/workflows/build-android.yml) can run manually on its own and is also called by the main build workflow. It uploads Debug/device-test APKs, an unsigned Release APK and Lint reports, runs native protocol tests, and checks 16 KB alignment and license contents. Tag releases include the unsigned Release APK, which requires your own signing before installation. Device tests must be run separately on an arm64 phone or emulator.

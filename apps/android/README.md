@@ -36,7 +36,7 @@
 
 - JDK 17 或更新版本（可使用 Android Studio 自带 JBR）。
 - Android SDK Platform 36、Build Tools 36.0.0、NDK `28.2.13676358`。
-- Xmake **3.0.0 或更新版本**、Python 3.9+、Git、CMake 和主机编译工具。
+- Xmake **3.1.1 或更新版本**、Python 3.9+、Git、CMake 和主机编译工具。
 - Python 的 setuptools、wheel，用于构建依赖的宿主工具。
 
 先在仓库根目录初始化子模块：
@@ -50,7 +50,7 @@ macOS 命令行示例：
 ```sh
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-# 使用 PATH 中的 Xmake（最低 3.0.0），或通过 XMAKE_BIN 指定其他可执行文件。
+# 使用 PATH 中的 Xmake（最低 3.1.1），或通过 XMAKE_BIN 指定其他可执行文件。
 cd apps/android
 ./gradlew :app:assembleDebug
 ```
@@ -94,7 +94,7 @@ git push origin android-v1.6.0-20261002
 
 已有 Release 需要补传服务器或刷新下载信息时，可手动运行 `Update version.json from Release` 并填写已有 `source_tag`，无需重新构建。
 
-工作流使用 Ubuntu 24.04、JDK 17、Python 3.13、SDK 36、Build Tools 36.0.0、NDK r28c，并使用最低支持的 Xmake 3.0.0 验证构建；本地允许使用更新的 Xmake。Gradle 使用工程内的 Wrapper，原生构建器固定 Xmake 包仓库版本。SDK/NDK 使用独立目录缓存，按宿主系统、架构和工具链版本区分；命中缓存时跳过 SDK 安装，未命中时在安装完成后立即保存，即使后续 APK 构建失败，下次也可复用。Xmake 可执行环境、固定版本的包仓库和 pip 下载也有各自的缓存；Ubuntu 系统工具只安装缺失项。
+工作流使用 Ubuntu 24.04、JDK 17、Python 3.13、SDK 36、Build Tools 36.0.0、NDK r28c，并使用最低支持的 Xmake 3.1.1 验证构建；本地允许使用更新的 Xmake。Gradle 使用工程内的 Wrapper，原生构建器固定 Xmake 包仓库版本。SDK/NDK 使用独立目录缓存，按宿主系统、架构和工具链版本区分；命中缓存时跳过 SDK 安装，未命中时在安装完成后立即保存，即使后续 APK 构建失败，下次也可复用。Xmake 可执行环境、固定版本的包仓库和 pip 下载也有各自的缓存；Ubuntu 系统工具只安装缺失项。
 
 Gradle 缓存与 Android 原生依赖缓存分别管理；原生缓存按宿主架构、构建脚本及 MiniRTC 配方区分，不复用桌面或 iOS 的配置和目标文件。GitHub 托管 runner 每次启动仍是新环境；第一次运行或缓存失效时需要安装。不同分支和标签可读取默认分支的缓存，因此建议先在默认分支运行一次 `Build Android` 预热，再创建发布标签。
 

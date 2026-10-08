@@ -27,7 +27,7 @@ permissions:
 
 env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  XMAKE_MIN_VERSION: "3.0.0"
+  XMAKE_MIN_VERSION: "3.1.1"
 
 jobs:
   build-linux:
