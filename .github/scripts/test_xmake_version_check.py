@@ -14,7 +14,7 @@ BASH = shutil.which("bash")
 
 @unittest.skipUnless(BASH, "Bash is required to exercise the CI version check")
 class XmakeVersionCheckTest(unittest.TestCase):
-    def check(self, version_output=None, *, minimum="3.1.1", status=0, arguments=()):
+    def check(self, version_output=None, *, minimum="3.0.0", status=0, arguments=()):
         with tempfile.TemporaryDirectory(prefix="crossdesk-xmake-check-") as directory:
             root = Path(directory)
             output_file = root / "github-output"
@@ -63,7 +63,8 @@ class XmakeVersionCheckTest(unittest.TestCase):
             return result, outputs, invocation
 
     def test_keeps_minimum_and_newer_versions(self):
-        for version in ("3.1.1", "3.1.2", "3.1.10", "3.2.0", "3.10.0", "4.0.0"):
+        for version in ("3.0.0", "3.0.1", "3.0.9", "3.0.99", "3.1.0", "3.1.1",
+                        "3.1.2", "3.1.10", "3.2.0", "3.10.0", "4.0.0"):
             with self.subTest(version=version):
                 result, outputs, invocation = self.check(f"xmake v{version}\n")
                 self.assertEqual(result.returncode, 0, result.stderr)
@@ -73,12 +74,12 @@ class XmakeVersionCheckTest(unittest.TestCase):
                 self.assertIn("Keeping installed Xmake", result.stdout)
 
     def test_older_versions_require_upgrade(self):
-        for version in ("3.1.0", "3.0.99", "2.99.99"):
+        for version in ("2.9.9", "2.99.99"):
             with self.subTest(version=version):
                 result, outputs, _ = self.check(f"xmake v{version}\n")
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(outputs["needs-upgrade"], "true")
-                self.assertIn("Install Xmake 3.1.1 or newer", result.stdout)
+                self.assertIn("Install Xmake 3.0.0 or newer", result.stdout)
 
     def test_components_are_compared_numerically(self):
         for installed, minimum, expected in (
@@ -110,8 +111,8 @@ class XmakeVersionCheckTest(unittest.TestCase):
             ("", 0),
             ("xmake version unknown\n", 0),
             ("xmake v3.1\n", 0),
-            ("xmake v3.1.1invalid\n", 0),
-            ("xmake v3.1.1-rc.1\n", 0),
+            ("xmake v3.0.0invalid\n", 0),
+            ("xmake v3.0.0-rc.1\n", 0),
             ("otherxmake v9.9.9\n", 0),
         )
         for output, status in cases:
@@ -120,16 +121,16 @@ class XmakeVersionCheckTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(outputs["needs-upgrade"], "true")
                 self.assertEqual(outputs["detected-version"], "")
-                self.assertIn("Install Xmake 3.1.1 or newer", result.stdout)
+                self.assertIn("Install Xmake 3.0.0 or newer", result.stdout)
 
     def test_verification_fails_when_install_did_not_provide_required_version(self):
-        for output, status in ((None, 0), ("xmake v3.1.0", 0), ("unknown", 0), ("xmake v3.1.1", 5)):
+        for output, status in ((None, 0), ("xmake v2.99.99", 0), ("unknown", 0), ("xmake v3.0.0", 5)):
             with self.subTest(output=output, status=status):
                 result, outputs, _ = self.check(output, status=status, arguments=("--verify",))
                 self.assertEqual(result.returncode, 1)
                 self.assertEqual(outputs["needs-upgrade"], "true")
                 self.assertIn("Xmake verification failed", result.stderr)
-                self.assertIn("3.1.1 or newer", result.stderr)
+                self.assertIn("3.0.0 or newer", result.stderr)
 
     def test_verification_accepts_newer_version(self):
         result, outputs, _ = self.check("xmake v4.0.0", arguments=("--verify",))

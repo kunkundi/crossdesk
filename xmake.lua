@@ -1,5 +1,5 @@
 set_project("crossdesk")
-set_xmakever("3.1.1")
+set_xmakever("3.0.0")
 set_license("GPL-3.0-only")
 
 local source_dir = os.getenv("CROSSDESK_SOURCE_DIR") or os.scriptdir()

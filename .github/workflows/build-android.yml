@@ -41,7 +41,7 @@ jobs:
       version: ${{ steps.package.outputs.version }}
     env:
       # Exercise the minimum supported version; local builds may use newer Xmake.
-      XMAKE_MIN_VERSION: "3.1.1"
+      XMAKE_MIN_VERSION: "3.0.0"
       CROSSDESK_SOURCE_TAG: ${{ inputs.source_tag || '' }}
       CROSSDESK_RELEASE_BUILD: ${{ inputs.source_tag && 'YES' || 'NO' }}
     steps:
@@ -130,7 +130,7 @@ jobs:
           path: apps/android/.native/global/.xmake/repositories/xmake-repo
           key: ${{ runner.os }}-${{ runner.arch }}-android-xmake-repo-v1-${{ hashFiles('apps/android/scripts/build_native.py') }}
 
-      # Cache installed packages only. build_native.py checks Xmake >= 3.1.1 and pins
+      # Cache installed packages only. build_native.py checks Xmake >= 3.0.0 and pins
       # its own package repository; never reuse another platform's build/config.
       - name: Cache native dependencies
         uses: actions/cache@v5

@@ -12,7 +12,7 @@ fi
 
 minimum_version="${XMAKE_MIN_VERSION:-}"
 if [[ ! "$minimum_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "XMAKE_MIN_VERSION must be a numeric major.minor.patch version, for example 3.1.1." >&2
+    echo "XMAKE_MIN_VERSION must be a numeric major.minor.patch version, for example 3.0.0." >&2
     exit 2
 fi
 
