@@ -137,6 +137,9 @@ class CrossDeskServiceHost {
   ULONGLONG session_helper_report_state_age_ms_ = 0;
   ULONGLONG session_helper_report_uptime_ms_ = 0;
   ULONGLONG secure_input_helper_started_at_tick_ = 0;
+  // Short idle grace after a validated user-desktop input request. This keeps
+  // the SYSTEM helper available for elevated windows such as Task Manager.
+  ULONGLONG user_desktop_input_until_tick_ = 0;
   ULONGLONG sas_secure_desktop_until_tick_ = 0;
   bool session_locked_ = false;
   bool logon_ui_visible_ = false;

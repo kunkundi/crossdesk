@@ -238,8 +238,11 @@ bool KeyboardController::InjectRemoteKey(int key_code, bool is_down,
           SetLastError(ERROR_SUCCESS);
           const bool sent = owner_.devices_.SendKeyboardCommand(
               key_code, is_down, scan_code, extended);
+          const DWORD error = GetLastError();
+          const bool blocked =
+              error == ERROR_ACCESS_DENIED || error == ERROR_GEN_FAILURE;
           return DesktopInputResult{
-              sent, IsDesktopTransitionInputError(GetLastError())};
+              sent, IsDesktopTransitionInputError(error) || blocked, blocked};
         },
         [&]() -> DesktopInputResult {
           const std::string response = SendCrossDeskSecureDesktopKeyInput(

@@ -404,8 +404,11 @@ void PeerEventHandler::OnReceiveDataBuffer(
             SetLastError(ERROR_SUCCESS);
             const bool sent = runtime->devices_.SendMouseCommand(
                 remote_action, runtime->selected_display_);
+            const DWORD error = GetLastError();
+            const bool blocked =
+                error == ERROR_ACCESS_DENIED || error == ERROR_GEN_FAILURE;
             return DesktopInputResult{
-                sent, IsDesktopTransitionInputError(GetLastError())};
+                sent, IsDesktopTransitionInputError(error) || blocked, blocked};
           },
           [&]() -> DesktopInputResult {
             int absolute_x = 0;

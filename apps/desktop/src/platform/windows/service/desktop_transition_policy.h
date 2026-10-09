@@ -39,6 +39,9 @@ struct DesktopInputResult {
   // A pipe timeout may have happened after a click/key was applied: never
   // replay it.
   bool not_injected = false;
+  // The ordinary desktop injector rejected its single input event (for
+  // example UIPI). The authorized service can retry even on the same desktop.
+  bool retry_with_service = false;
 };
 
 template <typename ProbeUserDesktop, typename SendUser, typename SendSecure>
@@ -48,6 +51,10 @@ bool DispatchDesktopInput(ProbeUserDesktop probe_user, SendUser send_user,
   const auto result = user ? send_user() : send_secure();
   if (result.delivered) return true;
   if (!result.not_injected) return false;
+  if (user && result.retry_with_service) {
+    // Do not replay a failed/ambiguous service request through another path.
+    return send_secure().delivered;
+  }
   const bool current_user = probe_user();
   if (current_user == user) return false;
   // Handle a switch between the probe and injection exactly once. Ordering is

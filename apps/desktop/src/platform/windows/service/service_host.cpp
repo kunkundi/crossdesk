@@ -38,6 +38,7 @@ constexpr wchar_t kCrossDeskClientProcessName[] = L"crossdesk.exe";
 constexpr DWORD kCrossDeskClientMonitorIntervalMs = 1000;
 constexpr ULONGLONG kCrossDeskClientMonitorStartupGraceMs = 5000;
 constexpr ULONGLONG kSasSecureDesktopGraceMs = 15000;
+constexpr ULONGLONG kUserDesktopInputIdleMs = 5000;
 
 using SendSasFunction = VOID(WINAPI*)(BOOL);
 
@@ -1057,6 +1058,7 @@ int CrossDeskServiceHost::InitializeRuntime() {
   session_helper_report_state_age_ms_ = 0;
   session_helper_report_uptime_ms_ = 0;
   secure_input_helper_started_at_tick_ = 0;
+  user_desktop_input_until_tick_ = 0;
   sas_secure_desktop_until_tick_ = 0;
   session_helper_process_handle_ = nullptr;
   session_helper_stop_event_ = nullptr;
@@ -1460,6 +1462,7 @@ void CrossDeskServiceHost::RefreshSessionState() {
     ResetSessionHelperReportedStateLocked("session_changed", 0);
     sas_secure_desktop_until_tick_ = 0;
     sas_secure_desktop_seen_ = false;
+    user_desktop_input_until_tick_ = 0;
   }
   process_session_id_ = process_session;
   logon_ui_visible_ = logon_ui;
@@ -1574,7 +1577,8 @@ bool CrossDeskServiceHost::ShouldKeepSecureInputHelperLocked(
     return false;
   }
 
-  return HasSecureInputUiLocked() || GetEffectiveSessionLockedLocked();
+  return HasSecureInputUiLocked() || GetEffectiveSessionLockedLocked() ||
+         GetTickCount64() < user_desktop_input_until_tick_;
 }
 
 std::string CrossDeskServiceHost::ResolveInteractiveStageLocked() const {
@@ -1619,6 +1623,10 @@ std::string CrossDeskServiceHost::ResolveInteractiveDesktopLocked(
   }
 
   if (interactive_stage == "lock-screen") {
+    return "Default";
+  }
+
+  if (interactive_stage == "user-desktop") {
     return "Default";
   }
 
@@ -2174,8 +2182,12 @@ void CrossDeskServiceHost::RecordSessionEvent(DWORD event_type,
       ResetSessionHelperReportedStateLocked("session_changed", 0);
       sas_secure_desktop_until_tick_ = 0;
       sas_secure_desktop_seen_ = false;
+      user_desktop_input_until_tick_ = 0;
     }
     if (session_id == active_session_id_) {
+      if (event_type == WTS_SESSION_LOGOFF) {
+        user_desktop_input_until_tick_ = 0;
+      }
       // Do not let an older helper sample override a session notification.
       ResetSessionHelperReportedStateLocked("session_event", 0);
       last_session_transition_tick_ = GetTickCount64();
@@ -2501,20 +2513,28 @@ std::string CrossDeskServiceHost::ResolveSecureInputTarget(
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
     target.session_id = active_session_id_;
+    if (target.session_id == 0xFFFFFFFF) {
+      return BuildErrorJson("no_active_console_session");
+    }
+    if (target.session_id != client_session_id ||
+        client_session_id != WTSGetActiveConsoleSessionId()) {
+      return BuildErrorJson("service_session_mismatch");
+    }
     target.stage = ResolveInteractiveStageLocked();
     target.desktop = ResolveInteractiveDesktopLocked(target.stage);
     helper_running = secure_input_helper_running_ &&
                      secure_input_helper_session_id_ == target.session_id;
     can_inject = GetEffectiveSessionLockedLocked() || HasSecureInputUiLocked();
+    if (target.stage == "user-desktop") {
+      // Ordinary GUI input can be blocked by an elevated foreground window.
+      // Only a Windows-validated client in the active console session may
+      // start/retain this helper; do not misreport the desktop as UAC/locked.
+      user_desktop_input_until_tick_ =
+          GetTickCount64() + kUserDesktopInputIdleMs;
+      can_inject = true;
+    }
   }
 
-  if (target.session_id == 0xFFFFFFFF) {
-    return BuildErrorJson("no_active_console_session");
-  }
-  if (target.session_id != client_session_id ||
-      client_session_id != WTSGetActiveConsoleSessionId()) {
-    return BuildErrorJson("service_session_mismatch");
-  }
   if (!can_inject) {
     WakeSessionState();
     return BuildErrorJson("secure_input_not_active");
@@ -2799,8 +2819,14 @@ std::string QueryDesktopInput(const std::string& command, DWORD timeout_ms) {
     const std::string error = json.value("error", "");
     // Retry only explicit pre-injection rejections during helper startup.
     // Never replay an uncertain timeout or a partially injected mouse action.
-    if (!IsDesktopInputSetupPending(error) || IsCurrentSessionUserDesktopActive())
+    // The SYSTEM helper may now be starting for an elevated application on
+    // Default too. Old services still reject that with secure_input_not_active;
+    // preserve their ordinary-desktop return instead of retrying indefinitely.
+    if (!IsDesktopInputSetupPending(error) ||
+        (error == "secure_input_not_active" &&
+         IsCurrentSessionUserDesktopActive())) {
       return response;
+    }
     const auto remaining = pipe_deadline_detail::Remaining(deadline);
     if (remaining == 0) return response;
     Sleep((std::min)(DWORD{10}, remaining));
