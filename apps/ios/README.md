@@ -327,6 +327,25 @@ Old previews saved without this choice are removed on upgrade.
 
 ## Physical-device test checklist
 
+The floating control menu includes **虚拟鼠标** (virtual mouse), a 140 × 48 pt
+horizontal left-button / wheel / right-button bar attached to the status orb.
+Drag the orb to reposition it, or use **收起鼠标** to hide it. The bar overlays
+the video without resizing it and avoids the floating keyboard. Hold either mouse
+button and drag the same finger, including beyond the key bounds, to drag at the
+remote cursor; lifting the finger releases that button. Moving another finger on
+the video while holding a button also works. The flat split design has unlabelled
+left/right paddles and an 18 × 30 pt wheel face, separated by clear gutters;
+all three touch targets remain 44 × 44 pt. There are no shadows, bevels or press
+displacement: pressing changes only the face color. Uniform horizontal wheel
+treads cycle vertically with the finger and stop when it lifts.
+Swipe the wheel up/down, including beyond its bounds, to scroll at any zoom
+level. Check both pointer modes, button cancellation, display changes, rotation,
+and backgrounding on a device; each must leave remote buttons released.
+The expanded status menu sizes to all of its content, including all ten actions;
+short, wide screens use four columns, and only content that exceeds the available
+safe area scrolls. Check this in both
+orientations, with larger text and while switching menu pages.
+
 Run the app from Xcode on a physical device and connect to a current desktop
 build. Test the features in this order so a media problem is not confused with
 a data-channel problem:

@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		10000000000000000000001D /* RemoteMouseInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001D /* RemoteMouseInput.swift */; };
+		10000000000000000000001E /* VirtualMouseBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001E /* VirtualMouseBar.swift */; };
 		100000000000000000000018 /* RecentConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000018 /* RecentConnection.swift */; };
 		100000000000000000000016 /* RemoteVideoSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000016 /* RemoteVideoSettings.swift */; };
 		100000000000000000000017 /* RemoteNetworkStatistics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000017 /* RemoteNetworkStatistics.swift */; };
@@ -34,6 +36,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		20000000000000000000001D /* RemoteMouseInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteMouseInput.swift; sourceTree = "<group>"; };
+		20000000000000000000001E /* VirtualMouseBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VirtualMouseBar.swift; sourceTree = "<group>"; };
 		200000000000000000000018 /* RecentConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentConnection.swift; sourceTree = "<group>"; };
 		200000000000000000000016 /* RemoteVideoSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteVideoSettings.swift; sourceTree = "<group>"; };
 		200000000000000000000017 /* RemoteNetworkStatistics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteNetworkStatistics.swift; sourceTree = "<group>"; };
@@ -149,6 +153,8 @@
 			isa = PBXGroup;
 			children = (
 				20000000000000000000000A /* RemoteTouchInputView.swift */,
+				20000000000000000000001D /* RemoteMouseInput.swift */,
+				20000000000000000000001E /* VirtualMouseBar.swift */,
 			);
 			path = Input;
 			sourceTree = "<group>";
@@ -289,6 +295,8 @@
 				100000000000000000000005 /* CrossDeskRTCBridge.mm in Sources */,
 				100000000000000000000006 /* NativeMetalVideoView.swift in Sources */,
 				100000000000000000000007 /* RemoteTouchInputView.swift in Sources */,
+				10000000000000000000001D /* RemoteMouseInput.swift in Sources */,
+				10000000000000000000001E /* VirtualMouseBar.swift in Sources */,
 				100000000000000000000012 /* PrivacyPreferences.swift in Sources */,
 				100000000000000000000013 /* ThumbnailFileStore.swift in Sources */,
 				100000000000000000000014 /* PrivacyViews.swift in Sources */,

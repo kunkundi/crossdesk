@@ -31,6 +31,9 @@ private struct RemoteViewportState: Equatable {
 
 struct RemoteSessionView: View {
     @ObservedObject var session: RemoteSessionModel
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var mouseInput = RemoteMouseInput()
+    @State private var virtualMouseVisible = false
     @State private var keyboardInputVisible = false
     @State private var keyboardMode: RemoteKeyboardMode = .system
     @State private var viewport = RemoteViewportState()
@@ -81,6 +84,7 @@ struct RemoteSessionView: View {
                     }
 
                     RemoteTouchInputView(
+                        mouseInput: mouseInput,
                         videoSize: session.displayGeometrySize,
                         controlMode: session.mouseControlMode,
                         remoteCursorPosition: session.remoteCursorPosition,
@@ -95,20 +99,24 @@ struct RemoteSessionView: View {
                                                            offset: offset)
                         },
                         move: { x, y in
+                            mouseInput.position(x: x, y: y)
                             cursorPosition = CGPoint(x: CGFloat(x), y: CGFloat(y))
                             session.bridge.sendPointer(x: x, y: y, action: .move)
                         },
                         leftDown: { x, y in
-                            session.bridge.sendPointer(x: x, y: y, action: .leftDown)
+                            mouseInput.position(x: x, y: y)
+                            mouseInput.setGestureLeft(true)
                         },
                         leftUp: { x, y in
-                            session.bridge.sendPointer(x: x, y: y, action: .leftUp)
+                            mouseInput.position(x: x, y: y)
+                            mouseInput.setGestureLeft(false)
                         },
                         rightClick: { x, y in
                             session.bridge.sendPointer(x: x, y: y, action: .rightDown)
                             session.bridge.sendPointer(x: x, y: y, action: .rightUp)
                         },
                         scroll: { x, y, dx, dy in
+                            mouseInput.position(x: x, y: y)
                             cursorPosition = CGPoint(x: CGFloat(x), y: CGFloat(y))
                             session.bridge.sendScrollX(x, y: y,
                                                        deltaX: dx, deltaY: dy)
@@ -160,7 +168,27 @@ struct RemoteSessionView: View {
         } message: {
             Text(session.remoteUpdateMessage ?? "")
         }
+        .onAppear {
+            mouseInput.send = { x, y, flag, wheel in
+                cursorPosition = CGPoint(x: CGFloat(x), y: CGFloat(y))
+                switch flag {
+                case 0: session.bridge.sendPointer(x: x, y: y, action: .move)
+                case 1: session.bridge.sendPointer(x: x, y: y, action: .leftDown)
+                case 2: session.bridge.sendPointer(x: x, y: y, action: .leftUp)
+                case 3: session.bridge.sendPointer(x: x, y: y, action: .rightDown)
+                case 4: session.bridge.sendPointer(x: x, y: y, action: .rightUp)
+                case 7: session.bridge.sendScrollX(x, y: y, deltaX: 0, deltaY: wheel)
+                default: break
+                }
+            }
+            if let point = session.remoteCursorPosition {
+                mouseInput.position(x: Float(point.x), y: Float(point.y))
+            }
+        }
         .onDisappear {
+            mouseInput.releaseAll()
+            mouseInput.send = nil
+            virtualMouseVisible = false
             keyboardInputVisible = false
             viewport = RemoteViewportState()
             cursorPosition = nil
@@ -169,14 +197,27 @@ struct RemoteSessionView: View {
             keyboardPanelCenter = nil
         }
         .onChange(of: session.selectedDisplay) { _ in
+            mouseInput.releaseAll()
+            mouseInput.position(x: 0.5, y: 0.5)
             cursorPosition = nil
             viewport = RemoteViewportState()
         }
         .onChange(of: session.mouseControlMode) { _ in
+            mouseInput.releaseAll()
             cursorPosition = session.remoteCursorPosition
+            if let point = cursorPosition {
+                mouseInput.position(x: Float(point.x), y: Float(point.y))
+            }
+        }
+        .onChange(of: scenePhase) { phase in
+            if phase != .active { mouseInput.releaseAll() }
+        }
+        .onChange(of: session.isConnected) { connected in
+            if !connected { mouseInput.releaseAll() }
         }
         .onChange(of: session.remoteCursorPositionRevision) { _ in
-            guard let position = session.remoteCursorPosition else { return }
+            guard !mouseInput.hasVirtualButton, let position = session.remoteCursorPosition else { return }
+            mouseInput.position(x: Float(position.x), y: Float(position.y))
             cursorPosition = position
         }
         .fileImporter(isPresented: $showingFileImporter,
@@ -271,17 +312,16 @@ struct RemoteSessionView: View {
                         y: restingOrbCenter.y + statusOrbDragTranslation.height),
                 in: containerSize
             )
-            let panelSize = CGSize(
-                width: min(340, max(280, containerSize.width - 160)),
-                height: min(310, max(0, containerSize.height - 16))
-            )
-            let panelCenter = floatingPanelCenter(
-                orbCenter: orbCenter,
-                panelSize: panelSize,
-                containerSize: containerSize
-            )
+            let menuColumns = containerSize.height < 400 && containerSize.width >= 400 ? 4 : 3
+            let panelWidth = min(max(1, containerSize.width - 16), menuColumns == 4
+                                 ? 380 : min(340, max(280, containerSize.width - 160)))
 
             ZStack(alignment: .topLeading) {
+                if virtualMouseVisible && !statusMenuVisible && session.pixelBuffer != nil {
+                    VirtualMouseBar(input: mouseInput)
+                        .frame(width: 140, height: 48)
+                        .position(virtualMouseCenter(orbCenter: orbCenter, in: containerSize))
+                }
                 if statusMenuVisible {
                     Color.clear
                         .contentShape(Rectangle())
@@ -292,13 +332,18 @@ struct RemoteSessionView: View {
                         }
                 }
 
-                // Position a stable container, then animate only the panel
-                // inside it. Scaling a view after .position also scales its
-                // full-screen positioning space and makes the panel drift.
-                ZStack {
+                FloatingMenuLayout(orbCenter: orbCenter, panelWidth: panelWidth) {
                     if statusMenuVisible {
                         FloatingSessionMenu(
                             session: session,
+                            columnCount: menuColumns,
+                            virtualMouseVisible: virtualMouseVisible,
+                            toggleMouse: {
+                                mouseInput.releaseAll()
+                                virtualMouseVisible.toggle()
+                                statusMenuVisible = false
+                            },
+                            releaseMouse: mouseInput.releaseAll,
                             showKeyboard: {
                                 statusMenuVisible = false
                                 keyboardInputVisible.toggle()
@@ -313,6 +358,7 @@ struct RemoteSessionView: View {
                                 }
                             },
                             disconnect: {
+                                mouseInput.releaseAll()
                                 statusMenuVisible = false
                                 keyboardInputVisible = false
                                 withAnimation(.easeOut(duration: 0.18)) {
@@ -320,13 +366,11 @@ struct RemoteSessionView: View {
                                 }
                             }
                         )
-                        .frame(width: panelSize.width, height: panelSize.height)
                         .transition(.scale(scale: 0.94, anchor: .topTrailing)
                             .combined(with: .opacity))
                     }
                 }
-                .frame(width: panelSize.width, height: panelSize.height)
-                .position(panelCenter)
+                .frame(width: containerSize.width, height: containerSize.height)
                 .allowsHitTesting(statusMenuVisible)
 
                 CrossDeskStatusOrb(isExpanded: statusMenuVisible)
@@ -334,6 +378,7 @@ struct RemoteSessionView: View {
                     .contentShape(Circle())
                     .position(orbCenter)
                     .onTapGesture {
+                        mouseInput.releaseAll()
                         withAnimation(.spring(response: 0.24,
                                               dampingFraction: 0.84)) {
                             statusMenuVisible.toggle()
@@ -345,6 +390,7 @@ struct RemoteSessionView: View {
                                 state = value.translation
                             }
                             .onChanged { _ in
+                                mouseInput.releaseAll()
                                 if statusMenuVisible {
                                     statusMenuVisible = false
                                 }
@@ -359,7 +405,38 @@ struct RemoteSessionView: View {
                     )
             }
             .frame(width: containerSize.width, height: containerSize.height)
+            .onChange(of: containerSize) { _ in mouseInput.releaseAll() }
         }
+    }
+
+    private func virtualMouseCenter(orbCenter: CGPoint, in size: CGSize) -> CGPoint {
+        let halfWidth: CGFloat = 70
+        let halfHeight: CGFloat = 24
+        let reach: CGFloat = 27 + 6 + halfWidth
+        var x = orbCenter.x - reach
+        var y = orbCenter.y
+        if x - halfWidth < 8 {
+            x = orbCenter.x + reach
+            if x + halfWidth > size.width - 8 {
+                x = orbCenter.x
+                y = orbCenter.y + 27 + 6 + halfHeight
+                if y + halfHeight > size.height - 8 {
+                    y = orbCenter.y - 27 - 6 - halfHeight
+                }
+            }
+        }
+        x = min(max(x, halfWidth + 8), max(halfWidth + 8, size.width - halfWidth - 8))
+        if keyboardInputVisible {
+            let keyboardSize = keyboardPanelSize(in: size)
+            let resting = constrainedKeyboardCenter(keyboardPanelCenter ?? defaultKeyboardCenter(in: size, panelSize: keyboardSize), in: size, panelSize: keyboardSize)
+            let center = constrainedKeyboardCenter(CGPoint(x: resting.x + keyboardDragTranslation.width, y: resting.y + keyboardDragTranslation.height), in: size, panelSize: keyboardSize)
+            let keyboardRect = CGRect(x: center.x - keyboardSize.width / 2, y: center.y - keyboardSize.height / 2, width: keyboardSize.width, height: keyboardSize.height)
+            if keyboardRect.intersects(CGRect(x: x - halfWidth, y: y - halfHeight, width: 140, height: 48)) {
+                y = keyboardRect.minY - 6 - halfHeight
+                if y - halfHeight < 8 { y = keyboardRect.maxY + 6 + halfHeight }
+            }
+        }
+        return CGPoint(x: x, y: min(max(y, halfHeight + 8), max(halfHeight + 8, size.height - halfHeight - 8)))
     }
 
     private var draggableKeyboard: some View {
@@ -500,24 +577,6 @@ struct RemoteSessionView: View {
                    max(horizontalMargin, size.width - horizontalMargin)),
             y: min(max(point.y, verticalMargin),
                    max(verticalMargin, size.height - verticalMargin))
-        )
-    }
-
-    private func floatingPanelCenter(orbCenter: CGPoint,
-                                     panelSize: CGSize,
-                                     containerSize: CGSize) -> CGPoint {
-        let gap: CGFloat = 12
-        let orbRadius: CGFloat = 27
-        let horizontalPadding: CGFloat = 8
-        let verticalPadding: CGFloat = 8
-        let preferredX = orbCenter.x > containerSize.width / 2
-            ? orbCenter.x - orbRadius - gap - panelSize.width / 2
-            : orbCenter.x + orbRadius + gap + panelSize.width / 2
-        return CGPoint(
-            x: min(max(preferredX, panelSize.width / 2 + horizontalPadding),
-                   containerSize.width - panelSize.width / 2 - horizontalPadding),
-            y: min(max(orbCenter.y, panelSize.height / 2 + verticalPadding),
-                   containerSize.height - panelSize.height / 2 - verticalPadding)
         )
     }
 
@@ -1079,8 +1138,39 @@ private struct CrossDeskStatusOrb: View {
     }
 }
 
+/// Measure the menu before positioning it; no fixed height or later-frame
+/// preference update is needed when changing pages, text size or orientation.
+private struct FloatingMenuLayout: Layout {
+    let orbCenter: CGPoint
+    let panelWidth: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews,
+                     cache: inout ()) -> CGSize {
+        proposal.replacingUnspecifiedDimensions()
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize,
+                       subviews: Subviews, cache: inout ()) {
+        guard let menu = subviews.first else { return }
+        let size = menu.sizeThatFits(ProposedViewSize(
+            width: panelWidth, height: max(0, bounds.height - 16)))
+        let preferredX = orbCenter.x > bounds.width / 2
+            ? orbCenter.x - 39 - size.width / 2
+            : orbCenter.x + 39 + size.width / 2
+        let center = CGPoint(
+            x: bounds.minX + min(max(preferredX, size.width / 2 + 8),
+                                bounds.width - size.width / 2 - 8),
+            y: bounds.minY + min(max(orbCenter.y, size.height / 2 + 8),
+                                bounds.height - size.height / 2 - 8))
+        menu.place(at: center, anchor: .center, proposal: ProposedViewSize(size))
+    }
+}
+
 private struct FloatingSessionMenu: View {
     @ObservedObject var session: RemoteSessionModel
+    let virtualMouseVisible: Bool
+    let toggleMouse: () -> Void
+    let releaseMouse: () -> Void
     private enum Page { case controls, videoSettings, networkStats }
     @State private var page: Page = .controls
     @State private var displayedNetworkSnapshot: RemoteNetworkSnapshot
@@ -1090,15 +1180,25 @@ private struct FloatingSessionMenu: View {
     let close: () -> Void
     let disconnect: () -> Void
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 7),
-                                count: 3)
+    let columnCount: Int
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 7), count: columnCount)
+    }
 
     init(session: RemoteSessionModel,
+         columnCount: Int,
+         virtualMouseVisible: Bool,
+         toggleMouse: @escaping () -> Void,
+         releaseMouse: @escaping () -> Void,
          showKeyboard: @escaping () -> Void,
          chooseFile: @escaping () -> Void,
          close: @escaping () -> Void,
          disconnect: @escaping () -> Void) {
         self.session = session
+        self.columnCount = columnCount
+        self.virtualMouseVisible = virtualMouseVisible
+        self.toggleMouse = toggleMouse
+        self.releaseMouse = releaseMouse
         self.showKeyboard = showKeyboard
         self.chooseFile = chooseFile
         self.close = close
@@ -1110,145 +1210,11 @@ private struct FloatingSessionMenu: View {
     }
 
     var body: some View {
-        VStack(spacing: 9) {
-            HStack(spacing: 8) {
-                if page != .controls {
-                    Button {
-                        page = .controls
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .frame(width: 28, height: 32)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("返回控制栏")
-                    Text(page == .videoSettings ? "画面设置" : "网络状态")
-                        .font(.subheadline.weight(.semibold))
-                } else {
-                    Circle()
-                        .fill(session.isConnected ? Color.green : Color.orange)
-                        .frame(width: 9, height: 9)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(session.connectionStatus)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                        Text(statusDetail)
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-                Spacer()
-                Button(action: close) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("关闭控制栏")
-            }
-
-            if page == .videoSettings, !session.videoSettingsFeedback.isEmpty {
-                Text(session.videoSettingsFeedback)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            ScrollView {
-                if page == .videoSettings {
-                    FloatingVideoSettings(session: session)
-                } else if page == .networkStats {
-                    FloatingNetworkStatistics(snapshot: displayedNetworkSnapshot,
-                                              frameSize: displayedFrameSize)
-                } else {
-                    VStack(spacing: 9) {
-                        LazyVGrid(columns: columns, spacing: 7) {
-                            FloatingControlButton(title: "键盘", symbol: "keyboard",
-                                                  action: showKeyboard)
-
-                            Menu {
-                                ForEach(Array(session.displays.enumerated()), id: \.offset) { index, name in
-                                    Button {
-                                        session.selectDisplay(index)
-                                    } label: {
-                                        if index == session.selectedDisplay {
-                                            Label(name, systemImage: "checkmark")
-                                        } else {
-                                            Text(name)
-                                        }
-                                    }
-                                }
-                            } label: {
-                                FloatingControlLabel(title: "显示器", symbol: "display")
-                            }
-                            .buttonStyle(.plain)
-
-                            FloatingControlButton(title: "画面设置", symbol: "slider.horizontal.3") {
-                                page = .videoSettings
-                            }
-                            FloatingControlButton(
-                                title: session.audioEnabled ? "声音" : "静音",
-                                symbol: session.audioEnabled ? "speaker.wave.2" : "speaker.slash",
-                                action: session.toggleAudio
-                            )
-                            FloatingControlButton(
-                                title: session.mouseControlMode == .relative ? "相对鼠标" : "绝对鼠标",
-                                symbol: "computermouse",
-                                action: {
-                                    session.mouseControlMode = session.mouseControlMode == .relative
-                                        ? .absolute : .relative
-                                }
-                            )
-                            FloatingControlButton(title: "发送文件",
-                                                  symbol: "folder.badge.plus",
-                                                  action: chooseFile)
-                            FloatingControlButton(title: "网络状态", symbol: "chart.bar.xaxis") {
-                                page = .networkStats
-                            }
-                            FloatingControlButton(title: "Ctrl+Alt+Del",
-                                                  symbol: "lock.trianglebadge.exclamationmark",
-                                                  action: session.sendSecureAttention)
-                            FloatingControlButton(title: "剪贴板", symbol: "doc.on.clipboard",
-                                                  action: session.sendClipboard)
-                        }
-
-                        if !session.controlStatus.isEmpty {
-                            Text(session.controlStatus).font(.caption2).foregroundStyle(.secondary)
-                        }
-                        if !session.clipboardStatus.isEmpty {
-                            Text(session.clipboardStatus).font(.caption2).foregroundStyle(.secondary)
-                        }
-
-                        if !session.transferStatus.isEmpty {
-                            HStack(spacing: 8) {
-                                Text(session.transferStatus)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                                Spacer(minLength: 0)
-                                if session.transferProgress > 0 && session.transferProgress < 1 {
-                                    ProgressView(value: session.transferProgress)
-                                        .frame(width: 60)
-                                }
-                                if let file = session.receivedFileURL {
-                                    ShareLink(item: file) {
-                                        Image(systemName: "square.and.arrow.up")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            Button(role: .destructive, action: disconnect) {
-                Text("断开连接")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 34)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.red)
+        // Prefer the full natural-height panel. Only use a scrolling body when
+        // the available safe-area height cannot contain all of its content.
+        ViewThatFits(in: .vertical) {
+            panel(scrolls: false).fixedSize(horizontal: false, vertical: true)
+            panel(scrolls: true)
         }
         .padding(12)
         .background(Color.white,
@@ -1272,6 +1238,164 @@ private struct FloatingSessionMenu: View {
                 }
             }
         }
+    }
+
+    private func panel(scrolls: Bool) -> some View {
+        VStack(spacing: 9) {
+            menuHeader
+            if scrolls {
+                ScrollView { menuContent }
+            } else {
+                menuContent
+            }
+            disconnectButton
+        }
+    }
+
+    @ViewBuilder private var menuHeader: some View {
+        HStack(spacing: 8) {
+            if page != .controls {
+                Button {
+                    page = .controls
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .frame(width: 28, height: 32)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("返回控制栏")
+                Text(page == .videoSettings ? "画面设置" : "网络状态")
+                    .font(.subheadline.weight(.semibold))
+            } else {
+                Circle()
+                    .fill(session.isConnected ? Color.green : Color.orange)
+                    .frame(width: 9, height: 9)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(session.connectionStatus)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    Text(statusDetail)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer()
+            Button(action: close) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("关闭控制栏")
+        }
+
+        if page == .videoSettings, !session.videoSettingsFeedback.isEmpty {
+            Text(session.videoSettingsFeedback)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder private var menuContent: some View {
+        if page == .videoSettings {
+            FloatingVideoSettings(session: session)
+        } else if page == .networkStats {
+            FloatingNetworkStatistics(snapshot: displayedNetworkSnapshot,
+                                      frameSize: displayedFrameSize)
+        } else {
+            VStack(spacing: 9) {
+                LazyVGrid(columns: columns, spacing: 7) {
+                    FloatingControlButton(title: "键盘", symbol: "keyboard",
+                                          action: showKeyboard)
+                    FloatingControlButton(
+                        title: session.mouseControlMode == .relative ? "相对鼠标" : "绝对鼠标",
+                        symbol: "computermouse",
+                        action: {
+                            session.mouseControlMode = session.mouseControlMode == .relative
+                                ? .absolute : .relative
+                        }
+                    )
+                    FloatingControlButton(title: virtualMouseVisible ? "收起鼠标" : "虚拟鼠标",
+                                          symbol: "computermouse", action: toggleMouse)
+
+                    Menu {
+                        ForEach(Array(session.displays.enumerated()), id: \.offset) { index, name in
+                            Button {
+                                releaseMouse()
+                                session.selectDisplay(index)
+                            } label: {
+                                if index == session.selectedDisplay {
+                                    Label(name, systemImage: "checkmark")
+                                } else {
+                                    Text(name)
+                                }
+                            }
+                        }
+                    } label: {
+                        FloatingControlLabel(title: "显示器", symbol: "display")
+                    }
+                    .buttonStyle(.plain)
+
+                    FloatingControlButton(title: "画面设置", symbol: "slider.horizontal.3") {
+                        page = .videoSettings
+                    }
+                    FloatingControlButton(
+                        title: session.audioEnabled ? "声音" : "静音",
+                        symbol: session.audioEnabled ? "speaker.wave.2" : "speaker.slash",
+                        action: session.toggleAudio
+                    )
+                    FloatingControlButton(title: "发送文件",
+                                          symbol: "folder.badge.plus",
+                                          action: chooseFile)
+                    FloatingControlButton(title: "网络状态", symbol: "chart.bar.xaxis") {
+                        page = .networkStats
+                    }
+                    FloatingControlButton(title: "Ctrl+Alt+Del",
+                                          symbol: "lock.trianglebadge.exclamationmark",
+                                          action: session.sendSecureAttention)
+                    FloatingControlButton(title: "剪贴板", symbol: "doc.on.clipboard",
+                                          action: session.sendClipboard)
+                }
+
+                if !session.controlStatus.isEmpty {
+                    Text(session.controlStatus).font(.caption2).foregroundStyle(.secondary)
+                }
+                if !session.clipboardStatus.isEmpty {
+                    Text(session.clipboardStatus).font(.caption2).foregroundStyle(.secondary)
+                }
+
+                if !session.transferStatus.isEmpty {
+                    HStack(spacing: 8) {
+                        Text(session.transferStatus)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        if session.transferProgress > 0 && session.transferProgress < 1 {
+                            ProgressView(value: session.transferProgress)
+                                .frame(width: 60)
+                        }
+                        if let file = session.receivedFileURL {
+                            ShareLink(item: file) {
+                                Image(systemName: "square.and.arrow.up")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var disconnectButton: some View {
+        Button(role: .destructive, action: disconnect) {
+            Text("断开连接")
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .frame(height: 34)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.red)
     }
 
     private var statusDetail: String {

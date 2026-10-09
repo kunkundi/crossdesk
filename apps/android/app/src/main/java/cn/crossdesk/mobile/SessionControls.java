@@ -6,7 +6,7 @@ import android.view.*;
 import android.widget.*;
 import static cn.crossdesk.mobile.MobileUi.*;
 
-/** Safe-area overlay: a draggable 54 dp orb, a three-column menu and a floating keyboard. */
+/** Safe-area overlay: a draggable 54 dp orb, an adaptive menu and a floating keyboard. */
 @android.annotation.SuppressLint("ViewConstructor")
 final class SessionControls extends FrameLayout {
     interface Actions {
@@ -21,8 +21,13 @@ final class SessionControls extends FrameLayout {
     private final LinearLayout waiting;
     private View shield;
     private LinearLayout menu,keyboard;
+    private VirtualMouseBar mouseBar;
+    private FrameLayout mouseHost;
+    private boolean mouseVisible;
     private ScrollView keyboardKeys;
+    private ScrollView menuScroll;
     private int keyboardPreferredHeight;
+    private int menuColumns=3;
     private TextView networkLabel,videoFeedback;
     private TextView transferLabel,saveFileButton;
     private String transferStatus="";
@@ -49,8 +54,36 @@ final class SessionControls extends FrameLayout {
         drag(orb,orb,()->{if(menu==null)openMenu("controls");else closeMenu();});
     }
     void setRelative(boolean value){relative=value;if(menu!=null&&menuPage.equals("controls"))openMenu("controls");}
+    void attachMouseBar(FrameLayout host, VirtualMouseBar bar) {
+        mouseHost=host;mouseBar=bar;
+        // A direct, tightly bounded sibling of the video is essential: otherwise
+        // an existing touch in this full-screen controls container captures the
+        // second finger before Android can dispatch it to the remote surface.
+        host.addView(bar,new FrameLayout.LayoutParams(ui.dp(140),ui.dp(48)));
+        bar.setVisibility(GONE);
+    }
+    void cancelMouseInput(){if(mouseBar!=null)mouseBar.cancelInput();}
+    private void toggleMouse(){cancelMouseInput();mouseVisible=!mouseVisible;closeMenu();positionMouse();}
+    private void positionMouse(){
+        if(mouseBar==null)return;
+        boolean visible=mouseVisible&&menu==null&&waiting.getVisibility()==GONE;
+        if(!visible){if(mouseBar.getVisibility()==VISIBLE)cancelMouseInput();mouseBar.setVisibility(GONE);return;}
+        int[] location=new int[2],hostLocation=new int[2];getLocationOnScreen(location);mouseHost.getLocationOnScreen(hostLocation);
+        float width=ui.dp(140),height=ui.dp(48),gap=ui.dp(6),margin=ui.dp(8);
+        float x=orb.getX()>=width+gap+margin?orb.getX()-gap-width:orb.getX()+orb.getWidth()+gap;
+        float y=orb.getY()+(orb.getHeight()-height)/2;
+        // When the orb is near the middle of a narrow phone, use the adjacent
+        // row rather than letting the two controls overlap.
+        if(x+width>getWidth()-margin){x=bound(orb.getX(),margin,getWidth()-width-margin);y=orb.getY()+orb.getHeight()+gap;if(y+height>getHeight()-margin)y=orb.getY()-gap-height;}
+        if(keyboard!=null&&x<keyboard.getX()+keyboard.getWidth()&&x+width>keyboard.getX()&&y<keyboard.getY()+keyboard.getHeight()&&y+height>keyboard.getY()){
+            y=keyboard.getY()-gap-height;if(y<margin)y=keyboard.getY()+keyboard.getHeight()+gap;
+        }
+        mouseBar.setX(location[0]-hostLocation[0]+bound(x,margin,getWidth()-width-margin));
+        mouseBar.setY(location[1]-hostLocation[1]+bound(y,margin,getHeight()-height-margin));
+        mouseBar.setVisibility(VISIBLE);
+    }
     void setMuted(boolean value){muted=value;if(menu!=null&&menuPage.equals("controls"))openMenu("controls");}
-    void videoSize(int width,int height){waiting.setVisibility(GONE);}
+    void videoSize(int width,int height){waiting.setVisibility(GONE);positionMouse();}
     void resetVideoStatistics(){statistics(new RemoteNetworkStatistics.Snapshot(network.report,0,0,0,Double.NaN,network.rtt));}
     void statistics(RemoteNetworkStatistics.Snapshot value){network=value;renderNetwork();}
     void videoSettings(RemoteVideoSettings value){settings=value;renderVideoSettings();}
@@ -59,8 +92,9 @@ final class SessionControls extends FrameLayout {
         if(transferLabel!=null){transferLabel.setText(transferStatus);transferLabel.setVisibility(transferStatus.isEmpty()?GONE:VISIBLE);}
         if(saveFileButton!=null)saveFileButton.setVisibility(hasReceivedFile?VISIBLE:GONE);
     }
-    private void closeMenu(){if(menu!=null){removeView(menu);menu=null;}if(shield!=null){removeView(shield);shield=null;}networkLabel=videoFeedback=transferLabel=saveFileButton=null;trafficCells=null;trafficRows=null;networkDetails=null;encryptionLock=encryptionOpen=null;settingRows.clear();orb.setContentDescription("展开远程控制菜单");}
+    private void closeMenu(){if(menu!=null){removeView(menu);menu=null;menuScroll=null;}if(shield!=null){removeView(shield);shield=null;}networkLabel=videoFeedback=transferLabel=saveFileButton=null;trafficCells=null;trafficRows=null;networkDetails=null;encryptionLock=encryptionOpen=null;settingRows.clear();orb.setContentDescription("展开远程控制菜单");positionMouse();}
     private void openMenu(String page){
+        cancelMouseInput();
         closeMenu();menuPage=page;shield=new View(getContext());shield.setOnClickListener(v->closeMenu());addView(shield,new LayoutParams(-1,-1));
         menu=ui.column();menu.setPadding(ui.dp(12),ui.dp(12),ui.dp(12),ui.dp(12));ui.card(menu,18);menu.setElevation(ui.dp(12));
         LinearLayout header=ui.row();
@@ -68,18 +102,19 @@ final class SessionControls extends FrameLayout {
         LinearLayout titles=ui.column();TextView title=ui.text(page.equals("controls")?"●  已连接":page.equals("video")?"画面设置":"网络状态",14,true);titles.addView(title);
         if(page.equals("controls")){ui.gap(titles,3);networkLabel=ui.text(network.summary(),10,false);networkLabel.setFontFeatureSettings("tnum");networkLabel.setTextColor(SECONDARY);titles.addView(networkLabel);}header.addView(titles,new LinearLayout.LayoutParams(0,-2,1));header.addView(ui.iconButton("close","关闭控制栏",this::closeMenu),ui.size(30,32));menu.addView(header);ui.gap(menu,9);
         if(page.equals("video")){videoFeedback=ui.text("",12,false);videoFeedback.setTextColor(SECONDARY);videoFeedback.setPadding(0,0,0,ui.dp(9));menu.addView(videoFeedback);}
-        ScrollView scroll=new ScrollView(getContext());menu.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));LinearLayout body=ui.column();scroll.addView(body);
+        ScrollView scroll=new ScrollView(getContext());menuScroll=scroll;menu.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));LinearLayout body=ui.column();scroll.addView(body);
         if(page.equals("network")){
             // Reserve the scrollbar's width plus a gap before right-aligned statistics.
             scroll.setScrollBarStyle(View.SCROLLBARS_OUTSIDE_INSET);body.setPadding(0,0,ui.dp(6),0);
         }
         if(page.equals("controls")){
-            String[] labels={"键盘","显示器","画面设置",muted?"静音":"声音",relative?"相对鼠标":"绝对鼠标","发送文件","网络状态","Ctrl+Alt+Del","剪贴板"};
-            String[] icons={"keyboard","display","sliders","audio","mouse","folder","chart","lock","clipboard"};
-            Runnable[] clicks={()->{closeMenu();toggleKeyboard();},actions::display,()->openMenu("video"),actions::mute,actions::mouse,actions::sendFile,()->openMenu("network"),actions::secureAttention,actions::clipboard};
-            for(int row=0;row<3;row++){LinearLayout line=ui.row();for(int col=0;col<3;col++){int index=row*3+col;LinearLayout control=ui.column();control.setGravity(Gravity.CENTER);control.setBackground(ui.background(0xFFF0F0F2,10));control.addView(ui.icon(icons[index],INK),ui.size(19,19));ui.gap(control,4);TextView caption=ui.text(labels[index],10,false);caption.setSingleLine();caption.setGravity(Gravity.CENTER);control.addView(caption);control.setContentDescription(labels[index]);control.setClickable(true);control.setFocusable(true);control.setOnClickListener(v->clicks[index].run());
+            String[] labels={"键盘",relative?"相对鼠标":"绝对鼠标",mouseVisible?"收起鼠标":"虚拟鼠标","显示器","画面设置",muted?"静音":"声音","发送文件","网络状态","Ctrl+Alt+Del","剪贴板"};
+            String[] icons={"keyboard","mouse","mouse","display","sliders","audio","folder","chart","lock","clipboard"};
+            Runnable[] clicks={()->{closeMenu();toggleKeyboard();},actions::mouse,this::toggleMouse,actions::display,()->openMenu("video"),actions::mute,actions::sendFile,()->openMenu("network"),actions::secureAttention,actions::clipboard};
+            menuColumns=controlColumns();
+            for(int row=0;row<(labels.length+menuColumns-1)/menuColumns;row++){LinearLayout line=ui.row();for(int col=0;col<menuColumns;col++){int index=row*menuColumns+col;if(index>=labels.length){View spacer=new View(getContext());LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,ui.dp(52),1);if(col>0)p.leftMargin=ui.dp(7);line.addView(spacer,p);continue;}LinearLayout control=ui.column();control.setGravity(Gravity.CENTER);control.setBackground(ui.background(0xFFF0F0F2,10));control.addView(ui.icon(icons[index],INK),ui.size(19,19));ui.gap(control,4);TextView caption=ui.text(labels[index],10,false);caption.setSingleLine();caption.setGravity(Gravity.CENTER);control.addView(caption);control.setContentDescription(labels[index]);control.setClickable(true);control.setFocusable(true);control.setOnClickListener(v->clicks[index].run());
                     LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,ui.dp(52),1);if(col>0)p.leftMargin=ui.dp(7);line.addView(control,p);
-                }body.addView(line);if(row<2)ui.gap(body,7);}
+                }body.addView(line);if((row+1)*menuColumns<labels.length)ui.gap(body,7);}
             ui.gap(body,7);transferLabel=ui.text(transferStatus,11,false);transferLabel.setTextColor(SECONDARY);transferLabel.setAccessibilityLiveRegion(ACCESSIBILITY_LIVE_REGION_POLITE);body.addView(transferLabel);
             saveFileButton=ui.action("保存收到的文件",BLUE,actions::saveFile);body.addView(saveFileButton);renderFileStatus();
         }else if(page.equals("network")){
@@ -91,6 +126,7 @@ final class SessionControls extends FrameLayout {
         }
         ui.gap(menu,9);TextView disconnect=ui.action("断开连接",Color.WHITE,()->{closeMenu();closeKeyboard();actions.disconnect();});disconnect.setMinHeight(ui.dp(34));disconnect.setTextSize(14);disconnect.setBackground(ui.background(RED,8));menu.addView(disconnect,ui.size(-1,34));
         addView(menu,new LayoutParams(panelWidth(getWidth()),panelHeight(getHeight())));orb.bringToFront();orb.setContentDescription("收起远程控制菜单");
+        positionMouse();
     }
     private final class SettingRow {
         final int field;final int[] values;final SegmentedControl group;
@@ -145,12 +181,24 @@ final class SessionControls extends FrameLayout {
         for(int i=0;i<values.length;i++)networkDetails[i].setText(values[i]);networkDetails[5].setTextColor(network.report!=null&&network.report.srtp?GREEN:SECONDARY);
         encryptionLock.setVisibility(network.report!=null&&network.report.srtp?VISIBLE:GONE);encryptionOpen.setVisibility(network.report!=null&&!network.report.srtp?VISIBLE:GONE);
     }
-    private int panelWidth(int width){return Math.max(1,Math.min(width-ui.dp(16),Math.max(ui.dp(280),Math.min(ui.dp(340),width-ui.dp(160)))));}
-    private int panelHeight(int height){return Math.min(ui.dp(310),Math.max(1,height-ui.dp(16)));}
+    private int controlColumns(){return getMeasuredHeight()<ui.dp(400)&&getMeasuredWidth()>=ui.dp(400)?4:3;}
+    private int panelWidth(int width){return Math.max(1,Math.min(width-ui.dp(16),controlColumns()==4?ui.dp(380):Math.max(ui.dp(280),Math.min(ui.dp(340),width-ui.dp(160)))));}
+    private int panelHeight(int height){
+        // First measure every row at its natural height, then cap only to the
+        // safe viewport. The weighted ScrollView takes any remaining space.
+        LinearLayout.LayoutParams scrollParams=(LinearLayout.LayoutParams)menuScroll.getLayoutParams();
+        scrollParams.height=LayoutParams.WRAP_CONTENT;scrollParams.weight=0;
+        menu.measure(MeasureSpec.makeMeasureSpec(panelWidth(getMeasuredWidth()),MeasureSpec.EXACTLY),
+                     MeasureSpec.makeMeasureSpec(0,MeasureSpec.UNSPECIFIED));
+        int contentHeight=menu.getMeasuredHeight();
+        scrollParams.height=0;scrollParams.weight=1;
+        menu.forceLayout();menuScroll.forceLayout();
+        return Math.min(contentHeight,Math.max(1,height-ui.dp(16)));
+    }
     private void positionMenu(){if(menu==null)return;float ox=orb.getX()+orb.getWidth()/2f;float x=ox>getWidth()/2f?orb.getX()-ui.dp(12)-menu.getWidth():orb.getX()+orb.getWidth()+ui.dp(12);menu.setX(bound(x,ui.dp(8),getWidth()-menu.getWidth()-ui.dp(8)));menu.setY(bound(orb.getY(),ui.dp(8),getHeight()-menu.getHeight()-ui.dp(8)));}
     private int keyboardWidth(int width){return Math.min(ui.dp(computerKeyboard?520:440),Math.max(1,width-ui.dp(16)));}
     private int keyboardHeight(int height){return Math.min(keyboardPreferredHeight,Math.max(1,height-ui.dp(16)));}
-    private void positionKeyboard(){if(keyboard!=null){keyboard.setX(bound(keyboard.getX(),ui.dp(8),getWidth()-keyboard.getWidth()-ui.dp(8)));keyboard.setY(bound(keyboard.getY(),ui.dp(8),getHeight()-keyboard.getHeight()-ui.dp(8)));}}
+    private void positionKeyboard(){if(keyboard!=null){keyboard.setX(bound(keyboard.getX(),ui.dp(8),getWidth()-keyboard.getWidth()-ui.dp(8)));keyboard.setY(bound(keyboard.getY(),ui.dp(8),getHeight()-keyboard.getHeight()-ui.dp(8)));}positionMouse();}
     private void closeKeyboard(){if(keyboard!=null){removeView(keyboard);keyboard=null;keyboardKeys=null;}}
     private void toggleKeyboard(){if(keyboard!=null){closeKeyboard();modifiers.clear();return;}modifiers.clear();showKeyboard();}
     private void showKeyboard(){
@@ -185,8 +233,8 @@ final class SessionControls extends FrameLayout {
         handle.setOnClickListener(v->tap.run());handle.setOnTouchListener(new View.OnTouchListener(){float startX,startY,originX,originY;boolean moved;
             public boolean onTouch(View v,MotionEvent event){
                 switch(event.getActionMasked()){
-                    case MotionEvent.ACTION_DOWN:startX=event.getRawX();startY=event.getRawY();originX=target.getX();originY=target.getY();moved=false;return true;
-                    case MotionEvent.ACTION_MOVE:float dx=event.getRawX()-startX,dy=event.getRawY()-startY;if(Math.hypot(dx,dy)>ui.dp(4))moved=true;if(moved){if(target==orb)closeMenu();target.setX(bound(originX+dx,ui.dp(8),getWidth()-target.getWidth()-ui.dp(8)));target.setY(bound(originY+dy,ui.dp(8),getHeight()-target.getHeight()-ui.dp(8)));}return true;
+                    case MotionEvent.ACTION_DOWN:if(target==orb)cancelMouseInput();startX=event.getRawX();startY=event.getRawY();originX=target.getX();originY=target.getY();moved=false;return true;
+                    case MotionEvent.ACTION_MOVE:float dx=event.getRawX()-startX,dy=event.getRawY()-startY;if(Math.hypot(dx,dy)>ui.dp(4))moved=true;if(moved){if(target==orb)closeMenu();target.setX(bound(originX+dx,ui.dp(8),getWidth()-target.getWidth()-ui.dp(8)));target.setY(bound(originY+dy,ui.dp(8),getHeight()-target.getHeight()-ui.dp(8)));positionMouse();}return true;
                     case MotionEvent.ACTION_UP:if(!moved)v.performClick();return true;
                     case MotionEvent.ACTION_CANCEL:return true;
                     default:return false;
@@ -195,9 +243,12 @@ final class SessionControls extends FrameLayout {
         });
     }
     void constrainPanels(){
+        cancelMouseInput();
+        if(menu!=null&&menuPage.equals("controls")&&menuColumns!=controlColumns())openMenu("controls");
         orb.setX(bound(orb.getX(),ui.dp(8),getWidth()-orb.getWidth()-ui.dp(8)));orb.setY(bound(orb.getY(),ui.dp(8),getHeight()-orb.getHeight()-ui.dp(8)));
         if(menu!=null||keyboard!=null)requestLayout();
         positionKeyboard();
+        positionMouse();
     }
     @Override protected void onMeasure(int widthSpec,int heightSpec){
         super.onMeasure(widthSpec,heightSpec);
@@ -205,7 +256,9 @@ final class SessionControls extends FrameLayout {
         if(menu!=null){
             // Use this traversal's viewport, including rotation/inset changes, before drawing.
             ViewGroup.LayoutParams p=menu.getLayoutParams();int width=panelWidth(getMeasuredWidth()),height=panelHeight(getMeasuredHeight());
-            if(p.width!=width||p.height!=height){p.width=width;p.height=height;resized=true;}
+            // panelHeight performed an unconstrained measurement; always
+            // measure again with the final cap, even when it did not change.
+            p.width=width;p.height=height;resized=true;
         }
         if(keyboard!=null){
             ViewGroup.LayoutParams p=keyboard.getLayoutParams();int width=keyboardWidth(getMeasuredWidth()),height=keyboardHeight(getMeasuredHeight());
@@ -220,7 +273,9 @@ final class SessionControls extends FrameLayout {
         // New/rebuilt menus have real dimensions now; position them in the same frame.
         positionMenu();
         positionKeyboard();
+        positionMouse();
     }
+    @Override protected void onDetachedFromWindow(){cancelMouseInput();super.onDetachedFromWindow();}
     @Override protected void onSizeChanged(int width,int height,int oldWidth,int oldHeight){super.onSizeChanged(width,height,oldWidth,oldHeight);post(this::constrainPanels);}
     private static float bound(float value,float min,float max){return Math.max(min,Math.min(value,Math.max(min,max)));}
 }

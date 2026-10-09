@@ -55,6 +55,7 @@ enum RemoteVideoGeometry {
 }
 
 struct RemoteTouchInputView: UIViewRepresentable {
+    let mouseInput: RemoteMouseInput
     let videoSize: CGSize
     let controlMode: MouseControlMode
     let remoteCursorPosition: CGPoint?
@@ -73,6 +74,7 @@ struct RemoteTouchInputView: UIViewRepresentable {
     }
 
     func updateUIView(_ view: RemoteTouchSurface, context: Context) {
+        view.mouseInput = mouseInput
         view.videoSize = videoSize
         view.controlMode = controlMode
         view.setViewport(scale: viewportScale, offset: viewportOffset)
@@ -88,6 +90,8 @@ struct RemoteTouchInputView: UIViewRepresentable {
 }
 
 final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
+    var mouseInput: RemoteMouseInput?
+    private var gestureRevisions: [ObjectIdentifier: UInt64] = [:]
     var videoSize = CGSize.zero {
         didSet { setNeedsLayout() }
     }
@@ -108,7 +112,14 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
     var onScroll: ((Float, Float, Int, Int) -> Void)?
     var onViewportChanged: ((CGFloat, CGSize) -> Void)?
 
-    private var relativeCursorPoint: (Float, Float) = (0.5, 0.5)
+    private var fallbackCursorPoint: (Float, Float) = (0.5, 0.5)
+    private var relativeCursorPoint: (Float, Float) {
+        get { mouseInput.map { ($0.x, $0.y) } ?? fallbackCursorPoint }
+        set {
+            fallbackCursorPoint = newValue
+            mouseInput?.position(x: newValue.0, y: newValue.1)
+        }
+    }
     private var lastRemoteCursorPoint: (Float, Float)?
     private var lastRemoteCursorRevision: UInt64?
     private var relativePanActive = false
@@ -128,10 +139,12 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
         isMultipleTouchEnabled = true
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+        tap.delegate = self
         tap.numberOfTouchesRequired = 1
         addGestureRecognizer(tap)
 
         let rightTap = UITapGestureRecognizer(target: self, action: #selector(handleRightTap(_:)))
+        rightTap.delegate = self
         rightTap.numberOfTouchesRequired = 2
         tap.require(toFail: rightTap)
         addGestureRecognizer(rightTap)
@@ -174,6 +187,7 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        mouseInput?.viewportSize = renderRect()?.size ?? .zero
         let constrained = constrainedViewportOffset(viewportOffset,
                                                      scale: viewportScale)
         guard constrained != viewportOffset else { return }
@@ -185,6 +199,7 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
         let nextScale = min(max(scale, 1), maximumViewportScale)
         viewportScale = nextScale
         viewportOffset = constrainedViewportOffset(offset, scale: nextScale)
+        mouseInput?.viewportSize = renderRect()?.size ?? .zero
     }
 
     func synchronizeRemoteCursor(_ position: CGPoint?, revision: UInt64) {
@@ -203,10 +218,37 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
         )
         lastRemoteCursorPoint = point
         guard controlMode == .relative,
+              mouseInput?.hasVirtualButton != true,
               !relativePanActive,
               heldDragPoint == nil,
               hoverLastLocation == nil else { return }
         relativeCursorPoint = point
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldReceive touch: UITouch) -> Bool {
+        if gestureRecognizer is UITapGestureRecognizer || gestureRecognizer is UILongPressGestureRecognizer {
+            guard mouseInput?.hasVirtualButton != true else { return false }
+            gestureRevisions[ObjectIdentifier(gestureRecognizer)] = mouseInput?.revision ?? 0
+        }
+        return true
+    }
+
+    private func allowsPointerGesture(_ recognizer: UIGestureRecognizer) -> Bool {
+        mouseInput?.hasVirtualButton != true &&
+            gestureRevisions[ObjectIdentifier(recognizer)] == (mouseInput?.revision ?? 0)
+    }
+
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if gestureRecognizer is UITapGestureRecognizer || gestureRecognizer is UILongPressGestureRecognizer {
+            // Decline recognition before a stale long press can cancel the pan
+            // used by the other finger to move a held virtual mouse button.
+            return allowsPointerGesture(gestureRecognizer)
+        }
+        if gestureRecognizer is UIPinchGestureRecognizer {
+            return mouseInput?.hasVirtualButton != true
+        }
+        return true
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
@@ -223,6 +265,7 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
     }
 
     @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
+        guard allowsPointerGesture(recognizer) else { return }
         let location = recognizer.location(in: self)
         guard recognizer.state == .ended,
               let point = pointerPoint(for: location) else { return }
@@ -240,6 +283,7 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
     }
 
     @objc private func handleRightTap(_ recognizer: UITapGestureRecognizer) {
+        guard allowsPointerGesture(recognizer) else { return }
         guard recognizer.state == .ended,
               let point = pointerPoint(for: recognizer.location(in: self)) else { return }
         onMove?(point.0, point.1)
@@ -262,6 +306,12 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
     }
 
     @objc private func handleHeldDrag(_ recognizer: UILongPressGestureRecognizer) {
+        guard allowsPointerGesture(recognizer) else {
+            // A virtual button took ownership while the surface gesture was in flight.
+            heldDragPoint = nil
+            heldDragLastLocation = nil
+            return
+        }
         if controlMode == .relative {
             handleRelativeHeldDrag(recognizer)
             return
@@ -289,6 +339,7 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
     }
 
     @objc private func handlePinch(_ recognizer: UIPinchGestureRecognizer) {
+        guard mouseInput?.hasVirtualButton != true else { pinchActive = false; return }
         let focus = recognizer.location(in: self)
         switch recognizer.state {
         case .began:
@@ -327,6 +378,7 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
     }
 
     @objc private func handleWheel(_ recognizer: UIPanGestureRecognizer) {
+        guard mouseInput?.hasVirtualButton != true else { viewportPanActive = false; return }
         if viewportScale > 1.001 || pinchActive {
             switch recognizer.state {
             case .began:

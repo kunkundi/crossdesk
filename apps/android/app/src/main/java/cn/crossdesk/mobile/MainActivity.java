@@ -308,9 +308,11 @@ public final class MainActivity extends Activity implements NativeSession.Listen
             public void mouse(){boolean relative=!preferences.getBoolean("relativeMouse",true);preferences.edit().putBoolean("relativeMouse",relative).apply();video.setRelative(relative);controls.setRelative(relative);}
             public void videoSettings(int field,int value){RemoteVideoSettings.Values old=MainActivity.this.videoSettings.selection;updateVideoSettings(new RemoteVideoSettings.Values(field==0?value:old.quality,field==1?value:old.frameRate,field==2?value:old.preference));}
         });controls.setRelative(preferences.getBoolean("relativeMouse",true));controls.videoSettings(videoSettings);root.addView(controls,new LinearLayout.LayoutParams(-1,-1));getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        controls.attachMouseBar(canvas,new VirtualMouseBar(ui,video.mouseInput));
     }
     private void confirmDisconnect(){disconnectDialog=new AlertDialog.Builder(this).setTitle("断开远程连接？").setMessage("断开后将返回首页").setNegativeButton("取消",null).setPositiveButton("断开连接",(d,w)->end("")).show();}
     private void end(String reason){
+        if(controls!=null)controls.cancelMouseInput();if(video!=null)video.releaseMouse();
         mainHandler.removeCallbacks(documentTimeout);documentSession=null;documentToSave=null;receivedFile=null;remoteServiceAvailable=false;
         resetRemoteVersionCheck();
         resetVideoSettings();
@@ -619,6 +621,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         if(controls!=null)controls.post(controls::constrainPanels);
     }
     // onStart marks a new visit; focus/resume callbacks must not reopen a refused notice.
+    @Override protected void onPause(){if(controls!=null)controls.cancelMouseInput();if(video!=null)video.releaseMouse();super.onPause();}
     @Override protected void onStart(){super.onStart();foreground=true;appUpdates.setEnabled(preferences.getBoolean("networkConsent",false));if(!preferences.getBoolean("networkConsent",false))consent(this::renderSignaling);ensureSignaling();}
     @Override protected void onStop(){foreground=false;appUpdates.setEnabled(false);if(privacyDialog!=null)privacyDialog.dismiss();pageHost.finish();
         // The system document picker is part of this session's explicit file action.
