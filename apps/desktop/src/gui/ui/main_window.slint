@@ -423,7 +423,9 @@ export component MainWindow inherits Window {
         if !root.self-host-settings-open { root.self-host-settings-error = ""; }
     }
     in-out property <bool> about-open: false;
-    in-out property <bool> update-open: false;
+    // Follow the first available update. Dismissing the dialog replaces this
+    // binding, so background checks do not reopen it during this launch.
+    in-out property <bool> update-open: root.update-available;
     in-out property <bool> reset-password-open: false;
     in-out property <bool> reset-password-invalid: false;
     in-out property <string> new-password-input: "";

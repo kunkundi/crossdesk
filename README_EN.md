@@ -171,7 +171,7 @@ Open **☰ → Settings** in the top-right corner and click **OK** to save. Conf
 
 ### Check for updates
 
-The client checks for updates in the background after launch. A new version adds an update indicator to the main window menu. Open **☰ → About** to view the version or click **Check for updates** to check manually. When an update is available, you can view its release notes and open the download page.
+The client checks for updates in the background after launch and automatically opens the update dialog when a new version is found, showing release notes and a link to the download page. After you dismiss the dialog, background checks will not reopen it during the current run, while the main window menu keeps its update indicator. Restarting the client shows the dialog again if an update is still available. Open **☰ → About** to view the version and release notes or click **Check for updates** to check manually.
 
 <p align="center">
   <img src="docs/images/desktop-about-en.png" width="720" alt="About dialog with the Check for updates button; version and check result are demonstration data" />

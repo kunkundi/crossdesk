@@ -495,9 +495,20 @@ int main() {
   window->set_about_open(true);
   assert(window->get_settings_open());
   assert(window->get_about_open());
-  window->set_update_available(true);
   if (window->get_update_open()) {
-    std::cerr << "Automatic update checks must not open the update dialog\n";
+    std::cerr << "The update dialog must stay closed before an update is found\n";
+    return 8;
+  }
+  window->set_update_available(true);
+  if (!window->get_update_open()) {
+    std::cerr << "Finding an update must automatically open the update dialog\n";
+    return 8;
+  }
+  // The Later button closes the dialog by assigning update-open = false.
+  window->set_update_open(false);
+  window->set_update_available(true);
+  if (window->get_update_open() || !window->get_update_available()) {
+    std::cerr << "Repeated checks must preserve dismissal and the update badge\n";
     return 8;
   }
   bool update_check_requested = false;
@@ -510,6 +521,26 @@ int main() {
                                      crossdesk::ui::UpdateCheckStatus::Checking) {
     std::cerr << "Manual update check must expose the checking state\n";
     return 8;
+  }
+  window->set_update_available(false);
+  window->set_update_available(true);
+  if (window->get_update_open()) {
+    std::cerr << "A dismissed update dialog must stay closed during this launch\n";
+    return 8;
+  }
+  window->set_update_open(true);
+  if (!window->get_update_open()) {
+    std::cerr << "Update details must still be available after dismissal\n";
+    return 8;
+  }
+  window->set_update_open(false);
+  {
+    auto next_launch = crossdesk::ui::MainWindow::create();
+    next_launch->set_update_available(true);
+    if (!next_launch->get_update_open()) {
+      std::cerr << "A new launch must show the available update again\n";
+      return 8;
+    }
   }
   window->set_update_available(false);
   window->set_update_check_status(crossdesk::ui::UpdateCheckStatus::Idle);
