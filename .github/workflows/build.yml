@@ -177,13 +177,26 @@ jobs:
             verify-crossdesk-glibc-baseline "${VERIFY_DIR}" 2.31
           done
 
+      - name: Stage Linux release artifacts
+        shell: bash
+        run: |
+          mkdir -p linux-artifacts
+          for PACKAGE in crossdesk crossdesk-virtual-desktop-xfce; do
+            FILE="${PACKAGE}-linux-${{ matrix.arch }}-${LEGAL_VERSION}.deb"
+            if [[ ! -s "${FILE}" ]]; then
+              echo "::error::Missing or empty Linux package: ${FILE}"
+              exit 1
+            fi
+            cp "${FILE}" linux-artifacts/
+          done
+
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
           name: crossdesk-linux-${{ matrix.arch }}-${{ env.LEGAL_VERSION }}
-          path: |
-            ${{ github.workspace }}/crossdesk-linux-${{ matrix.arch }}-${{ env.LEGAL_VERSION }}.deb
-            ${{ github.workspace }}/crossdesk-virtual-desktop-xfce-linux-${{ matrix.arch }}-${{ env.LEGAL_VERSION }}.deb
+          # A single relative directory avoids container translation of multiline
+          # absolute paths and keeps both package filenames at the artifact root.
+          path: linux-artifacts/
           if-no-files-found: error
 
   # macOS
