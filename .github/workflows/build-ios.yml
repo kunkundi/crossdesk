@@ -22,7 +22,7 @@ on:
         default: "0"
     outputs:
       version:
-        description: "Independent iOS version and build date."
+        description: "iOS artifact version; combined releases match the desktop tag."
         value: ${{ jobs.build.outputs.version }}
   pull_request:
     paths:
@@ -122,22 +122,29 @@ jobs:
             echo "CROSSDESK_RELEASE_BUILD=YES" >> "${GITHUB_ENV}"
           fi
 
-      - name: Read independent iOS version
+      - name: Resolve iOS version
         id: ios_version
         shell: bash
         run: |
-          IOS_VERSION_BASE="$(xcodebuild \
-            -project apps/ios/CrossDeskMobile.xcodeproj \
-            -scheme CrossDeskMobile \
-            -configuration Release \
-            -destination 'generic/platform=iOS' \
-            -showBuildSettings CODE_SIGNING_ALLOWED=NO | \
-            awk '$1 == "MARKETING_VERSION" && $2 == "=" { print $3 }')"
+          if [[ "${CROSSDESK_SOURCE_TAG}" == v* ]]; then
+            # Combined releases share the desktop version, including the date
+            # and optional hotfix suffix in the artifact filename.
+            IOS_VERSION_BASE="${VERSION_NUM#v}"
+            IOS_VERSION_BASE="${IOS_VERSION_BASE%%-*}"
+          else
+            IOS_VERSION_BASE="$(xcodebuild \
+              -project apps/ios/CrossDeskMobile.xcodeproj \
+              -scheme CrossDeskMobile \
+              -configuration Release \
+              -destination 'generic/platform=iOS' \
+              -showBuildSettings CODE_SIGNING_ALLOWED=NO | \
+              awk '$1 == "MARKETING_VERSION" && $2 == "=" { print $3 }')"
+            VERSION_NUM="v${IOS_VERSION_BASE}-${VERSION_NUM##*-}"
+          fi
           if [[ ! "${IOS_VERSION_BASE}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Invalid iOS marketing version: ${IOS_VERSION_BASE}" >&2
             exit 1
           fi
-          VERSION_NUM="v${IOS_VERSION_BASE}-${VERSION_NUM##*-}"
           if [[ "${CROSSDESK_SOURCE_TAG}" == ios-v* && "${CROSSDESK_SOURCE_TAG#ios-}" != "${VERSION_NUM}" ]]; then
             echo "iOS source tag does not match the app version: ${CROSSDESK_SOURCE_TAG} vs ${VERSION_NUM}" >&2
             exit 1
@@ -200,6 +207,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO \
+            MARKETING_VERSION="${IOS_VERSION_BASE}" \
             IPHONEOS_DEPLOYMENT_TARGET="${IOS_DEPLOYMENT_TARGET}" \
             build
 

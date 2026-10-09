@@ -52,8 +52,9 @@ For an existing checkout, run `git submodule update --init --recursive` from
 the repository root. All remaining commands below use that root directory.
 For a released app, select the tag shown in **Settings → About and open-source
 licenses** when cloning: `git clone --branch <source-tag> --recurse-submodules
-https://github.com/kunkundi/crossdesk.git`. The iOS marketing version is independent
-of the repository tag; use the source tag or commit recorded in the app.
+https://github.com/kunkundi/crossdesk.git`. Combined releases share the desktop
+tag's numeric version. Use the source tag or commit recorded in the app to
+identify its exact source.
 
 Install [Xmake](https://xmake.io/guide/quick-start.html) 3.1.1 or newer,
 CMake, and a current Python 3 with setuptools/wheel. Pin the package repository
@@ -143,10 +144,14 @@ The workflow builds with the minimum supported Xmake version (3.1.1) and retains
 the pinned Xcode/SDK, dependency cache, license catalog validation, unsigned arm64
 Release build, and app-bundle verification. Unit tests run locally as needed.
 It uploads
-`crossdesk-ios-arm64-unsigned-v<marketing-version>-<date>.zip`,
+`crossdesk-ios-arm64-unsigned-v<version>-<date>.zip`,
 including the app, source metadata, third-party source catalog, rights notice
-and any generated dSYM. The version comes from the iOS target; dated repository
-tags provide the build date, otherwise the date uses the Asia/Shanghai timezone.
+and any generated dSYM. For combined `v*` releases, the ZIP uses the same version,
+date and optional hotfix suffix as the desktop packages, and the app's
+`MARKETING_VERSION` is set to the tag's numeric version during the build.
+Branch builds and independent `ios-v*` releases use the iOS target's
+`MARKETING_VERSION`. Dated tags provide the build date; otherwise the date uses
+the Asia/Shanghai timezone.
 The main workflow collects this same ZIP for GitHub Releases and the download
 server. Standalone `Build iOS` runs only upload the build artifact.
 
