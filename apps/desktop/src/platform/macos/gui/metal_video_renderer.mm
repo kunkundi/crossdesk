@@ -1259,12 +1259,32 @@ MacMetalVideoRenderer::RenderOutcome MacMetalVideoRenderer::RenderLatest(
                 vertexCount:4];
     [encoder endEncoding];
 
+    NSWindow* window = impl_->video_view.window;
+    const bool visible_at_submit = window != nil && window.isVisible &&
+        !window.isMiniaturized && !impl_->video_view.isHiddenOrHasHiddenAncestor &&
+        (window.occlusionState & NSWindowOcclusionStateVisible) != 0;
     std::shared_ptr<SharedFrameState> completion_frames = impl_->frames;
-    [command_buffer addCompletedHandler:^(id<MTLCommandBuffer>) {
-      std::lock_guard lock(completion_frames->mutex);
-      auto& slot = completion_frames->slots[slot_index];
-      if (slot.sequence == sequence && slot.use == SlotUse::in_flight) {
-        slot.use = SlotUse::available;
+    [command_buffer addCompletedHandler:^(id<MTLCommandBuffer> completed) {
+      {
+        std::lock_guard lock(completion_frames->mutex);
+        auto& slot = completion_frames->slots[slot_index];
+        if (slot.sequence == sequence && slot.use == SlotUse::in_flight) {
+          slot.use = SlotUse::available;
+        }
+      }
+      // Some macOS/display environments return zero for every presentedTime,
+      // even while the video is visible. Keep a labelled GPU-end estimate so
+      // that missing presentation feedback does not leave latency blank. A
+      // real presentedTime takes precedence in VideoLatencyStats. Never use
+      // callback arrival time, which can be delayed by seconds.
+      const auto now = VideoLatencyFrame::Clock::now();
+      const double gpu_end = completed.GPUEndTime;
+      const auto rendered_at = VideoLatencyFrame::FromHostTime(
+          gpu_end, CACurrentMediaTime(), now);
+      const bool gpu_completed =
+          completed.status == MTLCommandBufferStatusCompleted;
+      if (gpu_completed && visible_at_submit && rendered_at) {
+        timing.MarkEstimated(*rendered_at);
       }
     }];
     [drawable addPresentedHandler:^(id<MTLDrawable> presented) {
@@ -1273,11 +1293,11 @@ MacMetalVideoRenderer::RenderOutcome MacMetalVideoRenderer::RenderLatest(
       // timing by value keeps this safe after a session/renderer is destroyed.
       const double presented_time = presented.presentedTime;
       const auto now = VideoLatencyFrame::Clock::now();
-      const double age = CACurrentMediaTime() - presented_time;
-      if (presented_time > 0 && std::isfinite(age) && age >= 0 && age <= 5) {
-        timing.MarkPresented(
-            now - std::chrono::duration_cast<VideoLatencyFrame::Clock::duration>(
-                      std::chrono::duration<double>(age)));
+      const double host_now = CACurrentMediaTime();
+      const auto presented_at = VideoLatencyFrame::FromHostTime(
+          presented_time, host_now, now);
+      if (presented_at) {
+        timing.MarkPresented(*presented_at);
       }
     }];
     [command_buffer presentDrawable:drawable];

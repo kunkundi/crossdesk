@@ -7,7 +7,9 @@
 #ifndef _VIDEO_LATENCY_H_
 #define _VIDEO_LATENCY_H_
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -27,8 +29,20 @@ struct VideoLatencyFrame {
   uint64_t id = 0;
   Clock::time_point capture_time{};
   void MarkPresented(Clock::time_point now = Clock::now()) const;
+  // GPU completion/submission are estimates: neither confirms screen display.
+  void MarkEstimated(Clock::time_point now = Clock::now()) const;
   // Fallback for renderers which expose submission but no presentation time.
   void MarkSubmitted(Clock::time_point now = Clock::now()) const;
+  // Translate a host-clock event, excluding any callback scheduling delay.
+  static std::optional<Clock::time_point> FromHostTime(
+      double event_time_s, double host_now_s,
+      Clock::time_point now = Clock::now()) {
+    const double age = host_now_s - event_time_s;
+    if (event_time_s <= 0 || !std::isfinite(age) || age < 0 || age > 5)
+      return std::nullopt;
+    return now - std::chrono::duration_cast<Clock::duration>(
+                     std::chrono::duration<double>(age));
+  }
 };
 
 class VideoLatencyStats
@@ -38,6 +52,7 @@ class VideoLatencyStats
   struct Snapshot {
     double average_ms;
     size_t samples;
+    bool estimated;
   };
 
   VideoLatencyFrame Frame(uint64_t captured_us, int64_t local_now_us,
@@ -51,16 +66,28 @@ class VideoLatencyStats
             now - std::chrono::microseconds(local_now_us - captured_us)};
   }
 
-  void Record(const VideoLatencyFrame& frame, Clock::time_point now) {
-    std::lock_guard lock(mutex_);
-    // Redraws, cached snapshots and late completions must not count twice.
-    if (frame.id <= last_id_) return;
-    last_id_ = frame.id;
+  void Record(const VideoLatencyFrame& frame, Clock::time_point now,
+              bool estimated = false) {
     const double ms =
         std::chrono::duration<double, std::milli>(now - frame.capture_time)
             .count();
     if (ms < 0 || ms > 5000) return;
-    samples_.push_back({now, ms});
+    std::lock_guard lock(mutex_);
+    if (frame.id <= last_id_) {
+      // A presentation callback can arrive after GPU completion, including
+      // callbacks for later frames. Upgrade its estimate without adding a
+      // second sample. Never revive a pruned/reset frame or overwrite a real
+      // presentation with a redraw or an estimate.
+      if (estimated) return;
+      auto sample = std::find_if(
+          samples_.begin(), samples_.end(),
+          [&](const Sample& value) { return value.id == frame.id; });
+      if (sample == samples_.end() || !sample->estimated) return;
+      *sample = {frame.id, now, ms, false};
+    } else {
+      last_id_ = frame.id;
+      samples_.push_back({frame.id, now, ms, estimated});
+    }
     Prune(now);
   }
 
@@ -68,11 +95,23 @@ class VideoLatencyStats
     std::lock_guard lock(mutex_);
     Prune(now);
     if (samples_.empty()) return std::nullopt;
-    double sum = 0;
+    double presented_sum = 0;
+    double estimated_sum = 0;
+    size_t presented_count = 0;
     for (const auto& sample : samples_) {
-      sum += sample.ms;
+      if (sample.estimated) {
+        estimated_sum += sample.ms;
+      } else {
+        presented_sum += sample.ms;
+        ++presented_count;
+      }
     }
-    return Snapshot{sum / samples_.size(), samples_.size()};
+    // Prefer actual presentations in the rolling window. Do not mix GPU and
+    // screen endpoints, or let the newest not-yet-presented frame force an
+    // otherwise precise measurement to be labelled approximate.
+    if (presented_count != 0)
+      return Snapshot{presented_sum / presented_count, presented_count, false};
+    return Snapshot{estimated_sum / samples_.size(), samples_.size(), true};
   }
 
   void Reset() {
@@ -83,14 +122,20 @@ class VideoLatencyStats
 
  private:
   void Prune(Clock::time_point now) {
-    while (!samples_.empty() &&
-           (now - samples_.front().time > std::chrono::seconds(1) ||
-            samples_.size() > 240))
-      samples_.pop_front();
+    // Upgrades can change timestamps out of order.
+    samples_.erase(std::remove_if(samples_.begin(), samples_.end(),
+                                  [&](const Sample& sample) {
+                                    return now - sample.time >
+                                           std::chrono::seconds(1);
+                                  }),
+                   samples_.end());
+    while (samples_.size() > 240) samples_.pop_front();
   }
   struct Sample {
+    uint64_t id;
     Clock::time_point time;
     double ms;
+    bool estimated;
   };
   std::mutex mutex_;
   uint64_t issued_id_ = 0;
@@ -99,7 +144,11 @@ class VideoLatencyStats
 };
 
 inline void VideoLatencyFrame::MarkSubmitted(Clock::time_point now) const {
-  MarkPresented(now);
+  MarkEstimated(now);
+}
+
+inline void VideoLatencyFrame::MarkEstimated(Clock::time_point now) const {
+  if (stats) stats->Record(*this, now, true);
 }
 
 inline void VideoLatencyFrame::MarkPresented(Clock::time_point now) const {
