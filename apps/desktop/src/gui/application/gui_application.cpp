@@ -62,6 +62,7 @@
 #endif
 #include "rd_log.h"
 #include "server_window_state.h"
+#include "signal_server_settings.h"
 #include "ui/announcement_text.h"
 #include "ui/ui_localization.h"
 #include "update_checker.h"
@@ -3496,6 +3497,7 @@ void GuiApplication::SyncServerWindow() {
 }
 
 void GuiApplication::SaveSettingsFromUi() {
+  const auto previous_server = GetSignalServerSettings(*config_center_);
   auto& main = ui_->main;
   language_button_value_ =
       localization::detail::ClampLanguageIndex(main->get_language_index());
@@ -3530,10 +3532,18 @@ void GuiApplication::SaveSettingsFromUi() {
   reload_recent_connections_ = true;
 #ifdef _WIN32
   if (!HasActiveSession()) {
+    const auto previous_capture_method = config_center_->GetScreenCaptureMethod();
     const auto capture_method = static_cast<ScreenCaptureMethod>(
         std::clamp(main->get_capture_method_index(), 0, 3));
     if (config_center_->SetScreenCaptureMethod(capture_method) != 0) {
       LOG_ERROR("Failed to save screen capture method");
+    } else if (capture_method != previous_capture_method) {
+      // Reconfigure only capture; its backend does not own signaling.
+      devices_.StopScreenCapturer();
+      screen_capturer_is_started_ = false;
+      if (devices_.InitializeScreenCapturer() != 0) {
+        LOG_ERROR("Failed to apply screen capture method");
+      }
     }
   }
   main->set_capture_method_index(
@@ -3563,7 +3573,8 @@ void GuiApplication::SaveSettingsFromUi() {
   }
 
   config_center_->SetSelfHosted(enable_self_hosted_);
-  ApplySettingsFromConfig(!HasActiveSession());
+  ApplySettingsFromConfig(previous_server !=
+                          GetSignalServerSettings(*config_center_));
 }
 
 void GuiApplication::ApplySettingsFromConfig(bool reconnect) {
@@ -3603,6 +3614,24 @@ void GuiApplication::ApplySettingsFromConfig(bool reconnect) {
     // Tick recreates the peer after asynchronous cleanup, using the committed
     // configuration. Keep the application and its console running throughout.
     CloseAllRemoteSessions();
+  } else {
+    const bool hardware = config_center_->IsHardwareVideoCodec();
+    const bool av1 = config_center_->GetVideoEncodeFormat() ==
+                     ConfigCenter::VIDEO_ENCODE_FORMAT::AV1;
+    const auto turn = static_cast<TurnMode>(config_center_->GetTurnMode());
+    if (hardware != params_.hardware_acceleration || av1 != params_.av1_encoding ||
+        turn != params_.turn_mode) {
+      // Update the listening peer for incoming connections and the template
+      // copied by ConnectTo for outgoing connections. Existing sessions retain
+      // the codec/ICE snapshot with which they negotiated.
+      if (!peer_ || UpdateConnectionSettings(peer_, hardware, av1, turn) == 0) {
+        params_.hardware_acceleration = hardware;
+        params_.av1_encoding = av1;
+        params_.turn_mode = turn;
+      } else {
+        LOG_ERROR("Failed to apply connection settings without reconnecting");
+      }
+    }
   }
 }
 

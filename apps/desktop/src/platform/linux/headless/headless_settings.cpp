@@ -10,6 +10,7 @@
 #include <optional>
 
 #include "config_center.h"
+#include "signal_server_settings.h"
 
 namespace crossdesk {
 namespace {
@@ -142,11 +143,15 @@ SettingResult ApplyConsoleSetting(ConfigCenter& config, const std::string& key,
       return {true, SettingEffect::none, "console_settings_unchanged"};
     }
   }
+  const auto previous_server = GetSignalServerSettings(config);
   status = save();
   if (status != 0) return {false, SettingEffect::none, "console_settings_save_failed"};
-  if (network && ((key != "server_host" && key != "server_port") || config.IsSelfHosted())) {
+  if (previous_server != GetSignalServerSettings(config)) {
     effect = SettingEffect::reconnect;
     message = "console_settings_reconnect";
+  } else if (key == "codec" || key == "hardware" || key == "turn") {
+    effect = SettingEffect::next_connection;
+    message = "console_settings_next_connection";
   }
   return {true, effect, message};
 }

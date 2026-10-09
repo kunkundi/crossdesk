@@ -80,7 +80,7 @@ struct PeerState {
   std::string file_label_ = kFileStream;
   std::string file_feedback_label_ = kFileFeedbackStream;
   std::string clipboard_label_ = kClipboardStream;
-  Params params_;
+  Params params_{};
 };
 
 // OS-specific service and permission state is kept separate from transport
