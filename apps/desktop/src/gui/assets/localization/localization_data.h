@@ -289,6 +289,7 @@ struct TranslationRow {
     "Check failed. Please try again later.",                                    \
     u8"Не удалось проверить обновления. Повторите позже.")                     \
   X(release_notes, u8"更新内容", "Release Notes", u8"Содержание обновления") \
+  X(view_release_notes, u8"更新日志", "Release notes", u8"История изменений") \
   X(version, u8"版本", "Version", u8"Версия")                                  \
   X(release_date, u8"发布日期: ", "Release Date: ", u8"Дата релиза: ")         \
   X(access_website, u8"访问官网: ",                                            \

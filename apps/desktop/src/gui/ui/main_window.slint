@@ -72,6 +72,7 @@ export global UiStrings {
     in-out property <string> up-to-date: "You’re up to date";
     in-out property <string> update-check-failed: "Check failed. Please try again later.";
     in-out property <string> release-notes: "Release notes";
+    in-out property <string> view-release-notes: "Release notes";
     in-out property <string> later: "Later";
     in-out property <string> download: "Download";
     in-out property <string> input-password: "Input password";
@@ -1887,7 +1888,7 @@ export component MainWindow inherits Window {
             x: (root.width - self.width) / 2;
             y: (root.height - self.height) / 2;
             width: 320px;
-            height: 216px;
+            height: max(216px, about-content.preferred-height);
             border-radius: 7px;
 
             Rectangle {
@@ -1901,8 +1902,8 @@ export component MainWindow inherits Window {
                 Rectangle { y: parent.height - 7px; height: 7px; background: #d3d3d3; }
                 Text { x: 6px; text: UiStrings.about; font-size: ImGuiFontStyle.base; font-weight: 600; color: #202124; vertical-alignment: center; }
             }
-            // Keep the dialog/footer stable while visible text rows determine
-            // each group's size and the layout redistributes the space between.
+            // Grow for update actions and wrapped translations while keeping
+            // the footer below the version and check result.
             about-content := VerticalLayout {
                 padding: 16px;
                 padding-top: 35px;
@@ -1940,6 +1941,19 @@ export component MainWindow inherits Window {
                         version-touch := TouchArea {
                             mouse-cursor: pointer;
                             clicked => { root.about-open = false; root.update-open = true; }
+                        }
+                    }
+                    if root.update-available: HorizontalLayout {
+                        alignment: start;
+                        padding-top: 4px;
+                        CompactButton {
+                            width: max(76px, release-notes-button-metrics.preferred-width + 20px);
+                            text: UiStrings.view-release-notes;
+                            accessible-role: button;
+                            accessible-label: self.text;
+                            accessible-action-default => { self.clicked(); }
+                            clicked => { root.about-open = false; root.update-open = true; }
+                            release-notes-button-metrics := Text { visible: false; text: UiStrings.view-release-notes; font-size: ImGuiFontStyle.body; }
                         }
                     }
                     if root.update-status-text != "": Text {
