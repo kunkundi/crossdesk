@@ -106,6 +106,11 @@ private:
       cursor_delivery_states_;
   uint32_t cursor_state_sequence_ = 0;
   std::chrono::steady_clock::time_point next_video_frame_time_{};
+  // The signal server is reached over a lossy path that routinely drops for the
+  // few seconds a reconnect takes, so the main window holds its "connected"
+  // indication through a brief blip instead of flickering offline.
+  std::chrono::steady_clock::time_point signal_lost_at_{};
+  bool signal_lost_at_valid_ = false;
 #if defined(__linux__) && !defined(__APPLE__)
   bool use_xwayland_gui_ = false;
   bool use_x11_custom_titlebar_ = false;
