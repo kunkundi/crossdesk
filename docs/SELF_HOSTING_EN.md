@@ -44,7 +44,7 @@ For a self-signed deployment, complete the [certificate trust steps](#3-trust-th
 
 1. Disconnect existing sessions and open **☰ → Settings**.
 2. Scroll down and click **Self-Hosted Config**.
-3. Enter **Server Address** and **Signal Service Port**, then confirm. Enter only the hostname or IP in the address field, without a URL scheme, path, or port.
+3. Enter **Server Address** and **Signal Service Port**, then confirm. The address accepts a hostname or IP (such as `my-server.example.com`), a signaling path (such as `my-server.example.com/signal-path`), or an `https://` / `wss://` URL. An explicit URL port takes precedence; otherwise the separate signaling port is used. Connections always use WSS. Paths must be routed to the signaling WebSocket service by your reverse proxy; an ordinary web page is not a signaling endpoint.
 4. Enable the checkbox beside **Self-Hosted Config**, then click **OK** in the parent settings window.
 5. Configure both the controller and host this way. Once both report a server connection, connect using the host's currently displayed ID.
 

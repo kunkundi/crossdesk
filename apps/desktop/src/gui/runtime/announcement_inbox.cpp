@@ -8,6 +8,8 @@
 #include <set>
 #include <system_error>
 
+#include "signal_server_address.h"
+
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -51,9 +53,12 @@ void AnnouncementInbox::Configure(std::string host, int port,
   std::lock_guard<std::mutex> lock(mutex_);
   if (directory_.empty() || host.empty() || port <= 0 || device_id.empty())
     return;
-  for (auto& ch : host)
+  auto address = minirtc::ParseSignalServerAddress(host);
+  if (!address) return;
+  for (auto& ch : address->host)
     if (ch >= 'A' && ch <= 'Z') ch += 'a' - 'A';
-  if (host.back() == '.') host.pop_back();
+  if (address->host.back() == '.') address->host.pop_back();
+  host = address->Address();
   const auto scope = json::array({host, port, device_id}).dump();
   if (scope_ == scope) return;
   scope_ = scope;

@@ -240,6 +240,9 @@ struct TranslationRow {
     "Server Address:", u8"Адрес сервера:")                                     \
   X(self_hosted_server_port, u8"信令服务端口:",                                \
     "Signal Service Port:", u8"Порт сигнального сервиса:")                     \
+  X(self_hosted_address_invalid, u8"请输入有效的主机名、IP 或 HTTPS/WSS 信令地址，可包含路径。", "Enter a valid host, IP, or HTTPS/WSS signaling URL. Paths are supported.", u8"Введите имя хоста, IP или HTTPS/WSS-адрес сигнального сервиса. Путь допустим.") \
+  X(self_hosted_port_invalid, u8"请输入 1–65535 范围内的信令端口。", "Enter a signaling port between 1 and 65535.", u8"Введите порт сигнального сервиса от 1 до 65535.") \
+  X(self_hosted_save_failed, u8"配置保存失败，请检查配置目录是否可写后重试。", "Could not save settings. Check that the configuration directory is writable and retry.", u8"Не удалось сохранить настройки. Проверьте доступ на запись в каталог конфигурации.") \
   X(ok, u8"确认", "OK", u8"ОК")                                                \
   X(cancel, u8"取消", "Cancel", u8"Отмена")                                    \
   X(new_password, u8"请输入六位密码:",                                         \

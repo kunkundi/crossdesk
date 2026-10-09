@@ -10,6 +10,7 @@
 #include "SimpleIni.h"
 #include "autostart.h"
 #include "rd_log.h"
+#include "signal_server_address.h"
 
 namespace crossdesk {
 
@@ -290,10 +291,23 @@ int ConfigCenter::SetTurn(bool enable_turn, bool force_relay) {
 }
 
 int ConfigCenter::SetServerHost(const std::string& host) {
-  if (host.empty() || host.size() > 253 || host.find_first_of("/\\@?#") != std::string::npos ||
-      std::any_of(host.begin(), host.end(), [](unsigned char c) { return c <= 32 || c == 127; })) return -1;
-  if (StoreValues({{"signal_server_host", host}}) != 0) return -1;
-  signal_server_host_ = host;
+  const auto address = minirtc::ParseSignalServerAddress(host);
+  if (!address) return -1;
+  if (address->port) return SetServerEndpoint(host, *address->port);
+  if (StoreValues({{"signal_server_host", address->Address()}}) != 0) return -1;
+  signal_server_host_ = address->Address();
+  return 0;
+}
+
+int ConfigCenter::SetServerEndpoint(const std::string& host, int port) {
+  const auto address = minirtc::ParseSignalServerAddress(host);
+  if (!address) return -1;
+  port = address->port.value_or(port);
+  if (port < 1 || port > 65535) return -1;
+  if (StoreValues({{"signal_server_host", address->Address()},
+                   {"signal_server_port", std::to_string(port)}}) != 0) return -1;
+  signal_server_host_ = address->Address();
+  signal_server_port_ = port;
   return 0;
 }
 

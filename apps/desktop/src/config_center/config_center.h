@@ -42,6 +42,7 @@ class ConfigCenter {
   int SetTurn(bool enable_turn, bool force_relay);
   int SetServerHost(const std::string& signal_server_host);
   int SetServerPort(int signal_server_port);
+  int SetServerEndpoint(const std::string& address, int port);
   int SetSelfHosted(bool enable_self_hosted);
   int SetAutostart(bool enable_autostart);
   int SetDaemon(bool enable_daemon);

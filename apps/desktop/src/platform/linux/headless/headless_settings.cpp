@@ -10,6 +10,7 @@
 #include <optional>
 
 #include "config_center.h"
+#include "signal_server_address.h"
 #include "signal_server_settings.h"
 
 namespace crossdesk {
@@ -83,9 +84,7 @@ SettingResult ApplyConsoleSetting(ConfigCenter& config, const std::string& key,
     canonical = value;
     save = [&config, mode] { return config.SetTurnMode(static_cast<ConfigCenter::TURN_MODE>(mode)); };
   } else if (key == "server_host") {
-    if (input.empty() || input.size() > 253 ||
-        input.find_first_of("/\\@?#") != std::string::npos ||
-        std::any_of(input.begin(), input.end(), [](unsigned char c) { return c <= 32 || c == 127; })) return result;
+    if (!minirtc::ParseSignalServerAddress(input)) return result;
     save = [&] { return config.SetServerHost(input); };
   } else if (key == "server_port") {
     int port = 0;

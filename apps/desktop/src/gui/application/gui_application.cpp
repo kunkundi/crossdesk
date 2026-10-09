@@ -63,6 +63,7 @@
 #include "rd_log.h"
 #include "server_window_state.h"
 #include "signal_server_settings.h"
+#include "signal_server_address.h"
 #include "ui/announcement_text.h"
 #include "ui/ui_localization.h"
 #include "update_checker.h"
@@ -1285,6 +1286,7 @@ void GuiApplication::ResetSettingsUi() {
   ui_->main->set_file_save_path(file_transfer_save_path_buf_);
   ui_->main->set_server_host(signal_server_ip_self_);
   ui_->main->set_server_port(signal_server_port_self_);
+  ui_->main->set_self_host_settings_error("");
 }
 
 void GuiApplication::BindMainCallbacks() {
@@ -1419,29 +1421,14 @@ void GuiApplication::BindMainCallbacks() {
       ui_->main->set_file_save_path(folder);
     }
   });
-  main->on_save_settings([this] { SaveSettingsFromUi(); });
+  main->on_save_settings([this] { return SaveSettingsFromUi(); });
   main->on_cancel_settings([this] { ResetSettingsUi(); });
   main->on_save_self_hosted_settings([this] {
-    const std::string host(ui_->main->get_server_host());
-    const auto signal_port = ParsePort(ui_->main->get_server_port());
-    if (!host.empty()) {
-      config_center_->SetServerHost(host);
-      std::memset(signal_server_ip_self_, 0, sizeof(signal_server_ip_self_));
-      std::strncpy(signal_server_ip_self_, host.c_str(),
-                   sizeof(signal_server_ip_self_) - 1);
-      std::memset(signal_server_ip_, 0, sizeof(signal_server_ip_));
-      std::strncpy(signal_server_ip_, host.c_str(),
-                   sizeof(signal_server_ip_) - 1);
-    }
-    if (signal_port) {
-      config_center_->SetServerPort(*signal_port);
-      std::snprintf(signal_server_port_self_, sizeof(signal_server_port_self_),
-                    "%d", *signal_port);
-      std::snprintf(signal_server_port_, sizeof(signal_server_port_), "%d",
-                    *signal_port);
-    }
+    // Stage the endpoint until the surrounding settings dialog is confirmed.
+    return ValidateSelfHostedSettingsFromUi();
   });
   main->on_cancel_self_hosted_settings([this] {
+    ui_->main->set_self_host_settings_error("");
     const std::string host = config_center_->GetSignalServerHost();
     ui_->main->set_server_host(UiText(host));
     const int signal_port = config_center_->GetSignalServerPort();
@@ -3496,9 +3483,45 @@ void GuiApplication::SyncServerWindow() {
   PositionServerWindows();
 }
 
-void GuiApplication::SaveSettingsFromUi() {
+bool GuiApplication::ValidateSelfHostedSettingsFromUi() {
+  auto& main = ui_->main;
+  const auto address = minirtc::ParseSignalServerAddress(
+      std::string(main->get_server_host()));
+  if (!address) {
+    main->set_self_host_settings_error(UiText(
+        localization::self_hosted_address_invalid[localization_language_index_]));
+    return false;
+  }
+  const auto port = address->port ? address->port : ParsePort(main->get_server_port());
+  if (!port) {
+    main->set_self_host_settings_error(UiText(
+        localization::self_hosted_port_invalid[localization_language_index_]));
+    return false;
+  }
+  main->set_server_host(UiText(address->Address()));
+  main->set_server_port(UiText(std::to_string(*port)));
+  main->set_self_host_settings_error("");
+  return true;
+}
+
+bool GuiApplication::SaveSettingsFromUi() {
   const auto previous_server = GetSignalServerSettings(*config_center_);
   auto& main = ui_->main;
+  const bool has_endpoint = main->get_self_hosted_enabled() ||
+      !std::string(main->get_server_host()).empty() ||
+      !std::string(main->get_server_port()).empty();
+  if (has_endpoint && !ValidateSelfHostedSettingsFromUi()) {
+    main->set_self_host_settings_open(true);
+    return false;
+  }
+  if ((has_endpoint && config_center_->SetServerEndpoint(
+          std::string(main->get_server_host()), *ParsePort(main->get_server_port())) != 0) ||
+      config_center_->SetSelfHosted(main->get_self_hosted_enabled()) != 0) {
+    main->set_self_host_settings_error(UiText(
+        localization::self_hosted_save_failed[localization_language_index_]));
+    main->set_self_host_settings_open(true);
+    return false;
+  }
   language_button_value_ =
       localization::detail::ClampLanguageIndex(main->get_language_index());
   video_encode_format_button_value_ = std::clamp(main->get_codec_index(), 0, 1);
@@ -3564,17 +3587,9 @@ void GuiApplication::SaveSettingsFromUi() {
                sizeof(file_transfer_save_path_buf_) - 1);
   config_center_->SetFileTransferSavePath(path);
 
-  const std::string host(main->get_server_host());
-  if (!host.empty()) {
-    config_center_->SetServerHost(host);
-  }
-  if (const auto port = ParsePort(main->get_server_port())) {
-    config_center_->SetServerPort(*port);
-  }
-
-  config_center_->SetSelfHosted(enable_self_hosted_);
   ApplySettingsFromConfig(previous_server !=
                           GetSignalServerSettings(*config_center_));
+  return true;
 }
 
 void GuiApplication::ApplySettingsFromConfig(bool reconnect) {

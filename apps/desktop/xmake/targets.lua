@@ -453,6 +453,7 @@ function setup_targets()
         add_deps("rd_log", "autostart")
         add_files("apps/desktop/src/config_center/*.cpp")
         add_includedirs("apps/desktop/src", "apps/desktop/src/config_center",
+            "deps/submodules/minirtc/src/api",
             {public = true})
 
     target("assets")

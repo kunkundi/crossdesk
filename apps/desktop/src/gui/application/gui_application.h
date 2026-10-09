@@ -76,7 +76,8 @@ private:
 #endif
   void UpdateLocalization();
   void ResetSettingsUi();
-  void SaveSettingsFromUi();
+  bool ValidateSelfHostedSettingsFromUi();
+  bool SaveSettingsFromUi();
   void ApplySettingsFromConfig(bool reconnect);
 #if _WIN32 && CROSSDESK_PORTABLE
   void CheckPortableWindowsService();

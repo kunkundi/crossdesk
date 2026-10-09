@@ -379,6 +379,7 @@ export component MainWindow inherits Window {
     in-out property <string> file-save-path: "";
     in-out property <string> server-host: "";
     in-out property <string> server-port: "";
+    in-out property <string> self-host-settings-error: "";
     in property <bool> settings-session-active: false;
     // Keep the setting visible on every platform. Unsupported builds expose it
     // as disabled so the fixed settings layout never turns into a blank row.
@@ -393,9 +394,9 @@ export component MainWindow inherits Window {
     callback recent-connect(string);
     callback recent-edit-alias(string, string);
     callback recent-delete(string);
-    callback save-settings;
+    callback save-settings() -> bool;
     callback cancel-settings;
-    callback save-self-hosted-settings;
+    callback save-self-hosted-settings() -> bool;
     callback cancel-self-hosted-settings;
     callback browse-save-path;
     callback open-download;
@@ -418,6 +419,9 @@ export component MainWindow inherits Window {
     in-out property <bool> settings-open: false;
     private property <length> settings-scroll-y: 0px;
     in-out property <bool> self-host-settings-open: false;
+    changed self-host-settings-open => {
+        if !root.self-host-settings-open { root.self-host-settings-error = ""; }
+    }
     in-out property <bool> about-open: false;
     in-out property <bool> update-open: false;
     in-out property <bool> reset-password-open: false;
@@ -1809,7 +1813,7 @@ export component MainWindow inherits Window {
             }
 
             Rectangle { x: 7px; y: 286px; width: parent.width - 14px; height: 1px; background: ImGuiLineStyle.separator; }
-            CompactButton { x: root.compact-language ? 63px : 89px; y: 297px; primary: true; text: UiStrings.ok; clicked => { root.save-settings(); root.settings-open = false; root.self-host-settings-open = false; } }
+            CompactButton { x: root.compact-language ? 63px : 89px; y: 297px; primary: true; text: UiStrings.ok; clicked => { if root.save-settings() { root.settings-open = false; root.self-host-settings-open = false; } } }
             CompactButton { x: root.compact-language ? 104px : 130px; y: 297px; width: root.compact-language ? 34px : 56px; text: UiStrings.cancel; clicked => { root.cancel-settings(); root.settings-open = false; root.self-host-settings-open = false; } }
         }
     }
@@ -1822,7 +1826,7 @@ export component MainWindow inherits Window {
             x: root.compact-language ? 190px : 140px;
             y: 105px;
             width: root.compact-language ? 260px : 360px;
-            height: 138px;
+            height: root.self-host-settings-error == "" ? 138px : 202px;
             border-radius: 7px;
 
             Rectangle {
@@ -1846,7 +1850,7 @@ export component MainWindow inherits Window {
                 border-width: 1px;
                 border-color: ImGuiLineStyle.border;
                 border-radius: 4px;
-                LineEdit { x: 1px; y: 1.5px; width: parent.width - 2px; height: parent.height - 2px; text <=> root.server-host; font-size: ImGuiFontStyle.body; }
+                LineEdit { x: 1px; y: 1.5px; width: parent.width - 2px; height: parent.height - 2px; text <=> root.server-host; input-type: InputType.text; font-size: ImGuiFontStyle.body; }
                 LineEditFocusUnderlineMask { x: 5px; y: parent.height - 3px; width: parent.width - 10px; }
             }
             Text { x: 8px; y: 61px; width: root.compact-language ? 88px : 165px; height: 24px; text: UiStrings.server-port; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; }
@@ -1862,8 +1866,13 @@ export component MainWindow inherits Window {
                 LineEdit { x: 1px; y: 1.5px; width: parent.width - 2px; height: parent.height - 2px; text <=> root.server-port; input-type: InputType.number; font-size: ImGuiFontStyle.body; }
                 LineEditFocusUnderlineMask { x: 5px; y: parent.height - 3px; width: parent.width - 10px; }
             }
-            CompactButton { x: root.compact-language ? 93px : 135px; y: 100px; primary: true; text: UiStrings.ok; clicked => { root.save-self-hosted-settings(); root.self-host-settings-open = false; } }
-            CompactButton { x: root.compact-language ? 134px : 176px; y: 100px; width: root.compact-language ? 34px : 56px; text: UiStrings.cancel; clicked => { root.cancel-self-hosted-settings(); root.self-host-settings-open = false; } }
+            if root.self-host-settings-error != "": Text {
+                x: 8px; y: 89px; width: parent.width - 16px; height: 64px;
+                text: root.self-host-settings-error; color: #b3261e;
+                font-size: ImGuiFontStyle.body; wrap: word-wrap;
+            }
+            CompactButton { x: root.compact-language ? 93px : 135px; y: parent.height - 38px; primary: true; text: UiStrings.ok; clicked => { if root.save-self-hosted-settings() { root.self-host-settings-open = false; } } }
+            CompactButton { x: root.compact-language ? 134px : 176px; y: parent.height - 38px; width: root.compact-language ? 34px : 56px; text: UiStrings.cancel; clicked => { root.cancel-self-hosted-settings(); root.self-host-settings-open = false; } }
         }
     }
 

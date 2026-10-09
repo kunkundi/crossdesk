@@ -61,7 +61,7 @@ xmake r crossdesk --headless
 | `codec` | `h264` / `av1` | 保存后重新连接 |
 | `hardware` | `on` / `off` | 保存后重新连接；构建不支持时拒绝开启 |
 | `turn` | `off` / `auto` / `udp` / `tcp` | 保存后重新连接；`udp` / `tcp` 表示强制中继 |
-| `server_host` | 主机名或 IP，不含协议与路径 | 自托管未启用时保存备用，已启用时重连 |
+| `server_host` | 主机名、IP 或 HTTPS/WSS 信令地址，支持路径和显式端口 | 自托管未启用时保存备用，已启用时重连 |
 | `server_port` | `1`–`65535` | 同上 |
 | `self_hosted` | `on` / `off` | 先配置地址、端口，再开启；保存后重连 |
 | `privacy` | `on` / `off` | 后续远程连接的自动隐私屏行为 |

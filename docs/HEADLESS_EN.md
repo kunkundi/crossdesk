@@ -60,7 +60,7 @@ The menu shares the GUI's `config.ini`. Each valid change is saved immediately; 
 | `codec` | `h264` / `av1` | Reconnect after saving |
 | `hardware` | `on` / `off` | Reconnect; enabling requires a build with hardware codec support |
 | `turn` | `off` / `auto` / `udp` / `tcp` | Reconnect; UDP/TCP force relay use |
-| `server_host` | Hostname or IP without URL scheme/path | Reconnect if self-hosting is enabled; otherwise saved for later |
+| `server_host` | Hostname, IP, or HTTPS/WSS signaling URL, with optional path and explicit port | Reconnect if self-hosting is enabled; otherwise saved for later |
 | `server_port` | `1`–`65535` | Same as server host |
 | `self_hosted` | `on` / `off` | Configure host/port first, then enable; reconnect |
 | `privacy` | `on` / `off` | Automatic privacy screen on subsequent connections |
