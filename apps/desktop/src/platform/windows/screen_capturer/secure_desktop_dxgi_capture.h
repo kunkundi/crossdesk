@@ -16,6 +16,8 @@
 #include <cstdint>
 #include <vector>
 
+#include "secure_desktop_dxgi_cursor_state.h"
+
 namespace crossdesk {
 
 // Owned by the SYSTEM helper's capture thread, after binding its input desktop.
@@ -85,9 +87,8 @@ class SecureDesktopDxgiCapture {
       IDXGIOutputDuplication* duplication;
       ~ReleaseFrame() { duplication->ReleaseFrame(); }
     } release{duplication_.Get()};
-    if (info.LastMouseUpdateTime.QuadPart != 0) {
-      cursor_embedded_ = !info.PointerPosition.Visible;
-    }
+    cursor_state_.Update(info.LastMouseUpdateTime.QuadPart,
+                         info.PointerPosition.Visible != FALSE);
     // Pointer-only updates leave the desktop image unchanged.
     if (info.LastPresentTime.QuadPart == 0 && !pixels_.empty()) return S_OK;
 
@@ -134,12 +135,11 @@ class SecureDesktopDxgiCapture {
   }
   int stride() const { return stride_; }
   bool updated() const { return updated_; }
-  const DXGI_OUTPUT_DESC& output() const { return output_desc_; }
-  void SetSoftwareCursor(bool software) { cursor_embedded_ = software; }
   bool CursorEmbedded(const CURSORINFO& cursor) const {
-    return cursor_embedded_ && (cursor.flags & CURSOR_SHOWING) != 0 &&
-           MonitorFromPoint(cursor.ptScreenPos, MONITOR_DEFAULTTONULL) ==
-               output_desc_.Monitor;
+    return cursor_state_.IsEmbedded(
+        (cursor.flags & CURSOR_SHOWING) != 0,
+        MonitorFromPoint(cursor.ptScreenPos, MONITOR_DEFAULTTONULL) ==
+            output_desc_.Monitor);
   }
 
  private:
@@ -150,7 +150,7 @@ class SecureDesktopDxgiCapture {
   DXGI_OUTPUT_DESC output_desc_{};
   libyuv::RotationMode rotation_ = libyuv::kRotate0;
   int offset_x_ = 0, offset_y_ = 0, stride_ = 0;
-  bool cursor_embedded_ = false;
+  SecureDesktopDxgiCursorState cursor_state_;
   bool updated_ = false;
   std::vector<uint8_t> pixels_;
 };

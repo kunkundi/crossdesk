@@ -1418,8 +1418,6 @@ struct SecureDesktopCaptureResources {
       const HRESULT hr = candidate->Initialize(
           request.left, request.top, request.width, request.height);
       if (SUCCEEDED(hr)) {
-        candidate->SetSoftwareCursor(crossdesk::IsUsbmmiddDisplayDevice(
-            candidate->output().DeviceName));
         dxgi = std::move(candidate);
         dxgi_started = now;
       } else {
