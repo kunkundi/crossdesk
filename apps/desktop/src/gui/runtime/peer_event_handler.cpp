@@ -379,6 +379,10 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
 
         runtime->focus_on_stream_window_ = false;
 
+        if (status == ConnectionStatus::Closed) {
+          props->remote_close_pending_.store(true, std::memory_order_release);
+        }
+
         break;
       }
       case ConnectionStatus::IncorrectPassword: {

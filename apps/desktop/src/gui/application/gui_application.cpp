@@ -1971,6 +1971,7 @@ void GuiApplication::Tick() {
   devices_.UpdateInteractions();
   ShareLocalCursorState();
 
+  CloseRemoteClosedTabs();
   UpdateLocalization();
   SyncMainWindow();
   SyncConnectionDialog();
@@ -2761,6 +2762,7 @@ void GuiApplication::SyncStreamWindow() {
     std::shared_lock lock(remote_sessions_mutex_);
     has_sessions = !remote_sessions_.empty();
   }
+  if (!has_sessions) need_to_create_stream_window_ = false;
   if (need_to_create_stream_window_ && !ui_->stream) {
     ui_->stream.emplace(ui::StreamWindow::create());
 #if defined(__linux__)
@@ -3686,6 +3688,21 @@ void GuiApplication::ReorderStreamTab(int from, float drop_x, float tab_width) {
   ui_->tab_order.insert(ui_->tab_order.begin() + target, std::move(moved));
   ui_->tab_ids = ui_->tab_order;
   SelectStreamTab(target);
+}
+
+void GuiApplication::CloseRemoteClosedTabs() {
+  std::vector<std::string> closed;
+  {
+    std::shared_lock lock(remote_sessions_mutex_);
+    for (const auto& [id, props] : remote_sessions_) {
+      if (props && props->remote_close_pending_.exchange(false)) {
+        closed.push_back(id);
+      }
+    }
+  }
+  // CloseRemoteSession drains transport callbacks and takes the session map
+  // lock. Do this on the UI thread, outside both the callback and map lock.
+  for (const auto& id : closed) CloseStreamTab(id);
 }
 
 void GuiApplication::CloseStreamTab(const std::string& remote_id) {

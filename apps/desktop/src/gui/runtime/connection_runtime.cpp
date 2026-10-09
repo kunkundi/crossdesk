@@ -308,7 +308,13 @@ void GuiRuntime::CloseServerController(const std::string& remote_id) {
   if (!peer_ || remote_id.empty() || controller_cleanup_tasks_.count(remote_id))
     return;
   controller_cleanup_tasks_[remote_id] = session_cleanup_queue_.PostTask(
-      [peer = peer_, remote_id] { LeaveConnection(peer, remote_id.c_str()); });
+      [peer = peer_, transmission_id = std::string(client_id_), remote_id] {
+        if (DisconnectPeerConnection(peer, transmission_id.c_str(),
+                                     remote_id.c_str()) != 0) {
+          LOG_WARN("[{}] Could not queue controller disconnect notification",
+                   remote_id);
+        }
+      });
 }
 
 void GuiRuntime::CloseConnectionPeer() {

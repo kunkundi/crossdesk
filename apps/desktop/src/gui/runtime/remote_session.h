@@ -73,6 +73,8 @@ struct RemoteSession {
   PeerPtr* peer_ = nullptr;
   std::shared_ptr<PeerEventHandler> peer_events_;
   std::atomic<bool> closing_{false};
+  // Transport callbacks request tab closure; only the UI thread destroys it.
+  std::atomic<bool> remote_close_pending_{false};
   std::string audio_label_ = kAudioStream;
   std::string data_label_ = kDataStream;
   std::string mouse_label_ = kMouseStream;
