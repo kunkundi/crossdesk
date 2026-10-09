@@ -1,12 +1,12 @@
 # CrossDesk Privacy Policy
 
-Last updated: October 2, 2026
+Last updated: October 10, 2026
 
 [中文](#中文) | [English](#english)
 
 ## 中文
 
-更新日期：2026 年 10 月 2 日
+更新日期：2026 年 10 月 10 日
 
 CrossDesk 重视您的个人信息与隐私保护。本政策说明我们在提供远程桌面服务时如何处理相关信息，以及您可以如何管理授权、保存的内容和数据请求。请在使用前阅读并了解本政策。
 
@@ -60,7 +60,9 @@ Android 默认信令连接同样进行 TLS 证书校验。
 
 **系统权限与会话功能。** iOS 客户端作为控制端接收远程电脑的画面与音频，不采集本机屏幕、摄像头或麦克风。局域网访问权限用于连接本地网络中的设备，您可在系统设置中管理。发送文件通过系统文件选择器选择，不要求开放整个文件库。当前 iOS 界面不读取或发送本机剪贴板文本；远端发送的剪贴板文本可在会话中写入本机剪贴板。
 
-Android 客户端同样作为控制端接收远程画面与音频，不采集本机屏幕、摄像头或麦克风，当前不支持文件传输。剪贴板文本仅在您主动发送或复制远端文本时传输或写入本机，会话结束时清除应用内缓存的远端剪贴板文本。
+Android 客户端同样作为控制端接收远程画面与音频，不采集本机屏幕、摄像头或麦克风。发送及保存文件通过系统文件选择器完成，不要求开放整个文件库。剪贴板文本仅在您主动发送或复制远端文本时传输或写入本机，会话结束时清除应用内缓存的远端剪贴板文本。
+
+Android 远程会话优先使用系统画中画在切换应用后继续显示画面。画中画不可用时，通过前台服务和连接通知保持您已建立的远程连接；后台暂停本地画面渲染和音频播放，不申请悬浮窗权限。通知权限用于提供返回及断开入口，CPU 唤醒锁用于会话后台期间维持连接，返回前台或会话结束时释放。您可以在应用或连接通知中断开，移除应用任务也会结束会话及保活服务。
 
 应用及通信组件使用本地文件元数据、应用偏好和计时接口实现文件传输、设置保存及网络计时，不使用这些信息制作设备指纹或进行广告追踪。
 
@@ -138,7 +140,9 @@ Default signaling connections on Android also validate TLS certificates.
 
 **System permissions and session features.** The iOS client receives remote computer screens and audio as a controller; it does not capture the local screen, camera or microphone. Local network access supports connections to devices on your network and can be managed in system settings. File sending uses the system document picker without requiring access to the entire file library. The current iOS interface does not read or send local clipboard text. Text sent by the remote device may be written to the local clipboard during a session.
 
-The Android client also receives remote screens and audio as a controller and does not capture the local screen, camera or microphone. It currently does not support file transfer. Clipboard text is transmitted or written locally only when you explicitly send text or copy remote text. The app clears cached remote clipboard text when the session ends.
+The Android client also receives remote screens and audio as a controller and does not capture the local screen, camera or microphone. Sending and saving files uses the system document picker without requiring access to the entire file library. Clipboard text is transmitted or written locally only when you explicitly send text or copy remote text. The app clears cached remote clipboard text when the session ends.
+
+Android remote sessions prefer system picture-in-picture to continue displaying video when you switch apps. If picture-in-picture is unavailable, a foreground service and connection notification maintain the remote connection you have established. Local video rendering and audio playback pause in the background; no overlay permission is requested. Notification permission provides return and disconnect actions. A CPU wake lock helps maintain the connection while the session is backgrounded and is released on foreground return or session end. You can disconnect in the app or its connection notification; removing the app task also ends the session and its foreground service.
 
 The app and its communication components use local file metadata, preferences and timing APIs for file transfer, settings and network timing, not for device fingerprinting or advertising tracking.
 

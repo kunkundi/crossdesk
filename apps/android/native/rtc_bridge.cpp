@@ -477,6 +477,10 @@ extern "C" JNIEXPORT void JNICALL JNI_METHOD(nClipboard)(
   s->Send(kClipboardStream, bytes);
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(nSurface)(JNIEnv* env, jclass, jlong handle, jobject surface) {
-  if (auto* s = From(handle)) s->Surface(env, surface);
+  if (auto* s = From(handle)) {
+    s->Surface(env, surface);
+    if (surface && s->controller && !s->stopping)
+      RequestVideoKeyFrame(s->controller, MakeDisplayStreamId(s->display.load()).c_str());
+  }
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(nDestroy)(JNIEnv*, jclass, jlong handle) { delete From(handle); }

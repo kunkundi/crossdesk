@@ -40,7 +40,7 @@ final class NativeSession implements AutoCloseable {
     private static final ExecutorService RTC = Executors.newSingleThreadExecutor(r -> new Thread(r, "CrossDesk RTC"));
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Context context;
-    private final Listener listener;
+    private volatile Listener listener;
     private final SecretStore secrets;
     private final String host, scope;
     private volatile String remote;
@@ -108,6 +108,9 @@ final class NativeSession implements AutoCloseable {
         });
     }
     boolean isClosed() { return closed; }
+    // UI callbacks run on the main thread. A service-owned state can replace
+    // the Activity listener without recreating either native peer.
+    void setListener(Listener value) { listener = java.util.Objects.requireNonNull(value); }
     private void publishSignaling() {
         int state = signalState;
         // Only expose the public device ID, never the identity's @password suffix.

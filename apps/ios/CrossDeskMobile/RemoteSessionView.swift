@@ -60,7 +60,8 @@ struct RemoteSessionView: View {
                                 pixelBuffer: session.pixelBuffer,
                                 frameID: session.currentVideoFrameID,
                                 captureUptime: session.frameCaptureUptime,
-                                onFrameSubmitted: session.recordVideoFrameSubmission
+                                onFrameSubmitted: session.recordVideoFrameSubmission,
+                                pictureInPicture: session.pictureInPicture
                             )
 
                             if let cursorPosition,

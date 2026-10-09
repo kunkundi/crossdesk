@@ -4,6 +4,34 @@ This target is a native MiniRTC controller. It uses the same WebSocket
 signaling, libnice ICE, SRTP/RTP and data-stream protocol as the desktop app.
 There is no `WKWebView` or browser runtime.
 
+## Background connection and Picture in Picture
+
+An established remote desktop session supports native Picture in Picture (PiP).
+After the first video frame appears, switching to another app automatically
+starts PiP when the device and system settings allow it. The PiP window shows
+the live remote desktop; restoring the app returns to the existing session and
+requests a fresh key frame. Remote mouse buttons are released when the app loses focus.
+
+The app declares the `audio` background mode required by AVKit for PiP and
+activates a playback audio session, including for muted remote video. Background
+frames are submitted directly from the RTC delegate to the sample-buffer display
+layer, without relying on SwiftUI background redraws. Only real remote audio is
+played; no synthetic silent audio or recurring background-task assertions are
+used. Disconnecting or withdrawing consent stops PiP and releases playback.
+
+Background execution depends on active PiP or actual remote audio playback.
+Closing or pausing PiP, disabling automatic PiP in system settings, locking the
+device, losing the network, or force-quitting can suspend or interrupt the
+session. iOS does not provide an unrestricted background socket keepalive.
+The connection is not deliberately closed on background entry, but continuous
+connectivity cannot be promised outside the supported playback modes.
+
+On a physical iPhone/iPad, verify automatic PiP when switching apps with remote
+audio both enabled and muted, continuously changing remote frames while another
+app is in front, restoration, pause/resume, close, lock/unlock, and disconnection while PiP
+is active. Also verify the system setting that disables automatic PiP. A build
+or simulator check alone does not establish long-duration background behavior.
+
 ## Requirements
 
 - Xcode 16 or newer

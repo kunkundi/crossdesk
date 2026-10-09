@@ -66,10 +66,17 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private String signalingServer="", localIdentity="", signalError="";
     private int signalState=-1;
     private boolean foreground;
+    private boolean pictureInPictureUi;
+    private boolean enteredPictureInPicture;
+    private BackgroundSession backgroundSession;
+    private int videoWidth,videoHeight;
+    private final RemotePictureInPicture pictureInPicture=new RemotePictureInPicture();
     private RemoteVideoView video;
     private SessionControls controls;
     private Dialog passwordDialog, progressDialog, privacyDialog;
     private AlertDialog disconnectDialog;
+    private AlertDialog connectionDialog;
+    private String pendingConnectionMessage="";
     private AlertDialog remoteUpdateDialog;
     private RemoteVersionCheck remoteVersionCheck;
     private String host, connectedRemote="", hostPlatform="", remoteClipboard="", pendingPassword="", page="home";
@@ -217,7 +224,15 @@ public final class MainActivity extends Activity implements NativeSession.Listen
             });renderRecentConnections();
         }
         ensureSignaling();
-        if(!message.isEmpty())new AlertDialog.Builder(this).setTitle("连接提示").setMessage(message).setPositiveButton("确定",null).show();
+        if(!message.isEmpty())pendingConnectionMessage=message;
+        showConnectionMessage();
+    }
+    private void showConnectionMessage(){
+        if(pendingConnectionMessage.isEmpty()||!foreground||isFinishing()||isDestroyed())return;
+        if(connectionDialog!=null)connectionDialog.dismiss();
+        connectionDialog=new AlertDialog.Builder(this).setTitle("连接提示").setMessage(pendingConnectionMessage).setPositiveButton("确定",null).create();
+        connectionDialog.setOnDismissListener(dialog->connectionDialog=null);
+        pendingConnectionMessage="";connectionDialog.show();
     }
     private String id(){return remote.getText().toString().replace(" ","");}
     static String formatId(String value){String digits=value.replaceAll("[^0-9]","");if(digits.length()>9)digits=digits.substring(0,9);return digits.replaceAll("(.{3})(?=.)","$1 ");}
@@ -283,6 +298,8 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         window.setGravity(width>=600?Gravity.CENTER:Gravity.BOTTOM);
     }
     private void begin(String id,String secret){
+        videoWidth=videoHeight=0;enteredPictureInPicture=false;
+        pictureInPicture.disconnect();updatePictureInPicture();
         remoteServiceAvailable=false;receivedFile=null;
         resetRemoteVersionCheck();
         resetVideoSettings();
@@ -307,17 +324,26 @@ public final class MainActivity extends Activity implements NativeSession.Listen
             public void mute(){muted=!muted;if(session!=null)session.control(2,muted?0:1);controls.setMuted(muted);}
             public void mouse(){boolean relative=!preferences.getBoolean("relativeMouse",true);preferences.edit().putBoolean("relativeMouse",relative).apply();video.setRelative(relative);controls.setRelative(relative);}
             public void videoSettings(int field,int value){RemoteVideoSettings.Values old=MainActivity.this.videoSettings.selection;updateVideoSettings(new RemoteVideoSettings.Values(field==0?value:old.quality,field==1?value:old.frameRate,field==2?value:old.preference));}
-        });controls.setRelative(preferences.getBoolean("relativeMouse",true));controls.videoSettings(videoSettings);root.addView(controls,new LinearLayout.LayoutParams(-1,-1));getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        });controls.setRelative(preferences.getBoolean("relativeMouse",true));controls.setMuted(muted);controls.videoSettings(videoSettings);root.addView(controls,new LinearLayout.LayoutParams(-1,-1));getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         controls.attachMouseBar(canvas,new VirtualMouseBar(ui,video.mouseInput));
+        video.addOnLayoutChangeListener((view,left,top,right,bottom,oldLeft,oldTop,oldRight,oldBottom)->{
+            if(!pictureInPictureUi&&!isInPictureInPictureMode())updatePictureInPicture();
+        });
+        pictureInPicture.connected();updatePictureInPicture();
     }
     private void confirmDisconnect(){disconnectDialog=new AlertDialog.Builder(this).setTitle("断开远程连接？").setMessage("断开后将返回首页").setNegativeButton("取消",null).setPositiveButton("断开连接",(d,w)->end("")).show();}
     private void end(String reason){
+        if(backgroundSession!=null){BackgroundSession retained=backgroundSession;backgroundSession=null;retained.detach(this);retained.finish(reason);}
+        boolean closeWindow=isInPictureInPictureMode();
+        pictureInPicture.disconnect();updatePictureInPicture();
         if(controls!=null)controls.cancelMouseInput();if(video!=null)video.releaseMouse();
         mainHandler.removeCallbacks(documentTimeout);documentSession=null;documentToSave=null;receivedFile=null;remoteServiceAvailable=false;
         resetRemoteVersionCheck();
         resetVideoSettings();
         previewCapture=null;previewCopying=false;
-        if(progressDialog!=null){progressDialog.dismiss();progressDialog=null;}if(session!=null){releaseKeys();session.close();session=null;}stopSignaling();pendingPassword="";remoteClipboard="";hostPlatform="";displays=new JSONArray();ready=false;video=null;controls=null;getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);home(reason);
+        if(progressDialog!=null){progressDialog.dismiss();progressDialog=null;}if(session!=null){releaseKeys();session.close();session=null;}stopSignaling();pendingPassword="";remoteClipboard="";hostPlatform="";displays=new JSONArray();ready=false;video=null;controls=null;getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if(closeWindow){finish();return;}
+        home(reason);
         appUpdates.checkNow();
     }
     private void settings(){
@@ -409,7 +435,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     @Override public void announcementFailed(String requestId){announcementInbox.failed(requestId);}
     private void privacyPage(){
         LinearLayout content=formPage("privacy","隐私与授权",this::settings);LinearLayout card=section(content,"");boolean consent=preferences.getBoolean("networkConsent",false);link(card,"授权状态",consent?"已授权":"未授权",()->{});ui.divider(card);link(card,"隐私政策","",this::privacyPolicyPage);
-        footer(content,"设备身份及选择保存的访问密码使用 Android Keystore 加密。连接记录仅保存在本机，不纳入设备备份。剪贴板内容在结束会话时清除。离开应用会结束当前会话。");
+        footer(content,"设备身份及选择保存的访问密码使用 Android Keystore 加密。连接记录仅保存在本机，不纳入设备备份。剪贴板内容在结束会话时清除。离开应用后通过画中画或连接通知保持会话，可在应用或通知中断开。");
         if(consent)content.addView(ui.action("撤回联网授权",RED,()->new AlertDialog.Builder(this).setTitle("撤回联网授权？").setMessage("撤回后将停止远程连接、关闭画面预览保存并清除已有预览。连接记录和密码会保留，重新连接前需再次授权。").setNegativeButton("取消",null).setPositiveButton("撤回",(d,w)->{preferences.edit().putBoolean("networkConsent",false).apply();appUpdates.setEnabled(false);previews.setEnabled(false);stopSignaling();announcementInbox.reset();privacyPage();}).show()));else content.addView(ui.primary("阅读并授权",()->consent(this::privacyPage)));
     }
     private void privacyPolicyPage(){
@@ -460,14 +486,16 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private void openDocument(Intent intent,int request){
         if(documentSession!=null)return;
         documentSession=session;releaseKeys();
+        pictureInPicture.choosingDocument(true);updatePictureInPicture();
         try{startActivityForResult(intent,request);mainHandler.postDelayed(documentTimeout,5*60*1000);}
-        catch(android.content.ActivityNotFoundException error){documentSession=null;documentToSave=null;controlFeedback("此设备没有可用的文件选择器");}
+        catch(android.content.ActivityNotFoundException error){documentSession=null;documentToSave=null;pictureInPicture.choosingDocument(false);updatePictureInPicture();controlFeedback("此设备没有可用的文件选择器");}
     }
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
         if(request!=PICK_FILE&&request!=SAVE_FILE)return;
         NativeSession source=documentSession;java.io.File saved=documentToSave;
         documentSession=null;documentToSave=null;mainHandler.removeCallbacks(documentTimeout);
+        pictureInPicture.choosingDocument(false);updatePictureInPicture();
         if(source==null||source!=session||!ready||result!=RESULT_OK||data==null||data.getData()==null)return;
         if(request==PICK_FILE)source.sendFile(data.getData());else if(saved!=null)source.saveFile(saved,data.getData());
     }
@@ -515,6 +543,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         renderSignaling();signaling.start();
     }
     private void stopSignaling(){
+        if(backgroundSession!=null&&backgroundSession.session==signaling){BackgroundSession retained=backgroundSession;backgroundSession=null;retained.detach(this);retained.finish("");}
         mainHandler.removeCallbacks(presenceTick);recentPresence.setConnected(false,android.os.SystemClock.elapsedRealtime());
         announcementInbox.setConnected(false);
         if(signaling!=null)signaling.close();
@@ -550,6 +579,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         // The first success consumes pendingPassword; a duplicate must not save it again.
         if(session==null||ready)return;ready=true;if(progressDialog!=null){progressDialog.dismiss();progressDialog=null;}
         try{history.save(serverKey(),connectedRemote,connectedRemote,hostPlatform,rememberPassword,pendingPassword);}catch(Exception error){toast("密码保存失败，本次连接仍可使用");}pendingPassword="";sessionScreen();
+        if(!canUsePictureInPicture())prepareBackgroundSession(true);
         if(videoSettings.supported&&videoSettings.requestId==0)updateVideoSettings(videoSettings.selection);
         if(foreground&&preferences.getBoolean("networkConsent",false))remoteVersionCheck.connected();
     }
@@ -566,7 +596,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     }
     private void cancelVideoSettingsTimeout(){if(videoSettingsTimeout!=null)mainHandler.removeCallbacks(videoSettingsTimeout);videoSettingsTimeout=null;}
     private void showRemoteUpdate(){
-        if(!ready||session==null||!foreground||isFinishing()||!preferences.getBoolean("networkConsent",false))return;
+        if(!ready||session==null||!foreground||pictureInPictureUi||isInPictureInPictureMode()||isFinishing()||!preferences.getBoolean("networkConsent",false))return;
         remoteUpdateDialog=new AlertDialog.Builder(this).setTitle("升级提示").setMessage(RemoteVersionCheck.NOTICE).setPositiveButton("知道了",null).create();
         remoteUpdateDialog.setOnDismissListener(dialog->remoteUpdateDialog=null);
         remoteUpdateDialog.setCanceledOnTouchOutside(false);
@@ -601,11 +631,11 @@ public final class MainActivity extends Activity implements NativeSession.Listen
             if(foreground&&preferences.getBoolean("networkConsent",false))remoteVersionCheck.hostInfo(info);
         }
     }
-    @Override public void videoSize(int width,int height){if(video!=null)video.videoSize(width,height);if(controls!=null)controls.videoSize(width,height);}
+    @Override public void videoSize(int width,int height){videoWidth=width;videoHeight=height;if(video!=null)video.videoSize(width,height);if(controls!=null)controls.videoSize(width,height);pictureInPicture.videoSize(width,height);updatePictureInPicture();}
     @Override public void clipboard(String value){remoteClipboard=value;}
     @Override public void statistics(RemoteNetworkStatistics.Snapshot value){if(controls!=null)controls.statistics(value);if(value.fps>0)capturePreviewIfNeeded();}
     @Override public boolean dispatchKeyEvent(KeyEvent event){
-        if(ready&&session!=null&&hasWindowFocus()&&!(getCurrentFocus() instanceof EditText)&&event.getKeyCode()!=KeyEvent.KEYCODE_BACK){int code=KeyMap.windowsCode(event.getKeyCode());if(code!=0){boolean down=event.getAction()==KeyEvent.ACTION_DOWN;if(down)pressed.add(code);else pressed.remove(code);session.key(code,down);return true;}}return super.dispatchKeyEvent(event);
+        if(ready&&session!=null&&!pictureInPictureUi&&hasWindowFocus()&&!(getCurrentFocus() instanceof EditText)&&event.getKeyCode()!=KeyEvent.KEYCODE_BACK){int code=KeyMap.windowsCode(event.getKeyCode());if(code!=0){boolean down=event.getAction()==KeyEvent.ACTION_DOWN;if(down)pressed.add(code);else pressed.remove(code);session.key(code,down);return true;}}return super.dispatchKeyEvent(event);
     }
     private void releaseKeys(){if(session!=null)for(int code:pressed)session.key(code,false);pressed.clear();}
     private void navigateBack(){if(backAction==null)return;navigatingBack=true;try{backAction.run();}finally{navigatingBack=false;}}
@@ -618,14 +648,124 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         if(!page.equals("session"))updateHomeOrientation();
         sizePasswordDialog();
         if(privacyDialog instanceof PrivacyConsentDialog)((PrivacyConsentDialog)privacyDialog).updateSize();
-        if(controls!=null)controls.post(controls::constrainPanels);
+        if(controls!=null&&!pictureInPictureUi)controls.post(controls::constrainPanels);
+        if(video!=null)video.post(this::updatePictureInPicture);
     }
+    private boolean supportsPictureInPicture(){return getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE);}
+    private boolean canUsePictureInPicture(){
+        if(!supportsPictureInPicture())return false;
+        android.app.AppOpsManager ops=getSystemService(android.app.AppOpsManager.class);
+        int mode=ops.checkOpNoThrow(android.app.AppOpsManager.OPSTR_PICTURE_IN_PICTURE,android.os.Process.myUid(),getPackageName());
+        return mode==android.app.AppOpsManager.MODE_ALLOWED||mode==android.app.AppOpsManager.MODE_DEFAULT;
+    }
+    private void captureBackgroundSession(){
+        BackgroundSession retained=backgroundSession;if(retained==null)return;
+        retained.identity=localIdentity;retained.signalState=signalState;retained.platform=hostPlatform;retained.displays=displays;
+        retained.muted=muted;retained.selectedDisplay=selectedDisplay;retained.remoteServiceAvailable=remoteServiceAvailable;
+        retained.clipboard=remoteClipboard;retained.videoSettings=videoSettings;retained.receivedFile=receivedFile;
+        retained.width=videoWidth;retained.height=videoHeight;
+    }
+    private boolean prepareBackgroundSession(boolean inform){
+        if(!ready||session==null||session.isClosed()||isFinishing()||!hasNetworkConsent())return false;
+        if(backgroundSession!=null&&!backgroundSession.ended)return RemoteSessionService.current()==backgroundSession;
+        BackgroundSession retained=new BackgroundSession(this,session,host,port,connectedRemote);
+        backgroundSession=retained;captureBackgroundSession();retained.attach(this);session.setListener(retained);
+        if(!RemoteSessionService.retain(this,retained)){
+            session.setListener(this);retained.detach(this);backgroundSession=null;
+            if(inform)toast("后台保活未能启动，请保持应用在前台");return false;
+        }
+        if(inform){
+            toast("已启用后台保活，可从连接通知返回或断开");
+            requestBackgroundNotifications();
+        }
+        return true;
+    }
+    private void requestBackgroundNotifications(){
+        if(android.os.Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED&&!preferences.getBoolean("notificationPermissionAsked",false)){
+            preferences.edit().putBoolean("notificationPermissionAsked",true).apply();
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},43);
+        }
+    }
+    private boolean restoreBackgroundSession(){
+        BackgroundSession retained=backgroundSession!=null?backgroundSession:RemoteSessionService.current();
+        if(retained==null)return false;
+        if(retained.ended||retained.session.isClosed()||!hasNetworkConsent()||!host.equals(retained.host)||port!=retained.port){
+            retained.detach(this);retained.finish("后台连接已结束，请重新连接");backgroundSession=null;
+            if(session==retained.session)end(retained.endReason);return false;
+        }
+        boolean rebuild=session!=retained.session||video==null||!page.equals("session");
+        backgroundSession=retained;session=signaling=retained.session;signalingServer=serverKey();
+        connectedRemote=retained.remote;localIdentity=retained.identity;signalState=retained.signalState;signalError="";
+        hostPlatform=retained.platform;displays=retained.displays;muted=retained.muted;selectedDisplay=retained.selectedDisplay;
+        remoteServiceAvailable=retained.remoteServiceAvailable;remoteClipboard=retained.clipboard;receivedFile=retained.receivedFile;
+        videoSettings=retained.videoSettings;ready=true;retained.attach(this);
+        if(rebuild)sessionScreen();
+        if(retained.width>0&&retained.height>0)videoSize(retained.width,retained.height);
+        if(controls!=null){controls.setMuted(muted);controls.videoSettings(videoSettings);controls.fileStatus(retained.fileStatus,receivedFile!=null);}
+        retained.setBackground(false);signaling(signalState,localIdentity);
+        return true;
+    }
+    private android.app.PictureInPictureParams pictureInPictureParams(){
+        return pictureInPicture.parameters(video==null||pictureInPictureUi||isInPictureInPictureMode()?null:video.pictureInPictureBounds());
+    }
+    private void updatePictureInPicture(){
+        if(!supportsPictureInPicture()||isDestroyed())return;
+        try{setPictureInPictureParams(pictureInPictureParams());}
+        catch(IllegalArgumentException|IllegalStateException error){android.util.Log.w("CrossDesk","Picture in Picture parameters unavailable",error);}
+    }
+    private void enterRemotePictureInPicture(){
+        if(isInPictureInPictureMode())return;
+        if(!canUsePictureInPicture()){
+            prepareBackgroundSession(false);return;
+        }
+        if(!pictureInPicture.canEnter()||session==null||session.isClosed()||isFinishing())return;
+        android.app.PictureInPictureParams params=pictureInPictureParams();
+        setPictureInPictureUi(true);
+        boolean entered=false;
+        try{entered=enterPictureInPictureMode(params);}
+        catch(IllegalArgumentException|IllegalStateException error){android.util.Log.w("CrossDesk","Picture in Picture could not start",error);}
+        if(!entered){setPictureInPictureUi(false);prepareBackgroundSession(false);}
+    }
+    private void setPictureInPictureUi(boolean value){
+        pictureInPictureUi=value;
+        if(value){releaseKeys();hideKeyboard();pageHost.finish();if(disconnectDialog!=null)disconnectDialog.dismiss();if(remoteUpdateDialog!=null)remoteUpdateDialog.dismiss();}
+        if(controls!=null)controls.setPictureInPicture(value);
+        if(video!=null)video.setPictureInPicture(value);
+    }
+    @Override protected void onUserLeaveHint(){
+        super.onUserLeaveHint();
+        if(documentSession!=null)return;
+        if(!canUsePictureInPicture()||!pictureInPicture.canEnter())prepareBackgroundSession(false);
+        else if(android.os.Build.VERSION.SDK_INT<31)enterRemotePictureInPicture();
+    }
+    @Override public void onPictureInPictureModeChanged(boolean active,Configuration config){
+        super.onPictureInPictureModeChanged(active,config);if(active)enteredPictureInPicture=true;setPictureInPictureUi(active);
+        if(!active&&video!=null)video.post(this::updatePictureInPicture);
+    }
+    @android.annotation.TargetApi(31)
+    @Override public void onPictureInPictureUiStateChanged(android.app.PictureInPictureUiState state){
+        super.onPictureInPictureUiStateChanged(state);
+        if(android.os.Build.VERSION.SDK_INT>=35&&state.isTransitioningToPip())setPictureInPictureUi(true);
+    }
+    @Override protected void onResume(){super.onResume();if(!isInPictureInPictureMode())enteredPictureInPicture=false;setPictureInPictureUi(isInPictureInPictureMode());updatePictureInPicture();if(ready&&!canUsePictureInPicture())prepareBackgroundSession(true);if(backgroundSession!=null)requestBackgroundNotifications();}
     // onStart marks a new visit; focus/resume callbacks must not reopen a refused notice.
-    @Override protected void onPause(){if(controls!=null)controls.cancelMouseInput();if(video!=null)video.releaseMouse();super.onPause();}
-    @Override protected void onStart(){super.onStart();foreground=true;appUpdates.setEnabled(preferences.getBoolean("networkConsent",false));if(!preferences.getBoolean("networkConsent",false))consent(this::renderSignaling);ensureSignaling();}
+    @Override protected void onPause(){releaseKeys();if(controls!=null)controls.cancelMouseInput();if(video!=null)video.releaseMouse();super.onPause();}
+    @Override protected void onStart(){super.onStart();foreground=true;restoreBackgroundSession();appUpdates.setEnabled(preferences.getBoolean("networkConsent",false));if(!preferences.getBoolean("networkConsent",false))consent(this::renderSignaling);ensureSignaling();showConnectionMessage();}
     @Override protected void onStop(){foreground=false;appUpdates.setEnabled(false);if(privacyDialog!=null)privacyDialog.dismiss();pageHost.finish();
-        // The system document picker is part of this session's explicit file action.
-        if(documentSession==null||documentSession!=session||isFinishing()){if(session!=null)end(isFinishing()?"":"应用已进入后台，会话已结束");stopSignaling();}
+        if(connectionDialog!=null)connectionDialog.dismiss();
+        // Closing native PiP is an explicit end, not a request for invisible
+        // fallback. An unavailable/failed PiP can hand its live session off.
+        if(!isFinishing()&&!enteredPictureInPicture&&ready&&(backgroundSession!=null||documentSession==null)&&prepareBackgroundSession(false)){
+            captureBackgroundSession();backgroundSession.detach(this);backgroundSession.setBackground(true);
+            mainHandler.removeCallbacks(presenceTick);recentPresence.setConnected(false,android.os.SystemClock.elapsedRealtime());announcementInbox.setConnected(false);
+            cancelVideoSettingsTimeout();if(videoSettings.pending)videoSettings.expire(videoSettings.requestId);
+            resetRemoteVersionCheck();if(disconnectDialog!=null)disconnectDialog.dismiss();
+        }else if(documentSession==null||documentSession!=session||isFinishing()){if(session!=null)end(isFinishing()?"":"远程窗口已关闭，或后台保活未能启动，会话已结束");stopSignaling();}
         super.onStop();}
-    @Override protected void onDestroy(){mainHandler.removeCallbacks(documentTimeout);documentSession=null;documentToSave=null;appUpdates.setEnabled(false);pageHost.finish();resetRemoteVersionCheck();cancelVideoSettingsTimeout();previews.removeListener(previewChanged);if(privacyDialog!=null)privacyDialog.dismiss();if(previewDialog!=null)previewDialog.dismiss();announcementInbox.close();if(disconnectDialog!=null)disconnectDialog.dismiss();if(passwordDialog!=null)passwordDialog.dismiss();if(progressDialog!=null)progressDialog.dismiss();if(session!=null)session.close();stopSignaling();super.onDestroy();}
+    @Override protected void onDestroy(){mainHandler.removeCallbacks(documentTimeout);documentSession=null;documentToSave=null;appUpdates.setEnabled(false);pageHost.finish();resetRemoteVersionCheck();cancelVideoSettingsTimeout();previews.removeListener(previewChanged);if(privacyDialog!=null)privacyDialog.dismiss();if(previewDialog!=null)previewDialog.dismiss();announcementInbox.close();if(disconnectDialog!=null)disconnectDialog.dismiss();if(passwordDialog!=null)passwordDialog.dismiss();if(progressDialog!=null)progressDialog.dismiss();
+        if(connectionDialog!=null)connectionDialog.dismiss();
+        boolean retained=!isFinishing()&&backgroundSession!=null&&!backgroundSession.ended&&RemoteSessionService.current()==backgroundSession;
+        if(backgroundSession!=null)backgroundSession.detach(this);
+        if(!retained){if(session!=null)session.close();stopSignaling();}else{mainHandler.removeCallbacks(presenceTick);session=signaling=null;}
+        super.onDestroy();}
 }

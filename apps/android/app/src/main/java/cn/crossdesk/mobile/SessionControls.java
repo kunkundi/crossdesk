@@ -23,7 +23,7 @@ final class SessionControls extends FrameLayout {
     private LinearLayout menu,keyboard;
     private VirtualMouseBar mouseBar;
     private FrameLayout mouseHost;
-    private boolean mouseVisible;
+    private boolean mouseVisible,pictureInPicture;
     private ScrollView keyboardKeys;
     private ScrollView menuScroll;
     private int keyboardPreferredHeight;
@@ -63,10 +63,15 @@ final class SessionControls extends FrameLayout {
         bar.setVisibility(GONE);
     }
     void cancelMouseInput(){if(mouseBar!=null)mouseBar.cancelInput();}
+    void setPictureInPicture(boolean value){
+        pictureInPicture=value;
+        if(value){cancelMouseInput();closeMenu();closeKeyboard();modifiers.clear();}
+        setVisibility(value?GONE:VISIBLE);positionMouse();
+    }
     private void toggleMouse(){cancelMouseInput();mouseVisible=!mouseVisible;closeMenu();positionMouse();}
     private void positionMouse(){
         if(mouseBar==null)return;
-        boolean visible=mouseVisible&&menu==null&&waiting.getVisibility()==GONE;
+        boolean visible=!pictureInPicture&&mouseVisible&&menu==null&&waiting.getVisibility()==GONE;
         if(!visible){if(mouseBar.getVisibility()==VISIBLE)cancelMouseInput();mouseBar.setVisibility(GONE);return;}
         int[] location=new int[2],hostLocation=new int[2];getLocationOnScreen(location);mouseHost.getLocationOnScreen(hostLocation);
         float width=ui.dp(140),height=ui.dp(48),gap=ui.dp(6),margin=ui.dp(8);

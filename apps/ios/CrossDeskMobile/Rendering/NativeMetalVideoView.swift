@@ -1,4 +1,5 @@
 import AVFoundation
+import AVKit
 import CoreMedia
 import CoreVideo
 import SwiftUI
@@ -15,15 +16,157 @@ struct NativeVideoView: UIViewRepresentable {
     let frameID: UInt64
     let captureUptime: TimeInterval
     let onFrameSubmitted: (UInt64, TimeInterval) -> Void
+    let pictureInPicture: RemotePictureInPicture
 
     func makeUIView(context: Context) -> SampleBufferVideoView {
-        SampleBufferVideoView(frame: .zero)
+        let view = SampleBufferVideoView(frame: .zero)
+        pictureInPicture.attach(view)
+        return view
     }
 
     func updateUIView(_ uiView: SampleBufferVideoView, context: Context) {
-        if uiView.display(pixelBuffer, isActive: scenePhase == .active) {
+        // Background frames go straight from the RTC delegate to the display
+        // layer: SwiftUI does not promise view updates while backgrounded.
+        guard scenePhase != .background, !pictureInPicture.isPaused else { return }
+        if uiView.display(pixelBuffer, isActive: true) {
             onFrameSubmitted(frameID, captureUptime)
         }
+    }
+
+    static func dismantleUIView(_ uiView: SampleBufferVideoView, coordinator: ()) {
+        _ = uiView.display(nil, isActive: false)
+    }
+}
+
+/// Uses actual live remote video for background playback, including when muted.
+/// Closing/pausing PiP removes that background execution opportunity; it does
+/// not fabricate silent audio or repeatedly request background task time.
+final class RemotePictureInPicture: NSObject, AVPictureInPictureControllerDelegate,
+                                    AVPictureInPictureSampleBufferPlaybackDelegate {
+    private var controller: AVPictureInPictureController?
+    private var videoView: SampleBufferVideoView?
+    private var sessionActive = false
+    private var starting = false
+    private var paused = false
+    var requestFrame: (() -> Void)?
+    var restoreInterface: (() -> Bool)?
+    var playbackChanged: ((Bool) -> Void)?
+    var failed: (() -> Void)?
+
+    var isRendering: Bool {
+        sessionActive && !paused && (starting || controller?.isPictureInPictureActive == true)
+    }
+    var isPaused: Bool { paused && controller?.isPictureInPictureActive == true }
+
+    func attach(_ view: SampleBufferVideoView) {
+        guard videoView !== view else { return }
+        controller?.stopPictureInPicture()
+        controller?.delegate = nil
+        videoView = view
+        guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
+        let source = AVPictureInPictureController.ContentSource(
+            sampleBufferDisplayLayer: view.videoLayer, playbackDelegate: self)
+        let controller = AVPictureInPictureController(contentSource: source)
+        controller.delegate = self
+        controller.requiresLinearPlayback = true
+        controller.canStartPictureInPictureAutomaticallyFromInline = sessionActive
+        self.controller = controller
+    }
+
+    func beginSession() {
+        guard !sessionActive else { return }
+        sessionActive = true
+        paused = false
+        // PiP needs an active playback session even when the remote is muted.
+        // There is no generated audio: only received desktop audio is played.
+        do {
+            let audio = AVAudioSession.sharedInstance()
+            try audio.setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
+            try audio.setActive(true)
+        } catch {
+            NSLog("CrossDesk could not activate Picture in Picture audio session: %@", error.localizedDescription)
+        }
+        controller?.canStartPictureInPictureAutomaticallyFromInline = true
+        controller?.invalidatePlaybackState()
+    }
+
+    func endSession() {
+        sessionActive = false
+        starting = false
+        paused = false
+        controller?.canStartPictureInPictureAutomaticallyFromInline = false
+        controller?.stopPictureInPicture()
+        controller?.invalidatePlaybackState()
+        _ = videoView?.display(nil, isActive: false)
+    }
+
+    func didBecomeActive() {
+        paused = false
+        if controller?.isPictureInPictureActive == true { controller?.stopPictureInPicture() }
+        controller?.invalidatePlaybackState()
+        playbackChanged?(true)
+    }
+
+    @discardableResult
+    func display(_ buffer: CVPixelBuffer) -> Bool {
+        guard isRendering else { return false }
+        return videoView?.display(buffer, isActive: true) ?? false
+    }
+
+    func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        guard self.controller === controller, sessionActive else { return }
+        starting = true
+        requestFrame?()
+    }
+
+    func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        guard self.controller === controller else { return }
+        starting = false
+        if !sessionActive { controller.stopPictureInPicture() }
+        else { requestFrame?() }
+    }
+
+    func pictureInPictureController(_ controller: AVPictureInPictureController,
+                                   failedToStartPictureInPictureWithError error: Error) {
+        guard self.controller === controller else { return }
+        starting = false
+        NSLog("CrossDesk Picture in Picture could not start: %@", error.localizedDescription)
+        failed?()
+    }
+
+    func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
+        guard self.controller === controller else { return }
+        starting = false
+        paused = false
+        playbackChanged?(true)
+    }
+
+    func pictureInPictureController(_ controller: AVPictureInPictureController,
+                                   restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completion: @escaping (Bool) -> Void) {
+        completion(sessionActive && (restoreInterface?() ?? false))
+    }
+
+    func pictureInPictureController(_ controller: AVPictureInPictureController, setPlaying playing: Bool) {
+        paused = !playing
+        playbackChanged?(playing)
+        if playing { requestFrame?() }
+        controller.invalidatePlaybackState()
+    }
+
+    func pictureInPictureControllerTimeRangeForPlayback(_ controller: AVPictureInPictureController) -> CMTimeRange {
+        sessionActive ? CMTimeRange(start: .zero, duration: .positiveInfinity) : .invalid
+    }
+
+    func pictureInPictureControllerIsPlaybackPaused(_ controller: AVPictureInPictureController) -> Bool {
+        !sessionActive || paused
+    }
+
+    func pictureInPictureController(_ controller: AVPictureInPictureController,
+                                   didTransitionToRenderSize newRenderSize: CMVideoDimensions) { }
+
+    func pictureInPictureController(_ controller: AVPictureInPictureController,
+                                   skipByInterval skipInterval: CMTime, completion: @escaping () -> Void) {
+        completion() // Live desktop video has no seekable history.
     }
 }
 
@@ -32,7 +175,7 @@ final class SampleBufferVideoView: UIView {
         AVSampleBufferDisplayLayer.self
     }
 
-    private var videoLayer: AVSampleBufferDisplayLayer {
+    var videoLayer: AVSampleBufferDisplayLayer {
         layer as! AVSampleBufferDisplayLayer
     }
 
@@ -60,6 +203,14 @@ final class SampleBufferVideoView: UIView {
         // calculation inside AVSampleBufferDisplayLayer. That rounding becomes
         // visibly amplified when the remote desktop is zoomed up to 10x.
         videoLayer.videoGravity = .resize
+        var timebase: CMTimebase?
+        if CMTimebaseCreateWithSourceClock(allocator: kCFAllocatorDefault,
+                                          sourceClock: CMClockGetHostTimeClock(),
+                                          timebaseOut: &timebase) == noErr, let timebase {
+            CMTimebaseSetTime(timebase, time: CMClockGetTime(CMClockGetHostTimeClock()))
+            CMTimebaseSetRate(timebase, rate: 1)
+            videoLayer.controlTimebase = timebase
+        }
     }
 
     /// True only when a new buffer was submitted; no presentation timestamp is
@@ -123,7 +274,7 @@ final class SampleBufferVideoView: UIView {
 
         var timing = CMSampleTimingInfo(
             duration: .invalid,
-            presentationTimeStamp: .invalid,
+            presentationTimeStamp: CMClockGetTime(CMClockGetHostTimeClock()),
             decodeTimeStamp: .invalid
         )
         var sampleBuffer: CMSampleBuffer?

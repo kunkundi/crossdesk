@@ -239,6 +239,16 @@ private final class RemoteAudioPlayer {
         }
     }
 
+    func endSession() {
+        queue.async {
+            self.enabled = false
+            self.player.stop()
+            self.engine.stop()
+            self.queuedBuffers = 0
+            try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        }
+    }
+
     func enqueue(_ data: Data) {
         guard !data.isEmpty, data.count.isMultiple(of: MemoryLayout<Int16>.size) else { return }
         queue.async {
@@ -339,6 +349,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     @Published private(set) var remotePlatform: RemoteHostPlatform = .unknown
 
     let bridge = CrossDeskRTCBridge()
+    let pictureInPicture = RemotePictureInPicture()
     let announcements = AnnouncementInbox()
     let appUpdates = AppUpdateChecker()
     private var appIsActive = false
@@ -392,6 +403,22 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     override init() {
         super.init()
         bridge.delegate = self
+        pictureInPicture.requestFrame = { [weak self] in
+            guard let self, self.isConnected else { return }
+            self.bridge.requestKeyFrame()
+        }
+        pictureInPicture.restoreInterface = { [weak self] in
+            guard let self, self.isConnected else { return false }
+            self.sessionVisible = true
+            return true
+        }
+        pictureInPicture.playbackChanged = { [weak self] playing in
+            guard let self, self.isConnected else { return }
+            self.audioPlayer.setEnabled(playing && self.audioEnabled)
+        }
+        pictureInPicture.failed = { [weak self] in
+            self?.controlStatus = "画中画未能开启，请保持应用在前台后重试。"
+        }
         announcements.send = { [weak bridge] data, requestID in
             bridge?.sendAnnouncementRequest(data, requestID: requestID)
         }
@@ -408,6 +435,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
 
     func applicationDidBecomeActive() {
         appIsActive = true
+        pictureInPicture.didBecomeActive()
         appUpdates.setEnabled(hasNetworkConsent)
         privacyNotice.didBecomeActive(hasNetworkConsent: hasNetworkConsent)
         refreshRecentConnectionPresenceAfterForeground()
@@ -656,6 +684,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     private func resetConnection() {
+        pictureInPicture.endSession()
         clipboardStatus = ""
         controlStatus = ""
         transferStatus = ""
@@ -682,7 +711,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         displaySizes = []
         selectedDisplay = 0
         connectionStatus = "未连接"
-        audioPlayer.setEnabled(false)
+        audioPlayer.endSession()
         AppOrientation.update(to: .portrait)
         appUpdates.checkNow()
     }
@@ -1124,6 +1153,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         case 1:
             connectionStatus = "已连接"
             sessionVisible = true
+            pictureInPicture.beginSession()
             if videoSettings.requestID == 0 { updateVideoSettings() }
             checkRemoteVersionIfNeeded()
             recordSuccessfulConnectionIfNeeded()
@@ -1226,7 +1256,16 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
                    width: Int,
                    height: Int,
                    captureUptime: TimeInterval) {
-        guard hasNetworkConsent, isConnected, !videoWasBackgrounded else { return }
+        guard hasNetworkConsent, isConnected else { return }
+        if videoWasBackgrounded {
+            // Feed PiP directly, without publishing background SwiftUI updates.
+            if pictureInPicture.display(pixelBuffer) {
+                videoFrameID &+= 1
+                networkStatistics.recordSubmittedFrame(id: videoFrameID, captureUptime: captureUptime,
+                                                       at: ProcessInfo.processInfo.systemUptime)
+            }
+            return
+        }
         cancelVideoRecovery()
         // Buffer and encoded dimensions must be one observable value. Adaptive
         // resolution changes must never expose a new frame with the previous

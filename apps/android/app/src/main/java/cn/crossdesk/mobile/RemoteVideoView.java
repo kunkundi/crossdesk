@@ -27,6 +27,8 @@ final class RemoteVideoView extends FrameLayout implements SurfaceHolder.Callbac
     private final GestureDetector gestures;
     private final ScaleGestureDetector scales;
     private final RemoteViewport viewport = new RemoteViewport();
+    private final RemoteViewport pictureInPictureViewport = new RemoteViewport();
+    private boolean pictureInPicture;
     private int frameWidth = 16, frameHeight = 9;
     private float x = .5f, y = .5f, scrollY;
     private boolean dragging, twoFinger, relative, viewportGesture, viewportPanActive;
@@ -34,6 +36,13 @@ final class RemoteVideoView extends FrameLayout implements SurfaceHolder.Callbac
     private long touchRevision;
     private boolean suppressPointerGesture;
     void setRelative(boolean value) { releaseMouse(); relative=value; }
+    void setPictureInPicture(boolean value) {
+        if(pictureInPicture==value)return;
+        releaseMouse();pictureInPicture=value;cursor.setVisibility(value?GONE:VISIBLE);fit();
+    }
+    Rect pictureInPictureBounds() {
+        Rect bounds=new Rect();video.getGlobalVisibleRect(bounds);return bounds;
+    }
     void releaseMouse() { mouseInput.releaseAll(); dragging=false; suppressPointerGesture=true; }
     private boolean suppressPointerGesture() {
         return suppressPointerGesture || mouseInput.hasVirtualButton() || touchRevision != mouseInput.revision();
@@ -117,15 +126,17 @@ final class RemoteVideoView extends FrameLayout implements SurfaceHolder.Callbac
     }
     private void fit() {
         if (getWidth() == 0 || getHeight() == 0) return;
-        viewport.fit(getWidth(), getHeight(), frameWidth, frameHeight);
-        video.setLayoutParams(new LayoutParams(viewport.baseWidth(),viewport.baseHeight(),android.view.Gravity.CENTER));
+        RemoteViewport active=pictureInPicture?pictureInPictureViewport:viewport;
+        active.fit(getWidth(), getHeight(), frameWidth, frameHeight);
+        video.setLayoutParams(new LayoutParams(active.baseWidth(),active.baseHeight(),android.view.Gravity.CENTER));
         applyViewport();
     }
     private void applyViewport() {
         // Transform the existing Surface without enlarging its decoder buffers.
-        video.setScaleX(viewport.scale()); video.setScaleY(viewport.scale());
-        video.setTranslationX(viewport.offsetX()); video.setTranslationY(viewport.offsetY());
-        mouseInput.viewportWidth = viewport.width(); mouseInput.viewportHeight = viewport.height();
+        RemoteViewport active=pictureInPicture?pictureInPictureViewport:viewport;
+        video.setScaleX(active.scale()); video.setScaleY(active.scale());
+        video.setTranslationX(active.offsetX()); video.setTranslationY(active.offsetY());
+        mouseInput.viewportWidth = active.width(); mouseInput.viewportHeight = active.height();
         cursor.invalidate();
     }
     private void sendMouse(float x, float y, int flag, int wheel) {
