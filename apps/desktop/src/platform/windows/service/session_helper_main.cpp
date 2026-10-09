@@ -1250,6 +1250,7 @@ LONG NormalizeAbsoluteMouseCoordinate(int value, int origin, int size) {
 INPUT BuildAbsoluteMouseMoveInput(int x, int y) {
   INPUT input = {0};
   input.type = INPUT_MOUSE;
+  input.mi.dwExtraInfo = crossdesk::kInjectedMouseInputMarker;
 
   const int virtual_left = GetSystemMetrics(SM_XVIRTUALSCREEN);
   const int virtual_top = GetSystemMetrics(SM_YVIRTUALSCREEN);
@@ -1283,6 +1284,7 @@ InputInjectionResult InjectMouseInput(const SecureMouseRequest& request) {
 
   INPUT action_input = {0};
   action_input.type = INPUT_MOUSE;
+  action_input.mi.dwExtraInfo = crossdesk::kInjectedMouseInputMarker;
   switch (request.flag) {
     case 0:
       break;

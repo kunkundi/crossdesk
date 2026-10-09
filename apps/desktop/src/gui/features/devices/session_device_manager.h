@@ -54,6 +54,7 @@ public:
   int StopScreenCapturer();
 #ifdef _WIN32
   void ReleaseRemoteMouseButtons();
+  std::string SendServiceMouseCommand(int x, int y, int wheel, int flag);
 #endif
   // Requests are asynchronous; Stop drains/revokes audio delivery before
   // returning so the connection peer can be destroyed safely.
@@ -107,6 +108,9 @@ private:
   CapturedKeyboardQueue captured_keyboard_inputs_;
 #ifdef _WIN32
   std::chrono::steady_clock::time_point next_keyboard_capture_retry_{};
+  std::mutex service_mouse_mutex_;
+  unsigned service_mouse_buttons_ = 0;
+  int service_mouse_x_ = 0, service_mouse_y_ = 0;
 #endif
   std::chrono::steady_clock::time_point last_frame_time_{};
   std::chrono::steady_clock::time_point next_frame_deadline_{};

@@ -19,6 +19,7 @@
 #include "desktop_transition_policy.h"
 #include "interactive_desktop.h"
 #include "service_host.h"
+#include "unattended_config.h"
 #endif
 
 namespace crossdesk {
@@ -229,10 +230,13 @@ bool KeyboardController::InjectRemoteKey(int key_code, bool is_down,
     owner_.privacy_.SuspendForDesktop();
   }
   if (owner_.is_server_mode_ || !owner_.WindowsInputStage().empty()) {
+    static const bool process_elevated = IsAdministratorProcess();
     return DispatchDesktopInput(
         [&] {
           return PreferUserDesktopInput(IsCurrentSessionUserDesktopActive(),
-                                        owner_.windows_consent_ui_.load());
+                                        owner_.windows_consent_ui_.load(),
+                                        owner_.local_service_available_.load(),
+                                        process_elevated);
         },
         [&] {
           SetLastError(ERROR_SUCCESS);

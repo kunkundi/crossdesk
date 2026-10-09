@@ -19,6 +19,18 @@ inline bool PreferUserDesktopInput(bool user_desktop_active,
   return user_desktop_active && !consent_ui_visible;
 }
 
+inline bool PreferUserDesktopInput(bool user_desktop_active,
+                                   bool consent_ui_visible,
+                                   bool service_available,
+                                   bool process_elevated) {
+  // An elevated application still lives on Default. SendInput only reports
+  // insertion into the input stream, not delivery to that application's UI.
+  // Use the authorized service proactively for an unelevated host, including
+  // clicks on an elevated window that has not become the foreground window.
+  return PreferUserDesktopInput(user_desktop_active, consent_ui_visible) &&
+         (process_elevated || !service_available);
+}
+
 inline bool IsDesktopInputSetupPending(const std::string& error) {
   // These failures explicitly precede injection; timeouts remain ambiguous.
   return error == "secure_input_helper_not_ready" ||

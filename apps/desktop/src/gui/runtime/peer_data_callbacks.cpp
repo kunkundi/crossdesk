@@ -29,6 +29,7 @@
 #include "desktop_transition_policy.h"
 #include "interactive_desktop.h"
 #include "service_host.h"
+#include "unattended_config.h"
 #endif
 
 namespace crossdesk {
@@ -394,11 +395,14 @@ void PeerEventHandler::OnReceiveDataBuffer(
     }
 #if _WIN32
     if (runtime->is_server_mode_ && remote_action.type == ControlType::mouse) {
+      static const bool process_elevated = IsAdministratorProcess();
       std::string response;
       const bool delivered = DispatchDesktopInput(
           [&] {
-            return PreferUserDesktopInput(IsCurrentSessionUserDesktopActive(),
-                                          runtime->windows_consent_ui_.load());
+            return PreferUserDesktopInput(
+                IsCurrentSessionUserDesktopActive(),
+                runtime->windows_consent_ui_.load(),
+                runtime->local_service_available_.load(), process_elevated);
           },
           [&] {
             SetLastError(ERROR_SUCCESS);
@@ -425,9 +429,9 @@ void PeerEventHandler::OnReceiveDataBuffer(
               return {};
             }
 
-            response = SendCrossDeskSecureDesktopMouseInput(
+            response = runtime->devices_.SendServiceMouseCommand(
                 absolute_x, absolute_y, remote_action.m.s,
-                static_cast<int>(remote_action.m.flag), 1000);
+                static_cast<int>(remote_action.m.flag));
             auto json = nlohmann::json::parse(response, nullptr, false);
             const bool sent = json.is_object() && json.value("ok", false);
             const std::string error =

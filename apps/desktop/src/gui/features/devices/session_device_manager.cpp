@@ -19,8 +19,10 @@
 #include "runtime/gui_runtime.h"
 #include "speaker_capturer_factory.h"
 #ifdef _WIN32
+#include <nlohmann/json.hpp>
 #include "platform/windows/screen_capturer/screen_capturer_win.h"
 #include "platform/windows/input/mouse/mouse_controller.h"
+#include "service_host.h"
 #endif
 
 namespace crossdesk {
@@ -327,6 +329,37 @@ int SessionDeviceManager::StopScreenCapturer() {
 void SessionDeviceManager::ReleaseRemoteMouseButtons() {
   if (auto mouse = dynamic_cast<PlatformMouseController*>(mouse_controller_))
     mouse->ReleasePressedButtons();
+  std::lock_guard lock(service_mouse_mutex_);
+  for (int button = 0; button < 3; ++button) {
+    const unsigned bit = 1u << button;
+    if (!(service_mouse_buttons_ & bit)) continue;
+    const auto response = SendCrossDeskSecureDesktopMouseInput(
+        service_mouse_x_, service_mouse_y_, 0, (button + 1) * 2, 1000);
+    const auto json = nlohmann::json::parse(response, nullptr, false);
+    if (json.is_object() && json.value("ok", false)) {
+      service_mouse_buttons_ &= ~bit;
+    } else {
+      LOG_WARN("Service mouse button release failed: button={}, response={}",
+               button, response);
+    }
+  }
+}
+
+std::string SessionDeviceManager::SendServiceMouseCommand(int x, int y,
+                                                         int wheel, int flag) {
+  std::lock_guard lock(service_mouse_mutex_);
+  service_mouse_x_ = x;
+  service_mouse_y_ = y;
+  const unsigned bit = flag >= 1 && flag <= 6 ? 1u << ((flag - 1) / 2) : 0;
+  // A timeout can follow successful injection. Keep downs for disconnect
+  // cleanup even if the reply was lost; only clear a confirmed release.
+  if (flag % 2 == 1) service_mouse_buttons_ |= bit;
+  const auto response = SendCrossDeskSecureDesktopMouseInput(x, y, wheel, flag,
+                                                           1000);
+  const auto json = nlohmann::json::parse(response, nullptr, false);
+  if (flag % 2 == 0 && json.is_object() && json.value("ok", false))
+    service_mouse_buttons_ &= ~bit;
+  return response;
 }
 #endif
 
@@ -412,6 +445,9 @@ int SessionDeviceManager::StartMouseController() {
 }
 
 int SessionDeviceManager::StopMouseController() {
+#ifdef _WIN32
+  ReleaseRemoteMouseButtons();
+#endif
   if (mouse_controller_) {
     mouse_controller_->Destroy();
     delete mouse_controller_;
@@ -718,11 +754,7 @@ std::vector<HostDisplay> SessionDeviceManager::host_display_list() const {
 
 void SessionDeviceManager::DestroyDevices() {
   speaker_capture_.Shutdown();
-  if (mouse_controller_) {
-    mouse_controller_->Destroy();
-    delete mouse_controller_;
-    mouse_controller_ = nullptr;
-  }
+  StopMouseController();
   if (screen_capturer_) {
     screen_capturer_->Destroy();
     delete screen_capturer_;

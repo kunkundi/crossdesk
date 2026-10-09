@@ -17,6 +17,7 @@
 #include "desktop_transition_policy.h"
 #include "interactive_state.h"
 #include "service_host.h"
+#include "unattended_config.h"
 #endif
 
 namespace crossdesk {
@@ -205,7 +206,12 @@ void GuiRuntime::HandleWindowsServiceIntegration() {
       status.interactive_stage == "user-desktop";
   local_service_status_received_ =
       status_ok || previous_secure_desktop_interaction;
-  local_service_available_ = status.available;
+  const bool service_was_available =
+      local_service_available_.exchange(status.available);
+  if (status.available && !service_was_available && !IsAdministratorProcess()) {
+    LOG_INFO("Unelevated host input routed through Windows service, including "
+             "elevated applications on the user desktop");
+  }
   if (status.available) {
     if (keep_optimistic_secure_desktop) {
       local_interactive_stage_ = "secure-desktop";
