@@ -54,6 +54,8 @@ final class RemoteVideoView extends FrameLayout implements SurfaceHolder.Callbac
                 point(current); return true;
             }
         });
+        // Let the remote desktop detect double-clicks; the default listener consumes the second tap.
+        gestures.setOnDoubleTapListener(null);
         scales = new ScaleGestureDetector(context, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
             @Override public boolean onScaleBegin(ScaleGestureDetector detector) {
                 if (!viewport.contains(detector.getFocusX(), detector.getFocusY())) return false;

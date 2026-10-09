@@ -184,6 +184,8 @@ struct RemoteSessionView: View {
                       allowsMultipleSelection: false) { result in
             if case let .success(urls) = result, let url = urls.first {
                 session.sendFile(url)
+            } else if case .failure = result {
+                session.fileImportFailed()
             }
         }
     }
@@ -1205,13 +1207,21 @@ private struct FloatingSessionMenu: View {
                             }
                             FloatingControlButton(title: "Ctrl+Alt+Del",
                                                   symbol: "lock.trianglebadge.exclamationmark",
-                                                  action: session.bridge.sendSecureAttentionSequence)
+                                                  action: session.sendSecureAttention)
+                            FloatingControlButton(title: "剪贴板", symbol: "doc.on.clipboard",
+                                                  action: session.sendClipboard)
                         }
 
-                        if !session.transferStatus.isEmpty || !session.clipboardStatus.isEmpty {
+                        if !session.controlStatus.isEmpty {
+                            Text(session.controlStatus).font(.caption2).foregroundStyle(.secondary)
+                        }
+                        if !session.clipboardStatus.isEmpty {
+                            Text(session.clipboardStatus).font(.caption2).foregroundStyle(.secondary)
+                        }
+
+                        if !session.transferStatus.isEmpty {
                             HStack(spacing: 8) {
-                                Text(!session.transferStatus.isEmpty
-                                     ? session.transferStatus : session.clipboardStatus)
+                                Text(session.transferStatus)
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)

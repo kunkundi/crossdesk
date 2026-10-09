@@ -86,6 +86,12 @@ Keep signing enabled for simulator runs. Xcode uses a local ad-hoc signature
 and supplies the application identity required by Keychain. Disabling signing
 causes identity storage to fail with `-34018` before signaling can connect.
 
+Simulator H.264 decoding uses VideoToolbox's available decoder, including its
+software path. A simulator reporting no hardware H.264 support must still be
+allowed to create a decoder; otherwise ICE can connect and receive video packets
+while the app remains on the waiting-for-picture screen. Physical iOS devices
+retain the hardware capability check.
+
 The first simulator build compiles its own MiniRTC and dependencies; later builds
 reuse `.xmake/packages-simulator` and `Vendor/iphonesimulator`. This runs the
 native application, including version checks and signaling. Validate hardware
@@ -336,8 +342,8 @@ a data-channel problem:
    16-bit PCM through `AVAudioEngine`.
 3. **Clipboard:** copy a short text value on the remote desktop, then paste it
    into a text field on the phone to verify reception. Text is limited to
-   128 KiB. The bridge supports sending local text, but the current UI has no
-   **Send local clipboard** action.
+   128 KiB. Tap **剪贴板** in the floating menu to send local clipboard text,
+   then paste it on the remote desktop. Empty or oversized text displays a hint.
 4. **Displays:** open the display menu, switch every listed monitor, and check
    that the selected monitor appears and the displayed resolution updates
    after a new key frame.
@@ -346,6 +352,10 @@ a data-channel problem:
    from the desktop. Progress is ACK-driven. Received files are stored in the
    app's `Documents/Received` directory and can be exported with the share
    button beside the transfer status or Finder's Files tab.
+6. **Ctrl+Alt+Del:** the floating menu sends the existing Windows service
+   command when the remote advertises an available system service. Other hosts
+   display a service requirement hint. Clipboard, control and transfer feedback
+   are shown separately and cleared when the session ends.
 
 Network status samples and caches displayed measurements once per second while
 the panel is open; video-frame redraws reuse that snapshot. Traffic and connection RTT

@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.ClipData;
+import android.content.Intent;
 import android.content.ClipboardManager;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
@@ -75,6 +76,11 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private int port,selectedDisplay;
     private JSONArray displays=new JSONArray();
     private boolean muted,ready,rememberPassword;
+    private boolean remoteServiceAvailable;
+    private static final int PICK_FILE=41,SAVE_FILE=42;
+    private NativeSession documentSession;
+    private java.io.File receivedFile,documentToSave;
+    private final Runnable documentTimeout=()->{if(documentSession!=null&&!foreground)end("文件选择已超时，会话已结束");};
     private RemoteVideoSettings videoSettings=new RemoteVideoSettings(1);
     private final android.os.Handler mainHandler=new android.os.Handler(android.os.Looper.getMainLooper());
     private Runnable videoSettingsTimeout;
@@ -277,6 +283,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         window.setGravity(width>=600?Gravity.CENTER:Gravity.BOTTOM);
     }
     private void begin(String id,String secret){
+        remoteServiceAvailable=false;receivedFile=null;
         resetRemoteVersionCheck();
         resetVideoSettings();
         previewCapture=previews.begin(serverKey(),id);previewCopying=false;previewAttempts=0;
@@ -294,6 +301,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         installRoot("session",true);setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR);video=new RemoteVideoView(this,session);video.setRelative(preferences.getBoolean("relativeMouse",true));canvas.addView(video,0,new FrameLayout.LayoutParams(-1,-1));
         controls=new SessionControls(this,ui,new SessionControls.Actions(){
             public void disconnect(){confirmDisconnect();}public void display(){selectDisplay();}public void clipboard(){MainActivity.this.clipboard();}
+            public void sendFile(){chooseFile();}public void saveFile(){saveReceivedFile();}public void secureAttention(){MainActivity.this.secureAttention();}
             public void key(int code){tapKey(code);}
             public void chord(int code,int[] modifiers){if(session==null)return;for(int modifier:modifiers)session.key(modifier,true);tapKey(code);for(int i=modifiers.length-1;i>=0;i--)session.key(modifiers[i],false);}public void shortcut(int code){MainActivity.this.shortcut(code);}public void text(String value){sendText(value);}
             public void mute(){muted=!muted;if(session!=null)session.control(2,muted?0:1);controls.setMuted(muted);}
@@ -303,6 +311,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     }
     private void confirmDisconnect(){disconnectDialog=new AlertDialog.Builder(this).setTitle("断开远程连接？").setMessage("断开后将返回首页").setNegativeButton("取消",null).setPositiveButton("断开连接",(d,w)->end("")).show();}
     private void end(String reason){
+        mainHandler.removeCallbacks(documentTimeout);documentSession=null;documentToSave=null;receivedFile=null;remoteServiceAvailable=false;
         resetRemoteVersionCheck();
         resetVideoSettings();
         previewCapture=null;previewCopying=false;
@@ -432,6 +441,44 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private void selectDisplay(){
         if(!ready)return;int count=Math.min(displays.length(),8);if(count==0){toast("等待远端屏幕信息");return;}String[] labels=new String[count];for(int i=0;i<count;i++){JSONObject display=displays.optJSONObject(i);labels[i]=(i+1)+" · "+(display==null?"显示器":display.optString("name","显示器"));}new AlertDialog.Builder(this).setTitle("显示器").setItems(labels,(d,w)->{if(session!=null){if(w!=selectedDisplay&&video!=null)video.resetViewport();selectedDisplay=w;session.control(4,w);if(controls!=null)controls.resetVideoStatistics();}}).show();
     }
+    private void secureAttention(){
+        if(!ready||session==null)return;
+        if(!remoteServiceAvailable){controlFeedback(hostPlatform.equals("windows")?"请在远端启用 CrossDesk 系统服务后重试":"Ctrl+Alt+Del 需要远端 Windows 系统服务支持");return;}
+        session.secureAttention();
+    }
+    private void chooseFile(){
+        if(!ready||session==null)return;
+        openDocument(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"),PICK_FILE);
+    }
+    private void saveReceivedFile(){
+        if(!ready||session==null||receivedFile==null)return;
+        documentToSave=receivedFile;
+        openDocument(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/octet-stream").putExtra(Intent.EXTRA_TITLE,receivedFile.getName()),SAVE_FILE);
+    }
+    private void openDocument(Intent intent,int request){
+        if(documentSession!=null)return;
+        documentSession=session;releaseKeys();
+        try{startActivityForResult(intent,request);mainHandler.postDelayed(documentTimeout,5*60*1000);}
+        catch(android.content.ActivityNotFoundException error){documentSession=null;documentToSave=null;controlFeedback("此设备没有可用的文件选择器");}
+    }
+    @Override protected void onActivityResult(int request,int result,Intent data){
+        super.onActivityResult(request,result,data);
+        if(request!=PICK_FILE&&request!=SAVE_FILE)return;
+        NativeSession source=documentSession;java.io.File saved=documentToSave;
+        documentSession=null;documentToSave=null;mainHandler.removeCallbacks(documentTimeout);
+        if(source==null||source!=session||!ready||result!=RESULT_OK||data==null||data.getData()==null)return;
+        if(request==PICK_FILE)source.sendFile(data.getData());else if(saved!=null)source.saveFile(saved,data.getData());
+    }
+    @Override public void fileTransfer(String name,double progress,boolean sending,java.io.File received){
+        if(!ready)return;
+        if(received!=null)receivedFile=received;
+        String fileStatus=progress<0?name+" 传输失败":(sending?"发送 ":"接收 ")+name+(progress>=1?" · 已完成":" · "+(int)(progress*100)+"%");
+        if(controls!=null)controls.fileStatus(fileStatus,receivedFile!=null);
+        if(progress<0||progress>=1)toast(fileStatus);
+    }
+    @Override public void controlFeedback(String message){
+        toast(message);
+    }
     private void clipboard(){
         if(!ready)return;
         EditText input=field("要发送到远端的文本",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);input.setSingleLine(false);input.setMinLines(3);
@@ -540,6 +587,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     }
     @Override public void data(JSONObject message){
         if(session==null)return;
+        if(message.optInt("type",-1)==5){JSONObject service=message.optJSONObject("service_status");remoteServiceAvailable=service!=null&&service.optBoolean("available",false);return;}
         if(message.optInt("type",-1)==12){if(!ready)return;videoSettings.receive(message);if(!videoSettings.pending)cancelVideoSettingsTimeout();if(controls!=null)controls.videoSettings(videoSettings);return;}
         JSONObject info=message.optJSONObject("host_info");
         if(info!=null){
@@ -572,6 +620,9 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     }
     // onStart marks a new visit; focus/resume callbacks must not reopen a refused notice.
     @Override protected void onStart(){super.onStart();foreground=true;appUpdates.setEnabled(preferences.getBoolean("networkConsent",false));if(!preferences.getBoolean("networkConsent",false))consent(this::renderSignaling);ensureSignaling();}
-    @Override protected void onStop(){foreground=false;appUpdates.setEnabled(false);if(privacyDialog!=null)privacyDialog.dismiss();pageHost.finish();if(session!=null)end(isFinishing()?"":"应用已进入后台，会话已结束");stopSignaling();super.onStop();}
-    @Override protected void onDestroy(){appUpdates.setEnabled(false);pageHost.finish();resetRemoteVersionCheck();cancelVideoSettingsTimeout();previews.removeListener(previewChanged);if(privacyDialog!=null)privacyDialog.dismiss();if(previewDialog!=null)previewDialog.dismiss();announcementInbox.close();if(disconnectDialog!=null)disconnectDialog.dismiss();if(passwordDialog!=null)passwordDialog.dismiss();if(progressDialog!=null)progressDialog.dismiss();if(session!=null)session.close();stopSignaling();super.onDestroy();}
+    @Override protected void onStop(){foreground=false;appUpdates.setEnabled(false);if(privacyDialog!=null)privacyDialog.dismiss();pageHost.finish();
+        // The system document picker is part of this session's explicit file action.
+        if(documentSession==null||documentSession!=session||isFinishing()){if(session!=null)end(isFinishing()?"":"应用已进入后台，会话已结束");stopSignaling();}
+        super.onStop();}
+    @Override protected void onDestroy(){mainHandler.removeCallbacks(documentTimeout);documentSession=null;documentToSave=null;appUpdates.setEnabled(false);pageHost.finish();resetRemoteVersionCheck();cancelVideoSettingsTimeout();previews.removeListener(previewChanged);if(privacyDialog!=null)privacyDialog.dismiss();if(previewDialog!=null)previewDialog.dismiss();announcementInbox.close();if(disconnectDialog!=null)disconnectDialog.dismiss();if(passwordDialog!=null)passwordDialog.dismiss();if(progressDialog!=null)progressDialog.dismiss();if(session!=null)session.close();stopSignaling();super.onDestroy();}
 }

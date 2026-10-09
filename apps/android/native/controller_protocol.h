@@ -12,6 +12,12 @@
 #include <remote_action.h>
 
 namespace crossdesk::android_controller {
+inline std::string SecureAttentionMessage() {
+  RemoteAction action{};
+  action.type = service_command;
+  action.c.flag = send_sas;
+  return action.to_json();
+}
 inline std::string VideoSettingsMessage(int quality, int frame_rate, int preference,
                                         uint32_t request_id) {
   RemoteAction action{};

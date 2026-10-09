@@ -326,6 +326,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     @Published var selectedDisplay = 0
     @Published var audioEnabled = true
     @Published private(set) var clipboardStatus = ""
+    @Published private(set) var controlStatus = ""
     @Published private(set) var transferStatus = ""
     @Published private(set) var transferProgress = 0.0
     @Published private(set) var receivedFileURL: URL?
@@ -354,6 +355,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     private var shouldCaptureThumbnail = false
     private var activeDisplayName = ""
     private var remoteCursorSequence: UInt32?
+    private var remoteServiceAvailable = false
     private var videoWasBackgrounded = false
     private var videoRecoveryTask: Task<Void, Never>?
     private var videoSettingsTimeoutTask: Task<Void, Never>?
@@ -654,6 +656,11 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     private func resetConnection() {
+        clipboardStatus = ""
+        controlStatus = ""
+        transferStatus = ""
+        transferProgress = 0
+        receivedFileURL = nil
         resetRemoteHostInfo()
         resetVideoSettings()
         connectionFailureMessage = nil
@@ -692,6 +699,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     private func resetRemoteHostInfo() {
+        remoteServiceAvailable = false
         remoteVersionCheckTask?.cancel()
         remoteVersionCheckTask = nil
         remoteVersionCheckGeneration = UUID()
@@ -1020,6 +1028,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     func sendClipboard() {
+        guard hasNetworkConsent, isConnected else { return }
         guard let text = UIPasteboard.general.string, !text.isEmpty else {
             clipboardStatus = "剪贴板中没有文本"
             return
@@ -1033,9 +1042,25 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     func sendFile(_ url: URL) {
+        guard hasNetworkConsent, isConnected else { return }
         transferStatus = "正在发送 \(url.lastPathComponent)"
         transferProgress = 0
         bridge.sendFile(at: url)
+    }
+
+    func sendSecureAttention() {
+        guard hasNetworkConsent, isConnected else { return }
+        guard remoteServiceAvailable else {
+            controlStatus = "Ctrl+Alt+Del 需要远端启用 Windows 系统服务"
+            return
+        }
+        bridge.sendSecureAttentionSequence()
+        controlStatus = "正在发送 Ctrl+Alt+Del…"
+    }
+
+    func fileImportFailed() {
+        transferStatus = "无法读取所选文件，请重试"
+        transferProgress = 0
     }
 
     func sendKeyStroke(_ keyCode: UInt) {
@@ -1296,10 +1321,21 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         clipboardStatus = "已接收远端剪贴板"
     }
 
+    func rtcBridge(_ bridge: CrossDeskRTCBridge, didReceiveServiceAvailable available: Bool) {
+        guard hasNetworkConsent, isConnecting || isConnected else { return }
+        remoteServiceAvailable = available
+    }
+
+    func rtcBridge(_ bridge: CrossDeskRTCBridge, didSendSecureAttention success: Bool) {
+        guard hasNetworkConsent, isConnected else { return }
+        controlStatus = success ? "已发送 Ctrl+Alt+Del" : "指令发送失败，请重试"
+    }
+
     func rtcBridge(_ bridge: CrossDeskRTCBridge,
                    didUpdateFileTransfer fileName: String,
                    progress: Double,
                    sending: Bool) {
+        guard hasNetworkConsent, isConnected else { return }
         if progress < 0 {
             transferStatus = "\(fileName) 传输失败"
             transferProgress = 0
@@ -1311,6 +1347,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     func rtcBridge(_ bridge: CrossDeskRTCBridge, didReceiveFileAt fileURL: URL) {
+        guard hasNetworkConsent, isConnected else { return }
         receivedFileURL = fileURL
         transferStatus = "已接收 \(fileURL.lastPathComponent)"
         transferProgress = 1

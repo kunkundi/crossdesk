@@ -18,6 +18,7 @@
 #include <stdexcept>
 #include <vector>
 #include "controller_protocol.h"
+#include "file_transfer_session.h"
 #include "android_codec_support.h"
 #include "latest_frame_worker.h"
 #include "video_picture.h"
@@ -76,6 +77,14 @@ struct Session {
   float pointer_x = .5f, pointer_y = .5f;
   android_controller::LatestFrameWorker<VideoPicture> renderer{
       [this](VideoPicture picture) { RenderVideo(this, std::move(picture)); }};
+  android_controller::FileTransferSession files{
+      [this](const char* stream, const char* data, size_t size) {
+        return controller && !stopping
+            ? SendReliableDataFrame(controller, data, size, stream) : -1;
+      },
+      [this](const std::string& name, double progress, bool sending, const std::string& path) {
+        Event(10, {{"name", name}, {"progress", progress}, {"sending", sending}, {"path", path}});
+      }};
 
   void Event(int type, const char* data, size_t size) {
     if (stopping || size > 1024 * 1024) return;
@@ -89,7 +98,7 @@ struct Session {
     if (scope.env->ExceptionCheck()) scope.env->ExceptionClear();
   }
   void Event(int type, const json& value) {
-    const std::string data = value.dump(); Event(type, data.data(), data.size());
+    const std::string data = value.dump(-1, ' ', false, json::error_handler_t::replace); Event(type, data.data(), data.size());
   }
   void Send(const char* stream, const std::string& data) {
     if (controller && !stopping && !data.empty())
@@ -180,6 +189,8 @@ void Data(const char* data, size_t size, const char*, size_t,
   auto* ctx = static_cast<CallbackContext*>(user);
   if (!ctx->controller || !data || !stream || size > kMaxClipboardBytes) return;
   const std::string name(stream, stream_size);
+  if (name == kFileStream) { ctx->owner->files.Receive(data, size); return; }
+  if (name == kFileFeedbackStream) { ctx->owner->files.Ack(data, size); return; }
   if (name == kControlStream) {
     RemoteAction action{};
     if (action.from_json(std::string(data, size))) {
@@ -352,7 +363,7 @@ extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nConnect)(
   AddAudioStream(s->controller, kAudioStream);
   AddDataStream(s->controller, kDataStream, false);
   for (const char* name : {kMouseStream, kKeyboardStream, kControlStream,
-                          kClipboardStream}) AddDataStream(s->controller, name, true);
+                          kClipboardStream, kFileStream, kFileFeedbackStream}) AddDataStream(s->controller, name, true);
   if (Init(s->controller) != 0) return false;
   const auto join = s->remote + "@" + String(env, password);
   return JoinConnection(s->controller, join.c_str()) == 0;
@@ -400,6 +411,30 @@ extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nVideoSettings)(
   const auto data = android_controller::VideoSettingsMessage(quality, rate, preference, static_cast<uint32_t>(request_id));
   if (data.empty()) return false;
   return SendReliableDataFrame(s->controller, data.data(), data.size(), kControlStream) == 0;
+}
+extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nSecureAttention)(JNIEnv*, jclass, jlong handle) {
+  auto* s = From(handle);
+  if (!s || !s->controller || s->stopping) return false;
+  const auto data = android_controller::SecureAttentionMessage();
+  return SendReliableDataFrame(s->controller, data.data(), data.size(), kControlStream) == 0;
+}
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(nFileDirectory)(JNIEnv* env, jclass, jlong handle, jstring directory) {
+  auto* s = From(handle); if (s) s->files.SetDirectory(String(env, directory));
+}
+extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nSendFile)(JNIEnv* env, jclass, jlong handle, jstring path, jbyteArray name) {
+  auto* s = From(handle);
+  if (!s || !s->controller || s->stopping || !name) return false;
+  const auto size = env->GetArrayLength(name);
+  if (!size || size > UINT16_MAX) return false;
+  std::string label(size, '\0');
+  env->GetByteArrayRegion(name, 0, size, reinterpret_cast<jbyte*>(label.data()));
+  return !env->ExceptionCheck() && s->files.Start(String(env, path), label);
+}
+extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nPumpFiles)(JNIEnv*, jclass, jlong handle) {
+  auto* s = From(handle);
+  if (!s || s->stopping) return false;
+  s->files.Pump();
+  return s->files.Sending();
 }
 extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nAnnouncementRequest)(
     JNIEnv* env, jclass, jlong handle, jbyteArray data) {

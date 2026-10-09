@@ -942,68 +942,61 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
 - (void)sendFileAtURL:(NSURL *)fileURL {
   if (!fileURL.isFileURL) return;
   NSURL *url = [fileURL copy];
+  NSString *fileName = url.lastPathComponent.length > 0 ? url.lastPathComponent : @"file";
+  const uint64_t generation = _activeControllerGeneration.load();
+  void (^reportProgress)(double) = ^(double progress) {
+    DispatchMain(^{
+      if (![self isControllerGenerationActive:generation]) return;
+      id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
+      if ([delegate respondsToSelector:@selector(rtcBridge:didUpdateFileTransfer:progress:sending:)]) {
+        [delegate rtcBridge:self didUpdateFileTransfer:fileName progress:progress sending:YES];
+      }
+    });
+  };
   // Acquire the document picker's sandbox extension before its completion
   // callback returns; the actual reads happen on the serialized RTC queue.
   const BOOL scoped = [url startAccessingSecurityScopedResource];
   dispatch_async(_rtcQueue, ^{
-    if (!self->_state->controller_peer) {
+    FILE *input = nullptr;
+    const auto finish = [&](bool failed) {
+      if (input) std::fclose(input);
       if (scoped) [url stopAccessingSecurityScopedResource];
+      if (failed) reportProgress(-1);
+    };
+    if (![self isControllerGenerationActive:generation] || !self->_state->controller_peer) {
+      finish(false);
       return;
     }
     const char *path_bytes = url.path.fileSystemRepresentation;
-    FILE *input = path_bytes ? std::fopen(path_bytes, "rb") : nullptr;
-    if (!input) {
-      if (scoped) [url stopAccessingSecurityScopedResource];
-      return;
-    }
-
-    if (fseeko(input, 0, SEEK_END) != 0) {
-      std::fclose(input);
-      if (scoped) [url stopAccessingSecurityScopedResource];
+    input = path_bytes ? std::fopen(path_bytes, "rb") : nullptr;
+    if (!input || fseeko(input, 0, SEEK_END) != 0) {
+      finish(true);
       return;
     }
     const off_t end = ftello(input);
     rewind(input);
-    if (end < 0) {
-      std::fclose(input);
-      if (scoped) [url stopAccessingSecurityScopedResource];
-      return;
-    }
-
-    NSString *last_component = url.lastPathComponent.length > 0
-        ? url.lastPathComponent
-        : @"file";
-    NSData *name_data = [last_component dataUsingEncoding:NSUTF8StringEncoding];
-    if (name_data.length == 0 ||
+    NSData *name_data = [fileName dataUsingEncoding:NSUTF8StringEncoding];
+    if (end < 0 || name_data.length == 0 ||
         name_data.length > std::numeric_limits<uint16_t>::max()) {
-      std::fclose(input);
-      if (scoped) [url stopAccessingSecurityScopedResource];
+      finish(true);
       return;
     }
 
+    const std::string file_name(static_cast<const char *>(name_data.bytes), name_data.length);
     const uint32_t file_id = g_next_file_id.fetch_add(1);
     const uint64_t total_size = static_cast<uint64_t>(end);
     {
       std::lock_guard<std::mutex> lock(self->_fileMutex);
-      self->_state->outgoing_files[file_id] = {
-          std::string(last_component.UTF8String ?: "file"), total_size};
+      self->_state->outgoing_files[file_id] = {file_name, total_size};
     }
-    DispatchMain(^{
-      id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
-      if ([delegate respondsToSelector:
-              @selector(rtcBridge:didUpdateFileTransfer:progress:sending:)]) {
-        [delegate rtcBridge:self
-            didUpdateFileTransfer:last_component
-                         progress:0
-                          sending:YES];
-      }
-    });
+    reportProgress(0);
 
     std::vector<char> payload(kFileChunkSize);
     uint64_t offset = 0;
     bool first = true;
     int send_result = 0;
     do {
+      if (![self isControllerGenerationActive:generation]) { send_result = -1; break; }
       const size_t to_read = static_cast<size_t>(
           std::min<uint64_t>(kFileChunkSize, total_size - offset));
       const size_t bytes_read = to_read > 0
@@ -1014,7 +1007,6 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
         break;
       }
       const bool last = offset + bytes_read >= total_size;
-      const std::string file_name(last_component.UTF8String ?: "file");
       const std::string* file_name_pointer = first ? &file_name : nullptr;
       std::vector<char> chunk = crossdesk::EncodeFileChunk(
           file_id, offset, total_size, payload.data(),
@@ -1031,32 +1023,32 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
       if (send_result != 0) break;
     } while (offset < total_size);
 
-    std::fclose(input);
-    if (scoped) [url stopAccessingSecurityScopedResource];
     if (send_result != 0) {
-      {
-        std::lock_guard<std::mutex> lock(self->_fileMutex);
-        self->_state->outgoing_files.erase(file_id);
-      }
-      DispatchMain(^{
-        id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
-        if ([delegate respondsToSelector:
-                @selector(rtcBridge:didUpdateFileTransfer:progress:sending:)]) {
-          [delegate rtcBridge:self
-              didUpdateFileTransfer:last_component
-                           progress:-1
-                            sending:YES];
-        }
-      });
+      std::lock_guard<std::mutex> lock(self->_fileMutex);
+      self->_state->outgoing_files.erase(file_id);
     }
+    finish(send_result != 0);
   });
 }
 
 - (void)sendSecureAttentionSequence {
-  RemoteAction action{};
-  action.type = ControlType::service_command;
-  action.c.flag = ServiceCommandFlag::send_sas;
-  [self sendMessage:action.to_json() reliable:YES stream:kControlStream];
+  const uint64_t generation = _activeControllerGeneration.load();
+  dispatch_async(_rtcQueue, ^{
+    if (![self isControllerGenerationActive:generation]) return;
+    RemoteAction action{};
+    action.type = ControlType::service_command;
+    action.c.flag = ServiceCommandFlag::send_sas;
+    const auto message = action.to_json();
+    const BOOL success = self->_state->controller_peer &&
+        SendReliableDataFrame(self->_state->controller_peer, message.data(), message.size(), kControlStream) == 0;
+    DispatchMain(^{
+      if (![self isControllerGenerationActive:generation]) return;
+      id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
+      if ([delegate respondsToSelector:@selector(rtcBridge:didSendSecureAttention:)]) {
+        [delegate rtcBridge:self didSendSecureAttention:success];
+      }
+    });
+  });
 }
 
 - (void)sendMessage:(const std::string &)message
@@ -1692,6 +1684,17 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
       [self notifyVideoSettings:action.vs generation:generation];
       return;
     }
+    if (action.type == ControlType::service_status) {
+      const BOOL available = action.ss.available;
+      DispatchMain(^{
+        if (![self isControllerGenerationActive:generation]) return;
+        id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
+        if ([delegate respondsToSelector:@selector(rtcBridge:didReceiveServiceAvailable:)]) {
+          [delegate rtcBridge:self didReceiveServiceAvailable:available];
+        }
+      });
+      return;
+    }
     if (action.type != ControlType::host_infomation) return;
     const BOOL supports_video_settings = action.i.supports_video_settings;
     NSString *platform = [NSString stringWithUTF8String:
@@ -1785,6 +1788,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
                                             encoding:NSUTF8StringEncoding];
     if (!text) return;
     DispatchMain(^{
+      if (![self isControllerGenerationActive:generation]) return;
       id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
       if ([delegate respondsToSelector:
               @selector(rtcBridge:didReceiveClipboardText:)]) {
@@ -1804,6 +1808,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
       std::lock_guard<std::mutex> lock(_fileMutex);
       auto it = _state->outgoing_files.find(ack.file_id);
       if (it == _state->outgoing_files.end()) return;
+      if (ack.total_size != it->second.total_size) return;
       name = [NSString stringWithUTF8String:it->second.name.c_str()];
       progress = ack.total_size == 0
           ? 1
@@ -1816,6 +1821,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
       }
     }
     DispatchMain(^{
+      if (![self isControllerGenerationActive:generation]) return;
       id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
       if ([delegate respondsToSelector:
               @selector(rtcBridge:didUpdateFileTransfer:progress:sending:)]) {
@@ -1929,7 +1935,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   }
 
   dispatch_async(_rtcQueue, ^{
-    if (self->_state->controller_peer) {
+    if ([self isControllerGenerationActive:generation] && self->_state->controller_peer) {
       const auto encoded_ack =
           crossdesk::EncodeFileTransferAck(ack);
       SendReliableDataFrame(self->_state->controller_peer,
@@ -1939,6 +1945,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   });
   if (progress_name) {
     DispatchMain(^{
+      if (![self isControllerGenerationActive:generation]) return;
       id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
       if ([delegate respondsToSelector:
               @selector(rtcBridge:didUpdateFileTransfer:progress:sending:)]) {

@@ -13,6 +13,7 @@ final class SessionControls extends FrameLayout {
         void disconnect(); void display(); void clipboard(); void key(int code);
         void chord(int code,int[] modifiers); void shortcut(int code); void text(String value); void mute(); void mouse();
         void videoSettings(int field,int value);
+        void sendFile(); void saveFile(); void secureAttention();
     }
     private final MobileUi ui;
     private final Actions actions;
@@ -23,6 +24,9 @@ final class SessionControls extends FrameLayout {
     private ScrollView keyboardKeys;
     private int keyboardPreferredHeight;
     private TextView networkLabel,videoFeedback;
+    private TextView transferLabel,saveFileButton;
+    private String transferStatus="";
+    private boolean hasReceivedFile;
     private String menuPage="controls";
     private RemoteNetworkStatistics.Snapshot network=new RemoteNetworkStatistics().snapshot(0);
     private RemoteVideoSettings settings=new RemoteVideoSettings(1);
@@ -50,7 +54,12 @@ final class SessionControls extends FrameLayout {
     void resetVideoStatistics(){statistics(new RemoteNetworkStatistics.Snapshot(network.report,0,0,0,Double.NaN,network.rtt));}
     void statistics(RemoteNetworkStatistics.Snapshot value){network=value;renderNetwork();}
     void videoSettings(RemoteVideoSettings value){settings=value;renderVideoSettings();}
-    private void closeMenu(){if(menu!=null){removeView(menu);menu=null;}if(shield!=null){removeView(shield);shield=null;}networkLabel=videoFeedback=null;trafficCells=null;trafficRows=null;networkDetails=null;encryptionLock=encryptionOpen=null;settingRows.clear();orb.setContentDescription("展开远程控制菜单");}
+    void fileStatus(String status,boolean received){transferStatus=status;hasReceivedFile=received;renderFileStatus();}
+    private void renderFileStatus(){
+        if(transferLabel!=null){transferLabel.setText(transferStatus);transferLabel.setVisibility(transferStatus.isEmpty()?GONE:VISIBLE);}
+        if(saveFileButton!=null)saveFileButton.setVisibility(hasReceivedFile?VISIBLE:GONE);
+    }
+    private void closeMenu(){if(menu!=null){removeView(menu);menu=null;}if(shield!=null){removeView(shield);shield=null;}networkLabel=videoFeedback=transferLabel=saveFileButton=null;trafficCells=null;trafficRows=null;networkDetails=null;encryptionLock=encryptionOpen=null;settingRows.clear();orb.setContentDescription("展开远程控制菜单");}
     private void openMenu(String page){
         closeMenu();menuPage=page;shield=new View(getContext());shield.setOnClickListener(v->closeMenu());addView(shield,new LayoutParams(-1,-1));
         menu=ui.column();menu.setPadding(ui.dp(12),ui.dp(12),ui.dp(12),ui.dp(12));ui.card(menu,18);menu.setElevation(ui.dp(12));
@@ -67,11 +76,12 @@ final class SessionControls extends FrameLayout {
         if(page.equals("controls")){
             String[] labels={"键盘","显示器","画面设置",muted?"静音":"声音",relative?"相对鼠标":"绝对鼠标","发送文件","网络状态","Ctrl+Alt+Del","剪贴板"};
             String[] icons={"keyboard","display","sliders","audio","mouse","folder","chart","lock","clipboard"};
-            Runnable[] clicks={()->{closeMenu();toggleKeyboard();},actions::display,()->openMenu("video"),actions::mute,actions::mouse,()->{},()->openMenu("network"),()->{},actions::clipboard};
+            Runnable[] clicks={()->{closeMenu();toggleKeyboard();},actions::display,()->openMenu("video"),actions::mute,actions::mouse,actions::sendFile,()->openMenu("network"),actions::secureAttention,actions::clipboard};
             for(int row=0;row<3;row++){LinearLayout line=ui.row();for(int col=0;col<3;col++){int index=row*3+col;LinearLayout control=ui.column();control.setGravity(Gravity.CENTER);control.setBackground(ui.background(0xFFF0F0F2,10));control.addView(ui.icon(icons[index],INK),ui.size(19,19));ui.gap(control,4);TextView caption=ui.text(labels[index],10,false);caption.setSingleLine();caption.setGravity(Gravity.CENTER);control.addView(caption);control.setContentDescription(labels[index]);control.setClickable(true);control.setFocusable(true);control.setOnClickListener(v->clicks[index].run());
-                    if(index==5||index==7){control.setEnabled(false);control.setAlpha(.38f);control.setContentDescription(labels[index]+"，暂不支持");}
                     LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,ui.dp(52),1);if(col>0)p.leftMargin=ui.dp(7);line.addView(control,p);
                 }body.addView(line);if(row<2)ui.gap(body,7);}
+            ui.gap(body,7);transferLabel=ui.text(transferStatus,11,false);transferLabel.setTextColor(SECONDARY);transferLabel.setAccessibilityLiveRegion(ACCESSIBILITY_LIVE_REGION_POLITE);body.addView(transferLabel);
+            saveFileButton=ui.action("保存收到的文件",BLUE,actions::saveFile);body.addView(saveFileButton);renderFileStatus();
         }else if(page.equals("network")){
             networkPage(body);
         }else{

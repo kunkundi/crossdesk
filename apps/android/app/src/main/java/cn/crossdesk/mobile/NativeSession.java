@@ -28,6 +28,8 @@ final class NativeSession implements AutoCloseable {
         void videoSize(int width, int height);
         void clipboard(String text);
         void statistics(RemoteNetworkStatistics.Snapshot value);
+        default void fileTransfer(String name,double progress,boolean sending,File received) { }
+        default void controlFeedback(String message) { }
         default void signaling(int state, String deviceId) { }
         default void presence(JSONObject message) { }
         default void announcement(JSONObject message) { }
@@ -52,6 +54,11 @@ final class NativeSession implements AutoCloseable {
     private volatile boolean closed;
     private Surface surface;
     private volatile AudioPlayer audio;
+    private final SessionDocuments documents;
+    private boolean sendingFile;
+    private final Runnable fileTick=new Runnable(){public void run(){
+        execute(()->{boolean sending=connected&&handle!=0&&nPumpFiles(handle);if(!closed)main.postDelayed(this,sending?10:1000);});
+    }};
     private final RemoteNetworkStatistics networkStatistics=new RemoteNetworkStatistics();
     private final Runnable statisticsTick=new Runnable(){public void run(){
         if(closed)return;
@@ -67,6 +74,7 @@ final class NativeSession implements AutoCloseable {
         this.host = host; this.port = port; this.remote = remote; this.password = password;
         scope = host.toLowerCase(java.util.Locale.ROOT) + ":" + port;
         secrets = new SecretStore(this.context);
+        documents = new SessionDocuments(this.context);
     }
     void start() {
         if (started || closed) return;
@@ -80,6 +88,7 @@ final class NativeSession implements AutoCloseable {
                 if (!logs.isDirectory() && !logs.mkdirs()) throw new IllegalStateException("Log directory unavailable");
                 handle = nCreate(this, host, port, identity, logs.getAbsolutePath(), certificates.getAbsolutePath());
                 if (handle == 0) { fail("原生连接初始化失败"); return; }
+                nFileDirectory(handle,new File(documents.directory,"received").getAbsolutePath());
                 if (surface != null && surface.isValid()) nSurface(handle, surface);
             } catch (Exception error) { fail("安全存储或证书初始化失败，请重试或清除应用数据"); }
         });
@@ -169,7 +178,7 @@ final class NativeSession implements AutoCloseable {
                         connected = true; main.removeCallbacks(timeout); nReady(handle);
                         audio = new AudioPlayer();
                         nControl(handle, 2, 1);
-                        ui(() -> { listener.connected(); if(!closed)statisticsTick.run(); });
+                        ui(() -> { listener.connected(); if(!closed){statisticsTick.run();fileTick.run();} });
                     } else if (status == 0 || status == 2) ui(() -> listener.status("正在建立安全连接…"));
                     else if (status == 6) ui(() -> { listener.passwordRejected(); close(); });
                     else {
@@ -186,6 +195,11 @@ final class NativeSession implements AutoCloseable {
                 else if (type == 9 && signalReady && presenceRequested) {
                     long generation=event.optLong("generation");
                     if(generation==signalGeneration)ui(()->{if(generation==signalGeneration)listener.presence(event);});
+                } else if(type==10){
+                    String name=event.getString("name"),path=event.optString("path");
+                    double progress=event.getDouble("progress");boolean sending=event.getBoolean("sending");
+                    ui(()->{if(sending&&(progress<0||progress>=1))sendingFile=false;
+                        listener.fileTransfer(name,progress,sending,path.isEmpty()?null:new File(path));});
                 }
             } catch (Exception error) {
                 if (type == 3) fail("设备身份保存失败，请检查安全存储");
@@ -232,14 +246,36 @@ final class NativeSession implements AutoCloseable {
         if (bytes.length == 0 || bytes.length > 128 * 1024) return;
         execute(() -> { if (connected) nClipboard(handle, bytes); });
     }
+    void secureAttention(){execute(()->{
+        boolean sent=connected&&nSecureAttention(handle);
+        ui(()->listener.controlFeedback(sent?"已发送 Ctrl+Alt+Del":"指令发送失败，请重试"));
+    });}
+    void sendFile(android.net.Uri uri){
+        if(closed)return;
+        if(sendingFile){listener.controlFeedback("请等待当前文件发送完成");return;}
+        sendingFile=true;listener.fileTransfer("正在读取所选文件…",0,true,null);
+        documents.prepare(uri,new SessionDocuments.Prepared(){
+            public void ready(File file,String name){execute(()->{
+                if(!connected||!nSendFile(handle,file.getAbsolutePath(),name.getBytes(StandardCharsets.UTF_8))){
+                    file.delete();ui(()->{sendingFile=false;listener.fileTransfer(name,-1,true,null);});
+                }
+            });}
+            public void failed(){ui(()->{sendingFile=false;listener.fileTransfer("所选文件（无法读取或空间不足）",-1,true,null);});}
+        });
+    }
+    void saveFile(File file,android.net.Uri destination){
+        if(closed)return;
+        documents.save(file,destination,success->ui(()->listener.controlFeedback(success?"文件已保存":"文件保存失败，请重试")));
+    }
     @Override public void close() {
         if (closed) return;
-        closed = true; main.removeCallbacks(timeout);main.removeCallbacks(statisticsTick);
+        closed = true; main.removeCallbacks(timeout);main.removeCallbacks(statisticsTick);main.removeCallbacks(fileTick);
         RTC.execute(() -> {
             main.removeCallbacks(timeout);
             if (audio != null) { audio.close(); audio = null; }
             password = "";
             if (handle != 0) { nDestroy(handle); handle = 0; }
+            documents.close();
             surface = null;
         });
     }
@@ -256,6 +292,10 @@ final class NativeSession implements AutoCloseable {
     private static native boolean nAnnouncementRequest(long handle,byte[] data);
     private static native boolean nPresenceRequest(long handle,byte[] data);
     private static native void nClipboard(long handle, byte[] data);
+    private static native boolean nSecureAttention(long handle);
+    private static native void nFileDirectory(long handle,String directory);
+    private static native boolean nSendFile(long handle,String path,byte[] name);
+    private static native boolean nPumpFiles(long handle);
     private static native void nSurface(long handle, Surface surface);
     private static native void nDestroy(long handle);
 }
