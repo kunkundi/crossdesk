@@ -93,6 +93,7 @@ struct PlatformIntegrationState {
   std::string windows_input_stage_;
   std::atomic<bool> windows_consent_ui_{false};
   std::atomic<bool> pending_windows_service_sas_{false};
+  std::atomic<bool> pending_windows_service_cancel_consent_{false};
   bool local_service_status_received_ = false;
   std::atomic<bool> local_service_available_{false};
   std::string local_interactive_stage_;

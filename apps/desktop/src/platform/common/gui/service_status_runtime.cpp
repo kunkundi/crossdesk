@@ -1,5 +1,7 @@
 #include "runtime/gui_runtime.h"
 
+#include "rd_log.h"
+
 namespace crossdesk {
 
 void GuiRuntime::ResetRemoteServiceStatus(RemoteSession& props) {
@@ -13,13 +15,25 @@ void GuiRuntime::ResetRemoteServiceStatus(RemoteSession& props) {
   props.remote_service_status_received_ = false;
   props.remote_service_available_ = false;
   props.remote_interactive_stage_.clear();
+  props.remote_consent_pending_ = false;
 }
 
 void GuiRuntime::ApplyRemoteServiceStatus(RemoteSession& props,
                                           const ServiceStatus& status) {
+  const bool changed =
+      props.remote_service_available_ != status.available ||
+      props.remote_interactive_stage_ != status.interactive_stage ||
+      props.remote_consent_pending_ != status.consent_pending;
+  if (changed) {
+    LOG_INFO("Remote service status changed: id={}, available={}, stage={}, "
+             "consent_pending={}",
+             props.remote_id_, status.available, status.interactive_stage,
+             status.consent_pending);
+  }
   props.remote_service_status_received_ = true;
   props.remote_service_available_ = status.available;
   props.remote_interactive_stage_ = status.interactive_stage;
+  props.remote_consent_pending_ = status.consent_pending;
 }
 
 GuiRuntime::RemoteUnlockState GuiRuntime::GetRemoteUnlockState(

@@ -34,11 +34,20 @@ class ServiceQueryWorker {
           std::unique_lock lock(mutex_);
           while (true) {
             wake_.wait(lock, [this] {
-              return stopping_ || (!result_ && (sas_ || status_));
+              return stopping_ ||
+                     (!result_ && (sas_ || cancel_consent_ || status_));
             });
             if (stopping_) return;
-            const std::string command = sas_ ? "sas" : "status";
-            (sas_ ? sas_ : status_) = false;
+            std::string command = "status";
+            if (sas_) {
+              sas_ = false;
+              command = "sas";
+            } else if (cancel_consent_) {
+              cancel_consent_ = false;
+              command = "cancel-consent";
+            } else {
+              status_ = false;
+            }
             const uint64_t generation = generation_;
             running_command_ = command;
             running_generation_ = generation;
@@ -70,8 +79,19 @@ class ServiceQueryWorker {
   void RequestStatus() {
     std::lock_guard lock(mutex_);
     if ((running_command_ == "status" && running_generation_ == generation_) ||
-        result_ || sas_) return;
+        result_ || sas_ || cancel_consent_) return;
     status_ = true;
+    wake_.notify_one();
+  }
+
+  void RequestCancelConsent() {
+    std::lock_guard lock(mutex_);
+    // Cancelling consent changes the interactive stage, so a status result
+    // captured before the cancel must not be published afterwards.
+    ++generation_;
+    status_ = false;
+    result_.reset();
+    cancel_consent_ = true;
     wake_.notify_one();
   }
 
@@ -95,14 +115,15 @@ class ServiceQueryWorker {
   void Reset() {
     std::lock_guard lock(mutex_);
     ++generation_;
-    status_ = sas_ = false;
+    status_ = sas_ = cancel_consent_ = false;
     result_.reset();
   }
 
  private:
   std::mutex mutex_;
   std::condition_variable wake_;
-  bool stopping_ = false, status_ = false, sas_ = false;
+  bool stopping_ = false, status_ = false, sas_ = false,
+       cancel_consent_ = false;
   uint64_t generation_ = 0, running_generation_ = 0;
   std::string running_command_;
   std::optional<ServiceQueryResult> result_;

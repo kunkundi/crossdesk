@@ -149,6 +149,11 @@ struct TranslationRow {
     u8"Видна блокировка, отправьте SAS")                                       \
   X(remote_secure_desktop_active, u8"远端已进入安全桌面",                      \
     "Remote secure desktop active", u8"Активен защищенный рабочий стол")       \
+  X(remote_consent_pending, u8"远端正在等待管理员授权，画面不会更新",          \
+    "Remote is waiting for an elevation prompt; video is frozen",              \
+    u8"Удаленная сторона ожидает запрос повышения прав; видео остановлено")   \
+  X(cancel_remote_consent, u8"取消提权请求", "Cancel elevation",               \
+    u8"Отменить повышение прав")                                               \
   X(remote_service_unavailable, u8"远端Windows服务不可用",                     \
     "Remote Windows service unavailable",                                      \
     u8"Служба Windows на удаленной стороне недоступна")                        \

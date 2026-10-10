@@ -51,6 +51,9 @@ BuildWindowsServiceStatusAction(const WindowsServiceInteractiveStatus &status) {
   std::strncpy(action.ss.interactive_stage, status.interactive_stage.c_str(),
                sizeof(action.ss.interactive_stage) - 1);
   action.ss.interactive_stage[sizeof(action.ss.interactive_stage) - 1] = '\0';
+  action.ss.consent_pending =
+      status.consent_ui_visible &&
+      IsSecureDesktopInteractionRequired(status.interactive_stage);
   return action;
 }
 
@@ -147,6 +150,10 @@ void GuiRuntime::HandleWindowsServiceIntegration() {
     }
     windows_service_worker_->RequestSas();
   }
+  if (pending_windows_service_cancel_consent_.exchange(
+          false, std::memory_order_relaxed)) {
+    windows_service_worker_->RequestCancelConsent();
+  }
 
   const uint32_t now = static_cast<uint32_t>(SDL_GetTicks());
   auto result = windows_service_worker_->Take();
@@ -174,6 +181,20 @@ void GuiRuntime::HandleWindowsServiceIntegration() {
       SendReliableDataFrame(peer_, message.data(), message.size(),
                             control_data_label_.c_str());
     }
+    result.reset();
+  }
+
+  if (result && result->command == "cancel-consent") {
+    auto json = nlohmann::json::parse(result->response, nullptr, false);
+    if (json.is_discarded() || !json.value("ok", false)) {
+      LOG_WARN("Remote consent cancel request failed: {}", result->response);
+    } else {
+      LOG_INFO("Remote consent cancel request forwarded to local Windows "
+               "service, dismissed={}",
+               json.value("dismissed", false));
+    }
+    // The stage changes as soon as the dialog dies, so skip the status wait.
+    last_windows_service_status_tick_ = 0;
     result.reset();
   }
 

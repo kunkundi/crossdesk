@@ -1616,9 +1616,26 @@ void GuiApplication::BindStreamCallbacks() {
     }
     RemoteAction action{};
     action.type = ControlType::service_command;
-    action.c.flag = std::string(shortcut) == "Ctrl+Alt+Del"
-                        ? ServiceCommandFlag::send_sas
-                        : ServiceCommandFlag::lock_workstation;
+    const std::string id = std::string(shortcut);
+    if (id == "Ctrl+Alt+Del") {
+      action.c.flag = ServiceCommandFlag::send_sas;
+    } else if (id == "cancel-consent") {
+      action.c.flag = ServiceCommandFlag::cancel_consent;
+    } else {
+      action.c.flag = ServiceCommandFlag::lock_workstation;
+    }
+    const std::string message = action.to_json();
+    SendReliableDataFrame(props->peer_, message.c_str(), message.size(),
+                          props->control_data_label_.c_str());
+  });
+  stream->on_cancel_remote_consent([this] {
+    auto props = SelectedSession();
+    if (!props || !props->peer_) {
+      return;
+    }
+    RemoteAction action{};
+    action.type = ControlType::service_command;
+    action.c.flag = ServiceCommandFlag::cancel_consent;
     const std::string message = action.to_json();
     SendReliableDataFrame(props->peer_, message.c_str(), message.size(),
                           props->control_data_label_.c_str());
@@ -2959,6 +2976,24 @@ void GuiApplication::SyncStreamWindow() {
         : controls.off ? localization::privacy_off[language]
         : localization::privacy_screen[language];
     (*ui_->stream)->set_privacy_status_text(UiText(text));
+  }
+  {
+    const auto unlock_state = GetRemoteUnlockState(*props);
+    const bool secure_desktop =
+        unlock_state == RemoteUnlockState::credential_ui ||
+        unlock_state == RemoteUnlockState::lock_screen ||
+        unlock_state == RemoteUnlockState::secure_desktop;
+    const bool consent_pending = secure_desktop && props->remote_consent_pending_;
+    std::string hint;
+    if (secure_desktop) {
+      hint = consent_pending ? localization::remote_consent_pending
+                                   [localization_language_index_]
+                             : localization::remote_secure_desktop_active
+                                   [localization_language_index_];
+    }
+    (*ui_->stream)->set_remote_secure_desktop(secure_desktop);
+    (*ui_->stream)->set_remote_secure_desktop_text(UiText(hint));
+    (*ui_->stream)->set_remote_consent_cancel_enabled(consent_pending);
   }
   int remote_cursor_shape =
       static_cast<int>(RemoteCursorShape::default_cursor);

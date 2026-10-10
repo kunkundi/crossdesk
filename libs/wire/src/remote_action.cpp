@@ -183,7 +183,8 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
     case ControlType::service_status:
       object["service_status"] =
           {{"available", action.ss.available},
-           {"interactive_stage", action.ss.interactive_stage}};
+           {"interactive_stage", action.ss.interactive_stage},
+           {"consent_pending", action.ss.consent_pending}};
       break;
     case ControlType::service_command:
       object["service_command"] = {{"flag", action.c.flag}};
@@ -351,6 +352,8 @@ bool RemoteAction::FromJson(const std::string& json_string,
         output.ss.available = service_status_object.value("available", false);
         const std::string stage = service_status_object.value(
             "interactive_stage", std::string());
+        output.ss.consent_pending =
+            service_status_object.value("consent_pending", false);
         std::strncpy(output.ss.interactive_stage, stage.c_str(),
                      sizeof(output.ss.interactive_stage) - 1);
         output.ss.interactive_stage[sizeof(output.ss.interactive_stage) - 1] =

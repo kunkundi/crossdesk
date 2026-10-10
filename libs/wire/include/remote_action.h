@@ -46,7 +46,7 @@ enum MouseFlag {
 };
 
 enum KeyFlag { key_down = 0, key_up };
-enum ServiceCommandFlag { send_sas = 0, lock_workstation };
+enum ServiceCommandFlag { send_sas = 0, lock_workstation, cancel_consent };
 
 struct Mouse {
   float x;
@@ -142,6 +142,9 @@ struct HostInfo {
 struct ServiceStatus {
   bool available;
   char interactive_stage[32];
+  // A pending elevation prompt (Consent.exe) can be dismissed remotely; a bare
+  // lock screen or logon UI cannot.
+  bool consent_pending;
 };
 
 struct ServiceCommand {
