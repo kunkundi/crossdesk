@@ -54,6 +54,7 @@ class GuiRuntime : protected gui_detail::GuiState {
                 bool remember_password, bool bypass_presence_check = false);
   int RequestSingleDevicePresence(const std::string& remote_id,
                                   const char* password, bool remember_password);
+  int ForceSignalReconnect();
 
   void HandleRecentConnections();
   void HandleConnectionStatusChange();

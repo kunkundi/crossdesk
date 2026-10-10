@@ -227,6 +227,14 @@ int GuiRuntime::RequestSingleDevicePresence(const std::string& remote_id,
   return ret;
 }
 
+int GuiRuntime::ForceSignalReconnect() {
+  if (!peer_) {
+    LOG_WARN("Signal reconnect requested with no connection peer");
+    return -1;
+  }
+  return ReconnectSignal(peer_);
+}
+
 void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
   if (!props || props->closing_.exchange(true)) return;
   if (props->peer_events_) props->peer_events_->Deactivate();
