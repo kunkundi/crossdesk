@@ -1227,7 +1227,9 @@ export component MainWindow inherits Window {
 
     // Match the ImGui recent-connection tooltip while keeping it outside the
     // clipped ScrollView. It is deliberately limited to the thumbnail area.
-    if root.recent-tooltip-visible: Rectangle {
+    // Stay under the modal layer (z >= 39): a hover tooltip that outlives the
+    // pointer can otherwise cover a dialog button and hide it from the user.
+    if root.recent-tooltip-visible && !root.connection-dialog-open: Rectangle {
         x: root.recent-tooltip-x;
         y: root.recent-tooltip-y;
         width: root.recent-tooltip-width;
@@ -1236,7 +1238,7 @@ export component MainWindow inherits Window {
         border-width: 1px;
         border-color: #ffffff38;
         border-radius: 5px;
-        z: 50;
+        z: 20;
 
         VerticalLayout {
             padding: 8px;
