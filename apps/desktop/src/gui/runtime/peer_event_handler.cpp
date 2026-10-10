@@ -79,7 +79,12 @@ void PeerEventHandler::OnSignalMessage(const char* message, size_t size,
     return;
   }
   std::string type = j["type"].get<std::string>();
-  if (type == "announcements_changed") {
+  if (type == "user_join_transmission" && j.contains("status") &&
+      j["status"] == "failed" && j.contains("transmission_id") &&
+      j["transmission_id"].is_string()) {
+    const auto props = runtime->FindRemoteSession(j["transmission_id"].get<std::string>());
+    if (props && !props->closing_) props->connection_auth_.Rejected(j);
+  } else if (type == "announcements_changed") {
     runtime->announcements_.Refresh();
   } else if (type == "announcements") {
     runtime->announcements_.Receive(j);
@@ -265,6 +270,8 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
     runtime->is_client_mode_ = true;
     runtime->show_connection_status_window_ = true;
     props->connection_status_.store(status);
+    if (status != ConnectionStatus::Connecting && status != ConnectionStatus::Gathering)
+      props->connection_auth_.Complete();
 
     switch (status) {
       case ConnectionStatus::Connected: {
@@ -383,11 +390,6 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
           props->remote_close_pending_.store(true, std::memory_order_release);
         }
 
-        break;
-      }
-      case ConnectionStatus::IncorrectPassword: {
-        runtime->password_validating_ = false;
-        runtime->password_validating_time_++;
         break;
       }
       default:

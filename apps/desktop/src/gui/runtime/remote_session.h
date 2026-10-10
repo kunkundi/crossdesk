@@ -26,6 +26,7 @@
 #include "minirtc.h"
 #include "rendering/video_latency.h"
 #include "runtime/net_traffic_stats_cache.h"
+#include "runtime/connection_auth_state.h"
 
 namespace crossdesk { class PeerEventHandler; }
 
@@ -100,6 +101,7 @@ struct RemoteSession {
   bool p2p_mode_ = true;
   bool remember_password_ = false;
   char remote_password_[7] = "";
+  ConnectionAuthState connection_auth_;
   // Reused across frames by the decode callback thread when a CPU NV12
   // native frame has to be materialized for a renderer that rejects it.
   std::vector<unsigned char> native_cpu_fallback_;

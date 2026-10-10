@@ -272,6 +272,10 @@ struct TranslationRow {
   X(receiving_screen, u8"画面接收中...", "Receiving screen...",                \
     u8"Получение изображения...")                                              \
   X(p2p_failed, u8"对等连接失败", "P2P Failed", u8"Сбой P2P")                  \
+  X(connection_auth_throttled, u8"验证尝试过于频繁，请稍后重试。", "Too many authentication attempts. Try again later.", u8"Слишком много попыток. Повторите позже.") \
+  X(connection_service_busy, u8"认证服务繁忙，请稍后重试。", "Authentication service busy. Try again later.", u8"Сервис проверки занят. Повторите позже.") \
+  X(connection_not_authenticated, u8"登录状态已失效，请重新连接。", "Signaling login expired. Please reconnect.", u8"Сеанс входа истёк. Подключитесь заново.") \
+  X(connection_retry_after, u8"请在 %d 秒后重试。", "Retry in %d seconds.", u8"Повторите через %d сек.") \
   X(p2p_closed, u8"对等连接已关闭", "P2P closed", u8"P2P закрыто")             \
   X(no_such_id, u8"无此ID", "No such ID", u8"ID не найден")                    \
   X(about, u8"关于", "About", u8"О программе")                                 \

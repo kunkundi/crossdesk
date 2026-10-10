@@ -83,9 +83,7 @@ int main() {
   ok &= ExpectContains("minirtc.h", minirtc_api, "RemoteUnavailable");
   ok &= ExpectNotContains("minirtc.h", minirtc_api, "DeviceOffline");
   ok &= ExpectContains("peer_connection.cpp", peer_connection,
-                       "\"Remote unavailable\"");
-  ok &= ExpectContains("peer_connection.cpp", peer_connection,
-                       "ConnectionStatus::RemoteUnavailable");
+                       "on_connection_status_(ParseJoinFailure(j).status,");
   ok &= ExpectContains("peer_connection.cpp", peer_connection,
                        "IsCurrentPeerConnection");
   ok &= ExpectContains(

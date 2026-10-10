@@ -72,8 +72,6 @@ struct ServerWindowState {
 };
 
 struct UiState {
-  bool password_validating_ = false;
-  uint32_t password_validating_time_ = 0;
   bool rejoin_ = false;
   bool show_password_ = true;
   bool show_connection_status_window_ = false;

@@ -479,6 +479,14 @@ std::shared_ptr<GuiRuntime::RemoteSession> GuiRuntime::FindRemoteSession(
 
 int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
                           bool remember_password, bool bypass_presence_check) {
+  // Do not recreate a failed peer or send another probe during a server cooldown.
+  if (const auto current = FindRemoteSession(remote_id);
+      current && current->connection_auth_.Get().retry_after > 0) {
+    focused_remote_id_ = remote_id;
+    show_connection_status_window_ = true;
+    current->rejoin_ = false;
+    return 0;
+  }
   if (session_cleanup_tasks_.count(remote_id)) {
     pending_reconnects_[remote_id] = {password ? password : "", remember_password};
     LOG_INFO("[{}] Reconnect queued until previous peer is destroyed", remote_id);
@@ -595,18 +603,23 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
   auto props = FindRemoteSession(remote_id);
   if (!props || props->closing_) return -1;
   if (!props->connection_established_) {
-    props->connection_status_.store(ConnectionStatus::Connecting);
     show_connection_status_window_ = true;
 
     props->remember_password_ = remember_password;
-    if (strcmp(password, "") != 0 &&
+    if (password && *password &&
         strcmp(password, props->remote_password_) != 0) {
       strncpy(props->remote_password_, password,
               sizeof(props->remote_password_) - 1);
       props->remote_password_[sizeof(props->remote_password_) - 1] = '\0';
     }
 
-    std::string remote_id_with_pwd = remote_id + "@" + password;
+    // Ask locally before Join; an empty-password round trip is no longer needed.
+    if (!props->connection_auth_.Begin(props->remote_password_)) {
+      props->rejoin_ = false;
+      return 0;
+    }
+    props->connection_status_.store(ConnectionStatus::Connecting);
+    std::string remote_id_with_pwd = remote_id + "@" + props->remote_password_;
     if (props->peer_) {
       ret = JoinConnection(props->peer_, remote_id_with_pwd.c_str());
       if (0 == ret) {

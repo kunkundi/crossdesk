@@ -1451,14 +1451,8 @@ void GuiApplication::BindMainCallbacks() {
       show_connection_status_window_ = false;
       return;
     }
-    const ConnectionStatus status = props->connection_status_.load();
-    if (status == ConnectionStatus::IncorrectPassword) {
-      std::memset(props->remote_password_, 0, sizeof(props->remote_password_));
-      password_validating_ = false;
-    } else {
-      CloseStreamTab(props->remote_id_);
-      re_enter_remote_id_ = true;
-    }
+    CloseStreamTab(props->remote_id_);
+    re_enter_remote_id_ = true;
     show_connection_status_window_ = false;
   });
   main->on_connection_acknowledge([this] {
@@ -1480,11 +1474,11 @@ void GuiApplication::BindMainCallbacks() {
     if (!props || password.empty() || password.size() > 6) {
       return;
     }
+    if (!props->connection_auth_.Begin(password)) return;
     std::memset(props->remote_password_, 0, sizeof(props->remote_password_));
     std::memcpy(props->remote_password_, password.data(), password.size());
     props->remember_password_ = remember;
     props->rejoin_ = true;
-    password_validating_ = true;
     need_to_rejoin_ = true;
   });
   main->on_request_screen_recording_permission([this] {
@@ -2580,26 +2574,41 @@ void GuiApplication::SyncConnectionDialog() {
   }
   ui_->connection_dialog_remote_id = props->remote_id_;
   const ConnectionStatus status = props->connection_status_.load();
-  const bool password_required = status == ConnectionStatus::IncorrectPassword;
-  const bool pending = status == ConnectionStatus::Connecting ||
-                       status == ConnectionStatus::Gathering;
+  const auto auth = props->connection_auth_.Get();
+  const bool password_required = auth.password_required ||
+      (status == ConnectionStatus::IncorrectPassword && auth.validating);
+  const bool pending = !password_required &&
+      (status == ConnectionStatus::Connecting || status == ConnectionStatus::Gathering);
   std::string text;
   if (password_required) {
-    text = password_validating_
+    text = auth.validating
                ? localization::validate_password[localization_language_index_]
-           : password_validating_time_ <= 1
-               ? localization::input_password[localization_language_index_]
-               : localization::reinput_password[localization_language_index_];
+           : auth.incorrect_password
+               ? localization::reinput_password[localization_language_index_]
+               : localization::input_password[localization_language_index_];
+  } else if (auth.error == minirtc::JoinFailureKind::Throttled) {
+    text = localization::connection_auth_throttled[localization_language_index_];
+  } else if (auth.error == minirtc::JoinFailureKind::Busy) {
+    text = localization::connection_service_busy[localization_language_index_];
+  } else if (auth.error == minirtc::JoinFailureKind::NotAuthenticated) {
+    text = localization::connection_not_authenticated[localization_language_index_];
   } else {
     text = ConnectionStatusText(status, localization_language_index_);
+  }
+  if (auth.retry_after > 0) {
+    char retry_text[256];
+    std::snprintf(retry_text, sizeof(retry_text),
+        localization::connection_retry_after[localization_language_index_].c_str(),
+        auth.retry_after);
+    text += "\n" + std::string(retry_text);
   }
 
   ui_->main->set_connection_dialog_open(true);
   ui_->main->set_connection_status_text(UiText(text));
   ui_->main->set_connection_pending(pending);
   ui_->main->set_connection_password_required(password_required);
-  ui_->main->set_connection_validating(password_validating_);
-  if (password_required && !password_validating_ &&
+  ui_->main->set_connection_validating(auth.validating);
+  if (password_required && !auth.validating &&
       !ui_->connection_password_initialized) {
     ui_->main->set_connection_password(props->remote_password_);
     ui_->main->set_connection_remember_password(props->remember_password_);
