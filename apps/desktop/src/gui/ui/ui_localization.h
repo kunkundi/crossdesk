@@ -110,6 +110,8 @@ inline int ApplyMainWindowStrings(
   strings.set_signal_disconnected(
       Text(localization::signal_disconnected[language]));
   strings.set_tls_error(Text(localization::signal_tls_cert_error[language]));
+  strings.set_signal_reconnect(
+      Text(localization::signal_reconnect[language]));
   strings.set_update_available(
       Text(localization::new_version_available[language]));
   strings.set_new_version(Text(localization::new_version[language]));

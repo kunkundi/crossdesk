@@ -1367,6 +1367,12 @@ void GuiApplication::BindMainCallbacks() {
       LOG_WARN("Copy local id failed: {}", SDL_GetError());
     }
   });
+  main->on_signal_reconnect_requested([this] {
+    LOG_INFO("Signal reconnect requested from the status bar");
+    if (ForceSignalReconnect() != 0) {
+      LOG_WARN("Signal reconnect could not be started");
+    }
+  });
   main->on_toggle_password_visibility([this] {
     show_password_ = !show_password_;
     ui_->main->set_password_visible(show_password_);

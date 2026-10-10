@@ -258,6 +258,7 @@ struct TranslationRow {
   X(signal_connected, u8"已连接服务器", "Connected", u8"Подключено к серверу") \
   X(signal_disconnected, u8"未连接服务器", "Disconnected",                     \
     u8"Нет подключения к серверу")                                             \
+  X(signal_reconnect, u8"重新连接", "Reconnect", u8"Переподключиться")             \
   X(signal_tls_cert_error, u8"证书验证失败，请重新安装自托管根证书",           \
     "Certificate verification failed. Reinstall the self-hosted root "         \
     "certificate.",                                                            \

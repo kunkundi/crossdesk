@@ -65,6 +65,7 @@ export global UiStrings {
     in-out property <string> signal-connected: "Signal server connected";
     in-out property <string> signal-disconnected: "Signal server disconnected";
     in-out property <string> tls-error: "Signal server TLS certificate error";
+    in-out property <string> signal-reconnect: "Reconnect";
     in-out property <string> update-available: "A new version is available";
     in-out property <string> new-version: "New version";
     in-out property <string> check-for-updates: "Check for updates";
@@ -402,6 +403,7 @@ export component MainWindow inherits Window {
     callback browse-save-path;
     callback open-download;
     callback check-for-updates;
+    callback signal-reconnect-requested;
     callback connection-cancel;
     callback connection-acknowledge;
     callback connection-submit-password(string, bool);
@@ -1221,6 +1223,25 @@ export component MainWindow inherits Window {
                     color: #343941;
                     font-size: ImGuiFontStyle.base;
                     vertical-alignment: center;
+            }
+            if !root.signal-connected && !root.signal-tls-error: Rectangle {
+                    x: parent.width - self.width - 12px;
+                    y: 3px;
+                    height: 18px;
+                    width: reconnect-label.preferred-width;
+                    reconnect-label := Text {
+                            text: UiStrings.signal-reconnect;
+                            color: #2563eb;
+                            font-size: ImGuiFontStyle.base;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                    }
+                    TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.signal-reconnect-requested();
+                            }
+                    }
             }
         }
     }
