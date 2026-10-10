@@ -346,6 +346,8 @@ jobs:
   build-android:
     name: Build Android
     uses: ./.github/workflows/build-android.yml
+    with:
+      patch: ${{ inputs.patch || '0' }}
     permissions:
       contents: read
 

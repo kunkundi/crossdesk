@@ -1,6 +1,6 @@
 # CrossDesk Android
 
-原生 Android 控制端，使用 Java 界面、JNI 和 MiniRTC，与桌面端使用相同的信令、ICE、SRTP 和输入协议。没有 WebView。当前版本为 1.6.0，支持 Android 8.0（API 26）及以上的 arm64 手机和平板。
+原生 Android 控制端，使用 Java 界面、JNI 和 MiniRTC，与桌面端使用相同的信令、ICE、SRTP 和输入协议。没有 WebView。当前版本为 1.6.1，支持 Android 8.0（API 26）及以上的 arm64 手机和平板。
 
 ## 当前功能
 
@@ -83,11 +83,11 @@ Release 构建使用 `./gradlew :app:assembleRelease`，默认输出未签名 AP
 
 [`Build Android`](../../.github/workflows/build-android.yml) 可在 Actions 页面单独手动运行；修改 Android、MiniRTC、共享协议或许可证资料的 Pull Request 也会触发。仓库原有的 [`Build and Release`](../../.github/workflows/build.yml) 在分支推送、标签推送及手动运行时调用同一工作流，`v` 标签发布会等待安卓构建及签名成功，并将已签名 Release APK 加入 GitHub Release 和现有下载服务器的产物集合。推送主仓库前，先确保它引用的 MiniRTC 提交已推送到子模块远程仓库，否则 CI 无法完成检出。
 
-单独发布使用 [`Release Mobile`](../../.github/workflows/release-mobile.yml)。先提交 `app/build.gradle` 中需要发布的 `versionName`，再为该提交创建 `android-v<versionName>-YYYYMMDD` 标签，例如：
+单独发布使用 [`Release Mobile`](../../.github/workflows/release-mobile.yml)。先更新并提交 `gradle.properties` 中的 `crossdeskVersionName` 和递增的 `crossdeskVersionCode`，再为该提交创建 `android-v<versionName>-YYYYMMDD` 标签，例如：
 
 ```sh
-git tag android-v1.6.0-20261002
-git push origin android-v1.6.0-20261002
+git tag android-v1.6.1-20261010
+git push origin android-v1.6.1-20261010
 ```
 
 该标签只触发安卓构建，使用固定发布密钥签名并验证 Release APK 后，再发布到独立的 GitHub Release 和现有下载服务器。签名失败或缺少签名 Secrets 时停止发布，不回退到未签名 APK。标签版本必须与应用版本一致，日期必须有效。重试发布时，在 Actions 页面手动运行 `Release Mobile`，将已有标签填入 `source_tag`；即使从其他分支触发，也会检出该标签的源码。APK 的源码资料记录安卓标签及准确的应用、MiniRTC 提交。
@@ -100,15 +100,15 @@ git push origin android-v1.6.0-20261002
 
 Gradle 缓存与 Android 原生依赖缓存分别管理；原生缓存按宿主架构、构建脚本及 MiniRTC 配方区分，不复用桌面或 iOS 的配置和目标文件。GitHub 托管 runner 每次启动仍是新环境；第一次运行或缓存失效时需要安装。不同分支和标签可读取默认分支的缓存，因此建议先在默认分支运行一次 `Build Android` 预热，再创建发布标签。
 
-CI 仅构建和打包 Debug、Release APK，并校验 APK 的 arm64 ABI、16 KB ELF / ZIP 对齐、完整许可证及 Debug 签名。单元测试、本机 C++ 协议与画面队列测试、Lint 和设备测试改为按需在本地执行；设备测试使用下面的设备验证流程在 arm64 手机或模拟器上执行。
+CI 仅构建和打包 Debug、Release APK，并校验 APK 的包名、`versionName` / `versionCode`、arm64 ABI、16 KB ELF / ZIP 对齐、完整许可证及 Debug 签名。单元测试、本机 C++ 协议与画面队列测试、Lint 和设备测试改为按需在本地执行；设备测试使用下面的设备验证流程在 arm64 手机或模拟器上执行。
 
-产物使用 Android 工程自己的 `versionName`，例如 `v1.6.0-20261002`，不跟随桌面版本号。构建日期采用上海时区；带日期的版本标签沿用标签中的日期，与 iOS 一致。Actions 提供：
+统一 `v*` 发布从标签提取数字版本，通过 Gradle 属性写入 APK 的 `versionName`；App 内版本展示读取同一包信息。产物版本、日期及可选热修复编号与桌面端保持一致，例如 `v1.6.1-20261010` 或 `v1.6.1-2-20261010`。分支构建和独立 `android-v*` 发布使用 `gradle.properties` 中的版本，独立发布会检查标签与配置一致。构建日期采用上海时区；带日期的版本标签沿用标签中的日期，与 iOS 一致。Actions 提供：
 
 - `crossdesk-android-arm64-<版本>.apk`：已签名 Release APK，独立安卓发布和全平台标签发布收集此 APK，可直接安装。
 - `crossdesk-android-arm64-unsigned-<版本>.apk`：构建工作流的中间产物，也可用于自行签名和验证修改后的构建。
 - `crossdesk-android-arm64-debug-<版本>.apk`：可安装的调试应用，保留 14 天。
 
-Debug APK 使用每次运行的临时调试证书，可能无法覆盖手机上已有的其他签名版本；卸载原应用会清除本机连接记录和密码。需要持续覆盖升级时，应使用同一私钥签名 Release APK，并在发布新版本时递增 `app/build.gradle` 中的 `versionCode`。未签名 APK 已完成对齐，可通过 SDK 的 `apksigner sign --ks <自己的密钥库> --out <已签名.apk> <未签名.apk>` 签名，再用 `apksigner verify` 检查。
+Debug APK 使用每次运行的临时调试证书，可能无法覆盖手机上已有的其他签名版本；卸载原应用会清除本机连接记录和密码。需要持续覆盖升级时，应使用同一私钥签名 Release APK，并在每次发布新版本（含统一发布及热修复）时递增 `gradle.properties` 中的 `crossdeskVersionCode`。该安装升级序号独立于显示版本，不从日期或 CI 运行编号推算。未签名 APK 已完成对齐，可通过 SDK 的 `apksigner sign --ks <自己的密钥库> --out <已签名.apk> <未签名.apk>` 签名，再用 `apksigner verify` 检查。
 
 ### Release 签名
 

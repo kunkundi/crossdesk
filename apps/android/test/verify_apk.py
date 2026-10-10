@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
 """Check the shipped native ABI, ELF load alignment and APK zip alignment."""
 from pathlib import Path
+import argparse
 import hashlib
 import json
+import re
 import struct
-import sys
+import subprocess
 import zipfile
+
+
+def verify_package_version(badging, version_name, version_code):
+    package = next((line for line in badging.splitlines() if line.startswith('package: ')), '')
+    attributes = dict(re.findall(r"(\w+)='([^']*)'", package))
+    expected = {'name': 'cn.crossdesk.mobile', 'versionName': version_name, 'versionCode': str(version_code)}
+    for key, value in expected.items():
+        if attributes.get(key) != value:
+            raise ValueError(f'Unexpected APK {key}: expected {value!r}, got {attributes.get(key)!r}')
 
 
 def verify(path):
@@ -59,4 +70,16 @@ def verify(path):
 
 
 if __name__ == '__main__':
-    verify(sys.argv[1])
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('apk', type=Path)
+    parser.add_argument('--aapt2', type=Path)
+    parser.add_argument('--version-name')
+    parser.add_argument('--version-code', type=int)
+    args = parser.parse_args()
+    if any(value is not None for value in (args.aapt2, args.version_name, args.version_code)):
+        if any(value is None for value in (args.aapt2, args.version_name, args.version_code)):
+            parser.error('--aapt2, --version-name and --version-code must be supplied together')
+        badging = subprocess.check_output([str(args.aapt2), 'dump', 'badging', str(args.apk)], text=True)
+        verify_package_version(badging, args.version_name, args.version_code)
+        print(f'PASS: {args.apk.name}: versionName={args.version_name}, versionCode={args.version_code}')
+    verify(args.apk)

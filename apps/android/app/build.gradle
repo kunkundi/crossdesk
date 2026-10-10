@@ -8,8 +8,8 @@ android {
         applicationId 'cn.crossdesk.mobile'
         minSdk 26
         targetSdk 36
-        versionCode 2
-        versionName '1.6.0'
+        versionCode providers.gradleProperty('crossdeskVersionCode').get().toInteger()
+        versionName providers.gradleProperty('crossdeskVersionName').get()
         ndk { abiFilters 'arm64-v8a' }
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }

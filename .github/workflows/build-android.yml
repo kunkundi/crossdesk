@@ -2,6 +2,12 @@ name: Build Android
 
 on:
   workflow_dispatch:
+    inputs:
+      patch:
+        description: "Optional patch number, matching the main build workflow."
+        required: false
+        type: string
+        default: "0"
   workflow_call:
     inputs:
       source_tag:
@@ -9,9 +15,14 @@ on:
         required: false
         type: string
         default: ""
+      patch:
+        description: "Optional patch number from the main build workflow."
+        required: false
+        type: string
+        default: "0"
     outputs:
       version:
-        description: "Independent Android version and build date."
+        description: "Android artifact version; combined releases match the desktop tag."
         value: ${{ jobs.build.outputs.version }}
   pull_request:
     paths:
@@ -147,51 +158,70 @@ jobs:
       - name: Verify shared license catalog
         run: python3 -B apps/ios/scripts/generate_third_party_licenses.py
 
+      - name: Resolve Android version
+        shell: python
+        env:
+          PATCH_NUMBER: ${{ inputs.patch || '0' }}
+        run: |
+          import datetime
+          import os
+          from pathlib import Path
+          import re
+          import runpy
+
+          resolver = Path("apps/android/scripts/release_version.py")
+          if resolver.exists():
+              runpy.run_path(str(resolver), run_name="__main__")
+          else:
+              # Older standalone releases predate the resolver and Gradle properties.
+              # Keep their original package version when retrying an existing tag.
+              tag = os.environ["CROSSDESK_SOURCE_TAG"]
+              match = re.fullmatch(r"android-v([0-9]+\.[0-9]+\.[0-9]+)-([0-9]{8})", tag)
+              config = Path("apps/android/app/build.gradle").read_text()
+              name = re.search(r"versionName\s+'([^']+)'", config)
+              code = re.search(r"versionCode\s+([0-9]+)", config)
+              if not match or not name or not code or match[1] != name[1]:
+                  raise ValueError("Legacy Android sources require a matching standalone release tag")
+              datetime.datetime.strptime(match[2], "%Y%m%d")
+              with open(os.environ["GITHUB_ENV"], "a") as stream:
+                  stream.write(f"ANDROID_VERSION_NAME={name[1]}\nANDROID_VERSION_CODE={code[1]}\n"
+                               f"ANDROID_ARTIFACT_VERSION={tag.removeprefix('android-')}\n")
+
       - name: Build APKs
         working-directory: apps/android
         run: |
           ./gradlew --no-daemon --stacktrace \
+            -PcrossdeskVersionName="${ANDROID_VERSION_NAME}" \
+            -PcrossdeskVersionCode="${ANDROID_VERSION_CODE}" \
             :app:assembleDebug :app:assembleRelease
 
       - name: Verify APKs
         working-directory: apps/android
         run: |
-          python3 -B test/verify_apk.py app/build/outputs/apk/debug/app-debug.apk
-          python3 -B test/verify_apk.py app/build/outputs/apk/release/app-release-unsigned.apk
+          for APK in app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/release/app-release-unsigned.apk; do
+            python3 -B test/verify_apk.py "${APK}" \
+              --aapt2 "${ANDROID_HOME}/build-tools/36.0.0/aapt2" \
+              --version-name "${ANDROID_VERSION_NAME}" --version-code "${ANDROID_VERSION_CODE}"
+          done
           "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Package APKs with the independent Android version
+      - name: Package APKs with the resolved Android version
         id: package
         shell: python
         run: |
-          import datetime
           import json
           import os
           from pathlib import Path
-          import re
           import shutil
-          from zoneinfo import ZoneInfo
 
           apk_dir = Path("apps/android/app/build/outputs/apk")
-          metadata = json.loads((apk_dir / "release/output-metadata.json").read_text())
-          version = metadata["elements"][0]["versionName"]
-          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
-              raise ValueError(f"Invalid Android version: {version!r}")
-          build_date = datetime.datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d")
-          # Match the dated release tags used by the desktop and iOS jobs.
-          tag = os.environ.get("CROSSDESK_SOURCE_TAG")
-          if not tag and os.environ["GITHUB_REF_TYPE"] == "tag":
-              tag = os.environ["GITHUB_REF_NAME"]
-          if tag:
-              tag = tag.removeprefix("android-")
-              match = re.fullmatch(r"v?[0-9]+(?:\.[0-9]+){1,3}-(?:[0-9]+-)?([0-9]{8})(?:-[0-9]+)?", tag)
-              if match:
-                  build_date = match[1]
-                  datetime.datetime.strptime(build_date, "%Y%m%d")
-          version = f"v{version}-{build_date}"
-          source_tag = os.environ.get("CROSSDESK_SOURCE_TAG", "")
-          if source_tag.startswith("android-v") and source_tag.removeprefix("android-") != version:
-              raise ValueError(f"Android source tag does not match the app version: {source_tag} vs {version}")
+          version = os.environ["ANDROID_ARTIFACT_VERSION"]
+          for variant in ("debug", "release"):
+              metadata = json.loads((apk_dir / variant / "output-metadata.json").read_text())
+              for element in metadata["elements"]:
+                  if (element["versionName"] != os.environ["ANDROID_VERSION_NAME"] or
+                      element["versionCode"] != int(os.environ["ANDROID_VERSION_CODE"])):
+                      raise ValueError(f"Unexpected Android {variant} version: {element}")
           output = Path(os.environ["RUNNER_TEMP"]) / "crossdesk-android"
           for variant, source in (
               ("unsigned", "release/app-release-unsigned.apk"),
