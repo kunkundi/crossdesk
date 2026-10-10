@@ -343,6 +343,9 @@ struct TranslationRow {
   X(connection_mode, u8"连接模式", "Mode", u8"Режим")                          \
   X(connection_mode_direct, u8"直连", "Direct", u8"Прямой")                    \
   X(connection_mode_relay, u8"中继", "Relay", u8"Релейный")                    \
+  X(connection_path, u8"连接路径", "Path", u8"Маршрут")                        \
+  X(connection_path_relay_suffix, u8"（经中继转发，速度受限）",                \
+    " (via relay, bandwidth limited)", u8" (через реле, скорость ограничена)") \
   X(transport_encryption, u8"加密传输", "Encryption", u8"Шифрование")         \
   X(transport_encryption_enabled, u8"已开启", "Enabled", u8"Включено")         \
   X(transport_encryption_disabled, u8"未开启", "Disabled", u8"Выключено")       \

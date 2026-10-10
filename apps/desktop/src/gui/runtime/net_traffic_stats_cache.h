@@ -7,7 +7,11 @@
 #ifndef _NET_TRAFFIC_STATS_CACHE_H_
 #define _NET_TRAFFIC_STATS_CACHE_H_
 
+#include <algorithm>
 #include <atomic>
+#include <cstring>
+#include <mutex>
+#include <string>
 
 #include "minirtc.h"
 #include "runtime/connection_latency.h"
@@ -36,6 +40,11 @@ class NetTrafficStatsCache {
     srtp_active_.store(stats.srtp_active, std::memory_order_relaxed);
     rtt_ms_.store(stats.rtt_ms, std::memory_order_relaxed);
     connection_latency_.Update(stats.rtt_ms);
+    {
+      std::lock_guard<std::mutex> lock(path_mutex_);
+      local_path_.assign(stats.local_path, TextLength(stats.local_path));
+      remote_path_.assign(stats.remote_path, TextLength(stats.remote_path));
+    }
   }
 
   MiniRtcNetTrafficStats Load() const {
@@ -50,6 +59,11 @@ class NetTrafficStatsCache {
     stats.total_outbound_stats = total_outbound_stats_.Load();
     stats.srtp_active = srtp_active_.load(std::memory_order_relaxed);
     stats.rtt_ms = rtt_ms_.load(std::memory_order_relaxed);
+    {
+      std::lock_guard<std::mutex> lock(path_mutex_);
+      CopyField(stats.local_path, local_path_);
+      CopyField(stats.remote_path, remote_path_);
+    }
     return stats;
   }
 
@@ -71,6 +85,20 @@ class NetTrafficStatsCache {
   }
 
  private:
+  static size_t TextLength(const char (&value)[64]) {
+    size_t length = 0;
+    while (length < sizeof(value) && value[length] != '\0') {
+      ++length;
+    }
+    return length;
+  }
+
+  static void CopyField(char (&target)[64], const std::string& value) {
+    const size_t copied = std::min(sizeof(target) - 1, value.size());
+    memcpy(target, value.data(), copied);
+    target[copied] = '\0';
+  }
+
   struct InboundStats {
     void Store(const MiniRtcInboundStats& stats) {
       bitrate.store(stats.bitrate, std::memory_order_relaxed);
@@ -115,6 +143,9 @@ class NetTrafficStatsCache {
   std::atomic<bool> srtp_active_{false};
   std::atomic<double> rtt_ms_{-1};
   ConnectionLatencyStats connection_latency_;
+  mutable std::mutex path_mutex_;
+  std::string local_path_;
+  std::string remote_path_;
 };
 
 }  // namespace crossdesk::gui_detail
