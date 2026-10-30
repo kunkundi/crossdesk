@@ -430,6 +430,23 @@ static void AppendCells(std::string &out, const Grid &g, int y, int begin,
     AppendUtf8(out, g.viewport.utf8 ? c.glyph : 0x20);
   }
 }
+static bool SameTerminalCell(const Cell &a, const Cell &b, const Viewport &v) {
+  if (a == b)
+    return true;
+  if (!v.utf8)
+    return TerminalColor(a.top, v.colors) == TerminalColor(b.top, v.colors);
+  return a.glyph == b.glyph &&
+         TerminalColor(a.bottom, v.colors) == TerminalColor(b.bottom, v.colors) &&
+         (a.glyph == 0x20 ||
+          TerminalColor(a.top, v.colors) == TerminalColor(b.top, v.colors));
+}
+static void AppendCursor(std::string &out, int row, int column) {
+  out += "\033[";
+  AppendNumber(out, row + 1);
+  out += ';';
+  AppendNumber(out, column + 1);
+  out += 'H';
+}
 std::vector<std::string> Lines(const Grid &g) {
   std::vector<std::string> lines;
   lines.reserve(g.viewport.rows);
@@ -445,6 +462,7 @@ std::vector<std::string> Lines(const Grid &g) {
 }
 std::string Difference(const Grid &g, const std::optional<Grid> &previous) {
   std::string out;
+  std::string skipped, joined;
   AnsiColors colors;
   const bool same = previous &&
                     previous->viewport.columns == g.viewport.columns &&
@@ -454,24 +472,54 @@ std::string Difference(const Grid &g, const std::optional<Grid> &previous) {
                     previous->viewport.utf8 == g.viewport.utf8 &&
                     previous->cells.size() == g.cells.size();
   for (int y = 0; y < g.viewport.rows; ++y) {
+    const auto offset = size_t(y) * g.viewport.columns;
+    const auto unchanged = [&](int x) {
+      return SameTerminalCell(g.cells[offset + x], previous->cells[offset + x],
+                              g.viewport);
+    };
     int begin = 0, end = g.viewport.columns;
     if (same) {
-      const auto offset = size_t(y) * g.viewport.columns;
-      while (begin < end &&
-             g.cells[offset + begin] == previous->cells[offset + begin])
+      while (begin < end && unchanged(begin))
         ++begin;
-      while (end > begin &&
-             g.cells[offset + end - 1] == previous->cells[offset + end - 1])
+      while (end > begin && unchanged(end - 1))
         --end;
     }
     if (begin == end)
       continue;
-    out += "\033[";
-    AppendNumber(out, g.viewport.row_offset + y + 1);
-    out += ';';
-    AppendNumber(out, begin + 1);
-    out += 'H';
-    AppendCells(out, g, y, begin, end, colors);
+    AppendCursor(out, g.viewport.row_offset + y, begin);
+    if (!same) {
+      AppendCells(out, g, y, begin, end, colors);
+      continue;
+    }
+    AppendCells(out, g, y, begin, begin + 1, colors);
+    for (int x = begin + 1; x < end;) {
+      const int start = x;
+      if (!unchanged(x)) {
+        while (++x < end && !unchanged(x)) {}
+        AppendCells(out, g, y, start, x, colors);
+        continue;
+      }
+      while (++x < end && unchanged(x)) {}
+      // end already excludes the unchanged suffix, so x is a changed cell.
+      // Compare actual bytes, including the next cell's SGR: crossing a short
+      // gap can be cheaper than moving the cursor and restoring its colours.
+      skipped.clear();
+      auto skip_colors = colors;
+      AppendCursor(skipped, g.viewport.row_offset + y, x);
+      AppendCells(skipped, g, y, x, x + 1, skip_colors);
+      joined.clear();
+      auto join_colors = colors;
+      for (int gap = start; gap <= x && joined.size() <= skipped.size(); ++gap)
+        AppendCells(joined, g, y, gap, gap + 1, join_colors);
+      if (joined.size() <= skipped.size()) {
+        out += joined;
+        colors = join_colors;
+      } else {
+        out += skipped;
+        colors = skip_colors;
+      }
+      ++x;
+    }
   }
   if (!out.empty())
     out += "\033[0m";

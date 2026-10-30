@@ -350,12 +350,13 @@ int View(SessionOptions options, const std::string &device,
   if (renderer == "kitty" && !kitty)
     throw std::runtime_error(
         "Kitty probe failed or multiplexer active; use --renderer ansi");
-  // Local pixel frames need more throughput than character output. Keep the
-  // conservative budget for SSH and the existing one-message/burst limits.
+  // Both pixel frames and large true-colour character grids need local
+  // throughput. Keep SSH conservative and retain the one-message/burst limits
+  // and nonblocking writes so slow terminals still apply backpressure.
   const bool local_terminal = Env("SSH_CONNECTION").empty() &&
                               Env("SSH_CLIENT").empty() &&
                               Env("SSH_TTY").empty();
-  if (kitty && local_terminal)
+  if (local_terminal)
     output.SetByteRate(8 * 1024 * 1024);
   SharedImage shared_image;
   bool shared_enabled = false;
