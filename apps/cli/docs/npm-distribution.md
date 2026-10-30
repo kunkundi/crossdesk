@@ -2,16 +2,24 @@
 
 ## 使用方式
 
-完整版本发布后的统一入口如下。构建产物或部分平台包上传成功，不代表入口包和全部平台依赖已经可用；发布者须完成本文的注册表检查。
+从 [@chunkdash/crossdesk-cli](https://www.npmjs.com/package/@chunkdash/crossdesk-cli) 安装统一入口，npm 会选择对应系统和架构的原生平台包。需要 Node.js 22 或以上和 npm，无需本机编译工具链。
+
+```sh
+npm install -g @chunkdash/crossdesk-cli@latest
+crossdesk-cli doctor --json
+crossdesk-cli 123456789
+```
+
+更新时重新执行同一条 `npm install -g @chunkdash/crossdesk-cli@latest`。将示例 ID 替换为被控电脑的 9 位 ID，密码在连接时隐藏输入；`doctor` 只检查本机环境，不建立远程连接。
+
+无需全局安装时使用 `npx`，首次运行会下载对应平台包：
 
 ```sh
 npx @chunkdash/crossdesk-cli@latest doctor --json
 npx @chunkdash/crossdesk-cli@latest 123456789
-npm install -g @chunkdash/crossdesk-cli
-crossdesk-cli 123456789
 ```
 
-需要 Node.js 22 或以上和 npm。启动器根据 Node 的 `process.platform` / `process.arch` 选择同版本的 `@chunkdash` 平台包，直接启动原生 C++ 程序，继承终端、工作目录、环境变量和命令参数。安装过程不下载外部可执行文件、不执行 postinstall、不在用户机器编译。不要使用 `--omit=optional`，否则对应平台包不会安装。
+启动器根据 Node 的 `process.platform` / `process.arch` 选择同版本的 `@chunkdash` 平台包，直接启动原生 C++ 程序，继承终端、工作目录、环境变量和命令参数。原生可执行文件随 npm 平台包下载，安装过程不执行 postinstall，也不在本机编译。不要使用 `--omit=optional`，否则对应平台包不会安装。
 
 入口包名为 `@chunkdash/crossdesk-cli`，`bin` 声明的终端命令仍为 `crossdesk-cli`。如已全局安装旧的无 scope 入口，先执行 `npm uninstall -g crossdesk-cli`，再安装 scoped 入口，避免两个包争用同一个命令。原来的 `crossdesk-cli@0.1.0` 是独立的旧包，改名不会更新它或自动迁移已有安装。
 

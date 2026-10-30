@@ -7,6 +7,8 @@
 <div align="center">
 
 [![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20iOS%20%7C%20Android%20%7C%20HarmonyOS-blue?style=flat)](#download)
+[![Terminal CLI](https://img.shields.io/badge/client-CLI-2ea44f?style=flat)](#cli)
+[![npm](https://img.shields.io/npm/v/%40chunkdash%2Fcrossdesk-cli?style=flat&logo=npm)](https://www.npmjs.com/package/@chunkdash/crossdesk-cli)
 
 [![Release](https://img.shields.io/github/v/release/kunkundi/crossdesk?style=flat)](https://github.com/kunkundi/crossdesk/releases)
 [![Build](https://img.shields.io/github/actions/workflow/status/kunkundi/crossdesk/build.yml?style=flat&label=build)](https://github.com/kunkundi/crossdesk/actions/workflows/build.yml)
@@ -51,7 +53,7 @@ CrossDesk 让你从电脑、浏览器、手机或终端连接远端电脑，也�
 | 鸿蒙 PC（开发版） | **控制 / 被控**；API 26，arm64；使用 DevEco 构建并签名 HAP，仍在进行真机验收 |
 | 鸿蒙手机 / 平板（开发版） | **仅控制**；API 20+，arm64；使用 DevEco 构建并签名 HAP，仍在进行真机验收 |
 | Web | **仅控制**；支持 WebRTC 的浏览器；无需在控制端安装客户端 |
-| 终端 CLI（开发版） | **仅控制**；构建目标为 macOS / Linux（x64、arm64）和 Windows（x64）；从源码构建，平台验收范围见 [CLI 说明](apps/cli/README.md) |
+| 终端 CLI（开发版） | **仅控制**；分发目标为 macOS / Linux（x64、arm64）和 Windows（x64）；通过 [npm 安装](#cli-npm) 或从源码构建，平台验收范围见 [CLI 说明](apps/cli/README.md) |
 
 系统要求按当前源码与构建配置整理，具体安装包以对应 Release 说明为准。各客户端的功能范围见 [终端 CLI](#cli) 与 [移动端与鸿蒙](#mobile)。
 
@@ -130,6 +132,38 @@ CrossDesk 让你从电脑、浏览器、手机或终端连接远端电脑，也�
 
 `crossdesk-cli` 在终端中通过 9 位设备 ID 连接被控电脑，默认只读、静音。普通终端使用 ANSI 字符画面，支持 Kitty 图形协议的终端可显示像素画面；可切换显示器、调整画质、放大细节和平移，也可明确开启键鼠控制。CLI 可以独立于桌面 GUI 构建，被控电脑仍需运行 CrossDesk 并提供可捕获的图形会话，信令服务需支持 `cli` 临时身份注册。
 
+### 画面预览
+
+| ANSI 字符画面 | Kitty 协议像素画面 |
+| --- | --- |
+| <img src="docs/images/cli-ansi-overview.png" width="480" alt="CrossDesk CLI 的 ANSI 四象限全景：顶部显示只读模式和连接状态，底部显示操作快捷键" /> | <img src="docs/images/cli-kitty-overview.png" width="480" alt="CrossDesk CLI 的 Kitty 协议全景：同一远程桌面以像素画面显示，保留状态栏和操作快捷键" /> |
+| 用彩色字符显示桌面轮廓，适合普通终端；查看局部可按 `d` 放大。 | 直接显示像素画面，适合支持 Kitty 图形协议的终端，如 Ghostty。 |
+
+两图采集于 **2026-10-31**，来自同一授权设备的实际只读连接，以 160 × 48 字符视口还原 CLI 的 ANSI / Kitty 协议输出。图示为输出渲染，终端实窗效果受字体、窗口大小及协议支持影响；采集方法见 [图示来源](docs/images/README.md#cli-captures)。
+
+<a id="cli-npm"></a>
+
+### 通过 npm 安装并连接
+
+准备 **Node.js 22 或以上**及 npm，从 [@chunkdash/crossdesk-cli](https://www.npmjs.com/package/@chunkdash/crossdesk-cli) 安装。npm 会按操作系统与 CPU 架构选择原生程序，无需安装 Xmake 或 C++ 编译工具链。
+
+```sh
+npm install -g @chunkdash/crossdesk-cli@latest
+crossdesk-cli doctor --json
+crossdesk-cli 123456789
+```
+
+将 `123456789` 换成被控电脑的 9 位设备 ID，连接时按提示隐藏输入密码。默认只读、静音；`doctor` 仅检查本机环境，不发起连接。更新到最新版时，重新执行上面的 `npm install -g @chunkdash/crossdesk-cli@latest`。
+
+无需全局安装时，也可使用 `npx`，首次运行会下载对应平台包：
+
+```sh
+npx @chunkdash/crossdesk-cli@latest doctor --json
+npx @chunkdash/crossdesk-cli@latest 123456789
+```
+
+请安装统一入口 `@chunkdash/crossdesk-cli`，并保留 npm 的可选依赖，不要添加 `--omit=optional`；仅安装平台包不会注册 `crossdesk-cli` 命令。平台运行要求、旧包迁移及故障排查见 [npm 分发说明](apps/cli/docs/npm-distribution.md)。
+
 ### 从源码构建并连接
 
 准备 Git、Xmake 3.1.1 或以上、C++17 编译工具链及对应平台依赖。以下以 macOS / Linux shell 为例；Windows 的 Git Bash / 开发者 PowerShell 步骤见 [CLI 构建说明](apps/cli/docs/terminal-client.md#构建与安装)。
@@ -146,7 +180,34 @@ xmake run crossdesk-cli 123456789
 
 已有仓库时从仓库根目录执行依赖准备及后续命令。将 `123456789` 换成被控电脑的 ID，密码在连接时隐藏输入。`doctor` 只检查本机环境，不发起连接。仓库默认构建桌面端；以上配置只构建 CLI，需要同时构建桌面端时将 `CROSSDESK_BUILD_DESKTOP` 设为 `y`。产物位于 `build/<platform>/<arch>/release/`。
 
-ANSI 全景受终端字符网格限制。阅读小字可添加 `--quality high --zoom native`，或进入画面后按 `d` 查看细节；`--renderer kitty` 需要终端支持对应协议。显示、鼠标报告、SSH 和终端兼容性见 [使用说明](apps/cli/docs/terminal-client.md)。
+### 选择画面与连接参数
+
+默认 `--renderer auto` 自动探测 Kitty 图形协议，未获支持时回退为 ANSI。macOS「终端」等普通终端可显式选择 `ansi`；Ghostty 等支持该协议的终端可选择 `kitty`。显式指定 `kitty` 但探测失败时会报错，此时改用 `ansi`。
+
+以下示例使用 npm 全局安装后的命令；从源码构建时，可在仓库根目录将 `crossdesk-cli` 替换为 `xmake run crossdesk-cli`。
+
+```sh
+# 普通终端：以细节模式查看局部
+crossdesk-cli 123456789 --renderer ansi --zoom native
+
+# 支持 Kitty 图形协议的终端：显示像素画面
+crossdesk-cli 123456789 --renderer kitty
+
+# 降低远端画质与刷新请求
+crossdesk-cli 123456789 --quality balanced --fps 8
+```
+
+| 参数 | 用途 |
+| --- | --- |
+| `--renderer auto\|ansi\|kitty` | 自动选择、字符画面或像素画面；默认 `auto` |
+| `--zoom native` | 从原始细节模式开始；`--zoom 2` 表示相对全景放大 2 倍 |
+| `--quality low\|balanced\|high\|ultra` | 请求最高 360p / 720p / 1080p / 2160p；默认 `high`，实际画质由被控端决定 |
+| `--fps 8` | 固定本地输出目标和相应远端预览请求；允许 1–30，默认本地目标为 30，未指定时远端供帧会自适应 |
+| `--display 1` | 选择第二个显示器，索引从 `0` 开始 |
+| `--control` | 连接后直接启用键鼠控制；省略时默认只读 |
+| `--server your-server.example --port 9099` | 使用自建信令服务，两端需接入同一服务 |
+
+ANSI 全景受字符网格限制，提高画质不能让整屏小字变得清晰；可扩大终端、缩小字体，再按 `d` 查看局部，按 `f` 回到全景。顶部状态栏显示模式、连接进度、渲染器、缩放、实时输出 FPS 和网络信息，窄窗口会省略部分字段。通过 SSH 使用时分配 PTY（`ssh -t`）；tmux / screen 使用 ANSI。更多显示、鼠标报告和兼容性说明见 [终端使用指南](apps/cli/docs/terminal-client.md)。
 
 ### 控制、查看与退出
 
@@ -160,7 +221,9 @@ ANSI 全景受终端字符网格限制。阅读小字可添加 `--quality high -
 | `d` / `f` | 在只读或本地命令模式中切换原始细节 / 完整桌面；只读时也可点击目标进入细节 |
 | 方向键 / `i j k l` | 在只读或本地命令模式中平移；`i` 上、`j` 左、`k` 下、`l` 右 |
 
-`Ctrl+]` 模式不会因为缩放、平移或按 `c` 自动结束。状态栏中的 `CONTROL PAUSED` / `READ ONLY` 表示返回后是否启用控制。控制模式中的普通 `c`、`q` 和 `Ctrl+C` 会发送到远端，需要先按 `Ctrl+]` 执行本地操作；再次按 `Ctrl+]` 也可返回，若返回控制模式则向远端发送一次该组合键。
+**控制模式下退出：先按 `Ctrl+]`，再按 `q`。** 普通 `c`、`q` 和 `Ctrl+C` 在控制模式中会发送到远端。
+
+`Ctrl+]` 模式不会因为缩放、平移或按 `c` 自动结束。状态栏中的 `CONTROL PAUSED` / `READ ONLY` 表示返回后是否启用控制；按 `Esc` / `Ctrl+C` 手动返回。再次按 `Ctrl+]` 也可返回，若返回控制模式则向远端发送一次该组合键。
 
 ### Pi 扩展与功能范围
 
@@ -173,7 +236,7 @@ pi -e ./apps/cli/plugins/pi/index.ts
 
 其他平台将 `CROSSDESK_CLI` 改为原生可执行文件的绝对路径。在 Pi 中输入 `/crossdesk` 或 `/crossdesk 123456789`，按提示输入密码。安装要求与验证范围见 [Pi 扩展说明](apps/cli/docs/terminal-client.md#pi-扩展)。
 
-CLI 当前仅提供 ID 连接与远程观看 / 输入，不提供 IP 直连、音频播放、文件传输或剪贴板同步。macOS arm64 已完成本地构建和连接验证；Linux / Windows 完整运行、SSH / Kitty 实机显示及真实 Pi TUI 的验收范围见 [验证记录](apps/cli/docs/validation.md)。平台构建配置与 npm 打包流程不代表全部平台已验收或包已发布。
+CLI 当前仅提供 ID 连接与远程观看 / 输入，不提供 IP 直连、音频播放、文件传输或剪贴板同步。macOS arm64 已完成本地构建和连接验证；Linux / Windows 完整运行、SSH / Kitty 实机显示及真实 Pi TUI 的验收范围见 [验证记录](apps/cli/docs/validation.md)。平台构建与 npm 发布不代表全部平台已完成实机验收。
 
 [CLI 文档入口](apps/cli/README.md) · [终端使用与故障排查](apps/cli/docs/terminal-client.md) · [桥接协议](apps/cli/docs/bridge-protocol.md) · [npm 打包与分发](apps/cli/docs/npm-distribution.md)
 

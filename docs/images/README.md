@@ -35,8 +35,24 @@ On **2026-10-25**, 16 images were rendered from the actual Slint components at `
 | `desktop-stream-video-settings-*.png` | 会话工具栏与画面设置 / Session video settings | 1920 × 1200 |
 | `desktop-about-*.png` | 关于与检查更新 / About and update check | 1280 × 944 |
 | `web-client.png`（中文） | Web 连接首页 / Web connection page | 1280 × 720 |
+| `cli-ansi-overview.png` | CLI ANSI 四象限全景 / ANSI quadrant overview | 1600 × 960 |
+| `cli-kitty-overview.png` | CLI Kitty 协议像素全景 / Kitty protocol pixel overview | 1600 × 960 |
 
 桌面图片使用 2× 原生渲染缩放，捕获窗口内容区，不包含 macOS 原生标题栏。未放大旧 UI 截图，也未重绘控件；演示远端画面由实际组件按比例显示。Markdown 只设置展示宽度。常规设置可滚动，`desktop-settings` 展示首屏，`desktop-settings-network` 展示网络连接分组；Windows 专属采集方式与便携版服务入口不会出现在这些 macOS 图片中。
+
+<a id="cli-captures"></a>
+
+## CLI 图示 / CLI captures
+
+- **2026-10-31 04:39（UTC+8）重新采集**，使用在 macOS arm64 上从 `22796368` 构建的 release CLI，连接同一用户授权的被控设备，分别采集 ANSI 与 Kitty 输出。两次连接均保持只读；图示展示远端当前的动画窗口，替换此前的桌面壁纸画面。
+- 使用工程外的 POSIX 伪终端采集器，视口为 **160 列 × 48 行**，每格 **10 × 20 像素**，输出 PNG 为 **1600 × 960**。顶栏与底部快捷键直接来自 CLI 输出；图示不包含连接密码或真实设备 ID。
+- ANSI 图由实际转义序列恢复字符网格及前景／背景色，四象限字符按对应的色块渲染。Kitty 图由 CLI 内联发送的 zlib / Base64 RGB 帧解码，按协议 placement 的行列尺寸显示；采集器只提供内联图像能力，不支持共享内存。
+- 这些图片是**实际 CLI 输出的渲染图**。Ghostty 和 macOS「终端」窗口的自动化访问被工具拒绝，未取得原生窗口截图，也未据此完成这两款应用的实窗验收。字体栅格、图像缩放和显示时序由采集器处理，不能用图中 FPS 推断 Ghostty 或其他终端的实际显示性能。
+- 构建配置、采集脚本、原始输出与中间产物均存放在工程外临时目录；工程内只保存最终图示及文档。示例命令使用占位 ID，凭据通过隐藏提示输入。
+
+Refreshed at **04:39 (UTC+8) on 2026-10-31** with a macOS arm64 release CLI built from `22796368`, using real read-only connections to the same authorized host. Both images now show the animation window on the remote desktop, replacing the previous wallpaper views. An external POSIX PTY collector reports 160 × 48 cells at 10 × 20 pixels and renders the actual CLI output to PNG. The ANSI image reconstructs character cells and colors; the Kitty image decodes inline RGB frames and applies their placement dimensions. The collector does not support shared-memory images. These are output renderings; native Ghostty and macOS Terminal window access was denied by the automation tool. They do not validate either application's window rendering or display performance. Passwords and real device IDs are omitted. Capture scripts, raw output, build configuration, and intermediate files stay outside the repository.
+
+重新采集时，使用 release CLI，在支持相应协议的终端或 PTY 采集器中分别运行 `crossdesk-cli <设备ID> --renderer ansi --quality high` 和 `crossdesk-cli <设备ID> --renderer kitty --quality high`，通过隐藏提示输入密码，等待顶栏显示 `Displaying` 后捕获完整视口，再按 `q` 退出。若使用 PTY 采集器，须正确处理终端尺寸回复、ANSI 光标与颜色、Kitty 探测、分块上传和 placement 缩放，并在图注中明确采集方式。更新图片前检查敏感信息、画面比例和状态栏完整性，并同步更新本节的日期、版本与验证范围。
 
 ## 重新生成 / Regenerate
 

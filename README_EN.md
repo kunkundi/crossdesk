@@ -7,6 +7,8 @@
 <div align="center">
 
 [![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20iOS%20%7C%20Android%20%7C%20HarmonyOS-blue?style=flat)](#download)
+[![Terminal CLI](https://img.shields.io/badge/client-CLI-2ea44f?style=flat)](#cli)
+[![npm](https://img.shields.io/npm/v/%40chunkdash%2Fcrossdesk-cli?style=flat&logo=npm)](https://www.npmjs.com/package/@chunkdash/crossdesk-cli)
 
 [![Release](https://img.shields.io/github/v/release/kunkundi/crossdesk?style=flat)](https://github.com/kunkundi/crossdesk/releases)
 [![Build](https://img.shields.io/github/actions/workflow/status/kunkundi/crossdesk/build.yml?style=flat&label=build)](https://github.com/kunkundi/crossdesk/actions/workflows/build.yml)
@@ -51,7 +53,7 @@ Get a package matching your OS and CPU architecture from the [website](https://w
 | HarmonyOS PC (development) | **Control + host**. API 26, arm64; build and sign a HAP with DevEco; physical-device validation is ongoing |
 | HarmonyOS phones / tablets (development) | **Control only**. API 20+, arm64; build and sign a HAP with DevEco; physical-device validation is ongoing |
 | Web | **Control only**. A WebRTC-capable browser; no client installation on the controlling device |
-| Terminal CLI (development) | **Control only**. Build targets: macOS / Linux (x64, arm64) and Windows (x64). Build from source; see the [CLI guide](apps/cli/README.md) (Chinese) for platform validation status |
+| Terminal CLI (development) | **Control only**. Distribution targets: macOS / Linux (x64, arm64) and Windows (x64). [Install from npm](#cli-npm) or build from source; see the [CLI guide](apps/cli/README.md) (Chinese) for platform validation status |
 
 Requirements follow the current source and build configuration. Check the release notes for the downloaded package. Client capabilities are summarized under [Terminal CLI](#cli) and [Mobile and HarmonyOS](#mobile).
 
@@ -130,6 +132,38 @@ Remote sessions support monitor switching, video quality and frame-rate controls
 
 `crossdesk-cli` connects to a host by its 9-digit device ID and starts in read-only, silent mode. Standard terminals use ANSI character rendering; terminals supporting the Kitty graphics protocol can display pixel graphics. The CLI supports monitor selection, quality settings, detail zoom, panning, and optional keyboard/mouse control. It builds independently of the desktop GUI. The host still needs CrossDesk and a capturable graphical session, and the signaling service must support temporary `cli` identities.
 
+### Display preview
+
+| ANSI character rendering | Kitty pixel graphics |
+| --- | --- |
+| <img src="docs/images/cli-ansi-overview.png" width="480" alt="CrossDesk CLI ANSI quadrant overview, with read-only mode and connection status at the top and shortcuts at the bottom" /> | <img src="docs/images/cli-kitty-overview.png" width="480" alt="CrossDesk CLI Kitty protocol overview of the same remote desktop, rendered as pixels with the status bar and shortcuts" /> |
+| Colored characters show the desktop in standard terminals; press `d` to inspect a smaller region. | Pixel graphics display the desktop in terminals supporting the Kitty graphics protocol, such as Ghostty. |
+
+Both images were captured on **2026-10-31** from real read-only connections to the same authorized host. They render the CLI's ANSI / Kitty protocol output in a 160 × 48 character viewport. Actual terminal appearance depends on the font, window size, and protocol support. See [capture notes](docs/images/README.md#cli-captures) for the method.
+
+<a id="cli-npm"></a>
+
+### Install from npm and connect
+
+Install **Node.js 22 or later** and npm, then get [@chunkdash/crossdesk-cli](https://www.npmjs.com/package/@chunkdash/crossdesk-cli). npm selects the native executable for your OS and CPU architecture; Xmake and a C++ toolchain are not required.
+
+```sh
+npm install -g @chunkdash/crossdesk-cli@latest
+crossdesk-cli doctor --json
+crossdesk-cli 123456789
+```
+
+Replace `123456789` with the host's 9-digit device ID and enter its password at the hidden prompt. Connections start in read-only, silent mode; `doctor` checks the local environment without connecting. To update, run `npm install -g @chunkdash/crossdesk-cli@latest` again.
+
+You can also use `npx` without a global installation. The first run downloads the matching platform package:
+
+```sh
+npx @chunkdash/crossdesk-cli@latest doctor --json
+npx @chunkdash/crossdesk-cli@latest 123456789
+```
+
+Install the main `@chunkdash/crossdesk-cli` package with npm optional dependencies enabled; do not add `--omit=optional`. Installing a platform package alone does not register the `crossdesk-cli` command. See the [npm distribution guide](apps/cli/docs/npm-distribution.md) (Chinese) for platform requirements, migration from older packages, and troubleshooting.
+
 ### Build and connect
 
 Install Git, Xmake 3.1.1 or later, a C++17 toolchain, and the platform dependencies. The following example uses a macOS / Linux shell; Windows Git Bash / Developer PowerShell steps are in the [CLI build guide](apps/cli/docs/terminal-client.md#构建与安装) (Chinese).
@@ -146,7 +180,34 @@ xmake run crossdesk-cli 123456789
 
 For an existing checkout, run the dependency preparation and subsequent commands from the repository root. Replace `123456789` with the host's ID; the password prompt hides your input. `doctor` reports the local environment without connecting. The repository builds the desktop client by default; this configuration builds only the CLI. Set `CROSSDESK_BUILD_DESKTOP=y` to also build the desktop client. Binaries are placed in `build/<platform>/<arch>/release/`.
 
-An ANSI overview is limited by the terminal's character grid. Add `--quality high --zoom native`, or press `d` in the viewer, to inspect small text. `--renderer kitty` requires a terminal supporting that protocol. See the [terminal guide](apps/cli/docs/terminal-client.md) (Chinese) for rendering, mouse reporting, SSH, and terminal compatibility.
+### Rendering and connection options
+
+The default `--renderer auto` probes for Kitty graphics support and falls back to ANSI. Use `ansi` explicitly in standard terminals such as macOS Terminal, or `kitty` in compatible terminals such as Ghostty. Explicit `kitty` mode reports an error if the probe fails; use `ansi` in that case.
+
+These examples use the command installed globally by npm. For a source build, replace `crossdesk-cli` with `xmake run crossdesk-cli` and run it from the repository root.
+
+```sh
+# Standard terminal: start with a detail view
+crossdesk-cli 123456789 --renderer ansi --zoom native
+
+# Terminal supporting the Kitty graphics protocol: display pixel graphics
+crossdesk-cli 123456789 --renderer kitty
+
+# Request lower video quality and refresh rate
+crossdesk-cli 123456789 --quality balanced --fps 8
+```
+
+| Option | Purpose |
+| --- | --- |
+| `--renderer auto\|ansi\|kitty` | Automatic selection, character rendering, or pixel graphics; default: `auto` |
+| `--zoom native` | Start in native detail mode; `--zoom 2` zooms to twice the full-desktop scale |
+| `--quality low\|balanced\|high\|ultra` | Request up to 360p / 720p / 1080p / 2160p; default: `high`. The host determines actual quality |
+| `--fps 8` | Fix the local output target and corresponding remote preview request; accepts 1–30. The default local target is 30, with adaptive remote requests when omitted |
+| `--display 1` | Select the second monitor; indexes start at `0` |
+| `--control` | Enable keyboard/mouse control immediately after connecting; omitted by default for read-only viewing |
+| `--server your-server.example --port 9099` | Use a self-hosted signaling service; both ends must use the same service |
+
+ANSI overviews are limited by the character grid: higher video quality alone cannot make full-desktop text legible. Enlarge the terminal or reduce its font size, press `d` for detail, and `f` to return to the full desktop. The top bar shows input mode, connection progress, renderer, zoom, live output FPS, and network information; narrow windows omit some fields. Allocate a PTY over SSH (`ssh -t`), and use ANSI inside tmux / screen. See the [terminal guide](apps/cli/docs/terminal-client.md) (Chinese) for rendering, mouse reporting, and compatibility details.
 
 ### Control, navigation, and exit
 
@@ -160,7 +221,9 @@ An ANSI overview is limited by the terminal's character grid. Add `--quality hig
 | `d` / `f` | Switch to native detail / full-desktop view in read-only or local command mode; clicking in read-only mode also opens detail at that point |
 | Arrow keys / `i j k l` | Pan in read-only or local command mode: `i` up, `j` left, `k` down, `l` right |
 
-Zooming, panning, or pressing `c` does not end `Ctrl+]` mode. The status bar shows `CONTROL PAUSED` / `READ ONLY` to indicate whether control will resume. In control mode, ordinary `c`, `q`, and `Ctrl+C` go to the host, so enter local command mode first for local actions. Pressing `Ctrl+]` again also leaves local mode and forwards that shortcut if control resumes.
+**To quit while controlling the host, press `Ctrl+]`, then `q`.** Ordinary `c`, `q`, and `Ctrl+C` go to the host in control mode.
+
+Zooming, panning, or pressing `c` does not end `Ctrl+]` mode. The status bar shows `CONTROL PAUSED` / `READ ONLY` to indicate whether control will resume; press `Esc` / `Ctrl+C` to return manually. Pressing `Ctrl+]` again also leaves local mode and forwards that shortcut if control resumes.
 
 ### Pi extension and feature scope
 
@@ -173,7 +236,7 @@ pi -e ./apps/cli/plugins/pi/index.ts
 
 On other platforms, set `CROSSDESK_CLI` to the absolute path of the native executable. Enter `/crossdesk` or `/crossdesk 123456789` in Pi and follow the password prompt. See the [Pi extension guide](apps/cli/docs/terminal-client.md#pi-扩展) (Chinese) for requirements and validation scope.
 
-The CLI currently provides ID-based viewing and input, without direct IP connections, audio playback, file transfer, or clipboard synchronization. Local builds and remote connections have been validated on macOS arm64. See the [validation record](apps/cli/docs/validation.md) (Chinese) for the remaining Linux / Windows, SSH / Kitty terminal, and actual Pi TUI checks. Platform build configurations and npm packaging do not establish that every platform is validated or that packages have been published.
+The CLI currently provides ID-based viewing and input, without direct IP connections, audio playback, file transfer, or clipboard synchronization. Local builds and remote connections have been validated on macOS arm64. See the [validation record](apps/cli/docs/validation.md) (Chinese) for the remaining Linux / Windows, SSH / Kitty terminal, and actual Pi TUI checks. Platform builds and npm publication do not establish that every platform has been validated on real devices.
 
 [CLI documentation](apps/cli/README.md) · [Terminal usage and troubleshooting](apps/cli/docs/terminal-client.md) · [Bridge protocol](apps/cli/docs/bridge-protocol.md) · [npm packaging and distribution](apps/cli/docs/npm-distribution.md) (detailed guides in Chinese)
 
