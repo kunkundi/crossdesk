@@ -986,9 +986,12 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
       return;
     }
     const off_t end = ftello(input);
-    rewind(input);
+    if (end < 0 || fseeko(input, 0, SEEK_SET) != 0) {
+      finish(true);
+      return;
+    }
     NSData *name_data = [fileName dataUsingEncoding:NSUTF8StringEncoding];
-    if (end < 0 || name_data.length == 0 ||
+    if (name_data.length == 0 ||
         name_data.length > std::numeric_limits<uint16_t>::max()) {
       finish(true);
       return;
@@ -1014,7 +1017,9 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
       const size_t bytes_read = to_read > 0
           ? std::fread(payload.data(), 1, to_read, input)
           : 0;
-      if (to_read > 0 && bytes_read == 0) {
+      // A short read indicates EOF or an error. Stop before sending a partial
+      // chunk or reading again from a stream whose position may be invalid.
+      if (bytes_read != to_read) {
         send_result = -1;
         break;
       }
