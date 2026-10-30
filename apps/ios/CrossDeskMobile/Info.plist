@@ -27,7 +27,7 @@
         <string>audio</string>
     </array>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>CrossDesk 使用局域网发现并建立原生 P2P 远程控制连接。</string>
+    <string>CrossDesk 需要访问本地网络，以连接同一局域网内的电脑，进行远程控制和文件传输。</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIFileSharingEnabled</key>
