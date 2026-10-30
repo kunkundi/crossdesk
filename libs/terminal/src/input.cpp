@@ -238,6 +238,10 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
           return;
         std::string seq = pending_.substr(0, end + 1);
         pending_.erase(0, end + 1);
+        if (seq.back() == 't') {
+          terminal_metrics.Report(seq);
+          continue;
+        }
         if (seq == "\033[O") {
           control = false;
           s.SetControl(false);

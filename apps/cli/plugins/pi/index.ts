@@ -1,9 +1,14 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth, parseKey, decodeKittyPrintable, isKeyRelease } from "@earendil-works/pi-tui";
+import { truncateToWidth, parseKey, decodeKittyPrintable, isKeyRelease, getCellDimensions } from "@earendil-works/pi-tui";
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Writable } from "node:stream";
 
 const clean = (s: unknown) => String(s ?? "").replace(/[^\x20-\x7e]/g, "?").slice(0, 180);
+const validAspect = (n: number) => Number.isFinite(n) && n >= 0.2 && n <= 2;
+function aspectOf(width: number, height: number): number | undefined {
+  const ratio = width / height;
+  return width >= 1 && width <= 1024 && height >= 1 && height <= 1024 && validAspect(ratio) ? ratio : undefined;
+}
 
 // Normalize enhanced key reports with the host's actual keyboard decoder.
 function legacyInput(data: string): string {
@@ -29,6 +34,12 @@ export default function crossdesk(pi: ExtensionAPI) {
         return;
       }
       if (stop) { ctx.ui.notify("A CrossDesk view is already open", "warning"); return; }
+      const configuredAspect = process.env.CROSSDESK_CELL_ASPECT?.trim();
+      const manualAspect = !configuredAspect || configuredAspect === "auto" ? undefined : Number(configuredAspect);
+      if (manualAspect !== undefined && !validAspect(manualAspect)) {
+        ctx.ui.notify("CROSSDESK_CELL_ASPECT must be auto or a width/height ratio from 0.2 to 2", "warning");
+        return;
+      }
       const device = (args.trim() || await ctx.ui.input("CrossDesk device ID", "9 digits"))?.trim();
       if (!device) return;
       if (!/^\d{9}$/.test(device)) { ctx.ui.notify("Expected a 9-digit device ID", "error"); return; }
@@ -56,7 +67,9 @@ export default function crossdesk(pi: ExtensionAPI) {
       if (password === undefined) return;
       let child: ChildProcess | undefined;
       let killTimer: ReturnType<typeof setTimeout> | undefined;
+      let stopGeometry: (() => void) | undefined;
       const cleanup = () => {
+        stopGeometry?.(); stopGeometry = undefined;
         if (!child) return;
         const owned = child; child = undefined;
         owned.stdin?.end(); // EOF asks the bridge to disconnect and release input.
@@ -75,6 +88,8 @@ export default function crossdesk(pi: ExtensionAPI) {
           let frame: { frame_id: number; generation: number } | undefined;
           let helloId = 0, zoom = 1, native = false;
           let control = false, commandMode = false, bridgeStopped = false;
+          const hostCell = getCellDimensions();
+          let cellAspect = manualAspect ?? aspectOf(hostCell.widthPx, hostCell.heightPx) ?? 0.5;
           const colorHint = process.env.COLORTERM || "";
           const colors = /^(truecolor|24bit)$/.test(colorHint) ? 24 : process.env.TERM?.includes("256color") ? 256 : 8;
           const finish = () => { if (closed) return; closed = true; cleanup(); stop = undefined; lines = []; done(); };
@@ -90,13 +105,21 @@ export default function crossdesk(pi: ExtensionAPI) {
             const id = ++request;
             child.stdin.write(JSON.stringify({ id, method, ...fields }) + "\n"); return id;
           };
+          const sendViewport = () => send("viewport", {
+            columns: columns || 80, rows: rows || 20, cell_aspect: cellAspect,
+            colors, utf8: true, fps: 8, detail: "quadrant", quality: "high",
+          });
           child.stdin?.on("error", () => fail("Bridge input closed"));
           const secrets = child.stdio[3] as Writable;
           secrets.on("error", () => fail("Credential channel closed"));
           secrets.end(password + "\n"); password = undefined;
           child.stderr?.resume(); // Never insert native diagnostics in the TUI or chat.
           child.on("error", () => fail("Cannot start crossdesk-cli; check CROSSDESK_CLI or PATH"));
-          child.on("exit", (code) => { if (!closed) { bridgeStopped = true; error ||= `Bridge exited (${code ?? "signal"})`; tui.requestRender(); } });
+          child.on("exit", (code) => {
+            if (child === processChild) child = undefined;
+            stopGeometry?.(); stopGeometry = undefined;
+            if (!closed) { bridgeStopped = true; error ||= `Bridge exited (${code ?? "signal"})`; tui.requestRender(); }
+          });
           child.stdout?.setEncoding("utf8");
           child.stdout?.on("data", (data: string) => {
             if (closed) return;
@@ -109,7 +132,7 @@ export default function crossdesk(pi: ExtensionAPI) {
                 const message = JSON.parse(raw);
                 if (message.id === helloId && message.ok && message.version === 1 && !ready) {
                   ready = true;
-                  send("viewport", { columns: columns || 80, rows: rows || 20, colors, utf8: true, fps: 8, detail: "quadrant", quality: "high" });
+                  sendViewport();
                   send("connect", { device });
                 }
                 if (message.ok === false) error = clean(message.error);
@@ -128,7 +151,8 @@ export default function crossdesk(pi: ExtensionAPI) {
                   if (!Number.isSafeInteger(message.frame_id) || !Number.isSafeInteger(message.generation) ||
                       !Array.isArray(message.lines) || message.lines.length > 100)
                     throw new Error("Invalid frame");
-                  if (message.columns !== columns || message.rows !== rows || message.generation < generation) {
+                  if (message.columns !== columns || message.rows !== rows || message.generation < generation ||
+                      (message.cell_aspect !== undefined && message.cell_aspect !== cellAspect)) {
                     send("ack", {frame_id: message.frame_id, generation: message.generation});
                     continue; // A frame already in flight may precede the resize response.
                   }
@@ -148,13 +172,57 @@ export default function crossdesk(pi: ExtensionAPI) {
           helloId = send("hello", { version: 1 });
           const watchdog = setTimeout(() => { if (!ready) fail("Bridge handshake timeout"); }, 5000);
           processChild.once("exit", () => clearTimeout(watchdog));
+          // Use the host's terminal writer and sequence listener; Pi remains
+          // the sole owner of raw input and screen rendering.
+          let pixelSize: [number, number] | undefined, cellCount: [number, number] | undefined;
+          let directCell = false, queried = false;
+          const updateAspect = (width: number, height: number) => {
+            const ratio = aspectOf(width, height);
+            if (manualAspect !== undefined || ratio === undefined || ratio === cellAspect) return;
+            cellAspect = ratio; lines = []; frame = undefined;
+            if (ready) sendViewport();
+            tui.requestRender();
+          };
+          const removeGeometryListener = tui.addInputListener(data => {
+            // Pi's StdinBuffer assembles split replies before listeners run.
+            const match = /^\x1b\[([468]);([0-9]+);([0-9]+)t$/.exec(data);
+            if (!queried || !match) return;
+            const type = Number(match[1]), height = Number(match[2]), width = Number(match[3]);
+            if (![height, width].every(n => Number.isSafeInteger(n) && n > 0 && n <= 1048576))
+              return { consume: true };
+            if (type === 6) {
+              if (aspectOf(width, height) === undefined) return { consume: true };
+              directCell = true;
+              updateAspect(width, height);
+              return; // Let Pi update its own shared cell-size cache as well.
+            }
+            if (type === 4) pixelSize = [width, height];
+            if (type === 8) cellCount = [width, height];
+            if (!directCell && pixelSize && cellCount)
+              updateAspect(pixelSize[0] / cellCount[0], pixelSize[1] / cellCount[1]);
+            return { consume: true };
+          });
+          let terminalColumns = tui.terminal.columns, terminalRows = tui.terminal.rows;
+          const queryGeometry = () => {
+            if (closed || bridgeStopped) return;
+            queried = true; directCell = false; pixelSize = cellCount = undefined;
+            tui.terminal.write("\x1b[16t\x1b[14t\x1b[18t");
+          };
+          const geometryTimer = setInterval(queryGeometry, 2000);
+          geometryTimer.unref();
+          stopGeometry = () => { clearInterval(geometryTimer); removeGeometryListener(); };
+          queryGeometry();
           return {
             render(width: number) {
               const w = Math.max(1, Math.min(240, width - 1));
               const h = Math.max(1, Math.min(100, tui.terminal.rows - 5));
               if (w !== columns || h !== rows) {
                 columns = w; rows = h; lines = []; frame = undefined;
-                if (ready) send("viewport", { columns, rows, colors, utf8: true, fps: 8, detail: "quadrant", quality: "high" });
+                if (ready) sendViewport();
+              }
+              if (terminalColumns !== tui.terminal.columns || terminalRows !== tui.terminal.rows) {
+                terminalColumns = tui.terminal.columns; terminalRows = tui.terminal.rows;
+                queryGeometry();
               }
               const ack = frame; frame = undefined;
               if (ack) queueMicrotask(() => send("ack", ack)); // Host consumed the frame; not a physical display timestamp.

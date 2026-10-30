@@ -21,6 +21,22 @@ struct Viewport {
   bool native = false, pixel_mode = false;
   int row_offset = 0; // Terminal rows reserved above the video area.
 };
+// Keep reported cell geometry across queries; never combine partial replies
+// from different query cycles. Pixel/cell window sizes use the full text area.
+class TerminalMetrics {
+public:
+  void BeginQuery();
+  void Report(const std::string &sequence);
+  void Apply(Viewport &) const;
+  bool Known() const { return cell_width_ > 0; }
+
+private:
+  bool SetCellSize(double width, double height);
+  double cell_width_ = 0, cell_height_ = 0;
+  int pixel_width_ = 0, pixel_height_ = 0, columns_ = 0, rows_ = 0;
+  bool queried_ = false, direct_reply_ = false;
+};
+inline constexpr char kTerminalSizeQuery[] = "\033[16t\033[14t\033[18t";
 struct Rect {
   int x, y, width, height;
 };
@@ -72,6 +88,7 @@ public:
   uint64_t mouse_reports = 0;
   uint64_t mouse_legacy_reports = 0, mouse_forwarded = 0;
   uint64_t mouse_send_failures = 0;
+  TerminalMetrics terminal_metrics;
 
 private:
   std::string pending_;

@@ -312,6 +312,19 @@ TerminalSize GetTerminalSize(int) {
   if (GetConsoleScreenBufferInfo(handle, &info)) {
     size.columns = info.srWindow.Right - info.srWindow.Left + 1;
     size.rows = info.srWindow.Bottom - info.srWindow.Top + 1;
+    // ConPTY's console window is only a message window, and its font API
+    // describes the hidden console host, not the user's display terminal.
+    // Only trust native font metrics for a visible classic console.
+    HWND window = GetConsoleWindow();
+    CONSOLE_FONT_INFOEX font{};
+    font.cbSize = sizeof(font);
+    if (window && IsWindowVisible(window) &&
+        GetCurrentConsoleFontEx(handle, FALSE, &font) &&
+        font.dwFontSize.X > 0 && font.dwFontSize.X <= 1024 &&
+        font.dwFontSize.Y > 0 && font.dwFontSize.Y <= 1024) {
+      size.pixel_width = size.columns * font.dwFontSize.X;
+      size.pixel_height = size.rows * font.dwFontSize.Y;
+    }
   }
   if (console_output < 0 && handle != INVALID_HANDLE_VALUE)
     CloseHandle(handle);

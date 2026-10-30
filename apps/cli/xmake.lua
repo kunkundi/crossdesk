@@ -42,7 +42,7 @@ target("crossdesk-cli")
     add_files("main.cpp")
     add_files(is_plat("windows") and "terminal_io_windows.cpp" or "terminal_io_posix.cpp")
     if is_plat("windows") then
-        add_syslinks("advapi32")
+        add_syslinks("advapi32", "user32")
         add_defines("NOMINMAX", "WIN32_LEAN_AND_MEAN")
     end
 target_end()

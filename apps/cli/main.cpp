@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <clocale>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
@@ -95,7 +96,8 @@ struct Tty {
     Write(out, end.data(), end.size());
   }
 };
-Viewport Size(int *status_rows = nullptr) {
+Viewport Size(int *status_rows = nullptr,
+              const TerminalMetrics *metrics = nullptr, double cell_aspect = 0) {
   auto ws = GetTerminalSize(0);
   const int reserved_rows = std::clamp(int(ws.rows) - 1, 0, 3);
   if (status_rows)
@@ -112,6 +114,16 @@ Viewport Size(int *status_rows = nullptr) {
     v.cell_aspect = std::clamp(double(ws.pixel_width) * ws.rows /
                                    (double(ws.pixel_height) * ws.columns),
                                .2, 2.0);
+  // A visible Windows console's font metrics are authoritative. ConPTY has
+  // no local font geometry, so use the display terminal's replies there.
+#ifdef _WIN32
+  if (metrics && (!ws.pixel_width || !ws.pixel_height))
+#else
+  if (metrics)
+#endif
+    metrics->Apply(v);
+  if (cell_aspect > 0)
+    v.cell_aspect = cell_aspect;
   auto locale = Env("LC_ALL");
   if (locale.empty())
     locale = Env("LC_CTYPE");
@@ -172,6 +184,17 @@ bool Boolean(const json &j, const char *key, bool fallback) {
     throw std::invalid_argument(std::string(key) + " must be boolean");
   return j[key];
 }
+double Real(const json &j, const char *key, double lo, double hi,
+            double fallback) {
+  if (!j.contains(key))
+    return fallback;
+  if (!j[key].is_number())
+    throw std::invalid_argument(std::string(key) + " must be a number");
+  const double value = j[key].get<double>();
+  if (!std::isfinite(value) || value < lo || value > hi)
+    throw std::invalid_argument(std::string(key) + " out of range");
+  return value;
+}
 void Quality(SessionOptions &options, const std::string &name) {
   if (name == "low") {
     options.quality = 0;
@@ -219,7 +242,7 @@ std::string WaitingScreen(const Viewport &v, const std::string &title,
 }
 int View(SessionOptions options, const std::string &device,
          const std::string &renderer, bool control, int fd, AnsiDetail detail,
-         double zoom, bool native) {
+         double zoom, bool native, double cell_aspect) {
   if (!IsTty(0) || !IsTty(fd) || Env("TERM") == "dumb")
     throw std::runtime_error("connecting needs an interactive ANSI terminal; use "
                              "bridge --stdio for a host");
@@ -257,7 +280,8 @@ int View(SessionOptions options, const std::string &device,
   std::optional<Grid> displayed, pending;
   bool pending_frame = false;
   int last_status_rows = 3;
-  Viewport last_view = Size(&last_status_rows);
+  Viewport last_view =
+      Size(&last_status_rows, &input.terminal_metrics, cell_aspect);
   std::optional<DecodedFrame> last_frame;
   uint64_t view_revision = input.view_revision;
   bool redraw = true;
@@ -267,6 +291,7 @@ int View(SessionOptions options, const std::string &device,
   bool waiting_visible = false;
   double queue_ms = 0;
   auto next = Clock::now(), status_tick = next;
+  auto size_query_tick = next;
   const auto pump_output = [&] {
     if (output.Pump() && pending_frame) {
       displayed = std::move(pending);
@@ -300,7 +325,7 @@ int View(SessionOptions options, const std::string &device,
       break;
     auto now = Clock::now();
     int status_rows;
-    auto v = Size(&status_rows);
+    auto v = Size(&status_rows, &input.terminal_metrics, cell_aspect);
     v.detail = detail;
     v.native = input.native;
     v.pixel_mode = kitty;
@@ -311,8 +336,10 @@ int View(SessionOptions options, const std::string &device,
       view_revision = input.view_revision;
       redraw = true;
     }
+    const bool grid_resized =
+        v.columns != last_view.columns || v.rows != last_view.rows;
     if (output.Idle() &&
-        (v.columns != last_view.columns || v.rows != last_view.rows ||
+        (grid_resized || v.cell_aspect != last_view.cell_aspect ||
          v.pixel_width != last_view.pixel_width ||
          v.pixel_height != last_view.pixel_height ||
          status_rows != last_status_rows)) {
@@ -322,6 +349,15 @@ int View(SessionOptions options, const std::string &device,
       last_status_rows = status_rows;
       redraw = true;
       status_tick = now;
+      if (grid_resized)
+        size_query_tick = now;
+    }
+    // Query through the terminal byte stream so this also works over SSH.
+    // Never wait for a reply or interrupt a partially written video frame.
+    if (output.Idle() && now >= size_query_tick) {
+      input.terminal_metrics.BeginQuery();
+      output.Put(kTerminalSizeQuery);
+      size_query_tick = now + std::chrono::seconds(2);
     }
     if (output.Idle() && now >= status_tick) {
       auto st = s.Status();
@@ -449,6 +485,12 @@ int View(SessionOptions options, const std::string &device,
               {"mouse_legacy_reports", input.mouse_legacy_reports},
               {"mouse_forwarded", input.mouse_forwarded},
               {"mouse_send_failures", input.mouse_send_failures},
+              {"terminal_geometry",
+               {{"cell_aspect", last_view.cell_aspect},
+                {"pixel_width", last_view.pixel_width},
+                {"pixel_height", last_view.pixel_height},
+                {"reported", input.terminal_metrics.Known()},
+                {"manual_aspect", cell_aspect > 0}}},
               {"submitted", submitted},
               {"output_bytes", output.bytes},
               {"last_queue_ms", queue_ms},
@@ -468,15 +510,16 @@ int Bridge(int fd, SessionOptions options, int password_fd) {
   Output output(fd);
   ControllerSession s;
   Input input;
+  Viewport viewport;
+  viewport.detail = AnsiDetail::Quadrant;
   auto status = [&] {
     auto value = s.Status();
     value["command_mode"] = input.command_mode;
     value["resume_control"] = input.control;
     value["exit_requested"] = input.exit;
+    value["cell_aspect"] = viewport.cell_aspect;
     return value;
   };
-  Viewport viewport;
-  viewport.detail = AnsiDetail::Quadrant;
   NonBlocking input_mode(0);
   std::deque<json> replies;
   std::string buffer;
@@ -548,6 +591,8 @@ int Bridge(int fd, SessionOptions options, int password_fd) {
                 next_view.colors != 256)
               throw std::invalid_argument("unsupported_colors");
             next_view.utf8 = Boolean(j, "utf8", true);
+            next_view.cell_aspect =
+                Real(j, "cell_aspect", .2, 2, viewport.cell_aspect);
             if (j.contains("detail"))
               next_view.detail = Detail(j.at("detail").get<std::string>());
             next_options.fps = Integer(j, "fps", 1, 30, 8);
@@ -687,6 +732,7 @@ int Bridge(int fd, SessionOptions options, int password_fd) {
                    {"generation", last_frame->generation},
                    {"columns", viewport.columns},
                    {"rows", viewport.rows},
+                   {"cell_aspect", viewport.cell_aspect},
                    {"source_width", last_frame->width},
                    {"source_height", last_frame->height},
                    {"zoom", viewport.zoom},
@@ -718,6 +764,7 @@ int Bridge(int fd, SessionOptions options, int password_fd) {
 const char *help = R"(crossdesk-cli <9-digit-device-id> [--renderer auto|ansi|kitty] [--fps 1..30]
                [--display 0..63] [--control] [--server host] [--port 9099]
                [--quality low|balanced|high|ultra] [--ansi-detail quadrant|half] [--zoom 1..32|native]
+               [--cell-aspect auto|0.2..2]
 crossdesk-cli view <9-digit-device-id> [options] (compatibility alias)
 crossdesk-cli doctor [--json]
 crossdesk-cli bridge --stdio [--password-fd 3] [--server host] [--port 9099]
@@ -729,6 +776,7 @@ View keys: click/d native detail, wheel/+/- zoom, arrows/ijkl pan (i up, j left,
 Local mode stays active after commands, paste or focus loss; remote input remains paused.
 Ctrl+T and Ctrl+C pass through in control mode; another Ctrl+] leaves local mode and forwards Ctrl+] if control is enabled.
 Default ANSI detail: quadrant. Default quality: high (1920x1080); ultra requests up to 3840x2160.
+Cell aspect is character width/height: auto detects terminal geometry; use --cell-aspect to calibrate.
 Display index is zero-based. ANSI cannot reproduce full desktop text at fit scale.
 --fps controls local output; negotiated previews use supported 1/8/15 FPS.
 bridge: private NDJSON v1, credentials on a separate inherited descriptor.
@@ -758,6 +806,9 @@ int main(int argc, char **argv) {
                 {"transport_diagnostics", true},
                 {"utf8", v.utf8},
                 {"colors", v.colors},
+                {"cell_aspect", v.cell_aspect},
+                {"pixel_width", v.pixel_width},
+                {"pixel_height", v.pixel_height},
                 {"multiplexer", !Env("TMUX").empty() || !Env("STY").empty()},
                 {"software_decode", true},
                 {"kitty", "probe_on_view"},
@@ -777,7 +828,7 @@ int main(int argc, char **argv) {
     SessionOptions options;
     std::string renderer = "auto", device;
     AnsiDetail detail = AnsiDetail::Quadrant;
-    double zoom = 1;
+    double zoom = 1, cell_aspect = 0;
     bool control = false, stdio = false, native = false;
     int secret_fd = 3;
     if (command == "view") {
@@ -819,7 +870,17 @@ int main(int argc, char **argv) {
           Quality(options, value);
         else if (a == "--ansi-detail" && command == "view")
           detail = Detail(value);
-        else if (a == "--zoom" && command == "view") {
+        else if (a == "--cell-aspect" && command == "view") {
+          if (value == "auto") {
+            cell_aspect = 0;
+          } else {
+            size_t used = 0;
+            cell_aspect = std::stod(value, &used);
+            if (used != value.size() || !std::isfinite(cell_aspect) ||
+                cell_aspect < .2 || cell_aspect > 2)
+              throw std::invalid_argument("cell aspect must be auto or 0.2..2");
+          }
+        } else if (a == "--zoom" && command == "view") {
           native = value == "native";
           zoom = native ? 1 : number(value, 1, 32);
         } else if (a == "--password-fd" && command == "bridge")
@@ -854,7 +915,8 @@ int main(int argc, char **argv) {
               << "\n";
     try {
       return command == "view" ? View(options, device, renderer, control,
-                                      output.value, detail, zoom, native)
+                                      output.value, detail, zoom, native,
+                                      cell_aspect)
                                : Bridge(output.value, options, secret_fd);
     } catch (const std::exception &e) {
       if (command == "view") {

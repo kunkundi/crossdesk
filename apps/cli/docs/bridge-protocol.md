@@ -8,7 +8,7 @@
 | method | 字段 | 行为 |
 |---|---|---|
 | hello | version:1 | 协议版本握手 |
-| viewport | columns:1..240, rows:1..100, colors:8/24/256, utf8:boolean, fps:1..30；可选 detail:quadrant/half, quality:low/balanced/high/ultra, zoom:1..32, native:boolean | 设置画面行数（不含状态栏）、本地目标与预览档位；默认 quadrant/high/1、native=false，保留未显式指定的 detail/quality/zoom/native；不探测宿主 TTY |
+| viewport | columns:1..240, rows:1..100, colors:8/24/256, utf8:boolean, fps:1..30；可选 cell_aspect:0.2..2, detail:quadrant/half, quality:low/balanced/high/ultra, zoom:1..32, native:boolean | 设置画面行数（不含状态栏）、字符宽高比、本地目标与预览档位；默认 cell_aspect=0.5、quadrant/high/1、native=false，保留未显式指定的 cell_aspect/detail/quality/zoom/native；不探测宿主 TTY |
 | connect | device:9位数字字符串, display:0..63（默认0） | 从专用 password fd 读取至换行/EOF（最多256字节、等待5秒），开始异步注册/连接；ok不是远端已连接 |
 | status | 无 | 返回当前状态 |
 | control | enabled:boolean | 显式启停控制；关闭时释放输入 |
@@ -23,10 +23,12 @@
 帧事件：
 
 ```json
-{"event":"frame","frame_id":42,"decoded_frame_id":38,"generation":4,"source_width":1280,"source_height":720,"zoom":2,"native":false,"source_rect":[320,180,640,360],"detail":"quadrant","columns":80,"rows":23,"lines":["..."],"queue_ms":3.2}
+{"event":"frame","frame_id":42,"decoded_frame_id":38,"generation":4,"source_width":1280,"source_height":720,"zoom":2,"native":false,"source_rect":[320,180,640,360],"detail":"quadrant","columns":80,"rows":23,"cell_aspect":0.45,"lines":["..."],"queue_ms":3.2}
 ```
 
-实际 lines 数为 rows，仅包含本地生成的 SGR 颜色序列、空格和 U+2580～U+259F 块字符，不含远端名称或任意终端指令。`frame_id` 是进程递增的输出序号，静止画面重绘仍产生新序号；`decoded_frame_id` 标识源解码帧，同源重绘可以相同。`source_width/height` 为实际解码尺寸，source_rect 为实际源裁剪矩形 [x,y,width,height]。native=true 表示原始细节模式，zoom 为当前模式下的倍率；generation 在关闭、重新连接和显示器切换时变化。viewport 变化可能与已写出的旧尺寸帧交错，宿主应丢弃不匹配尺寸/旧 generation 的帧并释放对应 ACK。宿主返回的 ACK 表示消费/布局，不表示屏幕物理显示完成。
+实际 lines 数为 rows，仅包含本地生成的 SGR 颜色序列、空格和 U+2580～U+259F 块字符，不含远端名称或任意终端指令。`frame_id` 是进程递增的输出序号，静止画面重绘仍产生新序号；`decoded_frame_id` 标识源解码帧，同源重绘可以相同。`source_width/height` 为实际解码尺寸，source_rect 为实际源裁剪矩形 [x,y,width,height]。native=true 表示原始细节模式，zoom 为当前模式下的倍率；generation 在关闭、重新连接和显示器切换时变化。viewport 变化可能与已写出的旧尺寸帧交错，宿主应丢弃不匹配行列数／cell_aspect 或旧 generation 的帧并释放对应 ACK。宿主返回的 ACK 表示消费/布局，不表示屏幕物理显示完成。
+
+`cell_aspect` 为单个字符的宽／高，必须是 0.2～2 范围内的有限 JSON 数值；例如 9×20 像素字符应传 0.45。宿主负责测量或提供手动设置，bridge 根据该比例计算图像布局与鼠标映射，响应及状态事件中的 `status.cell_aspect` 返回当前值。该字段为 v1 的可选扩展；省略时保留上次值，首次默认 0.5。旧版 bridge 的帧可能不含此字段。修改比例也会触发静止画面重绘，新的鼠标映射仍在帧 ACK 后生效。
 
 状态事件每秒最多一次：`{"event":"state","status":{...},"output_bytes":123,"submitted_frames":3,"elapsed_seconds":1.5}`。status 含 registering/connecting/connected/failed/closed/idle、client_id（当前或刚结束会话的 `cli-xxxxxxxxx`，注册前为空）、error、control、generation、显示器、文本/预览能力、预览确认状态、请求的 preview_width/height/quality/bitrate_bps、帧计数与网络统计。接收/提交 FPS 由相应计数的增量除以时间增量计算。
 
