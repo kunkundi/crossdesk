@@ -7,13 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		C10F10000000000000000001 /* RemotePrivacyScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10F20000000000000000001 /* RemotePrivacyScreen.swift */; };
-		100000000000000000000030 /* RemoteSystemKeyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000030 /* RemoteSystemKeyboard.swift */; };
-		10000000000000000000001D /* RemoteMouseInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001D /* RemoteMouseInput.swift */; };
-		10000000000000000000001E /* VirtualMouseBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001E /* VirtualMouseBar.swift */; };
-		100000000000000000000018 /* RecentConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000018 /* RecentConnection.swift */; };
-		100000000000000000000016 /* RemoteVideoSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000016 /* RemoteVideoSettings.swift */; };
-		100000000000000000000017 /* RemoteNetworkStatistics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000017 /* RemoteNetworkStatistics.swift */; };
 		100000000000000000000001 /* CrossDeskMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* CrossDeskMobileApp.swift */; };
 		100000000000000000000002 /* RemoteSessionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000002 /* RemoteSessionModel.swift */; };
 		100000000000000000000003 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000003 /* ContentView.swift */; };
@@ -23,30 +16,51 @@
 		100000000000000000000007 /* RemoteTouchInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* RemoteTouchInputView.swift */; };
 		100000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000D /* Assets.xcassets */; };
 		100000000000000000000009 /* ThirdPartyLicensesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000E /* ThirdPartyLicensesView.swift */; };
-		10000000000000000000000A /* ThirdPartyLicenses.json in Resources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000F /* ThirdPartyLicenses.json */; };
+		10000000000000000000000A /* Resources/ThirdPartyLicenses.json in Resources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000F /* Resources/ThirdPartyLicenses.json */; };
 		10000000000000000000000B /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000010 /* PrivacyInfo.xcprivacy */; };
 		10000000000000000000000C /* OpenSSL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 200000000000000000000011 /* OpenSSL.framework */; };
 		10000000000000000000000D /* OpenSSL.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 200000000000000000000011 /* OpenSSL.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		100000000000000000000012 /* PrivacyPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000012 /* PrivacyPreferences.swift */; };
 		100000000000000000000013 /* ThumbnailFileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000013 /* ThumbnailFileStore.swift */; };
 		100000000000000000000014 /* PrivacyViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000014 /* PrivacyViews.swift */; };
-		100000000000000000000015 /* PRIVACY.md in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000015 /* PRIVACY.md */; };
+		100000000000000000000015 /* ../../../PRIVACY.md in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000015 /* ../../../PRIVACY.md */; };
+		100000000000000000000016 /* RemoteVideoSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000016 /* RemoteVideoSettings.swift */; };
+		100000000000000000000017 /* RemoteNetworkStatistics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000017 /* RemoteNetworkStatistics.swift */; };
+		100000000000000000000018 /* RecentConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000018 /* RecentConnection.swift */; };
 		100000000000000000000019 /* AnnouncementInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000019 /* AnnouncementInbox.swift */; };
 		10000000000000000000001A /* AnnouncementText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001A /* AnnouncementText.swift */; };
 		10000000000000000000001B /* AnnouncementInboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001B /* AnnouncementInboxView.swift */; };
 		10000000000000000000001C /* AppUpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001C /* AppUpdateChecker.swift */; };
-		3C550ED141D4AEA30950BB7A /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 5BD6CC3A43B86A2E2267994F; };
-		4870B14C46F4C4B8F10FEF08 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A0A3C0DA09EE562AE21DF986; };
+		10000000000000000000001D /* RemoteMouseInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001D /* RemoteMouseInput.swift */; };
+		10000000000000000000001E /* VirtualMouseBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001E /* VirtualMouseBar.swift */; };
+		100000000000000000000030 /* RemoteSystemKeyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000030 /* RemoteSystemKeyboard.swift */; };
+		3C550ED141D4AEA30950BB7A /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 5BD6CC3A43B86A2E2267994F /* Localizable.strings */; };
+		4870B14C46F4C4B8F10FEF08 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A0A3C0DA09EE562AE21DF986 /* InfoPlist.strings */; };
+		C10F10000000000000000001 /* RemotePrivacyScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10F20000000000000000001 /* RemotePrivacyScreen.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		300000000000000000000002 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				10000000000000000000000D /* OpenSSL.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
-		C10F20000000000000000001 /* RemotePrivacyScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePrivacyScreen.swift; sourceTree = "<group>"; };
-		200000000000000000000030 /* RemoteSystemKeyboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSystemKeyboard.swift; sourceTree = "<group>"; };
-		20000000000000000000001D /* RemoteMouseInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteMouseInput.swift; sourceTree = "<group>"; };
-		20000000000000000000001E /* VirtualMouseBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VirtualMouseBar.swift; sourceTree = "<group>"; };
-		200000000000000000000018 /* RecentConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentConnection.swift; sourceTree = "<group>"; };
-		200000000000000000000016 /* RemoteVideoSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteVideoSettings.swift; sourceTree = "<group>"; };
-		200000000000000000000017 /* RemoteNetworkStatistics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteNetworkStatistics.swift; sourceTree = "<group>"; };
+		02A713C4B5A1623480A005D6 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = Resources/ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		093D4362C938821DE02B9032 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = Resources/es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		0BB7EC0F2A5A6A313F782DCA /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = Resources/fr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		10083BB5398965A4432CEC1E /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ko; path = Resources/ko.lproj/Localizable.strings; sourceTree = "<group>"; };
+		10718835138E0FDDFDE9B567 /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = Resources/ru.lproj/Localizable.strings; sourceTree = "<group>"; };
+		125E3BF17EC58E43B32F2AC3 /* pt-BR */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pt-BR"; path = "Resources/pt-BR.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		1C906F7AD7B701DB61B512D2 /* pt-BR */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pt-BR"; path = "Resources/pt-BR.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		200000000000000000000001 /* CrossDeskMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossDeskMobileApp.swift; sourceTree = "<group>"; };
 		200000000000000000000002 /* RemoteSessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSessionModel.swift; sourceTree = "<group>"; };
 		200000000000000000000003 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -61,52 +75,40 @@
 		20000000000000000000000C /* build_minirtc_ios.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build_minirtc_ios.sh; sourceTree = "<group>"; };
 		20000000000000000000000D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		20000000000000000000000E /* ThirdPartyLicensesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThirdPartyLicensesView.swift; sourceTree = "<group>"; };
-		20000000000000000000000F /* ThirdPartyLicenses.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Resources/ThirdPartyLicenses.json; sourceTree = "<group>"; };
+		20000000000000000000000F /* Resources/ThirdPartyLicenses.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Resources/ThirdPartyLicenses.json; sourceTree = "<group>"; };
 		200000000000000000000010 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		200000000000000000000011 /* OpenSSL.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = OpenSSL.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		200000000000000000000012 /* PrivacyPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyPreferences.swift; sourceTree = "<group>"; };
 		200000000000000000000013 /* ThumbnailFileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailFileStore.swift; sourceTree = "<group>"; };
 		200000000000000000000014 /* PrivacyViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyViews.swift; sourceTree = "<group>"; };
-		200000000000000000000015 /* PRIVACY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ../../../PRIVACY.md; sourceTree = "<group>"; };
+		200000000000000000000015 /* ../../../PRIVACY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ../../../PRIVACY.md; sourceTree = "<group>"; };
+		200000000000000000000016 /* RemoteVideoSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteVideoSettings.swift; sourceTree = "<group>"; };
+		200000000000000000000017 /* RemoteNetworkStatistics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteNetworkStatistics.swift; sourceTree = "<group>"; };
+		200000000000000000000018 /* RecentConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentConnection.swift; sourceTree = "<group>"; };
 		200000000000000000000019 /* AnnouncementInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncementInbox.swift; sourceTree = "<group>"; };
 		20000000000000000000001A /* AnnouncementText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncementText.swift; sourceTree = "<group>"; };
 		20000000000000000000001B /* AnnouncementInboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncementInboxView.swift; sourceTree = "<group>"; };
 		20000000000000000000001C /* AppUpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateChecker.swift; sourceTree = "<group>"; };
-		51B43C654308785E6FC27C98 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "en"; path = "Resources/en.lproj/Localizable.strings"; sourceTree = "<group>"; };
-		C04C96DC6D837D5C45257B37 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "Resources/zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
-		4E23FD4A4331F613A7BF3C81 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "Resources/zh-Hant.lproj/Localizable.strings"; sourceTree = "<group>"; };
-		10718835138E0FDDFDE9B567 /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "ru"; path = "Resources/ru.lproj/Localizable.strings"; sourceTree = "<group>"; };
-		BA8BCB85D00055B796EBB9E1 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "ja"; path = "Resources/ja.lproj/Localizable.strings"; sourceTree = "<group>"; };
-		10083BB5398965A4432CEC1E /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "ko"; path = "Resources/ko.lproj/Localizable.strings"; sourceTree = "<group>"; };
-		8CEF64DB2A646A3C710CAAE7 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "de"; path = "Resources/de.lproj/Localizable.strings"; sourceTree = "<group>"; };
-		467DE174FF993E9771FAEE5D /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "fr"; path = "Resources/fr.lproj/Localizable.strings"; sourceTree = "<group>"; };
-		2EA0435DFAEE685F04391B3B /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "es"; path = "Resources/es.lproj/Localizable.strings"; sourceTree = "<group>"; };
-		1C906F7AD7B701DB61B512D2 /* pt-BR */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pt-BR"; path = "Resources/pt-BR.lproj/Localizable.strings"; sourceTree = "<group>"; };
-		B6189259C1AE18847A742A13 /* pt */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pt"; path = "Resources/pt.lproj/Localizable.strings"; sourceTree = "<group>"; };
-		23D5AD87A9BF0CBF3A6AADDF /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "en"; path = "Resources/en.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		20000000000000000000001D /* RemoteMouseInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteMouseInput.swift; sourceTree = "<group>"; };
+		20000000000000000000001E /* VirtualMouseBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VirtualMouseBar.swift; sourceTree = "<group>"; };
+		200000000000000000000030 /* RemoteSystemKeyboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSystemKeyboard.swift; sourceTree = "<group>"; };
+		23D5AD87A9BF0CBF3A6AADDF /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = Resources/en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		2E83770B40B2D299796EB0CD /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "Resources/zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		2EA0435DFAEE685F04391B3B /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = Resources/es.lproj/Localizable.strings; sourceTree = "<group>"; };
 		36B135DFBFBD8F03E16FB09A /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "Resources/zh-Hant.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
-		56DE65D659C5D65945CF834F /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "ru"; path = "Resources/ru.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
-		02A713C4B5A1623480A005D6 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "ja"; path = "Resources/ja.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
-		EA650495031B45A6FE5892FD /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "ko"; path = "Resources/ko.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
-		E653CAF5C4E87548BF6D8670 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "de"; path = "Resources/de.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
-		0BB7EC0F2A5A6A313F782DCA /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "fr"; path = "Resources/fr.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
-		093D4362C938821DE02B9032 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "es"; path = "Resources/es.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
-		125E3BF17EC58E43B32F2AC3 /* pt-BR */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pt-BR"; path = "Resources/pt-BR.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
-		7DDF05F5D35AB063DB447879 /* pt */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pt"; path = "Resources/pt.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		467DE174FF993E9771FAEE5D /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = Resources/fr.lproj/Localizable.strings; sourceTree = "<group>"; };
+		4E23FD4A4331F613A7BF3C81 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "Resources/zh-Hant.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		51B43C654308785E6FC27C98 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = Resources/en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		56DE65D659C5D65945CF834F /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = Resources/ru.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		7DDF05F5D35AB063DB447879 /* pt */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = pt; path = Resources/pt.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		8CEF64DB2A646A3C710CAAE7 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = Resources/de.lproj/Localizable.strings; sourceTree = "<group>"; };
+		B6189259C1AE18847A742A13 /* pt */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = pt; path = Resources/pt.lproj/Localizable.strings; sourceTree = "<group>"; };
+		BA8BCB85D00055B796EBB9E1 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = Resources/ja.lproj/Localizable.strings; sourceTree = "<group>"; };
+		C04C96DC6D837D5C45257B37 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "Resources/zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		C10F20000000000000000001 /* RemotePrivacyScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePrivacyScreen.swift; sourceTree = "<group>"; };
+		E653CAF5C4E87548BF6D8670 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = Resources/de.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		EA650495031B45A6FE5892FD /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ko; path = Resources/ko.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		300000000000000000000002 /* Embed Frameworks */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 10;
-			files = (10000000000000000000000D /* OpenSSL.framework in Embed Frameworks */, );
-			name = "Embed Frameworks";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		300000000000000000000001 /* Frameworks */ = {
@@ -133,7 +135,7 @@
 			isa = PBXGroup;
 			children = (
 				200000000000000000000001 /* CrossDeskMobileApp.swift */,
-				200000000000000000000015 /* PRIVACY.md */,
+				200000000000000000000015 /* ../../../PRIVACY.md */,
 				200000000000000000000014 /* PrivacyViews.swift */,
 				200000000000000000000013 /* ThumbnailFileStore.swift */,
 				200000000000000000000012 /* PrivacyPreferences.swift */,
@@ -148,7 +150,7 @@
 				200000000000000000000017 /* RemoteNetworkStatistics.swift */,
 				200000000000000000000003 /* ContentView.swift */,
 				20000000000000000000000E /* ThirdPartyLicensesView.swift */,
-				20000000000000000000000F /* ThirdPartyLicenses.json */,
+				20000000000000000000000F /* Resources/ThirdPartyLicenses.json */,
 				A0A3C0DA09EE562AE21DF986 /* InfoPlist.strings */,
 				5BD6CC3A43B86A2E2267994F /* Localizable.strings */,
 				200000000000000000000010 /* PrivacyInfo.xcprivacy */,
@@ -232,18 +234,13 @@
 		};
 /* End PBXNativeTarget section */
 
-/* Begin PBXVariantGroup section */
-		5BD6CC3A43B86A2E2267994F /* Localizable.strings */ = {isa = PBXVariantGroup; children = (51B43C654308785E6FC27C98, C04C96DC6D837D5C45257B37, 4E23FD4A4331F613A7BF3C81, 10718835138E0FDDFDE9B567, BA8BCB85D00055B796EBB9E1, 10083BB5398965A4432CEC1E, 8CEF64DB2A646A3C710CAAE7, 467DE174FF993E9771FAEE5D, 2EA0435DFAEE685F04391B3B, 1C906F7AD7B701DB61B512D2, B6189259C1AE18847A742A13, ); name = Localizable.strings; sourceTree = "<group>"; };
-		A0A3C0DA09EE562AE21DF986 /* InfoPlist.strings */ = {isa = PBXVariantGroup; children = (23D5AD87A9BF0CBF3A6AADDF, 2E83770B40B2D299796EB0CD, 36B135DFBFBD8F03E16FB09A, 56DE65D659C5D65945CF834F, 02A713C4B5A1623480A005D6, EA650495031B45A6FE5892FD, E653CAF5C4E87548BF6D8670, 0BB7EC0F2A5A6A313F782DCA, 093D4362C938821DE02B9032, 125E3BF17EC58E43B32F2AC3, 7DDF05F5D35AB063DB447879, ); name = InfoPlist.strings; sourceTree = "<group>"; };
-/* End PBXVariantGroup section */
-
 /* Begin PBXProject section */
 		800000000000000000000001 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2660;
-				LastUpgradeCheck = 2660;
+				LastUpgradeCheck = 2710;
 				TargetAttributes = {
 					500000000000000000000001 = {
 						CreatedOnToolsVersion = 26.6;
@@ -254,7 +251,20 @@
 			compatibilityVersion = "Xcode 15.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
-			knownRegions = (Base, "en", "zh-Hans", "zh-Hant", "ru", "ja", "ko", "de", "fr", "es", "pt-BR", "pt", );
+			knownRegions = (
+				Base,
+				en,
+				"zh-Hans",
+				"zh-Hant",
+				ru,
+				ja,
+				ko,
+				de,
+				fr,
+				es,
+				"pt-BR",
+				pt,
+			);
 			mainGroup = 400000000000000000000001;
 			productRefGroup = 400000000000000000000007 /* Products */;
 			projectDirPath = "";
@@ -271,11 +281,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000008 /* Assets.xcassets in Resources */,
-				10000000000000000000000A /* ThirdPartyLicenses.json in Resources */,
+				10000000000000000000000A /* Resources/ThirdPartyLicenses.json in Resources */,
 				4870B14C46F4C4B8F10FEF08 /* InfoPlist.strings in Resources */,
 				3C550ED141D4AEA30950BB7A /* Localizable.strings in Resources */,
 				10000000000000000000000B /* PrivacyInfo.xcprivacy in Resources */,
-				100000000000000000000015 /* PRIVACY.md in Resources */,
+				100000000000000000000015 /* ../../../PRIVACY.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -342,26 +352,94 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXVariantGroup section */
+		5BD6CC3A43B86A2E2267994F /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				51B43C654308785E6FC27C98 /* en */,
+				C04C96DC6D837D5C45257B37 /* zh-Hans */,
+				4E23FD4A4331F613A7BF3C81 /* zh-Hant */,
+				10718835138E0FDDFDE9B567 /* ru */,
+				BA8BCB85D00055B796EBB9E1 /* ja */,
+				10083BB5398965A4432CEC1E /* ko */,
+				8CEF64DB2A646A3C710CAAE7 /* de */,
+				467DE174FF993E9771FAEE5D /* fr */,
+				2EA0435DFAEE685F04391B3B /* es */,
+				1C906F7AD7B701DB61B512D2 /* pt-BR */,
+				B6189259C1AE18847A742A13 /* pt */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+		A0A3C0DA09EE562AE21DF986 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				23D5AD87A9BF0CBF3A6AADDF /* en */,
+				2E83770B40B2D299796EB0CD /* zh-Hans */,
+				36B135DFBFBD8F03E16FB09A /* zh-Hant */,
+				56DE65D659C5D65945CF834F /* ru */,
+				02A713C4B5A1623480A005D6 /* ja */,
+				EA650495031B45A6FE5892FD /* ko */,
+				E653CAF5C4E87548BF6D8670 /* de */,
+				0BB7EC0F2A5A6A313F782DCA /* fr */,
+				093D4362C938821DE02B9032 /* es */,
+				125E3BF17EC58E43B32F2AC3 /* pt-BR */,
+				7DDF05F5D35AB063DB447879 /* pt */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
 /* Begin XCBuildConfiguration section */
 		A00000000000000000000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = RJZC936RL7;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"DEBUG=1",
 					"$(inherited)",
 				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -370,15 +448,44 @@
 		A00000000000000000000002 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = RJZC936RL7;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -387,22 +494,24 @@
 		A00000000000000000000003 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 3;
-				DEVELOPMENT_TEAM = RJZC936RL7;
 				ENABLE_BITCODE = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(BUILT_PRODUCTS_DIR)",
+				);
 				GENERATE_INFOPLIST_FILE = NO;
-				FRAMEWORK_SEARCH_PATHS = ("$(inherited)", "$(BUILT_PRODUCTS_DIR)", );
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/../../deps/submodules/minirtc/src/api",
 					"$(PROJECT_DIR)/../../libs/wire/include",
 				);
 				INFOPLIST_FILE = CrossDeskMobile/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				IPHONEOS_DEPLOYMENT_TARGET = "$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)";
 				MARKETING_VERSION = 1.7.4;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
@@ -437,22 +546,24 @@
 		A00000000000000000000004 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 3;
-				DEVELOPMENT_TEAM = RJZC936RL7;
 				ENABLE_BITCODE = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(BUILT_PRODUCTS_DIR)",
+				);
 				GENERATE_INFOPLIST_FILE = NO;
-				FRAMEWORK_SEARCH_PATHS = ("$(inherited)", "$(BUILT_PRODUCTS_DIR)", );
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/../../deps/submodules/minirtc/src/api",
 					"$(PROJECT_DIR)/../../libs/wire/include",
 				);
 				INFOPLIST_FILE = CrossDeskMobile/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				IPHONEOS_DEPLOYMENT_TARGET = "$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)";
 				MARKETING_VERSION = 1.7.4;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
