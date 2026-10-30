@@ -1,6 +1,6 @@
 {
   "name": "@chunkdash/crossdesk-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "CrossDesk remote desktop controller for the terminal",
   "license": "GPL-3.0-only",
