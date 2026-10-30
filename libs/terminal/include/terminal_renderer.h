@@ -86,7 +86,7 @@ inline constexpr char kKittyDelete[] =
     "\033_Ga=d,d=I,i=31,q=2\033\\\033_Ga=d,d=I,i=32,q=2\033\\";
 bool KittyReply(const std::string &response);
 struct StatusBar {
-  std::string progress, compact_progress, error, view, network;
+  std::string progress, compact_progress, error, view, network, fps;
   bool control = false, command_mode = false;
 };
 // Three padded ASCII rows. Shortcuts are compacted as whole groups to fit.

@@ -411,6 +411,9 @@ int View(SessionOptions options, const std::string &device,
   uint64_t view_revision = input.view_revision;
   bool redraw = true;
   uint64_t submitted = 0;
+  uint64_t fps_submitted = 0;
+  auto fps_sample_at = started;
+  long output_fps = 0;
   std::optional<Clock::time_point> connected_at, first_frame_at,
       first_output_at;
   bool waiting_visible = false;
@@ -550,6 +553,14 @@ int View(SessionOptions options, const std::string &device,
       size_query_tick = now + std::chrono::seconds(2);
     }
     if (output.Idle() && !shared_upload && now >= status_tick) {
+      const double fps_seconds =
+          std::chrono::duration<double>(now - fps_sample_at).count();
+      // Mode changes can redraw the status early; keep a full sampling window.
+      if (fps_seconds >= 1) {
+        output_fps = std::lround((submitted - fps_submitted) / fps_seconds);
+        fps_submitted = submitted;
+        fps_sample_at = now;
+      }
       auto st = s.Status();
       const auto last_state = st["state"].get<std::string>();
       std::string progress =
@@ -577,6 +588,7 @@ int View(SessionOptions options, const std::string &device,
       bar.error = input.error;
       bar.control = input.control;
       bar.command_mode = input.command_mode;
+      bar.fps = "FPS " + std::to_string(output_fps);
       bar.view = std::string(kitty                            ? "KITTY"
                              : detail == AnsiDetail::Quadrant ? "QUAD"
                                                               : "HALF") +

@@ -59,11 +59,16 @@ std::vector<std::string> StatusLines(const StatusBar &bar, int columns) {
   const auto progress =
       bar.error.empty() ? bar.progress : "Error: " + bar.error;
   auto left = mode + " | " + progress;
-  auto right = bar.view + (bar.network.empty() ? "" : " | " + bar.network);
+  auto metrics = bar.fps;
+  if (!bar.network.empty())
+    metrics += (metrics.empty() ? "" : " | ") + bar.network;
+  auto right = bar.view + (metrics.empty() ? "" : " | " + metrics);
   if (left.size() + right.size() + 2 > inner)
-    right = bar.network;
+    right = metrics;
   if (left.size() + right.size() + 2 > inner && bar.error.empty())
     left = mode + " | " + bar.compact_progress;
+  if (left.size() + right.size() + 2 > inner)
+    right = bar.fps;
   if (left.size() + right.size() + 2 > inner)
     right.clear();
   std::string status = Clip(left, inner);
