@@ -11,7 +11,7 @@ xmake build crossdesk-cli
 xmake run crossdesk-cli doctor --json
 ```
 
-`prepare-deps.sh` 固定 MiniRTC commit 并应用凭据日志脱敏补丁，可重复执行。构建会检查补丁，缺失时失败。不要直接升级子模块。仓库默认开启桌面构建、关闭 CLI。上述参数只构建 CLI；需要同时构建桌面和 CLI 时，将 `CROSSDESK_BUILD_DESKTOP` 设为 `y`。恢复默认桌面配置使用 `xmake f -y --CROSSDESK_BUILD_DESKTOP=y --CROSSDESK_BUILD_CLI=n`。所有命令均从仓库根目录执行。
+`prepare-deps.sh` 按主仓库记录的提交初始化 MiniRTC 子模块，并应用凭据日志脱敏补丁，可重复执行。脚本不另行校验提交哈希，升级 MiniRTC 时只需更新子模块提交；如果补丁与新版源码不兼容，准备步骤仍会失败，需要同步调整补丁。构建会检查补丁，缺失时失败。仓库默认开启桌面构建、关闭 CLI。上述参数只构建 CLI；需要同时构建桌面和 CLI 时，将 `CROSSDESK_BUILD_DESKTOP` 设为 `y`。恢复默认桌面配置使用 `xmake f -y --CROSSDESK_BUILD_DESKTOP=y --CROSSDESK_BUILD_CLI=n`。所有命令均从仓库根目录执行。
 
 构建产物在 `build/<platform>/<arch>/<mode>/crossdesk-cli`。可把对应目录加入 PATH 或复制可执行文件到自己的 bin 目录。Pi 需要直接启动该可执行文件，不能使用会输出构建日志的 `xmake run` 作为桥接程序。
 
