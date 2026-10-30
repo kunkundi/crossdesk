@@ -10,17 +10,57 @@ void Input::Tap(ControllerSession &s, int key, int modifier) {
   if (modifier)
     s.Key(modifier, false);
 }
+bool Input::LocalKey(int key, ControllerSession &s, const Grid *grid) {
+  if (key == 29) {
+    if (command_mode) {
+      command_mode = false;
+      s.SetControl(control);
+      if (control)
+        Tap(s, 0xDD, 17); // VK_OEM_6: right bracket, not ASCII ']'.
+    } else {
+      command_mode = true;
+      // Release held buttons and suspend remote input while choosing a command.
+      s.SetControl(false);
+    }
+    return true;
+  }
+  if (control && !command_mode)
+    return false;
+  if (key == '?') {
+    command_mode = true;
+    s.SetControl(false);
+    return true;
+  }
+  bool command = command_mode;
+  command_mode = false;
+  if (key == 'q' || (key == 3 && !command)) {
+    exit = true;
+    control = false;
+  } else if (key == 'c') {
+    control = !control;
+  } else if (key == '+' || key == '=' || key == '-' || key == 'f' ||
+             key == 'd' || key == 'i' || key == 'j' || key == 'k' ||
+             key == 'l') {
+    Navigate(char(key), grid);
+  } else if (!command) {
+    return false;
+  } else if (key != 27 && key != 3) {
+    error = "Unknown local command; Ctrl+] for help";
+  }
+  s.SetControl(control);
+  return true;
+}
 void Input::Navigate(char key, const Grid *grid) {
   if (key == '+' || key == '=')
     zoom = std::min(32.0, zoom * 2);
   if (key == '-')
     zoom = std::max(1.0, zoom / 2);
-  if (key == '0') {
+  if (key == 'f') {
     native = false;
     zoom = 1;
     center_x = center_y = .5;
   }
-  if (key == '1') {
+  if (key == 'd') {
     native = true;
     zoom = 1;
   }
@@ -31,17 +71,17 @@ void Input::Navigate(char key, const Grid *grid) {
   const double dy = grid && grid->source_height
                         ? double(grid->source.height) / grid->source_height
                         : 1 / zoom;
-  if (key == 'h' || key == 'j' || key == 'k' || key == 'l') {
+  if (key == 'i' || key == 'j' || key == 'k' || key == 'l') {
     center_x = std::clamp(center_x, dx / 2, 1 - dx / 2);
     center_y = std::clamp(center_y, dy / 2, 1 - dy / 2);
   }
-  if (key == 'h')
+  if (key == 'j')
     center_x -= .2 * dx;
   if (key == 'l')
     center_x += .2 * dx;
-  if (key == 'k')
+  if (key == 'i')
     center_y -= .2 * dy;
-  if (key == 'j')
+  if (key == 'k')
     center_y += .2 * dy;
   center_x = std::clamp(center_x, 0.0, 1.0);
   center_y = std::clamp(center_y, 0.0, 1.0);
@@ -49,9 +89,12 @@ void Input::Navigate(char key, const Grid *grid) {
 }
 void Input::Feed(const std::string &bytes, ControllerSession &s,
                  const Grid *grid) {
+  if (exit)
+    return;
   if (pending_.size() + bytes.size() > 32768) {
     pending_.clear();
     pasting_ = false;
+    command_mode = false;
     s.SetControl(false);
     control = false;
     return;
@@ -63,7 +106,8 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
   if (bytes.empty() && pending_ == "\033" &&
       std::chrono::steady_clock::now() - last_input_ >
           std::chrono::milliseconds(80)) {
-    Tap(s, 27);
+    if (!LocalKey(27, s, grid))
+      Tap(s, 27);
     pending_.clear();
     return;
   }
@@ -73,7 +117,11 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
       auto end = pending_.find("\033[201~");
       if (end == std::string::npos)
         return; // bounded by 32 KiB; one UTF-8 transaction
-      if (control && !s.Text(pending_.substr(0, end)))
+      if (command_mode) {
+        // Pasted text must never become local commands or leak to the remote.
+        command_mode = false;
+        s.SetControl(control);
+      } else if (control && !s.Text(pending_.substr(0, end)))
         error = "Remote UTF-8 text input unavailable";
       pending_.erase(0, end + 6);
       pasting_ = false;
@@ -81,20 +129,7 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
     }
     unsigned char c = pending_[0];
     if (c == 29) {
-      exit = true;
-      pending_.erase(0, 1);
-      s.SetControl(false);
-      return;
-    }
-    if (c == 20) {
-      control = !control;
-      s.SetControl(control);
-      pending_.erase(0, 1);
-      continue;
-    }
-    if (!control && (c == '+' || c == '=' || c == '-' || c == '0' || c == '1' ||
-                     c == 'h' || c == 'j' || c == 'k' || c == 'l')) {
-      Navigate(c, grid);
+      LocalKey(c, s, grid);
       pending_.erase(0, 1);
       continue;
     }
@@ -124,17 +159,18 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
         pending_.erase(0, end + 1);
         if (seq == "\033[O") {
           control = false;
+          command_mode = false;
           s.SetControl(false);
           continue;
         }
         int key = 0;
-        if (seq == "\033[A")
+        if (seq == "\033[A" || seq == "\033OA")
           key = 38;
-        else if (seq == "\033[B")
+        else if (seq == "\033[B" || seq == "\033OB")
           key = 40;
-        else if (seq == "\033[C")
+        else if (seq == "\033[C" || seq == "\033OC")
           key = 39;
-        else if (seq == "\033[D")
+        else if (seq == "\033[D" || seq == "\033OD")
           key = 37;
         else if (seq == "\033[H")
           key = 36;
@@ -155,15 +191,18 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
         else if (seq == "\033OS")
           key = 115;
         if (key) {
-          if (!control && key >= 37 && key <= 40) {
-            Navigate(key == 37   ? 'h'
-                     : key == 38 ? 'k'
+          if ((!control || command_mode) && key >= 37 && key <= 40) {
+            LocalKey(key == 37   ? 'j'
+                     : key == 38 ? 'i'
                      : key == 39 ? 'l'
-                                 : 'j',
-                     grid);
+                                 : 'k',
+                     s, grid);
             continue;
           }
-          Tap(s, key);
+          if (command_mode)
+            LocalKey(0, s, grid);
+          else
+            Tap(s, key);
           continue;
         }
         int b = 0, x = 0, y = 0;
@@ -185,7 +224,7 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
           } else
             mouse = mouse && cur == limit;
         }
-        if (grid && mouse) {
+        if (grid && mouse && !command_mode) {
           auto pos = MapPointer(*grid, x - 1, y - 1);
           if (!control) {
             if (pos && action == 'M' && ((b & 64) || b == 0)) {
@@ -194,7 +233,7 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
               if (b & 64)
                 Navigate((b & 1) ? '-' : '+', grid);
               else
-                Navigate('1', grid);
+                Navigate('d', grid);
             }
             continue;
           }
@@ -222,14 +261,19 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
         continue;
       }
       // Alt+ASCII letter: a tap with explicit modifier release.
-      if (pending_[1] >= 'a' && pending_[1] <= 'z')
+      if (command_mode)
+        LocalKey(0, s, grid);
+      else if (pending_[1] >= 'a' && pending_[1] <= 'z')
         Tap(s, pending_[1] - 'a' + 'A', 18);
       pending_.erase(0, 2);
       continue;
     }
     if (c < 32 || c == 127) {
       pending_.erase(0, 1);
-      if (c == 13 || c == 10)
+      if (LocalKey(c, s, grid)) {
+        if (exit)
+          return;
+      } else if (c == 13 || c == 10)
         Tap(s, 13);
       else if (c == 9)
         Tap(s, 9);
@@ -248,7 +292,10 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
       return;
     auto text = pending_.substr(0, n);
     pending_.erase(0, n);
-    if (control && !s.Text(text))
+    if (LocalKey(c, s, grid)) {
+      if (exit)
+        return;
+    } else if (control && !s.Text(text))
       error = "Remote UTF-8 text input unavailable";
   }
 }

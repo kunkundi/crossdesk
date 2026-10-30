@@ -247,8 +247,14 @@ int View(SessionOptions options, const std::string &device,
     s.Tick();
     char bytes[8192];
     auto n = Read(0, bytes, sizeof(bytes));
+    const bool previous_command = input.command_mode;
+    const bool previous_control = input.control;
+    const auto previous_error = input.error;
     input.Feed(n > 0 ? std::string(bytes, n) : "", s,
                displayed ? &*displayed : nullptr);
+    if (previous_command != input.command_mode ||
+        previous_control != input.control || previous_error != input.error)
+      status_tick = Clock::now();
     if (output.Pump() && pending_frame) {
       displayed = std::move(pending);
       pending.reset();
@@ -282,7 +288,10 @@ int View(SessionOptions options, const std::string &device,
       auto st = s.Status();
       const auto last_state = st["state"].get<std::string>();
       auto line = (input.error.empty() ? last_state : input.error) + " " +
-                  (input.control ? "CONTROL" : "READ ONLY") + " " +
+                  (input.command_mode ? "LOCAL COMMAND"
+                   : input.control    ? "CONTROL"
+                                      : "READ ONLY") +
+                  " " +
                   (kitty                            ? "KITTY"
                    : detail == AnsiDetail::Quadrant ? "QUAD"
                                                     : "HALF") +
@@ -291,13 +300,18 @@ int View(SessionOptions options, const std::string &device,
                   (last_frame ? " " + std::to_string(last_frame->width) + "x" +
                                     std::to_string(last_frame->height)
                               : "") +
-                  " | Ctrl+] exit Ctrl+T control";
+                  " | Ctrl+] commands";
+      const std::string hint =
+          input.command_mode ? "c control q quit Esc cancel | i up j left k down "
+                               "l right | +/- zoom f fit d detail"
+          : input.control
+              ? "Keys/mouse -> remote | Ctrl+] then c release, q quit"
+              : "c control q quit ? help | i up j left k down l right | "
+                "+/- zoom f fit d detail";
       output.Put("\033[" + std::to_string(v.rows + 1) + ";1H\033[0m\033[K" +
                  line.substr(0, v.columns) + "\033[" +
                  std::to_string(v.rows + 2) + ";1H\033[K" +
-                 std::string("Read-only: click/1 detail, wheel/+/- zoom, "
-                             "arrows pan, 0 fit | out=" +
-                             std::to_string(submitted) +
+                 std::string(hint + " | out=" + std::to_string(submitted) +
                              " bytes=" + std::to_string(output.bytes))
                      .substr(0, v.columns));
       status_tick = now + std::chrono::seconds(1);
@@ -360,6 +374,12 @@ int Bridge(int fd, SessionOptions options, int password_fd) {
   Output output(fd);
   ControllerSession s;
   Input input;
+  auto status = [&] {
+    auto value = s.Status();
+    value["command_mode"] = input.command_mode;
+    value["exit_requested"] = input.exit;
+    return value;
+  };
   Viewport viewport;
   viewport.detail = AnsiDetail::Quadrant;
   NonBlocking input_mode(0);
@@ -459,6 +479,7 @@ int Bridge(int fd, SessionOptions options, int password_fd) {
             s.Connect(options, j.at("device").get<std::string>(),
                       std::move(password));
             input.control = false;
+            input.command_mode = false;
             input.center_x = input.center_y = .5;
             last_frame.reset();
             redraw = true;
@@ -466,6 +487,7 @@ int Bridge(int fd, SessionOptions options, int password_fd) {
             awaiting = 0;
           } else if (method == "control") {
             input.control = Boolean(j, "enabled", false);
+            input.command_mode = false;
             s.SetControl(input.control);
           } else if (method == "input") {
             auto text = j.at("data").get<std::string>();
@@ -493,6 +515,8 @@ int Bridge(int fd, SessionOptions options, int password_fd) {
             awaiting = 0;
           } else if (method == "disconnect") {
             s.Disconnect();
+            input.control = false;
+            input.command_mode = false;
             last_frame.reset();
             current.reset();
             awaiting = 0;
@@ -500,14 +524,13 @@ int Bridge(int fd, SessionOptions options, int password_fd) {
             quit = true;
           } else if (method != "status")
             throw std::invalid_argument("unsupported_method");
-          respond({{"id", id},
-                   {"ok", true},
-                   {"version", 1},
-                   {"status", s.Status()}});
+          respond(
+              {{"id", id}, {"ok", true}, {"version", 1}, {"status", status()}});
         } catch (const std::exception &) {
           respond({{"id", id},
                    {"ok", false},
-                   {"error", "invalid_request_or_unavailable_operation"}});
+                   {"error", "invalid_request_or_unavailable_operation"},
+                   {"status", status()}});
         }
       }
     }
@@ -532,7 +555,7 @@ int Bridge(int fd, SessionOptions options, int password_fd) {
         break;
       else if (hello && now >= status_tick) {
         output.Put(json{{"event", "state"},
-                        {"status", s.Status()},
+                        {"status", status()},
                         {"output_bytes", output.bytes},
                         {"submitted_frames", submitted_frames},
                         {"elapsed_seconds",
@@ -605,7 +628,11 @@ crossdesk-cli view <9-digit-device-id> [--renderer auto|ansi|kitty] [--fps 1..30
 crossdesk-cli bridge --stdio [--password-fd 3] [--server host] [--port 9099]
 
 view: read-only and silent by default; hidden password prompt on the local terminal.
-Ctrl+] closes; Ctrl+T toggles control. Read-only: click/1 native detail, wheel/+/- zoom, arrows/hjkl pan, 0 fit.
+Read-only: c enables control; q or Ctrl+C quits; ? shows local commands.
+Ctrl+] opens local commands: c toggles control, q quits, Esc/Ctrl+C cancels.
+View keys: click/d native detail, wheel/+/- zoom, arrows/ijkl pan (i up, j left, k down, l right), f fit.
+In control mode, Ctrl+] then a view key adjusts the view once; ordinary keys go to the remote.
+Ctrl+T and Ctrl+C pass through in control mode; Ctrl+] twice sends remote Ctrl+].
 Default ANSI detail: quadrant. Default quality: high (1920x1080); ultra requests up to 3840x2160.
 Display index is zero-based. ANSI cannot reproduce full desktop text at fit scale.
 --fps controls local output; negotiated previews use supported 1/8/15 FPS.

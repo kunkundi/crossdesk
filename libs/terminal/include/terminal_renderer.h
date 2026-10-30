@@ -53,11 +53,12 @@ inline constexpr char kKittyDelete[] = "\033_Ga=d,d=I,i=31,q=2\033\\";
 bool KittyReply(const std::string &response);
 // Incremental parser: protocol replies and unknown escapes are consumed
 // locally. Key taps always release immediately; paste uses the UTF-8 text
-// protocol.
+// protocol. In command_mode, control records the mode to restore while the
+// session's remote input is suspended.
 class Input {
 public:
   void Feed(const std::string &bytes, ControllerSession &, const Grid *grid);
-  bool exit = false, control = false, native = false;
+  bool exit = false, control = false, native = false, command_mode = false;
   std::string error;
   double zoom = 1, center_x = .5, center_y = .5;
   uint64_t view_revision = 0;
@@ -68,6 +69,7 @@ private:
   bool pasting_ = false;
   float pointer_x_ = .5f, pointer_y_ = .5f;
   void Tap(ControllerSession &, int key, int modifier = 0);
+  bool LocalKey(int key, ControllerSession &, const Grid *);
   void Navigate(char key, const Grid *);
 };
 } // namespace crossdesk::terminal

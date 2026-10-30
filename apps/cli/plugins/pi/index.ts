@@ -22,7 +22,7 @@ export default function crossdesk(pi: ExtensionAPI) {
   let stop: (() => void) | undefined;
   pi.on("session_shutdown", async () => stop?.());
   pi.registerCommand("crossdesk", {
-    description: "Open a human-only remote desktop view (Ctrl+] closes)",
+    description: "Open a human-only remote desktop view (Ctrl+] for commands)",
     handler: async (args, ctx) => {
       if (ctx.mode !== "tui" || !ctx.hasUI || !process.stdin.isTTY || !process.stdout.isTTY) {
         ctx.ui.notify("CrossDesk embedded view requires Pi interactive TUI. Run crossdesk-cli view <device-id> in a terminal.", "warning");
@@ -74,11 +74,12 @@ export default function crossdesk(pi: ExtensionAPI) {
           let columns = 0, rows = 0, request = 0, ready = false, generation = 0;
           let frame: { frame_id: number; generation: number } | undefined;
           let helloId = 0, zoom = 1, native = false;
+          let control = false, commandMode = false, bridgeStopped = false;
           const colorHint = process.env.COLORTERM || "";
           const colors = /^(truecolor|24bit)$/.test(colorHint) ? 24 : process.env.TERM?.includes("256color") ? 256 : 8;
           const finish = () => { if (closed) return; closed = true; cleanup(); stop = undefined; lines = []; done(); };
           stop = finish;
-          const fail = (reason: string) => { error = clean(reason); cleanup(); tui.requestRender(); };
+          const fail = (reason: string) => { bridgeStopped = true; error = clean(reason); cleanup(); tui.requestRender(); };
           child = spawn(process.env.CROSSDESK_CLI || "crossdesk-cli", ["bridge", "--stdio", "--password-fd", "3"], {
             shell: false, stdio: ["pipe", "pipe", "pipe", "pipe"],
           });
@@ -95,7 +96,7 @@ export default function crossdesk(pi: ExtensionAPI) {
           secrets.end(password + "\n"); password = undefined;
           child.stderr?.resume(); // Never insert native diagnostics in the TUI or chat.
           child.on("error", () => fail("Cannot start crossdesk-cli; check CROSSDESK_CLI or PATH"));
-          child.on("exit", (code) => { if (!closed) { error ||= `Bridge exited (${code ?? "signal"})`; tui.requestRender(); } });
+          child.on("exit", (code) => { if (!closed) { bridgeStopped = true; error ||= `Bridge exited (${code ?? "signal"})`; tui.requestRender(); } });
           child.stdout?.setEncoding("utf8");
           child.stdout?.on("data", (data: string) => {
             if (closed) return;
@@ -113,8 +114,11 @@ export default function crossdesk(pi: ExtensionAPI) {
                 }
                 if (message.ok === false) error = clean(message.error);
                 if (message.status) {
+                  if (message.status.exit_requested) { clearTimeout(watchdog); finish(); return; }
                   if (Number.isSafeInteger(message.status.generation)) generation = message.status.generation;
-                  status = clean(message.status.state) + (message.status.control ? " CONTROL" : " READ ONLY");
+                  control = message.status.control === true;
+                  commandMode = message.status.command_mode === true;
+                  status = clean(message.status.state) + (commandMode ? " LOCAL COMMAND" : control ? " CONTROL" : " READ ONLY");
                   if (message.status.error) error = clean(message.status.error);
                   if (message.status.state !== "connected") lines = [];
                 }
@@ -152,14 +156,18 @@ export default function crossdesk(pi: ExtensionAPI) {
               }
               const ack = frame; frame = undefined;
               if (ack) queueMicrotask(() => send("ack", ack)); // Host consumed the frame; not a physical display timestamp.
-              return [truncateToWidth(`CrossDesk ${device} | ${status} ${native ? "detail" : "fit"} x${zoom} | Ctrl+] close, Ctrl+T control`, width),
+              const hint = bridgeStopped ? "q / Esc / Ctrl+C close"
+                : commandMode ? "c control q quit Esc cancel | i up j left k down l right | +/- zoom f fit d detail"
+                : control ? "Keys -> remote | Ctrl+] then c release, q quit"
+                : "c control q quit ? help | i up j left k down l right | +/- zoom f fit d detail";
+              return [truncateToWidth(`CrossDesk ${device} | ${status} ${native ? "detail" : "fit"} x${zoom} | Ctrl+] commands`, width),
                 ...lines.slice(0, h).map(line => truncateToWidth(line, width)),
-                truncateToWidth(error || (lines.length ? "Read-only: 1 detail, +/- zoom, arrows/hjkl pan, 0 fit" : "Waiting for remote video…"), width)];
+                truncateToWidth(`${hint}${error ? " | " + error : lines.length ? "" : " | Waiting for remote video…"}`, width)];
             },
             handleInput(data: string) {
               data = legacyInput(data);
               if (!data) return;
-              if (data === "\x1d") { clearTimeout(watchdog); finish(); }
+              if ((bridgeStopped || !ready) && (data === "q" || data === "\x1b" || data === "\x03")) { clearTimeout(watchdog); finish(); }
               else if (ready && Buffer.byteLength(data) <= 16384) send("input", { data });
             },
             invalidate() {},
