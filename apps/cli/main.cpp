@@ -84,6 +84,63 @@ private:
   double credit_ = 1048576;
   Clock::time_point last_;
 };
+// Measure occupied frame time, not the interval between incoming frames: a
+// slow source or a quiet desktop must not trap the next preview at a low rate.
+class AdaptivePreview {
+public:
+  AdaptivePreview(int fps, bool enabled) : fps_(fps), enabled_(enabled) {}
+  void Reset() {
+    service_ms_ = 0;
+    samples_ = 0;
+    candidate_ = fps_;
+    candidate_since_.reset();
+  }
+  std::optional<int> Observe(double ms, Clock::time_point now, bool fps15,
+                            bool accepted) {
+    service_ms_ = samples_++ ? service_ms_ + .2 * (ms - service_ms_) : ms;
+    if (!enabled_ || !accepted) {
+      candidate_since_.reset();
+      return {};
+    }
+    const double capacity = 1000 / std::max(.001, service_ms_);
+    int next = fps_;
+    // Request the next tier above sustainable output, leaving headroom for
+    // fresh frames. Separate up/down thresholds prevent boundary oscillation.
+    if (fps_ > 8 && capacity <= 6.4)
+      next = 8;
+    else if (fps_ == 30 && fps15 && capacity <= 12)
+      next = 15;
+    else if (fps_ < 30 && capacity >= 13.5)
+      next = 30;
+    else if (fps_ == 8 && capacity >= 7.2)
+      next = fps15 ? 15 : 30;
+    if (next == fps_) {
+      candidate_since_.reset();
+      return {};
+    }
+    if (next != candidate_ || !candidate_since_) {
+      candidate_ = next;
+      candidate_since_ = now;
+    }
+    const auto hold = std::chrono::seconds(next < fps_ ? 2 : 4);
+    if (samples_ < 8 || now - *candidate_since_ < hold)
+      return {};
+    fps_ = next;
+    ++adjustments_;
+    candidate_since_.reset();
+    return fps_;
+  }
+  int Fps() const { return fps_; }
+  double ServiceMs() const { return service_ms_; }
+  uint64_t Adjustments() const { return adjustments_; }
+
+private:
+  int fps_, candidate_ = 0;
+  bool enabled_;
+  double service_ms_ = 0;
+  uint64_t samples_ = 0, adjustments_ = 0;
+  std::optional<Clock::time_point> candidate_since_;
+};
 struct Tty {
   int out;
   RawTerminal terminal;
@@ -326,9 +383,11 @@ int View(SessionOptions options, const std::string &device,
     }
     shared_image.Reset();
   }
-  bool automatic_fast_fps = shared_enabled && !fps_explicit;
-  if (automatic_fast_fps)
+  if (!fps_explicit)
     options.fps = 30;
+  AdaptivePreview preview(options.fps, !fps_explicit);
+  const auto frame_interval = std::chrono::duration_cast<Clock::duration>(
+      std::chrono::duration<double>(1.0 / options.fps));
   ControllerSession s;
   Input input;
   input.control = control;
@@ -339,6 +398,7 @@ int View(SessionOptions options, const std::string &device,
   s.SetControl(control);
   std::optional<Grid> displayed, pending;
   bool pending_frame = false;
+  std::optional<Clock::time_point> frame_started;
   bool shared_upload = false;
   std::optional<Clock::time_point> shared_deadline;
   std::string pending_clear;
@@ -362,11 +422,26 @@ int View(SessionOptions options, const std::string &device,
     shared_deadline.reset();
     shared_image.Reset();
     ++shared_fallbacks;
-    if (automatic_fast_fps) {
-      automatic_fast_fps = false;
-      options.fps = 8;
-      s.SetPreview(options.fps, options.preview_width, options.preview_height,
+    frame_started.reset();
+    preview.Reset();
+  };
+  const auto complete_sample = [&] {
+    if (!frame_started)
+      return;
+    const auto now = Clock::now();
+    const double ms =
+        std::chrono::duration<double, std::milli>(now - *frame_started).count();
+    frame_started.reset();
+    if (auto fps = preview.Observe(ms, now, s.SupportsPreviewFps15(),
+                                  s.Connected() && s.PreviewAccepted())) {
+      s.SetPreview(*fps, options.preview_width, options.preview_height,
                    options.quality, options.max_bitrate_bps);
+      std::cerr << json{{"event", "preview_fps"},
+                        {"target_fps", options.fps},
+                        {"requested_fps", *fps},
+                        {"frame_service_ms", preview.ServiceMs()}}
+                       .dump()
+                << "\n";
     }
   };
   const auto pump_output = [&] {
@@ -379,6 +454,7 @@ int View(SessionOptions options, const std::string &device,
       pending.reset();
       pending_frame = false;
       ++submitted;
+      complete_sample();
       if (!first_output_at) {
         first_output_at = Clock::now();
         status_tick = *first_output_at;
@@ -447,6 +523,7 @@ int View(SessionOptions options, const std::string &device,
     if (input.view_revision != view_revision) {
       view_revision = input.view_revision;
       redraw = true;
+      preview.Reset();
     }
     const bool grid_resized =
         v.columns != last_view.columns || v.rows != last_view.rows;
@@ -460,6 +537,7 @@ int View(SessionOptions options, const std::string &device,
       last_view = v;
       last_status_rows = status_rows;
       redraw = true;
+      preview.Reset();
       status_tick = now;
       if (grid_resized)
         size_query_tick = now;
@@ -535,10 +613,11 @@ int View(SessionOptions options, const std::string &device,
       status_tick = now + std::chrono::seconds(1);
     }
     if (output.Idle() && !shared_upload && now >= next) {
-      next = now + std::chrono::milliseconds(1000 / options.fps);
       bool fresh = false;
       if (auto frame = s.TakeFrame(last_frame ? &*last_frame : nullptr);
           frame && frame->generation == s.Generation()) {
+        if (!last_frame || last_frame->generation != frame->generation)
+          preview.Reset();
         last_frame = std::move(frame);
         fresh = true;
         if (!first_frame_at)
@@ -548,10 +627,17 @@ int View(SessionOptions options, const std::string &device,
         last_frame.reset();
       if (last_frame && (fresh || redraw)) {
         const auto render_started = Clock::now();
-        if (fresh)
+        // Keep cadence when only slightly late, skip missed slots after a
+        // stall, and never consume a slot while waiting for a source frame.
+        next = render_started > next + frame_interval
+                   ? render_started + frame_interval
+                   : next + frame_interval;
+        if (fresh) {
+          frame_started = render_started;
           queue_ms = std::chrono::duration<double, std::milli>(
                          now - last_frame->queued)
                          .count();
+        }
         pending = kitty ? Layout(*last_frame, v) : Convert(*last_frame, v);
         // Clear waiting text and Kitty margins without erasing the status bars.
         std::string clear;
@@ -571,6 +657,8 @@ int View(SessionOptions options, const std::string &device,
           }
         }
         if (!shared_upload) {
+          if (fresh && !frame_started)
+            frame_started = Clock::now();
           output.Put(clear + (kitty ? Kitty(*last_frame, v, submitted % 2 != 0)
                                     : Difference(*pending, displayed)));
           waiting_visible = false;
@@ -585,10 +673,16 @@ int View(SessionOptions options, const std::string &device,
           displayed = std::move(pending);
           pending.reset();
           pending_frame = false;
+          complete_sample();
         }
       }
     }
-    output.Wait(0);
+    const auto wait_ms = std::chrono::ceil<std::chrono::milliseconds>(
+                             next - Clock::now())
+                             .count();
+    output.Wait(0, output.Idle() && !shared_upload && wait_ms > 0
+                       ? int(std::min<int64_t>(5, wait_ms))
+                       : 5);
   }
   auto final = s.Status();
   s.Disconnect();
@@ -627,6 +721,10 @@ int View(SessionOptions options, const std::string &device,
                                   : shared_enabled ? "shared_memory"
                                                    : "inline"},
               {"target_fps", options.fps},
+              {"adaptive_preview", !fps_explicit},
+              {"preview_fps", preview.Fps()},
+              {"preview_adjustments", preview.Adjustments()},
+              {"frame_service_ms", preview.ServiceMs()},
               {"frame_processing_ms", rendered ? render_ms / rendered : 0},
               {"shared_ack_ms", shared_acks ? shared_ack_ms / shared_acks : 0},
               {"shared_fallbacks", shared_fallbacks},
@@ -917,9 +1015,10 @@ Ctrl+T and Ctrl+C pass through in control mode; another Ctrl+] leaves local mode
 Default ANSI detail: quadrant. Default quality: high (1920x1080); ultra requests up to 3840x2160.
 Cell aspect is character width/height: auto detects terminal geometry; use --cell-aspect to calibrate.
 Display index is zero-based. ANSI cannot reproduce full desktop text at fit scale.
---fps controls local output. Local Kitty shared memory defaults to 30; other paths default to 8.
-Targets above 15 use the negotiated interactive 30 FPS stream; lower targets use 1/8/15 FPS previews.
-bridge: private NDJSON v1, credentials on a separate inherited descriptor.
+--fps controls local output (default 30). Without it, remote preview adapts to measured output speed.
+Explicit --fps keeps a fixed preview request. Kitty transport fallback keeps the local target unchanged.
+Preview requests above 15 use the negotiated interactive 30 FPS stream; lower requests use 1/8/15 FPS.
+bridge: private NDJSON v1, default 8 FPS, credentials on a separate inherited descriptor.
 No IP direct connection, audio playback, clipboard or file transfer support.
 )";
 } // namespace

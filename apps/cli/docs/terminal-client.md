@@ -78,7 +78,13 @@ crossdesk-cli 123456789 --renderer ansi --fps 8
 
 ## 预览与背压
 
-`--fps 1..30` 是本地输出目标。未显式指定时，共享内存探测成功默认使用 30 FPS；ANSI、内联 Kitty 和 bridge 默认仍为 8 FPS。自动选择的共享内存路径运行中退回内联时，目标也恢复为 8；显式设置的 `--fps` 始终保留。对端声明 PreviewSubscription 时，目标不超过 15 映射到合法 1/8/15 FPS（15 需要对应能力）；超过 15 则请求项目已有的交互模式：协议 `fps=60` 是模式标记，编码设置 `frame_rate=30` 才是帧率，不再把 `--fps 30` 限制为 15 FPS。分辨率上限使用协商到的 v2，视频预算只在 bandwidth 能力存在时发送。`--quality low|balanced|high|ultra` 对应如下请求：
+`--fps 1..30` 是本地输出目标。交互 CLI 的 ANSI、内联 Kitty 和共享内存 Kitty 默认均为 30 FPS；共享内存失败回退时保持该目标。bridge 仍按宿主协议默认使用 8 FPS。
+
+未显式指定 `--fps` 时，远端预览从 30 FPS 开始，根据完整一帧从转换开始到输出完成的耗时自动选择 8／15／30 FPS 请求；共享内存的上传确认等待也计入，等待源帧的空闲时间不计入。使用平滑估计、不同升降档阈值和至少 8 个新帧样本，持续变慢 2 秒才降档、持续恢复 4 秒才升档，保留供帧余量。15 FPS 仅在对端声明支持时使用；预览未获接受时不追加自动调节。视口变化、显示器切换和共享内存回退会重置耗时估计。显式 `--fps` 固定本地目标和对应的远端预览请求，关闭自动调节；例如 `--fps 30` 可用于与自动策略对比。
+
+本地调度只在有新帧或需要重绘时消耗刷新时隙；短暂迟到保持原刷新节奏，长时间阻塞后跳过旧时隙，不连续补画过时帧。目标帧率不代表终端实际显示帧率。
+
+对端声明 PreviewSubscription 时，预览请求不超过 15 映射到合法 1/8/15 FPS（15 需要对应能力）；超过 15 则请求项目已有的交互模式：协议 `fps=60` 是模式标记，编码设置 `frame_rate=30` 才是帧率。分辨率上限使用协商到的 v2，视频预算只在 bandwidth 能力存在时发送。`--quality low|balanced|high|ultra` 对应如下请求：
 
 | 档位 | 分辨率上限 | 质量枚举 | 视频预算 |
 |---|---|---|---|
@@ -95,7 +101,7 @@ crossdesk-cli 123456789 --renderer ansi --fps 8
 
 测量像素渲染帧率时使用 release 构建；debug 的 `-O0` 面积采样开销明显更高。共享内存中的像素不经过终端字节预算，但仍受转换和终端消费速度限制；8MiB/s 是内联路径的输出上限，不是帧率保证。解码、像素转换、压缩、终端消费速度和帧大小都会影响结果。退出时，未完成画面最多继续写入 2s；取消图像传输及恢复屏幕的短写最多另重试 500ms。POSIX 立即恢复 termios 并清理输入，不等待输出排空；如果终端始终不消费输出，屏幕清理只能尽力发送。
 
-统计包括收到帧数、被替换帧数、非法帧、等待帧数、实际完整提交次数、输出字节数、运行秒数、最近本地排队时间、网络码率/RTT/SRTP。通过计数差/时间差可得到区间 FPS；交互连接结束日志另给平均提交 FPS，以及实际 `renderer` 和 `output_bytes_per_second` 预算。`kitty_transport=shared_memory/inline/none` 标明生效路径，`target_fps` 是当前目标，`frame_processing_ms` 是平均本地布局／转换／传输准备耗时，`shared_ack_ms` 是平均上传命令写完到解析成功确认的耗时，`shared_fallbacks` 记录运行时回退次数。`client.log` 摘要的 `startup_ms` 记录从发起连接到连接成功（`connected`）、首个取出用于显示的视频帧入队（`first_frame`）、首帧显示命令完整写入终端（`first_output`）的毫秒数；未到达的阶段为 `null`。写入 TTY 完成不等于屏幕显示完成，本地排队时间不是端到端延迟。
+统计包括收到帧数、被替换帧数、非法帧、等待帧数、实际完整提交次数、输出字节数、运行秒数、最近本地排队时间、网络码率/RTT/SRTP。通过计数差/时间差可得到区间 FPS；交互连接结束日志另给平均提交 FPS，以及实际 `renderer` 和 `output_bytes_per_second` 预算。`kitty_transport=shared_memory/inline/none` 标明生效路径，`target_fps` 是本地目标，`preview_fps` 是最近请求的远端预览目标（并非已生效或实测帧率），`adaptive_preview` 表示是否开启自动调节，`preview_adjustments` 记录切档次数；每次切档另记录 `preview_fps` 事件。`frame_service_ms` 是最近完整帧处理与输出耗时的平滑估计，`frame_processing_ms` 是平均本地布局／转换／传输准备耗时，`shared_ack_ms` 是平均上传命令写完到解析成功确认的耗时，`shared_fallbacks` 记录运行时回退次数。`client.log` 摘要的 `startup_ms` 记录从发起连接到连接成功（`connected`）、首个取出用于显示的视频帧入队（`first_frame`）、首帧显示命令完整写入终端（`first_output`）的毫秒数；未到达的阶段为 `null`。写入 TTY 完成不等于屏幕显示完成，本地排队时间不是端到端延迟。
 
 ## 输入与退出
 
