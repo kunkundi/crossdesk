@@ -1,4 +1,5 @@
 #include "controller_session.h"
+#include "controller_diagnostics.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -136,8 +137,8 @@ void ControllerSession::Connect(SessionOptions options, std::string device,
   // The server assigns a temporary controller identity on this connection.
   // Never register a desktop identity or persist local credentials.
   client_id_.clear();
-  minirtc::InitLogger(options_.log_directory);
-  minirtc::get_logger()->set_level(spdlog::level::off);
+  InitializeControllerDiagnostics(options_.log_directory);
+  SPDLOG_LOGGER_INFO(minirtc::get_logger(), "Session registering");
   auto p = Parameters();
   peer_ = CreatePeer(&p);
   if (!peer_) {
@@ -169,6 +170,7 @@ void ControllerSession::Tick() {
     if (Finished())
       break;
     if (e.kind == 0) {
+      SPDLOG_LOGGER_INFO(minirtc::get_logger(), "Signal status: {}", e.code);
       if (e.code == SignalTlsCertError) {
         Fail("tls_certificate_error");
         break;
@@ -199,6 +201,8 @@ void ControllerSession::Tick() {
         password_.clear();
       }
     } else if (e.kind == 1) {
+      SPDLOG_LOGGER_INFO(minirtc::get_logger(), "Connection status: {} (session {})",
+                         e.code, state_);
       if (e.code == ::Connected && !Connected()) {
         state_ = "connected";
         auto hello = MakeHostInformation("CrossDesk CLI", {}, false);
@@ -215,7 +219,7 @@ void ControllerSession::Tick() {
       else if (e.code == RemoteUnavailable)
         Fail("device_offline_or_unavailable");
       else if (e.code == Failed)
-        Fail("connection_failed");
+        Fail(Connected() ? "connection_lost" : "connection_failed");
       else if (e.code == Closed || e.code == Disconnected)
         Fail("remote_disconnected");
     } else if (e.kind == 2 && Connected()) {
@@ -275,6 +279,7 @@ void ControllerSession::ClosePeers() {
   password_.clear();
 }
 void ControllerSession::Fail(const char *reason) {
+  SPDLOG_LOGGER_INFO(minirtc::get_logger(), "Session failed: {}", reason);
   ReleaseInput();
   error_ = reason;
   state_ = "failed";
@@ -345,6 +350,8 @@ void ControllerSession::Preview() {
   Send(kControlStream, s.ToJson().dump());
 }
 void ControllerSession::SetControl(bool enabled) {
+  if (control_ != enabled)
+    SPDLOG_LOGGER_INFO(minirtc::get_logger(), "Remote control: {}", enabled);
   if (!enabled)
     ReleaseInput();
   control_ = enabled;

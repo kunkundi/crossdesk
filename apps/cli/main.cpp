@@ -201,7 +201,7 @@ int View(SessionOptions options, const std::string &device,
          const std::string &renderer, bool control, int fd, AnsiDetail detail,
          double zoom, bool native) {
   if (!IsTty(0) || !IsTty(fd) || Env("TERM") == "dumb")
-    throw std::runtime_error("view needs an interactive ANSI terminal; use "
+    throw std::runtime_error("connecting needs an interactive ANSI terminal; use "
                              "bridge --stdio for a host");
   auto password = Password();
   if (interrupted)
@@ -288,9 +288,10 @@ int View(SessionOptions options, const std::string &device,
       auto st = s.Status();
       const auto last_state = st["state"].get<std::string>();
       auto line = (input.error.empty() ? last_state : input.error) + " " +
-                  (input.command_mode ? "LOCAL COMMAND"
-                   : input.control    ? "CONTROL"
-                                      : "READ ONLY") +
+                  (input.command_mode
+                       ? (input.control ? "LOCAL COMMAND / CONTROL PAUSED"
+                                        : "LOCAL COMMAND / READ ONLY")
+                       : input.control ? "CONTROL" : "READ ONLY") +
                   " " +
                   (kitty                            ? "KITTY"
                    : detail == AnsiDetail::Quadrant ? "QUAD"
@@ -302,8 +303,8 @@ int View(SessionOptions options, const std::string &device,
                               : "") +
                   " | Ctrl+] commands";
       const std::string hint =
-          input.command_mode ? "c control q quit Esc cancel | i up j left k down "
-                               "l right | +/- zoom f fit d detail"
+          input.command_mode ? "Esc/Ctrl+C return | c toggle q quit | "
+                               "arrows/ijkl pan +/- zoom f fit d detail"
           : input.control
               ? "Keys/mouse -> remote | Ctrl+] then c release, q quit"
               : "c control q quit ? help | i up j left k down l right | "
@@ -355,6 +356,7 @@ int View(SessionOptions options, const std::string &device,
   // These diagnostics go to the private file, never through the active screen.
   std::cerr
       << json{{"session", final},
+              {"mouse_reports", input.mouse_reports},
               {"submitted", submitted},
               {"output_bytes", output.bytes},
               {"last_queue_ms", queue_ms},
@@ -377,6 +379,7 @@ int Bridge(int fd, SessionOptions options, int password_fd) {
   auto status = [&] {
     auto value = s.Status();
     value["command_mode"] = input.command_mode;
+    value["resume_control"] = input.control;
     value["exit_requested"] = input.exit;
     return value;
   };
@@ -487,8 +490,7 @@ int Bridge(int fd, SessionOptions options, int password_fd) {
             awaiting = 0;
           } else if (method == "control") {
             input.control = Boolean(j, "enabled", false);
-            input.command_mode = false;
-            s.SetControl(input.control);
+            s.SetControl(input.control && !input.command_mode);
           } else if (method == "input") {
             auto text = j.at("data").get<std::string>();
             if (text.size() > 16384)
@@ -621,18 +623,19 @@ int Bridge(int fd, SessionOptions options, int password_fd) {
   s.Disconnect();
   return interrupted ? 130 : 0;
 }
-const char *help = R"(crossdesk-cli doctor [--json]
-crossdesk-cli view <9-digit-device-id> [--renderer auto|ansi|kitty] [--fps 1..30]
-                    [--display 0..63] [--control] [--server host] [--port 9099]
-                    [--quality low|balanced|high|ultra] [--ansi-detail quadrant|half] [--zoom 1..32|native]
+const char *help = R"(crossdesk-cli <9-digit-device-id> [--renderer auto|ansi|kitty] [--fps 1..30]
+               [--display 0..63] [--control] [--server host] [--port 9099]
+               [--quality low|balanced|high|ultra] [--ansi-detail quadrant|half] [--zoom 1..32|native]
+crossdesk-cli view <9-digit-device-id> [options] (compatibility alias)
+crossdesk-cli doctor [--json]
 crossdesk-cli bridge --stdio [--password-fd 3] [--server host] [--port 9099]
 
-view: read-only and silent by default; hidden password prompt on the local terminal.
+Connect by device ID: read-only and silent by default; hidden password prompt on the local terminal.
 Read-only: c enables control; q or Ctrl+C quits; ? shows local commands.
-Ctrl+] opens local commands: c toggles control, q quits, Esc/Ctrl+C cancels.
+Ctrl+] enters persistent local mode: c selects control on return; q quits; Esc/Ctrl+C returns.
 View keys: click/d native detail, wheel/+/- zoom, arrows/ijkl pan (i up, j left, k down, l right), f fit.
-In control mode, Ctrl+] then a view key adjusts the view once; ordinary keys go to the remote.
-Ctrl+T and Ctrl+C pass through in control mode; Ctrl+] twice sends remote Ctrl+].
+Local mode stays active after commands, paste or focus loss; remote input remains paused.
+Ctrl+T and Ctrl+C pass through in control mode; another Ctrl+] leaves local mode and forwards Ctrl+] if control is enabled.
 Default ANSI detail: quadrant. Default quality: high (1920x1080); ultra requests up to 3840x2160.
 Display index is zero-based. ANSI cannot reproduce full desktop text at fit scale.
 --fps controls local output; negotiated previews use supported 1/8/15 FPS.
@@ -658,6 +661,9 @@ int main(int argc, char **argv) {
                 {"stdin_tty", IsTty(0)},
                 {"stdout_tty", IsTty(1)},
                 {"term", SafeText(Env("TERM"))},
+                {"terminal_program", SafeText(Env("TERM_PROGRAM"))},
+                {"input_shortcuts", "local_commands_v2"},
+                {"transport_diagnostics", true},
                 {"utf8", v.utf8},
                 {"colors", v.colors},
                 {"multiplexer", !Env("TMUX").empty() || !Env("STY").empty()},
@@ -668,19 +674,27 @@ int main(int argc, char **argv) {
       std::cout << d.dump(argc == 3 ? -1 : 2) << "\n";
       return 0;
     }
-    if (command != "view" && command != "bridge")
-      throw std::invalid_argument("unknown command; use --help");
+    int i = 2;
+    if (command != "view" && command != "bridge") {
+      if (command.find_first_not_of("0123456789") != std::string::npos)
+        throw std::invalid_argument(
+            "expected a 9-digit device ID or a command; use --help");
+      command = "view";
+      i = 1;
+    }
     SessionOptions options;
     std::string renderer = "auto", device;
     AnsiDetail detail = AnsiDetail::Quadrant;
     double zoom = 1;
     bool control = false, stdio = false, native = false;
     int secret_fd = 3;
-    int i = 2;
     if (command == "view") {
-      if (argc <= 2)
+      if (i >= argc)
         throw std::invalid_argument("device ID required");
       device = argv[i++];
+      if (device.size() != 9 ||
+          device.find_first_not_of("0123456789") != std::string::npos)
+        throw std::invalid_argument("device ID must contain 9 digits");
     }
     auto number = [](const std::string &s, int lo, int hi) {
       size_t used = 0;
@@ -739,6 +753,13 @@ int main(int argc, char **argv) {
     }
     if (Redirect(2, 1) < 0)
       throw std::runtime_error("cannot isolate protocol output");
+    std::cerr << json{{"event", "startup"},
+                      {"executable", SafeText(argv[0], 4096)},
+                      {"terminal_program", SafeText(Env("TERM_PROGRAM"))},
+                      {"input_shortcuts", "local_commands_v2"},
+                      {"log_directory", options.log_directory}}
+                     .dump()
+              << "\n";
     try {
       return command == "view" ? View(options, device, renderer, control,
                                       output.value, detail, zoom, native)
@@ -746,6 +767,9 @@ int main(int argc, char **argv) {
     } catch (const std::exception &e) {
       if (command == "view") {
         std::string msg = "crossdesk-cli: " + SafeText(e.what()) + "\r\n";
+        if (std::string(e.what()) == "connection_lost")
+          msg += "The remote connection was lost after connecting.\r\n";
+        msg += "Diagnostics: " + SafeText(options.log_directory) + "\r\n";
         Write(output.value, msg.data(), msg.size());
       }
       throw;

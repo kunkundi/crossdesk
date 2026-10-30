@@ -12,7 +12,7 @@
 | connect | device:9位数字字符串, display:0..63（默认0） | 从专用 password fd 读取至换行/EOF（最多256字节、等待5秒），开始异步注册/连接；ok不是远端已连接 |
 | status | 无 | 返回当前状态 |
 | control | enabled:boolean | 显式启停控制；关闭时释放输入 |
-| input | data:string，最多16KiB | 终端原始按键/UTF-8/bracketed paste/SGR鼠标；只读时 c 开启控制、q/Ctrl+C 退出，d/鼠标点击进入细节，+/-/滚轮缩放，方向键或 i 上、j 左、k 下、l 右平移，f 全景；Ctrl+] 打开本地命令，随后 c 切换控制、q 退出或视图键调整一次画面，Esc/Ctrl+C 取消；控制模式中 Ctrl+T/Ctrl+C 传给远端，Ctrl+] 两次传递远端 Ctrl+] |
+| input | data:string，最多16KiB | 终端原始按键/UTF-8/bracketed paste/SGR鼠标；只读时 c 开启控制、q/Ctrl+C 退出，d/鼠标点击进入细节，+/-/滚轮缩放，方向键或 i 上、j 左、k 下、l 右平移，f 全景；Ctrl+] 打开本地命令，随后 c 选择返回后的控制状态、q 退出或视图键连续调整画面，Esc/Ctrl+C 手动返回；控制模式中 Ctrl+T/Ctrl+C 传给远端，本地模式中再按 Ctrl+] 手动返回，并在返回控制模式时传递远端 Ctrl+] |
 | display | index:0..63 | 选择已广告的零起始显示器，提升 generation |
 | ack | frame_id、generation：非负整数 | 确认宿主消费帧；匹配当前等待帧才开放下一帧 |
 | disconnect | 无 | 释放输入、结束当前媒体会话 |
@@ -30,7 +30,7 @@
 
 状态事件每秒最多一次：`{"event":"state","status":{...},"output_bytes":123,"submitted_frames":3,"elapsed_seconds":1.5}`。status 含 registering/connecting/connected/failed/closed/idle、client_id（当前或刚结束会话的 `cli-xxxxxxxxx`，注册前为空）、error、control、generation、显示器、文本/预览能力、预览确认状态、请求的 preview_width/height/quality/bitrate_bps、帧计数与网络统计。接收/提交 FPS 由相应计数的增量除以时间增量计算。
 
-状态和成功响应中的 `status.command_mode` 表示正在等待本地命令，此时 `control=false`，远端输入暂停；执行或取消命令后恢复此前模式。`status.exit_requested` 表示用户按键请求退出，宿主可据此关闭组件。宿主应从 `input` 响应立即更新命令提示，不必等待下一次状态事件；不要自行截获 `Ctrl+]` 退出。显式 `control` 请求会结束命令状态。具体快捷键见 [终端客户端](terminal-client.md)。
+状态和成功响应中的 `status.command_mode` 表示处于持续本地命令模式，此时 `control=false`，远端输入暂停；`status.resume_control` 表示手动返回后是否启用控制。执行命令、未知按键或粘贴不会退出此模式，失焦或输入溢出只会将返回模式设为只读。`Esc` / `Ctrl+C` 或再次 `Ctrl+]` 手动返回；`status.exit_requested` 表示用户按键请求退出，宿主可据此关闭组件。宿主应从 `input` 响应立即更新命令提示，不必等待下一次状态事件；不要自行截获 `Ctrl+]` 退出。显式 `control` 请求只更新所选控制状态，在本地模式中仍暂停远端输入。新建连接或断开会重置本地模式。具体快捷键见 [终端客户端](terminal-client.md)。
 
 边界：输入每条及当前解析缓冲上限64KiB、嵌套32层；响应队列64条；输出一条在途消息上限2MiB；1MiB/s；最多一条待 ACK 帧；一个最新待渲染 NV12 加一个最近画面的重绘缓存。协议错误明确响应；超限缓冲后结束。EOF 清理会话，完整的已收请求按序处理，不完整末尾报错；最多两秒排空输出后退出。宿主应持续消费响应，不能无限发送而不读取。失去连接后的释放只能尽力发送。
 

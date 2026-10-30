@@ -54,7 +54,7 @@ bool KittyReply(const std::string &response);
 // Incremental parser: protocol replies and unknown escapes are consumed
 // locally. Key taps always release immediately; paste uses the UTF-8 text
 // protocol. In command_mode, control records the mode to restore while the
-// session's remote input is suspended.
+// session's remote input is suspended until the user explicitly leaves the mode.
 class Input {
 public:
   void Feed(const std::string &bytes, ControllerSession &, const Grid *grid);
@@ -62,6 +62,7 @@ public:
   std::string error;
   double zoom = 1, center_x = .5, center_y = .5;
   uint64_t view_revision = 0;
+  uint64_t mouse_reports = 0;
 
 private:
   std::string pending_;

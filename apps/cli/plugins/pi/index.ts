@@ -25,7 +25,7 @@ export default function crossdesk(pi: ExtensionAPI) {
     description: "Open a human-only remote desktop view (Ctrl+] for commands)",
     handler: async (args, ctx) => {
       if (ctx.mode !== "tui" || !ctx.hasUI || !process.stdin.isTTY || !process.stdout.isTTY) {
-        ctx.ui.notify("CrossDesk embedded view requires Pi interactive TUI. Run crossdesk-cli view <device-id> in a terminal.", "warning");
+        ctx.ui.notify("CrossDesk embedded view requires Pi interactive TUI. Run crossdesk-cli <device-id> in a terminal.", "warning");
         return;
       }
       if (stop) { ctx.ui.notify("A CrossDesk view is already open", "warning"); return; }
@@ -118,7 +118,9 @@ export default function crossdesk(pi: ExtensionAPI) {
                   if (Number.isSafeInteger(message.status.generation)) generation = message.status.generation;
                   control = message.status.control === true;
                   commandMode = message.status.command_mode === true;
-                  status = clean(message.status.state) + (commandMode ? " LOCAL COMMAND" : control ? " CONTROL" : " READ ONLY");
+                  status = clean(message.status.state) + (commandMode
+                    ? " LOCAL COMMAND / " + (message.status.resume_control === true ? "CONTROL PAUSED" : "READ ONLY")
+                    : control ? " CONTROL" : " READ ONLY");
                   if (message.status.error) error = clean(message.status.error);
                   if (message.status.state !== "connected") lines = [];
                 }
@@ -157,7 +159,7 @@ export default function crossdesk(pi: ExtensionAPI) {
               const ack = frame; frame = undefined;
               if (ack) queueMicrotask(() => send("ack", ack)); // Host consumed the frame; not a physical display timestamp.
               const hint = bridgeStopped ? "q / Esc / Ctrl+C close"
-                : commandMode ? "c control q quit Esc cancel | i up j left k down l right | +/- zoom f fit d detail"
+                : commandMode ? "Esc/Ctrl+C return | c toggle q quit | arrows/ijkl pan +/- zoom f fit d detail"
                 : control ? "Keys -> remote | Ctrl+] then c release, q quit"
                 : "c control q quit ? help | i up j left k down l right | +/- zoom f fit d detail";
               return [truncateToWidth(`CrossDesk ${device} | ${status} ${native ? "detail" : "fit"} x${zoom} | Ctrl+] commands`, width),

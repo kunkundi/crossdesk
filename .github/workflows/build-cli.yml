@@ -29,14 +29,8 @@ jobs:
           - runner: windows-2022
             target: win32-x64
             arch: x64
-          - runner: windows-11-arm
-            target: win32-arm64
-            arch: arm64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
-    defaults:
-      run:
-        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
@@ -58,12 +52,18 @@ jobs:
         run: sh apps/cli/scripts/prepare-deps.sh
       - name: Configure macOS
         if: runner.os == 'macOS'
-        run: xmake f -y -a ${{ matrix.arch }} -m release --target_minver=13.0 --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n
-      - name: Configure Linux or Windows
-        if: runner.os != 'macOS'
-        run: xmake f -y -a ${{ matrix.arch }} -m release --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n
+        run: xmake f -y -p macosx -a ${{ matrix.arch }} -m release --target_minver=13.0 --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n
+      - name: Configure Linux
+        if: runner.os == 'Linux'
+        run: xmake f -y -p linux -a ${{ matrix.arch }} -m release --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n
+      - name: Configure Windows
+        if: runner.os == 'Windows'
+        run: xmake f -y -p windows -a ${{ matrix.arch }} -m release --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n
       - name: Build
         run: xmake build crossdesk-cli
+      - name: Sign macOS CLI
+        if: runner.os == 'macOS'
+        run: codesign --force --sign - build/macosx/${{ matrix.arch }}/release/crossdesk-cli
       - name: Report native environment
         run: xmake run crossdesk-cli doctor --json
       - name: Package native program and npm entry

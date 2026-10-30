@@ -31,10 +31,14 @@ bool Input::LocalKey(int key, ControllerSession &s, const Grid *grid) {
     s.SetControl(false);
     return true;
   }
-  bool command = command_mode;
-  command_mode = false;
-  if (key == 'q' || (key == 3 && !command)) {
+  if (command_mode && (key == 27 || key == 3)) {
+    command_mode = false;
+    s.SetControl(control);
+    return true;
+  }
+  if (key == 'q' || key == 3) {
     exit = true;
+    command_mode = false;
     control = false;
   } else if (key == 'c') {
     control = !control;
@@ -42,12 +46,12 @@ bool Input::LocalKey(int key, ControllerSession &s, const Grid *grid) {
              key == 'd' || key == 'i' || key == 'j' || key == 'k' ||
              key == 'l') {
     Navigate(char(key), grid);
-  } else if (!command) {
+  } else if (!command_mode) {
     return false;
-  } else if (key != 27 && key != 3) {
-    error = "Unknown local command; Ctrl+] for help";
+  } else {
+    error = "Unknown local command; ? for help";
   }
-  s.SetControl(control);
+  s.SetControl(control && !command_mode);
   return true;
 }
 void Input::Navigate(char key, const Grid *grid) {
@@ -94,7 +98,6 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
   if (pending_.size() + bytes.size() > 32768) {
     pending_.clear();
     pasting_ = false;
-    command_mode = false;
     s.SetControl(false);
     control = false;
     return;
@@ -117,11 +120,8 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
       auto end = pending_.find("\033[201~");
       if (end == std::string::npos)
         return; // bounded by 32 KiB; one UTF-8 transaction
-      if (command_mode) {
-        // Pasted text must never become local commands or leak to the remote.
-        command_mode = false;
-        s.SetControl(control);
-      } else if (control && !s.Text(pending_.substr(0, end)))
+      // Drop local-mode paste without leaving the mode or running commands.
+      if (control && !command_mode && !s.Text(pending_.substr(0, end)))
         error = "Remote UTF-8 text input unavailable";
       pending_.erase(0, end + 6);
       pasting_ = false;
@@ -159,7 +159,6 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
         pending_.erase(0, end + 1);
         if (seq == "\033[O") {
           control = false;
-          command_mode = false;
           s.SetControl(false);
           continue;
         }
@@ -224,6 +223,8 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
           } else
             mouse = mouse && cur == limit;
         }
+        if (mouse)
+          ++mouse_reports;
         if (grid && mouse && !command_mode) {
           auto pos = MapPointer(*grid, x - 1, y - 1);
           if (!control) {

@@ -63,7 +63,7 @@ function inspect(binary, target) {
       .sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).at(-1);
   } else {
     const offset = data.length >= 64 ? data.readUInt32LE(60) : data.length;
-    const machine = process.arch === 'arm64' ? 0xaa64 : 0x8664;
+    const machine = 0x8664;
     if (data.toString('ascii', 0, 2) !== 'MZ' || offset + 6 > data.length ||
         data.readUInt32LE(offset) !== 0x4550 || data.readUInt16LE(offset + 4) !== machine)
       throw new Error('Expected a Windows PE executable matching the current CPU.');
@@ -76,7 +76,7 @@ function inspect(binary, target) {
            !fs.existsSync(path.join(process.env.SystemRoot, 'System32', dependency))))
         throw new Error(`Unbundled Windows runtime: ${dependency}. Build with static runtimes (MT).`);
     }
-    info.minimumOS = process.arch === 'arm64' ? 'Windows 11' : 'Windows 10 (VT console)';
+    info.minimumOS = 'Windows 10 (VT console)';
   }
   const doctor = JSON.parse(run(binary, ['doctor', '--json'], { timeout: 15000 }));
   if (doctor.bridge_version !== 1) throw new Error('Native binary does not report the expected bridge version.');
@@ -135,7 +135,7 @@ try {
   // Keep desktop build definitions for Xmake's initial option discovery;
   // desktop application sources and resources are intentionally not bundled.
   for (const entry of ['apps/cli', 'apps/desktop/xmake',
-                       'libs/controller/include/controller_session.h',
+                       'libs/controller/include',
                        'libs/controller/src', 'libs/terminal', 'libs/wire/include',
                        'libs/wire/src', 'deps/submodules/minirtc',
                        'deps/submodules/xmake.lua', 'deps/thirdparty', 'deps/patches', 'xmake.lua',

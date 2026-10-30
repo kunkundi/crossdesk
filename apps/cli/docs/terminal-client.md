@@ -17,21 +17,21 @@ xmake run crossdesk-cli doctor --json
 
 macOS 的 MiniRTC 依赖仍链接 VideoToolbox/CoreMedia 和 GLib 声明的 AppKit 等系统框架；CLI 不创建 GUI、采集器或音频设备。硬件解码参数显式关闭。Linux 无需 DISPLAY/WAYLAND_DISPLAY；本轮尚未在 Linux 主机实际构建验证。
 
-Windows 产物为 `build/windows/<arch>/release/crossdesk-cli.exe`；先在 Git Bash 中执行 `sh apps/cli/scripts/prepare-deps.sh`，然后可在开发者 PowerShell 中执行上述 Xmake 命令。Windows 使用 Console / ConPTY 的原生键盘、鼠标事件和 VT 输出，保存并恢复控制台模式与代码页；无需 WSL。Windows Terminal、现代 PowerShell / CMD 和 VS Code 的 ConPTY 终端属于目标运行环境，仍需实机验收。Git Bash 的独立 mintty 窗口没有原生控制台时，应从 Windows Terminal 的 Git Bash 配置启动。
+Windows 仅支持 x64，产物为 `build/windows/x64/release/crossdesk-cli.exe`；先在 Git Bash 中执行 `sh apps/cli/scripts/prepare-deps.sh`，然后在开发者 PowerShell 中执行上述 Xmake 命令，配置时额外指定 `-p windows -a x64`。在 Git Bash 中构建时同样必须指定 `-p windows`，避免被识别为 MSYS 平台。Windows 使用 Console / ConPTY 的原生键盘、鼠标事件和 VT 输出，保存并恢复控制台模式与代码页；无需 WSL。Windows Terminal、现代 PowerShell / CMD 和 VS Code 的 ConPTY 终端属于目标运行环境，仍需实机验收。Git Bash 的独立 mintty 窗口没有原生控制台时，应从 Windows Terminal 的 Git Bash 配置启动。
 
 预编译 npm 包的用户无需构建工具，见 [npm 分发](npm-distribution.md)。
 
 ## 连接与身份
 
 ```sh
-crossdesk-cli view 123456789
-crossdesk-cli view 123456789 --renderer ansi --fps 8 --quality high --zoom native
-crossdesk-cli view 123456789 --renderer kitty --quality ultra --zoom native --display 0
-crossdesk-cli view 123456789 --control
-crossdesk-cli view 123456789 --server your-server.example --port 9099
+crossdesk-cli 123456789
+crossdesk-cli 123456789 --renderer ansi --fps 8 --quality high --zoom native
+crossdesk-cli 123456789 --renderer kitty --quality ultra --zoom native --display 0
+crossdesk-cli 123456789 --control
+crossdesk-cli 123456789 --server your-server.example --port 9099
 ```
 
-设备 ID 必须是 9 位数字，以上数字仅示例。默认信令地址沿用当前 CrossDesk：`api.crossdesk.cn:9099`。密码从本地终端隐藏输入（POSIX `/dev/tty`、Windows `CONIN$` / `CONOUT$`），不提供密码命令行参数。CLI 不读取、不修改桌面配置。每次连接直接用 `cli` 请求服务端分配临时 `cli-xxxxxxxxx` ID（后缀为 9 位数字），注册、Join 和媒体使用同一个 Peer。CLI 仅作为控制端，不申请普通数字身份或 `C-` 身份，也不保存本机密码或重连凭据。每次启动或重新连接都会申请新的 ID；断开后服务端按 Web 临时身份的规则清理注册记录。
+直接将设备 ID 作为第一个参数即可连接；`crossdesk-cli view <设备ID> [选项]` 保留为兼容别名，支持相同选项。设备 ID 必须是 9 位数字，保留前导零，以上数字仅示例。默认信令地址沿用当前 CrossDesk：`api.crossdesk.cn:9099`。密码从本地终端隐藏输入（POSIX `/dev/tty`、Windows `CONIN$` / `CONOUT$`），不提供密码命令行参数。CLI 不读取、不修改桌面配置。每次连接直接用 `cli` 请求服务端分配临时 `cli-xxxxxxxxx` ID（后缀为 9 位数字），注册、Join 和媒体使用同一个 Peer。CLI 仅作为控制端，不申请普通数字身份或 `C-` 身份，也不保存本机密码或重连凭据。每次启动或重新连接都会申请新的 ID；断开后服务端按 Web 临时身份的规则清理注册记录。
 
 需先部署支持 `cli` 注册的新版 crossdesk-server；旧服务端会登录失败，本客户端不会回退为普通设备身份。桥接 `status.client_id` 返回服务端分配的 ID。
 
@@ -41,7 +41,7 @@ crossdesk-cli view 123456789 --server your-server.example --port 9099
 
 ## ANSI、Kitty 与 SSH
 
-ANSI 默认使用四象限字符：每个字符从 2×2 样本选择误差最小的两个颜色和象限形状，比原先上下半方块多一倍水平采样点；每个字符仍只有前景/背景两色。使用 `--ansi-detail half` 可回到上下半方块以兼容字体。缩小时采用面积加权滤波，避免最近邻采样漏掉细线。支持 TrueColor、256 色和基础 8 色，256 色选择实际颜色立方体或灰阶条中更接近的颜色。环境的 COLORTERM/TERM 决定颜色模式；非 UTF-8 locale 使用背景色空格。TERM=dumb、非 TTY 输出明确拒绝 view，不输出全屏转义序列。
+ANSI 默认使用四象限字符：每个字符从 2×2 样本选择误差最小的两个颜色和象限形状，比原先上下半方块多一倍水平采样点；每个字符仍只有前景/背景两色。使用 `--ansi-detail half` 可回到上下半方块以兼容字体。缩小时采用面积加权滤波，避免最近邻采样漏掉细线。支持 TrueColor、256 色和基础 8 色，256 色选择实际颜色立方体或灰阶条中更接近的颜色。环境的 COLORTERM/TERM 决定颜色模式；非 UTF-8 locale 使用背景色空格。TERM=dumb、非 TTY 输出明确拒绝交互连接，不输出全屏转义序列。
 
 画面按字符单元比例等比缩放，留黑边及状态栏，默认假定字符宽高比 0.5；TTY 提供像素尺寸时使用其比例。每次只输出变化行，合并连续颜色设置；缩放在完整输出边界清理旧画面。上限 240 列、100 画面行；默认预留两行及一列，避免自动换行。
 
@@ -53,7 +53,7 @@ Kitty 通过终端字节流发送 zlib 压缩的内联 RGB/Base64（每块至多
 
 ```sh
 ssh -t your-server
-crossdesk-cli view 123456789 --renderer ansi --fps 8
+crossdesk-cli 123456789 --renderer ansi --fps 8
 ```
 
 用户本地终端负责显示 SSH 字节流。ANSI、Kitty over SSH 和 SSH+tmux 的实机互通尚未验证。无 GUI 指主控客户端；被控端仍需要可捕获的图形会话。
@@ -75,24 +75,26 @@ crossdesk-cli view 123456789 --renderer ansi --fps 8
 
 转换与输出在拥有会话的事件循环，媒体回调独立。输出至多一个完整消息（2MiB），以 1MiB/s 令牌预算分块非阻塞写入；不能开始新画面时保留最新解码帧。ANSI 差分基准只在整帧输出完成后提交。Pi 桥接另要求消费帧 ACK，最多一帧等待 ACK，输入映射只在对应 ACK 后切换到新网格。状态栏优先在完整画面输出之间更新，避免大图持续刷新时状态饥饿；可写事件唤醒短写重试，仍遵守字节预算。控制事件至多 64 条，协议输入 64KiB/嵌套 32 层，输入粘贴缓冲 32KiB，文本单次最多 16KiB。
 
-统计包括收到帧数、被替换帧数、非法帧、等待帧数、实际完整提交次数、输出字节数、运行秒数、最近本地排队时间、网络码率/RTT/SRTP。通过计数差/时间差可得到区间 FPS；view 结束日志另给平均提交 FPS。写入 TTY 完成不等于屏幕显示完成，本地排队时间不是端到端延迟。
+统计包括收到帧数、被替换帧数、非法帧、等待帧数、实际完整提交次数、输出字节数、运行秒数、最近本地排队时间、网络码率/RTT/SRTP。通过计数差/时间差可得到区间 FPS；交互连接结束日志另给平均提交 FPS。写入 TTY 完成不等于屏幕显示完成，本地排队时间不是端到端延迟。
 
 ## 输入与退出
 
-默认只读、静音。`--control` 或只读时按 `c` 明确启用输入。`Ctrl+]` 是本地命令前缀：先按下并松开，再按下表中的命令键。状态栏即时显示当前模式与可用按键，单按前缀不会退出。
+默认只读、静音。`--control` 或只读时按 `c` 明确启用输入。`Ctrl+]` 进入持续的本地命令模式：先按下并松开，再按下表中的命令键，可以连续执行多个命令。状态栏即时显示当前模式与可用按键。
+
+macOS 自带 Terminal 还需要在当前窗口勾选“显示 → 允许鼠标报告”（View → Allow Mouse Reporting）。CLI 会启用鼠标报告，但无法覆盖 Terminal 关闭此选项的设置；未勾选时，点击、拖动和滚轮事件不会传给 CLI。参见 [Apple 官方说明](https://support.apple.com/zh-cn/guide/terminal/trmlc69728a5/mac)。
 
 | 操作 | 只读模式 | 控制模式 |
 |---|---|---|
 | 开启／关闭远端控制 | `c` | `Ctrl+]`，再按 `c` |
 | 退出 CLI | `q` 或 `Ctrl+C` | `Ctrl+]`，再按 `q` |
-| 显示本地命令提示 | `?` 或 `Ctrl+]` | `Ctrl+]` |
+| 进入本地命令模式 | `?` 或 `Ctrl+]` | `Ctrl+]` |
 | 放大／缩小 | `+` / `=` / `-` | `Ctrl+]`，再按对应键 |
 | 原始细节／完整画面 | `d`（detail）/ `f`（fit），相邻字母键 | `Ctrl+]`，再按对应键 |
 | 平移 | 方向键或 `i` 上、`j` 左、`k` 下、`l` 右 | `Ctrl+]`，再按对应键 |
 
-进入本地命令状态时暂停远端输入，并释放已记录按键／鼠标；执行一个命令后恢复原模式，`c` 则切换模式。`Esc` 或 `Ctrl+C` 取消命令并恢复原模式；未知命令显示提示，不发送给远端。命令状态中的鼠标事件被忽略，bracketed paste 内容被丢弃并取消命令，不会触发快捷键。控制模式下普通 `c/q/?`、`Ctrl+T`、`Ctrl+C` 和单独 `Esc` 均传给远端；连续按两次 `Ctrl+]` 可向远端发送一次 `Ctrl+]`。目前不支持重绑定。
+进入本地命令模式时暂停远端输入，并释放已记录按键／鼠标。执行缩放、平移、`c` 或未知命令后均保持此模式；`c` 切换手动返回后是否启用远端控制，状态栏显示 `CONTROL PAUSED` 或 `READ ONLY`。`Esc` 或 `Ctrl+C` 手动返回所选模式；`q` 退出 CLI。再次按 `Ctrl+]` 也会返回，并在所选模式为控制时向远端发送一次 `Ctrl+]`。命令模式中的鼠标事件被忽略，bracketed paste 内容被丢弃，均不会退出模式或触发快捷键。窗口失焦或输入缓冲区溢出时继续保持本地命令模式，但将返回模式设为只读。控制模式下普通 `c/q/?`、`Ctrl+T`、`Ctrl+C` 和单独 `Esc` 均传给远端。目前不支持重绑定。
 
-只读时，`d` 或在画面中单击进入该位置的原始细节模式；`+` / `=` 放大、`-` 缩小（1～32倍），滚轮以鼠标指向为中心调整倍率。方向键或 `i/j/k/l` 分别向上/左/下/右平移，`f` 恢复完整画面。黑边点击被忽略。这些按键和鼠标在控制模式下仍传给远端；使用本地命令前缀可调整一次视图，持续查看时可先切回只读。放大、平移和只读鼠标定位不会向远端发送操作，也适用于静止画面。
+只读时，`d` 或在画面中单击进入该位置的原始细节模式；`+` / `=` 放大、`-` 缩小（1～32倍），滚轮以鼠标指向为中心调整倍率。方向键或 `i/j/k/l` 分别向上/左/下/右平移，`f` 恢复完整画面。黑边点击被忽略。这些按键和鼠标在控制模式下仍传给远端；进入本地命令模式后可连续调整视图，直至手动返回。放大、平移和只读鼠标定位不会向远端发送操作，也适用于静止画面。
 
 支持 SGR 鼠标移动、左右中键、拖动和滚轮；黑边不发送新点击，黑边处松开仍释放旧按钮。输入坐标映射到所选显示器，`--display` 是 HostInformation 列表的零起始索引，视频流为 Display1、Display2……
 
@@ -113,9 +115,9 @@ pi -e ./apps/cli/plugins/pi/index.ts
 
 在 Pi 输入 `/crossdesk` 或 `/crossdesk 123456789`。先输入 ID，再在自定义遮蔽组件输入密码。扩展使用独立 fd 3 写密码，随后关闭；不写配置、聊天、工具结果或模型上下文。查看组件与独立 CLI 使用相同的 `Ctrl+]` 命令前缀和上述模式按键，由 bridge 统一解析。插件默认请求 high 预览并显示 ANSI 象限字符行，支持同样的只读细节/放大/平移键，颜色深度依据终端环境回退，由 Pi 自身布局和刷新；不直接占用 TTY，不发送 Kitty 图形或自行打开鼠标报告。
 
-需要全局发现时，把整个 `apps/cli/plugins/pi` 目录复制到 `~/.pi/agent/extensions/crossdesk/` 后重启 Pi 或执行 `/reload`。卸载时先关闭视图，删除该目录并 `/reload`；使用 `-e` 时从启动参数移除即可。无需修改包中的密码或设备配置。默认连接官方信令；自建信令当前通过独立 view 命令使用，插件尚无服务器设置界面。
+需要全局发现时，把整个 `apps/cli/plugins/pi` 目录复制到 `~/.pi/agent/extensions/crossdesk/` 后重启 Pi 或执行 `/reload`。卸载时先关闭视图，删除该目录并 `/reload`；使用 `-e` 时从启动参数移除即可。无需修改包中的密码或设备配置。默认连接官方信令；自建信令当前通过独立 CLI 连接命令使用，插件尚无服务器设置界面。
 
-仅在 `ctx.mode === "tui"`、hasUI 且进程双向 TTY 时打开组件。RPC/print/json 返回独立播放器提示，不声称内嵌视频。UI 关闭/会话退出先关闭 bridge stdin，超时 SIGTERM，再超时 SIGKILL。bridge 尚未就绪或已经停止时，组件可直接用 `q`、`Esc` 或 `Ctrl+C` 关闭。SDK 类型和模拟 UI 生命周期已验证，真实 Pi TUI 视觉刷新、增强按键与鼠标传递未实机验收。真实设备的 bridge 与独立 view 验证见 [验证记录](validation.md)。
+仅在 `ctx.mode === "tui"`、hasUI 且进程双向 TTY 时打开组件。RPC/print/json 返回独立播放器提示，不声称内嵌视频。UI 关闭/会话退出先关闭 bridge stdin，超时 SIGTERM，再超时 SIGKILL。bridge 尚未就绪或已经停止时，组件可直接用 `q`、`Esc` 或 `Ctrl+C` 关闭。SDK 类型和模拟 UI 生命周期已验证，真实 Pi TUI 视觉刷新、增强按键与鼠标传递未实机验收。真实设备的 bridge 与独立 CLI 连接验证见 [验证记录](validation.md)。
 
 官方依据：[扩展文档](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/extensions.md)、[TUI 文档](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/tui.md)、[Kitty 图形协议](https://sw.kovidgoyal.net/kitty/graphics-protocol/)。
 
@@ -130,8 +132,10 @@ pi -e ./apps/cli/plugins/pi/index.ts
 - `display_not_available`：换成远端声明的索引；单会话一次只显示一个屏幕。
 - `media_initialization_failed`：检查编译依赖和本地媒体运行环境。
 - 只读下按键不会发送到远端；远端未声明文本协议时文本输入不可用。
-- 日志在进程创建的私有临时目录（POSIX `/tmp/crossdesk-cli-*`、Windows `%TEMP%\crossdesk-cli-*`）。view 的摘要在 client.log；底层诊断默认关闭且敏感 Join 日志已修补。目录不保存密码；使用完可删除。错误退出信息在恢复终端后显示。
-- `doctor --json` 是环境报告，不会联网登录、主动探测 Kitty 或证明远端可连接。
+- 日志在进程创建的私有临时目录（POSIX `/tmp/crossdesk-cli-*`、Windows `%TEMP%\crossdesk-cli-*`）。交互连接的摘要在 client.log，包含收到的终端鼠标事件数 `mouse_reports`；transport.log 只记录白名单中的 ICE/DTLS 状态及本地控制开关，不记录密码、SDP 或原始信令。使用完可删除。错误退出信息在恢复终端后显示，并给出本次日志目录。
+- `connection_failed` 表示连接建立失败；`connection_lost` 表示连接成功后传输失效。xmake 随后的 `execv ... failed(1)` 表示程序以错误码 1 退出，本身不代表进程崩溃。遇到控制失效时，对照 transport.log 中的控制开关和连接状态；`mouse_reports` 为 0 表示终端没有向 CLI 提供可识别的 SGR 鼠标事件。
+- 如果整个 macOS Terminal 窗口退出且 CLI 记录 `output closed`，还应检查系统 DiagnosticReports 中的 Terminal 报告。已观察到 Terminal 2.15 在创建标签页并调整窗口尺寸时发生 `TTLogicalScreen expandUnicharOffsetCacheToLine:` 行缓存越界；这与 CLI 的 `connection_failed` 不同。临时可在独立窗口运行，避开该标签页操作，不能据此认为 Terminal 缺陷已修复。
+- `doctor --json` 是环境报告，不会联网登录、主动探测 Kitty 或证明远端可连接。 `input_shortcuts=local_commands_v2` 表示支持本文的持续本地命令模式；启动日志同时记录实际执行路径，以便区分不同工程的构建产物。
 
 第一轮无音频播放或音频订阅 API，SSH 服务器上的声音不会传回本地。无后台守护进程、共享媒体 Broker、IP 直连、MCP 或自动截图。其他宿主可以使用 [私有桥接](bridge-protocol.md)，没有可靠自定义 UI 时打开独立终端或给出播放器命令。
 

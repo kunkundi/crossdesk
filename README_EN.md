@@ -1,6 +1,6 @@
 <div align="center">
   <img src="docs/images/crossdesk-banner.svg" width="420" alt="CrossDesk logo with the icon on the left and a two-tone wordmark on the right" />
-  <p>A lightweight, cross-platform remote desktop for computers, browsers, and mobile devices, with DeskHub for viewing and controlling multiple desktops.</p>
+  <p>A lightweight, cross-platform remote desktop for computers, browsers, mobile devices, and terminals, with DeskHub for viewing and controlling multiple desktops.</p>
   <p><a href="https://www.crossdesk.cn/">Website</a> · <a href="https://github.com/kunkundi/crossdesk/releases">Download</a> · <a href="https://web.crossdesk.cn/">Open Web Client</a> · <a href="README.md">中文</a></p>
 </div>
 
@@ -19,9 +19,9 @@
 
 </div>
 
-CrossDesk connects your computers from desktop, browser, and mobile clients, with **DeskHub** for viewing and controlling multiple devices together. It is built on [MiniRTC](https://github.com/kunkundi/minirtc) and supports self-hosting.
+CrossDesk connects your computers from desktop, browser, mobile, and terminal clients, with **DeskHub** for viewing and controlling multiple devices together. It is built on [MiniRTC](https://github.com/kunkundi/minirtc) and supports self-hosting.
 
-[Features](#features) · [Download and platforms](#download) · [Quick start](#quick-start) · [Direct IP](#lan-direct) · [Preview](#preview) · [User guide](docs/USER_GUIDE_EN.md) · [Self-hosting](#self-hosting) · [Build and feedback](#development) · [Sponsor](#sponsor)
+[Features](#features) · [Download and platforms](#download) · [Quick start](#quick-start) · [Terminal CLI](#cli) · [Direct IP](#lan-direct) · [Preview](#preview) · [User guide](docs/USER_GUIDE_EN.md) · [Self-hosting](#self-hosting) · [Build and feedback](#development) · [Sponsor](#sponsor)
 
 <a id="features"></a>
 
@@ -29,6 +29,7 @@ CrossDesk connects your computers from desktop, browser, and mobile clients, wit
 
 - **Cross-platform access:** control Windows, macOS, and Linux desktops from computers, browsers, or native iOS / Android clients. HarmonyOS PC and mobile clients are in development.
 - **Direct IP over LAN:** connect desktop clients using an IP address, port, and six-character password without a cloud signaling service. Each local IP has its own port; passwords can be remembered and recent devices are separated by mode.
+- **Terminal controller:** view and control remote desktops by device ID, with ANSI / Kitty rendering, zoom and pan, persistent local command mode, a Pi extension, and a build independent of the desktop GUI.
 - **DeskHub:** live multi-device previews, groups, enlarged control, group input, and batch file distribution.
 - **Video and audio:** H.264 / AV1, hardware codecs, remote audio, and in-session quality and frame-rate controls. Capabilities depend on the platform and device.
 - **Everyday controls:** monitor switching, keyboard and mouse input, shortcuts, text clipboard, and file transfer.
@@ -50,8 +51,9 @@ Get a package matching your OS and CPU architecture from the [website](https://w
 | HarmonyOS PC (development) | **Control + host**. API 26, arm64; build and sign a HAP with DevEco; physical-device validation is ongoing |
 | HarmonyOS phones / tablets (development) | **Control only**. API 20+, arm64; build and sign a HAP with DevEco; physical-device validation is ongoing |
 | Web | **Control only**. A WebRTC-capable browser; no client installation on the controlling device |
+| Terminal CLI (development) | **Control only**. Build targets: macOS / Linux (x64, arm64) and Windows (x64). Build from source; see the [CLI guide](apps/cli/README.md) (Chinese) for platform validation status |
 
-Requirements follow the current source and build configuration. Check the release notes for the downloaded package. Client capabilities are summarized under [Mobile and HarmonyOS](#mobile).
+Requirements follow the current source and build configuration. Check the release notes for the downloaded package. Client capabilities are summarized under [Terminal CLI](#cli) and [Mobile and HarmonyOS](#mobile).
 
 - **Linux:** use `crossdesk-linux-…deb` for an existing desktop, or `crossdesk-virtual-desktop-xfce-…deb` for a server needing a separate Xfce desktop. Choose one. See [installation details](docs/USER_GUIDE_EN.md#installation) and [headless operation](docs/HEADLESS_EN.md).
 - **macOS:** grant Screen Recording and Accessibility when prompted on first launch. These enable desktop capture and remote keyboard/mouse input. See [permissions](docs/USER_GUIDE_EN.md#installation).
@@ -122,6 +124,59 @@ Remote sessions support monitor switching, video quality and frame-rate controls
 - [Client settings and updates](docs/USER_GUIDE_EN.md#settings): general options, DeskHub video settings, and version checks.
 - [DeskHub technical guide](docs/deskhub.md) (Chinese): preview subscriptions, bandwidth allocation, protocol, and compatibility.
 
+<a id="cli"></a>
+
+## Terminal client CLI
+
+`crossdesk-cli` connects to a host by its 9-digit device ID and starts in read-only, silent mode. Standard terminals use ANSI character rendering; terminals supporting the Kitty graphics protocol can display pixel graphics. The CLI supports monitor selection, quality settings, detail zoom, panning, and optional keyboard/mouse control. It builds independently of the desktop GUI. The host still needs CrossDesk and a capturable graphical session, and the signaling service must support temporary `cli` identities.
+
+### Build and connect
+
+Install Git, Xmake 3.1.1 or later, a C++17 toolchain, and the platform dependencies. The following example uses a macOS / Linux shell; Windows Git Bash / Developer PowerShell steps are in the [CLI build guide](apps/cli/docs/terminal-client.md#构建与安装) (Chinese).
+
+```sh
+git clone --recurse-submodules https://github.com/kunkundi/crossdesk.git
+cd crossdesk
+./apps/cli/scripts/prepare-deps.sh
+xmake f -y --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n -m release
+xmake build crossdesk-cli
+xmake run crossdesk-cli doctor --json
+xmake run crossdesk-cli 123456789
+```
+
+For an existing checkout, run the dependency preparation and subsequent commands from the repository root. Replace `123456789` with the host's ID; the password prompt hides your input. `doctor` reports the local environment without connecting. The repository builds the desktop client by default; this configuration builds only the CLI. Set `CROSSDESK_BUILD_DESKTOP=y` to also build the desktop client. Binaries are placed in `build/<platform>/<arch>/release/`.
+
+An ANSI overview is limited by the terminal's character grid. Add `--quality high --zoom native`, or press `d` in the viewer, to inspect small text. `--renderer kitty` requires a terminal supporting that protocol. See the [terminal guide](apps/cli/docs/terminal-client.md) (Chinese) for rendering, mouse reporting, SSH, and terminal compatibility.
+
+### Control, navigation, and exit
+
+| Mode / key | Behavior |
+| --- | --- |
+| Read-only mode | `c` enables remote control; `q` or `Ctrl+C` exits the CLI |
+| Control mode | Keyboard/mouse input goes to the host; `Ctrl+]` enters local command mode and pauses remote input |
+| Local command mode | Stays active after commands; `c` selects whether control resumes when you leave; `q` exits the CLI |
+| `Esc` / `Ctrl+C` | Manually leave local command mode and return to the selected control or read-only mode |
+| `+` / `=` / `-` | Zoom in / out in read-only or local command mode |
+| `d` / `f` | Switch to native detail / full-desktop view in read-only or local command mode; clicking in read-only mode also opens detail at that point |
+| Arrow keys / `i j k l` | Pan in read-only or local command mode: `i` up, `j` left, `k` down, `l` right |
+
+Zooming, panning, or pressing `c` does not end `Ctrl+]` mode. The status bar shows `CONTROL PAUSED` / `READ ONLY` to indicate whether control will resume. In control mode, ordinary `c`, `q`, and `Ctrl+C` go to the host, so enter local command mode first for local actions. Pressing `Ctrl+]` again also leaves local mode and forwards that shortcut if control resumes.
+
+### Pi extension and feature scope
+
+The CLI includes a Pi custom TUI extension with the same input modes. Launch it from the repository root; for example, with a macOS Apple Silicon release build:
+
+```sh
+export CROSSDESK_CLI="$PWD/build/macosx/arm64/release/crossdesk-cli"
+pi -e ./apps/cli/plugins/pi/index.ts
+```
+
+On other platforms, set `CROSSDESK_CLI` to the absolute path of the native executable. Enter `/crossdesk` or `/crossdesk 123456789` in Pi and follow the password prompt. See the [Pi extension guide](apps/cli/docs/terminal-client.md#pi-扩展) (Chinese) for requirements and validation scope.
+
+The CLI currently provides ID-based viewing and input, without direct IP connections, audio playback, file transfer, or clipboard synchronization. Local builds and remote connections have been validated on macOS arm64. See the [validation record](apps/cli/docs/validation.md) (Chinese) for the remaining Linux / Windows, SSH / Kitty terminal, and actual Pi TUI checks. Platform build configurations and npm packaging do not establish that every platform is validated or that packages have been published.
+
+[CLI documentation](apps/cli/README.md) · [Terminal usage and troubleshooting](apps/cli/docs/terminal-client.md) · [Bridge protocol](apps/cli/docs/bridge-protocol.md) · [npm packaging and distribution](apps/cli/docs/npm-distribution.md) (detailed guides in Chinese)
+
 <a id="mobile"></a>
 
 ## Mobile and HarmonyOS
@@ -169,8 +224,7 @@ Host your own signaling and TURN services, then enable them under **Settings →
 
 ## Build and feedback
 
-- [Terminal client CLI](apps/cli/README.md) (Chinese): ANSI / Kitty remote viewing, optional keyboard and mouse control, and a Pi extension. The CLI can be built without the desktop GUI; npm packages are not published yet.
-
+- [Terminal client CLI](apps/cli/README.md) (Chinese): independent builds, terminal usage, Pi extension, bridge protocol, and npm packaging.
 - [Build from source](docs/BUILD_EN.md): desktop dependencies, build options, and packaging. Use the platform guides above for mobile builds.
 - [GUI architecture](docs/gui-architecture.md) (Chinese): desktop UI, platform implementation, and project structure.
 - [Connection architecture](docs/connection-architecture.md) (Chinese): discovery, authentication, negotiation, data paths, and lifecycle for ID and direct IP modes.

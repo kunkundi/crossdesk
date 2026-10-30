@@ -3,6 +3,5 @@
   "darwin-x64": { "os": "darwin", "cpu": "x64", "xmakePlatform": "macosx", "xmakeArch": "x86_64" },
   "linux-arm64": { "os": "linux", "cpu": "arm64", "libc": "glibc", "xmakePlatform": "linux", "xmakeArch": "arm64" },
   "linux-x64": { "os": "linux", "cpu": "x64", "libc": "glibc", "xmakePlatform": "linux", "xmakeArch": "x86_64" },
-  "win32-arm64": { "os": "win32", "cpu": "arm64", "xmakePlatform": "windows", "xmakeArch": "arm64" },
   "win32-x64": { "os": "win32", "cpu": "x64", "xmakePlatform": "windows", "xmakeArch": "x64" }
 }

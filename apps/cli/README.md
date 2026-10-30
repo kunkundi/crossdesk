@@ -2,14 +2,14 @@
 
 CrossDesk 的终端主控客户端，源码位于本仓库的 `apps/cli`。通过真实 MiniRTC ID 会话观看远程桌面；默认只读、静音。包含 ANSI 象限字符画面、局部放大和平移、Kitty 图形后端，以及 Pi 自定义 TUI 扩展。
 
-分发目标为 macOS、Linux 和 Windows 的原生终端客户端，包含 x64 / arm64。npm 包发布后可统一使用：
+分发目标为 macOS / Linux（x64、arm64）和 Windows（x64）的原生终端客户端。npm 包发布后可统一使用：
 
 ```sh
 npx crossdesk-cli@latest doctor --json
-npx crossdesk-cli@latest view 123456789
+npx crossdesk-cli@latest 123456789
 ```
 
-**当前尚未发布到 npm，也尚未完成三端实机验收。** 已加入平台包生成、自动选包入口和六个平台的 CI 构建配置；运行要求、打包与本地安装见 [npm 分发](docs/npm-distribution.md)。
+**当前尚未发布到 npm，也尚未完成三端实机验收。** 已加入平台包生成、自动选包入口和五个平台的 CI 构建配置；运行要求、打包与本地安装见 [npm 分发](docs/npm-distribution.md)。
 
 在 CrossDesk 仓库根目录执行以下命令构建 CLI：
 
@@ -18,10 +18,10 @@ npx crossdesk-cli@latest view 123456789
 xmake f -y --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n -m release
 xmake build crossdesk-cli
 xmake run crossdesk-cli doctor --json
-xmake run crossdesk-cli view 123456789 --quality high --zoom native
+xmake run crossdesk-cli 123456789 --quality high --zoom native
 ```
 
-最后一个设备 ID 是格式示例，使用时替换为你有权访问的设备。密码通过隐藏提示输入。只读时 `c` 开启控制、`q` 或 `Ctrl+C` 退出；点击目标或按 `d` 进入原始细节模式，`+/-` 或滚轮缩放，方向键或 `i` 上、`j` 左、`k` 下、`l` 右平移，`f` 回到完整桌面。任何模式下先按 `Ctrl+]` 打开本地命令提示，再按 `c` 切换控制、`q` 退出或视图按键调整一次画面，`Esc` 取消。控制模式中的 `Ctrl+T`、`Ctrl+C` 和普通按键均传给远端。ANSI 全屏缩略图仍受字符网格限制，默认请求 high 画质，阅读小字建议使用细节模式；支持 Kitty 协议的终端可使用 `--renderer kitty` 获得像素画面。
+`crossdesk-cli <设备ID> [选项]` 为默认连接方式，`view <设备ID>` 保留为兼容别名。最后一个设备 ID 是格式示例，使用时替换为你有权访问的设备。密码通过隐藏提示输入。只读时 `c` 开启控制、`q` 或 `Ctrl+C` 退出；点击目标或按 `d` 进入原始细节模式，`+/-` 或滚轮缩放，方向键或 `i` 上、`j` 左、`k` 下、`l` 右平移，`f` 回到完整桌面。任何模式下先按 `Ctrl+]` 进入持续本地命令模式，再按 `c` 选择返回后的控制状态、`q` 退出或视图按键连续调整画面，`Esc` / `Ctrl+C` 手动返回。控制模式中的 `Ctrl+T`、`Ctrl+C` 和普通按键均传给远端。ANSI 全屏缩略图仍受字符网格限制，默认请求 high 画质，阅读小字建议使用细节模式；支持 Kitty 协议的终端可使用 `--renderer kitty` 获得像素画面。
 
 - [构建、使用、Pi 安装和故障排查](docs/terminal-client.md)
 - [私有桥接协议](docs/bridge-protocol.md)

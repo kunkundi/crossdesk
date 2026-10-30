@@ -6,7 +6,6 @@ local credential_patch = path.join(source_dir, "deps/patches/minirtc-credential-
 
 add_requires("spdlog 1.14.1", {system = false})
 if is_plat("windows") then
-    set_runtimes("MT")
     add_requires("zlib 1.3.1", {system = false, configs = {shared = false}})
 end
 

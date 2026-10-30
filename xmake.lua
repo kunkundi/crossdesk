@@ -9,6 +9,11 @@ local desktop_platform = is_plat("windows", "macosx", "linux") or
 add_rules("mode.release", "mode.debug")
 set_languages("c++17")
 set_encodings("utf-8")
+if is_plat("windows") then
+    -- Shared wire targets and third-party packages must use the same CRT as
+    -- the native applications; a setting inside apps/cli does not reach them.
+    set_runtimes("MT")
+end
 add_requires("nlohmann_json 3.11.3")
 
 option("CROSSDESK_BUILD_DESKTOP")
