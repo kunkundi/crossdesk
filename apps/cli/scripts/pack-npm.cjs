@@ -22,6 +22,10 @@ function copy(from, to) {
 function json(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 }
+function tarballName(name, version) {
+  // npm pack writes @scope/name as scope-name-version.tgz.
+  return `${name.replace(/^@/, '').replace('/', '-')}-${version}.tgz`;
+}
 function inspect(binary, target) {
   const data = fs.readFileSync(binary);
   const info = { target, sha256: crypto.createHash('sha256').update(data).digest('hex') };
@@ -84,7 +88,7 @@ function inspect(binary, target) {
 }
 function pack(directory, output) {
   const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'package.json'), 'utf8'));
-  const expected = `${manifest.name}-${manifest.version}.tgz`;
+  const expected = tarballName(manifest.name, manifest.version);
   if (fs.existsSync(path.join(output, expected))) throw new Error(`Output already exists: ${expected}`);
   const args = ['pack', '--json', '--ignore-scripts', '--pack-destination', output];
   if (process.platform === 'win32' && !process.env.npm_execpath)
@@ -93,6 +97,7 @@ function pack(directory, output) {
     ? run(process.execPath, [process.env.npm_execpath, ...args], { cwd: directory })
     : run('npm', args, { cwd: directory });
   const [{ filename, size }] = JSON.parse(result);
+  if (filename !== expected) throw new Error(`Unexpected npm tarball name: ${filename}; expected ${expected}`);
   return { filename, size };
 }
 
@@ -111,10 +116,16 @@ try {
   const target = `${process.platform}-${process.arch}`;
   const platform = platforms[target];
   if (!platform) throw new Error(`No packaging target for ${target}`);
+  const packageNames = Object.values(platforms).map(({ packageName }) => packageName);
+  if (packageNames.some((name) => typeof name !== 'string' || name.length > 214 ||
+      !/^@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/.test(name)))
+    throw new Error('Every npm platform must declare a valid scoped packageName.');
+  if (new Set(packageNames).size !== packageNames.length)
+    throw new Error('Each npm platform must have a distinct packageName.');
   const version = fs.readFileSync(path.join(cliRoot, 'xmake.lua'), 'utf8').match(/set_version\("([^"]+)"\)/)?.[1];
   if (version !== project.version) throw new Error('apps/cli/package.json and apps/cli/xmake.lua versions must match.');
-  for (const name of [project.name, `${project.name}-${target}`]) {
-    const filename = `${name}-${version}.tgz`;
+  for (const name of [project.name, platform.packageName]) {
+    const filename = tarballName(name, version);
     if (fs.existsSync(path.join(output, filename))) throw new Error(`Output already exists: ${filename}`);
   }
   run('git', ['-C', path.join(root, 'deps/submodules/minirtc'), 'apply', '--reverse', '--check',
@@ -142,10 +153,15 @@ try {
                        'LICENSE', '.gitmodules'])
     copy(entry, path.join(native, 'source', entry));
   json(path.join(native, 'build-info.json'), { version, ...info });
-  fs.writeFileSync(path.join(native, 'README.md'), `# ${project.name}-${target}\n\nNative package for crossdesk-cli ${version}.\n\nRuntime requirements and linked libraries: [build-info.json](build-info.json).\n\nController and patched MiniRTC sources are included in source/. From source/, configure with xmake f -y --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n -m release, then run xmake build crossdesk-cli. External dependency notices and corresponding sources must accompany the product release; see source/apps/cli/docs/source-provenance.md.\n`);
+  fs.writeFileSync(path.join(native, 'README.md'), `# ${platform.packageName}\n\nNative ${target} dependency for [${project.name}](https://www.npmjs.com/package/${project.name}) ${version}, published under the ${platform.packageName.split('/')[0]} scope.\n\nInstall the cross-platform entry package with \`npm install -g ${project.name}\` or run \`npx ${project.name} doctor --json\`. This platform package contains the native binary and does not register a shell command.\n\nSource repository: [CrossDesk](${project.repository.url.replace(/^git\+/, '').replace(/\.git$/, '')}). Report problems at ${project.bugs.url}.\n\nRuntime requirements and linked libraries: [build-info.json](build-info.json).\n\nController and patched MiniRTC sources are included in source/. From source/, configure with xmake f -y --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n -m release, then run xmake build crossdesk-cli. External dependency notices and corresponding sources must accompany the product release; see source/apps/cli/docs/source-provenance.md.\n`);
+  const metadata = {
+    license: project.license, author: project.author, repository: project.repository,
+    homepage: project.homepage, bugs: project.bugs,
+    publishConfig: { access: 'public', registry: 'https://registry.npmjs.org/' },
+  };
   json(path.join(native, 'package.json'), {
-    name: `${project.name}-${target}`, version, description: `${project.description} (${target})`,
-    license: project.license, os: [platform.os], cpu: [platform.cpu],
+    ...metadata, name: platform.packageName, version, description: `${project.description} (${target})`,
+    os: [platform.os], cpu: [platform.cpu],
     ...(platform.libc ? { libc: [platform.libc] } : {}),
     files: ['bin', 'build-info.json', 'source', 'LICENSE', 'README.md'],
   });
@@ -155,12 +171,11 @@ try {
   copy('LICENSE', path.join(launcher, 'LICENSE'));
   fs.chmodSync(path.join(launcher, 'npm', 'cli.cjs'), 0o755);
   json(path.join(launcher, 'package.json'), {
-    name: project.name, version, description: project.description, license: project.license,
-    author: project.author, engines: project.engines,
+    ...metadata, name: project.name, version, description: project.description, engines: project.engines,
     bin: { 'crossdesk-cli': 'npm/cli.cjs' },
     os: ['darwin', 'linux', 'win32'], cpu: ['arm64', 'x64'],
     files: ['npm', 'docs', 'README.md', 'LICENSE'],
-    optionalDependencies: Object.fromEntries(Object.keys(platforms).map((key) => [`${project.name}-${key}`, version])),
+    optionalDependencies: Object.fromEntries(packageNames.map((name) => [name, version])),
   });
   // Finish both archives before publishing either one to the output directory.
   const archives = path.join(staging, 'archives');

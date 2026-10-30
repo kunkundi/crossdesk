@@ -9,7 +9,7 @@ npx crossdesk-cli@latest doctor --json
 npx crossdesk-cli@latest 123456789
 ```
 
-**当前尚未发布到 npm，也尚未完成三端实机验收。** 已加入平台包生成、自动选包入口和五个平台的 CI 构建配置；运行要求、打包与本地安装见 [npm 分发](docs/npm-distribution.md)。
+统一入口为 `crossdesk-cli`，五个平台依赖使用 `@chunkdash/crossdesk-cli-*`，由启动器自动选择。旧的无 scope 平台包不属于这套依赖；仅安装平台包不会注册 `crossdesk-cli` 命令。是否可安装以 npm 上完整版本的发布结果为准，三端实机验收尚未全部完成。运行要求、打包、本地安装与发布步骤见 [npm 分发](docs/npm-distribution.md)。
 
 在 CrossDesk 仓库根目录执行以下命令构建 CLI：
 

@@ -9,13 +9,14 @@ const { version } = require('../package.json');
 
 function main() {
   const target = `${process.platform}-${process.arch}`;
-  if (!platforms[target]) {
+  const platform = platforms[target];
+  if (!platform) {
     throw new Error(`No crossdesk-cli build for ${target}. Supported targets: ${Object.keys(platforms).join(', ')}.`);
   }
   if (process.platform === 'linux' && !process.report.getReport().header.glibcVersionRuntime) {
     throw new Error('This release requires glibc Linux. Alpine/musl needs a separate native build.');
   }
-  const packageName = `crossdesk-cli-${target}`;
+  const packageName = platform.packageName;
   let manifestPath;
   try {
     manifestPath = require.resolve(`${packageName}/package.json`);

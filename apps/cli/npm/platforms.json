@@ -1,7 +1,7 @@
 {
-  "darwin-arm64": { "os": "darwin", "cpu": "arm64", "xmakePlatform": "macosx", "xmakeArch": "arm64" },
-  "darwin-x64": { "os": "darwin", "cpu": "x64", "xmakePlatform": "macosx", "xmakeArch": "x86_64" },
-  "linux-arm64": { "os": "linux", "cpu": "arm64", "libc": "glibc", "xmakePlatform": "linux", "xmakeArch": "arm64" },
-  "linux-x64": { "os": "linux", "cpu": "x64", "libc": "glibc", "xmakePlatform": "linux", "xmakeArch": "x86_64" },
-  "win32-x64": { "os": "win32", "cpu": "x64", "xmakePlatform": "windows", "xmakeArch": "x64" }
+  "darwin-arm64": { "packageName": "@chunkdash/crossdesk-cli-darwin-arm64", "os": "darwin", "cpu": "arm64", "xmakePlatform": "macosx", "xmakeArch": "arm64" },
+  "darwin-x64": { "packageName": "@chunkdash/crossdesk-cli-darwin-x64", "os": "darwin", "cpu": "x64", "xmakePlatform": "macosx", "xmakeArch": "x86_64" },
+  "linux-arm64": { "packageName": "@chunkdash/crossdesk-cli-linux-arm64", "os": "linux", "cpu": "arm64", "libc": "glibc", "xmakePlatform": "linux", "xmakeArch": "arm64" },
+  "linux-x64": { "packageName": "@chunkdash/crossdesk-cli-linux-x64", "os": "linux", "cpu": "x64", "libc": "glibc", "xmakePlatform": "linux", "xmakeArch": "x86_64" },
+  "win32-x64": { "packageName": "@chunkdash/crossdesk-cli-windows-x64", "os": "win32", "cpu": "x64", "xmakePlatform": "windows", "xmakeArch": "x64" }
 }

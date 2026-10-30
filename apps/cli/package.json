@@ -5,6 +5,13 @@
   "description": "CrossDesk remote desktop controller for the terminal",
   "license": "GPL-3.0-only",
   "author": "DI JUNKUN",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kunkundi/crossdesk.git",
+    "directory": "apps/cli"
+  },
+  "homepage": "https://github.com/kunkundi/crossdesk#readme",
+  "bugs": { "url": "https://github.com/kunkundi/crossdesk/issues" },
   "engines": { "node": ">=22" },
   "scripts": {
     "pack:npm": "node scripts/pack-npm.cjs"
