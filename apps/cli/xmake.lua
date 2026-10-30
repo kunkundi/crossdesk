@@ -37,7 +37,7 @@ target_end()
 
 target("crossdesk-cli")
     set_kind("binary")
-    set_version("0.1.3")
+    set_version("0.1.4")
     add_deps("crossdesk_terminal")
     add_files("main.cpp")
     add_files(is_plat("windows") and "terminal_io_windows.cpp" or "terminal_io_posix.cpp")

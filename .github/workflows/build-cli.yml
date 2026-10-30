@@ -17,7 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-14
+          - runner: macos-15
             target: darwin-arm64
             arch: arm64
           - runner: macos-15-intel
