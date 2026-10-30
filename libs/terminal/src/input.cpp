@@ -21,6 +21,7 @@ bool Input::LocalKey(int key, ControllerSession &s, const Grid *grid) {
       command_mode = true;
       // Release held buttons and suspend remote input while choosing a command.
       s.SetControl(false);
+      mouse_buttons_ = 0;
     }
     return true;
   }
@@ -29,6 +30,7 @@ bool Input::LocalKey(int key, ControllerSession &s, const Grid *grid) {
   if (key == '?') {
     command_mode = true;
     s.SetControl(false);
+    mouse_buttons_ = 0;
     return true;
   }
   if (command_mode && (key == 27 || key == 3)) {
@@ -52,6 +54,8 @@ bool Input::LocalKey(int key, ControllerSession &s, const Grid *grid) {
     error = "Unknown local command; ? for help";
   }
   s.SetControl(control && !command_mode);
+  if (!control || command_mode)
+    mouse_buttons_ = 0;
   return true;
 }
 void Input::Navigate(char key, const Grid *grid) {
@@ -91,6 +95,65 @@ void Input::Navigate(char key, const Grid *grid) {
   center_y = std::clamp(center_y, 0.0, 1.0);
   ++view_revision;
 }
+void Input::Mouse(int b, int x, int y, bool release, ControllerSession &s,
+                  const Grid *grid) {
+  ++mouse_reports;
+  // Extra mouse buttons must not alias the three supported remote buttons.
+  if (!grid || command_mode || b < 0 || b >= 128)
+    return;
+  auto pos = MapPointer(*grid, x - 1, y - 1);
+  if (!control) {
+    if (pos && !release && ((b & 64) || b == 0)) {
+      center_x = pos->first;
+      center_y = pos->second;
+      Navigate((b & 64) ? ((b & 1) ? '-' : '+') : 'd', grid);
+    }
+    return;
+  }
+  if (!pos && !release)
+    return;
+  if (pos) {
+    pointer_x_ = pos->first;
+    pointer_y_ = pos->second;
+  }
+  const auto send = [&](int flag, int wheel = 0) {
+    if (s.Pointer(pointer_x_, pointer_y_, flag, wheel)) {
+      ++mouse_forwarded;
+      return true;
+    }
+    ++mouse_send_failures;
+    return false;
+  };
+  // Linux/X11 only positions the cursor on move events. A click or wheel
+  // report can arrive without prior motion, including over an SSH terminal.
+  // Always position before a button/scroll event; still release on failure.
+  if (pos && !send(0) && !release)
+    return;
+  if (b & 64) {
+    if (!release)
+      send((b & 2) ? 8 : 7, (b & 1) ? -120 : 120);
+    return;
+  }
+  if (b & 32)
+    return;
+  const int base = b & 3;
+  if (base == 3) {
+    // Legacy reports identify a release, but not which button was released.
+    if (release) {
+      for (unsigned i = 0; i < 3; ++i)
+        if ((mouse_buttons_ & (1u << i)) && send(2 + i * 2))
+          mouse_buttons_ &= ~(1u << i);
+    }
+    return;
+  }
+  const int index = base == 0 ? 0 : base == 1 ? 2 : 1;
+  if (send(1 + index * 2 + int(release))) {
+    if (release)
+      mouse_buttons_ &= ~(1u << index);
+    else
+      mouse_buttons_ |= 1u << index;
+  }
+}
 void Input::Feed(const std::string &bytes, ControllerSession &s,
                  const Grid *grid) {
   if (exit)
@@ -99,6 +162,7 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
     pending_.clear();
     pasting_ = false;
     s.SetControl(false);
+    mouse_buttons_ = 0;
     control = false;
     return;
   }
@@ -149,6 +213,23 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
         continue;
       }
       if (pending_[1] == '[' || pending_[1] == 'O') {
+        if (pending_.compare(0, 3, "\033[M") == 0) {
+          // Normal (non-SGR) reports have three raw bytes after CSI M.
+          // Keep the whole packet buffered across reads so its coordinates
+          // cannot become keystrokes or local commands.
+          if (pending_.size() < 6)
+            return;
+          const int b = static_cast<unsigned char>(pending_[3]) - 32;
+          const int x = static_cast<unsigned char>(pending_[4]) - 32;
+          const int y = static_cast<unsigned char>(pending_[5]) - 32;
+          pending_.erase(0, 6);
+          if (b >= 0 && x > 0 && y > 0) {
+            ++mouse_legacy_reports;
+            const bool release = (b & 3) == 3 && !(b & (32 | 64));
+            Mouse(b, x, y, release, s, grid);
+          }
+          continue;
+        }
         size_t end = 2;
         while (end < pending_.size() &&
                !(pending_[end] >= '@' && pending_[end] <= '~'))
@@ -160,6 +241,7 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
         if (seq == "\033[O") {
           control = false;
           s.SetControl(false);
+          mouse_buttons_ = 0;
           continue;
         }
         int key = 0;
@@ -224,41 +306,7 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
             mouse = mouse && cur == limit;
         }
         if (mouse)
-          ++mouse_reports;
-        if (grid && mouse && !command_mode) {
-          auto pos = MapPointer(*grid, x - 1, y - 1);
-          if (!control) {
-            if (pos && action == 'M' && ((b & 64) || b == 0)) {
-              center_x = pos->first;
-              center_y = pos->second;
-              if (b & 64)
-                Navigate((b & 1) ? '-' : '+', grid);
-              else
-                Navigate('d', grid);
-            }
-            continue;
-          }
-          if (!pos && action != 'm')
-            continue;
-          if (pos) {
-            pointer_x_ = pos->first;
-            pointer_y_ = pos->second;
-          }
-          int flag = 0, wheel = 0;
-          if (b & 64) {
-            flag = (b & 2) ? 8 : 7;
-            wheel = (b & 1) ? -120 : 120;
-          } else if (!(b & 32)) {
-            int base = b & 3;
-            if (base == 3)
-              continue;
-            flag = (base == 0   ? 1
-                    : base == 1 ? 5
-                                : 3) +
-                   (action == 'm' ? 1 : 0);
-          }
-          s.Pointer(pointer_x_, pointer_y_, flag, wheel);
-        }
+          Mouse(b, x, y, action == 'm', s, grid);
         continue;
       }
       // Alt+ASCII letter: a tap with explicit modifier release.

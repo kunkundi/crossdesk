@@ -70,15 +70,20 @@ public:
   double zoom = 1, center_x = .5, center_y = .5;
   uint64_t view_revision = 0;
   uint64_t mouse_reports = 0;
+  uint64_t mouse_legacy_reports = 0, mouse_forwarded = 0;
+  uint64_t mouse_send_failures = 0;
 
 private:
   std::string pending_;
   std::chrono::steady_clock::time_point last_input_{};
   bool pasting_ = false;
+  unsigned mouse_buttons_ = 0;
   float pointer_x_ = .5f, pointer_y_ = .5f;
   void Tap(ControllerSession &, int key, int modifier = 0);
   bool LocalKey(int key, ControllerSession &, const Grid *);
   void Navigate(char key, const Grid *);
+  void Mouse(int button, int x, int y, bool release, ControllerSession &,
+             const Grid *);
 };
 } // namespace crossdesk::terminal
 

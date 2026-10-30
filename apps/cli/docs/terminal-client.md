@@ -100,7 +100,11 @@ macOS 自带 Terminal 还需要在当前窗口勾选“显示 → 允许鼠标�
 
 只读时，`d` 或在画面中单击进入该位置的原始细节模式；`+` / `=` 放大、`-` 缩小（1～32倍），滚轮以鼠标指向为中心调整倍率。方向键或 `i/j/k/l` 分别向上/左/下/右平移，`f` 恢复完整画面。黑边点击被忽略。这些按键和鼠标在控制模式下仍传给远端；进入本地命令模式后可连续调整视图，直至手动返回。放大、平移和只读鼠标定位不会向远端发送操作，也适用于静止画面。
 
-支持 SGR 鼠标移动、左右中键、拖动和滚轮；黑边不发送新点击，黑边处松开仍释放旧按钮。输入坐标映射到所选显示器，`--display` 是 HostInformation 列表的零起始索引，视频流为 Display1、Display2……
+支持 SGR 和传统 `CSI M` 鼠标报告，包括移动、左右中键、拖动和滚轮；完整缓冲跨读取分片的传统报告，坐标字节不会作为按键执行。启动时依次启用普通、拖动和全移动报告，兼容只支持部分跟踪模式的终端；退出时关闭这些模式。传统报告的坐标上限为 223，较大窗口应使用支持 SGR 的终端。协议格式依据 [XTerm 鼠标协议](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking)。
+
+点击和滚轮先发送对应位置的移动事件，不依赖终端提前上报移动；黑边不发送新点击，黑边处松开仍释放旧按钮。传统报告无法区分松开的按钮，因此释放本客户端记录的全部已按下鼠标按钮。输入坐标映射到所选显示器，`--display` 是 HostInformation 列表的零起始索引，视频流为 Display1、Display2……
+
+控制模式显示画面后，状态栏的 `Mouse RX`（窄窗口为 `M:`）显示累计收到的有效鼠标报告数，即使画面中看不清远端指针也能检查输入。若点击或移动时计数一直为 0，检查本地终端的鼠标报告设置及 SSH 是否分配 PTY（`ssh -t`）；若计数增长但远端仍无响应，退出后查看以下日志统计。窗口失焦会退回只读，重新聚焦后需再按 `c` 开启控制。
 
 支持 UTF-8 文本与 bracketed paste（远端须声明 text_input），Enter、Tab、Backspace、Esc、方向、Home/End、Delete、PageUp/Down、F1–F4、Ctrl/Alt+英文字母。不支持的远端文本能力会提示，不把粘贴执行为本地 shell 命令。普通终端采用立即按下/释放的 tap 策略；不承诺持续按键、所有组合键、IME 或完整键盘布局。Pi 使用宿主 SDK 解码增强按键后转为这组基础输入。
 
@@ -136,8 +140,8 @@ pi -e ./apps/cli/plugins/pi/index.ts
 - `display_not_available`：换成远端声明的索引；单会话一次只显示一个屏幕。
 - `media_initialization_failed`：检查编译依赖和本地媒体运行环境。
 - 只读下按键不会发送到远端；远端未声明文本协议时文本输入不可用。
-- 日志在进程创建的私有临时目录（POSIX `/tmp/crossdesk-cli-*`、Windows `%TEMP%\crossdesk-cli-*`）。交互连接的摘要在 client.log，包含收到的终端鼠标事件数 `mouse_reports`；transport.log 只记录白名单中的 ICE/DTLS 状态及本地控制开关，不记录密码、SDP 或原始信令。使用完可删除。错误退出信息在恢复终端后显示，并给出本次日志目录。
-- `connection_failed` 表示连接建立失败；`connection_lost` 表示连接成功后传输失效。xmake 随后的 `execv ... failed(1)` 表示程序以错误码 1 退出，本身不代表进程崩溃。遇到控制失效时，对照 transport.log 中的控制开关和连接状态；`mouse_reports` 为 0 表示终端没有向 CLI 提供可识别的 SGR 鼠标事件。
+- 日志在进程创建的私有临时目录（POSIX `/tmp/crossdesk-cli-*`、Windows `%TEMP%\crossdesk-cli-*`）。交互连接的摘要在 client.log，包含收到的终端鼠标报告数 `mouse_reports`、其中的传统报告数 `mouse_legacy_reports`、成功交给传输层的鼠标事件数 `mouse_forwarded`、发送失败数 `mouse_send_failures`。一次点击报告可能生成定位和按键两条事件，所以发送数可能大于报告数；发送成功不表示被控端已执行。transport.log 只记录白名单中的 ICE/DTLS 状态及本地控制开关，不记录密码、SDP 或原始信令。使用完可删除。错误退出信息在恢复终端后显示，并给出本次日志目录。
+- `connection_failed` 表示连接建立失败；`connection_lost` 表示连接成功后传输失效。xmake 随后的 `execv ... failed(1)` 表示程序以错误码 1 退出，本身不代表进程崩溃。遇到控制失效时，对照 transport.log 中的控制开关和连接状态；`mouse_reports` 为 0 表示终端没有向 CLI 提供可识别的鼠标事件。报告数增长但 `mouse_forwarded` 为 0 时，检查是否仍为只读／本地命令模式、是否已有画面，以及点击是否落在视频区域；`mouse_send_failures` 增长时检查连接状态。
 - 如果整个 macOS Terminal 窗口退出且 CLI 记录 `output closed`，还应检查系统 DiagnosticReports 中的 Terminal 报告。已观察到 Terminal 2.15 在创建标签页并调整窗口尺寸时发生 `TTLogicalScreen expandUnicharOffsetCacheToLine:` 行缓存越界；这与 CLI 的 `connection_failed` 不同。临时可在独立窗口运行，避开该标签页操作，不能据此认为 Terminal 缺陷已修复。
 - `doctor --json` 是环境报告，不会联网登录、主动探测 Kitty 或证明远端可连接。 `input_shortcuts=local_commands_v2` 表示支持本文的持续本地命令模式；启动日志同时记录实际执行路径，以便区分不同工程的构建产物。
 

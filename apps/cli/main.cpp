@@ -81,14 +81,16 @@ struct Tty {
   int out;
   RawTerminal terminal;
   Tty(int input, int output) : out(output), terminal(input, output) {
-    const char start[] = "\033[?1049h\033[?25l\033[?7l\033[?1003h\033[?"
-                         "1006h\033[?1004h\033[?2004h\033[2J";
+    // Fall back to button/drag reporting if all-motion tracking is unsupported.
+    const char start[] = "\033[?1049h\033[?25l\033[?7l\033[?1000h\033[?1002h"
+                         "\033[?1003h\033[?1006h\033[?1004h\033[?2004h\033[2J";
     Write(out, start, sizeof(start) - 1);
   }
   ~Tty() {
     // Cancel any incomplete string/control sequence before restoration.
     std::string end = "\030\033\\" + std::string(kKittyDelete) +
-                      "\033[0m\033[?1003l\033[?1006l\033[?1004l\033[?2004l\033["
+                      "\033[0m\033[?1003l\033[?1002l\033[?1000l"
+                      "\033[?1006l\033[?1004l\033[?2004l\033["
                       "?7h\033[?25h\033[?1049l";
     Write(out, end.data(), end.size());
   }
@@ -341,6 +343,11 @@ int View(SessionOptions options, const std::string &device,
       bar.compact_progress = first_output_at ? "LIVE"
                              : s.Connected() ? "WAIT " + elapsed
                                              : "CONNECT " + elapsed;
+      if (first_output_at && input.control && !input.command_mode) {
+        const auto reports = std::to_string(input.mouse_reports);
+        bar.progress += " | Mouse RX " + reports;
+        bar.compact_progress += " M:" + reports;
+      }
       bar.error = input.error;
       bar.control = input.control;
       bar.command_mode = input.command_mode;
@@ -439,6 +446,9 @@ int View(SessionOptions options, const std::string &device,
                 {"first_frame", elapsed_ms(first_frame_at)},
                 {"first_output", elapsed_ms(first_output_at)}}},
               {"mouse_reports", input.mouse_reports},
+              {"mouse_legacy_reports", input.mouse_legacy_reports},
+              {"mouse_forwarded", input.mouse_forwarded},
+              {"mouse_send_failures", input.mouse_send_failures},
               {"submitted", submitted},
               {"output_bytes", output.bytes},
               {"last_queue_ms", queue_ms},
