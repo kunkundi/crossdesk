@@ -96,7 +96,11 @@ function pack(directory, output) {
   const result = process.env.npm_execpath
     ? run(process.execPath, [process.env.npm_execpath, ...args], { cwd: directory })
     : run('npm', args, { cwd: directory });
-  const [{ filename, size }] = JSON.parse(result);
+  // npm 12 uses a name-keyed object instead of the earlier array format.
+  const parsed = JSON.parse(result);
+  const entries = Array.isArray(parsed) ? parsed : Object.values(parsed);
+  if (entries.length !== 1) throw new Error('npm pack must produce exactly one package.');
+  const [{ filename, size }] = entries;
   if (filename !== expected) throw new Error(`Unexpected npm tarball name: ${filename}; expected ${expected}`);
   return { filename, size };
 }

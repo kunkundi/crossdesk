@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const platforms = require('./platforms.json');
-const { version } = require('../package.json');
+const { name: launcherPackage, version } = require('../package.json');
 
 function main() {
   const target = `${process.platform}-${process.arch}`;
@@ -21,7 +21,7 @@ function main() {
   try {
     manifestPath = require.resolve(`${packageName}/package.json`);
   } catch {
-    throw new Error(`Missing ${packageName}@${version}. Install with optional dependencies enabled; this platform's package must be published before crossdesk-cli.`);
+    throw new Error(`Missing ${packageName}@${version}. Install with optional dependencies enabled; this platform's package must be published before ${launcherPackage}.`);
   }
   if (require(manifestPath).version !== version) {
     throw new Error(`Expected ${packageName}@${version}; reinstall matching package versions.`);

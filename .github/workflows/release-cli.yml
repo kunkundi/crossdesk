@@ -1,0 +1,72 @@
+name: Publish CLI to npm
+
+on:
+  push:
+    tags: ["cli-v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and validate all packages without publishing (disable only on a cli-v* tag)"
+        type: boolean
+        default: true
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      dry_run: ${{ steps.release.outputs.dry_run }}
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Validate release version and Git tag
+        id: release
+        env:
+          RELEASE_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: node apps/cli/scripts/release-npm.cjs plan
+
+  build:
+    needs: prepare
+    uses: ./.github/workflows/build-cli.yml
+
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    # Serialize registry writes across versions; never cancel an in-flight publish.
+    concurrency:
+      group: npm-cli-publish
+      cancel-in-progress: false
+    env:
+      RELEASE_DRY_RUN: ${{ needs.prepare.outputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Install npm with Trusted Publishing support
+        run: npm install --global npm@12.2.1 --ignore-scripts --no-audit --no-fund
+      # Keep each platform in its own directory: all five artifacts contain an
+      # entry tarball, and Windows checkouts may have different line endings.
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: npm-*
+          path: ${{ runner.temp }}/cli-release
+          merge-multiple: false
+      - name: Validate and publish six packages
+        env:
+          RELEASE_ARTIFACTS: ${{ runner.temp }}/cli-release
+        run: node apps/cli/scripts/release-npm.cjs publish "$RELEASE_ARTIFACTS"

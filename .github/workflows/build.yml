@@ -9,6 +9,7 @@ on:
       - "*"
       - "!ios-v*"
       - "!android-v*"
+      - "!cli-v*"
   workflow_dispatch:
     inputs:
       desktop_version:

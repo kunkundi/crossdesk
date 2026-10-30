@@ -1,5 +1,5 @@
 {
-  "name": "crossdesk-cli",
+  "name": "@chunkdash/crossdesk-cli",
   "version": "0.1.0",
   "private": true,
   "description": "CrossDesk remote desktop controller for the terminal",

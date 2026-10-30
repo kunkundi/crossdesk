@@ -5,11 +5,11 @@ CrossDesk 的终端主控客户端，源码位于本仓库的 `apps/cli`。通�
 分发目标为 macOS / Linux（x64、arm64）和 Windows（x64）的原生终端客户端。npm 包发布后可统一使用：
 
 ```sh
-npx crossdesk-cli@latest doctor --json
-npx crossdesk-cli@latest 123456789
+npx @chunkdash/crossdesk-cli@latest doctor --json
+npx @chunkdash/crossdesk-cli@latest 123456789
 ```
 
-统一入口为 `crossdesk-cli`，五个平台依赖使用 `@chunkdash/crossdesk-cli-*`，由启动器自动选择。旧的无 scope 平台包不属于这套依赖；仅安装平台包不会注册 `crossdesk-cli` 命令。是否可安装以 npm 上完整版本的发布结果为准，三端实机验收尚未全部完成。运行要求、打包、本地安装与发布步骤见 [npm 分发](docs/npm-distribution.md)。
+统一入口包为 `@chunkdash/crossdesk-cli`，安装后命令仍为 `crossdesk-cli`。五个平台依赖使用 `@chunkdash/crossdesk-cli-*`，由启动器自动选择。旧的无 scope 平台包不属于这套依赖；仅安装平台包不会注册命令。是否可安装以 npm 上完整版本的发布结果为准，三端实机验收尚未全部完成。运行要求、打包、本地安装与发布步骤见 [npm 分发](docs/npm-distribution.md)。
 
 在 CrossDesk 仓库根目录执行以下命令构建 CLI：
 
