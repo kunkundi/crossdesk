@@ -1,4 +1,4 @@
-function setup_options_and_dependencies()
+function setup_options_and_dependencies(enable_dependencies)
     option("CROSSDESK_UPDATE_PUBLIC_KEY")
         set_showmenu(true)
         set_description("Ed25519 public key (64 lowercase hex characters); empty disables automatic installation")
@@ -33,6 +33,11 @@ function setup_options_and_dependencies()
         set_showmenu(true)
         set_description("Build CrossDesk as a portable package that stores data beside the executable")
     option_end()
+
+    -- Keep options discoverable when switching back from a CLI-only build.
+    if enable_dependencies == false then
+        return
+    end
 
     -- set_policy("build.warning", true)
     -- set_warnings("all", "extra")

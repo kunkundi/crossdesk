@@ -1,0 +1,75 @@
+name: CLI native builds and npm packages
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            target: darwin-arm64
+            arch: arm64
+          - runner: macos-15-intel
+            target: darwin-x64
+            arch: x86_64
+          - runner: ubuntu-22.04
+            target: linux-x64
+            arch: x86_64
+          - runner: ubuntu-22.04-arm
+            target: linux-arm64
+            arch: arm64
+          - runner: windows-2022
+            target: win32-x64
+            arch: x64
+          - runner: windows-11-arm
+            target: win32-arm64
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: 3.1.1
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+        with:
+          arch: ${{ matrix.arch }}
+      - name: Linux build tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config autoconf automake libtool nasm yasm zlib1g-dev python3-pip
+      - name: Prepare pinned dependency
+        run: sh apps/cli/scripts/prepare-deps.sh
+      - name: Configure macOS
+        if: runner.os == 'macOS'
+        run: xmake f -y -a ${{ matrix.arch }} -m release --target_minver=13.0 --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n
+      - name: Configure Linux or Windows
+        if: runner.os != 'macOS'
+        run: xmake f -y -a ${{ matrix.arch }} -m release --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n
+      - name: Build
+        run: xmake build crossdesk-cli
+      - name: Report native environment
+        run: xmake run crossdesk-cli doctor --json
+      - name: Package native program and npm entry
+        run: npm --prefix apps/cli run pack:npm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-${{ matrix.target }}
+          path: build/npm/*.tgz
+          if-no-files-found: error

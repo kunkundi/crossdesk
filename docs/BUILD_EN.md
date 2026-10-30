@@ -6,6 +6,8 @@ After cloning, run build and packaging commands from the repository root. The [X
 
 ## Build requirements
 
+The default configuration builds the desktop client. Use `--CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y` for the terminal controller alone, or enable both options to build both clients. See the [CLI guide](../apps/cli/README.md) (Chinese) for dependency preparation, usage and npm packaging.
+
 - Git, [Xmake](https://xmake.io/guide/quick-start.html) (3.1.1 or newer for both desktop and mobile), and the platform toolchain listed below.
 - The build scripts use Xmake to manage **CMake 3.x (≥ 3.21, < 4.0)**, **Rust 1.92.0**, and other dependencies. The first build downloads tools and source archives. See the [Slint package configuration](../deps/thirdparty/slint/xmake.lua) for the constraints.
 

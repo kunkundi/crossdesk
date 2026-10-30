@@ -1,0 +1,12 @@
+{
+  "name": "crossdesk-cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CrossDesk remote desktop controller for the terminal",
+  "license": "GPL-3.0-only",
+  "author": "DI JUNKUN",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "pack:npm": "node scripts/pack-npm.cjs"
+  }
+}

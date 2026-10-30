@@ -169,6 +169,8 @@ PC 端可控制和被控制，复用桌面界面与桌面墙；手机和平板�
 
 ## 构建与反馈
 
+- [终端客户端 CLI](apps/cli/README.md)：ANSI / Kitty 远程桌面观看、可选键鼠控制和 Pi 扩展；支持独立于桌面 GUI 的构建，npm 分发尚未发布。
+
 - [源码构建](docs/BUILD.md)：桌面端依赖、编译参数与打包；移动端请使用上方各平台的构建指南。
 - [GUI 架构](docs/gui-architecture.md)：桌面界面、平台实现与工程结构。
 - [连接模式架构](docs/connection-architecture.md)：ID 连接与 IP 直连的寻址、认证、协商、数据路径及生命周期。

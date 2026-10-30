@@ -9,6 +9,8 @@
 
 ## 构建依赖
 
+默认只构建桌面客户端。终端主控可通过 `--CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y` 单独构建；同时开启两个选项可构建两个客户端。CLI 的依赖准备、运行和 npm 打包见 [终端客户端](../apps/cli/README.md)。
+
 - Git、[Xmake](https://xmake.io/guide/quick-start.html)（桌面端和移动端均要求 3.1.1 或更新版本）及下文对应平台的编译工具链。
 - 构建脚本通过 Xmake 管理 **CMake 3.x（≥ 3.21、< 4.0）**、**Rust 1.92.0** 等依赖；首次构建需要下载工具与源码。具体约束见 [Slint 包配置](../deps/thirdparty/slint/xmake.lua)。
 

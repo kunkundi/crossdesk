@@ -13,3 +13,6 @@ xcuserdata/
 
 # VSCode cache
 .vscode
+
+# CLI npm dependencies
+node_modules/

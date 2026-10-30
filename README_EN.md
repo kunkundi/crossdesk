@@ -169,6 +169,8 @@ Host your own signaling and TURN services, then enable them under **Settings →
 
 ## Build and feedback
 
+- [Terminal client CLI](apps/cli/README.md) (Chinese): ANSI / Kitty remote viewing, optional keyboard and mouse control, and a Pi extension. The CLI can be built without the desktop GUI; npm packages are not published yet.
+
 - [Build from source](docs/BUILD_EN.md): desktop dependencies, build options, and packaging. Use the platform guides above for mobile builds.
 - [GUI architecture](docs/gui-architecture.md) (Chinese): desktop UI, platform implementation, and project structure.
 - [Connection architecture](docs/connection-architecture.md) (Chinese): discovery, authentication, negotiation, data paths, and lifecycle for ID and direct IP modes.
