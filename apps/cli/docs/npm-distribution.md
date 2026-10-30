@@ -80,6 +80,10 @@ Pi 等宿主应直接启动原生程序以可靠控制进程和专用密码描�
 
 `.github/workflows/build-cli.yml` 配置五个平台的原生 release 构建、doctor 和打包，并上传 tarball；该工作流不执行 npm publish。更新 MiniRTC 引用时，必须先将对应提交推送到子模块远端，再推送 CrossDesk，否则全新检出和 CI 会在拉取子模块时失败。
 
+CLI 构建分别缓存 Xmake 工具和已安装的原生依赖。原生依赖使用 `XMAKE_PKG_INSTALLDIR` 指定的 runner 临时目录，不缓存工程的 `.xmake` 配置或 `build` 产物。缓存 key 包含 runner 类型、目标架构、镜像版本、Xmake 版本以及构建配置、依赖配方和补丁的内容；不包含运行编号，也不因 CLI C++ 源码、README 或 npm 元数据修改而失效。镜像更新可能包含编译器／SDK 更新，因此会重新生成缓存；依赖配置变化时只接受新的完整 key，不回退使用旧配方的库。
+
+`Restore native dependencies` 会显示缓存是否命中。各平台的 `xmake f` 成功安装依赖后立即执行 `Save native dependencies`，后续 CLI 编译、签名或打包失败也能在下一次复用；依赖安装失败时不会保存不完整缓存。Linux 仅对镜像中缺失的系统工具执行 APT 更新和安装。首次运行、缓存被清理、镜像或依赖配置变化仍需下载／编译依赖；缓存命中不代表跳过 CLI 自身构建和打包。
+
 首次使用 `@chunkdash` 前，确认当前 npm 账号属于该组织且有目标包的发布权限。本地发布需要已启用的 2FA 或符合 npm 要求的发布凭据；组织 owner 身份不代替发布认证。
 
 ```sh

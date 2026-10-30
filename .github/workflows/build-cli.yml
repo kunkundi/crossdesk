@@ -31,6 +31,8 @@ jobs:
             arch: x64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
+    env:
+      XMAKE_VERSION: "3.1.1"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,18 +40,47 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # A runner label can receive compiler/SDK updates without changing its name.
+      - name: Set cache environment
+        id: runner-image
+        shell: bash
+        run: |
+          printf 'version=%s\n' "${ImageVersion:?Missing GitHub runner image version}" >> "$GITHUB_OUTPUT"
+          # Keep installed packages separate from the project's build/config state.
+          printf 'XMAKE_PKG_INSTALLDIR=%s/crossdesk-cli-packages\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: xmake-io/github-action-setup-xmake@v1
         with:
-          xmake-version: 3.1.1
+          xmake-version: ${{ env.XMAKE_VERSION }}
+          actions-cache-folder: ${{ runner.temp }}/crossdesk-cli-xmake-toolchain
+          actions-cache-key: cli-${{ matrix.runner }}-${{ matrix.target }}-image${{ steps.runner-image.outputs.version }}-xmake${{ env.XMAKE_VERSION }}
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'
         with:
           arch: ${{ matrix.arch }}
       - name: Linux build tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config autoconf automake libtool nasm yasm zlib1g-dev python3-pip
+        shell: bash
+        run: |
+          missing=()
+          for package in build-essential pkg-config autoconf automake libtool nasm yasm zlib1g-dev python3-pip; do
+            if [[ "$(dpkg-query -W -f='${Status}' "$package" 2>/dev/null || true)" != "install ok installed" ]]; then
+              missing+=("$package")
+            fi
+          done
+          if (( ${#missing[@]} )); then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends "${missing[@]}"
+          fi
       - name: Prepare pinned dependency
         run: sh apps/cli/scripts/prepare-deps.sh
+      # Exact matches only: changed local recipes/patches must not reuse old libraries.
+      # Source, README and npm metadata edits do not change this key.
+      - name: Restore native dependencies
+        id: native-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ env.XMAKE_PKG_INSTALLDIR }}
+          key: cli-deps-v1-${{ matrix.runner }}-${{ matrix.target }}-image${{ steps.runner-image.outputs.version }}-xmake${{ env.XMAKE_VERSION }}-${{ hashFiles('xmake.lua', 'apps/cli/xmake.lua', 'apps/desktop/xmake/options.lua', 'deps/thirdparty/openssl/**', 'deps/submodules/minirtc/xmake.lua', 'deps/submodules/minirtc/thirdparty/**', 'deps/patches/**', '.github/workflows/build-cli.yml') }}
       - name: Configure macOS
         if: runner.os == 'macOS'
         run: xmake f -y -p macosx -a ${{ matrix.arch }} -m release --target_minver=13.0 --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n
@@ -59,6 +90,14 @@ jobs:
       - name: Configure Windows
         if: runner.os == 'Windows'
         run: xmake f -y -p windows -a ${{ matrix.arch }} -m release --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n
+      # xmake f installs required packages. Save before compiling or packaging the CLI,
+      # so failures in those later steps do not discard successfully installed dependencies.
+      - name: Save native dependencies
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.XMAKE_PKG_INSTALLDIR }}
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
       - name: Build
         run: xmake build crossdesk-cli
       - name: Sign macOS CLI
