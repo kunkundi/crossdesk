@@ -10,6 +10,7 @@
 #include <atomic>
 #include <csignal>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -33,6 +34,21 @@ struct TerminalSize {
   int columns = 80, rows = 25, pixel_width = 0, pixel_height = 0;
 };
 TerminalSize GetTerminalSize(int fd);
+
+// One private, uniquely named pixel buffer. Keep it alive until the terminal
+// acknowledges reading it; Reset also unlinks objects the terminal left behind.
+class SharedImage {
+public:
+  SharedImage();
+  ~SharedImage();
+  bool Assign(const uint8_t *data, size_t size);
+  void Reset();
+  const std::string &Name() const;
+
+private:
+  struct State;
+  std::unique_ptr<State> state_;
+};
 
 class NonBlocking {
 public:

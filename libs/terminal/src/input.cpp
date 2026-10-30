@@ -209,6 +209,8 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
         auto end = pending_.find("\033\\", 2);
         if (end == std::string::npos)
           return;
+        if (auto ack = ParseKittyAck(pending_.substr(0, end + 2)))
+          kitty_ack = ack;
         pending_.erase(0, end + 2);
         continue;
       }

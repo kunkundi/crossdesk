@@ -63,10 +63,27 @@ std::optional<std::pair<float, float>> MapPointer(const Grid &, int column,
                                                   int row);
 std::vector<std::string> Lines(const Grid &);
 std::string Difference(const Grid &, const std::optional<Grid> &previous);
-std::string Kitty(const DecodedFrame &, const Viewport &);
+struct PixelFrame {
+  int width = 0, height = 0;
+  std::vector<uint8_t> rgb;
+};
+PixelFrame KittyPixels(const DecodedFrame &, const Viewport &);
+std::string KittySharedUpload(const std::string &name, int width, int height,
+                              bool alternate_buffer, bool query = false);
+std::string KittyPresent(const Viewport &, bool alternate_buffer);
+struct KittyAck {
+  uint32_t image_id = 0;
+  bool ok = false;
+};
+std::optional<KittyAck> ParseKittyAck(const std::string &);
+// Toggle alternate_buffer only after the previous output has been written in
+// full. Upload to the other image ID before replacing the visible placement.
+std::string Kitty(const DecodedFrame &, const Viewport &,
+                  bool alternate_buffer = false);
 inline constexpr char kKittyQuery[] =
     "\033_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\033\\";
-inline constexpr char kKittyDelete[] = "\033_Ga=d,d=I,i=31,q=2\033\\";
+inline constexpr char kKittyDelete[] =
+    "\033_Ga=d,d=I,i=31,q=2\033\\\033_Ga=d,d=I,i=32,q=2\033\\";
 bool KittyReply(const std::string &response);
 struct StatusBar {
   std::string progress, compact_progress, error, view, network;
@@ -89,6 +106,7 @@ public:
   uint64_t mouse_legacy_reports = 0, mouse_forwarded = 0;
   uint64_t mouse_send_failures = 0;
   TerminalMetrics terminal_metrics;
+  std::optional<KittyAck> kitty_ack;
 
 private:
   std::string pending_;

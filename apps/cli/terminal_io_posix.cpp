@@ -1,10 +1,12 @@
 #ifndef _WIN32
 #include "terminal_io.h"
 #include <cerrno>
+#include <cstring>
 #include <fcntl.h>
 #include <poll.h>
 #include <stdexcept>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <sys/select.h>
 #include <termios.h>
 #include <unistd.h>
@@ -78,6 +80,66 @@ TerminalSize GetTerminalSize(int fd) {
   }
   return size;
 }
+struct SharedImage::State {
+  std::string name;
+  void *data = MAP_FAILED;
+  size_t size = 0;
+};
+SharedImage::SharedImage() : state_(std::make_unique<State>()) {}
+SharedImage::~SharedImage() { Reset(); }
+const std::string &SharedImage::Name() const { return state_->name; }
+void SharedImage::Reset() {
+  if (state_->data != MAP_FAILED)
+    munmap(state_->data, state_->size);
+  if (!state_->name.empty())
+    shm_unlink(state_->name.c_str());
+  state_->data = MAP_FAILED;
+  state_->size = 0;
+  state_->name.clear();
+}
+bool SharedImage::Assign(const uint8_t *data, size_t size) {
+  Reset();
+  if (!data || !size || size > 1920 * 1080 * 3)
+    return false;
+  static std::atomic<uint32_t> sequence{0};
+  int fd = -1;
+  for (int attempt = 0; attempt < 16; ++attempt) {
+    // Fits Darwin's 31-byte name limit. O_EXCL prevents opening another
+    // process's object, including a stale name from a recycled process ID.
+    auto name = "/cdx-" + std::to_string(getpid()) + "-" +
+                std::to_string(++sequence);
+    fd = shm_open(name.c_str(), O_RDWR | O_CREAT | O_EXCL, 0600);
+    if (fd >= 0) {
+      state_->name = std::move(name);
+      break;
+    }
+    if (errno != EEXIST)
+      return false;
+  }
+  if (fd < 0)
+    return false;
+  fcntl(fd, F_SETFD, FD_CLOEXEC);
+#ifdef __linux__
+  // Reserve tmpfs space before touching the mapping; a successful ftruncate
+  // alone can still SIGBUS later when /dev/shm is full.
+  if (posix_fallocate(fd, 0, size) != 0) {
+    close(fd);
+    Reset();
+    return false;
+  }
+#endif
+  if (ftruncate(fd, size) == 0) {
+    state_->data = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    state_->size = size;
+  }
+  close(fd);
+  if (state_->data == MAP_FAILED) {
+    Reset();
+    return false;
+  }
+  std::memcpy(state_->data, data, size);
+  return true;
+}
 struct NonBlocking::State {
   int fd, flags;
 };
@@ -107,7 +169,11 @@ RawTerminal::RawTerminal(int input, int) : state_(std::make_unique<State>()) {
   }
 }
 RawTerminal::~RawTerminal() {
-  tcsetattr(state_->fd, TCSAFLUSH, &state_->saved);
+  // TCSAFLUSH waits for queued output, which can hang exit when the terminal
+  // stops consuming a partially written image. Restore immediately and flush
+  // only pending input so protocol replies do not reach the next shell prompt.
+  tcsetattr(state_->fd, TCSANOW, &state_->saved);
+  tcflush(state_->fd, TCIFLUSH);
   fcntl(state_->fd, F_SETFL, state_->flags);
 }
 std::string Password() {

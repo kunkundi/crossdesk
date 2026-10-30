@@ -31,6 +31,11 @@ public:
   explicit Output(int fd)
       : fd_(fd), nonblocking_(fd, true), last_(Clock::now()) {}
   bool Idle() const { return pending_.empty(); }
+  size_t ByteRate() const { return byte_rate_; }
+  void SetByteRate(size_t rate) {
+    byte_rate_ = rate;
+    last_ = Clock::now();
+  }
   void Put(std::string text) {
     if (!Idle() || text.size() > 2 * 1024 * 1024)
       throw std::runtime_error("output budget exceeded");
@@ -41,7 +46,7 @@ public:
     auto now = Clock::now();
     credit_ = std::min(
         1048576.0,
-        credit_ + std::chrono::duration<double>(now - last_).count() * 1048576);
+        credit_ + std::chrono::duration<double>(now - last_).count() * byte_rate_);
     last_ = now;
     if (Idle())
       return false;
@@ -75,6 +80,7 @@ private:
   NonBlocking nonblocking_;
   std::string pending_;
   size_t offset_ = 0;
+  size_t byte_rate_ = 1048576;
   double credit_ = 1048576;
   Clock::time_point last_;
 };
@@ -93,7 +99,24 @@ struct Tty {
                       "\033[0m\033[?1003l\033[?1002l\033[?1000l"
                       "\033[?1006l\033[?1004l\033[?2004l\033["
                       "?7h\033[?25h\033[?1049l";
-    Write(out, end.data(), end.size());
+    // A full PTY can reject even this small cleanup after an interrupted image.
+    // Retry short writes without indefinitely blocking exit on a stalled reader.
+    try {
+      NonBlocking nonblocking(out, true);
+      const auto until = Clock::now() + std::chrono::milliseconds(500);
+      size_t offset = 0;
+      while (offset < end.size() && Clock::now() < until) {
+        auto n = Write(out, end.data() + offset, end.size() - offset);
+        if (n > 0)
+          offset += n;
+        else if (n < 0 && errno != EAGAIN && errno != EINTR)
+          break;
+        else
+          WaitIo(-1, out, 10);
+      }
+    } catch (...) {
+      // A closed terminal must not prevent RawTerminal from restoring modes.
+    }
   }
 };
 Viewport Size(int *status_rows = nullptr,
@@ -242,10 +265,11 @@ std::string WaitingScreen(const Viewport &v, const std::string &title,
 }
 int View(SessionOptions options, const std::string &device,
          const std::string &renderer, bool control, int fd, AnsiDetail detail,
-         double zoom, bool native, double cell_aspect) {
+         double zoom, bool native, double cell_aspect, bool fps_explicit) {
   if (!IsTty(0) || !IsTty(fd) || Env("TERM") == "dumb")
-    throw std::runtime_error("connecting needs an interactive ANSI terminal; use "
-                             "bridge --stdio for a host");
+    throw std::runtime_error(
+        "connecting needs an interactive ANSI terminal; use "
+        "bridge --stdio for a host");
   auto password = Password();
   if (interrupted)
     return 130;
@@ -269,6 +293,42 @@ int View(SessionOptions options, const std::string &device,
   if (renderer == "kitty" && !kitty)
     throw std::runtime_error(
         "Kitty probe failed or multiplexer active; use --renderer ansi");
+  // Local pixel frames need more throughput than character output. Keep the
+  // conservative budget for SSH and the existing one-message/burst limits.
+  const bool local_terminal = Env("SSH_CONNECTION").empty() &&
+                              Env("SSH_CLIENT").empty() &&
+                              Env("SSH_TTY").empty();
+  if (kitty && local_terminal)
+    output.SetByteRate(8 * 1024 * 1024);
+  SharedImage shared_image;
+  bool shared_enabled = false;
+  const uint8_t probe_pixel[] = {0, 0, 0};
+  if (kitty && local_terminal && output.Idle() &&
+      shared_image.Assign(probe_pixel, sizeof(probe_pixel))) {
+    output.Put(KittySharedUpload(shared_image.Name(), 1, 1, false, true));
+    std::string reply;
+    const auto until = Clock::now() + std::chrono::milliseconds(250);
+    while (Clock::now() < until && !interrupted) {
+      output.Pump();
+      WaitReadable(0, 10);
+      char bytes[1024];
+      const auto n = Read(0, bytes, sizeof(bytes));
+      if (n > 0 && reply.size() < 8192)
+        reply.append(bytes, n);
+      const auto pos = reply.find("\033_Gi=33;");
+      const auto end =
+          pos == std::string::npos ? pos : reply.find("\033\\", pos);
+      if (end != std::string::npos) {
+        const auto ack = ParseKittyAck(reply.substr(pos, end + 2 - pos));
+        shared_enabled = ack && ack->ok;
+        break;
+      }
+    }
+    shared_image.Reset();
+  }
+  bool automatic_fast_fps = shared_enabled && !fps_explicit;
+  if (automatic_fast_fps)
+    options.fps = 30;
   ControllerSession s;
   Input input;
   input.control = control;
@@ -279,6 +339,11 @@ int View(SessionOptions options, const std::string &device,
   s.SetControl(control);
   std::optional<Grid> displayed, pending;
   bool pending_frame = false;
+  bool shared_upload = false;
+  std::optional<Clock::time_point> shared_deadline;
+  std::string pending_clear;
+  uint64_t shared_fallbacks = 0, rendered = 0, shared_acks = 0;
+  double render_ms = 0, shared_ack_ms = 0;
   int last_status_rows = 3;
   Viewport last_view =
       Size(&last_status_rows, &input.terminal_metrics, cell_aspect);
@@ -292,8 +357,24 @@ int View(SessionOptions options, const std::string &device,
   double queue_ms = 0;
   auto next = Clock::now(), status_tick = next;
   auto size_query_tick = next;
+  const auto disable_shared = [&] {
+    shared_enabled = shared_upload = false;
+    shared_deadline.reset();
+    shared_image.Reset();
+    ++shared_fallbacks;
+    if (automatic_fast_fps) {
+      automatic_fast_fps = false;
+      options.fps = 8;
+      s.SetPreview(options.fps, options.preview_width, options.preview_height,
+                   options.quality, options.max_bitrate_bps);
+    }
+  };
   const auto pump_output = [&] {
-    if (output.Pump() && pending_frame) {
+    if (!output.Pump())
+      return;
+    if (shared_upload) {
+      shared_deadline = Clock::now() + std::chrono::milliseconds(500);
+    } else if (pending_frame) {
       displayed = std::move(pending);
       pending.reset();
       pending_frame = false;
@@ -317,6 +398,8 @@ int View(SessionOptions options, const std::string &device,
     const auto previous_error = input.error;
     input.Feed(n > 0 ? std::string(bytes, n) : "", s,
                displayed ? &*displayed : nullptr);
+    if (input.exit || interrupted)
+      break;
     if (previous_command != input.command_mode ||
         previous_control != input.control || previous_error != input.error)
       status_tick = Clock::now();
@@ -324,6 +407,35 @@ int View(SessionOptions options, const std::string &device,
     if (s.Finished())
       break;
     auto now = Clock::now();
+    if (shared_upload && shared_deadline) {
+      const auto ack = input.kitty_ack;
+      const bool replied = ack && ack->image_id == (submitted % 2 ? 32u : 31u);
+      if (replied || now >= *shared_deadline) {
+        if (replied && ack->ok) {
+          shared_ack_ms +=
+              std::chrono::duration<double, std::milli>(
+                  now - (*shared_deadline - std::chrono::milliseconds(500)))
+                  .count();
+          ++shared_acks;
+          shared_upload = false;
+          shared_deadline.reset();
+          shared_image.Reset();
+          // Display only an acknowledged upload. A missing/failed upload must
+          // leave the previous image and pointer mapping intact.
+          output.Put(pending_clear +
+                     KittyPresent(pending->viewport, submitted % 2 != 0));
+          pending_frame = true;
+          waiting_visible = false;
+        } else {
+          disable_shared();
+          pending.reset();
+          redraw = true;
+          next = now;
+        }
+        pending_clear.clear();
+      }
+    }
+    input.kitty_ack.reset();
     int status_rows;
     auto v = Size(&status_rows, &input.terminal_metrics, cell_aspect);
     v.detail = detail;
@@ -338,7 +450,7 @@ int View(SessionOptions options, const std::string &device,
     }
     const bool grid_resized =
         v.columns != last_view.columns || v.rows != last_view.rows;
-    if (output.Idle() &&
+    if (output.Idle() && !shared_upload &&
         (grid_resized || v.cell_aspect != last_view.cell_aspect ||
          v.pixel_width != last_view.pixel_width ||
          v.pixel_height != last_view.pixel_height ||
@@ -354,12 +466,12 @@ int View(SessionOptions options, const std::string &device,
     }
     // Query through the terminal byte stream so this also works over SSH.
     // Never wait for a reply or interrupt a partially written video frame.
-    if (output.Idle() && now >= size_query_tick) {
+    if (output.Idle() && !shared_upload && now >= size_query_tick) {
       input.terminal_metrics.BeginQuery();
       output.Put(kTerminalSizeQuery);
       size_query_tick = now + std::chrono::seconds(2);
     }
-    if (output.Idle() && now >= status_tick) {
+    if (output.Idle() && !shared_upload && now >= status_tick) {
       auto st = s.Status();
       const auto last_state = st["state"].get<std::string>();
       std::string progress =
@@ -422,7 +534,7 @@ int View(SessionOptions options, const std::string &device,
       output.Put(std::move(screen));
       status_tick = now + std::chrono::seconds(1);
     }
-    if (output.Idle() && now >= next) {
+    if (output.Idle() && !shared_upload && now >= next) {
       next = now + std::chrono::milliseconds(1000 / options.fps);
       bool fresh = false;
       if (auto frame = s.TakeFrame(last_frame ? &*last_frame : nullptr);
@@ -435,6 +547,7 @@ int View(SessionOptions options, const std::string &device,
       if (last_frame && last_frame->generation != s.Generation())
         last_frame.reset();
       if (last_frame && (fresh || redraw)) {
+        const auto render_started = Clock::now();
         if (fresh)
           queue_ms = std::chrono::duration<double, std::milli>(
                          now - last_frame->queued)
@@ -446,12 +559,29 @@ int View(SessionOptions options, const std::string &device,
           for (int row = 0; row < v.rows; ++row)
             clear += "\033[" + std::to_string(v.row_offset + row + 1) +
                      ";1H\033[0m\033[2K";
-        output.Put(clear + (kitty ? Kitty(*last_frame, v)
-                                 : Difference(*pending, displayed)));
-        waiting_visible = false;
+        if (shared_enabled) {
+          const auto pixels = KittyPixels(*last_frame, v);
+          if (shared_image.Assign(pixels.rgb.data(), pixels.rgb.size())) {
+            output.Put(KittySharedUpload(shared_image.Name(), pixels.width,
+                                         pixels.height, submitted % 2 != 0));
+            shared_upload = true;
+            pending_clear = std::move(clear);
+          } else {
+            disable_shared();
+          }
+        }
+        if (!shared_upload) {
+          output.Put(clear + (kitty ? Kitty(*last_frame, v, submitted % 2 != 0)
+                                    : Difference(*pending, displayed)));
+          waiting_visible = false;
+          pending_frame = true;
+        }
+        render_ms += std::chrono::duration<double, std::milli>(Clock::now() -
+                                                               render_started)
+                         .count();
+        ++rendered;
         redraw = false;
-        pending_frame = true;
-        if (output.Idle()) {
+        if (output.Idle() && !shared_upload) {
           displayed = std::move(pending);
           pending.reset();
           pending_frame = false;
@@ -492,6 +622,15 @@ int View(SessionOptions options, const std::string &device,
                 {"reported", input.terminal_metrics.Known()},
                 {"manual_aspect", cell_aspect > 0}}},
               {"submitted", submitted},
+              {"renderer", kitty ? "kitty" : "ansi"},
+              {"kitty_transport", !kitty           ? "none"
+                                  : shared_enabled ? "shared_memory"
+                                                   : "inline"},
+              {"target_fps", options.fps},
+              {"frame_processing_ms", rendered ? render_ms / rendered : 0},
+              {"shared_ack_ms", shared_acks ? shared_ack_ms / shared_acks : 0},
+              {"shared_fallbacks", shared_fallbacks},
+              {"output_bytes_per_second", output.ByteRate()},
               {"output_bytes", output.bytes},
               {"last_queue_ms", queue_ms},
               {"elapsed_seconds",
@@ -778,7 +917,8 @@ Ctrl+T and Ctrl+C pass through in control mode; another Ctrl+] leaves local mode
 Default ANSI detail: quadrant. Default quality: high (1920x1080); ultra requests up to 3840x2160.
 Cell aspect is character width/height: auto detects terminal geometry; use --cell-aspect to calibrate.
 Display index is zero-based. ANSI cannot reproduce full desktop text at fit scale.
---fps controls local output; negotiated previews use supported 1/8/15 FPS.
+--fps controls local output. Local Kitty shared memory defaults to 30; other paths default to 8.
+Targets above 15 use the negotiated interactive 30 FPS stream; lower targets use 1/8/15 FPS previews.
 bridge: private NDJSON v1, credentials on a separate inherited descriptor.
 No IP direct connection, audio playback, clipboard or file transfer support.
 )";
@@ -829,7 +969,7 @@ int main(int argc, char **argv) {
     std::string renderer = "auto", device;
     AnsiDetail detail = AnsiDetail::Quadrant;
     double zoom = 1, cell_aspect = 0;
-    bool control = false, stdio = false, native = false;
+    bool control = false, stdio = false, native = false, fps_explicit = false;
     int secret_fd = 3;
     if (command == "view") {
       if (i >= argc)
@@ -860,9 +1000,10 @@ int main(int argc, char **argv) {
           options.host = value;
         else if (a == "--port")
           options.port = number(value, 1, 65535);
-        else if (a == "--fps" && command == "view")
+        else if (a == "--fps" && command == "view") {
           options.fps = number(value, 1, 30);
-        else if (a == "--display" && command == "view")
+          fps_explicit = true;
+        } else if (a == "--display" && command == "view")
           options.display = number(value, 0, 63);
         else if (a == "--renderer" && command == "view")
           renderer = value;
@@ -916,7 +1057,7 @@ int main(int argc, char **argv) {
     try {
       return command == "view" ? View(options, device, renderer, control,
                                       output.value, detail, zoom, native,
-                                      cell_aspect)
+                                      cell_aspect, fps_explicit)
                                : Bridge(output.value, options, secret_fd);
     } catch (const std::exception &e) {
       if (command == "view") {

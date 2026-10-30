@@ -330,6 +330,15 @@ TerminalSize GetTerminalSize(int) {
     CloseHandle(handle);
   return size;
 }
+struct SharedImage::State {
+  std::string name;
+};
+SharedImage::SharedImage() : state_(std::make_unique<State>()) {}
+SharedImage::~SharedImage() = default;
+bool SharedImage::Assign(const uint8_t *, size_t) { return false; }
+void SharedImage::Reset() {}
+const std::string &SharedImage::Name() const { return state_->name; }
+
 struct NonBlocking::State {
   HANDLE handle;
   DWORD mode = 0;

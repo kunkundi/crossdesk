@@ -44,5 +44,7 @@ target("crossdesk-cli")
     if is_plat("windows") then
         add_syslinks("advapi32", "user32")
         add_defines("NOMINMAX", "WIN32_LEAN_AND_MEAN")
+    elseif is_plat("linux") then
+        add_syslinks("rt")
     end
 target_end()

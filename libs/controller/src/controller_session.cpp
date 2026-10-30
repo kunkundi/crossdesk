@@ -335,9 +335,13 @@ void ControllerSession::Preview() {
   s.request_id = ++preview_request_;
   preview_accepted_ = false;
   s.fps = options_.fps == 0              ? 0
+          : options_.fps > 15            ? 60
           : options_.fps <= 1            ? 1
           : options_.fps <= 8 || !fps15_ ? 8
                                          : 15;
+  // 60 is the existing interactive-mode sentinel, not a 60 FPS request.
+  // The encoder cadence is independently specified by frame_rate.
+  s.frame_rate = 30;
   s.audio = false;
   s.quality = options_.quality;
   if (resolution_) {
