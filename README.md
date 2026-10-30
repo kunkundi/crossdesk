@@ -139,7 +139,7 @@ CrossDesk 让你从电脑、浏览器、手机或终端连接远端电脑，也�
 | <img src="docs/images/cli-ansi-overview.png" width="480" alt="CrossDesk CLI 的 ANSI 四象限全景：顶部显示只读模式和连接状态，底部显示操作快捷键" /> | <img src="docs/images/cli-kitty-overview.png" width="480" alt="CrossDesk CLI 的 Kitty 协议全景：同一远程桌面以像素画面显示，保留状态栏和操作快捷键" /> |
 | 用彩色字符显示桌面轮廓，适合普通终端；查看局部可按 `d` 放大。 | 直接显示像素画面，适合支持 Kitty 图形协议的终端，如 Ghostty。 |
 
-两图采集于 **2026-10-31**，来自同一授权设备的实际只读连接，以 160 × 48 字符视口还原 CLI 的 ANSI / Kitty 协议输出。图示为输出渲染，终端实窗效果受字体、窗口大小及协议支持影响；采集方法见 [图示来源](docs/images/README.md#cli-captures)。
+两图采集于 **2026-10-31**，来自同一授权设备的实际只读连接，以 128 × 40 字符视口还原 CLI 的 ANSI / Kitty 协议输出。图中 FPS 是采集时的实际输出计数，静止画面下 ANSI 无变化可显示 `FPS 0`。图示为输出渲染，终端实窗效果受字体、窗口大小及协议支持影响；采集方法见 [图示来源](docs/images/README.md#cli-captures)。
 
 <a id="cli-npm"></a>
 

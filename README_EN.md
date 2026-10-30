@@ -139,7 +139,7 @@ Remote sessions support monitor switching, video quality and frame-rate controls
 | <img src="docs/images/cli-ansi-overview.png" width="480" alt="CrossDesk CLI ANSI quadrant overview, with read-only mode and connection status at the top and shortcuts at the bottom" /> | <img src="docs/images/cli-kitty-overview.png" width="480" alt="CrossDesk CLI Kitty protocol overview of the same remote desktop, rendered as pixels with the status bar and shortcuts" /> |
 | Colored characters show the desktop in standard terminals; press `d` to inspect a smaller region. | Pixel graphics display the desktop in terminals supporting the Kitty graphics protocol, such as Ghostty. |
 
-Both images were captured on **2026-10-31** from real read-only connections to the same authorized host. They render the CLI's ANSI / Kitty protocol output in a 160 × 48 character viewport. Actual terminal appearance depends on the font, window size, and protocol support. See [capture notes](docs/images/README.md#cli-captures) for the method.
+Both images were captured on **2026-10-31** from real read-only connections to the same authorized host. They render the CLI's ANSI / Kitty protocol output in a 128 × 40 character viewport. FPS counts actual output during capture; an unchanged ANSI view can show `FPS 0`. Actual terminal appearance depends on the font, window size, and protocol support. See [capture notes](docs/images/README.md#cli-captures) for the method.
 
 <a id="cli-npm"></a>
 
