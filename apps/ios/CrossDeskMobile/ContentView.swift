@@ -8,6 +8,18 @@ enum MobileLayout {
 }
 
 extension View {
+    // Keep change callbacks available on iOS 16 without using the deprecated
+    // overload on newer systems. Neither branch fires on initial appearance.
+    @ViewBuilder
+    func onValueChange<Value: Equatable>(of value: Value,
+                                         perform action: @escaping (Value) -> Void) -> some View {
+        if #available(iOS 17.0, *) {
+            onChange(of: value) { _, newValue in action(newValue) }
+        } else {
+            onChange(of: value, perform: action)
+        }
+    }
+
     func readableContentWidth() -> some View {
         frame(maxWidth: MobileLayout.readableMaximumWidth)
             .frame(maxWidth: .infinity)
@@ -81,7 +93,7 @@ struct ContentView: View {
                 session.applicationDidBecomeActive()
             }
         }
-        .onChange(of: scenePhase) { phase in
+        .onValueChange(of: scenePhase) { phase in
             if phase == .active {
                 session.applicationDidBecomeActive()
             } else if phase == .background {
@@ -304,7 +316,7 @@ private struct ConnectionHomeView: View {
                 session.dismissDeviceOfflineAlert()
             }
         }
-        .onChange(of: session.remoteID) { value in
+        .onValueChange(of: session.remoteID) { value in
             let formatted = String(value.filter { $0.isNumber }.prefix(9))
             if formatted != value {
                 session.remoteID = formatted
@@ -916,16 +928,16 @@ private struct ServerSettingsView: View {
             }
             .allowsHitTesting(false)
         }
-        .onChange(of: serverConfigurationExpanded) { expanded in
+        .onValueChange(of: serverConfigurationExpanded) { expanded in
             if !expanded {
                 focusedServerField = nil
                 validateAndApplyServerConfiguration()
             }
         }
-        .onChange(of: usesCustomServer) { isCustom in
+        .onValueChange(of: usesCustomServer) { isCustom in
             if !isCustom { useDefaultServer() }
         }
-        .onChange(of: focusedServerField) { field in
+        .onValueChange(of: focusedServerField) { field in
             if field == nil { validateAndApplyServerConfiguration() }
         }
         .onDisappear {

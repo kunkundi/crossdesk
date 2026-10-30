@@ -273,7 +273,9 @@ if [[ -f "${OUTPUT_LIBRARY}" ]] && cmp -s "${TEMP_MANIFEST}" "${MERGE_MANIFEST}"
   exit 0
 fi
 
-/usr/bin/libtool -static -o "${TEMP_LIBRARY}" \
+# Dependencies include empty objects for disabled or other-platform code.
+# Suppress only that diagnostic; retain the members and other warnings.
+/usr/bin/libtool -static -no_warning_for_no_symbols -o "${TEMP_LIBRARY}" \
   "${MINIRTC_LIBRARY}" "${MERGE_ARCHIVES[@]}" \
   "${WIRE_LIBRARY}"
 verify_no_openh264 "${TEMP_LIBRARY}"

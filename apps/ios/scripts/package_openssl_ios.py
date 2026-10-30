@@ -40,7 +40,9 @@ def package(inputs, output, platform="iphoneos"):
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="openssl-framework-", dir=output.parent) as temp:
         binary = Path(temp) / "OpenSSL"
-        subprocess.run(["/usr/bin/libtool", "-static", "-o", str(binary),
+        # OpenSSL includes empty objects for disabled or platform-specific code.
+        # Keep those members and all other libtool diagnostics intact.
+        subprocess.run(["/usr/bin/libtool", "-static", "-no_warning_for_no_symbols", "-o", str(binary),
                         *(str(archives[name][0]) for name in sorted(archives))], check=True)
         subprocess.run(["xcrun", "lipo", str(binary), "-verify_arch", "arm64"], check=True)
         symbols = subprocess.check_output(["xcrun", "nm", "-u", str(binary)], text=True)

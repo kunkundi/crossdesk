@@ -197,7 +197,7 @@ struct RemoteSessionView: View {
         } message: {
             Text(session.remoteUpdateMessage ?? "")
         }
-        .onChange(of: session.privacyScreen.unlockNotice) { visible in
+        .onValueChange(of: session.privacyScreen.unlockNotice) { visible in
             if visible {
                 mouseInput.releaseAll()
                 keyboardInputVisible = false
@@ -231,37 +231,37 @@ struct RemoteSessionView: View {
             statusMenuVisible = false
             statusOrbCenter = nil
         }
-        .onChange(of: session.selectedDisplay) { _ in
+        .onValueChange(of: session.selectedDisplay) { _ in
             systemKeyboardContext.remoteFocusWillChange()
             mouseInput.releaseAll()
             mouseInput.position(x: 0.5, y: 0.5)
             cursorPosition = nil
             viewport = RemoteViewportState()
         }
-        .onChange(of: session.mouseControlMode) { _ in
+        .onValueChange(of: session.mouseControlMode) { _ in
             mouseInput.releaseAll()
             cursorPosition = session.remoteCursorPosition
             if let point = cursorPosition {
                 mouseInput.position(x: Float(point.x), y: Float(point.y))
             }
         }
-        .onChange(of: scenePhase) { phase in
+        .onValueChange(of: scenePhase) { phase in
             if phase != .active { mouseInput.releaseAll() }
             if phase == .background { keyboardInputVisible = false }
         }
-        .onChange(of: keyboardInputVisible) { visible in
+        .onValueChange(of: keyboardInputVisible) { visible in
             if !visible {
                 animateSystemKeyboardPresentation = true
                 waitingForSystemKeyboard = false
             }
         }
-        .onChange(of: session.isConnected) { connected in
+        .onValueChange(of: session.isConnected) { connected in
             if !connected {
                 mouseInput.releaseAll()
                 keyboardInputVisible = false
             }
         }
-        .onChange(of: session.remoteCursorPositionRevision) { _ in
+        .onValueChange(of: session.remoteCursorPositionRevision) { _ in
             guard !mouseInput.hasVirtualButton, let position = session.remoteCursorPosition else { return }
             mouseInput.position(x: Float(position.x), y: Float(position.y))
             cursorPosition = position
@@ -481,7 +481,7 @@ struct RemoteSessionView: View {
                     )
             }
             .frame(width: containerSize.width, height: containerSize.height)
-            .onChange(of: containerSize) { _ in mouseInput.releaseAll() }
+            .onValueChange(of: containerSize) { _ in mouseInput.releaseAll() }
         }
     }
 
@@ -1361,7 +1361,7 @@ private struct ScrollingCodecName: View {
                         GeometryReader { text in
                             Color.clear
                                 .onAppear { textWidth = text.size.width }
-                                .onChange(of: text.size.width) { textWidth = $0; startedAt = Date() }
+                                .onValueChange(of: text.size.width) { textWidth = $0; startedAt = Date() }
                         }
                     }
                     .offset(x: offset(in: bounds.size.width, at: context.date))
@@ -1369,8 +1369,8 @@ private struct ScrollingCodecName: View {
                     .clipped()
             }
             .onAppear { startedAt = Date() }
-            .onChange(of: value) { _ in startedAt = Date() }
-            .onChange(of: bounds.size.width) { _ in startedAt = Date() }
+            .onValueChange(of: value) { _ in startedAt = Date() }
+            .onValueChange(of: bounds.size.width) { _ in startedAt = Date() }
         }
         .frame(height: lineHeight)
         .accessibilityElement(children: .ignore)

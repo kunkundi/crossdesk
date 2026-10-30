@@ -142,7 +142,7 @@ struct ThirdPartyLicensesView: View {
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle(NSLocalizedString("关于 CrossDesk", comment: ""))
         .navigationBarTitleDisplayMode(.inline)
-        .onChange(of: session.hasNetworkConsent) { allowed in
+        .onValueChange(of: session.hasNetworkConsent) { allowed in
             if allowed { appUpdates.checkNow() }
         }
     }
