@@ -19,6 +19,7 @@ struct Viewport {
   double zoom = 1, center_x = .5, center_y = .5;
   int pixel_width = 0, pixel_height = 0;
   bool native = false, pixel_mode = false;
+  int row_offset = 0; // Terminal rows reserved above the video area.
 };
 struct Rect {
   int x, y, width, height;
@@ -51,6 +52,12 @@ inline constexpr char kKittyQuery[] =
     "\033_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\033\\";
 inline constexpr char kKittyDelete[] = "\033_Ga=d,d=I,i=31,q=2\033\\";
 bool KittyReply(const std::string &response);
+struct StatusBar {
+  std::string progress, compact_progress, error, view, network;
+  bool control = false, command_mode = false;
+};
+// Three padded ASCII rows. Shortcuts are compacted as whole groups to fit.
+std::vector<std::string> StatusLines(const StatusBar &, int columns);
 // Incremental parser: protocol replies and unknown escapes are consumed
 // locally. Key taps always release immediately; paste uses the UTF-8 text
 // protocol. In command_mode, control records the mode to restore while the

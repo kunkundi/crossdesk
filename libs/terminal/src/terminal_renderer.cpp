@@ -26,6 +26,7 @@ static uint32_t Pixel(const DecodedFrame &f, int x, int y) {
 }
 static void Validate(const DecodedFrame &f, const Viewport &v) {
   if (v.columns < 1 || v.rows < 1 || v.columns > 240 || v.rows > 100 ||
+      v.row_offset < 0 || v.row_offset > 100 ||
       !std::isfinite(v.cell_aspect) || v.cell_aspect < .2 ||
       v.cell_aspect > 2 || !std::isfinite(v.zoom) || v.zoom < 1 ||
       v.zoom > 32 || !std::isfinite(v.center_x) || !std::isfinite(v.center_y) ||
@@ -179,6 +180,7 @@ Grid Convert(const DecodedFrame &f, Viewport v) {
 }
 std::optional<std::pair<float, float>> MapPointer(const Grid &g, int x, int y) {
   x *= g.samples_x;
+  y -= g.viewport.row_offset;
   y *= g.samples_y;
   const auto &r = g.content;
   if (!r.width || !r.height || !g.source_width || !g.source_height || x < r.x ||
@@ -254,6 +256,7 @@ std::string Difference(const Grid &g, const std::optional<Grid> &previous) {
   const bool same = previous &&
                     previous->viewport.columns == g.viewport.columns &&
                     previous->viewport.rows == g.viewport.rows &&
+                    previous->viewport.row_offset == g.viewport.row_offset &&
                     previous->viewport.colors == g.viewport.colors &&
                     previous->viewport.utf8 == g.viewport.utf8;
   for (int y = 0; y < g.viewport.rows; ++y) {
@@ -261,7 +264,8 @@ std::string Difference(const Grid &g, const std::optional<Grid> &previous) {
     if (!same ||
         !std::equal(start, start + g.viewport.columns,
                     previous->cells.begin() + size_t(y) * g.viewport.columns))
-      out += "\033[" + std::to_string(y + 1) + ";1H" + Line(g, y);
+      out += "\033[" + std::to_string(g.viewport.row_offset + y + 1) +
+             ";1H" + Line(g, y);
   }
   return out;
 }
@@ -323,7 +327,7 @@ std::string Kitty(const DecodedFrame &f, const Viewport &requested) {
     w = std::max(2, w * 3 / 4);
     h = std::max(2, h * 3 / 4);
   }
-  std::string out = "\033[H";
+  std::string out = "\033[" + std::to_string(v.row_offset + 1) + ";1H";
   for (size_t i = 0; i < b64.size(); i += 4096) {
     out += "\033_G";
     if (i == 0)

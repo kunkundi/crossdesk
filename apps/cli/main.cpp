@@ -93,11 +93,15 @@ struct Tty {
     Write(out, end.data(), end.size());
   }
 };
-Viewport Size() {
+Viewport Size(int *status_rows = nullptr) {
   auto ws = GetTerminalSize(0);
+  const int reserved_rows = std::clamp(int(ws.rows) - 1, 0, 3);
+  if (status_rows)
+    *status_rows = reserved_rows;
   Viewport v;
   v.columns = std::clamp(int(ws.columns) - 1, 1, 240);
-  v.rows = std::clamp(int(ws.rows) - 2, 1, 100);
+  v.rows = std::clamp(int(ws.rows) - reserved_rows, 1, 100);
+  v.row_offset = reserved_rows > 0 ? 1 : 0;
   if (ws.columns && ws.rows) {
     v.pixel_width = int(ws.pixel_width) * v.columns / ws.columns;
     v.pixel_height = int(ws.pixel_height) * v.rows / ws.rows;
@@ -197,6 +201,20 @@ AnsiDetail Detail(const std::string &name) {
     return AnsiDetail::Quadrant;
   throw std::invalid_argument("ansi-detail must be half or quadrant");
 }
+std::string WaitingScreen(const Viewport &v, const std::string &title,
+                          const std::string &message) {
+  const std::string lines[] = {title, message, "Ctrl+] then q to quit"};
+  const int count = std::min(v.rows, 3);
+  const int top = v.row_offset + (v.rows - count) / 2 + 1;
+  std::string out;
+  for (int i = 0; i < count; ++i) {
+    const auto text = lines[i].substr(0, v.columns);
+    const auto column = (v.columns - text.size()) / 2 + 1;
+    out += "\033[" + std::to_string(top + i) + ";1H\033[0m\033[K\033[" +
+           std::to_string(column) + "G" + text;
+  }
+  return out;
+}
 int View(SessionOptions options, const std::string &device,
          const std::string &renderer, bool control, int fd, AnsiDetail detail,
          double zoom, bool native) {
@@ -231,20 +249,40 @@ int View(SessionOptions options, const std::string &device,
   input.control = control;
   input.zoom = zoom;
   input.native = native;
+  const auto started = Clock::now();
   s.Connect(options, device, std::move(password));
   s.SetControl(control);
   std::optional<Grid> displayed, pending;
   bool pending_frame = false;
-  Viewport last_view = Size();
+  int last_status_rows = 3;
+  Viewport last_view = Size(&last_status_rows);
   std::optional<DecodedFrame> last_frame;
   uint64_t view_revision = input.view_revision;
   bool redraw = true;
   uint64_t submitted = 0;
-  const auto started = Clock::now();
+  std::optional<Clock::time_point> connected_at, first_frame_at,
+      first_output_at;
+  bool waiting_visible = false;
   double queue_ms = 0;
   auto next = Clock::now(), status_tick = next;
+  const auto pump_output = [&] {
+    if (output.Pump() && pending_frame) {
+      displayed = std::move(pending);
+      pending.reset();
+      pending_frame = false;
+      ++submitted;
+      if (!first_output_at) {
+        first_output_at = Clock::now();
+        status_tick = *first_output_at;
+      }
+    }
+  };
   while (!interrupted && !input.exit) {
     s.Tick();
+    if (s.Connected() && !connected_at) {
+      connected_at = Clock::now();
+      status_tick = *connected_at;
+    }
     char bytes[8192];
     auto n = Read(0, bytes, sizeof(bytes));
     const bool previous_command = input.command_mode;
@@ -255,16 +293,12 @@ int View(SessionOptions options, const std::string &device,
     if (previous_command != input.command_mode ||
         previous_control != input.control || previous_error != input.error)
       status_tick = Clock::now();
-    if (output.Pump() && pending_frame) {
-      displayed = std::move(pending);
-      pending.reset();
-      pending_frame = false;
-      ++submitted;
-    }
+    pump_output();
     if (s.Finished())
       break;
     auto now = Clock::now();
-    auto v = Size();
+    int status_rows;
+    auto v = Size(&status_rows);
     v.detail = detail;
     v.native = input.native;
     v.pixel_mode = kitty;
@@ -278,43 +312,71 @@ int View(SessionOptions options, const std::string &device,
     if (output.Idle() &&
         (v.columns != last_view.columns || v.rows != last_view.rows ||
          v.pixel_width != last_view.pixel_width ||
-         v.pixel_height != last_view.pixel_height)) {
+         v.pixel_height != last_view.pixel_height ||
+         status_rows != last_status_rows)) {
       output.Put("\033[2J");
       displayed.reset();
       last_view = v;
+      last_status_rows = status_rows;
       redraw = true;
+      status_tick = now;
     }
     if (output.Idle() && now >= status_tick) {
       auto st = s.Status();
       const auto last_state = st["state"].get<std::string>();
-      auto line = (input.error.empty() ? last_state : input.error) + " " +
-                  (input.command_mode
-                       ? (input.control ? "LOCAL COMMAND / CONTROL PAUSED"
-                                        : "LOCAL COMMAND / READ ONLY")
-                       : input.control ? "CONTROL" : "READ ONLY") +
-                  " " +
-                  (kitty                            ? "KITTY"
-                   : detail == AnsiDetail::Quadrant ? "QUAD"
-                                                    : "HALF") +
-                  (input.native ? " native x" : " fit x") +
-                  std::to_string(int(input.zoom)) +
-                  (last_frame ? " " + std::to_string(last_frame->width) + "x" +
-                                    std::to_string(last_frame->height)
-                              : "") +
-                  " | Ctrl+] commands";
-      const std::string hint =
-          input.command_mode ? "Esc/Ctrl+C return | c toggle q quit | "
-                               "arrows/ijkl pan +/- zoom f fit d detail"
-          : input.control
-              ? "Keys/mouse -> remote | Ctrl+] then c release, q quit"
-              : "c control q quit ? help | i up j left k down l right | "
-                "+/- zoom f fit d detail";
-      output.Put("\033[" + std::to_string(v.rows + 1) + ";1H\033[0m\033[K" +
-                 line.substr(0, v.columns) + "\033[" +
-                 std::to_string(v.rows + 2) + ";1H\033[K" +
-                 std::string(hint + " | out=" + std::to_string(submitted) +
-                             " bytes=" + std::to_string(output.bytes))
-                     .substr(0, v.columns));
+      std::string progress =
+          first_output_at               ? "Displaying"
+          : s.Connected()               ? "Connected, waiting for first frame"
+          : last_state == "registering" ? "Connecting to server"
+                                        : "Connecting to device";
+      const auto elapsed =
+          std::to_string(std::chrono::duration_cast<std::chrono::seconds>(
+                             now - connected_at.value_or(started))
+                             .count()) +
+          "s";
+      if (!first_output_at)
+        progress += " (" + elapsed + ")";
+      StatusBar bar;
+      bar.progress = progress;
+      bar.compact_progress = first_output_at ? "LIVE"
+                             : s.Connected() ? "WAIT " + elapsed
+                                             : "CONNECT " + elapsed;
+      bar.error = input.error;
+      bar.control = input.control;
+      bar.command_mode = input.command_mode;
+      bar.view = std::string(kitty                            ? "KITTY"
+                             : detail == AnsiDetail::Quadrant ? "QUAD"
+                                                              : "HALF") +
+                 (input.native ? " | Detail x" : " | Fit x") +
+                 std::to_string(int(input.zoom)) +
+                 (last_frame ? " | " + std::to_string(last_frame->width) + "x" +
+                                   std::to_string(last_frame->height)
+                             : "");
+      const auto bps = st["network"]["video_bps"].get<uint64_t>();
+      const auto traversal = st["network"]["traversal"].get<int>();
+      bar.network =
+          std::string(traversal == P2P     ? "P2P  "
+                      : traversal == Relay ? "RELAY  "
+                                           : "Video  ") +
+          (bps < 1000      ? std::to_string(bps) + " bps"
+           : bps < 1000000 ? std::to_string(bps / 1000) + " kbps"
+                           : std::to_string(bps / 1000000) + "." +
+                                 std::to_string(bps / 100000 % 10) + " Mbps");
+      std::string screen;
+      if (!last_frame && !first_output_at) {
+        screen = WaitingScreen(
+            v, progress,
+            s.Connected() ? "The connection is established; waiting for video."
+                          : "Establishing a secure connection...");
+        waiting_visible = true;
+      }
+      const auto lines = StatusLines(bar, v.columns);
+      for (int row = 0; row < status_rows; ++row)
+        screen += "\033[" +
+                  std::to_string(row == 0 ? 1 : v.row_offset + v.rows + row) +
+                  ";1H\033[0m\033[K" + (row == 0 ? "\033[7m" : "") +
+                  lines[row] + "\033[0m";
+      output.Put(std::move(screen));
       status_tick = now + std::chrono::seconds(1);
     }
     if (output.Idle() && now >= next) {
@@ -324,6 +386,8 @@ int View(SessionOptions options, const std::string &device,
           frame && frame->generation == s.Generation()) {
         last_frame = std::move(frame);
         fresh = true;
+        if (!first_frame_at)
+          first_frame_at = last_frame->queued;
       }
       if (last_frame && last_frame->generation != s.Generation())
         last_frame.reset();
@@ -333,8 +397,15 @@ int View(SessionOptions options, const std::string &device,
                          now - last_frame->queued)
                          .count();
         pending = kitty ? Layout(*last_frame, v) : Convert(*last_frame, v);
-        output.Put(kitty ? Kitty(*last_frame, v)
-                         : Difference(*pending, displayed));
+        // Clear waiting text and Kitty margins without erasing the status bars.
+        std::string clear;
+        if (waiting_visible)
+          for (int row = 0; row < v.rows; ++row)
+            clear += "\033[" + std::to_string(v.row_offset + row + 1) +
+                     ";1H\033[0m\033[2K";
+        output.Put(clear + (kitty ? Kitty(*last_frame, v)
+                                 : Difference(*pending, displayed)));
+        waiting_visible = false;
         redraw = false;
         pending_frame = true;
         if (output.Idle()) {
@@ -350,12 +421,23 @@ int View(SessionOptions options, const std::string &device,
   s.Disconnect();
   auto until = Clock::now() + std::chrono::seconds(2);
   while (!output.Idle() && Clock::now() < until) {
-    output.Pump();
+    pump_output();
     output.Wait(-1);
   }
   // These diagnostics go to the private file, never through the active screen.
+  const auto elapsed_ms =
+      [&](const std::optional<Clock::time_point> &time) -> json {
+    return time
+               ? json(std::chrono::duration<double, std::milli>(*time - started)
+                          .count())
+               : json(nullptr);
+  };
   std::cerr
       << json{{"session", final},
+              {"startup_ms",
+               {{"connected", elapsed_ms(connected_at)},
+                {"first_frame", elapsed_ms(first_frame_at)},
+                {"first_output", elapsed_ms(first_output_at)}}},
               {"mouse_reports", input.mouse_reports},
               {"submitted", submitted},
               {"output_bytes", output.bytes},
