@@ -391,7 +391,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 3;
-				DEVELOPMENT_TEAM = 8DNC3SZ86S;
+				DEVELOPMENT_TEAM = RJZC936RL7;
 				ENABLE_BITCODE = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -424,7 +424,7 @@
 					"-framework",
 					Foundation,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = cn.crossdesk.mobile;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chunkdash.crossdesk;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_OBJC_BRIDGING_HEADER = "CrossDeskMobile/CrossDeskMobile-Bridging-Header.h";
@@ -441,7 +441,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 3;
-				DEVELOPMENT_TEAM = 8DNC3SZ86S;
+				DEVELOPMENT_TEAM = RJZC936RL7;
 				ENABLE_BITCODE = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -474,7 +474,7 @@
 					"-framework",
 					Foundation,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = cn.crossdesk.mobile;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chunkdash.crossdesk;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_OBJC_BRIDGING_HEADER = "CrossDeskMobile/CrossDeskMobile-Bridging-Header.h";

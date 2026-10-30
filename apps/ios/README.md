@@ -88,7 +88,7 @@ with Xmake precompiled package downloads disabled.
    target and scheme.
 2. Under **Signing & Capabilities**, select your own development team and set
    a bundle identifier available to that team. The checked-in signing team
-   and `cn.crossdesk.mobile` identifier belong to the project maintainer.
+   and `com.chunkdash.crossdesk` identifier belong to ChunkDash.
 3. Connect and select a physical iPhone or iPad, configure device trust and
    Developer Mode as prompted by Xcode, then build and run. See Apple's
    [device setup guide](https://developer.apple.com/documentation/xcode/running-your-app-on-simulated-or-physical-devices).
@@ -140,6 +140,27 @@ The first connection to a signaling server provisions and stores an identity
 for that server. Remote control sessions then log in as `C-<identity>` and use
 the desktop-compatible `DisplayN`, `control_audio`, `mouse`, `keyboard`,
 `control_data`, `clipboard`, `file`, and `file_feedback` streams.
+
+## Xcode Cloud
+
+Select `apps/ios/CrossDeskMobile.xcodeproj`, the shared `CrossDeskMobile`
+scheme, and an **Archive - iOS** action with **App Store Connect** distribution
+preparation (called **TestFlight and App Store** in some Xcode versions).
+Commit and push the intended signing settings and shared scheme to the branch
+selected by the workflow before starting a build.
+
+Xcode Cloud automatically runs `ci_scripts/ci_post_clone.sh` next to the Xcode
+project. It installs Xmake, CMake, and Python 3.13 with Homebrew, prepares an
+isolated host Python environment with pip/setuptools/wheel, verifies the minimum
+Xmake version, and initializes the pinned MiniRTC submodules. The native build
+phase selects these tools again and preserves Cloud's proxy settings for package
+downloads. No manual workflow PATH setting or `sudo` command is required.
+
+The first archive compiles native dependencies from source and may take longer
+than later builds. After changing the setup script, start a build from the new
+commit; rebuilding an older commit does not include the fix. App Store releases
+still need the source-tag and bundle checks described in **App Store archive
+and bundle validation** below.
 
 ## GitHub Actions
 

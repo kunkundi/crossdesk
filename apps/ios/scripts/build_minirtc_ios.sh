@@ -46,6 +46,17 @@ if [[ "${ARCH_NAME}" != "arm64" ]]; then
   exit 64
 fi
 
+# Post-clone scripts run in a separate process, so select their installed host
+# tools again here instead of relying on exported PATH changes surviving.
+if [[ "${CI_XCODE_CLOUD:-}" == "TRUE" ]]; then
+  CLOUD_HOST_BIN="${IOS_DIR}/.xmake/xcode-cloud-host/bin"
+  if [[ ! -x "${CLOUD_HOST_BIN}/xmake" || ! -x "${CLOUD_HOST_BIN}/python3" ]]; then
+    print -u2 "Xcode Cloud build tools are missing. Run ci_scripts/ci_post_clone.sh before building."
+    exit 69
+  fi
+  export PATH="${CLOUD_HOST_BIN}:${PATH}"
+fi
+
 XMAKE_BIN="${XMAKE_BIN:-}"
 if [[ -z "${XMAKE_BIN}" ]]; then
   XMAKE_BIN="$(command -v xmake 2>/dev/null || true)"
@@ -88,6 +99,16 @@ run_xmake() {
   fi
   if [[ -n "${XMAKE_MAIN_REPO:-}" ]]; then
     xmake_env+=("XMAKE_MAIN_REPO=${XMAKE_MAIN_REPO}")
+  fi
+  # Cloud dependency downloads use Apple's HTTP proxy. Keep those settings
+  # while still stripping Xcode's iOS compiler and SDK environment variables.
+  if [[ "${CI_XCODE_CLOUD:-}" == "TRUE" ]]; then
+    local proxy_name
+    for proxy_name in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy; do
+      if (( ${+parameters[$proxy_name]} )); then
+        xmake_env+=("${proxy_name}=${(P)proxy_name}")
+      fi
+    done
   fi
   /usr/bin/env -i \
     HOME="${HOME}" \
