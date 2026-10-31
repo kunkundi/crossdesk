@@ -323,6 +323,7 @@ final class RemoteKeyboardInputBar: UIView {
         let computerButton = UIButton(type: .system)
         computerButton.setTitle(NSLocalizedString("电脑键盘", comment: ""), for: .normal)
         computerButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .medium)
+        computerButton.setContentHuggingPriority(.defaultHigh, for: .horizontal)
         computerButton.accessibilityLabel = NSLocalizedString("切换到电脑键盘", comment: "")
         computerButton.addTarget(self, action: #selector(switchToComputer), for: .touchUpInside)
 
@@ -337,7 +338,8 @@ final class RemoteKeyboardInputBar: UIView {
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
         NSLayoutConstraint.activate([
-            computerButton.widthAnchor.constraint(equalToConstant: 80),
+            // Keep the minimum touch width while allowing longer translations.
+            computerButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
             dismissButton.widthAnchor.constraint(equalToConstant: RemoteKeyboardDismissButton.sideLength),
             row.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: 4),
             row.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -4),

@@ -855,7 +855,8 @@ private struct RemoteComputerKeyboard: View {
                     switchKeyboard()
                 }
                 .font(.system(size: 15, weight: .medium))
-                .frame(width: 80, height: 44)
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(minWidth: 80, minHeight: 44)
                 .accessibilityLabel(NSLocalizedString("切换到系统键盘", comment: ""))
                 if verticalSizeClass == .compact {
                     pageTabs
