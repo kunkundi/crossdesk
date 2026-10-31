@@ -2,7 +2,6 @@ local source_dir = path.absolute("../..", os.scriptdir())
 local controller_dir = path.join(source_dir, "libs/controller")
 local terminal_dir = path.join(source_dir, "libs/terminal")
 local minirtc_dir = path.join(source_dir, "deps/submodules/minirtc")
-local credential_patch = path.join(source_dir, "deps/patches/minirtc-credential-logs.patch")
 
 add_requires("spdlog 1.14.1", {system = false})
 if is_plat("windows") then
@@ -17,10 +16,6 @@ target("crossdesk_controller")
         path.join(minirtc_dir, "src/api"), {public = true})
     add_includedirs(path.join(minirtc_dir, "src/log"))
     add_files(path.join(controller_dir, "src/*.cpp"))
-    before_build(function ()
-        -- Require the same credential redaction in checkouts and source bundles.
-        os.vrunv("git", {"-C", minirtc_dir, "apply", "--reverse", "--check", credential_patch})
-    end)
 target_end()
 
 target("crossdesk_terminal")

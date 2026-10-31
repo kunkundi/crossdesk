@@ -97,7 +97,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ${{ env.XMAKE_PKG_INSTALLDIR }}
-          key: cli-deps-v1-${{ matrix.runner }}-${{ matrix.target }}-image${{ steps.runner-image.outputs.version }}-xmake${{ env.XMAKE_VERSION }}-${{ hashFiles('xmake.lua', 'apps/cli/xmake.lua', 'apps/desktop/xmake/options.lua', 'deps/thirdparty/openssl/**', 'deps/submodules/minirtc/xmake.lua', 'deps/submodules/minirtc/thirdparty/**', 'deps/patches/**', '.github/workflows/build-cli.yml') }}
+          key: cli-deps-v1-${{ matrix.runner }}-${{ matrix.target }}-image${{ steps.runner-image.outputs.version }}-xmake${{ env.XMAKE_VERSION }}-${{ hashFiles('xmake.lua', 'apps/cli/xmake.lua', 'apps/desktop/xmake/options.lua', 'deps/thirdparty/openssl/**', 'deps/submodules/minirtc/xmake.lua', 'deps/submodules/minirtc/thirdparty/**', '.github/workflows/build-cli.yml') }}
       - name: Configure macOS
         if: runner.os == 'macOS'
         run: xmake f -y -p macosx -a ${{ matrix.arch }} -m release --target_minver=13.0 --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n

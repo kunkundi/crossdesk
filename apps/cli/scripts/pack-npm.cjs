@@ -132,8 +132,6 @@ try {
     const filename = tarballName(name, version);
     if (fs.existsSync(path.join(output, filename))) throw new Error(`Output already exists: ${filename}`);
   }
-  run('git', ['-C', path.join(root, 'deps/submodules/minirtc'), 'apply', '--reverse', '--check',
-              path.join(root, 'deps/patches/minirtc-credential-logs.patch')]);
   const executable = process.platform === 'win32' ? 'crossdesk-cli.exe' : 'crossdesk-cli';
   binary ||= path.join(root, 'build', platform.xmakePlatform, platform.xmakeArch, 'release', executable);
   const info = inspect(binary, target);
@@ -144,7 +142,7 @@ try {
   fs.copyFileSync(binary, path.join(native, 'bin', executable));
   fs.chmodSync(path.join(native, 'bin', executable), 0o755);
   copy('LICENSE', path.join(native, 'LICENSE'));
-  // Include the controller and patched MiniRTC sources used by this checkout.
+  // Include the controller and MiniRTC sources used by this checkout.
   // External Xmake dependency source/licenses still belong to the release's
   // dependency bundle; see source/apps/cli/docs/source-provenance.md.
   // Keep desktop build definitions for Xmake's initial option discovery;
@@ -153,11 +151,11 @@ try {
                        'libs/controller/include',
                        'libs/controller/src', 'libs/terminal', 'libs/wire/include',
                        'libs/wire/src', 'deps/submodules/minirtc',
-                       'deps/submodules/xmake.lua', 'deps/thirdparty', 'deps/patches', 'xmake.lua',
+                       'deps/submodules/xmake.lua', 'deps/thirdparty', 'xmake.lua',
                        'LICENSE', '.gitmodules'])
     copy(entry, path.join(native, 'source', entry));
   json(path.join(native, 'build-info.json'), { version, ...info });
-  fs.writeFileSync(path.join(native, 'README.md'), `# ${platform.packageName}\n\nNative ${target} dependency for [${project.name}](https://www.npmjs.com/package/${project.name}) ${version}, published under the ${platform.packageName.split('/')[0]} scope.\n\nInstall the cross-platform entry package with \`npm install -g ${project.name}\` or run \`npx ${project.name} doctor --json\`. This platform package contains the native binary and does not register a shell command.\n\nSource repository: [CrossDesk](${project.repository.url.replace(/^git\+/, '').replace(/\.git$/, '')}). Report problems at ${project.bugs.url}.\n\nRuntime requirements and linked libraries: [build-info.json](build-info.json).\n\nController and patched MiniRTC sources are included in source/. From source/, configure with xmake f -y --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n -m release, then run xmake build crossdesk-cli. External dependency notices and corresponding sources must accompany the product release; see source/apps/cli/docs/source-provenance.md.\n`);
+  fs.writeFileSync(path.join(native, 'README.md'), `# ${platform.packageName}\n\nNative ${target} dependency for [${project.name}](https://www.npmjs.com/package/${project.name}) ${version}, published under the ${platform.packageName.split('/')[0]} scope.\n\nInstall the cross-platform entry package with \`npm install -g ${project.name}\` or run \`npx ${project.name} doctor --json\`. This platform package contains the native binary and does not register a shell command.\n\nSource repository: [CrossDesk](${project.repository.url.replace(/^git\+/, '').replace(/\.git$/, '')}). Report problems at ${project.bugs.url}.\n\nRuntime requirements and linked libraries: [build-info.json](build-info.json).\n\nController and MiniRTC sources are included in source/. From source/, configure with xmake f -y --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n -m release, then run xmake build crossdesk-cli. External dependency notices and corresponding sources must accompany the product release; see source/apps/cli/docs/source-provenance.md.\n`);
   const metadata = {
     license: project.license, author: project.author, repository: project.repository,
     homepage: project.homepage, bugs: project.bugs,

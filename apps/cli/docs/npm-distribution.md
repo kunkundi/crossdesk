@@ -57,7 +57,7 @@ codesign --force --sign - build/macosx/arm64/release/crossdesk-cli
 npm --prefix apps/cli run pack:npm
 ```
 
-脚本读取 `apps/cli/package.json` 与 `apps/cli/xmake.lua` 的版本，检查二者一致；确认源码中的 MiniRTC 日志脱敏补丁已应用，再检查当前平台二进制格式、CPU、动态链接依赖，并运行离线 `doctor --json`。macOS 只接受系统动态库，Linux 只接受列明的基础系统运行库，Windows 拒绝未随产品处理的 DLL 和动态 MSVC 运行库。Windows 在含 `dumpbin.exe` 的 Visual Studio 开发者环境中运行打包。脚本预先检查两个输出文件是否存在，并在临时目录中完成两个包后再写入输出目录；写入失败时清理本次已写入的包，已有同名产物不会被覆盖。
+脚本读取 `apps/cli/package.json` 与 `apps/cli/xmake.lua` 的版本，检查二者一致；检查当前平台二进制格式、CPU、动态链接依赖，并运行离线 `doctor --json`。macOS 只接受系统动态库，Linux 只接受列明的基础系统运行库，Windows 拒绝未随产品处理的 DLL 和动态 MSVC 运行库。Windows 在含 `dumpbin.exe` 的 Visual Studio 开发者环境中运行打包。脚本预先检查两个输出文件是否存在，并在临时目录中完成两个包后再写入输出目录；写入失败时清理本次已写入的包，已有同名产物不会被覆盖。
 
 默认从 `build/<platform>/<arch>/release/` 读取原生程序，将两个 `.tgz` 写入 `build/npm/`。可指定路径：
 
@@ -67,7 +67,7 @@ npm --prefix apps/cli run pack:npm -- --binary /absolute/path/crossdesk-cli --ou
 
 每台构建机生成当前平台的原生包与相同版本的通用启动包。以 macOS arm64、版本 0.1.0 为例，文件名为 `chunkdash-crossdesk-cli-darwin-arm64-0.1.0.tgz` 和 `chunkdash-crossdesk-cli-0.1.0.tgz`；npm 将 `@scope/name` 的 tarball 文件名写作 `scope-name-version.tgz`。五个 CI artifact 各含一份入口包，最终需要五个平台包和一份入口包，共六个 tarball。
 
-`apps/cli/npm/platforms.json` 集中定义五个平台；脚本校验平台包名合法且不重复，启动包通过精确版本的 `optionalDependencies` 让 npm 仅安装匹配系统和 CPU 的原生包。生成的六个包都包含作者、源码仓库、主页、问题反馈地址，以及面向 npm 官方注册表的公开发布配置。原生包包含二进制、运行要求、SHA-256，以及当前控制端和已应用修补的 MiniRTC 源码快照。外部 Xmake 依赖的许可证、对应源码和重链接材料需要随正式版本一并提供，参见 [源码来源](source-provenance.md)。源码快照已含 MiniRTC，解包后无需运行 `prepare-deps.sh`；在 `source/` 目录按上述构建说明显式关闭桌面、开启 CLI，再构建 `crossdesk-cli`。源码包仅包含 CLI 及其依赖，不包含桌面或移动应用。
+`apps/cli/npm/platforms.json` 集中定义五个平台；脚本校验平台包名合法且不重复，启动包通过精确版本的 `optionalDependencies` 让 npm 仅安装匹配系统和 CPU 的原生包。生成的六个包都包含作者、源码仓库、主页、问题反馈地址，以及面向 npm 官方注册表的公开发布配置。原生包包含二进制、运行要求、SHA-256，以及当前控制端和 MiniRTC 源码快照。外部 Xmake 依赖的许可证、对应源码和重链接材料需要随正式版本一并提供，参见 [源码来源](source-provenance.md)。源码快照已含 MiniRTC，解包后无需运行 `prepare-deps.sh`；在 `source/` 目录按上述构建说明显式关闭桌面、开启 CLI，再构建 `crossdesk-cli`。源码包仅包含 CLI 及其依赖，不包含桌面或移动应用。
 
 `apps/cli/package.json` 的 `private: true` 表示源码目录不是发布产物。只发布打包脚本生成的 tarball；生成的包不带 private 标记。
 
