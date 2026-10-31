@@ -586,6 +586,16 @@ Xcode removes the static archive from the embedded framework (it may insert a
 small resource-framework stub) and preserves `PrivacyInfo.xcprivacy`, source
 metadata and license texts. The application does not load a dynamic OpenSSL copy.
 
+For builds using `DWARF with dSYM File`, the **Generate OpenSSL symbols** phase
+runs after embedding. It verifies that Xcode's placeholder has no executable
+code, generates `OpenSSL.framework.dSYM` from that exact binary, and checks its
+UUIDs. This companion describes the empty resource stub, not the statically
+linked OpenSSL implementation. Xcode includes it alongside the app's dSYM in
+the archive so Organizer can upload symbols for every embedded Mach-O binary.
+`verify_app_bundle.py` checks both UUID matches when given an archived app;
+for an ordinary Release build, pass `--dsym-dir /path/to/Release-iphoneos`.
+The CI ZIP includes both dSYM bundles.
+
 The iOS-specific OpenSSL recipe disables POSIX metadata calls, automatic
 `openssl.cnf` loading, and the unused file-URI store provider. It selects the
 upstream `getrandom` entropy backend, which uses Darwin's `getentropy` on the

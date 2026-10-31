@@ -276,7 +276,8 @@ jobs:
           if [[ "${CROSSDESK_RELEASE_BUILD:-NO}" == "YES" ]]; then
             VERIFY_FLAGS+=(--require-release)
           fi
-          python3 apps/ios/scripts/verify_app_bundle.py "${APP_PATH}" "${VERIFY_FLAGS[@]}"
+          python3 apps/ios/scripts/verify_app_bundle.py "${APP_PATH}" \
+            --dsym-dir "${DERIVED_DATA}/Build/Products/Release-iphoneos" "${VERIFY_FLAGS[@]}"
           xcrun lipo -info "${EXECUTABLE_PATH}"
           echo "Minimum iOS version: ${MINIMUM_OS}"
 
@@ -293,10 +294,10 @@ jobs:
           cp apps/ios/licenses/OPEN_SOURCE_NOTICE.txt "${PACKAGE_DIR}/OPEN_SOURCE_NOTICE.txt"
           cp "${APP_PATH}/SourceMetadata.json" "${PACKAGE_DIR}/SourceMetadata.json"
 
-          DSYM_PATH="${DERIVED_DATA}/Build/Products/Release-iphoneos/CrossDeskMobile.app.dSYM"
-          if [[ -d "${DSYM_PATH}" ]]; then
+          for DSYM_NAME in CrossDeskMobile.app.dSYM OpenSSL.framework.dSYM; do
+            DSYM_PATH="${DERIVED_DATA}/Build/Products/Release-iphoneos/${DSYM_NAME}"
             cp -R "${DSYM_PATH}" "${PACKAGE_DIR}/"
-          fi
+          done
 
           ditto -c -k --sequesterRsrc --keepParent "${PACKAGE_DIR}" "${PACKAGE_FILE}"
           echo "PACKAGE_FILE=${PACKAGE_FILE}" >> "${GITHUB_ENV}"

@@ -222,6 +222,7 @@
 				300000000000000000000001 /* Frameworks */,
 				600000000000000000000002 /* Resources */,
 				300000000000000000000002 /* Embed Frameworks */,
+				700000000000000000000002 /* Generate OpenSSL symbols */,
 			);
 			buildRules = (
 			);
@@ -317,6 +318,24 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/zsh;
 			shellScript = "set -e\npython3 \"${PROJECT_DIR}/scripts/prepare_source_metadata.py\" --output \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/SourceMetadata.json\"\n\"${PROJECT_DIR}/scripts/build_minirtc_ios.sh\"\npython3 \"${PROJECT_DIR}/scripts/verify_native_build.py\" --inputs \"${PROJECT_DIR}/Vendor/${PLATFORM_NAME}/${CONFIGURATION}/libCrossDeskMiniRTC.a.inputs.sha256\" --xmake-version \"${PROJECT_DIR}/Vendor/${PLATFORM_NAME}/${CONFIGURATION}/xmake-version.txt\"\npython3 \"${PROJECT_DIR}/scripts/package_openssl_ios.py\" --inputs \"${PROJECT_DIR}/Vendor/${PLATFORM_NAME}/${CONFIGURATION}/libCrossDeskMiniRTC.a.inputs.sha256\" --output \"${BUILT_PRODUCTS_DIR}/OpenSSL.framework\" --platform \"${PLATFORM_NAME}\"\n";
+		};
+		700000000000000000000002 /* Generate OpenSSL symbols */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/OpenSSL.framework/OpenSSL",
+				"$(PROJECT_DIR)/scripts/generate_openssl_symbols.py",
+			);
+			name = "Generate OpenSSL symbols";
+			outputPaths = (
+				"$(DWARF_DSYM_FOLDER_PATH)/OpenSSL.framework.dSYM/Contents/Resources/DWARF/OpenSSL",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/zsh;
+			shellScript = "set -e\nif [[ \"${DEBUG_INFORMATION_FORMAT}\" == \"dwarf-with-dsym\" ]]; then\n  python3 -B \"${PROJECT_DIR}/scripts/generate_openssl_symbols.py\" --binary \"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/OpenSSL.framework/OpenSSL\" --output \"${DWARF_DSYM_FOLDER_PATH}/OpenSSL.framework.dSYM\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -496,7 +515,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				ENABLE_BITCODE = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -548,7 +567,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				ENABLE_BITCODE = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				FRAMEWORK_SEARCH_PATHS = (

@@ -10,8 +10,10 @@ import re
 import subprocess
 import sys
 
+from generate_openssl_symbols import verify_symbols
 
-def verify(app, require_release=False):
+
+def verify(app, require_release=False, dsym_dir=None):
     info = plistlib.loads((app / "Info.plist").read_bytes())
     binary = app / info["CFBundleExecutable"]
     subprocess.run(["xcrun", "lipo", str(binary), "-verify_arch", "arm64"], check=True)
@@ -63,6 +65,14 @@ def verify(app, require_release=False):
         sdk_symbols = subprocess.check_output(["xcrun", "nm", "-gU", str(embedded_binary)], text=True)
         if re.search(r"\b_(?:SSL_new|OPENSSL_init_crypto)\b", sdk_symbols):
             raise ValueError("Unexpected dynamic OpenSSL implementation in resource framework")
+    # Archive validation includes the exact files that Organizer uploads.
+    if dsym_dir is None and app.parents[2].suffix == ".xcarchive":
+        dsym_dir = app.parents[2] / "dSYMs"
+    if dsym_dir is not None:
+        verify_symbols(binary, dsym_dir / f"{app.name}.dSYM")
+        if embedded_binary.exists():
+            verify_symbols(embedded_binary, dsym_dir / "OpenSSL.framework.dSYM")
+        print("Verified app and embedded OpenSSL dSYM UUIDs")
     linked = subprocess.check_output(["xcrun", "otool", "-L", str(binary)], text=True)
     if "OpenSSL.framework" in linked:
         raise ValueError("OpenSSL must be statically linked into the application")
@@ -79,8 +89,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("app", type=Path)
     parser.add_argument("--require-release", action="store_true")
+    parser.add_argument("--dsym-dir", type=Path)
     args = parser.parse_args()
-    verify(args.app, args.require_release)
+    verify(args.app.resolve(), args.require_release, args.dsym_dir)
 
 
 if __name__ == "__main__":
