@@ -190,7 +190,7 @@ int GuiRuntime::CreateConnectionPeer() {
     if (pending_identity.empty()) {
       credential_recovery_in_progress_ = false;
       credential_recovery_attempt_pending_ = false;
-      credential_recovery_action_ = CredentialRecoveryAction::None;
+      credential_recovery_action_ = CredentialRecoveryAction::Idle;
     } else if (!credential_recovery_in_progress_) {
       credential_recovery_in_progress_ = true;
       credential_recovery_attempt_pending_ = true;

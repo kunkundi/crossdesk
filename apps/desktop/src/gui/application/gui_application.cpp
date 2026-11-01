@@ -3113,7 +3113,7 @@ void GuiApplication::HandleCredentialRecovery() {
   CredentialRecoveryAction action;
   {
     std::lock_guard<std::mutex> lock(password_change_mutex_);
-    action = std::exchange(credential_recovery_action_, CredentialRecoveryAction::None);
+    action = std::exchange(credential_recovery_action_, CredentialRecoveryAction::Idle);
     if (action == CredentialRecoveryAction::RetryActive) {
       credential_recovery_attempt_pending_ = false;
     }
