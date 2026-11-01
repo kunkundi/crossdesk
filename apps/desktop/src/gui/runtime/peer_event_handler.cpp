@@ -84,6 +84,24 @@ PeerEventHandler::PeerEventHandler(GuiRuntime& owner) : owner_(owner) {
   owner_.transfers_.Connected(this, "");
 }
 
+int PeerEventHandler::OnSignalExchange(SignalExchangeStage stage, const char* message,
+    size_t size, char* response, size_t capacity, void* user_data) {
+  auto* handler = static_cast<PeerEventHandler*>(user_data);
+  if (!handler || !message) return -1;
+  auto callback = handler->EnterCallback();
+  if (!callback) return -1;
+  if (stage == SignalExchangeStage::IncomingMessage &&
+      !handler->device_login_.Pending()) return 0;
+  try {
+    return handler->device_login_.Exchange(stage,
+        nlohmann::json::parse(message, message + size),
+        handler->owner_.trusted_devices_.get(), response, capacity);
+  } catch (const std::exception&) {
+    LOG_ERROR("Device login protocol or identity unavailable");
+    return -1;
+  }
+}
+
 void PeerEventHandler::OnSignalMessage(const char* message, size_t size,
                                        void* user_data) {
   auto* handler = static_cast<PeerEventHandler*>(user_data);
@@ -184,13 +202,16 @@ void PeerEventHandler::OnSignalMessage(const char* message, size_t size,
         j.contains("reason") && j["reason"].is_string()
             ? j["reason"].get<std::string>()
             : "Password change failed";
-    runtime->password_change_result_uncertain_ = false;
+    // A rejected replay cannot tell us whether the original request committed.
+    runtime->password_change_result_uncertain_ = runtime->password_change_recovery_ &&
+                                                !runtime->password_change_succeeded_;
     runtime->password_change_result_ready_ = true;
   }
 }
 
 void PeerEventHandler::OnSignalStatus(SignalStatus status, const char* user_id,
                                       size_t user_id_size, void* user_data) {
+  using RecoveryAction = GuiRuntime::CredentialRecoveryAction;
   auto* handler = static_cast<PeerEventHandler*>(user_data);
   if (!handler) return;
   auto callback = handler->EnterCallback();
@@ -212,10 +233,12 @@ void PeerEventHandler::OnSignalStatus(SignalStatus status, const char* user_id,
       SendClientInfo(runtime->peer_, client_id);
       std::lock_guard<std::mutex> lock(runtime->password_change_mutex_);
       if (runtime->credential_recovery_in_progress_) {
-        if (runtime->credential_recovery_attempt_pending_) {
-          runtime->credential_recovery_promote_pending_ = true;
+        if (!handler->device_login_.UsedPassword()) {
+          runtime->credential_recovery_action_ = RecoveryAction::ResumePending;
+        } else if (runtime->credential_recovery_attempt_pending_) {
+          runtime->credential_recovery_action_ = RecoveryAction::PromotePending;
         } else {
-          runtime->credential_recovery_clear_pending_ = true;
+          runtime->credential_recovery_action_ = RecoveryAction::ClearPending;
         }
       }
     } else if (SignalStatus::SignalFailed == status) {
@@ -223,7 +246,7 @@ void PeerEventHandler::OnSignalStatus(SignalStatus status, const char* user_id,
       std::lock_guard<std::mutex> lock(runtime->password_change_mutex_);
       if (runtime->credential_recovery_in_progress_ &&
           runtime->credential_recovery_attempt_pending_) {
-        runtime->credential_recovery_retry_active_ = true;
+        runtime->credential_recovery_action_ = RecoveryAction::RetryActive;
       }
     } else if (SignalStatus::SignalClosed == status) {
       runtime->signal_connected_ = false;

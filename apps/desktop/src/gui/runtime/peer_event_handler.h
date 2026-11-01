@@ -15,6 +15,7 @@
 
 #include "minirtc.h"
 #include "runtime/session_lifecycle.h"
+#include "runtime/device_login.h"
 
 namespace crossdesk {
 
@@ -63,6 +64,9 @@ public:
                              size_t user_id_size, void *user_data);
   static void OnSignalMessage(const char *message, size_t size,
                               void *user_data);
+  static int OnSignalExchange(SignalExchangeStage stage, const char* message,
+                              size_t size, char* response, size_t capacity,
+                              void* user_data);
   static void OnConnectionStatus(ConnectionStatus status, const char *user_id,
                                  size_t user_id_size, void *user_data);
   static void OnNetStatusReport(const char *client_id, size_t client_id_size,
@@ -85,6 +89,7 @@ private:
   size_t early_data_bytes_ = 0;
 
   GuiRuntime& owner_;
+  DeviceLogin device_login_;
   gui_detail::SessionCallbackGate callbacks_;
 };
 

@@ -51,7 +51,7 @@ public:
                                   const std::string &request_id);
   std::string PendingPasswordChangeIdentity(
       bool self_hosted, const std::string &server_host,
-      int server_port) const;
+      int server_port, std::string* request_id = nullptr) const;
   bool PromotePendingPasswordChange();
   bool ClearPendingPasswordChange();
 

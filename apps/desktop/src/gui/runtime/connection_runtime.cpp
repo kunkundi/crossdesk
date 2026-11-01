@@ -709,6 +709,7 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
         props->audio_capture_button_pressed_ = !background;
         memcpy(&props->params_, &params_, sizeof(Params));
         props->params_.user_id = props->local_id_.c_str();
+        props->params_.on_signal_exchange = nullptr;
         props->peer_events_ = std::make_shared<PeerEventHandler>(*this);
         props->params_.user_data = props->peer_events_.get();
         props->peer_ = CreatePeer(&props->params_);

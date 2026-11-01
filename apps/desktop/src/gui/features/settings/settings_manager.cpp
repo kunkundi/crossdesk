@@ -593,14 +593,17 @@ bool SettingsManager::StagePendingPasswordChange(
 }
 
 std::string SettingsManager::PendingPasswordChangeIdentity(
-    bool self_hosted, const std::string &server_host, int server_port) const {
+    bool self_hosted, const std::string &server_host, int server_port,
+    std::string* request_id) const {
   std::lock_guard<std::mutex> lock(cache_mutex_);
+  if (request_id) request_id->clear();
   if (cache_v3_.pending_identity[0] == '\0' ||
       cache_v3_.pending_self_hosted != self_hosted ||
       cache_v3_.pending_server_port != server_port ||
       server_host != cache_v3_.pending_server_host) {
     return {};
   }
+  if (request_id) *request_id = cache_v3_.pending_request_id;
   return cache_v3_.pending_identity;
 }
 

@@ -167,21 +167,23 @@ struct UserSettingsState {
 };
 
 struct PasswordChangeState {
+  enum class CredentialRecoveryAction {
+    None, RetryActive, PromotePending, ClearPending, ResumePending
+  };
   std::mutex password_change_mutex_;
   uint64_t next_password_change_request_id_ = 0;
   bool password_change_pending_ = false;
   bool password_change_result_ready_ = false;
   bool password_change_succeeded_ = false;
   bool password_change_result_uncertain_ = false;
+  bool password_change_recovery_ = false;
   std::chrono::steady_clock::time_point password_change_requested_at_;
   std::string pending_password_change_request_id_;
   std::string pending_local_password_;
   std::string password_change_error_;
   bool credential_recovery_in_progress_ = false;
   bool credential_recovery_attempt_pending_ = false;
-  bool credential_recovery_retry_active_ = false;
-  bool credential_recovery_promote_pending_ = false;
-  bool credential_recovery_clear_pending_ = false;
+  CredentialRecoveryAction credential_recovery_action_ = CredentialRecoveryAction::None;
 };
 
 struct ConnectionState {

@@ -156,15 +156,19 @@ nlohmann::json TrustedDevices::Prove(const std::string& nonce,
   Require(IsHex(nonce, 32) && Label(device_id) && Label(name));
   const Device device{public_key_, name, device_id};
   const auto text = Transcript(nonce, device);
+  return {{"type", "device_trust_proof"}, {"version", 1}, {"nonce", nonce},
+          {"public_key", public_key_}, {"device_id", device_id}, {"name", name},
+          {"signature", Sign(text)}};
+}
+
+std::string TrustedDevices::Sign(std::string_view text) const {
   Context context(EVP_MD_CTX_new(), EVP_MD_CTX_free);
   std::array<uint8_t, 64> signature{};
   size_t size = signature.size();
   Require(context && EVP_DigestSignInit(context.get(), nullptr, nullptr, nullptr, key_.get()) == 1 &&
           EVP_DigestSign(context.get(), signature.data(), &size,
                          reinterpret_cast<const uint8_t*>(text.data()), text.size()) == 1 && size == 64);
-  return {{"type", "device_trust_proof"}, {"version", 1}, {"nonce", nonce},
-          {"public_key", public_key_}, {"device_id", device_id}, {"name", name},
-          {"signature", Hex(signature.data(), signature.size())}};
+  return Hex(signature.data(), signature.size());
 }
 
 std::optional<TrustedDevices::Device> TrustedDevices::Verify(

@@ -2983,6 +2983,7 @@ bool GuiApplication::RequestPasswordChange(const std::string &password) {
     password_change_result_ready_ = false;
     password_change_succeeded_ = false;
     password_change_result_uncertain_ = false;
+    password_change_recovery_ = false;
     password_change_requested_at_ = std::chrono::steady_clock::now();
     pending_password_change_request_id_ = request_id;
     pending_local_password_ = password;
@@ -3062,6 +3063,7 @@ void GuiApplication::HandlePasswordChangeResult() {
     password_change_result_ready_ = false;
     password_change_succeeded_ = false;
     password_change_result_uncertain_ = false;
+    password_change_recovery_ = false;
     pending_password_change_request_id_.clear();
     pending_local_password_.clear();
     password_change_error_.clear();
@@ -3108,23 +3110,53 @@ void GuiApplication::HandlePasswordChangeResult() {
 }
 
 void GuiApplication::HandleCredentialRecovery() {
-  bool retry_active = false;
-  bool promote_pending = false;
-  bool clear_pending = false;
+  CredentialRecoveryAction action;
   {
     std::lock_guard<std::mutex> lock(password_change_mutex_);
-    retry_active = credential_recovery_retry_active_;
-    promote_pending = credential_recovery_promote_pending_;
-    clear_pending = credential_recovery_clear_pending_;
-    credential_recovery_retry_active_ = false;
-    credential_recovery_promote_pending_ = false;
-    credential_recovery_clear_pending_ = false;
-    if (retry_active) {
+    action = std::exchange(credential_recovery_action_, CredentialRecoveryAction::None);
+    if (action == CredentialRecoveryAction::RetryActive) {
       credential_recovery_attempt_pending_ = false;
     }
   }
 
-  if (retry_active) {
+  if (action == CredentialRecoveryAction::ResumePending) {
+    // Key authentication proves device ownership, not which password committed.
+    // Replay the durable request and promote only its successful server reply.
+    const bool self_hosted = config_center_->IsSelfHosted();
+    std::string request_id;
+    const auto identity = settings_.PendingPasswordChangeIdentity(self_hosted,
+        self_hosted ? config_center_->GetSignalServerHost() : config_center_->GetDefaultServerHost(),
+        self_hosted ? config_center_->GetSignalServerPort() : config_center_->GetDefaultSignalServerPort(),
+        &request_id);
+    const auto at = identity.find('@');
+    if (!peer_ || !signal_connected_ || at == std::string::npos || request_id.empty() ||
+        identity.substr(0, at) != client_id_) return;
+    const auto password = identity.substr(at + 1);
+    {
+      std::lock_guard lock(password_change_mutex_);
+      if (password_change_pending_) return;
+      password_change_pending_ = true;
+      password_change_result_ready_ = false;
+      password_change_succeeded_ = false;
+      password_change_result_uncertain_ = false;
+      password_change_recovery_ = true;
+      password_change_requested_at_ = std::chrono::steady_clock::now();
+      pending_password_change_request_id_ = request_id;
+      pending_local_password_ = password;
+      password_change_error_.clear();
+    }
+    const auto message = nlohmann::json{{"type", "change_password"},
+        {"request_id", request_id}, {"new_password", password}}.dump();
+    if (SendSignalMessage(peer_, message.data(), message.size()) != 0) {
+      std::lock_guard lock(password_change_mutex_);
+      password_change_result_ready_ = true;
+      password_change_result_uncertain_ = true;
+      password_change_error_ = "Password recovery connection unavailable";
+    }
+    return;
+  }
+
+  if (action == CredentialRecoveryAction::RetryActive) {
     LOG_INFO("Pending credential was not accepted; retrying active credential");
     if (peer_) {
       CloseConnectionPeer();
@@ -3132,7 +3164,7 @@ void GuiApplication::HandleCredentialRecovery() {
     return;
   }
 
-  if (promote_pending) {
+  if (action == CredentialRecoveryAction::PromotePending) {
 #if defined(__linux__) && !defined(__OHOS__)
     HeadlessConsole::Instance().NotifyKey("console_password_recovered");
 #endif
@@ -3141,7 +3173,7 @@ void GuiApplication::HandleCredentialRecovery() {
     } else {
       LOG_INFO("Recovered password change with pending credential");
     }
-  } else if (clear_pending) {
+  } else if (action == CredentialRecoveryAction::ClearPending) {
 #if defined(__linux__) && !defined(__OHOS__)
     HeadlessConsole::Instance().NotifyKey("console_password_retained");
 #endif

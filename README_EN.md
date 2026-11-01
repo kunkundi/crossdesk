@@ -73,7 +73,7 @@ Requirements follow the current source and build configuration. Check the releas
 2. **Connect.** On another computer, enter the host's 9-digit ID and click **Connect**. Native mobile clients and the [Web Client](https://web.crossdesk.cn/) can also connect.
 3. **Verify the password.** Enter the host's current connection password and wait for the desktop to appear. On desktop, select **Remember password** to reconnect later from **Recent Connections**.
 
-For self-hosting, both ends must use the same service. See the [user guide](docs/USER_GUIDE_EN.md#quick-start) for connection, password, and browser controls, or the [FAQ](docs/FAQ.md#english) for failed connections, blank video, and input problems.
+For self-hosting, both ends must use the same service. Upgrade the server before using the new desktop client: device login uses a private key, with its public key bound at registration or after a one-time password check for an existing ID. Once bound, wrong-password attempts against that ID cannot block valid signature login. Remote control still requires the connection password. See the [device login guide](docs/connection-architecture.md#41-id-模式) (Chinese) for identity backups and compatibility, the [user guide](docs/USER_GUIDE_EN.md#quick-start) for controls, or the [FAQ](docs/FAQ.md#english) for connection problems.
 
 <a id="lan-direct"></a>
 
@@ -101,7 +101,7 @@ Adding or removing a device takes effect immediately. With the restriction enabl
 
 **Compatibility:** both clients must support trusted-device authentication. Older clients without the protocol cannot connect to a restricted host. The CLI, iOS, Android, and HarmonyOS mobile clients do not currently implement it. With the restriction disabled, the existing connection behavior applies.
 
-The pairing private key is stored in `identity.json` in the cache directory; the trusted list is stored in `trusted-devices/devices.json` in the configuration directory. Clearing only the ordinary ID/password cache preserves the pairing identity. Clearing the entire cache directory requires other devices to trust this computer again. See the [trusted-device technical guide](docs/connection-architecture.md#43-可选可信设备认证) (Chinese) for backups, migration, and authentication details.
+Device login and pairing share the private key in the cache directory's `identity.json`; the trusted list is stored in `trusted-devices/devices.json` in the configuration directory. Back up the ID/password cache and `identity.json` together when migrating a device: a bound ID cannot be recovered with its password alone. Clearing the entire cache requires a new ID and renewed trust from other devices. See the [trusted-device technical guide](docs/connection-architecture.md#43-可选可信设备认证) (Chinese) for details.
 
 <a id="preview"></a>
 

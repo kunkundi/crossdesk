@@ -190,9 +190,7 @@ int GuiRuntime::CreateConnectionPeer() {
     if (pending_identity.empty()) {
       credential_recovery_in_progress_ = false;
       credential_recovery_attempt_pending_ = false;
-      credential_recovery_retry_active_ = false;
-      credential_recovery_promote_pending_ = false;
-      credential_recovery_clear_pending_ = false;
+      credential_recovery_action_ = CredentialRecoveryAction::None;
     } else if (!credential_recovery_in_progress_) {
       credential_recovery_in_progress_ = true;
       credential_recovery_attempt_pending_ = true;
@@ -270,6 +268,7 @@ int GuiRuntime::CreateConnectionPeer() {
 
   params_.on_signal_status = PeerEventHandler::OnSignalStatus;
   params_.on_signal_message = PeerEventHandler::OnSignalMessage;
+  params_.on_signal_exchange = PeerEventHandler::OnSignalExchange;
   params_.on_connection_status = PeerEventHandler::OnConnectionStatus;
   params_.on_net_status_report = PeerEventHandler::OnNetStatusReport;
 

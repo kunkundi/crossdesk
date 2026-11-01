@@ -31,6 +31,9 @@ class TrustedDevices {
   TrustedDevices(const std::filesystem::path& directory,
                  const std::filesystem::path& cache);
   std::string Fingerprint() const;
+  const std::string& PublicKey() const { return public_key_; }
+  // Callers supply a canonical, purpose-specific transcript.
+  std::string Sign(std::string_view transcript) const;
   static std::string Fingerprint(const std::string& public_key);
   static std::string Nonce();
   nlohmann::json Prove(const std::string& nonce,

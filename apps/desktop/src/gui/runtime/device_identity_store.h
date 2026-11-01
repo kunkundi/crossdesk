@@ -13,7 +13,7 @@
 
 namespace crossdesk::device_identity_store {
 
-// The trusted-device pairing key lives in cache/identity.json. Read the latest
+// The shared device signing key lives in cache/identity.json. Read the latest
 // document under a process lock, apply an update, then atomically persist it.
 // Throw on corruption, unsafe permissions, lock contention or persistence error.
 void Update(const std::filesystem::path& cache,
