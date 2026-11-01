@@ -6,11 +6,13 @@ import { WorkbenchStyle } from "workbench_controls.slint";
 // Shared visual treatment for the global settings pages.
 export component SettingsButton inherits FlatSurface {
     in property <string> text;
+    in property <length> text-size: 12px;
     in property <image> icon;
     in property <bool> primary: false;
     in property <bool> quiet: false;
     in property <bool> align-left: false;
     in property <bool> enabled: true;
+    in property <bool> destructive: false;
     out property <length> label-width: button-label.preferred-width + 2 * root.content-padding + (root.has-icon ? 24px : 0px);
     private property <bool> has-icon: root.icon.width > 0;
     private property <length> content-padding: root.has-icon ? 8px : 12px;
@@ -18,7 +20,8 @@ export component SettingsButton inherits FlatSurface {
     width: 88px; height: 32px; border-radius: UiRadius.control;
     background: !root.enabled ? ControlStyle.disabled
         : root.primary ? (touch.pressed ? #1e4fa3 : touch.has-hover ? #2866c9 : #3275dc)
-        : touch.pressed ? ButtonStyle.pressed : touch.has-hover ? ButtonStyle.hover
+        : touch.pressed ? (root.destructive ? #f6babb : ButtonStyle.pressed)
+        : touch.has-hover ? (root.destructive ? #fbe0e0 : ButtonStyle.hover)
         : root.quiet ? transparent : ButtonStyle.surface;
     outline-enabled: !root.quiet && !root.primary;
     outline-color: !root.enabled ? ButtonStyle.disabled-border
@@ -44,8 +47,9 @@ export component SettingsButton inherits FlatSurface {
         button-label := Text {
             x: root.has-icon ? 24px : 0px;
             width: parent.width - self.x; height: parent.height;
-            text: root.text; font-size: 12px; font-weight: root.primary ? 600 : 400;
-            color: !root.enabled ? #98a2b3 : root.primary ? white : root.quiet ? #65758b : #3c4d63;
+            text: root.text; font-size: root.text-size; font-weight: root.primary ? 600 : 400;
+            color: !root.enabled ? #98a2b3 : root.primary ? white
+                : root.destructive ? #c43c43 : root.quiet ? #65758b : #3c4d63;
             horizontal-alignment: root.align-left ? left : center; vertical-alignment: center; overflow: elide;
         }
     }

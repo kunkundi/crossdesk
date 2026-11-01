@@ -1,4 +1,5 @@
 import { SurfaceSeparator, FlatSurface, UiSurface } from "ui_surface.slint";
+import { TrustedDevicesDialog, TrustedDeviceEntry, TrustStrings } from "trusted_devices.slint";
 import { LanStrings } from "lan_strings.slint";
 import { AboutPanel, AboutPage, AboutComponent, AboutStrings, AboutNavigationRow, AboutNavigationGroup, AboutRowSeparator } from "about_panel.slint";
 import { UiRadius } from "ui_radius.slint";
@@ -660,6 +661,17 @@ export component MainWindow inherits Window {
     in-out property <bool> privacy-local-unlock-allowed: true;
     in property <bool> lock-on-disconnect-available: false;
     in-out property <bool> lock-on-disconnect-enabled: true;
+    in-out property <bool> trusted-devices-only: false;
+    in-out property <bool> trusted-devices-open: false;
+    in property <[TrustedDeviceEntry]> trusted-devices;
+    in property <[TrustedDeviceEntry]> trust-candidates;
+    in property <string> device-fingerprint;
+    in property <string> trusted-devices-error;
+    in property <string> trusted-devices-notice;
+    in property <string> trust-copy-error;
+    in property <string> trust-copy-notice;
+    in-out property <string> trust-pairing-input;
+    callback trust-action(string, string, string);
     in-out property <string> file-save-path: "";
     in-out property <string> server-host: "";
     in-out property <string> server-port: "";
@@ -1087,7 +1099,7 @@ export component MainWindow inherits Window {
                     if event.text == Key.Escape { root.messages-open = false; }
                     return accept;
                 }
-                if root.settings-open && !root.self-host-settings-open {
+                if root.settings-open && !root.self-host-settings-open && !root.trusted-devices-open {
                     if event.text == Key.Escape { root.cancel-settings(); root.settings-open = false; }
                     return accept;
                 }
@@ -2758,10 +2770,20 @@ export component MainWindow inherits Window {
                             font-size: 11px; color: WorkbenchStyle.muted; wrap: word-wrap;
                         }
                         SettingsGroup {
-                            title: GalleryStrings.texts[120]; rows: 3;
+                            title: GalleryStrings.texts[120]; rows: 5;
                             SettingsToggleRow { label: UiStrings.privacy-on-connect; checked <=> root.privacy-on-connect-enabled; enabled: root.privacy-setting-available; }
                             SettingsToggleRow { label: UiStrings.privacy-local-unlock; checked <=> root.privacy-local-unlock-allowed; enabled: root.privacy-setting-available; }
-                            SettingsToggleRow { label: UiStrings.lock-on-disconnect; checked <=> root.lock-on-disconnect-enabled; enabled: root.lock-on-disconnect-available; divider: false; }
+                            SettingsToggleRow { label: UiStrings.lock-on-disconnect; checked <=> root.lock-on-disconnect-enabled; enabled: root.lock-on-disconnect-available; }
+                            SettingsToggleRow { label: TrustStrings.only; checked <=> root.trusted-devices-only; }
+                            SettingsRow {
+                                label: TrustStrings.title; divider: false;
+                                SettingsButton {
+                                    x: parent.width - self.width - 12px; y: 4px;
+                                    width: max(104px, self.label-width); height: 28px;
+                                    text: TrustStrings.manage;
+                                    clicked => { root.trusted-devices-open = true; root.trust-action("open", "", ""); }
+                                }
+                            }
                         }
                         Text {
                             text: GalleryStrings.texts[121];
@@ -2869,6 +2891,20 @@ export component MainWindow inherits Window {
                 text: UiStrings.ok; clicked => { root.autostart-guide-open = false; }
             }
         }
+    }
+
+    if root.trusted-devices-open: TrustedDevicesDialog {
+        z: 51;
+        devices: root.trusted-devices;
+        candidates: root.trust-candidates;
+        local-fingerprint: root.device-fingerprint;
+        error: root.trusted-devices-error;
+        notice: root.trusted-devices-notice;
+        copy-error: root.trust-copy-error;
+        copy-notice: root.trust-copy-notice;
+        pairing-input <=> root.trust-pairing-input;
+        close => { root.trust-action("close", "", ""); root.trusted-devices-open = false; }
+        action(action, id, key) => { root.trust-action(action, id, key); }
     }
 
     if root.self-host-settings-open: Rectangle {

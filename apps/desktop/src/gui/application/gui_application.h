@@ -54,6 +54,7 @@ private:
   void ShowMainWindow(const std::string& activation_token = {});
   bool MinimizeMainWindowToTray();
   void BindMainCallbacks(bool gallery_window = false);
+  void BindTrustedDeviceCallbacks(bool gallery_window = false);
   void BindStreamCallbacks();
   void BindServerCallbacks();
   void Tick();
@@ -92,6 +93,7 @@ private:
   void SyncStreamKeyboardFocus();
   void SetStreamKeyboardFocus(bool focused);
   void SyncServerWindow();
+  void SyncTrustedDevices();
   void SyncFileTransferNotifications();
   void CancelFileTransfer(uint32_t file_id);
   void SetServerPanelExpanded(bool expanded);

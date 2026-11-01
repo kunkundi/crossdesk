@@ -1,0 +1,257 @@
+import { SettingsDialog, SettingsButton } from "settings_controls.slint";
+import { WorkbenchStyle } from "workbench_controls.slint";
+import { ScrollView } from "std-widgets.slint";
+import { FlatSurface, UiSurface } from "ui_surface.slint";
+import { UiRadius } from "ui_radius.slint";
+import { RoundedLineEdit } from "rounded_line_edit.slint";
+
+export struct TrustedDeviceEntry {
+    remote-id: string,
+    public-key: string,
+    display-name: string,
+    device-id: string,
+    fingerprint: string,
+}
+
+export global TrustStrings {
+    in property <string> title: "Trusted devices";
+    in property <string> only: "Only allow trusted devices";
+    in property <string> manage: "Manage";
+    in property <string> copy: "Copy pairing info";
+    in property <string> import-title: "Add a trusted device";
+    in property <string> add: "Add";
+    in property <string> placeholder: "Paste the controller's pairing information";
+    in property <string> confirm: "Check the fingerprint on the controller.";
+    in property <string> empty: "No trusted devices";
+    in property <string> candidates: "Connected devices available to trust";
+    in property <string> trust: "Trust";
+    in property <string> remove: "Remove";
+    in property <string> saved: "Trusted devices";
+    in property <string> sharing: "This device’s pairing info";
+    in property <string> show-fingerprint: "View fingerprint";
+    in property <string> hide-fingerprint: "Hide fingerprint";
+    in property <string> close: "Close";
+}
+
+component FingerprintBlock inherits Rectangle {
+    in property <string> fingerprint;
+    background: #f0f4fa; border-radius: UiRadius.control;
+    height: content.preferred-height;
+    content := VerticalLayout {
+        width: parent.width; height: self.preferred-height;
+        padding: 10px;
+        Text { text: root.fingerprint; color: #465a76; font-size: 11px; wrap: word-wrap; }
+    }
+}
+
+component DeviceRow inherits FlatSurface {
+    in property <TrustedDeviceEntry> device;
+    in property <string> action-text;
+    in property <bool> confirming: false;
+    private property <bool> fingerprint-open: false;
+    callback action;
+    height: content.preferred-height;
+    background: white; outline-color: UiSurface.edge;
+    border-radius: UiRadius.control;
+    content := VerticalLayout {
+        width: parent.width; height: self.preferred-height;
+        padding: 12px; spacing: 8px;
+        padding-top: root.confirming ? 12px : 8px;
+        padding-bottom: root.confirming ? 12px : 8px;
+        HorizontalLayout {
+            spacing: 6px;
+            VerticalLayout {
+                spacing: 2px; horizontal-stretch: 1; min-width: 0px;
+                Text {
+                    text: root.device.display-name;
+                    font-size: root.confirming ? 13px : 12px; font-weight: root.confirming ? 600 : 500;
+                    color: WorkbenchStyle.text; overflow: elide;
+                }
+                Text {
+                    text: "ID: " + (root.device.device-id == "" ? "—" : root.device.device-id);
+                    font-size: 11px; color: WorkbenchStyle.muted; overflow: elide;
+                }
+            }
+            if !root.confirming: SettingsButton {
+                width: min(144px, self.label-width); height: 28px; quiet: true;
+                text-size: 11px;
+                text: root.fingerprint-open ? TrustStrings.hide-fingerprint : TrustStrings.show-fingerprint;
+                clicked => { root.fingerprint-open = !root.fingerprint-open; }
+            }
+            if !root.confirming: SettingsButton {
+                width: min(128px, max(64px, self.label-width)); height: 28px;
+                text-size: 11px;
+                quiet: true; text: root.action-text;
+                destructive: true;
+                clicked => { root.action(); }
+            }
+        }
+        if root.confirming || root.fingerprint-open: FingerprintBlock {
+            fingerprint: root.device.fingerprint;
+        }
+        if root.confirming: HorizontalLayout {
+            spacing: 12px;
+            Text {
+                text: TrustStrings.confirm; font-size: 11px;
+                color: WorkbenchStyle.muted; wrap: word-wrap;
+                horizontal-stretch: 1; min-width: 0px; vertical-alignment: center;
+            }
+            SettingsButton {
+                width: min(parent.width * 0.6, max(112px, self.label-width)); height: 30px;
+                primary: true; text: root.action-text;
+                clicked => { root.action(); }
+            }
+        }
+    }
+}
+
+export component TrustedDevicesDialog inherits Rectangle {
+    in property <[TrustedDeviceEntry]> devices;
+    in property <[TrustedDeviceEntry]> candidates;
+    in property <string> local-fingerprint;
+    in property <string> error;
+    in property <string> notice;
+    in property <string> copy-error;
+    in property <string> copy-notice;
+    in-out property <string> pairing-input;
+    private property <bool> local-fingerprint-open: false;
+    callback close;
+    callback action(string, string, string);
+    background: #15223835;
+    TouchArea { }
+    forward-focus: focus;
+    focus := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape { root.close(); return accept; }
+            return reject;
+        }
+    }
+    dialog := SettingsDialog {
+        x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+        width: min(540px, parent.width - 32px);
+        height: min(400px, parent.height - 32px);
+        min-width: 0px; max-width: parent.width - 32px;
+        min-height: 0px; max-height: parent.height - 32px;
+        title: TrustStrings.title; close-label: TrustStrings.close;
+        close => { root.close(); }
+        ScrollView {
+            x: 24px; y: 64px; width: parent.width - 48px; height: parent.height - 84px;
+            min-width: 0px; min-height: 0px;
+            horizontal-scrollbar-policy: always-off;
+            viewport-width: self.visible-width;
+            viewport-height: content.preferred-height;
+            content := VerticalLayout {
+                width: parent.visible-width - 8px; height: self.preferred-height;
+                spacing: 16px; padding: 0px; alignment: start;
+                FlatSurface {
+                    background: #f1f6ff; outline-color: #d7e3f7; border-radius: UiRadius.surface;
+                    height: add-content.preferred-height;
+                    add-content := VerticalLayout {
+                        width: parent.width; height: self.preferred-height; padding: 14px; spacing: 10px;
+                        Text {
+                            text: TrustStrings.import-title; font-size: 14px; font-weight: 600;
+                            color: WorkbenchStyle.text; min-width: 0px; wrap: word-wrap;
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            RoundedLineEdit {
+                                horizontal-stretch: 1; height: 32px; text <=> root.pairing-input;
+                                placeholder-text: TrustStrings.placeholder; surrounding-background: #f1f6ff;
+                                edited => { root.action("edit", "", ""); }
+                                accepted => { root.action("import", "", ""); }
+                            }
+                            SettingsButton {
+                                width: max(64px, self.label-width); height: 32px; primary: true;
+                                text: TrustStrings.add; enabled: root.pairing-input != "" && root.local-fingerprint != "";
+                                clicked => { root.action("import", "", ""); }
+                            }
+                        }
+                        if root.error != "": Text {
+                            text: root.error; color: #b33c39; font-size: 11px; wrap: word-wrap;
+                        }
+                        if root.notice != "": Text {
+                            text: root.notice; color: #28734a; font-size: 11px; wrap: word-wrap;
+                        }
+                    }
+                }
+                VerticalLayout {
+                    spacing: 6px;
+                    Rectangle {
+                        // Align mixed font sizes by their baselines rather than their top edges.
+                        private property <length> baseline: max(saved-title.font-metrics.ascent, saved-count.font-metrics.ascent);
+                        height: max(saved-title.y + saved-title.preferred-height, saved-count.y + saved-count.preferred-height);
+                        saved-title := Text {
+                            x: 0px; width: self.preferred-width; height: self.preferred-height;
+                            y: parent.baseline - self.font-metrics.ascent;
+                            text: TrustStrings.saved; font-size: 13px; font-weight: 600; color: WorkbenchStyle.text;
+                        }
+                        saved-count := Text {
+                            x: saved-title.preferred-width + 6px;
+                            width: self.preferred-width; height: self.preferred-height;
+                            y: parent.baseline - self.font-metrics.ascent;
+                            text: "" + root.devices.length; font-size: 12px; color: WorkbenchStyle.muted;
+                        }
+                    }
+                    if root.devices.length == 0: FlatSurface {
+                        height: 48px; background: white;
+                        outline-color: UiSurface.edge; border-radius: UiRadius.control;
+                        Text {
+                            x: 14px; width: parent.width - 28px; height: parent.height;
+                            text: TrustStrings.empty; font-size: 12px; color: WorkbenchStyle.muted;
+                            horizontal-alignment: center; vertical-alignment: center; wrap: word-wrap;
+                        }
+                    }
+                    for device in root.devices: DeviceRow {
+                        device: device; action-text: TrustStrings.remove;
+                        action => { root.action("remove", device.remote-id, device.public-key); }
+                    }
+                }
+                if root.candidates.length > 0: VerticalLayout {
+                    spacing: 8px;
+                    Text { text: TrustStrings.candidates; font-size: 13px; font-weight: 600; color: WorkbenchStyle.text; wrap: word-wrap; }
+                    for device in root.candidates: DeviceRow {
+                        device: device; confirming: true; action-text: TrustStrings.trust;
+                        action => { root.action("add", device.remote-id, device.public-key); }
+                    }
+                }
+                FlatSurface {
+                    height: sharing-content.preferred-height; background: white;
+                    outline-color: UiSurface.edge; border-radius: UiRadius.control;
+                    sharing-content := VerticalLayout {
+                        width: parent.width; height: self.preferred-height; padding: 14px; spacing: 8px;
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Text {
+                                horizontal-stretch: 1; min-width: 0px;
+                                text: TrustStrings.sharing; font-size: 13px; font-weight: 600;
+                                color: WorkbenchStyle.text; wrap: word-wrap; vertical-alignment: center;
+                            }
+                            SettingsButton {
+                                width: min(160px, self.label-width); height: 30px; text: TrustStrings.copy;
+                                enabled: root.local-fingerprint != ""; clicked => { root.action("copy", "", ""); }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            SettingsButton {
+                                width: self.label-width; height: 22px; quiet: true; align-left: true;
+                                text: root.local-fingerprint-open ? TrustStrings.hide-fingerprint : TrustStrings.show-fingerprint;
+                                enabled: root.local-fingerprint != "";
+                                clicked => { root.local-fingerprint-open = !root.local-fingerprint-open; }
+                            }
+                            Text {
+                                text: root.copy-error != "" ? root.copy-error : root.copy-notice;
+                                color: root.copy-error != "" ? #b33c39 : #28734a; font-size: 11px;
+                                horizontal-stretch: 1; min-width: 0px; wrap: word-wrap;
+                                horizontal-alignment: right; vertical-alignment: center;
+                            }
+                        }
+                        if root.local-fingerprint-open: FingerprintBlock {
+                            fingerprint: root.local-fingerprint;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

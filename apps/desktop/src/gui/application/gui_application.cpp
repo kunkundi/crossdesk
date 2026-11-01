@@ -366,6 +366,19 @@ slint::SharedString UiText(std::string_view value) {
   return slint::SharedString(value);
 }
 
+slint::SharedString TrustFingerprint(std::string fingerprint) {
+  for (size_t i = 8; i < fingerprint.size(); i += 9) fingerprint.insert(i, " ");
+  return UiText(fingerprint);
+}
+
+ui::TrustedDeviceEntry TrustRow(const TrustedDevices::Device& device,
+                               const std::string& remote = {}) {
+  auto id = device.device_id;
+  if (id.rfind("C-", 0) == 0) id.erase(0, 2);
+  return {UiText(remote), UiText(device.public_key),
+      UiText(device.name.empty() ? id : device.name), UiText(id), {}};
+}
+
 void RegisterFontAwesome(slint::Window& window) {
   if (const auto error = window.window_handle().register_font_from_data(
           fa_solid_900_ttf, fa_solid_900_ttf_len)) {
@@ -1065,6 +1078,11 @@ struct GuiApplication::SlintUi {
   std::string tab_model_signature;
   std::vector<std::string> controller_ids;
   std::string controller_model_signature;
+  std::string trusted_device_signature;
+  std::shared_ptr<slint::VectorModel<ui::TrustedDeviceEntry>> trusted_device_model =
+      std::make_shared<slint::VectorModel<ui::TrustedDeviceEntry>>();
+  std::shared_ptr<slint::VectorModel<ui::TrustedDeviceEntry>> trust_candidate_model =
+      std::make_shared<slint::VectorModel<ui::TrustedDeviceEntry>>();
   std::string connection_dialog_remote_id;
   bool connection_password_initialized = false;
   bool connection_dialog_gallery = false;
@@ -1560,6 +1578,7 @@ void GuiApplication::ResetSettingsUi(bool gallery_window) {
       config_center_->IsEnablePrivacyScreen());
   main->set_privacy_local_unlock_allowed(config_center_->IsPrivacyLocalUnlockAllowed());
   main->set_lock_on_disconnect_enabled(config_center_->IsLockOnDisconnect());
+  main->set_trusted_devices_only(config_center_->IsTrustedDevicesOnly());
 #ifdef _WIN32
   main->set_capture_method_visible(true);
   main->set_capture_method_index(
@@ -1933,6 +1952,7 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
       main->set_file_save_path(folder);
     }
   });
+  BindTrustedDeviceCallbacks(gallery_window);
   main->on_save_settings([this, main] {
     return SaveSettingsFromUi(main->get_gallery_mode());
   });
@@ -2704,6 +2724,7 @@ void GuiApplication::Tick() {
   }
   SyncStreamWindow();
   SyncServerWindow();
+  SyncTrustedDevices();
   SyncFileTransferNotifications();
 }
 
@@ -4260,6 +4281,113 @@ void GuiApplication::PositionServerWindows() {
   }
 }
 
+void GuiApplication::BindTrustedDeviceCallbacks(bool gallery_window) {
+  const auto main = ui_->Window(gallery_window);
+  main->on_trust_action([this, main](
+      slint::SharedString action, slint::SharedString id, slint::SharedString key) {
+    const auto message = [this](const char* text) {
+      return UiText(localization::Literal(text, localization_language_index_));
+    };
+    const bool copying = action == "copy";
+    const auto set_error = [&](const char* text) {
+      if (copying) main->set_trust_copy_error(message(text));
+      else main->set_trusted_devices_error(message(text));
+    };
+    if (copying || action == "open" || action == "close") {
+      main->set_trust_copy_error("");
+      main->set_trust_copy_notice("");
+    }
+    if (!copying) {
+      main->set_trusted_devices_error("");
+      main->set_trusted_devices_notice("");
+    }
+    if (action == "open" || action == "close") {
+      main->set_trust_pairing_input("");
+      SyncTrustedDevices();
+      return;
+    }
+    if (!trusted_devices_) {
+      set_error("无法读取设备身份或可信列表，请修复后再启用。");
+      return;
+    }
+    if (action == "edit") return;
+    try {
+      if (copying) {
+        const auto text = trusted_devices_->PairingInfo(client_id_, GetHostName());
+        if (SDL_SetClipboardText(text.c_str()))
+          main->set_trust_copy_notice(message("配对信息已复制。"));
+        else set_error("无法访问剪贴板，请重试。");
+      } else if (action == "import") {
+        const auto input = std::string(main->get_trust_pairing_input());
+        if (input.empty()) return;
+        const auto device = TrustedDevices::ParsePairingInfo(input);
+        if (!device) {
+          set_error("配对信息无效，请从控制端重新复制。");
+          return;
+        }
+        // The Add action approves the current input. Import only updates the
+        // list; a live connection must still complete its own authentication.
+        if (trusted_devices_->Contains(device->public_key)) {
+          main->set_trusted_devices_notice(message("已在可信列表中"));
+        } else {
+          trusted_devices_->Add(*device);
+          main->set_trusted_devices_notice(message("已加入可信设备。"));
+        }
+        main->set_trust_pairing_input("");
+      } else if ((action == "add" && !TrustController(std::string(id), std::string(key))) ||
+                 (action == "remove" && !RemoveTrustedDevice(std::string(key)))) {
+        set_error("无法更新可信设备，请检查列表容量和存储权限后重试。");
+      }
+    } catch (const std::exception&) {
+      set_error(copying ? "无法复制配对信息，请重试。"
+                        : "无法更新可信设备，请检查列表容量和存储权限后重试。");
+    }
+    SyncTrustedDevices();
+  });
+}
+
+void GuiApplication::SyncTrustedDevices() {
+  if (!ui_->main->get_trusted_devices_open() && !ui_->wall->get_trusted_devices_open()) return;
+  std::vector<ui::TrustedDeviceEntry> saved, candidates;
+  if (trusted_devices_) {
+    for (const auto& device : trusted_devices_->List()) saved.push_back(TrustRow(device));
+    for (const auto& id : ConnectedControllers())
+      if (const auto device = VerifiedController(id);
+          device && !trusted_devices_->Contains(device->public_key))
+        candidates.push_back(TrustRow(*device, id));
+  }
+  std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
+    return std::string(a.remote_id) < std::string(b.remote_id);
+  });
+  std::string signature = trusted_devices_ ? "ready" : "unavailable";
+  for (const auto* rows : {&saved, &candidates}) {
+    signature += "|";
+    for (const auto& device : *rows)
+      signature += std::string(device.remote_id) + '\0' + std::string(device.public_key) + '\0' +
+          std::string(device.display_name) + '\0' + std::string(device.device_id) + '\0';
+  }
+  if (signature != ui_->trusted_device_signature) {
+    // Tick runs frequently. Hash keys and update Slint only when the rows change.
+    for (auto* rows : {&saved, &candidates})
+      for (auto& device : *rows)
+        device.fingerprint = TrustFingerprint(TrustedDevices::Fingerprint(std::string(device.public_key)));
+    ui_->trusted_device_model->set_vector(std::move(saved));
+    ui_->trust_candidate_model->set_vector(std::move(candidates));
+    ui_->trusted_device_signature = std::move(signature);
+    const auto fingerprint = TrustFingerprint(trusted_devices_ ? trusted_devices_->Fingerprint() : "");
+    for (auto& window : {ui_->main, ui_->wall}) {
+      window->set_trusted_devices(ui_->trusted_device_model);
+      window->set_trust_candidates(ui_->trust_candidate_model);
+      window->set_device_fingerprint(fingerprint);
+    }
+  }
+  if (!trusted_devices_) {
+    for (auto& window : {ui_->main, ui_->wall})
+      window->set_trusted_devices_error(UiText(localization::Literal(
+          "无法读取设备身份或可信列表，请修复后再启用。", localization_language_index_)));
+  }
+}
+
 void GuiApplication::SyncServerWindow() {
   // The connection map is authoritative. Lifecycle flags record callback
   // intent, but callbacks for different controllers can cross each other, so
@@ -4612,6 +4740,11 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
   const auto previous_connection_mode = config_center_->GetConnectionMode();
   auto& main = ui_->Window(gallery_window);
   main->set_settings_save_error("");
+  if (main->get_trusted_devices_only() && !trusted_devices_) {
+    main->set_settings_save_error(UiText(localization::Literal(
+        "无法读取设备身份或可信列表，请修复后再启用。", localization_language_index_)));
+    return false;
+  }
   const bool has_endpoint = main->get_self_hosted_enabled() ||
       !std::string(main->get_server_host()).empty() ||
       !std::string(main->get_server_port()).empty();
@@ -4771,6 +4904,12 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
         props->preview_needs_sync_ = true;
     ui_->gallery_synced = {};
   }
+  if (config_center_->SetTrustedDevicesOnly(main->get_trusted_devices_only()) != 0) {
+    main->set_settings_save_error(UiText(localization::Literal(
+        "无法保存可信设备设置，请重试。", localization_language_index_)));
+    return false;
+  }
+  TickControllerTrust();
   ApplySettingsFromConfig(previous_server !=
                           GetSignalServerSettings(*config_center_));
   ResetSettingsUi(gallery_window);
