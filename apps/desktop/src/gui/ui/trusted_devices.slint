@@ -127,6 +127,8 @@ export component TrustedDevicesDialog inherits Rectangle {
         }
     }
     dialog := SettingsDialog {
+        // Reserve the full 14px Fluent scrollbar plus an 8px content gap.
+        private property <length> scrollbar-gutter: 22px;
         x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
         width: min(540px, parent.width - 32px);
         height: min(400px, parent.height - 32px);
@@ -135,13 +137,18 @@ export component TrustedDevicesDialog inherits Rectangle {
         title: TrustStrings.title; close-label: TrustStrings.close;
         close => { root.close(); }
         ScrollView {
-            x: 24px; y: 64px; width: parent.width - 48px; height: parent.height - 84px;
+            x: 24px; y: 64px;
+            // Extend into the right margin to preserve the existing card width.
+            width: parent.width - 56px + dialog.scrollbar-gutter;
+            height: parent.height - 84px;
             min-width: 0px; min-height: 0px;
             horizontal-scrollbar-policy: always-off;
+            vertical-scrollbar-policy: as-needed;
             viewport-width: self.visible-width;
             viewport-height: content.preferred-height;
             content := VerticalLayout {
-                width: parent.visible-width - 8px; height: self.preferred-height;
+                x: 0px; y: 0px;
+                width: max(0px, parent.visible-width - dialog.scrollbar-gutter); height: self.preferred-height;
                 spacing: 16px; padding: 0px; alignment: start;
                 FlatSurface {
                     background: #f1f6ff; outline-color: #d7e3f7; border-radius: UiRadius.surface;
