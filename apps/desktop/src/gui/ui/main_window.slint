@@ -2765,10 +2765,6 @@ export component MainWindow inherits Window {
                                 }
                             }
                         }
-                        Text {
-                            text: GalleryStrings.texts[119] + "\n" + GalleryStrings.texts[207];
-                            font-size: 11px; color: WorkbenchStyle.muted; wrap: word-wrap;
-                        }
                         SettingsGroup {
                             title: GalleryStrings.texts[120]; rows: 5;
                             SettingsToggleRow { label: UiStrings.privacy-on-connect; checked <=> root.privacy-on-connect-enabled; enabled: root.privacy-setting-available; }
