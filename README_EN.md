@@ -24,7 +24,7 @@
 
 CrossDesk connects your computers from desktop, browser, mobile, and terminal clients, with **DeskHub** for viewing and controlling multiple devices together. It is built on [MiniRTC](https://github.com/kunkundi/minirtc) and supports self-hosting.
 
-[Features](#features) · [Download and platforms](#download) · [Quick start](#quick-start) · [Terminal CLI](#cli) · [Direct IP](#lan-direct) · [Preview](#preview) · [User guide](docs/USER_GUIDE_EN.md) · [Self-hosting](#self-hosting) · [Build and feedback](#development) · [Sponsor](#sponsor)
+[Features](#features) · [Download and platforms](#download) · [Quick start](#quick-start) · [Terminal CLI](#cli) · [Direct IP](#lan-direct) · [Trusted devices](#trusted-devices) · [Preview](#preview) · [User guide](docs/USER_GUIDE_EN.md) · [Self-hosting](#self-hosting) · [Build and feedback](#development) · [Sponsor](#sponsor)
 
 <a id="features"></a>
 
@@ -36,6 +36,7 @@ CrossDesk connects your computers from desktop, browser, mobile, and terminal cl
 - **DeskHub:** live multi-device previews, groups, enlarged control, group input, and batch file distribution.
 - **Video and audio:** H.264 / AV1, hardware codecs, remote audio, and in-session quality and frame-rate controls. Capabilities depend on the platform and device.
 - **Everyday controls:** monitor switching, keyboard and mouse input, shortcuts, text clipboard, and file transfer.
+- **Trusted devices:** optionally restrict desktop access to trusted device identities in addition to the connection password. Copy and paste pairing information to approve devices before they connect.
 - **Deployment:** direct P2P connections, TURN relay, SRTP media encryption, self-hosting, Windows access before sign-in, and Linux headless operation.
 
 <a id="download"></a>
@@ -84,6 +85,24 @@ For self-hosting, both ends must use the same service. See the [user guide](docs
 
 Both computers must be reachable over the LAN. Internet access may be available or absent; direct sessions do not depend on a cloud signaling service. The main window lets you select the local IP, edit its port, and change the password. **Listen on all IP interfaces** is enabled by default for IPv4, IPv6, VPN, and other local interfaces on a shared port; change it under **Settings → General → Network**. Disabling **Enable direct IP** stops listeners, disconnects direct IP sessions, and hides the mode button. See the [direct IP guide](docs/USER_GUIDE_EN.md#lan-direct).
 
+<a id="trusted-devices"></a>
+
+### Allow only trusted devices (optional)
+
+The desktop trusted-device restriction is **off by default** and applies to both ID and direct IP connections. When enabled, the controller must pass the existing password verification and prove possession of a pairing private key recognized by the host. Knowing the ID and password alone does not satisfy this restriction.
+
+1. **Copy pairing information on the controller.** Open **Settings → General → Privacy → Manage trusted devices**. Under **This device’s pairing info**, click **Copy pairing info**.
+2. **Add the controller on the host.** Open the same management dialog, paste the information into **Add a trusted device**, and click **Add**. It is saved immediately, with no second confirmation or prior remote connection required.
+3. **Enable the restriction on the host.** Return to settings, select **Only allow trusted devices**, and save. Connect by ID or IP and verify the password as usual.
+
+Pairing information contains only the public key, device name, and ID, with no private key or password. Exchange it through a trusted channel. After adding a device, use **View fingerprint** to compare it with the controller. You can also add the local device; the same public key is not added twice. Trust is one-way: to control each other, add the other device on both computers.
+
+Adding or removing a device takes effect immediately. With the restriction enabled, **Remove trust** disconnects that device’s sessions, and an empty list rejects all controllers. The dialog also lets you add connected controllers that have completed identity verification.
+
+**Compatibility:** both clients must support trusted-device authentication. Older clients without the protocol cannot connect to a restricted host. The CLI, iOS, Android, and HarmonyOS mobile clients do not currently implement it. With the restriction disabled, the existing connection behavior applies.
+
+The pairing private key is stored in `identity.json` in the cache directory; the trusted list is stored in `trusted-devices/devices.json` in the configuration directory. Clearing only the ordinary ID/password cache preserves the pairing identity. Clearing the entire cache directory requires other devices to trust this computer again. See the [trusted-device technical guide](docs/connection-architecture.md#43-可选可信设备认证) (Chinese) for backups, migration, and authentication details.
+
 <a id="preview"></a>
 
 ## Preview
@@ -121,7 +140,7 @@ Group control sends input to all connected devices; closing DeskHub disconnects 
 
 ## Session controls and settings
 
-Remote sessions support monitor switching, video quality and frame-rate controls, audio, text clipboard synchronization, and file transfer. The toolbar also provides network statistics and privacy screen controls. Desktop settings configure direct IP availability, codecs, relay, self-hosting, and the DeskHub video budget.
+Remote sessions support monitor switching, video quality and frame-rate controls, audio, text clipboard synchronization, and file transfer. The toolbar also provides network statistics and privacy screen controls. Desktop settings configure direct IP availability, trusted-device restrictions, codecs, relay, self-hosting, and the DeskHub video budget.
 
 - [Session controls](docs/USER_GUIDE_EN.md#session): toolbar, text clipboard, received files, and privacy screens.
 - [Client settings and updates](docs/USER_GUIDE_EN.md#settings): general options, DeskHub video settings, and version checks.
@@ -237,7 +256,7 @@ pi -e ./apps/cli/plugins/pi/index.ts
 
 On other platforms, set `CROSSDESK_CLI` to the absolute path of the native executable. Enter `/crossdesk` or `/crossdesk 123456789` in Pi and follow the password prompt. See the [Pi extension guide](apps/cli/docs/terminal-client.md#pi-扩展) (Chinese) for requirements and validation scope.
 
-The CLI currently provides ID-based viewing and input, without direct IP connections, audio playback, file transfer, or clipboard synchronization. Local builds and remote connections have been validated on macOS arm64. See the [validation record](apps/cli/docs/validation.md) (Chinese) for the remaining Linux / Windows, SSH / Kitty terminal, and actual Pi TUI checks. Platform builds and npm publication do not establish that every platform has been validated on real devices.
+The CLI currently provides ID-based viewing and input, without direct IP connections, audio playback, file transfer, or clipboard synchronization. It also cannot yet connect to hosts with [trusted-device restrictions](#trusted-devices) enabled. Local builds and remote connections have been validated on macOS arm64. See the [validation record](apps/cli/docs/validation.md) (Chinese) for the remaining Linux / Windows, SSH / Kitty terminal, and actual Pi TUI checks. Platform builds and npm publication do not establish that every platform has been validated on real devices.
 
 [CLI documentation](apps/cli/README.md) · [Terminal usage and troubleshooting](apps/cli/docs/terminal-client.md) · [Bridge protocol](apps/cli/docs/bridge-protocol.md) · [npm packaging and distribution](apps/cli/docs/npm-distribution.md) (detailed guides in Chinese)
 
