@@ -1,4 +1,5 @@
 #include "lan_identity.h"
+#include "private_file.h"
 
 #include <openssl/crypto.h>
 #include <openssl/pem.h>
@@ -8,7 +9,6 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
-#include <fstream>
 #include <memory>
 #include <stdexcept>
 #include <string_view>
@@ -16,23 +16,18 @@
 #include "direct_address.h"
 #include "lan_password.h"
 #ifdef _WIN32
-// Winsock must precede windows.h; the networking/ACL headers need its types.
+// Winsock must precede windows.h; the networking headers need its types.
 // clang-format off
 #include <winsock2.h>
 #include <windows.h>
 #include <ws2tcpip.h>
-#include <Aclapi.h>
 #include <iphlpapi.h>
 #include <netioapi.h>
-#include <sddl.h>
 // clang-format on
 #else
 #include <arpa/inet.h>
-#include <fcntl.h>
 #include <ifaddrs.h>
 #include <net/if.h>
-#include <sys/stat.h>
-#include <unistd.h>
 #ifdef __APPLE__
 #include <net/if_dl.h>
 #include <net/if_types.h>
@@ -59,166 +54,8 @@ bool IsHex(const std::string& text, size_t size) {
            return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
          });
 }
-#ifdef _WIN32
-std::vector<unsigned char> CurrentUser() {
-  HANDLE token = nullptr;
-  Require(OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token),
-          "Cannot open user token");
-  DWORD size = 0;
-  GetTokenInformation(token, TokenUser, nullptr, 0, &size);
-  std::vector<unsigned char> data(size);
-  bool ok = GetTokenInformation(token, TokenUser, data.data(), size, &size);
-  CloseHandle(token);
-  Require(ok, "Cannot read user token");
-  return data;
-}
-PSECURITY_DESCRIPTOR PrivateSecurityDescriptor(bool directory) {
-  auto user = CurrentUser();
-  LPWSTR sid = nullptr;
-  Require(ConvertSidToStringSidW(
-              reinterpret_cast<TOKEN_USER*>(user.data())->User.Sid, &sid),
-          "Cannot read user SID");
-  // An elevated token can default to Administrators as the owner even when
-  // its DACL grants access only to TokenUser. Always set both explicitly.
-  const auto acl = L"O:" + std::wstring(sid) + L"D:P(A;" +
-                   (directory ? L"OICI" : L"") + L";FA;;;" + sid + L")";
-  LocalFree(sid);
-  PSECURITY_DESCRIPTOR descriptor = nullptr;
-  Require(ConvertStringSecurityDescriptorToSecurityDescriptorW(
-              acl.c_str(), SDDL_REVISION_1, &descriptor, nullptr),
-          "Cannot protect LAN file");
-  return descriptor;
-}
-#endif
-void PrivateWrite(const std::filesystem::path& path, const std::string& text) {
-  const auto temporary = path.parent_path() / (".write-" + RandomHex(16));
-#ifdef _WIN32
-  auto descriptor = PrivateSecurityDescriptor(false);
-  SECURITY_ATTRIBUTES security{sizeof(security), descriptor, FALSE};
-  HANDLE file = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, &security,
-                            CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
-  LocalFree(descriptor);
-  Require(file != INVALID_HANDLE_VALUE, "Cannot create LAN file");
-  DWORD written = 0;
-  bool ok = WriteFile(file, text.data(), static_cast<DWORD>(text.size()),
-                      &written, nullptr) &&
-            written == text.size() && FlushFileBuffers(file);
-  CloseHandle(file);
-  if (!ok || !MoveFileExW(temporary.c_str(), path.c_str(),
-                          MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-    DeleteFileW(temporary.c_str());
-    throw std::runtime_error("Cannot persist LAN file");
-  }
-#else
-  int fd =
-      open(temporary.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
-  Require(fd >= 0, "Cannot create private LAN file");
-  size_t offset = 0;
-  while (offset < text.size()) {
-    const auto count = write(fd, text.data() + offset, text.size() - offset);
-    if (count <= 0) break;
-    offset += static_cast<size_t>(count);
-  }
-  bool ok = offset == text.size() && fsync(fd) == 0;
-  close(fd);
-  if (!ok || rename(temporary.c_str(), path.c_str()) != 0) {
-    unlink(temporary.c_str());
-    throw std::runtime_error("Cannot persist LAN file");
-  }
-#endif
-}
-#ifdef _WIN32
-using FileHandle = std::unique_ptr<void, decltype(&CloseHandle)>;
-FileHandle OpenLanPath(const std::filesystem::path& path, DWORD access) {
-  // Keep the object open without FILE_SHARE_DELETE so validation and legacy
-  // owner repair cannot operate on a replacement at the same path.
-  HANDLE file = CreateFileW(
-      path.c_str(), access, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-      OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS,
-      nullptr);
-  Require(file != INVALID_HANDLE_VALUE, "Cannot open LAN path");
-  return {file, CloseHandle};
-}
-void CheckPrivateWindowsPath(const std::filesystem::path& path) {
-  auto file = OpenLanPath(path, READ_CONTROL);
-  BY_HANDLE_FILE_INFORMATION info{};
-  Require(GetFileInformationByHandle(file.get(), &info) &&
-              !(info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT),
-          "LAN path cannot be a reparse point");
-  auto user = CurrentUser();
-  auto sid = reinterpret_cast<TOKEN_USER*>(user.data())->User.Sid;
-  PSID owner = nullptr;
-  PACL acl = nullptr;
-  PSECURITY_DESCRIPTOR descriptor = nullptr;
-  Require(GetSecurityInfo(
-              file.get(), SE_FILE_OBJECT,
-              OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION, &owner,
-              nullptr, &acl, nullptr, &descriptor) == ERROR_SUCCESS,
-          "Cannot read LAN file permissions");
-  std::unique_ptr<void, decltype(&LocalFree)> security(descriptor, LocalFree);
-  bool ok = acl && acl->AceCount > 0;
-  // Only the exact protected, full-access DACL written by older versions is
-  // eligible for owner repair. Never adopt a shared or foreign-user profile.
-  SECURITY_DESCRIPTOR_CONTROL control{};
-  DWORD revision = 0;
-  bool legacy = owner && IsWellKnownSid(owner, WinBuiltinAdministratorsSid) &&
-                GetSecurityDescriptorControl(descriptor, &control, &revision) &&
-                (control & SE_DACL_PROTECTED) && acl && acl->AceCount == 1;
-  for (DWORD i = 0; ok && i < acl->AceCount; ++i) {
-    void* raw = nullptr;
-    if (!GetAce(acl, i, &raw)) {
-      ok = false;
-      break;
-    }
-    const auto* ace = static_cast<ACCESS_ALLOWED_ACE*>(raw);
-    ok = ace->Header.AceType == ACCESS_ALLOWED_ACE_TYPE &&
-         EqualSid(const_cast<DWORD*>(&ace->SidStart), sid);
-    const BYTE flags = (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-                           ? OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE
-                           : 0;
-    legacy =
-        legacy && ace->Mask == FILE_ALL_ACCESS && ace->Header.AceFlags == flags;
-  }
-  Require(ok && owner && (EqualSid(owner, sid) || legacy),
-          "LAN files must be accessible only by the current user");
-  if (legacy) {
-    auto writable = OpenLanPath(path, WRITE_OWNER);
-    BY_HANDLE_FILE_INFORMATION current{};
-    Require(GetFileInformationByHandle(writable.get(), &current) &&
-                current.dwVolumeSerialNumber == info.dwVolumeSerialNumber &&
-                current.nFileIndexHigh == info.nFileIndexHigh &&
-                current.nFileIndexLow == info.nFileIndexLow &&
-                SetSecurityInfo(writable.get(), SE_FILE_OBJECT,
-                                OWNER_SECURITY_INFORMATION, sid, nullptr,
-                                nullptr, nullptr) == ERROR_SUCCESS,
-            "Cannot repair LAN file owner");
-  }
-}
-void CreatePrivateDirectory(const std::filesystem::path& path) {
-  if (!std::filesystem::exists(path)) {
-    auto descriptor = PrivateSecurityDescriptor(true);
-    SECURITY_ATTRIBUTES security{sizeof(security), descriptor, FALSE};
-    bool ok = CreateDirectoryW(path.c_str(), &security);
-    LocalFree(descriptor);
-    Require(ok, "Cannot create LAN directory");
-  }
-  CheckPrivateWindowsPath(path);
-}
-#endif
-std::string Read(const std::filesystem::path& path) {
-#ifdef _WIN32
-  CheckPrivateWindowsPath(path);
-#else
-  struct stat status{};
-  Require(lstat(path.c_str(), &status) == 0 && S_ISREG(status.st_mode) &&
-              status.st_uid == getuid() && (status.st_mode & 0077) == 0,
-          "LAN file must be owned by this user with mode 0600");
-#endif
-  Require(std::filesystem::file_size(path) <= 64 * 1024, "LAN file too large");
-  std::ifstream input(path, std::ios::binary);
-  Require(input.good(), "Cannot read LAN file");
-  return {std::istreambuf_iterator<char>(input), {}};
-}
+using private_file::Read;
+using private_file::Write;
 std::string BioText(BIO* bio) {
   char* data = nullptr;
   long size = BIO_get_mem_data(bio, &data);
@@ -245,7 +82,7 @@ std::string PasswordKey(const std::filesystem::path& directory, bool create) {
     Require(
         RAND_bytes(reinterpret_cast<unsigned char*>(key.value.data()), 32) == 1,
         "Cannot generate LAN password storage key");
-    PrivateWrite(path, key.value);
+    Write(path, key.value);
   }
   auto key = Read(path);
   Require(key.size() == 32, "Invalid LAN password storage key");
@@ -358,11 +195,11 @@ void CreateCertificate(const std::filesystem::path& key_path,
   Require(PEM_write_bio_PrivateKey(bio.get(), key.get(), nullptr, nullptr, 0,
                                    nullptr, nullptr) == 1,
           "Cannot encode private key");
-  PrivateWrite(key_path, BioText(bio.get()));
+  Write(key_path, BioText(bio.get()));
   (void)BIO_reset(bio.get());
   Require(PEM_write_bio_X509(bio.get(), cert.get()) == 1,
           "Cannot encode certificate");
-  PrivateWrite(cert_path, BioText(bio.get()));
+  Write(cert_path, BioText(bio.get()));
 }
 }  // namespace
 unsigned ParsePort(const std::string& value) {
@@ -539,18 +376,7 @@ Identity::Identity(std::filesystem::path directory)
     : directory_(std::move(directory)) {}
 void Identity::Load() {
   DevicePassword::CheckSupport();
-  std::filesystem::create_directories(directory_.parent_path());
-#ifdef _WIN32
-  CreatePrivateDirectory(directory_);
-#else
-  std::filesystem::create_directories(directory_);
-  struct stat directory_status{};
-  Require(lstat(directory_.c_str(), &directory_status) == 0 &&
-              S_ISDIR(directory_status.st_mode) &&
-              directory_status.st_uid == getuid(),
-          "Invalid LAN directory owner or type");
-  Require(chmod(directory_.c_str(), 0700) == 0, "Cannot protect LAN directory");
-#endif
+  private_file::EnsureDirectory(directory_);
   const auto store = directory_ / "identity.json";
   if (!std::filesystem::exists(store)) {
     Require(!std::filesystem::exists(private_key()) &&
@@ -642,7 +468,7 @@ void Identity::Load() {
   state_.erase("password_attempts");
 }
 void Identity::Save(const nlohmann::json& state) {
-  PrivateWrite(directory_ / "identity.json", state.dump(2));
+  Write(directory_ / "identity.json", state.dump(2));
 }
 std::pair<std::string, nlohmann::json> Identity::GeneratePassword() {
   constexpr std::string_view alphabet =

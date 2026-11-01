@@ -82,12 +82,13 @@ function setup_targets()
     target("desktop_common")
         set_kind("object")
         add_deps("rd_log", "crossdesk_wire")
-        add_packages("libyuv")
+        add_packages("libyuv", "openssl3")
         add_packages("concurrentqueue")
         add_files("apps/desktop/src/common/*.cpp")
         if is_os("windows") then
             add_files("apps/desktop/src/platform/windows/system_info.cpp",
                 "apps/desktop/src/platform/windows/screen_lock.cpp")
+            add_syslinks("Advapi32", {public = true})
         elseif is_os("macosx") then
             add_files("apps/desktop/src/platform/macos/system_info.cpp",
                 "apps/desktop/src/platform/macos/screen_lock.cpp")
