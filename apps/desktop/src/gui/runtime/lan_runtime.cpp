@@ -180,7 +180,9 @@ std::shared_ptr<PeerEventHandler> GuiRuntime::ControllerEvents(
 }
 int GuiRuntime::WithController(
     const std::string& id,
-    const std::function<int(PeerPtr*, const std::string&)>& operation) {
+    const std::function<int(PeerPtr*, const std::string&)>& operation,
+    bool require_trusted) {
+  if (require_trusted && !TrustedControllerAllowed(id)) return -1;
   std::shared_lock lock(remote_sessions_mutex_);
   auto it = lan_controllers_.find(id);
   auto events = it == lan_controllers_.end() ? peer_events_ : it->second.events;

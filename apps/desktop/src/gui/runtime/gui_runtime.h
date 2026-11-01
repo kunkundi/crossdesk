@@ -26,6 +26,7 @@
 #include "runtime/announcement_inbox.h"
 #include "runtime/peer_event_handler.h"
 #include "runtime/privacy_session_policy.h"
+#include "runtime/trusted_devices.h"
 
 namespace crossdesk {
 
@@ -63,7 +64,8 @@ class GuiRuntime : protected gui_detail::GuiState {
                   std::string password, bool remember_password = false);
   int WithController(
       const std::string& id,
-      const std::function<int(PeerPtr*, const std::string&)>& operation);
+      const std::function<int(PeerPtr*, const std::string&)>& operation,
+      bool require_trusted = true);
   int SendControllerData(const std::string& id, const char* data, size_t size,
                          const char* label);
   std::shared_ptr<PeerEventHandler> ControllerEvents(const std::string& id);
@@ -105,6 +107,32 @@ class GuiRuntime : protected gui_detail::GuiState {
   void HandlePrivacy();
   void HandleScreenLock();
   bool IsAuthorizedController(const std::string& remote_id);
+  void InitializeTrustedDevices(const std::filesystem::path& directory);
+  bool TrustedControllerAllowed(const std::string& remote_id);
+  bool BeginControllerTrust(const std::string& remote_id, PeerEventHandler* events);
+  void ForgetControllerTrust(const std::string& remote_id, PeerEventHandler* events);
+  bool HandleDeviceTrustMessage(const std::string& remote_id, PeerEventHandler* events,
+                               const char* data, size_t size);
+  void TickControllerTrust();
+  std::optional<TrustedDevices::Device> VerifiedController(const std::string& remote_id);
+  bool TrustController(const std::string& remote_id, const std::string& expected_key);
+  bool RemoveTrustedDevice(const std::string& public_key);
+  int SendTrustMessage(const std::string& remote_id, const nlohmann::json& message);
+  std::unique_ptr<TrustedDevices> trusted_devices_;
+  struct ControllerTrust {
+    PeerEventHandler* events = nullptr;
+    std::string nonce;
+    std::optional<TrustedDevices::Device> verified;
+    std::string early_host_info;
+    std::chrono::steady_clock::time_point deadline{}, next_challenge{};
+    bool pending = false, invalid = false, closing = false, capable = false;
+    bool IsTrusted(const TrustedDevices* devices) const {
+      return devices && !invalid && !closing && verified &&
+             devices->Contains(verified->public_key);
+    }
+  };
+  std::mutex controller_trust_mutex_;
+  std::map<std::string, ControllerTrust> controller_trust_;
   void SetControllerPrivacySupport(const std::string& remote_id, bool supported);
   // Caller holds connection_status_mutex_ exclusively. Turns privacy off when
   // any connected controller lacks support, or on for the first automatic one.

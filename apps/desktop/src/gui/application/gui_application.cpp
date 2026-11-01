@@ -1153,6 +1153,7 @@ int GuiApplication::Run() {
   announcements_.SetStorageDirectory(path_manager_->GetCachePath() /
                                      "announcement_reads");
   config_center_ = std::make_unique<ConfigCenter>(cache_path_ + "/config.ini");
+  InitializeTrustedDevices(path_manager_->GetConfigPath() / "trusted-devices");
 
   LOG_INFO("CrossDesk version: {} (Slint UI)", CROSSDESK_VERSION);
 
@@ -2472,6 +2473,7 @@ void GuiApplication::Tick() {
     return;
   }
   TickLan();
+  TickControllerTrust();
   if (LanAvailable()) {
     const auto address = lan_->identity().settings().value("address", "");
     ui_->main->set_lan_listen_all(lan_->identity().listen_all());

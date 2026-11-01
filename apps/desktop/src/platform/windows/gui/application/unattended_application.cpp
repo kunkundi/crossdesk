@@ -24,6 +24,7 @@ int GuiApplication::RunUnattended(void* stop_event) {
   dll_log_path_ = exec_log_path_;
   InitializeLogger();
   config_center_ = std::make_unique<ConfigCenter>(cache_path_ + "/config.ini");
+  InitializeTrustedDevices(root / "trusted-devices");
   if (config_center_->SetPrivacyScreen(false) != 0 ||
       config_center_->SetSaveRemotePreviews(false) != 0)
     return 1;
@@ -44,6 +45,7 @@ int GuiApplication::RunUnattended(void* stop_event) {
       next_peer_attempt = now + 3000;
       if (CreateConnectionPeer() != 0) CloseConnectionPeer();
     }
+    TickControllerTrust();
     HandleConnectionStatusChange();
     HandleScreenLock();
     HandleWindowsServiceIntegration();

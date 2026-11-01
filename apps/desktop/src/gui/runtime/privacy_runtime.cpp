@@ -16,6 +16,7 @@
 namespace crossdesk {
 
 bool GuiRuntime::IsAuthorizedController(const std::string& remote_id) {
+  if (!TrustedControllerAllowed(remote_id)) return false;
   if (remote_id.rfind("lan/", 0) == 0) {
     const auto events = ControllerEvents(remote_id);
     if (!events || !events->DataAllowed()) return false;
@@ -59,6 +60,7 @@ void GuiRuntime::ApplyPrivacyAdmission(bool automatic_enable) {
 
 void GuiRuntime::QueuePrivacyCommand(const std::string& remote_id,
                                      const PrivacyCommand& command) {
+  if (!TrustedControllerAllowed(remote_id)) return;
   std::shared_lock session_lock(connection_status_mutex_);
   const auto found = connection_status_.find(remote_id);
   if (found == connection_status_.end() ||
@@ -86,6 +88,7 @@ void GuiRuntime::HandlePrivacy() {
     commands.swap(privacy_commands_);
   }
   for (const auto& [remote_id, command] : commands) {
+    if (!TrustedControllerAllowed(remote_id)) continue;
     // Keep admission and activation under the connection lock so an unknown
     // controller cannot join between the capability check and enabling.
     std::shared_lock lock(connection_status_mutex_);

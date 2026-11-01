@@ -99,8 +99,9 @@ void FileTransferManager::ProcessQueue(std::shared_ptr<RemoteSession> props) {
       peer = events ? events->DirectPeer() : nullptr;
     }
     auto session = std::make_shared<file_transfer::Session>(
-        [peer, events, file, props](const char*, const char* data, size_t size) {
-          if (!peer || !events || (props && props->closing_)) return -1;
+        [this, peer, events, file, props](const char*, const char* data, size_t size) {
+          if (!peer || !events || (props && props->closing_) ||
+              (!props && !owner_.IsAuthorizedController(file.remote_id))) return -1;
           auto callback = events->EnterCallback();
           if (!callback || !events->DataAllowed()) return -1;
           const auto wire_id = events->WireId(file.remote_id);
@@ -341,7 +342,8 @@ void FileTransferManager::Receive(const char* data, size_t size,
           (const file_transfer::ReceiveState& progress) mutable {
             UpdateReceiveProgress(progress, notifications, remote);
           });
-      entry.session->SetOnSendAck([peer, events, remote](const FileTransferAck& ack) {
+      entry.session->SetOnSendAck([this, peer, events, remote, props](const FileTransferAck& ack) {
+        if (!props && !owner_.IsAuthorizedController(remote)) return -1;
         auto callback = events->EnterCallback();
         if (!callback || !events->DataAllowed()) return -1;
         const auto bytes = EncodeFileTransferAck(ack);

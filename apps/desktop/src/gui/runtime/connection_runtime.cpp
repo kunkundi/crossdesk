@@ -443,6 +443,12 @@ void GuiRuntime::CloseConnectionPeer() {
     announcements_.Reset();
     return;
   }
+  {
+    std::lock_guard lock(controller_trust_mutex_);
+    std::erase_if(controller_trust_, [this](const auto& item) {
+      return item.second.events == peer_events_.get();
+    });
+  }
   peer_events_->StopAccepting();
   transfers_.Cancel(peer_events_.get());
   announcements_.Reset();

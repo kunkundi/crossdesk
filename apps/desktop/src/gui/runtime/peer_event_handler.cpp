@@ -300,6 +300,14 @@ void PeerEventHandler::DispatchConnectionStatus(ConnectionStatus status,
     }
   }
 
+  if (!props) {
+    if (status == ConnectionStatus::Connected) {
+      if (!runtime->BeginControllerTrust(remote_id, handler)) return;
+    } else {
+      runtime->ForgetControllerTrust(remote_id, handler);
+    }
+  }
+
   if (props) {
     runtime->is_client_mode_ = true;
     if (!props->wall_managed_) runtime->show_connection_status_window_ = true;
@@ -332,7 +340,9 @@ void PeerEventHandler::DispatchConnectionStatus(ConnectionStatus status,
             LOG_INFO("Local display [{}:{}]", i + 1,
                      remote_action.i.display_list[i]);
           }
-          std::string msg = remote_action.to_json();
+          auto information = nlohmann::json::parse(remote_action.to_json());
+          information["device_trust_version"] = 1;
+          std::string msg = information.dump();
           const int ret =
               SendReliableDataFrame(props->peer_, msg.data(), msg.size(),
                                     runtime->control_data_label_.c_str());

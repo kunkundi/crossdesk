@@ -36,6 +36,14 @@ ConfigCenter::~ConfigCenter() {}
 int ConfigCenter::Load() {
   SI_Error rc = ini_->LoadFile(config_path_.c_str());
   if (rc < 0) {
+    std::error_code error;
+    if (std::filesystem::exists(config_path_, error) || error) {
+      // An unreadable existing configuration must not silently disable access
+      // restrictions or overwrite the user's settings with default values.
+      trusted_devices_only_.store(true);
+      LOG_ERROR("Cannot read existing configuration; restricting incoming connections");
+      return -1;
+    }
     Save();
     return -1;
   }
@@ -141,6 +149,9 @@ int ConfigCenter::Load() {
       ini_->GetBoolValue(section_, "privacy_local_unlock_allowed", true));
   lock_on_disconnect_.store(
       ini_->GetBoolValue(section_, "lock_on_disconnect", true));
+  trusted_devices_only_.store(
+      ini_->GetValue(section_, "trusted_devices_only", nullptr) != nullptr &&
+      ini_->GetBoolValue(section_, "trusted_devices_only", true));
   save_remote_previews_.store(
       ini_->GetBoolValue(section_, "save_remote_previews", true));
   portable_service_prompt_suppressed_ =
@@ -239,6 +250,7 @@ int ConfigCenter::Save() {
   ini_->SetBoolValue(section_, "privacy_local_unlock_allowed",
                     privacy_local_unlock_allowed_.load());
   ini_->SetBoolValue(section_, "lock_on_disconnect", lock_on_disconnect_.load());
+  ini_->SetBoolValue(section_, "trusted_devices_only", trusted_devices_only_.load());
   ini_->SetBoolValue(section_, "save_remote_previews",
                     save_remote_previews_.load());
   ini_->SetBoolValue(section_, "portable_service_prompt_suppressed",
@@ -424,6 +436,13 @@ int ConfigCenter::SetPrivacyLocalUnlock(bool allowed) {
 bool ConfigCenter::IsPrivacyLocalUnlockAllowed() const {
   return privacy_local_unlock_allowed_.load();
 }
+
+int ConfigCenter::SetTrustedDevicesOnly(bool enabled) {
+  if (StoreValues({{"trusted_devices_only", enabled ? "true" : "false"}}) != 0) return -1;
+  trusted_devices_only_.store(enabled);
+  return 0;
+}
+bool ConfigCenter::IsTrustedDevicesOnly() const { return trusted_devices_only_.load(); }
 
 int ConfigCenter::SetLockOnDisconnect(bool enabled) {
   if (StoreValues({{"lock_on_disconnect", enabled ? "true" : "false"}}) != 0)

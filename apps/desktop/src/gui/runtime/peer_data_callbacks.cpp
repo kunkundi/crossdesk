@@ -133,6 +133,12 @@ void PeerEventHandler::OnReceiveDataBuffer(
   GuiRuntime* runtime = &handler->owner_;
 
   std::string source_id = std::string(src_id, src_id_size);
+  const auto remote_id = handler->ConnectionKey(user_id, user_id_size);
+  if (source_id == runtime->control_data_label_ &&
+      runtime->HandleDeviceTrustMessage(remote_id, handler, data, size)) return;
+  const auto viewer = runtime->FindRemoteSession(remote_id);
+  if (viewer && viewer->peer_events_.get() != handler) return;
+  if (!viewer && !runtime->TrustedControllerAllowed(remote_id)) return;
   // The service-owned host runs as SYSTEM. Do not expose filesystem or
   // clipboard operations in that security context.
   if (runtime->unattended_host_ &&
@@ -143,34 +149,30 @@ void PeerEventHandler::OnReceiveDataBuffer(
     return;
   if (source_id == web_clipboard::kStream) {
     runtime->clipboard_.ReceiveWeb(
-        data, size, handler->ConnectionKey(user_id, user_id_size), handler);
+        data, size, remote_id, handler);
     return;
   }
   if (source_id == runtime->file_label_) {
-    runtime->transfers_.Receive(data, size, handler,
-                                handler->ConnectionKey(user_id, user_id_size));
+    runtime->transfers_.Receive(data, size, handler, remote_id);
     return;
   } else if (source_id == runtime->clipboard_label_) {
     if (size > 0) {
-      std::string remote_user_id =
-          handler->ConnectionKey(user_id, user_id_size);
-      auto props =
-          runtime->FindRemoteSession(remote_user_id);
-      if (props && !props->clipboard_allowed_.load()) {
+      if (viewer && !viewer->clipboard_allowed_.load()) {
         return;
       }
 
       runtime->clipboard_.QueueRemoteText(
-          data, size, props ? remote_user_id : std::string{});
+          data, size, viewer ? remote_id : std::string{}, {},
+          viewer ? std::function<bool()>{} : [runtime, remote_id] {
+            return runtime->IsAuthorizedController(remote_id);
+          });
     }
     return;
   } else if (source_id == runtime->file_feedback_label_) {
-    runtime->transfers_.HandleAck(
-        data, size, handler, handler->ConnectionKey(user_id, user_id_size));
+    runtime->transfers_.HandleAck(data, size, handler, remote_id);
     return;
   }
 
-  const std::string remote_id = handler->ConnectionKey(user_id, user_id_size);
   const std::string wire_id = handler->WireId(remote_id);
   PeerPtr* bound_peer =
       handler->IsDirect() ? handler->DirectPeer() : runtime->peer_;

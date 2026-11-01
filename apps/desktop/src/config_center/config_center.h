@@ -55,6 +55,7 @@ class ConfigCenter {
   int SetPrivacyScreen(bool enable_privacy_screen);
   int SetPrivacyLocalUnlock(bool allowed);
   int SetLockOnDisconnect(bool enabled);
+  int SetTrustedDevicesOnly(bool enabled);
   int SetSaveRemotePreviews(bool enabled);
   int SetPortableServicePromptSuppressed(bool suppressed);
   int SetSponsorshipPromptDismissedVersion(const std::string& version);
@@ -80,6 +81,7 @@ class ConfigCenter {
   bool IsEnablePrivacyScreen() const;
   bool IsPrivacyLocalUnlockAllowed() const;
   bool IsLockOnDisconnect() const;
+  bool IsTrustedDevicesOnly() const;
   bool IsSaveRemotePreviews() const;
   bool IsPortableServicePromptSuppressed() const;
   std::string GetSponsorshipPromptDismissedVersion() const;
@@ -113,6 +115,7 @@ class ConfigCenter {
   std::atomic<bool> enable_privacy_screen_{true};
   std::atomic<bool> privacy_local_unlock_allowed_{true};
   std::atomic<bool> lock_on_disconnect_{true};
+  std::atomic<bool> trusted_devices_only_{false};
   std::atomic<bool> save_remote_previews_{true};
   bool portable_service_prompt_suppressed_ = false;
   std::string sponsorship_prompt_dismissed_version_;
