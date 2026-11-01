@@ -20,7 +20,6 @@ int DeviceLogin::Exchange(SignalExchangeStage stage, const nlohmann::json& messa
     password_.clear();
     request_ = message;
     const auto login = message.at("user_id").get<std::string>();
-    if (login.rfind("C-", 0) == 0) return 0;
     if (!identity) return -1;  // Never fall back when local key storage fails.
     const auto at = login.find('@');
     request_["user_id"] = login.substr(0, at);
@@ -44,7 +43,7 @@ int DeviceLogin::Exchange(SignalExchangeStage stage, const nlohmann::json& messa
     auto reply = request_;
     used_password_ = message.at("password_required").get<bool>();
     if (used_password_) {
-      if (id.empty() || password_.empty()) return -1;
+      if (id.empty() || id.rfind("C-", 0) == 0 || password_.empty()) return -1;
       reply["user_id"] = id + "@" + password_;
     }
     const auto transcript = nlohmann::json::array(
