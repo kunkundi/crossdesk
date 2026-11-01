@@ -140,8 +140,11 @@ struct RemoteSessionView: View {
 
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
+                .clipped()
             }
-            .ignoresSafeArea()
+            // Fit video and input to the same unobscured area. Only the black
+            // background extends beneath the home indicator and display cutout.
+            .ignoresSafeArea(.keyboard)
             .transaction { transaction in
                 transaction.animation = nil
                 transaction.disablesAnimations = true

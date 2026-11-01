@@ -34,7 +34,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private View settingsUpdateDot, aboutUpdateDot, settingsUpdateButton, aboutUpdateRow;
     private TextView aboutUpdateLabel;
     private boolean navigatingBack;
-    private FrameLayout canvas;
+    private FrameLayout canvas, safeArea;
     private LinearLayout root;
     private EditText remote;
     private TextView status, signalBadge, identitySummary;
@@ -133,10 +133,11 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         settingsUpdateDot=null;aboutUpdateDot=null;settingsUpdateButton=null;aboutUpdateRow=null;aboutUpdateLabel=null;
         previewSwitch=null;clearPreviewsButton=null;previewCleanupError=null;previewCards.clear();recentGrid=null;
         canvas=new FrameLayout(this);canvas.setBackgroundColor(dark?Color.BLACK:BACKGROUND);
-        FrameLayout safeArea=new FrameLayout(this);canvas.addView(safeArea,new FrameLayout.LayoutParams(-1,-1));
+        safeArea=new FrameLayout(this);canvas.addView(safeArea,new FrameLayout.LayoutParams(-1,-1));
         root=ui.pageColumn(dark?0:nextPage.equals("home")?1200:720);
         safeArea.addView(root,new FrameLayout.LayoutParams(-1,-1,Gravity.TOP|Gravity.CENTER_HORIZONTAL));
         safeArea.setOnApplyWindowInsetsListener((view,insets)->{
+            if(dark&&(pictureInPictureUi||isInPictureInPictureMode())){view.setPadding(0,0,0,0);return insets;}
             if(dark&&android.os.Build.VERSION.SDK_INT>=30){
                 android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());
                 view.setPadding(bars.left,bars.top,bars.right,bars.bottom);
@@ -328,7 +329,10 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         dialog.setContentView(card);dialog.setCanceledOnTouchOutside(false);dialog.setOnCancelListener(d->end(""));Window w=dialog.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.setDimAmount(.08f);}dialog.show();if(w!=null)w.setLayout(dp(292),-2);
     }
     private void sessionScreen(boolean autoLandscape){
-        installRoot("session",true);remoteOrientation.begin(autoLandscape,!isTablet()&&!isInMultiWindowMode());video=new RemoteVideoView(this,session);video.setRelative(preferences.getBoolean("relativeMouse",true));canvas.addView(video,0,new FrameLayout.LayoutParams(-1,-1));
+        installRoot("session",true);remoteOrientation.begin(autoLandscape,!isTablet()&&!isInMultiWindowMode());video=new RemoteVideoView(this,session);video.setRelative(preferences.getBoolean("relativeMouse",true));
+        // Video, cursor and touch input must share the area inside system bars
+        // and display cutouts; fitting to the outer canvas hides image edges.
+        safeArea.addView(video,0,new FrameLayout.LayoutParams(-1,-1));
         controls=new SessionControls(this,ui,new SessionControls.Actions(){
             public void disconnect(){confirmDisconnect();}public void display(){selectDisplay();}public void clipboard(){MainActivity.this.clipboard();}
             public void sendFile(){chooseFile();}public void saveFile(){saveReceivedFile();}public void secureAttention(){MainActivity.this.secureAttention();}
@@ -803,6 +807,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         if(value){releaseKeys();hideKeyboard();pageHost.finish();if(disconnectDialog!=null)disconnectDialog.dismiss();if(remoteUpdateDialog!=null)remoteUpdateDialog.dismiss();}
         if(controls!=null)controls.setPictureInPicture(value);
         if(video!=null)video.setPictureInPicture(value);
+        if(safeArea!=null)safeArea.requestApplyInsets();
     }
     @Override protected void onUserLeaveHint(){
         super.onUserLeaveHint();

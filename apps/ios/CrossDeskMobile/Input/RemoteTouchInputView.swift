@@ -384,6 +384,15 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
             let newScale = min(max(oldScale * recognizer.scale, 1),
                                maximumViewportScale)
             recognizer.scale = 1
+            if newScale == 1 {
+                // Pinching back to fit also ends any cursor-edge pan, even
+                // when the gesture starts at 1x with an off-center image.
+                viewportScale = 1
+                viewportOffset = .zero
+                edgePanned = false
+                publishViewport()
+                return
+            }
             guard abs(newScale - oldScale) > 0.0001 else { return }
 
             let center = CGPoint(x: bounds.midX, y: bounds.midY)
@@ -402,7 +411,8 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
             pinchActive = false
             if viewportScale <= 1.001 {
                 viewportScale = 1
-                viewportOffset = constrainedViewportOffset(viewportOffset, scale: 1)
+                viewportOffset = .zero
+                edgePanned = false
                 publishViewport()
             }
         default:

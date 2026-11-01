@@ -42,6 +42,9 @@ final class RemoteViewport {
     void zoomBy(float factor, float focusX, float focusY) {
         if (baseWidth == 0 || baseHeight == 0 || !Float.isFinite(factor) || factor <= 0) return;
         float nextScale = clamp(scale * factor, 1, MAXIMUM_SCALE);
+        // Returning to fit must clear cursor-edge panning too, including a
+        // pinch that starts at 1x with an already shifted image.
+        if (nextScale == 1) { reset(); return; }
         float ratio = nextScale / scale;
         float focusFromCenterX = focusX - (baseLeft + baseWidth / 2f);
         float focusFromCenterY = focusY - (baseTop + baseHeight / 2f);
@@ -75,10 +78,9 @@ final class RemoteViewport {
     }
 
     void finishGesture() {
-        if (!isZoomed()) {
-            scale = 1;
-            constrainOffset();
-        }
+        // Ordinary pointer gestures at 1x retain edge panning. Only a zoom
+        // snapping back to its minimum restores the complete centered image.
+        if (scale > 1 && !isZoomed()) reset();
     }
 
     void reset() { scale = 1; offsetX = offsetY = 0; edgePanned = false; }
