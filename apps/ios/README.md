@@ -156,6 +156,20 @@ Xmake version, and initializes the pinned MiniRTC submodules. The native build
 phase selects these tools again and preserves Cloud's proxy settings for package
 downloads. No manual workflow PATH setting or `sudo` command is required.
 
+For **Archive - iOS**, `ci_scripts/ci_pre_xcodebuild.sh` builds the native
+dependencies before `xcodebuild`, using `Release / iphoneos / arm64` to match the
+shared scheme. It streams verbose build output and prints a heartbeat with
+process status every minute, avoiding the archive's 30-minute inactivity timeout
+while Xcode buffers Run Script output. The archive's native build phase reuses
+the same dependency cache and libraries, retaining its input and toolchain
+validation. Other actions keep their existing native build behavior.
+
+The prebuild records its output under `.xmake/xcode-cloud-logs` and copies package
+installation and Meson logs there on failure. These files are temporary, so the
+script also prints the complete GLib install log and the last 200 lines of other
+failed package logs and GLib's Meson log into the retained Cloud step output.
+Inspect **Run ci_pre_xcodebuild.sh script** when diagnosing native build failures.
+
 The first archive compiles native dependencies from source and may take longer
 than later builds. After changing the setup script, start a build from the new
 commit; rebuilding an older commit does not include the fix. App Store releases
