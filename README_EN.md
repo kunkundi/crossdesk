@@ -157,7 +157,7 @@ Remote sessions support monitor switching, video quality and frame-rate controls
 | ANSI character rendering | Kitty pixel graphics |
 | --- | --- |
 | <img src="docs/images/cli-ansi-overview.png" width="480" alt="CrossDesk CLI ANSI quadrant overview, with read-only mode and connection status at the top and shortcuts at the bottom" /> | <img src="docs/images/cli-kitty-overview.png" width="480" alt="CrossDesk CLI Kitty protocol overview of the same remote desktop, rendered as pixels with the status bar and shortcuts" /> |
-| Colored characters show the desktop in standard terminals; press `d` to inspect a smaller region. | Pixel graphics display the desktop in terminals supporting the Kitty graphics protocol, such as Ghostty. |
+| Colored characters show the desktop in standard terminals; use `+/-` or the wheel to zoom at the mouse position. | Pixel graphics display the desktop in terminals supporting the Kitty graphics protocol, such as Ghostty. |
 
 Both images were captured on **2026-10-31** from real read-only connections to the same authorized host. They render the CLI's ANSI / Kitty protocol output in a 128 × 40 character viewport. FPS counts actual output during capture; an unchanged ANSI view can show `FPS 0`. Actual terminal appearance depends on the font, window size, and protocol support. See [capture notes](docs/images/README.md#cli-captures) for the method.
 
@@ -227,7 +227,7 @@ crossdesk-cli 123456789 --quality balanced --fps 8
 | `--control` | Enable keyboard/mouse control immediately after connecting; omitted by default for read-only viewing |
 | `--server your-server.example --port 9099` | Use a self-hosted signaling service; both ends must use the same service |
 
-ANSI overviews are limited by the character grid: higher video quality alone cannot make full-desktop text legible. Enlarge the terminal or reduce its font size, press `d` for detail, and `f` to return to the full desktop. The top bar shows input mode, connection progress, renderer, zoom, live output FPS, and network information; narrow windows omit some fields. Allocate a PTY over SSH (`ssh -t`), and use ANSI inside tmux / screen. See the [terminal guide](apps/cli/docs/terminal-client.md) (Chinese) for rendering, mouse reporting, and compatibility details.
+ANSI overviews are limited by the character grid: higher video quality alone cannot make full-desktop text legible. Enlarge the terminal or reduce its font size, use `+/-` or the wheel for detail, and `f` to restore the full desktop and reset panning. The top bar shows input mode, connection progress, renderer, zoom, live output FPS, and network information; narrow windows omit some fields. Allocate a PTY over SSH (`ssh -t`), and use ANSI inside tmux / screen. See the [terminal guide](apps/cli/docs/terminal-client.md) (Chinese) for rendering, mouse reporting, and compatibility details.
 
 ### Control, navigation, and exit
 
@@ -237,9 +237,12 @@ ANSI overviews are limited by the character grid: higher video quality alone can
 | Control mode | Keyboard/mouse input goes to the host; `Ctrl+]` enters local command mode and pauses remote input |
 | Local command mode | Stays active after commands; `c` selects whether control resumes when you leave; `q` exits the CLI |
 | `Esc` / `Ctrl+C` | Manually leave local command mode and return to the selected control or read-only mode |
-| `+` / `=` / `-` | Zoom in / out in read-only or local command mode |
-| `d` / `f` | Switch to native detail / full-desktop view in read-only or local command mode; clicking in read-only mode also opens detail at that point |
+| `+` / `=` / `-` | Zoom in / out at the mouse position in read-only or local command mode |
+| Wheel / click | In read-only mode, zoom at the mouse position with the wheel; click a point to open native detail |
+| `f` | Restore the full desktop and reset zoom, pan, and native detail mode in read-only or local command mode |
 | Arrow keys / `i j k l` | Pan in read-only or local command mode: `i` up, `j` left, `k` down, `l` right |
+
+Zoom keeps the content under the pointer in place where possible, clamping the crop at desktop edges. Without a valid mouse position, zoom uses the current center. In local command mode, mouse reports only update the zoom anchor; clicks and the wheel do not change the view.
 
 **To quit while controlling the host, press `Ctrl+]`, then `q`.** Ordinary `c`, `q`, and `Ctrl+C` go to the host in control mode.
 

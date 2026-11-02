@@ -12,7 +12,7 @@
 | connect | device:9位数字字符串, display:0..63（默认0） | 从专用 password fd 读取至换行/EOF（最多256字节、等待5秒），开始异步注册/连接；ok不是远端已连接 |
 | status | 无 | 返回当前状态 |
 | control | enabled:boolean | 显式启停控制；关闭时释放输入 |
-| input | data:string，最多16KiB | 终端原始按键/UTF-8/bracketed paste/SGR鼠标；只读时 c 开启控制、q/Ctrl+C 退出，d/鼠标点击进入细节，+/-/滚轮缩放，方向键或 i 上、j 左、k 下、l 右平移，f 全景；Ctrl+] 打开本地命令，随后 c 选择返回后的控制状态、q 退出或视图键连续调整画面，Esc/Ctrl+C 手动返回；控制模式中 Ctrl+T/Ctrl+C 传给远端，本地模式中再按 Ctrl+] 手动返回，并在返回控制模式时传递远端 Ctrl+] |
+| input | data:string，最多16KiB | 终端原始按键/UTF-8/bracketed paste/SGR鼠标；只读时 c 开启控制、q/Ctrl+C 退出，鼠标点击进入细节，+/-/滚轮以鼠标位置缩放，方向键或 i 上、j 左、k 下、l 右平移，f 恢复全景并重置倍率与平移；Ctrl+] 打开本地命令，随后 c 选择返回后的控制状态、q 退出或视图键连续调整画面，Esc/Ctrl+C 手动返回；控制模式中 Ctrl+T/Ctrl+C 传给远端，本地模式中再按 Ctrl+] 手动返回，并在返回控制模式时传递远端 Ctrl+] |
 | display | index:0..63 | 选择已广告的零起始显示器，提升 generation |
 | ack | frame_id、generation：非负整数 | 确认宿主消费帧；匹配当前等待帧才开放下一帧 |
 | disconnect | 无 | 释放输入、结束当前媒体会话 |

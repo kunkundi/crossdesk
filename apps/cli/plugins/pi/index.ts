@@ -227,10 +227,10 @@ export default function crossdesk(pi: ExtensionAPI) {
               const ack = frame; frame = undefined;
               if (ack) queueMicrotask(() => send("ack", ack)); // Host consumed the frame; not a physical display timestamp.
               const hint = bridgeStopped ? "q / Esc / Ctrl+C close"
-                : commandMode ? "Esc/Ctrl+C return | c toggle q quit | arrows/ijkl pan +/- zoom f fit d detail"
+                : commandMode ? "Esc/Ctrl+C return | c toggle | q quit | +/- zoom | f full | arrows/ijkl pan"
                 : control ? "Keys -> remote | Ctrl+] then c release, q quit"
-                : "c control q quit ? help | i up j left k down l right | +/- zoom f fit d detail";
-              return [truncateToWidth(`CrossDesk ${device} | ${status} ${native ? "detail" : "fit"} x${zoom} | Ctrl+] commands`, width),
+                : "c control | q quit | +/- zoom | f full | arrows/ijkl pan | ? commands";
+              return [truncateToWidth(`CrossDesk ${device} | ${status} ${native ? "detail" : "zoom"} x${zoom} | Ctrl+] commands`, width),
                 ...lines.slice(0, h).map(line => truncateToWidth(line, width)),
                 truncateToWidth(`${hint}${error ? " | " + error : lines.length ? "" : " | Waiting for remote video…"}`, width)];
             },

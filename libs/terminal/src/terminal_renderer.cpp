@@ -25,21 +25,25 @@ static uint32_t Pixel(const DecodedFrame &f, int x, int y) {
          (clamp((298 * yy - 100 * u - 208 * v + 128) >> 8) << 8) |
          clamp((298 * yy + 516 * u + 128) >> 8);
 }
-static void Validate(const DecodedFrame &f, const Viewport &v) {
+static void Validate(unsigned width, unsigned height, const Viewport &v) {
   if (v.columns < 1 || v.rows < 1 || v.columns > 240 || v.rows > 100 ||
       v.row_offset < 0 || v.row_offset > 100 ||
       !std::isfinite(v.cell_aspect) || v.cell_aspect < .2 ||
       v.cell_aspect > 2 || !std::isfinite(v.zoom) || v.zoom < 1 ||
       v.zoom > 32 || !std::isfinite(v.center_x) || !std::isfinite(v.center_y) ||
       v.center_x < 0 || v.center_x > 1 || v.center_y < 0 || v.center_y > 1 ||
-      !f.width || !f.height || f.width > 8192 || f.height > 8192 ||
-      (f.width & 1) || (f.height & 1) ||
-      size_t(f.width) * f.height > 16777216 ||
-      f.nv12.size() < size_t(f.width) * f.height * 3 / 2)
+      !width || !height || width > 8192 || height > 8192 || (width & 1) ||
+      (height & 1) || size_t(width) * height > 16777216)
     throw std::invalid_argument("invalid frame or viewport");
 }
-static Rect Crop(const DecodedFrame &f, const Viewport &v) {
-  double width = f.width, height = f.height;
+static void Validate(const DecodedFrame &f, const Viewport &v) {
+  Validate(f.width, f.height, v);
+  if (f.nv12.size() < size_t(f.width) * f.height * 3 / 2)
+    throw std::invalid_argument("invalid frame or viewport");
+}
+static Rect Crop(unsigned source_width, unsigned source_height,
+                 const Viewport &v) {
+  double width = source_width, height = source_height;
   if (v.native) {
     const int sx = v.utf8 && v.detail == AnsiDetail::Quadrant ? 2 : 1;
     const int sy = v.utf8 ? 2 : 1;
@@ -60,8 +64,10 @@ static Rect Crop(const DecodedFrame &f, const Viewport &v) {
   }
   int w = std::max(1, int(width / v.zoom)),
       h = std::max(1, int(height / v.zoom));
-  int x = std::clamp(int(v.center_x * f.width - w * .5), 0, int(f.width) - w);
-  int y = std::clamp(int(v.center_y * f.height - h * .5), 0, int(f.height) - h);
+  int x = std::clamp(int(v.center_x * source_width - w * .5), 0,
+                     int(source_width) - w);
+  int y = std::clamp(int(v.center_y * source_height - h * .5), 0,
+                     int(source_height) - h);
   return {x, y, w, h};
 }
 // Area resampling integrates the entire source footprint. Thin lines cannot
@@ -249,16 +255,20 @@ static void AppendNumber(std::string &out, uint32_t value) {
 }
 Grid Layout(const DecodedFrame &f, Viewport v) {
   Validate(f, v);
+  return Layout(f.width, f.height, v);
+}
+Grid Layout(unsigned source_width, unsigned source_height, Viewport v) {
+  Validate(source_width, source_height, v);
   const int sx = v.utf8 && v.detail == AnsiDetail::Quadrant ? 2 : 1,
             sy = v.utf8 ? 2 : 1;
   const int width = v.columns * sx, height = v.rows * sy;
-  Rect crop = Crop(f, v);
+  Rect crop = Crop(source_width, source_height, v);
   Grid g{v,
          Fit(crop.width, crop.height, width, height, v.cell_aspect * sy / sx),
          {}};
   g.source = crop;
-  g.source_width = f.width;
-  g.source_height = f.height;
+  g.source_width = source_width;
+  g.source_height = source_height;
   g.samples_x = sx;
   g.samples_y = sy;
   return g;
@@ -553,7 +563,7 @@ PixelFrame ImagePixels(const DecodedFrame &f, const Viewport &requested) {
   pixels.height =
       std::clamp(v.pixel_height > 0 ? v.pixel_height : v.rows * 20, 2, 1080);
   pixels.rgb.resize(size_t(pixels.width) * pixels.height * 3, 0);
-  const auto crop = Crop(f, v);
+  const auto crop = Crop(f.width, f.height, v);
   const auto r = Fit(crop.width, crop.height, pixels.width, pixels.height,
                      double(v.columns) * v.cell_aspect * pixels.height /
                          (v.rows * pixels.width));
@@ -678,7 +688,7 @@ std::string Kitty(const DecodedFrame &f, const Viewport &requested,
       std::clamp(v.pixel_width > 0 ? v.pixel_width : v.columns * 10, 2, 1920);
   int h =
       std::clamp(v.pixel_height > 0 ? v.pixel_height : v.rows * 20, 2, 1080);
-  const auto crop = Crop(f, v);
+  const auto crop = Crop(f.width, f.height, v);
   std::string b64;
   for (;;) {
     auto r = Fit(crop.width, crop.height, w, h,

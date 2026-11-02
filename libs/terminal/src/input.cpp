@@ -45,8 +45,7 @@ bool Input::LocalKey(int key, ControllerSession &s, const Grid *grid) {
   } else if (key == 'c') {
     control = !control;
   } else if (key == '+' || key == '=' || key == '-' || key == 'f' ||
-             key == 'd' || key == 'i' || key == 'j' || key == 'k' ||
-             key == 'l') {
+             key == 'i' || key == 'j' || key == 'k' || key == 'l') {
     Navigate(char(key), grid);
   } else if (!command_mode) {
     return false;
@@ -58,19 +57,51 @@ bool Input::LocalKey(int key, ControllerSession &s, const Grid *grid) {
     mouse_buttons_ = 0;
   return true;
 }
+void Input::Zoom(double next_zoom, const Grid *grid) {
+  if (next_zoom == zoom)
+    return;
+  if (grid && mouse_column_ >= 0 && mouse_row_ >= 0) {
+    auto v = grid->viewport;
+    v.zoom = zoom;
+    v.native = native;
+    v.center_x = center_x;
+    v.center_y = center_y;
+    // Rebuild from the requested view so queued key/wheel repeats compose
+    // even when the terminal is still displaying an earlier frame.
+    const auto before = Layout(grid->source_width, grid->source_height, v);
+    if (const auto anchor = MapPointer(before, mouse_column_, mouse_row_)) {
+      v.zoom = next_zoom;
+      const auto after = Layout(grid->source_width, grid->source_height, v);
+      if (const auto moved = MapPointer(after, mouse_column_, mouse_row_)) {
+        const auto center = [](int origin, int size, unsigned extent,
+                               double shift) {
+          const double half = size * .5 / extent;
+          return std::clamp((origin + size * .5 + shift * (extent - 1)) /
+                                extent,
+                            half, 1 - half);
+        };
+        // Use the actual, clamped crop center and the same source-pixel
+        // mapping as remote input. Letterboxing and status rows stay aligned.
+        center_x = center(after.source.x, after.source.width,
+                          after.source_width,
+                          double(anchor->first) - moved->first);
+        center_y = center(after.source.y, after.source.height,
+                          after.source_height,
+                          double(anchor->second) - moved->second);
+      }
+    }
+  }
+  zoom = next_zoom;
+}
 void Input::Navigate(char key, const Grid *grid) {
   if (key == '+' || key == '=')
-    zoom = std::min(32.0, zoom * 2);
+    Zoom(std::min(32.0, zoom * 2), grid);
   if (key == '-')
-    zoom = std::max(1.0, zoom / 2);
+    Zoom(std::max(1.0, zoom / 2), grid);
   if (key == 'f') {
     native = false;
     zoom = 1;
     center_x = center_y = .5;
-  }
-  if (key == 'd') {
-    native = true;
-    zoom = 1;
   }
   // Use the displayed crop as the pan step, including native pixel mode.
   const double dx = grid && grid->source_width
@@ -99,14 +130,26 @@ void Input::Mouse(int b, int x, int y, bool release, ControllerSession &s,
                   const Grid *grid) {
   ++mouse_reports;
   // Extra mouse buttons must not alias the three supported remote buttons.
-  if (!grid || command_mode || b < 0 || b >= 128)
+  if (b < 0 || b >= 128 || x <= 0 || y <= 0)
     return;
-  auto pos = MapPointer(*grid, x - 1, y - 1);
+  // Track terminal coordinates even in local command mode. Re-map them for
+  // every zoom; a stationary mouse must follow subsequent view changes.
+  mouse_column_ = x - 1;
+  mouse_row_ = y - 1;
+  if (!grid || command_mode)
+    return;
+  auto pos = MapPointer(*grid, mouse_column_, mouse_row_);
   if (!control) {
-    if (pos && !release && ((b & 64) || b == 0)) {
-      center_x = pos->first;
-      center_y = pos->second;
-      Navigate((b & 64) ? ((b & 1) ? '-' : '+') : 'd', grid);
+    if (pos && !release) {
+      if (b & 64) {
+        Navigate((b & 1) ? '-' : '+', grid);
+      } else if (b == 0) {
+        center_x = pos->first;
+        center_y = pos->second;
+        native = true;
+        zoom = 1;
+        ++view_revision;
+      }
     }
     return;
   }
@@ -248,6 +291,7 @@ void Input::Feed(const std::string &bytes, ControllerSession &s,
           control = false;
           s.SetControl(false);
           mouse_buttons_ = 0;
+          mouse_column_ = mouse_row_ = -1;
           continue;
         }
         int key = 0;

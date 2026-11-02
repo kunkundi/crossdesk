@@ -608,7 +608,7 @@ int View(SessionOptions options, const std::string &device,
                              : sixel                          ? "SIXEL"
                              : detail == AnsiDetail::Quadrant ? "QUAD"
                                                               : "HALF") +
-                 (input.native ? " | Detail x" : " | Fit x") +
+                 (input.native ? " | Detail x" : " | Zoom x") +
                  std::to_string(int(input.zoom)) +
                  (last_frame ? " | " + std::to_string(last_frame->width) + "x" +
                                    std::to_string(last_frame->height)
@@ -1038,7 +1038,10 @@ crossdesk-cli bridge --stdio [--password-fd 3] [--server host] [--port 9099]
 Connect by device ID: read-only and silent by default; hidden password prompt on the local terminal.
 Read-only: c enables control; q or Ctrl+C quits; ? shows local commands.
 Ctrl+] enters persistent local mode: c selects control on return; q quits; Esc/Ctrl+C returns.
-View keys: click/d native detail, wheel/+/- zoom, arrows/ijkl pan (i up, j left, k down, l right), f fit.
+View keys (read-only/local): +/- zoom at mouse (= also zooms in); f restores the full desktop and resets pan.
+Pan: arrows or i up, j left, k down, l right. Read-only mouse: wheel zooms at pointer; click opens native detail.
+Local mode: move the mouse to choose the zoom anchor; clicks and wheel do not change the view.
+Zoom uses the current center when no mouse position is available or the pointer is outside the picture.
 Local mode stays active after commands, paste or focus loss; remote input remains paused.
 Ctrl+T and Ctrl+C pass through in control mode; another Ctrl+] leaves local mode and forwards Ctrl+] if control is enabled.
 Default ANSI detail: quadrant. Default quality: high (1920x1080); ultra requests up to 3840x2160.

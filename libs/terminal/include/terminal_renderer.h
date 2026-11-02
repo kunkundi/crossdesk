@@ -58,6 +58,8 @@ struct Grid {
 Rect Fit(int width, int height, int columns, int pixel_rows,
          double pixel_aspect = 1);
 Grid Layout(const DecodedFrame &, Viewport);
+// Calculate crop and pointer geometry without decoded pixel storage.
+Grid Layout(unsigned source_width, unsigned source_height, Viewport);
 Grid Convert(const DecodedFrame &, Viewport);
 std::optional<std::pair<float, float>> MapPointer(const Grid &, int column,
                                                   int row);
@@ -119,9 +121,11 @@ private:
   bool pasting_ = false;
   unsigned mouse_buttons_ = 0;
   float pointer_x_ = .5f, pointer_y_ = .5f;
+  int mouse_column_ = -1, mouse_row_ = -1;
   void Tap(ControllerSession &, int key, int modifier = 0);
   bool LocalKey(int key, ControllerSession &, const Grid *);
   void Navigate(char key, const Grid *);
+  void Zoom(double next_zoom, const Grid *);
   void Mouse(int button, int x, int y, bool release, ControllerSession &,
              const Grid *);
 };

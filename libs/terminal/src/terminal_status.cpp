@@ -79,41 +79,52 @@ std::vector<std::string> StatusLines(const StatusBar &bar, int columns) {
 
   std::string keys, view;
   if (inner >= 63) {
-    const size_t count = inner >= 99 ? 4 : inner >= 77 ? 3 : 2;
+    const size_t count = inner >= 99 ? 4 : inner >= 89 ? 3 : 2;
     if (bar.command_mode) {
-      keys =
-          Columns("LOCAL",
-                  count >= 3 ? std::vector<std::string>{"<Esc/Ctrl+C> Return",
-                                                        "<c> Toggle control",
-                                                        "<q> Quit"}
-                             : std::vector<std::string>{"<Esc/Ctrl+C> Return",
-                                                        "<c> Toggle; <q> Quit"},
-                  inner, count);
+      keys = Columns(
+          "LOCAL",
+          count == 4
+              ? std::vector<std::string>{"<Esc/Ctrl+C> Return",
+                                         "<c> Toggle control", "<q> Quit",
+                                         "<mouse> Set anchor"}
+          : count == 3
+              ? std::vector<std::string>{"<Esc/Ctrl+C> Return",
+                                         "<c> Toggle control", "<q> Quit"}
+              : std::vector<std::string>{"<Esc/Ctrl+C> Return",
+                                         "<c> Toggle; <q> Quit"},
+          inner, count);
     } else if (bar.control) {
       keys = Columns("KEYS", {"<Ctrl+]> Commands", "Input -> remote"}, inner,
                      count);
     } else {
-      keys = Columns("KEYS",
-                     count >= 3
-                         ? std::vector<std::string>{"<c> Control", "<q> Quit",
-                                                    "<Ctrl+]> Commands"}
-                         : std::vector<std::string>{"<c> Control; <q> Quit",
-                                                    "<Ctrl+]> Commands"},
-                     inner, count);
+      keys = Columns(
+          "KEYS",
+          count == 4
+              ? std::vector<std::string>{"<c> Control", "<q> Quit",
+                                         "<Ctrl+]> Commands", "<click> Detail"}
+          : count == 3
+              ? std::vector<std::string>{"<c> Control; <q> Quit",
+                                         "<Ctrl+]> Commands", "<click> Detail"}
+              : std::vector<std::string>{"<c> Control; <q> Quit",
+                                         "<Ctrl+]> Commands"},
+          inner, count);
     }
     if (bar.control && !bar.command_mode) {
       view = Columns("THEN", {"<c> Toggle control", "<q> Quit"}, inner, count);
     } else {
+      const auto zoom = bar.command_mode ? "<+/-> Zoom at mouse"
+                                         : "<+/wheel/-> Zoom at mouse";
       view = Columns(
           "VIEW",
           count == 4
-              ? std::vector<std::string>{"<arrows/ijkl> Pan", "<+/-> Zoom",
-                                         "<f> Fit", "<d> Detail"}
+              ? std::vector<std::string>{"<+/-> Zoom at mouse",
+                                         bar.command_mode ? "<=> Zoom in"
+                                                          : "<wheel> Zoom",
+                                         "<arrows/ijkl> Pan", "<f> Full view"}
           : count == 3
-              ? std::vector<std::string>{"<arrows/ijkl> Pan", "<+/-> Zoom",
-                                         "<f> Fit; <d> Detail"}
-              : std::vector<std::string>{"<arrows> Pan; <+/-> Zoom",
-                                         "<f> Fit; <d> Detail"},
+              ? std::vector<std::string>{zoom, "<arrows/ijkl> Pan",
+                                         "<f> Full view"}
+              : std::vector<std::string>{zoom, "<arrows> Pan; <f> Full"},
           inner, count);
     }
   } else {
@@ -139,11 +150,18 @@ std::vector<std::string> StatusLines(const StatusBar &bar, int columns) {
             ? std::vector<std::string>{"<c> Toggle control | <q> Quit",
                                        "<c> Toggle; <q> Quit", "<c> / <q>",
                                        "<q>", "q"}
-            : std::vector<std::string>{"<arrows> Pan | <+/-> Zoom | <f> Fit | "
-                                       "<d> Detail",
-                                       "<+/-> Zoom | <f> Fit | <d> Detail",
-                                       "<f> Fit | <d> Detail", "<f> Fit", "<f>",
-                                       "f"},
+        : bar.command_mode
+            ? std::vector<
+                  std::string>{"<+/-> Zoom at mouse | <arrows> Pan | <f> Full",
+                               "<+/-> Zoom at mouse | <f> Full",
+                               "<+/-> Zoom | <f> Full", "<+/-> | <f>", "<+/->",
+                               "+"}
+            : std::vector<std::string>{"<+/wheel/-> Zoom at mouse | <arrows> "
+                                       "Pan | <f> Full",
+                                       "<+/wheel/-> Zoom at mouse | <f> Full",
+                                       "<+/wheel/-> Zoom | <f> Full",
+                                       "<+/-> Zoom | <f> Full", "<+/-> | <f>",
+                                       "<+/->", "+"},
         inner);
   }
   std::vector<std::string> lines{status, keys, view};
