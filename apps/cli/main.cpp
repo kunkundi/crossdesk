@@ -143,6 +143,7 @@ private:
 };
 struct Tty {
   int out;
+  bool sixel = false;
   RawTerminal terminal;
   Tty(int input, int output) : out(output), terminal(input, output) {
     // Fall back to button/drag reporting if all-motion tracking is unsupported.
@@ -153,6 +154,7 @@ struct Tty {
   ~Tty() {
     // Cancel any incomplete string/control sequence before restoration.
     std::string end = "\030\033\\" + std::string(kKittyDelete) +
+                      (sixel ? "\033[?80r" : "") +
                       "\033[0m\033[?1003l\033[?1002l\033[?1000l"
                       "\033[?1006l\033[?1004l\033[?2004l\033["
                       "?7h\033[?25h\033[?1049l";
@@ -332,9 +334,9 @@ int View(SessionOptions options, const std::string &device,
     return 130;
   Tty tty(0, fd);
   Output output(fd);
-  bool kitty = false;
+  bool kitty = false, sixel = false;
   if (renderer != "ansi" && Env("TMUX").empty() && Env("STY").empty()) {
-    output.Put(std::string(kKittyQuery) + "\033[c");
+    output.Put((renderer == "sixel" ? std::string{} : kKittyQuery) + "\033[c");
     std::string reply;
     auto until = Clock::now() + std::chrono::milliseconds(250);
     while (Clock::now() < until && !interrupted) {
@@ -345,11 +347,21 @@ int View(SessionOptions options, const std::string &device,
       if (n > 0 && reply.size() < 8192)
         reply.append(b, n);
     }
-    kitty = KittyReply(reply);
+    kitty = renderer != "sixel" && KittyReply(reply);
+    sixel = renderer != "kitty" && !kitty && SixelReply(reply);
   }
   if (renderer == "kitty" && !kitty)
     throw std::runtime_error(
         "Kitty probe failed or multiplexer active; use --renderer ansi");
+  if (renderer == "sixel" && !sixel)
+    throw std::runtime_error(
+        "Sixel probe failed or multiplexer active; use --renderer ansi");
+  if (sixel) {
+    // DECSDM reset places graphics at the cursor. Save the user's setting
+    // and restore it on exit, including interrupted image writes.
+    output.Put("\033[?80s\033[?80l");
+    tty.sixel = true;
+  }
   // Both pixel frames and large true-colour character grids need local
   // throughput. Keep SSH conservative and retain the one-message/burst limits
   // and nonblocking writes so slow terminals still apply backpressure.
@@ -520,10 +532,12 @@ int View(SessionOptions options, const std::string &device,
     auto v = Size(&status_rows, &input.terminal_metrics, cell_aspect);
     v.detail = detail;
     v.native = input.native;
-    v.pixel_mode = kitty;
+    v.pixel_mode = kitty || sixel;
     v.zoom = input.zoom;
     v.center_x = input.center_x;
     v.center_y = input.center_y;
+    if (sixel)
+      v = SixelViewport(v);
     if (input.view_revision != view_revision) {
       view_revision = input.view_revision;
       redraw = true;
@@ -591,6 +605,7 @@ int View(SessionOptions options, const std::string &device,
       bar.command_mode = input.command_mode;
       bar.fps = "FPS " + std::to_string(output_fps);
       bar.view = std::string(kitty                            ? "KITTY"
+                             : sixel                          ? "SIXEL"
                              : detail == AnsiDetail::Quadrant ? "QUAD"
                                                               : "HALF") +
                  (input.native ? " | Detail x" : " | Fit x") +
@@ -651,15 +666,15 @@ int View(SessionOptions options, const std::string &device,
                          now - last_frame->queued)
                          .count();
         }
-        pending = kitty ? Layout(*last_frame, v) : Convert(*last_frame, v);
-        // Clear waiting text and Kitty margins without erasing the status bars.
+        pending = v.pixel_mode ? Layout(*last_frame, v) : Convert(*last_frame, v);
+        // Clear waiting text and image margins without erasing the status bars.
         std::string clear;
         if (waiting_visible)
           for (int row = 0; row < v.rows; ++row)
             clear += "\033[" + std::to_string(v.row_offset + row + 1) +
                      ";1H\033[0m\033[2K";
         if (shared_enabled) {
-          const auto pixels = KittyPixels(*last_frame, v);
+          const auto pixels = ImagePixels(*last_frame, v);
           if (shared_image.Assign(pixels.rgb.data(), pixels.rgb.size())) {
             output.Put(KittySharedUpload(shared_image.Name(), pixels.width,
                                          pixels.height, submitted % 2 != 0));
@@ -673,7 +688,8 @@ int View(SessionOptions options, const std::string &device,
           if (fresh && !frame_started)
             frame_started = Clock::now();
           output.Put(clear + (kitty ? Kitty(*last_frame, v, submitted % 2 != 0)
-                                    : Difference(*pending, displayed)));
+                              : sixel ? Sixel(*last_frame, v)
+                                      : Difference(*pending, displayed)));
           waiting_visible = false;
           pending_frame = true;
         }
@@ -729,7 +745,7 @@ int View(SessionOptions options, const std::string &device,
                 {"reported", input.terminal_metrics.Known()},
                 {"manual_aspect", cell_aspect > 0}}},
               {"submitted", submitted},
-              {"renderer", kitty ? "kitty" : "ansi"},
+              {"renderer", kitty ? "kitty" : sixel ? "sixel" : "ansi"},
               {"kitty_transport", !kitty           ? "none"
                                   : shared_enabled ? "shared_memory"
                                                    : "inline"},
@@ -1011,7 +1027,7 @@ int Bridge(int fd, SessionOptions options, int password_fd) {
   s.Disconnect();
   return interrupted ? 130 : 0;
 }
-const char *help = R"(crossdesk-cli <9-digit-device-id> [--renderer auto|ansi|kitty] [--fps 1..30]
+const char *help = R"(crossdesk-cli <9-digit-device-id> [--renderer auto|ansi|kitty|sixel] [--fps 1..30]
                [--display 0..63] [--control] [--server host] [--port 9099]
                [--quality low|balanced|high|ultra] [--ansi-detail quadrant|half] [--zoom 1..32|native]
                [--cell-aspect auto|0.2..2]
@@ -1028,6 +1044,7 @@ Ctrl+T and Ctrl+C pass through in control mode; another Ctrl+] leaves local mode
 Default ANSI detail: quadrant. Default quality: high (1920x1080); ultra requests up to 3840x2160.
 Cell aspect is character width/height: auto detects terminal geometry; use --cell-aspect to calibrate.
 Display index is zero-based. ANSI cannot reproduce full desktop text at fit scale.
+Auto rendering prefers Kitty, then Sixel, then ANSI. Explicit pixel renderers require a successful probe.
 --fps controls local output (default 30). Without it, remote preview adapts to measured output speed.
 Explicit --fps keeps a fixed preview request. Kitty transport fallback keeps the local target unchanged.
 Preview requests above 15 use the negotiated interactive 30 FPS stream; lower requests use 1/8/15 FPS.
@@ -1064,6 +1081,7 @@ int main(int argc, char **argv) {
                 {"multiplexer", !Env("TMUX").empty() || !Env("STY").empty()},
                 {"software_decode", true},
                 {"kitty", "probe_on_view"},
+                {"sixel", "probe_on_view"},
                 {"audio_playback", false},
                 {"bridge_version", 1}};
       std::cout << d.dump(argc == 3 ? -1 : 2) << "\n";
@@ -1142,7 +1160,8 @@ int main(int argc, char **argv) {
           throw std::invalid_argument("unsupported option");
       }
     }
-    if (renderer != "auto" && renderer != "ansi" && renderer != "kitty")
+    if (renderer != "auto" && renderer != "ansi" && renderer != "kitty" &&
+        renderer != "sixel")
       throw std::invalid_argument("unknown renderer");
     if (command == "bridge" && !stdio)
       throw std::invalid_argument("bridge requires --stdio");

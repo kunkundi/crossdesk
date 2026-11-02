@@ -67,7 +67,12 @@ struct PixelFrame {
   int width = 0, height = 0;
   std::vector<uint8_t> rgb;
 };
-PixelFrame KittyPixels(const DecodedFrame &, const Viewport &);
+PixelFrame ImagePixels(const DecodedFrame &, const Viewport &);
+// Sixel has no placement scaling. Limit the cell viewport, not the bitmap,
+// so the displayed pixels and pointer mapping keep the same geometry.
+Viewport SixelViewport(Viewport);
+std::string Sixel(const DecodedFrame &, const Viewport &);
+bool SixelReply(const std::string &response);
 std::string KittySharedUpload(const std::string &name, int width, int height,
                               bool alternate_buffer, bool query = false);
 std::string KittyPresent(const Viewport &, bool alternate_buffer);

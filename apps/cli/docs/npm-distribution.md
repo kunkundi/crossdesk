@@ -39,7 +39,7 @@ npx @chunkdash/crossdesk-cli@latest 123456789
 
 这些是构建与分发目标，不代表均已实机通过。当前完整构建与 npm 运行验证只覆盖 macOS arm64；CLI 主程序与平台 I/O 已通过 Windows x64 与 Linux x64、arm64 的交叉编译检查。其他平台的完整 MiniRTC 链接、实际视频连接、键鼠、终端恢复仍需对应机器验收。
 
-普通终端使用 ANSI 渲染，按能力选择 TrueColor / 256 色 / 基础色；Kitty 图形协议是可选增强。macOS Terminal、iTerm2、Linux 常用终端、Windows Terminal 和 VS Code 集成终端属于目标场景。SSH 应分配 PTY（`ssh -t`）；tmux / screen 使用 ANSI。不支持 `TERM=dumb` 或把交互观看输出重定向到文件；非交互宿主使用 `bridge --stdio`。Alpine / musl 当前没有预编译包。Windows 独立 mintty 窗口可能不提供 Console / ConPTY，应使用 Windows Terminal 承载 Git Bash。
+普通终端使用 ANSI 渲染，按能力选择 TrueColor / 256 色 / 基础色；Kitty / Sixel 图形协议是可选增强，需终端自身支持并通过能力探测。macOS Terminal、iTerm2、Linux 常用终端、Windows Terminal 和 VS Code 集成终端属于目标场景。SSH 应分配 PTY（`ssh -t`）；tmux / screen 使用 ANSI。不支持 `TERM=dumb` 或把交互观看输出重定向到文件；非交互宿主使用 `bridge --stdio`。Alpine / musl 当前没有预编译包。Windows 独立 mintty 窗口可能不提供 Console / ConPTY，应使用 Windows Terminal 承载 Git Bash。
 
 CI 的 macOS 构建配置指定 `--target_minver=13.0`，但最终必须检查实际产物及依赖。当前开发机的本地二进制最低要求为 **macOS 27.0**，不应将这个本地产物宣称为旧 macOS 通用版。
 

@@ -1,6 +1,6 @@
 # CrossDesk CLI
 
-CrossDesk 的终端主控客户端，源码位于本仓库的 `apps/cli`。通过真实 MiniRTC ID 会话观看远程桌面；默认只读、静音。包含 ANSI 象限字符画面、局部放大和平移、Kitty 图形后端，以及 Pi 自定义 TUI 扩展。
+CrossDesk 的终端主控客户端，源码位于本仓库的 `apps/cli`。通过真实 MiniRTC ID 会话观看远程桌面；默认只读、静音。包含 ANSI 象限字符画面、局部放大和平移、Kitty / Sixel 图形后端，以及 Pi 自定义 TUI 扩展。
 
 ## 画面预览
 
@@ -8,7 +8,7 @@ CrossDesk 的终端主控客户端，源码位于本仓库的 `apps/cli`。通�
 | --- | --- |
 | <img src="../../docs/images/cli-ansi-overview.png" width="480" alt="CrossDesk CLI 的 ANSI 全景输出，包含只读状态栏与快捷键提示" /> | <img src="../../docs/images/cli-kitty-overview.png" width="480" alt="CrossDesk CLI 的 Kitty 像素全景输出，显示同一远程桌面" /> |
 
-图示来自 **2026-10-31** 的实际只读连接，通过伪终端采集并渲染协议输出；来源与边界见 [图示说明](../../docs/images/README.md#cli-captures)。默认 `auto` 探测 Kitty 支持，失败时使用 ANSI；普通终端可指定 `--renderer ansi`，Ghostty 等支持 Kitty 图形协议的终端可指定 `--renderer kitty`。ANSI 全景适合查看桌面轮廓，阅读小字需进入细节模式。
+图示来自 **2026-10-31** 的实际只读连接，通过伪终端采集并渲染协议输出；来源与边界见 [图示说明](../../docs/images/README.md#cli-captures)。默认 `auto` 依次选择 Kitty、Sixel、ANSI；普通终端可指定 `--renderer ansi`，支持对应协议的终端可指定 `--renderer kitty` 或 `--renderer sixel`。显式像素模式需要通过能力探测；增加 Sixel 输出不代表所有 Xshell 版本均可显示图片，终端本身也必须支持该协议。ANSI 全景适合查看桌面轮廓，阅读小字需进入细节模式。
 
 ## 安装与连接
 
@@ -53,6 +53,7 @@ xmake run crossdesk-cli 123456789 --quality high --zoom native
 
 ```sh
 crossdesk-cli 123456789 --renderer kitty
+crossdesk-cli 123456789 --renderer sixel --fps 8
 crossdesk-cli 123456789 --renderer ansi --zoom native
 crossdesk-cli 123456789 --quality balanced --fps 8
 crossdesk-cli 123456789 --display 1
@@ -82,4 +83,4 @@ crossdesk-cli 123456789 --display 1
 
 CLI 仅作为控制端，每次连接通过服务端获得新的 `cli-xxxxxxxxx` 临时 ID。使用前须部署支持 `cli` 注册的 crossdesk-server；旧服务端不会回退为普通设备身份。
 
-终端 I/O 包含 POSIX（Linux/macOS）和 Windows Console / ConPTY 实现。macOS arm64 已完整构建，之前已连接真实被控端验证 ANSI 观看与预览协商。Linux / Windows 全量构建和真实连接、SSH/Kitty 实机显示及真实 Pi TUI 仍需验收；交叉编译检查不等于完整运行验证。此项目不创建被控端虚拟桌面，不提供音频播放、文件传输、剪贴板同步或 MCP 服务。
+终端 I/O 包含 POSIX（Linux/macOS）和 Windows Console / ConPTY 实现。macOS arm64 已完整构建，之前已连接真实被控端验证 ANSI 观看与预览协商。Linux / Windows 全量构建和真实连接、SSH/Kitty/Sixel 实机显示及真实 Pi TUI 仍需验收；交叉编译检查不等于完整运行验证。此项目不创建被控端虚拟桌面，不提供音频播放、文件传输、剪贴板同步或 MCP 服务。

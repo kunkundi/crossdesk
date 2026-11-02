@@ -32,7 +32,7 @@ CrossDesk connects your computers from desktop, browser, mobile, and terminal cl
 
 - **Cross-platform access:** control Windows, macOS, and Linux desktops from computers, browsers, or native iOS / Android clients. HarmonyOS PC and mobile clients are in development.
 - **Direct IP over LAN:** connect desktop clients using an IP address, port, and six-character password without a cloud signaling service. Each local IP has its own port; passwords can be remembered and recent devices are separated by mode.
-- **Terminal controller:** view and control remote desktops by device ID, with ANSI / Kitty rendering, zoom and pan, persistent local command mode, a Pi extension, and a build independent of the desktop GUI.
+- **Terminal controller:** view and control remote desktops by device ID, with ANSI / Kitty / Sixel rendering, zoom and pan, persistent local command mode, a Pi extension, and a build independent of the desktop GUI.
 - **DeskHub:** live multi-device previews, groups, enlarged control, group input, and batch file distribution.
 - **Video and audio:** H.264 / AV1, hardware codecs, remote audio, and in-session quality and frame-rate controls. Capabilities depend on the platform and device.
 - **Everyday controls:** monitor switching, keyboard and mouse input, shortcuts, text clipboard, and file transfer.
@@ -150,7 +150,7 @@ Remote sessions support monitor switching, video quality and frame-rate controls
 
 ## Terminal client CLI
 
-`crossdesk-cli` connects to a host by its 9-digit device ID and starts in read-only, silent mode. Standard terminals use ANSI character rendering; terminals supporting the Kitty graphics protocol can display pixel graphics. The CLI supports monitor selection, quality settings, detail zoom, panning, and optional keyboard/mouse control. It builds independently of the desktop GUI. The host still needs CrossDesk and a capturable graphical session, and the signaling service must support temporary `cli` identities.
+`crossdesk-cli` connects to a host by its 9-digit device ID and starts in read-only, silent mode. Standard terminals use ANSI character rendering; terminals supporting the Kitty or Sixel graphics protocol can display pixel graphics. The CLI supports monitor selection, quality settings, detail zoom, panning, and optional keyboard/mouse control. It builds independently of the desktop GUI. The host still needs CrossDesk and a capturable graphical session, and the signaling service must support temporary `cli` identities.
 
 ### Display preview
 
@@ -202,7 +202,7 @@ For an existing checkout, run the dependency preparation and subsequent commands
 
 ### Rendering and connection options
 
-The default `--renderer auto` probes for Kitty graphics support and falls back to ANSI. Use `ansi` explicitly in standard terminals such as macOS Terminal, or `kitty` in compatible terminals such as Ghostty. Explicit `kitty` mode reports an error if the probe fails; use `ansi` in that case.
+The default `--renderer auto` selects Kitty, then Sixel, then ANSI according to terminal capability replies. Use `ansi` in standard terminals such as macOS Terminal, or `kitty` / `sixel` in terminals supporting the corresponding protocol. Explicit pixel modes report an error if the probe fails; use `ansi` in that case. Sixel output alone does not guarantee Xshell compatibility: the terminal itself must support the protocol.
 
 These examples use the command installed globally by npm. For a source build, replace `crossdesk-cli` with `xmake run crossdesk-cli` and run it from the repository root.
 
@@ -219,7 +219,7 @@ crossdesk-cli 123456789 --quality balanced --fps 8
 
 | Option | Purpose |
 | --- | --- |
-| `--renderer auto\|ansi\|kitty` | Automatic selection, character rendering, or pixel graphics; default: `auto` |
+| `--renderer auto\|ansi\|kitty\|sixel` | Automatic selection, character rendering, or pixel graphics; default: `auto` |
 | `--zoom native` | Start in native detail mode; `--zoom 2` zooms to twice the full-desktop scale |
 | `--quality low\|balanced\|high\|ultra` | Request up to 360p / 720p / 1080p / 2160p; default: `high`. The host determines actual quality |
 | `--fps 8` | Fix the local output target and corresponding remote preview request; accepts 1–30. The default local target is 30, with adaptive remote requests when omitted |
@@ -256,7 +256,7 @@ pi -e ./apps/cli/plugins/pi/index.ts
 
 On other platforms, set `CROSSDESK_CLI` to the absolute path of the native executable. Enter `/crossdesk` or `/crossdesk 123456789` in Pi and follow the password prompt. See the [Pi extension guide](apps/cli/docs/terminal-client.md#pi-扩展) (Chinese) for requirements and validation scope.
 
-The CLI currently provides ID-based viewing and input, without direct IP connections, audio playback, file transfer, or clipboard synchronization. It also cannot yet connect to hosts with [trusted-device restrictions](#trusted-devices) enabled. Local builds and remote connections have been validated on macOS arm64. See the [validation record](apps/cli/docs/validation.md) (Chinese) for the remaining Linux / Windows, SSH / Kitty terminal, and actual Pi TUI checks. Platform builds and npm publication do not establish that every platform has been validated on real devices.
+The CLI currently provides ID-based viewing and input, without direct IP connections, audio playback, file transfer, or clipboard synchronization. It also cannot yet connect to hosts with [trusted-device restrictions](#trusted-devices) enabled. Local builds and remote connections have been validated on macOS arm64. See the [validation record](apps/cli/docs/validation.md) (Chinese) for the remaining Linux / Windows, SSH / Kitty / Sixel terminal, and actual Pi TUI checks. Platform builds and npm publication do not establish that every platform has been validated on real devices.
 
 [CLI documentation](apps/cli/README.md) · [Terminal usage and troubleshooting](apps/cli/docs/terminal-client.md) · [Bridge protocol](apps/cli/docs/bridge-protocol.md) · [npm packaging and distribution](apps/cli/docs/npm-distribution.md) (detailed guides in Chinese)
 

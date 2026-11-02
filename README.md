@@ -32,7 +32,7 @@ CrossDesk 让你从电脑、浏览器、手机或终端连接远端电脑，也�
 
 - **跨平台远控：** Windows、macOS、Linux 桌面互控，浏览器及原生 iOS / Android 客户端访问电脑；鸿蒙 PC 与移动端处于开发阶段。
 - **局域网 IP 直连：** 桌面客户端通过 IP、端口和六位密码连接，无需云端信令服务；支持独立端口、记住密码及按模式显示近期设备。
-- **终端主控：** 在终端中通过设备 ID 观看和操控远程桌面，支持 ANSI / Kitty 画面、局部缩放与平移、持续本地命令模式及 Pi 扩展，可单独构建。
+- **终端主控：** 在终端中通过设备 ID 观看和操控远程桌面，支持 ANSI / Kitty / Sixel 画面、局部缩放与平移、持续本地命令模式及 Pi 扩展，可单独构建。
 - **桌面墙：** 多设备实时预览、分组、放大操控、群控和批量文件分发。
 - **画面与声音：** H.264 / AV1、硬件编解码、远端音频，以及会话内画质和帧率调整；可用能力随平台与设备而异。
 - **日常协作：** 多显示器切换、键鼠与组合键、文本剪贴板、文件传输。
@@ -150,7 +150,7 @@ CrossDesk 让你从电脑、浏览器、手机或终端连接远端电脑，也�
 
 ## 终端客户端 CLI
 
-`crossdesk-cli` 在终端中通过 9 位设备 ID 连接被控电脑，默认只读、静音。普通终端使用 ANSI 字符画面，支持 Kitty 图形协议的终端可显示像素画面；可切换显示器、调整画质、放大细节和平移，也可明确开启键鼠控制。CLI 可以独立于桌面 GUI 构建，被控电脑仍需运行 CrossDesk 并提供可捕获的图形会话，信令服务需支持 `cli` 临时身份注册。
+`crossdesk-cli` 在终端中通过 9 位设备 ID 连接被控电脑，默认只读、静音。普通终端使用 ANSI 字符画面，支持 Kitty 或 Sixel 图形协议的终端可显示像素画面；可切换显示器、调整画质、放大细节和平移，也可明确开启键鼠控制。CLI 可以独立于桌面 GUI 构建，被控电脑仍需运行 CrossDesk 并提供可捕获的图形会话，信令服务需支持 `cli` 临时身份注册。
 
 ### 画面预览
 
@@ -202,7 +202,7 @@ xmake run crossdesk-cli 123456789
 
 ### 选择画面与连接参数
 
-默认 `--renderer auto` 自动探测 Kitty 图形协议，未获支持时回退为 ANSI。macOS「终端」等普通终端可显式选择 `ansi`；Ghostty 等支持该协议的终端可选择 `kitty`。显式指定 `kitty` 但探测失败时会报错，此时改用 `ansi`。
+默认 `--renderer auto` 按 Kitty → Sixel → ANSI 的顺序选择。macOS「终端」等普通终端可显式选择 `ansi`；支持对应图形协议的终端可选择 `kitty` 或 `sixel`。显式像素模式探测失败时会报错，此时改用 `ansi`。Xshell 是否能显示像素图片取决于终端自身的协议支持，CLI 无法单方面补齐。
 
 以下示例使用 npm 全局安装后的命令；从源码构建时，可在仓库根目录将 `crossdesk-cli` 替换为 `xmake run crossdesk-cli`。
 
@@ -219,7 +219,7 @@ crossdesk-cli 123456789 --quality balanced --fps 8
 
 | 参数 | 用途 |
 | --- | --- |
-| `--renderer auto\|ansi\|kitty` | 自动选择、字符画面或像素画面；默认 `auto` |
+| `--renderer auto\|ansi\|kitty\|sixel` | 自动选择、字符画面或像素画面；默认 `auto` |
 | `--zoom native` | 从原始细节模式开始；`--zoom 2` 表示相对全景放大 2 倍 |
 | `--quality low\|balanced\|high\|ultra` | 请求最高 360p / 720p / 1080p / 2160p；默认 `high`，实际画质由被控端决定 |
 | `--fps 8` | 固定本地输出目标和相应远端预览请求；允许 1–30，默认本地目标为 30，未指定时远端供帧会自适应 |
@@ -256,7 +256,7 @@ pi -e ./apps/cli/plugins/pi/index.ts
 
 其他平台将 `CROSSDESK_CLI` 改为原生可执行文件的绝对路径。在 Pi 中输入 `/crossdesk` 或 `/crossdesk 123456789`，按提示输入密码。安装要求与验证范围见 [Pi 扩展说明](apps/cli/docs/terminal-client.md#pi-扩展)。
 
-CLI 当前仅提供 ID 连接与远程观看 / 输入，不提供 IP 直连、音频播放、文件传输或剪贴板同步，也暂不支持连接开启[可信设备限制](#trusted-devices)的被控端。macOS arm64 已完成本地构建和连接验证；Linux / Windows 完整运行、SSH / Kitty 实机显示及真实 Pi TUI 的验收范围见 [验证记录](apps/cli/docs/validation.md)。平台构建与 npm 发布不代表全部平台已完成实机验收。
+CLI 当前仅提供 ID 连接与远程观看 / 输入，不提供 IP 直连、音频播放、文件传输或剪贴板同步，也暂不支持连接开启[可信设备限制](#trusted-devices)的被控端。macOS arm64 已完成本地构建和连接验证；Linux / Windows 完整运行、SSH / Kitty / Sixel 实机显示及真实 Pi TUI 的验收范围见 [验证记录](apps/cli/docs/validation.md)。平台构建与 npm 发布不代表全部平台已完成实机验收。
 
 [CLI 文档入口](apps/cli/README.md) · [终端使用与故障排查](apps/cli/docs/terminal-client.md) · [桥接协议](apps/cli/docs/bridge-protocol.md) · [npm 打包与分发](apps/cli/docs/npm-distribution.md)
 

@@ -543,7 +543,7 @@ static std::string Base64(const std::vector<uint8_t> &data) {
   }
   return out;
 }
-PixelFrame KittyPixels(const DecodedFrame &f, const Viewport &requested) {
+PixelFrame ImagePixels(const DecodedFrame &f, const Viewport &requested) {
   auto v = requested;
   v.pixel_mode = true;
   Validate(f, v);
