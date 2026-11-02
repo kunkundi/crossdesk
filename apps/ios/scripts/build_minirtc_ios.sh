@@ -50,10 +50,12 @@ fi
 # tools again here instead of relying on exported PATH changes surviving.
 if [[ "${CI_XCODE_CLOUD:-}" == "TRUE" ]]; then
   CLOUD_HOST_BIN="${IOS_DIR}/.xmake/xcode-cloud-host/bin"
-  if [[ ! -x "${CLOUD_HOST_BIN}/xmake" || ! -x "${CLOUD_HOST_BIN}/python3" ]]; then
-    print -u2 "Xcode Cloud build tools are missing. Run ci_scripts/ci_post_clone.sh before building."
-    exit 69
-  fi
+  for host_tool in xmake python3 pkg-config; do
+    if [[ ! -x "${CLOUD_HOST_BIN}/${host_tool}" ]]; then
+      print -u2 "Xcode Cloud host tool ${host_tool} is missing. Run ci_scripts/ci_post_clone.sh before building."
+      exit 69
+    fi
+  done
   export PATH="${CLOUD_HOST_BIN}:${PATH}"
 fi
 

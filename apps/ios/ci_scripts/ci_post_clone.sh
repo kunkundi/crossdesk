@@ -13,8 +13,9 @@ if ! command -v brew >/dev/null 2>&1; then
 fi
 
 echo "Installing Xcode Cloud native build tools"
-brew install xmake cmake python@3.13
+brew install xmake cmake pkgconf python@3.13
 BREW_PREFIX="$(brew --prefix)"
+PKGCONF_PREFIX="$(brew --prefix pkgconf)"
 PYTHON_PREFIX="$(brew --prefix python@3.13)"
 
 # Match GitHub Actions' host Python dependencies without modifying Homebrew's
@@ -25,6 +26,14 @@ PYTHON_PREFIX="$(brew --prefix python@3.13)"
 for tool in xmake xrepo cmake ctest cpack; do
     ln -sf "${BREW_PREFIX}/bin/${tool}" "${HOST_TOOLS_DIR}/bin/${tool}"
 done
+# Meson needs the host pkg-config executable to find Xmake's iOS packages.
+# Without it, GLib falls back to bundled PCRE2/libffi sources. Use the formula's
+# prefix so an older pkg-config elsewhere on PATH cannot shadow this tool.
+for tool in pkgconf pkg-config; do
+    ln -sf "${PKGCONF_PREFIX}/bin/${tool}" "${HOST_TOOLS_DIR}/bin/${tool}"
+done
+echo "Verifying Xcode Cloud host pkg-config"
+"${HOST_TOOLS_DIR}/bin/pkg-config" --version
 
 "${HOST_TOOLS_DIR}/bin/xmake" --version > "${HOST_TOOLS_DIR}/xmake-version.txt"
 "${HOST_TOOLS_DIR}/bin/python3" -B "${IOS_DIR}/scripts/verify_native_build.py" \

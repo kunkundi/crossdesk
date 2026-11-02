@@ -150,11 +150,14 @@ Commit and push the intended signing settings and shared scheme to the branch
 selected by the workflow before starting a build.
 
 Xcode Cloud automatically runs `ci_scripts/ci_post_clone.sh` next to the Xcode
-project. It installs Xmake, CMake, and Python 3.13 with Homebrew, prepares an
+project. It installs Xmake, CMake, pkgconf, and Python 3.13 with Homebrew, prepares an
 isolated host Python environment with pip/setuptools/wheel, verifies the minimum
-Xmake version, and initializes the pinned MiniRTC submodules. The native build
-phase selects these tools again and preserves Cloud's proxy settings for package
-downloads. No manual workflow PATH setting or `sudo` command is required.
+Xmake version and host `pkg-config`, and initializes the pinned MiniRTC submodules.
+It exposes both `pkgconf` and `pkg-config` from the Homebrew formula in the host
+tool directory, allowing GLib's Meson build to resolve Xmake's iOS PCRE2 and
+libffi packages instead of compiling bundled fallback versions. The native build
+phase checks and selects these tools again and preserves Cloud's proxy settings
+for package downloads. No manual workflow PATH setting or `sudo` command is required.
 
 For **Archive - iOS**, `ci_scripts/ci_pre_xcodebuild.sh` builds the native
 dependencies before `xcodebuild`, using `Release / iphoneos / arm64` to match the
