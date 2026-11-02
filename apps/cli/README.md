@@ -59,7 +59,7 @@ crossdesk-cli 123456789 --quality balanced --fps 8
 crossdesk-cli 123456789 --display 1
 ```
 
-默认请求 `high` 画质（最高 1920 × 1080），`--display` 的索引从 `0` 开始。交互 CLI 默认本地输出目标为 30 FPS，远端供帧会随输出耗时自适应；显式 `--fps` 固定目标和相应预览请求，实际帧率仍取决于设备、终端与链路。更多参数见 [主 README](../../README.md#cli) 和 [终端使用指南](docs/terminal-client.md)。
+默认请求 `high` 画质（最高 1920 × 1080）和清晰度优先策略，`--display` 的索引从 `0` 开始。交互 CLI 默认本地输出目标为 30 FPS，远端供帧会随输出耗时自适应；显式 `--fps` 固定目标和相应预览请求，各帧率下均优先保持分辨率，实际画质与帧率仍取决于设备、终端与链路。更多参数见 [主 README](../../README.md#cli) 和 [终端使用指南](docs/terminal-client.md)。
 
 ## 查看、控制与退出
 

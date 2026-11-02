@@ -1042,6 +1042,7 @@ View keys: click/d native detail, wheel/+/- zoom, arrows/ijkl pan (i up, j left,
 Local mode stays active after commands, paste or focus loss; remote input remains paused.
 Ctrl+T and Ctrl+C pass through in control mode; another Ctrl+] leaves local mode and forwards Ctrl+] if control is enabled.
 Default ANSI detail: quadrant. Default quality: high (1920x1080); ultra requests up to 3840x2160.
+Remote previews prioritize resolution at every frame rate.
 Cell aspect is character width/height: auto detects terminal geometry; use --cell-aspect to calibrate.
 Display index is zero-based. ANSI cannot reproduce full desktop text at fit scale.
 Auto rendering prefers Kitty, then Sixel, then ANSI. Explicit pixel renderers require a successful probe.

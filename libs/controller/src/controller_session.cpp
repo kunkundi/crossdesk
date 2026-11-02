@@ -342,6 +342,9 @@ void ControllerSession::Preview() {
   // 60 is the existing interactive-mode sentinel, not a 60 FPS request.
   // The encoder cadence is independently specified by frame_rate.
   s.frame_rate = 30;
+  // Preserve desktop text detail at every cadence, including 30 FPS previews.
+  s.preference =
+      static_cast<int>(VideoDegradationPreference::MaintainResolution);
   s.audio = false;
   s.quality = options_.quality;
   if (resolution_) {
