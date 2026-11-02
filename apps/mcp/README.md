@@ -1,6 +1,6 @@
 # CrossDesk MCP
 
-让本机 Agent 通过 MCP 观察并操作远端 CrossDesk，同时为用户提供 MCP Apps 或浏览器监看面板。控制端不需要安装 CrossDesk 桌面客户端；被控端仍需运行兼容的 CrossDesk，并连接支持 `cli` 注册的信令服务器。
+让本机 Agent 通过 MCP 观察并操作远端 CrossDesk，同时为用户提供浏览器、终端或 MCP Apps 监看面板。控制端不需要安装 CrossDesk 桌面客户端；被控端仍需运行兼容的 CrossDesk，并连接支持 `cli` 注册的信令服务器。
 
 此目录实现 MCP 包 `@chunkdash/crossdesk-mcp` 0.1.0，绑定原生 CLI 包 0.2.0。**源码实现和本地打包不代表这些版本已经发布到 npm。** 发布后的安装示例需要以实际可用版本为准。
 
@@ -73,12 +73,27 @@ Windows 和 Linux 使用各自构建产物路径；`--native-binary` 必须指�
 
 | 模式 | 行为 |
 | --- | --- |
-| `auto` | 当前请求声明 MCP Apps MIME 能力时提供 Apps；其他情况打开本机浏览器 |
+| `auto` | 有本机 GUI 时打开浏览器；无 GUI 且检测到终端环境时提供 CLI 画面入口；两者均无则使用 `off` |
 | `apps` | 只使用 MCP Apps；能力不匹配返回 `PANEL_UNSUPPORTED` |
 | `browser` | 只使用本地浏览器，不附加 Apps 工具资源元数据 |
+| `terminal` | 提供独立终端 `view` 命令，共用当前 MCP 会话，不启动网页服务 |
 | `off` | 不启动网页服务，保留截图和操作工具，凭据通过独立 `setup` 配置 |
 
-使用 `extensions["io.modelcontextprotocol/ui"].mimeTypes` 中的 `text/html;profile=mcp-app` 判断能力。旧协议读取 initialize 能力；2026-07-28 协议读取当前请求的能力，不按宿主产品名猜测支持情况。Apps 的卡片、侧栏或窗口形式由宿主决定。
+`auto` 不再优先选择 MCP Apps；需要宿主内嵌面板时显式使用 `--panel=apps`。Apps 使用 `extensions["io.modelcontextprotocol/ui"].mimeTypes` 中的 `text/html;profile=mcp-app` 判断能力。旧协议读取 initialize 能力；2026-07-28 协议读取当前请求的能力，不按宿主产品名猜测支持情况。Apps 的卡片、侧栏或窗口形式由宿主决定。
+
+Linux 根据 `DISPLAY` / `WAYLAND_DISPLAY` 判断 GUI；macOS 检查当前用户的桌面登录会话，SSH 会话不自动打开远端 Mac 的浏览器；Windows 排除 SSH 和 Services 会话。终端判断包含 TTY、`SSH_TTY` 和非 `dumb` 的 `TERM`，因为 MCP 的 stdin/stdout 通常是管道。环境变量被宿主清除或识别不适用时，可显式设置 `--panel=terminal` 或 `--panel=browser`。
+
+终端模式的 `crossdesk_open` / `crossdesk_connect` 返回 `terminal_command`。用户在同一主机的另一个交互终端执行（源码运行时将 `crossdesk-mcp` 替换为 `node /absolute/path/apps/mcp/dist/main.js`）：
+
+```sh
+crossdesk-mcp view --view <view_id> --config-dir <相同的配置目录>
+```
+
+该命令提供设备选择、隐藏密码输入和本次控制授权；已建立会话则直接显示画面。终端通过受限配置目录中的运行描述符和认证本地 IPC 复用 MCP 的原生连接，不启动第二个远程连接，也不占用 Agent 的终端或 MCP stdio。Agent 应展示命令供用户执行，再通过 `crossdesk_get_session` 等待；不能在工具输出捕获通道中运行 `view`。无交互终端时 `view` 返回 `VIEW_REQUIRES_TERMINAL`。
+
+终端画面采用原生 CLI 的 ANSI 四分块渲染器，目标 8 FPS，最多 160 列 × 60 行，根据终端环境使用 8/256/真彩色。默认字符宽高比 0.5，可用 `--cell-aspect`（0.2–2）调整。此入口暂不使用 Kitty/Sixel。`p` 暂停 Agent、`r` 恢复已授权控制、`d` 断开、`q` / Ctrl+C 仅关闭画面并恢复终端；关闭画面后会话保留。暂停仍由原生层锁定，Agent 不能自行恢复。
+
+浏览器/Apps 与终端均绘制 Agent 最后成功发送的鼠标位置，支持移动、点击、滚动和拖拽；坐标来自原生层对截图缩放及裁剪的映射。暂停或关闭控制时隐藏，切换显示器或图像尺寸变化时清除。该指针是 Agent 的操作位置提示，不代表远端输入执行 ACK，也不跟踪远端用户自己的鼠标。它不写入模型截图或源视频。
 
 Apps 资源为 `ui://crossdesk/viewer.html`，工具只在允许使用 Apps 且当前请求支持时暴露 UI 元数据和面板专用接口。页面回报 `crossdesk_ui_ready` 后才标记就绪；10 秒未回报显示 `not_confirmed`，不自动弹第二个浏览器。用户明确要求回退时调用 `crossdesk_open_browser`；该工具不附带 Apps 元数据，`apps`/`off` 策略拒绝覆盖。
 
@@ -193,6 +208,6 @@ npm run build
 npm run pack:npm -- --out-dir /absolute/path/artifacts
 ```
 
-脚本生成可发布 tarball，包含面板、运行代码、源代码、许可和固定版本的五个平台可选依赖。CI 的 `MCP package` 工作流仅构建并上传 `mcp-package`，不发布 npm。原生包继续由 CLI 工作流构建，`doctor` 必须同时声明自动化协议和 `automation_video_protocols: ["h264-annexb/1", "nv12/1"]` 和 `automation_video_decoders: ["auto", "software"]`，以及 `automation_video_transport: "loopback-websocket/1"`；先发布对应 0.2.0 平台包，再发布 MCP tarball。尚未进行真实跨平台发布/远端验收时，不应把构建成功等同于各宿主和设备上的联调完成。
+脚本生成可发布 tarball，包含面板、运行代码、源代码、许可和固定版本的五个平台可选依赖。CI 的 `MCP package` 工作流仅构建并上传 `mcp-package`，不发布 npm。原生包继续由 CLI 工作流构建，`doctor` 必须同时声明自动化协议和 `automation_video_protocols: ["h264-annexb/1", "nv12/1"]` 和 `automation_video_decoders: ["auto", "software"]`，以及 `automation_video_transport: "loopback-websocket/1"`、`automation_terminal_protocol: "ansi/1"`；先发布对应 0.2.0 平台包，再发布 MCP tarball。尚未进行真实跨平台发布/远端验收时，不应把构建成功等同于各宿主和设备上的联调完成。
 
 从发布 tarball 重建 TypeScript/面板时，将包中的 `build-package.json` 复制为 `package.json`，运行 `npm ci && npm run build`。原生源码和依赖来源随平台包提供，详见 [源码来源](../cli/docs/source-provenance.md)。

@@ -44,7 +44,7 @@ export const alias = z
   .max(80)
   .regex(/^[\p{L}\p{N} _.-]+$/u);
 export const mode = z.enum(["observe", "control"]);
-export const panel = z.enum(["auto", "apps", "browser", "off"]);
+export const panel = z.enum(["auto", "apps", "browser", "terminal", "off"]);
 export type Panel = z.infer<typeof panel>;
 export const videoOptions = z.strictObject({
   decode_path: z.enum(["browser", "minirtc"]).default("browser"),

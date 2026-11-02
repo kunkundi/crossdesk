@@ -82,6 +82,7 @@ button:disabled { cursor: default; color: #a3a7ad; background: #fafafa; border-c
 /* The screen takes the remaining panel height; object-fit preserves the remote aspect ratio. */
 .screen { position: relative; flex: 1; min-height: 60px; width: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; isolation: isolate; border-radius: 8px; background: #17191c; }
 .screen canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+#agent-cursor { pointer-events: none; z-index: 4; }
 /* Overlay the control indicator so toggling control never resizes the video. */
 .control-halo { display: none; }
 #app[data-controlling="true"] .screen::before,

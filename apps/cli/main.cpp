@@ -1091,6 +1091,7 @@ int main(int argc, char **argv) {
                 {"sixel", "probe_on_view"},
                 {"audio_playback", false},
                 {"bridge_version", 1},
+                {"automation_terminal_protocol", "ansi/1"},
                 {"automation_protocol", "crossdesk-automation/1"},
                 {"automation_video", "h264-annexb/1"},
                 {"automation_video_transport", "loopback-websocket/1"},

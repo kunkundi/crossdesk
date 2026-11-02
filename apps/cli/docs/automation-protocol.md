@@ -35,6 +35,7 @@ The output queue is bounded to 64 messages and 8 MiB; a blocked output pipe term
 | `action` | `operation_id`, `observation_id`, `action` |
 | `control` | `enabled` boolean; cannot override observe-only permission or human pause |
 | `viewer_control` | `operation: "pause" | "resume" | "disconnect"`; restricted to trusted UI by the MCP adapter |
+| `terminal_frame` | `columns` (1–160), `rows` (1–60), `colors` (8/24/256), `cell_aspect` (0.2–2); private terminal viewer only |
 | `display` | `index` (0–63) |
 | `cancel` | `request_id`; cancels queued/in-flight captures or input sequences |
 | `disconnect`, `exit` | none; `exit` also ends the process |
@@ -44,6 +45,12 @@ The output queue is bounded to 64 messages and 8 MiB; a blocked output pipe term
 ## Live video
 
 `doctor --json` advertises `automation_video_transport: "loopback-websocket/1"`, `automation_video_protocols: ["h264-annexb/1", "nv12/1"]`, and `automation_video_decoders: ["auto", "software"]`. `hello` repeats these without the `automation_` prefix. The MCP adapter requires the transport capability, so an old pipe-only CLI is rejected. Node spawns only stdin, stdout, stderr, and the credential pipe; live video never enters Node.
+
+The terminal viewer additionally requires `automation_terminal_protocol: "ansi/1"` in `doctor` and `terminal_protocol: "ansi/1"` in `hello`. `terminal_frame` asynchronously converts the current decoded frame using the existing ANSI quadrant renderer and returns `columns`, `rows`, `lines`, `generation`, `geometry_epoch`, and a nullable `cursor` with zero-based terminal `column`/`row`. Only one render may be in flight; obsolete geometry or frames older than two seconds are rejected. These rendered text rows travel through the private authenticated terminal IPC, never through public MCP tools or model content. The viewer requests at most 8 FPS and waits for terminal writes before requesting another frame. It shares the automation connection; no second media session is opened.
+
+Status includes `cursor` with normalized full-frame `x`/`y`, `visible`, `generation`, `geometry_epoch`, `width`, and `height`. The native layer updates it after each successfully sent pointer step, including drag steps, using the same ROI-to-source mapping as remote input. It hides on pause/control disable and clears on geometry changes. It is an Agent position indicator, not remote cursor telemetry or execution confirmation; observation PNGs and source video remain unchanged.
+
+Authenticated video sockets also receive small JSON text messages with `type: "cursor"` and these fields, independently of binary video frames. Pointer updates are coalesced to at most 30 Hz, retained for newly authorized viewers, and deferred under socket backpressure; they require no video ACK. Browser/Apps render a separate transparent overlay with the same aspect-ratio fitting as the video, including when no new video frame arrives.
 
 `connect.decode_path` defaults to `browser` (compressed H.264), or selects `minirtc` (decoded NV12). `connect.decoder` defaults to `auto` (hardware preferred, software when unavailable); `software` selects the native software decoder. Both paths maintain native screenshot frames with the selected decoder. These choices are fixed for the connection. Status exposes `video` and the reported `native_video_decoder` backend name. PNG encoding runs only when requested. The legacy `preview` image method remains available to private protocol callers but is not used by MCP panels.
 

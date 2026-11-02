@@ -15,6 +15,7 @@ import {
 } from "@modelcontextprotocol/ext-apps/server";
 import { Sessions, type View } from "./sessions.js";
 import { BrowserPanel } from "./browser.js";
+import { TerminalPanel } from "./terminal.js";
 import { uiAction, uiSchemas, type UIAction } from "./ui-actions.js";
 import {
   id,
@@ -60,6 +61,7 @@ function output(value: Data, meta?: Data): CallToolResult {
 export function createServer(
   sessions: Sessions,
   browser: BrowserPanel,
+  terminal: TerminalPanel,
 ): McpServer {
   const server = new McpServer(
     { name: "crossdesk-mcp", version: "0.1.0" },
@@ -91,7 +93,9 @@ export function createServer(
     );
   };
   const apps = (ctx: ServerContext) =>
-    ["auto", "apps"].includes(sessions.policy) && supported(ctx);
+    sessions.policy === "apps" && supported(ctx);
+  const openPanel = async (v: View) => v.panel === "browser" ? browser.open(v)
+    : v.panel === "terminal" ? terminal.open(v) : sessions.describe(v);
   const viewResult = (v: View, result: Data) =>
     output(
       result,
@@ -147,7 +151,7 @@ export function createServer(
   add(
     "crossdesk_open",
     z.strictObject({ device_alias: alias.optional() }),
-    "Open CrossDesk so the user can choose a device, enter its password, and authorize this session. Returns immediately so the panel can render. To continue a pending remote task, call crossdesk_get_session with the returned view_id and wait_ms: 25000; no chat confirmation is needed.",
+    "Open CrossDesk so the user can choose a device, enter its password, and authorize this session. GUI environments use a browser; headless terminal environments return terminal_command, which you must show to the user to run in a separate terminal. Never run the terminal viewer in a captured tool-output channel. Returns immediately. To continue a pending remote task, call crossdesk_get_session with the returned view_id and wait_ms: 25000; no chat confirmation is needed.",
     async (p, ctx) => {
       if (p.device_alias) await sessions.store.device(p.device_alias);
       const v = sessions.create(
@@ -156,7 +160,7 @@ export function createServer(
       );
       return viewResult(
         v,
-        v.panel === "browser" ? await browser.open(v) : sessions.describe(v),
+        await openPanel(v),
       );
     },
     { ui: true },
@@ -209,9 +213,7 @@ export function createServer(
       v.session = result.session_id;
       return viewResult(v, {
         ...result,
-        ...(selected === "browser"
-          ? await browser.open(v)
-          : sessions.describe(v)),
+        ...await openPanel(v),
         state: result.state,
       });
     },

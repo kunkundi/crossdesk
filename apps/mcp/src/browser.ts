@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { Failure, token, equal, failure, type Data } from "./common.js";
 import { Sessions, type View } from "./sessions.js";
 import { uiAction } from "./ui-actions.js";
+import { displayEnvironment } from "./environment.js";
 
 const uiFile = fileURLToPath(new URL("./viewer-browser.html", import.meta.url));
 interface BrowserSession {
@@ -25,12 +26,7 @@ interface BrowserSession {
   expires: number;
 }
 export async function openURL(url: string): Promise<boolean> {
-  if (
-    process.platform === "linux" &&
-    !process.env.DISPLAY &&
-    !process.env.WAYLAND_DISPLAY
-  )
-    return false;
+  if (!displayEnvironment().gui) return false;
   const command =
     process.platform === "darwin"
       ? "open"

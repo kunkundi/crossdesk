@@ -12,6 +12,7 @@ import {
 } from "./common.js";
 import { DeviceStore, type Device } from "./store.js";
 import { nativeBinary, NativeClient } from "./native.js";
+import { displayEnvironment } from "./environment.js";
 
 export interface View {
   id: string;
@@ -46,7 +47,9 @@ export class Sessions {
   ) {}
   choose(apps: boolean): View["panel"] {
     if (this.policy === "apps" && !apps) throw new Failure("PANEL_UNSUPPORTED");
-    return this.policy === "auto" ? (apps ? "apps" : "browser") : this.policy;
+    if (this.policy !== "auto") return this.policy;
+    const environment = displayEnvironment();
+    return environment.gui ? "browser" : environment.terminal ? "terminal" : "off";
   }
   create(panel: View["panel"], alias?: string): View {
     for (const [id, view] of this.views)
@@ -382,6 +385,12 @@ export class Sessions {
     return this.session(v.session).native.request("viewer_control", {
       operation,
     });
+  }
+  async terminalFrame(v: View, args: Data, signal?: AbortSignal) {
+    if (v.panel !== "terminal" || !v.session || this.connecting)
+      throw new Failure("NOT_READY");
+    const s = this.session(v.session);
+    return s.native.request("terminal_frame", args, 5000, signal);
   }
   async openVideo(v: View, origin: string): Promise<Data> {
     if (!v.session || this.views.get(v.id) !== v) throw new Failure("NOT_READY");

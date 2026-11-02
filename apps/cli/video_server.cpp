@@ -57,6 +57,7 @@ struct VideoServer::State {
   struct Client {
     std::string origin, view, session;
     uint64_t view_generation = 0;
+    uint64_t cursor_revision = 0;
     bool authorized = false, waiting_key = true;
     size_t bytes = 0;
     Clock::time_point opened = Clock::now(), pinged = Clock::now();
@@ -93,6 +94,8 @@ struct VideoServer::State {
   std::deque<Packet> queue;
   size_t queued_bytes = 0;
   bool scheduled = false, wait_key = true;
+  json cursor;
+  uint64_t cursor_revision = 0;
 
   State() {
     server.clear_access_channels(websocketpp::log::alevel::all);
@@ -250,10 +253,17 @@ struct VideoServer::State {
   }
   void Maintain() {
     timer = server.set_timer(
-        250, [this](const websocketpp::lib::error_code &error) {
+        33, [this](const websocketpp::lib::error_code &error) {
           if (error)
             return;
           const auto now = Clock::now();
+          std::string pointer;
+          uint64_t revision;
+          {
+            std::lock_guard lock(mutex);
+            revision = cursor_revision;
+            if (!cursor.is_null()) pointer = cursor.dump();
+          }
           for (auto it = tickets.begin(); it != tickets.end();)
             if (it->second.expires <= now)
               it = tickets.erase(it);
@@ -261,6 +271,16 @@ struct VideoServer::State {
               ++it;
           std::vector<Handle> close;
           for (auto &[h, c] : clients) {
+            if (c.authorized && c.cursor_revision != revision && !pointer.empty()) {
+              websocketpp::lib::error_code ec;
+              auto connection = server.get_con_from_hdl(h, ec);
+              // Coalesce pointer changes while a viewer is backpressured.
+              if (!ec && connection->get_buffered_amount() < 256 * 1024) {
+                server.send(h, pointer, websocketpp::frame::opcode::TEXT, ec);
+                if (!ec) c.cursor_revision = revision;
+              }
+              if (ec) close.push_back(h);
+            }
             if ((!c.authorized && now - c.opened >= 3s) ||
                 (!c.receipts.empty() && now - c.receipts.front().sent >= 10s)) {
               close.push_back(h);
@@ -467,6 +487,12 @@ void VideoServer::Submit(EncodedVideoFrame frame) {
     throw std::invalid_argument("INVALID_VIDEO_FRAME");
   if (Enabled())
     state_->Enqueue({{}, std::move(frame)});
+}
+void VideoServer::Cursor(json cursor) {
+  auto &s = *state_;
+  std::lock_guard lock(s.mutex);
+  s.cursor = std::move(cursor);
+  ++s.cursor_revision;
 }
 json VideoServer::Status() const {
   const auto &s = *state_;

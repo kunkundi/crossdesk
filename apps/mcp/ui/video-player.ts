@@ -1,4 +1,6 @@
 type FrameInfo = { width: number; height: number; fps: number; frames: number };
+type Cursor = { type: "cursor"; visible: boolean; x: number; y: number;
+  generation: number; geometry_epoch: number; width: number; height: number };
 function parameters(data: Uint8Array) {
   let codec = "", signature = "";
   for (let i = 0; i + 4 < data.length; i++) {
@@ -43,9 +45,18 @@ export class VideoPlayer {
   private raw = false;
   private software = false;
   private automatic = true;
+  private cursor?: Cursor;
+  private cursorDrawn = "";
+  private resize?: ResizeObserver;
   constructor(private canvas: HTMLCanvasElement,
     private onFrame: (info: FrameInfo) => void,
-    private onError: (error: Error) => void) {}
+    private onError: (error: Error) => void,
+    private overlay?: HTMLCanvasElement) {
+    if (overlay) {
+      this.resize = new ResizeObserver(() => this.drawCursor());
+      this.resize.observe(overlay);
+    }
+  }
 
   start(url: string, ticket: string, protocol = "h264-annexb/1", decoder = "auto") {
     if (!["h264-annexb/1", "nv12/1"].includes(protocol) ||
@@ -63,7 +74,24 @@ export class VideoPlayer {
     socket.onclose = () => { if (!this.stopped) this.fail(new Error("VIDEO_UNAVAILABLE")); };
     this.firstFrame = setTimeout(() => this.fail(new Error("VIDEO_UNAVAILABLE")), 10000);
     socket.onmessage = (event) => {
-      if (this.stopped || !(event.data instanceof ArrayBuffer)) return;
+      if (this.stopped) return;
+      if (typeof event.data === "string") {
+        try {
+          if (event.data.length > 1024) throw new Error();
+          const p = JSON.parse(event.data) as Cursor;
+          if (p.type !== "cursor" || typeof p.visible !== "boolean" ||
+              !Number.isFinite(p.x) || !Number.isFinite(p.y) || p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1 ||
+              !Number.isSafeInteger(p.generation) || p.generation < 0 ||
+              !Number.isSafeInteger(p.geometry_epoch) || p.geometry_epoch < 0 ||
+              !Number.isInteger(p.width) || !Number.isInteger(p.height) ||
+              p.width < 0 || p.width > 8192 || p.height < 0 || p.height > 8192)
+            throw new Error();
+          this.cursor = p;
+          this.drawCursor();
+        } catch { this.fail(new Error("VIDEO_INVALID")); }
+        return;
+      }
+      if (!(event.data instanceof ArrayBuffer)) return;
       const data = event.data;
       if (data.byteLength < (this.raw ? 38 : 25) ||
           data.byteLength > (this.raw ? 16777216 * 3 / 2 + 32 : 4 * 1024 * 1024 + 24))
@@ -196,6 +224,7 @@ export class VideoPlayer {
       this.canvas.getContext("2d", { alpha: false })!.drawImage(frame, 0, 0);
       clearTimeout(this.firstFrame);
       this.count++;
+      this.drawCursor();
       this.samples++;
       const elapsed = performance.now() - this.sampledAt;
       if (elapsed >= 1000) {
@@ -208,6 +237,45 @@ export class VideoPlayer {
     } catch { this.fail(new Error("VIDEO_INVALID")); }
     finally { frame.close(); }
   }
+  private drawCursor() {
+    const overlay = this.overlay;
+    if (!overlay) return;
+    if (overlay.width !== this.canvas.width) overlay.width = this.canvas.width;
+    if (overlay.height !== this.canvas.height) overlay.height = this.canvas.height;
+    const p = this.cursor;
+    const state = JSON.stringify([this.stopped, !!this.count, this.generation,
+      overlay.width, overlay.height, overlay.clientWidth, overlay.clientHeight, p]);
+    if (state === this.cursorDrawn) return;
+    this.cursorDrawn = state;
+    const context = overlay.getContext("2d")!;
+    context.clearRect(0, 0, overlay.width, overlay.height);
+    if (this.stopped || !this.count || !p?.visible || p.generation !== this.generation ||
+        p.width !== overlay.width || p.height !== overlay.height) return;
+    // Match the video canvas's object-fit: contain, including letterboxing.
+    const scale = Math.min(overlay.clientWidth / overlay.width, overlay.clientHeight / overlay.height);
+    if (!scale) return;
+    context.save();
+    context.translate(Math.min(overlay.width - 1, p.x * overlay.width), Math.min(overlay.height - 1, p.y * overlay.height));
+    context.scale(1 / scale, 1 / scale);
+    context.beginPath();
+    context.moveTo(0, 0);
+    context.lineTo(0, 22);
+    context.lineTo(6, 17);
+    context.lineTo(10, 26);
+    context.lineTo(14, 24);
+    context.lineTo(10, 15);
+    context.lineTo(18, 15);
+    context.closePath();
+    context.fillStyle = "#3269e8";
+    context.strokeStyle = "#fff";
+    context.lineWidth = 2;
+    context.lineJoin = "round";
+    context.shadowColor = "#0009";
+    context.shadowBlur = 3;
+    context.fill();
+    context.stroke();
+    context.restore();
+  }
   private fail(error: Error) {
     if (this.failed || this.stopped) return;
     this.failed = true;
@@ -216,6 +284,9 @@ export class VideoPlayer {
   }
   stop() {
     this.stopped = true;
+    this.cursor = undefined;
+    this.resize?.disconnect();
+    this.drawCursor();
     clearTimeout(this.firstFrame);
     this.socket?.close();
     if (this.decoder && this.decoder.state !== "closed") this.decoder.close();

@@ -10,6 +10,8 @@ import { DeviceStore, type Device } from "./store.js";
 import { Sessions } from "./sessions.js";
 import { BrowserPanel, pairBrowser, openURL } from "./browser.js";
 import { createServer } from "./server.js";
+import { TerminalPanel } from "./terminal.js";
+import { terminalView } from "./terminal-view.js";
 import {
   panel,
   parse,
@@ -120,6 +122,7 @@ async function main() {
       "native-binary": { type: "string" },
       "open-panel": { type: "boolean" },
       view: { type: "string" },
+      "cell-aspect": { type: "string" },
       help: { type: "boolean" },
       version: { type: "boolean" },
     },
@@ -130,16 +133,21 @@ async function main() {
   }
   if (values.help || !positionals.length) {
     process.stdout.write(
-      "crossdesk-mcp serve --stdio [--panel auto|apps|browser|off] [--video-path browser|minirtc] [--video-decoder auto|software] [--config-dir directory]\ncrossdesk-mcp setup [--config-dir directory]\ncrossdesk-mcp setup --open-panel --view VIEW_ID [--config-dir directory]\nDevelopment: --native-binary /absolute/path/to/crossdesk-cli\n",
+      "crossdesk-mcp serve --stdio [--panel auto|apps|browser|terminal|off] [--video-path browser|minirtc] [--video-decoder auto|software] [--config-dir directory]\ncrossdesk-mcp view --view VIEW_ID [--config-dir directory] [--cell-aspect 0.5]\ncrossdesk-mcp setup [--config-dir directory]\ncrossdesk-mcp setup --open-panel --view VIEW_ID [--config-dir directory]\nDevelopment: --native-binary /absolute/path/to/crossdesk-cli\n",
     );
     return;
   }
-  if (positionals.length !== 1 || !["serve", "setup"].includes(positionals[0]!))
+  if (positionals.length !== 1 || !["serve", "setup", "view"].includes(positionals[0]!))
     throw new Failure("INVALID_COMMAND");
   const store = new DeviceStore(
     values["config-dir"] ?? process.env.CROSSDESK_MCP_CONFIG_DIR,
   );
   await store.initialize();
+  if (positionals[0] === "view") {
+    if (!values.view) throw new Failure("VIEW_REQUIRED");
+    await terminalView(store.directory, values.view, Number(values["cell-aspect"] ?? 0.5));
+    return;
+  }
   if (positionals[0] === "setup") {
     if (values["open-panel"] && !values.view)
       throw new Failure("VIEW_REQUIRED");
@@ -162,7 +170,8 @@ async function main() {
     }),
   );
   const browser = new BrowserPanel(sessions);
-  const handle = serveStdio(() => createServer(sessions, browser), {
+  const terminal = new TerminalPanel(sessions);
+  const handle = serveStdio(() => createServer(sessions, browser, terminal), {
     transport: new StdioServerTransport(),
     onerror: () => process.stderr.write("crossdesk-mcp: protocol error\n"),
   });
@@ -170,6 +179,7 @@ async function main() {
   const close = async () => {
     if (closing) return;
     closing = true;
+    await terminal.close();
     await browser.close();
     await sessions.close();
     await handle.close();

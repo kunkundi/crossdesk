@@ -76,6 +76,7 @@ public:
   std::optional<DecodedFrame> TakeFrame(DecodedFrame *recycle = nullptr);
   nlohmann::json Status() const;
   bool Connected() const { return state_ == "connected"; }
+  bool ControlEnabled() const { return control_; }
   bool PreviewAccepted() const { return preview_accepted_; }
   bool SupportsPreviewFps15() const { return fps15_; }
   bool Finished() const { return state_ == "failed" || state_ == "closed"; }

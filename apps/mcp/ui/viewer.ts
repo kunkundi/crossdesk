@@ -55,6 +55,7 @@ root.innerHTML = `
       </div>
       <div class="screen" id="screen">
         <canvas id="frame" role="img" aria-label="远程桌面实时画面" hidden></canvas>
+        <canvas id="agent-cursor" aria-hidden="true"></canvas>
         <div class="control-halo" aria-hidden="true"></div>
         <div id="empty"><h3 id="empty-title">未连接设备</h3><p id="empty-description">选择设备并输入访问密码。</p></div>
         <div class="stale" id="stale" role="status" hidden>画面暂未更新</div>
@@ -393,7 +394,7 @@ async function startPreview() {
       element<HTMLButtonElement>("focus-view").disabled = false;
       text("video-state", "实时");
       element("video-state").dataset.state = "live";
-    }, failed);
+    }, failed, element<HTMLCanvasElement>("agent-cursor"));
     player.start(grant.url, grant.ticket, grant.protocol, grant.decoder);
   } catch (error) {
     failed(error instanceof Error ? error : new Error("VIDEO_UNAVAILABLE"));

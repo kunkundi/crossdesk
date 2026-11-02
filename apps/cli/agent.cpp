@@ -10,6 +10,7 @@
 #include <map>
 #include <memory>
 #include <stdexcept>
+#include <terminal_renderer.h>
 
 namespace crossdesk::cli {
 namespace {
@@ -119,6 +120,12 @@ struct Encoding {
   uint64_t epoch;
   bool cancelled = false;
   std::future<FrameImage> result;
+};
+struct TerminalEncoding {
+  json id;
+  uint64_t generation, epoch;
+  Clock::time_point queued;
+  std::future<terminal::Grid> result;
 };
 struct Step {
   int delay = 0, kind = 0, key = 0, flag = 0, wheel = 0;
@@ -232,6 +239,7 @@ private:
     }
     result["transport_state"] = result["state"];
     result["geometry_epoch"] = epoch_;
+    result["cursor"] = Cursor();
     result["human_paused"] = paused_;
     result["control_allowed"] = allowed_;
     result["frame_age_ms"] = frame_ ? json(Age(frame_->queued)) : json(nullptr);
@@ -244,6 +252,16 @@ private:
                             : "waiting_frame";
     return result;
   }
+  json Cursor() const {
+    const bool visible = cursor_visible_ && frame_ && session_.Connected() &&
+        frame_->generation == session_.Generation() && allowed_ && !paused_ &&
+        session_.ControlEnabled();
+    return {{"type", "cursor"}, {"visible", visible},
+            {"x", cursor_x_}, {"y", cursor_y_},
+            {"generation", session_.Generation()}, {"geometry_epoch", epoch_},
+            {"width", frame_ ? frame_->width : 0},
+            {"height", frame_ ? frame_->height : 0}};
+  }
   void PumpVideo() {
     if (!video_) return;
     const auto generation = session_.Generation();
@@ -254,6 +272,11 @@ private:
       video_generation_ = generation;
       video_connected_ = connected;
       last_video_frame_ = 0;
+    }
+    const auto cursor = Cursor();
+    if (cursor != video_cursor_) {
+      video_->Cursor(cursor);
+      video_cursor_ = cursor;
     }
     const bool enabled = video_->Enabled();
     const bool key = video_->TakeKeyframeRequest();
@@ -337,6 +360,7 @@ private:
       if (!frame_ || f->generation != frame_->generation ||
           f->width != frame_->width || f->height != frame_->height) {
         ++epoch_;
+        cursor_visible_ = false;
         observations_.clear();
         preview_ = json();
       }
@@ -345,6 +369,7 @@ private:
     if (frame_ && frame_->generation != session_.Generation()) {
       frame_.reset();
       ++epoch_;
+      cursor_visible_ = false;
       observations_.clear();
       preview_ = json();
     }
@@ -367,10 +392,40 @@ private:
           FinishAction("ACTION_OUTCOME_UNKNOWN");
           break;
         }
+        if (step.kind == 0) {
+          cursor_x_ = step.x;
+          cursor_y_ = step.y;
+          cursor_visible_ = true;
+        }
         action_->submitted = true;
       }
       if (action_ && action_->next == action_->steps.size())
         FinishAction();
+    }
+    if (terminal_encoding_ &&
+        terminal_encoding_->result.wait_for(Ms(0)) == std::future_status::ready) {
+      auto job = std::move(terminal_encoding_);
+      try {
+        auto grid = job->result.get();
+        if (!session_.Connected() || job->generation != session_.Generation() ||
+            job->epoch != epoch_)
+          Error(job->id, "STALE_OBSERVATION");
+        else if (Age(job->queued) > 2000)
+          Error(job->id, "FRAME_TIMEOUT");
+        else {
+          json cursor = nullptr;
+          if (Cursor()["visible"].get<bool>()) {
+            const int x = grid.content.x + std::clamp(
+                int(cursor_x_ * grid.content.width), 0, grid.content.width - 1);
+            const int y = grid.content.y + std::clamp(
+                int(cursor_y_ * grid.content.height), 0, grid.content.height - 1);
+            cursor = {{"column", x / grid.samples_x}, {"row", y / grid.samples_y}};
+          }
+          Reply(job->id, {{"columns", grid.viewport.columns}, {"rows", grid.viewport.rows},
+                          {"lines", terminal::Lines(grid)}, {"cursor", cursor},
+                          {"generation", job->generation}, {"geometry_epoch", job->epoch}});
+        }
+      } catch (...) { Error(job->id, "FRAME_RENDER_FAILED"); }
     }
     if (encoding_ &&
         encoding_->result.wait_for(Ms(0)) == std::future_status::ready) {
@@ -730,6 +785,7 @@ private:
                    {"video_protocols", {"h264-annexb/1", "nv12/1"}},
                    {"video_decoders", {"auto", "software"}},
                    {"video_transport", "loopback-websocket/1"},
+                   {"terminal_protocol", "ansi/1"},
                    {"action_completion", "submitted"},
                    {"max_request_bytes", 65536},
                    {"max_response_bytes", kMaxResponse},
@@ -775,6 +831,32 @@ private:
       } else if (method == "action") {
         StartAction(j, id);
         return false;
+      } else if (method == "terminal_frame") {
+        Fields(j, {"id", "method", "columns", "rows", "colors", "cell_aspect"});
+        if (terminal_encoding_) throw std::invalid_argument("BUSY");
+        if (!session_.Connected() || !frame_ ||
+            frame_->generation != session_.Generation() || Age(frame_->queued) > 2000)
+          throw std::invalid_argument("NOT_READY");
+        terminal::Viewport viewport;
+        viewport.columns = Number(j, "columns", 1, 160, 80);
+        viewport.rows = Number(j, "rows", 1, 60, 22);
+        viewport.colors = Number(j, "colors", 8, 256, 24);
+        if (viewport.colors != 8 && viewport.colors != 24 && viewport.colors != 256)
+          throw std::invalid_argument("INVALID_REQUEST");
+        viewport.cell_aspect = j.value("cell_aspect", .5);
+        if (!std::isfinite(viewport.cell_aspect) || viewport.cell_aspect < .2 || viewport.cell_aspect > 2)
+          throw std::invalid_argument("INVALID_REQUEST");
+        viewport.detail = terminal::AnsiDetail::Quadrant;
+        auto job = std::make_unique<TerminalEncoding>();
+        job->id = id;
+        job->generation = frame_->generation;
+        job->epoch = epoch_;
+        job->queued = frame_->queued;
+        job->result = std::async(std::launch::async, [frame = frame_, viewport] {
+          return terminal::Convert(*frame, viewport);
+        });
+        terminal_encoding_ = std::move(job);
+        return false;
       } else if (method == "control") {
         Fields(j, {"id", "method", "enabled"});
         const bool enable = Flag(j, "enabled");
@@ -807,6 +889,7 @@ private:
           throw std::invalid_argument("DISPLAY_UNAVAILABLE");
         frame_.reset();
         ++epoch_;
+        cursor_visible_ = false;
       } else if (method == "cancel") {
         Fields(j, {"id", "method", "request_id"});
         if (!j.contains("request_id") || !j["request_id"].is_number_integer())
@@ -875,6 +958,7 @@ private:
   std::deque<Observation> observations_;
   std::deque<Capture> captures_;
   std::unique_ptr<Encoding> encoding_;
+  std::unique_ptr<TerminalEncoding> terminal_encoding_;
   std::unique_ptr<RunningAction> action_;
   std::deque<Record> records_;
   json preview_;
@@ -883,6 +967,9 @@ private:
   std::unique_ptr<VideoServer> video_;
   uint64_t video_generation_ = 0, last_video_frame_ = 0;
   bool video_connected_ = false, video_enabled_ = false;
+  bool cursor_visible_ = false;
+  float cursor_x_ = 0, cursor_y_ = 0;
+  json video_cursor_;
 };
 } // namespace
 int Agent(int output_fd, SessionOptions options, int password_fd,

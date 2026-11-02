@@ -74,6 +74,7 @@ export async function nativeBinary(override?: string): Promise<string> {
     });
     const doctor = JSON.parse(stdout);
     if (doctor.automation_protocol !== "crossdesk-automation/1" ||
+        doctor.automation_terminal_protocol !== "ansi/1" ||
         doctor.automation_video_transport !== "loopback-websocket/1" ||
         !["h264-annexb/1", "nv12/1"].every((p) => doctor.automation_video_protocols?.includes(p)) ||
         !["auto", "software"].every((p) => doctor.automation_video_decoders?.includes(p)))
@@ -144,6 +145,7 @@ export class NativeClient {
       signal,
     );
     if (hello.protocol !== "crossdesk-automation/1" ||
+        hello.terminal_protocol !== "ansi/1" ||
         hello.video_transport !== "loopback-websocket/1" ||
         !hello.video_protocols?.includes(this.videoOptions.decode_path === "minirtc" ? "nv12/1" : "h264-annexb/1") ||
         !hello.video_decoders?.includes(this.videoOptions.decoder))
