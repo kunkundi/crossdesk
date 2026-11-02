@@ -94,7 +94,7 @@ export global UiStrings {
     in-out property <string> license: "Licensed under GNU GPL v3.";
     in-out property <string> signal-connected: "Signal server connected";
     in-out property <string> signal-disconnected: "Signal server disconnected";
-    in-out property <string> tls-error: "Signal server TLS certificate error";
+    in-out property <string> tls-error: "Server certificate invalid or expired. Retrying automatically.";
     in-out property <string> signal-reconnect: "Reconnect";
     in-out property <string> signal-reconnecting: "Reconnecting...";
     in-out property <string> update-available: "A new version is available";
@@ -1935,7 +1935,7 @@ export component MainWindow inherits Window {
                 text: root.current-version;
                 font-size: 11px; color: WorkbenchStyle.muted; vertical-alignment: center;
             }
-            if !root.lan-mode && !root.signal-connected && !root.signal-tls-error: WorkbenchButton {
+            if !root.lan-mode && !root.signal-connected: WorkbenchButton {
                 x: parent.width - self.width - 20px;
                 y: (parent.height - self.height) / 2;
                 width: max(64px, reconnect-label-metrics.preferred-width + 22px);

@@ -7980,17 +7980,17 @@
       "pt-BR": "Falha na verificação do certificado · Clique para tentar novamente",
       "ru": "Не удалось проверить сертификат · Нажмите, чтобы повторить попытку."
     },
-    "证书验证失败，请重新安装自托管根证书": {
-      "zh-Hans": "证书验证失败，请重新安装自托管根证书",
-      "en": "Certificate verification failed. Reinstall the self-hosted root certificate.",
-      "ru": "Ошибка проверки сертификата. Переустановите корневой сертификат собственного сервера.",
-      "zh-Hant": "證書驗證失敗，請重新安裝自託管根證書",
-      "ja": "証明書の検証に失敗しました。セルフホスト型ルート証明書を再インストールします。",
-      "ko": "인증서 확인에 실패했습니다. 자체 호스팅 루트 인증서를 다시 설치합니다.",
-      "de": "Die Zertifikatsüberprüfung ist fehlgeschlagen. Installieren Sie das selbstgehostete Stammzertifikat neu.",
-      "fr": "La vérification du certificat a échoué. Réinstallez le certificat racine auto-hébergé.",
-      "es": "Falló la verificación del certificado. Reinstale el certificado raíz autohospedado.",
-      "pt-BR": "Falha na verificação do certificado. Reinstale o certificado raiz auto-hospedado."
+    "服务器证书无效或已过期，正在自动重试": {
+      "zh-Hans": "服务器证书无效或已过期，正在自动重试",
+      "en": "Server certificate invalid or expired. Retrying automatically.",
+      "ru": "Сертификат сервера недействителен или просрочен. Повторяем подключение автоматически.",
+      "zh-Hant": "伺服器憑證無效或已過期，正在自動重試",
+      "ja": "サーバー証明書が無効か期限切れです。自動的に再試行します。",
+      "ko": "서버 인증서가 유효하지 않거나 만료되었습니다. 자동으로 재시도합니다.",
+      "de": "Serverzertifikat ungültig oder abgelaufen. Automatischer Neuversuch.",
+      "fr": "Certificat du serveur invalide ou expiré. Nouvelle tentative automatique.",
+      "es": "Certificado del servidor no válido o caducado. Reintentando automáticamente.",
+      "pt-BR": "Certificado do servidor inválido ou expirado. Tentando novamente automaticamente."
     },
     "该分组暂无近期连接": {
       "zh-Hans": "该分组暂无近期连接",
@@ -10752,7 +10752,7 @@
     "signal_disconnected": "未连接服务器",
     "signal_reconnect": "重新连接",
     "signal_reconnecting": "正在重新连接...",
-    "signal_tls_cert_error": "证书验证失败，请重新安装自托管根证书",
+    "signal_tls_cert_error": "服务器证书无效或已过期，正在自动重试",
     "p2p_connected": "对等连接已建立",
     "p2p_disconnected": "对等连接已断开",
     "p2p_connecting": "正在建立对等连接...",
@@ -11442,7 +11442,7 @@
       "设置（修改后立即保存）",
       "访问官网: ",
       "访问密码必须为 6 位英文字母或数字，区分大小写。",
-      "证书验证失败，请重新安装自托管根证书",
+      "服务器证书无效或已过期，正在自动重试",
       "该分组暂无近期连接",
       "该应用需要授权以下权限:",
       "该设备正在连接，请稍候",
