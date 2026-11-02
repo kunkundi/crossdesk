@@ -1,0 +1,34 @@
+name: MCP package
+
+on:
+  push:
+    paths: ['apps/mcp/**', 'apps/cli/package.json', 'apps/cli/npm/platforms.json', '.github/workflows/build-mcp.yml']
+  pull_request:
+    paths: ['apps/mcp/**', 'apps/cli/package.json', 'apps/cli/npm/platforms.json', '.github/workflows/build-mcp.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mcp/package-lock.json
+      - run: npm ci
+        working-directory: apps/mcp
+      - run: npm run build
+        working-directory: apps/mcp
+      - run: npm run pack:npm
+        working-directory: apps/mcp
+      - uses: actions/upload-artifact@v6
+        with:
+          name: mcp-package
+          path: build/npm-mcp/*.tgz
+          if-no-files-found: error

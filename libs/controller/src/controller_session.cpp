@@ -77,7 +77,7 @@ Params ControllerSession::Parameters() {
   std::snprintf(p.log_path, sizeof(p.log_path), "%s",
                 options_.log_directory.c_str());
   p.signal_server_port = options_.port;
-  p.hardware_acceleration = false;
+  p.hardware_acceleration = options_.hardware_acceleration;
   p.native_video_output = true;
   p.av1_encoding = false;
   p.turn_mode = TurnAutoUdpTcp;
@@ -92,6 +92,7 @@ Params ControllerSession::Parameters() {
   p.on_net_status_report = Network;
   p.on_receive_data_buffer = Data;
   p.on_receive_video_frame = Video;
+  p.on_receive_encoded_video = EncodedVideo;
   // No audio callback, clipboard receiver, file writer or incoming input
   // handler.
   p.user_id = "cli";
@@ -118,6 +119,7 @@ void ControllerSession::Connect(SessionOptions options, std::string device,
   state_ = "registering";
   error_.clear();
   displays_.clear();
+  host_platform_ = HostPlatform::Unknown;
   preview_supported_ = resolution_ = fps15_ = bandwidth_ = text_supported_ =
       false;
   preview_request_ = preview_ack_ = 0;
@@ -238,6 +240,7 @@ void ControllerSession::Tick() {
       if (!a.from_json(e.data))
         continue;
       if (a.type == host_infomation) {
+        host_platform_ = a.i.platform;
         displays_.clear();
         for (size_t i = 0; i < std::min(a.i.display_num, size_t(64)); ++i)
           displays_.push_back({SafeText(a.i.display_list[i]), a.i.left[i],
@@ -422,7 +425,9 @@ std::optional<DecodedFrame> ControllerSession::TakeFrame(DecodedFrame *recycle) 
 json ControllerSession::Status() const {
   json ds = json::array();
   for (size_t i = 0; i < displays_.size(); ++i)
-    ds.push_back({{"index", i}, {"name", displays_[i].name}});
+    ds.push_back({{"index", i}, {"name", displays_[i].name},
+                  {"left", displays_[i].left}, {"top", displays_[i].top},
+                  {"right", displays_[i].right}, {"bottom", displays_[i].bottom}});
   std::lock_guard lock(mutex_);
   return {{"state", state_},
           {"client_id", client_id_},
@@ -430,6 +435,7 @@ json ControllerSession::Status() const {
           {"generation", generation_},
           {"control", control_},
           {"displays", ds},
+          {"platform", HostPlatformName(host_platform_)},
           {"display", options_.display},
           {"text_input", text_supported_},
           {"preview_supported", preview_supported_},
@@ -440,7 +446,19 @@ json ControllerSession::Status() const {
           {"preview_height", options_.preview_height},
           {"preview_quality", options_.quality},
           {"preview_bitrate_bps", options_.max_bitrate_bps},
+          {"native_video_decoder", SafeText(std::string(
+              network_.video_decoder,
+              std::find(network_.video_decoder,
+                        network_.video_decoder + sizeof(network_.video_decoder), '\0')))},
           {"frames", frames_.Stats()},
+          {"video_output",
+           {{"enabled", video_output_},
+            {"received", video_sequence_},
+            {"queued", video_frames_.size()},
+            {"queued_bytes", video_bytes_},
+            {"waiting_keyframe", video_wait_key_},
+            {"has_sps", !video_sps_.empty()},
+            {"has_pps", !video_pps_.empty()}}},
           {"network",
            {{"video_bps", network_.video_inbound_stats.bitrate},
             {"rtt_ms", network_.rtt_ms},

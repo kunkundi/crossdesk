@@ -4,6 +4,8 @@ local terminal_dir = path.join(source_dir, "libs/terminal")
 local minirtc_dir = path.join(source_dir, "deps/submodules/minirtc")
 
 add_requires("spdlog 1.14.1", {system = false})
+add_requires("asio 1.32.0", "websocketpp 0.8.2", {system = false})
+add_requires("libpng v1.6.59", {system = false, configs = {shared = false}})
 if is_plat("windows") then
     add_requires("zlib 1.3.1", {system = false, configs = {shared = false}})
 end
@@ -11,7 +13,7 @@ end
 target("crossdesk_controller")
     set_kind("static")
     add_deps("minirtc", "crossdesk_wire")
-    add_packages("spdlog")
+    add_packages("spdlog", "libpng", "libyuv")
     add_includedirs(path.join(controller_dir, "include"),
         path.join(minirtc_dir, "src/api"), {public = true})
     add_includedirs(path.join(minirtc_dir, "src/log"))
@@ -32,12 +34,14 @@ target_end()
 
 target("crossdesk-cli")
     set_kind("binary")
-    set_version("0.1.6")
+    set_version("0.2.0")
     add_deps("crossdesk_terminal")
     add_files("main.cpp")
+    add_files("agent.cpp", "video_server.cpp")
+    add_packages("asio", "websocketpp")
     add_files(is_plat("windows") and "terminal_io_windows.cpp" or "terminal_io_posix.cpp")
     if is_plat("windows") then
-        add_syslinks("advapi32", "user32")
+        add_syslinks("advapi32", "user32", "ws2_32")
         add_defines("NOMINMAX", "WIN32_LEAN_AND_MEAN")
     elseif is_plat("linux") then
         add_syslinks("rt")

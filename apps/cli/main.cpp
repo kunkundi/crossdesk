@@ -1,4 +1,5 @@
 #include "terminal_io.h"
+#include "agent.h"
 #include <algorithm>
 #include <cerrno>
 #include <clocale>
@@ -1034,6 +1035,7 @@ const char *help = R"(crossdesk-cli <9-digit-device-id> [--renderer auto|ansi|ki
 crossdesk-cli view <9-digit-device-id> [options] (compatibility alias)
 crossdesk-cli doctor [--json]
 crossdesk-cli bridge --stdio [--password-fd 3] [--server host] [--port 9099]
+crossdesk-cli agent --stdio [--password-fd 3] [--video-ws] [--server host] [--port 9099]
 
 Connect by device ID: read-only and silent by default; hidden password prompt on the local terminal.
 Read-only: c enables control; q or Ctrl+C quits; ? shows local commands.
@@ -1053,6 +1055,7 @@ Auto rendering prefers Kitty, then Sixel, then ANSI. Explicit pixel renderers re
 Explicit --fps keeps a fixed preview request. Kitty transport fallback keeps the local target unchanged.
 Preview requests above 15 use the negotiated interactive 30 FPS stream; lower requests use 1/8/15 FPS.
 bridge: private NDJSON v1, default 8 FPS, credentials on a separate inherited descriptor.
+agent: crossdesk-automation/1, structured actions and PNG screenshots; no terminal required.
 No IP direct connection, audio playback, clipboard or file transfer support.
 )";
 } // namespace
@@ -1087,12 +1090,17 @@ int main(int argc, char **argv) {
                 {"kitty", "probe_on_view"},
                 {"sixel", "probe_on_view"},
                 {"audio_playback", false},
-                {"bridge_version", 1}};
+                {"bridge_version", 1},
+                {"automation_protocol", "crossdesk-automation/1"},
+                {"automation_video", "h264-annexb/1"},
+                {"automation_video_transport", "loopback-websocket/1"},
+                {"automation_video_protocols", {"h264-annexb/1", "nv12/1"}},
+                {"automation_video_decoders", {"auto", "software"}}};
       std::cout << d.dump(argc == 3 ? -1 : 2) << "\n";
       return 0;
     }
     int i = 2;
-    if (command != "view" && command != "bridge") {
+    if (command != "view" && command != "bridge" && command != "agent") {
       if (command.find_first_not_of("0123456789") != std::string::npos)
         throw std::invalid_argument(
             "expected a 9-digit device ID or a command; use --help");
@@ -1105,6 +1113,8 @@ int main(int argc, char **argv) {
     double zoom = 1, cell_aspect = 0;
     bool control = false, stdio = false, native = false, fps_explicit = false;
     int secret_fd = 3;
+    bool video_websocket = false;
+    if (command == "agent") options.fps = 30;
     if (command == "view") {
       if (i >= argc)
         throw std::invalid_argument("device ID required");
@@ -1124,8 +1134,10 @@ int main(int argc, char **argv) {
       std::string a = argv[i];
       if (a == "--control" && command == "view")
         control = true;
-      else if (a == "--stdio" && command == "bridge")
+      else if (a == "--stdio" && command != "view")
         stdio = true;
+      else if (a == "--video-ws" && command == "agent")
+        video_websocket = true;
       else {
         if (i + 1 >= argc)
           throw std::invalid_argument("option value missing");
@@ -1134,6 +1146,8 @@ int main(int argc, char **argv) {
           options.host = value;
         else if (a == "--port")
           options.port = number(value, 1, 65535);
+        else if (a == "--log-dir" && command == "agent")
+          options.log_directory = value;
         else if (a == "--fps" && command == "view") {
           options.fps = number(value, 1, 30);
           fps_explicit = true;
@@ -1158,7 +1172,7 @@ int main(int argc, char **argv) {
         } else if (a == "--zoom" && command == "view") {
           native = value == "native";
           zoom = native ? 1 : number(value, 1, 32);
-        } else if (a == "--password-fd" && command == "bridge")
+        } else if (a == "--password-fd" && command != "view")
           secret_fd = number(value, 3, 1024);
         else
           throw std::invalid_argument("unsupported option");
@@ -1167,14 +1181,14 @@ int main(int argc, char **argv) {
     if (renderer != "auto" && renderer != "ansi" && renderer != "kitty" &&
         renderer != "sixel")
       throw std::invalid_argument("unknown renderer");
-    if (command == "bridge" && !stdio)
-      throw std::invalid_argument("bridge requires --stdio");
+    if (command != "view" && !stdio)
+      throw std::invalid_argument("automation and bridge require --stdio");
     Descriptor output(Duplicate(1));
     if (output.value < 0)
       throw std::runtime_error("cannot preserve output channel");
     // All library stdout writes go to diagnostics. Only Output uses the saved
     // fd.
-    options.log_directory = Logs();
+    if (options.log_directory.empty()) options.log_directory = Logs();
     if (command == "view") {
       Descriptor logs(OpenLog(options.log_directory + "/client.log"));
       if (logs.value < 0 || Redirect(logs.value, 2) < 0)
@@ -1193,7 +1207,9 @@ int main(int argc, char **argv) {
       return command == "view" ? View(options, device, renderer, control,
                                       output.value, detail, zoom, native,
                                       cell_aspect, fps_explicit)
-                               : Bridge(output.value, options, secret_fd);
+                               : command == "agent"
+                                     ? Agent(output.value, options, secret_fd, video_websocket)
+                                     : Bridge(output.value, options, secret_fd);
     } catch (const std::exception &e) {
       if (command == "view") {
         std::string msg = "crossdesk-cli: " + SafeText(e.what()) + "\r\n";

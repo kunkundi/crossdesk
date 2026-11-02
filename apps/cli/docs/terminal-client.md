@@ -183,6 +183,6 @@ Pi 扩展读取宿主的字符尺寸，并通过宿主终端写入／输入监�
 - `doctor --json` 是环境报告，不会联网登录、主动探测 Kitty / Sixel 或证明远端可连接。 `input_shortcuts=local_commands_v2` 表示支持本文的持续本地命令模式；启动日志同时记录实际执行路径，以便区分不同工程的构建产物。
 - 画面比例异常时查看 `client.log` 摘要的 `terminal_geometry`：`cell_aspect` 为实际采用的字符宽高比，`reported` 表示收到有效的终端尺寸报告，`manual_aspect` 表示使用了手动覆盖。`doctor` 中的比例和像素尺寸只反映系统 TTY 信息，不主动查询终端，可能与交互连接自动检测后的值不同。
 
-第一轮无音频播放或音频订阅 API，SSH 服务器上的声音不会传回本地。无后台守护进程、共享媒体 Broker、IP 直连、MCP 或自动截图。其他宿主可以使用 [私有桥接](bridge-protocol.md)，没有可靠自定义 UI 时打开独立终端或给出播放器命令。
+终端模式无音频播放或音频订阅 API，SSH 服务器上的声音不会传回本地。无后台守护进程、共享媒体 Broker 或 IP 直连。终端宿主可以使用 [私有桥接](bridge-protocol.md)，没有可靠自定义 UI 时打开独立终端。Agent 的 PNG 截图和结构化操作由独立的 [自动化模式](automation-protocol.md) 和 [MCP 服务](../../mcp/README.md) 提供。
 
 每个播放器/桥接进程只拥有自己的一个媒体会话，不向模型消息发送视频。

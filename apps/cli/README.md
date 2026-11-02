@@ -80,6 +80,8 @@ crossdesk-cli 123456789 --display 1
 
 ## 更多文档与功能范围
 
+- [MCP 服务与实时面板](../mcp/README.md)：Agent 截图和结构化远程操作，不要求控制端安装桌面客户端。
+- [原生自动化协议](docs/automation-protocol.md)：独立 `agent --stdio` 模式。
 - [构建、使用、Pi 安装和故障排查](docs/terminal-client.md)
 - [私有桥接协议](docs/bridge-protocol.md)
 - [实际验证记录](docs/validation.md)
@@ -87,4 +89,4 @@ crossdesk-cli 123456789 --display 1
 
 CLI 仅作为控制端，每次连接通过服务端获得新的 `cli-xxxxxxxxx` 临时 ID。使用前须部署支持 `cli` 注册的 crossdesk-server；旧服务端不会回退为普通设备身份。
 
-终端 I/O 包含 POSIX（Linux/macOS）和 Windows Console / ConPTY 实现。macOS arm64 已完整构建，之前已连接真实被控端验证 ANSI 观看与预览协商。Linux / Windows 全量构建和真实连接、SSH/Kitty/Sixel 实机显示及真实 Pi TUI 仍需验收；交叉编译检查不等于完整运行验证。此项目不创建被控端虚拟桌面，不提供音频播放、文件传输、剪贴板同步或 MCP 服务。
+终端 I/O 包含 POSIX（Linux/macOS）和 Windows Console / ConPTY 实现。macOS arm64 已完整构建，之前已连接真实被控端验证 ANSI 观看与预览协商。Linux / Windows 全量构建和真实连接、SSH/Kitty/Sixel 实机显示及真实 Pi TUI 仍需验收；交叉编译检查不等于完整运行验证。CLI 不创建被控端虚拟桌面，不提供音频播放、文件传输或剪贴板同步；MCP 服务由独立的 `apps/mcp` 包提供。

@@ -36,17 +36,19 @@ function main() {
     return;
   }
   const stdio = ['inherit', 'inherit', 'inherit'];
-  if (args[0] === 'bridge') {
-    const index = args.lastIndexOf('--password-fd');
-    const fd = index === -1 ? 3 : Number(args[index + 1]);
-    if (Number.isInteger(fd) && fd >= 3 && fd <= 1024) {
-      try {
-        const stat = fs.fstatSync(fd);
-        if (stat.isFIFO() || stat.isSocket() || stat.isFile()) {
-          while (stdio.length <= fd) stdio.push('ignore');
-          stdio[fd] = fd;
-        }
-      } catch { /* The native bridge reports a missing credential descriptor. */ }
+  if (args[0] === 'bridge' || args[0] === 'agent') {
+    for (const [option, fallback] of [['--password-fd', 3]]) {
+      const index = args.lastIndexOf(option);
+      const fd = index === -1 ? fallback : Number(args[index + 1]);
+      if (Number.isInteger(fd) && fd >= 3 && fd <= 1024) {
+        try {
+          const stat = fs.fstatSync(fd);
+          if (stat.isFIFO() || stat.isSocket() || stat.isFile()) {
+            while (stdio.length <= fd) stdio.push('ignore');
+            stdio[fd] = fd;
+          }
+        } catch { /* Native code reports unavailable descriptors. */ }
+      }
     }
   }
   const child = spawn(binary, args, { stdio, shell: false });

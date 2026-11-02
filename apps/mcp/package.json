@@ -1,0 +1,38 @@
+{
+  "name": "@chunkdash/crossdesk-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local CrossDesk MCP tools and remote desktop panels",
+  "license": "GPL-3.0-only",
+  "author": "DI JUNKUN",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kunkundi/crossdesk.git",
+    "directory": "apps/mcp"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "crossdesk-mcp": "dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc && tsc -p tsconfig.ui.json && node scripts/build-ui.mjs",
+    "check": "tsc --noEmit && tsc -p tsconfig.ui.json",
+    "pack:npm": "node scripts/pack.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "@modelcontextprotocol/core": "2.4.0",
+    "@modelcontextprotocol/ext-apps": "2.0.4",
+    "@modelcontextprotocol/server": "2.4.0",
+    "@napi-rs/keyring": "2.1.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.15",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  }
+}

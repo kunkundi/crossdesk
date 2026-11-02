@@ -84,6 +84,8 @@ function inspect(binary, target) {
   }
   const doctor = JSON.parse(run(binary, ['doctor', '--json'], { timeout: 15000 }));
   if (doctor.bridge_version !== 1) throw new Error('Native binary does not report the expected bridge version.');
+  if (doctor.automation_protocol !== 'crossdesk-automation/1')
+    throw new Error('Native binary does not report the expected automation protocol.');
   return info;
 }
 function pack(directory, output) {

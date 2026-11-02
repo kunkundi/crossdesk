@@ -19,6 +19,11 @@
 #include <vector>
 
 namespace crossdesk {
+struct EncodedVideoFrame {
+  std::vector<uint8_t> data;
+  uint64_t generation = 0, sequence = 0, timestamp_us = 0;
+  bool key = false;
+};
 struct DecodedFrame {
   unsigned width = 0, height = 0;
   uint64_t generation = 0, frame_id = 0;
@@ -46,6 +51,7 @@ struct SessionOptions {
   int port = 9099, display = 0, fps = 8;
   int preview_width = 1920, preview_height = 1080;
   int quality = 2, max_bitrate_bps = 6000000;
+  bool hardware_acceleration = false;
   std::chrono::seconds timeout{30};
 };
 // All public methods except the destructor run on one owner thread. Call Tick
@@ -59,6 +65,8 @@ public:
   void Tick();
   void Disconnect();
   bool SelectDisplay(int index);
+  void SetVideoOutput(bool enabled, bool request_keyframe = false);
+  std::optional<EncodedVideoFrame> TakeEncodedVideo();
   void SetPreview(int fps, int width, int height, int quality = -1,
                   int max_bitrate_bps = -1);
   void SetControl(bool enabled);
@@ -91,6 +99,8 @@ private:
                    size_t, void *);
   static void Video(const MiniRtcVideoFrame *, const char *, size_t,
                     const char *, size_t, void *);
+  static int EncodedVideo(const uint8_t *, size_t, int64_t, const char *,
+                          size_t, const char *, size_t, void *);
   static void Network(const char *, size_t, TraversalMode,
                       const MiniRtcNetTrafficStats *, const char *, size_t,
                       void *);
@@ -102,6 +112,7 @@ private:
   bool control_ = false, preview_supported_ = false, resolution_ = false;
   bool fps15_ = false, bandwidth_ = false, text_supported_ = false;
   bool preview_accepted_ = false;
+  HostPlatform host_platform_ = HostPlatform::Unknown;
   std::vector<HostDisplay> displays_;
   std::set<int> keys_, buttons_;
   float pointer_x_ = .5f, pointer_y_ = .5f;
@@ -114,6 +125,12 @@ private:
   MiniRtcNetTrafficStats network_{};
   TraversalMode traversal_ = UnknownMode;
   LatestFrame frames_;
+  bool video_output_ = false, video_wait_key_ = true, video_request_key_ = false;
+  size_t video_bytes_ = 0;
+  uint64_t video_generation_ = 0, video_sequence_ = 0;
+  std::deque<EncodedVideoFrame> video_frames_;
+  std::vector<uint8_t> video_sps_, video_pps_;
+  std::chrono::steady_clock::time_point video_key_requested_{};
 };
 nlohmann::json ParseBoundedJson(const std::string &text);
 std::string SafeText(const std::string &text, size_t limit = 160);
