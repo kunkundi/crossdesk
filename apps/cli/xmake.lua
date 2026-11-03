@@ -37,7 +37,7 @@ target("crossdesk-cli")
     set_version("0.2.0")
     add_deps("crossdesk_terminal")
     add_files("main.cpp")
-    add_files("agent.cpp", "video_server.cpp")
+    add_files("agent.cpp", "automation_protocol.cpp", "video_server.cpp")
     add_packages("asio", "websocketpp")
     add_files(is_plat("windows") and "terminal_io_windows.cpp" or "terminal_io_posix.cpp")
     if is_plat("windows") then

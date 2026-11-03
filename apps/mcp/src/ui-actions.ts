@@ -35,7 +35,7 @@ export async function uiAction(
       };
     }
     case "status":
-      return sessions.status(undefined, view.id);
+      return sessions.status(undefined, view.id, signal);
     case "connect":
       return sessions.connectUI(view, p, signal);
     case "control":

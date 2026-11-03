@@ -19,10 +19,15 @@ FrameImage EncodeFrameImage(const DecodedFrame &f, ImageRegion r, int max_edge,
       r.width > int(f.width) || r.height > int(f.height) ||
       r.x > int(f.width) - r.width || r.y > int(f.height) - r.height)
     throw std::invalid_argument("INVALID_REGION");
-  std::vector<uint8_t> argb(size_t(f.width) * f.height * 4);
-  if (libyuv::NV12ToARGB(f.nv12.data(), f.width,
-                         f.nv12.data() + size_t(f.width) * f.height, f.width,
-                         argb.data(), f.width * 4, f.width, f.height))
+  // Align the NV12 crop to its chroma grid, then offset the RGB crop by at
+  // most one pixel. Small observations do not need a full-frame RGB buffer.
+  const int left = r.x & ~1, top = r.y & ~1;
+  const int width = r.width + r.x - left, height = r.height + r.y - top;
+  std::vector<uint8_t> argb(size_t(width) * height * 4);
+  if (libyuv::NV12ToARGB(f.nv12.data() + size_t(top) * f.width + left, f.width,
+                        f.nv12.data() + size_t(f.width) * f.height +
+                            size_t(top / 2) * f.width + left,
+                        f.width, argb.data(), width * 4, width, height))
     throw std::runtime_error("IMAGE_CONVERSION_FAILED");
   FrameImage result;
   result.region = r;
@@ -33,8 +38,8 @@ FrameImage EncodeFrameImage(const DecodedFrame &f, ImageRegion r, int max_edge,
     result.height = std::max(1, int(r.height * scale));
     std::vector<uint8_t> scaled(size_t(result.width) * result.height * 4);
     std::vector<uint8_t> rgb(size_t(result.width) * result.height * 3);
-    if (libyuv::ARGBScale(argb.data() + (size_t(r.y) * f.width + r.x) * 4,
-                          f.width * 4, r.width, r.height, scaled.data(),
+    if (libyuv::ARGBScale(argb.data() + (size_t(r.y - top) * width + r.x - left) * 4,
+                          width * 4, r.width, r.height, scaled.data(),
                           result.width * 4, result.width, result.height,
                           libyuv::kFilterBox) ||
         libyuv::ARGBToRAW(scaled.data(), result.width * 4, rgb.data(),
@@ -45,23 +50,22 @@ FrameImage EncodeFrameImage(const DecodedFrame &f, ImageRegion r, int max_edge,
     image.width = result.width;
     image.height = result.height;
     image.format = PNG_FORMAT_RGB;
-    png_alloc_size_t size = 0;
-    if (!png_image_write_to_memory(&image, nullptr, &size, 0, rgb.data(), 0,
-                                   nullptr)) {
-      png_image_free(&image);
-      throw std::runtime_error("IMAGE_ENCODING_FAILED");
-    }
-    if (size <= max_bytes) {
-      result.png.resize(size);
-      const auto ok = png_image_write_to_memory(
-          &image, result.png.data(), &size, 0, rgb.data(), 0, nullptr);
-      png_image_free(&image);
-      if (!ok)
-        throw std::runtime_error("IMAGE_ENCODING_FAILED");
+    // libpng reports the required size on buffer exhaustion. Compress once
+    // into the bounded output, instead of compressing once to measure and
+    // again to write every successful screenshot.
+    const auto capacity =
+        std::min(png_alloc_size_t(max_bytes), PNG_IMAGE_PNG_SIZE_MAX(image));
+    result.png.resize(capacity);
+    png_alloc_size_t size = capacity;
+    const auto ok = png_image_write_to_memory(
+        &image, result.png.data(), &size, 0, rgb.data(), 0, nullptr);
+    png_image_free(&image);
+    if (ok) {
       result.png.resize(size);
       return result;
     }
-    png_image_free(&image);
+    if (size <= max_bytes)
+      throw std::runtime_error("IMAGE_ENCODING_FAILED");
     if (edge == 32)
       throw std::runtime_error("IMAGE_TOO_LARGE");
   }

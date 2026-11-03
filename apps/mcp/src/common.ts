@@ -61,29 +61,38 @@ export const point = z.strictObject({
   y: z.number().finite().min(0).max(8192),
 });
 const button = z.enum(["left", "right", "middle"]).optional();
-const key = z
-  .string()
-  .min(1)
-  .max(16)
-  .regex(/^[A-Z0-9_]+$/);
+const unique = (keys: string[]) => new Set(keys).size === keys.length;
+const modifiers = z.array(z.enum(["CTRL", "ALT", "SHIFT", "META"])).max(4).refine(unique)
+  .describe("Modifiers held during this action and released afterwards, including on cancellation.").optional();
+const key = z.enum([
+  ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".split(""),
+  "BACKSPACE", "TAB", "ENTER", "SHIFT", "CTRL", "ALT", "PAUSE", "CAPS_LOCK",
+  "ESC", "SPACE", "PAGE_UP", "PAGE_DOWN", "END", "HOME", "LEFT", "UP", "RIGHT", "DOWN",
+  "INSERT", "DELETE", "META", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
+  "SEMICOLON", "EQUAL", "COMMA", "MINUS", "PERIOD", "SLASH", "BACKQUOTE", "BRACKET_LEFT", "BACKSLASH", "BRACKET_RIGHT", "QUOTE",
+]);
 export const action = z.discriminatedUnion("type", [
-  point.extend({ type: z.literal("move") }),
-  point.extend({ type: z.literal("click"), button }),
-  point.extend({ type: z.literal("double_click"), button }),
+  point.extend({ type: z.literal("move"), modifiers }),
+  point.extend({ type: z.literal("click"), button, modifiers }),
+  point.extend({ type: z.literal("double_click"), button, modifiers }),
   point.extend({
     type: z.literal("scroll"),
     direction: z.enum(["up", "down", "left", "right"]),
     ticks: z.int().min(1).max(10).optional(),
+    modifiers,
   }),
   z.strictObject({
     type: z.literal("drag"),
     path: z.array(point).min(2).max(128),
     duration_ms: z.int().min(100).max(2000).optional(),
+    button,
+    modifiers,
   }),
-  z.strictObject({ type: z.literal("key_press"), key }),
+  z.strictObject({ type: z.literal("key_press"), key, modifiers })
+    .refine((p) => !p.modifiers?.some((modifier) => modifier === p.key)),
   z.strictObject({
     type: z.literal("hotkey"),
-    keys: z.array(key).min(2).max(6),
+    keys: z.array(key).min(2).max(6).refine(unique),
   }),
   z.strictObject({
     type: z.literal("type_text"),

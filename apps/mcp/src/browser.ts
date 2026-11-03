@@ -367,6 +367,7 @@ export async function pairBrowser(
           resolve(undefined);
         });
         socket.once("error", () => resolve(undefined));
+        socket.once("close", () => resolve(undefined));
         socket.once("connect", () =>
           socket.write(
             JSON.stringify({ secret: descriptor.secret, view_id: view }) + "\n",

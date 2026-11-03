@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   Failure,
+  failure,
   token,
   equal,
   parse,
@@ -25,6 +26,7 @@ export interface View {
   alias?: string;
   session?: string;
   disconnected?: boolean;
+  connectionError?: Data;
 }
 interface Session {
   id: string;
@@ -32,11 +34,15 @@ interface Session {
   native: NativeClient;
   status: Data;
   release: () => Promise<void>;
+  connecting: boolean;
+  statusRequest?: Promise<Data>;
+  closing?: Promise<void>;
 }
 export class Sessions {
   readonly views = new Map<string, View>();
   private current?: Session;
-  private connecting = false;
+  private connecting?: AbortController;
+  private connectionDone?: Promise<void>;
   private closing = false;
   private binary?: Promise<string>;
   constructor(
@@ -94,11 +100,12 @@ export class Sessions {
           ? "not_confirmed"
           : "waiting",
       session_id: v.session ?? null,
-      state: v.session ? "session_available" : v.disconnected ? "closed" : "awaiting_user",
+      state: v.session ? "session_available" : v.disconnected ? "closed" : v.connectionError ? "failed" : "awaiting_user",
+      ...(v.connectionError ? { error: v.connectionError } : {}),
       device_alias: v.alias ?? null,
       next_step: v.session
         ? "Call crossdesk_get_session with view_id."
-        : v.disconnected
+        : v.disconnected || v.connectionError
           ? "The session was disconnected. Do not automatically reconnect."
           : v.panel === "off"
             ? "Use setup to configure credentials and authorization, then crossdesk_connect with the saved device alias. Never send passwords in chat."
@@ -117,25 +124,31 @@ export class Sessions {
     const s = this.session(id!);
     // A panel connection may still be performing the native hello handshake.
     // Reading native status here would race initialization and could close it.
-    if (this.connecting) return {
+    if (s.connecting) return {
       ...(view ? this.describe(view) : {}),
       session_id: s.id,
       device_alias: s.device.alias,
       state: "connecting",
       control: false,
     };
-    try {
-      s.status = await s.native.request("status", {}, 5000, signal);
-    } catch {
-      if (signal?.aborted) throw new Failure("CANCELLED");
-      s.status = { state: "closed", control: false };
+    // Concurrent panel/model polls share one native read. A cancelled waiter
+    // must not cancel another caller's status request or disconnect the session.
+    if (signal?.aborted) throw new Failure("CANCELLED");
+    if (!["closed", "failed"].includes(s.status.state)) {
+      s.statusRequest ??= s.native.request("status", {}, 5000)
+        .then((status) => (s.status = status))
+        .catch((error) => {
+          if (!(error instanceof Failure) || error.code !== "SESSION_CLOSED") throw error;
+          return (s.status = { state: "closed", control: false });
+        })
+        .finally(() => { s.statusRequest = undefined; });
+      await this.waitStatus(s.statusRequest, signal);
     }
     // The user may have disconnected or replaced the session during the read.
     if (this.current !== s || (view && view.session !== id))
       return view ? this.describe(view) : { session_id: id, state: "closed", control: false };
     if (["closed", "failed"].includes(s.status.state)) {
-      await s.native.close();
-      await s.release();
+      await this.dispose(s);
     }
     return {
       ...s.status,
@@ -149,6 +162,22 @@ export class Sessions {
         next_step: "The connection ended. Stop waiting and do not automatically reconnect or replay actions.",
       } : {}),
     };
+  }
+  private async waitStatus(request: Promise<Data>, signal?: AbortSignal) {
+    if (!signal) return request;
+    let abort: () => void = () => {};
+    try {
+      return await Promise.race([request, new Promise<never>((_, reject) => {
+        abort = () => reject(new Failure("CANCELLED"));
+        signal.addEventListener("abort", abort, { once: true });
+        if (signal.aborted) abort();
+      })]);
+    } finally {
+      signal.removeEventListener("abort", abort);
+    }
+  }
+  private dispose(s: Session): Promise<void> {
+    return s.closing ??= s.native.close().finally(() => s.release());
   }
   async waitForConnection(viewId: string, waitMs: number, signal?: AbortSignal): Promise<Data> {
     const deadline = Date.now() + waitMs;
@@ -253,18 +282,23 @@ export class Sessions {
   ): Promise<Data> {
     if (this.closing) throw new Failure("SESSION_CLOSED");
     if (this.connecting) throw new Failure("BUSY");
-    if (
-      this.current &&
-      !["closed", "failed", "disconnected"].includes(
-        (await this.status(this.current.id)).state,
-      )
-    )
-      throw new Failure("SESSION_LIMIT");
-    this.connecting = true;
+    // Reserve the single connection slot before the first await.
+    const controller = this.connecting = new AbortController();
+    signal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+    let complete!: () => void;
+    this.connectionDone = new Promise<void>((resolve) => { complete = resolve; });
     let release: (() => Promise<void>) | undefined;
     let native: NativeClient | undefined;
+    let session: Session | undefined;
     try {
+      if (this.current && !["closed", "failed", "disconnected"].includes(
+        (await this.status(this.current.id, undefined, signal)).state,
+      )) throw new Failure("SESSION_LIMIT");
       if (this.current) await this.disconnect(this.current.id);
+      if (view) {
+        view.disconnected = false;
+        view.connectionError = undefined;
+      }
       release = await this.store.lock(
         `device:${d.server}:${d.port}:${d.device_id}`,
       );
@@ -281,12 +315,13 @@ export class Sessions {
         join(this.store.directory, "logs"),
         this.videoOptions ?? (await this.store.config()).video,
       );
-      const s: Session = {
+      const s: Session = session = {
         id: token(),
         device: d,
         native,
         status: {},
         release,
+        connecting: true,
       };
       this.current = s;
       if (view) {
@@ -306,8 +341,11 @@ export class Sessions {
       while (Date.now() < deadline) {
         if (this.closing || signal?.aborted) throw new Failure("CANCELLED");
         s.status = await native.request("status", {}, 5000, signal);
-        if (s.status.state === "ready" && s.status.frame_age_ms <= 2000)
+        if (this.current !== s || signal.aborted) throw new Failure("CANCELLED");
+        if (s.status.state === "ready" && typeof s.status.frame_age_ms === "number" && s.status.frame_age_ms <= 2000) {
+          s.connecting = false;
           return { ...s.status, session_id: s.id, device_alias: s.device.alias };
+        }
         if (["failed", "closed", "disconnected"].includes(s.status.state))
           throw new Failure(
             s.status.error === "incorrect_password"
@@ -318,14 +356,23 @@ export class Sessions {
       }
       throw new Failure("CONNECTION_TIMEOUT");
     } catch (error) {
-      await native?.close();
-      await release?.();
+      if (session) await this.dispose(session);
+      else {
+        await native?.close();
+        await release?.();
+      }
       if (this.current?.native === native) this.current = undefined;
-      if (view) view.session = undefined;
-      throw error;
+      const reason = signal.aborted ? new Failure("CANCELLED") : error;
+      if (view && (!view.session || view.session === session?.id)) {
+        view.session = undefined;
+        if (!view.disconnected) view.connectionError = failure(reason);
+      }
+      throw reason;
     } finally {
       password = "";
-      this.connecting = false;
+      this.connecting = undefined;
+      this.connectionDone = undefined;
+      complete();
     }
   }
   async screenshot(p: Data, signal?: AbortSignal): Promise<Data> {
@@ -369,14 +416,15 @@ export class Sessions {
   }
   async disconnect(id: string) {
     const s = this.session(id);
-    await s.native.close();
-    await s.release();
-    if (this.current === s) this.current = undefined;
+    if (s.connecting) this.connecting?.abort();
     for (const v of this.views.values())
       if (v.session === id) {
         v.session = undefined;
         v.disconnected = true;
+        v.connectionError = undefined;
       }
+    await this.dispose(s);
+    if (this.current === s) this.current = undefined;
     return { session_id: id, state: "closed" };
   }
   async viewerControl(v: View, operation: string) {
@@ -428,7 +476,10 @@ export class Sessions {
   }
   async close() {
     this.closing = true;
+    this.connecting?.abort();
+    const pending = this.connectionDone;
     if (this.current) await this.disconnect(this.current.id);
+    await pending;
     this.views.clear();
   }
 }

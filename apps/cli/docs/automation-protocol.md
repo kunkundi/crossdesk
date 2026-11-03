@@ -93,6 +93,8 @@ NV12 frames must be tightly packed, even dimensions, at most 8192 per axis and 1
 
 `after_frame_id` requires `generation`. A screenshot waits up to `timeout_ms` for a newer frame; a preview can return `{unchanged:true, frame_age_ms, stale, generation, frame_id}`. Neither path treats an image as an input acknowledgement.
 
+`timeout_ms` bounds frame/worker availability, not the subsequent PNG encoding. With `timeout_ms: 0`, a fresh eligible frame is encoded immediately if the worker and queue are idle; otherwise return `FRAME_TIMEOUT` or `BUSY`. Captures of the same priority retain arrival order. Encoding still rejects obsolete geometry and frames that become older than two seconds. Terminal rendering also honors cancellation without sending a second result when the worker finishes.
+
 ## Actions
 
 All coordinates refer to the immutable returned observation image. The native layer maps them through its source rectangle to normalized remote coordinates, without terminal layout padding. Coordinates must satisfy `0 <= x < image_width` and `0 <= y < image_height`. Observations expire after 30 seconds, retain at most 32 entries, and are invalidated by geometry/display generation changes.
@@ -106,11 +108,15 @@ Supported payloads:
 - `move`: `x`, `y`.
 - `click`, `double_click`: `x`, `y`, optional `button` (`left`, `right`, `middle`).
 - `scroll`: `x`, `y`, `direction` (`up`, `down`, `left`, `right`), optional `ticks` (1–10).
-- `drag`: `path` of 2–128 `{x,y}` points, optional `duration_ms` (100–2000).
+- `drag`: `path` of 2–128 `{x,y}` points, optional `duration_ms` (100–2000), optional `button` (`left`, `right`, `middle`; default `left`).
 - `key_press`: `key`; `hotkey`: 2–6 unique `keys`.
 - `type_text`: `text`, at most 16 KiB UTF-8; requires negotiated remote text-input capability.
 
+All pointer actions and `key_press` accept optional `modifiers`, an array of at most four unique names from `CTRL`, `ALT`, `SHIFT`, `META`. They are pressed before the action and released afterwards in reverse order; a `key_press` cannot also list its own key as a modifier. `hotkey` already describes the complete chord and does not accept `modifiers`. Punctuation VK names are `SEMICOLON`, `EQUAL`, `COMMA`, `MINUS`, `PERIOD`, `SLASH`, `BACKQUOTE`, `BRACKET_LEFT`, `BACKSLASH`, `BRACKET_RIGHT`, `QUOTE`; these name keys, not layout-independent text.
+
 Only one input sequence runs at once. Timed steps are advanced by the owner loop; cancellation, disconnect, display changes and pause release held buttons/keys. A failed send is conservatively considered potentially submitted.
+
+New actions require a current frame no older than two seconds as well as a valid observation. Cached operation lookups remain available with a stalled feed or paused control. Failed key/button releases remain tracked for subsequent cleanup, including after control is disabled; a successful local send still does not prove remote execution. Invalid display indices leave existing observations and input sequences intact.
 
 Results use `status: submitted | in_progress | failed_before_submit | outcome_unknown`, with `operation_id`, `retryable`, `side_effect_possible` and, for completed actions, `generation`/`after_frame_id`. The same operation ID and arguments retrieve the cached result; different arguments conflict. Retention is bounded to 128 entries, with entries older than five minutes eligible for removal on a new action. Never retry an uncertain effect with a new ID. `submitted` does not claim remote execution.
 

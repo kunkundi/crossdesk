@@ -61,6 +61,8 @@ Windows 和 Linux 使用各自构建产物路径；`--native-binary` 必须指�
 
 `crossdesk_open` 立即返回，让 Apps 宿主有机会渲染面板；等待连接在后续 `crossdesk_get_session` 调用中完成。按 `view_id` 查询默认最多等待 25 秒，`wait_ms: 0` 则立即查询；未就绪时返回 `wait_timed_out: true`，Agent 在原任务仍待执行时继续等待。按 `session_id` 查询仍立即返回。取消等待只取消本次查询，不断开用户正在建立或使用的连接。用户主动断开后返回 `closed`，Agent 停止等待，不自动重连。
 
+面板发起的连接失败后，按 `view_id` 等待也会返回 `failed` 和错误码，避免 Agent 一直停留在等待用户状态。断开正在建立的连接会取消整个连接尝试。多个面板和 Agent 同时查询状态时共用一次原生查询，单次查询取消或暂时繁忙不会断开会话。`crossdesk_connect` 在连接成功但面板初始化失败时仍返回有效的 `session_id`，并附加 `panel_error`。
+
 自动继续依赖宿主保持当前 Agent 任务及工具调用流程。它不通过网页伪造用户消息，也不承诺从已经结束的对话中主动唤醒 Agent；此类唤醒由宿主负责。
 
 人工暂停由原生层锁定，模型不能通过 `set_control(true)` 恢复；只有当前授权面板的恢复按钮可以恢复。仅查看连接不能升级为控制连接，需重新连接并授权。关闭/隐藏面板仅停止预览，远程会话保留；断开按钮或 `crossdesk_disconnect` 才结束会话。
@@ -162,7 +164,15 @@ Apps 依赖宿主遵守 app-only 工具可见性和 `_meta` 的模型不可见�
 
 动作包括 `move`、`click`、`double_click`、`scroll`、`drag`、`key_press`、`hotkey`、`type_text`。不提供 shell、任意键按下保持、剪贴板或文件操作。按键使用 Windows VK 对应的标准名称：`A`–`Z`、`0`–`9`、`F1`–`F12`、`CTRL`、`ALT`、`SHIFT`、`META`、`ENTER`、`ESC`、方向键等；应用快捷键仍需根据远端系统选择。
 
+鼠标动作和 `key_press` 支持可选的 `modifiers: ["CTRL", "ALT", "SHIFT", "META"]`（选择需要的键，不能重复），用于组合点击、选择、拖拽和快捷键。修饰键仅在本次动作期间保持，结束、取消或人工暂停时释放。`drag` 可指定 `button: "left" | "right" | "middle"`，默认左键。标点键支持 `SEMICOLON`、`EQUAL`、`COMMA`、`MINUS`、`PERIOD`、`SLASH`、`BACKQUOTE`、`BRACKET_LEFT`、`BACKSLASH`、`BRACKET_RIGHT`、`QUOTE`；这些是 VK 键位名称，实际字符取决于远端键盘布局，输入文字应使用 `type_text`。例如：
+
+```json
+{"session_id":"…","operation_id":"select-item-1","observation_id":"…","action":{"type":"click","x":120,"y":80,"modifiers":["SHIFT"]}}
+```
+
 截图默认最长边 1280，最大 2048；允许指定源帧像素区域。返回 `source_size`、`source_rect`、`image_size`、`generation`、`geometry_epoch`、`frame_id`、`frame_age_ms` 和 `observation_id`。动作坐标使用返回图像坐标，不使用浏览器 CSS 像素。观测保留最多 32 个，30 秒过期；切换显示器、连接代际或图像几何变化立即失效。截图使用不超过 2 秒的帧，PNG 不超过 2 MiB，必要时继续缩小输出并返回真实尺寸。
+
+`timeout_ms` 限制等待可用帧的时间，PNG 编码独立执行；`0` 表示只使用当前已就绪的新鲜帧，无帧返回 `FRAME_TIMEOUT`，编码器繁忙返回 `BUSY`。截图按到达顺序处理，并优先于预览。视频超过 2 秒未更新时拒绝新的键鼠输入，恢复新鲜画面后可继续；已提交操作的去重查询仍可读取原结果。
 
 `operation_id` 在当前原生会话中缓存最近 128 个操作，至少在未被容量淘汰的 5 分钟窗口内支持同参数查询；不同参数复用 ID 返回冲突。`submitted` 仅说明本地发送完成，远端没有执行 ACK。超时、断网、取消或发送失败可能返回 `outcome_unknown`/`side_effect_possible`，禁止自动重放。`observe_after` 默认开启，后续图像只证明取得更新帧，不证明操作执行成功。
 
@@ -211,3 +221,11 @@ npm run pack:npm -- --out-dir /absolute/path/artifacts
 脚本生成可发布 tarball，包含面板、运行代码、源代码、许可和固定版本的五个平台可选依赖。CI 的 `MCP package` 工作流仅构建并上传 `mcp-package`，不发布 npm。原生包继续由 CLI 工作流构建，`doctor` 必须同时声明自动化协议和 `automation_video_protocols: ["h264-annexb/1", "nv12/1"]` 和 `automation_video_decoders: ["auto", "software"]`，以及 `automation_video_transport: "loopback-websocket/1"`、`automation_terminal_protocol: "ansi/1"`；先发布对应 0.2.0 平台包，再发布 MCP tarball。尚未进行真实跨平台发布/远端验收时，不应把构建成功等同于各宿主和设备上的联调完成。
 
 从发布 tarball 重建 TypeScript/面板时，将包中的 `build-package.json` 复制为 `package.json`，运行 `npm ci && npm run build`。原生源码和依赖来源随平台包提供，详见 [源码来源](../cli/docs/source-provenance.md)。
+
+## 本地审阅验证（2026-11-03）
+
+动作参数校验和输入步骤生成集中在 `apps/cli/automation_protocol.*`，主循环负责调度、取消和权限检查。截图按色度网格对齐后仅转换所需区域，PNG 在容量受限的缓冲区中单次压缩；原生帧仅在没有其他读取者时复用内存。Node 按行累计响应字节，在完整响应到达时解码，避免反复扫描和复制大截图。
+
+本机 macOS arm64 完成 TypeScript/面板构建、原生 CLI 构建、现有 wire/keyboard-state 测试，以及工程外的 MCP、会话和原生动作回归检查。ASan/UBSan 检查覆盖动作调度和输入清理；140 组随机图像覆盖完整帧、奇偶裁剪边界、缩放及容量回退，优化前后 PNG 字节一致。
+
+使用 1920 × 1080 合成 NV12、最长边 1280、每项 6 次的 `-O2` 本地基准：完整画面编码约 22.5 → 11.5 ms，321 × 241 裁剪约 2.1 → 0.9 ms。数字仅衡量图像转换与编码，不包含网络、解码、远端执行或宿主渲染；未连接真实远端或完成 Windows/Linux 验收。额外测试代码、脚本、数据和产物均存放于工程外系统临时目录。

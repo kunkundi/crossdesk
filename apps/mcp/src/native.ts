@@ -95,8 +95,10 @@ export class NativeClient {
   private child: ChildProcess;
   private pending = new Map<number, Pending>();
   private sequence = 0;
-  private buffer = "";
+  private chunks: Buffer[] = [];
+  private bufferedBytes = 0;
   private closed = false;
+  private exited = false;
   private closing?: Promise<void>;
   constructor(binary: string, server: string, port: number, logs: string,
     readonly videoOptions: VideoOptions = { decode_path: "browser", decoder: "auto" }) {
@@ -122,12 +124,14 @@ export class NativeClient {
         env: nativeEnvironment(),
       },
     );
-    this.child.stdout!.setEncoding("utf8");
-    this.child.stdout!.on("data", (part: string) => this.receive(part));
+    this.child.stdout!.on("data", (part: Buffer) => this.receive(part));
     this.child.stdin!.on("error", () => this.fail());
     this.child.stdio[3]!.on("error", () => this.fail());
     this.child.once("error", () => this.fail());
-    this.child.once("exit", () => this.fail());
+    // Process exit can precede the final stdout data. Drain replies until EOF
+    // or close before rejecting requests that have no response.
+    this.child.once("close", () => { this.exited = true; this.fail(); });
+    this.child.stdout!.once("end", () => this.fail());
   }
   async connect(
     device: string,
@@ -161,8 +165,8 @@ export class NativeClient {
     timeout = 7000,
     signal?: AbortSignal,
   ): Promise<Data> {
-    if (this.closed)
-      return Promise.reject(new Failure("SESSION_CLOSED", method === "action"));
+    if (this.closed || (this.closing && method !== "disconnect"))
+      return Promise.reject(new Failure("SESSION_CLOSED"));
     if (signal?.aborted) return Promise.reject(new Failure("CANCELLED"));
     if (this.pending.size >= 32 || this.child.stdin!.writableLength > 262144)
       return Promise.reject(new Failure("BUSY", false, true));
@@ -201,22 +205,30 @@ export class NativeClient {
       this.child.stdin!.write(line);
     });
   }
-  private receive(part: string) {
-    this.buffer += part;
-    if (Buffer.byteLength(this.buffer) > 8 * 1024 * 1024) {
-      this.fail();
-      this.child.kill();
-      return;
-    }
-    for (;;) {
-      const end = this.buffer.indexOf("\n");
-      if (end < 0) break;
-      const line = this.buffer.slice(0, end);
-      this.buffer = this.buffer.slice(end + 1);
+  private receive(part: Buffer) {
+    if (this.closed) return;
+    for (let start = 0; start < part.length;) {
+      const end = part.indexOf(10, start);
+      const chunk = part.subarray(start, end < 0 ? part.length : end);
+      this.bufferedBytes += chunk.length;
+      if (this.bufferedBytes > 4 * 1024 * 1024) {
+        this.fail();
+        this.child.kill();
+        return;
+      }
+      this.chunks.push(chunk);
+      if (end < 0) return;
+      // One allocation and UTF-8 decode per response, including split UTF-8
+      // codepoints. Do not repeatedly scan/copy a multi-megabyte PNG response.
+      const line = this.chunks.length === 1 ? chunk : Buffer.concat(this.chunks, this.bufferedBytes);
+      this.chunks = [];
+      this.bufferedBytes = 0;
+      start = end + 1;
       try {
-        if (Buffer.byteLength(line) > 4 * 1024 * 1024) throw new Error();
-        const reply = JSON.parse(line);
-        if (!Number.isSafeInteger(reply.id) || typeof reply.ok !== "boolean")
+        const reply = JSON.parse(line.toString("utf8"));
+        if (!reply || !Number.isSafeInteger(reply.id) || reply.id < 0 || typeof reply.ok !== "boolean" ||
+            (reply.ok && (!reply.result || typeof reply.result !== "object" || Array.isArray(reply.result))) ||
+            (!reply.ok && (!reply.error || typeof reply.error.code !== "string")))
           throw new Error();
         const p = this.pending.get(reply.id);
         if (!p) continue;
@@ -242,6 +254,8 @@ export class NativeClient {
   }
   private fail() {
     this.closed = true;
+    this.chunks = [];
+    this.bufferedBytes = 0;
     for (const p of this.pending.values()) {
       p.clean();
       p.reject(new Failure("SESSION_CLOSED", p.action));
@@ -254,13 +268,13 @@ export class NativeClient {
       if (!this.closed)
         await this.request("disconnect", {}, 1000).catch(() => {});
       this.child.stdin?.end();
-      if (this.child.exitCode === null && this.child.signalCode === null)
+      if (!this.exited && this.child.exitCode === null && this.child.signalCode === null)
         await new Promise<void>((resolve) => {
           const kill = setTimeout(() => {
             this.child.kill("SIGKILL");
-            resolve();
           }, 2000);
-          this.child.once("exit", () => {
+          // Keep the device lock until the child really exits.
+          this.child.once("close", () => {
             clearTimeout(kill);
             resolve();
           });

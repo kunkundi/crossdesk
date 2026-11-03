@@ -288,6 +288,8 @@ void ControllerSession::Fail(const char *reason) {
   state_ = "failed";
   control_ = false;
   ClosePeers();
+  keys_.clear();
+  buttons_.clear();
 }
 void ControllerSession::Disconnect() {
   if (state_ == "closed" && !control_)
@@ -295,6 +297,8 @@ void ControllerSession::Disconnect() {
   ReleaseInput();
   control_ = false;
   ClosePeers();
+  keys_.clear();
+  buttons_.clear();
   state_ = "closed";
 }
 bool ControllerSession::SelectDisplay(int index) {
@@ -367,30 +371,34 @@ void ControllerSession::SetControl(bool enabled) {
   control_ = enabled;
 }
 void ControllerSession::ReleaseInput() {
-  auto keys = keys_;
-  for (int k : keys)
-    Key(k, false);
+  // Release buttons before modifiers, so interrupted modified drags do not
+  // turn into an unmodified drop. Failed releases remain tracked for cleanup.
   auto buttons = buttons_;
   for (int b : buttons)
     Pointer(pointer_x_, pointer_y_, b + 1);
-  keys_.clear();
-  buttons_.clear();
+  auto keys = keys_;
+  for (auto it = keys.rbegin(); it != keys.rend(); ++it)
+    Key(*it, false);
 }
 bool ControllerSession::Key(int key, bool down) {
-  if (!control_ || !Connected() || key < 0 || key > 255)
+  if ((!control_ && (down || !keys_.count(key))) || !Connected() || key < 0 ||
+      key > 255)
     return false;
   RemoteAction a{};
   a.type = keyboard;
   a.k = {size_t(key), 0, false, down ? key_down : key_up};
   if (down)
     keys_.insert(key);
-  else
+  const bool sent = Send(kKeyboardStream, a.to_json());
+  if (sent && !down)
     keys_.erase(key);
-  return Send(kKeyboardStream, a.to_json());
+  return sent;
 }
 bool ControllerSession::Pointer(float x, float y, int flag, int wheel) {
-  if (!control_ || !Connected() || !std::isfinite(x) || !std::isfinite(y) ||
-      x < 0 || y < 0 || x > 1 || y > 1 || flag < 0 || flag > 8 ||
+  const bool releasing =
+      flag >= 2 && flag <= 6 && !(flag & 1) && buttons_.count(flag - 1);
+  if ((!control_ && !releasing) || !Connected() || !std::isfinite(x) ||
+      !std::isfinite(y) || x < 0 || y < 0 || x > 1 || y > 1 || flag < 0 || flag > 8 ||
       std::abs(int64_t(wheel)) > 1200)
     return false;
   RemoteAction a{};
@@ -398,13 +406,12 @@ bool ControllerSession::Pointer(float x, float y, int flag, int wheel) {
   a.m = {x, y, wheel, static_cast<MouseFlag>(flag)};
   pointer_x_ = x;
   pointer_y_ = y;
-  if (flag >= 1 && flag <= 6) {
-    if (flag & 1)
-      buttons_.insert(flag);
-    else
-      buttons_.erase(flag - 1);
-  }
-  return Send(kMouseStream, a.to_json());
+  if (flag >= 1 && flag <= 6 && (flag & 1))
+    buttons_.insert(flag);
+  const bool sent = Send(kMouseStream, a.to_json());
+  if (sent && flag >= 2 && flag <= 6 && !(flag & 1))
+    buttons_.erase(flag - 1);
+  return sent;
 }
 bool ControllerSession::Text(const std::string &text) {
   if (!control_ || !Connected() || !text_supported_ || text.empty() ||

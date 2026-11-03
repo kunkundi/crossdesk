@@ -70,6 +70,7 @@ public:
   void SetPreview(int fps, int width, int height, int quality = -1,
                   int max_bitrate_bps = -1);
   void SetControl(bool enabled);
+  void ReleaseInput();
   bool Text(const std::string &utf8);
   bool Key(int key, bool down);
   bool Pointer(float x, float y, int flag, int wheel = 0);
@@ -93,7 +94,6 @@ private:
   Params Parameters();
   bool Send(const char *stream, const std::string &payload);
   void Preview();
-  void ReleaseInput();
   static void Signal(SignalStatus, const char *, size_t, void *);
   static void Connection(ConnectionStatus, const char *, size_t, void *);
   static void Data(const char *, size_t, const char *, size_t, const char *,

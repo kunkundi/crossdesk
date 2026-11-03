@@ -203,17 +203,28 @@ export function createServer(
     "Connect only a saved, previously authorized device with available credentials. AUTH_REQUIRED means the user must authorize through the panel or setup.",
     async (p, ctx) => {
       const selected = sessions.choose(supported(ctx));
-      const result = await sessions.connectSaved(
-        p.device_alias,
-        p.mode,
-        p.display_index,
-        ctx.mcpReq.signal,
-      );
+      // Reserve panel capacity before starting a connection. Once connected,
+      // panel setup errors must not hide the live session from the caller.
       const v = sessions.create(selected, p.device_alias);
+      let result: Data;
+      try {
+        result = await sessions.connectSaved(
+          p.device_alias,
+          p.mode,
+          p.display_index,
+          ctx.mcpReq.signal,
+        );
+      } catch (error) {
+        sessions.views.delete(v.id);
+        throw error;
+      }
       v.session = result.session_id;
+      let panelResult: Data;
+      try { panelResult = await openPanel(v); }
+      catch (error) { panelResult = { ...sessions.describe(v), panel_error: failure(error) }; }
       return viewResult(v, {
         ...result,
-        ...await openPanel(v),
+        ...panelResult,
         state: result.state,
       });
     },
