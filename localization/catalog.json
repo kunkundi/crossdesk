@@ -10571,6 +10571,30 @@
       "fr": "Impossible de copier les informations d’association. Réessayez.",
       "es": "No se pudo copiar la información de emparejamiento. Inténtelo de nuevo.",
       "pt-BR": "Não foi possível copiar as informações de pareamento. Tente novamente."
+    },
+    "重试更新": {
+      "zh-Hans": "重试更新",
+      "en": "Retry update",
+      "ru": "Повторить",
+      "zh-Hant": "重試更新",
+      "ja": "再試行",
+      "ko": "다시 시도",
+      "de": "Erneut versuchen",
+      "fr": "Réessayer",
+      "es": "Reintentar",
+      "pt-BR": "Tentar novamente"
+    },
+    "更新未完成，请手动下载安装。": {
+      "zh-Hans": "更新未完成，请手动下载安装。",
+      "en": "Update did not complete. Download and install manually.",
+      "ru": "Обновление не завершено. Скачайте и установите вручную.",
+      "zh-Hant": "更新未完成，請手動下載安裝。",
+      "ja": "アップデートが完了しませんでした。手動でダウンロードしてインストールしてください。",
+      "ko": "업데이트가 완료되지 않았습니다. 수동으로 다운로드하여 설치하세요.",
+      "de": "Das Update wurde nicht abgeschlossen. Laden Sie es herunter und installieren Sie es manuell.",
+      "fr": "La mise à jour n'a pas été effectuée. Téléchargez-la et installez-la manuellement.",
+      "es": "La actualización no se completó. Descárguela e instálela manualmente.",
+      "pt-BR": "A atualização não foi concluída. Baixe e instale manualmente."
     }
   },
   "desktop": {
@@ -10784,10 +10808,12 @@
     "access_website": "访问官网: ",
     "update": "更新",
     "install_update": "安装更新",
+    "retry_update": "重试更新",
     "manual_download": "手动下载",
     "install_update_confirm": "下载完成后将关闭 CrossDesk 并安装更新，当前连接和文件传输会中断。安装需要系统授权，完成后重新启动。是否继续？",
     "update_preparing": "正在准备更新…",
     "update_install_failed": "更新未完成，可重试或手动安装。",
+    "update_install_failed_manual": "更新未完成，请手动下载安装。",
     "connection_alias": "修改名称",
     "delete_connection": "删除连接",
     "connect_to_this_connection": "发起连接",
@@ -11574,7 +11600,9 @@
       "暂无可信设备",
       "请核对控制端指纹。",
       "配对信息已复制。",
-      "无法复制配对信息，请重试。"
+      "无法复制配对信息，请重试。",
+      "重试更新",
+      "更新未完成，请手动下载安装。"
     ],
     "android": [
       " · 已完成",

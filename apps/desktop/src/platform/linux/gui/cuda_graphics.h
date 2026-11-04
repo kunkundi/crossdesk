@@ -9,8 +9,10 @@
 
 namespace crossdesk {
 
-// Call before SDL or Slint initializes EGL/GLX. Hybrid laptops otherwise
-// create the GUI context on the integrated GPU while NVDEC uses NVIDIA.
+// Call before SDL or Slint initializes EGL/GLX. Select NVIDIA on hybrid
+// systems with a PRIME offload GPU screen so GL can share NVDEC buffers.
+// Keep the default driver when NVIDIA already owns the display or the
+// display server does not advertise offload support.
 void ConfigureLinuxCudaGraphics();
 
 }  // namespace crossdesk

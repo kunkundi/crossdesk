@@ -1980,9 +1980,14 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
     if (updater_ && updater_->busy()) updater_->Cancel();
 #endif
   });
-  main->on_open_download([this, main] {
+  main->on_open_manual_download([this] {
     const auto& latest = update_checker_->latest();
+    OpenUrl(latest && !latest->download_url.empty() ? latest->download_url
+                                                   : "https://crossdesk.cn");
+  });
+  main->on_open_download([this, main] {
 #if CROSSDESK_HAS_UPDATER
+    const auto& latest = update_checker_->latest();
     if (updater_ && updater_->busy()) return;
     if (updater_ && latest && updater_->Available(latest->update_envelope)) {
       main->set_about_open(false);
@@ -1991,8 +1996,7 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
       return;
     }
 #endif
-    OpenUrl(latest && !latest->download_url.empty() ? latest->download_url
-                                                   : "https://crossdesk.cn");
+    main->invoke_open_manual_download();
   });
   main->on_confirm_update([this, main] {
     if (!main->get_update_confirm_open()) return;
@@ -2004,8 +2008,12 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
         !updater_->Available(latest->update_envelope)) return;
     updater_->Start(latest->update_envelope);
     // Disable both windows immediately, before the next polling tick.
-    for (const auto& window : {ui_->main, ui_->wall})
+    for (const auto& window : {ui_->main, ui_->wall}) {
       window->set_update_install_busy(updater_->busy());
+      window->set_update_install_failed(
+          updater_->state() == updater::Controller::State::Failed);
+      window->set_update_install_status("");
+    }
 #endif
   });
   about::Populate(ui_->Window(gallery_window));
@@ -2743,18 +2751,22 @@ void GuiApplication::PollUpdateCheck() {
     }
     const auto& latest = update_checker_->latest();
     const bool can_install = latest && updater_->Available(latest->update_envelope);
+    const bool failed = updater_->state() == updater::Controller::State::Failed;
     const int language = localization::detail::ClampLanguageIndex(localization_language_index_);
     std::string status;
     if (updater_->busy()) {
       status = localization::update_preparing[language];
       if (updater_->state() == updater::Controller::State::Downloading)
         status += " " + std::to_string(updater_->progress()) + "%";
-    } else if (updater_->state() == updater::Controller::State::Failed) {
-      status = localization::update_install_failed[language] + "\n" + updater_->error();
+    } else if (failed) {
+      status = (can_install ? localization::update_install_failed[language]
+                            : localization::update_install_failed_manual[language]) +
+               "\n" + updater_->error();
     }
     for (const auto& main : {ui_->main, ui_->wall}) {
       main->set_update_install_available(can_install);
       main->set_update_install_busy(updater_->busy());
+      main->set_update_install_failed(failed);
       main->set_update_install_status(UiText(status));
     }
   }

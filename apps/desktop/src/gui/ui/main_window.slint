@@ -108,6 +108,7 @@ export global UiStrings {
     in-out property <string> later: "Later";
     in-out property <string> download: "Download";
     in-out property <string> install-update: "Install update";
+    in-out property <string> retry-update: "Retry update";
     in-out property <string> install-update-confirm;
     in-out property <string> input-password: "Input password";
     in-out property <string> reinput-password: "Incorrect password, please try again";
@@ -593,6 +594,7 @@ export component MainWindow inherits Window {
     in property <bool> update-available: false;
     in property <bool> update-install-available: false;
     in property <bool> update-install-busy: false;
+    in property <bool> update-install-failed: false;
     changed update-install-available => {
         if !root.update-install-available { root.update-confirm-open = false; }
     }
@@ -600,7 +602,8 @@ export component MainWindow inherits Window {
         if root.update-install-busy { root.update-confirm-open = false; }
     }
     in property <string> update-install-status: "";
-    private property <string> update-action-text: root.update-install-available ? UiStrings.install-update : UiStrings.download;
+    private property <string> update-action-text: !root.update-install-available ? UiStrings.download
+        : root.update-install-failed && !root.update-install-busy ? UiStrings.retry-update : UiStrings.install-update;
     in property <UpdateCheckStatus> update-check-status: idle;
     private property <string> update-status-text:
         root.update-check-status == UpdateCheckStatus.checking ? UiStrings.checking-for-updates :
@@ -695,6 +698,7 @@ export component MainWindow inherits Window {
     callback cancel-self-hosted-settings;
     callback browse-save-path;
     callback open-download;
+    callback open-manual-download;
     callback confirm-update;
     callback cancel-update;
     callback open-website;
@@ -3299,6 +3303,14 @@ export component MainWindow inherits Window {
                             height: 34px;
                             text: UiStrings.later;
                             clicked => { root.cancel-update(); root.update-open = false; }
+                        }
+                        if root.update-install-failed && root.update-install-available: WorkbenchButton {
+                            width: max(110px, manual-download-metrics.preferred-width + 24px);
+                            height: 34px;
+                            enabled: !root.update-install-busy;
+                            text: UiStrings.download;
+                            clicked => { root.open-manual-download(); }
+                            manual-download-metrics := Text { visible: false; text: UiStrings.download; font-size: 12px; }
                         }
                         WorkbenchButton {
                             width: max(110px, update-action-metrics.preferred-width + 24px);

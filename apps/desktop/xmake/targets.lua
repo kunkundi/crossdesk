@@ -233,6 +233,17 @@ function setup_targets()
         add_files("apps/desktop/tests/slint_ui_smoke_test.cpp")
         add_rules("crossdesk.slint_runtime")
 
+    if is_os("linux") and is_arch("x86_64") and is_config("USE_CUDA", true) then
+        target("linux_cuda_graphics_test")
+            set_kind("binary")
+            set_default(false)
+            add_packages("spdlog")
+            add_includedirs("apps/desktop/src", "apps/desktop/src/log",
+                "deps/submodules/minirtc/src/api")
+            add_files("apps/desktop/tests/linux_cuda_graphics_test.cpp",
+                "apps/desktop/src/platform/linux/gui/cuda_graphics.cpp")
+    end
+
     target("slint_stream_render_test")
         set_kind("binary")
         set_languages("c++20")
