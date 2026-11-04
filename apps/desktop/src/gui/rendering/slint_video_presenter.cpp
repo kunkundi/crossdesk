@@ -88,6 +88,11 @@ struct SlintVideoPresenter::Impl {
   VideoRenderSize gl_pending_size;
   bool gl_pending_dirty = false;
   VideoLatencyFrame gl_pending_timing;
+  bool gl_use_pixel_buffers = false;
+  VideoRenderer::RenderOutcome gl_last_outcome;
+  std::string gl_rendered_stream;
+  std::string gl_requested_stream;
+  uint64_t gl_requested_sequence = 0;
 #endif
 
   SurfaceState CurrentState() const {
@@ -125,6 +130,13 @@ struct SlintVideoPresenter::Impl {
           auto* opengl_renderer =
               dynamic_cast<OpenGlVideoRenderer*>(&renderer);
           if (state == slint::RenderingState::RenderingSetup) {
+            gl_use_pixel_buffers = false;
+            gl_last_outcome = {};
+            gl_rendered_stream.clear();
+            gl_requested_stream.clear();
+            gl_requested_sequence = 0;
+            displayed_frame_sequence.clear();
+            seeded_frame_sequence.clear();
             GLuint texture = 0;
             glGenTextures(1, &texture);
             if (texture == 0) {
@@ -165,9 +177,28 @@ struct SlintVideoPresenter::Impl {
                 rounded_window ? static_cast<int>(std::lround(
                                      kStreamWindowCornerRadius * scale_factor))
                                : 0;
-            opengl_renderer->RenderLatest(
+            const auto outcome = opengl_renderer->RenderLatest(
                 surface.selected_stream, static_cast<int>(window_size.width),
                 static_cast<int>(window_size.height), top_inset, corner_radius);
+            if (outcome.result == VideoRenderer::RenderResult::idle) {
+              return;
+            }
+            if (outcome.result == VideoRenderer::RenderResult::failed) {
+              // RenderLatest stops native submissions. Apply the UI fallback
+              // on the next UI tick, outside Slint's rendering callback.
+              gl_use_pixel_buffers = true;
+              LOG_WARN("Switching Slint video presentation to pixel buffers");
+            }
+            const bool changed = gl_rendered_stream != surface.selected_stream ||
+                gl_last_outcome.result != outcome.result ||
+                gl_last_outcome.sequence != outcome.sequence ||
+                gl_last_outcome.width != outcome.width ||
+                gl_last_outcome.height != outcome.height;
+            gl_last_outcome = outcome;
+            gl_rendered_stream = surface.selected_stream;
+            if (changed) {
+              MarkDirty();
+            }
             return;
           }
 
@@ -211,6 +242,8 @@ struct SlintVideoPresenter::Impl {
             gl_pending_size = {};
             gl_pending_dirty = false;
             gl_pending_frame.clear();
+            gl_last_outcome = {};
+            gl_rendered_stream.clear();
           }
         });
 
@@ -239,6 +272,7 @@ void SlintVideoPresenter::PrepareWindow(
   impl_->attachment_attempts = kMetalAttachmentAttemptLimit;
   impl_->skip_attachment_once = true;
 #elif !defined(__OHOS__)
+  stream->set_native_video_enabled(false);
   impl_->ConfigureOpenGlNotifier();
 #endif
 }
@@ -313,7 +347,12 @@ bool SlintVideoPresenter::SelectStream(std::string remote_id) {
 }
 
 SlintVideoPresenter::PresentResult SlintVideoPresenter::Present(
-    const Frame& frame) {
+    const Frame& incoming_frame) {
+#if !defined(__APPLE__) && !defined(__OHOS__)
+  Frame frame = incoming_frame;
+#else
+  const Frame& frame = incoming_frame;
+#endif
   PresentResult result;
   if (!impl_->stream || frame.remote_id.empty()) {
     return result;
@@ -355,25 +394,54 @@ SlintVideoPresenter::PresentResult SlintVideoPresenter::Present(
   auto* opengl_renderer =
       dynamic_cast<OpenGlVideoRenderer*>(&impl_->renderer);
   if (opengl_renderer && opengl_renderer->IsReady()) {
-    opengl_renderer->SetSelectedStream(frame.remote_id);
+    bool needs_redraw = opengl_renderer->SetSelectedStream(frame.remote_id);
     if (!(*impl_->stream)->get_native_video_enabled()) {
       (*impl_->stream)->set_native_video_enabled(true);
+      needs_redraw = true;
     }
 
+    VideoRenderer::RenderOutcome outcome;
+    {
+      std::lock_guard lock(impl_->gl_mutex);
+      if (impl_->gl_rendered_stream == frame.remote_id) {
+        outcome = impl_->gl_last_outcome;
+      }
+    }
     const bool has_frame =
-        frame.width > 0 && frame.height > 0 && frame.sequence > 0;
+        outcome.result == VideoRenderer::RenderResult::rendered;
     (*impl_->stream)->set_has_frame(has_frame);
     if (has_frame) {
       (*impl_->stream)->set_receiving_text("");
-      result.width = frame.width;
-      result.height = frame.height;
-      result.new_frame = impl_->MarkPresented(frame.remote_id, frame.sequence);
+      result.width = outcome.width;
+      result.height = outcome.height;
+      result.new_frame = impl_->MarkPresented(frame.remote_id, outcome.sequence);
     }
-    (*impl_->stream)->window().request_redraw();
+    // A rendering acknowledgement also schedules Present(). Do not draw the
+    // same video again solely to acknowledge it, especially for low-FPS peers.
+    if (needs_redraw || impl_->gl_requested_stream != frame.remote_id ||
+        impl_->gl_requested_sequence != frame.sequence) {
+      impl_->gl_requested_stream = frame.remote_id;
+      impl_->gl_requested_sequence = frame.sequence;
+      (*impl_->stream)->window().request_redraw();
+    }
     return result;
   }
   if ((*impl_->stream)->get_native_video_enabled()) {
     (*impl_->stream)->set_native_video_enabled(false);
+    (*impl_->stream)->set_has_frame(false);
+    (*impl_->stream)->set_frame(slint::Image{});
+    impl_->displayed_frame_sequence.clear();
+    impl_->seeded_frame_sequence.clear();
+  }
+  if (!frame.nv12 && impl_->gl_use_pixel_buffers) {
+    // Native submissions intentionally release the session's CPU buffers.
+    // Recover the retained frame so even a static remote desktop can switch
+    // immediately; subsequent decode callbacks will supply CPU frames.
+    auto pixels = std::make_shared<std::vector<unsigned char>>();
+    if (impl_->renderer.CopyLatestNv12(frame.remote_id, pixels.get(),
+                                      &frame.width, &frame.height)) {
+      frame.nv12 = std::move(pixels);
+    }
   }
 #endif
 
@@ -423,7 +491,7 @@ SlintVideoPresenter::PresentResult SlintVideoPresenter::Present(
   uint32_t texture_id = 0;
   {
     std::lock_guard lock(impl_->gl_mutex);
-    texture_id = impl_->gl_texture;
+    texture_id = impl_->gl_use_pixel_buffers ? 0 : impl_->gl_texture;
   }
   if (texture_id != 0) {
     impl_->gl_conversion_frame.resize(static_cast<size_t>(output_width) *

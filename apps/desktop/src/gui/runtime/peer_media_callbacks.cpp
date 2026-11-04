@@ -183,9 +183,11 @@ void PeerEventHandler::OnReceiveVideoBuffer(
         return;
       }
       if (submit_result == VideoRenderer::SubmitResult::dropped ||
-          submit_result == VideoRenderer::SubmitResult::failed) {
+          (submit_result == VideoRenderer::SubmitResult::failed &&
+           native_renderer->IsActive())) {
         // Keep presenting the last native frame. A later decoded frame can
-        // reuse the renderer without changing ownership mid-window.
+        // reuse an active renderer. If rendering disabled it concurrently,
+        // continue below to materialize this frame for the CPU fallback.
         props->streaming_ = true;
         return;
       }

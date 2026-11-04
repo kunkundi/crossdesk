@@ -123,6 +123,9 @@ struct OpenGlFunctions {
   PFNGLUNIFORM4FPROC uniform_4f = nullptr;
   PFNGLUSEPROGRAMPROC use_program = nullptr;
   PFNGLVERTEXATTRIBPOINTERPROC vertex_attrib_pointer = nullptr;
+  PFNGLGENVERTEXARRAYSPROC gen_vertex_arrays = nullptr;
+  PFNGLDELETEVERTEXARRAYSPROC delete_vertex_arrays = nullptr;
+  PFNGLBINDVERTEXARRAYPROC bind_vertex_array = nullptr;
   PFNGLGENFRAMEBUFFERSPROC gen_framebuffers = nullptr;
   PFNGLDELETEFRAMEBUFFERSPROC delete_framebuffers = nullptr;
   PFNGLBINDFRAMEBUFFERPROC bind_framebuffer = nullptr;
@@ -176,6 +179,12 @@ struct OpenGlFunctions {
            LoadOpenGlFunction(&framebuffer_texture_2d, "glFramebufferTexture2D") &&
            LoadOpenGlFunction(&check_framebuffer_status,
                               "glCheckFramebufferStatus");
+  }
+
+  bool LoadVertexArrayFunctions() {
+    return LoadOpenGlFunction(&gen_vertex_arrays, "glGenVertexArrays") &&
+           LoadOpenGlFunction(&delete_vertex_arrays, "glDeleteVertexArrays") &&
+           LoadOpenGlFunction(&bind_vertex_array, "glBindVertexArray");
   }
 
 #if CROSSDESK_OPENGL_CUDA_INTEROP
@@ -292,6 +301,8 @@ struct OpenGlVideoRenderer::Impl {
   std::atomic<bool> ready{false};
   GLuint program = 0;
   GLuint vertex_buffer = 0;
+  GLuint vertex_array = 0;
+  bool modern_gl = false;
   GLuint y_texture = 0;
   GLuint uv_texture = 0;
   GLint position_location = -1;
@@ -644,6 +655,8 @@ struct OpenGlVideoRenderer::Impl {
   void ResetGlHandles() {
     program = 0;
     vertex_buffer = 0;
+    vertex_array = 0;
+    modern_gl = false;
     y_texture = 0;
     uv_texture = 0;
     position_location = -1;
@@ -698,6 +711,13 @@ bool OpenGlVideoRenderer::Setup() {
     std::sscanf(is_gles ? version + std::strlen("OpenGL ES ") : version,
                 "%d.%d", &major, &minor);
   }
+  // Slint may fall back from GLES to a desktop core context. In that context
+  // VAO 0, legacy luminance textures and legacy shader inputs are not usable.
+  impl_->modern_gl = major >= 3;
+  if (impl_->modern_gl && !impl_->gl.LoadVertexArrayFunctions()) {
+    LOG_WARN("OpenGL NV12 underlay unavailable: vertex array functions missing");
+    return false;
+  }
   const auto *extensions = major < 3
       ? reinterpret_cast<const char *>(glGetString(GL_EXTENSIONS)) : nullptr;
   impl_->pixel_unpack_buffer_available = major >= 3 ||
@@ -727,22 +747,30 @@ bool OpenGlVideoRenderer::Setup() {
   }
 #endif
 
-  const std::string vertex_source =
-      std::string(is_gles ? "#version 100\n" : "#version 110\n") + R"glsl(
-attribute vec2 position;
-attribute vec2 texcoord;
-varying vec2 video_texcoord;
+  const std::string shader_version = is_gles
+      ? (impl_->modern_gl ? "#version 300 es\n" : "#version 100\n")
+      : (major > 3 || (major == 3 && minor >= 2) ? "#version 150\n"
+         : impl_->modern_gl ? "#version 130\n" : "#version 110\n");
+  const std::string vertex_source = shader_version +
+      (impl_->modern_gl ? "#define INPUT in\n#define OUTPUT out\n"
+                        : "#define INPUT attribute\n#define OUTPUT varying\n") + R"glsl(
+INPUT vec2 position;
+INPUT vec2 texcoord;
+OUTPUT vec2 video_texcoord;
 void main() {
   video_texcoord = texcoord;
   gl_Position = vec4(position, 0.0, 1.0);
 }
 )glsl";
-  const std::string fragment_source =
-      std::string(is_gles ? "#version 100\n"
-                           "#ifdef GL_FRAGMENT_PRECISION_HIGH\n"
-                           "precision highp float;\n"
-                           "#else\nprecision mediump float;\n#endif\n"
-                         : "#version 110\n") + R"glsl(
+  const std::string fragment_source = shader_version +
+      (is_gles ? "#ifdef GL_FRAGMENT_PRECISION_HIGH\n"
+                 "precision highp float;\n"
+                 "#else\nprecision mediump float;\n#endif\n" : "") +
+      (impl_->modern_gl
+           ? "#define INPUT in\n#define SAMPLE texture\n"
+             "#define UV_CHANNELS rg\nout vec4 fragment_color;\n"
+           : "#define INPUT varying\n#define SAMPLE texture2D\n"
+             "#define UV_CHANNELS ra\n#define fragment_color gl_FragColor\n") + R"glsl(
 uniform sampler2D y_texture;
 uniform sampler2D uv_texture;
 uniform vec2 target_size;
@@ -752,7 +780,7 @@ uniform float packed_video;
 uniform vec4 video_rect;
 uniform float corner_radius;
 uniform float video_enabled;
-varying vec2 video_texcoord;
+INPUT vec2 video_texcoord;
 // A separable Lanczos-2 low-pass filter. Each pass reduces by at most 4x,
 // so 16 taps cover its complete support even for non-integer scale ratios.
 float lanczos2(float x) {
@@ -766,7 +794,7 @@ vec4 sample_plane(sampler2D plane, vec2 size, vec2 coord) {
   // FBO textures have the opposite vertical origin to the decoded NV12 planes.
   if (packed_video > 0.5) coord.y = 1.0 - coord.y;
   if (filter_direction.x + filter_direction.y < 0.5)
-    return texture2D(plane, coord);
+    return SAMPLE(plane, coord);
   float scale = max(1.0, dot(size / video_rect.zw, filter_direction));
   float center = dot(coord * size - vec2(0.5), filter_direction);
   float first = floor(center - 2.0 * scale) + 1.0;
@@ -776,7 +804,7 @@ vec4 sample_plane(sampler2D plane, vec2 size, vec2 coord) {
     float offset = first + float(tap) - center;
     if (offset >= 2.0 * scale) break;
     float weight = lanczos2(offset / scale);
-    sum += weight * texture2D(plane, coord + filter_direction * offset / size);
+    sum += weight * SAMPLE(plane, coord + filter_direction * offset / size);
     weight_sum += weight;
   }
   return sum / weight_sum;
@@ -785,7 +813,7 @@ vec3 sample_video(vec2 coord) {
   vec4 y_sample = sample_plane(y_texture, source_size, coord);
   if (packed_video > 0.5) return y_sample.rgb;
   return vec3(y_sample.r,
-              sample_plane(uv_texture, source_size * 0.5, coord).ra);
+              sample_plane(uv_texture, source_size * 0.5, coord).UV_CHANNELS);
 }
 void main() {
   vec2 surface_point = video_texcoord * target_size;
@@ -800,7 +828,7 @@ void main() {
     vec3 yuv = sample_video(frame_texcoord);
     if (filter_direction.x + filter_direction.y > 0.5) {
       // Intermediate RGBA textures carry Y/U/V until the final conversion.
-      gl_FragColor = vec4(yuv, 1.0);
+      fragment_color = vec4(yuv, 1.0);
       return;
     }
     float y = 1.16438356 * (yuv.x - 16.0 / 255.0);
@@ -820,7 +848,7 @@ void main() {
         min(max(corner.x, corner.y), 0.0) - corner_radius;
     coverage = clamp(0.5 - distance_to_edge, 0.0, 1.0);
   }
-  gl_FragColor = vec4(rgb * coverage, coverage);
+  fragment_color = vec4(rgb * coverage, coverage);
 }
 )glsl";
 
@@ -903,6 +931,11 @@ void main() {
   };
   GLint previous_array_buffer = 0;
   glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previous_array_buffer);
+  while (glGetError() != GL_NO_ERROR) {
+  }
+  if (impl_->modern_gl) {
+    impl_->gl.gen_vertex_arrays(1, &impl_->vertex_array);
+  }
   impl_->gl.gen_buffers(1, &impl_->vertex_buffer);
   impl_->gl.bind_buffer(GL_ARRAY_BUFFER, impl_->vertex_buffer);
   impl_->gl.buffer_data(GL_ARRAY_BUFFER, sizeof(kVertices), kVertices,
@@ -918,8 +951,6 @@ void main() {
   impl_->gl.active_texture(GL_TEXTURE1);
   GLint previous_texture_1 = 0;
   glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous_texture_1);
-  while (glGetError() != GL_NO_ERROR) {
-  }
   glGenTextures(1, &impl_->y_texture);
   glGenTextures(1, &impl_->uv_texture);
   for (const auto [unit, texture] :
@@ -940,6 +971,7 @@ void main() {
 
   const GLenum setup_error = glGetError();
   if (impl_->program == 0 || impl_->vertex_buffer == 0 ||
+      (impl_->modern_gl && impl_->vertex_array == 0) ||
       impl_->y_texture == 0 || impl_->uv_texture == 0 ||
       setup_error != GL_NO_ERROR) {
     LOG_ERROR("OpenGL NV12 resource setup failed, error={}", setup_error);
@@ -950,9 +982,16 @@ void main() {
   impl_->ready.store(true, std::memory_order_release);
   const auto *vendor = reinterpret_cast<const char *>(glGetString(GL_VENDOR));
   const auto *renderer = reinterpret_cast<const char *>(glGetString(GL_RENDERER));
-  LOG_INFO("OpenGL NV12 underlay initialized ({}), vendor={}, renderer={}",
+  GLint profile = 0;
+  if (!is_gles && (major > 3 || (major == 3 && minor >= 2))) {
+    glGetIntegerv(GL_CONTEXT_PROFILE_MASK, &profile);
+  }
+  LOG_INFO("OpenGL NV12 underlay initialized ({}), vendor={}, renderer={}, "
+           "profile={}, textures={}, vao={}",
            version ? version : "unknown OpenGL version",
-           vendor ? vendor : "unknown", renderer ? renderer : "unknown");
+           vendor ? vendor : "unknown", renderer ? renderer : "unknown",
+           profile, impl_->modern_gl ? "R/RG" : "luminance",
+           impl_->vertex_array);
   return true;
 }
 
@@ -972,6 +1011,9 @@ void OpenGlVideoRenderer::Teardown() {
     glDeleteTextures(1, &impl_->uv_texture);
   if (impl_->vertex_buffer != 0 && impl_->gl.delete_buffers) {
     impl_->gl.delete_buffers(1, &impl_->vertex_buffer);
+  }
+  if (impl_->vertex_array != 0 && impl_->gl.delete_vertex_arrays) {
+    impl_->gl.delete_vertex_arrays(1, &impl_->vertex_array);
   }
   if (impl_->program != 0 && impl_->gl.delete_program) {
     impl_->gl.delete_program(impl_->program);
@@ -1056,6 +1098,9 @@ OpenGlVideoRenderer::SubmitResult OpenGlVideoRenderer::SubmitNv12Internal(
 
   auto &frames = *impl_->frames;
   std::lock_guard lock(frames.mutex);
+  if (!IsReady()) {
+    return SubmitResult::failed;
+  }
   if (frames.selected_stream != remote_id) {
     return SubmitResult::not_selected;
   }
@@ -1194,8 +1239,11 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
                                   int target_width, int target_height,
                                   int top_inset_pixels,
                                   int corner_radius_pixels) {
-  if (!IsReady() || target_width <= 0 || target_height <= 0) {
+  if (!IsReady()) {
     return {RenderResult::failed};
+  }
+  if (target_width <= 0 || target_height <= 0) {
+    return {RenderResult::idle};
   }
 
   size_t slot_index = kFrameSlotCount;
@@ -1286,10 +1334,18 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
   GLint previous_texture_1 = 0;
   glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous_texture_1);
 
-  const auto position_state = CaptureVertexAttrib(
-      impl_->gl, static_cast<GLuint>(impl_->position_location));
-  const auto texcoord_state = CaptureVertexAttrib(
-      impl_->gl, static_cast<GLuint>(impl_->texcoord_location));
+  GLint previous_vertex_array = 0;
+  VertexAttribState position_state;
+  VertexAttribState texcoord_state;
+  if (impl_->vertex_array != 0) {
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previous_vertex_array);
+    impl_->gl.bind_vertex_array(impl_->vertex_array);
+  } else {
+    position_state = CaptureVertexAttrib(
+        impl_->gl, static_cast<GLuint>(impl_->position_location));
+    texcoord_state = CaptureVertexAttrib(
+        impl_->gl, static_cast<GLuint>(impl_->texcoord_location));
+  }
 
   glDisable(GL_BLEND);
   glDisable(GL_CULL_FACE);
@@ -1401,20 +1457,26 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
       if (uploaded_texture_width != source_width ||
           uploaded_texture_height != source_height) {
         impl_->gl.active_texture(GL_TEXTURE0);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, source_width,
-                     source_height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
+        glTexImage2D(GL_TEXTURE_2D, 0,
+                     impl_->modern_gl ? GL_R8 : GL_LUMINANCE, source_width,
+                     source_height, 0,
+                     impl_->modern_gl ? GL_RED : GL_LUMINANCE, GL_UNSIGNED_BYTE,
                      y_pixels);
         impl_->gl.active_texture(GL_TEXTURE1);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, source_width / 2,
-                     source_height / 2, 0, GL_LUMINANCE_ALPHA,
+        glTexImage2D(GL_TEXTURE_2D, 0,
+                     impl_->modern_gl ? GL_RG8 : GL_LUMINANCE_ALPHA,
+                     source_width / 2, source_height / 2, 0,
+                     impl_->modern_gl ? GL_RG : GL_LUMINANCE_ALPHA,
                      GL_UNSIGNED_BYTE, uv_pixels);
       } else {
         impl_->gl.active_texture(GL_TEXTURE0);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, source_width, source_height,
-                        GL_LUMINANCE, GL_UNSIGNED_BYTE, y_pixels);
+                        impl_->modern_gl ? GL_RED : GL_LUMINANCE,
+                        GL_UNSIGNED_BYTE, y_pixels);
         impl_->gl.active_texture(GL_TEXTURE1);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, source_width / 2,
-                        source_height / 2, GL_LUMINANCE_ALPHA,
+                        source_height / 2,
+                        impl_->modern_gl ? GL_RG : GL_LUMINANCE_ALPHA,
                         GL_UNSIGNED_BYTE, uv_pixels);
       }
       const GLenum upload_error = glGetError();
@@ -1562,10 +1624,23 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
       has_video ? source_width : 0, has_video ? source_height : 0,
       has_video ? sequence : 0};
 
-  RestoreVertexAttrib(impl_->gl, static_cast<GLuint>(impl_->position_location),
-                      position_state);
-  RestoreVertexAttrib(impl_->gl, static_cast<GLuint>(impl_->texcoord_location),
-                      texcoord_state);
+  if (outcome.result == RenderResult::failed) {
+    LOG_WARN("OpenGL NV12 presentation failed: upload={}, draw_error={}, "
+             "vao={}; disabling native video until the context is recreated",
+             upload_succeeded, draw_error, impl_->vertex_array);
+    // Do not expose the desktop during the UI tick that switches to pixels.
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+  }
+
+  if (impl_->vertex_array != 0) {
+    impl_->gl.bind_vertex_array(static_cast<GLuint>(previous_vertex_array));
+  } else {
+    RestoreVertexAttrib(impl_->gl, static_cast<GLuint>(impl_->position_location),
+                        position_state);
+    RestoreVertexAttrib(impl_->gl, static_cast<GLuint>(impl_->texcoord_location),
+                        texcoord_state);
+  }
   impl_->gl.bind_buffer(GL_ARRAY_BUFFER,
                         static_cast<GLuint>(previous_array_buffer));
   if (impl_->pixel_unpack_buffer_available) {
@@ -1600,9 +1675,13 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
   const GLenum restore_error = glGetError();
   if (restore_error != GL_NO_ERROR) {
     LOG_WARN("OpenGL NV12 state restoration failed, error={}", restore_error);
-    if (outcome.result == RenderResult::rendered) {
-      outcome.result = RenderResult::failed;
-    }
+    outcome.result = RenderResult::failed;
+  }
+  if (outcome.result == RenderResult::failed) {
+    // Keep the last decoded frame available for a CPU snapshot. GL resources
+    // are released by RenderingTeardown while the owning context is current.
+    std::lock_guard lock(impl_->frames->mutex);
+    impl_->ready.store(false, std::memory_order_release);
   }
   return outcome;
 }
