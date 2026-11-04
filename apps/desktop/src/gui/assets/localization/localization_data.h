@@ -519,6 +519,8 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"请核对控制端指纹。", {"请核对控制端指纹。", "Check the fingerprint on the controller.", "Сверьте отпечаток с управляющим устройством.", "請核對控制端指紋。", "操作側のフィンガープリントと照合してください。", "제어 장치의 지문과 대조하세요.", "Mit dem Fingerabdruck des steuernden Geräts vergleichen.", "Vérifiez l’empreinte sur l’appareil de contrôle.", "Verifique la huella en el dispositivo de control.", "Confira a impressão digital no dispositivo controlador."}},
   {"配对信息已复制。", {"配对信息已复制。", "Pairing information copied.", "Данные сопряжения скопированы.", "配對資訊已複製。", "ペアリング情報をコピーしました。", "페어링 정보를 복사했습니다.", "Kopplungsdaten kopiert.", "Informations d’association copiées.", "Información de emparejamiento copiada.", "Informações de pareamento copiadas."}},
   {"无法复制配对信息，请重试。", {"无法复制配对信息，请重试。", "Unable to copy pairing information. Please try again.", "Не удалось скопировать данные сопряжения. Повторите попытку.", "無法複製配對資訊，請重試。", "ペアリング情報をコピーできません。もう一度お試しください。", "페어링 정보를 복사할 수 없습니다. 다시 시도하세요.", "Kopplungsdaten konnten nicht kopiert werden. Bitte erneut versuchen.", "Impossible de copier les informations d’association. Réessayez.", "No se pudo copiar la información de emparejamiento. Inténtelo de nuevo.", "Não foi possível copiar as informações de pareamento. Tente novamente."}},
+  {"重试更新", {"重试更新", "Retry update", "Повторить", "重試更新", "再試行", "다시 시도", "Erneut versuchen", "Réessayer", "Reintentar", "Tentar novamente"}},
+  {"更新未完成，请手动下载安装。", {"更新未完成，请手动下载安装。", "Update did not complete. Download and install manually.", "Обновление не завершено. Скачайте и установите вручную.", "更新未完成，請手動下載安裝。", "アップデートが完了しませんでした。手動でダウンロードしてインストールしてください。", "업데이트가 완료되지 않았습니다. 수동으로 다운로드하여 설치하세요.", "Das Update wurde nicht abgeschlossen. Laden Sie es herunter und installieren Sie es manuell.", "La mise à jour n'a pas été effectuée. Téléchargez-la et installez-la manuellement.", "La actualización no se completó. Descárguela e instálela manualmente.", "A atualização não foi concluída. Baixe e instale manualmente."}},
 };
 
 struct NamedTranslation { const char* name; const char* literal; };
@@ -733,10 +735,12 @@ inline constexpr NamedTranslation kNamedTranslations[] = {
   {"access_website", "访问官网: "},
   {"update", "更新"},
   {"install_update", "安装更新"},
+  {"retry_update", "重试更新"},
   {"manual_download", "手动下载"},
   {"install_update_confirm", "下载完成后将关闭 CrossDesk 并安装更新，当前连接和文件传输会中断。安装需要系统授权，完成后重新启动。是否继续？"},
   {"update_preparing", "正在准备更新…"},
   {"update_install_failed", "更新未完成，可重试或手动安装。"},
+  {"update_install_failed_manual", "更新未完成，请手动下载安装。"},
   {"connection_alias", "修改名称"},
   {"delete_connection", "删除连接"},
   {"connect_to_this_connection", "发起连接"},
@@ -1229,10 +1233,12 @@ inline constexpr const char* kSlintLiterals[] = {
   X(access_website) \
   X(update) \
   X(install_update) \
+  X(retry_update) \
   X(manual_download) \
   X(install_update_confirm) \
   X(update_preparing) \
   X(update_install_failed) \
+  X(update_install_failed_manual) \
   X(connection_alias) \
   X(delete_connection) \
   X(connect_to_this_connection) \

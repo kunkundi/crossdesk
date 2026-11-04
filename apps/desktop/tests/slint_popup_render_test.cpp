@@ -3,6 +3,7 @@
 #include "ui/model_update.h"
 #include "ui/ui_localization.h"
 
+#include <algorithm>
 #include <iostream>
 #include <fstream>
 #include <cstdlib>
@@ -330,6 +331,60 @@ bool VerifyGalleryPopups(RenderTestPlatform& platform) {
   return Check(!wall->get_gallery_adding(), "Add dialog Cancel must respond immediately");
 }
 
+bool VerifyUpdateRecovery(RenderTestPlatform& platform) {
+  auto main = CreateMainWindow();
+  auto& screen = *platform.adapter;
+  const float width = main->get_minimum_window_width();
+  const float height = main->get_minimum_window_height();
+  main->window().set_size(slint::LogicalSize({width, height}));
+  main->set_update_available(true);
+  main->set_update_install_available(true);
+  main->set_latest_version("v2.0.0");
+  int install_requests = 0, manual_downloads = 0;
+  main->on_open_download([&] { ++install_requests; main->set_update_confirm_open(true); });
+  main->on_open_manual_download([&] { ++manual_downloads; });
+  main->show();
+  screen.Settle();
+  const float button_y = height / 2 + std::min(488.f, height - 32) / 2 - 41;
+  const float action_x = width / 2 + 161;
+  const float manual_x = action_x - 118;
+  const auto action_pixels = [&] {
+    return screen.Region(int(action_x - 40), int(button_y - 12), 80, 24);
+  };
+  const auto install_label = action_pixels();
+  main->set_update_install_failed(true);
+  main->set_update_install_status(crossdesk::ui_localization::Text(
+      crossdesk::localization::update_install_failed[0] + "\nDownload failed"));
+  screen.Settle();
+  if (!Check(action_pixels() != install_label,
+             "A failed update must visibly replace Install update with Retry update")) return false;
+  screen.Click(manual_x, button_y);
+  if (!Check(manual_downloads == 1 && install_requests == 0 && !main->get_update_confirm_open(),
+             "Manual download must remain reachable after failure without starting automatic installation")) return false;
+  screen.Click(action_x, button_y);
+  if (!Check(install_requests == 1 && main->get_update_confirm_open(),
+             "Retry must open the installation confirmation")) return false;
+  screen.Key(slint::platform::key_codes::Escape);
+  if (!Check(!main->get_update_confirm_open(), "Retry confirmation must remain cancellable")) return false;
+  main->set_update_install_busy(true);
+  screen.Settle();
+  screen.Click(action_x, button_y);
+  screen.Click(manual_x, button_y);
+  if (!Check(install_requests == 1 && manual_downloads == 1,
+             "Recovery buttons must reject repeated clicks while an update is running")) return false;
+  main->set_update_install_busy(false);
+  main->set_update_install_available(false);
+  main->set_update_install_status(crossdesk::ui_localization::Text(
+      crossdesk::localization::update_install_failed_manual[0]));
+  // The application's primary action falls back to manual download when the
+  // current installation or signed manifest no longer supports automatic updates.
+  main->on_open_download([&] { ++manual_downloads; });
+  screen.Settle();
+  screen.Click(action_x, button_y);
+  return Check(manual_downloads == 2 && !main->get_update_confirm_open(),
+               "An unavailable automatic retry must retain the primary manual download action");
+}
+
 bool VerifyServerPanel(RenderTestPlatform& platform) {
   auto panel = crossdesk::ui::ServerWindow::create();
   auto& screen = *platform.adapter;
@@ -377,5 +432,6 @@ int main() {
   if (!VerifyGalleryPopups(*backend)) return 3;
   if (!VerifyServerPanel(*backend)) return 4;
   if (!VerifyAutostartSettings(*backend)) return 5;
+  if (!VerifyUpdateRecovery(*backend)) return 6;
   std::cout << "Slint popup rendering and local input passed.\n";
 }
