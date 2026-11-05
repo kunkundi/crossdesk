@@ -10,6 +10,7 @@ extern unsigned int fa_solid_900_ttf_len;
 #include "ui/model_update.h"
 #include "localization.h"
 #include "application/window_geometry.h"
+#include "application/window_presentation.h"
 #if defined(__APPLE__)
 #include "platform/window_drag.h"
 #elif defined(_WIN32)
@@ -54,6 +55,9 @@ FileBrowserWindow::FileBrowserWindow(FileTransferManager& transfers, std::string
   transfers_.browser().TakeEvents(remote_);
   window_->window().window_handle().register_font_from_data(
       fa_solid_900_ttf, fa_solid_900_ttf_len);
+  // Resolve the native frame at its final size while it is still hidden.
+  // Otherwise show() applies the preferred size after we have centered it.
+  window_->window().set_size(slint::LogicalSize({900, 620}));
   window_->set_chinese(chinese_);
   UpdateActionLabels(language);
   SetPeerName("");
@@ -177,6 +181,7 @@ FileBrowserWindow::FileBrowserWindow(FileTransferManager& transfers, std::string
     next_sync_ = {};
   });
   window_->window().on_close_requested([this] {
+    show_pending_ = false;
     CancelDrag();
     window_->hide(); return slint::CloseRequestResponse::KeepWindowShown;
   });
@@ -246,18 +251,22 @@ bool FileBrowserWindow::CenterOnScreen() {
 }
 void FileBrowserWindow::Show() {
   if (!Tick()) return;
-  window_->window().set_minimized(false);
-  window_->show();
-#if defined(__APPLE__)
-  // Winit may create the NSWindow after show() returns. Retry on UI ticks,
-  // including when a hidden file window is opened again.
-  native_titlebar_attempts_ =
-      ConfigureWhiteWindowChrome(window_->window().appkit_view()) ? 0 : 30;
-#endif
-  // Always recenter a reopened window. Only retry until the native frame is
-  // ready; subsequent UI ticks must leave user-driven window movement alone.
-  center_attempts_ = CenterOnScreen() ? 0 : 30;
+  if (Visible()) {
+    window_->window().set_minimized(false);
+  } else {
+    show_pending_ = true;
+    ShowWhenReady();
+  }
   if (!panes_[1].busy && !panes_[1].error.empty()) Navigate(true, panes_[1].path);
+}
+void FileBrowserWindow::ShowWhenReady() {
+  if (!show_pending_ || !NativeWindowReady(window_->window())) return;
+#if defined(__APPLE__)
+  if (!ConfigureWhiteWindowChrome(window_->window().appkit_view())) return;
+#endif
+  if (!CenterOnScreen()) return;
+  show_pending_ = false;
+  window_->show();
 }
 void FileBrowserWindow::OpenDirectory(bool remote, const std::string& path) {
   const auto& pane = panes_[remote];
@@ -480,24 +489,14 @@ bool FileBrowserWindow::Tick() {
   // directory/progress refresh. All native window operations stay on this thread.
   if (!SessionConnected()) {
     disconnected_ = true;
+    show_pending_ = false;
     window_->set_connected(false);
     CancelDrag();
     requests_.clear();
     window_->hide();
     return false;
   }
-#if defined(__APPLE__)
-  if (native_titlebar_attempts_ > 0 && Visible()) {
-    if (ConfigureWhiteWindowChrome(window_->window().appkit_view()))
-      native_titlebar_attempts_ = 0;
-    else
-      --native_titlebar_attempts_;
-  }
-#endif
-  if (center_attempts_ > 0 && Visible()) {
-    if (CenterOnScreen()) center_attempts_ = 0;
-    else --center_attempts_;
-  }
+  ShowWhenReady();
   const auto now = std::chrono::steady_clock::now();
   if (now < next_sync_) return true;
   next_sync_ = now + std::chrono::milliseconds(150);

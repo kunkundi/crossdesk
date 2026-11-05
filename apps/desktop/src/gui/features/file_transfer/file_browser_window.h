@@ -61,6 +61,7 @@ class FileBrowserWindow {
   void Navigate(bool remote, const std::string& path, bool tree = false);
   void OpenDirectory(bool remote, const std::string& path);
   bool CenterOnScreen();
+  void ShowWhenReady();
   void UpdatePane(bool remote);
   void SortEntries(Pane& pane);
   void UpdateTree(bool remote);
@@ -82,10 +83,7 @@ class FileBrowserWindow {
   uint64_t connection_generation_;
   bool chinese_;
   bool disconnected_ = false;
-  int center_attempts_ = 0;
-#if defined(__APPLE__)
-  int native_titlebar_attempts_ = 0;
-#endif
+  bool show_pending_ = false;
   slint::ComponentHandle<ui::FileBrowserWindow> window_ = ui::FileBrowserWindow::create();
   Pane panes_[2];
   std::shared_ptr<int> drag_owner_ = std::make_shared<int>(0);

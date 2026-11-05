@@ -97,6 +97,7 @@
 #include "updater/update_controller.h"
 #endif
 #include "window_geometry.h"
+#include "window_presentation.h"
 
 namespace crossdesk {
 namespace {
@@ -1116,9 +1117,6 @@ struct GuiApplication::SlintUi {
   bool server_file_dialog_open = false;
   bool server_suspended_for_dialog = false;
   server_window_state::EdgeLayout server_layout{};
-#if _WIN32
-  int server_native_window_attempts = 0;
-#endif
   int localized_language = -1;
   std::chrono::steady_clock::time_point last_clipboard_poll{};
   slint::Timer video_timer;
@@ -3764,9 +3762,10 @@ void GuiApplication::SyncStreamWindow() {
     (*ui_->stream)->set_displays(ui_->display_model);
     (*ui_->stream)->set_stats_rows(ui_->stats_model);
     BindStreamCallbacks();
-    (*ui_->stream)->show();
-    // Repeat after the next layout pass because the backend resolves the
-    // initial DPI and preferred size asynchronously on some platforms.
+    (*ui_->stream)->window().set_size(slint::LogicalSize({
+        kStreamWindowLogicalWidth,
+        StreamWindowLogicalHeight((*ui_->stream)->get_custom_titlebar())}));
+    // Resolve placement and any display-DPI change while still hidden.
     ui_->stream_initial_position_attempts = 2;
 #if defined(__APPLE__)
     ui_->stream_live_resize_configuration_attempts = 30;
@@ -3781,8 +3780,10 @@ void GuiApplication::SyncStreamWindow() {
   // A wall takeover hides an existing stream window without destroying it.
   // Opening a recent device must also restore that existing window.
   if (need_to_create_stream_window_) {
-    (*ui_->stream)->window().set_minimized(false);
-    (*ui_->stream)->show();
+    if (ui_->stream_initial_position_attempts == 0) {
+      (*ui_->stream)->window().set_minimized(false);
+      (*ui_->stream)->show();
+    }
     need_to_create_stream_window_ = false;
   }
 #if _WIN32
@@ -3802,7 +3803,8 @@ void GuiApplication::SyncStreamWindow() {
   if (ui_->video_presenter && ui_->video_presenter->EnsureAttached()) {
     video_frame_dirty_.store(true, std::memory_order_release);
   }
-  if (ui_->stream_initial_position_attempts > 0) {
+  if (has_sessions && ui_->stream_initial_position_attempts > 0 &&
+      NativeWindowReady((*ui_->stream)->window())) {
     if (PositionWindowAtCenter(
             (*ui_->stream)->window(), ui_->main->window(),
             kStreamWindowLogicalWidth,
@@ -3811,6 +3813,7 @@ void GuiApplication::SyncStreamWindow() {
     } else {
       ui_->stream_initial_position_attempts = 0;
     }
+    if (ui_->stream_initial_position_attempts == 0) (*ui_->stream)->show();
   }
   if (!has_sessions) {
     SetStreamKeyboardFocus(false);
@@ -4211,11 +4214,7 @@ void GuiApplication::SetServerPanelExpanded(bool expanded) {
   server_window_collapsed_ = !expanded;
   (*ui_->server_bar)->set_expanded(expanded);
   if (expanded) {
-    PositionServerWindows();
-    (*ui_->server)->show();
-#if _WIN32
-    ConfigureWindowsServerWindow((*ui_->server)->window());
-#endif
+    // SyncServerWindow shows the panel after native creation and placement.
     PositionServerWindows();
   } else {
     (*ui_->server)->set_confirming_disconnect(false);
@@ -4447,10 +4446,6 @@ void GuiApplication::SyncServerWindow() {
     BindServerCallbacks();
     ui_localization::ApplyServerStrings(*ui_->server, localization_language_index_);
     ui_localization::ApplyServerStrings(*ui_->server_bar, localization_language_index_);
-    (*ui_->server_bar)->show();
-#if _WIN32
-    ui_->server_native_window_attempts = 30;
-#endif
     server_window_created_ = true;
     server_window_inited_ = true;
   }
@@ -4470,13 +4465,9 @@ void GuiApplication::SyncServerWindow() {
     ui_->server_drag.active = false;
     server_window_created_ = false;
     server_window_inited_ = false;
-#if _WIN32
-    ui_->server_native_window_attempts = 0;
-#endif
   }
   if (!ui_->server) return;
   if (ui_->server_suspended_for_dialog) {
-    (*ui_->server_bar)->show();
     ui_->server_suspended_for_dialog = false;
   }
 
@@ -4517,16 +4508,17 @@ void GuiApplication::SyncServerWindow() {
   (*ui_->server_bar)->set_controller_count(static_cast<int>(ui_->controller_ids.size()));
   ui_localization::ApplyServerStrings(*ui_->server, localization_language_index_);
   ui_localization::ApplyServerStrings(*ui_->server_bar, localization_language_index_);
-#if _WIN32
-  if (ui_->server_native_window_attempts > 0) {
-    if (ConfigureWindowsServerWindow((*ui_->server_bar)->window()))
-      ui_->server_native_window_attempts = 0;
-    else
-      --ui_->server_native_window_attempts;
-  }
-#endif
   (*ui_->server)->set_sending_file(transfers_.global_state().file_sending_.load());
   PositionServerWindows();
+  const auto show_prepared = [](slint::Window& window) {
+    if (window.is_visible() || !NativeWindowReady(window)) return;
+#if _WIN32
+    if (!ConfigureWindowsServerWindow(window)) return;
+#endif
+    window.show();
+  };
+  show_prepared((*ui_->server_bar)->window());
+  if (!server_window_collapsed_) show_prepared((*ui_->server)->window());
 }
 
 void GuiApplication::CancelFileTransfer(uint32_t file_id) {
@@ -4759,13 +4751,8 @@ void GuiApplication::SyncFileTransferNotifications() {
 #endif
     }
     if (!window.is_visible()) {
-#if defined(__APPLE__)
-      // Winit creates native windows on the next event-loop turn. Wait until
-      // it exists so show() and focus restoration happen synchronously.
-      if (!window.appkit_view()) continue;
-#elif _WIN32
-      if (!window.win32_hwnd()) continue;
-#endif
+      // Wait until native placement and focus restoration can be synchronous.
+      if (!NativeWindowReady(window)) continue;
 #if _WIN32
       // Tool windows stay out of Alt-Tab and must not interrupt remote input.
       const auto configure = [&] {
