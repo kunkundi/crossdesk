@@ -521,6 +521,10 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"无法复制配对信息，请重试。", {"无法复制配对信息，请重试。", "Unable to copy pairing information. Please try again.", "Не удалось скопировать данные сопряжения. Повторите попытку.", "無法複製配對資訊，請重試。", "ペアリング情報をコピーできません。もう一度お試しください。", "페어링 정보를 복사할 수 없습니다. 다시 시도하세요.", "Kopplungsdaten konnten nicht kopiert werden. Bitte erneut versuchen.", "Impossible de copier les informations d’association. Réessayez.", "No se pudo copiar la información de emparejamiento. Inténtelo de nuevo.", "Não foi possível copiar as informações de pareamento. Tente novamente."}},
   {"重试更新", {"重试更新", "Retry update", "Повторить", "重試更新", "再試行", "다시 시도", "Erneut versuchen", "Réessayer", "Reintentar", "Tentar novamente"}},
   {"更新未完成，请手动下载安装。", {"更新未完成，请手动下载安装。", "Update did not complete. Download and install manually.", "Обновление не завершено. Скачайте и установите вручную.", "更新未完成，請手動下載安裝。", "アップデートが完了しませんでした。手動でダウンロードしてインストールしてください。", "업데이트가 완료되지 않았습니다. 수동으로 다운로드하여 설치하세요.", "Das Update wurde nicht abgeschlossen. Laden Sie es herunter und installieren Sie es manuell.", "La mise à jour n'a pas été effectuée. Téléchargez-la et installez-la manuellement.", "La actualización no se completó. Descárguela e instálela manualmente.", "A atualização não foi concluída. Baixe e instale manualmente."}},
+  {"发送到远端", {"发送到远端", "Send to remote", "Отправить на удалённый ПК", "傳送到遠端", "リモートへ送信", "원격으로 보내기", "An Remote-PC senden", "Envoyer au PC distant", "Enviar al equipo remoto", "Enviar ao computador remoto"}},
+  {"发送到本机", {"发送到本机", "Send to local", "Отправить на этот ПК", "傳送到本機", "この端末へ送信", "이 기기로 보내기", "An diesen PC senden", "Envoyer à ce PC", "Enviar a este equipo", "Enviar a este computador"}},
+  {"清除已完成", {"清除已完成", "Clear completed", "Убрать завершённые", "清除已完成", "完了済みをクリア", "완료 항목 지우기", "Abgeschlossene entfernen", "Effacer les tâches terminées", "Limpiar completadas", "Limpar concluídas"}},
+  {"打开目录", {"打开目录", "Open folder", "Открыть папку", "開啟目錄", "フォルダーを開く", "폴더 열기", "Ordner öffnen", "Ouvrir le dossier", "Abrir carpeta", "Abrir pasta"}},
 };
 
 struct NamedTranslation { const char* name; const char* literal; };

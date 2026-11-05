@@ -10595,6 +10595,54 @@
       "fr": "La mise à jour n'a pas été effectuée. Téléchargez-la et installez-la manuellement.",
       "es": "La actualización no se completó. Descárguela e instálela manualmente.",
       "pt-BR": "A atualização não foi concluída. Baixe e instale manualmente."
+    },
+    "发送到远端": {
+      "zh-Hans": "发送到远端",
+      "en": "Send to remote",
+      "ru": "Отправить на удалённый ПК",
+      "zh-Hant": "傳送到遠端",
+      "ja": "リモートへ送信",
+      "ko": "원격으로 보내기",
+      "de": "An Remote-PC senden",
+      "fr": "Envoyer au PC distant",
+      "es": "Enviar al equipo remoto",
+      "pt-BR": "Enviar ao computador remoto"
+    },
+    "发送到本机": {
+      "zh-Hans": "发送到本机",
+      "en": "Send to local",
+      "ru": "Отправить на этот ПК",
+      "zh-Hant": "傳送到本機",
+      "ja": "この端末へ送信",
+      "ko": "이 기기로 보내기",
+      "de": "An diesen PC senden",
+      "fr": "Envoyer à ce PC",
+      "es": "Enviar a este equipo",
+      "pt-BR": "Enviar a este computador"
+    },
+    "清除已完成": {
+      "zh-Hans": "清除已完成",
+      "en": "Clear completed",
+      "ru": "Убрать завершённые",
+      "zh-Hant": "清除已完成",
+      "ja": "完了済みをクリア",
+      "ko": "완료 항목 지우기",
+      "de": "Abgeschlossene entfernen",
+      "fr": "Effacer les tâches terminées",
+      "es": "Limpiar completadas",
+      "pt-BR": "Limpar concluídas"
+    },
+    "打开目录": {
+      "zh-Hans": "打开目录",
+      "en": "Open folder",
+      "ru": "Открыть папку",
+      "zh-Hant": "開啟目錄",
+      "ja": "フォルダーを開く",
+      "ko": "폴더 열기",
+      "de": "Ordner öffnen",
+      "fr": "Ouvrir le dossier",
+      "es": "Abrir carpeta",
+      "pt-BR": "Abrir pasta"
     }
   },
   "desktop": {
@@ -11602,7 +11650,11 @@
       "配对信息已复制。",
       "无法复制配对信息，请重试。",
       "重试更新",
-      "更新未完成，请手动下载安装。"
+      "更新未完成，请手动下载安装。",
+      "发送到远端",
+      "发送到本机",
+      "清除已完成",
+      "打开目录"
     ],
     "android": [
       " · 已完成",

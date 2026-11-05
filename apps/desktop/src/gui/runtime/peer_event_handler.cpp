@@ -359,6 +359,7 @@ void PeerEventHandler::DispatchConnectionStatus(ConnectionStatus status,
           remote_action.i.supports_deskhub_resolution = true;
           remote_action.i.supports_deskhub_fps15 = true;
           remote_action.i.supports_deskhub_bandwidth = true;
+          remote_action.i.supports_file_browser = !runtime->unattended_host_;
           for (std::size_t i = 0; i < remote_action.i.display_num; i++) {
             LOG_INFO("Local display [{}:{}]", i + 1,
                      remote_action.i.display_list[i]);
@@ -528,6 +529,7 @@ void PeerEventHandler::DispatchConnectionStatus(ConnectionStatus status,
           remote_action.i.supports_deskhub_resolution = true;
           remote_action.i.supports_deskhub_fps15 = true;
           remote_action.i.supports_deskhub_bandwidth = true;
+          remote_action.i.supports_file_browser = !runtime->unattended_host_;
           for (std::size_t i = 0; i < remote_action.i.display_num; i++) {
             LOG_INFO("Local display [{}:{}]", i + 1,
                      remote_action.i.display_list[i]);

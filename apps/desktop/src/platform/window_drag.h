@@ -9,6 +9,13 @@ namespace crossdesk {
 // left-mouse-down event. Returns false when no suitable native event exists.
 bool StartNativeWindowDrag();
 
+// Gives a titled AppKit window an opaque white backing, preserving its resize
+// and fullscreen behavior. Returns false until its native window is ready.
+bool ConfigureWhiteWindowChrome(void* slint_view);
+// Centers the complete AppKit window frame in its screen's usable area.
+// Returns false until its native window and screen are ready.
+bool CenterNativeWindowOnScreen(void* slint_view);
+
 // Configures the connection or DeskHub window with a white native titlebar.
 // Only DeskHub is resizable. |slint_view| is its AppKit NSView*.
 // Returns false while the native window or its titlebar controls are not ready.

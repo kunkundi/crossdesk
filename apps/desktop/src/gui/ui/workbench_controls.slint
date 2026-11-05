@@ -24,6 +24,7 @@ export component WorkbenchButton inherits FlatSurface {
     in property <string> icon;
     in property <string> tooltip;
     in property <bool> tooltip-above: false;
+    in property <bool> tooltip-align-left: false;
     in property <bool> tooltip-suppressed: false;
     in property <color> icon-color: root.destructive ? white : root.primary
         ? (root.soft && !touch.has-hover && !root.show-focus ? WorkbenchStyle.accent : white)
@@ -99,15 +100,12 @@ export component WorkbenchButton inherits FlatSurface {
     button-focus := FocusScope {
         enabled: root.enabled;
         focus-gained(reason) => {
-            if reason == FocusReason.tab-navigation {
-                root.keyboard-focus = true;
-            } else if reason == FocusReason.pointer-click {
-                root.keyboard-focus = false;
-            }
+            root.keyboard-focus = reason == FocusReason.tab-navigation;
         }
+        focus-lost => { root.keyboard-focus = false; }
         key-pressed(event) => {
-            root.keyboard-focus = true;
             if event.text == Key.Return || event.text == " " {
+                root.keyboard-focus = true;
                 root.clicked();
                 return accept;
             }
@@ -123,7 +121,7 @@ export component WorkbenchButton inherits FlatSurface {
             }
             // Keep focus for subsequent keyboard activation without leaving a
             // keyboard focus ring behind after a pointer click.
-            clicked => { root.keyboard-focus = false; button-focus.focus(); root.clicked(); }
+            clicked => { button-focus.focus(); root.keyboard-focus = false; root.clicked(); }
         }
     }
     tooltip-timer := Timer {
@@ -132,7 +130,7 @@ export component WorkbenchButton inherits FlatSurface {
         triggered => { root.tooltip-visible = true; }
     }
     if root.tooltip-active && root.tooltip-visible: Rectangle {
-        x: min(0px, root.width - self.width);
+        x: root.tooltip-align-left ? 0px : min(0px, root.width - self.width);
         y: root.tooltip-above ? -self.height - 6px : root.height + 6px;
         width: min(260px, tip.preferred-width + 20px);
         height: max(28px, tip.preferred-height + 12px);

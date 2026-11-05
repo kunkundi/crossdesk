@@ -38,6 +38,8 @@
 #include "fa_solid_900.h"
 #include "features/about/about_catalog.h"
 #include "features/file_transfer/transfer_notification_layout.h"
+#include "features/file_transfer/transfer_notification_state.h"
+#include "features/file_transfer/file_browser_window.h"
 #include "features/gallery/gallery_fullscreen_transition.h"
 #include "features/gallery/gallery_window_state.h"
 #include "features/gallery/gallery_workspace.h"
@@ -1064,9 +1066,10 @@ struct GuiApplication::SlintUi {
   struct TransferNotification {
     std::optional<slint::ComponentHandle<ui::FileTransferNotification>> window;
     RemoteSession::FileTransferInfo info;
-    bool dismissed = false;
+    transfer_notification::Presentation presentation;
   };
   std::map<uint32_t, TransferNotification> transfer_notifications;
+  std::map<std::string, std::unique_ptr<FileBrowserWindow>> file_browsers;
   SDL_DisplayID transfer_display = 0;
   std::shared_ptr<slint::VectorModel<ui::NetworkStatsRow>> stats_model =
       std::make_shared<slint::VectorModel<ui::NetworkStatsRow>>();
@@ -2327,16 +2330,7 @@ void GuiApplication::BindStreamCallbacks() {
     SyncAudioPlayback();
   });
   stream->on_select_file([this] {
-    auto props = SelectedSession();
-    if (!props) {
-      return;
-    }
-    OpenFileDialog(localization::select_file[localization_language_index_],
-        [this, props](std::string path) {
-          if (!path.empty() && !props->closing_ &&
-              props->connection_status_ == ConnectionStatus::Connected)
-            transfers_.ProcessSelectedFile(path, props, props->file_label_);
-        });
+    if (auto props = SelectedSession()) OpenFileManager(props->remote_id_);
   });
   stream->on_can_drop_file(
       [](const slint::DataTransfer& data) { return data.has_plain_text(); });
@@ -2449,40 +2443,7 @@ void GuiApplication::BindServerCallbacks() {
     selected_server_remote_id_ = ui_->controller_ids[index];
   });
   server->on_select_file([this] {
-    if (selected_server_remote_id_.empty() || ui_->server_file_dialog_open) {
-      return;
-    }
-    // Keep the recipient stable if another controller connects or leaves while
-    // the asynchronous native picker is open.
-    const std::string recipient = selected_server_remote_id_;
-    ui_->server_file_dialog_open = true;
-    (*ui_->server)->window().request_redraw();
-    const auto select_file = [this, recipient] {
-      const auto connected = [this, recipient] {
-        std::shared_lock lock(connection_status_mutex_);
-        const auto found = connection_status_.find(recipient);
-        return found != connection_status_.end() &&
-               found->second == ConnectionStatus::Connected;
-      };
-      if (!connected()) {
-        ui_->server_file_dialog_open = false;
-        return;
-      }
-      OpenFileDialog(localization::select_file[localization_language_index_],
-          [this, recipient, connected](std::string path) {
-            ui_->server_file_dialog_open = false;
-            if (connected() && !path.empty())
-              transfers_.ProcessSelectedFile(path, nullptr, file_label_, recipient);
-          });
-    };
-#if defined(__APPLE__)
-    // The native picker is already dispatched outside the clicked callback.
-    select_file();
-#else
-    // Let TouchArea release and repaint before the blocking native picker.
-    ui_->server_file_dialog_timer.start(
-        slint::TimerMode::SingleShot, std::chrono::milliseconds(32), select_file);
-#endif
+    if (!selected_server_remote_id_.empty()) OpenFileManager(selected_server_remote_id_);
   });
   server->on_disconnect_controller([this](slint::SharedString id) {
     CloseServerController(std::string(id));
@@ -2733,6 +2694,14 @@ void GuiApplication::Tick() {
   SyncStreamWindow();
   SyncServerWindow();
   SyncTrustedDevices();
+  for (auto it = ui_->file_browsers.begin(); it != ui_->file_browsers.end();) {
+    if (!it->second->Tick()) it = ui_->file_browsers.erase(it);
+    else {
+      if (it->second->Visible())
+        it->second->SetPeerName(FileManagerPeerName(it->first));
+      ++it;
+    }
+  }
   SyncFileTransferNotifications();
 }
 
@@ -3222,6 +3191,8 @@ void GuiApplication::UpdateLocalization() {
   if (ui_->stream) {
     ui_localization::ApplyStreamWindowStrings(*ui_->stream, language);
   }
+  for (auto& [_, browser] : ui_->file_browsers)
+    browser->UpdateActionLabels(language);
   ui_->localized_language = language;
 }
 
@@ -4581,16 +4552,72 @@ void GuiApplication::CancelFileTransfer(uint32_t file_id) {
   }
 }
 
+std::string GuiApplication::FileManagerPeerName(const std::string& remote) {
+  Thumbnail::RecentConnection device{};
+  device.remote_id = remote;
+  if (const auto props = FindRemoteSession(remote)) {
+    if (const auto direct = props->lan_session_) {
+      device.remote_id = Thumbnail::LanRecordId(direct->target.device_id);
+    }
+    std::lock_guard lock(props->remote_version_mutex_);
+    device.remote_host_name = props->remote_host_name_;
+  } else {
+    std::shared_lock lock(connection_status_mutex_);
+    if (const auto host = connection_host_names_.find(remote);
+        host != connection_host_names_.end())
+      device.remote_host_name = host->second;
+  }
+  if (device.remote_host_name.empty() || device.remote_host_name == "unknown") {
+    for (const auto& [_, recent] : recent_connections_) {
+      if (recent.remote_id == device.remote_id) {
+        device.remote_host_name = recent.remote_host_name;
+        break;
+      }
+    }
+  }
+  const auto name = settings_.RecentConnectionDisplayName(device);
+  // Keep transport IDs out of the header while peer information is arriving.
+  return name == device.remote_id ? std::string{} : name;
+}
+
+void GuiApplication::OpenFileManager(const std::string& remote) {
+  if (!transfers_.OpenBrowser(remote)) return;
+  if (!transfers_.BrowserSupported(remote)) {
+    // Host information from older clients omits the capability. Use their
+    // existing file protocol and picker directly, without a directory RPC.
+    const auto generation = transfers_.browser().Generation(remote);
+    OpenFileDialog(std::string(localization::select_file[localization_language_index_]),
+        [this, remote, generation](std::string path) {
+          if (path.empty() || !transfers_.BrowserConnected(remote) ||
+              transfers_.browser().Generation(remote) != generation) return;
+          const auto props = FindRemoteSession(remote);
+          transfers_.ProcessSelectedFile(path, props,
+              props ? props->file_label_ : file_label_, remote);
+        });
+    return;
+  }
+  auto& browser = ui_->file_browsers[remote];
+  if (browser && !browser->Tick()) browser.reset();
+  if (!browser) {
+    const bool controller = static_cast<bool>(FindRemoteSession(remote));
+    browser = std::make_unique<FileBrowserWindow>(transfers_, remote, controller,
+        localization_language_index_);
+  }
+  browser->SetPeerName(FileManagerPeerName(remote));
+  browser->Show();
+  SyncFileTransferNotifications();
+}
+
 void GuiApplication::SyncFileTransferNotifications() {
   using Status = RemoteSession::FileTransferStatus;
   using namespace transfer_notification;
   std::map<uint32_t, RemoteSession::FileTransferInfo> files;
   const auto collect = [&](FileTransferState& state) {
     std::lock_guard lock(state.file_transfer_list_mutex_);
-    for (const auto& info : state.file_transfer_list_) files.emplace(info.file_id, info);
+    for (const auto& info : state.file_transfer_list_)
+      if (!info.receiving) files.emplace(info.file_id, info);
   };
   collect(transfers_.global_state());
-  collect(transfers_.received_state());
   {
     std::shared_lock lock(remote_sessions_mutex_);
     for (const auto& [_, props] : remote_sessions_) {
@@ -4605,11 +4632,17 @@ void GuiApplication::SyncFileTransferNotifications() {
         operation.state != SlintUi::BatchOperation::State::Finished)
       pending_files.insert(operation.file_id);
   // Retain the last progress independently of session lifetime. Results stay
-  // visible until dismissed, including after the connection is closed.
+  // visible until dismissed or presented in the browser, even after disconnect.
   for (const auto& [id, info] : files)
     ui_->transfer_notifications[id].info = info;
   std::erase_if(ui_->transfer_notifications, [&](auto& item) {
-    if (!item.second.dismissed || files.count(item.first) ||
+    // Progress belongs to the sender. Remove any cached receive popup as well,
+    // regardless of window visibility, peer version or final transfer status.
+    if (item.second.info.receiving) {
+      if (item.second.window) (*item.second.window)->hide();
+      return true;
+    }
+    if ((!item.second.presentation.dismissed && !item.second.presentation.result_seen) || files.count(item.first) ||
         pending_files.count(item.first)) return false;
     if (item.second.window) (*item.second.window)->hide();
     return true;
@@ -4649,7 +4682,11 @@ void GuiApplication::SyncFileTransferNotifications() {
     }
     const bool completed = info.status == Status::Completed;
     const bool failed = info.status == Status::Failed;
-    if (notification.dismissed || slot >= layout.capacity()) {
+    const auto browser = ui_->file_browsers.find(info.remote_id);
+    const bool in_browser = browser != ui_->file_browsers.end() && browser->second->PresentsTransfers();
+    const bool result_presented = in_browser && browser->second->PresentsResult(id, info.status);
+    if (!notification.presentation.ShowNotification(in_browser, result_presented) ||
+        slot >= layout.capacity()) {
       if (notification.window) {
         (*notification.window)->hide();
         notification.window.reset();
@@ -4663,7 +4700,7 @@ void GuiApplication::SyncFileTransferNotifications() {
       const auto dismiss = [this, id] {
         const auto found = ui_->transfer_notifications.find(id);
         if (found == ui_->transfer_notifications.end()) return;
-        found->second.dismissed = true;
+        found->second.presentation.dismissed = true;
         if (found->second.window) (*found->second.window)->hide();
       };
       (*notification.window)->on_dismissed(dismiss);
@@ -4693,15 +4730,12 @@ void GuiApplication::SyncFileTransferNotifications() {
     auto display_id = info.remote_id;
     std::erase_if(display_id, [](unsigned char c) { return c < '0' || c > '9'; });
     component->set_remote_id(UiText(display_id));
-    component->set_heading(UiText(info.receiving
-        ? localization::file_receiving_progress[localization_language_index_]
-        : localization::file_sending_progress[localization_language_index_]));
-    component->set_transferring(info.status == Status::Sending || info.status == Status::Receiving);
+    component->set_heading(UiText(localization::file_sending_progress[localization_language_index_]));
+    component->set_transferring(info.status == Status::Sending);
     component->set_completed(completed);
     component->set_failed(failed);
     component->set_cancelled(info.status == Status::Cancelled || info.status == Status::Cancelling);
-    component->set_can_cancel(!info.receiving &&
-        (info.status == Status::Queued || info.status == Status::Sending));
+    component->set_can_cancel(info.status == Status::Queued || info.status == Status::Sending);
     component->set_cancel_text(UiText(localization::cancel[localization_language_index_]));
     auto& window = component->window();
     const auto size = window.size();

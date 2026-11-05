@@ -24,6 +24,9 @@ class FileReceiver {
   bool OnData(const char* data, size_t size) { return session_.Receive(data, size); }
   void Poll() { session_.Pump(); }
   void Cancel() { session_.Cancel(); }
+  bool ReserveDirectory(uint32_t id, const std::filesystem::path& directory) {
+    return session_.ReserveDirectory(id, directory);
+  }
   // Set once, before the receiver is published to transport callbacks.
   void SetOnSendAck(OnSendAck cb) { on_send_ack_ = std::move(cb); }
   void SetOnReceiveProgress(OnReceiveProgress cb) { on_receive_progress_ = std::move(cb); }

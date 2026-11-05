@@ -147,6 +147,8 @@ void PeerEventHandler::OnReceiveDataBuffer(
        source_id == runtime->clipboard_label_ ||
        source_id == web_clipboard::kStream))
     return;
+  if (source_id == runtime->control_data_label_ &&
+      runtime->transfers_.HandleBrowser(data, size, handler, remote_id)) return;
   if (source_id == web_clipboard::kStream) {
     runtime->clipboard_.ReceiveWeb(
         data, size, remote_id, handler);
@@ -424,6 +426,10 @@ void PeerEventHandler::OnReceiveDataBuffer(
   }
 
   if (remote_action.type == ControlType::host_infomation) {
+    if (source_id == runtime->control_data_label_) {
+      runtime->transfers_.SetBrowserSupport(handler, remote_id,
+          remote_action.i.supports_file_browser);
+    }
     bool is_client_mode = false;
     std::shared_ptr<GuiRuntime::RemoteSession> props;
     {

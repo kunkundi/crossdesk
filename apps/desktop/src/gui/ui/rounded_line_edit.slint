@@ -12,6 +12,7 @@ export component RoundedLineEdit inherits Rectangle {
     in property <bool> enabled: true;
     in property <length> font-size: 12px;
     in property <color> normal-outline-color: UiSurface.edge;
+    in property <float> tint-opacity: 1;
     in property <brush> surrounding-background: white;
     callback accepted();
     callback edited();
@@ -36,6 +37,7 @@ export component RoundedLineEdit inherits Rectangle {
     // A visual-only tint preserves the standard editor and its built-in actions.
     Rectangle {
         width: parent.width; height: parent.height;
+        opacity: root.tint-opacity;
         background: !root.enabled ? transparent
             : editor.has-focus ? ControlStyle.input-focus-tint : ControlStyle.input-tint;
     }

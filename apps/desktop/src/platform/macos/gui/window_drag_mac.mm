@@ -126,6 +126,42 @@ float MainWindowInitialPositionYOffset() {
   }
 }
 
+bool CenterNativeWindowOnScreen(void *opaque_slint_view) {
+  @autoreleasepool {
+    NSView *slint_view = (__bridge NSView *)opaque_slint_view;
+    NSWindow *window = slint_view.window;
+    NSScreen *screen = window.screen ?: NSScreen.mainScreen;
+    if (!window || !screen) return false;
+    CenterWindowOnScreen(window, screen);
+    return true;
+  }
+}
+
+bool ConfigureWhiteWindowChrome(void *opaque_slint_view) {
+  @autoreleasepool {
+    NSView *slint_view = (__bridge NSView *)opaque_slint_view;
+    NSWindow *window = slint_view.window;
+    if (window == nil ||
+        (window.styleMask & NSWindowStyleMaskTitled) == 0) {
+      return false;
+    }
+
+    // Winit creates a transparent AppKit backing even when Slint paints an
+    // opaque client area. macOS 27 can expose that backing in the titlebar.
+    // Use a fixed white backing instead of AppKit's theme-dependent titlebar
+    // material. Aqua keeps the native title and controls readable on white.
+    window.styleMask &= ~NSWindowStyleMaskFullSizeContentView;
+    window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+    window.titlebarAppearsTransparent = YES;
+    window.opaque = YES;
+    window.backgroundColor = NSColor.whiteColor;
+    NSView *frame_view = window.contentView.superview;
+    frame_view.needsLayout = YES;
+    [frame_view layoutSubtreeIfNeeded];
+    return true;
+  }
+}
+
 bool ConfigureMainWindowChrome(void *opaque_slint_view, bool gallery) {
   @autoreleasepool {
     NSView *slint_view = (__bridge NSView *)opaque_slint_view;
@@ -150,21 +186,8 @@ bool ConfigureMainWindowChrome(void *opaque_slint_view, bool gallery) {
                                        NSWindowCollectionBehaviorFullScreenAllowsTiling)) |
         NSWindowCollectionBehaviorFullScreenNone;
 
-    // Winit creates a transparent AppKit backing even when Slint paints an
-    // opaque client area. macOS 27 can expose that backing in the titlebar.
-    // Use a fixed white backing instead of AppKit's theme-dependent titlebar
-    // material. Aqua keeps the native title and controls readable on white.
-    window.styleMask &= ~NSWindowStyleMaskFullSizeContentView;
-    window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
-    window.titlebarAppearsTransparent = YES;
-    window.opaque = YES;
-    window.backgroundColor = NSColor.whiteColor;
     HideMainWindowZoomButton(window);
-
-    NSView *frame_view = window.contentView.superview;
-    frame_view.needsLayout = YES;
-    [frame_view layoutSubtreeIfNeeded];
-    return true;
+    return ConfigureWhiteWindowChrome(opaque_slint_view);
   }
 }
 

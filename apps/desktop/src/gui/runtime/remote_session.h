@@ -73,6 +73,7 @@ struct FileTransferState {
     uint32_t file_id = 0;
     uint32_t rate_bps = 0;
     bool receiving = false;
+    uint32_t wire_file_id = 0;
   };
   std::vector<FileTransferInfo> file_transfer_list_;
   std::mutex file_transfer_list_mutex_;

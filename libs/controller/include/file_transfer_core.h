@@ -74,6 +74,15 @@ class Session {
     std::lock_guard<std::mutex> lock(mutex_);
     directory_ = std::move(directory);
   }
+  // A browser destination belongs to one wire ID, never to the whole peer.
+  // Keep reservations until consumed: other queued files may take hours.
+  bool ReserveDirectory(uint32_t id, const std::filesystem::path& directory) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (closed_ || !id || incoming_.count(id) || cancelled_incoming_.count(id) ||
+        destinations_.size() >= 8192)
+      return false;
+    return destinations_.emplace(id, directory).second;
+  }
   bool Start(const std::filesystem::path& path, const std::string& name,
              Clock::time_point now = Clock::now(), uint32_t id = 0) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -240,6 +249,7 @@ class Session {
           (it != incoming_.end() && h.total_size != it->second.total))
         return ack;
       cancelled_incoming_[h.file_id] = now;
+      destinations_.erase(h.file_id);
       if (it != incoming_.end()) {
         NotifyReceive(h.file_id, it->second, ReceiveStatus::Cancelled);
         Notify(it->second.name, -1, false, "");
@@ -253,6 +263,7 @@ class Session {
     if (cancelled_incoming_.count(h.file_id))
       return {kFileAckMagic, h.file_id, 0, h.total_size, 2};
     auto reject = [&]() {
+      destinations_.erase(h.file_id);
       if (it != incoming_.end()) {
         NotifyReceive(h.file_id, it->second, ReceiveStatus::Failed);
         Notify(it->second.name, -1, false, ""); Remove(it->second); incoming_.erase(it);
@@ -275,6 +286,10 @@ class Session {
       Incoming file;
       file.name = SafeName(chunk.file_name); file.total = h.total_size;
       file.directory = directory_.empty() ? std::filesystem::path(".") : directory_;
+      if (const auto destination = destinations_.find(h.file_id); destination != destinations_.end()) {
+        file.directory = destination->second;
+        destinations_.erase(destination);
+      }
       std::error_code ec;
       std::filesystem::create_directories(file.directory, ec);
       if (ec || (directory_.empty() && options_.receive_subdirectory)) return reject();
@@ -435,6 +450,7 @@ class Session {
     for (auto& entry : incoming_) Remove(entry.second);
     incoming_.clear();
     cancelled_incoming_.clear();
+    destinations_.clear();
   }
   const std::chrono::seconds timeout_{30};
   mutable std::mutex mutex_;
@@ -447,6 +463,7 @@ class Session {
   std::filesystem::path directory_;
   std::optional<Outgoing> outgoing_;
   std::map<uint32_t, Incoming> incoming_;
+  std::map<uint32_t, std::filesystem::path> destinations_;
   std::map<uint32_t, Clock::time_point> cancelled_incoming_;
 };
 

@@ -10,10 +10,31 @@
 
 namespace crossdesk {
 
-FileTransferManager::FileTransferManager(GuiRuntime& owner) : owner_(owner) {}
+FileTransferManager::FileTransferManager(GuiRuntime& owner)
+    : owner_(owner), browser_(
+        [this](const auto& remote, const auto& message) { return SendBrowser(remote, message); },
+        [this](const auto& remote, const auto& path, uint32_t id) {
+          if (!BrowserConnected(remote)) return false;
+          auto props = owner_.FindRemoteSession(remote);
+          return ProcessSelectedFile(path, props, owner_.file_label_, remote, id);
+        },
+        [this](const auto& remote, uint32_t id, const auto& directory) {
+          if (!BrowserConnected(remote)) return false;
+          std::shared_ptr<PeerEventHandler> events;
+          { std::lock_guard lock(browser_mutex_); events = browser_peers_[remote]; }
+          const auto receiver = ReceiverFor(events.get(), remote);
+          return receiver && receiver->ReserveDirectory(id, directory);
+        },
+        [this](const auto& remote, uint32_t id) {
+          if (!BrowserConnected(remote)) return false;
+          for (const auto& info : BrowserTransfers(remote))
+            if (!info.receiving && info.file_id == id) return CancelSend(id);
+          return false;
+        }) {}
 FileTransferManager::~FileTransferManager() { Shutdown(); }
 
 void FileTransferManager::Shutdown() {
+  browser_.Stop();
   std::vector<std::future<void>> workers;
   {
     std::lock_guard lock(workers_mutex_);
@@ -147,6 +168,18 @@ void FileTransferManager::ProcessQueue(std::shared_ptr<RemoteSession> props) {
     uint64_t previous = UINT64_MAX;
     auto progress = file_transfer::SendState{id, 0, 0,
         cancelled ? file_transfer::Status::Cancelled : file_transfer::Status::Failed};
+    if (cancelled && peer && events && (!props || !props->closing_) &&
+        (props || owner_.IsAuthorizedController(file.remote_id))) {
+      auto callback = events->EnterCallback();
+      if (callback && events->DataAllowed()) {
+        // A queued browser file already reserved a destination on the peer.
+        // Release that reservation even though no data chunk was ever sent.
+        const auto packet = EncodeFileCancel(id, 0);
+        const auto wire_id = events->WireId(file.remote_id);
+        SendReliableDataFrameToPeer(peer, packet.data(), packet.size(),
+            file.file_label.c_str(), wire_id.data(), wire_id.size());
+      }
+    }
     if (started) {
       do {
         {
@@ -288,6 +321,7 @@ void FileTransferManager::UpdateReceiveProgress(
     info.file_id = file_transfer::Session::NextFileId();
     info.remote_id = remote_id;
     info.receiving = true;
+    info.wire_file_id = progress.id;
     receive_rate_samples_.emplace(info.file_id,
         ReceiveRateSample{std::chrono::steady_clock::now(), 0});
     found = notifications.emplace(progress.id, files.size()).first;
@@ -310,7 +344,7 @@ void FileTransferManager::UpdateReceiveProgress(
   }
 }
 
-void FileTransferManager::Receive(const char* data, size_t size,
+std::shared_ptr<FileReceiver> FileTransferManager::ReceiverFor(
     PeerEventHandler* handler, const std::string& remote) {
   const auto props = owner_.FindRemoteSession(remote);
   PeerPtr* peer;
@@ -324,14 +358,14 @@ void FileTransferManager::Receive(const char* data, size_t size,
     events = owner_.ControllerEvents(remote);
     peer = events ? events->DirectPeer() : nullptr;
   }
-  if (!peer || !events || events.get() != handler || (props && props->closing_)) return;
+  if (!peer || !events || events.get() != handler || (props && props->closing_)) return {};
   std::shared_ptr<FileReceiver> receiver;
   std::filesystem::path default_directory;
   {
     std::lock_guard lock(sessions_mutex_);
     const auto closed = disconnected_.find(handler);
     if (stopping_ || (closed != disconnected_.end() &&
-        (closed->second.count("") || closed->second.count(remote)))) return;
+        (closed->second.count("") || closed->second.count(remote)))) return {};
     auto& entry = receivers_[handler][remote];
     if (!entry.session) {
       entry.session = std::make_shared<FileReceiver>(); entry.handler = events;
@@ -358,7 +392,12 @@ void FileTransferManager::Receive(const char* data, size_t size,
   }
   const auto configured = owner_.config_center_->GetFileTransferSavePath();
   receiver->SetOutputDir(configured.empty() ? default_directory : PathFromUtf8(configured));
-  receiver->OnData(data, size);
+  return receiver;
+}
+
+void FileTransferManager::Receive(const char* data, size_t size,
+    PeerEventHandler* handler, const std::string& remote) {
+  if (auto receiver = ReceiverFor(handler, remote)) receiver->OnData(data, size);
 }
 
 void FileTransferManager::Connected(PeerEventHandler* handler, const std::string& remote) {
@@ -371,6 +410,17 @@ void FileTransferManager::Connected(PeerEventHandler* handler, const std::string
 }
 
 void FileTransferManager::Cancel(PeerEventHandler* handler, const std::string& remote) {
+  {
+    std::lock_guard lock(browser_mutex_);
+    for (auto it = browser_peers_.begin(); it != browser_peers_.end();) {
+      if (it->second.get() == handler && (remote.empty() || it->first == remote)) {
+        browser_.Disconnect(it->first);
+        browser_opened_.erase(it->first);
+        browser_supported_.erase(it->first);
+        it = browser_peers_.erase(it);
+      } else ++it;
+    }
+  }
   std::lock_guard lock(sessions_mutex_);
   disconnected_[handler].insert(remote);
   for (auto& [id, sender] : senders_)
@@ -409,6 +459,131 @@ void FileTransferManager::Poll() {
         static_cast<double>((std::numeric_limits<uint32_t>::max)())));
     sample->second = {now, info.sent_bytes};
   }
+}
+
+void FileTransferManager::SetBrowserSupport(PeerEventHandler* handler,
+    const std::string& remote, bool supported) {
+  const auto props = owner_.FindRemoteSession(remote);
+  const auto events = props ? props->peer_events_ : owner_.ControllerEvents(remote);
+  if (!events || events.get() != handler || !events->DataAllowed()) return;
+  std::lock_guard lock(browser_mutex_);
+  if (const auto previous = browser_peers_.find(remote);
+      previous != browser_peers_.end() && previous->second != events) {
+    browser_.Disconnect(remote);
+    browser_opened_.erase(remote);
+  }
+  browser_peers_[remote] = events;
+  if (supported) browser_supported_.insert(remote);
+  else browser_supported_.erase(remote);
+}
+
+bool FileTransferManager::BrowserSupported(const std::string& remote) {
+  std::lock_guard lock(browser_mutex_);
+  return browser_supported_.count(remote) != 0;
+}
+
+bool FileTransferManager::OpenBrowser(const std::string& remote) {
+  auto props = owner_.FindRemoteSession(remote);
+  auto events = props ? props->peer_events_ : owner_.ControllerEvents(remote);
+  if (!events || !events->DataAllowed() || owner_.unattended_host_ ||
+      (props ? props->closing_ || !props->connection_established_
+             : !owner_.IsAuthorizedController(remote))) return false;
+  std::lock_guard lock(browser_mutex_);
+  if (const auto previous = browser_peers_.find(remote);
+      previous != browser_peers_.end() && previous->second != events) {
+    browser_.Disconnect(remote);
+    browser_opened_.erase(remote);
+    browser_supported_.erase(remote);
+  }
+  browser_peers_[remote] = events;
+  // Opening the legacy file picker authorizes a send, not disk browsing.
+  if (browser_supported_.count(remote)) browser_opened_.insert(remote);
+  return true;
+}
+
+void FileTransferManager::CancelBrowserTransfer(const std::string& remote, uint32_t file_id) {
+  for (const auto& info : BrowserTransfers(remote)) {
+    if (info.file_id != file_id) continue;
+    if (info.receiving) browser_.CancelTransfer(remote, info.wire_file_id);
+    else CancelSend(file_id);
+    return;
+  }
+}
+
+bool FileTransferManager::BrowserConnected(const std::string& remote) {
+  auto props = owner_.FindRemoteSession(remote);
+  auto events = props ? props->peer_events_ : owner_.ControllerEvents(remote);
+  if (!events || !events->DataAllowed() || owner_.unattended_host_ ||
+      (props ? props->closing_ || !props->connection_established_
+             : !owner_.IsAuthorizedController(remote))) return false;
+  std::lock_guard lock(browser_mutex_);
+  const auto it = browser_peers_.find(remote);
+  return it != browser_peers_.end() && it->second == events;
+}
+
+bool FileTransferManager::SendBrowser(const std::string& remote, const FileBrowser::Json& message) {
+  if (!BrowserConnected(remote)) return false;
+  auto props = owner_.FindRemoteSession(remote);
+  std::shared_ptr<PeerEventHandler> events;
+  { std::lock_guard lock(browser_mutex_); events = browser_peers_[remote]; }
+  if (!events) return false;
+  auto callback = events->EnterCallback();
+  if (!callback || !events->DataAllowed()) return false;
+  PeerPtr* peer = events->IsDirect() ? events->DirectPeer() : props ? props->peer_ : owner_.peer_;
+  const auto data = message.dump(-1, ' ', false, FileBrowser::Json::error_handler_t::replace);
+  if (!peer || data.size() > 60000) return false;
+  const auto wire_id = events->WireId(remote);
+  return SendReliableDataFrameToPeer(peer, data.data(), data.size(),
+      owner_.control_data_label_.c_str(), wire_id.data(), wire_id.size()) == 0;
+}
+
+bool FileTransferManager::HandleBrowser(const char* data, size_t size,
+    PeerEventHandler* handler, const std::string& remote) {
+  if (!data || size > 60000 || std::string_view(data, size).find("file_browser") == std::string_view::npos)
+    return false;
+  auto message = FileBrowser::Json::parse(data, data + size, nullptr, false);
+  if (!message.is_object() || message.value("type", FileBrowser::Json{}) != "file_browser") return false;
+  auto props = owner_.FindRemoteSession(remote);
+  auto events = props ? props->peer_events_ : owner_.ControllerEvents(remote);
+  if (owner_.unattended_host_ || !events || events.get() != handler || !events->DataAllowed() ||
+      (props ? props->closing_ || !props->connection_established_
+             : !owner_.IsAuthorizedController(remote))) return true;
+  bool opened;
+  {
+    std::lock_guard lock(browser_mutex_);
+    browser_peers_[remote] = events;
+    if (message.value("op", FileBrowser::Json{}) == "presentation") {
+      // Older browser builds synchronized window visibility. Ignore that
+      // optional event: progress now belongs exclusively to the local sender.
+      return true;
+    }
+    opened = browser_opened_.count(remote);
+  }
+  // A controlled computer cannot browse the controller's disk until that
+  // controller explicitly opens this peer's file manager in this connection.
+  const auto op = message.value("op", FileBrowser::Json{});
+  if (props && !opened && op != "reply") {
+    if (message.contains("id")) SendBrowser(remote,
+        {{"op", "reply"}, {"id", message["id"]}, {"type", "file_browser"},
+         {"version", 1}, {"ok", false}, {"error", "browser_not_open"}});
+    return true;
+  }
+  browser_.Handle(remote, std::move(message));
+  return true;
+}
+
+std::vector<FileTransferManager::FileTransferState::FileTransferInfo>
+FileTransferManager::BrowserTransfers(const std::string& remote) {
+  std::vector<FileTransferState::FileTransferInfo> result;
+  const auto collect = [&](auto& state) {
+    std::lock_guard lock(state.file_transfer_list_mutex_);
+    for (const auto& info : state.file_transfer_list_)
+      if (info.remote_id == remote) result.push_back(info);
+  };
+  collect(global_state_); collect(received_state_);
+  if (auto props = owner_.FindRemoteSession(remote)) collect(props->file_transfer_);
+  std::sort(result.begin(), result.end(), [](const auto& a, const auto& b) { return a.file_id > b.file_id; });
+  return result;
 }
 
 }  // namespace crossdesk

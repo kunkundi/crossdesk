@@ -1,0 +1,735 @@
+import { ScrollView, ListView, Spinner } from "std-widgets.slint";
+import { WorkbenchStyle, WorkbenchButton, WorkbenchCard } from "workbench_controls.slint";
+import { FlatSurface, UiSurface, SurfaceSeparator } from "ui_surface.slint";
+import { UiRadius } from "ui_radius.slint";
+import { RoundedLineEdit } from "rounded_line_edit.slint";
+import { FontAwesomeIcons, ControlStyle, ImGuiFontStyle } from "common.slint";
+
+export struct BrowserEntry {
+    name: string, path: string, directory: bool, selected: bool,
+    size: string, modified: string, link: bool,
+}
+export struct BrowserTreeEntry {
+    name: string, path: string, depth: int, expanded: bool, selected: bool,
+}
+export struct BrowserTask {
+    id: int, name: string, size: string, detail: string, status: string,
+    progress: float, active: bool, failed: bool, can-cancel: bool, receiving: bool,
+}
+
+component BrowserScrollView inherits Rectangle {
+    // Fluent overlays a 14px scrollbar on its viewport. Keep a 4px gap between
+    // that track and row content, including while the scrollbar expands on hover.
+    out property <length> content-gutter: 18px;
+    horizontal-stretch: 1;
+    vertical-stretch: 1;
+    clip: true;
+    ScrollView {
+        x: 0px; y: 0px; width: root.width; height: root.height;
+        viewport-width: self.visible-width;
+        horizontal-scrollbar-policy: always-off;
+        @children
+    }
+}
+
+// Keep the visual compact while retaining a generous pointer target.
+// Selection stays model-owned so refreshing rows cannot toggle it accidentally.
+component BrowserCheckBox inherits Rectangle {
+    in property <bool> checked;
+    in property <bool> indeterminate;
+    in property <bool> enabled: true;
+    in property <string> label;
+    in property <bool> show-label: false;
+    private property <bool> keyboard-focus: false;
+    callback toggled;
+    width: 24px; height: 24px;
+    forward-focus: focus;
+    accessible-role: checkbox;
+    accessible-label: root.label;
+    accessible-checked: root.checked;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.toggled(); } }
+    box := FlatSurface {
+        x: 4px; y: (parent.height - self.height) / 2; width: 16px; height: 16px;
+        border-radius: 4px;
+        background: !root.enabled ? #f4f6f9
+            : touch.pressed ? #dce7fb
+            : root.checked || root.indeterminate ? (touch.has-hover ? #dfe9fc : #edf2fc)
+            : touch.has-hover ? #f5f8fe : white;
+        outline-color: !root.enabled ? #dce2eb
+            : touch.has-hover || touch.pressed ? #7d9edb
+            : root.checked || root.indeterminate ? #a6bce6 : #b7c3d4;
+        animate background, outline-color { duration: 100ms; }
+        if root.checked && !root.indeterminate: Path {
+            width: parent.width; height: parent.height;
+            viewbox-width: 16; viewbox-height: 16;
+            commands: "M 4 8 L 6.75 10.75 L 12 5.5";
+            stroke: root.enabled ? WorkbenchStyle.accent : #aab5c6;
+            stroke-width: 1.7px; stroke-line-cap: round; stroke-line-join: round;
+        }
+        if root.indeterminate: Rectangle {
+            x: 4px; y: 7px; width: 8px; height: 2px; border-radius: 1px;
+            background: root.enabled ? WorkbenchStyle.accent : #aab5c6;
+        }
+    }
+    if root.show-label: Text {
+        x: 30px; width: parent.width - self.x; height: parent.height;
+        text: root.label; color: WorkbenchStyle.text; font-size: ImGuiFontStyle.base;
+        vertical-alignment: center; overflow: elide; accessible-role: none;
+    }
+    if root.keyboard-focus && focus.has-focus: FlatSurface {
+        x: 1px; y: box.y - 3px; width: 22px; height: 22px;
+        border-radius: 6px; outline-color: UiSurface.focus;
+    }
+    focus := FocusScope {
+        enabled: root.enabled;
+        focus-gained(reason) => { root.keyboard-focus = reason == FocusReason.tab-navigation; }
+        focus-lost => { root.keyboard-focus = false; }
+        key-pressed(event) => {
+            if event.text == " " || event.text == Key.Return {
+                root.keyboard-focus = true; root.toggled(); return accept;
+            }
+            reject
+        }
+        touch := TouchArea {
+            enabled: root.enabled; mouse-cursor: pointer;
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.down { root.keyboard-focus = false; }
+            }
+            clicked => { focus.focus(); root.keyboard-focus = false; root.toggled(); }
+        }
+    }
+}
+
+component BrowserSortHeader inherits FlatSurface {
+    in property <string> text;
+    in property <bool> chinese;
+    in property <bool> active;
+    in property <bool> descending;
+    in property <bool> default-descending;
+    in property <bool> right-aligned;
+    in property <bool> enabled: true;
+    private property <bool> keyboard-focus: false;
+    private property <bool> next-descending: root.active ? !root.descending : root.default-descending;
+    callback clicked;
+    height: 28px;
+    border-radius: UiRadius.control;
+    outline-enabled: focus.has-focus && root.keyboard-focus;
+    outline-color: UiSurface.focus;
+    background: touch.pressed ? ControlStyle.pressed.with-alpha(0.3)
+        : touch.has-hover && root.enabled ? ControlStyle.hover.with-alpha(0.2) : transparent;
+    forward-focus: focus;
+    accessible-role: button;
+    accessible-enabled: root.enabled;
+    accessible-label: root.text + (root.active ? (root.descending ? (root.chinese ? "，降序" : ", descending") : (root.chinese ? "，升序" : ", ascending")) : "")
+        + (root.next-descending ? (root.chinese ? "，点击按降序排列" : ", sort descending") : (root.chinese ? "，点击按升序排列" : ", sort ascending"));
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+    label := Text {
+        x: root.right-aligned ? parent.width - self.width - (root.active ? 14px : 0px) : 0px;
+        width: min(self.preferred-width, parent.width - (root.active ? 14px : 0px));
+        height: parent.height;
+        text: root.text; font-size: ImGuiFontStyle.body; font-weight: root.active ? 600 : 400;
+        color: root.active ? WorkbenchStyle.text : WorkbenchStyle.muted;
+        vertical-alignment: center; overflow: elide; accessible-role: none;
+    }
+    if root.active: Text {
+        x: label.x + label.width + 4px; width: 10px; height: parent.height;
+        text: root.descending ? FontAwesomeIcons.angle-down : FontAwesomeIcons.angle-up;
+        font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 10px;
+        color: WorkbenchStyle.muted; vertical-alignment: center; accessible-role: none;
+    }
+    focus := FocusScope {
+        enabled: root.enabled;
+        focus-gained(reason) => { root.keyboard-focus = reason == FocusReason.tab-navigation; }
+        focus-lost => { root.keyboard-focus = false; }
+        key-pressed(event) => {
+            if event.text == " " || event.text == Key.Return {
+                root.keyboard-focus = true; root.clicked(); return accept;
+            }
+            reject
+        }
+        touch := TouchArea {
+            enabled: root.enabled; mouse-cursor: pointer;
+            pointer-event(event) => { if event.kind == PointerEventKind.down { root.keyboard-focus = false; } }
+            clicked => { focus.focus(); root.keyboard-focus = false; root.clicked(); }
+        }
+    }
+}
+
+component BrowserPane inherits WorkbenchCard {
+    in property <bool> chinese;
+    in property <string> open-directory-text;
+    in property <string> heading;
+    in property <string> subtitle;
+    in-out property <string> path;
+    in property <string> current-path;
+    in-out property <string> filter-text;
+    in property <string> status;
+    in property <string> error;
+    in property <bool> busy;
+    in property <bool> enabled: true;
+    in property <bool> can-up;
+    in property <bool> all-selected;
+    in property <bool> show-hidden;
+    in property <int> selected-count;
+    in property <bool> destination;
+    in property <bool> transfer-ready;
+    in property <int> selection-revision;
+    in property <int> drag-count;
+    in property <bool> dragging;
+    in property <[BrowserEntry]> entries;
+    in property <[BrowserTreeEntry]> tree;
+    in property <int> sort-column;
+    in property <bool> sort-descending;
+    private property <length> modified-column-width: 72px;
+    private property <length> size-column-width: 56px;
+    outline-color: root.destination ? UiSurface.hover : UiSurface.edge;
+    callback navigate(string);
+    callback up;
+    callback select-entry(int);
+    callback open-entry(int);
+    callback open-directory(string);
+    callback select-all;
+    callback tree-open(int);
+    callback tree-toggle(int);
+    callback filter(string);
+    callback toggle-hidden;
+    callback sort(int);
+    pure callback drag-data(string, int) -> data-transfer;
+    callback drag-state(data-transfer, bool);
+    callback can-drop(data-transfer) -> bool;
+    callback dropped(data-transfer) -> bool;
+    changed enabled => { if !root.enabled { directory-popup.close(); } }
+    changed dragging => { if root.dragging { directory-popup.close(); } }
+    changed current-path => { file-list.reset-scroll(); }
+    changed filter-text => { file-list.reset-scroll(); }
+    changed sort-column => { file-list.reset-scroll(); }
+    changed sort-descending => { file-list.reset-scroll(); }
+    VerticalLayout {
+        padding-left: 14px; padding-right: 14px;
+        padding-top: 12px; padding-bottom: 12px; spacing: 6px;
+        HorizontalLayout {
+            height: 24px; spacing: 8px;
+            Text { text: root.heading; color: WorkbenchStyle.text; font-size: ImGuiFontStyle.prominent; font-weight: 600; vertical-alignment: center; }
+            Text {
+                horizontal-stretch: 1;
+                text: root.destination ? (root.chinese ? "接收目录" : "Destination")
+                    : root.selected-count > 0 ? (root.chinese ? "已选 " + root.selected-count + " 项" : root.selected-count + " selected") : root.subtitle;
+                color: root.destination ? WorkbenchStyle.accent : WorkbenchStyle.muted;
+                font-size: ImGuiFontStyle.body; horizontal-alignment: right; vertical-alignment: center; overflow: elide;
+            }
+            RoundedLineEdit {
+                width: min(164px, root.width * 0.4); height: 24px;
+                text <=> root.filter-text; tint-opacity: 0.15;
+                placeholder-text: root.chinese ? "筛选名称…" : "Filter by name…";
+                enabled: root.enabled && !root.busy && !root.dragging;
+                edited => { root.filter(self.text); }
+                accepted => { self.clear-focus(); }
+            }
+        }
+        HorizontalLayout {
+            height: 32px; spacing: 6px;
+            WorkbenchButton {
+                width: 32px; height: 32px; quiet: true; icon: FontAwesomeIcons.arrow-up;
+                tooltip: root.chinese ? "打开上一级目录" : "Open parent folder";
+                tooltip-above: true; tooltip-align-left: true;
+                accessible-label: self.tooltip;
+                enabled: root.can-up && !root.busy && root.enabled && !root.dragging;
+                clicked => { root.up(); }
+            }
+            path-focus := FocusScope {
+                horizontal-stretch: 1; height: 32px;
+                forward-focus: path-editor;
+                key-pressed(event) => {
+                    if event.text == Key.Escape {
+                        root.path = root.current-path;
+                        path-editor.clear-focus();
+                        return accept;
+                    }
+                    reject
+                }
+                path-editor := RoundedLineEdit {
+                    width: parent.width; height: parent.height; text <=> root.path;
+                    tint-opacity: 0.2;
+                    enabled: root.enabled && !root.dragging;
+                    placeholder-text: root.chinese ? "输入路径，按回车打开" : "Enter a folder path";
+                    accepted => { root.navigate(self.text); self.clear-focus(); }
+                }
+            }
+            tree-trigger := WorkbenchButton {
+                width: 28px; height: 32px; quiet: true; icon: FontAwesomeIcons.folder-open;
+                enabled: root.enabled && !root.dragging;
+                accessible-label: root.chinese ? "浏览目录树" : "Browse folder tree";
+                clicked => { if directory-popup.is-open { directory-popup.close(); } else { directory-popup.show(); } }
+            }
+        }
+        body := Rectangle {
+            vertical-stretch: 1;
+            drop-zone := DropArea {
+                enabled: root.transfer-ready;
+                can-drop(event) => { return root.can-drop(event.data) ? DragAction.copy : DragAction.none; }
+                dropped(event) => { return root.dropped(event.data) ? DragAction.copy : DragAction.none; }
+                VerticalLayout {
+                    spacing: 0px;
+                    Rectangle {
+                        height: 28px; background: WorkbenchStyle.field-surface; border-radius: UiRadius.control;
+                        HorizontalLayout {
+                            padding-left: 6px; padding-right: 8px + file-list.content-gutter; spacing: 8px;
+                            BrowserCheckBox {
+                                width: 24px; height: 28px; checked: root.all-selected;
+                                indeterminate: root.selected-count > 0 && !root.all-selected;
+                                label: (root.chinese ? "选择全部" : "Select all")
+                                    + (self.indeterminate ? (root.chinese ? "，部分已选" : ", partially selected") : "");
+                                enabled: root.enabled && root.entries.length > 0 && !root.busy && root.error == "" && !root.dragging;
+                                toggled => { root.select-all(); }
+                            }
+                            BrowserSortHeader {
+                                horizontal-stretch: 1; text: root.chinese ? "名称" : "Name"; chinese: root.chinese;
+                                active: root.sort-column == 0; descending: root.sort-descending;
+                                enabled: root.enabled && !root.busy && root.error == "" && !root.dragging;
+                                clicked => { root.sort(0); }
+                            }
+                            BrowserSortHeader {
+                                width: root.modified-column-width; text: root.chinese ? "修改日期" : "Modified"; chinese: root.chinese;
+                                active: root.sort-column == 1; descending: root.sort-descending; default-descending: true; right-aligned: true;
+                                enabled: root.enabled && !root.busy && root.error == "" && !root.dragging;
+                                clicked => { root.sort(1); }
+                            }
+                            BrowserSortHeader {
+                                width: root.size-column-width; text: root.chinese ? "大小" : "Size"; chinese: root.chinese;
+                                active: root.sort-column == 2; descending: root.sort-descending; default-descending: true; right-aligned: true;
+                                enabled: root.enabled && !root.busy && root.error == "" && !root.dragging;
+                                clicked => { root.sort(2); }
+                            }
+                        }
+                    }
+                    file-list := Rectangle {
+                        out property <length> content-gutter: 18px;
+                        public function reset-scroll() { visible-files.viewport-y = 0px; }
+                        vertical-stretch: 1;
+                        clip: true;
+                        visible-files := ListView {
+                            width: parent.width; height: parent.height;
+                            viewport-width: self.visible-width;
+                            horizontal-scrollbar-policy: always-off;
+                            for entry[index] in root.entries: Rectangle {
+                                x: 0px; width: file-list.width - file-list.content-gutter;
+                                height: 28px;
+                                border-radius: UiRadius.control;
+                                background: entry.selected
+                                    ? (row-touch.pressed ? ControlStyle.selected-pressed.with-alpha(0.4) : row-touch.has-hover ? ControlStyle.selected-hover.with-alpha(0.35) : ControlStyle.selected.with-alpha(0.3))
+                                    : row-touch.pressed ? ControlStyle.pressed.with-alpha(0.3) : row-touch.has-hover ? ControlStyle.hover.with-alpha(0.2) : transparent;
+                                opacity: drag-source.dragging ? 0.55 : 1;
+                                folder-menu := ContextMenuArea {
+                                    enabled: entry.directory && root.enabled && !root.busy && root.error == "" && !root.dragging;
+                                    Menu {
+                                        MenuItem {
+                                            title: root.open-directory-text;
+                                            activated => { root.open-directory(entry.path); }
+                                        }
+                                    }
+                                    HorizontalLayout {
+                                        padding-left: 6px; padding-right: 8px; spacing: 8px;
+                                        Rectangle { width: 24px; }
+                                        Text { width: 17px; text: entry.directory ? FontAwesomeIcons.folder-open : FontAwesomeIcons.file-lines; font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 14px; color: entry.directory ? WorkbenchStyle.accent : ControlStyle.icon; vertical-alignment: center; }
+                                        Text { text: entry.name; color: entry.link ? WorkbenchStyle.muted : entry.selected ? ControlStyle.selected-text : WorkbenchStyle.text; font-size: ImGuiFontStyle.base; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                                        Text { width: root.modified-column-width; text: entry.modified != "" ? entry.modified : "—"; color: WorkbenchStyle.muted; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; horizontal-alignment: right; }
+                                        Text { width: root.size-column-width; text: entry.directory ? "—" : entry.size; color: WorkbenchStyle.muted; font-size: ImGuiFontStyle.body; vertical-alignment: center; horizontal-alignment: right; }
+                                    }
+                                    drag-source := DragArea {
+                                        // Only the row body starts drags; checkboxes remain selection controls.
+                                        x: 34px; width: parent.width - 34px; height: parent.height;
+                                        enabled: root.transfer-ready && !entry.link;
+                                        allow-copy: true;
+                                        data: root.drag-data(entry.path, root.selection-revision);
+                                        changed dragging => { if self.dragging { root.drag-state(self.data, true); } }
+                                        drag-finished(action) => { root.drag-state(self.data, false); }
+                                        row-touch := TouchArea {
+                                            enabled: root.enabled && !root.busy && root.error == "";
+                                            mouse-cursor: entry.link ? MouseCursor.default : MouseCursor.grab;
+                                            pointer-event(event) => {
+                                                if event.button == PointerEventButton.right && event.kind == PointerEventKind.up && folder-menu.enabled {
+                                                    folder-menu.show({ x: self.mouse-x + 34px, y: self.mouse-y });
+                                                }
+                                            }
+                                            clicked => { root.select-entry(index); }
+                                            double-clicked => { root.open-entry(index); }
+                                        }
+                                    }
+                                    BrowserCheckBox { x: 6px; y: (parent.height - self.height) / 2; width: 24px; checked: entry.selected; label: (root.chinese ? "选择 " : "Select ") + entry.name; enabled: !entry.link && root.enabled && !root.busy && root.error == "" && !root.dragging; toggled => { root.select-entry(index); } }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if root.entries.length == 0 && !root.busy && root.error == "": VerticalLayout {
+                x: 12px; y: 34px; width: parent.width - 24px; height: parent.height - 40px;
+                alignment: center; spacing: 10px;
+                Text {
+                    text: root.filter-text != "" ? (root.chinese ? "没有匹配的项目" : "No matching items")
+                        : (root.chinese ? "此目录为空" : "This folder is empty");
+                    color: WorkbenchStyle.muted; font-size: ImGuiFontStyle.base; horizontal-alignment: center;
+                }
+                if root.filter-text != "": HorizontalLayout {
+                    alignment: center;
+                    WorkbenchButton { width: 112px; height: 28px; text-size: ImGuiFontStyle.base; text: root.chinese ? "清空筛选" : "Clear filter"; clicked => { root.filter-text = ""; root.filter(""); } }
+                }
+            }
+            if root.error != "" && !root.busy: Rectangle {
+                width: parent.width; height: parent.height; background: WorkbenchStyle.surface;
+                TouchArea {}
+                VerticalLayout {
+                    padding: 16px; spacing: 10px; alignment: center;
+                    Text { text: root.chinese ? "无法读取目录" : "Unable to open folder"; color: WorkbenchStyle.text; font-size: ImGuiFontStyle.base; font-weight: 600; horizontal-alignment: center; }
+                    Text { text: root.error; color: WorkbenchStyle.muted; font-size: ImGuiFontStyle.body; wrap: word-wrap; horizontal-alignment: center; }
+                    HorizontalLayout {
+                        alignment: center;
+                        WorkbenchButton { width: 128px; height: 28px; text-size: ImGuiFontStyle.base; text: root.chinese ? "打开主目录" : "Open home folder"; clicked => { root.navigate(""); } }
+                    }
+                }
+            }
+            if root.busy: Rectangle {
+                width: parent.width; height: parent.height; background: WorkbenchStyle.surface.with-alpha(0.9);
+                VerticalLayout { alignment: center; spacing: 12px; Spinner { width: 24px; height: 24px; } Text { text: root.status; horizontal-alignment: center; color: WorkbenchStyle.muted; font-size: ImGuiFontStyle.base; } }
+            }
+            if drop-zone.has-drag: FlatSurface {
+                width: parent.width; height: parent.height;
+                background: ControlStyle.selected.with-alpha(0.3); outline-color: UiSurface.focus; border-radius: UiRadius.control;
+                Rectangle {
+                    x: 8px; y: max(6px, parent.height - 68px); width: parent.width - 16px; height: 60px;
+                    background: ControlStyle.surface; border-radius: UiRadius.control;
+                    VerticalLayout {
+                        padding: 9px; spacing: 4px;
+                        Text { text: root.chinese ? "松手复制 " + root.drag-count + " 项到此目录" : "Release to copy " + root.drag-count + " items here"; color: WorkbenchStyle.accent; font-size: ImGuiFontStyle.base; font-weight: 600; horizontal-alignment: center; }
+                        Text { text: root.path; color: WorkbenchStyle.text; font-size: ImGuiFontStyle.body; overflow: elide; horizontal-alignment: center; }
+                    }
+                }
+            }
+        }
+        Text {
+            height: 16px;
+            text: root.busy ? root.status
+                : root.path != root.current-path ? (root.chinese ? "Enter 打开路径 · Esc 还原" : "Enter to open · Esc to restore")
+                : root.error != "" ? (root.chinese ? "目录不可用" : "Folder unavailable")
+                : root.filter-text != "" ? (root.chinese ? "筛选结果 · " : "Filtered · ") + root.status : root.status;
+            color: root.path != root.current-path ? WorkbenchStyle.accent : WorkbenchStyle.muted;
+            font-size: ImGuiFontStyle.body; overflow: elide;
+        }
+    }
+    directory-popup := PopupWindow {
+        x: 14px; y: 78px; width: root.width - 28px; height: min(330px, max(180px, root.height - 90px));
+        close-policy: close-on-click-outside;
+        FlatSurface {
+            width: parent.width; height: parent.height; background: WorkbenchStyle.surface; outline-color: UiSurface.edge; border-radius: UiRadius.menu;
+            VerticalLayout {
+                padding: 12px; spacing: 10px;
+                HorizontalLayout {
+                    height: 28px; spacing: 8px;
+                    WorkbenchButton { text: root.chinese ? "主目录" : "Home"; quiet: true; height: 28px; clicked => { root.navigate(""); directory-popup.close(); } }
+                    WorkbenchButton { text: root.chinese ? "磁盘" : "Drives"; quiet: true; height: 28px; clicked => { root.navigate("@roots"); directory-popup.close(); } }
+                }
+                tree-list := Rectangle {
+                    out property <length> content-gutter: 18px;
+                    vertical-stretch: 1;
+                    clip: true;
+                    ListView {
+                        width: parent.width; height: parent.height;
+                        viewport-width: self.visible-width;
+                        horizontal-scrollbar-policy: always-off;
+                        for node[index] in root.tree: Rectangle {
+                            x: 0px; width: tree-list.width - tree-list.content-gutter;
+                            height: 29px; border-radius: UiRadius.control;
+                            background: node.selected ? ControlStyle.selected.with-alpha(0.3) : tree-touch.has-hover ? ControlStyle.hover.with-alpha(0.2) : transparent;
+                            Text { x: 24px + min(node.depth, 8) * 12px; width: parent.width - self.x - 4px; height: parent.height; text: node.name; color: node.selected ? WorkbenchStyle.accent : WorkbenchStyle.text; font-size: ImGuiFontStyle.base; vertical-alignment: center; overflow: elide; }
+                            tree-touch := TouchArea { clicked => { root.tree-open(index); directory-popup.close(); } }
+                            WorkbenchButton { x: min(node.depth, 8) * 12px; width: 22px; height: 28px; quiet: true; icon: node.expanded ? FontAwesomeIcons.angle-down : FontAwesomeIcons.angle-right; clicked => { root.tree-toggle(index); } }
+                        }
+                    }
+                }
+                BrowserCheckBox { width: parent.width; show-label: true; label: root.chinese ? "显示隐藏项" : "Show hidden files"; checked: root.show-hidden; toggled => { root.toggle-hidden(); } }
+            }
+        }
+    }
+}
+
+export component FileBrowserWindow inherits Window {
+    title: root.chinese ? "文件传输" : "File transfer";
+    icon: @image-url("../../../resources/linux/crossdesk_256x256.png");
+    preferred-width: 900px; preferred-height: 620px;
+    min-width: 760px; min-height: 500px;
+    background: WorkbenchStyle.canvas;
+    default-font-size: ImGuiFontStyle.base;
+    in property <bool> chinese: true;
+    in property <string> send-local-text: root.chinese ? "发送到本机" : "Send to local";
+    in property <string> send-remote-text: root.chinese ? "发送到远端" : "Send to remote";
+    in property <string> clear-completed-text: root.chinese ? "清除已完成" : "Clear completed";
+    in property <string> open-directory-text: root.chinese ? "打开目录" : "Open folder";
+    in property <bool> connected: true;
+    in property <string> peer-name;
+    in property <string> local-role;
+    in property <string> remote-role;
+    in-out property <string> local-path;
+    in-out property <string> remote-path;
+    in property <string> local-current-path;
+    in property <string> remote-current-path;
+    in-out property <string> local-filter;
+    in-out property <string> remote-filter;
+    in property <string> local-status;
+    in property <string> remote-status;
+    in property <string> local-error;
+    in property <string> remote-error;
+    in property <bool> local-busy;
+    in property <bool> remote-busy;
+    in property <bool> local-up;
+    in property <bool> remote-up;
+    in property <bool> local-all;
+    in property <bool> remote-all;
+    in property <bool> local-hidden;
+    in property <bool> remote-hidden;
+    in property <int> local-sort-column;
+    in property <int> remote-sort-column;
+    in property <bool> local-sort-descending;
+    in property <bool> remote-sort-descending;
+    in property <int> local-selected;
+    in property <int> remote-selected;
+    in property <[BrowserEntry]> local-entries;
+    in property <[BrowserEntry]> remote-entries;
+    in property <[BrowserTreeEntry]> local-tree;
+    in property <[BrowserTreeEntry]> remote-tree;
+    in property <[BrowserTask]> tasks;
+    in property <string> task-summary;
+    in property <string> notice;
+    in property <bool> notice-error;
+    in property <bool> can-upload;
+    in property <bool> can-download;
+    in property <bool> source-remote;
+    in property <bool> transfer-ready;
+    in property <int> selection-revision;
+    in property <bool> drag-active;
+    in property <int> drag-count;
+    in-out property <bool> tasks-expanded: false;
+    private property <length> task-list-max-height: min(144px, max(72px, root.height - 440px));
+    private property <int> selected-count: root.local-selected + root.remote-selected;
+    private property <bool> path-pending: root.local-path != root.local-current-path || root.remote-path != root.remote-current-path;
+    private property <bool> notice-visible: false;
+    changed notice => { root.notice-visible = root.notice != ""; }
+    Timer {
+        interval: 3500ms;
+        running: root.notice-visible && !root.notice-error;
+        triggered => { root.notice-visible = false; }
+    }
+    callback navigate(bool, string);
+    callback refresh(bool);
+    callback up(bool);
+    callback select-entry(bool, int);
+    callback open-entry(bool, int);
+    callback open-directory(bool, string);
+    callback select-all(bool);
+    callback clear-selection;
+    callback tree-open(bool, int);
+    callback tree-toggle(bool, int);
+    callback filter(bool, string);
+    callback toggle-hidden(bool);
+    callback sort(bool, int);
+    callback transfer(bool);
+    callback cancel-task(int);
+    callback clear-finished;
+    pure callback drag-data(bool, string, int) -> data-transfer;
+    callback drag-state(data-transfer, bool);
+    callback can-drop(bool, data-transfer) -> bool;
+    callback dropped(bool, data-transfer) -> bool;
+    callback cancel-drag;
+    forward-focus: focus;
+    SurfaceSeparator { x: 0px; y: 0px; width: parent.width; }
+    focus := FocusScope {
+        focus-on-click: true;
+        key-pressed(event) => {
+            if event.text == Key.Escape { root.cancel-drag(); return accept; }
+            reject
+        }
+        focus-lost => { if root.drag-active { root.cancel-drag(); } }
+        VerticalLayout {
+            spacing: 12px; padding: 16px;
+            HorizontalLayout {
+                height: 32px; spacing: 12px;
+                Text { text: root.chinese ? "文件传输" : "File transfer"; font-size: ImGuiFontStyle.section-title; font-weight: 600; color: WorkbenchStyle.text; vertical-alignment: center; horizontal-stretch: 1; }
+                Text { text: root.peer-name; color: WorkbenchStyle.muted; vertical-alignment: center; font-size: ImGuiFontStyle.base; overflow: elide; }
+                Rectangle {
+                    width: root.chinese ? 104px : 144px;
+                    WorkbenchButton {
+                        y: (parent.height - self.height) / 2;
+                        width: parent.width; height: 28px; icon: FontAwesomeIcons.rotate;
+                        text: root.chinese ? "刷新目录" : "Refresh folders";
+                        text-size: ImGuiFontStyle.base;
+                        accessible-label: root.chinese ? "刷新双方目录" : "Refresh both folders";
+                        enabled: root.connected && !root.drag-active && !root.local-busy && !root.remote-busy;
+                        clicked => { root.refresh(false); root.refresh(true); }
+                    }
+                }
+            }
+            HorizontalLayout {
+                vertical-stretch: 1; spacing: 12px;
+                BrowserPane {
+                    width: (parent.width - 12px) / 2;
+                    horizontal-stretch: 1; chinese: root.chinese; heading: root.chinese ? "本机" : "Local"; subtitle: root.local-role;
+                    path <=> root.local-path; status: root.local-status; error: root.local-error; busy: root.local-busy;
+                    open-directory-text: root.open-directory-text;
+                    open-directory(path) => { root.open-directory(false, path); }
+                    current-path: root.local-current-path; filter-text <=> root.local-filter;
+                    can-up: root.local-up; all-selected: root.local-all; entries: root.local-entries; tree: root.local-tree;
+                    show-hidden: root.local-hidden; toggle-hidden => { root.toggle-hidden(false); }
+                    sort-column: root.local-sort-column; sort-descending: root.local-sort-descending;
+                    sort(column) => { root.sort(false, column); }
+                    selected-count: root.local-selected; destination: root.remote-selected > 0;
+                    transfer-ready: root.transfer-ready; selection-revision: root.selection-revision; dragging: root.drag-active; drag-count: root.drag-count;
+                    navigate(path) => { root.navigate(false, path); } up => { root.up(false); }
+                    select-entry(index) => { root.select-entry(false, index); } open-entry(index) => { root.open-entry(false, index); }
+                    select-all => { root.select-all(false); } tree-open(index) => { root.tree-open(false, index); } tree-toggle(index) => { root.tree-toggle(false, index); }
+                    filter(text) => { root.filter(false, text); }
+                    drag-data(path, revision) => { return root.drag-data(false, path, revision); }
+                    drag-state(data, active) => { root.drag-state(data, active); }
+                    can-drop(data) => { return root.can-drop(false, data); }
+                    dropped(data) => { return root.dropped(false, data); }
+                }
+                BrowserPane {
+                    width: (parent.width - 12px) / 2;
+                    horizontal-stretch: 1; chinese: root.chinese; heading: root.chinese ? "远端" : "Remote"; subtitle: root.remote-role; enabled: root.connected;
+                    path <=> root.remote-path; status: root.remote-status; error: root.remote-error; busy: root.remote-busy;
+                    open-directory-text: root.open-directory-text;
+                    open-directory(path) => { root.open-directory(true, path); }
+                    current-path: root.remote-current-path; filter-text <=> root.remote-filter;
+                    can-up: root.remote-up; all-selected: root.remote-all; entries: root.remote-entries; tree: root.remote-tree;
+                    show-hidden: root.remote-hidden; toggle-hidden => { root.toggle-hidden(true); }
+                    sort-column: root.remote-sort-column; sort-descending: root.remote-sort-descending;
+                    sort(column) => { root.sort(true, column); }
+                    selected-count: root.remote-selected; destination: root.local-selected > 0;
+                    transfer-ready: root.transfer-ready; selection-revision: root.selection-revision; dragging: root.drag-active; drag-count: root.drag-count;
+                    navigate(path) => { root.navigate(true, path); } up => { root.up(true); }
+                    select-entry(index) => { root.select-entry(true, index); } open-entry(index) => { root.open-entry(true, index); }
+                    select-all => { root.select-all(true); } tree-open(index) => { root.tree-open(true, index); } tree-toggle(index) => { root.tree-toggle(true, index); }
+                    filter(text) => { root.filter(true, text); }
+                    drag-data(path, revision) => { return root.drag-data(true, path, revision); }
+                    drag-state(data, active) => { root.drag-state(data, active); }
+                    can-drop(data) => { return root.can-drop(true, data); }
+                    dropped(data) => { return root.dropped(true, data); }
+                }
+            }
+            WorkbenchCard {
+                height: 83px + task-content.height;
+                VerticalLayout {
+                    spacing: 0px; padding: 1px;
+                    HorizontalLayout {
+                        height: 48px; padding-left: 12px; padding-right: 12px; spacing: 12px;
+                        VerticalLayout {
+                            alignment: center; spacing: 3px; horizontal-stretch: 1;
+                            Text {
+                                text: root.path-pending ? (root.chinese ? "按 Enter 打开路径" : "Press Enter to open the path")
+                                    : root.drag-active ? (root.chinese ? "松手复制 · Esc 取消" : "Release to copy · Esc to cancel")
+                                    : root.notice-error ? root.notice
+                                    : root.selected-count > 0 ? (root.chinese ? "已选 " + root.selected-count + " 项 · " + (root.source-remote ? "远端 → 本机" : "本机 → 远端")
+                                        : (root.source-remote ? "Remote → Local" : "Local → Remote") + " · " + root.selected-count + " selected")
+                                    : root.notice-visible ? root.notice
+                                    : (root.chinese ? "选择文件，或拖到另一侧" : "Select files or drag to the other side");
+                                color: root.notice-error && !root.drag-active && !root.path-pending ? UiSurface.error
+                                    : root.selected-count > 0 ? WorkbenchStyle.text : WorkbenchStyle.muted;
+                                font-size: ImGuiFontStyle.base; font-weight: 400; overflow: elide;
+                            }
+                            if root.selected-count > 0 && !root.path-pending && !root.drag-active && !root.notice-error: Text {
+                                text: (root.chinese ? "目标：" : "To: ") + (root.source-remote ? root.local-current-path : root.remote-current-path);
+                                color: WorkbenchStyle.muted;
+                                font-size: ImGuiFontStyle.body; overflow: elide;
+                            }
+                        }
+                        if root.selected-count > 0: Rectangle {
+                            width: root.chinese ? 76px : 100px;
+                            WorkbenchButton {
+                                y: (parent.height - self.height) / 2; width: parent.width; height: 28px; quiet: true;
+                                text-size: ImGuiFontStyle.base; text: root.chinese ? "取消选择" : "Clear selection";
+                                enabled: !root.drag-active; clicked => { root.clear-selection(); }
+                            }
+                        }
+                        Rectangle {
+                            width: max(root.chinese ? 148px : 160px, send-label-measure.preferred-width + 32px);
+                            send-label-measure := Text {
+                                visible: false;
+                                text: root.source-remote ? root.send-local-text : root.send-remote-text;
+                                font-size: ImGuiFontStyle.base; font-weight: 600;
+                            }
+                            WorkbenchButton {
+                                y: (parent.height - self.height) / 2; width: parent.width; height: 32px; primary: true;
+                                text-size: ImGuiFontStyle.base;
+                                enabled: !root.drag-active && (root.source-remote ? root.can-download : root.can-upload);
+                                text: send-label-measure.text;
+                                clicked => { root.transfer(root.source-remote); }
+                            }
+                        }
+                    }
+                    Rectangle { height: 1px; SurfaceSeparator { x: 12px; y: 0px; width: parent.width - 24px; } }
+                    Rectangle {
+                        height: 32px;
+                        HorizontalLayout {
+                            padding-left: 10px; padding-right: 10px; spacing: 8px;
+                            Rectangle {
+                                horizontal-stretch: 1;
+                                WorkbenchButton { x: 0px; width: min(parent.width, task-label.preferred-width + 46px); height: 32px; quiet: true; accessible-label: task-label.text; clicked => { root.tasks-expanded = !root.tasks-expanded; } }
+                                Text { x: 8px; width: 14px; height: parent.height; font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: ImGuiFontStyle.base; color: ControlStyle.icon; vertical-alignment: center; text: root.tasks-expanded ? FontAwesomeIcons.angle-down : FontAwesomeIcons.angle-right; }
+                                task-label := Text { x: 30px; width: parent.width - 40px; height: parent.height; font-size: ImGuiFontStyle.base; color: WorkbenchStyle.muted; vertical-alignment: center; overflow: elide; text: (root.chinese ? "传输任务" : "Transfers") + " · " + (root.tasks.length == 0 ? (root.chinese ? "暂无任务" : "No tasks") : root.task-summary != "" ? root.task-summary : root.tasks.length); }
+                            }
+                            if root.tasks-expanded: Rectangle {
+                                width: max(100px, clear-label-measure.preferred-width + 24px);
+                                clear-label-measure := Text {
+                                    visible: false; text: root.clear-completed-text;
+                                    font-size: ImGuiFontStyle.body; font-weight: 500;
+                                }
+                                WorkbenchButton { y: (parent.height - self.height) / 2; width: parent.width; height: 28px; quiet: true; text-size: ImGuiFontStyle.body; text: root.clear-completed-text; clicked => { root.clear-finished(); } }
+                            }
+                        }
+                    }
+                    task-content := Rectangle {
+                        height: root.tasks-expanded ? min(root.task-list-max-height, root.tasks.length == 0 ? 40px : task-rows.preferred-height) : 0px;
+                        visible: root.tasks-expanded;
+                        clip: true;
+                        SurfaceSeparator { x: 12px; y: 0px; width: parent.width - 24px; }
+                        if root.tasks.length == 0: Text { text: root.chinese ? "暂无传输任务" : "No transfers yet"; color: WorkbenchStyle.muted; font-size: ImGuiFontStyle.base; horizontal-alignment: center; vertical-alignment: center; }
+                        task-list := BrowserScrollView {
+                            x: 16px; width: parent.width - 32px; height: parent.height;
+                            visible: root.tasks.length > 0;
+                            task-rows := VerticalLayout {
+                                spacing: 2px; padding-top: 4px; padding-bottom: 4px; padding-right: task-list.content-gutter;
+                                for task in root.tasks: Rectangle {
+                                    height: task.active ? 46px : 32px;
+                                    HorizontalLayout {
+                                        spacing: 12px;
+                                        Text { width: 18px; text: task.receiving ? "↓" : "↑"; color: WorkbenchStyle.accent; font-size: 16px; vertical-alignment: center; }
+                                        VerticalLayout {
+                                            padding-top: 5px; padding-bottom: 5px; spacing: 3px; alignment: center; horizontal-stretch: 1;
+                                            Rectangle {
+                                                height: 16px;
+                                                task-name := Text {
+                                                    x: 0px;
+                                                    width: min(self.preferred-width, max(0px, parent.width - task-size.preferred-width - 8px));
+                                                    height: parent.height; text: task.name; color: WorkbenchStyle.text;
+                                                    font-size: ImGuiFontStyle.base; overflow: elide; vertical-alignment: center;
+                                                }
+                                                task-size := Text {
+                                                    x: task-name.width + 8px; width: self.preferred-width; height: parent.height;
+                                                    text: task.size; color: WorkbenchStyle.muted;
+                                                    font-size: ImGuiFontStyle.body; vertical-alignment: center;
+                                                }
+                                            }
+                                            if task.active: Text { text: task.detail; color: WorkbenchStyle.muted; font-size: ImGuiFontStyle.body; overflow: elide; }
+                                        }
+                                        Rectangle { width: root.width < 820px ? 80px : 110px; Rectangle { x: 0px; y: (parent.height - 4px) / 2; width: parent.width; height: 4px; background: WorkbenchStyle.separator; border-radius: 2px; Rectangle { x: 0px; y: 0px; width: parent.width * task.progress; height: 4px; border-radius: 2px; background: task.failed ? UiSurface.error : WorkbenchStyle.accent; } } }
+                                        Text { width: root.width < 820px ? 92px : 110px; text: task.status; color: task.failed ? UiSurface.error : WorkbenchStyle.muted; font-size: ImGuiFontStyle.body; vertical-alignment: center; horizontal-alignment: right; }
+                                        Rectangle { width: 56px; if task.can-cancel: WorkbenchButton { y: (parent.height - self.height) / 2; width: 56px; height: 26px; text: root.chinese ? "取消" : "Cancel"; text-size: ImGuiFontStyle.body; quiet: true; clicked => { root.cancel-task(task.id); } } }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

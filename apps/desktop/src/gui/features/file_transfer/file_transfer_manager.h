@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "file_transfer.h"
+#include "features/file_transfer/file_browser.h"
 #include "runtime/remote_session.h"
 
 namespace crossdesk {
@@ -40,6 +41,15 @@ class FileTransferManager {
   bool CancelSend(uint32_t file_id);
   void Poll();
   void Shutdown();
+  FileBrowser& browser() { return browser_; }
+  bool OpenBrowser(const std::string& remote);
+  void SetBrowserSupport(PeerEventHandler* handler, const std::string& remote, bool supported);
+  bool BrowserSupported(const std::string& remote);
+  bool BrowserConnected(const std::string& remote);
+  bool HandleBrowser(const char* data, size_t size, PeerEventHandler* handler,
+                     const std::string& remote);
+  std::vector<FileTransferState::FileTransferInfo> BrowserTransfers(const std::string& remote);
+  void CancelBrowserTransfer(const std::string& remote, uint32_t file_id);
 
  private:
   struct Sender {
@@ -53,6 +63,8 @@ class FileTransferManager {
     std::filesystem::path default_directory;
   };
   void ProcessQueue(std::shared_ptr<RemoteSession> props);
+  std::shared_ptr<FileReceiver> ReceiverFor(PeerEventHandler* handler, const std::string& remote);
+  bool SendBrowser(const std::string& remote, const FileBrowser::Json& message);
   void UpdateProgress(FileTransferState& state,
                       const file_transfer::SendState& progress,
                       std::chrono::steady_clock::time_point now);
@@ -76,6 +88,11 @@ class FileTransferManager {
   FileTransferState received_state_;
   // Guarded by received_state_.file_transfer_list_mutex_.
   std::unordered_map<uint32_t, ReceiveRateSample> receive_rate_samples_;
+  std::mutex browser_mutex_;
+  std::map<std::string, std::shared_ptr<PeerEventHandler>> browser_peers_;
+  std::set<std::string> browser_opened_;
+  std::set<std::string> browser_supported_;
+  FileBrowser browser_;
 };
 
 }  // namespace crossdesk
