@@ -230,7 +230,10 @@ std::string Read(const std::filesystem::path& path) {
 }
 
 void EnsureDirectory(const std::filesystem::path& directory, bool protect_existing) {
-  std::filesystem::create_directories(directory.parent_path());
+  const auto parent = directory.parent_path();
+  if (!parent.empty()) {
+    std::filesystem::create_directories(parent);
+  }
 #ifdef _WIN32
   CreatePrivateDirectory(directory, protect_existing);
 #else
