@@ -17,6 +17,10 @@ export struct BrowserTask {
     progress: float, active: bool, failed: bool, can-cancel: bool, receiving: bool,
 }
 
+component BrowserButton inherits WorkbenchButton {
+    mouse-cursor: default;
+}
+
 component BrowserScrollView inherits Rectangle {
     // Fluent overlays a 14px scrollbar on its viewport. Keep a 4px gap between
     // that track and row content, including while the scrollbar expands on hover.
@@ -92,7 +96,7 @@ component BrowserCheckBox inherits Rectangle {
             reject
         }
         touch := TouchArea {
-            enabled: root.enabled; mouse-cursor: pointer;
+            enabled: root.enabled; mouse-cursor: default;
             pointer-event(event) => {
                 if event.kind == PointerEventKind.down { root.keyboard-focus = false; }
             }
@@ -149,7 +153,7 @@ component BrowserSortHeader inherits FlatSurface {
             reject
         }
         touch := TouchArea {
-            enabled: root.enabled; mouse-cursor: pointer;
+            enabled: root.enabled; mouse-cursor: default;
             pointer-event(event) => { if event.kind == PointerEventKind.down { root.keyboard-focus = false; } }
             clicked => { focus.focus(); root.keyboard-focus = false; root.clicked(); }
         }
@@ -177,6 +181,7 @@ component BrowserPane inherits WorkbenchCard {
     in property <int> selection-revision;
     in property <int> drag-count;
     in property <bool> dragging;
+    in property <bool> drop-hover;
     in property <[BrowserEntry]> entries;
     in property <[BrowserTreeEntry]> tree;
     in property <int> sort-column;
@@ -196,9 +201,15 @@ component BrowserPane inherits WorkbenchCard {
     callback toggle-hidden;
     callback sort(int);
     pure callback drag-data(string, int) -> data-transfer;
-    callback drag-state(data-transfer, bool);
-    callback can-drop(data-transfer) -> bool;
-    callback dropped(data-transfer) -> bool;
+    callback drag-start(data-transfer, BrowserEntry);
+    callback drag-move(length, length);
+    callback drag-end;
+    callback drag-cancel;
+    public pure function contains-drop(x: length, y: length) -> bool {
+        return root.enabled && root.transfer-ready
+            && x >= body.absolute-position.x && x < body.absolute-position.x + body.width
+            && y >= body.absolute-position.y && y < body.absolute-position.y + body.height;
+    }
     changed enabled => { if !root.enabled { directory-popup.close(); } }
     changed dragging => { if root.dragging { directory-popup.close(); } }
     changed current-path => { file-list.reset-scroll(); }
@@ -229,7 +240,7 @@ component BrowserPane inherits WorkbenchCard {
         }
         HorizontalLayout {
             height: 32px; spacing: 6px;
-            WorkbenchButton {
+            BrowserButton {
                 width: 32px; height: 32px; quiet: true; icon: FontAwesomeIcons.arrow-up;
                 tooltip: root.chinese ? "打开上一级目录" : "Open parent folder";
                 tooltip-above: true; tooltip-align-left: true;
@@ -256,7 +267,7 @@ component BrowserPane inherits WorkbenchCard {
                     accepted => { root.navigate(self.text); self.clear-focus(); }
                 }
             }
-            tree-trigger := WorkbenchButton {
+            tree-trigger := BrowserButton {
                 width: 28px; height: 32px; quiet: true; icon: FontAwesomeIcons.folder-open;
                 enabled: root.enabled && !root.dragging;
                 accessible-label: root.chinese ? "浏览目录树" : "Browse folder tree";
@@ -265,10 +276,8 @@ component BrowserPane inherits WorkbenchCard {
         }
         body := Rectangle {
             vertical-stretch: 1;
-            drop-zone := DropArea {
-                enabled: root.transfer-ready;
-                can-drop(event) => { return root.can-drop(event.data) ? DragAction.copy : DragAction.none; }
-                dropped(event) => { return root.dropped(event.data) ? DragAction.copy : DragAction.none; }
+            Rectangle {
+                width: parent.width; height: parent.height;
                 VerticalLayout {
                     spacing: 0px;
                     Rectangle {
@@ -319,7 +328,7 @@ component BrowserPane inherits WorkbenchCard {
                                 background: entry.selected
                                     ? (row-touch.pressed ? ControlStyle.selected-pressed.with-alpha(0.4) : row-touch.has-hover ? ControlStyle.selected-hover.with-alpha(0.35) : ControlStyle.selected.with-alpha(0.3))
                                     : row-touch.pressed ? ControlStyle.pressed.with-alpha(0.3) : row-touch.has-hover ? ControlStyle.hover.with-alpha(0.2) : transparent;
-                                opacity: drag-source.dragging ? 0.55 : 1;
+                                opacity: root.dragging && row-touch.drag-started ? 0.55 : 1;
                                 folder-menu := ContextMenuArea {
                                     enabled: entry.directory && root.enabled && !root.busy && root.error == "" && !root.dragging;
                                     Menu {
@@ -336,25 +345,46 @@ component BrowserPane inherits WorkbenchCard {
                                         Text { width: root.modified-column-width; text: entry.modified != "" ? entry.modified : "—"; color: WorkbenchStyle.muted; font-size: ImGuiFontStyle.body; overflow: elide; vertical-alignment: center; horizontal-alignment: right; }
                                         Text { width: root.size-column-width; text: entry.directory ? "—" : entry.size; color: WorkbenchStyle.muted; font-size: ImGuiFontStyle.body; vertical-alignment: center; horizontal-alignment: right; }
                                     }
-                                    drag-source := DragArea {
+                                    row-touch := TouchArea {
                                         // Only the row body starts drags; checkboxes remain selection controls.
                                         x: 34px; width: parent.width - 34px; height: parent.height;
-                                        enabled: root.transfer-ready && !entry.link;
-                                        allow-copy: true;
-                                        data: root.drag-data(entry.path, root.selection-revision);
-                                        changed dragging => { if self.dragging { root.drag-state(self.data, true); } }
-                                        drag-finished(action) => { root.drag-state(self.data, false); }
-                                        row-touch := TouchArea {
-                                            enabled: root.enabled && !root.busy && root.error == "";
-                                            mouse-cursor: entry.link ? MouseCursor.default : MouseCursor.grab;
-                                            pointer-event(event) => {
-                                                if event.button == PointerEventButton.right && event.kind == PointerEventKind.up && folder-menu.enabled {
-                                                    folder-menu.show({ x: self.mouse-x + 34px, y: self.mouse-y });
-                                                }
-                                            }
-                                            clicked => { root.select-entry(index); }
-                                            double-clicked => { root.open-entry(index); }
+                                        enabled: root.enabled && !root.busy && root.error == "";
+                                        private property <bool> drag-armed;
+                                        out property <bool> drag-started;
+                                        // Keep pointer capture throughout the in-window drag, so the cursor
+                                        // remains a closed hand instead of DragArea's copy/no-drop cursor.
+                                        mouse-cursor: self.drag-started && root.dragging ? MouseCursor.grabbing : MouseCursor.default;
+                                        function update-drag-position() {
+                                            root.drag-move(self.absolute-position.x + self.mouse-x,
+                                                self.absolute-position.y + self.mouse-y);
                                         }
+                                        pointer-event(event) => {
+                                            if event.button == PointerEventButton.left && event.kind == PointerEventKind.down {
+                                                self.drag-armed = root.transfer-ready && !entry.link;
+                                                self.drag-started = false;
+                                            } else if event.kind == PointerEventKind.cancel {
+                                                self.drag-armed = false;
+                                                if self.drag-started && root.dragging { root.drag-cancel(); }
+                                            } else if event.button == PointerEventButton.left && event.kind == PointerEventKind.up {
+                                                self.drag-armed = false;
+                                                if self.drag-started && root.dragging {
+                                                    self.update-drag-position();
+                                                    root.drag-end();
+                                                }
+                                            } else if event.button == PointerEventButton.right && event.kind == PointerEventKind.up && folder-menu.enabled {
+                                                folder-menu.show({ x: self.mouse-x + 34px, y: self.mouse-y });
+                                            }
+                                        }
+                                        moved => {
+                                            if self.drag-armed && !self.drag-started && root.transfer-ready
+                                                && (abs(self.mouse-x - self.pressed-x) >= 5px || abs(self.mouse-y - self.pressed-y) >= 5px) {
+                                                self.drag-started = true;
+                                                root.drag-start(root.drag-data(entry.path, root.selection-revision), entry);
+                                            }
+                                            if self.drag-started && root.dragging { self.update-drag-position(); }
+                                        }
+                                        clicked => { if !self.drag-started { root.select-entry(index); } }
+                                        double-clicked => { if !self.drag-started { root.open-entry(index); } }
                                     }
                                     BrowserCheckBox { x: 6px; y: (parent.height - self.height) / 2; width: 24px; checked: entry.selected; label: (root.chinese ? "选择 " : "Select ") + entry.name; enabled: !entry.link && root.enabled && !root.busy && root.error == "" && !root.dragging; toggled => { root.select-entry(index); } }
                                 }
@@ -373,7 +403,7 @@ component BrowserPane inherits WorkbenchCard {
                 }
                 if root.filter-text != "": HorizontalLayout {
                     alignment: center;
-                    WorkbenchButton { width: 112px; height: 28px; text-size: ImGuiFontStyle.base; text: root.chinese ? "清空筛选" : "Clear filter"; clicked => { root.filter-text = ""; root.filter(""); } }
+                    BrowserButton { width: 112px; height: 28px; text-size: ImGuiFontStyle.base; text: root.chinese ? "清空筛选" : "Clear filter"; clicked => { root.filter-text = ""; root.filter(""); } }
                 }
             }
             if root.error != "" && !root.busy: Rectangle {
@@ -385,7 +415,7 @@ component BrowserPane inherits WorkbenchCard {
                     Text { text: root.error; color: WorkbenchStyle.muted; font-size: ImGuiFontStyle.body; wrap: word-wrap; horizontal-alignment: center; }
                     HorizontalLayout {
                         alignment: center;
-                        WorkbenchButton { width: 128px; height: 28px; text-size: ImGuiFontStyle.base; text: root.chinese ? "打开主目录" : "Open home folder"; clicked => { root.navigate(""); } }
+                        BrowserButton { width: 128px; height: 28px; text-size: ImGuiFontStyle.base; text: root.chinese ? "打开主目录" : "Open home folder"; clicked => { root.navigate(""); } }
                     }
                 }
             }
@@ -393,7 +423,7 @@ component BrowserPane inherits WorkbenchCard {
                 width: parent.width; height: parent.height; background: WorkbenchStyle.surface.with-alpha(0.9);
                 VerticalLayout { alignment: center; spacing: 12px; Spinner { width: 24px; height: 24px; } Text { text: root.status; horizontal-alignment: center; color: WorkbenchStyle.muted; font-size: ImGuiFontStyle.base; } }
             }
-            if drop-zone.has-drag: FlatSurface {
+            if root.drop-hover: FlatSurface {
                 width: parent.width; height: parent.height;
                 background: ControlStyle.selected.with-alpha(0.3); outline-color: UiSurface.focus; border-radius: UiRadius.control;
                 Rectangle {
@@ -426,8 +456,8 @@ component BrowserPane inherits WorkbenchCard {
                 padding: 12px; spacing: 10px;
                 HorizontalLayout {
                     height: 28px; spacing: 8px;
-                    WorkbenchButton { text: root.chinese ? "主目录" : "Home"; quiet: true; height: 28px; clicked => { root.navigate(""); directory-popup.close(); } }
-                    WorkbenchButton { text: root.chinese ? "磁盘" : "Drives"; quiet: true; height: 28px; clicked => { root.navigate("@roots"); directory-popup.close(); } }
+                    BrowserButton { text: root.chinese ? "主目录" : "Home"; quiet: true; height: 28px; clicked => { root.navigate(""); directory-popup.close(); } }
+                    BrowserButton { text: root.chinese ? "磁盘" : "Drives"; quiet: true; height: 28px; clicked => { root.navigate("@roots"); directory-popup.close(); } }
                 }
                 tree-list := Rectangle {
                     out property <length> content-gutter: 18px;
@@ -443,7 +473,7 @@ component BrowserPane inherits WorkbenchCard {
                             background: node.selected ? ControlStyle.selected.with-alpha(0.3) : tree-touch.has-hover ? ControlStyle.hover.with-alpha(0.2) : transparent;
                             Text { x: 24px + min(node.depth, 8) * 12px; width: parent.width - self.x - 4px; height: parent.height; text: node.name; color: node.selected ? WorkbenchStyle.accent : WorkbenchStyle.text; font-size: ImGuiFontStyle.base; vertical-alignment: center; overflow: elide; }
                             tree-touch := TouchArea { clicked => { root.tree-open(index); directory-popup.close(); } }
-                            WorkbenchButton { x: min(node.depth, 8) * 12px; width: 22px; height: 28px; quiet: true; icon: node.expanded ? FontAwesomeIcons.angle-down : FontAwesomeIcons.angle-right; clicked => { root.tree-toggle(index); } }
+                            BrowserButton { x: min(node.depth, 8) * 12px; width: 22px; height: 28px; quiet: true; icon: node.expanded ? FontAwesomeIcons.angle-down : FontAwesomeIcons.angle-right; clicked => { root.tree-toggle(index); } }
                         }
                     }
                 }
@@ -508,6 +538,12 @@ export component FileBrowserWindow inherits Window {
     in property <int> selection-revision;
     in property <bool> drag-active;
     in property <int> drag-count;
+    private property <data-transfer> drag-payload;
+    private property <BrowserEntry> drag-entry;
+    private property <length> drag-x;
+    private property <length> drag-y;
+    private property <int> drop-target: -1;
+    changed drag-active => { if !root.drag-active { root.drop-target = -1; } }
     in-out property <bool> tasks-expanded: false;
     private property <length> task-list-max-height: min(144px, max(72px, root.height - 440px));
     private property <int> selected-count: root.local-selected + root.remote-selected;
@@ -540,6 +576,27 @@ export component FileBrowserWindow inherits Window {
     callback can-drop(bool, data-transfer) -> bool;
     callback dropped(bool, data-transfer) -> bool;
     callback cancel-drag;
+    function start-drag(data: data-transfer, entry: BrowserEntry) {
+        root.drag-payload = data;
+        root.drag-entry = entry;
+        root.drop-target = -1;
+        root.drag-state(data, true);
+    }
+    function move-drag(x: length, y: length) {
+        if !root.drag-active { return; }
+        root.drag-x = x;
+        root.drag-y = y;
+        root.drop-target = local-pane.contains-drop(x, y) && root.can-drop(false, root.drag-payload) ? 0
+            : remote-pane.contains-drop(x, y) && root.can-drop(true, root.drag-payload) ? 1 : -1;
+    }
+    function finish-drag() {
+        if !root.drag-active { return; }
+        // The payload stays fixed from press-and-drag through release; C++ validates
+        // its source, destination, session and generation again before copying.
+        let data = root.drag-payload;
+        if root.drop-target >= 0 { root.dropped(root.drop-target == 1, data); }
+        root.drag-state(data, false);
+    }
     forward-focus: focus;
     SurfaceSeparator { x: 0px; y: 0px; width: parent.width; }
     focus := FocusScope {
@@ -557,7 +614,7 @@ export component FileBrowserWindow inherits Window {
                 Text { text: root.peer-name; color: WorkbenchStyle.muted; vertical-alignment: center; font-size: ImGuiFontStyle.base; overflow: elide; }
                 Rectangle {
                     width: root.chinese ? 104px : 144px;
-                    WorkbenchButton {
+                    BrowserButton {
                         y: (parent.height - self.height) / 2;
                         width: parent.width; height: 28px; icon: FontAwesomeIcons.rotate;
                         text: root.chinese ? "刷新目录" : "Refresh folders";
@@ -570,7 +627,7 @@ export component FileBrowserWindow inherits Window {
             }
             HorizontalLayout {
                 vertical-stretch: 1; spacing: 12px;
-                BrowserPane {
+                local-pane := BrowserPane {
                     width: (parent.width - 12px) / 2;
                     horizontal-stretch: 1; chinese: root.chinese; heading: root.chinese ? "本机" : "Local"; subtitle: root.local-role;
                     path <=> root.local-path; status: root.local-status; error: root.local-error; busy: root.local-busy;
@@ -583,16 +640,18 @@ export component FileBrowserWindow inherits Window {
                     sort(column) => { root.sort(false, column); }
                     selected-count: root.local-selected; destination: root.remote-selected > 0;
                     transfer-ready: root.transfer-ready; selection-revision: root.selection-revision; dragging: root.drag-active; drag-count: root.drag-count;
+                    drop-hover: root.drag-active && root.drop-target == 0;
                     navigate(path) => { root.navigate(false, path); } up => { root.up(false); }
                     select-entry(index) => { root.select-entry(false, index); } open-entry(index) => { root.open-entry(false, index); }
                     select-all => { root.select-all(false); } tree-open(index) => { root.tree-open(false, index); } tree-toggle(index) => { root.tree-toggle(false, index); }
                     filter(text) => { root.filter(false, text); }
                     drag-data(path, revision) => { return root.drag-data(false, path, revision); }
-                    drag-state(data, active) => { root.drag-state(data, active); }
-                    can-drop(data) => { return root.can-drop(false, data); }
-                    dropped(data) => { return root.dropped(false, data); }
+                    drag-start(data, entry) => { root.start-drag(data, entry); }
+                    drag-move(x, y) => { root.move-drag(x, y); }
+                    drag-end => { root.finish-drag(); }
+                    drag-cancel => { root.cancel-drag(); }
                 }
-                BrowserPane {
+                remote-pane := BrowserPane {
                     width: (parent.width - 12px) / 2;
                     horizontal-stretch: 1; chinese: root.chinese; heading: root.chinese ? "远端" : "Remote"; subtitle: root.remote-role; enabled: root.connected;
                     path <=> root.remote-path; status: root.remote-status; error: root.remote-error; busy: root.remote-busy;
@@ -605,14 +664,16 @@ export component FileBrowserWindow inherits Window {
                     sort(column) => { root.sort(true, column); }
                     selected-count: root.remote-selected; destination: root.local-selected > 0;
                     transfer-ready: root.transfer-ready; selection-revision: root.selection-revision; dragging: root.drag-active; drag-count: root.drag-count;
+                    drop-hover: root.drag-active && root.drop-target == 1;
                     navigate(path) => { root.navigate(true, path); } up => { root.up(true); }
                     select-entry(index) => { root.select-entry(true, index); } open-entry(index) => { root.open-entry(true, index); }
                     select-all => { root.select-all(true); } tree-open(index) => { root.tree-open(true, index); } tree-toggle(index) => { root.tree-toggle(true, index); }
                     filter(text) => { root.filter(true, text); }
                     drag-data(path, revision) => { return root.drag-data(true, path, revision); }
-                    drag-state(data, active) => { root.drag-state(data, active); }
-                    can-drop(data) => { return root.can-drop(true, data); }
-                    dropped(data) => { return root.dropped(true, data); }
+                    drag-start(data, entry) => { root.start-drag(data, entry); }
+                    drag-move(x, y) => { root.move-drag(x, y); }
+                    drag-end => { root.finish-drag(); }
+                    drag-cancel => { root.cancel-drag(); }
                 }
             }
             WorkbenchCard {
@@ -643,7 +704,7 @@ export component FileBrowserWindow inherits Window {
                         }
                         if root.selected-count > 0: Rectangle {
                             width: root.chinese ? 76px : 100px;
-                            WorkbenchButton {
+                            BrowserButton {
                                 y: (parent.height - self.height) / 2; width: parent.width; height: 28px; quiet: true;
                                 text-size: ImGuiFontStyle.base; text: root.chinese ? "取消选择" : "Clear selection";
                                 enabled: !root.drag-active; clicked => { root.clear-selection(); }
@@ -656,7 +717,7 @@ export component FileBrowserWindow inherits Window {
                                 text: root.source-remote ? root.send-local-text : root.send-remote-text;
                                 font-size: ImGuiFontStyle.base; font-weight: 600;
                             }
-                            WorkbenchButton {
+                            BrowserButton {
                                 y: (parent.height - self.height) / 2; width: parent.width; height: 32px; primary: true;
                                 text-size: ImGuiFontStyle.base;
                                 enabled: !root.drag-active && (root.source-remote ? root.can-download : root.can-upload);
@@ -672,7 +733,7 @@ export component FileBrowserWindow inherits Window {
                             padding-left: 10px; padding-right: 10px; spacing: 8px;
                             Rectangle {
                                 horizontal-stretch: 1;
-                                WorkbenchButton { x: 0px; width: min(parent.width, task-label.preferred-width + 46px); height: 32px; quiet: true; accessible-label: task-label.text; clicked => { root.tasks-expanded = !root.tasks-expanded; } }
+                                BrowserButton { x: 0px; width: min(parent.width, task-label.preferred-width + 46px); height: 32px; quiet: true; accessible-label: task-label.text; clicked => { root.tasks-expanded = !root.tasks-expanded; } }
                                 Text { x: 8px; width: 14px; height: parent.height; font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: ImGuiFontStyle.base; color: ControlStyle.icon; vertical-alignment: center; text: root.tasks-expanded ? FontAwesomeIcons.angle-down : FontAwesomeIcons.angle-right; }
                                 task-label := Text { x: 30px; width: parent.width - 40px; height: parent.height; font-size: ImGuiFontStyle.base; color: WorkbenchStyle.muted; vertical-alignment: center; overflow: elide; text: (root.chinese ? "传输任务" : "Transfers") + " · " + (root.tasks.length == 0 ? (root.chinese ? "暂无任务" : "No tasks") : root.task-summary != "" ? root.task-summary : root.tasks.length); }
                             }
@@ -682,7 +743,7 @@ export component FileBrowserWindow inherits Window {
                                     visible: false; text: root.clear-completed-text;
                                     font-size: ImGuiFontStyle.body; font-weight: 500;
                                 }
-                                WorkbenchButton { y: (parent.height - self.height) / 2; width: parent.width; height: 28px; quiet: true; text-size: ImGuiFontStyle.body; text: root.clear-completed-text; clicked => { root.clear-finished(); } }
+                                BrowserButton { y: (parent.height - self.height) / 2; width: parent.width; height: 28px; quiet: true; text-size: ImGuiFontStyle.body; text: root.clear-completed-text; clicked => { root.clear-finished(); } }
                             }
                         }
                     }
@@ -722,13 +783,53 @@ export component FileBrowserWindow inherits Window {
                                         }
                                         Rectangle { width: root.width < 820px ? 80px : 110px; Rectangle { x: 0px; y: (parent.height - 4px) / 2; width: parent.width; height: 4px; background: WorkbenchStyle.separator; border-radius: 2px; Rectangle { x: 0px; y: 0px; width: parent.width * task.progress; height: 4px; border-radius: 2px; background: task.failed ? UiSurface.error : WorkbenchStyle.accent; } } }
                                         Text { width: root.width < 820px ? 92px : 110px; text: task.status; color: task.failed ? UiSurface.error : WorkbenchStyle.muted; font-size: ImGuiFontStyle.body; vertical-alignment: center; horizontal-alignment: right; }
-                                        Rectangle { width: 56px; if task.can-cancel: WorkbenchButton { y: (parent.height - self.height) / 2; width: 56px; height: 26px; text: root.chinese ? "取消" : "Cancel"; text-size: ImGuiFontStyle.body; quiet: true; clicked => { root.cancel-task(task.id); } } }
+                                        Rectangle { width: 56px; if task.can-cancel: BrowserButton { y: (parent.height - self.height) / 2; width: 56px; height: 26px; text: root.chinese ? "取消" : "Cancel"; text-size: ImGuiFontStyle.body; quiet: true; clicked => { root.cancel-task(task.id); } } }
                                     }
                                 }
                             }
                         }
                     }
                 }
+            }
+        }
+    }
+    // Visual only: pointer capture and drop validation stay with the source row.
+    if root.drag-active: FlatSurface {
+        private property <bool> label-on-left: root.drag-x - 12px + self.width > root.width - 8px;
+        z: 100;
+        width: min(300px, max(112px, drag-label.preferred-width + 54px + drag-badge.width));
+        height: 40px;
+        // Keep the icon's top-left corner at the pointer when the label flips at the right edge.
+        x: root.drag-x - drag-icon.x;
+        y: root.drag-y - drag-icon.y;
+        border-radius: UiRadius.control;
+        background: WorkbenchStyle.surface;
+        outline-color: root.drop-target >= 0 ? WorkbenchStyle.accent : UiSurface.hover;
+        opacity: 0.94;
+        drag-icon := Text {
+            x: parent.label-on-left ? parent.width - 30px : 12px;
+            y: (parent.height - self.height) / 2; width: 18px; height: 18px;
+            text: root.drag-entry.directory ? FontAwesomeIcons.folder-open : FontAwesomeIcons.file-lines;
+            font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 17px;
+            color: root.drag-entry.directory ? WorkbenchStyle.accent : ControlStyle.icon;
+            horizontal-alignment: left; vertical-alignment: top;
+        }
+        drag-label := Text {
+            x: parent.label-on-left ? 12px : 40px;
+            width: parent.width - 54px - drag-badge.width; height: parent.height;
+            text: root.drag-entry.name; color: WorkbenchStyle.text;
+            font-size: ImGuiFontStyle.base; font-weight: 500;
+            vertical-alignment: center; overflow: elide;
+        }
+        drag-badge := Rectangle {
+            visible: root.drag-count > 1;
+            x: parent.width - self.width - (parent.label-on-left ? 38px : 10px); y: 10px;
+            width: root.drag-count > 1 ? max(24px, count-label.preferred-width + 12px) : 0px;
+            height: 20px; border-radius: 10px; background: WorkbenchStyle.accent;
+            count-label := Text {
+                width: parent.width; height: parent.height; text: root.drag-count;
+                color: white; font-size: ImGuiFontStyle.body; font-weight: 600;
+                horizontal-alignment: center; vertical-alignment: center;
             }
         }
     }

@@ -34,6 +34,7 @@ export component WorkbenchButton inherits FlatSurface {
     in property <bool> soft: false;
     in property <bool> quiet: false;
     in property <bool> enabled: true;
+    in property <MouseCursor> mouse-cursor: pointer;
     out property <bool> has-focus: button-focus.has-focus;
     private property <bool> keyboard-focus: false;
     private property <bool> show-focus: button-focus.has-focus && root.keyboard-focus;
@@ -113,7 +114,7 @@ export component WorkbenchButton inherits FlatSurface {
         }
         touch := TouchArea {
             enabled: root.enabled;
-            mouse-cursor: pointer;
+            mouse-cursor: root.mouse-cursor;
             pointer-event(event) => {
                 if event.kind == PointerEventKind.down {
                     root.keyboard-focus = false;
