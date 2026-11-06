@@ -27,13 +27,13 @@ int main() {
   stats.data_inbound_stats.bitrate = 2000; stats.data_outbound_stats.bitrate = 3000;
   stats.total_inbound_stats.bitrate = UINT32_MAX; stats.total_outbound_stats.bitrate = 131'000;
   stats.total_inbound_stats.loss_rate = 1.2f; stats.rtt_ms = 40; stats.srtp_active = true;
-  auto json = android_controller::NetworkReport(stats, Relay);
+  auto json = android_controller::NetworkReport(stats, MiniRtcTraversalRelay);
   assert(json.at("mode") == 1 && json.at("srtp") == true && json.at("rtt") == 40);
   assert(json.at("video").at("inbound") == 8'000'000 && json.at("audio").at("outbound") == 128'000);
   assert(json.at("data").at("inbound") == 2000 && json.at("data").at("outbound") == 3000);
   assert(json.at("total").at("inbound").get<uint32_t>() == UINT32_MAX);
   assert(std::abs(json.at("total").at("loss").get<double>() - 1.2) < .001);
   stats.rtt_ms = -1; stats.srtp_active = false;
-  json = android_controller::NetworkReport(stats, UnknownMode);
+  json = android_controller::NetworkReport(stats, MiniRtcTraversalUnknown);
   assert(json.at("mode") == 2 && json.at("srtp") == false && json.at("rtt") == -1);
 }

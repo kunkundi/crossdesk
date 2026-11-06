@@ -6,7 +6,7 @@
 #include "runtime/trusted_devices.h"
 
 namespace crossdesk {
-int DeviceLogin::Exchange(SignalExchangeStage stage, const nlohmann::json& message,
+int DeviceLogin::Exchange(MiniRtcSignalExchangeStage stage, const nlohmann::json& message,
     const TrustedDevices* identity, char* response, size_t capacity) {
   auto output = [&](const nlohmann::json& reply) {
     const auto text = reply.dump();
@@ -14,7 +14,7 @@ int DeviceLogin::Exchange(SignalExchangeStage stage, const nlohmann::json& messa
     std::memcpy(response, text.data(), text.size());
     return static_cast<int>(text.size());
   };
-  if (stage == SignalExchangeStage::PrepareLogin) {
+  if (stage == MiniRtcSignalExchangeStage::PrepareLogin) {
     phase_ = Phase::Idle;
     used_password_ = false;
     password_.clear();

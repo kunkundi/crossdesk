@@ -100,23 +100,23 @@ class MobileSession {
       if (self->Current(controller, generation)) fn(self, controller);
     });
   }
-  static void Signal(SignalStatus status, const char*, size_t, void* user) {
+  static void Signal(MiniRtcSignalStatus status, const char*, size_t, void* user) {
     Dispatch(user, [status](MobileSession* s, bool controller) {
       if (!controller) {
-        s->online_ = status == SignalConnected;
+        s->online_ = status == MiniRtcSignalConnected;
         if (s->signal_status_ != status) {
           ++s->signal_generation_;
-          if (s->signal_status_ == SignalConnected) s->signal_started_ = Clock::now();
+          if (s->signal_status_ == MiniRtcSignalConnected) s->signal_started_ = Clock::now();
         }
         s->signal_status_ = status;
         if (s->online_) {
           constexpr char info[] = R"({"type":"client_info","version":"harmony-mobile","platform":"harmonyos"})";
-          SendSignalMessage(s->identity_, info, sizeof(info)-1);
+          MiniRtcSendSignalMessage(s->identity_, info, sizeof(info)-1);
         }
       }
       s->Event({{"type", "signal"}, {"controller", controller}, {"status", status},
                 {"generation", s->signal_generation_}, {"id", s->login_.substr(0, s->login_.find('@'))}});
-      if (controller && status >= SignalFailed && status != SignalReconnecting) s->Disconnect("远程会话信令连接失败");
+      if (controller && status >= MiniRtcSignalFailed && status != MiniRtcSignalReconnecting) s->Disconnect("远程会话信令连接失败");
     });
   }
   static void SignalMessage(const char* data, size_t size, void* user) {
@@ -130,29 +130,29 @@ class MobileSession {
         s->Event({{"type", "signalMessage"}, {"message", value}, {"generation", s->signal_generation_}});
     });
   }
-  static void Connection(ConnectionStatus status, const char* id, size_t size, void* user) {
+  static void Connection(MiniRtcConnectionStatus status, const char* id, size_t size, void* user) {
     const std::string remote(id ? id : "", id ? size : 0);
     Dispatch(user, [status, remote](MobileSession* s, bool controller) {
       if (!controller) {
         // Defense in depth if a server tries to attach a guest to our identity.
-        if (status == Connected && s->identity_)
-          DisconnectPeerConnection(s->identity_, s->login_.substr(0,s->login_.find('@')).c_str(), remote.c_str());
+        if (status == MiniRtcConnectionConnected && s->identity_)
+          MiniRtcDisconnectPeerConnection(s->identity_, s->login_.substr(0,s->login_.find('@')).c_str(), remote.c_str());
         return;
       }
       s->Event({{"type", "connection"}, {"status", status}}, true);
-      if (status == Connected && !s->connected_) {
+      if (status == MiniRtcConnectionConnected && !s->connected_) {
         s->connecting_ = false; s->connected_ = true;
         auto info = MakeHostInformation("CrossDesk HarmonyOS Mobile", {}, true, s->version_, HostPlatform::HarmonyOS);
         info.i.supports_video_codec_status = true;
         s->Send(info); FreeRemoteAction(info);
         RemoteAction audio{}; audio.type = audio_capture; audio.a = !s->muted_; s->Send(audio);
         s->audio_.Start();
-      } else if (status >= Disconnected) s->Disconnect("");
+      } else if (status >= MiniRtcConnectionDisconnected) s->Disconnect("");
     });
   }
-  static void Network(const char* id, size_t size, TraversalMode mode, const MiniRtcNetTrafficStats* stats,
+  static void Network(const char* id, size_t size, MiniRtcTraversalMode mode, const MiniRtcNetTrafficStats* stats,
                       const char*, size_t, void* user) {
-    if (mode == UnknownMode && id && size) {
+    if (mode == MiniRtcTraversalUnknown && id && size) {
       const std::string login(id, size);
       Dispatch(user, [login](MobileSession* s, bool controller) {
         if (!controller) {
@@ -198,13 +198,13 @@ class MobileSession {
     auto* c = static_cast<Context*>(user); auto* s = c->owner;
     if (c->controller && c->generation == s->connection_ && s->connected_ && !s->muted_ && !s->suspended_) s->audio_.Push(data,size);
   }
-  Params Parameters(bool controller) {
-    Params p{};
+  MiniRtcParams Parameters(bool controller) {
+    MiniRtcParams p{};
     std::snprintf(p.signal_server_ip,sizeof(p.signal_server_ip),"%s",server_.c_str());
     std::snprintf(p.log_path,sizeof(p.log_path),"%s",logs_.c_str());
-    p.signal_server_port = port_; p.enable_srtp = true; p.turn_mode = TurnAutoUdpTcp;
-    p.video_content_type = VideoContentType::ScreenContent; p.video_quality = QualityMedium; p.video_frame_rate = 30;
-    p.video_degradation_preference = VideoDegradationPreference::MaintainResolution;
+    p.signal_server_port = port_; p.enable_srtp = true; p.turn_mode = MiniRtcTurnAutoUdpTcp;
+    p.video_content_type = MiniRtcVideoContentType::ScreenContent; p.video_quality = MiniRtcVideoQualityMedium; p.video_frame_rate = 30;
+    p.video_degradation_preference = MiniRtcVideoDegradationPreference::MaintainResolution;
     p.hardware_acceleration = true;
     p.user_id = controller ? controller_login_.c_str() : login_.c_str();
     p.user_data = controller ? control_context_.get() : identity_context_.get();
@@ -214,7 +214,7 @@ class MobileSession {
   }
   void Send(const RemoteAction& action, const char* stream = kControlStream) {
     if (!controller_) return;
-    const auto bytes = action.to_json(); SendReliableDataFrame(controller_,bytes.data(),bytes.size(),stream);
+    const auto bytes = action.to_json(); MiniRtcSendReliableDataFrame(controller_,bytes.data(),bytes.size(),stream);
   }
   void Release() {
     for (int key : keys_) { RemoteAction a{}; a.type=keyboard; a.k={size_t(key),0,false,key_up}; Send(a,kKeyboardStream); }
@@ -236,14 +236,14 @@ class MobileSession {
     const bool active = controller_ != nullptr;
     Release(); connected_=false; connecting_=false; ++video_generation_;
     CancelPreview();
-    if (controller_) { LeaveConnection(controller_,remote_.c_str()); DestroyPeer(&controller_); }
+    if (controller_) { MiniRtcLeaveConnection(controller_,remote_.c_str()); MiniRtcDestroyPeer(&controller_); }
     files_.reset(); renderer_.Clear(); audio_.Stop();
     if (active) Event({{"type","ended"},{"reason",reason}},true);
     ++connection_; display_=0; frame_id_=0;
   }
   void Stop() {
     Disconnect(""); online_=false;
-    if (identity_) DestroyPeer(&identity_);
+    if (identity_) MiniRtcDestroyPeer(&identity_);
     ++session_; login_.clear(); signal_status_=-1;
   }
   void Execute(const json& v) {
@@ -260,8 +260,8 @@ class MobileSession {
       if (MiniRtcConfigureLogging(MiniRtcLogOff, nullptr, nullptr) != 0)
         throw std::runtime_error("Unable to configure MiniRTC logging");
       identity_context_=std::make_unique<Context>(Context{this,false,session_});
-      auto p=Parameters(false); identity_=CreatePeer(&p); signal_started_=Clock::now();
-      if (!identity_||Init(identity_)!=0) { throw std::runtime_error("Identity initialization failed"); }
+      auto p=Parameters(false); identity_=MiniRtcCreatePeer(&p); signal_started_=Clock::now();
+      if (!identity_||MiniRtcInit(identity_)!=0) { throw std::runtime_error("Identity initialization failed"); }
     } else if (op=="stop") Stop();
     else if (op=="version") {
       const auto body=v.at("body").get<std::string>(), current=v.value("version","");
@@ -279,25 +279,25 @@ class MobileSession {
         throw std::runtime_error("Invalid remote credentials");
       muted_=false; suspended_=false; controller_login_="C-"+login_.substr(0,login_.find('@'));
       control_context_=std::make_unique<Context>(Context{this,true,connection_});
-      auto p=Parameters(true); controller_=CreatePeer(&p); connecting_=true; connection_started_=Clock::now();
+      auto p=Parameters(true); controller_=MiniRtcCreatePeer(&p); connecting_=true; connection_started_=Clock::now();
       if (!controller_) throw std::runtime_error("Peer creation failed");
-      AddAudioStream(controller_,kAudioStream); AddDataStream(controller_,kDataStream,false);
+      MiniRtcAddAudioStream(controller_,kAudioStream); MiniRtcAddDataStream(controller_,kDataStream,false);
       for (auto stream : {kMouseStream,kKeyboardStream,kControlStream,kClipboardStream,kFileStream,kFileFeedbackStream})
-        AddDataStream(controller_,stream,true);
+        MiniRtcAddDataStream(controller_,stream,true);
       files_=std::make_unique<mobile_controller::FileTransferSession>(
-        [this](const char* stream,const char* data,size_t size) { return controller_?SendReliableDataFrame(controller_,data,size,stream):-1; },
+        [this](const char* stream,const char* data,size_t size) { return controller_?MiniRtcSendReliableDataFrame(controller_,data,size,stream):-1; },
         [this](const std::string& name,double progress,bool sending,const std::string& path) {
           Event({{"type","file"},{"name",name},{"progress",progress},{"sending",sending},{"path",path}},true);
         });
       files_->SetDirectory(directory_+"/received");
-      if (Init(controller_)!=0||JoinConnection(controller_,(remote_+"@"+password).c_str())!=0) Disconnect("无法发起连接");
+      if (MiniRtcInit(controller_)!=0||MiniRtcJoinConnection(controller_,(remote_+"@"+password).c_str())!=0) Disconnect("无法发起连接");
     } else if (op=="disconnect") Disconnect("");
     else if (op=="release") Release();
     else if (op=="signal" && online_ && identity_) {
       auto request=v.at("message"); const auto type=request.value("type","");
       if (type!="announcements_list"&&type!="recent_connections_presence") return;
       request["user_id"]=login_.substr(0,login_.find('@'));
-      const auto bytes=request.dump(); const bool ok=SendSignalMessage(identity_,bytes.data(),bytes.size())==0;
+      const auto bytes=request.dump(); const bool ok=MiniRtcSendSignalMessage(identity_,bytes.data(),bytes.size())==0;
       if (!ok) Event({{"type","requestFailed"},{"request",request.value("request_id","")}});
     } else if (connected_) {
       if (op=="pointer") {
@@ -323,22 +323,22 @@ class MobileSession {
         RemoteAction a{}; a.type=audio_capture; a.a=!muted_; Send(a);
       } else if (op=="clipboard") {
         const auto text=v.at("text").get<std::string>();
-        if(!text.empty()&&text.size()<=kMaxClipboardBytes) SendReliableDataFrame(controller_,text.data(),text.size(),kClipboardStream);
+        if(!text.empty()&&text.size()<=kMaxClipboardBytes) MiniRtcSendReliableDataFrame(controller_,text.data(),text.size(),kClipboardStream);
       } else if (op=="videoSettings") {
         const int q=v.at("quality"),fps=v.at("frameRate"),pref=v.at("preference");
         if(q<0||q>2||(fps!=30&&fps!=60)||pref<0||pref>2)return;
         auto bytes=mobile_controller::VideoSettingsMessage(q,fps,pref,v.at("request").get<uint32_t>());
-        if(SendReliableDataFrame(controller_,bytes.data(),bytes.size(),kControlStream)!=0)
+        if(MiniRtcSendReliableDataFrame(controller_,bytes.data(),bytes.size(),kControlStream)!=0)
           Event({{"type","settingsFailed"},{"request",v.at("request")}},true);
       } else if (op=="privacy") {
         const auto bytes = mobile_controller::PrivacyMessage(
             v.at("flag").get<int>(), v.at("blockLocalInput").get<bool>());
         if (bytes.empty() ||
-            SendReliableDataFrame(controller_, bytes.data(), bytes.size(), kControlStream) != 0)
+            MiniRtcSendReliableDataFrame(controller_, bytes.data(), bytes.size(), kControlStream) != 0)
           Event({{"type", "privacyFailed"}, {"request", v.at("request")}}, true);
       } else if (op=="sas") {
         const auto bytes=mobile_controller::SecureAttentionMessage();
-        const bool ok=SendReliableDataFrame(controller_,bytes.data(),bytes.size(),kControlStream)==0;
+        const bool ok=MiniRtcSendReliableDataFrame(controller_,bytes.data(),bytes.size(),kControlStream)==0;
         Event({{"type","feedback"},{"text",ok?"已发送 Ctrl+Alt+Del":"指令发送失败，请重试"}},true);
       } else if (op=="sendFile") {
         const auto path=v.at("path").get<std::string>(),name=v.at("name").get<std::string>();
@@ -368,7 +368,7 @@ class MobileSession {
       for(int key:keys_) { if(a.ks.pressed_count>=kMaxKeyboardStateKeys)break; a.ks.pressed_keys[a.ks.pressed_count++]={size_t(key),0,false}; }
       Send(a,kKeyboardStream); keyboard_sent_=now;
       const auto local=std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
-      const auto rtc=GetSystemTimeMicros(controller_); if(rtc>0)clock_offset_=rtc-local;
+      const auto rtc=MiniRtcGetSystemTimeMicros(controller_); if(rtc>0)clock_offset_=rtc-local;
     }
   }
   void Run() {
@@ -391,8 +391,8 @@ class MobileSession {
   std::atomic<uint64_t> session_{0},connection_{0},video_generation_{1},frame_id_{0};
   std::atomic<int64_t> clock_offset_{0};
   std::atomic<int> display_{0};
-  PeerPtr* identity_=nullptr;
-  PeerPtr* controller_=nullptr;
+  MiniRtcPeerPtr* identity_=nullptr;
+  MiniRtcPeerPtr* controller_=nullptr;
   std::unique_ptr<Context> identity_context_,control_context_;
   std::unique_ptr<mobile_controller::FileTransferSession> files_;
   std::string server_,logs_,login_,controller_login_,remote_,directory_,preview_directory_,preview_path_,version_;

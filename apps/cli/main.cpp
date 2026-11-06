@@ -617,8 +617,8 @@ int View(SessionOptions options, const std::string &device,
       const auto bps = st["network"]["video_bps"].get<uint64_t>();
       const auto traversal = st["network"]["traversal"].get<int>();
       bar.network =
-          std::string(traversal == P2P     ? "P2P  "
-                      : traversal == Relay ? "RELAY  "
+          std::string(traversal == MiniRtcTraversalP2P     ? "P2P  "
+                      : traversal == MiniRtcTraversalRelay ? "RELAY  "
                                            : "Video  ") +
           (bps < 1000      ? std::to_string(bps) + " bps"
            : bps < 1000000 ? std::to_string(bps / 1000) + " kbps"

@@ -22,7 +22,7 @@ namespace crossdesk {
 class VideoLatencyStats;
 
 // Travels with the exact queued pixels, including native frames. Its clock is
-// translated once at the receive callback; rendering needs no live PeerPtr.
+// translated once at the receive callback; rendering needs no live MiniRtcPeerPtr.
 struct VideoLatencyFrame {
   using Clock = std::chrono::steady_clock;
   std::shared_ptr<VideoLatencyStats> stats;

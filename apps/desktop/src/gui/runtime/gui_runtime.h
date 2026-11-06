@@ -60,12 +60,12 @@ class GuiRuntime : protected gui_detail::GuiState {
   void TickLan();
   void BeginShutdown();
   bool ShutdownDrained();
-  void RegisterStreams(PeerPtr* peer, size_t display_count);
+  void RegisterStreams(MiniRtcPeerPtr* peer, size_t display_count);
   void ConnectLan(const std::string& address, unsigned port,
                   std::string password, bool remember_password = false);
   int WithController(
       const std::string& id,
-      const std::function<int(PeerPtr*, const std::string&)>& operation,
+      const std::function<int(MiniRtcPeerPtr*, const std::string&)>& operation,
       bool require_trusted = true);
   int SendControllerData(const std::string& id, const char* data, size_t size,
                          const char* label);

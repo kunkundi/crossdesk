@@ -59,11 +59,11 @@
 
 可靠控制通道的 `deskhub_preview` v2 保留 v1 的 `request_id`、`fps`、`quality`、`frame_rate`、`preference`、`audio` 字段，新增必填 `width`、`height` 整数，单位为物理像素。两个值均为 0 表示恢复源尺寸上限，否则两个值均须在 2～16384 之间；非法或缺失的值不应用。`deskhub_preview_status` 回传请求的协议版本、请求 ID 与 `accepted`。请求 ID 跳过 0，支持 32 位回绕，重复或过期请求不会覆盖新设置。断开会话清除订阅和 15 FPS 协商能力，再连接会重新发送当前需求。15 FPS 扩展通过可选能力 `supports_deskhub_fps15` 协商，沿用 v1／v2 的字段结构，使用 `fps=15, frame_rate=30`，在编码前将实际输入限制为 15 FPS。
 
-带宽扩展沿用 v1／v2，增加可选整数 `max_bitrate_bps`（0～100000000，单位 bps），仅向声明 `supports_deskhub_bandwidth` 的对端发送。0 或缺省表示解除额外的视频预算限制；暂停视频仍使用 `fps=0`。非法字段拒绝整个订阅，断开后清除能力，重连重新协商。MiniRTC 的 `UpdateVideoBitrateLimit(peer, remote_id, remote_id_size, max_bitrate_bps)` 为指定连接的所有视频流设置合计预算，不改变音频与数据发送；返回 0 表示已进入拥塞控制队列，-1 表示参数、连接或传输不支持。
+带宽扩展沿用 v1／v2，增加可选整数 `max_bitrate_bps`（0～100000000，单位 bps），仅向声明 `supports_deskhub_bandwidth` 的对端发送。0 或缺省表示解除额外的视频预算限制；暂停视频仍使用 `fps=0`。非法字段拒绝整个订阅，断开后清除能力，重连重新协商。MiniRTC 的 `MiniRtcUpdateVideoBitrateLimit(peer, remote_id, remote_id_size, max_bitrate_bps)` 为指定连接的所有视频流设置合计预算，不改变音频与数据发送；返回 0 表示已进入拥塞控制队列，-1 表示参数、连接或传输不支持。
 
-MiniRTC 新增 `UpdateVideoResolution(peer, remote_id, remote_id_size, width, height)` 接口，返回 0 表示已接受，-1 表示参数、连接或传输类型不支持。它为指定控制端的所有显示流设置独立尺寸上限，切换时丢弃旧设置尚未发出的编码结果，并请求新关键帧；底层自适应也以这个上限作为有效源尺寸。
+MiniRTC 新增 `MiniRtcUpdateVideoResolution(peer, remote_id, remote_id_size, width, height)` 接口，返回 0 表示已接受，-1 表示参数、连接或传输类型不支持。它为指定控制端的所有显示流设置独立尺寸上限，切换时丢弃旧设置尚未发出的编码结果，并请求新关键帧；底层自适应也以这个上限作为有效源尺寸。
 
-`SetVideoSendPaused(peer, remote_id, remote_id_size, paused)` 与 `SetAudioSendPaused(peer, remote_id, remote_id_size, paused)` 分别控制指定连接的所有视频／音频发送通道，`true` 暂停、`false` 恢复。重复设置不产生额外操作；返回 0 表示接受，-1 表示参数、连接或传输类型不支持。视频暂停阻止新帧进入编码，废弃旧编码结果，并在发送队列上清除待发视频／重传／纠错包，停止探测和填充；恢复请求新关键帧。音频暂停阻止 PCM 编码并清理待发音频，恢复时仅发送新音频。已交给网络的包无法撤回。API 保留连接、采集源、码率与画质设置以及其他媒体／数据通道，也不改变其他控制端的发送状态。
+`MiniRtcSetVideoSendPaused(peer, remote_id, remote_id_size, paused)` 与 `MiniRtcSetAudioSendPaused(peer, remote_id, remote_id_size, paused)` 分别控制指定连接的所有视频／音频发送通道，`true` 暂停、`false` 恢复。重复设置不产生额外操作；返回 0 表示接受，-1 表示参数、连接或传输类型不支持。视频暂停阻止新帧进入编码，废弃旧编码结果，并在发送队列上清除待发视频／重传／纠错包，停止探测和填充；恢复请求新关键帧。音频暂停阻止 PCM 编码并清理待发音频，恢复时仅发送新音频。已交给网络的包无法撤回。API 保留连接、采集源、码率与画质设置以及其他媒体／数据通道，也不改变其他控制端的发送状态。
 
 桌面墙将 `fps=0` 和 `audio=false` 分别映射到上述 API；应用层仅保留低帧率节流，不再使用 `1 bps` 代替视频暂停或在采集回调中过滤静音音频。接收端仍保留静音门控及播放队列清理，以立即停止播放网络中已在途的音频。旧版 `audio_capture` 命令在支持新 API 的传输中也按连接静音，已有订阅的音频状态优先；不支持 API 的旧／Web 传输沿用采集开关回退。
 

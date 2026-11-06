@@ -26,7 +26,7 @@ bool GuiRuntime::IsAuthorizedController(const std::string& remote_id) {
   std::shared_lock lock(connection_status_mutex_);
   const auto found = connection_status_.find(remote_id);
   return found != connection_status_.end() &&
-         found->second == ConnectionStatus::Connected;
+         found->second == MiniRtcConnectionStatus::MiniRtcConnectionConnected;
 }
 
 void GuiRuntime::SetControllerPrivacySupport(const std::string& remote_id,
@@ -34,9 +34,9 @@ void GuiRuntime::SetControllerPrivacySupport(const std::string& remote_id,
   std::unique_lock lock(connection_status_mutex_);
   const auto found = connection_status_.find(remote_id);
   if (found == connection_status_.end()) return;
-  if (found->second != ConnectionStatus::Connected) {
-    if (found->second == ConnectionStatus::Connecting ||
-        found->second == ConnectionStatus::Gathering) {
+  if (found->second != MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
+    if (found->second == MiniRtcConnectionStatus::MiniRtcConnectionConnecting ||
+        found->second == MiniRtcConnectionStatus::MiniRtcConnectionGathering) {
       privacy_sessions_.RememberSupport(remote_id, supported);
       LOG_INFO("Privacy: retained early controller capability, peer={}, supported={}",
                remote_id, supported);
@@ -64,7 +64,7 @@ void GuiRuntime::QueuePrivacyCommand(const std::string& remote_id,
   std::shared_lock session_lock(connection_status_mutex_);
   const auto found = connection_status_.find(remote_id);
   if (found == connection_status_.end() ||
-      found->second != ConnectionStatus::Connected ||
+      found->second != MiniRtcConnectionStatus::MiniRtcConnectionConnected ||
       !privacy_sessions_.Supports(remote_id)) return;
   std::lock_guard lock(privacy_commands_mutex_);
   if (privacy_commands_.size() >= 32) return;
@@ -94,7 +94,7 @@ void GuiRuntime::HandlePrivacy() {
     std::shared_lock lock(connection_status_mutex_);
     const auto found = connection_status_.find(remote_id);
     if (found == connection_status_.end() ||
-        found->second != ConnectionStatus::Connected ||
+        found->second != MiniRtcConnectionStatus::MiniRtcConnectionConnected ||
         !privacy_sessions_.Supports(remote_id)) continue;
     if (command.flag == PrivacyCommandFlag::enable) {
       if (privacy_sessions_.CanEnable())
@@ -124,7 +124,7 @@ void GuiRuntime::HandlePrivacy() {
       privacy_.CancelAutomaticResume();
     status = privacy_.Snapshot();
     for (const auto& [id, state] : connection_status_)
-      if (state == ConnectionStatus::Connected &&
+      if (state == MiniRtcConnectionStatus::MiniRtcConnectionConnected &&
           privacy_sessions_.Supports(id))
         controllers.push_back(id);
     if (!privacy_sessions_.CanEnable()) {

@@ -34,7 +34,7 @@ inline std::string VideoSettingsMessage(int quality, int frame_rate, int prefere
   return action.to_json();
 }
 
-inline nlohmann::json NetworkReport(const MiniRtcNetTrafficStats& stats, TraversalMode mode) {
+inline nlohmann::json NetworkReport(const MiniRtcNetTrafficStats& stats, MiniRtcTraversalMode mode) {
   const auto traffic = [](const MiniRtcInboundStats& in, const MiniRtcOutboundStats& out) {
     return nlohmann::json{{"inbound", in.bitrate}, {"outbound", out.bitrate}, {"loss", in.loss_rate}};
   };

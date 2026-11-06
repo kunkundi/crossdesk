@@ -99,7 +99,7 @@ void GuiRuntime::SendRemoteInput(const RemoteAction& action) {
           ? action.k.flag == KeyFlag::key_up : action.ks.pressed_count == 0;
   const auto available = [](const auto& props) {
     return props && props->peer_ && !props->closing_ &&
-           props->connection_status_ == ConnectionStatus::Connected;
+           props->connection_status_ == MiniRtcConnectionStatus::MiniRtcConnectionConnected;
   };
   std::shared_lock lock(remote_sessions_mutex_);
   const auto source = remote_sessions_.find(target_id);
@@ -121,9 +121,9 @@ void GuiRuntime::SendRemoteInput(const RemoteAction& action) {
     // Use the negotiated unreliable stream; clicks and wheel events remain
     // on the reliable mouse stream, with their own absolute coordinates.
     const int result = mouse_move
-        ? SendDataFrame(props->peer_, message.data(), message.size(),
+        ? MiniRtcSendDataFrame(props->peer_, message.data(), message.size(),
                         props->data_label_.c_str())
-        : SendReliableDataFrame(
+        : MiniRtcSendReliableDataFrame(
               props->peer_, message.data(), message.size(),
               mouse ? props->mouse_label_.c_str() : props->keyboard_label_.c_str());
     if (result != 0)
@@ -256,15 +256,15 @@ int GuiRuntime::CreateConnectionPeer() {
                                  ConfigCenter::VIDEO_ENCODE_FORMAT::AV1
                              ? true
                              : false;
-  params_.turn_mode = static_cast<TurnMode>(config_center_->GetTurnMode());
+  params_.turn_mode = static_cast<MiniRtcTurnMode>(config_center_->GetTurnMode());
   params_.enable_srtp = config_center_->IsEnableSrtp();
-  params_.video_content_type = VideoContentType::ScreenContent;
+  params_.video_content_type = MiniRtcVideoContentType::ScreenContent;
   // Bootstrap outgoing media with fixed defaults. Live overrides come only
   // from the authorized controller and apply to its connection on this host.
-  params_.video_quality = VideoQuality::QualityHigh;
+  params_.video_quality = MiniRtcVideoQuality::MiniRtcVideoQualityHigh;
   params_.video_frame_rate = 60;
   params_.video_degradation_preference =
-      VideoDegradationPreference::MaintainResolution;
+      MiniRtcVideoDegradationPreference::MaintainResolution;
   params_.on_receive_video_buffer = nullptr;
   params_.on_receive_audio_buffer = PeerEventHandler::OnReceiveAudioBuffer;
   params_.on_receive_data_buffer = PeerEventHandler::OnReceiveDataBuffer;
@@ -284,15 +284,15 @@ int GuiRuntime::CreateConnectionPeer() {
   signal_connected_ = false;
   device_presence_cache_.SetSignalConnected(false);
   need_to_send_recent_connections_ = true;
-  signal_status_ = SignalStatus::SignalConnecting;
+  signal_status_ = MiniRtcSignalStatus::MiniRtcSignalConnecting;
 
   {
     std::unique_lock lock(remote_sessions_mutex_);
-    peer_ = CreatePeer(&params_);
+    peer_ = MiniRtcCreatePeer(&params_);
   }
   if (peer_) {
     LOG_INFO("Create peer instance [{}] successful", client_id_);
-    Init(peer_);
+    MiniRtcInit(peer_);
     LOG_INFO("Peer [{}] init finish", client_id_);
   } else {
     LOG_INFO("Create peer [{}] instance failed", client_id_);
@@ -302,19 +302,19 @@ int GuiRuntime::CreateConnectionPeer() {
     const auto &displays = devices_.display_info_list();
     for (size_t index = 0; index < displays.size(); ++index) {
       const std::string stream_id = MakeDisplayStreamId(index);
-      AddVideoStream(peer_, stream_id.c_str());
+      MiniRtcAddVideoStream(peer_, stream_id.c_str());
     }
 
-    AddAudioStream(peer_, audio_label_.c_str());
-    AddDataStream(peer_, data_label_.c_str(), false);
-    AddDataStream(peer_, mouse_label_.c_str(), true);
-    AddDataStream(peer_, keyboard_label_.c_str(), true);
-    AddDataStream(peer_, control_data_label_.c_str(), true);
-    AddDataStream(peer_, file_label_.c_str(), true);
-    AddDataStream(peer_, file_feedback_label_.c_str(), true);
-    AddDataStream(peer_, clipboard_label_.c_str(), true);
+    MiniRtcAddAudioStream(peer_, audio_label_.c_str());
+    MiniRtcAddDataStream(peer_, data_label_.c_str(), false);
+    MiniRtcAddDataStream(peer_, mouse_label_.c_str(), true);
+    MiniRtcAddDataStream(peer_, keyboard_label_.c_str(), true);
+    MiniRtcAddDataStream(peer_, control_data_label_.c_str(), true);
+    MiniRtcAddDataStream(peer_, file_label_.c_str(), true);
+    MiniRtcAddDataStream(peer_, file_feedback_label_.c_str(), true);
+    MiniRtcAddDataStream(peer_, clipboard_label_.c_str(), true);
     if (!unattended_host_)
-      AddDataStream(peer_, web_clipboard::kStream, true);
+      MiniRtcAddDataStream(peer_, web_clipboard::kStream, true);
     return 0;
   } else {
     return -1;
@@ -390,10 +390,10 @@ void GuiRuntime::SdlCaptureAudioIn(void *userdata, Uint8 *stream, int len) {
     uint64_t captured_timestamp = 0;
     for (const auto &it : runtime->remote_sessions_) {
       auto props = it.second;
-      if (props->connection_status_.load() == ConnectionStatus::Connected) {
+      if (props->connection_status_.load() == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
         if (props->peer_) {
           if (captured_timestamp == 0) {
-            const int64_t timestamp_us = GetSystemTimeMicros(props->peer_);
+            const int64_t timestamp_us = MiniRtcGetSystemTimeMicros(props->peer_);
             if (timestamp_us > 0) {
               captured_timestamp = static_cast<uint64_t>(timestamp_us);
             }
@@ -402,7 +402,7 @@ void GuiRuntime::SdlCaptureAudioIn(void *userdata, Uint8 *stream, int len) {
           frame.data = reinterpret_cast<const char *>(stream);
           frame.size = static_cast<size_t>(len);
           frame.captured_timestamp = captured_timestamp;
-          SendAudioFrame(props->peer_, &frame,
+          MiniRtcSendAudioFrame(props->peer_, &frame,
                          runtime->audio_label_.c_str());
         }
       }

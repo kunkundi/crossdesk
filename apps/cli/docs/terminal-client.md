@@ -35,9 +35,9 @@ crossdesk-cli 123456789 --server your-server.example --port 9099
 
 需先部署支持 `cli` 注册的新版 crossdesk-server；旧服务端会登录失败，本客户端不会回退为普通设备身份。桥接 `status.client_id` 返回服务端分配的 ID。
 
-流程为创建主控 Peer、注册流 → 以 `cli` 注册 → SignalConnected 返回 `cli-xxxxxxxxx` → Join → Connected → 现有 HostInformation 握手 → 显示器选择、能力协商 → 视频。Init 返回 0 不是远端连接成功。连接总超时默认 30 秒；信令断开后结束本次会话，用户重新连接，不自动循环重试密码。
+流程为创建主控 Peer、注册流 → 以 `cli` 注册 → SignalConnected 返回 `cli-xxxxxxxxx` → Join → Connected → 现有 HostInformation 握手 → 显示器选择、能力协商 → 视频。MiniRtcInit 返回 0 不是远端连接成功。连接总超时默认 30 秒；信令断开后结束本次会话，用户重新连接，不自动循环重试密码。
 
-交互界面区分 `Connecting to server`（连接信令）、`Connecting to device`（连接设备）、`Connected, waiting for first frame`（已连接，等待首帧）和 `Displaying`（正在显示）。首帧前显示居中的等待提示及秒数；连接阶段从发起连接计时，首帧等待阶段从连接成功重新计时。首帧完整写入终端后才切换到 `Displaying` 并清除等待提示。已连接但暂时没有画面不会因此判为连接失败，也不代表中继未启用。状态栏右侧为接收视频码率，收到网络统计后显示 `P2P` 或 `RELAY`，码率按 bps、kbps、Mbps 显示；初始码率为零或很低时仍继续等待视频。
+交互界面区分 `MiniRtcConnectionConnecting to server`（连接信令）、`MiniRtcConnectionConnecting to device`（连接设备）、`MiniRtcConnectionConnected, waiting for first frame`（已连接，等待首帧）和 `Displaying`（正在显示）。首帧前显示居中的等待提示及秒数；连接阶段从发起连接计时，首帧等待阶段从连接成功重新计时。首帧完整写入终端后才切换到 `Displaying` 并清除等待提示。已连接但暂时没有画面不会因此判为连接失败，也不代表中继未启用。状态栏右侧为接收视频码率，收到网络统计后显示 `MiniRtcTraversalP2P` 或 `RELAY`，码率按 bps、kbps、Mbps 显示；初始码率为零或很低时仍继续等待视频。
 
 保留 MiniRTC WSS 证书链与主机名验证、TURN 临时凭据下发及 SRTP 协商。未提供跳过证书检查的参数。SRTP 是否实际协商成功通过状态统计呈现；沿用现有 MiniRTC 对旧端的兼容性，不宣称所有旧端必然启用 SRTP。自建证书问题应修复证书/系统信任链。
 

@@ -176,7 +176,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
   }
 
   const std::string wire_id = handler->WireId(remote_id);
-  PeerPtr* bound_peer =
+  MiniRtcPeerPtr* bound_peer =
       handler->IsDirect() ? handler->DirectPeer() : runtime->peer_;
   std::string json_str(data, size);
   if (json_str.find("\"automation\"") != std::string::npos) {
@@ -204,31 +204,31 @@ void PeerEventHandler::OnReceiveDataBuffer(
     // their own demand. MiniRTC owns per-peer video/audio pause state.
     if (!previous || subscription->IsNewerThan(*previous)) {
       if (subscription->fps > 0)
-        accepted = UpdateVideoSettings(
+        accepted = MiniRtcUpdateVideoSettings(
                        bound_peer, wire_id.data(), wire_id.size(),
-                       static_cast<VideoQuality>(subscription->quality),
+                       static_cast<MiniRtcVideoQuality>(subscription->quality),
                        subscription->frame_rate,
-                       static_cast<VideoDegradationPreference>(
+                       static_cast<MiniRtcVideoDegradationPreference>(
                            subscription->EncoderPreference())) == 0;
       if (accepted && (!previous || previous->max_bitrate_bps.value_or(0) !=
                                        subscription->max_bitrate_bps.value_or(0)))
-        accepted = UpdateVideoBitrateLimit(
+        accepted = MiniRtcUpdateVideoBitrateLimit(
                        bound_peer, wire_id.data(), wire_id.size(),
                        subscription->max_bitrate_bps.value_or(0)) == 0;
       // Rebalancing bandwidth alone must not force every device to send a
       // keyframe. The pause API requests its own keyframes on resume.
       if (accepted && (!previous || previous->width != subscription->width ||
                        previous->height != subscription->height))
-        accepted = UpdateVideoResolution(bound_peer, wire_id.data(),
+        accepted = MiniRtcUpdateVideoResolution(bound_peer, wire_id.data(),
                                          wire_id.size(), subscription->width,
                                          subscription->height) == 0;
       if (accepted)
         accepted =
-            SetVideoSendPaused(bound_peer, wire_id.data(), wire_id.size(),
+            MiniRtcSetVideoSendPaused(bound_peer, wire_id.data(), wire_id.size(),
                                subscription->fps == 0) == 0;
       if (accepted)
         accepted =
-            SetAudioSendPaused(bound_peer, wire_id.data(), wire_id.size(),
+            MiniRtcSetAudioSendPaused(bound_peer, wire_id.data(), wire_id.size(),
                                !subscription->audio) == 0;
       if (accepted && subscription->audio)
         runtime->devices_.StartSpeakerCapturer();
@@ -240,7 +240,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
         {"request_id", subscription->request_id},
         {"accepted",
          accepted}}.dump();
-    SendReliableDataFrameToPeer(bound_peer, reply.data(), reply.size(),
+    MiniRtcSendReliableDataFrameToPeer(bound_peer, reply.data(), reply.size(),
                                 runtime->control_data_label_.c_str(),
                                 wire_id.data(), wire_id.size());
     return;
@@ -275,7 +275,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
     if (auto props = runtime->FindRemoteSession(remote_id);
         props && source_id == props->control_data_label_ &&
         !props->closing_ &&
-        props->connection_status_ == ConnectionStatus::Connected) {
+        props->connection_status_ == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
       props->net_traffic_stats_.StoreRemoteVideoEncoder(remote_action.vcs.encoder);
     }
     return;
@@ -314,17 +314,17 @@ void PeerEventHandler::OnReceiveDataBuffer(
       return;
     const auto& settings = remote_action.vs;
     remote_action.vs.accepted =
-        UpdateVideoSettings(
+        MiniRtcUpdateVideoSettings(
             bound_peer, wire_id.data(), wire_id.size(),
-            static_cast<VideoQuality>(settings.quality), settings.frame_rate,
-            static_cast<VideoDegradationPreference>(settings.preference)) == 0;
+            static_cast<MiniRtcVideoQuality>(settings.quality), settings.frame_rate,
+            static_cast<MiniRtcVideoDegradationPreference>(settings.preference)) == 0;
     LOG_INFO("Video settings: peer={} source={} request={} quality={} fps={} "
              "preference={} accepted={}",
              remote_id, source_id, settings.request_id, settings.quality,
              settings.frame_rate, settings.preference, remote_action.vs.accepted);
     remote_action.type = ControlType::video_settings_status;
     const auto message = remote_action.to_json();
-    SendReliableDataFrameToPeer(bound_peer, message.data(), message.size(),
+    MiniRtcSendReliableDataFrameToPeer(bound_peer, message.data(), message.size(),
                                 runtime->control_data_label_.c_str(),
                                 wire_id.data(), wire_id.size());
     return;
@@ -479,7 +479,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
           props->video_settings_request_tick_ = SDL_GetTicks();
           settings.vs = props->video_settings_;
           const auto message = settings.to_json();
-          SendReliableDataFrame(
+          MiniRtcSendReliableDataFrame(
               handler->IsDirect() ? handler->DirectPeer() : props->peer_,
               message.data(), message.size(),
               props->control_data_label_.c_str());
@@ -530,7 +530,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
       // command arrives after it (e.g. when unmuting an inactive window).
       const auto subscription = runtime->preview_subscriptions_.Get(remote_id);
       const bool paused = subscription ? !subscription->audio : !remote_action.a;
-      const int ret = SetAudioSendPaused(bound_peer, wire_id.data(),
+      const int ret = MiniRtcSetAudioSendPaused(bound_peer, wire_id.data(),
                                          wire_id.size(), paused);
       if (remote_action.a)
         runtime->devices_.StartSpeakerCapturer();

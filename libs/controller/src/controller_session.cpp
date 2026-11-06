@@ -25,7 +25,7 @@ void ControllerSession::Enqueue(Event e) noexcept {
   } catch (...) { /* Allocation failure cannot escape a C callback. */
   }
 }
-void ControllerSession::Signal(SignalStatus s, const char *id, size_t n,
+void ControllerSession::Signal(MiniRtcSignalStatus s, const char *id, size_t n,
                                void *p) {
   try {
     static_cast<ControllerSession *>(p)->Enqueue(
@@ -33,7 +33,7 @@ void ControllerSession::Signal(SignalStatus s, const char *id, size_t n,
   } catch (...) {
   }
 }
-void ControllerSession::Connection(ConnectionStatus s, const char *, size_t,
+void ControllerSession::Connection(MiniRtcConnectionStatus s, const char *, size_t,
                                    void *p) {
   auto &session = *static_cast<ControllerSession *>(p);
   session.Enqueue({1, s, {}});
@@ -73,7 +73,7 @@ void ControllerSession::Video(const MiniRtcVideoFrame *f, const char *, size_t,
   } catch (...) {
   }
 }
-void ControllerSession::Network(const char *, size_t, TraversalMode mode,
+void ControllerSession::Network(const char *, size_t, MiniRtcTraversalMode mode,
                                 const MiniRtcNetTrafficStats *stats,
                                 const char *, size_t, void *p) {
   auto &session = *static_cast<ControllerSession *>(p);
@@ -83,8 +83,8 @@ void ControllerSession::Network(const char *, size_t, TraversalMode mode,
     session.traversal_ = mode;
   }
 }
-Params ControllerSession::Parameters() {
-  Params p{};
+MiniRtcParams ControllerSession::Parameters() {
+  MiniRtcParams p{};
   std::snprintf(p.signal_server_ip, sizeof(p.signal_server_ip), "%s",
                 options_.host.c_str());
   std::snprintf(p.log_path, sizeof(p.log_path), "%s",
@@ -93,13 +93,13 @@ Params ControllerSession::Parameters() {
   p.hardware_acceleration = options_.hardware_acceleration;
   p.native_video_output = true;
   p.av1_encoding = false;
-  p.turn_mode = TurnAutoUdpTcp;
+  p.turn_mode = MiniRtcTurnAutoUdpTcp;
   p.enable_srtp = true;
-  p.video_content_type = VideoContentType::ScreenContent;
-  p.video_quality = QualityLow;
+  p.video_content_type = MiniRtcVideoContentType::ScreenContent;
+  p.video_quality = MiniRtcVideoQualityLow;
   p.video_frame_rate = 30;
   p.video_degradation_preference =
-      VideoDegradationPreference::MaintainResolution;
+      MiniRtcVideoDegradationPreference::MaintainResolution;
   p.on_signal_status = Signal;
   p.on_connection_status = Connection;
   p.on_net_status_report = Network;
@@ -149,7 +149,7 @@ void ControllerSession::Connect(SessionOptions options, std::string device,
     overflow_ = false;
     events_.clear();
     network_ = {};
-    traversal_ = UnknownMode;
+    traversal_ = MiniRtcTraversalUnknown;
     callback_generation_ = ++generation_;
     callback_display_ = options_.display;
     frames_.Reset(generation_);
@@ -160,19 +160,19 @@ void ControllerSession::Connect(SessionOptions options, std::string device,
   InitializeControllerDiagnostics(options_.log_directory);
   WriteControllerDiagnostic("Session registering");
   auto p = Parameters();
-  peer_ = CreatePeer(&p);
+  peer_ = MiniRtcCreatePeer(&p);
   if (!peer_) {
     Fail("media_initialization_failed");
     return;
   }
-  AddAudioStream(peer_, kAudioStream);
-  AddDataStream(peer_, kDataStream, false);
+  MiniRtcAddAudioStream(peer_, kAudioStream);
+  MiniRtcAddDataStream(peer_, kDataStream, false);
   for (auto stream : {kMouseStream, kKeyboardStream, kControlStream})
-    AddDataStream(peer_, stream, true);
-  AddDataStream(peer_, web_clipboard::kStream, true);
-  AddDataStream(peer_, kFileStream, true);
-  AddDataStream(peer_, kFileFeedbackStream, true);
-  if (Init(peer_) != 0)
+    MiniRtcAddDataStream(peer_, stream, true);
+  MiniRtcAddDataStream(peer_, web_clipboard::kStream, true);
+  MiniRtcAddDataStream(peer_, kFileStream, true);
+  MiniRtcAddDataStream(peer_, kFileFeedbackStream, true);
+  if (MiniRtcInit(peer_) != 0)
     Fail("media_initialization_failed");
 }
 void ControllerSession::Tick() {
@@ -198,26 +198,26 @@ void ControllerSession::Tick() {
       break;
     if (e.kind == 0) {
       WriteControllerDiagnostic("Signal status: " + std::to_string(e.code));
-      if (e.code == SignalTlsCertError) {
+      if (e.code == MiniRtcSignalTlsCertError) {
         Fail("tls_certificate_error");
         break;
       }
-      if (e.code == SignalFailed) {
+      if (e.code == MiniRtcSignalFailed) {
         Fail("signaling_login_failed");
         break;
       }
       // The initial signaling transport can recover before a remote join is
       // sent. Keep its backoff worker alive within the original deadline.
-      if (e.code == SignalReconnecting && state_ == "registering") {
+      if (e.code == MiniRtcSignalReconnecting && state_ == "registering") {
         WriteControllerDiagnostic("Initial signaling retry within connection deadline");
         continue;
       }
-      if (e.code == SignalClosed || e.code == SignalServerClosed ||
-          e.code == SignalReconnecting) {
+      if (e.code == MiniRtcSignalClosed || e.code == MiniRtcSignalServerClosed ||
+          e.code == MiniRtcSignalReconnecting) {
         Fail("signaling_disconnected");
         break;
       }
-      if (e.code != SignalConnected)
+      if (e.code != MiniRtcSignalConnected)
         continue;
       if (state_ == "registering") {
         if (e.data.size() != 13 || e.data.rfind("cli-", 0) != 0 ||
@@ -228,14 +228,14 @@ void ControllerSession::Tick() {
         client_id_ = e.data;
         state_ = "connecting";
         const auto join = device_ + "@" + password_;
-        if (JoinConnection(peer_, join.c_str()) != 0)
+        if (MiniRtcJoinConnection(peer_, join.c_str()) != 0)
           Fail("join_request_failed");
         std::fill(password_.begin(), password_.end(), '\0');
         password_.clear();
       }
     } else if (e.kind == 1) {
       WriteControllerDiagnostic("Connection status: " + std::to_string(e.code) + " (session " + state_ + ")");
-      if (e.code == ::Connected && !Connected()) {
+      if (e.code == MiniRtcConnectionConnected && !Connected()) {
         state_ = "connected";
         auto hello = MakeHostInformation("CrossDesk CLI", {}, false);
         Send(kControlStream, hello.to_json());
@@ -245,15 +245,15 @@ void ControllerSession::Tick() {
         mute.a = false;
         Send(kControlStream, mute.to_json());
         capability_request_ = RequestRemote("capabilities");
-      } else if (e.code == IncorrectPassword)
+      } else if (e.code == MiniRtcConnectionIncorrectPassword)
         Fail("incorrect_password");
-      else if (e.code == NoSuchTransmissionId)
+      else if (e.code == MiniRtcConnectionNoSuchTransmissionId)
         Fail("device_not_found");
-      else if (e.code == RemoteUnavailable)
+      else if (e.code == MiniRtcConnectionRemoteUnavailable)
         Fail("device_offline_or_unavailable");
-      else if (e.code == Failed)
+      else if (e.code == MiniRtcConnectionFailed)
         Fail(Connected() ? "connection_lost" : "connection_failed");
-      else if (e.code == Closed || e.code == Disconnected)
+      else if (e.code == MiniRtcConnectionClosed || e.code == MiniRtcConnectionDisconnected)
         Fail("remote_disconnected");
     } else if ((e.kind == 4 || e.kind == 5) && Connected()) {
       if (files_) files_->Receive(e.data.data(), e.data.size(), e.kind == 5);
@@ -299,7 +299,7 @@ void ControllerSession::Tick() {
             if (remote_capabilities_.value("files", json{}) == true)
               files_ = std::make_unique<ControllerFiles>([this](const char *stream, const std::string &data) {
                 if (!peer_ || !Connected()) return false;
-                return SendReliableDataFrame(peer_, data.data(), data.size(), stream) == 0;
+                return MiniRtcSendReliableDataFrame(peer_, data.data(), data.size(), stream) == 0;
               });
             remote_results_.erase(found);
           }
@@ -340,7 +340,7 @@ void ControllerSession::Tick() {
 }
 bool ControllerSession::Send(const char *stream, const std::string &payload) {
   return peer_ && Connected() && !payload.empty() &&
-         SendReliableDataFrame(peer_, payload.data(), payload.size(), stream) ==
+         MiniRtcSendReliableDataFrame(peer_, payload.data(), payload.size(), stream) ==
              0;
 }
 void ControllerSession::ClosePeers() {
@@ -355,8 +355,8 @@ void ControllerSession::ClosePeers() {
     frames_.Reset(generation_);
   }
   if (peer_) {
-    LeaveConnection(peer_, device_.c_str());
-    DestroyPeer(&peer_);
+    MiniRtcLeaveConnection(peer_, device_.c_str());
+    MiniRtcDestroyPeer(&peer_);
   }
   std::fill(password_.begin(), password_.end(), '\0');
   password_.clear();
@@ -431,7 +431,7 @@ void ControllerSession::Preview() {
   s.frame_rate = options_.fps > 30 ? 60 : 30;
   // Preserve desktop text detail at every cadence, including 30 FPS previews.
   s.preference =
-      static_cast<int>(VideoDegradationPreference::MaintainResolution);
+      static_cast<int>(MiniRtcVideoDegradationPreference::MaintainResolution);
   s.audio = audio_enabled_;
   s.quality = options_.quality;
   if (resolution_) {

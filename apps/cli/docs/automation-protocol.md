@@ -44,7 +44,7 @@ The output queue is bounded to 64 messages and 8 MiB; a blocked output pipe term
 
 `connect` returns immediately after initiating transport. Poll `status` until `state == "ready"`; this requires a frame from the current display generation. Status includes `transport_state`, `geometry_epoch`, `frame_age_ms`, `source_size`, `control_allowed`, `human_paused`, host platform, displays and transport diagnostics.
 
-During initial `registering`, `SignalReconnecting` keeps the existing signaling peer and its backoff worker alive within the original 30-second connection deadline. Expiry in that phase reports `signaling_timeout`; expiry after submitting a device join reports `connection_timeout`. Certificate validation and login rejection terminate the attempt immediately. A signaling interruption after join submission also terminates the attempt. Explicit cancellation closes the peer and its retry worker. The MCP adapter forwards recognized status errors as an optional `error.reason` alongside its public error category.
+During initial `registering`, `MiniRtcSignalReconnecting` keeps the existing signaling peer and its backoff worker alive within the original 30-second connection deadline. Expiry in that phase reports `signaling_timeout`; expiry after submitting a device join reports `connection_timeout`. Certificate validation and login rejection terminate the attempt immediately. A signaling interruption after join submission also terminates the attempt. Explicit cancellation closes the peer and its retry worker. The MCP adapter forwards recognized status errors as an optional `error.reason` alongside its public error category.
 
 ## Live video
 
@@ -87,7 +87,7 @@ NV12 retains one latest picture in the I/O handoff and at most one unacknowledge
 
 `status.video_output` includes `transport`, `viewers`, I/O handoff `queued` / `queued_bytes`, aggregate `unacknowledged_bytes`, and `dropped` (handoff replacements plus per-viewer congestion skips). These diagnostics contain no video payload. The original receive-tap SPS/PPS and keyframe state remain available for H.264.
 
-The MiniRTC `Params` structure appends `on_receive_encoded_video`, changing its ABI size. Rebuild consumers and MiniRTC together; zero-initialize `Params`. The callback borrows frame bytes on the receive/decode queue and must not retain the pointer. Returning nonzero requests a remote keyframe. No remote wire-protocol change is required.
+The MiniRTC `MiniRtcParams` structure appends `on_receive_encoded_video`, changing its ABI size. Rebuild consumers and MiniRTC together; zero-initialize `MiniRtcParams`. The callback borrows frame bytes on the receive/decode queue and must not retain the pointer. Returning nonzero requests a remote keyframe. No remote wire-protocol change is required.
 
 ## Images and observations
 

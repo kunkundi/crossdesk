@@ -170,7 +170,7 @@ MainWindow::connect_requested
   → GuiRuntime::ConnectTo
   → 在线状态探测
   → 创建或复用 RemoteSession
-  → MiniRTC JoinConnection
+  → MiniRtcJoinConnection
   → PeerEventHandler 接收连接状态
   → SyncStreamWindow 创建串流窗口并开始呈现视频
 ```

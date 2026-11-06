@@ -495,25 +495,25 @@ std::optional<int> ParsePort(const slint::SharedString& text) {
   return port;
 }
 
-std::string ConnectionStatusText(ConnectionStatus status, int language) {
+std::string ConnectionStatusText(MiniRtcConnectionStatus status, int language) {
   switch (status) {
-    case ConnectionStatus::Connected:
+    case MiniRtcConnectionStatus::MiniRtcConnectionConnected:
       return localization::p2p_connected[language];
-    case ConnectionStatus::Connecting:
+    case MiniRtcConnectionStatus::MiniRtcConnectionConnecting:
       return localization::p2p_connecting[language];
-    case ConnectionStatus::Gathering:
+    case MiniRtcConnectionStatus::MiniRtcConnectionGathering:
       return localization::p2p_gathering[language];
-    case ConnectionStatus::Disconnected:
+    case MiniRtcConnectionStatus::MiniRtcConnectionDisconnected:
       return localization::p2p_disconnected[language];
-    case ConnectionStatus::NoSuchTransmissionId:
+    case MiniRtcConnectionStatus::MiniRtcConnectionNoSuchTransmissionId:
       return localization::no_such_id[language];
-    case ConnectionStatus::IncorrectPassword:
+    case MiniRtcConnectionStatus::MiniRtcConnectionIncorrectPassword:
       return localization::reinput_password[language];
-    case ConnectionStatus::Closed:
+    case MiniRtcConnectionStatus::MiniRtcConnectionClosed:
       return localization::p2p_closed[language];
-    case ConnectionStatus::RemoteUnavailable:
+    case MiniRtcConnectionStatus::MiniRtcConnectionRemoteUnavailable:
       return localization::device_offline[language];
-    case ConnectionStatus::Failed:
+    case MiniRtcConnectionStatus::MiniRtcConnectionFailed:
     default:
       return localization::p2p_failed[language];
   }
@@ -1913,7 +1913,7 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
   main->on_recent_disconnect([this](slint::SharedString id) {
     const std::string remote_id(id);
     if (auto props = FindRemoteSession(remote_id);
-        props && props->connection_status_ == ConnectionStatus::Connected &&
+        props && props->connection_status_ == MiniRtcConnectionStatus::MiniRtcConnectionConnected &&
         !props->closing_) {
       CloseStreamTab(props->remote_id_);
       SyncMainWindow();
@@ -2057,9 +2057,9 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
   main->on_connection_acknowledge([this] {
     const auto props = FindRemoteSession(ui_->connection_dialog_remote_id);
     if (props) {
-      const ConnectionStatus status = props->connection_status_.load();
-      if (status == ConnectionStatus::NoSuchTransmissionId ||
-          status == ConnectionStatus::RemoteUnavailable) {
+      const MiniRtcConnectionStatus status = props->connection_status_.load();
+      if (status == MiniRtcConnectionStatus::MiniRtcConnectionNoSuchTransmissionId ||
+          status == MiniRtcConnectionStatus::MiniRtcConnectionRemoteUnavailable) {
         CloseStreamTab(props->remote_id_);
         re_enter_remote_id_ = true;
       }
@@ -2216,13 +2216,13 @@ void GuiApplication::BindStreamCallbacks() {
     action.type = ControlType::display_id;
     action.d = index;
     const std::string message = action.to_json();
-    SendReliableDataFrame(props->peer_, message.c_str(), message.size(),
+    MiniRtcSendReliableDataFrame(props->peer_, message.c_str(), message.size(),
                           props->control_data_label_.c_str());
   });
   stream->on_send_shortcut([this](slint::SharedString shortcut) {
     auto props = SelectedSession();
     if (!props || !props->peer_ || !props->control_mouse_ ||
-        props->connection_status_.load() != ConnectionStatus::Connected) {
+        props->connection_status_.load() != MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
       return;
     }
     const std::string name(shortcut);
@@ -2237,13 +2237,13 @@ void GuiApplication::BindStreamCallbacks() {
                         ? ServiceCommandFlag::send_sas
                         : ServiceCommandFlag::lock_workstation;
     const std::string message = action.to_json();
-    SendReliableDataFrame(props->peer_, message.c_str(), message.size(),
+    MiniRtcSendReliableDataFrame(props->peer_, message.c_str(), message.size(),
                           props->control_data_label_.c_str());
   });
   const auto send_privacy = [this](bool relock) {
     auto props = SelectedSession();
     if (!props || !props->peer_ || (!relock && !props->control_mouse_) ||
-        props->connection_status_.load() != ConnectionStatus::Connected) return;
+        props->connection_status_.load() != MiniRtcConnectionStatus::MiniRtcConnectionConnected) return;
     RemoteAction action{};
     action.type = ControlType::privacy_command;
     {
@@ -2265,7 +2265,7 @@ void GuiApplication::BindStreamCallbacks() {
       props->privacy_request_revision_ = status.revision;
     }
     const auto message = action.to_json();
-    if (SendReliableDataFrame(props->peer_, message.data(), message.size(),
+    if (MiniRtcSendReliableDataFrame(props->peer_, message.data(), message.size(),
                               props->control_data_label_.c_str()) != 0) {
       std::lock_guard lock(props->privacy_status_mutex_);
       props->privacy_command_pending_ = false;
@@ -2295,7 +2295,7 @@ void GuiApplication::BindStreamCallbacks() {
                                           int preference) {
     auto props = SelectedSession();
     if (!props || !props->peer_ ||
-        props->connection_status_.load() != ConnectionStatus::Connected)
+        props->connection_status_.load() != MiniRtcConnectionStatus::MiniRtcConnectionConnected)
       return;
     RemoteAction action{};
     action.type = ControlType::video_settings;
@@ -2308,7 +2308,7 @@ void GuiApplication::BindStreamCallbacks() {
       if (!props->video_settings_supported_) return;
       action.vs.request_id = props->video_settings_.request_id + 1;
       const auto message = action.to_json();
-      if (SendReliableDataFrame(props->peer_, message.data(), message.size(),
+      if (MiniRtcSendReliableDataFrame(props->peer_, message.data(), message.size(),
                                 props->control_data_label_.c_str()) != 0)
         return;
       props->video_settings_ = action.vs;
@@ -2773,7 +2773,7 @@ void GuiApplication::ShareLocalCursorState() {
     std::shared_lock lock(connection_status_mutex_);
     connected_controllers.reserve(connection_status_.size());
     for (const auto& [remote_id, status] : connection_status_) {
-      if (status == ConnectionStatus::Connected) {
+      if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
         connected_controllers.push_back(remote_id);
       }
     }
@@ -2997,7 +2997,7 @@ bool GuiApplication::RequestPasswordChange(const std::string &password) {
                                 {"request_id", request_id},
                                 {"new_password", password}};
   const std::string message = request.dump();
-  if (SendSignalMessage(peer_, message.data(), message.size()) != 0) {
+  if (MiniRtcSendSignalMessage(peer_, message.data(), message.size()) != 0) {
     {
       std::lock_guard<std::mutex> lock(password_change_mutex_);
       password_change_pending_ = false;
@@ -3128,7 +3128,7 @@ void GuiApplication::HandleCredentialRecovery() {
     }
     const auto message = nlohmann::json{{"type", "change_password"},
         {"request_id", request_id}, {"new_password", password}}.dump();
-    if (SendSignalMessage(peer_, message.data(), message.size()) != 0) {
+    if (MiniRtcSendSignalMessage(peer_, message.data(), message.size()) != 0) {
       std::lock_guard lock(password_change_mutex_);
       password_change_result_ready_ = true;
       password_change_result_uncertain_ = true;
@@ -3204,7 +3204,7 @@ void GuiApplication::SyncAnnouncements() {
   const auto request = announcements_.TakePendingRequest();
   if (!request.is_null()) {
     const auto payload = request.dump();
-    if (!peer_ || SendSignalMessage(peer_, payload.data(), payload.size()) != 0)
+    if (!peer_ || MiniRtcSendSignalMessage(peer_, payload.data(), payload.size()) != 0)
       announcements_.Failed(request["request_id"]);
   }
   if (ui_->announcement_version == announcements_.Version()) return;
@@ -3315,7 +3315,7 @@ void GuiApplication::SyncMainWindow() {
     main->set_signal_connected(signal_online);
     main->set_signal_reconnecting(signal_reconnecting);
     main->set_signal_tls_error(signal_status_ ==
-                                    SignalStatus::SignalTlsCertError);
+                                    MiniRtcSignalStatus::MiniRtcSignalTlsCertError);
     main->set_update_available(update_available_);
     switch (update_checker_->status()) {
       case UpdateChecker::Status::Idle:
@@ -3389,7 +3389,7 @@ void GuiApplication::SyncMainWindow() {
   }
   const auto is_connected = [this](const std::string& id) {
     const auto props = FindRemoteSession(id);
-    return props && props->connection_status_ == ConnectionStatus::Connected &&
+    return props && props->connection_status_ == MiniRtcConnectionStatus::MiniRtcConnectionConnected &&
            !props->closing_;
   };
   const auto preview_size = ui_->recent_preview_resolution.Update(
@@ -3512,8 +3512,8 @@ void GuiApplication::SyncConnectionDialog() {
     ui_->connection_password_initialized = false;
   }
   ui_->connection_dialog_remote_id = props->remote_id_;
-  const ConnectionStatus status = props->connection_status_.load();
-  if (status == ConnectionStatus::Connected && !ui_->gallery_auth_id.empty()) {
+  const MiniRtcConnectionStatus status = props->connection_status_.load();
+  if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected && !ui_->gallery_auth_id.empty()) {
     ui_->gallery_auth_id.clear();
     show_connection_status_window_ = false;
     ui_->main->set_connection_dialog_open(false);
@@ -3522,9 +3522,9 @@ void GuiApplication::SyncConnectionDialog() {
   }
   const auto auth = props->connection_auth_.Get();
   const bool password_required = auth.password_required ||
-      (status == ConnectionStatus::IncorrectPassword && auth.validating);
+      (status == MiniRtcConnectionStatus::MiniRtcConnectionIncorrectPassword && auth.validating);
   const bool pending = !password_required &&
-      (status == ConnectionStatus::Connecting || status == ConnectionStatus::Gathering);
+      (status == MiniRtcConnectionStatus::MiniRtcConnectionConnecting || status == MiniRtcConnectionStatus::MiniRtcConnectionGathering);
   std::string text;
   if (password_required) {
     text = auth.validating
@@ -3855,7 +3855,7 @@ void GuiApplication::SyncStreamWindow() {
       tab.title = UiText(
           props->remote_host_name_.empty() ? id : props->remote_host_name_);
       tab.connected =
-          props->connection_status_.load() == ConnectionStatus::Connected;
+          props->connection_status_.load() == MiniRtcConnectionStatus::MiniRtcConnectionConnected;
       tabs_by_id.emplace(id, std::move(tab));
     }
   }
@@ -3905,10 +3905,10 @@ void GuiApplication::SyncStreamWindow() {
   if (!props) {
     return;
   }
-  const ConnectionStatus status = props->connection_status_.load();
+  const MiniRtcConnectionStatus status = props->connection_status_.load();
   bool remote_update_available = false;
   HostPlatform remote_platform = HostPlatform::Unknown;
-  if (status == ConnectionStatus::Connected) {
+  if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
     std::lock_guard lock(props->remote_version_mutex_);
     remote_platform = props->remote_platform_;
     // Wait for host_info: a version still in transit is not a legacy peer.
@@ -3925,14 +3925,14 @@ void GuiApplication::SyncStreamWindow() {
     SetStreamKeyboardFocus(false);
   }
   const bool waiting_for_frame =
-      status == ConnectionStatus::Connected &&
+      status == MiniRtcConnectionStatus::MiniRtcConnectionConnected &&
       !(*ui_->stream)->get_has_frame();
   // Once the peer is connected, the frame-waiting hint replaces the
   // connection status. Keeping these states mutually exclusive also avoids a
   // transient overlap when both properties are synchronized in one tick.
   (*ui_->stream)
       ->set_status_text(UiText(
-          status == ConnectionStatus::Connected
+          status == MiniRtcConnectionStatus::MiniRtcConnectionConnected
               ? std::string{}
               : ConnectionStatusText(status, localization_language_index_)));
   (*ui_->stream)
@@ -3949,7 +3949,7 @@ void GuiApplication::SyncStreamWindow() {
         status, props->privacy_status_received_, props->privacy_command_pending_,
         now - props->privacy_status_tick_, now - props->privacy_command_tick_);
     const bool connected =
-        props->connection_status_.load() == ConnectionStatus::Connected;
+        props->connection_status_.load() == MiniRtcConnectionStatus::MiniRtcConnectionConnected;
     (*ui_->stream)->set_privacy_unlock_visible(connected && props->privacy_unlock_notice_);
     (*ui_->stream)->set_privacy_can_lock(connected && props->privacy_desktop_available_ &&
         props->privacy_status_received_ && status.supported &&
@@ -3977,7 +3977,7 @@ void GuiApplication::SyncStreamWindow() {
   {
     std::lock_guard lock(props->remote_cursor_state_mutex_);
     remote_cursor_active =
-        status == ConnectionStatus::Connected && props->control_mouse_ &&
+        status == MiniRtcConnectionStatus::MiniRtcConnectionConnected && props->control_mouse_ &&
         props->remote_cursor_state_received_;
     if (remote_cursor_active) {
       remote_cursor_shape = static_cast<int>(
@@ -3998,7 +3998,7 @@ void GuiApplication::SyncStreamWindow() {
       props->video_settings_.request_id = request_id;
     }
     (*ui_->stream)
-        ->set_video_settings_enabled(status == ConnectionStatus::Connected &&
+        ->set_video_settings_enabled(status == MiniRtcConnectionStatus::MiniRtcConnectionConnected &&
                                      props->video_settings_supported_);
     (*ui_->stream)
         ->set_video_settings_feedback(UiText(
@@ -4035,13 +4035,13 @@ void GuiApplication::SyncStreamWindow() {
   const auto net = props->net_traffic_stats_.Load();
   const auto codecs = props->net_traffic_stats_.LoadVideoCodecs();
   (*ui_->stream)->set_stats_encoder(UiText(
-      status == ConnectionStatus::Connected && !codecs.remote_encoder.empty()
+      status == MiniRtcConnectionStatus::MiniRtcConnectionConnected && !codecs.remote_encoder.empty()
           ? codecs.remote_encoder : "—"));
   (*ui_->stream)->set_stats_decoder(UiText(
-      status == ConnectionStatus::Connected && !codecs.local_decoder.empty()
+      status == MiniRtcConnectionStatus::MiniRtcConnectionConnected && !codecs.local_decoder.empty()
           ? codecs.local_decoder : "—"));
   (*ui_->stream)->set_stats_encryption_enabled(
-      status == ConnectionStatus::Connected && net.srtp_active);
+      status == MiniRtcConnectionStatus::MiniRtcConnectionConnected && net.srtp_active);
   std::vector<ui::NetworkStatsRow> stats_rows;
   stats_rows.reserve(4);
   const auto append_stats_row = [&](const std::string& label,
@@ -4067,7 +4067,7 @@ void GuiApplication::SyncStreamWindow() {
                                                      props->video_height_)));
   (*ui_->stream)
       ->set_stats_connection_mode(
-          UiText(props->traversal_mode_ == TraversalMode::P2P
+          UiText(props->traversal_mode_ == MiniRtcTraversalMode::MiniRtcTraversalP2P
                      ? localization::connection_mode_direct
                            [localization_language_index_]
                      : localization::connection_mode_relay
@@ -4095,7 +4095,7 @@ void GuiApplication::SyncStreamWindow() {
   }
   (*ui_->stream)->set_stats_fps(UiText(std::to_string(props->fps_)));
   if (!props->net_traffic_stats_button_pressed_ ||
-      status != ConnectionStatus::Connected) {
+      status != MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
     props->video_latency_snapshot_.reset();
   } else if (refresh_stats) {
     props->video_latency_snapshot_ = props->video_latency_->Get(fps_now);
@@ -4109,7 +4109,7 @@ void GuiApplication::SyncStreamWindow() {
                   : "—"));
   const auto display_rtt = props->net_traffic_stats_.SmoothedRttMs(fps_now);
   const bool rtt_available = props->net_traffic_stats_button_pressed_ &&
-                            status == ConnectionStatus::Connected &&
+                            status == MiniRtcConnectionStatus::MiniRtcConnectionConnected &&
                             display_rtt.has_value();
   std::string connection_latency = "—";
   if (rtt_available) {
@@ -4119,7 +4119,7 @@ void GuiApplication::SyncStreamWindow() {
             : std::to_string(static_cast<int>(std::lround(*display_rtt))) + " ms";
   }
   (*ui_->stream)->set_stats_connection_latency(UiText(connection_latency));
-  if (refresh_stats && status == ConnectionStatus::Connected) {
+  if (refresh_stats && status == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
     LOG_DEBUG("Latency stats: remote={} video_ms={} video_samples={} "
               "rtt_raw_ms={} rtt_display_ms={}",
               props->remote_id_, latency ? latency->average_ms : -1,
@@ -4416,7 +4416,7 @@ void GuiApplication::SyncServerWindow() {
     has_connected_controller =
         std::any_of(connection_status_.begin(), connection_status_.end(),
                     [](const auto& entry) {
-                      return entry.second == ConnectionStatus::Connected;
+                      return entry.second == MiniRtcConnectionStatus::MiniRtcConnectionConnected;
                     });
   }
 
@@ -4478,7 +4478,7 @@ void GuiApplication::SyncServerWindow() {
     std::shared_lock lock(connection_status_mutex_);
     controllers.reserve(connection_status_.size());
     for (const auto& [id, status] : connection_status_) {
-      if (status != ConnectionStatus::Connected) continue;
+      if (status != MiniRtcConnectionStatus::MiniRtcConnectionConnected) continue;
       const auto host = connection_host_names_.find(id);
       const std::string name =
           host != connection_host_names_.end() && !host->second.empty()
@@ -5033,12 +5033,12 @@ void GuiApplication::ApplySettingsFromConfig(bool reconnect) {
   } else {
     const bool av1 = config_center_->GetVideoEncodeFormat() ==
                      ConfigCenter::VIDEO_ENCODE_FORMAT::AV1;
-    const auto turn = static_cast<TurnMode>(config_center_->GetTurnMode());
+    const auto turn = static_cast<MiniRtcTurnMode>(config_center_->GetTurnMode());
     if (av1 != params_.av1_encoding || turn != params_.turn_mode) {
       // Update the listening peer for incoming connections and the template
       // copied by ConnectTo for outgoing connections. Existing sessions retain
       // the codec/ICE snapshot with which they negotiated.
-      if (!peer_ || UpdateConnectionSettings(peer_, true, av1, turn) == 0) {
+      if (!peer_ || MiniRtcUpdateConnectionSettings(peer_, true, av1, turn) == 0) {
         params_.av1_encoding = av1;
         params_.turn_mode = turn;
       } else {
@@ -5139,7 +5139,7 @@ void GuiApplication::SelectStreamTab(int index) {
     start_keyboard_capturer_ = selected_session &&
                                selected_session->control_mouse_ &&
                                selected_session->connection_status_.load() ==
-                                   ConnectionStatus::Connected;
+                                   MiniRtcConnectionStatus::MiniRtcConnectionConnected;
   }
   if (clipboard_resumed) {
     // Flush a copy made in another local app before the next paste shortcut,
@@ -5366,7 +5366,7 @@ void GuiApplication::SendKeyInput(const std::string& text, bool pressed,
   (void)meta;
   auto props = SelectedSession();
   if (!props || !props->peer_ || !props->control_mouse_ ||
-      props->connection_status_.load() != ConnectionStatus::Connected) {
+      props->connection_status_.load() != MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
     return;
   }
 
@@ -5423,7 +5423,7 @@ void GuiApplication::SyncAudioPlayback() {
   std::shared_lock lock(remote_sessions_mutex_);
   for (const auto& [id, props] : remote_sessions_) {
     const bool allowed = !props->closing_ &&
-        props->connection_status_ == ConnectionStatus::Connected &&
+        props->connection_status_ == MiniRtcConnectionStatus::MiniRtcConnectionConnected &&
         props->audio_capture_button_pressed_ &&
         ((wall_visible && props->wall_managed_) ||
          (stream_active && props->tab_opened_ && props->tab_selected_));
@@ -5898,7 +5898,7 @@ void GuiApplication::GalleryAction(const std::string& action,
     auto props = FindRemoteSession(value);
     if (value != ui_->gallery_focus || !props || !props->peer_ ||
         props->closing_ ||
-        props->connection_status_ != ConnectionStatus::Connected)
+        props->connection_status_ != MiniRtcConnectionStatus::MiniRtcConnectionConnected)
       return;
     {
       std::lock_guard lock(props->gallery_frame_mutex_);
@@ -5955,7 +5955,7 @@ void GuiApplication::GalleryAction(const std::string& action,
       for (const auto& id : ids) {
         if (auto props = FindRemoteSession(id);
             props && !props->closing_ &&
-            props->connection_status_ == ConnectionStatus::Connected) {
+            props->connection_status_ == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
           if (action == "mute") {
             MuteRemoteAudio(props);
           } else {
@@ -6236,7 +6236,7 @@ void GuiApplication::SyncGallery() {
     // control. Followers can report different shapes without replacing it.
     auto controlled = FindRemoteSession(ui_->gallery_control_id);
     if (!visible || !controlled || controlled->closing_ ||
-        controlled->connection_status_ != ConnectionStatus::Connected) {
+        controlled->connection_status_ != MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
       ReleaseControl();
     } else {
       HostPlatform platform;
@@ -6330,7 +6330,7 @@ void GuiApplication::SyncGallery() {
       std::shared_lock lock(remote_sessions_mutex_);
       for (const auto& [id, props] : remote_sessions_)
         if (props && !props->lan_session_ && !props->closing_ &&
-            props->connection_status_ == ConnectionStatus::Connected)
+            props->connection_status_ == MiniRtcConnectionStatus::MiniRtcConnectionConnected)
           connected_ids.push_back(id);
     }
     std::sort(connected_ids.begin(), connected_ids.end());
@@ -6338,15 +6338,15 @@ void GuiApplication::SyncGallery() {
     for (const auto& id : connected_ids) {
       const auto props = FindRemoteSession(id);
       if (!props || props->closing_ ||
-          props->connection_status_ != ConnectionStatus::Connected)
+          props->connection_status_ != MiniRtcConnectionStatus::MiniRtcConnectionConnected)
         continue;
       ui::GalleryNetworkDevice device{};
       device.name = UiText(name(id));
       device.id = UiText(FormatPeerId(id.c_str()));
       const auto mode = props->traversal_mode_.load();
-      device.mode = UiText(mode == TraversalMode::P2P
+      device.mode = UiText(mode == MiniRtcTraversalMode::MiniRtcTraversalP2P
           ? tr("直连")
-          : mode == TraversalMode::UnknownMode
+          : mode == MiniRtcTraversalMode::MiniRtcTraversalUnknown
               ? tr("等待统计")
               : tr("中继"));
       device.inbound = device.outbound = device.loss = "—";
@@ -6374,7 +6374,7 @@ void GuiApplication::SyncGallery() {
       // Missing/stale reports cannot confirm either encrypted or plaintext.
       device.encryption_known = has_report;
       device.encryption_enabled = has_report && stats.srtp_active;
-      if (mode != TraversalMode::UnknownMode && has_report) {
+      if (mode != MiniRtcTraversalMode::MiniRtcTraversalUnknown && has_report) {
         device.inbound = UiText(FormatBitrate(stats.total_inbound_stats.bitrate));
         device.outbound = UiText(FormatBitrate(stats.total_outbound_stats.bitrate));
         // MiniRTC's total loss is a sum of media fractions, not an aggregate.
@@ -6416,14 +6416,14 @@ void GuiApplication::SyncGallery() {
           MuteRemoteAudio(props);
         }
         const auto status = props ? props->connection_status_.load()
-                                  : ConnectionStatus::Closed;
+                                  : MiniRtcConnectionStatus::MiniRtcConnectionClosed;
         const bool usable = props && props->peer_ && !props->closing_;
         const bool connecting = usable &&
-            (status == ConnectionStatus::Connecting ||
-             status == ConnectionStatus::Gathering);
+            (status == MiniRtcConnectionStatus::MiniRtcConnectionConnecting ||
+             status == MiniRtcConnectionStatus::MiniRtcConnectionGathering);
         if (!signal_connected_)
           operation.state = OperationState::Finished;
-        else if (!(usable && status == ConnectionStatus::Connected) &&
+        else if (!(usable && status == MiniRtcConnectionStatus::MiniRtcConnectionConnected) &&
                  (!connecting || operation.password)) {
           std::string password = operation.password.value_or("");
           bool remember = operation.remember_password;
@@ -6449,7 +6449,7 @@ void GuiApplication::SyncGallery() {
           operation.password.reset();
         }
       } else if (!props || !props->peer_ ||
-                 props->connection_status_ != ConnectionStatus::Connected) {
+                 props->connection_status_ != MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
         operation.state = OperationState::Finished;
       } else if (operation.action == "file") {
         if (!transfers_.ProcessSelectedFile(operation.file, props,
@@ -6472,12 +6472,12 @@ void GuiApplication::SyncGallery() {
       else if (operation.action == "connect") {
         const auto status = props->connection_status_.load();
         const auto auth = props->connection_auth_.Get();
-        if (status == ConnectionStatus::Connected)
+        if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected)
           operation.state = OperationState::Finished;
         else if (auth.password_required && !auth.validating)
           operation.state = OperationState::AwaitingPassword;
-        else if (status != ConnectionStatus::Connecting &&
-                 status != ConnectionStatus::Gathering && !auth.validating)
+        else if (status != MiniRtcConnectionStatus::MiniRtcConnectionConnecting &&
+                 status != MiniRtcConnectionStatus::MiniRtcConnectionGathering && !auth.validating)
           operation.state = OperationState::Finished;
         else if (operation.state == OperationState::AwaitingPassword) {
           operation.state = OperationState::Running;
@@ -6486,7 +6486,7 @@ void GuiApplication::SyncGallery() {
           operation.state = OperationState::Finished;
           CloseStreamTab(operation.id);
         }
-      } else if (props->connection_status_ != ConnectionStatus::Connected)
+      } else if (props->connection_status_ != MiniRtcConnectionStatus::MiniRtcConnectionConnected)
         operation.state = OperationState::Finished;
       else if (operation.action == "file") {
         std::lock_guard lock(props->file_transfer_.file_transfer_list_mutex_);
@@ -6594,7 +6594,7 @@ void GuiApplication::SyncGallery() {
       tile.host_name = UiText(props->remote_host_name_);
     }
     tile.connected = props &&
-                     props->connection_status_ == ConnectionStatus::Connected &&
+                     props->connection_status_ == MiniRtcConnectionStatus::MiniRtcConnectionConnected &&
                      !props->closing_;
     const auto online = device_presence_cache_.GetOnline(id);
     tile.online = tile.connected || online.value_or(false);
@@ -6648,7 +6648,7 @@ void GuiApplication::SyncGallery() {
   };
   for (size_t i = 0; i < ids.size(); ++i) {
     const auto props = FindRemoteSession(ids[i]);
-    if (props && props->connection_status_ == ConnectionStatus::Connected &&
+    if (props && props->connection_status_ == MiniRtcConnectionStatus::MiniRtcConnectionConnected &&
         !props->closing_) {
       ++connected;
     }
@@ -6684,7 +6684,7 @@ void GuiApplication::SyncGallery() {
       device.name = UiText(name(id));
       const auto props = FindRemoteSession(id);
       device.connected = props && !props->closing_ &&
-                         props->connection_status_ == ConnectionStatus::Connected;
+                         props->connection_status_ == MiniRtcConnectionStatus::MiniRtcConnectionConnected;
       if (device.connected) {
         selected_audio_available = true;
         selected_audio_muted &= !props->audio_capture_button_pressed_;
@@ -6738,7 +6738,7 @@ void GuiApplication::SyncGallery() {
         props->gallery_rgba_.reset();
       }
       if (props->preview_subscription_supported_ &&
-          props->connection_status_ == ConnectionStatus::Connected) {
+          props->connection_status_ == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
         if (wall_mode && !ui_->gallery_hidden_active_ids.count(id))
           props->wall_managed_ = true;
         // Keep session quality and audio; wall bandwidth, resolution and
@@ -6814,7 +6814,7 @@ void GuiApplication::SyncGallery() {
       demand.request_id = ++props->preview_request_;
       if (!demand.request_id) demand.request_id = ++props->preview_request_;
       const auto message = demand.ToJson().dump();
-      if (SendReliableDataFrame(props->peer_, message.data(), message.size(),
+      if (MiniRtcSendReliableDataFrame(props->peer_, message.data(), message.size(),
                                 props->control_data_label_.c_str()) == 0)
         props->preview_requested_ = demand;
       props->preview_request_at_ = now;

@@ -37,10 +37,10 @@ public:
   std::string WireId(const std::string& key) const;
   bool DataAllowed() const;
   bool IsDirect() const { return direct_bound_; }
-  void SetDirectPeer(PeerPtr* peer) { direct_peer_ = peer; }
-  PeerPtr* DirectPeer() const { return direct_peer_; }
+  void SetDirectPeer(MiniRtcPeerPtr* peer) { direct_peer_ = peer; }
+  MiniRtcPeerPtr* DirectPeer() const { return direct_peer_; }
   void FlushEarlyData();
-  void ApplyConnectionStatus(ConnectionStatus status, const std::string& id) {
+  void ApplyConnectionStatus(MiniRtcConnectionStatus status, const std::string& id) {
     DispatchConnectionStatus(status, id.data(), id.size(), this);
   }
   void StopAccepting() { callbacks_.StopAccepting(); }
@@ -60,30 +60,30 @@ public:
                                   const char *user_id, size_t user_id_size,
                                   const char *src_id, size_t src_id_size,
                                   void *user_data);
-  static void OnSignalStatus(SignalStatus status, const char *user_id,
+  static void OnSignalStatus(MiniRtcSignalStatus status, const char *user_id,
                              size_t user_id_size, void *user_data);
   static void OnSignalMessage(const char *message, size_t size,
                               void *user_data);
-  static int OnSignalExchange(SignalExchangeStage stage, const char* message,
+  static int OnSignalExchange(MiniRtcSignalExchangeStage stage, const char* message,
                               size_t size, char* response, size_t capacity,
                               void* user_data);
-  static void OnConnectionStatus(ConnectionStatus status, const char *user_id,
+  static void OnConnectionStatus(MiniRtcConnectionStatus status, const char *user_id,
                                  size_t user_id_size, void *user_data);
   static void OnNetStatusReport(const char *client_id, size_t client_id_size,
-                                TraversalMode mode,
+                                MiniRtcTraversalMode mode,
                                 const MiniRtcNetTrafficStats *net_traffic_stats,
                                 const char *user_id, size_t user_id_size,
                                 void *user_data);
 
 private:
-  static void DispatchConnectionStatus(ConnectionStatus status, const char* id,
+  static void DispatchConnectionStatus(MiniRtcConnectionStatus status, const char* id,
                                        size_t size, void* context);
-  static void SendClientInfo(PeerPtr* peer, const std::string& client_id);
+  static void SendClientInfo(MiniRtcPeerPtr* peer, const std::string& client_id);
   bool QueueEarlyData(const char* data, size_t size, const char* label,
                       size_t label_size);
   std::weak_ptr<lan::Session> direct_;
   bool direct_bound_ = false;
-  PeerPtr* direct_peer_ = nullptr;
+  MiniRtcPeerPtr* direct_peer_ = nullptr;
   std::mutex early_data_mutex_;
   std::vector<std::string> early_data_;
   size_t early_data_bytes_ = 0;

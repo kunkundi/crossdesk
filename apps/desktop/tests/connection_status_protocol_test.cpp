@@ -80,7 +80,7 @@ int main() {
       ReadFile(repo_root / "apps/desktop/src/gui/application/application_state.h");
 
   bool ok = true;
-  ok &= ExpectContains("minirtc.h", minirtc_api, "RemoteUnavailable");
+  ok &= ExpectContains("minirtc.h", minirtc_api, "MiniRtcConnectionRemoteUnavailable");
   ok &= ExpectNotContains("minirtc.h", minirtc_api, "DeviceOffline");
   ok &= ExpectContains("peer_connection.cpp", peer_connection,
                        "on_connection_status_(ParseJoinFailure(j).status,");
@@ -88,17 +88,17 @@ int main() {
                        "IsCurrentPeerConnection");
   ok &= ExpectContains(
       "peer_connection.cpp", peer_connection,
-      "on_connection_status_(ConnectionStatus::Closed, remote_user_id.data()");
+      "on_connection_status_(MiniRtcConnectionStatus::MiniRtcConnectionClosed, remote_user_id.data()");
   ok &= ExpectNotContains("peer_connection.cpp", peer_connection,
                           "\"Device offline\"");
   ok &= ExpectNotContains("peer_connection.cpp", peer_connection,
-                          "ConnectionStatus::DeviceOffline");
+                          "MiniRtcConnectionStatus::MiniRtcConnectionDeviceOffline");
   ok &= ExpectContains("main_window.slint", main_window,
                        "in property <bool> connection-dialog-open: false;");
   ok &= ExpectContains("main_window.slint", main_window,
-                       "text: root.connection-status-text;");
+                       "text: root.prompt-status-text;");
   ok &= ExpectContains("gui_application.cpp", gui_application,
-                       "case ConnectionStatus::RemoteUnavailable:");
+                       "case MiniRtcConnectionStatus::MiniRtcConnectionRemoteUnavailable:");
   ok &= ExpectContains("gui_application.cpp", gui_application,
                        "return localization::device_offline[language];");
   ok &= ExpectContains("runtime_state.h", runtime_state_h,
@@ -116,7 +116,7 @@ int main() {
   // Reading a terminal transport status to reconnect is valid. This guard
   // prohibits synthesizing a failure locally, not comparisons with Failed.
   const std::regex synthetic_failure(
-      R"((connection_status_\s*(=\s*|\.\s*(store|exchange)\s*\(\s*)|OnConnectionStatus\s*\(\s*)ConnectionStatus::Failed\b)");
+      R"((connection_status_\s*(=\s*|\.\s*(store|exchange)\s*\(\s*)|OnConnectionStatus\s*\(\s*)MiniRtcConnectionStatus::MiniRtcConnectionFailed\b)");
   if (std::regex_search(connection_runtime_cpp, synthetic_failure)) {
     std::cerr << "connection_runtime.cpp synthesizes a Failed status\n";
     ok = false;
@@ -124,7 +124,7 @@ int main() {
   ok &= ExpectContains("peer_event_handler.cpp", peer_event_handler_cpp,
                        "props->connection_status_.store(status);");
   ok &= ExpectContains("peer_event_handler.cpp", peer_event_handler_cpp,
-                       "case ConnectionStatus::Failed:");
+                       "case MiniRtcConnectionStatus::MiniRtcConnectionFailed:");
   ok &= ExpectContains("connection_runtime.cpp", connection_runtime_cpp,
                        "HandleServerControllerDisconnected");
   ok &= ExpectContains("peer_event_handler.cpp", peer_event_handler_cpp,

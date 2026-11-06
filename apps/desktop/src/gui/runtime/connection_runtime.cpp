@@ -32,8 +32,8 @@ bool GuiRuntime::HasActiveSession() {
   std::shared_lock lock(connection_status_mutex_);
   return std::any_of(connection_status_.begin(), connection_status_.end(),
                      [](const auto& entry) {
-                       return entry.second == ConnectionStatus::Connecting ||
-                              entry.second == ConnectionStatus::Connected;
+                       return entry.second == MiniRtcConnectionStatus::MiniRtcConnectionConnecting ||
+                              entry.second == MiniRtcConnectionStatus::MiniRtcConnectionConnected;
                      });
 }
 
@@ -57,7 +57,7 @@ void GuiRuntime::UnmuteRemoteAudio(const std::shared_ptr<RemoteSession>& props) 
   action.type = ControlType::audio_capture;
   action.a = true;
   const auto message = action.to_json();
-  SendReliableDataFrame(props->peer_, message.data(), message.size(),
+  MiniRtcSendReliableDataFrame(props->peer_, message.data(), message.size(),
                         props->control_data_label_.c_str());
 }
 
@@ -79,7 +79,7 @@ void GuiRuntime::HandleConnectionStatusChange() {
   const auto message =
       BuildDevicePresenceRequest(client_id_, recent_connection_ids_, true, {},
                                  gallery_presence_ids_).dump();
-  if (SendSignalMessage(peer_, message.data(), message.size()) == 0) {
+  if (MiniRtcSendSignalMessage(peer_, message.data(), message.size()) == 0) {
     next_presence_refresh_at_ = now + kPresenceRefreshInterval;
   } else {
     need_to_send_recent_connections_ = true;
@@ -207,7 +207,7 @@ void GuiRuntime::HandleServerControllerDisconnected(
     codec_status_controllers_.erase(remote_id);
     privacy_sessions_.Disconnected(remote_id);
     for (const auto& [id, status] : connection_status_) {
-      if (status != ConnectionStatus::Connected) {
+      if (status != MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
         continue;
       }
       has_connected_controller = true;
@@ -296,7 +296,7 @@ int GuiRuntime::RequestSingleDevicePresence(const std::string& remote_id,
                      gallery_presence_ids_)
                      .dump();
 
-  int ret = SendSignalMessage(peer_, s.data(), s.size());
+  int ret = MiniRtcSendSignalMessage(peer_, s.data(), s.size());
   if (ret != 0) {
     std::lock_guard<std::mutex> lock(pending_presence_probe_mutex_);
     pending_presence_probe_ = false;
@@ -315,7 +315,7 @@ int GuiRuntime::ForceSignalReconnect() {
     LOG_WARN("Signal reconnect requested with no connection peer");
     return -1;
   }
-  return ReconnectSignal(peer_);
+  return MiniRtcReconnectSignal(peer_);
 }
 
 void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
@@ -332,7 +332,7 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
   }
   props->connection_established_ = false;
   props->streaming_ = false;
-  props->connection_status_.store(ConnectionStatus::Closed);
+  props->connection_status_.store(MiniRtcConnectionStatus::MiniRtcConnectionClosed);
   std::shared_ptr<std::vector<unsigned char>> frame_snapshot;
   int video_width = 0;
   int video_height = 0;
@@ -365,7 +365,7 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
     video_frame_dirty_.store(true, std::memory_order_release);
   }
 
-  PeerPtr* peer = nullptr;
+  MiniRtcPeerPtr* peer = nullptr;
   {
     // Audio/clipboard senders hold a shared map lock while using this pointer.
     std::unique_lock lock(remote_sessions_mutex_);
@@ -384,8 +384,8 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
         if (peer && !props->lan_session_) {
           LOG_INFO("[{}] Background leave connection [{}]", props->local_id_,
                    props->remote_id_);
-          LeaveConnection(peer, props->remote_id_.c_str());
-          DestroyPeer(&peer);
+          MiniRtcLeaveConnection(peer, props->remote_id_.c_str());
+          MiniRtcDestroyPeer(&peer);
         }
         if (thumbnail && props->was_connected_) {
           const char* nv12 = frame_snapshot && !frame_snapshot->empty()
@@ -430,7 +430,7 @@ void GuiRuntime::CloseServerController(const std::string& remote_id) {
     return;
   controller_cleanup_tasks_[remote_id] = session_cleanup_queue_.PostTask(
       [peer = peer_, transmission_id = std::string(client_id_), remote_id] {
-        if (DisconnectPeerConnection(peer, transmission_id.c_str(),
+        if (MiniRtcDisconnectPeerConnection(peer, transmission_id.c_str(),
                                      remote_id.c_str()) != 0) {
           LOG_WARN("[{}] Could not queue controller disconnect notification",
                    remote_id);
@@ -462,8 +462,8 @@ void GuiRuntime::CloseConnectionPeer() {
     HandleServerControllerDisconnected(id, "peer_closed");
   signal_connected_ = false;
   device_presence_cache_.SetSignalConnected(false);
-  signal_status_ = SignalStatus::SignalClosed;
-  PeerPtr* peer;
+  signal_status_ = MiniRtcSignalStatus::MiniRtcSignalClosed;
+  MiniRtcPeerPtr* peer;
   {
     std::unique_lock lock(remote_sessions_mutex_);
     peer = std::exchange(peer_, nullptr);
@@ -474,8 +474,8 @@ void GuiRuntime::CloseConnectionPeer() {
       [peer, handler = peer_events_, id = std::string(client_id_)]() mutable {
         handler->Deactivate();
         LOG_INFO("[{}] Background connection peer cleanup", id);
-        LeaveConnection(peer, id.c_str());
-        DestroyPeer(&peer);
+        MiniRtcLeaveConnection(peer, id.c_str());
+        MiniRtcDestroyPeer(&peer);
       });
 }
 
@@ -673,9 +673,9 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
     if (exists && !stale->closing_.load() &&
         !stale->connection_established_) {
       const auto status = stale->connection_status_.load();
-      if (status == ConnectionStatus::Disconnected ||
-          status == ConnectionStatus::Failed ||
-          status == ConnectionStatus::Closed) {
+      if (status == MiniRtcConnectionStatus::MiniRtcConnectionDisconnected ||
+          status == MiniRtcConnectionStatus::MiniRtcConnectionFailed ||
+          status == MiniRtcConnectionStatus::MiniRtcConnectionClosed) {
         // The recreated session starts with an empty password; callers that
         // pass none expect the one stored by the previous attempt to be reused.
         const bool keep_stored_password = !password || !*password;
@@ -692,7 +692,7 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
   }
 
   if (!exists) {
-    PeerPtr* peer_to_init = nullptr;
+    MiniRtcPeerPtr* peer_to_init = nullptr;
     std::string local_id;
 
     {
@@ -707,13 +707,13 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
         props->control_mouse_ = !background;
         props->enable_mouse_control_ = !background;
         props->audio_capture_button_pressed_ = !background;
-        memcpy(&props->params_, &params_, sizeof(Params));
+        memcpy(&props->params_, &params_, sizeof(MiniRtcParams));
         props->params_.user_id = props->local_id_.c_str();
         props->peer_events_ = std::make_shared<PeerEventHandler>(*this);
         props->params_.user_data = props->peer_events_.get();
-        props->peer_ = CreatePeer(&props->params_);
+        props->peer_ = MiniRtcCreatePeer(&props->params_);
 
-        props->connection_status_.store(ConnectionStatus::Connecting);
+        props->connection_status_.store(MiniRtcConnectionStatus::MiniRtcConnectionConnecting);
         if (!background) show_connection_status_window_ = true;
 
         if (!props->peer_) {
@@ -724,18 +724,18 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
         const auto& displays = devices_.display_info_list();
         for (size_t index = 0; index < displays.size(); ++index) {
           const std::string stream_id = MakeDisplayStreamId(index);
-          AddVideoStream(props->peer_, stream_id.c_str());
+          MiniRtcAddVideoStream(props->peer_, stream_id.c_str());
         }
-        AddAudioStream(props->peer_, props->audio_label_.c_str());
-        AddDataStream(props->peer_, props->data_label_.c_str(), false);
-        AddDataStream(props->peer_, props->mouse_label_.c_str(), true);
-        AddDataStream(props->peer_, props->keyboard_label_.c_str(), true);
-        AddDataStream(props->peer_, props->control_data_label_.c_str(), true);
-        AddDataStream(props->peer_, props->file_label_.c_str(), true);
-        AddDataStream(props->peer_, props->file_feedback_label_.c_str(), true);
-        AddDataStream(props->peer_, props->clipboard_label_.c_str(), true);
+        MiniRtcAddAudioStream(props->peer_, props->audio_label_.c_str());
+        MiniRtcAddDataStream(props->peer_, props->data_label_.c_str(), false);
+        MiniRtcAddDataStream(props->peer_, props->mouse_label_.c_str(), true);
+        MiniRtcAddDataStream(props->peer_, props->keyboard_label_.c_str(), true);
+        MiniRtcAddDataStream(props->peer_, props->control_data_label_.c_str(), true);
+        MiniRtcAddDataStream(props->peer_, props->file_label_.c_str(), true);
+        MiniRtcAddDataStream(props->peer_, props->file_feedback_label_.c_str(), true);
+        MiniRtcAddDataStream(props->peer_, props->clipboard_label_.c_str(), true);
 
-        props->connection_status_.store(ConnectionStatus::Connecting);
+        props->connection_status_.store(MiniRtcConnectionStatus::MiniRtcConnectionConnecting);
 
         peer_to_init = props->peer_;
         local_id = props->local_id_;
@@ -744,7 +744,7 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
 
     if (peer_to_init) {
       LOG_INFO("[{}] Create peer instance successful", local_id);
-      Init(peer_to_init);
+      MiniRtcInit(peer_to_init);
       LOG_INFO("[{}] Peer init finish", local_id);
     }
   }
@@ -773,10 +773,10 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
       props->rejoin_ = false;
       return 0;
     }
-    props->connection_status_.store(ConnectionStatus::Connecting);
+    props->connection_status_.store(MiniRtcConnectionStatus::MiniRtcConnectionConnecting);
     std::string remote_id_with_pwd = remote_id + "@" + props->remote_password_;
     if (props->peer_) {
-      ret = JoinConnection(props->peer_, remote_id_with_pwd.c_str());
+      ret = MiniRtcJoinConnection(props->peer_, remote_id_with_pwd.c_str());
       if (0 == ret) {
         props->rejoin_ = false;
       } else {

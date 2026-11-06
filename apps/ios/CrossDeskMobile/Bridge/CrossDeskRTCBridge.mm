@@ -71,14 +71,14 @@ struct PresenceRequest {
 };
 
 struct RTCState {
-  PeerPtr *identity_peer = nullptr;
-  PeerPtr *controller_peer = nullptr;
+  MiniRtcPeerPtr *identity_peer = nullptr;
+  MiniRtcPeerPtr *controller_peer = nullptr;
   CallbackContext identity_context;
   CallbackContext controller_context;
   std::string signal_host;
   int signal_port = 0;
-  VideoDegradationPreference video_adaptation_policy =
-      VideoDegradationPreference::MaintainResolution;
+  MiniRtcVideoDegradationPreference video_adaptation_policy =
+      MiniRtcVideoDegradationPreference::MaintainResolution;
   bool identity_ready = false;
   std::deque<PresenceRequest> presence_requests;
   bool identity_recovery_attempted = false;
@@ -337,7 +337,7 @@ void DispatchMain(dispatch_block_t block) {
       sourceIDSize:(size_t)sourceIDSize
         generation:(uint64_t)generation;
 - (void)handleStats:(const MiniRtcNetTrafficStats *)stats
-               mode:(TraversalMode)mode
+               mode:(MiniRtcTraversalMode)mode
          generation:(uint64_t)generation;
 - (void)sendMessage:(const std::string &)message
             reliable:(BOOL)reliable
@@ -389,7 +389,7 @@ void OnDataBuffer(const char *data, size_t size, const char *, size_t,
   }
 }
 
-void OnSignalState(SignalStatus status, const char *, size_t, void *user_data) {
+void OnSignalState(MiniRtcSignalStatus status, const char *, size_t, void *user_data) {
   auto *context = static_cast<CallbackContext *>(user_data);
   CrossDeskRTCBridge *owner = context ? context->owner : nil;
   if (owner &&
@@ -410,7 +410,7 @@ void OnSignalMessage(const char *message, size_t size, void *user_data) {
   }
 }
 
-void OnConnectionState(ConnectionStatus status, const char *remote_id,
+void OnConnectionState(MiniRtcConnectionStatus status, const char *remote_id,
                        size_t remote_id_size, void *user_data) {
   auto *context = static_cast<CallbackContext *>(user_data);
   CrossDeskRTCBridge *owner = context ? context->owner : nil;
@@ -425,12 +425,12 @@ void OnConnectionState(ConnectionStatus status, const char *remote_id,
 }
 
 void OnNetworkStats(const char *peer_id, size_t peer_id_size,
-                    TraversalMode mode, const MiniRtcNetTrafficStats *stats,
+                    MiniRtcTraversalMode mode, const MiniRtcNetTrafficStats *stats,
                     const char *, size_t, void *user_data) {
   auto *context = static_cast<CallbackContext *>(user_data);
   CrossDeskRTCBridge *owner = context ? context->owner : nil;
   if (!owner) return;
-  if (context->role == PeerRole::Identity && mode == TraversalMode::UnknownMode &&
+  if (context->role == PeerRole::Identity && mode == MiniRtcTraversalMode::MiniRtcTraversalUnknown &&
       peer_id && peer_id_size > 0) {
     [owner handleProvisionedIdentity:std::string(peer_id, peer_id_size)
                            generation:context->generation];
@@ -440,9 +440,9 @@ void OnNetworkStats(const char *peer_id, size_t peer_id_size,
   }
 }
 
-Params MakeParams(const RTCState &state, const std::string &user_id,
+MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
                   CallbackContext *context) {
-  Params params{};
+  MiniRtcParams params{};
   params.use_cfg_file = false;
   CopyCString(params.signal_server_ip, sizeof(params.signal_server_ip),
               state.signal_host);
@@ -452,10 +452,10 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   params.hardware_acceleration = true;
   params.native_video_output = true;
   params.av1_encoding = false;
-  params.turn_mode = TurnMode::TurnAutoUdpTcp;
+  params.turn_mode = MiniRtcTurnMode::MiniRtcTurnAutoUdpTcp;
   params.enable_srtp = true;
-  params.video_content_type = VideoContentType::ScreenContent;
-  params.video_quality = VideoQuality::QualityHigh;
+  params.video_content_type = MiniRtcVideoContentType::ScreenContent;
+  params.video_quality = MiniRtcVideoQuality::MiniRtcVideoQualityHigh;
   params.video_frame_rate = 60;
   params.video_degradation_preference = state.video_adaptation_policy;
   params.on_receive_video_buffer = nullptr;
@@ -654,16 +654,16 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     switch (policy) {
       case CrossDeskVideoAdaptationPolicyFrameRatePriority:
         self->_state->video_adaptation_policy =
-            VideoDegradationPreference::MaintainFrameRate;
+            MiniRtcVideoDegradationPreference::MaintainFrameRate;
         break;
       case CrossDeskVideoAdaptationPolicyBalanced:
         self->_state->video_adaptation_policy =
-            VideoDegradationPreference::Balanced;
+            MiniRtcVideoDegradationPreference::Balanced;
         break;
       case CrossDeskVideoAdaptationPolicyQualityPriority:
       default:
         self->_state->video_adaptation_policy =
-            VideoDegradationPreference::MaintainResolution;
+            MiniRtcVideoDegradationPreference::MaintainResolution;
         break;
     }
   });
@@ -685,7 +685,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
         networking_generation != self->_networkingGeneration.load()) return;
     if (self->_state->identity_peer && self->_state->identity_ready &&
         !self->_state->identity_base.empty() &&
-        SendSignalMessage(self->_state->identity_peer,
+        MiniRtcSendSignalMessage(self->_state->identity_peer,
                           static_cast<const char *>(payload.bytes), payload.length) == 0) return;
     DispatchMain(^{
       if (generation != self->_identityGeneration.load() ||
@@ -714,7 +714,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     action.vs = {static_cast<int>(quality), static_cast<int>(frameRate),
                  static_cast<int>(preference), requestID, false};
     const auto message = action.to_json();
-    if (SendReliableDataFrame(self->_state->controller_peer, message.data(),
+    if (MiniRtcSendReliableDataFrame(self->_state->controller_peer, message.data(),
                               message.size(), kControlStream) != 0) {
       [self notifyVideoSettings:action.vs generation:generation];
     }
@@ -771,7 +771,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
                                                       options:0
                                                         error:nil];
     if (!payload) return;
-    if (SendSignalMessage(self->_state->identity_peer,
+    if (MiniRtcSendSignalMessage(self->_state->identity_peer,
                            static_cast<const char *>(payload.bytes),
                            payload.length) == 0) {
       // Both old and new servers return snapshots in request order. Retain the
@@ -844,7 +844,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     if (self->_state->controller_peer) {
       const std::string stream = crossdesk::MakeDisplayStreamId(
           static_cast<size_t>(self->_selectedDisplay.load()));
-      RequestVideoKeyFrame(self->_state->controller_peer, stream.c_str());
+      MiniRtcRequestVideoKeyFrame(self->_state->controller_peer, stream.c_str());
     }
   });
 }
@@ -896,19 +896,19 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
       if (!mapping.valid) continue;
       if (mapping.shift) {
         const std::string shift_down = KeyJSON(0x10, true);
-        SendReliableDataFrame(self->_state->controller_peer,
+        MiniRtcSendReliableDataFrame(self->_state->controller_peer,
                               shift_down.data(), shift_down.size(),
                               kKeyboardStream);
       }
       const std::string key_down = KeyJSON(mapping.key_code, true);
       const std::string key_up = KeyJSON(mapping.key_code, false);
-      SendReliableDataFrame(self->_state->controller_peer, key_down.data(),
+      MiniRtcSendReliableDataFrame(self->_state->controller_peer, key_down.data(),
                             key_down.size(), kKeyboardStream);
-      SendReliableDataFrame(self->_state->controller_peer, key_up.data(),
+      MiniRtcSendReliableDataFrame(self->_state->controller_peer, key_up.data(),
                             key_up.size(), kKeyboardStream);
       if (mapping.shift) {
         const std::string shift_up = KeyJSON(0x10, false);
-        SendReliableDataFrame(self->_state->controller_peer, shift_up.data(),
+        MiniRtcSendReliableDataFrame(self->_state->controller_peer, shift_up.data(),
                               shift_up.size(), kKeyboardStream);
       }
     }
@@ -1032,7 +1032,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
         send_result = -1;
         break;
       }
-      send_result = SendReliableDataFrame(self->_state->controller_peer,
+      send_result = MiniRtcSendReliableDataFrame(self->_state->controller_peer,
                                           chunk.data(), chunk.size(),
                                           kFileStream);
       offset += bytes_read;
@@ -1063,7 +1063,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
                  static_cast<bool>(blockLocalInput)};
     const auto message = action.to_json();
     const BOOL success = self->_state->controller_peer &&
-        SendReliableDataFrame(self->_state->controller_peer, message.data(),
+        MiniRtcSendReliableDataFrame(self->_state->controller_peer, message.data(),
                               message.size(), kControlStream) == 0;
     DispatchMain(^{
       if (![self isControllerGenerationActive:generation]) return;
@@ -1083,7 +1083,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     action.c.flag = ServiceCommandFlag::send_sas;
     const auto message = action.to_json();
     const BOOL success = self->_state->controller_peer &&
-        SendReliableDataFrame(self->_state->controller_peer, message.data(), message.size(), kControlStream) == 0;
+        MiniRtcSendReliableDataFrame(self->_state->controller_peer, message.data(), message.size(), kControlStream) == 0;
     DispatchMain(^{
       if (![self isControllerGenerationActive:generation]) return;
       id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
@@ -1107,11 +1107,11 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     if (![self isControllerGenerationActive:generation] ||
         !self->_state->controller_peer) return;
     if (reliable) {
-      SendReliableDataFrame(self->_state->controller_peer,
+      MiniRtcSendReliableDataFrame(self->_state->controller_peer,
                             owned_message.data(), owned_message.size(),
                             owned_stream.c_str());
     } else {
-      SendDataFrame(self->_state->controller_peer, owned_message.data(),
+      MiniRtcSendDataFrame(self->_state->controller_peer, owned_message.data(),
                     owned_message.size(), owned_stream.c_str());
     }
   });
@@ -1134,10 +1134,10 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
 - (void)createIdentityPeer {
   if (_state->identity_peer || _state->signal_host.empty()) return;
   _state->identity_context.generation = _identityGeneration.fetch_add(1) + 1;
-  Params params = MakeParams(*_state, _state->identity_with_password,
+  MiniRtcParams params = MakeParams(*_state, _state->identity_with_password,
                              &_state->identity_context);
-  _state->identity_peer = CreatePeer(&params);
-  if (!_state->identity_peer || Init(_state->identity_peer) != 0) {
+  _state->identity_peer = MiniRtcCreatePeer(&params);
+  if (!_state->identity_peer || MiniRtcInit(_state->identity_peer) != 0) {
     [self destroyIdentityPeer];
     [self handleSignalState:CrossDeskSignalStateFailed
                        role:PeerRole::Identity
@@ -1155,9 +1155,9 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   _state->controller_context.generation = generation;
   _activeControllerGeneration.store(generation);
   _state->controller_login = "C-" + _state->identity_base;
-  Params params = MakeParams(*_state, _state->controller_login,
+  MiniRtcParams params = MakeParams(*_state, _state->controller_login,
                              &_state->controller_context);
-  _state->controller_peer = CreatePeer(&params);
+  _state->controller_peer = MiniRtcCreatePeer(&params);
   if (!_state->controller_peer) {
     _activeControllerGeneration.store(0);
     [self handleConnectionState:CrossDeskConnectionStateFailed
@@ -1168,16 +1168,16 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
 
   // This native iOS peer is controller-only and does not publish a local
   // display. Remote display receivers are created from the host's SDP.
-  AddAudioStream(_state->controller_peer, kAudioStream);
-  AddDataStream(_state->controller_peer, kDataStream, false);
-  AddDataStream(_state->controller_peer, kMouseStream, true);
-  AddDataStream(_state->controller_peer, kKeyboardStream, true);
-  AddDataStream(_state->controller_peer, kControlStream, true);
-  AddDataStream(_state->controller_peer, kFileStream, true);
-  AddDataStream(_state->controller_peer, kFileFeedbackStream, true);
-  AddDataStream(_state->controller_peer, kClipboardStream, true);
+  MiniRtcAddAudioStream(_state->controller_peer, kAudioStream);
+  MiniRtcAddDataStream(_state->controller_peer, kDataStream, false);
+  MiniRtcAddDataStream(_state->controller_peer, kMouseStream, true);
+  MiniRtcAddDataStream(_state->controller_peer, kKeyboardStream, true);
+  MiniRtcAddDataStream(_state->controller_peer, kControlStream, true);
+  MiniRtcAddDataStream(_state->controller_peer, kFileStream, true);
+  MiniRtcAddDataStream(_state->controller_peer, kFileFeedbackStream, true);
+  MiniRtcAddDataStream(_state->controller_peer, kClipboardStream, true);
 
-  if (Init(_state->controller_peer) != 0) {
+  if (MiniRtcInit(_state->controller_peer) != 0) {
     [self destroyControllerPeer];
     [self handleConnectionState:CrossDeskConnectionStateFailed
                         remoteID:_state->pending_remote_id
@@ -1186,7 +1186,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   }
   const std::string join_id = _state->pending_remote_id + "@" +
                               _state->pending_password;
-  JoinConnection(_state->controller_peer, join_id.c_str());
+  MiniRtcJoinConnection(_state->controller_peer, join_id.c_str());
 
   // Joining authenticates with "remote-id@password", while leaving is routed
   // by the remote peer ID alone (the same contract used by the desktop app).
@@ -1198,7 +1198,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   _presenceGeneration.fetch_add(1);
   _state->presence_requests.clear();
   if (_state->identity_peer) {
-    DestroyPeer(&_state->identity_peer);
+    MiniRtcDestroyPeer(&_state->identity_peer);
   }
   _state->identity_ready = false;
 }
@@ -1207,10 +1207,10 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   _activeControllerGeneration.store(0);
   if (_state->controller_peer) {
     if (!_state->transmission_id.empty()) {
-      LeaveConnection(_state->controller_peer,
+      MiniRtcLeaveConnection(_state->controller_peer,
                       _state->transmission_id.c_str());
     }
-    DestroyPeer(&_state->controller_peer);
+    MiniRtcDestroyPeer(&_state->controller_peer);
   }
   _state->controller_login.clear();
   _state->transmission_id.clear();
@@ -1248,7 +1248,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
         constexpr char client_info[] =
             "{\"type\":\"client_info\",\"version\":\"ios-native\","
             "\"platform\":\"ios\"}";
-        SendSignalMessage(self->_state->identity_peer, client_info,
+        MiniRtcSendSignalMessage(self->_state->identity_peer, client_info,
                           sizeof(client_info) - 1);
       }
       if (state == CrossDeskSignalStateFailed &&
@@ -1456,11 +1456,11 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
       action.i.right = nullptr;
       action.i.bottom = nullptr;
       const std::string host_info = action.to_json();
-      SendReliableDataFrame(self->_state->controller_peer, host_info.data(),
+      MiniRtcSendReliableDataFrame(self->_state->controller_peer, host_info.data(),
                             host_info.size(), kControlStream);
       const std::string stream = crossdesk::MakeDisplayStreamId(
           static_cast<size_t>(self->_selectedDisplay.load()));
-      RequestVideoKeyFrame(self->_state->controller_peer, stream.c_str());
+      MiniRtcRequestVideoKeyFrame(self->_state->controller_peer, stream.c_str());
     });
   }
   DispatchMain(^{
@@ -1506,7 +1506,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
   // Translate the transport's calibrated capture time once, while the peer is
   // alive. Carry it with the exact pixels through coalescing and UI submission.
   const NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
-  const int64_t peer_now = GetSystemTimeMicros(_state->controller_peer);
+  const int64_t peer_now = MiniRtcGetSystemTimeMicros(_state->controller_peer);
   NSTimeInterval capture_uptime = 0;
   if (frame->captured_timestamp > 0 && peer_now > 0 &&
       frame->captured_timestamp <= static_cast<uint64_t>(peer_now) &&
@@ -2009,7 +2009,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
     if ([self isControllerGenerationActive:generation] && self->_state->controller_peer) {
       const auto encoded_ack =
           crossdesk::EncodeFileTransferAck(ack);
-      SendReliableDataFrame(self->_state->controller_peer,
+      MiniRtcSendReliableDataFrame(self->_state->controller_peer,
                             encoded_ack.data(), encoded_ack.size(),
                             kFileFeedbackStream);
     }
@@ -2035,7 +2035,7 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
 }
 
 - (void)handleStats:(const MiniRtcNetTrafficStats *)stats
-               mode:(TraversalMode)mode
+               mode:(MiniRtcTraversalMode)mode
          generation:(uint64_t)generation {
   if (!stats) return;
   const auto traffic = [](const MiniRtcInboundStats &inbound,
@@ -2049,8 +2049,8 @@ Params MakeParams(const RTCState &state, const std::string &user_id,
       traffic(stats->data_inbound_stats, stats->data_outbound_stats),
       traffic(stats->total_inbound_stats, stats->total_outbound_stats),
       stats->rtt_ms, static_cast<BOOL>(stats->srtp_active),
-      mode == TraversalMode::P2P ? CrossDeskTraversalModeDirect
-      : mode == TraversalMode::Relay ? CrossDeskTraversalModeRelay
+      mode == MiniRtcTraversalMode::MiniRtcTraversalP2P ? CrossDeskTraversalModeDirect
+      : mode == MiniRtcTraversalMode::MiniRtcTraversalRelay ? CrossDeskTraversalModeRelay
                                     : CrossDeskTraversalModeUnknown};
   NSString *decoder = [[NSString alloc]
       initWithBytes:stats->video_decoder

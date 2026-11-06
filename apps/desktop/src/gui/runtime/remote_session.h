@@ -112,8 +112,8 @@ struct RemoteSession {
   std::mutex gallery_conversion_mutex_;
   std::vector<unsigned char> gallery_nv12_, gallery_scaled_, gallery_scratch_;
   std::shared_ptr<lan::Session> lan_session_;
-  Params params_;
-  PeerPtr* peer_ = nullptr;
+  MiniRtcParams params_;
+  MiniRtcPeerPtr* peer_ = nullptr;
   std::shared_ptr<PeerEventHandler> peer_events_;
   std::atomic<bool> closing_{false};
   // Transport callbacks request tab closure; only the UI thread destroys it.
@@ -130,7 +130,7 @@ struct RemoteSession {
   std::string remote_id_;
   bool exit_ = false;
   bool signal_connected_ = false;
-  SignalStatus signal_status_ = SignalStatus::SignalClosed;
+  MiniRtcSignalStatus signal_status_ = MiniRtcSignalStatus::MiniRtcSignalClosed;
   bool connection_established_ = false;
   std::atomic<bool> was_connected_{false};
   // Transport callbacks publish changes; the UI thread persists history.
@@ -211,8 +211,8 @@ struct RemoteSession {
   bool remote_cursor_state_received_ = false;
   CursorPresentation cursor_presentation_;
   // Shared by minirtc callbacks, Slint rendering and SDL audio callbacks.
-  std::atomic<ConnectionStatus> connection_status_ = ConnectionStatus::Closed;
-  std::atomic<TraversalMode> traversal_mode_{TraversalMode::UnknownMode};
+  std::atomic<MiniRtcConnectionStatus> connection_status_ = MiniRtcConnectionStatus::MiniRtcConnectionClosed;
+  std::atomic<MiniRtcTraversalMode> traversal_mode_{MiniRtcTraversalMode::MiniRtcTraversalUnknown};
   int fps_ = 0;
   int frame_count_ = 0;
   std::chrono::steady_clock::time_point last_time_;

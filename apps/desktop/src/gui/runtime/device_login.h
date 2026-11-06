@@ -18,7 +18,7 @@ class TrustedDevices;
 // One signaling connection's application authentication, owned by its callbacks.
 class DeviceLogin {
  public:
-  int Exchange(SignalExchangeStage stage, const nlohmann::json& message,
+  int Exchange(MiniRtcSignalExchangeStage stage, const nlohmann::json& message,
                const TrustedDevices* identity, char* response, size_t capacity);
   bool Pending() const { return phase_ != Phase::Idle; }
   bool UsedPassword() const { return used_password_; }

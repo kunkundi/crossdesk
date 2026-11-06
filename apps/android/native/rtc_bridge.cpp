@@ -50,8 +50,8 @@ struct CallbackContext { Session* owner; bool controller; };
 struct Session {
   jobject owner = nullptr;
   jmethodID event_method, audio_method, frame_method;
-  PeerPtr* identity = nullptr;
-  PeerPtr* controller = nullptr;
+  MiniRtcPeerPtr* identity = nullptr;
+  MiniRtcPeerPtr* controller = nullptr;
   CallbackContext identity_context{this, false}, controller_context{this, true};
   std::string host, log_path, identity_login, controller_login, remote;
   int port;
@@ -78,7 +78,7 @@ struct Session {
   android_controller::FileTransferSession files{
       [this](const char* stream, const char* data, size_t size) {
         return controller && !stopping
-            ? SendReliableDataFrame(controller, data, size, stream) : -1;
+            ? MiniRtcSendReliableDataFrame(controller, data, size, stream) : -1;
       },
       [this](const std::string& name, double progress, bool sending, const std::string& path) {
         Event(10, {{"name", name}, {"progress", progress}, {"sending", sending}, {"path", path}});
@@ -100,7 +100,7 @@ struct Session {
   }
   void Send(const char* stream, const std::string& data) {
     if (controller && !stopping && !data.empty())
-      SendReliableDataFrame(controller, data.data(), data.size(), stream);
+      MiniRtcSendReliableDataFrame(controller, data.data(), data.size(), stream);
   }
   void Surface(JNIEnv* env, jobject surface) {
     std::lock_guard<std::mutex> lock(render_mutex);
@@ -131,25 +131,25 @@ struct Session {
     stopping = true;
     renderer.Stop();
     if (controller) {
-      LeaveConnection(controller, remote.c_str());
-      DestroyPeer(&controller);
+      MiniRtcLeaveConnection(controller, remote.c_str());
+      MiniRtcDestroyPeer(&controller);
     }
-    if (identity) DestroyPeer(&identity);
+    if (identity) MiniRtcDestroyPeer(&identity);
     Environment scope;
     Surface(scope.env, nullptr);
     if (scope.env) scope.env->DeleteGlobalRef(owner);
   }
 };
 
-void Signal(SignalStatus status, const char*, size_t, void* user) {
+void Signal(MiniRtcSignalStatus status, const char*, size_t, void* user) {
   auto* ctx = static_cast<CallbackContext*>(user);
-  if (!ctx->controller && status == SignalStatus::SignalConnected &&
+  if (!ctx->controller && status == MiniRtcSignalStatus::MiniRtcSignalConnected &&
       !ctx->owner->stopping && ctx->owner->identity) {
     // Report after every identity login, including reconnects. The server
     // ignores client_info sent through the temporary C- controller peer.
     constexpr char info[] =
         R"({"type":"client_info","version":"android-native","platform":"android"})";
-    SendSignalMessage(ctx->owner->identity, info, sizeof(info) - 1);
+    MiniRtcSendSignalMessage(ctx->owner->identity, info, sizeof(info) - 1);
   }
   if (!ctx->controller && ctx->owner->signal_status.exchange(status) != status)
     ++ctx->owner->signal_generation;
@@ -169,14 +169,14 @@ void SignalMessage(const char* data, size_t size, void* user) {
     ctx->owner->Event(9, message);
   }
 }
-void Connection(ConnectionStatus status, const char*, size_t, void* user) {
+void Connection(MiniRtcConnectionStatus status, const char*, size_t, void* user) {
   auto* ctx = static_cast<CallbackContext*>(user);
   if (ctx->controller) ctx->owner->Event(2, {{"status", status}});
 }
-void Network(const char* id, size_t size, TraversalMode mode,
+void Network(const char* id, size_t size, MiniRtcTraversalMode mode,
              const MiniRtcNetTrafficStats* stats, const char*, size_t, void* user) {
   auto* ctx = static_cast<CallbackContext*>(user);
-  if (!ctx->controller && mode == UnknownMode && id && size) {
+  if (!ctx->controller && mode == MiniRtcTraversalUnknown && id && size) {
     ctx->owner->Event(3, id, size);
   } else if (ctx->controller && stats) {
     ctx->owner->Event(7, android_controller::NetworkReport(*stats, mode));
@@ -250,7 +250,7 @@ void RenderVideo(Session* s, VideoPicture picture) {
     s->Event(5, {{"width", w}, {"height", h}});
   }
   // Measure through display submission, using MiniRTC's calibrated capture clock.
-  const auto now = GetSystemTimeMicros(s->controller);
+  const auto now = MiniRtcGetSystemTimeMicros(s->controller);
   const double latency = android_controller::VideoLatencyMilliseconds(
       picture.captured_us, picture.received_us, now);
   Environment scope;
@@ -259,8 +259,8 @@ void RenderVideo(Session* s, VideoPicture picture) {
     if (scope.env->ExceptionCheck()) scope.env->ExceptionClear();
   }
 }
-Params Parameters(Session* s, bool controller) {
-  Params p{};
+MiniRtcParams Parameters(Session* s, bool controller) {
+  MiniRtcParams p{};
   std::snprintf(p.signal_server_ip, sizeof(p.signal_server_ip), "%s", s->host.c_str());
   std::snprintf(p.log_path, sizeof(p.log_path), "%s", s->log_path.c_str());
   p.signal_server_port = s->port;
@@ -268,12 +268,12 @@ Params Parameters(Session* s, bool controller) {
   // MediaCodec returns retained Surface buffers; software fallback returns
   // pooled CPU NV12 with the same ownership contract.
   p.native_video_output = controller;
-  p.turn_mode = TurnAutoUdpTcp;
+  p.turn_mode = MiniRtcTurnAutoUdpTcp;
   p.enable_srtp = true;
-  p.video_content_type = VideoContentType::ScreenContent;
-  p.video_quality = QualityMedium;
+  p.video_content_type = MiniRtcVideoContentType::ScreenContent;
+  p.video_quality = MiniRtcVideoQualityMedium;
   p.video_frame_rate = 30;
-  p.video_degradation_preference = VideoDegradationPreference::Balanced;
+  p.video_degradation_preference = MiniRtcVideoDegradationPreference::Balanced;
   p.on_signal_status = Signal; p.on_connection_status = Connection;
   p.on_signal_message = SignalMessage;
   p.on_net_status_report = Network; p.on_receive_data_buffer = Data;
@@ -344,8 +344,8 @@ extern "C" JNIEXPORT jlong JNICALL JNI_METHOD(nCreate)(
     if (MiniRtcConfigureLogging(MiniRtcLogOff, nullptr, nullptr) != 0)
       throw std::runtime_error("Unable to configure MiniRTC logging");
     auto params = Parameters(s.get(), false);
-    s->identity = CreatePeer(&params);
-    if (!s->identity || Init(s->identity) != 0) return 0;
+    s->identity = MiniRtcCreatePeer(&params);
+    if (!s->identity || MiniRtcInit(s->identity) != 0) return 0;
     return reinterpret_cast<jlong>(s.release());
   } catch (const std::exception&) { return 0; }
 }
@@ -356,15 +356,15 @@ extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nConnect)(
   s->controller_login = "C-" + String(env, identity);
   s->remote = String(env, remote);
   auto params = Parameters(s, true);
-  s->controller = CreatePeer(&params);
+  s->controller = MiniRtcCreatePeer(&params);
   if (!s->controller) return false;
-  AddAudioStream(s->controller, kAudioStream);
-  AddDataStream(s->controller, kDataStream, false);
+  MiniRtcAddAudioStream(s->controller, kAudioStream);
+  MiniRtcAddDataStream(s->controller, kDataStream, false);
   for (const char* name : {kMouseStream, kKeyboardStream, kControlStream,
-                          kClipboardStream, kFileStream, kFileFeedbackStream}) AddDataStream(s->controller, name, true);
-  if (Init(s->controller) != 0) return false;
+                          kClipboardStream, kFileStream, kFileFeedbackStream}) MiniRtcAddDataStream(s->controller, name, true);
+  if (MiniRtcInit(s->controller) != 0) return false;
   const auto join = s->remote + "@" + String(env, password);
-  return JoinConnection(s->controller, join.c_str()) == 0;
+  return MiniRtcJoinConnection(s->controller, join.c_str()) == 0;
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(nReady)(JNIEnv*, jclass, jlong handle) {
   auto* s = From(handle); if (!s || !s->controller) return;
@@ -420,13 +420,13 @@ extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nVideoSettings)(
   if (!s || !s->controller || s->stopping || request_id < 0 || request_id > UINT32_MAX) return false;
   const auto data = android_controller::VideoSettingsMessage(quality, rate, preference, static_cast<uint32_t>(request_id));
   if (data.empty()) return false;
-  return SendReliableDataFrame(s->controller, data.data(), data.size(), kControlStream) == 0;
+  return MiniRtcSendReliableDataFrame(s->controller, data.data(), data.size(), kControlStream) == 0;
 }
 extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nSecureAttention)(JNIEnv*, jclass, jlong handle) {
   auto* s = From(handle);
   if (!s || !s->controller || s->stopping) return false;
   const auto data = android_controller::SecureAttentionMessage();
-  return SendReliableDataFrame(s->controller, data.data(), data.size(), kControlStream) == 0;
+  return MiniRtcSendReliableDataFrame(s->controller, data.data(), data.size(), kControlStream) == 0;
 }
 extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nPrivacy)(
     JNIEnv*, jclass, jlong handle, jint flag, jboolean block_input) {
@@ -434,7 +434,7 @@ extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nPrivacy)(
   if (!s || !s->controller || s->stopping) return false;
   const auto data = android_controller::PrivacyMessage(flag, block_input);
   return !data.empty() &&
-      SendReliableDataFrame(s->controller, data.data(), data.size(), kControlStream) == 0;
+      MiniRtcSendReliableDataFrame(s->controller, data.data(), data.size(), kControlStream) == 0;
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(nFileDirectory)(JNIEnv* env, jclass, jlong handle, jstring directory) {
   auto* s = From(handle); if (s) s->files.SetDirectory(String(env, directory));
@@ -466,7 +466,7 @@ extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nAnnouncementRequest)(
   auto message = json::parse(bytes, nullptr, false);
   if (!message.is_object() || !message.contains("type") ||
       !message["type"].is_string() || message["type"] != "announcements_list") return false;
-  return SendSignalMessage(s->identity, bytes.data(), bytes.size()) == 0;
+  return MiniRtcSendSignalMessage(s->identity, bytes.data(), bytes.size()) == 0;
 }
 extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nPresenceRequest)(
     JNIEnv* env, jclass, jlong handle, jbyteArray data) {
@@ -483,7 +483,7 @@ extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nPresenceRequest)(
       !message.contains("user_id") || !message["user_id"].is_string() ||
       !message.contains("devices") || !message["devices"].is_array() ||
       !message.contains("subscribe") || message["subscribe"] != true) return false;
-  return SendSignalMessage(s->identity, bytes.data(), bytes.size()) == 0;
+  return MiniRtcSendSignalMessage(s->identity, bytes.data(), bytes.size()) == 0;
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(nClipboard)(
     JNIEnv* env, jclass, jlong handle, jbyteArray data) {
@@ -498,7 +498,7 @@ extern "C" JNIEXPORT void JNICALL JNI_METHOD(nSurface)(JNIEnv* env, jclass, jlon
   if (auto* s = From(handle)) {
     s->Surface(env, surface);
     if (surface && s->controller && !s->stopping)
-      RequestVideoKeyFrame(s->controller, MakeDisplayStreamId(s->display.load()).c_str());
+      MiniRtcRequestVideoKeyFrame(s->controller, MakeDisplayStreamId(s->display.load()).c_str());
   }
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(nDestroy)(JNIEnv*, jclass, jlong handle) { delete From(handle); }

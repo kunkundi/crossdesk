@@ -108,7 +108,7 @@ void FileTransferManager::ProcessQueue(std::shared_ptr<RemoteSession> props) {
   workers_.push_back(std::async(std::launch::async, [this, props, file] {
     auto& state = state_for(props);
     const auto id = file.file_id;
-    PeerPtr* peer;
+    MiniRtcPeerPtr* peer;
     std::shared_ptr<PeerEventHandler> events;
     {
       std::shared_lock lock(owner_.remote_sessions_mutex_);
@@ -126,7 +126,7 @@ void FileTransferManager::ProcessQueue(std::shared_ptr<RemoteSession> props) {
           auto callback = events->EnterCallback();
           if (!callback || !events->DataAllowed()) return -1;
           const auto wire_id = events->WireId(file.remote_id);
-          return SendReliableDataFrameToPeer(
+          return MiniRtcSendReliableDataFrameToPeer(
               peer, data, size, file.file_label.c_str(),
               wire_id.data(), wire_id.size());
         }, file_transfer::Session::Progress{});
@@ -176,7 +176,7 @@ void FileTransferManager::ProcessQueue(std::shared_ptr<RemoteSession> props) {
         // Release that reservation even though no data chunk was ever sent.
         const auto packet = EncodeFileCancel(id, 0);
         const auto wire_id = events->WireId(file.remote_id);
-        SendReliableDataFrameToPeer(peer, packet.data(), packet.size(),
+        MiniRtcSendReliableDataFrameToPeer(peer, packet.data(), packet.size(),
             file.file_label.c_str(), wire_id.data(), wire_id.size());
       }
     }
@@ -347,7 +347,7 @@ void FileTransferManager::UpdateReceiveProgress(
 std::shared_ptr<FileReceiver> FileTransferManager::ReceiverFor(
     PeerEventHandler* handler, const std::string& remote) {
   const auto props = owner_.FindRemoteSession(remote);
-  PeerPtr* peer;
+  MiniRtcPeerPtr* peer;
   std::shared_ptr<PeerEventHandler> events;
   {
     std::shared_lock lock(owner_.remote_sessions_mutex_);
@@ -382,7 +382,7 @@ std::shared_ptr<FileReceiver> FileTransferManager::ReceiverFor(
         if (!callback || !events->DataAllowed()) return -1;
         const auto bytes = EncodeFileTransferAck(ack);
         const auto wire_id = events->WireId(remote);
-        return SendReliableDataFrameToPeer(
+        return MiniRtcSendReliableDataFrameToPeer(
             peer, bytes.data(), bytes.size(), kFileFeedbackStream,
             wire_id.data(), wire_id.size());
       });
@@ -529,11 +529,11 @@ bool FileTransferManager::SendBrowser(const std::string& remote, const FileBrows
   if (!events) return false;
   auto callback = events->EnterCallback();
   if (!callback || !events->DataAllowed()) return false;
-  PeerPtr* peer = events->IsDirect() ? events->DirectPeer() : props ? props->peer_ : owner_.peer_;
+  MiniRtcPeerPtr* peer = events->IsDirect() ? events->DirectPeer() : props ? props->peer_ : owner_.peer_;
   const auto data = message.dump(-1, ' ', false, FileBrowser::Json::error_handler_t::replace);
   if (!peer || data.size() > 60000) return false;
   const auto wire_id = events->WireId(remote);
-  return SendReliableDataFrameToPeer(peer, data.data(), data.size(),
+  return MiniRtcSendReliableDataFrameToPeer(peer, data.data(), data.size(),
       owner_.control_data_label_.c_str(), wire_id.data(), wire_id.size()) == 0;
 }
 

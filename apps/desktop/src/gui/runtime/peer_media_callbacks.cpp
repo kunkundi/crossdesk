@@ -51,7 +51,7 @@ void PeerEventHandler::OnReceiveVideoBuffer(
   if (props->connection_established_) {
     const auto timing_now = VideoLatencyFrame::Clock::now();
     // Pair the clocks before preview conversion so its cost is included.
-    const auto local_now_us = GetSystemTimeMicros(
+    const auto local_now_us = MiniRtcGetSystemTimeMicros(
         handler->IsDirect() ? handler->DirectPeer() : props->peer_);
     const auto* received_native = GetNativeVideoFrame(video_frame);
     props->received_video_stats_.Record(

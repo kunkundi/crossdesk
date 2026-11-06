@@ -65,7 +65,7 @@ bool PeerEventHandler::DataAllowed() const {
   return session && session->authorized && !session->closing;
 }
 
-void PeerEventHandler::SendClientInfo(PeerPtr* peer,
+void PeerEventHandler::SendClientInfo(MiniRtcPeerPtr* peer,
                                       const std::string& client_id) {
   if (!peer) {
     return;
@@ -75,7 +75,7 @@ void PeerEventHandler::SendClientInfo(PeerPtr* peer,
                                   {"version", CROSSDESK_VERSION},
                                   {"platform", HostPlatformName(kClientPlatform)}};
   const std::string payload = message.dump();
-  if (SendSignalMessage(peer, payload.data(), payload.size()) != 0) {
+  if (MiniRtcSendSignalMessage(peer, payload.data(), payload.size()) != 0) {
     LOG_WARN("[{}] failed to report client information", client_id);
   }
 }
@@ -84,13 +84,13 @@ PeerEventHandler::PeerEventHandler(GuiRuntime& owner) : owner_(owner) {
   owner_.transfers_.Connected(this, "");
 }
 
-int PeerEventHandler::OnSignalExchange(SignalExchangeStage stage, const char* message,
+int PeerEventHandler::OnSignalExchange(MiniRtcSignalExchangeStage stage, const char* message,
     size_t size, char* response, size_t capacity, void* user_data) {
   auto* handler = static_cast<PeerEventHandler*>(user_data);
   if (!handler || !message) return -1;
   auto callback = handler->EnterCallback();
   if (!callback) return -1;
-  if (stage == SignalExchangeStage::IncomingMessage &&
+  if (stage == MiniRtcSignalExchangeStage::IncomingMessage &&
       !handler->device_login_.Pending()) return 0;
   try {
     return handler->device_login_.Exchange(stage,
@@ -209,7 +209,7 @@ void PeerEventHandler::OnSignalMessage(const char* message, size_t size,
   }
 }
 
-void PeerEventHandler::OnSignalStatus(SignalStatus status, const char* user_id,
+void PeerEventHandler::OnSignalStatus(MiniRtcSignalStatus status, const char* user_id,
                                       size_t user_id_size, void* user_data) {
   using RecoveryAction = GuiRuntime::CredentialRecoveryAction;
   auto* handler = static_cast<PeerEventHandler*>(user_data);
@@ -220,13 +220,13 @@ void PeerEventHandler::OnSignalStatus(SignalStatus status, const char* user_id,
 
   std::string client_id(user_id, user_id_size);
   if (client_id == runtime->client_id_) {
-    runtime->announcements_.SetConnected(status == SignalStatus::SignalConnected);
+    runtime->announcements_.SetConnected(status == MiniRtcSignalStatus::MiniRtcSignalConnected);
     runtime->signal_status_ = status;
     runtime->device_presence_cache_.SetSignalConnected(
-        status == SignalStatus::SignalConnected);
-    if (SignalStatus::SignalConnecting == status) {
+        status == MiniRtcSignalStatus::MiniRtcSignalConnected);
+    if (MiniRtcSignalStatus::MiniRtcSignalConnecting == status) {
       runtime->signal_connected_ = false;
-    } else if (SignalStatus::SignalConnected == status) {
+    } else if (MiniRtcSignalStatus::MiniRtcSignalConnected == status) {
       runtime->signal_connected_ = true;
       runtime->need_to_send_recent_connections_ = true;
       LOG_INFO("[{}] connected to signal server", client_id);
@@ -241,20 +241,20 @@ void PeerEventHandler::OnSignalStatus(SignalStatus status, const char* user_id,
           runtime->credential_recovery_action_ = RecoveryAction::ClearPending;
         }
       }
-    } else if (SignalStatus::SignalFailed == status) {
+    } else if (MiniRtcSignalStatus::MiniRtcSignalFailed == status) {
       runtime->signal_connected_ = false;
       std::lock_guard<std::mutex> lock(runtime->password_change_mutex_);
       if (runtime->credential_recovery_in_progress_ &&
           runtime->credential_recovery_attempt_pending_) {
         runtime->credential_recovery_action_ = RecoveryAction::RetryActive;
       }
-    } else if (SignalStatus::SignalClosed == status) {
+    } else if (MiniRtcSignalStatus::MiniRtcSignalClosed == status) {
       runtime->signal_connected_ = false;
-    } else if (SignalStatus::SignalReconnecting == status) {
+    } else if (MiniRtcSignalStatus::MiniRtcSignalReconnecting == status) {
       runtime->signal_connected_ = false;
-    } else if (SignalStatus::SignalServerClosed == status) {
+    } else if (MiniRtcSignalStatus::MiniRtcSignalServerClosed == status) {
       runtime->signal_connected_ = false;
-    } else if (SignalStatus::SignalTlsCertError == status) {
+    } else if (MiniRtcSignalStatus::MiniRtcSignalTlsCertError == status) {
       runtime->signal_connected_ = false;
     }
   } else {
@@ -266,27 +266,27 @@ void PeerEventHandler::OnSignalStatus(SignalStatus status, const char* user_id,
     auto props = runtime->FindRemoteSession(remote_id);
     if (!props) return;
     props->signal_status_ = status;
-    if (SignalStatus::SignalConnecting == status) {
+    if (MiniRtcSignalStatus::MiniRtcSignalConnecting == status) {
       props->signal_connected_ = false;
-    } else if (SignalStatus::SignalConnected == status) {
+    } else if (MiniRtcSignalStatus::MiniRtcSignalConnected == status) {
       props->signal_connected_ = true;
       LOG_INFO("[{}] connected to signal server", remote_id);
       SendClientInfo(props->peer_, client_id);
-    } else if (SignalStatus::SignalFailed == status) {
+    } else if (MiniRtcSignalStatus::MiniRtcSignalFailed == status) {
       props->signal_connected_ = false;
-    } else if (SignalStatus::SignalClosed == status) {
+    } else if (MiniRtcSignalStatus::MiniRtcSignalClosed == status) {
       props->signal_connected_ = false;
-    } else if (SignalStatus::SignalReconnecting == status) {
+    } else if (MiniRtcSignalStatus::MiniRtcSignalReconnecting == status) {
       props->signal_connected_ = false;
-    } else if (SignalStatus::SignalServerClosed == status) {
+    } else if (MiniRtcSignalStatus::MiniRtcSignalServerClosed == status) {
       props->signal_connected_ = false;
-    } else if (SignalStatus::SignalTlsCertError == status) {
+    } else if (MiniRtcSignalStatus::MiniRtcSignalTlsCertError == status) {
       props->signal_connected_ = false;
     }
   }
 }
 
-void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
+void PeerEventHandler::OnConnectionStatus(MiniRtcConnectionStatus status,
                                           const char* user_id, size_t size,
                                           void* context) {
   auto* handler = static_cast<PeerEventHandler*>(context);
@@ -300,7 +300,7 @@ void PeerEventHandler::OnConnectionStatus(ConnectionStatus status,
   DispatchConnectionStatus(status, user_id, size, context);
 }
 
-void PeerEventHandler::DispatchConnectionStatus(ConnectionStatus status,
+void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
                                                 const char* user_id,
                                                 const size_t user_id_size,
                                                 void* user_data) {
@@ -311,9 +311,9 @@ void PeerEventHandler::DispatchConnectionStatus(ConnectionStatus status,
   GuiRuntime* runtime = &handler->owner_;
 
   std::string remote_id = handler->ConnectionKey(user_id, user_id_size);
-  if (status == ConnectionStatus::Connected) runtime->transfers_.Connected(handler, remote_id);
-  else if (status == ConnectionStatus::Disconnected || status == ConnectionStatus::Failed ||
-           status == ConnectionStatus::Closed) runtime->transfers_.Cancel(handler, remote_id);
+  if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected) runtime->transfers_.Connected(handler, remote_id);
+  else if (status == MiniRtcConnectionStatus::MiniRtcConnectionDisconnected || status == MiniRtcConnectionStatus::MiniRtcConnectionFailed ||
+           status == MiniRtcConnectionStatus::MiniRtcConnectionClosed) runtime->transfers_.Cancel(handler, remote_id);
   std::shared_ptr<GuiRuntime::RemoteSession> props;
   {
     std::shared_lock lock(runtime->remote_sessions_mutex_);
@@ -324,7 +324,7 @@ void PeerEventHandler::DispatchConnectionStatus(ConnectionStatus status,
   }
 
   if (!props) {
-    if (status == ConnectionStatus::Connected) {
+    if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
       if (!runtime->BeginControllerTrust(remote_id, handler)) return;
     } else {
       runtime->ForgetControllerTrust(remote_id, handler);
@@ -335,11 +335,11 @@ void PeerEventHandler::DispatchConnectionStatus(ConnectionStatus status,
     runtime->is_client_mode_ = true;
     if (!props->wall_managed_) runtime->show_connection_status_window_ = true;
     props->connection_status_.store(status);
-    if (status != ConnectionStatus::Connecting && status != ConnectionStatus::Gathering)
+    if (status != MiniRtcConnectionStatus::MiniRtcConnectionConnecting && status != MiniRtcConnectionStatus::MiniRtcConnectionGathering)
       props->connection_auth_.Complete();
 
     switch (status) {
-      case ConnectionStatus::Connected: {
+      case MiniRtcConnectionStatus::MiniRtcConnectionConnected: {
         runtime->ResetRemoteServiceStatus(*props);
         {
           std::lock_guard lock(props->remote_cursor_state_mutex_);
@@ -368,7 +368,7 @@ void PeerEventHandler::DispatchConnectionStatus(ConnectionStatus status,
           information["device_trust_version"] = 1;
           std::string msg = information.dump();
           const int ret =
-              SendReliableDataFrame(props->peer_, msg.data(), msg.size(),
+              MiniRtcSendReliableDataFrame(props->peer_, msg.data(), msg.size(),
                                     runtime->control_data_label_.c_str());
           if (ret != 0) {
             LOG_WARN("[{}] host information send failed, ret={}", remote_id,
@@ -386,9 +386,9 @@ void PeerEventHandler::DispatchConnectionStatus(ConnectionStatus status,
         if (!props->wall_managed_) runtime->start_keyboard_capturer_ = true;
         break;
       }
-      case ConnectionStatus::Disconnected:
-      case ConnectionStatus::Failed:
-      case ConnectionStatus::Closed: {
+      case MiniRtcConnectionStatus::MiniRtcConnectionDisconnected:
+      case MiniRtcConnectionStatus::MiniRtcConnectionFailed:
+      case MiniRtcConnectionStatus::MiniRtcConnectionClosed: {
         runtime->keyboard_.ReleaseRemotePressedKeys(remote_id,
                                                     "connection_closed");
         props->connection_established_ = false;
@@ -406,7 +406,7 @@ void PeerEventHandler::DispatchConnectionStatus(ConnectionStatus status,
           props->gallery_video_latency_->Reset();
           props->gallery_frame_timing_ = {};
         }
-        props->traversal_mode_ = TraversalMode::UnknownMode;
+        props->traversal_mode_ = MiniRtcTraversalMode::MiniRtcTraversalUnknown;
         props->enable_mouse_control_ = false;
         props->preview_subscription_supported_ = false;
         props->preview_resolution_supported_ = false;
@@ -477,7 +477,7 @@ void PeerEventHandler::DispatchConnectionStatus(ConnectionStatus status,
 
         runtime->focus_on_stream_window_ = false;
 
-        if (status == ConnectionStatus::Closed) {
+        if (status == MiniRtcConnectionStatus::MiniRtcConnectionClosed) {
           props->remote_close_pending_.store(true, std::memory_order_release);
         }
 
@@ -491,7 +491,7 @@ void PeerEventHandler::DispatchConnectionStatus(ConnectionStatus status,
     runtime->show_connection_status_window_ = true;
     {
       std::unique_lock lock(runtime->connection_status_mutex_);
-      if (status == ConnectionStatus::Connected) {
+      if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
         runtime->disconnect_lock_.Connected(remote_id);
         // Local privacy requires explicit desktop capability. Host info may
         // arrive before Connected; consume that saved capability here.
@@ -500,19 +500,19 @@ void PeerEventHandler::DispatchConnectionStatus(ConnectionStatus status,
         runtime->ApplyPrivacyAdmission(automatic_enable);
       }
       runtime->connection_status_[remote_id] = status;
-      if (status == ConnectionStatus::Connected)
+      if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected)
         runtime->remote_input_.Connect(remote_id);
 #if _WIN32
       runtime->windows_rdp_handoff_connected_->store(std::any_of(
           runtime->connection_status_.begin(), runtime->connection_status_.end(),
-          [](const auto& entry) { return entry.second == ConnectionStatus::Connected; }),
+          [](const auto& entry) { return entry.second == MiniRtcConnectionStatus::MiniRtcConnectionConnected; }),
           std::memory_order_relaxed);
 #endif
       runtime->devices_.OnControllerConnectionsChanged();
     }
 
     switch (status) {
-      case ConnectionStatus::Connected: {
+      case MiniRtcConnectionStatus::MiniRtcConnectionConnected: {
         runtime->preview_subscriptions_.Remove(remote_id);
 #if _WIN32
         runtime->last_windows_service_status_tick_ = 0;
@@ -557,9 +557,9 @@ void PeerEventHandler::DispatchConnectionStatus(ConnectionStatus status,
 
         break;
       }
-      case ConnectionStatus::Disconnected:
-      case ConnectionStatus::Failed:
-      case ConnectionStatus::Closed: {
+      case MiniRtcConnectionStatus::MiniRtcConnectionDisconnected:
+      case MiniRtcConnectionStatus::MiniRtcConnectionFailed:
+      case MiniRtcConnectionStatus::MiniRtcConnectionClosed: {
         runtime->HandleServerControllerDisconnected(remote_id,
                                                     "connection_closed");
         break;
@@ -571,7 +571,7 @@ void PeerEventHandler::DispatchConnectionStatus(ConnectionStatus status,
 }
 
 void PeerEventHandler::OnNetStatusReport(
-    const char* client_id, size_t client_id_size, TraversalMode mode,
+    const char* client_id, size_t client_id_size, MiniRtcTraversalMode mode,
     const MiniRtcNetTrafficStats* net_traffic_stats, const char* user_id,
     const size_t user_id_size, void* user_data) {
   auto* handler = static_cast<PeerEventHandler*>(user_data);
@@ -640,7 +640,7 @@ void PeerEventHandler::OnNetStatusReport(
       const auto status = runtime->connection_status_.find(remote_id);
       report_codecs = runtime->codec_status_controllers_.count(remote_id) != 0 &&
           status != runtime->connection_status_.end() &&
-          status->second == ConnectionStatus::Connected;
+          status->second == MiniRtcConnectionStatus::MiniRtcConnectionConnected;
     }
     if (net_traffic_stats && report_codecs) {
       RemoteAction action{};

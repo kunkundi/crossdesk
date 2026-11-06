@@ -53,8 +53,8 @@ void GuiRuntime::ForgetControllerTrust(const std::string& id, PeerEventHandler* 
 
 int GuiRuntime::SendTrustMessage(const std::string& id, const nlohmann::json& message) {
   const auto text = message.dump();
-  return WithController(id, [&](PeerPtr* peer, const std::string& wire) {
-    return SendReliableDataFrameToPeer(peer, text.data(), text.size(),
+  return WithController(id, [&](MiniRtcPeerPtr* peer, const std::string& wire) {
+    return MiniRtcSendReliableDataFrameToPeer(peer, text.data(), text.size(),
         control_data_label_.c_str(), wire.data(), wire.size());
   }, false);
 }
@@ -94,7 +94,7 @@ bool GuiRuntime::HandleDeviceTrustMessage(const std::string& id, PeerEventHandle
       const auto wire = events->WireId(id);
       const auto proof = trusted_devices_->Prove(message.at("nonce"),
           props->local_id_, GetHostName()).dump();
-      SendReliableDataFrameToPeer(props->peer_, proof.data(), proof.size(),
+      MiniRtcSendReliableDataFrameToPeer(props->peer_, proof.data(), proof.size(),
           control_data_label_.c_str(), wire.data(), wire.size());
     } else if (type == "device_trust_proof") {
       std::lock_guard lock(controller_trust_mutex_);
@@ -156,7 +156,7 @@ void GuiRuntime::TickControllerTrust() {
       remote_input_.Disconnect(action.id);
       CloseServerController(action.id);
     } else if (action.kind > 0) {
-      events->ApplyConnectionStatus(ConnectionStatus::Connected, action.id);
+      events->ApplyConnectionStatus(MiniRtcConnectionStatus::MiniRtcConnectionConnected, action.id);
       if (!action.host_info.empty()) {
         const auto wire = events->WireId(action.id);
         PeerEventHandler::OnReceiveDataBuffer(action.host_info.data(), action.host_info.size(),

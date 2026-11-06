@@ -76,9 +76,9 @@ sequenceDiagram
     end
 ```
 
-1. `GuiRuntime::CreateConnectionPeer()` 创建本机的常驻 MiniRTC Peer，`Init()` 连接信令服务并登录。控制另一个设备时，`ConnectTo()` 创建或复用对应的 `RemoteSession` 和控制端 Peer；该会话 Peer 以 `C-<本机ID>` 作为登录身份，使用独立的信令连接。
+1. `GuiRuntime::CreateConnectionPeer()` 创建本机的常驻 MiniRTC Peer，`MiniRtcInit()` 连接信令服务并登录。控制另一个设备时，`ConnectTo()` 创建或复用对应的 `RemoteSession` 和控制端 Peer；该会话 Peer 以 `C-<本机ID>` 作为登录身份，使用独立的信令连接。
 2. 普通交互连接在需要时进行在线探测；桌面墙后台连接可以直接由 Join 结果判定可用性。没有密码时先在本地弹窗收集，不先发送一次空密码请求。
-3. 当前桌面调用为 `JoinConnection(peer, "目标ID@密码")`，MiniRTC 将其放入 `join_transmission` 的 `transmission_id`，经 WSS 提交给信令服务。登录尚未完成时，Join 会等待登录结果。
+3. 当前桌面调用为 `MiniRtcJoinConnection(peer, "目标ID@密码")`，MiniRTC 将其放入 `join_transmission` 的 `transmission_id`，经 WSS 提交给信令服务。登录尚未完成时，Join 会等待登录结果。
 4. 服务端的加入通知驱动被控端发起 offer，控制端回复 answer；双方通过服务端转发 ICE 候选。支持新版协议的服务端提供每次连接的 ICE 配置及有效期，客户端仍保留旧服务端兼容路径。
 5. MiniRTC 根据中继设置、对端能力和网络条件选择直连或中继。数据不通过信令 WebSocket 搬运。当前桌面端始终请求 SRTP；原生 ID 会话仍允许第 4.1 节所述的旧端兼容行为，因此请求 SRTP 不代表所有数据最终都经过加密。
 
@@ -160,9 +160,9 @@ sequenceDiagram
     end
 ```
 
-IP 直连由**控制端**发起 offer。双方内部 ID 和随机 `session_id` 用于本次会话路由，不需要用户填写设备 ID。协商消息带会话 ID 和严格递增序号；会话管理器检查状态顺序，再调用 `ReceiveDirectSignal()`。MiniRTC 进一步检查 SDP、候选数量、地址和 ICE 标识一致性，并去重候选。
+IP 直连由**控制端**发起 offer。双方内部 ID 和随机 `session_id` 用于本次会话路由，不需要用户填写设备 ID。协商消息带会话 ID 和严格递增序号；会话管理器检查状态顺序，再调用 `MiniRtcReceiveDirectSignal()`。MiniRTC 进一步检查 SDP、候选数量、地址和 ICE 标识一致性，并去重候选。
 
-SessionManager 将当前 WSS socket 的本地与对端 IPv4/IPv6 传入 `InitDirectPeer()`，由 MiniRTC 构造 `HostOnly` 策略，启动独立 ICE worker，不执行云端登录。MiniRTC 通过 `SignalSender` 回调把协商消息交给 SessionManager，再由 WSS 发送。
+SessionManager 将当前 WSS socket 的本地与对端 IPv4/IPv6 传入 `MiniRtcInitDirectPeer()`，由 MiniRTC 构造 `HostOnly` 策略，启动独立 ICE worker，不执行云端登录。MiniRTC 通过 `SignalSender` 回调把协商消息交给 SessionManager，再由 WSS 发送。
 
 MiniRTC 关闭 STUN/TURN 服务器访问、UPnP、ICE TCP 和公网打洞扩展，仅收集指定本机 IPv4/IPv6 的 UDP host 候选。libnice 的 `direct-peer-address` 补丁同时检查远端候选和入站来源：在解析 STUN 连通性检查、学习新候选或回复数据之前，拒绝不匹配的 IP。ICE 自身的 STUN 检查报文仍会在双方之间使用，这与访问 STUN 服务器是两回事。
 
@@ -188,7 +188,7 @@ WSS 在连接成功后继续承担心跳和会话关闭消息。当前心跳约�
 
 旧 ID 首次升级时，客户端先完成签名证明，再按服务端要求提交原有密码；密码验证成功后仅允许绑定一次公钥，保留 ID 和密码。绑定后撤销旧重连令牌并拒绝密码登录，不能用密码覆盖公钥；尚未完成绑定的旧 ID 按来源 IP 及“来源 IP → 目标 ID”限流，不保留目标 ID 的总失败次数。部署时先升级服务端；新桌面客户端要求签名协议，不自动回退到旧服务端的密码登录。混部或回滚到忽略公钥绑定的旧服务端会失去这项保护。
 
-MiniRTC 的可选 `OnSignalExchange` 回调提供登录请求替换、入站消息处理及回复发送能力，不包含设备密钥、可信名单或 CrossDesk 协议字段。应用层负责签名和协议状态；未配置回调的使用方保留原有登录及内存重连令牌行为。改密中断后，签名登录不代表待定密码已生效，客户端重发持久保存的改密请求，收到成功回复后才更新本地密码。
+MiniRTC 的可选 `MiniRtcOnSignalExchange` 回调提供登录请求替换、入站消息处理及回复发送能力，不包含设备密钥、可信名单或 CrossDesk 协议字段。应用层负责签名和协议状态；未配置回调的使用方保留原有登录及内存重连令牌行为。改密中断后，签名登录不代表待定密码已生效，客户端重发持久保存的改密请求，收到成功回复后才更新本地密码。
 
 连接目标设备时，控制端会话 Peer 仍将 `目标ID@目标密码` 放入 Join，由服务端返回成功、凭据错误、限流或繁忙结果。设备签名登录仅证明本机 ID 所有权，不授予控制其他设备的权限。服务端按已验证控制端 B 和“B → A”组合累计失败（分别为 20／5 次），不保留 A 的总失败次数；B 的失败不会触发 C 连接 A 的密码冷却。认证队列和计算额度也按已验证控制端隔离。未验证的旧客户端、Web／CLI 临时身份按来源 IP 处理，无法通过自称 `C-B` 获得 B 的预算。已绑定 B 的 `C-B` 登录必须支持签名协议；同一 NAT 下旧客户端仍共享 IP 限制，显式 IP 风控与服务器资源上限仍然适用。
 
@@ -249,7 +249,7 @@ MiniRTC 仅通过现有可靠数据通道收发这些应用消息，不提供可
 flowchart TD
     UI["MainWindow / GuiApplication"] --> ID["GuiRuntime::ConnectTo"]
     UI --> IP["GuiRuntime::ConnectLan"]
-    ID --> Managed["MiniRTC Init / JoinConnection"]
+    ID --> Managed["MiniRtcInit / MiniRtcJoinConnection"]
     IP --> LAN["LAN SessionManager / Transport"]
     LAN --> Direct["MiniRTC InitDirectPeer / StartDirectSession"]
     Managed --> Common["MiniRtcConnection / IceTransport / IceAgent"]
@@ -265,7 +265,7 @@ flowchart TD
 - **业务复用：** `ControllerEvents()`、`WithController()` 等根据会话类型路由到正确 Peer。视频、音频、键鼠、文件、剪贴板仍交给原有回调和功能模块；采集设备按整体连接需求管理。
 - **线程分工：** SessionManager 的公开操作和 `Tick()` 在 GUI 管理线程运行；Transport 使用一个共享 Asio 网络线程，回调仅提交有界事件。密码计算、Peer 准备与销毁在后台任务执行，MiniRTC 自身处理 ICE 和媒体工作。
 - **数据放行：** LAN 业务回调检查会话授权和关闭状态。加密就绪通知与数据到达可能交错，少量早期控制消息会在有界队列中暂存，授权后按序处理；其他业务数据不因排队而提前获得授权。
-- **关闭顺序：** 标记关闭并停止新回调，取消会话相关传输，关闭 WSS；后台排空已有回调，再执行 `CloseDirectSession()` 和 `DestroyPeer()`。网络回调中不直接销毁 Peer。
+- **关闭顺序：** 标记关闭并停止新回调，取消会话相关传输，关闭 WSS；后台排空已有回调，再执行 `MiniRtcCloseDirectSession()` 和 `MiniRtcDestroyPeer()`。网络回调中不直接销毁 Peer。
 - **资源边界：** 当前管理器最多保留 24 个通道，未认证接入最多 16 个，异步密码验证与 Peer 准备各最多 2 个任务，同时准入的准备中/已认证会话最多 8 个。协商还设有消息数量、字节和阶段超时限制，防止无限队列或等待。
 
 关闭 IP 功能时，运行时等待会话、密码任务、准备任务及清理任务全部结束，再释放 LAN 管理器和网络线程。快速关闭后重新开启会等待旧实例排空；应用退出时不会重新创建监听。

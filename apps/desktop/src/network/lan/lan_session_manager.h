@@ -43,7 +43,7 @@ struct Session {
   bool incoming = false;
   uint64_t epoch = 0, receive_seq = 0, send_seq = 0;
   std::chrono::steady_clock::time_point deadline;
-  PeerPtr* peer = nullptr;  // Only published/cleared by the manager.
+  MiniRtcPeerPtr* peer = nullptr;  // Only published/cleared by the manager.
   std::atomic<bool> closing{false}, authorized{false}, ready{false},
       failed{false};
   std::atomic<int> failure_code{-1};
@@ -54,7 +54,7 @@ struct Session {
   std::function<void()> drain_callbacks;
   static int SendSignal(const char* data, size_t size, void* context);
   static void Error(MiniRtcDirectError error, void* context);
-  void Status(ConnectionStatus status);
+  void Status(MiniRtcConnectionStatus status);
 };
 
 // All public methods run on the GUI manager thread. Only Session's bounded
@@ -63,7 +63,7 @@ class SessionManager {
  public:
   using SessionPtr = std::shared_ptr<Session>;
   struct Prepared {
-    PeerPtr* peer = nullptr;
+    MiniRtcPeerPtr* peer = nullptr;
     std::shared_ptr<void> callback_owner;
     std::function<void()> drain_callbacks;
   };

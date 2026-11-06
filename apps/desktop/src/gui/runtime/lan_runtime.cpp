@@ -7,17 +7,17 @@
 #endif
 
 namespace crossdesk {
-void GuiRuntime::RegisterStreams(PeerPtr* peer, size_t displays) {
+void GuiRuntime::RegisterStreams(MiniRtcPeerPtr* peer, size_t displays) {
   for (size_t i = 0; i < displays; ++i) {
     const auto id = MakeDisplayStreamId(i);
-    AddVideoStream(peer, id.c_str());
+    MiniRtcAddVideoStream(peer, id.c_str());
   }
-  AddAudioStream(peer, audio_label_.c_str());
-  AddDataStream(peer, data_label_.c_str(), false);
+  MiniRtcAddAudioStream(peer, audio_label_.c_str());
+  MiniRtcAddDataStream(peer, data_label_.c_str(), false);
   for (const auto& label :
        {mouse_label_, keyboard_label_, control_data_label_, file_label_,
         file_feedback_label_, clipboard_label_})
-    AddDataStream(peer, label.c_str(), true);
+    MiniRtcAddDataStream(peer, label.c_str(), true);
 }
 void GuiRuntime::InitializeLan() {
   if (unattended_host_ || stopping_ || lan_ ||
@@ -37,8 +37,8 @@ void GuiRuntime::InitializeLan() {
     auto events = std::make_shared<PeerEventHandler>(*this);
     events->BindDirect(session);
     // Direct initialization must not depend on cloud login/configuration having
-    // successfully populated the managed peer's Params snapshot.
-    Params params{};
+    // successfully populated the managed peer's MiniRtcParams snapshot.
+    MiniRtcParams params{};
     std::snprintf(params.log_path, sizeof(params.log_path), "%s",
                   dll_log_path_.c_str());
     params.hardware_acceleration = true;
@@ -46,12 +46,12 @@ void GuiRuntime::InitializeLan() {
     params.av1_encoding = config_center_->GetVideoEncodeFormat() ==
                           ConfigCenter::VIDEO_ENCODE_FORMAT::AV1;
     params.enable_srtp = true;
-    params.turn_mode = TurnMode::TurnDisabled;
-    params.video_content_type = VideoContentType::ScreenContent;
-    params.video_quality = VideoQuality::QualityHigh;
+    params.turn_mode = MiniRtcTurnMode::MiniRtcTurnDisabled;
+    params.video_content_type = MiniRtcVideoContentType::ScreenContent;
+    params.video_quality = MiniRtcVideoQuality::MiniRtcVideoQualityHigh;
     params.video_frame_rate = 60;
     params.video_degradation_preference =
-        VideoDegradationPreference::MaintainResolution;
+        MiniRtcVideoDegradationPreference::MaintainResolution;
     params.on_receive_video_frame = PeerEventHandler::OnReceiveVideoBuffer;
     params.on_receive_audio_buffer = PeerEventHandler::OnReceiveAudioBuffer;
     params.on_receive_data_buffer = PeerEventHandler::OnReceiveDataBuffer;
@@ -69,7 +69,7 @@ void GuiRuntime::InitializeLan() {
       lan::SessionManager::Prepared result;
       result.callback_owner = events;
       result.drain_callbacks = [events] { events->Deactivate(); };
-      result.peer = CreatePeer(&params);
+      result.peer = MiniRtcCreatePeer(&params);
       events->SetDirectPeer(result.peer);
       if (result.peer) RegisterStreams(result.peer, displays);
       return result;
@@ -88,7 +88,7 @@ void GuiRuntime::InitializeLan() {
   hooks.connected = [this](const std::shared_ptr<lan::Session>& session) {
     auto events =
         std::static_pointer_cast<PeerEventHandler>(session->callback_owner);
-    events->ApplyConnectionStatus(ConnectionStatus::Connected, session->key);
+    events->ApplyConnectionStatus(MiniRtcConnectionStatus::MiniRtcConnectionConnected, session->key);
     events->FlushEarlyData();
   };
   hooks.closed = [this](const std::shared_ptr<lan::Session>& session) {
@@ -101,7 +101,7 @@ void GuiRuntime::InitializeLan() {
     }
     if (events) {
       if (attached)
-        events->ApplyConnectionStatus(ConnectionStatus::Closed, session->key);
+        events->ApplyConnectionStatus(MiniRtcConnectionStatus::MiniRtcConnectionClosed, session->key);
       events->StopAccepting();
       transfers_.Cancel(events.get());
     }
@@ -157,7 +157,7 @@ void GuiRuntime::ConnectLan(const std::string& address, unsigned port,
     lan_connecting_ = session;
     props->lan_session_ = session;
     props->remote_id_ = session->key;
-    props->connection_status_ = ConnectionStatus::Connecting;
+    props->connection_status_ = MiniRtcConnectionStatus::MiniRtcConnectionConnecting;
     props->connection_auth_.Complete();
     {
       std::unique_lock lock(remote_sessions_mutex_);
@@ -180,14 +180,14 @@ std::shared_ptr<PeerEventHandler> GuiRuntime::ControllerEvents(
 }
 int GuiRuntime::WithController(
     const std::string& id,
-    const std::function<int(PeerPtr*, const std::string&)>& operation,
+    const std::function<int(MiniRtcPeerPtr*, const std::string&)>& operation,
     bool require_trusted) {
   if (require_trusted && !TrustedControllerAllowed(id)) return -1;
   std::shared_lock lock(remote_sessions_mutex_);
   auto it = lan_controllers_.find(id);
   auto events = it == lan_controllers_.end() ? peer_events_ : it->second.events;
   if (it == lan_controllers_.end() && id.rfind("lan/", 0) == 0) return -1;
-  PeerPtr* peer =
+  MiniRtcPeerPtr* peer =
       it == lan_controllers_.end() ? peer_ : it->second.session->peer;
   if (!peer || !events || !events->DataAllowed()) return -1;
   auto callback = events->EnterCallback();
@@ -198,8 +198,8 @@ int GuiRuntime::WithController(
 }
 int GuiRuntime::SendControllerData(const std::string& id, const char* data,
                                    size_t size, const char* label) {
-  return WithController(id, [&](PeerPtr* peer, const std::string& wire) {
-    return SendReliableDataFrameToPeer(peer, data, size, label, wire.data(),
+  return WithController(id, [&](MiniRtcPeerPtr* peer, const std::string& wire) {
+    return MiniRtcSendReliableDataFrameToPeer(peer, data, size, label, wire.data(),
                                        wire.size());
   });
 }
@@ -208,7 +208,7 @@ std::vector<std::string> GuiRuntime::ConnectedControllers() {
   std::shared_lock lock(connection_status_mutex_);
   ids.reserve(connection_status_.size());
   for (const auto& [id, status] : connection_status_)
-    if (status == ConnectionStatus::Connected) ids.push_back(id);
+    if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected) ids.push_back(id);
   return ids;
 }
 void GuiRuntime::BeginShutdown() {

@@ -113,12 +113,12 @@ private:
   void Enqueue(Event event) noexcept;
   void Fail(const char *reason);
   void ClosePeers();
-  Params Parameters();
+  MiniRtcParams Parameters();
   bool Send(const char *stream, const std::string &payload);
   bool SendInput(const char *stream, const RemoteAction &action);
   void Preview();
-  static void Signal(SignalStatus, const char *, size_t, void *);
-  static void Connection(ConnectionStatus, const char *, size_t, void *);
+  static void Signal(MiniRtcSignalStatus, const char *, size_t, void *);
+  static void Connection(MiniRtcConnectionStatus, const char *, size_t, void *);
   static void Data(const char *, size_t, const char *, size_t, const char *,
                    size_t, void *);
   static void Audio(const char *, size_t, const char *, size_t,
@@ -127,11 +127,11 @@ private:
                     const char *, size_t, void *);
   static int EncodedVideo(const uint8_t *, size_t, int64_t, const char *,
                           size_t, const char *, size_t, void *);
-  static void Network(const char *, size_t, TraversalMode,
+  static void Network(const char *, size_t, MiniRtcTraversalMode,
                       const MiniRtcNetTrafficStats *, const char *, size_t,
                       void *);
   SessionOptions options_;
-  PeerPtr *peer_ = nullptr;
+  MiniRtcPeerPtr *peer_ = nullptr;
   std::string state_ = "idle", error_, device_, password_, client_id_;
   nlohmann::json remote_capabilities_ = nlohmann::json::object();
   uint64_t remote_sequence_ = 0, capability_request_ = 0;
@@ -160,7 +160,7 @@ private:
   uint64_t callback_generation_ = 0;
   int callback_display_ = 0;
   MiniRtcNetTrafficStats network_{};
-  TraversalMode traversal_ = UnknownMode;
+  MiniRtcTraversalMode traversal_ = MiniRtcTraversalUnknown;
   LatestFrame frames_;
   bool audio_enabled_ = false;
   size_t audio_bytes_ = 0;

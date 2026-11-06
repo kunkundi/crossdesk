@@ -67,11 +67,11 @@ struct RecentConnectionsState {
 };
 
 struct PeerState {
-  SignalStatus signal_status_ = SignalStatus::SignalClosed;
+  MiniRtcSignalStatus signal_status_ = MiniRtcSignalStatus::MiniRtcSignalClosed;
   std::string signal_status_str_;
   std::atomic<bool> signal_connected_{false};
-  PeerPtr *peer_ = nullptr;
-  PeerPtr *peer_reserved_ = nullptr;
+  MiniRtcPeerPtr *peer_ = nullptr;
+  MiniRtcPeerPtr *peer_reserved_ = nullptr;
   std::string video_primary_label_ = "primary_display";
   std::string video_secondary_label_ = "secondary_display";
   std::string audio_label_ = "audio";
@@ -83,7 +83,7 @@ struct PeerState {
   std::string file_label_ = kFileStream;
   std::string file_feedback_label_ = kFileFeedbackStream;
   std::string clipboard_label_ = kClipboardStream;
-  Params params_{};
+  MiniRtcParams params_{};
 };
 
 // OS-specific service and permission state is kept separate from transport
@@ -203,7 +203,7 @@ struct ConnectionState {
   std::unordered_map<std::string, PendingReconnect> pending_reconnects_;
 
   std::shared_mutex connection_status_mutex_;
-  std::unordered_map<std::string, ConnectionStatus> connection_status_;
+  std::unordered_map<std::string, MiniRtcConnectionStatus> connection_status_;
   std::unordered_map<std::string, std::string> connection_host_names_;
   std::unordered_set<std::string> codec_status_controllers_;
   // Cursor position is sampled asynchronously after remote mouse input has

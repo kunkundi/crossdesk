@@ -83,13 +83,13 @@ void Session::Error(MiniRtcDirectError error, void* context) {
     s->failed = true;
   }
 }
-void Session::Status(ConnectionStatus status) {
+void Session::Status(MiniRtcConnectionStatus status) {
   if (closing) return;
-  if (status == ConnectionStatus::Connected)
+  if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected)
     ready = true;
-  else if (status == ConnectionStatus::Closed ||
-           status == ConnectionStatus::Failed ||
-           status == ConnectionStatus::Disconnected)
+  else if (status == MiniRtcConnectionStatus::MiniRtcConnectionClosed ||
+           status == MiniRtcConnectionStatus::MiniRtcConnectionFailed ||
+           status == MiniRtcConnectionStatus::MiniRtcConnectionDisconnected)
     failed = true;
 }
 SessionManager::SessionManager(std::filesystem::path path, Hooks hooks)
@@ -417,9 +417,9 @@ void SessionManager::Prepare(const SessionPtr& s) {
          options.send_signal = Session::SendSignal;
          options.on_error = Session::Error;
          options.context = s.get();
-         if (InitDirectPeer(prepared.peer, &options) != 0 ||
+         if (MiniRtcInitDirectPeer(prepared.peer, &options) != 0 ||
              (!s->closing &&
-              StartDirectSession(prepared.peer, !s->incoming) != 0))
+              MiniRtcStartDirectSession(prepared.peer, !s->incoming) != 0))
            s->failed = true;
          return prepared;
        })});
@@ -560,7 +560,7 @@ void SessionManager::Message(const SessionPtr& s, const std::string& text) {
     Check(type == "candidate" &&
           (s->phase == Session::AwaitAnswer ||
            s->phase == Session::Negotiating || s->phase == Session::Connected));
-  if (ReceiveDirectSignal(s->peer, text.data(), text.size()) != 0)
+  if (MiniRtcReceiveDirectSignal(s->peer, text.data(), text.size()) != 0)
     Fail(s, "InvalidSignal");
 }
 void SessionManager::Dispose(const SessionPtr& s) {
@@ -571,8 +571,8 @@ void SessionManager::Dispose(const SessionPtr& s) {
   cleanup_jobs_.push_back(
       std::async(std::launch::async, [s, peer, owner, drain]() mutable {
         if (drain) drain();
-        CloseDirectSession(peer);
-        DestroyPeer(&peer);
+        MiniRtcCloseDirectSession(peer);
+        MiniRtcDestroyPeer(&peer);
       }));
 }
 void SessionManager::Close(const SessionPtr& s, const std::string& error) {

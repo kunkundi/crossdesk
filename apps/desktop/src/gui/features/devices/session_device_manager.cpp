@@ -48,9 +48,9 @@ SessionDeviceManager::SessionDeviceManager(GuiRuntime &owner)
             frame.size = size;
             for (const auto& id : owner_.ConnectedControllers())
               owner_.WithController(
-                  id, [&](PeerPtr* peer, const std::string& wire) {
-                    frame.captured_timestamp = GetSystemTimeMicros(peer);
-                    return SendAudioFrameToPeer(peer, &frame,
+                  id, [&](MiniRtcPeerPtr* peer, const std::string& wire) {
+                    frame.captured_timestamp = MiniRtcGetSystemTimeMicros(peer);
+                    return MiniRtcSendAudioFrameToPeer(peer, &frame,
                                                 owner_.audio_label_.c_str(),
                                                 wire.data(), wire.size());
                   });
@@ -239,11 +239,11 @@ int SessionDeviceManager::InitializeScreenCapturer() {
           if (!owner_.preview_subscriptions_.ShouldSend(remote_id, now_time,
                                                         stream_id)) continue;
           if (owner_.WithController(
-                  remote_id, [&](PeerPtr* peer, const std::string& wire) {
+                  remote_id, [&](MiniRtcPeerPtr* peer, const std::string& wire) {
                     if (resumed_after_gap || stream_changed)
-                      RequestVideoKeyFrame(peer, stream_id.c_str());
-                    frame.captured_timestamp = GetSystemTimeMicros(peer);
-                    return SendVideoFrameToPeer(peer, &frame, stream_id.c_str(),
+                      MiniRtcRequestVideoKeyFrame(peer, stream_id.c_str());
+                    frame.captured_timestamp = MiniRtcGetSystemTimeMicros(peer);
+                    return MiniRtcSendVideoFrameToPeer(peer, &frame, stream_id.c_str(),
                                                 wire.data(), wire.size());
                   }) != 0)
             ++send_errors;
@@ -285,7 +285,7 @@ bool SessionDeviceManager::ShouldCaptureCursor() const {
   std::shared_lock lock(owner_.connection_status_mutex_);
   return std::any_of(owner_.connection_status_.begin(),
                      owner_.connection_status_.end(), [](const auto& entry) {
-    return entry.second == ConnectionStatus::Connected &&
+    return entry.second == MiniRtcConnectionStatus::MiniRtcConnectionConnected &&
            entry.first.find("web") != std::string::npos;
   });
 }
@@ -294,7 +294,7 @@ bool SessionDeviceManager::HasConnectedController() const {
   std::shared_lock lock(owner_.connection_status_mutex_);
   return std::any_of(owner_.connection_status_.begin(),
                      owner_.connection_status_.end(), [](const auto& entry) {
-    return entry.second == ConnectionStatus::Connected;
+    return entry.second == MiniRtcConnectionStatus::MiniRtcConnectionConnected;
   });
 }
 
