@@ -214,10 +214,10 @@ private final class RemoteAudioPlayer {
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let queue = DispatchQueue(label: "cn.crossdesk.mobile.audio")
-    private let format = AVAudioFormat(commonFormat: .pcmFormatInt16,
-                                       sampleRate: 48_000,
-                                       channels: 1,
-                                       interleaved: false)!
+    // Older iOS audio units can reject an Int16 player-to-mixer connection
+    // with an Objective-C exception. Use the standard Float32 graph format.
+    private let format = AVAudioFormat(standardFormatWithSampleRate: 48_000,
+                                       channels: 1)!
     private var enabled = true
     private var queuedBuffers = 0
 
@@ -250,18 +250,24 @@ private final class RemoteAudioPlayer {
     }
 
     func enqueue(_ data: Data) {
-        guard !data.isEmpty, data.count.isMultiple(of: MemoryLayout<Int16>.size) else { return }
+        guard !data.isEmpty, data.count.isMultiple(of: MemoryLayout<Int16>.size),
+              let frameCount = AVAudioFrameCount(exactly: data.count / MemoryLayout<Int16>.size) else { return }
         queue.async {
             guard self.enabled, self.queuedBuffers < 80 else { return }
             self.startIfNeeded()
             guard self.engine.isRunning,
                   let buffer = AVAudioPCMBuffer(pcmFormat: self.format,
-                                                frameCapacity: AVAudioFrameCount(data.count / 2)),
-                  let samples = buffer.int16ChannelData?[0] else { return }
+                                                frameCapacity: frameCount),
+                  let samples = buffer.floatChannelData?[0] else { return }
             buffer.frameLength = buffer.frameCapacity
             data.withUnsafeBytes { bytes in
-                guard let source = bytes.baseAddress else { return }
-                memcpy(samples, source, data.count)
+                // MiniRTC delivers native-endian signed 16-bit PCM. Data's
+                // storage may be unaligned, including for short inline values.
+                for index in 0..<Int(frameCount) {
+                    let sample = bytes.loadUnaligned(
+                        fromByteOffset: index * MemoryLayout<Int16>.size, as: Int16.self)
+                    samples[index] = Float(sample) / 32_768.0
+                }
             }
             self.queuedBuffers += 1
             self.player.scheduleBuffer(buffer) {
@@ -361,7 +367,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     let announcements = AnnouncementInbox()
     let appUpdates = AppUpdateChecker()
     private var appIsActive = false
-    private let audioPlayer = RemoteAudioPlayer()
+    private lazy var audioPlayer = RemoteAudioPlayer()
     private var activeRemoteID = ""
     private var remoteAppVersion = ""
     private var remoteHostInfoReceived = false
