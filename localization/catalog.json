@@ -10643,6 +10643,30 @@
       "fr": "Ouvrir le dossier",
       "es": "Abrir carpeta",
       "pt-BR": "Abrir pasta"
+    },
+    "最小化时暂停视频": {
+      "zh-Hans": "最小化时暂停视频",
+      "en": "Pause video when minimized",
+      "ru": "Приостанавливать видео при сворачивании",
+      "zh-Hant": "最小化時暫停視訊",
+      "ja": "最小化時に映像を一時停止",
+      "ko": "최소화 시 영상 일시 중지",
+      "de": "Video beim Minimieren pausieren",
+      "fr": "Mettre la vidéo en pause à la réduction",
+      "es": "Pausar el vídeo al minimizar",
+      "pt-BR": "Pausar vídeo ao minimizar"
+    },
+    "控制窗口最小化时暂停接收视频，降低本机解码资源占用。": {
+      "zh-Hans": "控制窗口最小化时暂停接收视频，降低本机解码资源占用。",
+      "en": "Pause video reception when the control window is minimized to reduce local decoding resource usage.",
+      "ru": "При сворачивании окна управления приём видео приостанавливается, снижая нагрузку от декодирования на этом устройстве.",
+      "zh-Hant": "控制視窗最小化時暫停接收視訊，降低本機解碼資源占用。",
+      "ja": "操作ウィンドウの最小化時に映像の受信を一時停止し、この端末のデコード処理による負荷を軽減します。",
+      "ko": "제어 창을 최소화하면 영상 수신을 일시 중지하여 이 기기의 디코딩 리소스 사용량을 줄입니다.",
+      "de": "Pausiert den Videoempfang, wenn das Steuerungsfenster minimiert ist, und reduziert so den lokalen Ressourcenverbrauch beim Dekodieren.",
+      "fr": "Met en pause la réception vidéo lorsque la fenêtre de contrôle est réduite afin de diminuer les ressources de décodage utilisées sur cet appareil.",
+      "es": "Pausa la recepción de vídeo al minimizar la ventana de control para reducir el uso de recursos de decodificación en este dispositivo.",
+      "pt-BR": "Pausa a recepção de vídeo ao minimizar a janela de controle para reduzir o uso de recursos de decodificação neste dispositivo."
     }
   },
   "desktop": {
@@ -10929,7 +10953,9 @@
     "privacy_unlock_lock": "锁定",
     "privacy_screen_unlock_hint": "按下快捷键，解除隐私屏",
     "exit_program": "退出",
-    "shutdown_reason": "远程控制连接中，保留连接以确认或取消关机。"
+    "shutdown_reason": "远程控制连接中，保留连接以确认或取消关机。",
+    "pause_video_when_minimized": "最小化时暂停视频",
+    "pause_video_when_minimized_hint": "控制窗口最小化时暂停接收视频，降低本机解码资源占用。"
   },
   "slint": [
     "此端口已被占用，",
@@ -11139,7 +11165,9 @@
     "确认断开",
     "确认执行",
     "监听所有 IP 接口",
-    "所有接口共用一个端口，包括 VPN。分享时请选择实际 IP；关闭后恢复各 IP 的独立端口。"
+    "所有接口共用一个端口，包括 VPN。分享时请选择实际 IP；关闭后恢复各 IP 的独立端口。",
+    "最小化时暂停视频",
+    "控制窗口最小化时暂停接收视频，降低本机解码资源占用。"
   ],
   "platforms": {
     "desktop": [
@@ -11654,7 +11682,9 @@
       "发送到远端",
       "发送到本机",
       "清除已完成",
-      "打开目录"
+      "打开目录",
+      "最小化时暂停视频",
+      "控制窗口最小化时暂停接收视频，降低本机解码资源占用。"
     ],
     "android": [
       " · 已完成",

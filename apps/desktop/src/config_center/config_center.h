@@ -57,6 +57,7 @@ class ConfigCenter {
   int SetLockOnDisconnect(bool enabled);
   int SetTrustedDevicesOnly(bool enabled);
   int SetSaveRemotePreviews(bool enabled);
+  int SetPauseVideoWhenMinimized(bool enabled);
   int SetPortableServicePromptSuppressed(bool suppressed);
   int SetSponsorshipPromptDismissedVersion(const std::string& version);
   int SetFileTransferSavePath(const std::string& path);
@@ -83,6 +84,7 @@ class ConfigCenter {
   bool IsLockOnDisconnect() const;
   bool IsTrustedDevicesOnly() const;
   bool IsSaveRemotePreviews() const;
+  bool IsPauseVideoWhenMinimized() const;
   bool IsPortableServicePromptSuppressed() const;
   std::string GetSponsorshipPromptDismissedVersion() const;
   std::string GetFileTransferSavePath() const;
@@ -117,6 +119,7 @@ class ConfigCenter {
   std::atomic<bool> lock_on_disconnect_{true};
   std::atomic<bool> trusted_devices_only_{false};
   std::atomic<bool> save_remote_previews_{true};
+  std::atomic<bool> pause_video_when_minimized_{true};
   bool portable_service_prompt_suppressed_ = false;
   std::string sponsorship_prompt_dismissed_version_;
   std::string file_transfer_save_path_ = "";

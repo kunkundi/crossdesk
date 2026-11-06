@@ -154,6 +154,8 @@ int ConfigCenter::Load() {
       ini_->GetBoolValue(section_, "trusted_devices_only", true));
   save_remote_previews_.store(
       ini_->GetBoolValue(section_, "save_remote_previews", true));
+  pause_video_when_minimized_.store(
+      ini_->GetBoolValue(section_, "pause_video_when_minimized", true));
   portable_service_prompt_suppressed_ =
       ini_->GetBoolValue(section_, "portable_service_prompt_suppressed",
                         portable_service_prompt_suppressed_);
@@ -253,6 +255,8 @@ int ConfigCenter::Save() {
   ini_->SetBoolValue(section_, "trusted_devices_only", trusted_devices_only_.load());
   ini_->SetBoolValue(section_, "save_remote_previews",
                     save_remote_previews_.load());
+  ini_->SetBoolValue(section_, "pause_video_when_minimized",
+                    pause_video_when_minimized_.load());
   ini_->SetBoolValue(section_, "portable_service_prompt_suppressed",
                     portable_service_prompt_suppressed_);
   ini_->SetValue(section_, "sponsorship_prompt_dismissed_version",
@@ -465,6 +469,18 @@ int ConfigCenter::SetSaveRemotePreviews(bool enabled) {
 
 bool ConfigCenter::IsSaveRemotePreviews() const {
   return save_remote_previews_.load();
+}
+
+int ConfigCenter::SetPauseVideoWhenMinimized(bool enabled) {
+  if (StoreValues({{"pause_video_when_minimized", enabled ? "true" : "false"}}) != 0) {
+    return -1;
+  }
+  pause_video_when_minimized_.store(enabled);
+  return 0;
+}
+
+bool ConfigCenter::IsPauseVideoWhenMinimized() const {
+  return pause_video_when_minimized_.load();
 }
 
 int ConfigCenter::SetPortableServicePromptSuppressed(bool suppressed) {

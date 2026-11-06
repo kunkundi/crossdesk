@@ -1575,6 +1575,7 @@ void GuiApplication::ResetSettingsUi(bool gallery_window) {
 #endif
   main->set_daemon_enabled(enable_daemon_);
   main->set_save_remote_previews(config_center_->IsSaveRemotePreviews());
+  main->set_pause_video_when_minimized(config_center_->IsPauseVideoWhenMinimized());
   main->set_privacy_on_connect_enabled(
       config_center_->IsEnablePrivacyScreen());
   main->set_privacy_local_unlock_allowed(config_center_->IsPrivacyLocalUnlockAllowed());
@@ -4868,6 +4869,13 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
         localization::Literal("无法保存隐私屏解锁设置，请重试。", localization_language_index_)));
     return false;
   }
+  if (config_center_->SetPauseVideoWhenMinimized(main->get_pause_video_when_minimized()) != 0) {
+    if (wall_changed && !ui_->gallery.Save(ui_->gallery_path))
+      LOG_ERROR("Failed to restore DeskHub settings after video pause preference save failure");
+    main->set_settings_save_error(UiText(
+        localization::Literal("保存失败，请重试", localization_language_index_)));
+    return false;
+  }
   try {
     const bool listen_all = main->get_lan_listen_all_draft();
     if (LanAvailable() && main->get_ip_direct_enabled_draft()) {
@@ -4978,6 +4986,7 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
   ApplySettingsFromConfig(previous_server !=
                           GetSignalServerSettings(*config_center_));
   ResetSettingsUi(gallery_window);
+  ui_->gallery_synced = {};
   return true;
 }
 
@@ -6701,6 +6710,8 @@ void GuiApplication::SyncGallery() {
   const bool stream_window_visible = ui_->stream &&
       (*ui_->stream)->window().is_visible() &&
       !(*ui_->stream)->window().is_minimized();
+  const bool stream_window_receiving = ui_->stream &&
+      (stream_window_visible || !config_center_->IsPauseVideoWhenMinimized());
   const auto stream_viewport = stream_window_visible
       ? gallery::PreviewResolution::Viewport(
             (*ui_->stream)->get_video_area_width(),
@@ -6743,6 +6754,12 @@ void GuiApplication::SyncGallery() {
         const bool needs_sync = props->preview_needs_sync_.exchange(false);
         const bool stream_visible = stream_window_visible &&
             props->tab_opened_ && id == focused_remote_id_;
+        // Ordinary tabs keep receiving while their window is visible. DeskHub
+        // sessions also account for their visible previews below. A minimized
+        // window can keep receiving when the user disables automatic pausing.
+        const bool stream_needs_video = stream_window_receiving &&
+            props->tab_opened_ &&
+            (!props->wall_managed_ || id == focused_remote_id_);
         if (props->preview_resolution_supported_) {
           const auto wall_viewport = !preview_ids.count(id)
               ? gallery::PreviewResolution{}
@@ -6757,7 +6774,7 @@ void GuiApplication::SyncGallery() {
           demand.width = resolution.width;
           demand.height = resolution.height;
         }
-        if (props->wall_managed_ && !preview_ids.count(id) && !stream_visible)
+        if (!preview_ids.count(id) && !stream_needs_video)
           demand.fps = 0;
         gallery::PreviewBandwidthDemand bandwidth;
         if (props->preview_bandwidth_supported_) {

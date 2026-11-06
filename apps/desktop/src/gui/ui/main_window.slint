@@ -76,6 +76,8 @@ export global UiStrings {
     in-out property <string> capture-method: "Capture method";
     in-out property <string> capture-method-auto: "Auto";
     in-out property <string> codec: "Video codec";
+    in-out property <string> pause-video-when-minimized: "Pause video when minimized";
+    in-out property <string> pause-video-when-minimized-hint: "Pause video reception when the control window is minimized to reduce local decoding resource usage.";
     in-out property <string> force-relay: "Force relay";
     in-out property <string> self-hosted: "Self-hosted server";
     in-out property <string> autostart: "Start with system";
@@ -658,6 +660,7 @@ export component MainWindow inherits Window {
     changed autostart-guide-open => { if root.autostart-guide-open { root.dialog-focus-pending = true; } }
     in-out property <bool> daemon-enabled: false;
     in-out property <bool> save-remote-previews: true;
+    in-out property <bool> pause-video-when-minimized: true;
     // Show the preference on every platform; only adapted hosts can change it.
     in property <bool> privacy-setting-available: false;
     in-out property <bool> privacy-on-connect-enabled: true;
@@ -726,6 +729,11 @@ export component MainWindow inherits Window {
     in-out property <bool> settings-open: false;
     in-out property <int> settings-tab: 0;
     private property <length> settings-scroll-y: 0px;
+    private property <bool> pause-video-hint-visible: false;
+    private property <length> pause-video-hint-x: 0px;
+    private property <length> pause-video-hint-y: 0px;
+    changed settings-tab => { root.pause-video-hint-visible = false; }
+    changed settings-scroll-y => { root.pause-video-hint-visible = false; }
     in-out property <bool> self-host-settings-open: false;
     changed self-host-settings-open => {
         if !root.self-host-settings-open { root.self-host-settings-error = ""; }
@@ -826,6 +834,7 @@ export component MainWindow inherits Window {
     changed connection-dialog-open => { if root.connection-dialog-open { root.gallery-action("release", ""); } }
     changed permission-dialog-open => { if root.permission-dialog-open { root.gallery-action("release", ""); } }
     changed settings-open => {
+        root.pause-video-hint-visible = false;
         if root.settings-open {
             root.settings-tab = 0;
             root.settings-scroll-y = 0px;
@@ -2730,14 +2739,29 @@ export component MainWindow inherits Window {
                         }
                         SettingsGroup {
                             title: GalleryStrings.texts[115];
-                            rows: root.capture-method-visible ? 2 : 1;
+                            rows: root.capture-method-visible ? 3 : 2;
                             if root.capture-method-visible: SettingsRow {
                                 label: UiStrings.capture-method; enabled: !root.settings-session-active;
                                 SettingsSelect { x: parent.width - 116px; y: 4px; width: 104px; enabled: !root.settings-session-active; model: [UiStrings.capture-method-auto, "DXGI", "WGC", "GDI"]; current-index <=> root.capture-method-index; }
                             }
                             SettingsRow {
-                                label: UiStrings.codec; enabled: !root.settings-session-active; divider: false;
+                                label: UiStrings.codec; enabled: !root.settings-session-active;
                                 SettingsSelect { x: parent.width - 116px; y: 4px; width: 104px; enabled: !root.settings-session-active; model: [UiStrings.codec-h264, UiStrings.codec-av1]; current-index <=> root.codec-index; }
+                            }
+                            pause-video-hover := TouchArea {
+                                height: 36px;
+                                function update-hint() {
+                                    root.pause-video-hint-visible = self.has-hover;
+                                    root.pause-video-hint-x = self.absolute-position.x + self.mouse-x;
+                                    root.pause-video-hint-y = self.absolute-position.y + self.mouse-y;
+                                }
+                                changed has-hover => { self.update-hint(); }
+                                pointer-event(event) => { self.update-hint(); }
+                                SettingsToggleRow {
+                                    width: parent.width;
+                                    label: UiStrings.pause-video-when-minimized;
+                                    checked <=> root.pause-video-when-minimized; divider: false;
+                                }
                             }
                         }
                         SettingsGroup {
@@ -2841,6 +2865,25 @@ export component MainWindow inherits Window {
                     width: max(92px, self.label-width); primary: true;
                     text: GalleryStrings.texts[34];
                     clicked => { if root.save-settings() { root.settings-open = false; root.self-host-settings-open = false; } }
+                }
+            }
+            if root.window-active && root.settings-tab == 0 && root.pause-video-hint-visible: Rectangle {
+                // Keep the immediate hint outside ScrollView's clipping area.
+                width: min(260px, parent.width - 16px);
+                height: max(28px, pause-video-hint-text.preferred-height + 12px);
+                x: clamp(root.pause-video-hint-x - settings-dialog.absolute-position.x,
+                    8px, parent.width - self.width - 8px);
+                private property <length> pointer-y: root.pause-video-hint-y - settings-dialog.absolute-position.y;
+                y: self.pointer-y + 8px + self.height <= parent.height - 8px
+                    ? self.pointer-y + 8px : self.pointer-y - self.height - 8px;
+                background: #24324a;
+                border-radius: UiRadius.control; z: 20;
+                pause-video-hint-text := Text {
+                    x: 10px; y: 6px;
+                    width: parent.width - 20px; height: parent.height - 12px;
+                    text: UiStrings.pause-video-when-minimized-hint;
+                    font-size: 12px; font-weight: 400; color: white; wrap: word-wrap;
+                    horizontal-alignment: left; vertical-alignment: center;
                 }
             }
         }

@@ -525,6 +525,8 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"发送到本机", {"发送到本机", "Send to local", "Отправить на этот ПК", "傳送到本機", "この端末へ送信", "이 기기로 보내기", "An diesen PC senden", "Envoyer à ce PC", "Enviar a este equipo", "Enviar a este computador"}},
   {"清除已完成", {"清除已完成", "Clear completed", "Убрать завершённые", "清除已完成", "完了済みをクリア", "완료 항목 지우기", "Abgeschlossene entfernen", "Effacer les tâches terminées", "Limpiar completadas", "Limpar concluídas"}},
   {"打开目录", {"打开目录", "Open folder", "Открыть папку", "開啟目錄", "フォルダーを開く", "폴더 열기", "Ordner öffnen", "Ouvrir le dossier", "Abrir carpeta", "Abrir pasta"}},
+  {"最小化时暂停视频", {"最小化时暂停视频", "Pause video when minimized", "Приостанавливать видео при сворачивании", "最小化時暫停視訊", "最小化時に映像を一時停止", "최소화 시 영상 일시 중지", "Video beim Minimieren pausieren", "Mettre la vidéo en pause à la réduction", "Pausar el vídeo al minimizar", "Pausar vídeo ao minimizar"}},
+  {"控制窗口最小化时暂停接收视频，降低本机解码资源占用。", {"控制窗口最小化时暂停接收视频，降低本机解码资源占用。", "Pause video reception when the control window is minimized to reduce local decoding resource usage.", "При сворачивании окна управления приём видео приостанавливается, снижая нагрузку от декодирования на этом устройстве.", "控制視窗最小化時暫停接收視訊，降低本機解碼資源占用。", "操作ウィンドウの最小化時に映像の受信を一時停止し、この端末のデコード処理による負荷を軽減します。", "제어 창을 최소화하면 영상 수신을 일시 중지하여 이 기기의 디코딩 리소스 사용량을 줄입니다.", "Pausiert den Videoempfang, wenn das Steuerungsfenster minimiert ist, und reduziert so den lokalen Ressourcenverbrauch beim Dekodieren.", "Met en pause la réception vidéo lorsque la fenêtre de contrôle est réduite afin de diminuer les ressources de décodage utilisées sur cet appareil.", "Pausa la recepción de vídeo al minimizar la ventana de control para reducir el uso de recursos de decodificación en este dispositivo.", "Pausa a recepção de vídeo ao minimizar a janela de controle para reduzir o uso de recursos de decodificação neste dispositivo."}},
 };
 
 struct NamedTranslation { const char* name; const char* literal; };
@@ -813,6 +815,8 @@ inline constexpr NamedTranslation kNamedTranslations[] = {
   {"privacy_screen_unlock_hint", "按下快捷键，解除隐私屏"},
   {"exit_program", "退出"},
   {"shutdown_reason", "远程控制连接中，保留连接以确认或取消关机。"},
+  {"pause_video_when_minimized", "最小化时暂停视频"},
+  {"pause_video_when_minimized_hint", "控制窗口最小化时暂停接收视频，降低本机解码资源占用。"},
 };
 inline constexpr const char* kSlintLiterals[] = {
   "此端口已被占用，",
@@ -1023,6 +1027,8 @@ inline constexpr const char* kSlintLiterals[] = {
   "确认执行",
   "监听所有 IP 接口",
   "所有接口共用一个端口，包括 VPN。分享时请选择实际 IP；关闭后恢复各 IP 的独立端口。",
+  "最小化时暂停视频",
+  "控制窗口最小化时暂停接收视频，降低本机解码资源占用。",
 };
 }  // namespace detail
 
@@ -1310,7 +1316,9 @@ inline constexpr const char* kSlintLiterals[] = {
   X(privacy_unlock_lock) \
   X(privacy_screen_unlock_hint) \
   X(exit_program) \
-  X(shutdown_reason)
+  X(shutdown_reason) \
+  X(pause_video_when_minimized) \
+  X(pause_video_when_minimized_hint)
 
 }  // namespace localization
 }  // namespace crossdesk
