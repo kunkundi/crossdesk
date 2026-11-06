@@ -312,6 +312,14 @@ export function createServer(
     "Enable or disable control within the user-authorized scope. Cannot override human pause or upgrade an observe-only connection.",
     async (p) => output(await sessions.control(p.session_id, p.enabled)),
   );
+  add("crossdesk_clipboard_get", z.strictObject({ session_id: id }),
+    "Read the remote text clipboard within the authorized control session.",
+    async (p, ctx) => output(await sessions.clipboard({ ...p, operation: "get" }, ctx.mcpReq.signal)),
+    { readOnly: true });
+  add("crossdesk_clipboard_set", z.strictObject({ session_id: id, operation_id: id,
+    text: z.string().max(16384).refine((text) => Buffer.byteLength(text) <= 16384 && !text.includes("\0")) }),
+    "Set or clear the remote text clipboard. Reuse the same operation_id to query the original result. Returns applied after the remote clipboard update.",
+    async (p, ctx) => output(await sessions.clipboard({ ...p, operation: "set" }, ctx.mcpReq.signal)));
   add(
     "crossdesk_select_display",
     z.strictObject({ session_id: id, display_index: z.int().min(0).max(63) }),

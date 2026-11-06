@@ -59,6 +59,7 @@ void ClipboardController::Shutdown() {
   pending_remote_text_.reset();
   pending_complete_ = {};
   pending_allowed_ = {};
+  pending_reads_.clear();
 }
 
 bool ClipboardController::WebSessionActive(
@@ -107,7 +108,7 @@ void ClipboardController::ReceiveWeb(const char* data, size_t size,
       if (found == web_sessions_.end() || found->second->events.lock() != events) return;
       session = found->second;
     }
-    if (!hello) {
+    if (!hello && kind != clip::kRead && kind != clip::kClear) {
       if (!session->ready.load(std::memory_order_acquire) ||
           kind != clip::kText || !request) return;
       message = session->assembler.Receive(std::string_view(data, size));
@@ -121,6 +122,23 @@ void ClipboardController::ReceiveWeb(const char* data, size_t size,
       session->ready.store(true, std::memory_order_release);
     return;
   }
+  if ((kind == clip::kRead || kind == clip::kClear) &&
+      (!session->ready.load(std::memory_order_acquire) || !request ||
+       size != clip::kHeaderBytes)) return;
+  if (kind == clip::kRead) {
+    const auto send = [this, remote_id, session](const std::string& frame) {
+      return WebSessionActive(remote_id, session) &&
+          owner_.SendControllerData(remote_id, frame.data(), frame.size(), clip::kStream) == 0;
+    };
+    if (!QueueRead([send, request](std::optional<std::string> text) {
+      if (!text) send(clip::Frame(clip::kRejected, request));
+      else if (text->empty()) send(clip::Frame(clip::kEmpty, request));
+      else if (!clip::SendText(*text, request, 16 * 1024, send))
+        send(clip::Frame(clip::kRejected, request));
+    })) send(clip::Frame(clip::kRejected, request));
+    return;
+  }
+  if (kind == clip::kClear) message = clip::Frame(clip::kText, request);
   if (message.empty()) return;
   const std::weak_ptr<WebSession> weak = session;
   auto allowed = [this, remote_id, weak] {
@@ -163,7 +181,7 @@ void ClipboardController::QueueRemoteText(const char* data, size_t size,
   if (!events_enabled_.load(std::memory_order_acquire)) {
     return;
   }
-  if (!data || size == 0) {
+  if (!data || (size == 0 && !complete)) {
     return;
   }
   if (size > kMaxClipboardTextBytes) {
@@ -207,11 +225,37 @@ void ClipboardController::QueueRemoteText(const char* data, size_t size,
   }
 }
 
+bool ClipboardController::QueueRead(std::function<void(std::optional<std::string>)> complete) {
+  {
+    std::lock_guard lock(pending_mutex_);
+    if (!events_enabled_.load() || pending_reads_.size() >= 32) return false;
+    pending_reads_.push_back(std::move(complete));
+  }
+  SDL_Event event{};
+  event.type = event_type_;
+  if (event_type_) SDL_PushEvent(&event);
+  return true;
+}
+
 void ClipboardController::ApplyPendingRemoteText() {
   if (!events_enabled_.load(std::memory_order_acquire)) {
     return;
   }
+  ApplyPendingWrite();
+  std::deque<std::function<void(std::optional<std::string>)>> reads;
+  {
+    std::lock_guard lock(pending_mutex_);
+    reads.swap(pending_reads_);
+  }
+  if (!reads.empty()) {
+    char* value = SDL_GetClipboardText();
+    const std::optional<std::string> text = value ? std::optional<std::string>{value} : std::nullopt;
+    SDL_free(value);
+    for (auto& complete : reads) complete(text);
+  }
+}
 
+void ClipboardController::ApplyPendingWrite() {
   std::optional<std::string> pending_text;
   std::string source_id;
   std::weak_ptr<gui_detail::RemoteSession> source_session;

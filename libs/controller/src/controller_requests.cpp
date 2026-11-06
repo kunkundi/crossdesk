@@ -54,3 +54,19 @@ std::string ControllerSession::InputResult() {
   return input_requests_.empty() ? input_result_ : "pending";
 }
 } // namespace crossdesk
+
+namespace crossdesk {
+uint64_t ControllerSession::Clipboard(bool write, const std::string &text) {
+  namespace clip = web_clipboard;
+  if (!Connected() || !control_ || !clipboard_ready_ || remote_results_.size() >= 512 ||
+      remote_sequence_ >= UINT32_MAX || (write && !text.empty() && !clip::ValidText(text)))
+    return 0;
+  const auto id = uint32_t(++remote_sequence_);
+  remote_results_[id] = nullptr;
+  const auto send = [this](const std::string &frame) { return Send(clip::kStream, frame); };
+  const bool sent = write && !text.empty() ? clip::SendText(text, id, 16 * 1024, send)
+      : send(clip::Frame(write ? clip::kClear : clip::kRead, id));
+  if (!sent) { remote_results_.erase(id); return 0; }
+  return id;
+}
+} // namespace crossdesk

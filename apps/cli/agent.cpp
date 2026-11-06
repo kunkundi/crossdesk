@@ -79,6 +79,13 @@ struct FrameWait {
   uint64_t signature, frame;
   Clock::time_point deadline, changed;
 };
+struct RemoteJob {
+  json id;
+  uint64_t request;
+  std::string operation;
+  bool write;
+  Clock::time_point deadline;
+};
 struct Capture {
   json id, request;
   bool preview = false;
@@ -298,8 +305,13 @@ private:
       std::fill(step.text.begin(), step.text.end(), '\0');
     action_.reset();
   }
+  void CancelRemoteJobs(const char *code) {
+    for (const auto &job : remote_jobs_) FinishRemote(job, {}, code);
+    remote_jobs_.clear();
+  }
   void Stop(const char *code) {
     FinishAction(code);
+    CancelRemoteJobs(code);
     for (const auto &capture : captures_)
       Error(capture.id, code);
     captures_.clear();
@@ -318,6 +330,15 @@ private:
   }
   void Tick() {
     session_.Tick();
+    for (auto it = remote_jobs_.begin(); it != remote_jobs_.end();) {
+      auto result = session_.TakeRemoteResult(it->request);
+      const char *error = !session_.Connected() ? "SESSION_CLOSED"
+          : Clock::now() >= it->deadline ? "REMOTE_REQUEST_TIMEOUT" : nullptr;
+      if (result || error) {
+        FinishRemote(*it, result ? *result : json{}, error);
+        it = remote_jobs_.erase(it);
+      } else ++it;
+    }
     // Recycle only uniquely owned frames; an encoder/video worker may still be
     // reading the old pixels. Save geometry before Take can swap its storage.
     if (auto f = session_.TakeFrame(frame_ && frame_.use_count() == 1 ? frame_.get() : nullptr)) {
@@ -593,6 +614,40 @@ private:
       throw std::invalid_argument("STALE_OBSERVATION");
     return *it;
   }
+  void FinishRemote(const RemoteJob &job, const json &reply, const char *error = nullptr) {
+    session_.ForgetRemoteRequest(job.request);
+    if (!error && reply.value("ok", json{}) != true) error = "REMOTE_REQUEST_FAILED";
+    json result = error ? json{{"status", job.write ? "outcome_unknown" : "failed"},
+        {"error", error}, {"side_effect_possible", job.write}} : reply.value("result", json::object());
+    if (!job.operation.empty()) {
+      result["operation_id"] = job.operation;
+      for (auto &record : records_) if (record.operation == job.operation) record.result = result;
+    }
+    Reply(job.id, result);
+  }
+  bool PreviousRemote(const json &j, const json &id, const std::string &operation) {
+    for (const auto &record : records_) {
+      if (record.operation != operation) continue;
+      auto arguments = j;
+      arguments.erase("id");
+      if (record.arguments != arguments.dump()) throw std::invalid_argument("OPERATION_ID_CONFLICT");
+      Reply(id, record.result);
+      return true;
+    }
+    return false;
+  }
+  void TrackRemote(const json &j, const json &id, uint64_t request, bool write,
+                   const std::string &operation = {}) {
+    if (!request) throw std::invalid_argument("NOT_READY");
+    if (!operation.empty()) {
+      auto arguments = j;
+      arguments.erase("id");
+      while (records_.size() >= 128) records_.pop_front();
+      records_.push_back({operation, arguments.dump(),
+          {{"status", "in_progress"}, {"operation_id", operation}}, Clock::now()});
+    }
+    remote_jobs_.push_back({id, request, operation, write, Clock::now() + Ms(5000)});
+  }
   const Observation &InputObservation(const json &j) {
     if (!allowed_ || paused_ || !session_.ControlEnabled())
       throw std::invalid_argument("CONTROL_DENIED");
@@ -733,6 +788,27 @@ private:
       } else if (method == "action") {
         StartAction(j, id);
         return false;
+      } else if (method == "clipboard") {
+        Fields(j, {"id", "method", "operation", "operation_id", "text"});
+        if (!allowed_ || paused_ || !session_.ControlEnabled())
+          throw std::invalid_argument("CONTROL_DENIED");
+        if (session_.Status()["capabilities"].value("clipboard", json{}) != true)
+          throw std::invalid_argument("CLIPBOARD_UNSUPPORTED");
+        const auto operation = String(j, "operation", 8);
+        if (operation != "get" && operation != "set") throw std::invalid_argument("INVALID_ARGUMENT");
+        const bool write = operation == "set";
+        const auto operation_id = write ? String(j, "operation_id") : std::string{};
+        if (write && PreviousRemote(j, id, operation_id)) return false;
+        if (remote_jobs_.size() >= 16) throw std::invalid_argument("BUSY");
+        std::string text;
+        if (write) {
+          if (!j.contains("text") || !j["text"].is_string()) throw std::invalid_argument("INVALID_ARGUMENT");
+          text = j["text"].get<std::string>();
+          if (text.size() > 16384 || text.find('\0') != std::string::npos)
+            throw std::invalid_argument("INVALID_ARGUMENT");
+        }
+        TrackRemote(j, id, session_.Clipboard(write, text), write, operation_id);
+        return false;
       } else if (method == "wait_frame") {
         Fields(j, {"id", "method", "observation_id", "condition", "stable_ms", "timeout_ms"});
         const auto &observation = Observe(j);
@@ -788,6 +864,7 @@ private:
           throw std::invalid_argument("CONTROL_DENIED");
         if (!enable)
           FinishAction("CONTROL_DISABLED");
+        if (!enable) CancelRemoteJobs("CONTROL_DENIED");
         session_.SetControl(enable);
       } else if (method == "viewer_control") {
         Fields(j, {"id", "method", "operation"});
@@ -795,6 +872,7 @@ private:
         if (operation == "pause") {
           paused_ = true;
           FinishAction("USER_PAUSED");
+          CancelRemoteJobs("USER_PAUSED");
           session_.SetControl(false);
         } else if (operation == "resume") {
           if (!allowed_)
@@ -823,6 +901,12 @@ private:
         if (!j.contains("request_id") || !j["request_id"].is_number_integer())
           throw std::invalid_argument("INVALID_REQUEST");
         const auto target = j["request_id"];
+        for (auto it = remote_jobs_.begin(); it != remote_jobs_.end();) {
+          if (it->id == target) {
+            FinishRemote(*it, {}, "CANCELLED");
+            it = remote_jobs_.erase(it);
+          } else ++it;
+        }
         for (auto it = frame_waits_.begin(); it != frame_waits_.end();) {
           if (it->id == target) {
             Error(it->id, "CANCELLED");
@@ -896,6 +980,7 @@ private:
   std::deque<Observation> observations_;
   std::deque<Capture> captures_;
   std::deque<FrameWait> frame_waits_;
+  std::deque<RemoteJob> remote_jobs_;
   std::unique_ptr<Encoding> encoding_;
   std::unique_ptr<TerminalEncoding> terminal_encoding_;
   std::unique_ptr<RunningAction> action_;

@@ -466,6 +466,13 @@ export class Sessions {
     if (result.matched) result.observation = await this.screenshot({ session_id }, signal);
     return result;
   }
+  async clipboard(p: Data, signal?: AbortSignal): Promise<Data> {
+    const { session_id, ...args } = p;
+    const s = this.session(session_id);
+    this.checkUnlock(s);
+    if (s.unlock && this.unlockPending(s.unlock)) throw new Failure("UNLOCK_PENDING");
+    return s.native.request("clipboard", args, 7000, signal);
+  }
   async control(id: string, enabled: boolean) {
     if (!enabled) this.cancelUnlock(this.session(id));
     return this.session(id).native.request("control", { enabled });

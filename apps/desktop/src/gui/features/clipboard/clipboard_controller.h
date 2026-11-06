@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -42,6 +43,7 @@ public:
                        std::function<void(bool)> complete = {},
                        std::function<bool()> allowed = {});
   void ApplyPendingRemoteText();
+  bool QueueRead(std::function<void(std::optional<std::string>)> complete);
   void HandleLocalUpdate();
   void ReceiveWeb(const char* data, size_t size, const std::string& remote_id,
                    PeerEventHandler* source);
@@ -49,6 +51,7 @@ public:
 
 private:
   struct WebSession;
+  void ApplyPendingWrite();
   bool WebSessionActive(const std::string& remote_id,
                          const std::shared_ptr<WebSession>& session);
   int SendToController(const std::string& remote_id, const std::string& text);
@@ -59,6 +62,7 @@ private:
   uint32_t event_type_ = 0;
   std::atomic<bool> events_enabled_{false};
   std::mutex pending_mutex_;
+  std::deque<std::function<void(std::optional<std::string>)>> pending_reads_;
   std::optional<std::string> pending_remote_text_;
   std::string pending_remote_id_;
   std::weak_ptr<gui_detail::RemoteSession> pending_session_;

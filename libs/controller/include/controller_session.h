@@ -15,6 +15,7 @@
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <remote_action.h>
+#include <web_clipboard_protocol.h>
 #include <set>
 #include <string>
 #include <vector>
@@ -77,6 +78,8 @@ public:
   bool Pointer(float x, float y, int flag, int wheel = 0);
   uint64_t RequestRemote(const std::string &method, nlohmann::json arguments = {});
   std::optional<nlohmann::json> TakeRemoteResult(uint64_t request);
+  void ForgetRemoteRequest(uint64_t request) { remote_results_.erase(request); }
+  uint64_t Clipboard(bool write, const std::string &text = {});
   void BeginInput();
   std::string InputResult();
   bool InputAcknowledged() const { return remote_capabilities_.value("input_ack", nlohmann::json{}) == true; }
@@ -121,6 +124,8 @@ private:
   std::vector<uint64_t> input_requests_;
   std::string input_result_ = "applied";
   bool input_ack_active_ = false;
+  bool clipboard_ready_ = false;
+  web_clipboard::Assembler clipboard_assembler_;
   uint64_t generation_ = 0;
   uint32_t preview_request_ = 0, preview_ack_ = 0;
   bool control_ = false, preview_supported_ = false, resolution_ = false;

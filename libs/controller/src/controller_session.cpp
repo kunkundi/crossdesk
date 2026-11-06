@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <display_stream_id.h>
 #include <log.h>
 #include <preview_subscription.h>
@@ -42,6 +43,12 @@ void ControllerSession::Data(const char *data, size_t n, const char *, size_t,
                              const char *stream, size_t sn, void *p) {
   auto &session = *static_cast<ControllerSession *>(p);
   try {
+    if (data && n && n <= web_clipboard::kHeaderBytes + web_clipboard::kChunkBytes &&
+        stream && sn == std::strlen(web_clipboard::kStream) &&
+        std::string_view(stream, sn) == web_clipboard::kStream) {
+      session.Enqueue({3, 0, std::string(data, n)});
+      return;
+    }
     if (data && n && n <= 65536 && stream && sn < 64 &&
         (std::string(stream, sn) == kControlStream ||
          std::string(stream, sn) == kWebControlStream))
@@ -122,6 +129,8 @@ void ControllerSession::Connect(SessionOptions options, std::string device,
   remote_results_.clear();
   input_requests_.clear();
   capability_request_ = 0;
+  clipboard_ready_ = false;
+  clipboard_assembler_ = {};
   displays_.clear();
   host_platform_ = HostPlatform::Unknown;
   preview_supported_ = resolution_ = fps15_ = bandwidth_ = text_supported_ =
@@ -155,6 +164,7 @@ void ControllerSession::Connect(SessionOptions options, std::string device,
   AddDataStream(peer_, kDataStream, false);
   for (auto stream : {kMouseStream, kKeyboardStream, kControlStream})
     AddDataStream(peer_, stream, true);
+  AddDataStream(peer_, web_clipboard::kStream, true);
   if (Init(peer_) != 0)
     Fail("media_initialization_failed");
 }
@@ -240,6 +250,24 @@ void ControllerSession::Tick() {
         Fail(Connected() ? "connection_lost" : "connection_failed");
       else if (e.code == Closed || e.code == Disconnected)
         Fail("remote_disconnected");
+    } else if (e.kind == 3 && Connected()) {
+      namespace clip = web_clipboard;
+      if (e.data.size() < clip::kHeaderBytes) continue;
+      const auto kind = clip::Read32(e.data.data());
+      const auto id = clip::Read32(e.data.data() + 4);
+      if (kind == clip::kReady && !id) { clipboard_ready_ = true; continue; }
+      const auto found = remote_results_.find(id);
+      if (!id || found == remote_results_.end()) continue;
+      if (kind == clip::kApplied || kind == clip::kRejected) {
+        found->second = {{"ok", kind == clip::kApplied},
+            {"result", {{"applied", kind == clip::kApplied}}}, {"error", "CLIPBOARD_REJECTED"}};
+      } else if (kind == clip::kEmpty) {
+        found->second = {{"ok", true}, {"result", {{"text", ""}}}};
+      } else if (kind == clip::kText) {
+        const auto text = clipboard_assembler_.Receive(e.data);
+        if (!text.empty()) found->second = {{"ok", true},
+            {"result", {{"text", text.substr(clip::kHeaderBytes)}}}};
+      }
     } else if (e.kind == 2 && Connected()) {
       auto j = ParseBoundedJson(e.data);
       if (!j.is_object())
@@ -254,6 +282,9 @@ void ControllerSession::Tick() {
           if (id == capability_request_) {
             if (j.value("ok", json{}) == true && j.value("result", json{}).is_object())
               remote_capabilities_ = j["result"];
+            if (remote_capabilities_.value("clipboard", json{}) == true)
+              Send(web_clipboard::kStream, web_clipboard::Frame(
+                  web_clipboard::kHello, 0, web_clipboard::kVersion));
             remote_results_.erase(found);
           }
         }
@@ -475,6 +506,7 @@ json ControllerSession::Status() const {
           {"display", options_.display},
           {"text_input", text_supported_},
           {"capabilities", remote_capabilities_},
+          {"clipboard_ready", clipboard_ready_},
           {"preview_supported", preview_supported_},
           {"preview_request", preview_request_},
           {"preview_ack", preview_ack_},

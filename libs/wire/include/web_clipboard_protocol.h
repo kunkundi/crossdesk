@@ -23,6 +23,7 @@ inline constexpr size_t kHeaderBytes = 16;
 inline constexpr size_t kChunkBytes = 16 * 1024;
 inline constexpr uint32_t kText = 1, kApplied = 2, kRejected = 3;
 inline constexpr uint32_t kHello = 4, kReady = 5;
+inline constexpr uint32_t kRead = 6, kEmpty = 7, kClear = 8;
 
 inline uint32_t Read32(const char* data) {
   const auto* p = reinterpret_cast<const unsigned char*>(data);

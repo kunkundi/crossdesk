@@ -250,3 +250,7 @@ npm run pack:npm -- --out-dir /absolute/path/artifacts
 更新后的被控端通过 `capabilities.input_ack` 声明输入处理回执。动作结果的 `remote_execution` 表示远端原生输入处理状态，应用界面的实际结果由后续观察确认。旧被控端返回 `unsupported`。回执等待有明确期限，超时动作保留结果不确定状态。
 
 `crossdesk_wait` 使用已有截图的 `observation_id`，等待对应区域变化（`changed`）或持续稳定（`stable`）。可设置 `stable_ms` 和最长 25000 毫秒的 `timeout_ms`。满足条件后返回新截图，切换显示器、断开和取消会结束等待。
+
+### 远端剪贴板
+
+`crossdesk_clipboard_get` 读取远端文本剪贴板，`crossdesk_clipboard_set` 设置文本，空字符串清空。读取上限为 128 KiB，单次工具写入上限为 16 KiB UTF-8。写入需要 `operation_id`，相同请求查询原结果。工具使用已授权控制会话，并遵守人工暂停及解锁等待状态。更新后的被控端通过 `capabilities.clipboard` 声明支持，写入成功由系统剪贴板更新回执确认。

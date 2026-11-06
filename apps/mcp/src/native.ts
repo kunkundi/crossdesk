@@ -173,6 +173,8 @@ export class NativeClient {
     if (this.pending.size >= 32 || this.child.stdin!.writableLength > 262144)
       return Promise.reject(new Failure("BUSY", false, true));
     const id = ++this.sequence;
+    const sideEffect = method === "action" || method === "unlock" ||
+      (method === "clipboard" && args.operation === "set");
     const line = JSON.stringify({ ...args, id, method }) + "\n";
     if (Buffer.byteLength(line) > 65536)
       return Promise.reject(new Failure("MESSAGE_TOO_LARGE"));
@@ -190,7 +192,7 @@ export class NativeClient {
             request_id: id,
           }) + "\n",
         );
-        reject(new Failure(code, method === "action" || method === "unlock"));
+        reject(new Failure(code, sideEffect));
       };
       const abort = () => cancel("CANCELLED");
       const timer = setTimeout(() => cancel("NATIVE_TIMEOUT"), timeout);
@@ -198,7 +200,7 @@ export class NativeClient {
       this.pending.set(id, {
         resolve,
         reject,
-        action: method === "action" || method === "unlock",
+        action: sideEffect,
         clean: () => {
           clearTimeout(timer);
           signal?.removeEventListener("abort", abort);
