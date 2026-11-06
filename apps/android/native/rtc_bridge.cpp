@@ -2,7 +2,6 @@
 #include <android/native_window_jni.h>
 #include <libyuv.h>
 #include <minirtc.h>
-#include <log.h>
 #include <remote_action.h>
 #include <app_version.h>
 #include <stream_names.h>
@@ -19,7 +18,6 @@
 #include <vector>
 #include "controller_protocol.h"
 #include "file_transfer_session.h"
-#include "android_codec_support.h"
 #include "latest_frame_worker.h"
 #include "video_picture.h"
 #include "video_timing.h"
@@ -289,7 +287,7 @@ Session* From(jlong handle) { return reinterpret_cast<Session*>(handle); }
 
 extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* java_vm, void*) {
   vm = java_vm;
-  minirtc::android::SetJavaVm(java_vm);
+  if (SetMiniRtcAndroidJavaVm(java_vm) != 0) return JNI_ERR;
   return JNI_VERSION_1_6;
 }
 #define JNI_METHOD(name) Java_cn_crossdesk_mobile_NativeSession_##name
@@ -343,8 +341,8 @@ extern "C" JNIEXPORT jlong JNICALL JNI_METHOD(nCreate)(
       throw std::runtime_error("Unable to configure Android trust bundle");
     // MiniRTC's diagnostic log includes login identities. Keep credentials
     // solely in Keystore-backed storage; do not persist its session logging.
-    minirtc::InitLogger(s->log_path);
-    minirtc::get_logger()->set_level(spdlog::level::off);
+    if (ConfigureMiniRtcLogging(MiniRtcLogOff, nullptr, nullptr) != 0)
+      throw std::runtime_error("Unable to configure MiniRTC logging");
     auto params = Parameters(s.get(), false);
     s->identity = CreatePeer(&params);
     if (!s->identity || Init(s->identity) != 0) return 0;

@@ -11,6 +11,7 @@
 
 namespace crossdesk {
 void InitializeControllerDiagnostics(const std::string &directory);
+void WriteControllerDiagnostic(const std::string &message) noexcept;
 }
 
 #endif

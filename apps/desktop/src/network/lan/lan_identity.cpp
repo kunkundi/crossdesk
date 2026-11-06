@@ -13,7 +13,7 @@
 #include <stdexcept>
 #include <string_view>
 
-#include "direct_address.h"
+#include <minirtc.h>
 #include "lan_password.h"
 #ifdef _WIN32
 // Winsock must precede windows.h; the networking headers need its types.
@@ -212,12 +212,14 @@ unsigned ParsePort(const std::string& value) {
   return port;
 }
 bool IsIpAddress(const std::string& value) {
-  return minirtc::ParseDirectAddress(value).has_value();
+  char normalized[129]{};
+  return NormalizeMiniRtcDirectAddress(value.data(), value.size(), normalized, sizeof(normalized)) == 0;
 }
 std::string NormalizeAddress(const std::string& value) {
-  const auto address = minirtc::ParseDirectAddress(value);
-  Require(address.has_value(), "Invalid LAN endpoint");
-  return minirtc::DirectAddressString(*address);
+  char normalized[129]{};
+  Require(NormalizeMiniRtcDirectAddress(value.data(), value.size(), normalized, sizeof(normalized)) == 0,
+          "Invalid LAN endpoint");
+  return normalized;
 }
 std::string FormatEndpoint(const std::string& address, unsigned port) {
   return (address.find(':') == std::string::npos ? address

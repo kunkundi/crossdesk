@@ -7,7 +7,6 @@
 #include <mobile_file_transfer_session.h>
 #include <mobile_video_timing.h>
 #include <display_stream_id.h>
-#include <log.h>
 #include <libyuv.h>
 #include <algorithm>
 #include <cmath>
@@ -257,7 +256,9 @@ class MobileSession {
       preview_directory_=v.at("previewDirectory").get<std::string>();
       if (server_.empty()||server_.size()>=256||server_.find('@')!=std::string::npos||port_<1||port_>65535||
           logs_.size()>=256||roots.empty()||directory_.empty()) throw std::runtime_error("Invalid configuration");
-      setenv("SSL_CERT_DIR",roots.c_str(),1); minirtc::InitLogger(logs_); minirtc::get_logger()->set_level(spdlog::level::off);
+      setenv("SSL_CERT_DIR",roots.c_str(),1);
+      if (ConfigureMiniRtcLogging(MiniRtcLogOff, nullptr, nullptr) != 0)
+        throw std::runtime_error("Unable to configure MiniRTC logging");
       identity_context_=std::make_unique<Context>(Context{this,false,session_});
       auto p=Parameters(false); identity_=CreatePeer(&p); signal_started_=Clock::now();
       if (!identity_||Init(identity_)!=0) { throw std::runtime_error("Identity initialization failed"); }

@@ -87,7 +87,7 @@
 #include "rd_log.h"
 #include "server_window_state.h"
 #include "signal_server_settings.h"
-#include "signal_server_address.h"
+#include <minirtc.h>
 #include "ui/announcement_text.h"
 #include "ui/model_update.h"
 #include "ui/release_notes_text.h"
@@ -3532,11 +3532,11 @@ void GuiApplication::SyncConnectionDialog() {
            : auth.incorrect_password
                ? localization::reinput_password[localization_language_index_]
                : localization::input_password[localization_language_index_];
-  } else if (auth.error == minirtc::JoinFailureKind::Throttled) {
+  } else if (auth.error == MiniRtcJoinFailureKind::Throttled) {
     text = localization::connection_auth_throttled[localization_language_index_];
-  } else if (auth.error == minirtc::JoinFailureKind::Busy) {
+  } else if (auth.error == MiniRtcJoinFailureKind::Busy) {
     text = localization::connection_service_busy[localization_language_index_];
-  } else if (auth.error == minirtc::JoinFailureKind::NotAuthenticated) {
+  } else if (auth.error == MiniRtcJoinFailureKind::NotAuthenticated) {
     text = localization::connection_not_authenticated[localization_language_index_];
   } else {
     text = props->lan_session_ && !props->lan_session_->error.empty()
@@ -4782,20 +4782,20 @@ void GuiApplication::SyncFileTransferNotifications() {
 
 bool GuiApplication::ValidateSelfHostedSettingsFromUi(bool gallery_window) {
   auto& main = ui_->Window(gallery_window);
-  const auto address = minirtc::ParseSignalServerAddress(
-      std::string(main->get_server_host()));
-  if (!address) {
+  const auto input = std::string(main->get_server_host());
+  MiniRtcSignalServerAddress address{};
+  if (ParseMiniRtcSignalServerAddress(input.data(), input.size(), &address) != 0) {
     main->set_self_host_settings_error(UiText(
         localization::self_hosted_address_invalid[localization_language_index_]));
     return false;
   }
-  const auto port = address->port ? address->port : ParsePort(main->get_server_port());
+  const auto port = address.port ? std::optional<int>(address.port) : ParsePort(main->get_server_port());
   if (!port) {
     main->set_self_host_settings_error(UiText(
         localization::self_hosted_port_invalid[localization_language_index_]));
     return false;
   }
-  main->set_server_host(UiText(address->Address()));
+  main->set_server_host(UiText(std::string(address.host) + address.target));
   main->set_server_port(UiText(std::to_string(*port)));
   main->set_self_host_settings_error("");
   return true;

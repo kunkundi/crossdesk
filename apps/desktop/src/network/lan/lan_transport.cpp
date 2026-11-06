@@ -13,7 +13,7 @@
 #include <websocketpp/config/asio_client.hpp>
 #include <websocketpp/server.hpp>
 
-#include "direct_address.h"
+#include <minirtc.h>
 
 namespace crossdesk::lan {
 namespace {
@@ -147,7 +147,11 @@ bool SupportsDualStack() {
 std::string SocketAddress(asio::ip::address address) {
   if (address.is_v6() && address.to_v6().is_v4_mapped())
     address = asio::ip::make_address_v4(asio::ip::v4_mapped, address.to_v6());
-  return minirtc::DirectAddressString(address);
+  if (address.is_v4()) return address.to_string();
+  auto ipv6 = address.to_v6();
+  const auto scope = ipv6.scope_id();
+  ipv6.scope_id(0);
+  return ipv6.to_string() + (scope ? "%" + std::to_string(scope) : "");
 }
 std::shared_ptr<Context> TlsContext() {
   auto context = std::make_shared<Context>(Context::tls);
@@ -323,7 +327,8 @@ struct Transport::Impl {
       c->local_address = SocketAddress(local.address());
       c->remote_address = SocketAddress(remote.address());
       const auto interfaces = LocalIpInterfaces();
-      if (!minirtc::IsDirectAddressPair(c->local_address, c->remote_address) ||
+      if (IsMiniRtcDirectAddressPair(c->local_address.data(), c->local_address.size(),
+                                    c->remote_address.data(), c->remote_address.size()) != 1 ||
           std::none_of(
               interfaces.begin(), interfaces.end(),
               [&](const auto& i) { return i.address == c->local_address; })) {

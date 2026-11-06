@@ -1,19 +1,22 @@
 #include "controller_diagnostics.h"
-#include <log.h>
+#include <minirtc.h>
+#include <spdlog/details/log_msg.h>
+#include <spdlog/sinks/rotating_file_sink.h>
+#include <memory>
+#include <mutex>
+#include <stdexcept>
 #include <string_view>
 
 namespace crossdesk {
 namespace {
 // Signaling errors and SDP can contain credentials. Only audited transport
 // events reach this sink; arbitrary MiniRTC messages remain suppressed.
-std::string DiagnosticEvent(const spdlog::details::log_msg &message) {
-  std::string_view source = message.source.filename ? message.source.filename : "";
+std::string DiagnosticEvent(const MiniRtcLogRecord &message) {
+  std::string_view source = message.source_file ? message.source_file : "";
   const auto slash = source.find_last_of("/\\");
   if (slash != std::string_view::npos)
     source.remove_prefix(slash + 1);
-  const std::string_view text(message.payload.data(), message.payload.size());
-  if (source == "controller_session.cpp")
-    return std::string(text); // Local states/counters only at these call sites.
+  const std::string_view text(message.message, message.message_size);
   if (source == "ws_client.cpp") {
     if (text == "WebSocket connection opened") return std::string(text);
     // These call sites contain library category names, numeric codes and retry
@@ -59,30 +62,56 @@ std::string DiagnosticEvent(const spdlog::details::log_msg &message) {
   return {};
 }
 
-class DiagnosticSink final : public spdlog::sinks::base_sink<std::mutex> {
+class DiagnosticWriter {
 public:
-  explicit DiagnosticSink(const std::string &directory)
+  explicit DiagnosticWriter(const std::string &directory)
       : file_(directory + "/transport.log", 1024 * 1024, 2) {}
-
-private:
-  void sink_it_(const spdlog::details::log_msg &message) override {
-    const auto event = DiagnosticEvent(message);
-    if (event.empty())
-      return;
-    auto sanitized = message;
-    sanitized.payload = spdlog::string_view_t(event.data(), event.size());
-    file_.log(sanitized);
+  void Write(const std::string &event, const MiniRtcLogRecord *record = nullptr) {
+    if (event.empty()) return;
+    spdlog::details::log_msg message("crossdesk", spdlog::level::info, event);
+    if (record) {
+      message.level = static_cast<spdlog::level::level_enum>(record->level);
+      message.time = spdlog::log_clock::time_point(std::chrono::microseconds(record->timestamp_us));
+      message.source = {record->source_file, record->source_line, ""};
+    }
+    file_.log(message);
     file_.flush();
   }
-  void flush_() override { file_.flush(); }
+private:
   spdlog::sinks::rotating_file_sink_mt file_;
 };
+void ReceiveLog(const MiniRtcLogRecord *message, void *context) {
+  if (message) static_cast<DiagnosticWriter *>(context)->Write(DiagnosticEvent(*message), message);
+}
+struct Diagnostics {
+  std::mutex initialization, mutex;
+  std::shared_ptr<DiagnosticWriter> writer;
+  ~Diagnostics() {
+    // Quiesce the callback before releasing its application-owned context.
+    ConfigureMiniRtcLogging(MiniRtcLogOff, nullptr, nullptr);
+  }
+};
+Diagnostics &State() {
+  static Diagnostics state;
+  return state;
+}
 } // namespace
 
 void InitializeControllerDiagnostics(const std::string &directory) {
-  auto sink = std::make_shared<DiagnosticSink>(directory);
-  minirtc::InitLogger(directory, std::move(sink));
-  auto logger = minirtc::get_logger();
-  logger->set_level(spdlog::level::info);
+  auto &state = State();
+  std::lock_guard initialize(state.initialization);
+  auto writer = std::make_shared<DiagnosticWriter>(directory);
+  if (ConfigureMiniRtcLogging(MiniRtcLogInfo, ReceiveLog, writer.get()) != 0)
+    throw std::runtime_error("Unable to configure MiniRTC diagnostics");
+  std::lock_guard lock(state.mutex);
+  state.writer = std::move(writer);
+}
+void WriteControllerDiagnostic(const std::string &message) noexcept {
+  try {
+    auto &state = State();
+    std::shared_ptr<DiagnosticWriter> writer;
+    { std::lock_guard lock(state.mutex); writer = state.writer; }
+    if (writer) writer->Write(message);
+  } catch (...) {}
 }
 } // namespace crossdesk

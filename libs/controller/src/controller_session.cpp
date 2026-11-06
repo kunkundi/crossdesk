@@ -5,7 +5,6 @@
 #include <cstdio>
 #include <cstring>
 #include <display_stream_id.h>
-#include <log.h>
 #include <preview_subscription.h>
 #include <stdexcept>
 #include <stream_names.h>
@@ -159,7 +158,7 @@ void ControllerSession::Connect(SessionOptions options, std::string device,
   // Never register a desktop identity or persist local credentials.
   client_id_.clear();
   InitializeControllerDiagnostics(options_.log_directory);
-  SPDLOG_LOGGER_INFO(minirtc::get_logger(), "Session registering");
+  WriteControllerDiagnostic("Session registering");
   auto p = Parameters();
   peer_ = CreatePeer(&p);
   if (!peer_) {
@@ -198,7 +197,7 @@ void ControllerSession::Tick() {
     if (Finished())
       break;
     if (e.kind == 0) {
-      SPDLOG_LOGGER_INFO(minirtc::get_logger(), "Signal status: {}", e.code);
+      WriteControllerDiagnostic("Signal status: " + std::to_string(e.code));
       if (e.code == SignalTlsCertError) {
         Fail("tls_certificate_error");
         break;
@@ -210,8 +209,7 @@ void ControllerSession::Tick() {
       // The initial signaling transport can recover before a remote join is
       // sent. Keep its backoff worker alive within the original deadline.
       if (e.code == SignalReconnecting && state_ == "registering") {
-        SPDLOG_LOGGER_INFO(minirtc::get_logger(),
-                          "Initial signaling retry within connection deadline");
+        WriteControllerDiagnostic("Initial signaling retry within connection deadline");
         continue;
       }
       if (e.code == SignalClosed || e.code == SignalServerClosed ||
@@ -236,8 +234,7 @@ void ControllerSession::Tick() {
         password_.clear();
       }
     } else if (e.kind == 1) {
-      SPDLOG_LOGGER_INFO(minirtc::get_logger(), "Connection status: {} (session {})",
-                         e.code, state_);
+      WriteControllerDiagnostic("Connection status: " + std::to_string(e.code) + " (session " + state_ + ")");
       if (e.code == ::Connected && !Connected()) {
         state_ = "connected";
         auto hello = MakeHostInformation("CrossDesk CLI", {}, false);
@@ -365,8 +362,7 @@ void ControllerSession::ClosePeers() {
   password_.clear();
 }
 void ControllerSession::Fail(const char *reason) {
-  SPDLOG_LOGGER_INFO(minirtc::get_logger(), "Session failed: {} (stage {})",
-                     reason, state_);
+  WriteControllerDiagnostic("Session failed: " + std::string(reason) + " (stage " + state_ + ")");
   ReleaseInput();
   error_ = reason;
   state_ = "failed";
@@ -449,7 +445,7 @@ void ControllerSession::Preview() {
 }
 void ControllerSession::SetControl(bool enabled) {
   if (control_ != enabled)
-    SPDLOG_LOGGER_INFO(minirtc::get_logger(), "Remote control: {}", enabled);
+    WriteControllerDiagnostic(std::string("Remote control: ") + (enabled ? "true" : "false"));
   if (!enabled)
     ReleaseInput();
   control_ = enabled;

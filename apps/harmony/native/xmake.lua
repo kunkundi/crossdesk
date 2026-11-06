@@ -10,7 +10,7 @@ target("crossdesk_harmony_mobile")
     set_kind("shared")
     set_default(false)
     add_deps("minirtc")
-    add_packages("nlohmann_json", "libyuv", "spdlog")
+    add_packages("nlohmann_json", "libyuv")
     add_files("mobile_session.cpp", "media.cpp", "audio.cpp", "../../../libs/wire/src/remote_action.cpp", "../../../libs/wire/src/file_transfer.cpp", "../../../libs/wire/src/app_version.cpp")
     -- Export only the bridge API; bundled static dependencies are internal.
     add_cxflags("-fvisibility=hidden", "-fvisibility-inlines-hidden")

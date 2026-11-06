@@ -16,7 +16,6 @@ target("crossdesk_controller")
     add_packages("spdlog", "libpng", "libyuv")
     add_includedirs(path.join(controller_dir, "include"),
         path.join(minirtc_dir, "src/api"), {public = true})
-    add_includedirs(path.join(minirtc_dir, "src/log"))
     add_files(path.join(controller_dir, "src/*.cpp"))
     remove_files(path.join(controller_dir, "src/file_browser.cpp"))
 target_end()

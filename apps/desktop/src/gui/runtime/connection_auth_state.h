@@ -5,7 +5,8 @@
 #include <mutex>
 #include <string_view>
 
-#include "join_failure.h"
+#include <minirtc.h>
+#include <nlohmann/json.hpp>
 
 namespace crossdesk {
 
@@ -18,7 +19,7 @@ class ConnectionAuthState {
     bool password_required = false;
     bool validating = false;
     bool incorrect_password = false;
-    minirtc::JoinFailureKind error = minirtc::JoinFailureKind::Unknown;
+    MiniRtcJoinFailureKind error = MiniRtcJoinFailureKind::Unknown;
     int retry_after = 0;
   };
 
@@ -34,15 +35,16 @@ class ConnectionAuthState {
 
   void Rejected(const nlohmann::json& reply,
                 Clock::time_point now = Clock::now()) {
-    const auto failure = minirtc::ParseJoinFailure(reply);
+    const auto message = reply.dump();
+    const auto failure = ParseMiniRtcJoinFailure(message.data(), message.size());
     std::lock_guard lock(mutex_);
     state_ = {};
     state_.error = failure.kind;
     state_.incorrect_password =
-        failure.kind == minirtc::JoinFailureKind::AuthenticationFailed;
+        failure.kind == MiniRtcJoinFailureKind::AuthenticationFailed;
     state_.password_required =
         state_.incorrect_password ||
-        failure.kind == minirtc::JoinFailureKind::PasswordRequired;
+        failure.kind == MiniRtcJoinFailureKind::PasswordRequired;
     retry_at_ = now + std::chrono::seconds(failure.retry_after);
   }
 

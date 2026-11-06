@@ -10,7 +10,7 @@
 #include "SimpleIni.h"
 #include "autostart.h"
 #include "rd_log.h"
-#include "signal_server_address.h"
+#include <minirtc.h>
 
 namespace crossdesk {
 
@@ -349,22 +349,24 @@ int ConfigCenter::SetForceRelay(bool force_relay) {
 }
 
 int ConfigCenter::SetServerHost(const std::string& host) {
-  const auto address = minirtc::ParseSignalServerAddress(host);
-  if (!address) return -1;
-  if (address->port) return SetServerEndpoint(host, *address->port);
-  if (StoreValues({{"signal_server_host", address->Address()}}) != 0) return -1;
-  signal_server_host_ = address->Address();
+  MiniRtcSignalServerAddress address{};
+  if (ParseMiniRtcSignalServerAddress(host.data(), host.size(), &address) != 0) return -1;
+  if (address.port) return SetServerEndpoint(host, address.port);
+  const auto normalized = std::string(address.host) + address.target;
+  if (StoreValues({{"signal_server_host", normalized}}) != 0) return -1;
+  signal_server_host_ = normalized;
   return 0;
 }
 
 int ConfigCenter::SetServerEndpoint(const std::string& host, int port) {
-  const auto address = minirtc::ParseSignalServerAddress(host);
-  if (!address) return -1;
-  port = address->port.value_or(port);
+  MiniRtcSignalServerAddress address{};
+  if (ParseMiniRtcSignalServerAddress(host.data(), host.size(), &address) != 0) return -1;
+  if (address.port) port = address.port;
   if (port < 1 || port > 65535) return -1;
-  if (StoreValues({{"signal_server_host", address->Address()},
+  const auto normalized = std::string(address.host) + address.target;
+  if (StoreValues({{"signal_server_host", normalized},
                    {"signal_server_port", std::to_string(port)}}) != 0) return -1;
-  signal_server_host_ = address->Address();
+  signal_server_host_ = normalized;
   signal_server_port_ = port;
   return 0;
 }
