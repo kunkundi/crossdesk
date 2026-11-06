@@ -168,6 +168,10 @@ void ControllerSession::Tick() {
     Fail("control_event_overflow");
     return;
   }
+  if (!Connected() && std::chrono::steady_clock::now() >= deadline_) {
+    Fail(state_ == "registering" ? "signaling_timeout" : "connection_timeout");
+    return;
+  }
   for (auto &e : pending) {
     if (Finished())
       break;
@@ -180,6 +184,13 @@ void ControllerSession::Tick() {
       if (e.code == SignalFailed) {
         Fail("signaling_login_failed");
         break;
+      }
+      // The initial signaling transport can recover before a remote join is
+      // sent. Keep its backoff worker alive within the original deadline.
+      if (e.code == SignalReconnecting && state_ == "registering") {
+        SPDLOG_LOGGER_INFO(minirtc::get_logger(),
+                          "Initial signaling retry within connection deadline");
+        continue;
       }
       if (e.code == SignalClosed || e.code == SignalServerClosed ||
           e.code == SignalReconnecting) {
@@ -258,9 +269,6 @@ void ControllerSession::Tick() {
       FreeRemoteAction(a);
     }
   }
-  if (!Connected() && !Finished() &&
-      std::chrono::steady_clock::now() > deadline_)
-    Fail("connection_timeout");
 }
 bool ControllerSession::Send(const char *stream, const std::string &payload) {
   return peer_ && Connected() && !payload.empty() &&
@@ -282,7 +290,8 @@ void ControllerSession::ClosePeers() {
   password_.clear();
 }
 void ControllerSession::Fail(const char *reason) {
-  SPDLOG_LOGGER_INFO(minirtc::get_logger(), "Session failed: {}", reason);
+  SPDLOG_LOGGER_INFO(minirtc::get_logger(), "Session failed: {} (stage {})",
+                     reason, state_);
   ReleaseInput();
   error_ = reason;
   state_ = "failed";

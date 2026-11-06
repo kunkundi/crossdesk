@@ -15,6 +15,26 @@ import { DeviceStore, type Device } from "./store.js";
 import { nativeBinary, NativeClient } from "./native.js";
 import { displayEnvironment } from "./environment.js";
 
+// Keep the public error categories while exposing only known native reasons.
+const connectionErrors = new Map<string, string>([
+  ["incorrect_password", "AUTH_FAILED"],
+  ["signaling_timeout", "CONNECTION_TIMEOUT"],
+  ["connection_timeout", "CONNECTION_TIMEOUT"],
+  ["signaling_login_failed", "CONNECTION_FAILED"],
+  ["signaling_disconnected", "CONNECTION_FAILED"],
+  ["tls_certificate_error", "CONNECTION_FAILED"],
+  ["cli_identity_not_supported", "CONNECTION_FAILED"],
+  ["join_request_failed", "CONNECTION_FAILED"],
+  ["device_not_found", "CONNECTION_FAILED"],
+  ["device_offline_or_unavailable", "CONNECTION_FAILED"],
+  ["connection_lost", "CONNECTION_FAILED"],
+  ["connection_failed", "CONNECTION_FAILED"],
+  ["remote_disconnected", "CONNECTION_FAILED"],
+  ["display_not_available", "CONNECTION_FAILED"],
+  ["media_initialization_failed", "CONNECTION_FAILED"],
+  ["control_event_overflow", "CONNECTION_FAILED"],
+]);
+
 export interface View {
   id: string;
   generation: number;
@@ -346,12 +366,11 @@ export class Sessions {
           s.connecting = false;
           return { ...s.status, session_id: s.id, device_alias: s.device.alias };
         }
-        if (["failed", "closed", "disconnected"].includes(s.status.state))
-          throw new Failure(
-            s.status.error === "incorrect_password"
-              ? "AUTH_FAILED"
-              : "CONNECTION_FAILED",
-          );
+        if (["failed", "closed", "disconnected"].includes(s.status.state)) {
+          const code = connectionErrors.get(s.status.error);
+          throw new Failure(code ?? "CONNECTION_FAILED", false, false,
+            code ? s.status.error : undefined);
+        }
         await delay(100, undefined, { signal });
       }
       throw new Failure("CONNECTION_TIMEOUT");

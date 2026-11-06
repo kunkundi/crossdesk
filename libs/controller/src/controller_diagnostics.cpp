@@ -14,6 +14,17 @@ std::string DiagnosticEvent(const spdlog::details::log_msg &message) {
   const std::string_view text(message.payload.data(), message.payload.size());
   if (source == "controller_session.cpp")
     return std::string(text); // Local states/counters only at these call sites.
+  if (source == "ws_client.cpp") {
+    if (text == "WebSocket connection opened") return std::string(text);
+    // These call sites contain library category names, numeric codes and retry
+    // counters. Keep free-form errors, server close reasons and URLs filtered.
+    for (const std::string_view prefix : {
+             "Signaling transport failure: category=",
+             "Signaling transport closed: code=",
+             "Scheduling signaling reconnect: attempt=",
+             "Will retry connection after "})
+      if (text.substr(0, prefix.size()) == prefix) return std::string(text);
+  }
   if (source == "ice_transport.cpp") {
     const auto marker = text.rfind("state_change: ");
     if (marker != std::string_view::npos) {
@@ -70,10 +81,8 @@ private:
 
 void InitializeControllerDiagnostics(const std::string &directory) {
   auto sink = std::make_shared<DiagnosticSink>(directory);
-  minirtc::InitLogger(directory);
+  minirtc::InitLogger(directory, std::move(sink));
   auto logger = minirtc::get_logger();
-  // Connect calls this after the previous peer and its callbacks stop.
-  logger->sinks() = {std::move(sink)};
   logger->set_level(spdlog::level::info);
 }
 } // namespace crossdesk

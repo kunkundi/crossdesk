@@ -96,6 +96,22 @@ const messages: Record<string, string> = {
   CONNECTION_FAILED: "连接失败，请检查设备是否在线及服务器设置。",
   CONNECTION_TIMEOUT: "等待远端画面超时，请检查远端状态后重试。",
   CONNECTION_LOST: "远程连接已中断。请检查远端状态并重新连接。",
+  signaling_timeout: "连接信令服务器超时，请检查本机网络、代理和服务器状态。",
+  signaling_disconnected: "信令连接已中断，请检查本机网络、代理和服务器状态。",
+  signaling_login_failed: "信令服务器登录失败，请检查服务器配置。",
+  tls_certificate_error: "信令服务器证书验证失败，请检查证书和本机时间。",
+  cli_identity_not_supported: "信令服务器需要支持 CLI 身份注册，请更新服务器。",
+  join_request_failed: "发送设备连接请求失败，请检查信令连接。",
+  incorrect_password: "访问密码错误，请重新输入。",
+  device_not_found: "设备 ID 无效或已过期，请确认设备 ID。",
+  device_offline_or_unavailable: "远端设备暂不可连接，请检查被控端的在线状态。",
+  connection_timeout: "等待远端连接超时，请检查被控端和网络状态。",
+  connection_failed: "远端连接建立失败，请检查双方网络和中继服务器状态。",
+  connection_lost: "远端连接已中断，请检查双方网络状态。",
+  remote_disconnected: "远端已断开连接。",
+  display_not_available: "所选显示器当前不可用，请检查显示器索引。",
+  media_initialization_failed: "本机媒体组件初始化失败，请检查原生 CLI 运行环境。",
+  control_event_overflow: "连接事件队列已满，请稍后重新连接。",
   SESSION_LIMIT: "已有活动连接，请先断开当前电脑。",
   DEVICE_BUSY: "另一实例正在使用此设备。",
   CREDENTIAL_STORE_UNAVAILABLE: "系统凭据库不可用，密码未保存。",
@@ -168,7 +184,12 @@ function showError(error: unknown) {
   element("error").hidden = false;
 }
 function check(result: Data): Data {
-  if (result.error) throw new Error(result.error.code ?? "INTERNAL_ERROR");
+  if (result.error) {
+    const error = typeof result.error === "string"
+      ? { code: "CONNECTION_FAILED", reason: result.error } : result.error;
+    throw new Error(Object.hasOwn(messages, error.reason)
+      ? error.reason : error.code ?? "INTERNAL_ERROR");
+  }
   return result;
 }
 async function devices() {

@@ -201,6 +201,7 @@ async function main() {
   });
 }
 main().catch((error) => {
-  process.stderr.write(`crossdesk-mcp: ${failure(error).code}\n`);
+  const result = failure(error);
+  process.stderr.write(`crossdesk-mcp: ${result.code}${result.reason ? ` (${result.reason})` : ""}\n`);
   process.exitCode = 1;
 });

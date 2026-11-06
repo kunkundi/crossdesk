@@ -42,6 +42,8 @@ The output queue is bounded to 64 messages and 8 MiB; a blocked output pipe term
 
 `connect` returns immediately after initiating transport. Poll `status` until `state == "ready"`; this requires a frame from the current display generation. Status includes `transport_state`, `geometry_epoch`, `frame_age_ms`, `source_size`, `control_allowed`, `human_paused`, host platform, displays and transport diagnostics.
 
+During initial `registering`, `SignalReconnecting` keeps the existing signaling peer and its backoff worker alive within the original 30-second connection deadline. Expiry in that phase reports `signaling_timeout`; expiry after submitting a device join reports `connection_timeout`. Certificate validation and login rejection terminate the attempt immediately. A signaling interruption after join submission also terminates the attempt. Explicit cancellation closes the peer and its retry worker. The MCP adapter forwards recognized status errors as an optional `error.reason` alongside its public error category.
+
 ## Live video
 
 `doctor --json` advertises `automation_video_transport: "loopback-websocket/1"`, `automation_video_protocols: ["h264-annexb/1", "nv12/1"]`, and `automation_video_decoders: ["auto", "software"]`. `hello` repeats these without the `automation_` prefix. The MCP adapter requires the transport capability, so an old pipe-only CLI is rejected. Node spawns only stdin, stdout, stderr, and the credential pipe; live video never enters Node.

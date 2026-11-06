@@ -161,7 +161,8 @@ export class TerminalClient {
         if (!buffer.includes(10)) return;
         try {
           const reply = JSON.parse(buffer.toString("utf8"));
-          if (reply.error) finish(new Failure(reply.error.code));
+          if (reply.error) finish(new Failure(reply.error.code,
+            !!reply.error.side_effect_possible, !!reply.error.retryable, reply.error.reason));
           else if (reply.result && typeof reply.result === "object") finish(undefined, reply.result);
           else finish(new Failure("INVALID_RESPONSE"));
         } catch { finish(new Failure("INVALID_RESPONSE")); }

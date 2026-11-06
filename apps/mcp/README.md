@@ -63,6 +63,8 @@ Windows 和 Linux 使用各自构建产物路径；`--native-binary` 必须指�
 
 面板发起的连接失败后，按 `view_id` 等待也会返回 `failed` 和错误码，避免 Agent 一直停留在等待用户状态。断开正在建立的连接会取消整个连接尝试。多个面板和 Agent 同时查询状态时共用一次原生查询，单次查询取消或暂时繁忙不会断开会话。`crossdesk_connect` 在连接成功但面板初始化失败时仍返回有效的 `session_id`，并附加 `panel_error`。
 
+初次信令注册使用原生连接的整体 30 秒期限，期间允许 MiniRTC 按退避策略恢复临时传输异常。期限覆盖所有初始重试。证书校验失败、登录被拒绝，以及设备连接请求发出后的信令中断会结束当前尝试。连接失败结果使用 `error.code` 表示错误类别，并以 `error.reason` 提供已识别的原生原因，例如 `signaling_timeout`、`signaling_disconnected` 或 `device_offline_or_unavailable`。面板显示对应说明，终端错误包含原因标识。`logs/transport.log` 记录连接阶段、受控的传输错误分类与数字码、连接关闭码和重试退避信息。
+
 自动继续依赖宿主保持当前 Agent 任务及工具调用流程。它不通过网页伪造用户消息，也不承诺从已经结束的对话中主动唤醒 Agent；此类唤醒由宿主负责。
 
 人工暂停由原生层锁定，模型不能通过 `set_control(true)` 恢复；只有当前授权面板的恢复按钮可以恢复。仅查看连接不能升级为控制连接，需重新连接并授权。关闭/隐藏面板仅停止预览，远程会话保留；断开按钮或 `crossdesk_disconnect` 才结束会话。

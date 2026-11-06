@@ -13,6 +13,7 @@ export class Failure extends Error {
     public code: string,
     public sideEffect = false,
     public retryable = false,
+    public reason?: string,
   ) {
     super(code);
   }
@@ -23,6 +24,7 @@ export function failure(error: unknown): Data {
     code: e.code,
     retryable: e.retryable,
     side_effect_possible: e.sideEffect,
+    ...(e.reason ? { reason: e.reason } : {}),
   };
 }
 export function parse<T extends z.ZodType>(
