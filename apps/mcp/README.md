@@ -244,3 +244,9 @@ npm run pack:npm -- --out-dir /absolute/path/artifacts
 本机 macOS arm64 完成 TypeScript/面板构建、原生 CLI 构建、现有 wire/keyboard-state 测试，以及工程外的 MCP、会话和原生动作回归检查。ASan/UBSan 检查覆盖动作调度和输入清理；140 组随机图像覆盖完整帧、奇偶裁剪边界、缩放及容量回退，优化前后 PNG 字节一致。
 
 使用 1920 × 1080 合成 NV12、最长边 1280、每项 6 次的 `-O2` 本地基准：完整画面编码约 22.5 → 11.5 ms，321 × 241 裁剪约 2.1 → 0.9 ms。数字仅衡量图像转换与编码，不包含网络、解码、远端执行或宿主渲染；未连接真实远端或完成 Windows/Linux 验收。额外测试代码、脚本、数据和产物均存放于工程外系统临时目录。
+
+### 远端输入回执与条件等待
+
+更新后的被控端通过 `capabilities.input_ack` 声明输入处理回执。动作结果的 `remote_execution` 表示远端原生输入处理状态，应用界面的实际结果由后续观察确认。旧被控端返回 `unsupported`。回执等待有明确期限，超时动作保留结果不确定状态。
+
+`crossdesk_wait` 使用已有截图的 `observation_id`，等待对应区域变化（`changed`）或持续稳定（`stable`）。可设置 `stable_ms` 和最长 25000 毫秒的 `timeout_ms`。满足条件后返回新截图，切换显示器、断开和取消会结束等待。

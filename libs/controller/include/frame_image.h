@@ -22,6 +22,7 @@ struct FrameImage {
 FrameImage EncodeFrameImage(const DecodedFrame &frame, ImageRegion region,
                             int max_edge, size_t max_bytes);
 std::string ImageBase64(const std::vector<uint8_t> &bytes);
+uint64_t FrameSignature(const DecodedFrame &frame, ImageRegion region);
 } // namespace crossdesk
 
 #endif

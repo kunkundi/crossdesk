@@ -38,6 +38,7 @@ class RemoteInputDispatcher {
   // Optional targeted adapter; legacy callers fall back to full Release.
   using ReleaseMouse =
       std::function<InputOutcome(const std::string&, unsigned)>;
+  using Completion = std::function<void(InputOutcome)>;
   enum class Result { queued, coalesced, rejected, overflow };
   static constexpr size_t kMaxPendingPerController = 128;
 
@@ -47,7 +48,8 @@ class RemoteInputDispatcher {
   ~RemoteInputDispatcher();
   static bool Accepts(const RemoteAction& action);
   void Connect(const std::string& id);
-  Result Push(const std::string& id, const RemoteAction& action);
+  Result Push(const std::string& id, const RemoteAction& action,
+              Completion completion = {});
   void Disconnect(const std::string& id);
 
   // Scheduled recovery is not idle work. Check HasPendingReleases() as well,
@@ -68,6 +70,7 @@ class RemoteInputDispatcher {
     // Zero requests full controller cleanup; otherwise only these mouse
     // buttons.
     unsigned mouse_mask = 0;
+    Completion completion;
     bool IsReset() const { return kind == ItemKind::reset_display; }
     bool IsInput() const { return kind == ItemKind::input; }
     bool IsCleanup() const { return kind == ItemKind::cleanup; }

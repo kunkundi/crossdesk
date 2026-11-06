@@ -11,6 +11,7 @@
 #include <deque>
 #include <minirtc.h>
 #include <mutex>
+#include <map>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <remote_action.h>
@@ -74,6 +75,11 @@ public:
   bool Text(const std::string &utf8);
   bool Key(int key, bool down);
   bool Pointer(float x, float y, int flag, int wheel = 0);
+  uint64_t RequestRemote(const std::string &method, nlohmann::json arguments = {});
+  std::optional<nlohmann::json> TakeRemoteResult(uint64_t request);
+  void BeginInput();
+  std::string InputResult();
+  bool InputAcknowledged() const { return remote_capabilities_.value("input_ack", nlohmann::json{}) == true; }
   std::optional<DecodedFrame> TakeFrame(DecodedFrame *recycle = nullptr);
   nlohmann::json Status() const;
   bool Connected() const { return state_ == "connected"; }
@@ -93,6 +99,7 @@ private:
   void ClosePeers();
   Params Parameters();
   bool Send(const char *stream, const std::string &payload);
+  bool SendInput(const char *stream, const RemoteAction &action);
   void Preview();
   static void Signal(SignalStatus, const char *, size_t, void *);
   static void Connection(ConnectionStatus, const char *, size_t, void *);
@@ -108,6 +115,12 @@ private:
   SessionOptions options_;
   PeerPtr *peer_ = nullptr;
   std::string state_ = "idle", error_, device_, password_, client_id_;
+  nlohmann::json remote_capabilities_ = nlohmann::json::object();
+  uint64_t remote_sequence_ = 0, capability_request_ = 0;
+  std::map<uint64_t, nlohmann::json> remote_results_;
+  std::vector<uint64_t> input_requests_;
+  std::string input_result_ = "applied";
+  bool input_ack_active_ = false;
   uint64_t generation_ = 0;
   uint32_t preview_request_ = 0, preview_ack_ = 0;
   bool control_ = false, preview_supported_ = false, resolution_ = false;

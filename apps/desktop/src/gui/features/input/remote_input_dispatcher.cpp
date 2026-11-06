@@ -39,14 +39,14 @@ void RemoteInputDispatcher::Connect(const std::string& id) {
 }
 
 RemoteInputDispatcher::Result RemoteInputDispatcher::Push(
-    const std::string& id, const RemoteAction& action) {
+    const std::string& id, const RemoteAction& action, Completion completion) {
   // HostInfo owns raw arrays; it must never enter this value-copy queue.
   if (!Accepts(action)) return Result::rejected;
   std::lock_guard lock(mutex_);
   if (stopping_ || !connected_.count(id)) return Result::rejected;
-  if (IsMove(action) && !pending_.empty()) {
+  if (!completion && IsMove(action) && !pending_.empty()) {
     auto& last = pending_.back();
-    if (last.id == id && last.IsInput() && IsMove(*last.action)) {
+    if (!last.completion && last.id == id && last.IsInput() && IsMove(*last.action)) {
       last.action = action;
       last.queued_at = Clock::now();
       return Result::coalesced;
@@ -56,7 +56,7 @@ RemoteInputDispatcher::Result RemoteInputDispatcher::Push(
     QueueReleaseLocked(id);
     return Result::overflow;
   }
-  pending_.push_back({id, action, Clock::now(), ItemKind::input});
+  pending_.push_back({id, action, Clock::now(), ItemKind::input, 0, std::move(completion)});
   ++pending_counts_[id];
   ready_.notify_one();
   return Result::queued;
@@ -328,6 +328,9 @@ void RemoteInputDispatcher::Run() {
         !pending_counts_.count(item.id))
       logs_.erase(item.id);
     lock.unlock();
+    if (item.completion) {
+      try { item.completion(outcome); } catch (...) {}
+    }
     if (report) {
       try {
         report_(item.id, queued_ms, execution_ms, outcome);

@@ -179,6 +179,14 @@ void PeerEventHandler::OnReceiveDataBuffer(
   PeerPtr* bound_peer =
       handler->IsDirect() ? handler->DirectPeer() : runtime->peer_;
   std::string json_str(data, size);
+  if (json_str.find("\"automation\"") != std::string::npos) {
+    const auto request = nlohmann::json::parse(json_str, nullptr, false);
+    if (request.is_object() && request.value("type", nlohmann::json{}) == "automation") {
+      if (source_id == runtime->control_data_label_ && runtime->IsAuthorizedController(remote_id))
+        runtime->HandleAutomation(remote_id, request);
+      return;
+    }
+  }
   const auto preview_json =
       json_str.find("\"deskhub_preview") != std::string::npos
           ? nlohmann::json::parse(json_str, nullptr, false)

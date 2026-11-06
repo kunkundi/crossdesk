@@ -459,6 +459,13 @@ export class Sessions {
     }
     return result;
   }
+  async waitFor(p: Data, signal?: AbortSignal): Promise<Data> {
+    const { session_id, ...args } = p;
+    const result = await this.session(session_id).native.request(
+      "wait_frame", args, (args.timeout_ms ?? 5000) + 3000, signal);
+    if (result.matched) result.observation = await this.screenshot({ session_id }, signal);
+    return result;
+  }
   async control(id: string, enabled: boolean) {
     if (!enabled) this.cancelUnlock(this.session(id));
     return this.session(id).native.request("control", { enabled });

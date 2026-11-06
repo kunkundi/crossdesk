@@ -69,6 +69,15 @@ struct Observation {
   int width, height, source_width, source_height;
   ImageRegion region;
   Clock::time_point created;
+  uint64_t signature;
+};
+struct FrameWait {
+  json id;
+  Observation observation;
+  bool stable;
+  int stable_ms;
+  uint64_t signature, frame;
+  Clock::time_point deadline, changed;
 };
 struct Capture {
   json id, request;
@@ -96,7 +105,7 @@ struct RunningAction {
   std::vector<Step> steps;
   size_t next = 0;
   bool submitted = false;
-  Clock::time_point started;
+  Clock::time_point started, awaiting_ack{};
 };
 struct Record {
   std::string operation, arguments;
@@ -260,11 +269,19 @@ private:
     if (!action_)
       return;
     session_.ReleaseInput();
+    const auto remote = session_.InputResult();
+    if (!error && remote == "pending") {
+      if (action_->awaiting_ack == Clock::time_point{}) action_->awaiting_ack = Clock::now();
+      if (Age(action_->awaiting_ack) < 2000) return;
+      error = "REMOTE_ACK_TIMEOUT";
+    }
+    if (!error && remote == "failed") error = "REMOTE_INPUT_FAILED";
     json result = {
         {"status", error ? (action_->submitted ? "outcome_unknown"
                                                : "failed_before_submit")
                          : "submitted"},
         {"operation_id", action_->operation},
+        {"remote_execution", remote},
         {"generation", action_->generation},
         {"after_frame_id", frame_ ? frame_->frame_id : 0},
         {"side_effect_possible", action_->submitted},
@@ -295,6 +312,8 @@ private:
       terminal_encoding_->cancelled = true;
     }
     observations_.clear();
+    for (const auto &wait : frame_waits_) Error(wait.id, code);
+    frame_waits_.clear();
     preview_ = json();
   }
   void Tick() {
@@ -347,6 +366,30 @@ private:
       }
       if (action_ && action_->next == action_->steps.size())
         FinishAction();
+    }
+    for (auto it = frame_waits_.begin(); it != frame_waits_.end();) {
+      if (!session_.Connected() || !frame_ ||
+          it->observation.generation != session_.Generation() || it->observation.epoch != epoch_) {
+        Error(it->id, "SESSION_CHANGED");
+        it = frame_waits_.erase(it);
+        continue;
+      }
+      bool matched = false;
+      if (frame_->frame_id != it->frame && Age(frame_->queued) <= 2000) {
+        it->frame = frame_->frame_id;
+        const auto signature = FrameSignature(*frame_, it->observation.region);
+        if (signature != it->signature) {
+          it->signature = signature;
+          it->changed = Clock::now();
+        }
+        matched = it->stable ? Age(it->changed) >= it->stable_ms
+                             : signature != it->observation.signature;
+      }
+      if (matched || Clock::now() >= it->deadline) {
+        Reply(it->id, {{"matched", matched}, {"wait_timed_out", !matched},
+            {"generation", session_.Generation()}, {"frame_id", frame_->frame_id}});
+        it = frame_waits_.erase(it);
+      } else ++it;
     }
     if (terminal_encoding_ &&
         terminal_encoding_->result.wait_for(Ms(0)) == std::future_status::ready) {
@@ -418,7 +461,8 @@ private:
                 observations_.pop_front();
               observations_.push_back(
                   {id, f.generation, job->epoch, image.width, image.height,
-                   int(f.width), int(f.height), image.region, Clock::now()});
+                   int(f.width), int(f.height), image.region, Clock::now(),
+                   FrameSignature(f, image.region)});
             }
             Reply(job->capture.id, std::move(result));
           }
@@ -596,6 +640,7 @@ private:
          arguments,
          {{"status", "in_progress"}, {"operation_id", operation}},
          Clock::now()});
+    session_.BeginInput();
     running->started = Clock::now();
     action_ = std::move(running);
   }
@@ -688,6 +733,18 @@ private:
       } else if (method == "action") {
         StartAction(j, id);
         return false;
+      } else if (method == "wait_frame") {
+        Fields(j, {"id", "method", "observation_id", "condition", "stable_ms", "timeout_ms"});
+        const auto &observation = Observe(j);
+        const auto condition = String(j, "condition", 16);
+        if (condition != "changed" && condition != "stable")
+          throw std::invalid_argument("INVALID_ARGUMENT");
+        if (frame_waits_.size() >= 16) throw std::invalid_argument("BUSY");
+        const auto now = Clock::now();
+        frame_waits_.push_back({id, observation, condition == "stable",
+            Number(j, "stable_ms", 100, 5000, 500), observation.signature, 0,
+            now + Ms(Number(j, "timeout_ms", 0, 25000, 5000)), now});
+        return false;
       } else if (method == "unlock_prepare") {
         Fields(j, {"id", "method", "observation_id"});
         const auto &observation = InputObservation(j);
@@ -766,6 +823,12 @@ private:
         if (!j.contains("request_id") || !j["request_id"].is_number_integer())
           throw std::invalid_argument("INVALID_REQUEST");
         const auto target = j["request_id"];
+        for (auto it = frame_waits_.begin(); it != frame_waits_.end();) {
+          if (it->id == target) {
+            Error(it->id, "CANCELLED");
+            it = frame_waits_.erase(it);
+          } else ++it;
+        }
         if (action_ && action_->id == target)
           FinishAction("CANCELLED");
         if (encoding_ && !encoding_->cancelled &&
@@ -832,6 +895,7 @@ private:
   std::shared_ptr<DecodedFrame> frame_;
   std::deque<Observation> observations_;
   std::deque<Capture> captures_;
+  std::deque<FrameWait> frame_waits_;
   std::unique_ptr<Encoding> encoding_;
   std::unique_ptr<TerminalEncoding> terminal_encoding_;
   std::unique_ptr<RunningAction> action_;

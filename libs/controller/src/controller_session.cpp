@@ -118,6 +118,10 @@ void ControllerSession::Connect(SessionOptions options, std::string device,
   password_ = std::move(password);
   state_ = "registering";
   error_.clear();
+  remote_capabilities_ = json::object();
+  remote_results_.clear();
+  input_requests_.clear();
+  capability_request_ = 0;
   displays_.clear();
   host_platform_ = HostPlatform::Unknown;
   preview_supported_ = resolution_ = fps15_ = bandwidth_ = text_supported_ =
@@ -225,6 +229,7 @@ void ControllerSession::Tick() {
         mute.type = audio_capture;
         mute.a = false;
         Send(kControlStream, mute.to_json());
+        capability_request_ = RequestRemote("capabilities");
       } else if (e.code == IncorrectPassword)
         Fail("incorrect_password");
       else if (e.code == NoSuchTransmissionId)
@@ -239,6 +244,21 @@ void ControllerSession::Tick() {
       auto j = ParseBoundedJson(e.data);
       if (!j.is_object())
         continue;
+      if (j.value("type", json{}) == "automation_result" &&
+          j.value("version", json{}) == 1 && j.contains("id") &&
+          j["id"].is_number_unsigned()) {
+        const auto id = j["id"].get<uint64_t>();
+        const auto found = remote_results_.find(id);
+        if (found != remote_results_.end()) {
+          found->second = j;
+          if (id == capability_request_) {
+            if (j.value("ok", json{}) == true && j.value("result", json{}).is_object())
+              remote_capabilities_ = j["result"];
+            remote_results_.erase(found);
+          }
+        }
+        continue;
+      }
       if (j.value("type", json{}) == "deskhub_preview_status") {
         if (j.value("request_id", json{}) == preview_request_ &&
             j.contains("accepted") && j["accepted"].is_boolean()) {
@@ -398,7 +418,7 @@ bool ControllerSession::Key(int key, bool down) {
   a.k = {size_t(key), 0, false, down ? key_down : key_up};
   if (down)
     keys_.insert(key);
-  const bool sent = Send(kKeyboardStream, a.to_json());
+  const bool sent = SendInput(kKeyboardStream, a);
   if (sent && !down)
     keys_.erase(key);
   return sent;
@@ -417,7 +437,7 @@ bool ControllerSession::Pointer(float x, float y, int flag, int wheel) {
   pointer_y_ = y;
   if (flag >= 1 && flag <= 6 && (flag & 1))
     buttons_.insert(flag);
-  const bool sent = Send(kMouseStream, a.to_json());
+  const bool sent = SendInput(kMouseStream, a);
   if (sent && flag >= 2 && flag <= 6 && !(flag & 1))
     buttons_.erase(flag - 1);
   return sent;
@@ -430,7 +450,7 @@ bool ControllerSession::Text(const std::string &text) {
   a.type = text_input;
   a.text = text;
   try {
-    return Send(kKeyboardStream, a.to_json());
+    return SendInput(kKeyboardStream, a);
   } catch (...) {
     return false;
   }
@@ -454,6 +474,7 @@ json ControllerSession::Status() const {
           {"platform", HostPlatformName(host_platform_)},
           {"display", options_.display},
           {"text_input", text_supported_},
+          {"capabilities", remote_capabilities_},
           {"preview_supported", preview_supported_},
           {"preview_request", preview_request_},
           {"preview_ack", preview_ack_},

@@ -297,6 +297,16 @@ export function createServer(
     { ui: true },
   );
   add(
+    "crossdesk_wait",
+    z.strictObject({ session_id: id, observation_id: id,
+      condition: z.enum(["changed", "stable"]),
+      stable_ms: z.int().min(100).max(5000).default(500),
+      timeout_ms: z.int().min(0).max(25000).default(5000) }),
+    "Wait for the observed screenshot region to change or remain stable. Returns matched, wait_timed_out and a fresh screenshot on success. A visual condition can be checked after an action with a separate screenshot observation. Remote input receipts report native input acceptance; verify the application's intended result visually.",
+    async (p, ctx) => output(await sessions.waitFor(p, ctx.mcpReq.signal)),
+    { readOnly: true },
+  );
+  add(
     "crossdesk_set_control",
     z.strictObject({ session_id: id, enabled: z.boolean() }),
     "Enable or disable control within the user-authorized scope. Cannot override human pause or upgrade an observe-only connection.",

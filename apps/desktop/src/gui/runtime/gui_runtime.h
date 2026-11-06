@@ -152,6 +152,7 @@ class GuiRuntime : protected gui_detail::GuiState {
   // or every connected session while that target leads DeskHub group control.
   void SendRemoteInput(const RemoteAction& action);
   InputOutcome ApplyRemoteInput(const std::string& remote_id, const RemoteAction& action);
+  void HandleAutomation(const std::string& remote_id, const nlohmann::json& request);
   InputOutcome InjectRemoteMouse(const RemoteAction& action, int display);
   std::string gallery_group_control_id_;
 
