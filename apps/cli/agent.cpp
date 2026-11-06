@@ -788,6 +788,18 @@ private:
       } else if (method == "action") {
         StartAction(j, id);
         return false;
+      } else if (method == "files") {
+        Fields(j, {"id", "method", "operation", "operation_id", "path", "paths",
+                   "destination", "request_id", "offset"});
+        const auto operation = String(j, "operation", 16);
+        const bool existing = operation == "status" || operation == "cancel" ||
+            operation == "list_result" || operation == "list_cancel";
+        if (!allowed_ || (!existing && (paused_ || !session_.ControlEnabled())))
+          throw std::invalid_argument("CONTROL_DENIED");
+        auto request = j;
+        request.erase("id"); request.erase("method");
+        Reply(id, session_.Files(request));
+        return false;
       } else if (method == "clipboard") {
         Fields(j, {"id", "method", "operation", "operation_id", "text"});
         if (!allowed_ || paused_ || !session_.ControlEnabled())

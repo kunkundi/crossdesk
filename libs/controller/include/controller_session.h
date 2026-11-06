@@ -8,6 +8,7 @@
 #define _CONTROLLER_SESSION_H_
 
 #include <chrono>
+#include <controller_files.h>
 #include <deque>
 #include <minirtc.h>
 #include <mutex>
@@ -80,6 +81,7 @@ public:
   std::optional<nlohmann::json> TakeRemoteResult(uint64_t request);
   void ForgetRemoteRequest(uint64_t request) { remote_results_.erase(request); }
   uint64_t Clipboard(bool write, const std::string &text = {});
+  nlohmann::json Files(const nlohmann::json &request);
   void BeginInput();
   std::string InputResult();
   bool InputAcknowledged() const { return remote_capabilities_.value("input_ack", nlohmann::json{}) == true; }
@@ -126,6 +128,7 @@ private:
   bool input_ack_active_ = false;
   bool clipboard_ready_ = false;
   web_clipboard::Assembler clipboard_assembler_;
+  std::unique_ptr<ControllerFiles> files_;
   uint64_t generation_ = 0;
   uint32_t preview_request_ = 0, preview_ack_ = 0;
   bool control_ = false, preview_supported_ = false, resolution_ = false;

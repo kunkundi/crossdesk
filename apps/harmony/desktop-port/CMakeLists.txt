@@ -7,6 +7,7 @@ file(GLOB_RECURSE FEATURES CONFIGURE_DEPENDS "${DESKTOP}/gui/features/*.cpp")
 file(GLOB COMMON CONFIGURE_DEPENDS "${DESKTOP}/common/*.cpp" "${DESKTOP}/thumbnail/*.cpp"
     "${DESKTOP}/version_checker/*.cpp" "${CROSSDESK_ROOT}/libs/wire/src/*.cpp")
 target_sources(slint_desktop PRIVATE ${RUNTIME} ${FEATURES} ${COMMON}
+    "${CROSSDESK_ROOT}/libs/controller/src/file_browser.cpp"
     "${DESKTOP}/gui/application/gui_application.cpp"
     "${DESKTOP}/gui/rendering/slint_video_presenter.cpp"
     "${DESKTOP}/platform/common/gui/service_status_runtime.cpp"

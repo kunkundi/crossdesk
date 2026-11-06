@@ -43,6 +43,13 @@ void ControllerSession::Data(const char *data, size_t n, const char *, size_t,
                              const char *stream, size_t sn, void *p) {
   auto &session = *static_cast<ControllerSession *>(p);
   try {
+    if (data && n && n <= 256 * 1024 && stream && sn < 64) {
+      const std::string_view source(stream, sn);
+      if (source == kFileStream || source == kFileFeedbackStream) {
+        session.Enqueue({source == kFileStream ? 4 : 5, 0, std::string(data, n)});
+        return;
+      }
+    }
     if (data && n && n <= web_clipboard::kHeaderBytes + web_clipboard::kChunkBytes &&
         stream && sn == std::strlen(web_clipboard::kStream) &&
         std::string_view(stream, sn) == web_clipboard::kStream) {
@@ -165,6 +172,8 @@ void ControllerSession::Connect(SessionOptions options, std::string device,
   for (auto stream : {kMouseStream, kKeyboardStream, kControlStream})
     AddDataStream(peer_, stream, true);
   AddDataStream(peer_, web_clipboard::kStream, true);
+  AddDataStream(peer_, kFileStream, true);
+  AddDataStream(peer_, kFileFeedbackStream, true);
   if (Init(peer_) != 0)
     Fail("media_initialization_failed");
 }
@@ -250,6 +259,8 @@ void ControllerSession::Tick() {
         Fail(Connected() ? "connection_lost" : "connection_failed");
       else if (e.code == Closed || e.code == Disconnected)
         Fail("remote_disconnected");
+    } else if ((e.kind == 4 || e.kind == 5) && Connected()) {
+      if (files_) files_->Receive(e.data.data(), e.data.size(), e.kind == 5);
     } else if (e.kind == 3 && Connected()) {
       namespace clip = web_clipboard;
       if (e.data.size() < clip::kHeaderBytes) continue;
@@ -272,6 +283,10 @@ void ControllerSession::Tick() {
       auto j = ParseBoundedJson(e.data);
       if (!j.is_object())
         continue;
+      if (j.value("type", json{}) == "file_browser") {
+        if (files_) files_->Message(std::move(j));
+        continue;
+      }
       if (j.value("type", json{}) == "automation_result" &&
           j.value("version", json{}) == 1 && j.contains("id") &&
           j["id"].is_number_unsigned()) {
@@ -285,6 +300,11 @@ void ControllerSession::Tick() {
             if (remote_capabilities_.value("clipboard", json{}) == true)
               Send(web_clipboard::kStream, web_clipboard::Frame(
                   web_clipboard::kHello, 0, web_clipboard::kVersion));
+            if (remote_capabilities_.value("files", json{}) == true)
+              files_ = std::make_unique<ControllerFiles>([this](const char *stream, const std::string &data) {
+                if (!peer_ || !Connected()) return false;
+                return SendReliableDataFrame(peer_, data.data(), data.size(), stream) == 0;
+              });
             remote_results_.erase(found);
           }
         }
@@ -320,6 +340,7 @@ void ControllerSession::Tick() {
       FreeRemoteAction(a);
     }
   }
+  if (files_) files_->Tick();
 }
 bool ControllerSession::Send(const char *stream, const std::string &payload) {
   return peer_ && Connected() && !payload.empty() &&
@@ -327,6 +348,7 @@ bool ControllerSession::Send(const char *stream, const std::string &payload) {
              0;
 }
 void ControllerSession::ClosePeers() {
+  files_.reset();
   {
     std::lock_guard lock(mutex_);
     stopping_ = true;

@@ -254,3 +254,11 @@ npm run pack:npm -- --out-dir /absolute/path/artifacts
 ### 远端剪贴板
 
 `crossdesk_clipboard_get` 读取远端文本剪贴板，`crossdesk_clipboard_set` 设置文本，空字符串清空。读取上限为 128 KiB，单次工具写入上限为 16 KiB UTF-8。写入需要 `operation_id`，相同请求查询原结果。工具使用已授权控制会话，并遵守人工暂停及解锁等待状态。更新后的被控端通过 `capabilities.clipboard` 声明支持，写入成功由系统剪贴板更新回执确认。
+
+### 文件浏览与传输
+
+`crossdesk_files_list` 浏览远端目录，空路径选择远端主目录，`@roots` 返回文件系统根目录。每页最多 256 项，使用 `request_id` 和 `next_offset` 继续读取。超时返回可继续查询的请求标识。
+
+`crossdesk_files_transfer` 支持上传和下载文件、文件夹，源路径为绝对路径，目标目录需要已存在。传输使用 `operation_id` 去重，通过 `crossdesk_files_status` 查询每个文件的字节进度和终态，通过 `crossdesk_files_cancel` 取消并清理未完成文件。每个连接同时处理一个传输任务，多文件按现有传输引擎排队。已完成任务保留四份历史记录，状态中的文件清单分页返回。目标同名文件按现有冲突命名规则另存。
+
+文件操作需要更新后的被控端声明 `capabilities.files`。下载请求绑定目标目录及传输标识，接收器接受已为该请求预留的文件。人工暂停后仍可查询或取消已有任务。

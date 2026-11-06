@@ -21,7 +21,7 @@ void GuiRuntime::HandleAutomation(const std::string& remote_id,
   try {
     const auto method = request.value("method", std::string{});
     if (method == "capabilities") {
-      reply(true, {{"input_ack", true}, {"clipboard", true}});
+      reply(true, {{"input_ack", true}, {"clipboard", true}, {"files", true}});
     } else if (method == "input") {
       RemoteAction action{};
       if (!request.contains("arguments") ||

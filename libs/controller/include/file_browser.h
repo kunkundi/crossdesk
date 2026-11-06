@@ -73,6 +73,7 @@ class FileBrowser {
     size_t next = 0;
     std::string destination;
     bool notify_peer = false;
+    std::string transfer_id;
   };
   void Post(const std::string& peer, std::function<void()> work);
   void Run();
@@ -85,10 +86,12 @@ class FileBrowser {
   void ReleaseList(const std::string& peer, const std::string& cursor);
   Json DirectoryPage(const std::string& peer, const Json& message);
   void Upload(const std::string& peer, const std::vector<std::string>& paths,
-              const std::string& destination, bool notify_peer = false);
+              const std::string& destination, bool notify_peer = false,
+              const std::string& transfer_id = {});
   void UploadNext(const std::string& peer, const std::shared_ptr<UploadJob>& job);
   bool Current(const std::string& peer, uint64_t generation);
-  void Report(const std::string& peer, Json result, bool notify_peer);
+  void Report(const std::string& peer, Json result, bool notify_peer,
+              const std::string& transfer_id = {});
   bool SendMessage(const std::string& peer, Json message);
   Send send_;
   Enqueue enqueue_;

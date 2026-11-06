@@ -124,7 +124,8 @@ export function createServer(
       inputSchema: schema,
       annotations: {
         readOnlyHint: !!d.readOnly,
-        destructiveHint: ["crossdesk_action", "crossdesk_unlock"].includes(d.name),
+        destructiveHint: ["crossdesk_action", "crossdesk_unlock", "crossdesk_clipboard_set",
+          "crossdesk_files_transfer", "crossdesk_files_cancel"].includes(d.name),
         openWorldHint: true,
       },
       ...(d.ui || d.app
@@ -316,6 +317,28 @@ export function createServer(
     "Read the remote text clipboard within the authorized control session.",
     async (p, ctx) => output(await sessions.clipboard({ ...p, operation: "get" }, ctx.mcpReq.signal)),
     { readOnly: true });
+  const filePath = z.string().max(4096).refine((path) => !path.includes("\0"));
+  add("crossdesk_files_list", z.strictObject({ session_id: id, path: filePath.default(""),
+    request_id: z.int().min(1).max(4294967295).optional(), offset: z.int().min(0).default(0) }),
+    "List a remote directory. Empty path selects the remote home and @roots lists filesystem roots. Results contain up to 256 entries. Continue with request_id and next_offset while present. A timed-out listing remains queryable with its request_id.",
+    async (p, ctx) => output(await sessions.files({ ...p, operation: "list" }, ctx.mcpReq.signal)),
+    { readOnly: true });
+  add("crossdesk_files_transfer", z.strictObject({ session_id: id, operation_id: id,
+    direction: z.enum(["upload", "download"]), paths: z.array(filePath.min(1)).min(1).max(256),
+    destination: filePath.min(1) }),
+    "Upload local files/folders or download remote files/folders into an existing absolute destination directory. paths are absolute source paths. Returns a transfer operation to monitor with crossdesk_files_status. Reuse the same operation_id and arguments to query the original transfer. Existing destination files receive a distinct name on conflict.",
+    async (p, ctx) => {
+      const { direction, ...args } = p;
+      return output(await sessions.files({ ...args, operation: direction }, ctx.mcpReq.signal));
+    });
+  add("crossdesk_files_status", z.strictObject({ session_id: id, operation_id: id,
+    offset: z.int().min(0).default(0) }),
+    "Get transfer progress, per-file completion and errors. Continue file entries with next_offset. Wait for completed, failed or cancelled before reporting a finished transfer.",
+    async (p, ctx) => output(await sessions.files({ ...p, operation: "status" }, ctx.mcpReq.signal)),
+    { readOnly: true });
+  add("crossdesk_files_cancel", z.strictObject({ session_id: id, operation_id: id }),
+    "Cancel a transfer and remove its unfinished staging files. Completed files remain available.",
+    async (p, ctx) => output(await sessions.files({ ...p, operation: "cancel" }, ctx.mcpReq.signal)));
   add("crossdesk_clipboard_set", z.strictObject({ session_id: id, operation_id: id,
     text: z.string().max(16384).refine((text) => Buffer.byteLength(text) <= 16384 && !text.includes("\0")) }),
     "Set or clear the remote text clipboard. Reuse the same operation_id to query the original result. Returns applied after the remote clipboard update.",
@@ -414,7 +437,8 @@ export function createServer(
           inputSchema,
           annotations: {
             readOnlyHint: !!d.readOnly,
-            destructiveHint: ["crossdesk_action", "crossdesk_unlock"].includes(d.name),
+            destructiveHint: ["crossdesk_action", "crossdesk_unlock", "crossdesk_clipboard_set",
+              "crossdesk_files_transfer", "crossdesk_files_cancel"].includes(d.name),
             openWorldHint: true,
           },
           ...((d.ui || d.app) && apps(ctx)

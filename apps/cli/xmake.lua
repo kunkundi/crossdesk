@@ -12,12 +12,13 @@ end
 
 target("crossdesk_controller")
     set_kind("static")
-    add_deps("minirtc", "crossdesk_wire")
+    add_deps("minirtc", "crossdesk_wire", "crossdesk_file_browser")
     add_packages("spdlog", "libpng", "libyuv")
     add_includedirs(path.join(controller_dir, "include"),
         path.join(minirtc_dir, "src/api"), {public = true})
     add_includedirs(path.join(minirtc_dir, "src/log"))
     add_files(path.join(controller_dir, "src/*.cpp"))
+    remove_files(path.join(controller_dir, "src/file_browser.cpp"))
 target_end()
 
 target("crossdesk_terminal")

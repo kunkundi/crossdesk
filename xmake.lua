@@ -59,6 +59,14 @@ target("crossdesk_wire")
     add_includedirs(path.join(wire_dir, "include"), {public = true})
 target_end()
 
+target("crossdesk_file_browser")
+    set_kind("static")
+    set_languages("c++20")
+    add_deps("crossdesk_wire")
+    add_includedirs(path.join(source_dir, "libs/controller/include"), {public = true})
+    add_files(path.join(source_dir, "libs/controller/src/file_browser.cpp"))
+target_end()
+
 -- CLI source packages omit tests; full checkouts retain these existing targets.
 if os.isdir(path.join(wire_dir, "tests")) then
     target("crossdesk_wire_test")

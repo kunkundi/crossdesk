@@ -70,3 +70,11 @@ uint64_t ControllerSession::Clipboard(bool write, const std::string &text) {
   return id;
 }
 } // namespace crossdesk
+
+namespace crossdesk {
+nlohmann::json ControllerSession::Files(const nlohmann::json &request) {
+  if (!Connected()) throw std::invalid_argument("NOT_READY");
+  if (!files_) throw std::invalid_argument("FILES_UNSUPPORTED");
+  return files_->Command(request);
+}
+} // namespace crossdesk

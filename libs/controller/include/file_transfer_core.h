@@ -204,6 +204,16 @@ class Session {
     if (send_) send_(kFileStream, packet.data(), packet.size());
     return true;
   }
+  void CancelReceive(uint32_t id) {
+    uint64_t total = 0;
+    {
+      std::lock_guard lock(mutex_);
+      const auto found = incoming_.find(id);
+      if (found != incoming_.end()) total = found->second.total;
+    }
+    const auto packet = EncodeFileCancel(id, total);
+    Receive(packet.data(), packet.size());
+  }
   // A cancelled connection cannot be restarted by a late data callback.
   void Cancel() {
     std::lock_guard<std::mutex> lock(mutex_);

@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "file_transfer.h"
-#include "features/file_transfer/file_browser.h"
+#include <file_browser.h>
 #include "runtime/remote_session.h"
 
 namespace crossdesk {

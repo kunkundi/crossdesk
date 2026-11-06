@@ -145,3 +145,9 @@ Updated desktop hosts answer the versioned `automation` capability handshake. Wh
 ## Clipboard
 
 `clipboard` accepts `operation: get | set`. Writes additionally require `operation_id` and `text` (up to 16384 UTF-8 bytes, including an empty string to clear). Reads return up to 128 KiB of text. The existing chunked `web-clipboard` stream carries values and applied/rejected replies. Additive `read`, `empty`, and `clear` frames are enabled by the remote `clipboard` capability. Clipboard access requires control permission and respects human pause. Cancellation of an issued write reports an uncertain effect. Repeated write operation IDs retrieve the cached result.
+
+## File operations
+
+`files` supports `list`, `list_result`, `list_cancel`, `upload`, `download`, `status`, and `cancel`. Listing requests return a numeric `request_id`. Transfer requests require an `operation_id`, absolute `paths`, and an existing absolute `destination` directory. Progress and listing pages use `offset` and return `next_offset` with at most 256 entries.
+
+The desktop and CLI share `FileBrowser` and the existing file transfer engine. Preparation and completion messages carry a transfer identifier to bind incoming files to the requested destination. A cancelled transfer cleans unfinished staging files. The capability handshake advertises `files` on compatible hosts. Queries and cancellation of existing tasks remain available during human pause.

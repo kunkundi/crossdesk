@@ -1,4 +1,4 @@
-#include "features/file_transfer/file_browser.h"
+#include "file_browser.h"
 
 #include <file_transfer_core.h>
 #include <algorithm>
@@ -9,7 +9,6 @@
 #include <fstream>
 #include <set>
 #include <stdexcept>
-#include "filesystem_utf8.h"
 
 namespace crossdesk {
 namespace {
@@ -27,7 +26,7 @@ fs::path Home() {
 #else
   const auto* home = std::getenv("HOME");
 #endif
-  return home ? PathFromUtf8(home) : fs::current_path();
+  return home ? std::filesystem::u8path(home) : fs::current_path();
 }
 Json Failure(const std::string& reason) { return {{"ok", false}, {"error", reason}}; }
 template <typename FileTime>
@@ -77,7 +76,7 @@ std::string Text(const Json& value, const char* key) {
 }
 fs::path ExistingDirectory(const std::string& path) {
   if (path.empty()) throw std::runtime_error("invalid_path");
-  auto input = PathFromUtf8(path);
+  auto input = std::filesystem::u8path(path);
   if (!input.is_absolute()) throw std::runtime_error("invalid_path");
   std::error_code ec;
   auto result = fs::canonical(input, ec);
@@ -85,7 +84,7 @@ fs::path ExistingDirectory(const std::string& path) {
   return result;
 }
 fs::path Destination(const fs::path& root, const std::string& relative) {
-  auto path = PathFromUtf8(relative);
+  auto path = std::filesystem::u8path(relative);
   if (path.is_absolute() || path.has_root_name()) throw std::runtime_error("invalid_path");
   auto result = root;
   for (const auto& component : path) {
@@ -155,7 +154,9 @@ bool FileBrowser::Current(const std::string& peer, uint64_t generation) {
   std::lock_guard lock(mutex_);
   return !stopping_ && generations_[peer] == generation;
 }
-void FileBrowser::Report(const std::string& peer, Json result, bool notify_peer) {
+void FileBrowser::Report(const std::string& peer, Json result, bool notify_peer,
+                         const std::string& transfer_id) {
+  if (!transfer_id.empty()) result["transfer_id"] = transfer_id;
   if (!Current(peer, active_generation_)) return;
   Publish(peer, 0, result);
   if (notify_peer) {
@@ -357,7 +358,7 @@ FileBrowser::Json FileBrowser::Directory(const std::string& value, const std::fu
       for (char drive = 'A'; drive <= 'Z'; ++drive) {
         const std::string root = std::string(1, drive) + ":\\";
         std::error_code ec;
-        if (fs::is_directory(PathFromUtf8(root), ec))
+        if (fs::is_directory(std::filesystem::u8path(root), ec))
           entries.push_back({{"name", root}, {"path", root}, {"directory", true}, {"size", 0}, {"modified", ""}, {"link", false}});
       }
 #else
@@ -483,16 +484,18 @@ void FileBrowser::Serve(const std::string& peer, const Json& message) {
       if (!paths.is_array() || paths.empty() || paths.size() > 256) throw std::runtime_error("invalid_request");
       std::vector<std::string> sources;
       for (const auto& path : paths) sources.push_back(Text(Json{{"path", path}}, "path"));
-      Upload(peer, sources, Text(message, "destination"), true);
+      Upload(peer, sources, Text(message, "destination"), true,
+             message.contains("transfer_id") ? Text(message, "transfer_id") : "");
       result = {{"ok", true}, {"message", "queued"}};
     } else throw std::runtime_error("unsupported");
   } catch (const std::exception& error) { result = Failure(error.what()); }
+  if (message.contains("transfer_id")) result["transfer_id"] = Text(message, "transfer_id");
   result["op"] = "reply"; result["id"] = message.at("id");
   SendMessage(peer, std::move(result));
 }
 
 void FileBrowser::Upload(const std::string& peer, const std::vector<std::string>& paths,
-                         const std::string& destination, bool notify_peer) {
+                         const std::string& destination, bool notify_peer, const std::string& transfer_id) {
   std::vector<UploadItem> files;
   try {
     if (paths.empty() || paths.size() > 256 || destination.empty()) throw std::runtime_error("invalid_request");
@@ -511,7 +514,7 @@ void FileBrowser::Upload(const std::string& peer, const std::vector<std::string>
     };
     // Validate the entire selection before creating remote folders or sending.
     for (const auto& source : paths) {
-      auto path = PathFromUtf8(source);
+      auto path = std::filesystem::u8path(source);
       if (!path.is_absolute() || path.filename().empty()) throw std::runtime_error("invalid_path");
       add(path, path.filename());
       if (fs::is_directory(fs::symlink_status(path))) {
@@ -523,6 +526,7 @@ void FileBrowser::Upload(const std::string& peer, const std::vector<std::string>
     }
     auto job = std::make_shared<UploadJob>();
     job->files = std::move(files); job->destination = destination; job->notify_peer = notify_peer;
+    job->transfer_id = transfer_id;
     UploadNext(peer, job);
   } catch (const std::exception& error) {
     Publish(peer, 0, Failure(error.what()));
@@ -533,7 +537,7 @@ void FileBrowser::Upload(const std::string& peer, const std::vector<std::string>
 void FileBrowser::UploadNext(const std::string& peer, const std::shared_ptr<UploadJob>& job) {
   if (!Current(peer, active_generation_)) return;
   if (job->next == job->files.size()) {
-    Report(peer, {{"ok", true}, {"message", "queued"}}, job->notify_peer);
+    Report(peer, {{"ok", true}, {"message", "queued"}}, job->notify_peer, job->transfer_id);
     return;
   }
   const auto start = job->next;
@@ -549,14 +553,15 @@ void FileBrowser::UploadNext(const std::string& peer, const std::shared_ptr<Uplo
   const auto end = job->next;
   // Only one preparation batch per operation is in flight. Large folder
   // copies do not exhaust pending requests or reserve thousands of paths.
-  Request(peer, {{"op", "prepare"}, {"destination", job->destination}, {"items", items}},
+  Request(peer, {{"op", "prepare"}, {"destination", job->destination}, {"items", items},
+                 {"transfer_id", job->transfer_id}},
       [this, peer, job, start, end](const Json& reply) {
-        if (!reply.value("ok", false)) { Report(peer, reply, job->notify_peer); return; }
+        if (!reply.value("ok", false)) { Report(peer, reply, job->notify_peer, job->transfer_id); return; }
         for (auto index = start; index < end; ++index) {
           if (!Current(peer, active_generation_)) return;
           const auto& file = job->files[index];
           if (file.id && !enqueue_(peer, file.path, file.id)) {
-            Report(peer, Failure("file_unreadable"), job->notify_peer); return;
+            Report(peer, Failure("file_unreadable"), job->notify_peer, job->transfer_id); return;
           }
         }
         UploadNext(peer, job);

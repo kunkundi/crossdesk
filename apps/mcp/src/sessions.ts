@@ -473,6 +473,34 @@ export class Sessions {
     if (s.unlock && this.unlockPending(s.unlock)) throw new Failure("UNLOCK_PENDING");
     return s.native.request("clipboard", args, 7000, signal);
   }
+  async files(p: Data, signal?: AbortSignal): Promise<Data> {
+    const { session_id, ...args } = p;
+    const s = this.session(session_id);
+    this.checkUnlock(s);
+    if (s.unlock && this.unlockPending(s.unlock) && !["status", "cancel"].includes(args.operation))
+      throw new Failure("UNLOCK_PENDING");
+    if (args.operation !== "list") return s.native.request("files", args, 7000, signal);
+    const requestId = args.request_id ?? (await s.native.request("files",
+      { operation: "list", path: args.path ?? "" }, 7000, signal)).request_id;
+    try {
+      const deadline = Date.now() + 25000;
+      while (true) {
+        const result = await s.native.request("files", {
+          operation: "list_result", request_id: requestId, offset: args.offset ?? 0,
+        }, 7000, signal);
+        if (result.state !== "pending") {
+          if (result.next_offset == null)
+            await s.native.request("files", { operation: "list_cancel", request_id: requestId });
+          return result;
+        }
+        if (Date.now() >= deadline) return { request_id: requestId, state: "pending", wait_timed_out: true };
+        await delay(100, undefined, { signal });
+      }
+    } catch (error) {
+      await s.native.request("files", { operation: "list_cancel", request_id: requestId }).catch(() => {});
+      throw error;
+    }
+  }
   async control(id: string, enabled: boolean) {
     if (!enabled) this.cancelUnlock(this.session(id));
     return this.session(id).native.request("control", { enabled });
