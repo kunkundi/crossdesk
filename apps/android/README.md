@@ -149,7 +149,7 @@ gh secret set ANDROID_KEY_PASSWORD --repo kunkundi/crossdesk
 
 最近连接卡片与 iOS 一样，在设备 ID 旁显示已保存密码的钥匙图标和在线／离线状态，在线设备优先，同一状态内保留原来的最近连接顺序。授权并登录服务器后，通过身份信令订阅 `recent_connections_presence`，接收完整快照与 `presence_update`；每 30 秒刷新，状态超过 60 秒未更新则显示离线。断线、切换服务器或进入后台会清除在线状态，重连后等待新的快照。自托管服务需要支持相同的设备在线状态协议。
 
-证书信任来自 Android 默认 TrustManager 导出的根证书。JNI 设置证书文件路径后，MiniRTC 的 Android 分支通过 `SSL_CTX_load_verify_locations` 显式加载，并校验证书链及 DNS / IP 主机名；不会跳过 TLS 验证。Android 应用进程带有 `AT_SECURE` 标记，不能依赖 OpenSSL 的默认路径加载器读取 `SSL_CERT_FILE`，否则会出现所有服务器均无法建立信任链的问题。自托管服务器应使用受系统信任的证书。当前没有在应用内导入自签名证书的入口。
+证书信任来自 Android 默认 TrustManager 导出的根证书，应用的 Network Security Configuration 显式信任系统 CA 和用户安装的 CA。JNI 设置证书文件路径后，MiniRTC 的 Android 分支通过 `SSL_CTX_load_verify_locations` 显式加载，并校验证书链及 DNS / IP 主机名；不会跳过 TLS 验证。Android 应用进程带有 `AT_SECURE` 标记，不能依赖 OpenSSL 的默认路径加载器读取 `SSL_CERT_FILE`，否则会出现所有服务器均无法建立信任链的问题。自托管服务器可使用受系统信任的证书，或通过 Android 系统设置安装签发服务器证书的 CA。安装或移除 CA 后，重启 CrossDesk 再连接；服务器证书须在有效期内，且包含与连接地址匹配的域名或 IP。
 
 身份按主机名和端口分开保存，备份与设备迁移不包含应用数据。密码不写入连接记录，仅在明确开启“保存密码”后写入独立加密存储；未开启时仅用于当前会话。连接成功通知只处理一次，重复的传输就绪回调不会再次保存密码或重建会话页面；密码存储拒绝空值覆盖。旧版本已被空值覆盖的密码无法恢复，遇到此记录时会提示重新输入一次，并保留“保存密码”开启状态。由于 MiniRTC 的诊断日志包含登录身份，Android 桥接层关闭其会话日志。身份存储损坏会显示错误，不会静默重新注册。
 

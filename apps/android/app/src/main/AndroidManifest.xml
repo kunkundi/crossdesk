@@ -11,6 +11,7 @@
         android:icon="@mipmap/ic_launcher" android:allowBackup="false"
         android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="false" android:usesCleartextTraffic="false">
         <service android:name=".RemoteSessionService" android:exported="false"
             android:foregroundServiceType="specialUse">
