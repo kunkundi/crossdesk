@@ -112,10 +112,13 @@ int PlatformKeyboardCapturer::Unhook() {
 }
 
 void PlatformKeyboardCapturer::SnapshotLocalKeys() {
+  // Keep local release ownership even if focus changed during installation
+  // or recovery. Focus may return before the UI stops capture; forgetting a
+  // held local modifier here would swallow its release and leave Windows stuck.
   local_keys_down_.fill(false);
   for (int code = VK_BACK; code < 0xFF; ++code)
     local_keys_down_[code] = (GetAsyncKeyState(code) & 0x8000) != 0;
-  ForwardLocalModifiers();
+  if (GetForegroundWindow() == capture_window_) ForwardLocalModifiers();
 }
 
 void PlatformKeyboardCapturer::ForwardKey(int code, bool down,
@@ -187,10 +190,7 @@ bool PlatformKeyboardCapturer::RenewKeyboardHook() {
     // Events may have escaped while the hook was unavailable or a backend
     // re-enabled raw input. Cancel uncertain presses and adopt local state.
     ReleaseCapturedKeys();
-    if (GetForegroundWindow() == capture_window_)
-      SnapshotLocalKeys();
-    else
-      local_keys_down_.fill(false);
+    SnapshotLocalKeys();
     LOG_WARN("Reset captured keys after keyboard capture recovery");
   }
   last_hook_pump_tick_.store(GetTickCount64());
@@ -227,8 +227,7 @@ void PlatformKeyboardCapturer::CaptureThreadMain() {
              GetLastError());
   }
   hook_active_.store(capture_started);
-  if (capture_started && GetForegroundWindow() == capture_window_)
-    SnapshotLocalKeys();
+  if (capture_started) SnapshotLocalKeys();
   {
     std::lock_guard<std::mutex> lock(capture_state_mutex_);
     capture_thread_id_ = thread_id;

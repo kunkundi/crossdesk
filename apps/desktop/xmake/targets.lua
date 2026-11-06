@@ -198,6 +198,18 @@ function setup_targets()
         set_default(false)
         add_files("apps/desktop/tests/windows_mouse_controller_safety_test.cpp")
 
+    if is_os("windows") then
+        target("windows_keyboard_capturer_test")
+            set_kind("binary")
+            set_default(false)
+            add_includedirs("apps/desktop/src/platform/windows/input",
+                "apps/desktop/src/platform/common/input",
+                "apps/desktop/src/device_controller", "apps/desktop/src/common",
+                "apps/desktop/src/log", "libs/wire/include")
+            add_files("apps/desktop/tests/windows_keyboard_capturer_test.cpp")
+            add_syslinks("user32")
+    end
+
     target("windows_sas_guard_test")
         set_kind("binary")
         set_default(false)
