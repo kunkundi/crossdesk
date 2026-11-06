@@ -221,7 +221,10 @@ jobs:
           PLATFORM_NAME: iphoneos
           CURRENT_ARCH: arm64
           CROSSDESK_NATIVE_VERBOSE: "1"
-        run: apps/ios/scripts/build_minirtc_ios.sh --configure-only
+        run: |
+          set -o pipefail
+          apps/ios/scripts/build_minirtc_ios.sh --configure-only 2>&1 | \
+            tee "${RUNNER_TEMP}/ios-native-prepare.log"
 
       - name: Save native dependencies
         if: steps.native-cache-key.outputs.incremental == 'true' && steps.native-cache.outputs.cache-hit != 'true'
@@ -291,6 +294,7 @@ jobs:
         with:
           name: ios-build-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
+            ${{ runner.temp }}/ios-native-prepare.log
             ${{ runner.temp }}/ios-native-build.log
             ${{ runner.temp }}/ios-app-build.log
             ~/.xmake/cache/packages/**/logs/*.txt

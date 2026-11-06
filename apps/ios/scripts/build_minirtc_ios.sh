@@ -100,6 +100,13 @@ for host_bin in "${(@s/:/)PATH}"; do
     XMAKE_HOST_PATH+=":${host_bin}"
   fi
 done
+# MiniRTC explicitly uses host Python for its build tools. Check its modules
+# before dependency resolution so a missing setup fails with an actionable error.
+if ! /usr/bin/env -i HOME="${HOME}" PATH="${XMAKE_HOST_PATH}" \
+    python3 -B -c 'import setuptools, wheel, pip'; then
+  print -u2 "Host Python 3 with pip, setuptools and wheel is required. Install them in the Python environment on PATH before building."
+  exit 69
+fi
 run_xmake() {
   # Match desktop repository selection: use Xmake defaults unless explicitly
   # overridden by the caller. Only compiled iOS packages use a separate cache.
