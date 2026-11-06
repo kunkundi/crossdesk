@@ -28,6 +28,18 @@ void OpenPrivacyPreferences(const char *pane) {
 }
 } // namespace
 
+void GuiRuntime::StartMacPermissionMigration(bool retry) {
+  if (mac_permission_migration_task_.valid()) return;
+  mac_permission_migration_failed_ = false;
+  try {
+    mac_permission_migration_task_ = std::async(
+        std::launch::async, [retry] { return MigrateMacPermissions(retry); });
+  } catch (const std::exception& error) {
+    mac_permission_migration_failed_ = true;
+    LOG_ERROR("Could not start macOS permission migration: {}", error.what());
+  }
+}
+
 bool GuiRuntime::CheckScreenRecordingPermission() {
   // CGPreflightScreenCaptureAccess is available on macOS 10.15+
   if (@available(macOS 10.15, *)) {
@@ -46,6 +58,7 @@ bool GuiRuntime::CheckAccessibilityPermission() {
 }
 
 void GuiRuntime::OpenAccessibilityPreferences() {
+  if (mac_permission_migration_task_.valid()) return;
   if (!mac_accessibility_permission_requested_) {
     NSDictionary *options = @{(__bridge id)kAXTrustedCheckOptionPrompt : @YES};
     AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
@@ -55,6 +68,7 @@ void GuiRuntime::OpenAccessibilityPreferences() {
 }
 
 void GuiRuntime::OpenScreenRecordingPreferences() {
+  if (mac_permission_migration_task_.valid()) return;
   if (@available(macOS 10.15, *)) {
     if (!mac_screen_recording_permission_requested_) {
       CGRequestScreenCaptureAccess();
@@ -67,6 +81,19 @@ void GuiRuntime::OpenScreenRecordingPreferences() {
 }
 
 void GuiRuntime::RefreshMacPermissionStatus(bool force) {
+  if (mac_permission_migration_task_.valid() &&
+      mac_permission_migration_task_.wait_for(std::chrono::seconds(0)) ==
+          std::future_status::ready) {
+    try {
+      const auto result = mac_permission_migration_task_.get();
+      mac_permission_migration_failed_ = result.needs_repair;
+      if (result.needs_repair) LOG_WARN("macOS permission migration: {}", result.detail);
+    } catch (const std::exception& error) {
+      mac_permission_migration_failed_ = true;
+      LOG_ERROR("macOS permission migration failed: {}", error.what());
+    }
+    force = true;
+  }
   const uint32_t now = static_cast<uint32_t>(SDL_GetTicks());
   if (!force && mac_permission_status_initialized_ &&
       now - mac_permission_last_check_tick_ <
@@ -98,7 +125,7 @@ bool GuiRuntime::EnsureMacScreenRecordingPermission() {
     return true;
   }
 
-  show_request_permission_window_ = true;
+  show_request_permission_window_ = !mac_permission_dialog_dismissed_;
   return false;
 }
 
@@ -108,7 +135,7 @@ bool GuiRuntime::EnsureMacAccessibilityPermission() {
     return true;
   }
 
-  show_request_permission_window_ = true;
+  show_request_permission_window_ = !mac_permission_dialog_dismissed_;
   return false;
 }
 

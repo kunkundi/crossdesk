@@ -20,6 +20,21 @@
 
 在“系统设置 → 隐私与安全性”中检查 CrossDesk 的屏幕录制与辅助功能权限。更换应用位置或签名、更新开发构建后，可能需要重新授权并重启应用。
 
+同一团队正式签名且应用标识与签名要求兼容的版本，正常升级通常可以沿用权限。从未签名或 ad-hoc 旧版升级后，退出旧版并启动新版，新版会在后台处理当前用户的辅助功能和录屏权限迁移，再引导重新授权。每项权限的完成状态会单独保存。
+
+迁移失败或中断时，打开“设置 → 系统权限”，点击“重试权限迁移”。也可选择“稍后”继续使用客户端，受影响的被控功能在授权后启用。若系统设置仍显示已授权但功能异常，彻底退出 CrossDesk，在对应权限列表中移除旧条目后重新添加 `/Applications/CrossDesk.app`，再启动应用。
+
+问题仍存在时，再次退出 CrossDesk，在当前登录用户的终端中仅执行与故障对应的一条命令，重置 CrossDesk 的该项授权。
+
+```bash
+# 录屏权限异常
+tccutil reset ScreenCapture cn.crossdesk.app
+# 辅助功能权限异常
+tccutil reset Accessibility cn.crossdesk.app
+```
+
+执行后重新启动 CrossDesk，按提示在系统设置中授权。仍有旧路径或旧版本条目时，可在对应权限列表中移除旧条目后重新添加当前应用。
+
 ## Linux Wayland 无法捕获画面
 
 Wayland 画面捕获依赖启用了 Wayland 支持的构建、宿主系统 PipeWire 0.3 和桌面门户授权；无法捕获时也可在 X11 会话中对比验证。构建选项见 [Linux 构建说明](BUILD.md#linux)。
@@ -98,7 +113,7 @@ Windows 安装包和便携包内置了 Amyuni 的 `usbmmidd_v2` 虚拟显示器�
 | Server disconnected / TLS error | Network access, signaling endpoint, certificate dates, hostname, and system trust. See [self-hosting](SELF_HOSTING_EN.md). |
 | Remote device offline | Keep the host running, connect both sides to the same signaling server, and copy its current ID again. |
 | P2P connection failed | The default connection policy already allows TURN relay fallback. Enable Force Relay in Settings, save, and reconnect to troubleshoot direct connections. For self-hosting, check Coturn and relay/media firewall ports. Review [release compatibility notes](https://github.com/kunkundi/crossdesk/releases). |
-| Black screen / no input on macOS | Grant Screen Recording and Accessibility, then reopen the app. A changed app path or signature may require fresh permission grants. |
+| Black screen / no input on macOS | Grant Screen Recording and Accessibility, then reopen the app. Release updates with compatible signing identities normally retain permissions. For migration or stale grants, see [macOS permission repair](#repair-macos-permissions). |
 | No capture on Linux Wayland | Check the Wayland build option, host PipeWire 0.3, and desktop portal permission. Compare with an X11 session. See [Linux build instructions](BUILD_EN.md#linux). |
 | Linux host has no monitor or graphical session | Start CrossDesk normally to automatically discover and select your existing desktop, preserving its Dock and apps; no display number is needed. A bare Xvfb shows only CrossDesk on a black background; use an existing session or install Xfce and specify `--headless-session startxfce4`. See [Linux headless operation](HEADLESS_EN.md). |
 | Cannot control a Windows lock screen | Install/start CrossDesk Service and keep the host client running. See [service commands](../README_EN.md#windows-service). |
@@ -111,5 +126,22 @@ Windows 安装包和便携包内置了 Amyuni 的 `usbmmidd_v2` 虚拟显示器�
 | Main window closed but app still running | Closing hides the window. Use the tray/menu-bar exit command to quit. |
 | Windows build without CUDA | Build with `--USE_CUDA=false`, or follow the [CUDA build instructions](BUILD_EN.md). Use `$env:CUDA_PATH` in PowerShell. |
 | iOS artifact cannot be installed directly | CI exports an unsigned app. Sign it yourself or build and run from Xcode on a physical device. See [iOS requirements](../apps/ios/README.md). |
+
+### Repair macOS permissions
+
+Release upgrades with compatible signing identities normally retain permissions. After upgrading an unsigned or ad-hoc build, quit the old app and launch the new version. It migrates Accessibility and Screen Recording in the background for the current user, then guides you through authorization. Completion is saved separately for each permission.
+
+For failed or interrupted migrations, open **Settings → System permissions** and choose **Retry migration**. Choose **Later** to continue using the client. Affected host features become available after authorization. If access appears enabled while capture or input still fails, quit CrossDesk, remove the old entry from the affected privacy list, add `/Applications/CrossDesk.app` again, and reopen the app.
+
+If the issue persists, quit CrossDesk and run only the command for the affected permission in the logged-in user's terminal.
+
+```bash
+# Screen Recording permission issue
+tccutil reset ScreenCapture cn.crossdesk.app
+# Accessibility permission issue
+tccutil reset Accessibility cn.crossdesk.app
+```
+
+Reopen CrossDesk and grant the requested permission in System Settings. If entries for older paths or builds remain, remove the old entry from the affected permission list and add the current app again.
 
 If the issue persists, [open an issue](https://github.com/kunkundi/crossdesk/issues) with both OS versions, client versions, connection mode, and reproduction steps. Remove passwords and private device information from logs or screenshots before sharing them.

@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cstdint>
 #include <deque>
+#include <future>
 #include <memory>
 #include <string>
 
@@ -28,6 +29,9 @@
 #include "runtime/peer_event_handler.h"
 #include "runtime/privacy_session_policy.h"
 #include "runtime/trusted_devices.h"
+#ifdef __APPLE__
+#include "platform/macos/gui/runtime/mac_permission_migration.h"
+#endif
 
 namespace crossdesk {
 
@@ -180,6 +184,11 @@ class GuiRuntime : protected gui_detail::GuiState {
 #endif
 
 #ifdef __APPLE__
+  void StartMacPermissionMigration(bool retry);
+  std::future<MacPermissionMigrationResult> mac_permission_migration_task_;
+  bool mac_permission_migration_failed_ = false;
+  bool mac_permission_dialog_dismissed_ = false;
+  bool mac_permission_dialog_requested_ = false;
   bool CheckScreenRecordingPermission();
   bool CheckAccessibilityPermission();
   void OpenScreenRecordingPreferences();

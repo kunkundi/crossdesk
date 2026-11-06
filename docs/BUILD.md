@@ -59,7 +59,11 @@ xmake r crossdesk
 ./apps/desktop/scripts/macos/pkg_x64.sh 1.4.3
 ```
 
-打包脚本会生成包含 Slint 运行库的 `.app` 和 `.pkg`。屏幕录制、辅助功能授权与应用路径及签名有关；测试被控能力时请使用固定路径下的应用包。
+打包脚本会生成包含 Slint 运行库的 `.app` 和 `.pkg`。正式版本持续使用同一团队的 Developer ID 签名、相同 Bundle ID 及兼容的签名要求时，正常升级通常可以沿用录屏、辅助功能等授权。测试被控能力时请使用固定路径下的应用包。
+
+Developer ID 安装包通过 `preinstall` 检查覆盖前的旧应用。检测到未签名或 ad-hoc 的 CrossDesk 时，原子保存迁移标记到目标卷的 `/Library/Application Support/CrossDesk/permission-migration.json`。安装完成后退出旧版并启动新版，正式签名的新版会在后台按当前用户分别迁移辅助功能与录屏授权。迁移标记支持离线卷安装和稍后登录的其他用户。
+
+每项权限的处理进度保存在当前用户的 `~/Library/Application Support/CrossDesk/PermissionMigration/progress.json`。已处理或已有效授权的项目会跳过，失败或中断的项目可在“设置 → 系统权限”中点击“重试权限迁移”。迁移处理中及失败时均可选择“稍后”，受影响的被控功能在获得授权后启用。安装器记录迁移状态失败时会写入安装日志并继续安装。已完成安装后遗留的异常授权、更换证书签名身份等情况，参照 [macOS 权限排查](FAQ.md#macos-有连接但黑屏或无法操作键鼠)。
 
 ### Developer ID 签名与公证
 
@@ -120,7 +124,7 @@ base64 -i "$HOME/Downloads/crossdesk-installer.p12" | pbcopy
 
 配置后先手动运行工作流：填写 `desktop_version`，勾选 `sign_macos`，确认 ARM64、Intel 的 `Notarize and staple macOS installer` 步骤均成功，再推送发布标签。需要先将工作流和配套脚本提交、推送到 GitHub，新的开关和步骤才会生效。
 
-CI 最多等待公证 60 分钟；若 Apple 仍在处理，任务失败并阻止发布，但会保留 `macos-pending-notarization-*` 安装包及 `macos-notarization-*` JSON 诊断产物 14 天。下载产物后，按上一节用已保存的提交 ID 查询并附加票据，无需重复上传同一个包。不要将 pending 产物当作已经完成公证的发布包。自动签名流程不改变安装器当前的权限重置逻辑；辅助功能授权是否保留还需单独调整安装脚本。
+CI 最多等待公证 60 分钟；若 Apple 仍在处理，任务失败并阻止发布，但会保留 `macos-pending-notarization-*` 安装包及 `macos-notarization-*` JSON 诊断产物 14 天。下载产物后，按上一节用已保存的提交 ID 查询并附加票据，无需重复上传同一个包。不要将 pending 产物当作已经完成公证的发布包。
 
 ## Linux
 

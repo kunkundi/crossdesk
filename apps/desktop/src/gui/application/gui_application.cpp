@@ -1173,6 +1173,9 @@ int GuiApplication::Run() {
                                      "announcement_reads");
   config_center_ = std::make_unique<ConfigCenter>(cache_path_ + "/config.ini");
   InitializeTrustedDevices(path_manager_->GetConfigPath() / "trusted-devices");
+#ifdef __APPLE__
+  StartMacPermissionMigration(false);
+#endif
 
   LOG_INFO("CrossDesk version: {} (Slint UI)", CROSSDESK_VERSION);
 
@@ -2079,6 +2082,26 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
     props->remember_password_ = remember;
     props->rejoin_ = true;
     need_to_rejoin_ = true;
+  });
+  main->on_open_permissions([this, main] {
+#ifdef __APPLE__
+    mac_permission_dialog_dismissed_ = false;
+    mac_permission_dialog_requested_ = true;
+    show_request_permission_window_ = true;
+    if (main->get_gallery_mode()) ShowMainWindow();
+#endif
+  });
+  main->on_dismiss_permissions([this] {
+#ifdef __APPLE__
+    mac_permission_dialog_dismissed_ = true;
+    mac_permission_dialog_requested_ = false;
+    show_request_permission_window_ = false;
+#endif
+  });
+  main->on_retry_permission_migration([this] {
+#ifdef __APPLE__
+    StartMacPermissionMigration(true);
+#endif
   });
   main->on_request_screen_recording_permission([this] {
 #ifdef __APPLE__
@@ -3617,8 +3640,16 @@ void GuiApplication::SyncPlatformDialogs() {
 #endif
 #ifdef __APPLE__
   RefreshMacPermissionStatus(false);
-  show_request_permission_window_ = !mac_screen_recording_permission_granted_ ||
-                                    !mac_accessibility_permission_granted_;
+  const bool migration_running = mac_permission_migration_task_.valid();
+  const bool permissions_pending = migration_running ||
+      mac_permission_migration_failed_ || !mac_screen_recording_permission_granted_ ||
+      !mac_accessibility_permission_granted_;
+  show_request_permission_window_ = !mac_permission_dialog_dismissed_ &&
+      (mac_permission_dialog_requested_ || permissions_pending);
+  ui_->main->set_mac_permission_settings_visible(true);
+  ui_->wall->set_mac_permission_settings_visible(true);
+  ui_->main->set_permission_migration_running(migration_running);
+  ui_->main->set_permission_migration_failed(mac_permission_migration_failed_);
   ui_->main->set_permission_dialog_open(show_request_permission_window_);
   ui_->main->set_screen_recording_granted(
       mac_screen_recording_permission_granted_);

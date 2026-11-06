@@ -120,6 +120,11 @@ export global UiStrings {
     in-out property <string> permission-required: "The application requires the following permissions:";
     in-out property <string> screen-recording-permission: "Screen recording permission";
     in-out property <string> accessibility-permission: "Accessibility permission";
+    in-out property <string> system-permissions: "System permissions";
+    in-out property <string> permission-migration-running: "Migrating permissions…";
+    in-out property <string> permission-migration-failed;
+    in-out property <string> retry-permission-migration: "Retry migration";
+    in-out property <string> permission-later: "Later";
     in-out property <string> wayland-notice-title: "Wayland Session Notice";
     in-out property <string> wayland-notice-subtitle;
     in-out property <string> wayland-permission-title;
@@ -625,6 +630,9 @@ export component MainWindow inherits Window {
     in-out property <string> connection-password: "";
     in-out property <bool> connection-remember-password: false;
     in property <bool> permission-dialog-open: false;
+    in property <bool> mac-permission-settings-visible: false;
+    in property <bool> permission-migration-running: false;
+    in property <bool> permission-migration-failed: false;
     in property <bool> screen-recording-granted: true;
     in property <bool> accessibility-granted: true;
     in-out property <bool> wayland-notice-open: false;
@@ -717,6 +725,9 @@ export component MainWindow inherits Window {
     callback reset-remote-id;
     callback request-screen-recording-permission;
     callback request-accessibility-permission;
+    callback open-permissions;
+    callback dismiss-permissions;
+    callback retry-permission-migration;
     callback install-portable-service;
     callback cancel-portable-service;
     callback acknowledge-portable-service;
@@ -2577,82 +2588,117 @@ export component MainWindow inherits Window {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
             width: min(400px, parent.width - 40px);
-            height: permission-content.preferred-height;
+            height: min(permission-content.preferred-height, parent.height - 32px);
             background: #f8fafc; outline-color: UiSurface.edge;
             TouchArea { clicked => { focus-sink.focus(); } }
-            permission-content := VerticalLayout {
-                padding: 24px; spacing: 20px;
-                VerticalLayout {
-                    spacing: 8px;
-                    Text {
-                        text: UiStrings.request-permissions;
-                        font-size: 20px; font-weight: 600; color: WorkbenchStyle.text;
-                        wrap: word-wrap;
-                    }
-                    Text {
-                        text: UiStrings.permission-required;
-                        font-size: 12px; color: WorkbenchStyle.muted; wrap: word-wrap;
-                    }
-                }
-                VerticalLayout {
-                    spacing: 12px;
-                    for permission[index] in [
-                        {label: UiStrings.accessibility-permission, granted: root.accessibility-granted,
-                         description: GalleryStrings.texts[108]},
-                        {label: UiStrings.screen-recording-permission, granted: root.screen-recording-granted,
-                         description: GalleryStrings.texts[109]},
-                    ]: WorkbenchCard {
-                        height: max(80px, permission-labels.preferred-height + 32px);
-                        permission-labels := VerticalLayout {
-                            x: 16px; y: 16px; width: parent.width - permission-action.width - 48px;
-                            height: parent.height - 32px; spacing: 6px; alignment: center;
+            permission-scroll := ScrollView {
+                width: parent.width; height: parent.height;
+                viewport-width: self.visible-width;
+                viewport-height: permission-content.preferred-height;
+                horizontal-scrollbar-policy: always-off;
+                vertical-scrollbar-policy: as-needed;
+                Rectangle {
+                    width: permission-scroll.viewport-width;
+                    height: permission-scroll.viewport-height;
+                    permission-content := VerticalLayout {
+                        padding: 24px; spacing: 20px;
+                        VerticalLayout {
+                            spacing: 8px;
                             Text {
-                                text: permission.label; font-size: 13px; font-weight: 600;
-                                color: WorkbenchStyle.text; wrap: word-wrap;
+                                text: UiStrings.request-permissions;
+                                font-size: 20px; font-weight: 600; color: WorkbenchStyle.text;
+                                wrap: word-wrap;
                             }
                             Text {
-                                text: permission.description; font-size: 11px;
-                                color: WorkbenchStyle.muted; wrap: word-wrap;
+                                text: UiStrings.permission-required;
+                                font-size: 12px; color: WorkbenchStyle.muted; wrap: word-wrap;
                             }
                         }
-                        permission-action := Rectangle {
-                            x: parent.width - self.width - 16px; y: (parent.height - self.height) / 2;
-                            width: max(96px, permission-action-metrics.preferred-width + 24px);
-                            height: 36px;
-                            permission-action-metrics := Text {
-                                visible: false; font-size: 13px; font-weight: 600;
-                                text: GalleryStrings.texts[110];
-                            }
-                            if !permission.granted: WorkbenchButton {
-                                width: parent.width; height: parent.height; primary: true;
-                                text: permission-action-metrics.text;
-                                accessible-label: permission.label + ": " + self.text;
-                                clicked => {
-                                    if index == 0 { root.request-accessibility-permission(); }
-                                    else { root.request-screen-recording-permission(); }
+                        VerticalLayout {
+                            spacing: 12px;
+                            for permission[index] in [
+                                {label: UiStrings.accessibility-permission, granted: root.accessibility-granted,
+                                 description: GalleryStrings.texts[108]},
+                                {label: UiStrings.screen-recording-permission, granted: root.screen-recording-granted,
+                                 description: GalleryStrings.texts[109]},
+                            ]: WorkbenchCard {
+                                height: max(80px, permission-labels.preferred-height + 32px);
+                                permission-labels := VerticalLayout {
+                                    x: 16px; y: 16px; width: parent.width - permission-action.width - 48px;
+                                    height: parent.height - 32px; spacing: 6px; alignment: center;
+                                    Text {
+                                        text: permission.label; font-size: 13px; font-weight: 600;
+                                        color: WorkbenchStyle.text; wrap: word-wrap;
+                                    }
+                                    Text {
+                                        text: permission.description; font-size: 11px;
+                                        color: WorkbenchStyle.muted; wrap: word-wrap;
+                                    }
                                 }
-                            }
-                            if permission.granted: HorizontalLayout {
-                                alignment: center; spacing: 6px;
-                                Text {
-                                    text: FontAwesomeIcons.check; font-family: "Font Awesome 6 Free";
-                                    font-weight: 900; font-size: 12px; color: WorkbenchStyle.success;
-                                    vertical-alignment: center; accessible-role: none;
-                                }
-                                Text {
-                                    text: GalleryStrings.texts[111];
-                                    font-size: 12px; color: WorkbenchStyle.success; vertical-alignment: center;
+                                permission-action := Rectangle {
+                                    x: parent.width - self.width - 16px; y: (parent.height - self.height) / 2;
+                                    width: max(96px, permission-action-metrics.preferred-width + 24px);
+                                    height: 36px;
+                                    permission-action-metrics := Text {
+                                        visible: false; font-size: 13px; font-weight: 600;
+                                        text: GalleryStrings.texts[110];
+                                    }
+                                    if !permission.granted: WorkbenchButton {
+                                        width: parent.width; height: parent.height; primary: true;
+                                        enabled: !root.permission-migration-running;
+                                        text: permission-action-metrics.text;
+                                        accessible-label: permission.label + ": " + self.text;
+                                        clicked => {
+                                            if index == 0 { root.request-accessibility-permission(); }
+                                            else { root.request-screen-recording-permission(); }
+                                        }
+                                    }
+                                    if permission.granted: HorizontalLayout {
+                                        alignment: center; spacing: 6px;
+                                        Text {
+                                            text: FontAwesomeIcons.check; font-family: "Font Awesome 6 Free";
+                                            font-weight: 900; font-size: 12px; color: WorkbenchStyle.success;
+                                            vertical-alignment: center; accessible-role: none;
+                                        }
+                                        Text {
+                                            text: GalleryStrings.texts[111];
+                                            font-size: 12px; color: WorkbenchStyle.success; vertical-alignment: center;
+                                        }
+                                    }
                                 }
                             }
                         }
-                    }
-                }
-                VerticalLayout {
-                    spacing: 12px;
-                    SurfaceSeparator { height: 1px; outline-color: UiSurface.separator; }
-                    Text {
-                        text: GalleryStrings.texts[112];
-                        font-size: 11px; color: WorkbenchStyle.muted; wrap: word-wrap;
+                        VerticalLayout {
+                            spacing: 12px;
+                            SurfaceSeparator { height: 1px; outline-color: UiSurface.separator; }
+                            if root.permission-migration-running || root.permission-migration-failed: Text {
+                                text: root.permission-migration-running
+                                    ? UiStrings.permission-migration-running : UiStrings.permission-migration-failed;
+                                font-size: 11px; color: WorkbenchStyle.muted; wrap: word-wrap;
+                            }
+                            Text {
+                                text: GalleryStrings.texts[112];
+                                font-size: 11px; color: WorkbenchStyle.muted; wrap: word-wrap;
+                            }
+                            HorizontalLayout {
+                                alignment: end; spacing: 8px;
+                                WorkbenchButton {
+                                    text: root.accessibility-granted && root.screen-recording-granted
+                                        && !root.permission-migration-running && !root.permission-migration-failed
+                                        ? UiStrings.ok : UiStrings.permission-later;
+                                    clicked => { root.dismiss-permissions(); }
+                                }
+                                if root.permission-migration-failed: retry-migration := WorkbenchButton {
+                                    width: max(112px, retry-migration-label.preferred-width + 24px);
+                                    primary: true; text: UiStrings.retry-permission-migration;
+                                    clicked => { root.retry-permission-migration(); }
+                                    retry-migration-label := Text {
+                                        visible: false; accessible-role: none;
+                                        text: retry-migration.text; font-size: 13px; font-weight: 600;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2794,18 +2840,28 @@ export component MainWindow inherits Window {
                             }
                         }
                         SettingsGroup {
-                            title: GalleryStrings.texts[120]; rows: 5;
+                            title: GalleryStrings.texts[120];
+                            rows: root.mac-permission-settings-visible ? 6 : 5;
                             SettingsToggleRow { label: UiStrings.privacy-on-connect; checked <=> root.privacy-on-connect-enabled; enabled: root.privacy-setting-available; }
                             SettingsToggleRow { label: UiStrings.privacy-local-unlock; checked <=> root.privacy-local-unlock-allowed; enabled: root.privacy-setting-available; }
                             SettingsToggleRow { label: UiStrings.lock-on-disconnect; checked <=> root.lock-on-disconnect-enabled; enabled: root.lock-on-disconnect-available; }
                             SettingsToggleRow { label: TrustStrings.only; checked <=> root.trusted-devices-only; }
                             SettingsRow {
-                                label: TrustStrings.title; divider: false;
+                                label: TrustStrings.title; divider: root.mac-permission-settings-visible;
                                 SettingsButton {
                                     x: parent.width - self.width - 12px; y: 4px;
                                     width: max(104px, self.label-width); height: 28px;
                                     text: TrustStrings.manage;
                                     clicked => { root.trusted-devices-open = true; root.trust-action("open", "", ""); }
+                                }
+                            }
+                            if root.mac-permission-settings-visible: SettingsRow {
+                                label: UiStrings.system-permissions; divider: false;
+                                SettingsButton {
+                                    x: parent.width - self.width - 12px; y: 4px;
+                                    width: max(104px, self.label-width); height: 28px;
+                                    text: TrustStrings.manage;
+                                    clicked => { root.open-permissions(); }
                                 }
                             }
                         }

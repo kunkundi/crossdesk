@@ -74,6 +74,11 @@ inline int ApplyMainWindowStrings(
   trust.set_remove(Text(localization::Literal("移除信任", language)));
   trust.set_close(Text(localization::message_close[language]));
   auto& strings = window->global<ui::UiStrings>();
+  strings.set_system_permissions(Text(localization::system_permissions[language]));
+  strings.set_permission_migration_running(Text(localization::permission_migration_running[language]));
+  strings.set_permission_migration_failed(Text(localization::permission_migration_failed[language]));
+  strings.set_retry_permission_migration(Text(localization::retry_permission_migration[language]));
+  strings.set_permission_later(Text(localization::permission_later[language]));
   strings.set_window_minimize(Text(localization::window_minimize[language]));
   strings.set_window_close(Text(localization::window_close[language]));
   strings.set_save(Text(localization::save[language]));

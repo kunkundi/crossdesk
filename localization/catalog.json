@@ -10667,6 +10667,66 @@
       "fr": "Met en pause la réception vidéo lorsque la fenêtre de contrôle est réduite afin de diminuer les ressources de décodage utilisées sur cet appareil.",
       "es": "Pausa la recepción de vídeo al minimizar la ventana de control para reducir el uso de recursos de decodificación en este dispositivo.",
       "pt-BR": "Pausa a recepção de vídeo ao minimizar a janela de controle para reduzir o uso de recursos de decodificação neste dispositivo."
+    },
+    "系统权限": {
+      "zh-Hans": "系统权限",
+      "en": "System permissions",
+      "ru": "Системные разрешения",
+      "zh-Hant": "系統權限",
+      "ja": "システム権限",
+      "ko": "시스템 권한",
+      "de": "Systemberechtigungen",
+      "fr": "Autorisations système",
+      "es": "Permisos del sistema",
+      "pt-BR": "Permissões do sistema"
+    },
+    "正在迁移旧版权限…": {
+      "zh-Hans": "正在迁移旧版权限…",
+      "en": "Migrating permissions…",
+      "ru": "Перенос разрешений…",
+      "zh-Hant": "正在遷移舊版權限…",
+      "ja": "権限を移行中…",
+      "ko": "권한 이전 중…",
+      "de": "Berechtigungen werden migriert…",
+      "fr": "Migration des autorisations…",
+      "es": "Migrando permisos…",
+      "pt-BR": "Migrando permissões…"
+    },
+    "权限迁移未完成。请重试，或在系统设置中移除旧 CrossDesk 后重新添加。": {
+      "zh-Hans": "权限迁移未完成。请重试，或在系统设置中移除旧 CrossDesk 后重新添加。",
+      "en": "Permission migration needs attention. Retry, or remove and re-add CrossDesk in System Settings.",
+      "ru": "Не удалось завершить перенос разрешений. Повторите попытку или удалите и заново добавьте CrossDesk в системных настройках.",
+      "zh-Hant": "權限遷移未完成。請重試，或在系統設定中移除舊 CrossDesk 後重新加入。",
+      "ja": "権限の移行を完了できませんでした。再試行するか、システム設定でCrossDeskを削除して追加し直してください。",
+      "ko": "권한 이전이 완료되지 않았습니다. 다시 시도하거나 시스템 설정에서 CrossDesk를 제거한 후 다시 추가하세요.",
+      "de": "Die Migration der Berechtigungen ist unvollständig. Wiederholen Sie den Vorgang oder entfernen Sie CrossDesk in den Systemeinstellungen und fügen Sie es erneut hinzu.",
+      "fr": "La migration des autorisations est incomplète. Réessayez, ou supprimez puis ajoutez à nouveau CrossDesk dans les réglages système.",
+      "es": "La migración de permisos está incompleta. Reinténtelo o elimine y vuelva a añadir CrossDesk en Ajustes del Sistema.",
+      "pt-BR": "A migração de permissões está incompleta. Tente novamente ou remova e adicione o CrossDesk novamente nos Ajustes do Sistema."
+    },
+    "重试权限迁移": {
+      "zh-Hans": "重试权限迁移",
+      "en": "Retry migration",
+      "ru": "Повторить перенос",
+      "zh-Hant": "重試權限遷移",
+      "ja": "移行を再試行",
+      "ko": "권한 이전 재시도",
+      "de": "Migration wiederholen",
+      "fr": "Réessayer la migration",
+      "es": "Reintentar migración",
+      "pt-BR": "Repetir migração"
+    },
+    "稍后": {
+      "zh-Hans": "稍后",
+      "en": "Later",
+      "ru": "Позже",
+      "zh-Hant": "稍後",
+      "ja": "後で",
+      "ko": "나중에",
+      "de": "Später",
+      "fr": "Plus tard",
+      "es": "Más tarde",
+      "pt-BR": "Mais tarde"
     }
   },
   "desktop": {
@@ -10955,7 +11015,12 @@
     "exit_program": "退出",
     "shutdown_reason": "远程控制连接中，保留连接以确认或取消关机。",
     "pause_video_when_minimized": "最小化时暂停视频",
-    "pause_video_when_minimized_hint": "控制窗口最小化时暂停接收视频，降低本机解码资源占用。"
+    "pause_video_when_minimized_hint": "控制窗口最小化时暂停接收视频，降低本机解码资源占用。",
+    "system_permissions": "系统权限",
+    "permission_migration_running": "正在迁移旧版权限…",
+    "permission_migration_failed": "权限迁移未完成。请重试，或在系统设置中移除旧 CrossDesk 后重新添加。",
+    "retry_permission_migration": "重试权限迁移",
+    "permission_later": "稍后"
   },
   "slint": [
     "此端口已被占用，",
@@ -11684,7 +11749,12 @@
       "清除已完成",
       "打开目录",
       "最小化时暂停视频",
-      "控制窗口最小化时暂停接收视频，降低本机解码资源占用。"
+      "控制窗口最小化时暂停接收视频，降低本机解码资源占用。",
+      "系统权限",
+      "正在迁移旧版权限…",
+      "权限迁移未完成。请重试，或在系统设置中移除旧 CrossDesk 后重新添加。",
+      "重试权限迁移",
+      "稍后"
     ],
     "android": [
       " · 已完成",

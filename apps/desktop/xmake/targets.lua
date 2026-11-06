@@ -656,6 +656,7 @@ function setup_targets()
                 "apps/desktop/src/platform/macos/gui/window_drag_mac.mm",
                 "apps/desktop/src/platform/macos/gui/metal_video_renderer.mm",
                 "apps/desktop/src/platform/macos/gui/video_renderer_factory_metal.mm")
+            add_frameworks("Security", {public = true})
             add_includedirs("apps/desktop/src/platform/macos/gui",
                 "apps/desktop/src/platform/macos/gui/tray")
         elseif is_os("linux") then

@@ -56,7 +56,11 @@ The current CI sets macOS 14.0 as the minimum target for both Intel and Apple Si
 ./apps/desktop/scripts/macos/pkg_x64.sh 1.4.3
 ```
 
-The scripts create an `.app` and `.pkg` containing the Slint runtime. Screen Recording and Accessibility grants depend on the app path and signature; use a consistent application bundle when testing host functionality.
+The scripts create an `.app` and `.pkg` containing the Slint runtime. Release updates can normally retain Screen Recording, Accessibility and other grants when they use Developer ID signing from the same team, the same bundle ID and compatible code signing requirements. Use a consistent application path when testing host functionality.
+
+Developer ID installers inspect the old app in `preinstall`. For unsigned or ad-hoc builds, they atomically record a migration marker at `/Library/Application Support/CrossDesk/permission-migration.json` on the target volume. After installation, quit the old app and launch the new version. The Developer ID app migrates Accessibility and Screen Recording in the background for the current user. The marker also supports offline target volumes and users who log in later.
+
+Per-service progress is stored in `~/Library/Application Support/CrossDesk/PermissionMigration/progress.json` for each user. Completed services and valid grants are preserved. Failed or interrupted services can be retried from **Settings → System permissions → Retry migration**. Choose **Later** to continue using the app while migration is running or needs attention. Affected host features become available after authorization. Failure to record the installer marker is logged and installation continues. For stale grants from earlier installations or changes between certificate signing identities, see [macOS permission repair](FAQ.md#repair-macos-permissions).
 
 ### Developer ID signing and notarization
 
@@ -117,7 +121,7 @@ Your local `crossdesk-notary` profile does not synchronize to GitHub runners. Th
 
 After committing and pushing the workflow and supporting scripts, first run it manually with `desktop_version` set and `sign_macos` enabled. Confirm that `Notarize and staple macOS installer` succeeds for both ARM64 and Intel before pushing a release tag.
 
-CI waits up to 60 minutes for notarization. If Apple is still processing, the job fails and blocks publication, while preserving `macos-pending-notarization-*` installer artifacts and `macos-notarization-*` JSON diagnostics for 14 days. Download them and use the saved submission ID as described above to resume checking and staple the package without uploading it again. Pending artifacts are not completed notarized releases. CI signing does not change the installer's existing permission-reset behavior; preserving Accessibility grants requires a separate installer change.
+CI waits up to 60 minutes for notarization. If Apple is still processing, the job fails and blocks publication, while preserving `macos-pending-notarization-*` installer artifacts and `macos-notarization-*` JSON diagnostics for 14 days. Download them and use the saved submission ID as described above to resume checking and staple the package without uploading it again. Pending artifacts are not completed notarized releases.
 
 ## Linux
 

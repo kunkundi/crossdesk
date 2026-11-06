@@ -527,6 +527,11 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"打开目录", {"打开目录", "Open folder", "Открыть папку", "開啟目錄", "フォルダーを開く", "폴더 열기", "Ordner öffnen", "Ouvrir le dossier", "Abrir carpeta", "Abrir pasta"}},
   {"最小化时暂停视频", {"最小化时暂停视频", "Pause video when minimized", "Приостанавливать видео при сворачивании", "最小化時暫停視訊", "最小化時に映像を一時停止", "최소화 시 영상 일시 중지", "Video beim Minimieren pausieren", "Mettre la vidéo en pause à la réduction", "Pausar el vídeo al minimizar", "Pausar vídeo ao minimizar"}},
   {"控制窗口最小化时暂停接收视频，降低本机解码资源占用。", {"控制窗口最小化时暂停接收视频，降低本机解码资源占用。", "Pause video reception when the control window is minimized to reduce local decoding resource usage.", "При сворачивании окна управления приём видео приостанавливается, снижая нагрузку от декодирования на этом устройстве.", "控制視窗最小化時暫停接收視訊，降低本機解碼資源占用。", "操作ウィンドウの最小化時に映像の受信を一時停止し、この端末のデコード処理による負荷を軽減します。", "제어 창을 최소화하면 영상 수신을 일시 중지하여 이 기기의 디코딩 리소스 사용량을 줄입니다.", "Pausiert den Videoempfang, wenn das Steuerungsfenster minimiert ist, und reduziert so den lokalen Ressourcenverbrauch beim Dekodieren.", "Met en pause la réception vidéo lorsque la fenêtre de contrôle est réduite afin de diminuer les ressources de décodage utilisées sur cet appareil.", "Pausa la recepción de vídeo al minimizar la ventana de control para reducir el uso de recursos de decodificación en este dispositivo.", "Pausa a recepção de vídeo ao minimizar a janela de controle para reduzir o uso de recursos de decodificação neste dispositivo."}},
+  {"系统权限", {"系统权限", "System permissions", "Системные разрешения", "系統權限", "システム権限", "시스템 권한", "Systemberechtigungen", "Autorisations système", "Permisos del sistema", "Permissões do sistema"}},
+  {"正在迁移旧版权限…", {"正在迁移旧版权限…", "Migrating permissions…", "Перенос разрешений…", "正在遷移舊版權限…", "権限を移行中…", "권한 이전 중…", "Berechtigungen werden migriert…", "Migration des autorisations…", "Migrando permisos…", "Migrando permissões…"}},
+  {"权限迁移未完成。请重试，或在系统设置中移除旧 CrossDesk 后重新添加。", {"权限迁移未完成。请重试，或在系统设置中移除旧 CrossDesk 后重新添加。", "Permission migration needs attention. Retry, or remove and re-add CrossDesk in System Settings.", "Не удалось завершить перенос разрешений. Повторите попытку или удалите и заново добавьте CrossDesk в системных настройках.", "權限遷移未完成。請重試，或在系統設定中移除舊 CrossDesk 後重新加入。", "権限の移行を完了できませんでした。再試行するか、システム設定でCrossDeskを削除して追加し直してください。", "권한 이전이 완료되지 않았습니다. 다시 시도하거나 시스템 설정에서 CrossDesk를 제거한 후 다시 추가하세요.", "Die Migration der Berechtigungen ist unvollständig. Wiederholen Sie den Vorgang oder entfernen Sie CrossDesk in den Systemeinstellungen und fügen Sie es erneut hinzu.", "La migration des autorisations est incomplète. Réessayez, ou supprimez puis ajoutez à nouveau CrossDesk dans les réglages système.", "La migración de permisos está incompleta. Reinténtelo o elimine y vuelva a añadir CrossDesk en Ajustes del Sistema.", "A migração de permissões está incompleta. Tente novamente ou remova e adicione o CrossDesk novamente nos Ajustes do Sistema."}},
+  {"重试权限迁移", {"重试权限迁移", "Retry migration", "Повторить перенос", "重試權限遷移", "移行を再試行", "권한 이전 재시도", "Migration wiederholen", "Réessayer la migration", "Reintentar migración", "Repetir migração"}},
+  {"稍后", {"稍后", "Later", "Позже", "稍後", "後で", "나중에", "Später", "Plus tard", "Más tarde", "Mais tarde"}},
 };
 
 struct NamedTranslation { const char* name; const char* literal; };
@@ -817,6 +822,11 @@ inline constexpr NamedTranslation kNamedTranslations[] = {
   {"shutdown_reason", "远程控制连接中，保留连接以确认或取消关机。"},
   {"pause_video_when_minimized", "最小化时暂停视频"},
   {"pause_video_when_minimized_hint", "控制窗口最小化时暂停接收视频，降低本机解码资源占用。"},
+  {"system_permissions", "系统权限"},
+  {"permission_migration_running", "正在迁移旧版权限…"},
+  {"permission_migration_failed", "权限迁移未完成。请重试，或在系统设置中移除旧 CrossDesk 后重新添加。"},
+  {"retry_permission_migration", "重试权限迁移"},
+  {"permission_later", "稍后"},
 };
 inline constexpr const char* kSlintLiterals[] = {
   "此端口已被占用，",
@@ -1318,7 +1328,12 @@ inline constexpr const char* kSlintLiterals[] = {
   X(exit_program) \
   X(shutdown_reason) \
   X(pause_video_when_minimized) \
-  X(pause_video_when_minimized_hint)
+  X(pause_video_when_minimized_hint) \
+  X(system_permissions) \
+  X(permission_migration_running) \
+  X(permission_migration_failed) \
+  X(retry_permission_migration) \
+  X(permission_later)
 
 }  // namespace localization
 }  // namespace crossdesk
