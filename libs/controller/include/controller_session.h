@@ -67,7 +67,7 @@ public:
                std::string password);
   void Tick();
   void Disconnect();
-  bool SelectDisplay(int index);
+  bool SelectDisplay(int index, bool preserve_input = false);
   void SetVideoOutput(bool enabled, bool request_keyframe = false);
   std::optional<EncodedVideoFrame> TakeEncodedVideo();
   void SetPreview(int fps, int width, int height, int quality = -1,

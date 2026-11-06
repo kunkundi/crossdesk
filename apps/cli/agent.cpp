@@ -943,14 +943,30 @@ private:
           session_.Disconnect();
         } else
           throw std::invalid_argument("INVALID_REQUEST");
+      } else if (method == "video_settings") {
+        Fields(j, {"id", "method", "fps", "width", "height", "quality", "max_bitrate_bps"});
+        if (action_) throw std::invalid_argument("BUSY");
+        if (session_.HasPressedInput()) throw std::invalid_argument("INPUT_HELD");
+        const auto status = session_.Status();
+        if (!session_.Connected() || !status.value("preview_supported", false))
+          throw std::invalid_argument("VIDEO_SETTINGS_UNSUPPORTED");
+        if (((j.contains("width") || j.contains("height")) && !status.value("preview_resolution_supported", false)) ||
+            (j.contains("max_bitrate_bps") && !status.value("preview_bitrate_supported", false)) ||
+            (j.value("fps", json{}) == 15 && !status.value("preview_fps15_supported", false)))
+          throw std::invalid_argument("VIDEO_SETTINGS_UNSUPPORTED");
+        session_.SetPreview(Number(j, "fps", 1, 60, status.value("preview_fps", 30)),
+            Number(j, "width", 2, 3840, status.value("preview_width", 1920)),
+            Number(j, "height", 2, 2160, status.value("preview_height", 1080)),
+            Number(j, "quality", 0, 2, status.value("preview_quality", 2)),
+            Number(j, "max_bitrate_bps", 128000, 100000000, status.value("preview_bitrate_bps", 6000000)));
       } else if (method == "display") {
-        Fields(j, {"id", "method", "index"});
+        Fields(j, {"id", "method", "index", "preserve_input"});
         const int index = Number(j, "index", 0, 63, -1);
         if (!session_.Connected() || index < 0 ||
             size_t(index) >= session_.Status()["displays"].size())
           throw std::invalid_argument("DISPLAY_UNAVAILABLE");
         Stop("SESSION_CHANGED");
-        if (!session_.SelectDisplay(index))
+        if (!session_.SelectDisplay(index, Flag(j, "preserve_input")))
           throw std::invalid_argument("DISPLAY_UNAVAILABLE");
         frame_.reset();
         ++epoch_;

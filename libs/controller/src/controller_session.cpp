@@ -383,10 +383,10 @@ void ControllerSession::Disconnect() {
   buttons_.clear();
   state_ = "closed";
 }
-bool ControllerSession::SelectDisplay(int index) {
+bool ControllerSession::SelectDisplay(int index, bool preserve_input) {
   if (!Connected() || index < 0 || size_t(index) >= displays_.size())
     return false;
-  ReleaseInput();
+  if (!preserve_input) ReleaseInput();
   options_.display = index;
   {
     std::lock_guard lock(mutex_);
@@ -401,7 +401,7 @@ bool ControllerSession::SelectDisplay(int index) {
 }
 void ControllerSession::SetPreview(int fps, int w, int h, int quality,
                                    int bitrate) {
-  if (fps < 0 || fps > 30 || w < 2 || h < 2 || w > 3840 || h > 2160 ||
+  if (fps < 0 || fps > 60 || w < 2 || h < 2 || (w & 1) || (h & 1) || w > 3840 || h > 2160 ||
       quality < -1 || quality > 2 || bitrate < -1 || bitrate > 100000000)
     throw std::invalid_argument("preview out of range");
   quality = quality < 0 ? options_.quality : quality;
@@ -430,7 +430,7 @@ void ControllerSession::Preview() {
                                          : 15;
   // 60 is the existing interactive-mode sentinel, not a 60 FPS request.
   // The encoder cadence is independently specified by frame_rate.
-  s.frame_rate = 30;
+  s.frame_rate = options_.fps > 30 ? 60 : 30;
   // Preserve desktop text detail at every cadence, including 30 FPS previews.
   s.preference =
       static_cast<int>(VideoDegradationPreference::MaintainResolution);
@@ -539,10 +539,14 @@ json ControllerSession::Status() const {
           {"capabilities", remote_capabilities_},
           {"clipboard_ready", clipboard_ready_},
           {"preview_supported", preview_supported_},
+          {"preview_resolution_supported", resolution_},
+          {"preview_bitrate_supported", bandwidth_},
+          {"preview_fps15_supported", fps15_},
           {"preview_request", preview_request_},
           {"preview_ack", preview_ack_},
           {"preview_accepted", preview_accepted_},
           {"preview_width", options_.preview_width},
+          {"preview_fps", options_.fps},
           {"preview_height", options_.preview_height},
           {"preview_quality", options_.quality},
           {"preview_bitrate_bps", options_.max_bitrate_bps},

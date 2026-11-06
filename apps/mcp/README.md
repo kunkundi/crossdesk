@@ -63,7 +63,7 @@ Windows 和 Linux 使用各自构建产物路径；`--native-binary` 必须指�
 
 面板发起的连接失败后，按 `view_id` 等待也会返回 `failed` 和错误码，避免 Agent 一直停留在等待用户状态。断开正在建立的连接会取消整个连接尝试。多个面板和 Agent 同时查询状态时共用一次原生查询，单次查询取消或暂时繁忙不会断开会话。`crossdesk_connect` 在连接成功但面板初始化失败时仍返回有效的 `session_id`，并附加 `panel_error`。
 
-初次信令注册使用原生连接的整体 30 秒期限，期间允许 MiniRTC 按退避策略恢复临时传输异常。期限覆盖所有初始重试。证书校验失败、登录被拒绝，以及设备连接请求发出后的信令中断会结束当前尝试。连接失败结果使用 `error.code` 表示错误类别，并以 `error.reason` 提供已识别的原生原因，例如 `signaling_timeout`、`signaling_disconnected` 或 `device_offline_or_unavailable`。面板显示对应说明，终端错误包含原因标识。`logs/transport.log` 记录连接阶段、受控的传输错误分类与数字码、连接关闭码和重试退避信息。
+初次信令注册使用原生连接的整体 30 秒期限，期间允许 MiniRTC 按退避策略恢复临时传输异常。期限覆盖所有初始重试。证书校验失败、登录被拒绝，以及设备连接请求发出后的信令中断会结束当前尝试。连接失败结果使用 `error.code` 表示错误类别，并以 `error.reason` 提供已识别的原生原因，例如 `signaling_timeout`、`signaling_disconnected` 或 `device_offline_or_unavailable`。面板显示对应说明，终端错误包含原因标识。`logs/<session_id>/transport.log` 记录连接阶段、受控的传输错误分类与数字码、连接关闭码和重试退避信息。
 
 自动继续依赖宿主保持当前 Agent 任务及工具调用流程。它不通过网页伪造用户消息，也不承诺从已经结束的对话中主动唤醒 Agent；此类唤醒由宿主负责。
 
@@ -274,3 +274,11 @@ npm run pack:npm -- --out-dir /absolute/path/artifacts
 `crossdesk_action` 增加 `key_down`、`key_up`、`mouse_down` 和 `mouse_up`。按下状态可跨动作保持，例如按住 Ctrl 后移动或拖动鼠标。最后一次动作完成后，按住状态的有效期为十五秒，超时自动释放。`crossdesk_release_inputs` 可立即释放本会话的全部按键和按钮，并取消当前输入动作。人工暂停、断开及输入错误同样释放按住状态。
 
 `key_press`、`hotkey` 支持 `duration_ms`，拖拽时长上限提高到三十秒。扩展键名覆盖 F13–F24、数字键盘、菜单、锁定键和媒体键，实际效果取决于远端系统支持。状态返回 `held_key_codes` 和 `held_mouse_flags`。文本输入前应释放持续按住的键鼠状态。
+
+### 多会话与显示管理
+
+同一 MCP 实例支持最多八个并行设备连接。`crossdesk_list_sessions` 返回各连接的设备、显示器及控制状态。面板按设备绑定会话，断开一个连接会释放该连接的资源。每个连接的诊断日志位于 `logs/<session_id>/transport.log`。
+
+`crossdesk_capture_displays` 按顺序截取最多八个显示器并恢复原显示器，通过一次工具结果展示多屏画面。`capture_id` 有效期三十秒，供 `crossdesk_drag_across` 使用各屏截图坐标完成跨屏拖拽。拖拽保持按下状态跨越显示器切换，在完成、取消或异常时释放按钮。普通输入操作使用重新选择显示器后取得的新截图。
+
+`crossdesk_video_settings` 在运行时调整预览帧率、分辨率、质量和码率，返回远端接受状态。设置受对端能力限制。多屏采集及跨屏拖拽期间，同一会话的其他输入请求返回忙碌状态。

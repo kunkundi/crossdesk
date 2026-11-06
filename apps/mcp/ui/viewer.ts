@@ -130,8 +130,8 @@ const messages: Record<string, string> = {
   display_not_available: "所选显示器当前不可用，请检查显示器索引。",
   media_initialization_failed: "本机媒体组件初始化失败，请检查原生 CLI 运行环境。",
   control_event_overflow: "连接事件队列已满，请稍后重新连接。",
-  SESSION_LIMIT: "已有活动连接，请先断开当前电脑。",
-  DEVICE_BUSY: "另一实例正在使用此设备。",
+  SESSION_LIMIT: "活动连接已达到八个，请先断开一个连接。",
+  DEVICE_BUSY: "此设备已有活动连接。",
   CREDENTIAL_STORE_UNAVAILABLE: "系统凭据库不可用，密码未保存。",
   CREDENTIAL_ROLLBACK_FAILED: "凭据保存中断，请通过本机 setup 重新配置密码。",
   PAIRING_REQUIRED:
@@ -710,7 +710,10 @@ async function start() {
     csrf = result.csrf;
     invoke = (name, args = {}) =>
       request(name, { ...args, view_id: context!.view_id });
-    await ready(bootstrap ? result : result.views.at(-1));
+    const previous = sessionStorage.getItem("crossdesk-view");
+    const selected = bootstrap ? result : result.views.find((view: Data) => view.view_id === previous) ?? result.views.at(-1);
+    await ready(selected);
+    sessionStorage.setItem("crossdesk-view", selected.view_id);
   }
 }
 void start().catch(showError);

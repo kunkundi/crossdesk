@@ -163,3 +163,9 @@ The desktop and CLI share `FileBrowser` and the existing file transfer engine. P
 `key_down`, `key_up`, `mouse_down`, and `mouse_up` extend the action union. Each successful action renews a fifteen-second lease for held input. Existing held modifiers survive subsequent clicks, movement and hotkeys. `release_inputs` releases the controller's tracked keys/buttons and cancels current input without requiring an observation. Errors, human pause, display changes and disconnection release held input.
 
 `key_press` and `hotkey` accept `duration_ms` from 10 to 30000. Drags accept durations up to 30000 milliseconds. Extended key names include F13–F24, NUMPAD0–NUMPAD9, arithmetic keypad keys, lock/menu/print keys and media controls. Target platform key mapping determines availability. Text input requires held keys/buttons to be released first.
+
+## Display management
+
+`video_settings` accepts optional `fps`, even `width`/`height`, `quality`, and `max_bitrate_bps`. The controller checks negotiated preview capabilities and publishes the requested cadence and acceptance state. Supported MCP frame-rate tiers are 1, 8, 15, 30 and 60.
+
+The trusted adapter may use `display` with `preserve_input: true` during a cross-display drag. It captures a fresh observation after each switch, maps the requested point from its source display image, and releases input in a final cleanup step. Ordinary display selection releases input. Multi-display capture returns sequential observations and restores the previous display.

@@ -56,6 +56,11 @@ function output(value: Data, meta?: Data): CallToolResult {
     data.observation = { ...data.observation };
     delete data.observation.data;
   }
+  if (Array.isArray(data.observations)) data.observations = data.observations.map((observation: Data) => {
+    const { data: bytes, ...metadata } = observation;
+    if (bytes) content.push({ type: "image", mimeType: observation.mime_type, data: bytes });
+    return metadata;
+  });
   content.unshift({ type: "text", text: JSON.stringify(data) });
   return { content, structuredContent: data, ...(meta ? { _meta: meta } : {}) };
 }
@@ -125,7 +130,7 @@ export function createServer(
       annotations: {
         readOnlyHint: !!d.readOnly,
         destructiveHint: ["crossdesk_action", "crossdesk_unlock", "crossdesk_clipboard_set",
-          "crossdesk_files_transfer", "crossdesk_files_cancel", "crossdesk_system_command"].includes(d.name),
+          "crossdesk_files_transfer", "crossdesk_files_cancel", "crossdesk_system_command", "crossdesk_drag_across"].includes(d.name),
         openWorldHint: true,
       },
       ...(d.ui || d.app
@@ -254,6 +259,29 @@ export function createServer(
     },
     { readOnly: true },
   );
+  add("crossdesk_list_sessions", z.strictObject({}),
+    "List the active remote sessions with their device aliases, displays and control state. Each session_id addresses one connection. Up to eight connections can be active concurrently.",
+    async () => output(await sessions.listSessions()), { readOnly: true });
+  add("crossdesk_capture_displays", z.strictObject({ session_id: id,
+    display_indices: z.array(z.int().min(0).max(63)).min(1).max(8)
+      .refine((values) => new Set(values).size === values.length).optional(),
+    max_edge: z.int().min(64).max(2048).default(1024) }),
+    "Capture up to eight remote displays in sequence and restore the selected display. Returns all images and a capture_id valid for 30 seconds. Use capture_id for cross-display dragging. For ordinary actions select a display and capture a fresh observation.",
+    async (p, ctx) => output(await sessions.captureDisplays(p, ctx.mcpReq.signal)));
+  add("crossdesk_drag_across", z.strictObject({ session_id: id, operation_id: id, capture_id: id,
+    path: z.array(z.strictObject({ display_index: z.int().min(0).max(63),
+      x: z.number().finite().min(0).max(8192), y: z.number().finite().min(0).max(8192) })).min(2).max(32),
+    button: z.enum(["left", "right", "middle"]).default("left"),
+    duration_ms: z.int().min(100).max(10000).default(500) }),
+    "Drag across displays using coordinates in the matching images from crossdesk_capture_displays. Keeps the mouse button held while switching displays. Always releases on interruption. Reuse the same operation_id to query an uncertain result. Display switching and network latency add to duration_ms.",
+    async (p, ctx) => output(await sessions.dragAcross(p, ctx.mcpReq.signal)));
+  add("crossdesk_video_settings", z.strictObject({ session_id: id,
+    fps: z.union([z.literal(1), z.literal(8), z.literal(15), z.literal(30), z.literal(60)]).optional(),
+    width: z.int().min(2).max(3840).refine((value) => value % 2 === 0).optional(),
+    height: z.int().min(2).max(2160).refine((value) => value % 2 === 0).optional(),
+    quality: z.int().min(0).max(2).optional(), max_bitrate_bps: z.int().min(128000).max(100000000).optional() }),
+    "Adjust this connection's remote preview frame rate, resolution, quality and bitrate at runtime. Returns the remote preview acceptance status or wait_timed_out. Release held input before changing these settings.",
+    async (p, ctx) => output(await sessions.videoSettings(p, ctx.mcpReq.signal)));
   add(
     "crossdesk_screenshot",
     screenshot,
@@ -449,7 +477,7 @@ export function createServer(
           annotations: {
             readOnlyHint: !!d.readOnly,
             destructiveHint: ["crossdesk_action", "crossdesk_unlock", "crossdesk_clipboard_set",
-              "crossdesk_files_transfer", "crossdesk_files_cancel", "crossdesk_system_command"].includes(d.name),
+              "crossdesk_files_transfer", "crossdesk_files_cancel", "crossdesk_system_command", "crossdesk_drag_across"].includes(d.name),
             openWorldHint: true,
           },
           ...((d.ui || d.app) && apps(ctx)
