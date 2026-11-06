@@ -86,6 +86,13 @@ struct RemoteJob {
   bool write;
   Clock::time_point deadline;
 };
+struct AudioCapture {
+  json id;
+  size_t target;
+  bool restore_enabled;
+  Clock::time_point deadline;
+  std::vector<uint8_t> pcm;
+};
 struct Capture {
   json id, request;
   bool preview = false;
@@ -314,11 +321,44 @@ private:
       std::fill(step.text.begin(), step.text.end(), '\0');
     action_.reset();
   }
+  void FinishAudio(const char *error = nullptr) {
+    if (!audio_capture_) return;
+    const auto capture = std::move(audio_capture_);
+    if (session_.Connected() && session_.AudioEnabled() != capture->restore_enabled)
+      session_.SetAudio(capture->restore_enabled);
+    if (error) { Error(capture->id, error); return; }
+    std::vector<uint8_t> wave;
+    const auto number = [&](uint32_t value, int count) {
+      for (int index = 0; index < count; ++index) wave.push_back(uint8_t(value >> (8 * index)));
+    };
+    const auto tag = [&](const char *value) { wave.insert(wave.end(), value, value + 4); };
+    tag("RIFF"); number(uint32_t(capture->pcm.size()) + 36, 4); tag("WAVE");
+    tag("fmt "); number(16, 4); number(1, 2); number(1, 2);
+    number(48000, 4); number(96000, 4); number(2, 2); number(16, 2);
+    tag("data"); number(uint32_t(capture->pcm.size()), 4);
+    wave.insert(wave.end(), capture->pcm.begin(), capture->pcm.end());
+    Reply(capture->id, {{"mime_type", "audio/wav"}, {"data", ImageBase64(wave)},
+      {"duration_ms", capture->pcm.size() / 96}, {"sample_rate", 48000}, {"channels", 1}});
+  }
+  void PumpAudio() {
+    while (auto frame = session_.TakeAudio()) {
+      if (audio_capture_) {
+        const auto size = std::min(frame->pcm.size(), audio_capture_->target - audio_capture_->pcm.size());
+        audio_capture_->pcm.insert(audio_capture_->pcm.end(), frame->pcm.begin(), frame->pcm.begin() + size);
+      }
+      if (video_ && video_->Enabled()) video_->Submit(std::move(*frame));
+    }
+    if (!audio_capture_) return;
+    if (!session_.Connected()) FinishAudio("SESSION_CLOSED");
+    else if (audio_capture_->pcm.size() >= audio_capture_->target) FinishAudio();
+    else if (Clock::now() >= audio_capture_->deadline) FinishAudio("AUDIO_UNAVAILABLE");
+  }
   void CancelRemoteJobs(const char *code) {
     for (const auto &job : remote_jobs_) FinishRemote(job, {}, code);
     remote_jobs_.clear();
   }
   void Stop(const char *code) {
+    FinishAudio(code);
     FinishAction(code);
     CancelRemoteJobs(code);
     for (const auto &capture : captures_)
@@ -339,6 +379,7 @@ private:
   }
   void Tick() {
     session_.Tick();
+    PumpAudio();
     if (!action_ && session_.HasPressedInput() && Clock::now() >= input_lease_)
       session_.ReleaseInput();
     for (auto it = remote_jobs_.begin(); it != remote_jobs_.end();) {
@@ -922,6 +963,20 @@ private:
         });
         terminal_encoding_ = std::move(job);
         return false;
+      } else if (method == "audio") {
+        Fields(j, {"id", "method", "enabled"});
+        FinishAudio("CANCELLED");
+        session_.SetAudio(Flag(j, "enabled"));
+      } else if (method == "audio_capture") {
+        Fields(j, {"id", "method", "duration_ms"});
+        if (!session_.Connected()) throw std::invalid_argument("NOT_CONNECTED");
+        if (audio_capture_) throw std::invalid_argument("BUSY");
+        const int duration = Number(j, "duration_ms", 100, 10000, 3000);
+        const bool restore = session_.AudioEnabled();
+        session_.SetAudio(true);
+        audio_capture_ = std::make_unique<AudioCapture>(AudioCapture{
+            id, size_t(duration) * 96, restore, Clock::now() + Ms(duration + 3000), {}});
+        return false;
       } else if (method == "control") {
         Fields(j, {"id", "method", "enabled"});
         if (human_control_) throw std::invalid_argument("HUMAN_CONTROL_ACTIVE");
@@ -1038,6 +1093,7 @@ private:
         if (!j.contains("request_id") || !j["request_id"].is_number_integer())
           throw std::invalid_argument("INVALID_REQUEST");
         const auto target = j["request_id"];
+        if (audio_capture_ && audio_capture_->id == target) FinishAudio("CANCELLED");
         for (auto it = remote_jobs_.begin(); it != remote_jobs_.end();) {
           if (it->id == target) {
             FinishRemote(*it, {}, "CANCELLED");
@@ -1121,6 +1177,7 @@ private:
   std::deque<Capture> captures_;
   std::deque<FrameWait> frame_waits_;
   std::deque<RemoteJob> remote_jobs_;
+  std::unique_ptr<AudioCapture> audio_capture_;
   std::unique_ptr<Encoding> encoding_;
   std::unique_ptr<TerminalEncoding> terminal_encoding_;
   std::unique_ptr<RunningAction> action_;

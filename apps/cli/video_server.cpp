@@ -92,6 +92,8 @@ struct VideoServer::State {
   // each other; the compressed handoff is bounded and recovers at an IDR.
   mutable std::mutex mutex;
   std::deque<Packet> queue;
+  std::deque<AudioFrame> audio_queue;
+  size_t audio_bytes = 0;
   size_t queued_bytes = 0;
   bool scheduled = false, wait_key = true;
   json cursor;
@@ -257,6 +259,33 @@ struct VideoServer::State {
           if (error)
             return;
           const auto now = Clock::now();
+          std::deque<AudioFrame> audio;
+          {
+            std::lock_guard lock(mutex);
+            audio.swap(audio_queue);
+            audio_bytes = 0;
+          }
+          for (const auto &frame : audio) {
+            if (!connected || frame.generation != generation) continue;
+            std::string bytes;
+            Number(bytes, 0x43444131, 4); // CDA1, network-order header, s16le payload.
+            Number(bytes, frame.generation, 4);
+            Number(bytes, frame.sequence, 4);
+            Number(bytes, 48000, 4);
+            Number(bytes, 1, 2);
+            Number(bytes, 16, 2);
+            bytes.append(reinterpret_cast<const char *>(frame.pcm.data()), frame.pcm.size());
+            std::vector<Handle> failed;
+            for (auto &[handle, client] : clients) {
+              if (!client.authorized) continue;
+              websocketpp::lib::error_code error;
+              const auto connection = server.get_con_from_hdl(handle, error);
+              if (!error && connection->get_buffered_amount() < 256 * 1024)
+                server.send(handle, bytes, websocketpp::frame::opcode::BINARY, error);
+              if (error) failed.push_back(handle);
+            }
+            for (const auto handle : failed) Drop(handle);
+          }
           std::string pointer;
           uint64_t revision;
           {
@@ -429,6 +458,8 @@ void VideoServer::Bind(uint64_t generation, bool decoded, bool connected) {
     s.key_requested = false;
     std::lock_guard lock(s.mutex);
     s.queue.clear();
+    s.audio_queue.clear();
+    s.audio_bytes = 0;
     s.queued_bytes = 0;
     s.wait_key = true;
   });
@@ -487,6 +518,17 @@ void VideoServer::Submit(EncodedVideoFrame frame) {
     throw std::invalid_argument("INVALID_VIDEO_FRAME");
   if (Enabled())
     state_->Enqueue({{}, std::move(frame)});
+}
+void VideoServer::Submit(AudioFrame frame) {
+  if (!Enabled() || frame.pcm.empty() || frame.pcm.size() > 11520 || (frame.pcm.size() & 1)) return;
+  auto &s = *state_;
+  std::lock_guard lock(s.mutex);
+  while (!s.audio_queue.empty() && s.audio_bytes + frame.pcm.size() > 48000) {
+    s.audio_bytes -= s.audio_queue.front().pcm.size();
+    s.audio_queue.pop_front();
+  }
+  s.audio_bytes += frame.pcm.size();
+  s.audio_queue.push_back(std::move(frame));
 }
 void VideoServer::Cursor(json cursor) {
   auto &s = *state_;

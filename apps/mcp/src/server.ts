@@ -41,10 +41,15 @@ const uiNames: Record<UIAction, string> = {
   unlock: "crossdesk_ui_unlock",
   recovery: "crossdesk_ui_recovery",
   input: "crossdesk_ui_input",
+  audio: "crossdesk_ui_audio",
 };
 function output(value: Data, meta?: Data): CallToolResult {
   const data = { ...value };
   const content: any[] = [];
+  if (data.mime_type === "audio/wav" && typeof data.data === "string") {
+    content.push({ type: "audio", mimeType: data.mime_type, data: data.data });
+    delete data.data;
+  }
   if (data.mime_type === "image/png" && typeof data.data === "string") {
     content.push({ type: "image", mimeType: data.mime_type, data: data.data });
     delete data.data;
@@ -261,6 +266,12 @@ export function createServer(
     },
     { readOnly: true },
   );
+  add("crossdesk_audio", z.strictObject({ session_id: id, enabled: z.boolean() }),
+    "Enable or disable remote desktop audio reception. Audio starts disabled. Panel playback also requires the user's Play audio button. Status reports PCM reception counters.",
+    async (p, ctx) => output(await sessions.audio(p, false, ctx.mcpReq.signal)));
+  add("crossdesk_audio_capture", z.strictObject({ session_id: id, duration_ms: z.int().min(100).max(10000).default(3000) }),
+    "Capture the next 100–10000 ms of remote desktop audio as a bounded mono 48 kHz WAV audio content block. Temporarily enables reception, then restores the previous setting. AUDIO_UNAVAILABLE means insufficient PCM arrived. Cancellation discards the capture.",
+    async (p, ctx) => output(await sessions.audio(p, true, ctx.mcpReq.signal)), { readOnly: true });
   add("crossdesk_list_sessions", z.strictObject({}),
     "List the active remote sessions with their device aliases, displays and control state. Each session_id addresses one connection. Up to eight connections can be active concurrently.",
     async () => output(await sessions.listSessions()), { readOnly: true });

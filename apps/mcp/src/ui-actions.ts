@@ -9,6 +9,7 @@ export const uiSchemas = {
   connect: uiConnect,
   video_open: z.strictObject({}),
   input: viewerInput,
+  audio: z.strictObject({ enabled: z.boolean() }),
   recovery: z.strictObject({ enabled: z.boolean(), max_attempts: z.int().min(1).max(5).default(3) }),
   unlock: z.strictObject({
     request_id: id,
@@ -46,6 +47,9 @@ export async function uiAction(
       return sessions.status(undefined, view.id, signal);
     case "connect":
       return sessions.connectUI(view, p, signal);
+    case "audio":
+      if (!view.session) throw new Failure("NOT_READY");
+      return sessions.audio({ session_id: view.session, ...p }, false, signal);
     case "input":
       return sessions.viewerInput(view, p, signal);
     case "control":

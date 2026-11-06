@@ -22,6 +22,10 @@
 #include <vector>
 
 namespace crossdesk {
+struct AudioFrame {
+  uint64_t generation = 0, sequence = 0;
+  std::vector<uint8_t> pcm;
+};
 struct EncodedVideoFrame {
   std::vector<uint8_t> data;
   uint64_t generation = 0, sequence = 0, timestamp_us = 0;
@@ -72,6 +76,9 @@ public:
   std::optional<EncodedVideoFrame> TakeEncodedVideo();
   void SetPreview(int fps, int width, int height, int quality = -1,
                   int max_bitrate_bps = -1);
+  void SetAudio(bool enabled);
+  bool AudioEnabled() const { return audio_enabled_; }
+  std::optional<AudioFrame> TakeAudio();
   void SetControl(bool enabled);
   void ReleaseInput();
   void ReleaseActionInput();
@@ -114,6 +121,8 @@ private:
   static void Connection(ConnectionStatus, const char *, size_t, void *);
   static void Data(const char *, size_t, const char *, size_t, const char *,
                    size_t, void *);
+  static void Audio(const char *, size_t, const char *, size_t,
+                    const char *, size_t, void *);
   static void Video(const MiniRtcVideoFrame *, const char *, size_t,
                     const char *, size_t, void *);
   static int EncodedVideo(const uint8_t *, size_t, int64_t, const char *,
@@ -153,6 +162,10 @@ private:
   MiniRtcNetTrafficStats network_{};
   TraversalMode traversal_ = UnknownMode;
   LatestFrame frames_;
+  bool audio_enabled_ = false;
+  size_t audio_bytes_ = 0;
+  uint64_t audio_sequence_ = 0, audio_dropped_ = 0;
+  std::deque<AudioFrame> audio_frames_;
   bool video_output_ = false, video_wait_key_ = true, video_request_key_ = false;
   size_t video_bytes_ = 0;
   uint64_t video_generation_ = 0, video_sequence_ = 0;

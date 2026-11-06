@@ -51,7 +51,8 @@ export class VideoPlayer {
   constructor(private canvas: HTMLCanvasElement,
     private onFrame: (info: FrameInfo) => void,
     private onError: (error: Error) => void,
-    private overlay?: HTMLCanvasElement) {
+    private overlay?: HTMLCanvasElement,
+    private onAudio?: (bytes: ArrayBuffer) => void) {
     if (overlay) {
       this.resize = new ResizeObserver(() => this.drawCursor());
       this.resize.observe(overlay);
@@ -93,6 +94,10 @@ export class VideoPlayer {
       }
       if (!(event.data instanceof ArrayBuffer)) return;
       const data = event.data;
+      if (data.byteLength >= 4 && new DataView(data).getUint32(0) === 0x43444131) {
+        try { this.onAudio?.(data); } catch { this.onError(new Error("AUDIO_INVALID")); }
+        return;
+      }
       if (data.byteLength < (this.raw ? 38 : 25) ||
           data.byteLength > (this.raw ? 16777216 * 3 / 2 + 32 : 4 * 1024 * 1024 + 24))
         return this.fail(new Error("VIDEO_INVALID"));

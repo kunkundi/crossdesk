@@ -36,6 +36,7 @@ public:
   bool TakeKeyframeRequest();
   void Submit(std::shared_ptr<const DecodedFrame> frame);
   void Submit(EncodedVideoFrame frame);
+  void Submit(AudioFrame frame);
   void Cursor(nlohmann::json cursor);
   nlohmann::json Status() const;
 

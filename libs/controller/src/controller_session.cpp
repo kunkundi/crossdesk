@@ -107,8 +107,7 @@ Params ControllerSession::Parameters() {
   p.on_receive_data_buffer = Data;
   p.on_receive_video_frame = Video;
   p.on_receive_encoded_video = EncodedVideo;
-  // No audio callback, clipboard receiver, file writer or incoming input
-  // handler.
+  p.on_receive_audio_buffer = Audio;
   p.user_id = "cli";
   p.user_data = this;
   return p;
@@ -352,6 +351,9 @@ void ControllerSession::ClosePeers() {
   {
     std::lock_guard lock(mutex_);
     stopping_ = true;
+    audio_enabled_ = false;
+    audio_frames_.clear();
+    audio_bytes_ = 0;
     callback_generation_ = ++generation_;
     frames_.Reset(generation_);
   }
@@ -434,7 +436,7 @@ void ControllerSession::Preview() {
   // Preserve desktop text detail at every cadence, including 30 FPS previews.
   s.preference =
       static_cast<int>(VideoDegradationPreference::MaintainResolution);
-  s.audio = false;
+  s.audio = audio_enabled_;
   s.quality = options_.quality;
   if (resolution_) {
     s.version = 2;
@@ -536,6 +538,8 @@ json ControllerSession::Status() const {
           {"platform", HostPlatformName(host_platform_)},
           {"display", options_.display},
           {"text_input", text_supported_},
+          {"audio", {{"enabled", audio_enabled_}, {"sample_rate", 48000}, {"channels", 1},
+                     {"format", "s16le"}, {"received", audio_sequence_}, {"dropped", audio_dropped_}}},
           {"capabilities", remote_capabilities_},
           {"clipboard_ready", clipboard_ready_},
           {"preview_supported", preview_supported_},

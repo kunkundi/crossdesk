@@ -1,5 +1,6 @@
 import type { App } from "@modelcontextprotocol/ext-apps";
 import "./viewer.css";
+import { AudioPlayer } from "./audio-player.js";
 import { HumanInput } from "./human-input.js";
 import { VideoPlayer } from "./video-player.js";
 
@@ -55,7 +56,7 @@ root.innerHTML = `
     <div class="viewer-card">
       <div class="viewer-toolbar">
         <div class="viewer-title"><h2 id="device-name">远程画面</h2><span id="video-state">待连接</span></div>
-        <div class="viewer-controls"><button id="take-over" disabled>人工接管</button><button id="pause" disabled><span id="pause-label">暂停控制</span></button><button id="disconnect" class="danger" disabled>断开连接</button><button id="focus-view" aria-label="放大画面" aria-pressed="false" disabled>放大画面</button></div>
+        <div class="viewer-controls"><button id="audio-play" disabled>播放声音</button><label class="audio-volume">音量<input id="audio-volume" type="range" min="0" max="1" step="0.05" value="1"></label><button id="take-over" disabled>人工接管</button><button id="pause" disabled><span id="pause-label">暂停控制</span></button><button id="disconnect" class="danger" disabled>断开连接</button><button id="focus-view" aria-label="放大画面" aria-pressed="false" disabled>放大画面</button></div>
       </div>
       <div class="screen" id="screen">
         <canvas id="frame" role="img" aria-label="远程桌面实时画面" hidden></canvas>
@@ -107,10 +108,13 @@ let imageAt = 0;
 let busy = false,
   polling = false,
   started = false;
+const audioPlayer = new AudioPlayer();
 const humanInput = new HumanInput(element("screen"), element<HTMLTextAreaElement>("remote-input"),
   (args) => invoke("input", args), showError);
 function ownsInput() { return status.control_owner === "human" && status.human_view === context?.view_id; }
 const messages: Record<string, string> = {
+  AUDIO_INVALID: "远端音频格式无效。",
+  AUDIO_UNAVAILABLE: "尚未收到远端声音，请检查远端音频捕获权限。",
   HUMAN_CONTROL_ACTIVE: "远端正在由人工操作，请先交还 Agent。",
   STALE_OBSERVATION: "画面已变化，请等待新画面后继续操作。",
   STALE_CONTROL: "控制权已交接。",
@@ -386,6 +390,9 @@ function renderStatus(s: Data) {
   if (lost && !disconnectedByUser && ["ready", "waiting_frame"].includes(status.state)) showError(new Error("CONNECTION_LOST"));
   const changedSession = s.session_id !== status.session_id;
   status = s;
+  element<HTMLButtonElement>("audio-play").disabled = !connected;
+  text("audio-play", audioPlayer.enabled ? "静音" : "播放声音");
+  if (!connected || changedSession) audioPlayer.flush();
   humanInput.update(connected && ownsInput() ? s.human_input_epoch : undefined);
   text("take-over", ownsInput() ? "交还 Agent" : "人工接管");
   element<HTMLButtonElement>("take-over").disabled = !connected || !s.control_allowed ||
@@ -503,6 +510,17 @@ input("recovery").onchange = async () => {
     renderStatus(await invoke("status"));
   } catch (error) { showError(error); renderStatus(status); }
 };
+element("audio-play").onclick = async () => {
+  const enabled = !audioPlayer.enabled;
+  element<HTMLButtonElement>("audio-play").disabled = true;
+  try {
+    await audioPlayer.enable(enabled);
+    audioPlayer.volume(Number(input("audio-volume").value));
+    await invoke("audio", { enabled });
+  } catch (error) { await audioPlayer.enable(false); showError(error); }
+  finally { renderStatus(status); }
+};
+input("audio-volume").oninput = () => audioPlayer.volume(Number(input("audio-volume").value));
 element("take-over").onclick = async () => {
   if (controlBusy) return;
   controlBusy = true;
@@ -550,6 +568,7 @@ element("disconnect").onclick = async () => {
   }
 };
 async function closePreview() {
+  audioPlayer.flush();
   ++videoEpoch;
   player?.stop();
   player = undefined;
@@ -596,7 +615,7 @@ async function startPreview() {
       element<HTMLButtonElement>("focus-view").disabled = false;
       text("video-state", "实时");
       element("video-state").dataset.state = "live";
-    }, failed, element<HTMLCanvasElement>("agent-cursor"));
+    }, failed, element<HTMLCanvasElement>("agent-cursor"), (bytes) => audioPlayer.accept(bytes));
     player.start(grant.url, grant.ticket, grant.protocol, grant.decoder);
   } catch (error) {
     failed(error instanceof Error ? error : new Error("VIDEO_UNAVAILABLE"));
@@ -693,6 +712,7 @@ async function start() {
       unlock: "crossdesk_ui_unlock",
       recovery: "crossdesk_ui_recovery",
       input: "crossdesk_ui_input",
+      audio: "crossdesk_ui_audio",
     };
     let connected = false,
       initial: Data | undefined;

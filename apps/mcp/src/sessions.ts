@@ -61,6 +61,7 @@ interface Session {
   displayBatch?: boolean;
   mode: string;
   desiredControl: boolean;
+  audioEnabled?: boolean;
   recoveryEnabled: boolean;
   recoveryAttempts: number;
   recoveryAttempt: number;
@@ -316,6 +317,10 @@ export class Sessions {
             width: s.status.preview_width, height: s.status.preview_height });
           if (next.status.preview_bitrate_supported) settings.max_bitrate_bps = s.status.preview_bitrate_bps;
           await next.native.request("video_settings", settings).catch(() => {});
+        }
+        if (s.audioEnabled) {
+          await next.native.request("audio", { enabled: true });
+          next.audioEnabled = true;
         }
         next.recoveryEnabled = true;
         next.recoveryAttempts = s.recoveryAttempts;
@@ -755,6 +760,14 @@ export class Sessions {
       s.displayBatch = false;
     }
     return record.result;
+  }
+  async audio(p: Data, capture: boolean, signal?: AbortSignal): Promise<Data> {
+    const { session_id, ...args } = p;
+    const s = this.session(session_id);
+    const result = await s.native.request(capture ? "audio_capture" : "audio", args,
+      capture ? (args.duration_ms ?? 3000) + 5000 : 5000, signal);
+    if (!capture) { s.status = result; s.audioEnabled = args.enabled; }
+    return result;
   }
   async videoSettings(p: Data, signal?: AbortSignal): Promise<Data> {
     const { session_id, ...args } = p;
