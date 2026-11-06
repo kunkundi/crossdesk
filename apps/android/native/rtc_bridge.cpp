@@ -287,7 +287,7 @@ Session* From(jlong handle) { return reinterpret_cast<Session*>(handle); }
 
 extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* java_vm, void*) {
   vm = java_vm;
-  if (SetMiniRtcAndroidJavaVm(java_vm) != 0) return JNI_ERR;
+  if (MiniRtcSetAndroidJavaVm(java_vm) != 0) return JNI_ERR;
   return JNI_VERSION_1_6;
 }
 #define JNI_METHOD(name) Java_cn_crossdesk_mobile_NativeSession_##name
@@ -341,7 +341,7 @@ extern "C" JNIEXPORT jlong JNICALL JNI_METHOD(nCreate)(
       throw std::runtime_error("Unable to configure Android trust bundle");
     // MiniRTC's diagnostic log includes login identities. Keep credentials
     // solely in Keystore-backed storage; do not persist its session logging.
-    if (ConfigureMiniRtcLogging(MiniRtcLogOff, nullptr, nullptr) != 0)
+    if (MiniRtcConfigureLogging(MiniRtcLogOff, nullptr, nullptr) != 0)
       throw std::runtime_error("Unable to configure MiniRTC logging");
     auto params = Parameters(s.get(), false);
     s->identity = CreatePeer(&params);

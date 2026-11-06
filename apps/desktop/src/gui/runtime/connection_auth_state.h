@@ -36,7 +36,7 @@ class ConnectionAuthState {
   void Rejected(const nlohmann::json& reply,
                 Clock::time_point now = Clock::now()) {
     const auto message = reply.dump();
-    const auto failure = ParseMiniRtcJoinFailure(message.data(), message.size());
+    const auto failure = MiniRtcParseJoinFailure(message.data(), message.size());
     std::lock_guard lock(mutex_);
     state_ = {};
     state_.error = failure.kind;

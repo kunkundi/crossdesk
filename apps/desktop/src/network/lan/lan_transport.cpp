@@ -327,7 +327,7 @@ struct Transport::Impl {
       c->local_address = SocketAddress(local.address());
       c->remote_address = SocketAddress(remote.address());
       const auto interfaces = LocalIpInterfaces();
-      if (IsMiniRtcDirectAddressPair(c->local_address.data(), c->local_address.size(),
+      if (MiniRtcIsDirectAddressPair(c->local_address.data(), c->local_address.size(),
                                     c->remote_address.data(), c->remote_address.size()) != 1 ||
           std::none_of(
               interfaces.begin(), interfaces.end(),

@@ -54,7 +54,7 @@ void AnnouncementInbox::Configure(std::string host, int port,
   if (directory_.empty() || host.empty() || port <= 0 || device_id.empty())
     return;
   MiniRtcSignalServerAddress address{};
-  if (ParseMiniRtcSignalServerAddress(host.data(), host.size(), &address) != 0) return;
+  if (MiniRtcParseSignalServerAddress(host.data(), host.size(), &address) != 0) return;
   std::string normalized_host(address.host);
   for (auto& ch : normalized_host)
     if (ch >= 'A' && ch <= 'Z') ch += 'a' - 'A';

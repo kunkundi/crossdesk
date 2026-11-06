@@ -88,7 +88,7 @@ struct Diagnostics {
   std::shared_ptr<DiagnosticWriter> writer;
   ~Diagnostics() {
     // Quiesce the callback before releasing its application-owned context.
-    ConfigureMiniRtcLogging(MiniRtcLogOff, nullptr, nullptr);
+    MiniRtcConfigureLogging(MiniRtcLogOff, nullptr, nullptr);
   }
 };
 Diagnostics &State() {
@@ -101,7 +101,7 @@ void InitializeControllerDiagnostics(const std::string &directory) {
   auto &state = State();
   std::lock_guard initialize(state.initialization);
   auto writer = std::make_shared<DiagnosticWriter>(directory);
-  if (ConfigureMiniRtcLogging(MiniRtcLogInfo, ReceiveLog, writer.get()) != 0)
+  if (MiniRtcConfigureLogging(MiniRtcLogInfo, ReceiveLog, writer.get()) != 0)
     throw std::runtime_error("Unable to configure MiniRTC diagnostics");
   std::lock_guard lock(state.mutex);
   state.writer = std::move(writer);

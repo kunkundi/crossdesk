@@ -89,7 +89,7 @@ SettingResult ApplyConsoleSetting(ConfigCenter& config, const std::string& key,
     save = [&config, mode] { return config.SetTurnMode(static_cast<ConfigCenter::TURN_MODE>(mode)); };
   } else if (key == "server_host") {
     MiniRtcSignalServerAddress address{};
-    if (ParseMiniRtcSignalServerAddress(input.data(), input.size(), &address) != 0) return result;
+    if (MiniRtcParseSignalServerAddress(input.data(), input.size(), &address) != 0) return result;
     save = [&] { return config.SetServerHost(input); };
   } else if (key == "server_port") {
     int port = 0;

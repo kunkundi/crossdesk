@@ -213,11 +213,11 @@ unsigned ParsePort(const std::string& value) {
 }
 bool IsIpAddress(const std::string& value) {
   char normalized[129]{};
-  return NormalizeMiniRtcDirectAddress(value.data(), value.size(), normalized, sizeof(normalized)) == 0;
+  return MiniRtcNormalizeDirectAddress(value.data(), value.size(), normalized, sizeof(normalized)) == 0;
 }
 std::string NormalizeAddress(const std::string& value) {
   char normalized[129]{};
-  Require(NormalizeMiniRtcDirectAddress(value.data(), value.size(), normalized, sizeof(normalized)) == 0,
+  Require(MiniRtcNormalizeDirectAddress(value.data(), value.size(), normalized, sizeof(normalized)) == 0,
           "Invalid LAN endpoint");
   return normalized;
 }

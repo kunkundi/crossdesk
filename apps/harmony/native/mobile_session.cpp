@@ -257,7 +257,7 @@ class MobileSession {
       if (server_.empty()||server_.size()>=256||server_.find('@')!=std::string::npos||port_<1||port_>65535||
           logs_.size()>=256||roots.empty()||directory_.empty()) throw std::runtime_error("Invalid configuration");
       setenv("SSL_CERT_DIR",roots.c_str(),1);
-      if (ConfigureMiniRtcLogging(MiniRtcLogOff, nullptr, nullptr) != 0)
+      if (MiniRtcConfigureLogging(MiniRtcLogOff, nullptr, nullptr) != 0)
         throw std::runtime_error("Unable to configure MiniRTC logging");
       identity_context_=std::make_unique<Context>(Context{this,false,session_});
       auto p=Parameters(false); identity_=CreatePeer(&p); signal_started_=Clock::now();

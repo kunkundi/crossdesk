@@ -350,7 +350,7 @@ int ConfigCenter::SetForceRelay(bool force_relay) {
 
 int ConfigCenter::SetServerHost(const std::string& host) {
   MiniRtcSignalServerAddress address{};
-  if (ParseMiniRtcSignalServerAddress(host.data(), host.size(), &address) != 0) return -1;
+  if (MiniRtcParseSignalServerAddress(host.data(), host.size(), &address) != 0) return -1;
   if (address.port) return SetServerEndpoint(host, address.port);
   const auto normalized = std::string(address.host) + address.target;
   if (StoreValues({{"signal_server_host", normalized}}) != 0) return -1;
@@ -360,7 +360,7 @@ int ConfigCenter::SetServerHost(const std::string& host) {
 
 int ConfigCenter::SetServerEndpoint(const std::string& host, int port) {
   MiniRtcSignalServerAddress address{};
-  if (ParseMiniRtcSignalServerAddress(host.data(), host.size(), &address) != 0) return -1;
+  if (MiniRtcParseSignalServerAddress(host.data(), host.size(), &address) != 0) return -1;
   if (address.port) port = address.port;
   if (port < 1 || port > 65535) return -1;
   const auto normalized = std::string(address.host) + address.target;

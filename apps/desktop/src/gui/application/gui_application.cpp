@@ -4784,7 +4784,7 @@ bool GuiApplication::ValidateSelfHostedSettingsFromUi(bool gallery_window) {
   auto& main = ui_->Window(gallery_window);
   const auto input = std::string(main->get_server_host());
   MiniRtcSignalServerAddress address{};
-  if (ParseMiniRtcSignalServerAddress(input.data(), input.size(), &address) != 0) {
+  if (MiniRtcParseSignalServerAddress(input.data(), input.size(), &address) != 0) {
     main->set_self_host_settings_error(UiText(
         localization::self_hosted_address_invalid[localization_language_index_]));
     return false;
