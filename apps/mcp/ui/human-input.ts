@@ -42,6 +42,7 @@ export class HumanInput {
       editor.focus({ preventScroll: true });
       surface.setPointerCapture(event.pointerId);
       this.flushMove();
+      this.modifiers(event);
       this.enqueue({ type: "mouse_down", ...point, button: this.button(event.button) });
     });
     surface.addEventListener("pointermove", (event) => {
@@ -69,6 +70,7 @@ export class HumanInput {
       const delta = horizontal ? event.deltaX : event.deltaY;
       if (!delta) return;
       this.flushMove();
+      this.modifiers(event);
       this.enqueue({ type: "scroll", ...point,
         direction: horizontal ? delta > 0 ? "right" : "left" : delta > 0 ? "down" : "up",
         ticks: Math.min(10, Math.max(1, Math.round(Math.abs(delta) / (event.deltaMode === 0 ? 100 : 1)))) });
@@ -76,25 +78,21 @@ export class HumanInput {
     editor.addEventListener("keydown", (event) => {
       if (this.epoch === undefined || event.isComposing) return;
       // Let the local input method produce committed Unicode text.
-      if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) return;
+      if (event.key.length === 1 && ((!event.ctrlKey && !event.metaKey && !event.altKey) || event.getModifierState?.("AltGraph"))) return;
       const key = keyName(event);
       if (!key) return;
       event.preventDefault();
-      for (const [name, held] of [["CTRL", event.ctrlKey], ["ALT", event.altKey],
-        ["META", event.metaKey], ["SHIFT", event.shiftKey]] as const) {
-        if (held && name !== key && !this.pressed.has(name)) {
-          this.pressed.add(name);
-          this.enqueue({ type: "key_down", key: name });
-        }
-      }
-      if (!this.pressed.has(key)) {
+      this.modifiers(event, key);
+      if (!this.pressed.has(key) || event.repeat) {
         this.pressed.add(key);
         this.enqueue({ type: "key_down", key });
       }
     });
     editor.addEventListener("keyup", (event) => {
       const key = keyName(event);
-      if (key && this.pressed.delete(key)) {
+      const held = key === "CTRL" ? event.ctrlKey : key === "ALT" ? event.altKey :
+        key === "META" ? event.metaKey : key === "SHIFT" ? event.shiftKey : false;
+      if (key && !held && this.pressed.delete(key)) {
         event.preventDefault();
         this.enqueue({ type: "key_up", key });
       }
@@ -128,6 +126,17 @@ export class HumanInput {
   setFrame(frame?: InputFrame) {
     this.frame = frame ? { width: frame.width, height: frame.height, generation: frame.generation } : undefined;
     this.frameAt = Date.now();
+  }
+  private modifiers(event: MouseEvent | KeyboardEvent, skip?: string) {
+    for (const [key, held] of [["CTRL", event.ctrlKey], ["ALT", event.altKey],
+      ["META", event.metaKey], ["SHIFT", event.shiftKey]] as const) {
+      if (key === skip) continue;
+      if (held) {
+        // Refresh modifiers after focus changes or native input-lease expiry.
+        this.pressed.add(key);
+        this.enqueue({ type: "key_down", key });
+      } else if (this.pressed.delete(key)) this.enqueue({ type: "key_up", key });
+    }
   }
   private button(index: number) { return ["left", "middle", "right"][index]; }
   private point(event: MouseEvent, clamp: boolean) {
@@ -183,9 +192,9 @@ export class HumanInput {
         if (packet.input_epoch !== this.epoch) continue;
         try { await this.send(packet); }
         catch (error) {
-          this.clear();
           // Never replay clicks or text after an uncertain response.
           if (packet.input_epoch === this.epoch) {
+            this.clear();
             try { await this.send({ ...packet, action: { type: "release" } }); } catch { /* Lease releases on lost transport. */ }
             this.error(error);
           }
