@@ -85,6 +85,44 @@ int KeyCode(const std::string &key) {
                                                   {"F10", 121},
                                                   {"F11", 122},
                                                   {"F12", 123},
+                                                  {"F13", 124},
+                                                  {"F14", 125},
+                                                  {"F15", 126},
+                                                  {"F16", 127},
+                                                  {"F17", 128},
+                                                  {"F18", 129},
+                                                  {"F19", 130},
+                                                  {"F20", 131},
+                                                  {"F21", 132},
+                                                  {"F22", 133},
+                                                  {"F23", 134},
+                                                  {"F24", 135},
+                                                  {"NUMPAD0", 96},
+                                                  {"NUMPAD1", 97},
+                                                  {"NUMPAD2", 98},
+                                                  {"NUMPAD3", 99},
+                                                  {"NUMPAD4", 100},
+                                                  {"NUMPAD5", 101},
+                                                  {"NUMPAD6", 102},
+                                                  {"NUMPAD7", 103},
+                                                  {"NUMPAD8", 104},
+                                                  {"NUMPAD9", 105},
+                                                  {"NUM_LOCK", 144},
+                                                  {"SCROLL_LOCK", 145},
+                                                  {"PRINT_SCREEN", 44},
+                                                  {"MENU", 93},
+                                                  {"MULTIPLY", 106},
+                                                  {"ADD", 107},
+                                                  {"SUBTRACT", 109},
+                                                  {"DECIMAL", 110},
+                                                  {"DIVIDE", 111},
+                                                  {"VOLUME_MUTE", 173},
+                                                  {"VOLUME_DOWN", 174},
+                                                  {"VOLUME_UP", 175},
+                                                  {"MEDIA_NEXT", 176},
+                                                  {"MEDIA_PREVIOUS", 177},
+                                                  {"MEDIA_STOP", 178},
+                                                  {"MEDIA_PLAY_PAUSE", 179},
                                                   {"SEMICOLON", 186},
                                                   {"EQUAL", 187},
                                                   {"COMMA", 188},
@@ -135,7 +173,17 @@ std::vector<Step> BuildInputSteps(const json &a, const InputGeometry &o) {
     step.delay = delay;
     steps.push_back(std::move(step));
   };
-  if (type == "move" || type == "click" || type == "double_click") {
+  if (type == "mouse_down" || type == "mouse_up") {
+    Fields(a, {"type", "x", "y", "button"});
+    const auto button = a.contains("button") ? String(a, "button", 8) : "left";
+    const int flag = button == "left" ? 1 : button == "right" ? 3 : button == "middle" ? 5 : -1;
+    if (flag < 0) throw std::invalid_argument("INVALID_BUTTON");
+    point(a, 0);
+    point(a, 10, flag + (type == "mouse_up" ? 1 : 0));
+  } else if (type == "key_down" || type == "key_up") {
+    Fields(a, {"type", "key"});
+    key(KeyCode(String(a, "key", 16)), type == "key_down", 0);
+  } else if (type == "move" || type == "click" || type == "double_click") {
     Fields(a, type == "move"
                   ? std::initializer_list<const char *>{"type", "x", "y",
                                                         "modifiers"}
@@ -180,7 +228,7 @@ std::vector<Step> BuildInputSteps(const json &a, const InputGeometry &o) {
     const auto &path = a.at("path");
     if (!path.is_array() || path.size() < 2 || path.size() > 128)
       throw std::invalid_argument("INVALID_PATH");
-    const int duration = Number(a, "duration_ms", 100, 2000, 500);
+    const int duration = Number(a, "duration_ms", 100, 30000, 500);
     for (const auto &p : path)
       Fields(p, {"x", "y"});
     point(path.front(), 0);
@@ -189,12 +237,12 @@ std::vector<Step> BuildInputSteps(const json &a, const InputGeometry &o) {
       point(path[i], 10 + int(i * duration / (path.size() - 1)));
     point(path.back(), duration + 30, flag + 1);
   } else if (type == "key_press") {
-    Fields(a, {"type", "key", "modifiers"});
+    Fields(a, {"type", "key", "modifiers", "duration_ms"});
     const auto code = KeyCode(String(a, "key", 16));
     key(code, true, 0);
-    key(code, false, 40);
+    key(code, false, Number(a, "duration_ms", 10, 30000, 40));
   } else if (type == "hotkey") {
-    Fields(a, {"type", "keys"});
+    Fields(a, {"type", "keys", "duration_ms"});
     const auto &keys = a.at("keys");
     if (!keys.is_array() || keys.size() < 2 || keys.size() > 6)
       throw std::invalid_argument("INVALID_KEYS");
@@ -213,7 +261,7 @@ std::vector<Step> BuildInputSteps(const json &a, const InputGeometry &o) {
       key(code, true, delay);
       delay += 15;
     }
-    delay += 30;
+    delay += Number(a, "duration_ms", 10, 30000, 30);
     for (auto it = codes.rbegin(); it != codes.rend(); ++it) {
       key(*it, false, delay);
       delay += 15;

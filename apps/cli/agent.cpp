@@ -112,6 +112,7 @@ struct RunningAction {
   std::vector<Step> steps;
   size_t next = 0;
   bool submitted = false;
+  bool retain_input = false;
   Clock::time_point started, awaiting_ack{};
 };
 struct Record {
@@ -275,7 +276,8 @@ private:
   void FinishAction(const char *error = nullptr) {
     if (!action_)
       return;
-    session_.ReleaseInput();
+    if (error) session_.ReleaseInput();
+    else if (!action_->retain_input) session_.ReleaseActionInput();
     const auto remote = session_.InputResult();
     if (!error && remote == "pending") {
       if (action_->awaiting_ack == Clock::time_point{}) action_->awaiting_ack = Clock::now();
@@ -283,12 +285,15 @@ private:
       error = "REMOTE_ACK_TIMEOUT";
     }
     if (!error && remote == "failed") error = "REMOTE_INPUT_FAILED";
+    if (error) session_.ReleaseInput();
+    if (session_.HasPressedInput()) input_lease_ = Clock::now() + std::chrono::seconds(15);
     json result = {
         {"status", error ? (action_->submitted ? "outcome_unknown"
                                                : "failed_before_submit")
                          : "submitted"},
         {"operation_id", action_->operation},
         {"remote_execution", remote},
+        {"input_lease_ms", session_.HasPressedInput() ? 15000 : 0},
         {"generation", action_->generation},
         {"after_frame_id", frame_ ? frame_->frame_id : 0},
         {"side_effect_possible", action_->submitted},
@@ -330,6 +335,8 @@ private:
   }
   void Tick() {
     session_.Tick();
+    if (!action_ && session_.HasPressedInput() && Clock::now() >= input_lease_)
+      session_.ReleaseInput();
     for (auto it = remote_jobs_.begin(); it != remote_jobs_.end();) {
       auto result = session_.TakeRemoteResult(it->request);
       const char *error = !session_.Connected() ? "SESSION_CLOSED"
@@ -687,6 +694,27 @@ private:
     running->steps = unlock
         ? BuildUnlockSteps(String(j, "password", 256), session_.Status().value("platform", "") == "macos")
         : BuildInputSteps(j.at("action"), {o.width, o.height, o.source_width, o.source_height, o.region});
+    if (unlock) session_.ReleaseInput();
+    if (type == "type_text" && session_.HasPressedInput()) throw std::invalid_argument("INPUT_HELD");
+    running->retain_input = type == "key_down" || type == "mouse_down";
+    for (auto it = running->steps.begin(); it != running->steps.end();) {
+      if (it->kind == StepKind::Key && session_.KeyPressed(it->key) && type != "key_up") {
+        const bool modifier = it->key == 16 || it->key == 17 || it->key == 18 || it->key == 91;
+        if (type != "key_down" && !modifier) throw std::invalid_argument("KEY_ALREADY_HELD");
+        it = running->steps.erase(it);
+      } else {
+        if (it->kind == StepKind::Pointer && session_.ButtonPressed(it->flag) && type == "mouse_down") {
+          it = running->steps.erase(it);
+          continue;
+        }
+        if (it->kind == StepKind::Pointer && (it->flag == 1 || it->flag == 3 || it->flag == 5) &&
+            session_.ButtonPressed(it->flag) && type != "mouse_down")
+          throw std::invalid_argument("BUTTON_ALREADY_HELD");
+        ++it;
+      }
+    }
+    if (type == "key_down" && !running->steps.empty() && session_.Status()["held_key_codes"].size() >= 32)
+      throw std::invalid_argument("INPUT_LIMIT");
     while (records_.size() >= 128 ||
            (!records_.empty() && Age(records_.front().created) > 300000))
       records_.pop_front();
@@ -788,6 +816,10 @@ private:
       } else if (method == "action") {
         StartAction(j, id);
         return false;
+      } else if (method == "release_inputs") {
+        Fields(j, {"id", "method"});
+        FinishAction("CANCELLED");
+        session_.ReleaseInput();
       } else if (method == "system") {
         Fields(j, {"id", "method", "command", "operation_id"});
         const auto command = String(j, "command", 16);
@@ -1015,6 +1047,7 @@ private:
   json preview_;
   int preview_edge_ = 960;
   Clock::time_point preview_time_;
+  Clock::time_point input_lease_{};
   std::unique_ptr<VideoServer> video_;
   uint64_t video_generation_ = 0, last_video_frame_ = 0;
   bool video_connected_ = false, video_enabled_ = false;

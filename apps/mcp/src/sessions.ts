@@ -441,7 +441,7 @@ export class Sessions {
     const s = this.session(session_id);
     this.checkUnlock(s);
     if (s.unlock && this.unlockPending(s.unlock)) throw new Failure("UNLOCK_PENDING");
-    const result = await s.native.request("action", args, 5000, signal);
+    const result = await s.native.request("action", args, (args.action.duration_ms ?? 0) + 5000, signal);
     if (observe_after && result.status === "submitted") {
       try {
         result.observation = await this.screenshot(
@@ -508,6 +508,11 @@ export class Sessions {
     if (args.command !== "status" && s.unlock && this.unlockPending(s.unlock))
       throw new Failure("UNLOCK_PENDING");
     return s.native.request("system", args, 7000, signal);
+  }
+  async releaseInputs(sessionId: string) {
+    const s = this.session(sessionId);
+    this.cancelUnlock(s);
+    return s.native.request("release_inputs");
   }
   async control(id: string, enabled: boolean) {
     if (!enabled) this.cancelUnlock(this.session(id));

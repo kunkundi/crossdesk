@@ -476,6 +476,13 @@ bool ControllerSession::Key(int key, bool down) {
     keys_.erase(key);
   return sent;
 }
+void ControllerSession::ReleaseActionInput() {
+  const auto buttons = buttons_, keys = keys_;
+  for (int button : buttons)
+    if (!action_buttons_.count(button)) Pointer(pointer_x_, pointer_y_, button + 1);
+  for (auto it = keys.rbegin(); it != keys.rend(); ++it)
+    if (!action_keys_.count(*it)) Key(*it, false);
+}
 bool ControllerSession::Pointer(float x, float y, int flag, int wheel) {
   const bool releasing =
       flag >= 2 && flag <= 6 && !(flag & 1) && buttons_.count(flag - 1);
@@ -523,6 +530,8 @@ json ControllerSession::Status() const {
           {"error", error_},
           {"generation", generation_},
           {"control", control_},
+          {"held_key_codes", keys_},
+          {"held_mouse_flags", buttons_},
           {"displays", ds},
           {"platform", HostPlatformName(host_platform_)},
           {"display", options_.display},

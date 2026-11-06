@@ -268,3 +268,9 @@ npm run pack:npm -- --out-dir /absolute/path/artifacts
 `crossdesk_system_status` 查询系统锁定状态。Windows 同时报告服务可用性和交互桌面阶段。`crossdesk_system_command` 支持 `lock`，Windows 可通过已运行的服务执行 `send_sas`。命令需要控制授权和独立的 `operation_id`，相同请求查询原结果。系统接受命令后，通过状态及画面观察确认实际界面。
 
 支持系统状态的被控端会在密码提交后接受最长八秒的解锁验证。确认解锁后返回 `unlock.state: verified`，并保存用户选择记住的密码。系统状态无法确认时保留 `submitted` 和验证信息。已经解锁的桌面返回 `already_unlocked`。旧被控端沿用截图确认流程。
+
+### 持续键鼠输入
+
+`crossdesk_action` 增加 `key_down`、`key_up`、`mouse_down` 和 `mouse_up`。按下状态可跨动作保持，例如按住 Ctrl 后移动或拖动鼠标。最后一次动作完成后，按住状态的有效期为十五秒，超时自动释放。`crossdesk_release_inputs` 可立即释放本会话的全部按键和按钮，并取消当前输入动作。人工暂停、断开及输入错误同样释放按住状态。
+
+`key_press`、`hotkey` 支持 `duration_ms`，拖拽时长上限提高到三十秒。扩展键名覆盖 F13–F24、数字键盘、菜单、锁定键和媒体键，实际效果取决于远端系统支持。状态返回 `held_key_codes` 和 `held_mouse_flags`。文本输入前应释放持续按住的键鼠状态。

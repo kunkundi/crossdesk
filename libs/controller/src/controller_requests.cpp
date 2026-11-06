@@ -26,6 +26,8 @@ std::optional<json> ControllerSession::TakeRemoteResult(uint64_t request) {
 }
 
 void ControllerSession::BeginInput() {
+  action_keys_ = keys_;
+  action_buttons_ = buttons_;
   for (const auto id : input_requests_) remote_results_.erase(id);
   input_requests_.clear();
   input_result_ = "applied";

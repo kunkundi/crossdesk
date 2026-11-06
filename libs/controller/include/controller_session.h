@@ -74,6 +74,10 @@ public:
                   int max_bitrate_bps = -1);
   void SetControl(bool enabled);
   void ReleaseInput();
+  void ReleaseActionInput();
+  bool KeyPressed(int key) const { return keys_.count(key) != 0; }
+  bool ButtonPressed(int flag) const { return buttons_.count(flag) != 0; }
+  bool HasPressedInput() const { return !keys_.empty() || !buttons_.empty(); }
   bool Text(const std::string &utf8);
   bool Key(int key, bool down);
   bool Pointer(float x, float y, int flag, int wheel = 0);
@@ -137,6 +141,7 @@ private:
   HostPlatform host_platform_ = HostPlatform::Unknown;
   std::vector<HostDisplay> displays_;
   std::set<int> keys_, buttons_;
+  std::set<int> action_keys_, action_buttons_;
   float pointer_x_ = .5f, pointer_y_ = .5f;
   std::chrono::steady_clock::time_point deadline_;
   mutable std::mutex mutex_;

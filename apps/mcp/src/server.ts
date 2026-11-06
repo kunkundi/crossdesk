@@ -343,6 +343,9 @@ export function createServer(
     "Query the remote operating system's lock state and available secure-desktop service. unknown means the platform could not determine the state.",
     async (p, ctx) => output(await sessions.system({ ...p, command: "status" }, ctx.mcpReq.signal)),
     { readOnly: true });
+  add("crossdesk_release_inputs", z.strictObject({ session_id: id }),
+    "Release all keys and mouse buttons held by this session and cancel its current input action. Use when finishing a sequence of key_down/mouse_down actions or recovering from interruption. Held input expires after 15 seconds without another action.",
+    async (p) => output(await sessions.releaseInputs(p.session_id)));
   add("crossdesk_system_command", z.strictObject({ session_id: id, operation_id: id,
     command: z.enum(["lock", "send_sas"]) }),
     "Lock the remote session or request Windows secure attention through its service. Requires control authorization. Reuse operation_id to query the same command. Check system status and a fresh screenshot after acceptance.",

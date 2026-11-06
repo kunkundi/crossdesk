@@ -73,10 +73,21 @@ const key = z.enum([
   "BACKSPACE", "TAB", "ENTER", "SHIFT", "CTRL", "ALT", "PAUSE", "CAPS_LOCK",
   "ESC", "SPACE", "PAGE_UP", "PAGE_DOWN", "END", "HOME", "LEFT", "UP", "RIGHT", "DOWN",
   "INSERT", "DELETE", "META", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
+  "F13", "F14", "F15", "F16", "F17", "F18",
+  "F19", "F20", "F21", "F22", "F23", "F24",
+  "NUMPAD0", "NUMPAD1", "NUMPAD2", "NUMPAD3", "NUMPAD4", "NUMPAD5",
+  "NUMPAD6", "NUMPAD7", "NUMPAD8", "NUMPAD9", "NUM_LOCK", "SCROLL_LOCK",
+  "PRINT_SCREEN", "MENU", "MULTIPLY", "ADD", "SUBTRACT", "DECIMAL",
+  "DIVIDE", "VOLUME_MUTE", "VOLUME_DOWN", "VOLUME_UP", "MEDIA_NEXT", "MEDIA_PREVIOUS",
+  "MEDIA_STOP", "MEDIA_PLAY_PAUSE",
   "SEMICOLON", "EQUAL", "COMMA", "MINUS", "PERIOD", "SLASH", "BACKQUOTE", "BRACKET_LEFT", "BACKSLASH", "BRACKET_RIGHT", "QUOTE",
 ]);
 export const action = z.discriminatedUnion("type", [
   point.extend({ type: z.literal("move"), modifiers }),
+  point.extend({ type: z.literal("mouse_down"), button }),
+  point.extend({ type: z.literal("mouse_up"), button }),
+  z.strictObject({ type: z.literal("key_down"), key }),
+  z.strictObject({ type: z.literal("key_up"), key }),
   point.extend({ type: z.literal("click"), button, modifiers }),
   point.extend({ type: z.literal("double_click"), button, modifiers }),
   point.extend({
@@ -88,14 +99,16 @@ export const action = z.discriminatedUnion("type", [
   z.strictObject({
     type: z.literal("drag"),
     path: z.array(point).min(2).max(128),
-    duration_ms: z.int().min(100).max(2000).optional(),
+    duration_ms: z.int().min(100).max(30000).optional(),
     button,
     modifiers,
   }),
-  z.strictObject({ type: z.literal("key_press"), key, modifiers })
+  z.strictObject({ type: z.literal("key_press"), key, modifiers,
+    duration_ms: z.int().min(10).max(30000).optional() })
     .refine((p) => !p.modifiers?.some((modifier) => modifier === p.key)),
   z.strictObject({
     type: z.literal("hotkey"),
+    duration_ms: z.int().min(10).max(30000).optional(),
     keys: z.array(key).min(2).max(6).refine(unique),
   }),
   z.strictObject({

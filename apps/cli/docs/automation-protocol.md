@@ -157,3 +157,9 @@ The desktop and CLI share `FileBrowser` and the existing file transfer engine. P
 `system` accepts `command: status | lock | send_sas`. Commands that change system state require an `operation_id` and control permission. Status queries are available during human pause. The host executes system operations through its application-thread queue, checks connection authorization again, and expires queued operations after two seconds. Windows secure attention uses the existing service integration.
 
 `lock_state` is `locked`, `unlocked`, or `unknown`. macOS queries the current console session, Windows uses its session lock state, and Linux queries the current logind session's `LockedHint`. The MCP unlock workflow verifies this state on compatible hosts and returns `verified` when the system reports an unlocked session.
+
+## Held input
+
+`key_down`, `key_up`, `mouse_down`, and `mouse_up` extend the action union. Each successful action renews a fifteen-second lease for held input. Existing held modifiers survive subsequent clicks, movement and hotkeys. `release_inputs` releases the controller's tracked keys/buttons and cancels current input without requiring an observation. Errors, human pause, display changes and disconnection release held input.
+
+`key_press` and `hotkey` accept `duration_ms` from 10 to 30000. Drags accept durations up to 30000 milliseconds. Extended key names include F13–F24, NUMPAD0–NUMPAD9, arithmetic keypad keys, lock/menu/print keys and media controls. Target platform key mapping determines availability. Text input requires held keys/buttons to be released first.

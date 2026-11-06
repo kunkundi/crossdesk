@@ -173,7 +173,7 @@ export class NativeClient {
     if (this.pending.size >= 32 || this.child.stdin!.writableLength > 262144)
       return Promise.reject(new Failure("BUSY", false, true));
     const id = ++this.sequence;
-    const sideEffect = method === "action" || method === "unlock" ||
+    const sideEffect = method === "action" || method === "unlock" || method === "release_inputs" ||
       (method === "clipboard" && args.operation === "set") ||
       (method === "system" && args.command !== "status") ||
       (method === "files" && ["upload", "download", "cancel"].includes(args.operation));
