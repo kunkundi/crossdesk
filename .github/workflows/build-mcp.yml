@@ -2,9 +2,7 @@ name: MCP package
 
 on:
   push:
-    paths: ['apps/mcp/**', 'apps/cli/package.json', 'apps/cli/npm/platforms.json', '.github/workflows/build-mcp.yml']
   pull_request:
-    paths: ['apps/mcp/**', 'apps/cli/package.json', 'apps/cli/npm/platforms.json', '.github/workflows/build-mcp.yml']
   workflow_dispatch:
 
 permissions:
