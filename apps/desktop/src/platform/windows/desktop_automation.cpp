@@ -6,12 +6,14 @@
 #include <wrl/client.h>
 #include <algorithm>
 #include <deque>
+#include <memory>
 #include <stdexcept>
 
 namespace crossdesk {
 namespace {
 using nlohmann::json;
 using Microsoft::WRL::ComPtr;
+using Bstr = std::unique_ptr<OLECHAR, decltype(&SysFreeString)>;
 std::string Utf8(BSTR value) {
   if (!value) return {};
   const int length = std::min<int>(int(SysStringLen(value)), 256);
@@ -64,7 +66,14 @@ json Perform(ComPtr<IUIAutomationElement> element, const std::string& operation,
     }
   } else if (operation == "set_value") {
     ComPtr<IUIAutomationValuePattern> pattern;
-    if (SUCCEEDED(element->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&pattern)))) result = pattern->SetValue(Wide(value).c_str());
+    if (SUCCEEDED(element->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&pattern)))) {
+      const auto text = Wide(value);
+      Bstr automation_value(
+          SysAllocStringLen(text.data(), static_cast<UINT>(text.size())),
+          SysFreeString);
+      if (!automation_value) throw std::runtime_error("UI_ACTION_FAILED");
+      result = pattern->SetValue(automation_value.get());
+    }
   }
   if (FAILED(result)) throw std::runtime_error(result == UIA_E_ELEMENTNOTAVAILABLE ? "STALE_ELEMENT" : "UI_ACTION_FAILED");
   return {{"accepted", true}};
