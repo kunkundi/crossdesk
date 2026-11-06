@@ -70,6 +70,7 @@ jobs:
           java-version: "17"
 
       - name: Set up Python
+        id: python
         uses: actions/setup-python@v6
         with:
           python-version: "3.13"
@@ -90,7 +91,9 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y --no-install-recommends "${crossdesk_missing_packages[@]}"
           fi
-          python3 -m pip install setuptools wheel
+          if ! python3 -c 'import setuptools, wheel, pip' >/dev/null 2>&1; then
+            python3 -m pip install setuptools wheel
+          fi
 
       # Use an isolated SDK directory so the cache contains only this toolchain,
       # rather than every SDK/NDK version preinstalled on the runner.
@@ -134,13 +137,40 @@ jobs:
           actions-cache-folder: .xmake-toolchain-cache
           actions-cache-key: ${{ runner.os }}-${{ runner.arch }}-ubuntu24.04-android-xmake${{ env.XMAKE_MIN_VERSION }}
 
-      # Repository selection follows desktop Xmake behavior. Keep installed
-      # packages isolated; never reuse another platform's build/config.
-      - name: Cache native dependencies
-        uses: actions/cache@v5
+      - name: Set native dependency cache key
+        id: native-cache-key
+        env:
+          CACHE_ENVIRONMENT: ${{ runner.os }}-${{ runner.arch }}-android-arm64-native-v2-ndk28.2.13676358-api26-xmake${{ env.XMAKE_MIN_VERSION }}-python${{ steps.python.outputs.python-version }}
+          RECIPE_HASH: ${{ hashFiles('apps/android/scripts/build_native.py', 'deps/submodules/minirtc/thirdparty/**') }}
+          DEPENDENCY_HASH: ${{ hashFiles('apps/android/native/xmake.lua', 'deps/submodules/minirtc/xmake.lua') }}
+        run: |
+          prefix="${CACHE_ENVIRONMENT}-image${ImageVersion:?Missing GitHub runner image version}-${RECIPE_HASH}-"
+          printf 'prefix=%s\nkey=%s%s\n' "$prefix" "$prefix" "$DEPENDENCY_HASH" >> "$GITHUB_OUTPUT"
+          # Historical source_tag checkouts keep exact-only dependency reuse.
+          if grep -q -- '--configure-only' apps/android/scripts/build_native.py && \
+             grep -q 'package.librarydeps.strict_compatibility' apps/android/scripts/build_native.py; then
+            echo 'incremental=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      # Cache installed packages separately from native targets and Xmake state.
+      - name: Restore native dependencies
+        id: native-cache
+        uses: actions/cache/restore@v5
         with:
           path: apps/android/.native/packages
-          key: ${{ runner.os }}-${{ runner.arch }}-android-arm64-native-v1-${{ hashFiles('apps/android/scripts/build_native.py', 'apps/android/native/xmake.lua', 'deps/submodules/minirtc/xmake.lua', 'deps/submodules/minirtc/thirdparty/**') }}
+          key: ${{ steps.native-cache-key.outputs.key }}
+          restore-keys: ${{ steps.native-cache-key.outputs.incremental == 'true' && steps.native-cache-key.outputs.prefix || '' }}
+
+      - name: Prepare native dependencies
+        if: steps.native-cache-key.outputs.incremental == 'true'
+        run: python3 -B apps/android/scripts/build_native.py --configure-only
+
+      - name: Save native dependencies
+        if: steps.native-cache-key.outputs.incremental == 'true' && steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: apps/android/.native/packages
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -184,6 +214,13 @@ jobs:
             -PcrossdeskVersionName="${ANDROID_VERSION_NAME}" \
             -PcrossdeskVersionCode="${ANDROID_VERSION_CODE}" \
             :app:assembleDebug :app:assembleRelease
+
+      - name: Save legacy native dependencies
+        if: steps.native-cache-key.outputs.incremental != 'true' && steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: apps/android/.native/packages
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
 
       - name: Verify APKs
         working-directory: apps/android

@@ -5,6 +5,9 @@ inputs:
   minimum-version:
     description: Minimum supported Xmake version (major.minor.patch).
     required: true
+  cache-key:
+    description: Host environment identity, including the image when running in a container.
+    default: host
 
 runs:
   using: composite
@@ -16,11 +19,19 @@ runs:
         XMAKE_MIN_VERSION: ${{ inputs.minimum-version }}
       run: bash "$GITHUB_ACTION_PATH/check-version.sh"
 
+    - name: Identify Xmake cache environment
+      if: steps.check.outputs.needs-upgrade == 'true'
+      id: cache-environment
+      shell: bash
+      run: printf 'image=%s-%s\n' "${ImageOS:-unknown}" "${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+
     - name: Install or upgrade Xmake
       if: steps.check.outputs.needs-upgrade == 'true'
       uses: xmake-io/github-action-setup-xmake@v1
       with:
         xmake-version: ${{ inputs.minimum-version }}
+        actions-cache-folder: ${{ runner.temp }}/crossdesk-xmake-toolchain
+        actions-cache-key: crossdesk-toolchain-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.cache-environment.outputs.image }}-${{ inputs.cache-key }}
 
     - name: Verify Xmake meets the minimum version
       shell: bash

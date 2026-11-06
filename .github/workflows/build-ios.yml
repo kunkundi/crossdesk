@@ -155,30 +155,55 @@ jobs:
       - name: Initialize submodules
         run: git submodule update --init --recursive
 
-      - name: Cache xmake dependencies
-        uses: actions/cache@v5
-        with:
-          path: apps/ios/.xmake/packages
-          key: "${{ runner.os }}-xmake${{ env.XMAKE_MIN_VERSION }}-deps-ios-arm64-source-v2-xcode26.6-min16-${{ hashFiles('apps/ios/scripts/build_minirtc_ios.sh', 'xmake.lua', 'deps/submodules/minirtc/xmake.lua', 'deps/submodules/minirtc/thirdparty/**') }}-${{ github.run_id }}"
-          restore-keys: |
-            ${{ runner.os }}-xmake${{ env.XMAKE_MIN_VERSION }}-deps-ios-arm64-source-v2-xcode26.6-min16-${{ hashFiles('apps/ios/scripts/build_minirtc_ios.sh', 'xmake.lua', 'deps/submodules/minirtc/xmake.lua', 'deps/submodules/minirtc/thirdparty/**') }}-
-
       - name: Set up Python
+        id: python
         uses: actions/setup-python@v6
         with:
           python-version: "3.13"
+          cache: pip
+          cache-dependency-path: .github/workflows/build-ios.yml
 
       - name: Install Python build tools
         shell: bash
         run: |
           # Xmake only accepts the host Python when all three modules exist;
           # otherwise it falls back to compiling another Python from source.
-          python3 -m pip install --upgrade pip setuptools wheel
+          if ! python3 -c 'import setuptools, wheel, pip' >/dev/null 2>&1; then
+            python3 -m pip install setuptools wheel
+          fi
+
+      - name: Set native dependency cache key
+        id: native-cache-key
+        shell: bash
+        env:
+          CACHE_ENVIRONMENT: ${{ runner.os }}-${{ runner.arch }}-ios-arm64-source-v3-xcode26.6-min16-xmake${{ env.XMAKE_MIN_VERSION }}-python${{ steps.python.outputs.python-version }}
+          RECIPE_HASH: ${{ hashFiles('apps/ios/scripts/build_minirtc_ios.sh', 'deps/submodules/minirtc/thirdparty/**') }}
+          DEPENDENCY_HASH: ${{ hashFiles('xmake.lua', 'deps/submodules/minirtc/xmake.lua') }}
+        run: |
+          image="${ImageVersion:?Missing GitHub runner image version}"
+          prefix="${CACHE_ENVIRONMENT}-image${image}-${RECIPE_HASH}-"
+          printf 'image=%s\nprefix=%s\nkey=%s%s\n' "$image" "$prefix" "$prefix" "$DEPENDENCY_HASH" >> "$GITHUB_OUTPUT"
+          # Historical source_tag checkouts keep exact-only dependency reuse.
+          if grep -q -- '--configure-only' apps/ios/scripts/build_minirtc_ios.sh && \
+             grep -q 'package.librarydeps.strict_compatibility' apps/ios/scripts/build_minirtc_ios.sh; then
+            echo 'incremental=true' >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install xmake
         uses: xmake-io/github-action-setup-xmake@v1
         with:
           xmake-version: "${{ env.XMAKE_MIN_VERSION }}"
+          actions-cache-folder: ${{ runner.temp }}/crossdesk-ios-xmake-toolchain
+          actions-cache-key: ios-toolchain-v1-${{ runner.os }}-${{ runner.arch }}-image${{ steps.native-cache-key.outputs.image }}-xcode26.6
+
+      # Keep recipe/patch and toolchain changes outside the fallback boundary.
+      - name: Restore native dependencies
+        id: native-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: apps/ios/.xmake/packages
+          key: ${{ steps.native-cache-key.outputs.key }}
+          restore-keys: ${{ steps.native-cache-key.outputs.incremental == 'true' && steps.native-cache-key.outputs.prefix || '' }}
 
       - name: Verify minimum xmake version
         shell: bash
@@ -186,6 +211,24 @@ jobs:
           xmake --version | tee "${RUNNER_TEMP}/xmake-version.txt"
           python3 -B apps/ios/scripts/verify_native_build.py \
             --xmake-version "${RUNNER_TEMP}/xmake-version.txt"
+
+      - name: Prepare native dependencies
+        if: steps.native-cache-key.outputs.incremental == 'true'
+        timeout-minutes: 60
+        shell: bash
+        env:
+          CONFIGURATION: Release
+          PLATFORM_NAME: iphoneos
+          CURRENT_ARCH: arm64
+          CROSSDESK_NATIVE_VERBOSE: "1"
+        run: apps/ios/scripts/build_minirtc_ios.sh --configure-only
+
+      - name: Save native dependencies
+        if: steps.native-cache-key.outputs.incremental == 'true' && steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: apps/ios/.xmake/packages
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
 
       # Xcode buffers Run Script output until the phase finishes. Build the
       # native archives here so dependency downloads and compiler commands are
@@ -215,6 +258,13 @@ jobs:
           trap 'kill "${MONITOR_PID}" 2>/dev/null || true; wait "${MONITOR_PID}" 2>/dev/null || true' EXIT
           apps/ios/scripts/build_minirtc_ios.sh 2>&1 | \
             tee "${RUNNER_TEMP}/ios-native-build.log"
+
+      - name: Save legacy native dependencies
+        if: steps.native-cache-key.outputs.incremental != 'true' && steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: apps/ios/.xmake/packages
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
 
       - name: Build CrossDesk Mobile
         timeout-minutes: 30

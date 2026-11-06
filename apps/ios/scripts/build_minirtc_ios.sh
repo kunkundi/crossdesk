@@ -2,6 +2,14 @@
 
 set -euo pipefail
 
+CONFIGURE_ONLY=false
+if [[ $# -eq 1 && "$1" == "--configure-only" ]]; then
+  CONFIGURE_ONLY=true
+elif [[ $# -ne 0 ]]; then
+  print -u2 "Usage: $0 [--configure-only]"
+  exit 64
+fi
+
 SCRIPT_DIR="${0:A:h}"
 IOS_DIR="${SCRIPT_DIR:h}"
 REPO_DIR="${IOS_DIR:h:h}"
@@ -169,7 +177,7 @@ configure_xmake() {
   print "Configuring iOS native project: ${project_dir}"
   run_xmake f -P "${project_dir}" "${clean_flags[@]}" "${XMAKE_LOG_FLAGS[@]}" -o "${build_dir}" \
     -p iphoneos -a arm64 --appledev="${APPLE_DEVICE}" -m "${MODE}" --target_minver=16.0 \
-    --policies=package.precompiled:n -y "$@"
+    --policies=package.precompiled:n,package.librarydeps.strict_compatibility -y "$@"
   mkdir -p "${build_dir}"
   print -r -- "${CONFIG_SIGNATURE}" > "${stamp}"
 }
@@ -182,6 +190,24 @@ configure_xmake() {
   configure_xmake "${MINIRTC_DIR}" "${MINIRTC_BUILD_DIR}" \
     --as="${XMAKE_TOOLCHAIN_BIN}/clang" --USE_CUDA=false \
     --MINIRTC_ENABLE_AOM="${MINIRTC_ENABLE_AOM}"
+)
+
+# Build the platform-independent wire archive from the root project's target.
+# The copied manifest only isolates Xmake's generated configuration; there is
+# no second project definition to maintain.
+(
+  cd "${WIRE_WORK_DIR}"
+  configure_xmake "${WIRE_WORK_DIR}" "${WIRE_BUILD_DIR}" \
+    --CROSSDESK_BUILD_DESKTOP=false --CROSSDESK_BUILD_CLI=false
+)
+
+# CI can persist the installed packages before compiling either archive.
+if [[ "${CONFIGURE_ONLY}" == true ]]; then
+  exit 0
+fi
+
+(
+  cd "${MINIRTC_DIR}"
   print "Building MiniRTC for ${SDK_NAME} (${MODE})"
   run_xmake b -P "${MINIRTC_DIR}" "${XMAKE_LOG_FLAGS[@]}" minirtc
 )
@@ -191,13 +217,8 @@ if [[ ! -f "${MINIRTC_LIBRARY}" ]]; then
   exit 66
 fi
 
-# Build the platform-independent wire archive from the root project's target.
-# The copied manifest only isolates Xmake's generated configuration; there is
-# no second project definition to maintain.
 (
   cd "${WIRE_WORK_DIR}"
-  configure_xmake "${WIRE_WORK_DIR}" "${WIRE_BUILD_DIR}" \
-    --CROSSDESK_BUILD_DESKTOP=false --CROSSDESK_BUILD_CLI=false
   print "Building CrossDesk wire for ${SDK_NAME} (${MODE})"
   run_xmake b -P "${WIRE_WORK_DIR}" "${XMAKE_LOG_FLAGS[@]}" crossdesk_wire
 )

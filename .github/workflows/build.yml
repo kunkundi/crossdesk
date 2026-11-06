@@ -132,6 +132,7 @@ jobs:
         uses: ./.github/actions/ensure-xmake
         with:
           minimum-version: ${{ env.XMAKE_MIN_VERSION }}
+          cache-key: ${{ matrix.image }}
 
       - name: Verify Linux build image
         shell: bash

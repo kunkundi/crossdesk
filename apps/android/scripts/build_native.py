@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build the native controller in isolation from desktop and iOS caches."""
+import argparse
 import fcntl
 import os
 from pathlib import Path
@@ -26,7 +27,7 @@ def find_xmake():
     return xmake
 
 
-def main():
+def main(configure_only=False):
     sdk = Path(os.environ.get('ANDROID_HOME') or os.environ.get('ANDROID_SDK_ROOT')
                or Path.home() / 'Library/Android/sdk')
     ndk = sdk / 'ndk/28.2.13676358'
@@ -45,13 +46,20 @@ def main():
     # and updates. Only installed Android packages/build products are isolated.
     subprocess.run([xmake, 'f', '-P', str(work), '-y', '-p', 'android', '-a', 'arm64-v8a',
                     '-m', 'release', '--ndk=' + str(ndk), '--ndk_sdkver=26',
-                    '--runtimes=c++_static', '--policies=package.precompiled:n',
+                    '--runtimes=c++_static',
+                    '--policies=package.precompiled:n,package.librarydeps.strict_compatibility',
                     '-o', str(CACHE / 'build')], cwd=work, env=env, check=True)
+    if configure_only:
+        return
     subprocess.run([xmake, '-P', str(work), '-y', 'crossdesk_android'], cwd=work, env=env, check=True)
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--configure-only', action='store_true',
+                        help='Install native dependencies before compiling application targets.')
+    args = parser.parse_args()
     CACHE.mkdir(parents=True, exist_ok=True)
     with (CACHE / 'build.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        main()
+        main(configure_only=args.configure_only)
