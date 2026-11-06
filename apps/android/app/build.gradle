@@ -1,27 +1,27 @@
 plugins { id 'com.android.application' }
 
 android {
-    namespace 'cn.crossdesk.mobile'
-    compileSdk 36
-    ndkVersion '28.2.13676358'
+    namespace = 'cn.crossdesk.mobile'
+    compileSdk = 36
+    ndkVersion = '28.2.13676358'
     defaultConfig {
-        applicationId 'cn.crossdesk.mobile'
-        minSdk 26
-        targetSdk 36
-        versionCode providers.gradleProperty('crossdeskVersionCode').get().toInteger()
-        versionName providers.gradleProperty('crossdeskVersionName').get()
+        applicationId = 'cn.crossdesk.mobile'
+        minSdk = 26
+        targetSdk = 36
+        versionCode = providers.gradleProperty('crossdeskVersionCode').get().toInteger()
+        versionName = providers.gradleProperty('crossdeskVersionName').get()
         ndk { abiFilters 'arm64-v8a' }
-        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        testInstrumentationRunner = 'androidx.test.runner.AndroidJUnitRunner'
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     sourceSets.main.jniLibs.srcDirs = [layout.buildDirectory.dir('native')]
     sourceSets.main.assets.srcDirs += [layout.buildDirectory.dir('generated/notices')]
     sourceSets.androidTest.java.srcDirs = ['../test/android/java']
     sourceSets.androidTest.assets.srcDirs = ['../test/android/assets']
-    buildTypes.release { minifyEnabled false }
+    buildTypes.release { minifyEnabled = false }
     packaging.jniLibs.useLegacyPackaging = false
 }
 

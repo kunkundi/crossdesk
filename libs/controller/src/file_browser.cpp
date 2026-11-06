@@ -9,6 +9,7 @@
 #include <fstream>
 #include <set>
 #include <stdexcept>
+#include <string_view>
 
 namespace crossdesk {
 namespace {
@@ -16,6 +17,9 @@ using Json = FileBrowser::Json;
 namespace fs = std::filesystem;
 constexpr size_t kPageEntries = 512;
 constexpr size_t kPageBytes = 45000;
+fs::path PathFromUtf8(std::string_view value) {
+  return fs::path(std::u8string(value.begin(), value.end()));
+}
 std::string Utf8(const fs::path& path) {
   const auto value = path.u8string();
   return {value.begin(), value.end()};
@@ -26,7 +30,7 @@ fs::path Home() {
 #else
   const auto* home = std::getenv("HOME");
 #endif
-  return home ? std::filesystem::u8path(home) : fs::current_path();
+  return home ? PathFromUtf8(home) : fs::current_path();
 }
 Json Failure(const std::string& reason) { return {{"ok", false}, {"error", reason}}; }
 template <typename FileTime>
@@ -76,7 +80,7 @@ std::string Text(const Json& value, const char* key) {
 }
 fs::path ExistingDirectory(const std::string& path) {
   if (path.empty()) throw std::runtime_error("invalid_path");
-  auto input = std::filesystem::u8path(path);
+  auto input = PathFromUtf8(path);
   if (!input.is_absolute()) throw std::runtime_error("invalid_path");
   std::error_code ec;
   auto result = fs::canonical(input, ec);
@@ -84,7 +88,7 @@ fs::path ExistingDirectory(const std::string& path) {
   return result;
 }
 fs::path Destination(const fs::path& root, const std::string& relative) {
-  auto path = std::filesystem::u8path(relative);
+  auto path = PathFromUtf8(relative);
   if (path.is_absolute() || path.has_root_name()) throw std::runtime_error("invalid_path");
   auto result = root;
   for (const auto& component : path) {
@@ -358,7 +362,7 @@ FileBrowser::Json FileBrowser::Directory(const std::string& value, const std::fu
       for (char drive = 'A'; drive <= 'Z'; ++drive) {
         const std::string root = std::string(1, drive) + ":\\";
         std::error_code ec;
-        if (fs::is_directory(std::filesystem::u8path(root), ec))
+        if (fs::is_directory(PathFromUtf8(root), ec))
           entries.push_back({{"name", root}, {"path", root}, {"directory", true}, {"size", 0}, {"modified", ""}, {"link", false}});
       }
 #else
@@ -514,7 +518,7 @@ void FileBrowser::Upload(const std::string& peer, const std::vector<std::string>
     };
     // Validate the entire selection before creating remote folders or sending.
     for (const auto& source : paths) {
-      auto path = std::filesystem::u8path(source);
+      auto path = PathFromUtf8(source);
       if (!path.is_absolute() || path.filename().empty()) throw std::runtime_error("invalid_path");
       add(path, path.filename());
       if (fs::is_directory(fs::symlink_status(path))) {

@@ -102,7 +102,11 @@ void Launch(const fs::path& executable, const std::vector<std::string>& argument
     }
     execv(executable.c_str(), argv.data());
     const int error = errno;
-    (void)write(errors[1], &error, sizeof(error));
+    // This small blocking pipe write is atomic. Retry signal interruptions so
+    // the parent cannot mistake a failed exec for a successful launch.
+    ssize_t written;
+    do { written = write(errors[1], &error, sizeof(error)); }
+    while (written < 0 && errno == EINTR);
     _exit(127);
   }
   close(errors[1]);

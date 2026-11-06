@@ -86,6 +86,8 @@ if os.isdir(path.join(wire_dir, "tests")) then
 end
 
 if build_desktop then
+    includes(path.join(source_dir, "deps/submodules"),
+        path.join(source_dir, "deps/thirdparty"))
     setup_targets()
 end
 

@@ -1,7 +1,7 @@
 /*
  * @Author: DI JUNKUN
  * @Date: 2023-12-14
- * Copyright (c) 2023 by DI JUNKUN, All Rights Reserved.
+ * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
  */
 
 #ifndef _MOUSE_CONTROLLER_H_
@@ -20,15 +20,15 @@ namespace crossdesk {
 class PlatformMouseController final : public MouseController {
  public:
   PlatformMouseController();
-  virtual ~PlatformMouseController();
+  ~PlatformMouseController() override;
 
  public:
-  virtual int Init(std::vector<DisplayInfo> display_info_list);
-  virtual int Destroy();
-  virtual int SendMouseCommand(RemoteAction remote_action, int display_index);
+  int Init(std::vector<DisplayInfo> display_info_list) override;
+  int Destroy() override;
+  int SendMouseCommand(RemoteAction remote_action, int display_index) override;
   unsigned ReleasePressedButtons(unsigned mask = 7) override;
   void UpdateDisplayInfoList(
-      const std::vector<DisplayInfo>& display_info_list);
+      const std::vector<DisplayInfo>& display_info_list) override;
 
  private:
   struct ClickTracker {

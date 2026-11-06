@@ -1,6 +1,4 @@
 function setup_targets()
-    includes("deps/submodules", "deps/thirdparty")
-
     local crossdesk_version = get_config("CROSSDESK_VERSION") or "0.0.0"
     local version_define = "CROSSDESK_VERSION=\"" .. crossdesk_version .. "\""
     local windows_resource_defines = {

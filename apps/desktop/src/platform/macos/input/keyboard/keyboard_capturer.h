@@ -17,16 +17,16 @@ namespace crossdesk {
 class PlatformKeyboardCapturer final : public KeyboardCapturer {
  public:
   PlatformKeyboardCapturer();
-  virtual ~PlatformKeyboardCapturer();
+  ~PlatformKeyboardCapturer() override;
 
  public:
-  virtual int Hook(OnKeyAction on_key_action, void* user_ptr);
-  virtual int Unhook();
+  int Hook(OnKeyAction on_key_action, void* user_ptr) override;
+  int Unhook() override;
   bool SupportsTextInput() const override { return true; }
   int SendTextCommand(const std::string& text) override;
-  virtual int SendKeyboardCommand(int key_code, bool is_down,
-                                  uint32_t scan_code = 0,
-                                  bool extended = false);
+  int SendKeyboardCommand(int key_code, bool is_down,
+                          uint32_t scan_code = 0,
+                          bool extended = false) override;
 
  private:
   CFMachPortRef event_tap_ = nullptr;

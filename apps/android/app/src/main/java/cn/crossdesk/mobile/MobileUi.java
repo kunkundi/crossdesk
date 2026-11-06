@@ -90,6 +90,8 @@ final class MobileUi {
         }
         @Override public void setAlpha(int alpha) { bitmapPaint.setAlpha(alpha);invalidateSelf(); }
         @Override public void setColorFilter(ColorFilter filter) { bitmapPaint.setColorFilter(filter);invalidateSelf(); }
+        // Drawable still requires this abstract method, including on API 26.
+        @SuppressWarnings("deprecation")
         @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
     }
     @android.annotation.SuppressLint("ViewConstructor") // Programmatic icon primitive, not inflated from XML.

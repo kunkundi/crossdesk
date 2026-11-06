@@ -601,6 +601,9 @@ export component FileBrowserWindow inherits Window {
     SurfaceSeparator { x: 0px; y: 0px; width: parent.width; }
     focus := FocusScope {
         focus-on-click: true;
+        // Window sizing is defined above. Keep its layout constraints separate
+        // from children whose dimensions adapt to the current window size.
+        x: 0px; y: 0px; width: root.width; height: root.height;
         key-pressed(event) => {
             if event.text == Key.Escape { root.cancel-drag(); return accept; }
             reject

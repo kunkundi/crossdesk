@@ -196,7 +196,8 @@ fi
 # no second project definition to maintain.
 (
   cd "${WIRE_WORK_DIR}"
-  configure_xmake "${WIRE_WORK_DIR}" "${WIRE_BUILD_DIR}"
+  configure_xmake "${WIRE_WORK_DIR}" "${WIRE_BUILD_DIR}" \
+    --CROSSDESK_BUILD_DESKTOP=false --CROSSDESK_BUILD_CLI=false
   print "Building CrossDesk wire for ${SDK_NAME} (${MODE})"
   run_xmake b -P "${WIRE_WORK_DIR}" "${XMAKE_LOG_FLAGS[@]}" crossdesk_wire
 )

@@ -118,6 +118,9 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private String serverKey(){return host+":"+port;}
     private void toast(String value){Toast.makeText(this,value,Toast.LENGTH_SHORT).show();}
     private void hideKeyboard(){((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(root.getWindowToken(),0);root.clearFocus();}
+    // Legacy inset handling also includes the IME on non-session pages. The
+    // decor-fitting call below is restricted to Android 11–14.
+    @SuppressWarnings("deprecation")
     private void installRoot(String nextPage,boolean dark){
         PageHost.Motion motion=PageHost.Motion.NONE;
         if(canvas!=null&&foreground&&!page.equals(nextPage)){
@@ -147,6 +150,8 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         root.setFocusableInTouchMode(true);pageHost.show(canvas,motion);
         applySystemBars(dark);
     }
+    // Android 8–10 require system UI flags instead of WindowInsetsController.
+    @SuppressWarnings("deprecation")
     private void applySystemBars(boolean dark){
         if(android.os.Build.VERSION.SDK_INT>=30){
             android.view.WindowInsetsController controller=getWindow().getInsetsController();
@@ -302,7 +307,9 @@ public final class MainActivity extends Activity implements NativeSession.Listen
             rememberPassword=remember.isChecked();password.setText("");dialog.dismiss();begin(id,secret);
         });connect.setContentDescription(L10n.tr("确认连接"));sheet.addView(connect,ui.size(-1,48));
         ScrollView scroll=new ScrollView(this);scroll.addView(sheet);
-        dialog.setContentView(scroll);Window window=dialog.getWindow();if(window!=null){window.setBackgroundDrawableResource(android.R.color.transparent);window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);window.setDimAmount(.22f);}dialog.show();sizePasswordDialog();password.requestFocus();if(!error.isEmpty())password.setError(error);
+        // This floating dialog uses window-managed IME resizing on all supported APIs.
+        @SuppressWarnings("deprecation") int resizeMode=WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
+        dialog.setContentView(scroll);Window window=dialog.getWindow();if(window!=null){window.setBackgroundDrawableResource(android.R.color.transparent);window.setSoftInputMode(resizeMode);window.setDimAmount(.22f);}dialog.show();sizePasswordDialog();password.requestFocus();if(!error.isEmpty())password.setError(error);
         dialog.setOnDismissListener(d->{password.setText("");passwordDialog=null;});
     }
     private void sizePasswordDialog(){
@@ -715,6 +722,8 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private void navigateBack(){if(backAction==null)return;navigatingBack=true;try{backAction.run();}finally{navigatingBack=false;}}
     private void back(){if(controls!=null&&controls.closeKeyboard())return;pageHost.finish();if(session!=null){if(ready)confirmDisconnect();else end("");}else if(backAction!=null)navigateBack();else finish();}
     @Override public void onWindowFocusChanged(boolean focus){super.onWindowFocusChanged(focus);if(!focus)releaseKeys();else applySystemBars(ready);}
+    // API 26–32 use this callback; API 33+ registers OnBackInvokedCallback in onCreate.
+    @SuppressWarnings("deprecation")
     @android.annotation.SuppressLint("GestureBackNavigation") @Override public void onBackPressed(){back();}
     @Override public void onConfigurationChanged(Configuration config){
         super.onConfigurationChanged(config);
