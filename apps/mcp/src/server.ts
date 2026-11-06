@@ -39,6 +39,7 @@ const uiNames: Record<UIAction, string> = {
   video_open: "crossdesk_video_open",
   control: "crossdesk_viewer_control",
   unlock: "crossdesk_ui_unlock",
+  recovery: "crossdesk_ui_recovery",
 };
 function output(value: Data, meta?: Data): CallToolResult {
   const data = { ...value };
@@ -74,7 +75,7 @@ export function createServer(
     {
       capabilities: { tools: {}, resources: {} },
       instructions:
-        "Remote computer control. Open a panel for the user to select and authorize a device. Never request passwords in chat. When a remote task is pending, immediately follow crossdesk_open with crossdesk_get_session(view_id, wait_ms: 25000) in the same turn. Repeat bounded waits on wait_timed_out until ready or the user cancels; do not ask the user to type a connection confirmation or click Continue. On ready, continue the requested task within current authorization. On closed/failed, stop waiting and do not automatically reconnect. Obtain a screenshot before actions and pass its observation_id; coordinates refer to that returned image. If the remote system is locked, focus its visible password field, take a fresh screenshot and call crossdesk_unlock. A saved system password is used automatically; otherwise the local panel asks the user. Wait with crossdesk_get_session(unlock_request_id, wait_ms: 25000), then verify a fresh screenshot before continuing the original task. Submitted actions are not remote execution acknowledgements. Never replay actions after uncertain outcomes. Human pause can only be resumed in the user panel.",
+        "Remote computer control. Open a panel for the user to select and authorize a device. Never request passwords in chat. When a remote task is pending, immediately follow crossdesk_open with crossdesk_get_session(view_id, wait_ms: 25000) in the same turn. Repeat bounded waits on wait_timed_out until ready or the user cancels; do not ask the user to type a connection confirmation or click Continue. On ready, continue the requested task within current authorization. When state is reconnecting, continue bounded waits for the explicitly enabled recovery policy. Use the returned session_id after recovery and inspect a fresh screenshot. On closed/failed, stop waiting and do not automatically reconnect. Obtain a screenshot before actions and pass its observation_id; coordinates refer to that returned image. If the remote system is locked, focus its visible password field, take a fresh screenshot and call crossdesk_unlock. A saved system password is used automatically; otherwise the local panel asks the user. Wait with crossdesk_get_session(unlock_request_id, wait_ms: 25000), then verify a fresh screenshot before continuing the original task. Submitted actions are not remote execution acknowledgements. Never replay actions after uncertain outcomes. Human pause can only be resumed in the user panel.",
     },
   );
   type Definition = {
@@ -245,14 +246,14 @@ export function createServer(
       wait_ms: z.int().min(0).max(25000).optional(),
       unlock_request_id: id.optional(),
     }),
-    "Get connection, display geometry, frame age and control state. Supply exactly one of session_id or view_id. With unlock_request_id, wait for that unlock request to finish (default 25000 ms). Otherwise view_id waits for connection and session_id returns immediately. On wait_timed_out, repeat while the task is pending. An unlock state of submitted requires a fresh screenshot to verify success. Waiting never connects or grants control.",
+    "Get connection, display geometry, frame age and control state. Supply exactly one of session_id or view_id. With unlock_request_id, wait for that unlock request to finish (default 25000 ms). Otherwise view_id waits for connection, and session_id with wait_ms waits for an active recovery. session_id without wait_ms returns immediately. On wait_timed_out, repeat while the task is pending. An unlock state of submitted requires a fresh screenshot to verify success. Waiting never connects or grants control.",
     async (p, ctx) => {
       if (!!p.session_id === !!p.view_id)
         throw new Failure("SELECT_ONE_SESSION");
       if (p.unlock_request_id) return output(await sessions.waitForUnlock(
         p.session_id, p.view_id, p.unlock_request_id, p.wait_ms ?? 25000, ctx.mcpReq.signal,
       ));
-      if (p.session_id && p.wait_ms) throw new Failure("INVALID_ARGUMENT");
+      if (p.session_id && p.wait_ms) return output(await sessions.waitForSession(p.session_id, p.wait_ms, ctx.mcpReq.signal));
       return output(p.view_id
         ? await sessions.waitForConnection(p.view_id, p.wait_ms ?? 25000, ctx.mcpReq.signal)
         : await sessions.status(p.session_id, undefined, ctx.mcpReq.signal));
@@ -262,6 +263,10 @@ export function createServer(
   add("crossdesk_list_sessions", z.strictObject({}),
     "List the active remote sessions with their device aliases, displays and control state. Each session_id addresses one connection. Up to eight connections can be active concurrently.",
     async () => output(await sessions.listSessions()), { readOnly: true });
+  add("crossdesk_set_recovery", z.strictObject({ session_id: id, enabled: z.boolean(),
+    max_attempts: z.int().min(1).max(5).default(3) }),
+    "Enable or disable bounded background connection recovery for a saved device with persistent authorization and credentials. Recovery uses a new session_id and never resubmits previous input, unlock or file operations. Wait with crossdesk_get_session and use its returned session_id plus a fresh screenshot before continuing. Human pause and explicit disconnect stop recovery.",
+    async (p) => output(await sessions.setRecovery(p.session_id, p.enabled, p.max_attempts)));
   add("crossdesk_capture_displays", z.strictObject({ session_id: id,
     display_indices: z.array(z.int().min(0).max(63)).min(1).max(8)
       .refine((values) => new Set(values).size === values.length).optional(),

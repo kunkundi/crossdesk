@@ -46,6 +46,7 @@ root.innerHTML = `
     <div id="session-card" hidden>
       <div class="device-card"><strong id="session-device">远程电脑</strong><span id="session-platform">已连接</span></div>
       <dl class="session-details"><div id="session-device-id-row" hidden><dt>设备 ID</dt><dd id="session-device-id"></dd></div><div><dt>访问权限</dt><dd id="session-access"></dd></div><div><dt>显示器</dt><dd id="session-display"></dd></div><div><dt>Agent 状态</dt><dd id="session-agent"></dd></div><div><dt>锁屏密码</dt><dd id="session-unlock-credential"></dd></div><div id="session-unlock-row" hidden><dt>解锁状态</dt><dd class="session-unlock-details"><span id="session-unlock-state"></span><button id="unlock-open" type="button" hidden>输入密码</button></dd></div></dl>
+      <label class="check"><input id="recovery" type="checkbox">断线自动恢复</label>
       <p class="session-note">关闭页面不会断开连接。</p>
     </div>
   </aside>
@@ -130,6 +131,7 @@ const messages: Record<string, string> = {
   display_not_available: "所选显示器当前不可用，请检查显示器索引。",
   media_initialization_failed: "本机媒体组件初始化失败，请检查原生 CLI 运行环境。",
   control_event_overflow: "连接事件队列已满，请稍后重新连接。",
+  SESSION_REPLACED: "连接已恢复，请使用更新后的会话。",
   SESSION_LIMIT: "活动连接已达到八个，请先断开一个连接。",
   DEVICE_BUSY: "此设备已有活动连接。",
   CREDENTIAL_STORE_UNAVAILABLE: "系统凭据库不可用，密码未保存。",
@@ -380,8 +382,8 @@ function renderStatus(s: Data) {
   root.dataset.controlling = String(connected && s.control === true && s.control_allowed === true && !s.human_paused);
   element("connection").dataset.state = connected ? "online" : connecting ? "connecting" : lost && !disconnectedByUser ? "offline" : "idle";
   text("connection-label", connected ? "已连接" : connecting ? "正在连接" : lost ? "未连接" : "等待连接");
-  element("connect-form").hidden = connected;
-  element("session-card").hidden = !connected;
+  element("connect-form").hidden = connected || s.state === "reconnecting";
+  element("session-card").hidden = !connected && s.state !== "reconnecting";
   text("sidebar-title", connected ? "连接信息" : "连接设备");
   text("device-name", connected ? s.device_alias || "远程电脑" : "远程画面");
   if (!connected || changedSession) setDetails(false);
@@ -396,7 +398,9 @@ function renderStatus(s: Data) {
   text("session-device-id", device ? String(device.device_id).replace(/(\d{3})(?=\d)/g, "$1 ") : "");
   text("session-access", s.control_allowed ? "查看与操作" : "仅查看");
   text("session-display", `显示器 ${(s.display ?? 0) + 1}`);
-  text("session-agent", s.human_paused ? "已暂停" : s.control_allowed ? "允许操作" : "仅可观察");
+  text("session-agent", s.state === "reconnecting" ? "正在恢复连接" : s.human_paused ? "已暂停" : s.control_allowed ? "允许操作" : "仅可观察");
+  input("recovery").checked = s.reconnect_enabled === true;
+  input("recovery").disabled = !s.session_id;
   element("session-agent").dataset.paused = String(!!s.human_paused);
   element<HTMLButtonElement>("pause").disabled = !connected || !s.control_allowed || controlBusy;
   const pauseLabel = s.human_paused ? "恢复控制" : "暂停控制";
@@ -477,6 +481,13 @@ element("connect-form").addEventListener("keydown", (event) => {
     void connect();
   }
 });
+input("recovery").onchange = async () => {
+  input("recovery").disabled = true;
+  try {
+    await invoke("recovery", { enabled: input("recovery").checked });
+    renderStatus(await invoke("status"));
+  } catch (error) { showError(error); renderStatus(status); }
+};
 element("pause").onclick = async () => {
   if (controlBusy) return;
   controlBusy = true;
@@ -653,6 +664,7 @@ async function start() {
       video_open: "crossdesk_video_open",
       control: "crossdesk_viewer_control",
       unlock: "crossdesk_ui_unlock",
+      recovery: "crossdesk_ui_recovery",
     };
     let connected = false,
       initial: Data | undefined;

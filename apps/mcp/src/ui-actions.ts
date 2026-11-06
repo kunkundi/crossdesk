@@ -8,6 +8,7 @@ export const uiSchemas = {
   status: z.strictObject({}),
   connect: uiConnect,
   video_open: z.strictObject({}),
+  recovery: z.strictObject({ enabled: z.boolean(), max_attempts: z.int().min(1).max(5).default(3) }),
   unlock: z.strictObject({
     request_id: id,
     password: unlockPassword.optional(),
@@ -49,6 +50,9 @@ export async function uiAction(
     case "unlock":
       if (!p.cancel && !p.password) throw new Failure("UNLOCK_CREDENTIAL_REQUIRED");
       return sessions.unlockUI(view, p, signal);
+    case "recovery":
+      if (!view.session) throw new Failure("NOT_READY");
+      return sessions.setRecovery(view.session, p.enabled, p.max_attempts);
     default:
       throw new Failure("UNKNOWN_ACTION");
   }

@@ -59,6 +59,15 @@ interface Session {
   connecting: boolean;
   connection: AbortController;
   displayBatch?: boolean;
+  mode: string;
+  desiredControl: boolean;
+  recoveryEnabled: boolean;
+  recoveryAttempts: number;
+  recoveryAttempt: number;
+  recovering?: Promise<void>;
+  recoveryAbort?: AbortController;
+  monitor?: ReturnType<typeof setInterval>;
+  recoveredFrom?: string;
   statusRequest?: Promise<Data>;
   closing?: Promise<void>;
   unlock?: UnlockRequest;
@@ -84,6 +93,7 @@ export class Sessions {
   readonly views = new Map<string, View>();
   private current?: Session;
   private active = new Map<string, Session>();
+  private replacements = new Map<string, string>();
   private captures = new Map<string, { session: string; native: NativeClient; created: number; displays: Data[] }>();
   private drags = new Map<string, { arguments: string; result: Data }>();
   private connecting = new Set<AbortController>();
@@ -160,6 +170,7 @@ export class Sessions {
     };
   }
   private session(id: string): Session {
+    if (this.replacements.has(id)) throw new Failure("SESSION_REPLACED");
     const session = this.active.get(id);
     if (!session) throw new Failure("SESSION_NOT_FOUND");
     return session;
@@ -168,7 +179,16 @@ export class Sessions {
     const view = viewId ? this.view(viewId) : undefined;
     const id = sessionId ?? view?.session;
     if (!id && view) return this.describe(view);
+    const replacement = this.replacements.get(id!);
+    if (replacement) return { ...await this.status(replacement, undefined, signal), previous_session_id: id };
     const s = this.session(id!);
+    if (s.recovering) return {
+      ...s.status, error: "", frame_age_ms: null,
+      ...(view ? this.describe(view) : {}), session_id: s.id, device_alias: s.device.alias,
+      state: "reconnecting", control: false, reconnect_enabled: s.recoveryEnabled,
+      recovery_attempt: s.recoveryAttempt,
+      next_step: "Authorized connection recovery is running. Wait with crossdesk_get_session. Use the returned session_id and a fresh screenshot after recovery. Query uncertain task outcomes without replaying input.",
+    };
     // A panel connection may still be performing the native hello handshake.
     // Reading native status here would race initialization and could close it.
     if (s.connecting) return {
@@ -186,15 +206,17 @@ export class Sessions {
         .then((status) => (s.status = status))
         .catch((error) => {
           if (!(error instanceof Failure) || error.code !== "SESSION_CLOSED") throw error;
-          return (s.status = { state: "closed", control: false });
+          return (s.status = { ...s.status, state: "closed", control: false, error: "native_process_closed" });
         })
         .finally(() => { s.statusRequest = undefined; });
       await this.waitStatus(s.statusRequest, signal);
     }
+    if (s.recovering) return this.status(sessionId, viewId, signal);
     // The user may have disconnected or replaced the session during the read.
     if (this.active.get(s.id) !== s || (view && view.session !== id))
       return view ? this.describe(view) : { session_id: id, state: "closed", control: false };
     if (["closed", "failed"].includes(s.status.state)) {
+      if (this.startRecovery(s)) return this.status(sessionId, viewId, signal);
       await this.dispose(s);
     }
     this.checkUnlock(s);
@@ -202,6 +224,9 @@ export class Sessions {
       ...s.status,
       session_id: s.id,
       device_alias: s.device.alias,
+      reconnect_enabled: s.recoveryEnabled,
+      recovery_attempt: s.recoveryAttempt,
+      ...(s.recoveredFrom ? { recovered_from: s.recoveredFrom } : {}),
       ...(s.unlock ? { unlock: this.unlockStatus(s.unlock) } : {}),
       ...(view ? this.describe(view) : {}),
       state: s.status.state,
@@ -213,7 +238,7 @@ export class Sessions {
       ...(s.unlock && this.unlockPending(s.unlock) ? { next_step: this.unlockStatus(s.unlock).next_step } : {}),
     };
   }
-  private async waitStatus(request: Promise<Data>, signal?: AbortSignal) {
+  private async waitStatus<T>(request: Promise<T>, signal?: AbortSignal) {
     if (!signal) return request;
     let abort: () => void = () => {};
     try {
@@ -228,7 +253,121 @@ export class Sessions {
   }
   private dispose(s: Session): Promise<void> {
     this.cancelUnlock(s);
+    clearInterval(s.monitor);
+    s.monitor = undefined;
     return s.closing ??= s.native.close().finally(() => s.release());
+  }
+  private monitor(s: Session) {
+    clearInterval(s.monitor);
+    if (!s.recoveryEnabled || s.closing) return;
+    s.monitor = setInterval(() => {
+      if (s.recovering || s.connecting || this.closing) return;
+      void this.status(s.id).catch((error) => {
+        if (this.active.get(s.id) !== s || s.closing || s.recovering) return;
+        if (failure(error).code === "NATIVE_TIMEOUT") {
+          s.status = { ...s.status, state: "failed", error: "native_process_unresponsive" };
+          this.startRecovery(s);
+        }
+      });
+    }, 1000);
+    s.monitor.unref();
+  }
+  private startRecovery(s: Session): boolean {
+    if (!s.recoveryEnabled || s.closing || this.closing || s.status.human_paused ||
+        !["connection_lost", "signaling_disconnected", "native_process_closed", "native_process_unresponsive"].includes(s.status.error))
+      return false;
+    if (s.recovering) return true;
+    clearInterval(s.monitor);
+    const controller = s.recoveryAbort = new AbortController();
+    s.recovering = this.recover(s, controller.signal).finally(() => { s.recovering = undefined; });
+    return true;
+  }
+  private async recover(s: Session, signal: AbortSignal) {
+    const views = [...this.views.values()].filter((view) => view.session === s.id);
+    const display = s.status.display ?? 0;
+    try { await this.dispose(s); }
+    catch (error) {
+      s.recoveryEnabled = false;
+      s.status = { ...s.status, state: "failed", recovery_error: failure(error) };
+      return;
+    }
+    const deadline = Date.now() + 60000;
+    for (let attempt = 1; attempt <= s.recoveryAttempts && Date.now() < deadline; attempt++) {
+      s.recoveryAttempt = attempt;
+      try {
+        await delay(Math.min(500 * 3 ** (attempt - 1), 5000), undefined, { signal });
+        if (!s.recoveryEnabled || this.closing || signal.aborted) throw new Failure("CANCELLED");
+        const device = await this.store.device(s.device.alias);
+        if (device.device_id !== s.device.device_id || device.server !== s.device.server || device.port !== s.device.port)
+          throw new Failure("DEVICE_ALIAS_CONFLICT");
+        const timeout = AbortSignal.timeout(Math.max(1, deadline - Date.now()));
+        const result = await this.connectSaved(s.device.alias, s.mode, display,
+          AbortSignal.any([signal, timeout]), s.desiredControl);
+        const next = this.session(result.session_id);
+        if (signal.aborted || this.closing || !s.recoveryEnabled) {
+          await this.disconnect(next.id);
+          throw new Failure("CANCELLED");
+        }
+        if (!s.desiredControl) await next.native.request("control", { enabled: false });
+        next.desiredControl = s.desiredControl;
+        if (next.status.preview_supported && s.status.preview_supported) {
+          const settings: Data = { fps: s.status.preview_fps, quality: s.status.preview_quality };
+          if (next.status.preview_resolution_supported) Object.assign(settings, {
+            width: s.status.preview_width, height: s.status.preview_height });
+          if (next.status.preview_bitrate_supported) settings.max_bitrate_bps = s.status.preview_bitrate_bps;
+          await next.native.request("video_settings", settings).catch(() => {});
+        }
+        next.recoveryEnabled = true;
+        next.recoveryAttempts = s.recoveryAttempts;
+        next.recoveryAttempt = attempt;
+        next.recoveredFrom = s.id;
+        for (const view of views) if (this.views.get(view.id) === view && view.session === s.id) {
+          view.session = next.id;
+          view.disconnected = false;
+          view.connectionError = undefined;
+        }
+        for (const [old, replacement] of this.replacements) if (replacement === s.id) this.replacements.set(old, next.id);
+        if (this.replacements.size >= 128) this.replacements.delete(this.replacements.keys().next().value!);
+        this.replacements.set(s.id, next.id);
+        this.active.delete(s.id);
+        this.monitor(next);
+        return;
+      } catch (error) {
+        s.status = { ...s.status, state: "failed", control: false, recovery_error: failure(error) };
+        if (signal.aborted || this.closing || !s.recoveryEnabled ||
+            ["AUTH_REQUIRED", "AUTH_FAILED", "DEVICE_ALIAS_CONFLICT", "CANCELLED"].includes(failure(error).code) ||
+            failure(error).reason === "tls_certificate_error") break;
+      }
+    }
+    s.recoveryEnabled = false;
+    s.status = { ...s.status, state: signal.aborted ? "closed" : "failed", control: false, recovery_exhausted: !signal.aborted };
+  }
+  async setRecovery(sessionId: string, enabled: boolean, attempts = 3): Promise<Data> {
+    const s = this.session(sessionId);
+    if (enabled) {
+      if (s.closing) throw new Failure("SESSION_CLOSED");
+      const device = await this.store.device(s.device.alias);
+      if (device.device_id !== s.device.device_id || device.server !== s.device.server || device.port !== s.device.port)
+        throw new Failure("DEVICE_ALIAS_CONFLICT");
+      if (!device.authorization || (s.mode === "control" && device.authorization !== "control"))
+        throw new Failure("AUTH_REQUIRED");
+      await this.store.password(device);
+      if (s.closing || this.active.get(s.id) !== s) throw new Failure("SESSION_CLOSED");
+    }
+    s.recoveryEnabled = enabled;
+    s.recoveryAttempts = attempts;
+    if (!enabled) s.recoveryAbort?.abort();
+    this.monitor(s);
+    return { session_id: s.id, reconnect_enabled: enabled, max_attempts: attempts };
+  }
+  async waitForSession(sessionId: string, waitMs: number, signal?: AbortSignal): Promise<Data> {
+    const deadline = Date.now() + waitMs;
+    while (true) {
+      const result = await this.status(sessionId, undefined, signal);
+      if (!["connecting", "reconnecting"].includes(result.state)) return result;
+      if (Date.now() >= deadline) return { ...result, wait_timed_out: true };
+      await delay(Math.min(200, deadline - Date.now()), undefined, { signal });
+    }
   }
   async waitForConnection(viewId: string, waitMs: number, signal?: AbortSignal): Promise<Data> {
     const deadline = Date.now() + waitMs;
@@ -267,6 +406,7 @@ export class Sessions {
     mode: string,
     display: number,
     signal?: AbortSignal,
+    initialControl = mode === "control",
   ): Promise<Data> {
     const d = await this.store.device(name);
     if (
@@ -276,11 +416,12 @@ export class Sessions {
       throw new Failure("AUTH_REQUIRED");
     return this.connect(
       d,
-      await this.store.password(d),
+      await this.waitStatus(this.store.password(d), signal),
       mode,
       display,
       undefined,
       signal,
+      initialControl,
     );
   }
   async connectUI(v: View, args: unknown, signal?: AbortSignal): Promise<Data> {
@@ -337,6 +478,7 @@ export class Sessions {
     display: number,
     view?: View,
     signal?: AbortSignal,
+    initialControl = mode === "control",
   ): Promise<Data> {
     if (this.closing) throw new Failure("SESSION_CLOSED");
     const established = [...this.active.values()].filter((s) => !s.connecting && !s.closing).length;
@@ -352,7 +494,7 @@ export class Sessions {
     let session: Session | undefined;
     try {
       for (const s of this.active.values()) {
-        if (s.closing) {
+        if (s.closing && !s.recovering) {
           this.active.delete(s.id);
           for (const v of this.views.values()) if (v.session === s.id) {
             v.session = undefined;
@@ -392,6 +534,11 @@ export class Sessions {
         release,
         connecting: true,
         connection: controller,
+        mode,
+        desiredControl: initialControl,
+        recoveryEnabled: false,
+        recoveryAttempts: 3,
+        recoveryAttempt: 0,
         unlocks: new Map(),
       };
       this.current = s;
@@ -409,6 +556,8 @@ export class Sessions {
         signal,
       );
       password = "";
+      if (mode === "control" && !initialControl)
+        await native.request("control", { enabled: false }, 5000, signal);
       const deadline = Date.now() + 35000;
       while (Date.now() < deadline) {
         if (this.closing || signal?.aborted) throw new Failure("CANCELLED");
@@ -448,15 +597,26 @@ export class Sessions {
   }
   async screenshot(p: Data, signal?: AbortSignal): Promise<Data> {
     const { session_id, ...args } = p;
-    if (this.session(session_id).displayBatch) throw new Failure("BUSY");
+    const s = this.session(session_id);
+    if (s.displayBatch) throw new Failure("BUSY");
     if (args.after_frame_id !== undefined && args.generation === undefined)
       throw new Failure("GENERATION_REQUIRED");
-    return this.session(session_id).native.request(
+    const result = await s.native.request(
       "screenshot",
       args,
       (args.timeout_ms ?? 2000) + 3000,
       signal,
     );
+    return this.publicObservation(s, result);
+  }
+  private publicObservation(s: Session, observation: Data): Data {
+    return { ...observation, metadata: { ...observation.metadata,
+      observation_id: `${s.id}_${observation.metadata.observation_id}` } };
+  }
+  private nativeObservation(s: Session, observation: string): string {
+    const prefix = `${s.id}_`;
+    if (!observation.startsWith(prefix)) throw new Failure("STALE_OBSERVATION");
+    return observation.slice(prefix.length);
   }
   async action(p: Data, signal?: AbortSignal): Promise<Data> {
     const { session_id, observe_after = true, ...args } = p;
@@ -464,6 +624,7 @@ export class Sessions {
     if (s.displayBatch) throw new Failure("BUSY");
     this.checkUnlock(s);
     if (s.unlock && this.unlockPending(s.unlock)) throw new Failure("UNLOCK_PENDING");
+    args.observation_id = this.nativeObservation(s, args.observation_id);
     const result = await s.native.request("action", args, (args.action.duration_ms ?? 0) + 5000, signal);
     if (observe_after && result.status === "submitted") {
       try {
@@ -485,7 +646,9 @@ export class Sessions {
   }
   async waitFor(p: Data, signal?: AbortSignal): Promise<Data> {
     const { session_id, ...args } = p;
-    const result = await this.session(session_id).native.request(
+    const s = this.session(session_id);
+    args.observation_id = this.nativeObservation(s, args.observation_id);
+    const result = await s.native.request(
       "wait_frame", args, (args.timeout_ms ?? 5000) + 3000, signal);
     if (result.matched) result.observation = await this.screenshot({ session_id }, signal);
     return result;
@@ -511,7 +674,7 @@ export class Sessions {
       for (const index of indices) {
         await native.request("display", { index }, 5000, signal);
         const observation = await native.request("screenshot", { max_edge: p.max_edge ?? 1024 }, 5000, signal);
-        observations.push({ ...observation, actionable: false });
+        observations.push({ ...this.publicObservation(s, observation), actionable: false });
       }
     } catch (failure) { error = failure; }
     finally {
@@ -529,14 +692,14 @@ export class Sessions {
     return { session_id: s.id, capture_id, observations, restored_display: status.display };
   }
   async dragAcross(p: Data, signal?: AbortSignal): Promise<Data> {
-    const s = this.session(p.session_id);
-    const key = `${s.id}:${p.operation_id}`;
+    const key = `${p.session_id}:${p.operation_id}`;
     const args = JSON.stringify({ capture_id: p.capture_id, path: p.path, button: p.button ?? "left", duration_ms: p.duration_ms ?? 500 });
     const previous = this.drags.get(key);
     if (previous) {
       if (previous.arguments !== args) throw new Failure("OPERATION_ID_CONFLICT");
       return previous.result;
     }
+    const s = this.session(p.session_id);
     const capture = this.captures.get(p.capture_id);
     if (!capture || capture.session !== s.id || capture.native !== s.native || Date.now() - capture.created > 30000)
       throw new Failure("STALE_OBSERVATION");
@@ -583,7 +746,7 @@ export class Sessions {
       }
       await submit("mouse_up", p.path.at(-1));
       record.result = { operation_id: p.operation_id, status: "submitted", side_effect_possible: true,
-        observation: await native.request("screenshot", {}, 5000, signal) };
+        observation: this.publicObservation(s, await native.request("screenshot", {}, 5000, signal)) };
     } catch (error) {
       record.result = { operation_id: p.operation_id, status: submitted ? "outcome_unknown" : "failed_before_submit",
         error: failure(error), side_effect_possible: submitted };
@@ -655,8 +818,11 @@ export class Sessions {
     return s.native.request("release_inputs");
   }
   async control(id: string, enabled: boolean) {
-    if (!enabled) this.cancelUnlock(this.session(id));
-    return this.session(id).native.request("control", { enabled });
+    const s = this.session(id);
+    if (!enabled) { this.cancelUnlock(s); s.desiredControl = false; }
+    const result = await s.native.request("control", { enabled });
+    s.desiredControl = enabled;
+    return result;
   }
   async display(id: string, index: number) {
     const s = this.session(id);
@@ -666,7 +832,11 @@ export class Sessions {
     return s.native.request("display", { index });
   }
   async disconnect(id: string) {
+    id = this.replacements.get(id) ?? id;
     const s = this.session(id);
+    s.recoveryEnabled = false;
+    s.recoveryAbort?.abort();
+    clearInterval(s.monitor);
     if (s.connecting) s.connection.abort();
     for (const v of this.views.values())
       if (v.session === id) {
@@ -675,6 +845,7 @@ export class Sessions {
         v.connectionError = undefined;
       }
     await this.dispose(s);
+    await s.recovering?.catch(() => {});
     this.active.delete(s.id);
     if (this.current === s) this.current = [...this.active.values()].find((other) => !other.closing);
     return { session_id: id, state: "closed" };
@@ -682,10 +853,20 @@ export class Sessions {
   async viewerControl(v: View, operation: string) {
     if (!v.session) throw new Failure("NOT_READY");
     if (operation === "disconnect") return this.disconnect(v.session);
-    if (operation === "pause") this.cancelUnlock(this.session(v.session));
-    return this.session(v.session).native.request("viewer_control", {
+    if (operation === "pause") {
+      const s = this.session(v.session);
+      this.cancelUnlock(s);
+      s.status.human_paused = true;
+      s.desiredControl = false;
+      s.recoveryAbort?.abort();
+    }
+    const s = this.session(v.session);
+    const result = await s.native.request("viewer_control", {
       operation,
     });
+    if (operation === "resume") s.desiredControl = true;
+    s.status = result;
+    return result;
   }
   private unlockPending(request: UnlockRequest) {
     return ["preparing", "awaiting_password", "submitting", "verifying"].includes(request.state);
@@ -745,7 +926,7 @@ export class Sessions {
     s.unlocks.set(request.id, request);
     if (s.unlocks.size > 128) s.unlocks.delete(s.unlocks.keys().next().value!);
     try {
-      const prepared = await s.native.request("unlock_prepare", { observation_id: p.observation_id }, 5000, signal);
+      const prepared = await s.native.request("unlock_prepare", { observation_id: this.nativeObservation(s, p.observation_id) }, 5000, signal);
       request.generation = prepared.generation;
       request.geometry = prepared.geometry_epoch;
       let password: string | undefined;
@@ -799,7 +980,7 @@ export class Sessions {
         throw new Failure("STALE_OBSERVATION");
       const result = await s.native.request("unlock", {
         operation_id: request.operation,
-        observation_id: metadata.observation_id,
+        observation_id: this.nativeObservation(s, metadata.observation_id),
         password,
       }, 5000, combined);
       request.result = result;

@@ -169,3 +169,7 @@ The desktop and CLI share `FileBrowser` and the existing file transfer engine. P
 `video_settings` accepts optional `fps`, even `width`/`height`, `quality`, and `max_bitrate_bps`. The controller checks negotiated preview capabilities and publishes the requested cadence and acceptance state. Supported MCP frame-rate tiers are 1, 8, 15, 30 and 60.
 
 The trusted adapter may use `display` with `preserve_input: true` during a cross-display drag. It captures a fresh observation after each switch, maps the requested point from its source display image, and releases input in a final cleanup step. Ordinary display selection releases input. Multi-display capture returns sequential observations and restores the previous display.
+
+## MCP connection recovery
+
+The MCP adapter optionally monitors saved, persistently authorized devices. Eligible failures receive bounded backoff retries within sixty seconds. Each replacement has a new session ID, device authorization is checked again, and disabled control remains disabled. User pause and explicit disconnect stop recovery. Queries against an old session can discover its replacement, while mutations require the replacement's ID and a fresh observation. MCP observation IDs are namespaced by session and translated back to native observation IDs at the adapter boundary.

@@ -255,7 +255,7 @@ export class BrowserPanel {
       if (typeof body.view_id !== "string" || !client.views.has(body.view_id))
         throw new Failure("VIEW_UNAUTHORIZED");
       const name = req.url?.match(
-        /^\/api\/(ready|devices|status|connect|video_open|control|unlock)$/,
+        /^\/api\/(ready|devices|status|connect|video_open|control|unlock|recovery)$/,
       )?.[1];
       if (!name) throw new Failure("UNKNOWN_ACTION");
       const { view_id, ...args } = body;
