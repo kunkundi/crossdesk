@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parse, uiConnect, unlockPassword, id, Failure, type Data } from "./common.js";
+import { parse, uiConnect, unlockPassword, viewerInput, id, Failure, type Data } from "./common.js";
 import { Sessions, type View } from "./sessions.js";
 
 export const uiSchemas = {
@@ -8,6 +8,7 @@ export const uiSchemas = {
   status: z.strictObject({}),
   connect: uiConnect,
   video_open: z.strictObject({}),
+  input: viewerInput,
   recovery: z.strictObject({ enabled: z.boolean(), max_attempts: z.int().min(1).max(5).default(3) }),
   unlock: z.strictObject({
     request_id: id,
@@ -16,7 +17,7 @@ export const uiSchemas = {
     cancel: z.boolean().default(false),
   }),
   control: z.strictObject({
-    operation: z.enum(["pause", "resume", "disconnect"]),
+    operation: z.enum(["pause", "resume", "disconnect", "take_over"]),
   }),
 };
 export type UIAction = keyof typeof uiSchemas;
@@ -45,6 +46,8 @@ export async function uiAction(
       return sessions.status(undefined, view.id, signal);
     case "connect":
       return sessions.connectUI(view, p, signal);
+    case "input":
+      return sessions.viewerInput(view, p, signal);
     case "control":
       return sessions.viewerControl(view, p.operation);
     case "unlock":

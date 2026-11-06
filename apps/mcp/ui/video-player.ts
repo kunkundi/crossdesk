@@ -1,4 +1,4 @@
-type FrameInfo = { width: number; height: number; fps: number; frames: number };
+type FrameInfo = { width: number; height: number; generation: number; fps: number; frames: number };
 type Cursor = { type: "cursor"; visible: boolean; x: number; y: number;
   generation: number; geometry_epoch: number; width: number; height: number };
 function parameters(data: Uint8Array) {
@@ -233,7 +233,7 @@ export class VideoPlayer {
         this.sampledAt = performance.now();
       }
       this.canvas.dataset.frames = String(this.count);
-      this.onFrame({ width, height, frames: this.count, fps: this.fps });
+      this.onFrame({ width, height, generation: this.generation, frames: this.count, fps: this.fps });
     } catch { this.fail(new Error("VIDEO_INVALID")); }
     finally { frame.close(); }
   }

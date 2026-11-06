@@ -25,20 +25,22 @@ std::optional<json> ControllerSession::TakeRemoteResult(uint64_t request) {
   return result;
 }
 
-void ControllerSession::BeginInput() {
+void ControllerSession::BeginInput(bool acknowledge) {
   action_keys_ = keys_;
   action_buttons_ = buttons_;
   for (const auto id : input_requests_) remote_results_.erase(id);
   input_requests_.clear();
   input_result_ = "applied";
-  input_ack_active_ = InputAcknowledged();
+  input_ack_transport_ = InputAcknowledged();
+  input_ack_active_ = acknowledge && input_ack_transport_;
 }
 
 bool ControllerSession::SendInput(const char *stream, const RemoteAction &action) {
-  if (!input_ack_active_) return Send(stream, action.to_json());
+  if (!input_ack_transport_) return Send(stream, action.to_json());
   const auto id = RequestRemote("input", json::parse(action.to_json()));
   if (!id) return false;
-  input_requests_.push_back(id);
+  if (input_ack_active_) input_requests_.push_back(id);
+  else remote_results_.erase(id);
   return true;
 }
 

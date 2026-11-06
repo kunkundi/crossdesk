@@ -120,6 +120,22 @@ export const action = z.discriminatedUnion("type", [
       .refine((s) => Buffer.byteLength(s) <= 16384 && !s.includes("\0")),
   }),
 ]);
+const normalizedPoint = z.strictObject({ x: z.number().finite().min(0).max(1), y: z.number().finite().min(0).max(1) });
+export const viewerInput = z.strictObject({
+  input_epoch: z.int().min(0), generation: z.int().min(0),
+  width: z.int().min(1).max(8192), height: z.int().min(1).max(8192),
+  action: z.discriminatedUnion("type", [
+    normalizedPoint.extend({ type: z.literal("move") }),
+    normalizedPoint.extend({ type: z.literal("mouse_down"), button }),
+    normalizedPoint.extend({ type: z.literal("mouse_up"), button }),
+    normalizedPoint.extend({ type: z.literal("scroll"), direction: z.enum(["up", "down", "left", "right"]), ticks: z.int().min(1).max(10) }),
+    z.strictObject({ type: z.literal("key_down"), key }),
+    z.strictObject({ type: z.literal("key_up"), key }),
+    z.strictObject({ type: z.literal("type_text"), text: z.string().min(1).max(16384)
+      .refine((value) => Buffer.byteLength(value) <= 16384 && !value.includes("\0")) }),
+    z.strictObject({ type: z.literal("release") }),
+  ]),
+});
 export const screenshot = z.strictObject({
   session_id: id,
   region: z

@@ -40,6 +40,7 @@ const uiNames: Record<UIAction, string> = {
   control: "crossdesk_viewer_control",
   unlock: "crossdesk_ui_unlock",
   recovery: "crossdesk_ui_recovery",
+  input: "crossdesk_ui_input",
 };
 function output(value: Data, meta?: Data): CallToolResult {
   const data = { ...value };

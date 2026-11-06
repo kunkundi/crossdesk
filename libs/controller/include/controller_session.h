@@ -86,7 +86,7 @@ public:
   void ForgetRemoteRequest(uint64_t request) { remote_results_.erase(request); }
   uint64_t Clipboard(bool write, const std::string &text = {});
   nlohmann::json Files(const nlohmann::json &request);
-  void BeginInput();
+  void BeginInput(bool acknowledge = true);
   std::string InputResult();
   bool InputAcknowledged() const { return remote_capabilities_.value("input_ack", nlohmann::json{}) == true; }
   std::optional<DecodedFrame> TakeFrame(DecodedFrame *recycle = nullptr);
@@ -130,6 +130,7 @@ private:
   std::vector<uint64_t> input_requests_;
   std::string input_result_ = "applied";
   bool input_ack_active_ = false;
+  bool input_ack_transport_ = false;
   bool clipboard_ready_ = false;
   web_clipboard::Assembler clipboard_assembler_;
   std::unique_ptr<ControllerFiles> files_;

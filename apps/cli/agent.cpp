@@ -201,6 +201,10 @@ private:
     result["geometry_epoch"] = epoch_;
     result["cursor"] = Cursor();
     result["human_paused"] = paused_;
+    result["control_owner"] = human_control_ ? "human" : !paused_ && session_.ControlEnabled() ? "agent" : "none";
+    result["human_view"] = human_owner_;
+    result["human_input_epoch"] = human_epoch_;
+    result["viewer_input_protocol"] = "events/1";
     result["control_allowed"] = allowed_;
     result["frame_age_ms"] = frame_ ? json(Age(frame_->queued)) : json(nullptr);
     result["source_size"] =
@@ -771,6 +775,7 @@ private:
                    {"video_transport", "loopback-websocket/1"},
                    {"terminal_protocol", "ansi/1"},
                    {"unlock_protocol", "password/1"},
+                   {"viewer_input_protocol", "events/1"},
                    {"action_completion", "submitted"},
                    {"max_request_bytes", 65536},
                    {"max_response_bytes", kMaxResponse},
@@ -818,6 +823,7 @@ private:
         return false;
       } else if (method == "release_inputs") {
         Fields(j, {"id", "method"});
+        if (human_control_) throw std::invalid_argument("HUMAN_CONTROL_ACTIVE");
         FinishAction("CANCELLED");
         session_.ReleaseInput();
       } else if (method == "system") {
@@ -918,6 +924,7 @@ private:
         return false;
       } else if (method == "control") {
         Fields(j, {"id", "method", "enabled"});
+        if (human_control_) throw std::invalid_argument("HUMAN_CONTROL_ACTIVE");
         const bool enable = Flag(j, "enabled");
         if (enable && (!allowed_ || paused_))
           throw std::invalid_argument("CONTROL_DENIED");
@@ -926,26 +933,80 @@ private:
         if (!enable) CancelRemoteJobs("CONTROL_DENIED");
         session_.SetControl(enable);
       } else if (method == "viewer_control") {
-        Fields(j, {"id", "method", "operation"});
+        Fields(j, {"id", "method", "operation", "owner"});
         const auto operation = String(j, "operation", 16);
-        if (operation == "pause") {
+        if (operation == "pause" || operation == "take_over") {
+          const auto owner = operation == "take_over" ? String(j, "owner") : std::string{};
+          if (operation == "take_over" && !allowed_) throw std::invalid_argument("CONTROL_DENIED");
           paused_ = true;
           FinishAction("USER_PAUSED");
           CancelRemoteJobs("USER_PAUSED");
-          session_.SetControl(false);
+          session_.ReleaseInput();
+          human_control_ = operation == "take_over";
+          human_owner_ = owner;
+          ++human_epoch_;
+          session_.BeginInput(false);
+          session_.SetControl(human_control_);
         } else if (operation == "resume") {
           if (!allowed_)
             throw std::invalid_argument("CONTROL_DENIED");
           paused_ = false;
+          human_control_ = false;
+          human_owner_.clear();
+          ++human_epoch_;
+          session_.ReleaseInput();
           session_.SetControl(true);
         } else if (operation == "disconnect") {
           Stop("CANCELLED");
           session_.Disconnect();
         } else
           throw std::invalid_argument("INVALID_REQUEST");
+      } else if (method == "viewer_input") {
+        Fields(j, {"id", "method", "owner", "input_epoch", "generation", "width", "height", "action"});
+        if (!allowed_ || !human_control_ || String(j, "owner") != human_owner_)
+          throw std::invalid_argument("HUMAN_CONTROL_REQUIRED");
+        if (Sequence(j, "input_epoch") != human_epoch_) throw std::invalid_argument("STALE_CONTROL");
+        auto action = j.at("action");
+        const auto type = String(action, "type", 16);
+        if (type == "release") {
+          Fields(action, {"type"});
+          session_.ReleaseInput();
+        } else {
+          if (!frame_ || !session_.Connected() || Age(frame_->queued) > 2000 ||
+              Sequence(j, "generation") != session_.Generation() ||
+              Number(j, "width", 1, 8192, 0) != int(frame_->width) ||
+              Number(j, "height", 1, 8192, 0) != int(frame_->height)) {
+            session_.ReleaseInput();
+            throw std::invalid_argument("STALE_OBSERVATION");
+          }
+          if (type != "move" && type != "mouse_down" && type != "mouse_up" && type != "scroll" &&
+              type != "key_down" && type != "key_up" && type != "type_text")
+            throw std::invalid_argument("INVALID_ARGUMENT");
+          if (action.contains("x") || action.contains("y")) {
+            const double x = action.at("x").get<double>(), y = action.at("y").get<double>();
+            if (!std::isfinite(x) || !std::isfinite(y) || x < 0 || x > 1 || y < 0 || y > 1)
+              throw std::invalid_argument("INVALID_COORDINATE");
+            action["x"] = std::min(x * frame_->width, double(frame_->width) - 1);
+            action["y"] = std::min(y * frame_->height, double(frame_->height) - 1);
+          }
+          const auto steps = BuildInputSteps(action, {int(frame_->width), int(frame_->height),
+              int(frame_->width), int(frame_->height), {0, 0, int(frame_->width), int(frame_->height)}});
+          if (type == "key_down" && session_.Status()["held_key_codes"].size() >= 32)
+            throw std::invalid_argument("INPUT_LIMIT");
+          if (type == "type_text") session_.ReleaseInput();
+          for (const auto &step : steps) {
+            const bool sent = step.kind == StepKind::Pointer ? session_.Pointer(step.x, step.y, step.flag, step.wheel)
+                : step.kind == StepKind::Key ? session_.Key(step.key, step.down) : session_.Text(step.text);
+            if (!sent) { session_.ReleaseInput(); Error(id, "INPUT_FAILED", true); return false; }
+          }
+          input_lease_ = Clock::now() + std::chrono::seconds(15);
+        }
+        Reply(id, {{"submitted", true}});
+        return false;
       } else if (method == "video_settings") {
         Fields(j, {"id", "method", "fps", "width", "height", "quality", "max_bitrate_bps"});
         if (action_) throw std::invalid_argument("BUSY");
+        if (human_control_) throw std::invalid_argument("HUMAN_CONTROL_ACTIVE");
         if (session_.HasPressedInput()) throw std::invalid_argument("INPUT_HELD");
         const auto status = session_.Status();
         if (!session_.Connected() || !status.value("preview_supported", false))
@@ -961,6 +1022,7 @@ private:
             Number(j, "max_bitrate_bps", 128000, 100000000, status.value("preview_bitrate_bps", 6000000)));
       } else if (method == "display") {
         Fields(j, {"id", "method", "index", "preserve_input"});
+        if (human_control_) throw std::invalid_argument("HUMAN_CONTROL_ACTIVE");
         const int index = Number(j, "index", 0, 63, -1);
         if (!session_.Connected() || index < 0 ||
             size_t(index) >= session_.Status()["displays"].size())
@@ -1050,6 +1112,9 @@ private:
   int password_fd_, output_fd_ = -1;
   bool hello_ = false, connected_once_ = false, allowed_ = false,
        paused_ = false;
+  bool human_control_ = false;
+  std::string human_owner_;
+  uint64_t human_epoch_ = 0;
   uint64_t epoch_ = 0, observation_sequence_ = 0;
   std::shared_ptr<DecodedFrame> frame_;
   std::deque<Observation> observations_;

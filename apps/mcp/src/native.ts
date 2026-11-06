@@ -93,6 +93,7 @@ type Pending = {
 };
 export class NativeClient {
   unlockSupported = false;
+  viewerInputSupported = false;
   private child: ChildProcess;
   private pending = new Map<number, Pending>();
   private sequence = 0;
@@ -150,6 +151,7 @@ export class NativeClient {
       signal,
     );
     this.unlockSupported = hello.unlock_protocol === "password/1";
+    this.viewerInputSupported = hello.viewer_input_protocol === "events/1";
     if (hello.protocol !== "crossdesk-automation/1" ||
         hello.terminal_protocol !== "ansi/1" ||
         hello.video_transport !== "loopback-websocket/1" ||
@@ -173,7 +175,7 @@ export class NativeClient {
     if (this.pending.size >= 32 || this.child.stdin!.writableLength > 262144)
       return Promise.reject(new Failure("BUSY", false, true));
     const id = ++this.sequence;
-    const sideEffect = method === "action" || method === "unlock" || method === "release_inputs" ||
+    const sideEffect = method === "action" || method === "unlock" || method === "release_inputs" || method === "viewer_input" ||
       (method === "clipboard" && args.operation === "set") ||
       (method === "system" && args.command !== "status") ||
       (method === "files" && ["upload", "download", "cancel"].includes(args.operation));

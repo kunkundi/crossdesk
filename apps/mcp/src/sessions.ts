@@ -853,7 +853,9 @@ export class Sessions {
   async viewerControl(v: View, operation: string) {
     if (!v.session) throw new Failure("NOT_READY");
     if (operation === "disconnect") return this.disconnect(v.session);
-    if (operation === "pause") {
+    if (operation === "take_over" && !this.session(v.session).native.viewerInputSupported)
+      throw new Failure("NATIVE_INPUT_UNSUPPORTED");
+    if (operation === "pause" || operation === "take_over") {
       const s = this.session(v.session);
       this.cancelUnlock(s);
       s.status.human_paused = true;
@@ -862,11 +864,17 @@ export class Sessions {
     }
     const s = this.session(v.session);
     const result = await s.native.request("viewer_control", {
-      operation,
+      operation, owner: v.id,
     });
     if (operation === "resume") s.desiredControl = true;
     s.status = result;
     return result;
+  }
+  async viewerInput(view: View, args: Data, signal?: AbortSignal): Promise<Data> {
+    if (!view.session) throw new Failure("NOT_READY");
+    const s = this.session(view.session);
+    if (s.displayBatch) throw new Failure("BUSY");
+    return s.native.request("viewer_input", { ...args, owner: view.id }, 5000, signal);
   }
   private unlockPending(request: UnlockRequest) {
     return ["preparing", "awaiting_password", "submitting", "verifying"].includes(request.state);

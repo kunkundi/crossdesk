@@ -1,5 +1,6 @@
 import type { App } from "@modelcontextprotocol/ext-apps";
 import "./viewer.css";
+import { HumanInput } from "./human-input.js";
 import { VideoPlayer } from "./video-player.js";
 
 declare const CROSSDESK_APPS: boolean;
@@ -54,11 +55,12 @@ root.innerHTML = `
     <div class="viewer-card">
       <div class="viewer-toolbar">
         <div class="viewer-title"><h2 id="device-name">远程画面</h2><span id="video-state">待连接</span></div>
-        <div class="viewer-controls"><button id="pause" disabled><span id="pause-label">暂停控制</span></button><button id="disconnect" class="danger" disabled>断开连接</button><button id="focus-view" aria-label="放大画面" aria-pressed="false" disabled>放大画面</button></div>
+        <div class="viewer-controls"><button id="take-over" disabled>人工接管</button><button id="pause" disabled><span id="pause-label">暂停控制</span></button><button id="disconnect" class="danger" disabled>断开连接</button><button id="focus-view" aria-label="放大画面" aria-pressed="false" disabled>放大画面</button></div>
       </div>
       <div class="screen" id="screen">
         <canvas id="frame" role="img" aria-label="远程桌面实时画面" hidden></canvas>
         <canvas id="agent-cursor" aria-hidden="true"></canvas>
+        <textarea id="remote-input" aria-label="远程键盘输入" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
         <div class="control-halo" aria-hidden="true"></div>
         <div id="empty"><h3 id="empty-title">未连接设备</h3><p id="empty-description">选择设备并输入访问密码。</p></div>
         <div class="stale" id="stale" role="status" hidden>画面暂未更新</div>
@@ -105,7 +107,15 @@ let imageAt = 0;
 let busy = false,
   polling = false,
   started = false;
+const humanInput = new HumanInput(element("screen"), element<HTMLTextAreaElement>("remote-input"),
+  (args) => invoke("input", args), showError);
+function ownsInput() { return status.control_owner === "human" && status.human_view === context?.view_id; }
 const messages: Record<string, string> = {
+  HUMAN_CONTROL_ACTIVE: "远端正在由人工操作，请先交还 Agent。",
+  STALE_OBSERVATION: "画面已变化，请等待新画面后继续操作。",
+  STALE_CONTROL: "控制权已交接。",
+  INPUT_QUEUE_FULL: "输入过快，已释放按键，请稍后继续。",
+  NATIVE_INPUT_UNSUPPORTED: "请更新原生 CLI 以启用人工接管。",
   VIDEO_UNSUPPORTED: "当前浏览器不支持此视频格式，请使用支持 WebCodecs 的浏览器。",
   VIDEO_UNAVAILABLE: "视频通道暂不可用。可重新加载画面；内嵌面板受限时请在浏览器中观看。",
   VIDEO_INVALID: "视频格式发生变化，请重新加载画面。",
@@ -160,6 +170,7 @@ function platformName(platform?: string) {
   return ({ macos: "macOS", windows: "Windows", linux: "Linux", android: "Android", ios: "iOS" } as Record<string, string>)[platform ?? ""] ?? "远程电脑";
 }
 function resetMetrics() {
+  humanInput.setFrame(undefined);
   imageAt = 0;
   frameSize = frameRate = "";
   text("resolution", "—");
@@ -184,7 +195,7 @@ function setDetails(open: boolean) {
 element("details-toggle").onclick = () => setDetails(!root.classList.contains("details-open"));
 element("focus-view").onclick = () => setFocus(!root.classList.contains("focus-mode"));
 window.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !element<HTMLDialogElement>("unlock-dialog").open && root.classList.contains("focus-mode")) setFocus(false);
+  if (!ownsInput() && event.key === "Escape" && !element<HTMLDialogElement>("unlock-dialog").open && root.classList.contains("focus-mode")) setFocus(false);
 });
 function hidePassword() {
   input("password").type = "password";
@@ -375,6 +386,10 @@ function renderStatus(s: Data) {
   if (lost && !disconnectedByUser && ["ready", "waiting_frame"].includes(status.state)) showError(new Error("CONNECTION_LOST"));
   const changedSession = s.session_id !== status.session_id;
   status = s;
+  humanInput.update(connected && ownsInput() ? s.human_input_epoch : undefined);
+  text("take-over", ownsInput() ? "交还 Agent" : "人工接管");
+  element<HTMLButtonElement>("take-over").disabled = !connected || !s.control_allowed ||
+    s.viewer_input_protocol !== "events/1" || controlBusy || (!imageAt && !ownsInput());
   renderUnlock(s);
   const connecting = busy || s.state === "waiting_frame";
   root.dataset.connected = String(connected);
@@ -387,7 +402,7 @@ function renderStatus(s: Data) {
   text("sidebar-title", connected ? "连接信息" : "连接设备");
   text("device-name", connected ? s.device_alias || "远程电脑" : "远程画面");
   if (!connected || changedSession) setDetails(false);
-  text("permission", connected ? s.human_paused ? "控制已暂停" : s.control_allowed ? "允许 Agent 操作" : "仅查看画面" : "等待授权");
+  text("permission", connected ? s.control_owner === "human" ? ownsInput() ? "正在人工操作" : "其他面板正在操作" : s.human_paused ? "控制已暂停" : s.control_allowed ? "允许 Agent 操作" : "仅查看画面" : "等待授权");
   element("permission").dataset.state = !connected ? "idle" : s.human_paused ? "paused" : "active";
   const platform = platformName(s.platform);
   text("session-info", connected ? `${platform} · 显示器 ${(s.display ?? 0) + 1}` : "等待设备连接");
@@ -398,11 +413,11 @@ function renderStatus(s: Data) {
   text("session-device-id", device ? String(device.device_id).replace(/(\d{3})(?=\d)/g, "$1 ") : "");
   text("session-access", s.control_allowed ? "查看与操作" : "仅查看");
   text("session-display", `显示器 ${(s.display ?? 0) + 1}`);
-  text("session-agent", s.state === "reconnecting" ? "正在恢复连接" : s.human_paused ? "已暂停" : s.control_allowed ? "允许操作" : "仅可观察");
+  text("session-agent", s.state === "reconnecting" ? "正在恢复连接" : s.control_owner === "human" ? "人工接管中" : s.human_paused ? "已暂停" : s.control_allowed ? "允许操作" : "仅可观察");
   input("recovery").checked = s.reconnect_enabled === true;
   input("recovery").disabled = !s.session_id;
   element("session-agent").dataset.paused = String(!!s.human_paused);
-  element<HTMLButtonElement>("pause").disabled = !connected || !s.control_allowed || controlBusy;
+  element<HTMLButtonElement>("pause").disabled = !connected || !s.control_allowed || controlBusy || s.control_owner === "human";
   const pauseLabel = s.human_paused ? "恢复控制" : "暂停控制";
   text("pause-label", pauseLabel);
   element<HTMLButtonElement>("disconnect").disabled = !s.session_id || controlBusy || busy;
@@ -488,6 +503,17 @@ input("recovery").onchange = async () => {
     renderStatus(await invoke("status"));
   } catch (error) { showError(error); renderStatus(status); }
 };
+element("take-over").onclick = async () => {
+  if (controlBusy) return;
+  controlBusy = true;
+  humanInput.release();
+  renderStatus(status);
+  try {
+    await invoke("control", { operation: ownsInput() ? "resume" : "take_over" });
+    renderStatus(await invoke("status"));
+  } catch (error) { showError(error); }
+  finally { controlBusy = false; renderStatus(status); }
+};
 element("pause").onclick = async () => {
   if (controlBusy) return;
   controlBusy = true;
@@ -558,6 +584,7 @@ async function startPreview() {
     if (epoch !== videoEpoch || document.hidden) return;
     player = new VideoPlayer(element<HTMLCanvasElement>("frame"), (info) => {
       if (epoch !== videoEpoch) return;
+      humanInput.setFrame(info);
       imageAt = Date.now();
       element("frame").hidden = false;
       element("empty").hidden = true;
@@ -665,6 +692,7 @@ async function start() {
       control: "crossdesk_viewer_control",
       unlock: "crossdesk_ui_unlock",
       recovery: "crossdesk_ui_recovery",
+      input: "crossdesk_ui_input",
     };
     let connected = false,
       initial: Data | undefined;
