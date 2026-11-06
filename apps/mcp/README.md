@@ -160,6 +160,7 @@ Apps 依赖宿主遵守 app-only 工具可见性和 `_meta` 的模型不可见�
 | `crossdesk_get_session` | `session_id`、`view_id` 严格二选一；按 `view_id` 可等待连接，`wait_ms` 范围 0–25000 |
 | `crossdesk_screenshot` | 返回 PNG image content 和观测元数据 |
 | `crossdesk_action` | 结构化输入，可附带动作之后的截图 |
+| `crossdesk_unlock` | 使用独立的系统锁屏凭据解锁，或在本地面板请求输入密码 |
 | `crossdesk_set_control` | 在已授权范围内启停 Agent 输入 |
 | `crossdesk_select_display` | 切换显示器，使旧观测失效 |
 | `crossdesk_disconnect` | 断开并释放输入状态、子进程和设备锁 |
@@ -177,6 +178,18 @@ Apps 依赖宿主遵守 app-only 工具可见性和 `_meta` 的模型不可见�
 `timeout_ms` 限制等待可用帧的时间，PNG 编码独立执行；`0` 表示只使用当前已就绪的新鲜帧，无帧返回 `FRAME_TIMEOUT`，编码器繁忙返回 `BUSY`。截图按到达顺序处理，并优先于预览。视频超过 2 秒未更新时拒绝新的键鼠输入，恢复新鲜画面后可继续；已提交操作的去重查询仍可读取原结果。
 
 `operation_id` 在当前原生会话中缓存最近 128 个操作，至少在未被容量淘汰的 5 分钟窗口内支持同参数查询；不同参数复用 ID 返回冲突。`submitted` 仅说明本地发送完成，远端没有执行 ACK。超时、断网、取消或发送失败可能返回 `outcome_unknown`/`side_effect_possible`，禁止自动重放。`observe_after` 默认开启，后续图像只证明取得更新帧，不证明操作执行成功。
+
+### 锁屏解锁与密码保存
+
+Agent 识别到远端系统锁屏后，先聚焦画面中的系统密码框并重新截图，再调用 `crossdesk_unlock`，传入 `session_id`、`operation_id` 和截图的 `observation_id`。默认 `use_saved: true` 会读取该设备独立保存的锁屏凭据。缺少凭据时，浏览器或 Apps 面板通过悬浮弹窗显示隐藏输入框，终端观看器显示隐藏输入提示。弹窗可关闭，并通过左侧连接信息中的“输入密码”重新打开。提交结果显示为六秒后收起的悬浮提示，连接信息持续展示解锁状态和锁屏凭据配置状态。
+
+用户可在解锁输入框勾选“保存密码并允许以后自动解锁”。连接表单的“保存与授权”和本机 `crossdesk-mcp setup` 也提供锁屏密码配置。持久保存要求设备已在本地设备簿中，系统凭据库使用独立账户保存访问密码和锁屏密码。设备列表返回 `unlock_credential_provider` 摘要，配置文件保存 `unlock_credential` 引用。环境变量方式使用 `unlock_credential: "environment"` 和 `unlock_environment_variable`，旧设备配置继续有效。
+
+等待输入时，Agent 使用 `crossdesk_get_session`，提供 `session_id` 或 `view_id`、`unlock_request_id` 和 `wait_ms: 25000`。`wait_timed_out` 后可继续等待，等待取消仅结束当前查询。解锁请求有效期为五分钟，等待期间保留实时画面，常规 Agent 输入和显示器切换会返回 `UNLOCK_PENDING`。用户取消、人工暂停、连接结束或画面代际变化会终止请求。
+
+提交前重新获取同一显示器代际的截图，原生端执行选择密码框内容、文本输入和回车。成功发送返回 `unlock.state: "submitted"`，Agent 随后用新截图确认桌面是否已解锁，再继续原任务。保存选项在输入提交后写入凭据库，密码正确性仍需检查远端画面。密码被拒绝时，使用新请求并设置 `use_saved: false` 让用户更正，结果不确定时先观察画面。相同 `operation_id` 与参数查询原请求结果。
+
+锁屏密码通过经过认证的本地面板或终端 IPC 进入原生输入通道。模型侧工具参数和结果只包含请求状态，原生操作缓存仅保存解锁请求标识及结果。解锁遵守现有控制授权和人工暂停状态，依赖远端文本输入能力。`off` 模式可使用预先配置的锁屏凭据，缺少凭据时返回 `UNLOCK_CREDENTIAL_REQUIRED`。原生 CLI 通过 `unlock_protocol: "password/1"` 声明支持，更新源码后需重建 CLI 和 MCP 并重新启动服务。
 
 ## 实时视频与按需截图
 

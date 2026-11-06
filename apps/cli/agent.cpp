@@ -277,6 +277,8 @@ private:
         break;
       }
     Reply(action_->id, result);
+    for (auto &step : action_->steps)
+      std::fill(step.text.begin(), step.text.end(), '\0');
     action_.reset();
   }
   void Stop(const char *code) {
@@ -323,7 +325,7 @@ private:
         FinishAction("SESSION_CHANGED");
       while (action_ && action_->next < action_->steps.size() &&
              Age(action_->started) >= action_->steps[action_->next].delay) {
-        const auto &step = action_->steps[action_->next++];
+        auto &step = action_->steps[action_->next++];
         action_->submitted =
             true; // A failed send may still have reached the peer.
         const bool sent =
@@ -331,6 +333,7 @@ private:
                 ? session_.Pointer(step.x, step.y, step.flag, step.wheel)
             : step.kind == StepKind::Key ? session_.Key(step.key, step.down)
                              : session_.Text(step.text);
+        std::fill(step.text.begin(), step.text.end(), '\0');
         if (!sent) {
           FinishAction("ACTION_OUTCOME_UNKNOWN");
           break;
@@ -546,13 +549,26 @@ private:
       throw std::invalid_argument("STALE_OBSERVATION");
     return *it;
   }
-  void StartAction(const json &j, const json &id) {
-    Fields(j, {"id", "method", "operation_id", "observation_id", "action"});
+  const Observation &InputObservation(const json &j) {
+    if (!allowed_ || paused_ || !session_.ControlEnabled())
+      throw std::invalid_argument("CONTROL_DENIED");
+    if (!session_.Connected() || !frame_ || Age(frame_->queued) > 2000)
+      throw std::invalid_argument("NOT_READY");
+    if (action_)
+      throw std::invalid_argument("BUSY");
+    return Observe(j);
+  }
+  void StartAction(const json &j, const json &id, bool unlock = false) {
+    if (unlock)
+      Fields(j, {"id", "method", "operation_id", "observation_id", "password"});
+    else
+      Fields(j, {"id", "method", "operation_id", "observation_id", "action"});
     const auto operation = String(j, "operation_id");
+    // A private unlock's credential is never retained in the operation cache.
+    // Repeating its ID retrieves the first attempt, including uncertain results.
     const auto arguments = json{
         {"observation_id", j.at("observation_id")},
-        {"action",
-         j.at("action")}}.dump();
+        {"action", unlock ? json{{"type", "unlock"}} : j.at("action")}}.dump();
     for (const auto &r : records_)
       if (r.operation == operation) {
         if (r.arguments != arguments)
@@ -560,15 +576,8 @@ private:
         Reply(id, r.result);
         return;
       }
-    if (!allowed_ || paused_ || !session_.ControlEnabled())
-      throw std::invalid_argument("CONTROL_DENIED");
-    if (!session_.Connected() || !frame_ || Age(frame_->queued) > 2000)
-      throw std::invalid_argument("NOT_READY");
-    if (action_)
-      throw std::invalid_argument("BUSY");
-    const auto &o = Observe(j);
-    const auto &a = j.at("action");
-    const auto type = String(a, "type", 32);
+    const auto &o = InputObservation(j);
+    const auto type = unlock ? "type_text" : String(j.at("action"), "type", 32);
     auto running = std::make_unique<RunningAction>();
     running->id = id;
     running->operation = operation;
@@ -576,8 +585,9 @@ private:
     running->epoch = o.epoch;
     if (type == "type_text" && !session_.Status()["text_input"].get<bool>())
       throw std::invalid_argument("TEXT_INPUT_UNSUPPORTED");
-    running->steps = automation::BuildInputSteps(a,
-        {o.width, o.height, o.source_width, o.source_height, o.region});
+    running->steps = unlock
+        ? BuildUnlockSteps(String(j, "password", 256), session_.Status().value("platform", "") == "macos")
+        : BuildInputSteps(j.at("action"), {o.width, o.height, o.source_width, o.source_height, o.region});
     while (records_.size() >= 128 ||
            (!records_.empty() && Age(records_.front().created) > 300000))
       records_.pop_front();
@@ -632,6 +642,7 @@ private:
                    {"video_decoders", {"auto", "software"}},
                    {"video_transport", "loopback-websocket/1"},
                    {"terminal_protocol", "ansi/1"},
+                   {"unlock_protocol", "password/1"},
                    {"action_completion", "submitted"},
                    {"max_request_bytes", 65536},
                    {"max_response_bytes", kMaxResponse},
@@ -676,6 +687,16 @@ private:
         return false;
       } else if (method == "action") {
         StartAction(j, id);
+        return false;
+      } else if (method == "unlock_prepare") {
+        Fields(j, {"id", "method", "observation_id"});
+        const auto &observation = InputObservation(j);
+        if (!session_.Status()["text_input"].get<bool>())
+          throw std::invalid_argument("TEXT_INPUT_UNSUPPORTED");
+        Reply(id, {{"generation", observation.generation}, {"geometry_epoch", observation.epoch}});
+        return false;
+      } else if (method == "unlock") {
+        StartAction(j, id, true);
         return false;
       } else if (method == "terminal_frame") {
         Fields(j, {"id", "method", "columns", "rows", "colors", "cell_aspect"});

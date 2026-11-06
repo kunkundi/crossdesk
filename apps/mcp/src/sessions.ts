@@ -7,6 +7,7 @@ import {
   equal,
   parse,
   uiConnect,
+  unlockPassword,
   type Data,
   type Panel,
   type VideoOptions,
@@ -57,6 +58,23 @@ interface Session {
   connecting: boolean;
   statusRequest?: Promise<Data>;
   closing?: Promise<void>;
+  unlock?: UnlockRequest;
+  unlocks: Map<string, UnlockRequest>;
+}
+interface UnlockRequest {
+  id: string;
+  operation: string;
+  observation: string;
+  useSaved: boolean;
+  state: "preparing" | "awaiting_password" | "submitting" | "submitted" | "failed" | "cancelled";
+  expires: number;
+  generation?: number;
+  geometry?: number;
+  error?: Data;
+  result?: Data;
+  persistenceError?: string;
+  saved?: boolean;
+  controller: AbortController;
 }
 export class Sessions {
   readonly views = new Map<string, View>();
@@ -92,7 +110,7 @@ export class Sessions {
       created: Date.now(),
       lastSeen: Date.now(),
       ready: false,
-      alias,
+      alias: alias ?? this.current?.device.alias,
       session: this.current?.id,
     };
     this.views.set(view.id, view);
@@ -170,10 +188,12 @@ export class Sessions {
     if (["closed", "failed"].includes(s.status.state)) {
       await this.dispose(s);
     }
+    this.checkUnlock(s);
     return {
       ...s.status,
       session_id: s.id,
       device_alias: s.device.alias,
+      ...(s.unlock ? { unlock: this.unlockStatus(s.unlock) } : {}),
       ...(view ? this.describe(view) : {}),
       state: s.status.state,
       ...(s.status.state === "ready" ? {
@@ -181,6 +201,7 @@ export class Sessions {
       } : ["closed", "failed", "disconnected"].includes(s.status.state) ? {
         next_step: "The connection ended. Stop waiting and do not automatically reconnect or replay actions.",
       } : {}),
+      ...(s.unlock && this.unlockPending(s.unlock) ? { next_step: this.unlockStatus(s.unlock).next_step } : {}),
     };
   }
   private async waitStatus(request: Promise<Data>, signal?: AbortSignal) {
@@ -197,6 +218,7 @@ export class Sessions {
     }
   }
   private dispose(s: Session): Promise<void> {
+    this.cancelUnlock(s);
     return s.closing ??= s.native.close().finally(() => s.release());
   }
   async waitForConnection(viewId: string, waitMs: number, signal?: AbortSignal): Promise<Data> {
@@ -267,8 +289,12 @@ export class Sessions {
         };
     if (p.device_alias && (p.server || p.port || p.label))
       throw new Failure("INVALID_ARGUMENT");
-    if ((p.remember_password || p.persistent_authorization) && !p.save_device)
+    if ((p.remember_password || p.remember_unlock_password || p.persistent_authorization) && !p.save_device)
       throw new Failure("SAVE_DEVICE_REQUIRED");
+    if (p.remember_unlock_password && !p.unlock_password)
+      throw new Failure("UNLOCK_CREDENTIAL_REQUIRED");
+    if (p.unlock_password && !p.remember_unlock_password)
+      throw new Failure("SAVE_UNLOCK_REQUIRED");
     let password = p.password ?? (await this.store.password(d));
     p.password = undefined;
     // Persist only after successful authentication, avoiding poisoned saved passwords.
@@ -282,14 +308,17 @@ export class Sessions {
     );
     if (p.save_device) {
       d.authorization = p.persistent_authorization ? p.mode : undefined;
+      delete d.unlock_credential;
+      delete d.unlock_environment_variable;
       try {
-        await this.store.save(d, p.remember_password ? password : undefined);
+        await this.store.save(d, p.remember_password ? password : undefined, p.unlock_password);
       } catch (error) {
         result.persistence_error =
           error instanceof Failure ? error.code : "CONFIG_WRITE_FAILED";
       }
     }
     password = "";
+    p.unlock_password = undefined;
     return result;
   }
   private async connect(
@@ -342,6 +371,7 @@ export class Sessions {
         status: {},
         release,
         connecting: true,
+        unlocks: new Map(),
       };
       this.current = s;
       if (view) {
@@ -408,6 +438,8 @@ export class Sessions {
   async action(p: Data, signal?: AbortSignal): Promise<Data> {
     const { session_id, observe_after = true, ...args } = p;
     const s = this.session(session_id);
+    this.checkUnlock(s);
+    if (s.unlock && this.unlockPending(s.unlock)) throw new Failure("UNLOCK_PENDING");
     const result = await s.native.request("action", args, 5000, signal);
     if (observe_after && result.status === "submitted") {
       try {
@@ -428,10 +460,14 @@ export class Sessions {
     return result;
   }
   async control(id: string, enabled: boolean) {
+    if (!enabled) this.cancelUnlock(this.session(id));
     return this.session(id).native.request("control", { enabled });
   }
   async display(id: string, index: number) {
-    return this.session(id).native.request("display", { index });
+    const s = this.session(id);
+    this.checkUnlock(s);
+    if (s.unlock && this.unlockPending(s.unlock)) throw new Failure("UNLOCK_PENDING");
+    return s.native.request("display", { index });
   }
   async disconnect(id: string) {
     const s = this.session(id);
@@ -449,9 +485,150 @@ export class Sessions {
   async viewerControl(v: View, operation: string) {
     if (!v.session) throw new Failure("NOT_READY");
     if (operation === "disconnect") return this.disconnect(v.session);
+    if (operation === "pause") this.cancelUnlock(this.session(v.session));
     return this.session(v.session).native.request("viewer_control", {
       operation,
     });
+  }
+  private unlockPending(request: UnlockRequest) {
+    return ["preparing", "awaiting_password", "submitting"].includes(request.state);
+  }
+  private unlockStatus(request: UnlockRequest): Data {
+    return {
+      request_id: request.id,
+      state: request.state,
+      expires_at: request.expires,
+      ...(request.error ? { error: request.error } : {}),
+      ...(request.result ? { result: request.result } : {}),
+      ...(request.persistenceError ? { persistence_error: request.persistenceError } : {}),
+      ...(request.saved ? { credential_saved: true } : {}),
+      next_step: this.unlockPending(request)
+        ? "The user enters the system lock-screen password in the local panel. Never request it in chat. Wait with crossdesk_get_session and unlock_request_id."
+        : request.state === "submitted"
+          ? "Take a fresh screenshot to verify that the desktop is unlocked, then continue the pending task. If the password was rejected, request user entry with use_saved: false; never automatically replay an unlock."
+          : "Unlock stopped. Inspect the error and current screen before starting another request. Never automatically replay an uncertain submission.",
+    };
+  }
+  private cancelUnlock(s: Session, code = "CANCELLED") {
+    const request = s.unlock;
+    if (!request || !this.unlockPending(request)) return;
+    request.error = failure(new Failure(code, request.state === "submitting"));
+    request.state = "cancelled";
+    request.controller.abort();
+  }
+  private checkUnlock(s: Session) {
+    const request = s.unlock;
+    if (!request || !this.unlockPending(request)) return;
+    if (Date.now() > request.expires) this.cancelUnlock(s, "UNLOCK_EXPIRED");
+    else if (s.closing || !s.status.control || s.status.human_paused ||
+        (request.generation !== undefined && (request.generation !== s.status.generation ||
+         request.geometry !== s.status.geometry_epoch))) this.cancelUnlock(s, "CONTROL_DENIED");
+  }
+  async requestUnlock(p: Data, signal?: AbortSignal): Promise<Data> {
+    const s = this.session(p.session_id);
+    if (!s.native.unlockSupported) throw new Failure("NATIVE_UNLOCK_UNSUPPORTED");
+    const previous = s.unlocks.get(p.operation_id);
+    if (previous) {
+      if (previous.observation !== p.observation_id || previous.useSaved !== p.use_saved)
+        throw new Failure("OPERATION_ID_CONFLICT");
+      this.checkUnlock(s);
+      return { session_id: s.id, unlock: this.unlockStatus(previous) };
+    }
+    this.checkUnlock(s);
+    if (s.unlock && this.unlockPending(s.unlock)) throw new Failure("UNLOCK_PENDING");
+    const request: UnlockRequest = {
+      id: p.operation_id, operation: token(), observation: p.observation_id, useSaved: p.use_saved,
+      state: "preparing", expires: Date.now() + 300000, controller: new AbortController(),
+    };
+    s.unlock = request;
+    s.unlocks.set(request.id, request);
+    if (s.unlocks.size > 128) s.unlocks.delete(s.unlocks.keys().next().value!);
+    try {
+      const prepared = await s.native.request("unlock_prepare", { observation_id: p.observation_id }, 5000, signal);
+      request.generation = prepared.generation;
+      request.geometry = prepared.geometry_epoch;
+      let password: string | undefined;
+      if (p.use_saved) {
+        try {
+          const d = await this.store.device(s.device.alias);
+          if (d.device_id !== s.device.device_id || d.server !== s.device.server || d.port !== s.device.port)
+            throw new Failure("DEVICE_ALIAS_CONFLICT");
+          password = await this.store.password(d, "unlock");
+        } catch (error) {
+          if (!["DEVICE_NOT_FOUND", "UNLOCK_CREDENTIAL_REQUIRED", "CREDENTIAL_STORE_UNAVAILABLE"].includes(failure(error).code)) throw error;
+        }
+      }
+      if (!this.unlockPending(request) || signal?.aborted) throw new Failure("CANCELLED");
+      request.state = "awaiting_password";
+      if (password !== undefined) {
+        try { await this.submitUnlock(s, request, password, false, signal); }
+        finally { password = undefined; }
+      } else if (this.policy === "off") throw new Failure("UNLOCK_CREDENTIAL_REQUIRED");
+    } catch (error) {
+      if (request.state !== "cancelled") {
+        request.state = "failed";
+        request.error = failure(error);
+      }
+    }
+    return { session_id: s.id, unlock: this.unlockStatus(request) };
+  }
+  private async submitUnlock(s: Session, request: UnlockRequest, password: string, remember: boolean, signal?: AbortSignal) {
+    parse(unlockPassword, password);
+    await this.status(s.id, undefined, signal);
+    if (s.unlock !== request || request.state !== "awaiting_password") throw new Failure("UNLOCK_EXPIRED");
+    request.state = "submitting";
+    const combined = signal ? AbortSignal.any([signal, request.controller.signal]) : request.controller.signal;
+    try {
+      // User input may take longer than an observation's lifetime. Re-observe the
+      // same display generation before sending the secret to its focused field.
+      const observation = await this.screenshot({ session_id: s.id }, combined);
+      const metadata = observation.metadata;
+      if (metadata.generation !== request.generation || metadata.geometry_epoch !== request.geometry)
+        throw new Failure("STALE_OBSERVATION");
+      const result = await s.native.request("unlock", {
+        operation_id: request.operation,
+        observation_id: metadata.observation_id,
+        password,
+      }, 5000, combined);
+      request.result = result;
+      if (request.controller.signal.aborted) return;
+      request.state = result.status === "submitted" ? "submitted" : "failed";
+      if (remember && request.state === "submitted") {
+        try { await this.store.saveUnlock(s.device, password); request.saved = true; }
+        catch (error) { request.persistenceError = failure(error).code; }
+      }
+    } catch (error) {
+      if (!request.controller.signal.aborted) {
+        request.state = "failed";
+        request.error = failure(error);
+      }
+    } finally { password = ""; }
+  }
+  async unlockUI(v: View, p: Data, signal?: AbortSignal): Promise<Data> {
+    const s = this.session(v.session!);
+    const request = s.unlock;
+    if (!request || request.id !== p.request_id) throw new Failure("UNLOCK_NOT_FOUND");
+    if (p.cancel) this.cancelUnlock(s);
+    else if (request.state === "awaiting_password") {
+      const password = p.password;
+      p.password = undefined;
+      await this.submitUnlock(s, request, password, p.remember_password, signal);
+    }
+    return { unlock: this.unlockStatus(request) };
+  }
+  async waitForUnlock(sessionId: string | undefined, viewId: string | undefined, requestId: string, waitMs: number, signal?: AbortSignal): Promise<Data> {
+    const deadline = Date.now() + waitMs;
+    while (true) {
+      const result = await this.status(sessionId, viewId, signal);
+      const s = result.session_id && this.current?.id === result.session_id ? this.current : undefined;
+      if (!s || ["closed", "failed"].includes(result.state)) return result;
+      const request = s.unlocks.get(requestId);
+      if (!request) throw new Failure("UNLOCK_NOT_FOUND");
+      result.unlock = this.unlockStatus(request);
+      if (!this.unlockPending(request)) return result;
+      if (Date.now() >= deadline) return { ...result, wait_timed_out: true };
+      await delay(Math.min(200, deadline - Date.now()), undefined, { signal });
+    }
   }
   async terminalFrame(v: View, args: Data, signal?: AbortSignal) {
     if (v.panel !== "terminal" || !v.session || this.connecting)

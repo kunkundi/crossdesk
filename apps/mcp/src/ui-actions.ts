@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parse, uiConnect, Failure, type Data } from "./common.js";
+import { parse, uiConnect, unlockPassword, id, Failure, type Data } from "./common.js";
 import { Sessions, type View } from "./sessions.js";
 
 export const uiSchemas = {
@@ -8,6 +8,12 @@ export const uiSchemas = {
   status: z.strictObject({}),
   connect: uiConnect,
   video_open: z.strictObject({}),
+  unlock: z.strictObject({
+    request_id: id,
+    password: unlockPassword.optional(),
+    remember_password: z.boolean().default(false),
+    cancel: z.boolean().default(false),
+  }),
   control: z.strictObject({
     operation: z.enum(["pause", "resume", "disconnect"]),
   }),
@@ -40,6 +46,9 @@ export async function uiAction(
       return sessions.connectUI(view, p, signal);
     case "control":
       return sessions.viewerControl(view, p.operation);
+    case "unlock":
+      if (!p.cancel && !p.password) throw new Failure("UNLOCK_CREDENTIAL_REQUIRED");
+      return sessions.unlockUI(view, p, signal);
     default:
       throw new Failure("UNKNOWN_ACTION");
   }

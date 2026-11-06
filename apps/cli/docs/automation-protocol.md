@@ -33,6 +33,8 @@ The output queue is bounded to 64 messages and 8 MiB; a blocked output pipe term
 | `video_revoke` | optional `view`; omit to revoke all video grants and sockets |
 | `preview` | optional `max_edge` (64–960), `after_frame_id`, `generation`, `timeout_ms` (0–5000); no region |
 | `action` | `operation_id`, `observation_id`, `action` |
+| `unlock_prepare` | `observation_id`; validates control, fresh frames and text-input support, returns `generation` and `geometry_epoch` |
+| `unlock` | `operation_id`, `observation_id`, `password`; trusted local credential submission to the focused system password field |
 | `control` | `enabled` boolean; cannot override observe-only permission or human pause |
 | `viewer_control` | `operation: "pause" | "resume" | "disconnect"`; restricted to trusted UI by the MCP adapter |
 | `terminal_frame` | `columns` (1–160), `rows` (1–60), `colors` (8/24/256), `cell_aspect` (0.2–2); private terminal viewer only |
@@ -123,3 +125,13 @@ New actions require a current frame no older than two seconds as well as a valid
 Results use `status: submitted | in_progress | failed_before_submit | outcome_unknown`, with `operation_id`, `retryable`, `side_effect_possible` and, for completed actions, `generation`/`after_frame_id`. The same operation ID and arguments retrieve the cached result; different arguments conflict. Retention is bounded to 128 entries, with entries older than five minutes eligible for removal on a new action. Never retry an uncertain effect with a new ID. `submitted` does not claim remote execution.
 
 The native process trusts its parent. The parent must authenticate panel-only `viewer_control` calls and protect descriptor 3; this private pipe does not isolate arbitrary programs running as the same OS user.
+
+## System unlock
+
+`doctor` advertises `automation_unlock_protocol: "password/1"`; `hello` advertises `unlock_protocol: "password/1"`. The adapter enables the additional unlock flow when this capability is present.
+
+After the Agent identifies the system lock screen and focuses its password field, `unlock_prepare` validates the supplied observation and returns its display generation. The trusted adapter may then ask the user in its local panel, or retrieve the separately configured system credential. Before submission it captures a fresh observation and verifies that the display generation and geometry still match.
+
+`unlock` accepts a password of 1–256 UTF-8 bytes, rejecting NUL, newline, carriage return and tab. It uses the existing input scheduler to select the focused field contents, type the password and press Enter. Selection uses Command+A on macOS and Ctrl+A on other platforms. Control permission, human pause, observation freshness and cancellation follow the action rules. The operation cache stores the observation and unlock operation kind, with secret text confined to the transient input request and scheduled text step. Completed or cancelled steps clear their text buffers.
+
+The result follows the existing action result format. Repeated operation IDs retrieve the first result, and the caller verifies the visible desktop using a subsequent screenshot. Password persistence and the five-minute user-input request lifetime belong to the TypeScript adapter.

@@ -46,6 +46,8 @@ export const alias = z
   .max(80)
   .regex(/^[\p{L}\p{N} _.-]+$/u);
 export const mode = z.enum(["observe", "control"]);
+export const unlockPassword = z.string().min(1).max(256)
+  .refine((value) => Buffer.byteLength(value) <= 256 && !/[\0\r\n\t]/.test(value));
 export const panel = z.enum(["auto", "apps", "browser", "terminal", "off"]);
 export type Panel = z.infer<typeof panel>;
 export const videoOptions = z.strictObject({
@@ -138,5 +140,7 @@ export const uiConnect = z.strictObject({
   port: z.int().min(1).max(65535).optional(),
   save_device: z.boolean().default(false),
   remember_password: z.boolean().default(false),
+  unlock_password: unlockPassword.optional(),
+  remember_unlock_password: z.boolean().default(false),
   persistent_authorization: z.boolean().default(false),
 });

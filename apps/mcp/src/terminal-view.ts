@@ -41,6 +41,34 @@ async function connect(client: TerminalClient) {
   } finally { rl.close(); }
 }
 
+async function unlock(client: TerminalClient, requestId: string, device: string) {
+  let hidden = false;
+  const output = new Writable({ write(chunk, _encoding, done) {
+    if (!hidden) process.stdout.write(chunk);
+    done();
+  } });
+  const rl = createInterface({ input: process.stdin, output, terminal: true, historySize: 0 });
+  const controller = new AbortController();
+  rl.once("SIGINT", () => controller.abort());
+  const args: Data = { request_id: requestId };
+  try {
+    process.stdout.write("Agent 请求解锁远程系统。请确认远端系统密码框已聚焦。\n系统锁屏密码（隐藏输入，留空取消）：");
+    hidden = true;
+    try { args.password = await rl.question("", { signal: controller.signal }); }
+    finally { hidden = false; process.stdout.write("\n"); }
+    if (!args.password) args.cancel = true;
+    else {
+      const { devices } = await client.call("devices");
+      if (devices.some((entry: Data) => entry.device_alias === device))
+        args.remember_password = (await rl.question("保存到系统凭据库并允许以后自动解锁？[y/N]：", { signal: controller.signal })).trim().toLowerCase() === "y";
+    }
+    return await client.call("unlock", args);
+  } catch (error) {
+    if (!controller.signal.aborted) throw error;
+    return await client.call("unlock", { request_id: requestId, cancel: true });
+  } finally { args.password = undefined; rl.close(); }
+}
+
 export async function terminalView(directory: string, view: string, cellAspect = 0.5) {
   if (!process.stdin.isTTY || !process.stdout.isTTY || process.env.TERM === "dumb")
     throw new Failure("VIEW_REQUIRES_TERMINAL");
@@ -72,7 +100,7 @@ export async function terminalView(directory: string, view: string, cellAspect =
     process.stdin.resume();
     for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(signal, stop);
     await write("\x1b[?1049h\x1b[?25l\x1b[?7l\x1b[2J");
-    let statusAt = 0, size = "";
+    let statusAt = 0, size = "", promptedUnlock = "";
     const colors = /truecolor|24bit/i.test(process.env.COLORTERM ?? "") ? 24
       : /256color/i.test(process.env.TERM ?? "") ? 256 : 8;
     while (!stopped) {
@@ -81,6 +109,25 @@ export async function terminalView(directory: string, view: string, cellAspect =
         status = await client.call("status", {}, 7000);
         statusAt = Date.now();
         if (["closed", "failed", "disconnected"].includes(status.state)) break;
+      }
+      if (status.unlock?.state === "awaiting_password" && status.unlock.request_id !== promptedUnlock && !controls) {
+        promptedUnlock = status.unlock.request_id;
+        process.stdin.off("keypress", keypress);
+        process.stdin.setRawMode(false);
+        await write("\x1b[0m\x1b[?7h\x1b[?25h\x1b[?1049l");
+        try {
+          const result = await unlock(client, promptedUnlock, status.device_alias);
+          message = result.unlock?.error?.code ?? result.unlock?.persistence_error ?? "";
+        } catch (error) { message = failure(error).code; }
+        finally {
+          process.stdin.setRawMode(true);
+          process.stdin.on("keypress", keypress);
+          process.stdin.resume();
+          await write("\x1b[?1049h\x1b[?25l\x1b[?7l\x1b[2J");
+          statusAt = 0;
+          size = "";
+        }
+        continue;
       }
       // Leave a spare column so terminals with unusual wrap behavior stay safe.
       const columns = Math.min(160, Math.max(1, (process.stdout.columns || 80) - 1));

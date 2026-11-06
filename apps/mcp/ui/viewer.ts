@@ -30,8 +30,10 @@ root.innerHTML = `
           <div class="checks">
             <label><input id="save" type="checkbox"><span>保存设备</span></label>
             <label><input id="remember" type="checkbox" disabled><span>记住密码<small>保存在本机系统凭据库</small></span></label>
+            <label><input id="remember-unlock" type="checkbox" disabled><span>保存锁屏密码并允许自动解锁<small>独立保存在本机系统凭据库</small></span></label>
             <label><input id="authorize" type="checkbox" disabled><span>允许下次自动连接<small>沿用本次授权范围</small></span></label>
           </div>
+          <div id="saved-unlock-field" hidden><label for="saved-unlock-password">系统锁屏密码</label><input id="saved-unlock-password" type="password" autocomplete="off" maxlength="256"></div>
         </details>
         <details id="advanced"><summary>高级设置</summary>
           <label for="server">服务器</label><input id="server" value="api.crossdesk.cn" autocomplete="off">
@@ -43,7 +45,7 @@ root.innerHTML = `
     </div>
     <div id="session-card" hidden>
       <div class="device-card"><strong id="session-device">远程电脑</strong><span id="session-platform">已连接</span></div>
-      <dl class="session-details"><div id="session-device-id-row" hidden><dt>设备 ID</dt><dd id="session-device-id"></dd></div><div><dt>访问权限</dt><dd id="session-access"></dd></div><div><dt>显示器</dt><dd id="session-display"></dd></div><div><dt>Agent 状态</dt><dd id="session-agent"></dd></div></dl>
+      <dl class="session-details"><div id="session-device-id-row" hidden><dt>设备 ID</dt><dd id="session-device-id"></dd></div><div><dt>访问权限</dt><dd id="session-access"></dd></div><div><dt>显示器</dt><dd id="session-display"></dd></div><div><dt>Agent 状态</dt><dd id="session-agent"></dd></div><div><dt>锁屏密码</dt><dd id="session-unlock-credential"></dd></div><div id="session-unlock-row" hidden><dt>解锁状态</dt><dd class="session-unlock-details"><span id="session-unlock-state"></span><button id="unlock-open" type="button" hidden>输入密码</button></dd></div></dl>
       <p class="session-note">关闭页面不会断开连接。</p>
     </div>
   </aside>
@@ -65,7 +67,17 @@ root.innerHTML = `
     <div class="video-options"><button id="video-retry" hidden>重新加载画面</button><button id="video-browser" hidden>在浏览器中观看</button></div>
     <p id="panel-status" class="panel-status" role="status" hidden></p>
   </section>
-</main>`;
+</main>
+<dialog id="unlock-dialog" class="unlock-dialog" aria-labelledby="unlock-title" aria-describedby="unlock-status">
+  <div class="unlock-dialog-header"><h2 id="unlock-title">解锁远程电脑</h2><button id="unlock-close" type="button" aria-label="关闭解锁弹窗">×</button></div>
+  <p id="unlock-status" role="status"></p>
+  <form id="unlock-form">
+    <label for="unlock-password">系统锁屏密码</label><input id="unlock-password" type="password" autocomplete="off" maxlength="256" required autofocus>
+    <div class="checks"><label><input id="unlock-remember" type="checkbox"><span>保存密码并允许以后自动解锁<small>独立保存在本机系统凭据库</small></span></label></div>
+    <div class="unlock-buttons"><button id="unlock-submit" class="primary" type="submit">解锁</button><button id="unlock-cancel" type="button">取消解锁</button></div>
+  </form>
+</dialog>
+<div id="unlock-toast" class="unlock-toast" role="status" hidden><div><strong id="unlock-toast-title"></strong><p id="unlock-toast-message"></p></div><button id="unlock-toast-close" type="button" aria-label="关闭解锁提示">×</button></div>`;
 const element = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 const input = (id: string) => element<HTMLInputElement>(id);
@@ -76,6 +88,12 @@ let context: Data | undefined;
 let status: Data = {};
 let savedDevices: Data[] = [];
 let controlBusy = false;
+let unlockBusy = false;
+let unlockRequestId: string | undefined;
+let unlockSessionId: string | undefined;
+let unlockState: string | undefined;
+let unlockError = "";
+let unlockToastTimer: ReturnType<typeof setTimeout> | undefined;
 let disconnectedByUser = false;
 let frameSize = "", frameRate = "";
 let player: VideoPlayer | undefined;
@@ -115,11 +133,18 @@ const messages: Record<string, string> = {
   SESSION_LIMIT: "已有活动连接，请先断开当前电脑。",
   DEVICE_BUSY: "另一实例正在使用此设备。",
   CREDENTIAL_STORE_UNAVAILABLE: "系统凭据库不可用，密码未保存。",
+  CREDENTIAL_ROLLBACK_FAILED: "凭据保存中断，请通过本机 setup 重新配置密码。",
   PAIRING_REQUIRED:
     "请在终端运行 Agent 工具结果中的 setup --open-panel 配对命令，再打开面板。",
   PANEL_UNAUTHORIZED: "面板授权已失效，请重新打开。",
   VIEW_UNAUTHORIZED: "此面板已失效，请使用最新打开的面板。",
   CONTROL_DENIED: "当前会话没有控制权限，或已被人工暂停。",
+  UNLOCK_PENDING: "请先完成或取消当前解锁请求。",
+  UNLOCK_CREDENTIAL_REQUIRED: "请输入系统锁屏密码。",
+  UNLOCK_EXPIRED: "解锁请求已失效，请让 Agent 重新观察锁屏并发起请求。",
+  NATIVE_UNLOCK_UNSUPPORTED: "请更新原生 CLI，以启用锁屏解锁。",
+  SAVE_DEVICE_REQUIRED: "请先保存设备，再保存锁屏密码。",
+  SAVE_UNLOCK_REQUIRED: "请勾选保存锁屏密码。",
   NATIVE_PACKAGE_MISSING:
     "缺少对应平台的 CLI 运行组件，请检查包安装是否启用了 optional dependencies。",
   INVALID_ARGUMENT: "请检查设备 ID、服务器和输入内容。",
@@ -156,7 +181,7 @@ function setDetails(open: boolean) {
 element("details-toggle").onclick = () => setDetails(!root.classList.contains("details-open"));
 element("focus-view").onclick = () => setFocus(!root.classList.contains("focus-mode"));
 window.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && root.classList.contains("focus-mode")) setFocus(false);
+  if (event.key === "Escape" && !element<HTMLDialogElement>("unlock-dialog").open && root.classList.contains("focus-mode")) setFocus(false);
 });
 function hidePassword() {
   input("password").type = "password";
@@ -223,9 +248,121 @@ function deviceChanged() {
 }
 select("device").onchange = deviceChanged;
 input("save").onchange = () => {
-  for (const name of ["remember", "authorize"]) {
+  for (const name of ["remember", "remember-unlock", "authorize"]) {
     input(name).disabled = !input("save").checked;
     if (!input("save").checked) input(name).checked = false;
+  }
+  savedUnlockChanged();
+};
+function savedUnlockChanged() {
+  element("saved-unlock-field").hidden = !input("remember-unlock").checked;
+  if (!input("remember-unlock").checked) input("saved-unlock-password").value = "";
+}
+input("remember-unlock").onchange = savedUnlockChanged;
+function hideUnlockToast() {
+  clearTimeout(unlockToastTimer);
+  unlockToastTimer = undefined;
+  element("unlock-toast").hidden = true;
+}
+function openUnlockDialog() {
+  const dialog = element<HTMLDialogElement>("unlock-dialog");
+  if (status.unlock?.state !== "awaiting_password" || dialog.open) return;
+  hideUnlockToast();
+  dialog.showModal();
+}
+element("unlock-open").onclick = openUnlockDialog;
+element("unlock-close").onclick = () => element<HTMLDialogElement>("unlock-dialog").close();
+element<HTMLDialogElement>("unlock-dialog").onclose = () => {
+  if (element<HTMLDialogElement>("unlock-dialog").open) return;
+  input("unlock-password").value = "";
+  input("unlock-remember").checked = false;
+};
+element("unlock-toast-close").onclick = hideUnlockToast;
+function renderUnlock(s: Data) {
+  const request = s.unlock;
+  const pending = request?.state === "awaiting_password";
+  const visible = !!request && ["ready", "waiting_frame"].includes(s.state);
+  const sessionChanged = s.session_id !== unlockSessionId;
+  const changed = sessionChanged || request?.request_id !== unlockRequestId;
+  const stateChanged = changed || request?.state !== unlockState;
+  const finished = ["submitted", "cancelled", "failed"].includes(request?.state);
+  const dialog = element<HTMLDialogElement>("unlock-dialog");
+  if (changed || !pending || !visible) {
+    input("unlock-password").value = "";
+    input("unlock-remember").checked = false;
+  }
+  if (changed || finished) unlockError = "";
+  if (changed || !visible) hideUnlockToast();
+  if (dialog.open && (changed || !visible || finished)) dialog.close();
+  unlockRequestId = request?.request_id;
+  unlockSessionId = s.session_id;
+  unlockState = request?.state;
+  const device = savedDevices.find((d) => d.device_alias === s.device_alias);
+  if (request?.credential_saved && device) device.unlock_credential_provider = "keyring";
+  const provider = request?.credential_saved ? "keyring" : device?.unlock_credential_provider;
+  text("session-unlock-credential", provider === "keyring" ? "已保存 · 自动解锁"
+    : provider === "environment" ? "环境变量 · 自动解锁" : "待配置");
+  element("session-unlock-row").hidden = !visible;
+  const states: Record<string, string> = {
+    preparing: "准备中", awaiting_password: "等待密码", submitting: "提交中",
+    submitted: "已提交", cancelled: "已取消", failed: "提交失败",
+  };
+  text("session-unlock-state", states[request?.state] ?? "—");
+  element("session-unlock-state").dataset.state = request?.state ?? "";
+  element("unlock-open").hidden = !visible || !pending;
+  element<HTMLButtonElement>("unlock-open").disabled = unlockBusy;
+  element("unlock-form").hidden = !pending;
+  input("unlock-password").disabled = unlockBusy;
+  input("unlock-remember").disabled = unlockBusy || !device;
+  element<HTMLButtonElement>("unlock-submit").disabled = unlockBusy;
+  element<HTMLButtonElement>("unlock-cancel").disabled = unlockBusy;
+  text("unlock-status", unlockError || (unlockBusy || request?.state === "submitting"
+    ? "正在提交解锁，请稍候。" : "请确认远端系统密码框已聚焦，然后输入锁屏密码。"));
+  if (visible && pending && stateChanged) openUnlockDialog();
+  if (visible && finished) {
+    text("unlock-toast-title", request.state === "submitted" ? "解锁请求已提交"
+      : request.state === "cancelled" ? "解锁已取消" : "解锁操作未完成");
+    let message = request.state === "submitted" ? "Agent 将检查画面并继续任务。" : "";
+    if (request.credential_saved) message = "锁屏密码已保存，Agent 将检查画面并继续任务。";
+    if (request.error) message = messages[request.error.code] ?? "请检查远端画面后再发起解锁。";
+    if (request.persistence_error) message = "密码保存失败，可通过本机 setup 重新配置。";
+    text("unlock-toast-message", message);
+    element("unlock-toast-message").hidden = !message;
+    element("unlock-toast").dataset.state = request.state;
+    if (stateChanged && !sessionChanged) {
+      element("unlock-toast").hidden = false;
+      clearTimeout(unlockToastTimer);
+      unlockToastTimer = setTimeout(hideUnlockToast, 6000);
+    }
+  }
+}
+element<HTMLFormElement>("unlock-form").onsubmit = async (event) => {
+  event.preventDefault();
+  if (unlockBusy || !unlockRequestId) return;
+  const args: Data = { request_id: unlockRequestId, password: input("unlock-password").value,
+    remember_password: input("unlock-remember").checked };
+  input("unlock-password").value = "";
+  unlockError = "";
+  unlockBusy = true;
+  renderUnlock(status);
+  try {
+    const result = await invoke("unlock", args);
+    renderStatus({ ...status, unlock: result.unlock });
+    await devices();
+  } catch (error) {
+    unlockError = messages[error instanceof Error ? error.message : ""] ?? "解锁请求暂时无法提交，请检查连接状态。";
+  }
+  finally { args.password = undefined; unlockBusy = false; renderUnlock(status); }
+};
+element("unlock-cancel").onclick = async () => {
+  if (!unlockRequestId || unlockBusy) return;
+  input("unlock-password").value = "";
+  try {
+    const result = await invoke("unlock", { request_id: unlockRequestId, cancel: true });
+    renderStatus({ ...status, unlock: result.unlock });
+  } catch (error) {
+    unlockError = messages[error instanceof Error ? error.message : ""] ?? "取消请求暂时无法提交，请检查连接状态。";
+    renderUnlock(status);
   }
 };
 function renderStatus(s: Data) {
@@ -234,6 +371,7 @@ function renderStatus(s: Data) {
   if (lost && !disconnectedByUser && ["ready", "waiting_frame"].includes(status.state)) showError(new Error("CONNECTION_LOST"));
   const changedSession = s.session_id !== status.session_id;
   status = s;
+  renderUnlock(s);
   const connecting = busy || s.state === "waiting_frame";
   root.dataset.connected = String(connected);
   root.dataset.connecting = String(connecting);
@@ -296,6 +434,7 @@ async function connect() {
     display_index: Number(input("display").value),
     save_device: input("save").checked,
     remember_password: input("remember").checked,
+    remember_unlock_password: input("remember-unlock").checked,
     persistent_authorization: input("authorize").checked,
     ...(saved
       ? { device_alias: saved }
@@ -308,7 +447,9 @@ async function connect() {
   };
   if (!saved || input("password").value)
     args.password = input("password").value;
+  if (input("remember-unlock").checked) args.unlock_password = input("saved-unlock-password").value;
   input("password").value = "";
+  input("saved-unlock-password").value = "";
   hidePassword();
   try {
     const result = await invoke("connect", args);
@@ -472,6 +613,10 @@ document.addEventListener("visibilitychange", () => {
   else void poll();
 });
 window.addEventListener("pagehide", () => {
+  element<HTMLDialogElement>("unlock-dialog").close();
+  hideUnlockToast();
+  input("unlock-password").value = "";
+  input("saved-unlock-password").value = "";
   void closePreview();
 });
 setInterval(() => {
@@ -505,6 +650,7 @@ async function start() {
       connect: "crossdesk_ui_connect",
       video_open: "crossdesk_video_open",
       control: "crossdesk_viewer_control",
+      unlock: "crossdesk_ui_unlock",
     };
     let connected = false,
       initial: Data | undefined;

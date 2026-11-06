@@ -259,4 +259,18 @@ std::vector<Step> BuildInputSteps(const json &a, const InputGeometry &o) {
   }
   return steps;
 }
+std::vector<Step> BuildUnlockSteps(const std::string &password, bool macos) {
+  if (password.empty() || password.size() > 256 ||
+      password.find('\0') != std::string::npos || password.find_first_of("\r\n\t") != std::string::npos)
+    throw std::invalid_argument("INVALID_CREDENTIAL");
+  const InputGeometry geometry{};
+  auto steps = BuildInputSteps({{"type", "hotkey"}, {"keys", {macos ? "META" : "CTRL", "A"}}}, geometry);
+  auto text = BuildInputSteps({{"type", "type_text"}, {"text", password}}, geometry);
+  text.front().delay = 150;
+  steps.insert(steps.end(), text.begin(), text.end());
+  auto enter = BuildInputSteps({{"type", "key_press"}, {"key", "ENTER"}}, geometry);
+  for (auto &step : enter) step.delay += 350;
+  steps.insert(steps.end(), enter.begin(), enter.end());
+  return steps;
+}
 } // namespace crossdesk::cli::automation

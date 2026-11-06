@@ -38,6 +38,7 @@ const uiNames: Record<UIAction, string> = {
   connect: "crossdesk_ui_connect",
   video_open: "crossdesk_video_open",
   control: "crossdesk_viewer_control",
+  unlock: "crossdesk_ui_unlock",
 };
 function output(value: Data, meta?: Data): CallToolResult {
   const data = { ...value };
@@ -68,7 +69,7 @@ export function createServer(
     {
       capabilities: { tools: {}, resources: {} },
       instructions:
-        "Remote computer control. Open a panel for the user to select and authorize a device. Never request passwords in chat. When a remote task is pending, immediately follow crossdesk_open with crossdesk_get_session(view_id, wait_ms: 25000) in the same turn. Repeat bounded waits on wait_timed_out until ready or the user cancels; do not ask the user to type a connection confirmation or click Continue. On ready, continue the requested task within current authorization. On closed/failed, stop waiting and do not automatically reconnect. Obtain a screenshot before actions and pass its observation_id; coordinates refer to that returned image. Submitted actions are not remote execution acknowledgements. Never replay actions after uncertain outcomes. Human pause can only be resumed in the user panel.",
+        "Remote computer control. Open a panel for the user to select and authorize a device. Never request passwords in chat. When a remote task is pending, immediately follow crossdesk_open with crossdesk_get_session(view_id, wait_ms: 25000) in the same turn. Repeat bounded waits on wait_timed_out until ready or the user cancels; do not ask the user to type a connection confirmation or click Continue. On ready, continue the requested task within current authorization. On closed/failed, stop waiting and do not automatically reconnect. Obtain a screenshot before actions and pass its observation_id; coordinates refer to that returned image. If the remote system is locked, focus its visible password field, take a fresh screenshot and call crossdesk_unlock. A saved system password is used automatically; otherwise the local panel asks the user. Wait with crossdesk_get_session(unlock_request_id, wait_ms: 25000), then verify a fresh screenshot before continuing the original task. Submitted actions are not remote execution acknowledgements. Never replay actions after uncertain outcomes. Human pause can only be resumed in the user panel.",
     },
   );
   type Definition = {
@@ -123,7 +124,7 @@ export function createServer(
       inputSchema: schema,
       annotations: {
         readOnlyHint: !!d.readOnly,
-        destructiveHint: d.name === "crossdesk_action",
+        destructiveHint: ["crossdesk_action", "crossdesk_unlock"].includes(d.name),
         openWorldHint: true,
       },
       ...(d.ui || d.app
@@ -236,11 +237,15 @@ export function createServer(
       session_id: id.optional(),
       view_id: id.optional(),
       wait_ms: z.int().min(0).max(25000).optional(),
+      unlock_request_id: id.optional(),
     }),
-    "Get connection, display geometry, frame age and control state. Supply exactly one of session_id or view_id. With view_id, wait for connection (default 25000 ms; 0 returns immediately). On wait_timed_out, repeat while the remote task is pending. On ready, continue without asking the user to send a message. Waiting never connects or grants control. session_id returns immediately and requires wait_ms to be 0 or omitted.",
+    "Get connection, display geometry, frame age and control state. Supply exactly one of session_id or view_id. With unlock_request_id, wait for that unlock request to finish (default 25000 ms). Otherwise view_id waits for connection and session_id returns immediately. On wait_timed_out, repeat while the task is pending. An unlock state of submitted requires a fresh screenshot to verify success. Waiting never connects or grants control.",
     async (p, ctx) => {
       if (!!p.session_id === !!p.view_id)
         throw new Failure("SELECT_ONE_SESSION");
+      if (p.unlock_request_id) return output(await sessions.waitForUnlock(
+        p.session_id, p.view_id, p.unlock_request_id, p.wait_ms ?? 25000, ctx.mcpReq.signal,
+      ));
       if (p.session_id && p.wait_ms) throw new Failure("INVALID_ARGUMENT");
       return output(p.view_id
         ? await sessions.waitForConnection(p.view_id, p.wait_ms ?? 25000, ctx.mcpReq.signal)
@@ -266,6 +271,30 @@ export function createServer(
     }),
     "Submit one structured action against a recent observation. Reuse operation_id only to retrieve that same operation, never replay uncertain effects with a new ID. Human pause prevents control. A post-action screenshot is not an execution acknowledgement.",
     async (p, ctx) => output(await sessions.action(p, ctx.mcpReq.signal)),
+  );
+  add(
+    "crossdesk_unlock",
+    z.strictObject({
+      session_id: id,
+      operation_id: id,
+      observation_id: id,
+      use_saved: z.boolean().default(true),
+    }),
+    "Unlock the remote system after visually identifying its lock screen, focusing the password field and obtaining a fresh screenshot. Uses its separately saved system password, or asks through the local panel. Never supply passwords in chat or tool arguments. Repeat the same operation_id and parameters only to query that request. Wait with crossdesk_get_session and the returned unlock.request_id, then inspect a fresh screenshot. If the password was rejected, use_saved: false asks the user to replace it. Never automatically retry uncertain or rejected input.",
+    async (p, ctx) => {
+      let v = [...sessions.views.values()].find((view) => view.session === p.session_id);
+      const created = !v;
+      if (!v) v = sessions.create(sessions.choose(supported(ctx)));
+      let result: Data;
+      try { result = await sessions.requestUnlock(p, ctx.mcpReq.signal); }
+      catch (error) { if (created) sessions.views.delete(v.id); throw error; }
+      let panel = sessions.describe(v);
+      try {
+        if (result.unlock.state === "awaiting_password" && !v.ready) panel = await openPanel(v);
+      } catch (error) { panel.panel_error = failure(error); }
+      return viewResult(v, { ...panel, ...result, next_step: result.unlock.next_step });
+    },
+    { ui: true },
   );
   add(
     "crossdesk_set_control",
@@ -367,7 +396,7 @@ export function createServer(
           inputSchema,
           annotations: {
             readOnlyHint: !!d.readOnly,
-            destructiveHint: d.name === "crossdesk_action",
+            destructiveHint: ["crossdesk_action", "crossdesk_unlock"].includes(d.name),
             openWorldHint: true,
           },
           ...((d.ui || d.app) && apps(ctx)

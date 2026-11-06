@@ -70,6 +70,22 @@ button:disabled { cursor: default; color: #a3a7ad; background: #fafafa; border-c
 #session-agent[data-paused="true"] { color: #956e2d; }
 .session-note { margin-top: 18px; }
 .workspace { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; overflow: auto; padding: 16px; background: #f6f7f8; }
+.session-unlock-details { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; }
+#session-unlock-state[data-state="awaiting_password"] { color: #956e2d; }
+#session-unlock-state[data-state="failed"] { color: #9a4e47; }
+.unlock-dialog { width: min(420px, calc(100% - 32px)); max-height: calc(100% - 32px); margin: auto; padding: 22px; color: inherit; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 18px 64px #17243733; }
+.unlock-dialog::backdrop { background: #19212e4d; }
+.unlock-dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.unlock-dialog-header h2 { font-size: 16px; }
+.unlock-dialog-header button, .unlock-toast > button { width: 28px; min-height: 28px; padding: 0; flex: none; border: 0; color: var(--muted); font-size: 20px; line-height: 1; }
+.unlock-dialog p { margin: 12px 0 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.unlock-buttons { display: flex; gap: 8px; }
+.unlock-buttons .primary { margin: 0; width: auto; min-width: 80px; }
+.unlock-toast { position: fixed; top: 70px; right: 20px; z-index: 10; display: flex; align-items: flex-start; gap: 12px; width: min(360px, calc(100% - 32px)); padding: 14px 14px 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: 0 6px 24px #17243726; }
+.unlock-toast > div { min-width: 0; flex: 1; }
+.unlock-toast strong { display: block; padding-top: 4px; font-size: 13px; font-weight: 600; }
+.unlock-toast p { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.unlock-toast[data-state="failed"] { border-color: #d6b4ae; }
 .viewer-card { display: flex; flex-direction: column; flex: 1; min-height: 160px; min-width: 0; background: #fff; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
 .viewer-toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 9px 12px; flex: none; }
 .viewer-title { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }

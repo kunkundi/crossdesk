@@ -92,6 +92,7 @@ type Pending = {
   action: boolean;
 };
 export class NativeClient {
+  unlockSupported = false;
   private child: ChildProcess;
   private pending = new Map<number, Pending>();
   private sequence = 0;
@@ -148,6 +149,7 @@ export class NativeClient {
       5000,
       signal,
     );
+    this.unlockSupported = hello.unlock_protocol === "password/1";
     if (hello.protocol !== "crossdesk-automation/1" ||
         hello.terminal_protocol !== "ansi/1" ||
         hello.video_transport !== "loopback-websocket/1" ||
@@ -188,7 +190,7 @@ export class NativeClient {
             request_id: id,
           }) + "\n",
         );
-        reject(new Failure(code, method === "action"));
+        reject(new Failure(code, method === "action" || method === "unlock"));
       };
       const abort = () => cancel("CANCELLED");
       const timer = setTimeout(() => cancel("NATIVE_TIMEOUT"), timeout);
@@ -196,7 +198,7 @@ export class NativeClient {
       this.pending.set(id, {
         resolve,
         reject,
-        action: method === "action",
+        action: method === "action" || method === "unlock",
         clean: () => {
           clearTimeout(timer);
           signal?.removeEventListener("abort", abort);

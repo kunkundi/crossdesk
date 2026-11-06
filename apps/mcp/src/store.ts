@@ -20,6 +20,7 @@ import {
   Failure,
   parse,
   token,
+  unlockPassword,
   type Data,
 } from "./common.js";
 
@@ -34,6 +35,8 @@ const deviceSchema = z.strictObject({
     .string()
     .regex(/^[A-Z][A-Z0-9_]{0,127}$/)
     .optional(),
+  unlock_credential: z.enum(["keyring", "environment"]).optional(),
+  unlock_environment_variable: z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/).optional(),
 });
 export type Device = z.infer<typeof deviceSchema>;
 const configSchema = z.strictObject({
@@ -76,6 +79,7 @@ export class DeviceStore {
       port: d.port,
       authorization: d.authorization ?? "none",
       credential_provider: d.credential ?? "none",
+      unlock_credential_provider: d.unlock_credential ?? "none",
     }));
   }
   async device(name: string): Promise<Device> {
@@ -83,39 +87,45 @@ export class DeviceStore {
     if (!d) throw new Failure("DEVICE_NOT_FOUND");
     return d;
   }
-  private account(d: Device) {
+  private account(d: Device, purpose: "connection" | "unlock") {
+    const identity = [this.directory, d.server, d.port, d.device_id];
+    if (purpose === "unlock") identity.push("unlock");
     return createHash("sha256")
-      .update(JSON.stringify([this.directory, d.server, d.port, d.device_id]))
+      .update(JSON.stringify(identity))
       .digest("hex");
   }
-  private async entry(d: Device) {
+  private async entry(d: Device, purpose: "connection" | "unlock" = "connection") {
     try {
       const { AsyncEntry } = await import("@napi-rs/keyring");
-      return new AsyncEntry("crossdesk-mcp", this.account(d), {
+      return new AsyncEntry("crossdesk-mcp", this.account(d, purpose), {
         linux: { store: "secret-service" },
       });
     } catch {
       throw new Failure("CREDENTIAL_STORE_UNAVAILABLE");
     }
   }
-  async password(d: Device): Promise<string> {
-    if (d.credential === "environment") {
+  async password(d: Device, purpose: "connection" | "unlock" = "connection"): Promise<string> {
+    const provider = purpose === "unlock" ? d.unlock_credential : d.credential;
+    const variable = purpose === "unlock" ? d.unlock_environment_variable : d.environment_variable;
+    if (provider === "environment") {
       const secret =
-        d.environment_variable && process.env[d.environment_variable];
+        variable && process.env[variable];
       if (secret !== undefined) return secret;
-    } else if (d.credential === "keyring") {
+    } else if (provider === "keyring") {
       try {
-        const secret = await (await this.entry(d)).getPassword();
+        const secret = await (await this.entry(d, purpose)).getPassword();
         if (secret !== null) return secret;
       } catch {
         throw new Failure("CREDENTIAL_STORE_UNAVAILABLE");
       }
     }
-    throw new Failure("AUTH_REQUIRED");
+    throw new Failure(purpose === "unlock" ? "UNLOCK_CREDENTIAL_REQUIRED" : "AUTH_REQUIRED");
   }
-  async save(d: Device, password?: string) {
+  async save(d: Device, password?: string, unlockSecret?: string, update: "device" | "unlock" = "device") {
     parse(deviceSchema, d);
+    if (unlockSecret !== undefined) parse(unlockPassword, unlockSecret);
     const lock = await this.lock("config");
+    const restore: Array<() => Promise<unknown>> = [];
     try {
       const config = await this.config();
       const previous = config.devices.find((item) => item.alias === d.alias);
@@ -126,20 +136,38 @@ export class DeviceStore {
           previous.port !== d.port)
       )
         throw new Failure("DEVICE_ALIAS_CONFLICT");
+      if (update === "unlock") {
+        if (!previous) throw new Failure("SAVE_DEVICE_REQUIRED");
+        d = { ...previous };
+      }
       if (password !== undefined) {
-        try {
-          await (await this.entry(d)).setPassword(password);
-          d.credential = "keyring";
-          delete d.environment_variable;
-        } catch {
-          throw new Failure("CREDENTIAL_STORE_UNAVAILABLE");
-        }
+        d.credential = "keyring";
+        delete d.environment_variable;
+      }
+      // Keep separately configured system credentials when updating connection settings.
+      if (previous && !d.unlock_credential) {
+        d.unlock_credential = previous.unlock_credential;
+        d.unlock_environment_variable = previous.unlock_environment_variable;
+      }
+      if (unlockSecret !== undefined) {
+        d.unlock_credential = "keyring";
+        delete d.unlock_environment_variable;
       }
       config.devices = [
         ...config.devices.filter((item) => item.alias !== d.alias),
         d,
       ];
       parse(configSchema, config);
+      const saveSecret = async (purpose: "connection" | "unlock", secret: string) => {
+        try {
+          const entry = await this.entry(d, purpose);
+          const previous = await entry.getPassword();
+          restore.push(() => previous === null ? entry.deletePassword() : entry.setPassword(previous));
+          await entry.setPassword(secret);
+        } catch { throw new Failure("CREDENTIAL_STORE_UNAVAILABLE"); }
+      };
+      if (password !== undefined) await saveSecret("connection", password);
+      if (unlockSecret !== undefined) await saveSecret("unlock", unlockSecret);
       const temporary = `${this.file}.${token()}.tmp`;
       try {
         await writeFile(temporary, JSON.stringify(config, null, 2) + "\n", {
@@ -150,9 +178,19 @@ export class DeviceStore {
       } finally {
         await unlink(temporary).catch(() => {});
       }
+    } catch (error) {
+      let restored = true;
+      for (const undo of restore.reverse()) {
+        try { await undo(); } catch { restored = false; }
+      }
+      if (!restored) throw new Failure("CREDENTIAL_ROLLBACK_FAILED");
+      throw error;
     } finally {
       await lock();
     }
+  }
+  async saveUnlock(d: Device, password: string) {
+    await this.save(d, undefined, password, "unlock");
   }
   async lock(name: string): Promise<() => Promise<void>> {
     const path = join(

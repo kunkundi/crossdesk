@@ -19,6 +19,7 @@ import {
   failure,
   uiConnect,
   videoOptions,
+  unlockPassword,
   type Panel,
 } from "./common.js";
 
@@ -98,9 +99,27 @@ async function setup(store: DeviceStore, view?: string) {
       ...(environment
         ? { credential: "environment", environment_variable: environment }
         : {}),
+      ...(previous?.unlock_credential ? {
+        unlock_credential: previous.unlock_credential,
+        unlock_environment_variable: previous.unlock_environment_variable,
+      } : {}),
     };
-    await store.save(d, password);
+    let unlockSecret: string | undefined;
+    if ((await question("配置锁屏密码，供 Agent 后续自动解锁？[y/N]：")).toLowerCase() === "y") {
+      const variable = await question("锁屏密码环境变量名称（留空使用系统凭据库）：");
+      if (variable) {
+        d.unlock_credential = "environment";
+        d.unlock_environment_variable = variable;
+      } else {
+        hidden = true;
+        process.stdout.write("系统锁屏密码（隐藏输入）：");
+        try { unlockSecret = parse(unlockPassword, await rl.question("")); }
+        finally { hidden = false; process.stdout.write("\n"); }
+      }
+    }
+    await store.save(d, password, unlockSecret);
     password = undefined;
+    unlockSecret = undefined;
     process.stdout.write(
       "已保存。Agent 可调用 crossdesk_list_devices；自动连接仍需有效授权和凭据。\n",
     );
