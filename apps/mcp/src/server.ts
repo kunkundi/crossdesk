@@ -266,6 +266,37 @@ export function createServer(
     },
     { readOnly: true },
   );
+  add("crossdesk_desktop", z.strictObject({ session_id: id,
+    operation: z.enum(["capabilities", "windows", "tree"]), pid: z.int().min(0).max(2147483647).optional(),
+    snapshot_id: id.optional(), element_id: z.int().min(0).max(127).optional(),
+    max_nodes: z.int().min(1).max(128).default(128), max_depth: z.int().min(0).max(16).default(8),
+  }).refine((p) => (p.snapshot_id === undefined) === (p.element_id === undefined) &&
+    !(p.snapshot_id && p.pid !== undefined)),
+    "Inspect native desktop capabilities, windows/applications or an accessibility tree. Use pid or a prior snapshot's element_id to inspect a subtree. Returns at most 128 nodes with role, name, available value and desktop-native bounds. Snapshot references expire after 30 seconds and are scoped to this session. Secure text values are omitted. Check truncated and drill into subtrees. Backend support and accessibility permissions vary by platform.",
+    async (p, ctx) => output(await sessions.desktop(p, ctx.mcpReq.signal)), { readOnly: true });
+  const target = { snapshot_id: id, element_id: z.int().min(0).max(127) };
+  add("crossdesk_desktop_action", z.strictObject({ session_id: id, operation_id: id,
+    action: z.discriminatedUnion("operation", [
+      z.strictObject({ operation: z.literal("activate"), ...target }),
+      z.strictObject({ operation: z.literal("press"), ...target }),
+      z.strictObject({ operation: z.literal("focus"), ...target }),
+      z.strictObject({ operation: z.literal("set_value"), ...target, value: z.string().max(16384)
+        .refine((value) => Buffer.byteLength(value) <= 16384 && !value.includes("\0")) }),
+      z.strictObject({ operation: z.literal("launch"), application: z.string().min(1).max(4096) }),
+      z.strictObject({ operation: z.literal("open_url"), url: z.string().url().max(4096)
+        .refine((value) => /^https?:\/\//.test(value)) }),
+    ]),
+  }),
+    "Activate a window, press/focus an accessibility element, set its value, launch an application or open an HTTP(S) URL in the default browser. Requires active control authorization. Element operations consume their 30-second snapshot, so inspect again afterward. Use operation_id for deduplication. Secure fields use the local unlock workflow. launch accepts a macOS bundle ID or absolute .app path, an absolute Windows .exe path, or an absolute Linux executable path. OS acceptance requires subsequent UI verification.",
+    async (p, ctx) => output(await sessions.desktop(p, ctx.mcpReq.signal)));
+  add("crossdesk_wait_ui", z.strictObject({ session_id: id,
+    scope: z.enum(["tree", "windows"]).default("tree"), pid: z.int().min(0).max(2147483647).optional(),
+    text: z.string().min(1).max(256).optional(), role: z.string().min(1).max(128).optional(),
+    condition: z.enum(["present", "absent"]).default("present"), case_sensitive: z.boolean().default(false),
+    timeout_ms: z.int().min(0).max(25000).default(5000),
+  }).refine((p) => !!p.text || !!p.role),
+    "Wait for native UI text (substring) and/or role (exact) to appear or disappear, optionally within a process. Returns a fresh snapshot and matching elements. An incomplete tree cannot confirm absence and returns search_incomplete on timeout. Use shorter waits or a narrower process for large applications.",
+    async (p, ctx) => output(await sessions.waitUI(p, ctx.mcpReq.signal)), { readOnly: true });
   add("crossdesk_audio", z.strictObject({ session_id: id, enabled: z.boolean() }),
     "Enable or disable remote desktop audio reception. Audio starts disabled. Panel playback also requires the user's Play audio button. Status reports PCM reception counters.",
     async (p, ctx) => output(await sessions.audio(p, false, ctx.mcpReq.signal)));

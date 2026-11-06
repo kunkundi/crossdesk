@@ -671,6 +671,11 @@ private:
     if (!error && reply.value("ok", json{}) != true) error = "REMOTE_REQUEST_FAILED";
     json result = error ? json{{"status", job.write ? "outcome_unknown" : "failed"},
         {"error", error}, {"side_effect_possible", job.write}} : reply.value("result", json::object());
+    if (error && reply.contains("error") && reply["error"].is_string()) {
+      const auto reason = reply["error"].get<std::string>();
+      if (!reason.empty() && reason.size() <= 64 && reason.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ_") == std::string::npos)
+        result["remote_error"] = reason;
+    }
     if (!job.operation.empty()) {
       result["operation_id"] = job.operation;
       for (auto &record : records_) if (record.operation == job.operation) record.result = result;
@@ -867,6 +872,25 @@ private:
         if (human_control_) throw std::invalid_argument("HUMAN_CONTROL_ACTIVE");
         FinishAction("CANCELLED");
         session_.ReleaseInput();
+      } else if (method == "desktop") {
+        Fields(j, {"id", "method", "operation", "operation_id", "pid", "max_nodes", "max_depth",
+                   "snapshot_id", "element_id", "application", "url", "value"});
+        const auto command = String(j, "operation", 16);
+        const bool write = command != "capabilities" && command != "windows" && command != "tree";
+        if (write && command != "activate" && command != "press" && command != "focus" &&
+            command != "set_value" && command != "launch" && command != "open_url")
+          throw std::invalid_argument("INVALID_ARGUMENT");
+        const auto operation = write ? String(j, "operation_id") : std::string{};
+        if (write && PreviousRemote(j, id, operation)) return false;
+        if (write && (!allowed_ || paused_ || !session_.ControlEnabled())) throw std::invalid_argument("CONTROL_DENIED");
+        if (write && (action_ || session_.HasPressedInput())) throw std::invalid_argument("INPUT_HELD");
+        if (session_.Status()["capabilities"].value("desktop", json{}) != true)
+          throw std::invalid_argument("UI_AUTOMATION_UNSUPPORTED");
+        if (remote_jobs_.size() >= 16) throw std::invalid_argument("BUSY");
+        auto arguments = j;
+        arguments.erase("id"); arguments.erase("method"); arguments.erase("operation_id");
+        TrackRemote(j, id, session_.RequestRemote("desktop", arguments), write, operation);
+        return false;
       } else if (method == "system") {
         Fields(j, {"id", "method", "command", "operation_id"});
         const auto command = String(j, "command", 16);

@@ -13,6 +13,7 @@
 #include <memory>
 #include <string>
 
+#include "desktop_automation.h"
 #include "features/clipboard/clipboard_controller.h"
 #include "features/devices/session_device_manager.h"
 #include "features/file_transfer/file_transfer_manager.h"
@@ -154,6 +155,7 @@ class GuiRuntime : protected gui_detail::GuiState {
   void SendRemoteInput(const RemoteAction& action);
   InputOutcome ApplyRemoteInput(const std::string& remote_id, const RemoteAction& action);
   void HandleAutomation(const std::string& remote_id, const nlohmann::json& request);
+  DesktopAutomation desktop_automation_;
   std::mutex automation_mutex_;
   std::deque<std::function<void()>> automation_tasks_;
   bool automation_closing_ = false;

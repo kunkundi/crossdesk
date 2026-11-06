@@ -47,6 +47,7 @@ function setup_platform_settings()
         add_cxflags("/WX")
         set_runtimes("MT")
     elseif is_os("linux") then
+        add_requires("pkgconfig::atspi-2", {alias = "atspi", system = true, optional = true})
         add_links("pulse-simple", "pulse")
         add_requires("libyuv")
         add_syslinks("pthread", "dl")

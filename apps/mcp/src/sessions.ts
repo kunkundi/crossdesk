@@ -818,6 +818,41 @@ export class Sessions {
       throw error;
     }
   }
+  async desktop(p: Data, signal?: AbortSignal): Promise<Data> {
+    const { session_id, ...args } = p;
+    const s = this.session(session_id);
+    if (args.action) { Object.assign(args, args.action); delete args.action; }
+    const write = !["capabilities", "windows", "tree"].includes(args.operation);
+    if (write && s.displayBatch) throw new Failure("BUSY");
+    if (write && s.unlock && this.unlockPending(s.unlock)) throw new Failure("UNLOCK_PENDING");
+    if (args.snapshot_id) {
+      const prefix = `${s.id}_`;
+      if (!args.snapshot_id.startsWith(prefix)) throw new Failure("STALE_UI_SNAPSHOT");
+      args.snapshot_id = args.snapshot_id.slice(prefix.length);
+    }
+    const result = await s.native.request("desktop", args, 7000, signal);
+    if (result.snapshot_id) result.snapshot_id = `${s.id}_${result.snapshot_id}`;
+    return result;
+  }
+  async waitUI(p: Data, signal?: AbortSignal): Promise<Data> {
+    const deadline = Date.now() + (p.timeout_ms ?? 5000);
+    const normalized = (value: unknown) => p.case_sensitive ? String(value ?? "") : String(value ?? "").toLocaleLowerCase();
+    let incomplete = false;
+    do {
+      const result = await this.desktop({ session_id: p.session_id, operation: p.scope ?? "tree",
+        ...(p.pid !== undefined ? { pid: p.pid } : {}), max_nodes: 128, max_depth: 16 }, signal);
+      if (result.error) return result;
+      const matches = (result.elements ?? []).filter((element: Data) =>
+        (!p.text || normalized(`${element.name ?? ""} ${element.value ?? ""}`).includes(normalized(p.text))) &&
+        (!p.role || normalized(element.role) === normalized(p.role)));
+      incomplete = result.truncated === true;
+      if (p.condition === "absent" ? !matches.length && !incomplete : matches.length > 0)
+        return { ...result, matched: true, matches };
+      if (Date.now() >= deadline) break;
+      await delay(Math.min(250, deadline - Date.now()), undefined, { signal });
+    } while (Date.now() <= deadline);
+    return { matched: false, wait_timed_out: true, search_incomplete: incomplete };
+  }
   async system(p: Data, signal?: AbortSignal): Promise<Data> {
     const { session_id, ...args } = p;
     const s = this.session(session_id);

@@ -87,17 +87,25 @@ function setup_targets()
         add_files("apps/desktop/src/common/*.cpp")
         if is_os("windows") then
             add_files("apps/desktop/src/platform/windows/system_info.cpp",
-                "apps/desktop/src/platform/windows/screen_lock.cpp")
-            add_syslinks("Advapi32", "Wtsapi32", {public = true})
+                "apps/desktop/src/platform/windows/screen_lock.cpp",
+                "apps/desktop/src/platform/windows/desktop_automation.cpp")
+            add_syslinks("Advapi32", "Wtsapi32", "Ole32", "OleAut32", "Uiautomationcore", {public = true})
         elseif is_os("macosx") then
             add_files("apps/desktop/src/platform/macos/system_info.cpp",
-                "apps/desktop/src/platform/macos/screen_lock.cpp")
+                "apps/desktop/src/platform/macos/screen_lock.cpp",
+                "apps/desktop/src/platform/macos/desktop_automation.mm")
+            add_frameworks("AppKit", "ApplicationServices", {public = true})
         elseif is_os("linux") then
             add_files("apps/desktop/src/platform/linux/system_info.cpp",
                 "apps/desktop/src/platform/linux/screen_lock.cpp",
+                "apps/desktop/src/platform/linux/desktop_automation.cpp",
                 "apps/desktop/src/platform/linux/common/*.cpp")
             add_includedirs("apps/desktop/src/platform/linux/common")
-            add_syslinks("Xi", {public = true})
+            add_syslinks("Xi", "xcb", {public = true})
+            add_packages("atspi", {public = true})
+            on_load(function (target)
+                if target:pkg("atspi") then target:add("defines", "CROSSDESK_HAS_ATSPI=1") end
+            end)
         end
         add_includedirs("apps/desktop/src/common", {public = true})
 

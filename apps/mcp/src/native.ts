@@ -178,6 +178,7 @@ export class NativeClient {
     const sideEffect = method === "action" || method === "unlock" || method === "release_inputs" || method === "viewer_input" ||
       (method === "clipboard" && args.operation === "set") ||
       (method === "system" && args.command !== "status") ||
+      (method === "desktop" && !["capabilities", "windows", "tree"].includes(args.operation)) ||
       (method === "files" && ["upload", "download", "cancel"].includes(args.operation));
     const line = JSON.stringify({ ...args, id, method }) + "\n";
     if (Buffer.byteLength(line) > 65536)

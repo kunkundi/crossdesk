@@ -25,6 +25,7 @@ void GuiRuntime::HandleAutomation(const std::string& remote_id,
       json capabilities{{"input_ack", true}, {"clipboard", true}, {"files", true}};
 #if defined(_WIN32) || defined(__APPLE__) || (defined(__linux__) && !defined(__OHOS__))
       capabilities["system"] = true;
+      capabilities["desktop"] = true;
 #endif
       reply(true, std::move(capabilities));
     } else if (method == "input") {
@@ -42,6 +43,22 @@ void GuiRuntime::HandleAutomation(const std::string& remote_id,
       if (result == RemoteInputDispatcher::Result::rejected ||
           result == RemoteInputDispatcher::Result::overflow)
         reply(false, "INPUT_REJECTED");
+    } else if (method == "desktop") {
+      const auto arguments = request.at("arguments");
+      if (!arguments.is_object()) { reply(false, "INVALID_ARGUMENT"); return; }
+      std::lock_guard lock(automation_mutex_);
+      if (automation_closing_ || automation_tasks_.size() >= 32) { reply(false, "BUSY"); return; }
+      const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+      automation_tasks_.push_back([this, source, remote_id, arguments, reply, deadline] {
+        if (std::chrono::steady_clock::now() > deadline) { reply(false, "REQUEST_EXPIRED"); return; }
+        if (ControllerEvents(remote_id) != source || !IsAuthorizedController(remote_id)) return;
+        try { reply(true, desktop_automation_.Execute(remote_id, arguments)); }
+        catch (const std::exception& error) {
+          const std::string code = error.what();
+          reply(false, !code.empty() && code.size() <= 64 && code.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ_") == std::string::npos
+              ? code : "UI_AUTOMATION_FAILED");
+        }
+      });
     } else if (method == "system") {
       const auto operation = request.at("arguments").at("operation").get<std::string>();
       if (operation != "status" && operation != "lock" && operation != "send_sas") {
