@@ -7,10 +7,22 @@
 #include "screen_lock.h"
 
 #include <dlfcn.h>
+#include <ApplicationServices/ApplicationServices.h>
 
 #include "rd_log.h"
 
 namespace crossdesk {
+
+ScreenLockState QueryScreenLock() {
+  const auto session = CGSessionCopyCurrentDictionary();
+  if (!session) return ScreenLockState::unknown;
+  const auto console = CFDictionaryGetValue(session, kCGSessionOnConsoleKey);
+  const auto locked = CFDictionaryGetValue(session, CFSTR("CGSSessionScreenIsLocked"));
+  const auto state = locked == kCFBooleanTrue ? ScreenLockState::locked
+      : console == kCFBooleanTrue ? ScreenLockState::unlocked : ScreenLockState::unknown;
+  CFRelease(session);
+  return state;
+}
 
 bool LockScreen() {
   // macOS has no public immediate-lock API. Resolve login.framework at

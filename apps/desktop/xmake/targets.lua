@@ -88,7 +88,7 @@ function setup_targets()
         if is_os("windows") then
             add_files("apps/desktop/src/platform/windows/system_info.cpp",
                 "apps/desktop/src/platform/windows/screen_lock.cpp")
-            add_syslinks("Advapi32", {public = true})
+            add_syslinks("Advapi32", "Wtsapi32", {public = true})
         elseif is_os("macosx") then
             add_files("apps/desktop/src/platform/macos/system_info.cpp",
                 "apps/desktop/src/platform/macos/screen_lock.cpp")

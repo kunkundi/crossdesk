@@ -175,6 +175,7 @@ export class NativeClient {
     const id = ++this.sequence;
     const sideEffect = method === "action" || method === "unlock" ||
       (method === "clipboard" && args.operation === "set") ||
+      (method === "system" && args.command !== "status") ||
       (method === "files" && ["upload", "download", "cancel"].includes(args.operation));
     const line = JSON.stringify({ ...args, id, method }) + "\n";
     if (Buffer.byteLength(line) > 65536)

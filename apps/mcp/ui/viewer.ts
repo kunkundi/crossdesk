@@ -142,6 +142,7 @@ const messages: Record<string, string> = {
   UNLOCK_PENDING: "请先完成或取消当前解锁请求。",
   UNLOCK_CREDENTIAL_REQUIRED: "请输入系统锁屏密码。",
   UNLOCK_EXPIRED: "解锁请求已失效，请让 Agent 重新观察锁屏并发起请求。",
+  UNLOCK_NOT_CONFIRMED: "系统解锁状态尚待确认，请检查远端画面。",
   NATIVE_UNLOCK_UNSUPPORTED: "请更新原生 CLI，以启用锁屏解锁。",
   SAVE_DEVICE_REQUIRED: "请先保存设备，再保存锁屏密码。",
   SAVE_UNLOCK_REQUIRED: "请勾选保存锁屏密码。",
@@ -285,7 +286,7 @@ function renderUnlock(s: Data) {
   const sessionChanged = s.session_id !== unlockSessionId;
   const changed = sessionChanged || request?.request_id !== unlockRequestId;
   const stateChanged = changed || request?.state !== unlockState;
-  const finished = ["submitted", "cancelled", "failed"].includes(request?.state);
+  const finished = ["submitted", "verified", "cancelled", "failed"].includes(request?.state);
   const dialog = element<HTMLDialogElement>("unlock-dialog");
   if (changed || !pending || !visible) {
     input("unlock-password").value = "";
@@ -305,7 +306,7 @@ function renderUnlock(s: Data) {
   element("session-unlock-row").hidden = !visible;
   const states: Record<string, string> = {
     preparing: "准备中", awaiting_password: "等待密码", submitting: "提交中",
-    submitted: "已提交", cancelled: "已取消", failed: "提交失败",
+    submitted: "已提交", verifying: "验证中", verified: "已解锁", cancelled: "已取消", failed: "提交失败",
   };
   text("session-unlock-state", states[request?.state] ?? "—");
   element("session-unlock-state").dataset.state = request?.state ?? "";
@@ -320,12 +321,13 @@ function renderUnlock(s: Data) {
     ? "正在提交解锁，请稍候。" : "请确认远端系统密码框已聚焦，然后输入锁屏密码。"));
   if (visible && pending && stateChanged) openUnlockDialog();
   if (visible && finished) {
-    text("unlock-toast-title", request.state === "submitted" ? "解锁请求已提交"
+    text("unlock-toast-title", request.state === "verified" ? "系统已解锁" : request.state === "submitted" ? "解锁请求已提交"
       : request.state === "cancelled" ? "解锁已取消" : "解锁操作未完成");
-    let message = request.state === "submitted" ? "Agent 将检查画面并继续任务。" : "";
+    let message = ["submitted", "verified"].includes(request.state) ? "Agent 将检查画面并继续任务。" : "";
     if (request.credential_saved) message = "锁屏密码已保存，Agent 将检查画面并继续任务。";
     if (request.error) message = messages[request.error.code] ?? "请检查远端画面后再发起解锁。";
-    if (request.persistence_error) message = "密码保存失败，可通过本机 setup 重新配置。";
+    if (request.persistence_error) message = request.persistence_error === "UNLOCK_NOT_CONFIRMED"
+      ? "锁屏密码需要在解锁确认后保存，请检查远端画面。" : "密码保存失败，可通过本机 setup 重新配置。";
     text("unlock-toast-message", message);
     element("unlock-toast-message").hidden = !message;
     element("unlock-toast").dataset.state = request.state;

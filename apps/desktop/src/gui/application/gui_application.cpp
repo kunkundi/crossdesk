@@ -2609,6 +2609,7 @@ void GuiApplication::Tick() {
     }
   }
   clipboard_.ApplyPendingRemoteText();
+  ProcessAutomationRequests();
 #ifndef __OHOS__
   std::string activation_token;
   bool activation_requested =

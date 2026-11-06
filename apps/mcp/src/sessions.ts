@@ -66,7 +66,8 @@ interface UnlockRequest {
   operation: string;
   observation: string;
   useSaved: boolean;
-  state: "preparing" | "awaiting_password" | "submitting" | "submitted" | "failed" | "cancelled";
+  state: "preparing" | "awaiting_password" | "submitting" | "verifying" | "verified" | "submitted" | "failed" | "cancelled";
+  verification?: "locked" | "unlocked" | "unknown";
   expires: number;
   generation?: number;
   geometry?: number;
@@ -501,6 +502,13 @@ export class Sessions {
       throw error;
     }
   }
+  async system(p: Data, signal?: AbortSignal): Promise<Data> {
+    const { session_id, ...args } = p;
+    const s = this.session(session_id);
+    if (args.command !== "status" && s.unlock && this.unlockPending(s.unlock))
+      throw new Failure("UNLOCK_PENDING");
+    return s.native.request("system", args, 7000, signal);
+  }
   async control(id: string, enabled: boolean) {
     if (!enabled) this.cancelUnlock(this.session(id));
     return this.session(id).native.request("control", { enabled });
@@ -533,20 +541,23 @@ export class Sessions {
     });
   }
   private unlockPending(request: UnlockRequest) {
-    return ["preparing", "awaiting_password", "submitting"].includes(request.state);
+    return ["preparing", "awaiting_password", "submitting", "verifying"].includes(request.state);
   }
   private unlockStatus(request: UnlockRequest): Data {
     return {
       request_id: request.id,
       state: request.state,
+      ...(request.verification ? { verification: request.verification } : {}),
       expires_at: request.expires,
       ...(request.error ? { error: request.error } : {}),
       ...(request.result ? { result: request.result } : {}),
       ...(request.persistenceError ? { persistence_error: request.persistenceError } : {}),
       ...(request.saved ? { credential_saved: true } : {}),
-      next_step: this.unlockPending(request)
+      next_step: request.state === "verifying"
+        ? "The remote system is verifying unlock completion. Wait with crossdesk_get_session and unlock_request_id."
+        : this.unlockPending(request)
         ? "The user enters the system lock-screen password in the local panel. Never request it in chat. Wait with crossdesk_get_session and unlock_request_id."
-        : request.state === "submitted"
+        : ["submitted", "verified"].includes(request.state)
           ? "Take a fresh screenshot to verify that the desktop is unlocked, then continue the pending task. If the password was rejected, request user entry with use_saved: false; never automatically replay an unlock."
           : "Unlock stopped. Inspect the error and current screen before starting another request. Never automatically replay an uncertain submission.",
     };
@@ -554,7 +565,7 @@ export class Sessions {
   private cancelUnlock(s: Session, code = "CANCELLED") {
     const request = s.unlock;
     if (!request || !this.unlockPending(request)) return;
-    request.error = failure(new Failure(code, request.state === "submitting"));
+    request.error = failure(new Failure(code, ["submitting", "verifying"].includes(request.state)));
     request.state = "cancelled";
     request.controller.abort();
   }
@@ -621,6 +632,17 @@ export class Sessions {
     request.state = "submitting";
     const combined = signal ? AbortSignal.any([signal, request.controller.signal]) : request.controller.signal;
     try {
+      const verify = s.status.capabilities?.system === true;
+      if (verify) {
+        const before = await this.system({ session_id: s.id, command: "status" }, combined);
+        if (combined.aborted) return;
+        if (before.lock_state === "unlocked") {
+          request.state = "verified";
+          request.verification = "unlocked";
+          request.result = { status: "already_unlocked" };
+          return;
+        }
+      }
       // User input may take longer than an observation's lifetime. Re-observe the
       // same display generation before sending the secret to its focused field.
       const observation = await this.screenshot({ session_id: s.id }, combined);
@@ -635,14 +657,30 @@ export class Sessions {
       request.result = result;
       if (request.controller.signal.aborted) return;
       request.state = result.status === "submitted" ? "submitted" : "failed";
-      if (remember && request.state === "submitted") {
+      if (verify && request.state === "submitted") {
+        request.state = "verifying";
+        const deadline = Date.now() + 8000;
+        do {
+          const state = await this.system({ session_id: s.id, command: "status" }, combined);
+          request.verification = ["locked", "unlocked"].includes(state.lock_state) ? state.lock_state : "unknown";
+          if (request.verification !== "locked") break;
+          await delay(250, undefined, { signal: combined });
+        } while (Date.now() < deadline);
+        if (request.controller.signal.aborted) return;
+        request.state = request.verification === "unlocked" ? "verified" : "submitted";
+        if (request.verification === "locked") request.error = failure(new Failure("UNLOCK_NOT_CONFIRMED", true));
+      }
+      if (remember && (request.state === "verified" || (!verify && request.state === "submitted"))) {
         try { await this.store.saveUnlock(s.device, password); request.saved = true; }
         catch (error) { request.persistenceError = failure(error).code; }
+      } else if (remember && request.state === "submitted") {
+        request.persistenceError = "UNLOCK_NOT_CONFIRMED";
       }
     } catch (error) {
       if (!request.controller.signal.aborted) {
         request.state = "failed";
         request.error = failure(error);
+        if (request.result?.status === "submitted") request.error.side_effect_possible = true;
       }
     } finally { password = ""; }
   }

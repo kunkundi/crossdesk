@@ -125,7 +125,7 @@ export function createServer(
       annotations: {
         readOnlyHint: !!d.readOnly,
         destructiveHint: ["crossdesk_action", "crossdesk_unlock", "crossdesk_clipboard_set",
-          "crossdesk_files_transfer", "crossdesk_files_cancel"].includes(d.name),
+          "crossdesk_files_transfer", "crossdesk_files_cancel", "crossdesk_system_command"].includes(d.name),
         openWorldHint: true,
       },
       ...(d.ui || d.app
@@ -339,6 +339,14 @@ export function createServer(
   add("crossdesk_files_cancel", z.strictObject({ session_id: id, operation_id: id }),
     "Cancel a transfer and remove its unfinished staging files. Completed files remain available.",
     async (p, ctx) => output(await sessions.files({ ...p, operation: "cancel" }, ctx.mcpReq.signal)));
+  add("crossdesk_system_status", z.strictObject({ session_id: id }),
+    "Query the remote operating system's lock state and available secure-desktop service. unknown means the platform could not determine the state.",
+    async (p, ctx) => output(await sessions.system({ ...p, command: "status" }, ctx.mcpReq.signal)),
+    { readOnly: true });
+  add("crossdesk_system_command", z.strictObject({ session_id: id, operation_id: id,
+    command: z.enum(["lock", "send_sas"]) }),
+    "Lock the remote session or request Windows secure attention through its service. Requires control authorization. Reuse operation_id to query the same command. Check system status and a fresh screenshot after acceptance.",
+    async (p, ctx) => output(await sessions.system(p, ctx.mcpReq.signal)));
   add("crossdesk_clipboard_set", z.strictObject({ session_id: id, operation_id: id,
     text: z.string().max(16384).refine((text) => Buffer.byteLength(text) <= 16384 && !text.includes("\0")) }),
     "Set or clear the remote text clipboard. Reuse the same operation_id to query the original result. Returns applied after the remote clipboard update.",
@@ -438,7 +446,7 @@ export function createServer(
           annotations: {
             readOnlyHint: !!d.readOnly,
             destructiveHint: ["crossdesk_action", "crossdesk_unlock", "crossdesk_clipboard_set",
-              "crossdesk_files_transfer", "crossdesk_files_cancel"].includes(d.name),
+              "crossdesk_files_transfer", "crossdesk_files_cancel", "crossdesk_system_command"].includes(d.name),
             openWorldHint: true,
           },
           ...((d.ui || d.app) && apps(ctx)

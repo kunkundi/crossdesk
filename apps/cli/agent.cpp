@@ -788,6 +788,21 @@ private:
       } else if (method == "action") {
         StartAction(j, id);
         return false;
+      } else if (method == "system") {
+        Fields(j, {"id", "method", "command", "operation_id"});
+        const auto command = String(j, "command", 16);
+        if (command != "status" && command != "lock" && command != "send_sas")
+          throw std::invalid_argument("INVALID_ARGUMENT");
+        const bool write = command != "status";
+        if (write && (!allowed_ || paused_ || !session_.ControlEnabled()))
+          throw std::invalid_argument("CONTROL_DENIED");
+        if (session_.Status()["capabilities"].value("system", json{}) != true)
+          throw std::invalid_argument("SYSTEM_UNSUPPORTED");
+        const auto operation = write ? String(j, "operation_id") : std::string{};
+        if (write && PreviousRemote(j, id, operation)) return false;
+        if (remote_jobs_.size() >= 16) throw std::invalid_argument("BUSY");
+        TrackRemote(j, id, session_.RequestRemote("system", {{"operation", command}}), write, operation);
+        return false;
       } else if (method == "files") {
         Fields(j, {"id", "method", "operation", "operation_id", "path", "paths",
                    "destination", "request_id", "offset"});

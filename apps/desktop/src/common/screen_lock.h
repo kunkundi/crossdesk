@@ -12,6 +12,8 @@ namespace crossdesk {
 // Called on the application thread. True means the OS accepted the request,
 // not that the asynchronous transition to the lock screen has finished.
 bool LockScreen();
+enum class ScreenLockState { unknown, unlocked, locked };
+ScreenLockState QueryScreenLock();
 
 }  // namespace crossdesk
 

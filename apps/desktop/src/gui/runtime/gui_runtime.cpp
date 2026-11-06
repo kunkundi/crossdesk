@@ -65,6 +65,11 @@ GuiRuntime::GuiRuntime()
           }) {}
 
 GuiRuntime::~GuiRuntime() {
+  {
+    std::lock_guard lock(automation_mutex_);
+    automation_closing_ = true;
+    automation_tasks_.clear();
+  }
   remote_input_.Stop();
 #if _WIN32
   windows_rdp_handoff_allowed_->store(false, std::memory_order_relaxed);

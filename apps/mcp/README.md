@@ -262,3 +262,9 @@ npm run pack:npm -- --out-dir /absolute/path/artifacts
 `crossdesk_files_transfer` 支持上传和下载文件、文件夹，源路径为绝对路径，目标目录需要已存在。传输使用 `operation_id` 去重，通过 `crossdesk_files_status` 查询每个文件的字节进度和终态，通过 `crossdesk_files_cancel` 取消并清理未完成文件。每个连接同时处理一个传输任务，多文件按现有传输引擎排队。已完成任务保留四份历史记录，状态中的文件清单分页返回。目标同名文件按现有冲突命名规则另存。
 
 文件操作需要更新后的被控端声明 `capabilities.files`。下载请求绑定目标目录及传输标识，接收器接受已为该请求预留的文件。人工暂停后仍可查询或取消已有任务。
+
+### 系统状态与安全桌面
+
+`crossdesk_system_status` 查询系统锁定状态。Windows 同时报告服务可用性和交互桌面阶段。`crossdesk_system_command` 支持 `lock`，Windows 可通过已运行的服务执行 `send_sas`。命令需要控制授权和独立的 `operation_id`，相同请求查询原结果。系统接受命令后，通过状态及画面观察确认实际界面。
+
+支持系统状态的被控端会在密码提交后接受最长八秒的解锁验证。确认解锁后返回 `unlock.state: verified`，并保存用户选择记住的密码。系统状态无法确认时保留 `submitted` 和验证信息。已经解锁的桌面返回 `already_unlocked`。旧被控端沿用截图确认流程。

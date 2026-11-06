@@ -104,6 +104,7 @@ class GuiRuntime : protected gui_detail::GuiState {
   void HandleServerControllerDisconnected(const std::string& remote_id,
                                           const char* reason);
   void HandleWindowsServiceIntegration();
+  void ProcessAutomationRequests();
   void HandlePrivacy();
   void HandleScreenLock();
   bool IsAuthorizedController(const std::string& remote_id);
@@ -153,6 +154,9 @@ class GuiRuntime : protected gui_detail::GuiState {
   void SendRemoteInput(const RemoteAction& action);
   InputOutcome ApplyRemoteInput(const std::string& remote_id, const RemoteAction& action);
   void HandleAutomation(const std::string& remote_id, const nlohmann::json& request);
+  std::mutex automation_mutex_;
+  std::deque<std::function<void()>> automation_tasks_;
+  bool automation_closing_ = false;
   InputOutcome InjectRemoteMouse(const RemoteAction& action, int display);
   std::string gallery_group_control_id_;
 

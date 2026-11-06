@@ -151,3 +151,9 @@ Updated desktop hosts answer the versioned `automation` capability handshake. Wh
 `files` supports `list`, `list_result`, `list_cancel`, `upload`, `download`, `status`, and `cancel`. Listing requests return a numeric `request_id`. Transfer requests require an `operation_id`, absolute `paths`, and an existing absolute `destination` directory. Progress and listing pages use `offset` and return `next_offset` with at most 256 entries.
 
 The desktop and CLI share `FileBrowser` and the existing file transfer engine. Preparation and completion messages carry a transfer identifier to bind incoming files to the requested destination. A cancelled transfer cleans unfinished staging files. The capability handshake advertises `files` on compatible hosts. Queries and cancellation of existing tasks remain available during human pause.
+
+## System control
+
+`system` accepts `command: status | lock | send_sas`. Commands that change system state require an `operation_id` and control permission. Status queries are available during human pause. The host executes system operations through its application-thread queue, checks connection authorization again, and expires queued operations after two seconds. Windows secure attention uses the existing service integration.
+
+`lock_state` is `locked`, `unlocked`, or `unknown`. macOS queries the current console session, Windows uses its session lock state, and Linux queries the current logind session's `LockedHint`. The MCP unlock workflow verifies this state on compatible hosts and returns `verified` when the system reports an unlocked session.
