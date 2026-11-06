@@ -19,18 +19,23 @@ jobs:
         include:
           - runner: macos-15
             target: darwin-arm64
+            plat: macosx
             arch: arm64
           - runner: macos-15-intel
             target: darwin-x64
+            plat: macosx
             arch: x86_64
           - runner: ubuntu-22.04
             target: linux-x64
+            plat: linux
             arch: x86_64
           - runner: ubuntu-22.04-arm
             target: linux-arm64
+            plat: linux
             arch: arm64
           - runner: windows-2022
             target: win32-x64
+            plat: windows
             arch: x64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
@@ -90,23 +95,31 @@ jobs:
           fi
       - name: Prepare pinned dependency
         run: sh apps/cli/scripts/prepare-deps.sh
-      # Exact matches only: changed local recipes/patches must not reuse old libraries.
-      # Source, README and npm metadata edits do not change this key.
+      - name: Read native dependency configuration
+        id: dependency-config
+        shell: bash
+        run: xmake lua .github/scripts/cli-dependency-cache.lua "${{ matrix.plat }}" "${{ matrix.arch }}" "$RUNNER_TEMP/crossdesk-cli-config.lua"
+      - name: Set native dependency cache key
+        id: dependency-key
+        shell: bash
+        env:
+          CACHE_PREFIX: cli-deps-v2-${{ matrix.runner }}-${{ matrix.target }}-image${{ steps.runner-image.outputs.version }}-xmake${{ env.XMAKE_VERSION }}-${{ steps.dependency-config.outputs.configuration }}-${{ hashFiles('deps/thirdparty/openssl/**', 'deps/submodules/minirtc/thirdparty/**') }}
+          DEPENDENCY_HASH: ${{ steps.dependency-config.outputs.dependencies }}
+        run: |
+          printf 'prefix=%s-\n' "$CACHE_PREFIX" >> "$GITHUB_OUTPUT"
+          printf 'key=%s-%s\n' "$CACHE_PREFIX" "$DEPENDENCY_HASH" >> "$GITHUB_OUTPUT"
+      # Reuse installed packages across dependency declaration changes within the
+      # same toolchain, build settings and local recipes/patches.
       - name: Restore native dependencies
         id: native-cache
         uses: actions/cache/restore@v5
         with:
           path: ${{ env.XMAKE_PKG_INSTALLDIR }}
-          key: cli-deps-v1-${{ matrix.runner }}-${{ matrix.target }}-image${{ steps.runner-image.outputs.version }}-xmake${{ env.XMAKE_VERSION }}-${{ hashFiles('xmake.lua', 'apps/cli/xmake.lua', 'apps/desktop/xmake/options.lua', 'deps/thirdparty/openssl/**', 'deps/submodules/minirtc/xmake.lua', 'deps/submodules/minirtc/thirdparty/**', '.github/workflows/build-cli.yml') }}
-      - name: Configure macOS
-        if: runner.os == 'macOS'
-        run: xmake f -y -p macosx -a ${{ matrix.arch }} -m release --target_minver=13.0 --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n
-      - name: Configure Linux
-        if: runner.os == 'Linux'
-        run: xmake f -y -p linux -a ${{ matrix.arch }} -m release --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n
-      - name: Configure Windows
-        if: runner.os == 'Windows'
-        run: xmake f -y -p windows -a ${{ matrix.arch }} -m release --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n
+          key: ${{ steps.dependency-key.outputs.key }}
+          restore-keys: ${{ steps.dependency-key.outputs.prefix }}
+      - name: Configure native dependencies
+        shell: bash
+        run: xmake f -y --import="$RUNNER_TEMP/crossdesk-cli-config.lua"
       # xmake f installs required packages. Save before compiling or packaging the CLI,
       # so failures in those later steps do not discard successfully installed dependencies.
       - name: Save native dependencies
