@@ -71,7 +71,7 @@ Release 构建使用 `./gradlew :app:assembleRelease`，默认输出未签名 AP
 
 首次构建会下载并从源码编译依赖，耗时取决于网络。后续编译复用缓存。Android 直接编译 `deps/submodules/minirtc` 中的源码；构建产物和依赖缓存位于 `.native/`，Xmake 工程配置位于 `native/.xmake/`，与桌面和 iOS 分开保存：
 
-- Gradle 9.3.1、AGP 9.1.0、NDK r28c 固定在工程中。
+- Gradle 9.9.0、AGP 9.1.0、NDK r28c 固定在工程中。
 - Xmake 依赖仓库沿用 PC 端策略：使用默认仓库或调用环境指定的仓库，不固定或校验仓库提交。Android 编译产物和安装包缓存仍独立保存。
 - `scripts/build_native.py` 调用独立的 `native/xmake.lua`，直接包含 MiniRTC 子模块的构建定义。构建过程不复制 MiniRTC 源码，也不应用补丁。
 - MiniRTC 源码内的 Android 分支启用 OpenH264、SVT-AV1 和 dav1d 软件编解码及依赖配方，兼容 OpenFEC 的 Android 头文件，并关闭 UPnP。SVT-AV1 使用内置 ARM CPU 能力检测；当前应用作为控制端只接收视频，库同时提供 AV1 编码能力。TLS 校验位于 MiniRTC 内部。STUN、TURN UDP/TCP 与直接连接仍由 MiniRTC 提供。
