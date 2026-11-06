@@ -95,10 +95,11 @@ jobs:
           fi
       - name: Prepare pinned dependency
         run: sh apps/cli/scripts/prepare-deps.sh
+      # Use the runner's native shell for Xmake. Git Bash sets MSYSTEM on
+      # Windows, which makes host tools such as jom resolve for msys.
       - name: Read native dependency configuration
         id: dependency-config
-        shell: bash
-        run: xmake lua .github/scripts/cli-dependency-cache.lua "${{ matrix.plat }}" "${{ matrix.arch }}" "$RUNNER_TEMP/crossdesk-cli-config.lua"
+        run: xmake lua .github/scripts/cli-dependency-cache.lua "${{ matrix.plat }}" "${{ matrix.arch }}" "${{ runner.temp }}/crossdesk-cli-config.lua"
       - name: Set native dependency cache key
         id: dependency-key
         shell: bash
@@ -118,8 +119,7 @@ jobs:
           key: ${{ steps.dependency-key.outputs.key }}
           restore-keys: ${{ steps.dependency-key.outputs.prefix }}
       - name: Configure native dependencies
-        shell: bash
-        run: xmake f -y --import="$RUNNER_TEMP/crossdesk-cli-config.lua"
+        run: xmake f -y --import="${{ runner.temp }}/crossdesk-cli-config.lua"
       # xmake f installs required packages. Save before compiling or packaging the CLI,
       # so failures in those later steps do not discard successfully installed dependencies.
       - name: Save native dependencies
