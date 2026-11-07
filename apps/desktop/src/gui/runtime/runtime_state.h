@@ -122,6 +122,7 @@ struct PlatformIntegrationState {
   bool portable_service_do_not_remind_ = false;
   bool portable_service_prompt_suppressed_ = false;
   bool portable_service_installed_ = false;
+  bool portable_service_needs_repair_ = false;
   std::atomic<PortableServiceInstallState> portable_service_install_state_{
       PortableServiceInstallState::idle};
   std::thread portable_service_install_thread_;

@@ -219,6 +219,12 @@ inline int ApplyMainWindowStrings(
       Text(localization::install_windows_service[language]));
   strings.set_service_installed(
       Text(localization::windows_service_installed[language]));
+  strings.set_repair_service(
+      Text(localization::repair_windows_service[language]));
+  strings.set_service_repair_title(
+      Text(localization::windows_service_repair_title[language]));
+  strings.set_service_repair_message(
+      Text(localization::windows_service_repair_message[language]));
   strings.set_do_not_remind(
       Text(localization::do_not_remind_again[language]));
   strings.set_notification(Text(localization::notification[language]));

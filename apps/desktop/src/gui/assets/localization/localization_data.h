@@ -532,6 +532,13 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"权限迁移未完成。请重试，或在系统设置中移除旧 CrossDesk 后重新添加。", {"权限迁移未完成。请重试，或在系统设置中移除旧 CrossDesk 后重新添加。", "Permission migration needs attention. Retry, or remove and re-add CrossDesk in System Settings.", "Не удалось завершить перенос разрешений. Повторите попытку или удалите и заново добавьте CrossDesk в системных настройках.", "權限遷移未完成。請重試，或在系統設定中移除舊 CrossDesk 後重新加入。", "権限の移行を完了できませんでした。再試行するか、システム設定でCrossDeskを削除して追加し直してください。", "권한 이전이 완료되지 않았습니다. 다시 시도하거나 시스템 설정에서 CrossDesk를 제거한 후 다시 추가하세요.", "Die Migration der Berechtigungen ist unvollständig. Wiederholen Sie den Vorgang oder entfernen Sie CrossDesk in den Systemeinstellungen und fügen Sie es erneut hinzu.", "La migration des autorisations est incomplète. Réessayez, ou supprimez puis ajoutez à nouveau CrossDesk dans les réglages système.", "La migración de permisos está incompleta. Reinténtelo o elimine y vuelva a añadir CrossDesk en Ajustes del Sistema.", "A migração de permissões está incompleta. Tente novamente ou remova e adicione o CrossDesk novamente nos Ajustes do Sistema."}},
   {"重试权限迁移", {"重试权限迁移", "Retry migration", "Повторить перенос", "重試權限遷移", "移行を再試行", "권한 이전 재시도", "Migration wiederholen", "Réessayer la migration", "Reintentar migración", "Repetir migração"}},
   {"稍后", {"稍后", "Later", "Позже", "稍後", "後で", "나중에", "Später", "Plus tard", "Más tarde", "Mais tarde"}},
+  {"修复", {"修复", "Repair", "Восстановить", "修復", "修復", "복구", "Reparieren", "Réparer", "Reparar", "Reparar"}},
+  {"修复 CrossDesk 服务", {"修复 CrossDesk 服务", "Repair CrossDesk Service", "Восстановление службы CrossDesk", "修復 CrossDesk 服務", "CrossDesk サービスの修復", "CrossDesk 서비스 복구", "CrossDesk-Dienst reparieren", "Réparer le service CrossDesk", "Reparar el servicio CrossDesk", "Reparar o serviço CrossDesk"}},
+  {"升级或移动 CrossDesk 后，锁屏控制服务可能不可用。修复将以管理员权限更新服务路径并重启服务。请确认当前目录包含完整的便携版文件。", {"升级或移动 CrossDesk 后，锁屏控制服务可能不可用。修复将以管理员权限更新服务路径并重启服务。请确认当前目录包含完整的便携版文件。", "After updating or moving CrossDesk, lock-screen control may be unavailable. Repair updates the service path and restarts the service with administrator permission. Keep all portable package files in the current folder.", "После обновления или перемещения CrossDesk управление экраном блокировки может быть недоступно. Восстановление обновит путь и перезапустит службу с правами администратора. Все файлы портативной версии должны находиться в текущей папке.", "升級或移動 CrossDesk 後，鎖定畫面控制服務可能無法使用。修復將以管理員權限更新服務路徑並重新啟動服務。請確認目前目錄包含完整的可攜版檔案。", "CrossDesk の更新や移動後は、ロック画面を操作できない場合があります。修復すると管理者権限でサービスのパスを更新し、再起動します。ポータブル版の全ファイルを現在のフォルダーに配置してください。", "CrossDesk를 업데이트하거나 이동한 후 잠금 화면 제어가 작동하지 않을 수 있습니다. 복구하면 관리자 권한으로 서비스 경로를 갱신하고 서비스를 다시 시작합니다. 현재 폴더에 포터블 버전의 모든 파일이 있어야 합니다.", "Nach dem Aktualisieren oder Verschieben von CrossDesk ist die Steuerung des Sperrbildschirms möglicherweise nicht verfügbar. Die Reparatur aktualisiert den Dienstpfad und startet den Dienst mit Administratorrechten neu. Alle Dateien der portablen Version müssen im aktuellen Ordner liegen.", "Après une mise à jour ou un déplacement de CrossDesk, le contrôle de l’écran verrouillé peut être indisponible. La réparation met à jour le chemin du service et le redémarre avec les droits administrateur. Conservez tous les fichiers de la version portable dans le dossier actuel.", "Tras actualizar o mover CrossDesk, el control de la pantalla de bloqueo puede no estar disponible. La reparación actualiza la ruta y reinicia el servicio con permisos de administrador. Mantenga todos los archivos de la versión portátil en la carpeta actual.", "Após atualizar ou mover o CrossDesk, o controle da tela de bloqueio pode ficar indisponível. O reparo atualiza o caminho e reinicia o serviço com permissão de administrador. Mantenha todos os arquivos da versão portátil na pasta atual."}},
+  {"正在修复 Windows 服务…", {"正在修复 Windows 服务…", "Repairing Windows service…", "Восстановление службы Windows…", "正在修復 Windows 服務…", "Windows サービスを修復中…", "Windows 서비스 복구 중…", "Windows-Dienst wird repariert…", "Réparation du service Windows…", "Reparando el servicio de Windows…", "Reparando o serviço do Windows…"}},
+  {"服务已修复并启动", {"服务已修复并启动", "Service repaired and started", "Служба восстановлена и запущена", "服務已修復並啟動", "サービスを修復し、起動しました", "서비스를 복구하고 시작했습니다", "Dienst repariert und gestartet", "Service réparé et démarré", "Servicio reparado e iniciado", "Serviço reparado e iniciado"}},
+  {"修复失败，请检查管理员权限和便携版文件后重试", {"修复失败，请检查管理员权限和便携版文件后重试", "Repair failed. Check administrator permission and portable package files, then retry.", "Восстановление не удалось. Проверьте права администратора и файлы портативной версии, затем повторите попытку.", "修復失敗，請檢查管理員權限和可攜版檔案後重試", "修復に失敗しました。管理者権限とポータブル版のファイルを確認して再試行してください。", "복구하지 못했습니다. 관리자 권한과 포터블 버전 파일을 확인한 후 다시 시도하세요.", "Reparatur fehlgeschlagen. Prüfen Sie die Administratorrechte und die Dateien der portablen Version und versuchen Sie es erneut.", "Échec de la réparation. Vérifiez les droits administrateur et les fichiers de la version portable, puis réessayez.", "Error al reparar. Compruebe los permisos de administrador y los archivos de la versión portátil e inténtelo de nuevo.", "Falha no reparo. Verifique a permissão de administrador e os arquivos da versão portátil e tente novamente."}},
+  {"远端 Windows 服务不可用，锁屏时无法操作。请在远端安装或修复 CrossDesk 服务。", {"远端 Windows 服务不可用，锁屏时无法操作。请在远端安装或修复 CrossDesk 服务。", "The remote Windows service is unavailable. Lock-screen control will not work. Install or repair the CrossDesk service on the remote device.", "Служба Windows на удалённом устройстве недоступна. Управление экраном блокировки не работает. Установите или восстановите службу CrossDesk на удалённом устройстве.", "遠端 Windows 服務無法使用，鎖定畫面時無法操作。請在遠端安裝或修復 CrossDesk 服務。", "リモートの Windows サービスが利用できないため、ロック画面を操作できません。リモート端末で CrossDesk サービスをインストールまたは修復してください。", "원격 Windows 서비스를 사용할 수 없어 잠금 화면을 제어할 수 없습니다. 원격 장치에서 CrossDesk 서비스를 설치하거나 복구하세요.", "Der Windows-Dienst auf dem entfernten Gerät ist nicht verfügbar. Der Sperrbildschirm kann nicht gesteuert werden. Installieren oder reparieren Sie dort den CrossDesk-Dienst.", "Le service Windows distant est indisponible. Le contrôle de l’écran verrouillé ne fonctionnera pas. Installez ou réparez le service CrossDesk sur l’appareil distant.", "El servicio de Windows remoto no está disponible. No se podrá controlar la pantalla de bloqueo. Instale o repare el servicio CrossDesk en el dispositivo remoto.", "O serviço do Windows remoto está indisponível. Não será possível controlar a tela de bloqueio. Instale ou repare o serviço CrossDesk no dispositivo remoto."}},
 };
 
 struct NamedTranslation { const char* name; const char* literal; };
@@ -827,6 +834,13 @@ inline constexpr NamedTranslation kNamedTranslations[] = {
   {"permission_migration_failed", "权限迁移未完成。请重试，或在系统设置中移除旧 CrossDesk 后重新添加。"},
   {"retry_permission_migration", "重试权限迁移"},
   {"permission_later", "稍后"},
+  {"repair_windows_service", "修复"},
+  {"windows_service_repair_title", "修复 CrossDesk 服务"},
+  {"windows_service_repair_message", "升级或移动 CrossDesk 后，锁屏控制服务可能不可用。修复将以管理员权限更新服务路径并重启服务。请确认当前目录包含完整的便携版文件。"},
+  {"windows_service_repairing", "正在修复 Windows 服务…"},
+  {"windows_service_repair_success", "服务已修复并启动"},
+  {"windows_service_repair_failed", "修复失败，请检查管理员权限和便携版文件后重试"},
+  {"remote_service_unavailable_message", "远端 Windows 服务不可用，锁屏时无法操作。请在远端安装或修复 CrossDesk 服务。"},
 };
 inline constexpr const char* kSlintLiterals[] = {
   "此端口已被占用，",
@@ -1333,7 +1347,14 @@ inline constexpr const char* kSlintLiterals[] = {
   X(permission_migration_running) \
   X(permission_migration_failed) \
   X(retry_permission_migration) \
-  X(permission_later)
+  X(permission_later) \
+  X(repair_windows_service) \
+  X(windows_service_repair_title) \
+  X(windows_service_repair_message) \
+  X(windows_service_repairing) \
+  X(windows_service_repair_success) \
+  X(windows_service_repair_failed) \
+  X(remote_service_unavailable_message)
 
 }  // namespace localization
 }  // namespace crossdesk

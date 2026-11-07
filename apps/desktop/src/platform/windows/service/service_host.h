@@ -186,7 +186,16 @@ class CrossDeskServiceHost {
 };
 
 bool IsCrossDeskServiceInstalled();
+enum class ServiceRegistrationState {
+  not_installed,
+  current,
+  repair_required,
+  query_failed,
+};
+ServiceRegistrationState QueryCrossDeskServiceRegistration(
+    const std::wstring& binary_path, DWORD* error_code = nullptr);
 bool InstallCrossDeskService(const std::wstring& binary_path);
+bool RepairCrossDeskService(const std::wstring& binary_path);
 bool UninstallCrossDeskService();
 bool StartCrossDeskService();
 bool StopCrossDeskService(DWORD timeout_ms = 20000);

@@ -70,6 +70,7 @@ void PrintServiceCliUsage() {
   std::cout
       << "CrossDesk service management commands\n"
       << "  --service-install    Install the sibling crossdesk_service.exe\n"
+      << "  --service-repair     Update the service path and restart it\n"
       << "  --service-uninstall  Remove the installed Windows service\n"
       << "  --service-start      Start the Windows service\n"
       << "  --service-stop       Stop the Windows service\n"
@@ -111,6 +112,7 @@ bool IsServiceCliCommand(const char* arg) {
   }
 
   return std::strcmp(arg, "--service-install") == 0 ||
+         std::strcmp(arg, "--service-repair") == 0 ||
          std::strcmp(arg, "--unattended-enable") == 0 ||
          std::strcmp(arg, "--unattended-disable") == 0 ||
          std::strcmp(arg, "--unattended-status") == 0 ||
@@ -233,7 +235,7 @@ int HandleServiceCliCommand(const std::string& command) {
 #endif
   }
 
-  if (command == "--service-install") {
+  if (command == "--service-install" || command == "--service-repair") {
     std::filesystem::path service_path = GetSiblingServiceExecutablePath();
     if (service_path.empty()) {
       std::cerr << "Failed to locate crossdesk_service.exe" << std::endl;
@@ -245,7 +247,9 @@ int HandleServiceCliCommand(const std::string& command) {
       return 1;
     }
 
-    bool success = crossdesk::InstallCrossDeskService(service_path.wstring());
+    bool success = command == "--service-repair"
+                       ? crossdesk::RepairCrossDeskService(service_path.wstring())
+                       : crossdesk::InstallCrossDeskService(service_path.wstring());
     std::cout << (success ? "install ok" : "install failed") << std::endl;
     return success ? 0 : 1;
   }

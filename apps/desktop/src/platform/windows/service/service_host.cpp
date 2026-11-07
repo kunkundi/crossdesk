@@ -5,6 +5,7 @@
 #include <Userenv.h>
 #include <WtsApi32.h>
 #include <sddl.h>
+#include <shellapi.h>
 
 #include <algorithm>
 #include <cctype>
@@ -242,7 +243,8 @@ bool GrantCrossDeskServiceStartAccessToAuthenticatedUsers(SC_HANDLE service) {
   }
 
   EXPLICIT_ACCESSW access{};
-  access.grfAccessPermissions = SERVICE_START | SERVICE_QUERY_STATUS;
+  access.grfAccessPermissions =
+      SERVICE_START | SERVICE_QUERY_STATUS | SERVICE_QUERY_CONFIG;
   access.grfAccessMode = SET_ACCESS;
   access.grfInheritance = NO_INHERITANCE;
   access.Trustee.TrusteeForm = TRUSTEE_IS_SID;
@@ -2637,6 +2639,75 @@ std::string CrossDeskServiceHost::SendSecureDesktopTextInput(
       BuildSecureTextInputCommand(text, target.stage, target.desktop), 1000);
 }
 
+ServiceRegistrationState QueryCrossDeskServiceRegistration(
+    const std::wstring& binary_path, DWORD* error_code) {
+  if (error_code) *error_code = ERROR_SUCCESS;
+  const auto failed = [error_code](DWORD error) {
+    if (error_code) *error_code = error;
+    return ServiceRegistrationState::query_failed;
+  };
+  SC_HANDLE manager = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT);
+  if (!manager) return failed(GetLastError());
+  SC_HANDLE service =
+      OpenServiceW(manager, kCrossDeskServiceName, SERVICE_QUERY_CONFIG);
+  const DWORD open_error = service ? ERROR_SUCCESS : GetLastError();
+  CloseServiceHandle(manager);
+  if (!service) {
+    return open_error == ERROR_SERVICE_DOES_NOT_EXIST
+               ? ServiceRegistrationState::not_installed
+               : failed(open_error);
+  }
+
+  // QueryServiceConfig documents an 8 KiB maximum. A single query also avoids
+  // a size-query race with an installer changing the registration.
+  alignas(QUERY_SERVICE_CONFIGW) BYTE buffer[8192]{};
+  auto* config = reinterpret_cast<QUERY_SERVICE_CONFIGW*>(buffer);
+  DWORD needed = 0;
+  const bool queried = QueryServiceConfigW(service, config, sizeof(buffer),
+                                           &needed) != FALSE;
+  const DWORD query_error = queried ? ERROR_SUCCESS : GetLastError();
+  CloseServiceHandle(service);
+  if (!queried) return failed(query_error);
+
+  if (!config->lpBinaryPathName || binary_path.empty() ||
+      config->dwStartType == SERVICE_DISABLED) {
+    return ServiceRegistrationState::repair_required;
+  }
+  const DWORD expanded_size =
+      ExpandEnvironmentStringsW(config->lpBinaryPathName, nullptr, 0);
+  if (!expanded_size) return failed(GetLastError());
+  std::vector<wchar_t> expanded(expanded_size);
+  const DWORD expanded_length = ExpandEnvironmentStringsW(
+      config->lpBinaryPathName, expanded.data(), expanded_size);
+  if (!expanded_length) return failed(GetLastError());
+  if (expanded_length > expanded_size) return failed(ERROR_INSUFFICIENT_BUFFER);
+  const std::wstring command(expanded.data());
+  const auto first = command.find_first_not_of(L" \t");
+  if (first == std::wstring::npos)
+    return ServiceRegistrationState::repair_required;
+  int argc = 0;
+  LPWSTR* argv = CommandLineToArgvW(command.c_str() + first, &argc);
+  if (!argv) return failed(GetLastError());
+  const bool valid_command = argc == 2 && std::wstring(argv[1]) == L"--service";
+  const std::filesystem::path registered = argc > 0 ? argv[0] : L"";
+  LocalFree(argv);
+  const std::filesystem::path expected(binary_path);
+  const auto registered_path = registered.lexically_normal().make_preferred().wstring();
+  const auto expected_path = expected.lexically_normal().make_preferred().wstring();
+  if (!valid_command ||
+      CompareStringOrdinal(registered_path.c_str(), -1, expected_path.c_str(),
+                           -1, TRUE) != CSTR_EQUAL) {
+    return ServiceRegistrationState::repair_required;
+  }
+  std::error_code error;
+  if (!std::filesystem::is_regular_file(expected, error) ||
+      !std::filesystem::is_regular_file(
+          expected.parent_path() / L"crossdesk_session_helper.exe", error)) {
+    return ServiceRegistrationState::repair_required;
+  }
+  return ServiceRegistrationState::current;
+}
+
 bool InstallCrossDeskService(const std::wstring& binary_path) {
   SC_HANDLE manager = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ALL_ACCESS);
   if (manager == nullptr) {
@@ -2732,6 +2803,37 @@ bool IsCrossDeskServiceInstalled() {
   CloseServiceHandle(service);
   CloseServiceHandle(manager);
   return true;
+}
+
+bool RepairCrossDeskService(const std::wstring& binary_path) {
+  const std::filesystem::path service_path(binary_path);
+  std::error_code error;
+  if (!std::filesystem::is_regular_file(service_path, error) ||
+      !std::filesystem::is_regular_file(
+          service_path.parent_path() / L"crossdesk_session_helper.exe", error)) {
+    LOG_ERROR("Service repair failed: service binaries missing");
+    return false;
+  }
+  // Updating ImagePath does not replace an already running process. Keep the
+  // existing service identity and unattended profile, then restart it so the
+  // service and its helpers all come from the current directory.
+  if (!InstallCrossDeskService(binary_path) || !StopCrossDeskService() ||
+      !StartCrossDeskService()) {
+    return false;
+  }
+  const ULONGLONG deadline = GetTickCount64() + 10000;
+  while (GetTickCount64() < deadline) {
+    const auto response = Json::parse(QueryCrossDeskService("ping", 500),
+                                      nullptr, false);
+    if (response.is_object() && response.value("ok", false) &&
+        response.value("reply", std::string{}) == "pong") {
+      return QueryCrossDeskServiceRegistration(binary_path) ==
+             ServiceRegistrationState::current;
+    }
+    Sleep(100);
+  }
+  LOG_ERROR("Service repair failed: service did not become ready");
+  return false;
 }
 
 bool StartCrossDeskService() {

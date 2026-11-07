@@ -137,6 +137,9 @@ export global UiStrings {
     in-out property <string> service-settings-label: "Lock-screen control service";
     in-out property <string> install-service: "Install";
     in-out property <string> service-installed: "Installed";
+    in-out property <string> repair-service: "Repair";
+    in-out property <string> service-repair-title: "Repair CrossDesk Service";
+    in-out property <string> service-repair-message;
     in-out property <string> do-not-remind: "Do not remind again";
     in-out property <string> notification: "Notification";
     in-out property <string> service-suppressed-message: "You will not be reminded again. You can install the service later in Settings.";
@@ -216,6 +219,92 @@ component DialogPromptText inherits Rectangle {
         font-weight: root.text-weight;
         wrap: word-wrap;
         horizontal-alignment: center;
+    }
+}
+
+// Service installation, repair and reminder notices share the settings style.
+// Keep actions visible while long translations can scroll within the window.
+component ServicePromptDialog inherits DialogSurface {
+    in property <string> title;
+    in property <string> message;
+    in property <string> status;
+    in property <string> primary-text;
+    in property <string> secondary-text;
+    in property <string> opt-out-label;
+    in property <bool> busy: false;
+    in property <bool> succeeded: false;
+    in property <bool> show-opt-out: false;
+    in-out property <bool> opt-out: false;
+    in property <length> available-height;
+    callback primary-action;
+    callback secondary-action;
+    height: min(root.available-height, content.preferred-height + 113px);
+    background: #f8fafc;
+    outline-color: UiSurface.edge;
+    TouchArea { scroll-event(event) => { accept } }
+    ScrollView {
+        x: 24px; y: 24px; width: parent.width - 40px;
+        height: parent.height - 113px;
+        horizontal-scrollbar-policy: always-off;
+        vertical-scrollbar-policy: as-needed;
+        viewport-width: self.visible-width;
+        viewport-height: content.preferred-height;
+        content := VerticalLayout {
+            // Reserve the scrollbar gutter independently of its visibility.
+            x: 0px; y: 0px;
+            width: root.width - 64px; height: self.preferred-height;
+            padding: 0px; spacing: 16px;
+            Text {
+                text: root.title; color: WorkbenchStyle.text;
+                font-size: 20px; font-weight: 600; wrap: word-wrap;
+            }
+            Text {
+                text: root.message; color: WorkbenchStyle.text;
+                font-size: 14px; wrap: word-wrap;
+                font-family: "CrossDesk Message Spacing";
+            }
+            if root.status != "": Text {
+                text: root.status; font-size: 12px; wrap: word-wrap;
+                font-family: "CrossDesk Message Spacing";
+                color: root.succeeded ? WorkbenchStyle.success
+                    : root.busy ? WorkbenchStyle.muted : UiSurface.error;
+            }
+            if root.show-opt-out: HorizontalLayout {
+                spacing: 12px;
+                Text {
+                    text: root.opt-out-label; color: WorkbenchStyle.muted;
+                    font-size: 12px; wrap: word-wrap;
+                    vertical-alignment: center; horizontal-stretch: 1;
+                }
+                ToggleSwitch {
+                    checked <=> root.opt-out; enabled: !root.busy;
+                    accessible-role: switch;
+                    accessible-label: root.opt-out-label;
+                    accessible-checked: root.opt-out;
+                    accessible-enabled: !root.busy;
+                    accessible-action-default => { if !root.busy { root.opt-out = !root.opt-out; } }
+                }
+            }
+        }
+    }
+    SurfaceSeparator {
+        x: 24px; y: parent.height - 73px; width: parent.width - 48px;
+        outline-color: UiSurface.separator;
+    }
+    HorizontalLayout {
+        x: 24px; y: parent.height - 56px;
+        width: parent.width - 48px; height: 32px;
+        alignment: end; spacing: 8px;
+        if root.secondary-text != "": SettingsButton {
+            width: max(80px, self.label-width);
+            text: root.secondary-text; enabled: !root.busy;
+            clicked => { root.secondary-action(); }
+        }
+        SettingsButton {
+            width: max(80px, self.label-width); primary: true;
+            text: root.primary-text; enabled: !root.busy;
+            clicked => { root.primary-action(); }
+        }
     }
 }
 
@@ -640,6 +729,7 @@ export component MainWindow inherits Window {
     in property <bool> portable-service-dialog-open: false;
     in property <bool> portable-service-suppressed-notice-open: false;
     in property <bool> portable-service-installed: false;
+    in property <bool> portable-service-needs-repair: false;
     in property <bool> portable-service-installing: false;
     in property <bool> portable-service-succeeded: false;
     in property <string> portable-service-status: "";
@@ -729,6 +819,7 @@ export component MainWindow inherits Window {
     callback dismiss-permissions;
     callback retry-permission-migration;
     callback install-portable-service;
+    callback open-portable-service;
     callback cancel-portable-service;
     callback acknowledge-portable-service;
     callback acknowledge-portable-service-suppressed;
@@ -2841,13 +2932,14 @@ export component MainWindow inherits Window {
                         }
                         SettingsGroup {
                             title: GalleryStrings.texts[120];
-                            rows: root.mac-permission-settings-visible ? 6 : 5;
+                            rows: 5 + (root.mac-permission-settings-visible ? 1 : 0)
+                                + (root.portable-service-settings-visible ? 1 : 0);
                             SettingsToggleRow { label: UiStrings.privacy-on-connect; checked <=> root.privacy-on-connect-enabled; enabled: root.privacy-setting-available; }
                             SettingsToggleRow { label: UiStrings.privacy-local-unlock; checked <=> root.privacy-local-unlock-allowed; enabled: root.privacy-setting-available; }
                             SettingsToggleRow { label: UiStrings.lock-on-disconnect; checked <=> root.lock-on-disconnect-enabled; enabled: root.lock-on-disconnect-available; }
                             SettingsToggleRow { label: TrustStrings.only; checked <=> root.trusted-devices-only; }
                             SettingsRow {
-                                label: TrustStrings.title; divider: root.mac-permission-settings-visible;
+                                label: TrustStrings.title; divider: root.mac-permission-settings-visible || root.portable-service-settings-visible;
                                 SettingsButton {
                                     x: parent.width - self.width - 12px; y: 4px;
                                     width: max(104px, self.label-width); height: 28px;
@@ -2862,6 +2954,18 @@ export component MainWindow inherits Window {
                                     width: max(104px, self.label-width); height: 28px;
                                     text: TrustStrings.manage;
                                     clicked => { root.open-permissions(); }
+                                }
+                            }
+                            if root.portable-service-settings-visible: SettingsRow {
+                                label: UiStrings.service-settings-label; divider: false;
+                                label-reserve: service-button.width + 24px;
+                                service-button := SettingsButton {
+                                    x: parent.width - self.width - 12px; y: 4px;
+                                    width: max(104px, self.label-width); height: 28px;
+                                    text: root.portable-service-installed || root.portable-service-needs-repair
+                                        ? UiStrings.repair-service : UiStrings.install-service;
+                                    enabled: !root.portable-service-installing;
+                                    clicked => { root.open-portable-service(); }
                                 }
                             }
                         }
@@ -3607,72 +3711,46 @@ export component MainWindow inherits Window {
 
     // Portable Windows builds prompt for the optional lock-screen service.
     if root.portable-service-dialog-open: Rectangle {
-        background: #00000052;
+        background: #15223835;
         z: 50;
         TouchArea { clicked => { focus-sink.focus(); } }
-        DialogSurface {
-            x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; width: 480px; height: 300px;
-            VerticalLayout {
-                padding: 24px; spacing: 14px;
-                DialogPromptText {
-                    prompt: UiStrings.service-setup-title;
-                    text-color: #242832;
-                    text-size: ImGuiFontStyle.prominent;
-                    text-weight: 600;
-                }
-                FlatSurface {
-                    background: #f7f8fa; outline-color: UiSurface.edge; border-radius: UiRadius.surface;
-                    Text { x: 14px; y: 22px; width: parent.width - 28px; height: parent.height - 24px; text: UiStrings.service-setup-message; color: #3d434d; wrap: word-wrap; vertical-alignment: center; }
-                }
-                if root.portable-service-status != "": Text {
-                    text: root.portable-service-status;
-                    color: root.portable-service-succeeded ? #25874b : root.portable-service-installing ? #68707d : #b23b3b;
-                    horizontal-alignment: center;
-                    wrap: word-wrap;
-                }
-                if !root.portable-service-succeeded: HorizontalLayout {
-                    height: 26px; alignment: center; spacing: 8px;
-                    Text { text: UiStrings.do-not-remind; vertical-alignment: center; color: #4a505a; }
-                    ToggleSwitch { checked <=> root.portable-service-do-not-remind; enabled: !root.portable-service-installing; }
-                }
-                HorizontalLayout {
-                    height: 34px; alignment: center; spacing: 8px;
-                    if root.portable-service-succeeded: PrimaryButton { text: UiStrings.ok; clicked => { root.acknowledge-portable-service(); } }
-                    if !root.portable-service-succeeded: PrimaryButton {
-                        text: UiStrings.install-service;
-                        enabled: !root.portable-service-installing;
-                        clicked => { root.install-portable-service(); }
-                    }
-                    if !root.portable-service-succeeded: SecondaryButton {
-                        text: UiStrings.cancel;
-                        enabled: !root.portable-service-installing;
-                        clicked => { root.cancel-portable-service(); }
-                    }
-                }
+        ServicePromptDialog {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: min(480px, parent.width - 32px);
+            available-height: parent.height - 32px;
+            title: root.portable-service-needs-repair ? UiStrings.service-repair-title : UiStrings.service-setup-title;
+            message: root.portable-service-needs-repair ? UiStrings.service-repair-message : UiStrings.service-setup-message;
+            status: root.portable-service-status;
+            busy: root.portable-service-installing;
+            succeeded: root.portable-service-succeeded;
+            show-opt-out: !root.portable-service-succeeded && !root.portable-service-needs-repair;
+            opt-out-label: UiStrings.do-not-remind;
+            opt-out <=> root.portable-service-do-not-remind;
+            primary-text: root.portable-service-succeeded ? UiStrings.ok
+                : root.portable-service-needs-repair ? UiStrings.repair-service : UiStrings.install-service;
+            secondary-text: root.portable-service-succeeded ? "" : UiStrings.cancel;
+            primary-action => {
+                if root.portable-service-succeeded { root.acknowledge-portable-service(); }
+                else { root.install-portable-service(); }
             }
+            secondary-action => { root.cancel-portable-service(); }
         }
     }
 
     if root.portable-service-suppressed-notice-open: Rectangle {
-        background: #00000052;
+        background: #15223835;
         z: 51;
         TouchArea { clicked => { focus-sink.focus(); } }
-        DialogSurface {
-            x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; width: 440px; height: 190px;
-            VerticalLayout {
-                padding: 24px; spacing: 16px;
-                DialogPromptText {
-                    prompt: UiStrings.notification;
-                    text-color: #242832;
-                    text-size: ImGuiFontStyle.prominent;
-                    text-weight: 600;
-                }
-                DialogPromptText {
-                    prompt: UiStrings.service-suppressed-message;
-                    text-color: #3d434d;
-                }
-                PrimaryButton { text: UiStrings.ok; clicked => { root.acknowledge-portable-service-suppressed(); } }
-            }
+        ServicePromptDialog {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: min(440px, parent.width - 32px);
+            available-height: parent.height - 32px;
+            title: UiStrings.notification;
+            message: UiStrings.service-suppressed-message;
+            primary-text: UiStrings.ok;
+            primary-action => { root.acknowledge-portable-service-suppressed(); }
         }
     }
     }

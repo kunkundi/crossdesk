@@ -301,6 +301,7 @@ export component StreamWindow inherits Window {
     in property <bool> has-frame: false;
     in property <string> status-text: "";
     in property <string> receiving-text: "";
+    in property <string> service-warning: "";
     in property <bool> remote-update-visible: false;
     in property <bool> privacy-unlock-visible: false;
     in property <bool> privacy-can-lock: false;
@@ -1763,6 +1764,21 @@ export component StreamWindow inherits Window {
                 TouchArea {
                     mouse-cursor: default;
                     scroll-event(event) => { accept }
+                }
+            }
+            if root.service-warning != "" && !root.modal-visible: FlatSurface {
+                x: (parent.width - self.width) / 2;
+                y: 12px;
+                width: min(600px, parent.width - 32px);
+                height: service-warning-text.preferred-height + 20px;
+                background: #fff4d6;
+                outline-color: #e8c56a;
+                border-radius: UiRadius.surface;
+                z: 12;
+                service-warning-text := Text {
+                    x: 12px; y: 10px; width: parent.width - 24px;
+                    text: root.service-warning; color: #805b12;
+                    font-size: 12px; wrap: word-wrap;
                 }
             }
             if root.privacy-unlock-visible: DialogSurface {

@@ -2117,6 +2117,21 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
     RefreshMacPermissionStatus(true);
 #endif
   });
+  main->on_open_portable_service([this] {
+#if _WIN32 && CROSSDESK_PORTABLE
+    if (portable_service_install_state_.load(std::memory_order_acquire) ==
+        PortableServiceInstallState::installing) return;
+    JoinPortableWindowsServiceInstallThread();
+    portable_service_prompt_checked_ = false;
+    CheckPortableWindowsService();
+    portable_service_needs_repair_ =
+        portable_service_needs_repair_ || portable_service_installed_;
+    portable_service_install_state_.store(PortableServiceInstallState::idle,
+                                          std::memory_order_release);
+    show_portable_service_install_window_ = true;
+    ShowMainWindow();
+#endif
+  });
   main->on_install_portable_service([this, main] {
 #if _WIN32 && CROSSDESK_PORTABLE
     portable_service_do_not_remind_ = false;
@@ -2133,7 +2148,7 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
     }
     portable_service_do_not_remind_ =
         main->get_portable_service_do_not_remind();
-    if (portable_service_do_not_remind_) {
+    if (portable_service_do_not_remind_ && !portable_service_needs_repair_) {
       portable_service_prompt_suppressed_ = true;
       config_center_->SetPortableServicePromptSuppressed(true);
       show_portable_service_prompt_suppressed_window_ = true;
@@ -3605,6 +3620,8 @@ void GuiApplication::SyncPlatformDialogs() {
   ui_->main->set_portable_service_installed(portable_service_installed_);
   ui_->wall->set_portable_service_settings_visible(true);
   ui_->wall->set_portable_service_installed(portable_service_installed_);
+  ui_->main->set_portable_service_needs_repair(portable_service_needs_repair_);
+  ui_->wall->set_portable_service_needs_repair(portable_service_needs_repair_);
   ui_->wall->set_portable_service_installing(
       state == PortableServiceInstallState::installing);
   ui_->main->set_portable_service_installing(
@@ -3613,14 +3630,17 @@ void GuiApplication::SyncPlatformDialogs() {
       state == PortableServiceInstallState::succeeded);
   const std::string* status = nullptr;
   if (state == PortableServiceInstallState::installing) {
-    status =
-        &localization::installing_windows_service[localization_language_index_];
+    status = &(portable_service_needs_repair_
+                   ? localization::windows_service_repairing
+                   : localization::installing_windows_service)[localization_language_index_];
   } else if (state == PortableServiceInstallState::succeeded) {
-    status = &localization::windows_service_install_success
-                 [localization_language_index_];
+    status = &(portable_service_needs_repair_
+                   ? localization::windows_service_repair_success
+                   : localization::windows_service_install_success)[localization_language_index_];
   } else if (state == PortableServiceInstallState::failed) {
-    status = &localization::windows_service_install_failed
-                 [localization_language_index_];
+    status = &(portable_service_needs_repair_
+                   ? localization::windows_service_repair_failed
+                   : localization::windows_service_install_failed)[localization_language_index_];
   }
   ui_->main->set_portable_service_status(status ? UiText(*status)
                                                 : slint::SharedString{});
@@ -3952,6 +3972,12 @@ void GuiApplication::SyncStreamWindow() {
   }
   (*ui_->stream)->set_remote_update_visible(remote_update_available);
   (*ui_->stream)->set_secure_attention_supported(remote_platform == HostPlatform::Windows);
+  (*ui_->stream)->set_service_warning(UiText(
+      status == MiniRtcConnectionStatus::MiniRtcConnectionConnected &&
+              remote_platform == HostPlatform::Windows &&
+              GetRemoteUnlockState(*props) == RemoteUnlockState::service_unavailable
+          ? localization::remote_service_unavailable_message[localization_language_index_]
+          : std::string{}));
   if (remote_update_available) {
     SetStreamKeyboardFocus(false);
   }

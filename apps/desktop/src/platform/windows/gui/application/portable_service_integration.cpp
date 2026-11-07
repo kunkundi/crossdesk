@@ -43,8 +43,9 @@ bool InstallServiceWithElevation() {
       executable_path.parent_path() / L"crossdesk_service.exe";
   const std::filesystem::path helper_path =
       executable_path.parent_path() / L"crossdesk_session_helper.exe";
-  if (!std::filesystem::exists(service_path) ||
-      !std::filesystem::exists(helper_path)) {
+  std::error_code error;
+  if (!std::filesystem::is_regular_file(service_path, error) ||
+      !std::filesystem::is_regular_file(helper_path, error)) {
     LOG_ERROR("Portable service install failed: service binaries missing, "
               "service={}, helper={}",
               service_path.string(), helper_path.string());
@@ -53,7 +54,7 @@ bool InstallServiceWithElevation() {
 
   const std::wstring executable = executable_path.wstring();
   const std::wstring working_dir = executable_path.parent_path().wstring();
-  constexpr wchar_t parameters[] = L"--service-install";
+  constexpr wchar_t parameters[] = L"--service-repair";
 
   SHELLEXECUTEINFOW execute_info{};
   execute_info.cbSize = sizeof(execute_info);
@@ -86,11 +87,8 @@ bool InstallServiceWithElevation() {
     return false;
   }
 
-  const bool started = StartCrossDeskService();
-  if (!started) {
-    LOG_WARN("Portable service installed but start failed");
-  }
-  return IsCrossDeskServiceInstalled() && started;
+  return QueryCrossDeskServiceRegistration(service_path.wstring()) ==
+         ServiceRegistrationState::current;
 }
 
 } // namespace
@@ -100,14 +98,34 @@ void GuiApplication::CheckPortableWindowsService() {
     return;
   }
   portable_service_prompt_checked_ = true;
-  portable_service_installed_ = IsCrossDeskServiceInstalled();
-  if (portable_service_installed_ || portable_service_prompt_suppressed_) {
+  const auto executable_path = GetCurrentExecutablePath();
+  DWORD error = ERROR_SUCCESS;
+  const auto registration = QueryCrossDeskServiceRegistration(
+      executable_path.empty() ? std::wstring{}
+                              : (executable_path.parent_path() /
+                                 L"crossdesk_service.exe").wstring(),
+      &error);
+  portable_service_installed_ = registration == ServiceRegistrationState::current;
+  portable_service_needs_repair_ =
+      registration == ServiceRegistrationState::repair_required ||
+      registration == ServiceRegistrationState::query_failed;
+  if (registration == ServiceRegistrationState::query_failed) {
+    LOG_WARN("Could not validate portable service registration, error={}", error);
+  }
+  // Suppressing an optional first-install prompt must never hide a broken
+  // registration left behind by a portable upgrade.
+  if (portable_service_installed_ ||
+      (!portable_service_needs_repair_ && portable_service_prompt_suppressed_)) {
     return;
   }
 
   portable_service_install_state_.store(PortableServiceInstallState::idle,
                                         std::memory_order_relaxed);
   show_portable_service_install_window_ = true;
+  if (portable_service_needs_repair_) {
+    portable_service_do_not_remind_ = false;
+    ShowMainWindow();
+  }
 }
 
 void GuiApplication::StartPortableWindowsServiceInstall() {
@@ -124,6 +142,7 @@ void GuiApplication::StartPortableWindowsServiceInstall() {
   }
 
   JoinPortableWindowsServiceInstallThread();
+  portable_service_installed_ = false;
   portable_service_install_thread_ = std::thread([this]() {
     const bool installed = InstallServiceWithElevation();
     portable_service_install_state_.store(
