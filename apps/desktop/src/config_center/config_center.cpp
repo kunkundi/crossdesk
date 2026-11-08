@@ -12,6 +12,11 @@
 #include "rd_log.h"
 #include <minirtc.h>
 
+#if defined(__linux__) && !defined(__OHOS__)
+#include "platform/linux/autostart.h"
+#include "platform/linux/runtime_daemon.h"
+#endif
+
 namespace crossdesk {
 
 struct ConfigCenter::IniStorage : CSimpleIniA {};
@@ -386,6 +391,14 @@ int ConfigCenter::SetSelfHosted(bool enabled) {
 
 int ConfigCenter::SetAutostart(bool enabled) {
   const bool previous = IsAutostartEnabled("CrossDesk");
+#if defined(__linux__) && !defined(__OHOS__)
+  // Repair old deb entries even when the saved boolean is unchanged, keeping
+  // desktop-managed disabled flags and custom commands intact.
+  if (enabled && previous && !platform::MigrateLegacyAutostart("CrossDesk")) {
+    LOG_ERROR("Failed to migrate Linux autostart");
+    return -1;
+  }
+#endif
   // Refresh the executable path and remove legacy registrations even when the
   // boolean state is unchanged. In particular, a Run entry no longer counts
   // as enabled for an elevated Windows build, but still needs deleting.
@@ -411,8 +424,23 @@ int ConfigCenter::SetAutostart(bool enabled) {
 }
 
 int ConfigCenter::SetDaemon(bool enabled) {
+#if defined(__linux__) && !defined(__OHOS__)
+  const bool previous = enable_daemon_;
+#endif
   if (StoreValues({{"enable_daemon", enabled ? "true" : "false"}}) != 0) return -1;
   enable_daemon_ = enabled;
+#if defined(__linux__) && !defined(__OHOS__)
+  std::string error;
+  if (!platform::LinuxRuntimeDaemon::Instance().SetEnabled(enabled, error)) {
+    LOG_ERROR("Cannot apply daemon setting: {}", error);
+    if (StoreValues({{"enable_daemon", previous ? "true" : "false"}}) == 0) {
+      enable_daemon_ = previous;
+    } else {
+      LOG_ERROR("Cannot restore daemon preference after startup failure");
+    }
+    return -1;
+  }
+#endif
   return 0;
 }
 

@@ -509,10 +509,21 @@ function setup_targets()
     target("config_center")
         set_kind("object")
         add_deps("rd_log", "autostart")
+        if is_os("linux") then
+            add_deps("linux_runtime_daemon")
+        end
         add_files("apps/desktop/src/config_center/*.cpp")
         add_includedirs("apps/desktop/src", "apps/desktop/src/config_center",
             "deps/submodules/minirtc/src/api",
             {public = true})
+
+    if is_os("linux") then
+        target("linux_runtime_daemon")
+            set_kind("static")
+            add_includedirs("apps/desktop/src", {public = true})
+            add_files("apps/desktop/src/platform/linux/runtime_daemon.cpp")
+            add_syslinks("dl", {public = true})
+    end
 
     target("assets")
         set_kind("headeronly")

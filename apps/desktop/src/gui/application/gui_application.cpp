@@ -4985,7 +4985,13 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
 #if !defined(__OHOS__)
   config_center_->SetAutostart(enable_autostart_);
 #endif
-  config_center_->SetDaemon(enable_daemon_);
+  if (config_center_->SetDaemon(enable_daemon_) != 0) {
+    enable_daemon_ = config_center_->IsEnableDaemon();
+    main->set_daemon_enabled(enable_daemon_);
+    main->set_settings_save_error(UiText(
+        localization::Literal("保存失败，请重试", localization_language_index_)));
+    return false;
+  }
   if (config_center_->SetSaveRemotePreviews(main->get_save_remote_previews()) != 0) {
     LOG_ERROR("Failed to save remote preview preference");
   }

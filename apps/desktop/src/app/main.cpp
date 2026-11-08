@@ -37,9 +37,11 @@
 
 #ifdef __linux__
 #include "SimpleIni.h"
+#include "platform/linux/autostart.h"
 #include "platform/linux/headless/headless_console.h"
 #include "platform/linux/headless/headless_session.h"
 #include "platform/linux/privacy/privacy_guard.h"
+#include "platform/linux/runtime_daemon.h"
 #endif
 
 #ifdef _WIN32
@@ -365,6 +367,13 @@ static int RunApplication(
     std::string cache_path = path_manager->GetCachePath().string();
     crossdesk::ConfigCenter config_center(cache_path + "/config.ini");
     enable_daemon = config_center.IsEnableDaemon();
+#ifdef __linux__
+    if (config_center.IsEnableAutostart() &&
+        !crossdesk::platform::MigrateLegacyAutostart("CrossDesk")) {
+      crossdesk::get_logger()->warn(
+          "Could not migrate the legacy Linux autostart entry");
+    }
+#endif
   }
 
 #ifdef __linux__
@@ -373,7 +382,20 @@ static int RunApplication(
   // session instead.
   if (std::getenv("CROSSDESK_HEADLESS_ACTIVE") ||
       crossdesk::HeadlessConsole::Instance().active()) enable_daemon = false;
-#endif
+
+  auto& runtime_daemon = crossdesk::platform::LinuxRuntimeDaemon::Instance();
+  runtime_daemon.Initialize(
+      argc, argv, !std::getenv("CROSSDESK_HEADLESS_ACTIVE") &&
+                      !crossdesk::HeadlessConsole::Instance().active());
+  std::string daemon_error;
+  if (!runtime_daemon.SetEnabled(enable_daemon, daemon_error)) {
+    crossdesk::get_logger()->warn("Could not start daemon: {}", daemon_error);
+  }
+  crossdesk::Render render;
+  const int result = render.Run();
+  runtime_daemon.Shutdown(result != 0);
+  return result;
+#else
 
   if (enable_daemon) {
     // The launcher lease stays in main for the supervisor's entire lifetime.
@@ -406,6 +428,7 @@ static int RunApplication(
   // run without daemon: direct execution
   crossdesk::Render render;
   return render.Run();
+#endif
 }
 
 int main(int argc, char* argv[]) {
@@ -421,6 +444,10 @@ int main(int argc, char* argv[]) {
 #endif
 #ifdef __linux__
   // Run before GUI, configuration, logging or display initialization.
+  if (argc >= 2 &&
+      std::strcmp(argv[1], crossdesk::platform::kLinuxDaemonArgument) == 0) {
+    return crossdesk::platform::RunLinuxRuntimeDaemon(argc, argv);
+  }
   if (argc == 2 &&
       std::strcmp(argv[1], crossdesk::kLinuxPrivacyGuardArgument) == 0) {
     return crossdesk::RunLinuxPrivacyGuard();
