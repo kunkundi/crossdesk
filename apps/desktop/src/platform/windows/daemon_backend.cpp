@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>
 #include <thread>
 #include <vector>
 
@@ -23,21 +24,21 @@ bool DaemonStopRequested() { return g_stop_requested.load(); }
 bool PrepareDaemon() { return true; }
 
 std::string GetDaemonExecutablePath() {
-  char path[32768] = {};
-  const DWORD length = GetModuleFileNameA(nullptr, path, sizeof(path));
-  return length > 0 && length < sizeof(path) ? std::string(path, length)
-                                             : std::string();
+  wchar_t path[32768] = {};
+  const DWORD length = GetModuleFileNameW(nullptr, path, 32768);
+  return length > 0 && length < 32768
+             ? std::filesystem::path(path, path + length).u8string()
+             : std::string();
 }
 
 DaemonChildResult RunDaemonChild(const std::string& executable_path,
                                  const std::function<bool()>& keep_running) {
   DaemonChildResult result;
-  STARTUPINFOA startup = {sizeof(startup)};
+  STARTUPINFOW startup = {sizeof(startup)};
   PROCESS_INFORMATION process = {};
-  std::string command = "\"" + executable_path + "\" --child";
-  std::vector<char> command_buffer(command.begin(), command.end());
-  command_buffer.push_back('\0');
-  if (!CreateProcessA(nullptr, command_buffer.data(), nullptr, nullptr, FALSE,
+  const auto path = std::filesystem::u8path(executable_path).wstring();
+  std::wstring command = L"\"" + path + L"\" --child";
+  if (!CreateProcessW(path.c_str(), command.data(), nullptr, nullptr, FALSE,
                       0, nullptr, nullptr, &startup, &process)) {
     return result;
   }

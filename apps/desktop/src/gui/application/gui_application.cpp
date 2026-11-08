@@ -4983,7 +4983,13 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
   config_center_->SetForceRelay(main->get_force_relay_enabled());
   main->set_force_relay_enabled(config_center_->IsForceRelay());
 #if !defined(__OHOS__)
-  config_center_->SetAutostart(enable_autostart_);
+  if (config_center_->SetAutostart(enable_autostart_) != 0) {
+    enable_autostart_ = config_center_->IsEnableAutostart();
+    main->set_autostart_enabled(enable_autostart_);
+    main->set_settings_save_error(UiText(
+        localization::Literal("保存失败，请重试", localization_language_index_)));
+    return false;
+  }
 #endif
   if (config_center_->SetDaemon(enable_daemon_) != 0) {
     enable_daemon_ = config_center_->IsEnableDaemon();

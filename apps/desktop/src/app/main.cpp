@@ -18,6 +18,7 @@
 
 #include "platform/windows/autostart_task.h"
 #include "platform/windows/gui/slint_backend.h"
+#include "platform/windows/runtime_daemon.h"
 #include "service_host.h"
 #include "service_lifetime.h"
 #include "shutdown_order.h"
@@ -395,6 +396,17 @@ static int RunApplication(
   const int result = render.Run();
   runtime_daemon.Shutdown(result != 0);
   return result;
+#elif defined(_WIN32)
+  auto& runtime_daemon = crossdesk::platform::WindowsRuntimeDaemon::Instance();
+  runtime_daemon.Initialize();
+  std::string daemon_error;
+  if (!runtime_daemon.SetEnabled(enable_daemon, daemon_error)) {
+    crossdesk::get_logger()->warn("Could not start daemon: {}", daemon_error);
+  }
+  crossdesk::Render render;
+  const int result = render.Run();
+  runtime_daemon.Shutdown(result != 0);
+  return result;
 #else
 
   if (enable_daemon) {
@@ -433,8 +445,12 @@ static int RunApplication(
 
 int main(int argc, char* argv[]) {
 #ifdef _WIN32
-  // Apply in every process, including the daemon and --child. Windows does
-  // not inherit shutdown priority from a parent process.
+  if (argc >= 2 &&
+      std::strcmp(argv[1], crossdesk::platform::kWindowsDaemonArgument) == 0) {
+    return crossdesk::platform::RunWindowsRuntimeDaemon();
+  }
+  // Apply in every GUI process, including legacy --child launches. The watcher
+  // keeps the default shutdown priority so it ends before this remote host.
   const DWORD shutdown_error = crossdesk::ConfigureWindowsShutdownOrder(
       crossdesk::WindowsShutdownRole::host);
   if (shutdown_error != ERROR_SUCCESS) {

@@ -504,6 +504,12 @@ function setup_targets()
                 add_defines("CROSSDESK_PORTABLE=1")
             end
             add_files("apps/desktop/tests/windows_autostart_test.cpp")
+
+        target("windows_runtime_daemon")
+            set_kind("static")
+            add_includedirs("apps/desktop/src", {public = true})
+            add_files("apps/desktop/src/platform/windows/runtime_daemon.cpp")
+            add_syslinks("User32", "Shell32", {public = true})
     end
 
     target("config_center")
@@ -511,6 +517,8 @@ function setup_targets()
         add_deps("rd_log", "autostart")
         if is_os("linux") then
             add_deps("linux_runtime_daemon")
+        elseif is_os("windows") then
+            add_deps("windows_runtime_daemon")
         end
         add_files("apps/desktop/src/config_center/*.cpp")
         add_includedirs("apps/desktop/src", "apps/desktop/src/config_center",

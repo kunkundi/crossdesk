@@ -12,6 +12,10 @@
 #include "rd_log.h"
 #include <minirtc.h>
 
+#ifdef _WIN32
+#include "platform/windows/runtime_daemon.h"
+#endif
+
 #if defined(__linux__) && !defined(__OHOS__)
 #include "platform/linux/autostart.h"
 #include "platform/linux/runtime_daemon.h"
@@ -424,14 +428,19 @@ int ConfigCenter::SetAutostart(bool enabled) {
 }
 
 int ConfigCenter::SetDaemon(bool enabled) {
-#if defined(__linux__) && !defined(__OHOS__)
+#if defined(_WIN32) || (defined(__linux__) && !defined(__OHOS__))
   const bool previous = enable_daemon_;
 #endif
   if (StoreValues({{"enable_daemon", enabled ? "true" : "false"}}) != 0) return -1;
   enable_daemon_ = enabled;
-#if defined(__linux__) && !defined(__OHOS__)
+#if defined(_WIN32) || (defined(__linux__) && !defined(__OHOS__))
   std::string error;
-  if (!platform::LinuxRuntimeDaemon::Instance().SetEnabled(enabled, error)) {
+#ifdef _WIN32
+  auto& daemon = platform::WindowsRuntimeDaemon::Instance();
+#else
+  auto& daemon = platform::LinuxRuntimeDaemon::Instance();
+#endif
+  if (!daemon.SetEnabled(enabled, error)) {
     LOG_ERROR("Cannot apply daemon setting: {}", error);
     if (StoreValues({{"enable_daemon", previous ? "true" : "false"}}) == 0) {
       enable_daemon_ = previous;
