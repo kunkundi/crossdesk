@@ -19,10 +19,12 @@
 #include "platform/windows/autostart_task.h"
 #include "platform/windows/gui/slint_backend.h"
 #include "platform/windows/runtime_daemon.h"
+#include "platform/windows/service/autostart_control.h"
 #include "service_host.h"
 #include "service_lifetime.h"
 #include "shutdown_order.h"
 #include "unattended_config.h"
+#include "shared_identity.h"
 #endif
 
 #include "config_center.h"
@@ -83,7 +85,7 @@ void PrintServiceCliUsage() {
       << "  --service-status     Query service runtime status\n"
       << "  --service-help       Show this help\n";
   std::cout
-      << "  --unattended-enable  Enable a separate machine host before login\n"
+      << "  --unattended-enable  Enable the shared device identity before login\n"
       << "  --unattended-disable Stop the machine host and disable boot "
          "startup\n"
       << "  --unattended-status  Show machine host status and connection "
@@ -138,6 +140,11 @@ void TryStartManagedWindowsService() {
     return;
   }
 
+  if (crossdesk::IsUnattendedEnabled() && !crossdesk::IsSharedIdentityServiceConfigured()) {
+    if (!crossdesk::RepairCrossDeskService(service_path.wstring()))
+      crossdesk::get_logger()->warn("Could not prepare the service for shared-identity migration");
+    return;
+  }
   crossdesk::StartCrossDeskService();
 }
 
@@ -158,84 +165,16 @@ int HandleServiceCliCommand(const std::string& command) {
       std::cout << crossdesk::ReadUnattendedStatus() << '\n';
       return 0;
     }
-    const auto service = GetSiblingServiceExecutablePath();
-    if (service.empty() || !std::filesystem::exists(service)) {
-      std::cerr << "Install CrossDesk with its Windows service first.\n";
+    const bool enabled = command == "--unattended-enable";
+    std::string error;
+    if (!crossdesk::SetServiceAutostart(enabled, error)) {
+      std::cerr << error << '\n';
       return 1;
     }
-    if (command == "--unattended-disable") {
-      // Disarm boot startup even if stopping the current process fails.
-      const bool saved = crossdesk::SetUnattendedEnabled(false);
-      const bool configured =
-          saved && crossdesk::InstallCrossDeskService(service.wstring());
-      const bool stopped = crossdesk::StopCrossDeskService(20000);
-      std::cout << (configured && stopped
-                        ? "Unattended host disabled.\n"
-                        : "Failed to disable unattended host.\n");
-      return configured && stopped ? 0 : 1;
-    }
-#if defined(CROSSDESK_DEBUG) || CROSSDESK_PORTABLE
-    std::cerr << "Unattended mode requires the installed release build.\n";
-    return 1;
-#else
-    const bool was_enabled = crossdesk::IsUnattendedEnabled();
-    if (!crossdesk::PrepareUnattendedDirectory(true)) {
-      std::cerr
-          << "Cannot create a private machine profile. Existing permissive "
-             "directories and links are rejected.\n";
-      return 1;
-    }
-    if (crossdesk::IsCrossDeskServiceInstalled() &&
-        !crossdesk::StopCrossDeskService(20000)) {
-      std::cerr << "Could not stop the service to configure unattended mode.\n";
-      return 1;
-    }
-    crossdesk::PathManager paths("CrossDesk");
-    crossdesk::ConfigCenter source(
-        (paths.GetCachePath() / "config.ini").string());
-    const auto machine_config = crossdesk::UnattendedDataPath() / "config.ini";
-    const auto staged_config =
-        crossdesk::UnattendedDataPath() / "config.pending.ini";
-    // Import only server/media preferences. Never share the GUI identity or
-    // consume its file-transfer paths in the SYSTEM process.
-    const auto host = source.IsSelfHosted() ? source.GetSignalServerHost()
-                                            : source.GetDefaultServerHost();
-    const int port = source.IsSelfHosted()
-                         ? source.GetSignalServerPort()
-                         : source.GetDefaultSignalServerPort();
-    bool configured = std::filesystem::exists(machine_config);
-    if (!configured) {
-      crossdesk::ConfigCenter destination(staged_config.string());
-      configured =
-          destination.SetServerHost(host) == 0 &&
-          destination.SetServerPort(port) == 0 &&
-          destination.SetSelfHosted(source.IsSelfHosted()) == 0 &&
-          destination.SetTurnMode(source.GetTurnMode()) == 0 &&
-          destination.SetVideoEncodeFormat(source.GetVideoEncodeFormat()) ==
-              0 &&
-          destination.SetScreenCaptureMethod(
-              crossdesk::ScreenCaptureMethod::Auto) == 0 &&
-          destination.SetPrivacyScreen(false) == 0 &&
-          destination.SetSaveRemotePreviews(false) == 0;
-    }
-    if (configured && !std::filesystem::exists(machine_config)) {
-      configured = MoveFileExW(staged_config.c_str(), machine_config.c_str(),
-                               MOVEFILE_WRITE_THROUGH) != FALSE;
-    }
-    if (!configured || !crossdesk::SetUnattendedEnabled(true) ||
-        !crossdesk::InstallCrossDeskService(service.wstring()) ||
-        !crossdesk::StartCrossDeskService()) {
-      crossdesk::SetUnattendedEnabled(was_enabled);
-      crossdesk::InstallCrossDeskService(service.wstring());
-      if (was_enabled) crossdesk::StartCrossDeskService();
-      std::cerr << "Failed to enable unattended host.\n";
-      return 1;
-    }
-    std::cout << "Unattended host enabled for boot startup.\n"
-                 "After it connects, use --unattended-status to obtain its "
-                 "separate device ID and password.\n";
+    std::cout << (enabled
+        ? "Unattended host enabled for boot startup with the GUI's device ID and password.\n"
+        : "Unattended host disabled.\n");
     return 0;
-#endif
   }
 
   if (command == "--service-install" || command == "--service-repair") {
@@ -356,9 +295,9 @@ static int RunApplication(
   }
 
 #ifdef _WIN32
-  if (!crossdesk::platform::MigrateLegacyAutostart("CrossDesk")) {
+  if (!crossdesk::CleanupLegacyServiceAutostart()) {
     crossdesk::get_logger()->warn(
-        "Could not migrate the legacy Windows autostart entry");
+        "Could not remove legacy Windows logon startup");
   }
   TryStartManagedWindowsService();
 #endif
@@ -484,7 +423,8 @@ int main(int argc, char* argv[]) {
     // Internal service entry point: never elevate an ordinary invocation into
     // a SYSTEM host, and never open the GUI or the per-user daemon here.
     if (argc != 4 || !crossdesk::IsLocalSystemProcess() ||
-        !crossdesk::IsUnattendedEnabled())
+        (!crossdesk::IsUnattendedEnabled() && !crossdesk::SharedHostIdentity::GuiPresent()) ||
+        !crossdesk::PrepareUnattendedDirectory(false))
       return 1;
     const std::string name(argv[2]);
     if (name.rfind("Global\\CrossDeskUnattendedStop-", 0) != 0) return 1;
@@ -498,6 +438,9 @@ int main(int argc, char* argv[]) {
       CloseHandle(stop);
       return 1;
     }
+    // Runtime members can log during construction. Select the protected host
+    // log before constructing Render, not after its logger has already opened.
+    crossdesk::InitLogger((crossdesk::UnattendedDataPath() / L"logs").string());
     crossdesk::Render render;
     const int result = render.RunUnattended(stop);
     CloseHandle(stop);
@@ -511,7 +454,7 @@ int main(int argc, char* argv[]) {
                           "crossdesk-autostart-cli");
     const bool success =
         std::strcmp(argv[1], "--autostart-migrate") == 0
-            ? crossdesk::platform::MigrateLegacyAutostart("CrossDesk")
+            ? crossdesk::CleanupLegacyServiceAutostart()
             : crossdesk::platform::RemoveInstalledAutostart("CrossDesk");
     return success ? 0 : 1;
   }
@@ -522,8 +465,12 @@ int main(int argc, char* argv[]) {
   if (argc > 1 && IsServiceCliCommand(argv[1])) {
     EnsureConsoleForCli();
     crossdesk::platform::SingleInstanceGuard cli_instance;
-    if (AcquireInstance(cli_instance, crossdesk::platform::InstanceRole::kServiceCli) !=
-        crossdesk::platform::InstanceResult::kAcquired) return 1;
+    // Unattended changes acquire this lease in the shared GUI/CLI entry point.
+    const bool unattended_change = std::strcmp(argv[1], "--unattended-enable") == 0 ||
+        std::strcmp(argv[1], "--unattended-disable") == 0;
+    if (!unattended_change &&
+        AcquireInstance(cli_instance, crossdesk::platform::InstanceRole::kServiceCli) !=
+            crossdesk::platform::InstanceResult::kAcquired) return 1;
     crossdesk::PathManager paths("CrossDesk");
     crossdesk::InitLogger(paths.GetLogPath().string(), "crossdesk-service-cli");
     return HandleServiceCliCommand(argv[1]);

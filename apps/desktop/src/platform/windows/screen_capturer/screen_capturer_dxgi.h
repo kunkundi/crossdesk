@@ -66,6 +66,7 @@ class ScreenCapturerDxgi : public ScreenCapturer {
   bool ConvertFrame(int frame_monitor, bool* cursor_embedded,
                     CursorFrameCompositor& compositor);
   void ReleaseDuplication();
+  HRESULT ReleaseAcquiredFrame();
 
  private:
   std::vector<DisplayInfo> display_info_list_;
@@ -76,6 +77,7 @@ class ScreenCapturerDxgi : public ScreenCapturer {
   Microsoft::WRL::ComPtr<ID3D11Device> d3d_device_;
   Microsoft::WRL::ComPtr<ID3D11DeviceContext> d3d_context_;
   Microsoft::WRL::ComPtr<IDXGIOutputDuplication> duplication_;
+  bool frame_acquired_ = false;  // Guarded by switch_mutex_ while capturing.
   Microsoft::WRL::ComPtr<ID3D11Texture2D> staging_;
   DXGI_MODE_ROTATION rotation_ = DXGI_MODE_ROTATION_IDENTITY;
   uint64_t duplication_generation_ = 0;

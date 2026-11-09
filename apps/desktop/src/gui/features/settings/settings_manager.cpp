@@ -34,9 +34,6 @@
 namespace crossdesk {
 namespace {
 
-constexpr uint32_t kCacheV3Magic = 0x33444358;  // "XCD3"
-constexpr uint32_t kCacheV3Version = 3;
-
 #if defined(__linux__) && !defined(__OHOS__)
 constexpr const char *kCredentialCacheNames[] = {
     "secure_cache_v3.enc", "secure_cache_v2.enc", "secure_cache.enc"};
@@ -130,16 +127,6 @@ void CopyString(char (&destination)[Size], const char *source) {
   if (source) {
     std::strncpy(destination, source, Size - 1);
   }
-}
-
-uint32_t CacheChecksum(const void *data, size_t size) {
-  const auto *bytes = static_cast<const unsigned char *>(data);
-  uint32_t hash = 2166136261u;
-  for (size_t i = 0; i < size; ++i) {
-    hash ^= bytes[i];
-    hash *= 16777619u;
-  }
-  return hash;
 }
 
 std::filesystem::path TemporaryPathFor(
@@ -259,6 +246,15 @@ bool WriteFileAtomically(const std::filesystem::path &target,
 
 SettingsManager::SettingsManager(GuiRuntime &owner) : owner_(owner) {}
 
+bool SettingsManager::ApplyHostIdentity(const std::string& identity, bool self_hosted) {
+  if (identity.size() != 16 || identity[9] != '@' ||
+      identity.substr(0, 9).find_first_not_of("0123456789") != std::string::npos)
+    return false;
+  std::lock_guard lock(cache_mutex_);
+  ActivateIdentity(identity.c_str(), self_hosted);
+  return SaveLocked() == 0;
+}
+
 int SettingsManager::Save() {
   std::lock_guard<std::mutex> lock(cache_mutex_);
   return SaveLocked();
@@ -271,8 +267,8 @@ int SettingsManager::SaveLocked() {
   std::memcpy(cache_v2_.iv, owner_.aes128_iv_, sizeof(owner_.aes128_iv_));
   CopyString(cache_v2_.self_hosted_id, owner_.self_hosted_id_);
 
-  cache_v3_.magic = kCacheV3Magic;
-  cache_v3_.version = kCacheV3Version;
+  cache_v3_.magic = credential_cache::kMagic;
+  cache_v3_.version = credential_cache::kVersion;
   cache_v3_.base = cache_v2_;
   cache_v3_.pending_identity[sizeof(cache_v3_.pending_identity) - 1] = '\0';
   cache_v3_.pending_server_host[sizeof(cache_v3_.pending_server_host) - 1] =
@@ -280,7 +276,7 @@ int SettingsManager::SaveLocked() {
   cache_v3_.pending_request_id[sizeof(cache_v3_.pending_request_id) - 1] =
       '\0';
   cache_v3_.checksum =
-      CacheChecksum(&cache_v3_, offsetof(CacheV3, checksum));
+      credential_cache::Checksum(&cache_v3_, offsetof(CacheV3, checksum));
 
   if (!WriteFileAtomically(owner_.cache_path_ + "/secure_cache_v3.enc",
                            &cache_v3_, sizeof(cache_v3_))) {
@@ -302,7 +298,7 @@ int SettingsManager::SaveLocked() {
     LOG_WARN("Failed to update legacy v1 credential cache");
   }
 
-  return 0;
+  return owner_.PublishSharedIdentity() ? 0 : -1;
 }
 
 bool SettingsManager::ReadV3Locked() {
@@ -325,9 +321,7 @@ bool SettingsManager::ReadV3Locked() {
     return false;
   }
 #endif
-  if (loaded.magic != kCacheV3Magic ||
-      loaded.version != kCacheV3Version ||
-      loaded.checksum != CacheChecksum(&loaded, offsetof(CacheV3, checksum))) {
+  if (!credential_cache::Valid(loaded)) {
     LOG_WARN("Ignore invalid v3 credential cache");
     return false;
   }

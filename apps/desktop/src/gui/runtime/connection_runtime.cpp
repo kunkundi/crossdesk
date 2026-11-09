@@ -79,7 +79,7 @@ void GuiRuntime::HandleConnectionStatusChange() {
   const auto message =
       BuildDevicePresenceRequest(client_id_, recent_connection_ids_, true, {},
                                  gallery_presence_ids_).dump();
-  if (MiniRtcSendSignalMessage(peer_, message.data(), message.size()) == 0) {
+  if (PeerSendSignalMessage(peer_, message.data(), message.size()) == 0) {
     next_presence_refresh_at_ = now + kPresenceRefreshInterval;
   } else {
     need_to_send_recent_connections_ = true;
@@ -200,7 +200,8 @@ void GuiRuntime::HandleServerControllerDisconnected(
     std::unique_lock lock(connection_status_mutex_);
     connection_status_.erase(remote_id);
     disconnect_lock_.Disconnected(remote_id,
-                                  config_center_->IsLockOnDisconnect());
+        config_center_->IsLockOnDisconnect() &&
+        !(managed_host_frontend_ && remote_id.rfind("lan/", 0) != 0));
     remote_input_.Disconnect(remote_id);
     devices_.OnControllerConnectionsChanged();
     connection_host_names_.erase(remote_id);
@@ -296,7 +297,7 @@ int GuiRuntime::RequestSingleDevicePresence(const std::string& remote_id,
                      gallery_presence_ids_)
                      .dump();
 
-  int ret = MiniRtcSendSignalMessage(peer_, s.data(), s.size());
+  int ret = PeerSendSignalMessage(peer_, s.data(), s.size());
   if (ret != 0) {
     std::lock_guard<std::mutex> lock(pending_presence_probe_mutex_);
     pending_presence_probe_ = false;
@@ -315,7 +316,7 @@ int GuiRuntime::ForceSignalReconnect() {
     LOG_WARN("Signal reconnect requested with no connection peer");
     return -1;
   }
-  return MiniRtcReconnectSignal(peer_);
+  return PeerReconnectSignal(peer_);
 }
 
 void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
@@ -430,7 +431,7 @@ void GuiRuntime::CloseServerController(const std::string& remote_id) {
     return;
   controller_cleanup_tasks_[remote_id] = session_cleanup_queue_.PostTask(
       [peer = peer_, transmission_id = std::string(client_id_), remote_id] {
-        if (MiniRtcDisconnectPeerConnection(peer, transmission_id.c_str(),
+        if (PeerDisconnectPeerConnection(peer, transmission_id.c_str(),
                                      remote_id.c_str()) != 0) {
           LOG_WARN("[{}] Could not queue controller disconnect notification",
                    remote_id);
@@ -460,6 +461,14 @@ void GuiRuntime::CloseConnectionPeer() {
   }
   for (const auto& id : controllers)
     HandleServerControllerDisconnected(id, "peer_closed");
+#ifdef _WIN32
+  {
+    std::lock_guard lock(local_host_state_mutex_);
+    mirrored_controllers_.clear();
+    local_controller_info_.clear();
+    local_host_status_.controllers_dirty = true;
+  }
+#endif
   signal_connected_ = false;
   device_presence_cache_.SetSignalConnected(false);
   signal_status_ = MiniRtcSignalStatus::MiniRtcSignalClosed;
@@ -474,7 +483,8 @@ void GuiRuntime::CloseConnectionPeer() {
       [peer, handler = peer_events_, id = std::string(client_id_)]() mutable {
         handler->Deactivate();
         LOG_INFO("[{}] Background connection peer cleanup", id);
-        MiniRtcLeaveConnection(peer, id.c_str());
+        if (!IsLocalPeer(peer)) MiniRtcLeaveConnection(peer, id.c_str());
+        UnbindLocalPeer(peer);
         MiniRtcDestroyPeer(&peer);
       });
 }

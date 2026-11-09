@@ -30,15 +30,18 @@ DWORD FailureCode() {
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
-  if (argc != 5) return ERROR_INVALID_PARAMETER;
+  if (argc != 5 && argc != 6) return ERROR_INVALID_PARAMETER;
   HANDLE parent = ParseHandle(argv[1]);
   HANDLE stop = ParseHandle(argv[2]);
   HANDLE ready = ParseHandle(argv[3]);
   HANDLE mapping = ParseHandle(argv[4]);
+  HANDLE capture_owner = argc == 6 ? ParseHandle(argv[5]) : nullptr;
   // Observe the inherited process OBJECT, never a reused PID or a process name.
   if (!parent || !stop || !ready || !mapping ||
       WaitForSingleObject(parent, 0) != WAIT_TIMEOUT ||
-      WaitForSingleObject(stop, 0) != WAIT_TIMEOUT)
+      WaitForSingleObject(stop, 0) != WAIT_TIMEOUT ||
+      (argc == 6 && (!capture_owner ||
+                    WaitForSingleObject(capture_owner, 0) != WAIT_TIMEOUT)))
     return ERROR_INVALID_HANDLE;
   auto shared = static_cast<crossdesk::PrivacyCursorReady*>(MapViewOfFile(
       mapping, FILE_MAP_WRITE, 0, 0, sizeof(crossdesk::PrivacyCursorReady)));
@@ -50,12 +53,13 @@ int wmain(int argc, wchar_t** argv) {
   InterlockedExchange(&shared->error, static_cast<LONG>(error));
   if (!SetEvent(ready)) error = FailureCode();
   if (!error) {
-    HANDLE watched[] = {parent, stop};
+    HANDLE watched[] = {parent, stop, capture_owner};
+    const DWORD count = capture_owner ? 3 : 2;
     for (;;) {
       const DWORD result =
-          MsgWaitForMultipleObjects(2, watched, FALSE, 250, QS_ALLINPUT);
-      if (result == WAIT_OBJECT_0 || result == WAIT_OBJECT_0 + 1) break;
-      if (result == WAIT_OBJECT_0 + 2) {
+          MsgWaitForMultipleObjects(count, watched, FALSE, 250, QS_ALLINPUT);
+      if (result < WAIT_OBJECT_0 + count) break;
+      if (result == WAIT_OBJECT_0 + count) {
         MSG message{};
         while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
           TranslateMessage(&message);
@@ -79,5 +83,6 @@ int wmain(int argc, wchar_t** argv) {
   CloseHandle(ready);
   CloseHandle(stop);
   CloseHandle(parent);
+  if (capture_owner) CloseHandle(capture_owner);
   return static_cast<int>(error);
 }

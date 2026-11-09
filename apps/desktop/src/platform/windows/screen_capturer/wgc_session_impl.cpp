@@ -193,8 +193,9 @@ int WgcSessionImpl::StartCaptureLocked(bool show_cursor) {
     capture_session_.StartCapture();
     is_running_ = true;
     return 0;
-  } catch (const winrt::hresult_error&) {
-    LOG_ERROR("AE_WGC_CREATE_CAPTURER_FAILED");
+  } catch (const winrt::hresult_error& error) {
+    LOG_ERROR("WGC: start capture failed, hr=0x{:08X}, thread={}",
+              static_cast<uint32_t>(error.code().value), GetCurrentThreadId());
     return 86;
   } catch (...) {
     LOG_ERROR("AE_WGC_CREATE_CAPTURER_FAILED");
@@ -296,9 +297,7 @@ void WgcSessionImpl::OnFrame(
     if (!d3d11_texture_mapped_ || is_new_size) {
       HRESULT tex_hr = CreateMappedTexture(frame_captured);
       if (FAILED(tex_hr)) {
-        OutputDebugStringW(
-            (L"CreateMappedTexture failed: " + std::to_wstring(tex_hr))
-                .c_str());
+        ReportFrameFailure(tex_hr);
         return;
       }
     }
@@ -314,32 +313,37 @@ void WgcSessionImpl::OnFrame(
         ,
         &map_result);
     if (FAILED(hr)) {
-      OutputDebugStringW(
-          (L"map resource failed: " + std::to_wstring(hr)).c_str());
+      ReportFrameFailure(hr);
       return;
     }
 
-    // copy data from map_result.pData
-    if (map_result.pData && observer_) {
-      CURSORINFO cursor{};
-      cursor.cbSize = sizeof(cursor);
-      const bool cursor_captured =
-          last_show_cursor_ && GetCursorInfo(&cursor) && cursor.hCursor &&
-          (cursor.flags & CURSOR_SHOWING) != 0 &&
-          (target_.is_window ||
-           MonitorFromPoint(cursor.ptScreenPos, MONITOR_DEFAULTTONULL) ==
-               target_.hmonitor);
-      observer_->OnFrame(
-          wgc_session_frame{static_cast<unsigned int>(frame_size.Width),
-                            static_cast<unsigned int>(frame_size.Height),
-                            map_result.RowPitch,
-                            const_cast<const unsigned char*>(
-                                (unsigned char*)map_result.pData),
-                            cursor_captured},
-          id_);
+    {
+      struct UnmapOnExit {
+        ID3D11DeviceContext* context;
+        ID3D11Texture2D* texture;
+        ~UnmapOnExit() { context->Unmap(texture, 0); }
+      } unmap{d3d11_device_context_.get(), d3d11_texture_mapped_.get()};
+      // copy data from map_result.pData
+      if (map_result.pData && observer_) {
+        CURSORINFO cursor{};
+        cursor.cbSize = sizeof(cursor);
+        const bool cursor_captured =
+            last_show_cursor_ && GetCursorInfo(&cursor) && cursor.hCursor &&
+            (cursor.flags & CURSOR_SHOWING) != 0 &&
+            (target_.is_window ||
+             MonitorFromPoint(cursor.ptScreenPos, MONITOR_DEFAULTTONULL) ==
+                 target_.hmonitor);
+        observer_->OnFrame(
+            wgc_session_frame{static_cast<unsigned int>(frame_size.Width),
+                              static_cast<unsigned int>(frame_size.Height),
+                              map_result.RowPitch,
+                              const_cast<const unsigned char*>(
+                                  (unsigned char*)map_result.pData),
+                              cursor_captured},
+            id_);
+        frame_failure_reported_ = false;
+      }
     }
-
-    d3d11_device_context_->Unmap(d3d11_texture_mapped_.get(), 0);
 
     if (is_new_size) {
       capture_framepool_.Recreate(
@@ -348,11 +352,20 @@ void WgcSessionImpl::OnFrame(
               DirectXPixelFormat::B8G8R8A8UIntNormalized,
           2, capture_frame_size_);
     }
-  } catch (const winrt::hresult_error&) {
-    LOG_WARN("WGC: frame processing failed");
+  } catch (const winrt::hresult_error& error) {
+    ReportFrameFailure(error.code());
   } catch (...) {
-    LOG_WARN("WGC: frame processing failed");
+    ReportFrameFailure(E_FAIL);
   }
+}
+
+void WgcSessionImpl::ReportFrameFailure(HRESULT error) {
+  if (frame_failure_reported_) return;
+  frame_failure_reported_ = true;
+  LOG_WARN("WGC: frame processing failed, hr=0x{:08X}", static_cast<uint32_t>(error));
+  // Let both normal and secure capture advance to GDI rather than replay a
+  // stale image indefinitely after a readback/device failure.
+  if (observer_) observer_->OnFrame({}, id_);
 }
 
 void WgcSessionImpl::OnClosed(
@@ -409,8 +422,9 @@ int WgcSessionImpl::InitializeLocked() {
         GetDXGIInterfaceFromObject<ID3D11Device>(d3d11_direct_device_);
     d3d11_device->GetImmediateContext(d3d11_device_context_.put());
 
-  } catch (winrt::hresult_error) {
-    LOG_ERROR("AE_WGC_CREATE_CAPTURER_FAILED");
+  } catch (const winrt::hresult_error& error) {
+    LOG_ERROR("WGC: create capture item failed, hr=0x{:08X}, thread={}",
+              static_cast<uint32_t>(error.code().value), GetCurrentThreadId());
     return 86;
   } catch (...) {
     return 86;

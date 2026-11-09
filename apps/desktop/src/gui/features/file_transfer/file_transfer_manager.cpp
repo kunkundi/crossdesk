@@ -126,7 +126,7 @@ void FileTransferManager::ProcessQueue(std::shared_ptr<RemoteSession> props) {
           auto callback = events->EnterCallback();
           if (!callback || !events->DataAllowed()) return -1;
           const auto wire_id = events->WireId(file.remote_id);
-          return MiniRtcSendReliableDataFrameToPeer(
+          return PeerSendReliableDataFrameToPeer(
               peer, data, size, file.file_label.c_str(),
               wire_id.data(), wire_id.size());
         }, file_transfer::Session::Progress{});
@@ -176,7 +176,7 @@ void FileTransferManager::ProcessQueue(std::shared_ptr<RemoteSession> props) {
         // Release that reservation even though no data chunk was ever sent.
         const auto packet = EncodeFileCancel(id, 0);
         const auto wire_id = events->WireId(file.remote_id);
-        MiniRtcSendReliableDataFrameToPeer(peer, packet.data(), packet.size(),
+        PeerSendReliableDataFrameToPeer(peer, packet.data(), packet.size(),
             file.file_label.c_str(), wire_id.data(), wire_id.size());
       }
     }
@@ -382,7 +382,7 @@ std::shared_ptr<FileReceiver> FileTransferManager::ReceiverFor(
         if (!callback || !events->DataAllowed()) return -1;
         const auto bytes = EncodeFileTransferAck(ack);
         const auto wire_id = events->WireId(remote);
-        return MiniRtcSendReliableDataFrameToPeer(
+        return PeerSendReliableDataFrameToPeer(
             peer, bytes.data(), bytes.size(), kFileFeedbackStream,
             wire_id.data(), wire_id.size());
       });
@@ -533,7 +533,7 @@ bool FileTransferManager::SendBrowser(const std::string& remote, const FileBrows
   const auto data = message.dump(-1, ' ', false, FileBrowser::Json::error_handler_t::replace);
   if (!peer || data.size() > 60000) return false;
   const auto wire_id = events->WireId(remote);
-  return MiniRtcSendReliableDataFrameToPeer(peer, data.data(), data.size(),
+  return PeerSendReliableDataFrameToPeer(peer, data.data(), data.size(),
       owner_.control_data_label_.c_str(), wire_id.data(), wire_id.size()) == 0;
 }
 

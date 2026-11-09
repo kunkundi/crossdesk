@@ -14,7 +14,6 @@
 #include <utility>
 #include <string>
 
-#include "screen_capturer/screen_capture_method.h"
 
 namespace crossdesk {
 
@@ -42,7 +41,6 @@ class ConfigCenter {
   int SetLanguage(LANGUAGE language);
   int SetConnectionMode(CONNECTION_MODE mode);
   int SetIpDirectEnabled(bool enabled);
-  int SetScreenCaptureMethod(ScreenCaptureMethod method);
   int SetVideoEncodeFormat(VIDEO_ENCODE_FORMAT video_encode_format);
   int SetTurnMode(TURN_MODE turn_mode);
   int SetForceRelay(bool force_relay);
@@ -67,7 +65,6 @@ class ConfigCenter {
   LANGUAGE GetLanguage() const;
   CONNECTION_MODE GetConnectionMode() const;
   bool IsIpDirectEnabled() const;
-  ScreenCaptureMethod GetScreenCaptureMethod() const;
   VIDEO_ENCODE_FORMAT GetVideoEncodeFormat() const;
   TURN_MODE GetTurnMode() const;
   bool IsForceRelay() const;
@@ -91,6 +88,9 @@ class ConfigCenter {
 
   int Load();
   int Save();
+  // Only connection/admission preferences cross into the SYSTEM host profile.
+  std::string ExportSharedHostConfig() const;
+  int ApplySharedHostConfig(const std::string& contents);
 
  private:
   int CommitIni();
@@ -104,7 +104,6 @@ class ConfigCenter {
   LANGUAGE language_ = LANGUAGE::SYSTEM;
   CONNECTION_MODE connection_mode_ = CONNECTION_MODE::DEVICE_ID;
   bool enable_ip_direct_ = true;
-  ScreenCaptureMethod screen_capture_method_ = ScreenCaptureMethod::Auto;
   VIDEO_ENCODE_FORMAT video_encode_format_ = VIDEO_ENCODE_FORMAT::H264;
   TURN_MODE turn_mode_ = TURN_MODE::AUTO_UDP_TCP;
   std::string signal_server_host_ = "";

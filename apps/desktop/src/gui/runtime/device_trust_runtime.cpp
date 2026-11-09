@@ -14,6 +14,12 @@ void GuiRuntime::InitializeTrustedDevices(const std::filesystem::path& directory
 }
 
 bool GuiRuntime::TrustedControllerAllowed(const std::string& id) {
+#ifdef _WIN32
+  if (managed_host_frontend_ && id.rfind("lan/", 0) != 0) {
+    std::lock_guard lock(local_host_state_mutex_);
+    return mirrored_controllers_.contains(id);
+  }
+#endif
   if (!config_center_ || !config_center_->IsTrustedDevicesOnly()) return true;
   std::lock_guard lock(controller_trust_mutex_);
   const auto it = controller_trust_.find(id);
@@ -21,6 +27,7 @@ bool GuiRuntime::TrustedControllerAllowed(const std::string& id) {
 }
 
 bool GuiRuntime::BeginControllerTrust(const std::string& id, PeerEventHandler* events) {
+  if (managed_host_frontend_ && !events->IsDirect()) return TrustedControllerAllowed(id);
   const bool required = config_center_->IsTrustedDevicesOnly();
   std::lock_guard lock(controller_trust_mutex_);
   const auto previous = controller_trust_.find(id);
@@ -54,7 +61,7 @@ void GuiRuntime::ForgetControllerTrust(const std::string& id, PeerEventHandler* 
 int GuiRuntime::SendTrustMessage(const std::string& id, const nlohmann::json& message) {
   const auto text = message.dump();
   return WithController(id, [&](MiniRtcPeerPtr* peer, const std::string& wire) {
-    return MiniRtcSendReliableDataFrameToPeer(peer, text.data(), text.size(),
+    return PeerSendReliableDataFrameToPeer(peer, text.data(), text.size(),
         control_data_label_.c_str(), wire.data(), wire.size());
   }, false);
 }
@@ -94,7 +101,7 @@ bool GuiRuntime::HandleDeviceTrustMessage(const std::string& id, PeerEventHandle
       const auto wire = events->WireId(id);
       const auto proof = trusted_devices_->Prove(message.at("nonce"),
           props->local_id_, GetHostName()).dump();
-      MiniRtcSendReliableDataFrameToPeer(props->peer_, proof.data(), proof.size(),
+      PeerSendReliableDataFrameToPeer(props->peer_, proof.data(), proof.size(),
           control_data_label_.c_str(), wire.data(), wire.size());
     } else if (type == "device_trust_proof") {
       std::lock_guard lock(controller_trust_mutex_);
@@ -127,6 +134,7 @@ void GuiRuntime::TickControllerTrust() {
   {
     std::lock_guard lock(controller_trust_mutex_);
     for (auto& [id, state] : controller_trust_) {
+      if (managed_host_frontend_ && state.events == peer_events_.get()) continue;
       if (state.closing) continue;
       const bool trusted = state.IsTrusted(trusted_devices_.get());
       if (required && (state.invalid || (state.verified && !trusted) ||
@@ -179,14 +187,28 @@ bool GuiRuntime::TrustController(const std::string& id, const std::string& expec
   if (!trusted_devices_ || !IsAuthorizedController(id)) return false;
   const auto device = VerifiedController(id);
   if (!device || device->public_key != expected_key) return false;
-  try { trusted_devices_->Add(*device); return true; }
+  return AddTrustedDevice(*device);
+}
+bool GuiRuntime::AddTrustedDevice(const TrustedDevices::Device& device) {
+#ifdef _WIN32
+  if (managed_host_frontend_) return SendLocalHostCommand({{"op", "trust_add"},
+      {"key", device.public_key}, {"name", device.name}, {"device", device.device_id}});
+#endif
+  if (!trusted_devices_) return false;
+  try { trusted_devices_->Add(device); }
   catch (const std::exception& error) { LOG_ERROR("Cannot trust device: {}", error.what()); return false; }
+  // Local persistence completes before publishing. A shared-store failure
+  // must not leave the in-memory trust list behind its own on-disk state.
+  return PublishSharedIdentity();
 }
 bool GuiRuntime::RemoveTrustedDevice(const std::string& public_key) {
+#ifdef _WIN32
+  if (managed_host_frontend_) return SendLocalHostCommand({{"op", "trust_remove"}, {"key", public_key}});
+#endif
   if (!trusted_devices_) return false;
   try { trusted_devices_->Remove(public_key); }
   catch (const std::exception& error) { LOG_ERROR("Cannot remove trusted device: {}", error.what()); return false; }
   TickControllerTrust();
-  return true;
+  return PublishSharedIdentity();
 }
 }  // namespace crossdesk

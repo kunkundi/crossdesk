@@ -32,6 +32,14 @@ constexpr DWORD kInstallAndPlugTimeoutMs = 120 * 1000;
 constexpr DWORD kUnplugTimeoutMs = 10 * 1000;
 constexpr DWORD kPresenceSettleTimeoutMs = 5 * 1000;
 
+bool HasProvisioningPrivileges() {
+  BYTE admin_sid[SECURITY_MAX_SID_SIZE];
+  DWORD size = sizeof(admin_sid);
+  BOOL member = FALSE;
+  return CreateWellKnownSid(WinBuiltinAdministratorsSid, nullptr, admin_sid, &size) &&
+         CheckTokenMembership(nullptr, admin_sid, &member) && member;
+}
+
 struct HelperVirtualDisplayStatus {
   bool ok = false;
   bool package_available = false;
@@ -189,23 +197,36 @@ bool VirtualDisplayProvisioner::Acquire(VirtualDisplayMode mode,
                                         std::string* error) {
   std::string local_error;
   if (error == nullptr) error = &local_error;
-  if (active_.load(std::memory_order_relaxed)) return true;
   if (Cancelled()) {
     *error = "cancelled";
     return false;
   }
-
+  if (active_.load(std::memory_order_relaxed)) {
+    if (CountUsbmmiddMonitors() > 0) return ApplyUsbmmiddDisplayMode(mode, error);
+    // Windows can remove a boot-time target while restoring display topology.
+    // The old ownership count no longer describes any attached monitor.
+    LOG_WARN("Virtual display target disappeared; recreating it");
+    active_.store(false, std::memory_order_relaxed);
+    via_helper_ = pending_helper_release_ = false;
+    plugged_locally_ = 0;
+  }
   bool helper_reachable = false;
   const ULONGLONG started = GetTickCount64();
-  bool ok = AcquireViaHelper(mode, error, &helper_reachable);
-  if (ok) {
-    via_helper_ = true;
-  } else if (!helper_reachable && *error != "cancelled") {
-    LOG_INFO("Virtual display: session helper unreachable ({}), trying "
-             "in-process provisioning",
-             *error);
+  bool ok = false;
+  if (HasProvisioningPrivileges()) {
+    // A user-token helper cannot inspect/authorize a SYSTEM caller. SYSTEM
+    // and elevated GUI hosts already have the rights required by the driver.
+    LOG_INFO("Virtual display: provisioning with this host's administrator/SYSTEM token");
     ok = AcquireLocally(mode, error);
     via_helper_ = false;
+  } else {
+    ok = AcquireViaHelper(mode, error, &helper_reachable);
+    via_helper_ = ok;
+    if (!ok && !helper_reachable && *error != "cancelled") {
+      LOG_INFO("Virtual display: session helper unreachable ({}), trying in-process provisioning", *error);
+      error->clear();
+      ok = AcquireLocally(mode, error);
+    }
   }
   if (!ok) {
     LOG_WARN("Virtual display: provisioning failed after {} ms, error={}",

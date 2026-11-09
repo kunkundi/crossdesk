@@ -20,6 +20,8 @@
 #include "rd_log.h"
 #ifdef _WIN32
 #include "platform/windows/input/windows_input_injector.h"
+#include "platform/windows/service/autostart_control.h"
+#include "service_host.h"
 #endif
 #if defined(__linux__) && !defined(__OHOS__)
 #include "platform/linux/headless/headless_console.h"
@@ -129,6 +131,63 @@ void GuiRuntime::SendRemoteInput(const RemoteAction& action) {
     if (result != 0)
       LOG_WARN("Send remote input failed, remote_id={}, ret={}", id, result);
   }
+}
+
+bool GuiRuntime::PrepareSharedGuiIdentity(bool import_existing) {
+#ifdef _WIN32
+  if (!SupportsServiceAutostart() || shared_identity_) return true;
+  if (!import_existing && settings_.Save() != 0) return false;
+  if (peer_) {
+    CloseConnectionPeer();
+    WaitForSessionCleanup();
+  }
+  std::string error;
+  if (!import_existing && !SharedHostIdentity::Prepare(
+      path_manager_->GetCachePath(), path_manager_->GetConfigPath() / "trusted-devices",
+      config_center_->ExportSharedHostConfig(), error)) {
+    LOG_ERROR("Cannot prepare persistent host: {}", error);
+    return false;
+  }
+  auto identity = SharedHostIdentity::AttachGui(path_manager_->GetCachePath(),
+      path_manager_->GetConfigPath() / "trusted-devices", import_existing, error);
+  if (!identity ||
+      (import_existing && config_center_->ApplySharedHostConfig(identity->HostConfig()) != 0)) {
+    LOG_ERROR("Cannot load the machine identity: {}", error);
+    return false;
+  }
+  shared_identity_ = std::move(identity);
+  managed_host_frontend_ = true;
+  StartCrossDeskService();
+#else
+  (void)import_existing;
+#endif
+  return true;
+}
+
+bool GuiRuntime::PublishSharedIdentity(bool include_config) {
+#ifdef _WIN32
+  if (managed_host_frontend_) {
+    if (!include_config) return true;
+    pending_local_config_ =
+        {{"op", "config"}, {"config", config_center_->ExportSharedHostConfig()},
+         {"privacy_on_connect", config_center_->IsEnablePrivacyScreen()},
+         {"request", ++next_local_config_request_}};
+    local_config_sent_ = false;
+    return true;  // Tick sends after startup/reattachment; errors return to the UI.
+  }
+  if (shared_identity_) {
+    local_host_profile_dirty_ = true;
+    std::string error;
+    if (!shared_identity_->Publish(include_config ? config_center_->ExportSharedHostConfig()
+                                                 : std::string{}, error)) {
+      LOG_ERROR("Cannot synchronize the shared device identity: {}", error);
+      return false;
+    }
+  }
+#else
+  (void)include_config;
+#endif
+  return true;
 }
 
 int GuiRuntime::CreateConnectionPeer() {
@@ -286,12 +345,38 @@ int GuiRuntime::CreateConnectionPeer() {
   need_to_send_recent_connections_ = true;
   signal_status_ = MiniRtcSignalStatus::MiniRtcSignalConnecting;
 
+  // Complete slow headless display setup before connecting to signaling.
+  if (unattended_host_ && devices_.EnsureCaptureReady() != 0) return -1;
   {
     std::unique_lock lock(remote_sessions_mutex_);
     peer_ = MiniRtcCreatePeer(&params_);
   }
   if (peer_) {
     LOG_INFO("Create peer instance [{}] successful", client_id_);
+#ifdef _WIN32
+    if (managed_host_frontend_) {
+      if (!local_host_) local_host_ = std::make_shared<LocalHostChannel>(false);
+      std::weak_ptr<LocalHostChannel> channel = local_host_;
+      BindLocalPeer(peer_, [this, channel](nlohmann::json message) {
+        if (message.contains("id")) {
+          std::lock_guard lock(local_host_state_mutex_);
+          const auto found = mirrored_controllers_.find(message.at("id").get<std::string>());
+          if (found == mirrored_controllers_.end()) return false;
+          message["epoch"] = found->second;
+        }
+        const auto connection = channel.lock();
+        return connection && connection->Send(message);
+      });
+      local_host_->Send({{"op", "hello"},
+          {"privacy_on_connect", config_center_->IsEnablePrivacyScreen()},
+          {"privacy_requested", privacy_.Requested() || config_center_->IsEnablePrivacyScreen()}});
+      // Outgoing viewer/direct sessions still register their native streams
+      // from the user's local display metadata; this does not start capture.
+      devices_.EnsureCaptureReady();
+      LOG_INFO("GUI attached to persistent host; no second signaling login");
+      return 0;
+    }
+#endif
     MiniRtcInit(peer_);
     LOG_INFO("Peer [{}] init finish", client_id_);
   } else {
@@ -313,8 +398,7 @@ int GuiRuntime::CreateConnectionPeer() {
     MiniRtcAddDataStream(peer_, file_label_.c_str(), true);
     MiniRtcAddDataStream(peer_, file_feedback_label_.c_str(), true);
     MiniRtcAddDataStream(peer_, clipboard_label_.c_str(), true);
-    if (!unattended_host_)
-      MiniRtcAddDataStream(peer_, web_clipboard::kStream, true);
+    MiniRtcAddDataStream(peer_, web_clipboard::kStream, true);
     return 0;
   } else {
     return -1;

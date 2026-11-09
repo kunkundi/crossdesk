@@ -3,6 +3,7 @@
 #include <SDL3/SDL_audio.h>
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_init.h>
+#include <SDL3/SDL_timer.h>
 
 #include <display_stream_id.h>
 #include <remote_action.h>
@@ -50,13 +51,26 @@ SessionDeviceManager::SessionDeviceManager(GuiRuntime &owner)
               owner_.WithController(
                   id, [&](MiniRtcPeerPtr* peer, const std::string& wire) {
                     frame.captured_timestamp = MiniRtcGetSystemTimeMicros(peer);
-                    return MiniRtcSendAudioFrameToPeer(peer, &frame,
+                    return PeerSendAudioFrameToPeer(peer, &frame,
                                                 owner_.audio_label_.c_str(),
                                                 wire.data(), wire.size());
                   });
           }) {}
 
 SessionDeviceManager::~SessionDeviceManager() { speaker_capture_.Shutdown(); }
+
+#ifdef _WIN32
+bool SessionDeviceManager::OwnsNativeCursor() const {
+  const auto* windows = dynamic_cast<ScreenCapturerWin*>(screen_capturer_);
+  return windows && windows->OwnsNativeCursor();
+}
+void SessionDeviceManager::SetNativeCursorPolicy(bool default_enabled, bool current_enabled) {
+  owner_.host_cursor_default_ = default_enabled;
+  owner_.host_cursor_preference_ = current_enabled;
+  if (auto* windows = dynamic_cast<ScreenCapturerWin*>(screen_capturer_))
+    windows->SetNativeCursorPolicy(default_enabled, current_enabled);
+}
+#endif
 
 bool SessionDeviceManager::ShouldSendCapturedFrame(
     std::chrono::steady_clock::time_point now, int fps) {
@@ -148,7 +162,8 @@ int SessionDeviceManager::InitializeScreenCapturer() {
   screen_capturer_->SetPrivacyController(&owner_.privacy_);
 #ifdef _WIN32
   if (auto windows = dynamic_cast<ScreenCapturerWin*>(screen_capturer_)) {
-    windows->SetCaptureMethod(owner_.config_center_->GetScreenCaptureMethod());
+    windows->SetUnattendedHost(owner_.unattended_host_);
+    windows->SetNativeCursorPolicy(owner_.host_cursor_default_, owner_.host_cursor_preference_);
   }
 #endif
 
@@ -176,6 +191,7 @@ int SessionDeviceManager::InitializeScreenCapturer() {
         const auto now_time = std::chrono::steady_clock::now();
         bool from_secure_desktop = false;
 #ifdef _WIN32
+        owner_.host_capture_tick_ = SDL_GetTicks();
         from_secure_desktop =
             ScreenCapturerWin::CurrentFrameIsFromSecureDesktop();
 #endif
@@ -236,6 +252,7 @@ int SessionDeviceManager::InitializeScreenCapturer() {
         const auto send_started = std::chrono::steady_clock::now();
         uint64_t send_errors = 0;
         for (const std::string &remote_id : connected_remote_ids) {
+          if (owner_.managed_host_frontend_ && remote_id.rfind("lan/", 0) != 0) continue;
           if (!owner_.preview_subscriptions_.ShouldSend(remote_id, now_time,
                                                         stream_id)) continue;
           if (owner_.WithController(
@@ -243,7 +260,7 @@ int SessionDeviceManager::InitializeScreenCapturer() {
                     if (resumed_after_gap || stream_changed)
                       MiniRtcRequestVideoKeyFrame(peer, stream_id.c_str());
                     frame.captured_timestamp = MiniRtcGetSystemTimeMicros(peer);
-                    return MiniRtcSendVideoFrameToPeer(peer, &frame, stream_id.c_str(),
+                    return PeerSendVideoFrameToPeer(peer, &frame, stream_id.c_str(),
                                                 wire.data(), wire.size());
                   }) != 0)
             ++send_errors;
@@ -702,14 +719,20 @@ void SessionDeviceManager::UpdateInteractions() {
 #endif
 
   if (owner_.start_screen_capturer_ && !owner_.screen_capturer_is_started_) {
-    if (StartScreenCapturer() == 0) {
-      owner_.screen_capturer_is_started_ = true;
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= next_capture_start_retry_) {
+      next_capture_start_retry_ = now + std::chrono::seconds(1);
+      if (StartScreenCapturer() == 0) {
+        owner_.screen_capturer_is_started_ = true;
+        next_capture_start_retry_ = {};
+      }
     }
   } else if (!owner_.start_screen_capturer_ &&
              owner_.screen_capturer_is_started_) {
     StopScreenCapturer();
     owner_.screen_capturer_is_started_ = false;
   }
+  if (!owner_.start_screen_capturer_) next_capture_start_retry_ = {};
 
   UpdateScreenSharingPower();
 

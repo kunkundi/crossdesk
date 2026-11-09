@@ -75,7 +75,7 @@ void PeerEventHandler::SendClientInfo(MiniRtcPeerPtr* peer,
                                   {"version", CROSSDESK_VERSION},
                                   {"platform", HostPlatformName(kClientPlatform)}};
   const std::string payload = message.dump();
-  if (MiniRtcSendSignalMessage(peer, payload.data(), payload.size()) != 0) {
+  if (PeerSendSignalMessage(peer, payload.data(), payload.size()) != 0) {
     LOG_WARN("[{}] failed to report client information", client_id);
   }
 }
@@ -118,6 +118,12 @@ void PeerEventHandler::OnSignalMessage(const char* message, size_t size,
     return;
   }
   std::string type = j["type"].get<std::string>();
+#ifdef _WIN32
+  if (runtime->unattended_host_ && runtime->local_host_ &&
+      (type == "presence" || type == "presence_update" ||
+       type == "announcements" || type == "announcements_changed"))
+    runtime->local_host_->Send({{"op", "signal"}, {"message", s}});
+#endif
   if (type == "user_join_transmission" && j.contains("status") &&
       j["status"] == "failed" && j.contains("transmission_id") &&
       j["transmission_id"].is_string()) {
@@ -329,6 +335,19 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
     } else {
       runtime->ForgetControllerTrust(remote_id, handler);
     }
+#ifdef _WIN32
+    if (runtime->unattended_host_) {
+      std::lock_guard lock(runtime->local_host_state_mutex_);
+      if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
+        auto& info = runtime->local_controller_info_[remote_id];
+        if (!info.contains("epoch")) info["epoch"] = ++runtime->next_controller_epoch_;
+      } else if (status == MiniRtcConnectionStatus::MiniRtcConnectionClosed ||
+                 status == MiniRtcConnectionStatus::MiniRtcConnectionFailed ||
+                 status == MiniRtcConnectionStatus::MiniRtcConnectionDisconnected) {
+        runtime->local_controller_info_.erase(remote_id);
+      }
+    }
+#endif
   }
 
   if (props) {
@@ -348,25 +367,7 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
           props->cursor_presentation_ = {};
         }
         {
-          RemoteAction remote_action = MakeHostInformation(
-              GetHostName(), runtime->devices_.host_display_list(),
-              /*supports_privacy_screen=*/!runtime->unattended_host_,
-              CROSSDESK_VERSION, kClientPlatform);
-          remote_action.i.supports_video_settings = true;
-          remote_action.i.supports_video_codec_status = true;
-          remote_action.i.supports_text_input = runtime->devices_.SupportsTextInput();
-          remote_action.i.supports_deskhub_preview = true;
-          remote_action.i.supports_deskhub_resolution = true;
-          remote_action.i.supports_deskhub_fps15 = true;
-          remote_action.i.supports_deskhub_bandwidth = true;
-          remote_action.i.supports_file_browser = !runtime->unattended_host_;
-          for (std::size_t i = 0; i < remote_action.i.display_num; i++) {
-            LOG_INFO("Local display [{}:{}]", i + 1,
-                     remote_action.i.display_list[i]);
-          }
-          auto information = nlohmann::json::parse(remote_action.to_json());
-          information["device_trust_version"] = 1;
-          std::string msg = information.dump();
+          const auto msg = runtime->BuildHostInformation(true);
           const int ret =
               MiniRtcSendReliableDataFrame(props->peer_, msg.data(), msg.size(),
                                     runtime->control_data_label_.c_str());
@@ -374,7 +375,6 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
             LOG_WARN("[{}] host information send failed, ret={}", remote_id,
                      ret);
           }
-          FreeRemoteAction(remote_action);
         }
 
         if (!props->wall_managed_ && !runtime->need_to_create_stream_window_) {
@@ -517,43 +517,20 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
 #if _WIN32
         runtime->last_windows_service_status_tick_ = 0;
 #endif
-        {
-          RemoteAction remote_action = MakeHostInformation(
-              GetHostName(), runtime->devices_.host_display_list(),
-              /*supports_privacy_screen=*/!runtime->unattended_host_,
-              CROSSDESK_VERSION, kClientPlatform);
-          remote_action.i.supports_video_settings = true;
-          remote_action.i.supports_video_codec_status = true;
-          remote_action.i.supports_text_input = runtime->devices_.SupportsTextInput();
-          remote_action.i.supports_deskhub_preview = true;
-          remote_action.i.supports_deskhub_resolution = true;
-          remote_action.i.supports_deskhub_fps15 = true;
-          remote_action.i.supports_deskhub_bandwidth = true;
-          remote_action.i.supports_file_browser = !runtime->unattended_host_;
-          for (std::size_t i = 0; i < remote_action.i.display_num; i++) {
-            LOG_INFO("Local display [{}:{}]", i + 1,
-                     remote_action.i.display_list[i]);
-          }
-          std::string msg = remote_action.to_json();
-          const int ret =
-              runtime->SendControllerData(remote_id, msg.data(), msg.size(),
-                                          runtime->control_data_label_.c_str());
-          if (ret != 0) {
-            LOG_WARN("[{}] host information send failed, ret={}", remote_id,
-                     ret);
-          }
-          FreeRemoteAction(remote_action);
-        }
+        if (!runtime->managed_host_frontend_ || handler->IsDirect())
+          runtime->AnnounceHostCapabilities(remote_id);
 
         runtime->need_to_destroy_server_window_.store(
             false, std::memory_order_release);
         runtime->need_to_create_server_window_.store(true,
                                                      std::memory_order_release);
         runtime->is_server_mode_ = true;
-        runtime->start_screen_capturer_ = true;
+        if (!runtime->managed_host_frontend_ || handler->IsDirect())
+          runtime->start_screen_capturer_ = true;
         runtime->devices_.StartSpeakerCapturer();
         runtime->remote_client_id_ = remote_id;
-        runtime->start_mouse_controller_ = true;
+        if (!runtime->managed_host_frontend_ || handler->IsDirect())
+          runtime->start_mouse_controller_ = true;
 
         break;
       }
@@ -670,4 +647,33 @@ void PeerEventHandler::OnNetStatusReport(
     props->net_traffic_stats_.Store(*net_traffic_stats);
   }
 }
+std::string GuiRuntime::BuildHostInformation(bool advertise_trust) {
+  auto action = MakeHostInformation(GetHostName(), devices_.host_display_list(),
+      UserSessionFeaturesAvailable(), CROSSDESK_VERSION, kClientPlatform);
+  action.i.supports_video_settings = true;
+  action.i.supports_video_codec_status = true;
+  action.i.supports_text_input = devices_.SupportsTextInput();
+  action.i.supports_deskhub_preview = true;
+  action.i.supports_deskhub_resolution = true;
+  action.i.supports_deskhub_fps15 = true;
+  action.i.supports_deskhub_bandwidth = true;
+  action.i.supports_file_browser = UserSessionFeaturesAvailable();
+  for (std::size_t i = 0; i < action.i.display_num; ++i)
+    LOG_INFO("Local display [{}:{}]", i + 1, action.i.display_list[i]);
+  auto message = action.to_json();
+  FreeRemoteAction(action);
+  if (advertise_trust) {
+    auto information = nlohmann::json::parse(message);
+    information["device_trust_version"] = 1;
+    message = information.dump();
+  }
+  return message;
+}
+
+void GuiRuntime::AnnounceHostCapabilities(const std::string& id) {
+  const auto message = BuildHostInformation();
+  const int ret = SendControllerData(id, message.data(), message.size(), control_data_label_.c_str());
+  if (ret != 0) LOG_WARN("[{}] host information send failed, ret={}", id, ret);
+}
+
 }  // namespace crossdesk

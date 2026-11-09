@@ -66,6 +66,8 @@ public:
     return remote_mouse_buttons_.Apply(remote_id, flag, std::move(send));
   }
 #ifdef _WIN32
+  bool OwnsNativeCursor() const;
+  void SetNativeCursorPolicy(bool default_enabled, bool current_enabled);
   std::string SendServiceMouseCommand(int x, int y, int wheel, int flag);
 #endif
   // Requests are asynchronous; Stop drains/revokes audio delivery before
@@ -145,6 +147,7 @@ private:
 #endif
   std::chrono::steady_clock::time_point last_frame_time_{};
   std::chrono::steady_clock::time_point next_frame_deadline_{};
+  std::chrono::steady_clock::time_point next_capture_start_retry_{};
   std::mutex capture_metrics_mutex_;
   std::chrono::steady_clock::time_point capture_metrics_started_{};
   std::chrono::steady_clock::time_point last_capture_callback_{};

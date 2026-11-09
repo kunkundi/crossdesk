@@ -5,6 +5,7 @@
 #include <sddl.h>
 
 #include <ctime>
+#include <atomic>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <vector>
@@ -18,6 +19,20 @@ constexpr wchar_t kDirectorySecurity[] =
 bool TrustedSid(PSID sid) {
   return sid && (IsWellKnownSid(sid, WinLocalSystemSid) ||
                  IsWellKnownSid(sid, WinBuiltinAdministratorsSid));
+}
+
+bool PrivateAccess(PSID owner, PACL acl, BYTE required_flags = 0) {
+  if (!TrustedSid(owner) || !acl || !acl->AceCount) return false;
+  for (DWORD i = 0; i < acl->AceCount; ++i) {
+    void* raw = nullptr;
+    if (!GetAce(acl, i, &raw)) return false;
+    auto* ace = static_cast<ACCESS_ALLOWED_ACE*>(raw);
+    // Credentials and SYSTEM configuration are restricted to SYSTEM/admins.
+    if (ace->Header.AceType != ACCESS_ALLOWED_ACE_TYPE ||
+        !TrustedSid(&ace->SidStart) ||
+        (ace->Header.AceFlags & required_flags) != required_flags) return false;
+  }
+  return true;
 }
 
 bool PrivateDirectory(const std::filesystem::path& path) {
@@ -34,22 +49,7 @@ bool PrivateDirectory(const std::filesystem::path& path) {
           OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION, &owner,
           nullptr, &dacl, nullptr, &descriptor) != ERROR_SUCCESS)
     return false;
-  bool safe = TrustedSid(owner) && dacl && dacl->AceCount > 0;
-  for (DWORD index = 0; safe && index < dacl->AceCount; ++index) {
-    void* raw = nullptr;
-    if (!GetAce(dacl, index, &raw)) {
-      safe = false;
-      break;
-    }
-    auto* ace = static_cast<ACCESS_ALLOWED_ACE*>(raw);
-    // Only SYSTEM and elevated administrators can read credentials or write
-    // configuration that the service will consume as SYSTEM.
-    safe =
-        ace->Header.AceType == ACCESS_ALLOWED_ACE_TYPE &&
-        TrustedSid(&ace->SidStart) &&
-        (ace->Header.AceFlags & (OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE)) ==
-            (OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE);
-  }
+  const bool safe = PrivateAccess(owner, dacl, OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE);
   LocalFree(descriptor);
   return safe;
 }
@@ -82,11 +82,23 @@ bool SetUnattendedEnabled(bool enabled) {
                       nullptr) != ERROR_SUCCESS)
     return false;
   const DWORD value = enabled ? 1 : 0;
-  const auto result =
+  auto result =
       RegSetValueExW(key, L"Enabled", 0, REG_DWORD,
                      reinterpret_cast<const BYTE*>(&value), sizeof(value));
+  if (result == ERROR_SUCCESS && enabled) {
+    const DWORD version = 1;
+    result = RegSetValueExW(key, L"SharedIdentityVersion", 0, REG_DWORD,
+                            reinterpret_cast<const BYTE*>(&version), sizeof(version));
+  }
   RegCloseKey(key);
   return result == ERROR_SUCCESS;
+}
+
+bool IsSharedIdentityServiceConfigured() {
+  DWORD version = 0;
+  DWORD size = sizeof(version);
+  return RegGetValueW(HKEY_LOCAL_MACHINE, kRegistryKey, L"SharedIdentityVersion",
+      RRF_RT_REG_DWORD | RRF_SUBKEY_WOW6464KEY, nullptr, &version, &size) == ERROR_SUCCESS && version == 1;
 }
 
 bool IsAdministratorProcess() {
@@ -116,6 +128,25 @@ bool PrepareUnattendedDirectory(bool create) {
                                                     create);
 }
 
+bool PrepareUnattendedDirectoryForService() {
+  if (!IsLocalSystemProcess()) return false;
+  const auto root = UnattendedDataPath();
+  // Only adopt an already trusted SYSTEM/Administrators directory. Never
+  // repair a permissive, linked, or ordinary-user-owned machine profile.
+  if (!unattended_detail::PreparePrivateDirectory(root, true)) return false;
+  PSECURITY_DESCRIPTOR descriptor = nullptr;
+  if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
+          kDirectorySecurity, SDDL_REVISION_1, &descriptor, nullptr)) return false;
+  PACL acl = nullptr;
+  BOOL present = FALSE, defaulted = FALSE;
+  const bool updated = GetSecurityDescriptorDacl(descriptor, &present, &acl, &defaulted) &&
+      present && SetNamedSecurityInfoW(const_cast<wchar_t*>(root.c_str()), SE_FILE_OBJECT,
+          DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+          nullptr, nullptr, acl, nullptr) == ERROR_SUCCESS;
+  LocalFree(descriptor);
+  return updated && PrivateDirectory(root);
+}
+
 bool unattended_detail::PreparePrivateDirectory(
     const std::filesystem::path& root, bool create) {
   if (root.empty()) return false;
@@ -134,6 +165,62 @@ bool unattended_detail::PreparePrivateDirectory(
   return PrivateDirectory(root);
 }
 
+HANDLE unattended_detail::OpenPrivateMachineFile(const std::filesystem::path& root,
+    const std::filesystem::path& path, DWORD access, DWORD sharing,
+    DWORD creation, DWORD flags) {
+  if (path.parent_path() != root || !PreparePrivateDirectory(root, false)) {
+    SetLastError(ERROR_ACCESS_DENIED);
+    return INVALID_HANDLE_VALUE;
+  }
+  PSECURITY_DESCRIPTOR security = nullptr;
+  const auto sddl = IsLocalSystemProcess()
+      ? L"O:SYG:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)"
+      : L"O:BAG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)";
+  if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
+          sddl, SDDL_REVISION_1, &security, nullptr)) return INVALID_HANDLE_VALUE;
+  SECURITY_ATTRIBUTES attributes{sizeof(attributes), security, FALSE};
+  HANDLE file = CreateFileW(path.c_str(), access | READ_CONTROL, sharing,
+      &attributes, creation, flags | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+  const DWORD error = GetLastError();
+  LocalFree(security);
+  if (file == INVALID_HANDLE_VALUE) { SetLastError(error); return file; }
+  BY_HANDLE_FILE_INFORMATION info{};
+  PSID owner = nullptr;
+  PACL acl = nullptr;
+  PSECURITY_DESCRIPTOR descriptor = nullptr;
+  const bool safe = GetFileInformationByHandle(file, &info) && info.nNumberOfLinks == 1 &&
+      !(info.dwFileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY)) &&
+      GetSecurityInfo(file, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+                      &owner, nullptr, &acl, nullptr, &descriptor) == ERROR_SUCCESS &&
+      PrivateAccess(owner, acl);
+  if (descriptor) LocalFree(descriptor);
+  if (safe) return file;
+  CloseHandle(file);
+  SetLastError(ERROR_ACCESS_DENIED);
+  return INVALID_HANDLE_VALUE;
+}
+
+bool unattended_detail::WritePrivateMachineFile(const std::filesystem::path& root,
+    const std::filesystem::path& path, const std::string& contents) {
+  const DWORD attributes = GetFileAttributesW(path.c_str());
+  if (attributes != INVALID_FILE_ATTRIBUTES &&
+      (attributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY))) return false;
+  static std::atomic<unsigned long> sequence{0};
+  const auto temporary = path.wstring() + L".tmp-" + std::to_wstring(GetCurrentProcessId()) +
+      L"-" + std::to_wstring(GetTickCount64()) + L"-" + std::to_wstring(sequence++);
+  HANDLE output = OpenPrivateMachineFile(
+      root, temporary, GENERIC_WRITE, 0, CREATE_NEW);
+  if (output == INVALID_HANDLE_VALUE) return false;
+  DWORD written = 0;
+  const bool saved = WriteFile(output, contents.data(), static_cast<DWORD>(contents.size()),
+      &written, nullptr) && written == contents.size() && FlushFileBuffers(output);
+  CloseHandle(output);
+  if (saved && MoveFileExW(temporary.c_str(), path.c_str(),
+                          MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) return true;
+  DeleteFileW(temporary.c_str());
+  return false;
+}
+
 bool WriteUnattendedStatus(const std::string& identity, bool online,
                            DWORD session_id) {
   const auto root = UnattendedDataPath();
@@ -141,6 +228,7 @@ bool WriteUnattendedStatus(const std::string& identity, bool online,
   const auto separator = identity.find('@');
   nlohmann::json status = {
       {"online", online},
+      {"mode", "service"},
       {"process_id", GetCurrentProcessId()},
       {"session_id", session_id},
       {"updated_at", std::time(nullptr)},
@@ -148,13 +236,7 @@ bool WriteUnattendedStatus(const std::string& identity, bool online,
        separator == std::string::npos ? "" : identity.substr(0, separator)},
       {"password",
        separator == std::string::npos ? "" : identity.substr(separator + 1)}};
-  const auto temporary = root / L"status.tmp";
-  std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
-  output << status.dump(2);
-  output.close();
-  return !output.fail() &&
-         MoveFileExW(temporary.c_str(), (root / L"status.json").c_str(),
-                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+  return unattended_detail::WritePrivateMachineFile(root, root / L"status.json", status.dump());
 }
 
 std::string ReadUnattendedStatus() {

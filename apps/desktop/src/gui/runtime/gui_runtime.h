@@ -27,10 +27,15 @@
 #include "runtime/disconnect_lock_policy.h"
 #include "runtime/announcement_inbox.h"
 #include "runtime/peer_event_handler.h"
+#include "runtime/peer_transport.h"
 #include "runtime/privacy_session_policy.h"
 #include "runtime/trusted_devices.h"
 #ifdef __APPLE__
 #include "platform/macos/gui/runtime/mac_permission_migration.h"
+#endif
+#ifdef _WIN32
+#include "local_host_channel.h"
+#include "runtime/local_host_status.h"
 #endif
 
 namespace crossdesk {
@@ -114,6 +119,8 @@ class GuiRuntime : protected gui_detail::GuiState {
   void HandleScreenLock();
   bool IsAuthorizedController(const std::string& remote_id);
   void InitializeTrustedDevices(const std::filesystem::path& directory);
+  bool PublishSharedIdentity(bool include_config = false);
+  bool PrepareSharedGuiIdentity(bool import_existing);
   bool TrustedControllerAllowed(const std::string& remote_id);
   bool BeginControllerTrust(const std::string& remote_id, PeerEventHandler* events);
   void ForgetControllerTrust(const std::string& remote_id, PeerEventHandler* events);
@@ -122,6 +129,7 @@ class GuiRuntime : protected gui_detail::GuiState {
   void TickControllerTrust();
   std::optional<TrustedDevices::Device> VerifiedController(const std::string& remote_id);
   bool TrustController(const std::string& remote_id, const std::string& expected_key);
+  bool AddTrustedDevice(const TrustedDevices::Device& device);
   bool RemoveTrustedDevice(const std::string& public_key);
   int SendTrustMessage(const std::string& remote_id, const nlohmann::json& message);
   std::unique_ptr<TrustedDevices> trusted_devices_;
@@ -201,6 +209,39 @@ class GuiRuntime : protected gui_detail::GuiState {
   PrivacyController privacy_;
   // Set before initializing callbacks; immutable for the process lifetime.
   bool unattended_host_ = false;
+  bool managed_host_frontend_ = false;
+  std::string BuildHostInformation(bool advertise_trust = false);
+  void AnnounceHostCapabilities(const std::string& id);
+#ifdef _WIN32
+  std::shared_ptr<LocalHostChannel> local_host_;
+  std::atomic<bool> local_gui_ready_{false};
+  std::mutex local_host_state_mutex_;
+  std::map<std::string, nlohmann::json> local_controller_info_;
+  std::map<std::string, uint64_t> mirrored_controllers_;
+  uint64_t next_controller_epoch_ = 0;
+  uint64_t next_local_host_status_ = 0;
+  LocalHostStatus local_host_status_;
+  std::atomic<bool> local_host_profile_dirty_{true};
+  nlohmann::json pending_local_config_;
+  uint64_t next_local_config_request_ = 0;
+  bool local_config_sent_ = false;
+  std::optional<bool> local_cursor_hidden_sent_;
+  std::optional<bool> local_cursor_request_sent_;
+  bool local_cursor_policy_ready_ = false;
+  bool host_cursor_default_ = true, host_cursor_preference_ = true;
+  std::atomic<uint64_t> host_capture_tick_{0};
+  bool ForwardUserSessionData(const std::string& id, const std::string& stream,
+                              const char* data, size_t size);
+  void PublishLocalHostStatus();
+  bool SendLocalHostCommand(nlohmann::json message);
+#endif
+  bool UserSessionFeaturesAvailable() const {
+#ifdef _WIN32
+    return !unattended_host_ || local_gui_ready_.load();
+#else
+    return !unattended_host_;
+#endif
+  }
   AnnouncementInbox announcements_;
   PrivacySessionPolicy privacy_sessions_;
   DisconnectLockPolicy disconnect_lock_;

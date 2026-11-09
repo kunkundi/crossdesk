@@ -19,7 +19,7 @@ class DxgiCursorState {
     // a separate pointer update. Preserve this output-specific default across
     // privacy restoration; an explicit DXGI update can still override it.
     software_cursor_monitor_ = software_cursor ? monitor : nullptr;
-    embedded_monitor_ = privacy_cursor_hidden_ ? nullptr : software_cursor_monitor_;
+    embedded_monitor_ = HiddenLocked() ? nullptr : software_cursor_monitor_;
   }
 
   void Update(int64_t last_mouse_update_time, bool separate_pointer_visible,
@@ -28,7 +28,7 @@ class DxgiCursorState {
     // pointer state until DXGI actually reports another pointer update.
     if (last_mouse_update_time == 0) return;
     std::lock_guard<std::mutex> lock(mutex_);
-    if (privacy_cursor_hidden_) return;
+    if (HiddenLocked()) return;
     embedded_monitor_ = separate_pointer_visible ? nullptr : monitor;
   }
 
@@ -41,10 +41,57 @@ class DxgiCursorState {
   void SetPrivacyCursorHidden(bool hidden) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (privacy_cursor_hidden_ == hidden) return;
+    const bool previous = HiddenLocked();
     privacy_cursor_hidden_ = hidden;
+    RefreshHiddenState(previous);
+  }
+
+  void SetExternalCursorHidden(bool hidden) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (external_cursor_hidden_ == hidden) return;
+    const bool previous = HiddenLocked();
+    external_cursor_hidden_ = hidden;
+    RefreshHiddenState(previous);
+  }
+
+  bool LocalPrivacyCursorHidden() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return privacy_cursor_hidden_;
+  }
+
+  bool ExternalCursorHidden() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return external_cursor_hidden_;
+  }
+
+  void SetExternalControllerAvailable(bool available) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    external_controller_available_ = available;
+  }
+  bool ExternalControllerAvailable() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return external_controller_available_;
+  }
+
+  uint64_t CursorVisibilityRevision() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return visibility_revision_;
+  }
+
+ private:
+  bool HiddenLocked() const { return privacy_cursor_hidden_ || external_cursor_hidden_; }
+  void RefreshHiddenState(bool previous) {
+    if (previous == HiddenLocked()) return;
+    ++visibility_revision_;
     // Discard stale pointer-plane updates, then restore the output's default.
     // A software-cursor IDD may never send a fresh pointer-plane update.
-    embedded_monitor_ = hidden ? nullptr : software_cursor_monitor_;
+    embedded_monitor_ = HiddenLocked() ? nullptr : software_cursor_monitor_;
+  }
+
+ public:
+  bool PrivacyCursorHidden() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return HiddenLocked();
   }
 
   bool ShouldDrawCursor(bool system_cursor_visible, void* cursor_monitor) const {
@@ -53,7 +100,7 @@ class DxgiCursorState {
     // CURSOR_SHOWING. DXGI Visible=false then means hidden, not embedded in the
     // captured frame. Keep sending the application's cursor to the controller.
     // CURSOR_SHOWING still takes precedence when the application hides it.
-    if (privacy_cursor_hidden_) return system_cursor_visible;
+    if (HiddenLocked()) return system_cursor_visible;
     // A hidden cursor or a pointer on another monitor also makes DXGI report
     // Visible=false. Only suppress a visible cursor on the captured monitor.
     return system_cursor_visible &&
@@ -65,6 +112,9 @@ class DxgiCursorState {
   void* embedded_monitor_ = nullptr;
   void* software_cursor_monitor_ = nullptr;
   bool privacy_cursor_hidden_ = false;
+  bool external_cursor_hidden_ = false;
+  bool external_controller_available_ = false;
+  uint64_t visibility_revision_ = 0;
 };
 
 inline DxgiCursorState& SharedDxgiCursorState() {

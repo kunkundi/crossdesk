@@ -295,6 +295,7 @@ void GuiRuntime::HandleWindowsServiceIntegration() {
       BuildWindowsServiceStatusAction(broadcast_status);
   std::string msg = remote_action.to_json();
   for (const auto& id : ConnectedControllers()) {
+    if (managed_host_frontend_ && id.rfind("lan/", 0) != 0) continue;
     const int ret = SendControllerData(id, msg.data(), msg.size(),
                                        control_data_label_.c_str());
     if (ret != 0)

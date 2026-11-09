@@ -35,6 +35,8 @@ class PrivacyController {
   void Shutdown();
   void Fail(const std::string& reason);
   bool Engaged() const { return engaged_.load(); }
+  // Includes automatic privacy suspended until the user desktop recovers.
+  bool Requested() const;
   void CaptureChanged(bool running);
 
  private:

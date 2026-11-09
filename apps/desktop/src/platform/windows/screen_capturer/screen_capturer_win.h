@@ -12,7 +12,6 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -31,6 +30,7 @@
 namespace crossdesk {
 
 class CapturedNv12FramePool;
+class PrivacyCursorGuard;
 
 class ScreenCapturerWin : public ScreenCapturer {
  public:
@@ -55,27 +55,33 @@ class ScreenCapturerWin : public ScreenCapturer {
 
   std::vector<DisplayInfo> GetDisplayInfoList() override;
   int GetCurrentMonitorIndex() const override;
-  // True while this session captures a usbmmidd monitor it plugged itself.
-  bool IsVirtualDisplayActive() const { return virtual_display_.active(); }
+  bool OwnsNativeCursor() const { return native_cursor_owned_.load(); }
+  void SetNativeCursorPolicy(bool default_enabled, bool current_enabled) {
+    native_cursor_default_.store(default_enabled);
+    native_cursor_enabled_.store(current_enabled);
+  }
   void SetPrivacyController(PrivacyController* privacy) override { privacy_ = privacy; }
   // Set before Init(), while capture is stopped.
-  void SetCaptureMethod(ScreenCaptureMethod method) { capture_method_ = method; }
+  void SetUnattendedHost(bool enabled) { unattended_host_ = enabled; }
   // Query synchronously inside the frame callback, on the delivering thread.
   // This describes the actual frame, independently of service status polling.
   static bool CurrentFrameIsFromSecureDesktop();
 
  private:
-  using BackendFactory = std::function<std::unique_ptr<ScreenCapturer>()>;
   std::unique_ptr<ScreenCapturer> impl_;
   // Serializes backend replacement (secure-desktop recovery runs on the
   // management thread) against the public entry points that dereference it.
   // Lock order: impl_mutex_ before alias_mutex_; never the reverse.
   std::mutex impl_mutex_;
-  ScreenCaptureMethod capture_method_ = ScreenCaptureMethod::Auto;
-  bool IsBackendEnabled(ScreenCaptureMethod method) const {
-    return capture_method_ == ScreenCaptureMethod::Auto ||
-           capture_method_ == method;
-  }
+  bool unattended_host_ = false;
+  bool PrepareUnattendedDisplay();
+  void UpdateNativeCursor(ScreenCapturer* backend);
+  void ReleaseNativeCursor();
+  std::unique_ptr<PrivacyCursorGuard> native_cursor_guard_;
+  std::atomic<bool> native_cursor_owned_{false};
+  std::atomic<bool> native_cursor_transition_{false};
+  std::atomic<bool> native_cursor_default_{true}, native_cursor_enabled_{true};
+  ULONGLONG next_native_cursor_retry_ = 0;
   PrivacyController* privacy_ = nullptr;
   void NotifyPrivacyCapture(bool running);
   int fps_ = 60;
@@ -92,6 +98,7 @@ class ScreenCapturerWin : public ScreenCapturer {
   std::atomic<bool> native_output_error_logged_{false};
   std::atomic<bool> running_{false};
   std::atomic<ULONGLONG> last_capture_progress_tick_{0};
+  std::atomic<bool> backend_frame_received_{false}, backend_reset_pending_{false};
   std::atomic<bool> display_probe_requested_{false};
   ULONGLONG last_display_probe_tick_ = 0;
   ULONGLONG last_capture_retry_tick_ = 0;
@@ -99,13 +106,11 @@ class ScreenCapturerWin : public ScreenCapturer {
   std::atomic<bool> paused_{false};
   std::atomic<bool> show_cursor_{true};
   bool applied_show_cursor_ = true;
-  std::atomic<bool> headless_compat_{false};
-  // Session-scoped: plugged on a headless desktop after Start() returns and
-  // released after Stop(), so an attached physical monitor is never shadowed
-  // between sessions. Both run on virtual_display_thread_ because the helper
-  // may need up to two minutes to install the driver; Start() itself begins
-  // in GDI compatibility mode and the management thread adopts the virtual
-  // display (switching to a GPU backend) once virtual_display_ready_ is set.
+  // GUI sessions provision on a worker and release after Stop(). Machine
+  // hosts prepare before signaling, revalidate before capture, and retain
+  // the monitor until Destroy(). Recovery also handles lost login targets.
+  // The management thread adopts the output once virtual_display_ready_ is
+  // set, trying the same ordered backends on the replacement target.
   VirtualDisplayProvisioner virtual_display_;
   std::thread virtual_display_thread_;
   std::atomic<bool> virtual_display_ready_{false};
@@ -128,23 +133,17 @@ class ScreenCapturerWin : public ScreenCapturer {
   SharedCaptureConfiguration secure_shared_configuration_;
   bool secure_shared_capture_started_ = false;
   bool secure_shared_start_pending_ = false;
+  ULONGLONG secure_shared_last_keepalive_ = 0;
   std::shared_ptr<CapturedNv12FramePool> native_frame_pool_;
 
   void BuildCanonicalFromImpl();
   void RebuildAliasesFromImpl(bool preserve_backend_slots = false);
   void RestoreMonitor(int monitor_index);
-  // Backends in preference order for the current desktop; each factory is
-  // invoked lazily so an unused WGC plugin is never loaded.
-  std::vector<BackendFactory> PreferredBackends(bool headless,
-                                               bool usbmmidd = false) const;
   bool TryStartBackend(std::unique_ptr<ScreenCapturer> candidate,
                        int monitor_index);
-  bool StartPreferredBackend(bool headless, int monitor_index,
-                              bool usbmmidd = false);
-  void ResetPostSecureDesktopState();
-  // Common tail of every successful Start(): publish running state and
-  // launch the management thread.
-  int MarkStarted();
+  bool StartPreferredBackend(int monitor_index,
+      ScreenCaptureMethod after = ScreenCaptureMethod::Auto);
+  void ResetPostSecureDesktopState(bool secure = false);
   void EmitCapturedFrame(unsigned char* data, int size, int width, int height,
                          const char* stream_id,
                          const MiniRtcNativeVideoFrame* native_frame = nullptr,

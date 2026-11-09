@@ -10811,6 +10811,42 @@
       "fr": "Le service Windows distant est indisponible. Le contrôle de l’écran verrouillé ne fonctionnera pas. Installez ou réparez le service CrossDesk sur l’appareil distant.",
       "es": "El servicio de Windows remoto no está disponible. No se podrá controlar la pantalla de bloqueo. Instale o repare el servicio CrossDesk en el dispositivo remoto.",
       "pt-BR": "O serviço do Windows remoto está indisponível. Não será possível controlar a tela de bloqueio. Instale ou repare o serviço CrossDesk no dispositivo remoto."
+    },
+    "开机自启需要安装版 Release；便携版和 Debug 不支持无人值守服务。": {
+      "zh-Hans": "开机自启需要安装版 Release；便携版和 Debug 不支持无人值守服务。",
+      "en": "Boot startup requires the installed Release build. Portable and Debug builds do not support the unattended service.",
+      "ru": "Автозапуск требует установленной сборки Release. Переносная версия и Debug не поддерживают автономную службу.",
+      "zh-Hant": "開機自啟需要安裝版 Release；可攜版和 Debug 不支援無人值守服務。",
+      "ja": "自動起動にはインストール版 Release が必要です。ポータブル版と Debug は無人アクセスサービスに対応していません。",
+      "ko": "자동 시작에는 설치형 Release 버전이 필요합니다. 포터블 및 Debug 버전은 무인 접속 서비스를 지원하지 않습니다.",
+      "de": "Der Systemstart erfordert die installierte Release-Version. Portable- und Debug-Versionen unterstützen den unbeaufsichtigten Dienst nicht.",
+      "fr": "Le démarrage automatique nécessite la version Release installée. Les versions portable et Debug ne prennent pas en charge le service sans surveillance.",
+      "es": "El inicio automático requiere la versión Release instalada. Las versiones portátil y Debug no admiten el servicio desatendido.",
+      "pt-BR": "A inicialização automática exige a versão Release instalada. As versões portátil e Debug não oferecem suporte ao serviço não assistido."
+    },
+    "无法配置无人值守服务，请检查管理员权限和安装文件。": {
+      "zh-Hans": "无法配置无人值守服务，请检查管理员权限和安装文件。",
+      "en": "Could not configure the unattended service. Check administrator privileges and installation files.",
+      "ru": "Не удалось настроить автономную службу. Проверьте права администратора и файлы установки.",
+      "zh-Hant": "無法設定無人值守服務，請檢查管理員權限和安裝檔案。",
+      "ja": "無人アクセスサービスを設定できません。管理者権限とインストールファイルを確認してください。",
+      "ko": "무인 접속 서비스를 설정할 수 없습니다. 관리자 권한과 설치 파일을 확인하세요.",
+      "de": "Der unbeaufsichtigte Dienst konnte nicht eingerichtet werden. Prüfen Sie Administratorrechte und Installationsdateien.",
+      "fr": "Impossible de configurer le service sans surveillance. Vérifiez les droits administrateur et les fichiers d’installation.",
+      "es": "No se pudo configurar el servicio desatendido. Compruebe los permisos de administrador y los archivos de instalación.",
+      "pt-BR": "Não foi possível configurar o serviço não assistido. Verifique as permissões de administrador e os arquivos de instalação."
+    },
+    "开机后无需登录即可连接；登录后继续使用同一 ID、密码和完整功能。": {
+      "zh-Hans": "开机后无需登录即可连接；登录后继续使用同一 ID、密码和完整功能。",
+      "en": "Connect after boot without signing in. After login, keep the same ID, password and full functionality.",
+      "ru": "Подключайтесь после загрузки без входа в Windows. После входа сохраняются ID, пароль и все функции.",
+      "zh-Hant": "開機後無需登入即可連線；登入後繼續使用同一 ID、密碼和完整功能。",
+      "ja": "サインイン前でも接続できます。サインイン後も同じ ID とパスワードですべての機能を利用できます。",
+      "ko": "부팅 후 로그인하지 않아도 연결할 수 있습니다. 로그인 후에도 같은 ID와 비밀번호로 모든 기능을 사용할 수 있습니다.",
+      "de": "Verbinden Sie sich nach dem Start ohne Anmeldung. Nach der Anmeldung bleiben ID, Passwort und alle Funktionen erhalten.",
+      "fr": "Connectez-vous après le démarrage sans ouvrir de session. Après connexion, conservez les mêmes ID et mot de passe et toutes les fonctions.",
+      "es": "Conéctese tras arrancar sin iniciar sesión. Después de iniciar sesión, conserve el mismo ID, contraseña y todas las funciones.",
+      "pt-BR": "Conecte-se após a inicialização sem fazer login. Após o login, mantenha o mesmo ID, senha e todas as funções."
     }
   },
   "desktop": {
@@ -10952,8 +10988,6 @@
     "remote_unlock_requires_secure_desktop": "当前仍需要安全桌面专用采集/输入",
     "settings": "设置",
     "language": "语言",
-    "screen_capture_method": "采集方式",
-    "screen_capture_method_auto": "自动",
     "video_settings": "画面设置",
     "remote_update_title": "建议升级被控端",
     "remote_update": "新版本包含功能改进和性能优化，建议将被控端升级至最新版本。",
@@ -11852,7 +11886,10 @@
       "正在修复 Windows 服务…",
       "服务已修复并启动",
       "修复失败，请检查管理员权限和便携版文件后重试",
-      "远端 Windows 服务不可用，锁屏时无法操作。请在远端安装或修复 CrossDesk 服务。"
+      "远端 Windows 服务不可用，锁屏时无法操作。请在远端安装或修复 CrossDesk 服务。",
+      "开机自启需要安装版 Release；便携版和 Debug 不支持无人值守服务。",
+      "无法配置无人值守服务，请检查管理员权限和安装文件。",
+      "开机后无需登录即可连接；登录后继续使用同一 ID、密码和完整功能。"
     ],
     "android": [
       " · 已完成",

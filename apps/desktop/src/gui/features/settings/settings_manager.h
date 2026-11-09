@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 #include "thumbnail.h"
+#include "common/credential_cache.h"
 
 namespace crossdesk {
 
@@ -21,6 +22,7 @@ public:
   int Save();
   int Load();
   std::string ActiveIdentity() const;
+  bool ApplyHostIdentity(const std::string& identity, bool self_hosted);
 
   int LoadRecentConnectionAliases();
   int SaveRecentConnectionAliases() const;
@@ -56,46 +58,9 @@ public:
   bool ClearPendingPasswordChange();
 
 private:
-  struct CacheV1 {
-    char client_id_with_password[17];
-    int language;
-    // Reserved legacy slots: retain the on-disk cache layout.
-    int legacy_video_quality;
-    int legacy_video_frame_rate;
-    int video_encode_format;
-    bool legacy_enable_hardware_video_codec;
-    bool enable_turn;
-    bool enable_srtp;
-    unsigned char key[16];
-    unsigned char iv[16];
-  };
-
-  struct CacheV2 {
-    char client_id_with_password[17];
-    int language;
-    // Reserved legacy slots: retain the on-disk cache layout.
-    int legacy_video_quality;
-    int legacy_video_frame_rate;
-    int video_encode_format;
-    bool legacy_enable_hardware_video_codec;
-    bool enable_turn;
-    bool enable_srtp;
-    unsigned char key[16];
-    unsigned char iv[16];
-    char self_hosted_id[17];
-  };
-
-  struct CacheV3 {
-    uint32_t magic;
-    uint32_t version;
-    CacheV2 base;
-    char pending_identity[17];
-    char pending_server_host[256];
-    int pending_server_port;
-    bool pending_self_hosted;
-    char pending_request_id[64];
-    uint32_t checksum;
-  };
+  using CacheV1 = credential_cache::CacheV1;
+  using CacheV2 = credential_cache::CacheV2;
+  using CacheV3 = credential_cache::CacheV3;
 
   int SaveLocked();
   bool ReadV3Locked();

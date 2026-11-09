@@ -14,6 +14,7 @@
 
 #ifdef _WIN32
 #include "platform/windows/runtime_daemon.h"
+#include "platform/windows/service/autostart_control.h"
 #endif
 
 #if defined(__linux__) && !defined(__OHOS__)
@@ -92,13 +93,8 @@ int ConfigCenter::Load() {
           ? CONNECTION_MODE::DIRECT_IP
           : CONNECTION_MODE::DEVICE_ID;
 
-  const long screen_capture_method_value = ini_->GetLongValue(
-      section_, "screen_capture_method",
-      static_cast<long>(ScreenCaptureMethod::Auto));
-  screen_capture_method_ = IsValidScreenCaptureMethod(screen_capture_method_value)
-                               ? static_cast<ScreenCaptureMethod>(
-                                     screen_capture_method_value)
-                               : ScreenCaptureMethod::Auto;
+  // Capture always follows DXGI -> WGC -> GDI; discard old forced choices.
+  persist_config_migration |= ini_->Delete(section_, "screen_capture_method");
 
   video_encode_format_ = static_cast<VIDEO_ENCODE_FORMAT>(
       ini_->GetLongValue(section_, "video_encode_format",
@@ -237,8 +233,6 @@ int ConfigCenter::Save() {
   ini_->SetValue(section_, "connection_mode",
                 connection_mode_ == CONNECTION_MODE::DIRECT_IP ? "ip" : "id");
   ini_->SetBoolValue(section_, "enable_ip_direct", enable_ip_direct_);
-  ini_->SetLongValue(section_, "screen_capture_method",
-                    static_cast<long>(screen_capture_method_));
   ini_->SetLongValue(section_, "video_encode_format",
                     static_cast<long>(video_encode_format_));
   ini_->SetLongValue(section_, "turn_mode", static_cast<long>(turn_mode_));
@@ -282,6 +276,56 @@ int ConfigCenter::Save() {
   return 0;
 }
 
+std::string ConfigCenter::ExportSharedHostConfig() const {
+  CSimpleIniA host;
+  host.SetUnicode(true);
+  host.SetLongValue(section_, "shared_identity_config_version", 1);
+  host.SetBoolValue(section_, "enable_self_hosted", enable_self_hosted_);
+  host.SetValue(section_, "signal_server_host", signal_server_host_.c_str());
+  host.SetLongValue(section_, "signal_server_port", signal_server_port_);
+  host.SetLongValue(section_, "turn_mode", static_cast<long>(turn_mode_));
+  host.SetLongValue(section_, "video_encode_format", static_cast<long>(video_encode_format_));
+  host.SetBoolValue(section_, "trusted_devices_only", trusted_devices_only_.load());
+  host.SetBoolValue(section_, "lock_on_disconnect", lock_on_disconnect_.load());
+  host.SetBoolValue(section_, "enable_privacy_screen", false);
+  host.SetBoolValue(section_, "save_remote_previews", false);
+  host.SetBoolValue(section_, "enable_ip_direct", false);
+  std::string contents;
+  host.Save(contents);
+  return contents;
+}
+
+int ConfigCenter::ApplySharedHostConfig(const std::string& contents) {
+  CSimpleIniA host;
+  host.SetUnicode(true);
+  if (host.LoadData(contents.c_str(), contents.size()) < 0 ||
+      host.GetLongValue(section_, "shared_identity_config_version", 0) != 1) return -1;
+  const bool self_hosted = host.GetBoolValue(section_, "enable_self_hosted", false);
+  const std::string server = host.GetValue(section_, "signal_server_host", "");
+  const long port = host.GetLongValue(section_, "signal_server_port", 0);
+  const long turn = host.GetLongValue(section_, "turn_mode", static_cast<long>(turn_mode_));
+  const long codec = host.GetLongValue(section_, "video_encode_format", static_cast<long>(video_encode_format_));
+  const bool trusted = host.GetBoolValue(section_, "trusted_devices_only", false);
+  const bool lock = host.GetBoolValue(section_, "lock_on_disconnect", true);
+  MiniRtcSignalServerAddress address{};
+  if (!IsValidTurnModeValue(turn) || codec < 0 || codec > 1 ||
+      (self_hosted && (port < 1 || port > 65535 ||
+       MiniRtcParseSignalServerAddress(server.data(), server.size(), &address) != 0))) return -1;
+  if (StoreValues({{"enable_self_hosted", self_hosted ? "true" : "false"},
+                   {"signal_server_host", server}, {"signal_server_port", std::to_string(port)},
+                   {"turn_mode", std::to_string(turn)}, {"video_encode_format", std::to_string(codec)},
+                   {"trusted_devices_only", trusted ? "true" : "false"},
+                   {"lock_on_disconnect", lock ? "true" : "false"}}) != 0) return -1;
+  enable_self_hosted_ = self_hosted;
+  signal_server_host_ = server;
+  signal_server_port_ = static_cast<int>(port);
+  turn_mode_ = static_cast<TURN_MODE>(turn);
+  video_encode_format_ = static_cast<VIDEO_ENCODE_FORMAT>(codec);
+  trusted_devices_only_.store(trusted);
+  lock_on_disconnect_.store(lock);
+  return 0;
+}
+
 // setters
 
 int ConfigCenter::SetLanguage(LANGUAGE language) {
@@ -316,20 +360,6 @@ int ConfigCenter::SetIpDirectEnabled(bool enabled) {
     return -1;
   enable_ip_direct_ = enabled;
   connection_mode_ = mode;
-  return 0;
-}
-
-int ConfigCenter::SetScreenCaptureMethod(ScreenCaptureMethod method) {
-  if (!IsValidScreenCaptureMethod(static_cast<long>(method))) {
-    return -1;
-  }
-  ini_->SetLongValue(section_, "screen_capture_method", static_cast<long>(method));
-  if (CommitIni() < 0) {
-    ini_->SetLongValue(section_, "screen_capture_method",
-                      static_cast<long>(screen_capture_method_));
-    return -1;
-  }
-  screen_capture_method_ = method;
   return 0;
 }
 
@@ -394,7 +424,18 @@ int ConfigCenter::SetSelfHosted(bool enabled) {
 }
 
 int ConfigCenter::SetAutostart(bool enabled) {
+  std::string error = "Operating system startup registration failed";
+#ifdef _WIN32
+  if (!SupportsServiceAutostart()) return enabled ? -1 : 0;
+  const bool previous = IsServiceAutostartEnabled();
+  const bool update_registration = true;
+  const auto configure = [&error](bool value) { return SetServiceAutostart(value, error); };
+#else
   const bool previous = IsAutostartEnabled("CrossDesk");
+  const bool update_registration = enabled != previous;
+  const auto configure = [](bool value) {
+    return value ? EnableAutostart("CrossDesk") : DisableAutostart("CrossDesk");
+  };
 #if defined(__linux__) && !defined(__OHOS__)
   // Repair old deb entries even when the saved boolean is unchanged, keeping
   // desktop-managed disabled flags and custom commands intact.
@@ -403,24 +444,14 @@ int ConfigCenter::SetAutostart(bool enabled) {
     return -1;
   }
 #endif
-  // Refresh the executable path and remove legacy registrations even when the
-  // boolean state is unchanged. In particular, a Run entry no longer counts
-  // as enabled for an elevated Windows build, but still needs deleting.
-#ifdef _WIN32
-  const bool update_registration = true;
-#else
-  const bool update_registration = enabled != previous;
 #endif
-  if (update_registration &&
-      !(enabled ? EnableAutostart("CrossDesk") : DisableAutostart("CrossDesk"))) {
-    LOG_ERROR("SetAutostart failed");
+  if (update_registration && !configure(enabled)) {
+    LOG_ERROR("Cannot configure autostart: {}", error);
     return -1;
   }
   if (StoreValues({{"enable_autostart", enabled ? "true" : "false"}}) != 0) {
-    if (enabled != previous) {
-      if (previous) EnableAutostart("CrossDesk");
-      else DisableAutostart("CrossDesk");
-    }
+    if (enabled != previous && !configure(previous))
+      LOG_ERROR("Cannot restore autostart: {}", error);
     return -1;
   }
   enable_autostart_ = enabled;
@@ -554,10 +585,6 @@ ConfigCenter::CONNECTION_MODE ConfigCenter::GetConnectionMode() const {
 
 bool ConfigCenter::IsIpDirectEnabled() const { return enable_ip_direct_; }
 
-ScreenCaptureMethod ConfigCenter::GetScreenCaptureMethod() const {
-  return screen_capture_method_;
-}
-
 ConfigCenter::VIDEO_ENCODE_FORMAT ConfigCenter::GetVideoEncodeFormat() const {
   return video_encode_format_;
 }
@@ -588,7 +615,13 @@ int ConfigCenter::GetDefaultSignalServerPort() const {
 
 bool ConfigCenter::IsSelfHosted() const { return enable_self_hosted_; }
 
-bool ConfigCenter::IsEnableAutostart() const { return enable_autostart_; }
+bool ConfigCenter::IsEnableAutostart() const {
+#ifdef _WIN32
+  return IsServiceAutostartEnabled();
+#else
+  return enable_autostart_;
+#endif
+}
 
 bool ConfigCenter::IsEnableDaemon() const { return enable_daemon_; }
 

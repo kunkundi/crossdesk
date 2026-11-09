@@ -199,7 +199,7 @@ int GuiRuntime::WithController(
 int GuiRuntime::SendControllerData(const std::string& id, const char* data,
                                    size_t size, const char* label) {
   return WithController(id, [&](MiniRtcPeerPtr* peer, const std::string& wire) {
-    return MiniRtcSendReliableDataFrameToPeer(peer, data, size, label, wire.data(),
+    return PeerSendReliableDataFrameToPeer(peer, data, size, label, wire.data(),
                                        wire.size());
   });
 }

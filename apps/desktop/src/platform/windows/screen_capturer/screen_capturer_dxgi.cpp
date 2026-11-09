@@ -300,13 +300,23 @@ bool ScreenCapturerDxgi::CreateDuplicationForMonitor(int monitor_index) {
 }
 
 void ScreenCapturerDxgi::ReleaseDuplication() {
-  SharedDxgiCursorState().Reset();
+  // A stopped candidate may be destroyed after its replacement has started.
+  // Only the live duplication owns the shared pointer-plane state.
+  if (duplication_) SharedDxgiCursorState().Reset();
   ++duplication_generation_;
   staging_.Reset();
-  if (duplication_) {
-    duplication_->ReleaseFrame();
-  }
+  ReleaseAcquiredFrame();
   duplication_.Reset();
+}
+
+HRESULT ScreenCapturerDxgi::ReleaseAcquiredFrame() {
+  if (!frame_acquired_) return S_OK;
+  frame_acquired_ = false;
+  const HRESULT result = duplication_->ReleaseFrame();
+  if (FAILED(result))
+    LOG_WARN("DXGI: ReleaseFrame failed, hr=0x{:08X}",
+             static_cast<uint32_t>(result));
+  return result;
 }
 
 bool ScreenCapturerDxgi::ConvertFrame(int frame_monitor, bool* cursor_embedded,
@@ -417,6 +427,7 @@ void ScreenCapturerDxgi::CaptureLoop() {
   uint64_t cached_generation = 0;
   auto next_topology_check = std::chrono::steady_clock::now();
   unsigned acquire_failures = 0;
+  auto cursor_revision = SharedDxgiCursorState().CursorVisibilityRevision();
   while (running_) {
     if (paused_) {
       cached_frame_valid = false;
@@ -429,7 +440,13 @@ void ScreenCapturerDxgi::CaptureLoop() {
     std::unique_lock capture_lock(switch_mutex_);
     if (paused_ || !running_) continue;
     const auto now = std::chrono::steady_clock::now();
-    const bool refresh = topology_refresh_requested_.exchange(false);
+    const auto revision = SharedDxgiCursorState().CursorVisibilityRevision();
+    // An IDD can bake the pointer into the last desktop texture. Retire that
+    // cached texture when the user helper hides/restores the system cursor;
+    // pointer-only updates must not keep replaying its old image.
+    const bool refresh = topology_refresh_requested_.exchange(false) ||
+                         revision != cursor_revision;
+    cursor_revision = revision;
     if (refresh || now >= next_topology_check) {
       next_topology_check = now + std::chrono::milliseconds(500);
       const bool changed = EnumerateDisplays();
@@ -452,6 +469,23 @@ void ScreenCapturerDxgi::CaptureLoop() {
     }
 
     const int frame_monitor = monitor_index_.load();
+    const auto deliver_cached = [&] {
+      if (!cached_frame_valid || cached_generation != duplication_generation_ ||
+          cached_monitor != monitor_index_.load() || !callback_ || !nv12_frame_)
+        return;
+      // Recompose from the clean staging texture while showing a cursor, or
+      // once after disabling it. Never replay a baked-in stale cursor.
+      if ((show_cursor_.load(std::memory_order_relaxed) || cached_cursor_embedded) &&
+          !ConvertFrame(cached_monitor, &cached_cursor_embedded, cursor_compositor)) {
+        cached_frame_valid = false;
+        return;
+      }
+      const auto stream_id = MakeDisplayStreamId(cached_monitor);
+      capture_lock.unlock();
+      CapturedCursorFrameScope cursor_scope(cached_cursor_embedded);
+      callback_(nv12_frame_, nv12_width_ * nv12_height_ * 3 / 2, nv12_width_,
+                nv12_height_, stream_id.c_str(), nullptr);
+    };
     DXGI_OUTDUPL_FRAME_INFO frame_info{};
     Microsoft::WRL::ComPtr<IDXGIResource> desktop_resource;
     HRESULT hr = duplication_->AcquireNextFrame(
@@ -459,30 +493,13 @@ void ScreenCapturerDxgi::CaptureLoop() {
     if (hr == DXGI_ERROR_WAIT_TIMEOUT) {
       // DXGI explicitly reports an unchanged desktop. Re-emit only a frame
       // successfully acquired for this monitor to keep delivering static frames.
-      if (cached_frame_valid && cached_generation == duplication_generation_ &&
-          cached_monitor == monitor_index_.load() && callback_ && nv12_frame_) {
-        // Recompose from the clean staging texture while showing a cursor, or
-        // once after disabling it. Never replay a baked-in stale cursor.
-        if (show_cursor_.load(std::memory_order_relaxed) ||
-            cached_cursor_embedded) {
-          if (!ConvertFrame(cached_monitor, &cached_cursor_embedded,
-                            cursor_compositor)) {
-            cached_frame_valid = false;
-            continue;
-          }
-        }
-        const auto stream_id = MakeDisplayStreamId(cached_monitor);
-        capture_lock.unlock();
-        CapturedCursorFrameScope cursor_scope(cached_cursor_embedded);
-        callback_(nv12_frame_, nv12_width_ * nv12_height_ * 3 / 2, nv12_width_,
-                  nv12_height_, stream_id.c_str(), nullptr);
-      }
+      deliver_cached();
       continue;
     }
     // Never replay a cached image after an acquisition/conversion failure or
     // a backend rebuild. Display recovery retains the session privacy state.
-    cached_frame_valid = false;
     if (FAILED(hr)) {
+      cached_frame_valid = false;
       LOG_ERROR("DXGI: AcquireNextFrame failed, hr={}", (int)hr);
       ReleaseDuplication();
       // A single ACCESS_LOST (mode switch, fullscreen toggle, UAC return) is
@@ -494,6 +511,7 @@ void ScreenCapturerDxgi::CaptureLoop() {
       }
       continue;
     }
+    frame_acquired_ = true;
     acquire_failures = 0;
 
     if (frame_monitor >= 0 &&
@@ -504,16 +522,31 @@ void ScreenCapturerDxgi::CaptureLoop() {
           display_info_list_[frame_monitor].handle);
     }
 
+    // A successful acquire can contain only a cursor update. It is not a new
+    // desktop image; in particular, do not seed a newly rebuilt capture with
+    // its surface. Keep the last confirmed desktop until a present arrives.
+    if (frame_info.LastPresentTime.QuadPart == 0) {
+      if (FAILED(ReleaseAcquiredFrame())) {
+        cached_frame_valid = false;
+        ReleaseDuplication();
+        next_topology_check = std::chrono::steady_clock::now();
+      } else {
+        deliver_cached();
+      }
+      continue;
+    }
+    cached_frame_valid = false;
+
     Microsoft::WRL::ComPtr<ID3D11Texture2D> acquired_tex;
     if (desktop_resource) {
       hr = desktop_resource->QueryInterface(
           IID_PPV_ARGS(acquired_tex.GetAddressOf()));
       if (FAILED(hr)) {
-        duplication_->ReleaseFrame();
+        ReleaseAcquiredFrame();
         continue;
       }
     } else {
-      duplication_->ReleaseFrame();
+      ReleaseAcquiredFrame();
       continue;
     }
 
@@ -530,7 +563,7 @@ void ScreenCapturerDxgi::CaptureLoop() {
                                         staging_.GetAddressOf());
       if (FAILED(hr)) {
         LOG_ERROR("DXGI: CreateTexture2D staging failed, hr={}", (int)hr);
-        duplication_->ReleaseFrame();
+        ReleaseAcquiredFrame();
         continue;
       }
     }
@@ -558,7 +591,13 @@ void ScreenCapturerDxgi::CaptureLoop() {
         last_logged_cursor_embedding_ = static_cast<int>(cursor_embedded);
       }
     }
-    duplication_->ReleaseFrame();
+    // A mode/desktop transition can invalidate the acquire during readback.
+    // Do not publish that frame if releasing it reports the lost capture.
+    if (FAILED(ReleaseAcquiredFrame())) {
+      ReleaseDuplication();
+      next_topology_check = std::chrono::steady_clock::now();
+      continue;
+    }
     capture_lock.unlock();
 
     if (converted && frame_monitor == monitor_index_.load() && callback_) {

@@ -17,9 +17,9 @@
 namespace crossdesk {
 
 // Session-scoped usbmmidd virtual display for a host without any monitor.
-// Acquire() asks the session helper (SYSTEM in the console session) to
-// install/plug the driver; without a reachable helper an elevated GUI does it
-// itself. Release() unplugs only what this object plugged.
+// SYSTEM/elevated hosts provision directly with their existing token. Other
+// hosts use the session helper, with a local fallback if it is unreachable.
+// Release() unplugs only what this object plugged.
 class VirtualDisplayProvisioner {
  public:
   VirtualDisplayProvisioner() = default;

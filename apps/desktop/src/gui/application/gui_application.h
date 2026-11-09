@@ -58,6 +58,9 @@ private:
   void BindStreamCallbacks();
   void BindServerCallbacks();
   void Tick();
+#ifdef _WIN32
+  void TickLocalHost();
+#endif
   void PollUpdateCheck();
   void ShareLocalCursorState();
   bool RequestPasswordChange(const std::string &password);

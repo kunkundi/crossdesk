@@ -41,6 +41,10 @@ PrivacyStatus PrivacyController::Snapshot() const {
   std::lock_guard lock(mutex_);
   return status_;
 }
+bool PrivacyController::Requested() const {
+  std::lock_guard lock(mutex_);
+  return engaged_.load() || (automatic_enable_ && resume_after_unlock_);
+}
 void PrivacyController::SetText(const PrivacyScreenText& text) {
   std::lock_guard lock(mutex_);
   if (text_.unlock_hint == text.unlock_hint && text_.locked_hint == text.locked_hint &&

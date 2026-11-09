@@ -41,12 +41,13 @@ inline DisplayPresence ClassifyDisplayPresence(
     const DisplayPresenceProbe& probe, bool capture_stalled = false) {
   if (probe.query_succeeded) {
     if (probe.available_targets > 0) {
-      // NVIDIA can retain both availability AND EDID/interface identity after
-      // the last unplug. Those describe a target, not a connected monitor.
-      // Require stalled capture plus a desktop adapter with no active monitor,
-      // and exempt built-in/wireless/IDD targets and failed target queries.
-      // A remaining physical monitor (even without EDID) prevents takeover.
-      if (capture_stalled && probe.desktop_devices > 0 &&
+      // KVMs can leave an available phantom target with no monitor identity.
+      // NVIDIA can also retain an old EDID after unplug; only that ambiguous
+      // case needs stalled capture as additional evidence. An active monitor,
+      // built-in/IDD target, or failed target query still prevents takeover.
+      const bool unidentified_only = probe.identified_targets == 0 &&
+          probe.unidentified_targets == probe.available_targets;
+      if ((unidentified_only || capture_stalled) && probe.desktop_devices > 0 &&
           probe.attached_monitors == 0 &&
           probe.embedded_or_virtual_targets == 0 &&
           probe.target_query_failures == 0) {

@@ -17,9 +17,8 @@
 namespace crossdesk {
 
 // Plug/unplug talks to the driver through Amyuni's installer and needs
-// administrator rights inside the interactive session. The session helper
-// (SYSTEM, console session) is the intended caller; the GUI only calls these
-// directly when it is elevated and no helper is reachable.
+// administrator rights inside the interactive session. An elevated GUI or
+// SYSTEM host provisions locally with its own token.
 
 struct UsbmmiddPackage {
   std::filesystem::path directory;
@@ -39,6 +38,10 @@ struct UsbmmiddStatus {
   std::string package_directory;
 };
 UsbmmiddStatus QueryUsbmmiddStatus();
+
+// Remember an attached display's current pixel mode for GUI/SYSTEM startup.
+// Phantom targets and our own fallback monitor must not overwrite that mode.
+VirtualDisplayMode ResolveVirtualDisplayMode();
 
 // Adapters attached to the desktop, i.e. monitors currently plugged in.
 int CountUsbmmiddMonitors();

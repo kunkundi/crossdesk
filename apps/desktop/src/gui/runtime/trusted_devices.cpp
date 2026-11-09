@@ -230,4 +230,16 @@ void TrustedDevices::Remove(const std::string& public_key) {
   Save(next);
   devices_.swap(next);
 }
+void TrustedDevices::Replace(const std::vector<Device>& devices) {
+  Require(devices.size() <= kMaxTrustedDevices);
+  std::map<std::string, Device> next;
+  for (const auto& device : devices) {
+    Require(IsHex(device.public_key, 32) && Label(device.name) && Label(device.device_id));
+    Require(next.emplace(device.public_key, device).second);
+  }
+  std::lock_guard lock(mutex_);
+  if (next == devices_) return;
+  Save(next);
+  devices_.swap(next);
+}
 }  // namespace crossdesk

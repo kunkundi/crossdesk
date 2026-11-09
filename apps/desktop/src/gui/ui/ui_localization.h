@@ -131,9 +131,6 @@ inline int ApplyMainWindowStrings(
   strings.set_confirm_delete(
       Text(localization::confirm_delete_connection[language]));
   strings.set_language(Text(localization::language[language]));
-  strings.set_capture_method(Text(localization::screen_capture_method[language]));
-  strings.set_capture_method_auto(
-      Text(localization::screen_capture_method_auto[language]));
   strings.set_codec(Text(localization::video_encode_format[language]));
   strings.set_pause_video_when_minimized(
       Text(localization::pause_video_when_minimized[language]));

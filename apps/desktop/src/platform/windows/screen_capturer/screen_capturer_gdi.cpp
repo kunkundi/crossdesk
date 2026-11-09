@@ -123,6 +123,7 @@ void ScreenCapturerGdi::CaptureLoop() {
   int interval_ms = fps_ > 0 ? (1000 / fps_) : 16;
   HDC screen_dc = GetDC(nullptr);
   bool dc_error_logged = false;
+  bool capture_error_logged = false;
   while (running_) {
     if (paused_) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -184,8 +185,21 @@ void ScreenCapturerGdi::CaptureLoop() {
       continue;
     }
 
-    BitBlt(mem_dc, 0, 0, width, height, screen_dc, left, top,
-           SRCCOPY | CAPTUREBLT);
+    if (!BitBlt(mem_dc, 0, 0, width, height, screen_dc, left, top,
+                SRCCOPY | CAPTUREBLT)) {
+      if (!capture_error_logged) {
+        LOG_WARN("GDI: BitBlt failed, error={}; reacquiring desktop DC", GetLastError());
+        capture_error_logged = true;
+      }
+      SelectObject(mem_dc, old);
+      DeleteObject(dib);
+      DeleteDC(mem_dc);
+      ReleaseDC(nullptr, screen_dc);
+      screen_dc = nullptr;
+      std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
+      continue;
+    }
+    capture_error_logged = false;
 
     bool cursor_embedded = false;
     if (show_cursor_) {

@@ -33,6 +33,7 @@
 
 #if _WIN32
 #include "platform/windows/service/service_query_worker.h"
+#include "platform/windows/service/shared_identity.h"
 #endif
 
 namespace crossdesk::gui_detail {
@@ -47,6 +48,9 @@ struct InfrastructureState {
   std::string exec_log_path_;
   std::string dll_log_path_;
   std::string cache_path_;
+#ifdef _WIN32
+  std::unique_ptr<SharedHostIdentity> shared_identity_;
+#endif
   int localization_language_index_ = -1;
   bool modules_inited_ = false;
   unsigned char aes128_key_[16]{};

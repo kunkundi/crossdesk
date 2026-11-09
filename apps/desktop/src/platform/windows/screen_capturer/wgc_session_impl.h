@@ -69,6 +69,7 @@ class WgcSessionImpl : public WgcSession {
                 winrt::Windows::Foundation::IInspectable const&);
 
   int InitializeLocked();
+  void ReportFrameFailure(HRESULT error);
   int StartLocked(bool show_cursor);
   int StartCaptureLocked(bool show_cursor);
   void StopLocked();
@@ -84,6 +85,7 @@ class WgcSessionImpl : public WgcSession {
   bool is_running_ = false;
   bool is_paused_ = false;
   bool last_show_cursor_ = false;
+  bool frame_failure_reported_ = false;
 
   wgc_session_observer* observer_ = nullptr;
 

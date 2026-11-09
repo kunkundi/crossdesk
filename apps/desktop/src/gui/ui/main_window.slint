@@ -73,8 +73,6 @@ export global UiStrings {
     in-out property <string> delete-connection: "Delete connection";
     in-out property <string> confirm-delete: "Delete this recent connection?";
     in-out property <string> language: "Language";
-    in-out property <string> capture-method: "Capture method";
-    in-out property <string> capture-method-auto: "Auto";
     in-out property <string> codec: "Video codec";
     in-out property <string> pause-video-when-minimized: "Pause video when minimized";
     in-out property <string> pause-video-when-minimized-hint: "Pause video reception when the control window is minimized to reduce local decoding resource usage.";
@@ -737,8 +735,6 @@ export component MainWindow inherits Window {
 
     in-out property <int> language-index: 10;
     in property <[string]> language-options;
-    in property <bool> capture-method-visible: false;
-    in-out property <int> capture-method-index: 0;
     in-out property <int> codec-index: 0;
     in-out property <bool> ip-direct-enabled-draft: true;
     in-out property <bool> lan-listen-all-draft: true;
@@ -746,6 +742,9 @@ export component MainWindow inherits Window {
     in-out property <bool> force-relay-enabled: false;
     in-out property <bool> self-hosted-enabled: false;
     in-out property <bool> autostart-enabled: false;
+    in property <bool> autostart-available: true;
+    in property <bool> service-autostart-platform: false;
+    in property <string> service-autostart-hint;
     in property <bool> autostart-system-managed: false;
     in property <AutostartStatus> autostart-status: AutostartStatus.checking;
     out property <string> autostart-status-text:
@@ -2876,11 +2875,7 @@ export component MainWindow inherits Window {
                         }
                         SettingsGroup {
                             title: GalleryStrings.texts[115];
-                            rows: root.capture-method-visible ? 3 : 2;
-                            if root.capture-method-visible: SettingsRow {
-                                label: UiStrings.capture-method; enabled: !root.settings-session-active;
-                                SettingsSelect { x: parent.width - 116px; y: 4px; width: 104px; enabled: !root.settings-session-active; model: [UiStrings.capture-method-auto, "DXGI", "WGC", "GDI"]; current-index <=> root.capture-method-index; }
-                            }
+                            rows: 2;
                             SettingsRow {
                                 label: UiStrings.codec; enabled: !root.settings-session-active;
                                 SettingsSelect { x: parent.width - 116px; y: 4px; width: 104px; enabled: !root.settings-session-active; model: [UiStrings.codec-h264, UiStrings.codec-av1]; current-index <=> root.codec-index; }
@@ -2983,7 +2978,7 @@ export component MainWindow inherits Window {
                         }
                         SettingsGroup {
                             title: GalleryStrings.texts[123]; rows: 2;
-                            if !root.autostart-system-managed: SettingsToggleRow { label: UiStrings.autostart; checked <=> root.autostart-enabled; enabled: !root.settings-session-active; }
+                            if !root.autostart-system-managed: SettingsToggleRow { label: UiStrings.autostart; checked <=> root.autostart-enabled; enabled: root.autostart-available && !root.settings-session-active; }
                             if root.autostart-system-managed: SettingsToggleRow {
                                 label: UiStrings.autostart;
                                 checked: root.autostart-status == AutostartStatus.enabled;
@@ -2992,6 +2987,11 @@ export component MainWindow inherits Window {
                             }
                             SettingsToggleRow { label: UiStrings.daemon; checked <=> root.daemon-enabled; enabled: !root.settings-session-active; divider: false; }
                         }
+                        if root.service-autostart-platform: Text {
+                            text: root.service-autostart-hint; wrap: word-wrap;
+                            font-size: 11px; color: WorkbenchStyle.muted;
+                        }
+
                     }
                 }
             }

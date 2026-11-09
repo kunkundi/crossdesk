@@ -27,6 +27,7 @@
 #include "secure_text_input.h"
 #include "unattended_config.h"
 #include "unattended_policy.h"
+#include "shared_identity.h"
 #include "rdp_session_handoff.h"
 
 namespace crossdesk {
@@ -991,6 +992,8 @@ int CrossDeskServiceHost::RunInConsole() {
 }
 
 int CrossDeskServiceHost::InitializeRuntime() {
+  if (IsUnattendedEnabled() && !PrepareUnattendedDirectoryForService())
+    LOG_ERROR("Cannot prepare the protected machine identity directory");
   stop_event_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
   if (stop_event_ == nullptr) {
     DWORD error = GetLastError();
@@ -1177,7 +1180,8 @@ void CrossDeskServiceHost::ClientProcessMonitorLoop() {
     }
     const DWORD console_session = WTSGetActiveConsoleSessionId();
     const auto action =
-        UnattendedAction(enabled, console_session,
+        UnattendedAction((enabled || SharedHostIdentity::GuiPresent()) &&
+                             SharedHostIdentity::Configured(), console_session,
                          unattended_process_ != nullptr, unattended_session_);
     if (action == UnattendedProcessAction::stop) StopUnattendedHost();
     if (action == UnattendedProcessAction::start) {

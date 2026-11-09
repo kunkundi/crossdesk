@@ -191,6 +191,58 @@ std::vector<VirtualDisplayMode> EnumerateModes(const std::wstring& device) {
 
 }  // namespace
 
+VirtualDisplayMode ResolveVirtualDisplayMode() {
+  constexpr wchar_t value_name[] = L"LastAttachedDisplayMode";
+  DWORD saved = 0, size = sizeof(saved);
+  if (RegGetValueW(HKEY_LOCAL_MACHINE, kUsbmmiddInstallMarkerKey, value_name,
+      RRF_RT_REG_DWORD | RRF_SUBKEY_WOW6464KEY, nullptr, &saved, &size) != ERROR_SUCCESS)
+    saved = 0;
+  const auto valid = [](VirtualDisplayMode mode) {
+    return mode.width > 0 && mode.height > 0 && mode.width <= 16384 && mode.height <= 16384;
+  };
+  VirtualDisplayMode attached;
+  // RDP creates a display mode for that client, not the console's next boot.
+  if (!GetSystemMetrics(SM_REMOTESESSION)) {
+    for (DWORD index = 0;; ++index) {
+      DISPLAY_DEVICEW adapter{sizeof(adapter)};
+      if (!EnumDisplayDevicesW(nullptr, index, &adapter, 0)) break;
+      if (!(adapter.StateFlags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP) ||
+          IsUsbmmiddAdapter(adapter.DeviceString, adapter.DeviceID)) continue;
+      bool present = false;
+      for (DWORD child = 0; !present; ++child) {
+        DISPLAY_DEVICEW monitor{sizeof(monitor)};
+        if (!EnumDisplayDevicesW(adapter.DeviceName, child, &monitor, 0)) break;
+        present = (monitor.StateFlags & DISPLAY_DEVICE_ACTIVE) != 0 &&
+                  !ContainsCaseInsensitive(monitor.DeviceID, L"Default_Monitor");
+      }
+      DEVMODEW mode{};
+      mode.dmSize = sizeof(mode);
+      if (!present || !EnumDisplaySettingsExW(adapter.DeviceName, ENUM_CURRENT_SETTINGS, &mode, 0))
+        continue;
+      const VirtualDisplayMode current{static_cast<int>(mode.dmPelsWidth),
+                                       static_cast<int>(mode.dmPelsHeight)};
+      if (!valid(current)) continue;
+      if (!valid(attached) || (adapter.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE)) attached = current;
+      if (adapter.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE) break;
+    }
+  }
+  if (valid(attached)) {
+    const DWORD packed = (static_cast<DWORD>(attached.width) << 16) |
+                         static_cast<DWORD>(attached.height);
+    HKEY key = nullptr;
+    if (packed != saved && RegCreateKeyExW(HKEY_LOCAL_MACHINE, kUsbmmiddInstallMarkerKey,
+        0, nullptr, 0, KEY_SET_VALUE | KEY_WOW64_64KEY, nullptr, &key, nullptr) == ERROR_SUCCESS) {
+      if (RegSetValueExW(key, value_name, 0, REG_DWORD,
+          reinterpret_cast<const BYTE*>(&packed), sizeof(packed)) == ERROR_SUCCESS)
+        LOG_INFO("Remembered attached display mode: {}x{}", attached.width, attached.height);
+      RegCloseKey(key);
+    }
+    return attached;
+  }
+  const VirtualDisplayMode previous{static_cast<int>(saved >> 16), static_cast<int>(saved & 0xffff)};
+  return valid(previous) ? previous : kDefaultVirtualDisplayMode;
+}
+
 UsbmmiddPackage LocateUsbmmiddPackage() {
   UsbmmiddPackage package;
   const std::filesystem::path base = CurrentExecutableDirectory();

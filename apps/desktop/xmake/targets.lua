@@ -77,12 +77,23 @@ function setup_targets()
 
     -- MiniRTC owns a target named "common". Reusing it merges the two targets
     -- and makes the media library inherit desktop sources and dependencies.
+    target("private_file")
+        set_kind("static")
+        add_files("apps/desktop/src/common/private_file.cpp")
+        add_includedirs("apps/desktop/src/common", {public = true})
+        add_packages("openssl3", {public = true})
+        if is_os("windows") then
+            add_syslinks("Advapi32", {public = true})
+        end
+
     target("desktop_common")
         set_kind("object")
         add_deps("rd_log", "crossdesk_wire")
         add_packages("libyuv", "openssl3")
         add_packages("concurrentqueue")
         add_files("apps/desktop/src/common/*.cpp")
+        remove_files("apps/desktop/src/common/private_file.cpp")
+        add_deps("private_file")
         if is_os("windows") then
             add_files("apps/desktop/src/platform/windows/system_info.cpp",
                 "apps/desktop/src/platform/windows/screen_lock.cpp",
@@ -477,8 +488,11 @@ function setup_targets()
     if is_os("windows") then
         target("windows_unattended_config")
             set_kind("object")
+            add_deps("private_file")
             add_packages("nlohmann_json")
             add_files("apps/desktop/src/platform/windows/service/unattended_config.cpp")
+            add_files("apps/desktop/src/platform/windows/service/shared_identity.cpp")
+            add_includedirs("apps/desktop/src")
             add_includedirs("apps/desktop/src/platform/windows/service")
             add_syslinks("Advapi32", "Shell32", "Ole32", {public = true})
 
@@ -653,6 +667,9 @@ function setup_targets()
             add_cxxflags("/bigobj")
             add_deps("windows_unattended_config")
             add_files("apps/desktop/src/platform/windows/gui/application/unattended_application.cpp")
+            add_files("apps/desktop/src/platform/windows/gui/application/local_host_application.cpp",
+                "apps/desktop/src/platform/windows/service/local_host_channel.cpp")
+            add_syslinks("Wtsapi32")
             add_links("opengl32")
             add_syslinks("Comctl32", "Iphlpapi", "Ws2_32", "Advapi32", {public = true})
             add_files("apps/desktop/src/platform/windows/gui/tray/win_tray.cpp",
@@ -728,15 +745,19 @@ function setup_targets()
 
         target("crossdesk_session_helper")
             set_kind("binary")
+              add_deps("crossdesk_privacy_cursor_helper", {inherit = false})
+              add_deps("wgc_plugin", {inherit = false})
             add_packages("libyuv", "nlohmann_json")
             add_deps("rd_log", "path_manager")
             add_links("Advapi32", "User32", "Wtsapi32", "Gdi32", "Setupapi",
-                "d3d11", "dxgi")
+                  "d3d11", "dxgi", "RuntimeObject")
             add_files("apps/desktop/src/platform/windows/service/session_helper_main.cpp")
+              add_files("apps/desktop/src/platform/windows/privacy/privacy_cursor_guard.cpp")
             add_files("apps/desktop/src/platform/windows/virtual_display/usbmmidd_virtual_display.cpp")
             add_files("apps/desktop/resources/windows/crossdesk_session_helper.rc",
                 {defines = windows_resource_defines})
             add_includedirs("apps/desktop/src/common",
+                  "apps/desktop/src/screen_capturer", "deps/submodules/minirtc/src/api",
                 "apps/desktop/src/platform/windows/service",
                 "apps/desktop/src/platform/windows/screen_capturer",
                 "apps/desktop/src/platform/windows/virtual_display")
@@ -754,7 +775,8 @@ function setup_targets()
         add_files("apps/desktop/src/app/*.cpp")
         add_includedirs("apps/desktop/src", "apps/desktop/src/app", {public = true})
         if is_os("windows") then
-            add_files("apps/desktop/src/platform/windows/daemon_backend.cpp")
+            add_files("apps/desktop/src/platform/windows/daemon_backend.cpp",
+                "apps/desktop/src/platform/windows/service/autostart_control.cpp")
             add_files("apps/desktop/src/platform/windows/service/service_host.cpp",
                 "apps/desktop/src/platform/windows/service/rdp_session_handoff.cpp")
             add_includedirs("apps/desktop/src/platform/windows/service",

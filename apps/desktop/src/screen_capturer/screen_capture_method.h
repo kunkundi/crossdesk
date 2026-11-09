@@ -9,13 +9,8 @@
 
 namespace crossdesk {
 
-// Persisted values; keep these in the same order as the settings choices.
+// Backend identifiers. Auto starts the fixed DXGI/WGC/GDI selection order.
 enum class ScreenCaptureMethod { Auto = 0, Dxgi = 1, Wgc = 2, Gdi = 3 };
-
-inline bool IsValidScreenCaptureMethod(long value) {
-  return value >= static_cast<long>(ScreenCaptureMethod::Auto) &&
-         value <= static_cast<long>(ScreenCaptureMethod::Gdi);
-}
 
 }  // namespace crossdesk
 

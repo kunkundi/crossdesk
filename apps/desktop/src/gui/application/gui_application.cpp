@@ -62,6 +62,9 @@
 #include "platform/windows/gui/shutdown_session_guard.h"
 #include "platform/windows/gui/tray/win_tray.h"
 #include "platform/windows/gui/window_icons.h"
+#include "platform/windows/service/autostart_control.h"
+#include "platform/windows/service/interactive_desktop.h"
+#include "platform/windows/service/unattended_config.h"
 #elif defined(__APPLE__)
 #include "platform/macos/gui/tray/mac_tray.h"
 #include "platform/window_drag.h"
@@ -1172,6 +1175,19 @@ int GuiApplication::Run() {
   announcements_.SetStorageDirectory(path_manager_->GetCachePath() /
                                      "announcement_reads");
   config_center_ = std::make_unique<ConfigCenter>(cache_path_ + "/config.ini");
+#ifdef _WIN32
+  if (SupportsServiceAutostart() && SharedHostIdentity::Configured()) {
+    // User-session features attach after unlock; the persistent host keeps
+    // its transport, capture and input across this transition.
+    if (IsUnattendedEnabled() && !IsCurrentSessionUserDesktopActive()) {
+      LOG_INFO("Waiting for the unlocked user desktop before attaching GUI features");
+      do {
+        Sleep(250);
+      } while (IsUnattendedEnabled() && !IsCurrentSessionUserDesktopActive());
+    }
+    if (!PrepareSharedGuiIdentity(true)) return -1;
+  }
+#endif
   InitializeTrustedDevices(path_manager_->GetConfigPath() / "trusted-devices");
 #ifdef __APPLE__
   StartMacPermissionMigration(false);
@@ -1197,6 +1213,13 @@ int GuiApplication::Run() {
   }
 #else
   InitializeSettings();
+#endif
+#ifdef _WIN32
+  // Upgrade an already-enabled standalone host before the GUI opens its peer.
+  if (SupportsServiceAutostart() && IsUnattendedEnabled() && !shared_identity_) {
+    if (!PrepareSharedGuiIdentity(false) || config_center_->SetAutostart(true) != 0)
+      return -1;
+  }
 #endif
 #if defined(__linux__) && !defined(__OHOS__)
   HeadlessConsole::Instance().BindSettings(
@@ -1572,6 +1595,10 @@ void GuiApplication::ResetSettingsUi(bool gallery_window) {
   }
   main->set_force_relay_enabled(config_center_->IsForceRelay());
   main->set_self_hosted_enabled(enable_self_hosted_);
+#ifdef _WIN32
+  // The machine setting can also be changed by the CLI or another admin.
+  enable_autostart_ = config_center_->IsEnableAutostart();
+#endif
   main->set_autostart_enabled(enable_autostart_);
 #if defined(__OHOS__)
   main->set_autostart_system_managed(true);
@@ -1584,11 +1611,6 @@ void GuiApplication::ResetSettingsUi(bool gallery_window) {
   main->set_privacy_local_unlock_allowed(config_center_->IsPrivacyLocalUnlockAllowed());
   main->set_lock_on_disconnect_enabled(config_center_->IsLockOnDisconnect());
   main->set_trusted_devices_only(config_center_->IsTrustedDevicesOnly());
-#ifdef _WIN32
-  main->set_capture_method_visible(true);
-  main->set_capture_method_index(
-      static_cast<int>(config_center_->GetScreenCaptureMethod()));
-#endif
 #if defined(_WIN32) || defined(__APPLE__) || (defined(__linux__) && !defined(__OHOS__))
   main->set_privacy_setting_available(true);
   main->set_lock_on_disconnect_available(true);
@@ -2498,6 +2520,9 @@ void GuiApplication::Tick() {
     if (ShutdownDrained()) slint::quit_event_loop();
     return;
   }
+#ifdef _WIN32
+  TickLocalHost();
+#endif
   TickLan();
   TickControllerTrust();
   if (LanAvailable()) {
@@ -2811,6 +2836,7 @@ void GuiApplication::ShareLocalCursorState() {
     std::shared_lock lock(connection_status_mutex_);
     connected_controllers.reserve(connection_status_.size());
     for (const auto& [remote_id, status] : connection_status_) {
+      if (managed_host_frontend_ && remote_id.rfind("lan/", 0) != 0) continue;
       if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
         connected_controllers.push_back(remote_id);
       }
@@ -2953,7 +2979,7 @@ void GuiApplication::ShareLocalCursorState() {
     if (!delivery.has_sent ||
         delivery.last_sent.render_mode != outgoing.render_mode ||
         delivery.last_sent.hidden_reason != outgoing.hidden_reason) {
-      LOG_DEBUG("Send cursor presentation to [{}]: mode={}, reason={}",
+      LOG_INFO("Send cursor presentation to [{}]: mode={}, reason={}",
                recipient.remote_id, static_cast<int>(outgoing.render_mode),
                static_cast<int>(outgoing.hidden_reason));
     }
@@ -2967,6 +2993,18 @@ void GuiApplication::ShareLocalCursorState() {
 }
 
 bool GuiApplication::RequestPasswordChange(const std::string &password) {
+#ifdef _WIN32
+  if (managed_host_frontend_) {
+    if (password.size() != 6 || password.find_first_not_of(
+        "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz") != std::string::npos)
+      return false;
+    if (!SendLocalHostCommand({{"op", "password"}, {"password", password}})) {
+      offline_warning_text_ = localization::signal_disconnected[localization_language_index_];
+      show_offline_warning_window_ = true;
+    }
+    return true;
+  }
+#endif
   const auto notify = [](const std::string& message) {
 #if defined(__linux__) && !defined(__OHOS__)
     HeadlessConsole::Instance().NotifyKey(message.c_str());
@@ -3035,7 +3073,7 @@ bool GuiApplication::RequestPasswordChange(const std::string &password) {
                                 {"request_id", request_id},
                                 {"new_password", password}};
   const std::string message = request.dump();
-  if (MiniRtcSendSignalMessage(peer_, message.data(), message.size()) != 0) {
+  if (PeerSendSignalMessage(peer_, message.data(), message.size()) != 0) {
     {
       std::lock_guard<std::mutex> lock(password_change_mutex_);
       password_change_pending_ = false;
@@ -3056,6 +3094,7 @@ bool GuiApplication::RequestPasswordChange(const std::string &password) {
 }
 
 void GuiApplication::HandlePasswordChangeResult() {
+  if (managed_host_frontend_) return;
   bool succeeded = false;
   bool uncertain = false;
   std::string error;
@@ -3129,6 +3168,7 @@ void GuiApplication::HandlePasswordChangeResult() {
 }
 
 void GuiApplication::HandleCredentialRecovery() {
+  if (managed_host_frontend_) return;
   CredentialRecoveryAction action;
   {
     std::lock_guard<std::mutex> lock(password_change_mutex_);
@@ -3166,7 +3206,7 @@ void GuiApplication::HandleCredentialRecovery() {
     }
     const auto message = nlohmann::json{{"type", "change_password"},
         {"request_id", request_id}, {"new_password", password}}.dump();
-    if (MiniRtcSendSignalMessage(peer_, message.data(), message.size()) != 0) {
+    if (PeerSendSignalMessage(peer_, message.data(), message.size()) != 0) {
       std::lock_guard lock(password_change_mutex_);
       password_change_result_ready_ = true;
       password_change_result_uncertain_ = true;
@@ -3221,6 +3261,14 @@ void GuiApplication::UpdateLocalization() {
   static std::vector<std::wstring> shutdown_reasons(localization::GetSupportedLanguages().size());
   ui_->shutdown_reason = localization::GetWindowsLocalizedLabel(
       language, "shutdown_reason", L"Remote session active.", shutdown_reasons);
+  const bool available = SupportsServiceAutostart();
+  for (const auto& main : {ui_->main, ui_->wall}) {
+    main->set_service_autostart_platform(true);
+    main->set_autostart_available(available);
+    main->set_service_autostart_hint(UiText(localization::Literal(available
+        ? "开机后无需登录即可连接；登录后继续使用同一 ID、密码和完整功能。"
+        : "开机自启需要安装版 Release；便携版和 Debug 不支持无人值守服务。", language)));
+  }
 #endif
   ui_localization::ApplyMainWindowStrings(ui_->main, language);
   ui_localization::ApplyStreamWindowStrings(ui_->main, language);
@@ -3242,7 +3290,7 @@ void GuiApplication::SyncAnnouncements() {
   const auto request = announcements_.TakePendingRequest();
   if (!request.is_null()) {
     const auto payload = request.dump();
-    if (!peer_ || MiniRtcSendSignalMessage(peer_, payload.data(), payload.size()) != 0)
+    if (!peer_ || PeerSendSignalMessage(peer_, payload.data(), payload.size()) != 0)
       announcements_.Failed(request["request_id"]);
   }
   if (ui_->announcement_version == announcements_.Version()) return;
@@ -4400,13 +4448,12 @@ void GuiApplication::BindTrustedDeviceCallbacks(bool gallery_window) {
         }
         // The Add action approves the current input. Import only updates the
         // list; a live connection must still complete its own authentication.
-        if (trusted_devices_->Contains(device->public_key)) {
-          main->set_trusted_devices_notice(message("已在可信列表中"));
-        } else {
-          trusted_devices_->Add(*device);
-          main->set_trusted_devices_notice(message("已加入可信设备。"));
-        }
-        main->set_trust_pairing_input("");
+        const bool existing = trusted_devices_->Contains(device->public_key);
+        if (existing ? PublishSharedIdentity() : AddTrustedDevice(*device)) {
+          main->set_trusted_devices_notice(message(existing
+              ? "已在可信列表中" : "已加入可信设备。"));
+          main->set_trust_pairing_input("");
+        } else set_error("无法更新可信设备，请检查列表容量和存储权限后重试。");
       } else if ((action == "add" && !TrustController(std::string(id), std::string(key))) ||
                  (action == "remove" && !RemoveTrustedDevice(std::string(key)))) {
         set_error("无法更新可信设备，请检查列表容量和存储权限后重试。");
@@ -4859,6 +4906,12 @@ bool GuiApplication::ValidateSelfHostedSettingsFromUi(bool gallery_window) {
 }
 
 bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
+#ifdef _WIN32
+  // A later setter can fail after earlier values were persisted. Reconcile
+  // with the host on the next status even when no config request was sent.
+  if (managed_host_frontend_)
+    local_host_status_.config_dirty = local_host_status_.identity_dirty = true;
+#endif
   const auto previous_server = GetSignalServerSettings(*config_center_);
   const bool previous_ip_enabled = config_center_->IsIpDirectEnabled();
   const auto previous_connection_mode = config_center_->GetConnectionMode();
@@ -4983,11 +5036,19 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
   config_center_->SetForceRelay(main->get_force_relay_enabled());
   main->set_force_relay_enabled(config_center_->IsForceRelay());
 #if !defined(__OHOS__)
-  if (config_center_->SetAutostart(enable_autostart_) != 0) {
+  bool identity_ready = true;
+#ifdef _WIN32
+  identity_ready = !enable_autostart_ || PrepareSharedGuiIdentity(false);
+#endif
+  if (!identity_ready || config_center_->SetAutostart(enable_autostart_) != 0) {
     enable_autostart_ = config_center_->IsEnableAutostart();
     main->set_autostart_enabled(enable_autostart_);
     main->set_settings_save_error(UiText(
+#ifdef _WIN32
+        localization::Literal("无法配置无人值守服务，请检查管理员权限和安装文件。", localization_language_index_)));
+#else
         localization::Literal("保存失败，请重试", localization_language_index_)));
+#endif
     return false;
   }
 #endif
@@ -5005,25 +5066,6 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
     LOG_ERROR("Failed to clear saved remote previews");
   }
   reload_recent_connections_ = true;
-#ifdef _WIN32
-  if (!HasActiveSession()) {
-    const auto previous_capture_method = config_center_->GetScreenCaptureMethod();
-    const auto capture_method = static_cast<ScreenCaptureMethod>(
-        std::clamp(main->get_capture_method_index(), 0, 3));
-    if (config_center_->SetScreenCaptureMethod(capture_method) != 0) {
-      LOG_ERROR("Failed to save screen capture method");
-    } else if (capture_method != previous_capture_method) {
-      // Reconfigure only capture; its backend does not own signaling.
-      devices_.StopScreenCapturer();
-      screen_capturer_is_started_ = false;
-      if (devices_.InitializeScreenCapturer() != 0) {
-        LOG_ERROR("Failed to apply screen capture method");
-      }
-    }
-  }
-  main->set_capture_method_index(
-      static_cast<int>(config_center_->GetScreenCaptureMethod()));
-#endif
 #if defined(_WIN32) || defined(__APPLE__) || (defined(__linux__) && !defined(__OHOS__))
   if (config_center_->SetPrivacyScreen(main->get_privacy_on_connect_enabled()) !=
       0) {
@@ -5053,6 +5095,11 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
     return false;
   }
   TickControllerTrust();
+  if (!PublishSharedIdentity(true)) {
+    main->set_settings_save_error(UiText(localization::Literal(
+        "保存失败，请重试", localization_language_index_)));
+    return false;
+  }
   ApplySettingsFromConfig(previous_server !=
                           GetSignalServerSettings(*config_center_));
   ResetSettingsUi(gallery_window);
@@ -5107,7 +5154,7 @@ void GuiApplication::ApplySettingsFromConfig(bool reconnect) {
       // Update the listening peer for incoming connections and the template
       // copied by ConnectTo for outgoing connections. Existing sessions retain
       // the codec/ICE snapshot with which they negotiated.
-      if (!peer_ || MiniRtcUpdateConnectionSettings(peer_, true, av1, turn) == 0) {
+      if (!peer_ || PeerUpdateConnectionSettings(peer_, true, av1, turn) == 0) {
         params_.av1_encoding = av1;
         params_.turn_mode = turn;
       } else {

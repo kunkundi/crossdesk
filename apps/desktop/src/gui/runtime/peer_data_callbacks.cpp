@@ -139,6 +139,10 @@ void PeerEventHandler::OnReceiveDataBuffer(
   const auto viewer = runtime->FindRemoteSession(remote_id);
   if (viewer && viewer->peer_events_.get() != handler) return;
   if (!viewer && !runtime->TrustedControllerAllowed(remote_id)) return;
+#ifdef _WIN32
+  if (runtime->unattended_host_ && !viewer &&
+      runtime->ForwardUserSessionData(remote_id, source_id, data, size)) return;
+#endif
   // The service-owned host runs as SYSTEM. Do not expose filesystem or
   // clipboard operations in that security context.
   if (runtime->unattended_host_ &&
@@ -198,6 +202,11 @@ void PeerEventHandler::OnReceiveDataBuffer(
       return;
     const auto subscription = PreviewSubscription::Parse(preview_json);
     if (!subscription) return;
+    if (runtime->managed_host_frontend_ && !handler->IsDirect()) {
+      runtime->preview_subscriptions_.Set(remote_id, *subscription);
+      if (subscription->audio) runtime->devices_.StartSpeakerCapturer();
+      return;  // The persistent host has already applied/acknowledged this.
+    }
     const auto previous = runtime->preview_subscriptions_.Get(remote_id);
     bool accepted = true;
     // Apply encoder quality to this controller only; other controllers retain
@@ -240,7 +249,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
         {"request_id", subscription->request_id},
         {"accepted",
          accepted}}.dump();
-    MiniRtcSendReliableDataFrameToPeer(bound_peer, reply.data(), reply.size(),
+    PeerSendReliableDataFrameToPeer(bound_peer, reply.data(), reply.size(),
                                 runtime->control_data_label_.c_str(),
                                 wire_id.data(), wire_id.size());
     return;
@@ -324,7 +333,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
              settings.frame_rate, settings.preference, remote_action.vs.accepted);
     remote_action.type = ControlType::video_settings_status;
     const auto message = remote_action.to_json();
-    MiniRtcSendReliableDataFrameToPeer(bound_peer, message.data(), message.size(),
+    PeerSendReliableDataFrameToPeer(bound_peer, message.data(), message.size(),
                                 runtime->control_data_label_.c_str(),
                                 wire_id.data(), wire_id.size());
     return;
@@ -526,6 +535,10 @@ void PeerEventHandler::OnReceiveDataBuffer(
     }
   } else {
     if (remote_action.type == ControlType::audio_capture) {
+      if (runtime->managed_host_frontend_ && !handler->IsDirect()) {
+        if (remote_action.a) runtime->devices_.StartSpeakerCapturer();
+        return;
+      }
       // A negotiated subscription remains authoritative if a legacy capture
       // command arrives after it (e.g. when unmuting an inactive window).
       const auto subscription = runtime->preview_subscriptions_.Get(remote_id);
@@ -586,8 +599,10 @@ InputOutcome GuiRuntime::ApplyRemoteInput(const std::string& remote_id,
   const int display = selected_display_.load();
   if (is_server_mode_ && remote_action.type == ControlType::mouse) {
     std::lock_guard lock(remote_pointer_input_mutex_);
-    last_remote_pointer_input_time_[remote_id] =
-        std::chrono::steady_clock::now();
+    const auto now = std::chrono::steady_clock::now();
+    auto [position, first] = last_remote_pointer_input_time_.try_emplace(remote_id, now);
+    position->second = now;
+    if (first) LOG_INFO("Remote pointer input received: peer={}", remote_id);
   }
 
   if (remote_action.type == ControlType::mouse) {
@@ -652,6 +667,12 @@ InputOutcome GuiRuntime::InjectRemoteMouse(const RemoteAction& remote_action,
               static_cast<int>(remote_action.m.flag));
           auto json = nlohmann::json::parse(response, nullptr, false);
           const bool sent = json.is_object() && json.value("ok", false);
+          static thread_local bool logged_service_input = false;
+          if (sent && !logged_service_input) {
+            logged_service_input = true;
+            LOG_INFO("Secure desktop pointer injection succeeded: stage='{}', desktop='{}'",
+                     WindowsInputStage(), json.value("desktop", ""));
+          }
           const std::string error =
               json.is_object() ? json.value("error", "") : "";
           return {sent, IsDesktopInputSetupPending(error)};

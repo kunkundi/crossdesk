@@ -48,6 +48,9 @@ class TrustedDevices {
   // Call only after a local add action for a verified peer or valid pairing info.
   void Add(const Device& device);
   void Remove(const std::string& public_key);
+  // Replace a complete snapshot from the authenticated machine host.
+  // Validation and persistence finish before the in-memory list changes.
+  void Replace(const std::vector<Device>& devices);
 
  private:
   void Save(const std::map<std::string, Device>& devices) const;

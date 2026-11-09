@@ -39,9 +39,34 @@ PrivacyCursorGuard::~PrivacyCursorGuard() {
   if (stop_event_) CloseHandle(stop_event_);
 }
 
-bool PrivacyCursorGuard::Start(std::string& error) {
-  if (process_ || restore_pending_)
+bool PrivacyCursorGuard::Start(std::string& error, const std::wstring& desktop,
+                               HANDLE capture_owner) {
+  if (process_ || restore_pending_ || delegated_)
     return Failed("Cursor guard already active", error, ERROR_BUSY);
+  desktop_ = desktop;
+  if (!capture_owner && SharedDxgiCursorState().ExternalControllerAvailable()) {
+    // The managed GUI's privacy request reaches the host on its next tick.
+    // Give that owner time to become ready before falling back to a local
+    // helper (e.g. a GUI-only LAN session). Keep the privacy window responsive.
+    const auto deadline = GetTickCount64() + 1000;
+    while (!SharedDxgiCursorState().ExternalCursorHidden() &&
+           SharedDxgiCursorState().ExternalControllerAvailable() &&
+           GetTickCount64() < deadline) {
+      MSG message{};
+      while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+        TranslateMessage(&message);
+        DispatchMessageW(&message);
+      }
+      Sleep(10);
+    }
+  }
+  // A managed GUI can reuse the persistent host's confirmed cursor guard.
+  // It must not start a second helper that restores the shared cursor later.
+  // Secure capture with its own client lifetime always owns its watchdog.
+  if (!capture_owner && SharedDxgiCursorState().ExternalCursorHidden()) {
+    delegated_ = true;
+    return true;
+  }
   helper_failure_reported_ = false;
   std::vector<wchar_t> module(32768);
   const DWORD count = GetModuleFileNameW(nullptr, module.data(),
@@ -52,10 +77,14 @@ bool PrivacyCursorGuard::Start(std::string& error) {
                       L"crossdesk_privacy_cursor_helper.exe";
   SECURITY_ATTRIBUTES security{sizeof(security), nullptr, TRUE};
   Handle parent;
+  Handle owner;
   if (!DuplicateHandle(GetCurrentProcess(), GetCurrentProcess(),
                        GetCurrentProcess(), &parent.value, SYNCHRONIZE, TRUE,
                        0))
     return Failed("Duplicate parent process handle", error);
+  if (capture_owner && !DuplicateHandle(GetCurrentProcess(), capture_owner,
+      GetCurrentProcess(), &owner.value, SYNCHRONIZE, TRUE, 0))
+    return Failed("Duplicate capture owner process handle", error);
   Handle stop{CreateEventW(&security, TRUE, FALSE, nullptr)};
   Handle ready{CreateEventW(&security, TRUE, FALSE, nullptr)};
   Handle mapping{CreateFileMappingW(INVALID_HANDLE_VALUE, &security,
@@ -73,6 +102,8 @@ bool PrivacyCursorGuard::Start(std::string& error) {
   std::vector<unsigned char> attributes(bytes);
   STARTUPINFOEXW startup{};
   startup.StartupInfo.cb = sizeof(startup);
+  startup.StartupInfo.lpDesktop = desktop.empty()
+      ? nullptr : const_cast<wchar_t*>(desktop.c_str());
   startup.lpAttributeList =
       reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attributes.data());
   if (!InitializeProcThreadAttributeList(startup.lpAttributeList, 1, 0,
@@ -81,10 +112,11 @@ bool PrivacyCursorGuard::Start(std::string& error) {
     UnmapViewOfFile(shared);
     return Failed("Initialize cursor guard handle list", error, code);
   }
-  HANDLE inherited[] = {parent.value, stop.value, ready.value, mapping.value};
+  std::vector<HANDLE> inherited{parent.value, stop.value, ready.value, mapping.value};
+  if (owner.value) inherited.push_back(owner.value);
   bool ok = UpdateProcThreadAttribute(
                 startup.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
-                inherited, sizeof(inherited), nullptr, nullptr) != FALSE;
+                inherited.data(), inherited.size() * sizeof(HANDLE), nullptr, nullptr) != FALSE;
   PROCESS_INFORMATION child{};
   bool used_job_fallback = false;
   if (ok) {
@@ -140,6 +172,11 @@ bool PrivacyCursorGuard::RestoreAfterFailure(std::string& error) {
 }
 
 bool PrivacyCursorGuard::Healthy(std::string& error) {
+  if (delegated_) {
+    if (SharedDxgiCursorState().ExternalCursorHidden()) return true;
+    delegated_ = false;
+    return Start(error, desktop_);
+  }
   if (process_ && WaitForSingleObject(process_, 0) == WAIT_TIMEOUT) return true;
   if (restore_pending_ || (process_ && !helper_failure_reported_))
     RestoreAfterFailure(error);
@@ -149,6 +186,10 @@ bool PrivacyCursorGuard::Healthy(std::string& error) {
 }
 
 bool PrivacyCursorGuard::Stop(std::string& error) {
+  if (delegated_) {
+    delegated_ = false;
+    return true;
+  }
   if (!process_) return !restore_pending_ || RestoreAfterFailure(error);
   if (!SetEvent(stop_event_)) return Failed("Stop cursor helper", error);
   if (WaitForSingleObject(process_, 2000) != WAIT_OBJECT_0) {

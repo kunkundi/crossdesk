@@ -30,6 +30,8 @@
 #include "session_helper_shared.h"
 #include "secure_text_input.h"
 #include "secure_desktop_dxgi_capture.h"
+#include "secure_desktop_wgc_capture.h"
+#include "capture_backend_policy.h"
 #include "secure_desktop_frame_pacer.h"
 #include "secure_desktop_nv12_cache.h"
 #include "service_lifetime.h"
@@ -40,10 +42,12 @@
 #include "usbmmidd_virtual_display.h"
 #include "windows_cursor_state.h"
 #include "cursor_draw.h"
+#include "dxgi_cursor_state.h"
 #include "windows_input_marker.h"
 #include "windows_text_input.h"
 #include "windows_key_metadata.h"
 #include "../windows_thread_dpi.h"
+#include "../privacy/privacy_cursor_guard.h"
 
 namespace {
 
@@ -53,6 +57,7 @@ using crossdesk::ScopedInteractiveDesktop;
 using Json = nlohmann::json;
 
 constexpr DWORD kSessionHelperStatePollMs = 1000;
+constexpr ULONGLONG kCaptureOwnerLeaseMs = 4000;
 
 std::atomic<HANDLE> g_session_helper_desktop_switch_event{nullptr};
 
@@ -81,6 +86,8 @@ struct HelperState {
 struct SecureCaptureRequest : crossdesk::SharedCaptureConfiguration {
   std::string interactive_stage;
   std::string interactive_desktop;
+  std::shared_ptr<void> owner_process;
+  DWORD owner_pid = 0;
 };
 
 struct SecureMouseRequest {
@@ -99,6 +106,7 @@ struct SecureSharedCaptureState {
   HANDLE frame_ready_event = nullptr;
   uint8_t* frame_view = nullptr;
   uint32_t sequence = 0;
+  std::atomic<ULONGLONG> last_owner_refresh{0};
   // Last member: joins/cleans the producer before any captured state is destroyed.
   crossdesk::SharedCaptureLifecycle lifecycle;
 };
@@ -1363,9 +1371,12 @@ std::vector<uint8_t> BuildTextResponseBytes(const std::string& response) {
 }
 
 // Own the desktop before its capture objects, and release those objects before
-// restoring the original desktop. The legacy pipe path remains GDI-only.
+// restoring the original desktop. Shared and pipe capture use the same order.
 struct SecureDesktopCaptureResources {
   ScopedInteractiveDesktop desktop;
+  // Destroy before releasing the bound desktop, after capture objects.
+  std::unique_ptr<crossdesk::PrivacyCursorGuard> cursor_guard;
+  bool cursor_hidden = false;
   HDC screen_dc = nullptr;
   HDC mem_dc = nullptr;
   HBITMAP dib = nullptr;
@@ -1375,12 +1386,15 @@ struct SecureDesktopCaptureResources {
   DWORD error_code = ERROR_SUCCESS;
   crossdesk::SecureDesktopCursorSnapshot cursor_snapshot{};
   std::unique_ptr<crossdesk::SecureDesktopDxgiCapture> dxgi;
-  ULONGLONG next_dxgi_attempt = 0;
-  ULONGLONG dxgi_started = 0;
+  std::unique_ptr<crossdesk::SecureDesktopWgcCapture> wgc;
+  ULONGLONG next_gpu_attempt = 0, dxgi_started = 0, wgc_started = 0;
+  bool wgc_attempted = false;
   bool using_dxgi = false;
+  bool using_wgc = false;
   bool frame_pending = false;
   const uint8_t* frame_bits = nullptr;
   int frame_stride = 0;
+  const std::vector<uint8_t>* frame_nv12 = nullptr;
   crossdesk::SecureDesktopNv12Cache nv12;
 
   ~SecureDesktopCaptureResources() {
@@ -1399,7 +1413,7 @@ struct SecureDesktopCaptureResources {
     return false;
   }
 
-  bool Initialize(const SecureCaptureRequest& request) {
+  bool Initialize(const SecureCaptureRequest& request, bool shared = false) {
     const auto fallback = DesktopNameForInteractiveStage(
         request.interactive_stage, request.interactive_desktop);
     if (!desktop.Bind(fallback.empty() ? L"Winlogon" : fallback)) {
@@ -1408,6 +1422,19 @@ struct SecureDesktopCaptureResources {
     if (!desktop.IsReceivingInput()) {
       SetLastError(ERROR_REQUIRES_INTERACTIVE_WINDOWSTATION);
       return Fail("inactive_capture_desktop");
+    }
+    if (shared && !request.show_cursor && request.owner_process) {
+      cursor_guard = std::make_unique<crossdesk::PrivacyCursorGuard>();
+      std::string cursor_error;
+      cursor_hidden = cursor_guard->Start(cursor_error,
+          L"winsta0\\" + desktop.name(), request.owner_process.get());
+      if (cursor_hidden) {
+        LOG_INFO("Secure capture: system cursor hidden on '{}'; native controller draws it",
+                 WideToUtf8(desktop.name()));
+      } else {
+        LOG_WARN("Secure capture: cursor exclusion unavailable: {}", cursor_error);
+        cursor_guard.reset();
+      }
     }
     return true;
   }
@@ -1434,48 +1461,101 @@ struct SecureDesktopCaptureResources {
     return true;
   }
 
-  bool Capture(const SecureCaptureRequest& request, bool allow_dxgi = false) {
+  bool Capture(const SecureCaptureRequest& request, bool wait_for_first_frame = false) {
     frame_pending = false;
-    const ULONGLONG now = GetTickCount64();
-    if (allow_dxgi && !dxgi && now >= next_dxgi_attempt) {
-      next_dxgi_attempt = now + 5000;
-      auto candidate = std::make_unique<crossdesk::SecureDesktopDxgiCapture>();
-      const HRESULT hr = candidate->Initialize(
-          request.left, request.top, request.width, request.height);
-      if (SUCCEEDED(hr)) {
-        dxgi = std::move(candidate);
-        dxgi_started = now;
-      } else {
-        LOG_INFO("Secure capture DXGI unavailable; using GDI, hr={}",
-                 static_cast<int>(hr));
-      }
-    }
-    using_dxgi = false;
-    if (dxgi) {
-      const HRESULT hr = dxgi->Capture();
-      using_dxgi = hr == S_OK;
-      if (FAILED(hr) || (hr == S_FALSE && now - dxgi_started >= 250)) {
-        LOG_INFO("Secure capture DXGI lost; using GDI, hr={}",
-                 static_cast<int>(hr));
+    if (cursor_hidden) {
+      std::string cursor_error;
+      if (!cursor_guard->Healthy(cursor_error)) {
+        cursor_hidden = false;
+        cursor_guard.reset();
         dxgi.reset();
-        next_dxgi_attempt = now + 5000;
-      } else if (hr == S_FALSE) {
-        // DuplicateOutput often succeeds before the first desktop image is
-        // ready. A synchronous BitBlt here can stall the first frame for a
-        // desktop transition. Retry DXGI at the requested cadence instead.
-        frame_pending = true;
-        return false;
+        wgc.reset();
+        next_gpu_attempt = 0;
+        wgc_attempted = false;
+        LOG_WARN("Secure capture: cursor helper stopped; restoring captured cursor: {}",
+                 cursor_error);
       }
     }
-    if (!using_dxgi) {
-      if (!InitializeGdi(request)) return false;
-      if (!BitBlt(mem_dc, 0, 0, request.width, request.height, screen_dc,
-                  request.left, request.top, SRCCOPY | CAPTUREBLT)) {
-        return Fail("bitblt_failed");
+    const ULONGLONG now = GetTickCount64();
+    const bool retry_gpu = now >= next_gpu_attempt;
+    if (retry_gpu) {
+      next_gpu_attempt = now + 5000;
+      wgc_attempted = false;
+    }
+    using_dxgi = using_wgc = false;
+    frame_nv12 = nullptr;
+    frame_bits = nullptr;
+    for (const auto backend : crossdesk::WindowsCaptureBackendOrder()) {
+      if (backend == crossdesk::ScreenCaptureMethod::Dxgi) {
+        if (!dxgi && retry_gpu) {
+          auto candidate = std::make_unique<crossdesk::SecureDesktopDxgiCapture>();
+          const HRESULT result = candidate->Initialize(request.left, request.top,
+                                                        request.width, request.height);
+          if (SUCCEEDED(result)) {
+            dxgi = std::move(candidate);
+            dxgi_started = GetTickCount64();
+          } else LOG_INFO("Secure capture: DXGI unavailable, trying WGC, hr=0x{:08X}",
+                          static_cast<uint32_t>(result));
+        }
+        if (!dxgi) continue;
+        const HRESULT result = dxgi->Capture();
+        if (result == S_OK) {
+          using_dxgi = true;
+          wgc.reset();
+          wgc_attempted = false;
+          frame_bits = dxgi->pixels();
+          frame_stride = dxgi->stride();
+          break;
+        }
+        if (result == S_FALSE && GetTickCount64() - dxgi_started < 250) {
+          // Keep an already usable fallback while the preferred GPU warms up.
+          if (wait_for_first_frame && !wgc && !bits) {
+            frame_pending = true;
+            return false;
+          }
+        } else {
+          LOG_INFO("Secure capture: DXGI lost, trying WGC, hr=0x{:08X}", static_cast<uint32_t>(result));
+          dxgi.reset();
+          next_gpu_attempt = now + 5000;
+        }
+      } else if (backend == crossdesk::ScreenCaptureMethod::Wgc) {
+        if (!wgc && !wgc_attempted) {
+          wgc_attempted = true;
+          auto candidate = std::make_unique<crossdesk::SecureDesktopWgcCapture>();
+          const int result = candidate->Initialize(request.left, request.top, request.width,
+                  request.height, request.fps, request.show_cursor);
+          if (result == 0) {
+            wgc = std::move(candidate);
+            wgc_started = GetTickCount64();
+            LOG_INFO("Secure capture: WGC started");
+          } else LOG_INFO("Secure capture: WGC unavailable, trying GDI, ret={}", result);
+        }
+        if (!wgc) continue;
+        const HRESULT result = wgc->Capture();
+        if (result == S_OK) {
+          using_wgc = true;
+          frame_nv12 = &wgc->pixels();
+          break;
+        }
+        if (result == S_FALSE && GetTickCount64() - wgc_started < 250) {
+          if (wait_for_first_frame && !bits) {
+            frame_pending = true;
+            return false;
+          }
+        } else {
+          LOG_INFO("Secure capture: WGC lost, trying GDI, hr=0x{:08X}", static_cast<uint32_t>(result));
+          wgc.reset();
+          next_gpu_attempt = now + 5000;
+        }
+      } else {
+        if (!InitializeGdi(request)) return false;
+        if (!BitBlt(mem_dc, 0, 0, request.width, request.height, screen_dc,
+                    request.left, request.top, SRCCOPY | CAPTUREBLT))
+          return Fail("bitblt_failed");
+        frame_bits = static_cast<const uint8_t*>(bits);
+        frame_stride = request.width * 4;
       }
     }
-    frame_bits = using_dxgi ? dxgi->pixels() : static_cast<const uint8_t*>(bits);
-    frame_stride = using_dxgi ? dxgi->stride() : request.width * 4;
     // Sample on the thread bound to the captured input desktop, including when
     // native controllers render the cursor themselves (show_cursor == false).
     cursor_snapshot = {};
@@ -1484,7 +1564,12 @@ struct SecureDesktopCaptureResources {
     if (GetCursorInfo(&cursor)) {
       static thread_local crossdesk::WindowsCursorState cursor_state;
       crossdesk::CursorState state{};
-      const bool embedded = using_dxgi && dxgi->CursorEmbedded(cursor);
+      // MagShowSystemCursor hides the pointer without clearing CURSOR_SHOWING.
+      // A successfully hidden pointer is separate, regardless of the driver's
+      // usual software-cursor default on Winlogon.
+      const bool embedded = using_wgc ? wgc->CursorEmbedded()
+          : !(cursor_hidden || crossdesk::SharedDxgiCursorState().PrivacyCursorHidden()) &&
+                using_dxgi && dxgi->CursorEmbedded(cursor);
       cursor_state.Sample(cursor, embedded, &state);
       cursor_snapshot.valid = 1;
       cursor_snapshot.visible = state.visible;
@@ -1495,14 +1580,22 @@ struct SecureDesktopCaptureResources {
       cursor_snapshot.y = cursor.ptScreenPos.y;
       // Never draw into DXGI's cached desktop: each cursor position starts
       // with clean pixels, including on a static screen or after a toggle.
-      if (request.show_cursor && !embedded && using_dxgi &&
+      if (request.show_cursor && !embedded && (using_dxgi || using_wgc) &&
           (cursor.flags & CURSOR_SHOWING) != 0) {
         if (!InitializeGdi(request)) return false;
         const size_t row_bytes = static_cast<size_t>(request.width) * 4;
-        for (int y = 0; y < request.height; ++y) {
-          std::memcpy(static_cast<uint8_t*>(bits) + y * row_bytes,
-                      frame_bits + static_cast<size_t>(y) * frame_stride,
-                      row_bytes);
+        if (frame_nv12) {
+          const auto* pixels = frame_nv12->data();
+          if (libyuv::NV12ToARGB(pixels, request.width,
+                pixels + static_cast<size_t>(request.width) * request.height,
+                request.width, static_cast<uint8_t*>(bits), request.width * 4,
+                request.width, request.height) != 0)
+            return Fail("nv12_to_argb_failed");
+          frame_nv12 = nullptr;
+        } else {
+          for (int y = 0; y < request.height; ++y)
+            std::memcpy(static_cast<uint8_t*>(bits) + y * row_bytes,
+                        frame_bits + static_cast<size_t>(y) * frame_stride, row_bytes);
         }
         frame_bits = static_cast<const uint8_t*>(bits);
         frame_stride = request.width * 4;
@@ -1517,7 +1610,7 @@ struct SecureDesktopCaptureResources {
       }
     }
     // Complete GDI writes before libyuv reads the DIB's pixel memory.
-    if (!using_dxgi || frame_bits == bits) GdiFlush();
+    if ((!using_dxgi && !using_wgc) || (bits && frame_bits == bits)) GdiFlush();
     return true;
   }
 };
@@ -1537,7 +1630,9 @@ std::vector<uint8_t> CaptureSecureDesktopFrame(
   // cannot be reused. Convert straight into the response payload.
   std::vector<uint8_t> response(sizeof(header) + nv12_size);
   uint8_t* payload = response.data() + sizeof(header);
-  const int convert_result = libyuv::ARGBToNV12(
+  const int convert_result = capture.frame_nv12
+      ? (std::memcpy(payload, capture.frame_nv12->data(), nv12_size), 0)
+      : libyuv::ARGBToNV12(
       capture.frame_bits, capture.frame_stride, payload, request.width,
       payload + static_cast<size_t>(request.width) * request.height,
       request.width, request.width, request.height);
@@ -1578,6 +1673,8 @@ void CloseSecureDesktopSharedCaptureResources(
     capture_state->frame_mapping = nullptr;
   }
   capture_state->sequence = 0;
+  capture_state->request = {};
+  capture_state->last_owner_refresh.store(0, std::memory_order_relaxed);
 }
 
 void SecureDesktopSharedCaptureThread(SecureSharedCaptureState* capture_state) {
@@ -1599,7 +1696,7 @@ void SecureDesktopSharedCaptureThread(SecureSharedCaptureState* capture_state) {
   std::unique_ptr<SecureDesktopCaptureResources> capture;
   ULONGLONG last_error_tick = 0;
   auto stats_started = std::chrono::steady_clock::now();
-  unsigned frame_count = 0, dxgi_frames = 0, dxgi_updates = 0;
+  unsigned frame_count = 0, dxgi_frames = 0, dxgi_updates = 0, wgc_frames = 0;
   unsigned converted_frames = 0;
   double capture_ms = 0, convert_ms = 0, publish_ms = 0;
   auto report_stats = [&](bool force) {
@@ -1611,19 +1708,29 @@ void SecureDesktopSharedCaptureThread(SecureSharedCaptureState* capture_state) {
       LOG_INFO(
           "Secure capture producer: fps={:.1f}, capture_avg_ms={:.1f}, "
           "convert_avg_ms={:.1f}, publish_avg_ms={:.1f}, size={}x{}, "
-          "target_fps={}, dxgi_frames={}, dxgi_updates={}, gdi_frames={}, "
+          "target_fps={}, dxgi_frames={}, dxgi_updates={}, wgc_frames={}, gdi_frames={}, "
           "converted_frames={}, reused_frames={}",
           frame_count / elapsed, capture_ms / frame_count,
           convert_ms / frame_count, publish_ms / frame_count, request.width,
-          request.height, request.fps, dxgi_frames, dxgi_updates,
-          frame_count - dxgi_frames, converted_frames,
+          request.height, request.fps, dxgi_frames, dxgi_updates, wgc_frames,
+          frame_count - dxgi_frames - wgc_frames, converted_frames,
           frame_count - converted_frames);
     }
     stats_started = std::chrono::steady_clock::now();
-    frame_count = dxgi_frames = dxgi_updates = converted_frames = 0;
+    frame_count = dxgi_frames = dxgi_updates = wgc_frames = converted_frames = 0;
     capture_ms = convert_ms = publish_ms = 0;
   };
   while (!capture_state->lifecycle.StopRequested()) {
+    if (request.owner_process &&
+        WaitForSingleObject(request.owner_process.get(), 0) != WAIT_TIMEOUT) {
+      LOG_INFO("Secure capture owner exited; stopping capture and restoring cursor");
+      break;
+    }
+    if (GetTickCount64() - capture_state->last_owner_refresh.load(
+            std::memory_order_relaxed) >= kCaptureOwnerLeaseMs) {
+      LOG_INFO("Secure capture lease expired; restoring cursor");
+      break;
+    }
     const auto frame_started = std::chrono::steady_clock::now();
     report_stats(false);
     // A lock/credential/UAC transition can change the desktop before the
@@ -1633,7 +1740,7 @@ void SecureDesktopSharedCaptureThread(SecureSharedCaptureState* capture_state) {
     }
     if (!capture) {
       capture = std::make_unique<SecureDesktopCaptureResources>();
-      if (!capture->Initialize(request)) {
+      if (!capture->Initialize(request, true)) {
         const DWORD error = capture->error_code;
         capture.reset();
         const ULONGLONG now = GetTickCount64();
@@ -1657,9 +1764,10 @@ void SecureDesktopSharedCaptureThread(SecureSharedCaptureState* capture_state) {
       // or pointer-only update can reuse the NV12 image safely.
       const bool pixels_changed = !capture->using_dxgi ||
                                   capture->dxgi->updated() || request.show_cursor;
-      if (capture->nv12.Convert(capture->frame_bits, capture->frame_stride,
+      if (capture->frame_nv12 || capture->nv12.Convert(capture->frame_bits, capture->frame_stride,
                                request.width, request.height, pixels_changed)) {
-        const auto& nv12_frame = capture->nv12.pixels();
+        const auto& nv12_frame = capture->frame_nv12 ? *capture->frame_nv12 : capture->nv12.pixels();
+        const bool pixels_updated = capture->frame_nv12 ? capture->wgc->updated() : capture->nv12.updated();
         const auto converted_at = std::chrono::steady_clock::now();
         auto* header = reinterpret_cast<
             crossdesk::CrossDeskSecureDesktopSharedFrameHeader*>(frame_view);
@@ -1674,7 +1782,7 @@ void SecureDesktopSharedCaptureThread(SecureSharedCaptureState* capture_state) {
         header->height = static_cast<uint32_t>(request.height);
         header->payload_size = static_cast<uint32_t>(nv12_frame.size());
         header->cursor = capture->cursor_snapshot;
-        if (capture->nv12.updated()) {
+        if (pixels_updated) {
           std::memcpy(payload, nv12_frame.data(), nv12_frame.size());
           ++converted_frames;
         }
@@ -1686,7 +1794,7 @@ void SecureDesktopSharedCaptureThread(SecureSharedCaptureState* capture_state) {
         if (capture->using_dxgi) {
           ++dxgi_frames;
           if (capture->dxgi->updated()) ++dxgi_updates;
-        }
+        } else if (capture->using_wgc) ++wgc_frames;
         capture_ms += std::chrono::duration<double, std::milli>(captured_at -
                                                                 frame_started)
                           .count();
@@ -1815,6 +1923,7 @@ std::vector<uint8_t> PrepareSecureDesktopSharedCapture(
   capture_state->frame_view = frame_view;
   capture_state->sequence = 0;
   capture_state->request = request;
+  capture_state->last_owner_refresh.store(GetTickCount64(), std::memory_order_relaxed);
 
   return {};
 }
@@ -1837,7 +1946,13 @@ std::vector<uint8_t> StartSecureDesktopSharedCapture(
       },
       [&] {
         // A timed-out caller may retry a start that already succeeded.
-        return capture_state->request == request;
+        const bool reuse = capture_state->request == request &&
+            capture_state->request.owner_pid == request.owner_pid &&
+            capture_state->request.owner_process &&
+            WaitForSingleObject(capture_state->request.owner_process.get(), 0) == WAIT_TIMEOUT;
+        if (reuse)
+          capture_state->last_owner_refresh.store(GetTickCount64(), std::memory_order_relaxed);
+        return reuse;
       });
   if (result == crossdesk::SharedCaptureLifecycle::StartResult::ShuttingDown) {
     return BuildTextResponseBytes(BuildErrorJson("capture_shutting_down"));
@@ -1859,7 +1974,8 @@ std::vector<uint8_t> StartSecureDesktopSharedCapture(
 
 std::vector<uint8_t> HandleSecureInputHelperCommand(
     const std::string& command,
-    SecureSharedCaptureState* capture_state) {
+    SecureSharedCaptureState* capture_state,
+    const std::shared_ptr<void>& owner_process, DWORD owner_pid) {
   if (command.rfind(crossdesk::kSecureTextInputCommandPrefix, 0) == 0) {
     crossdesk::SecureTextInputRequest request;
     if (!crossdesk::ParseSecureTextInputCommand(command, request))
@@ -1885,6 +2001,10 @@ std::vector<uint8_t> HandleSecureInputHelperCommand(
 
   SecureCaptureRequest capture_start_request;
   if (ParseSecureInputCaptureStartCommand(command, &capture_start_request)) {
+    if (!owner_process || WaitForSingleObject(owner_process.get(), 0) != WAIT_TIMEOUT)
+      return BuildTextResponseBytes(BuildErrorJson("capture_owner_unavailable"));
+    capture_start_request.owner_process = owner_process;
+    capture_start_request.owner_pid = owner_pid;
     return StartSecureDesktopSharedCapture(capture_start_request,
                                            capture_state);
   }
@@ -1971,8 +2091,19 @@ void HandleSecureInputHelperPipeClient(
           pipe, event_handle, false, buffer, sizeof(buffer) - 1,
           GetTickCount64() + 1000, &bytes_read, &error) &&
       bytes_read > 0) {
+    // Bind the producer/cursor watchdog to the Windows-identified caller,
+    // never a PID supplied in a capture command. The process object remains
+    // valid even after its PID is reused.
+    ULONG owner_pid = 0;
+    std::shared_ptr<void> owner_process;
+    if (GetNamedPipeClientProcessId(pipe, &owner_pid)) {
+      HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, owner_pid);
+      if (process) owner_process = std::shared_ptr<void>(process,
+          [](void* handle) { CloseHandle(handle); });
+    }
     std::vector<uint8_t> response = HandleSecureInputHelperCommand(
-        std::string(buffer, buffer + bytes_read), capture_state.get());
+        std::string(buffer, buffer + bytes_read), capture_state.get(),
+        owner_process, owner_pid);
     DWORD bytes_written = 0;
     if (!response.empty()) {
       if (crossdesk::pipe_deadline_detail::Transfer(
