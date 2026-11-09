@@ -86,7 +86,14 @@ struct DesktopIndicatorApi {
 template <typename T>
 bool LoadDesktopIndicatorSymbol(void* library, T* function,
                                 const char* symbol_name) {
-  *function = reinterpret_cast<T>(dlsym(library, symbol_name));
+  // MiniRTC can export a statically linked GLib/GObject. GTK's own calls then
+  // bind to those process-wide symbols, while a lookup through the indicator
+  // handle can select the system GObject's separate type registry instead.
+  // Match GTK's symbol resolution so menu signals and unrefs use its registry.
+  *function = reinterpret_cast<T>(dlsym(RTLD_DEFAULT, symbol_name));
+  if (!*function) {
+    *function = reinterpret_cast<T>(dlsym(library, symbol_name));
+  }
   return *function != nullptr;
 }
 

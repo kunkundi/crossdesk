@@ -16,6 +16,7 @@
 #include <unistd.h>
 #ifdef CROSSDESK_HAS_ATSPI
 #include <atspi/atspi.h>
+#include <dlfcn.h>
 #endif
 extern char** environ;
 
@@ -102,18 +103,44 @@ struct XConnection {
   }
 };
 #ifdef CROSSDESK_HAS_ATSPI
-template <class T> std::shared_ptr<T> Own(T* object) { return {object, [](T* value) { if (value) g_object_unref(value); }}; }
+// AT-SPI objects and its event loop belong to the system GLib, not MiniRTC's
+// private static copy. Keep the handle for the lifetime of these objects.
+struct AtspiGlib {
+  decltype(&g_object_unref) object_unref;
+  decltype(&g_free) free;
+  decltype(&g_main_context_pending) context_pending;
+  decltype(&g_main_context_iteration) context_iteration;
+
+  AtspiGlib() {
+    void* library = dlopen("libatspi.so.0", RTLD_NOW | RTLD_LOCAL);
+    if (!library) throw std::runtime_error("ACCESSIBILITY_UNAVAILABLE");
+    object_unref = reinterpret_cast<decltype(object_unref)>(dlsym(library, "g_object_unref"));
+    free = reinterpret_cast<decltype(free)>(dlsym(library, "g_free"));
+    context_pending = reinterpret_cast<decltype(context_pending)>(dlsym(library, "g_main_context_pending"));
+    context_iteration = reinterpret_cast<decltype(context_iteration)>(dlsym(library, "g_main_context_iteration"));
+    if (!object_unref || !free || !context_pending || !context_iteration) {
+      dlclose(library);
+      throw std::runtime_error("ACCESSIBILITY_UNAVAILABLE");
+    }
+  }
+};
+AtspiGlib& SystemGlib() {
+  static AtspiGlib api;
+  return api;
+}
+template <class T> std::shared_ptr<T> Own(T* object) { return {object, [](T* value) { if (value) SystemGlib().object_unref(value); }}; }
 using Accessible = std::shared_ptr<AtspiAccessible>;
 std::string Text(char* value) {
   auto text = DesktopText(value ? value : "");
-  g_free(value);
+  SystemGlib().free(value);
   return text;
 }
 Accessible Desktop() {
+  auto& glib = SystemGlib();
   static const int initialized = atspi_init();
   if (initialized > 1) throw std::runtime_error("ACCESSIBILITY_UNAVAILABLE");
   atspi_set_timeout(120, 120);
-  for (int count = 0; count < 32 && g_main_context_pending(nullptr); ++count) g_main_context_iteration(nullptr, false);
+  for (int count = 0; count < 32 && glib.context_pending(nullptr); ++count) glib.context_iteration(nullptr, false);
   auto desktop = Own(atspi_get_desktop(0));
   if (!desktop) throw std::runtime_error("ACCESSIBILITY_UNAVAILABLE");
   return desktop;
@@ -173,7 +200,7 @@ DesktopSnapshot Tree(Accessible root, int limit, int depth) {
       const auto rect = atspi_component_get_extents(component.get(), ATSPI_COORD_TYPE_SCREEN, nullptr);
       if (rect) {
         data["bounds"] = {{"x", rect->x}, {"y", rect->y}, {"width", rect->width}, {"height", rect->height}};
-        g_free(rect);
+        SystemGlib().free(rect);
       }
     }
     if (!secure) {

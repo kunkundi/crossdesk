@@ -4,9 +4,6 @@
  * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
  */
 
-#ifndef _PEER_TRANSPORT_H_
-#define _PEER_TRANSPORT_H_
-
 #include "runtime/peer_transport.h"
 
 #ifdef _WIN32
@@ -100,5 +97,3 @@ int PeerUpdateConnectionSettings(MiniRtcPeerPtr* peer, bool hardware, bool av1,
   return MiniRtcUpdateConnectionSettings(peer, hardware, av1, turn);
 }
 }  // namespace crossdesk
-
-#endif

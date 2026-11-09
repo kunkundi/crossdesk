@@ -47,6 +47,12 @@ function setup_platform_settings()
         add_cxflags("/WX")
         set_runtimes("MT")
     elseif is_os("linux") then
+        -- MiniRTC carries its own static GLib/GIO. System GTK and AT-SPI must
+        -- keep using the system runtime, including its separate GType registry.
+        -- Partial ELF interposition otherwise registers GCancellable twice and
+        -- leaves ICE stream initialization stuck in g_once_init_enter().
+        add_ldflags("-Wl,--exclude-libs,libgio-2.0.a:libgobject-2.0.a:libgthread-2.0.a:libgmodule-2.0.a:libglib-2.0.a:libffi.a",
+            {force = true})
         add_requires("pkgconfig::atspi-2", {alias = "atspi", system = true, optional = true})
         add_links("pulse-simple", "pulse")
         add_requires("libyuv")

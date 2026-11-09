@@ -618,6 +618,10 @@ bool ConfigCenter::IsSelfHosted() const { return enable_self_hosted_; }
 bool ConfigCenter::IsEnableAutostart() const {
 #ifdef _WIN32
   return IsServiceAutostartEnabled();
+#elif defined(__linux__) && !defined(__OHOS__)
+  // Uninstalling or desktop startup settings can remove the registration while
+  // leaving config.ini intact. Report the actual entry, not the saved intent.
+  return IsAutostartEnabled("CrossDesk");
 #else
   return enable_autostart_;
 #endif
