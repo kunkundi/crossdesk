@@ -282,13 +282,20 @@ TEMP_MANIFEST="${MERGE_MANIFEST}.tmp"
 trap 'rm -f "${TEMP_LIBRARY}" "${TEMP_MANIFEST}"' EXIT
 
 # Check the actual archive, including when reusing cached build products.
-verify_no_openh264() {
+verify_native_symbols() {
   local symbols
   symbols="$(DEVELOPER_DIR="${XMAKE_DEVELOPER_DIR}" xcrun nm -g "$1")"
   if [[ "${symbols}" == *WelsCreateDecoder* || \
         "${symbols}" == *WelsCreateSVCEncoder* || \
         "${symbols}" == *WelsGetCodecVersion* ]]; then
     print -u2 "OpenH264 symbols must not be present in the iOS native archive: $1"
+    exit 65
+  fi
+  # New Apple SDKs export pipe2 as a weak import for older deployment targets.
+  # GLib must use pipe + fcntl; an unconditional pipe2 call crashes during ICE
+  # setup on iOS versions that do not provide it. Check cached archives too.
+  if print -r -- "${symbols}" | /usr/bin/awk '$NF == "_pipe2" { found = 1 } END { exit !found }'; then
+    print -u2 "pipe2 must not be present in the iOS native archive; rebuild GLib with the iOS compatibility recipe: $1"
     exit 65
   fi
 }
@@ -299,7 +306,7 @@ verify_no_openh264() {
 shasum -a 256 "${SCRIPT_DIR}/build_minirtc_ios.sh" "${MINIRTC_LIBRARY}" \
   "${DEPENDENCY_ARCHIVES[@]}" "${WIRE_LIBRARY}" > "${TEMP_MANIFEST}"
 if [[ -f "${OUTPUT_LIBRARY}" ]] && cmp -s "${TEMP_MANIFEST}" "${MERGE_MANIFEST}"; then
-  verify_no_openh264 "${OUTPUT_LIBRARY}"
+  verify_native_symbols "${OUTPUT_LIBRARY}"
   print "Up to date: ${OUTPUT_LIBRARY}"
   exit 0
 fi
@@ -309,7 +316,7 @@ fi
 /usr/bin/libtool -static -no_warning_for_no_symbols -o "${TEMP_LIBRARY}" \
   "${MINIRTC_LIBRARY}" "${MERGE_ARCHIVES[@]}" \
   "${WIRE_LIBRARY}"
-verify_no_openh264 "${TEMP_LIBRARY}"
+verify_native_symbols "${TEMP_LIBRARY}"
 mv -f "${TEMP_LIBRARY}" "${OUTPUT_LIBRARY}"
 mv -f "${TEMP_MANIFEST}" "${MERGE_MANIFEST}"
 
