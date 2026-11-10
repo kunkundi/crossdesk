@@ -17,6 +17,10 @@
 #include "platform/windows/service/autostart_control.h"
 #endif
 
+#ifdef __APPLE__
+#include "platform/macos/runtime_daemon.h"
+#endif
+
 #if defined(__linux__) && !defined(__OHOS__)
 #include "platform/linux/autostart.h"
 #include "platform/linux/runtime_daemon.h"
@@ -459,15 +463,17 @@ int ConfigCenter::SetAutostart(bool enabled) {
 }
 
 int ConfigCenter::SetDaemon(bool enabled) {
-#if defined(_WIN32) || (defined(__linux__) && !defined(__OHOS__))
+#if defined(_WIN32) || defined(__APPLE__) || (defined(__linux__) && !defined(__OHOS__))
   const bool previous = enable_daemon_;
 #endif
   if (StoreValues({{"enable_daemon", enabled ? "true" : "false"}}) != 0) return -1;
   enable_daemon_ = enabled;
-#if defined(_WIN32) || (defined(__linux__) && !defined(__OHOS__))
+#if defined(_WIN32) || defined(__APPLE__) || (defined(__linux__) && !defined(__OHOS__))
   std::string error;
 #ifdef _WIN32
   auto& daemon = platform::WindowsRuntimeDaemon::Instance();
+#elif defined(__APPLE__)
+  auto& daemon = platform::MacRuntimeDaemon::Instance();
 #else
   auto& daemon = platform::LinuxRuntimeDaemon::Instance();
 #endif

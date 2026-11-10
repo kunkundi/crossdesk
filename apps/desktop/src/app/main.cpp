@@ -28,7 +28,6 @@
 #endif
 
 #include "config_center.h"
-#include "daemon.h"
 #include "path_manager.h"
 #include "platform/instance_activation.h"
 #include "platform/single_instance.h"
@@ -45,6 +44,10 @@
 #include "platform/linux/headless/headless_session.h"
 #include "platform/linux/privacy/privacy_guard.h"
 #include "platform/linux/runtime_daemon.h"
+#endif
+
+#ifdef __APPLE__
+#include "platform/macos/runtime_daemon.h"
 #endif
 
 #ifdef _WIN32
@@ -275,9 +278,7 @@ static int ExitForExistingInstance(
   return result == crossdesk::platform::InstanceResult::kAlreadyRunning ? 0 : 1;
 }
 
-static int RunApplication(
-    int argc, char* argv[],
-    crossdesk::platform::SingleInstanceGuard& client_instance) {
+static int RunApplication(int argc, char* argv[]) {
   // The instance guards are held before any configuration or logger is opened.
   auto path_manager = std::make_unique<crossdesk::PathManager>("CrossDesk");
   crossdesk::InitLogger(path_manager->GetLogPath().string());
@@ -289,7 +290,7 @@ static int RunApplication(
 #endif
 
   if (IsDaemonChild(argc, argv)) {
-    // child process: run render directly
+    // Compatibility with a supervisor from an older, still-running build.
     crossdesk::Render render;
     return render.Run();
   }
@@ -327,62 +328,34 @@ static int RunApplication(
   runtime_daemon.Initialize(
       argc, argv, !std::getenv("CROSSDESK_HEADLESS_ACTIVE") &&
                       !crossdesk::HeadlessConsole::Instance().active());
-  std::string daemon_error;
-  if (!runtime_daemon.SetEnabled(enable_daemon, daemon_error)) {
-    crossdesk::get_logger()->warn("Could not start daemon: {}", daemon_error);
-  }
-  crossdesk::Render render;
-  const int result = render.Run();
-  runtime_daemon.Shutdown(result != 0);
-  return result;
 #elif defined(_WIN32)
   auto& runtime_daemon = crossdesk::platform::WindowsRuntimeDaemon::Instance();
   runtime_daemon.Initialize();
+#elif defined(__APPLE__)
+  auto& runtime_daemon = crossdesk::platform::MacRuntimeDaemon::Instance();
+  runtime_daemon.Initialize(argc, argv);
+#endif
+#if defined(__linux__) || defined(_WIN32) || defined(__APPLE__)
   std::string daemon_error;
   if (!runtime_daemon.SetEnabled(enable_daemon, daemon_error)) {
     crossdesk::get_logger()->warn("Could not start daemon: {}", daemon_error);
   }
+#endif
   crossdesk::Render render;
   const int result = render.Run();
+#if defined(__linux__) || defined(_WIN32) || defined(__APPLE__)
   runtime_daemon.Shutdown(result != 0);
-  return result;
-#else
-
-  if (enable_daemon) {
-    // The launcher lease stays in main for the supervisor's entire lifetime.
-    // Each --child must acquire its own client lease, so it is neither blocked
-    // by its supervisor nor able to bypass the single-client restriction.
-    client_instance.Release();
-    // start daemon with restart monitoring
-    Daemon daemon("CrossDesk");
-
-    // define main loop function: run render and stop daemon on normal exit
-    Daemon::MainLoopFunc main_loop = [&daemon, &client_instance]() {
-      // Executable discovery can fail and make the supervisor run the GUI in
-      // process. This fallback must retain the same client ownership rule.
-      if (AcquireInstance(client_instance,
-                          crossdesk::platform::InstanceRole::kClient) !=
-          crossdesk::platform::InstanceResult::kAcquired) {
-        daemon.stop();
-        return;
-      }
-      crossdesk::Render render;
-      render.Run();
-      daemon.stop();
-    };
-
-    // start daemon and return result
-    bool success = daemon.start(main_loop);
-    return success ? 0 : 1;
-  }
-
-  // run without daemon: direct execution
-  crossdesk::Render render;
-  return render.Run();
 #endif
+  return result;
 }
 
 int main(int argc, char* argv[]) {
+#ifdef __APPLE__
+  if (argc >= 2 &&
+      std::strcmp(argv[1], crossdesk::platform::kMacDaemonArgument) == 0) {
+    return crossdesk::platform::RunMacRuntimeDaemon(argc, argv);
+  }
+#endif
 #ifdef _WIN32
   if (argc >= 2 &&
       std::strcmp(argv[1], crossdesk::platform::kWindowsDaemonArgument) == 0) {
@@ -503,7 +476,7 @@ int main(int argc, char* argv[]) {
 
 #ifdef __linux__
   const int exit_code = crossdesk::RunWithLinuxDisplay(
-      argc, argv, [&] { return RunApplication(argc, argv, client_instance); }, [&] {
+      argc, argv, [&] { return RunApplication(argc, argv); }, [&] {
         crossdesk::PathManager paths("CrossDesk");
         if (console.Enable(paths.GetLogPath(), paths.GetCachePath() / "config.ini")) return true;
         std::cerr << "无法初始化日志或控制台，启动失败。\n";
@@ -516,6 +489,6 @@ int main(int argc, char* argv[]) {
   }
   return exit_code;
 #else
-  return RunApplication(argc, argv, client_instance);
+  return RunApplication(argc, argv);
 #endif
 }

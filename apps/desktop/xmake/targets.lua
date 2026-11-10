@@ -533,6 +533,8 @@ function setup_targets()
             add_deps("linux_runtime_daemon")
         elseif is_os("windows") then
             add_deps("windows_runtime_daemon")
+        elseif is_os("macosx") then
+            add_deps("macos_runtime_daemon")
         end
         add_files("apps/desktop/src/config_center/*.cpp")
         add_includedirs("apps/desktop/src", "apps/desktop/src/config_center",
@@ -545,6 +547,15 @@ function setup_targets()
             add_includedirs("apps/desktop/src", {public = true})
             add_files("apps/desktop/src/platform/linux/runtime_daemon.cpp")
             add_syslinks("dl", {public = true})
+    end
+
+    if is_os("macosx") then
+        target("macos_runtime_daemon")
+            set_kind("static")
+            add_includedirs("apps/desktop/src", {public = true})
+            add_files("apps/desktop/src/platform/macos/runtime_daemon.mm")
+            add_mxxflags("-fobjc-arc")
+            add_frameworks("AppKit", "CoreFoundation", {public = true})
     end
 
     target("assets")
@@ -775,8 +786,7 @@ function setup_targets()
         add_files("apps/desktop/src/app/*.cpp")
         add_includedirs("apps/desktop/src", "apps/desktop/src/app", {public = true})
         if is_os("windows") then
-            add_files("apps/desktop/src/platform/windows/daemon_backend.cpp",
-                "apps/desktop/src/platform/windows/service/autostart_control.cpp")
+            add_files("apps/desktop/src/platform/windows/service/autostart_control.cpp")
             add_files("apps/desktop/src/platform/windows/service/service_host.cpp",
                 "apps/desktop/src/platform/windows/service/rdp_session_handoff.cpp")
             add_includedirs("apps/desktop/src/platform/windows/service",
@@ -784,13 +794,8 @@ function setup_targets()
             add_links("Advapi32", "Wtsapi32", "Ole32", "Userenv")
             add_deps("wgc_plugin", "crossdesk_service", "crossdesk_session_helper")
             add_files(crossdesk_windows_resource, {defines = windows_resource_defines})
-        elseif is_os("macosx") then
-            add_files("apps/desktop/src/platform/common/posix_daemon_backend.cpp",
-                "apps/desktop/src/platform/macos/daemon_backend.cpp")
         elseif is_os("linux") then
-            add_files("apps/desktop/src/platform/common/posix_daemon_backend.cpp",
-                "apps/desktop/src/platform/linux/daemon_backend.cpp",
-                "apps/desktop/src/platform/linux/headless/headless_session.cpp")
+            add_files("apps/desktop/src/platform/linux/headless/headless_session.cpp")
         end
         add_rules("crossdesk.slint_runtime")
         after_build(copy_usbmmidd_package)
