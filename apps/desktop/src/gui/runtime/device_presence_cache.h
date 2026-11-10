@@ -22,6 +22,9 @@ public:
 
   void SetSignalConnected(bool connected) {
     std::lock_guard<std::mutex> lock(mutex_);
+    // Managed-host heartbeats repeat the current state every 250 ms. They
+    // must not discard server presence or refresh its age.
+    if (signal_connected_ == connected) return;
     signal_connected_ = connected;
     cache_.clear();
   }
