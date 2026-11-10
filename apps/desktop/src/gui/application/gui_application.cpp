@@ -48,6 +48,7 @@
 #include "features/gallery/gallery_workspace.h"
 #include "features/gallery/preview_bandwidth.h"
 #include "features/gallery/preview_resolution.h"
+#include "features/input/stream_keyboard_focus.h"
 #include "filesystem_utf8.h"
 #include "localization.h"
 #include "platform.h"
@@ -3803,19 +3804,10 @@ void GuiApplication::SyncXWaylandWindowActivation() {
 #endif
 
 void GuiApplication::SetStreamKeyboardFocus(bool focused) {
-  // Local dialogs own input even while the native window is active.
-  if (focused && ui_ && ui_->stream &&
-      (*ui_->stream)->get_modal_visible()) {
-    focused = false;
-  }
-  if (focus_on_stream_window_ == focused) {
-    return;
-  }
-
-  focus_on_stream_window_ = focused;
-  if (!focused) {
-    ReleaseControl();
-  }
+  const bool local_input_active = ui_ && ui_->stream &&
+      (*ui_->stream)->get_local_input_active();
+  UpdateStreamKeyboardFocus(focused, local_input_active, focus_on_stream_window_,
+      [this](bool preserve_local_ui) { ReleaseControl(preserve_local_ui); });
 }
 
 void GuiApplication::SyncStreamKeyboardFocus() {
@@ -5665,7 +5657,7 @@ void GuiApplication::SyncAudioPlayback() {
   }
 }
 
-void GuiApplication::ReleasePressedInput() {
+void GuiApplication::ReleasePressedInput(bool preserve_local_ui) {
   keyboard_.ForceReleasePressedKeys();
   for (int button : ui_->pressed_mouse_buttons) {
     RemoteAction action{};
@@ -5678,13 +5670,16 @@ void GuiApplication::ReleasePressedInput() {
     SendRemoteInput(action);
   }
   ui_->pressed_mouse_buttons.clear();
-  if (ui_->stream) (*ui_->stream)->invoke_reset_input_state();
+  if (ui_->stream) {
+    if (preserve_local_ui) (*ui_->stream)->invoke_reset_pressed_input();
+    else (*ui_->stream)->invoke_reset_input_state();
+  }
 }
 
-void GuiApplication::ReleaseControl() {
+void GuiApplication::ReleaseControl(bool preserve_local_ui) {
   const auto gallery_target = ui_->gallery_control_id;
   devices_.StopKeyboardCapturer();
-  ReleasePressedInput();
+  ReleasePressedInput(preserve_local_ui);
   gallery_group_control_id_.clear();
   ui_->wall->set_gallery_group_controlling(false);
   ui_->wall->set_gallery_remote_cursor_shape(

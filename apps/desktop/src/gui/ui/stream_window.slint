@@ -423,6 +423,10 @@ export component StreamWindow inherits Window {
     private property <length> disconnect-menu-y: root.control-panel-y(root.disconnect-menu-height);
     private property <bool> control-menu-open:
         root.display-menu-open || root.shortcut-menu-open || root.video-menu-open || root.disconnect-menu-open;
+    out property <bool> local-input-active: root.modal-visible || root.control-menu-open;
+    changed control-menu-open => {
+        root.keyboard-focus-changed(!root.control-menu-open && !root.modal-visible && input-focus.has-focus);
+    }
     changed selected-tab => {
         root.close-control-menus();
         root.cancel-remote-pointer();
@@ -589,10 +593,14 @@ export component StreamWindow inherits Window {
 
     // Native focus/session changes release input in C++; clear the matching UI
     // ownership too, including when replacing the only tab (same tab index).
-    public function reset-input-state() {
+    public function reset-pressed-input() {
         root.remote-left-down = false;
         root.remote-right-down = false;
         root.remote-middle-down = false;
+    }
+
+    public function reset-input-state() {
+        root.reset-pressed-input();
         root.close-control-menus();
         root.control-drag-pending = false;
         root.end-control-drag();
@@ -1039,10 +1047,10 @@ export component StreamWindow inherits Window {
 
             input-focus := FocusScope {
                 focus-on-click: true;
-                focus-gained => { root.keyboard-focus-changed(true); }
+                focus-gained => { root.keyboard-focus-changed(!root.control-menu-open && !root.modal-visible); }
                 focus-lost => { root.keyboard-focus-changed(false); }
                 key-pressed(event) => {
-                    if !root.modal-visible {
+                    if !root.modal-visible && !root.control-menu-open {
                         root.key-input(event.text, true, event.modifiers.control, event.modifiers.alt, event.modifiers.shift, event.modifiers.meta);
                     }
                     accept
@@ -1053,7 +1061,7 @@ export component StreamWindow inherits Window {
                         if event.text == Key.Escape || event.text == Key.Return {
                             if root.privacy-unlock-visible { root.dismiss-privacy-unlock(); } else { root.dismiss-remote-update(); }
                         }
-                    } else {
+                    } else if !root.control-menu-open {
                         root.key-input(event.text, false, event.modifiers.control, event.modifiers.alt, event.modifiers.shift, event.modifiers.meta);
                     }
                     accept
