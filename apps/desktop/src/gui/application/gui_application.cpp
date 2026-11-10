@@ -1071,6 +1071,9 @@ struct GuiApplication::SlintUi {
       std::make_shared<slint::VectorModel<ui::StreamTab>>();
   std::shared_ptr<slint::VectorModel<slint::SharedString>> display_model =
       std::make_shared<slint::VectorModel<slint::SharedString>>();
+  std::shared_ptr<slint::VectorModel<slint::SharedString>> resolution_model =
+      std::make_shared<slint::VectorModel<slint::SharedString>>();
+  DisplayResolutionInfo resolution_choices;
   struct TransferNotification {
     std::optional<slint::ComponentHandle<ui::FileTransferNotification>> window;
     RemoteSession::FileTransferInfo info;
@@ -2280,9 +2283,10 @@ void GuiApplication::BindStreamCallbacks() {
   });
   stream->on_switch_display([this](int index) {
     auto props = SelectedSession();
-    if (!props || index < 0 ||
-        index >= static_cast<int>(props->display_info_list_.size())) {
-      return;
+    if (!props || !props->peer_ || index < 0) return;
+    {
+      std::lock_guard lock(props->remote_version_mutex_);
+      if (index >= static_cast<int>(props->display_info_list_.size())) return;
     }
     props->selected_display_ = index;
     {
@@ -2392,6 +2396,32 @@ void GuiApplication::BindStreamCallbacks() {
       props->video_settings_pending_ = true;
       props->video_settings_failed_ = false;
       props->video_settings_request_tick_ = SDL_GetTicks();
+    }
+  });
+  stream->on_change_remote_resolution([this](int index) {
+    auto props = SelectedSession();
+    if (!props || !props->peer_ || props->closing_ || index < 0 ||
+        props->connection_status_ != MiniRtcConnectionStatus::MiniRtcConnectionConnected ||
+        ui_->resolution_choices.display_id != props->selected_display_ ||
+        index >= int(ui_->resolution_choices.modes.size())) return;
+    RemoteAction action;
+    action.type = ControlType::display_resolution;
+    {
+      std::lock_guard lock(props->display_resolution_mutex_);
+      auto& state = props->display_resolution_;
+      const DisplayResolutionChange selection{props->selected_display_,
+          ui_->resolution_choices.display_key, ui_->resolution_choices.modes[index]};
+      if (!state.Begin(selection, SDL_GetTicks())) return;
+      action.resolution_change = state.requested;
+    }
+    const auto message = action.to_json();
+    if (MiniRtcSendReliableDataFrame(props->peer_, message.data(), message.size(),
+                                    props->control_data_label_.c_str()) != 0) {
+      std::lock_guard lock(props->display_resolution_mutex_);
+      if (props->display_resolution_.requested.request_id == action.resolution_change.request_id) {
+        props->display_resolution_.pending = false;
+        props->display_resolution_.failed = true;
+      }
     }
   });
   stream->on_toggle_audio([this] {
@@ -3876,6 +3906,7 @@ void GuiApplication::SyncStreamWindow() {
     ui_->localized_language = -1;
     (*ui_->stream)->set_tabs(ui_->tab_model);
     (*ui_->stream)->set_displays(ui_->display_model);
+    (*ui_->stream)->set_remote_resolutions(ui_->resolution_model);
     (*ui_->stream)->set_stats_rows(ui_->stats_model);
     BindStreamCallbacks();
     (*ui_->stream)->window().set_size(slint::LogicalSize({
@@ -4148,14 +4179,44 @@ void GuiApplication::SyncStreamWindow() {
   (*ui_->stream)->set_stats_visible(props->net_traffic_stats_button_pressed_);
 
   std::vector<slint::SharedString> displays;
-  displays.reserve(props->display_info_list_.size());
-  for (size_t index = 0; index < props->display_info_list_.size(); ++index) {
-    displays.emplace_back(UiText(localization::FormatDisplayLabel(
-        index, props->display_info_list_[index].name,
-        localization_language_index_)));
+  {
+    std::lock_guard lock(props->remote_version_mutex_);
+    displays.reserve(props->display_info_list_.size());
+    for (size_t index = 0; index < props->display_info_list_.size(); ++index) {
+      displays.emplace_back(UiText(localization::FormatDisplayLabel(
+          index, props->display_info_list_[index].name,
+          localization_language_index_)));
+    }
+    if (props->selected_display_ >= int(displays.size())) props->selected_display_ = 0;
   }
   ui::UpdateModelRows(*ui_->display_model, std::move(displays));
   (*ui_->stream)->set_selected_display(props->selected_display_);
+  {
+    std::lock_guard lock(props->display_resolution_mutex_);
+    auto& state = props->display_resolution_;
+    state.Expire(SDL_GetTicks());
+    ui_->resolution_choices = {};
+    int selected = -1;
+    std::vector<slint::SharedString> resolutions;
+    for (const auto& display : state.displays) {
+      if (display.display_id != props->selected_display_) continue;
+      ui_->resolution_choices = display;
+      for (const auto& mode : display.modes) {
+        if (mode == display.current) selected = int(resolutions.size());
+        resolutions.emplace_back(UiText(FormatResolution(mode.width, mode.height)));
+      }
+      break;
+    }
+    const bool visible = status == MiniRtcConnectionStatus::MiniRtcConnectionConnected &&
+                         !resolutions.empty();
+    ui::UpdateModelRows(*ui_->resolution_model, std::move(resolutions));
+    (*ui_->stream)->set_remote_resolution_visible(visible);
+    (*ui_->stream)->set_remote_resolution_enabled(visible && !state.pending);
+    (*ui_->stream)->set_remote_resolution_index(selected);
+    (*ui_->stream)->set_remote_resolution_feedback(UiText(
+        state.failed ? localization::video_settings_failed[localization_language_index_]
+        : state.pending ? localization::video_settings_pending[localization_language_index_] : ""));
+  }
 
   const auto net = props->net_traffic_stats_.Load();
   const auto codecs = props->net_traffic_stats_.LoadVideoCodecs();

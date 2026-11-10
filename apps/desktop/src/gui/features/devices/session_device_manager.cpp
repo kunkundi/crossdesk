@@ -799,6 +799,7 @@ void SessionDeviceManager::UpdateInteractions() {
   }
 
   owner_.keyboard_.CheckRemoteTimeouts();
+  owner_.HandleDisplayResolutionChanges();
 }
 
 void SessionDeviceManager::DrainCapturedKeyboardInput() {

@@ -24,6 +24,7 @@
 #include <stream_names.h>
 #include "display_info.h"
 #include "features/gallery/preview_resolution.h"
+#include "runtime/display_resolution_state.h"
 #include "cursor_presentation.h"
 #include "minirtc.h"
 #include "rendering/video_latency.h"
@@ -203,6 +204,8 @@ struct RemoteSession {
   bool remote_service_available_ = false;
   std::string remote_interactive_stage_;
   std::vector<DisplayInfo> display_info_list_;
+  std::mutex display_resolution_mutex_;
+  DisplayResolutionState display_resolution_;
   // Cursor snapshots arrive on the transport callback thread and are applied
   // by the Slint UI thread. Keep the snapshot atomic as a unit so visibility
   // and shape cannot briefly come from different protocol messages.

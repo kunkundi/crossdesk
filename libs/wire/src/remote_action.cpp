@@ -13,6 +13,73 @@ namespace {
 
 using json = nlohmann::json;
 
+json DisplayResolutionsJson(const std::vector<DisplayResolutionInfo>& displays) {
+  json result = json::array();
+  for (const auto& display : displays) {
+    json modes = json::array();
+    for (const auto& mode : display.modes)
+      modes.push_back({{"width", mode.width}, {"height", mode.height}});
+    result.push_back({{"display_id", display.display_id},
+                      {"display_key", display.display_key},
+                      {"width", display.current.width},
+                      {"height", display.current.height}, {"modes", modes}});
+  }
+  return result;
+}
+
+bool ReadInteger(const json& object, const char* key, int64_t min,
+                 int64_t max, int64_t& result) {
+  const auto& value = object.at(key);
+  if (!value.is_number_integer() ||
+      (value.is_number_unsigned() && value.get<uint64_t>() > uint64_t(max)))
+    return false;
+  result = value.get<int64_t>();
+  return result >= min && result <= max;
+}
+
+bool ReadResolution(const json& object, DisplayResolution& result) {
+  int64_t width = 0, height = 0;
+  if (!ReadInteger(object, "width", 1, 32768, width) ||
+      !ReadInteger(object, "height", 1, 32768, height)) return false;
+  result = {int(width), int(height)};
+  return true;
+}
+
+bool ReadDisplayKey(const json& object, int& id, std::string& key) {
+  int64_t index = 0;
+  if (!ReadInteger(object, "display_id", 0, kMaxResolutionDisplays - 1, index))
+    return false;
+  key = object.at("display_key").get<std::string>();
+  if (key.empty() || key.size() > 1024 || key.find('\0') != std::string::npos)
+    return false;
+  id = int(index);
+  return true;
+}
+
+bool ReadDisplayResolutions(const json& values,
+                            std::vector<DisplayResolutionInfo>& result) {
+  result.clear();
+  if (!values.is_array() || values.size() > kMaxResolutionDisplays) return false;
+  for (const auto& value : values) {
+    DisplayResolutionInfo display;
+    if (!ReadDisplayKey(value, display.display_id, display.display_key) ||
+        !ReadResolution(value, display.current)) return false;
+    if (std::any_of(result.begin(), result.end(), [&](const auto& existing) {
+          return existing.display_id == display.display_id;
+        })) return false;
+    const auto& modes = value.at("modes");
+    if (!modes.is_array() || modes.size() > kMaxDisplayResolutionModes) return false;
+    for (const auto& mode : modes) {
+      DisplayResolution parsed;
+      if (!ReadResolution(mode, parsed)) return false;
+      if (std::find(display.modes.begin(), display.modes.end(), parsed) ==
+          display.modes.end()) display.modes.push_back(parsed);
+    }
+    result.push_back(std::move(display));
+  }
+  return true;
+}
+
 void ResetHostInfo(HostInfo& info) {
   info.host_name[0] = '\0';
   info.host_name_size = 0;
@@ -191,6 +258,21 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
     case ControlType::video_codec_status:
       object["video_codec"] = {{"encoder", action.vcs.encoder}};
       break;
+    case ControlType::display_resolution:
+    case ControlType::display_resolution_status: {
+      const auto& change = action.resolution_change;
+      if (!ValidDisplayResolution(change.resolution) || change.request_id == 0 ||
+          change.display_id < 0 || change.display_id >= kMaxResolutionDisplays ||
+          change.display_key.empty() || change.display_key.size() > 1024 ||
+          change.display_key.find('\0') != std::string::npos) return {};
+      object["display_resolution"] = {
+          {"display_id", change.display_id}, {"display_key", change.display_key},
+          {"width", change.resolution.width}, {"height", change.resolution.height},
+          {"request_id", change.request_id}, {"accepted", change.accepted}};
+      if (action.type == ControlType::display_resolution_status)
+        object["display_resolutions"] = DisplayResolutionsJson(action.display_resolutions);
+      break;
+    }
     case ControlType::video_settings:
     case ControlType::video_settings_status:
       if (!ValidVideoSettings(action.vs)) return {};
@@ -254,6 +336,9 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
           {"supports_deskhub_fps15", action.i.supports_deskhub_fps15},
           {"supports_deskhub_bandwidth", action.i.supports_deskhub_bandwidth},
           {"supports_file_browser", action.i.supports_file_browser}};
+      if (!action.display_resolutions.empty())
+        object["host_info"]["display_resolutions"] =
+            DisplayResolutionsJson(action.display_resolutions);
       break;
     }
     case ControlType::invalid:
@@ -268,8 +353,26 @@ bool RemoteAction::FromJson(const std::string& json_string,
   bool owns_host_info = false;
   try {
     const json object = json::parse(json_string);
+    output.display_resolutions.clear();
     output.type = static_cast<ControlType>(object.at("type").get<int>());
     switch (output.type) {
+      case ControlType::display_resolution:
+      case ControlType::display_resolution_status: {
+        const auto& value = object.at("display_resolution");
+        auto& change = output.resolution_change;
+        int64_t request_id = 0;
+        if (!ReadDisplayKey(value, change.display_id, change.display_key) ||
+            !ReadResolution(value, change.resolution) ||
+            !ReadInteger(value, "request_id", 1, UINT32_MAX, request_id)) return false;
+        change.request_id = uint32_t(request_id);
+        change.accepted = false;
+        if (output.type == ControlType::display_resolution_status) {
+          change.accepted = value.at("accepted").get<bool>();
+          if (!ReadDisplayResolutions(object.at("display_resolutions"),
+                                       output.display_resolutions)) return false;
+        }
+        break;
+      }
       case ControlType::mouse:
         output.m.x = object.at("mouse").at("x").get<float>();
         output.m.y = object.at("mouse").at("y").get<float>();
@@ -446,6 +549,9 @@ bool RemoteAction::FromJson(const std::string& json_string,
         ResetHostInfo(output.i);
         owns_host_info = true;
         const auto& host_info_object = object.at("host_info");
+        if (const auto modes = host_info_object.find("display_resolutions");
+            modes != host_info_object.end() &&
+            !ReadDisplayResolutions(*modes, output.display_resolutions)) return false;
         const auto platform = host_info_object.find("platform");
         if (platform != host_info_object.end() && platform->is_string()) {
           output.i.platform =

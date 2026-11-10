@@ -152,6 +152,11 @@ class GuiRuntime : protected gui_detail::GuiState {
   // any connected controller lacks support, or on for the first automatic one.
   void ApplyPrivacyAdmission(bool automatic_enable);
   void QueuePrivacyCommand(const std::string& remote_id, const PrivacyCommand& command);
+  std::vector<DisplayResolutionInfo> QueryHostDisplayResolutions();
+  void QueueDisplayResolutionChange(const std::string& id,
+                                    PeerEventHandler* source,
+                                    const DisplayResolutionChange& change);
+  void HandleDisplayResolutionChanges();
 
   void CloseRemoteSession(std::shared_ptr<RemoteSession> props);
   void CloseAllRemoteSessions();
@@ -247,6 +252,15 @@ class GuiRuntime : protected gui_detail::GuiState {
   DisconnectLockPolicy disconnect_lock_;
   std::mutex privacy_commands_mutex_;
   std::deque<std::pair<std::string, PrivacyCommand>> privacy_commands_;
+  struct PendingDisplayResolution {
+    std::string remote_id;
+    std::weak_ptr<PeerEventHandler> source;
+    DisplayResolutionChange change;
+  };
+  std::mutex display_resolution_commands_mutex_;
+  std::deque<PendingDisplayResolution> display_resolution_commands_;
+  std::vector<DisplayResolutionInfo> last_display_resolutions_;
+  uint64_t next_display_resolution_poll_ = 0;
   bool privacy_settings_changed_ = false;
   uint32_t last_privacy_revision_ = 0;
   uint64_t last_privacy_status_tick_ = 0;

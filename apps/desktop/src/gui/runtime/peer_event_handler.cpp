@@ -333,6 +333,10 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
       if (!runtime->BeginControllerTrust(remote_id, handler)) return;
     } else {
       runtime->ForgetControllerTrust(remote_id, handler);
+      std::lock_guard lock(runtime->display_resolution_commands_mutex_);
+      std::erase_if(runtime->display_resolution_commands_, [&](const auto& request) {
+        return request.remote_id == remote_id;
+      });
     }
 #ifdef _WIN32
     if (runtime->unattended_host_) {
@@ -421,6 +425,10 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
           props->video_settings_supported_ = false;
           props->video_settings_pending_ = false;
           props->video_settings_failed_ = false;
+        }
+        {
+          std::lock_guard lock(props->display_resolution_mutex_);
+          props->display_resolution_ = {};
         }
         {
           std::lock_guard lock(props->remote_cursor_state_mutex_);
@@ -648,6 +656,7 @@ void PeerEventHandler::OnNetStatusReport(
 std::string GuiRuntime::BuildHostInformation(bool advertise_trust) {
   auto action = MakeHostInformation(GetHostName(), devices_.host_display_list(),
       UserSessionFeaturesAvailable(), CROSSDESK_VERSION, kClientPlatform);
+  action.display_resolutions = QueryHostDisplayResolutions();
   action.i.supports_video_settings = true;
   action.i.supports_video_codec_status = true;
   action.i.supports_text_input = devices_.SupportsTextInput();

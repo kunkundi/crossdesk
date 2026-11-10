@@ -234,6 +234,7 @@ export component ImageButton inherits Rectangle {
 
 export component CompactComboBox inherits FlatSurface {
     in property <[string]> model;
+    in property <length> maximum-popup-height: root.model.length * 23px + 8px;
     in-out property <int> current-index: 0;
     in property <bool> enabled: true;
     in property <bool> subtle: false;
@@ -331,7 +332,7 @@ export component CompactComboBox inherits FlatSurface {
         x: 0px;
         y: root.height + 4px;
         width: root.width;
-        height: root.model.length * 23px + 8px;
+        height: min(root.maximum-popup-height, root.model.length * 23px + 8px);
         close-policy: close-on-click-outside;
 
         FlatSurface {
@@ -345,39 +346,46 @@ export component CompactComboBox inherits FlatSurface {
             outline-color: root.normal-outline-color;
             border-radius: UiRadius.menu;
             clip: true;
-            for choice[index] in root.model: Rectangle {
-                x: 4px; y: 4px + index * 23px;
+            Flickable {
+                x: 4px; y: 4px;
                 width: parent.width - 8px;
-                height: 23px;
-                border-radius: UiRadius.control;
-                background: index == root.current-index
-                    ? (option-touch.pressed ? ButtonStyle.pressed : ButtonStyle.hover)
-                    : option-touch.pressed ? ButtonStyle.pressed : option-touch.has-hover ? ButtonStyle.hover : white;
-                Text {
-                    x: 6px; width: parent.width - 28px; height: parent.height; text: choice;
-                    color: index == root.current-index ? ControlStyle.selected-text : #202124;
-                    font-weight: index == root.current-index ? 600 : 400;
-                    font-size: root.subtle ? 12px : ImGuiFontStyle.body; overflow: elide; vertical-alignment: center;
-                }
-                if index == root.current-index: Text {
-                    x: parent.width - 20px; width: 14px; height: parent.height;
-                    text: FontAwesomeIcons.check; color: UiSurface.focus;
-                    font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 10px;
-                    horizontal-alignment: center; vertical-alignment: center;
-                    accessible-role: none;
-                }
-                option-touch := TouchArea {
-                    enabled: root.enabled;
-                    mouse-cursor: pointer;
-                    clicked => {
-                        popup-open-timer.running = false;
-                        root.popup-animation-enabled = false;
-                        root.popup-progress = 0.0;
-                        if root.enabled && index >= 0 && index < root.model.length {
-                            root.current-index = index;
-                            root.selected(index);
+                height: max(0px, parent.height - 8px);
+                viewport-width: self.width;
+                viewport-height: root.model.length * 23px;
+                for choice[index] in root.model: Rectangle {
+                    y: index * 23px;
+                    width: parent.width;
+                    height: 23px;
+                    border-radius: UiRadius.control;
+                    background: index == root.current-index
+                        ? (option-touch.pressed ? ButtonStyle.pressed : ButtonStyle.hover)
+                        : option-touch.pressed ? ButtonStyle.pressed : option-touch.has-hover ? ButtonStyle.hover : white;
+                    Text {
+                        x: 6px; width: parent.width - 28px; height: parent.height; text: choice;
+                        color: index == root.current-index ? ControlStyle.selected-text : #202124;
+                        font-weight: index == root.current-index ? 600 : 400;
+                        font-size: root.subtle ? 12px : ImGuiFontStyle.body; overflow: elide; vertical-alignment: center;
+                    }
+                    if index == root.current-index: Text {
+                        x: parent.width - 20px; width: 14px; height: parent.height;
+                        text: FontAwesomeIcons.check; color: UiSurface.focus;
+                        font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 10px;
+                        horizontal-alignment: center; vertical-alignment: center;
+                        accessible-role: none;
+                    }
+                    option-touch := TouchArea {
+                        enabled: root.enabled;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            popup-open-timer.running = false;
+                            root.popup-animation-enabled = false;
+                            root.popup-progress = 0.0;
+                            if root.enabled && index >= 0 && index < root.model.length {
+                                root.current-index = index;
+                                root.selected(index);
+                            }
+                            combo-popup.close();
                         }
-                        combo-popup.close();
                     }
                 }
             }

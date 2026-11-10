@@ -13,6 +13,7 @@
 #include <vector>
 
 #include <remote_cursor_shape.h>
+#include <display_resolution.h>
 
 namespace crossdesk {
 
@@ -33,6 +34,8 @@ enum ControlType {
   video_settings_status = 12,
   text_input = 13,
   video_codec_status = 14,
+  display_resolution = 15,
+  display_resolution_status = 16,
 };
 
 enum MouseFlag {
@@ -217,6 +220,9 @@ struct RemoteAction {
 
   // Committed UTF-8 text. Kept outside the POD union for automatic ownership.
   std::string text;
+  // Optional host information extension, also returned with resolution status.
+  std::vector<DisplayResolutionInfo> display_resolutions;
+  DisplayResolutionChange resolution_change;
 
   std::string to_json() const;
   bool from_json(const std::string& json_string);

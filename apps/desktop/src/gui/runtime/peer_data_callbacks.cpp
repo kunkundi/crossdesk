@@ -280,6 +280,21 @@ void PeerEventHandler::OnReceiveDataBuffer(
     return;
   }
 
+  if (remote_action.type == ControlType::display_resolution_status) {
+    if (auto props = runtime->FindRemoteSession(remote_id);
+        props && source_id == props->control_data_label_ && !props->closing_ &&
+        props->connection_status_ == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
+      std::lock_guard lock(props->display_resolution_mutex_);
+      props->display_resolution_.Complete(remote_action.resolution_change,
+                                          std::move(remote_action.display_resolutions));
+    }
+    return;
+  }
+  if (remote_action.type == ControlType::display_resolution) {
+    if (source_id == runtime->control_data_label_ || source_id == kWebControlStream)
+      runtime->QueueDisplayResolutionChange(remote_id, handler, remote_action.resolution_change);
+    return;
+  }
   if (remote_action.type == ControlType::video_codec_status) {
     if (auto props = runtime->FindRemoteSession(remote_id);
         props && source_id == props->control_data_label_ &&
@@ -461,6 +476,10 @@ void PeerEventHandler::OnReceiveDataBuffer(
 
     if (is_client_mode) {
       if (props && source_id == props->control_data_label_) {
+        std::lock_guard lock(props->display_resolution_mutex_);
+        props->display_resolution_.displays = std::move(remote_action.display_resolutions);
+      }
+      if (props && source_id == props->control_data_label_) {
         std::lock_guard lock(props->remote_version_mutex_);
         props->remote_host_info_received_ = true;
         props->remote_platform_ = remote_action.i.platform;
@@ -502,7 +521,11 @@ void PeerEventHandler::OnReceiveDataBuffer(
           props->remote_host_name_ = std::string(remote_action.i.host_name,
                                                  remote_action.i.host_name_size);
           LOG_DEBUG("Remote hostname: [{}]", props->remote_host_name_);
-
+        }
+        // Preserve legacy hosts' initial display list on their original data
+        // channel; live topology updates use the reliable control channel.
+        if (source_id == props->control_data_label_ || props->display_info_list_.empty()) {
+          props->display_info_list_.clear();
           for (int i = 0; i < remote_action.i.display_num; i++) {
             props->display_info_list_.push_back(
                 DisplayInfo(remote_action.i.display_list[i],

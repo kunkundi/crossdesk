@@ -1,6 +1,7 @@
 import { SurfaceSeparator, FlatSurface, UiSurface } from "ui_surface.slint";
 import { UiRadius } from "ui_radius.slint";
-import { ComboBox, ScrollView } from "std-widgets.slint";
+import { ScrollView } from "std-widgets.slint";
+import { SettingsSelect } from "settings_controls.slint";
 import { RemoteCursor } from "remote_cursor.slint";
 import { FontAwesomeIcons, IconButton, PrimaryButton, SecondaryButton, DialogSurface, ImGuiFontStyle, ControlStyle, ButtonStyle, ScrollingText } from "common.slint";
 
@@ -34,6 +35,7 @@ export global StreamStrings {
     in-out property <string> remote-update: "Update the remote device to the latest version for improved features and performance.";
     in-out property <string> remote-update-dismiss: "Got it";
     in-out property <string> video-settings: "Video settings";
+    in-out property <string> remote-resolution: "Resolution";
     in-out property <string> video-settings-unavailable: "The remote device does not support live video settings";
     in-out property <string> video-quality: "Video quality";
     in-out property <string> frame-rate: "Capture frame rate";
@@ -329,6 +331,26 @@ export component StreamWindow inherits Window {
     in-out property <int> frame-rate-index: 1;
     in-out property <int> adaptation-policy-index: 1;
     callback change-video-settings(int, int, int);
+    in property <[string]> remote-resolutions;
+    in property <bool> remote-resolution-visible: false;
+    in property <int> remote-resolution-index: -1;
+    private property <int> resolution-selection: -1;
+    changed remote-resolution-index => { root.resolution-selection = root.remote-resolution-index; }
+    resolution-confirmation-timer := Timer {
+        interval: 1ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.resolution-selection = root.remote-resolution-index;
+        }
+    }
+    function restore-confirmed-resolution() {
+        resolution-confirmation-timer.running = true;
+        resolution-confirmation-timer.restart();
+    }
+    in property <bool> remote-resolution-enabled: false;
+    in property <string> remote-resolution-feedback: "";
+    callback change-remote-resolution(int);
     in property <bool> fullscreen-enabled: false;
     in property <bool> stats-visible: false;
     in property <[NetworkStatsRow]> stats-rows;
@@ -410,7 +432,9 @@ export component StreamWindow inherits Window {
     private property <length> shortcut-menu-y: root.control-panel-y(root.shortcut-menu-height);
     in-out property <bool> video-menu-open: false;
     private property <length> video-menu-width: min(320px, video.width - 8px);
-    private property <length> video-menu-height: root.video-settings-enabled && root.video-settings-feedback == "" ? 182px : 220px;
+    private property <length> video-menu-height:
+        (root.video-settings-enabled && root.video-settings-feedback == "" ? 182px : 220px)
+        + (root.remote-resolution-visible ? 57px + (root.remote-resolution-feedback == "" ? 0px : 32px) : 0px);
     private property <length> video-menu-x: min(max(4px, control.x + video-button.x), video.width - root.video-menu-width - 4px);
     private property <length> video-menu-y: root.control-panel-y(root.video-menu-height);
     private property <bool> disconnect-menu-open: false;
@@ -427,6 +451,7 @@ export component StreamWindow inherits Window {
     changed control-menu-open => {
         root.keyboard-focus-changed(!root.control-menu-open && !root.modal-visible && input-focus.has-focus);
     }
+    changed selected-display => { root.video-menu-open = false; }
     changed selected-tab => {
         root.close-control-menus();
         root.cancel-remote-pointer();
@@ -1630,6 +1655,27 @@ export component StreamWindow inherits Window {
                 }
                 VerticalLayout {
                     padding: 10px; spacing: 8px;
+                    if root.remote-resolution-visible: VerticalLayout {
+                        spacing: 4px;
+                        Text { text: StreamStrings.remote-resolution; color: #5c626c; font-size: 11px; height: 18px; }
+                        SettingsSelect {
+                            height: 27px;
+                            width: parent.width;
+                            maximum-popup-height: 240px;
+                            model: root.remote-resolutions;
+                            current-index <=> root.resolution-selection;
+                            enabled: root.remote-resolution-enabled;
+                            selected(index) => {
+                                root.change-remote-resolution(index);
+                                // Restore the host-confirmed value after selection.
+                                root.restore-confirmed-resolution();
+                            }
+                        }
+                    }
+                    if root.remote-resolution-visible && root.remote-resolution-feedback != "": Text {
+                        text: root.remote-resolution-feedback; wrap: word-wrap;
+                        color: #8b8f95; font-size: 11px; height: 24px;
+                    }
                     VideoSettingRow {
                         label: StreamStrings.video-quality;
                         options: [StreamStrings.quality-low, StreamStrings.quality-medium, StreamStrings.quality-high];
