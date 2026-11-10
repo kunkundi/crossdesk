@@ -686,6 +686,7 @@ function setup_targets()
             add_files("apps/desktop/src/platform/windows/gui/tray/win_tray.cpp",
                 "apps/desktop/src/platform/windows/gui/slint_backend.cpp",
                 "apps/desktop/src/platform/windows/gui/window_icons.cpp",
+                "apps/desktop/src/platform/windows/gui/window_taskbar.cpp",
                 "apps/desktop/src/platform/windows/gui/shutdown_session_guard.cpp",
                 "apps/desktop/src/platform/windows/gui/slint_renderer_probe.cpp",
                 "apps/desktop/src/platform/common/gui/opengl_video_renderer.cpp",

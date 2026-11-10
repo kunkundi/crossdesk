@@ -62,6 +62,7 @@
 #include "platform/windows/gui/shutdown_session_guard.h"
 #include "platform/windows/gui/tray/win_tray.h"
 #include "platform/windows/gui/window_icons.h"
+#include "platform/windows/gui/window_taskbar.h"
 #include "platform/windows/service/autostart_control.h"
 #include "platform/windows/service/interactive_desktop.h"
 #include "platform/windows/service/unattended_config.h"
@@ -3882,6 +3883,11 @@ void GuiApplication::SyncStreamWindow() {
   if (!ui_->stream) {
     return;
   }
+  // Assign the window's taskbar group before its first show or restoration.
+  // Reapply when Slint recreates the HWND; the helper skips configured handles.
+#if _WIN32
+  ConfigureWindowsStreamTaskbar((*ui_->stream)->window().win32_hwnd());
+#endif
   // A wall takeover hides an existing stream window without destroying it.
   // Opening a recent device must also restore that existing window.
   if (need_to_create_stream_window_) {
