@@ -1,5 +1,7 @@
 #include "platform/windows/runtime_daemon.h"
 
+#include "platform/windows/executable_path.h"
+
 #include <shellapi.h>
 
 #include <cerrno>
@@ -24,14 +26,6 @@ struct Arguments {
   wchar_t** values = CommandLineToArgvW(GetCommandLineW(), &count);
   ~Arguments() { if (values) LocalFree(values); }
 };
-
-std::wstring ExecutablePath() {
-  std::vector<wchar_t> path(32768);
-  const DWORD count = GetModuleFileNameW(nullptr, path.data(),
-                                        static_cast<DWORD>(path.size()));
-  if (!count || count >= path.size()) return {};
-  return {path.data(), count};
-}
 
 std::wstring QuoteArgument(const std::wstring& value) {
   std::wstring result = L"\"";
@@ -130,7 +124,7 @@ WindowsRuntimeDaemon::~WindowsRuntimeDaemon() { Shutdown(); }
 void WindowsRuntimeDaemon::Initialize() {
   std::lock_guard<std::mutex> lock(mutex_);
   initialized_ = true;
-  executable_ = ExecutablePath();
+  executable_ = CurrentExecutablePath();
   arguments_.clear();
   Arguments arguments;
   if (!arguments.values) {
@@ -273,7 +267,7 @@ int RunWindowsRuntimeDaemon() {
       return 1;
     }
   }
-  const auto executable = ExecutablePath();
+  const auto executable = CurrentExecutablePath();
   if (executable.empty()) return 1;
   std::wstring command = QuoteArgument(executable);
   for (int i = 5; i < arguments.count; ++i)

@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "autostart_task.h"
+#include "executable_path.h"
 #include "rd_log.h"
 
 namespace crossdesk::platform {
@@ -185,11 +186,7 @@ bool RemoveLogonTask(const std::wstring& app_name) {
 }  // namespace
 
 std::string GetAutostartExecutablePath() {
-  std::vector<wchar_t> path(32768);
-  const DWORD length =
-      GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
-  if (length == 0 || length >= path.size()) return {};
-  return std::filesystem::path(path.data(), path.data() + length).u8string();
+  return std::filesystem::path(CurrentExecutablePath()).u8string();
 }
 
 bool EnableAutostart(const std::string& app_name,

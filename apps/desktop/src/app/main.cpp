@@ -17,6 +17,7 @@
 #include <cstdio>
 
 #include "platform/windows/autostart_task.h"
+#include "platform/windows/executable_path.h"
 #include "platform/windows/gui/slint_backend.h"
 #include "platform/windows/runtime_daemon.h"
 #include "platform/windows/service/autostart_control.h"
@@ -95,23 +96,8 @@ void PrintServiceCliUsage() {
          "credentials\n";
 }
 
-std::wstring GetCurrentExecutablePathW() {
-  wchar_t path[MAX_PATH] = {0};
-  DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);
-  if (length == 0 || length >= MAX_PATH) {
-    return L"";
-  }
-  return std::wstring(path, length);
-}
-
 std::filesystem::path GetSiblingServiceExecutablePath() {
-  std::wstring current_executable = GetCurrentExecutablePathW();
-  if (current_executable.empty()) {
-    return {};
-  }
-
-  return std::filesystem::path(current_executable).parent_path() /
-         L"crossdesk_service.exe";
+  return crossdesk::platform::SiblingExecutablePath(L"crossdesk_service.exe");
 }
 
 bool IsServiceCliCommand(const char* arg) {
@@ -286,7 +272,7 @@ static int RunApplication(int argc, char* argv[]) {
 #ifdef _WIN32
   crossdesk::get_logger()->info(
       "CrossDesk executable: {}",
-      std::filesystem::path(GetCurrentExecutablePathW()).u8string());
+      std::filesystem::path(crossdesk::platform::CurrentExecutablePath()).u8string());
 #endif
 
   if (IsDaemonChild(argc, argv)) {
