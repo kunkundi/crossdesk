@@ -62,6 +62,9 @@ void PrepareNativeFileDialog();
 // nested modal loop. Completion receives an empty path on cancel or failure.
 void OpenNativeFileDialog(const std::string& title,
                           std::function<void(std::string)> completion);
+// Asynchronous ZIP destination picker with native overwrite confirmation.
+void SaveNativeFileDialog(const std::string& title, const std::string& filename,
+                          std::function<void(std::string)> completion);
 // Cancels an open or pending picker, completes it once with an empty path, and
 // releases the cached panel and pending initialization during application exit.
 void CancelNativeFileDialog();

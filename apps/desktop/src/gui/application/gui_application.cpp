@@ -17,6 +17,7 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -26,6 +27,7 @@
 #include <set>
 #include <shared_mutex>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -37,6 +39,7 @@
 #include "crossdesk_ui.h"
 #include "fa_solid_900.h"
 #include "features/about/about_catalog.h"
+#include "features/feedback/diagnostic_export.h"
 #include "features/file_transfer/transfer_notification_layout.h"
 #include "features/file_transfer/transfer_notification_state.h"
 #include "features/file_transfer/file_browser_window.h"
@@ -1106,6 +1109,8 @@ struct GuiApplication::SlintUi {
   slint::Timer server_file_dialog_timer;
   std::shared_ptr<void> file_dialog_lifetime = std::make_shared<int>(0);
   bool file_dialog_open = false;
+  std::future<feedback::ExportResult> diagnostic_export;
+  std::string diagnostic_saved_path;
   WindowDragState main_drag, gallery_drag;
   WindowDragState stream_drag;
   WindowDragState server_drag;
@@ -2054,6 +2059,14 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
     if (link.starts_with("https://")) OpenUrl(link);
   });
   main->on_open_website([this] { OpenUrl("https://crossdesk.cn"); });
+  main->on_open_feedback_github([this, main] {
+    if (!OpenUrl("https://github.com/kunkundi/crossdesk/issues/new/choose")) {
+      main->set_feedback_succeeded(false);
+      main->set_feedback_status(UiText(localization::Literal(
+          "无法打开浏览器，请访问 GitHub 项目页面。", localization_language_index_)));
+    }
+  });
+  main->on_export_diagnostic_logs([this] { ExportDiagnosticLogs(); });
   main->on_open_afdian_sponsor([this] {
     OpenUrl("https://afdian.com/a/kunkundi");
   });
@@ -2525,6 +2538,7 @@ void GuiApplication::Tick() {
     if (ShutdownDrained()) slint::quit_event_loop();
     return;
   }
+  PollDiagnosticExport();
 #ifdef _WIN32
   TickLocalHost();
 #endif
@@ -5541,6 +5555,94 @@ void GuiApplication::OpenFileDialog(const std::string& title,
       tinyfd_openFileDialog(title.c_str(), "", 0, nullptr, nullptr, 0);
   finished(path ? path : "");
 #endif
+}
+
+void GuiApplication::ExportDiagnosticLogs() {
+  if (!ui_ || exit_ || ui_->file_dialog_open || ui_->diagnostic_export.valid()) return;
+  ui_->file_dialog_open = true;
+  for (const auto& window : {ui_->main, ui_->wall}) {
+    window->set_feedback_exporting(true);
+    window->set_feedback_status("");
+    window->set_feedback_saved_path("");
+    window->set_feedback_succeeded(false);
+  }
+  const auto filename = feedback::DiagnosticFileName();
+  const auto title = localization::Literal("导出诊断日志", localization_language_index_);
+  std::weak_ptr<void> lifetime = ui_->file_dialog_lifetime;
+  auto finished = [this, lifetime](std::string path) {
+    if (lifetime.expired()) return;
+    ui_->file_dialog_open = false;
+    if (exit_) return;
+    if (path.empty()) {
+      for (const auto& window : {ui_->main, ui_->wall}) window->set_feedback_exporting(false);
+      return;
+    }
+    try {
+      auto destination = PathFromUtf8(path);
+      auto extension = destination.extension().string();
+      std::transform(extension.begin(), extension.end(), extension.begin(),
+                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      if (extension != ".zip") {
+        destination += ".zip";
+        path += ".zip";
+        // The save dialog only confirms replacement of the original path.
+        if (std::filesystem::exists(destination)) throw std::runtime_error("Destination exists");
+      }
+#ifdef __OHOS__
+      // The folder picker cannot confirm replacement of an existing archive.
+      if (std::filesystem::exists(destination)) throw std::runtime_error("Destination exists");
+#endif
+      ui_->diagnostic_saved_path = path;
+      get_logger()->flush();
+      ui_->diagnostic_export = std::async(std::launch::async,
+          [logs = path_manager_->GetLogPath(), destination] {
+            return feedback::ExportDiagnostics(logs, logs, destination, CROSSDESK_VERSION);
+          });
+    } catch (...) {
+      for (const auto& window : {ui_->main, ui_->wall}) {
+        window->set_feedback_exporting(false);
+        window->set_feedback_status(UiText(localization::Literal(
+            "无法保存诊断包，请选择其他位置重试。", localization_language_index_)));
+      }
+    }
+  };
+#if defined(__APPLE__)
+  SaveNativeFileDialog(title, filename, std::move(finished));
+#elif defined(__OHOS__)
+  const char* folder = tinyfd_selectFolderDialog(title.c_str(), "");
+  finished(folder ? std::string(folder) + "/" + filename : "");
+#else
+  const char* filters[] = {"*.zip"};
+  const char* path = tinyfd_saveFileDialog(title.c_str(), filename.c_str(), 1,
+                                         filters, "ZIP archive");
+  finished(path ? path : "");
+#endif
+}
+
+void GuiApplication::PollDiagnosticExport() {
+  if (!ui_->diagnostic_export.valid() ||
+      ui_->diagnostic_export.wait_for(0ms) != std::future_status::ready) return;
+  feedback::ExportResult result{feedback::ExportError::write_failed};
+  try { result = ui_->diagnostic_export.get(); } catch (...) {}
+  const char* message = "无法保存诊断包，请选择其他位置重试。";
+  switch (result.error) {
+    case feedback::ExportError::none:
+      message = "诊断日志已导出，请将 ZIP 附到 GitHub Issue。"; break;
+    case feedback::ExportError::no_logs:
+      message = "没有找到可导出的日志。"; break;
+    case feedback::ExportError::read_failed:
+      message = "无法读取日志，请稍后重试。"; break;
+    case feedback::ExportError::too_large:
+      message = "日志文件过大，无法导出。"; break;
+    case feedback::ExportError::write_failed: break;
+  }
+  const bool succeeded = result.error == feedback::ExportError::none;
+  for (const auto& window : {ui_->main, ui_->wall}) {
+    window->set_feedback_exporting(false);
+    window->set_feedback_succeeded(succeeded);
+    window->set_feedback_status(UiText(localization::Literal(message, localization_language_index_)));
+    window->set_feedback_saved_path(UiText(succeeded ? ui_->diagnostic_saved_path : ""));
+  }
 }
 
 bool GuiApplication::OpenUrl(const std::string& url) {

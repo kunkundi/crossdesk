@@ -1,0 +1,99 @@
+import { ScrollView } from "std-widgets.slint";
+import { SettingsDialog, SettingsButton } from "settings_controls.slint";
+import { AboutNavigationGroup, AboutNavigationRow, AboutRowSeparator } from "about_panel.slint";
+import { SurfaceSeparator, UiSurface } from "ui_surface.slint";
+import { UiRadius } from "ui_radius.slint";
+import { WorkbenchStyle } from "workbench_controls.slint";
+
+export global FeedbackStrings {
+    in-out property <string> title: "Feedback & suggestions";
+    in-out property <string> github: "Give feedback on GitHub";
+    in-out property <string> github-hint: "Report a problem or suggest an improvement.";
+    in-out property <string> export: "Export diagnostic logs";
+    in-out property <string> export-hint: "Save CrossDesk and MiniRTC logs with basic version information as a ZIP file.";
+    in-out property <string> exporting: "Exporting…";
+    in-out property <string> attachment-hint: "Attach the exported ZIP log archive to your GitHub issue to help us investigate.";
+    in-out property <string> close: "Close";
+}
+
+export component FeedbackPanel inherits SettingsDialog {
+    in property <bool> exporting: false;
+    in property <string> status;
+    in property <bool> succeeded: false;
+    in property <string> saved-path;
+    out property <length> preferred-dialog-height: root.content-top
+        + content.preferred-height + 16px + footer.preferred-height + 24px;
+    callback open-github;
+    callback export-logs;
+    title: FeedbackStrings.title;
+    close-label: FeedbackStrings.close;
+    ScrollView {
+        x: 24px; y: root.content-top;
+        width: parent.width - 48px + 22px;
+        height: footer.y - self.y - 16px;
+        viewport-width: self.visible-width;
+        viewport-height: content.preferred-height;
+        horizontal-scrollbar-policy: always-off;
+        vertical-scrollbar-policy: as-needed;
+        content := VerticalLayout {
+            width: parent.width; height: self.preferred-height;
+            padding: 0px; padding-right: 22px; spacing: 16px;
+            AboutNavigationGroup {
+                AboutNavigationRow {
+                    grouped: true;
+                    title: FeedbackStrings.github;
+                    subtitle: FeedbackStrings.github-hint;
+                    external: true;
+                    clicked => { root.open-github(); }
+                }
+                AboutRowSeparator { }
+                AboutNavigationRow {
+                    grouped: true;
+                    title: root.exporting ? FeedbackStrings.exporting : FeedbackStrings.export;
+                    subtitle: FeedbackStrings.export-hint;
+                    enabled: !root.exporting;
+                    clicked => { root.export-logs(); }
+                }
+            }
+            Text {
+                text: FeedbackStrings.attachment-hint;
+                color: WorkbenchStyle.muted;
+                font-size: 12px; wrap: word-wrap;
+            }
+            if root.status != "": Rectangle {
+                height: result.preferred-height + 24px;
+                background: root.succeeded ? #e9f6ef : #fef2f2;
+                border-radius: UiRadius.control;
+                result := VerticalLayout {
+                    x: 12px; y: 12px; width: parent.width - 24px;
+                    height: self.preferred-height; padding: 0px; spacing: 6px;
+                    Text {
+                        text: root.status;
+                        color: root.succeeded ? WorkbenchStyle.success : #b3261e;
+                        font-size: 12px; wrap: word-wrap;
+                        accessible-role: text;
+                    }
+                    if root.saved-path != "": Text {
+                        text: root.saved-path; color: WorkbenchStyle.muted;
+                        font-size: 11px; wrap: char-wrap;
+                    }
+                }
+            }
+        }
+    }
+    footer := VerticalLayout {
+        x: 24px; y: parent.height - self.height - 24px;
+        width: parent.width - 48px; height: self.preferred-height;
+        spacing: 16px;
+        SurfaceSeparator { height: 1px; outline-color: UiSurface.separator; }
+        HorizontalLayout {
+            alignment: end;
+            SettingsButton {
+                width: max(80px, self.label-width);
+                text: FeedbackStrings.close;
+                primary: true;
+                clicked => { root.close(); }
+            }
+        }
+    }
+}

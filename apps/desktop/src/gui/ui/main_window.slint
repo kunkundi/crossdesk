@@ -2,6 +2,7 @@ import { SurfaceSeparator, FlatSurface, UiSurface } from "ui_surface.slint";
 import { TrustedDevicesDialog, TrustedDeviceEntry, TrustStrings } from "trusted_devices.slint";
 import { LanStrings } from "lan_strings.slint";
 import { AboutPanel, AboutPage, AboutComponent, AboutStrings, AboutNavigationRow, AboutNavigationGroup, AboutRowSeparator } from "about_panel.slint";
+import { FeedbackPanel, FeedbackStrings } from "feedback_panel.slint";
 import { UiRadius } from "ui_radius.slint";
 import { WorkbenchStyle, WorkbenchButton, WorkbenchCard, WorkbenchNotice } from "workbench_controls.slint";
 import { GalleryStrings } from "device_strings.slint";
@@ -849,6 +850,13 @@ export component MainWindow inherits Window {
     in property <string> about-source-url;
     in property <string> about-build-url;
     callback open-about-link(string);
+    callback open-feedback-github;
+    callback export-diagnostic-logs;
+    in-out property <bool> feedback-open: false;
+    in property <bool> feedback-exporting: false;
+    in property <string> feedback-status;
+    in property <bool> feedback-succeeded: false;
+    in property <string> feedback-saved-path;
     function about-back() {
         if root.about-page == AboutPage.document { root.about-page = AboutPage.component; }
         else if root.about-page == AboutPage.component && root.about-component-index != 0 { root.about-page = AboutPage.components; }
@@ -858,7 +866,7 @@ export component MainWindow inherits Window {
     // Automatic prompts must not interrupt another dialog or menu.
     private property <bool> sponsorship-unobstructed: !root.gallery-mode
         && !root.menu-open && !root.settings-open
-        && !root.self-host-settings-open && !root.about-open
+        && !root.self-host-settings-open && !root.about-open && !root.feedback-open
         && !(root.update-open && root.update-available) && !root.messages-open
         && !root.update-confirm-open
         && !root.reset-password-open && !root.alias-open && !root.delete-open
@@ -922,7 +930,7 @@ export component MainWindow inherits Window {
         triggered => {
             root.dialog-focus-pending = false;
             if root.settings-open || root.autostart-guide-open
-                || root.wayland-notice-open || root.messages-open || root.about-open
+                || root.wayland-notice-open || root.messages-open || root.about-open || root.feedback-open
                 || (root.sponsorship-open && root.sponsorship-unobstructed) {
                 focus-sink.focus();
             }
@@ -958,6 +966,13 @@ export component MainWindow inherits Window {
 
     changed messages-open => {
         if root.messages-open { root.dialog-focus-pending = true; }
+    }
+
+    changed feedback-open => {
+        if root.feedback-open {
+            root.gallery-action("release", "");
+            root.dialog-focus-pending = true;
+        }
     }
 
     changed about-open => {
@@ -1188,6 +1203,10 @@ export component MainWindow inherits Window {
         focus-sink := FocusScope {
             x: 0px; y: 0px; width: 0px; height: 0px;
             key-pressed(event) => {
+                if root.feedback-open {
+                    if event.text == Key.Escape { root.feedback-open = false; }
+                    return accept;
+                }
                 if root.autostart-guide-open {
                     if event.text == Key.Return || event.text == Key.Escape { root.autostart-guide-open = false; }
                     return accept;
@@ -2195,9 +2214,9 @@ export component MainWindow inherits Window {
     if !root.gallery-mode && root.menu-open: FlatSurface {
         x: menu-button.x + menu-button.width - self.width;
         y: menu-button.y + menu-button.height + 6px;
-        width: max(128px, max(menu-settings-label.preferred-width,
+        width: max(128px, max(menu-feedback-label.preferred-width, max(menu-settings-label.preferred-width,
                    max(menu-messages-label.preferred-width + (root.announcement-unread > 0 ? menu-message-badge.width + 8px : 0px),
-                       menu-about-label.preferred-width + (root.update-available ? menu-update-badge.width + 8px : 0px))) + 28px);
+                       menu-about-label.preferred-width + (root.update-available ? menu-update-badge.width + 8px : 0px)))) + 28px);
         height: application-menu-content.preferred-height;
         background: WorkbenchStyle.surface;
         outline-color: UiSurface.edge;
@@ -2327,6 +2346,54 @@ export component MainWindow inherits Window {
                     clicked => { root.menu-open = false; root.about-open = true; }
                 }
             }
+            Rectangle {
+                height: 7px;
+                SurfaceSeparator {
+                    x: 8px; y: 3px; width: parent.width - 16px; height: 1px;
+                    outline-color: UiSurface.separator;
+                }
+            }
+            Rectangle {
+                height: 30px;
+                background: feedback-touch.pressed ? WorkbenchStyle.pressed-surface
+                          : feedback-touch.has-hover ? WorkbenchStyle.hover-surface : transparent;
+                border-radius: UiRadius.control;
+                animate background { duration: 120ms; }
+                accessible-role: button;
+                accessible-label: FeedbackStrings.title;
+                accessible-action-default => { feedback-touch.clicked(); }
+                menu-feedback-label := Text {
+                    x: 8px; height: parent.height;
+                    text: FeedbackStrings.title;
+                    color: WorkbenchStyle.text; font-size: 12px;
+                    vertical-alignment: center;
+                    accessible-role: none;
+                }
+                feedback-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.menu-open = false; root.feedback-open = true; }
+                }
+            }
+        }
+    }
+
+    if root.feedback-open: Rectangle {
+        background: #15223850;
+        z: 40;
+        TouchArea { clicked => { focus-sink.focus(); } }
+        FeedbackPanel {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: min(480px, parent.width - 40px);
+            min-height: 0px; max-height: parent.height - 32px;
+            height: min(self.preferred-dialog-height, parent.height - 32px);
+            exporting: root.feedback-exporting;
+            status: root.feedback-status;
+            succeeded: root.feedback-succeeded;
+            saved-path: root.feedback-saved-path;
+            open-github => { root.open-feedback-github(); }
+            export-logs => { root.export-diagnostic-logs(); }
+            close => { root.feedback-open = false; }
         }
     }
 

@@ -663,6 +663,7 @@ function setup_targets()
             "apps/desktop/src/gui/rendering/*.cpp",
             "apps/desktop/src/gui/runtime/*.cpp",
             "apps/desktop/src/gui/features/about/*.cpp",
+            "apps/desktop/src/gui/features/feedback/*.cpp",
             "apps/desktop/src/platform/common/gui/service_status_runtime.cpp",
             "apps/desktop/src/gui/features/devices/*.cpp", "apps/desktop/src/gui/features/input/*.cpp",
             "apps/desktop/src/gui/features/clipboard/*.cpp", "apps/desktop/src/gui/features/file_transfer/*.cpp",
@@ -704,7 +705,7 @@ function setup_targets()
                 "apps/desktop/src/platform/macos/gui/window_drag_mac.mm",
                 "apps/desktop/src/platform/macos/gui/metal_video_renderer.mm",
                 "apps/desktop/src/platform/macos/gui/video_renderer_factory_metal.mm")
-            add_frameworks("Security", {public = true})
+            add_frameworks("Security", "UniformTypeIdentifiers", {public = true})
             add_includedirs("apps/desktop/src/platform/macos/gui",
                 "apps/desktop/src/platform/macos/gui/tray")
         elseif is_os("linux") then

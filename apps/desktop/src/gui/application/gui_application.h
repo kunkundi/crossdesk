@@ -62,6 +62,8 @@ private:
   void TickLocalHost();
 #endif
   void PollUpdateCheck();
+  void ExportDiagnosticLogs();
+  void PollDiagnosticExport();
   void ShareLocalCursorState();
   bool RequestPasswordChange(const std::string &password);
   void HandlePasswordChangeResult();

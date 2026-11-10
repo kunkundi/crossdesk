@@ -1,6 +1,7 @@
 #include "platform/window_drag.h"
 
 #import <AppKit/AppKit.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #include <cmath>
 #include <cstdint>
@@ -46,9 +47,10 @@ NSApplicationPresentationOptions stream_restore_presentation_options =
 struct FileDialogRequest {
   std::string title;
   std::function<void(std::string)> completion;
+  std::string filename;
 };
 std::shared_ptr<FileDialogRequest> file_dialog_request;
-NSOpenPanel *file_dialog = nil;
+NSSavePanel *file_dialog = nil;
 NSOpenPanel *prepared_file_dialog = nil;
 uint64_t file_dialog_prepare_generation = 0;
 
@@ -500,12 +502,47 @@ void OpenNativeFileDialog(const std::string& title,
   });
 }
 
+void SaveNativeFileDialog(const std::string& title, const std::string& filename,
+                          std::function<void(std::string)> completion) {
+  if (file_dialog_request) { completion({}); return; }
+  const auto request = std::make_shared<FileDialogRequest>(
+      FileDialogRequest{title, std::move(completion), filename});
+  file_dialog_request = request;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (file_dialog_request != request) return;
+    NSSavePanel *panel = [NSSavePanel savePanel];
+    file_dialog = panel;
+    panel.title = [NSString stringWithUTF8String:request->title.c_str()];
+    panel.nameFieldStringValue = [NSString stringWithUTF8String:request->filename.c_str()];
+    panel.allowedContentTypes = @[UTTypeZIP];
+    panel.allowsOtherFileTypes = NO;
+    panel.canCreateDirectories = YES;
+    [NSApp activateIgnoringOtherApps:YES];
+    NSWindow *owner = NSApp.keyWindow ?: NSApp.mainWindow;
+    CenterWindowOnScreen(panel, owner.screen ?: NSScreen.mainScreen);
+    __weak NSSavePanel *weak_panel = panel;
+    [panel beginWithCompletionHandler:^(NSModalResponse result) {
+      if (file_dialog_request != request) return;
+      NSSavePanel *finished_panel = weak_panel;
+      const char *selected = result == NSModalResponseOK
+          ? finished_panel.URL.fileSystemRepresentation : nullptr;
+      const std::string path = selected ? selected : "";
+      [finished_panel orderOut:nil];
+      file_dialog = nil;
+      file_dialog_request.reset();
+      auto finished = std::move(request->completion);
+      finished(path);
+    }];
+    if (file_dialog_request == request) [panel makeKeyAndOrderFront:nil];
+  });
+}
+
 void CancelNativeFileDialog() {
   ++file_dialog_prepare_generation;
   prepared_file_dialog = nil;
   const auto request = std::move(file_dialog_request);
   if (!request) return;
-  NSOpenPanel *panel = file_dialog;
+  NSSavePanel *panel = file_dialog;
   file_dialog = nil;
   [panel cancel:nil];
   [panel orderOut:nil];

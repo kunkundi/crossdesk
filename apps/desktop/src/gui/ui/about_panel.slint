@@ -55,6 +55,7 @@ export component AboutNavigationRow inherits FlatSurface {
     in property <string> detail;
     in property <bool> grouped: false;
     in property <bool> external: false;
+    in property <bool> enabled: true;
     callback clicked;
     min-width: 0px;
     min-height: max(44px, labels.preferred-height + 20px);
@@ -62,10 +63,12 @@ export component AboutNavigationRow inherits FlatSurface {
         : touch.has-hover ? WorkbenchStyle.hover-surface : WorkbenchStyle.surface;
     border-radius: root.grouped ? 0px : UiRadius.control;
     outline-enabled: !root.grouped; outline-color: UiSurface.edge;
+    opacity: root.enabled ? 1 : 0.45;
     accessible-role: button;
     accessible-label: root.title + (root.subtitle != "" ? ", " + root.subtitle : "")
         + (root.detail != "" ? ", " + root.detail : "");
-    accessible-action-default => { root.clicked(); }
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
     if root.icon != "": Rectangle {
         x: 12px; y: (parent.height - self.height) / 2;
         width: 28px; height: 28px;
@@ -103,7 +106,7 @@ export component AboutNavigationRow inherits FlatSurface {
         font-size: 11px; vertical-alignment: center; horizontal-alignment: center;
         accessible-role: none;
     }
-    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+    touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.clicked(); } }
 }
 
 export component AboutPanel inherits SettingsDialog {
