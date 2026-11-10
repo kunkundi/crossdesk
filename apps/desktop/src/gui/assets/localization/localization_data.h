@@ -433,7 +433,6 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"近期连接", {"近期连接", "Recent Connections", "Недавние подключения", "近期連線", "最近の接続", "최근 연결", "Aktuelle Verbindungen", "Connexions récentes", "Conexiones recientes", "Conexões recentes"}},
   {"返回", {"返回", "Back", "Назад", "返回", "戻る", "뒤로", "Zurück", "Retour", "Volver", "Voltar"}},
   {"还原窗口", {"还原窗口", "Restore window", "Восстановить окно", "還原視窗", "復元ウィンドウ", "복원 창", "Fenster „Wiederherstellen“.", "Fenêtre de restauration", "Restaurar ventana", "Janela de restauração"}},
-  {"远程控制连接中，保留连接以确认或取消关机。", {"远程控制连接中，保留连接以确认或取消关机。", "Remote session active. Keeping the connection available to confirm or cancel shutdown.", "Удалённый сеанс активен. Соединение сохранено для подтверждения или отмены выключения.", "遠端控制連線中，保留連線以確認或取消關機。", "リモート接続中です。シャットダウンの確認または取り消しのため、接続を維持しています。", "원격 세션이 활성화되어 있습니다. 종료 확인 또는 취소를 위해 연결을 유지합니다.", "Remotesitzung aktiv. Die Verbindung bleibt zum Bestätigen oder Abbrechen des Herunterfahrens bestehen.", "Session distante active. La connexion reste disponible pour confirmer ou annuler l’arrêt.", "Sesión remota activa. Se mantiene la conexión para confirmar o cancelar el apagado.", "Sessão remota ativa. A conexão é mantida para confirmar ou cancelar o desligamento."}},
   {"远程桌面", {"远程桌面", "Remote Desktop", "Удаленный рабочий стол", "遠端桌面", "リモートデスクトップ", "원격 데스크톱", "Remotedesktop", "Bureau à distance", "Escritorio remoto", "Área de Trabalho Remota"}},
   {"远端 IP / 端口", {"远端 IP / 端口", "Remote IP / Port", "Удалённый IP / Порт", "遠端 IP / 埠", "リモートIP/ポート", "원격 IP / 포트", "Remote-IP/Port", "IP/port distant", "IP/puerto remoto", "IP/Porta Remota"}},
   {"远端 Windows 服务不可用", {"远端 Windows 服务不可用", "Remote Windows service unavailable", "Служба Windows на удаленной стороне недоступна", "遠端 Windows 服務不可用", "リモート Windows サービスが利用できない", "원격 Windows 서비스를 사용할 수 없습니다.", "Remote-Windows-Dienst nicht verfügbar", "Service Windows distant indisponible", "Servicio remoto de Windows no disponible", "Serviço remoto do Windows indisponível"}},
@@ -840,7 +839,6 @@ inline constexpr NamedTranslation kNamedTranslations[] = {
   {"privacy_unlock_lock", "锁定"},
   {"privacy_screen_unlock_hint", "按下快捷键，解除隐私屏"},
   {"exit_program", "退出"},
-  {"shutdown_reason", "远程控制连接中，保留连接以确认或取消关机。"},
   {"pause_video_when_minimized", "最小化时暂停视频"},
   {"pause_video_when_minimized_hint", "控制窗口最小化时暂停接收视频，降低本机解码资源占用。"},
   {"system_permissions", "系统权限"},
@@ -1352,7 +1350,6 @@ inline constexpr const char* kSlintLiterals[] = {
   X(privacy_unlock_lock) \
   X(privacy_screen_unlock_hint) \
   X(exit_program) \
-  X(shutdown_reason) \
   X(pause_video_when_minimized) \
   X(pause_video_when_minimized_hint) \
   X(system_permissions) \

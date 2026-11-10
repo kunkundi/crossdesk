@@ -688,7 +688,7 @@ function setup_targets()
                 "apps/desktop/src/platform/windows/gui/slint_backend.cpp",
                 "apps/desktop/src/platform/windows/gui/window_icons.cpp",
                 "apps/desktop/src/platform/windows/gui/window_taskbar.cpp",
-                "apps/desktop/src/platform/windows/gui/shutdown_session_guard.cpp",
+                "apps/desktop/src/platform/windows/gui/session_end_observer.cpp",
                 "apps/desktop/src/platform/windows/gui/slint_renderer_probe.cpp",
                 "apps/desktop/src/platform/common/gui/opengl_video_renderer.cpp",
                 "apps/desktop/src/platform/common/gui/cuda_driver.cpp",

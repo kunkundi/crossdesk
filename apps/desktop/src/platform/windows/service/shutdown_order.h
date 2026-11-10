@@ -22,8 +22,9 @@ inline constexpr DWORD WindowsShutdownLevel(WindowsShutdownRole role) {
 }
 
 inline DWORD ConfigureWindowsShutdownOrder(WindowsShutdownRole role) {
-  // Change only the order. The GUI's session guard separately defers shutdown
-  // while a controller is connected; a confirmed shutdown still ends CrossDesk.
+  // Change only the order, without vetoing shutdown or extending its timeout.
+  // SCM shutdown notifications still govern the service-owned host/helpers;
+  // these levels do not override an explicit stop from their owner.
   if (SetProcessShutdownParameters(WindowsShutdownLevel(role), 0))
     return ERROR_SUCCESS;
   const DWORD error = GetLastError();

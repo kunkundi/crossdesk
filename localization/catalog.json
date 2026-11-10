@@ -10248,18 +10248,6 @@
       "pt-BR": "{0}, recebendo {1}, enviando {2}, taxa de perda de pacotes {3}",
       "ru": "{0}, прием {1}, отправка {2}, скорость потери пакетов {3}"
     },
-    "远程控制连接中，保留连接以确认或取消关机。": {
-      "zh-Hans": "远程控制连接中，保留连接以确认或取消关机。",
-      "en": "Remote session active. Keeping the connection available to confirm or cancel shutdown.",
-      "ru": "Удалённый сеанс активен. Соединение сохранено для подтверждения или отмены выключения.",
-      "zh-Hant": "遠端控制連線中，保留連線以確認或取消關機。",
-      "ja": "リモート接続中です。シャットダウンの確認または取り消しのため、接続を維持しています。",
-      "ko": "원격 세션이 활성화되어 있습니다. 종료 확인 또는 취소를 위해 연결을 유지합니다.",
-      "de": "Remotesitzung aktiv. Die Verbindung bleibt zum Bestätigen oder Abbrechen des Herunterfahrens bestehen.",
-      "fr": "Session distante active. La connexion reste disponible pour confirmer ou annuler l’arrêt.",
-      "es": "Sesión remota activa. Se mantiene la conexión para confirmar o cancelar el apagado.",
-      "pt-BR": "Sessão remota ativa. A conexão é mantida para confirmar ou cancelar o desligamento."
-    },
     "监听所有 IP 接口": {
       "zh-Hans": "监听所有 IP 接口",
       "en": "Listen on all IP interfaces",
@@ -11335,7 +11323,6 @@
     "privacy_unlock_lock": "锁定",
     "privacy_screen_unlock_hint": "按下快捷键，解除隐私屏",
     "exit_program": "退出",
-    "shutdown_reason": "远程控制连接中，保留连接以确认或取消关机。",
     "pause_video_when_minimized": "最小化时暂停视频",
     "pause_video_when_minimized_hint": "控制窗口最小化时暂停接收视频，降低本机解码资源占用。",
     "system_permissions": "系统权限",
@@ -11985,7 +11972,6 @@
       "近期连接",
       "返回",
       "还原窗口",
-      "远程控制连接中，保留连接以确认或取消关机。",
       "远程桌面",
       "远端 IP / 端口",
       "远端 Windows 服务不可用",

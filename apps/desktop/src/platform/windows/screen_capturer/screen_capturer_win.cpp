@@ -425,17 +425,22 @@ void ScreenCapturerWin::UpdateNativeCursor(ScreenCapturer* backend) {
 }
 
 bool ScreenCapturerWin::PrepareUnattendedDisplay() {
+  if (virtual_display_.active() || DetectHeadlessDesktop()) {
+    physical_mode_recovery_pending_ = true;
+    physical_mode_restore_attempts_ = 0;
+  }
   if (!ForceHeadlessEnabled() && unattended_host_ && virtual_display_.active() &&
       QueryAttachedPhysicalDisplayMode().width > 0) {
     // The monitor may have returned between controller connections.
     virtual_display_.Release();
+    RestorePhysicalDisplayMode();
     return false;
   }
   if (!unattended_host_ ||
       (!virtual_display_.active() && !DetectHeadlessDesktop())) return false;
   virtual_display_.PrepareAcquire();
   std::string error;
-  if (!virtual_display_.Acquire(ResolveVirtualDisplayMode(), &error)) {
+  if (!virtual_display_.Acquire(ResolveVirtualDisplayMode(false), &error)) {
     LOG_WARN("Cannot prepare unattended capture display: {}", error);
     return false;
   }
@@ -778,7 +783,7 @@ int ScreenCapturerWin::Start(bool show_cursor) {
   if (running_.load(std::memory_order_relaxed)) {
     return 0;
   }
-  ResolveVirtualDisplayMode();
+  ResolveVirtualDisplayMode(!physical_mode_recovery_pending_ && physical_mode_restore_attempts_ == 0);
   native_cursor_enabled_.store(native_cursor_default_.load());
   NotifyPrivacyCapture(false);
 
@@ -870,7 +875,7 @@ void ScreenCapturerWin::BeginVirtualDisplayProvisioning() {
     // A usbmmidd virtual monitor turns the phantom desktop into a real
     // display target, so the GPU backends and a chosen resolution apply.
     std::string error;
-    if (virtual_display_.Acquire(ResolveVirtualDisplayMode(), &error)) {
+    if (virtual_display_.Acquire(ResolveVirtualDisplayMode(false), &error)) {
       virtual_display_ready_.store(true, std::memory_order_release);
     } else if (error != "cancelled") {
       LOG_WARN("Windows capturer: no usbmmidd virtual display ({}); "
@@ -1169,6 +1174,10 @@ void ScreenCapturerWin::CheckDisplayPresence(ULONGLONG now) {
   const bool headless = DetectHeadlessDesktop(stalled,
                                              topology_changed);
   const bool owns_display = virtual_display_.active();
+  if (headless || owns_display) {
+    physical_mode_recovery_pending_ = true;
+    physical_mode_restore_attempts_ = 0;
+  }
   const bool provisioning =
       virtual_display_busy_.load(std::memory_order_acquire);
   if (!provisioning) {
@@ -1181,7 +1190,8 @@ void ScreenCapturerWin::CheckDisplayPresence(ULONGLONG now) {
       physical_binding_changed = !replacement_display_name_.empty() &&
           replacement_display_name_ != GetDisplayLabel(physical_device);
     }
-    if (physical_present && (owns_display || physical_binding_changed)) {
+    if (physical_present && (owns_display || physical_binding_changed ||
+                             physical_mode_recovery_pending_)) {
       // Debounce a hotplug before removing the fallback that is still carrying
       // the stream. This runs on the management thread, never a frame callback.
       if (physical_display_since_ == 0) physical_display_since_ = now;
@@ -1194,7 +1204,7 @@ void ScreenCapturerWin::CheckDisplayPresence(ULONGLONG now) {
     physical_display_since_ = 0;
     // Track user resolution changes during capture, not only process startup.
     // Resolve ignores phantom, RDP and virtual-display clone modes.
-    ResolveVirtualDisplayMode();
+    ResolveVirtualDisplayMode(!physical_mode_recovery_pending_ && physical_mode_restore_attempts_ == 0);
   }
   bool target_ready = false;
   if (owns_display) {
@@ -1222,6 +1232,23 @@ void ScreenCapturerWin::CheckDisplayPresence(ULONGLONG now) {
   BeginVirtualDisplayProvisioning();
 }
 
+void ScreenCapturerWin::RestorePhysicalDisplayMode() {
+  if (!physical_mode_recovery_pending_ || ForceHeadlessEnabled()) return;
+  std::string error;
+  if (RestoreAttachedPhysicalDisplayModes(&error)) {
+    physical_mode_recovery_pending_ = false;
+    physical_mode_restore_attempts_ = 0;
+  } else {
+    ++physical_mode_restore_attempts_;
+    LOG_WARN("Physical display mode recovery attempt {} failed: {}",
+             physical_mode_restore_attempts_, error);
+    // Retry transient EDID/topology failures, but do not continually interrupt
+    // capture or fight a user setting if a driver cannot apply its native mode.
+    if (physical_mode_restore_attempts_ >= 3)
+      physical_mode_recovery_pending_ = false;
+  }
+}
+
 void ScreenCapturerWin::RestorePhysicalDisplay() {
   JoinVirtualDisplayThread();
   if (!running_.load(std::memory_order_relaxed)) return;
@@ -1231,6 +1258,7 @@ void ScreenCapturerWin::RestorePhysicalDisplay() {
   StopSecureDesktopSharedCapture(secure_shared_session_id_);
   virtual_display_ready_.store(false, std::memory_order_release);
   virtual_display_.Release();
+  RestorePhysicalDisplayMode();
   // Windows may renumber outputs after the unplug. Requery and bind the real
   // screen to the same registered wire slot, including multi-monitor hotplugs.
   std::wstring device;

@@ -117,6 +117,10 @@ class ScreenCapturerWin : public ScreenCapturer {
   std::atomic<bool> virtual_display_busy_{false};
   ULONGLONG last_virtual_adoption_tick_ = 0;
   ULONGLONG physical_display_since_ = 0;
+  // A phantom desktop can return on the same DISPLAYn without ever acquiring
+  // usbmmidd. Remember that transition independently of virtual ownership.
+  bool physical_mode_recovery_pending_ = false;
+  unsigned physical_mode_restore_attempts_ = 0;
   // Protected by alias_mutex_. The virtual screen and then the returning
   // physical screen replace the same active wire slot explicitly.
   std::string replacement_display_name_;
@@ -154,6 +158,7 @@ class ScreenCapturerWin : public ScreenCapturer {
   void CheckCaptureProgress(ULONGLONG now);
   void CheckDisplayPresence(ULONGLONG now);
   void RestorePhysicalDisplay();
+  void RestorePhysicalDisplayMode();
   // Virtual display provisioning runs off the caller's thread.
   void JoinVirtualDisplayThread();
   void BeginVirtualDisplayProvisioning();

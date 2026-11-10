@@ -237,7 +237,14 @@ void SaveRememberedMode(HKEY root, const RememberedDisplayMode& record) {
   RegCloseKey(key);
 }
 
-std::vector<std::wstring> ActivePhysicalDisplaySources(bool* queried) {
+struct PhysicalDisplayTarget {
+  std::wstring device;
+  std::wstring monitor_path;
+  DISPLAYCONFIG_PATH_TARGET_INFO target;
+  bool cloned = false;
+};
+
+std::vector<PhysicalDisplayTarget> ActivePhysicalDisplays(bool* queried) {
   *queried = false;
   for (int attempt = 0; attempt < 4; ++attempt) {
     UINT32 path_count = 0, mode_count = 0;
@@ -252,7 +259,7 @@ std::vector<std::wstring> ActivePhysicalDisplaySources(bool* queried) {
         paths.data(), &mode_count, modes.data(), nullptr);
     if (result == ERROR_INSUFFICIENT_BUFFER) continue;
     if (result != ERROR_SUCCESS) break;
-    std::vector<std::wstring> sources;
+    std::vector<PhysicalDisplayTarget> displays;
     for (UINT32 i = 0; i < path_count; ++i) {
       const auto& path = paths[i];
       if (!(path.flags & DISPLAYCONFIG_PATH_ACTIVE) ||
@@ -268,10 +275,18 @@ std::vector<std::wstring> ActivePhysicalDisplaySources(bool* queried) {
       DISPLAYCONFIG_SOURCE_DEVICE_NAME source{};
       source.header = {DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME, sizeof(source),
                        path.sourceInfo.adapterId, path.sourceInfo.id};
-      if (DisplayConfigGetDeviceInfo(&source.header) == ERROR_SUCCESS)
-        sources.emplace_back(source.viewGdiDeviceName);
+      if (DisplayConfigGetDeviceInfo(&source.header) != ERROR_SUCCESS) continue;
+      const bool cloned = std::count_if(paths.begin(), paths.begin() + path_count,
+          [&](const DISPLAYCONFIG_PATH_INFO& other) {
+            return (other.flags & DISPLAYCONFIG_PATH_ACTIVE) &&
+                other.sourceInfo.id == path.sourceInfo.id &&
+                other.sourceInfo.adapterId.LowPart == path.sourceInfo.adapterId.LowPart &&
+                other.sourceInfo.adapterId.HighPart == path.sourceInfo.adapterId.HighPart;
+          }) > 1;
+      displays.push_back({source.viewGdiDeviceName, target.monitorDevicePath,
+                          path.targetInfo, cloned});
     }
-    return sources;
+    return displays;
   }
   return {};
 }
@@ -284,7 +299,7 @@ VirtualDisplayMode QueryAttachedPhysicalDisplayMode(std::wstring* device_name) {
   // RDP creates a display mode for that client, not the console's next boot.
   if (!GetSystemMetrics(SM_REMOTESESSION)) {
     bool queried = false;
-    const auto sources = ActivePhysicalDisplaySources(&queried);
+    const auto sources = ActivePhysicalDisplays(&queried);
     for (DWORD index = 0;; ++index) {
       DISPLAY_DEVICEW adapter{sizeof(adapter)};
       if (!EnumDisplayDevicesW(nullptr, index, &adapter, 0)) break;
@@ -296,8 +311,8 @@ VirtualDisplayMode QueryAttachedPhysicalDisplayMode(std::wstring* device_name) {
       // real target disappears. Require the corresponding available CCD path
       // when CCD is accessible; an IDD path must not validate a phantom GPU.
       if (queried && std::none_of(sources.begin(), sources.end(),
-          [&](const std::wstring& source) {
-            return _wcsicmp(source.c_str(), adapter.DeviceName) == 0;
+          [&](const PhysicalDisplayTarget& source) {
+            return _wcsicmp(source.device.c_str(), adapter.DeviceName) == 0;
           })) continue;
       bool present = false;
       for (DWORD child = 0; !present; ++child) {
@@ -325,7 +340,88 @@ VirtualDisplayMode QueryAttachedPhysicalDisplayMode(std::wstring* device_name) {
   return attached;
 }
 
-VirtualDisplayMode ResolveVirtualDisplayMode() {
+bool RestoreAttachedPhysicalDisplayModes(std::string* error) {
+  if (GetSystemMetrics(SM_REMOTESESSION) || CountUsbmmiddMonitors() != 0) {
+    SetError(error, "physical_display_topology_not_ready");
+    return false;
+  }
+  bool queried = false;
+  const auto displays = ActivePhysicalDisplays(&queried);
+  if (displays.empty()) {
+    SetError(error, "physical_display_not_ready");
+    return false;
+  }
+  bool restored = true;
+  for (const auto& display : displays) {
+    // One source mode affects every cloned target. Do not force a native 4K
+    // mode onto another real/third-party screen sharing a 1080p clone source.
+    if (display.cloned) {
+      LOG_INFO("Physical display '{}': keeping the shared clone mode", Narrow(display.device));
+      continue;
+    }
+    DISPLAYCONFIG_TARGET_PREFERRED_MODE preferred{};
+    preferred.header = {DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_PREFERRED_MODE,
+        sizeof(preferred), display.target.adapterId, display.target.id};
+    const LONG preferred_error = DisplayConfigGetDeviceInfo(&preferred.header);
+    DEVMODEW mode{};
+    mode.dmSize = sizeof(mode);
+    if (preferred_error != ERROR_SUCCESS ||
+        !ValidDisplayMode({static_cast<int>(preferred.width), static_cast<int>(preferred.height)}) ||
+        !EnumDisplaySettingsExW(display.device.c_str(), ENUM_CURRENT_SETTINGS, &mode, 0)) {
+      SetError(error, "physical_display_preferred_mode_unavailable:" + std::to_string(preferred_error));
+      restored = false;
+      continue;
+    }
+    DWORD width = preferred.width, height = preferred.height;
+    if (mode.dmDisplayOrientation == DMDO_90 || mode.dmDisplayOrientation == DMDO_270)
+      std::swap(width, height);
+    if (mode.dmPelsWidth == width && mode.dmPelsHeight == height) continue;
+    const DWORD old_width = mode.dmPelsWidth, old_height = mode.dmPelsHeight;
+    mode.dmPelsWidth = width;
+    mode.dmPelsHeight = height;
+    // Do not reuse the phantom's timing, change the primary screen/position,
+    // or write this temporary recovery into the user's persistent settings.
+    mode.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL | DM_DISPLAYORIENTATION;
+    LONG result = ChangeDisplaySettingsExW(display.device.c_str(), &mode, nullptr, CDS_TEST, nullptr);
+    if (result == DISP_CHANGE_SUCCESSFUL) {
+      // Display numbers may be recycled during hotplug. Validate the target
+      // identity again after CDS_TEST before changing this source's mode.
+      const auto current = ActivePhysicalDisplays(&queried);
+      const bool same_target = std::any_of(current.begin(), current.end(),
+          [&](const PhysicalDisplayTarget& target) {
+            return !target.cloned && target.device == display.device &&
+                target.monitor_path == display.monitor_path &&
+                target.target.id == display.target.id &&
+                target.target.adapterId.LowPart == display.target.adapterId.LowPart &&
+                target.target.adapterId.HighPart == display.target.adapterId.HighPart;
+          });
+      if (!same_target || CountUsbmmiddMonitors() != 0) {
+        SetError(error, "physical_display_changed_during_restore");
+        restored = false;
+        continue;
+      }
+      result = ChangeDisplaySettingsExW(display.device.c_str(), &mode, nullptr, 0, nullptr);
+    }
+    if (result != DISP_CHANGE_SUCCESSFUL) {
+      SetError(error, "physical_display_mode_change_failed:" + std::to_string(result));
+      restored = false;
+      continue;
+    }
+    DEVMODEW applied{};
+    applied.dmSize = sizeof(applied);
+    if (!EnumDisplaySettingsExW(display.device.c_str(), ENUM_CURRENT_SETTINGS, &applied, 0) ||
+        applied.dmPelsWidth != width || applied.dmPelsHeight != height) {
+      SetError(error, "physical_display_mode_not_applied");
+      restored = false;
+      continue;
+    }
+    LOG_INFO("Physical display '{}' restored from {}x{} to preferred {}x{}",
+             Narrow(display.device), old_width, old_height, width, height);
+  }
+  return restored;
+}
+
+VirtualDisplayMode ResolveVirtualDisplayMode(bool remember_attached) {
   std::lock_guard lock(remembered_mode_mutex);
   RememberedDisplayMode saved = last_observed_mode;
   for (HKEY root : {HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER}) {
@@ -336,7 +432,7 @@ VirtualDisplayMode ResolveVirtualDisplayMode() {
   }
   // A reattached physical screen may temporarily clone the fallback monitor.
   // Do not let that temporary desktop mode replace the original observation.
-  const auto attached = CountUsbmmiddMonitors() == 0
+  const auto attached = remember_attached && CountUsbmmiddMonitors() == 0
                             ? QueryAttachedPhysicalDisplayMode()
                             : VirtualDisplayMode{};
   if (ValidDisplayMode(attached)) {

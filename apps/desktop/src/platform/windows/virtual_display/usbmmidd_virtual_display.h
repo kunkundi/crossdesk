@@ -41,11 +41,15 @@ UsbmmiddStatus QueryUsbmmiddStatus();
 
 // Remember an attached display's current pixel mode for GUI/SYSTEM startup.
 // Phantom targets and our own fallback monitor must not overwrite that mode.
-VirtualDisplayMode ResolveVirtualDisplayMode();
+VirtualDisplayMode ResolveVirtualDisplayMode(bool remember_attached = true);
 // A real active monitor's current mode, or {0, 0} for headless/RDP desktops.
 // This probe does not update the remembered mode or change display settings.
 VirtualDisplayMode QueryAttachedPhysicalDisplayMode(
     std::wstring* device_name = nullptr);
+// After a headless/virtual-display handoff, recover each real screen's native
+// preferred pixel mode. Keep rotation and layout; never persist fallback modes.
+// Returns false while topology/EDID is settling, so the owner can retry.
+bool RestoreAttachedPhysicalDisplayModes(std::string* error = nullptr);
 
 // Adapters attached to the desktop, i.e. monitors currently plugged in.
 int CountUsbmmiddMonitors();

@@ -62,7 +62,7 @@
 #include <windows.h>
 
 #include "platform/windows/gui/slint_backend.h"
-#include "platform/windows/gui/shutdown_session_guard.h"
+#include "platform/windows/gui/session_end_observer.h"
 #include "platform/windows/gui/tray/win_tray.h"
 #include "platform/windows/gui/window_icons.h"
 #include "platform/windows/gui/window_taskbar.h"
@@ -989,8 +989,7 @@ void DragWindow(WindowHandle& component, int phase, float mouse_x,
 
 struct GuiApplication::SlintUi {
 #if _WIN32
-  std::unique_ptr<ShutdownSessionGuard> shutdown_guard;
-  std::wstring_view shutdown_reason;
+  SessionEndObserver session_end;
 #endif
   gallery::Workspace gallery;
   std::filesystem::path gallery_path;
@@ -1397,8 +1396,7 @@ void GuiApplication::InitializeUi() {
   ui_->main->set_lan_mode(config_center_->GetConnectionMode() ==
                           ConfigCenter::CONNECTION_MODE::DIRECT_IP);
 #if _WIN32
-  ui_->shutdown_guard =
-      std::make_unique<ShutdownSessionGuard>(windows_rdp_handoff_connected_);
+  ui_->session_end.Start();
 #endif
   ui_->sponsorship_prompt_pending =
       config_center_->GetSponsorshipPromptDismissedVersion() != CROSSDESK_VERSION;
@@ -2533,6 +2531,12 @@ void GuiApplication::BindServerCallbacks() {
 }
 
 void GuiApplication::Tick() {
+#if _WIN32
+  if (ui_) {
+    ui_->session_end.Start();  // Retry a transient native-window creation failure.
+    if (ui_->session_end.Ending()) exit_ = true;
+  }
+#endif
   if (exit_) {
     BeginShutdown();
     if (ShutdownDrained()) slint::quit_event_loop();
@@ -2647,11 +2651,6 @@ void GuiApplication::Tick() {
                                ? std::string("ConnectionFailed")
                                : lan_error_;
   ui_->main->set_lan_message(UiText(lan_message));
-#if _WIN32
-  if (ui_->shutdown_guard) {
-    ui_->shutdown_guard->Update(ui_->shutdown_reason);
-  }
-#endif
   PollUpdateCheck();
   HandleSessionCleanup();
   HandlePasswordChangeResult();
@@ -3280,9 +3279,6 @@ void GuiApplication::UpdateLocalization() {
     return;
   }
 #if _WIN32
-  static std::vector<std::wstring> shutdown_reasons(localization::GetSupportedLanguages().size());
-  ui_->shutdown_reason = localization::GetWindowsLocalizedLabel(
-      language, "shutdown_reason", L"Remote session active.", shutdown_reasons);
   const bool available = SupportsServiceAutostart();
   for (const auto& main : {ui_->main, ui_->wall}) {
     main->set_service_autostart_platform(true);
@@ -7081,9 +7077,6 @@ void GuiApplication::Cleanup() {
     return;
   }
   ui_->file_dialog_lifetime.reset();
-#if _WIN32
-  ui_->shutdown_guard.reset();
-#endif
 #if defined(__APPLE__)
   CancelNativeFileDialog();
 #endif
