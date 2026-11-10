@@ -83,6 +83,11 @@ bool MigrateLegacyAutostart(const std::string& app_name);
 // registrations belonging to other installation/portable directories.
 bool RemoveInstalledAutostart(const std::string& app_name);
 
+// Read-only counterpart of RemoveInstalledAutostart. Includes disabled tasks
+// across users and this user's legacy Run entry for the current executable.
+// False means either a matching registration remains or a query failed.
+bool IsInstalledAutostartAbsent(const std::string& app_name);
+
 }  // namespace crossdesk::platform
 
 #endif

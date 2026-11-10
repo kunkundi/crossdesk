@@ -192,9 +192,15 @@ enum class ServiceRegistrationState {
   repair_required,
   query_failed,
 };
+// start_type receives the registered start type, or SERVICE_DEMAND_START when
+// the service is not installed.
 ServiceRegistrationState QueryCrossDeskServiceRegistration(
-    const std::wstring& binary_path, DWORD* error_code = nullptr);
+    const std::wstring& binary_path, DWORD* error_code = nullptr,
+    DWORD* start_type = nullptr);
 bool InstallCrossDeskService(const std::wstring& binary_path);
+// Switch between boot and on-demand start; a missing service counts as
+// disabled.
+bool SetCrossDeskServiceAutoStart(bool enabled);
 bool RepairCrossDeskService(const std::wstring& binary_path);
 bool UninstallCrossDeskService();
 bool StartCrossDeskService();

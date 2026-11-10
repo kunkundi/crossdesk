@@ -187,16 +187,20 @@ int ConfigCenter::Load() {
   return 0;
 }
 
-int ConfigCenter::CommitIni() {
+int ConfigCenter::CommitIni(bool warn_only) {
   // Write beside the destination and rename only after a complete save. A
   // failed write must not truncate the last usable configuration.
+  const auto log_failure = [warn_only](const std::string& message) {
+    if (warn_only) LOG_WARN("{}", message);
+    else LOG_ERROR("{}", message);
+  };
   static std::atomic<unsigned long> sequence{0};
   const std::string temporary = config_path_ + ".tmp-" +
       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
       "-" + std::to_string(sequence++);
   std::error_code error;
   if (ini_->SaveFile(temporary.c_str()) < 0) {
-    LOG_ERROR("Failed to write configuration: {}", config_path_);
+    log_failure("Failed to write configuration: " + config_path_);
     std::filesystem::remove(temporary, error);
     return -1;
   }
@@ -204,14 +208,14 @@ int ConfigCenter::CommitIni() {
   if (!error && std::filesystem::is_regular_file(previous)) {
     std::filesystem::permissions(temporary, previous.permissions(), error);
     if (error) {
-      LOG_ERROR("Failed to preserve configuration permissions: {}", error.message());
+      log_failure("Failed to preserve configuration permissions: " + error.message());
       std::filesystem::remove(temporary, error);
       return -1;
     }
   }
   std::filesystem::rename(temporary, config_path_, error);
   if (!error) return 0;
-  LOG_ERROR("Failed to replace configuration {}: {}", config_path_, error.message());
+  log_failure("Failed to replace configuration " + config_path_ + ": " + error.message());
   std::filesystem::remove(temporary, error);
   return -1;
 }
@@ -428,15 +432,26 @@ int ConfigCenter::SetSelfHosted(bool enabled) {
 }
 
 int ConfigCenter::SetAutostart(bool enabled) {
-  std::string error = "Operating system startup registration failed";
 #ifdef _WIN32
-  if (!SupportsServiceAutostart()) return enabled ? -1 : 0;
-  const bool previous = IsServiceAutostartEnabled();
-  const bool update_registration = true;
-  const auto configure = [&error](bool value) { return SetServiceAutostart(value, error); };
+  // System registration determines success; INI only mirrors the last
+  // successfully applied preference. Unsupported builds never touch services.
+  if (!SupportsServiceAutostart()) {
+    if (enabled) return -1;
+  } else if (!ServiceAutostartMatches(enabled)) {
+    std::string error;
+    if (!SetServiceAutostart(enabled, error)) {
+      LOG_ERROR("Cannot configure autostart: {}", error);
+      return -1;
+    }
+  }
+  enable_autostart_ = enabled;
+  ini_->SetBoolValue(section_, "enable_autostart", enabled);
+  // Keep both in-memory copies even if the file is temporarily unwritable,
+  // so a later settings save can persist them. Never roll back the service.
+  CommitIni(true);
+  return 0;
 #else
   const bool previous = IsAutostartEnabled("CrossDesk");
-  const bool update_registration = enabled != previous;
   const auto configure = [](bool value) {
     return value ? EnableAutostart("CrossDesk") : DisableAutostart("CrossDesk");
   };
@@ -448,18 +463,18 @@ int ConfigCenter::SetAutostart(bool enabled) {
     return -1;
   }
 #endif
-#endif
-  if (update_registration && !configure(enabled)) {
-    LOG_ERROR("Cannot configure autostart: {}", error);
+  if (enabled != previous && !configure(enabled)) {
+    LOG_ERROR("Cannot configure autostart");
     return -1;
   }
   if (StoreValues({{"enable_autostart", enabled ? "true" : "false"}}) != 0) {
     if (enabled != previous && !configure(previous))
-      LOG_ERROR("Cannot restore autostart: {}", error);
+      LOG_ERROR("Cannot restore autostart");
     return -1;
   }
   enable_autostart_ = enabled;
   return 0;
+#endif
 }
 
 int ConfigCenter::SetDaemon(bool enabled) {

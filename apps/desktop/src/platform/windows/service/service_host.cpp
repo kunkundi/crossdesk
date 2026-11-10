@@ -2644,8 +2644,9 @@ std::string CrossDeskServiceHost::SendSecureDesktopTextInput(
 }
 
 ServiceRegistrationState QueryCrossDeskServiceRegistration(
-    const std::wstring& binary_path, DWORD* error_code) {
+    const std::wstring& binary_path, DWORD* error_code, DWORD* start_type) {
   if (error_code) *error_code = ERROR_SUCCESS;
+  if (start_type) *start_type = SERVICE_DEMAND_START;
   const auto failed = [error_code](DWORD error) {
     if (error_code) *error_code = error;
     return ServiceRegistrationState::query_failed;
@@ -2672,6 +2673,7 @@ ServiceRegistrationState QueryCrossDeskServiceRegistration(
   const DWORD query_error = queried ? ERROR_SUCCESS : GetLastError();
   CloseServiceHandle(service);
   if (!queried) return failed(query_error);
+  if (start_type) *start_type = config->dwStartType;
 
   if (!config->lpBinaryPathName || binary_path.empty() ||
       config->dwStartType == SERVICE_DISABLED) {
@@ -2780,6 +2782,23 @@ bool InstallCrossDeskService(const std::wstring& binary_path) {
   CloseServiceHandle(service);
   CloseServiceHandle(manager);
   return true;
+}
+
+bool SetCrossDeskServiceAutoStart(bool enabled) {
+  SC_HANDLE manager = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT);
+  if (!manager) return false;
+  SC_HANDLE service =
+      OpenServiceW(manager, kCrossDeskServiceName, SERVICE_CHANGE_CONFIG);
+  const DWORD open_error = service ? ERROR_SUCCESS : GetLastError();
+  CloseServiceHandle(manager);
+  if (!service) return !enabled && open_error == ERROR_SERVICE_DOES_NOT_EXIST;
+  const bool changed =
+      ChangeServiceConfigW(service, SERVICE_NO_CHANGE,
+                           enabled ? SERVICE_AUTO_START : SERVICE_DEMAND_START,
+                           SERVICE_NO_CHANGE, nullptr, nullptr, nullptr,
+                           nullptr, nullptr, nullptr, nullptr) != FALSE;
+  CloseServiceHandle(service);
+  return changed;
 }
 
 bool IsCrossDeskServiceInstalled() {

@@ -251,11 +251,17 @@ bool MigrateLegacyAutostart(const std::string& app_name) {
   return EnableAutostart(app_name, executable);
 }
 
-bool RemoveInstalledAutostart(const std::string& app_name) {
+namespace {
+
+bool CollectInstalledAutostart(const std::string& app_name,
+                              TaskScheduler& scheduler,
+                              std::vector<std::wstring>& matching_tasks,
+                              bool& matching_run_entry) {
+  matching_tasks.clear();
+  matching_run_entry = false;
   const auto name = FromUtf8(app_name);
   const auto executable = FromUtf8(GetAutostartExecutablePath());
   if (name.empty() || executable.empty()) return false;
-  TaskScheduler scheduler;
   if (!scheduler.Open()) return false;
   ComPtr<IRegisteredTaskCollection> tasks;
   if (!Check(scheduler.folder->GetTasks(TASK_ENUM_HIDDEN, tasks.GetAddressOf()),
@@ -264,7 +270,6 @@ bool RemoveInstalledAutostart(const std::string& app_name) {
   LONG count = 0;
   if (!Check(tasks->get_Count(&count), "count logon tasks")) return false;
   const auto prefix = name + L" Autostart ";
-  std::vector<std::wstring> remove;
   for (LONG index = 1; index <= count; ++index) {
     VARIANT item{};
     item.vt = VT_I4;
@@ -291,19 +296,14 @@ bool RemoveInstalledAutostart(const std::string& app_name) {
     if (action_count != 1) continue;
     if (!Check(actions->get_Item(1, action.GetAddressOf()), "read task action"))
       return false;
-    if (FAILED(action.As(&exec))) continue;
+    const HRESULT queried = action.As(&exec);
+    if (queried == E_NOINTERFACE) continue;
+    if (!Check(queried, "read executable action")) return false;
     BSTR raw_path = nullptr;
     if (!Check(exec->get_Path(&raw_path), "read task executable")) return false;
     Bstr path(raw_path, SysFreeString);
     if (path && _wcsicmp(path.get(), executable.c_str()) == 0)
-      remove.push_back(task_text);
-  }
-  // Collect names first; deleting during enumeration can change its indices.
-  for (const auto& task : remove) {
-    auto task_name = MakeBstr(task);
-    if (!task_name || !Check(scheduler.folder->DeleteTask(task_name.get(), 0),
-                             "remove installed logon task"))
-      return false;
+      matching_tasks.push_back(task_text);
   }
   std::wstring command;
   const LONG result = ReadRunEntry(name, &command);
@@ -312,8 +312,33 @@ bool RemoveInstalledAutostart(const std::string& app_name) {
   if (result != ERROR_SUCCESS) return false;
   if (command.size() >= 2 && command.front() == L'"' && command.back() == L'"')
     command = command.substr(1, command.size() - 2);
-  return _wcsicmp(command.c_str(), executable.c_str()) != 0 ||
-         RemoveRunEntry(name);
+  matching_run_entry = _wcsicmp(command.c_str(), executable.c_str()) == 0;
+  return true;
+}
+
+}  // namespace
+
+bool IsInstalledAutostartAbsent(const std::string& app_name) {
+  TaskScheduler scheduler;
+  std::vector<std::wstring> tasks;
+  bool run_entry = false;
+  return CollectInstalledAutostart(app_name, scheduler, tasks, run_entry) &&
+         tasks.empty() && !run_entry;
+}
+
+bool RemoveInstalledAutostart(const std::string& app_name) {
+  TaskScheduler scheduler;
+  std::vector<std::wstring> tasks;
+  bool run_entry = false;
+  if (!CollectInstalledAutostart(app_name, scheduler, tasks, run_entry)) return false;
+  // Collect names first; deleting during enumeration can change its indices.
+  for (const auto& task : tasks) {
+    auto task_name = MakeBstr(task);
+    if (!task_name || !Check(scheduler.folder->DeleteTask(task_name.get(), 0),
+                             "remove installed logon task"))
+      return false;
+  }
+  return !run_entry || RemoveRunEntry(FromUtf8(app_name));
 }
 
 }  // namespace crossdesk::platform

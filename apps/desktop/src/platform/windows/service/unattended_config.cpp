@@ -65,13 +65,21 @@ std::filesystem::path UnattendedDataPath() {
   return path;
 }
 
+bool QueryUnattendedEnabled(bool& enabled) {
+  enabled = false;
+  DWORD value = 0;
+  DWORD size = sizeof(value);
+  const LONG result = RegGetValueW(HKEY_LOCAL_MACHINE, kRegistryKey, L"Enabled",
+      RRF_RT_REG_DWORD | RRF_SUBKEY_WOW6464KEY, nullptr, &value, &size);
+  if (result == ERROR_FILE_NOT_FOUND || result == ERROR_PATH_NOT_FOUND) return true;
+  if (result != ERROR_SUCCESS) return false;
+  enabled = value == 1;
+  return true;
+}
+
 bool IsUnattendedEnabled() {
-  DWORD enabled = 0;
-  DWORD size = sizeof(enabled);
-  return RegGetValueW(HKEY_LOCAL_MACHINE, kRegistryKey, L"Enabled",
-                      RRF_RT_REG_DWORD | RRF_SUBKEY_WOW6464KEY, nullptr,
-                      &enabled, &size) == ERROR_SUCCESS &&
-         enabled == 1;
+  bool enabled = false;
+  return QueryUnattendedEnabled(enabled) && enabled;
 }
 
 bool SetUnattendedEnabled(bool enabled) {

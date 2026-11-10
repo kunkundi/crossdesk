@@ -786,7 +786,8 @@ function setup_targets()
         add_files("apps/desktop/src/app/*.cpp")
         add_includedirs("apps/desktop/src", "apps/desktop/src/app", {public = true})
         if is_os("windows") then
-            add_files("apps/desktop/src/platform/windows/service/autostart_control.cpp")
+            add_files("apps/desktop/src/platform/windows/service/autostart_control.cpp",
+                "apps/desktop/src/platform/windows/service/autostart_state.cpp")
             add_files("apps/desktop/src/platform/windows/service/service_host.cpp",
                 "apps/desktop/src/platform/windows/service/rdp_session_handoff.cpp")
             add_includedirs("apps/desktop/src/platform/windows/service",

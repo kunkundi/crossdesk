@@ -1216,9 +1216,13 @@ int GuiApplication::Run() {
 #endif
 #ifdef _WIN32
   // Upgrade an already-enabled standalone host before the GUI opens its peer.
+  // Until an identity is attached the GUI can still run on its own identity,
+  // e.g. before its first connection has obtained a device ID.
   if (SupportsServiceAutostart() && IsUnattendedEnabled() && !shared_identity_) {
-    if (!PrepareSharedGuiIdentity(false) || config_center_->SetAutostart(true) != 0)
-      return -1;
+    if (!PrepareSharedGuiIdentity(false))
+      LOG_WARN("Could not upgrade the unattended host; boot startup stays off");
+    else if (config_center_->SetAutostart(true) != 0)
+      return -1;  // Attached to a host that could not be configured.
   }
 #endif
 #if defined(__linux__) && !defined(__OHOS__)

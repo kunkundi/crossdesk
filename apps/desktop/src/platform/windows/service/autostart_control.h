@@ -13,13 +13,19 @@ namespace crossdesk {
 
 // Windows startup preferences control the machine host and its GUI handoff.
 // Portable and Debug builds keep the existing unattended-mode restriction.
+// Evaluate in the application target: callers such as config_center do not
+// carry the application's CROSSDESK_PORTABLE define.
 bool SupportsServiceAutostart();
 bool IsServiceAutostartEnabled();
+// True when the registration already matches `enabled`, so saving settings
+// does not stop, reinstall or re-register anything.
+bool ServiceAutostartMatches(bool enabled);
 // Shared GUI/CLI entry point; serializes service changes and preserves a
 // running host when the installed service already matches this executable.
 bool SetServiceAutostart(bool enabled, std::string& error);
 
-// Keep a legacy Run entry from bypassing the elevated GUI handoff task.
+// Logon startup only exists as the GUI handoff of an enabled machine host.
+// Remove registrations left by versions before the service-based startup.
 bool CleanupLegacyServiceAutostart();
 
 }  // namespace crossdesk

@@ -9,6 +9,9 @@ namespace crossdesk {
 
 // This directory is deliberately separate from every user's GUI profile.
 std::filesystem::path UnattendedDataPath();
+// Missing configuration is a successful disabled result; other read failures
+// must not be mistaken for a completed disable operation.
+bool QueryUnattendedEnabled(bool& enabled);
 bool IsUnattendedEnabled();
 bool IsSharedIdentityServiceConfigured();
 bool SetUnattendedEnabled(bool enabled);

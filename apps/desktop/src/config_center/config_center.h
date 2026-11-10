@@ -93,7 +93,7 @@ class ConfigCenter {
   int ApplySharedHostConfig(const std::string& contents);
 
  private:
-  int CommitIni();
+  int CommitIni(bool warn_only = false);
   int StoreValues(std::initializer_list<std::pair<const char*, std::string>> values);
   mutable std::mutex file_path_mutex_;
   std::string config_path_;
