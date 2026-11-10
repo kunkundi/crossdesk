@@ -281,3 +281,7 @@
 "鼠标左键" = "Bouton gauche de la souris";
 "鼠标控制" = "Contrôle de la souris";
 "鼠标滚轮" = "Molette de la souris";
+"前往 App Store 更新" = "Mettre à jour dans l’App Store";
+"App Store 暂无可用更新" = "Aucune mise à jour disponible dans l’App Store pour le moment";
+"暂时无法在当前地区的 App Store 查询到此应用" = "Cette app est introuvable dans l’App Store de la région actuelle";
+"新版本需要 iOS %1$@ 或更高版本" = "La nouvelle version nécessite iOS %1$@ ou une version ultérieure";

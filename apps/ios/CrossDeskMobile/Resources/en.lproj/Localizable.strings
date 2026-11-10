@@ -281,3 +281,7 @@
 "鼠标左键" = "Left mouse button";
 "鼠标控制" = "Mouse control";
 "鼠标滚轮" = "Mouse wheel";
+"前往 App Store 更新" = "Update in the App Store";
+"App Store 暂无可用更新" = "No update is currently available in the App Store";
+"暂时无法在当前地区的 App Store 查询到此应用" = "This app could not be found in the App Store for the current region";
+"新版本需要 iOS %1$@ 或更高版本" = "The new version requires iOS %1$@ or later";

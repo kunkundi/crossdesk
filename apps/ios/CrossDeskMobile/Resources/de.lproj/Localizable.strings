@@ -281,3 +281,7 @@
 "鼠标左键" = "Linke Maustaste";
 "鼠标控制" = "Maussteuerung";
 "鼠标滚轮" = "Mausrad";
+"前往 App Store 更新" = "Im App Store aktualisieren";
+"App Store 暂无可用更新" = "Im App Store ist derzeit kein Update verfügbar";
+"暂时无法在当前地区的 App Store 查询到此应用" = "Diese App wurde im App Store der aktuellen Region nicht gefunden";
+"新版本需要 iOS %1$@ 或更高版本" = "Die neue Version erfordert iOS %1$@ oder neuer";

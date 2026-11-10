@@ -155,10 +155,6 @@ typedef struct {
                                        releaseJSON:(NSData *)releaseJSON
     NS_SWIFT_NAME(availableUpdate(appVersion:releaseJSON:));
 
-+ (nullable NSString *)checkMobileUpdateForAppVersion:(NSString *)appVersion
-                                        releaseJSON:(NSData *)releaseJSON
-    NS_SWIFT_NAME(checkMobileUpdate(appVersion:releaseJSON:));
-
 - (void)configureWithSignalHost:(NSString *)host
                      signalPort:(NSInteger)signalPort;
 - (void)setVideoAdaptationPolicy:(CrossDeskVideoAdaptationPolicy)policy;

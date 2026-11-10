@@ -83,11 +83,15 @@ struct ThirdPartyLicensesView: View {
         List {
             Section {
                 LabeledContent(NSLocalizedString("版本", comment: ""), value: appUpdates.currentVersion)
-                if appUpdates.updateAvailable {
-                    Link(destination: URL(string: "https://crossdesk.cn")!) {
+                if appUpdates.updateAvailable, let appStoreURL = appUpdates.appStoreURL {
+                    Link(destination: appStoreURL) {
                         HStack {
                             UpdateDot()
-                            Text(String(format: NSLocalizedString("新版本可用：v%1$@", comment: ""), String(describing: appUpdates.availableVersion)))
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(String(format: NSLocalizedString("新版本可用：v%1$@", comment: ""), appUpdates.availableVersion))
+                                Text(NSLocalizedString("前往 App Store 更新", comment: ""))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
                             Spacer()
                             Image(systemName: "arrow.up.right")
                         }
@@ -98,7 +102,12 @@ struct ThirdPartyLicensesView: View {
                 } else if appUpdates.status == .checking {
                     Text(NSLocalizedString("正在检查更新…", comment: "")).foregroundStyle(.secondary)
                 } else if appUpdates.status == .upToDate {
-                    Text(NSLocalizedString("当前已是最新版本", comment: "")).foregroundStyle(.secondary)
+                    Text(NSLocalizedString("App Store 暂无可用更新", comment: "")).foregroundStyle(.secondary)
+                } else if appUpdates.status == .unavailable {
+                    Text(NSLocalizedString("暂时无法在当前地区的 App Store 查询到此应用", comment: "")).foregroundStyle(.secondary)
+                } else if appUpdates.status == .requiresNewerOS {
+                    Text(String(format: NSLocalizedString("新版本需要 iOS %1$@ 或更高版本", comment: ""), appUpdates.requiredOSVersion))
+                        .foregroundStyle(.secondary)
                 } else if appUpdates.status == .failed {
                     Text(NSLocalizedString("检查失败，请稍后重试", comment: "")).foregroundStyle(.red)
                 }
@@ -143,7 +152,7 @@ struct ThirdPartyLicensesView: View {
         .navigationTitle(NSLocalizedString("关于 CrossDesk", comment: ""))
         .navigationBarTitleDisplayMode(.inline)
         .onValueChange(of: session.hasNetworkConsent) { allowed in
-            if allowed { appUpdates.checkNow() }
+            if allowed { appUpdates.checkIfNeeded() }
         }
     }
 }

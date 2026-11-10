@@ -10847,6 +10847,54 @@
       "fr": "Connectez-vous après le démarrage sans ouvrir de session. Après connexion, conservez les mêmes ID et mot de passe et toutes les fonctions.",
       "es": "Conéctese tras arrancar sin iniciar sesión. Después de iniciar sesión, conserve el mismo ID, contraseña y todas las funciones.",
       "pt-BR": "Conecte-se após a inicialização sem fazer login. Após o login, mantenha o mesmo ID, senha e todas as funções."
+    },
+    "前往 App Store 更新": {
+      "zh-Hans": "前往 App Store 更新",
+      "en": "Update in the App Store",
+      "ru": "Обновить в App Store",
+      "zh-Hant": "前往 App Store 更新",
+      "ja": "App Store でアップデート",
+      "ko": "App Store에서 업데이트",
+      "de": "Im App Store aktualisieren",
+      "fr": "Mettre à jour dans l’App Store",
+      "es": "Actualizar en el App Store",
+      "pt-BR": "Atualizar na App Store"
+    },
+    "App Store 暂无可用更新": {
+      "zh-Hans": "App Store 暂无可用更新",
+      "en": "No update is currently available in the App Store",
+      "ru": "В App Store пока нет доступных обновлений",
+      "zh-Hant": "App Store 暫無可用更新",
+      "ja": "現在 App Store に利用可能なアップデートはありません",
+      "ko": "현재 App Store에 사용 가능한 업데이트가 없습니다",
+      "de": "Im App Store ist derzeit kein Update verfügbar",
+      "fr": "Aucune mise à jour disponible dans l’App Store pour le moment",
+      "es": "No hay actualizaciones disponibles en el App Store por ahora",
+      "pt-BR": "Nenhuma atualização disponível na App Store no momento"
+    },
+    "暂时无法在当前地区的 App Store 查询到此应用": {
+      "zh-Hans": "暂时无法在当前地区的 App Store 查询到此应用",
+      "en": "This app could not be found in the App Store for the current region",
+      "ru": "Не удалось найти приложение в App Store для текущего региона",
+      "zh-Hant": "暫時無法在目前地區的 App Store 查詢到此 App",
+      "ja": "現在の地域の App Store でこのアプリが見つかりませんでした",
+      "ko": "현재 지역의 App Store에서 이 앱을 찾을 수 없습니다",
+      "de": "Diese App wurde im App Store der aktuellen Region nicht gefunden",
+      "fr": "Cette app est introuvable dans l’App Store de la région actuelle",
+      "es": "No se encontró esta app en el App Store de la región actual",
+      "pt-BR": "Este app não foi encontrado na App Store da região atual"
+    },
+    "新版本需要 iOS %1$@ 或更高版本": {
+      "zh-Hans": "新版本需要 iOS %1$@ 或更高版本",
+      "en": "The new version requires iOS %1$@ or later",
+      "ru": "Для новой версии требуется iOS %1$@ или новее",
+      "zh-Hant": "新版本需要 iOS %1$@ 或以上版本",
+      "ja": "新しいバージョンには iOS %1$@ 以降が必要です",
+      "ko": "새 버전에는 iOS %1$@ 이상이 필요합니다",
+      "de": "Die neue Version erfordert iOS %1$@ oder neuer",
+      "fr": "La nouvelle version nécessite iOS %1$@ ou une version ultérieure",
+      "es": "La nueva versión requiere iOS %1$@ o posterior",
+      "pt-BR": "A nova versão requer iOS %1$@ ou posterior"
     }
   },
   "desktop": {
@@ -12479,7 +12527,11 @@
       "鼠标右键",
       "鼠标左键",
       "鼠标控制",
-      "鼠标滚轮"
+      "鼠标滚轮",
+      "前往 App Store 更新",
+      "App Store 暂无可用更新",
+      "暂时无法在当前地区的 App Store 查询到此应用",
+      "新版本需要 iOS %1$@ 或更高版本"
     ],
     "harmony": [
       "OpenFEC 告知",

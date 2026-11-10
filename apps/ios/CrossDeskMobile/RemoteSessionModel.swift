@@ -733,7 +733,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         connectionStatus = NSLocalizedString("未连接", comment: "")
         audioPlayer.endSession()
         AppOrientation.endSession()
-        appUpdates.checkNow()
+        appUpdates.checkIfNeeded()
     }
 
     func retry() {

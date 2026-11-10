@@ -15,12 +15,6 @@ class AppUpdateCheckerTest(unittest.TestCase):
             harness.write_text(r'''
 import Foundation
 
-// The actual shared C++ parser is covered by version_checker_test.cpp.
-enum CrossDeskRTCBridge {
-    static func checkMobileUpdate(appVersion: String, releaseJSON: Data) -> String? {
-        String(data: releaseJSON, encoding: .utf8)
-    }
-}
 func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
     if !condition() { fatalError(message) }
 }
@@ -28,11 +22,21 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
 final class Fixture {
     var replies: [(Data?) -> Void] = []
     var cancellations = 0
-    lazy var checker = AppUpdateChecker(currentVersion: "0.0.1", fetch: { completion in
+    var time = Date(timeIntervalSince1970: 0)
+    lazy var checker = AppUpdateChecker(currentVersion: "0.0.1",
+        bundleIdentifier: "com.chunkdash.crossdesk", appStoreID: "6828859211", systemVersion: "17.0",
+        fetch: { completion in
         self.replies.append(completion)
         return { self.cancellations += 1 }
-    })
-    func reply(_ value: String?) { replies.last!(value.map { Data($0.utf8) }) }
+    }, now: { self.time })
+    func reply(_ value: String?) {
+        replies.last!(value.map { version in
+            try! JSONSerialization.data(withJSONObject: ["resultCount": 1, "results": [[
+                "wrapperType": "software", "bundleId": "com.chunkdash.crossdesk",
+                "trackId": 6828859211, "version": version, "minimumOsVersion": "16.0"
+            ]]])
+        })
+    }
 }
 @main
 enum Tests {
@@ -49,18 +53,19 @@ enum Tests {
         f.checker.setEnabled(true)
         expect(f.replies.count == 1, "Duplicate active callbacks do not recheck after completion")
         f.checker.setEnabled(false)
+        f.time.addTimeInterval(6 * 60 * 60)
         f.checker.setEnabled(true)
-        expect(f.replies.count == 2, "Every new visit checks even immediately after success")
+        expect(f.replies.count == 2, "A new visit checks after the automatic cooldown")
         f.reply(nil)
         expect(f.checker.status == .failed && f.checker.updateAvailable,
                "Failed checks retain discovered update")
         f.checker.setEnabled(true)
         expect(f.replies.count == 2, "A failure does not restart the check")
-        // Session teardown and the About action both explicitly request a check.
+        // The About action explicitly bypasses the automatic cooldown.
         f.checker.checkNow()
         f.checker.checkNow()
         expect(f.replies.count == 3, "Explicit events check again without a cooldown and deduplicate")
-        f.reply("")
+        f.reply("0.0.1")
         expect(!f.checker.updateAvailable && f.checker.status == .upToDate,
                "Successful current-version check clears badge")
         f.checker.checkNow()
@@ -69,6 +74,7 @@ enum Tests {
         expect(f.cancellations == 1, "Background/revocation cancels request")
         stale(Data("9.0.0".utf8))
         expect(!f.checker.updateAvailable, "Ignore cancelled response")
+        f.time.addTimeInterval(6 * 60 * 60)
         f.checker.setEnabled(true)
         stale(Data("9.0.0".utf8))
         expect(f.checker.status == .checking, "Ignore old response during new request")
@@ -77,6 +83,7 @@ enum Tests {
         let beforeForeground = f.replies.count
         f.checker.checkNow()
         expect(f.replies.count == beforeForeground, "Session endings in background do not check")
+        f.time.addTimeInterval(6 * 60 * 60)
         f.checker.setEnabled(true)
         expect(f.replies.count == beforeForeground + 1, "Check once on return from background")
         expect(f.checker.updateAvailable, "Retain badge while rechecking")

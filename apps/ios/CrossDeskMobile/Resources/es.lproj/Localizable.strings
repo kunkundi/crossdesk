@@ -281,3 +281,7 @@
 "鼠标左键" = "Botón izquierdo del ratón";
 "鼠标控制" = "Control del ratón";
 "鼠标滚轮" = "Rueda del ratón";
+"前往 App Store 更新" = "Actualizar en el App Store";
+"App Store 暂无可用更新" = "No hay actualizaciones disponibles en el App Store por ahora";
+"暂时无法在当前地区的 App Store 查询到此应用" = "No se encontró esta app en el App Store de la región actual";
+"新版本需要 iOS %1$@ 或更高版本" = "La nueva versión requiere iOS %1$@ o posterior";

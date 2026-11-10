@@ -224,6 +224,8 @@ Mobile releases keep the desktop `latest` tag and GitHub's latest release
 selection unchanged. After uploading the ZIP, the workflow merges its server
 URL, version and release date into `downloads.ios-arm64` in the shared
 `https://version.crossdesk.cn/version.json`.
+This entry describes the unsigned download artifact; the iOS app checks the
+App Store listing for its own updates instead.
 Top-level desktop version information and other platforms' entries are retained.
 Uploads preserve other platforms' files and use the existing `SERVER_HOST`,
 `SERVER_USER` and `SERVER_KEY` repository secrets. Regular desktop version tags
@@ -333,21 +335,33 @@ forwarding. Actual password entry still requires validation on updated Windows.
 
 ## App updates
 
-After network consent, the app checks the public version manifest once on each
-launch or return from the background, and after a remote connection ends while
-active. Concurrent triggers share the pending request. There are no periodic
-checks or automatic retries; failures retain any known update until the next
-trigger or manual check. Backgrounding or withdrawing consent cancels requests
-and ignores stale replies.
+After network consent, the app queries Apple's public Lookup API on launch,
+on return from the background, and after a remote connection ends while active.
+Successful results are reused in memory for six hours; failed checks defer the
+next automatic attempt for 15 minutes. There is no timer or automatic retry.
+**检查更新** bypasses this cooldown. Concurrent triggers share the pending
+request. Backgrounding or withdrawing consent cancels requests and ignores
+stale replies; failures retain an already discovered update.
 
-Local updates read only `downloads.ios-arm64`, using the same numeric version
-and patch comparison as desktop. Build dates alone do not indicate an update;
-missing platform metadata is a failed check. New releases show a red badge with
-a white exclamation mark at the top-right edge of the home Settings button,
-matching the announcement badge's size and position.
-Settings → About shows “新版本” and a red dot. About displays the new version,
-links to the official download page, and offers **检查更新** for manual checks.
-This is independent of the remote desktop's upgrade notice.
+`CrossDeskAppStoreID` in `CrossDeskMobile/Info.plist` identifies the App Store
+listing (`6828859211`). Forks must set their own App ID and bundle identifier;
+responses are accepted only when both identities match. Lookup uses the current
+StoreKit storefront, converting its three-letter country code to two letters.
+When StoreKit has no storefront, the device's region is used; an unknown region
+fails the check instead of silently querying the US store.
+
+Only the published App Store `version` is compared numerically with
+`CFBundleShortVersionString`. Desktop patches, build dates, `CFBundleVersion`,
+TestFlight builds and unsigned GitHub artifacts do not trigger App Store update
+notices. An empty Lookup result has its own unavailable message, not an
+up-to-date message. A newer release requiring a newer iOS version shows that
+requirement without an installable-update badge.
+
+Installable new releases show the existing red badge on the home Settings
+button and “新版本” with a red dot in Settings → About. About shows the version
+and **前往 App Store 更新**, linking directly to the application's App Store
+page. The remote desktop's separate upgrade check still uses the CrossDesk
+version manifest.
 
 ## Announcements
 
