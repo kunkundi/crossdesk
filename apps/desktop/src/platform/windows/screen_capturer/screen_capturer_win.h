@@ -108,7 +108,7 @@ class ScreenCapturerWin : public ScreenCapturer {
   bool applied_show_cursor_ = true;
   // GUI sessions provision on a worker and release after Stop(). Machine
   // hosts prepare before signaling, revalidate before capture, and retain
-  // the monitor until Destroy(). Recovery also handles lost login targets.
+  // the monitor until a physical screen returns or Destroy() runs.
   // The management thread adopts the output once virtual_display_ready_ is
   // set, trying the same ordered backends on the replacement target.
   VirtualDisplayProvisioner virtual_display_;
@@ -116,10 +116,11 @@ class ScreenCapturerWin : public ScreenCapturer {
   std::atomic<bool> virtual_display_ready_{false};
   std::atomic<bool> virtual_display_busy_{false};
   ULONGLONG last_virtual_adoption_tick_ = 0;
-  // Protected by alias_mutex_. A session-created display replaces the active
-  // wire slot explicitly, even if Windows retains the old phantom output.
-  std::string virtual_display_name_;
-  int virtual_display_slot_ = -1;
+  ULONGLONG physical_display_since_ = 0;
+  // Protected by alias_mutex_. The virtual screen and then the returning
+  // physical screen replace the same active wire slot explicitly.
+  std::string replacement_display_name_;
+  int replacement_display_slot_ = -1;
   std::atomic<int> monitor_index_{0};
   std::atomic<bool> secure_desktop_capture_active_{false};
   std::atomic<bool> post_secure_desktop_waiting_for_frame_{false};
@@ -152,6 +153,7 @@ class ScreenCapturerWin : public ScreenCapturer {
   bool RestartCaptureBackendAfterSecureDesktop();
   void CheckCaptureProgress(ULONGLONG now);
   void CheckDisplayPresence(ULONGLONG now);
+  void RestorePhysicalDisplay();
   // Virtual display provisioning runs off the caller's thread.
   void JoinVirtualDisplayThread();
   void BeginVirtualDisplayProvisioning();

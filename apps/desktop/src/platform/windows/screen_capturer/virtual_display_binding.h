@@ -14,8 +14,8 @@
 
 namespace crossdesk {
 
-// Only for headless takeover. Preserve the registered wire slot while choosing
-// IDD by identity; primary status and the old phantom's slot are irrelevant.
+// Preserve the registered wire slot across headless takeover and physical
+// recovery. Select the replacement by identity, not the phantom's position.
 inline int BindVirtualDisplayToStream(const std::vector<DisplayInfo>& current,
                                       const std::string& name, int slot,
                                       std::vector<DisplayInfo>* canonical,

@@ -42,6 +42,10 @@ UsbmmiddStatus QueryUsbmmiddStatus();
 // Remember an attached display's current pixel mode for GUI/SYSTEM startup.
 // Phantom targets and our own fallback monitor must not overwrite that mode.
 VirtualDisplayMode ResolveVirtualDisplayMode();
+// A real active monitor's current mode, or {0, 0} for headless/RDP desktops.
+// This probe does not update the remembered mode or change display settings.
+VirtualDisplayMode QueryAttachedPhysicalDisplayMode(
+    std::wstring* device_name = nullptr);
 
 // Adapters attached to the desktop, i.e. monitors currently plugged in.
 int CountUsbmmiddMonitors();
@@ -57,7 +61,8 @@ bool PlugUsbmmiddMonitor(const UsbmmiddPackage& package, DWORD timeout_ms,
                          std::string* error);
 bool UnplugUsbmmiddMonitor(const UsbmmiddPackage& package, DWORD timeout_ms,
                            std::string* error);
-// Applies the closest supported mode to the first plugged usbmmidd monitor.
+// Applies a temporary mode to usbmmidd only while no physical screen is active.
+// Never persists the virtual resolution in Windows display configuration.
 bool ApplyUsbmmiddDisplayMode(VirtualDisplayMode requested, std::string* error);
 
 // Installs the driver on first use, plugs one monitor when none is attached

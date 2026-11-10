@@ -108,14 +108,18 @@ bool BackendCursorCapture(ScreenCapturer* capturer, bool requested) {
 // as if it had none until a usbmmidd monitor is plugged, so the virtual
 // display path can be exercised without unplugging cables. Once the virtual
 // monitor is attached the real probe takes over again.
-bool ForcedHeadlessForTesting() {
+bool ForceHeadlessEnabled() {
   static const bool forced = [] {
     wchar_t value[8] = {0};
     const DWORD length =
         GetEnvironmentVariableW(L"CROSSDESK_FORCE_HEADLESS", value, 8);
     return length > 0 && length < 8 && value[0] == L'1';
   }();
-  return forced && CountUsbmmiddMonitors() == 0;
+  return forced;
+}
+
+bool ForcedHeadlessForTesting() {
+  return ForceHeadlessEnabled() && CountUsbmmiddMonitors() == 0;
 }
 
 // Detect phantom/headless topology for virtual-display provisioning.
@@ -421,6 +425,12 @@ void ScreenCapturerWin::UpdateNativeCursor(ScreenCapturer* backend) {
 }
 
 bool ScreenCapturerWin::PrepareUnattendedDisplay() {
+  if (!ForceHeadlessEnabled() && unattended_host_ && virtual_display_.active() &&
+      QueryAttachedPhysicalDisplayMode().width > 0) {
+    // The monitor may have returned between controller connections.
+    virtual_display_.Release();
+    return false;
+  }
   if (!unattended_host_ ||
       (!virtual_display_.active() && !DetectHeadlessDesktop())) return false;
   virtual_display_.PrepareAcquire();
@@ -431,8 +441,8 @@ bool ScreenCapturerWin::PrepareUnattendedDisplay() {
   }
   const auto name = GetDisplayLabel(FindUsbmmiddDisplayDeviceName());
   std::lock_guard lock(alias_mutex_);
-  virtual_display_name_ = name;
-  virtual_display_slot_ = name.empty() ? -1 : 0;
+  replacement_display_name_ = name;
+  replacement_display_slot_ = name.empty() ? -1 : 0;
   return !name.empty();
 }
 
@@ -494,7 +504,7 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
       } else {
         // During IDD takeover, never relabel a late frame from the old output
         // as the virtual display's stream.
-        if (!virtual_display_name_.empty()) return;
+        if (!replacement_display_name_.empty()) return;
         // Unknown backend labels are presentation data, not wire IDs.
         // Resolve them through the selected logical display instead.
         mapped_stream_id.clear();
@@ -566,7 +576,7 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
     BuildCanonicalFromImpl();
     monitor_index_.store(0, std::memory_order_relaxed);
     if (prepared_display) {
-      const auto name = virtual_display_name_;
+      const auto name = replacement_display_name_;
       const auto displays = impl_->GetDisplayInfoList();
       if (std::none_of(displays.begin(), displays.end(), [&name](const DisplayInfo& display) {
             return display.name == name && display.width > 0 && display.height > 0;
@@ -702,7 +712,7 @@ bool ScreenCapturerWin::TryStartBackend(
   std::string required_display;
   {
     std::lock_guard<std::mutex> lock(alias_mutex_);
-    required_display = virtual_display_name_;
+    required_display = replacement_display_name_;
   }
   if (ret == 0 && !required_display.empty()) {
     const auto displays = candidate->GetDisplayInfoList();
@@ -738,7 +748,7 @@ bool ScreenCapturerWin::TryStartBackend(
   committed->store(true, std::memory_order_release);
   LOG_INFO("Windows capturer: started {}", name);
   if (!required_display.empty())
-    LOG_INFO("Windows capturer: virtual display '{}' captured via {}",
+    LOG_INFO("Windows capturer: replacement display '{}' captured via {}",
              required_display, name);
   return true;
 }
@@ -768,6 +778,7 @@ int ScreenCapturerWin::Start(bool show_cursor) {
   if (running_.load(std::memory_order_relaxed)) {
     return 0;
   }
+  ResolveVirtualDisplayMode();
   native_cursor_enabled_.store(native_cursor_default_.load());
   NotifyPrivacyCapture(false);
 
@@ -790,8 +801,8 @@ int ScreenCapturerWin::Start(bool show_cursor) {
   // Reconcile the live target, not the display name cached at process startup.
   if (!PrepareUnattendedDisplay()) {
     std::lock_guard<std::mutex> lock(alias_mutex_);
-    virtual_display_name_.clear();
-    virtual_display_slot_ = -1;
+    replacement_display_name_.clear();
+    replacement_display_slot_ = -1;
   }
   DetectHeadlessDesktop(false, true);
   virtual_display_ready_.store(false, std::memory_order_relaxed);
@@ -799,6 +810,7 @@ int ScreenCapturerWin::Start(bool show_cursor) {
   last_display_probe_tick_ = 0;
   last_capture_retry_tick_ = 0;
   last_virtual_adoption_tick_ = 0;
+  physical_display_since_ = 0;
   headless_recovery_.Reset();
   impl_->Destroy();
   if (!StartPreferredBackend(requested_monitor)) {
@@ -903,8 +915,8 @@ void ScreenCapturerWin::MaybeAdoptVirtualDisplay() {
   if (previous) previous->Destroy();
   {
     std::lock_guard<std::mutex> lock(alias_mutex_);
-    virtual_display_name_ = virtual_name;
-    virtual_display_slot_ = current_monitor;
+    replacement_display_name_ = virtual_name;
+    replacement_display_slot_ = current_monitor;
   }
   if (StartPreferredBackend(current_monitor)) {
     if (!IsCurrentSessionUserDesktopActive()) impl_->Stop();
@@ -915,8 +927,8 @@ void ScreenCapturerWin::MaybeAdoptVirtualDisplay() {
     LOG_ERROR("Windows capturer: no backend could start on usbmmidd; will retry");
     {
       std::lock_guard<std::mutex> lock(alias_mutex_);
-      virtual_display_name_.clear();
-      virtual_display_slot_ = -1;
+      replacement_display_name_.clear();
+      replacement_display_slot_ = -1;
     }
     {
       std::lock_guard<std::mutex> lock(impl_mutex_);
@@ -1016,21 +1028,20 @@ void ScreenCapturerWin::RebuildAliasesFromImpl(bool preserve_backend_slots) {
   stream_id_alias_.clear();
   auto current = impl_->GetDisplayInfoList();
   if (current.empty() || canonical_displays_.empty()) return;
-  if (!virtual_display_name_.empty() && virtual_display_slot_ >= 0 &&
-      virtual_display_slot_ < static_cast<int>(canonical_displays_.size())) {
-    // A headless session deliberately replaces its selected output with IDD.
-    // Bind by device name, not primary status/enumeration order: the phantom
-    // NVIDIA output can remain first even after usbmmidd is ready.
+  if (!replacement_display_name_.empty() && replacement_display_slot_ >= 0 &&
+      replacement_display_slot_ < static_cast<int>(canonical_displays_.size())) {
+    // Bind IDD (or the returning physical screen) to the same wire slot.
+    // The first enumerated output may still be a phantom NVIDIA desktop.
     handle_to_canonical_index_.clear();
-    const int i = BindVirtualDisplayToStream(current, virtual_display_name_,
-        virtual_display_slot_, &canonical_displays_, &backend_to_canonical_);
+    const int i = BindVirtualDisplayToStream(current, replacement_display_name_,
+        replacement_display_slot_, &canonical_displays_, &backend_to_canonical_);
     if (i >= 0) {
-      const auto stream = MakeDisplayStreamId(virtual_display_slot_);
+      const auto stream = MakeDisplayStreamId(replacement_display_slot_);
       stream_id_alias_[MakeDisplayStreamId(i)] = stream;
       stream_id_alias_[current[i].name] = stream;
       if (current[i].handle)
-        handle_to_canonical_index_[current[i].handle] = virtual_display_slot_;
-      monitor_index_.store(virtual_display_slot_, std::memory_order_relaxed);
+        handle_to_canonical_index_[current[i].handle] = replacement_display_slot_;
+      monitor_index_.store(replacement_display_slot_, std::memory_order_relaxed);
     }
     return;
   }
@@ -1158,15 +1169,42 @@ void ScreenCapturerWin::CheckDisplayPresence(ULONGLONG now) {
   const bool headless = DetectHeadlessDesktop(stalled,
                                              topology_changed);
   const bool owns_display = virtual_display_.active();
+  const bool provisioning =
+      virtual_display_busy_.load(std::memory_order_acquire);
+  if (!provisioning) {
+    std::wstring physical_device;
+    const bool physical_present = !ForceHeadlessEnabled() &&
+        QueryAttachedPhysicalDisplayMode(&physical_device).width > 0;
+    bool physical_binding_changed = false;
+    if (!owns_display && physical_present) {
+      std::lock_guard lock(alias_mutex_);
+      physical_binding_changed = !replacement_display_name_.empty() &&
+          replacement_display_name_ != GetDisplayLabel(physical_device);
+    }
+    if (physical_present && (owns_display || physical_binding_changed)) {
+      // Debounce a hotplug before removing the fallback that is still carrying
+      // the stream. This runs on the management thread, never a frame callback.
+      if (physical_display_since_ == 0) physical_display_since_ = now;
+      if (now - physical_display_since_ >= 1000) {
+        RestorePhysicalDisplay();
+        physical_display_since_ = 0;
+      }
+      return;
+    }
+    physical_display_since_ = 0;
+    // Track user resolution changes during capture, not only process startup.
+    // Resolve ignores phantom, RDP and virtual-display clone modes.
+    ResolveVirtualDisplayMode();
+  }
   bool target_ready = false;
   if (owns_display) {
     const auto current = GetDisplayLabel(FindUsbmmiddDisplayDeviceName());
     std::lock_guard lock(alias_mutex_);
-    target_ready = !current.empty() && current == virtual_display_name_;
+    target_ready = !current.empty() && current == replacement_display_name_;
   }
   if (!headless_recovery_.ShouldProvision(
           now, headless || (owns_display && !target_ready),
-          virtual_display_busy_.load(std::memory_order_acquire), target_ready)) return;
+          provisioning, target_ready)) return;
   if (!running_.load(std::memory_order_relaxed)) return;
   headless_recovery_.Attempted(now);
   // The current backend has lost its usable target. Continue the same order
@@ -1182,6 +1220,33 @@ void ScreenCapturerWin::CheckDisplayPresence(ULONGLONG now) {
   LOG_WARN("Windows capturer: confirmed headless desktop during capture "
            "(stalled={}); provisioning usbmmidd", stalled);
   BeginVirtualDisplayProvisioning();
+}
+
+void ScreenCapturerWin::RestorePhysicalDisplay() {
+  JoinVirtualDisplayThread();
+  if (!running_.load(std::memory_order_relaxed)) return;
+  LOG_INFO("Windows capturer: physical monitor returned; restoring physical capture");
+  NotifyPrivacyCapture(false);
+  if (impl_) impl_->Stop();
+  StopSecureDesktopSharedCapture(secure_shared_session_id_);
+  virtual_display_ready_.store(false, std::memory_order_release);
+  virtual_display_.Release();
+  // Windows may renumber outputs after the unplug. Requery and bind the real
+  // screen to the same registered wire slot, including multi-monitor hotplugs.
+  std::wstring device;
+  QueryAttachedPhysicalDisplayMode(&device);
+  const int slot = monitor_index_.load(std::memory_order_relaxed);
+  {
+    std::lock_guard lock(alias_mutex_);
+    replacement_display_name_ = GetDisplayLabel(device);
+    replacement_display_slot_ = replacement_display_name_.empty() ? -1 : slot;
+  }
+  headless_recovery_.Reset();
+  if (!running_.load(std::memory_order_relaxed)) return;
+  const bool started = StartPreferredBackend(slot);
+  if (started && !IsCurrentSessionUserDesktopActive()) impl_->Stop();
+  NotifyPrivacyCapture(started);
+  if (!started) ReleaseNativeCursor();
 }
 
 void ScreenCapturerWin::CheckCaptureProgress(ULONGLONG now) {

@@ -14,10 +14,12 @@
 // clang-format on
 
 #include <algorithm>
+#include <mutex>
 #include <string>
 #include <vector>
 
 #include "rd_log.h"
+#include "../screen_capturer/display_presence.h"
 
 namespace crossdesk {
 
@@ -189,30 +191,120 @@ std::vector<VirtualDisplayMode> EnumerateModes(const std::wstring& device) {
   return modes;
 }
 
+bool ValidDisplayMode(VirtualDisplayMode mode) {
+  return mode.width > 0 && mode.height > 0 && mode.width <= 16384 &&
+         mode.height <= 16384;
+}
+
+// One atomic registry value keeps the mode and its observation time together.
+// HKCU works for a normal GUI; HKLM makes the same record available before
+// login to the SYSTEM host. Pick the newest, not an arbitrarily preferred hive.
+struct RememberedDisplayMode {
+  VirtualDisplayMode mode;
+  ULONGLONG observed_at = 0;
+};
+constexpr wchar_t kRememberedModeValue[] = L"LastAttachedDisplayModeV2";
+std::mutex remembered_mode_mutex;
+RememberedDisplayMode last_observed_mode;
+
+RememberedDisplayMode ReadRememberedMode(HKEY root) {
+  RememberedDisplayMode saved;
+  DWORD size = sizeof(saved);
+  if (RegGetValueW(root, kUsbmmiddInstallMarkerKey, kRememberedModeValue,
+                   RRF_RT_REG_BINARY | RRF_SUBKEY_WOW6464KEY, nullptr, &saved,
+                   &size) == ERROR_SUCCESS && size == sizeof(saved) &&
+      ValidDisplayMode(saved.mode)) return saved;
+  // Migrate the packed value written by earlier versions.
+  DWORD packed = 0;
+  size = sizeof(packed);
+  if (RegGetValueW(root, kUsbmmiddInstallMarkerKey, L"LastAttachedDisplayMode",
+                   RRF_RT_REG_DWORD | RRF_SUBKEY_WOW6464KEY, nullptr, &packed,
+                   &size) == ERROR_SUCCESS) {
+    VirtualDisplayMode mode{static_cast<int>(packed >> 16),
+                            static_cast<int>(packed & 0xffff)};
+    if (ValidDisplayMode(mode)) return {mode, 0};
+  }
+  return {};
+}
+
+void SaveRememberedMode(HKEY root, const RememberedDisplayMode& record) {
+  HKEY key = nullptr;
+  if (RegCreateKeyExW(root, kUsbmmiddInstallMarkerKey, 0, nullptr, 0,
+                      KEY_SET_VALUE | KEY_WOW64_64KEY, nullptr, &key,
+                      nullptr) != ERROR_SUCCESS) return;
+  RegSetValueExW(key, kRememberedModeValue, 0, REG_BINARY,
+                 reinterpret_cast<const BYTE*>(&record), sizeof(record));
+  RegCloseKey(key);
+}
+
+std::vector<std::wstring> ActivePhysicalDisplaySources(bool* queried) {
+  *queried = false;
+  for (int attempt = 0; attempt < 4; ++attempt) {
+    UINT32 path_count = 0, mode_count = 0;
+    if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &path_count,
+                                    &mode_count) != ERROR_SUCCESS) break;
+    // Once CCD is accessible, a racing/failed topology query is inconclusive.
+    // Do not fall back to stale EnumDisplayDevices children in that window.
+    *queried = true;
+    std::vector<DISPLAYCONFIG_PATH_INFO> paths((std::max)(path_count, 1u));
+    std::vector<DISPLAYCONFIG_MODE_INFO> modes((std::max)(mode_count, 1u));
+    const LONG result = QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &path_count,
+        paths.data(), &mode_count, modes.data(), nullptr);
+    if (result == ERROR_INSUFFICIENT_BUFFER) continue;
+    if (result != ERROR_SUCCESS) break;
+    std::vector<std::wstring> sources;
+    for (UINT32 i = 0; i < path_count; ++i) {
+      const auto& path = paths[i];
+      if (!(path.flags & DISPLAYCONFIG_PATH_ACTIVE) ||
+          !path.targetInfo.targetAvailable ||
+          path.targetInfo.outputTechnology == DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INDIRECT_WIRED ||
+          path.targetInfo.outputTechnology == DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INDIRECT_VIRTUAL)
+        continue;
+      DISPLAYCONFIG_TARGET_DEVICE_NAME target{};
+      target.header = {DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME, sizeof(target),
+                       path.targetInfo.adapterId, path.targetInfo.id};
+      if (DisplayConfigGetDeviceInfo(&target.header) != ERROR_SUCCESS ||
+          !HasDisplayTargetIdentity(target)) continue;
+      DISPLAYCONFIG_SOURCE_DEVICE_NAME source{};
+      source.header = {DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME, sizeof(source),
+                       path.sourceInfo.adapterId, path.sourceInfo.id};
+      if (DisplayConfigGetDeviceInfo(&source.header) == ERROR_SUCCESS)
+        sources.emplace_back(source.viewGdiDeviceName);
+    }
+    return sources;
+  }
+  return {};
+}
+
 }  // namespace
 
-VirtualDisplayMode ResolveVirtualDisplayMode() {
-  constexpr wchar_t value_name[] = L"LastAttachedDisplayMode";
-  DWORD saved = 0, size = sizeof(saved);
-  if (RegGetValueW(HKEY_LOCAL_MACHINE, kUsbmmiddInstallMarkerKey, value_name,
-      RRF_RT_REG_DWORD | RRF_SUBKEY_WOW6464KEY, nullptr, &saved, &size) != ERROR_SUCCESS)
-    saved = 0;
-  const auto valid = [](VirtualDisplayMode mode) {
-    return mode.width > 0 && mode.height > 0 && mode.width <= 16384 && mode.height <= 16384;
-  };
+VirtualDisplayMode QueryAttachedPhysicalDisplayMode(std::wstring* device_name) {
+  if (device_name) device_name->clear();
   VirtualDisplayMode attached;
   // RDP creates a display mode for that client, not the console's next boot.
   if (!GetSystemMetrics(SM_REMOTESESSION)) {
+    bool queried = false;
+    const auto sources = ActivePhysicalDisplaySources(&queried);
     for (DWORD index = 0;; ++index) {
       DISPLAY_DEVICEW adapter{sizeof(adapter)};
       if (!EnumDisplayDevicesW(nullptr, index, &adapter, 0)) break;
       if (!(adapter.StateFlags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP) ||
+          (adapter.StateFlags & (DISPLAY_DEVICE_MIRRORING_DRIVER |
+                                 DISPLAY_DEVICE_REMOTE)) ||
           IsUsbmmiddAdapter(adapter.DeviceString, adapter.DeviceID)) continue;
+      // A converter can retain an active EnumDisplayDevices monitor after its
+      // real target disappears. Require the corresponding available CCD path
+      // when CCD is accessible; an IDD path must not validate a phantom GPU.
+      if (queried && std::none_of(sources.begin(), sources.end(),
+          [&](const std::wstring& source) {
+            return _wcsicmp(source.c_str(), adapter.DeviceName) == 0;
+          })) continue;
       bool present = false;
       for (DWORD child = 0; !present; ++child) {
         DISPLAY_DEVICEW monitor{sizeof(monitor)};
         if (!EnumDisplayDevicesW(adapter.DeviceName, child, &monitor, 0)) break;
         present = (monitor.StateFlags & DISPLAY_DEVICE_ACTIVE) != 0 &&
+                  monitor.DeviceID[0] != L'\0' &&
                   !ContainsCaseInsensitive(monitor.DeviceID, L"Default_Monitor");
       }
       DEVMODEW mode{};
@@ -221,26 +313,51 @@ VirtualDisplayMode ResolveVirtualDisplayMode() {
         continue;
       const VirtualDisplayMode current{static_cast<int>(mode.dmPelsWidth),
                                        static_cast<int>(mode.dmPelsHeight)};
-      if (!valid(current)) continue;
-      if (!valid(attached) || (adapter.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE)) attached = current;
+      if (!ValidDisplayMode(current)) continue;
+      if (!ValidDisplayMode(attached) ||
+          (adapter.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE)) {
+        attached = current;
+        if (device_name) *device_name = adapter.DeviceName;
+      }
       if (adapter.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE) break;
     }
   }
-  if (valid(attached)) {
-    const DWORD packed = (static_cast<DWORD>(attached.width) << 16) |
-                         static_cast<DWORD>(attached.height);
-    HKEY key = nullptr;
-    if (packed != saved && RegCreateKeyExW(HKEY_LOCAL_MACHINE, kUsbmmiddInstallMarkerKey,
-        0, nullptr, 0, KEY_SET_VALUE | KEY_WOW64_64KEY, nullptr, &key, nullptr) == ERROR_SUCCESS) {
-      if (RegSetValueExW(key, value_name, 0, REG_DWORD,
-          reinterpret_cast<const BYTE*>(&packed), sizeof(packed)) == ERROR_SUCCESS)
-        LOG_INFO("Remembered attached display mode: {}x{}", attached.width, attached.height);
-      RegCloseKey(key);
-    }
-    return attached;
+  return attached;
+}
+
+VirtualDisplayMode ResolveVirtualDisplayMode() {
+  std::lock_guard lock(remembered_mode_mutex);
+  RememberedDisplayMode saved = last_observed_mode;
+  for (HKEY root : {HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER}) {
+    const auto record = ReadRememberedMode(root);
+    if (ValidDisplayMode(record.mode) &&
+        (!ValidDisplayMode(saved.mode) || record.observed_at > saved.observed_at))
+      saved = record;
   }
-  const VirtualDisplayMode previous{static_cast<int>(saved >> 16), static_cast<int>(saved & 0xffff)};
-  return valid(previous) ? previous : kDefaultVirtualDisplayMode;
+  // A reattached physical screen may temporarily clone the fallback monitor.
+  // Do not let that temporary desktop mode replace the original observation.
+  const auto attached = CountUsbmmiddMonitors() == 0
+                            ? QueryAttachedPhysicalDisplayMode()
+                            : VirtualDisplayMode{};
+  if (ValidDisplayMode(attached)) {
+    if (attached != saved.mode) {
+      FILETIME now{};
+      GetSystemTimeAsFileTime(&now);
+      saved = {attached, (static_cast<ULONGLONG>(now.dwHighDateTime) << 32) |
+                             now.dwLowDateTime};
+      LOG_INFO("Remembered attached display mode: {}x{}", attached.width,
+               attached.height);
+    }
+    // Also propagate a record first observed by another process/hive. Avoid
+    // repeated writes on the display probe's steady-state path.
+    for (HKEY root : {HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE}) {
+      const auto record = ReadRememberedMode(root);
+      if (record.mode != saved.mode || record.observed_at != saved.observed_at)
+        SaveRememberedMode(root, saved);
+    }
+  }
+  last_observed_mode = saved;  // Still usable when neither hive is writable.
+  return ValidDisplayMode(saved.mode) ? saved.mode : kDefaultVirtualDisplayMode;
 }
 
 UsbmmiddPackage LocateUsbmmiddPackage() {
@@ -384,6 +501,13 @@ bool ApplyUsbmmiddDisplayMode(VirtualDisplayMode requested,
     SetError(error, "usbmmidd_monitor_not_attached");
     return false;
   }
+  // Recheck immediately before changing a mode: a physical monitor can return
+  // while the driver is being installed/plugged. A cloned topology could resize
+  // that monitor too; the capture owner will retire its fallback instead.
+  if (ValidDisplayMode(QueryAttachedPhysicalDisplayMode())) {
+    SetError(error, "physical_display_present");
+    return false;
+  }
   VirtualDisplayMode chosen;
   if (!ChooseVirtualDisplayMode(EnumerateModes(device), requested, &chosen)) {
     SetError(error, "usbmmidd_no_display_modes");
@@ -404,7 +528,7 @@ bool ApplyUsbmmiddDisplayMode(VirtualDisplayMode requested,
   mode.dmPelsHeight = static_cast<DWORD>(chosen.height);
   mode.dmBitsPerPel = 32;
   const LONG result = ChangeDisplaySettingsExW(device.c_str(), &mode, nullptr,
-                                               CDS_UPDATEREGISTRY, nullptr);
+                                               0, nullptr);
   if (result != DISP_CHANGE_SUCCESSFUL) {
     SetError(error, "usbmmidd_mode_change_failed:" + std::to_string(result));
     return false;

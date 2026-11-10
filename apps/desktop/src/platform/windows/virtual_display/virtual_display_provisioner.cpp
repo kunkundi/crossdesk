@@ -281,6 +281,8 @@ void VirtualDisplayProvisioner::Release() {
     LOG_INFO("Virtual display: usbmmidd monitor released");
   } else {
     LOG_WARN("Virtual display: release failed, error={}", error);
+    // Keep the owner eligible to retry after a physical-monitor hotplug.
+    active_.store(was_active, std::memory_order_relaxed);
   }
 }
 
