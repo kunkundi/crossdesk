@@ -2335,7 +2335,7 @@ void GuiApplication::BindStreamCallbacks() {
       std::lock_guard lock(props->privacy_status_mutex_);
       props->privacy_command_pending_ = false;
       if (!relock) props->privacy_status_received_ = false;
-      LOG_WARN("Privacy command send failed, remote_id={}", props->remote_id_);
+      LOG_WARN("Privacy command send failed");
     }
   };
   stream->on_toggle_privacy([send_privacy] { send_privacy(false); });
@@ -2981,16 +2981,15 @@ void GuiApplication::ShareLocalCursorState() {
     const int result = SendControllerData(recipient.remote_id, message.c_str(),
                                           message.size(), mouse_label_.c_str());
     if (result != 0) {
-      LOG_WARN("Send cursor state to [{}] failed, ret={}",
-               recipient.remote_id, result);
+      LOG_WARN("Send cursor state failed, ret={}", result);
       continue;
     }
 
     if (!delivery.has_sent ||
         delivery.last_sent.render_mode != outgoing.render_mode ||
         delivery.last_sent.hidden_reason != outgoing.hidden_reason) {
-      LOG_INFO("Send cursor presentation to [{}]: mode={}, reason={}",
-               recipient.remote_id, static_cast<int>(outgoing.render_mode),
+      LOG_INFO("Send cursor presentation: mode={}, reason={}",
+               static_cast<int>(outgoing.render_mode),
                static_cast<int>(outgoing.hidden_reason));
     }
     delivery.last_sent = outgoing;
@@ -3143,10 +3142,9 @@ void GuiApplication::HandlePasswordChangeResult() {
         uncertain ? "console_password_uncertain" : "console_password_rejected");
 #endif
     if (uncertain) {
-      LOG_WARN("Password change outcome is unknown: {}; re-authenticating",
-               error);
+      LOG_WARN("Password change outcome is unknown; re-authenticating");
     } else {
-      LOG_WARN("Password change failed: {}", error);
+      LOG_WARN("Password change failed");
       if (!settings_.ClearPendingPasswordChange()) {
         LOG_WARN("Could not clear rejected pending password change");
       }
@@ -3168,7 +3166,7 @@ void GuiApplication::HandlePasswordChangeResult() {
     LOG_WARN("Password changed on server; pending recovery record retained");
   }
 
-  LOG_INFO("Password changed successfully for [{}]", client_id_);
+  LOG_INFO("Password changed successfully");
 #if defined(__linux__) && !defined(__OHOS__)
   HeadlessConsole::Instance().NotifyKey("console_password_confirmed");
 #endif

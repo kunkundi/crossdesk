@@ -434,7 +434,7 @@ std::vector<std::filesystem::path> Thumbnail::FindThumbnailPath(
   std::vector<std::filesystem::path> thumbnails_path;
 
   if (!std::filesystem::is_directory(directory)) {
-    LOG_ERROR("No such directory [{}]", directory.string());
+    LOG_ERROR("Thumbnail directory does not exist");
     return thumbnails_path;
   }
 

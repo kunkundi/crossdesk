@@ -46,9 +46,7 @@ bool InstallServiceWithElevation() {
   std::error_code error;
   if (!std::filesystem::is_regular_file(service_path, error) ||
       !std::filesystem::is_regular_file(helper_path, error)) {
-    LOG_ERROR("Portable service install failed: service binaries missing, "
-              "service={}, helper={}",
-              service_path.string(), helper_path.string());
+    LOG_ERROR("Portable service install failed: service binaries missing");
     return false;
   }
 

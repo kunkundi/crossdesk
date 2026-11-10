@@ -56,7 +56,9 @@ bool GuiRuntime::ForwardUserSessionData(const std::string& id,
       (user_stream || user_control || host_info || preview || audio)) {
     if (!local_host_->Send({{"op", "data"}, {"id", id}, {"epoch", epoch}, {"stream", stream},
         {"bytes", Json::binary(std::vector<uint8_t>(data, data + size))}})) {
-      LOG_WARN("Cannot forward user-session data for [{}] on {}; reconnecting local frontend", id, stream);
+      LOG_WARN(
+          "Cannot forward user-session data on {}; reconnecting local frontend",
+          stream);
       local_gui_ready_ = false;
       // Reset the mirrored sessions so an incomplete reliable stream fails
       // explicitly. Never fall through to file/clipboard handling as SYSTEM.

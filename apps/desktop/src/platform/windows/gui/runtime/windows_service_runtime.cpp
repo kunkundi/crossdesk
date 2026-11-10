@@ -298,8 +298,7 @@ void GuiRuntime::HandleWindowsServiceIntegration() {
     if (managed_host_frontend_ && id.rfind("lan/", 0) != 0) continue;
     const int ret = SendControllerData(id, msg.data(), msg.size(),
                                        control_data_label_.c_str());
-    if (ret != 0)
-      LOG_WARN("Windows service status send failed, peer={}, ret={}", id, ret);
+    if (ret != 0) LOG_WARN("Windows service status send failed, ret={}", ret);
   }
 #endif
 }

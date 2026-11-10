@@ -379,8 +379,8 @@ bool KeyboardController::ReleaseRemotePressedKeysLocked(
   if (state_it != remote_states_.end()) {
     const auto& keys = state_it->second.pressed_keys;
     if (!keys.empty()) {
-      LOG_WARN("Releasing {} remote keyboard keys for remote_id={}, reason={}",
-               keys.size(), remote_id, reason ? reason : "unknown");
+      LOG_WARN("Releasing {} remote keyboard keys, reason={}", keys.size(),
+               reason ? reason : "unknown");
     }
     // Stage before erasing: subsequent dispatcher retries must still see the
     // keys if injection fails, even though active/heartbeat state is gone.

@@ -53,9 +53,10 @@ GuiRuntime::GuiRuntime()
           },
           [](const std::string& id, int64_t queued_ms, int64_t execution_ms,
              InputOutcome outcome) {
-            LOG_WARN("Remote input result: peer={} queue_ms={} execution_ms={} "
-                     "result={}",
-                     id, queued_ms, execution_ms, InputOutcomeName(outcome));
+            LOG_DEBUG("Remote input result for peer={}", id);
+            LOG_WARN(
+                "Remote input result: queue_ms={} execution_ms={} result={}",
+                queued_ms, execution_ms, InputOutcomeName(outcome));
           },
           [this] { return devices_.ResetToInitialDisplay(); },
           [this](const std::string& id, unsigned mask) {
@@ -128,8 +129,7 @@ void GuiRuntime::SendRemoteInput(const RemoteAction& action) {
         : MiniRtcSendReliableDataFrame(
               props->peer_, message.data(), message.size(),
               mouse ? props->mouse_label_.c_str() : props->keyboard_label_.c_str());
-    if (result != 0)
-      LOG_WARN("Send remote input failed, remote_id={}, ret={}", id, result);
+    if (result != 0) LOG_WARN("Send remote input failed, ret={}", result);
   }
 }
 
@@ -258,8 +258,7 @@ int GuiRuntime::CreateConnectionPeer() {
     } else if (!credential_recovery_in_progress_) {
       credential_recovery_in_progress_ = true;
       credential_recovery_attempt_pending_ = true;
-      LOG_INFO("Recovering an interrupted password change for [{}]",
-               client_id_);
+      LOG_INFO("Recovering an interrupted password change");
     }
     try_pending_identity = credential_recovery_in_progress_ &&
                            credential_recovery_attempt_pending_ &&
@@ -352,7 +351,8 @@ int GuiRuntime::CreateConnectionPeer() {
     peer_ = MiniRtcCreatePeer(&params_);
   }
   if (peer_) {
-    LOG_INFO("Create peer instance [{}] successful", client_id_);
+    LOG_INFO("Create peer instance successful");
+    LOG_DEBUG("Local client id: [{}]", client_id_);
 #ifdef _WIN32
     if (managed_host_frontend_) {
       if (!local_host_) local_host_ = std::make_shared<LocalHostChannel>(false);
@@ -378,9 +378,9 @@ int GuiRuntime::CreateConnectionPeer() {
     }
 #endif
     MiniRtcInit(peer_);
-    LOG_INFO("Peer [{}] init finish", client_id_);
+    LOG_INFO("Peer initialization finished");
   } else {
-    LOG_INFO("Create peer [{}] instance failed", client_id_);
+    LOG_INFO("Create peer instance failed");
   }
 
   if (0 == devices_.EnsureCaptureReady()) {
@@ -440,7 +440,7 @@ void GuiRuntime::HandleRecentConnections() {
               platform, direct ? &target : nullptr) == 0)
         reload_recent_connections_ = true;
       else
-        LOG_ERROR("[{}] Failed to save recent connection", props->remote_id_);
+        LOG_ERROR("Failed to save recent connection");
     }
   }
   if (session_cleanup_tasks_.empty() && reload_recent_connections_ && thumbnail_) {

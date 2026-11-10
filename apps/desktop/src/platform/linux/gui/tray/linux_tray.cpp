@@ -1193,7 +1193,7 @@ struct LinuxTrayImpl {
       icon_rgba.assign(pixels, pixels + static_cast<size_t>(width) *
                                            static_cast<size_t>(height) * 4);
       stbi_image_free(pixels);
-      LOG_INFO("Loaded Linux tray icon: {}", candidate.string());
+      LOG_DEBUG("Loaded Linux tray icon: {}", candidate.string());
       return true;
     }
 

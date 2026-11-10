@@ -159,7 +159,7 @@ void GuiRuntime::TickControllerTrust() {
     auto callback = events->EnterCallback();
     if (!callback) continue;
     if (action.kind < 0) {
-      LOG_WARN("Reject controller [{}]: trusted device verification required", action.id);
+      LOG_WARN("Reject controller: trusted device verification required");
       transfers_.Cancel(events.get(), action.id);
       remote_input_.Disconnect(action.id);
       CloseServerController(action.id);

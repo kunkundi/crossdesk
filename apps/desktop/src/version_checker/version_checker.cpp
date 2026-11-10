@@ -98,9 +98,9 @@ void ConfigureLinuxCaCerts(httplib::Client* cli) {
   }
 
   cli->set_ca_cert_path(ca_file, ca_dir);
-  LOG_INFO("Configured version.json TLS CA bundle: file={}, dir={}",
-           ca_file.empty() ? "<none>" : ca_file,
-           ca_dir.empty() ? "<none>" : ca_dir);
+  LOG_DEBUG("Configured version.json TLS CA bundle: file={}, dir={}",
+            ca_file.empty() ? "<none>" : ca_file,
+            ca_dir.empty() ? "<none>" : ca_dir);
 }
 #endif
 

@@ -44,8 +44,8 @@ std::filesystem::path FileReceiver::GetDefaultDesktopPath() {
   std::error_code ec;
   std::filesystem::create_directories(desktop_path, ec);
   if (ec) {
-    LOG_ERROR("FileReceiver: failed to create desktop directory [{}]: {}",
-              desktop_path.string().c_str(), ec.message().c_str());
+    LOG_ERROR("FileReceiver: failed to create desktop directory: {}",
+              ec.message().c_str());
   }
 
   return desktop_path;

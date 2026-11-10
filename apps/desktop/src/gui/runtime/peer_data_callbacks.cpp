@@ -327,10 +327,11 @@ void PeerEventHandler::OnReceiveDataBuffer(
             bound_peer, wire_id.data(), wire_id.size(),
             static_cast<MiniRtcVideoQuality>(settings.quality), settings.frame_rate,
             static_cast<MiniRtcVideoDegradationPreference>(settings.preference)) == 0;
-    LOG_INFO("Video settings: peer={} source={} request={} quality={} fps={} "
-             "preference={} accepted={}",
-             remote_id, source_id, settings.request_id, settings.quality,
-             settings.frame_rate, settings.preference, remote_action.vs.accepted);
+    LOG_INFO(
+        "Video settings: source={} request={} quality={} fps={} preference={} "
+        "accepted={}",
+        source_id, settings.request_id, settings.quality, settings.frame_rate,
+        settings.preference, remote_action.vs.accepted);
     remote_action.type = ControlType::video_settings_status;
     const auto message = remote_action.to_json();
     PeerSendReliableDataFrameToPeer(bound_peer, message.data(), message.size(),
@@ -373,9 +374,9 @@ void PeerEventHandler::OnReceiveDataBuffer(
         source_id != runtime->keyboard_label_) return;
     if (runtime->remote_input_.Push(remote_id, remote_action) ==
         RemoteInputDispatcher::Result::overflow)
-      LOG_WARN("Remote input queue overflow: peer={}, clearing stale input and "
-               "releasing keys/buttons",
-               remote_id);
+      LOG_WARN(
+          "Remote input queue overflow: clearing stale input and releasing "
+          "keys/buttons");
     return;
   }
   if (remote_action.type == ControlType::audio_capture) {
@@ -500,7 +501,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
         if (props->remote_host_name_.empty()) {
           props->remote_host_name_ = std::string(remote_action.i.host_name,
                                                  remote_action.i.host_name_size);
-          LOG_INFO("Remote hostname: [{}]", props->remote_host_name_);
+          LOG_DEBUG("Remote hostname: [{}]", props->remote_host_name_);
 
           for (int i = 0; i < remote_action.i.display_num; i++) {
             props->display_info_list_.push_back(
@@ -526,7 +527,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
             runtime->codec_status_controllers_.erase(remote_id);
         }
       }
-      LOG_INFO("Remote hostname: [{}]", host_name);
+      LOG_DEBUG("Remote hostname: [{}]", host_name);
       if (source_id == runtime->control_data_label_) {
         runtime->SetControllerPrivacySupport(
             remote_id, remote_action.i.supports_privacy_screen);
@@ -602,7 +603,7 @@ InputOutcome GuiRuntime::ApplyRemoteInput(const std::string& remote_id,
     const auto now = std::chrono::steady_clock::now();
     auto [position, first] = last_remote_pointer_input_time_.try_emplace(remote_id, now);
     position->second = now;
-    if (first) LOG_INFO("Remote pointer input received: peer={}", remote_id);
+    if (first) LOG_INFO("Remote pointer input received");
   }
 
   if (remote_action.type == ControlType::mouse) {

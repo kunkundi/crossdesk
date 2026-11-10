@@ -60,8 +60,7 @@ bool RestrictCachePermissions(const std::filesystem::path &path,
     close(fd);
   }
   if (error) {
-    LOG_WARN("Cannot restrict credential cache permissions for {}: {}",
-             path.string(),
+    LOG_WARN("Cannot restrict credential cache permissions: {}",
              std::error_code(error, std::generic_category()).message());
   }
   return error == 0;

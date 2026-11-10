@@ -38,8 +38,8 @@ void GuiRuntime::SetControllerPrivacySupport(const std::string& remote_id,
     if (found->second == MiniRtcConnectionStatus::MiniRtcConnectionConnecting ||
         found->second == MiniRtcConnectionStatus::MiniRtcConnectionGathering) {
       privacy_sessions_.RememberSupport(remote_id, supported);
-      LOG_INFO("Privacy: retained early controller capability, peer={}, supported={}",
-               remote_id, supported);
+      LOG_INFO("Privacy: retained early controller capability, supported={}",
+               supported);
     }
     return;
   }
@@ -68,7 +68,7 @@ void GuiRuntime::QueuePrivacyCommand(const std::string& remote_id,
       !privacy_sessions_.Supports(remote_id)) return;
   std::lock_guard lock(privacy_commands_mutex_);
   if (privacy_commands_.size() >= 32) return;
-  LOG_INFO("Privacy: queued controller command, peer={}, flag={}", remote_id,
+  LOG_INFO("Privacy: queued controller command, flag={}",
            static_cast<int>(command.flag));
   privacy_commands_.emplace_back(remote_id, command);
 }
@@ -149,7 +149,7 @@ void GuiRuntime::HandlePrivacy() {
                                           control_data_label_.c_str());
     if (result != 0) {
       sent = false;
-      LOG_WARN("Privacy status send failed, peer={}, ret={}", id, result);
+      LOG_WARN("Privacy status send failed, ret={}", result);
     }
   }
   if (sent) {

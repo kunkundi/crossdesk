@@ -362,8 +362,7 @@ void ClipboardController::SendDeferredLocalText() {
       session->peer_, last_text_.data(), last_text_.size(),
       session->clipboard_label_.c_str());
   if (ret != 0) {
-    LOG_WARN("Failed to send deferred clipboard data to peer [{}], ret={}",
-             session->remote_id_, ret);
+    LOG_WARN("Failed to send deferred clipboard data, ret={}", ret);
     return;
   }
   deferred_local_session_.reset();
@@ -390,8 +389,7 @@ int ClipboardController::SendToPeers(const std::string &text) {
         MiniRtcSendReliableDataFrame(props->peer_, text.data(), text.size(),
                               props->clipboard_label_.c_str());
     if (ret != 0) {
-      LOG_WARN("Failed to send clipboard data to peer [{}], ret={}",
-               remote_id.c_str(), ret);
+      LOG_WARN("Failed to send clipboard data, ret={}", ret);
       return ret;
     }
   }

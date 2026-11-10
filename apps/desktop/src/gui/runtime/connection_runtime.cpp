@@ -184,7 +184,7 @@ void GuiRuntime::HandlePresenceProbeTimeout() {
     offline_warning_text_ =
         localization::device_offline[localization_language_index_];
     show_offline_warning_window_ = true;
-    LOG_WARN("Presence probe timed out for [{}]", presence_remote_id);
+    LOG_WARN("Presence probe timed out");
   }
 }
 
@@ -383,8 +383,7 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
        thumbnail = thumbnail_, queued_at]() mutable {
         if (props->peer_events_) props->peer_events_->Deactivate();
         if (peer && !props->lan_session_) {
-          LOG_INFO("[{}] Background leave connection [{}]", props->local_id_,
-                   props->remote_id_);
+          LOG_INFO("Background leave connection");
           MiniRtcLeaveConnection(peer, props->remote_id_.c_str());
           MiniRtcDestroyPeer(&peer);
         }
@@ -405,13 +404,12 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
                   props->remote_host_name_,
                   props->remember_password_ ? props->remote_password_ : "",
                   platform, direct ? &target : nullptr) != 0) {
-            LOG_ERROR("[{}] Failed to save recent connection", props->remote_id_);
+            LOG_ERROR("Failed to save recent connection");
           }
         }
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - queued_at).count();
-        LOG_INFO("[{}] Session cleanup completed in {} ms", props->remote_id_,
-                 elapsed);
+        LOG_INFO("Session cleanup completed in {} ms", elapsed);
       });
 }
 
@@ -433,8 +431,7 @@ void GuiRuntime::CloseServerController(const std::string& remote_id) {
       [peer = peer_, transmission_id = std::string(client_id_), remote_id] {
         if (PeerDisconnectPeerConnection(peer, transmission_id.c_str(),
                                      remote_id.c_str()) != 0) {
-          LOG_WARN("[{}] Could not queue controller disconnect notification",
-                   remote_id);
+          LOG_WARN("Could not queue controller disconnect notification");
         }
       });
 }
@@ -482,7 +479,7 @@ void GuiRuntime::CloseConnectionPeer() {
   connection_peer_cleanup_ = session_cleanup_queue_.PostTask(
       [peer, handler = peer_events_, id = std::string(client_id_)]() mutable {
         handler->Deactivate();
-        LOG_INFO("[{}] Background connection peer cleanup", id);
+        LOG_INFO("Background connection peer cleanup");
         if (!IsLocalPeer(peer)) MiniRtcLeaveConnection(peer, id.c_str());
         UnbindLocalPeer(peer);
         MiniRtcDestroyPeer(&peer);
@@ -534,7 +531,8 @@ void GuiRuntime::HandleSessionCleanup() {
     try {
       it->second.get();
     } catch (const std::exception& error) {
-      LOG_ERROR("[{}] Session cleanup failed: {}", it->first, error.what());
+      LOG_ERROR("Session cleanup failed");
+      LOG_DEBUG("Session cleanup failed for [{}]: {}", it->first, error.what());
     }
     if (auto pending = pending_reconnects_.find(it->first);
         pending != pending_reconnects_.end()) {
@@ -568,7 +566,8 @@ void GuiRuntime::WaitForSessionCleanup() {
     try {
       task.get();
     } catch (const std::exception& error) {
-      LOG_ERROR("[{}] Session cleanup failed: {}", id, error.what());
+      LOG_ERROR("Session cleanup failed");
+      LOG_DEBUG("Session cleanup failed for [{}]: {}", id, error.what());
     }
   }
   session_cleanup_tasks_.clear();
@@ -641,7 +640,7 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
   if (session_cleanup_tasks_.count(remote_id)) {
     pending_reconnects_[remote_id] = {password ? password : "",
                                       remember_password, background};
-    LOG_INFO("[{}] Reconnect queued until previous peer is destroyed", remote_id);
+    LOG_INFO("Reconnect queued until previous peer is destroyed");
     return 0;
   }
   // Wall requests, including deferred reconnects, must not replace the single
@@ -654,14 +653,15 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
       offline_warning_text_ =
           localization::device_offline[localization_language_index_];
       show_offline_warning_window_ = true;
-      LOG_WARN("Presence probe failed for [{}], ret={}", remote_id, ret);
+      LOG_WARN("Presence probe failed, ret={}", ret);
     } else {
-      LOG_INFO("Presence probe requested for [{}] before connect", remote_id);
+      LOG_INFO("Presence probe requested before connect");
     }
     return -1;
   }
 
-  LOG_INFO("Connect to [{}]", remote_id);
+  LOG_INFO("Connecting to remote device");
+  LOG_DEBUG("Connect to [{}]", remote_id);
   if (!background) focused_remote_id_ = remote_id;
 
   auto stale = FindRemoteSession(remote_id);
@@ -676,8 +676,7 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
       if (it != remote_sessions_.end() && it->second == stale) {
         remote_sessions_.erase(it);
         exists = false;
-        LOG_INFO("[{}] Recreating stale remote session before connect",
-                 remote_id);
+        LOG_INFO("Recreating stale remote session before connect");
       }
     }
     if (exists && !stale->closing_.load() &&
@@ -694,7 +693,7 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
                                  : std::string(password),
             remember_password, background};
         CloseRemoteSession(stale);
-        LOG_INFO("[{}] Reconnecting after terminal peer status {}", remote_id,
+        LOG_INFO("Reconnecting after terminal peer status {}",
                  static_cast<int>(status));
         return 0;
       }
@@ -727,7 +726,7 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
         if (!background) show_connection_status_window_ = true;
 
         if (!props->peer_) {
-          LOG_INFO("Create peer [{}] instance failed", props->local_id_);
+          LOG_INFO("Create peer instance failed");
           return -1;
         }
 
@@ -753,9 +752,10 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
     }
 
     if (peer_to_init) {
-      LOG_INFO("[{}] Create peer instance successful", local_id);
+      LOG_INFO("Create peer instance successful");
+      LOG_DEBUG("Local peer id: [{}]", local_id);
       MiniRtcInit(peer_to_init);
-      LOG_INFO("[{}] Peer init finish", local_id);
+      LOG_INFO("Peer initialization finished");
     }
   }
 

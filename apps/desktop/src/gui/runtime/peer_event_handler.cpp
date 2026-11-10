@@ -76,7 +76,7 @@ void PeerEventHandler::SendClientInfo(MiniRtcPeerPtr* peer,
                                   {"platform", HostPlatformName(kClientPlatform)}};
   const std::string payload = message.dump();
   if (PeerSendSignalMessage(peer, payload.data(), payload.size()) != 0) {
-    LOG_WARN("[{}] failed to report client information", client_id);
+    LOG_WARN("Failed to report client information");
   }
 }
 
@@ -195,8 +195,7 @@ void PeerEventHandler::OnSignalMessage(const char* message, size_t size,
       const std::string response_user_id = j["user_id"].get<std::string>();
       if (!response_user_id.empty() &&
           response_user_id != runtime->client_id_) {
-        LOG_WARN("Ignore password change response for unexpected id [{}]",
-                 response_user_id);
+        LOG_WARN("Ignore password change response for unexpected device");
         return;
       }
     }
@@ -235,7 +234,7 @@ void PeerEventHandler::OnSignalStatus(MiniRtcSignalStatus status, const char* us
     } else if (MiniRtcSignalStatus::MiniRtcSignalConnected == status) {
       runtime->signal_connected_ = true;
       runtime->need_to_send_recent_connections_ = true;
-      LOG_INFO("[{}] connected to signal server", client_id);
+      LOG_INFO("Connected to signal server");
       SendClientInfo(runtime->peer_, client_id);
       std::lock_guard<std::mutex> lock(runtime->password_change_mutex_);
       if (runtime->credential_recovery_in_progress_) {
@@ -276,7 +275,7 @@ void PeerEventHandler::OnSignalStatus(MiniRtcSignalStatus status, const char* us
       props->signal_connected_ = false;
     } else if (MiniRtcSignalStatus::MiniRtcSignalConnected == status) {
       props->signal_connected_ = true;
-      LOG_INFO("[{}] connected to signal server", remote_id);
+      LOG_INFO("Connected to signal server");
       SendClientInfo(props->peer_, client_id);
     } else if (MiniRtcSignalStatus::MiniRtcSignalFailed == status) {
       props->signal_connected_ = false;
@@ -372,8 +371,7 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
               MiniRtcSendReliableDataFrame(props->peer_, msg.data(), msg.size(),
                                     runtime->control_data_label_.c_str());
           if (ret != 0) {
-            LOG_WARN("[{}] host information send failed, ret={}", remote_id,
-                     ret);
+            LOG_WARN("Host information send failed, ret={}", ret);
           }
         }
 
@@ -579,7 +577,7 @@ void PeerEventHandler::OnNetStatusReport(
               sizeof(runtime->self_hosted_id_) - 1);
       runtime->self_hosted_id_[sizeof(runtime->self_hosted_id_) - 1] = '\0';
 
-      LOG_INFO("Use self-hosted client id [{}] and save to cache file", id);
+      LOG_DEBUG("Use self-hosted client id [{}] and save to cache file", id);
 
       runtime->settings_.PersistSelfHostedIdentity(client_id);
     } else {
@@ -600,7 +598,7 @@ void PeerEventHandler::OnNetStatusReport(
           ->client_id_with_password_[sizeof(runtime->client_id_with_password_) -
                                      1] = '\0';
 
-      LOG_INFO("Use client id [{}] and save id into cache file", id);
+      LOG_DEBUG("Use client id [{}] and save id into cache file", id);
       runtime->settings_.Save();
     }
 #if defined(__linux__) && !defined(__OHOS__)
@@ -673,7 +671,7 @@ std::string GuiRuntime::BuildHostInformation(bool advertise_trust) {
 void GuiRuntime::AnnounceHostCapabilities(const std::string& id) {
   const auto message = BuildHostInformation();
   const int ret = SendControllerData(id, message.data(), message.size(), control_data_label_.c_str());
-  if (ret != 0) LOG_WARN("[{}] host information send failed, ret={}", id, ret);
+  if (ret != 0) LOG_WARN("Host information send failed, ret={}", ret);
 }
 
 }  // namespace crossdesk

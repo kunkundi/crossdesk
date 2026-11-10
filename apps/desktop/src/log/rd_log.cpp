@@ -50,8 +50,10 @@ void InitLogger(const std::string& log_dir, const std::string& logger_name) {
   if (g_logger) {
     if (directory != g_log_dir || logger_name != g_logger_name) {
       g_logger->warn(
-          "InitLogger called after logger initialized. Keeping logger {} in {}",
-          g_logger_name, g_log_dir);
+          "InitLogger called after logger initialized. Keeping existing "
+          "logger");
+      SPDLOG_LOGGER_DEBUG(g_logger, "Keeping logger {} in {}", g_logger_name,
+                          g_log_dir);
     }
     return;
   }
@@ -88,7 +90,8 @@ std::shared_ptr<spdlog::logger> get_logger() {
                           : spdlog::level::info);
     logger->flush_on(spdlog::level::info);
     spdlog::register_logger(logger);
-    logger->info("Logger initialized: path={}", file_sink->filename());
+    logger->info("Logger initialized");
+    SPDLOG_LOGGER_DEBUG(logger, "Log file: {}", file_sink->filename());
     g_logger = std::move(logger);
   });
 
