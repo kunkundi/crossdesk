@@ -286,9 +286,8 @@ void ClipboardController::ApplyPendingWrite() {
   }
 
   // SDL clipboard functions must run on the thread that initialized SDL.
-  // Browser writes must also refresh an unchanged baseline: the local OS
-  // clipboard may have changed since the last poll.
-  if (!complete && *pending_text == last_text_) return;
+  // Always apply remote writes: the local OS clipboard may have changed since
+  // the last poll, even when the received text still matches last_text_.
   if (!SDL_SetClipboardText(pending_text->c_str())) {
     LOG_ERROR("Failed to set remote clipboard text: {}", SDL_GetError());
     if (complete) complete(false);
