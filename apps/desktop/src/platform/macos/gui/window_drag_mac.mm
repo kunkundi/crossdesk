@@ -174,6 +174,10 @@ bool ConfigureMainWindowChrome(void *opaque_slint_view, bool gallery) {
     NSButton *zoom_button =
         [window standardWindowButton:NSWindowZoomButton];
     if (zoom_button == nil) return false;
+    // Keep the connection/DeskHub and remote-control windows independently
+    // switchable even when the user prefers opening documents in tabs.
+    window.tabbingMode = NSWindowTabbingModeDisallowed;
+    window.excludedFromWindowsMenu = NO;
     if (gallery) gallery_window = window;
     if (gallery && gallery_fullscreen) return true;
     if (gallery)
@@ -280,6 +284,8 @@ bool ConfigureStreamWindowLiveResize(void *opaque_slint_view) {
         NSViewLayerContentsPlacementScaleProportionallyToFit;
     stream_window = window;
     stream_slint_view = slint_view;
+    window.tabbingMode = NSWindowTabbingModeDisallowed;
+    window.excludedFromWindowsMenu = NO;
     // Native Space fullscreen cross-fades an AppKit source snapshot over a
     // separately rendered destination window. Disable that path for the
     // stream window and route the green button to the immediate transition.

@@ -129,6 +129,10 @@ Desktop clients synchronize text clipboard contents. Configure the receiving dir
 
 On Windows, the main window and remote control window use separate taskbar buttons, so you can switch to or minimize either window independently. Closing the main window leaves the remote control window and its connections running; reopen the main window from the system tray. The remote control button appears only while the session window is present; use the main window's button to pin the application.
 
+On Linux, the main and remote control windows use different application grouping IDs on X11, XWayland, and native Wayland. Taskbar presentation depends on the desktop environment and its grouping settings. Closing the main window keeps remote connections running; reopen it from the system tray. Use the main application's launcher for pinning.
+
+On macOS, CrossDesk keeps one application icon in the Dock. The main and remote control windows can be switched and minimized independently and do not automatically merge into native window tabs. Closing the main window keeps the Dock icon while another window is visible or minimized, and remote connections continue running. Once all windows are closed, the application remains in the menu bar, where you can reopen the main window.
+
 Network statistics in both ordinary sessions and DeskHub show the video codecs actually in use, including software fallback. Names use “Implementation (Format)” with an initial capital and uppercase technical abbreviations, such as `VideoToolbox (H.264)`, `NVENC (H.264)`, `NVDEC (H.264)`, `SVT-AV1 (AV1)`, `Dav1d (AV1)`, and `LibAOM (AV1)`; Media Foundation also includes `HW` (hardware) or `SW` (software). The host must support encoder status reporting; older versions and information not yet available display “—”.
 
 ### Adjust video during a session

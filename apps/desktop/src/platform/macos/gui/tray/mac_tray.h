@@ -32,6 +32,8 @@ class MacTray {
   ~MacTray();
 
   void MinimizeToTray();
+  // Keep the Dock available while another normal window is open or minimized.
+  void SyncDockVisibility();
   void RemoveTrayIcon();
   bool TakeReopenRequest();
 

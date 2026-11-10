@@ -65,8 +65,30 @@ struct MacTrayImpl {
     } else if (app_window) {
       SDL_HideWindow(app_window);
     }
-    // Keep running through the menu-bar tray without a Dock application icon.
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+    SyncDockVisibility();
+  }
+
+  void SyncDockVisibility() {
+    // Cmd-H hides the application as a whole. Keep its Dock entry available
+    // so it can be unhidden; only closing individual windows enters tray mode.
+    if ([NSApp isHidden]) return;
+
+    bool has_window = false;
+    for (NSWindow *window in [NSApp windows]) {
+      // A miniaturized NSWindow may no longer be eligible to become main,
+      // but it still needs a Dock entry from which the user can restore it.
+      if ([window isMiniaturized] ||
+          ([window canBecomeMainWindow] && [window isVisible])) {
+        has_window = true;
+        break;
+      }
+    }
+    const NSApplicationActivationPolicy policy = has_window
+        ? NSApplicationActivationPolicyRegular
+        : NSApplicationActivationPolicyAccessory;
+    if ([NSApp activationPolicy] != policy) {
+      [NSApp setActivationPolicy:policy];
+    }
   }
 
   void RemoveTrayIcon() {
@@ -191,6 +213,14 @@ struct MacTrayImpl {
       return;
     }
 
+    // Unbundled development builds have no CFBundleIconFile, and winit's
+    // macOS window-icon setter is a no-op. Set the application icon explicitly
+    // so the Dock uses the logo instead of the generic executable icon.
+    NSImage *crossdesk_icon = LoadCrossDeskIcon();
+    if (crossdesk_icon) {
+      [NSApp setApplicationIconImage:crossdesk_icon];
+    }
+
     status_item = [[NSStatusBar systemStatusBar]
         statusItemWithLength:NSSquareStatusItemLength];
     NSStatusBarButton *button = [status_item button];
@@ -200,7 +230,6 @@ struct MacTrayImpl {
 
     [button setToolTip:NSStringFromUtf8(tooltip)];
 
-    NSImage *crossdesk_icon = LoadCrossDeskIcon();
     if (crossdesk_icon) {
       NSImage *status_icon = [crossdesk_icon copy];
       [status_icon setSize:NSMakeSize(18.0, 18.0)];
@@ -327,6 +356,8 @@ void MacActivateWindow(void *appkit_view) {
 }
 
 void MacTray::MinimizeToTray() { impl_->MinimizeToTray(); }
+
+void MacTray::SyncDockVisibility() { impl_->SyncDockVisibility(); }
 
 void MacTray::RemoveTrayIcon() { impl_->RemoveTrayIcon(); }
 

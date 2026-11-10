@@ -2771,6 +2771,11 @@ void GuiApplication::Tick() {
     }
   }
   SyncFileTransferNotifications();
+#if defined(__APPLE__)
+  // Native hide/show may complete after its callback. Re-evaluate after all
+  // session windows have been synchronized, including the last session close.
+  if (ui_->tray) ui_->tray->SyncDockVisibility();
+#endif
 }
 
 void GuiApplication::PollUpdateCheck() {
@@ -3854,6 +3859,11 @@ void GuiApplication::SyncStreamWindow() {
   if (!has_sessions) need_to_create_stream_window_ = false;
   if (need_to_create_stream_window_ && !ui_->stream) {
     ui_->stream.emplace(ui::StreamWindow::create());
+#if defined(__linux__) && !defined(__OHOS__)
+    // Set a per-window identity before Slint asynchronously creates the native
+    // window. The override survives hide/show and native handle recreation.
+    (*ui_->stream)->window().set_xdg_app_id("crossdesk-remote-control");
+#endif
     (*ui_->stream)->set_control_hand_cursor_supported(
         SupportsControlHandCursor(ui_->main->window()));
 #if (defined(__linux__) && !defined(__OHOS__))

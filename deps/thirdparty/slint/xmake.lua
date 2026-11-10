@@ -7,6 +7,15 @@ package("slint")
              "https://github.com/slint-ui/slint.git")
     add_versions("1.17.1", "68222567f8c70ff677cd4a98cd94fb4765ac0f797eb8f8608a646911c908dc2a")
 
+    if is_plat("linux") then
+        -- Slint 1.17.1 only exposes a context-wide xdg app id. Keep a window
+        -- override through deferred native creation and hide/show on both
+        -- X11 and Wayland. Include the extension in the package cache key.
+        add_configs("per_window_xdg_app_id", {description = "Support per-window XDG application IDs", default = true, type = "boolean", readonly = true})
+        add_patches("1.17.1", path.join(os.scriptdir(), "patches/1.17.1-per-window-xdg-app-id.patch"),
+            "86aedd42960c6e1b0f9d2a37ee5681bff177f166ee7aa77fee4b18c72fbff3d3")
+    end
+
     add_configs("shared", {description = "Build the Slint runtime as a shared library", default = true, type = "boolean", readonly = true})
     if is_plat("windows") then
         -- Include CRT linkage in the package hash so cached /MD builds are not reused.

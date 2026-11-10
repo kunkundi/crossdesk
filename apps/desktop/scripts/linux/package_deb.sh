@@ -175,6 +175,23 @@ Type=Application
 Categories=Utility;
 EOF
 
+# Give shells a desktop entry for the remote window's separate app id. Without
+# it, some shells fall back to the process's main launcher and merge the groups;
+# Wayland also uses this entry to resolve the icon. Hide it from app menus: a
+# fresh launch can open CrossDesk, but cannot recreate a live remote session.
+cat > "$DESKTOP_DIR/$PKG_NAME-remote-control.desktop" <<EOF
+[Desktop Entry]
+Version=1.0
+Name=$APP_NAME Remote Control
+Comment=Active CrossDesk remote control sessions
+Exec=/usr/bin/$PKG_NAME
+Icon=$PKG_NAME
+StartupWMClass=$PKG_NAME-remote-control
+Terminal=false
+Type=Application
+NoDisplay=true
+EOF
+
 # Stage and strip the application once, then package it with two dependency sets.
 # Keep the executable, launcher and configuration paths identical when switching.
 for package_name in "$PKG_NAME" "$VIRTUAL_PACKAGE_NAME"; do

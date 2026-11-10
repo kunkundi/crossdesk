@@ -1,0 +1,82 @@
+--- a/internal/core/window.rs
++++ b/internal/core/window.rs
+@@ -537,6 +537,7 @@
+     close_requested: Callback<(), CloseRequestResponse>,
+     click_state: ClickState,
+     ctx: core::cell::OnceCell<crate::SlintContext>,
++    xdg_app_id_override: RefCell<Option<SharedString>>,
+ }
+
+ impl Drop for WindowInner {
+@@ -598,6 +599,7 @@
+             click_state: ClickState::default(),
+             prevent_focus_change: Default::default(),
+             ctx: Default::default(),
++            xdg_app_id_override: Default::default(),
+             menubar: Default::default(),
+         }
+     }
+@@ -2170,9 +2172,15 @@
+         }
+     }
+
+-    /// Returns the (context global) xdg app id for use with wayland and x11.
++    /// Returns the window's xdg app id, falling back to the context default.
+     pub fn xdg_app_id(&self) -> Option<SharedString> {
+-        self.context().xdg_app_id()
++        self.xdg_app_id_override.borrow().clone().or_else(|| self.context().xdg_app_id())
++    }
++
++    /// Sets an override before native window creation. Winit reads this again
++    /// when recreating the native window, so hide/show preserves the identity.
++    pub fn set_xdg_app_id(&self, app_id: SharedString) {
++        self.xdg_app_id_override.replace(Some(app_id));
+     }
+
+     /// Returns the upgraded window adapter
+@@ -2823,6 +2831,17 @@
+     }
+
+     #[unsafe(no_mangle)]
++    pub unsafe extern "C" fn slint_windowrc_set_xdg_app_id(
++        handle: *const WindowAdapterRcOpaque,
++        app_id: &SharedString,
++    ) {
++        unsafe {
++            let window_adapter = &*(handle as *const Rc<dyn WindowAdapter>);
++            WindowInner::from_pub(window_adapter.window()).set_xdg_app_id(app_id.clone());
++        }
++    }
++
++    #[unsafe(no_mangle)]
+     pub unsafe extern "C" fn slint_windowrc_set_fullscreen(
+         handle: *const WindowAdapterRcOpaque,
+         value: bool,
+--- a/api/cpp/include/private/slint_window.h
++++ b/api/cpp/include/private/slint_window.h
+@@ -497,6 +497,15 @@
+         return inner.scale_factor();
+     }
+
++    /// Override the application id for this window on X11 and Wayland.
++    /// Call before native window creation; existing windows are not regrouped.
++    /// The override persists when the backend recreates the native window.
++    void set_xdg_app_id(const SharedString &app_id)
++    {
++        private_api::assert_main_thread();
++        cbindgen_private::slint_windowrc_set_xdg_app_id(&inner.handle(), &app_id);
++    }
++
+     /// Returns if the window is currently fullscreen
+     bool is_fullscreen() const
+     {
+--- a/api/cpp/cbindgen.rs
++++ b/api/cpp/cbindgen.rs
+@@ -756,6 +756,7 @@
+             "slint_windowrc_dispatch_pointer_event",
+             "slint_windowrc_dispatch_key_event",
+             "slint_windowrc_dispatch_event",
++            "slint_windowrc_set_xdg_app_id",
+             "slint_windowrc_set_fullscreen",
+             "slint_windowrc_set_minimized",
+             "slint_windowrc_set_maximized",
