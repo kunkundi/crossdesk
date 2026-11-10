@@ -116,9 +116,10 @@ int main() {
   ok &= ExpectContains("crossdesk_session_helper.rc", session_helper_rc,
                        "crossdesk_session_helper.exe");
   ok &= ExpectContains("crossdesk_session_helper.rc", session_helper_rc,
-                       "CROSSDESK_PORTABLE");
+                       "CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "
+                       "\"crossdesk_session_helper.manifest\"");
   ok &= ExpectContains("crossdesk_session_helper.rc", session_helper_rc,
-                       "crossdesk_portable.manifest");
+                       "version_info.rcinc");
   ok &= ExpectContains("wgc_plugin.rc", wgc_plugin_rc, "wgc_plugin.dll");
   ok &= ExpectContains("version_info.rcinc", version_info, "ProductName");
   ok &= ExpectContains("version_info.rcinc", version_info,

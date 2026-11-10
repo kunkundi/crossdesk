@@ -25,8 +25,9 @@ function main(plat, portable)
         return table.contains(flatten(values), expected)
     end
     local function effective_defines(target)
+        -- Private dependency defines do not reach this target's compiler.
         return table.join(table.wrap(target:get("defines")),
-            flatten(target:get_from("defines", "dep::*")))
+            flatten(target:get_from("defines", "dep::*", {interface = true})))
     end
 
     for _, name in ipairs({"minirtc", "media", "common", "crossdesk_wire", "rd_log"}) do
@@ -73,10 +74,10 @@ function main(plat, portable)
         for name, resource in pairs(resources) do
             local defines = targets[name]:fileconfig(path.translate(
                 "apps/desktop/resources/windows/" .. resource .. ".rc")).defines
-            assert(contains(defines, 'CROSSDESK_VERSION_STRING="v1.5.3-2-20260913"'))
-            assert(contains(defines, "CROSSDESK_VERSION_NUMERIC=1,5,3,0"))
-            assert(contains(defines, "CROSSDESK_PORTABLE=1") ==
-                (name == "crossdesk_session_helper" and portable == "true"))
+            assert(contains(defines, 'CROSSDESK_VERSION_STRING="v1.5.3-2-20260913"'),
+                name .. " resource has an incorrect version string")
+            assert(contains(defines, "CROSSDESK_VERSION_NUMERIC=1,5,3,0"),
+                name .. " resource has an incorrect numeric version")
         end
     end
     print("Build define scopes passed: %s portable=%s", plat, portable)
