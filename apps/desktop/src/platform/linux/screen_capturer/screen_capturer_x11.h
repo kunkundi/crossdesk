@@ -11,8 +11,6 @@
 struct _XDisplay;
 typedef struct _XDisplay Display;
 typedef unsigned long Window;
-struct _XRRScreenResources;
-typedef struct _XRRScreenResources XRRScreenResources;
 struct _XImage;
 typedef struct _XImage XImage;
 
@@ -21,6 +19,7 @@ typedef struct _XImage XImage;
 #include <cstring>
 #include <functional>
 #include <iostream>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -52,11 +51,13 @@ class ScreenCapturerX11 : public ScreenCapturer {
  private:
   void DrawCursor(XImage* image, int x, int y);
   bool ProbeCapture();
+  void RefreshDisplays();
+  void HandleDisplayEvents();
 
  private:
   Display* display_ = nullptr;
   Window root_ = 0;
-  XRRScreenResources* screen_res_ = nullptr;
+  int randr_event_base_ = -1;
   int left_ = 0;
   int top_ = 0;
   int width_ = 0;
@@ -70,6 +71,7 @@ class ScreenCapturerX11 : public ScreenCapturer {
   int fps_ = 60;
   cb_desktop_data callback_;
   std::vector<DisplayInfo> display_info_list_;
+  std::mutex display_info_mutex_;
   int capture_error_count_ = 0;
   bool use_abgr_to_nv12_ = false;
 

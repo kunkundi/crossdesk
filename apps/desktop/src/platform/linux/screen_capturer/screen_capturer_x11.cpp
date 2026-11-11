@@ -13,53 +13,9 @@
 #include <display_stream_id.h>
 #include "libyuv.h"
 #include "rd_log.h"
+#include "x11_error_trap.h"
 
 namespace crossdesk {
-
-namespace {
-
-std::atomic<int> g_x11_last_error_code{0};
-std::mutex g_x11_error_handler_mutex;
-
-int CaptureX11ErrorHandler([[maybe_unused]] Display* display,
-                           XErrorEvent* error_event) {
-  if (error_event) {
-    g_x11_last_error_code.store(error_event->error_code);
-  } else {
-    g_x11_last_error_code.store(-1);
-  }
-  return 0;
-}
-
-class ScopedX11ErrorTrap {
- public:
-  explicit ScopedX11ErrorTrap(Display* display)
-      : display_(display), lock_(g_x11_error_handler_mutex) {
-    g_x11_last_error_code.store(0);
-    previous_handler_ = XSetErrorHandler(CaptureX11ErrorHandler);
-  }
-
-  ~ScopedX11ErrorTrap() {
-    if (display_) {
-      XSync(display_, False);
-    }
-    XSetErrorHandler(previous_handler_);
-  }
-
-  int SyncAndGetError() const {
-    if (display_) {
-      XSync(display_, False);
-    }
-    return g_x11_last_error_code.load();
-  }
-
- private:
-  Display* display_ = nullptr;
-  int (*previous_handler_)(Display*, XErrorEvent*) = nullptr;
-  std::unique_lock<std::mutex> lock_;
-};
-
-}  // namespace
 
 ScreenCapturerX11::ScreenCapturerX11() {}
 
@@ -92,40 +48,11 @@ int ScreenCapturerX11::Init(const int fps, cb_desktop_data cb) {
 
   int event_base = 0, error_base = 0;
   if (XRRQueryExtension(display_, &event_base, &error_base)) {
-    screen_res_ = XRRGetScreenResources(display_, root_);
+    randr_event_base_ = event_base;
+    XRRSelectInput(display_, root_, RRScreenChangeNotifyMask |
+                      RRCrtcChangeNotifyMask | RROutputChangeNotifyMask);
   }
-  if (screen_res_) {
-    for (int i = 0; i < screen_res_->noutput; ++i) {
-      XRROutputInfo* output =
-          XRRGetOutputInfo(display_, screen_res_, screen_res_->outputs[i]);
-      if (!output) continue;
-      if (output->connection == RR_Connected && output->crtc != 0) {
-        XRRCrtcInfo* crtc = XRRGetCrtcInfo(display_, screen_res_, output->crtc);
-        if (crtc) {
-          std::string name(output->name, output->nameLen);
-          if (name.empty()) name = "Display" + std::to_string(i + 1);
-          // Reject stale/offscreen CRTCs after hot-unplug. The root drawable
-          // remains a usable virtual screen even when no output is connected.
-          if (crtc->width > 1 && crtc->height > 1 && crtc->x >= 0 &&
-              crtc->y >= 0 &&
-              crtc->x + crtc->width <= static_cast<unsigned>(attr.width) &&
-              crtc->y + crtc->height <= static_cast<unsigned>(attr.height)) {
-            display_info_list_.emplace_back(
-                display_, name, true, crtc->x, crtc->y,
-                crtc->x + crtc->width, crtc->y + crtc->height);
-          }
-          XRRFreeCrtcInfo(crtc);
-        }
-      }
-      XRRFreeOutputInfo(output);
-    }
-  }
-  if (display_info_list_.empty()) {
-    display_info_list_.emplace_back(display_, "Virtual Display", true,
-                                    0, 0, width_, height_);
-    LOG_INFO("No active X11 outputs; capturing virtual root window {}x{}",
-             width_, height_);
-  }
+  RefreshDisplays();
 
   fps_ = fps;
   callback_ = cb;
@@ -147,15 +74,15 @@ int ScreenCapturerX11::Destroy() {
 
   y_plane_.clear();
   uv_plane_.clear();
-  display_info_list_.clear();
+  {
+    std::lock_guard lock(display_info_mutex_);
+    display_info_list_.clear();
+  }
   monitor_index_ = initial_monitor_index_ = 0;
   root_ = 0;
   callback_ = nullptr;
 
-  if (screen_res_) {
-    XRRFreeScreenResources(screen_res_);
-    screen_res_ = nullptr;
-  }
+  randr_event_base_ = -1;
 
   if (display_) {
     XCloseDisplay(display_);
@@ -178,6 +105,7 @@ int ScreenCapturerX11::Start(bool show_cursor) {
 
     while (running_) {
       const auto frame_start = clock::now();
+      HandleDisplayEvents();
       if (!paused_) {
         OnFrame();
       }
@@ -211,6 +139,7 @@ int ScreenCapturerX11::Resume(int monitor_index) {
 }
 
 int ScreenCapturerX11::SwitchTo(int monitor_index) {
+  std::lock_guard lock(display_info_mutex_);
   if (monitor_index < 0 ||
       monitor_index >= static_cast<int>(display_info_list_.size())) return -1;
   monitor_index_ = monitor_index;
@@ -222,7 +151,88 @@ int ScreenCapturerX11::ResetToInitialMonitor() {
   return 0;
 }
 std::vector<DisplayInfo> ScreenCapturerX11::GetDisplayInfoList() {
+  std::lock_guard lock(display_info_mutex_);
   return display_info_list_;
+}
+
+void ScreenCapturerX11::HandleDisplayEvents() {
+  bool changed = false;
+  while (XPending(display_)) {
+    XEvent event{};
+    XNextEvent(display_, &event);
+    if (randr_event_base_ >= 0 &&
+        (event.type == randr_event_base_ + RRScreenChangeNotify ||
+         event.type == randr_event_base_ + RRNotify)) {
+      XRRUpdateConfiguration(&event);
+      changed = true;
+    }
+  }
+  if (changed) RefreshDisplays();
+}
+
+void ScreenCapturerX11::RefreshDisplays() {
+  ScopedX11ErrorTrap trap(display_);
+  XWindowAttributes attr{};
+  if (!XGetWindowAttributes(display_, root_, &attr)) return;
+  std::vector<DisplayInfo> latest;
+  auto* resources = randr_event_base_ >= 0
+                        ? XRRGetScreenResources(display_, root_)
+                        : nullptr;
+  if (resources) {
+    const auto primary = XRRGetOutputPrimary(display_, root_);
+    for (int i = 0; i < resources->noutput; ++i) {
+      const auto id = resources->outputs[i];
+      auto* output = XRRGetOutputInfo(display_, resources, id);
+      if (!output) continue;
+      if (output->connection == RR_Connected && output->crtc) {
+        auto* crtc = XRRGetCrtcInfo(display_, resources, output->crtc);
+        if (crtc) {
+          if (crtc->mode && crtc->width > 1 && crtc->height > 1 &&
+              crtc->x >= 0 && crtc->y >= 0 &&
+              crtc->x + crtc->width <= static_cast<unsigned>(attr.width) &&
+              crtc->y + crtc->height <= static_cast<unsigned>(attr.height)) {
+            latest.emplace_back(reinterpret_cast<void*>(id),
+                                std::string(output->name, output->nameLen),
+                                id == primary, crtc->x, crtc->y,
+                                crtc->x + crtc->width, crtc->y + crtc->height);
+          }
+          XRRFreeCrtcInfo(crtc);
+        }
+      }
+      XRRFreeOutputInfo(output);
+    }
+    XRRFreeScreenResources(resources);
+  }
+  if (trap.SyncAndGetError()) return;
+  std::lock_guard lock(display_info_mutex_);
+  if (display_info_list_.empty()) {
+    if (latest.empty()) {
+      latest.emplace_back(nullptr, "Virtual Display", true, 0, 0,
+                          attr.width & ~1, attr.height & ~1);
+    }
+    display_info_list_ = std::move(latest);
+    return;
+  }
+  // Keep stream slots stable across mode changes and unplug/replug. Newly
+  // attached outputs need peer stream registration before they can be used.
+  for (auto& existing : display_info_list_) {
+    if (!existing.handle) {
+      existing.right = existing.width = attr.width & ~1;
+      existing.bottom = existing.height = attr.height & ~1;
+      continue;
+    }
+    const auto found = std::find_if(latest.begin(), latest.end(),
+        [&](const auto& item) {
+          return item.handle == existing.handle && item.name == existing.name;
+        });
+    if (found != latest.end()) {
+      existing = *found;
+    } else {
+      existing.width = existing.height = 0;
+      existing.right = existing.left;
+      existing.bottom = existing.top;
+    }
+  }
 }
 
 void ScreenCapturerX11::OnFrame() {
@@ -232,16 +242,16 @@ void ScreenCapturerX11::OnFrame() {
   }
 
   const int monitor_index = monitor_index_.load();
-  if (monitor_index < 0 ||
-      monitor_index >= static_cast<int>(display_info_list_.size())) {
-    LOG_ERROR("Invalid monitor index: {}", monitor_index);
-    return;
+  {
+    std::lock_guard lock(display_info_mutex_);
+    if (monitor_index < 0 ||
+        monitor_index >= static_cast<int>(display_info_list_.size())) return;
+    const auto& selected = display_info_list_[monitor_index];
+    left_ = selected.left;
+    top_ = selected.top;
+    width_ = selected.width & ~1;
+    height_ = selected.height & ~1;
   }
-
-  left_ = display_info_list_[monitor_index].left;
-  top_ = display_info_list_[monitor_index].top;
-  width_ = display_info_list_[monitor_index].width & ~1;
-  height_ = display_info_list_[monitor_index].height & ~1;
 
   if (width_ <= 1 || height_ <= 1) {
     LOG_ERROR("Invalid capture size: {}x{}", width_, height_);

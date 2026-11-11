@@ -385,6 +385,7 @@ function setup_targets()
             add_packages("libyuv")
             add_files("apps/desktop/src/platform/linux/screen_capturer/screen_capturer_linux.cpp")
             add_files("apps/desktop/src/platform/linux/screen_capturer/screen_capturer_x11.cpp")
+            add_files("apps/desktop/src/platform/linux/screen_capturer/display_resolution_linux.cpp")
             add_files("apps/desktop/src/platform/linux/screen_capturer/screen_capturer_drm.cpp")
             add_files("apps/desktop/src/platform/linux/screen_capturer/screen_capturer_factory.cpp")
             if is_config("USE_WAYLAND", true) then

@@ -560,8 +560,19 @@ void ScreenCapturerLinux::UpdateAliasesFromBackend(ScreenCapturer* backend) {
        ++current_index) {
     const auto& backend_display = backend_displays[current_index];
     int canonical_index = -1;
+    // Native identity survives a resolution change; geometry may now coincide
+    // with another screen and must not redirect this stream to its slot.
     for (size_t i = 0; i < canonical_displays_.size(); ++i) {
-      if (!used[i] && similar(backend_display, canonical_displays_[i])) {
+      if (!used[i] && backend_display.handle &&
+          backend_display.handle == canonical_displays_[i].handle &&
+          backend_display.name == canonical_displays_[i].name) {
+        canonical_index = static_cast<int>(i);
+        break;
+      }
+    }
+    for (size_t i = 0; i < canonical_displays_.size(); ++i) {
+      if (canonical_index < 0 && !used[i] &&
+          similar(backend_display, canonical_displays_[i])) {
         canonical_index = static_cast<int>(i);
         break;
       }

@@ -9,6 +9,8 @@
 #include "platform/windows/screen_capturer/display_resolution_win.h"
 #elif defined(__APPLE__)
 #include "platform/macos/screen_capturer/display_resolution_mac.h"
+#elif defined(__linux__) && !defined(__OHOS__)
+#include "platform/linux/screen_capturer/display_resolution_linux.h"
 #endif
 
 namespace crossdesk {
@@ -25,6 +27,9 @@ std::vector<DisplayResolutionInfo> GuiRuntime::QueryHostDisplayResolutions() {
 #elif defined(__APPLE__)
   std::lock_guard lock(native_display_resolution_mutex);
   return QueryMacDisplayResolutions(devices_.display_info_list());
+#elif defined(__linux__) && !defined(__OHOS__)
+  std::lock_guard lock(native_display_resolution_mutex);
+  return QueryLinuxDisplayResolutions(devices_.display_info_list());
 #else
   return {};
 #endif
@@ -126,6 +131,19 @@ void GuiRuntime::HandleDisplayResolutionChanges() {
                 },
                 [&] {
                   return ApplyMacDisplayResolution(displays, command.change);
+                });
+      }
+#elif defined(__linux__) && !defined(__OHOS__)
+      {
+        std::lock_guard lock(native_display_resolution_mutex);
+        reply.resolution_change.accepted =
+            display_resolution_restoration_.Apply(
+                command.change.display_key,
+                [&] {
+                  return CaptureLinuxDisplayResolution(displays, command.change);
+                },
+                [&] {
+                  return ApplyLinuxDisplayResolution(displays, command.change);
                 });
       }
 #endif

@@ -139,6 +139,8 @@ Network statistics in both ordinary sessions and DeskHub show the video codecs a
 
 After connecting, open **Video settings** (the sliders icon) in the toolbar. Choose low / medium / high quality, **30 / 60 fps**, and frame-rate priority / quality priority / balanced adaptation. Changes are sent to the current host without reconnecting; actual results depend on the network, device, and encoder. For older hosts that do not support live video settings, the menu explains the limitation and disables the options.
 
+For Windows, macOS, and Linux X11 hosts, **Video settings → Resolution** also lists supported desktop resolutions for the selected monitor. Changes take effect without reconnecting; when the last controller disconnects, the display mode from before the first change is restored. Linux requires X11 capture and a RandR-capable display server. Wayland, XWayland, and custom scaling or panning configurations are not supported. Choices come from the monitor or virtual display server; no additional modes are created for virtual screens that expose only one mode.
+
 <p align="center">
   <img src="images/desktop-stream-video-settings-en.png" width="800" alt="Current session video menu with quality, capture frame rate, and video preference; the background is a public page used for demonstration" />
 </p>
