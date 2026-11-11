@@ -84,7 +84,7 @@ const key = z.enum([
   "MEDIA_STOP", "MEDIA_PLAY_PAUSE",
   "SEMICOLON", "EQUAL", "COMMA", "MINUS", "PERIOD", "SLASH", "BACKQUOTE", "BRACKET_LEFT", "BACKSLASH", "BRACKET_RIGHT", "QUOTE",
 ]);
-export const action = z.discriminatedUnion("type", [
+export const singleAction = z.discriminatedUnion("type", [
   point.extend({ type: z.literal("move"), modifiers }),
   point.extend({ type: z.literal("mouse_down"), button }),
   point.extend({ type: z.literal("mouse_up"), button }),
@@ -121,6 +121,31 @@ export const action = z.discriminatedUnion("type", [
       .max(16384)
       .refine((s) => Buffer.byteLength(s) <= 16384 && !s.includes("\0")),
   }),
+]);
+const sequenceAction = singleAction.refine((value) =>
+  !["key_down", "key_up", "mouse_down", "mouse_up"].includes(value.type),
+  "Sequences cannot hold inputs across actions.");
+export const action = z.union([singleAction, z.strictObject({
+  type: z.literal("sequence"),
+  actions: z.array(sequenceAction).min(1).max(8),
+  interval_ms: z.int().min(0).max(500).default(100),
+}).refine((value) => value.actions.reduce((bytes, item) =>
+  bytes + (item.type === "type_text" ? Buffer.byteLength(item.text) : 0), 0) <= 16384,
+  "Sequence text is limited to 16 KiB.")]);
+export const actionWait = z.union([
+  z.strictObject({
+    condition: z.enum(["changed", "stable"]),
+    observation_id: id.optional().describe("Optional pre-action observation of a relevant cropped region."),
+    stable_ms: z.int().min(100).max(5000).default(200),
+    timeout_ms: z.int().min(0).max(5000).default(1000),
+  }),
+  z.strictObject({
+    condition: z.literal("ui"),
+    text: z.string().min(1).max(256).optional(),
+    role: z.string().min(1).max(128).optional(),
+    pid: z.int().min(0).max(2147483647).optional(),
+    timeout_ms: z.int().min(0).max(5000).default(2000),
+  }).refine((value) => !!value.text || !!value.role),
 ]);
 const normalizedPoint = z.strictObject({ x: z.number().finite().min(0).max(1), y: z.number().finite().min(0).max(1) });
 export const viewerInput = z.strictObject({

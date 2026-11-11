@@ -94,6 +94,8 @@ type Pending = {
 export class NativeClient {
   unlockSupported = false;
   viewerInputSupported = false;
+  sequenceSupported = false;
+  waitAfterFrameSupported = false;
   private child: ChildProcess;
   private pending = new Map<number, Pending>();
   private sequence = 0;
@@ -152,6 +154,8 @@ export class NativeClient {
     );
     this.unlockSupported = hello.unlock_protocol === "password/1";
     this.viewerInputSupported = hello.viewer_input_protocol === "events/1";
+    this.sequenceSupported = hello.action_sequence_protocol === "sequence/1";
+    this.waitAfterFrameSupported = hello.wait_after_frame_supported === true;
     if (hello.protocol !== "crossdesk-automation/1" ||
         hello.terminal_protocol !== "ansi/1" ||
         hello.video_transport !== "loopback-websocket/1" ||

@@ -141,6 +141,30 @@ int KeyCode(const std::string &key) {
 }
 } // namespace
 
+std::vector<std::vector<Step>> BuildInputSequence(const json &a, const InputGeometry &o) {
+  Fields(a, {"type", "actions", "interval_ms"});
+  if (String(a, "type", 32) != "sequence" || !a.contains("actions") ||
+      !a["actions"].is_array() || a["actions"].empty() || a["actions"].size() > 8)
+    throw std::invalid_argument("INVALID_SEQUENCE");
+  const int interval = Number(a, "interval_ms", 0, 500, 100);
+  int duration = int(a["actions"].size() - 1) * interval;
+  size_t text_bytes = 0;
+  std::vector<std::vector<Step>> result;
+  for (const auto &item : a["actions"]) {
+    const auto type = String(item, "type", 32);
+    if (type == "sequence" || type == "key_down" || type == "key_up" ||
+        type == "mouse_down" || type == "mouse_up")
+      throw std::invalid_argument("INVALID_SEQUENCE");
+    auto steps = BuildInputSteps(item, o);
+    duration += steps.back().delay;
+    for (const auto &step : steps) text_bytes += step.text.size();
+    if (duration > 8000 || text_bytes > 16384)
+      throw std::invalid_argument("SEQUENCE_LIMIT");
+    result.push_back(std::move(steps));
+  }
+  return result;
+}
+
 std::vector<Step> BuildInputSteps(const json &a, const InputGeometry &o) {
   const auto type = String(a, "type", 32);
   std::vector<Step> steps;

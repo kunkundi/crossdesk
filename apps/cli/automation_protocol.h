@@ -36,6 +36,8 @@ struct Step {
 // Pure validation and translation: no session access or input side effects.
 std::vector<Step> BuildInputSteps(const json &action,
                                   const InputGeometry &geometry);
+std::vector<std::vector<Step>> BuildInputSequence(const json &action,
+                                                const InputGeometry &geometry);
 std::vector<Step> BuildUnlockSteps(const std::string &password, bool macos);
 } // namespace crossdesk::cli::automation
 

@@ -179,6 +179,17 @@ export class Sessions {
     if (!session) throw new Failure("SESSION_NOT_FOUND");
     return session;
   }
+  private automation(s: Session): Data {
+    const desktop = s.status.capabilities?.desktop === true;
+    return {
+      sequence_supported: s.native.sequenceSupported,
+      input_ack_supported: s.status.capabilities?.input_ack === true,
+      desktop_supported: desktop,
+      frame_bound_wait_supported: s.native.waitAfterFrameSupported,
+      preferred_input: desktop ? "desktop_action" : "action",
+      ...(!desktop ? { compatibility_note: "Remote desktop automation is not advertised. Use screenshot-based input; update the remote client to enable direct URL/app and accessibility operations." } : {}),
+    };
+  }
   async status(sessionId?: string, viewId?: string, signal?: AbortSignal): Promise<Data> {
     const view = viewId ? this.view(viewId) : undefined;
     const id = sessionId ?? view?.session;
@@ -226,6 +237,7 @@ export class Sessions {
     this.checkUnlock(s);
     return {
       ...s.status,
+      automation: this.automation(s),
       session_id: s.id,
       device_alias: s.device.alias,
       reconnect_enabled: s.recoveryEnabled,
@@ -235,7 +247,7 @@ export class Sessions {
       ...(view ? this.describe(view) : {}),
       state: s.status.state,
       ...(s.status.state === "ready" ? {
-        next_step: "Connection ready. Continue the user's pending task within the current authorization. Obtain a screenshot before input; respect human_paused and control. No user confirmation message is needed.",
+        next_step: "Reuse this session and its advertised automation capabilities. Prefer desktop_action for supported URL/app/UI operations; otherwise use action. Group fixed inputs into short sequences and use the returned observation for the next decision. Do not duplicate screenshots unless stale or insufficient. Respect human_paused and control; continue the pending task without chat confirmation.",
       } : ["closed", "failed", "disconnected"].includes(s.status.state) ? {
         next_step: "The connection ended. Stop waiting and do not automatically reconnect or replay actions.",
       } : {}),
@@ -573,7 +585,7 @@ export class Sessions {
         if (this.active.get(s.id) !== s || signal.aborted) throw new Failure("CANCELLED");
         if (s.status.state === "ready" && typeof s.status.frame_age_ms === "number" && s.status.frame_age_ms <= 2000) {
           s.connecting = false;
-          return { ...s.status, session_id: s.id, device_alias: s.device.alias };
+          return { ...s.status, automation: this.automation(s), session_id: s.id, device_alias: s.device.alias };
         }
         if (["failed", "closed", "disconnected"].includes(s.status.state)) {
           const code = connectionErrors.get(s.status.error);
@@ -627,20 +639,51 @@ export class Sessions {
     return observation.slice(prefix.length);
   }
   async action(p: Data, signal?: AbortSignal): Promise<Data> {
-    const { session_id, observe_after = true, ...args } = p;
+    const { session_id, observe_after = true, wait, ...args } = p;
     const s = this.session(session_id);
     if (s.displayBatch) throw new Failure("BUSY");
     this.checkUnlock(s);
     if (s.unlock && this.unlockPending(s.unlock)) throw new Failure("UNLOCK_PENDING");
+    if (args.action.type === "sequence" && !s.native.sequenceSupported)
+      throw new Failure("NATIVE_SEQUENCE_UNSUPPORTED");
+    if (wait?.condition === "ui" && s.status.capabilities?.desktop !== true)
+      throw new Failure("UI_AUTOMATION_UNSUPPORTED");
     args.observation_id = this.nativeObservation(s, args.observation_id);
-    const result = await s.native.request("action", args, (args.action.duration_ms ?? 0) + 5000, signal);
+    // Reject cross-session wait references before sending any input.
+    const waitObservation = wait?.observation_id
+      ? this.nativeObservation(s, wait.observation_id) : args.observation_id;
+    const started = performance.now();
+    const result = await s.native.request("action", args,
+      args.action.type === "sequence" ? 30000 : (args.action.duration_ms ?? 0) + 5000, signal);
+    const inputMs = Math.round(performance.now() - started);
     if (observe_after && result.status === "submitted") {
+      try {
+        // Pointer motion/held-input primitives need not change captured pixels.
+        const condition = wait ?? (["move", "key_down", "key_up", "mouse_down", "mouse_up"].includes(args.action.type)
+          ? undefined : { condition: "changed", timeout_ms: 1000 });
+        if (condition?.condition === "ui") {
+          const { condition: _, ...query } = condition;
+          result.wait = await this.waitUI({ ...query, session_id, condition: "present" }, signal);
+        } else if (condition) {
+          result.wait = await s.native.request("wait_frame", {
+            observation_id: waitObservation, condition: condition.condition,
+            stable_ms: condition.stable_ms ?? 200, timeout_ms: condition.timeout_ms ?? 1000,
+            ...(s.native.waitAfterFrameSupported ? { after_frame_id: result.after_frame_id } : {}),
+          }, (condition.timeout_ms ?? 1000) + 3000, signal);
+          result.wait.frame_bound = s.native.waitAfterFrameSupported;
+        }
+      } catch (error) {
+        // Observation errors never erase a successful or uncertain input result.
+        result.wait = { matched: false, error: failure(error) };
+      }
       try {
         result.observation = await this.screenshot(
           {
             session_id,
             generation: result.generation,
-            after_frame_id: result.after_frame_id,
+            // A matched frame can be encoded directly; avoid another frame wait.
+            after_frame_id: result.wait?.matched && result.wait.frame_id
+              ? Math.max(result.after_frame_id, result.wait.frame_id - 1) : result.after_frame_id,
             timeout_ms: 2000,
           },
           signal,
@@ -650,6 +693,9 @@ export class Sessions {
           error instanceof Failure ? error.code : "OBSERVATION_FAILED";
       }
     }
+    result.timing_ms = { ...result.timing_ms, input_round_trip: inputMs,
+      observation: Math.round(performance.now() - started) - inputMs,
+      total: Math.round(performance.now() - started) };
     return result;
   }
   async waitFor(p: Data, signal?: AbortSignal): Promise<Data> {

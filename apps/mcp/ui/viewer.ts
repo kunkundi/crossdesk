@@ -9,17 +9,31 @@ declare const CROSSDESK_APPS: boolean;
 declare const CROSSDESK_LOGO: string;
 type Data = Record<string, any>;
 type Invoke = (name: string, args?: Data) => Promise<Data>;
+const icons = {
+  monitor: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8m-4-4v4"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/>',
+  volume: '<path d="m11 4-6 5H2v6h3l6 5V4Zm4 4a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>',
+  mouse: '<rect x="6" y="2" width="12" height="20" rx="6"/><path d="M12 2v6"/>',
+  pause: '<path d="M8 5v14m8-14v14"/>',
+  power: '<path d="M12 2v10m6-7a9 9 0 1 1-12 0"/>',
+  expand: '<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/>',
+  arrow: '<path d="M4 12h16m-6-6 6 6-6 6"/>',
+  more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
+};
+const icon = (name: keyof typeof icons) => `<svg class="icon icon-${name}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name]}</svg>`;
 const root = document.querySelector<HTMLDivElement>("#app")!;
 root.innerHTML = `
 <header class="app-header">
-  <div class="brand"><img class="brand-logo" src="${CROSSDESK_LOGO}" alt="" width="28" height="28"><h1>CrossDesk MCP</h1></div>
-  <div class="header-right"><button id="details-toggle" aria-expanded="false" aria-controls="sidebar">连接信息</button><span class="connection" id="connection" role="status"><span id="connection-label">等待连接</span></span></div>
+  <div class="brand"><img class="brand-logo" src="${CROSSDESK_LOGO}" alt="" width="24" height="24"><h1>CrossDesk</h1><span class="brand-context">Agent 会话</span></div>
+  <div class="header-right"><button id="details-toggle" class="quiet" aria-expanded="false" aria-controls="sidebar">${icon("info")}<span id="details-label">会话详情</span></button><span class="connection" id="connection" role="status"><span id="connection-label">等待连接</span></span></div>
 </header>
 <div id="error" role="alert" hidden></div>
 <main>
+  <button id="details-backdrop" class="details-backdrop" aria-label="关闭会话详情" tabindex="-1" hidden></button>
   <aside id="sidebar" aria-labelledby="sidebar-title">
-    <h2 id="sidebar-title">连接设备</h2>
+    <div class="sidebar-heading"><h2 id="sidebar-title">授权 Agent 连接</h2><button id="details-close" class="quiet icon-button" aria-label="关闭会话详情">×</button></div>
     <div id="connect-form" role="form" aria-label="连接远程电脑">
+      <p class="authorization-note">选择设备并授权后，Agent 将继续任务。你可以在这里查看画面或暂停控制。</p>
       <fieldset id="connection-fields">
         <label for="device">设备</label><select id="device"><option value="">连接新设备</option></select>
         <div id="new-device">
@@ -43,36 +57,49 @@ root.innerHTML = `
           <div class="row"><div><label for="port">端口</label><input id="port" type="number" min="1" max="65535" value="9099"></div><div><label for="display">显示器索引</label><input id="display" type="number" min="0" max="63" value="0"></div></div>
         </details>
       </fieldset>
-      <button id="connect" type="button" class="primary" disabled><span id="connect-label">连接</span></button>
+      <button id="connect" type="button" class="primary" disabled><span id="connect-label">授权并连接</span>${icon("arrow")}</button>
       <p class="privacy">密码不会发送到 Agent 对话中。</p>
     </div>
     <div id="session-card" hidden>
-      <div class="device-card"><strong id="session-device">远程电脑</strong><span id="session-platform">已连接</span></div>
-      <dl class="session-details"><div id="session-device-id-row" hidden><dt>设备 ID</dt><dd id="session-device-id"></dd></div><div><dt>访问权限</dt><dd id="session-access"></dd></div><div><dt>显示器</dt><dd id="session-display"></dd></div><div><dt>Agent 状态</dt><dd id="session-agent"></dd></div><div><dt>锁屏密码</dt><dd id="session-unlock-credential"></dd></div><div id="session-unlock-row" hidden><dt>解锁状态</dt><dd class="session-unlock-details"><span id="session-unlock-state"></span><button id="unlock-open" type="button" hidden>输入密码</button></dd></div></dl>
-      <label class="check"><input id="recovery" type="checkbox">断线自动恢复</label>
+      <div class="device-card"><div class="device-icon">${icon("monitor")}</div><div class="device-identity"><strong id="session-device">远程电脑</strong><span id="session-platform">已连接</span></div></div>
+      <dl class="session-details"><div id="session-device-id-row" hidden><dt>设备 ID</dt><dd id="session-device-id"></dd></div><div><dt>访问权限</dt><dd id="session-access"></dd></div><div><dt>显示器</dt><dd id="session-display"></dd></div><div><dt>Agent 状态</dt><dd id="session-agent"></dd></div><div><dt>锁屏密码</dt><dd id="session-unlock-credential"></dd></div><div id="session-unlock-row" hidden><dt>解锁状态</dt><dd class="session-unlock-details"><span id="session-unlock-state"></span></dd></div></dl>
+      <label class="check"><input id="recovery" type="checkbox"><span>断线自动恢复</span></label>
       <p class="session-note">关闭页面不会断开连接。</p>
     </div>
   </aside>
   <section class="workspace" aria-label="远程画面与会话控制">
     <div class="viewer-card">
       <div class="viewer-toolbar">
-        <div class="viewer-title"><h2 id="device-name">远程画面</h2><span id="video-state">待连接</span></div>
-        <div class="viewer-controls"><button id="audio-play" disabled>播放声音</button><label class="audio-volume">音量<input id="audio-volume" type="range" min="0" max="1" step="0.05" value="1"></label><button id="take-over" disabled>人工接管</button><button id="pause" disabled><span id="pause-label">暂停控制</span></button><button id="disconnect" class="danger" disabled>断开连接</button><button id="focus-view" aria-label="放大画面" aria-pressed="false" disabled>放大画面</button></div>
+        <div class="viewer-title"><h2 id="device-name">远程画面</h2><span id="agent-state" role="status">等待授权</span></div>
+        <div class="viewer-controls">
+          <button id="return-agent" class="soft" hidden>${icon("arrow")}<span>交还 Agent</span></button>
+          <button id="pause" title="暂停 Agent 控制" hidden disabled>${icon("pause")}<span id="pause-label">暂停 Agent</span></button>
+          <button id="more-toggle" class="quiet icon-button" aria-label="会话选项" title="会话选项" aria-expanded="false" aria-controls="session-menu" aria-haspopup="dialog">${icon("more")}</button>
+        </div>
       </div>
+      <div id="attention" class="attention" role="status" hidden><span>Agent 等待系统解锁</span><button id="unlock-open" type="button" hidden>输入密码</button></div>
       <div class="screen" id="screen">
         <canvas id="frame" role="img" aria-label="远程桌面实时画面" hidden></canvas>
         <canvas id="agent-cursor" aria-hidden="true"></canvas>
         <textarea id="remote-input" aria-label="远程键盘输入" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
         <div class="control-halo" aria-hidden="true"></div>
-        <div id="empty"><h3 id="empty-title">未连接设备</h3><p id="empty-description">选择设备并输入访问密码。</p></div>
+        <div id="empty"><div class="empty-icon">${icon("monitor")}</div><h3 id="empty-title">未连接设备</h3><p id="empty-description">选择设备并输入访问密码。</p></div>
         <div class="stale" id="stale" role="status" hidden>画面暂未更新</div>
       </div>
-      <div class="telemetry"><div class="stream-metrics"><span id="resolution">—</span><span id="fps">—</span></div><span id="session-info">等待设备连接</span><span id="permission">等待授权</span></div>
+      <div class="telemetry"><span id="video-state">待连接</span><div class="stream-metrics"><span id="resolution">—</span><span id="fps">—</span></div><span id="session-info">等待设备连接</span></div>
     </div>
     <div class="video-options"><button id="video-retry" hidden>重新加载画面</button><button id="video-browser" hidden>在浏览器中观看</button></div>
     <p id="panel-status" class="panel-status" role="status" hidden></p>
   </section>
 </main>
+<div id="session-menu" class="session-menu" role="dialog" aria-label="会话选项" hidden>
+  <p class="menu-caption">查看与人工干预</p>
+  <button id="focus-view" class="quiet" aria-label="放大画面" aria-pressed="false" disabled>${icon("expand")}<span id="focus-label">放大画面</span></button>
+  <button id="take-over" class="quiet" disabled>${icon("mouse")}<span id="take-over-label">人工接管</span></button>
+  <div class="menu-audio"><button id="audio-play" class="quiet" aria-label="播放声音" aria-pressed="false" disabled>${icon("volume")}<span id="audio-label">播放声音</span></button><label class="audio-volume"><span>音量</span><input id="audio-volume" type="range" min="0" max="1" step="0.05" value="1" disabled></label></div>
+  <button id="disconnect" class="quiet danger" disabled>${icon("power")}<span>断开连接</span></button>
+  <p class="menu-note">断开会结束当前远程会话。</p>
+</div>
 <dialog id="unlock-dialog" class="unlock-dialog" aria-labelledby="unlock-title" aria-describedby="unlock-status">
   <div class="unlock-dialog-header"><h2 id="unlock-title">解锁远程电脑</h2><button id="unlock-close" type="button" aria-label="关闭解锁弹窗">×</button></div>
   <p id="unlock-status" role="status"></p>
@@ -188,21 +215,62 @@ function setFocus(focused: boolean) {
   root.classList.toggle("focus-mode", focused);
   const button = element<HTMLButtonElement>("focus-view");
   const label = focused ? "还原布局" : "放大画面";
-  button.textContent = label;
+  text("focus-label", label);
   if (focused) setDetails(false);
   button.setAttribute("aria-pressed", String(focused));
   button.setAttribute("aria-label", label);
   button.title = label;
 }
 function setDetails(open: boolean) {
+  const restoreFocus = !open && root.classList.contains("details-open") &&
+    element("sidebar").contains(document.activeElement);
   root.classList.toggle("details-open", open);
+  element("details-backdrop").hidden = !open;
   element("details-toggle").setAttribute("aria-expanded", String(open));
-  text("details-toggle", open ? "收起信息" : "连接信息");
+  text("details-label", open ? "收起详情" : "会话详情");
+  if (open) { setSessionMenu(false, false); element("details-close").focus(); }
+  else if (restoreFocus && !root.classList.contains("focus-mode")) element("details-toggle").focus();
+}
+function positionSessionMenu() {
+  const menu = element("session-menu");
+  const rect = element("more-toggle").getBoundingClientRect();
+  menu.style.top = `${Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - menu.offsetHeight - 8))}px`;
+  menu.style.right = `${Math.max(8, window.innerWidth - rect.right)}px`;
+}
+function setSessionMenu(open: boolean, restoreFocus = true) {
+  const menu = element("session-menu");
+  const hadFocus = menu.contains(document.activeElement);
+  menu.hidden = !open;
+  element("more-toggle").setAttribute("aria-expanded", String(open));
+  if (open) {
+    setDetails(false);
+    positionSessionMenu();
+    menu.querySelector<HTMLButtonElement>("button:not(:disabled):not([hidden])")?.focus();
+  } else if (restoreFocus && hadFocus) element("more-toggle").focus();
 }
 element("details-toggle").onclick = () => setDetails(!root.classList.contains("details-open"));
-element("focus-view").onclick = () => setFocus(!root.classList.contains("focus-mode"));
+element("details-close").onclick = element("details-backdrop").onclick = () => setDetails(false);
+element("more-toggle").onclick = () => setSessionMenu(element("session-menu").hidden);
+element("focus-view").onclick = () => {
+  setSessionMenu(false);
+  setFocus(!root.classList.contains("focus-mode"));
+};
+document.addEventListener("pointerdown", (event) => {
+  if (!element("session-menu").hidden && event.target instanceof Node &&
+      !element("session-menu").contains(event.target) && !element("more-toggle").contains(event.target))
+    setSessionMenu(false, false);
+});
+document.addEventListener("focusin", (event) => {
+  if (!element("session-menu").hidden && event.target instanceof Node &&
+      !element("session-menu").contains(event.target) && !element("more-toggle").contains(event.target))
+    setSessionMenu(false, false);
+});
+window.addEventListener("resize", () => { if (!element("session-menu").hidden) positionSessionMenu(); });
 window.addEventListener("keydown", (event) => {
-  if (!ownsInput() && event.key === "Escape" && !element<HTMLDialogElement>("unlock-dialog").open && root.classList.contains("focus-mode")) setFocus(false);
+  if (event.key !== "Escape" || element<HTMLDialogElement>("unlock-dialog").open) return;
+  if (!element("session-menu").hidden) { event.preventDefault(); setSessionMenu(false); }
+  else if (root.classList.contains("details-open")) { event.preventDefault(); setDetails(false); }
+  else if (!ownsInput() && root.classList.contains("focus-mode")) setFocus(false);
 });
 function hidePassword() {
   input("password").type = "password";
@@ -331,6 +399,7 @@ function renderUnlock(s: Data) {
   text("session-unlock-state", states[request?.state] ?? "—");
   element("session-unlock-state").dataset.state = request?.state ?? "";
   element("unlock-open").hidden = !visible || !pending;
+  element("attention").hidden = !visible || !pending;
   element<HTMLButtonElement>("unlock-open").disabled = unlockBusy;
   element("unlock-form").hidden = !pending;
   input("unlock-password").disabled = unlockBusy;
@@ -389,19 +458,30 @@ element("unlock-cancel").onclick = async () => {
 };
 function renderStatus(s: Data) {
   const connected = s.state === "ready" || s.state === "waiting_frame";
+  const hasSession = connected || s.state === "reconnecting";
   const lost = ["closed", "failed"].includes(s.state);
   if (lost && !disconnectedByUser && ["ready", "waiting_frame"].includes(status.state)) showError(new Error("CONNECTION_LOST"));
   const changedSession = s.session_id !== status.session_id;
   status = s;
   element<HTMLButtonElement>("audio-play").disabled = !connected || usePreview;
-  text("audio-play", audioPlayer.enabled ? "静音" : "播放声音");
+  input("audio-volume").disabled = !connected || usePreview;
+  const audioLabel = audioPlayer.enabled ? "静音" : "播放声音";
+  text("audio-label", audioLabel);
+  element("audio-play").setAttribute("aria-label", audioLabel);
+  element("audio-play").setAttribute("aria-pressed", String(audioPlayer.enabled));
+  element("audio-play").title = audioLabel;
   if (!connected || changedSession) audioPlayer.flush();
   humanInput.update(connected && ownsInput() ? s.human_input_epoch : undefined);
-  text("take-over", ownsInput() ? "交还 Agent" : "人工接管");
+  text("take-over-label", ownsInput() ? "交还 Agent" : "人工接管");
+  element("take-over").setAttribute("aria-pressed", String(ownsInput()));
   element<HTMLButtonElement>("take-over").disabled = !connected || !s.control_allowed ||
     s.viewer_input_protocol !== "events/1" || controlBusy || (!imageAt && !ownsInput());
+  element("take-over").hidden = !s.control_allowed || ownsInput();
+  element("return-agent").hidden = !connected || !ownsInput();
+  element<HTMLButtonElement>("return-agent").disabled = element<HTMLButtonElement>("take-over").disabled;
   renderUnlock(s);
-  const connecting = busy || s.state === "waiting_frame";
+  const connecting = busy || s.state === "waiting_frame" || s.state === "reconnecting";
+  root.dataset.session = String(hasSession);
   root.dataset.connected = String(connected);
   root.dataset.connecting = String(connecting);
   root.dataset.controlling = String(connected && s.control === true && s.control_allowed === true && !s.human_paused);
@@ -409,11 +489,20 @@ function renderStatus(s: Data) {
   text("connection-label", connected ? "已连接" : connecting ? "正在连接" : lost ? "未连接" : "等待连接");
   element("connect-form").hidden = connected || s.state === "reconnecting";
   element("session-card").hidden = !connected && s.state !== "reconnecting";
-  text("sidebar-title", connected ? "连接信息" : "连接设备");
-  text("device-name", connected ? s.device_alias || "远程电脑" : "远程画面");
-  if (!connected || changedSession) setDetails(false);
-  text("permission", connected ? s.control_owner === "human" ? ownsInput() ? "正在人工操作" : "其他面板正在操作" : s.human_paused ? "控制已暂停" : s.control_allowed ? "允许 Agent 操作" : "仅查看画面" : "等待授权");
-  element("permission").dataset.state = !connected ? "idle" : s.human_paused ? "paused" : "active";
+  text("sidebar-title", hasSession ? "会话详情" : "授权 Agent 连接");
+  text("device-name", hasSession ? s.device_alias || "远程电脑" : "远程画面");
+  if (!hasSession || changedSession) { setDetails(false); setSessionMenu(false, false); }
+  // Native control state describes permissions/ownership, not task execution.
+  const agentState = s.state === "reconnecting" ? "recovering" : !connected ? "idle"
+    : s.control_owner === "human" ? "human" : s.human_paused ? "paused"
+    : s.unlock?.state === "awaiting_password" ? "unlock"
+    : !s.control_allowed ? "observe" : s.control ? "enabled" : "idle";
+  const agentLabel = s.state === "reconnecting" ? "正在恢复连接" : !connected ? "等待授权"
+    : agentState === "human" ? ownsInput() ? "人工接管中 · Agent 已让出控制" : "其他面板正在人工操作"
+    : agentState === "paused" ? "Agent 控制已暂停" : agentState === "unlock" ? "Agent 等待系统解锁"
+    : agentState === "observe" ? "Agent 仅查看" : agentState === "enabled" ? "Agent 控制已启用" : "Agent 控制未启用";
+  text("agent-state", agentLabel);
+  element("agent-state").dataset.state = agentState;
   const platform = platformName(s.platform);
   text("session-info", connected ? `${platform} · 显示器 ${(s.display ?? 0) + 1}` : "等待设备连接");
   text("session-device", s.device_alias || "远程电脑");
@@ -423,18 +512,21 @@ function renderStatus(s: Data) {
   text("session-device-id", device ? String(device.device_id).replace(/(\d{3})(?=\d)/g, "$1 ") : "");
   text("session-access", s.control_allowed ? "查看与操作" : "仅查看");
   text("session-display", `显示器 ${(s.display ?? 0) + 1}`);
-  text("session-agent", s.state === "reconnecting" ? "正在恢复连接" : s.control_owner === "human" ? "人工接管中" : s.human_paused ? "已暂停" : s.control_allowed ? "允许操作" : "仅可观察");
+  text("session-agent", agentLabel);
   input("recovery").checked = s.reconnect_enabled === true;
   input("recovery").disabled = !s.session_id;
   element("session-agent").dataset.paused = String(!!s.human_paused);
   element<HTMLButtonElement>("pause").disabled = !connected || !s.control_allowed || controlBusy || s.control_owner === "human";
-  const pauseLabel = s.human_paused ? "恢复控制" : "暂停控制";
+  element("pause").hidden = !connected || !s.control_allowed || s.control_owner === "human";
+  element("pause").classList.toggle("soft", !!s.human_paused);
+  const pauseLabel = s.human_paused ? "恢复 Agent" : "暂停 Agent";
   text("pause-label", pauseLabel);
+  element("pause").title = s.human_paused ? "恢复 Agent 控制" : "暂停 Agent 控制";
   element<HTMLButtonElement>("disconnect").disabled = !s.session_id || controlBusy || busy;
   element<HTMLButtonElement>("connect").disabled = busy || connected || !invoke;
   element<HTMLFieldSetElement>("connection-fields").disabled = busy;
   element("connect").setAttribute("aria-busy", String(busy));
-  text("connect-label", busy ? "正在连接…" : "连接");
+  text("connect-label", busy ? "正在连接…" : "授权并连接");
   if (!connected) {
     element("frame").hidden = true;
     element("empty").hidden = false;
@@ -524,8 +616,9 @@ element("audio-play").onclick = async () => {
   finally { renderStatus(status); }
 };
 input("audio-volume").oninput = () => audioPlayer.volume(Number(input("audio-volume").value));
-element("take-over").onclick = async () => {
+element("take-over").onclick = element("return-agent").onclick = async () => {
   if (controlBusy) return;
+  setSessionMenu(false);
   controlBusy = true;
   humanInput.release();
   renderStatus(status);
@@ -553,6 +646,7 @@ element("pause").onclick = async () => {
 };
 element("disconnect").onclick = async () => {
   if (controlBusy) return;
+  setSessionMenu(false);
   controlBusy = true;
   disconnectedByUser = true;
   renderStatus(status);
@@ -630,6 +724,7 @@ async function startPreview() {
     if (usePreview) {
       audioPlayer.flush();
       element<HTMLButtonElement>("audio-play").disabled = true;
+      input("audio-volume").disabled = true;
       element("error").hidden = true;
       text("panel-status", "实时视频不可用，已切换为内嵌预览：最高每秒 1 帧，不含声音。需要流畅画面时可使用浏览器面板。");
       element("panel-status").hidden = false;

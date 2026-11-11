@@ -77,6 +77,7 @@ struct FrameWait {
   bool stable;
   int stable_ms;
   uint64_t signature, frame;
+  uint64_t after_frame = 0;
   Clock::time_point deadline, changed;
 };
 struct RemoteJob {
@@ -117,10 +118,14 @@ struct RunningAction {
   std::string operation;
   uint64_t generation = 0, epoch = 0;
   std::vector<Step> steps;
+  std::deque<std::vector<Step>> remaining;
+  size_t action_index = 0, action_count = 1;
+  int interval_ms = 0;
+  bool sequence = false, unacknowledged = false;
   size_t next = 0;
   bool submitted = false;
   bool retain_input = false;
-  Clock::time_point started, awaiting_ack{};
+  Clock::time_point started, total_started, awaiting_ack{};
 };
 struct Record {
   std::string operation, arguments;
@@ -213,6 +218,8 @@ private:
     result["human_input_epoch"] = human_epoch_;
     result["viewer_input_protocol"] = "events/1";
     result["control_allowed"] = allowed_;
+    result["action_sequence_protocol"] = "sequence/1";
+    result["wait_after_frame_supported"] = true;
     result["frame_age_ms"] = frame_ ? json(Age(frame_->queued)) : json(nullptr);
     result["source_size"] =
         frame_ ? json{{"width", frame_->width}, {"height", frame_->height}}
@@ -297,18 +304,37 @@ private:
     }
     if (!error && remote == "failed") error = "REMOTE_INPUT_FAILED";
     if (error) session_.ReleaseInput();
+    if (remote == "unsupported") action_->unacknowledged = true;
+    if (!error && !action_->remaining.empty()) {
+      // The full sequence was validated before the first event. Only advance
+      // after this action's input receipts; never replay an uncertain action.
+      action_->steps = std::move(action_->remaining.front());
+      action_->remaining.pop_front();
+      ++action_->action_index;
+      action_->next = 0;
+      action_->awaiting_ack = {};
+      session_.BeginInput();
+      action_->started = Clock::now() + Ms(action_->interval_ms);
+      return;
+    }
     if (session_.HasPressedInput()) input_lease_ = Clock::now() + std::chrono::seconds(15);
     json result = {
         {"status", error ? (action_->submitted ? "outcome_unknown"
                                                : "failed_before_submit")
                          : "submitted"},
         {"operation_id", action_->operation},
-        {"remote_execution", remote},
+        {"remote_execution", !error && action_->unacknowledged ? "unsupported" : remote},
         {"input_lease_ms", session_.HasPressedInput() ? 15000 : 0},
         {"generation", action_->generation},
         {"after_frame_id", frame_ ? frame_->frame_id : 0},
         {"side_effect_possible", action_->submitted},
         {"retryable", false}};
+    result["timing_ms"] = {{"input", Age(action_->total_started)}};
+    if (action_->sequence) {
+      result["sequence"] = {{"action_count", action_->action_count},
+          {"finished_actions", action_->action_index + (error ? 0 : 1)}};
+      if (error) result["sequence"]["stopped_at"] = action_->action_index;
+    }
     if (error)
       result["error"] = error;
     for (auto &record : records_)
@@ -319,6 +345,8 @@ private:
     Reply(action_->id, result);
     for (auto &step : action_->steps)
       std::fill(step.text.begin(), step.text.end(), '\0');
+    for (auto &steps : action_->remaining)
+      for (auto &step : steps) std::fill(step.text.begin(), step.text.end(), '\0');
     action_.reset();
   }
   void FinishAudio(const char *error = nullptr) {
@@ -411,10 +439,13 @@ private:
       preview_ = json();
     }
     if (action_) {
-      if (!session_.Connected() || !frame_ || paused_ || !allowed_ ||
+      if (!session_.Connected() || !frame_ || paused_ || !allowed_ || human_control_ ||
+          !session_.ControlEnabled() ||
           action_->generation != session_.Generation() ||
           action_->epoch != epoch_)
         FinishAction("SESSION_CHANGED");
+      if (action_ && action_->sequence && Age(action_->total_started) >= 25000)
+        FinishAction("SEQUENCE_TIMEOUT");
       while (action_ && action_->next < action_->steps.size() &&
              Age(action_->started) >= action_->steps[action_->next].delay) {
         auto &step = action_->steps[action_->next++];
@@ -448,7 +479,7 @@ private:
         continue;
       }
       bool matched = false;
-      if (frame_->frame_id != it->frame && Age(frame_->queued) <= 2000) {
+      if (frame_->frame_id > it->after_frame && frame_->frame_id != it->frame && Age(frame_->queued) <= 2000) {
         it->frame = frame_->frame_id;
         const auto signature = FrameSignature(*frame_, it->observation.region);
         if (signature != it->signature) {
@@ -741,7 +772,21 @@ private:
     running->epoch = o.epoch;
     if (type == "type_text" && !session_.Status()["text_input"].get<bool>())
       throw std::invalid_argument("TEXT_INPUT_UNSUPPORTED");
-    running->steps = unlock
+    if (type == "sequence") {
+      if (session_.HasPressedInput()) throw std::invalid_argument("INPUT_HELD");
+      auto groups = BuildInputSequence(j.at("action"),
+          {o.width, o.height, o.source_width, o.source_height, o.region});
+      for (const auto &steps : groups)
+        for (const auto &step : steps)
+          if (step.kind == StepKind::Text && !session_.Status()["text_input"].get<bool>())
+            throw std::invalid_argument("TEXT_INPUT_UNSUPPORTED");
+      running->sequence = true;
+      running->action_count = groups.size();
+      running->interval_ms = Number(j.at("action"), "interval_ms", 0, 500, 100);
+      running->steps = std::move(groups.front());
+      for (size_t index = 1; index < groups.size(); ++index)
+        running->remaining.push_back(std::move(groups[index]));
+    } else running->steps = unlock
         ? BuildUnlockSteps(String(j, "password", 256), session_.Status().value("platform", "") == "macos")
         : BuildInputSteps(j.at("action"), {o.width, o.height, o.source_width, o.source_height, o.region});
     if (unlock) session_.ReleaseInput();
@@ -775,6 +820,7 @@ private:
          Clock::now()});
     session_.BeginInput();
     running->started = Clock::now();
+    running->total_started = running->started;
     action_ = std::move(running);
   }
   std::string Password() {
@@ -823,6 +869,8 @@ private:
                    {"unlock_protocol", "password/1"},
                    {"viewer_input_protocol", "events/1"},
                    {"action_completion", "submitted"},
+                   {"action_sequence_protocol", "sequence/1"},
+                   {"wait_after_frame_supported", true},
                    {"max_request_bytes", 65536},
                    {"max_response_bytes", kMaxResponse},
                    {"operation_cache_entries", 128},
@@ -940,7 +988,7 @@ private:
         TrackRemote(j, id, session_.Clipboard(write, text), write, operation_id);
         return false;
       } else if (method == "wait_frame") {
-        Fields(j, {"id", "method", "observation_id", "condition", "stable_ms", "timeout_ms"});
+        Fields(j, {"id", "method", "observation_id", "condition", "stable_ms", "timeout_ms", "after_frame_id"});
         const auto &observation = Observe(j);
         const auto condition = String(j, "condition", 16);
         if (condition != "changed" && condition != "stable")
@@ -949,6 +997,7 @@ private:
         const auto now = Clock::now();
         frame_waits_.push_back({id, observation, condition == "stable",
             Number(j, "stable_ms", 100, 5000, 500), observation.signature, 0,
+            Sequence(j, "after_frame_id"),
             now + Ms(Number(j, "timeout_ms", 0, 25000, 5000)), now});
         return false;
       } else if (method == "unlock_prepare") {
