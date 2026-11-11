@@ -531,7 +531,7 @@
 				INFOPLIST_FILE = CrossDeskMobile/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				MARKETING_VERSION = 1.7.5;
+				MARKETING_VERSION = 1.7.6;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/Vendor/$(PLATFORM_NAME)/$(CONFIGURATION)/libCrossDeskMiniRTC.a",
@@ -583,7 +583,7 @@
 				INFOPLIST_FILE = CrossDeskMobile/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				MARKETING_VERSION = 1.7.5;
+				MARKETING_VERSION = 1.7.6;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/Vendor/$(PLATFORM_NAME)/$(CONFIGURATION)/libCrossDeskMiniRTC.a",
