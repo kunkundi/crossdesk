@@ -151,7 +151,8 @@ void PeerEventHandler::OnReceiveDataBuffer(
        source_id == runtime->clipboard_label_ ||
        source_id == web_clipboard::kStream))
     return;
-  if (source_id == runtime->control_data_label_ &&
+  // MiniRTC reports the browser's reliable control channel as data-stream.
+  if ((source_id == runtime->control_data_label_ || source_id == kWebControlStream) &&
       runtime->transfers_.HandleBrowser(data, size, handler, remote_id)) return;
   if (source_id == web_clipboard::kStream) {
     runtime->clipboard_.ReceiveWeb(
@@ -463,7 +464,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
   }
 
   if (remote_action.type == ControlType::host_infomation) {
-    if (source_id == runtime->control_data_label_) {
+    if (source_id == runtime->control_data_label_ || source_id == kWebControlStream) {
       runtime->transfers_.SetBrowserSupport(handler, remote_id,
           remote_action.i.supports_file_browser);
     }

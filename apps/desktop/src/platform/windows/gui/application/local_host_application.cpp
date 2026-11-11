@@ -1,6 +1,7 @@
 #include "application/gui_application.h"
 
 #include <SDL3/SDL_timer.h>
+#include <stream_names.h>
 #include <web_clipboard_protocol.h>
 #include <algorithm>
 #include <tuple>
@@ -35,7 +36,7 @@ bool GuiRuntime::ForwardUserSessionData(const std::string& id,
   const bool user_stream = stream == file_label_ || stream == file_feedback_label_ ||
       stream == clipboard_label_ || stream == web_clipboard::kStream;
   Json action;
-  if (stream == control_data_label_ && size <= 65536)
+  if ((stream == control_data_label_ || stream == kWebControlStream) && size <= 65536)
     action = Json::parse(data, data + size, nullptr, false);
   const auto type = action.is_object() ? action.value("type", Json{}) : Json{};
   const bool host_info = type == static_cast<int>(ControlType::host_infomation);
@@ -54,7 +55,9 @@ bool GuiRuntime::ForwardUserSessionData(const std::string& id,
   }
   if (local_gui_ready_ && local_host_ &&
       (user_stream || user_control || host_info || preview || audio)) {
-    if (!local_host_->Send({{"op", "data"}, {"id", id}, {"epoch", epoch}, {"stream", stream},
+    // IPC uses the native label; the Web alias belongs to the SCTP boundary.
+    const auto& forwarded_stream = stream == kWebControlStream ? control_data_label_ : stream;
+    if (!local_host_->Send({{"op", "data"}, {"id", id}, {"epoch", epoch}, {"stream", forwarded_stream},
         {"bytes", Json::binary(std::vector<uint8_t>(data, data + size))}})) {
       LOG_WARN(
           "Cannot forward user-session data on {}; reconnecting local frontend",

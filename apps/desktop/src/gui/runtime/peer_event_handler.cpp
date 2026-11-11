@@ -685,12 +685,12 @@ std::string GuiRuntime::BuildHostInformation(bool advertise_trust,
     LOG_INFO("Local display [{}:{}]", i + 1, action.i.display_list[i]);
   auto message = action.to_json();
   FreeRemoteAction(action);
-  if (advertise_trust) {
-    auto information = nlohmann::json::parse(message);
-    information["device_trust_version"] = 1;
-    message = information.dump();
-  }
-  return message;
+  auto information = nlohmann::json::parse(message);
+  // Older desktop builds advertise native directory RPC, but their Web
+  // control router cannot carry it. Negotiate the Web route independently.
+  information["host_info"]["supports_web_file_browser"] = UserSessionFeaturesAvailable();
+  if (advertise_trust) information["device_trust_version"] = 1;
+  return information.dump();
 }
 
 void GuiRuntime::AnnounceHostCapabilities(const std::string& id) {
