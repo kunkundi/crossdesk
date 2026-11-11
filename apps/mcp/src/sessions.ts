@@ -49,6 +49,8 @@ export interface View {
   session?: string;
   disconnected?: boolean;
   connectionError?: Data;
+  previewPending?: boolean;
+  previewAt?: number;
 }
 interface Session {
   id: string;
@@ -107,9 +109,10 @@ export class Sessions {
     private nativePath?: string,
     private videoOptions?: VideoOptions,
   ) {}
-  choose(apps: boolean): View["panel"] {
+  choose(apps: boolean, preferHostBrowser = false): View["panel"] {
     if (this.policy === "apps" && !apps) throw new Failure("PANEL_UNSUPPORTED");
     if (this.policy !== "auto") return this.policy;
+    if (preferHostBrowser) return "browser";
     const environment = displayEnvironment();
     return environment.gui ? "browser" : environment.terminal ? "terminal" : "off";
   }
@@ -1122,6 +1125,29 @@ export class Sessions {
         result.decoder !== s.native.videoOptions.decoder)
       throw new Failure("NATIVE_PROTOCOL_MISMATCH");
     return { ...result, ticket };
+  }
+  async preview(v: View, args: Data, signal?: AbortSignal): Promise<Data> {
+    if (v.panel !== "apps" || !v.session || this.views.get(v.id) !== v)
+      throw new Failure("NOT_READY");
+    const s = this.session(v.session);
+    if (this.closing || s.connecting || s.displayBatch || s.status.state !== "ready")
+      throw new Failure("NOT_READY");
+    if (args.after_frame_id !== undefined && args.generation === undefined)
+      throw new Failure("GENERATION_REQUIRED");
+    if (v.previewPending || Date.now() - (v.previewAt ?? 0) < 1000)
+      throw new Failure("BUSY", false, true);
+    const generation = v.generation, session = v.session;
+    v.previewPending = true;
+    v.previewAt = Date.now();
+    try {
+      // Native preview is capped at 960px / 256 KiB and does not consume the
+      // agent's observation history. Never send these frames through tools visible to the model.
+      const result = await s.native.request("preview", { ...args, max_edge: 960, timeout_ms: 1000 }, 4000, signal);
+      if (this.active.get(s.id) !== s || this.views.get(v.id) !== v ||
+          v.generation !== generation || v.session !== session || s.closing)
+        throw new Failure("SESSION_CHANGED");
+      return result;
+    } finally { v.previewPending = false; }
   }
   async listSessions(): Promise<Data> {
     const sessions = await Promise.all([...this.active.keys()].map((id) => this.status(id)));

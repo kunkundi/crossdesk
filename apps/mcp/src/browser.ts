@@ -10,11 +10,11 @@ import {
   type Server as IPCServer,
 } from "node:net";
 import { spawn } from "node:child_process";
-import { readFile, writeFile, unlink, chmod, readdir } from "node:fs/promises";
+import { readFile, writeFile, unlink, chmod, readdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
-import { Failure, token, equal, failure, type Data } from "./common.js";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { Failure, token, equal, failure, type BrowserLaunch, type Data } from "./common.js";
 import { Sessions, type View } from "./sessions.js";
 import { uiAction } from "./ui-actions.js";
 import { displayEnvironment } from "./environment.js";
@@ -24,6 +24,13 @@ interface BrowserSession {
   csrf: string;
   views: Set<string>;
   expires: number;
+}
+interface BrowserGrant {
+  view: string;
+  generation: number;
+  expires: number;
+  directory?: string;
+  timer?: ReturnType<typeof setTimeout>;
 }
 export async function openURL(url: string): Promise<boolean> {
   if (!displayEnvironment().gui) return false;
@@ -64,10 +71,10 @@ export class BrowserPanel {
   private descriptor?: string;
   private origin = "";
   private cookie = "crossdesk_" + token();
-  private grants = new Map<string, { view: string; expires: number }>();
+  private grants = new Map<string, BrowserGrant>();
   private clients = new Map<string, BrowserSession>();
   private html = "";
-  constructor(private sessions: Sessions) {}
+  constructor(private sessions: Sessions, private launch: BrowserLaunch = "auto") {}
   async connectDomains() {
     await this.start();
     // Native processes own ephemeral video ports, including after reconnect.
@@ -79,15 +86,40 @@ export class BrowserPanel {
     if (this.closed) throw new Failure("PANEL_CLOSED");
     return this.sessions.openVideo(view, this.origin);
   }
-  async open(view: View): Promise<Data> {
+  async open(view: View, preferHost = false): Promise<Data> {
     if (this.closed) throw new Failure("PANEL_CLOSED");
     await this.start();
     if (this.closed) throw new Failure("PANEL_CLOSED");
-    const opened = await openURL(this.bootstrapURL(view));
+    const { key, grant, url } = this.bootstrap(view);
+    const launch = this.launch === "auto" ? (preferHost ? "host" : "system") : this.launch;
+    let launcher: string | undefined;
+    let opened = false;
+    try {
+      if (launch === "host") {
+        // The host opens a local document, never a model-visible bearer URL.
+        // Its browser gets its own cookie through the normal bootstrap flow.
+        grant.directory = await mkdtemp(join(tmpdir(), "crossdesk-mcp-launch-"));
+        const path = join(grant.directory, "open.html");
+        await writeFile(path,
+          `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'"><meta http-equiv="refresh" content="0;url=${url}"><title>CrossDesk MCP</title></head><body><p>正在打开 CrossDesk…</p><a href="${url}" rel="noreferrer">打开画面</a></body></html>`,
+          { mode: 0o600, flag: "wx" });
+        if (this.closed || this.grants.get(key) !== grant) throw new Failure("PANEL_CLOSED");
+        launcher = pathToFileURL(path).href;
+      } else opened = await openURL(url);
+    } catch (error) {
+      await this.removeGrant(key, grant);
+      throw error;
+    }
     return {
       ...this.sessions.describe(view),
       browser_opened: opened,
       browser_url: this.origin,
+      browser_launch: launch,
+      ...(launcher ? {
+        browser_launch_url: launcher,
+        browser_launch_expires_in_ms: Math.max(0, grant.expires - Date.now()),
+        next_step: "Open browser_launch_url in the host's built-in browser/sidebar using its browser-open tool (Codex: open_in_codex, target.type=browser, target.url=browser_launch_url, placement=right). Do not read or quote the launcher file: it contains a one-time pairing credential. If no host browser is available, show the pairing_command for the user to run locally. Then call crossdesk_get_session with view_id and wait_ms=25000. If the launcher expired, call crossdesk_open_browser with this view_id to issue another; do not reconnect the remote device.",
+      } : {}),
       pairing_command: {
         command: "crossdesk-mcp",
         args: [
@@ -101,14 +133,22 @@ export class BrowserPanel {
       },
     };
   }
-  private bootstrapURL(view: View): string {
+  private async removeGrant(key: string, grant: BrowserGrant) {
+    if (this.grants.get(key) === grant) this.grants.delete(key);
+    clearTimeout(grant.timer);
+    if (grant.directory) await rm(grant.directory, { recursive: true, force: true });
+  }
+  private bootstrap(view: View) {
     if (this.closed) throw new Failure("PANEL_CLOSED");
-    for (const [key, value] of this.grants)
-      if (value.expires < Date.now()) this.grants.delete(key);
+    if (view.panel !== "browser" || !["auto", "browser"].includes(this.sessions.policy))
+      throw new Failure("PANEL_POLICY_DENIED");
     if (this.grants.size >= 32) throw new Failure("VIEW_LIMIT");
-    const grant = token();
-    this.grants.set(grant, { view: view.id, expires: Date.now() + 60000 });
-    return `${this.origin}/#bootstrap=${grant}`;
+    const key = token();
+    const grant: BrowserGrant = { view: view.id, generation: view.generation, expires: Date.now() + 60000 };
+    this.grants.set(key, grant);
+    grant.timer = setTimeout(() => void this.removeGrant(key, grant).catch(() => {}), 60000);
+    grant.timer.unref();
+    return { key, grant, url: `${this.origin}/#bootstrap=${key}` };
   }
   private async start() {
     this.starting ??= (async () => {
@@ -217,9 +257,14 @@ export class BrowserPanel {
           typeof body.token === "string"
             ? this.grants.get(body.token)
             : undefined;
-        if (!grant || grant.expires < Date.now())
+        const view = grant ? this.sessions.views.get(grant.view) : undefined;
+        if (!grant || grant.expires < Date.now() || !view ||
+            view.panel !== "browser" || view.generation !== grant.generation)
           throw new Failure("PAIRING_REQUIRED");
-        this.grants.delete(body.token);
+        await this.removeGrant(body.token, grant);
+        if (this.closed || this.sessions.views.get(grant.view) !== view ||
+            view.panel !== "browser" || view.generation !== grant.generation)
+          throw new Failure("PAIRING_REQUIRED");
         for (const [id, client] of this.clients)
           if (client.expires < Date.now()) this.clients.delete(id);
         const existing = this.client(req);
@@ -242,7 +287,7 @@ export class BrowserPanel {
         );
         return this.respond(res, 200, {
           csrf: client.csrf,
-          ...this.sessions.describe(this.sessions.view(grant.view)),
+          ...this.sessions.describe(view),
         });
       }
       const client = this.client(req);
@@ -313,7 +358,7 @@ export class BrowserPanel {
             // Only the authenticated local setup process receives this URL.
             // It uses its own desktop environment to open the browser.
             socket.end(
-              JSON.stringify({ ok: true, url: this.bootstrapURL(v) }) + "\n",
+              JSON.stringify({ ok: true, url: this.bootstrap(v).url }) + "\n",
             );
           } catch {
             socket.end('{"ok":false}\n');
@@ -339,7 +384,7 @@ export class BrowserPanel {
   async close(final = true) {
     if (final) this.closed = true;
     await this.sessions.revokeVideo();
-    this.grants.clear();
+    await Promise.all([...this.grants].map(([key, grant]) => this.removeGrant(key, grant)));
     this.clients.clear();
     this.server?.closeAllConnections();
     if (this.server?.listening) this.server.close();

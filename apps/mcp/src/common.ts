@@ -50,6 +50,8 @@ export const unlockPassword = z.string().min(1).max(256)
   .refine((value) => Buffer.byteLength(value) <= 256 && !/[\0\r\n\t]/.test(value));
 export const panel = z.enum(["auto", "apps", "browser", "terminal", "off"]);
 export type Panel = z.infer<typeof panel>;
+export const browserLaunch = z.enum(["auto", "system", "host"]);
+export type BrowserLaunch = z.infer<typeof browserLaunch>;
 export const videoOptions = z.strictObject({
   decode_path: z.enum(["browser", "minirtc"]).default("browser"),
   decoder: z.enum(["auto", "software"]).default("auto"),

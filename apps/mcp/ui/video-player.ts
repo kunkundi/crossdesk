@@ -1,4 +1,5 @@
-type FrameInfo = { width: number; height: number; generation: number; fps: number; frames: number };
+export type FrameInfo = { width: number; height: number; generation: number; fps: number; frames: number;
+  sourceSize?: { width: number; height: number } };
 type Cursor = { type: "cursor"; visible: boolean; x: number; y: number;
   generation: number; geometry_epoch: number; width: number; height: number };
 function parameters(data: Uint8Array) {
@@ -48,6 +49,8 @@ export class VideoPlayer {
   private cursor?: Cursor;
   private cursorDrawn = "";
   private resize?: ResizeObserver;
+  private policyListener?: (event: SecurityPolicyViolationEvent) => void;
+  private socketError?: ReturnType<typeof setTimeout>;
   constructor(private canvas: HTMLCanvasElement,
     private onFrame: (info: FrameInfo) => void,
     private onError: (error: Error) => void,
@@ -68,11 +71,26 @@ export class VideoPlayer {
     if (typeof VideoFrame === "undefined" || (!this.raw && typeof VideoDecoder === "undefined"))
       throw new Error("VIDEO_UNSUPPORTED");
     if (!/^ws:\/\/127\.0\.0\.1:\d+\/api\/video$/.test(url)) throw new Error("VIDEO_INVALID");
-    const socket = this.socket = new WebSocket(url);
+    this.policyListener = (event) => {
+      if (event.disposition === "enforce" &&
+          ["connect-src", "default-src"].includes(event.effectiveDirective) &&
+          [url, new URL(url).origin].includes(event.blockedURI))
+        this.fail(new Error("VIDEO_POLICY_BLOCKED"));
+    };
+    document.addEventListener("securitypolicyviolation", this.policyListener);
+    let socket: WebSocket;
+    try { socket = this.socket = new WebSocket(url); }
+    catch (error) {
+      this.fail(new Error(error instanceof DOMException && error.name === "SecurityError"
+        ? "VIDEO_POLICY_BLOCKED" : "VIDEO_UNAVAILABLE"));
+      return;
+    }
     socket.binaryType = "arraybuffer";
     socket.onopen = () => socket.send(JSON.stringify({ ticket }));
-    socket.onerror = () => this.fail(new Error("VIDEO_UNAVAILABLE"));
-    socket.onclose = () => { if (!this.stopped) this.fail(new Error("VIDEO_UNAVAILABLE")); };
+    // Give a queued CSP event a chance to identify the failure precisely.
+    socket.onerror = socket.onclose = () => {
+      if (!this.stopped) this.socketError ??= setTimeout(() => this.fail(new Error("VIDEO_UNAVAILABLE")), 0);
+    };
     this.firstFrame = setTimeout(() => this.fail(new Error("VIDEO_UNAVAILABLE")), 10000);
     socket.onmessage = (event) => {
       if (this.stopped) return;
@@ -293,6 +311,8 @@ export class VideoPlayer {
     this.resize?.disconnect();
     this.drawCursor();
     clearTimeout(this.firstFrame);
+    clearTimeout(this.socketError);
+    if (this.policyListener) document.removeEventListener("securitypolicyviolation", this.policyListener);
     this.socket?.close();
     if (this.decoder && this.decoder.state !== "closed") this.decoder.close();
     this.decoder = undefined;

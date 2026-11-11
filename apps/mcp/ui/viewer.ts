@@ -2,7 +2,8 @@ import type { App } from "@modelcontextprotocol/ext-apps";
 import "./viewer.css";
 import { AudioPlayer } from "./audio-player.js";
 import { HumanInput } from "./human-input.js";
-import { VideoPlayer } from "./video-player.js";
+import { VideoPlayer, type FrameInfo } from "./video-player.js";
+import { PreviewPlayer } from "./preview-player.js";
 
 declare const CROSSDESK_APPS: boolean;
 declare const CROSSDESK_LOGO: string;
@@ -100,7 +101,8 @@ let unlockError = "";
 let unlockToastTimer: ReturnType<typeof setTimeout> | undefined;
 let disconnectedByUser = false;
 let frameSize = "", frameRate = "";
-let player: VideoPlayer | undefined;
+let player: VideoPlayer | PreviewPlayer | undefined;
+let usePreview = false;
 let videoStarting = false, videoFailed = false, videoEpoch = 0;
 let videoSession: string | undefined;
 let videoGeneration: number | undefined;
@@ -122,6 +124,7 @@ const messages: Record<string, string> = {
   NATIVE_INPUT_UNSUPPORTED: "请更新原生 CLI 以启用人工接管。",
   VIDEO_UNSUPPORTED: "当前浏览器不支持此视频格式，请使用支持 WebCodecs 的浏览器。",
   VIDEO_UNAVAILABLE: "视频通道暂不可用。可重新加载画面；内嵌面板受限时请在浏览器中观看。",
+  VIDEO_POLICY_BLOCKED: "宿主的安全策略阻止了实时视频连接。",
   VIDEO_INVALID: "视频格式发生变化，请重新加载画面。",
   VIDEO_LIMIT: "观看面板数量已达上限，请关闭其他面板。",
   AUTH_FAILED: "访问密码错误，请重新输入。",
@@ -390,7 +393,7 @@ function renderStatus(s: Data) {
   if (lost && !disconnectedByUser && ["ready", "waiting_frame"].includes(status.state)) showError(new Error("CONNECTION_LOST"));
   const changedSession = s.session_id !== status.session_id;
   status = s;
-  element<HTMLButtonElement>("audio-play").disabled = !connected;
+  element<HTMLButtonElement>("audio-play").disabled = !connected || usePreview;
   text("audio-play", audioPlayer.enabled ? "静音" : "播放声音");
   if (!connected || changedSession) audioPlayer.flush();
   humanInput.update(connected && ownsInput() ? s.human_input_epoch : undefined);
@@ -577,6 +580,7 @@ async function closePreview() {
   videoStarting = videoFailed = false;
   element("video-retry").hidden = true;
   element("video-browser").hidden = true;
+  element("panel-status").hidden = true;
 }
 async function startPreview() {
   if (player || videoStarting || videoFailed || document.hidden) return;
@@ -586,6 +590,15 @@ async function startPreview() {
   videoStarting = true;
   const failed = (error: Error) => {
     if (epoch !== videoEpoch) return;
+    if (CROSSDESK_APPS && !usePreview &&
+        ["VIDEO_POLICY_BLOCKED", "VIDEO_UNAVAILABLE", "VIDEO_UNSUPPORTED"].includes(error.message)) {
+      player?.stop();
+      player = undefined;
+      usePreview = true;
+      videoStarting = false;
+      void startPreview();
+      return;
+    }
     videoFailed = true;
     showError(error);
     element("video-retry").hidden = false;
@@ -598,25 +611,40 @@ async function startPreview() {
       text("empty-description", "会话仍然保留。请尝试重新加载画面。");
     }
   };
+  const presented = (info: FrameInfo) => {
+    if (epoch !== videoEpoch) return;
+    humanInput.setFrame({ ...info, ...(info.sourceSize ?? {}) });
+    imageAt = Date.now();
+    element("frame").hidden = false;
+    element("empty").hidden = true;
+    element("stale").hidden = true;
+    const size = `${info.width} × ${info.height}`;
+    const rate = info.fps > 0 ? `${info.fps.toFixed(1)} FPS` : "测量中";
+    if (size !== frameSize) { frameSize = size; text("resolution", size); }
+    if (rate !== frameRate) { frameRate = rate; text("fps", rate); }
+    element<HTMLButtonElement>("focus-view").disabled = false;
+    text("video-state", usePreview ? "预览" : "实时");
+    element("video-state").dataset.state = "live";
+  };
   try {
+    if (usePreview) {
+      audioPlayer.flush();
+      element<HTMLButtonElement>("audio-play").disabled = true;
+      element("error").hidden = true;
+      text("panel-status", "实时视频不可用，已切换为内嵌预览：最高每秒 1 帧，不含声音。需要流畅画面时可使用浏览器面板。");
+      element("panel-status").hidden = false;
+      const preview = new PreviewPlayer(element<HTMLCanvasElement>("frame"), status.generation,
+        (args) => invoke("preview", args), presented, failed);
+      player = preview;
+      preview.start();
+      return;
+    }
     const grant = await invoke("video_open");
     if (epoch !== videoEpoch || document.hidden) return;
-    player = new VideoPlayer(element<HTMLCanvasElement>("frame"), (info) => {
-      if (epoch !== videoEpoch) return;
-      humanInput.setFrame(info);
-      imageAt = Date.now();
-      element("frame").hidden = false;
-      element("empty").hidden = true;
-      element("stale").hidden = true;
-      const size = `${info.width} × ${info.height}`;
-      const rate = info.fps > 0 ? `${info.fps.toFixed(1)} FPS` : "测量中";
-      if (size !== frameSize) { frameSize = size; text("resolution", size); }
-      if (rate !== frameRate) { frameRate = rate; text("fps", rate); }
-      element<HTMLButtonElement>("focus-view").disabled = false;
-      text("video-state", "实时");
-      element("video-state").dataset.state = "live";
-    }, failed, element<HTMLCanvasElement>("agent-cursor"), (bytes) => audioPlayer.accept(bytes));
-    player.start(grant.url, grant.ticket, grant.protocol, grant.decoder);
+    const video = new VideoPlayer(element<HTMLCanvasElement>("frame"), presented,
+      failed, element<HTMLCanvasElement>("agent-cursor"), (bytes) => audioPlayer.accept(bytes));
+    player = video;
+    video.start(grant.url, grant.ticket, grant.protocol, grant.decoder);
   } catch (error) {
     failed(error instanceof Error ? error : new Error("VIDEO_UNAVAILABLE"));
   } finally {
@@ -625,6 +653,7 @@ async function startPreview() {
 }
 element("video-retry").onclick = async () => {
   await closePreview();
+  usePreview = false;
   element("error").hidden = true;
   await startPreview();
 };
@@ -708,6 +737,7 @@ async function start() {
       status: "crossdesk_ui_get_session",
       connect: "crossdesk_ui_connect",
       video_open: "crossdesk_video_open",
+      preview: "crossdesk_ui_preview",
       control: "crossdesk_viewer_control",
       unlock: "crossdesk_ui_unlock",
       recovery: "crossdesk_ui_recovery",
@@ -729,7 +759,8 @@ async function start() {
       const data =
         result.structuredContent ??
         JSON.parse((result.content?.[0] as Data)?.text ?? "{}");
-      return check(data);
+      check(data);
+      return name === "preview" ? (result._meta?.["crossdesk/preview"] as Data) ?? data : data;
     };
     app.ontoolresult = (result) => {
       const meta = result._meta?.["crossdesk/ui"] as Data | undefined;

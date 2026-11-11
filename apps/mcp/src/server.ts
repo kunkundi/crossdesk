@@ -37,6 +37,7 @@ const uiNames: Record<UIAction, string> = {
   status: "crossdesk_ui_get_session",
   connect: "crossdesk_ui_connect",
   video_open: "crossdesk_video_open",
+  preview: "crossdesk_ui_preview",
   control: "crossdesk_viewer_control",
   unlock: "crossdesk_ui_unlock",
   recovery: "crossdesk_ui_recovery",
@@ -81,7 +82,7 @@ export function createServer(
     {
       capabilities: { tools: {}, resources: {} },
       instructions:
-        "Remote computer control. Open a panel for the user to select and authorize a device. Never request passwords in chat. When a remote task is pending, immediately follow crossdesk_open with crossdesk_get_session(view_id, wait_ms: 25000) in the same turn. Repeat bounded waits on wait_timed_out until ready or the user cancels; do not ask the user to type a connection confirmation or click Continue. On ready, continue the requested task within current authorization. When state is reconnecting, continue bounded waits for the explicitly enabled recovery policy. Use the returned session_id after recovery and inspect a fresh screenshot. On closed/failed, stop waiting and do not automatically reconnect. Obtain a screenshot before actions and pass its observation_id; coordinates refer to that returned image. If the remote system is locked, focus its visible password field, take a fresh screenshot and call crossdesk_unlock. A saved system password is used automatically; otherwise the local panel asks the user. Wait with crossdesk_get_session(unlock_request_id, wait_ms: 25000), then verify a fresh screenshot before continuing the original task. Submitted actions are not remote execution acknowledgements. Never replay actions after uncertain outcomes. Human pause can only be resumed in the user panel.",
+        "Remote computer control. Open a panel for the user to select and authorize a device. Never request passwords in chat. In Codex, the default panel is the host built-in browser/sidebar for every user; no personal agent instructions are required. Other clients keep their local environment and system browser defaults. Explicit panel and launch settings override these defaults. Whenever browser_launch_url is returned, immediately open that local launcher using the host browser-open tool before waiting for authorization or continuing the remote task, even if the connection is already ready. Do not wait for the user to ask to open the sidebar. Do not read or quote its contents; it contains a one-time pairing credential. In Codex, use open_in_codex with target.type=browser, target.url=browser_launch_url, placement=right. If the host has no browser-open tool, explain the limitation and show pairing_command for the user to run locally; do not claim the sidebar is open. Reissue expired launchers with crossdesk_open_browser using the existing view_id, without reconnecting. When a remote task is pending, immediately follow crossdesk_open with crossdesk_get_session(view_id, wait_ms: 25000) in the same turn. Repeat bounded waits on wait_timed_out until ready or the user cancels; do not ask the user to type a connection confirmation or click Continue. On ready, continue the requested task within current authorization. When state is reconnecting, continue bounded waits for the explicitly enabled recovery policy. Use the returned session_id after recovery and inspect a fresh screenshot. On closed/failed, stop waiting and do not automatically reconnect. Obtain a screenshot before actions and pass its observation_id; coordinates refer to that returned image. If the remote system is locked, focus its visible password field, take a fresh screenshot and call crossdesk_unlock. A saved system password is used automatically; otherwise the local panel asks the user. Wait with crossdesk_get_session(unlock_request_id, wait_ms: 25000), then verify a fresh screenshot before continuing the original task. Submitted actions are not remote execution acknowledgements. Never replay actions after uncertain outcomes. Human pause can only be resumed in the user panel.",
     },
   );
   type Definition = {
@@ -94,6 +95,14 @@ export function createServer(
     run: (p: Data, ctx: ServerContext) => Promise<CallToolResult>;
   };
   const definitions = new Map<string, Definition>();
+  const codex = (ctx: ServerContext) => {
+    const envelope = ctx.mcpReq.envelope as Data | undefined;
+    const info = envelope
+      ? envelope["io.modelcontextprotocol/clientInfo"]
+      : server.server.getClientVersion();
+    // Client identity selects a presentation default, never authorization.
+    return info?.name === "codex-mcp-client";
+  };
   const supported = (ctx: ServerContext) => {
     const envelope = ctx.mcpReq.envelope as Data | undefined;
     const caps = envelope
@@ -107,7 +116,7 @@ export function createServer(
   };
   const apps = (ctx: ServerContext) =>
     sessions.policy === "apps" && supported(ctx);
-  const openPanel = async (v: View) => v.panel === "browser" ? browser.open(v)
+  const openPanel = async (v: View, ctx: ServerContext) => v.panel === "browser" ? browser.open(v, codex(ctx))
     : v.panel === "terminal" ? terminal.open(v) : sessions.describe(v);
   const viewResult = (v: View, result: Data) =>
     output(
@@ -165,16 +174,16 @@ export function createServer(
   add(
     "crossdesk_open",
     z.strictObject({ device_alias: alias.optional() }),
-    "Open CrossDesk so the user can choose a device, enter its password, and authorize this session. GUI environments use a browser; headless terminal environments return terminal_command, which you must show to the user to run in a separate terminal. Never run the terminal viewer in a captured tool-output channel. Returns immediately. To continue a pending remote task, call crossdesk_get_session with the returned view_id and wait_ms: 25000; no chat confirmation is needed.",
+    "Open CrossDesk so the user can choose a device, enter its password, and authorize this session. In Codex, defaults to browser_launch_url: immediately open it in the host sidebar without reading the launcher file or asking the user to request the sidebar. Other clients default to the local environment and system browser; explicit settings take precedence. Headless terminal environments return terminal_command, which you must show to the user to run in a separate terminal. Never run the terminal viewer in a captured tool-output channel. Returns immediately. To continue a pending remote task, call crossdesk_get_session with the returned view_id and wait_ms: 25000; no chat confirmation is needed.",
     async (p, ctx) => {
       if (p.device_alias) await sessions.store.device(p.device_alias);
       const v = sessions.create(
-        sessions.choose(supported(ctx)),
+        sessions.choose(supported(ctx), codex(ctx)),
         p.device_alias,
       );
       return viewResult(
         v,
-        await openPanel(v),
+        await openPanel(v, ctx),
       );
     },
     { ui: true },
@@ -182,8 +191,8 @@ export function createServer(
   add(
     "crossdesk_open_browser",
     z.strictObject({ view_id: id.optional() }),
-    "Explicitly open the local browser panel after the user requests browser fallback. Does not create another remote connection.",
-    async (p) => {
+    "Open or reissue the local browser panel using the configured launch mode. In host mode (the Codex default), immediately open browser_launch_url in the host sidebar without reading the launcher file. Use the existing view_id to renew an expired launcher without creating another remote connection. Strict apps/off policies deny browser fallback.",
+    async (p, ctx) => {
       if (!["auto", "browser"].includes(sessions.policy))
         throw new Failure("PANEL_POLICY_DENIED");
       const v = p.view_id
@@ -197,7 +206,7 @@ export function createServer(
         v.ready = false;
         v.created = Date.now();
       }
-      return output(await browser.open(v));
+      return output(await browser.open(v, codex(ctx)));
     },
   );
   add(
@@ -214,9 +223,9 @@ export function createServer(
       mode: mode.default("observe"),
       display_index: z.int().min(0).max(63).default(0),
     }),
-    "Connect only a saved, previously authorized device with available credentials. AUTH_REQUIRED means the user must authorize through the panel or setup.",
+    "Connect only a saved, previously authorized device with available credentials. In Codex, defaults to browser_launch_url: immediately open it in the host sidebar even when the remote connection is already ready. Do not read the launcher file. AUTH_REQUIRED means the user must authorize through the panel or setup.",
     async (p, ctx) => {
-      const selected = sessions.choose(supported(ctx));
+      const selected = sessions.choose(supported(ctx), codex(ctx));
       // Reserve panel capacity before starting a connection. Once connected,
       // panel setup errors must not hide the live session from the caller.
       const v = sessions.create(selected, p.device_alias);
@@ -234,7 +243,7 @@ export function createServer(
       }
       v.session = result.session_id;
       let panelResult: Data;
-      try { panelResult = await openPanel(v); }
+      try { panelResult = await openPanel(v, ctx); }
       catch (error) { panelResult = { ...sessions.describe(v), panel_error: failure(error) }; }
       return viewResult(v, {
         ...result,
@@ -361,13 +370,13 @@ export function createServer(
     async (p, ctx) => {
       let v = [...sessions.views.values()].find((view) => view.session === p.session_id);
       const created = !v;
-      if (!v) v = sessions.create(sessions.choose(supported(ctx)));
+      if (!v) v = sessions.create(sessions.choose(supported(ctx), codex(ctx)));
       let result: Data;
       try { result = await sessions.requestUnlock(p, ctx.mcpReq.signal); }
       catch (error) { if (created) sessions.views.delete(v.id); throw error; }
       let panel = sessions.describe(v);
       try {
-        if (result.unlock.state === "awaiting_password" && !v.ready) panel = await openPanel(v);
+        if (result.unlock.state === "awaiting_password" && !v.ready) panel = await openPanel(v, ctx);
       } catch (error) { panel.panel_error = failure(error); }
       return viewResult(v, { ...panel, ...result, next_step: result.unlock.next_step });
     },
@@ -464,6 +473,11 @@ export function createServer(
           args,
           ctx.mcpReq.signal,
         );
+        if (name === "preview") return {
+          content: [{ type: "text", text: "Panel preview frame" }],
+          structuredContent: { transport: "mcp-preview/1" },
+          _meta: { "crossdesk/preview": result },
+        };
         return {
           content: [
             {
@@ -474,7 +488,7 @@ export function createServer(
           structuredContent: result,
         };
       },
-      { app: true },
+      { app: true, readOnly: name === "preview" },
     );
   }
   registerAppResource(

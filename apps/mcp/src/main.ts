@@ -14,6 +14,7 @@ import { TerminalPanel } from "./terminal.js";
 import { terminalView } from "./terminal-view.js";
 import {
   panel,
+  browserLaunch,
   parse,
   Failure,
   failure,
@@ -135,6 +136,7 @@ async function main() {
     options: {
       stdio: { type: "boolean" },
       panel: { type: "string" },
+      "browser-launch": { type: "string" },
       "video-path": { type: "string" },
       "video-decoder": { type: "string" },
       "config-dir": { type: "string" },
@@ -152,7 +154,7 @@ async function main() {
   }
   if (values.help || !positionals.length) {
     process.stdout.write(
-      "crossdesk-mcp serve --stdio [--panel auto|apps|browser|terminal|off] [--video-path browser|minirtc] [--video-decoder auto|software] [--config-dir directory]\ncrossdesk-mcp view --view VIEW_ID [--config-dir directory] [--cell-aspect 0.5]\ncrossdesk-mcp setup [--config-dir directory]\ncrossdesk-mcp setup --open-panel --view VIEW_ID [--config-dir directory]\nDevelopment: --native-binary /absolute/path/to/crossdesk-cli\n",
+      "crossdesk-mcp serve --stdio [--panel auto|apps|browser|terminal|off] [--browser-launch auto|host|system] [--video-path browser|minirtc] [--video-decoder auto|software] [--config-dir directory]\nDefaults: --panel=auto --browser-launch=auto (Codex: host sidebar browser; other clients: local environment/system browser)\nExplicit host sidebar: --panel=browser --browser-launch=host\nSystem browser: --panel=browser --browser-launch=system\ncrossdesk-mcp view --view VIEW_ID [--config-dir directory] [--cell-aspect 0.5]\ncrossdesk-mcp setup [--config-dir directory]\ncrossdesk-mcp setup --open-panel --view VIEW_ID [--config-dir directory]\nDevelopment: --native-binary /absolute/path/to/crossdesk-cli\n",
     );
     return;
   }
@@ -179,6 +181,11 @@ async function main() {
     panel,
     values.panel ?? config.panel,
   );
+  const launch = parse(browserLaunch, values["browser-launch"] ?? "auto");
+  // Other explicit panel policies do not use the browser launch default.
+  // auto resolves per client when a browser panel is opened.
+  if (values["browser-launch"] === "host" && !["auto", "browser"].includes(policy))
+    throw new Failure("BROWSER_LAUNCH_REQUIRES_BROWSER");
   const sessions = new Sessions(
     store,
     policy,
@@ -188,7 +195,7 @@ async function main() {
       decoder: values["video-decoder"] ?? config.video.decoder,
     }),
   );
-  const browser = new BrowserPanel(sessions);
+  const browser = new BrowserPanel(sessions, launch);
   const terminal = new TerminalPanel(sessions);
   const handle = serveStdio(() => createServer(sessions, browser, terminal), {
     transport: new StdioServerTransport(),

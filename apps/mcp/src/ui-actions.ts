@@ -8,6 +8,10 @@ export const uiSchemas = {
   status: z.strictObject({}),
   connect: uiConnect,
   video_open: z.strictObject({}),
+  preview: z.strictObject({
+    generation: z.int().nonnegative().optional(),
+    after_frame_id: z.int().nonnegative().optional(),
+  }),
   input: viewerInput,
   audio: z.strictObject({ enabled: z.boolean() }),
   recovery: z.strictObject({ enabled: z.boolean(), max_attempts: z.int().min(1).max(5).default(3) }),
@@ -45,6 +49,8 @@ export async function uiAction(
     }
     case "status":
       return sessions.status(undefined, view.id, signal);
+    case "preview":
+      return sessions.preview(view, p, signal);
     case "connect":
       return sessions.connectUI(view, p, signal);
     case "audio":
