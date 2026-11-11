@@ -6,6 +6,60 @@
 
 当前提供 31 个模型工具和 11 个 MCP Apps 面板专用接口，覆盖设备与会话管理、截图与条件等待、键鼠输入、窗口与可访问性元素、多显示器、实时视频与音频、文本剪贴板、文件传输、系统锁定与解锁、断线恢复及人工接管。具体能力取决于原生 CLI、被控端版本和系统权限；本机 MCP 接入使用 stdio，不提供 MCP Streamable HTTP 或通用远程 shell 工具。
 
+安装入口：[安装前准备](#install) · [本地安装包](#install-package) · [源码构建](#从源码运行) · [Codex 用户](#install-codex) · [DeepSeek Harness 用户](#install-dsh) · [首次连接](#用户连接流程) · [安装排查](#install-troubleshooting)
+
+<a id="install"></a>
+
+## 安装前准备
+
+控制端安装 Node.js 22 或以上，使用支持图像工具结果的 Agent。MCP、原生 CLI 和显示画面的宿主浏览器必须运行在同一台控制端电脑上；远端电脑运行兼容的 CrossDesk，并保持在线。
+
+| 使用环境 | 需要安装 | 画面打开方式 |
+| --- | --- | --- |
+| Codex 桌面版 | CrossDesk MCP 和兼容的原生 CLI | Agent 打开右侧内置浏览器，无需额外插件 |
+| DeepSeek Harness 桌面版（DSH） | CrossDesk MCP、兼容的原生 CLI、CrossDesk Sidebar 插件 | 插件自动打开当前对话的右侧浏览器 |
+| Codex CLI / 没有内置浏览器的宿主 | CrossDesk MCP 和兼容的原生 CLI | 系统浏览器或终端，不提供桌面侧栏 |
+
+DSH 侧栏已在 macOS / Harness 0.2.2-rc.1 验证；Harness 网页版不支持此侧栏方案。其他平台的原生运行要求见 [CLI 分发文档](../cli/docs/npm-distribution.md)。
+
+下文配置中的 `/absolute/path/...` 均需替换为自己的**绝对路径**。macOS / Linux 可用 `command -v node` 查找 Node；Windows PowerShell 使用 `(Get-Command node).Source`。桌面应用不一定继承终端的 PATH，不要假设配置中的 `~` 会展开。
+
+<a id="install-package"></a>
+
+## 使用本地安装包
+
+如果已获得维护者或 CI 构建的 `chunkdash-crossdesk-mcp-0.1.0.tgz`，在固定目录安装。可在 [Build MCP 工作流](https://github.com/kunkundi/crossdesk/actions/workflows/build-mcp.yml) 的成功运行中查找 `mcp-package` 产物；所选构建需包含本次宿主适配。Actions 下载件是外层 ZIP，先解压，再将其中的 `.tgz` 交给 npm；不要把 ZIP 直接交给 npm。没有可用安装包时，使用下方源码构建流程。
+
+macOS / Linux：
+
+```sh
+mkdir -p "$HOME/crossdesk-mcp"
+cd "$HOME/crossdesk-mcp"
+npm init -y
+npm install /absolute/path/chunkdash-crossdesk-mcp-0.1.0.tgz
+node node_modules/@chunkdash/crossdesk-mcp/dist/main.js --help
+```
+
+Windows PowerShell：
+
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE/crossdesk-mcp"
+Set-Location "$env:USERPROFILE/crossdesk-mcp"
+npm init -y
+npm install "C:/Downloads/chunkdash-crossdesk-mcp-0.1.0.tgz"
+node node_modules/@chunkdash/crossdesk-mcp/dist/main.js --help
+```
+
+安装包已经包含页面和 DSH 插件构建产物，无需再执行 `npm run build`。安装时保留 optional dependencies：包会尝试安装固定版本的平台原生依赖，支持 macOS arm64/x64、glibc Linux arm64/x64 和 Windows x64。当前 MCP 0.1.0 绑定原生包 0.2.0；如果对应原生包尚未发布或下载失败，需要在**同一安装目录**安装维护者提供的对应平台包，例如 macOS arm64：
+
+```sh
+npm install /absolute/path/chunkdash-crossdesk-cli-darwin-arm64-0.2.0.tgz
+```
+
+也可在下文宿主配置中添加 `--native-binary`，指向已经构建好的兼容 `crossdesk-cli` 可执行文件（Windows 为 `.exe`）。全局安装 CLI 不会被 MCP 自动发现：未指定路径时只解析固定版本的平台依赖，不搜索 PATH。`--help` 仅验证 Node 入口，原生协议在连接时才检查。
+
+如果使用 npm 仓库，先确认所需版本已发布，再将上述安装命令替换为 `npm install @chunkdash/crossdesk-mcp@<已发布版本>`；仓库里的版本号不代表 npm 上已有该包。
+
 ## 从源码运行
 
 仓库根目录构建原生程序（已有工作区可保留原有桌面构建选项）：
@@ -19,39 +73,176 @@ npm ci
 npm run build
 ```
 
-Node.js 要求 22 或以上。在 Agent 宿主中配置本地 stdio 进程，例如 macOS arm64 源码构建：
+完整编译环境见 [源码构建指南](../../docs/BUILD.md)。`npm run build` 同时构建 MCP、页面和 DSH 配套插件。源码目录的 `npm ci` 只安装开发依赖，**源码运行必须显式指定原生程序路径**；生成的发布包才声明固定版本的平台依赖。
 
-```json
-{
-  "mcpServers": {
-    "crossdesk": {
-      "command": "node",
-      "args": [
-        "/absolute/path/crossdesk/apps/mcp/dist/main.js",
-        "serve", "--stdio",
-        "--native-binary", "/absolute/path/crossdesk/build/macosx/arm64/release/crossdesk-cli"
-      ]
-    }
-  }
-}
+例如，macOS arm64 Release 构建后可先检查：
+
+```sh
+/absolute/path/crossdesk/build/macosx/arm64/release/crossdesk-cli doctor --json
 ```
 
-Windows 和 Linux 使用各自构建产物路径；`--native-binary` 必须指向可信原生可执行程序，不接受 shell 命令。也可以通过 `CROSSDESK_NATIVE_BINARY` 显式指定开发产物。未指定时只从包内的固定版本平台依赖解析，不搜索 PATH。服务启动不连接远端、不打开浏览器；连接时才检查 `doctor` 协议并启动原生子进程。
+Windows、Linux、x64 或 Debug 构建使用自己的实际产物路径。`--native-binary` 必须指向可执行文件，不接受 shell 命令；也可用 `CROSSDESK_NATIVE_BINARY` 指定。原生程序需要提供 MCP 所需的 automation、terminal、video 协议；仅能运行交互式 CLI 不代表版本兼容。
 
-发布包的配置形式：
+两种安装方式在下文使用的路径不同：
 
-```json
-{
-  "mcpServers": {
-    "crossdesk": {
-      "command": "npx",
-      "args": ["-y", "@chunkdash/crossdesk-mcp@<已发布版本>", "serve", "--stdio"]
-    }
-  }
-}
+| 项目 | 本地安装包 | 源码构建 |
+| --- | --- | --- |
+| MCP 入口 | `<安装目录>/node_modules/@chunkdash/crossdesk-mcp/dist/main.js` | `<工程目录>/apps/mcp/dist/main.js` |
+| DSH 插件目录 | `<安装目录>/node_modules/@chunkdash/crossdesk-mcp/integrations/deepseek-harness` | `<工程目录>/apps/mcp/integrations/deepseek-harness` |
+| 原生程序 | 固定版本平台依赖，或显式指定路径 | 显式指定构建产物路径 |
+
+服务启动不连接远端、不打开浏览器；Agent 调用打开或连接工具后才进入授权与连接流程。
+
+<a id="install-codex"></a>
+
+## Codex 用户安装与使用
+
+### 1. 注册 MCP 服务
+
+先完成上方的安装包安装或源码构建，再将以下内容合并到 `~/.codex/config.toml`。已有 `[mcp_servers.crossdesk]` 时直接更新该段，保留其他服务配置。该配置由 Codex 桌面版和 CLI 共用；字段说明见 [Codex 官方 MCP 文档](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)。
+
+```toml
+[mcp_servers.crossdesk]
+command = "/absolute/path/node"
+args = [
+  "/absolute/path/crossdesk-mcp/node_modules/@chunkdash/crossdesk-mcp/dist/main.js",
+  "serve", "--stdio",
+  "--panel=browser", "--browser-launch=host"
+]
+enabled = true
+startup_timeout_sec = 30
+tool_timeout_sec = 90
 ```
 
-平台依赖覆盖 macOS arm64/x64、glibc Linux arm64/x64 和 Windows x64。安装时保留 optional dependencies；不需要另装全局 CLI。原生运行要求沿用 [CLI 分发文档](../cli/docs/npm-distribution.md)。`npm ci` 仅安装此源码目录的开发依赖，开发运行需使用 `--native-binary`；生成的发布包才包含固定平台依赖。
+**源码用户**将上述 `args` 数组替换为：
+
+```toml
+args = [
+  "/absolute/path/crossdesk/apps/mcp/dist/main.js",
+  "serve", "--stdio",
+  "--panel=browser", "--browser-launch=host",
+  "--native-binary", "/absolute/path/crossdesk/build/macosx/arm64/release/crossdesk-cli"
+]
+```
+
+该原生路径仅为 macOS arm64 Release 示例。Windows 使用实际的 `node.exe`、`crossdesk-cli.exe` 路径；配置路径可统一使用 `/`，如 `C:/Users/you/crossdesk-mcp/...`。
+
+显式保留 `--panel=browser --browser-launch=host`，使 Codex 桌面版采用右侧内置浏览器。新版 MCP 的 `auto` 也包含相同默认策略，无需另装插件或添加个人 `AGENTS.md`。这里配置的是本地 stdio 进程，不需要填写 HTTP MCP 地址。
+
+### 2. 加载并确认工具
+
+保存配置后，重启 CrossDesk MCP 或 Codex，再开启一次对话。安装了 Codex CLI 时，可用 `codex mcp list` 确认 `crossdesk` 已启用。随后对 Agent 说：
+
+> 使用 CrossDesk 列出已保存设备。
+
+首次安装返回空列表是正常的。若没有 CrossDesk 工具或服务启动失败，先检查 Node、入口路径和 [安装排查](#install-troubleshooting)。
+
+### 3. 打开侧栏并连接
+
+> 打开 CrossDesk，让我选择远程电脑；连接后先查看画面。
+
+Agent 会将启动地址交给 Codex 的内置浏览器，打开右侧面板。在面板中选择或添加设备、输入密码、授予仅查看或控制权限。连接后可以继续下达任务；若希望以后按设备别名连接，按需保存设备、密码与自动连接授权，例如：
+
+> 使用 CrossDesk 连接已授权的“办公室电脑”，打开浏览器搜索天气。
+
+密码只在本地授权面板输入。详细权限行为见 [用户连接流程](#用户连接流程)。如果使用的是 **Codex CLI** 而非桌面版，将 `--browser-launch=host` 改为 `--browser-launch=system`；无图形环境可使用 `--panel=terminal` 并删除 `--browser-launch=host`，按工具返回的命令在另一个交互终端打开画面。
+
+<a id="install-dsh"></a>
+
+## DeepSeek Harness 用户安装与使用
+
+以下针对 **DeepSeek Harness 桌面版**，简称 DSH。需要同时完成“注册 MCP 服务”和“安装侧栏插件”：MCP 提供远控工具，插件负责自动打开当前对话的侧栏；安装插件不会自动注册 MCP 服务。
+
+### 1. 注册 MCP 服务
+
+先完成上方的安装包安装或源码构建。默认桌面 profile 配置为 `~/.dsh/profiles/desktop/cordis.patch.yml`；使用自定义 `DSH_HOME` 或 profile 时改为对应目录。将下列条目合并到现有 YAML 列表，不要覆盖已有插件或 MCP 配置。若已通过界面配置 `crossdesk`，编辑已有服务即可，不要重复添加。
+
+```yaml
+- insert:
+    - id: mcp-crossdesk
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: crossdesk
+        transport: stdio
+        command: /absolute/path/node
+        args:
+          - /absolute/path/crossdesk-mcp/node_modules/@chunkdash/crossdesk-mcp/dist/main.js
+          - serve
+          - --stdio
+          - --panel=browser
+          - --browser-launch=host
+        toolCallTimeoutMs: 90000
+```
+
+**源码用户**将入口改为 `/absolute/path/crossdesk/apps/mcp/dist/main.js`，并在 `args` 列表末尾追加以下两项，原生路径替换为当前平台的实际构建产物：
+
+```yaml
+          - --native-binary
+          - /absolute/path/crossdesk/build/macosx/arm64/release/crossdesk-cli
+```
+
+服务名称 `serverName: crossdesk` 要与侧栏插件匹配。参数格式见 [Harness 官方 MCP Client 文档](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/mcp/mcp-client)。保留 `--panel=browser --browser-launch=host` 或新版的 `auto` 默认值；旧配置中的 `--panel=apps`、`--panel=off`、`--browser-launch=system` 会改变显示方式。
+
+### 2. 安装 CrossDesk Sidebar 插件
+
+本地安装包用户执行：
+
+```sh
+dsh plugin --profile desktop add /absolute/path/crossdesk-mcp/node_modules/@chunkdash/crossdesk-mcp/integrations/deepseek-harness
+```
+
+源码用户完成 `npm run build` 后执行：
+
+```sh
+dsh plugin --profile desktop add /absolute/path/crossdesk/apps/mcp/integrations/deepseek-harness
+```
+
+若终端找不到 `dsh`，可在 Harness 插件页面通过本地路径安装上述目录。macOS 默认安装位置也可使用应用自带的 CLI，将命令开头的 `dsh` 替换为：
+
+```sh
+"/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh"
+```
+
+在 Harness 插件页面确认 `crossdesk-sidebar` 组件已启用并运行。如果 MCP 服务改了名称，按 [插件说明](integrations/deepseek-harness/README.md) 配置相同的 `serverName`。
+
+### 3. 重启并首次使用
+
+重启 CrossDesk MCP 和 Harness，使新入口、工具说明及插件一起生效。然后在 Harness 对话中依次发送：
+
+> 使用 CrossDesk 列出已保存设备。
+
+> 打开 CrossDesk，让我选择远程电脑；连接后先查看画面。
+
+工具名称形如 `mcp__crossdesk__crossdesk_list_devices`。打开工具返回后，插件会自动打开**发起调用的对话**右侧浏览器，无需手动点击链接。用户在页面中输入设备信息并授权，Agent 等待连接；页面显示“实时”、分辨率和帧率后，可监看远端任务。已有保存设备及相应授权时，也可以直接要求连接设备别名。
+
+插件只负责导航，不读取启动页或转发视频。不要将 `browser_launch_url` 改成普通 `browser_url` 来完成首次配对，也不要读取或复制启动页内容。已有会话的启动地址过期时，让 Agent 为同一 `view_id` 调用 `crossdesk_open_browser`，无需重连远端。
+
+### 更新与卸载
+
+安装包用户在原安装目录安装新版 `.tgz`；源码用户更新后重新运行 `npm ci` 和 `npm run build`。保持插件目录路径稳定，再重启 MCP 和 Harness；目录变更时重新执行对应的 `dsh plugin ... add` 命令，并同步修改 MCP 入口。
+
+卸载侧栏插件：
+
+```sh
+dsh plugin --profile desktop remove @chunkdash/dsh-crossdesk-sidebar
+```
+
+该命令不会移除 MCP 服务配置。只取消自动侧栏、继续使用 MCP 时，可将服务参数改为 `--panel=browser --browser-launch=system`；完全停用则另行禁用或删除 `crossdesk` MCP 配置。
+
+<a id="install-troubleshooting"></a>
+
+## 安装与侧栏排查
+
+| 现象 | 处理方式 |
+| --- | --- |
+| 找不到 `node`、服务启动失败或没有工具 | 使用 Node 和 `dist/main.js` 的绝对路径；先在终端运行 `node <入口> --help`，确认服务已启用，再重启宿主 |
+| `NATIVE_PACKAGE_MISSING` | 在 MCP 安装目录安装对应平台的原生 0.2.0 包，或配置 `--native-binary`；全局 CLI 不会被自动解析 |
+| `NATIVE_VERSION_MISMATCH` / `NATIVE_PROTOCOL_MISMATCH` | 使用与 MCP 匹配的原生版本，运行 `crossdesk-cli doctor --json` 检查协议；不要仅依据交互式 CLI 能启动判断兼容 |
+| DSH 能调用工具，但没有自动侧栏 | 确认 Sidebar 插件启用、`serverName` 一致，MCP 已更新并重启，且未强制使用 `apps` / `off` / `system` |
+| DSH 返回 `file://` 启动地址 | 检查是否仍运行旧版 MCP 或旧入口，更新为包含 Harness 适配的构建后重启；不要复制启动页内容 |
+| 页面配对失败或启动地址过期 | 为已有 `view_id` 调用 `crossdesk_open_browser` 重新签发；普通 `browser_url` 不能为新浏览器完成配对 |
+| Codex CLI 没有右侧画面 | CLI 不提供桌面侧栏，使用系统浏览器或终端模式 |
+| `DEVICE_BUSY` | 先断开另一 MCP 进程对该设备的会话；使用同一配置目录的 Codex 与 DSH 不应同时连接同一目标 |
 
 ## 用户连接流程
 
@@ -75,19 +266,19 @@ Windows 和 Linux 使用各自构建产物路径；`--native-binary` 必须指�
 
 ## 面板策略
 
-`--panel` 优先于设备配置中的 `panel`，默认 `auto`；`--browser-launch` 同样默认 `auto`。MCP 根据客户端标识内置 Codex 的默认策略，不依赖个人 Codex 配置或 `AGENTS.md`。已有配置中显式指定的面板模式和启动方式仍然有效。
+`--panel` 优先于设备配置中的 `panel`，默认 `auto`；`--browser-launch` 同样默认 `auto`。MCP 根据客户端标识内置 Codex 和 DeepSeek Harness 的默认策略，不依赖个人 Codex 配置或 `AGENTS.md`。已有配置中显式指定的面板模式和启动方式仍然有效。
 
 | 模式 | 行为 |
 | --- | --- |
-| `auto` | Codex 默认选择宿主侧栏浏览器；其他客户端有本机 GUI 时使用系统浏览器，无 GUI 且有终端环境时提供 CLI 画面入口，两者均无则使用 `off` |
+| `auto` | Codex 和 DeepSeek Harness 默认选择宿主侧栏浏览器；其他客户端有本机 GUI 时使用系统浏览器，无 GUI 且有终端环境时提供 CLI 画面入口，两者均无则使用 `off` |
 | `apps` | 只使用 MCP Apps；能力不匹配返回 `PANEL_UNSUPPORTED` |
-| `browser` | 使用本地浏览器页面；启动方式为 `auto` 时 Codex 使用宿主侧栏，其他客户端使用系统浏览器；可显式选择 `--browser-launch=host` 或 `--browser-launch=system`，不附加 Apps 工具资源元数据 |
+| `browser` | 使用本地浏览器页面；启动方式为 `auto` 时 Codex 和 DeepSeek Harness 使用宿主侧栏，其他客户端使用系统浏览器；可显式选择 `--browser-launch=host` 或 `--browser-launch=system`，不附加 Apps 工具资源元数据 |
 | `terminal` | 提供独立终端 `view` 命令，共用当前 MCP 会话，不启动网页服务 |
 | `off` | 不启动网页服务，保留截图和操作工具，凭据通过独立 `setup` 配置 |
 
 `auto` 不再优先选择 MCP Apps；需要宿主内嵌面板时显式使用 `--panel=apps`。Apps 使用 `extensions["io.modelcontextprotocol/ui"].mimeTypes` 中的 `text/html;profile=mcp-app` 判断能力。旧协议读取 initialize 能力；2026-07-28 协议读取当前请求的能力，不按宿主产品名猜测支持情况。Apps 的卡片、侧栏或窗口形式由宿主决定。
 
-非 Codex 客户端使用 `auto` 时，Linux 根据 `DISPLAY` / `WAYLAND_DISPLAY` 判断 GUI；macOS 检查当前用户的桌面登录会话，SSH 会话不自动打开远端 Mac 的浏览器；Windows 排除 SSH 和 Services 会话。终端判断包含 TTY、`SSH_TTY` 和非 `dumb` 的 `TERM`，因为 MCP 的 stdin/stdout 通常是管道。需要终端或无面板运行时，显式设置 `--panel=terminal` 或 `--panel=off`。
+除 Codex 和 DeepSeek Harness 外，客户端使用 `auto` 时，Linux 根据 `DISPLAY` / `WAYLAND_DISPLAY` 判断 GUI；macOS 检查当前用户的桌面登录会话，SSH 会话不自动打开远端 Mac 的浏览器；Windows 排除 SSH 和 Services 会话。终端判断包含 TTY、`SSH_TTY` 和非 `dumb` 的 `TERM`，因为 MCP 的 stdin/stdout 通常是管道。需要终端或无面板运行时，显式设置 `--panel=terminal` 或 `--panel=off`。
 
 终端模式的 `crossdesk_open` / `crossdesk_connect` 返回 `terminal_command`。用户在同一主机的另一个交互终端执行（源码运行时将 `crossdesk-mcp` 替换为 `node /absolute/path/apps/mcp/dist/main.js`）：
 
@@ -113,7 +304,7 @@ Apps 资源为 `ui://crossdesk/viewer.html`，工具只在允许使用 Apps 且�
 
 页面标题为 CrossDesk MCP，页内使用 CrossDesk 正式标志和名称。配色与桌面客户端的 WorkbenchStyle / ButtonStyle 一致，采用浅蓝灰底色、蓝色主操作、6 像素控件圆角及 12 像素卡片圆角；工具栏按钮统一为 32 像素高，图标按钮保留可访问名称与悬停提示。布局填满浏览器或宿主面板的可用宽高，远程画面保持原比例缩放，底部集中显示视频状态、分辨率和帧率；授权卡片在高度不足时独立滚动，窄侧栏沿用相同的监看布局。「放大画面」隐藏页眉并缩小外边距；退出菜单、详情和非人工接管状态下的放大模式支持 Esc。界面资源均可离线使用，保存设备与持久授权仍由用户分别选择。
 
-首次打开使用 URL fragment 中的短期一次性 bootstrap，页面立即清除 fragment，并换取 HttpOnly/SameSite cookie 和 CSRF 令牌。模型只收到无特权的网页地址。复制无凭据地址到另一浏览器不能获得会话控制权。
+首次打开使用 URL fragment 中的短期一次性 bootstrap，页面立即清除 fragment，并换取 HttpOnly/SameSite cookie 和 CSRF 令牌。原始 bootstrap 不进入工具结果；`browser_url` 不含配对凭据，`browser_launch_url` 则是短期配对入口，只用于交给宿主导航，不应读取或发布。复制无凭据地址到另一浏览器不能获得会话控制权。
 
 无法自动打开浏览器时，在自己的终端运行工具结果 `pairing_command` 中的命令和参数。例如：
 
@@ -125,36 +316,19 @@ crossdesk-mcp setup --open-panel --view <view_id> --config-dir <相同的配置�
 
 ### Codex 默认侧栏浏览器
 
-任何用户在 Codex 中直接启动本 MCP，默认都会返回侧栏浏览器入口；无需额外配置面板参数：
+安装、配置示例及首次使用见 [Codex 用户安装与使用](#install-codex)。任何用户在 Codex 中直接启动新版 MCP，默认都会返回侧栏浏览器入口；以下说明宿主识别和配对机制。
 
-```sh
-crossdesk-mcp serve --stdio
-```
+MCP 识别 Codex 的客户端名称 `codex-mcp-client` 和 DeepSeek Harness 的 `dsh-mcp-client`：旧协议读取 initialize 中的 `clientInfo`，2026-07-28 协议读取当前请求的 `io.modelcontextprotocol/clientInfo`。该标识仅选择显示方式，不授予任何设备权限。`--panel=auto` 在这两个宿主中选择 `browser`，`--browser-launch=auto` 选择 `host`；其他客户端仍沿用环境检测和系统浏览器。
 
-MCP 识别 Codex 的客户端名称 `codex-mcp-client`：旧协议读取 initialize 中的 `clientInfo`，2026-07-28 协议读取当前请求的 `io.modelcontextprotocol/clientInfo`。该标识仅选择显示方式，不授予任何设备权限。`--panel=auto` 在 Codex 中选择 `browser`，`--browser-launch=auto` 在 Codex 中选择 `host`；其他客户端仍沿用环境检测和系统浏览器。
-
-`host` 不启动系统浏览器，也不生成 MCP App 卡片；它要求宿主浏览器与 MCP 运行在同一台电脑，并能打开本机 `file://` 页面。显式使用 `--panel=browser --browser-launch=host` 可以强制宿主浏览器，使用 `--panel=browser --browser-launch=system` 则强制系统浏览器。显式将 `--browser-launch=host` 与 `apps`、`terminal` 或 `off` 组合会报错，这些模式单独使用不受浏览器默认值影响。
-
-Codex 源码构建配置示例（替换实际路径，已有配置保留其他参数）：
-
-```toml
-[mcp_servers.crossdesk]
-command = "node"
-args = [
-  "/absolute/path/crossdesk/apps/mcp/dist/main.js",
-  "serve", "--stdio",
-  "--native-binary", "/absolute/path/crossdesk/build/macosx/arm64/release/crossdesk-cli"
-]
-enabled = true
-```
+`host` 不启动系统浏览器，也不生成 MCP App 卡片；它要求宿主浏览器与 MCP 运行在同一台电脑。Codex 使用本机 `file://` 启动页；DeepSeek Harness 使用下述 HTTP 启动入口。显式使用 `--panel=browser --browser-launch=host` 可以强制宿主浏览器，使用 `--panel=browser --browser-launch=system` 则强制系统浏览器。显式将 `--browser-launch=host` 与 `apps`、`terminal` 或 `off` 组合会报错，这些模式单独使用不受浏览器默认值影响。
 
 服务指令、工具说明和返回值均内置 Codex 的打开流程：Agent 拿到 `browser_launch_url` 后立即打开宿主浏览器，即使连接已就绪也不省略此步骤。无需用户再次要求打开侧栏，也无需添加个人 `AGENTS.md`。实际打开仍由宿主浏览器工具执行，MCP 协议本身不能强制所有客户端展示侧栏；缺少该工具时（例如没有侧栏浏览器的 Codex CLI）应明确说明限制并展示本地配对命令。
 
 升级后重启 MCP 服务即可使用新默认值；原有 `--panel=apps`、`--panel=terminal`、`--panel=off` 等参数或设备配置中的显式策略会继续覆盖默认值，需要侧栏时删除旧覆盖或显式使用 `--panel=browser --browser-launch=host`。这项行为随 MCP 包分发，尚未升级到包含此改动的版本不会自动变化。
 
-`crossdesk_open`、`crossdesk_connect` 和 `crossdesk_open_browser` 在此模式返回 `browser_launch_url`、`browser_url` 和剩余有效时间。Agent 应将 `browser_launch_url` 直接交给宿主的浏览器打开工具；在 Codex 中调用 `open_in_codex`，设置 `target.type` 为 `browser`、`target.url` 为该地址、`placement` 为 `right`。不要读取、粘贴或上传启动页内容。
+`crossdesk_open`、`crossdesk_connect` 和 `crossdesk_open_browser` 在此模式返回 `browser_launch_url`、`browser_url`、`browser_host`、剩余有效时间及绝对到期时间。Agent 应将 `browser_launch_url` 直接交给宿主的浏览器打开工具；在 Codex 中调用 `open_in_codex`，设置 `target.type` 为 `browser`、`target.url` 为该地址、`placement` 为 `right`。不要读取、粘贴或上传启动页内容。
 
-启动页位于系统临时目录的独立目录中，POSIX 权限为目录 `0700`、文件 `0600`，内含 60 秒有效的一次性配对地址。浏览器在本机跳转到播放器并换取自己的 HttpOnly/SameSite cookie 和 CSRF 令牌；工具结果不包含原始 bootstrap 票据。票据绑定视图及代际，消费、到期或正常关闭服务时清理启动页。启动地址过期时，对已有 `view_id` 调用 `crossdesk_open_browser` 重新签发，不要重新连接远端。
+Codex 启动页位于系统临时目录的独立目录中，POSIX 权限为目录 `0700`、文件 `0600`，内含 60 秒有效的一次性配对地址。浏览器在本机跳转到播放器并换取自己的 HttpOnly/SameSite cookie 和 CSRF 令牌；工具结果不包含原始 bootstrap 票据。票据绑定视图及代际，消费、到期或正常关闭服务时清理启动页。启动地址过期时，对已有 `view_id` 调用 `crossdesk_open_browser` 重新签发，不要重新连接远端。
 
 `browser_url` 是不带配对凭据的本机 HTTP 地址，用于已配对浏览器重新打开；直接复制到另一浏览器不能获得当前会话权限。没有内置浏览器的宿主可由用户执行原有 `pairing_command`，在系统浏览器完成配对。
 
@@ -163,6 +337,18 @@ enabled = true
 2026-11-11 在本机 Codex 侧栏浏览器完成实测：通过上述启动页连接 macOS 远端，页面显示“实时”、1920 × 1080、约 26 FPS，画布帧计数持续递增。原生端确认 `h264-annexb/1` 经 `loopback-websocket/1` 传输，1 个活动观看者、发送队列无积压；验证期间仅查看画面，未发送远端输入。此结果验证当前环境下的侧栏实时播放，实际帧率仍取决于远端、网络和解码性能。
 
 2026-11-12 使用工程外的全新临时配置完成 16 项 stdio 协议检查：Codex 新旧协议均在不设置面板参数时返回宿主浏览器启动页，其他客户端保留原有行为，显式面板及启动方式覆盖有效，重新签发及退出清理正常；另以模拟会话验证已就绪连接和解锁面板的 Codex 路由。此检查不读取个人 Codex 配置，不连接真实远端。
+
+### DeepSeek Harness 桌面侧栏
+
+Harness 桌面版的 Sidebar Browser 只接受 HTTP(S) 地址，不能打开 Codex 的 `file://` 启动页；其内置侧栏也未提供供 Agent 调用的打开工具。安装配套 [CrossDesk Sidebar 插件](integrations/deepseek-harness/README.md) 后，MCP 工具调用会自动打开当前 Harness 会话的浏览器侧栏，不需要手动点击链接。插件源代码及构建产物随 MCP 包分发。
+
+完整安装与配置见 [DeepSeek Harness 用户安装与使用](#install-dsh)。插件只负责页面显示，不增加设备权限，也不会发起第二次远端连接。
+
+Harness 的 `browser_launch_url` 为本机 `/launch/<随机标识>`，在 60 秒内仅可导航一次，再跳转到原有配对流程；原始 bootstrap 令牌不进入工具结果。启动地址本身是短期配对入口，不应发布、抓取或记录其内容。消费、过期、视图代际变化或服务关闭后均不可重用；过期时为已有 `view_id` 重新签发。现有 Host/Origin 校验、HttpOnly/SameSite Cookie、CSRF 和禁止 iframe 嵌入的策略保持有效。
+
+插件只在 Harness 桌面版启用；Harness 网页版的 iframe 不支持此路径，不会为此开放任意跨域嵌入或公网转发。未安装插件时，Agent 应说明安装方式，或提供入口链接供用户选择“在侧栏打开”，不能声称已自动打开。侧栏导航成功与配对/视频就绪分别确认，Agent 仍须等待 `crossdesk_get_session`。
+
+2026-11-12 在 macOS 的 DeepSeek Harness 0.2.2-rc.1 完成实测：安装配套插件后，`crossdesk_connect` 以仅查看模式连接已保存的 Mac mini，插件自动打开当前会话右侧浏览器并完成配对；页面显示实时画面、1920 × 1080、约 27–29 FPS。验证过程中未发送远端键鼠输入。另在工程外临时目录通过 23 项协议/配对/宿主桥接检查及 6 项客户端生命周期检查，覆盖 Codex 与 Harness 新旧协议、单次消费、过期、代际失效、会话隔离、多窗口领取和标签复用。
 
 ## 无面板配置与凭据
 

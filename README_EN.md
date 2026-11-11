@@ -283,9 +283,14 @@ The interactive CLI provides ID-based viewing and input, without direct IP conne
 
 ## Agents and MCP
 
-[`apps/mcp`](apps/mcp/README.md) provides a local MCP service for Agents to connect to remote computers through CrossDesk. The controller needs Node.js 22+ and the native CLI, without the desktop GUI. The remote host still needs a compatible CrossDesk client and a signaling server supporting `cli` registration. Follow the source build workflow; package versions in the repository do not establish npm availability.
+[`apps/mcp`](apps/mcp/README.md) provides a local MCP service for Agents to connect to remote computers through CrossDesk. The controller needs Node.js 22+ and a compatible native CLI, without the CrossDesk desktop GUI. The remote host still needs a compatible CrossDesk client and a signaling server supporting `cli` registration. Use a local package supplied by the maintainer or build from source; package versions in the repository do not establish npm availability.
 
-1. Follow [source setup](apps/mcp/README.md#从源码运行) (Chinese) to build the native CLI and MCP service, then configure the local stdio process in your Agent host.
+| Host | Installation and configuration | Remote video |
+| --- | --- | --- |
+| Codex desktop | [Codex setup](apps/mcp/README.md#install-codex) (Chinese): register the MCP server; no extra plugin | The Agent opens the built-in browser on the right |
+| DeepSeek Harness desktop (DSH) | [DSH setup](apps/mcp/README.md#install-dsh) (Chinese): register the MCP server and install the CrossDesk Sidebar plugin | The plugin opens the current chat's browser sidebar automatically |
+
+1. Choose a [local package](apps/mcp/README.md#install-package) or [source build](apps/mcp/README.md#从源码运行), then configure your host using the guides above. These guides include configuration examples, native dependencies, and troubleshooting.
 2. Ask the Agent to open CrossDesk. Choose a device and enter its password in the local monitoring panel, then grant view-only or control access. Saving a password and allowing future automatic connections are separate choices.
 3. The Agent uses screenshots, keyboard and mouse actions, and structured desktop tools. You can watch live, pause the Agent, take over manually, or disconnect.
 
@@ -338,7 +343,7 @@ Host your own signaling and TURN services, then enable them under **Settings →
 
 ## Build and feedback
 
-- [Agent / MCP](apps/mcp/README.md) (Chinese): source setup, host configuration, authorization, monitoring, automation tools, and compatibility.
+- [Agent / MCP](apps/mcp/README.md) (Chinese): package and source installation, Codex / DSH setup, authorization, monitoring, automation tools, and compatibility.
 - [Terminal client CLI](apps/cli/README.md) (Chinese): independent builds, terminal usage, Pi extension, bridge protocol, and npm packaging.
 - [Build from source](docs/BUILD_EN.md): desktop dependencies, build options, and packaging. Use the platform guides above for mobile builds.
 - [GUI architecture](docs/gui-architecture.md) (Chinese): desktop UI, platform implementation, and project structure.

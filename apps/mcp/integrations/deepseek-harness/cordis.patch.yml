@@ -1,0 +1,3 @@
+- insert:
+    - id: crossdesk-sidebar
+      name: '@chunkdash/dsh-crossdesk-sidebar'

@@ -283,9 +283,14 @@ pi -e ./apps/cli/plugins/pi/index.ts
 
 ## Agent 与 MCP
 
-[`apps/mcp`](apps/mcp/README.md) 提供本机 MCP 服务，让 Agent 通过 CrossDesk 连接远端电脑。控制端需要 Node.js 22+ 和原生 CLI，无需安装桌面 GUI；被控端仍需运行兼容的 CrossDesk，信令服务需支持 `cli` 注册。当前以源码构建流程为准，仓库中的包版本不代表已发布到 npm。
+[`apps/mcp`](apps/mcp/README.md) 提供本机 MCP 服务，让 Agent 通过 CrossDesk 连接远端电脑。控制端需要 Node.js 22+ 和兼容的原生 CLI，无需安装 CrossDesk 桌面 GUI；被控端仍需运行兼容的 CrossDesk，信令服务需支持 `cli` 注册。可以使用维护者提供的本地安装包或从源码构建；仓库中的包版本不代表已发布到 npm。
 
-1. 按 [源码运行说明](apps/mcp/README.md#从源码运行) 构建原生 CLI 与 MCP，并将本地 stdio 服务配置到 Agent 宿主。
+| 使用环境 | 安装与配置 | 远端画面 |
+| --- | --- | --- |
+| Codex 桌面版 | [Codex 安装指南](apps/mcp/README.md#install-codex)：注册 MCP，无需额外插件 | Agent 打开右侧内置浏览器 |
+| DeepSeek Harness 桌面版（DSH） | [DSH 安装指南](apps/mcp/README.md#install-dsh)：注册 MCP，并安装 CrossDesk Sidebar 插件 | 插件自动打开当前对话侧栏 |
+
+1. 选择 [本地安装包](apps/mcp/README.md#install-package) 或 [源码构建](apps/mcp/README.md#从源码运行)，再按上表配置宿主。完整指南包含配置示例、原生依赖和故障排查。
 2. 让 Agent 打开 CrossDesk，在监看面板选择设备、输入连接密码，并选择仅查看或允许控制。密码在本地面板中输入；保存密码与允许以后自动连接分别设置。
 3. Agent 通过截图、键鼠和结构化桌面工具执行任务；用户可实时监看、暂停 Agent、人工接管或断开连接。
 
@@ -339,7 +344,7 @@ PC 端可控制和被控制，复用桌面界面与桌面墙；手机和平板�
 ## 构建与反馈
 
 - [终端客户端 CLI](apps/cli/README.md)：独立构建、终端使用、Pi 扩展、桥接协议和 npm 打包。
-- [Agent / MCP](apps/mcp/README.md)：源码运行、宿主配置、授权与监看、自动化工具及兼容范围。
+- [Agent / MCP](apps/mcp/README.md)：安装包与源码运行、Codex / DSH 配置、授权与监看、自动化工具及兼容范围。
 - [源码构建](docs/BUILD.md)：桌面端依赖、编译参数与打包；移动端请使用上方各平台的构建指南。
 - [GUI 架构](docs/gui-architecture.md)：桌面界面、平台实现与工程结构。
 - [连接模式架构](docs/connection-architecture.md)：ID 连接与 IP 直连的寻址、认证、协商、数据路径及生命周期。

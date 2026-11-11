@@ -15,6 +15,7 @@ import {
 } from "@modelcontextprotocol/ext-apps/server";
 import { Sessions, type View } from "./sessions.js";
 import { BrowserPanel } from "./browser.js";
+import { browserHost } from "./browser-host.js";
 import { TerminalPanel } from "./terminal.js";
 import { uiAction, uiSchemas, type UIAction } from "./ui-actions.js";
 import {
@@ -83,7 +84,7 @@ export function createServer(
     {
       capabilities: { tools: {}, resources: {} },
       instructions:
-        "Remote computer control. Open a panel for the user to select and authorize a device. Never request passwords in chat. In Codex, the default panel is the host built-in browser/sidebar for every user; no personal agent instructions are required. Other clients keep their local environment and system browser defaults. Explicit panel and launch settings override these defaults. Whenever browser_launch_url is returned, immediately open that local launcher using the host browser-open tool before waiting for authorization or continuing the remote task, even if the connection is already ready. Do not wait for the user to ask to open the sidebar. Do not read or quote its contents; it contains a one-time pairing credential. In Codex, use open_in_codex with target.type=browser, target.url=browser_launch_url, placement=right. If the host has no browser-open tool, explain the limitation and show pairing_command for the user to run locally; do not claim the sidebar is open. Reissue expired launchers with crossdesk_open_browser using the existing view_id, without reconnecting. When a remote task is pending, immediately follow crossdesk_open with crossdesk_get_session(view_id, wait_ms: 25000) in the same turn. Repeat bounded waits on wait_timed_out until ready or the user cancels; do not ask the user to type a connection confirmation or click Continue. On ready, continue the requested task within current authorization. When state is reconnecting, continue bounded waits for the explicitly enabled recovery policy. Use the returned session_id after recovery and inspect a fresh screenshot. On closed/failed, stop waiting and do not automatically reconnect. Reuse the active session and its advertised automation capabilities. Prefer desktop_action for supported URL/app/accessibility operations. Use a recent screenshot observation for coordinate input; reuse action results instead of taking duplicate screenshots. Group fixed inputs that need no intermediate visual decision into a short action sequence, and wait for a relevant visual region or UI condition in that same call. Coordinates refer to the observation image. If the remote system is locked, focus its visible password field, take a fresh screenshot and call crossdesk_unlock. A saved system password is used automatically; otherwise the local panel asks the user. Wait with crossdesk_get_session(unlock_request_id, wait_ms: 25000), then verify a fresh screenshot before continuing the original task. Submitted actions are not remote execution acknowledgements. Never replay actions after uncertain outcomes. Human pause can only be resumed in the user panel.",
+        "Remote computer control. Open a panel for the user to select and authorize a device. Never request passwords in chat. In Codex, the default panel is the host built-in browser/sidebar for every user; no personal agent instructions are required. DeepSeek Harness Desktop also defaults to a host sidebar, opened automatically by the CrossDesk Sidebar companion plugin. Its HTTP launcher replaces the file launcher rejected by Harness. If that plugin is unavailable, explain how to install it or provide a Markdown link for Open in sidebar. Other clients keep their local environment and system browser defaults. Explicit panel and launch settings override these defaults. Whenever browser_launch_url is returned, immediately open that local launcher using the host browser-open tool (or let the DeepSeek Harness companion plugin handle it) before waiting for authorization or continuing the remote task, even if the connection is already ready. Do not wait for the user to ask to open the sidebar. Do not read or quote its contents; it contains a one-time pairing credential. In Codex, use open_in_codex with target.type=browser, target.url=browser_launch_url, placement=right. If the host has no browser-open tool, explain the limitation and show pairing_command for the user to run locally; do not claim the sidebar is open. Reissue expired launchers with crossdesk_open_browser using the existing view_id, without reconnecting. When a remote task is pending, immediately follow crossdesk_open with crossdesk_get_session(view_id, wait_ms: 25000) in the same turn. Repeat bounded waits on wait_timed_out until ready or the user cancels; do not ask the user to type a connection confirmation or click Continue. On ready, continue the requested task within current authorization. When state is reconnecting, continue bounded waits for the explicitly enabled recovery policy. Use the returned session_id after recovery and inspect a fresh screenshot. On closed/failed, stop waiting and do not automatically reconnect. Reuse the active session and its advertised automation capabilities. Prefer desktop_action for supported URL/app/accessibility operations. Use a recent screenshot observation for coordinate input; reuse action results instead of taking duplicate screenshots. Group fixed inputs that need no intermediate visual decision into a short action sequence, and wait for a relevant visual region or UI condition in that same call. Coordinates refer to the observation image. If the remote system is locked, focus its visible password field, take a fresh screenshot and call crossdesk_unlock. A saved system password is used automatically; otherwise the local panel asks the user. Wait with crossdesk_get_session(unlock_request_id, wait_ms: 25000), then verify a fresh screenshot before continuing the original task. Submitted actions are not remote execution acknowledgements. Never replay actions after uncertain outcomes. Human pause can only be resumed in the user panel.",
     },
   );
   type Definition = {
@@ -96,13 +97,13 @@ export function createServer(
     run: (p: Data, ctx: ServerContext) => Promise<CallToolResult>;
   };
   const definitions = new Map<string, Definition>();
-  const codex = (ctx: ServerContext) => {
+  const host = (ctx: ServerContext) => {
     const envelope = ctx.mcpReq.envelope as Data | undefined;
     const info = envelope
       ? envelope["io.modelcontextprotocol/clientInfo"]
       : server.server.getClientVersion();
     // Client identity selects a presentation default, never authorization.
-    return info?.name === "codex-mcp-client";
+    return browserHost(info);
   };
   const supported = (ctx: ServerContext) => {
     const envelope = ctx.mcpReq.envelope as Data | undefined;
@@ -117,7 +118,7 @@ export function createServer(
   };
   const apps = (ctx: ServerContext) =>
     sessions.policy === "apps" && supported(ctx);
-  const openPanel = async (v: View, ctx: ServerContext) => v.panel === "browser" ? browser.open(v, codex(ctx))
+  const openPanel = async (v: View, ctx: ServerContext) => v.panel === "browser" ? browser.open(v, host(ctx))
     : v.panel === "terminal" ? terminal.open(v) : sessions.describe(v);
   const viewResult = (v: View, result: Data) =>
     output(
@@ -175,11 +176,11 @@ export function createServer(
   add(
     "crossdesk_open",
     z.strictObject({ device_alias: alias.optional() }),
-    "Open CrossDesk so the user can choose a device, enter its password, and authorize this session. In Codex, defaults to browser_launch_url: immediately open it in the host sidebar without reading the launcher file or asking the user to request the sidebar. Other clients default to the local environment and system browser; explicit settings take precedence. Headless terminal environments return terminal_command, which you must show to the user to run in a separate terminal. Never run the terminal viewer in a captured tool-output channel. Returns immediately. To continue a pending remote task, call crossdesk_get_session with the returned view_id and wait_ms: 25000; no chat confirmation is needed.",
+    "Open CrossDesk so the user can choose a device, enter its password, and authorize this session. In Codex, defaults to browser_launch_url: immediately open it in the host sidebar without reading the launcher file or asking the user to request the sidebar. DeepSeek Harness Desktop returns an HTTP browser_launch_url handled automatically by the CrossDesk Sidebar companion plugin; without that plugin, provide its installation instructions or a Markdown link for Open in sidebar. Other clients default to the local environment and system browser; explicit settings take precedence. Headless terminal environments return terminal_command, which you must show to the user to run in a separate terminal. Never run the terminal viewer in a captured tool-output channel. Returns immediately. To continue a pending remote task, call crossdesk_get_session with the returned view_id and wait_ms: 25000; no chat confirmation is needed.",
     async (p, ctx) => {
       if (p.device_alias) await sessions.store.device(p.device_alias);
       const v = sessions.create(
-        sessions.choose(supported(ctx), codex(ctx)),
+        sessions.choose(supported(ctx), !!host(ctx)),
         p.device_alias,
       );
       return viewResult(
@@ -192,7 +193,7 @@ export function createServer(
   add(
     "crossdesk_open_browser",
     z.strictObject({ view_id: id.optional() }),
-    "Open or reissue the local browser panel using the configured launch mode. In host mode (the Codex default), immediately open browser_launch_url in the host sidebar without reading the launcher file. Use the existing view_id to renew an expired launcher without creating another remote connection. Strict apps/off policies deny browser fallback.",
+    "Open or reissue the local browser panel using the configured launch mode. In host mode (the Codex and DeepSeek Harness default), open browser_launch_url in the host sidebar without fetching the launcher contents. The CrossDesk Sidebar companion plugin opens it automatically in DeepSeek Harness Desktop. Use the existing view_id to renew an expired launcher without creating another remote connection. Strict apps/off policies deny browser fallback.",
     async (p, ctx) => {
       if (!["auto", "browser"].includes(sessions.policy))
         throw new Failure("PANEL_POLICY_DENIED");
@@ -207,7 +208,7 @@ export function createServer(
         v.ready = false;
         v.created = Date.now();
       }
-      return output(await browser.open(v, codex(ctx)));
+      return output(await browser.open(v, host(ctx)));
     },
   );
   add(
@@ -224,9 +225,9 @@ export function createServer(
       mode: mode.default("observe"),
       display_index: z.int().min(0).max(63).default(0),
     }),
-    "Connect only a saved, previously authorized device with available credentials. In Codex, defaults to browser_launch_url: immediately open it in the host sidebar even when the remote connection is already ready. Do not read the launcher file. AUTH_REQUIRED means the user must authorize through the panel or setup.",
+    "Connect only a saved, previously authorized device with available credentials. In Codex, defaults to browser_launch_url: immediately open it in the host sidebar even when the remote connection is already ready. DeepSeek Harness Desktop returns an HTTP launcher opened by the CrossDesk Sidebar companion plugin. Do not fetch or read the launcher contents. AUTH_REQUIRED means the user must authorize through the panel or setup.",
     async (p, ctx) => {
-      const selected = sessions.choose(supported(ctx), codex(ctx));
+      const selected = sessions.choose(supported(ctx), !!host(ctx));
       // Reserve panel capacity before starting a connection. Once connected,
       // panel setup errors must not hide the live session from the caller.
       const v = sessions.create(selected, p.device_alias);
@@ -372,7 +373,7 @@ export function createServer(
     async (p, ctx) => {
       let v = [...sessions.views.values()].find((view) => view.session === p.session_id);
       const created = !v;
-      if (!v) v = sessions.create(sessions.choose(supported(ctx), codex(ctx)));
+      if (!v) v = sessions.create(sessions.choose(supported(ctx), !!host(ctx)));
       let result: Data;
       try { result = await sessions.requestUnlock(p, ctx.mcpReq.signal); }
       catch (error) { if (created) sessions.views.delete(v.id); throw error; }

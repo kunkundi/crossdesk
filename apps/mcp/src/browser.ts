@@ -18,6 +18,7 @@ import { Failure, token, equal, failure, type BrowserLaunch, type Data } from ".
 import { Sessions, type View } from "./sessions.js";
 import { uiAction } from "./ui-actions.js";
 import { displayEnvironment } from "./environment.js";
+import { browserNextStep, type BrowserHost } from "./browser-host.js";
 
 const uiFile = fileURLToPath(new URL("./viewer-browser.html", import.meta.url));
 interface BrowserSession {
@@ -30,6 +31,7 @@ interface BrowserGrant {
   generation: number;
   expires: number;
   directory?: string;
+  launcher?: string;
   timer?: ReturnType<typeof setTimeout>;
 }
 export async function openURL(url: string): Promise<boolean> {
@@ -72,6 +74,7 @@ export class BrowserPanel {
   private origin = "";
   private cookie = "crossdesk_" + token();
   private grants = new Map<string, BrowserGrant>();
+  private launchers = new Map<string, string>();
   private clients = new Map<string, BrowserSession>();
   private html = "";
   constructor(private sessions: Sessions, private launch: BrowserLaunch = "auto") {}
@@ -86,16 +89,22 @@ export class BrowserPanel {
     if (this.closed) throw new Failure("PANEL_CLOSED");
     return this.sessions.openVideo(view, this.origin);
   }
-  async open(view: View, preferHost = false): Promise<Data> {
+  async open(view: View, host?: BrowserHost): Promise<Data> {
     if (this.closed) throw new Failure("PANEL_CLOSED");
     await this.start();
     if (this.closed) throw new Failure("PANEL_CLOSED");
     const { key, grant, url } = this.bootstrap(view);
-    const launch = this.launch === "auto" ? (preferHost ? "host" : "system") : this.launch;
+    const launch = this.launch === "auto" ? (host ? "host" : "system") : this.launch;
     let launcher: string | undefined;
     let opened = false;
     try {
-      if (launch === "host") {
+      if (launch === "host" && host === "deepseek-harness") {
+        // Harness rejects file: navigation. Keep the bootstrap credential out
+        // of tool results and exchange a separate single-use loopback launcher.
+        grant.launcher = token();
+        this.launchers.set(grant.launcher, key);
+        launcher = `${this.origin}/launch/${grant.launcher}`;
+      } else if (launch === "host") {
         // The host opens a local document, never a model-visible bearer URL.
         // Its browser gets its own cookie through the normal bootstrap flow.
         grant.directory = await mkdtemp(join(tmpdir(), "crossdesk-mcp-launch-"));
@@ -115,10 +124,12 @@ export class BrowserPanel {
       browser_opened: opened,
       browser_url: this.origin,
       browser_launch: launch,
+      ...(host ? { browser_host: host } : {}),
       ...(launcher ? {
         browser_launch_url: launcher,
         browser_launch_expires_in_ms: Math.max(0, grant.expires - Date.now()),
-        next_step: "Open browser_launch_url in the host's built-in browser/sidebar using its browser-open tool (Codex: open_in_codex, target.type=browser, target.url=browser_launch_url, placement=right). Do not read or quote the launcher file: it contains a one-time pairing credential. If no host browser is available, show the pairing_command for the user to run locally. Then call crossdesk_get_session with view_id and wait_ms=25000. If the launcher expired, call crossdesk_open_browser with this view_id to issue another; do not reconnect the remote device.",
+        browser_launch_expires_at_ms: grant.expires,
+        next_step: browserNextStep(host),
       } : {}),
       pairing_command: {
         command: "crossdesk-mcp",
@@ -135,6 +146,7 @@ export class BrowserPanel {
   }
   private async removeGrant(key: string, grant: BrowserGrant) {
     if (this.grants.get(key) === grant) this.grants.delete(key);
+    if (grant.launcher) this.launchers.delete(grant.launcher);
     clearTimeout(grant.timer);
     if (grant.directory) await rm(grant.directory, { recursive: true, force: true });
   }
@@ -223,6 +235,22 @@ export class BrowserPanel {
       (req.headers.origin && req.headers.origin !== this.origin)
     )
       return this.respond(res, 403, { error: { code: "ORIGIN_DENIED" } });
+    const launcher = req.url?.match(/^\/launch\/([a-zA-Z0-9_-]+)$/)?.[1];
+    if (launcher && req.method === "GET") {
+      const key = this.launchers.get(launcher);
+      const grant = key ? this.grants.get(key) : undefined;
+      const view = grant ? this.sessions.views.get(grant.view) : undefined;
+      if (!key || !grant || grant.expires <= Date.now() || !view ||
+          view.panel !== "browser" || view.generation !== grant.generation) {
+        if (key && grant) await this.removeGrant(key, grant);
+        return this.respond(res, 410, { error: { code: "LAUNCHER_EXPIRED" } });
+      }
+      this.launchers.delete(launcher);
+      grant.launcher = undefined;
+      res.writeHead(302, { Location: `${this.origin}/#bootstrap=${key}` });
+      res.end();
+      return;
+    }
     if (req.url === "/" && req.method === "GET") {
       const nonce = token();
       res.setHeader(

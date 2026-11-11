@@ -154,7 +154,7 @@ async function main() {
   }
   if (values.help || !positionals.length) {
     process.stdout.write(
-      "crossdesk-mcp serve --stdio [--panel auto|apps|browser|terminal|off] [--browser-launch auto|host|system] [--video-path browser|minirtc] [--video-decoder auto|software] [--config-dir directory]\nDefaults: --panel=auto --browser-launch=auto (Codex: host sidebar browser; other clients: local environment/system browser)\nExplicit host sidebar: --panel=browser --browser-launch=host\nSystem browser: --panel=browser --browser-launch=system\ncrossdesk-mcp view --view VIEW_ID [--config-dir directory] [--cell-aspect 0.5]\ncrossdesk-mcp setup [--config-dir directory]\ncrossdesk-mcp setup --open-panel --view VIEW_ID [--config-dir directory]\nDevelopment: --native-binary /absolute/path/to/crossdesk-cli\n",
+      "crossdesk-mcp serve --stdio [--panel auto|apps|browser|terminal|off] [--browser-launch auto|host|system] [--video-path browser|minirtc] [--video-decoder auto|software] [--config-dir directory]\nDefaults: --panel=auto --browser-launch=auto (Codex/DeepSeek Harness: host sidebar browser; other clients: local environment/system browser)\nExplicit host sidebar: --panel=browser --browser-launch=host\nSystem browser: --panel=browser --browser-launch=system\ncrossdesk-mcp view --view VIEW_ID [--config-dir directory] [--cell-aspect 0.5]\ncrossdesk-mcp setup [--config-dir directory]\ncrossdesk-mcp setup --open-panel --view VIEW_ID [--config-dir directory]\nDevelopment: --native-binary /absolute/path/to/crossdesk-cli\n",
     );
     return;
   }
