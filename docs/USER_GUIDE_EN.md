@@ -118,8 +118,8 @@ Switch devices using session tabs. Expand the control bar if it is collapsed, an
 | Keyboard | Send shortcuts; Windows `Ctrl+Alt+Del` requires the remote service |
 | Mouse | Enable / release remote mouse control |
 | Speaker | Play / mute remote audio |
-| Folder | Select a file to send and view transfer progress |
-| Video settings | Adjust video quality, capture frame rate, and video preference during the current session |
+| Folder | Open the dual-pane file browser and transfer files or folders between local and remote directories |
+| Video settings | Adjust video quality, capture frame rate, supported remote display resolution, and video preference |
 | Network statistics | Inspect traffic, packet loss, frame rate, resolution, direct / relay mode, encryption status, the remote encoder, and the local decoder |
 | Privacy screen | Enable or disable the host's privacy screen; hover to see its status and available actions |
 | Fullscreen | Enter / exit fullscreen |
@@ -135,6 +135,16 @@ On macOS, CrossDesk keeps one application icon in the Dock. The main and remote 
 
 Network statistics in both ordinary sessions and DeskHub show the video codecs actually in use, including software fallback. Names use “Implementation (Format)” with an initial capital and uppercase technical abbreviations, such as `VideoToolbox (H.264)`, `NVENC (H.264)`, `NVDEC (H.264)`, `SVT-AV1 (AV1)`, `Dav1d (AV1)`, and `LibAOM (AV1)`; Media Foundation also includes `HW` (hardware) or `SW` (software). The host must support encoder status reporting; older versions and information not yet available display “—”.
 
+### Browse directories and transfer files
+
+Open the folder button in the session toolbar to view local and remote file lists side by side. Enter a path, go to the parent directory, filter by name, select files or folders, then click **Send to remote** / **Send to local**, or drag between panes. The destination directory must exist; conflicting names are saved under an alternate name. Remote directory browsing requires a compatible host.
+
+The task list shows transfer status and progress, with controls to cancel unfinished tasks and clear completed records. Paths, filenames, and completion states in the image are illustrative.
+
+<p align="center">
+  <img src="images/desktop-files-en.png" width="960" alt="File transfer window with local and remote file lists, transfer direction, and task status; all data is illustrative" />
+</p>
+
 ### Adjust video during a session
 
 After connecting, open **Video settings** (the sliders icon) in the toolbar. Choose low / medium / high quality, **30 / 60 fps**, and frame-rate priority / quality priority / balanced adaptation. Changes are sent to the current host without reconnecting; actual results depend on the network, device, and encoder. For older hosts that do not support live video settings, the menu explains the limitation and disables the options.
@@ -142,8 +152,10 @@ After connecting, open **Video settings** (the sliders icon) in the toolbar. Cho
 For Windows, macOS, and Linux X11 hosts, **Video settings → Resolution** also lists supported desktop resolutions for the selected monitor. Changes take effect without reconnecting; when the last controller disconnects, the display mode from before the first change is restored. Linux requires X11 capture and a RandR-capable display server. Wayland, XWayland, and custom scaling or panning configurations are not supported. Choices come from the monitor or virtual display server; no additional modes are created for virtual screens that expose only one mode.
 
 <p align="center">
-  <img src="images/desktop-stream-video-settings-en.png" width="800" alt="Current session video menu with quality, capture frame rate, and video preference; the background is a public page used for demonstration" />
+  <img src="images/desktop-stream-video-settings-en.png" width="800" alt="Current session video menu with resolution, quality, capture frame rate, and video preference; the background is a public page used for demonstration" />
 </p>
+
+Desktop and native mobile controllers remember confirmed resolutions per remote device and display. On reconnection, a saved mode is requested again if still supported. The host still restores the original mode when the last controller disconnects.
 
 <a id="settings"></a>
 
@@ -157,7 +169,7 @@ Open **☰ → Settings** in the top-right corner, choose **General / DeskHub**,
 
 | Setting | Purpose |
 | --- | --- |
-| Language | 中文, English, Русский |
+| Language | Follow the system by default, or select Simplified / Traditional Chinese, English, Russian, Japanese, Korean, German, French, Spanish, or Brazilian Portuguese; see [localization](../localization/README.md) (Chinese) |
 | Capture Method (Windows) | Auto / DXGI / WGC / GDI; choose Auto for automatic headless adaptation |
 | Video Encode Format | H.264 / AV1; H.264 automatically prefers hardware codecs, with software fallback when unavailable or initialization fails; desktop AV1 uses software codecs |
 | Enable direct IP | Enabled by default; saving starts or stops direct IP immediately. Disabling disconnects IP sessions, stops listeners, and hides the mode button; the choice persists across restarts |
@@ -165,7 +177,8 @@ Open **☰ → Settings** in the top-right corner, choose **General / DeskHub**,
 | Save remote screen previews | On by default. When disabled, the thumbnail area shows the remote device’s platform and existing previews are cleared; connection records and passwords are preserved |
 | Privacy screen on connect | Automatically enable privacy when this computer is controlled remotely; the controller can toggle it from the session toolbar |
 | Self-Hosted Config | Click Edit to set the server address and signaling port, then enable the switch on the right |
-| Auto Start / Enable Daemon | Configure startup and process supervision; restart as indicated by the UI |
+| Auto Start | Installed Windows Release builds use the same ID and password before and after sign-in, with the GUI attaching to the background service after login. Unavailable in portable and Debug Windows builds. Other desktop platforms start at desktop login |
+| Enable Daemon | On Windows / macOS / Linux desktops, saving immediately enables or disables restart after an abnormal exit. Normal exit or logoff does not relaunch the app; headless console mode does not use the built-in daemon |
 | File Save Path | Choose where received files are saved |
 
 The direct IP switch in the Network group is independent of the relay settings used for ID connections:
@@ -195,7 +208,17 @@ Devices supporting preview subscriptions can pause video while their views are h
 The client checks for updates in the background after launch and automatically opens the update dialog when a new version is found, showing release notes and a link to the download page. After you dismiss the dialog, background checks will not reopen it during the current run, while the main window menu keeps its update indicator. Restarting the client shows the dialog again if an update is still available. Open **☰ → About** to view the version. When an update is available, click **Release notes** below the new version to reopen the update dialog, or click **Check for updates** to check manually.
 
 <p align="center">
-  <img src="images/desktop-about-en.png" width="720" alt="About dialog with the Check for updates button; version and check result are demonstration data" />
+  <img src="images/desktop-about-en.png" width="720" alt="About dialog with the Check for updates button; development is a demonstration version and no online check was performed" />
+</p>
+
+<a id="feedback"></a>
+
+### Feedback and diagnostic logs
+
+Open **☰ → Feedback & suggestions** in the main window. **Give feedback on GitHub** opens the issue page; **Export diagnostic logs** saves CrossDesk and MiniRTC logs with basic version information as a ZIP archive. After export, the panel shows the saved path. Attach the archive to a report with both systems, client versions, connection mode, and reproduction steps.
+
+<p align="center">
+  <img src="images/desktop-feedback-en.png" width="720" alt="Feedback and suggestions with GitHub feedback and diagnostic log export buttons" />
 </p>
 
 <a id="ios"></a>
@@ -204,7 +227,7 @@ The client checks for updates in the background after launch and automatically o
 
 [`apps/ios`](../apps/ios/README.md) contains a native controller using the same MiniRTC protocol as the desktop client. It controls remote computers; it does not expose an iPhone or iPad as a remotely controlled desktop.
 
-1. Follow the [iOS guide](../apps/ios/README.md) to build and sign the app with Xcode, then install it on an iOS 16+ physical device.
+1. Install from the [App Store](https://apps.apple.com/app/id6828859211), checking the listing for OS requirements. Alternatively, follow the [iOS guide](../apps/ios/README.md) to build and sign with Xcode; current source targets iOS 16+.
 2. Enter a remote ID on the home screen, connect, and enter its password. Successful connections become available in the recent devices list.
 3. Choose a mouse mode in Settings: **Relative Position** works like a trackpad; **Absolute Position** maps touches directly to the remote screen.
 4. Tap the floating icon to expand the menu, then switch displays, open the keyboard, toggle audio, or send files. Received files are stored in `Documents/Received` and can be exported using the share button beside the transfer status.
@@ -249,7 +272,7 @@ These are development builds. Follow the [HarmonyOS build guide](../apps/harmony
 
 The installer registers an on-demand service by default. CrossDesk tries to start it on launch. Unless unattended mode is enabled, the service exits when no local CrossDesk client is running. Portable builds offer service installation in the prompt or **Settings → Lock Screen Service**, with administrator privileges.
 
-On Windows, **Auto Start** launches the client after the current user signs in. Installed release builds use a logon scheduled task with highest privileges, so subsequent logons need no UAC confirmation; portable and Debug builds use a normal per-user startup entry. Upgrading the installed build or launching the new version manually migrates a legacy startup entry pointing to that executable. Turning Auto Start off removes its registration. Remote access before sign-in requires the separate unattended mode below.
+In installed Windows Release builds, **Auto Start** enables unattended hosting: `CrossDeskService` starts with the system, and a scheduled task starts the GUI after the enabling user signs in. The background service owns the device identity and remote connections; the GUI attaches through an authenticated local pipe. Turning the option off removes automatic startup and returns the service to on-demand startup. Opening the GUI manually still uses the background host. **Enable Daemon** controls GUI crash recovery. Portable and Debug builds do not offer Auto Start.
 
 <a id="windows-service-development-update"></a>
 
@@ -273,26 +296,28 @@ Remote control may briefly disconnect while the service restarts. Reconnect and 
 
 ### Remote access before Windows sign-in
 
-The installed release supports a separate unattended host. Open an **administrator PowerShell** in the complete installation directory and enable it once:
+Enable **Settings → Auto Start** and save to use the main window's device ID and password before and after sign-in. The same feature can be enabled from an **administrator PowerShell** in the complete installation directory. Close the ordinary client before first enabling it through the CLI, or use the running client's settings switch:
 
 ```powershell
 .\CrossDesk.exe --unattended-enable
-# After network registration, show its separate device ID, password and online state
+# Show the shared device ID, password, online state, and current hosting mode
 .\CrossDesk.exe --unattended-status
 ```
 
-Connect from another device using the returned `device_id` and `password`. First-time setup copies the current client's server and codec preferences and creates separate credentials. This ID differs from the GUI client's ID and persists across reboots, logoffs and re-enabling. Subsequent enable commands retain the machine configuration. Self-hosted server root certificates must be trusted in the Local Computer certificate store.
+Connect using the existing `device_id` and `password`. Password changes, device identity keys, and trusted-device records are shared between hosting modes. Re-enabling reuses this identity instead of creating a new ID. Self-hosted server root certificates must be trusted in the Local Computer certificate store.
 
-Once enabled, `CrossDeskService` starts automatically at system boot. Windows automatic login and saved Windows login passwords are unnecessary. The service launches a windowless SYSTEM host in the active console session and reuses secure-desktop capture, keyboard/mouse input and `Ctrl+Alt+Del`. Signing in, locking Windows or closing the ordinary client does not stop it. Logoff, user switching or a host crash causes the service to restart the host; the connection may drop, and you can reconnect using the same ID. Network connections retry if networking is unavailable during boot.
+Once enabled, `CrossDeskService` starts at system boot without Windows automatic login or saved Windows login passwords. A windowless SYSTEM host owns network connections, capture, keyboard/mouse input, and `Ctrl+Alt+Del`. The GUI attaches after the user desktop unlocks without another signaling login or replacing the remote connection. Closing or restarting the GUI preserves viewing and input. Logoff, switching Windows sessions, service restarts, or network failures can still require reconnection; networking retries if unavailable during boot.
 
-Unattended mode supports screen viewing, keyboard/mouse input, monitor switching and secure desktops. Audio, file transfer, clipboard and privacy screens are unavailable. Portable and Debug builds cannot enable it. Configuration and credentials reside in `%ProgramData%\CrossDeskUnattended`, accessible only to SYSTEM and administrators; logs are in its `logs` subdirectory.
+Before sign-in, screen viewing, keyboard/mouse input, monitor switching, and secure-desktop control are available. Once the GUI attaches, audio, file transfers, clipboard, and privacy screens run in the signed-in user process over the existing background connection; file operations do not run as SYSTEM. Those user features pause when the GUI exits and resume when reopened. Portable and Debug builds cannot enable this mode. Shared identity resides in `%ProgramData%\CrossDeskUnattended`, accessible only to SYSTEM and administrators; logs are in its `logs` subdirectory.
+
+Without a physical monitor, the unattended host attempts to prepare a virtual display before accepting connections, preferring a previously recorded resolution and using 1920 × 1080 when no valid record exists. These temporary modes do not overwrite persistent Windows display configuration. Once a physical display is stable, the temporary virtual display is released while preserving the remote stream index.
 
 ```powershell
 # Stop the unattended host and restore on-demand service startup
 .\CrossDesk.exe --unattended-disable
 ```
 
-Turning off ordinary Auto Start does not disable unattended mode. Disabling or uninstalling the service disarms unattended startup but retains the protected machine profile. To erase its credentials, stop the service and delete that directory as an administrator.
+Turning off **Auto Start** disables unattended mode; CLI enable/disable operations are also reflected in the switch. Disabling or uninstalling the service disarms unattended startup but retains the protected machine profile. To erase its credentials, stop the service and delete that directory as an administrator.
 
 <details>
 <summary>Manual deployment and service commands</summary>

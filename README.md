@@ -24,7 +24,7 @@
 
 CrossDesk 让你从电脑、浏览器、手机或终端（桌面 CLI）连接远端电脑，也能通过桌面墙（DeskHub）集中查看与操控多台设备。项目基于 [MiniRTC](https://github.com/kunkundi/minirtc)，支持自托管。
 
-[主要功能](#features) · [下载与平台支持](#download) · [快速连接](#quick-start) · [终端 CLI](#cli) · [IP 直连](#lan-direct) · [可信设备](#trusted-devices) · [界面预览](#preview) · [使用指南](docs/USER_GUIDE.md) · [自托管](#self-hosting) · [构建与反馈](#development) · [赞助](#sponsor)
+[主要功能](#features) · [下载与平台支持](#download) · [快速连接](#quick-start) · [终端 CLI](#cli) · [Agent / MCP](#mcp) · [IP 直连](#lan-direct) · [可信设备](#trusted-devices) · [界面预览](#preview) · [使用指南](docs/USER_GUIDE.md) · [自托管](#self-hosting) · [构建与反馈](#development) · [赞助](#sponsor)
 
 <a id="features"></a>
 
@@ -33,9 +33,10 @@ CrossDesk 让你从电脑、浏览器、手机或终端（桌面 CLI）连接远
 - **跨平台远控：** Windows、macOS、Linux 桌面互控，浏览器及原生 iOS / Android 客户端访问电脑；鸿蒙 PC 与移动端处于开发阶段。
 - **局域网 IP 直连：** 桌面客户端通过 IP、端口和六位密码连接，无需云端信令服务；支持独立端口、记住密码及按模式显示近期设备。
 - **终端主控：** 在终端中通过设备 ID 观看和操控远程桌面，支持 ANSI / Kitty / Sixel 画面、局部缩放与平移、持续本地命令模式及 Pi 扩展，可单独构建。
-- 桌面墙：多设备实时预览、分组、放大操控、群控和批量文件分发。
-- **画面与声音：** H.264 / AV1、硬件编解码、远端音频，以及会话内画质和帧率调整；可用能力随平台与设备而异。
-- **日常协作：** 多显示器切换、键鼠与组合键、文本剪贴板、文件传输。
+- **桌面墙：** 多设备实时预览、分组、放大操控、群控和批量文件分发。
+- **画面与声音：** H.264 / AV1、硬件编解码、远端音频，会话内调整画质、帧率和远端显示器分辨率；记住已确认的分辨率选择，最后一个控制端断开后恢复原显示模式。可用能力随平台与设备而异。
+- **日常协作：** 多显示器切换、键鼠与组合键、文本剪贴板；双栏文件浏览支持目录导航、文件与文件夹双向传输、拖放和任务管理。
+- **Agent / MCP：** 通过本机 MCP 服务授权 Agent 观察和操作远端电脑，提供实时监看、人工接管、多会话、剪贴板和文件工具；目前从源码构建使用。
 - **可信设备：** 桌面端可选开启可信设备限制，在连接密码之外校验设备身份；支持复制、粘贴配对信息，提前添加允许访问本机的设备。
 - **部署与运维：** P2P 直连、TURN 中继、SRTP 媒体加密、自托管，以及 Windows 登录前远控和 Linux 无头运行。
 
@@ -50,18 +51,19 @@ CrossDesk 让你从电脑、浏览器、手机或终端（桌面 CLI）连接远
 | Windows | **控制 / 被控**；Windows 10+，x64；`.exe` 安装包，也支持便携构建 |
 | macOS | **控制 / 被控**；macOS 14.0+；按 Intel / Apple Silicon 选择 x64 / arm64 `.pkg` |
 | Linux | **控制 / 被控**；Ubuntu 20.04+、glibc 2.31 基线；amd64 / arm64 `.deb` |
-| iOS / iPadOS | **仅控制**；iOS 16.0+；发布包为未签名应用，需自行签名，或使用 Xcode 构建安装 |
+| iOS / iPadOS | **仅控制**；从 [App Store](https://apps.apple.com/app/id6828859211) 安装，商店版系统要求以页面为准；当前源码目标为 iOS 16.0+，也可自行构建签名 |
 | Android | **仅控制**；Android 8.0+，arm64；下载已签名 APK 安装，或自行构建 |
 | 鸿蒙 PC（开发版） | **控制 / 被控**；API 26，arm64；使用 DevEco 构建并签名 HAP，仍在进行真机验收 |
 | 鸿蒙手机 / 平板（开发版） | **仅控制**；API 20+，arm64；使用 DevEco 构建并签名 HAP，仍在进行真机验收 |
 | Web | **仅控制**；支持 WebRTC 的浏览器；无需在控制端安装客户端 |
 | 终端 CLI（开发版） | **仅控制**；分发目标为 macOS / Linux（x64、arm64）和 Windows（x64）；通过 [npm 安装](#cli-npm) 或从源码构建，平台验收范围见 [CLI 说明](apps/cli/README.md) |
+| MCP（开发版） | **仅控制**；本机 Node.js 22+、兼容的 Agent 宿主及原生 CLI；支持浏览器、终端和 MCP Apps 监看，见 [源码运行说明](apps/mcp/README.md) |
 
 系统要求按当前源码与构建配置整理，具体安装包以对应 Release 说明为准。各客户端的功能范围见 [终端 CLI](#cli) 与 [移动端与鸿蒙](#mobile)。
 
 - **Linux：** 已有桌面选普通版 `crossdesk-linux-…deb`；需要独立 Xfce 桌面的服务器选 `crossdesk-virtual-desktop-xfce-…deb`。两者选择其一，安装与启动方法见 [使用指南](docs/USER_GUIDE.md#installation) 和 [无头运行](docs/HEADLESS.md)。
 - **macOS：** 首次运行时按提示授予屏幕录制及辅助功能权限；前者用于桌面采集，后者用于远程键鼠输入。[权限说明](docs/USER_GUIDE.md#installation)
-- **iOS / 鸿蒙：** 签名与构建步骤分别见 [iOS](apps/ios/README.md) 和 [鸿蒙](apps/harmony/README.md)，不要将未签名产物当作可直接安装的应用。
+- **iOS：** 优先从 [App Store](https://apps.apple.com/app/id6828859211) 安装；GitHub 的未签名产物仍需自行签名，步骤见 [iOS 构建说明](apps/ios/README.md)。鸿蒙需使用 DevEco 构建并签名，见 [鸿蒙说明](apps/harmony/README.md)。
 
 <a id="quick-start"></a>
 
@@ -135,12 +137,26 @@ CrossDesk 让你从电脑、浏览器、手机或终端（桌面 CLI）连接远
 
 群控会向所有已连接设备发送输入；关闭桌面墙会断开全部远程连接。操作范围与详细用法见 [桌面墙使用指南](docs/USER_GUIDE.md#deskhub)。截图使用演示数据，更多界面及来源见 [使用指南](docs/USER_GUIDE.md) 与 [截图说明](docs/images/README.md)。
 
+### 双栏文件传输
+
+在会话工具栏打开文件传输，同时浏览本机与远端目录，选择文件或文件夹后发送，也可在两栏之间拖放；任务列表显示进度并支持取消未完成任务。远端目录浏览需要兼容的被控端。
+
+<p align="center">
+  <img src="docs/images/desktop-files-zh.png" width="960" alt="双栏文件传输：本机与远端路径、文件列表、发送按钮和任务列表；数据为演示" />
+</p>
+
 <a id="session"></a>
 <a id="settings"></a>
 
 ## 会话操作与设置
 
-远程会话支持显示器切换、画质与帧率调整、声音、文本剪贴板同步和文件传输。工具栏还可查看网络状态、控制隐私屏；桌面设置中可配置 IP 直连开关、可信设备限制、编码、中继、自托管与桌面墙画面预算。
+远程会话支持显示器切换、画质与帧率调整、声音、文本剪贴板同步和双向文件传输。工具栏还可查看网络状态、控制隐私屏；桌面设置中可配置 IP 直连开关、可信设备限制、编码、中继、自托管、最小化时暂停视频及桌面墙画面预算。
+
+被控端为 Windows、macOS 或 Linux X11 时，可在 **画面设置 → 分辨率** 中选择当前显示器支持的模式，无需重连。桌面和原生移动端会记住远端确认成功的选择，重连时在仍受支持的情况下重新应用；最后一个控制端断开后，被控端恢复本轮连接首次调整前的显示模式。Linux 需要 X11 采集和 RandR，Wayland / XWayland 暂不支持此项调整。
+
+<p align="center">
+  <img src="docs/images/desktop-stream-video-settings-zh.png" width="960" alt="会话画面设置：质量、帧率、远端显示器分辨率和画面偏好；背景为公开页面演示图" />
+</p>
 
 - [会话操作](docs/USER_GUIDE.md#session)：工具栏、文本剪贴板、文件保存和隐私屏。
 - [客户端设置与更新](docs/USER_GUIDE.md#settings)：常规设置、桌面墙传输及版本检查。
@@ -259,9 +275,21 @@ pi -e ./apps/cli/plugins/pi/index.ts
 
 其他平台将 `CROSSDESK_CLI` 改为原生可执行文件的绝对路径。在 Pi 中输入 `/crossdesk` 或 `/crossdesk 123456789`，按提示输入密码。安装要求与验证范围见 [Pi 扩展说明](apps/cli/docs/terminal-client.md#pi-扩展)。
 
-CLI 当前仅提供 ID 连接与远程观看 / 输入，不提供 IP 直连、音频播放、文件传输或剪贴板同步，也暂不支持连接开启[可信设备限制](#trusted-devices)的被控端。macOS arm64 已完成本地构建和连接验证；Linux / Windows 完整运行、SSH / Kitty / Sixel 实机显示及真实 Pi TUI 的验收范围见 [验证记录](apps/cli/docs/validation.md)。平台构建与 npm 发布不代表全部平台已完成实机验收。
+交互式 CLI 当前提供 ID 连接与远程观看 / 输入，不提供 IP 直连、音频播放、文件传输或剪贴板同步；需要 Agent 自动化及文件、音频等工具时，使用下方的 [MCP 服务](#mcp)。CLI 也暂不支持连接开启[可信设备限制](#trusted-devices)的被控端。macOS arm64 已完成本地构建和连接验证；Linux / Windows 完整运行、SSH / Kitty / Sixel 实机显示及真实 Pi TUI 的验收范围见 [验证记录](apps/cli/docs/validation.md)。平台构建与 npm 发布不代表全部平台已完成实机验收。
 
 [CLI 文档入口](apps/cli/README.md) · [终端使用与故障排查](apps/cli/docs/terminal-client.md) · [桥接协议](apps/cli/docs/bridge-protocol.md) · [npm 打包与分发](apps/cli/docs/npm-distribution.md)
+
+<a id="mcp"></a>
+
+## Agent 与 MCP
+
+[`apps/mcp`](apps/mcp/README.md) 提供本机 MCP 服务，让 Agent 通过 CrossDesk 连接远端电脑。控制端需要 Node.js 22+ 和原生 CLI，无需安装桌面 GUI；被控端仍需运行兼容的 CrossDesk，信令服务需支持 `cli` 注册。当前以源码构建流程为准，仓库中的包版本不代表已发布到 npm。
+
+1. 按 [源码运行说明](apps/mcp/README.md#从源码运行) 构建原生 CLI 与 MCP，并将本地 stdio 服务配置到 Agent 宿主。
+2. 让 Agent 打开 CrossDesk，在监看面板选择设备、输入连接密码，并选择仅查看或允许控制。密码在本地面板中输入；保存密码与允许以后自动连接分别设置。
+3. Agent 通过截图、键鼠和结构化桌面工具执行任务；用户可实时监看、暂停 Agent、人工接管或断开连接。
+
+支持最多 8 个并行设备会话、多屏观察、远端文本剪贴板、文件浏览与传输、声音、系统锁屏及本地输入密码的解锁流程。窗口与可访问性操作受远端平台和系统权限限制，部分工具需要新版被控端。浏览器、终端和 MCP Apps 的面板能力因宿主而异；配置及兼容范围见 [MCP 文档](apps/mcp/README.md)。
 
 <a id="mobile"></a>
 
@@ -271,7 +299,7 @@ CLI 当前仅提供 ID 连接与远程观看 / 输入，不提供 IP 直连、�
 
 ### iOS / iPadOS
 
-原生控制端支持触控与虚拟鼠标、多显示器、远端音频、文件收发和文本剪贴板。悬浮菜单的“剪贴板”按钮可主动发送本机文本，单次上限为 128 KiB。iPhone / iPad 当前不能作为被控桌面。
+可从 [App Store](https://apps.apple.com/app/id6828859211) 安装原生控制端，支持触控与虚拟鼠标、多显示器、远端音频、文件收发和文本剪贴板。悬浮菜单的“剪贴板”按钮可主动发送本机文本，单次上限为 128 KiB；画面设置可调整受支持的远端显示器分辨率，并记住已确认的选择。iPhone / iPad 当前不能作为被控桌面，应用内更新检查指向 App Store。
 
 [使用说明](docs/USER_GUIDE.md#ios) · [构建与签名](apps/ios/README.md)
 
@@ -295,7 +323,7 @@ PC 端可控制和被控制，复用桌面界面与桌面墙；手机和平板�
 
 ## 无人值守与无头运行
 
-- **Windows：** CrossDesk Service 支持锁屏、登录和安全桌面控制。安装版可额外启用登录前远控，使用独立设备 ID 和密码；普通“开机自启”仅在用户登录后启动客户端。功能限制及启停命令见 [Windows 无人值守指南](docs/USER_GUIDE.md#windows-service)。
+- **Windows：** CrossDesk Service 支持锁屏、登录和安全桌面控制。安装版 Release 开启“开机自启”后，登录前后使用同一本机 ID 和密码；后台服务持有身份与远控连接，用户登录后 GUI 自动启动并接入。便携版和 Debug 不提供此开关。无显示器时会尝试准备虚拟显示器，并优先恢复已记录的显示分辨率。功能限制及启停命令见 [Windows 无人值守指南](docs/USER_GUIDE.md#windows-service)。
 - **Linux：** 可复用现有桌面，也可创建独立 Xvfb / Xfce 会话，操作方法见 [Linux 无头运行](docs/HEADLESS.md)。
 
 <a id="self-hosting"></a>
@@ -311,11 +339,14 @@ PC 端可控制和被控制，复用桌面界面与桌面墙；手机和平板�
 ## 构建与反馈
 
 - [终端客户端 CLI](apps/cli/README.md)：独立构建、终端使用、Pi 扩展、桥接协议和 npm 打包。
+- [Agent / MCP](apps/mcp/README.md)：源码运行、宿主配置、授权与监看、自动化工具及兼容范围。
 - [源码构建](docs/BUILD.md)：桌面端依赖、编译参数与打包；移动端请使用上方各平台的构建指南。
 - [GUI 架构](docs/gui-architecture.md)：桌面界面、平台实现与工程结构。
 - [连接模式架构](docs/connection-architecture.md)：ID 连接与 IP 直连的寻址、认证、协商、数据路径及生命周期。
 - [常见问题](docs/FAQ.md)：连接失败、黑屏、系统权限、文件位置与构建问题。
 - [提交问题或建议](https://github.com/kunkundi/crossdesk/issues)：请提供两端系统、客户端版本、连接方式和可复现步骤。
+
+桌面端主菜单中的 **反馈与建议** 可打开 GitHub 问题页面，或将 CrossDesk、MiniRTC 日志及基本版本信息导出为 ZIP。提交问题时可附上日志包；操作入口见 [反馈与诊断日志](docs/USER_GUIDE.md#feedback)。
 
 桌面端的 `CROSSDESK_UPDATE_PUBLIC_KEY` 是可选编译参数，用于验证应用内升级清单的 Ed25519 签名。不配置仍可正常编译、运行和检查版本，但更新只能手动下载；需要应用内自动安装更新时，须配置与发布私钥匹配的公钥。配置方式见 [更新公钥](docs/BUILD.md#update-public-key)，密钥生成与发布流程见 [桌面端应用内升级](docs/UPDATER.md)。
 

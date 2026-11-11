@@ -4,20 +4,15 @@
 
 ## 来源 / Sources
 
-- **2026-10-26** 从 `e551e04e` 的实际 Slint 组件重新生成中英文 README 引用的 6 张截图：ID 连接主窗口、IP 直连主窗口与六设备桌面墙，展示更新后的柔和阴影、输入框与按钮配色。沿用原有演示数据、图片尺寸及 2× 软件渲染。
-- **2026-10-25** 删除“启用中继服务”开关，并将自托管配置拆分为普通标签、“编辑”按钮和开关后，从当前工作区组件重新生成常规设置与网络设置共 4 张中英文截图。
-- **2026-10-25** 从 `ae6f81e8` 的实际 Slint 组件重新生成 16 张中英文截图：更新主窗口、常规设置、桌面墙设置、自托管及关于共 10 张，新增 IP 直连主界面、记住密码弹窗和网络设置共 6 张。使用 Slint 1.17.1、macOS arm64 和 2× 软件渲染。
-- 捕获程序在**工程外临时目录**中复用现有 [`slint_ui_smoke_test`](../../apps/desktop/tests/slint_ui_smoke_test.cpp) 的截图辅助函数，并注入演示界面状态；没有启动应用运行时、打开监听端口或建立远控会话。没有修改产品组件或工程内测试，临时源码、可执行程序与 PPM 均位于工程外。
-- 主窗口展示 ID / IP 模式切换、桌面墙入口和各自的近期设备；IP 模式展示地址编辑、六位密码和默认端口 52888，网络设置展示“启用 IP 直连”及关闭说明。IP 近期设备的 `LAN` 标记表示记录类型，不代表在线探测结果。
-- 本机 ID `123 456 789`、密码 `Ab12Cd` / `Cd34Ef`、地址 `192.168.1.10` 与 `192.168.1.20–22`、设备名称和连接状态均为演示数据，不是真实设备凭据。IP 列表还包含 `192.168.2.10` 作为切换示例。截图中勾选的“记住密码”是演示选择，配置状态不代表全部运行时默认值。
-- 桌面墙放大视图和会话画面设置共 4 张继续沿用 **2026-10-19** 从 `1ef372d2` 渲染的截图。桌面墙展示六台演示设备，主窗口展示三台。
-- “关于”中的 `v1.5.2` 和“已是最新版本”是捕获工具的示例值，不代表当前发布版本或实际在线检查结果。会话图使用公开页面作为远端画面，展示真实工具栏与画面设置菜单；隐私屏按钮处于关闭状态。
-- 缩略图沿用既有公开页面截图：`fixtures/source.png` 来自 [CrossDesk Xmake 源码页](https://github.com/kunkundi/crossdesk/blob/ios-support/xmake.lua)，`fixtures/website.png` 来自 [CrossDesk 官网](https://www.crossdesk.cn/)，两者采集于 2026-09-07。它们只用于展示预览效果，不代表这些页面正在对应设备上运行，页面中的版本信息也不代表最新发布。
-- `web-client.png` 保留 **2026-09-25** 从 [Web 客户端](https://web.crossdesk.cn/) 采集的 1280 × 720 连接首页，页面版本为 `2026.09.24.2`，ID 与密码为空。本次未重新采集 Web 页面；桌面设备预览继续复用这张图片。
+- **2026-11-11** 从 `6414f231` 的实际 Slint 组件刷新 **22 张**中英文桌面截图，并新增 **4 张**双栏文件传输与反馈面板截图。使用 Slint 1.17.1、macOS arm64 和 2× 软件渲染；主窗口展示独立的 ID / IP 模式与桌面墙入口，设置展示最小化时暂停视频，会话菜单展示远端显示器分辨率。
+- 捕获程序在**工程外临时目录**复用现有 [`slint_ui_smoke_test`](../../apps/desktop/tests/slint_ui_smoke_test.cpp) 的截图辅助函数，注入演示状态并直接渲染产品组件。没有启动应用运行时、监听端口或远控会话，也没有读取真实设备记录、浏览文件系统或执行传输。工程内未新增或修改测试；捕获源码、可执行文件和 PPM 均位于工程外。
+- 本机 ID `123 456 789`、密码 `Ab12Cd` / `Cd34Ef`、地址 `192.168.1.10` 与 `192.168.1.20–22`、设备名称和连接状态均为演示数据。IP 列表还包含 `192.168.2.10`。主窗口展示三台设备，桌面墙展示六台；IP 近期设备的 `LAN` 标记表示记录类型，不代表在线探测结果。
+- 文件传输图中的 `/Users/demo/Documents`、`/home/demo/Documents`、文件名、大小、日期与已完成任务均为演示数据。会话菜单中的分辨率列表也是演示能力，不表示某台真实显示器提供这些模式。勾选状态不代表全部运行时默认值。
+- “关于”中的 `development` 是捕获程序设置的演示版本；未执行在线更新检查。反馈截图仅展示入口，没有导出本机日志或提交反馈。
+- 缩略图和会话背景沿用公开页面截图：`fixtures/source.png` 来自 [CrossDesk Xmake 源码页](https://github.com/kunkundi/crossdesk/blob/ios-support/xmake.lua)，`fixtures/website.png` 来自 [CrossDesk 官网](https://www.crossdesk.cn/)，采集于 **2026-09-07**。它们只用于展示预览效果，不代表页面正在对应设备上运行，其中的版本和日期不是当前发布信息。
+- `web-client.png` 沿用 **2026-09-25** 从 [Web 客户端](https://web.crossdesk.cn/) 采集的 1280 × 720 连接首页（页面版本 `2026.09.24.2`），ID 与密码为空。本轮没有重新采集 Web 页面、CLI 或原生移动端。CLI 图片保留 **2026-10-31** 的实际输出，来源见下方 [CLI 图示](#cli-captures)。
 
-On **2026-10-26**, the six images referenced by the Chinese and English READMEs (ID mode, Direct IP mode, and the six-device DeskHub grid) were refreshed from the actual Slint components at `e551e04e`, showing the updated soft shadows and input and button colors. The existing demonstration data, image dimensions, and 2× software rendering were retained.
-
-On **2026-10-25**, 16 images were rendered from the actual Slint components at `ae6f81e8`: ten refreshed images (main window, General settings, DeskHub settings, self-hosting, and About) and six additions (Direct IP mode, its password dialog, and Network settings), in Chinese and English. Later that day, the four General and Network settings images were refreshed from the working tree after removing Enable TURN Service and separating Self-Hosted Config into a label, Edit button, and switch. The capture-only program reused the existing helper functions in an external temporary directory, using Slint 1.17.1 on macOS arm64 at 2× scale. Capture did not modify product components or repository tests, and no listeners or remote sessions were opened. IDs, IPs, passwords, device records, connection states, and update results are illustrative; `LAN` labels indicate record type, not an online check. The checked Remember password box is a demonstration choice. The four DeskHub enlarged-view and session-video images remain from 2026-10-19, public-page fixtures from 2026-09-07, and the Web image from 2026-09-25. Native mobile screenshots are not included.
+On **2026-11-11**, **22 desktop images** were refreshed and **4 file-transfer and feedback images** were added using the actual Slint components at `6414f231`, Slint 1.17.1 on macOS arm64, and 2× software rendering. The external capture program supplies demonstration data only: it starts no application runtime, listeners, remote sessions, file browsing, transfers, log export, or online update checks. No repository tests were added or changed. IDs, passwords, paths, file metadata, device states, resolution choices, and the `development` version are illustrative. Public-page fixtures remain from 2026-09-07, the Web image from 2026-09-25, and CLI output captures from 2026-10-31; native mobile screenshots are not included. Temporary source, binaries, and PPM files stay outside the repository.
 
 ## 文件 / Files
 
@@ -34,6 +29,8 @@ On **2026-10-25**, 16 images were rendered from the actual Slint components at `
 | `desktop-self-hosted-*.png` | 自托管设置 / Self-hosting | 1280 × 944 |
 | `desktop-stream-video-settings-*.png` | 会话工具栏与画面设置 / Session video settings | 1920 × 1200 |
 | `desktop-about-*.png` | 关于与检查更新 / About and update check | 1280 × 944 |
+| `desktop-files-*.png` | 双栏文件传输 / Dual-pane file transfer | 1920 × 1240 |
+| `desktop-feedback-*.png` | 反馈与诊断日志入口 / Feedback and diagnostic log export | 1280 × 944 |
 | `web-client.png`（中文） | Web 连接首页 / Web connection page | 1280 × 720 |
 | `cli-ansi-overview.png` | CLI ANSI 四象限全景 / ANSI quadrant overview | 1280 × 800 |
 | `cli-kitty-overview.png` | CLI Kitty 协议像素全景 / Kitty protocol pixel overview | 1280 × 800 |
@@ -148,6 +145,105 @@ int main() {
   return RunCaptureMode(options, window, stream, server);
 }
 '''
+# Documentation-only additions for the current UI.
+source = source.replace('window->set_current_version("v1.5.2");',
+    'window->set_current_version("development");\n'
+    '    window->set_update_check_status(crossdesk::ui::UpdateCheckStatus::Idle);')
+source = source.replace('  // Preview DeskHub with the same demo images, without opening any sessions.',
+    '  if (options.page == "feedback") window->set_feedback_open(true);\n'
+    '  // Preview DeskHub with the same demo images, without opening any sessions.')
+source = source.replace('      stream->set_video_menu_open(true);', r'''      stream->set_video_menu_open(true);
+      stream->set_remote_resolution_visible(true);
+      stream->set_remote_resolution_enabled(true);
+      stream->set_remote_resolutions(std::make_shared<slint::VectorModel<slint::SharedString>>(
+          std::vector<slint::SharedString>{"1280 × 720", "1920 × 1080", "2560 × 1440"}));
+      stream->set_remote_resolution_index(1);''')
+source = source.replace('      // Let settings scroll animations settle as well as hover/focus feedback.', r'''      if (options.page == "stream-video-settings") {
+        stream->set_video_menu_open(false);
+        const slint::LogicalPosition logo({19.0f, 19.0f});
+        stream->window().dispatch_pointer_move_event(logo);
+        stream->window().dispatch_pointer_press_event(logo, slint::PointerEventButton::Left);
+        stream->window().dispatch_pointer_release_event(logo, slint::PointerEventButton::Left);
+        stream->window().dispatch_pointer_move_event(slint::LogicalPosition({950.0f, 590.0f}));
+        stream->set_video_menu_open(true);
+      }
+      // Let settings scroll animations settle as well as hover/focus feedback.''')
+source = source.replace('options.page.rfind("settings", 0) == 0 ? 350 : 150',
+    'options.page == "stream-video-settings" ? 650 : options.page.rfind("settings", 0) == 0 ? 350 : 150')
+source = source.replace('int RunCaptureMode(', r'''int CaptureFileBrowser(const CaptureOptions &options) {
+  auto files = crossdesk::ui::FileBrowserWindow::create();
+  if (!RegisterFontAwesome(files->window())) return 2;
+  const bool zh = options.language == 0;
+  files->set_chinese(zh);
+  files->set_peer_name("Office PC");
+  files->set_local_role(zh ? "控制端" : "Controller");
+  files->set_remote_role(zh ? "被控端" : "Host");
+  files->set_local_path("/Users/demo/Documents");
+  files->set_local_current_path("/Users/demo/Documents");
+  files->set_remote_path("/home/demo/Documents");
+  files->set_remote_current_path("/home/demo/Documents");
+  files->set_local_up(true);
+  files->set_remote_up(true);
+  files->set_local_status(zh ? "4 个项目" : "4 items");
+  files->set_remote_status(zh ? "4 个项目" : "4 items");
+  std::vector<crossdesk::ui::BrowserEntry> local, remote;
+  for (int pane = 0; pane < 2; ++pane) {
+    const char *names[] = {"Design assets", "Release notes.md", "Roadmap.pdf", "Screenshots.zip"};
+    const char *sizes[] = {"—", "12 KB", "248 KB", "8.4 MB"};
+    auto &entries = pane == 0 ? local : remote;
+    for (int i = 0; i < 4; ++i) {
+      crossdesk::ui::BrowserEntry entry{};
+      entry.name = names[i];
+      entry.path = slint::SharedString((std::string(pane == 0 ? "/Users/demo/Documents/" : "/home/demo/Documents/") + names[i]).c_str());
+      entry.directory = i == 0;
+      entry.selected = pane == 0 && i == 3;
+      entry.size = sizes[i];
+      entry.modified = "2026-11-11 10:30";
+      entries.push_back(entry);
+    }
+  }
+  files->set_local_entries(std::make_shared<slint::VectorModel<crossdesk::ui::BrowserEntry>>(local));
+  files->set_remote_entries(std::make_shared<slint::VectorModel<crossdesk::ui::BrowserEntry>>(remote));
+  for (int pane = 0; pane < 2; ++pane) {
+    std::vector<crossdesk::ui::BrowserTreeEntry> tree;
+    const char *names[] = {"demo", "Desktop", "Documents", "Downloads"};
+    for (int i = 0; i < 4; ++i) {
+      crossdesk::ui::BrowserTreeEntry entry{};
+      entry.name = names[i]; entry.depth = i == 0 ? 0 : 1;
+      entry.path = slint::SharedString((std::string(pane == 0 ? "/Users/demo" : "/home/demo") + (i == 0 ? "" : std::string("/") + names[i])).c_str());
+      entry.expanded = i == 0; entry.selected = i == 2;
+      tree.push_back(entry);
+    }
+    auto model = std::make_shared<slint::VectorModel<crossdesk::ui::BrowserTreeEntry>>(tree);
+    if (pane == 0) files->set_local_tree(model); else files->set_remote_tree(model);
+  }
+  files->set_local_selected(1);
+  files->set_transfer_ready(true);
+  files->set_can_upload(true);
+  files->set_tasks_expanded(true);
+  crossdesk::ui::BrowserTask task{};
+  task.id = 1; task.name = "Roadmap.pdf"; task.size = "248 KB";
+  task.detail = zh ? "发送到远端" : "Send to remote";
+  task.status = zh ? "已完成" : "Completed";
+  task.progress = 1.0f;
+  files->set_tasks(std::make_shared<slint::VectorModel<crossdesk::ui::BrowserTask>>(std::vector{task}));
+  files->set_task_summary(zh ? "1 个任务 · 已完成 1" : "1 task · 1 completed");
+  files->window().set_size(slint::LogicalSize({960.0f, 620.0f}));
+  files->show();
+  bool saved = false;
+  slint::Timer timer;
+  timer.start(slint::TimerMode::SingleShot, std::chrono::milliseconds(600), [&] {
+    saved = WriteWindowSnapshot(files->window(), options.snapshot_path.c_str());
+    slint::quit_event_loop();
+  });
+  slint::run_event_loop();
+  return saved ? 0 : 7;
+}
+
+''' + 'int RunCaptureMode(')
+source = source.replace('  auto window = crossdesk::ui::MainWindow::create();',
+    '  if (options.page == "files") return CaptureFileBrowser(options);\n'
+    '  auto window = crossdesk::ui::MainWindow::create();')
 (out / 'readme_capture.cpp').write_text(source)
 print(out / 'readme_capture.cpp')
 PY
@@ -155,7 +251,7 @@ PY
 
 ### 编译与捕获
 
-以下路径对应 `macosx / arm64 / debug` 配置；其他配置先用 `xmake show -t slint_ui_smoke_test` 查看生成头文件与库路径，再调整。捕获按顺序执行，避免窗口互相抢占焦点。
+macOS 编译需链接 `CoreFoundation`，供当前语言检测辅助函数使用。以下路径对应 `macosx / arm64 / debug` 配置；其他配置先用 `xmake show -t slint_ui_smoke_test` 查看生成头文件与库路径，再调整。捕获按顺序执行，避免窗口互相抢占焦点。
 
 ```bash
 slint_prefix=$(xmake lua -c 'import("core.project.config"); config.load(); import("core.project.project"); print(project.target("slint_ui_smoke_test"):pkg("slint"):installdir())')
@@ -168,14 +264,16 @@ xcrun clang++ -std=c++20 \
   "$capture_dir/readme_capture.cpp" \
   build/macosx/arm64/debug/libcrossdesk_ui.a \
   -L"$slint_prefix/lib" -lslint_cpp -Wl,-rpath,"$slint_prefix/lib" \
+  -framework CoreFoundation \
   -o "$capture_dir/readme_capture"
 
 for locale in zh en; do
   language=0
   if [ "$locale" = en ]; then language=1; fi
-  for page in main lan gallery; do
+  for page in main lan gallery lan-password settings settings-network settings-deskhub self-hosted about gallery-focus stream-video-settings files feedback; do
     image_page="$page"
     if [ "$page" = gallery ]; then image_page=deskhub; fi
+    if [ "$page" = gallery-focus ]; then image_page=deskhub-focus; fi
     snapshot="$capture_dir/desktop-$image_page-$locale.ppm"
     SLINT_BACKEND=winit-software SLINT_SCALE_FACTOR=2 \
       CROSSDESK_UI_CAPTURE=1 \
@@ -192,8 +290,8 @@ done
 
 逐张检查语言、页面、文字裁切、尺寸和演示数据后，将这些 PNG 复制到 `docs/images`，并更新日期与源码版本。桌面墙设置的标签在窗口初始化后设置，网络页滚动到对应分组，避免捕获尚未稳定的页面。
 
-### 其他页面
+### 捕获范围
 
-使用指南中的截图可用相同程序捕获，将循环中的页面列表换为 `lan-password settings settings-network settings-deskhub self-hosted about stream-video-settings`。桌面墙放大视图使用 `gallery-focus` 页面，输出文件命名为 `desktop-deskhub-focus-*`。生成器已为桌面墙保留六台演示设备、300px 磁贴宽度和 500px 网格窗口内容高度；放大视图保持 698px（macOS）。这些设置仅影响临时捕获程序的示例数据和窗口尺寸。
+上面的循环生成本轮全部 26 张桌面图片。可缩短页面列表以仅刷新所需页面。生成器为桌面墙保留六台演示设备、300px 磁贴宽度和 500px 网格内容高度；放大视图保持 698px（macOS）。会话捕获先展开真实工具栏，再显示画面设置菜单；文件浏览窗口只填充内存中的示例行，不连接文件操作回调。这些设置仅影响临时捕获程序。
 
 若更新 Web 图片，应打开 Web 客户端，等待表单与底部版本号加载完成，保持 ID 与密码为空，再截取页面视口；替换后也需重新生成桌面图以同步缩略图。

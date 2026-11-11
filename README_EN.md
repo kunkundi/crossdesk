@@ -24,7 +24,7 @@
 
 CrossDesk connects your computers from desktop, browser, mobile, and terminal clients, with DeskHub for viewing and controlling multiple devices together. It is built on [MiniRTC](https://github.com/kunkundi/minirtc) and supports self-hosting.
 
-[Features](#features) · [Download and platforms](#download) · [Quick start](#quick-start) · [Terminal CLI](#cli) · [Direct IP](#lan-direct) · [Trusted devices](#trusted-devices) · [Preview](#preview) · [User guide](docs/USER_GUIDE_EN.md) · [Self-hosting](#self-hosting) · [Build and feedback](#development) · [Sponsor](#sponsor)
+[Features](#features) · [Download and platforms](#download) · [Quick start](#quick-start) · [Terminal CLI](#cli) · [Agent / MCP](#mcp) · [Direct IP](#lan-direct) · [Trusted devices](#trusted-devices) · [Preview](#preview) · [User guide](docs/USER_GUIDE_EN.md) · [Self-hosting](#self-hosting) · [Build and feedback](#development) · [Sponsor](#sponsor)
 
 <a id="features"></a>
 
@@ -33,9 +33,10 @@ CrossDesk connects your computers from desktop, browser, mobile, and terminal cl
 - **Cross-platform access:** control Windows, macOS, and Linux desktops from computers, browsers, or native iOS / Android clients. HarmonyOS PC and mobile clients are in development.
 - **Direct IP over LAN:** connect desktop clients using an IP address, port, and six-character password without a cloud signaling service. Each local IP has its own port; passwords can be remembered and recent devices are separated by mode.
 - **Terminal controller:** view and control remote desktops by device ID, with ANSI / Kitty / Sixel rendering, zoom and pan, persistent local command mode, a Pi extension, and a build independent of the desktop GUI.
-- DeskHub: live multi-device previews, groups, enlarged control, group input, and batch file distribution.
-- **Video and audio:** H.264 / AV1, hardware codecs, remote audio, and in-session quality and frame-rate controls. Capabilities depend on the platform and device.
-- **Everyday controls:** monitor switching, keyboard and mouse input, shortcuts, text clipboard, and file transfer.
+- **DeskHub:** live multi-device previews, groups, enlarged control, group input, and batch file distribution.
+- **Video and audio:** H.264 / AV1, hardware codecs, remote audio, and in-session quality, frame-rate, and remote display resolution controls. Confirmed resolution choices are remembered; the original display mode is restored when the last controller disconnects. Capabilities depend on the platform and device.
+- **Everyday controls:** monitor switching, keyboard and mouse input, shortcuts, and text clipboard. A dual-pane file browser supports directory navigation, bidirectional file and folder transfers, drag and drop, and transfer management.
+- **Agent / MCP:** authorize an Agent through a local MCP service to observe and operate remote computers, with live monitoring, manual takeover, multiple sessions, clipboard, and file tools. Currently built from source.
 - **Trusted devices:** optionally restrict desktop access to trusted device identities in addition to the connection password. Copy and paste pairing information to approve devices before they connect.
 - **Deployment:** direct P2P connections, TURN relay, SRTP media encryption, self-hosting, Windows access before sign-in, and Linux headless operation.
 
@@ -50,18 +51,19 @@ Get a package matching your OS and CPU architecture from the [website](https://w
 | Windows | **Control + host**. Windows 10+, x64; `.exe` installer, with portable builds also supported |
 | macOS | **Control + host**. macOS 14.0+; x64 / arm64 `.pkg` for Intel / Apple Silicon |
 | Linux | **Control + host**. Ubuntu 20.04+, glibc 2.31 baseline; amd64 / arm64 `.deb` |
-| iOS / iPadOS | **Control only**. iOS 16.0+; sign the unsigned release app yourself, or build and install with Xcode |
+| iOS / iPadOS | **Control only**. Install from the [App Store](https://apps.apple.com/app/id6828859211); check the listing for its OS requirements. Current source targets iOS 16.0+ and can also be built and signed locally |
 | Android | **Control only**. Android 8.0+, arm64; install the signed APK or build from source |
 | HarmonyOS PC (development) | **Control + host**. API 26, arm64; build and sign a HAP with DevEco; physical-device validation is ongoing |
 | HarmonyOS phones / tablets (development) | **Control only**. API 20+, arm64; build and sign a HAP with DevEco; physical-device validation is ongoing |
 | Web | **Control only**. A WebRTC-capable browser; no client installation on the controlling device |
 | Terminal CLI (development) | **Control only**. Distribution targets: macOS / Linux (x64, arm64) and Windows (x64). [Install from npm](#cli-npm) or build from source; see the [CLI guide](apps/cli/README.md) (Chinese) for platform validation status |
+| MCP (development) | **Control only**. Local Node.js 22+, a compatible Agent host, and the native CLI; browser, terminal, and MCP Apps monitoring. See [source setup](apps/mcp/README.md) (Chinese) |
 
 Requirements follow the current source and build configuration. Check the release notes for the downloaded package. Client capabilities are summarized under [Terminal CLI](#cli) and [Mobile and HarmonyOS](#mobile).
 
 - **Linux:** use `crossdesk-linux-…deb` for an existing desktop, or `crossdesk-virtual-desktop-xfce-…deb` for a server needing a separate Xfce desktop. Choose one. See [installation details](docs/USER_GUIDE_EN.md#installation) and [headless operation](docs/HEADLESS_EN.md).
 - **macOS:** grant Screen Recording and Accessibility when prompted on first launch. These enable desktop capture and remote keyboard/mouse input. See [permissions](docs/USER_GUIDE_EN.md#installation).
-- **iOS / HarmonyOS:** follow the [iOS](apps/ios/README.md) or [HarmonyOS](apps/harmony/README.md) (Chinese) signing and build guide. Unsigned artifacts cannot be installed directly.
+- **iOS:** install from the [App Store](https://apps.apple.com/app/id6828859211). Unsigned GitHub artifacts still require signing; see the [iOS build guide](apps/ios/README.md). HarmonyOS requires a signed DevEco build; see the [HarmonyOS guide](apps/harmony/README.md) (Chinese).
 
 <a id="quick-start"></a>
 
@@ -135,12 +137,26 @@ View devices by group, click a preview to enlarge it, and take control when need
 
 Group control sends input to all connected devices; closing DeskHub disconnects all remote connections. See the [DeskHub user guide](docs/USER_GUIDE_EN.md#deskhub) for exact scopes and controls. Screenshots use demonstration data; more views and sources are in the [user guide](docs/USER_GUIDE_EN.md) and [screenshot notes](docs/images/README.md).
 
+### Dual-pane file transfers
+
+Open file transfer from the session toolbar to browse local and remote directories side by side. Send selected files or folders, or drag them between panes; the task list shows progress and lets you cancel unfinished transfers. Remote directory browsing requires a compatible host.
+
+<p align="center">
+  <img src="docs/images/desktop-files-en.png" width="960" alt="Dual-pane file transfer with local and remote paths, file lists, send controls, and a transfer task; all data is illustrative" />
+</p>
+
 <a id="session"></a>
 <a id="settings"></a>
 
 ## Session controls and settings
 
-Remote sessions support monitor switching, video quality and frame-rate controls, audio, text clipboard synchronization, and file transfer. The toolbar also provides network statistics and privacy screen controls. Desktop settings configure direct IP availability, trusted-device restrictions, codecs, relay, self-hosting, and the DeskHub video budget.
+Remote sessions support monitor switching, video quality and frame-rate controls, audio, text clipboard synchronization, and bidirectional file transfers. The toolbar also provides network statistics and privacy screen controls. Desktop settings configure direct IP availability, trusted-device restrictions, codecs, relay, self-hosting, video pausing when minimized, and the DeskHub video budget.
+
+For Windows, macOS, and Linux X11 hosts, **Video settings → Resolution** selects a mode supported by the current remote display without reconnecting. Desktop and native mobile controllers remember confirmed choices and reapply them on reconnection when still supported. When the last controller disconnects, the host restores the display mode used before the first change in that connection period. Linux requires X11 capture and RandR; Wayland / XWayland resolution changes are not currently supported.
+
+<p align="center">
+  <img src="docs/images/desktop-stream-video-settings-en.png" width="960" alt="Session video settings: quality, frame rate, remote display resolution, and video preference, over an illustrative public-page capture" />
+</p>
 
 - [Session controls](docs/USER_GUIDE_EN.md#session): toolbar, text clipboard, received files, and privacy screens.
 - [Client settings and updates](docs/USER_GUIDE_EN.md#settings): general options, DeskHub video settings, and version checks.
@@ -259,9 +275,21 @@ pi -e ./apps/cli/plugins/pi/index.ts
 
 On other platforms, set `CROSSDESK_CLI` to the absolute path of the native executable. Enter `/crossdesk` or `/crossdesk 123456789` in Pi and follow the password prompt. See the [Pi extension guide](apps/cli/docs/terminal-client.md#pi-扩展) (Chinese) for requirements and validation scope.
 
-The CLI currently provides ID-based viewing and input, without direct IP connections, audio playback, file transfer, or clipboard synchronization. It also cannot yet connect to hosts with [trusted-device restrictions](#trusted-devices) enabled. Local builds and remote connections have been validated on macOS arm64. See the [validation record](apps/cli/docs/validation.md) (Chinese) for the remaining Linux / Windows, SSH / Kitty / Sixel terminal, and actual Pi TUI checks. Platform builds and npm publication do not establish that every platform has been validated on real devices.
+The interactive CLI provides ID-based viewing and input, without direct IP connections, audio playback, file transfer, or clipboard synchronization. For Agent automation and file or audio tools, use the [MCP service](#mcp) below. The CLI cannot yet connect to hosts with [trusted-device restrictions](#trusted-devices) enabled. Local builds and remote connections have been validated on macOS arm64. See the [validation record](apps/cli/docs/validation.md) (Chinese) for the remaining Linux / Windows, SSH / Kitty / Sixel terminal, and actual Pi TUI checks. Platform builds and npm publication do not establish that every platform has been validated on real devices.
 
 [CLI documentation](apps/cli/README.md) · [Terminal usage and troubleshooting](apps/cli/docs/terminal-client.md) · [Bridge protocol](apps/cli/docs/bridge-protocol.md) · [npm packaging and distribution](apps/cli/docs/npm-distribution.md) (detailed guides in Chinese)
+
+<a id="mcp"></a>
+
+## Agents and MCP
+
+[`apps/mcp`](apps/mcp/README.md) provides a local MCP service for Agents to connect to remote computers through CrossDesk. The controller needs Node.js 22+ and the native CLI, without the desktop GUI. The remote host still needs a compatible CrossDesk client and a signaling server supporting `cli` registration. Follow the source build workflow; package versions in the repository do not establish npm availability.
+
+1. Follow [source setup](apps/mcp/README.md#从源码运行) (Chinese) to build the native CLI and MCP service, then configure the local stdio process in your Agent host.
+2. Ask the Agent to open CrossDesk. Choose a device and enter its password in the local monitoring panel, then grant view-only or control access. Saving a password and allowing future automatic connections are separate choices.
+3. The Agent uses screenshots, keyboard and mouse actions, and structured desktop tools. You can watch live, pause the Agent, take over manually, or disconnect.
+
+The service supports up to 8 concurrent device sessions, multi-display observation, remote text clipboard, file browsing and transfers, audio, system locking, and unlocking with a password entered locally. Window and accessibility actions depend on the remote platform and permissions; some tools require an updated host. Browser, terminal, and MCP Apps panels have different host requirements. See the [MCP guide](apps/mcp/README.md) (Chinese) for configuration and compatibility.
 
 <a id="mobile"></a>
 
@@ -271,7 +299,7 @@ The CLI currently provides ID-based viewing and input, without direct IP connect
 
 ### iOS / iPadOS
 
-The native controller supports touch and a virtual mouse, multiple monitors, remote audio, file transfers, and text clipboard. Tap **剪贴板** (Clipboard) in the floating menu to send local text, up to 128 KiB per transfer. iPhone and iPad cannot currently act as remote hosts. The native interface uses Chinese labels.
+Install the native controller from the [App Store](https://apps.apple.com/app/id6828859211). It supports touch and a virtual mouse, multiple monitors, remote audio, file transfers, and text clipboard. Tap **Clipboard** in the floating menu to send local text, up to 128 KiB per transfer. Video settings can change supported remote display resolutions and remember confirmed choices. iPhone and iPad cannot currently act as remote hosts; in-app update checks point to the App Store.
 
 [User guide](docs/USER_GUIDE_EN.md#ios) · [Build and signing](apps/ios/README.md)
 
@@ -295,7 +323,7 @@ The PC client acts as both controller and host, sharing the desktop UI and DeskH
 
 ## Unattended and headless access
 
-- **Windows:** CrossDesk Service supports lock screens, sign-in, and secure desktops. Installed builds can enable access before sign-in with a separate device ID and password; ordinary **Auto Start** runs after a user signs in. See the [Windows unattended guide](docs/USER_GUIDE_EN.md#windows-service) for capabilities, limits, and commands.
+- **Windows:** CrossDesk Service supports lock screens, sign-in, and secure desktops. Enabling **Auto Start** in an installed Release build uses the same device ID and password before and after sign-in. The background service owns the identity and remote connections; the GUI starts and attaches after sign-in. Portable and Debug builds do not offer this switch. Without a monitor, the host attempts to prepare a virtual display and restore a previously recorded resolution. See the [Windows unattended guide](docs/USER_GUIDE_EN.md#windows-service) for capabilities, limits, and commands.
 - **Linux:** reuse an existing desktop or create an independent Xvfb / Xfce session. See [Linux headless operation](docs/HEADLESS_EN.md).
 
 <a id="self-hosting"></a>
@@ -310,6 +338,7 @@ Host your own signaling and TURN services, then enable them under **Settings →
 
 ## Build and feedback
 
+- [Agent / MCP](apps/mcp/README.md) (Chinese): source setup, host configuration, authorization, monitoring, automation tools, and compatibility.
 - [Terminal client CLI](apps/cli/README.md) (Chinese): independent builds, terminal usage, Pi extension, bridge protocol, and npm packaging.
 - [Build from source](docs/BUILD_EN.md): desktop dependencies, build options, and packaging. Use the platform guides above for mobile builds.
 - [GUI architecture](docs/gui-architecture.md) (Chinese): desktop UI, platform implementation, and project structure.
@@ -318,6 +347,8 @@ Host your own signaling and TURN services, then enable them under **Settings →
 - [Report an issue or suggestion](https://github.com/kunkundi/crossdesk/issues): include both operating systems, client versions, connection mode, and reproduction steps.
 
 The optional desktop build parameter `CROSSDESK_UPDATE_PUBLIC_KEY` verifies Ed25519 signatures on in-app update manifests. Without it, the app still builds, runs, and checks for new versions, but updates require manual download. In-app update installation requires a public key matching the release signing private key. See [Update public key](docs/BUILD_EN.md#update-public-key) for configuration and the [desktop updater guide](docs/UPDATER.md) (Chinese) for key generation and publishing.
+
+Open **Feedback & suggestions** from the desktop main menu to visit GitHub issues or export CrossDesk and MiniRTC logs with basic version information as a ZIP archive. Attach the archive when reporting a problem; see [feedback and diagnostic logs](docs/USER_GUIDE_EN.md#feedback).
 
 <a id="sponsor"></a>
 
