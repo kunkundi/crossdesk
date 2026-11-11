@@ -305,4 +305,7 @@
     <string name="text_ba9a792d063a8c86" formatted="false">", senha salva"</string>
     <string name="text_f4c1f9d7896760a7" formatted="false">", receba "</string>
     <string name="text_42237b5ec70c26f3" formatted="false">", clique em Tentar novamente"</string>
+    <string name="text_59c9dca5568a6cd3" formatted="false">"Resolução da tela remota"</string>
+    <string name="text_36e0073276c0e39f" formatted="false">"Não suportado"</string>
+    <string name="text_7b3440ad0f81b811" formatted="false">"Aguardando confirmação do computador..."</string>
 </resources>

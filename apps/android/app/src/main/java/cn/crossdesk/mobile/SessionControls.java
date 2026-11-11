@@ -14,6 +14,7 @@ final class SessionControls extends FrameLayout {
         void chord(int code,int[] modifiers); void shortcut(int code); void text(String value); void mute(); void mouse();
         default boolean textEdit(int deletions,String value){return false;}
         void videoSettings(int field,int value);
+        default void displayResolution(RemoteDisplayResolutions.Mode mode) { }
         void sendFile(); void saveFile(); void secureAttention();
         default void togglePrivacy() { }
     }
@@ -36,7 +37,10 @@ final class SessionControls extends FrameLayout {
         int height=Math.max(0,getRootView().getHeight()-visible.bottom);
         keyboardInsets(height,height>ui.dp(80),0);
     }
-    private TextView videoFeedback;
+    private TextView videoFeedback,resolutionButton,resolutionFeedback;
+    private RemoteDisplayResolutions resolutions=new RemoteDisplayResolutions();
+    private int resolutionDisplay;
+    private android.app.AlertDialog resolutionDialog;
     private RemotePrivacyScreen privacy=new RemotePrivacyScreen();
     private View privacyButton;
     private MobileUi.Icon privacyIcon;
@@ -111,13 +115,14 @@ final class SessionControls extends FrameLayout {
     void resetVideoStatistics(){statistics(new RemoteNetworkStatistics.Snapshot(network.report,0,0,0,Double.NaN,network.rtt,network.remoteEncoder,network.localDecoder));}
     void statistics(RemoteNetworkStatistics.Snapshot value){network=value;renderNetwork();}
     void videoSettings(RemoteVideoSettings value){settings=value;renderVideoSettings();}
+    void displayResolutions(RemoteDisplayResolutions value,int display){resolutions=value;resolutionDisplay=display;renderResolutions();}
     void privacyScreen(RemotePrivacyScreen value){privacy=value;renderPrivacy();}
     void fileStatus(String status,boolean received){transferStatus=status;hasReceivedFile=received;renderFileStatus();}
     private void renderFileStatus(){
         if(transferLabel!=null){transferLabel.setText(transferStatus);transferLabel.setVisibility(transferStatus.isEmpty()?GONE:VISIBLE);}
         if(saveFileButton!=null)saveFileButton.setVisibility(hasReceivedFile?VISIBLE:GONE);
     }
-    private void closeMenu(){if(menu!=null){removeView(menu);menu=null;menuScroll=null;}if(shield!=null){removeView(shield);shield=null;}videoFeedback=transferLabel=saveFileButton=null;privacyFeedback=privacyCaption=null;privacyButton=null;privacyIcon=null;trafficCells=null;trafficRows=null;networkDetails=null;encryptionLock=encryptionOpen=null;settingRows.clear();orb.setContentDescription(L10n.tr("展开远程控制菜单"));positionMouse();}
+    private void closeMenu(){if(resolutionDialog!=null){resolutionDialog.dismiss();resolutionDialog=null;}resolutionButton=resolutionFeedback=null;if(menu!=null){removeView(menu);menu=null;menuScroll=null;}if(shield!=null){removeView(shield);shield=null;}videoFeedback=transferLabel=saveFileButton=null;privacyFeedback=privacyCaption=null;privacyButton=null;privacyIcon=null;trafficCells=null;trafficRows=null;networkDetails=null;encryptionLock=encryptionOpen=null;settingRows.clear();orb.setContentDescription(L10n.tr("展开远程控制菜单"));positionMouse();}
     private void openMenu(String page){
         cancelMouseInput();
         closeMenu();menuPage=page;shield=new View(getContext());shield.setOnClickListener(v->closeMenu());addView(shield,new LayoutParams(-1,-1));
@@ -153,6 +158,9 @@ final class SessionControls extends FrameLayout {
         }else if(page.equals("network")){
             networkPage(body);
         }else{
+            TextView resolutionTitle=ui.text(L10n.tr("被控端分辨率"),12,false);resolutionTitle.setTextColor(SECONDARY);body.addView(resolutionTitle);ui.gap(body,5);
+            resolutionButton=ui.action("",INK,this::chooseResolution);resolutionButton.setTextSize(13);resolutionButton.setBackground(ui.background(0xFFF0F0F2,7));body.addView(resolutionButton,ui.size(-1,34));
+            resolutionFeedback=ui.text("",12,false);resolutionFeedback.setTextColor(SECONDARY);resolutionFeedback.setAccessibilityLiveRegion(ACCESSIBILITY_LIVE_REGION_POLITE);body.addView(resolutionFeedback);ui.gap(body,12);renderResolutions();
             settingRows.add(new SettingRow(body,0,L10n.tr("画面质量"),new String[]{L10n.tr("低"),L10n.tr("中"),L10n.tr("高")},new int[]{0,1,2}));ui.gap(body,12);
             settingRows.add(new SettingRow(body,1,L10n.tr("画面采集帧率"),new String[]{"30 fps","60 fps"},new int[]{30,60}));ui.gap(body,12);
             settingRows.add(new SettingRow(body,2,L10n.tr("画面偏好"),RemoteVideoSettings.preferences(),new int[]{0,1,2}));renderVideoSettings();
@@ -191,6 +199,26 @@ final class SessionControls extends FrameLayout {
             for(int i=0;i<values.length;i++)if(values[i]==selected)return i;return 0;
         }
         void render(){group.setSelection(selectionIndex());group.setOptionsEnabled(settings.supported);}
+    }
+    private void renderResolutions(){
+        if(resolutionButton==null)return;
+        RemoteDisplayResolutions.Display display=resolutions.display(resolutionDisplay);
+        boolean enabled=display!=null&&!display.modes.isEmpty()&&!resolutions.pending;
+        resolutionButton.setText(display==null?L10n.tr("设备不支持"):display.current.label()+" ▾");
+        resolutionButton.setEnabled(enabled);resolutionButton.setAlpha(enabled?1f:.45f);
+        String feedback=resolutions.feedback();resolutionFeedback.setText(feedback);resolutionFeedback.setVisibility(feedback.isEmpty()?GONE:VISIBLE);
+    }
+    private void chooseResolution(){
+        RemoteDisplayResolutions.Display display=resolutions.display(resolutionDisplay);
+        if(display==null||resolutions.pending||display.modes.isEmpty())return;
+        String[] labels=new String[display.modes.size()];int selected=-1;
+        for(int i=0;i<labels.length;i++){labels[i]=display.modes.get(i).label();if(display.current.same(display.modes.get(i)))selected=i;}
+        resolutionDialog=new android.app.AlertDialog.Builder(getContext()).setTitle(L10n.tr("被控端分辨率"))
+            .setSingleChoiceItems(labels,selected,(dialog,index)->{
+                dialog.dismiss();resolutionDialog=null;
+                RemoteDisplayResolutions.Display current=resolutions.display(resolutionDisplay);
+                if(current!=null&&current.id==display.id&&current.key.equals(display.key))actions.displayResolution(display.modes.get(index));
+            }).setNegativeButton(L10n.tr("取消"),null).show();
     }
     private void renderVideoSettings(){
         if(videoFeedback!=null){String feedback=settings.feedback();videoFeedback.setText(feedback);videoFeedback.setVisibility(feedback.isEmpty()?GONE:VISIBLE);}

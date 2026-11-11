@@ -711,6 +711,35 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
   });
 }
 
+- (void)sendDisplayResolution:(NSInteger)displayID
+                  displayKey:(NSString *)displayKey
+                       width:(NSInteger)width
+                      height:(NSInteger)height
+                   requestID:(uint32_t)requestID {
+  if (displayID < 0 || displayID >= crossdesk::kMaxResolutionDisplays ||
+      width <= 0 || width > 32768 || height <= 0 || height > 32768 || !requestID) return;
+  NSString *key = [displayKey copy];
+  const uint64_t generation = _activeControllerGeneration.load();
+  dispatch_async(_rtcQueue, ^{
+    if (![self isControllerGenerationActive:generation] ||
+        !self->_state->controller_peer) return;
+    RemoteAction action{};
+    action.type = ControlType::display_resolution;
+    action.resolution_change = {int(displayID), key.UTF8String ?: "",
+                                {int(width), int(height)}, requestID, false};
+    const auto message = action.to_json();
+    if (message.empty() || MiniRtcSendReliableDataFrame(self->_state->controller_peer,
+            message.data(), message.size(), kControlStream) != 0) {
+      DispatchMain(^{
+        if (![self isControllerGenerationActive:generation]) return;
+        id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
+        if ([delegate respondsToSelector:@selector(rtcBridge:didFailDisplayResolutionRequest:)])
+          [delegate rtcBridge:self didFailDisplayResolutionRequest:requestID];
+      });
+    }
+  });
+}
+
 - (void)notifyVideoSettings:(crossdesk::VideoSettings)settings
                 generation:(uint64_t)generation {
   DispatchMain(^{
@@ -1737,6 +1766,18 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
           [delegate rtcBridge:self didReceivePrivacyStatus:status];
       });
       return;
+    }
+    if (action.type == ControlType::display_resolution_status ||
+        action.type == ControlType::host_infomation) {
+      const auto message = action.to_json();
+      NSData *payload = [NSData dataWithBytes:message.data() length:message.size()];
+      DispatchMain(^{
+        if (![self isControllerGenerationActive:generation]) return;
+        id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
+        if ([delegate respondsToSelector:@selector(rtcBridge:didReceiveDisplayResolutions:)])
+          [delegate rtcBridge:self didReceiveDisplayResolutions:payload];
+      });
+      if (action.type == ControlType::display_resolution_status) return;
     }
     if (action.type == ControlType::video_settings_status) {
       [self notifyVideoSettings:action.vs generation:generation];

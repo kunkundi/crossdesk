@@ -311,6 +311,9 @@ final class LocalizationKeys {
         IDS.put("，已保存密码", R.string.text_ba9a792d063a8c86);
         IDS.put("，接收 ", R.string.text_f4c1f9d7896760a7);
         IDS.put("，点击重试", R.string.text_42237b5ec70c26f3);
+        IDS.put("被控端分辨率", R.string.text_59c9dca5568a6cd3);
+        IDS.put("设备不支持", R.string.text_36e0073276c0e39f);
+        IDS.put("等待电脑端确认…", R.string.text_7b3440ad0f81b811);
     }
     private LocalizationKeys() {}
 }

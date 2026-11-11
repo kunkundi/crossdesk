@@ -1,3 +1,5 @@
+import Foundation
+
 // Values match crossdesk::VideoSettings on the reliable control stream.
 struct RemoteVideoSettings: Equatable {
     var quality = 2
@@ -64,5 +66,98 @@ struct RemoteVideoSettingsState {
         selection = applied
         pending = false
         failed = true
+    }
+}
+
+
+struct RemoteDisplayResolution: Codable, Equatable, Hashable {
+    let width: Int
+    let height: Int
+    var label: String { "\(width) × \(height)" }
+    var valid: Bool { (1...32768).contains(width) && (1...32768).contains(height) }
+}
+
+struct RemoteDisplayResolutionInfo: Decodable {
+    let display_id: Int
+    let display_key: String
+    let width: Int
+    let height: Int
+    let modes: [RemoteDisplayResolution]
+    var current: RemoteDisplayResolution { RemoteDisplayResolution(width: width, height: height) }
+    var valid: Bool {
+        (0..<32).contains(display_id) && !display_key.isEmpty &&
+            display_key.utf8.count <= 1024 && !display_key.contains("\0") &&
+            current.valid && modes.count <= 256 && modes.allSatisfy(\.valid)
+    }
+}
+
+struct RemoteDisplayResolutionRequest: Decodable, Equatable {
+    let display_id: Int
+    let display_key: String
+    let width: Int
+    let height: Int
+    let request_id: UInt32
+    var accepted = false
+    var resolution: RemoteDisplayResolution { RemoteDisplayResolution(width: width, height: height) }
+    func matches(_ other: Self) -> Bool {
+        display_id == other.display_id && display_key == other.display_key &&
+            resolution == other.resolution && request_id == other.request_id
+    }
+}
+
+struct RemoteDisplayResolutionState {
+    private(set) var displays: [RemoteDisplayResolutionInfo] = []
+    private(set) var requested: RemoteDisplayResolutionRequest?
+    private(set) var pending = false
+    private(set) var failed = false
+
+    func display(_ id: Int) -> RemoteDisplayResolutionInfo? {
+        displays.first { $0.display_id == id }
+    }
+    mutating func begin(displayID: Int, resolution: RemoteDisplayResolution) -> RemoteDisplayResolutionRequest? {
+        guard !pending, let display = display(displayID), display.modes.contains(resolution),
+              display.current != resolution else { return nil }
+        let next = (requested?.request_id ?? 0) &+ 1
+        let request = RemoteDisplayResolutionRequest(display_id: displayID,
+            display_key: display.display_key, width: resolution.width,
+            height: resolution.height, request_id: next == 0 ? 1 : next)
+        requested = request; pending = true; failed = false
+        return request
+    }
+    mutating func expire(requestID: UInt32) {
+        guard pending, requested?.request_id == requestID else { return }
+        pending = false; failed = true
+    }
+    mutating func receive(_ data: Data) {
+        struct Host: Decodable { let display_resolutions: [RemoteDisplayResolutionInfo]? }
+        struct Message: Decodable {
+            let type: Int
+            let host_info: Host?
+            let display_resolution: RemoteDisplayResolutionRequest?
+            let display_resolutions: [RemoteDisplayResolutionInfo]?
+        }
+        guard let message = try? JSONDecoder().decode(Message.self, from: data) else { return }
+        let actual: [RemoteDisplayResolutionInfo]
+        if message.type == 3, let host = message.host_info {
+            actual = host.display_resolutions ?? []
+        } else if message.type == 16, let response = message.display_resolution,
+                  let requested, response.matches(requested), let values = message.display_resolutions {
+            actual = values
+        } else { return }
+        guard actual.count <= 32, actual.allSatisfy(\.valid),
+              Set(actual.map(\.display_id)).count == actual.count else { return }
+        displays = actual
+        if message.type == 16, let response = message.display_resolution {
+            pending = false
+            failed = !response.accepted || !actual.contains {
+                $0.display_id == response.display_id && $0.display_key == response.display_key &&
+                    $0.current == response.resolution
+            }
+        } else if pending, let requested, !actual.contains(where: {
+            $0.display_id == requested.display_id && $0.display_key == requested.display_key &&
+                $0.modes.contains(requested.resolution)
+        }) {
+            expire(requestID: requested.request_id)
+        }
     }
 }

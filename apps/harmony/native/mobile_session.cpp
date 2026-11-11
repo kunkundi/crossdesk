@@ -330,6 +330,15 @@ class MobileSession {
         auto bytes=mobile_controller::VideoSettingsMessage(q,fps,pref,v.at("request").get<uint32_t>());
         if(MiniRtcSendReliableDataFrame(controller_,bytes.data(),bytes.size(),kControlStream)!=0)
           Event({{"type","settingsFailed"},{"request",v.at("request")}},true);
+      } else if (op=="displayResolution") {
+        const auto request = v.at("request").get<int64_t>();
+        if (request <= 0 || request > UINT32_MAX) return;
+        const auto bytes = mobile_controller::DisplayResolutionMessage(
+            v.at("displayId").get<int>(), v.at("displayKey").get<std::string>(),
+            v.at("width").get<int>(), v.at("height").get<int>(), uint32_t(request));
+        if (bytes.empty() || MiniRtcSendReliableDataFrame(
+                controller_, bytes.data(), bytes.size(), kControlStream) != 0)
+          Event({{"type", "resolutionFailed"}, {"request", request}}, true);
       } else if (op=="privacy") {
         const auto bytes = mobile_controller::PrivacyMessage(
             v.at("flag").get<int>(), v.at("blockLocalInput").get<bool>());

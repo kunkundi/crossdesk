@@ -106,7 +106,7 @@ function setup_platform_settings()
         add_cxflags("-Wno-unused-variable")
     elseif is_os("macosx") then
         add_cxflags("-Wno-unused-variable")
-        add_frameworks("Cocoa", "CoreGraphics", "Metal", "QuartzCore", "IOKit",
+        add_frameworks("Cocoa", "CoreGraphics", "ColorSync", "Metal", "QuartzCore", "IOKit",
             "IOSurface",
             "ScreenCaptureKit", "AVFoundation", "CoreMedia", "CoreVideo",
             "CoreAudio", "AudioToolbox")

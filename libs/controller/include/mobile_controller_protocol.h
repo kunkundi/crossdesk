@@ -34,6 +34,14 @@ inline std::string VideoSettingsMessage(int quality, int frame_rate, int prefere
   return action.to_json();
 }
 
+inline std::string DisplayResolutionMessage(int display_id, const std::string& display_key,
+                                            int width, int height, uint32_t request_id) {
+  RemoteAction action{};
+  action.type = display_resolution;
+  action.resolution_change = {display_id, display_key, {width, height}, request_id, false};
+  return action.to_json();
+}
+
 inline nlohmann::json NetworkReport(const MiniRtcNetTrafficStats& stats, MiniRtcTraversalMode mode) {
   const auto traffic = [](const MiniRtcInboundStats& in, const MiniRtcOutboundStats& out) {
     return nlohmann::json{{"inbound", in.bitrate}, {"outbound", out.bitrate}, {"loss", in.loss_rate}};

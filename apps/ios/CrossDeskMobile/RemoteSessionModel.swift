@@ -322,6 +322,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         didSet { UserDefaults.standard.set(autoLandscape, forKey: AppOrientation.autoLandscapeKey) }
     }
     @Published private(set) var videoSettings = RemoteVideoSettingsState()
+    @Published private(set) var displayResolutions = RemoteDisplayResolutionState()
     @Published var privacyScreen = RemotePrivacyScreen()
     @Published private(set) var privacyClock = ProcessInfo.processInfo.systemUptime
     private var privacyTimer: Timer?
@@ -384,6 +385,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     private var videoWasBackgrounded = false
     private var videoRecoveryTask: Task<Void, Never>?
     private var videoSettingsTimeoutTask: Task<Void, Never>?
+    private var displayResolutionTimeoutTask: Task<Void, Never>?
     private var pendingPresenceRemoteID: String?
     private var presenceProbeGeneration: UInt64 = 0
     @Published private(set) var signalConnected = false
@@ -1040,7 +1042,40 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         }
     }
 
+    func updateDisplayResolution(_ resolution: RemoteDisplayResolution, displayID: Int, displayKey: String) {
+        guard hasNetworkConsent, isConnected, selectedDisplay == displayID,
+              displayResolutions.display(displayID)?.display_key == displayKey,
+              let request = displayResolutions.begin(displayID: selectedDisplay, resolution: resolution) else { return }
+        displayResolutionTimeoutTask?.cancel()
+        bridge.sendDisplayResolution(displayID: request.display_id, displayKey: request.display_key,
+                                     width: request.width, height: request.height, requestID: request.request_id)
+        displayResolutionTimeoutTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(nanoseconds: 10_000_000_000) } catch { return }
+            self?.displayResolutions.expire(requestID: request.request_id)
+        }
+    }
+
+    func rtcBridge(_ bridge: CrossDeskRTCBridge, didReceiveDisplayResolutions message: Data) {
+        // Host information can arrive before the connection-state callback.
+        // The bridge already rejects callbacks from previous sessions.
+        guard hasNetworkConsent else { return }
+        displayResolutions.receive(message)
+        if !displayResolutions.pending {
+            displayResolutionTimeoutTask?.cancel(); displayResolutionTimeoutTask = nil
+        }
+    }
+
+    func rtcBridge(_ bridge: CrossDeskRTCBridge, didFailDisplayResolutionRequest requestID: UInt32) {
+        guard hasNetworkConsent, isConnected else { return }
+        displayResolutions.expire(requestID: requestID)
+        if !displayResolutions.pending {
+            displayResolutionTimeoutTask?.cancel(); displayResolutionTimeoutTask = nil
+        }
+    }
+
     private func resetVideoSettings() {
+        displayResolutionTimeoutTask?.cancel(); displayResolutionTimeoutTask = nil
+        displayResolutions = RemoteDisplayResolutionState()
         privacyTimer?.invalidate(); privacyTimer = nil
         privacyScreen = RemotePrivacyScreen()
         privacyClock = ProcessInfo.processInfo.systemUptime

@@ -305,4 +305,7 @@
     <string name="text_ba9a792d063a8c86" formatted="false">", password saved"</string>
     <string name="text_f4c1f9d7896760a7" formatted="false">", receive "</string>
     <string name="text_42237b5ec70c26f3" formatted="false">", click Retry"</string>
+    <string name="text_59c9dca5568a6cd3" formatted="false">"Remote display resolution"</string>
+    <string name="text_36e0073276c0e39f" formatted="false">"Unsupported"</string>
+    <string name="text_7b3440ad0f81b811" formatted="false">"Waiting for confirmation from the computer..."</string>
 </resources>

@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -105,6 +106,18 @@ inline bool ApplyWindowsResolutionMode(const wchar_t *device,
   return false;
 }
 
+inline bool WindowsResolutionDeviceKey(const std::wstring &device,
+                                       std::string &key) {
+  DISPLAY_DEVICEW target{};
+  target.cb = sizeof(target);
+  if (!EnumDisplayDevicesW(device.c_str(), 0, &target,
+                           EDD_GET_DEVICE_INTERFACE_NAME) ||
+      !target.DeviceID[0])
+    return false;
+  key = WideToUtf8(device) + "|" + WideToUtf8(target.DeviceID);
+  return true;
+}
+
 inline bool ResolveWindowsResolutionDisplay(const DisplayInfo &display,
                                             std::wstring &device,
                                             std::string &key) {
@@ -135,14 +148,55 @@ inline bool ResolveWindowsResolutionDisplay(const DisplayInfo &display,
     if (device.empty())
       return false;
   }
-  DISPLAY_DEVICEW target{};
-  target.cb = sizeof(target);
-  if (!EnumDisplayDevicesW(device.c_str(), 0, &target,
-                           EDD_GET_DEVICE_INTERFACE_NAME) ||
-      !target.DeviceID[0])
-    return false;
-  key = WideToUtf8(device) + "|" + WideToUtf8(target.DeviceID);
-  return true;
+  return WindowsResolutionDeviceKey(device, key);
+}
+
+inline bool SameWindowsResolutionMode(const DEVMODEW &mode,
+                                      const DEVMODEW &original) {
+  return mode.dmPelsWidth == original.dmPelsWidth &&
+         mode.dmPelsHeight == original.dmPelsHeight &&
+         mode.dmBitsPerPel == original.dmBitsPerPel &&
+         mode.dmDisplayFrequency == original.dmDisplayFrequency &&
+         mode.dmDisplayFlags == original.dmDisplayFlags &&
+         (!(original.dmFields & DM_DISPLAYORIENTATION) ||
+          mode.dmDisplayOrientation == original.dmDisplayOrientation) &&
+         (!(original.dmFields & DM_DISPLAYFIXEDOUTPUT) ||
+          mode.dmDisplayFixedOutput == original.dmDisplayFixedOutput);
+}
+
+inline std::function<bool()> CaptureWindowsDisplayResolution(
+    const std::vector<DisplayInfo> &displays,
+    const DisplayResolutionChange &change,
+    const WindowsResolutionApi &api = {}) {
+  if (change.display_id < 0 || change.display_id >= int(displays.size()))
+    return {};
+  std::wstring device;
+  std::string key;
+  if (!ResolveWindowsResolutionDisplay(displays[change.display_id], device, key) ||
+      key != change.display_key)
+    return {};
+  DEVMODEW original{};
+  original.dmSize = sizeof(original);
+  if (!api.enumerate(device.c_str(), ENUM_CURRENT_SETTINGS, &original)) return {};
+  return [device, key, original, api] {
+    std::string current_key;
+    // Resolve the native output, not a capture slot or stale HMONITOR. Never
+    // apply a saved mode to a different monitor plugged into the same output.
+    if (!WindowsResolutionDeviceKey(device, current_key) || current_key != key)
+      return false;
+    DEVMODEW current{};
+    current.dmSize = sizeof(current);
+    if (!api.enumerate(device.c_str(), ENUM_CURRENT_SETTINGS, &current)) return false;
+    if (SameWindowsResolutionMode(current, original)) return true;
+    auto mode = original;
+    if (api.change(device.c_str(), &mode, nullptr, CDS_TEST, nullptr) !=
+            DISP_CHANGE_SUCCESSFUL ||
+        api.change(device.c_str(), &mode, nullptr, 0, nullptr) !=
+            DISP_CHANGE_SUCCESSFUL)
+      return false;
+    return api.enumerate(device.c_str(), ENUM_CURRENT_SETTINGS, &current) &&
+           SameWindowsResolutionMode(current, original);
+  };
 }
 
 inline std::vector<DisplayResolutionInfo>

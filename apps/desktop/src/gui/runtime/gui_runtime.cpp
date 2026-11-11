@@ -82,6 +82,7 @@ GuiRuntime::~GuiRuntime() {
   lan_.reset();
   transfers_.Shutdown();
   WaitForSessionCleanup();
+  RestoreHostDisplayResolutions(true);
 }
 
 void GuiRuntime::SendRemoteInput(const RemoteAction& action) {

@@ -11039,6 +11039,18 @@
       "fr": "Joignez l’archive ZIP des journaux exportés à votre ticket GitHub pour nous aider à analyser le problème.",
       "es": "Adjunta el archivo ZIP de los registros exportados a tu issue de GitHub para ayudarnos a investigar el problema.",
       "pt-BR": "Anexe o arquivo ZIP dos logs exportados à sua issue do GitHub para nos ajudar a investigar o problema."
+    },
+    "被控端分辨率": {
+      "zh-Hans": "被控端分辨率",
+      "en": "Remote display resolution",
+      "ru": "Разрешение удалённого экрана",
+      "zh-Hant": "被控端解析度",
+      "ja": "接続先の画面解像度",
+      "ko": "원격 화면 해상도",
+      "de": "Auflösung des entfernten Bildschirms",
+      "fr": "Résolution de l’écran distant",
+      "es": "Resolución de la pantalla remota",
+      "pt-BR": "Resolução da tela remota"
     }
   },
   "desktop": {
@@ -12398,7 +12410,10 @@
       "，发送 ",
       "，已保存密码",
       "，接收 ",
-      "，点击重试"
+      "，点击重试",
+      "被控端分辨率",
+      "设备不支持",
+      "等待电脑端确认…"
     ],
     "ios": [
       "%1$@ 传输失败",
@@ -12686,7 +12701,10 @@
       "前往 App Store 更新",
       "App Store 暂无可用更新",
       "暂时无法在当前地区的 App Store 查询到此应用",
-      "新版本需要 iOS %1$@ 或更高版本"
+      "新版本需要 iOS %1$@ 或更高版本",
+      "被控端分辨率",
+      "设备不支持",
+      "等待电脑端确认…"
     ],
     "harmony": [
       "OpenFEC 告知",
@@ -12928,7 +12946,9 @@
       "默认关闭。开启后，手机连接时进入并保持横屏；关闭时跟随设备方向。平板和多窗口不受影响。",
       "鼠标右键，按住拖动",
       "鼠标左键，按住拖动",
-      "鼠标控制"
+      "鼠标控制",
+      "被控端分辨率",
+      "设备不支持"
     ]
   }
 }

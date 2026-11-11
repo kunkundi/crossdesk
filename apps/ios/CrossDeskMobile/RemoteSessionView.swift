@@ -1488,6 +1488,39 @@ private struct FloatingVideoSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(NSLocalizedString("被控端分辨率", comment: ""))
+                    .font(.caption).foregroundStyle(.secondary)
+                let display = session.displayResolutions.display(session.selectedDisplay)
+                Menu {
+                    ForEach(Array(Set(display?.modes ?? [])).sorted {
+                        $0.width == $1.width ? $0.height > $1.height : $0.width > $1.width
+                    }, id: \.self) { mode in
+                        Button {
+                            if let display {
+                                session.updateDisplayResolution(mode, displayID: display.display_id, displayKey: display.display_key)
+                            }
+                        } label: {
+                            if mode == display?.current { Label(mode.label, systemImage: "checkmark") }
+                            else { Text(mode.label) }
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Text(display?.current.label ?? NSLocalizedString("设备不支持", comment: ""))
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down")
+                    }
+                    .font(.subheadline).padding(8)
+                    .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
+                }
+                .disabled(!session.isConnected || session.displayResolutions.pending || (display?.modes.isEmpty ?? true))
+                if session.displayResolutions.pending {
+                    Text(NSLocalizedString("等待电脑端确认…", comment: "")).font(.caption).foregroundStyle(.secondary)
+                } else if session.displayResolutions.failed {
+                    Text(NSLocalizedString("调整失败，请重试。", comment: "")).font(.caption).foregroundStyle(.secondary)
+                }
+            }
             settingRow(NSLocalizedString("画面质量", comment: ""), options: [NSLocalizedString("低", comment: ""), NSLocalizedString("中", comment: ""), NSLocalizedString("高", comment: "")],
                        values: [0, 1, 2], selection: Binding(
                         get: { session.videoSettings.selection.quality },

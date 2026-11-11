@@ -93,6 +93,8 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private RemoteVideoSettings videoSettings=new RemoteVideoSettings(1);
     private final android.os.Handler mainHandler=new android.os.Handler(android.os.Looper.getMainLooper());
     private Runnable videoSettingsTimeout;
+    private RemoteDisplayResolutions displayResolutions=new RemoteDisplayResolutions();
+    private Runnable displayResolutionTimeout;
     private final Set<Integer> pressed=new HashSet<>();
     private Runnable backAction;
 
@@ -349,8 +351,9 @@ public final class MainActivity extends Activity implements NativeSession.Listen
             public void chord(int code,int[] modifiers){if(session==null)return;for(int modifier:modifiers)session.key(modifier,true);tapKey(code);for(int i=modifiers.length-1;i>=0;i--)session.key(modifiers[i],false);}public void shortcut(int code){MainActivity.this.shortcut(code);}public void text(String value){sendText(value);}
             public void mute(){muted=!muted;if(session!=null)session.control(2,muted?0:1);controls.setMuted(muted);}
             public void mouse(){boolean relative=!preferences.getBoolean("relativeMouse",true);preferences.edit().putBoolean("relativeMouse",relative).apply();video.setRelative(relative);controls.setRelative(relative);}
+            public void displayResolution(RemoteDisplayResolutions.Mode mode){updateDisplayResolution(mode);}
             public void videoSettings(int field,int value){RemoteVideoSettings.Values old=MainActivity.this.videoSettings.selection;updateVideoSettings(new RemoteVideoSettings.Values(field==0?value:old.quality,field==1?value:old.frameRate,field==2?value:old.preference));}
-        });controls.setHostPlatform(hostPlatform);controls.setRelative(preferences.getBoolean("relativeMouse",true));controls.setMuted(muted);controls.videoSettings(videoSettings);root.addView(controls,new LinearLayout.LayoutParams(-1,-1));getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        });controls.setHostPlatform(hostPlatform);controls.setRelative(preferences.getBoolean("relativeMouse",true));controls.setMuted(muted);controls.videoSettings(videoSettings);controls.displayResolutions(displayResolutions,selectedDisplay);root.addView(controls,new LinearLayout.LayoutParams(-1,-1));getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         controls.attachMouseBar(canvas,new VirtualMouseBar(ui,video.mouseInput));
         privacyChanged();
         video.remoteFocusChanged=()->{if(controls!=null)controls.resetKeyboardContext();};
@@ -506,7 +509,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private void tapKey(int code){if(session!=null){session.key(code,true);session.key(code,false);}}
     private void shortcut(int code){if(session!=null){int modifier=hostPlatform.equals("macos")?0x5B:0x11;session.key(modifier,true);tapKey(code);session.key(modifier,false);}}
     private void selectDisplay(){
-        if(!ready)return;int count=Math.min(displays.length(),8);if(count==0){toast(L10n.tr("等待远端屏幕信息"));return;}String[] labels=new String[count];for(int i=0;i<count;i++){JSONObject display=displays.optJSONObject(i);labels[i]=(i+1)+" · "+(display==null?L10n.tr("显示器"):display.optString("name",L10n.tr("显示器")));}new AlertDialog.Builder(this).setTitle(L10n.tr("显示器")).setItems(labels,(d,w)->{if(session!=null){if(w!=selectedDisplay&&video!=null)video.resetViewport();selectedDisplay=w;session.control(4,w);if(controls!=null)controls.resetVideoStatistics();}}).show();
+        if(!ready)return;int count=Math.min(displays.length(),8);if(count==0){toast(L10n.tr("等待远端屏幕信息"));return;}String[] labels=new String[count];for(int i=0;i<count;i++){JSONObject display=displays.optJSONObject(i);labels[i]=(i+1)+" · "+(display==null?L10n.tr("显示器"):display.optString("name",L10n.tr("显示器")));}new AlertDialog.Builder(this).setTitle(L10n.tr("显示器")).setItems(labels,(d,w)->{if(session!=null){if(w!=selectedDisplay&&video!=null)video.resetViewport();selectedDisplay=w;session.control(4,w);if(controls!=null)controls.displayResolutions(displayResolutions,selectedDisplay);if(controls!=null)controls.resetVideoStatistics();}}).show();
     }
     private void secureAttention(){
         if(!ready||session==null||!hostPlatform.equals("windows"))return;
@@ -645,7 +648,22 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         remoteVersionCheck.reset();
         if(remoteUpdateDialog!=null){remoteUpdateDialog.dismiss();remoteUpdateDialog=null;}
     }
+    private void cancelDisplayResolutionTimeout(){if(displayResolutionTimeout!=null)mainHandler.removeCallbacks(displayResolutionTimeout);displayResolutionTimeout=null;}
+    private void updateDisplayResolution(RemoteDisplayResolutions.Mode mode){
+        if(!ready||session==null||!hasNetworkConsent())return;
+        RemoteDisplayResolutions.Request request=displayResolutions.begin(selectedDisplay,mode);if(request==null)return;
+        cancelDisplayResolutionTimeout();session.displayResolution(request);
+        if(controls!=null)controls.displayResolutions(displayResolutions,selectedDisplay);
+        displayResolutionTimeout=()->{displayResolutions.expire(request.id);if(controls!=null)controls.displayResolutions(displayResolutions,selectedDisplay);};
+        mainHandler.postDelayed(displayResolutionTimeout,10000);
+    }
+    @Override public void displayResolutionFailed(long requestId){
+        displayResolutions.expire(requestId);
+        if(!displayResolutions.pending)cancelDisplayResolutionTimeout();
+        if(controls!=null)controls.displayResolutions(displayResolutions,selectedDisplay);
+    }
     private void resetVideoSettings(){
+        cancelDisplayResolutionTimeout();displayResolutions=new RemoteDisplayResolutions();
         cancelVideoSettingsTimeout();
         android.util.DisplayMetrics metrics=getResources().getDisplayMetrics();
         videoSettings=new RemoteVideoSettings(preferences.getInt("videoPreference",1),Math.max(metrics.widthPixels,metrics.heightPixels));
@@ -658,6 +676,11 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     }
     @Override public void data(JSONObject message){
         if(session==null)return;
+        if(message.optInt("type",-1)==3||message.optInt("type",-1)==16){
+            displayResolutions.receive(message);if(!displayResolutions.pending)cancelDisplayResolutionTimeout();
+            if(controls!=null)controls.displayResolutions(displayResolutions,selectedDisplay);
+            if(message.optInt("type",-1)==16)return;
+        }
         if(message.optInt("type",-1)==5){JSONObject service=message.optJSONObject("service_status");remoteServiceAvailable=service!=null&&service.optBoolean("available",false);return;}
         if(message.optInt("type",-1)==12){if(!ready)return;videoSettings.receive(message);if(!videoSettings.pending)cancelVideoSettingsTimeout();if(controls!=null)controls.videoSettings(videoSettings);return;}
         JSONObject info=message.optJSONObject("host_info");
@@ -746,7 +769,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         BackgroundSession retained=backgroundSession;if(retained==null)return;
         retained.identity=localIdentity;retained.signalState=signalState;retained.platform=hostPlatform;retained.displays=displays;
         retained.muted=muted;retained.selectedDisplay=selectedDisplay;retained.remoteServiceAvailable=remoteServiceAvailable;
-        retained.clipboard=remoteClipboard;retained.videoSettings=videoSettings;retained.receivedFile=receivedFile;
+        retained.clipboard=remoteClipboard;retained.videoSettings=videoSettings;retained.displayResolutions=displayResolutions;retained.receivedFile=receivedFile;
         retained.width=videoWidth;retained.height=videoHeight;
         retained.autoLandscape=remoteOrientation.autoLandscape();
     }
@@ -783,10 +806,10 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         connectedRemote=retained.remote;localIdentity=retained.identity;signalState=retained.signalState;signalError="";
         hostPlatform=retained.platform;displays=retained.displays;muted=retained.muted;selectedDisplay=retained.selectedDisplay;
         remoteServiceAvailable=retained.remoteServiceAvailable;remoteClipboard=retained.clipboard;receivedFile=retained.receivedFile;
-        videoSettings=retained.videoSettings;ready=true;retained.attach(this);
+        videoSettings=retained.videoSettings;displayResolutions=retained.displayResolutions;ready=true;retained.attach(this);
         if(rebuild)sessionScreen(retained.autoLandscape);
         if(retained.width>0&&retained.height>0)videoSize(retained.width,retained.height);
-        if(controls!=null){controls.setHostPlatform(hostPlatform);controls.setMuted(muted);controls.videoSettings(videoSettings);controls.fileStatus(retained.fileStatus,receivedFile!=null);}
+        if(controls!=null){controls.setHostPlatform(hostPlatform);controls.setMuted(muted);controls.videoSettings(videoSettings);controls.displayResolutions(displayResolutions,selectedDisplay);controls.fileStatus(retained.fileStatus,receivedFile!=null);}
         retained.setBackground(false);signaling(signalState,localIdentity);
         return true;
     }
@@ -844,11 +867,12 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         if(!isFinishing()&&!enteredPictureInPicture&&ready&&(backgroundSession!=null||documentSession==null)&&prepareBackgroundSession(false)){
             captureBackgroundSession();backgroundSession.detach(this);backgroundSession.setBackground(true);
             mainHandler.removeCallbacks(presenceTick);recentPresence.setConnected(false,android.os.SystemClock.elapsedRealtime());announcementInbox.setConnected(false);
+            cancelDisplayResolutionTimeout();if(displayResolutions.pending)displayResolutions.expire(displayResolutions.requested.id);
             cancelVideoSettingsTimeout();if(videoSettings.pending)videoSettings.expire(videoSettings.requestId);
             resetRemoteVersionCheck();if(disconnectDialog!=null)disconnectDialog.dismiss();
         }else if(documentSession==null||documentSession!=session||isFinishing()){if(session!=null)end(isFinishing()?"":L10n.tr("远程窗口已关闭，或后台保活未能启动，会话已结束"));stopSignaling();}
         super.onStop();}
-    @Override protected void onDestroy(){dismissPrivacyUnlockDialog();mainHandler.removeCallbacks(documentTimeout);documentSession=null;documentToSave=null;appUpdates.setEnabled(false);pageHost.finish();resetRemoteVersionCheck();cancelVideoSettingsTimeout();previews.removeListener(previewChanged);if(privacyDialog!=null)privacyDialog.dismiss();if(previewDialog!=null)previewDialog.dismiss();announcementInbox.close();if(disconnectDialog!=null)disconnectDialog.dismiss();if(passwordDialog!=null)passwordDialog.dismiss();if(progressDialog!=null)progressDialog.dismiss();
+    @Override protected void onDestroy(){dismissPrivacyUnlockDialog();mainHandler.removeCallbacks(documentTimeout);documentSession=null;documentToSave=null;appUpdates.setEnabled(false);pageHost.finish();resetRemoteVersionCheck();cancelVideoSettingsTimeout();cancelDisplayResolutionTimeout();previews.removeListener(previewChanged);if(privacyDialog!=null)privacyDialog.dismiss();if(previewDialog!=null)previewDialog.dismiss();announcementInbox.close();if(disconnectDialog!=null)disconnectDialog.dismiss();if(passwordDialog!=null)passwordDialog.dismiss();if(progressDialog!=null)progressDialog.dismiss();
         if(connectionDialog!=null)connectionDialog.dismiss();
         boolean retained=!isFinishing()&&backgroundSession!=null&&!backgroundSession.ended&&RemoteSessionService.current()==backgroundSession;
         if(backgroundSession!=null)backgroundSession.detach(this);

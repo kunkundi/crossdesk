@@ -1,4 +1,5 @@
 import { tr } from './Localization';
+import { ResolutionMode, resolutionLabel } from './RemoteDisplayResolutions';
 import { MobileController, MobileState } from './MobileController';
 import { RemoteViewport, MouseInput, TouchInput, TouchPoint, clamp, NetworkStatistics, Traffic, asciiKey } from './ControllerModels';
 import { MobileTheme, MobileSegment, MobileIcon, MobileIconButton } from './MobileWidgets';
@@ -193,6 +194,16 @@ export struct MobileRemoteView {
     this.keyboardY = clamp(this.keyboardOriginY + event.offsetY, 8, Math.max(8, this.viewHeight - this.keyboardHeight - 8));
   }
   @Builder
+  ResolutionMenu(modes: ResolutionMode[], displayId: number, displayKey: string) {
+    Menu() {
+      ForEach(modes, (mode: ResolutionMode) => {
+        MenuItem({ content: resolutionLabel(mode) })
+          .onClick(() => this.controller?.updateResolution(mode, displayId, displayKey))
+      }, (mode: ResolutionMode) => resolutionLabel(mode))
+    }
+  }
+
+  @Builder
   NetworkRow(title: string, traffic: Traffic | undefined) {
     Row({ space: 4 }) {
       Text(title).fontSize(11).minFontSize(8).maxFontSize(11).maxLines(1).fontWeight(title === tr("合计") ? 600 : 400).fontColor(MobileTheme.ink).width(48)
@@ -252,6 +263,12 @@ export struct MobileRemoteView {
             if (this.state.transfer) { Text(this.state.transfer).fontSize(11).fontColor(MobileTheme.secondary).width('100%') }
             if (this.state.receivedPath) { Button(tr("保存收到的文件"), { type: ButtonType.Normal }).fontSize(14).fontColor(MobileTheme.blue).backgroundColor(Color.White).height(42).width('100%').onClick(() => this.controller?.saveFile()) }
           } else if (this.menu === 'video') {
+            Text(tr("被控端分辨率")).fontSize(12).width('100%')
+            Button(`${this.state.resolutionCurrent} ▾`, { type: ButtonType.Normal })
+              .fontSize(13).fontColor(MobileTheme.ink).backgroundColor('#F0F0F2').borderRadius(7)
+              .width('100%').height(34).enabled(this.state.resolutionEnabled)
+              .bindMenu(() => { this.ResolutionMenu(this.state.resolutionModes, this.state.selectedDisplay, this.state.resolutionKey) })
+            if (this.state.resolutionFeedback) { Text(this.state.resolutionFeedback).fontSize(12).fontColor(MobileTheme.secondary).width('100%') }
             Text(this.state.videoFeedback).fontSize(12).fontColor(MobileTheme.secondary).width('100%')
             Text(tr("画面质量")).fontSize(12).width('100%')
             MobileSegment({ labels: [tr("低"), tr("中"), tr("高")], selection: this.state.videoQuality,

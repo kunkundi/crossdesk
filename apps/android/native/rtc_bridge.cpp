@@ -422,6 +422,16 @@ extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nVideoSettings)(
   if (data.empty()) return false;
   return MiniRtcSendReliableDataFrame(s->controller, data.data(), data.size(), kControlStream) == 0;
 }
+extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nDisplayResolution)(
+    JNIEnv* env, jclass, jlong handle, jint display_id, jstring display_key,
+    jint width, jint height, jlong request_id) {
+  auto* s = From(handle);
+  if (!s || !s->controller || s->stopping || request_id <= 0 || request_id > UINT32_MAX) return false;
+  const auto data = mobile_controller::DisplayResolutionMessage(
+      display_id, String(env, display_key), width, height, static_cast<uint32_t>(request_id));
+  return !data.empty() && MiniRtcSendReliableDataFrame(
+      s->controller, data.data(), data.size(), kControlStream) == 0;
+}
 extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nSecureAttention)(JNIEnv*, jclass, jlong handle) {
   auto* s = From(handle);
   if (!s || !s->controller || s->stopping) return false;

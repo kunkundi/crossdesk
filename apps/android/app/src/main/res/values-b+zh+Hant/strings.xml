@@ -305,4 +305,7 @@
     <string name="text_ba9a792d063a8c86" formatted="false">"，已儲存密碼"</string>
     <string name="text_f4c1f9d7896760a7" formatted="false">"，接收 "</string>
     <string name="text_42237b5ec70c26f3" formatted="false">"，點選重試"</string>
+    <string name="text_59c9dca5568a6cd3" formatted="false">"被控端解析度"</string>
+    <string name="text_36e0073276c0e39f" formatted="false">"裝置不支援"</string>
+    <string name="text_7b3440ad0f81b811" formatted="false">"等待電腦端確認…"</string>
 </resources>

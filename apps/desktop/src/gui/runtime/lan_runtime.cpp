@@ -218,6 +218,7 @@ void GuiRuntime::BeginShutdown() {
       std::chrono::steady_clock::now() + std::chrono::seconds(5);
   if (lan_) lan_->Stop();
   CloseAllRemoteSessions();
+  RestoreHostDisplayResolutions(true);
 }
 bool GuiRuntime::ShutdownDrained() {
   TickLan();
@@ -225,6 +226,7 @@ bool GuiRuntime::ShutdownDrained() {
   const bool drained =
       (!lan_ || lan_->Quiescent()) && !connection_peer_cleanup_.valid() &&
       session_cleanup_tasks_.empty() && controller_cleanup_tasks_.empty();
+  if (drained) RestoreHostDisplayResolutions(true);
   if (!drained && std::chrono::steady_clock::now() >= shutdown_report_at_) {
     LOG_WARN(
         "Shutdown waiting: LAN [{}], cloud peer={}, viewers={}, controllers={}",

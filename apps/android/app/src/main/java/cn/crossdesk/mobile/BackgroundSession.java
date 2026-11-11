@@ -17,6 +17,7 @@ final class BackgroundSession implements NativeSession.Listener {
     String identity = "", platform = "", clipboard = "", fileStatus = "", endReason = "";
     JSONArray displays = new JSONArray();
     RemoteVideoSettings videoSettings;
+    RemoteDisplayResolutions displayResolutions=new RemoteDisplayResolutions();
     int signalState, selectedDisplay, width, height;
     boolean muted, remoteServiceAvailable, background, ended;
     boolean autoLandscape;
@@ -55,6 +56,7 @@ final class BackgroundSession implements NativeSession.Listener {
     }
     @Override public void data(JSONObject message) {
         if (view != null) { view.data(message); return; }
+        displayResolutions.receive(message);
         if (message.optInt("type", -1) == 12 && videoSettings != null) videoSettings.receive(message);
         if (message.optInt("type", -1) == 5) {
             JSONObject service = message.optJSONObject("service_status");
@@ -80,6 +82,7 @@ final class BackgroundSession implements NativeSession.Listener {
         if (view != null) view.fileTransfer(name, progress, sending, received);
     }
     @Override public void controlFeedback(String text) { if (view != null) view.controlFeedback(text); }
+    @Override public void displayResolutionFailed(long requestId) { if(view!=null)view.displayResolutionFailed(requestId);else displayResolutions.expire(requestId); }
     @Override public void privacyChanged() { if (view != null) view.privacyChanged(); }
     @Override public void presence(JSONObject message) { if (view != null) view.presence(message); }
     @Override public void announcement(JSONObject message) { if (view != null) view.announcement(message); }

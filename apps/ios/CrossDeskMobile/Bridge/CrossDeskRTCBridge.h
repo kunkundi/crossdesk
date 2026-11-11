@@ -101,6 +101,10 @@ typedef struct {
     didReceivePresence:(NSDictionary<NSString *, NSNumber *> *)presence
                snapshot:(BOOL)snapshot;
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
+    didReceiveDisplayResolutions:(NSData *)message;
+- (void)rtcBridge:(CrossDeskRTCBridge *)bridge
+    didFailDisplayResolutionRequest:(uint32_t)requestID;
+- (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didReceiveAnnouncementMessage:(NSData *)message;
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didFailAnnouncementRequest:(NSString *)requestID;
@@ -163,6 +167,12 @@ typedef struct {
                          preference:(NSInteger)preference
                           requestID:(uint32_t)requestID
     NS_SWIFT_NAME(sendVideoSettings(quality:frameRate:preference:requestID:));
+- (void)sendDisplayResolution:(NSInteger)displayID
+                  displayKey:(NSString *)displayKey
+                       width:(NSInteger)width
+                      height:(NSInteger)height
+                   requestID:(uint32_t)requestID
+    NS_SWIFT_NAME(sendDisplayResolution(displayID:displayKey:width:height:requestID:));
 - (void)requestPresenceForRemoteIDs:(NSArray<NSString *> *)remoteIDs
                          subscribe:(BOOL)subscribe
     NS_SWIFT_NAME(requestPresence(remoteIDs:subscribe:));

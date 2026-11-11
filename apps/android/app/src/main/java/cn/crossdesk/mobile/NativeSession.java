@@ -31,6 +31,7 @@ final class NativeSession implements AutoCloseable {
         default void fileTransfer(String name,double progress,boolean sending,File received) { }
         default void controlFeedback(String message) { }
         default void privacyChanged() { }
+        default void displayResolutionFailed(long requestId) { }
         default void signaling(int state, String deviceId) { }
         default void presence(JSONObject message) { }
         default void announcement(JSONObject message) { }
@@ -243,6 +244,9 @@ final class NativeSession implements AutoCloseable {
         if(!settings.valid()||requestId<0||requestId>0xffffffffL)return;
         execute(()->{if(connected&&!nVideoSettings(handle,settings.quality,settings.frameRate,settings.preference,requestId))ui(()->listener.data(settings.status(requestId,false)));});
     }
+    void displayResolution(RemoteDisplayResolutions.Request request){
+        execute(()->{if(!connected||!nDisplayResolution(handle,request.displayId,request.displayKey,request.mode.width,request.mode.height,request.id))ui(()->listener.displayResolutionFailed(request.id));});
+    }
     void announcementRequest(JSONObject request,String requestId){
         byte[] bytes=request.toString().getBytes(StandardCharsets.UTF_8);
         execute(()->{if(!signalReady||identity.isEmpty()||!nAnnouncementRequest(handle,bytes))ui(()->listener.announcementFailed(requestId));});
@@ -344,6 +348,7 @@ final class NativeSession implements AutoCloseable {
     private static native void nKey(long handle, int code, boolean down);
     private static native void nText(long handle,byte[] text);
     private static native void nControl(long handle, int type, int value);
+    private static native boolean nDisplayResolution(long handle,int displayId,String displayKey,int width,int height,long requestId);
     private static native boolean nVideoSettings(long handle,int quality,int frameRate,int preference,long requestId);
     private static native boolean nAnnouncementRequest(long handle,byte[] data);
     private static native boolean nPresenceRequest(long handle,byte[] data);

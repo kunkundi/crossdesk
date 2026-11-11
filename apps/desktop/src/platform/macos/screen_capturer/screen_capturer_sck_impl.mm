@@ -180,7 +180,7 @@ class API_AVAILABLE(macos(14.0)) ScreenCapturerSckImpl : public ScreenCapturer {
                              bool complete, SCStreamConfiguration* configuration,
                              NSError* error);
   void RetryPrivacyFilter();
-  void PrivacyCoversChanged() { StartOrReconfigureCapturer(); }
+  void CaptureConfigurationChanged() { StartOrReconfigureCapturer(); }
   void CaptureStopped(SCStream* source, NSError* error) {
     {
       std::lock_guard lock(lock_);
@@ -914,13 +914,23 @@ void ScreenCapturerSckImpl::StartOrReconfigureCapturer() {
                                               DISPATCH_QUEUE_SERIAL);
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(privacyCoversChanged:)
         name:@"CrossDeskPrivacyCoversChanged" object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(screenParametersChanged:)
+        name:NSApplicationDidChangeScreenParametersNotification object:nil];
   }
   return self;
 }
 
 - (void)privacyCoversChanged:(NSNotification*)notification {
   std::lock_guard<std::mutex> lock(_capturer_lock);
-  if (_capturer) _capturer->PrivacyCoversChanged();
+  if (_capturer) _capturer->CaptureConfigurationChanged();
+}
+- (void)screenParametersChanged:(NSNotification*)notification {
+  // Defer until the mode switch has completed, then fetch fresh SCDisplay
+  // geometry and update the stream's pixel dimensions and input bounds.
+  dispatch_async(_completion_queue, ^{
+    std::lock_guard<std::mutex> lock(self->_capturer_lock);
+    if (self->_capturer) self->_capturer->CaptureConfigurationChanged();
+  });
 }
 - (void)configurationFinished:(SCStream*)stream generation:(uint64_t)generation
                      revision:(uint64_t)revision complete:(BOOL)complete

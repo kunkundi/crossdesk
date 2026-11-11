@@ -25,6 +25,7 @@
 #include "privacy_controller.h"
 #include "runtime/gui_state.h"
 #include "runtime/disconnect_lock_policy.h"
+#include "runtime/display_resolution_restoration.h"
 #include "runtime/announcement_inbox.h"
 #include "runtime/peer_event_handler.h"
 #include "runtime/peer_transport.h"
@@ -157,6 +158,7 @@ class GuiRuntime : protected gui_detail::GuiState {
                                     PeerEventHandler* source,
                                     const DisplayResolutionChange& change);
   void HandleDisplayResolutionChanges();
+  void RestoreHostDisplayResolutions(bool force = false);
 
   void CloseRemoteSession(std::shared_ptr<RemoteSession> props);
   void CloseAllRemoteSessions();
@@ -256,11 +258,18 @@ class GuiRuntime : protected gui_detail::GuiState {
     std::string remote_id;
     std::weak_ptr<PeerEventHandler> source;
     DisplayResolutionChange change;
+    uint64_t epoch;
   };
   std::mutex display_resolution_commands_mutex_;
   std::deque<PendingDisplayResolution> display_resolution_commands_;
   std::vector<DisplayResolutionInfo> last_display_resolutions_;
   uint64_t next_display_resolution_poll_ = 0;
+  // Incremented when the last incoming controller disconnects. Keep the
+  // boundary even if a new connection arrives before the application tick.
+  std::atomic<uint64_t> display_resolution_epoch_{0};
+  uint64_t handled_display_resolution_epoch_ = 0;
+  uint64_t next_display_resolution_restore_ = 0;
+  DisplayResolutionRestoration display_resolution_restoration_;
   bool privacy_settings_changed_ = false;
   uint32_t last_privacy_revision_ = 0;
   uint64_t last_privacy_status_tick_ = 0;

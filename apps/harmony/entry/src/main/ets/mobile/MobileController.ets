@@ -1,4 +1,5 @@
 import { tr } from './Localization';
+import { RemoteDisplayResolutions, ResolutionDisplay, ResolutionMode, ResolutionRequest, resolutionLabel } from './RemoteDisplayResolutions';
 import { RemotePrivacyScreen, PrivacyStatus } from './RemotePrivacyScreen';
 import bridge from 'libcrossdesk.so';
 import { common, bundleManager } from '@kit.AbilityKit';
@@ -11,6 +12,7 @@ import { AnnouncementInbox, AnnouncementItem, AnnouncementRequest, AnnouncementR
 import { VideoSettings, VideoValues, NetworkStatistics, NetworkReport, RecentPresence, PresenceMessage, asciiKey } from './ControllerModels';
 
 interface Command {
+  displayId?: number; displayKey?: string; width?: number; height?: number;
   op: string; session?: number; connection?: number; server?: string; port?: number; identity?: string;
   logs?: string; certificates?: string; directory?: string; previewDirectory?: string; remote?: string; password?: string; version?: string;
   id?: string; x?: number; y?: number; flag?: number; scroll?: number; code?: number; down?: boolean;
@@ -24,11 +26,11 @@ interface NativeEvent {
   sending?: boolean; path?: string; ok?: boolean; request?: number | string; latest?: string;
 }
 export interface RemoteDisplay { name: string; }
-interface HostInfo { host_name: string; platform: string; app_version: string; supports_video_settings: boolean; displays: RemoteDisplay[]; }
+interface HostInfo { host_name: string; platform: string; app_version: string; supports_video_settings: boolean; displays: RemoteDisplay[]; display_resolutions?: ResolutionDisplay[]; }
 interface SettingAck { quality: number; frame_rate: number; preference: number; request_id: number; accepted: boolean; }
 interface ServiceStatus { available: boolean; interactive_stage?: string; }
 interface VideoCodecStatus { encoder: string; }
-interface ControlData { type: number; host_info?: HostInfo; video_settings?: SettingAck; service_status?: ServiceStatus; privacy_status?: PrivacyStatus; video_codec?: VideoCodecStatus; }
+interface ControlData { display_resolution?: ResolutionRequest; display_resolutions?: ResolutionDisplay[]; type: number; host_info?: HostInfo; video_settings?: SettingAck; service_status?: ServiceStatus; privacy_status?: PrivacyStatus; video_codec?: VideoCodecStatus; }
 interface PresenceRequest { type: string; devices: string[]; subscribe: boolean; }
 interface SignalType { type: string; }
 
@@ -76,6 +78,11 @@ export class MobileState {
   videoSelectedPreference: number = 1;
   videoSupported: boolean = false;
   videoFeedback: string = '';
+  resolutionModes: ResolutionMode[] = [];
+  resolutionKey: string = '';
+  resolutionCurrent: string = tr("设备不支持");
+  resolutionEnabled: boolean = false;
+  resolutionFeedback: string = '';
   privacyStatus: string = '';
   privacyButtonTitle: string = tr("隐私屏");
   privacyFeedback: string = '';
@@ -97,6 +104,8 @@ export class MobileController {
   store: MobileStore;
   platform: MobilePlatform;
   video: VideoSettings = new VideoSettings();
+  private resolutions: RemoteDisplayResolutions = new RemoteDisplayResolutions();
+  private resolutionTimeout: number = -1;
   private privacyScreen: RemotePrivacyScreen = new RemotePrivacyScreen();
   network: NetworkStatistics = new NetworkStatistics();
   presence: RecentPresence;
@@ -248,6 +257,7 @@ export class MobileController {
     this.network = new NetworkStatistics(); let edge = 1920;
     try { const screen = display.getDefaultDisplaySync(); edge = Math.max(screen.width, screen.height); } catch {}
     this.video = new VideoSettings(this.state.videoPreference, edge); this.syncVideo();
+    this.resetResolutions();
     this.privacyScreen = new RemotePrivacyScreen(); this.syncPrivacy();
     this.store.put('lastRemote', this.state.remote); this.state.password = '';
     this.ensureSignal(); this.joinIfReady();
@@ -259,6 +269,7 @@ export class MobileController {
   }
   end(reason: string): void {
     this.release(); this.send({ op: 'disconnect' }); this.platform.disconnect();
+    this.resetResolutions();
     this.connection++; this.uiEpoch++; this.pendingPassword = ''; this.joinSent = false; this.sendingFile = false;
     this.privacyScreen = new RemotePrivacyScreen(); this.syncPrivacy();
     this.state.connecting = this.state.ready = false; this.state.page = 'home'; this.state.modal = ''; this.state.password = '';
@@ -285,7 +296,7 @@ export class MobileController {
   selectDisplay(index: number): void {
     if (index < 0 || index >= this.state.displays.length) return;
     this.release(); this.state.selectedDisplay = index; this.state.viewportReset++; this.state.hasFrame = false; this.network.reset();
-    this.send({ op: 'display', index: index }); this.state.modal = '';
+    this.send({ op: 'display', index: index }); this.state.modal = ''; this.syncResolutions();
   }
   updateVideo(field: number, value: number): void {
     const old = this.video.selection;
@@ -294,6 +305,31 @@ export class MobileController {
     this.send({ op: 'videoSettings', quality: next.quality, frameRate: next.frameRate, preference: next.preference, request: id });
     if (this.settingsTimeout >= 0) clearTimeout(this.settingsTimeout);
     this.settingsTimeout = setTimeout(() => { this.video.expire(id); this.syncVideo(); }, 5000); this.syncVideo();
+  }
+  updateResolution(mode: ResolutionMode, displayId: number, displayKey: string): void {
+    if (!this.state.ready || !this.state.consent) return;
+    const display = this.resolutions.display(this.state.selectedDisplay);
+    if (!display || display.display_id !== displayId || display.display_key !== displayKey) return;
+    const request = this.resolutions.begin(displayId, mode);
+    if (!request) return;
+    this.send({ op: 'displayResolution', displayId: request.display_id, displayKey: request.display_key,
+      width: request.width, height: request.height, request: request.request_id });
+    if (this.resolutionTimeout >= 0) clearTimeout(this.resolutionTimeout);
+    this.resolutionTimeout = setTimeout(() => { this.resolutions.expire(request.request_id); this.syncResolutions(); }, 10000);
+    this.syncResolutions();
+  }
+  private resetResolutions(): void {
+    if (this.resolutionTimeout >= 0) clearTimeout(this.resolutionTimeout);
+    this.resolutionTimeout = -1; this.resolutions = new RemoteDisplayResolutions(); this.syncResolutions();
+  }
+  private syncResolutions(): void {
+    const display = this.resolutions.display(this.state.selectedDisplay);
+    this.state.resolutionModes = display?.modes ?? [];
+    this.state.resolutionKey = display?.display_key ?? '';
+    this.state.resolutionCurrent = display ? resolutionLabel(display) : tr("设备不支持");
+    this.state.resolutionEnabled = this.state.ready && !this.resolutions.pending && this.state.resolutionModes.length > 0;
+    this.state.resolutionFeedback = this.resolutions.feedback();
+    if (!this.resolutions.pending && this.resolutionTimeout >= 0) { clearTimeout(this.resolutionTimeout); this.resolutionTimeout = -1; }
   }
   setPreference(value: number): void { this.store.put('videoPreference', value); this.state.videoPreference = value; }
   setAutoLandscape(value: boolean): void { this.store.put('autoLandscape', value); this.state.autoLandscape = value; }
@@ -441,6 +477,7 @@ export class MobileController {
       this.state.transfer = (e.progress ?? 0) < 0 ? tr("{0} 传输失败", [String(e.name)]) : `${e.sending ? '发送' : '接收'} ${e.name} · ${(e.progress ?? 0) >= 1 ? '已完成' : Math.floor((e.progress ?? 0) * 100) + '%'}`;
       if (e.path) { this.state.receivedPath = e.path; this.state.receivedName = e.name ?? 'received-file'; }
     } else if (e.type === 'privacyFailed') { this.privacyScreen.failed(Number(e.request)); this.syncPrivacy(); }
+    else if (e.type === 'resolutionFailed') { this.resolutions.expire(Number(e.request)); this.syncResolutions(); }
     else if (e.type === 'settingsFailed') { this.video.expire(Number(e.request)); this.syncVideo(); }
     else if (e.type === 'preview') {
       this.previewPending = false;
@@ -477,6 +514,7 @@ export class MobileController {
       }
     }).catch(() => this.toast(tr("密码保存失败，本次连接仍可使用")));
     this.platform.connected(this.state.autoLandscape);
+    this.syncResolutions();
     if (this.video.supported && this.video.requestId === 0) this.updateVideo(0, this.video.selection.quality);
     if (this.receivedHostInfo) this.checkRemote(this.remoteVersion);
   }
@@ -493,9 +531,13 @@ export class MobileController {
       this.video.receive({ quality: v.quality, frameRate: v.frame_rate, preference: v.preference }, v.request_id, v.accepted === true);
       if (!this.video.pending && this.settingsTimeout >= 0) clearTimeout(this.settingsTimeout); this.syncVideo(); return;
     }
+    if (message.type === 16 && message.display_resolution && message.display_resolutions) {
+      this.resolutions.receive(message.display_resolution, message.display_resolutions); this.syncResolutions(); return;
+    }
     if (message.host_info) {
       const info = message.host_info; this.state.platform = info.platform; this.state.hostName = info.host_name;
       this.state.displays = Array.isArray(info.displays) ? info.displays.slice(0, 8) : [];
+      this.resolutions.host(info.display_resolutions === undefined ? [] : info.display_resolutions); this.syncResolutions();
       this.store.metadata(this.scope(), this.connectingId, info.host_name, info.platform);
       const supported = this.video.supported; this.video.support(info.supports_video_settings === true); this.syncVideo();
       if (this.state.ready && this.video.supported && !supported) this.updateVideo(0, this.video.selection.quality);

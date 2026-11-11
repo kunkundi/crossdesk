@@ -305,4 +305,7 @@
     <string name="text_ba9a792d063a8c86" formatted="false">", 비밀번호가 저장되었습니다"</string>
     <string name="text_f4c1f9d7896760a7" formatted="false">", 수신 "</string>
     <string name="text_42237b5ec70c26f3" formatted="false">", 재시도를 클릭하세요."</string>
+    <string name="text_59c9dca5568a6cd3" formatted="false">"원격 화면 해상도"</string>
+    <string name="text_36e0073276c0e39f" formatted="false">"지원되지 않음"</string>
+    <string name="text_7b3440ad0f81b811" formatted="false">"컴퓨터의 확인을 기다리는 중..."</string>
 </resources>

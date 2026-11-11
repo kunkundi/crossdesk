@@ -220,6 +220,7 @@ void GuiRuntime::HandleServerControllerDisconnected(
     windows_rdp_handoff_connected_->store(has_connected_controller,
                                           std::memory_order_relaxed);
 #endif
+    if (!has_connected_controller) ++display_resolution_epoch_;
   }
   clipboard_.ForgetWeb(remote_id);
   if (has_connected_controller) {
@@ -269,6 +270,9 @@ void GuiRuntime::HandleScreenLock() {
   std::unique_lock lock(connection_status_mutex_);
   if (!disconnect_lock_.TakeRequest(config_center_->IsLockOnDisconnect()))
     return;
+  // Restore while the interactive desktop is still available. This forced
+  // path does not reacquire connection_status_mutex_.
+  RestoreHostDisplayResolutions(true);
 #if defined(_WIN32) || defined(__APPLE__) || (defined(__linux__) && !defined(__OHOS__))
   if (LockScreen()) LOG_INFO("Requested screen lock after last controller disconnected");
 #endif
