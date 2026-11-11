@@ -48,6 +48,14 @@ export class VideoPlayer {
   private automatic = true;
   private cursor?: Cursor;
   private cursorDrawn = "";
+  private cursorHeading = -Math.PI * 3 / 4;
+  private cursorMotion?: { x: number; y: number; started: number; duration: number };
+  private cursorDrawing = 0;
+  private reducedMotion?: MediaQueryList;
+  private motionPreferenceChanged = () => {
+    this.cursorMotion = undefined;
+    this.drawCursor();
+  };
   private resize?: ResizeObserver;
   private policyListener?: (event: SecurityPolicyViolationEvent) => void;
   private socketError?: ReturnType<typeof setTimeout>;
@@ -57,6 +65,8 @@ export class VideoPlayer {
     private overlay?: HTMLCanvasElement,
     private onAudio?: (bytes: ArrayBuffer) => void) {
     if (overlay) {
+      this.reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+      this.reducedMotion.addEventListener("change", this.motionPreferenceChanged);
       this.resize = new ResizeObserver(() => this.drawCursor());
       this.resize.observe(overlay);
     }
@@ -105,8 +115,7 @@ export class VideoPlayer {
               !Number.isInteger(p.width) || !Number.isInteger(p.height) ||
               p.width < 0 || p.width > 8192 || p.height < 0 || p.height > 8192)
             throw new Error();
-          this.cursor = p;
-          this.drawCursor();
+          this.updateCursor(p);
         } catch { this.fail(new Error("VIDEO_INVALID")); }
         return;
       }
@@ -241,6 +250,8 @@ export class VideoPlayer {
       const width = frame.displayWidth, height = frame.displayHeight;
       if (width > 8192 || height > 8192 || width * height > 16777216) throw new Error("VIDEO_INVALID");
       if (this.canvas.width !== width || this.canvas.height !== height) {
+        this.cursorMotion = undefined;
+        this.cursorHeading = -Math.PI * 3 / 4;
         this.canvas.width = width;
         this.canvas.height = height;
       }
@@ -260,41 +271,99 @@ export class VideoPlayer {
     } catch { this.fail(new Error("VIDEO_INVALID")); }
     finally { frame.close(); }
   }
-  private drawCursor() {
+  private cursorPoint(now: number) {
+    const p = this.cursor, motion = this.cursorMotion;
+    if (!p || !motion) return p;
+    const progress = Math.min(1, Math.max(0, (now - motion.started) / motion.duration));
+    if (progress === 1) {
+      this.cursorMotion = undefined;
+      return p;
+    }
+    const eased = 1 - (1 - progress) ** 3;
+    return { x: motion.x + (p.x - motion.x) * eased, y: motion.y + (p.y - motion.y) * eased };
+  }
+  private updateCursor(p: Cursor) {
+    const now = performance.now(), previous = this.cursor, from = this.cursorPoint(now);
+    const overlay = this.overlay;
+    const compatible = previous?.visible && p.visible && previous.generation === p.generation &&
+      previous.geometry_epoch === p.geometry_epoch && previous.width === p.width && previous.height === p.height;
+    const moved = previous?.x !== p.x || previous?.y !== p.y;
+    // Animate only the presentation. Native input and hit testing keep using
+    // the exact target; new samples replace the target without queuing trails.
+    if (!compatible || moved) {
+      this.cursorMotion = undefined;
+      if (!compatible) this.cursorHeading = -Math.PI * 3 / 4;
+      if (compatible && moved && from && overlay && !this.stopped &&
+          this.count && p.generation === this.generation &&
+          p.width === this.canvas.width && p.height === this.canvas.height) {
+        const scale = Math.min(overlay.clientWidth / p.width, overlay.clientHeight / p.height);
+        const dx = (p.x - from.x) * p.width, dy = (p.y - from.y) * p.height;
+        const distance = Math.hypot(dx, dy) * scale;
+        if (distance > .5) {
+          // Follow the displayed trajectory in screen pixels, not normalized
+          // coordinates. Keep the last heading at rest and ignore subpixel noise.
+          this.cursorHeading = Math.atan2(dy, dx);
+          if (!document.hidden && !this.reducedMotion?.matches)
+            this.cursorMotion = { x: from.x, y: from.y, started: now,
+              duration: Math.min(140, 60 + distance * .12) };
+        }
+      }
+    }
+    this.cursor = p;
+    this.drawCursor(now);
+  }
+  private drawCursor(now = performance.now()) {
     const overlay = this.overlay;
     if (!overlay) return;
     if (overlay.width !== this.canvas.width) overlay.width = this.canvas.width;
     if (overlay.height !== this.canvas.height) overlay.height = this.canvas.height;
     const p = this.cursor;
+    // Match the video canvas's object-fit: contain, including letterboxing.
+    const scale = Math.min(overlay.clientWidth / overlay.width, overlay.clientHeight / overlay.height);
+    const visible = !this.stopped && !!this.count && p?.visible && p.generation === this.generation &&
+      p.width === overlay.width && p.height === overlay.height && scale > 0;
+    if (!visible || document.hidden || this.reducedMotion?.matches) this.cursorMotion = undefined;
+    const point = this.cursorPoint(now);
+    if (this.cursorMotion) {
+      // Cursor animation is independent of video frames, including a static desktop.
+      if (!this.cursorDrawing) this.cursorDrawing = requestAnimationFrame(() => {
+        this.cursorDrawing = 0;
+        this.drawCursor();
+      });
+    } else {
+      cancelAnimationFrame(this.cursorDrawing);
+      this.cursorDrawing = 0;
+    }
     const state = JSON.stringify([this.stopped, !!this.count, this.generation,
-      overlay.width, overlay.height, overlay.clientWidth, overlay.clientHeight, p]);
+      overlay.width, overlay.height, overlay.clientWidth, overlay.clientHeight, p, point, this.cursorHeading]);
     if (state === this.cursorDrawn) return;
     this.cursorDrawn = state;
     const context = overlay.getContext("2d")!;
     context.clearRect(0, 0, overlay.width, overlay.height);
-    if (this.stopped || !this.count || !p?.visible || p.generation !== this.generation ||
-        p.width !== overlay.width || p.height !== overlay.height) return;
-    // Match the video canvas's object-fit: contain, including letterboxing.
-    const scale = Math.min(overlay.clientWidth / overlay.width, overlay.clientHeight / overlay.height);
-    if (!scale) return;
+    if (!visible || !point) return;
     context.save();
-    context.translate(Math.min(overlay.width - 1, p.x * overlay.width), Math.min(overlay.height - 1, p.y * overlay.height));
+    context.translate(Math.min(overlay.width - 1, point.x * overlay.width), Math.min(overlay.height - 1, point.y * overlay.height));
     context.scale(1 / scale, 1 / scale);
+    // The tip stays on the operation coordinate while the body turns behind it.
+    context.rotate(this.cursorHeading);
+    // Round the filled outline itself. The tip radius must remain visible after
+    // the centered white stroke; offset the rounded tip back to the input point.
+    const tipRadius = 1.8;
+    const tip = tipRadius * (Math.hypot(23, 9.5) / 9.5 - 1);
     context.beginPath();
-    context.moveTo(0, 0);
-    context.lineTo(0, 22);
-    context.lineTo(6, 17);
-    context.lineTo(10, 26);
-    context.lineTo(14, 24);
-    context.lineTo(10, 15);
-    context.lineTo(18, 15);
+    context.moveTo(tip - 10, -10 * 9.5 / 23);
+    context.arcTo(tip - 23, -9.5, tip - 18.5, 0, 1.8);
+    context.arcTo(tip - 18.5, 0, tip - 23, 9.5, 1.4);
+    context.arcTo(tip - 23, 9.5, tip, 0, 1.8);
+    context.arcTo(tip, 0, tip - 23, -9.5, tipRadius);
     context.closePath();
-    context.fillStyle = "#3269e8";
+    // Match desktop WorkbenchStyle.accent and the viewer's --accent color.
+    context.fillStyle = "#3564e3";
     context.strokeStyle = "#fff";
-    context.lineWidth = 2;
+    context.lineWidth = 1.7;
     context.lineJoin = "round";
-    context.shadowColor = "#0009";
-    context.shadowBlur = 3;
+    context.shadowColor = "#3564e380";
+    context.shadowBlur = 6.5 / scale;
     context.fill();
     context.stroke();
     context.restore();
@@ -308,6 +377,8 @@ export class VideoPlayer {
   stop() {
     this.stopped = true;
     this.cursor = undefined;
+    this.cursorMotion = undefined;
+    this.reducedMotion?.removeEventListener("change", this.motionPreferenceChanged);
     this.resize?.disconnect();
     this.drawCursor();
     clearTimeout(this.firstFrame);
