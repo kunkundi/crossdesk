@@ -86,6 +86,7 @@ struct RTCState {
   std::string identity_base;
   std::string controller_login;
   std::string pending_remote_id;
+  std::vector<crossdesk::DisplayResolutionPreference> preferred_display_resolutions;
   uint64_t pending_controller_generation = 0;
   std::string pending_password;
   std::string transmission_id;
@@ -800,7 +801,14 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
   });
 }
 
-- (void)connectToRemoteID:(NSString *)remoteID password:(NSString *)password {
+- (void)connectToRemoteID:(NSString *)remoteID password:(NSString *)password
+      displayResolutions:(NSData *)displayResolutions {
+  std::vector<crossdesk::DisplayResolutionPreference> preferences;
+  if (displayResolutions.length > 0 && displayResolutions.length <= 65536) {
+    const auto *bytes = static_cast<const char *>(displayResolutions.bytes);
+    crossdesk::ParseDisplayResolutionPreferences(
+        std::string(bytes, displayResolutions.length), preferences);
+  }
   NSString *cleanID = [remoteID
       stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
   NSString *cleanPassword = [password
@@ -820,6 +828,7 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
   dispatch_async(_rtcQueue, ^{
     if (generation != self->_controllerGenerationCounter.load()) return;
     self->_state->pending_remote_id = identifier;
+    self->_state->preferred_display_resolutions = preferences;
     self->_state->pending_controller_generation = generation;
     self->_state->pending_password = password_value;
     [self destroyControllerPeer];
@@ -1458,6 +1467,7 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
               : "iPhone-" + self->_state->identity_base;
       RemoteAction action{};
       action.type = ControlType::host_infomation;
+      action.preferred_display_resolutions = self->_state->preferred_display_resolutions;
       action.i.platform = crossdesk::HostPlatform::IOS;
       action.i.supports_privacy_screen = true;
       action.i.supports_video_codec_status = true;

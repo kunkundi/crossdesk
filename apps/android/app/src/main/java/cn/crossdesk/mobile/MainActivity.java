@@ -651,6 +651,10 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private void cancelDisplayResolutionTimeout(){if(displayResolutionTimeout!=null)mainHandler.removeCallbacks(displayResolutionTimeout);displayResolutionTimeout=null;}
     private void updateDisplayResolution(RemoteDisplayResolutions.Mode mode){
         if(!ready||session==null||!hasNetworkConsent())return;
+        RemoteDisplayResolutions.Display display=displayResolutions.display(selectedDisplay);
+        if(!displayResolutions.pending&&display!=null&&display.supports(mode)&&display.current.same(mode)){
+            session.rememberDisplayResolution(display.key,mode);return;
+        }
         RemoteDisplayResolutions.Request request=displayResolutions.begin(selectedDisplay,mode);if(request==null)return;
         cancelDisplayResolutionTimeout();session.displayResolution(request);
         if(controls!=null)controls.displayResolutions(displayResolutions,selectedDisplay);
@@ -677,7 +681,9 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     @Override public void data(JSONObject message){
         if(session==null)return;
         if(message.optInt("type",-1)==3||message.optInt("type",-1)==16){
-            displayResolutions.receive(message);if(!displayResolutions.pending)cancelDisplayResolutionTimeout();
+            RemoteDisplayResolutions.Request confirmed=displayResolutions.receive(message);
+            if(confirmed!=null&&session!=null)session.rememberDisplayResolution(confirmed.displayKey,confirmed.mode);
+            if(!displayResolutions.pending)cancelDisplayResolutionTimeout();
             if(controls!=null)controls.displayResolutions(displayResolutions,selectedDisplay);
             if(message.optInt("type",-1)==16)return;
         }

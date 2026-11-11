@@ -7,6 +7,7 @@
 #include <mobile_file_transfer_session.h>
 #include <mobile_video_timing.h>
 #include <display_stream_id.h>
+#include <display_resolution_preferences.h>
 #include <libyuv.h>
 #include <algorithm>
 #include <cmath>
@@ -144,6 +145,7 @@ class MobileSession {
         s->connecting_ = false; s->connected_ = true;
         auto info = MakeHostInformation("CrossDesk HarmonyOS Mobile", {}, true, s->version_, HostPlatform::HarmonyOS);
         info.i.supports_video_codec_status = true;
+        info.preferred_display_resolutions = s->preferred_display_resolutions_;
         s->Send(info); FreeRemoteAction(info);
         RemoteAction audio{}; audio.type = audio_capture; audio.a = !s->muted_; s->Send(audio);
         s->audio_.Start();
@@ -238,6 +240,7 @@ class MobileSession {
     CancelPreview();
     if (controller_) { MiniRtcLeaveConnection(controller_,remote_.c_str()); MiniRtcDestroyPeer(&controller_); }
     files_.reset(); renderer_.Clear(); audio_.Stop();
+    preferred_display_resolutions_.clear();
     if (active) Event({{"type","ended"},{"reason",reason}},true);
     ++connection_; display_=0; frame_id_=0;
   }
@@ -274,6 +277,7 @@ class MobileSession {
     else if (op=="connect") {
       if (!online_||login_.empty()) throw std::runtime_error("Not signed in");
       Disconnect(""); connection_=v.at("connection").get<uint64_t>();
+      ReadDisplayResolutionPreferences(v.value("displayResolutions", json::array()), preferred_display_resolutions_);
       remote_=v.at("remote").get<std::string>(); const auto password=v.at("password").get<std::string>();
       if (remote_.size()!=9||!std::all_of(remote_.begin(),remote_.end(),::isdigit)||password.size()>128||password.find('@')!=std::string::npos)
         throw std::runtime_error("Invalid remote credentials");
@@ -405,6 +409,7 @@ class MobileSession {
   std::unique_ptr<Context> identity_context_,control_context_;
   std::unique_ptr<mobile_controller::FileTransferSession> files_;
   std::string server_,logs_,login_,controller_login_,remote_,directory_,preview_directory_,preview_path_,version_;
+  std::vector<DisplayResolutionPreference> preferred_display_resolutions_;
   int port_=9099,signal_status_=-1;
   uint64_t signal_generation_=0;
   std::set<int> keys_;

@@ -366,10 +366,16 @@ extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nConnect)(
   const auto join = s->remote + "@" + String(env, password);
   return MiniRtcJoinConnection(s->controller, join.c_str()) == 0;
 }
-extern "C" JNIEXPORT void JNICALL JNI_METHOD(nReady)(JNIEnv*, jclass, jlong handle) {
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(nReady)(JNIEnv* env, jclass, jlong handle, jbyteArray preferences) {
   auto* s = From(handle); if (!s || !s->controller) return;
   auto action = MakeHostInformation("CrossDesk Android", {}, true, "1.6.0", HostPlatform::Android);
   action.i.supports_video_codec_status = true;
+  if (preferences && env->GetArrayLength(preferences) <= 65536) {
+    std::string bytes(env->GetArrayLength(preferences), '\0');
+    env->GetByteArrayRegion(preferences, 0, bytes.size(), reinterpret_cast<jbyte*>(bytes.data()));
+    if (!env->ExceptionCheck())
+      ParseDisplayResolutionPreferences(bytes, action.preferred_display_resolutions);
+  }
   s->Send(kControlStream, action.to_json()); FreeRemoteAction(action);
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(nPointer)(

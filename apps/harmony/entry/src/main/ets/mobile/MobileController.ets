@@ -1,5 +1,5 @@
 import { tr } from './Localization';
-import { RemoteDisplayResolutions, ResolutionDisplay, ResolutionMode, ResolutionRequest, resolutionLabel } from './RemoteDisplayResolutions';
+import { RemoteDisplayResolutions, RemoteResolutionStore, ResolutionDisplay, ResolutionMode, ResolutionRequest, ResolutionPreference, resolutionLabel } from './RemoteDisplayResolutions';
 import { RemotePrivacyScreen, PrivacyStatus } from './RemotePrivacyScreen';
 import bridge from 'libcrossdesk.so';
 import { common, bundleManager } from '@kit.AbilityKit';
@@ -12,6 +12,7 @@ import { AnnouncementInbox, AnnouncementItem, AnnouncementRequest, AnnouncementR
 import { VideoSettings, VideoValues, NetworkStatistics, NetworkReport, RecentPresence, PresenceMessage, asciiKey } from './ControllerModels';
 
 interface Command {
+  displayResolutions?: ResolutionPreference[];
   displayId?: number; displayKey?: string; width?: number; height?: number;
   op: string; session?: number; connection?: number; server?: string; port?: number; identity?: string;
   logs?: string; certificates?: string; directory?: string; previewDirectory?: string; remote?: string; password?: string; version?: string;
@@ -106,6 +107,8 @@ export class MobileController {
   video: VideoSettings = new VideoSettings();
   private resolutions: RemoteDisplayResolutions = new RemoteDisplayResolutions();
   private resolutionTimeout: number = -1;
+  private resolutionScope: string = '';
+  private resolutionStore: RemoteResolutionStore;
   private privacyScreen: RemotePrivacyScreen = new RemotePrivacyScreen();
   network: NetworkStatistics = new NetworkStatistics();
   presence: RecentPresence;
@@ -141,6 +144,8 @@ export class MobileController {
   private privacy: string = '';
   constructor(context: common.UIAbilityContext) {
     this.context = context; this.store = new MobileStore(context);
+    this.resolutionStore = new RemoteResolutionStore((key: string) => this.store.text(key, '[]'),
+      (key: string, value: string) => this.store.put(key, value));
     this.state.consent = this.store.flag('consent'); this.state.server = this.store.text('server', 'api.crossdesk.cn');
     this.state.port = this.store.text('port', '9099'); this.state.remote = this.store.text('lastRemote');
     this.state.relative = this.store.flag('relative', true); this.state.videoPreference = this.store.number('videoPreference', 1);
@@ -248,6 +253,7 @@ export class MobileController {
   begin(password: string): void {
     if (!this.state.consent || !/^[0-9]{9}$/.test(this.state.remote) || !password || password.length > 128 || password.includes('@')) { this.toast(tr("请输入有效的访问密码")); return; }
     this.joinSent = false; this.connection++; this.connectingId = this.state.remote; this.pendingPassword = password;
+    this.resolutionScope = this.scope();
     this.state.connecting = true; this.state.ready = false; this.state.modal = 'connecting'; this.state.notice = '';
     this.state.muted = false; this.state.platform = ''; this.state.hostName = ''; this.state.receivedPath = this.state.receivedName = this.state.transfer = '';
     this.state.remoteClipboard = ''; this.state.displays = []; this.state.width = 16; this.state.height = 9; this.state.hasFrame = false;
@@ -265,7 +271,8 @@ export class MobileController {
   private joinSent: boolean = false;
   private joinIfReady(): void {
     if (!this.state.connecting || this.joinSent || this.state.signal !== 1 || !this.state.identity) return;
-    this.joinSent = true; this.send({ op: 'connect', connection: this.connection, remote: this.connectingId, password: this.pendingPassword });
+    this.joinSent = true; this.send({ op: 'connect', connection: this.connection, remote: this.connectingId, password: this.pendingPassword,
+      displayResolutions: this.resolutionStore.load(this.resolutionScope, this.connectingId) });
   }
   end(reason: string): void {
     this.release(); this.send({ op: 'disconnect' }); this.platform.disconnect();
@@ -310,6 +317,12 @@ export class MobileController {
     if (!this.state.ready || !this.state.consent) return;
     const display = this.resolutions.display(this.state.selectedDisplay);
     if (!display || display.display_id !== displayId || display.display_key !== displayKey) return;
+    if (!this.resolutions.pending && display.width === mode.width && display.height === mode.height &&
+        display.modes.some((value: ResolutionMode) => value.width === mode.width && value.height === mode.height)) {
+      this.resolutionStore.remember(this.resolutionScope, this.connectingId,
+        { display_key: displayKey, width: mode.width, height: mode.height });
+      return;
+    }
     const request = this.resolutions.begin(displayId, mode);
     if (!request) return;
     this.send({ op: 'displayResolution', displayId: request.display_id, displayKey: request.display_key,
@@ -532,7 +545,10 @@ export class MobileController {
       if (!this.video.pending && this.settingsTimeout >= 0) clearTimeout(this.settingsTimeout); this.syncVideo(); return;
     }
     if (message.type === 16 && message.display_resolution && message.display_resolutions) {
-      this.resolutions.receive(message.display_resolution, message.display_resolutions); this.syncResolutions(); return;
+      const confirmed = this.resolutions.receive(message.display_resolution, message.display_resolutions);
+      if (confirmed) this.resolutionStore.remember(this.resolutionScope, this.connectingId, confirmed);
+      if (!this.resolutions.pending && this.resolutionTimeout >= 0) clearTimeout(this.resolutionTimeout);
+      this.syncResolutions(); return;
     }
     if (message.host_info) {
       const info = message.host_info; this.state.platform = info.platform; this.state.hostName = info.host_name;

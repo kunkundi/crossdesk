@@ -57,28 +57,30 @@ final class RemoteDisplayResolutions {
         requested=new Request(display,mode,next==0?1:next);pending=true;failed=false;return requested;
     }
     void expire(long id){if(pending&&requested!=null&&requested.id==id){pending=false;failed=true;}}
-    void receive(JSONObject message){
+    Request receive(JSONObject message){
         try{
             int type=message.getInt("type");JSONArray values;JSONObject response=null;
             if(type==3){JSONObject host=message.getJSONObject("host_info");values=host.has("display_resolutions")?host.getJSONArray("display_resolutions"):new JSONArray();}
-            else if(type==16){response=message.getJSONObject("display_resolution");if(requested==null||!requested.matches(response)||!(response.get("accepted") instanceof Boolean))return;values=message.getJSONArray("display_resolutions");}
-            else return;
-            if(values.length()>32)return;
+            else if(type==16){response=message.getJSONObject("display_resolution");if(requested==null||!requested.matches(response)||!(response.get("accepted") instanceof Boolean))return null;values=message.getJSONArray("display_resolutions");}
+            else return null;
+            if(values.length()>32)return null;
             List<Display> actual=new ArrayList<>();
             for(int i=0;i<values.length();i++){
                 Display display=new Display(values.getJSONObject(i));
-                for(Display previous:actual)if(previous.id==display.id)return;
+                for(Display previous:actual)if(previous.id==display.id)return null;
                 actual.add(display);
             }
             displays=actual;
             if(response!=null){
                 Display display=display(requested.displayId);pending=false;
                 failed=!response.getBoolean("accepted")||display==null||!display.key.equals(requested.displayKey)||!display.current.same(requested.mode);
+                if(!failed)return requested;
             }else if(pending){
                 Display display=display(requested.displayId);
                 if(display==null||!display.key.equals(requested.displayKey)||!display.supports(requested.mode))expire(requested.id);
             }
         }catch(Exception ignored){ /* Ignore malformed or unrelated control messages. */ }
+        return null;
     }
     String feedback(){return pending?L10n.tr("等待电脑端确认…"):failed?L10n.tr("调整失败，请重试。"):"";}
     private static Mode mode(JSONObject value)throws Exception{return new Mode((int)integer(value,"width",1,32768),(int)integer(value,"height",1,32768));}

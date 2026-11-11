@@ -44,6 +44,7 @@ final class NativeSession implements AutoCloseable {
     private final Context context;
     private volatile Listener listener;
     private final SecretStore secrets;
+    private final RemoteResolutionStore resolutionStore;
     private final String host, scope;
     private volatile String remote;
     private String password, identity = "";
@@ -80,6 +81,7 @@ final class NativeSession implements AutoCloseable {
         this.host = host; this.port = port; this.remote = remote; this.password = password;
         scope = host.toLowerCase(java.util.Locale.ROOT) + ":" + port;
         secrets = new SecretStore(this.context);
+        resolutionStore = new RemoteResolutionStore(this.context);
         documents = new SessionDocuments(this.context);
     }
     void start() {
@@ -184,7 +186,8 @@ final class NativeSession implements AutoCloseable {
                     int status = event.getInt("status");
                     if (status == 1) {
                         if (connected) return; // Repeated transport readiness is the same desktop session.
-                        connected = true; main.removeCallbacks(timeout); nReady(handle);
+                        connected = true; main.removeCallbacks(timeout);
+                        nReady(handle,resolutionStore.load(host,port,remote).toString().getBytes(StandardCharsets.UTF_8));
                         audio = new AudioPlayer();
                         nControl(handle, 2, 1);
                         ui(() -> { listener.connected(); if(!closed){statisticsTick.run();fileTick.run();} });
@@ -246,6 +249,9 @@ final class NativeSession implements AutoCloseable {
     }
     void displayResolution(RemoteDisplayResolutions.Request request){
         execute(()->{if(!connected||!nDisplayResolution(handle,request.displayId,request.displayKey,request.mode.width,request.mode.height,request.id))ui(()->listener.displayResolutionFailed(request.id));});
+    }
+    void rememberDisplayResolution(String displayKey,RemoteDisplayResolutions.Mode mode){
+        if(!closed&&connected)resolutionStore.remember(host,port,remote,displayKey,mode);
     }
     void announcementRequest(JSONObject request,String requestId){
         byte[] bytes=request.toString().getBytes(StandardCharsets.UTF_8);
@@ -343,7 +349,7 @@ final class NativeSession implements AutoCloseable {
     static native String nCheckMobileUpdate(String version, byte[] releaseJson);
     private static native long nCreate(NativeSession owner, String host, int port, String identity, String logs, String roots);
     private static native boolean nConnect(long handle, String identity, String remote, String password);
-    private static native void nReady(long handle);
+    private static native void nReady(long handle,byte[] displayResolutions);
     private static native void nPointer(long handle, float x, float y, int flag, int wheel);
     private static native void nKey(long handle, int code, boolean down);
     private static native void nText(long handle,byte[] text);

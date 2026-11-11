@@ -56,7 +56,8 @@ final class BackgroundSession implements NativeSession.Listener {
     }
     @Override public void data(JSONObject message) {
         if (view != null) { view.data(message); return; }
-        displayResolutions.receive(message);
+        RemoteDisplayResolutions.Request confirmed=displayResolutions.receive(message);
+        if(confirmed!=null)session.rememberDisplayResolution(confirmed.displayKey,confirmed.mode);
         if (message.optInt("type", -1) == 12 && videoSettings != null) videoSettings.receive(message);
         if (message.optInt("type", -1) == 5) {
             JSONObject service = message.optJSONObject("service_status");

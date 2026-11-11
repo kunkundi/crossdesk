@@ -370,6 +370,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     private var appIsActive = false
     private lazy var audioPlayer = RemoteAudioPlayer()
     private var activeRemoteID = ""
+    private var resolutionPreferenceKey = ""
     private var remoteAppVersion = ""
     private var remoteHostInfoReceived = false
     private var remoteVersionCheckAttempted = false
@@ -610,6 +611,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     private func beginRemoteConnection(_ identifier: String) {
+        guard let configuration = bridgeConfiguration else { return }
         AppOrientation.endSession()
         networkStatistics = RemoteNetworkStatistics()
         resetRemoteHostInfo()
@@ -617,6 +619,8 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         resetVideoSettings()
         cancelPresenceProbe()
         activeRemoteID = identifier
+        resolutionPreferenceKey = RemoteDisplayResolutionStore.key(host: configuration.host,
+            port: configuration.signalPort, remoteID: identifier)
         activeDisplayName = ""
         displaySizes = []
         connectionRecorded = false
@@ -626,7 +630,8 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         sessionVisible = false
         resetRemoteCursorState()
         connectionStatus = NSLocalizedString("正在准备连接…", comment: "")
-        bridge.connect(toRemoteID: identifier, password: password)
+        bridge.connect(toRemoteID: identifier, password: password,
+                       displayResolutions: RemoteDisplayResolutionStore.message(key: resolutionPreferenceKey))
     }
 
     private func beginPresenceProbe(_ identifier: String) {
@@ -1044,8 +1049,13 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
 
     func updateDisplayResolution(_ resolution: RemoteDisplayResolution, displayID: Int, displayKey: String) {
         guard hasNetworkConsent, isConnected, selectedDisplay == displayID,
-              displayResolutions.display(displayID)?.display_key == displayKey,
-              let request = displayResolutions.begin(displayID: selectedDisplay, resolution: resolution) else { return }
+              let display = displayResolutions.display(displayID), display.display_key == displayKey else { return }
+        if !displayResolutions.pending, display.current == resolution, display.modes.contains(resolution) {
+            RemoteDisplayResolutionStore.remember(RemoteDisplayResolutionPreference(display_key: displayKey,
+                width: resolution.width, height: resolution.height), key: resolutionPreferenceKey)
+            return
+        }
+        guard let request = displayResolutions.begin(displayID: selectedDisplay, resolution: resolution) else { return }
         displayResolutionTimeoutTask?.cancel()
         bridge.sendDisplayResolution(displayID: request.display_id, displayKey: request.display_key,
                                      width: request.width, height: request.height, requestID: request.request_id)
@@ -1059,7 +1069,9 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         // Host information can arrive before the connection-state callback.
         // The bridge already rejects callbacks from previous sessions.
         guard hasNetworkConsent else { return }
-        displayResolutions.receive(message)
+        if let confirmed = displayResolutions.receive(message) {
+            RemoteDisplayResolutionStore.remember(confirmed, key: resolutionPreferenceKey)
+        }
         if !displayResolutions.pending {
             displayResolutionTimeoutTask?.cancel(); displayResolutionTimeoutTask = nil
         }

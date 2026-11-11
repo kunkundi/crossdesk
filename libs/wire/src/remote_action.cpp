@@ -138,6 +138,12 @@ char* DuplicateString(const std::string& value) {
 
 }  // namespace
 
+bool ParseDisplayResolutionPreferences(
+    const std::string& text, std::vector<DisplayResolutionPreference>& result) {
+  return text.size() <= 65536 &&
+      ReadDisplayResolutionPreferences(json::parse(text, nullptr, false), result);
+}
+
 const char* HostPlatformName(HostPlatform platform) {
   switch (platform) {
     case HostPlatform::Windows: return "windows";

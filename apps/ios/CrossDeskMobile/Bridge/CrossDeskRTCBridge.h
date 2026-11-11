@@ -180,7 +180,8 @@ typedef struct {
 - (void)sendAnnouncementRequest:(NSData *)request requestID:(NSString *)requestID
     NS_SWIFT_NAME(sendAnnouncementRequest(_:requestID:));
 
-- (void)connectToRemoteID:(NSString *)remoteID password:(NSString *)password;
+- (void)connectToRemoteID:(NSString *)remoteID password:(NSString *)password
+      displayResolutions:(NSData *)displayResolutions;
 - (void)disconnect;
 // Close both session and signaling peers, including automatic reconnection.
 - (void)stopNetworking;

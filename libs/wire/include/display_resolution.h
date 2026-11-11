@@ -58,6 +58,10 @@ struct DisplayResolutionPreference {
   DisplayResolution resolution;
 };
 
+// JSON-free boundary for native bridges that do not expose the JSON library.
+bool ParseDisplayResolutionPreferences(
+    const std::string &text, std::vector<DisplayResolutionPreference> &result);
+
 inline bool ValidDisplayResolutionPreference(
     const DisplayResolutionPreference &preference) {
   return !preference.display_key.empty() &&
