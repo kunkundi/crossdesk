@@ -45,7 +45,7 @@ struct WindowState {
     }
   }
 
-  bool RecoverUndersized(bool wall, slint::PhysicalPosition position,
+  bool RecoverSizeMismatch(bool wall, slint::PhysicalPosition position,
                          slint::PhysicalSize size, float scale, bool visible,
                          bool minimized, bool fullscreen, bool maximized,
                          float compact_height = 486,
@@ -53,8 +53,16 @@ struct WindowState {
     // Hidden/minimized/uninitialized windows can report temporary tiny bounds.
     // Leave those alone, and let an in-flight restoration retain its target.
     if (Restoring() || !visible || minimized || fullscreen || maximized ||
-        size.width == 0 || size.height == 0 ||
-        !IsUndersized(size, scale, compact_height, compact_width))
+        size.width == 0 || size.height == 0)
+      return false;
+    // Display mode/DPI changes can enlarge the fixed connection window as
+    // well as shrink it. Restore both directions at the current scale; the
+    // resizable gallery only needs recovery below its minimum dimensions.
+    const bool mismatch =
+        wall ? IsUndersized(size, scale, compact_height, compact_width)
+             : !SameSize(size, RestoreSize(false, scale, compact_height,
+                                          compact_width));
+    if (!mismatch)
       return false;
     if (wall) {
       wall_position = position;

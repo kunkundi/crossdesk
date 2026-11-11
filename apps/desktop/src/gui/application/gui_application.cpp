@@ -6455,14 +6455,14 @@ void GuiApplication::SyncWindowGeometry(bool gallery_window) {
   const bool fullscreen = window.is_fullscreen();
   const bool maximized = window.is_maximized();
 #endif
-  if (!transitioning && placement.RecoverUndersized(wall_mode, window.position(), current_size,
+  if (!transitioning && placement.RecoverSizeMismatch(wall_mode, window.position(), current_size,
                                  window.scale_factor(), window.is_visible(),
                                  window.is_minimized(), fullscreen, maximized,
                                  compact_height, compact_width)) {
     ui_->restore_ticks[gallery_window] = 0;
     const auto target = placement.RestoreSize(wall_mode, window.scale_factor(),
                                                compact_height, compact_width);
-    LOG_WARN("DeskHub undersized window: wall={} client={}x{} scale={}; restoring={}x{}",
+    LOG_WARN("DeskHub window size mismatch: wall={} client={}x{} scale={}; restoring={}x{}",
              wall_mode, current_size.width, current_size.height,
              window.scale_factor(), target.width, target.height);
   }
