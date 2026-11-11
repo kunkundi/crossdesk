@@ -48,6 +48,71 @@ void GuiRuntime::QueueDisplayResolutionChange(
   display_resolution_commands_.push_back({id, events, change, epoch});
 }
 
+void GuiRuntime::BeginDisplayResolutionStartup(const std::string &id,
+                                               PeerEventHandler *source) {
+  const auto events = ControllerEvents(id);
+  if (events.get() != source) return;
+  std::lock_guard lock(display_resolution_commands_mutex_);
+  auto &initial = initial_display_resolutions_[id];
+  if (initial.source.lock() != events) initial = {};
+  initial.source = events;
+  if (!initial.state.connected)
+    initial.generation = ++next_display_resolution_startup_;
+  initial.state.Begin(SDL_GetTicks());
+}
+
+void GuiRuntime::ReceiveDisplayResolutionStartup(
+    const std::string &id, PeerEventHandler *source,
+    std::vector<DisplayResolutionPreference> preferences) {
+  const auto events = ControllerEvents(id);
+  if (events.get() != source) return;
+  std::lock_guard lock(display_resolution_commands_mutex_);
+  auto &initial = initial_display_resolutions_[id];
+  if (initial.source.lock() != events) initial = {};
+  initial.source = events;
+  initial.state.Receive(std::move(preferences));
+}
+
+bool GuiRuntime::DisplayResolutionsReadyForCapture(const std::string &id) {
+  std::lock_guard lock(display_resolution_commands_mutex_);
+  const auto now = SDL_GetTicks();
+  if (!id.empty()) {
+    const auto found = initial_display_resolutions_.find(id);
+    return found == initial_display_resolutions_.end() || found->second.state.Ready(now);
+  }
+  return std::all_of(initial_display_resolutions_.begin(),
+      initial_display_resolutions_.end(), [&](const auto &entry) {
+        return entry.second.state.Ready(now);
+      });
+}
+
+bool GuiRuntime::ApplyHostDisplayResolution(const DisplayResolutionChange &change) {
+  const auto available = QueryHostDisplayResolutions();
+  const auto selected = std::find_if(available.begin(), available.end(),
+      [&](const auto &info) { return SupportsDisplayResolution(info, change); });
+  // Unsupported or stale requests must never create a restoration record.
+  if (selected == available.end()) return false;
+  if (selected->current == change.resolution) return true;
+  const auto displays = devices_.display_info_list();
+  std::lock_guard lock(native_display_resolution_mutex);
+#ifdef _WIN32
+  if (!IsCurrentSessionUserDesktopActive()) return false;
+  return display_resolution_restoration_.Apply(change.display_key,
+      [&] { return CaptureWindowsDisplayResolution(displays, change); },
+      [&] { return ApplyWindowsDisplayResolution(displays, change); });
+#elif defined(__APPLE__)
+  return display_resolution_restoration_.Apply(change.display_key,
+      [&] { return CaptureMacDisplayResolution(displays, change); },
+      [&] { return ApplyMacDisplayResolution(displays, change); });
+#elif defined(__linux__) && !defined(__OHOS__)
+  return display_resolution_restoration_.Apply(change.display_key,
+      [&] { return CaptureLinuxDisplayResolution(displays, change); },
+      [&] { return ApplyLinuxDisplayResolution(displays, change); });
+#else
+  return false;
+#endif
+}
+
 void GuiRuntime::RestoreHostDisplayResolutions(bool force) {
   const auto epoch = display_resolution_epoch_.load();
   const bool disconnected = epoch != handled_display_resolution_epoch_;
@@ -76,6 +141,57 @@ void GuiRuntime::RestoreHostDisplayResolutions(bool force) {
 
 void GuiRuntime::HandleDisplayResolutionChanges() {
   RestoreHostDisplayResolutions();
+  std::vector<std::pair<std::string, InitialDisplayResolutions>> initial;
+  {
+    std::lock_guard lock(display_resolution_commands_mutex_);
+    for (auto &[id, startup] : initial_display_resolutions_) {
+      if (!startup.state.NeedsApply()) continue;
+      initial.emplace_back(id, startup);
+    }
+  }
+  for (const auto &[id, startup] : initial) {
+    const auto source = startup.source.lock();
+    const auto active = [&] {
+      if (stopping_ || !source || !source->IsActive() ||
+          source != ControllerEvents(id) || !IsAuthorizedController(id))
+        return false;
+      std::lock_guard lock(display_resolution_commands_mutex_);
+      const auto found = initial_display_resolutions_.find(id);
+      return found != initial_display_resolutions_.end() &&
+             found->second.generation == startup.generation &&
+             found->second.source.lock() == source;
+    };
+    // Connected and metadata callbacks can interleave with this tick. Keep
+    // early preferences pending until admission has actually been committed.
+    if (!active()) continue;
+    for (const auto &preference : startup.state.preferences) {
+      RestoreHostDisplayResolutions();
+      if (!active()) break;
+      const auto available = QueryHostDisplayResolutions();
+      const auto display = std::find_if(available.begin(), available.end(),
+          [&](const auto &info) { return info.display_key == preference.display_key; });
+      if (display == available.end()) continue;
+      // Resolve a fresh slot from the native identity: hotplug can reorder the
+      // list, and another display must never inherit the remembered mode.
+      const DisplayResolutionChange change{display->display_id,
+          display->display_key, preference.resolution};
+      if (!ApplyHostDisplayResolution(change))
+        LOG_INFO("Remembered display resolution is unavailable; keeping current mode");
+    }
+    RestoreHostDisplayResolutions();
+    {
+      std::lock_guard lock(display_resolution_commands_mutex_);
+      const auto found = initial_display_resolutions_.find(id);
+      if (found != initial_display_resolutions_.end() &&
+          found->second.source.lock() == source &&
+          found->second.generation == startup.generation) {
+        found->second.state.applied = true;
+        found->second.state.preferences.clear();
+      }
+    }
+    if (active() && !startup.state.preferences.empty())
+      AnnounceHostCapabilities(id);
+  }
   std::deque<PendingDisplayResolution> commands;
   {
     std::lock_guard lock(display_resolution_commands_mutex_);
@@ -92,62 +208,7 @@ void GuiRuntime::HandleDisplayResolutionChanges() {
     RemoteAction reply;
     reply.type = ControlType::display_resolution_status;
     reply.resolution_change = command.change;
-    reply.resolution_change.accepted = false;
-    const auto displays = devices_.display_info_list();
-    const auto available = QueryHostDisplayResolutions();
-    const auto selected =
-        std::find_if(available.begin(), available.end(), [&](const auto &info) {
-          return SupportsDisplayResolution(info, command.change);
-        });
-    if (selected == available.end()) {
-      // Unsupported or stale requests must never create a restoration record.
-    } else if (selected->current == command.change.resolution) {
-      reply.resolution_change.accepted = true;
-    } else {
-#ifdef _WIN32
-      {
-        std::lock_guard lock(native_display_resolution_mutex);
-        if (IsCurrentSessionUserDesktopActive())
-          reply.resolution_change.accepted =
-              display_resolution_restoration_.Apply(
-                  command.change.display_key,
-                  [&] {
-                    return CaptureWindowsDisplayResolution(displays,
-                                                           command.change);
-                  },
-                  [&] {
-                    return ApplyWindowsDisplayResolution(displays,
-                                                         command.change);
-                  });
-      }
-#elif defined(__APPLE__)
-      {
-        std::lock_guard lock(native_display_resolution_mutex);
-        reply.resolution_change.accepted =
-            display_resolution_restoration_.Apply(
-                command.change.display_key,
-                [&] {
-                  return CaptureMacDisplayResolution(displays, command.change);
-                },
-                [&] {
-                  return ApplyMacDisplayResolution(displays, command.change);
-                });
-      }
-#elif defined(__linux__) && !defined(__OHOS__)
-      {
-        std::lock_guard lock(native_display_resolution_mutex);
-        reply.resolution_change.accepted =
-            display_resolution_restoration_.Apply(
-                command.change.display_key,
-                [&] {
-                  return CaptureLinuxDisplayResolution(displays, command.change);
-                },
-                [&] {
-                  return ApplyLinuxDisplayResolution(displays, command.change);
-                });
-      }
-#endif
-    }
+    reply.resolution_change.accepted = ApplyHostDisplayResolution(command.change);
     reply.display_resolutions = QueryHostDisplayResolutions();
     const auto message = reply.to_json();
     SendControllerData(command.remote_id, message.data(), message.size(),

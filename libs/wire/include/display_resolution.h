@@ -52,6 +52,20 @@ struct DisplayResolutionChange {
   bool accepted = false;
 };
 
+// Persist the native identity, never the display's position in a session.
+struct DisplayResolutionPreference {
+  std::string display_key;
+  DisplayResolution resolution;
+};
+
+inline bool ValidDisplayResolutionPreference(
+    const DisplayResolutionPreference &preference) {
+  return !preference.display_key.empty() &&
+         preference.display_key.size() <= 1024 &&
+         preference.display_key.find('\0') == std::string::npos &&
+         ValidDisplayResolution(preference.resolution);
+}
+
 inline bool SupportsDisplayResolution(const DisplayResolutionInfo &display,
                                       const DisplayResolutionChange &change) {
   return display.display_id == change.display_id &&

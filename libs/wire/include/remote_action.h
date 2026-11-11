@@ -223,6 +223,8 @@ struct RemoteAction {
   // Optional host information extension, also returned with resolution status.
   std::vector<DisplayResolutionInfo> display_resolutions;
   DisplayResolutionChange resolution_change;
+  // Controller preferences sent with its initial host information.
+  std::vector<DisplayResolutionPreference> preferred_display_resolutions;
 
   std::string to_json() const;
   bool from_json(const std::string& json_string);

@@ -1,4 +1,5 @@
 #include <remote_action.h>
+#include <display_resolution_preferences.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -339,6 +340,9 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
       if (!action.display_resolutions.empty())
         object["host_info"]["display_resolutions"] =
             DisplayResolutionsJson(action.display_resolutions);
+      if (!action.preferred_display_resolutions.empty())
+        object["host_info"]["preferred_display_resolutions"] =
+            DisplayResolutionPreferencesJson(action.preferred_display_resolutions);
       break;
     }
     case ControlType::invalid:
@@ -354,6 +358,7 @@ bool RemoteAction::FromJson(const std::string& json_string,
   try {
     const json object = json::parse(json_string);
     output.display_resolutions.clear();
+    output.preferred_display_resolutions.clear();
     output.type = static_cast<ControlType>(object.at("type").get<int>());
     switch (output.type) {
       case ControlType::display_resolution:
@@ -549,6 +554,11 @@ bool RemoteAction::FromJson(const std::string& json_string,
         ResetHostInfo(output.i);
         owns_host_info = true;
         const auto& host_info_object = object.at("host_info");
+        // A corrupt optional preference must not prevent a connection.
+        if (const auto preferences = host_info_object.find("preferred_display_resolutions");
+            preferences != host_info_object.end())
+          ReadDisplayResolutionPreferences(*preferences,
+                                           output.preferred_display_resolutions);
         if (const auto modes = host_info_object.find("display_resolutions");
             modes != host_info_object.end() &&
             !ReadDisplayResolutions(*modes, output.display_resolutions)) return false;

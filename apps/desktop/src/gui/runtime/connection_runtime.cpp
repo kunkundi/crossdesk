@@ -193,6 +193,10 @@ void GuiRuntime::HandleServerControllerDisconnected(
   if (auto events = ControllerEvents(remote_id))
     transfers_.Cancel(events.get(), remote_id);
   preview_subscriptions_.Remove(remote_id);
+  {
+    std::lock_guard lock(display_resolution_commands_mutex_);
+    initial_display_resolutions_.erase(remote_id);
+  }
 
   bool has_connected_controller = false;
   std::string remaining_controller_id;

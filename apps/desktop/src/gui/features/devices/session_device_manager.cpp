@@ -253,6 +253,8 @@ int SessionDeviceManager::InitializeScreenCapturer() {
         uint64_t send_errors = 0;
         for (const std::string &remote_id : connected_remote_ids) {
           if (owner_.managed_host_frontend_ && remote_id.rfind("lan/", 0) != 0) continue;
+          // Warm/shared capture may already be running for another controller.
+          if (!owner_.DisplayResolutionsReadyForCapture(remote_id)) continue;
           if (!owner_.preview_subscriptions_.ShouldSend(remote_id, now_time,
                                                         stream_id)) continue;
           if (owner_.WithController(
@@ -693,6 +695,9 @@ void SessionDeviceManager::PushAudio(const std::string& remote_id,
 }
 
 void SessionDeviceManager::UpdateInteractions() {
+  // Restore the previous session's modes and apply the new controller's saved
+  // selections before starting capture or allowing an early input return.
+  owner_.HandleDisplayResolutionChanges();
   // Release even when pending remote-input cleanup makes this tick return early.
   UpdateScreenSharingPower();
 #ifdef _WIN32
@@ -720,7 +725,8 @@ void SessionDeviceManager::UpdateInteractions() {
 
   if (owner_.start_screen_capturer_ && !owner_.screen_capturer_is_started_) {
     const auto now = std::chrono::steady_clock::now();
-    if (now >= next_capture_start_retry_) {
+    if (now >= next_capture_start_retry_ &&
+        owner_.DisplayResolutionsReadyForCapture()) {
       next_capture_start_retry_ = now + std::chrono::seconds(1);
       if (StartScreenCapturer() == 0) {
         owner_.screen_capturer_is_started_ = true;
@@ -799,7 +805,6 @@ void SessionDeviceManager::UpdateInteractions() {
   }
 
   owner_.keyboard_.CheckRemoteTimeouts();
-  owner_.HandleDisplayResolutionChanges();
 }
 
 void SessionDeviceManager::DrainCapturedKeyboardInput() {

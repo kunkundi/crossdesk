@@ -331,12 +331,14 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
   if (!props) {
     if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
       if (!runtime->BeginControllerTrust(remote_id, handler)) return;
+      runtime->BeginDisplayResolutionStartup(remote_id, handler);
     } else {
       runtime->ForgetControllerTrust(remote_id, handler);
       std::lock_guard lock(runtime->display_resolution_commands_mutex_);
       std::erase_if(runtime->display_resolution_commands_, [&](const auto& request) {
         return request.remote_id == remote_id;
       });
+      runtime->initial_display_resolutions_.erase(remote_id);
     }
 #ifdef _WIN32
     if (runtime->unattended_host_) {
@@ -370,7 +372,19 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
           props->cursor_presentation_ = {};
         }
         {
-          const auto msg = runtime->BuildHostInformation(true);
+          // Snapshot the server namespace for this session. Direct connections
+          // use the authenticated device identity, not a random LAN session key.
+          const auto preference_key = props->lan_session_
+              ? nlohmann::json::array({"lan", props->lan_session_->target.device_id}).dump()
+              : nlohmann::json::array({"signal",
+                  runtime->config_center_->GetSignalServerHost(),
+                  runtime->config_center_->GetSignalServerPort(), remote_id}).dump();
+          {
+            std::lock_guard lock(props->display_resolution_mutex_);
+            props->resolution_preference_key_ = preference_key;
+          }
+          const auto msg = runtime->BuildHostInformation(true,
+              runtime->remote_resolutions_.Get(preference_key));
           const int ret =
               MiniRtcSendReliableDataFrame(props->peer_, msg.data(), msg.size(),
                                     runtime->control_data_label_.c_str());
@@ -653,10 +667,12 @@ void PeerEventHandler::OnNetStatusReport(
     props->net_traffic_stats_.Store(*net_traffic_stats);
   }
 }
-std::string GuiRuntime::BuildHostInformation(bool advertise_trust) {
+std::string GuiRuntime::BuildHostInformation(bool advertise_trust,
+    const std::vector<DisplayResolutionPreference>& preferences) {
   auto action = MakeHostInformation(GetHostName(), devices_.host_display_list(),
       UserSessionFeaturesAvailable(), CROSSDESK_VERSION, kClientPlatform);
   action.display_resolutions = QueryHostDisplayResolutions();
+  action.preferred_display_resolutions = preferences;
   action.i.supports_video_settings = true;
   action.i.supports_video_codec_status = true;
   action.i.supports_text_input = devices_.SupportsTextInput();

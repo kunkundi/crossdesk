@@ -129,6 +129,8 @@ struct RemoteSession {
   std::string clipboard_label_ = kClipboardStream;
   std::string local_id_;
   std::string remote_id_;
+  // Stable device/server identity; LAN's remote_id_ is a temporary session key.
+  std::string resolution_preference_key_;
   bool exit_ = false;
   bool signal_connected_ = false;
   MiniRtcSignalStatus signal_status_ = MiniRtcSignalStatus::MiniRtcSignalClosed;

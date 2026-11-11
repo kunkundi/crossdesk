@@ -285,8 +285,12 @@ void PeerEventHandler::OnReceiveDataBuffer(
         props && source_id == props->control_data_label_ && !props->closing_ &&
         props->connection_status_ == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
       std::lock_guard lock(props->display_resolution_mutex_);
-      props->display_resolution_.Complete(remote_action.resolution_change,
-                                          std::move(remote_action.display_resolutions));
+      if (props->display_resolution_.Complete(remote_action.resolution_change,
+              std::move(remote_action.display_resolutions)) &&
+          !runtime->remote_resolutions_.Remember(props->resolution_preference_key_,
+              {remote_action.resolution_change.display_key,
+               remote_action.resolution_change.resolution}))
+        LOG_WARN("Could not save remote display resolution");
     }
     return;
   }
@@ -552,6 +556,8 @@ void PeerEventHandler::OnReceiveDataBuffer(
       }
       LOG_DEBUG("Remote hostname: [{}]", host_name);
       if (source_id == runtime->control_data_label_) {
+        runtime->ReceiveDisplayResolutionStartup(remote_id, handler,
+            std::move(remote_action.preferred_display_resolutions));
         runtime->SetControllerPrivacySupport(
             remote_id, remote_action.i.supports_privacy_screen);
       }

@@ -41,13 +41,13 @@ struct DisplayResolutionState {
     return false;
   }
 
-  void Complete(const DisplayResolutionChange &response,
+  bool Complete(const DisplayResolutionChange &response,
                 std::vector<DisplayResolutionInfo> actual) {
     if (response.request_id != requested.request_id ||
         response.display_id != requested.display_id ||
         response.display_key != requested.display_key ||
         !(response.resolution == requested.resolution))
-      return;
+      return false;
     displays = std::move(actual);
     pending = false;
     failed = !response.accepted;
@@ -60,6 +60,7 @@ struct DisplayResolutionState {
           });
       failed = found == displays.end();
     }
+    return !failed;
   }
 
   void Expire(uint64_t now) {
@@ -67,6 +68,35 @@ struct DisplayResolutionState {
       pending = false;
       failed = true;
     }
+  }
+};
+
+// Initial host information can arrive before Connected. Consume it only once
+// per connection, and let legacy controllers without metadata start after a
+// bounded wait. Late metadata can still apply the remembered selection.
+struct DisplayResolutionStartup {
+  bool connected = false;
+  bool received = false;
+  bool applied = false;
+  uint64_t deadline = 0;
+  std::vector<DisplayResolutionPreference> preferences;
+
+  void Begin(uint64_t now) {
+    if (connected) return;
+    connected = true;
+    deadline = now + 2000;
+  }
+
+  void Receive(std::vector<DisplayResolutionPreference> values) {
+    if (received) return;
+    preferences = std::move(values);
+    received = true;
+  }
+
+  bool NeedsApply() const { return connected && received && !applied; }
+
+  bool Ready(uint64_t now) const {
+    return !connected || applied || (!received && now >= deadline);
   }
 };
 

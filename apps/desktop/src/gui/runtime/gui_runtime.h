@@ -21,6 +21,7 @@
 #include "features/input/keyboard_controller.h"
 #include "features/input/remote_input_dispatcher.h"
 #include "features/settings/settings_manager.h"
+#include "features/settings/remote_resolution_store.h"
 #include "network/lan/lan_session_manager.h"
 #include "privacy_controller.h"
 #include "runtime/gui_state.h"
@@ -159,6 +160,11 @@ class GuiRuntime : protected gui_detail::GuiState {
                                     const DisplayResolutionChange& change);
   void HandleDisplayResolutionChanges();
   void RestoreHostDisplayResolutions(bool force = false);
+  bool ApplyHostDisplayResolution(const DisplayResolutionChange& change);
+  void BeginDisplayResolutionStartup(const std::string& id, PeerEventHandler* source);
+  void ReceiveDisplayResolutionStartup(const std::string& id, PeerEventHandler* source,
+      std::vector<DisplayResolutionPreference> preferences);
+  bool DisplayResolutionsReadyForCapture(const std::string& id = {});
 
   void CloseRemoteSession(std::shared_ptr<RemoteSession> props);
   void CloseAllRemoteSessions();
@@ -217,7 +223,8 @@ class GuiRuntime : protected gui_detail::GuiState {
   // Set before initializing callbacks; immutable for the process lifetime.
   bool unattended_host_ = false;
   bool managed_host_frontend_ = false;
-  std::string BuildHostInformation(bool advertise_trust = false);
+  std::string BuildHostInformation(bool advertise_trust = false,
+      const std::vector<DisplayResolutionPreference>& preferences = {});
   void AnnounceHostCapabilities(const std::string& id);
 #ifdef _WIN32
   std::shared_ptr<LocalHostChannel> local_host_;
@@ -262,6 +269,13 @@ class GuiRuntime : protected gui_detail::GuiState {
   };
   std::mutex display_resolution_commands_mutex_;
   std::deque<PendingDisplayResolution> display_resolution_commands_;
+  struct InitialDisplayResolutions {
+    std::weak_ptr<PeerEventHandler> source;
+    DisplayResolutionStartup state;
+    uint64_t generation = 0;
+  };
+  std::map<std::string, InitialDisplayResolutions> initial_display_resolutions_;
+  uint64_t next_display_resolution_startup_ = 0;
   std::vector<DisplayResolutionInfo> last_display_resolutions_;
   uint64_t next_display_resolution_poll_ = 0;
   // Incremented when the last incoming controller disconnects. Keep the
@@ -277,6 +291,7 @@ class GuiRuntime : protected gui_detail::GuiState {
   SessionDeviceManager devices_;
   FileTransferManager transfers_;
   SettingsManager settings_;
+  RemoteResolutionStore remote_resolutions_;
   KeyboardController keyboard_;
   RemoteInputDispatcher remote_input_;
   std::shared_ptr<PeerEventHandler> peer_events_;

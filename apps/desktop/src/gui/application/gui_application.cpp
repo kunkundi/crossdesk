@@ -1294,6 +1294,9 @@ void GuiApplication::InitializeSettings() {
     LOG_ERROR("Failed to clear saved remote previews");
   }
   settings_.LoadRecentConnectionAliases();
+  if (!remote_resolutions_.Load(
+          std::filesystem::path(cache_path_) / "remote_display_resolutions.json"))
+    LOG_WARN("Could not load remembered remote display resolutions");
   localization_language_index_ =
       localization::detail::ClampLanguageIndex(language_button_value_);
   localization_language_ =
@@ -2411,6 +2414,17 @@ void GuiApplication::BindStreamCallbacks() {
       auto& state = props->display_resolution_;
       const DisplayResolutionChange selection{props->selected_display_,
           ui_->resolution_choices.display_key, ui_->resolution_choices.modes[index]};
+      // Explicitly choosing the current mode also establishes a preference.
+      if (!state.pending && std::any_of(state.displays.begin(), state.displays.end(),
+          [&](const auto& display) {
+            return SupportsDisplayResolution(display, selection) &&
+                   display.current == selection.resolution;
+          })) {
+        if (!remote_resolutions_.Remember(props->resolution_preference_key_,
+                {selection.display_key, selection.resolution}))
+          LOG_WARN("Could not save remote display resolution");
+        return;
+      }
       if (!state.Begin(selection, SDL_GetTicks())) return;
       action.resolution_change = state.requested;
     }
