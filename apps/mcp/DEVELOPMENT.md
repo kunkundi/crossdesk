@@ -6,7 +6,7 @@
 
 ## 版本与依赖
 
-MCP 包 `@chunkdash/crossdesk-mcp` 0.1.0 绑定原生 CLI 0.2.0，内置 DSH 插件随 MCP 同包分发。源码版本和本地打包不代表版本已经发布到 npm；内含原生程序的平台安装包可独立分发。
+CLI、MCP 包 `@chunkdash/crossdesk-mcp` 和内置 DSH 插件共用版本，当前均为 0.2.0，MCP 原生依赖也固定为 0.2.0。使用[版本脚本](../../docs/VERSIONING.md)修改任一工具版本会同步整个分组。源码版本和本地打包不代表版本已经发布到 npm；内含原生程序的平台安装包可独立分发。
 
 当前提供 31 个模型工具和 11 个 MCP Apps 面板专用接口。本机 MCP 接入使用 stdio，不提供 MCP Streamable HTTP 或通用远程 shell 工具。控制端原生 CLI、被控端和信令服务器需要支持对应自动化协议。
 
@@ -497,7 +497,7 @@ npm run pack:npm -- --native-package-dir "$native_package_dir/package" --out-dir
 rm -rf "$native_package_dir"
 ```
 
-平台包保留原生包的程序、源码、许可和构建信息，设置对应 OS / CPU / libc 限制，不再下载原生平台依赖；其他 JavaScript 依赖仍由包管理器安装。CLI 构建工作流为每个平台生成 `crossdesk-mcp-<平台>` 产物；平台安装包要求实际传入的原生包与 MCP 的依赖版本一致。通用包和平台包名称、版本相同，应放在不同输出目录，不要将平台包当成通用版本发布到 npm。
+平台包保留原生包的程序、源码、许可和构建信息，设置对应 OS / CPU / libc 限制，不再下载原生平台依赖；其他 JavaScript 依赖仍由包管理器安装。CLI 构建工作流为每个平台生成 `crossdesk-mcp-<平台>` 产物，CLI、MCP、DSH 和原生依赖版本不一致时直接停止构建或打包。通用包和平台包名称、版本相同，应放在不同输出目录，不要将平台包当成通用版本发布到 npm。
 
 原生 `doctor` 必须同时声明自动化协议和 `automation_video_protocols: ["h264-annexb/1", "nv12/1"]`、`automation_video_decoders: ["auto", "software"]`，以及 `automation_video_transport: "loopback-websocket/1"`、`automation_terminal_protocol: "ansi/1"`。通用 npm 分发需要先发布对应 0.2.0 平台包，再发布 MCP；内含原生程序的平台包不受此顺序限制。构建通过不等于各宿主和设备上的联调完成。
 

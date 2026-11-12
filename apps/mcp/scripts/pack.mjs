@@ -23,12 +23,17 @@ const { values } = parseArgs({ options: {
 const output = resolve(values["out-dir"] ?? join(repository, "build/npm-mcp"));
 const project = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 const cli = JSON.parse(await readFile(join(root, "../cli/package.json"), "utf8"));
+const harness = JSON.parse(await readFile(join(root, "integrations/deepseek-harness/package.json"), "utf8"));
 const platforms = JSON.parse(
   await readFile(join(root, "../cli/npm/platforms.json"), "utf8"),
 );
 const native = await import(new URL("../dist/native.js", import.meta.url));
-if (native.NATIVE_VERSION !== cli.version)
-  throw new Error("MCP and CLI native versions must match.");
+const nativeVersion = (await readFile(join(root, "src/native.ts"), "utf8"))
+  .match(/export const NATIVE_VERSION = "([^"]+)";/)?.[1];
+if (project.version !== cli.version || project.version !== harness.version || project.version !== nativeVersion)
+  throw new Error("CLI, MCP, DSH and NATIVE_VERSION must match. Run python3 scripts/version.py set mcp VERSION from the repository root.");
+if (!nativeVersion || native.NATIVE_VERSION !== nativeVersion)
+  throw new Error("Built MCP native version differs from source. Run npm run build first.");
 for (const file of ["main.js", "viewer-browser.html", "viewer-apps.html", "harness.js", "harness-client.js"])
   await access(join(root, "dist", file));
 const staging = await mkdtemp(join(tmpdir(), "crossdesk-mcp-pack-"));
@@ -72,7 +77,7 @@ try {
       "LICENSE",
     ],
     optionalDependencies: Object.fromEntries(
-      Object.values(platforms).map((p) => [p.packageName, cli.version]),
+      Object.values(platforms).map((p) => [p.packageName, nativeVersion]),
     ),
     publishConfig: { access: "public" },
   };

@@ -204,13 +204,16 @@ The main workflow collects this same ZIP for GitHub Releases and the download
 server. Standalone `Build iOS` runs only upload the build artifact.
 
 For an independent release, use the
-[`Release Mobile`](../../.github/workflows/release-mobile.yml) workflow. Commit
-the intended `MARKETING_VERSION` in the iOS target, then tag that commit with
+[`Release Mobile`](../../.github/workflows/release-mobile.yml) workflow. Desktop,
+Android, iOS and HarmonyOS share the same client release version while mobile
+build numbers remain independent. From the repository root, run
+`python3 scripts/version.py set client <version>` to update all clients,
+then commit the changes and tag that commit with
 `ios-v<marketing-version>-YYYYMMDD`, for example:
 
 ```sh
-git tag ios-v0.0.1-20261002
-git push origin ios-v0.0.1-20261002
+git tag ios-v1.7.6-20261112
+git push origin ios-v1.7.6-20261112
 ```
 
 The tag starts only the iOS build and publishes its unsigned ZIP to a dedicated

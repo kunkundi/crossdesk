@@ -100,11 +100,11 @@ Pi 等宿主应直接启动原生程序以可靠控制进程和专用密码描�
 | 推送 `cli-v0.2.0-rc.1` | 校验源码版本为 `0.2.0-rc.1`，构建并发布到 `next` |
 | 在对应 `cli-v*` 标签上手动运行并取消 `dry_run` | 执行真实发布；分支上不允许关闭预演 |
 
-准备下一版时同步修改 `apps/cli/package.json` 的 `version` 与 `apps/cli/xmake.lua` 的 `set_version`，提交并推送代码后创建同版本标签。例如源码已更新为 `0.1.1` 时：
+准备下一版时，在仓库根目录运行 `python3 scripts/version.py set cli <版本>`，同步 CLI、MCP、DSH 插件及 MCP 的原生依赖版本，再执行 `python3 scripts/version.py check cli`。`set mcp <版本>` 的修改范围相同，详见[组件版本管理](../../../docs/VERSIONING.md)。先发布 CLI 的平台包和入口包，再发布同版本 MCP。提交并推送代码后创建同版本标签。例如源码已更新为 `0.2.1` 时：
 
 ```sh
-git tag cli-v0.1.1
-git push origin cli-v0.1.1
+git tag cli-v0.2.1
+git push origin cli-v0.2.1
 ```
 
 已经上传过 `0.1.0` 的包不能被新构建覆盖；下一次原生程序发布应使用新版本。手动预演使用 `npm pack --dry-run` 加上内容校验，不调用 `npm publish` 或交换 OIDC 凭据；可对分支运行，也允许检查已发布的版本，但不验证 npm 发布权限。标签运行始终校验版本一致性。GitHub 的手动运行入口需要该工作流先进入默认分支。

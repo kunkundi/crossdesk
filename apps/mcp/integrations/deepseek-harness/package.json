@@ -1,6 +1,6 @@
 {
   "name": "@chunkdash/dsh-crossdesk-sidebar",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Open CrossDesk remote desktop panels in DeepSeek Harness Desktop's sidebar",
   "type": "module",
   "main": "dist/host.js",

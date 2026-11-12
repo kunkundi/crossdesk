@@ -163,6 +163,10 @@ jobs:
           cache: pip
           cache-dependency-path: .github/workflows/build-ios.yml
 
+      - name: Check shared client version
+        if: hashFiles('scripts/version.py') != ''
+        run: python3 scripts/version.py check client
+
       - name: Install Python build tools
         shell: bash
         run: |

@@ -347,6 +347,7 @@ Host your own signaling and TURN services, then enable them under **Settings →
 - [MCP developer reference](apps/mcp/DEVELOPMENT.md) (Chinese): source builds, host integration, tool interfaces, packaging, and validation scope.
 - [Terminal client CLI](apps/cli/README.md) (Chinese): independent builds, terminal usage, Pi extension, bridge protocol, and npm packaging.
 - [Build from source](docs/BUILD_EN.md): desktop dependencies, build options, and packaging. Use the platform guides above for mobile builds.
+- [Component versions](docs/VERSIONING.md) (Chinese): inspect, set, and increment component versions, with synchronized build numbers and lockfiles.
 - [GUI architecture](docs/gui-architecture.md) (Chinese): desktop UI, platform implementation, and project structure.
 - [Connection architecture](docs/connection-architecture.md) (Chinese): discovery, authentication, negotiation, data paths, and lifecycle for ID and direct IP modes.
 - [FAQ](docs/FAQ.md#english): connections, blank video, permissions, received files, and build issues.

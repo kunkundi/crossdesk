@@ -8,7 +8,7 @@
 2. 在 Harness 桌面版的插件页面安装该文件，或执行以下命令。将示例中的路径和版本号替换为实际文件：
 
    ```sh
-   dsh plugin --profile desktop add "/absolute/path/chunkdash-crossdesk-mcp-0.1.0.tgz"
+   dsh plugin --profile desktop add "/absolute/path/chunkdash-crossdesk-mcp-0.2.0.tgz"
    ```
 
 3. 重启 Harness，确认 CrossDesk 插件已启用。

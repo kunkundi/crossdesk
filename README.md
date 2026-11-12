@@ -347,6 +347,7 @@ PC 端可控制和被控制，复用桌面界面与桌面墙；手机和平板�
 - [Agent / MCP 用户指南](apps/mcp/README.md)：下载安装、Codex / DSH 配置、连接授权、日常使用与常见问题。
 - [MCP 开发参考](apps/mcp/DEVELOPMENT.md)：源码构建、宿主集成、工具接口、打包与验证范围。
 - [源码构建](docs/BUILD.md)：桌面端依赖、编译参数与打包；移动端请使用上方各平台的构建指南。
+- [组件版本管理](docs/VERSIONING.md)：通过统一脚本查看、设置、递增各组件版本，以及同步构建号和锁文件。
 - [GUI 架构](docs/gui-architecture.md)：桌面界面、平台实现与工程结构。
 - [连接模式架构](docs/connection-architecture.md)：ID 连接与 IP 直连的寻址、认证、协商、数据路径及生命周期。
 - [常见问题](docs/FAQ.md)：连接失败、黑屏、系统权限、文件位置与构建问题。

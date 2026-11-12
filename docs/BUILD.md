@@ -2,6 +2,8 @@
 
 [返回 README](../README.md) · [English](BUILD_EN.md)
 
+各组件版本可通过 `python3 scripts/version.py show` 查看，使用 `set` 或 `bump` 修改；同步范围和发布衔接见[组件版本管理](VERSIONING.md)。
+
 安装版的升级器随主程序构建。发布公钥、清单签名和验证方法见
 [桌面端应用内升级](UPDATER.md)；便携版不包含升级器。
 

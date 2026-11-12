@@ -49,6 +49,11 @@ jobs:
         with:
           node-version: 22
           package-manager-cache: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Check shared CLI and MCP version
+        run: python scripts/version.py check cli
       # A runner label can receive compiler/SDK updates without changing its name.
       - name: Set cache environment
         id: runner-image

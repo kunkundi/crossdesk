@@ -79,6 +79,10 @@ jobs:
           # also exists when source_tag checks out an older Android release.
           cache-dependency-path: .github/workflows/build-android.yml
 
+      - name: Check shared client version
+        if: hashFiles('scripts/version.py') != ''
+        run: python3 scripts/version.py check client
+
       - name: Install native build tools
         run: |
           crossdesk_missing_packages=()

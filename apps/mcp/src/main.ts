@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
+import { VERSION } from "./version.js";
 import { createInterface } from "node:readline/promises";
 import { Writable } from "node:stream";
 import {
@@ -149,7 +150,7 @@ async function main() {
     },
   });
   if (values.version) {
-    process.stdout.write("0.1.0\n");
+    process.stdout.write(`${VERSION}\n`);
     return;
   }
   if (values.help || !positionals.length) {

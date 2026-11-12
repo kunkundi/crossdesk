@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { VERSION } from "./version.js";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/server";
 import type {
@@ -80,7 +81,7 @@ export function createServer(
   terminal: TerminalPanel,
 ): McpServer {
   const server = new McpServer(
-    { name: "crossdesk-mcp", version: "0.1.0" },
+    { name: "crossdesk-mcp", version: VERSION },
     {
       capabilities: { tools: {}, resources: {} },
       instructions:

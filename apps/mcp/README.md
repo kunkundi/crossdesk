@@ -31,7 +31,7 @@ DSH 和 Codex 都使用下表中的**平台安装包**，其中已包含所需�
 
 1. 登录 GitHub，打开 [CrossDesk 构建页面](https://github.com/kunkundi/crossdesk/actions/workflows/build-cli.yml)。
 2. 选择一次成功的运行，在页面的 **Artifacts** 区域下载与你的本机对应的文件。
-3. 解压下载的 `.zip`，取出里面的 `.tgz` 安装包，例如 `chunkdash-crossdesk-mcp-0.1.0.tgz`。保留 `.tgz`，安装时直接使用它。
+3. 解压下载的 `.zip`，取出里面的 `.tgz` 安装包，例如 `chunkdash-crossdesk-mcp-0.2.0.tgz`。保留 `.tgz`，安装时直接使用它。
 
 GitHub 要求登录后才能下载构建产物，操作说明见 [下载构建产物](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts)。
 
@@ -47,7 +47,7 @@ Mac 可在“关于本机”中查看芯片；Windows 可在“设置 → 系统
 
 不同平台解压后的 `.tgz` 文件名相同，请以下载时的产物名称区分。如果某次运行没有表中对应的产物，选择另一次提供该产物的运行；也可以按 [源码构建说明](DEVELOPMENT.md#从源码运行) 自行构建。
 
-下文以 `0.1.0` 为例。**所有 `/absolute/path/...` 都需要换成自己电脑上的完整路径**，版本号也应与实际下载的文件一致。路径中有空格时保留引号。
+下文以 `0.2.0` 为例。**所有 `/absolute/path/...` 都需要换成自己电脑上的完整路径**，版本号也应与实际下载的文件一致。路径中有空格时保留引号。
 
 <a id="install-dsh"></a>
 
@@ -58,7 +58,7 @@ Mac 可在“关于本机”中查看芯片；Windows 可在“设置 → 系统
 在 Harness 的插件页面选择本地 `.tgz` 安装包，或在终端执行：
 
 ```sh
-dsh plugin --profile desktop add "/absolute/path/chunkdash-crossdesk-mcp-0.1.0.tgz"
+dsh plugin --profile desktop add "/absolute/path/chunkdash-crossdesk-mcp-0.2.0.tgz"
 ```
 
 这个插件包会自动提供 MCP 工具和侧栏画面，无需另外安装 Node.js、原生 CLI 或填写 MCP 启动配置。
@@ -66,7 +66,7 @@ dsh plugin --profile desktop add "/absolute/path/chunkdash-crossdesk-mcp-0.1.0.t
 如果 macOS 终端提示找不到 `dsh`，可使用应用自带的命令：
 
 ```sh
-"/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" plugin --profile desktop add "/absolute/path/chunkdash-crossdesk-mcp-0.1.0.tgz"
+"/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" plugin --profile desktop add "/absolute/path/chunkdash-crossdesk-mcp-0.2.0.tgz"
 ```
 
 上述命令对应默认安装位置和 `desktop` 配置。使用自定义安装位置或 profile 时替换为自己的值。
@@ -93,7 +93,7 @@ macOS / Linux：
 mkdir -p "$HOME/crossdesk-mcp"
 cd "$HOME/crossdesk-mcp"
 npm init -y
-npm install "/absolute/path/chunkdash-crossdesk-mcp-0.1.0.tgz"
+npm install "/absolute/path/chunkdash-crossdesk-mcp-0.2.0.tgz"
 ```
 
 Windows PowerShell：
@@ -102,7 +102,7 @@ Windows PowerShell：
 New-Item -ItemType Directory -Force "$env:USERPROFILE/crossdesk-mcp"
 Set-Location "$env:USERPROFILE/crossdesk-mcp"
 npm init -y
-npm install "C:/Downloads/chunkdash-crossdesk-mcp-0.1.0.tgz"
+npm install "C:/Downloads/chunkdash-crossdesk-mcp-0.2.0.tgz"
 ```
 
 安装完成后，在同一目录运行：

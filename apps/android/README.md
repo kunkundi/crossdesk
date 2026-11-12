@@ -1,6 +1,6 @@
 # CrossDesk Android
 
-原生 Android 控制端，使用 Java 界面、JNI 和 MiniRTC，与桌面端使用相同的信令、ICE、SRTP 和输入协议。没有 WebView。当前版本为 1.6.1，支持 Android 8.0（API 26）及以上的 arm64 手机和平板。
+原生 Android 控制端，使用 Java 界面、JNI 和 MiniRTC，与桌面端使用相同的信令、ICE、SRTP 和输入协议。没有 WebView。支持 Android 8.0（API 26）及以上的 arm64 手机和平板。桌面、Android、iOS 和 HarmonyOS 共用客户端发布版本，各移动平台构建号独立；可在仓库根目录执行 `python3 scripts/version.py show client` 查看，使用 `set client <版本>` 同步修改，详见[组件版本管理](../../docs/VERSIONING.md)。
 
 ## 当前功能
 
@@ -85,11 +85,11 @@ Release 构建使用 `./gradlew :app:assembleRelease`，默认输出未签名 AP
 
 [`Build Android`](../../.github/workflows/build-android.yml) 可在 Actions 页面单独手动运行；修改 Android、MiniRTC、共享协议或许可证资料的 Pull Request 也会触发。仓库原有的 [`Build and Release`](../../.github/workflows/build.yml) 在分支推送、标签推送及手动运行时调用同一工作流，`v` 标签发布会等待安卓构建及签名成功，并将已签名 Release APK 加入 GitHub Release 和现有下载服务器的产物集合。推送主仓库前，先确保它引用的 MiniRTC 提交已推送到子模块远程仓库，否则 CI 无法完成检出。
 
-单独发布使用 [`Release Mobile`](../../.github/workflows/release-mobile.yml)。先更新并提交 `gradle.properties` 中的 `crossdeskVersionName` 和递增的 `crossdeskVersionCode`，再为该提交创建 `android-v<versionName>-YYYYMMDD` 标签，例如：
+单独发布使用 [`Release Mobile`](../../.github/workflows/release-mobile.yml)。先在仓库根目录运行 `python3 scripts/version.py set client <版本>` 同步全部客户端版本及各移动端构建号，检查并提交改动，再为该提交创建 `android-v<versionName>-YYYYMMDD` 标签，例如：
 
 ```sh
-git tag android-v1.6.1-20261010
-git push origin android-v1.6.1-20261010
+git tag android-v1.7.6-20261112
+git push origin android-v1.7.6-20261112
 ```
 
 该标签只触发安卓构建，使用固定发布密钥签名并验证 Release APK 后，再发布到独立的 GitHub Release 和现有下载服务器。签名失败或缺少签名 Secrets 时停止发布，不回退到未签名 APK。标签版本必须与应用版本一致，日期必须有效。重试发布时，在 Actions 页面手动运行 `Release Mobile`，将已有标签填入 `source_tag`；即使从其他分支触发，也会检出该标签的源码。APK 的源码资料记录安卓标签及准确的应用、MiniRTC 提交。

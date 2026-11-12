@@ -31,7 +31,9 @@ jobs:
         id: release
         env:
           RELEASE_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
-        run: node apps/cli/scripts/release-npm.cjs plan
+        run: |
+          python3 scripts/version.py check cli
+          node apps/cli/scripts/release-npm.cjs plan
 
   build:
     needs: prepare
