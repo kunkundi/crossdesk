@@ -47,37 +47,6 @@ normalize_app_version() {
     fi
 }
 
-find_slint_runtime() {
-    local needed="$1"
-    local resolved=""
-
-    resolved="$(ldd "$BUILD_BINARY" 2>/dev/null | awk -v needed="$needed" \
-        '$1 == needed && $2 == "=>" && $3 ~ /^\// { print $3; exit }')"
-    if [[ -n "$resolved" && -f "$resolved" ]]; then
-        echo "$resolved"
-        return 0
-    fi
-
-    local package_roots=()
-    if [[ -n "${XMAKE_GLOBALDIR:-}" ]]; then
-        package_roots+=("$XMAKE_GLOBALDIR/.xmake/packages")
-    fi
-    package_roots+=("$HOME/.xmake/packages" "/data/.xmake/packages")
-
-    local package_root=""
-    local candidate=""
-    for package_root in "${package_roots[@]}"; do
-        [[ -d "$package_root/s/slint" ]] || continue
-        candidate="$(find "$package_root/s/slint" -path "*/lib/$needed" -print -quit 2>/dev/null || true)"
-        if [[ -n "$candidate" ]]; then
-            echo "$candidate"
-            return 0
-        fi
-    done
-
-    return 1
-}
-
 APP_VERSION="$(normalize_app_version "$INPUT_VERSION")"
 DEB_VERSION="${APP_VERSION#v}"
 if [[ ! "$DEB_VERSION" =~ ^[0-9][0-9A-Za-z.+:~_-]*$ ]]; then
@@ -127,15 +96,40 @@ fi
 SLINT_NEEDED="$(readelf -d "$BUILD_BINARY" | sed -n \
     's/.*Shared library: \[\(libslint_cpp[^]]*\)\].*/\1/p' | head -n 1)"
 if [[ -n "$SLINT_NEEDED" ]]; then
-    SLINT_LIBRARY="$(find_slint_runtime "$SLINT_NEEDED" || true)"
-    if [[ -z "$SLINT_LIBRARY" ]]; then
-        echo "Unable to locate the required Slint runtime: $SLINT_NEEDED" >&2
+    # The build rule copies the exact linked package beside the executable.
+    # Never search global caches or trust the packager's LD_LIBRARY_PATH: an
+    # unpatched runtime can share both the version and SONAME of the linked one.
+    SLINT_LIBRARY="$(dirname "$BUILD_BINARY")/$SLINT_NEEDED"
+    if [[ ! -f "$SLINT_LIBRARY" ]]; then
+        echo "Missing build-matched Slint runtime: $SLINT_LIBRARY" >&2
+        echo "Build it first with: xmake b -vy crossdesk" >&2
         exit 1
     fi
     install -m 0755 "$SLINT_LIBRARY" "$PRIVATE_DIR/$SLINT_NEEDED"
     # Keep dynamic exports/relocations while removing unneeded symbols from the
     # staged copy. Never strip Xmake's cached runtime in place.
     strip --strip-unneeded "$PRIVATE_DIR/$SLINT_NEEDED"
+fi
+
+# Check the staged files with only their private runtime directory available.
+# ldd -r can exit successfully even when it reports unresolved symbols, so its
+# diagnostics must also be checked. This does not start the GUI or updater.
+for executable in crossdesk-bin crossdesk_updater; do
+    dependency_report="$WORK_DIR/$executable.ldd"
+    if ! env -u LD_PRELOAD -u LD_AUDIT LD_LIBRARY_PATH="$PRIVATE_DIR" \
+        ldd -r "$PRIVATE_DIR/$executable" > "$dependency_report" 2>&1 || \
+        grep -Eq 'not found|undefined symbol:' "$dependency_report"; then
+        echo "Packaged runtime dependency check failed: $executable" >&2
+        cat "$dependency_report" >&2
+        exit 1
+    fi
+done
+if [[ -n "$SLINT_NEEDED" ]]; then
+    if ! grep -Fq "$SLINT_NEEDED => $PRIVATE_DIR/$SLINT_NEEDED (" "$WORK_DIR/crossdesk-bin.ldd"; then
+        echo "Packaged executable does not load its private Slint runtime" >&2
+        cat "$WORK_DIR/crossdesk-bin.ldd" >&2
+        exit 1
+    fi
 fi
 
 cat > "$BIN_DIR/$PKG_NAME" <<'EOF'
