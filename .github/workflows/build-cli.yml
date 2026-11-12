@@ -3,7 +3,7 @@ name: CLI native builds and npm packages
 on:
   push:
     branches: ["**"]
-    tags-ignore: ["cli-v*"]
+    tags-ignore: ["cli-v*", "mcp-v*"]
   pull_request:
   workflow_dispatch:
   workflow_call:

@@ -79,7 +79,7 @@ try {
     optionalDependencies: Object.fromEntries(
       Object.values(platforms).map((p) => [p.packageName, nativeVersion]),
     ),
-    publishConfig: { access: "public" },
+    publishConfig: { access: "public", registry: "https://registry.npmjs.org/" },
   };
   delete manifest.scripts;
   delete manifest.devDependencies;

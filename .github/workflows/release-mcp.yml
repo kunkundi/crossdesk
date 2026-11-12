@@ -1,0 +1,88 @@
+name: Publish MCP to npm
+
+on:
+  push:
+    tags: ["mcp-v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and validate without publishing (disable only on a matching mcp-v* tag)"
+        type: boolean
+        default: true
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      dry_run: ${{ steps.release.outputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Validate release version and Git tag
+        id: release
+        env:
+          RELEASE_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          python3 scripts/version.py check mcp
+          node apps/mcp/scripts/release-npm.cjs plan
+
+  build:
+    needs: prepare
+    uses: ./.github/workflows/build-mcp.yml
+
+  validate:
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: actions/download-artifact@v7
+        with:
+          name: mcp-package
+          path: ${{ runner.temp }}/mcp-release
+      - name: Validate the universal MCP package without publishing
+        env:
+          RELEASE_DRY_RUN: "true"
+          RELEASE_ARTIFACTS: ${{ runner.temp }}/mcp-release
+        run: node apps/mcp/scripts/release-npm.cjs publish "$RELEASE_ARTIFACTS"
+
+  publish:
+    needs: [prepare, validate]
+    if: needs.prepare.outputs.dry_run == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: npm-mcp-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Install npm with Trusted Publishing support
+        run: npm install --global npm@12.2.1 --ignore-scripts --no-audit --no-fund
+      - uses: actions/download-artifact@v7
+        with:
+          name: mcp-package
+          path: ${{ runner.temp }}/mcp-release
+      - name: Check native dependencies and publish MCP
+        env:
+          RELEASE_DRY_RUN: "false"
+          RELEASE_ARTIFACTS: ${{ runner.temp }}/mcp-release
+        run: node apps/mcp/scripts/release-npm.cjs publish "$RELEASE_ARTIFACTS"

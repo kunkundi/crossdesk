@@ -486,7 +486,7 @@ npm run build
 npm run pack:npm -- --out-dir /absolute/path/artifacts
 ```
 
-默认生成通用 tarball，包含 MCP、DSH 插件入口与 bundle 声明、面板、源代码、许可和固定版本的五个平台可选依赖。CI 的 `MCP package` 工作流上传此通用 `mcp-package`，不发布 npm。使用通用包前需要对应版本的原生 npm 依赖已经可用。
+默认生成通用 tarball，包含 MCP、DSH 插件入口与 bundle 声明、面板、源代码、许可和固定版本的五个平台可选依赖。CI 的 `MCP package` 工作流上传此通用 `mcp-package`，不发布 npm；`Publish MCP to npm` 复用它构建并发布，见下方[自动发布说明](#github-actions-发布到-npm)。使用通用包前需要对应版本的原生 npm 依赖已经可用。
 
 为 DSH 生成只需安装一次的平台包时，将 CLI 工作流生成的原生 `.tgz` 解压到工程外目录，再传入其 `package` 目录：
 
@@ -502,6 +502,72 @@ rm -rf "$native_package_dir"
 原生 `doctor` 必须同时声明自动化协议和 `automation_video_protocols: ["h264-annexb/1", "nv12/1"]`、`automation_video_decoders: ["auto", "software"]`，以及 `automation_video_transport: "loopback-websocket/1"`、`automation_terminal_protocol: "ansi/1"`。通用 npm 分发需要先发布对应 0.2.0 平台包，再发布 MCP；内含原生程序的平台包不受此顺序限制。构建通过不等于各宿主和设备上的联调完成。
 
 从发布 tarball 重建 TypeScript/面板时，将包中的 `build-package.json` 复制为 `package.json`，运行 `npm ci && npm run build`。原生源码和依赖来源随平台包提供，详见 [源码来源](../cli/docs/source-provenance.md)。
+
+## GitHub Actions 发布到 npm
+
+[`release-mcp.yml`](../../.github/workflows/release-mcp.yml) 发布 `@chunkdash/crossdesk-mcp` 通用包，同时提供 stdio MCP 和 DSH 插件。发布过程不需要另发一个 DSH 插件包。
+
+| 操作 | 结果 |
+| --- | --- |
+| 普通提交或 PR | `MCP package` 编译并上传 `mcp-package`，不发布 npm |
+| Actions → Publish MCP to npm → Run workflow，保持 `dry_run` 勾选 | 构建并检查发布包，不使用 npm 发布凭据，不要求 GitHub `npm` environment 审批 |
+| 推送 `mcp-v0.2.1` | 校验共同源码版本为 `0.2.1`，构建、检查原生依赖并发布到 `latest` |
+| 推送 `mcp-v0.3.0-rc.1` | 校验共同源码版本为 `0.3.0-rc.1`，发布到 `next` |
+| 在匹配的 `mcp-v*` 标签上手动运行并取消 `dry_run` | 执行真实发布；分支上不允许真实发布 |
+
+MCP 标签不触发独立的桌面、CLI 或重复 MCP 构建。手动运行入口需要工作流先进入默认分支；预演可选择分支，标签上的预演也必须与源码版本一致。
+
+### 配置 npm 发布权限
+
+在 npm 网站打开 `@chunkdash/crossdesk-mcp` 的 **Settings → Trusted Publisher**，选择 **GitHub Actions**：
+
+| 字段 | 值 |
+| --- | --- |
+| Organization or user | `kunkundi` |
+| Repository | `crossdesk` |
+| Workflow filename | `release-mcp.yml` |
+| Environment name | `npm` |
+| Allowed actions | 勾选 **Allow npm publish** |
+
+工作流使用 GitHub-hosted runner、Node.js 24、npm 12.2.1 和 OIDC，无需设置 `NPM_TOKEN`。只有实际发布 job 获得 `id-token: write`，上传时附带 provenance。配置字段需与工作流完全一致，详见 [npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers/)。
+
+GitHub 仓库的 **Settings → Environments → npm** 若已限制只允许 `cli-v*`，需同时允许 `mcp-v*`。预演不进入该环境；真实发布会遵循已有的环境审批规则。MCP 与 CLI 的 npm 信任配置分别对应 `release-mcp.yml` 和 `release-cli.yml`，不能互换。
+
+### 发布一个新版本
+
+1. 在仓库根目录统一设置 CLI、MCP、DSH 和原生依赖版本。例如准备 `0.2.1`：
+
+   ```sh
+   python3 scripts/version.py set mcp 0.2.1
+   python3 scripts/version.py check
+   ```
+
+2. 提交并推送改动，再运行一次 MCP 发布工作流的 `dry_run`。版本脚本同时同步 CLI 构建配置、MCP 锁文件和 DSH 集成元数据，详见[组件版本管理](../../docs/VERSIONING.md)。预演检查 tarball 的名称、版本、SHA-512、可执行入口、页面、DSH bundle 和固定版本的原生依赖声明；它不检查 npm 发布权限或注册表中的原生包是否已经可用。
+3. 按 [CLI 发布指南](../cli/docs/npm-distribution.md#ci-与发布)从该提交推送 `cli-v0.2.1`，先发布五个平台原生包和 CLI 入口。确认 [`platforms.json`](../cli/npm/platforms.json) 中五个原生包的 `0.2.1` 均可查询后再发布 MCP。即使只改动 MCP，也需要发布同版本 CLI；已发布版本不能用不同内容覆盖。
+4. 确认 MCP 的 npm 信任配置可用后，从同一提交创建并推送 MCP 标签：
+
+   ```sh
+   git tag mcp-v0.2.1
+   git push origin mcp-v0.2.1
+   ```
+
+真实发布前会检查五个平台原生包的确切版本、平台字段和分发信息；任何一个缺失，或注册表返回权限／网络错误，都会停止发布。原生版本不依赖其 `latest` 或 `next` 标签，只需 MCP 引用的确切版本可用。`crossdesk-mcp-<平台>` 安装包会被拒绝；npm 只发布 `mcp-package` 中的通用包。
+
+### 验证结果与失败恢复
+
+发布 job 只下载当前工作流的 `mcp-package` artifact。上传后每 15 秒检查版本、SHA-512 和目标 dist-tag，最多等待 15 分钟；npm 尚在处理时不会重复上传。成功后 Actions Summary 显示发布版本、原生依赖版本和 tarball 校验值。
+
+发布失败后优先 **Re-run failed jobs**，复用原 artifact。同版本、同校验值且 dist-tag 匹配的已发布包会跳过上传；同版本内容不同、dist-tag 已指向更新版本、已有版本的 dist-tag 不匹配或注册表仅有 `0.0.0-stage` 占位版本时，工作流会停止并给出原因。等待处理完成或修复依赖／权限后再重跑，不要为恢复上传而重跑全部构建或覆盖已有版本。本工作流不自动修改已有版本的 dist-tag。
+
+发布成功后在工程外验证，避免 `npx` 匹配到源码目录中的同名包。以下以 `0.2.1` 为例：
+
+```sh
+cd "$(mktemp -d)"
+npm view @chunkdash/crossdesk-mcp@0.2.1 version optionalDependencies --registry=https://registry.npmjs.org/
+npx --yes --registry=https://registry.npmjs.org/ @chunkdash/crossdesk-mcp@0.2.1 --help
+```
+
+`--help` 仅验证命令入口；完整验收还需按[用户指南](README.md)在 Codex 或 DSH 中连接已授权设备。
 
 ## 本地审阅验证（2026-11-03）
 

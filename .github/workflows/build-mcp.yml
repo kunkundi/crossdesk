@@ -2,8 +2,11 @@ name: MCP package
 
 on:
   push:
+    branches: ["**"]
+    tags-ignore: ["mcp-v*", "cli-v*"]
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

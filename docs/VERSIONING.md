@@ -77,7 +77,7 @@ CLI、MCP、DSH 集成元数据和 MCP 的原生依赖版本必须完全相同�
 
 MCP 通用 npm 包从 `NATIVE_VERSION` 生成五个平台包的精确依赖；MCP 的 `--version` 和协议握手读取包版本。DSH 随 MCP 同包分发，不另发插件版本。
 
-先通过 CLI 发布工作流发布同版本的五个平台原生包和 CLI 入口，再发布 MCP。即使只修改 MCP，也要为两者准备同一个新版本并按此顺序发布。MCP 平台安装包由 CLI 构建工作流一并生成，通用包使用 `npm run pack:npm` 打包。
+先通过 CLI 发布工作流发布同版本的五个平台原生包和 CLI 入口，再发布 MCP。即使只修改 MCP，也要为两者准备同一个新版本并按此顺序发布。CLI 与 MCP 仍使用各自的发布工作流和标签前缀；例如同一次版本更新使用 `cli-v0.3.0` 与 `mcp-v0.3.0`，建议指向同一提交。
 
 CLI 构建工作流为每个平台附带生成 `crossdesk-mcp-<平台>` 安装包。源码版本不一致时，构建、MCP 打包和发布检查会报错；平台安装包还要求传入的原生包版本一致。工具版本不影响客户端版本和 Pi 扩展版本。
 
@@ -85,6 +85,6 @@ CLI 构建工作流为每个平台附带生成 `crossdesk-mcp-<平台>` 安装�
 
 客户端版本同时控制本地 Xmake 默认值，以及 GitHub Actions 分支构建未填写 `desktop_version` 时的默认版本。已有 Xmake 配置可能保留缓存，应重新配置；显式 `--CROSSDESK_VERSION`、Actions 的 `desktop_version` 和发布标签继续按原流程覆盖默认值。正式发布时应使标签的基础版本与客户端源码版本一致。日期和热修订后缀仍由发布流程处理，本脚本不修改既有标签格式。各端可分开构建和发布，但共用同一个源码发布版本。
 
-修改并检查后，审阅、提交和推送源码，再按实际版本创建对应标签：CLI 使用 `cli-v<版本>`。移动端沿用 `android-v<版本>-YYYYMMDD`、`ios-v<版本>-YYYYMMDD`。已发布版本不能用不同内容覆盖；版本修改脚本不会替你判断某个版本是否已在注册表中使用。
+修改并检查后，审阅、提交和推送源码，再按实际版本创建对应标签：CLI 使用 `cli-v<版本>`，MCP 使用 `mcp-v<版本>`。移动端沿用 `android-v<版本>-YYYYMMDD`、`ios-v<版本>-YYYYMMDD`。已发布版本不能用不同内容覆盖；版本修改脚本不会替你判断某个版本是否已在注册表中使用。
 
-相关说明：[桌面构建](BUILD.md) · [CLI 发布](../apps/cli/docs/npm-distribution.md#ci-与发布) · [MCP 打包](../apps/mcp/DEVELOPMENT.md#打包)。
+相关说明：[桌面构建](BUILD.md) · [CLI 发布](../apps/cli/docs/npm-distribution.md#ci-与发布) · [MCP 发布](../apps/mcp/DEVELOPMENT.md#github-actions-发布到-npm)。

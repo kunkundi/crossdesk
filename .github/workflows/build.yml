@@ -10,6 +10,7 @@ on:
       - "!ios-v*"
       - "!android-v*"
       - "!cli-v*"
+      - "!mcp-v*"
   workflow_dispatch:
     inputs:
       desktop_version:
