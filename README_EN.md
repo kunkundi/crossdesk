@@ -57,7 +57,7 @@ Get a package matching your OS and CPU architecture from the [website](https://w
 | HarmonyOS phones / tablets (development) | **Control only**. API 20+, arm64; build and sign a HAP with DevEco; physical-device validation is ongoing |
 | Web | **Control only**. A WebRTC-capable browser; no client installation on the controlling device |
 | Terminal CLI (development) | **Control only**. Distribution targets: macOS / Linux (x64, arm64) and Windows (x64). [Install from npm](#cli-npm) or build from source; see the [CLI guide](apps/cli/README.md) (Chinese) for platform validation status |
-| MCP (development) | **Control only**. Local Node.js 22+, a compatible Agent host, and the native CLI; browser, terminal, and MCP Apps monitoring. See [source setup](apps/mcp/README.md) (Chinese) |
+| MCP (development) | **Control only**. Operate and watch a remote computer in Codex or DSH. DSH needs one plugin package; Codex also needs Node.js 22+. See [installation and usage](apps/mcp/README.md) (Chinese) |
 
 Requirements follow the current source and build configuration. Check the release notes for the downloaded package. Client capabilities are summarized under [Terminal CLI](#cli) and [Mobile and HarmonyOS](#mobile).
 
@@ -283,14 +283,14 @@ The interactive CLI provides ID-based viewing and input, without direct IP conne
 
 ## Agents and MCP
 
-[`apps/mcp`](apps/mcp/README.md) provides a local MCP service for Agents to connect to remote computers through CrossDesk. The controller needs Node.js 22+ and a compatible native CLI, without the CrossDesk desktop GUI. The remote host still needs a compatible CrossDesk client and a signaling server supporting `cli` registration. Use a local package supplied by the maintainer or build from source; package versions in the repository do not establish npm availability.
+[CrossDesk MCP](apps/mcp/README.md) lets you request remote tasks in a Codex or DeepSeek Harness chat and watch the remote screen on the right. Run CrossDesk on the remote computer, follow the installation guide for your local app below, then choose and authorize the device in the panel.
 
 | Host | Installation and configuration | Remote video |
 | --- | --- | --- |
 | Codex desktop | [Codex setup](apps/mcp/README.md#install-codex) (Chinese): register the MCP server; no extra plugin | The Agent opens the built-in browser on the right |
-| DeepSeek Harness desktop (DSH) | [DSH setup](apps/mcp/README.md#install-dsh) (Chinese): register the MCP server and install the CrossDesk Sidebar plugin | The plugin opens the current chat's browser sidebar automatically |
+| DeepSeek Harness desktop (DSH) | [DSH setup](apps/mcp/README.md#install-dsh) (Chinese): install one platform plugin package; MCP registration is automatic | The plugin opens the current chat's browser sidebar automatically |
 
-1. Choose a [local package](apps/mcp/README.md#install-package) or [source build](apps/mcp/README.md#从源码运行), then configure your host using the guides above. These guides include configuration examples, native dependencies, and troubleshooting.
+1. [Download the platform package for your local computer](apps/mcp/README.md#install-package), then follow the guide for your app above.
 2. Ask the Agent to open CrossDesk. Choose a device and enter its password in the local monitoring panel, then grant view-only or control access. Saving a password and allowing future automatic connections are separate choices.
 3. The Agent uses screenshots, keyboard and mouse actions, and structured desktop tools. You can watch live, pause the Agent, take over manually, or disconnect.
 
@@ -343,7 +343,8 @@ Host your own signaling and TURN services, then enable them under **Settings →
 
 ## Build and feedback
 
-- [Agent / MCP](apps/mcp/README.md) (Chinese): package and source installation, Codex / DSH setup, authorization, monitoring, automation tools, and compatibility.
+- [Agent / MCP user guide](apps/mcp/README.md) (Chinese): downloads, Codex / DSH setup, device authorization, everyday usage, and troubleshooting.
+- [MCP developer reference](apps/mcp/DEVELOPMENT.md) (Chinese): source builds, host integration, tool interfaces, packaging, and validation scope.
 - [Terminal client CLI](apps/cli/README.md) (Chinese): independent builds, terminal usage, Pi extension, bridge protocol, and npm packaging.
 - [Build from source](docs/BUILD_EN.md): desktop dependencies, build options, and packaging. Use the platform guides above for mobile builds.
 - [GUI architecture](docs/gui-architecture.md) (Chinese): desktop UI, platform implementation, and project structure.

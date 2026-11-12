@@ -1,0 +1,3 @@
+- insert:
+    - id: crossdesk
+      name: '@chunkdash/crossdesk-mcp'

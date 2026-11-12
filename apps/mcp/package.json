@@ -12,7 +12,22 @@
     "directory": "apps/mcp"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22",
+    "dsh": ">=0.2.2-rc.1 <0.3.0"
+  },
+  "main": "dist/harness.js",
+  "exports": {
+    ".": "./dist/harness.js",
+    "./client": "./dist/harness-client.js",
+    "./package.json": "./package.json",
+    "./dist/*": "./dist/*"
+  },
+  "dsh": {
+    "bundle": { "patch": "cordis.patch.yml" },
+    "client": {
+      "inject": ["@deepseek-ai/dsh-client-ui-session", "@deepseek-ai/dsh-client-ui-sidebar-right", "@deepseek-ai/dsh-client-ui-sidebar-browser"],
+      "platform": "web"
+    }
   },
   "bin": {
     "crossdesk-mcp": "dist/main.js"
@@ -29,6 +44,14 @@
     "@modelcontextprotocol/server": "2.4.0",
     "@napi-rs/keyring": "2.1.2",
     "zod": "4.6.7"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-mcp-client": ">=0.2.2-rc.1 <0.3.0",
+    "@deepseek-ai/schemastery": "~3.19.0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-mcp-client": { "optional": true },
+    "@deepseek-ai/schemastery": { "optional": true }
   },
   "devDependencies": {
     "@types/node": "22.19.15",

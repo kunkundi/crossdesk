@@ -2,6 +2,8 @@ import { spawn, execFile, type ChildProcess } from "node:child_process";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { Writable } from "node:stream";
 import { Failure, type Data, type VideoOptions } from "./common.js";
 
@@ -49,9 +51,12 @@ export async function nativeBinary(override?: string): Promise<string> {
     )
       throw new Failure("GLIBC_REQUIRED");
     try {
-      const manifest = require.resolve(
+      const bundled = fileURLToPath(new URL(`../native/${target}/package.json`, import.meta.url));
+      const manifest = existsSync(bundled) ? bundled : require.resolve(
         `@chunkdash/crossdesk-cli-${target}/package.json`,
       );
+      if (require(manifest).name !== `@chunkdash/crossdesk-cli-${target}`)
+        throw new Failure("NATIVE_VERSION_MISMATCH");
       if (require(manifest).version !== NATIVE_VERSION)
         throw new Failure("NATIVE_VERSION_MISMATCH");
       binary = join(

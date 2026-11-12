@@ -57,7 +57,7 @@ CrossDesk 让你从电脑、浏览器、手机或终端（桌面 CLI）连接远
 | 鸿蒙手机 / 平板（开发版） | **仅控制**；API 20+，arm64；使用 DevEco 构建并签名 HAP，仍在进行真机验收 |
 | Web | **仅控制**；支持 WebRTC 的浏览器；无需在控制端安装客户端 |
 | 终端 CLI（开发版） | **仅控制**；分发目标为 macOS / Linux（x64、arm64）和 Windows（x64）；通过 [npm 安装](#cli-npm) 或从源码构建，平台验收范围见 [CLI 说明](apps/cli/README.md) |
-| MCP（开发版） | **仅控制**；本机 Node.js 22+、兼容的 Agent 宿主及原生 CLI；支持浏览器、终端和 MCP Apps 监看，见 [源码运行说明](apps/mcp/README.md) |
+| MCP（开发版） | **仅控制**；在 Codex 或 DSH 中操作远端并监看画面；DSH 安装一个插件包，Codex 需 Node.js 22+，见 [安装与使用](apps/mcp/README.md) |
 
 系统要求按当前源码与构建配置整理，具体安装包以对应 Release 说明为准。各客户端的功能范围见 [终端 CLI](#cli) 与 [移动端与鸿蒙](#mobile)。
 
@@ -283,14 +283,14 @@ pi -e ./apps/cli/plugins/pi/index.ts
 
 ## Agent 与 MCP
 
-[`apps/mcp`](apps/mcp/README.md) 提供本机 MCP 服务，让 Agent 通过 CrossDesk 连接远端电脑。控制端需要 Node.js 22+ 和兼容的原生 CLI，无需安装 CrossDesk 桌面 GUI；被控端仍需运行兼容的 CrossDesk，信令服务需支持 `cli` 注册。可以使用维护者提供的本地安装包或从源码构建；仓库中的包版本不代表已发布到 npm。
+[CrossDesk MCP](apps/mcp/README.md) 让你在 Codex 或 DeepSeek Harness 对话中安排远程任务，并在右侧查看远端画面。远端电脑运行 CrossDesk；本机按下表安装后，在面板中选择设备并授权。
 
 | 使用环境 | 安装与配置 | 远端画面 |
 | --- | --- | --- |
 | Codex 桌面版 | [Codex 安装指南](apps/mcp/README.md#install-codex)：注册 MCP，无需额外插件 | Agent 打开右侧内置浏览器 |
-| DeepSeek Harness 桌面版（DSH） | [DSH 安装指南](apps/mcp/README.md#install-dsh)：注册 MCP，并安装 CrossDesk Sidebar 插件 | 插件自动打开当前对话侧栏 |
+| DeepSeek Harness 桌面版（DSH） | [DSH 安装指南](apps/mcp/README.md#install-dsh)：只安装一个对应平台的 MCP 插件包，自动注册服务 | 插件自动打开当前对话侧栏 |
 
-1. 选择 [本地安装包](apps/mcp/README.md#install-package) 或 [源码构建](apps/mcp/README.md#从源码运行)，再按上表配置宿主。完整指南包含配置示例、原生依赖和故障排查。
+1. [下载与你的本机对应的平台安装包](apps/mcp/README.md#install-package)，再按上表完成安装。
 2. 让 Agent 打开 CrossDesk，在监看面板选择设备、输入连接密码，并选择仅查看或允许控制。密码在本地面板中输入；保存密码与允许以后自动连接分别设置。
 3. Agent 通过截图、键鼠和结构化桌面工具执行任务；用户可实时监看、暂停 Agent、人工接管或断开连接。
 
@@ -344,7 +344,8 @@ PC 端可控制和被控制，复用桌面界面与桌面墙；手机和平板�
 ## 构建与反馈
 
 - [终端客户端 CLI](apps/cli/README.md)：独立构建、终端使用、Pi 扩展、桥接协议和 npm 打包。
-- [Agent / MCP](apps/mcp/README.md)：安装包与源码运行、Codex / DSH 配置、授权与监看、自动化工具及兼容范围。
+- [Agent / MCP 用户指南](apps/mcp/README.md)：下载安装、Codex / DSH 配置、连接授权、日常使用与常见问题。
+- [MCP 开发参考](apps/mcp/DEVELOPMENT.md)：源码构建、宿主集成、工具接口、打包与验证范围。
 - [源码构建](docs/BUILD.md)：桌面端依赖、编译参数与打包；移动端请使用上方各平台的构建指南。
 - [GUI 架构](docs/gui-architecture.md)：桌面界面、平台实现与工程结构。
 - [连接模式架构](docs/connection-architecture.md)：ID 连接与 IP 直连的寻址、认证、协商、数据路径及生命周期。

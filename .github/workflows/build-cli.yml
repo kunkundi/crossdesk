@@ -142,3 +142,29 @@ jobs:
           name: npm-${{ matrix.target }}
           path: build/npm/*.tgz
           if-no-files-found: error
+      - name: Build MCP and DSH plugin
+        shell: bash
+        run: |
+          npm --prefix apps/mcp ci
+          npm --prefix apps/mcp run build
+      - name: Package MCP with native CLI
+        shell: bash
+        run: |
+          native_dir=$(mktemp -d)
+          trap 'rm -rf "$native_dir"' EXIT
+          native_archives=(build/npm/chunkdash-crossdesk-cli-*-*.tgz)
+          if [[ ${#native_archives[@]} -ne 1 || ! -f "${native_archives[0]}" ]]; then
+            echo 'Expected exactly one native platform package' >&2
+            exit 1
+          fi
+          tar -xzf "${native_archives[0]}" -C "$native_dir"
+          native_package_dir="$native_dir/package"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            native_package_dir=$(cygpath -m "$native_package_dir")
+          fi
+          npm --prefix apps/mcp run pack:npm -- --native-package-dir "$native_package_dir"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: crossdesk-mcp-${{ matrix.target }}
+          path: build/npm-mcp/*.tgz
+          if-no-files-found: error
