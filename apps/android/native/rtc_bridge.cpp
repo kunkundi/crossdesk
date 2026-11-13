@@ -17,6 +17,7 @@
 #include <stdexcept>
 #include <vector>
 #include "controller_protocol.h"
+#include "../../../libs/controller/include/mobile_device_trust.h"
 #include "file_transfer_session.h"
 #include "latest_frame_worker.h"
 #include "video_picture.h"
@@ -54,6 +55,7 @@ struct Session {
   MiniRtcPeerPtr* controller = nullptr;
   CallbackContext identity_context{this, false}, controller_context{this, true};
   std::string host, log_path, identity_login, controller_login, remote;
+  std::unique_ptr<mobile_controller::DeviceTrustIdentity> trust;
   int port;
   std::atomic<bool> stopping{false};
   std::atomic<uint64_t> signal_generation{0};
@@ -190,6 +192,11 @@ void Data(const char* data, size_t size, const char*, size_t,
   if (name == kFileStream) { ctx->owner->files.Receive(data, size); return; }
   if (name == kFileFeedbackStream) { ctx->owner->files.Ack(data, size); return; }
   if (name == kControlStream) {
+    if (auto proof = ctx->owner->trust->ChallengeResponse(std::string_view(data, size),
+            ctx->owner->controller_login.substr(2), "CrossDesk Android")) {
+      ctx->owner->Send(kControlStream, *proof);
+      return;
+    }
     RemoteAction action{};
     if (action.from_json(std::string(data, size))) {
       const auto message = action.to_json();
@@ -291,6 +298,26 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* java_vm, void*) {
   return JNI_VERSION_1_6;
 }
 #define JNI_METHOD(name) Java_cn_crossdesk_mobile_NativeSession_##name
+extern "C" JNIEXPORT jstring JNICALL JNI_METHOD(nGenerateTrustKey)(JNIEnv* env, jclass) {
+  try {
+    auto seed = mobile_controller::DeviceTrustIdentity::GeneratePrivateKey();
+    auto result = env->NewStringUTF(seed.c_str());
+    mobile_controller::DeviceTrustIdentity::ClearSecret(seed);
+    return result;
+  } catch (const std::exception&) { return nullptr; }
+}
+extern "C" JNIEXPORT jstring JNICALL JNI_METHOD(nTrustInfo)(
+    JNIEnv* env, jclass, jstring key, jstring device_id) {
+  try {
+    auto seed = String(env, key);
+    // Clean the temporary JNI copy even when key validation fails.
+    struct Clean { std::string& value; ~Clean() { mobile_controller::DeviceTrustIdentity::ClearSecret(value); } } clean{seed};
+    mobile_controller::DeviceTrustIdentity trust(seed);
+    const auto info = json{{"pairing", trust.PairingInfo(String(env, device_id), "CrossDesk Android")},
+                           {"fingerprint", trust.Fingerprint()}}.dump();
+    return env->NewStringUTF(info.c_str());
+  } catch (const std::exception&) { return nullptr; }
+}
 extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nValidAppVersion)(
     JNIEnv* env, jclass, jstring version) {
   return version && env->GetStringUTFLength(version) < 64 &&
@@ -321,7 +348,7 @@ extern "C" JNIEXPORT jstring JNICALL JNI_METHOD(nCheckMobileUpdate)(
 }
 extern "C" JNIEXPORT jlong JNICALL JNI_METHOD(nCreate)(
     JNIEnv* env, jclass, jobject owner, jstring host, jint port, jstring identity,
-    jstring log_path, jstring certificates) {
+    jstring log_path, jstring certificates, jstring trust_key) {
   try {
     auto s = std::make_unique<Session>();
     s->owner = env->NewGlobalRef(owner);
@@ -332,6 +359,9 @@ extern "C" JNIEXPORT jlong JNICALL JNI_METHOD(nCreate)(
     env->DeleteLocalRef(cls);
     s->host = String(env, host); s->port = port;
     s->identity_login = String(env, identity); s->log_path = String(env, log_path);
+    auto seed = String(env, trust_key);
+    struct Clean { std::string& value; ~Clean() { mobile_controller::DeviceTrustIdentity::ClearSecret(value); } } clean{seed};
+    s->trust = std::make_unique<mobile_controller::DeviceTrustIdentity>(seed);
     // The bundle is exported from Android's default TrustManager, never the
     // build machine's certificate store. MiniRTC on Android explicitly
     // loads this path: OpenSSL's default loader ignores SSL_CERT_FILE in an
@@ -376,7 +406,8 @@ extern "C" JNIEXPORT void JNICALL JNI_METHOD(nReady)(JNIEnv* env, jclass, jlong 
     if (!env->ExceptionCheck())
       ParseDisplayResolutionPreferences(bytes, action.preferred_display_resolutions);
   }
-  s->Send(kControlStream, action.to_json()); FreeRemoteAction(action);
+  s->Send(kControlStream, mobile_controller::DeviceTrustIdentity::Advertise(action.to_json()));
+  FreeRemoteAction(action);
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(nPointer)(
     JNIEnv*, jclass, jlong handle, jfloat x, jfloat y, jint flag, jint wheel) {

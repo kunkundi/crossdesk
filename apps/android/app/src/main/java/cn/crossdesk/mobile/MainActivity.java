@@ -397,6 +397,8 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         toggle.setOnCheckedChangeListener((button,checked)->{inputs.setVisibility(checked?View.VISIBLE:View.GONE);if(!checked){host="api.crossdesk.cn";port=9099;preferences.edit().putString("host",host).putInt("port",port).apply();ensureSignaling();} });
         backAction=()->{if(toggle.isChecked()&&!saveServer(address,number))return;hideKeyboard();home("");};
         identitySummary=text("",12,false);identitySummary.setTextColor(SECONDARY);identitySummary.setGravity(Gravity.CENTER);identitySummary.setPadding(dp(16),dp(12),dp(16),dp(16));identitySummary.setTextIsSelectable(true);content.addView(identitySummary);renderSignaling();
+        LinearLayout trust=section(content,L10n.tr("本机配对信息"),MobileUi.SETTINGS_CARD_RADIUS);
+        link(trust,L10n.tr("查看指纹"),"",this::showPairingInfo);ui.gap(content,28);
         LinearLayout privacy=section(content,L10n.tr("隐私"),MobileUi.SETTINGS_CARD_RADIUS);link(privacy,L10n.tr("隐私与授权"),preferences.getBoolean("networkConsent",false)?L10n.tr("已授权"):L10n.tr("未授权"),this::privacyPage);ui.divider(privacy);
         LinearLayout preview=row();preview.setPadding(dp(16),dp(10),dp(16),dp(10));preview.addView(text(L10n.tr("保存远程画面预览"),16,false),new LinearLayout.LayoutParams(0,-2,1));previewSwitch=new Switch(this);previewSwitch.setContentDescription(L10n.tr("保存远程画面预览"));preview.addView(previewSwitch);privacy.addView(preview);
         previewSwitch.setOnCheckedChangeListener((button,checked)->{if(updatingPreviewSwitch)return;if(checked){renderPreviews();confirmPreviewSaving();}else previews.setEnabled(false);});
@@ -405,6 +407,21 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         ui.gap(content,28);LinearLayout about=section(content,"",MobileUi.SETTINGS_CARD_RADIUS);LinearLayout aboutLink=link(about,L10n.tr("关于"),L10n.tr("新版本"),this::about);aboutUpdateRow=aboutLink;
         aboutUpdateLabel=(TextView)aboutLink.getChildAt(1);aboutUpdateLabel.setPadding(0,0,dp(8),0);
         aboutUpdateDot=updateDot();LinearLayout.LayoutParams dotPosition=new LinearLayout.LayoutParams(dp(8),dp(8));dotPosition.setMarginEnd(dp(8));aboutLink.addView(aboutUpdateDot,2,dotPosition);renderAppUpdates();
+    }
+    private void showPairingInfo(){
+        NativeSession.pairingInfo(this,localIdentity,info->{
+            if(isFinishing()||isDestroyed()||!page.equals("settings"))return;
+            if(info==null){toast(L10n.tr("安全存储不可用，请解锁设备后重试"));return;}
+            TextView fingerprint=text(info.optString("fingerprint").replaceAll("(.{4})(?!$)","$1 "),14,false);
+            fingerprint.setTypeface(android.graphics.Typeface.MONOSPACE);fingerprint.setTextIsSelectable(true);fingerprint.setPadding(dp(24),dp(16),dp(24),dp(16));
+            new AlertDialog.Builder(this).setTitle(L10n.tr("本机配对信息"))
+                .setMessage(L10n.tr("将配对信息添加到被控端的可信设备列表，并核对指纹。"))
+                .setView(fingerprint).setNegativeButton(L10n.tr("取消"),null)
+                .setPositiveButton(L10n.tr("复制配对信息"),(dialog,which)->{
+                    try{((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("CrossDesk",info.getString("pairing")));toast(L10n.tr("配对信息已复制。"));}
+                    catch(Exception error){toast(L10n.tr("无法复制配对信息，请重试。"));}
+                }).show();
+        });
     }
     private void confirmPreviewSaving(){
         previewDialog=new AlertDialog.Builder(this).setTitle(L10n.tr("保存远程画面预览？"))

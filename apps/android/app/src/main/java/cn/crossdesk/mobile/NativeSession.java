@@ -94,7 +94,7 @@ final class NativeSession implements AutoCloseable {
                 File certificates = exportTrust();
                 File logs = new File(context.getNoBackupFilesDir(), "logs");
                 if (!logs.isDirectory() && !logs.mkdirs()) throw new IllegalStateException("Log directory unavailable");
-                handle = nCreate(this, host, port, identity, logs.getAbsolutePath(), certificates.getAbsolutePath());
+                handle = nCreate(this, host, port, identity, logs.getAbsolutePath(), certificates.getAbsolutePath(), trustKey(context));
                 if (handle == 0) { fail(L10n.tr("原生连接初始化失败")); return; }
                 nFileDirectory(handle,new File(documents.directory,"received").getAbsolutePath());
                 if (surface != null && surface.isValid()) nSurface(handle, surface);
@@ -116,6 +116,33 @@ final class NativeSession implements AutoCloseable {
         });
     }
     boolean isClosed() { return closed; }
+    // Called only on RTC, shared by every foreground/background session and UI export.
+    // This key belongs to the installation, not to a signaling server or login ID.
+    private static String trustKey(Context context) throws Exception {
+        SecretStore store = new SecretStore(context);
+        var preferences = context.getSharedPreferences("settings", Context.MODE_PRIVATE);
+        String seed = store.get("device-trust:v1");
+        if (seed.isEmpty()) {
+            if (preferences.getBoolean("deviceTrustInitialized", false))
+                throw new IllegalStateException("Device signing identity missing");
+            seed = nGenerateTrustKey();
+            if (seed == null) throw new IllegalStateException("Device signing identity unavailable");
+            store.put("device-trust:v1", seed);
+        }
+        if (!preferences.edit().putBoolean("deviceTrustInitialized", true).commit())
+            throw new IllegalStateException("Device signing identity marker unavailable");
+        return seed;
+    }
+    static void pairingInfo(Context context, String deviceId, java.util.function.Consumer<JSONObject> completed) {
+        Context app = context.getApplicationContext();
+        RTC.execute(() -> {
+            JSONObject info = null;
+            try { info = new JSONObject(nTrustInfo(trustKey(app), deviceId.split("@", 2)[0])); }
+            catch (Exception ignored) { }
+            JSONObject result = info;
+            new Handler(Looper.getMainLooper()).post(() -> completed.accept(result));
+        });
+    }
     // UI callbacks run on the main thread. A service-owned state can replace
     // the Activity listener without recreating either native peer.
     void setListener(Listener value) { listener = java.util.Objects.requireNonNull(value); }
@@ -347,7 +374,9 @@ final class NativeSession implements AutoCloseable {
     static native boolean nValidAppVersion(String version);
     static native boolean nHasAppUpdate(String version, byte[] releaseJson);
     static native String nCheckMobileUpdate(String version, byte[] releaseJson);
-    private static native long nCreate(NativeSession owner, String host, int port, String identity, String logs, String roots);
+    private static native long nCreate(NativeSession owner, String host, int port, String identity, String logs, String roots, String trustKey);
+    private static native String nGenerateTrustKey();
+    private static native String nTrustInfo(String seed, String deviceId);
     private static native boolean nConnect(long handle, String identity, String remote, String password);
     private static native void nReady(long handle,byte[] displayResolutions);
     private static native void nPointer(long handle, float x, float y, int flag, int wheel);
