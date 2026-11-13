@@ -270,7 +270,9 @@ void SharedHostIdentity::Import() {
   private_file::EnsureDirectory(cache_, true);
   private_file::EnsureDirectory(trusted_);
   Json identity{{"version", 1}};
-  if (std::filesystem::exists(cache_ / "identity.json"))
+  if (std::filesystem::exists(trusted_ / "identity.json"))
+    identity = PrivateDocument(trusted_ / "identity.json");
+  else if (std::filesystem::exists(cache_ / "identity.json"))
     identity = PrivateDocument(cache_ / "identity.json");
   Require(identity.is_object() && identity.value("version", 0) == 1,
           "Invalid existing device identity store");
@@ -284,7 +286,7 @@ void SharedHostIdentity::Import() {
   cache.checksum = credential_cache::Checksum(&cache, offsetof(credential_cache::CacheV3, checksum));
   // Validate everything before replacing any user identity data. Both stores
   // stay private to this process's user; their DACLs are never relaxed.
-  private_file::Write(cache_ / "identity.json", identity.dump());
+  private_file::Write(trusted_ / "identity.json", identity.dump());
   private_file::Write(trusted_ / "devices.json", data.at("trusted_devices").dump());
   private_file::Write(cache_ / "secure_cache_v3.enc",
                       std::string(reinterpret_cast<const char*>(&cache), sizeof(cache)));
@@ -303,7 +305,10 @@ bool SharedHostIdentity::Publish(const std::string& host_config, std::string& er
     std::memset(cache.base.iv, 0, sizeof(cache.base.iv));
     cache.checksum = credential_cache::Checksum(&cache, offsetof(credential_cache::CacheV3, checksum));
     const std::string identity_cache(reinterpret_cast<const char*>(&cache), sizeof(cache));
-    const auto identity = PrivateDocument(cache_ / "identity.json");
+    // CLI setup can publish an installation that has not run GUI migration yet.
+    const auto identity = PrivateDocument(
+        std::filesystem::exists(trusted_ / "identity.json")
+            ? trusted_ / "identity.json" : cache_ / "identity.json");
     const auto key = identity.at("trust_private_key").get<std::string>();
     Require(Unhex(key).size() == 32, "Invalid device identity key");
     const auto devices = PrivateDocument(trusted_ / "devices.json");

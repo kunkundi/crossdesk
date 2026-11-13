@@ -70,28 +70,38 @@ struct PrivateText {
 void Validate(const nlohmann::json& document) {
   Require(document.is_object() && document.at("version") == 1);
 }
+
+std::optional<nlohmann::json> ReadLocked(const std::filesystem::path& directory) {
+  const auto path = directory / "identity.json";
+  if (std::filesystem::symlink_status(path).type() ==
+      std::filesystem::file_type::not_found) return std::nullopt;
+  PrivateText text{private_file::Read(path)};
+  auto saved = nlohmann::json::parse(text.value, nullptr, false);
+  Require(!saved.is_discarded());
+  Validate(saved);
+  return saved;
+}
 }  // namespace
 
-void Update(const std::filesystem::path& cache,
-            const std::function<void(nlohmann::json&)>& update) {
-  private_file::EnsureDirectory(cache, true);
-  StoreLock lock(cache / "identity.json.lock");
-  const auto path = cache / "identity.json";
-  const bool exists = std::filesystem::symlink_status(path).type() !=
-                      std::filesystem::file_type::not_found;
-  nlohmann::json saved = {{"version", 1}};
-  if (exists) {
-    PrivateText text{private_file::Read(path)};
-    saved = nlohmann::json::parse(text.value, nullptr, false);
-    Require(!saved.is_discarded());
-  }
-  Validate(saved);
+std::optional<nlohmann::json> Read(const std::filesystem::path& directory) {
+  private_file::EnsureDirectory(directory, true);
+  StoreLock lock(directory / "identity.json.lock");
+  return ReadLocked(directory);
+}
+
+void Update(const std::filesystem::path& directory,
+            const std::function<void(nlohmann::json&, bool)>& update) {
+  private_file::EnsureDirectory(directory, true);
+  StoreLock lock(directory / "identity.json.lock");
+  auto previous = ReadLocked(directory);
+  auto saved = previous ? std::move(*previous) : nlohmann::json{{"version", 1}};
   PrivateText before{saved.dump()};
-  update(saved);
+  update(saved, previous.has_value());
   Validate(saved);
   PrivateText after{saved.dump()};
   Require(after.value.size() <= 64 * 1024);
-  if (!exists || before.value != after.value) private_file::Write(path, after.value);
+  if (!previous || before.value != after.value)
+    private_file::Write(directory / "identity.json", after.value);
 }
 
 }  // namespace crossdesk::device_identity_store

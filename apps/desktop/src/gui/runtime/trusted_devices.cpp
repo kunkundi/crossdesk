@@ -14,8 +14,8 @@
 namespace crossdesk {
 namespace {
 constexpr size_t kMaxTrustedDevices = 128;
-void Require(bool ok) {
-  if (!ok) throw std::runtime_error("Invalid or unavailable trusted device identity");
+void Require(bool ok, const char* error = "Invalid or unavailable trusted device identity") {
+  if (!ok) throw std::runtime_error(error);
 }
 std::string Hex(const uint8_t* data, size_t size) {
   constexpr char digits[] = "0123456789abcdef";
@@ -81,7 +81,19 @@ TrustedDevices::TrustedDevices(const std::filesystem::path& directory,
     }
   }
 
-  device_identity_store::Update(cache, [&](nlohmann::json& identity) {
+  device_identity_store::Update(directory, [&](nlohmann::json& identity, bool identity_exists) {
+    bool legacy_identity_exists = false;
+    if (!identity_exists) {
+      // The persistent copy is authoritative once migration has completed.
+      // Leave the old cache copy intact so an interrupted migration is retryable.
+      if (auto previous = device_identity_store::Read(cache)) {
+        identity = std::move(*previous);
+        legacy_identity_exists = true;
+      }
+    } else {
+      Require(identity.contains("trust_private_key"),
+              "Persistent device signing key is missing; restore the original identity");
+    }
     if (!identity.contains("trust_private_key") && !legacy_key.value.empty())
       identity["trust_private_key"] = legacy_key.value;
     if (identity.contains("trust_private_key")) {
@@ -94,6 +106,8 @@ TrustedDevices::TrustedDevices(const std::filesystem::path& directory,
                                              secret.data(), secret.size()));
       OPENSSL_cleanse(secret.data(), secret.size());
     } else {
+      Require(!exists && !legacy_identity_exists,
+              "Device signing key is missing from an existing installation; restore the original identity");
       key_.reset(EVP_PKEY_Q_keygen(nullptr, nullptr, "ED25519"));
       Require(bool(key_));
       std::array<uint8_t, 32> secret{};
