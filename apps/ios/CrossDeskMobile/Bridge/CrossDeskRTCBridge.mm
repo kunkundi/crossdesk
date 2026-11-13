@@ -974,6 +974,30 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
              stream:kKeyboardStream];
 }
 
+- (void)sendKeyChord:(NSUInteger)keyCode modifiers:(NSArray<NSNumber *> *)modifiers {
+  if (!keyCode || keyCode > 255 || modifiers.count > 4) return;
+  std::vector<NSUInteger> keys;
+  for (NSUInteger code : {17u, 16u, 18u, 91u}) {
+    if ([modifiers containsObject:@(code)]) keys.push_back(code);
+  }
+  std::vector<std::string> messages;
+  for (NSUInteger code : keys) messages.push_back(KeyJSON(code, true));
+  messages.push_back(KeyJSON(keyCode, true));
+  messages.push_back(KeyJSON(keyCode, false));
+  for (auto it = keys.rbegin(); it != keys.rend(); ++it)
+    messages.push_back(KeyJSON(*it, false));
+  const uint64_t generation = _activeControllerGeneration.load();
+  // A whole chord shares one RTC task and can never spill into a new session.
+  dispatch_async(_rtcQueue, ^{
+    if (![self isControllerGenerationActive:generation] ||
+        !self->_state->controller_peer) return;
+    for (const auto& message : messages) {
+      MiniRtcSendReliableDataFrame(self->_state->controller_peer,
+                                  message.data(), message.size(), kKeyboardStream);
+    }
+  });
+}
+
 - (void)sendText:(NSString *)text {
   NSData *utf8 = [text dataUsingEncoding:NSUTF8StringEncoding];
   if (!utf8.length) return;

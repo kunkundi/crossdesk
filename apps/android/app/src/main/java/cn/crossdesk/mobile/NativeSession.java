@@ -299,6 +299,15 @@ final class NativeSession implements AutoCloseable {
     void surface(Surface value) { execute(() -> { surface = value; if (handle != 0) nSurface(handle, value); }); }
     void pointer(float x, float y, int flag, int wheel) { execute(() -> { if (connected) nPointer(handle, x, y, flag, wheel); }); }
     void key(int code, boolean down) { execute(() -> { if (connected) nKey(handle, code, down); }); }
+    void chord(int code,int[] modifiers) {
+        if(closed||!connected)return;
+        int[] keys=RemoteShortcuts.normalize(modifiers);
+        execute(()->{
+            if(!connected)return;
+            try{for(int modifier:keys)nKey(handle,modifier,true);nKey(handle,code,true);}
+            finally{nKey(handle,code,false);for(int i=keys.length-1;i>=0;i--)nKey(handle,keys[i],false);}
+        });
+    }
     boolean textEdit(int deletions,String text) {
         byte[] bytes=text.getBytes(StandardCharsets.UTF_8);
         boolean unicode=supportsTextInput;

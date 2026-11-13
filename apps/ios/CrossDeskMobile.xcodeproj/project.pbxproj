@@ -34,6 +34,8 @@
 		10000000000000000000001D /* RemoteMouseInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001D /* RemoteMouseInput.swift */; };
 		10000000000000000000001E /* VirtualMouseBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001E /* VirtualMouseBar.swift */; };
 		100000000000000000000030 /* RemoteSystemKeyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000030 /* RemoteSystemKeyboard.swift */; };
+		100000000000000000000031 /* RemoteShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000031 /* RemoteShortcuts.swift */; };
+		100000000000000000000032 /* RemoteShortcutPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000032 /* RemoteShortcutPanel.swift */; };
 		3C550ED141D4AEA30950BB7A /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 5BD6CC3A43B86A2E2267994F /* Localizable.strings */; };
 		4870B14C46F4C4B8F10FEF08 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A0A3C0DA09EE562AE21DF986 /* InfoPlist.strings */; };
 		C10F10000000000000000001 /* RemotePrivacyScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10F20000000000000000001 /* RemotePrivacyScreen.swift */; };
@@ -92,6 +94,8 @@
 		20000000000000000000001D /* RemoteMouseInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteMouseInput.swift; sourceTree = "<group>"; };
 		20000000000000000000001E /* VirtualMouseBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VirtualMouseBar.swift; sourceTree = "<group>"; };
 		200000000000000000000030 /* RemoteSystemKeyboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSystemKeyboard.swift; sourceTree = "<group>"; };
+		200000000000000000000031 /* RemoteShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteShortcuts.swift; sourceTree = "<group>"; };
+		200000000000000000000032 /* RemoteShortcutPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteShortcutPanel.swift; sourceTree = "<group>"; };
 		23D5AD87A9BF0CBF3A6AADDF /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = Resources/en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		2E83770B40B2D299796EB0CD /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "Resources/zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		2EA0435DFAEE685F04391B3B /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = Resources/es.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -187,6 +191,8 @@
 			children = (
 				20000000000000000000000A /* RemoteTouchInputView.swift */,
 				200000000000000000000030 /* RemoteSystemKeyboard.swift */,
+				200000000000000000000031 /* RemoteShortcuts.swift */,
+				200000000000000000000032 /* RemoteShortcutPanel.swift */,
 				20000000000000000000001D /* RemoteMouseInput.swift */,
 				20000000000000000000001E /* VirtualMouseBar.swift */,
 			);
@@ -361,6 +367,8 @@
 				100000000000000000000006 /* NativeMetalVideoView.swift in Sources */,
 				100000000000000000000007 /* RemoteTouchInputView.swift in Sources */,
 				100000000000000000000030 /* RemoteSystemKeyboard.swift in Sources */,
+				100000000000000000000031 /* RemoteShortcuts.swift in Sources */,
+				100000000000000000000032 /* RemoteShortcutPanel.swift in Sources */,
 				10000000000000000000001D /* RemoteMouseInput.swift in Sources */,
 				10000000000000000000001E /* VirtualMouseBar.swift in Sources */,
 				100000000000000000000012 /* PrivacyPreferences.swift in Sources */,

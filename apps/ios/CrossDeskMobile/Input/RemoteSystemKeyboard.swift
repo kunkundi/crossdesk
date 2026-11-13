@@ -10,6 +10,9 @@ struct RemoteSystemKeyboard: View {
     var geometry: RemoteKeyboardGeometry? = nil
     var animatePresentation = true
     var didPresent: () -> Void = {}
+    var shortcuts: [RemoteShortcut] = []
+    var sendShortcut: (RemoteShortcut) -> Void = { _ in }
+    var showShortcuts: () -> Void = {}
     let switchKeyboard: () -> Void
     let dismiss: () -> Void
 
@@ -23,6 +26,11 @@ struct RemoteSystemKeyboard: View {
             didPresent: didPresent,
             key: session.sendKeyStroke,
             status: session.keyboardInputStatus,
+            shortcuts: shortcuts,
+            sendShortcut: sendShortcut,
+            showShortcuts: showShortcuts,
+            inputBlocked: { session.showKeyboardCompositionHint() },
+            inputReady: session.clearKeyboardInputStatus,
             switchKeyboard: switchKeyboard,
             dismiss: dismiss
         )
@@ -43,6 +51,11 @@ private struct RemoteKeyboardHost: UIViewControllerRepresentable {
     let didPresent: () -> Void
     let key: (UInt) -> Void
     let status: String
+    let shortcuts: [RemoteShortcut]
+    let sendShortcut: (RemoteShortcut) -> Void
+    let showShortcuts: () -> Void
+    let inputBlocked: () -> Void
+    let inputReady: () -> Void
     let switchKeyboard: () -> Void
     let dismiss: () -> Void
 
@@ -63,13 +76,32 @@ private struct RemoteKeyboardHost: UIViewControllerRepresentable {
         controller.animatePresentation = animatePresentation
         controller.didPresent = didPresent
         controller.editor.key = key
+        let prepareShortcut: () -> Bool = { [weak controller] in
+            guard let controller else { return false }
+            if controller.editor.markedTextRange != nil { inputBlocked(); return false }
+            guard controller.editor.prepareShortcut() else { return false }
+            inputReady()
+            return true
+        }
         controller.inputBar.switchKeyboard = { [weak controller] in
-            controller?.rememberKeyboardHeight()
+            guard let controller, prepareShortcut() else { return }
+            controller.rememberKeyboardHeight()
             // Let SwiftUI install the replacement panel before teardown hides
             // the native keyboard, avoiding an empty frame between the two.
-            controller?.animateDismissal = false
+            controller.animateDismissal = false
             switchKeyboard()
         }
+        controller.inputBar.showShortcuts = { [weak controller] in
+            guard let controller, prepareShortcut() else { return }
+            controller.rememberKeyboardHeight()
+            controller.animateDismissal = false
+            showShortcuts()
+        }
+        controller.inputBar.sendShortcut = { item in
+            guard prepareShortcut() else { return }
+            sendShortcut(item)
+        }
+        controller.inputBar.setShortcuts(shortcuts)
         controller.inputBar.dismiss = { [weak controller] in
             controller?.stop()
             dismiss()
@@ -204,6 +236,8 @@ final class RemoteKeyboardController: UIViewController, ObservableObject {
         finishKeyboardPresentation()
         editor.stop()
         inputBar.switchKeyboard = nil
+        inputBar.showShortcuts = nil
+        inputBar.sendShortcut = nil
         inputBar.dismiss = nil
         let dismiss = {
             self.editor.resignFirstResponder()
@@ -258,6 +292,41 @@ private final class RemoteKeyboardHostView: UIView {
     }
 }
 
+/// Both replacement panels use the same edge controls and layout. Only the
+/// center content changes, so switching panels cannot move the return label.
+struct RemoteKeyboardToolbar<Center: View>: View {
+    let switchKeyboard: () -> Void
+    let more: () -> Void
+    var moreAccessibilityLabel = NSLocalizedString("更多快捷键", comment: "")
+    let dismiss: () -> Void
+    var dismissAccessibilityLabel = NSLocalizedString("收起键盘", comment: "")
+    @ViewBuilder var center: () -> Center
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Button(NSLocalizedString("系统键盘", comment: ""), action: switchKeyboard)
+                .font(.system(size: 15, weight: .medium))
+                .frame(minWidth: 80, minHeight: 44)
+                .fixedSize(horizontal: true, vertical: false)
+                .accessibilityLabel(NSLocalizedString("切换到系统键盘", comment: ""))
+            center()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Button(action: more) {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 17))
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel(moreAccessibilityLabel)
+            RemoteKeyboardDismissButton(accessibilityLabel: dismissAccessibilityLabel, action: dismiss)
+                .frame(width: 44, height: 44)
+        }
+        .padding(.horizontal, 4)
+        .frame(height: 44)
+        .foregroundStyle(Color(uiColor: .label))
+        .buttonStyle(.plain)
+    }
+}
+
 /// Use the same UIKit symbol layout in both the native and SwiftUI toolbars.
 /// Matching font sizes alone still gives their symbols different baselines.
 struct RemoteKeyboardDismissButton: UIViewRepresentable {
@@ -306,7 +375,11 @@ final class RemoteKeyboardInputBar: UIView {
         traits.userInterfaceStyle == .dark ? .secondarySystemBackground : .systemGray4
     }
     var switchKeyboard: (() -> Void)?
+    var showShortcuts: (() -> Void)?
+    var sendShortcut: ((RemoteShortcut) -> Void)?
     var dismiss: (() -> Void)?
+    private let shortcutRow = UIStackView()
+    private var shortcuts: [RemoteShortcut] = []
     private let statusLabel = UILabel()
     private let row = UIStackView()
     private var status = ""
@@ -331,10 +404,29 @@ final class RemoteKeyboardInputBar: UIView {
         dismissButton.accessibilityLabel = NSLocalizedString("收起系统键盘", comment: "")
         dismissButton.addTarget(self, action: #selector(hideKeyboard), for: .touchUpInside)
 
+        let moreButton = UIButton(type: .system)
+        moreButton.setImage(UIImage(systemName: "ellipsis"), for: .normal)
+        moreButton.accessibilityLabel = NSLocalizedString("更多快捷键", comment: "")
+        moreButton.addTarget(self, action: #selector(openShortcuts), for: .touchUpInside)
+        let scroll = UIScrollView()
+        scroll.showsHorizontalScrollIndicator = false
+        shortcutRow.axis = .horizontal
+        shortcutRow.spacing = 2
+        shortcutRow.translatesAutoresizingMaskIntoConstraints = false
+        scroll.addSubview(shortcutRow)
+        NSLayoutConstraint.activate([
+            shortcutRow.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+            shortcutRow.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
+            shortcutRow.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            shortcutRow.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+            shortcutRow.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor),
+            moreButton.widthAnchor.constraint(equalToConstant: 44)
+        ])
+
         row.axis = .horizontal
         row.alignment = .fill
         row.spacing = 4
-        for item in [computerButton, UIView(), dismissButton] { row.addArrangedSubview(item) }
+        for item in [computerButton, scroll, moreButton, dismissButton] { row.addArrangedSubview(item) }
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
         NSLayoutConstraint.activate([
@@ -368,6 +460,24 @@ final class RemoteKeyboardInputBar: UIView {
         setNeedsLayout()
     }
 
+    func setShortcuts(_ items: [RemoteShortcut]) {
+        guard items != shortcuts else { return }
+        shortcuts = items
+        for child in shortcutRow.arrangedSubviews { shortcutRow.removeArrangedSubview(child); child.removeFromSuperview() }
+        for item in items {
+            let button = UIButton(type: .system)
+            button.setTitle(item.title, for: .normal)
+            button.titleLabel?.font = .systemFont(ofSize: 13)
+            button.accessibilityLabel = item.title + ", " + item.chord
+            button.widthAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+            button.addAction(UIAction { [weak self] _ in
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                self?.sendShortcut?(item)
+            }, for: .touchUpInside)
+            shortcutRow.addArrangedSubview(button)
+        }
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         let inset = max(8, safeAreaInsets.left)
@@ -383,6 +493,7 @@ final class RemoteKeyboardInputBar: UIView {
     }
 
     @objc private func switchToComputer() { switchKeyboard?() }
+    @objc private func openShortcuts() { showShortcuts?() }
     @objc private func hideKeyboard() { dismiss?() }
 }
 
@@ -521,6 +632,13 @@ final class RemoteTextInputView: UITextField, UITextFieldDelegate {
         guard acceptingInput else { return }
         _ = synchronizeText()
         resetContext()
+    }
+
+    func prepareShortcut() -> Bool {
+        guard markedTextRange == nil, synchronizeText() else { return false }
+        // Future IME corrections must not delete text at a caret moved by a shortcut.
+        resetContext()
+        return true
     }
 
     func stop() {

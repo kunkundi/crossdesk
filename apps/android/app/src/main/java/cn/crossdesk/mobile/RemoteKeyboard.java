@@ -22,6 +22,12 @@ final class RemoteKeyboard extends LinearLayout {
     private final Runnable changed;
     private final LinearLayout toolbar,keys;
     private final TextView switchButton,lettersButton,functionsButton;
+    private final LinearLayout quickKeys;
+    private final HorizontalScrollView quickScroll;
+    private final TextView panelTitle;
+    private final RemoteShortcutPanel shortcutPanel;
+    private String hostPlatform="unknown";
+    private boolean shortcuts;
     private final Set<Integer> modifiers=new LinkedHashSet<>();
     private final SparseIntArray heights=new SparseIntArray();
     private boolean opened,computer,functions,imeVisible,measuring,switching,targetComputer;
@@ -35,15 +41,20 @@ final class RemoteKeyboard extends LinearLayout {
             public boolean edit(int count,String text){return actions.textEdit(count,text);}
             public void key(int code){actions.key(code);}
         });
+        shortcutPanel=new RemoteShortcutPanel(context,ui,this::sendShortcut,()->{render();changed.run();});
         FrameLayout header=new FrameLayout(context);addView(header,new LayoutParams(-1,ui.dp(44)));
         header.addView(editor,new FrameLayout.LayoutParams(1,1,Gravity.BOTTOM));
         toolbar=ui.row();toolbar.setGravity(Gravity.CENTER_VERTICAL);toolbar.setPadding(ui.dp(6),0,ui.dp(6),0);
         header.addView(toolbar,new FrameLayout.LayoutParams(-1,-1));
-        switchButton=button(L10n.tr("电脑键盘"),this::switchKeyboard);switchButton.setPadding(ui.dp(8),0,ui.dp(8),0);
+        switchButton=button(L10n.tr("电脑键盘"),()->{shortcuts=false;switchKeyboard();});switchButton.setPadding(ui.dp(8),0,ui.dp(8),0);
         toolbar.addView(switchButton,new LayoutParams(-2,-1));
         LinearLayout pages=ui.row();pages.setGravity(Gravity.CENTER);toolbar.addView(pages,new LayoutParams(0,-1,1));
+        quickScroll=new HorizontalScrollView(context);quickScroll.setHorizontalScrollBarEnabled(false);
+        quickKeys=ui.row();quickScroll.addView(quickKeys);pages.addView(quickScroll,new LayoutParams(-1,-1));
+        panelTitle=ui.text(L10n.tr("快捷键"),13,false);panelTitle.setGravity(Gravity.CENTER);pages.addView(panelTitle,new LayoutParams(-1,-1));
         lettersButton=button(L10n.tr("字母数字"),()->page(false));functionsButton=button(L10n.tr("符号功能"),()->page(true));
         pages.addView(lettersButton,new LayoutParams(-2,ui.dp(32)));pages.addView(functionsButton,new LayoutParams(-2,ui.dp(32)));
+        TextView more=button("⋯",this::showShortcuts);more.setContentDescription(L10n.tr("更多快捷键"));toolbar.addView(more,new LayoutParams(ui.dp(44),ui.dp(44)));
         FrameLayout hide=new FrameLayout(context);hide.setContentDescription(L10n.tr("收起键盘"));hide.setClickable(true);hide.setFocusable(true);
         hide.addView(ui.icon("keyboard_hide",foreground()),new FrameLayout.LayoutParams(ui.dp(24),ui.dp(24),Gravity.CENTER));
         hide.setOnClickListener(v->{feedback(v);close();});toolbar.addView(hide,new LayoutParams(ui.dp(44),ui.dp(44)));
@@ -60,6 +71,7 @@ final class RemoteKeyboard extends LinearLayout {
     private void feedback(View view){view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);}
     boolean isOpen(){return opened;}
     boolean isComputer(){return computer;}
+    void setPlatform(String value){hostPlatform=RemoteShortcuts.platform(value);shortcutPanel.platform(hostPlatform);if(opened)render();}
     int bottomInset(){return opened&&!computer?imeHeight:0;}
     private int sizeKey(){Configuration c=getResources().getConfiguration();return c.screenWidthDp*10000+c.screenHeightDp;}
     private int keyAreaHeight(){
@@ -71,11 +83,11 @@ final class RemoteKeyboard extends LinearLayout {
     int preferredHeight(){return ui.dp(44)+(computer?keyAreaHeight():0);}
     void toggle(){if(opened)close();else open();}
     void open(){
-        opened=true;computer=false;modifiers.clear();editor.start();setVisibility(VISIBLE);render();changed.run();
+        opened=true;computer=shortcuts=false;modifiers.clear();editor.start();setVisibility(VISIBLE);render();changed.run();
         post(()->{if(opened&&!computer)changeIme(true,false,false);});
     }
     boolean close(){
-        if(!opened)return false;opened=false;measuring=switching=false;cancelTransition();modifiers.clear();editor.stop();
+        shortcutPanel.close();if(!opened)return false;opened=false;measuring=switching=false;cancelTransition();modifiers.clear();editor.stop();
         getContext().getSystemService(InputMethodManager.class).hideSoftInputFromWindow(getWindowToken(),0);
         setVisibility(GONE);changed.run();return true;
     }
@@ -83,6 +95,7 @@ final class RemoteKeyboard extends LinearLayout {
     private void page(boolean next){functions=next;render();}
     private void switchKeyboard(){
         if(!opened||switching)return;
+        if(!computer&&!prepareShortcut())return;
         targetComputer=!computer;switching=true;modifiers.clear();
         if(targetComputer){
             editor.pause();computer=true;render();changed.run();
@@ -98,6 +111,20 @@ final class RemoteKeyboard extends LinearLayout {
             }));
             invalidate();
         }else changeIme(!targetComputer,true,false);
+    }
+    private boolean prepareShortcut(){
+        if(computer)return true;
+        if(editor.hasPendingComposition()){Toast.makeText(getContext(),L10n.tr("请先选词或取消组词"),Toast.LENGTH_SHORT).show();return false;}
+        return editor.prepareShortcut();
+    }
+    private void showShortcuts(){
+        if(!opened||switching)return;
+        if(computer){if(shortcuts)switchKeyboard();else{shortcuts=true;modifiers.clear();render();changed.run();}}
+        else{shortcuts=true;switchKeyboard();}
+    }
+    private void sendShortcut(RemoteShortcuts.Item item){
+        if(!opened||switching||!item.platform.equals(hostPlatform)||!prepareShortcut())return;
+        modifiers.clear();if(item.service)actions.secureAttention();else actions.chord(item.key,item.modifiers);
     }
     private void finishSwitch(){
         if(!switching)return;switching=false;
@@ -158,7 +185,9 @@ final class RemoteKeyboard extends LinearLayout {
     private void render(){
         setBackgroundColor(dark()?0xFF202124:0xFFE8EAED);
         switchButton.setText(computer?L10n.tr("系统键盘"):L10n.tr("电脑键盘"));switchButton.setTextColor(foreground());
-        lettersButton.setVisibility(computer?VISIBLE:GONE);functionsButton.setVisibility(computer?VISIBLE:GONE);
+        lettersButton.setVisibility(computer&&!shortcuts?VISIBLE:GONE);functionsButton.setVisibility(computer&&!shortcuts?VISIBLE:GONE);
+        quickScroll.setVisibility(computer?GONE:VISIBLE);panelTitle.setVisibility(computer&&shortcuts?VISIBLE:GONE);panelTitle.setTextColor(foreground());
+        quickKeys.removeAllViews();for(RemoteShortcuts.Item item:shortcutPanel.store.pinned(hostPlatform)){TextView key=button(item.title(),()->sendShortcut(item));key.setContentDescription(item.title()+", "+item.chord());quickKeys.addView(key,new LayoutParams(-2,ui.dp(44)));}
         for(TextView view:new TextView[]{lettersButton,functionsButton}){
             boolean selected=(view==functionsButton)==functions;view.setSelected(selected);
             view.setTextColor(selected?(dark()?0xFFA8C7FA:0xFF185ABC):foreground());
@@ -169,6 +198,7 @@ final class RemoteKeyboard extends LinearLayout {
     private void renderKeysIfNeeded(int width){
         if(!computer)return;int height=keyAreaHeight();
         if(layoutWidth==width&&layoutHeight==height)return;layoutWidth=width;layoutHeight=height;keys.removeAllViews();
+        if(shortcuts){keys.addView(shortcutPanel.create(),new LayoutParams(-1,-1));return;}
         boolean landscape=getResources().getConfiguration().screenWidthDp>getResources().getConfiguration().screenHeightDp;
         String[][] upper;
         if(!functions)upper=new String[][]{{"1","2","3","4","5","6","7","8","9","0"},{"q","w","e","r","t","y","u","i","o","p"},{"a","s","d","f","g","h","j","k","l"}};
@@ -185,6 +215,7 @@ final class RemoteKeyboard extends LinearLayout {
         LinearLayout line=ui.row();line.setGravity(Gravity.CENTER);
         for(String value:values){
             boolean shift=modifiers.contains(16);String shown=shift&&value.length()==1?shifted(value):value;
+            if(value.equals("Win"))shown=RemoteShortcuts.modifierName(91,hostPlatform);else if(value.equals("Alt"))shown=RemoteShortcuts.modifierName(18,hostPlatform);
             TextView key=button(L10n.tr(shown),()->key(value));key.setPadding(0,0,0,0);
             key.setTextSize(value.length()>1?12:18);key.setSingleLine(true);
             int modifier=modifier(value);boolean selected=modifier!=0&&modifiers.contains(modifier);key.setSelected(selected);
@@ -209,6 +240,7 @@ final class RemoteKeyboard extends LinearLayout {
         int modifier=modifier(value);if(modifier!=0){if(!modifiers.add(modifier))modifiers.remove(modifier);render();return;}
         int code=switch(value){case "空格"->32;case "Enter"->13;case "⌫"->8;case "Esc"->27;case "Tab"->9;case "Caps"->20;case "Ins"->45;case "Del"->46;case "Home"->36;case "End"->35;case "PgUp"->33;case "PgDn"->34;case "←"->37;case "↑"->38;case "→"->39;case "↓"->40;default->value.startsWith("F")?111+Integer.parseInt(value.substring(1)):KeyMap.ascii(value.charAt(0))&255;};
         actions.chord(code,modifiers.stream().mapToInt(Integer::intValue).toArray());
+        modifiers.clear();render();
     }
     @Override protected void onMeasure(int widthSpec,int heightSpec){
         renderKeysIfNeeded(MeasureSpec.getSize(widthSpec));super.onMeasure(widthSpec,heightSpec);

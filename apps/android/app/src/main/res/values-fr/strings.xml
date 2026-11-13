@@ -315,4 +315,59 @@
     <string name="text_cbacf1eafbca53e0" formatted="false">"Informations d’association copiées."</string>
     <string name="text_cde42ccdeacbbbd9" formatted="false">"Impossible de copier les informations d’association. Réessayez."</string>
     <string name="text_7383b2ae09252c59" formatted="false">"Le stockage sécurisé n\'est pas disponible, veuillez déverrouiller l\'appareil et réessayer"</string>
+    <string name="text_c9b9ae7a61444ab7" formatted="false">"Page précédente"</string>
+    <string name="text_8a8542f6964852dc" formatted="false">"Page suivante"</string>
+    <string name="text_0c4f690eb398c12e" formatted="false">"Touche principale"</string>
+    <string name="text_62fdb5304cf5cd9b" formatted="false">"Gestionnaire des tâches"</string>
+    <string name="text_a3030bf8f16dc63c" formatted="false">"Enregistrer"</string>
+    <string name="text_ba0e2ff8201bc6a6" formatted="false">"Touches de modification"</string>
+    <string name="text_3a5040b68abf75f9" formatted="false">"Sélectionner tout"</string>
+    <string name="text_c2d918002afcc3d4" formatted="false">"Changer d’application"</string>
+    <string name="text_a7fe8e2685849c31" formatted="false">"Changer de fenêtre"</string>
+    <string name="text_410a8e8a6bf253ac" formatted="false">"Couper"</string>
+    <string name="text_6309cd49db59d165" formatted="false">"Combinaison à envoyer"</string>
+    <string name="text_d44e9b3d3b31d37b" formatted="false">"Nom"</string>
+    <string name="text_6789dd11afc7c4c5" formatted="false">"Monter"</string>
+    <string name="text_352c003784b1c89e" formatted="false">"Épingler au-dessus du clavier"</string>
+    <string name="text_63d90d977348ab1f" formatted="false">"Copier"</string>
+    <string name="text_ecb0d13f3f8bfd0d" formatted="false">"Options de sécurité"</string>
+    <string name="text_dd1b1da65a6c89de" formatted="false">"Cette combinaison existe déjà"</string>
+    <string name="text_4563c57b5143deaa" formatted="false">"Favoris"</string>
+    <string name="text_6308bf1373bd0ee8" formatted="false">"Liste des applications"</string>
+    <string name="text_8dc0823d700cf875" formatted="false">"Fenêtre Forcer à quitter"</string>
+    <string name="text_ee2638183d3ea860" formatted="false">"Raccourcis"</string>
+    <string name="text_7f1d9dd04cd1c7b8" formatted="false">"Mes raccourcis"</string>
+    <string name="text_7c7577d4d4fc6009" formatted="false">"Touches"</string>
+    <string name="text_926a50b98ece2667" formatted="false">"Annuler l’action"</string>
+    <string name="text_50ef2f4cf6a46924" formatted="false">"Nouveau"</string>
+    <string name="text_c6904bb36f7f62c5" formatted="false">"Nouveau raccourci"</string>
+    <string name="text_5cfe4846aa8a7228" formatted="false">"Afficher le bureau"</string>
+    <string name="text_feb12adf8e0315e2" formatted="false">"Autres raccourcis"</string>
+    <string name="text_5d6bce93c0649a63" formatted="false">"Enregistrez jusqu’à 16 raccourcis personnalisés"</string>
+    <string name="text_f33cb21422f62ee8" formatted="false">"Épinglez jusqu’à 8 raccourcis"</string>
+    <string name="text_4d8c1c5b42830791" formatted="false">"Inconnu"</string>
+    <string name="text_6b1fa1d7159de777" formatted="false">"Édition locale. La saisie reste sur cet appareil."</string>
+    <string name="text_cb9eaa63c25d383e" formatted="false">"Ajouter à la barre des favoris"</string>
+    <string name="text_6135d4159e892541" formatted="false">"Retirer"</string>
+    <string name="text_e693ff5832c7f46d" formatted="false">"Menu de la fenêtre"</string>
+    <string name="text_096a247cc5455ba7" formatted="false">"En attente des informations du système distant"</string>
+    <string name="text_39c7740197c41d44" formatted="false">"Gérer et personnaliser"</string>
+    <string name="text_2dc8c27b75796b36" formatted="false">"Gérer les raccourcis"</string>
+    <string name="text_33517926747180e6" formatted="false">"Coller"</string>
+    <string name="text_5b50d7c4b5950dc5" formatted="false">"Système"</string>
+    <string name="text_45123fa07e22fb3e" formatted="false">"Copier dans le terminal"</string>
+    <string name="text_3936f3d30a763a35" formatted="false">"Coller dans le terminal"</string>
+    <string name="text_051836569928a9f9" formatted="false">"Modifier"</string>
+    <string name="text_0ecda10acc934f22" formatted="false">"Modifier le raccourci"</string>
+    <string name="text_d32d2a4e0e83d7cf" formatted="false">"Recherche Spotlight"</string>
+    <string name="text_add54b3ce4b1c661" formatted="false">"Utilisez les options de sécurité des préréglages système"</string>
+    <string name="text_ae066f34095261c9" formatted="false">"Validez ou annulez d’abord la composition en cours"</string>
+    <string name="text_a895bdb6f1f11e99" formatted="false">"Saisissez un nom de 1 à 64 caractères"</string>
+    <string name="text_6b3213d2afed99e8" formatted="false">"Sélectionnez une touche valide"</string>
+    <string name="text_819569ec77acb01e" formatted="false">"Fenêtre Exécuter"</string>
+    <string name="text_22c4107f03c3533e" formatted="false">"Aucun raccourci personnalisé"</string>
+    <string name="text_b07f98d4671af3f9" formatted="false">"Système distant"</string>
+    <string name="text_4bdabfba3368869d" formatted="false">"Choisir l’environnement de bureau"</string>
+    <string name="text_4fa28857c6f253cc" formatted="false">"Choisissez un environnement pour charger les préréglages système"</string>
+    <string name="text_fc5f6f7462e8557a" formatted="false">"Favoris au-dessus du clavier"</string>
 </resources>

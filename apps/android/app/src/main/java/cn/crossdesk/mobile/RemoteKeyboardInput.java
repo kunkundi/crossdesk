@@ -52,6 +52,15 @@ final class RemoteKeyboardInput extends EditText {
     void pause() { accepting=false;resetContext(); }
     void stop() { pause();clearFocus(); }
     boolean isAcceptingInput() { return accepting; }
+    boolean hasPendingComposition() { return batches>0||composing(); }
+    boolean prepareShortcut() {
+        if(!synchronize())return false;
+        // Navigation and shortcuts invalidate the remote correction context.
+        // Flush committed text first; never send or discard an IME preedit.
+        if(enterPending)sender.key(13);
+        resetContext();
+        return true;
+    }
     void resetContext() {
         generation++;batches=0;main.removeCallbacks(synchronize);resetting=true;
         // EditText.setText replaces the buffer and internally restarts the IME,

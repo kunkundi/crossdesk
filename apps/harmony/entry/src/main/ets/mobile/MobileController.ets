@@ -12,6 +12,7 @@ import { AnnouncementInbox, AnnouncementItem, AnnouncementRequest, AnnouncementR
 import { VideoSettings, VideoValues, NetworkStatistics, NetworkReport, RecentPresence, PresenceMessage, asciiKey } from './ControllerModels';
 
 interface Command {
+  modifiers?: number[];
   trustKey?: string;
   displayResolutions?: ResolutionPreference[];
   displayId?: number; displayKey?: string; width?: number; height?: number;
@@ -308,8 +309,8 @@ export class MobileController {
   physicalKey(code: number, down: boolean): void { if (this.state.modal === 'privacyUnlock') return; this.send({ op: 'key', code: code, down: down }); }
   key(code: number, down: boolean): void { if (this.state.modal === 'privacyUnlock') return; this.send({ op: 'virtualKey', code: code, down: down }); }
   chord(code: number, modifiers: number[] = []): void {
-    modifiers.forEach((key: number) => this.key(key, true)); this.key(code, true); this.key(code, false);
-    modifiers.slice().reverse().forEach((key: number) => this.key(key, false));
+    if (!this.state.ready || !this.state.consent || this.state.modal === 'privacyUnlock') return;
+    this.send({ op: 'chord', code, modifiers: [17, 16, 18, 91].filter((key: number) => modifiers.includes(key)), connection: this.connection });
   }
   shortcut(code: number): void { this.chord(code, [this.state.platform === 'macos' ? 91 : 17]); }
   text(text: string): void {

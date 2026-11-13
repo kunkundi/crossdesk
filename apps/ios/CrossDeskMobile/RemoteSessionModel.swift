@@ -1224,11 +1224,34 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     func sendKeyStroke(_ keyCode: UInt) {
-        bridge.sendWindowsKeyCode(keyCode, isDown: true)
-        bridge.sendWindowsKeyCode(keyCode, isDown: false)
+        sendKeyChord(keyCode, modifiers: [])
+    }
+
+    func sendKeyChord(_ keyCode: UInt, modifiers: [UInt]) {
+        guard hasNetworkConsent, isConnected, !privacyScreen.unlockNotice else { return }
+        bridge.sendKeyChord(keyCode, modifiers: RemoteShortcut.modifierKeys.filter(modifiers.contains).map { NSNumber(value: $0) })
+    }
+
+    func showKeyboardCompositionHint() {
+        keyboardInputStatus = NSLocalizedString("请先选词或取消组词", comment: "")
+    }
+
+    func clearKeyboardInputStatus() { keyboardInputStatus = "" }
+
+    func sendShortcut(_ item: RemoteShortcut) {
+        guard hasNetworkConsent, isConnected, !privacyScreen.unlockNotice,
+              item.platform == remotePlatform.rawValue else { return }
+        keyboardInputStatus = ""
+        if item.service {
+            sendSecureAttention()
+            keyboardInputStatus = controlStatus
+        } else {
+            sendKeyChord(item.key, modifiers: item.modifiers)
+        }
     }
 
     func sendKeyState(_ keyCode: UInt, isDown: Bool) {
+        guard hasNetworkConsent, isConnected else { return }
         bridge.sendWindowsKeyCode(keyCode, isDown: isDown)
     }
 
@@ -1504,6 +1527,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     func rtcBridge(_ bridge: CrossDeskRTCBridge, didSendSecureAttention success: Bool) {
         guard hasNetworkConsent, isConnected else { return }
         controlStatus = success ? NSLocalizedString("已发送 Ctrl+Alt+Del", comment: "") : NSLocalizedString("指令发送失败，请重试", comment: "")
+        keyboardInputStatus = controlStatus
     }
 
     func rtcBridge(_ bridge: CrossDeskRTCBridge,

@@ -315,4 +315,59 @@
     <string name="text_cbacf1eafbca53e0" formatted="false">"配對資訊已複製。"</string>
     <string name="text_cde42ccdeacbbbd9" formatted="false">"無法複製配對資訊，請重試。"</string>
     <string name="text_7383b2ae09252c59" formatted="false">"安全儲存不可用，請解鎖裝置後重試"</string>
+    <string name="text_c9b9ae7a61444ab7" formatted="false">"上一頁"</string>
+    <string name="text_8a8542f6964852dc" formatted="false">"下一頁"</string>
+    <string name="text_0c4f690eb398c12e" formatted="false">"主按鍵"</string>
+    <string name="text_62fdb5304cf5cd9b" formatted="false">"工作管理員"</string>
+    <string name="text_a3030bf8f16dc63c" formatted="false">"儲存"</string>
+    <string name="text_ba0e2ff8201bc6a6" formatted="false">"修飾鍵"</string>
+    <string name="text_3a5040b68abf75f9" formatted="false">"全選"</string>
+    <string name="text_c2d918002afcc3d4" formatted="false">"切換應用程式"</string>
+    <string name="text_a7fe8e2685849c31" formatted="false">"切換視窗"</string>
+    <string name="text_410a8e8a6bf253ac" formatted="false">"剪下"</string>
+    <string name="text_6309cd49db59d165" formatted="false">"傳送組合"</string>
+    <string name="text_d44e9b3d3b31d37b" formatted="false">"名稱"</string>
+    <string name="text_6789dd11afc7c4c5" formatted="false">"向上移動"</string>
+    <string name="text_352c003784b1c89e" formatted="false">"固定到鍵盤上方"</string>
+    <string name="text_63d90d977348ab1f" formatted="false">"複製"</string>
+    <string name="text_ecb0d13f3f8bfd0d" formatted="false">"安全性選項"</string>
+    <string name="text_dd1b1da65a6c89de" formatted="false">"已有相同組合的快捷鍵"</string>
+    <string name="text_4563c57b5143deaa" formatted="false">"常用"</string>
+    <string name="text_6308bf1373bd0ee8" formatted="false">"應用程式列表"</string>
+    <string name="text_8dc0823d700cf875" formatted="false">"強制結束面板"</string>
+    <string name="text_ee2638183d3ea860" formatted="false">"快速鍵"</string>
+    <string name="text_7f1d9dd04cd1c7b8" formatted="false">"我的"</string>
+    <string name="text_7c7577d4d4fc6009" formatted="false">"按鍵"</string>
+    <string name="text_926a50b98ece2667" formatted="false">"復原"</string>
+    <string name="text_50ef2f4cf6a46924" formatted="false">"新增"</string>
+    <string name="text_c6904bb36f7f62c5" formatted="false">"新增快速鍵"</string>
+    <string name="text_5cfe4846aa8a7228" formatted="false">"顯示桌面"</string>
+    <string name="text_feb12adf8e0315e2" formatted="false">"更多快速鍵"</string>
+    <string name="text_5d6bce93c0649a63" formatted="false">"最多儲存 16 個自訂快速鍵"</string>
+    <string name="text_f33cb21422f62ee8" formatted="false">"最多固定 8 個快速鍵"</string>
+    <string name="text_4d8c1c5b42830791" formatted="false">"未知"</string>
+    <string name="text_6b1fa1d7159de777" formatted="false">"本機編輯，輸入不會傳送到遠端"</string>
+    <string name="text_cb9eaa63c25d383e" formatted="false">"加入常用列"</string>
+    <string name="text_6135d4159e892541" formatted="false">"移除"</string>
+    <string name="text_e693ff5832c7f46d" formatted="false">"視窗選單"</string>
+    <string name="text_096a247cc5455ba7" formatted="false">"等待遠端平台資訊"</string>
+    <string name="text_39c7740197c41d44" formatted="false">"管理與自訂"</string>
+    <string name="text_2dc8c27b75796b36" formatted="false">"管理快速鍵"</string>
+    <string name="text_33517926747180e6" formatted="false">"貼上"</string>
+    <string name="text_5b50d7c4b5950dc5" formatted="false">"系統"</string>
+    <string name="text_45123fa07e22fb3e" formatted="false">"終端機複製"</string>
+    <string name="text_3936f3d30a763a35" formatted="false">"終端機貼上"</string>
+    <string name="text_051836569928a9f9" formatted="false">"編輯"</string>
+    <string name="text_0ecda10acc934f22" formatted="false">"編輯快速鍵"</string>
+    <string name="text_d32d2a4e0e83d7cf" formatted="false">"Spotlight 搜尋"</string>
+    <string name="text_add54b3ce4b1c661" formatted="false">"請使用系統預設中的安全性選項"</string>
+    <string name="text_ae066f34095261c9" formatted="false">"請先選字或取消組字"</string>
+    <string name="text_a895bdb6f1f11e99" formatted="false">"請輸入有效的快速鍵名稱"</string>
+    <string name="text_6b3213d2afed99e8" formatted="false">"請選擇有效的按鍵"</string>
+    <string name="text_819569ec77acb01e" formatted="false">"執行視窗"</string>
+    <string name="text_22c4107f03c3533e" formatted="false">"尚無自訂快速鍵"</string>
+    <string name="text_b07f98d4671af3f9" formatted="false">"適用遠端"</string>
+    <string name="text_4bdabfba3368869d" formatted="false">"選擇桌面環境"</string>
+    <string name="text_4fa28857c6f253cc" formatted="false">"選擇桌面環境以載入系統預設"</string>
+    <string name="text_fc5f6f7462e8557a" formatted="false">"鍵盤上方常用列"</string>
 </resources>

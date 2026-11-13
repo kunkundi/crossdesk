@@ -72,6 +72,7 @@ final class SessionControls extends FrameLayout {
     }
     void setRelative(boolean value){relative=value;if(menu!=null&&menuPage.equals("controls"))openMenu("controls");}
     void setHostPlatform(String platform){
+        keyboard.setPlatform(platform);
         boolean visible="windows".equals(platform);
         if(secureAttentionVisible==visible)return;
         secureAttentionVisible=visible;

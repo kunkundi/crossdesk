@@ -282,8 +282,9 @@ the insertion point, and Return starts a new context. Text edited directly on
 the host is not mirrored back; automatic corrections assume the remote caret
 still follows the text entered from the phone.
 
-Only the **电脑键盘** switch and keyboard hide button are visible in the 44-point
-native input row, anchored to `UIKeyboardLayoutGuide`. Its background continues
+The 44-point native input row contains the **电脑键盘** switch, a horizontally
+scrollable favorites bar (Escape, Tab, Copy and Paste by default), More and Hide.
+It is anchored to `UIKeyboardLayoutGuide`. Its background continues
 behind the system keyboard; no input accessory slot is reserved. The IME's
 candidate bar remains native. Chinese nine-key Pinyin reserves its own
 spelling-choice row above the candidates (for example `m`, `n`, `o`); this may
@@ -310,8 +311,8 @@ iOS does not expose the native keyboard's intensity for custom controls to read.
 One feedback generator is reused
 while the keyboard is visible and released when it closes. Haptics require
 supported hardware; the simulator can only verify the feedback trigger.
-Latched modifiers survive page changes and are released when the
-keyboard closes or switches back to the system keyboard. The panel reuses the
+Modifiers are selected locally and applied to the next key, then cleared. A
+whole chord is queued as one RTC task and releases modifiers in reverse order. The panel reuses the
 last measured native keyboard height, including the 44-point control row, for
 the current window width and orientation. Before landscape has been measured,
 the iPhone fallback uses a 161-point compact keybed plus the actual bottom safe
@@ -705,3 +706,18 @@ the applicable [export-compliance determination](https://developer.apple.com/hel
 After that determination, supply the appropriate declaration and any required
 approval code in the distribution build. The repository deliberately does not
 preselect an exemption.
+
+## Remote shortcuts
+
+More replaces the keybed with Common, Keys, System and Mine groups, using the
+last measured native keyboard height. Copy/Paste and other semantic presets
+follow the remote OS: Ctrl on Windows/Linux and Cmd on macOS. Linux system
+presets require an explicit GNOME or KDE Plasma choice. Windows security
+options use the existing Ctrl+Alt+Del service command. Unknown remote platforms
+expose generic keys until host information arrives.
+
+Manage & Customize opens a separate local screen. Save up to 16 named custom
+chords and pin up to 8 shortcuts per remote platform; reorder, unpin, edit and
+delete them locally. Custom chords preserve their selected modifiers when the
+target platform changes. Shortcut taps flush committed text and reset the IME
+correction context; an active composition must be confirmed or cancelled first.

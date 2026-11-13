@@ -315,4 +315,59 @@
     <string name="text_cbacf1eafbca53e0" formatted="false">"페어링 정보를 복사했습니다."</string>
     <string name="text_cde42ccdeacbbbd9" formatted="false">"페어링 정보를 복사할 수 없습니다. 다시 시도하세요."</string>
     <string name="text_7383b2ae09252c59" formatted="false">"보안 저장소를 사용할 수 없습니다. 장치를 잠금 해제한 후 다시 시도해 주세요."</string>
+    <string name="text_c9b9ae7a61444ab7" formatted="false">"이전 페이지"</string>
+    <string name="text_8a8542f6964852dc" formatted="false">"다음 페이지"</string>
+    <string name="text_0c4f690eb398c12e" formatted="false">"기본 키"</string>
+    <string name="text_62fdb5304cf5cd9b" formatted="false">"작업 관리자"</string>
+    <string name="text_a3030bf8f16dc63c" formatted="false">"저장"</string>
+    <string name="text_ba0e2ff8201bc6a6" formatted="false">"보조 키"</string>
+    <string name="text_3a5040b68abf75f9" formatted="false">"모두 선택"</string>
+    <string name="text_c2d918002afcc3d4" formatted="false">"앱 전환"</string>
+    <string name="text_a7fe8e2685849c31" formatted="false">"창 전환"</string>
+    <string name="text_410a8e8a6bf253ac" formatted="false">"잘라내기"</string>
+    <string name="text_6309cd49db59d165" formatted="false">"전송할 키 조합"</string>
+    <string name="text_d44e9b3d3b31d37b" formatted="false">"이름"</string>
+    <string name="text_6789dd11afc7c4c5" formatted="false">"위로 이동"</string>
+    <string name="text_352c003784b1c89e" formatted="false">"키보드 위에 고정"</string>
+    <string name="text_63d90d977348ab1f" formatted="false">"복사"</string>
+    <string name="text_ecb0d13f3f8bfd0d" formatted="false">"보안 옵션"</string>
+    <string name="text_dd1b1da65a6c89de" formatted="false">"이미 등록된 키 조합입니다"</string>
+    <string name="text_4563c57b5143deaa" formatted="false">"자주 사용"</string>
+    <string name="text_6308bf1373bd0ee8" formatted="false">"앱 목록"</string>
+    <string name="text_8dc0823d700cf875" formatted="false">"강제 종료 대화상자"</string>
+    <string name="text_ee2638183d3ea860" formatted="false">"단축키"</string>
+    <string name="text_7f1d9dd04cd1c7b8" formatted="false">"내 단축키"</string>
+    <string name="text_7c7577d4d4fc6009" formatted="false">"키"</string>
+    <string name="text_926a50b98ece2667" formatted="false">"실행 취소"</string>
+    <string name="text_50ef2f4cf6a46924" formatted="false">"새로 만들기"</string>
+    <string name="text_c6904bb36f7f62c5" formatted="false">"새 단축키"</string>
+    <string name="text_5cfe4846aa8a7228" formatted="false">"바탕 화면 표시"</string>
+    <string name="text_feb12adf8e0315e2" formatted="false">"더 많은 단축키"</string>
+    <string name="text_5d6bce93c0649a63" formatted="false">"사용자 지정 단축키는 최대 16개까지 저장할 수 있습니다"</string>
+    <string name="text_f33cb21422f62ee8" formatted="false">"단축키는 최대 8개까지 고정할 수 있습니다"</string>
+    <string name="text_4d8c1c5b42830791" formatted="false">"알 수 없음"</string>
+    <string name="text_6b1fa1d7159de777" formatted="false">"로컬 편집 중입니다. 입력은 원격 기기로 전송되지 않습니다."</string>
+    <string name="text_cb9eaa63c25d383e" formatted="false">"즐겨찾기 모음에 추가"</string>
+    <string name="text_6135d4159e892541" formatted="false">"제거"</string>
+    <string name="text_e693ff5832c7f46d" formatted="false">"창 메뉴"</string>
+    <string name="text_096a247cc5455ba7" formatted="false">"원격 플랫폼 정보를 기다리는 중"</string>
+    <string name="text_39c7740197c41d44" formatted="false">"관리 및 사용자 지정"</string>
+    <string name="text_2dc8c27b75796b36" formatted="false">"단축키 관리"</string>
+    <string name="text_33517926747180e6" formatted="false">"붙여넣기"</string>
+    <string name="text_5b50d7c4b5950dc5" formatted="false">"시스템"</string>
+    <string name="text_45123fa07e22fb3e" formatted="false">"터미널 복사"</string>
+    <string name="text_3936f3d30a763a35" formatted="false">"터미널 붙여넣기"</string>
+    <string name="text_051836569928a9f9" formatted="false">"편집"</string>
+    <string name="text_0ecda10acc934f22" formatted="false">"단축키 편집"</string>
+    <string name="text_d32d2a4e0e83d7cf" formatted="false">"Spotlight 검색"</string>
+    <string name="text_add54b3ce4b1c661" formatted="false">"시스템 프리셋의 보안 옵션을 사용하세요"</string>
+    <string name="text_ae066f34095261c9" formatted="false">"먼저 조합 중인 문자를 확정하거나 취소하세요"</string>
+    <string name="text_a895bdb6f1f11e99" formatted="false">"단축키 이름을 1~64자로 입력하세요"</string>
+    <string name="text_6b3213d2afed99e8" formatted="false">"유효한 키를 선택하세요"</string>
+    <string name="text_819569ec77acb01e" formatted="false">"실행 대화상자"</string>
+    <string name="text_22c4107f03c3533e" formatted="false">"아직 사용자 지정 단축키가 없습니다"</string>
+    <string name="text_b07f98d4671af3f9" formatted="false">"대상 원격 플랫폼"</string>
+    <string name="text_4bdabfba3368869d" formatted="false">"데스크톱 환경 선택"</string>
+    <string name="text_4fa28857c6f253cc" formatted="false">"데스크톱 환경을 선택하여 시스템 프리셋을 불러오세요"</string>
+    <string name="text_fc5f6f7462e8557a" formatted="false">"키보드 위 즐겨찾기 모음"</string>
 </resources>

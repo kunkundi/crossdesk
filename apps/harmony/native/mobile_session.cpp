@@ -327,6 +327,21 @@ class MobileSession {
         if (key<=0||key>255) return;
         const bool down=v.at("down").get<bool>(); if (down) keys_.insert(key); else keys_.erase(key);
         RemoteAction a{}; a.type=keyboard; a.k={size_t(key),0,false,down?key_down:key_up}; Send(a,kKeyboardStream);
+      } else if (op=="chord") {
+        if (v.at("connection").get<uint64_t>() != connection_) return;
+        const int key=v.at("code").get<int>();
+        const auto modifiers=v.at("modifiers").get<std::vector<int>>();
+        if (key<=0||key>255||modifiers.size()>4) return;
+        std::vector<int> ordered;
+        for (const int modifier : {17,16,18,91})
+          if (std::find(modifiers.begin(),modifiers.end(),modifier)!=modifiers.end()) ordered.push_back(modifier);
+        const auto stroke=[this](int code,bool down) {
+          if (down) keys_.insert(code); else keys_.erase(code);
+          RemoteAction a{}; a.type=keyboard; a.k={size_t(code),0,false,down?key_down:key_up}; Send(a,kKeyboardStream);
+        };
+        for (const int modifier : ordered) stroke(modifier,true);
+        stroke(key,true); stroke(key,false);
+        for (auto it=ordered.rbegin();it!=ordered.rend();++it) stroke(*it,false);
       } else if (op=="display") {
         const int index=v.at("index").get<int>(); if(index<0||index>=32)return;
         Release(); display_=index; ++video_generation_; renderer_.Clear();

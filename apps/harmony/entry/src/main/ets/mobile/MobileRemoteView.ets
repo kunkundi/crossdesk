@@ -1,3 +1,5 @@
+import { RemoteShortcut, RemoteShortcuts } from './RemoteShortcuts';
+import { RemoteShortcutPanel, RemoteShortcutManager } from './RemoteShortcutPanel';
 import { tr } from './Localization';
 import { ResolutionMode, resolutionLabel } from './RemoteDisplayResolutions';
 import { MobileController, MobileState } from './MobileController';
@@ -26,6 +28,12 @@ export struct MobileRemoteView {
   private orbPositioned: boolean = false;
   @State private keyboard: boolean = false;
   @State private computerKeyboard: boolean = false;
+  @State private shortcutPanel: boolean = false;
+  @State private shortcutManager: boolean = false;
+  @State private pinnedShortcuts: RemoteShortcut[] = [];
+  @State private shortcutRevision: number = 0;
+  private shortcutStore?: RemoteShortcuts;
+  private shortcutPlatform: string = '';
   @State private shift: boolean = false;
   @State private modifiers: number[] = [];
   @State private keyboardX: number = 8;
@@ -56,9 +64,23 @@ export struct MobileRemoteView {
   private wheelLast: number = 0;
   private keyboardOriginX: number = 0;
   private keyboardOriginY: number = 0;
-  aboutToAppear(): void { if (this.controller) this.controller.releaseInput = () => this.release(); this.stateChanged(); }
+  aboutToAppear(): void {
+    if (this.controller) { this.controller.releaseInput = () => this.release(); this.shortcutStore = new RemoteShortcuts(this.controller.store); }
+    this.refreshShortcuts(); this.stateChanged();
+  }
+  private refreshShortcuts(): void { this.pinnedShortcuts = this.shortcutStore?.pinned(this.state.platform) ?? []; this.shortcutRevision++; }
+  private sendShortcut(item: RemoteShortcut): void {
+    if (!this.state.ready || item.platform !== RemoteShortcuts.platform(this.state.platform)) return;
+    this.modifiers = []; this.shift = false;
+    if (item.service) this.controller?.sas(); else this.controller?.chord(item.key, item.modifiers);
+  }
+  private manageShortcuts(): void { this.controller?.release(); this.menu = ''; this.shortcutManager = true; }
   aboutToDisappear(): void { this.release(); if (this.controller) this.controller.releaseInput = () => {}; this.controller?.surface('0'); }
   private stateChanged(): void {
+    if (!this.state.ready || this.state.modal === 'privacyUnlock') this.shortcutManager = false;
+    if (this.shortcutPlatform !== this.state.platform) {
+      this.shortcutPlatform = this.state.platform; this.shortcutManager = false; this.refreshShortcuts();
+    }
     if (this.lastReset !== this.state.viewportReset || this.lastRelative !== this.state.relative) {
       this.release();
       if (this.lastReset !== this.state.viewportReset) { this.viewport.reset(); this.applyViewport(); }
@@ -165,6 +187,8 @@ export struct MobileRemoteView {
       case 'space': return tr("空格");
       case 'computer': return tr("电脑");
       case 'clipboard': return tr("剪贴板");
+      case 'Win': return RemoteShortcuts.modifierName(91, this.state.platform);
+      case 'Alt': return RemoteShortcuts.modifierName(18, this.state.platform);
       default: return this.shift && key.length === 1 ? key.toUpperCase() : key;
     }
   }
@@ -182,12 +206,13 @@ export struct MobileRemoteView {
     if (value === 'clipboard') { this.state.modal = 'clipboard'; return; }
     const modifier = value === 'Ctrl' ? 17 : value === 'Alt' ? 18 : value === 'Win' ? 91 : 0;
     if (modifier) { this.modifiers = this.modifiers.includes(modifier) ? this.modifiers.filter((m: number) => m !== modifier) : [...this.modifiers, modifier]; return; }
-    if (value === 'copy' || value === 'paste' || value === 'select_all') { this.controller?.shortcut(value === 'copy' ? 67 : value === 'paste' ? 86 : 65); return; }
+    if (value === 'copy' || value === 'paste' || value === 'select_all') { this.controller?.shortcut(value === 'copy' ? 67 : value === 'paste' ? 86 : 65); this.modifiers = []; this.shift = false; return; }
     const names = ['space','⌫','Enter','Esc','Tab','↑','↓','←','→']; const codes = [32,8,13,27,9,38,40,37,39];
     let code = names.includes(value) ? codes[names.indexOf(value)] : /^F[1-6]$/.test(value) ? 111 + Number(value.substring(1)) : 0;
     if (!code && this.modifiers.length) { const key = asciiKey(this.shift ? value.toUpperCase() : value); code = key & 255; if (key & 256) this.modifiers = [...this.modifiers, 16]; }
     if (code) { this.controller?.chord(code, this.modifiers); this.modifiers = []; }
     else this.controller?.text(this.shift ? value.toUpperCase() : value);
+    this.shift = false;
   }
   private keyboardDrag(event: GestureEvent): void {
     this.keyboardX = clamp(this.keyboardOriginX + event.offsetX, 8, this.viewWidth - this.keyboardWidth() - 8);
@@ -314,12 +339,38 @@ export struct MobileRemoteView {
   @Builder
   Keyboard() {
     Column({ space: 3 }) {
-      Row() {
-        Stack() { Row() {}.width(32).height(4).backgroundColor(MobileTheme.secondary).borderRadius(2) }.layoutWeight(1).height(28).accessibilityText(tr("拖动键盘"))
-          .gesture(PanGesture().onActionStart(() => { this.keyboardOriginX = this.keyboardX; this.keyboardOriginY = this.keyboardY; })
-            .onActionUpdate((e: GestureEvent) => this.keyboardDrag(e)))
-        MobileIconButton({ icon: 'close', label: tr("收起键盘"), iconExtent: 28, iconSize: 18, action: () => { this.keyboard = false; this.modifiers = []; } })
-      }.width('100%')
+      Stack() { Row() {}.width(32).height(4).backgroundColor(MobileTheme.secondary).borderRadius(2) }
+        .width('100%').height(14).accessibilityText(tr('拖动键盘'))
+        .gesture(PanGesture().onActionStart(() => { this.keyboardOriginX = this.keyboardX; this.keyboardOriginY = this.keyboardY; })
+          .onActionUpdate((e: GestureEvent) => this.keyboardDrag(e)))
+      Row({ space: 2 }) {
+        Button(this.shortcutPanel ? 'ABC' : this.computerKeyboard ? 'ABC' : '⌘', { type: ButtonType.Normal })
+          .width(44).height(44).fontSize(15).padding(0).fontColor(MobileTheme.ink).backgroundColor(Color.Transparent)
+          .accessibilityText(tr(this.computerKeyboard || this.shortcutPanel ? '键盘' : '电脑键盘'))
+          .onClick(() => { if (this.shortcutPanel) { this.shortcutPanel = false; this.computerKeyboard = false; } else this.computerKeyboard = !this.computerKeyboard; this.modifiers = []; })
+        if (this.shortcutPanel) {
+          Text(tr('快捷键')).layoutWeight(1).fontSize(14).textAlign(TextAlign.Center)
+        } else {
+          Scroll() {
+            Row({ space: 4 }) {
+              ForEach(this.pinnedShortcuts, (item: RemoteShortcut) => {
+                Button(item.title(), { type: ButtonType.Normal }).height(44).constraintSize({ minWidth: 44 }).fontSize(13)
+                  .padding({ left: 10, right: 10 }).fontColor(MobileTheme.ink).backgroundColor(Color.Transparent)
+                  .accessibilityText(`${item.title()}, ${item.chord()}`).onClick(() => this.sendShortcut(item))
+              }, (item: RemoteShortcut) => item.id)
+            }
+          }.scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off).layoutWeight(1)
+        }
+        Button('•••', { type: ButtonType.Normal }).width(44).height(44).padding(0).fontColor(MobileTheme.ink).backgroundColor(Color.Transparent)
+          .accessibilityText(tr('更多快捷键')).onClick(() => { this.shortcutPanel = !this.shortcutPanel; this.modifiers = []; })
+        MobileIconButton({ icon: 'close', label: tr('收起键盘'), iconExtent: 44, iconSize: 20, buttonFill: '#D1D6DE', action: () => { this.keyboard = false; this.modifiers = []; } })
+      }.width('100%').height(44)
+      if (this.shortcutPanel) {
+        Column() {
+          RemoteShortcutPanel({ store: this.shortcutStore, platform: RemoteShortcuts.platform(this.state.platform), revision: this.shortcutRevision,
+            send: (item: RemoteShortcut) => this.sendShortcut(item), manage: () => this.manageShortcuts(), changed: () => this.refreshShortcuts() })
+        }.width('100%').height(Math.min(230, Math.max(100, this.viewHeight - 88)))
+      } else {
       Scroll() {
       Column({ space: 3 }) {
       ForEach(this.keyboardRows(), (row: KeyRow) => {
@@ -334,7 +385,8 @@ export struct MobileRemoteView {
         }.width('100%')
       })
       }.width('100%')
-      }.width('100%').constraintSize({ maxHeight: Math.max(31, this.viewHeight - 60) }).scrollBar(BarState.Off)
+      }.width('100%').constraintSize({ maxHeight: Math.max(31, this.viewHeight - 88) }).scrollBar(BarState.Off)
+      }
     }.padding(5).width(this.keyboardWidth()).backgroundColor('#D1D6DE').borderRadius(12)
       .shadow({ radius: 20, color: '#33000000', offsetY: 5 }).onAreaChange((_old: Area, next: Area) => this.keyboardHeight = Number(next.height))
       .position({ x: clamp(this.keyboardX, 8, this.viewWidth - this.keyboardWidth() - 8), y: clamp(this.keyboardY, 8, Math.max(8, this.viewHeight - this.keyboardHeight - 8)) })
@@ -372,10 +424,10 @@ export struct MobileRemoteView {
         }.padding(20).constraintSize({ minWidth: 200 }).backgroundColor('#B0202024').borderRadius(14)
           .position({ x: (this.viewWidth - 200) / 2, y: (this.viewHeight - 104) / 2 }).hitTestBehavior(HitTestMode.None)
       }
-      Column() {}.width('100%').height('100%').focusable(true).defaultFocus(true)
+      Column() {}.width('100%').height('100%').focusable(!this.shortcutManager).enabled(!this.shortcutManager).defaultFocus(true)
         .onTouch((e: TouchEvent) => this.touch(e)).onMouse((e: MouseEvent) => this.physicalMouse(e))
         .onAxisEvent((event: AxisEvent) => { const delta = event.getVerticalAxisValue(); if (delta) this.mouse.scroll(-delta); })
-        .onKeyEvent((e: KeyEvent) => { if (e.type === KeyType.Down || e.type === KeyType.Up) { this.controller?.physicalKey(e.keyCode, e.type === KeyType.Down); return true; } return false; })
+        .onKeyEvent((e: KeyEvent) => { if (this.shortcutManager) return false; if (e.type === KeyType.Down || e.type === KeyType.Up) { this.controller?.physicalKey(e.keyCode, e.type === KeyType.Down); return true; } return false; })
         .onBlur(() => this.controller?.release())
         .accessibilityText(tr("远程桌面：轻触点击、长按右键、双指捏合缩放、放大后双指拖动画面，原始比例下双指滚动"))
       MobileIcon({ name: 'cursor', iconExtent: 24, color: '#000000' })
@@ -388,6 +440,10 @@ export struct MobileRemoteView {
       }.width(54).height(54).backgroundColor('#F5F5F7').borderRadius(27).shadow({ radius: 14, color: '#33000000', offsetY: 4 })
         .position({ x: this.orbX, y: this.orbY }).accessibilityText(tr("远程控制菜单，拖动可移动")).accessibilityLevel('yes')
         .onTouch((e: TouchEvent) => this.orbTouch(e))
+      if (this.shortcutManager) {
+        RemoteShortcutManager({ store: this.shortcutStore, platform: RemoteShortcuts.platform(this.state.platform),
+          changed: () => this.refreshShortcuts(), close: () => { this.shortcutManager = false; this.refreshShortcuts(); } })
+      }
     }.width('100%').height('100%').backgroundColor(Color.Black).clip(true)
       .onAreaChange((_old: Area, next: Area) => {
         this.release(); this.viewWidth = Number(next.width); this.viewHeight = Number(next.height); this.fit();

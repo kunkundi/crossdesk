@@ -195,6 +195,7 @@ typedef struct {
 - (void)sendScrollX:(float)x y:(float)y deltaX:(NSInteger)deltaX
               deltaY:(NSInteger)deltaY;
 - (void)sendWindowsKeyCode:(NSUInteger)keyCode isDown:(BOOL)isDown;
+- (void)sendKeyChord:(NSUInteger)keyCode modifiers:(NSArray<NSNumber *> *)modifiers;
 - (void)sendText:(NSString *)text;
 - (void)sendCommittedText:(NSString *)text;
 - (void)switchToDisplay:(NSInteger)displayIndex;

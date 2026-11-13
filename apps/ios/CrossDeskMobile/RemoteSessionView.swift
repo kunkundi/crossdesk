@@ -31,6 +31,7 @@ private enum RemoteKeyboardMetrics {
 private enum RemoteKeyboardMode: String {
     case system
     case computer
+    case shortcuts
 }
 
 private struct RemoteViewportState: Equatable {
@@ -45,6 +46,10 @@ struct RemoteSessionView: View {
     @State private var virtualMouseVisible = false
     @StateObject private var systemKeyboardContext = RemoteKeyboardInputContext()
     @StateObject private var keyboardGeometry = RemoteKeyboardGeometry()
+    @StateObject private var shortcutStore = RemoteShortcutStore()
+    @State private var shortcutManagerVisible = false
+    @State private var shortcutManagerPlatform = "unknown"
+    @State private var previousKeyboardMode: RemoteKeyboardMode = .computer
     @State private var keyboardInputVisible = false
     @State private var keyboardMode: RemoteKeyboardMode = .system
     @State private var animateSystemKeyboardPresentation = true
@@ -171,10 +176,13 @@ struct RemoteSessionView: View {
                             geometry: keyboardGeometry,
                             animatePresentation: animateSystemKeyboardPresentation,
                             didPresent: { waitingForSystemKeyboard = false },
+                            shortcuts: shortcutStore.pinned(platform: session.remotePlatform.rawValue),
+                            sendShortcut: session.sendShortcut,
+                            showShortcuts: { previousKeyboardMode = .shortcuts; keyboardMode = .shortcuts },
                             switchKeyboard: { keyboardMode = .computer },
                             dismiss: { keyboardInputVisible = false })
                     }
-                    if keyboardMode == .computer || waitingForSystemKeyboard {
+                    if keyboardMode != .system || waitingForSystemKeyboard {
                         dockedKeyboard
                     }
                 }
@@ -204,6 +212,7 @@ struct RemoteSessionView: View {
             if visible {
                 mouseInput.releaseAll()
                 keyboardInputVisible = false
+                shortcutManagerVisible = false
             }
         }
         .onAppear {
@@ -262,6 +271,7 @@ struct RemoteSessionView: View {
             if !connected {
                 mouseInput.releaseAll()
                 keyboardInputVisible = false
+                shortcutManagerVisible = false
             }
         }
         .onValueChange(of: session.remoteCursorPositionRevision) { _ in
@@ -277,6 +287,14 @@ struct RemoteSessionView: View {
             } else if case .failure = result {
                 session.fileImportFailed()
             }
+        }
+        .fullScreenCover(isPresented: $shortcutManagerVisible, onDismiss: {
+            if session.isConnected && scenePhase == .active && !session.privacyScreen.unlockNotice {
+                keyboardMode = .shortcuts
+                keyboardInputVisible = true
+            }
+        }) {
+            RemoteShortcutManager(store: shortcutStore, platform: shortcutManagerPlatform)
         }
     }
 
@@ -505,7 +523,7 @@ struct RemoteSessionView: View {
             }
         }
         x = min(max(x, halfWidth + 8), max(halfWidth + 8, size.width - halfWidth - 8))
-        if keyboardInputVisible && keyboardMode == .computer {
+        if keyboardInputVisible && keyboardMode != .system {
             let keyboardSize = keyboardPanelSize(in: size)
             let center = keyboardCenter(in: size, panelSize: keyboardSize)
             let keyboardRect = CGRect(x: center.x - keyboardSize.width / 2, y: center.y - keyboardSize.height / 2, width: keyboardSize.width, height: keyboardSize.height)
@@ -537,16 +555,33 @@ struct RemoteSessionView: View {
         .ignoresSafeArea(.keyboard)
     }
 
+    private func returnToSystemKeyboard() {
+        previousKeyboardMode = keyboardMode
+        animateSystemKeyboardPresentation = false
+        waitingForSystemKeyboard = true
+        keyboardMode = .system
+    }
+
     private func remoteKeyboardPanel(bottomInset: CGFloat) -> some View {
-        RemoteComputerKeyboard(
-            session: session,
-            switchKeyboard: {
-                animateSystemKeyboardPresentation = false
-                waitingForSystemKeyboard = true
-                keyboardMode = .system
-            },
-            dismiss: { keyboardInputVisible = false }
-        )
+        Group {
+            if keyboardMode == .shortcuts || (waitingForSystemKeyboard && previousKeyboardMode == .shortcuts) {
+                RemoteShortcutPanel(store: shortcutStore, session: session,
+                    systemKeyboard: returnToSystemKeyboard,
+                    dismiss: { keyboardInputVisible = false },
+                    manage: {
+                        mouseInput.releaseAll()
+                        keyboardInputVisible = false
+                        statusMenuVisible = false
+                        shortcutManagerPlatform = session.remotePlatform.rawValue
+                        shortcutManagerVisible = true
+                    })
+            } else {
+                RemoteComputerKeyboard(session: session,
+                    switchKeyboard: returnToSystemKeyboard,
+                    showShortcuts: { previousKeyboardMode = .shortcuts; keyboardMode = .shortcuts },
+                    dismiss: { keyboardInputVisible = false })
+            }
+        }
         .padding(.bottom, bottomInset)
         .background(RemoteKeyboardPalette.background)
     }
@@ -837,45 +872,44 @@ private struct RemoteComputerKeyboard: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @StateObject private var feedback = RemoteKeyboardFeedback()
     let switchKeyboard: () -> Void
+    let showShortcuts: () -> Void
     let dismiss: () -> Void
     @State private var activeModifiers: Set<UInt> = []
     @State private var page: RemoteComputerKeyboardPage = .input
 
-    private static let commonRow: [RemoteComputerKey] = [
+    private var commonRow: [RemoteComputerKey] { [
         .init("Ctrl", 0x11, isModifier: true),
-        .init("Win", 0x5B, isModifier: true),
-        .init("Alt", 0x12, isModifier: true),
+        .init(RemoteShortcut.modifierName(91, platform: session.remotePlatform.rawValue), 0x5B, isModifier: true),
+        .init(RemoteShortcut.modifierName(18, platform: session.remotePlatform.rawValue), 0x12, isModifier: true),
         .init(NSLocalizedString("空格", comment: ""), 0x20, width: 2.6),
         .init(NSLocalizedString("回车", comment: ""), 0x0D, width: 1.4, style: .special)
-    ]
+    ] }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 4) {
-                Button(NSLocalizedString("系统键盘", comment: "")) {
+            RemoteKeyboardToolbar(
+                switchKeyboard: {
                     feedback.keyPressed()
                     releaseModifiers()
                     switchKeyboard()
-                }
-                .font(.system(size: 15, weight: .medium))
-                .fixedSize(horizontal: true, vertical: false)
-                .frame(minWidth: 80, minHeight: 44)
-                .accessibilityLabel(NSLocalizedString("切换到系统键盘", comment: ""))
+                },
+                more: {
+                    releaseModifiers()
+                    showShortcuts()
+                },
+                dismiss: {
+                    feedback.keyPressed()
+                    releaseModifiers()
+                    dismiss()
+                },
+                dismissAccessibilityLabel: NSLocalizedString("收起电脑键盘", comment: "")
+            ) {
                 if verticalSizeClass == .compact {
                     pageTabs
                 } else {
                     Spacer(minLength: 0)
                 }
-                RemoteKeyboardDismissButton(accessibilityLabel: NSLocalizedString("收起电脑键盘", comment: "")) {
-                    feedback.keyPressed()
-                    releaseModifiers()
-                    dismiss()
-                }
-                .frame(width: RemoteKeyboardDismissButton.sideLength,
-                       height: RemoteKeyboardDismissButton.sideLength)
             }
-            .padding(.horizontal, 4)
-            .frame(height: 44)
 
             if verticalSizeClass != .compact {
                 pageTabs
@@ -919,7 +953,7 @@ private struct RemoteComputerKeyboard: View {
                     }
 
                     RemoteComputerKeyboardRow(
-                        keys: Self.commonRow,
+                        keys: commonRow,
                         activeModifiers: activeModifiers,
                         action: handleKey
                     )
@@ -966,14 +1000,13 @@ private struct RemoteComputerKeyboard: View {
         switch key.action {
         case let .modifier(keyCode):
             if activeModifiers.contains(keyCode) {
-                session.sendKeyState(keyCode, isDown: false)
                 activeModifiers.remove(keyCode)
             } else {
-                session.sendKeyState(keyCode, isDown: true)
                 activeModifiers.insert(keyCode)
             }
         case let .stroke(keyCode):
-            session.sendKeyStroke(keyCode)
+            session.sendKeyChord(keyCode, modifiers: Array(activeModifiers))
+            activeModifiers.removeAll()
         case .switchKeyboard:
             releaseModifiers()
             switchKeyboard()
@@ -984,9 +1017,6 @@ private struct RemoteComputerKeyboard: View {
     }
 
     private func releaseModifiers() {
-        for keyCode in activeModifiers {
-            session.sendKeyState(keyCode, isDown: false)
-        }
         activeModifiers.removeAll()
     }
 }
