@@ -6,7 +6,8 @@
 namespace crossdesk {
 void GuiRuntime::InitializeTrustedDevices(const std::filesystem::path& directory) {
   try {
-    trusted_devices_ = std::make_unique<TrustedDevices>(directory, cache_path_);
+    trusted_devices_ = std::make_unique<TrustedDevices>(
+        directory, cache_path_, config_center_ && config_center_->IsTrustedDevicesOnly());
   } catch (const std::exception& error) {
     LOG_ERROR("Cannot load trusted devices: {}", error.what());
     // The independent persisted switch stays enabled on identity/store failure.

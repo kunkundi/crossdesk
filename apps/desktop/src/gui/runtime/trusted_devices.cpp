@@ -55,11 +55,14 @@ struct PrivateText {
 }
 
 TrustedDevices::TrustedDevices(const std::filesystem::path& directory,
-                               const std::filesystem::path& cache)
+                               const std::filesystem::path& cache,
+                               bool require_existing)
     : path_(directory / "devices.json") {
   private_file::EnsureDirectory(directory);
   const bool exists = std::filesystem::symlink_status(path_).type() !=
                       std::filesystem::file_type::not_found;
+  Require(exists || !require_existing,
+          "Trusted device list is missing while restrictions are enabled; restore the original configuration");
   PrivateText legacy_key;
   if (exists) {
     PrivateText text{private_file::Read(path_)};
@@ -94,6 +97,11 @@ TrustedDevices::TrustedDevices(const std::filesystem::path& directory,
       Require(identity.contains("trust_private_key"),
               "Persistent device signing key is missing; restore the original identity");
     }
+    // Only a never-completed first initialization may create an empty list.
+    // Older identity stores predate this marker and must already have a list.
+    Require(exists || (!legacy_identity_exists &&
+                (!identity_exists || !identity.value("trusted_devices_initialized", true))),
+            "Trusted device list is missing from an existing installation; restore the original list");
     if (!identity.contains("trust_private_key") && !legacy_key.value.empty())
       identity["trust_private_key"] = legacy_key.value;
     if (identity.contains("trust_private_key")) {
@@ -117,6 +125,7 @@ TrustedDevices::TrustedDevices(const std::filesystem::path& directory,
       OPENSSL_cleanse(secret.data(), secret.size());
     }
     Require(bool(key_));
+    identity["trusted_devices_initialized"] = exists;
   });
 
   std::array<uint8_t, 32> public_key{};
@@ -126,6 +135,13 @@ TrustedDevices::TrustedDevices(const std::filesystem::path& directory,
   // The identity update is durable before removing the legacy secret. If this
   // write fails, reopening can safely retry with the same key and device list.
   if (!exists || !legacy_key.value.empty()) Save(devices_);
+  if (!exists) {
+    device_identity_store::Update(directory, [](nlohmann::json& identity, bool present) {
+      Require(present && identity.contains("trust_private_key"),
+              "Device identity disappeared during initialization");
+      identity["trusted_devices_initialized"] = true;
+    });
+  }
 }
 
 std::string TrustedDevices::Fingerprint(const std::string& public_key) {

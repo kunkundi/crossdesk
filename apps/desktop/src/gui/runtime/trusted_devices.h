@@ -29,7 +29,8 @@ class TrustedDevices {
   };
 
   TrustedDevices(const std::filesystem::path& directory,
-                 const std::filesystem::path& cache);
+                 const std::filesystem::path& cache,
+                 bool require_existing = false);
   std::string Fingerprint() const;
   const std::string& PublicKey() const { return public_key_; }
   // Callers supply a canonical, purpose-specific transcript.
