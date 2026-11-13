@@ -4,6 +4,7 @@
 #include "key_mapping.h"
 #include <app_version.h>
 #include <mobile_controller_protocol.h>
+#include <mobile_device_trust.h>
 #include <mobile_file_transfer_session.h>
 #include <mobile_video_timing.h>
 #include <display_stream_id.h>
@@ -146,7 +147,9 @@ class MobileSession {
         auto info = MakeHostInformation("CrossDesk HarmonyOS Mobile", {}, true, s->version_, HostPlatform::HarmonyOS);
         info.i.supports_video_codec_status = true;
         info.preferred_display_resolutions = s->preferred_display_resolutions_;
-        s->Send(info); FreeRemoteAction(info);
+        const auto message = mobile_controller::DeviceTrustIdentity::Advertise(info.to_json());
+        MiniRtcSendReliableDataFrame(s->controller_, message.data(), message.size(), kControlStream);
+        FreeRemoteAction(info);
         RemoteAction audio{}; audio.type = audio_capture; audio.a = !s->muted_; s->Send(audio);
         s->audio_.Start();
       } else if (status >= MiniRtcConnectionDisconnected) s->Disconnect("");
@@ -183,6 +186,13 @@ class MobileSession {
       else if (name == kClipboardStream && bytes.size() <= kMaxClipboardBytes)
         s->Event({{"type", "clipboard"}, {"text", bytes}}, true);
       else if (name == kControlStream) {
+        if (s->trust_) {
+          if (auto proof = s->trust_->ChallengeResponse(bytes, s->login_.substr(0, s->login_.find('@')),
+                  "CrossDesk HarmonyOS Mobile")) {
+            if (!proof->empty()) MiniRtcSendReliableDataFrame(s->controller_, proof->data(), proof->size(), kControlStream);
+            return;
+          }
+        }
         RemoteAction action{};
         if (action.from_json(bytes)) {
           const auto value = json::parse(action.to_json()); FreeRemoteAction(action);
@@ -248,11 +258,13 @@ class MobileSession {
     Disconnect(""); online_=false;
     if (identity_) MiniRtcDestroyPeer(&identity_);
     ++session_; login_.clear(); signal_status_=-1;
+    trust_.reset();
   }
   void Execute(const json& v) {
     const auto op=v.at("op").get<std::string>();
     if (op=="start") {
       Stop(); session_=v.at("session").get<uint64_t>();
+      trust_=std::make_unique<mobile_controller::DeviceTrustIdentity>(v.at("trustKey").get_ref<const std::string&>());
       server_=v.at("server").get<std::string>(); port_=v.at("port").get<int>();
       logs_=v.at("logs").get<std::string>(); login_=v.value("identity",""); version_=v.value("version","0.1.0");
       const auto roots=v.at("certificates").get<std::string>(); directory_=v.at("directory").get<std::string>();
@@ -408,6 +420,7 @@ class MobileSession {
   MiniRtcPeerPtr* controller_=nullptr;
   std::unique_ptr<Context> identity_context_,control_context_;
   std::unique_ptr<mobile_controller::FileTransferSession> files_;
+  std::unique_ptr<mobile_controller::DeviceTrustIdentity> trust_;
   std::string server_,logs_,login_,controller_login_,remote_,directory_,preview_directory_,preview_path_,version_;
   std::vector<DisplayResolutionPreference> preferred_display_resolutions_;
   int port_=9099,signal_status_=-1;
@@ -432,4 +445,10 @@ void MobileCommand(const std::string& text) {
 }
 std::string MobilePoll() { std::lock_guard lock(mobile_mutex); return mobile?mobile->Poll():"[]"; }
 void MobileShutdown() { std::lock_guard lock(mobile_mutex); mobile.reset(); }
+std::string MobileGenerateTrustKey() { return mobile_controller::DeviceTrustIdentity::GeneratePrivateKey(); }
+std::string MobileTrustInfo(const std::string& seed, const std::string& device_id) {
+  mobile_controller::DeviceTrustIdentity trust(seed);
+  return json{{"pairing", trust.PairingInfo(device_id.substr(0, device_id.find('@')), "CrossDesk HarmonyOS Mobile")},
+              {"fingerprint", trust.Fingerprint()}}.dump();
+}
 }

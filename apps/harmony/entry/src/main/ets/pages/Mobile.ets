@@ -304,6 +304,18 @@ struct Mobile {
       }.width('100%').backgroundColor(Color.White).borderRadius(26).clip(true).border({ width: 0.5, color: MobileTheme.line }).margin({ top: 28 })
       Text(this.state.identity ? tr("本机 ID  {0}", [String(this.formatId(this.state.identity))]) : this.state.signalText).fontSize(12).fontColor(MobileTheme.secondary)
         .textAlign(TextAlign.Center).padding({ left: 16, right: 16, top: 12, bottom: 16 }).width('100%').copyOption(CopyOptions.LocalDevice)
+      this.SectionTitle(tr("本机配对信息"))
+      Column() {
+        this.SettingRow(tr("查看指纹"), '', () => this.controller?.pairingInfo(false))
+        if (this.state.trustFingerprint) {
+          Text(this.state.trustFingerprint).fontSize(14).fontFamily('monospace').fontColor(MobileTheme.secondary)
+            .padding(16).width('100%').copyOption(CopyOptions.LocalDevice)
+        }
+        this.Rule()
+        this.SettingRow(tr("复制配对信息"), '', () => this.controller?.pairingInfo(true))
+      }.width('100%').backgroundColor(Color.White).borderRadius(26).clip(true).border({ width: 0.5, color: MobileTheme.line })
+      Text(tr("将配对信息添加到被控端的可信设备列表，并核对指纹。"))
+        .fontSize(12).fontColor(MobileTheme.secondary).width('100%').padding({ left: 16, right: 16, top: 8, bottom: 12 })
       this.SectionTitle(tr("隐私"))
       Column() {
         this.SettingRow(tr("隐私与授权"), this.state.consent ? tr("已授权") : tr("未授权"), () => this.navigate('privacy'))

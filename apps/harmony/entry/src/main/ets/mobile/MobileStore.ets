@@ -6,9 +6,11 @@ import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { util } from '@kit.ArkTS';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { image } from '@kit.ImageKit';
+import bridge from 'libcrossdesk.so';
 
 export interface RecentDevice { id: string; name: string; platform: string; remember: boolean; preview: string; }
 export class MobileStore {
+  private static trustLoading?: Promise<string>;
   private data: preferences.Preferences;
   readonly directory: string;
   readonly previewDirectory: string;
@@ -58,6 +60,25 @@ export class MobileStore {
   async removeSecret(key: string): Promise<void> {
     try { await asset.remove(await this.query(key)); }
     catch (error) { if ((error as ErrorWithCode).code !== asset.ErrorCode.NOT_FOUND) throw new Error(tr("无法删除已保存的凭据")); }
+  }
+  async trustKey(): Promise<string> {
+    // Serializes pairing export and reconnects, including overlapping page lifetimes.
+    if (MobileStore.trustLoading) return MobileStore.trustLoading;
+    const task = this.loadTrustKey(); MobileStore.trustLoading = task;
+    try { return await task; }
+    finally { if (MobileStore.trustLoading === task) MobileStore.trustLoading = undefined; }
+  }
+  private async loadTrustKey(): Promise<string> {
+    let seed = await this.secret('device-trust:v1');
+    if (!seed) {
+      if (this.flag('deviceTrustInitialized')) throw new Error('Device signing identity missing');
+      seed = bridge.mobileGenerateTrustKey();
+      await this.saveSecret('device-trust:v1', seed);
+    }
+    // Validate persisted data without replacing a corrupt/unavailable identity.
+    bridge.mobileTrustInfo(seed, '');
+    this.put('deviceTrustInitialized', true);
+    return seed;
   }
   recent(scope: string): RecentDevice[] {
     try {

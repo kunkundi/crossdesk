@@ -12,6 +12,7 @@ import { AnnouncementInbox, AnnouncementItem, AnnouncementRequest, AnnouncementR
 import { VideoSettings, VideoValues, NetworkStatistics, NetworkReport, RecentPresence, PresenceMessage, asciiKey } from './ControllerModels';
 
 interface Command {
+  trustKey?: string;
   displayResolutions?: ResolutionPreference[];
   displayId?: number; displayKey?: string; width?: number; height?: number;
   op: string; session?: number; connection?: number; server?: string; port?: number; identity?: string;
@@ -34,9 +35,11 @@ interface VideoCodecStatus { encoder: string; }
 interface ControlData { display_resolution?: ResolutionRequest; display_resolutions?: ResolutionDisplay[]; type: number; host_info?: HostInfo; video_settings?: SettingAck; service_status?: ServiceStatus; privacy_status?: PrivacyStatus; video_codec?: VideoCodecStatus; }
 interface PresenceRequest { type: string; devices: string[]; subscribe: boolean; }
 interface SignalType { type: string; }
+interface TrustInfo { pairing: string; fingerprint: string; }
 
 @Observed
 export class MobileState {
+  trustFingerprint: string = '';
   page: string = 'home';
   consent: boolean = false;
   privacyAvailable: boolean = false;
@@ -200,12 +203,13 @@ export class MobileController {
     this.starting = true; const session = ++this.session, scope = this.scope();
     try {
       let identity = await this.store.secret(`identity:${scope}`);
+      const trustKey = await this.store.trustKey();
       // A public ID alone is not a login credential. Discard legacy incomplete records.
       if (identity && !/^[0-9]{9}@.+$/.test(identity)) { await this.store.removeSecret(`identity:${scope}`); identity = ''; }
       if (session !== this.session || !this.foreground || !this.state.consent) return;
       this.state.signalText = tr("正在连接…"); this.state.signal = 0; this.started = true;
       this.send({ op: 'start', session: session, server: this.state.server, port: Number(this.state.port), identity: identity,
-        logs: this.context.cacheDir, certificates: '/etc/security/certificates', directory: this.store.directory,
+        trustKey: trustKey, logs: this.context.cacheDir, certificates: '/etc/security/certificates', directory: this.store.directory,
         previewDirectory: this.store.previewDirectory, version: this.state.version });
     } catch { this.state.signalText = tr("安全存储不可用，请解锁设备后重试"); this.state.signal = -1; }
     finally { if (session === this.session) this.starting = false; }
@@ -228,6 +232,20 @@ export class MobileController {
     this.navigate('settings');
   }
   navigate(page: string): void { this.state.page = page; this.state.modal = ''; }
+  async pairingInfo(copy: boolean): Promise<void> {
+    try {
+      const seed = await this.store.trustKey();
+      const info = JSON.parse(bridge.mobileTrustInfo(seed, this.state.identity)) as TrustInfo;
+      if (!this.foreground || this.state.page !== 'settings') return;
+      this.state.trustFingerprint = info.fingerprint.replace(/(.{4})(?!$)/g, '$1 ');
+      if (copy) {
+        try {
+          await pasteboard.getSystemPasteboard().setData(pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, info.pairing));
+          this.toast(tr("配对信息已复制。"));
+        } catch { this.toast(tr("无法复制配对信息，请重试。")); }
+      }
+    } catch { this.toast(tr("安全存储不可用，请解锁设备后重试")); }
+  }
   history(): void {
     const values = this.store.recent(this.scope()), now = this.now(); this.presence?.watch(values.map((d: RecentDevice) => d.id), now);
     this.state.recent = values.filter((d: RecentDevice) => this.presence?.online(d.id, now))
