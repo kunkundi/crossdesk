@@ -45,9 +45,16 @@ bool GuiRuntime::BeginControllerTrust(const std::string& id, PeerEventHandler* e
   state.pending = required;
   state.deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
   try {
-    if (!trusted_devices_) state.invalid = true;
-    else state.nonce = TrustedDevices::Nonce();
-  } catch (...) { state.invalid = true; }
+    if (!trusted_devices_) {
+      state.invalid = true;
+      state.failure_reason = "identity_unavailable";
+    } else {
+      state.nonce = TrustedDevices::Nonce();
+    }
+  } catch (...) {
+    state.invalid = true;
+    state.failure_reason = "challenge_generation_failed";
+  }
   controller_trust_[id] = std::move(state);
   return !required;
 }
@@ -112,8 +119,12 @@ bool GuiRuntime::HandleDeviceTrustMessage(const std::string& id, PeerEventHandle
       if (state.invalid || state.verified || std::chrono::steady_clock::now() >= state.deadline)
         return true;
       // Accept once per fresh challenge; malformed/replayed proofs grant nothing.
-      state.verified = TrustedDevices::Verify(message, state.nonce);
-      if (!state.verified) state.invalid = true;
+      TrustedDevices::ProofFailure failure;
+      state.verified = TrustedDevices::Verify(message, state.nonce, &failure);
+      if (!state.verified) {
+        state.invalid = true;
+        state.failure_reason = TrustedDevices::ProofFailureReason(failure);
+      }
     }
   } catch (const std::exception&) {
     // Untrusted protocol input never escapes the transport callback.
@@ -128,6 +139,7 @@ void GuiRuntime::TickControllerTrust() {
     std::string nonce;
     int kind;
     std::string host_info;
+    const char* rejection_reason = nullptr;
   };
   std::vector<Action> actions;
   const auto now = std::chrono::steady_clock::now();
@@ -140,9 +152,12 @@ void GuiRuntime::TickControllerTrust() {
       const bool trusted = state.IsTrusted(trusted_devices_.get());
       if (required && (state.invalid || (state.verified && !trusted) ||
                        (!state.verified && now >= state.deadline))) {
+        const char* reason = state.invalid
+            ? (state.failure_reason ? state.failure_reason : "invalid_proof")
+            : (state.verified ? "public_key_not_trusted" : "proof_timeout");
         state.invalid = true;
         state.closing = true;
-        actions.push_back({id, state.events, {}, -1});
+        actions.push_back({id, state.events, {}, -1, {}, reason});
       } else if (state.pending && (!required || trusted)) {
         state.pending = false;
         actions.push_back({id, state.events, {}, 1, std::exchange(state.early_host_info, {})});
@@ -160,7 +175,8 @@ void GuiRuntime::TickControllerTrust() {
     auto callback = events->EnterCallback();
     if (!callback) continue;
     if (action.kind < 0) {
-      LOG_WARN("Reject controller: trusted device verification required");
+      LOG_WARN("Reject controller: trusted device verification required; reason={}",
+               action.rejection_reason);
       transfers_.Cancel(events.get(), action.id);
       remote_input_.Disconnect(action.id);
       CloseServerController(action.id);

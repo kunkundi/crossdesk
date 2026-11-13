@@ -140,6 +140,7 @@ class GuiRuntime : protected gui_detail::GuiState {
     std::string nonce;
     std::optional<TrustedDevices::Device> verified;
     std::string early_host_info;
+    const char* failure_reason = nullptr;
     std::chrono::steady_clock::time_point deadline{}, next_challenge{};
     bool pending = false, invalid = false, closing = false, capable = false;
     bool IsTrusted(const TrustedDevices* devices) const {

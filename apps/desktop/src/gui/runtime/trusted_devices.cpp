@@ -202,12 +202,18 @@ std::string TrustedDevices::Sign(std::string_view text) const {
 }
 
 std::optional<TrustedDevices::Device> TrustedDevices::Verify(
-    const nlohmann::json& proof, const std::string& nonce) {
+    const nlohmann::json& proof, const std::string& nonce, ProofFailure* failure) {
+  if (failure) *failure = ProofFailure::None;
+  const auto reject = [failure](ProofFailure reason) -> std::optional<Device> {
+    if (failure) *failure = reason;
+    return std::nullopt;
+  };
   try {
-    if (proof.at("version") != 1 || proof.at("nonce") != nonce || !IsHex(nonce, 32))
-      return std::nullopt;
+    if (proof.at("version") != 1) return reject(ProofFailure::UnsupportedVersion);
+    if (!IsHex(nonce, 32)) return reject(ProofFailure::Malformed);
+    if (proof.at("nonce") != nonce) return reject(ProofFailure::NonceMismatch);
     Device device{proof.at("public_key"), proof.at("name"), proof.at("device_id")};
-    if (!Label(device.name) || !Label(device.device_id)) return std::nullopt;
+    if (!Label(device.name) || !Label(device.device_id)) return reject(ProofFailure::Malformed);
     const auto public_key = Unhex(device.public_key, 32);
     const auto signature = Unhex(proof.at("signature"), 64);
     std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> key(
@@ -215,12 +221,28 @@ std::optional<TrustedDevices::Device> TrustedDevices::Verify(
         EVP_PKEY_free);
     Context context(EVP_MD_CTX_new(), EVP_MD_CTX_free);
     const auto text = Transcript(nonce, device);
-    if (key && context && EVP_DigestVerifyInit(context.get(), nullptr, nullptr, nullptr, key.get()) == 1 &&
-        EVP_DigestVerify(context.get(), signature.data(), signature.size(),
-                         reinterpret_cast<const uint8_t*>(text.data()), text.size()) == 1)
-      return device;
-  } catch (const std::exception&) {}
-  return std::nullopt;
+    if (!key || !context ||
+        EVP_DigestVerifyInit(context.get(), nullptr, nullptr, nullptr, key.get()) != 1)
+      return reject(ProofFailure::CryptoUnavailable);
+    const int verified = EVP_DigestVerify(context.get(), signature.data(), signature.size(),
+        reinterpret_cast<const uint8_t*>(text.data()), text.size());
+    if (verified == 1) return device;
+    return reject(verified == 0 ? ProofFailure::InvalidSignature : ProofFailure::CryptoUnavailable);
+  } catch (const std::exception&) {
+    return reject(ProofFailure::Malformed);
+  }
+}
+
+const char* TrustedDevices::ProofFailureReason(ProofFailure failure) {
+  switch (failure) {
+    case ProofFailure::None: return "none";
+    case ProofFailure::Malformed: return "malformed_proof";
+    case ProofFailure::UnsupportedVersion: return "unsupported_proof_version";
+    case ProofFailure::NonceMismatch: return "nonce_mismatch";
+    case ProofFailure::InvalidSignature: return "invalid_signature";
+    case ProofFailure::CryptoUnavailable: return "crypto_unavailable";
+  }
+  return "invalid_proof";
 }
 
 bool TrustedDevices::Contains(const std::string& public_key) const {

@@ -27,6 +27,14 @@ class TrustedDevices {
     std::string public_key, name, device_id;
     bool operator==(const Device&) const = default;
   };
+  enum class ProofFailure {
+    None,
+    Malformed,
+    UnsupportedVersion,
+    NonceMismatch,
+    InvalidSignature,
+    CryptoUnavailable
+  };
 
   TrustedDevices(const std::filesystem::path& directory,
                  const std::filesystem::path& cache,
@@ -40,7 +48,9 @@ class TrustedDevices {
   nlohmann::json Prove(const std::string& nonce,
                        const std::string& device_id, const std::string& name) const;
   static std::optional<Device> Verify(const nlohmann::json& proof,
-      const std::string& nonce);
+      const std::string& nonce, ProofFailure* failure = nullptr);
+  // Stable diagnostic codes contain no peer-supplied data or key material.
+  static const char* ProofFailureReason(ProofFailure failure);
   static constexpr size_t kMaxPairingInfoSize = 2048;
   std::string PairingInfo(const std::string& device_id, const std::string& name) const;
   static std::optional<Device> ParsePairingInfo(std::string_view text);
