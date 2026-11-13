@@ -17,7 +17,8 @@ std::filesystem::path Home() {
 std::filesystem::path EnvOrDefault(const char* name,
                                    const std::filesystem::path& fallback) {
   const char* value = std::getenv(name);
-  return value ? std::filesystem::path(value) : fallback;
+  const std::filesystem::path path = value ? value : "";
+  return path.is_absolute() ? path : fallback;
 }
 
 }  // namespace
