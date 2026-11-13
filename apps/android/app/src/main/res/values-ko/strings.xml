@@ -308,4 +308,11 @@
     <string name="text_59c9dca5568a6cd3" formatted="false">"원격 화면 해상도"</string>
     <string name="text_36e0073276c0e39f" formatted="false">"지원되지 않음"</string>
     <string name="text_7b3440ad0f81b811" formatted="false">"컴퓨터의 확인을 기다리는 중..."</string>
+    <string name="text_728ea431051d269e" formatted="false">"제어 대상 장치의 신뢰 목록에 이 페어링 정보를 추가하고 지문을 확인하세요."</string>
+    <string name="text_56a998ff5c730e20" formatted="false">"이 장치의 페어링 정보"</string>
+    <string name="text_976f1504103f24ac" formatted="false">"지문 보기"</string>
+    <string name="text_3aab57c59aba6543" formatted="false">"페어링 정보 복사"</string>
+    <string name="text_cbacf1eafbca53e0" formatted="false">"페어링 정보를 복사했습니다."</string>
+    <string name="text_cde42ccdeacbbbd9" formatted="false">"페어링 정보를 복사할 수 없습니다. 다시 시도하세요."</string>
+    <string name="text_7383b2ae09252c59" formatted="false">"보안 저장소를 사용할 수 없습니다. 장치를 잠금 해제한 후 다시 시도해 주세요."</string>
 </resources>

@@ -11051,6 +11051,18 @@
       "fr": "Résolution de l’écran distant",
       "es": "Resolución de la pantalla remota",
       "pt-BR": "Resolução da tela remota"
+    },
+    "将配对信息添加到被控端的可信设备列表，并核对指纹。": {
+      "zh-Hans": "将配对信息添加到被控端的可信设备列表，并核对指纹。",
+      "en": "Add this pairing information to the controlled device’s trusted list and verify the fingerprint.",
+      "ru": "Добавьте эти данные сопряжения в список доверенных устройств на управляемом компьютере и сверьте отпечаток.",
+      "zh-Hant": "將配對資訊新增至被控端的可信裝置清單，並核對指紋。",
+      "ja": "操作されるデバイスの信頼済みリストにこのペアリング情報を追加し、フィンガープリントを確認してください。",
+      "ko": "제어 대상 장치의 신뢰 목록에 이 페어링 정보를 추가하고 지문을 확인하세요.",
+      "de": "Fügen Sie diese Kopplungsdaten auf dem gesteuerten Gerät zur Vertrauensliste hinzu und prüfen Sie den Fingerabdruck.",
+      "fr": "Ajoutez ces informations à la liste des appareils de confiance de l’appareil contrôlé et vérifiez l’empreinte.",
+      "es": "Añada esta información de emparejamiento a la lista de confianza del dispositivo controlado y verifique la huella.",
+      "pt-BR": "Adicione estas informações de pareamento à lista de confiança do dispositivo controlado e confira a impressão digital."
     }
   },
   "desktop": {
@@ -12413,7 +12425,14 @@
       "，点击重试",
       "被控端分辨率",
       "设备不支持",
-      "等待电脑端确认…"
+      "等待电脑端确认…",
+      "将配对信息添加到被控端的可信设备列表，并核对指纹。",
+      "本机配对信息",
+      "查看指纹",
+      "复制配对信息",
+      "配对信息已复制。",
+      "无法复制配对信息，请重试。",
+      "安全存储不可用，请解锁设备后重试"
     ],
     "ios": [
       "%1$@ 传输失败",
@@ -12704,7 +12723,14 @@
       "新版本需要 iOS %1$@ 或更高版本",
       "被控端分辨率",
       "设备不支持",
-      "等待电脑端确认…"
+      "等待电脑端确认…",
+      "将配对信息添加到被控端的可信设备列表，并核对指纹。",
+      "本机配对信息",
+      "查看指纹",
+      "复制配对信息",
+      "配对信息已复制。",
+      "无法复制配对信息，请重试。",
+      "安全存储不可用，请解锁设备后重试"
     ],
     "harmony": [
       "OpenFEC 告知",
@@ -12948,7 +12974,13 @@
       "鼠标左键，按住拖动",
       "鼠标控制",
       "被控端分辨率",
-      "设备不支持"
+      "设备不支持",
+      "将配对信息添加到被控端的可信设备列表，并核对指纹。",
+      "本机配对信息",
+      "查看指纹",
+      "复制配对信息",
+      "配对信息已复制。",
+      "无法复制配对信息，请重试。"
     ]
   }
 }

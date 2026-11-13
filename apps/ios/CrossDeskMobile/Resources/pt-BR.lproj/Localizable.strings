@@ -288,3 +288,10 @@
 "被控端分辨率" = "Resolução da tela remota";
 "设备不支持" = "Não suportado";
 "等待电脑端确认…" = "Aguardando confirmação do computador...";
+"将配对信息添加到被控端的可信设备列表，并核对指纹。" = "Adicione estas informações de pareamento à lista de confiança do dispositivo controlado e confira a impressão digital.";
+"本机配对信息" = "Informações deste dispositivo";
+"查看指纹" = "Ver impressão digital";
+"复制配对信息" = "Copiar informações";
+"配对信息已复制。" = "Informações de pareamento copiadas.";
+"无法复制配对信息，请重试。" = "Não foi possível copiar as informações de pareamento. Tente novamente.";
+"安全存储不可用，请解锁设备后重试" = "O armazenamento seguro não está disponível. Desbloqueie o dispositivo e tente novamente";

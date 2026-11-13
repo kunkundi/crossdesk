@@ -314,6 +314,13 @@ final class LocalizationKeys {
         IDS.put("被控端分辨率", R.string.text_59c9dca5568a6cd3);
         IDS.put("设备不支持", R.string.text_36e0073276c0e39f);
         IDS.put("等待电脑端确认…", R.string.text_7b3440ad0f81b811);
+        IDS.put("将配对信息添加到被控端的可信设备列表，并核对指纹。", R.string.text_728ea431051d269e);
+        IDS.put("本机配对信息", R.string.text_56a998ff5c730e20);
+        IDS.put("查看指纹", R.string.text_976f1504103f24ac);
+        IDS.put("复制配对信息", R.string.text_3aab57c59aba6543);
+        IDS.put("配对信息已复制。", R.string.text_cbacf1eafbca53e0);
+        IDS.put("无法复制配对信息，请重试。", R.string.text_cde42ccdeacbbbd9);
+        IDS.put("安全存储不可用，请解锁设备后重试", R.string.text_7383b2ae09252c59);
     }
     private LocalizationKeys() {}
 }

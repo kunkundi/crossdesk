@@ -288,3 +288,10 @@
 "被控端分辨率" = "Résolution de l’écran distant";
 "设备不支持" = "Non pris en charge";
 "等待电脑端确认…" = "En attente de confirmation de l'ordinateur...";
+"将配对信息添加到被控端的可信设备列表，并核对指纹。" = "Ajoutez ces informations à la liste des appareils de confiance de l’appareil contrôlé et vérifiez l’empreinte.";
+"本机配对信息" = "Informations de cet appareil";
+"查看指纹" = "Afficher l’empreinte";
+"复制配对信息" = "Copier les informations";
+"配对信息已复制。" = "Informations d’association copiées.";
+"无法复制配对信息，请重试。" = "Impossible de copier les informations d’association. Réessayez.";
+"安全存储不可用，请解锁设备后重试" = "Le stockage sécurisé n'est pas disponible, veuillez déverrouiller l'appareil et réessayer";

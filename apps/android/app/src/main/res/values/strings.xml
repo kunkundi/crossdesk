@@ -308,4 +308,11 @@
     <string name="text_59c9dca5568a6cd3" formatted="false">"Remote display resolution"</string>
     <string name="text_36e0073276c0e39f" formatted="false">"Unsupported"</string>
     <string name="text_7b3440ad0f81b811" formatted="false">"Waiting for confirmation from the computer..."</string>
+    <string name="text_728ea431051d269e" formatted="false">"Add this pairing information to the controlled device’s trusted list and verify the fingerprint."</string>
+    <string name="text_56a998ff5c730e20" formatted="false">"This device’s pairing info"</string>
+    <string name="text_976f1504103f24ac" formatted="false">"View fingerprint"</string>
+    <string name="text_3aab57c59aba6543" formatted="false">"Copy pairing info"</string>
+    <string name="text_cbacf1eafbca53e0" formatted="false">"Pairing information copied."</string>
+    <string name="text_cde42ccdeacbbbd9" formatted="false">"Unable to copy pairing information. Please try again."</string>
+    <string name="text_7383b2ae09252c59" formatted="false">"Secure storage is unavailable, please unlock the device and try again"</string>
 </resources>
