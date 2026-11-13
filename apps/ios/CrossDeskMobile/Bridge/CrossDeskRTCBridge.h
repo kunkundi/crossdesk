@@ -151,6 +151,7 @@ typedef struct {
 /// All MiniRTC ownership and calls are serialized internally. Delegate methods
 /// are delivered on the main queue so SwiftUI never touches callback threads.
 @interface CrossDeskRTCBridge : NSObject
++ (nullable NSDictionary<NSString *, NSString *> *)deviceTrustInfoForDeviceID:(NSString *)deviceID;
 
 @property(nonatomic, weak, nullable) id<CrossDeskRTCBridgeDelegate> delegate;
 

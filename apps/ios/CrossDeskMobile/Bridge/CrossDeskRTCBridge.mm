@@ -23,8 +23,11 @@
 #include <remote_action.h>
 #include <stream_names.h>
 #include "minirtc.h"
+#include "../../../../libs/controller/include/mobile_device_trust.h"
 
 namespace {
+
+using crossdesk::mobile_controller::DeviceTrustIdentity;
 
 using crossdesk::ControlType;
 using crossdesk::FileTransferAck;
@@ -71,6 +74,7 @@ struct PresenceRequest {
 };
 
 struct RTCState {
+  std::unique_ptr<DeviceTrustIdentity> trust;
   MiniRtcPeerPtr *identity_peer = nullptr;
   MiniRtcPeerPtr *controller_peer = nullptr;
   CallbackContext identity_context;
@@ -209,6 +213,47 @@ OSStatus RemoveIdentityCredential(NSString *account) {
     return errSecSuccess;
   }
   return status;
+}
+
+std::unique_ptr<DeviceTrustIdentity> LoadDeviceTrustIdentity() {
+  // Pairing export and all bridges share one installation-wide Keychain item.
+  static std::mutex mutex;
+  std::lock_guard<std::mutex> lock(mutex);
+  NSDictionary *query = @{
+    (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+    (__bridge id)kSecAttrService: @"cn.crossdesk.mobile.device-trust",
+    (__bridge id)kSecAttrAccount: @"v1",
+    (__bridge id)kSecAttrSynchronizable: @NO,
+  };
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    NSMutableDictionary *read = [query mutableCopy];
+    read[(__bridge id)kSecReturnData] = @YES;
+    read[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
+    CFTypeRef result = nullptr;
+    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)read, &result);
+    id object = CFBridgingRelease(result);
+    std::string seed;
+    struct Clean { std::string& value; ~Clean() { DeviceTrustIdentity::ClearSecret(value); } } clean{seed};
+    if (status == errSecSuccess && [object isKindOfClass:NSData.class]) {
+      NSData *data = object;
+      seed.assign(static_cast<const char *>(data.bytes), data.length);
+    } else if (status == errSecItemNotFound &&
+        ![NSUserDefaults.standardUserDefaults boolForKey:@"CrossDeskDeviceTrustInitialized.v1"]) {
+      seed = DeviceTrustIdentity::GeneratePrivateKey();
+      NSMutableDictionary *item = [query mutableCopy];
+      item[(__bridge id)kSecValueData] = [NSData dataWithBytes:seed.data() length:seed.size()];
+      item[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
+      status = SecItemAdd((__bridge CFDictionaryRef)item, nullptr);
+      if (status == errSecDuplicateItem) continue;
+      if (status != errSecSuccess) throw std::runtime_error("Device signing identity save failed");
+    } else {
+      throw std::runtime_error("Device signing identity unavailable");
+    }
+    auto identity = std::make_unique<DeviceTrustIdentity>(seed);
+    [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"CrossDeskDeviceTrustInitialized.v1"];
+    return identity;
+  }
+  throw std::runtime_error("Device signing identity unavailable");
 }
 
 void CopyCString(char *destination, size_t capacity,
@@ -499,6 +544,15 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
   std::atomic<uint64_t> _networkingGeneration;
 }
 
++ (nullable NSDictionary<NSString *, NSString *> *)deviceTrustInfoForDeviceID:(NSString *)deviceID {
+  try {
+    auto trust = LoadDeviceTrustIdentity();
+    auto pairing = trust->PairingInfo(BaseIdentity(deviceID.UTF8String ?: ""), "CrossDesk iOS");
+    return @{@"pairing": [NSString stringWithUTF8String:pairing.c_str()],
+             @"fingerprint": [NSString stringWithUTF8String:trust->Fingerprint().c_str()]};
+  } catch (const std::exception&) { return nil; }
+}
+
 + (nullable NSString *)availableUpdateForAppVersion:(NSString *)appVersion
                                        releaseJSON:(NSData *)releaseJSON {
   const auto latest = crossdesk::ParseVersionInfoJSON(std::string_view(
@@ -609,6 +663,15 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
     self->_state->identity_recovery_attempted = false;
     self->_state->identity_with_password.clear();
     self->_state->identity_base.clear();
+
+    try {
+      self->_state->trust = LoadDeviceTrustIdentity();
+    } catch (const std::exception&) {
+      [self reportIdentityStorageStatus:errSecDecode];
+      [self handleSignalState:CrossDeskSignalStateCredentialUnavailable
+                        role:PeerRole::Identity generation:self->_identityGeneration.load()];
+      return;
+    }
 
     NSString *cached = nil;
     OSStatus load_status = LoadIdentityCredential(
@@ -1484,7 +1547,7 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
       action.i.top = nullptr;
       action.i.right = nullptr;
       action.i.bottom = nullptr;
-      const std::string host_info = action.to_json();
+      const std::string host_info = DeviceTrustIdentity::Advertise(action.to_json());
       MiniRtcSendReliableDataFrame(self->_state->controller_peer, host_info.data(),
                             host_info.size(), kControlStream);
       const std::string stream = crossdesk::MakeDisplayStreamId(
@@ -1754,6 +1817,18 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
   if (!data || size == 0 || !sourceID) return;
   const std::string source(sourceID, sourceIDSize);
   if (source == kControlStream) {
+    if (DeviceTrustIdentity::IsChallenge(std::string_view(data, size))) {
+      const std::string challenge(data, size);
+      dispatch_async(_rtcQueue, ^{
+        if (![self isControllerGenerationActive:generation] || !self->_state->controller_peer ||
+            !self->_state->trust) return;
+        auto proof = self->_state->trust->ChallengeResponse(challenge,
+            self->_state->identity_base, "CrossDesk iOS");
+        if (proof && !proof->empty())
+          MiniRtcSendReliableDataFrame(self->_state->controller_peer, proof->data(), proof->size(), kControlStream);
+      });
+      return;
+    }
     RemoteAction action{};
     if (!action.from_json(std::string(data, size))) return;
     if (action.type == ControlType::video_codec_status) {

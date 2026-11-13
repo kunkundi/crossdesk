@@ -8,6 +8,12 @@ UPnP discovery and router port mapping are disabled in iOS builds, matching
 Android. Local connections, ICE/STUN hole punching, and TURN UDP/TCP relay
 remain available. The native archive excludes GUPnP and its HTTP/XML dependencies.
 
+## Trusted device authentication
+
+Open **Settings → This device’s pairing info** to view the fingerprint and copy the public pairing information. Import it under **Manage trusted devices → Add a trusted device** on the controlled desktop and compare fingerprints. Once trusted, this iPhone or iPad can connect with **Only allow trusted devices** enabled. The connection password is still required.
+
+The controller responds to the shared Ed25519 challenge protocol. Its signing seed is stored in a separate, non-synchronizing, device-only Keychain item, never in caches, logs or the exported pairing information. Restarting, clearing caches and changing signaling servers or login IDs preserve the same key. An unavailable, corrupt or unexpectedly missing identity fails initialization instead of silently generating a replacement. A new installation on another device needs its own pairing.
+
 ## Remote privacy screen
 
 The floating menu includes a **Privacy screen** button that toggles the host's

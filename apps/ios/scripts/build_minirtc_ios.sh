@@ -155,6 +155,7 @@ WIRE_BUILD_DIR="${IOS_DIR}/.xmake/wire-build${CACHE_SUFFIX}"
 WIRE_WORK_DIR="${IOS_DIR}/.xmake/wire-work${CACHE_SUFFIX}"
 WIRE_MANIFEST_FILE="${WIRE_WORK_DIR}/xmake.lua"
 WIRE_LIBRARY="${WIRE_BUILD_DIR}/iphoneos/arm64/${MODE}/libcrossdesk_wire.a"
+TRUST_LIBRARY="${WIRE_BUILD_DIR}/iphoneos/arm64/${MODE}/libcrossdesk_mobile_trust.a"
 
 mkdir -p "${OUTPUT_DIR}" "${WIRE_WORK_DIR}"
 if ! cmp -s "${REPO_DIR}/xmake.lua" "${WIRE_MANIFEST_FILE}"; then
@@ -228,6 +229,7 @@ fi
   cd "${WIRE_WORK_DIR}"
   print "Building CrossDesk wire for ${SDK_NAME} (${MODE})"
   run_xmake b -P "${WIRE_WORK_DIR}" "${XMAKE_LOG_FLAGS[@]}" crossdesk_wire
+  run_xmake b -P "${WIRE_WORK_DIR}" "${XMAKE_LOG_FLAGS[@]}" crossdesk_mobile_trust
 )
 
 if [[ ! -f "${WIRE_LIBRARY}" ]]; then
@@ -304,7 +306,7 @@ verify_native_symbols() {
 # timestamp tick cannot leave a stale merged library. Preserve the output mtime
 # on no-op builds to avoid relinking the Xcode app.
 shasum -a 256 "${SCRIPT_DIR}/build_minirtc_ios.sh" "${MINIRTC_LIBRARY}" \
-  "${DEPENDENCY_ARCHIVES[@]}" "${WIRE_LIBRARY}" > "${TEMP_MANIFEST}"
+  "${DEPENDENCY_ARCHIVES[@]}" "${WIRE_LIBRARY}" "${TRUST_LIBRARY}" > "${TEMP_MANIFEST}"
 if [[ -f "${OUTPUT_LIBRARY}" ]] && cmp -s "${TEMP_MANIFEST}" "${MERGE_MANIFEST}"; then
   verify_native_symbols "${OUTPUT_LIBRARY}"
   print "Up to date: ${OUTPUT_LIBRARY}"
@@ -315,7 +317,7 @@ fi
 # Suppress only that diagnostic; retain the members and other warnings.
 /usr/bin/libtool -static -no_warning_for_no_symbols -o "${TEMP_LIBRARY}" \
   "${MINIRTC_LIBRARY}" "${MERGE_ARCHIVES[@]}" \
-  "${WIRE_LIBRARY}"
+  "${WIRE_LIBRARY}" "${TRUST_LIBRARY}"
 verify_native_symbols "${TEMP_LIBRARY}"
 mv -f "${TEMP_LIBRARY}" "${OUTPUT_LIBRARY}"
 mv -f "${TEMP_MANIFEST}" "${MERGE_MANIFEST}"

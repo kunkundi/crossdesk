@@ -59,6 +59,19 @@ target("crossdesk_wire")
     add_includedirs(path.join(wire_dir, "include"), {public = true})
 target_end()
 
+-- iOS packages this controller helper alongside the wire and MiniRTC archives.
+-- Keep crypto headers out of the Objective-C++ bridge's public include paths.
+if is_plat("iphoneos") then
+    includes(path.join(source_dir, "deps/submodules/minirtc/thirdparty/openssl"))
+    add_requires("openssl3 3.3.2", {system = false, configs = {shared = false}})
+    target("crossdesk_mobile_trust")
+        set_kind("static")
+        add_packages("nlohmann_json", "openssl3")
+        add_includedirs(path.join(source_dir, "libs/controller/include"))
+        add_files(path.join(source_dir, "libs/controller/src/mobile_device_trust.cpp"))
+    target_end()
+end
+
 target("crossdesk_file_browser")
     set_kind("static")
     set_languages("c++20")

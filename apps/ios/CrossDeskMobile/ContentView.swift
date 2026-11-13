@@ -804,6 +804,37 @@ private struct PasswordPromptView: View {
     }
 }
 
+private struct DevicePairingView: View {
+    let deviceID: String
+    @State private var info: [String: String]?
+    @State private var copied = false
+
+    var body: some View {
+        Form {
+            Section {
+                Text(NSLocalizedString("将配对信息添加到被控端的可信设备列表，并核对指纹。", comment: ""))
+                if let info, let fingerprint = info["fingerprint"], let pairing = info["pairing"] {
+                    Text(fingerprint.enumerated().map { index, character in
+                        (index > 0 && index % 4 == 0 ? " " : "") + String(character)
+                    }.joined()).font(.footnote.monospaced()).textSelection(.enabled)
+                    Button(NSLocalizedString("复制配对信息", comment: "")) {
+                        UIPasteboard.general.setItems([["public.utf8-plain-text": pairing]], options: [.localOnly: true])
+                        copied = true
+                    }
+                    if copied { Text(NSLocalizedString("配对信息已复制。", comment: "")).foregroundStyle(.secondary) }
+                } else {
+                    Text(NSLocalizedString("安全存储不可用，请解锁设备后重试", comment: "")).foregroundStyle(.orange)
+                    Button(NSLocalizedString("重试", comment: "")) { load() }
+                }
+            }
+        }
+        .navigationTitle(NSLocalizedString("本机配对信息", comment: ""))
+        .navigationBarTitleDisplayMode(.inline)
+        .task { load() }
+    }
+    private func load() { info = CrossDeskRTCBridge.deviceTrustInfo(forDeviceID: deviceID); copied = false }
+}
+
 private struct ServerSettingsView: View {
     @EnvironmentObject private var appUpdates: AppUpdateChecker
     @ObservedObject var session: RemoteSessionModel
@@ -901,6 +932,11 @@ private struct ServerSettingsView: View {
                     .textSelection(.enabled)
             }
             PrivacySettingsSection(session: session)
+            Section {
+                NavigationLink(NSLocalizedString("本机配对信息", comment: "")) {
+                    DevicePairingView(deviceID: session.localIdentity)
+                }
+            }
             Section {
                 NavigationLink {
                     ThirdPartyLicensesView(session: session)
