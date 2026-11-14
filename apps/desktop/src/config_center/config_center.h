@@ -67,6 +67,9 @@ class ConfigCenter {
   bool IsIpDirectEnabled() const;
   VIDEO_ENCODE_FORMAT GetVideoEncodeFormat() const;
   TURN_MODE GetTurnMode() const;
+  int GetDirectStartBitrateBps() const;
+  int GetRelayStartBitrateBps() const;
+  bool IsReceiverPaddingProbingDisabled() const;
   bool IsForceRelay() const;
   bool IsEnableSrtp() const;
   std::string GetSignalServerHost() const;
@@ -106,6 +109,12 @@ class ConfigCenter {
   bool enable_ip_direct_ = true;
   VIDEO_ENCODE_FORMAT video_encode_format_ = VIDEO_ENCODE_FORMAT::H264;
   TURN_MODE turn_mode_ = TURN_MODE::AUTO_UDP_TCP;
+  static constexpr int kDefaultDirectStartBitrateBps = 1'500'000;
+  static constexpr int kDefaultRelayStartBitrateBps = 500'000;
+  int direct_start_bitrate_bps_ = kDefaultDirectStartBitrateBps;
+  int relay_start_bitrate_bps_ = kDefaultRelayStartBitrateBps;
+  static constexpr bool kDefaultDisableReceiverPaddingProbing = true;
+  bool disable_receiver_padding_probing_ = kDefaultDisableReceiverPaddingProbing;
   std::string signal_server_host_ = "";
   std::string signal_server_host_default_ = "api.crossdesk.cn";
   int signal_server_port_ = 0;

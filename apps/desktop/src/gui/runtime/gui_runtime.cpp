@@ -316,6 +316,10 @@ int GuiRuntime::CreateConnectionPeer() {
                              ? true
                              : false;
   params_.turn_mode = static_cast<MiniRtcTurnMode>(config_center_->GetTurnMode());
+  params_.direct_start_bitrate_bps = config_center_->GetDirectStartBitrateBps();
+  params_.relay_start_bitrate_bps = config_center_->GetRelayStartBitrateBps();
+  params_.disable_receiver_padding_probing =
+      config_center_->IsReceiverPaddingProbingDisabled();
   params_.enable_srtp = config_center_->IsEnableSrtp();
   params_.video_content_type = MiniRtcVideoContentType::ScreenContent;
   // Bootstrap outgoing media with fixed defaults. Live overrides come only

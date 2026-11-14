@@ -186,6 +186,25 @@ macOS 保留一个 CrossDesk Dock 应用图标，主窗口与远程控制窗口�
   <img src="images/desktop-settings-network-zh.png" width="720" alt="常规设置的网络连接分组：启用 IP 直连开关及关闭后的行为说明" />
 </p>
 
+### 起始带宽与探测配置
+
+退出客户端后，编辑缓存目录中 `config.ini` 的 `[Settings]` 节，重启后生效：
+
+```ini
+[Settings]
+direct_start_bitrate_bps = 1500000
+relay_start_bitrate_bps = 500000
+disable_receiver_padding_probing = true
+```
+
+两个值的单位均为 bps，分别控制本机原生媒体发送端在 P2P / IP 直连和 TURN 中继路径上的拥塞控制起始估计。桌面端默认值为 1.5 Mbps 和 0.5 Mbps，允许范围为 300000–20000000；缺失或非法值使用对应默认值，启动时补写到配置文件。连接后仍按网络反馈动态调整，桌面墙带宽预算继续生效。观看远程画面时，应修改发送画面的被控端配置。浏览器连接使用独立的带宽控制，不受这两个选项影响。
+
+该文件在 macOS / Linux 上默认位于 `~/.cache/CrossDesk/`（设置 `XDG_CACHE_HOME` 时使用该目录下的 `CrossDesk/`）；Windows 安装版 Release 位于 `%LOCALAPPDATA%\CrossDesk\cache\`，Windows Debug 使用工作目录下的 `cache/`，便携版使用可执行文件旁的 `data/`。
+
+Windows 已配置后台主机时，以 `%ProgramData%\CrossDeskUnattended\shared-identity.json` 的 `host_config` 中保存的 INI 配置为准。管理员须在 GUI 与后台服务均停止时修改其中这些配置项，再重启服务和 GUI；单独修改用户缓存或 `host/config.ini` 会在启动时被共享配置覆盖。
+
+桌面端的 `disable_receiver_padding_probing` 默认为 `true`，禁止尚未发送过本地视频的连接发送填充探测包；设为 `false` 可恢复接收端填充探测。开始发送本地视频后仍保留正常探测和静态画面时的带宽恢复。缺失或非法值使用默认值，已有显式配置保持不变。该选项适用于原生直连和中继，配置位置及重启要求同上；Windows 后台主机共享配置也包含此项。MiniRTC API 零初始化仍默认为 `false`，桌面端会显式传入此配置。
+
 ### 桌面墙画面传输
 
 在 **设置 → 桌面墙** 中统一配置墙内设备，保存后立即应用到当前桌面墙会话，并用于后续连接；普通连接不受影响。

@@ -187,6 +187,25 @@ The direct IP switch in the Network group is independent of the relay settings u
   <img src="images/desktop-settings-network-en.png" width="720" alt="Network settings with Enable direct IP and an explanation of what happens when disabled" />
 </p>
 
+### Starting bandwidth and probing configuration
+
+Quit the client, edit the `[Settings]` section in its cache directory's `config.ini`, then restart:
+
+```ini
+[Settings]
+direct_start_bitrate_bps = 1500000
+relay_start_bitrate_bps = 500000
+disable_receiver_padding_probing = true
+```
+
+Both values are in bps and set the local native media sender's initial congestion-control estimate for P2P / direct IP and TURN relay paths, respectively. Desktop defaults are 1.5 Mbps and 0.5 Mbps; the accepted range is 300000–20000000. Missing or invalid values use the corresponding default, which is written to the file on startup. Network feedback continues to adjust bandwidth, and DeskHub bandwidth budgets still apply. To change the stream you watch remotely, edit the host that sends the video. Browser connections use separate bandwidth control and are unaffected.
+
+The file is in `~/.cache/CrossDesk/` on macOS / Linux (`CrossDesk/` under `XDG_CACHE_HOME` when set), and `%LOCALAPPDATA%\CrossDesk\cache\` for installed Windows Release builds. Windows Debug builds use `cache/` under the working directory; portable builds use `data/` beside the executable.
+
+With a Windows background host configured, the INI string in `host_config` inside `%ProgramData%\CrossDeskUnattended\shared-identity.json` is authoritative. An administrator must stop both the GUI and background service before editing these entries there, then restart both. Editing only the user cache or `host/config.ini` is overwritten by the shared configuration on startup.
+
+The desktop default for `disable_receiver_padding_probing` is `true`, suppressing padding probes on connections that have not yet sent local video. Set it to `false` to restore receiver-side padding probes. After local video starts, normal probing and bandwidth recovery during static content remain available. Missing or invalid values use the default; existing explicit settings are preserved. It applies to native direct and relay connections, uses the configuration locations and restart procedure above, and is included in the Windows background host's shared configuration. A zero-initialized MiniRTC API parameter remains `false`; the desktop passes this setting explicitly.
+
 ### DeskHub video transmission
 
 Use **Settings → DeskHub** to configure wall sessions together. Saving applies changes immediately to current DeskHub sessions and future connections; ordinary connections are unaffected.
