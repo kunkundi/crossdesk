@@ -2,11 +2,11 @@
 
 [Project overview](../README_EN.md) · [中文](USER_GUIDE.md)
 
-Start with [download and installation](../README_EN.md#download). This guide describes the current source; check the release notes for the features available in a downloaded build.
+Start with [download and installation](../README_EN.md#download). This guide covers connections and everyday controls. Some new features may not be included in released packages; check the notes for your version.
 
-[Installation and permissions](#installation) · [Quick start](#quick-start) · [Direct IP](#lan-direct) · [DeskHub](#deskhub) · [Session controls](#session) · [Settings and updates](#settings) · [iOS](#ios) · [Android](#android) · [HarmonyOS](#harmonyos) · [Windows unattended access](#windows-service) · [Self-hosting](#self-hosting)
+[Installation and permissions](#installation) · [Quick start](#quick-start) · [Direct IP](#lan-direct) · [Trusted devices](#trusted-devices) · [DeskHub](#deskhub) · [Session controls](#session) · [Settings and updates](#settings) · [iOS](#ios) · [Android](#android) · [HarmonyOS](#harmonyos) · [Windows unattended access](#windows-service) · [Self-hosting](#self-hosting)
 
-Screenshots use demonstration devices and credentials. See the [screenshot notes](images/README.md) for sources and reproduction instructions.
+Screenshots use demonstration devices and credentials. See the [screenshot notes](images/README.md) for sources and what the images illustrate.
 
 <a id="installation"></a>
 
@@ -65,9 +65,9 @@ The direct IP entry is available in the regular Windows, macOS, and Linux deskto
 
 **Addresses and ports:** use **Switch IP** to choose the displayed address and **Edit port** to change its port. By default all interfaces share one port. When **Listen on all IP interfaces** is disabled, the app listens on available physical-interface IPv4 and IPv6 addresses simultaneously and saves a separate port for each IP. Selecting a displayed address keeps the others listening. The first port assignment for an IP tries **52888**; if busy, it allocates and saves an available port. A conflict on an already saved port is reported and requires a manual change. Valid ports are **1–65535**; failed changes preserve the previous settings. Connect using the actual port displayed on the host. The LAN firewall must allow CrossDesk's TCP negotiation connection and UDP remote-control traffic.
 
-**Listen on all interfaces:** enable **Listen on all IP interfaces** under **Settings → General → Network** and save to share one TCP negotiation port across IPv4 and IPv6 on Ethernet, Wi-Fi, VPN, and virtual interfaces. This option is on by default; an explicitly saved off setting is preserved. Changes apply on Save and persist across restarts; Cancel leaves the listening scope unchanged. Turning it off restores the saved ports for individual physical-interface IPs. Editing the port of any displayed address in this mode changes the shared port. **Switch IP** and Copy still use actual local addresses; neither `0.0.0.0` nor `::` is a remote connection address. New interfaces use the shared port automatically. Both VPN endpoints must allow TCP and UDP traffic. Loopback remote control and automatic public NAT traversal remain unsupported. Switching the listening scope cancels unfinished authentication but preserves authenticated connections. If binding or persistence fails, the app attempts to restore the previous listeners; any failed restoration is reported and retried.
+**Listen on all interfaces:** enabled by default, this shares one port across Ethernet, Wi-Fi, VPN, and virtual interfaces. Editing any displayed address’s port changes the shared port. Turning it off restores separate physical-interface ports. Save to apply changes. Use the actual displayed address, not `0.0.0.0` or `::`. Both VPN ends must allow TCP and UDP; loopback remote control and automatic public NAT traversal are not supported.
 
-**IPv6 addresses:** enter a bare address such as `2001:db8::20` for the default port, or `[2001:db8::20]:52888` for an explicit port. Global, ULA, and link-local unicast addresses are supported. Link-local addresses require the connecting computer's local interface zone, for example `[fe80::1234%14]:52888`, or an interface name supported by the OS such as `%en0`. A copied address contains the host's zone; replace it with the controller's interface index or name for that link, since the two machines may use different indices. TCP authentication and UDP media use the actual endpoints. Existing IPv4 clients remain compatible. All-interface listening falls back to IPv4 when the OS has no IPv6 support; upgrading preserves the shared port and saved preference.
+**IPv6 addresses:** use `2001:db8::20` with the default port, or `[2001:db8::20]:52888` with an explicit port. Link-local addresses need the controller’s interface zone, for example `[fe80::1234%14]:52888` or a supported name such as `%en0`. Replace a copied host zone with the controller’s interface index or name for that network.
 
 **Passwords:** direct IP has its own **six-character, case-sensitive ASCII letter/digit password**. A missing password is generated automatically. Use the eye, refresh, and pencil buttons to show/hide, randomly generate, or customize it. A successful change applies immediately without restarting or connecting to a server. Controllers that saved the old password must enter the new one.
 
@@ -133,7 +133,7 @@ On Linux, the main and remote control windows use different application grouping
 
 On macOS, CrossDesk keeps one application icon in the Dock. The main and remote control windows can be switched and minimized independently and do not automatically merge into native window tabs. Closing the main window keeps the Dock icon while another window is visible or minimized, and remote connections continue running. Once all windows are closed, the application remains in the menu bar, where you can reopen the main window.
 
-Network statistics in both ordinary sessions and DeskHub show the video codecs actually in use, including software fallback. Names use “Implementation (Format)” with an initial capital and uppercase technical abbreviations, such as `VideoToolbox (H.264)`, `NVENC (H.264)`, `NVDEC (H.264)`, `SVT-AV1 (AV1)`, `Dav1d (AV1)`, and `LibAOM (AV1)`; Media Foundation also includes `HW` (hardware) or `SW` (software). The host must support encoder status reporting; older versions and information not yet available display “—”.
+Network statistics show the host encoder and controller decoder actually in use, including software fallback. These details can help diagnose video performance. “—” means the information is unavailable or the host version does not support reporting it.
 
 ### Browse directories and transfer files
 
@@ -187,7 +187,10 @@ The direct IP switch in the Network group is independent of the relay settings u
   <img src="images/desktop-settings-network-en.png" width="720" alt="Network settings with Enable direct IP and an explanation of what happens when disabled" />
 </p>
 
-### Starting bandwidth and probing configuration
+<details>
+<summary>Advanced: adjust initial connection bandwidth</summary>
+
+Most users can keep the defaults. Try the session’s video quality and frame rate controls first.
 
 Quit the client, edit the `[Settings]` section in its cache directory's `config.ini`, then restart:
 
@@ -204,7 +207,9 @@ The file is in `~/.cache/CrossDesk/` on macOS / Linux (`CrossDesk/` under `XDG_C
 
 With a Windows background host configured, the INI string in `host_config` inside `%ProgramData%\CrossDeskUnattended\shared-identity.json` is authoritative. An administrator must stop both the GUI and background service before editing these entries there, then restart both. Editing only the user cache or `host/config.ini` is overwritten by the shared configuration on startup.
 
-The desktop default for `disable_receiver_padding_probing` is `true`, suppressing padding probes on connections that have not yet sent local video. Set it to `false` to restore receiver-side padding probes. After local video starts, normal probing and bandwidth recovery during static content remain available. Missing or invalid values use the default; existing explicit settings are preserved. It applies to native direct and relay connections, uses the configuration locations and restart procedure above, and is included in the Windows background host's shared configuration. A zero-initialized MiniRTC API parameter remains `false`; the desktop passes this setting explicitly.
+The desktop default for `disable_receiver_padding_probing` is `true`, suppressing padding probes on connections that have not yet sent local video. Set it to `false` to restore receiver-side padding probes. After local video starts, normal probing and bandwidth recovery during static content remain available. Missing or invalid values use the default; existing explicit settings are preserved. It applies to native direct and relay connections, uses the configuration locations and restart procedure above, and is included in the Windows background host's shared configuration.
+
+</details>
 
 ### DeskHub video transmission
 
@@ -224,11 +229,7 @@ Devices supporting preview subscriptions can pause video while their views are h
 
 ### Check for updates
 
-The client checks for updates in the background after launch and automatically opens the update dialog when a new version is found, showing release notes and a link to the download page. After you dismiss the dialog, background checks will not reopen it during the current run, while the main window menu keeps its update indicator. Restarting the client shows the dialog again if an update is still available. Open **☰ → About** to view the version. When an update is available, click **Release notes** below the new version to reopen the update dialog, or click **Check for updates** to check manually.
-
-<p align="center">
-  <img src="images/desktop-about-en.png" width="720" alt="About dialog with the Check for updates button; development is a demonstration version and no online check was performed" />
-</p>
+CrossDesk checks for new versions on startup. You can also open **Menu → About → Check for updates** and read the release notes. Follow the available install or download option. Save work and finish file transfers before installing; connections will be interrupted. See the [update guide](UPDATER.md) (Chinese) for recovery steps.
 
 <a id="feedback"></a>
 
@@ -240,11 +241,19 @@ Open **☰ → Feedback & suggestions** in the main window. **Give feedback on G
   <img src="images/desktop-feedback-en.png" width="720" alt="Feedback and suggestions with GitHub feedback and diagnostic log export buttons" />
 </p>
 
+<a id="trusted-devices"></a>
+
+## Trusted devices and pairing
+
+If the computer enables **Only allow trusted devices**, first copy the controller’s pairing information, add it to the computer’s trusted list, and compare fingerprints. On desktop, open **Settings → General → Privacy → Manage trusted devices**; on iOS, Android, and HarmonyOS mobile, open **Settings → This device’s pairing info**. The connection password is still required.
+
+Check that every controller you intend to use supports pairing before enabling the restriction. The current terminal CLI does not. See the [pairing and migration guide](connection-architecture.md#trusted-devices) (Chinese).
+
 <a id="ios"></a>
 
 ## Native iOS / iPadOS client
 
-[`apps/ios`](../apps/ios/README.md) contains a native controller using the same MiniRTC protocol as the desktop client. It controls remote computers; it does not expose an iPhone or iPad as a remotely controlled desktop.
+Install the native controller on your iPhone or iPad to access a remote computer. It cannot share the iPhone or iPad as a remotely controlled desktop.
 
 1. Install from the [App Store](https://apps.apple.com/app/id6828859211), checking the listing for OS requirements. Alternatively, follow the [iOS guide](../apps/ios/README.md) to build and sign with Xcode; current source targets iOS 16+.
 2. Enter a remote ID on the home screen, connect, and enter its password. Successful connections become available in the recent devices list.
@@ -253,7 +262,7 @@ Open **☰ → Feedback & suggestions** in the main window. **Give feedback on G
 
 The app receives remote text into the iOS clipboard. Tap **剪贴板** (Clipboard) in the floating menu to send local text to the remote computer. Text is limited to **128 KiB** per transfer; empty or oversized text displays a hint.
 
-Gestures include one-finger click, two-finger right-click, long-press drag, and pinch-to-zoom. When zoomed in, two-finger panning moves the viewport. The native and browser clients are maintained separately, so their controls and gestures may differ. The current native UI uses Chinese labels.
+Pinch to zoom and use two fingers to pan the enlarged view. Native and browser controls may differ. The app follows the system or per-app language; see the [language guide](../localization/README.md).
 
 <a id="android"></a>
 
@@ -266,20 +275,20 @@ The Android client supports Android 8.0+ arm64 phones and tablets. Install the s
 3. Open the floating menu to switch displays, adjust video quality and frame rate, use the virtual mouse, send and receive files, inspect network statistics, and send clipboard text. Use the save action to export received files.
 4. When switching apps, an active session uses system Picture in Picture when available, with a foreground service and notification as a fallback. Closing the Picture in Picture window or failing to start background session support ends the session.
 
-H.264 / AV1 use MediaCodec hardware decoding when available, with software fallback when unsupported or when decoding fails. Results depend on the device. Android does not currently support phone-as-host. The floating menu’s **Privacy screen** button toggles the computer’s local cover directly, labels the host-confirmed on/off state without changing colors, and shows inline feedback only for errors or unavailable status. Enabling privacy also blocks local keyboard/mouse input, matching the desktop controller.
+Android supports H.264 / AV1; performance depends on the device. It cannot act as a remote host. Use **Privacy screen** in the floating menu to toggle the computer’s local cover and block its local keyboard and mouse when supported. The button shows the state confirmed by the computer.
 
 <a id="harmonyos"></a>
 
 ## HarmonyOS support
 
-CrossDesk supports HarmonyOS PCs, phones, and tablets. PC and mobile clients use separate HAP builds, both named **CrossDesk** with the bundle name `com.chunkdash.crossdesk`.
+HarmonyOS PC, phone, and tablet clients are development builds that need building and signing before installation. Select the package for your device type.
 
 | Client | System and architecture | Features |
 | --- | --- | --- |
-| HarmonyOS PC (`2in1`) | API 26, arm64 | Controller and host roles, sharing the Slint desktop UI, session management, DeskHub, and file transfer |
-| HarmonyOS phones / tablets | API 20+, arm64 | Native ArkUI controller with remote video/audio, touch and external keyboard/mouse input, display switching, text clipboard, and bidirectional file transfer |
+| HarmonyOS PC (`2in1`) | API 26, arm64 | Controller and host roles, with the desktop UI, session management, DeskHub, and file transfer |
+| HarmonyOS phones / tablets | API 20+, arm64 | Native mobile controller with remote video/audio, touch and external keyboard/mouse input, display switching, text clipboard, and bidirectional file transfer |
 
-HarmonyOS PC and mobile clients share the file transfer core with other PC platforms. Mobile clients use the system picker to send and export files; PC users can choose the receive directory in Settings.
+Mobile clients use the system file picker to send and export files; PC users can choose the receiving directory in Settings.
 
 These are development builds. Follow the [HarmonyOS build guide](../apps/harmony/README.md) to build and sign them with DevEco before installation. PC screen capture and input control require system authorization, and physical-device and long-session validation are ongoing. See the [PC guide](../apps/harmony/desktop-port/README.md) and [mobile feature guide](../apps/harmony/MOBILE_PARITY.md) for permissions, platform differences, and validation coverage (Chinese).
 
@@ -291,11 +300,11 @@ These are development builds. Follow the [HarmonyOS build guide](../apps/harmony
 
 The installer registers an on-demand service by default. CrossDesk tries to start it on launch. Unless unattended mode is enabled, the service exits when no local CrossDesk client is running. Portable builds offer service installation in the prompt or **Settings → Lock Screen Service**, with administrator privileges.
 
-In installed Windows Release builds, **Auto Start** enables unattended hosting: `CrossDeskService` starts with the system, and a scheduled task starts the GUI after the enabling user signs in. The background service owns the device identity and remote connections; the GUI attaches through an authenticated local pipe. Turning the option off removes automatic startup and returns the service to on-demand startup. Opening the GUI manually still uses the background host. **Enable Daemon** controls GUI crash recovery. Portable and Debug builds do not offer Auto Start.
+In installed Windows Release builds, **Auto Start** enables remote access before sign-in with the same ID and password. The interface opens after sign-in while the existing connection continues. Turning this off disables unattended startup. **Enable Daemon** separately controls recovery after an interface crash. Portable and Debug builds do not offer unattended Auto Start.
 
 <a id="windows-service-development-update"></a>
 
-### Updating the service for a development build
+### Updating the service in a manual deployment
 
 Launching a newly compiled client only tries to start the registered service. It does not change the service executable path or restart an older running service. If the computer keyboard works but the system IME fails in both Notepad and the lock screen, and the log contains `Secure desktop text injection failed: error=unknown_command`, update the service binaries and registration first.
 
@@ -325,9 +334,9 @@ Enable **Settings → Auto Start** and save to use the main window's device ID a
 
 Connect using the existing `device_id` and `password`. Password changes, device identity keys, and trusted-device records are shared between hosting modes. Re-enabling reuses this identity instead of creating a new ID. Self-hosted server root certificates must be trusted in the Local Computer certificate store.
 
-Once enabled, `CrossDeskService` starts at system boot without Windows automatic login or saved Windows login passwords. A windowless SYSTEM host owns network connections, capture, keyboard/mouse input, and `Ctrl+Alt+Del`. The GUI attaches after the user desktop unlocks without another signaling login or replacing the remote connection. Closing or restarting the GUI preserves viewing and input. Logoff, switching Windows sessions, service restarts, or network failures can still require reconnection; networking retries if unavailable during boot.
+Once enabled, the service starts with Windows without automatic sign-in or saved Windows login passwords. Closing the CrossDesk interface leaves remote viewing and input available. Signing out, switching users, restarting the service, or losing the network can interrupt the connection.
 
-Before sign-in, screen viewing, keyboard/mouse input, monitor switching, and secure-desktop control are available. Once the GUI attaches, audio, file transfers, clipboard, and privacy screens run in the signed-in user process over the existing background connection; file operations do not run as SYSTEM. Those user features pause when the GUI exits and resume when reopened. Portable and Debug builds cannot enable this mode. Shared identity resides in `%ProgramData%\CrossDeskUnattended`, accessible only to SYSTEM and administrators; logs are in its `logs` subdirectory.
+Before sign-in, video, input, monitor switching, and secure-desktop controls are available. Audio, files, clipboard, and privacy screen require the user to sign in and run the CrossDesk interface. Shared identity is in `%ProgramData%\CrossDeskUnattended`, accessible to administrators and SYSTEM; logs are in its `logs` subdirectory.
 
 Without a physical monitor, the unattended host attempts to prepare a virtual display before accepting connections, preferring a previously recorded resolution and using 1920 × 1080 when no valid record exists. These temporary modes do not overwrite persistent Windows display configuration. Once a physical display is stable, the temporary virtual display is released while preserving the remote stream index.
 

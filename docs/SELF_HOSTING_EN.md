@@ -4,6 +4,8 @@
 
 Signaling and TURN deployment are maintained in [CrossDesk Server](https://github.com/kunkundi/crossdesk-server). Use matching server configuration files from the same release. This guide focuses on deployment entry points and the current client UI.
 
+Using the public CrossDesk service does not require deploying a server. Continue here if you want both devices to use your own service. Update the server before upgrading to clients that require device identity authentication, then configure both ends with the same server address and port.
+
 ## 1. Deploy the server
 
 These steps target a Linux server with Docker Engine and the Compose plugin installed. Confirm that `docker compose version` works. The current Compose deployment uses host networking and runs signaling and Coturn separately.

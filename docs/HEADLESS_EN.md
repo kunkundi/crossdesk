@@ -4,6 +4,14 @@
 
 CrossDesk can reuse an existing X11 desktop or create a separate Xvfb desktop on a Linux host without a monitor. Capture, input, cursor and clipboard use the same display.
 
+Choose the mode that matches what you want to see:
+
+- **Existing desktop and open apps:** start normally using the first section below.
+- **A separate desktop on a server:** use [Create a separate virtual desktop](#create-a-separate-virtual-desktop).
+- **Keep it running after closing the terminal:** see [Run as a service](#run-as-a-service).
+
+Use the [installation guide](USER_GUIDE_EN.md#installation) to choose the standard or virtual-desktop DEB. Headless mode is a host mode; to control another computer from a terminal, use the [CLI](../apps/cli/README.md).
+
 ## Preserve the existing desktop and applications
 
 Start CrossDesk normally. It automatically discovers and selects your existing desktop, preserving its Dock, panel, wallpaper and open applications. No display number or `DISPLAY` configuration is required:

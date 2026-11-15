@@ -1,22 +1,19 @@
-# 从源码构建
+# 自行构建桌面客户端
 
 [返回 README](../README.md) · [English](BUILD_EN.md)
 
-各组件版本可通过 `python3 scripts/version.py show` 查看，使用 `set` 或 `bump` 修改；同步范围和发布衔接见[组件版本管理](VERSIONING.md)。
-
-安装版的升级器随主程序构建。发布公钥、清单签名和验证方法见
-[桌面端应用内升级](UPDATER.md)；便携版不包含升级器。
+需要自行编译 CrossDesk 时使用本页。日常安装可直接选择 [下载页面](../README.md#download) 的安装包。请按操作系统阅读对应章节，移动端构建入口在文末。源码版本查询见 [版本说明](VERSIONING.md)。
 
 克隆仓库后，构建和打包命令均在仓库根目录执行。构建依赖与参数以 [Xmake 配置](../apps/desktop/xmake/options.lua) 和 [CI 工作流](../.github/workflows/build.yml) 为准。`1.4.3` 仅为本地构建示例版本号；调整时请同步修改配置命令与打包参数，避免程序内版本号与安装包不一致。
 
 ## 构建依赖
 
-默认只构建桌面客户端。终端主控可通过 `--CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y` 单独构建；同时开启两个选项可构建两个客户端。CLI 的依赖准备、运行和 npm 打包见 [终端客户端](../apps/cli/README.md)。
+默认只构建桌面客户端。终端主控可通过 `--CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y` 单独构建；同时开启两个选项可构建两个客户端。CLI 的依赖准备、运行和安装见 [终端客户端](../apps/cli/README.md)。
 
 - Git、[Xmake](https://xmake.io/guide/quick-start.html)（桌面端和移动端均要求 3.1.1 或更新版本）及下文对应平台的编译工具链。
 - 构建脚本通过 Xmake 管理 **CMake 3.x（≥ 3.21、< 4.0）**、**Rust 1.92.0** 等依赖；首次构建需要下载工具与源码。具体约束见 [Slint 包配置](../deps/thirdparty/slint/xmake.lua)。
 
-鸿蒙 PC 的 Slint 移植直接编译桌面公共界面和业务代码，见 [Slint 桌面构建与一致性验收](../apps/harmony/desktop-port/README.md)（API 26）。独立 ArkUI 手机 / 平板工程见 [HarmonyOS 构建与真机验证](../apps/harmony/README.md)。请使用各自说明中的脚本，不要通过桌面根工程切换鸿蒙配置。
+鸿蒙 PC 的 Slint 移植直接编译桌面公共界面和业务代码，见 [鸿蒙 PC 安装与权限](../apps/harmony/desktop-port/README.md)（API 26）。独立 ArkUI 手机 / 平板工程见 [HarmonyOS 构建与安装](../apps/harmony/README.md)。请使用各自说明中的脚本，不要通过桌面根工程切换鸿蒙配置。
 
 ## Windows
 
@@ -97,36 +94,6 @@ CROSSDESK_MACOS_NOTARY_PROFILE=crossdesk-notary \
 若加速上传出现连接超时，可设置 `CROSSDESK_MACOS_NOTARY_S3_ACCELERATION=false`，使用普通 S3 上传通道重试；默认值为 `true`。上传失败也可能已在 Apple 端创建记录，重试前先用 `xcrun notarytool history --keychain-profile crossdesk-notary` 检查提交历史。
 
 自定义钥匙串可通过 `CROSSDESK_MACOS_KEYCHAIN` 指定，证书私钥与公证 Profile 都需要存放在该钥匙串。不要将私钥、P12 文件或密码提交到仓库。苹果说明：[Developer ID 证书](https://developer.apple.com/help/account/certificates/create-developer-id-certificates/)、[公证要求](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)。
-
-### GitHub Actions 自动签名与公证
-
-[Build and Release 工作流](../.github/workflows/build.yml) 对 `v*` 发布标签自动启用 macOS 签名、公证与票据附加；手动运行时可勾选 `sign_macos`。普通分支推送及未勾选的手动构建沿用 ad-hoc 签名。两种架构均在各自 runner 上完成处理，只有公证及 Gatekeeper 校验成功的签名构建才上传正式产物；缺少 Secrets 或公证失败会阻止发布。
-
-先在本机“钥匙串访问 → 我的证书”中，分别将 `Developer ID Application` 和 `Developer ID Installer` **连同对应私钥**导出为两个 `.p12` 文件，并为这两个文件设置相同的导出密码。只有 `.cer` 证书文件不能用于 CI 签名。文件保存在工程之外，例如 `~/Downloads/crossdesk-application.p12` 和 `~/Downloads/crossdesk-installer.p12`。
-
-在 GitHub 仓库 **Settings → Secrets and variables → Actions → New repository secret** 中配置：
-
-| Secret | 内容 |
-| --- | --- |
-| `MACOS_APP_CERTIFICATE_P12_BASE64` | Application 证书及私钥的 `.p12` 文件的 Base64 |
-| `MACOS_INSTALLER_CERTIFICATE_P12_BASE64` | Installer 证书及私钥的 `.p12` 文件的 Base64 |
-| `MACOS_P12_PASSWORD` | 导出两个 `.p12` 时设置的共同密码 |
-| `APPLE_ID` | 拥有该开发团队权限的 Apple 账户邮箱 |
-| `APPLE_APP_SPECIFIC_PASSWORD` | 为公证生成的 App 专用密码 |
-| `APPLE_TEAM_ID` | 两张证书所属的 10 位团队 ID |
-
-在本机分别执行以下命令，将剪贴板内容粘贴到对应的 Base64 Secret。先保存第一项，再执行第二条命令：
-
-```bash
-base64 -i "$HOME/Downloads/crossdesk-application.p12" | pbcopy
-base64 -i "$HOME/Downloads/crossdesk-installer.p12" | pbcopy
-```
-
-本机保存的 `crossdesk-notary` 钥匙串 Profile 不会同步到 GitHub runner。工作流使用上述 Secrets 在临时钥匙串中重建 Profile，自动选择与团队 ID 匹配的有效证书，配置签名工具无需交互访问这些临时私钥，并在任务结束时删除证书和公证凭据。无需额外设置钥匙串密码 Secret，也无需为当前 Developer ID 分发流程配置 provisioning profile。
-
-配置后先手动运行工作流：填写 `desktop_version`，勾选 `sign_macos`，确认 ARM64、Intel 的 `Notarize and staple macOS installer` 步骤均成功，再推送发布标签。需要先将工作流和配套脚本提交、推送到 GitHub，新的开关和步骤才会生效。
-
-CI 最多等待公证 60 分钟；若 Apple 仍在处理，任务失败并阻止发布，但会保留 `macos-pending-notarization-*` 安装包及 `macos-notarization-*` JSON 诊断产物 14 天。下载产物后，按上一节用已保存的提交 ID 查询并附加票据，无需重复上传同一个包。不要将 pending 产物当作已经完成公证的发布包。
 
 ## Linux
 
@@ -224,7 +191,7 @@ xmake r crossdesk
 
 ### 更新公钥（可选）
 
-`CROSSDESK_UPDATE_PUBLIC_KEY` 在编译时嵌入桌面客户端，用于验证升级清单的 Ed25519 签名。本地开发可以省略：程序仍可正常编译、运行和检查新版本，但只提供手动下载入口，不执行应用内自动安装。
+`CROSSDESK_UPDATE_PUBLIC_KEY` 在编译时嵌入桌面客户端，用于验证升级清单的 Ed25519 签名。自行构建可以省略：程序仍可正常编译、运行和检查新版本，但只提供手动下载入口，不执行应用内自动安装。
 
 需要应用内自动安装更新时，在对应平台的 `xmake f` 配置命令中加入此参数，再编译。例如，已完成平台配置后执行（将占位符替换为实际公钥）：
 
@@ -235,9 +202,9 @@ xmake b crossdesk
 
 也可以在构建前设置同名环境变量；Xmake 配置值优先于环境变量。公钥必须是 32 字节 Ed25519 公钥的十六进制表示，共 64 个小写字符；非空但格式不正确时，构建配置会报错。发布清单必须由对应私钥签名，并满足安装位置等升级条件；便携版始终使用手动下载。
 
-GitHub Actions 构建从仓库 Actions variable `CROSSDESK_UPDATE_PUBLIC_KEY` 读取公钥。私钥仅供发布端签名使用，无需提供给普通构建。密钥生成、发布端配置及升级条件见 [桌面端应用内升级](UPDATER.md)。
+自行使用的构建通常不需要发布签名密钥；没有配套签名更新来源时，保留手动下载安装即可。安装条件和失败处理见 [更新指南](UPDATER.md)。
 
-## 无 CUDA 环境下的开发支持
+## 不使用 CUDA 构建
 
 对于**未安装 CUDA 环境的 Linux 开发者，如果希望编译后的成果物拥有硬件编解码能力**，这里提供了预配置的 [Ubuntu 20.04 兼容构建镜像](https://hub.docker.com/r/crossdesk/ubuntu20.04)。该镜像内置必要的构建依赖，可生成兼容 glibc 2.31 的两种 Linux 安装包。
 
@@ -333,10 +300,6 @@ xmake r -d crossdesk
 原生客户端使用独立 Xcode 工程，要求 iOS 16+ 的 arm64 真机。构建与音视频、文件传输验证步骤见 [iOS 开发说明](../apps/ios/README.md)。当前 CI 导出未签名应用，真机安装需要自行签名。
 
 [iOS CI](../.github/workflows/build-ios.yml) 可独立手动运行，并由主构建工作流调用；相关 Pull Request 也会触发。工具链、许可证及隐私检查、应用验证和 ZIP 打包沿用现有流程，标签发布继续收集同名的未签名应用归档。
-
-## 更新界面截图
-
-README 的桌面图片直接由当前 Slint UI 渲染，复现方式见 [截图说明](images/README.md)。
 
 ## Android
 

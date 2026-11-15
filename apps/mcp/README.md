@@ -21,7 +21,7 @@
 
 安装时需要联网下载依赖。MCP 和用于显示画面的应用应在同一台本机上运行。远端电脑使用自建服务器时，在连接面板的“高级设置”中填写相同的服务器和端口。
 
-目前侧栏已在 macOS 的 Codex 和 DSH 0.2.2-rc.1 验证；Harness 网页版不支持此侧栏。其他平台的验证范围见 [开发参考](DEVELOPMENT.md)。
+目前侧栏已在 macOS 的 Codex 和 DSH 0.2.2-rc.1 验证；Harness 网页版不支持此侧栏。其他平台的画面、输入和系统权限表现请以实际环境为准。
 
 <a id="install-package"></a>
 
@@ -244,6 +244,6 @@ dsh plugin --profile desktop remove @chunkdash/crossdesk-mcp
 
 ## 更多文档
 
-- [源码构建与开发配置](DEVELOPMENT.md#从源码运行)
-- [工具接口、显示机制与验证范围](DEVELOPMENT.md)
+- [自行构建与进阶配置](DEVELOPMENT.md#从源码运行)
+- [显示方式、无面板配置与使用限制](DEVELOPMENT.md)
 - [DSH 安装简明指南](integrations/deepseek-harness/README.md)

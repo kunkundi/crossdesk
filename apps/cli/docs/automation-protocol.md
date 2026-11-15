@@ -1,4 +1,6 @@
-# Native automation protocol
+# Native automation interface
+
+For users integrating CrossDesk with their own scripts or applications. For everyday Agent use, follow the [MCP setup guide](../../mcp/README.md) (Chinese); no direct protocol integration is required.
 
 `crossdesk-cli agent --stdio --password-fd 3 --video-ws` is the private native adapter used by CrossDesk MCP. It is separate from the existing terminal-oriented `bridge` protocol. This is **not MCP on stdin**: the TypeScript service owns the public MCP transport and tool schemas.
 

@@ -4,6 +4,8 @@
 
 CrossDesk 的信令服务与 TURN 中继由独立的 [CrossDesk Server](https://github.com/kunkundi/crossdesk-server) 项目维护。本页说明部署入口与当前客户端的配置方法；服务端文件请使用同一 Release 中的配套版本。
 
+使用公共服务时无需自行部署。需要让设备接入自己的服务器时，再按本页操作。升级到要求设备身份认证的新版客户端前，请先更新服务端，再让两端使用同一服务器地址和端口。
+
 ## 1. 部署服务端
 
 以下步骤面向已安装 Docker Engine 和 Compose 插件的 Linux 服务器；先确认 `docker compose version` 可用。当前 Compose 使用主机网络，分别运行信令服务和 Coturn。

@@ -8,7 +8,7 @@ CrossDesk 的终端主控客户端，源码位于本仓库的 `apps/cli`。通�
 | --- | --- |
 | <img src="../../docs/images/cli-ansi-overview.png" width="480" alt="CrossDesk CLI 的 ANSI 全景输出，包含只读状态栏与快捷键提示" /> | <img src="../../docs/images/cli-kitty-overview.png" width="480" alt="CrossDesk CLI 的 Kitty 像素全景输出，显示同一远程桌面" /> |
 
-图示来自 **2026-10-31** 的实际只读连接，通过伪终端采集并渲染协议输出；来源与边界见 [图示说明](../../docs/images/README.md#cli-captures)。默认 `auto` 依次选择 Kitty、Sixel、ANSI；普通终端可指定 `--renderer ansi`，支持对应协议的终端可指定 `--renderer kitty` 或 `--renderer sixel`。显式像素模式需要通过能力探测；增加 Sixel 输出不代表所有 Xshell 版本均可显示图片，终端本身也必须支持该协议。ANSI 全景适合查看桌面轮廓，阅读小字需进入细节模式。
+图示来自 **2026-10-31** 的实际只读连接，通过伪终端采集并渲染协议输出；实际显示效果取决于终端和窗口大小。默认 `auto` 依次选择 Kitty、Sixel、ANSI；普通终端可指定 `--renderer ansi`，支持对应协议的终端可指定 `--renderer kitty` 或 `--renderer sixel`。显式像素模式需要通过能力探测；增加 Sixel 输出不代表所有 Xshell 版本均可显示图片，终端本身也必须支持该协议。ANSI 全景适合查看桌面轮廓，阅读小字需进入细节模式。
 
 ## 安装与连接
 
@@ -31,7 +31,7 @@ npx @chunkdash/crossdesk-cli@latest doctor --json
 npx @chunkdash/crossdesk-cli@latest 123456789
 ```
 
-安装后命令为 `crossdesk-cli`。五个平台依赖使用 `@chunkdash/crossdesk-cli-*`，由启动器自动选择；请保留 npm 的可选依赖，不要使用 `--omit=optional`。旧的无 scope 平台包不属于这套依赖，仅安装平台包不会注册命令。三端实机验收尚未全部完成；运行要求、旧包迁移、打包与发布步骤见 [npm 分发](docs/npm-distribution.md)。
+请安装统一入口并保留 npm 的可选依赖，不要使用 `--omit=optional`。仅安装平台包不会注册命令。运行要求、旧包迁移及安装排障见 [安装指南](docs/npm-distribution.md)。
 
 ### 从源码构建
 
@@ -78,15 +78,13 @@ crossdesk-cli 123456789 --display 1
 
 本地命令模式在缩放、平移和按 `c` 后持续保持，直到手动返回。此模式中鼠标仅更新缩放锚点，点击和滚轮不执行视图操作。控制模式中的 `Ctrl+T`、`Ctrl+C` 和普通按键均传给远端。再次按 `Ctrl+]` 也可离开本地命令模式，若返回控制模式则同时向远端发送该组合键。
 
-## 更多文档与功能范围
+## 功能范围与更多帮助
 
-- [MCP 服务与实时面板](../mcp/README.md)：Agent 截图和结构化远程操作，不要求控制端安装桌面客户端。
-- [原生自动化协议](docs/automation-protocol.md)：独立 `agent --stdio` 模式。
-- [构建、使用、Pi 安装和故障排查](docs/terminal-client.md)
-- [私有桥接协议](docs/bridge-protocol.md)
-- [实际验证记录](docs/validation.md)
-- [源码来源和依赖修补](docs/source-provenance.md)
+CLI 仅控制远程电脑，不提供音频播放、文件传输、剪贴板同步或 IP 直连，也不能连接开启可信设备限制的电脑。被控端需要有可用桌面，自托管服务器需支持 CLI 临时身份。
 
-CLI 仅作为控制端，每次连接通过服务端获得新的 `cli-xxxxxxxxx` 临时 ID。使用前须部署支持 `cli` 注册的 crossdesk-server；旧服务端不会回退为普通设备身份。
-
-终端 I/O 包含 POSIX（Linux/macOS）和 Windows Console / ConPTY 实现。macOS arm64 已完整构建，之前已连接真实被控端验证 ANSI 观看与预览协商。Linux / Windows 全量构建和真实连接、SSH/Kitty/Sixel 实机显示及真实 Pi TUI 仍需验收；交叉编译检查不等于完整运行验证。CLI 不创建被控端虚拟桌面，不提供音频播放、文件传输或剪贴板同步；MCP 服务由独立的 `apps/mcp` 包提供。
+- [终端使用指南](docs/terminal-client.md)：参数、显示、输入、Pi 扩展和故障排查。
+- [安装与更新](docs/npm-distribution.md)：npm、平台要求和旧版迁移。
+- [兼容性与限制](docs/validation.md)：平台和终端的已确认范围。
+- [MCP 使用指南](../mcp/README.md)：通过 Agent 操作远端并实时监看。
+- [自动化接口](docs/automation-protocol.md) / [终端桥接接口](docs/bridge-protocol.md)：供需要自行接入脚本或终端界面的用户参考。
+- [源码与许可信息](docs/source-provenance.md)。

@@ -49,44 +49,35 @@ Wayland 画面捕获依赖启用了 Wayland 支持的构建、宿主系统 PipeW
 
 “断开连接后自动锁屏”可用不代表锁屏控制服务可用：锁屏由客户端调用系统功能，输入登录密码则需要服务。若 Android 手机能看到登录界面但输入法无法输入，可在远程键盘中切换到 **电脑键盘**，对比数字、字母与回车是否有效；反馈时注明两端版本、安装版或便携版，以及两种键盘的表现。
 
-若电脑键盘可用，而搜狗等系统输入法不可用，请确认被控端已安装包含文本转发修复的新 Windows 构建，并一并更新客户端、服务与会话辅助程序。旧版的按键转发与输入法文本转发是不同通道，仅更新手机端不会修复旧 Windows 的文本通道。本次修复转发完整文本，保留大小写、符号、空格及中文等字符，不限于数字密码；仍需在更新后的 Windows 锁屏、登录界面验证。
+若电脑键盘可用而手机系统输入法不可用，请用完整 Windows 安装包更新被控电脑，使客户端、服务和会话辅助程序来自同一版本。只更新手机端或替换 `CrossDesk.exe` 可能仍使用旧服务。
 
-若日志出现 `Secure desktop text injection failed: error=unknown_command`，说明文本已到达 Windows 客户端，但服务或会话辅助程序不支持该指令。直接运行重新编译的 `CrossDesk.exe` 不会将已注册的服务切换到新构建目录；旧服务也可能导致解锁后的记事本无法接收文本。请按[开发构建的服务更新步骤](USER_GUIDE.md#windows-service-development-update)，从完整的新构建目录重新注册并启动服务后再测试。
+若日志出现 `Secure desktop text injection failed: error=unknown_command`，通常表示服务与主程序版本不匹配。安装版请用完整安装包修复；自行部署构建的用户按 [Windows 服务更新步骤](USER_GUIDE.md#windows-service-development-update) 更新服务后重连。
 
 ## 移动端连接后没有进入隐私屏
 
-Android、iOS 和鸿蒙原生移动端可直接点击悬浮菜单的隐私屏按钮切换，按钮按电脑确认的状态显示“隐私屏已开启”或“隐私屏已关闭”，开启与关闭使用相同配色，无需进入详情页；开启时与桌面端一致屏蔽电脑本地键鼠，不提供独立屏蔽选项。自动开启还需要电脑勾选“被连接时开启隐私屏”，且电脑当前桌面支持遮罩；锁屏、登录界面或无人值守被控端不提供隐私遮罩。
+Android、iOS 和鸿蒙原生移动端可在悬浮菜单直接开关“隐私屏”，按钮显示电脑确认的状态。开启时会遮住电脑画面并屏蔽本地键鼠。自动开启还需电脑勾选“被连接时开启隐私屏”，并处于支持遮罩的桌面；锁屏、登录界面及尚未附加用户界面的无人值守模式不提供遮罩。
 
-v1.7.3-1 的 Android 端尚未实现上述控制能力，需要使用包含该功能的新构建。若一直等待状态，请检查电脑端版本；若显示不可用或失败，请查看控制栏内的电脑返回原因。当前 PC 策略要求所有已连接控制端均支持隐私屏，旧版或 Web 控制端同时在线时仍会阻止开启。“断开连接后自动锁屏”是独立功能。Windows 被控端仍可通过 Ctrl+Alt+Shift+F12 应急恢复本地显示与输入。
+旧客户端可能不提供隐私屏控制，请确认两端已更新且移动端有该入口。若提示失败，查看电脑返回的原因；旧版或 Web 控制端同时在线时可能阻止开启。“断开连接后自动锁屏”是独立功能。Windows 被控端可通过 Ctrl+Alt+Shift+F12 应急恢复本地显示与输入。
 
 ## 被控 Windows 电脑没有接显示器
 
-没有显示器时，Windows 会把桌面放在一个分辨率固定的虚拟目标上，GPU 采集路径不可用。CrossDesk 会先尝试插入内置的 usbmmidd 虚拟显示器（见下一节）；无法插入时自动进入**无屏兼容模式**：用 GDI 采集，分辨率由系统决定（常见为 1024×768），帧率和画质低于正常模式，被控端日志会记录进入兼容模式的原因。键鼠控制、隐私屏、文件传输不受影响。
+CrossDesk 会自动选择可用的采集方式，并尝试使用随 Windows 安装包或便携包提供的虚拟显示器。请确认 CrossDesk Service 已安装且可运行；未安装服务时，普通权限下可能无法准备虚拟显示器。
 
-需要完整体验时，给显卡接一个 HDMI/DP 假负载（EDID 模拟器）或真实显示器，然后重新连接；CrossDesk 会在下一次连接时重新检测并切回 GPU 采集。兼容模式只在“采集方式”为“自动”时启用；手动指定采集方式时按所选方式工作。
+无人值守模式会优先恢复已记录的显示分辨率，没有记录时使用 1920×1080。驱动不可用时，仍可能进入系统提供的兼容画面，分辨率和帧率会降低。接入真实显示器后重新连接，也可以检查是否恢复正常画面。
 
-### 自动插入 usbmmidd 虚拟显示器（免假负载）
-
-Windows 安装包和便携包内置了 Amyuni 的 `usbmmidd_v2` 虚拟显示器驱动（位于安装目录的 `usbmmidd_v2` 文件夹，附带 Amyuni 的 License.txt）。无屏时 CrossDesk 会自动使用它，每次连接时：
-
-1. CrossDesk 检测到没有任何显示器且采集方式为“自动”；
-2. 先以兼容模式开始传输，同时在后台通过 CrossDesk Service 的会话助手（管理员权限、交互会话内）安装驱动（仅首次，驱动带微软签名，无需测试模式）、插入一块虚拟显示器并设置为 1920×1080；
-3. 虚拟显示器就绪后采集自动切到 DXGI/WGC 正常模式；
-4. 会话结束时自动拔出虚拟显示器，接入真实显示器后不会残留。
-
-未安装 CrossDesk Service 时，只有以管理员身份运行的 CrossDesk 才能自行插拔；否则日志会记录 `usbmmidd_installer_launch_failed:740` 并保持兼容模式。
-
-卸载 CrossDesk 时，安装包会移除由 CrossDesk 安装的这块驱动；如果驱动是你为其他软件事先安装的，则保持不动。便携版不带卸载程序，需要移除时在便携目录的 `usbmmidd_v2` 下以管理员身份运行 `deviceinstaller64 enableidd 0`、`deviceinstaller64 stop usbmmidd`、`deviceinstaller64 remove usbmmidd`，或在设备管理器中卸载“USB Mobile Monitor Virtual Display”。
-
-调试时不方便拔线，可以设置环境变量 `CROSSDESK_FORCE_HEADLESS=1` 再启动 CrossDesk：在没有 usbmmidd 显示器时按无屏处理，走完插屏流程后恢复真实检测。仅用于验证，不要在生产环境设置。
+安装包附带的驱动位于 `usbmmidd_v2`，许可文件随包提供。卸载安装版会移除由 CrossDesk 安装的驱动，原先为其他软件安装的驱动保持不动。便携版需要手动移除时，可在设备管理器中卸载“USB Mobile Monitor Virtual Display”。
 
 ## 修改密码后连接失败
 
-修改密码时使用 6 位数字或英文字母，并保持连接服务器。等待修改成功、客户端重新连接后，重新复制当前密码。控制端保存的旧密码会失效，按弹窗输入新密码再连接。
+密码使用 6 位数字或英文字母，区分大小写。ID 模式修改时需连接服务器，等待成功并重新连接后使用新密码；IP 直连使用独立密码，修改成功后立即生效。控制端保存的旧密码需要重新输入。
+
+## 密码正确，仍提示不是可信设备
+
+被控电脑可能开启了“仅允许可信设备控制”。先在控制端复制配对信息，再到被控端的可信名单添加并核对指纹；手机入口为 **设置 → 本机配对信息**。旧客户端和当前终端 CLI 不支持此认证。换设备或清除应用数据后可能需要重新配对，详见 [可信设备说明](connection-architecture.md#trusted-devices)。
 
 ## 收到的文件在哪里
 
-桌面端见 **☰ → 设置 → 文件保存路径**。iOS 原生端收到的文件保存在应用的 `Documents/Received`，可以从分享入口导出；更多说明见 [iOS 开发文档](../apps/ios/README.md)。
+桌面端见 **☰ → 设置 → 文件保存路径**。iOS 收到的文件位于应用的 `Documents/Received`，可从分享入口导出。Android 和鸿蒙通过会话中的保存 / 导出入口保留文件；Android 会在结束会话后清除临时接收文件，请在断开前导出。
 
 ## 关闭主窗口后为什么还能连接
 
@@ -98,7 +89,7 @@ Windows 安装包和便携包内置了 Amyuni 的 `usbmmidd_v2` 虚拟显示器�
 
 ## iOS 构建产物为什么不能直接安装
 
-当前 CI 导出的是未签名应用。需要使用自己的开发签名 / 分发方式安装；也可用 Xcode 打开工程并选择真机运行。见 [iOS 构建要求](../apps/ios/README.md)。
+从 [App Store](https://apps.apple.com/app/id6828859211) 可直接安装。GitHub 构建产物若标为未签名，需要自己的签名才能装到设备上，也可通过 Xcode 签名运行。见 [iOS 构建要求](../apps/ios/README.md)。
 
 ---
 
@@ -118,14 +109,15 @@ Windows 安装包和便携包内置了 Amyuni 的 `usbmmidd_v2` 虚拟显示器�
 | Linux host has no monitor or graphical session | Start CrossDesk normally to automatically discover and select your existing desktop, preserving its Dock and apps; no display number is needed. A bare Xvfb shows only CrossDesk on a black background; use an existing session or install Xfce and specify `--headless-session startxfce4`. See [Linux headless operation](HEADLESS_EN.md). |
 | Cannot control a Windows lock screen | Install/start CrossDesk Service and keep the host client running. See [service commands](../README_EN.md#windows-service). |
 | Android can connect but cannot type a Windows login password | Locking on disconnect does not verify service availability. Check CrossDesk Service, then compare the phone IME with **Computer keyboard** in the remote keyboard panel. Include both client versions, installer/portable edition, and both keyboard results in the report. |
-| Privacy screen does not activate for a mobile connection | Toggle **Privacy screen** directly in the native Android, iOS or HarmonyOS floating menu. The button labels the host-confirmed on/off state without changing colors; normal toggling shows no extra text; errors and unavailable status still appear inline. Android v1.7.3-1 lacks this feature; use a build containing it. Automatic activation also needs the host setting and a supported unlocked desktop. The current host policy requires every connected controller to support privacy; older or Web controllers can prevent activation. Locking on disconnect is independent. |
-| Windows host has no monitor attached | The Windows installer and portable archive bundle Amyuni's `usbmmidd_v2` virtual display driver (in the `usbmmidd_v2` folder with its License.txt). On each connection to a host without a monitor (capture method Auto), CrossDesk starts streaming in compatibility mode and, in the background, asks the CrossDesk Service session helper to install the Microsoft-signed driver (first time only) and plug one virtual monitor at 1920×1080; capture then switches to DXGI/WGC on that monitor and it is unplugged when the session ends. Without the service only an elevated CrossDesk can plug it itself; otherwise the host stays in **headless compatibility mode**: GDI capture at an OS-fixed resolution (often 1024×768) with reduced frame rate; the host log records why. Input, privacy screen and file transfer still work. A real monitor or an HDMI/DP dummy plug also restores GPU capture. |
-| Removing the bundled virtual display driver | The uninstaller removes the driver when CrossDesk installed it and leaves a driver you installed yourself. For the portable build run `deviceinstaller64 enableidd 0`, `deviceinstaller64 stop usbmmidd` and `deviceinstaller64 remove usbmmidd` as administrator from the `usbmmidd_v2` folder, or uninstall "USB Mobile Monitor Virtual Display" in Device Manager. |
-| Saved password no longer works | Use 6 ASCII letters or digits when changing the password, with the host connected to the server. Wait for the change and reconnection to complete, then copy the current password and enter it on the controller. |
-| Cannot find received files | Check Settings → File Save Path on desktop. Native iOS stores them in `Documents/Received` and provides a share action. |
+| Privacy screen does not activate for a mobile connection | Use **Privacy screen** in the native mobile floating menu. Update both clients if the entry is missing. Automatic activation also requires the host setting and a supported user desktop; older or Web controllers connected at the same time may prevent it. Locking on disconnect is separate. |
+| Windows host has no monitor attached | CrossDesk automatically selects a capture method and tries the bundled virtual display. Check that CrossDesk Service is installed and running. Unattended mode prefers a saved resolution, otherwise 1920×1080. If the driver is unavailable, resolution and frame rate may be limited. Reconnect after attaching a physical monitor to check recovery. |
+| Removing the bundled virtual display driver | The installer removes a driver installed by CrossDesk. For a portable build, uninstall “USB Mobile Monitor Virtual Display” in Device Manager when it is no longer needed. |
+| Saved password no longer works | Use six case-sensitive ASCII letters or digits. ID password changes require a server connection; wait for confirmation. Direct IP has a separate password that applies immediately after a successful change. Enter the new password on the controller. |
+| Correct password but device is not trusted | Copy the controller’s pairing information, add it to the host’s trusted list, and compare fingerprints. Mobile: Settings → This device’s pairing info. Older clients and the current terminal CLI do not support this restriction. |
+| Cannot find received files | Desktop: Settings → File Save Path. iOS: share from `Documents/Received`. Android / HarmonyOS: use the save/export action. Export Android files before disconnecting, as its temporary received files are cleared when the session ends. |
 | Main window closed but app still running | Closing hides the window. Use the tray/menu-bar exit command to quit. |
 | Windows build without CUDA | Build with `--USE_CUDA=false`, or follow the [CUDA build instructions](BUILD_EN.md). Use `$env:CUDA_PATH` in PowerShell. |
-| iOS artifact cannot be installed directly | CI exports an unsigned app. Sign it yourself or build and run from Xcode on a physical device. See [iOS requirements](../apps/ios/README.md). |
+| iOS artifact cannot be installed directly | Install from the [App Store](https://apps.apple.com/app/id6828859211), or sign the unsigned build yourself. See [iOS installation](../apps/ios/README.md). |
 
 ### Repair macOS permissions
 

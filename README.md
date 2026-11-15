@@ -24,7 +24,7 @@
 
 CrossDesk 让你从电脑、浏览器、手机或终端（桌面 CLI）连接远端电脑，也能通过桌面墙（DeskHub）集中查看与操控多台设备。项目基于 [MiniRTC](https://github.com/kunkundi/minirtc)，支持自托管。
 
-[主要功能](#features) · [下载与平台支持](#download) · [快速连接](#quick-start) · [终端 CLI](#cli) · [Agent / MCP](#mcp) · [IP 直连](#lan-direct) · [可信设备](#trusted-devices) · [界面预览](#preview) · [使用指南](docs/USER_GUIDE.md) · [自托管](#self-hosting) · [构建与反馈](#development) · [赞助](#sponsor)
+[主要功能](#features) · [下载与平台支持](#download) · [快速连接](#quick-start) · [终端 CLI](#cli) · [Agent / MCP](#mcp) · [IP 直连](#lan-direct) · [可信设备](#trusted-devices) · [界面预览](#preview) · [使用指南](docs/USER_GUIDE.md) · [文档导航](docs/README.md) · [自托管](#self-hosting) · [帮助与反馈](#development) · [赞助](#sponsor)
 
 <a id="features"></a>
 
@@ -36,7 +36,7 @@ CrossDesk 让你从电脑、浏览器、手机或终端（桌面 CLI）连接远
 - **桌面墙：** 多设备实时预览、分组、放大操控、群控和批量文件分发。
 - **画面与声音：** H.264 / AV1、硬件编解码、远端音频，会话内调整画质、帧率和远端显示器分辨率；记住已确认的分辨率选择，最后一个控制端断开后恢复原显示模式。可用能力随平台与设备而异。
 - **日常协作：** 多显示器切换、键鼠与组合键、文本剪贴板；双栏文件浏览支持目录导航、文件与文件夹双向传输、拖放和任务管理。
-- **Agent / MCP：** 通过本机 MCP 服务授权 Agent 观察和操作远端电脑，提供实时监看、人工接管、多会话、剪贴板和文件工具；目前从源码构建使用。
+- **Agent / MCP：** 通过本机 MCP 服务授权 Agent 观察和操作远端电脑，提供实时监看、人工接管、多会话、剪贴板和文件工具；可安装对应平台的 MCP 包。
 - **可信设备：** 桌面端可选开启可信设备限制，在连接密码之外校验设备身份；支持复制、粘贴配对信息，提前添加允许访问本机的设备。
 - **部署与运维：** P2P 直连、TURN 中继、SRTP 媒体加密、自托管，以及 Windows 登录前远控和 Linux 无头运行。
 
@@ -56,10 +56,10 @@ CrossDesk 让你从电脑、浏览器、手机或终端（桌面 CLI）连接远
 | 鸿蒙 PC（开发版） | **控制 / 被控**；API 26，arm64；使用 DevEco 构建并签名 HAP，仍在进行真机验收 |
 | 鸿蒙手机 / 平板（开发版） | **仅控制**；API 20+，arm64；使用 DevEco 构建并签名 HAP，仍在进行真机验收 |
 | Web | **仅控制**；支持 WebRTC 的浏览器；无需在控制端安装客户端 |
-| 终端 CLI（开发版） | **仅控制**；分发目标为 macOS / Linux（x64、arm64）和 Windows（x64）；通过 [npm 安装](#cli-npm) 或从源码构建，平台验收范围见 [CLI 说明](apps/cli/README.md) |
+| 终端 CLI（开发版） | **仅控制**；分发目标为 macOS / Linux（x64、arm64）和 Windows（x64）；通过 [npm 安装](#cli-npm) 或从源码构建，使用要求见 [CLI 说明](apps/cli/README.md) |
 | MCP（开发版） | **仅控制**；在 Codex 或 DSH 中操作远端并监看画面；DSH 安装一个插件包，Codex 需 Node.js 22+，见 [安装与使用](apps/mcp/README.md) |
 
-系统要求按当前源码与构建配置整理，具体安装包以对应 Release 说明为准。各客户端的功能范围见 [终端 CLI](#cli) 与 [移动端与鸿蒙](#mobile)。
+请按下载页面选择与你的系统和芯片匹配的安装包。开发版功能可能尚未包含在已发布安装包中，具体以对应 Release 说明为准。
 
 - **Linux：** 已有桌面选普通版 `crossdesk-linux-…deb`；需要独立 Xfce 桌面的服务器选 `crossdesk-virtual-desktop-xfce-…deb`。两者选择其一，安装与启动方法见 [使用指南](docs/USER_GUIDE.md#installation) 和 [无头运行](docs/HEADLESS.md)。
 - **macOS：** 首次运行时按提示授予屏幕录制及辅助功能权限；前者用于桌面采集，后者用于远程键鼠输入。[权限说明](docs/USER_GUIDE.md#installation)
@@ -75,7 +75,7 @@ CrossDesk 让你从电脑、浏览器、手机或终端（桌面 CLI）连接远
 2. **发起连接。** 在另一台电脑的 CrossDesk 中输入被控电脑的 9 位 ID，点击“连接”；也可使用原生移动端或 [Web 客户端](https://web.crossdesk.cn/)。
 3. **验证密码。** 输入被控电脑当前的连接密码，等待远程画面出现。桌面端可勾选“记住密码”，后续从“近期连接”重连。
 
-使用自建服务器时，两端需要接入同一服务。新版桌面端使用设备密钥登录服务器，请先升级服务端：新 ID 注册时绑定公钥，旧 ID 首次升级时验证原密码后绑定；绑定后，针对该 ID 的错误密码尝试不会阻塞正常签名登录。远程控制仍需输入连接密码；新版控制端也验证设备签名，密码失败按控制端及“控制端 → 目标”计数，不再累计被控端的总失败次数，避免他人的错误尝试锁住目标。身份备份与兼容要求见 [设备登录说明](docs/connection-architecture.md#41-id-模式)。更多连接、密码及浏览器操作见 [使用指南](docs/USER_GUIDE.md#quick-start)；连接失败、黑屏或无法操作键鼠时先查阅 [常见问题](docs/FAQ.md)。
+使用自建服务器时，两端需要接入同一服务；升级客户端前请先更新服务端。更多连接和密码操作见 [使用指南](docs/USER_GUIDE.md#quick-start)，连接失败、黑屏或无法操作键鼠时见 [常见问题](docs/FAQ.md)。
 
 <a id="lan-direct"></a>
 
@@ -101,9 +101,9 @@ CrossDesk 让你从电脑、浏览器、手机或终端（桌面 CLI）连接远
 
 添加和移除会立即保存；开启限制时，**移除信任** 会断开对应设备的会话，名单为空则拒绝所有控制端。也可以从管理界面的已连接设备中添加完成身份验证的控制端。
 
-**兼容范围：** 两端均需使用支持可信设备认证的客户端。不支持该协议的旧版客户端无法连接开启限制的被控端；当前 CLI、iOS、Android 和鸿蒙移动端尚未实现该认证。关闭限制时沿用原有连接方式。
+**兼容范围：** 使用支持配对的新版桌面端、iOS、Android 或鸿蒙移动端。手机和平板从“设置 → 本机配对信息”复制配对信息，再添加到被控电脑。旧客户端和当前终端 CLI 无法连接开启此限制的被控端。
 
-设备登录与配对共用缓存目录 `identity.json` 中的私钥，可信名单保存在配置目录的 `trusted-devices/devices.json`。迁移本机身份时应同时备份 ID/密码缓存与 `identity.json`；已绑定的 ID 无法仅凭密码恢复登录。清空整个缓存目录后需重新登记 ID，并让其他设备重新信任本机。备份、迁移及认证机制见 [可信设备技术说明](docs/connection-architecture.md#43-可选可信设备认证)。
+重装、清除应用数据或迁移电脑前，请先查看 [身份备份与迁移](docs/connection-architecture.md#backup)。仅保存 ID 和密码不足以恢复已绑定的桌面身份；更换设备身份后需要重新配对。
 
 <a id="preview"></a>
 
@@ -135,7 +135,7 @@ CrossDesk 让你从电脑、浏览器、手机或终端（桌面 CLI）连接远
   <img src="docs/images/desktop-deskhub-zh.png" width="960" alt="DeskHub 桌面墙：六台演示设备的远程画面与管理工具栏" />
 </p>
 
-群控会向所有已连接设备发送输入；关闭桌面墙会断开全部远程连接。操作范围与详细用法见 [桌面墙使用指南](docs/USER_GUIDE.md#deskhub)。截图使用演示数据，更多界面及来源见 [使用指南](docs/USER_GUIDE.md) 与 [截图说明](docs/images/README.md)。
+群控会向所有已连接设备发送输入；关闭桌面墙会断开全部远程连接。操作范围与详细用法见 [桌面墙使用指南](docs/USER_GUIDE.md#deskhub)。截图使用演示数据，更多操作见 [使用指南](docs/USER_GUIDE.md)。
 
 ### 双栏文件传输
 
@@ -160,7 +160,7 @@ CrossDesk 让你从电脑、浏览器、手机或终端（桌面 CLI）连接远
 
 - [会话操作](docs/USER_GUIDE.md#session)：工具栏、文本剪贴板、文件保存和隐私屏。
 - [客户端设置与更新](docs/USER_GUIDE.md#settings)：常规设置、桌面墙传输及版本检查。
-- [桌面墙技术说明](docs/deskhub.md)：预览订阅、带宽分配、协议与兼容性。
+- [桌面墙使用说明](docs/deskhub.md)：整理设备、群控、批量传文件及降低带宽占用。
 
 <a id="cli"></a>
 
@@ -175,7 +175,7 @@ CrossDesk 让你从电脑、浏览器、手机或终端（桌面 CLI）连接远
 | <img src="docs/images/cli-ansi-overview.png" width="480" alt="CrossDesk CLI 的 ANSI 四象限全景：顶部显示只读模式和连接状态，底部显示操作快捷键" /> | <img src="docs/images/cli-kitty-overview.png" width="480" alt="CrossDesk CLI 的 Kitty 协议全景：同一远程桌面以像素画面显示，保留状态栏和操作快捷键" /> |
 | 用彩色字符显示桌面轮廓，适合普通终端；查看局部可用 `+/-` 或滚轮以鼠标位置缩放。 | 直接显示像素画面，适合支持 Kitty 图形协议的终端，如 Ghostty。 |
 
-两图采集于 **2026-10-31**，来自同一授权设备的实际只读连接，以 128 × 40 字符视口还原 CLI 的 ANSI / Kitty 协议输出。图中 FPS 是采集时的实际输出计数，静止画面下 ANSI 无变化可显示 `FPS 0`。图示为输出渲染，终端实窗效果受字体、窗口大小及协议支持影响；采集方法见 [图示来源](docs/images/README.md#cli-captures)。
+ANSI 用字符显示画面，Kitty 可显示像素画面；实际效果取决于终端支持、字体和窗口大小。
 
 <a id="cli-npm"></a>
 
@@ -200,84 +200,21 @@ npx @chunkdash/crossdesk-cli@latest 123456789
 
 请安装统一入口 `@chunkdash/crossdesk-cli`，并保留 npm 的可选依赖，不要添加 `--omit=optional`；仅安装平台包不会注册 `crossdesk-cli` 命令。平台运行要求、旧包迁移及故障排查见 [npm 分发说明](apps/cli/docs/npm-distribution.md)。
 
-### 从源码构建并连接
+### 常用操作
 
-准备 Git、Xmake 3.1.1 或以上、C++17 编译工具链及对应平台依赖。以下以 macOS / Linux shell 为例；Windows 的 Git Bash / 开发者 PowerShell 步骤见 [CLI 构建说明](apps/cli/docs/terminal-client.md#构建与安装)。
-
-```sh
-git clone --recurse-submodules https://github.com/kunkundi/crossdesk.git
-cd crossdesk
-./apps/cli/scripts/prepare-deps.sh
-xmake f -y --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n -m release
-xmake build crossdesk-cli
-xmake run crossdesk-cli doctor --json
-xmake run crossdesk-cli 123456789
-```
-
-已有仓库时从仓库根目录执行依赖准备及后续命令。将 `123456789` 换成被控电脑的 ID，密码在连接时隐藏输入。`doctor` 只检查本机环境，不发起连接。仓库默认构建桌面端；以上配置只构建 CLI，需要同时构建桌面端时将 `CROSSDESK_BUILD_DESKTOP` 设为 `y`。产物位于 `build/<platform>/<arch>/release/`。
-
-### 选择画面与连接参数
-
-默认 `--renderer auto` 按 Kitty → Sixel → ANSI 的顺序选择。macOS「终端」等普通终端可显式选择 `ansi`；支持对应图形协议的终端可选择 `kitty` 或 `sixel`。显式像素模式探测失败时会报错，此时改用 `ansi`。Xshell 是否能显示像素图片取决于终端自身的协议支持，CLI 无法单方面补齐。
-
-以下示例使用 npm 全局安装后的命令；从源码构建时，可在仓库根目录将 `crossdesk-cli` 替换为 `xmake run crossdesk-cli`。
+默认只读、静音。只读模式下按 `c` 开启键鼠控制，按 `+/-` 或滚轮缩放，按 `f` 回到全景。**控制模式下退出时，先按 `Ctrl+]`，再按 `q`**，否则普通按键会发给远端电脑。
 
 ```sh
-# 普通终端：以细节模式查看局部
-crossdesk-cli 123456789 --renderer ansi --zoom native
+# 普通终端，用字符显示画面
+crossdesk-cli 123456789 --renderer ansi
 
-# 支持 Kitty 图形协议的终端：显示像素画面
+# 支持 Kitty 图形协议的终端，用像素显示画面
 crossdesk-cli 123456789 --renderer kitty
-
-# 降低远端画质与刷新请求
-crossdesk-cli 123456789 --quality balanced --fps 8
 ```
 
-| 参数 | 用途 |
-| --- | --- |
-| `--renderer auto\|ansi\|kitty\|sixel` | 自动选择、字符画面或像素画面；默认 `auto` |
-| `--zoom native` | 从原始细节模式开始；`--zoom 2` 表示相对全景放大 2 倍 |
-| `--quality low\|balanced\|high\|ultra` | 请求最高 360p / 720p / 1080p / 2160p；默认 `high`，实际画质由被控端决定 |
-| `--fps 8` | 固定本地输出目标和相应远端预览请求；允许 1–30，默认本地目标为 30，未指定时远端供帧会自适应 |
-| `--display 1` | 选择第二个显示器，索引从 `0` 开始 |
-| `--control` | 连接后直接启用键鼠控制；省略时默认只读 |
-| `--server your-server.example --port 9099` | 使用自建信令服务，两端需接入同一服务 |
+CLI 通过设备 ID 连接，暂不提供 IP 直连、音频播放、文件传输或剪贴板同步，也不支持连接开启可信设备限制的电脑。被控电脑需要运行 CrossDesk 并有可用的桌面。自托管用户需要使用支持 CLI 连接的服务端。
 
-ANSI 全景受字符网格限制，提高画质不能让整屏小字变得清晰；可扩大终端、缩小字体，再用 `+/-` 或滚轮查看局部，按 `f` 回到全景并重置平移。顶部状态栏显示模式、连接进度、渲染器、缩放、实时输出 FPS 和网络信息，窄窗口会省略部分字段。通过 SSH 使用时分配 PTY（`ssh -t`）；tmux / screen 使用 ANSI。更多显示、鼠标报告和兼容性说明见 [终端使用指南](apps/cli/docs/terminal-client.md)。
-
-### 控制、查看与退出
-
-| 模式 / 按键 | 行为 |
-| --- | --- |
-| 只读模式 | `c` 开启远端控制；`q` 或 `Ctrl+C` 退出 CLI |
-| 控制模式 | 键鼠输入传给远端；`Ctrl+]` 进入本地命令模式并暂停远端输入 |
-| 本地命令模式 | 执行命令后持续保持；`c` 选择手动返回后是否启用控制，`q` 退出 CLI |
-| `Esc` / `Ctrl+C` | 在本地命令模式中手动返回所选的控制或只读模式 |
-| `+` / `=` / `-` | 在只读或本地命令模式中以鼠标位置放大 / 缩小 |
-| 滚轮 / 点击 | 只读模式中，滚轮以鼠标位置缩放；点击目标进入原始细节 |
-| `f` | 在只读或本地命令模式中恢复完整桌面，同时重置倍率、平移和细节模式 |
-| 方向键 / `i j k l` | 在只读或本地命令模式中平移；`i` 上、`j` 左、`k` 下、`l` 右 |
-
-鼠标下的画面内容在缩放时尽量保持原位，到达桌面边缘时限制裁剪范围；没有有效鼠标位置时沿用当前中心。本地命令模式中鼠标仅更新缩放锚点，点击和滚轮不执行视图操作。
-
-**控制模式下退出：先按 `Ctrl+]`，再按 `q`。** 普通 `c`、`q` 和 `Ctrl+C` 在控制模式中会发送到远端。
-
-`Ctrl+]` 模式不会因为缩放、平移或按 `c` 自动结束。状态栏中的 `CONTROL PAUSED` / `READ ONLY` 表示返回后是否启用控制；按 `Esc` / `Ctrl+C` 手动返回。再次按 `Ctrl+]` 也可返回，若返回控制模式则向远端发送一次该组合键。
-
-### Pi 扩展与功能范围
-
-CLI 附带 Pi 自定义 TUI 扩展，使用同样的输入模式。在仓库根目录启动，例如 macOS Apple Silicon 的 release 构建：
-
-```sh
-export CROSSDESK_CLI="$PWD/build/macosx/arm64/release/crossdesk-cli"
-pi -e ./apps/cli/plugins/pi/index.ts
-```
-
-其他平台将 `CROSSDESK_CLI` 改为原生可执行文件的绝对路径。在 Pi 中输入 `/crossdesk` 或 `/crossdesk 123456789`，按提示输入密码。安装要求与验证范围见 [Pi 扩展说明](apps/cli/docs/terminal-client.md#pi-扩展)。
-
-交互式 CLI 当前提供 ID 连接与远程观看 / 输入，不提供 IP 直连、音频播放、文件传输或剪贴板同步；需要 Agent 自动化及文件、音频等工具时，使用下方的 [MCP 服务](#mcp)。CLI 也暂不支持连接开启[可信设备限制](#trusted-devices)的被控端。macOS arm64 已完成本地构建和连接验证；Linux / Windows 完整运行、SSH / Kitty / Sixel 实机显示及真实 Pi TUI 的验收范围见 [验证记录](apps/cli/docs/validation.md)。平台构建与 npm 发布不代表全部平台已完成实机验收。
-
-[CLI 文档入口](apps/cli/README.md) · [终端使用与故障排查](apps/cli/docs/terminal-client.md) · [桥接协议](apps/cli/docs/bridge-protocol.md) · [npm 打包与分发](apps/cli/docs/npm-distribution.md)
+[完整 CLI 指南](apps/cli/README.md) · [参数、Pi 扩展与自行构建](apps/cli/docs/terminal-client.md) · [安装故障排查](apps/cli/docs/npm-distribution.md)
 
 <a id="mcp"></a>
 
@@ -312,7 +249,7 @@ pi -e ./apps/cli/plugins/pi/index.ts
 
 ### Android
 
-原生控制端支持触控与外接键鼠、多屏切换、文件收发、文本剪贴板和会话画面设置。H.264 / AV1 优先使用硬件解码，不支持或运行失败时回退到软件解码；切换应用时优先通过画中画保持会话，画中画不可用时尝试前台服务保活。当前不提供手机被控功能。悬浮菜单中的“隐私屏”按钮可直接开启或关闭电脑本地遮罩，按钮按电脑确认的状态显示“隐私屏已开启”或“隐私屏已关闭”，开启与关闭使用相同配色，正常切换不显示额外文字，仅在异常时显示提示；开启时与桌面端一致屏蔽电脑本地键鼠。
+原生控制端支持触控与外接键鼠、多屏切换、文件收发、文本剪贴板和画面设置。切换应用时优先通过画中画保持会话；不支持画中画时尝试通过后台通知保留连接。悬浮菜单可开关电脑的隐私屏。Android 手机和平板当前不能作为被控端。
 
 [使用说明](docs/USER_GUIDE.md#android) · [源码构建](apps/android/README.md)
 
@@ -328,7 +265,7 @@ PC 端可控制和被控制，复用桌面界面与桌面墙；手机和平板�
 
 ## 无人值守与无头运行
 
-- **Windows：** CrossDesk Service 支持锁屏、登录和安全桌面控制。安装版 Release 开启“开机自启”后，登录前后使用同一本机 ID 和密码；后台服务持有身份与远控连接，用户登录后 GUI 自动启动并接入。便携版和 Debug 不提供此开关。无显示器时会尝试准备虚拟显示器，并优先恢复已记录的显示分辨率。功能限制及启停命令见 [Windows 无人值守指南](docs/USER_GUIDE.md#windows-service)。
+- **Windows：** CrossDesk Service 支持锁屏、登录和安全桌面控制。安装版 Release 开启“开机自启”后，登录前后使用同一本机 ID 和密码；用户登录后界面自动打开，已有远控连接继续保留。便携版和 Debug 不提供此开关。无显示器时会尝试准备虚拟显示器，并优先恢复已记录的显示分辨率。功能限制及启停命令见 [Windows 无人值守指南](docs/USER_GUIDE.md#windows-service)。
 - **Linux：** 可复用现有桌面，也可创建独立 Xvfb / Xfce 会话，操作方法见 [Linux 无头运行](docs/HEADLESS.md)。
 
 <a id="self-hosting"></a>
@@ -341,21 +278,15 @@ PC 端可控制和被控制，复用桌面界面与桌面墙；手机和平板�
 
 <a id="development"></a>
 
-## 构建与反馈
+## 帮助与反馈
 
-- [终端客户端 CLI](apps/cli/README.md)：独立构建、终端使用、Pi 扩展、桥接协议和 npm 打包。
-- [Agent / MCP 用户指南](apps/mcp/README.md)：下载安装、Codex / DSH 配置、连接授权、日常使用与常见问题。
-- [MCP 开发参考](apps/mcp/DEVELOPMENT.md)：源码构建、宿主集成、工具接口、打包与验证范围。
-- [源码构建](docs/BUILD.md)：桌面端依赖、编译参数与打包；移动端请使用上方各平台的构建指南。
-- [组件版本管理](docs/VERSIONING.md)：通过统一脚本查看、设置、递增各组件版本，以及同步构建号和锁文件。
-- [GUI 架构](docs/gui-architecture.md)：桌面界面、平台实现与工程结构。
-- [连接模式架构](docs/connection-architecture.md)：ID 连接与 IP 直连的寻址、认证、协商、数据路径及生命周期。
-- [常见问题](docs/FAQ.md)：连接失败、黑屏、系统权限、文件位置与构建问题。
-- [提交问题或建议](https://github.com/kunkundi/crossdesk/issues)：请提供两端系统、客户端版本、连接方式和可复现步骤。
+- [使用指南](docs/USER_GUIDE.md)：安装、连接、会话操作、设置和无人值守。
+- [常见问题](docs/FAQ.md)：连接失败、黑屏、系统权限及文件位置。
+- [连接与可信设备](docs/connection-architecture.md)：选择连接方式、配对及迁移身份。
+- [更新客户端](docs/UPDATER.md)：检查更新、安装与失败后的处理。
+- [自行构建](docs/BUILD.md)：需要从源码安装时使用。
 
-桌面端主菜单中的 **反馈与建议** 可打开 GitHub 问题页面，或将 CrossDesk、MiniRTC 日志及基本版本信息导出为 ZIP。提交问题时可附上日志包；操作入口见 [反馈与诊断日志](docs/USER_GUIDE.md#feedback)。
-
-桌面端的 `CROSSDESK_UPDATE_PUBLIC_KEY` 是可选编译参数，用于验证应用内升级清单的 Ed25519 签名。不配置仍可正常编译、运行和检查版本，但更新只能手动下载；需要应用内自动安装更新时，须配置与发布私钥匹配的公钥。配置方式见 [更新公钥](docs/BUILD.md#update-public-key)，密钥生成与发布流程见 [桌面端应用内升级](docs/UPDATER.md)。
+遇到问题时，可在桌面端主菜单打开 **反馈与建议**，导出诊断日志，并 [提交问题](https://github.com/kunkundi/crossdesk/issues)。请附上两端系统、客户端版本、连接方式、报错及复现步骤；分享前检查日志和截图中的私人信息。详见 [反馈与诊断日志](docs/USER_GUIDE.md#feedback)。
 
 <a id="sponsor"></a>
 

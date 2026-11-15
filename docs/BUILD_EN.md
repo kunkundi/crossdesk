@@ -1,17 +1,19 @@
-# Build from source
+# Build your own desktop client
 
 [Back to README](../README_EN.md) · [中文](BUILD.md)
+
+Use this guide when you need to build CrossDesk yourself. For normal installation, choose a package from [downloads](../README_EN.md#download). Select the section for your operating system; mobile build guides are linked below.
 
 After cloning, run build and packaging commands from the repository root. The [Xmake options](../apps/desktop/xmake/options.lua) and [CI workflow](../.github/workflows/build.yml) define the build configuration. `1.4.3` is an example version for local builds; change both the configuration value and packaging argument together so the app and package versions match.
 
 ## Build requirements
 
-The default configuration builds the desktop client. Use `--CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y` for the terminal controller alone, or enable both options to build both clients. See the [CLI guide](../apps/cli/README.md) (Chinese) for dependency preparation, usage and npm packaging.
+The default configuration builds the desktop client. Use `--CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y` for the terminal controller alone, or enable both options to build both clients. See the [CLI guide](../apps/cli/README.md) (Chinese) for dependency preparation, usage and installation.
 
 - Git, [Xmake](https://xmake.io/guide/quick-start.html) (3.1.1 or newer for both desktop and mobile), and the platform toolchain listed below.
 - The build scripts use Xmake to manage **CMake 3.x (≥ 3.21, < 4.0)**, **Rust 1.92.0**, and other dependencies. The first build downloads tools and source archives. See the [Slint package configuration](../deps/thirdparty/slint/xmake.lua) for the constraints.
 
-The HarmonyOS Slint desktop port compiles the shared desktop UI and application logic; see its [build and parity validation guide (Chinese)](../apps/harmony/desktop-port/README.md) (API 26). The separate ArkUI phone / tablet project is documented in the [HarmonyOS guide (Chinese)](../apps/harmony/README.md). Use the respective scripts instead of reconfiguring the desktop root project.
+The HarmonyOS Slint desktop port compiles the shared desktop UI and application logic; see its [PC installation and permission guide (Chinese)](../apps/harmony/desktop-port/README.md) (API 26). The separate ArkUI phone / tablet project is documented in the [HarmonyOS guide (Chinese)](../apps/harmony/README.md). Use the respective scripts instead of reconfiguring the desktop root project.
 
 ## Windows
 
@@ -92,36 +94,6 @@ After a successful upload, the submission ID is printed immediately and saved in
 If accelerated uploads time out, set `CROSSDESK_MACOS_NOTARY_S3_ACCELERATION=false` to retry using the standard S3 upload endpoint; the default is `true`. A failed upload may still allocate a submission record at Apple, so check `xcrun notarytool history --keychain-profile crossdesk-notary` before retrying.
 
 Set `CROSSDESK_MACOS_KEYCHAIN` to use a custom keychain containing both signing identities and the notary profile. Never commit private keys, P12 files or passwords. See Apple's [Developer ID certificate guide](https://developer.apple.com/help/account/certificates/create-developer-id-certificates/) and [notarization requirements](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
-
-### Signing and notarization in GitHub Actions
-
-The [Build and Release workflow](../.github/workflows/build.yml) automatically signs, notarizes and staples macOS installers for `v*` release tags. Manual runs can enable `sign_macos`; ordinary branch pushes and unchecked manual runs retain ad-hoc signing. Each architecture is processed on its own runner. Signed builds upload their normal artifacts only after notarization and Gatekeeper verification succeed; missing secrets or notarization failures block publication.
-
-In **Keychain Access → My Certificates**, export the `Developer ID Application` and `Developer ID Installer` identities **with their private keys** into two `.p12` files, using the same export password for both. A `.cer` file alone is insufficient. Keep these files outside the repository, for example `~/Downloads/crossdesk-application.p12` and `~/Downloads/crossdesk-installer.p12`.
-
-Add these repository secrets under **Settings → Secrets and variables → Actions → New repository secret**:
-
-| Secret | Value |
-| --- | --- |
-| `MACOS_APP_CERTIFICATE_P12_BASE64` | Base64 of the Application certificate/private-key `.p12` |
-| `MACOS_INSTALLER_CERTIFICATE_P12_BASE64` | Base64 of the Installer certificate/private-key `.p12` |
-| `MACOS_P12_PASSWORD` | Shared export password for both `.p12` files |
-| `APPLE_ID` | Apple account email with access to the developer team |
-| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password generated for notarization |
-| `APPLE_TEAM_ID` | The 10-character team ID of both certificates |
-
-Run these commands separately and paste each clipboard value into its corresponding Base64 secret. Save the first secret before running the second command:
-
-```bash
-base64 -i "$HOME/Downloads/crossdesk-application.p12" | pbcopy
-base64 -i "$HOME/Downloads/crossdesk-installer.p12" | pbcopy
-```
-
-Your local `crossdesk-notary` profile does not synchronize to GitHub runners. The workflow recreates it in a temporary keychain, selects valid identities matching the team ID, allows signing tools to access only those imported keys without interactive prompts, and deletes signing/notarization credentials at the end of the job. No extra keychain password secret or provisioning profile is required for the current Developer ID distribution setup.
-
-After committing and pushing the workflow and supporting scripts, first run it manually with `desktop_version` set and `sign_macos` enabled. Confirm that `Notarize and staple macOS installer` succeeds for both ARM64 and Intel before pushing a release tag.
-
-CI waits up to 60 minutes for notarization. If Apple is still processing, the job fails and blocks publication, while preserving `macos-pending-notarization-*` installer artifacts and `macos-notarization-*` JSON diagnostics for 14 days. Download them and use the saved submission ID as described above to resume checking and staple the package without uploading it again. Pending artifacts are not completed notarized releases.
 
 ## Linux
 
@@ -227,7 +199,7 @@ xmake r crossdesk
 
 ### Update public key (optional)
 
-`CROSSDESK_UPDATE_PUBLIC_KEY` is embedded in the desktop client at build time to verify Ed25519 signatures on update manifests. Local development builds can omit it: the app still builds, runs, and checks for new versions, but only offers manual downloads without in-app update installation.
+`CROSSDESK_UPDATE_PUBLIC_KEY` is embedded in the desktop client at build time to verify Ed25519 signatures on update manifests. Your own builds can omit it: the app still builds, runs, and checks for new versions, but only offers manual downloads without in-app update installation.
 
 For in-app update installation, add this option to your platform's `xmake f` configuration command before building. For example, after configuring the platform, run the following with the placeholder replaced by your actual public key:
 
@@ -238,9 +210,9 @@ xmake b crossdesk
 
 You can also set the environment variable with the same name before building; the Xmake configuration value takes precedence. The value must encode a 32-byte Ed25519 public key as 64 lowercase hexadecimal characters. A nonempty value with an invalid format fails build configuration. Update manifests must be signed with the matching private key, and the installation must meet the other updater requirements, including a supported installation location. Portable builds always use manual downloads.
 
-GitHub Actions builds read the key from the repository Actions variable `CROSSDESK_UPDATE_PUBLIC_KEY`. The private key is only needed for release signing, not ordinary builds. See the [desktop updater guide](UPDATER.md) (Chinese) for key generation, release configuration, and updater requirements.
+For a self-built client, you normally do not need a release signing key. Keep manual updates unless you manage a matching signed update source. See [client updates](UPDATER.md) (Chinese) for installation requirements and recovery.
 
-## Development Without CUDA Environment
+## Build without CUDA
 
 For **Linux developers who do not have a CUDA environment installed and want to enable hardware codec feature**, a preconfigured [Ubuntu 20.04 compatibility build image](https://hub.docker.com/r/crossdesk/ubuntu20.04) is provided.
 This image contains the required build dependencies and produces both Linux package variants with the glibc 2.31 baseline.
@@ -340,10 +312,6 @@ For more information, please refer to the [official Xmake documentation](https:/
 The native client has a separate Xcode project and requires an arm64 physical device running iOS 16+. See the [iOS development guide](../apps/ios/README.md) for build and media/file-transfer checks. CI exports an unsigned app; device installation requires your own signing.
 
 [iOS CI](../.github/workflows/build-ios.yml) can run manually on its own, is called by the main build workflow, and runs for relevant pull requests. It retains the existing toolchain, license/privacy checks, app verification and ZIP packaging. Tag releases continue to collect the unsigned app archive under the same artifact name.
-
-## Refreshing screenshots
-
-Desktop README images are rendered directly from the current Slint UI. See the [screenshot notes](images/README.md) for reproduction commands.
 
 ## Android
 

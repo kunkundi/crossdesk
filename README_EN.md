@@ -24,19 +24,19 @@
 
 CrossDesk connects your computers from desktop, browser, mobile, and terminal clients, with DeskHub for viewing and controlling multiple devices together. It is built on [MiniRTC](https://github.com/kunkundi/minirtc) and supports self-hosting.
 
-[Features](#features) · [Download and platforms](#download) · [Quick start](#quick-start) · [Terminal CLI](#cli) · [Agent / MCP](#mcp) · [Direct IP](#lan-direct) · [Trusted devices](#trusted-devices) · [Preview](#preview) · [User guide](docs/USER_GUIDE_EN.md) · [Self-hosting](#self-hosting) · [Build and feedback](#development) · [Sponsor](#sponsor)
+[Features](#features) · [Download and platforms](#download) · [Quick start](#quick-start) · [Terminal CLI](#cli) · [Agent / MCP](#mcp) · [Direct IP](#lan-direct) · [Trusted devices](#trusted-devices) · [Preview](#preview) · [User guide](docs/USER_GUIDE_EN.md) · [Self-hosting](#self-hosting) · [Help and feedback](#development) · [Sponsor](#sponsor)
 
 <a id="features"></a>
 
 ## Features
 
 - **Cross-platform access:** control Windows, macOS, and Linux desktops from computers, browsers, or native iOS / Android clients. HarmonyOS PC and mobile clients are in development.
-- **Direct IP over LAN:** connect desktop clients using an IP address, port, and six-character password without a cloud signaling service. Each local IP has its own port; passwords can be remembered and recent devices are separated by mode.
+- **Direct IP over LAN:** connect desktop clients using an IP address, port, and six-character password without a cloud signaling service. You can change the port, remember passwords, and view recent devices separately by mode.
 - **Terminal controller:** view and control remote desktops by device ID, with ANSI / Kitty / Sixel rendering, zoom and pan, persistent local command mode, a Pi extension, and a build independent of the desktop GUI.
 - **DeskHub:** live multi-device previews, groups, enlarged control, group input, and batch file distribution.
 - **Video and audio:** H.264 / AV1, hardware codecs, remote audio, and in-session quality, frame-rate, and remote display resolution controls. Confirmed resolution choices are remembered; the original display mode is restored when the last controller disconnects. Capabilities depend on the platform and device.
 - **Everyday controls:** monitor switching, keyboard and mouse input, shortcuts, and text clipboard. A dual-pane file browser supports directory navigation, bidirectional file and folder transfers, drag and drop, and transfer management.
-- **Agent / MCP:** authorize an Agent through a local MCP service to observe and operate remote computers, with live monitoring, manual takeover, multiple sessions, clipboard, and file tools. Currently built from source.
+- **Agent / MCP:** authorize an Agent through a local MCP service to observe and operate remote computers, with live monitoring, manual takeover, multiple sessions, clipboard, and file tools. Install the package for your local platform.
 - **Trusted devices:** optionally restrict desktop access to trusted device identities in addition to the connection password. Copy and paste pairing information to approve devices before they connect.
 - **Deployment:** direct P2P connections, TURN relay, SRTP media encryption, self-hosting, Windows access before sign-in, and Linux headless operation.
 
@@ -56,10 +56,10 @@ Get a package matching your OS and CPU architecture from the [website](https://w
 | HarmonyOS PC (development) | **Control + host**. API 26, arm64; build and sign a HAP with DevEco; physical-device validation is ongoing |
 | HarmonyOS phones / tablets (development) | **Control only**. API 20+, arm64; build and sign a HAP with DevEco; physical-device validation is ongoing |
 | Web | **Control only**. A WebRTC-capable browser; no client installation on the controlling device |
-| Terminal CLI (development) | **Control only**. Distribution targets: macOS / Linux (x64, arm64) and Windows (x64). [Install from npm](#cli-npm) or build from source; see the [CLI guide](apps/cli/README.md) (Chinese) for platform validation status |
+| Terminal CLI (development) | **Control only**. Distribution targets: macOS / Linux (x64, arm64) and Windows (x64). [Install from npm](#cli-npm) or build from source; see the [CLI guide](apps/cli/README.md) (Chinese) for system requirements and compatibility |
 | MCP (development) | **Control only**. Operate and watch a remote computer in Codex or DSH. DSH needs one plugin package; Codex also needs Node.js 22+. See [installation and usage](apps/mcp/README.md) (Chinese) |
 
-Requirements follow the current source and build configuration. Check the release notes for the downloaded package. Client capabilities are summarized under [Terminal CLI](#cli) and [Mobile and HarmonyOS](#mobile).
+Choose the package for your operating system and processor. Some development features may not be available in released packages; check the release notes for your download.
 
 - **Linux:** use `crossdesk-linux-…deb` for an existing desktop, or `crossdesk-virtual-desktop-xfce-…deb` for a server needing a separate Xfce desktop. Choose one. See [installation details](docs/USER_GUIDE_EN.md#installation) and [headless operation](docs/HEADLESS_EN.md).
 - **macOS:** grant Screen Recording and Accessibility when prompted on first launch. These enable desktop capture and remote keyboard/mouse input. See [permissions](docs/USER_GUIDE_EN.md#installation).
@@ -75,7 +75,7 @@ Requirements follow the current source and build configuration. Check the releas
 2. **Connect.** On another computer, enter the host's 9-digit ID and click **Connect**. Native mobile clients and the [Web Client](https://web.crossdesk.cn/) can also connect.
 3. **Verify the password.** Enter the host's current connection password and wait for the desktop to appear. On desktop, select **Remember password** to reconnect later from **Recent Connections**.
 
-For self-hosting, both ends must use the same service. Upgrade the server before using the new desktop client: device login uses a private key, with its public key bound at registration or after a one-time password check for an existing ID. Once bound, wrong-password attempts against that ID cannot block valid signature login. Remote control still requires the connection password. Signed controllers have separate per-controller and controller-to-destination failure budgets; failures from one controller no longer lock the destination for others. See the [device login guide](docs/connection-architecture.md#41-id-模式) (Chinese) for identity backups and compatibility, the [user guide](docs/USER_GUIDE_EN.md#quick-start) for controls, or the [FAQ](docs/FAQ.md#english) for connection problems.
+For self-hosting, connect both ends to the same service and update the server before upgrading clients. See the [user guide](docs/USER_GUIDE_EN.md#quick-start) for connection steps and the [FAQ](docs/FAQ.md#english) for connection, video, and input problems.
 
 <a id="lan-direct"></a>
 
@@ -101,9 +101,9 @@ Pairing information contains only the public key, device name, and ID, with no p
 
 Adding or removing a device takes effect immediately. With the restriction enabled, **Remove trust** disconnects that device’s sessions, and an empty list rejects all controllers. The dialog also lets you add connected controllers that have completed identity verification.
 
-**Compatibility:** both clients must support trusted-device authentication. Older clients without the protocol cannot connect to a restricted host. The CLI, iOS, Android, and HarmonyOS mobile clients do not currently implement it. With the restriction disabled, the existing connection behavior applies.
+**Compatibility:** Use a recent desktop, iOS, Android, or HarmonyOS mobile client with pairing support. On a phone or tablet, copy the pairing information under **Settings → This device’s pairing info** and add it on the host computer. Older clients and the current terminal CLI cannot connect to a host with this restriction enabled.
 
-Device login and pairing share the private key in the cache directory's `identity.json`; the trusted list is stored in `trusted-devices/devices.json` in the configuration directory. Back up the ID/password cache and `identity.json` together when migrating a device: a bound ID cannot be recovered with its password alone. Clearing the entire cache requires a new ID and renewed trust from other devices. See the [trusted-device technical guide](docs/connection-architecture.md#43-可选可信设备认证) (Chinese) for details.
+Before reinstalling, clearing application data, or moving to another computer, see [identity backup and migration](docs/connection-architecture.md#backup) (Chinese). An ID and password alone cannot restore a bound desktop identity; a changed identity must be paired again.
 
 <a id="preview"></a>
 
@@ -160,7 +160,7 @@ For Windows, macOS, and Linux X11 hosts, **Video settings → Resolution** selec
 
 - [Session controls](docs/USER_GUIDE_EN.md#session): toolbar, text clipboard, received files, and privacy screens.
 - [Client settings and updates](docs/USER_GUIDE_EN.md#settings): general options, DeskHub video settings, and version checks.
-- [DeskHub technical guide](docs/deskhub.md) (Chinese): preview subscriptions, bandwidth allocation, protocol, and compatibility.
+- [DeskHub guide](docs/deskhub.md) (Chinese): organize devices, use group control, distribute files, and reduce bandwidth use.
 
 <a id="cli"></a>
 
@@ -175,7 +175,7 @@ For Windows, macOS, and Linux X11 hosts, **Video settings → Resolution** selec
 | <img src="docs/images/cli-ansi-overview.png" width="480" alt="CrossDesk CLI ANSI quadrant overview, with read-only mode and connection status at the top and shortcuts at the bottom" /> | <img src="docs/images/cli-kitty-overview.png" width="480" alt="CrossDesk CLI Kitty protocol overview of the same remote desktop, rendered as pixels with the status bar and shortcuts" /> |
 | Colored characters show the desktop in standard terminals; use `+/-` or the wheel to zoom at the mouse position. | Pixel graphics display the desktop in terminals supporting the Kitty graphics protocol, such as Ghostty. |
 
-Both images were captured on **2026-10-31** from real read-only connections to the same authorized host. They render the CLI's ANSI / Kitty protocol output in a 128 × 40 character viewport. FPS counts actual output during capture; an unchanged ANSI view can show `FPS 0`. Actual terminal appearance depends on the font, window size, and protocol support. See [capture notes](docs/images/README.md#cli-captures) for the method.
+ANSI displays characters; Kitty displays pixels. Appearance depends on terminal support, font, and window size.
 
 <a id="cli-npm"></a>
 
@@ -200,84 +200,21 @@ npx @chunkdash/crossdesk-cli@latest 123456789
 
 Install the main `@chunkdash/crossdesk-cli` package with npm optional dependencies enabled; do not add `--omit=optional`. Installing a platform package alone does not register the `crossdesk-cli` command. See the [npm distribution guide](apps/cli/docs/npm-distribution.md) (Chinese) for platform requirements, migration from older packages, and troubleshooting.
 
-### Build and connect
+### Everyday controls
 
-Install Git, Xmake 3.1.1 or later, a C++17 toolchain, and the platform dependencies. The following example uses a macOS / Linux shell; Windows Git Bash / Developer PowerShell steps are in the [CLI build guide](apps/cli/docs/terminal-client.md#构建与安装) (Chinese).
-
-```sh
-git clone --recurse-submodules https://github.com/kunkundi/crossdesk.git
-cd crossdesk
-./apps/cli/scripts/prepare-deps.sh
-xmake f -y --CROSSDESK_BUILD_DESKTOP=n --CROSSDESK_BUILD_CLI=y --USE_CUDA=n -m release
-xmake build crossdesk-cli
-xmake run crossdesk-cli doctor --json
-xmake run crossdesk-cli 123456789
-```
-
-For an existing checkout, run the dependency preparation and subsequent commands from the repository root. Replace `123456789` with the host's ID; the password prompt hides your input. `doctor` reports the local environment without connecting. The repository builds the desktop client by default; this configuration builds only the CLI. Set `CROSSDESK_BUILD_DESKTOP=y` to also build the desktop client. Binaries are placed in `build/<platform>/<arch>/release/`.
-
-### Rendering and connection options
-
-The default `--renderer auto` selects Kitty, then Sixel, then ANSI according to terminal capability replies. Use `ansi` in standard terminals such as macOS Terminal, or `kitty` / `sixel` in terminals supporting the corresponding protocol. Explicit pixel modes report an error if the probe fails; use `ansi` in that case. Sixel output alone does not guarantee Xshell compatibility: the terminal itself must support the protocol.
-
-These examples use the command installed globally by npm. For a source build, replace `crossdesk-cli` with `xmake run crossdesk-cli` and run it from the repository root.
+Connections start read-only and silent. Press `c` in read-only mode to enable keyboard and mouse input, `+/-` or the wheel to zoom, and `f` to restore the full desktop. **To quit while controlling the host, press `Ctrl+]`, then `q`**; ordinary keys otherwise go to the remote computer.
 
 ```sh
-# Standard terminal: start with a detail view
-crossdesk-cli 123456789 --renderer ansi --zoom native
+# Character graphics in a standard terminal
+crossdesk-cli 123456789 --renderer ansi
 
-# Terminal supporting the Kitty graphics protocol: display pixel graphics
+# Pixel graphics in a terminal supporting the Kitty graphics protocol
 crossdesk-cli 123456789 --renderer kitty
-
-# Request lower video quality and refresh rate
-crossdesk-cli 123456789 --quality balanced --fps 8
 ```
 
-| Option | Purpose |
-| --- | --- |
-| `--renderer auto\|ansi\|kitty\|sixel` | Automatic selection, character rendering, or pixel graphics; default: `auto` |
-| `--zoom native` | Start in native detail mode; `--zoom 2` zooms to twice the full-desktop scale |
-| `--quality low\|balanced\|high\|ultra` | Request up to 360p / 720p / 1080p / 2160p; default: `high`. The host determines actual quality |
-| `--fps 8` | Fix the local output target and corresponding remote preview request; accepts 1–30. The default local target is 30, with adaptive remote requests when omitted |
-| `--display 1` | Select the second monitor; indexes start at `0` |
-| `--control` | Enable keyboard/mouse control immediately after connecting; omitted by default for read-only viewing |
-| `--server your-server.example --port 9099` | Use a self-hosted signaling service; both ends must use the same service |
+The CLI connects by device ID. Direct IP, audio playback, file transfer, clipboard synchronization, and hosts with trusted-device restrictions are not currently supported. The host needs CrossDesk and an available desktop session. Self-hosted servers must support CLI connections.
 
-ANSI overviews are limited by the character grid: higher video quality alone cannot make full-desktop text legible. Enlarge the terminal or reduce its font size, use `+/-` or the wheel for detail, and `f` to restore the full desktop and reset panning. The top bar shows input mode, connection progress, renderer, zoom, live output FPS, and network information; narrow windows omit some fields. Allocate a PTY over SSH (`ssh -t`), and use ANSI inside tmux / screen. See the [terminal guide](apps/cli/docs/terminal-client.md) (Chinese) for rendering, mouse reporting, and compatibility details.
-
-### Control, navigation, and exit
-
-| Mode / key | Behavior |
-| --- | --- |
-| Read-only mode | `c` enables remote control; `q` or `Ctrl+C` exits the CLI |
-| Control mode | Keyboard/mouse input goes to the host; `Ctrl+]` enters local command mode and pauses remote input |
-| Local command mode | Stays active after commands; `c` selects whether control resumes when you leave; `q` exits the CLI |
-| `Esc` / `Ctrl+C` | Manually leave local command mode and return to the selected control or read-only mode |
-| `+` / `=` / `-` | Zoom in / out at the mouse position in read-only or local command mode |
-| Wheel / click | In read-only mode, zoom at the mouse position with the wheel; click a point to open native detail |
-| `f` | Restore the full desktop and reset zoom, pan, and native detail mode in read-only or local command mode |
-| Arrow keys / `i j k l` | Pan in read-only or local command mode: `i` up, `j` left, `k` down, `l` right |
-
-Zoom keeps the content under the pointer in place where possible, clamping the crop at desktop edges. Without a valid mouse position, zoom uses the current center. In local command mode, mouse reports only update the zoom anchor; clicks and the wheel do not change the view.
-
-**To quit while controlling the host, press `Ctrl+]`, then `q`.** Ordinary `c`, `q`, and `Ctrl+C` go to the host in control mode.
-
-Zooming, panning, or pressing `c` does not end `Ctrl+]` mode. The status bar shows `CONTROL PAUSED` / `READ ONLY` to indicate whether control will resume; press `Esc` / `Ctrl+C` to return manually. Pressing `Ctrl+]` again also leaves local mode and forwards that shortcut if control resumes.
-
-### Pi extension and feature scope
-
-The CLI includes a Pi custom TUI extension with the same input modes. Launch it from the repository root; for example, with a macOS Apple Silicon release build:
-
-```sh
-export CROSSDESK_CLI="$PWD/build/macosx/arm64/release/crossdesk-cli"
-pi -e ./apps/cli/plugins/pi/index.ts
-```
-
-On other platforms, set `CROSSDESK_CLI` to the absolute path of the native executable. Enter `/crossdesk` or `/crossdesk 123456789` in Pi and follow the password prompt. See the [Pi extension guide](apps/cli/docs/terminal-client.md#pi-扩展) (Chinese) for requirements and validation scope.
-
-The interactive CLI provides ID-based viewing and input, without direct IP connections, audio playback, file transfer, or clipboard synchronization. For Agent automation and file or audio tools, use the [MCP service](#mcp) below. The CLI cannot yet connect to hosts with [trusted-device restrictions](#trusted-devices) enabled. Local builds and remote connections have been validated on macOS arm64. See the [validation record](apps/cli/docs/validation.md) (Chinese) for the remaining Linux / Windows, SSH / Kitty / Sixel terminal, and actual Pi TUI checks. Platform builds and npm publication do not establish that every platform has been validated on real devices.
-
-[CLI documentation](apps/cli/README.md) · [Terminal usage and troubleshooting](apps/cli/docs/terminal-client.md) · [Bridge protocol](apps/cli/docs/bridge-protocol.md) · [npm packaging and distribution](apps/cli/docs/npm-distribution.md) (detailed guides in Chinese)
+[Complete CLI guide](apps/cli/README.md) · [Options, Pi extension, and source builds](apps/cli/docs/terminal-client.md) · [Installation troubleshooting](apps/cli/docs/npm-distribution.md) (Chinese)
 
 <a id="mcp"></a>
 
@@ -312,7 +249,7 @@ Install the native controller from the [App Store](https://apps.apple.com/app/id
 
 ### Android
 
-The native controller supports touch and external keyboards/mice, monitor switching, file transfers, text clipboard, and video settings. H.264 / AV1 use hardware decoding when available, with software fallback when unsupported or when decoding fails. Active sessions use Picture in Picture when switching apps, with a foreground service as a fallback when Picture in Picture is unavailable. Phone-as-host is not currently supported. The floating menu’s **Privacy screen** button toggles the computer’s local cover directly, labels the host-confirmed on/off state without changing colors, and shows inline feedback only for errors or unavailable status. Enabling privacy also blocks local keyboard/mouse input, matching the desktop controller.
+The native controller supports touch, external keyboards and mice, monitor switching, file transfers, text clipboard, and video settings. Switching apps uses Picture in Picture when available, with a background notification as a fallback. Use the floating menu to toggle the computer’s privacy screen. Android phones and tablets cannot currently act as hosts.
 
 [User guide](docs/USER_GUIDE_EN.md#android) · [Build from source](apps/android/README.md) (Chinese)
 
@@ -328,7 +265,7 @@ The PC client acts as both controller and host, sharing the desktop UI and DeskH
 
 ## Unattended and headless access
 
-- **Windows:** CrossDesk Service supports lock screens, sign-in, and secure desktops. Enabling **Auto Start** in an installed Release build uses the same device ID and password before and after sign-in. The background service owns the identity and remote connections; the GUI starts and attaches after sign-in. Portable and Debug builds do not offer this switch. Without a monitor, the host attempts to prepare a virtual display and restore a previously recorded resolution. See the [Windows unattended guide](docs/USER_GUIDE_EN.md#windows-service) for capabilities, limits, and commands.
+- **Windows:** CrossDesk Service supports lock screens, sign-in, and secure desktops. Enabling **Auto Start** in an installed Release build uses the same device ID and password before and after sign-in. The interface opens after sign-in while the existing remote connection continues. Portable and Debug builds do not offer this switch. Without a monitor, the host attempts to prepare a virtual display and restore a previously recorded resolution. See the [Windows unattended guide](docs/USER_GUIDE_EN.md#windows-service) for capabilities, limits, and commands.
 - **Linux:** reuse an existing desktop or create an independent Xvfb / Xfce session. See [Linux headless operation](docs/HEADLESS_EN.md).
 
 <a id="self-hosting"></a>
@@ -341,21 +278,16 @@ Host your own signaling and TURN services, then enable them under **Settings →
 
 <a id="development"></a>
 
-## Build and feedback
+## Help and feedback
 
-- [Agent / MCP user guide](apps/mcp/README.md) (Chinese): downloads, Codex / DSH setup, device authorization, everyday usage, and troubleshooting.
-- [MCP developer reference](apps/mcp/DEVELOPMENT.md) (Chinese): source builds, host integration, tool interfaces, packaging, and validation scope.
-- [Terminal client CLI](apps/cli/README.md) (Chinese): independent builds, terminal usage, Pi extension, bridge protocol, and npm packaging.
-- [Build from source](docs/BUILD_EN.md): desktop dependencies, build options, and packaging. Use the platform guides above for mobile builds.
-- [Component versions](docs/VERSIONING.md) (Chinese): inspect, set, and increment component versions, with synchronized build numbers and lockfiles.
-- [GUI architecture](docs/gui-architecture.md) (Chinese): desktop UI, platform implementation, and project structure.
-- [Connection architecture](docs/connection-architecture.md) (Chinese): discovery, authentication, negotiation, data paths, and lifecycle for ID and direct IP modes.
-- [FAQ](docs/FAQ.md#english): connections, blank video, permissions, received files, and build issues.
-- [Report an issue or suggestion](https://github.com/kunkundi/crossdesk/issues): include both operating systems, client versions, connection mode, and reproduction steps.
+- [Documentation index](docs/README.md) (Chinese): find help by task.
+- [User guide](docs/USER_GUIDE_EN.md): installation, connections, session controls, settings, and unattended access.
+- [FAQ](docs/FAQ.md#english): connection failures, blank video, permissions, and received files.
+- [Connections and trusted devices](docs/connection-architecture.md) (Chinese): connection modes, pairing, and identity migration.
+- [Client updates](docs/UPDATER.md) (Chinese): check, install, and recover from update failures.
+- [Build from source](docs/BUILD_EN.md): for users who need to build their own client.
 
-The optional desktop build parameter `CROSSDESK_UPDATE_PUBLIC_KEY` verifies Ed25519 signatures on in-app update manifests. Without it, the app still builds, runs, and checks for new versions, but updates require manual download. In-app update installation requires a public key matching the release signing private key. See [Update public key](docs/BUILD_EN.md#update-public-key) for configuration and the [desktop updater guide](docs/UPDATER.md) (Chinese) for key generation and publishing.
-
-Open **Feedback & suggestions** from the desktop main menu to visit GitHub issues or export CrossDesk and MiniRTC logs with basic version information as a ZIP archive. Attach the archive when reporting a problem; see [feedback and diagnostic logs](docs/USER_GUIDE_EN.md#feedback).
+Open **Feedback & suggestions** from the desktop main menu to export diagnostic logs and [report an issue](https://github.com/kunkundi/crossdesk/issues). Include both operating systems, client versions, connection mode, error message, and reproduction steps. Review logs and screenshots for private information before sharing. See [feedback and diagnostic logs](docs/USER_GUIDE_EN.md#feedback).
 
 <a id="sponsor"></a>
 
