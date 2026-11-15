@@ -85,6 +85,27 @@ class VideoLatencyStats
     double ongoing_gap_ms = 0;
   };
 
+  // Non-cumulative buckets: <=2, (2,8], (8,16], (16,33], >33 ms.
+  // Keep distributions bounded; a mean alone conceals paired arrivals.
+  struct CadenceTiming {
+    std::array<uint64_t, 5> buckets{};
+    uint64_t samples = 0;
+    double total_ms = 0;
+    double max_ms = 0;
+
+    void Add(double ms) {
+      if (!std::isfinite(ms) || ms < 0) return;
+      constexpr std::array<double, 4> upper_ms{2, 8, 16, 33};
+      size_t bucket = 0;
+      while (bucket < upper_ms.size() && ms > upper_ms[bucket]) ++bucket;
+      ++buckets[bucket];
+      ++samples;
+      total_ms += ms;
+      max_ms = std::max(max_ms, ms);
+    }
+    double Average() const { return samples ? total_ms / samples : 0; }
+  };
+
   struct PipelineSnapshot {
     std::array<uint64_t, static_cast<size_t>(VideoFrameStage::count)> frames{};
     uint64_t render_ticks = 0;
@@ -95,6 +116,18 @@ class VideoLatencyStats
     double receive_to_commit_max_ms = 0;
     double drawable_wait_total_ms = 0;
     double drawable_wait_max_ms = 0;
+    CadenceTiming arrival_intervals;
+    CadenceTiming receive_to_accept;
+    CadenceTiming pending_at_replace;
+    CadenceTiming pending_at_commit;
+    uint64_t arrival_out_of_order = 0;
+    uint64_t scheduler_ticks = 0;
+    uint64_t scheduler_skipped_deadlines = 0;
+    double scheduler_late_total_ms = 0;
+    double scheduler_late_max_ms = 0;
+    uint64_t arrival_wakeups = 0;
+    double wake_queue_total_ms = 0;
+    double wake_queue_max_ms = 0;
   };
 
   struct DiagnosticsSnapshot {
@@ -116,6 +149,7 @@ class VideoLatencyStats
     gap_min_frame_id_ = issued_id_;
     gap_states_ = {};
     pipeline_ = {};
+    last_received_time_.reset();
     diagnostic_window_started_ = now;
     return tail;
   }
@@ -133,6 +167,28 @@ class VideoLatencyStats
     ++pipeline_.render_ticks;
     pipeline_.timer_late_total_ms += late_ms;
     pipeline_.timer_late_max_ms = std::max(pipeline_.timer_late_max_ms, late_ms);
+  }
+
+  // Count every due scheduler tick, including ticks with no dirty frame. The
+  // existing render_ticks count only presentation attempts and are not Hz.
+  void RecordSchedulerTick(double late_ms, uint64_t skipped_deadlines) {
+    std::lock_guard lock(mutex_);
+    if (!gap_tracking_enabled_ || !std::isfinite(late_ms)) return;
+    late_ms = std::max(0.0, late_ms);
+    ++pipeline_.scheduler_ticks;
+    pipeline_.scheduler_skipped_deadlines += skipped_deadlines;
+    pipeline_.scheduler_late_total_ms += late_ms;
+    pipeline_.scheduler_late_max_ms =
+        std::max(pipeline_.scheduler_late_max_ms, late_ms);
+  }
+
+  void RecordFrameWake(double queued_ms) {
+    std::lock_guard lock(mutex_);
+    if (!gap_tracking_enabled_ || !std::isfinite(queued_ms)) return;
+    queued_ms = std::max(0.0, queued_ms);
+    ++pipeline_.arrival_wakeups;
+    pipeline_.wake_queue_total_ms += queued_ms;
+    pipeline_.wake_queue_max_ms = std::max(pipeline_.wake_queue_max_ms, queued_ms);
   }
 
   void RecordStage(const VideoLatencyFrame& frame, VideoFrameStage stage,
@@ -264,6 +320,7 @@ class VideoLatencyStats
     gap_tracking_enabled_ = false;
     gap_states_ = {};
     pipeline_ = {};
+    last_received_time_.reset();
     return tail;
   }
 
@@ -308,6 +365,35 @@ class VideoLatencyStats
     if (seen.stages & bit) return;
     seen.stages |= bit;
     ++pipeline_.frames[index];
+    if (stage == VideoFrameStage::received) {
+      if (last_received_time_ && now < *last_received_time_) {
+        // Callback timestamps can be delivered out of order after preview
+        // conversion. Do not interpret a negative interval as a burst.
+        ++pipeline_.arrival_out_of_order;
+      } else {
+        if (last_received_time_) {
+          pipeline_.arrival_intervals.Add(
+              std::chrono::duration<double, std::milli>(
+                  now - *last_received_time_).count());
+        }
+        last_received_time_ = now;
+      }
+    } else if (stage == VideoFrameStage::accepted) {
+      seen.accepted_at = now;
+      if (frame.received_time != Clock::time_point{}) {
+        pipeline_.receive_to_accept.Add(
+            std::chrono::duration<double, std::milli>(
+                now - frame.received_time).count());
+      }
+    } else if (seen.accepted_at &&
+               (stage == VideoFrameStage::replaced ||
+                stage == VideoFrameStage::committed)) {
+      auto& pending = stage == VideoFrameStage::replaced
+                          ? pipeline_.pending_at_replace
+                          : pipeline_.pending_at_commit;
+      pending.Add(std::chrono::duration<double, std::milli>(
+          now - *seen.accepted_at).count());
+    }
     if (stage == VideoFrameStage::committed) {
       if (frame.received_time != Clock::time_point{} &&
           now >= frame.received_time) {
@@ -356,9 +442,11 @@ class VideoLatencyStats
   uint64_t gap_min_frame_id_ = 0;
   std::array<FrameGapState, 2> gap_states_{};
   PipelineSnapshot pipeline_;
+  std::optional<Clock::time_point> last_received_time_;
   struct PipelineIdentity {
     uint64_t id = 0;
     uint32_t stages = 0;
+    std::optional<Clock::time_point> accepted_at;
   };
   std::array<PipelineIdentity, 1024> pipeline_seen_{};
   Clock::time_point diagnostic_window_started_{};

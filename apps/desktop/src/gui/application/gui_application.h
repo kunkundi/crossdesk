@@ -95,6 +95,10 @@ private:
   void SyncStreamVideoFrame(double timer_lateness_ms);
   void SyncVideoFrameGapStats();
   void ScheduleNextVideoFrame();
+  void PresentPendingVideoFrame(double lateness_ms);
+#if defined(__APPLE__)
+  void UpdateVideoFrameScheduler();
+#endif
   void ConfigureStreamVideoRenderer();
   void SyncStreamKeyboardFocus();
   void SetStreamKeyboardFocus(bool focused);

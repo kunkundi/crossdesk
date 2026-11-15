@@ -73,6 +73,7 @@
 #include "platform/windows/service/unattended_config.h"
 #elif defined(__APPLE__)
 #include "platform/macos/gui/tray/mac_tray.h"
+#include "platform/macos/gui/video_frame_scheduler.h"
 #include "platform/window_drag.h"
 #elif defined(__OHOS__)
 #include "platform/harmony/harmony_autostart.h"
@@ -1133,6 +1134,9 @@ struct GuiApplication::SlintUi {
   int localized_language = -1;
   std::chrono::steady_clock::time_point last_clipboard_poll{};
   slint::Timer video_timer;
+#if defined(__APPLE__)
+  MacVideoFrameScheduler video_scheduler;
+#endif
 #ifndef __OHOS__
   std::unique_ptr<platform::InstanceActivationReceiver> activation_receiver;
 #endif
@@ -1410,6 +1414,19 @@ void GuiApplication::InitializeUi() {
       config_center_->GetSponsorshipPromptDismissedVersion() != CROSSDESK_VERSION;
   ui_->video_presenter =
       std::make_unique<SlintVideoPresenter>(*video_renderer_);
+#if defined(__APPLE__)
+  ui_->video_scheduler.Start([this](double queued_ms) {
+    if (!ui_ || !ui_->stream || !ui_->gallery_control_id.empty() ||
+        !(*ui_->stream)->window().is_visible() ||
+        (*ui_->stream)->window().is_minimized()) return;
+    if (const auto props = SelectedSession())
+      props->video_latency_->RecordFrameWake(queued_ms);
+    PresentPendingVideoFrame(0);
+  });
+  std::atomic_store_explicit(&video_frame_wakeup_,
+      std::make_shared<const std::function<void()>>(
+          ui_->video_scheduler.Notifier()), std::memory_order_release);
+#endif
 #if _WIN32
   ui_->main->set_custom_titlebar(true);
 #elif (defined(__linux__) && !defined(__OHOS__))
@@ -2820,6 +2837,9 @@ void GuiApplication::Tick() {
   }
   SyncStreamWindow();
   SyncVideoFrameGapStats();
+#if defined(__APPLE__)
+  UpdateVideoFrameScheduler();
+#endif
   SyncServerWindow();
   SyncTrustedDevices();
   for (auto it = ui_->file_browsers.begin(); it != ui_->file_browsers.end();) {
@@ -4407,27 +4427,59 @@ void GuiApplication::ConfigureStreamVideoRenderer() {
       [this] { video_frame_dirty_.store(true, std::memory_order_release); });
 }
 
+void GuiApplication::PresentPendingVideoFrame(double lateness_ms) {
+  const bool frame_dirty =
+      video_frame_dirty_.exchange(false, std::memory_order_acq_rel);
+  const bool native_render_needed = ui_->stream && ui_->video_presenter &&
+                                    ui_->video_presenter->NeedsRedraw();
+  if (frame_dirty || native_render_needed) SyncStreamVideoFrame(lateness_ms);
+}
+
+#if defined(__APPLE__)
+void GuiApplication::UpdateVideoFrameScheduler() {
+  if (!ui_ || !ui_->video_scheduler.IsRunning()) return;
+  // Layout/selection/restore still need a wakeup with a static source. This UI
+  // poll requests work but never gates decoded-frame arrival notifications.
+  const bool enabled = ui_->stream && ui_->gallery_control_id.empty() &&
+      (*ui_->stream)->window().is_visible() &&
+      !(*ui_->stream)->window().is_minimized();
+  ui_->video_scheduler.SetEnabled(enabled);
+  if (enabled && (video_frame_dirty_.load(std::memory_order_acquire) ||
+                 (ui_->video_presenter && ui_->video_presenter->NeedsRedraw())))
+    ui_->video_scheduler.Request();
+}
+#endif
+
 void GuiApplication::ScheduleNextVideoFrame() {
   if (!ui_) {
     return;
   }
+#if defined(__APPLE__)
+  // CAMetalLayer already synchronizes presentation. A second fixed-frequency
+  // timer can replace uniformly arriving frames at the timer phase boundary.
+  if (ui_->video_scheduler.IsRunning()) {
+    ui_->video_timer.stop();
+    return;
+  }
+#endif
 
   constexpr auto frame_interval = std::chrono::nanoseconds(1'000'000'000 / 60);
   const auto now = std::chrono::steady_clock::now();
-  if (next_video_frame_time_ == std::chrono::steady_clock::time_point{} ||
-      now - next_video_frame_time_ > 250ms) {
+  if (next_video_frame_time_ == std::chrono::steady_clock::time_point{}) {
     next_video_frame_time_ = now;
   }
 
   if (now >= next_video_frame_time_) {
-    const bool frame_dirty =
-        video_frame_dirty_.exchange(false, std::memory_order_acq_rel);
-    const bool native_render_needed = ui_->stream && ui_->video_presenter &&
-                                      ui_->video_presenter->NeedsRedraw();
-    if (frame_dirty || native_render_needed) {
-      SyncStreamVideoFrame(std::chrono::duration<double, std::milli>(
-          now - next_video_frame_time_).count());
+    const double lateness_ms = std::chrono::duration<double, std::milli>(
+        now - next_video_frame_time_).count();
+    if (const auto props = SelectedSession()) {
+      props->video_latency_->RecordSchedulerTick(
+          lateness_ms, (now - next_video_frame_time_) / frame_interval);
     }
+    // Measure a long stall before resynchronizing, without replaying missed
+    // frames. Otherwise the most important scheduler delays appear as zero.
+    if (now - next_video_frame_time_ > 250ms) next_video_frame_time_ = now;
+    PresentPendingVideoFrame(lateness_ms);
     do {
       next_video_frame_time_ += frame_interval;
     } while (next_video_frame_time_ <= now);
@@ -7163,6 +7215,12 @@ void GuiApplication::SyncGallery() {
 }
 
 void GuiApplication::Cleanup() {
+#if defined(__APPLE__)
+  // Deactivate queued main-thread work before sessions/renderers are released.
+  std::atomic_store_explicit(&video_frame_wakeup_,
+      std::shared_ptr<const std::function<void()>>{}, std::memory_order_release);
+  if (ui_) ui_->video_scheduler.Stop();
+#endif
   BeginShutdown();
   while (!ShutdownDrained())
     std::this_thread::sleep_for(std::chrono::milliseconds(2));

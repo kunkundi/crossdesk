@@ -179,7 +179,7 @@ void PeerEventHandler::OnReceiveVideoBuffer(
         props->background_snapshot_time_ = {};
         ++props->video_frame_sequence_;
         props->streaming_ = true;
-        runtime->video_frame_dirty_.store(true, std::memory_order_release);
+        runtime->NotifyVideoFrameReady();
         return;
       }
       if (submit_result == VideoRenderer::SubmitResult::dropped ||
@@ -267,7 +267,7 @@ void PeerEventHandler::OnReceiveVideoBuffer(
     if (background_snapshot_only) {
       return;
     }
-    runtime->video_frame_dirty_.store(true, std::memory_order_release);
+    runtime->NotifyVideoFrameReady();
   }
 }
 

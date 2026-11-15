@@ -8,6 +8,7 @@
 #define _GUI_RUNTIME_H_
 
 #include <atomic>
+#include <functional>
 #include <cstdint>
 #include <deque>
 #include <future>
@@ -297,6 +298,17 @@ class GuiRuntime : protected gui_detail::GuiState {
   RemoteInputDispatcher remote_input_;
   std::shared_ptr<PeerEventHandler> peer_events_;
   std::atomic<bool> video_frame_dirty_{false};
+#if defined(__APPLE__)
+  std::shared_ptr<const std::function<void()>> video_frame_wakeup_;
+#endif
+  void NotifyVideoFrameReady() {
+    video_frame_dirty_.store(true, std::memory_order_release);
+#if defined(__APPLE__)
+    if (auto wake = std::atomic_load_explicit(
+            &video_frame_wakeup_, std::memory_order_acquire))
+      (*wake)();
+#endif
+  }
   std::unique_ptr<VideoRenderer> video_renderer_;
 
  private:

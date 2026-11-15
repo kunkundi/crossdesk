@@ -40,7 +40,8 @@ inline void LogVideoFrameDiagnostics(
   };
   bool has_frames = false;
   for (auto frames : pipeline.frames) has_frames |= frames != 0;
-  if (!has_frames && pipeline.render_ticks == 0) return;
+  if (!has_frames && pipeline.render_ticks == 0 &&
+      pipeline.scheduler_ticks == 0 && pipeline.arrival_wakeups == 0) return;
   // Stages describe events in this window, so a frame may cross a boundary.
   // Native GPU completions and actual presentations remain separate counts.
   // Drawable waits cover committed frames only, excluding nil/idle outcomes.
@@ -64,6 +65,47 @@ inline void LogVideoFrameDiagnostics(
             count(VideoFrameStage::committed)
                 ? pipeline.drawable_wait_total_ms / count(VideoFrameStage::committed) : 0,
             pipeline.drawable_wait_max_ms);
+  const auto buckets = [](const VideoLatencyStats::CadenceTiming& timing) {
+    std::string result;
+    for (auto count : timing.buckets) {
+      if (!result.empty()) result += ',';
+      result += std::to_string(count);
+    }
+    return result;
+  };
+  // The callback-to-accept distribution includes thumbnail conversion;
+  // pending durations start only once the native slot accepts the frame.
+  // Buckets are non-cumulative. Print once per diagnostic window, not per frame.
+  const auto& arrival = pipeline.arrival_intervals;
+  const auto& pre_submit = pipeline.receive_to_accept;
+  const auto& replaced = pipeline.pending_at_replace;
+  const auto& committed = pipeline.pending_at_commit;
+  LOG_DEBUG("Video frame cadence: remote={} display={} window_ms={} final={} "
+            "scheduler_ticks={} skipped_deadlines={} scheduler_late_avg_ms={} "
+            "scheduler_late_max_ms={} arrival_wakeups={} wake_queue_avg_ms={} "
+            "wake_queue_max_ms={} bucket_upper_ms=2,8,16,33,inf "
+            "arrival_intervals={} arrival_out_of_order={} arrival_gap_avg_ms={} "
+            "arrival_gap_max_ms={} arrival_gap_buckets={} "
+            "pre_submit_samples={} pre_submit_avg_ms={} pre_submit_max_ms={} "
+            "pre_submit_buckets={} replaced_pending_samples={} "
+            "replaced_pending_avg_ms={} replaced_pending_max_ms={} "
+            "replaced_pending_buckets={} committed_pending_samples={} "
+            "committed_pending_avg_ms={} committed_pending_max_ms={} "
+            "committed_pending_buckets={}",
+            remote_id, value.stream_index, value.window_ms, value.final,
+            pipeline.scheduler_ticks, pipeline.scheduler_skipped_deadlines,
+            pipeline.scheduler_ticks
+                ? pipeline.scheduler_late_total_ms / pipeline.scheduler_ticks : 0,
+            pipeline.scheduler_late_max_ms, pipeline.arrival_wakeups,
+            pipeline.arrival_wakeups
+                ? pipeline.wake_queue_total_ms / pipeline.arrival_wakeups : 0,
+            pipeline.wake_queue_max_ms, arrival.samples,
+            pipeline.arrival_out_of_order, arrival.Average(), arrival.max_ms,
+            buckets(arrival), pre_submit.samples, pre_submit.Average(),
+            pre_submit.max_ms, buckets(pre_submit), replaced.samples,
+            replaced.Average(), replaced.max_ms, buckets(replaced),
+            committed.samples, committed.Average(), committed.max_ms,
+            buckets(committed));
 }
 
 }  // namespace crossdesk

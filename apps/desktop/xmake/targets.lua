@@ -714,6 +714,7 @@ function setup_targets()
                 "apps/desktop/src/platform/macos/gui/tray/*.mm",
                 "apps/desktop/src/platform/macos/gui/window_drag_mac.mm",
                 "apps/desktop/src/platform/macos/gui/metal_video_renderer.mm",
+                "apps/desktop/src/platform/macos/gui/video_frame_scheduler.mm",
                 "apps/desktop/src/platform/macos/gui/video_renderer_factory_metal.mm")
             add_frameworks("Security", "UniformTypeIdentifiers", {public = true})
             add_includedirs("apps/desktop/src/platform/macos/gui",
