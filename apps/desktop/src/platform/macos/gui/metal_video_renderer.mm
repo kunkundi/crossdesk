@@ -1296,7 +1296,7 @@ MacMetalVideoRenderer::RenderOutcome MacMetalVideoRenderer::RenderLatest(
       const double host_now = CACurrentMediaTime();
       const auto presented_at = VideoLatencyFrame::FromHostTime(
           presented_time, host_now, now);
-      if (presented_at) {
+      if (visible_at_submit && presented_at) {
         timing.MarkPresented(*presented_at);
       }
     }];

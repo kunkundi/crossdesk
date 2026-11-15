@@ -43,6 +43,7 @@ if build_desktop then
     includes(path.join(source_dir, "apps/desktop/xmake/platform.lua"))
     includes(path.join(source_dir, "apps/desktop/xmake/rules/slint.lua"))
     includes(path.join(source_dir, "apps/desktop/xmake/rules/about_resources.lua"))
+    includes(path.join(source_dir, "apps/desktop/xmake/rules/build_identity.lua"))
     includes(path.join(source_dir, "apps/desktop/xmake/targets.lua"))
 
     setup_platform_settings()

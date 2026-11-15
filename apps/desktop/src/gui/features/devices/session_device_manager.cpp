@@ -89,7 +89,17 @@ bool SessionDeviceManager::ShouldSendCapturedFrame(
   return true;
 }
 
-void SessionDeviceManager::RecordCaptureCadence(
+void SessionDeviceManager::ResetCaptureMetrics() {
+  std::lock_guard<std::mutex> lock(capture_metrics_mutex_);
+  ++capture_metrics_generation_;
+  capture_metrics_started_ = last_capture_callback_ = {};
+  capture_callbacks_ = capture_rate_drops_ = capture_forwarded_ = 0;
+  capture_secure_callbacks_ = 0;
+  capture_send_errors_ = 0;
+  capture_max_gap_us_ = capture_send_us_ = capture_max_send_us_ = 0;
+}
+
+uint64_t SessionDeviceManager::RecordCaptureCadence(
     std::chrono::steady_clock::time_point now, int fps,
     bool from_secure_desktop) {
   std::lock_guard<std::mutex> lock(capture_metrics_mutex_);
@@ -134,6 +144,7 @@ void SessionDeviceManager::RecordCaptureCadence(
   last_capture_callback_ = std::max(last_capture_callback_, now);
   ++capture_callbacks_;
   if (from_secure_desktop) ++capture_secure_callbacks_;
+  return capture_metrics_generation_;
 }
 
 void SessionDeviceManager::Initialize() {
@@ -169,11 +180,7 @@ int SessionDeviceManager::InitializeScreenCapturer() {
 
   last_frame_time_ = {};
   next_frame_deadline_ = {};
-  capture_metrics_started_ = last_capture_callback_ = {};
-  capture_callbacks_ = capture_rate_drops_ = capture_forwarded_ = 0;
-  capture_secure_callbacks_ = 0;
-  capture_send_errors_ = 0;
-  capture_max_gap_us_ = capture_send_us_ = capture_max_send_us_ = 0;
+  ResetCaptureMetrics();
   // Keep the shared source ready for either live rate. MiniRTC admits 30/60
   // frames independently per viewer, so switching never restarts native
   // capture.
@@ -195,10 +202,12 @@ int SessionDeviceManager::InitializeScreenCapturer() {
         from_secure_desktop =
             ScreenCapturerWin::CurrentFrameIsFromSecureDesktop();
 #endif
-        RecordCaptureCadence(now_time, fps, from_secure_desktop);
+        const uint64_t capture_generation =
+            RecordCaptureCadence(now_time, fps, from_secure_desktop);
         if (!ShouldSendCapturedFrame(now_time, fps)) {
           std::lock_guard<std::mutex> lock(capture_metrics_mutex_);
-          ++capture_rate_drops_;
+          if (capture_generation == capture_metrics_generation_)
+            ++capture_rate_drops_;
           return;
         }
 
@@ -273,11 +282,15 @@ int SessionDeviceManager::InitializeScreenCapturer() {
                 .count();
         {
           std::lock_guard<std::mutex> lock(capture_metrics_mutex_);
-          ++capture_forwarded_;
-          capture_send_errors_ += send_errors;
-          capture_send_us_ += send_us;
-          capture_max_send_us_ =
-              std::max<int64_t>(capture_max_send_us_, send_us);
+          // A callback already forwarding during stop/restart belongs to its
+          // original window, not the new capture session.
+          if (capture_generation == capture_metrics_generation_) {
+            ++capture_forwarded_;
+            capture_send_errors_ += send_errors;
+            capture_send_us_ += send_us;
+            capture_max_send_us_ =
+                std::max<int64_t>(capture_max_send_us_, send_us);
+          }
         }
         last_video_frame_stream_id_ = stream_id;
         last_frame_time_ = now_time;
@@ -344,6 +357,9 @@ int SessionDeviceManager::StartScreenCapturer() {
   const bool show_cursor = ShouldCaptureCursor();
   LOG_INFO("Start screen capturer, show cursor: {}", show_cursor);
   screen_sharing_power_.SetSharing(HasConnectedController());
+  // Start may reuse the initialized backend after a disconnected interval.
+  // Begin a new measurement window before it can deliver its first callback.
+  ResetCaptureMetrics();
   const int ret = screen_capturer_->Start(show_cursor);
   if (ret != 0) {
     screen_sharing_power_.SetSharing(false);
@@ -357,6 +373,9 @@ int SessionDeviceManager::StopScreenCapturer() {
     LOG_INFO("Stop screen capturer");
     screen_capturer_->Stop();
   }
+  // Discard the final partial window and callback timestamp after stopping the
+  // backend; a late completion cannot contribute to the next generation.
+  ResetCaptureMetrics();
   owner_.screen_capturer_is_started_ = false;
   screen_sharing_power_.SetSharing(false);
   return 0;

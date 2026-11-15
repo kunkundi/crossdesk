@@ -79,6 +79,7 @@ function setup_targets()
 
     target("rd_log")
         set_kind("object")
+        add_rules("crossdesk.build_identity")
         add_packages("spdlog", {public = true})
         add_files("apps/desktop/src/log/rd_log.cpp")
         add_includedirs("apps/desktop/src/log", {public = true})

@@ -93,6 +93,7 @@ private:
   void SyncPlatformDialogs();
   void SyncStreamWindow();
   void SyncStreamVideoFrame();
+  void SyncVideoFrameGapStats();
   void ScheduleNextVideoFrame();
   void ConfigureStreamVideoRenderer();
   void SyncStreamKeyboardFocus();
@@ -144,6 +145,7 @@ private:
       cursor_delivery_states_;
   uint32_t cursor_state_sequence_ = 0;
   std::chrono::steady_clock::time_point next_video_frame_time_{};
+  std::chrono::steady_clock::time_point last_video_frame_gap_log_time_{};
   SignalConnectionIndicator signal_connection_indicator_;
 #if (defined(__linux__) && !defined(__OHOS__)) && !defined(__APPLE__)
   bool use_xwayland_gui_ = false;

@@ -114,8 +114,9 @@ private:
   void UpdateScreenSharingPower();
   bool SyncDisplayInfo();
   void SetDisplayInfoList(std::vector<DisplayInfo> displays);
-  void RecordCaptureCadence(std::chrono::steady_clock::time_point now, int fps,
-                            bool from_secure_desktop);
+  void ResetCaptureMetrics();
+  uint64_t RecordCaptureCadence(std::chrono::steady_clock::time_point now,
+                                int fps, bool from_secure_desktop);
 
   GuiRuntime &owner_;
   uint32_t output_device_ = 0;
@@ -149,6 +150,7 @@ private:
   std::chrono::steady_clock::time_point next_frame_deadline_{};
   std::chrono::steady_clock::time_point next_capture_start_retry_{};
   std::mutex capture_metrics_mutex_;
+  uint64_t capture_metrics_generation_ = 0;
   std::chrono::steady_clock::time_point capture_metrics_started_{};
   std::chrono::steady_clock::time_point last_capture_callback_{};
   uint64_t capture_callbacks_ = 0, capture_rate_drops_ = 0;

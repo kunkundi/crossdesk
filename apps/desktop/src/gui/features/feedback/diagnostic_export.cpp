@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "common/private_file.h"
+#include "build_identity.h"
 
 namespace crossdesk::feedback {
 namespace {
@@ -164,8 +165,13 @@ ExportResult ExportDiagnostics(const std::filesystem::path& application_logs,
     return {ExportError::read_failed};
   }
   if (entries.empty()) return {ExportError::no_logs};
+  const auto& identity = GetBuildIdentity();
   std::string info =
       "CrossDesk diagnostics\nVersion: " + version +
+      "\nCrossDesk commit: " + identity.crossdesk_revision +
+      "\nCrossDesk source state: " + identity.crossdesk_state +
+      "\nMiniRTC commit: " + identity.minirtc_revision +
+      "\nMiniRTC source state: " + identity.minirtc_state +
       "\nPlatform: " + Platform() +
       "\nProcess bits: " + std::to_string(sizeof(void*) * 8) +
       "\nExported UTC: " + TimeText(now, "%Y-%m-%d %H:%M:%S", true) +

@@ -1,4 +1,14 @@
 #include "rd_log.h"
+#include "build_identity.h"
+
+#if __has_include("build_identity_generated.h")
+#include "build_identity_generated.h"
+#else
+#define CROSSDESK_BUILD_REVISION "unknown"
+#define CROSSDESK_BUILD_STATE "unknown"
+#define MINIRTC_BUILD_REVISION "unknown"
+#define MINIRTC_BUILD_STATE "unknown"
+#endif
 
 #include <filesystem>
 #include <mutex>
@@ -43,6 +53,14 @@ std::string NormalizeLogDirectory(const std::string& log_dir) {
 }
 
 }  // namespace
+
+const BuildIdentity& GetBuildIdentity() {
+  static constexpr BuildIdentity identity{CROSSDESK_BUILD_REVISION,
+                                           CROSSDESK_BUILD_STATE,
+                                           MINIRTC_BUILD_REVISION,
+                                           MINIRTC_BUILD_STATE};
+  return identity;
+}
 
 void InitLogger(const std::string& log_dir, const std::string& logger_name) {
   const auto directory = NormalizeLogDirectory(log_dir);
@@ -91,6 +109,10 @@ std::shared_ptr<spdlog::logger> get_logger() {
     logger->flush_on(spdlog::level::info);
     spdlog::register_logger(logger);
     logger->info("Logger initialized");
+    const auto& identity = GetBuildIdentity();
+    logger->info("Build identity: CrossDesk={} ({}) MiniRTC={} ({})",
+                 identity.crossdesk_revision, identity.crossdesk_state,
+                 identity.minirtc_revision, identity.minirtc_state);
     SPDLOG_LOGGER_DEBUG(logger, "Log file: {}", file_sink->filename());
     g_logger = std::move(logger);
   });

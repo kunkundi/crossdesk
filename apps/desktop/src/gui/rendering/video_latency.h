@@ -8,6 +8,7 @@
 #define _VIDEO_LATENCY_H_
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -28,6 +29,7 @@ struct VideoLatencyFrame {
   std::shared_ptr<VideoLatencyStats> stats;
   uint64_t id = 0;
   Clock::time_point capture_time{};
+  bool capture_valid = true;
   void MarkPresented(Clock::time_point now = Clock::now()) const;
   // GPU completion/submission are estimates: neither confirms screen display.
   void MarkEstimated(Clock::time_point now = Clock::now()) const;
@@ -55,15 +57,65 @@ class VideoLatencyStats
     bool estimated;
   };
 
+  // Intervals between observed distinct render endpoints, not an assertion
+  // that pixels should have changed. Static/source-idle video can also have
+  // gaps. Only explicit visibility/session boundaries stop the measurement.
+  static constexpr double kFrameGapThresholdMs = 200;
+  struct FrameGapSnapshot {
+    size_t intervals = 0;
+    double interval_total_ms = 0;
+    double interval_max_ms = 0;
+    size_t gap_count = 0;
+    double gap_total_ms = 0;
+    double gap_max_ms = 0;
+    double ongoing_gap_ms = 0;
+  };
+
+  void SetFrameGapTrackingEnabled(bool enabled, int stream_index = 0) {
+    std::lock_guard lock(mutex_);
+    if (gap_tracking_enabled_ == enabled && gap_stream_index_ == stream_index)
+      return;
+    gap_tracking_enabled_ = enabled;
+    gap_stream_index_ = stream_index;
+    gap_min_frame_id_ = issued_id_;
+    gap_states_ = {};
+  }
+
+  // Index 0 uses actual presentation times; index 1 uses GPU/submission
+  // estimates. Never combine the two or count an estimate upgrade twice.
+  std::array<FrameGapSnapshot, 2> TakeFrameGapStats(
+      Clock::time_point now = Clock::now()) {
+    std::lock_guard lock(mutex_);
+    std::array<FrameGapSnapshot, 2> result{};
+    if (!gap_tracking_enabled_) return result;
+    for (size_t i = 0; i < gap_states_.size(); ++i) {
+      auto& state = gap_states_[i];
+      result[i] = state.interval;
+      if (state.last_id != 0) {
+        const double age_ms =
+            std::chrono::duration<double, std::milli>(now - state.last_time)
+                .count();
+        if (age_ms > kFrameGapThresholdMs)
+          result[i].ongoing_gap_ms = age_ms;
+      }
+      state.interval = {};
+    }
+    return result;
+  }
+
   VideoLatencyFrame Frame(uint64_t captured_us, int64_t local_now_us,
                           Clock::time_point now = Clock::now()) {
-    if (captured_us == 0 || local_now_us <= 0 ||
-        captured_us > uint64_t(local_now_us) ||
-        uint64_t(local_now_us) - captured_us > 5'000'000)
-      return {};
+    const bool valid_capture = captured_us != 0 && local_now_us > 0 &&
+        captured_us <= uint64_t(local_now_us) &&
+        uint64_t(local_now_us) - captured_us <= 5'000'000;
     std::lock_guard lock(mutex_);
+    // Presentation cadence needs only the local endpoint clock. Keep issuing
+    // frame identities when cross-machine capture-time mapping is unavailable.
     return {shared_from_this(), ++issued_id_,
-            now - std::chrono::microseconds(local_now_us - captured_us)};
+            valid_capture
+                ? now - std::chrono::microseconds(local_now_us - captured_us)
+                : now,
+            valid_capture};
   }
 
   void Record(const VideoLatencyFrame& frame, Clock::time_point now,
@@ -71,8 +123,32 @@ class VideoLatencyStats
     const double ms =
         std::chrono::duration<double, std::milli>(now - frame.capture_time)
             .count();
-    if (ms < 0 || ms > 5000) return;
     std::lock_guard lock(mutex_);
+    if (gap_tracking_enabled_ && frame.id > gap_min_frame_id_) {
+      auto& gap = gap_states_[estimated ? 1 : 0];
+      // Redraws, estimate upgrades, and out-of-order callback delivery must
+      // not add another interval or move the latest endpoint backwards.
+      if (frame.id > gap.last_id &&
+          (gap.last_id == 0 || now > gap.last_time)) {
+        if (gap.last_id != 0) {
+          const double interval_ms =
+              std::chrono::duration<double, std::milli>(now - gap.last_time)
+                  .count();
+          auto& value = gap.interval;
+          ++value.intervals;
+          value.interval_total_ms += interval_ms;
+          value.interval_max_ms = std::max(value.interval_max_ms, interval_ms);
+          if (interval_ms > kFrameGapThresholdMs) {
+            ++value.gap_count;
+            value.gap_total_ms += interval_ms;
+            value.gap_max_ms = std::max(value.gap_max_ms, interval_ms);
+          }
+        }
+        gap.last_id = frame.id;
+        gap.last_time = now;
+      }
+    }
+    if (!frame.capture_valid || ms < 0 || ms > 5000) return;
     if (frame.id <= last_id_) {
       // A presentation callback can arrive after GPU completion, including
       // callbacks for later frames. Upgrade its estimate without adding a
@@ -118,6 +194,9 @@ class VideoLatencyStats
     std::lock_guard lock(mutex_);
     samples_.clear();
     last_id_ = issued_id_;  // Invalidate frames still held by a renderer.
+    gap_min_frame_id_ = issued_id_;
+    gap_tracking_enabled_ = false;
+    gap_states_ = {};
   }
 
  private:
@@ -137,10 +216,19 @@ class VideoLatencyStats
     double ms;
     bool estimated;
   };
+  struct FrameGapState {
+    uint64_t last_id = 0;
+    Clock::time_point last_time{};
+    FrameGapSnapshot interval;
+  };
   std::mutex mutex_;
   uint64_t issued_id_ = 0;
   uint64_t last_id_ = 0;
   std::deque<Sample> samples_;
+  bool gap_tracking_enabled_ = false;
+  int gap_stream_index_ = 0;
+  uint64_t gap_min_frame_id_ = 0;
+  std::array<FrameGapState, 2> gap_states_{};
 };
 
 inline void VideoLatencyFrame::MarkSubmitted(Clock::time_point now) const {

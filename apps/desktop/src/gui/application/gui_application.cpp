@@ -2818,6 +2818,7 @@ void GuiApplication::Tick() {
     ui_->main->set_sponsorship_open(true);
   }
   SyncStreamWindow();
+  SyncVideoFrameGapStats();
   SyncServerWindow();
   SyncTrustedDevices();
   for (auto it = ui_->file_browsers.begin(); it != ui_->file_browsers.end();) {
@@ -4320,11 +4321,53 @@ void GuiApplication::SyncStreamWindow() {
   }
   (*ui_->stream)->set_stats_connection_latency(UiText(connection_latency));
   if (refresh_stats && status == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
-    LOG_DEBUG("Latency stats: remote={} video_ms={} video_samples={} "
+    LOG_DEBUG("Latency stats: remote={} video_ms={} video_samples={} video_endpoint={} "
               "rtt_raw_ms={} rtt_display_ms={}",
               props->remote_id_, latency ? latency->average_ms : -1,
-              latency ? latency->samples : 0, net.rtt_ms,
+              latency ? latency->samples : 0,
+              !latency ? "unavailable" : latency->estimated ? "estimated" : "presented",
+              net.rtt_ms,
               display_rtt.value_or(-1));
+  }
+}
+
+void GuiApplication::SyncVideoFrameGapStats() {
+  const auto now = VideoLatencyFrame::Clock::now();
+  const bool visible = ui_ && ui_->stream && ui_->gallery_control_id.empty() &&
+      (*ui_->stream)->window().is_visible() &&
+      !(*ui_->stream)->window().is_minimized();
+  const bool log = last_video_frame_gap_log_time_ ==
+                       VideoLatencyFrame::Clock::time_point{} ||
+      now - last_video_frame_gap_log_time_ >= std::chrono::seconds(5);
+  if (log) last_video_frame_gap_log_time_ = now;
+  std::shared_lock lock(remote_sessions_mutex_);
+  for (const auto& [id, props] : remote_sessions_) {
+    if (!props) continue;
+    const bool paused = props->preview_subscription_supported_ &&
+                        props->preview_requested_.fps == 0;
+    const bool active = visible && !props->closing_ && props->tab_opened_ &&
+        id == focused_remote_id_ && !paused &&
+        props->connection_status_ == MiniRtcConnectionStatus::MiniRtcConnectionConnected;
+    props->video_latency_->SetFrameGapTrackingEnabled(active,
+                                                     props->selected_display_);
+    if (!active || !log) continue;
+    const auto snapshots = props->video_latency_->TakeFrameGapStats(now);
+    for (size_t i = 0; i < snapshots.size(); ++i) {
+      const auto& value = snapshots[i];
+      if (value.intervals == 0 && value.ongoing_gap_ms == 0) continue;
+      // Actual Metal presentation is distinct from GPU/Slint submission.
+      // Source idle and missing endpoint callbacks can also cause these gaps;
+      // this is deliberately not labelled physical screen freeze duration.
+      LOG_DEBUG("Video frame gaps: remote={} endpoint={} threshold_ms={} "
+                "intervals={} interval_avg_ms={} interval_max_ms={} "
+                "frame_gap_count={} frame_gap_total_ms={} frame_gap_max_ms={} "
+                "ongoing_gap_ms={}",
+                id, i == 0 ? "presented" : "estimated",
+                VideoLatencyStats::kFrameGapThresholdMs, value.intervals,
+                value.intervals ? value.interval_total_ms / value.intervals : 0,
+                value.interval_max_ms, value.gap_count, value.gap_total_ms,
+                value.gap_max_ms, value.ongoing_gap_ms);
+    }
   }
 }
 
