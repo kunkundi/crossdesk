@@ -58,6 +58,7 @@
 #include "platform/video_renderer.h"
 #include "rendering/slint_video_presenter.h"
 #include "rendering/video_geometry.h"
+#include "rendering/video_frame_diagnostics.h"
 #include "runtime/privacy_control_state.h"
 #if _WIN32
 #include <windows.h>
@@ -4348,30 +4349,16 @@ void GuiApplication::SyncVideoFrameGapStats() {
     const bool active = visible && !props->closing_ && props->tab_opened_ &&
         id == focused_remote_id_ && !paused &&
         props->connection_status_ == MiniRtcConnectionStatus::MiniRtcConnectionConnected;
-    props->video_latency_->SetFrameGapTrackingEnabled(active,
-                                                     props->selected_display_);
-    if (!active || !log) continue;
-    const auto snapshots = props->video_latency_->TakeFrameGapStats(now);
-    for (size_t i = 0; i < snapshots.size(); ++i) {
-      const auto& value = snapshots[i];
-      if (value.intervals == 0 && value.ongoing_gap_ms == 0) continue;
-      // Actual Metal presentation is distinct from GPU/Slint submission.
-      // Source idle and missing endpoint callbacks can also cause these gaps;
-      // this is deliberately not labelled physical screen freeze duration.
-      LOG_DEBUG("Video frame gaps: remote={} endpoint={} threshold_ms={} "
-                "intervals={} interval_avg_ms={} interval_max_ms={} "
-                "frame_gap_count={} frame_gap_total_ms={} frame_gap_max_ms={} "
-                "ongoing_gap_ms={}",
-                id, i == 0 ? "presented" : "estimated",
-                VideoLatencyStats::kFrameGapThresholdMs, value.intervals,
-                value.intervals ? value.interval_total_ms / value.intervals : 0,
-                value.interval_max_ms, value.gap_count, value.gap_total_ms,
-                value.gap_max_ms, value.ongoing_gap_ms);
+    LogVideoFrameDiagnostics(id,
+        props->video_latency_->SetFrameGapTrackingEnabled(
+            active, props->selected_display_, now));
+    if (active && log) {
+      LogVideoFrameDiagnostics(id, props->video_latency_->TakeDiagnostics(now));
     }
   }
 }
 
-void GuiApplication::SyncStreamVideoFrame() {
+void GuiApplication::SyncStreamVideoFrame(double timer_lateness_ms) {
   if (ui_ && !ui_->gallery_control_id.empty()) return;
   if (!ui_ || !ui_->stream || !ui_->video_presenter) {
     return;
@@ -4380,6 +4367,8 @@ void GuiApplication::SyncStreamVideoFrame() {
   if (!props) {
     return;
   }
+
+  props->video_latency_->RecordRenderTick(timer_lateness_ms);
 
   SlintVideoPresenter::Frame frame;
   frame.remote_id = props->remote_id_;
@@ -4436,7 +4425,8 @@ void GuiApplication::ScheduleNextVideoFrame() {
     const bool native_render_needed = ui_->stream && ui_->video_presenter &&
                                       ui_->video_presenter->NeedsRedraw();
     if (frame_dirty || native_render_needed) {
-      SyncStreamVideoFrame();
+      SyncStreamVideoFrame(std::chrono::duration<double, std::milli>(
+          now - next_video_frame_time_).count());
     }
     do {
       next_video_frame_time_ += frame_interval;

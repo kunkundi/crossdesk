@@ -14,6 +14,7 @@
 #include "platform.h"
 #include "platform/video_renderer.h"
 #include "rd_log.h"
+#include "rendering/video_frame_diagnostics.h"
 #include "screen_lock.h"
 #include "runtime/device_presence_request.h"
 #include "runtime/gui_runtime.h"
@@ -592,7 +593,7 @@ void GuiRuntime::ResetRemoteSessionResources(
   }
   {
     std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
-    props->video_latency_->Reset();
+    LogVideoFrameDiagnostics(props->remote_id_, props->video_latency_->Reset());
     props->video_frame_timing_ = {};
     props->front_frame_.reset();
     props->back_frame_.reset();

@@ -22,6 +22,17 @@ namespace crossdesk {
 
 class VideoLatencyStats;
 
+enum class VideoFrameStage : uint8_t {
+  received,
+  accepted,
+  replaced,
+  busy,
+  committed,
+  gpu_completed,
+  presented,
+  count,
+};
+
 // Travels with the exact queued pixels, including native frames. Its clock is
 // translated once at the receive callback; rendering needs no live MiniRtcPeerPtr.
 struct VideoLatencyFrame {
@@ -30,11 +41,14 @@ struct VideoLatencyFrame {
   uint64_t id = 0;
   Clock::time_point capture_time{};
   bool capture_valid = true;
+  Clock::time_point received_time{};
   void MarkPresented(Clock::time_point now = Clock::now()) const;
   // GPU completion/submission are estimates: neither confirms screen display.
   void MarkEstimated(Clock::time_point now = Clock::now()) const;
   // Fallback for renderers which expose submission but no presentation time.
   void MarkSubmitted(Clock::time_point now = Clock::now()) const;
+  void MarkStage(VideoFrameStage stage, Clock::time_point now = Clock::now(),
+                 double drawable_wait_ms = 0) const;
   // Translate a host-clock event, excluding any callback scheduling delay.
   static std::optional<Clock::time_point> FromHostTime(
       double event_time_s, double host_now_s,
@@ -71,14 +85,60 @@ class VideoLatencyStats
     double ongoing_gap_ms = 0;
   };
 
-  void SetFrameGapTrackingEnabled(bool enabled, int stream_index = 0) {
+  struct PipelineSnapshot {
+    std::array<uint64_t, static_cast<size_t>(VideoFrameStage::count)> frames{};
+    uint64_t render_ticks = 0;
+    double timer_late_total_ms = 0;
+    double timer_late_max_ms = 0;
+    uint64_t commit_timing_samples = 0;
+    double receive_to_commit_total_ms = 0;
+    double receive_to_commit_max_ms = 0;
+    double drawable_wait_total_ms = 0;
+    double drawable_wait_max_ms = 0;
+  };
+
+  struct DiagnosticsSnapshot {
+    std::array<FrameGapSnapshot, 2> gaps{};
+    PipelineSnapshot pipeline;
+    double window_ms = 0;
+    int stream_index = 0;
+    bool final = false;
+  };
+
+  std::optional<DiagnosticsSnapshot> SetFrameGapTrackingEnabled(
+      bool enabled, int stream_index = 0, Clock::time_point now = Clock::now()) {
     std::lock_guard lock(mutex_);
     if (gap_tracking_enabled_ == enabled && gap_stream_index_ == stream_index)
-      return;
+      return std::nullopt;
+    auto tail = TakeDiagnosticsLocked(now, true);
     gap_tracking_enabled_ = enabled;
     gap_stream_index_ = stream_index;
     gap_min_frame_id_ = issued_id_;
     gap_states_ = {};
+    pipeline_ = {};
+    diagnostic_window_started_ = now;
+    return tail;
+  }
+
+  std::optional<DiagnosticsSnapshot> TakeDiagnostics(
+      Clock::time_point now = Clock::now()) {
+    std::lock_guard lock(mutex_);
+    return TakeDiagnosticsLocked(now, false);
+  }
+
+  void RecordRenderTick(double late_ms) {
+    std::lock_guard lock(mutex_);
+    if (!gap_tracking_enabled_ || !std::isfinite(late_ms)) return;
+    late_ms = std::max(0.0, late_ms);
+    ++pipeline_.render_ticks;
+    pipeline_.timer_late_total_ms += late_ms;
+    pipeline_.timer_late_max_ms = std::max(pipeline_.timer_late_max_ms, late_ms);
+  }
+
+  void RecordStage(const VideoLatencyFrame& frame, VideoFrameStage stage,
+                   Clock::time_point now, double drawable_wait_ms = 0) {
+    std::lock_guard lock(mutex_);
+    RecordStageLocked(frame, stage, now, drawable_wait_ms);
   }
 
   // Index 0 uses actual presentation times; index 1 uses GPU/submission
@@ -111,11 +171,13 @@ class VideoLatencyStats
     std::lock_guard lock(mutex_);
     // Presentation cadence needs only the local endpoint clock. Keep issuing
     // frame identities when cross-machine capture-time mapping is unavailable.
-    return {shared_from_this(), ++issued_id_,
+    VideoLatencyFrame frame{shared_from_this(), ++issued_id_,
             valid_capture
                 ? now - std::chrono::microseconds(local_now_us - captured_us)
                 : now,
-            valid_capture};
+            valid_capture, now};
+    RecordStageLocked(frame, VideoFrameStage::received, now, 0);
+    return frame;
   }
 
   void Record(const VideoLatencyFrame& frame, Clock::time_point now,
@@ -124,6 +186,9 @@ class VideoLatencyStats
         std::chrono::duration<double, std::milli>(now - frame.capture_time)
             .count();
     std::lock_guard lock(mutex_);
+    if (!estimated) {
+      RecordStageLocked(frame, VideoFrameStage::presented, now, 0);
+    }
     if (gap_tracking_enabled_ && frame.id > gap_min_frame_id_) {
       auto& gap = gap_states_[estimated ? 1 : 0];
       // Redraws, estimate upgrades, and out-of-order callback delivery must
@@ -190,16 +255,77 @@ class VideoLatencyStats
     return Snapshot{estimated_sum / samples_.size(), samples_.size(), true};
   }
 
-  void Reset() {
+  std::optional<DiagnosticsSnapshot> Reset(Clock::time_point now = Clock::now()) {
     std::lock_guard lock(mutex_);
+    auto tail = TakeDiagnosticsLocked(now, true);
     samples_.clear();
     last_id_ = issued_id_;  // Invalidate frames still held by a renderer.
     gap_min_frame_id_ = issued_id_;
     gap_tracking_enabled_ = false;
     gap_states_ = {};
+    pipeline_ = {};
+    return tail;
   }
 
  private:
+  std::optional<DiagnosticsSnapshot> TakeDiagnosticsLocked(
+      Clock::time_point now, bool final) {
+    if (!gap_tracking_enabled_) return std::nullopt;
+    DiagnosticsSnapshot result;
+    result.pipeline = pipeline_;
+    result.stream_index = gap_stream_index_;
+    result.final = final;
+    result.window_ms = std::max(0.0, std::chrono::duration<double, std::milli>(
+        now - diagnostic_window_started_).count());
+    for (size_t i = 0; i < gap_states_.size(); ++i) {
+      auto& state = gap_states_[i];
+      result.gaps[i] = state.interval;
+      if (state.last_id != 0) {
+        const double age_ms = std::chrono::duration<double, std::milli>(
+            now - state.last_time).count();
+        if (age_ms > kFrameGapThresholdMs) result.gaps[i].ongoing_gap_ms = age_ms;
+      }
+      state.interval = {};
+    }
+    pipeline_ = {};
+    diagnostic_window_started_ = now;
+    return result;
+  }
+
+  void RecordStageLocked(const VideoLatencyFrame& frame, VideoFrameStage stage,
+                         Clock::time_point now, double drawable_wait_ms) {
+    if (!gap_tracking_enabled_ || frame.id <= gap_min_frame_id_ ||
+        frame.id > issued_id_) return;
+    const auto index = static_cast<size_t>(stage);
+    if (index >= pipeline_.frames.size()) return;
+    // Bounded identities allow completion callbacks to arrive out of order,
+    // while cached-frame redraws never count as fresh video. Stale callbacks
+    // cannot replace a newer identity occupying the same slot.
+    auto& seen = pipeline_seen_[frame.id % pipeline_seen_.size()];
+    if (seen.id > frame.id) return;
+    if (seen.id != frame.id) seen = {frame.id, 0};
+    const uint32_t bit = uint32_t{1} << index;
+    if (seen.stages & bit) return;
+    seen.stages |= bit;
+    ++pipeline_.frames[index];
+    if (stage == VideoFrameStage::committed) {
+      if (frame.received_time != Clock::time_point{} &&
+          now >= frame.received_time) {
+        const double delay_ms = std::chrono::duration<double, std::milli>(
+            now - frame.received_time).count();
+        ++pipeline_.commit_timing_samples;
+        pipeline_.receive_to_commit_total_ms += delay_ms;
+        pipeline_.receive_to_commit_max_ms =
+            std::max(pipeline_.receive_to_commit_max_ms, delay_ms);
+      }
+      if (std::isfinite(drawable_wait_ms) && drawable_wait_ms >= 0) {
+        pipeline_.drawable_wait_total_ms += drawable_wait_ms;
+        pipeline_.drawable_wait_max_ms =
+            std::max(pipeline_.drawable_wait_max_ms, drawable_wait_ms);
+      }
+    }
+  }
+
   void Prune(Clock::time_point now) {
     // Upgrades can change timestamps out of order.
     samples_.erase(std::remove_if(samples_.begin(), samples_.end(),
@@ -229,6 +355,13 @@ class VideoLatencyStats
   int gap_stream_index_ = 0;
   uint64_t gap_min_frame_id_ = 0;
   std::array<FrameGapState, 2> gap_states_{};
+  PipelineSnapshot pipeline_;
+  struct PipelineIdentity {
+    uint64_t id = 0;
+    uint32_t stages = 0;
+  };
+  std::array<PipelineIdentity, 1024> pipeline_seen_{};
+  Clock::time_point diagnostic_window_started_{};
 };
 
 inline void VideoLatencyFrame::MarkSubmitted(Clock::time_point now) const {
@@ -241,6 +374,12 @@ inline void VideoLatencyFrame::MarkEstimated(Clock::time_point now) const {
 
 inline void VideoLatencyFrame::MarkPresented(Clock::time_point now) const {
   if (stats) stats->Record(*this, now);
+}
+
+inline void VideoLatencyFrame::MarkStage(VideoFrameStage stage,
+                                       Clock::time_point now,
+                                       double drawable_wait_ms) const {
+  if (stats) stats->RecordStage(*this, stage, now, drawable_wait_ms);
 }
 }  // namespace crossdesk
 

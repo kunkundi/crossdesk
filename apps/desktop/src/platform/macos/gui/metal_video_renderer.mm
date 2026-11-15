@@ -869,9 +869,13 @@ MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitNativeFrame(
   if (!target) {
     CFRelease(y_cv_texture);
     CFRelease(uv_cv_texture);
+    timing.MarkStage(VideoFrameStage::busy);
     return SubmitResult::dropped;
   }
 
+  if (target->use == SlotUse::pending) {
+    target->timing.MarkStage(VideoFrameStage::replaced);
+  }
   target->ReleaseResources();
   target->y_cv_texture = y_cv_texture;
   target->uv_cv_texture = uv_cv_texture;
@@ -885,6 +889,7 @@ MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitNativeFrame(
   target->timing = timing;
   target->use = SlotUse::pending;
   target->valid = true;
+  timing.MarkStage(VideoFrameStage::accepted);
   if (!impl_->native_path_logged.exchange(true, std::memory_order_acq_rel)) {
     LOG_INFO("macOS VideoToolbox-to-Metal native NV12 path enabled");
   }
@@ -953,11 +958,15 @@ MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitNv12Internal(
     }
   }
   if (target == nullptr) {
+    timing.MarkStage(VideoFrameStage::busy);
     return SubmitResult::dropped;
   }
+  const VideoLatencyFrame replaced_timing =
+      target->use == SlotUse::pending ? target->timing : VideoLatencyFrame{};
   if (!AllocateSlot(impl_->device, *target, width, height)) {
     return SubmitResult::failed;
   }
+  replaced_timing.MarkStage(VideoFrameStage::replaced);
 
   auto* y_destination = static_cast<uint8_t*>(target->y_buffer.contents);
   auto* uv_destination = static_cast<uint8_t*>(target->uv_buffer.contents);
@@ -976,6 +985,7 @@ MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitNv12Internal(
   target->timing = timing;
   target->use = SlotUse::pending;
   target->valid = true;
+  timing.MarkStage(VideoFrameStage::accepted);
   return SubmitResult::submitted;
 }
 
@@ -1117,27 +1127,21 @@ MacMetalVideoRenderer::RenderOutcome MacMetalVideoRenderer::RenderLatest(
     bool matching_frame_in_flight = false;
     uint64_t content_generation = 0;
     bool redraw_cached_frame = false;
-    {
-      std::lock_guard lock(impl_->frames->mutex);
-      content_generation = impl_->frames->content_generation;
-      redraw_cached_frame =
-          stream_changed ||
-          impl_->native_surface_needs_redraw->load(
-              std::memory_order_acquire) ||
-          impl_->rendered_content_generation != content_generation;
+    // Called only while holding frames->mutex. Select again after nextDrawable:
+    // a decoder callback may replace the pending slot while that call waits.
+    const auto select_latest = [&] {
+      slot_index = kFrameSlotCount;
+      sequence = 0;
+      matching_frame_in_flight = false;
       for (size_t index = 0; index < impl_->frames->slots.size(); ++index) {
         const auto& slot = impl_->frames->slots[index];
-        matching_frame_in_flight =
-            matching_frame_in_flight ||
-            (slot.valid && slot.use == SlotUse::in_flight &&
-             slot.remote_id == remote_id);
+        matching_frame_in_flight |= slot.valid &&
+            slot.use == SlotUse::in_flight && slot.remote_id == remote_id;
         if (slot.valid && slot.use == SlotUse::pending &&
             slot.remote_id == remote_id &&
             (slot_index == kFrameSlotCount || slot.sequence > sequence)) {
           slot_index = index;
           sequence = slot.sequence;
-          source_width = slot.width;
-          source_height = slot.height;
         }
       }
       if (slot_index == kFrameSlotCount && redraw_cached_frame) {
@@ -1148,23 +1152,63 @@ MacMetalVideoRenderer::RenderOutcome MacMetalVideoRenderer::RenderLatest(
               (slot_index == kFrameSlotCount || slot.sequence > sequence)) {
             slot_index = index;
             sequence = slot.sequence;
-            source_width = slot.width;
-            source_height = slot.height;
           }
         }
       }
-    }
-    if (slot_index == kFrameSlotCount) {
-      if (!redraw_cached_frame) {
+    };
+    {
+      std::lock_guard lock(impl_->frames->mutex);
+      if (impl_->frames->selected_stream != remote_id) {
         return {RenderResult::idle};
       }
-      id<CAMetalDrawable> clear_drawable = [impl_->metal_layer nextDrawable];
-      if (clear_drawable == nil) {
-        return {impl_->MissingDrawableResult()};
+      content_generation = impl_->frames->content_generation;
+      redraw_cached_frame = stream_changed ||
+          impl_->native_surface_needs_redraw->load(std::memory_order_acquire) ||
+          impl_->rendered_content_generation != content_generation;
+      select_latest();
+      if (slot_index == kFrameSlotCount && !redraw_cached_frame) {
+        return {RenderResult::idle};
       }
+    }
+
+    const auto drawable_started = VideoLatencyFrame::Clock::now();
+    id<CAMetalDrawable> drawable = [impl_->metal_layer nextDrawable];
+    const double drawable_wait_ms = std::chrono::duration<double, std::milli>(
+        VideoLatencyFrame::Clock::now() - drawable_started).count();
+    if (drawable == nil) {
+      return {impl_->MissingDrawableResult()};
+    }
+
+    id<MTLTexture> y_texture = nil;
+    id<MTLTexture> uv_texture = nil;
+    VideoLatencyFrame timing;
+    {
+      std::lock_guard lock(impl_->frames->mutex);
+      // Discard/reselect can invalidate a stream even if its name is reused.
+      // Never carry the old stream's clear or texture into the new generation.
+      if (impl_->frames->selected_stream != remote_id ||
+          impl_->frames->content_generation != content_generation) {
+        impl_->native_surface_needs_redraw->store(true,
+                                                 std::memory_order_release);
+        return {RenderResult::idle};
+      }
+      select_latest();
+      if (slot_index != kFrameSlotCount) {
+        auto& slot = impl_->frames->slots[slot_index];
+        slot.use = SlotUse::in_flight;
+        // All metadata and retained textures must come from this new selection.
+        source_width = slot.width;
+        source_height = slot.height;
+        y_texture = slot.y_texture;
+        uv_texture = slot.uv_texture;
+        timing = slot.timing;
+      }
+    }
+    if (slot_index == kFrameSlotCount) {
+      if (!redraw_cached_frame) return {RenderResult::idle};
       MTLRenderPassDescriptor* clear_pass =
           [MTLRenderPassDescriptor renderPassDescriptor];
-      clear_pass.colorAttachments[0].texture = clear_drawable.texture;
+      clear_pass.colorAttachments[0].texture = drawable.texture;
       clear_pass.colorAttachments[0].loadAction = MTLLoadActionClear;
       clear_pass.colorAttachments[0].storeAction = MTLStoreActionStore;
       clear_pass.colorAttachments[0].clearColor =
@@ -1175,41 +1219,17 @@ MacMetalVideoRenderer::RenderOutcome MacMetalVideoRenderer::RenderLatest(
           [clear_command renderCommandEncoderWithDescriptor:clear_pass];
       if (clear_command == nil || clear_encoder == nil) {
         impl_->native_surface_needs_redraw->store(true,
-                                                  std::memory_order_release);
+                                                 std::memory_order_release);
         return {RenderResult::failed};
       }
       [clear_encoder endEncoding];
-      [clear_command presentDrawable:clear_drawable];
+      [clear_command presentDrawable:drawable];
       [clear_command commit];
       impl_->rendered_stream.assign(remote_id);
       impl_->rendered_content_generation = content_generation;
       impl_->native_surface_needs_redraw->store(
           matching_frame_in_flight, std::memory_order_release);
       return {RenderResult::empty};
-    }
-
-    id<CAMetalDrawable> drawable = [impl_->metal_layer nextDrawable];
-    if (drawable == nil) {
-      return {impl_->MissingDrawableResult()};
-    }
-
-    id<MTLTexture> y_texture = nil;
-    id<MTLTexture> uv_texture = nil;
-    VideoLatencyFrame timing;
-    {
-      std::lock_guard lock(impl_->frames->mutex);
-      auto& slot = impl_->frames->slots[slot_index];
-      if (!slot.valid ||
-          (slot.use != SlotUse::pending &&
-           slot.use != SlotUse::available) ||
-          slot.sequence != sequence ||
-          slot.remote_id != remote_id) {
-        return {RenderResult::idle};
-      }
-      slot.use = SlotUse::in_flight;
-      y_texture = slot.y_texture;
-      uv_texture = slot.uv_texture;
-      timing = slot.timing;
     }
 
     MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
@@ -1283,6 +1303,9 @@ MacMetalVideoRenderer::RenderOutcome MacMetalVideoRenderer::RenderLatest(
           gpu_end, CACurrentMediaTime(), now);
       const bool gpu_completed =
           completed.status == MTLCommandBufferStatusCompleted;
+      if (gpu_completed && visible_at_submit) {
+        timing.MarkStage(VideoFrameStage::gpu_completed, now);
+      }
       if (gpu_completed && visible_at_submit && rendered_at) {
         timing.MarkEstimated(*rendered_at);
       }
@@ -1301,6 +1324,8 @@ MacMetalVideoRenderer::RenderOutcome MacMetalVideoRenderer::RenderLatest(
       }
     }];
     [command_buffer presentDrawable:drawable];
+    timing.MarkStage(VideoFrameStage::committed, VideoLatencyFrame::Clock::now(),
+                     drawable_wait_ms);
     [command_buffer commit];
     impl_->rendered_stream.assign(remote_id);
     impl_->rendered_content_generation = content_generation;

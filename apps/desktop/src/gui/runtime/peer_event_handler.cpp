@@ -22,6 +22,7 @@
 #include "platform.h"
 #include "platform/video_renderer.h"
 #include "rd_log.h"
+#include "rendering/video_frame_diagnostics.h"
 #include "runtime/gui_runtime.h"
 #if defined(__linux__) && !defined(__OHOS__)
 #include "platform/linux/headless/headless_console.h"
@@ -473,7 +474,7 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
         }
         {
           std::lock_guard<std::mutex> lock(props->video_frame_mutex_);
-          props->video_latency_->Reset();
+          LogVideoFrameDiagnostics(props->remote_id_, props->video_latency_->Reset());
           props->video_frame_timing_ = {};
           props->front_frame_.reset();
           props->back_frame_.reset();

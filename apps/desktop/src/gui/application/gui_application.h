@@ -92,7 +92,7 @@ private:
   void SyncConnectionDialog();
   void SyncPlatformDialogs();
   void SyncStreamWindow();
-  void SyncStreamVideoFrame();
+  void SyncStreamVideoFrame(double timer_lateness_ms);
   void SyncVideoFrameGapStats();
   void ScheduleNextVideoFrame();
   void ConfigureStreamVideoRenderer();
