@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/images/crossdesk-banner.svg" width="420" alt="CrossDesk logo with the icon on the left and a two-tone wordmark on the right" />
   <p>A lightweight, cross-platform remote desktop for computers, browsers, mobile devices, and terminals, with DeskHub for viewing and controlling multiple desktops.</p>
-  <p><a href="https://www.crossdesk.cn/">Website</a> · <a href="https://github.com/kunkundi/crossdesk/releases">Download</a> · <a href="https://web.crossdesk.cn/">Open Web Client</a> · <a href="README.md">中文</a></p>
+  <p><a href="https://www.crossdesk.cn/">Website</a> · <a href="https://github.com/kunkundi/crossdesk/releases">Download</a> · <a href="#build">Build guide</a> · <a href="https://web.crossdesk.cn/">Open Web Client</a> · <a href="README.md">中文</a></p>
 </div>
 
 <div align="center">
@@ -24,7 +24,7 @@
 
 CrossDesk connects your computers from desktop, browser, mobile, and terminal clients, with DeskHub for viewing and controlling multiple devices together. It is built on [MiniRTC](https://github.com/kunkundi/minirtc) and supports self-hosting.
 
-[Features](#features) · [Download and platforms](#download) · [Quick start](#quick-start) · [Terminal CLI](#cli) · [Agent / MCP](#mcp) · [Direct IP](#lan-direct) · [Trusted devices](#trusted-devices) · [Preview](#preview) · [User guide](docs/USER_GUIDE_EN.md) · [Self-hosting](#self-hosting) · [Documentation and feedback](#development) · [Sponsor](#sponsor)
+[Features](#features) · [Download and platforms](#download) · [Build guide](#build) · [Quick start](#quick-start) · [Terminal CLI](#cli) · [Agent / MCP](#mcp) · [Direct IP](#lan-direct) · [Trusted devices](#trusted-devices) · [Preview](#preview) · [User guide](docs/USER_GUIDE_EN.md) · [Self-hosting](#self-hosting) · [Documentation and feedback](#development) · [Sponsor](#sponsor)
 
 <a id="features"></a>
 
@@ -64,6 +64,21 @@ Choose the package for your operating system and processor. Some development fea
 - **Linux:** use `crossdesk-linux-…deb` for an existing desktop, or `crossdesk-virtual-desktop-xfce-…deb` for a server needing a separate Xfce desktop. Choose one. See [installation details](docs/USER_GUIDE_EN.md#installation) and [headless operation](docs/HEADLESS_EN.md).
 - **macOS:** grant Screen Recording and Accessibility when prompted on first launch. These enable desktop capture and remote keyboard/mouse input. See [permissions](docs/USER_GUIDE_EN.md#installation).
 - **iOS:** install from the [App Store](https://apps.apple.com/app/id6828859211). Unsigned GitHub artifacts still require signing; see the [iOS build guide](apps/ios/README.md). HarmonyOS requires a signed DevEco build; see the [HarmonyOS guide](apps/harmony/README.md) (Chinese).
+
+<a id="build"></a>
+
+## Build guide
+
+The desktop client uses Xmake. Install Git, Xmake 3.1.1 or newer, and the toolchain and dependencies for your platform, then clone the source and submodules:
+
+```bash
+git clone --recurse-submodules https://github.com/kunkundi/crossdesk.git
+cd crossdesk
+```
+
+- **Desktop:** follow the [Windows](docs/BUILD_EN.md#windows), [macOS](docs/BUILD_EN.md#macos), or [Linux](docs/BUILD_EN.md#linux) steps to configure, build, and run. See the [full build guide](docs/BUILD_EN.md) for packaging, signing, and CI configuration.
+- **Mobile and HarmonyOS:** [iOS / iPadOS](apps/ios/README.md), [Android](apps/android/README.md), [HarmonyOS phones / tablets](apps/harmony/README.md), and [HarmonyOS PC](apps/harmony/desktop-port/README.md) (Chinese).
+- **Terminal and integrations:** [CLI build and usage](apps/cli/README.md) and [MCP build and integration](apps/mcp/DEVELOPMENT.md) (Chinese).
 
 <a id="quick-start"></a>
 

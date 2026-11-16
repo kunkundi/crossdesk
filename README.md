@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/images/crossdesk-banner.svg" width="420" alt="CrossDesk 标志：图标在左，双色文字在右" />
   <p>轻量、跨平台的远程桌面，支持电脑、浏览器、移动端和终端连接，用桌面墙集中查看与操控多台设备。</p>
-  <p><a href="https://www.crossdesk.cn/">官方网站</a> · <a href="https://github.com/kunkundi/crossdesk/releases">下载客户端</a> · <a href="https://web.crossdesk.cn/">打开 Web 客户端</a> · <a href="README_EN.md">English</a></p>
+  <p><a href="https://www.crossdesk.cn/">官方网站</a> · <a href="https://github.com/kunkundi/crossdesk/releases">下载客户端</a> · <a href="#build">构建指南</a> · <a href="https://web.crossdesk.cn/">打开 Web 客户端</a> · <a href="README_EN.md">English</a></p>
 </div>
 
 <div align="center">
@@ -24,7 +24,7 @@
 
 CrossDesk 让你从电脑、浏览器、手机或终端（桌面 CLI）连接远端电脑，也能通过桌面墙（DeskHub）集中查看与操控多台设备。项目基于 [MiniRTC](https://github.com/kunkundi/minirtc)，支持自托管。
 
-[主要功能](#features) · [下载与平台支持](#download) · [快速连接](#quick-start) · [终端 CLI](#cli) · [Agent / MCP](#mcp) · [IP 直连](#lan-direct) · [可信设备](#trusted-devices) · [界面预览](#preview) · [使用指南](docs/USER_GUIDE.md) · [文档导航](docs/README.md) · [自托管](#self-hosting) · [文档与反馈](#development) · [赞助](#sponsor)
+[主要功能](#features) · [下载与平台支持](#download) · [构建指南](#build) · [快速连接](#quick-start) · [终端 CLI](#cli) · [Agent / MCP](#mcp) · [IP 直连](#lan-direct) · [可信设备](#trusted-devices) · [界面预览](#preview) · [使用指南](docs/USER_GUIDE.md) · [文档导航](docs/README.md) · [自托管](#self-hosting) · [文档与反馈](#development) · [赞助](#sponsor)
 
 <a id="features"></a>
 
@@ -64,6 +64,21 @@ CrossDesk 让你从电脑、浏览器、手机或终端（桌面 CLI）连接远
 - **Linux：** 已有桌面选普通版 `crossdesk-linux-…deb`；需要独立 Xfce 桌面的服务器选 `crossdesk-virtual-desktop-xfce-…deb`。两者选择其一，安装与启动方法见 [使用指南](docs/USER_GUIDE.md#installation) 和 [无头运行](docs/HEADLESS.md)。
 - **macOS：** 首次运行时按提示授予屏幕录制及辅助功能权限；前者用于桌面采集，后者用于远程键鼠输入。[权限说明](docs/USER_GUIDE.md#installation)
 - **iOS：** 优先从 [App Store](https://apps.apple.com/app/id6828859211) 安装；GitHub 的未签名产物仍需自行签名，步骤见 [iOS 构建说明](apps/ios/README.md)。鸿蒙需使用 DevEco 构建并签名，见 [鸿蒙说明](apps/harmony/README.md)。
+
+<a id="build"></a>
+
+## 构建指南
+
+桌面客户端使用 Xmake 构建。准备 Git、Xmake 3.1.1 或更新版本，并按对应平台安装编译工具链与依赖，然后获取源码及子模块：
+
+```bash
+git clone --recurse-submodules https://github.com/kunkundi/crossdesk.git
+cd crossdesk
+```
+
+- **桌面客户端：** 按 [Windows](docs/BUILD.md#windows)、[macOS](docs/BUILD.md#macos) 或 [Linux](docs/BUILD.md#linux) 的步骤配置、编译和运行；打包、签名与 CI 配置见 [完整构建指南](docs/BUILD.md)。
+- **移动端与鸿蒙：** [iOS / iPadOS](apps/ios/README.md)、[Android](apps/android/README.md)、[鸿蒙手机 / 平板](apps/harmony/README.md)、[鸿蒙 PC](apps/harmony/desktop-port/README.md)。
+- **终端与集成：** [CLI 构建与运行](apps/cli/README.md)、[MCP 构建与集成](apps/mcp/DEVELOPMENT.md)。
 
 <a id="quick-start"></a>
 
