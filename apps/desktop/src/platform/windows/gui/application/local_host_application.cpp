@@ -34,7 +34,8 @@ bool GuiRuntime::SendLocalHostCommand(Json message) {
 bool GuiRuntime::ForwardUserSessionData(const std::string& id,
     const std::string& stream, const char* data, size_t size) {
   const bool user_stream = stream == file_label_ || stream == file_feedback_label_ ||
-      stream == clipboard_label_ || stream == web_clipboard::kStream;
+      stream == clipboard_label_ || stream == web_clipboard::kStream ||
+      stream == kClipboardFilesStream;
   Json action;
   if ((stream == control_data_label_ || stream == kWebControlStream) && size <= 65536)
     action = Json::parse(data, data + size, nullptr, false);
@@ -213,6 +214,7 @@ void GuiApplication::TickLocalHost() {
             });
           } else if (stream == file_label_ || stream == file_feedback_label_ ||
                      stream == clipboard_label_ || stream == web_clipboard::kStream ||
+                     stream == kClipboardFilesStream ||
                      stream == control_data_label_) {
             SendControllerData(id, reinterpret_cast<const char*>(bytes.data()), bytes.size(), stream.c_str());
           }

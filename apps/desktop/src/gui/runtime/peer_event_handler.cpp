@@ -682,6 +682,9 @@ std::string GuiRuntime::BuildHostInformation(bool advertise_trust,
   action.i.supports_deskhub_fps15 = true;
   action.i.supports_deskhub_bandwidth = true;
   action.i.supports_file_browser = UserSessionFeaturesAvailable();
+#ifndef __OHOS__
+  action.i.supports_file_clipboard = UserSessionFeaturesAvailable();
+#endif
   for (std::size_t i = 0; i < action.i.display_num; ++i)
     LOG_INFO("Local display [{}:{}]", i + 1, action.i.display_list[i]);
   auto message = action.to_json();

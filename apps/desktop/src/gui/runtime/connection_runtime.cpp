@@ -752,6 +752,7 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
         MiniRtcAddDataStream(props->peer_, props->file_label_.c_str(), true);
         MiniRtcAddDataStream(props->peer_, props->file_feedback_label_.c_str(), true);
         MiniRtcAddDataStream(props->peer_, props->clipboard_label_.c_str(), true);
+        MiniRtcAddDataStream(props->peer_, kClipboardFilesStream, true);
 
         props->connection_status_.store(MiniRtcConnectionStatus::MiniRtcConnectionConnecting);
 

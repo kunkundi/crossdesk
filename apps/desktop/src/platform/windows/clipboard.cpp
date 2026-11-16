@@ -1,11 +1,15 @@
 #include "clipboard.h"
 
 #include <windows.h>
+#include <shellapi.h>
+#include <shlobj.h>
 
 #include <string>
+#include <cstring>
 
 #include "platform/clipboard_backend.h"
 #include "rd_log.h"
+#include "filesystem_utf8.h"
 
 namespace crossdesk {
 namespace {
@@ -94,6 +98,68 @@ bool Clipboard::HasText() {
                       IsClipboardFormatAvailable(CF_TEXT);
   CloseClipboard();
   return result;
+}
+
+std::optional<std::vector<std::string>> Clipboard::GetFiles() {
+  if (!IsClipboardFormatAvailable(CF_HDROP)) return std::vector<std::string>{};
+  // Preserve file precedence when another process briefly holds the clipboard.
+  if (!OpenClipboard(nullptr)) return std::nullopt;
+  const auto drop = static_cast<HDROP>(GetClipboardData(CF_HDROP));
+  std::vector<std::string> paths;
+  const UINT count = drop ? DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0) : 0;
+  if (count <= 128) for (UINT i = 0; i < count; ++i) {
+    const UINT size = DragQueryFileW(drop, i, nullptr, 0);
+    std::wstring path(size + 1, L'\0');
+    if (!size || !DragQueryFileW(drop, i, path.data(), size + 1)) break;
+    path.resize(size);
+    const auto utf8 = std::filesystem::path(path).u8string();
+    paths.emplace_back(utf8.begin(), utf8.end());
+  }
+  CloseClipboard();
+  if (!count || paths.size() != count) return std::nullopt;
+  return paths;
+}
+
+uint64_t Clipboard::ChangeCount() { return GetClipboardSequenceNumber(); }
+
+bool Clipboard::SetFiles(const std::vector<std::string>& paths) {
+  if (paths.empty()) return false;
+  std::wstring list;
+  for (const auto& path : paths) {
+    const auto native = PathFromUtf8(path);
+    if (!native.is_absolute()) return false;
+    list.append(native.native()); list.push_back(L'\0');
+  }
+  list.push_back(L'\0');
+  HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT,
+                               sizeof(DROPFILES) + list.size() * sizeof(wchar_t));
+  if (!memory) return false;
+  auto* drop = static_cast<DROPFILES*>(GlobalLock(memory));
+  if (!drop) { GlobalFree(memory); return false; }
+  drop->pFiles = sizeof(DROPFILES); drop->fWide = TRUE;
+  memcpy(reinterpret_cast<char*>(drop) + sizeof(DROPFILES), list.data(),
+         list.size() * sizeof(wchar_t));
+  GlobalUnlock(memory);
+  // OpenClipboard(NULL) cannot own a clipboard after EmptyClipboard().
+  static HWND owner = CreateWindowExW(0, L"STATIC", L"CrossDesk file clipboard",
+      0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, GetModuleHandleW(nullptr), nullptr);
+  if (!owner || !OpenClipboard(owner)) { GlobalFree(memory); return false; }
+  const bool ok = EmptyClipboard() && SetClipboardData(CF_HDROP, memory);
+  if (!ok) GlobalFree(memory);
+  if (ok) {
+    // Explorer must copy these temporary files, even if the source used Cut.
+    HGLOBAL effect = GlobalAlloc(GMEM_MOVEABLE, sizeof(DWORD));
+    if (effect) {
+      auto* value = static_cast<DWORD*>(GlobalLock(effect));
+      if (value) {
+        *value = DROPEFFECT_COPY; GlobalUnlock(effect);
+        if (!SetClipboardData(RegisterClipboardFormatW(L"Preferred DropEffect"), effect))
+          GlobalFree(effect);
+      } else GlobalFree(effect);
+    }
+  }
+  CloseClipboard();
+  return ok;
 }
 
 namespace platform {

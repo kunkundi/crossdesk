@@ -39,6 +39,9 @@ class FileTransferManager {
   void Connected(PeerEventHandler* handler, const std::string& remote);
   void Cancel(PeerEventHandler* handler, const std::string& remote = "");
   bool CancelSend(uint32_t file_id);
+  void UpdateClipboardSend(uint32_t id, const std::string& remote, const std::string& name,
+                           uint64_t total, uint64_t bytes, file_transfer::Status status,
+                           std::function<void()> cancel);
   void Poll();
   void Shutdown();
   FileBrowser& browser() { return browser_; }
@@ -84,6 +87,13 @@ class FileTransferManager {
   std::unordered_map<PeerEventHandler*, std::set<std::string>> disconnected_;
   GuiRuntime& owner_;
   FileTransferState global_state_;
+  // Guarded by global_state_.file_transfer_list_mutex_.
+  struct ClipboardSend {
+    std::function<void()> cancel;
+    std::chrono::steady_clock::time_point updated = std::chrono::steady_clock::now();
+    uint64_t bytes = 0;
+  };
+  std::unordered_map<uint32_t, ClipboardSend> clipboard_sends_;
   // Keep received files separate from outgoing queues.
   FileTransferState received_state_;
   // Guarded by received_state_.file_transfer_list_mutex_.

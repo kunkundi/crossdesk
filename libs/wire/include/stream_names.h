@@ -21,6 +21,7 @@ inline constexpr char kWebControlStream[] = "data-stream";
 inline constexpr char kFileStream[] = "file";
 inline constexpr char kFileFeedbackStream[] = "file_feedback";
 inline constexpr char kClipboardStream[] = "clipboard";
+inline constexpr char kClipboardFilesStream[] = "clipboard_files";
 
 inline constexpr std::size_t kFileChunkSize = 64 * 1024;
 inline constexpr std::size_t kMaxClipboardBytes = 128 * 1024;

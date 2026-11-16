@@ -127,6 +127,10 @@ Switch devices using session tabs. Expand the control bar if it is collapsed, an
 
 Desktop clients synchronize text clipboard contents. Configure the receiving directory under **Settings → General → File Save Path**. Closing the main window hides it and keeps the app running; use the system tray or menu-bar exit command to quit completely.
 
+Windows, macOS, and Linux desktop clients also support bidirectional file copy and paste when both ends support this feature. Copy files in the system file manager, return to the current remote session, and wait for the sending progress to complete. Then paste in the other computer's file manager (`Ctrl+V` on Windows/Linux, `⌘V` on macOS). You can also copy files remotely and paste locally without opening the transfer window.
+
+Copy up to 128 regular files at a time; use the dual-pane transfer window for folders. Clipboard transfers copy files without deleting their sources. Cancelling one file cancels the unfinished files in that batch. Received files remain in a temporary directory until the receiving CrossDesk app exits, so keep it running until pasting finishes. A newer clipboard copy supersedes older results. Background sessions and DeskHub previews do not receive locally copied files.
+
 On Windows, the main window and remote control window use separate taskbar buttons, so you can switch to or minimize either window independently. Closing the main window leaves the remote control window and its connections running; reopen the main window from the system tray. The remote control button appears only while the session window is present; use the main window's button to pin the application.
 
 On Linux, the main and remote control windows use different application grouping IDs on X11, XWayland, and native Wayland. Taskbar presentation depends on the desktop environment and its grouping settings. Closing the main window keeps remote connections running; reopen it from the system tray. Use the main application's launcher for pinning.

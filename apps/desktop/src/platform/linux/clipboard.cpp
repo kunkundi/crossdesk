@@ -3,14 +3,17 @@
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/extensions/Xfixes.h>
+#include <SDL3/SDL_clipboard.h>
 
 #include <chrono>
 #include <climits>
+#include <memory>
 #include <string>
 #include <thread>
 
 #include "platform/clipboard_backend.h"
 #include "rd_log.h"
+#include "clipboard_file_uri.h"
 
 namespace crossdesk {
 
@@ -146,6 +149,49 @@ bool Clipboard::HasText() {
   if (owner == None) owner = XGetSelectionOwner(display, XA_PRIMARY);
   XCloseDisplay(display);
   return owner != None;
+}
+
+std::optional<std::vector<std::string>> Clipboard::GetFiles() {
+  for (const char* type : {"x-special/gnome-copied-files", "text/uri-list"}) {
+    if (!SDL_HasClipboardData(type)) continue;
+    size_t size = 0;
+    void* data = SDL_GetClipboardData(type, &size);
+    std::vector<std::string> paths;
+    if (data && size <= 1024 * 1024)
+      paths = clipboard_uri::Decode(std::string_view(static_cast<const char*>(data), size));
+    SDL_free(data);
+    if (paths.empty()) return std::nullopt;
+    return paths;
+  }
+  return std::vector<std::string>{};
+}
+
+uint64_t Clipboard::ChangeCount() { return 0; }
+
+bool Clipboard::SetFiles(const std::vector<std::string>& paths) {
+  if (paths.empty()) return false;
+  struct Payload { std::string uri, gnome; };
+  // SDL can retain userdata even when its backend reports a failed set. Keep
+  // ownership here and clear SDL's reference before destroying failed offers.
+  static std::unique_ptr<Payload> offered;
+  auto payload = std::make_unique<Payload>();
+  for (const auto& path : paths) {
+    if (path.empty() || path.front() != '/') return false;
+    payload->uri += clipboard_uri::Encode(path) + "\r\n";
+    payload->gnome += "\n" + clipboard_uri::Encode(path);
+  }
+  payload->gnome = "copy" + payload->gnome;
+  const char* types[] = {"text/uri-list", "x-special/gnome-copied-files"};
+  const bool ok = SDL_SetClipboardData(
+      [](void* user, const char* type, size_t* size) -> const void* {
+        if (!type) return nullptr;
+        auto* payload = static_cast<Payload*>(user);
+        const auto& value = std::string_view(type) == "text/uri-list" ? payload->uri : payload->gnome;
+        *size = value.size(); return value.data();
+      }, nullptr, payload.get(), types, 2);
+  if (ok) offered = std::move(payload);
+  else SDL_ClearClipboardData();
+  return ok;
 }
 
 namespace platform {

@@ -651,6 +651,7 @@ function setup_targets()
             add_files("apps/desktop/src/platform/macos/clipboard.mm")
         elseif is_os("linux") then
             add_files("apps/desktop/src/platform/linux/clipboard.cpp")
+            add_packages("libsdl3")
         end
         add_includedirs("apps/desktop/src", "apps/desktop/src/tools", {public = true})
         add_includedirs("libs/controller/include", {public = true})

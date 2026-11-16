@@ -11,6 +11,7 @@
 #include "rd_log.h"
 #include "runtime/gui_runtime.h"
 #include "web_clipboard_protocol.h"
+#include "clipboard.h"
 
 namespace crossdesk {
 namespace {
@@ -28,6 +29,7 @@ struct ClipboardController::WebSession {
 };
 
 ClipboardController::ClipboardController(GuiRuntime &owner) : owner_(owner) {}
+ClipboardController::~ClipboardController() { Shutdown(); }
 
 void ClipboardController::SetEventType(uint32_t event_type) {
   event_type_ = event_type;
@@ -38,6 +40,12 @@ uint32_t ClipboardController::event_type() const { return event_type_; }
 void ClipboardController::Initialize() {
   last_text_.clear();
   deferred_local_session_.reset();
+#ifndef __OHOS__
+  last_files_ = Clipboard::GetFiles().value_or(std::vector<std::string>{});
+  last_files_change_ = Clipboard::ChangeCount();
+#endif
+  local_files_ = false;
+  deferred_file_session_.reset();
 
   char *clipboard_text = SDL_GetClipboardText();
   if (clipboard_text) {
@@ -50,6 +58,7 @@ void ClipboardController::Initialize() {
 
 void ClipboardController::Shutdown() {
   events_enabled_.store(false, std::memory_order_release);
+  StopFiles();
   deferred_local_session_.reset();
   {
     std::lock_guard lock(web_sessions_mutex_);
@@ -242,6 +251,7 @@ void ClipboardController::ApplyPendingRemoteText() {
     return;
   }
   ApplyPendingWrite();
+  ApplyPendingFiles();
   std::deque<std::function<void(std::optional<std::string>)>> reads;
   {
     std::lock_guard lock(pending_mutex_);
@@ -297,15 +307,43 @@ void ClipboardController::ApplyPendingWrite() {
   // SDL will normally emit SDL_EVENT_CLIPBOARD_UPDATE for this write. Update
   // the baseline first so that event cannot echo the text back to the sender.
   last_text_ = std::move(*pending_text);
+  ++clipboard_revision_;
+  last_files_.clear(); local_files_ = false;
+  deferred_file_session_.reset();
+  SendLocalFiles(true);
   deferred_local_session_.reset();
   if (complete) complete(true);
 }
 
-void ClipboardController::HandleLocalUpdate() {
+void ClipboardController::HandleLocalUpdate(bool external_event) {
   if (!events_enabled_.load(std::memory_order_acquire)) {
     return;
   }
+#ifndef __OHOS__
+  auto snapshot = Clipboard::GetFiles();
+  if (!snapshot) return;
+  auto files = std::move(*snapshot);
+  if (!files.empty()) {
+    const auto change = Clipboard::ChangeCount();
+    const bool changed = files != last_files_ || change != last_files_change_ ||
+        (change == 0 && external_event);
+    last_files_change_ = change;
+    if (changed) {
+      ++clipboard_revision_;
+      last_files_ = std::move(files); last_text_.clear(); local_files_ = true;
+      deferred_local_session_.reset(); deferred_file_session_.reset();
+    }
+    SendLocalFiles(changed);
+    return;
+  }
+#endif
+  if (!last_files_.empty()) {
+    ++clipboard_revision_;
+    last_files_.clear(); local_files_ = false; deferred_file_session_.reset();
+    SendLocalFiles(true);
+  }
   if (!SDL_HasClipboardText()) {
+    if (!last_text_.empty()) ++clipboard_revision_;
     last_text_.clear();
     deferred_local_session_.reset();
     return;
@@ -327,6 +365,7 @@ void ClipboardController::HandleLocalUpdate() {
   // Record the value before sending. Duplicate SDL notifications and a
   // remote write of the same value must not create a clipboard feedback loop.
   last_text_ = text;
+  ++clipboard_revision_;
   deferred_local_session_.reset();
   if (text.empty()) {
     return;

@@ -2749,7 +2749,7 @@ void GuiApplication::Tick() {
     if (event.type == SDL_EVENT_QUIT) {
       exit_ = true;
     } else if (event.type == SDL_EVENT_CLIPBOARD_UPDATE) {
-      clipboard_.HandleLocalUpdate();
+      clipboard_.HandleLocalUpdate(!event.clipboard.owner);
     }
   }
   clipboard_.ApplyPendingRemoteText();

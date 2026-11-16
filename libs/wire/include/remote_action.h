@@ -150,6 +150,7 @@ struct HostInfo {
   bool supports_deskhub_bandwidth;
   // Optional; legacy peers keep the original single-file transfer UI.
   bool supports_file_browser;
+  bool supports_file_clipboard;
 };
 
 struct ServiceStatus {

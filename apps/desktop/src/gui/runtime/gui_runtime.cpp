@@ -79,6 +79,7 @@ GuiRuntime::~GuiRuntime() {
   windows_rdp_handoff_connected_->store(false, std::memory_order_relaxed);
   if (windows_service_worker_) windows_service_worker_->Reset();
 #endif
+  clipboard_.Shutdown();
   lan_.reset();
   transfers_.Shutdown();
   WaitForSessionCleanup();
@@ -403,6 +404,7 @@ int GuiRuntime::CreateConnectionPeer() {
     MiniRtcAddDataStream(peer_, file_label_.c_str(), true);
     MiniRtcAddDataStream(peer_, file_feedback_label_.c_str(), true);
     MiniRtcAddDataStream(peer_, clipboard_label_.c_str(), true);
+    MiniRtcAddDataStream(peer_, kClipboardFilesStream, true);
     MiniRtcAddDataStream(peer_, web_clipboard::kStream, true);
     return 0;
   } else {

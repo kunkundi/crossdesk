@@ -1,14 +1,17 @@
 /*
  * @Author: DI JUNKUN
  * @Date: 2025-12-28
- * Copyright (c) 2025 by DI JUNKUN, All Rights Reserved.
+ * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
  */
 
 #ifndef _CLIPBOARD_H_
 #define _CLIPBOARD_H_
 
 #include <functional>
+#include <cstdint>
+#include <optional>
 #include <string>
+#include <vector>
 
 namespace crossdesk {
 
@@ -24,6 +27,12 @@ class Clipboard {
   static bool SetText(const std::string& text);
 
   static bool HasText();
+
+  // Main/UI thread only. File paths are UTF-8; a nonempty list takes precedence
+  // over a file manager's accompanying text representation. No move/delete.
+  static std::optional<std::vector<std::string>> GetFiles();
+  static bool SetFiles(const std::vector<std::string>& paths);
+  static uint64_t ChangeCount();
 
   static void StartMonitoring(int check_interval_ms = 100,
                               OnClipboardChanged on_changed = nullptr);

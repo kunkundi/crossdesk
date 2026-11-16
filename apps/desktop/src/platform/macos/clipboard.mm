@@ -50,6 +50,39 @@ bool Clipboard::HasText() {
   }
 }
 
+std::optional<std::vector<std::string>> Clipboard::GetFiles() {
+  @autoreleasepool {
+    NSArray* urls = [[NSPasteboard generalPasteboard]
+        readObjectsForClasses:@[[NSURL class]]
+        options:@{NSPasteboardURLReadingFileURLsOnlyKey: @YES}];
+    std::vector<std::string> paths;
+    if (urls.count > 128) return std::nullopt;
+    for (NSURL* url in urls) {
+      if (url.fileURL && url.path.UTF8String) paths.emplace_back(url.path.UTF8String);
+    }
+    return paths;
+  }
+}
+
+uint64_t Clipboard::ChangeCount() {
+  @autoreleasepool { return [[NSPasteboard generalPasteboard] changeCount]; }
+}
+
+bool Clipboard::SetFiles(const std::vector<std::string>& paths) {
+  @autoreleasepool {
+    if (paths.empty()) return false;
+    NSMutableArray* urls = [NSMutableArray arrayWithCapacity:paths.size()];
+    for (const auto& path : paths) {
+      NSString* value = [NSString stringWithUTF8String:path.c_str()];
+      if (!value || !value.isAbsolutePath) return false;
+      [urls addObject:[NSURL fileURLWithPath:value]];
+    }
+    NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+    [pasteboard clearContents];
+    return [pasteboard writeObjects:urls] == YES;
+  }
+}
+
 namespace platform {
 
 void RunClipboardMonitor(int) {

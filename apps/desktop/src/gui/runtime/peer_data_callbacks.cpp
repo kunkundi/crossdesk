@@ -149,6 +149,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
       (source_id == runtime->file_label_ ||
        source_id == runtime->file_feedback_label_ ||
        source_id == runtime->clipboard_label_ ||
+       source_id == kClipboardFilesStream ||
        source_id == web_clipboard::kStream))
     return;
   // MiniRTC reports the browser's reliable control channel as data-stream.
@@ -157,6 +158,10 @@ void PeerEventHandler::OnReceiveDataBuffer(
   if (source_id == web_clipboard::kStream) {
     runtime->clipboard_.ReceiveWeb(
         data, size, remote_id, handler);
+    return;
+  }
+  if (source_id == kClipboardFilesStream) {
+    runtime->clipboard_.ReceiveFiles(data, size, remote_id, handler);
     return;
   }
   if (source_id == runtime->file_label_) {
@@ -467,6 +472,8 @@ void PeerEventHandler::OnReceiveDataBuffer(
     if (source_id == runtime->control_data_label_ || source_id == kWebControlStream) {
       runtime->transfers_.SetBrowserSupport(handler, remote_id,
           remote_action.i.supports_file_browser);
+      runtime->clipboard_.SetFileSupport(remote_id, handler,
+          remote_action.i.supports_file_clipboard);
     }
     bool is_client_mode = false;
     std::shared_ptr<GuiRuntime::RemoteSession> props;

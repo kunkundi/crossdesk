@@ -17,6 +17,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include "clipboard_file_transfer.h"
 
 namespace crossdesk::gui_detail {
 struct RemoteSession;
@@ -32,6 +33,7 @@ class PeerEventHandler;
 class ClipboardController {
 public:
   explicit ClipboardController(GuiRuntime &owner);
+  ~ClipboardController();
 
   void SetEventType(uint32_t event_type);
   uint32_t event_type() const;
@@ -44,13 +46,21 @@ public:
                        std::function<bool()> allowed = {});
   void ApplyPendingRemoteText();
   bool QueueRead(std::function<void(std::optional<std::string>)> complete);
-  void HandleLocalUpdate();
+  void HandleLocalUpdate(bool external_event = false);
   void ReceiveWeb(const char* data, size_t size, const std::string& remote_id,
                    PeerEventHandler* source);
   void ForgetWeb(const std::string& remote_id);
+  void SetFileSupport(const std::string& remote_id, PeerEventHandler* source, bool supported);
+  void ReceiveFiles(const char* data, size_t size, const std::string& remote_id,
+                    PeerEventHandler* source);
 
 private:
   struct WebSession;
+  struct FileSession;
+  bool FileSessionActive(const std::string& remote_id, const std::shared_ptr<FileSession>& session);
+  void SendLocalFiles(bool changed);
+  void ApplyPendingFiles();
+  void StopFiles();
   void ApplyPendingWrite();
   bool WebSessionActive(const std::string& remote_id,
                          const std::shared_ptr<WebSession>& session);
@@ -75,6 +85,24 @@ private:
   std::weak_ptr<gui_detail::RemoteSession> deferred_local_session_;
   std::mutex web_sessions_mutex_;
   std::unordered_map<std::string, std::shared_ptr<WebSession>> web_sessions_;
+  std::mutex file_sessions_mutex_;
+  std::unordered_map<std::string, std::shared_ptr<FileSession>> file_sessions_;
+  std::atomic<uint64_t> clipboard_revision_{0};
+  std::vector<std::string> last_files_;
+  uint64_t last_files_change_ = 0;
+  bool local_files_ = false;
+  std::weak_ptr<gui_detail::RemoteSession> deferred_file_session_;
+  struct PendingFiles {
+    std::string remote;
+    std::weak_ptr<FileSession> session;
+    std::shared_ptr<ClipboardFileTransfer::Files> files;
+    uint64_t revision;
+    uint32_t token;
+  };
+  std::optional<PendingFiles> pending_files_;
+  // Keep published files alive for OS paste operations, including after a
+  // disconnect or a subsequent copy. The private cache is removed at shutdown.
+  std::vector<std::shared_ptr<ClipboardFileTransfer::Files>> published_files_;
 };
 
 } // namespace crossdesk
