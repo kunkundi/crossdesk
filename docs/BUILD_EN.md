@@ -1,8 +1,8 @@
-# Build your own desktop client
+# Build from source
 
 [Back to README](../README_EN.md) · [中文](BUILD.md)
 
-Use this guide when you need to build CrossDesk yourself. For normal installation, choose a package from [downloads](../README_EN.md#download). Select the section for your operating system; mobile build guides are linked below.
+Build dependencies, configuration, packaging, and signing are organized by platform below. Prebuilt packages are available from [downloads](../README_EN.md#download).
 
 After cloning, run build and packaging commands from the repository root. The [Xmake options](../apps/desktop/xmake/options.lua) and [CI workflow](../.github/workflows/build.yml) define the build configuration. `1.4.3` is an example version for local builds; change both the configuration value and packaging argument together so the app and package versions match.
 
@@ -94,6 +94,36 @@ After a successful upload, the submission ID is printed immediately and saved in
 If accelerated uploads time out, set `CROSSDESK_MACOS_NOTARY_S3_ACCELERATION=false` to retry using the standard S3 upload endpoint; the default is `true`. A failed upload may still allocate a submission record at Apple, so check `xcrun notarytool history --keychain-profile crossdesk-notary` before retrying.
 
 Set `CROSSDESK_MACOS_KEYCHAIN` to use a custom keychain containing both signing identities and the notary profile. Never commit private keys, P12 files or passwords. See Apple's [Developer ID certificate guide](https://developer.apple.com/help/account/certificates/create-developer-id-certificates/) and [notarization requirements](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
+
+### Signing and notarization in GitHub Actions
+
+The [Build and Release workflow](../.github/workflows/build.yml) automatically signs, notarizes and staples macOS installers for `v*` release tags. Manual runs can enable `sign_macos`; ordinary branch pushes and unchecked manual runs retain ad-hoc signing. Each architecture is processed on its own runner. Signed builds upload their normal artifacts only after notarization and Gatekeeper verification succeed; missing secrets or notarization failures block publication.
+
+In **Keychain Access → My Certificates**, export the `Developer ID Application` and `Developer ID Installer` identities **with their private keys** into two `.p12` files, using the same export password for both. A `.cer` file alone is insufficient. Keep these files outside the repository, for example `~/Downloads/crossdesk-application.p12` and `~/Downloads/crossdesk-installer.p12`.
+
+Add these repository secrets under **Settings → Secrets and variables → Actions → New repository secret**:
+
+| Secret | Value |
+| --- | --- |
+| `MACOS_APP_CERTIFICATE_P12_BASE64` | Base64 of the Application certificate/private-key `.p12` |
+| `MACOS_INSTALLER_CERTIFICATE_P12_BASE64` | Base64 of the Installer certificate/private-key `.p12` |
+| `MACOS_P12_PASSWORD` | Shared export password for both `.p12` files |
+| `APPLE_ID` | Apple account email with access to the developer team |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password generated for notarization |
+| `APPLE_TEAM_ID` | The 10-character team ID of both certificates |
+
+Run these commands separately and paste each clipboard value into its corresponding Base64 secret. Save the first secret before running the second command:
+
+```bash
+base64 -i "$HOME/Downloads/crossdesk-application.p12" | pbcopy
+base64 -i "$HOME/Downloads/crossdesk-installer.p12" | pbcopy
+```
+
+Your local `crossdesk-notary` profile does not synchronize to GitHub runners. The workflow recreates it in a temporary keychain, selects valid identities matching the team ID, allows signing tools to access only those imported keys without interactive prompts, and deletes signing/notarization credentials at the end of the job. No extra keychain password secret or provisioning profile is required for the current Developer ID distribution setup.
+
+After committing and pushing the workflow and supporting scripts, first run it manually with `desktop_version` set and `sign_macos` enabled. Confirm that `Notarize and staple macOS installer` succeeds for both ARM64 and Intel before pushing a release tag.
+
+CI waits up to 60 minutes for notarization. If Apple is still processing, the job fails and blocks publication, while preserving `macos-pending-notarization-*` installer artifacts and `macos-notarization-*` JSON diagnostics for 14 days. Download them and use the saved submission ID as described above to resume checking and staple the package without uploading it again. Pending artifacts are not completed notarized releases.
 
 ## Linux
 
@@ -210,7 +240,7 @@ xmake b crossdesk
 
 You can also set the environment variable with the same name before building; the Xmake configuration value takes precedence. The value must encode a 32-byte Ed25519 public key as 64 lowercase hexadecimal characters. A nonempty value with an invalid format fails build configuration. Update manifests must be signed with the matching private key, and the installation must meet the other updater requirements, including a supported installation location. Portable builds always use manual downloads.
 
-For a self-built client, you normally do not need a release signing key. Keep manual updates unless you manage a matching signed update source. See [client updates](UPDATER.md) (Chinese) for installation requirements and recovery.
+GitHub Actions reads `CROSSDESK_UPDATE_PUBLIC_KEY` from repository variables. The matching private key is needed only when signing release manifests. See [updater build and release](UPDATER.md#升级器构建与发布) for key generation, manifest signing, and installation requirements.
 
 ## Build without CUDA
 
@@ -312,6 +342,10 @@ For more information, please refer to the [official Xmake documentation](https:/
 The native client has a separate Xcode project and requires an arm64 physical device running iOS 16+. See the [iOS development guide](../apps/ios/README.md) for build and media/file-transfer checks. CI exports an unsigned app; device installation requires your own signing.
 
 [iOS CI](../.github/workflows/build-ios.yml) can run manually on its own, is called by the main build workflow, and runs for relevant pull requests. It retains the existing toolchain, license/privacy checks, app verification and ZIP packaging. Tag releases continue to collect the unsigned app archive under the same artifact name.
+
+## Refreshing screenshots
+
+Desktop README images are rendered directly from the current Slint UI. See the [screenshot notes](images/README.md) for reproduction commands.
 
 ## Android
 

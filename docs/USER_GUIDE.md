@@ -262,7 +262,7 @@ Windows 已配置后台主机时，以 `%ProgramData%\CrossDeskUnattended\shared
 
 如果电脑开启了“仅允许可信设备控制”，先在控制端复制配对信息，再到电脑的可信名单中添加并核对指纹。桌面端入口是 **设置 → 常规 → 隐私保护 → 管理可信设备**；iOS、Android、鸿蒙移动端入口是 **设置 → 本机配对信息**。配对后仍需验证连接密码。
 
-开启限制前确认要使用的控制端支持配对；当前终端 CLI 不支持。完整步骤和重装迁移说明见 [可信设备指南](connection-architecture.md#trusted-devices)。
+开启限制前确认要使用的控制端支持配对；当前终端 CLI 不支持。完整步骤和重装迁移说明见 [可信设备指南](CONNECTIONS.md#trusted-devices)。
 
 <a id="ios"></a>
 

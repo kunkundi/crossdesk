@@ -1,6 +1,6 @@
 # 终端桥接接口（Bridge v1）
 
-本页供需要把 CLI 画面嵌入自有终端界面的用户参考。日常连接请看 [终端指南](terminal-client.md)，通过 Agent 使用请看 [MCP 指南](../../mcp/README.md)。此接口是 CrossDesk 私有协议，不是 MCP。
+本页描述将 CLI 画面嵌入终端界面所需的请求、响应和帧事件。日常连接请看 [终端指南](terminal-client.md)，通过 Agent 使用请看 [MCP 指南](../../mcp/README.md)。此接口是 CrossDesk 私有协议，不是 MCP。
 
 启动：`crossdesk-cli bridge --stdio [--password-fd 3] [--server host] [--port 9099] [--quality low|balanced|high|ultra]`。
 通过参数数组启动，不经 shell。stdin/stdout 为 UTF-8 NDJSON，每行一个完整 JSON。stdout 使用保留的描述符，底层 stdout 重定向到 stderr。宿主应消费/隔离 stderr，不能展示为视频行或模型消息。bridge 不要求 TTY。

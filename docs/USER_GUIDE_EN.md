@@ -259,7 +259,7 @@ Open **☰ → Feedback & suggestions** in the main window. **Give feedback on G
 
 If the computer enables **Only allow trusted devices**, first copy the controller’s pairing information, add it to the computer’s trusted list, and compare fingerprints. On desktop, open **Settings → General → Privacy → Manage trusted devices**; on iOS, Android, and HarmonyOS mobile, open **Settings → This device’s pairing info**. The connection password is still required.
 
-Check that every controller you intend to use supports pairing before enabling the restriction. The current terminal CLI does not. See the [pairing and migration guide](connection-architecture.md#trusted-devices) (Chinese).
+Check that every controller you intend to use supports pairing before enabling the restriction. The current terminal CLI does not. See the [pairing and migration guide](CONNECTIONS.md#trusted-devices) (Chinese).
 
 <a id="ios"></a>
 

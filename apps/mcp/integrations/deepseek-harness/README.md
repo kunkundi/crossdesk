@@ -39,4 +39,4 @@ dsh plugin --profile desktop remove @chunkdash/crossdesk-mcp
 
 卸载后，保存在本机的设备配置和系统凭据仍会保留。
 
-需要从源码安装或指定原生程序时，见 [DSH 进阶配置](../../DEVELOPMENT.md#harness-development)。
+源码构建、原生程序配置及插件集成见 [DSH 配置](../../DEVELOPMENT.md#harness-development)。

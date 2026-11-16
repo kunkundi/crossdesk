@@ -83,8 +83,8 @@ crossdesk-cli 123456789 --display 1
 CLI 仅控制远程电脑，不提供音频播放、文件传输、剪贴板同步或 IP 直连，也不能连接开启可信设备限制的电脑。被控端需要有可用桌面，自托管服务器需支持 CLI 临时身份。
 
 - [终端使用指南](docs/terminal-client.md)：参数、显示、输入、Pi 扩展和故障排查。
-- [安装与更新](docs/npm-distribution.md)：npm、平台要求和旧版迁移。
+- [npm 安装与分发](docs/npm-distribution.md)：平台要求、旧版迁移、打包和发布。
 - [兼容性与限制](docs/validation.md)：平台和终端的已确认范围。
 - [MCP 使用指南](../mcp/README.md)：通过 Agent 操作远端并实时监看。
-- [自动化接口](docs/automation-protocol.md) / [终端桥接接口](docs/bridge-protocol.md)：供需要自行接入脚本或终端界面的用户参考。
+- [自动化接口](docs/automation-protocol.md) / [终端桥接接口](docs/bridge-protocol.md)：对接脚本、应用或自定义终端界面。
 - [源码与许可信息](docs/source-provenance.md)。

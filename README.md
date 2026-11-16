@@ -24,7 +24,7 @@
 
 CrossDesk 让你从电脑、浏览器、手机或终端（桌面 CLI）连接远端电脑，也能通过桌面墙（DeskHub）集中查看与操控多台设备。项目基于 [MiniRTC](https://github.com/kunkundi/minirtc)，支持自托管。
 
-[主要功能](#features) · [下载与平台支持](#download) · [快速连接](#quick-start) · [终端 CLI](#cli) · [Agent / MCP](#mcp) · [IP 直连](#lan-direct) · [可信设备](#trusted-devices) · [界面预览](#preview) · [使用指南](docs/USER_GUIDE.md) · [文档导航](docs/README.md) · [自托管](#self-hosting) · [帮助与反馈](#development) · [赞助](#sponsor)
+[主要功能](#features) · [下载与平台支持](#download) · [快速连接](#quick-start) · [终端 CLI](#cli) · [Agent / MCP](#mcp) · [IP 直连](#lan-direct) · [可信设备](#trusted-devices) · [界面预览](#preview) · [使用指南](docs/USER_GUIDE.md) · [文档导航](docs/README.md) · [自托管](#self-hosting) · [文档与反馈](#development) · [赞助](#sponsor)
 
 <a id="features"></a>
 
@@ -103,7 +103,7 @@ CrossDesk 让你从电脑、浏览器、手机或终端（桌面 CLI）连接远
 
 **兼容范围：** 使用支持配对的新版桌面端、iOS、Android 或鸿蒙移动端。手机和平板从“设置 → 本机配对信息”复制配对信息，再添加到被控电脑。旧客户端和当前终端 CLI 无法连接开启此限制的被控端。
 
-重装、清除应用数据或迁移电脑前，请先查看 [身份备份与迁移](docs/connection-architecture.md#backup)。仅保存 ID 和密码不足以恢复已绑定的桌面身份；更换设备身份后需要重新配对。
+重装、清除应用数据或迁移电脑前，请先查看 [身份备份与迁移](docs/CONNECTIONS.md#backup)。仅保存 ID 和密码不足以恢复已绑定的桌面身份；更换设备身份后需要重新配对。
 
 <a id="preview"></a>
 
@@ -278,13 +278,15 @@ PC 端可控制和被控制，复用桌面界面与桌面墙；手机和平板�
 
 <a id="development"></a>
 
-## 帮助与反馈
+## 文档与反馈
 
 - [使用指南](docs/USER_GUIDE.md)：安装、连接、会话操作、设置和无人值守。
 - [常见问题](docs/FAQ.md)：连接失败、黑屏、系统权限及文件位置。
-- [连接与可信设备](docs/connection-architecture.md)：选择连接方式、配对及迁移身份。
+- [连接与可信设备](docs/CONNECTIONS.md)：选择连接方式、配对及迁移身份。
 - [更新客户端](docs/UPDATER.md)：检查更新、安装与失败后的处理。
-- [自行构建](docs/BUILD.md)：需要从源码安装时使用。
+- [源码构建](docs/BUILD.md)：依赖、编译、打包和签名。
+- [架构与集成](docs/README.md#构建与集成)：GUI 和连接架构、CLI / MCP 接口、各平台适配。
+- [版本与发布](docs/VERSIONING.md)：组件版本同步、发布编号及更新清单。
 
 遇到问题时，可在桌面端主菜单打开 **反馈与建议**，导出诊断日志，并 [提交问题](https://github.com/kunkundi/crossdesk/issues)。请附上两端系统、客户端版本、连接方式、报错及复现步骤；分享前检查日志和截图中的私人信息。详见 [反馈与诊断日志](docs/USER_GUIDE.md#feedback)。
 

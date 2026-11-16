@@ -1,89 +1,128 @@
-# CrossDesk for iPhone and iPad
+# CrossDesk Mobile (native iOS)
 
-[Project home](../../README_EN.md) · [User guide](../../docs/USER_GUIDE_EN.md#ios) · [FAQ](../../docs/FAQ.md#english)
+[App Store](https://apps.apple.com/app/id6828859211) · [User guide](../../docs/USER_GUIDE_EN.md#ios) · [Build and signing](#build) · [Licenses](#third-party-licenses)
 
-Use your iPhone or iPad to control a remote computer. The mobile app is a controller; it cannot share the iPhone or iPad as a remote desktop.
+The native iPhone and iPad app controls remote computers. Install from the App Store or build and sign a copy with the steps below.
 
-## Install and connect
+This target is a native MiniRTC controller. It uses the same WebSocket
+signaling, libnice ICE, SRTP/RTP and data-stream protocol as the desktop app.
+There is no `WKWebView` or browser runtime.
 
-1. Install from the [App Store](https://apps.apple.com/app/id6828859211). Check the listing for supported iOS versions.
-2. Run CrossDesk on the computer and have its 9-digit device ID and connection password ready.
-3. Read the privacy notice in the mobile app and choose whether to allow network access. Enter the computer’s ID, connect, and enter its password.
-4. Save the password if you want to reconnect from recent devices without entering it each time.
+UPnP discovery and router port mapping are disabled in iOS builds, matching
+Android. Local connections, ICE/STUN hole punching, and TURN UDP/TCP relay
+remain available. The native archive excludes GUPnP and its HTTP/XML dependencies.
 
-For a self-hosted server, configure the same server and port on both devices. See [self-hosting](../../docs/SELF_HOSTING_EN.md).
+## Trusted device authentication
 
-## Touch, mouse, and keyboard
+Open **Settings → This device’s pairing info** to view the fingerprint and copy the public pairing information. Import it under **Manage trusted devices → Add a trusted device** on the controlled desktop and compare fingerprints. Once trusted, this iPhone or iPad can connect with **Only allow trusted devices** enabled. The connection password is still required.
 
-Choose **Relative Position** in Settings to use the screen like a trackpad, or **Absolute Position** to point directly at the touched location. Pinch to zoom and use two fingers to pan the enlarged view. Open the floating menu for the virtual mouse, keyboard, display selection, sound, and video settings.
+The controller responds to the shared Ed25519 challenge protocol. Its signing seed is stored in a separate, non-synchronizing, device-only Keychain item, never in caches, logs or the exported pairing information. Restarting, clearing caches and changing signaling servers or login IDs preserve the same key. An unavailable, corrupt or unexpectedly missing identity fails initialization instead of silently generating a replacement. A new installation on another device needs its own pairing.
 
-The system keyboard supports your installed input methods, including candidates, emoji, and dictation. Text is sent after you confirm it. Remote text input depends on the host version and platform; use Clipboard when a character is not supported. **Computer keyboard** provides individual keys and shortcuts.
+## Remote privacy screen
 
-**More** offers Common, Keys, System, and Mine groups. Copy/Paste follows the remote platform: Ctrl on Windows/Linux and Cmd on macOS. Linux system shortcuts require choosing GNOME or KDE Plasma. You can save up to 16 custom combinations and pin up to 8 shortcuts for each remote platform.
+The floating menu includes a **Privacy screen** button that toggles the host's
+local cover directly, without opening a detail page. Its label reports the confirmed
+on/off state without changing colors; normal toggling shows no extra text; errors and unavailable status still appear inline. It supports enabling/disabling
+the local cover, blocks local keyboard/mouse input when enabled like the desktop
+controller, and advertises support
+for the host’s automatic privacy-on-connect setting. Status older than five
+seconds is shown as stale; commands require confirmation within fifteen seconds.
+PiP/background transitions preserve the session state; disconnecting clears it.
 
-On iPhone, enable **Settings → Screen orientation → Lock landscape after connecting** to keep sessions in landscape. It is off by default. iPad supports rotation and resizable multitasking windows; resizing preserves the active session.
+## Background connection and Picture in Picture
 
-## Video, audio, and privacy screen
+An established remote desktop session supports native Picture in Picture (PiP).
+After the first video frame appears, switching to another app automatically
+starts PiP when the device and system settings allow it. The PiP window shows
+the live remote desktop; restoring the app returns to the existing session and
+requests a fresh key frame. Remote mouse buttons are released when the app loses focus.
 
-Use the floating menu to switch monitors, change video quality or frame rate, and toggle remote audio. Available choices depend on the host. Lower video settings if playback is slow or the device becomes warm.
+The app declares the `audio` background mode required by AVKit for PiP and
+activates a playback audio session, including for muted remote video. Background
+frames are submitted directly from the RTC delegate to the sample-buffer display
+layer, without relying on SwiftUI background redraws. Only real remote audio is
+played; no synthetic silent audio or recurring background-task assertions are
+used. Disconnecting or withdrawing consent stops PiP and releases playback.
 
-**Privacy screen** toggles the computer’s local cover and blocks its local keyboard and mouse when supported. The button shows the host-confirmed state; errors appear in the menu. Automatic activation also requires enabling the corresponding setting on the computer.
+Background execution depends on active PiP or actual remote audio playback.
+Closing or pausing PiP, disabling automatic PiP in system settings, locking the
+device, losing the network, or force-quitting can suspend or interrupt the
+session. iOS does not provide an unrestricted background socket keepalive.
+The connection is not deliberately closed on background entry, but continuous
+connectivity cannot be promised outside the supported playback modes.
 
-## Clipboard and files
+On a physical iPhone/iPad, verify automatic PiP when switching apps with remote
+audio both enabled and muted, continuously changing remote frames while another
+app is in front, restoration, pause/resume, close, lock/unlock, and disconnection while PiP
+is active. Also verify the system setting that disables automatic PiP. A build
+or simulator check alone does not establish long-duration background behavior.
 
-Use **Clipboard** in the floating menu to send local text to the computer, up to 128 KiB per transfer. The app can also receive remote text into the iOS clipboard.
+## Requirements
 
-Select files from the floating menu to send them. Received files are stored in the app’s `Documents/Received` folder; use the share action beside the transfer status to export them. Wait for a transfer to finish before disconnecting.
+- Xcode 16 or newer
+- Xmake 3.1.1 or newer available on `PATH` (or selected with `XMAKE_BIN`)
+- A physical arm64 iPhone/iPad running iOS 16 or newer, or an iOS simulator on Apple Silicon
 
-## Switching apps and Picture in Picture
+## Build
 
-After remote video appears, switching apps starts Picture in Picture when the device and system settings allow it. Return from the small window to continue the same session.
-
-Background connectivity depends on active Picture in Picture or remote audio playback. Pausing or closing Picture in Picture, disabling automatic Picture in Picture, locking the phone, losing the network, or force-quitting can interrupt the session. A connection is not guaranteed to remain active indefinitely in the background.
-
-## Trusted devices
-
-Open **Settings → This device’s pairing info**, copy the pairing information, and import it under **Manage trusted devices → Add a trusted device** on the computer. Compare fingerprints before trusting the device. You can then connect with **Only allow trusted devices** enabled; the connection password is still required.
-
-Restarting, clearing caches, or changing servers preserves the pairing identity. A different iPhone or iPad needs its own pairing. If the app cannot read its stored identity, follow the error message rather than assuming the computer’s password is incorrect.
-
-## Privacy, language, and updates
-
-**Settings → Privacy → Privacy and Authorization** lets you read the policy or withdraw consent. Withdrawal disconnects the session. Remote desktop previews are off by default; enabling them saves local previews from subsequent connections. Turning saving off or withdrawing consent clears them.
-
-The app follows the system or per-app language setting. Supported languages are listed in the [language guide](../../localization/README.md). Interface language does not translate the remote computer’s contents.
-
-Update through the App Store. About provides offline licenses and source information, including the OpenFEC notice and component terms. CrossDesk uses [GPL-3.0-only](../../LICENSE); dependencies retain their own licenses. See the [open-source rights notice](licenses/OPEN_SOURCE_NOTICE.txt). A self-signed build must be updated using a compatible signing identity.
-
-## Build and sign your own copy (optional)
-
-Skip this section if you installed from the App Store. Source builds require a Mac with Xcode 16+, Xmake 3.1.1+, CMake, and Python 3 with setuptools/wheel. The source target requires iOS 16+ and an arm64 device, or an iOS simulator on Apple Silicon.
+Clone the repository with its submodules. Run these commands from the parent
+directory where you want to place the checkout:
 
 ```sh
 git clone --recurse-submodules https://github.com/kunkundi/crossdesk.git
 cd crossdesk
 ```
 
-For an existing checkout, run `git submodule update --init --recursive`. To reproduce a released build, use the source tag or commit listed in the app’s About page.
+For an existing checkout, run `git submodule update --init --recursive` from
+the repository root. All remaining commands below use that root directory.
+For a released app, select the tag shown in **Settings → About and open-source
+licenses** when cloning: `git clone --branch <source-tag> --recurse-submodules
+https://github.com/kunkundi/crossdesk.git`. Combined releases share the desktop
+tag's numeric version. Use the source tag or commit recorded in the app to
+identify its exact source.
 
-1. Open `apps/ios/CrossDeskMobile.xcodeproj` and select the `CrossDeskMobile` scheme.
-2. Under **Signing & Capabilities**, select your own team and a bundle identifier available to that team. The checked-in team and `com.chunkdash.crossdesk` identifier belong to ChunkDash.
-3. Select your connected iPhone or iPad, complete device trust and Developer Mode prompts, and run the app.
+Install [Xmake](https://xmake.io/guide/quick-start.html) 3.1.1 or newer,
+CMake, and a current Python 3 with setuptools/wheel. Repository selection follows
+the Windows/macOS/Linux desktop build: Xmake uses its default package repository,
+or an explicit `XMAKE_GLOBALDIR` / `XMAKE_MAIN_REPO` supplied by the caller.
+No repository commit is pinned, checked out, or required to have a clean worktree.
+You can build directly from Xcode without preparing a separate recipe checkout.
 
-The first build downloads and compiles native dependencies; later builds reuse them. Ensure Xmake is on PATH, or set `XMAKE_BIN` to its full path.
+Installed iOS packages and device/simulator build products still have separate
+caches to avoid mixing target architectures and deployment settings. The build
+retains the minimum Xmake version check, Xmake's source-download verification,
+and native archive input checks. Application dependencies are built from source,
+with Xmake precompiled package downloads disabled.
 
-An unsigned build can be generated from the repository root:
+1. Open `apps/ios/CrossDeskMobile.xcodeproj` and select the `CrossDeskMobile`
+   target and scheme.
+2. Under **Signing & Capabilities**, select your own development team and set
+   a bundle identifier available to that team. The checked-in signing team
+   and `com.chunkdash.crossdesk` identifier belong to ChunkDash.
+3. Connect and select a physical iPhone or iPad, configure device trust and
+   Developer Mode as prompted by Xcode, then build and run. See Apple's
+   [device setup guide](https://developer.apple.com/documentation/xcode/running-your-app-on-simulated-or-physical-devices).
+
+The first build phase builds MiniRTC and the CrossDesk wire library, downloads
+and builds their dependencies, then merges the iPhoneOS archives into a local library under
+`Vendor/`. OpenSSL is kept separate and packaged as a static framework with SDK
+privacy resources in the Xcode products directory. Device and simulator builds
+use separate native archives and package caches. The exact tool versions used by CI are recorded in the
+[iOS workflow](../../.github/workflows/build-ios.yml).
+
+You can also build the target without code signing. The resulting app, like
+the unsigned CI artifact, requires signing before device installation:
 
 ```sh
 xcodebuild -project apps/ios/CrossDeskMobile.xcodeproj \
-  -scheme CrossDeskMobile -configuration Debug \
+  -scheme CrossDeskMobile \
+  -configuration Debug \
   -destination 'generic/platform=iOS' \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-This output, like an unsigned GitHub Actions artifact, needs signing before it can be installed on a device. The App Store is the direct installation option.
-
-For an Apple Silicon simulator:
+On an Apple Silicon Mac, select an iOS simulator in Xcode and run the same
+scheme. To build from the command line:
 
 ```sh
 xcodebuild -project apps/ios/CrossDeskMobile.xcodeproj \
@@ -92,8 +131,597 @@ xcodebuild -project apps/ios/CrossDeskMobile.xcodeproj \
   CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- build
 ```
 
-Keep the simulator’s local ad-hoc signing enabled so Keychain can store the app’s identity. Disabling signing can cause error `-34018` before connection. Simulator behavior does not establish physical-device video performance or background reliability.
+Keep signing enabled for simulator runs. Xcode uses a local ad-hoc signature
+and supplies the application identity required by Keychain. Disabling signing
+causes identity storage to fail with `-34018` before signaling can connect.
 
-## Troubleshooting
+Simulator H.264 decoding uses VideoToolbox's available decoder, including its
+software path. A simulator reporting no hardware H.264 support must still be
+allowed to create a decoder; otherwise ICE can connect and receive video packets
+while the app remains on the waiting-for-picture screen. Physical iOS devices
+retain the hardware capability check.
 
-Check the [FAQ](../../docs/FAQ.md#english) for connection failures, blank video, and Windows lock-screen input. When reporting a problem, include both client versions, the iPhone/iPad model and iOS version, the error, and the steps to reproduce it.
+The first simulator build compiles its own MiniRTC and dependencies; later builds
+reuse `.xmake/packages-simulator` and `Vendor/iphonesimulator`. This runs the
+native application, including version checks and signaling. Validate hardware
+video behavior and performance separately on a physical device.
+
+The first connection to a signaling server provisions and stores an identity
+for that server. Remote control sessions then log in as `C-<identity>` and use
+the desktop-compatible `DisplayN`, `control_audio`, `mouse`, `keyboard`,
+`control_data`, `clipboard`, `file`, and `file_feedback` streams.
+
+## Xcode Cloud
+
+Select `apps/ios/CrossDeskMobile.xcodeproj`, the shared `CrossDeskMobile`
+scheme, and an **Archive - iOS** action with **App Store Connect** distribution
+preparation (called **TestFlight and App Store** in some Xcode versions).
+Commit and push the intended signing settings and shared scheme to the branch
+selected by the workflow before starting a build.
+
+Xcode Cloud automatically runs `ci_scripts/ci_post_clone.sh` next to the Xcode
+project. It installs Xmake, CMake, pkgconf, and Python 3.13 with Homebrew, prepares an
+isolated host Python environment with pip/setuptools/wheel, verifies the minimum
+Xmake version and host `pkg-config`, and initializes the pinned MiniRTC submodules.
+It exposes both `pkgconf` and `pkg-config` from the Homebrew formula in the host
+tool directory, allowing GLib's Meson build to resolve Xmake's iOS PCRE2 and
+libffi packages instead of compiling bundled fallback versions. The native build
+phase checks and selects these tools again and preserves Cloud's proxy settings
+for package downloads. No manual workflow PATH setting or `sudo` command is required.
+
+For **Archive - iOS**, `ci_scripts/ci_pre_xcodebuild.sh` builds the native
+dependencies before `xcodebuild`, using `Release / iphoneos / arm64` to match the
+shared scheme. It streams verbose build output and prints a heartbeat with
+process status every minute, avoiding the archive's 30-minute inactivity timeout
+while Xcode buffers Run Script output. The archive's native build phase reuses
+the same dependency cache and libraries, retaining its input and toolchain
+validation. Other actions keep their existing native build behavior.
+
+The prebuild records its output under `.xmake/xcode-cloud-logs` and copies package
+installation and Meson logs there on failure. These files are temporary, so the
+script also prints the complete GLib install log and the last 200 lines of other
+failed package logs and GLib's Meson log into the retained Cloud step output.
+Inspect **Run ci_pre_xcodebuild.sh script** when diagnosing native build failures.
+
+The first archive compiles native dependencies from source and may take longer
+than later builds. After changing the setup script, start a build from the new
+commit; rebuilding an older commit does not include the fix. App Store releases
+still need the source-tag and bundle checks described in **App Store archive
+and bundle validation** below.
+
+## GitHub Actions
+
+[`Build iOS`](../../.github/workflows/build-ios.yml) can run independently from
+the Actions page. Pull requests changing the iOS app, MiniRTC, shared wire code
+or relevant build configuration also trigger it. The main
+[`Build and Release`](../../.github/workflows/build.yml) workflow calls the same
+workflow on branch/tag pushes and manual runs, and waits for its result before
+publishing a version-tag release.
+
+The workflow builds with the minimum supported Xmake version (3.1.1) and retains
+the pinned Xcode/SDK, dependency cache, native input validation, unsigned arm64
+Release build, and app-bundle verification. Unit tests run locally as needed.
+It uploads
+`crossdesk-ios-arm64-unsigned-v<version>-<date>.zip`,
+including the app, source metadata, third-party source catalog, rights notice
+and any generated dSYM. For combined `v*` releases, the ZIP uses the same version,
+date and optional hotfix suffix as the desktop packages, and the app's
+`MARKETING_VERSION` is set to the tag's numeric version during the build.
+Branch builds and independent `ios-v*` releases use the iOS target's
+`MARKETING_VERSION`. Dated tags provide the build date; otherwise the date uses
+the Asia/Shanghai timezone.
+The main workflow collects this same ZIP for GitHub Releases and the download
+server. Standalone `Build iOS` runs only upload the build artifact.
+
+For an independent release, use the
+[`Release Mobile`](../../.github/workflows/release-mobile.yml) workflow. Desktop,
+Android, iOS and HarmonyOS share the same client release version while mobile
+build numbers remain independent. From the repository root, run
+`python3 scripts/version.py set client <version>` to update all clients,
+then commit the changes and tag that commit with
+`ios-v<marketing-version>-YYYYMMDD`, for example:
+
+```sh
+git tag ios-v1.7.6-20261112
+git push origin ios-v1.7.6-20261112
+```
+
+The tag starts only the iOS build and publishes its unsigned ZIP to a dedicated
+GitHub Release and the existing download server. The tag version must match the
+iOS target, and its date must be valid. To retry a release, run `Release Mobile`
+manually and enter the existing tag in `source_tag`; it builds that tag's source
+even when the workflow is dispatched from a different branch. Source metadata
+records the iOS tag and exact application/MiniRTC commits.
+
+Mobile releases keep the desktop `latest` tag and GitHub's latest release
+selection unchanged. After uploading the ZIP, the workflow merges its server
+URL, version and release date into `downloads.ios-arm64` in the shared
+`https://version.crossdesk.cn/version.json`.
+This entry describes the unsigned download artifact; the iOS app checks the
+App Store listing for its own updates instead.
+Top-level desktop version information and other platforms' entries are retained.
+Uploads preserve other platforms' files and use the existing `SERVER_HOST`,
+`SERVER_USER` and `SERVER_KEY` repository secrets. Regular desktop version tags
+still publish all platforms and update their download entries through
+`Build and Release`. All publishing jobs share one queue when updating the manifest.
+To upload an existing release and refresh its download metadata without rebuilding,
+run `Update version.json from Release` with its existing `source_tag`.
+
+No Apple signing secrets are needed. Sign the app yourself before installing
+it on a device. Push any referenced MiniRTC commit before the parent repository
+so the runner can check out all corresponding sources.
+
+## iPad and adaptive layout
+
+iPad supports portrait, upside-down portrait, landscape and resizable multitasking
+windows on both the home screen and an active remote session. The home screen
+uses two columns at a window width of 900 points or more, with the connection
+form beside recent connections; smaller windows use a single column. Content is
+centered at a maximum width of 1200 points, and recent-connection cards adapt to
+the available space. Settings and reading pages are limited to 720 points.
+Resizing preserves the connection fields and active session. iPhone retains its
+portrait home screen and two-column recent-connection grid.
+
+On iPhone, Settings → Screen orientation (屏幕方向) → Lock landscape after connecting
+(连接建立后锁定横屏) is disabled by default and saved locally. When enabled, the session
+enters and stays in landscape; when disabled, it follows the device orientation.
+Leaving the session restores portrait, and returning to a background session keeps
+that session's orientation setting. The physical-device monitoring that released
+the initial landscape hold has been removed. iPad orientation and multitasking
+are unaffected.
+
+## System keyboard and remote text
+
+The session keyboard button opens the iPhone/iPad's selected system keyboard.
+Chinese candidates, nine-key layouts, handwriting, emoji and dictation use the
+installed keyboard's own UI and availability. Confirmed text is sent immediately
+without a visible local draft or a separate send action. Pinyin preedit stays in
+the system IME until composition is confirmed. Return presses remote Enter;
+Backspace edits an active composition locally, otherwise it deletes remotely.
+A hidden native text field retains the current input context so autocorrection,
+candidate replacement and continuous dictation can revise previously sent text.
+Only the changed suffix is replaced, using Backspace events followed by text on
+the same ordered keyboard stream. Remote clicks reset this context before moving
+the insertion point, and Return starts a new context. Text edited directly on
+the host is not mirrored back; automatic corrections assume the remote caret
+still follows the text entered from the phone.
+
+The 44-point native input row contains the **电脑键盘** switch, a horizontally
+scrollable favorites bar (Escape, Tab, Copy and Paste by default), More and Hide.
+It is anchored to `UIKeyboardLayoutGuide`. Its background continues
+behind the system keyboard; no input accessory slot is reserved. The IME's
+candidate bar remains native. Chinese nine-key Pinyin reserves its own
+spelling-choice row above the candidates (for example `m`, `n`, `o`); this may
+be empty before typing and is not an app spacer. An input error expands the
+row only while its message is visible. Computer keys such as Escape, Tab,
+arrows and modifiers are available on the computer keyboard.
+Switching between the system and computer keyboards replaces the panel in place
+in both directions. Opening the system keyboard after it has been hidden keeps
+the normal iOS presentation animation.
+
+The computer keyboard has two pages: **字母数字** for letters and numbers,
+and **符号功能** for punctuation, F1–F12 and navigation. Keys fill each row
+with consistent 5-point horizontal and 6-point vertical gaps; there are no
+fixed keycap size limits or extra spacing around individual rows. The second
+page uses two function-key rows in portrait and one in landscape.
+The two bottom rows keep their height and position when changing pages.
+Shift and Backspace also keep the same width at the ends of the penultimate
+row; its middle keys fill the remaining width. Ctrl, Win, Alt, Space and Return
+share the last row. Only the upper rows redistribute the remaining height.
+Computer-key taps, page changes and keyboard controls use a light impact haptic
+at a fixed intensity of 1.0 alongside the existing pressed-key highlight.
+The public feedback API lets the system decide whether haptics are enabled;
+iOS does not expose the native keyboard's intensity for custom controls to read.
+One feedback generator is reused
+while the keyboard is visible and released when it closes. Haptics require
+supported hardware; the simulator can only verify the feedback trigger.
+Modifiers are selected locally and applied to the next key, then cleared. A
+whole chord is queued as one RTC task and releases modifiers in reverse order. The panel reuses the
+last measured native keyboard height, including the 44-point control row, for
+the current window width and orientation. Before landscape has been measured,
+the iPhone fallback uses a 161-point compact keybed plus the actual bottom safe
+area and the 44-point control row, avoiding the oversized first rotation.
+Measured native heights take precedence over fallback sizes. Horizontal layouts
+put the page selectors in the control row to preserve key height. The bottom
+safe area stays clear. Both keyboards stay docked to the bottom of the screen;
+the computer keyboard has no drag handle or repositioning gesture.
+Closing the keyboard, switching keyboards, disconnecting or entering the
+background discards unfinished composition and pending callbacks. Already sent
+text remains on the remote computer.
+
+Direct UTF-8 text requires a host advertising `supports_text_input`. Windows and
+macOS hosts implement this with native Unicode keyboard events and do not modify
+the clipboard. Each replacement is validated before remote Backspace events are
+sent; text is limited to 16 KiB and deletions to 16,384 characters per update.
+Hosts without this capability retain ASCII key input. Unsupported input is
+rejected with an explanation and is not queued for later replay. For hosts
+without text input support on an ordinary desktop, send text with
+**剪贴板** in the remote session menu, then use the computer keyboard's paste
+shortcut.
+
+This development build forwards complete UTF-8 commits through the Windows
+service on lock screens, sign-in screens and secure desktops. Digits, mixed-case
+letters, punctuation, spaces and non-ASCII characters stay on the text path.
+The Windows client, service and session helper must all be updated; updating
+iOS alone cannot enable this fix. Older Windows hosts may advertise
+`supports_text_input` for ordinary desktops while lacking secure desktop text
+forwarding. Actual password entry still requires validation on updated Windows.
+
+## App updates
+
+After network consent, the app queries Apple's public Lookup API on launch,
+on return from the background, and after a remote connection ends while active.
+Successful results are reused in memory for six hours; failed checks defer the
+next automatic attempt for 15 minutes. There is no timer or automatic retry.
+**检查更新** bypasses this cooldown. Concurrent triggers share the pending
+request. Backgrounding or withdrawing consent cancels requests and ignores
+stale replies; failures retain an already discovered update.
+
+`CrossDeskAppStoreID` in `CrossDeskMobile/Info.plist` identifies the App Store
+listing (`6828859211`). Forks must set their own App ID and bundle identifier;
+responses are accepted only when both identities match. Lookup uses the current
+StoreKit storefront, converting its three-letter country code to two letters.
+When StoreKit has no storefront, the device's region is used; an unknown region
+fails the check instead of silently querying the US store.
+
+Only the published App Store `version` is compared numerically with
+`CFBundleShortVersionString`. Desktop patches, build dates, `CFBundleVersion`,
+TestFlight builds and unsigned GitHub artifacts do not trigger App Store update
+notices. An empty Lookup result has its own unavailable message, not an
+up-to-date message. A newer release requiring a newer iOS version shows that
+requirement without an installable-update badge.
+
+Installable new releases show the existing red badge on the home Settings
+button and “新版本” with a red dot in Settings → About. About shows the version
+and **前往 App Store 更新**, linking directly to the application's App Store
+page. The remote desktop's separate upgrade check still uses the CrossDesk
+version manifest.
+
+## Announcements
+
+The home toolbar's bell opens **通知公告** and shows the unread count (capped
+at `99+` on the badge). The persistent identity peer fetches announcements after
+signaling connects, so a remote desktop session is not required. Opening the
+inbox, returning to the foreground, reconnecting, and `announcements_changed`
+events refresh the catalog. Pull to refresh or use the refresh button to retry.
+
+The iOS inbox follows the desktop `announcements_list` protocol: summaries load
+in batches of 200 to count all unread announcements, while full bodies load in
+batches of 20 as the list scrolls. Opening a detail marks that revision read.
+Swipe or long-press a row to delete it after confirmation. Read and deleted
+revisions persist only on this device, scoped by server, port and device ID;
+updating an announcement makes its new revision visible and unread again.
+Plain text, line breaks, HTTP(S) URLs and `[label](URL)` links are supported.
+
+Local state lives in Application Support and is excluded from backups. Failed
+writes leave the item unread or undeleted and display a retry message. Failed
+requests time out after 12 seconds and retain previously loaded content.
+Changing servers or withdrawing network consent clears the displayed inbox and
+invalidates pending responses; consent is required before fetching again.
+
+## Video codecs
+
+Every iOS build includes VideoToolbox, dav1d, and SVT-AV1. H.264 uses
+VideoToolbox exclusively; OpenH264 is excluded from the iOS dependencies and
+native archive. The hardware/software processing setting has been removed,
+and preferences saved by older versions are no longer read. H.264 codec
+initialization failure is reported without a software fallback.
+AV1 encoding uses SVT-AV1 and AV1 decoding uses dav1d; VideoToolbox AV1 hardware
+decoding is currently unsupported. Desktop builds retain OpenH264.
+
+The native build script checks the merged archive for OpenH264 entry points
+and rejects a build if they are present, including in cached archives.
+
+## Third-party licenses
+
+**设置 → 关于** shows the app version and links to the application's
+license, open-source components, and source/build information. `crossdesk_wire`
+is part of CrossDesk's own source and is covered by its application license,
+not a separate third-party entry. OpenFEC is acknowledged at the top of the
+open-source components page, with its INRIA copyright, CeCILL-C terms and limited
+warranty/liability notice. Its embedded BSD and CC-BY-SA notices are preserved
+in the source-notices document as well.
+
+`licenses/sources.json` pins the reviewed source archives (SHA-256), notice-review
+Git revisions, selected legal files and source-notice extraction rules.
+`CrossDeskMobile/Resources/ThirdPartyLicenses.json` is the generated resource
+bundled by Xcode. The catalog covers CrossDesk and 25 dependency entries for the default iOS build,
+including header-only dependencies, GLib's proxy-libintl, spdlog's bundled fmt,
+WebRTC-derived code, inih, and the applicable patent notices. Host build tools,
+OpenH264, desktop-only libraries, and the disabled UPnP dependency stack are excluded.
+
+Regenerate from the pinned source distributions with Python 3.9 or newer:
+
+```sh
+python3 apps/ios/scripts/generate_third_party_licenses.py --generate
+```
+
+The collector uses original checksum-verified archives, including GLib's
+`COPYING` file even when Xmake excludes it from an extracted build directory.
+It reuses matching Xmake downloads or caches downloads outside the repository
+in `~/.cache/crossdesk/licenses/`. License text is preserved, with explicit
+character decoding for the legacy OpenFEC files. Copyright comment blocks are
+collected from the reviewed runtime source directories; the catalog is an
+attribution superset, not a claim that every source file survives linker
+dead stripping.
+
+Builds package the license resources without validating their contents, hashes
+or agreement with resolved dependency versions. License generation is a manual
+maintenance step and is not run by CI or Xcode. Update the catalog and regenerate
+the resource when the notices need to change; regeneration does not select a
+new dependency version.
+
+`scripts/verify_native_build.py` independently checks the native archive input
+hashes and the minimum supported Xmake version after compilation. These checks do not read
+the license catalog. Downloaded source archives retain their SHA-256 checks
+when manually regenerating notices.
+
+The source screen links to the exact application tag/commit, MiniRTC commit,
+and custom dependency recipes/patches. `SourceMetadata.json` is generated in
+the app bundle, not in the checkout. Development builds with local edits are
+explicitly identified as modified. Version-tag CI builds reject an unclean
+checkout or a mismatched tag. The release archive also carries
+`ThirdPartySources.json`, `SourceMetadata.json` and the open-source rights
+notice. `ThirdPartySources.json` preserves the notice-review catalog;
+`SourceMetadata.json` records the actual build commit and per-component version,
+source and recipe links used by the license screen, including MiniRTC, inih and
+WebRTC-derived code. These links update automatically on every build without
+rewriting the checked-in license resource. Release notes provide the
+corresponding source and build links.
+Keep the source tags, submodule commits and referenced dependency source
+archives available for recipients of that release.
+
+To change a library, edit MiniRTC in its submodule, or modify the relevant
+package recipe/patch under `deps/submodules/minirtc/thirdparty`. If a package
+recipe changes, change its package configuration revision (or rebuild that
+package) so Xmake does not reuse a previous binary. Update affected notices
+and commit MiniRTC. When the notice catalog changes,
+record the reviewed revision in `sources.json` and regenerate the catalog.
+Build the application again to relink it with
+the modified library. Use your own team and bundle identifier to install the
+modified build; the maintainer's signing credentials are not required.
+
+These materials implement source identification and attribution. They do not
+by themselves resolve GPL/LGPL distribution-term compatibility or grant
+additional permissions from other copyright holders. Applicable modification,
+reverse-engineering and installation-information rights must also be respected.
+See [LGPLv3 section 4](https://www.gnu.org/licenses/lgpl-3.0.html) and
+[GPLv3 section 6](https://www.gnu.org/licenses/gpl-3.0.html).
+
+## Optional codecs
+
+The unused libaom backends are excluded by default. To include them for development,
+set the `MINIRTC_ENABLE_AOM` environment variable (or Xcode user-defined build setting)
+to `true`. This includes libaom in the merged native archive without changing the
+AV1 factories' choice of SVT-AV1 and dav1d.
+
+## Privacy choices
+
+A launch without stored consent shows the privacy notice before signaling
+registration, including after a previous refusal or withdrawal. Returning from
+the background also shows it until consent is granted. Declining dismisses it
+for the current visit and leaves settings, local history and the bundled
+privacy policy available. Settings → Privacy → Privacy and Authorization shows consent status and can
+withdraw consent to stop both the persistent identity peer and remote session. Consent is required
+again before reconnecting; foregrounding or relaunching does not grant it.
+
+The notice opens as a native large sheet with a scrolling document above a fixed
+consent area. The agreement checkbox starts unchecked; **同意并继续** stays
+disabled until it is selected and the bundled policy is available.
+**暂不同意** dismisses the sheet for this visit. Swipe-to-dismiss is disabled
+so either action is explicit.
+
+Remote desktop previews default to off, including on upgrade. Enabling and
+confirming saving in Settings → Privacy applies from the next connection. Previews stay local
+and are excluded from device backups. Disabling saving or withdrawing consent
+clears them; clearing is serialized after pending writes to prevent resurrection.
+Old previews saved without this choice are removed on upgrade.
+
+## Pointer edge panning
+
+Pinch-to-zoom can start anywhere on the touch surface, including black margins
+outside the image, in either pointer mode. A pinch also follows the fingers'
+midpoint movement when it starts in a margin. Held virtual mouse buttons still
+prevent viewport gestures.
+
+In relative mouse mode, continuing to move outward at the top or bottom of the
+visible image pans the video vertically in the opposite direction. Moving
+down-left at the bottom edge pans upward without shifting the video horizontally;
+left and right edges do not trigger panning.
+This also works at 1× scale and while dragging a held virtual mouse button.
+Panning stops with the pointer movement and retains its position after release.
+At the vertical limit, the visible image occupies at least 20% of the viewport
+height regardless of zoom. If the entire image is shorter than that, its full
+height remains visible. The bounds account for letterboxing. Ending a pinch,
+including returning to 1×, preserves the translated position within those bounds
+instead of recentering it. Switching displays restores the centered view.
+
+## Touch controls and device validation
+
+The floating control menu includes **虚拟鼠标** (virtual mouse), a 140 × 48 pt
+horizontal left-button / wheel / right-button bar attached to the status orb.
+Drag the orb to reposition it, or use **收起鼠标** to hide it. The bar overlays
+the video without resizing it and avoids the computer keyboard. Hold either mouse
+button and drag the same finger, including beyond the key bounds, to drag at the
+remote cursor; lifting the finger releases that button. Moving another finger on
+the video while holding a button also works. The flat split design has unlabelled
+left/right paddles and an 18 × 30 pt wheel face, separated by clear gutters;
+all three touch targets remain 44 × 44 pt. There are no shadows, bevels or press
+displacement: pressing changes only the face color. Uniform horizontal wheel
+treads cycle vertically with the finger and stop when it lifts.
+Swipe the wheel up/down, including beyond its bounds, to scroll at any zoom
+level. Check both pointer modes, button cancellation, display changes, rotation,
+and backgrounding on a device; each must leave remote buttons released.
+The expanded status menu sizes to all of its content, including all ten actions;
+short, wide screens use four columns, and only content that exceeds the available
+safe area scrolls. Check this in both
+orientations, with larger text and while switching menu pages.
+
+Run the app from Xcode on a physical device and connect to a current desktop
+build. Test the features in this order so a media problem is not confused with
+a data-channel problem:
+
+1. **Video:** after the session connects, the waiting panel should be replaced
+   by the remote desktop. Tap the floating icon, then **网络状态** (Network
+   status), to see video/audio/data/total receive and send bitrates, receive
+   loss rates, submitted FPS, decoded resolution, video delay, connection RTT,
+   P2P/TURN mode, and the actual SRTP encryption state. Scroll the panel in
+   either orientation to see all metrics.
+2. **Audio:** play continuous sound on the remote computer, then toggle the
+   speaker button. Audio is Opus-decoded by MiniRTC and played as 48 kHz mono
+   16-bit PCM through `AVAudioEngine`.
+3. **Clipboard:** copy a short text value on the remote desktop, then paste it
+   into a text field on the phone to verify reception. Text is limited to
+   128 KiB. Tap **剪贴板** in the floating menu to send local clipboard text,
+   then paste it on the remote desktop. Empty or oversized text displays a hint.
+4. **Displays:** open the display menu, switch every listed monitor, and check
+   that the selected monitor appears and the displayed resolution updates
+   after a new key frame.
+5. **Files:** choose **发送文件** (Send file) from the floating menu to pick a
+   small file, then send a file back
+   from the desktop. Progress is ACK-driven. Received files are stored in the
+   app's `Documents/Received` directory and can be exported with the share
+   button beside the transfer status or Finder's Files tab.
+6. **Ctrl+Alt+Del:** the floating menu sends the existing Windows service
+   command when the remote advertises an available system service. Other hosts
+   display a service requirement hint. Clipboard, control and transfer feedback
+   are shown separately and cleared when the session ends.
+
+Network status samples and caches displayed measurements once per second while
+the panel is open; video-frame redraws reuse that snapshot. Traffic and connection RTT
+expire after three seconds without a valid report; RTT uses the desktop's
+0.25-weight smoothing. FPS counts distinct frames submitted to the native
+display layer during the last second. Video delay averages calibrated capture
+time through display submission over that same window; it is an estimate, not
+a measurement of physical screen presentation. Missing calibration or stale
+samples show **—**, and idle video reaches zero FPS. Switching displays or
+backgrounding clears video samples; disconnecting clears all statistics.
+Receive loss rates are fractions converted to percentages. As on desktop,
+MiniRTC's total loss is the sum of the media loss rates, not a packet-weighted
+overall loss rate.
+
+The reliable control channel's `host_info` also advertises `platform` as
+`windows`, `linux`, `macos`, `ios`, or `unknown`. Desktop and iOS controllers
+retain the received platform for the current session. Missing, malformed, or
+unrecognized values from older or other peers map to unknown (`未知` on iOS),
+without rejecting the remaining host information. Reconnecting clears the
+previous peer's platform; iOS sends `ios` in its own host information.
+On iOS, the received platform is also saved with each recent connection.
+When preview saving is off or no preview is available, the thumbnail placeholder
+shows the platform name. Existing history without platform metadata shows
+`未知` until host information is received from a subsequent connection.
+
+For black-screen diagnosis, keep Xcode's debug console open and look for
+`CrossDesk` and `VideoToolbox` messages. With VideoToolbox H.264 decoding selected, look for
+`VideoToolbox decoded frame` from MiniRTC and `CrossDesk delivered latest frame`
+from the iOS bridge. Other codec paths do not produce the VideoToolbox message.
+If decoded frames do not reach the bridge, check that the selected stream is
+named `Display1`, `Display2`, and so on. If no frames decode, check the selected
+codec and the desktop capture/encoding logs, then reconnect or switch displays
+to request a new key frame.
+
+## App Store archive and bundle validation
+
+OpenSSL is on Apple's
+[required SDK privacy-manifest list](https://developer.apple.com/support/third-party-SDK-requirements/).
+The iOS build compiles OpenSSL from source, packages it separately as
+`OpenSSL.framework`, then links and embeds it using Xcode's
+[static framework support](https://developer.apple.com/documentation/xcode/creating-a-static-framework).
+Xcode removes the static archive from the embedded framework (it may insert a
+small resource-framework stub) and preserves `PrivacyInfo.xcprivacy`, source
+metadata and license texts. The application does not load a dynamic OpenSSL copy.
+
+For builds using `DWARF with dSYM File`, the **Generate OpenSSL symbols** phase
+runs after embedding. It verifies that Xcode's placeholder has no executable
+code, generates `OpenSSL.framework.dSYM` from that exact binary, and checks its
+UUIDs. This companion describes the empty resource stub, not the statically
+linked OpenSSL implementation. Xcode includes it alongside the app's dSYM in
+the archive so Organizer can upload symbols for every embedded Mach-O binary.
+`verify_app_bundle.py` checks both UUID matches when given an archived app;
+for an ordinary Release build, pass `--dsym-dir /path/to/Release-iphoneos`.
+The CI ZIP includes both dSYM bundles.
+
+The iOS-specific OpenSSL recipe disables POSIX metadata calls, automatic
+`openssl.cnf` loading, and the unused file-URI store provider. It selects the
+upstream `getrandom` entropy backend, which uses Darwin's `getentropy` on the
+supported iOS versions; the random-device fallback is not compiled. Existing
+in-memory certificate/key handling remains available, while `OSSL_STORE` file
+URLs are intentionally unsupported. Signaling trust and hostname validation
+use Apple Security rather than OpenSSL's build-host certificate paths.
+Desktop OpenSSL builds are unchanged.
+
+`package_openssl_ios.py` checks the actual OpenSSL archives for file metadata,
+disk-space and boot-time API imports before producing the framework. Its
+`sysctlbyname` calls are limited to the reviewed `armcap.c` CPU implementation
+selection, not fingerprinting. The SDK privacy manifest declares no tracking,
+SDK data collection or required-reason API use for this specific configuration.
+This is not a declaration about generic OpenSSL builds or the application's
+signaling/relay data processing. Source or configuration changes require another
+review; the packager rejects known forbidden imports even when reusing a cache.
+
+`PrivacyInfo.xcprivacy` declares app preferences (`CA92.1`), sandbox and
+user-selected file metadata (`C617.1`, `3B52.1`), and elapsed/event timing
+(`35F9.1`, `8FFB.1`). MiniRTC uses timing for pacing, timeouts, RTT and media
+packet timestamps. The iOS GLib recipe disables unused filesystem-capacity
+and system-volume discovery. These APIs must not be repurposed for fingerprinting.
+The app-level manifest does not assert that the service collects no data: App Store
+Connect privacy answers also depend on actual signaling/relay-server practices.
+The application links to the [privacy policy](../../PRIVACY.md), including iOS
+clipboard, file, local thumbnail and Keychain behavior.
+
+Validate a built bundle using:
+
+```sh
+python3 apps/ios/scripts/verify_app_bundle.py /path/to/CrossDeskMobile.app
+```
+
+For a release, first commit all application and submodule changes, regenerate
+notices for the committed dependency revision, and check out the intended
+version tag. Publish the tag and its referenced MiniRTC commit to the public repositories
+before distributing the app. Local tag verification cannot prove that recipients
+can fetch an unpublished commit. With an App Store-capable development team
+configured in Xcode:
+
+```sh
+xcodebuild -project apps/ios/CrossDeskMobile.xcodeproj \
+  -scheme CrossDeskMobile -configuration Release \
+  -destination 'generic/platform=iOS' \
+  -archivePath /tmp/CrossDeskMobile.xcarchive \
+  CROSSDESK_RELEASE_BUILD=YES archive
+
+python3 apps/ios/scripts/verify_app_bundle.py \
+  /tmp/CrossDeskMobile.xcarchive/Products/Applications/CrossDeskMobile.app \
+  --require-release
+
+xcodebuild -exportArchive -archivePath /tmp/CrossDeskMobile.xcarchive \
+  -exportOptionsPlist apps/ios/ExportOptions-AppStore.plist \
+  -exportPath /tmp/CrossDeskMobile-AppStore
+```
+
+Set a new `CURRENT_PROJECT_VERSION` for each upload. The export configuration
+creates a local App Store export; it does not submit the app. Distribution
+signing requires the appropriate Apple Developer Program membership and
+provisioning. The unsigned GitHub artifact is for development, not an App Store
+submission. Organizer/App Store Connect validation remains necessary.
+
+The app embeds OpenSSL and libsrtp. Do not declare that encryption is limited
+to Apple system APIs or set `ITSAppUsesNonExemptEncryption=NO` without completing
+the applicable [export-compliance determination](https://developer.apple.com/help/app-store-connect/manage-app-information/overview-of-export-compliance).
+After that determination, supply the appropriate declaration and any required
+approval code in the distribution build. The repository deliberately does not
+preselect an exemption.
+
+## Remote shortcuts
+
+More replaces the keybed with Common, Keys, System and Mine groups, using the
+last measured native keyboard height. Copy/Paste and other semantic presets
+follow the remote OS: Ctrl on Windows/Linux and Cmd on macOS. Linux system
+presets require an explicit GNOME or KDE Plasma choice. Windows security
+options use the existing Ctrl+Alt+Del service command. Unknown remote platforms
+expose generic keys until host information arrives.
+
+Manage & Customize opens a separate local screen. Save up to 16 named custom
+chords and pin up to 8 shortcuts per remote platform; reorder, unpin, edit and
+delete them locally. Custom chords preserve their selected modifiers when the
+target platform changes. Shortcut taps flush committed text and reset the IME
+correction context; an active composition must be confirmed or cancelled first.

@@ -244,6 +244,6 @@ dsh plugin --profile desktop remove @chunkdash/crossdesk-mcp
 
 ## 更多文档
 
-- [自行构建与进阶配置](DEVELOPMENT.md#从源码运行)
-- [显示方式、无面板配置与使用限制](DEVELOPMENT.md)
+- [源码构建与配置](DEVELOPMENT.md#从源码运行)
+- [宿主集成、工具接口与打包发布](DEVELOPMENT.md)
 - [DSH 安装简明指南](integrations/deepseek-harness/README.md)
