@@ -77,25 +77,40 @@ void ClipboardController::SetFileSupport(const std::string& remote, PeerEventHan
             }
             std::lock_guard lock(pending_mutex_);
             return clipboard_revision_.load();
-          }, [this, remote, weak](std::shared_ptr<ClipboardFileTransfer::Files> files,
+          }, [this, remote, weak](std::shared_ptr<ClipboardFilePromise> offer,
                                   uint64_t revision, uint32_t token) {
-            if (!FileSessionActive(remote, weak.lock())) return;
+            if (!FileSessionActive(remote, weak.lock())) { offer->Cancel(); return; }
+            const std::weak_ptr<ClipboardFilePromise> pending_offer = offer;
+            offer->SetRequest([weak, pending_offer, token] {
+              const auto session = weak.lock();
+              if (session && session->transfer->Current(token)) session->transfer->Paste(token);
+              else if (const auto offer = pending_offer.lock()) offer->Cancel();
+            });
             std::optional<PendingFiles> previous;
             {
               std::lock_guard lock(pending_mutex_);
               previous.swap(pending_files_);
               if (events_enabled_.load())
-                pending_files_ = PendingFiles{remote, weak, std::move(files), revision, token};
+                pending_files_ = PendingFiles{remote, weak, std::move(offer), revision, token};
             }
             if (previous) if (const auto old = previous->session.lock())
-              old->transfer->Confirm(previous->token, false);
-          }, [this, remote, weak, ids = std::unordered_map<uint32_t, uint32_t>{}]
-              (uint32_t id, const std::string& name, uint64_t total, uint64_t bytes,
-               file_transfer::Status status) mutable {
-            auto [entry, added] = ids.try_emplace(id, 0);
-            if (added) entry->second = file_transfer::Session::NextFileId();
-            owner_.transfers_.UpdateClipboardSend(entry->second, remote, name, total, bytes, status,
-                [weak] { if (const auto session = weak.lock()) session->transfer->Copy({}); });
+              old->transfer->CancelReceive(previous->token);
+          }, ClipboardFileTransfer::Progress{},
+          [this, weak, token = uint32_t{}, id = uint64_t{}]
+              (const ClipboardFileTransfer::ReceiveProgress& progress) mutable {
+            if (token != progress.token) {
+              token = progress.token; id = ++next_file_progress_id_;
+            }
+            std::lock_guard lock(file_progress_mutex_);
+            if (id <= dismissed_file_progress_id_ || (file_progress_ && file_progress_->id > id)) return;
+            const auto now = std::chrono::steady_clock::now();
+            if (!file_progress_ || file_progress_->id != id)
+              file_progress_ = FileReceiveProgress{id, progress, now, now};
+            else {
+              if (file_progress_->transfer.status != progress.status) file_progress_->updated = now;
+              file_progress_->transfer = progress;
+            }
+            file_progress_session_ = weak;
           });
       slot = std::move(session);
     }
@@ -155,11 +170,13 @@ void ClipboardController::SendLocalFiles(bool changed) {
 
 void ClipboardController::ApplyPendingFiles() {
 #ifndef __OHOS__
+  if (file_offer_ && (!file_offer_->offer->valid() ||
+      !FileSessionActive(file_offer_->remote, file_offer_->session.lock()))) ClearFileOffer();
   std::optional<PendingFiles> pending;
   { std::lock_guard lock(pending_mutex_); pending.swap(pending_files_); }
   if (!pending) return;
   const auto session = pending->session.lock();
-  const auto reject = [&] { if (session) session->transfer->Confirm(pending->token, false); };
+  const auto reject = [&] { if (session) session->transfer->CancelReceive(pending->token); };
   // Observe a local copy even when SDL has not delivered its notification yet.
   HandleLocalUpdate();
   if (!FileSessionActive(pending->remote, session)) { reject(); return; }
@@ -172,27 +189,73 @@ void ClipboardController::ApplyPendingFiles() {
   std::lock_guard commit_lock(pending_mutex_);
   if (pending->revision != clipboard_revision_.load() ||
       !session->transfer->Current(pending->token)) { reject(); return; }
-  if (!Clipboard::SetFiles(pending->files->paths)) {
-    LOG_WARN("Failed to publish received clipboard files");
-    reject();
+  ClearFileOffer();
+  if (!Clipboard::SetFileOffer(pending->offer)) {
+    LOG_WARN("Failed to publish clipboard file offer");
+    session->transfer->CancelReceive(pending->token);
     return;
   }
   ++clipboard_revision_;
-  last_files_ = pending->files->paths;
+  last_files_.clear();
   last_files_change_ = Clipboard::ChangeCount();
   last_text_.clear(); local_files_ = false;
   deferred_file_session_.reset(); deferred_local_session_.reset();
-  published_files_.push_back(std::move(pending->files));
-  session->transfer->Confirm(pending->token, true);
+  file_offer_ = std::move(pending);
+#endif
+}
+
+void ClipboardController::ClearFileOffer() {
+#ifndef __OHOS__
+  if (!file_offer_) return;
+  if (file_offer_->offer->failed()) {
+    std::lock_guard lock(file_progress_mutex_);
+    if (file_progress_ && file_progress_->transfer.token == file_offer_->token &&
+        file_progress_session_.lock() == file_offer_->session.lock()) {
+      file_progress_->transfer.status = file_transfer::ReceiveStatus::Failed;
+      file_progress_->updated = std::chrono::steady_clock::now();
+    }
+  }
+  if (const auto session = file_offer_->session.lock())
+    session->transfer->CancelReceive(file_offer_->token);
+  file_offer_->offer->Cancel();
+  Clipboard::ClearFileOffer();
+  file_offer_.reset();
 #endif
 }
 
 void ClipboardController::StopFiles() {
+  ClearFileOffer();
   std::unordered_map<std::string, std::shared_ptr<FileSession>> sessions;
   { std::lock_guard lock(file_sessions_mutex_); sessions.swap(file_sessions_); }
   for (const auto& [_, session] : sessions) session->transfer->Stop();
   { std::lock_guard lock(pending_mutex_); pending_files_.reset(); }
-  published_files_.clear();
+  { std::lock_guard lock(file_progress_mutex_); file_progress_.reset(); file_progress_session_.reset(); }
+}
+
+std::optional<ClipboardController::FileReceiveProgress> ClipboardController::FileReceiveSnapshot() {
+  std::lock_guard lock(file_progress_mutex_);
+  return file_progress_;
+}
+
+void ClipboardController::CancelFileReceive(uint64_t id) {
+  std::shared_ptr<FileSession> session;
+  uint32_t token = 0;
+  {
+    std::lock_guard lock(file_progress_mutex_);
+    if (!file_progress_ || file_progress_->id != id ||
+        file_progress_->transfer.status != file_transfer::ReceiveStatus::Receiving) return;
+    session = file_progress_session_.lock(); token = file_progress_->transfer.token;
+  }
+  if (file_offer_ && file_offer_->token == token && file_offer_->session.lock() == session)
+    file_offer_->offer->Cancel();
+  if (session) session->transfer->CancelReceive(token);
+}
+
+void ClipboardController::DismissFileReceive(uint64_t id) {
+  std::lock_guard lock(file_progress_mutex_);
+  if (!file_progress_ || file_progress_->id != id) return;
+  dismissed_file_progress_id_ = id;
+  file_progress_.reset(); file_progress_session_.reset();
 }
 
 }  // namespace crossdesk

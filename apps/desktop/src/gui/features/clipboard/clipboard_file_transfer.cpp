@@ -9,8 +9,9 @@ namespace crossdesk {
 namespace {
 using Json = nlohmann::json;
 using Clock = std::chrono::steady_clock;
-constexpr uint8_t kOffer = 1, kReady = 2, kChunk = 3, kAck = 4, kCancel = 5, kReject = 6;
-constexpr uint8_t kApplied = 7;
+// Version 2 offers are deliberately distinct from the eager-transfer protocol.
+constexpr uint8_t kOffer = 8, kReady = 2, kChunk = 3, kAck = 4, kCancel = 5, kReject = 6;
+constexpr uint8_t kApplied = 7, kFailed = 9;
 constexpr size_t kHeader = 5, kMaxFiles = 128, kMaxOffer = 60000;
 constexpr auto kTimeout = std::chrono::seconds(60);
 
@@ -37,15 +38,10 @@ std::filesystem::path MakeCache() {
 }
 }  // namespace
 
-ClipboardFileTransfer::Files::~Files() {
-  std::error_code ec;
-  if (!directory.empty()) std::filesystem::remove_all(directory, ec);
-}
-
-ClipboardFileTransfer::ClipboardFileTransfer(Send send, Begin begin, Complete complete,
-                                             Progress progress)
-    : send_(std::move(send)), begin_(std::move(begin)), complete_(std::move(complete)),
-      progress_(std::move(progress)) {
+ClipboardFileTransfer::ClipboardFileTransfer(Send send, Begin begin, Offer offer,
+                                             Progress progress, OnReceiveProgress receive_progress)
+    : send_(std::move(send)), begin_(std::move(begin)), offer_(std::move(offer)),
+      progress_(std::move(progress)), receive_progress_(std::move(receive_progress)) {
   worker_ = std::thread([this] { Run(); });
 }
 
@@ -74,10 +70,20 @@ void ClipboardFileTransfer::Receive(const char* data, size_t size) {
   wake_.notify_all();
 }
 
-void ClipboardFileTransfer::Confirm(uint32_t token, bool applied) {
+void ClipboardFileTransfer::Paste(uint32_t token) {
   std::lock_guard lock(mutex_);
-  if (stopping_ || confirmations_.size() >= 128) return;
-  confirmations_.emplace_back(token, applied);
+  if (stopping_ || !Current(token)) return;
+  paste_ = token;
+  wake_.notify_all();
+}
+
+void ClipboardFileTransfer::CancelReceive(uint32_t token) {
+  // Invalidate immediately so a cancelled offer cannot start a queued paste.
+  auto expected = token;
+  current_receive_token_.compare_exchange_strong(expected, 0);
+  std::lock_guard lock(mutex_);
+  if (stopping_ || cancellations_.size() >= 128) return;
+  cancellations_.push_back(token);
   wake_.notify_all();
 }
 
@@ -99,11 +105,25 @@ void ClipboardFileTransfer::ResetOutgoing(file_transfer::Status status) {
 
 void ClipboardFileTransfer::ResetIncoming() {
   incoming_.reset(); files_.reset(); expected_.clear(); received_.clear(); order_.clear();
+  received_bytes_.clear();
   receive_token_ = 0;
 }
 
+void ClipboardFileTransfer::FinishReceive(file_transfer::ReceiveStatus status) {
+  if (status != file_transfer::ReceiveStatus::Completed && offered_) offered_->Cancel();
+  if (!receiving_) return;
+  receiving_->status = status;
+  if (status != file_transfer::ReceiveStatus::Completed) {
+    auto expected = receiving_->token;
+    current_receive_token_.compare_exchange_strong(expected, 0);
+  }
+  if (receive_progress_) receive_progress_(*receiving_);
+  receiving_.reset();
+}
+
 void ClipboardFileTransfer::StartCopy(const std::vector<std::string>& paths) {
-  if (send_token_) SendPacket(kCancel, send_token_);
+  if (offered_send_token_) SendPacket(kCancel, offered_send_token_);
+  offered_send_token_ = 0;
   ResetOutgoing();
   if (paths.empty() || paths.size() > kMaxFiles) return;
   Json list = Json::array();
@@ -116,12 +136,13 @@ void ClipboardFileTransfer::StartCopy(const std::vector<std::string>& paths) {
     const auto name = Utf8(path.filename());
     if (ec || size > INT64_MAX || name.empty() || name.size() > 240) return;
     const auto id = file_transfer::Session::NextFileId();
-    list.push_back({{"id", id}, {"size", size}});
+    list.push_back({{"id", id}, {"name", name}, {"size", size}});
     items.push_back({id, value, name, size});
   }
   const auto offer = list.dump();
   if (offer.size() > kMaxOffer) return;
   send_token_ = file_transfer::Session::NextFileId();
+  offered_send_token_ = send_token_;
   items_ = std::move(items);
   for (const auto& item : items_)
     if (progress_) progress_(item.id, item.name, item.size, 0, file_transfer::Status::Idle);
@@ -143,7 +164,7 @@ void ClipboardFileTransfer::StartNext() {
       }, file_transfer::Session::Progress{});
   if (!outgoing_->Start(PathFromUtf8(item.path), item.name, Clock::now(), item.id) ||
       outgoing_->Snapshot().total != item.size) {
-    SendPacket(kCancel, send_token_); ResetOutgoing(file_transfer::Status::Failed);
+    SendPacket(kFailed, send_token_); ResetOutgoing(file_transfer::Status::Failed);
   }
 }
 
@@ -151,7 +172,7 @@ void ClipboardFileTransfer::ReportOutgoing() {
   if (!outgoing_ || !next_) return;
   auto& item = items_[next_ - 1];
   const auto state = outgoing_->Snapshot();
-  // A batch is usable only after every file reaches the OS clipboard.
+  // Native paste consumers wait for the complete batch.
   item.status = state.status == file_transfer::Status::Completed
       ? file_transfer::Status::Sending : state.status;
   if (progress_) progress_(item.id, item.name, state.total, state.acknowledged, item.status);
@@ -166,6 +187,44 @@ void ClipboardFileTransfer::FinishApplied() {
   ResetOutgoing();
 }
 
+void ClipboardFileTransfer::StartReceive(uint32_t token) {
+  if (!Current(token) || token != receive_token_ || incoming_ || !offered_ || !offered_->valid()) return;
+  uint64_t total = 0;
+  for (const auto& entry : offered_->entries()) total += entry.size;
+  receiving_ = ReceiveProgress{token, expected_.size(), 0, total};
+  if (receive_progress_) receive_progress_(*receiving_);
+  files_ = std::make_shared<Files>();
+  files_->directory = MakeCache();
+  if (files_->directory.empty()) {
+    FinishReceive(file_transfer::ReceiveStatus::Failed);
+    SendPacket(kReject, token); ResetIncoming(); return;
+  }
+  incoming_ = std::make_unique<file_transfer::Session>(
+      [this](const char*, const char* bytes, size_t length) {
+        return SendPacket(kAck, receive_token_, bytes, length) ? 0 : -1;
+      }, [this](const auto& name, double fraction, bool sending, const std::string& path) {
+        if (!sending && fraction == 1 && !path.empty()) received_[completed_id_] = path;
+      }, file_transfer::Options{false, true, 1},
+      [this](const file_transfer::ReceiveState& state) {
+        completed_id_ = state.id;
+        if (!receiving_) return;
+        received_bytes_[state.id] = state.received;
+        receiving_->received = 0;
+        for (const auto& [_, bytes] : received_bytes_) receiving_->received += bytes;
+        receiving_->name = state.name;
+        receiving_->completed_files = received_.size() +
+            (state.status == file_transfer::ReceiveStatus::Completed ? 1 : 0);
+        if (state.status == file_transfer::ReceiveStatus::Failed ||
+            state.status == file_transfer::ReceiveStatus::Cancelled) FinishReceive(state.status);
+        else if (receive_progress_) receive_progress_(*receiving_);
+      });
+  incoming_->SetDirectory(files_->directory);
+  receive_activity_ = Clock::now();
+  if (!SendPacket(kReady, token)) {
+    FinishReceive(file_transfer::ReceiveStatus::Failed); ResetIncoming();
+  }
+}
+
 void ClipboardFileTransfer::Handle(const std::string& packet) {
   const auto type = static_cast<uint8_t>(packet[0]);
   uint32_t token = 0;
@@ -176,6 +235,7 @@ void ClipboardFileTransfer::Handle(const std::string& packet) {
   if (type == kOffer) {
     if (latest_receive_token_ && static_cast<int32_t>(token - latest_receive_token_) <= 0) return;
     latest_receive_token_ = token;
+    FinishReceive(file_transfer::ReceiveStatus::Cancelled);
     current_receive_token_ = token;
     ResetIncoming();
     const auto reject = [&] { current_receive_token_ = 0; SendPacket(kReject, token); };
@@ -186,31 +246,31 @@ void ClipboardFileTransfer::Handle(const std::string& packet) {
     }
     std::map<uint32_t, uint64_t> expected;
     std::vector<uint32_t> order;
+    std::vector<ClipboardFilePromise::Entry> entries;
+    uint64_t total = 0;
     for (const auto& entry : list) {
       if (!entry.is_object() || !entry.contains("id") || !entry["id"].is_number_unsigned() ||
-          !entry.contains("size") || !entry["size"].is_number_unsigned()) { reject(); return; }
+          !entry.contains("size") || !entry["size"].is_number_unsigned() ||
+          !entry.contains("name") || !entry["name"].is_string()) { reject(); return; }
       const auto id = entry["id"].get<uint64_t>(), bytes = entry["size"].get<uint64_t>();
-      if (!id || id > UINT32_MAX || bytes > INT64_MAX ||
+      if (!id || id > UINT32_MAX || bytes > INT64_MAX || bytes > UINT64_MAX - total ||
           !expected.emplace(static_cast<uint32_t>(id), bytes).second) {
         reject(); return;
       }
+      const auto name = entry["name"].get<std::string>();
+      if (name.empty() || name.size() > 240 || name == "." || name == ".." ||
+          name.find_first_of("/\\") != std::string::npos || name.find('\0') != std::string::npos) {
+        reject(); return;
+      }
+      entries.push_back({static_cast<uint32_t>(id), name, bytes});
       order.push_back(static_cast<uint32_t>(id));
+      total += bytes;
     }
-    files_ = std::make_shared<Files>();
-    files_->directory = MakeCache();
-    if (files_->directory.empty()) { ResetIncoming(); reject(); return; }
-    receive_token_ = token; revision_ = *revision;
+    receive_token_ = token;
     expected_ = std::move(expected); order_ = std::move(order);
-    incoming_ = std::make_unique<file_transfer::Session>(
-        [this](const char*, const char* bytes, size_t length) {
-          return SendPacket(kAck, receive_token_, bytes, length) ? 0 : -1;
-        }, [this](const auto& name, double fraction, bool sending, const std::string& path) {
-          if (!sending && fraction == 1 && !path.empty()) received_[completed_id_] = path;
-        }, file_transfer::Options{false, true, 1},
-        [this](const file_transfer::ReceiveState& state) { completed_id_ = state.id; });
-    incoming_->SetDirectory(files_->directory);
-    receive_activity_ = Clock::now();
-    if (!SendPacket(kReady, token)) ResetIncoming();
+    offered_token_ = token;
+    offered_ = std::make_shared<ClipboardFilePromise>(std::move(entries));
+    offer_(offered_, *revision, token);
   } else if (type == kReady && !size && token == send_token_ && !ready_) {
     ready_ = true; send_activity_ = Clock::now(); StartNext();
   } else if (type == kChunk && incoming_ && token == receive_token_) {
@@ -219,22 +279,44 @@ void ClipboardFileTransfer::Handle(const std::string& packet) {
     const auto found = expected_.find(chunk.header.file_id);
     if (found == expected_.end() || found->second != chunk.header.total_size ||
         received_.count(chunk.header.file_id)) return;
+    const auto& entries = offered_->entries();
+    const auto entry = std::find_if(entries.begin(), entries.end(),
+        [&](const auto& value) { return value.id == chunk.header.file_id; });
+    if (chunk.header.flags & 0x01) {
+      if (entry == entries.end() || chunk.file_name != entry->name) {
+        FinishReceive(file_transfer::ReceiveStatus::Failed);
+        SendPacket(kReject, token); ResetIncoming(); return;
+      }
+    }
     receive_activity_ = Clock::now();
     if (!incoming_->Receive(data, size)) {
+      FinishReceive(file_transfer::ReceiveStatus::Failed);
       SendPacket(kReject, token); ResetIncoming(); return;
     }
     if (received_.size() == expected_.size()) {
+      if (!Current(token) || !offered_->valid()) {
+        FinishReceive(file_transfer::ReceiveStatus::Cancelled);
+        SendPacket(kReject, token); ResetIncoming(); return;
+      }
       for (auto id : order_) files_->paths.push_back(received_.at(id));
-      complete_(files_, revision_, receive_token_);
+      offered_->Resolve(files_);
+      SendPacket(kApplied, receive_token_);
+      FinishReceive(file_transfer::ReceiveStatus::Completed);
       ResetIncoming();
     }
   } else if (type == kAck && outgoing_ && token == send_token_) {
     outgoing_->Ack(data, size); send_activity_ = Clock::now();
-  } else if (type == kCancel && !size) {
+  } else if ((type == kCancel || type == kFailed) && !size) {
     if (!latest_receive_token_ || static_cast<int32_t>(token - latest_receive_token_) > 0)
       latest_receive_token_ = token;
     if (token == receive_token_) ResetIncoming();
-    if (current_receive_token_ == token) current_receive_token_ = 0;
+    if (receiving_ && receiving_->token == token)
+      FinishReceive(type == kFailed ? file_transfer::ReceiveStatus::Failed
+                                    : file_transfer::ReceiveStatus::Cancelled);
+    if (current_receive_token_ == token) {
+      current_receive_token_ = 0;
+      if (offered_) offered_->Cancel();
+    }
   } else if (type == kReject && !size && token == send_token_) {
     ResetOutgoing(file_transfer::Status::Failed);
   } else if (type == kApplied && !size && token == send_token_) {
@@ -248,19 +330,27 @@ void ClipboardFileTransfer::Run() {
     for (;;) {
       std::deque<std::string> packets;
       std::optional<std::vector<std::string>> copy;
-      std::deque<std::pair<uint32_t, bool>> confirmations;
+      uint32_t paste = 0;
+      std::deque<uint32_t> cancellations;
       {
         std::unique_lock lock(mutex_);
         wake_.wait_for(lock, std::chrono::milliseconds(5),
-            [this] { return stopping_ || copy_.has_value() || !packets_.empty() || !confirmations_.empty(); });
+            [this] { return stopping_ || copy_.has_value() || !packets_.empty() || !cancellations_.empty() || paste_; });
         if (stopping_) break;
         packets.swap(packets_); queued_bytes_ = 0; copy.swap(copy_);
-        confirmations.swap(confirmations_);
+        cancellations.swap(cancellations_);
+        paste = std::exchange(paste_, 0);
       }
       if (copy) StartCopy(*copy);
-      for (const auto& [token, applied] : confirmations)
-        SendPacket(applied ? kApplied : kReject, token);
+      for (auto token : cancellations) {
+        SendPacket(kReject, token);
+        if (token == offered_token_) {
+          FinishReceive(file_transfer::ReceiveStatus::Cancelled);
+          ResetIncoming();
+        }
+      }
       for (const auto& packet : packets) Handle(packet);
+      if (paste) StartReceive(paste);
       if (incoming_) incoming_->Pump();
       if (outgoing_) {
         // Fill the engine's bounded ACK window without limiting throughput to
@@ -270,20 +360,22 @@ void ClipboardFileTransfer::Run() {
         ReportOutgoing();
         if (state.status == file_transfer::Status::Completed) StartNext();
         else if (state.status != file_transfer::Status::Sending) {
-          SendPacket(kCancel, send_token_); ResetOutgoing(file_transfer::Status::Failed);
+          SendPacket(kFailed, send_token_); ResetOutgoing(file_transfer::Status::Failed);
         }
       }
       const auto now = Clock::now();
-      if (send_token_ && now - send_activity_ > kTimeout) {
-        SendPacket(kCancel, send_token_); ResetOutgoing(file_transfer::Status::Failed);
+      if (send_token_ && ready_ && now - send_activity_ > kTimeout) {
+        SendPacket(kFailed, send_token_); ResetOutgoing(file_transfer::Status::Failed);
       }
-      if (receive_token_ && now - receive_activity_ > kTimeout) {
-        SendPacket(kReject, receive_token_); ResetIncoming();
+      if (receiving_ && now - receive_activity_ > kTimeout) {
+        SendPacket(kReject, receiving_->token);
+        FinishReceive(file_transfer::ReceiveStatus::Failed); ResetIncoming();
       }
     }
   } catch (const std::exception&) {
     // Filesystem/JSON failures must never terminate the desktop process.
   }
+  FinishReceive(file_transfer::ReceiveStatus::Cancelled);
   ResetOutgoing(); ResetIncoming();
   current_receive_token_ = 0;
   { std::lock_guard lock(mutex_); stopping_ = true; }

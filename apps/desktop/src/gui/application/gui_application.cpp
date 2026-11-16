@@ -1082,6 +1082,9 @@ struct GuiApplication::SlintUi {
     transfer_notification::Presentation presentation;
   };
   std::map<uint32_t, TransferNotification> transfer_notifications;
+  std::optional<slint::ComponentHandle<ui::ClipboardFileNotification>> clipboard_notification;
+  uint64_t clipboard_notification_id = 0;
+  SDL_DisplayID clipboard_notification_display = 0;
   std::map<std::string, std::unique_ptr<FileBrowserWindow>> file_browsers;
   SDL_DisplayID transfer_display = 0;
   std::shared_ptr<slint::VectorModel<ui::NetworkStatsRow>> stats_model =
@@ -2850,6 +2853,7 @@ void GuiApplication::Tick() {
       ++it;
     }
   }
+  SyncClipboardFileNotification();
   SyncFileTransferNotifications();
 #if defined(__APPLE__)
   // Native hide/show may complete after its callback. Re-evaluate after all
@@ -4886,6 +4890,124 @@ void GuiApplication::OpenFileManager(const std::string& remote) {
   SyncFileTransferNotifications();
 }
 
+void GuiApplication::SyncClipboardFileNotification() {
+  using Status = file_transfer::ReceiveStatus;
+  const auto snapshot = clipboard_.FileReceiveSnapshot();
+  const auto hide = [this] {
+    if (ui_->clipboard_notification) (*ui_->clipboard_notification)->hide();
+    ui_->clipboard_notification.reset();
+    ui_->clipboard_notification_id = 0;
+    ui_->clipboard_notification_display = 0;
+  };
+  if (!snapshot) { hide(); return; }
+  const auto& progress = snapshot->transfer;
+  const bool active = progress.status == Status::Receiving;
+  const bool completed = progress.status == Status::Completed;
+  const bool failed = progress.status == Status::Failed;
+  const auto now = std::chrono::steady_clock::now();
+  if (!active && now - snapshot->updated > (failed ? 6s : 3s)) {
+    clipboard_.DismissFileReceive(snapshot->id); hide(); return;
+  }
+  if (ui_->clipboard_notification_id != snapshot->id) {
+    hide();
+    // Avoid flashing a progress window for tiny selections; they go straight
+    // to the short completion confirmation on the receiving computer.
+    if (active && now - snapshot->started < 250ms) return;
+    ui_->clipboard_notification.emplace(ui::ClipboardFileNotification::create());
+    ui_->clipboard_notification_id = snapshot->id;
+    auto& component = *ui_->clipboard_notification;
+    RegisterFontAwesome(component->window());
+    const auto action = [this, id = snapshot->id] {
+      const auto current = clipboard_.FileReceiveSnapshot();
+      if (!current || current->id != id) return;
+      if (current->transfer.status == Status::Receiving) clipboard_.CancelFileReceive(id);
+      else clipboard_.DismissFileReceive(id);
+    };
+    component->on_action_requested(action);
+    component->window().on_close_requested([action] {
+      action(); return slint::CloseRequestResponse::KeepWindowShown;
+    });
+    if (CanUseGlobalPointerPosition()) {
+      float x = 0, y = 0;
+      SDL_GetGlobalMouseState(&x, &y);
+      const SDL_Point point{static_cast<int>(std::lround(x)), static_cast<int>(std::lround(y))};
+      ui_->clipboard_notification_display = SDL_GetDisplayForPoint(&point);
+    }
+  }
+  auto& component = *ui_->clipboard_notification;
+  const auto text = [this](const char* key) {
+    return UiText(localization::Literal(key, localization_language_index_));
+  };
+  component->set_heading(text(active ? "正在接收剪贴板文件" : completed ? "剪贴板文件接收完成"
+                                     : failed ? "剪贴板文件接收失败" : "已取消文件接收"));
+  component->set_detail(UiText(progress.name));
+  auto count = localization::Literal("{0} / {1} 个文件", localization_language_index_);
+  for (const auto& [key, value] : {std::pair{"{0}", std::to_string(progress.completed_files)},
+                                  std::pair{"{1}", std::to_string(progress.files)}})
+    if (const auto pos = count.find(key); pos != std::string::npos) count.replace(pos, 3, value);
+  component->set_summary(UiText(count + " · " + FormatFileSize(progress.received) +
+                                " / " + FormatFileSize(progress.total)));
+  const float fraction = completed ? 1.0f : progress.total
+      ? static_cast<float>(static_cast<double>(progress.received) / progress.total)
+      : progress.files ? static_cast<float>(progress.completed_files) / progress.files : 0.0f;
+  component->set_progress(std::clamp(fraction, 0.0f, 1.0f));
+  component->set_active(active); component->set_completed(completed); component->set_failed(failed);
+  component->set_action_label(active ? UiText(localization::cancel[localization_language_index_])
+                                     : text("关闭"));
+  SDL_Rect bounds{};
+  if (!SDL_GetDisplayUsableBounds(ui_->clipboard_notification_display, &bounds)) {
+    ui_->clipboard_notification_display = SDL_GetPrimaryDisplay();
+    if (!SDL_GetDisplayUsableBounds(ui_->clipboard_notification_display, &bounds)) return;
+  }
+#if defined(__APPLE__)
+  const float scale = 1;
+#else
+  const float scale = std::max(0.01f, SDL_GetDisplayContentScale(ui_->clipboard_notification_display));
+#endif
+  auto& window = component->window();
+  const float width = std::min(344.0f, std::max(1.0f, bounds.w / scale - 32));
+  const float window_scale = std::max(0.01f, window.scale_factor());
+  const auto size = window.size();
+  if (std::abs(size.width / window_scale - width) > 0.5f ||
+      std::abs(size.height / window_scale - 112) > 0.5f)
+    window.set_size(slint::LogicalSize({width, 112}));
+  if (CanUseGlobalPointerPosition()) {
+    const float x = bounds.x / scale + std::max(0.0f, bounds.w / scale - width - 16);
+    const float y = bounds.y / scale + std::max(0.0f, bounds.h / scale - 128);
+#if defined(__APPLE__)
+    const auto position = window.position();
+    if (std::abs(position.x / window_scale - x) > 0.5f ||
+        std::abs(position.y / window_scale - y) > 0.5f)
+      window.set_position(slint::LogicalPosition({x, y}));
+#else
+    const slint::PhysicalPosition target({static_cast<int32_t>(std::lround(x * scale)),
+                                         static_cast<int32_t>(std::lround(y * scale))});
+    const auto position = window.position();
+    if (position.x != target.x || position.y != target.y) window.set_position(target);
+#endif
+  }
+  if (window.is_visible() || !NativeWindowReady(window)) return;
+#if _WIN32
+  const auto configure = [&] {
+    if (const HWND hwnd = window.win32_hwnd()) {
+      SetWindowLongPtr(hwnd, GWL_EXSTYLE,
+          (GetWindowLongPtr(hwnd, GWL_EXSTYLE) | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE) & ~WS_EX_APPWINDOW);
+      SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+          SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED | SWP_NOACTIVATE);
+    }
+  };
+  configure();
+#endif
+#if defined(__APPLE__)
+  ShowFileTransferNotification(window.appkit_view(), [&window] { window.show(); });
+#else
+  component->show();
+#endif
+#if _WIN32
+  configure();
+#endif
+}
+
 void GuiApplication::SyncFileTransferNotifications() {
   using Status = RemoteSession::FileTransferStatus;
   using namespace transfer_notification;
@@ -4948,7 +5070,10 @@ void GuiApplication::SyncFileTransferNotifications() {
   const float screen_x = bounds.x / desktop_scale;
   const float screen_y = bounds.y / desktop_scale;
   const float screen_width = bounds.w / desktop_scale;
-  const float screen_height = bounds.h / desktop_scale;
+  const bool clipboard_visible = ui_->clipboard_notification &&
+      (*ui_->clipboard_notification)->window().is_visible() &&
+      ui_->clipboard_notification_display == ui_->transfer_display;
+  const float screen_height = bounds.h / desktop_scale - (clipboard_visible ? 122.0f : 0.0f);
   const auto layout = Fit(screen_width, screen_height);
   size_t slot = 0;
   for (auto& [id, notification] : ui_->transfer_notifications) {
@@ -7249,6 +7374,8 @@ void GuiApplication::Cleanup() {
   for (auto& [_, notification] : ui_->transfer_notifications)
     if (notification.window) (*notification.window)->hide();
   ui_->transfer_notifications.clear();
+  if (ui_->clipboard_notification) (*ui_->clipboard_notification)->hide();
+  ui_->clipboard_notification.reset();
   ui_->timer.stop();
   ui_->server_file_dialog_timer.stop();
   ui_->video_timer.stop();

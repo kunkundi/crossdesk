@@ -268,13 +268,6 @@ void FileTransferManager::UpdateProgress(FileTransferState& state,
 }
 
 bool FileTransferManager::CancelSend(uint32_t file_id) {
-  std::function<void()> cancel_clipboard;
-  {
-    std::lock_guard lock(global_state_.file_transfer_list_mutex_);
-    const auto found = clipboard_sends_.find(file_id);
-    if (found != clipboard_sends_.end()) cancel_clipboard = found->second.cancel;
-  }
-  if (cancel_clipboard) { cancel_clipboard(); return true; }
   using Status = FileTransferState::FileTransferStatus;
   const auto cancel = [file_id](FileTransferState& state) {
     std::lock_guard lock(state.file_transfer_list_mutex_);
@@ -296,42 +289,6 @@ bool FileTransferManager::CancelSend(uint32_t file_id) {
   }
   if (cancelled) wake_.notify_all();
   return cancelled;
-}
-
-void FileTransferManager::UpdateClipboardSend(uint32_t id, const std::string& remote,
-    const std::string& name, uint64_t total, uint64_t bytes, file_transfer::Status status,
-    std::function<void()> cancel) {
-  using Status = FileTransferState::FileTransferStatus;
-  std::lock_guard lock(global_state_.file_transfer_list_mutex_);
-  auto& list = global_state_.file_transfer_list_;
-  auto found = std::find_if(list.begin(), list.end(), [id](const auto& info) { return info.file_id == id; });
-  if (found == list.end()) {
-    list.emplace_back(); found = std::prev(list.end());
-    found->file_id = id; found->remote_id = remote; found->file_name = name;
-  }
-  found->file_size = total; found->sent_bytes = bytes;
-  switch (status) {
-    case file_transfer::Status::Idle: found->status = Status::Queued; break;
-    case file_transfer::Status::Sending: found->status = Status::Sending; break;
-    case file_transfer::Status::Completed: found->status = Status::Completed; break;
-    case file_transfer::Status::Failed: found->status = Status::Failed; break;
-    case file_transfer::Status::Cancelled: found->status = Status::Cancelled; break;
-  }
-  if (status == file_transfer::Status::Idle || status == file_transfer::Status::Sending) {
-    auto& sample = clipboard_sends_[id];
-    sample.cancel = std::move(cancel);
-    const auto now = std::chrono::steady_clock::now();
-    const double seconds = std::chrono::duration<double>(now - sample.updated).count();
-    if (seconds >= 1) {
-      const auto delta = bytes >= sample.bytes ? bytes - sample.bytes : 0;
-      found->rate_bps = static_cast<uint32_t>((std::min)(delta * 8.0 / seconds,
-          static_cast<double>((std::numeric_limits<uint32_t>::max)())));
-      sample.updated = now; sample.bytes = bytes;
-    }
-  } else {
-    found->rate_bps = 0;
-    clipboard_sends_.erase(id);
-  }
 }
 
 void FileTransferManager::HandleAck(const char* data, size_t size,

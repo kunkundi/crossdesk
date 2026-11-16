@@ -105,6 +105,7 @@ private:
   void SyncServerWindow();
   void SyncTrustedDevices();
   void SyncFileTransferNotifications();
+  void SyncClipboardFileNotification();
   void OpenFileManager(const std::string& remote);
   std::string FileManagerPeerName(const std::string& remote);
   void CancelFileTransfer(uint32_t file_id);

@@ -151,6 +151,7 @@ struct HostInfo {
   // Optional; legacy peers keep the original single-file transfer UI.
   bool supports_file_browser;
   bool supports_file_clipboard;
+  int file_clipboard_version;
 };
 
 struct ServiceStatus {

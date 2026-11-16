@@ -102,6 +102,7 @@ void ResetHostInfo(HostInfo& info) {
   info.supports_deskhub_bandwidth = false;
   info.supports_file_browser = false;
   info.supports_file_clipboard = false;
+  info.file_clipboard_version = 0;
 }
 
 void CopyHostName(HostInfo& info, const std::string& host_name) {
@@ -344,7 +345,8 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
           {"supports_deskhub_fps15", action.i.supports_deskhub_fps15},
           {"supports_deskhub_bandwidth", action.i.supports_deskhub_bandwidth},
           {"supports_file_browser", action.i.supports_file_browser},
-          {"supports_file_clipboard", action.i.supports_file_clipboard}};
+          {"supports_file_clipboard", action.i.supports_file_clipboard},
+          {"file_clipboard_version", action.i.file_clipboard_version}};
       if (!action.display_resolutions.empty())
         object["host_info"]["display_resolutions"] =
             DisplayResolutionsJson(action.display_resolutions);
@@ -606,6 +608,7 @@ bool RemoteAction::FromJson(const std::string& json_string,
             host_info_object.value("supports_file_browser", false);
         output.i.supports_file_clipboard =
             host_info_object.value("supports_file_clipboard", false);
+        output.i.file_clipboard_version = host_info_object.value("file_clipboard_version", 0);
         const std::string host_name =
             host_info_object.at("host_name").get<std::string>();
         CopyHostName(output.i, host_name);

@@ -473,7 +473,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
       runtime->transfers_.SetBrowserSupport(handler, remote_id,
           remote_action.i.supports_file_browser);
       runtime->clipboard_.SetFileSupport(remote_id, handler,
-          remote_action.i.supports_file_clipboard);
+          remote_action.i.supports_file_clipboard && remote_action.i.file_clipboard_version == 2);
     }
     bool is_client_mode = false;
     std::shared_ptr<GuiRuntime::RemoteSession> props;

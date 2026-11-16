@@ -144,10 +144,10 @@ jobs:
           EXPECTED_ARCH: ${{ matrix.arch }}
         run: bash docker/linux-build/verify-build-image.sh
 
-      - name: Ensure Wayland build dependencies
+      - name: Ensure Wayland and clipboard build dependencies
         shell: bash
         run: |
-          if pkg-config --exists dbus-1 libdrm && \
+          if pkg-config --exists dbus-1 libdrm fuse3 && \
              test -f /opt/crossdesk-pipewire-sdk/include/pipewire-0.3/pipewire/pipewire.h && \
              test -f /opt/crossdesk-pipewire-sdk/include/spa-0.2/spa/param/video/format-utils.h; then
             exit 0
@@ -156,11 +156,11 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             libdbus-1-dev \
-            libdrm-dev
+            libdrm-dev libfuse3-dev fuse3
           rm -rf /var/lib/apt/lists/*
 
           install-crossdesk-pipewire-sdk
-          pkg-config --exists dbus-1 libdrm
+          pkg-config --exists dbus-1 libdrm fuse3
           test -f /opt/crossdesk-pipewire-sdk/include/pipewire-0.3/pipewire/pipewire.h
           test -f /opt/crossdesk-pipewire-sdk/include/spa-0.2/spa/param/video/format-utils.h
 

@@ -53,6 +53,14 @@ public:
   void SetFileSupport(const std::string& remote_id, PeerEventHandler* source, bool supported);
   void ReceiveFiles(const char* data, size_t size, const std::string& remote_id,
                     PeerEventHandler* source);
+  struct FileReceiveProgress {
+    uint64_t id = 0;
+    ClipboardFileTransfer::ReceiveProgress transfer;
+    std::chrono::steady_clock::time_point started, updated;
+  };
+  std::optional<FileReceiveProgress> FileReceiveSnapshot();
+  void CancelFileReceive(uint64_t id);
+  void DismissFileReceive(uint64_t id);
 
 private:
   struct WebSession;
@@ -61,6 +69,7 @@ private:
   void SendLocalFiles(bool changed);
   void ApplyPendingFiles();
   void StopFiles();
+  void ClearFileOffer();
   void ApplyPendingWrite();
   bool WebSessionActive(const std::string& remote_id,
                          const std::shared_ptr<WebSession>& session);
@@ -95,14 +104,17 @@ private:
   struct PendingFiles {
     std::string remote;
     std::weak_ptr<FileSession> session;
-    std::shared_ptr<ClipboardFileTransfer::Files> files;
+    std::shared_ptr<ClipboardFilePromise> offer;
     uint64_t revision;
     uint32_t token;
   };
   std::optional<PendingFiles> pending_files_;
-  // Keep published files alive for OS paste operations, including after a
-  // disconnect or a subsequent copy. The private cache is removed at shutdown.
-  std::vector<std::shared_ptr<ClipboardFileTransfer::Files>> published_files_;
+  std::optional<PendingFiles> file_offer_;
+  std::mutex file_progress_mutex_;
+  std::atomic<uint64_t> next_file_progress_id_{0};
+  uint64_t dismissed_file_progress_id_ = 0;
+  std::optional<FileReceiveProgress> file_progress_;
+  std::weak_ptr<FileSession> file_progress_session_;
 };
 
 } // namespace crossdesk

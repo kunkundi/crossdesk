@@ -646,11 +646,17 @@ function setup_targets()
         add_deps("rd_log", "desktop_common", "crossdesk_wire")
         add_files("apps/desktop/src/tools/*.cpp")
         if is_os("windows") then
-            add_files("apps/desktop/src/platform/windows/clipboard.cpp")
+            add_files("apps/desktop/src/platform/windows/clipboard.cpp",
+                "apps/desktop/src/platform/windows/clipboard_file_offer.cpp")
+            add_syslinks("ole32", "shlwapi", "uuid", {public = true})
         elseif is_os("macosx") then
-            add_files("apps/desktop/src/platform/macos/clipboard.mm")
+            add_files("apps/desktop/src/platform/macos/clipboard.mm",
+                "apps/desktop/src/platform/macos/clipboard_file_offer.mm")
+            add_frameworks("CoreServices", {public = true})
         elseif is_os("linux") then
-            add_files("apps/desktop/src/platform/linux/clipboard.cpp")
+            add_files("apps/desktop/src/platform/linux/clipboard.cpp",
+                "apps/desktop/src/platform/linux/clipboard_file_offer.cpp")
+            add_packages("fuse3")
             add_packages("libsdl3")
         end
         add_includedirs("apps/desktop/src", "apps/desktop/src/tools", {public = true})

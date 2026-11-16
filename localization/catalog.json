@@ -11651,6 +11651,66 @@
       "es": "Favoritos sobre el teclado",
       "pt-BR": "Favoritos acima do teclado",
       "ru": "Избранное над клавиатурой"
+    },
+    "正在接收剪贴板文件": {
+      "zh-Hans": "正在接收剪贴板文件",
+      "en": "Receiving clipboard files",
+      "ru": "Получение файлов буфера обмена",
+      "zh-Hant": "正在接收剪貼簿檔案",
+      "ja": "クリップボードのファイルを受信中",
+      "ko": "클립보드 파일 받는 중",
+      "de": "Empfange Zwischenablage-Dateien",
+      "fr": "Réception des fichiers du presse-papiers",
+      "es": "Recibiendo archivos del portapapeles",
+      "pt-BR": "Recebendo arquivos da área de transferência"
+    },
+    "剪贴板文件接收完成": {
+      "zh-Hans": "剪贴板文件接收完成",
+      "en": "Clipboard files received",
+      "ru": "Файлы буфера обмена получены",
+      "zh-Hant": "剪貼簿檔案接收完成",
+      "ja": "クリップボードのファイルを受信しました",
+      "ko": "클립보드 파일 수신 완료",
+      "de": "Zwischenablage-Dateien empfangen",
+      "fr": "Fichiers du presse-papiers reçus",
+      "es": "Archivos del portapapeles recibidos",
+      "pt-BR": "Arquivos da área de transferência recebidos"
+    },
+    "剪贴板文件接收失败": {
+      "zh-Hans": "剪贴板文件接收失败",
+      "en": "Could not receive clipboard files",
+      "ru": "Не удалось получить файлы буфера обмена",
+      "zh-Hant": "剪貼簿檔案接收失敗",
+      "ja": "クリップボードのファイルを受信できませんでした",
+      "ko": "클립보드 파일을 받지 못했습니다",
+      "de": "Zwischenablage-Dateien nicht empfangen",
+      "fr": "Échec de réception des fichiers",
+      "es": "No se pudieron recibir los archivos",
+      "pt-BR": "Não foi possível receber os arquivos"
+    },
+    "已取消文件接收": {
+      "zh-Hans": "已取消文件接收",
+      "en": "File reception cancelled",
+      "ru": "Получение файлов отменено",
+      "zh-Hant": "已取消檔案接收",
+      "ja": "ファイルの受信をキャンセルしました",
+      "ko": "파일 받기가 취소되었습니다",
+      "de": "Dateiempfang abgebrochen",
+      "fr": "Réception des fichiers annulée",
+      "es": "Recepción de archivos cancelada",
+      "pt-BR": "Recebimento de arquivos cancelado"
+    },
+    "{0} / {1} 个文件": {
+      "zh-Hans": "{0} / {1} 个文件",
+      "en": "{0} / {1} files",
+      "ru": "Файлы: {0} / {1}",
+      "zh-Hant": "{0} / {1} 個檔案",
+      "ja": "{0} / {1} ファイル",
+      "ko": "파일 {0} / {1}개",
+      "de": "{0} / {1} Dateien",
+      "fr": "{0} / {1} fichiers",
+      "es": "{0} / {1} archivos",
+      "pt-BR": "{0} / {1} arquivos"
     }
   },
   "desktop": {
@@ -12704,7 +12764,12 @@
       "正在导出…",
       "没有找到可导出的日志。",
       "诊断日志已导出，请将 ZIP 附到 GitHub Issue。",
-      "请在 GitHub Issue 中附上导出的 ZIP 日志包，便于排查问题。"
+      "请在 GitHub Issue 中附上导出的 ZIP 日志包，便于排查问题。",
+      "正在接收剪贴板文件",
+      "剪贴板文件接收完成",
+      "剪贴板文件接收失败",
+      "已取消文件接收",
+      "{0} / {1} 个文件"
     ],
     "android": [
       " · 已完成",

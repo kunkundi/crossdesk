@@ -295,6 +295,8 @@ void ClipboardController::ApplyPendingWrite() {
     return;
   }
 
+  ClearFileOffer();
+
   // SDL clipboard functions must run on the thread that initialized SDL.
   // Always apply remote writes: the local OS clipboard may have changed since
   // the last poll, even when the received text still matches last_text_.
@@ -320,6 +322,11 @@ void ClipboardController::HandleLocalUpdate(bool external_event) {
     return;
   }
 #ifndef __OHOS__
+  if (file_offer_) {
+    if (Clipboard::OwnsFileOffer(file_offer_->offer)) return;
+    ClearFileOffer();
+    ++clipboard_revision_;
+  }
   auto snapshot = Clipboard::GetFiles();
   if (!snapshot) return;
   auto files = std::move(*snapshot);

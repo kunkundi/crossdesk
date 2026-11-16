@@ -7,6 +7,8 @@
 #ifndef _CLIPBOARD_H_
 #define _CLIPBOARD_H_
 
+#include "clipboard_file_promise.h"
+
 #include <functional>
 #include <cstdint>
 #include <optional>
@@ -33,6 +35,10 @@ class Clipboard {
   static std::optional<std::vector<std::string>> GetFiles();
   static bool SetFiles(const std::vector<std::string>& paths);
   static uint64_t ChangeCount();
+  // Publish metadata only. File contents are requested by an actual OS paste.
+  static bool SetFileOffer(std::shared_ptr<ClipboardFilePromise> offer);
+  static bool OwnsFileOffer(const std::shared_ptr<ClipboardFilePromise>& offer);
+  static void ClearFileOffer();
 
   static void StartMonitoring(int check_interval_ms = 100,
                               OnClipboardChanged on_changed = nullptr);

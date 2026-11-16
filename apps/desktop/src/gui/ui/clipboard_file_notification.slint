@@ -1,0 +1,85 @@
+import { DialogSurface, FontAwesomeIcons, IconButton } from "common.slint";
+import { WorkbenchStyle } from "workbench_controls.slint";
+import { UiSurface } from "ui_surface.slint";
+
+// One quiet, receiving-side card for the whole clipboard selection.
+export component ClipboardFileNotification inherits Window {
+    title: "CrossDesk";
+    icon: @image-url("../../../resources/linux/crossdesk_256x256.png");
+    preferred-width: 344px;
+    preferred-height: 112px;
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+    in property <string> heading;
+    in property <string> detail;
+    in property <string> summary;
+    in property <string> action-label;
+    in property <float> progress;
+    in property <bool> active;
+    in property <bool> completed;
+    in property <bool> failed;
+    callback action-requested;
+    private property <color> tone: root.failed ? #d92d20 : root.completed
+        ? WorkbenchStyle.success : root.active ? WorkbenchStyle.accent : WorkbenchStyle.muted;
+
+    DialogSurface {
+        width: parent.width; height: parent.height;
+        background: WorkbenchStyle.surface;
+        outline-color: UiSurface.edge;
+        Rectangle {
+            x: 14px; y: 14px; width: 32px; height: 32px;
+            border-radius: 8px;
+            background: root.failed ? #fff0ee : root.completed ? #e9f6ef : #edf2ff;
+            Text {
+                text: root.completed ? FontAwesomeIcons.check : FontAwesomeIcons.copy;
+                font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 15px;
+                color: root.tone;
+                horizontal-alignment: center; vertical-alignment: center;
+            }
+        }
+        Text {
+            x: 56px; y: 14px; width: parent.width - 100px; height: 19px;
+            text: root.heading; color: WorkbenchStyle.text;
+            font-size: 13px; font-weight: 600; overflow: elide; vertical-alignment: center;
+        }
+        Text {
+            x: 56px; y: 35px; width: parent.width - 74px; height: 16px;
+            text: root.detail; color: WorkbenchStyle.muted;
+            font-size: 11px; overflow: elide; vertical-alignment: center;
+        }
+        IconButton {
+            x: parent.width - 38px; y: 10px; width: 26px; height: 26px;
+            icon: FontAwesomeIcons.xmark; icon-size: 12px;
+            tooltip: root.action-label;
+            icon-color: WorkbenchStyle.muted;
+            hover-background: WorkbenchStyle.hover-surface;
+            pressed-background: WorkbenchStyle.pressed-surface;
+            accessible-role: button;
+            accessible-label: root.action-label;
+            accessible-action-default => { root.action-requested(); }
+            clicked => { root.action-requested(); }
+        }
+        Rectangle {
+            x: 16px; y: 65px; width: parent.width - 32px; height: 4px;
+            border-radius: 2px; background: WorkbenchStyle.separator;
+            Rectangle {
+                x: 0px; y: 0px;
+                width: parent.width * max(0, min(1, root.progress)); height: parent.height;
+                border-radius: 2px; background: root.tone;
+                animate width { duration: 120ms; }
+            }
+        }
+        Text {
+            x: 16px; y: 80px; width: parent.width - 82px; height: 16px;
+            text: root.summary; color: WorkbenchStyle.muted;
+            font-size: 11px; overflow: elide; vertical-alignment: center;
+        }
+        Text {
+            x: parent.width - 64px; y: 80px; width: 48px; height: 16px;
+            text: root.active || root.completed ? round(root.progress * 100) + "%" : "";
+            color: root.tone; font-size: 11px; font-weight: 600;
+            horizontal-alignment: right; vertical-alignment: center;
+        }
+    }
+}
