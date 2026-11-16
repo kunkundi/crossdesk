@@ -365,7 +365,7 @@ bool Clipboard::SetFileOffer(std::shared_ptr<ClipboardFilePromise> offer, FileOf
   if (!offer || offer->entries().empty()) return false;
   if (!apartment) apartment = std::make_unique<ClipboardApartment>();
   if (!apartment->Set(std::move(offer))) return false;
-  if (error) *error = FileOfferError::None;
+  if (error) *error = FileOfferError::NoError;
   return true;
 }
 bool Clipboard::OwnsFileOffer(const std::shared_ptr<ClipboardFilePromise>& offer) {

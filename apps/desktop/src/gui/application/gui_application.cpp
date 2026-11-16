@@ -4905,7 +4905,7 @@ void GuiApplication::SyncClipboardFileNotification() {
   const bool completed = progress.status == Status::Completed;
   const bool failed = progress.status == Status::Failed;
   using OfferError = Clipboard::FileOfferError;
-  const bool unavailable = snapshot->offer_error != OfferError::None;
+  const bool unavailable = snapshot->offer_error != OfferError::NoError;
   const auto now = std::chrono::steady_clock::now();
   if (!active && now - snapshot->updated > (failed ? 6s : 3s)) {
     clipboard_.DismissFileReceive(snapshot->id); hide(); return;

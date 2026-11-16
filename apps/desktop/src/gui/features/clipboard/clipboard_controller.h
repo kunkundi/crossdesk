@@ -58,7 +58,7 @@ public:
     uint64_t id = 0;
     ClipboardFileTransfer::ReceiveProgress transfer;
     std::chrono::steady_clock::time_point started, updated;
-    Clipboard::FileOfferError offer_error = Clipboard::FileOfferError::None;
+    Clipboard::FileOfferError offer_error = Clipboard::FileOfferError::NoError;
   };
   std::optional<FileReceiveProgress> FileReceiveSnapshot();
   void CancelFileReceive(uint64_t id);

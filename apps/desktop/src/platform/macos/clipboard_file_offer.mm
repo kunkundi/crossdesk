@@ -203,7 +203,7 @@ bool Clipboard::SetFileOffer(std::shared_ptr<ClipboardFilePromise> offer, FileOf
       return false;
     native->change = pasteboard.changeCount;
     current = std::move(native);
-    if (error) *error = FileOfferError::None;
+    if (error) *error = FileOfferError::NoError;
     return true;
   }
 }

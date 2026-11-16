@@ -153,7 +153,7 @@ bool Clipboard::SetFileOffer(std::shared_ptr<ClipboardFilePromise> offer, FileOf
   auto mount = std::make_unique<FileMount>(std::move(offer));
   if (!mount->Start(*error) || !SetFiles(mount->paths())) return false;
   current = std::move(mount);
-  *error = FileOfferError::None;
+  *error = FileOfferError::NoError;
   return true;
 }
 bool Clipboard::OwnsFileOffer(const std::shared_ptr<ClipboardFilePromise>& offer) {
