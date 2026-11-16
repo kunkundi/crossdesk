@@ -53,6 +53,7 @@ class PlatformKeyboardCapturer final : public KeyboardCapturer {
   void* user_ptr_ = nullptr;
   HWND capture_window_ = nullptr;
   std::atomic<bool> hook_active_{false};
+  std::atomic<bool> stop_requested_{false};
   std::atomic<ULONGLONG> last_hook_pump_tick_{0};
   HHOOK keyboard_hook_ = nullptr;
   WindowsRawKeyboardGuard raw_keyboard_guard_;

@@ -39,7 +39,7 @@ thread_local PlatformKeyboardCapturer*
 PlatformKeyboardCapturer::~PlatformKeyboardCapturer() { Unhook(); }
 
 bool PlatformKeyboardCapturer::IsHookActive() const {
-  if (!hook_active_.load()) return false;
+  if (stop_requested_.load() || !hook_active_.load()) return false;
   const auto last_pump_tick = last_hook_pump_tick_.load();
   return GetTickCount64() - last_pump_tick < kHookStallTimeoutMs;
 }
@@ -48,6 +48,9 @@ int PlatformKeyboardCapturer::Hook(OnKeyAction on_key_action, void* user_ptr) {
   if (capture_thread_.joinable()) {
     return IsHookActive() ? 0 : -1;
   }
+
+  // Only a new capture session may clear a stop request, never hook renewal.
+  stop_requested_.store(false);
 
   // Hook() is called only while the stream has focus. Pin capture to that
   // window so a focus change cannot steal input before the UI stops capture.
@@ -88,6 +91,9 @@ int PlatformKeyboardCapturer::Hook(OnKeyAction on_key_action, void* user_ptr) {
 }
 
 int PlatformKeyboardCapturer::Unhook() {
+  // An in-flight renewal can set hook_active_ again after this thread stops it.
+  // Keep interception disabled independently until the next Hook().
+  stop_requested_.store(true);
   hook_active_.store(false);
   DWORD capture_thread_id = 0;
   {
@@ -150,6 +156,7 @@ void PlatformKeyboardCapturer::ReleaseCapturedKeys() {
 }
 
 bool PlatformKeyboardCapturer::RenewKeyboardHook() {
+  if (stop_requested_.load()) return false;
   bool raw_keyboard_suspended = false;
   if (!raw_keyboard_guard_.Suspend(raw_keyboard_suspended)) {
     hook_active_.store(false);
@@ -288,8 +295,8 @@ LRESULT CALLBACK PlatformKeyboardCapturer::KeyboardHookProc(
 
 bool PlatformKeyboardCapturer::HandleKeyboardInput(
     WPARAM message, const KBDLLHOOKSTRUCT& keyboard, HWND foreground_window) {
-  if (!hook_active_.load() || !on_key_action_ || !capture_window_ ||
-      keyboard.vkCode < VK_BACK || keyboard.vkCode >= 0xFF ||
+  if (stop_requested_.load() || !hook_active_.load() || !on_key_action_ ||
+      !capture_window_ || keyboard.vkCode < VK_BACK || keyboard.vkCode >= 0xFF ||
       keyboard.dwExtraInfo == kInjectedKeyboardInputMarker) {
     return false;
   }
