@@ -190,7 +190,8 @@ void ClipboardFileTransfer::Handle(const std::string& packet) {
       if (!entry.is_object() || !entry.contains("id") || !entry["id"].is_number_unsigned() ||
           !entry.contains("size") || !entry["size"].is_number_unsigned()) { reject(); return; }
       const auto id = entry["id"].get<uint64_t>(), bytes = entry["size"].get<uint64_t>();
-      if (!id || id > UINT32_MAX || bytes > INT64_MAX || !expected.emplace(id, bytes).second) {
+      if (!id || id > UINT32_MAX || bytes > INT64_MAX ||
+          !expected.emplace(static_cast<uint32_t>(id), bytes).second) {
         reject(); return;
       }
       order.push_back(static_cast<uint32_t>(id));
