@@ -190,8 +190,24 @@ void ClipboardController::ApplyPendingFiles() {
   if (pending->revision != clipboard_revision_.load() ||
       !session->transfer->Current(pending->token)) { reject(); return; }
   ClearFileOffer();
-  if (!Clipboard::SetFileOffer(pending->offer)) {
+  Clipboard::FileOfferError error = Clipboard::FileOfferError::PublishFailed;
+  if (!Clipboard::SetFileOffer(pending->offer, &error)) {
     LOG_WARN("Failed to publish clipboard file offer");
+    // Reject metadata without starting a download, but explain why this
+    // receiver cannot paste instead of leaving its user with a silent failure.
+    pending->offer->Cancel();
+    {
+      std::lock_guard lock(file_progress_mutex_);
+      const auto now = std::chrono::steady_clock::now();
+      FileReceiveProgress notice;
+      notice.id = ++next_file_progress_id_;
+      notice.transfer.token = pending->token;
+      notice.transfer.status = file_transfer::ReceiveStatus::Failed;
+      notice.started = notice.updated = now;
+      notice.offer_error = error;
+      file_progress_ = notice;
+      file_progress_session_ = session;
+    }
     session->transfer->CancelReceive(pending->token);
     return;
   }

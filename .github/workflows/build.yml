@@ -156,7 +156,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             libdbus-1-dev \
-            libdrm-dev libfuse3-dev fuse3
+            libdrm-dev libfuse3-dev
           rm -rf /var/lib/apt/lists/*
 
           install-crossdesk-pipewire-sdk

@@ -36,7 +36,9 @@ class Clipboard {
   static bool SetFiles(const std::vector<std::string>& paths);
   static uint64_t ChangeCount();
   // Publish metadata only. File contents are requested by an actual OS paste.
-  static bool SetFileOffer(std::shared_ptr<ClipboardFilePromise> offer);
+  enum class FileOfferError { None, UnavailableRuntime, MountFailed, PublishFailed };
+  static bool SetFileOffer(std::shared_ptr<ClipboardFilePromise> offer,
+                           FileOfferError* error = nullptr);
   static bool OwnsFileOffer(const std::shared_ptr<ClipboardFilePromise>& offer);
   static void ClearFileOffer();
 

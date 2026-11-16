@@ -55,7 +55,6 @@ RUN apt-get update \
         libfontconfig1-dev \
         libfreetype6-dev \
         libfuse3-dev \
-        fuse3 \
         libgl1-mesa-dev \
         libmount-dev \
         libpulse-dev \

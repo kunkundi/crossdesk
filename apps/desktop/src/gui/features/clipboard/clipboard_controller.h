@@ -17,6 +17,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include "clipboard.h"
 #include "clipboard_file_transfer.h"
 
 namespace crossdesk::gui_detail {
@@ -57,6 +58,7 @@ public:
     uint64_t id = 0;
     ClipboardFileTransfer::ReceiveProgress transfer;
     std::chrono::steady_clock::time_point started, updated;
+    Clipboard::FileOfferError offer_error = Clipboard::FileOfferError::None;
   };
   std::optional<FileReceiveProgress> FileReceiveSnapshot();
   void CancelFileReceive(uint64_t id);

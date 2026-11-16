@@ -2,6 +2,7 @@
 
 #define FUSE_USE_VERSION 31
 #include <SDL3/SDL_clipboard.h>
+#include <dlfcn.h>
 #include <fcntl.h>
 #include <fuse3/fuse.h>
 #include <unistd.h>
@@ -11,8 +12,53 @@
 #include <map>
 #include <thread>
 
+#include "rd_log.h"
+
 namespace crossdesk {
 namespace {
+
+// Keep FUSE out of DT_NEEDED: upgrading and launching CrossDesk must also work
+// on machines without it. This API and its library outlive every FileMount.
+class FuseApi {
+ public:
+  ~FuseApi() { if (library_) dlclose(library_); }
+  bool Load() {
+    if (library_) return true;
+    library_ = dlopen("libfuse3.so.3", RTLD_NOW | RTLD_LOCAL);
+    if (!library_) {
+      LOG_WARN("Clipboard file paste requires libfuse3.so.3: {}", dlerror());
+      return false;
+    }
+    // Resolve the API 3.1 entry points, not the newer loop signature. Never
+    // substitute a different SONAME: its structs may have a different ABI.
+    if (Symbol(create, "fuse_new") && Symbol(free_args, "fuse_opt_free_args") &&
+        Symbol(mount, "fuse_mount") && Symbol(loop, "fuse_loop_mt_31") &&
+        Symbol(context, "fuse_get_context") && Symbol(exit, "fuse_exit") &&
+        Symbol(unmount, "fuse_unmount") && Symbol(destroy, "fuse_destroy")) return true;
+    dlclose(library_);
+    library_ = nullptr;
+    return false;
+  }
+  // Explicit signature also supports headers that implement fuse_new as an
+  // inline wrapper around a newer, versioned entry point.
+  struct fuse* (*create)(struct fuse_args*, const struct fuse_operations*, size_t, void*) = nullptr;
+  decltype(&fuse_opt_free_args) free_args = nullptr;
+  decltype(&fuse_mount) mount = nullptr;
+  decltype(&fuse_loop_mt_31) loop = nullptr;
+  decltype(&fuse_get_context) context = nullptr;
+  decltype(&fuse_exit) exit = nullptr;
+  decltype(&fuse_unmount) unmount = nullptr;
+  decltype(&fuse_destroy) destroy = nullptr;
+
+ private:
+  template <typename T> bool Symbol(T& function, const char* name) {
+    function = reinterpret_cast<T>(dlsym(library_, name));
+    if (!function) LOG_WARN("Clipboard file paste requires FUSE symbol {}", name);
+    return function != nullptr;
+  }
+  void* library_ = nullptr;
+};
+FuseApi fuse_api;
 
 // URI lists contain a read-only virtual filesystem. Looking up names/sizes is
 // local; opening a file for a paste is the first operation that requests bytes.
@@ -22,15 +68,15 @@ class FileMount {
   ~FileMount() {
     offer_->Cancel();
     if (fuse_) {
-      fuse_exit(fuse_);
-      fuse_unmount(fuse_);
+      fuse_api.exit(fuse_);
+      fuse_api.unmount(fuse_);
       if (worker_.joinable()) worker_.join();
-      fuse_destroy(fuse_);
+      fuse_api.destroy(fuse_);
     }
     std::error_code ec;
     if (!directory_.empty()) std::filesystem::remove(directory_, ec);
   }
-  bool Start() {
+  bool Start(Clipboard::FileOfferError& error) {
     std::string path = (std::filesystem::temp_directory_path() / "crossdesk-paste-XXXXXX").string();
     if (!mkdtemp(path.data())) return false;
     directory_ = path;
@@ -96,15 +142,17 @@ class FileMount {
     char flags[] = "ro,nodev,nosuid,noexec,default_permissions,fsname=crossdesk-clipboard";
     char* argv[] = {program, option, flags};
     struct fuse_args args = FUSE_ARGS_INIT(3, argv);
-    fuse_ = fuse_new(&args, &ops, sizeof(ops), this);
-    fuse_opt_free_args(&args);
+    fuse_ = fuse_api.create(&args, &ops, sizeof(ops), this);
+    fuse_api.free_args(&args);
     if (!fuse_) return false;
-    if (fuse_mount(fuse_, directory_.c_str()) != 0) {
-      fuse_destroy(fuse_);
+    if (fuse_api.mount(fuse_, directory_.c_str()) != 0) {
+      LOG_WARN("Clipboard FUSE mount failed; check fusermount3 and /dev/fuse permissions");
+      error = Clipboard::FileOfferError::MountFailed;
+      fuse_api.destroy(fuse_);
       fuse_ = nullptr;
       return false;
     }
-    worker_ = std::thread([this] { fuse_loop_mt(fuse_, 0); });
+    worker_ = std::thread([this] { fuse_api.loop(fuse_, 0); });
     for (size_t i = 0; i < offer_->entries().size(); ++i)
       paths_.push_back(directory_ + "/" + std::to_string(i) + "/" + offer_->entries()[i].name);
     return true;
@@ -120,7 +168,7 @@ class FileMount {
       if (fd >= 0) close(fd);
     }
   };
-  static FileMount* Self() { return static_cast<FileMount*>(fuse_get_context()->private_data); }
+  static FileMount* Self() { return static_cast<FileMount*>(fuse_api.context()->private_data); }
   int Index(const char* path, bool& directory) const {
     if (!offer_->valid() || !path || *path != '/') return -1;
     std::string_view value(path + 1);
@@ -166,12 +214,20 @@ std::unique_ptr<FileMount> current;
 
 }  // namespace
 
-bool Clipboard::SetFileOffer(std::shared_ptr<ClipboardFilePromise> offer) {
+bool Clipboard::SetFileOffer(std::shared_ptr<ClipboardFilePromise> offer, FileOfferError* error) {
+  FileOfferError failure = FileOfferError::PublishFailed;
+  if (!error) error = &failure;
+  *error = FileOfferError::PublishFailed;
   if (!offer || offer->entries().empty()) return false;
+  if (!fuse_api.Load()) {
+    *error = FileOfferError::UnavailableRuntime;
+    return false;
+  }
   ClearFileOffer();
   auto mount = std::make_unique<FileMount>(std::move(offer));
-  if (!mount->Start() || !SetFiles(mount->paths())) return false;
+  if (!mount->Start(*error) || !SetFiles(mount->paths())) return false;
   current = std::move(mount);
+  *error = FileOfferError::None;
   return true;
 }
 bool Clipboard::OwnsFileOffer(const std::shared_ptr<ClipboardFilePromise>& offer) {

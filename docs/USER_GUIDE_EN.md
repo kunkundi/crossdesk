@@ -131,7 +131,11 @@ Windows, macOS, and Linux desktop clients support bidirectional file copy and pa
 
 Copy up to 128 regular files at a time; use the dual-pane transfer window for folders. Clipboard transfers copy files without deleting their sources. Cancel the whole batch from the receiving card. The card closes automatically after completion or cancellation; no sending progress window appears on the source. Keep both CrossDesk apps and the connection running until pasting finishes. Downloaded files are cached for repeated pastes and cleaned up when the clipboard is replaced, the session disconnects, or CrossDesk exits. A newer clipboard copy invalidates the old file list. Background sessions and DeskHub previews do not receive locally copied files.
 
-Linux receivers use FUSE 3 for on-demand file reads. The Debian package installs its dependencies, and the runtime must permit access to `/dev/fuse`. On macOS, paste into a local folder in Finder; existing files are preserved by adding a numbered suffix to conflicting names.
+Linux receivers use the optional FUSE 3 runtime (`libfuse3.so.3`) for on-demand file reads. They also need `fusermount3`, access to `/dev/fuse`, and permission to mount FUSE filesystems. The Debian package lists `fuse3` only under Suggests, so installation and in-app upgrades do not install or replace FUSE packages by default. If the runtime is missing or mounting fails, the receiver suggests using the file transfer window. Remote control, text clipboard, regular file transfers, and copying files to other devices remain available.
+
+To enable file pasting on Linux, install `fuse3` and its runtime through your distribution's package manager, then restart CrossDesk. Review the proposed package changes first; if they would remove packages you still use, keep using the file transfer window instead. In-app upgrades retain the protection against automatic package removal.
+
+On macOS, paste into a local folder in Finder; existing files are preserved by adding a numbered suffix to conflicting names.
 
 On Windows, the main window and remote control window use separate taskbar buttons, so you can switch to or minimize either window independently. Closing the main window leaves the remote control window and its connections running; reopen the main window from the system tray. The remote control button appears only while the session window is present; use the main window's button to pin the application.
 

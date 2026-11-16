@@ -144,7 +144,8 @@ void ObservePaste(const std::shared_ptr<PasteState>& state, const char* value) {
 
 }  // namespace
 
-bool Clipboard::SetFileOffer(std::shared_ptr<ClipboardFilePromise> offer) {
+bool Clipboard::SetFileOffer(std::shared_ptr<ClipboardFilePromise> offer, FileOfferError* error) {
+  if (error) *error = FileOfferError::PublishFailed;
   @autoreleasepool {
     if (!offer || offer->entries().empty()) return false;
     ClearFileOffer();
@@ -202,6 +203,7 @@ bool Clipboard::SetFileOffer(std::shared_ptr<ClipboardFilePromise> offer) {
       return false;
     native->change = pasteboard.changeCount;
     current = std::move(native);
+    if (error) *error = FileOfferError::None;
     return true;
   }
 }

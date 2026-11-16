@@ -656,7 +656,9 @@ function setup_targets()
         elseif is_os("linux") then
             add_files("apps/desktop/src/platform/linux/clipboard.cpp",
                 "apps/desktop/src/platform/linux/clipboard_file_offer.cpp")
-            add_packages("fuse3")
+            -- Only the FUSE headers are needed at build time. Load the runtime
+            -- dynamically so installing CrossDesk never forces a FUSE upgrade.
+            add_defines("_FILE_OFFSET_BITS=64")
             add_packages("libsdl3")
         end
         add_includedirs("apps/desktop/src", "apps/desktop/src/tools", {public = true})

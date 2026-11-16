@@ -11711,6 +11711,42 @@
       "fr": "{0} / {1} fichiers",
       "es": "{0} / {1} archivos",
       "pt-BR": "{0} / {1} arquivos"
+    },
+    "文件粘贴暂不可用": {
+      "zh-Hans": "文件粘贴暂不可用",
+      "en": "File paste unavailable",
+      "ru": "Вставка файлов недоступна",
+      "zh-Hant": "檔案貼上暫不可用",
+      "ja": "ファイルを貼り付けられません",
+      "ko": "파일 붙여넣기를 사용할 수 없습니다",
+      "de": "Dateien einfügen nicht verfügbar",
+      "fr": "Collage de fichiers indisponible",
+      "es": "Pegado de archivos no disponible",
+      "pt-BR": "Colagem de arquivos indisponível"
+    },
+    "请检查 FUSE 3 安装和挂载权限。": {
+      "zh-Hans": "请检查 FUSE 3 安装和挂载权限。",
+      "en": "Check the FUSE 3 installation and mount permissions.",
+      "ru": "Проверьте установку FUSE 3 и права на монтирование.",
+      "zh-Hant": "請檢查 FUSE 3 安裝和掛載權限。",
+      "ja": "FUSE 3 のインストールとマウント権限を確認してください。",
+      "ko": "FUSE 3 설치 및 마운트 권한을 확인하세요.",
+      "de": "Prüfen Sie die FUSE-3-Installation und die Einhängerechte.",
+      "fr": "Vérifiez FUSE 3 et les autorisations de montage.",
+      "es": "Comprueba la instalación de FUSE 3 y los permisos de montaje.",
+      "pt-BR": "Verifique a instalação do FUSE 3 e as permissões de montagem."
+    },
+    "可使用文件传输窗口发送文件。": {
+      "zh-Hans": "可使用文件传输窗口发送文件。",
+      "en": "You can send files using the file transfer window.",
+      "ru": "Файлы можно отправить через окно передачи файлов.",
+      "zh-Hant": "可使用檔案傳輸視窗傳送檔案。",
+      "ja": "ファイル転送ウィンドウから送信できます。",
+      "ko": "파일 전송 창에서 파일을 보낼 수 있습니다.",
+      "de": "Senden Sie Dateien über das Dateiübertragungsfenster.",
+      "fr": "Vous pouvez envoyer les fichiers via la fenêtre de transfert.",
+      "es": "Puedes enviar archivos desde la ventana de transferencia.",
+      "pt-BR": "Você pode enviar arquivos pela janela de transferência."
     }
   },
   "desktop": {
@@ -12769,7 +12805,10 @@
       "剪贴板文件接收完成",
       "剪贴板文件接收失败",
       "已取消文件接收",
-      "{0} / {1} 个文件"
+      "{0} / {1} 个文件",
+      "文件粘贴暂不可用",
+      "请检查 FUSE 3 安装和挂载权限。",
+      "可使用文件传输窗口发送文件。"
     ],
     "android": [
       " · 已完成",

@@ -4904,6 +4904,8 @@ void GuiApplication::SyncClipboardFileNotification() {
   const bool active = progress.status == Status::Receiving;
   const bool completed = progress.status == Status::Completed;
   const bool failed = progress.status == Status::Failed;
+  using OfferError = Clipboard::FileOfferError;
+  const bool unavailable = snapshot->offer_error != OfferError::None;
   const auto now = std::chrono::steady_clock::now();
   if (!active && now - snapshot->updated > (failed ? 6s : 3s)) {
     clipboard_.DismissFileReceive(snapshot->id); hide(); return;
@@ -4938,7 +4940,9 @@ void GuiApplication::SyncClipboardFileNotification() {
   const auto text = [this](const char* key) {
     return UiText(localization::Literal(key, localization_language_index_));
   };
-  component->set_heading(text(active ? "正在接收剪贴板文件" : completed ? "剪贴板文件接收完成"
+  component->set_unavailable(unavailable);
+  component->set_heading(text(unavailable ? "文件粘贴暂不可用"
+                                     : active ? "正在接收剪贴板文件" : completed ? "剪贴板文件接收完成"
                                      : failed ? "剪贴板文件接收失败" : "已取消文件接收"));
   component->set_detail(UiText(progress.name));
   auto count = localization::Literal("{0} / {1} 个文件", localization_language_index_);
@@ -4947,6 +4951,13 @@ void GuiApplication::SyncClipboardFileNotification() {
     if (const auto pos = count.find(key); pos != std::string::npos) count.replace(pos, 3, value);
   component->set_summary(UiText(count + " · " + FormatFileSize(progress.received) +
                                 " / " + FormatFileSize(progress.total)));
+  if (unavailable) {
+    const bool fuse_error = snapshot->offer_error == OfferError::UnavailableRuntime ||
+                           snapshot->offer_error == OfferError::MountFailed;
+    component->set_detail(fuse_error ? text("请检查 FUSE 3 安装和挂载权限。")
+                                    : text("剪贴板文件接收失败"));
+    component->set_summary(text("可使用文件传输窗口发送文件。"));
+  }
   const float fraction = completed ? 1.0f : progress.total
       ? static_cast<float>(static_cast<double>(progress.received) / progress.total)
       : progress.files ? static_cast<float>(progress.completed_files) / progress.files : 0.0f;

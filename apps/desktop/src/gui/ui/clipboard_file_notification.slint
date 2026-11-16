@@ -19,6 +19,7 @@ export component ClipboardFileNotification inherits Window {
     in property <bool> active;
     in property <bool> completed;
     in property <bool> failed;
+    in property <bool> unavailable;
     callback action-requested;
     private property <color> tone: root.failed ? #d92d20 : root.completed
         ? WorkbenchStyle.success : root.active ? WorkbenchStyle.accent : WorkbenchStyle.muted;
@@ -44,9 +45,13 @@ export component ClipboardFileNotification inherits Window {
             font-size: 13px; font-weight: 600; overflow: elide; vertical-alignment: center;
         }
         Text {
-            x: 56px; y: 35px; width: parent.width - 74px; height: 16px;
+            x: root.unavailable ? 16px : 56px;
+            y: root.unavailable ? 48px : 35px;
+            width: parent.width - (root.unavailable ? 32px : 74px);
+            height: root.unavailable ? 30px : 16px;
             text: root.detail; color: WorkbenchStyle.muted;
             font-size: 11px; overflow: elide; vertical-alignment: center;
+            wrap: root.unavailable ? word-wrap : no-wrap;
         }
         IconButton {
             x: parent.width - 38px; y: 10px; width: 26px; height: 26px;
@@ -61,6 +66,7 @@ export component ClipboardFileNotification inherits Window {
             clicked => { root.action-requested(); }
         }
         Rectangle {
+            visible: !root.unavailable;
             x: 16px; y: 65px; width: parent.width - 32px; height: 4px;
             border-radius: 2px; background: WorkbenchStyle.separator;
             Rectangle {
@@ -71,9 +77,11 @@ export component ClipboardFileNotification inherits Window {
             }
         }
         Text {
-            x: 16px; y: 80px; width: parent.width - 82px; height: 16px;
+            x: 16px; y: 80px; width: parent.width - (root.unavailable ? 32px : 82px);
+            height: root.unavailable ? 28px : 16px;
             text: root.summary; color: WorkbenchStyle.muted;
             font-size: 11px; overflow: elide; vertical-alignment: center;
+            wrap: root.unavailable ? word-wrap : no-wrap;
         }
         Text {
             x: parent.width - 64px; y: 80px; width: 48px; height: 16px;

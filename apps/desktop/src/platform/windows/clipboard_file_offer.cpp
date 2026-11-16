@@ -360,10 +360,13 @@ std::unique_ptr<ClipboardApartment> apartment;
 
 }  // namespace
 
-bool Clipboard::SetFileOffer(std::shared_ptr<ClipboardFilePromise> offer) {
+bool Clipboard::SetFileOffer(std::shared_ptr<ClipboardFilePromise> offer, FileOfferError* error) {
+  if (error) *error = FileOfferError::PublishFailed;
   if (!offer || offer->entries().empty()) return false;
   if (!apartment) apartment = std::make_unique<ClipboardApartment>();
-  return apartment->Set(std::move(offer));
+  if (!apartment->Set(std::move(offer))) return false;
+  if (error) *error = FileOfferError::None;
+  return true;
 }
 bool Clipboard::OwnsFileOffer(const std::shared_ptr<ClipboardFilePromise>& offer) {
   return apartment && apartment->Owns(offer);

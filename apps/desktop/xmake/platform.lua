@@ -53,7 +53,6 @@ function setup_platform_settings()
         -- leaves ICE stream initialization stuck in g_once_init_enter().
         add_ldflags("-Wl,--exclude-libs,libgio-2.0.a:libgobject-2.0.a:libgthread-2.0.a:libgmodule-2.0.a:libglib-2.0.a:libffi.a",
             {force = true})
-        add_requires("pkgconfig::fuse3", {alias = "fuse3", system = true})
         add_requires("pkgconfig::atspi-2", {alias = "atspi", system = true, optional = true})
         add_links("pulse-simple", "pulse")
         add_requires("libyuv")
