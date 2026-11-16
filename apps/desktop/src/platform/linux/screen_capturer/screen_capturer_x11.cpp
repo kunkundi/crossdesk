@@ -83,6 +83,8 @@ int ScreenCapturerX11::Destroy() {
   callback_ = nullptr;
 
   randr_event_base_ = -1;
+  displays_need_refresh_ = root_fallback_ = false;
+  next_display_refresh_ = {};
 
   if (display_) {
     XCloseDisplay(display_);
@@ -98,6 +100,9 @@ int ScreenCapturerX11::Start(bool show_cursor) {
   running_ = true;
   paused_ = false;
   capture_error_count_ = 0;
+  next_capture_error_log_ = {};
+  displays_need_refresh_ = true;
+  next_display_refresh_ = {};
   thread_ = std::thread([this]() {
     using clock = std::chrono::steady_clock;
     const auto frame_interval =
@@ -167,23 +172,38 @@ void ScreenCapturerX11::HandleDisplayEvents() {
       changed = true;
     }
   }
-  if (changed) RefreshDisplays();
+  // A driver can announce a mode transition before its new CRTC is usable,
+  // without sending another event when it settles. Retry even while paused.
+  if (changed || ((displays_need_refresh_ || capture_error_count_ > 0) &&
+                  std::chrono::steady_clock::now() >= next_display_refresh_)) {
+    RefreshDisplays();
+  }
 }
 
 void ScreenCapturerX11::RefreshDisplays() {
+  next_display_refresh_ =
+      std::chrono::steady_clock::now() + std::chrono::seconds(1);
+  displays_need_refresh_ = true;
   ScopedX11ErrorTrap trap(display_);
   XWindowAttributes attr{};
-  if (!XGetWindowAttributes(display_, root_, &attr)) return;
+  if (!XGetWindowAttributes(display_, root_, &attr) ||
+      attr.width <= 1 || attr.height <= 1) return;
   std::vector<DisplayInfo> latest;
   auto* resources = randr_event_base_ >= 0
                         ? XRRGetScreenResources(display_, root_)
                         : nullptr;
+  // A failed query is not evidence that every output was disconnected.
+  if (randr_event_base_ >= 0 && !resources) return;
+  bool query_failed = false;
   if (resources) {
     const auto primary = XRRGetOutputPrimary(display_, root_);
     for (int i = 0; i < resources->noutput; ++i) {
       const auto id = resources->outputs[i];
       auto* output = XRRGetOutputInfo(display_, resources, id);
-      if (!output) continue;
+      if (!output) {
+        query_failed = true;
+        continue;
+      }
       if (output->connection == RR_Connected && output->crtc) {
         auto* crtc = XRRGetCrtcInfo(display_, resources, output->crtc);
         if (crtc) {
@@ -197,13 +217,16 @@ void ScreenCapturerX11::RefreshDisplays() {
                                 crtc->x + crtc->width, crtc->y + crtc->height);
           }
           XRRFreeCrtcInfo(crtc);
+        } else {
+          query_failed = true;
         }
       }
       XRRFreeOutputInfo(output);
     }
     XRRFreeScreenResources(resources);
   }
-  if (trap.SyncAndGetError()) return;
+  if (trap.SyncAndGetError() || query_failed) return;
+  displays_need_refresh_ = latest.empty();
   std::lock_guard lock(display_info_mutex_);
   if (display_info_list_.empty()) {
     if (latest.empty()) {
@@ -215,6 +238,7 @@ void ScreenCapturerX11::RefreshDisplays() {
   }
   // Keep stream slots stable across mode changes and unplug/replug. Newly
   // attached outputs need peer stream registration before they can be used.
+  bool root_fallback = false;
   for (auto& existing : display_info_list_) {
     if (!existing.handle) {
       existing.right = existing.width = attr.width & ~1;
@@ -228,10 +252,38 @@ void ScreenCapturerX11::RefreshDisplays() {
     if (found != latest.end()) {
       existing = *found;
     } else {
-      existing.width = existing.height = 0;
-      existing.right = existing.left;
-      existing.bottom = existing.top;
+      displays_need_refresh_ = true;
+      if (display_info_list_.size() == 1 && latest.empty()) {
+        // With no active outputs, X11 can still provide a virtual root
+        // desktop. Preserve the output identity so waking it restores the
+        // same stream slot and mouse geometry. Never substitute another
+        // active screen for a missing screen in a multi-monitor session.
+        existing.left = existing.top = 0;
+        existing.right = existing.width = attr.width & ~1;
+        existing.bottom = existing.height = attr.height & ~1;
+        root_fallback = true;
+      } else {
+        existing.width = existing.height = 0;
+        existing.right = existing.left;
+        existing.bottom = existing.top;
+      }
     }
+  }
+  if (root_fallback != root_fallback_) {
+    LOG_INFO("X11 root desktop fallback {}: root={}x{}",
+             root_fallback ? "enabled" : "disabled", attr.width, attr.height);
+    root_fallback_ = root_fallback;
+  }
+}
+
+void ScreenCapturerX11::CaptureFailed(const char* reason, int x11_error) {
+  ++capture_error_count_;
+  const auto now = std::chrono::steady_clock::now();
+  if (capture_error_count_ == 1 || now >= next_capture_error_log_) {
+    LOG_WARN("X11 capture unavailable: reason={}, size={}x{}, x11_error={}, "
+             "consecutive={}; retrying display detection",
+             reason, width_, height_, x11_error, capture_error_count_);
+    next_capture_error_log_ = now + std::chrono::seconds(5);
   }
 }
 
@@ -254,7 +306,7 @@ void ScreenCapturerX11::OnFrame() {
   }
 
   if (width_ <= 1 || height_ <= 1) {
-    LOG_ERROR("Invalid capture size: {}x{}", width_, height_);
+    CaptureFailed("invalid display geometry");
     return;
   }
 
@@ -271,14 +323,9 @@ void ScreenCapturerX11::OnFrame() {
     if (image) {
       XDestroyImage(image);
     }
-    ++capture_error_count_;
-    if (capture_error_count_ == 1 || capture_error_count_ % 120 == 0) {
-      LOG_WARN("X11 capture failed: x11_error={}, image={}, consecutive={}",
-               x11_error, image ? "valid" : "null", capture_error_count_);
-    }
+    CaptureFailed("XGetImage failed", x11_error);
     return;
   }
-  capture_error_count_ = 0;
 
   // if enable show cursor, draw cursor
   if (show_cursor_) {
@@ -328,6 +375,11 @@ void ScreenCapturerX11::OnFrame() {
              use_abgr_to_nv12_ ? "ABGRToNV12" : "ARGBToNV12", convert_ret);
     XDestroyImage(image);
     return;
+  }
+  if (capture_error_count_ > 0) {
+    LOG_INFO("X11 capture recovered: size={}x{}, failed_frames={}",
+             width_, height_, capture_error_count_);
+    capture_error_count_ = 0;
   }
 
   std::vector<uint8_t> nv12;

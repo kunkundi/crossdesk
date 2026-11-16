@@ -133,6 +133,10 @@ int PlatformMouseController::SendMouseCommand(RemoteAction remote_action,
             LOG_ERROR("Invalid display index: {}", display_index);
             return -2;
           }
+          // A disconnected output has no coordinate space. In particular,
+          // do not collapse every remote movement onto its former origin.
+          if (display_info_list_[display_index].width <= 1 ||
+              display_info_list_[display_index].height <= 1) return -2;
 
           SetMousePosition(
               static_cast<int>(remote_action.m.x *

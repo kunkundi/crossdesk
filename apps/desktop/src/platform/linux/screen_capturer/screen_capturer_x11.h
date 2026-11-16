@@ -16,6 +16,7 @@ typedef struct _XImage XImage;
 
 #include <atomic>
 #include <cctype>
+#include <chrono>
 #include <cstring>
 #include <functional>
 #include <iostream>
@@ -53,6 +54,7 @@ class ScreenCapturerX11 : public ScreenCapturer {
   bool ProbeCapture();
   void RefreshDisplays();
   void HandleDisplayEvents();
+  void CaptureFailed(const char* reason, int x11_error = 0);
 
  private:
   Display* display_ = nullptr;
@@ -73,6 +75,10 @@ class ScreenCapturerX11 : public ScreenCapturer {
   std::vector<DisplayInfo> display_info_list_;
   std::mutex display_info_mutex_;
   int capture_error_count_ = 0;
+  bool displays_need_refresh_ = false;
+  bool root_fallback_ = false;
+  std::chrono::steady_clock::time_point next_display_refresh_{};
+  std::chrono::steady_clock::time_point next_capture_error_log_{};
   bool use_abgr_to_nv12_ = false;
 
   std::vector<uint8_t> y_plane_;
