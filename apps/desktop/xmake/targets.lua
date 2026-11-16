@@ -655,9 +655,11 @@ function setup_targets()
             add_frameworks("CoreServices", {public = true})
         elseif is_os("linux") then
             add_files("apps/desktop/src/platform/linux/clipboard.cpp",
-                "apps/desktop/src/platform/linux/clipboard_file_offer.cpp")
+                "apps/desktop/src/platform/linux/clipboard_file_offer.cpp",
+                "apps/desktop/src/platform/linux/clipboard_fuse2_mount.cpp",
+                "apps/desktop/src/platform/linux/clipboard_fuse3_mount.cpp")
             -- Only the FUSE headers are needed at build time. Load the runtime
-            -- dynamically so installing CrossDesk never forces a FUSE upgrade.
+            -- dynamically so either installed major version can be used.
             add_defines("_FILE_OFFSET_BITS=64")
             add_packages("libsdl3")
         end

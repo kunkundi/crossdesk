@@ -4954,7 +4954,7 @@ void GuiApplication::SyncClipboardFileNotification() {
   if (unavailable) {
     const bool fuse_error = snapshot->offer_error == OfferError::UnavailableRuntime ||
                            snapshot->offer_error == OfferError::MountFailed;
-    component->set_detail(fuse_error ? text("请检查 FUSE 3 安装和挂载权限。")
+    component->set_detail(fuse_error ? text("请检查 FUSE 安装和挂载权限。")
                                     : text("剪贴板文件接收失败"));
     component->set_summary(text("可使用文件传输窗口发送文件。"));
   }

@@ -91,11 +91,11 @@ if readelf -d "$BUILD_BINARY" \
     exit 1
 fi
 
-# FUSE is only used for receiving clipboard files. A direct dependency would
-# prevent startup without it and force upgrades to replace older FUSE helpers.
+# Resolve FUSE dynamically so either runtime can satisfy the package dependency.
+# A direct link would force one ABI even when the other is already installed.
 if readelf -d "$BUILD_BINARY" \
     | grep -E 'Shared library: \[libfuse' >/dev/null; then
-    echo "CrossDesk must not link directly to the optional FUSE runtime" >&2
+    echo "CrossDesk must load FUSE 2 or 3 dynamically, not link to one ABI" >&2
     exit 1
 fi
 
@@ -215,9 +215,9 @@ Depends: libc6 (>= 2.31), libstdc++6 (>= 10), libx11-6, libxext6,
  libxrender1, libxft2, libxrandr2, libxfixes3, libxcursor1, libxi6, libxcb1, libxcb-randr0,
  libxcb-xtest0, libxcb-xinerama0, libxcb-shape0, libxcb-xkb1,
  libxcb-xfixes0, libxv1, libxtst6, $ALSA_RUNTIME_DEP, libsndio7.0,
- libxcb-shm0, libpulse0, libdrm2, libdbus-1-3, libgl1$extra_depends
+ libxcb-shm0, libpulse0, libdrm2, libdbus-1-3, libgl1,
+ fuse3 (>= 3.2) | fuse (>= 2.9)$extra_depends
 Recommends: $RECOMMENDS
-Suggests: fuse3
 Conflicts: $other_package
 Replaces: $other_package
 Priority: optional

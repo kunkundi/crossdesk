@@ -112,7 +112,7 @@ sudo apt-get install -y \
   libxinerama-dev libxcursor-dev libxi-dev libxfixes-dev libxv-dev \
   libxtst-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev \
   libxcb-shape0-dev libxcb-xkb-dev libxcb-xfixes0-dev libxcb-shm0-dev \
-  libasound2-dev libsndio-dev libpulse-dev libfuse3-dev \
+  libasound2-dev libsndio-dev libpulse-dev libfuse-dev libfuse3-dev \
   libgl1-mesa-dev
 ```
 

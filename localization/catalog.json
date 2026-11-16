@@ -11724,17 +11724,17 @@
       "es": "Pegado de archivos no disponible",
       "pt-BR": "Colagem de arquivos indisponível"
     },
-    "请检查 FUSE 3 安装和挂载权限。": {
-      "zh-Hans": "请检查 FUSE 3 安装和挂载权限。",
-      "en": "Check the FUSE 3 installation and mount permissions.",
-      "ru": "Проверьте установку FUSE 3 и права на монтирование.",
-      "zh-Hant": "請檢查 FUSE 3 安裝和掛載權限。",
-      "ja": "FUSE 3 のインストールとマウント権限を確認してください。",
-      "ko": "FUSE 3 설치 및 마운트 권한을 확인하세요.",
-      "de": "Prüfen Sie die FUSE-3-Installation und die Einhängerechte.",
-      "fr": "Vérifiez FUSE 3 et les autorisations de montage.",
-      "es": "Comprueba la instalación de FUSE 3 y los permisos de montaje.",
-      "pt-BR": "Verifique a instalação do FUSE 3 e as permissões de montagem."
+    "请检查 FUSE 安装和挂载权限。": {
+      "zh-Hans": "请检查 FUSE 安装和挂载权限。",
+      "en": "Check the FUSE installation and mount permissions.",
+      "ru": "Проверьте установку FUSE и права на монтирование.",
+      "zh-Hant": "請檢查 FUSE 安裝和掛載權限。",
+      "ja": "FUSE のインストールとマウント権限を確認してください。",
+      "ko": "FUSE 설치 및 마운트 권한을 확인하세요.",
+      "de": "Prüfen Sie die FUSE-Installation und die Einhängerechte.",
+      "fr": "Vérifiez FUSE et les autorisations de montage.",
+      "es": "Comprueba la instalación de FUSE y los permisos de montaje.",
+      "pt-BR": "Verifique a instalação do FUSE e as permissões de montagem."
     },
     "可使用文件传输窗口发送文件。": {
       "zh-Hans": "可使用文件传输窗口发送文件。",
@@ -12807,7 +12807,7 @@
       "已取消文件接收",
       "{0} / {1} 个文件",
       "文件粘贴暂不可用",
-      "请检查 FUSE 3 安装和挂载权限。",
+      "请检查 FUSE 安装和挂载权限。",
       "可使用文件传输窗口发送文件。"
     ],
     "android": [
