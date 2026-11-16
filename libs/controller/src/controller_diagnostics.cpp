@@ -24,10 +24,19 @@ std::string DiagnosticEvent(const MiniRtcLogRecord &message) {
     for (const std::string_view prefix : {
              "Signaling transport failure: category=",
              "Signaling transport closed: code=",
+#ifndef NDEBUG
+             "Signaling timeouts: client=",
+             "Signaling retry wait: client=",
+#endif
              "Scheduling signaling reconnect: attempt=",
              "Will retry connection after "})
       if (text.substr(0, prefix.size()) == prefix) return std::string(text);
   }
+#ifndef NDEBUG
+  if (source == "ws_connection_diagnostics.cpp" &&
+      text.substr(0, 17) == "Signaling stage: ")
+    return std::string(text); // Fixed stage names, timings and native error codes.
+#endif
   if (source == "ice_transport.cpp") {
     const auto marker = text.rfind("state_change: ");
     if (marker != std::string_view::npos) {
