@@ -169,7 +169,9 @@ jobs:
           CUDA_PATH: /usr/local/cuda
           XMAKE_GLOBALDIR: /data
         run: |
-          xmake f --CROSSDESK_VERSION=${LEGAL_VERSION} --USE_CUDA=true --USE_WAYLAND=true \
+          # Verbose mode serializes dependency installs in Xmake 3.1.1, avoiding
+          # meson/meson~host self-test directory races and preserving full errors.
+          xmake f -v --CROSSDESK_VERSION=${LEGAL_VERSION} --USE_CUDA=true --USE_WAYLAND=true \
             --cc=gcc-10 --cxx=g++-10 --root -y
           xmake b -vy --root crossdesk
 
