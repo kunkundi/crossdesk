@@ -59,7 +59,12 @@ function setup_options_and_dependencies(enable_dependencies)
         {version = "3.3.2", system = false, override = true})
     add_requires("spdlog 1.14.1", {system = false})
     add_requires("slint 1.17.1", {configs = {shared = true}})
-    add_requires("libsdl3 3.2.26", {configs = {shared = false}})
+    if is_plat("linux") then
+        add_requires("crossdesk_sdl3 3.2.26", {alias = "libsdl3", system = false,
+            configs = {shared = false}})
+    else
+        add_requires("libsdl3 3.2.26", {configs = {shared = false}})
+    end
     add_requires("openssl3 3.3.2", {system = false})
     add_requires("cpp-httplib v0.26.0", {configs = {ssl = true}})
     add_requires("tinyfiledialogs 3.15.1")

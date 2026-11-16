@@ -1,0 +1,124 @@
+--- a/src/video/x11/SDL_x11keyboard.c
++++ b/src/video/x11/SDL_x11keyboard.c
+@@ -123,6 +123,22 @@
+ 
+     return keysym;
+ }
++
++#ifdef X_HAVE_UTF8_STRING
++static void X11_InputMethodDestroyed(XIM im, XPointer client_data, XPointer call_data)
++{
++    SDL_VideoData *data = (SDL_VideoData *)client_data;
++    /* Xlib has invalidated the IM and its contexts. They must not be used
++     * or closed again when the input method exits before SDL does. */
++    data->im = NULL;
++}
++
++static void X11_InputContextDestroyed(XIC ic, XPointer client_data, XPointer call_data)
++{
++    SDL_WindowData *data = (SDL_WindowData *)client_data;
++    data->ic = NULL;
++}
++#endif
+ 
+ bool X11_InitKeyboard(SDL_VideoDevice *_this)
+ {
+@@ -182,6 +198,12 @@
+         X11_XSetLocaleModifiers("");
+ 
+         data->im = X11_XOpenIM(data->display, NULL, NULL, NULL);
++        if (data->im) {
++            XIMCallback destroyed_callback;
++            destroyed_callback.client_data = (XPointer)data;
++            destroyed_callback.callback = (XIMProc)X11_InputMethodDestroyed;
++            X11_XSetIMValues(data->im, XNDestroyCallback, &destroyed_callback, (char *)NULL);
++        }
+ 
+         /* Reset the locale + X locale modifiers back to how they were,
+            locale first because the X locale modifiers depend on it. */
+@@ -628,6 +650,9 @@
+     SDL_VideoData *videodata = data->videodata;
+ 
+     if (SDL_X11_HAVE_UTF8 && videodata->im) {
++        XIMCallback destroyed_callback;
++        destroyed_callback.client_data = (XPointer)data;
++        destroyed_callback.callback = (XIMProc)X11_InputContextDestroyed;
+         const char *hint = SDL_GetHint(SDL_HINT_IME_IMPLEMENTED_UI);
+         if (hint && SDL_strstr(hint, "composition")) {
+             XIMCallback draw_callback;
+@@ -657,6 +682,7 @@
+                                          XNInputStyle, XIMPreeditCallbacks | XIMStatusCallbacks,
+                                          XNPreeditAttributes, attr,
+                                          XNClientWindow, data->xwindow,
++                                         XNDestroyCallback, &destroyed_callback,
+                                          NULL);
+                 X11_XFree(attr);
+             }
+@@ -665,6 +691,7 @@
+             data->ic = X11_XCreateIC(videodata->im,
+                                      XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
+                                      XNClientWindow, data->xwindow,
++                                     XNDestroyCallback, &destroyed_callback,
+                                      NULL);
+         }
+         data->xim_spot.x = -1;
+--- a/src/video/x11/SDL_x11dyn.h
++++ b/src/video/x11/SDL_x11dyn.h
+@@ -98,10 +98,12 @@
+ typedef XIC (*SDL_DYNX11FN_XCreateIC)(XIM, ...);
+ typedef char *(*SDL_DYNX11FN_XGetICValues)(XIC, ...);
+ typedef char *(*SDL_DYNX11FN_XSetICValues)(XIC, ...);
++typedef char *(*SDL_DYNX11FN_XSetIMValues)(XIM, ...);
+ typedef XVaNestedList (*SDL_DYNX11FN_XVaCreateNestedList)(int, ...);
+ extern SDL_DYNX11FN_XCreateIC X11_XCreateIC;
+ extern SDL_DYNX11FN_XGetICValues X11_XGetICValues;
+ extern SDL_DYNX11FN_XSetICValues X11_XSetICValues;
++extern SDL_DYNX11FN_XSetIMValues X11_XSetIMValues;
+ extern SDL_DYNX11FN_XVaCreateNestedList X11_XVaCreateNestedList;
+ #endif
+ 
+--- a/src/video/x11/SDL_x11dyn.c
++++ b/src/video/x11/SDL_x11dyn.c
+@@ -105,6 +105,7 @@
+ SDL_DYNX11FN_XCreateIC X11_XCreateIC = NULL;
+ SDL_DYNX11FN_XGetICValues X11_XGetICValues = NULL;
+ SDL_DYNX11FN_XSetICValues X11_XSetICValues = NULL;
++SDL_DYNX11FN_XSetIMValues X11_XSetIMValues = NULL;
+ SDL_DYNX11FN_XVaCreateNestedList X11_XVaCreateNestedList = NULL;
+ #endif
+ 
+@@ -132,6 +133,7 @@
+             X11_XCreateIC = NULL;
+             X11_XGetICValues = NULL;
+             X11_XSetICValues = NULL;
++            X11_XSetIMValues = NULL;
+             X11_XVaCreateNestedList = NULL;
+ #endif
+ 
+@@ -177,6 +179,8 @@
+             X11_GetSym("XGetICValues", &SDL_X11_HAVE_UTF8);
+         X11_XSetICValues = (SDL_DYNX11FN_XSetICValues)
+             X11_GetSym("XSetICValues", &SDL_X11_HAVE_UTF8);
++        X11_XSetIMValues = (SDL_DYNX11FN_XSetIMValues)
++            X11_GetSym("XSetIMValues", &SDL_X11_HAVE_UTF8);
+         X11_XVaCreateNestedList = (SDL_DYNX11FN_XVaCreateNestedList)
+             X11_GetSym("XVaCreateNestedList", &SDL_X11_HAVE_UTF8);
+ #endif
+@@ -200,6 +204,7 @@
+         X11_XCreateIC = XCreateIC;
+         X11_XGetICValues = XGetICValues;
+         X11_XSetICValues = XSetICValues;
++        X11_XSetIMValues = XSetIMValues;
+         X11_XVaCreateNestedList = XVaCreateNestedList;
+ #endif
+ #endif
+--- a/src/video/x11/SDL_x11video.c
++++ b/src/video/x11/SDL_x11video.c
+@@ -454,6 +454,7 @@
+ #ifdef X_HAVE_UTF8_STRING
+     if (data->im) {
+         X11_XCloseIM(data->im);
++        data->im = NULL;
+     }
+ #endif
+ 
