@@ -43,6 +43,6 @@
 | 鸿蒙桌面适配与权限 | [PC 平台说明](../apps/harmony/desktop-port/README.md) |
 | 组件版本与 npm 发布 | [版本管理](VERSIONING.md) · [CLI 分发](../apps/cli/docs/npm-distribution.md#生成包) · [MCP 发布](../apps/mcp/DEVELOPMENT.md#github-actions-发布到-npm) |
 | 更新签名、清单与升级流程 | [升级器构建与发布](UPDATER.md#升级器构建与发布) |
-| 翻译资源与截图 | [本地化维护](../localization/README.md#维护资源) · [截图生成](images/README.md#重新生成--regenerate) |
+| 翻译资源与截图 | [本地化维护](../localization/README.md#维护资源) · [截图生成](images/REGENERATE.md) |
 
 开发版功能可能尚未包含在已发布安装包中，请以所用版本的说明与界面为准。反馈问题时提供两端系统、版本、连接方式和复现步骤，桌面端可通过 **主菜单 → 反馈与建议** 导出诊断日志。

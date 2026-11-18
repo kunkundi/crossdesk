@@ -345,7 +345,7 @@ The native client has a separate Xcode project and requires an arm64 physical de
 
 ## Refreshing screenshots
 
-Desktop README images are rendered directly from the current Slint UI. See the [screenshot notes](images/README.md) for reproduction commands.
+Desktop README images are rendered directly from the current Slint UI. See [Regenerating screenshots](images/REGENERATE.md) for the commands.
 
 ## Android
 

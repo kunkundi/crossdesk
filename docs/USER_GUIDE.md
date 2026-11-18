@@ -6,8 +6,6 @@
 
 [安装与权限](#installation) · [快速连接](#quick-start) · [IP 直连](#lan-direct) · [可信设备](#trusted-devices) · [桌面墙](#deskhub) · [会话操作](#session) · [设置与更新](#settings) · [iOS](#ios) · [Android](#android) · [鸿蒙](#harmonyos) · [Windows 无人值守](#windows-service) · [自托管](#self-hosting)
 
-截图使用演示设备和凭据，来源与图示含义见 [截图说明](images/README.md)。
-
 <a id="installation"></a>
 
 ## 安装补充与系统权限

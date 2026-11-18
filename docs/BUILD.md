@@ -333,7 +333,7 @@ xmake r -d crossdesk
 
 ## 更新界面截图
 
-README 的桌面图片直接由当前 Slint UI 渲染，复现方式见 [截图说明](images/README.md)。
+README 的桌面图片直接由当前 Slint UI 渲染，生成命令见 [更新文档配图](images/REGENERATE.md)。
 
 ## Android
 

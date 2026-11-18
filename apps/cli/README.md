@@ -8,7 +8,7 @@ CrossDesk 的终端主控客户端，源码位于本仓库的 `apps/cli`。通�
 | --- | --- |
 | <img src="../../docs/images/cli-ansi-overview.png" width="480" alt="CrossDesk CLI 的 ANSI 全景输出，包含只读状态栏与快捷键提示" /> | <img src="../../docs/images/cli-kitty-overview.png" width="480" alt="CrossDesk CLI 的 Kitty 像素全景输出，显示同一远程桌面" /> |
 
-图示来自 **2026-10-31** 的实际只读连接，通过伪终端采集并渲染协议输出；实际显示效果取决于终端和窗口大小。默认 `auto` 依次选择 Kitty、Sixel、ANSI；普通终端可指定 `--renderer ansi`，支持对应协议的终端可指定 `--renderer kitty` 或 `--renderer sixel`。显式像素模式需要通过能力探测；增加 Sixel 输出不代表所有 Xshell 版本均可显示图片，终端本身也必须支持该协议。ANSI 全景适合查看桌面轮廓，阅读小字需进入细节模式。
+显示效果取决于终端和窗口大小。默认 `auto` 依次选择 Kitty、Sixel、ANSI；普通终端可指定 `--renderer ansi`，支持对应协议的终端可指定 `--renderer kitty` 或 `--renderer sixel`。显式像素模式需要通过能力探测；增加 Sixel 输出不代表所有 Xshell 版本均可显示图片，终端本身也必须支持该协议。ANSI 全景适合查看桌面轮廓，阅读小字需进入细节模式。
 
 ## 安装与连接
 

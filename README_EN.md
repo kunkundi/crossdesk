@@ -129,7 +129,7 @@ Before reinstalling, clearing application data, or moving to another computer, s
 Local credentials, remote connections, and recent devices share the main window. The top-left controls switch connection modes and open DeskHub.
 
 <p align="center">
-  <img src="docs/images/desktop-main-en.png" width="800" alt="CrossDesk ID mode with the mode switch, local ID, remote connection controls, and recent devices; demonstration data" />
+  <img src="docs/images/desktop-main-en.png" width="800" alt="CrossDesk ID mode with the mode switch, local ID, remote connection controls, and recent devices" />
 </p>
 
 ### Direct IP mode
@@ -137,7 +137,7 @@ Local credentials, remote connections, and recent devices share the main window.
 Select the local IP, edit its port and password, and connect using the other desktop's address. Recent LAN devices have their own list below.
 
 <p align="center">
-  <img src="docs/images/desktop-lan-en.png" width="800" alt="CrossDesk Direct IP mode with local IP and port editing, a six-character password, remote address input, and recent LAN devices; demonstration data" />
+  <img src="docs/images/desktop-lan-en.png" width="800" alt="CrossDesk Direct IP mode with local IP and port editing, a six-character password, remote address input, and recent LAN devices" />
 </p>
 
 <a id="deskhub"></a>
@@ -147,17 +147,17 @@ Select the local IP, edit its port and password, and connect using the other des
 View devices by group, click a preview to enlarge it, and take control when needed. Batch actions include connecting, muting, and sending files.
 
 <p align="center">
-  <img src="docs/images/desktop-deskhub-en.png" width="960" alt="DeskHub with six demonstration remote desktops and its management toolbar" />
+  <img src="docs/images/desktop-deskhub-en.png" width="960" alt="DeskHub with six remote desktops and its management toolbar" />
 </p>
 
-Group control sends input to all connected devices; closing DeskHub disconnects all remote connections. See the [DeskHub user guide](docs/USER_GUIDE_EN.md#deskhub) for exact scopes and controls. Screenshots use demonstration data; more views and sources are in the [user guide](docs/USER_GUIDE_EN.md) and [screenshot notes](docs/images/README.md).
+Group control sends input to all connected devices; closing DeskHub disconnects all remote connections. See the [DeskHub user guide](docs/USER_GUIDE_EN.md#deskhub) for exact scopes and controls.
 
 ### Dual-pane file transfers
 
 Open file transfer from the session toolbar to browse local and remote directories side by side. Send selected files or folders, or drag them between panes; the task list shows progress and lets you cancel unfinished transfers. Remote directory browsing requires a compatible host.
 
 <p align="center">
-  <img src="docs/images/desktop-files-en.png" width="960" alt="Dual-pane file transfer with local and remote paths, file lists, send controls, and a transfer task; all data is illustrative" />
+  <img src="docs/images/desktop-files-en.png" width="960" alt="Dual-pane file transfer with local and remote paths, file lists, send controls, and a transfer task" />
 </p>
 
 <a id="session"></a>
@@ -170,7 +170,7 @@ Remote sessions support monitor switching, video quality and frame-rate controls
 For Windows, macOS, and Linux X11 hosts, **Video settings → Resolution** selects a mode supported by the current remote display without reconnecting. Desktop and native mobile controllers remember confirmed choices and reapply them on reconnection when still supported. When the last controller disconnects, the host restores the display mode used before the first change in that connection period. Linux requires X11 capture and RandR; Wayland / XWayland resolution changes are not currently supported.
 
 <p align="center">
-  <img src="docs/images/desktop-stream-video-settings-en.png" width="960" alt="Session video settings: quality, frame rate, remote display resolution, and video preference, over an illustrative public-page capture" />
+  <img src="docs/images/desktop-stream-video-settings-en.png" width="960" alt="Session video settings: quality, frame rate, remote display resolution, and video preference" />
 </p>
 
 - [Session controls](docs/USER_GUIDE_EN.md#session): toolbar, text clipboard, received files, and privacy screens.

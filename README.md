@@ -129,7 +129,7 @@ cd crossdesk
 本机凭据、远程连接和近期设备集中在主窗口，左上角提供连接模式切换和桌面墙入口。
 
 <p align="center">
-  <img src="docs/images/desktop-main-zh.png" width="800" alt="CrossDesk ID 连接模式：模式切换、本机 ID、远程连接入口和近期设备；数据为演示" />
+  <img src="docs/images/desktop-main-zh.png" width="800" alt="CrossDesk ID 连接模式：模式切换、本机 ID、远程连接入口和近期设备" />
 </p>
 
 ### IP 直连模式
@@ -137,7 +137,7 @@ cd crossdesk
 切换本机 IP、修改端口与密码，通过对方地址连接；下方展示独立的局域网近期设备。
 
 <p align="center">
-  <img src="docs/images/desktop-lan-zh.png" width="800" alt="CrossDesk IP 直连模式：本机 IP 和端口编辑入口、六位密码、远端地址输入和局域网近期设备；数据为演示" />
+  <img src="docs/images/desktop-lan-zh.png" width="800" alt="CrossDesk IP 直连模式：本机 IP 和端口编辑入口、六位密码、远端地址输入和局域网近期设备" />
 </p>
 
 <a id="deskhub"></a>
@@ -147,17 +147,17 @@ cd crossdesk
 按分组查看多台设备，点击画面放大，再选择接管操控；支持批量连接、静音与文件分发。
 
 <p align="center">
-  <img src="docs/images/desktop-deskhub-zh.png" width="960" alt="DeskHub 桌面墙：六台演示设备的远程画面与管理工具栏" />
+  <img src="docs/images/desktop-deskhub-zh.png" width="960" alt="DeskHub 桌面墙：六台设备的远程画面与管理工具栏" />
 </p>
 
-群控会向所有已连接设备发送输入；关闭桌面墙会断开全部远程连接。操作范围与详细用法见 [桌面墙使用指南](docs/USER_GUIDE.md#deskhub)。截图使用演示数据，更多操作见 [使用指南](docs/USER_GUIDE.md)。
+群控会向所有已连接设备发送输入；关闭桌面墙会断开全部远程连接。操作范围与详细用法见 [桌面墙使用指南](docs/USER_GUIDE.md#deskhub)。
 
 ### 双栏文件传输
 
 在会话工具栏打开文件传输，同时浏览本机与远端目录，选择文件或文件夹后发送，也可在两栏之间拖放；任务列表显示进度并支持取消未完成任务。远端目录浏览需要兼容的被控端。
 
 <p align="center">
-  <img src="docs/images/desktop-files-zh.png" width="960" alt="双栏文件传输：本机与远端路径、文件列表、发送按钮和任务列表；数据为演示" />
+  <img src="docs/images/desktop-files-zh.png" width="960" alt="双栏文件传输：本机与远端路径、文件列表、发送按钮和任务列表" />
 </p>
 
 <a id="session"></a>
@@ -170,7 +170,7 @@ cd crossdesk
 被控端为 Windows、macOS 或 Linux X11 时，可在 **画面设置 → 分辨率** 中选择当前显示器支持的模式，无需重连。桌面和原生移动端会记住远端确认成功的选择，重连时在仍受支持的情况下重新应用；最后一个控制端断开后，被控端恢复本轮连接首次调整前的显示模式。Linux 需要 X11 采集和 RandR，Wayland / XWayland 暂不支持此项调整。
 
 <p align="center">
-  <img src="docs/images/desktop-stream-video-settings-zh.png" width="960" alt="会话画面设置：质量、帧率、远端显示器分辨率和画面偏好；背景为公开页面演示图" />
+  <img src="docs/images/desktop-stream-video-settings-zh.png" width="960" alt="会话画面设置：质量、帧率、远端显示器分辨率和画面偏好" />
 </p>
 
 - [会话操作](docs/USER_GUIDE.md#session)：工具栏、文本剪贴板、文件保存和隐私屏。

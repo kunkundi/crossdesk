@@ -6,8 +6,6 @@ Start with [download and installation](../README_EN.md#download). This guide cov
 
 [Installation and permissions](#installation) · [Quick start](#quick-start) · [Direct IP](#lan-direct) · [Trusted devices](#trusted-devices) · [DeskHub](#deskhub) · [Session controls](#session) · [Settings and updates](#settings) · [iOS](#ios) · [Android](#android) · [HarmonyOS](#harmonyos) · [Windows unattended access](#windows-service) · [Self-hosting](#self-hosting)
 
-Screenshots use demonstration devices and credentials. See the [screenshot notes](images/README.md) for sources and what the images illustrate.
-
 <a id="installation"></a>
 
 ## Installation details and permissions
