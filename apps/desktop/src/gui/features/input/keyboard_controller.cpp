@@ -111,6 +111,7 @@ void KeyboardController::TrackPressedKey(int key_code, bool is_down,
 }
 
 void KeyboardController::ForceReleasePressedKeys() {
+  window_shift_ = {};  // The inferred key, if any, is in pressed_keys_ too.
   PressedKeys pressed_keys;
   {
     std::lock_guard<std::mutex> lock(pressed_keys_mutex_);
@@ -165,6 +166,22 @@ void KeyboardController::SendHeartbeat(bool force) {
 
   owner_.SendRemoteInput(action);
   last_heartbeat_tick_ = now;
+}
+
+void KeyboardController::SendWindowKey(int key_code, bool is_down, bool shift) {
+  WindowShiftState::Held held;
+  {
+    std::lock_guard lock(pressed_keys_mutex_);
+    held = {pressed_keys_.count(WindowShiftState::kLeft) != 0,
+            pressed_keys_.count(WindowShiftState::kRight) != 0};
+  }
+  window_shift_.Forward(key_code, is_down, shift, held,
+                        [this](int key, bool down) { SendKeyCommand(key, down); });
+}
+
+void KeyboardController::ReleaseInferredWindowShift() {
+  window_shift_.ReleaseInferred(
+      [this](int key, bool down) { SendKeyCommand(key, down); });
 }
 
 int KeyboardController::SendKeyCommand(int key_code, bool is_down,

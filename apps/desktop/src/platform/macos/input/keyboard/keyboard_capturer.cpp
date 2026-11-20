@@ -307,7 +307,12 @@ int PlatformKeyboardCapturer::SendKeyboardCommand(int key_code, bool is_down,
       return -1;
     }
 
-    CGEventSetFlags(event, ToCGEventFlags(injected_flags));
+    // Caps Lock is a session toggle. Replacing every flag with the remote
+    // held modifiers also cleared Caps Lock on ordinary letter events.
+    const CGEventFlags caps_lock =
+        CGEventSourceFlagsState(kCGEventSourceStateCombinedSessionState) &
+        kCGEventFlagMaskAlphaShift;
+    CGEventSetFlags(event, ToCGEventFlags(injected_flags) | caps_lock);
     CGEventSetIntegerValueField(event, kCGEventSourceUserData,
                                kCrossDeskInjectedEvent);
     CGEventPost(kCGHIDEventTap, event);

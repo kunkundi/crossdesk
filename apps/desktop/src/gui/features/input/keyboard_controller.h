@@ -11,6 +11,7 @@
 #include "keyboard_state.h"
 #include "input_outcome.h"
 #include "pending_key_releases.h"
+#include "window_shift_state.h"
 
 namespace crossdesk {
 
@@ -24,6 +25,8 @@ public:
 
   int SendKeyCommand(int key_code, bool is_down, uint32_t scan_code = 0,
                      bool extended = false);
+  void SendWindowKey(int key_code, bool is_down, bool shift);
+  void ReleaseInferredWindowShift();
   void ForceReleasePressedKeys();
   void RecoverCapturedState(const PressedKeys& pressed);
   void SendHeartbeat(bool force);
@@ -54,6 +57,7 @@ private:
 
   GuiRuntime &owner_;
   PressedKeys pressed_keys_;
+  WindowShiftState window_shift_;
   std::mutex pressed_keys_mutex_;
   uint32_t state_sequence_ = 0;
   uint32_t last_heartbeat_tick_ = 0;

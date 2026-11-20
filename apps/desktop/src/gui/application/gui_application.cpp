@@ -5800,7 +5800,6 @@ void GuiApplication::SendKeyInput(const std::string& text, bool pressed,
                                   bool meta) {
   (void)control;
   (void)alt;
-  (void)shift;
   (void)meta;
   auto props = SelectedSession();
   if (!props || !props->peer_ || !props->control_mouse_ ||
@@ -5819,7 +5818,7 @@ void GuiApplication::SendKeyInput(const std::string& text, bool pressed,
 
   const int virtual_key = SlintKeyToWindowsVk(text);
   if (virtual_key >= 0) {
-    keyboard_.SendKeyCommand(virtual_key, pressed);
+    keyboard_.SendWindowKey(virtual_key, pressed, shift);
   }
 }
 

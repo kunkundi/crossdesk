@@ -113,6 +113,7 @@ std::map<int, int> vkCodeToCGKeyCode = {
     {0xBE, 0x2F},  // . (Period)
     {0xBF, 0x2C},  // / (Slash)
     {0xDC, 0x2A},  // \ (Backslash)
+    {0xE2, 0x0A},  // VK_OEM_102 / kVK_ISO_Section
     {0xDB, 0x21},  // [ (Left Bracket)
     {0xDD, 0x1E},  // ] (Right Bracket)
     {0xBD, 0x1B},  // - (Minus)
