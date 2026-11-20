@@ -72,6 +72,7 @@
 #include "platform/windows/service/interactive_desktop.h"
 #include "platform/windows/service/unattended_config.h"
 #elif defined(__APPLE__)
+#include "features/input/scroll_accumulator.h"
 #include "platform/macos/gui/tray/mac_tray.h"
 #include "platform/macos/gui/video_frame_scheduler.h"
 #include "platform/window_drag.h"
@@ -1054,6 +1055,9 @@ struct GuiApplication::SlintUi {
       std::make_shared<slint::VectorModel<ui::GalleryActionDevice>>();
   float pointer_x = 0, pointer_y = 0;
   std::set<int> pressed_mouse_buttons;
+#if defined(__APPLE__)
+  ScrollAccumulator scroll;
+#endif
   uint64_t announcement_version = UINT64_MAX;
   std::string announcement_selected_id, announcement_selected_revision;
   // Share the window shell and dialogs, but keep each component's UI state and
@@ -5775,13 +5779,15 @@ void GuiApplication::SendScrollInput(float delta_x, float delta_y, float x,
   action.type = ControlType::mouse;
   action.m.x = point->x;
   action.m.y = point->y;
-  if (std::abs(delta_y) >= std::abs(delta_x)) {
-    action.m.flag = MouseFlag::wheel_vertical;
-    action.m.s = delta_y > 0 ? 1 : delta_y < 0 ? -1 : 0;
-  } else {
-    action.m.flag = MouseFlag::wheel_horizontal;
-    action.m.s = delta_x > 0 ? 1 : delta_x < 0 ? -1 : 0;
-  }
+  const bool vertical = std::abs(delta_y) >= std::abs(delta_x);
+  const float delta = vertical ? delta_y : delta_x;
+  action.m.flag =
+      vertical ? MouseFlag::wheel_vertical : MouseFlag::wheel_horizontal;
+#if defined(__APPLE__)
+  action.m.s = ui_->scroll.Consume(vertical, delta);
+#else
+  action.m.s = delta > 0 ? 1 : delta < 0 ? -1 : 0;
+#endif
   if (action.m.s == 0) {
     return;
   }
@@ -5954,6 +5960,9 @@ void GuiApplication::SyncAudioPlayback() {
 }
 
 void GuiApplication::ReleasePressedInput(bool preserve_local_ui) {
+#if defined(__APPLE__)
+  ui_->scroll = {};
+#endif
   keyboard_.ForceReleasePressedKeys();
   for (int button : ui_->pressed_mouse_buttons) {
     RemoteAction action{};
