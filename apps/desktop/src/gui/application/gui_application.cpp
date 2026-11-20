@@ -48,6 +48,7 @@
 #include "features/gallery/gallery_workspace.h"
 #include "features/gallery/preview_bandwidth.h"
 #include "features/gallery/preview_resolution.h"
+#include "features/input/scroll_accumulator.h"
 #include "features/input/stream_keyboard_focus.h"
 #include "filesystem_utf8.h"
 #include "localization.h"
@@ -72,7 +73,6 @@
 #include "platform/windows/service/interactive_desktop.h"
 #include "platform/windows/service/unattended_config.h"
 #elif defined(__APPLE__)
-#include "features/input/scroll_accumulator.h"
 #include "platform/macos/gui/tray/mac_tray.h"
 #include "platform/macos/gui/video_frame_scheduler.h"
 #include "platform/window_drag.h"
@@ -1055,7 +1055,7 @@ struct GuiApplication::SlintUi {
       std::make_shared<slint::VectorModel<ui::GalleryActionDevice>>();
   float pointer_x = 0, pointer_y = 0;
   std::set<int> pressed_mouse_buttons;
-#if defined(__APPLE__)
+#if defined(_WIN32) || defined(__APPLE__)
   ScrollAccumulator scroll;
 #endif
   uint64_t announcement_version = UINT64_MAX;
@@ -5783,7 +5783,7 @@ void GuiApplication::SendScrollInput(float delta_x, float delta_y, float x,
   const float delta = vertical ? delta_y : delta_x;
   action.m.flag =
       vertical ? MouseFlag::wheel_vertical : MouseFlag::wheel_horizontal;
-#if defined(__APPLE__)
+#if defined(_WIN32) || defined(__APPLE__)
   action.m.s = ui_->scroll.Consume(vertical, delta);
 #else
   action.m.s = delta > 0 ? 1 : delta < 0 ? -1 : 0;
@@ -5959,7 +5959,7 @@ void GuiApplication::SyncAudioPlayback() {
 }
 
 void GuiApplication::ReleasePressedInput(bool preserve_local_ui) {
-#if defined(__APPLE__)
+#if defined(_WIN32) || defined(__APPLE__)
   ui_->scroll = {};
 #endif
   keyboard_.ForceReleasePressedKeys();

@@ -22,15 +22,15 @@ class ScrollAccumulator {
     if (!std::isfinite(delta) || delta == 0) return 0;
 
     auto& axis = vertical ? vertical_ : horizontal_;
-    // Give a short gesture one notch even if it ends after its first event.
-    if (!axis.last_event ||
-        now - *axis.last_event >= std::chrono::milliseconds(200)) {
-      axis.remainder = 0;
-      axis.last_event = now;
-      return delta > 0 ? 1 : -1;
-    }
+    const bool new_gesture =
+        !axis.last_event ||
+        now - *axis.last_event >= std::chrono::milliseconds(200);
     axis.last_event = now;
-    if (axis.remainder * delta < 0) axis.remainder = 0;
+    if (new_gesture || axis.remainder * delta < 0) axis.remainder = 0;
+#if defined(__APPLE__)
+    // Give a short macOS trackpad gesture one notch on its first event.
+    if (new_gesture) return delta > 0 ? 1 : -1;
+#endif
 
     // Slint's winit backend maps one line to 60 logical pixels. Cap large
     // deltas to preserve the single notch sent for a conventional wheel event.
