@@ -127,7 +127,7 @@ EOF
 xattr -cr "${APP_BUNDLE}" 2>/dev/null || true
 find "${APP_BUNDLE}" -name '._*' -delete
 
-"${SCRIPT_DIR}/bundle_app.sh" "${APP_BUNDLE}" "${BINARY_ARCH}"
+"${SCRIPT_DIR}/bundle_app.sh" "${APP_BUNDLE}" "${BINARY_ARCH}" "$(dirname "${EXECUTABLE_PATH}")/libslint_cpp.dylib"
 "${SCRIPT_DIR}/verify_app.sh" "${APP_BUNDLE}" "${BINARY_ARCH}"
 
 echo ".app created successfully."

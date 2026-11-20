@@ -20,7 +20,8 @@ function setup_targets()
         "CROSSDESK_VERSION_NUMERIC=" .. table.concat(version_parts, ","))
 
     local function copy_slint_runtime(target)
-        if not target:is_plat("windows", "linux") then
+        if not target:is_plat("windows", "linux") and
+            not (target:is_plat("macosx") and target:name() == "crossdesk") then
             return
         end
 
@@ -30,12 +31,12 @@ function setup_targets()
         end
         assert(slint, "the Slint package is required to copy its runtime")
         local runtime_dir = path.join(slint:installdir(), "lib")
-        if target:is_plat("linux") then
-            -- Package the runtime selected for this build. Multiple Slint builds
-            -- with the same version/SONAME can have different patched APIs.
-            local runtime_so = path.join(runtime_dir, "libslint_cpp.so")
-            assert(os.isfile(runtime_so), "Slint runtime not found: " .. runtime_so)
-            os.cp(runtime_so, target:targetdir())
+        if target:is_plat("linux", "macosx") then
+            -- Same-version Slint builds can contain different platform fixes.
+            local library = target:is_plat("macosx") and "libslint_cpp.dylib" or "libslint_cpp.so"
+            local runtime = path.join(runtime_dir, library)
+            assert(os.isfile(runtime), "Slint runtime not found: " .. runtime)
+            os.cp(runtime, target:targetdir())
             return
         end
         local runtime_dll = path.join(runtime_dir, "slint_cpp.dll")

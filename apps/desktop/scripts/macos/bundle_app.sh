@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 2 ]]; then
-    echo "Usage: $0 <app-bundle> <expected-architecture>" >&2
+if [[ $# -ne 3 ]]; then
+    echo "Usage: $0 <app-bundle> <expected-architecture> <slint-runtime>" >&2
     exit 2
 fi
 
 APP_BUNDLE="$1"
 EXPECTED_ARCH="$2"
+SLINT_LIBRARY="$3"
 APP_EXECUTABLE="$APP_BUNDLE/Contents/MacOS/CrossDesk"
 FRAMEWORKS_DIR="$APP_BUNDLE/Contents/Frameworks"
 
@@ -64,47 +65,12 @@ slint_runtime_version() {
         }'
 }
 
-find_slint_runtime() {
-    local candidate=""
-    local candidate_version=""
-    local package_root=""
-    local package_roots=()
-
-    if [[ "$SLINT_REFERENCE" == /* && -f "$SLINT_REFERENCE" ]]; then
-        if lipo "$SLINT_REFERENCE" -verify_arch "$EXPECTED_ARCH" >/dev/null 2>&1; then
-            echo "$SLINT_REFERENCE"
-            return 0
-        fi
-    fi
-
-    if [[ -n "${XMAKE_GLOBALDIR:-}" ]]; then
-        package_roots+=("$XMAKE_GLOBALDIR/.xmake/packages")
-    fi
-    package_roots+=("$HOME/.xmake/packages" "/data/.xmake/packages")
-
-    for package_root in "${package_roots[@]}"; do
-        [[ -d "$package_root/s/slint" ]] || continue
-        while IFS= read -r candidate; do
-            if ! lipo "$candidate" -verify_arch "$EXPECTED_ARCH" >/dev/null 2>&1; then
-                continue
-            fi
-
-            candidate_version="$(slint_runtime_version "$candidate")"
-            if [[ -n "$SLINT_CURRENT_VERSION" && "$candidate_version" != "$SLINT_CURRENT_VERSION" ]]; then
-                continue
-            fi
-
-            echo "$candidate"
-            return 0
-        done < <(find "$package_root/s/slint" -type f -path "*/lib/$SLINT_NAME" -print 2>/dev/null)
-    done
-
-    return 1
-}
-
-SLINT_LIBRARY="$(find_slint_runtime || true)"
-if [[ -z "$SLINT_LIBRARY" ]]; then
-    echo "Unable to locate $SLINT_NAME for $EXPECTED_ARCH (current version $SLINT_CURRENT_VERSION)" >&2
+if [[ ! -f "$SLINT_LIBRARY" ]] || ! lipo "$SLINT_LIBRARY" -verify_arch "$EXPECTED_ARCH" >/dev/null 2>&1; then
+    echo "Missing $EXPECTED_ARCH Slint runtime from the application build: $SLINT_LIBRARY" >&2
+    exit 1
+fi
+if [[ -n "$SLINT_CURRENT_VERSION" && "$(slint_runtime_version "$SLINT_LIBRARY")" != "$SLINT_CURRENT_VERSION" ]]; then
+    echo "Expected Slint runtime version $SLINT_CURRENT_VERSION in $SLINT_LIBRARY" >&2
     exit 1
 fi
 

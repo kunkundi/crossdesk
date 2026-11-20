@@ -14,6 +14,12 @@ package("slint")
         add_configs("per_window_xdg_app_id", {description = "Support per-window XDG application IDs", default = true, type = "boolean", readonly = true})
         add_patches("1.17.1", path.join(os.scriptdir(), "patches/1.17.1-per-window-xdg-app-id.patch"),
             "86aedd42960c6e1b0f9d2a37ee5681bff177f166ee7aa77fee4b18c72fbff3d3")
+    elseif is_plat("macosx") then
+        -- AccessKit/accesskit#835 preserves AppKit's KVO subclass when an
+        -- observed Slint window closes. Keep the fixed runtime in its own cache.
+        add_configs("accesskit_macos_kvo", {description = "Preserve AppKit observers on window teardown", default = true, type = "boolean", readonly = true})
+        add_patches("1.17.1", path.join(os.scriptdir(), "patches/1.17.1-macos-accesskit-kvo.patch"),
+            "ed51c3125bad6a69fe5dcf212c5c8a0c360ab97c6e1095afe7e10bd5ec3b1b96")
     end
 
     add_configs("shared", {description = "Build the Slint runtime as a shared library", default = true, type = "boolean", readonly = true})
