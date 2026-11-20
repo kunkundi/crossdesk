@@ -167,7 +167,7 @@ cat > build_pkg_resources/welcome.html <<EOF
 </head>
 <body>
     <h1>欢迎安装 ${INSTALLER_TITLE}</h1>
-    <p>CrossDesk 将安装到“应用程序”文件夹。</p>
+    <p>CrossDesk 需要 macOS ${MACOS_MIN_VERSION} 或更高版本，将安装到“应用程序”文件夹。</p>
     <p>首次启动时，CrossDesk 会引导你在系统设置中授予必要权限，包括辅助功能、录屏与系统录音等。</p>
     <p>正式签名版本正常升级时会保留已有权限。从未签名或 ad-hoc 旧版升级后，请退出旧版并启动新版。新版会迁移当前用户的录屏与辅助功能授权，并引导你重新授权。遇到异常可在“设置 → 系统权限”中重试或稍后处理。</p>
     <p>安装完成后，请从“应用程序”文件夹启动 CrossDesk。</p>
@@ -186,10 +186,15 @@ pkgbuild \
 
 cat > build_pkg_temp/Distribution <<EOF
 <?xml version="1.0" encoding="utf-8"?>
-<installer-gui-script minSpecVersion="1">
+<installer-gui-script minSpecVersion="2">
     <title>${INSTALLER_TITLE}</title>
     <welcome file="welcome.html" mime-type="text/html"/>
     <options customize="never" require-scripts="false" hostArchitectures="arm64"/>
+    <volume-check>
+        <allowed-os-versions>
+            <os-version min="${MACOS_MIN_VERSION}"/>
+        </allowed-os-versions>
+    </volume-check>
     <choices-outline>
         <line choice="default">
             <line choice="${IDENTIFIER}"/>
