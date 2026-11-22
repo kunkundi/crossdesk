@@ -58,12 +58,21 @@ inline bool ResolveMacResolutionDisplay(const DisplayInfo &display,
   return true;
 }
 
-// The array owns the borrowed mode references returned by Choices().
+// Choices() borrows its mode references from this object.
 class MacResolutionModes {
 public:
   explicit MacResolutionModes(CGDirectDisplayID display)
-      : current(CGDisplayCopyDisplayMode(display)),
-        modes_(CGDisplayCopyAllDisplayModes(display, nullptr)) {}
+      : current(CGDisplayCopyDisplayMode(display)) {
+    // The default enumeration can omit the active Retina scaling modes.
+    const void *key = kCGDisplayShowDuplicateLowResolutionModes;
+    const void *value = kCFBooleanTrue;
+    CFDictionaryRef options = CFDictionaryCreate(
+        nullptr, &key, &value, 1, &kCFTypeDictionaryKeyCallBacks,
+        &kCFTypeDictionaryValueCallBacks);
+    modes_ = CGDisplayCopyAllDisplayModes(display, options);
+    if (options)
+      CFRelease(options);
+  }
   ~MacResolutionModes() {
     if (modes_)
       CFRelease(modes_);
@@ -75,8 +84,8 @@ public:
 
   std::vector<CGDisplayModeRef> Choices() const {
     std::vector<CGDisplayModeRef> result;
-    if (!current || !modes_ ||
-        !ValidDisplayResolution(MacDisplayResolution(current)))
+    const auto current_size = MacDisplayResolution(current);
+    if (!modes_ || !ValidDisplayResolution(current_size))
       return result;
     const double scale = double(CGDisplayModeGetPixelWidth(current)) /
                          CGDisplayModeGetWidth(current);
@@ -91,6 +100,8 @@ public:
               CGDisplayModeGetIODisplayModeID(current));
     };
     std::map<std::pair<int, int>, CGDisplayModeRef> unique;
+    const auto current_key = std::make_pair(current_size.width, current_size.height);
+    unique.emplace(current_key, current);
     for (CFIndex index = 0; index < CFArrayGetCount(modes_); ++index) {
       auto mode = static_cast<CGDisplayModeRef>(
           const_cast<void *>(CFArrayGetValueAtIndex(modes_, index)));
@@ -108,8 +119,12 @@ public:
     }
     for (auto it = unique.rbegin(); it != unique.rend(); ++it) {
       result.push_back(it->second);
-      if (result.size() == kMaxDisplayResolutionModes)
+      if (result.size() == kMaxDisplayResolutionModes) {
+        // Keep the active mode selectable even when the wire limit truncates the list.
+        if (it->first > current_key)
+          result.back() = current;
         break;
+      }
     }
     return result;
   }
