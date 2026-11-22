@@ -11843,6 +11843,30 @@
       "fr": "Échec de la connexion IP directe. Vérifiez l’adresse, le port et le réseau de l’ordinateur.",
       "es": "Error de conexión IP directa. Comprueba la dirección, el puerto y la red del equipo.",
       "pt-BR": "Falha na conexão IP direta. Verifique o endereço, a porta e a rede do computador."
+    },
+    "本端地址": {
+      "zh-Hans": "本端地址",
+      "en": "Local endpoint",
+      "ru": "Локальный адрес",
+      "zh-Hant": "本端位址",
+      "ja": "ローカルアドレス",
+      "ko": "로컬 주소",
+      "de": "Lokale Adresse",
+      "fr": "Adresse locale",
+      "es": "Dirección local",
+      "pt-BR": "Endereço local"
+    },
+    "对端地址": {
+      "zh-Hans": "对端地址",
+      "en": "Remote endpoint",
+      "ru": "Удалённый адрес",
+      "zh-Hant": "對端位址",
+      "ja": "リモートアドレス",
+      "ko": "원격 주소",
+      "de": "Remote-Adresse",
+      "fr": "Adresse distante",
+      "es": "Dirección remota",
+      "pt-BR": "Endereço remoto"
     }
   },
   "desktop": {
@@ -12356,7 +12380,9 @@
     "控制窗口最小化时暂停接收视频，降低本机解码资源占用。",
     "鼠标灵敏度",
     "滚轮灵敏度",
-    "特别赞助"
+    "特别赞助",
+    "本端地址",
+    "对端地址"
   ],
   "platforms": {
     "desktop": [
@@ -12911,7 +12937,9 @@
       "{0} / {1} 个文件",
       "文件粘贴暂不可用",
       "请检查 FUSE 安装和挂载权限。",
-      "可使用文件传输窗口发送文件。"
+      "可使用文件传输窗口发送文件。",
+      "本端地址",
+      "对端地址"
     ],
     "android": [
       " · 已完成",
@@ -13298,7 +13326,9 @@
       "设备 ID 或 IP 地址",
       "请输入设备 ID 或有效的 IP 地址",
       "IP 直连密码",
-      "IP 直连失败，请检查电脑的直连地址和网络。"
+      "IP 直连失败，请检查电脑的直连地址和网络。",
+      "本端地址",
+      "对端地址"
     ],
     "ios": [
       "%1$@ 传输失败",
@@ -13665,7 +13695,9 @@
       "设备 ID 或 IP 地址",
       "请输入设备 ID 或有效的 IP 地址",
       "IP 直连密码",
-      "IP 直连失败，请检查电脑的直连地址和网络。"
+      "IP 直连失败，请检查电脑的直连地址和网络。",
+      "本端地址",
+      "对端地址"
     ],
     "harmony": [
       "OpenFEC 告知",
@@ -13984,7 +14016,9 @@
       "设备 ID 或 IP 地址",
       "请输入设备 ID 或有效的 IP 地址",
       "IP 直连密码",
-      "IP 直连失败，请检查电脑的直连地址和网络。"
+      "IP 直连失败，请检查电脑的直连地址和网络。",
+      "本端地址",
+      "对端地址"
     ]
   }
 }

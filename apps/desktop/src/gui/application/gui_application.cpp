@@ -4197,12 +4197,15 @@ void GuiApplication::SyncStreamWindow(StreamView& view) {
     std::lock_guard lock(props->video_frame_mutex_);
     stream->set_stats_resolution(UiText(FormatResolution(props->video_width_, props->video_height_)));
   }
-  stream->set_stats_connection_mode(
-          UiText(props->traversal_mode_ == MiniRtcTraversalMode::MiniRtcTraversalP2P
-                     ? localization::connection_mode_direct
-                           [localization_language_index_]
-                     : localization::connection_mode_relay
-                           [localization_language_index_]));
+  const auto mode = props->traversal_mode_.load();
+  const bool direct = mode == MiniRtcTraversalP2P &&
+                      status == MiniRtcConnectionConnected;
+  stream->set_stats_connection_mode(UiText(mode == MiniRtcTraversalP2P
+      ? localization::connection_mode_direct[localization_language_index_]
+      : mode == MiniRtcTraversalRelay
+          ? localization::connection_mode_relay[localization_language_index_] : "—"));
+  stream->set_stats_local_endpoint(UiText(direct ? net.local_endpoint : ""));
+  stream->set_stats_remote_endpoint(UiText(direct ? net.remote_endpoint : ""));
 
   const auto fps_now = std::chrono::steady_clock::now();
   bool refresh_stats = false;
@@ -6536,6 +6539,10 @@ void GuiApplication::SyncGallery() {
       device.decoder = UiText(codecs.local_decoder.empty() ? "—" : codecs.local_decoder);
       const bool has_report = props->net_traffic_stats_.HasRecentReport(now);
       const auto stats = props->net_traffic_stats_.Load();
+      if (mode == MiniRtcTraversalP2P && has_report) {
+        device.local_endpoint = UiText(stats.local_endpoint);
+        device.remote_endpoint = UiText(stats.remote_endpoint);
+      }
       // Use negotiated transport state, never the local encryption preference.
       // Missing/stale reports cannot confirm either encrypted or plaintext.
       device.encryption_known = has_report;

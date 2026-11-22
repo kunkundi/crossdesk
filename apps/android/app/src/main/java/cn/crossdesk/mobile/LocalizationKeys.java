@@ -392,6 +392,8 @@ final class LocalizationKeys {
         IDS.put("请输入设备 ID 或有效的 IP 地址", R.string.text_1be1c81002d880d1);
         IDS.put("IP 直连密码", R.string.text_288a9a63177b76a1);
         IDS.put("IP 直连失败，请检查电脑的直连地址和网络。", R.string.text_53b856ab7ac9d8e2);
+        IDS.put("本端地址", R.string.text_3a940622a8012b31);
+        IDS.put("对端地址", R.string.text_2c5e32d2c5de5c2b);
     }
     private LocalizationKeys() {}
 }

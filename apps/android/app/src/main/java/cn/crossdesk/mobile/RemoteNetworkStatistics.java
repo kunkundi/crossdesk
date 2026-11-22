@@ -12,12 +12,14 @@ final class RemoteNetworkStatistics {
     }
     static final class Report {
         final Traffic[] traffic=new Traffic[4];final int mode;final boolean srtp;final double rtt;
-        final String decoder;
+        final String decoder,localEndpoint,remoteEndpoint;
         Report(JSONObject json){
             String[] keys={"video","audio","data","total"};
             for(int i=0;i<keys.length;i++){JSONObject item=json.optJSONObject(keys[i]);traffic[i]=item==null?null:new Traffic(item);}
             mode=json.optInt("mode",2);srtp=json.optBoolean("srtp");rtt=json.optDouble("rtt",Double.NaN);
             decoder=json.optString("decoder","");
+            localEndpoint=json.optString("localEndpoint","");
+            remoteEndpoint=json.optString("remoteEndpoint","");
         }
     }
     static final class Snapshot {

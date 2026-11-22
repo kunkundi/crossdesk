@@ -151,7 +151,7 @@ export class VideoSettings {
   feedback(): string { return !this.supported ? tr("连接建立后可调整，需被控端支持。") : this.failed ? tr("调整失败，请重试。") : this.pending ? tr("等待电脑端确认…") : ''; }
 }
 export interface Traffic { inbound: number; outbound: number; loss: number; }
-export interface NetworkReport { rtt: number; mode: number; srtp: boolean; decoder?: string; video: Traffic; audio: Traffic; data: Traffic; total: Traffic; }
+export interface NetworkReport { rtt: number; mode: number; srtp: boolean; localEndpoint?: string; remoteEndpoint?: string; decoder?: string; video: Traffic; audio: Traffic; data: Traffic; total: Traffic; }
 export interface FrameSample { time: number; count: number; latency: number; latencyCount: number; }
 export class NetworkStatistics {
   report?: NetworkReport;

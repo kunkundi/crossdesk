@@ -1,7 +1,8 @@
 import { SurfaceSeparator, FlatSurface, UiSurface } from "ui_surface.slint";
 import { UiRadius } from "ui_radius.slint";
 import { GalleryStrings } from "device_strings.slint";
-import { CompactButton, ScrollingText } from "common.slint";
+import { EndpointPopup } from "detail_popup.slint";
+import { CompactButton, ScrollingText, HoverTooltip } from "common.slint";
 import { ScrollView } from "std-widgets.slint";
 
 export struct GalleryNetworkDevice {
@@ -18,11 +19,15 @@ export struct GalleryNetworkDevice {
     fps: string,
     encoder: string,
     decoder: string,
+    local-endpoint: string,
+    remote-endpoint: string,
 }
 
 component NetworkRow inherits Rectangle {
     in property <GalleryNetworkDevice> device;
     in property <bool> heading: false;
+    out property <bool> mode-hovered: mode-hover.has-hover;
+    out property <length> mode-center-x: mode-badge.absolute-position.x - root.absolute-position.x + mode-badge.width / 2;
     // Keep the same column geometry in the header and every row. Grouping
     // related values leaves room for device names even in the 640px window.
     HorizontalLayout {
@@ -41,20 +46,27 @@ component NetworkRow inherits Rectangle {
                 y: 8px; height: 20px; width: parent.width;
                 enabled: !root.heading;
             }
-            if !root.heading: HorizontalLayout {
+            HorizontalLayout {
+                visible: !root.heading;
                 x: 0px; y: 30px; width: parent.width; height: 17px; spacing: 4px;
                 id-text := Text {
                     text: root.device.id; font-size: 10px; color: #7a8490;
+                    min-width: 0px;
+                    max-width: max(0px, parent.width - mode-badge.width - encryption-badge.width - 12px);
                     vertical-alignment: center; overflow: elide;
                 }
-                Rectangle {
-                    width: max(0px, min(mode-text.preferred-width + 12px,
-                        parent.width - id-text.preferred-width - encryption-badge.width - 12px));
+                mode-badge := Rectangle {
+                    width: min(mode-text.preferred-width + 12px,
+                        max(0px, parent.width - encryption-badge.width - 8px));
                     background: #edf2f7; border-radius: 3px;
                     mode-text := Text {
                         x: 6px; width: parent.width - 12px; height: parent.height;
                         text: root.device.mode; font-size: 10px; color: #586f87;
                         horizontal-alignment: center; vertical-alignment: center; overflow: elide;
+                    }
+                    mode-hover := TouchArea {
+                        enabled: !root.heading && root.device.local-endpoint != "" && root.device.remote-endpoint != "";
+                        mouse-cursor: default;
                     }
                 }
                 encryption-badge := Rectangle {
@@ -139,14 +151,10 @@ component NetworkRow inherits Rectangle {
             }
         }
     }
-    if !root.heading && name-hover.has-hover && device-name.preferred-width > identity.width: Rectangle {
-        x: 12px; y: 32px; width: min(name-tip.preferred-width + 20px, root.width - 24px);
-        height: 26px; background: #293746; border-radius: UiRadius.control; z: 10;
-        name-tip := Text {
-            x: 10px; width: parent.width - 20px; height: parent.height;
-            text: root.device.name; font-size: 11px; color: white;
-            vertical-alignment: center; overflow: elide;
-        }
+    if !root.heading && name-hover.has-hover && device-name.preferred-width > identity.width: HoverTooltip {
+        x: 12px; y: 32px; z: 10;
+        available-width: root.width - 24px;
+        text: root.device.name; wrap: no-wrap;
     }
     if !root.heading: HorizontalLayout {
         x: 12px; y: 52px; width: parent.width - 24px; height: 20px;
@@ -176,6 +184,7 @@ component NetworkRow inherits Rectangle {
             }
         }
     }
+
 }
 
 component NetworkEmptyState inherits Rectangle {
@@ -196,6 +205,8 @@ export component GalleryNetworkDialog inherits Rectangle {
     in property <[GalleryNetworkDevice]> devices;
     private property <length> row-height: 78px;
     private property <length> list-height: max(2, min(root.devices.length, 6)) * root.row-height;
+    private property <int> hovered-index: -1;
+    private property <length> hovered-badge-x;
     callback close();
     background: #00000042;
     TouchArea { clicked => { root.close(); } }
@@ -243,11 +254,32 @@ export component GalleryNetworkDialog inherits Rectangle {
             viewport-width: self.width - 14px;
             viewport-height: max(self.height, root.devices.length * root.row-height);
             horizontal-scrollbar-policy: always-off;
+            changed viewport-y => { root.hovered-index = -1; }
             for device[index] in root.devices: NetworkRow {
                 y: index * root.row-height; width: list.viewport-width; height: root.row-height;
+                changed mode-hovered => {
+                    if self.mode-hovered {
+                        root.hovered-index = index;
+                        root.hovered-badge-x = self.mode-center-x;
+                    } else if root.hovered-index == index {
+                        root.hovered-index = -1;
+                    }
+                }
                 device: device; background: mod(index, 2) == 0 ? white : #f8fafc;
                 SurfaceSeparator { y: parent.height - 1px; height: 1px; outline-color: UiSurface.separator; }
             }
+        }
+        if root.hovered-index >= 0 && root.hovered-index < root.devices.length
+            && root.devices[root.hovered-index].local-endpoint != ""
+            && root.devices[root.hovered-index].remote-endpoint != "": EndpointPopup {
+            available-width: parent.width - 16px;
+            x: clamp(list.x + root.hovered-badge-x - self.width / 2, 8px, parent.width - self.width - 8px);
+            private property <length> badge-y: list.y + list.viewport-y + root.hovered-index * root.row-height + 30px;
+            y: self.badge-y - self.height - 4px;
+            local-label: GalleryStrings.texts[213];
+            local-address: root.devices[root.hovered-index].local-endpoint;
+            remote-label: GalleryStrings.texts[214];
+            remote-address: root.devices[root.hovered-index].remote-endpoint;
         }
         if root.devices.length == 0: NetworkEmptyState {
             x: list.x; y: list.y; width: list.width; height: list.height;

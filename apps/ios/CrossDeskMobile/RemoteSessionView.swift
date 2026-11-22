@@ -1146,6 +1146,7 @@ private struct FloatingSessionMenu: View {
     let releaseMouse: () -> Void
     private enum Page { case controls, videoSettings, networkStats }
     @State private var page: Page = .controls
+    @State private var endpointsExpanded = false
     @State private var displayedNetworkSnapshot: RemoteNetworkSnapshot
     @State private var displayedFrameSize: CGSize
     let showKeyboard: () -> Void
@@ -1203,6 +1204,9 @@ private struct FloatingSessionMenu: View {
             // when the menu closes. Rendering only reads the sampled values.
             while !Task.isCancelled {
                 displayedNetworkSnapshot = session.networkSnapshot
+                if displayedNetworkSnapshot.report?.hasDirectEndpoints != true {
+                    endpointsExpanded = false
+                }
                 displayedFrameSize = session.frameSize
                 do {
                     try await Task.sleep(nanoseconds: 1_000_000_000)
@@ -1269,7 +1273,8 @@ private struct FloatingSessionMenu: View {
             FloatingVideoSettings(session: session)
         } else if page == .networkStats {
             FloatingNetworkStatistics(snapshot: displayedNetworkSnapshot,
-                                      frameSize: displayedFrameSize)
+                                      frameSize: displayedFrameSize,
+                                      endpointsExpanded: $endpointsExpanded)
         } else {
             VStack(spacing: 9) {
                 LazyVGrid(columns: columns, spacing: 7) {
@@ -1316,6 +1321,7 @@ private struct FloatingSessionMenu: View {
                                           symbol: "folder.badge.plus",
                                           action: chooseFile)
                     FloatingControlButton(title: NSLocalizedString("网络状态", comment: ""), symbol: "chart.bar.xaxis") {
+                        endpointsExpanded = false
                         page = .networkStats
                     }
                     if session.remotePlatform == .windows {
@@ -1430,6 +1436,7 @@ private struct ScrollingCodecName: View {
 private struct FloatingNetworkStatistics: View {
     let snapshot: RemoteNetworkSnapshot
     let frameSize: CGSize
+    @Binding var endpointsExpanded: Bool
 
     var body: some View {
         VStack(spacing: 10) {
@@ -1452,7 +1459,26 @@ private struct FloatingNetworkStatistics: View {
                 detail(NSLocalizedString("分辨率", comment: ""), value: resolution)
                 detail(NSLocalizedString("画面延时", comment: ""), value: RemoteNetworkSnapshot.latency(snapshot.videoLatencyMilliseconds))
                 detail(NSLocalizedString("连接延时（RTT）", comment: ""), value: RemoteNetworkSnapshot.latency(snapshot.rttMilliseconds))
-                detail(NSLocalizedString("连接方式", comment: ""), value: snapshot.connectionMode)
+                if let report = snapshot.report, report.hasDirectEndpoints {
+                    Button {
+                        endpointsExpanded.toggle()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(NSLocalizedString("连接方式", comment: "")).foregroundStyle(.secondary)
+                            Spacer(minLength: 8)
+                            Text(snapshot.connectionMode)
+                            Image(systemName: endpointsExpanded ? "chevron.down" : "chevron.right")
+                                .font(.caption2).accessibilityHidden(true)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    if endpointsExpanded {
+                        detail(NSLocalizedString("本端地址", comment: ""), value: report.localEndpoint)
+                        detail(NSLocalizedString("对端地址", comment: ""), value: report.remoteEndpoint)
+                    }
+                } else {
+                    detail(NSLocalizedString("连接方式", comment: ""), value: snapshot.connectionMode)
+                }
                 HStack {
                     Text(NSLocalizedString("媒体加密", comment: ""))
                         .foregroundStyle(.secondary)

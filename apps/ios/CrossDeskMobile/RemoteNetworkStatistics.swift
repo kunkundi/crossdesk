@@ -17,6 +17,12 @@ struct RemoteNetworkReport {
     var srtpActive = false
     var rttMilliseconds: Double = -1
     var localVideoDecoder = ""
+    var localEndpoint = ""
+    var remoteEndpoint = ""
+
+    var hasDirectEndpoints: Bool {
+        mode == .direct && !localEndpoint.isEmpty && !remoteEndpoint.isEmpty
+    }
 }
 
 struct RemoteNetworkSnapshot {

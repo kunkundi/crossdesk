@@ -386,4 +386,6 @@
     <string name="text_1be1c81002d880d1" formatted="false">"Insira um ID de dispositivo ou um endereço IP válido"</string>
     <string name="text_288a9a63177b76a1" formatted="false">"Senha de conexão IP direta"</string>
     <string name="text_53b856ab7ac9d8e2" formatted="false">"Falha na conexão IP direta. Verifique o endereço, a porta e a rede do computador."</string>
+    <string name="text_3a940622a8012b31" formatted="false">"Endereço local"</string>
+    <string name="text_2c5e32d2c5de5c2b" formatted="false">"Endereço remoto"</string>
 </resources>

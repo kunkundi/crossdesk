@@ -364,3 +364,5 @@
 "请输入设备 ID 或有效的 IP 地址" = "Saisissez un ID d’appareil ou une adresse IP valide";
 "IP 直连密码" = "Mot de passe de connexion IP directe";
 "IP 直连失败，请检查电脑的直连地址和网络。" = "Échec de la connexion IP directe. Vérifiez l’adresse, le port et le réseau de l’ordinateur.";
+"本端地址" = "Adresse locale";
+"对端地址" = "Adresse distante";

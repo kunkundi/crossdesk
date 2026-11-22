@@ -3,7 +3,8 @@ import { UiRadius } from "ui_radius.slint";
 import { ScrollView, Slider } from "std-widgets.slint";
 import { SettingsSelect } from "settings_controls.slint";
 import { RemoteCursor, AdjustedPointer } from "remote_cursor.slint";
-import { FontAwesomeIcons, IconButton, PrimaryButton, SecondaryButton, DialogSurface, ImGuiFontStyle, ControlStyle, ButtonStyle, ScrollingText } from "common.slint";
+import { EndpointPopup } from "detail_popup.slint";
+import { FontAwesomeIcons, IconButton, PrimaryButton, SecondaryButton, DialogSurface, ImGuiFontStyle, ControlStyle, ButtonStyle, ScrollingText, HoverTooltip } from "common.slint";
 
 export struct FileTransferEntry {
     name: string,
@@ -74,6 +75,8 @@ export global StreamStrings {
     in-out property <string> stats-video-latency: "Video latency";
     in-out property <string> stats-connection-latency: "Connection RTT";
     in-out property <string> stats-connection-mode: "Mode";
+    in-out property <string> stats-local-endpoint: "Local endpoint";
+    in-out property <string> stats-remote-endpoint: "Remote endpoint";
     in-out property <string> stats-encoder: "Remote encoder";
     in-out property <string> stats-decoder: "Local decoder";
     in-out property <string> stats-encryption: "Encryption";
@@ -463,6 +466,8 @@ export component StreamWindow inherits Window {
     in property <string> stats-video-latency: "—";
     in property <string> stats-connection-latency: "—";
     in property <string> stats-connection-mode: "";
+    in property <string> stats-local-endpoint;
+    in property <string> stats-remote-endpoint;
     in property <string> stats-encoder: "—";
     in property <string> stats-decoder: "—";
     in property <bool> stats-encryption-enabled: false;
@@ -1648,15 +1653,19 @@ export component StreamWindow inherits Window {
                         }
                     }
 
-                    for metric[index] in [
-                        { label: "FPS", value: root.stats-fps },
-                        { label: StreamStrings.stats-resolution, value: root.stats-resolution },
-                        { label: StreamStrings.stats-video-latency, value: root.stats-video-latency },
-                        { label: StreamStrings.stats-connection-latency, value: root.stats-connection-latency },
-                        { label: StreamStrings.stats-connection-mode, value: root.stats-connection-mode },
-                        { label: StreamStrings.stats-encryption, value: root.stats-encryption-enabled
-                            ? StreamStrings.stats-encryption-enabled : StreamStrings.stats-encryption-disabled },
+                    // Keep the hover target alive when the periodic report changes a value.
+                    private property <[string]> metric-values: [
+                        root.stats-fps, root.stats-resolution, root.stats-video-latency,
+                        root.stats-connection-latency, root.stats-connection-mode,
+                        root.stats-encryption-enabled ? StreamStrings.stats-encryption-enabled
+                            : StreamStrings.stats-encryption-disabled,
+                    ];
+                    for label[index] in [
+                        "FPS", StreamStrings.stats-resolution, StreamStrings.stats-video-latency,
+                        StreamStrings.stats-connection-latency, StreamStrings.stats-connection-mode,
+                        StreamStrings.stats-encryption,
                     ]: Rectangle {
+                        private property <string> reading: stats-table.metric-values[index];
                         private property <length> encryption-icon-width:
                             index == 5 && root.stats-encryption-enabled ? 14px : 0px;
                         x: mod(index, 2) == 1 ? stats-table.details-right-x : 8px;
@@ -1671,13 +1680,13 @@ export component StreamWindow inherits Window {
                             width: mod(index, 2) == 1 ? right-label-width-probe.preferred-width
                                 : left-label-width-probe.preferred-width;
                             height: parent.height;
-                            text: metric.label;
+                            text: label;
                             color: #667085;
                             font-size: ImGuiFontStyle.small;
                             vertical-alignment: center;
                         }
                         value-width-probe := Text {
-                            visible: false; text: metric.value;
+                            visible: false; text: reading;
                             font-size: index >= 4 ? ImGuiFontStyle.small : ImGuiFontStyle.body;
                             font-weight: 600;
                         }
@@ -1695,12 +1704,16 @@ export component StreamWindow inherits Window {
                             Text {
                                 x: parent.badge-padding; y: 0px; height: parent.height;
                                 width: max(0px, parent.width - parent.badge-padding * 2 - parent.icon-width);
-                                text: metric.value;
+                                text: reading;
                                 color: index == 4 ? #275188 : index == 5
                                     ? (root.stats-encryption-enabled ? #18794e : #946015) : #253247;
                                 font-size: index >= 4 ? ImGuiFontStyle.small : ImGuiFontStyle.body;
                                 font-weight: 600; horizontal-alignment: right;
                                 vertical-alignment: center; overflow: elide;
+                            }
+                            mode-hover := TouchArea {
+                                enabled: index == 4 && root.stats-local-endpoint != "" && root.stats-remote-endpoint != "";
+                                mouse-cursor: default;
                             }
                             if index == 5 && root.stats-encryption-enabled: Text {
                                 x: parent.width - parent.badge-padding - 10px; y: 2px;
@@ -1710,6 +1723,16 @@ export component StreamWindow inherits Window {
                                 font-size: 10px; color: #238653;
                                 horizontal-alignment: center; vertical-alignment: center;
                             }
+                        }
+                        if mode-hover.enabled && mode-hover.has-hover: EndpointPopup {
+                            available-width: stats-table.width;
+                            x: clamp(metric-value.x + (metric-value.width - self.width) / 2,
+                                -parent.x, stats-table.width - parent.x - self.width);
+                            y: metric-value.y - self.height - 4px;
+                            local-label: StreamStrings.stats-local-endpoint;
+                            local-address: root.stats-local-endpoint;
+                            remote-label: StreamStrings.stats-remote-endpoint;
+                            remote-address: root.stats-remote-endpoint;
                         }
                     }
                 }
@@ -1943,28 +1966,15 @@ export component StreamWindow inherits Window {
                 }
             }
 
-            // Measure unwrapped text so short hints stay compact. Render outside
-            // the clipped control bar, capping longer hints before wrapping.
-            control-tooltip-width-probe := Text {
-                visible: false;
+            if root.hovered-control.text != "" && root.control-tooltip-visible: HoverTooltip {
                 text: root.hovered-control.text;
-                font-size: ImGuiFontStyle.body;
-            }
-            if root.hovered-control.text != "" && root.control-tooltip-visible: Rectangle {
-                width: min(240px, video.width - 8px,
-                    control-tooltip-width-probe.preferred-width + 16px);
+                available-width: min(240px, video.width - 8px);
                 x: min(max(4px, control.x + root.hovered-control.anchor-x - self.width / 2),
                     video.width - self.width - 4px);
-                height: control-tip.preferred-height + 12px;
                 // Anchor to the button row so expanded stats stay beneath the tooltip.
                 y: control.y + root.control-toolbar-height + self.height + 8px <= video.height
                     ? control.y + root.control-toolbar-height + 4px : max(4px, control.y - self.height - 4px);
-                background: #30343bf5; border-radius: UiRadius.control; z: 12;
-                control-tip := Text {
-                    x: 8px; y: 6px; width: parent.width - 16px;
-                    text: root.hovered-control.text;
-                    color: white; font-size: ImGuiFontStyle.body; wrap: word-wrap;
-                }
+                z: 12;
             }
 
             if root.modal-visible: Rectangle {

@@ -319,6 +319,8 @@ inline int ApplyStreamWindowStrings(
   strings.set_stats_connection_latency(Text(localization::connection_latency[language]));
   strings.set_stats_connection_mode(
       Text(localization::connection_mode[language]));
+  strings.set_stats_local_endpoint(Text(localization::Literal("本端地址", language)));
+  strings.set_stats_remote_endpoint(Text(localization::Literal("对端地址", language)));
   strings.set_stats_encoder(Text(localization::remote_video_encoder[language]));
   strings.set_stats_decoder(Text(localization::local_video_decoder[language]));
   strings.set_stats_encryption(

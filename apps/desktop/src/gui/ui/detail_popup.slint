@@ -1,0 +1,52 @@
+import { FlatSurface, UiSurface } from "ui_surface.slint";
+import { UiRadius } from "ui_radius.slint";
+import { WorkbenchStyle } from "workbench_controls.slint";
+
+export component DetailPopup inherits FlatSurface {
+    background: WorkbenchStyle.surface;
+    outline-color: UiSurface.edge;
+    border-radius: UiRadius.menu;
+    @children
+}
+
+export component DetailPopupRow inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <length> label-width;
+    in property <TextWrap> wrap: no-wrap;
+    out property <length> label-text-width: caption.preferred-width;
+    out property <length> value-text-width: reading.preferred-width;
+    height: max(16px, reading.preferred-height);
+    caption := Text {
+        x: 0px; y: 0px; width: root.label-width; height: 16px;
+        text: root.label; color: WorkbenchStyle.muted; font-size: 10px;
+        vertical-alignment: center;
+    }
+    reading := Text {
+        x: root.label-width + 8px; width: parent.width - self.x; height: parent.height;
+        text: root.value; color: WorkbenchStyle.text; font-size: 11px; font-weight: 600;
+        horizontal-alignment: right; vertical-alignment: center; wrap: root.wrap;
+    }
+}
+
+export component EndpointPopup inherits DetailPopup {
+    in property <string> local-label;
+    in property <string> local-address;
+    in property <string> remote-label;
+    in property <string> remote-address;
+    in property <length> available-width;
+    private property <length> label-width: max(local-row.label-text-width, remote-row.label-text-width);
+    width: min(root.available-width, max(160px,
+        root.label-width + max(local-row.value-text-width, remote-row.value-text-width) + 32px));
+    height: remote-row.y + remote-row.height + 10px;
+    local-row := DetailPopupRow {
+        x: 12px; y: 10px; width: parent.width - 24px;
+        label: root.local-label; value: root.local-address;
+        label-width: root.label-width; wrap: char-wrap;
+    }
+    remote-row := DetailPopupRow {
+        x: local-row.x; y: local-row.y + local-row.height + 4px; width: local-row.width;
+        label: root.remote-label; value: root.remote-address;
+        label-width: root.label-width; wrap: char-wrap;
+    }
+}

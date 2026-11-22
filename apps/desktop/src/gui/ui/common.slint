@@ -32,6 +32,24 @@ export component ScrollingText inherits Rectangle {
     }
 }
 
+export component HoverTooltip inherits Rectangle {
+    in property <string> text;
+    in property <length> available-width;
+    in property <TextWrap> wrap: word-wrap;
+    width: min(root.available-width, measure.preferred-width + 16px);
+    height: contents.preferred-height + 12px;
+    background: #30343bf5;
+    border-radius: UiRadius.control;
+    measure := Text {
+        visible: false; text: root.text; font-size: ImGuiFontStyle.body;
+    }
+    contents := Text {
+        x: 8px; y: 6px; width: parent.width - 16px;
+        text: root.text; color: white; font-size: ImGuiFontStyle.body;
+        wrap: root.wrap; overflow: root.wrap == TextWrap.no-wrap ? elide : clip;
+    }
+}
+
 export global FloatingBarStyle {
     out property <length> corner-radius: UiRadius.menu;
 }

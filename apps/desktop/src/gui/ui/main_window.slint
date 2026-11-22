@@ -7,6 +7,7 @@ import { AboutPanel, AboutPage, AboutComponent, AboutStrings, AboutNavigationRow
 import { FeedbackPanel, FeedbackStrings } from "feedback_panel.slint";
 import { UiRadius } from "ui_radius.slint";
 import { WorkbenchStyle, WorkbenchButton, WorkbenchCard, WorkbenchNotice } from "workbench_controls.slint";
+import { DetailPopup, DetailPopupRow } from "detail_popup.slint";
 import { GalleryStrings } from "device_strings.slint";
 import { DeviceCardStyle } from "device_card_actions.slint";
 import { GalleryMenuButton } from "gallery_menu_button.slint";
@@ -2144,7 +2145,7 @@ export component MainWindow inherits Window {
     // Shared device details sit outside the clipped recent list and wall rail,
     // below the modal layer (z >= 39).
     if (root.gallery-mode ? gallery.hovered-device.id != "" : root.recent-tooltip-visible && recent-panel.preview-hovered)
-        && !root.connection-dialog-open && !root.lan-open: device-tip := FlatSurface {
+        && !root.connection-dialog-open && !root.lan-open: device-tip := DetailPopup {
         private property <string> device-name: root.gallery-mode ? gallery.hovered-device.name : root.recent-tooltip-name;
         private property <string> host-name: root.gallery-mode ? gallery.hovered-device.host-name : root.recent-tooltip-host;
         private property <string> device-id: root.gallery-mode ? gallery.hovered-device.id : root.recent-tooltip-id;
@@ -2153,7 +2154,7 @@ export component MainWindow inherits Window {
         private property <bool> presence-known: !root.gallery-mode || gallery.hovered-device.presence-known;
         private property <bool> has-host-name: self.host-name != "" && self.host-name != self.device-name;
         private property <color> status-color: self.online ? WorkbenchStyle.success : WorkbenchStyle.muted;
-        private property <length> label-width: max(tooltip-id-label.preferred-width, tooltip-group-label.preferred-width);
+        private property <length> label-width: max(tooltip-id.label-text-width, tooltip-group-label.preferred-width);
         private property <length> pointer-x: root.gallery-mode ? gallery.x + gallery.device-tooltip-x : root.recent-tooltip-pointer-x;
         private property <length> pointer-y: root.gallery-mode ? gallery.y + gallery.device-tooltip-y : root.recent-tooltip-pointer-y;
         // Follow the pointer with a gap; change sides only when space runs out.
@@ -2168,11 +2169,8 @@ export component MainWindow inherits Window {
             tooltip-name.preferred-width + 24px,
             self.has-host-name ? tooltip-host.preferred-width + 24px : 0px,
             tooltip-name-label.preferred-width + tooltip-status.width + 32px,
-            self.label-width + max(tooltip-id.preferred-width, tooltip-groups.preferred-width) + 32px));
+            self.label-width + max(tooltip-id.value-text-width, tooltip-groups.preferred-width) + 32px));
         height: tooltip-groups.y + tooltip-groups.height + 10px;
-        background: WorkbenchStyle.surface;
-        outline-color: UiSurface.edge;
-        border-radius: UiRadius.menu;
         z: 20;
 
         tooltip-name-label := Text {
@@ -2217,19 +2215,10 @@ export component MainWindow inherits Window {
             width: parent.width - 24px; height: 1px;
             outline-color: UiSurface.separator;
         }
-        tooltip-id-label := Text {
-            x: 12px; y: tooltip-divider.y + 7px;
-            width: device-tip.label-width; height: 16px;
-            text: UiStrings.remote-id;
-            color: WorkbenchStyle.muted; font-size: 10px;
-            vertical-alignment: center;
-        }
-        tooltip-id := Text {
-            x: 20px + device-tip.label-width; y: tooltip-id-label.y;
-            width: parent.width - self.x - 12px; height: 16px;
-            text: device-tip.device-id;
-            color: WorkbenchStyle.text; font-size: 11px; font-weight: 600;
-            horizontal-alignment: right; vertical-alignment: center;
+        tooltip-id := DetailPopupRow {
+            x: 12px; y: tooltip-divider.y + 7px; width: parent.width - 24px; height: 16px;
+            label: UiStrings.remote-id; value: device-tip.device-id;
+            label-width: device-tip.label-width;
         }
         tooltip-group-label := Text {
             x: 12px; y: tooltip-groups.y;
@@ -2239,7 +2228,7 @@ export component MainWindow inherits Window {
             vertical-alignment: center;
         }
         tooltip-groups := Text {
-            x: 20px + device-tip.label-width; y: tooltip-id-label.y + tooltip-id-label.height + 4px;
+            x: 20px + device-tip.label-width; y: tooltip-id.y + tooltip-id.height + 4px;
             width: parent.width - self.x - 12px; height: max(16px, self.preferred-height);
             text: device-tip.group-names == "" ? GalleryStrings.texts[31] : device-tip.group-names;
             color: device-tip.group-names == "" ? WorkbenchStyle.muted : WorkbenchStyle.accent;

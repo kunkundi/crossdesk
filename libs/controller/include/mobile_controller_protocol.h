@@ -47,6 +47,7 @@ inline nlohmann::json NetworkReport(const MiniRtcNetTrafficStats& stats, MiniRtc
     return nlohmann::json{{"inbound", in.bitrate}, {"outbound", out.bitrate}, {"loss", in.loss_rate}};
   };
   return {{"rtt", stats.rtt_ms}, {"mode", mode}, {"srtp", stats.srtp_active},
+    {"localEndpoint", stats.local_endpoint}, {"remoteEndpoint", stats.remote_endpoint},
     {"decoder", std::string(stats.video_decoder, strnlen(stats.video_decoder, sizeof(stats.video_decoder)))},
     {"video", traffic(stats.video_inbound_stats, stats.video_outbound_stats)},
     {"audio", traffic(stats.audio_inbound_stats, stats.audio_outbound_stats)},

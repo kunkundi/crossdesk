@@ -565,6 +565,8 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"文件粘贴暂不可用", {"文件粘贴暂不可用", "File paste unavailable", "Вставка файлов недоступна", "檔案貼上暫不可用", "ファイルを貼り付けられません", "파일 붙여넣기를 사용할 수 없습니다", "Dateien einfügen nicht verfügbar", "Collage de fichiers indisponible", "Pegado de archivos no disponible", "Colagem de arquivos indisponível"}},
   {"请检查 FUSE 安装和挂载权限。", {"请检查 FUSE 安装和挂载权限。", "Check the FUSE installation and mount permissions.", "Проверьте установку FUSE и права на монтирование.", "請檢查 FUSE 安裝和掛載權限。", "FUSE のインストールとマウント権限を確認してください。", "FUSE 설치 및 마운트 권한을 확인하세요.", "Prüfen Sie die FUSE-Installation und die Einhängerechte.", "Vérifiez FUSE et les autorisations de montage.", "Comprueba la instalación de FUSE y los permisos de montaje.", "Verifique a instalação do FUSE e as permissões de montagem."}},
   {"可使用文件传输窗口发送文件。", {"可使用文件传输窗口发送文件。", "You can send files using the file transfer window.", "Файлы можно отправить через окно передачи файлов.", "可使用檔案傳輸視窗傳送檔案。", "ファイル転送ウィンドウから送信できます。", "파일 전송 창에서 파일을 보낼 수 있습니다.", "Senden Sie Dateien über das Dateiübertragungsfenster.", "Vous pouvez envoyer les fichiers via la fenêtre de transfert.", "Puedes enviar archivos desde la ventana de transferencia.", "Você pode enviar arquivos pela janela de transferência."}},
+  {"本端地址", {"本端地址", "Local endpoint", "Локальный адрес", "本端位址", "ローカルアドレス", "로컬 주소", "Lokale Adresse", "Adresse locale", "Dirección local", "Endereço local"}},
+  {"对端地址", {"对端地址", "Remote endpoint", "Удалённый адрес", "對端位址", "リモートアドレス", "원격 주소", "Remote-Adresse", "Adresse distante", "Dirección remota", "Endereço remoto"}},
 };
 
 struct NamedTranslation { const char* name; const char* literal; };
@@ -1080,6 +1082,8 @@ inline constexpr const char* kSlintLiterals[] = {
   "鼠标灵敏度",
   "滚轮灵敏度",
   "特别赞助",
+  "本端地址",
+  "对端地址",
 };
 }  // namespace detail
 

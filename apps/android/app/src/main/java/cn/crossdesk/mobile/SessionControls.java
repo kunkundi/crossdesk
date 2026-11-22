@@ -56,7 +56,9 @@ final class SessionControls extends FrameLayout {
     private final java.util.List<SettingRow> settingRows=new java.util.ArrayList<>();
     private TextView[][] trafficCells;
     private LinearLayout[] trafficRows;
+    private static final int CONNECTION_MODE = 4, LOCAL_ENDPOINT = 5, REMOTE_ENDPOINT = 6, ENCRYPTION = 7;
     private TextView[] networkDetails;
+    private boolean endpointsExpanded;
     private View encryptionLock,encryptionOpen;
     private boolean muted,relative=true,orbPositioned,secureAttentionVisible;
     SessionControls(Context context,MobileUi ui,IntConsumer keyboardInsetChanged,Actions actions){
@@ -237,17 +239,27 @@ final class SessionControls extends FrameLayout {
         for(SettingRow row:settingRows)row.render();
     }
     private void networkPage(LinearLayout body){
+        endpointsExpanded = false;
         trafficCells=new TextView[4][3];trafficRows=new LinearLayout[4];String[] names={L10n.tr("视频"),L10n.tr("音频"),L10n.tr("数据"),L10n.tr("合计")};
         LinearLayout heading=trafficRow(body,"",new TextView[3],false);((TextView)heading.getChildAt(1)).setText(L10n.tr("接收"));((TextView)heading.getChildAt(2)).setText(L10n.tr("发送"));((TextView)heading.getChildAt(3)).setText(L10n.tr("丢包率"));
         for(int i=0;i<heading.getChildCount();i++)((TextView)heading.getChildAt(i)).setTextColor(SECONDARY);
         for(int i=0;i<4;i++)trafficRows[i]=trafficRow(body,names[i],trafficCells[i],i==3);
         ui.gap(body,10);ui.divider(body);ui.gap(body,10);
-        String[] titles={L10n.tr("帧率"),L10n.tr("分辨率"),L10n.tr("画面延时"),L10n.tr("连接延时（RTT）"),L10n.tr("连接方式"),L10n.tr("媒体加密"),L10n.tr("被控端编码器"),L10n.tr("控制端解码器")};networkDetails=new TextView[titles.length];
-        for(int i=0;i<titles.length;i++){LinearLayout row=ui.row();TextView title=ui.text(titles[i],12,false);title.setTextColor(SECONDARY);row.addView(title,i>=6?new LinearLayout.LayoutParams(-2,-2):new LinearLayout.LayoutParams(0,-2,1));
-            if(i==5){encryptionLock=ui.icon("lock",GREEN);encryptionOpen=ui.icon("unlock",SECONDARY);for(View icon:new View[]{encryptionLock,encryptionOpen}){LinearLayout.LayoutParams p=ui.size(14,14);p.rightMargin=ui.dp(4);row.addView(icon,p);}}
+        String[] titles={L10n.tr("帧率"),L10n.tr("分辨率"),L10n.tr("画面延时"),L10n.tr("连接延时（RTT）"),L10n.tr("连接方式"),L10n.tr("本端地址"),L10n.tr("对端地址"),L10n.tr("媒体加密"),L10n.tr("被控端编码器"),L10n.tr("控制端解码器")};networkDetails=new TextView[titles.length];
+        for(int i=0;i<titles.length;i++){LinearLayout row=ui.row();
+            boolean longValue=i>=LOCAL_ENDPOINT && i!=ENCRYPTION;
+            TextView title=ui.text(titles[i],12,false);title.setTextColor(SECONDARY);row.addView(title,longValue?new LinearLayout.LayoutParams(-2,-2):new LinearLayout.LayoutParams(0,-2,1));
+            if(i==ENCRYPTION){encryptionLock=ui.icon("lock",GREEN);encryptionOpen=ui.icon("unlock",SECONDARY);for(View icon:new View[]{encryptionLock,encryptionOpen}){LinearLayout.LayoutParams p=ui.size(14,14);p.rightMargin=ui.dp(4);row.addView(icon,p);}}
             TextView value=ui.text("—",12,false);value.setFontFeatureSettings("tnum");
-            if(i>=6){value.setGravity(Gravity.END);value.setSingleLine();value.setEllipsize(android.text.TextUtils.TruncateAt.MARQUEE);value.setMarqueeRepeatLimit(-1);value.setSelected(true);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-2,1);p.leftMargin=ui.dp(8);row.addView(value,p);}else row.addView(value);
-            networkDetails[i]=value;body.addView(row);if(i<titles.length-1)ui.gap(body,7);}
+            if(longValue){value.setGravity(Gravity.END);value.setSingleLine();value.setEllipsize(android.text.TextUtils.TruncateAt.MARQUEE);value.setMarqueeRepeatLimit(-1);value.setSelected(true);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-2,1);p.leftMargin=ui.dp(8);row.addView(value,p);}else row.addView(value);
+            if(i==CONNECTION_MODE) {
+                row.setOnClickListener(v -> { endpointsExpanded=!endpointsExpanded; renderNetwork(); });
+            }
+            networkDetails[i]=value;
+            LinearLayout.LayoutParams layout=new LinearLayout.LayoutParams(-1,-2);
+            if(i>0)layout.topMargin=ui.dp(7);
+            body.addView(row,layout);
+        }
         renderNetwork();
     }
     private LinearLayout trafficRow(LinearLayout body,String title,TextView[] cells,boolean total){
@@ -265,9 +277,24 @@ final class SessionControls extends FrameLayout {
             String in=RemoteNetworkStatistics.bitrate(traffic==null?-1:traffic.inbound),out=RemoteNetworkStatistics.bitrate(traffic==null?-1:traffic.outbound),loss=RemoteNetworkStatistics.loss(traffic==null?Double.NaN:traffic.loss);
             trafficCells[i][0].setText(in);trafficCells[i][1].setText(out);trafficCells[i][2].setText(loss);trafficRows[i].setContentDescription(L10n.format("{0}，接收 {1}，发送 {2}，丢包率 {3}",names[i],in,out,loss));
         }
-        String[] values={network.fps+" FPS",network.resolution(),RemoteNetworkStatistics.latency(network.latency),RemoteNetworkStatistics.latency(network.rtt),network.mode(),network.report==null?"—":network.report.srtp?L10n.tr("SRTP 已启用"):L10n.tr("未启用"),network.remoteEncoder.isEmpty()?"—":network.remoteEncoder,network.localDecoder.isEmpty()?"—":network.localDecoder};
+        boolean direct=network.report!=null && network.report.mode==0
+                && !network.report.localEndpoint.isEmpty() && !network.report.remoteEndpoint.isEmpty();
+        if(!direct) endpointsExpanded=false;
+        View modeRow=(View)networkDetails[CONNECTION_MODE].getParent();
+        modeRow.setClickable(direct);
+        modeRow.setFocusable(direct);
+        String mode=network.mode();
+        if(direct) mode+=endpointsExpanded?"  ▾":"  ▸";
+        String[] values={network.fps+" FPS",network.resolution(),RemoteNetworkStatistics.latency(network.latency),
+                RemoteNetworkStatistics.latency(network.rtt),mode,direct?network.report.localEndpoint:"",
+                direct?network.report.remoteEndpoint:"",network.report==null?"—":network.report.srtp?L10n.tr("SRTP 已启用"):L10n.tr("未启用"),
+                network.remoteEncoder.isEmpty()?"—":network.remoteEncoder,network.localDecoder.isEmpty()?"—":network.localDecoder};
+        for(int i=LOCAL_ENDPOINT;i<=REMOTE_ENDPOINT;i++)
+            ((View)networkDetails[i].getParent()).setVisibility(endpointsExpanded?VISIBLE:GONE);
         // Reassigning identical text every statistics tick restarts the marquee.
-        for(int i=0;i<values.length;i++)if(!android.text.TextUtils.equals(networkDetails[i].getText(),values[i]))networkDetails[i].setText(values[i]);networkDetails[5].setTextColor(network.report!=null&&network.report.srtp?GREEN:SECONDARY);
+        for(int i=0;i<values.length;i++)if(!android.text.TextUtils.equals(networkDetails[i].getText(),values[i]))networkDetails[i].setText(values[i]);
+        networkDetails[CONNECTION_MODE].setTextColor(direct?BLUE:INK);
+        networkDetails[ENCRYPTION].setTextColor(network.report!=null&&network.report.srtp?GREEN:SECONDARY);
         encryptionLock.setVisibility(network.report!=null&&network.report.srtp?VISIBLE:GONE);encryptionOpen.setVisibility(network.report!=null&&!network.report.srtp?VISIBLE:GONE);
     }
     private int controlColumns(){return getMeasuredHeight()<ui.dp(400)&&getMeasuredWidth()>=ui.dp(400)?4:3;}

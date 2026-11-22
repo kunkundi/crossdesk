@@ -364,3 +364,5 @@
 "请输入设备 ID 或有效的 IP 地址" = "Enter a device ID or a valid IP address";
 "IP 直连密码" = "Direct IP password";
 "IP 直连失败，请检查电脑的直连地址和网络。" = "Direct IP connection failed. Check the computer’s direct IP address, port, and network.";
+"本端地址" = "Local endpoint";
+"对端地址" = "Remote endpoint";

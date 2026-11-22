@@ -2228,13 +2228,16 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
       initWithBytes:stats->video_decoder
              length:strnlen(stats->video_decoder, sizeof(stats->video_decoder))
            encoding:NSUTF8StringEncoding];
+  NSString *localEndpoint = [NSString stringWithUTF8String:stats->local_endpoint];
+  NSString *remoteEndpoint = [NSString stringWithUTF8String:stats->remote_endpoint];
   DispatchMain(^{
     // Disconnect/reconnect can happen while this report waits on the UI queue.
     if (![self isControllerGenerationActive:generation]) return;
     id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
     if ([delegate respondsToSelector:
-            @selector(rtcBridge:didUpdateNetworkStats:localDecoder:)]) {
-      [delegate rtcBridge:self didUpdateNetworkStats:snapshot localDecoder:decoder ?: @""];
+            @selector(rtcBridge:didUpdateNetworkStats:localDecoder:localEndpoint:remoteEndpoint:)]) {
+      [delegate rtcBridge:self didUpdateNetworkStats:snapshot localDecoder:decoder ?: @""
+            localEndpoint:localEndpoint remoteEndpoint:remoteEndpoint];
     }
   });
 }

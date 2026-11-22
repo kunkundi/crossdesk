@@ -26,6 +26,7 @@ export struct MobileRemoteView {
   @State private orbY: number = 100;
   @State private menu: string = '';
   @State private menuHeight: number = 390;
+  @State private endpointsExpanded: boolean = false;
   @State private keyboardHeight: number = 220;
   private orbPositioned: boolean = false;
   @State private keyboard: boolean = false;
@@ -354,7 +355,23 @@ export struct MobileRemoteView {
             this.NetworkDetail(tr("分辨率"), this.state.hasFrame ? `${this.state.width} × ${this.state.height}` : '—')
             this.NetworkDetail(tr("画面延时"), NetworkStatistics.delay(this.controller?.network.latency(this.state.networkTime) ?? -1))
             this.NetworkDetail(tr("连接延时（RTT）"), NetworkStatistics.delay(this.state.networkTime - (this.controller?.network.rttTime ?? 0) < 3000 ? this.controller?.network.rtt ?? -1 : -1))
-            this.NetworkDetail(tr("连接方式"), this.controller?.network.mode(this.state.networkTime) ?? '—')
+            if (this.controller?.network.current(this.state.networkTime)?.mode === 0
+              && this.controller?.network.report?.localEndpoint && this.controller?.network.report?.remoteEndpoint) {
+              Row({ space: 4 }) {
+                Text(tr("连接方式")).fontSize(12).fontColor(MobileTheme.secondary).layoutWeight(1)
+                Text(tr("P2P 直连")).fontSize(12).fontColor(MobileTheme.blue)
+                MobileIcon({ name: 'chevron', iconExtent: 13, color: MobileTheme.blue })
+                  .rotate({ angle: this.endpointsExpanded ? 90 : 0 })
+              }.width('100%').constraintSize({ minHeight: 28 })
+                .onClick(() => { this.endpointsExpanded = !this.endpointsExpanded; })
+                .onDisAppear(() => { this.endpointsExpanded = false; })
+              if (this.endpointsExpanded) {
+                this.NetworkCodec(tr("本端地址"), this.controller?.network.report?.localEndpoint || '—')
+                this.NetworkCodec(tr("对端地址"), this.controller?.network.report?.remoteEndpoint || '—')
+              }
+            } else {
+              this.NetworkDetail(tr("连接方式"), this.controller?.network.mode(this.state.networkTime) ?? '—')
+            }
             this.NetworkDetail(tr("媒体加密"), this.controller?.network.current(this.state.networkTime) === undefined ? '—' : this.controller?.network.report?.srtp ? tr("SRTP 已启用") : tr("未启用"), this.controller?.network.current(this.state.networkTime)?.srtp === true)
             this.NetworkCodec(tr("被控端编码器"), this.controller?.network.remoteEncoder || '—')
             this.NetworkCodec(tr("控制端解码器"), this.controller?.network.report?.decoder || '—')

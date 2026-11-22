@@ -141,7 +141,9 @@ typedef struct {
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didUpdateNetworkStats:(CrossDeskNetworkStats)stats
              localDecoder:(NSString *)decoder
-    NS_SWIFT_NAME(rtcBridge(_:didUpdateNetworkStats:localDecoder:));
+            localEndpoint:(NSString *)localEndpoint
+           remoteEndpoint:(NSString *)remoteEndpoint
+    NS_SWIFT_NAME(rtcBridge(_:didUpdateNetworkStats:localDecoder:localEndpoint:remoteEndpoint:));
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didUpdateRemoteVideoEncoder:(NSString *)encoder;
 @end
