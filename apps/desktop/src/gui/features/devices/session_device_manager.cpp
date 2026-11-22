@@ -19,6 +19,9 @@
 #include "rd_log.h"
 #include "runtime/gui_runtime.h"
 #include "speaker_capturer_factory.h"
+#if defined(__linux__) && !defined(__OHOS__)
+#include "platform/linux/screen_capturer/screen_capturer_linux.h"
+#endif
 #ifdef _WIN32
 #include <nlohmann/json.hpp>
 #include "platform/windows/screen_capturer/screen_capturer_win.h"
@@ -322,21 +325,6 @@ bool SessionDeviceManager::ShouldCaptureCursor() const {
   });
 }
 
-bool SessionDeviceManager::HasConnectedController() const {
-  std::shared_lock lock(owner_.connection_status_mutex_);
-  return std::any_of(owner_.connection_status_.begin(),
-                     owner_.connection_status_.end(), [](const auto& entry) {
-    return entry.second == MiniRtcConnectionStatus::MiniRtcConnectionConnected;
-  });
-}
-
-void SessionDeviceManager::UpdateScreenSharingPower() {
-  // Wayland keeps capture warm after the last disconnect. Only live viewers
-  // justify keeping the host awake; an outgoing viewing session does not.
-  screen_sharing_power_.SetSharing(owner_.screen_capturer_is_started_ &&
-                                   HasConnectedController());
-}
-
 int SessionDeviceManager::StartScreenCapturer() {
 #ifdef __APPLE__
   if (!owner_.EnsureMacScreenRecordingPermission()) {
@@ -356,7 +344,7 @@ int SessionDeviceManager::StartScreenCapturer() {
   cursor_capture_dirty_.store(false, std::memory_order_relaxed);
   const bool show_cursor = ShouldCaptureCursor();
   LOG_INFO("Start screen capturer, show cursor: {}", show_cursor);
-  screen_sharing_power_.SetSharing(HasConnectedController());
+  screen_sharing_power_.SetSharing(true);
   // Start may reuse the initialized backend after a disconnected interval.
   // Begin a new measurement window before it can deliver its first callback.
   ResetCaptureMetrics();
@@ -371,7 +359,12 @@ int SessionDeviceManager::StartScreenCapturer() {
 int SessionDeviceManager::StopScreenCapturer() {
   if (screen_capturer_) {
     LOG_INFO("Stop screen capturer");
-    screen_capturer_->Stop();
+    const int ret = screen_capturer_->Stop();
+    if (ret != 0) {
+      LOG_WARN("Screen capturer stop failed: {}", ret);
+      return ret;
+    }
+    LOG_INFO("Screen capturer stopped");
   }
   // Discard the final partial window and callback timestamp after stopping the
   // backend; a late completion cannot contribute to the next generation.
@@ -720,8 +713,6 @@ void SessionDeviceManager::UpdateInteractions() {
   // Restore the previous session's modes and apply the new controller's saved
   // selections before starting capture or allowing an early input return.
   owner_.HandleDisplayResolutionChanges();
-  // Release even when pending remote-input cleanup makes this tick return early.
-  UpdateScreenSharingPower();
 #ifdef _WIN32
   if (owner_.screen_capturer_is_started_ &&
       cursor_capture_dirty_.load(std::memory_order_relaxed)) {
@@ -731,21 +722,19 @@ void SessionDeviceManager::UpdateInteractions() {
     }
   }
 #endif
-#if (defined(__linux__) && !defined(__OHOS__)) && !defined(__APPLE__)
-  const bool is_wayland_session = IsWaylandSession();
-  const bool stop_wayland_mouse_before_screen =
-      is_wayland_session && !owner_.start_screen_capturer_ &&
-      owner_.screen_capturer_is_started_ && !owner_.start_mouse_controller_ &&
-      owner_.mouse_controller_is_started_;
-  if (stop_wayland_mouse_before_screen) {
-    if (StopMouseController() != 0) return;
-    LOG_INFO("Stopped Wayland mouse controller before screen capturer to "
-             "cleanly release the shared portal session");
-    owner_.mouse_controller_is_started_ = false;
+  // Decide on the device thread from the current controllers. Never hold
+  // the connection lock across Stop(): the last frame callback also takes it.
+  auto controllers = owner_.ConnectedControllers();
+  if (owner_.managed_host_frontend_) {
+    // The Windows service owns capture for mirrored (non-LAN) controllers.
+    std::erase_if(controllers, [](const auto& id) { return id.rfind("lan/", 0) != 0; });
   }
+  bool capture_needed = !controllers.empty();
+#if defined(__linux__) && !defined(__OHOS__)
+  // Preserve a running Wayland portal across reconnects.
+  capture_needed = capture_needed || (owner_.screen_capturer_is_started_ && IsWaylandSession());
 #endif
-
-  if (owner_.start_screen_capturer_ && !owner_.screen_capturer_is_started_) {
+  if (capture_needed && !owner_.screen_capturer_is_started_) {
     const auto now = std::chrono::steady_clock::now();
     if (now >= next_capture_start_retry_ &&
         owner_.DisplayResolutionsReadyForCapture()) {
@@ -755,14 +744,18 @@ void SessionDeviceManager::UpdateInteractions() {
         next_capture_start_retry_ = {};
       }
     }
-  } else if (!owner_.start_screen_capturer_ &&
-             owner_.screen_capturer_is_started_) {
+  } else if (!capture_needed && owner_.screen_capturer_is_started_) {
     StopScreenCapturer();
-    owner_.screen_capturer_is_started_ = false;
   }
-  if (!owner_.start_screen_capturer_) next_capture_start_retry_ = {};
+  if (!capture_needed) next_capture_start_retry_ = {};
+  screen_sharing_power_.SetSharing(!controllers.empty() && owner_.screen_capturer_is_started_);
 
-  UpdateScreenSharingPower();
+#if defined(__linux__) && !defined(__OHOS__)
+  if (owner_.screen_capturer_is_started_) {
+    auto* linux_capture = static_cast<ScreenCapturerLinux*>(screen_capturer_);
+    linux_capture->SetX11VideoWanted(owner_.preview_subscriptions_.WantsVideo(controllers));
+  }
+#endif
 
   if (owner_.start_mouse_controller_ && !owner_.mouse_controller_is_started_) {
     if (StartMouseController() == 0) {

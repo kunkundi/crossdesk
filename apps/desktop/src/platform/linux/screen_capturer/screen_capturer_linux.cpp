@@ -275,6 +275,17 @@ int ScreenCapturerLinux::Resume(int monitor_index) {
   return impl_->Resume(monitor_index);
 }
 
+void ScreenCapturerLinux::SetX11VideoWanted(bool wanted) {
+  if (backend_ != BackendType::kX11) return;
+  // Automatic privacy on connection needs a first real frame before the
+  // guard can engage. An idle subscription must not report a capture fault.
+  if (!wanted) {
+    std::lock_guard lock(privacy_mutex_);
+    wanted = !capture_announced_ && privacy_ && privacy_->Requested();
+  }
+  static_cast<ScreenCapturerX11*>(impl_.get())->SetVideoWanted(wanted);
+}
+
 int ScreenCapturerLinux::SwitchTo(int monitor_index) {
   if (!impl_) {
     return -1;

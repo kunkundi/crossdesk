@@ -110,8 +110,6 @@ private:
   bool ShouldSendCapturedFrame(std::chrono::steady_clock::time_point now,
                                int fps);
   bool ShouldCaptureCursor() const;
-  bool HasConnectedController() const;
-  void UpdateScreenSharingPower();
   bool SyncDisplayInfo();
   void SetDisplayInfoList(std::vector<DisplayInfo> displays);
   void ResetCaptureMetrics();
