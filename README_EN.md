@@ -28,7 +28,7 @@
     <tr>
       <td align="center">
         <a href="https://crossdesk.hualong-ai.com/">
-          <img src="apps/desktop/src/gui/ui/icons/sponsors/hualongai.png" width="64" height="64" alt="" /><br />
+          <img src="apps/desktop/src/gui/ui/icons/sponsors/hualongai.png" width="128" height="128" alt="" /><br />
           <strong>HuaLongAI 华龙算力</strong>
         </a>
       </td>
@@ -356,7 +356,12 @@ Open **Feedback & suggestions** from the desktop main menu to export diagnostic 
 
 <table border="1">
   <tr>
-    <td>
+    <td align="center" valign="middle" width="128">
+      <a href="https://crossdesk.hualong-ai.com/">
+        <img src="apps/desktop/src/gui/ui/icons/sponsors/hualongai.png" width="96" height="96" alt="HuaLongAI 华龙算力" />
+      </a>
+    </td>
+    <td valign="middle">
       <p><strong><a href="https://crossdesk.hualong-ai.com/">HuaLongAI 华龙算力</a></strong></p>
       <p>A stable, efficient API relay for Codex, zero-injection Kiro, and Claude models. HuaLongAI sources 100% of its models directly from official providers, with no substitutions. It offers high availability and reports an average SLA above 99.2%. Token-level billing lets you verify each charge. Enterprise contracts and invoices are available.</p>
     </td>

@@ -28,7 +28,7 @@
     <tr>
       <td align="center">
         <a href="https://crossdesk.hualong-ai.com/">
-          <img src="apps/desktop/src/gui/ui/icons/sponsors/hualongai.png" width="64" height="64" alt="" /><br />
+          <img src="apps/desktop/src/gui/ui/icons/sponsors/hualongai.png" width="128" height="128" alt="" /><br />
           <strong>HuaLongAI 华龙算力</strong>
         </a>
       </td>
@@ -355,7 +355,12 @@ PC 端可控制和被控制，复用桌面界面与桌面墙；手机和平板�
 
 <table border="1">
   <tr>
-    <td>
+    <td align="center" valign="middle" width="128">
+      <a href="https://crossdesk.hualong-ai.com/">
+        <img src="apps/desktop/src/gui/ui/icons/sponsors/hualongai.png" width="96" height="96" alt="HuaLongAI 华龙算力" />
+      </a>
+    </td>
+    <td valign="middle">
       <p><strong><a href="https://crossdesk.hualong-ai.com/">HuaLongAI 华龙算力</a></strong></p>
       <p>稳定、高效的 API 中转服务商，主营 Codex、0 注入 Kiro 与 Claude 系列模型。100% 官方源直供、不掺假、高可用，平均 SLA 高于 99.2%。计费透明，Token 级账单可逐笔核验，支持企业合同与发票。</p>
     </td>
