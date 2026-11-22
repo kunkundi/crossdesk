@@ -11,7 +11,6 @@
 
 #include <display_stream_id.h>
 #include "localization.h"
-#include "platform.h"
 #include "platform/video_renderer.h"
 #include "rd_log.h"
 #include "rendering/video_frame_diagnostics.h"
@@ -193,7 +192,6 @@ void GuiRuntime::HandleServerControllerDisconnected(
     const std::string& remote_id, const char* reason) {
   if (auto events = ControllerEvents(remote_id))
     transfers_.Cancel(events.get(), remote_id);
-  preview_subscriptions_.Remove(remote_id);
   {
     std::lock_guard lock(display_resolution_commands_mutex_);
     initial_display_resolutions_.erase(remote_id);
@@ -204,6 +202,7 @@ void GuiRuntime::HandleServerControllerDisconnected(
   {
     std::unique_lock lock(connection_status_mutex_);
     connection_status_.erase(remote_id);
+    preview_subscriptions_.Remove(remote_id);
     disconnect_lock_.Disconnected(remote_id,
         config_center_->IsLockOnDisconnect() &&
         !(managed_host_frontend_ && remote_id.rfind("lan/", 0) != 0));
@@ -225,7 +224,11 @@ void GuiRuntime::HandleServerControllerDisconnected(
     windows_rdp_handoff_connected_->store(has_connected_controller,
                                           std::memory_order_relaxed);
 #endif
-    if (!has_connected_controller) ++display_resolution_epoch_;
+    if (!has_connected_controller) {
+      ++display_resolution_epoch_;
+      // Serialize recovery with privacy admission on a concurrent reconnect.
+      privacy_.Disconnected();
+    }
   }
   clipboard_.ForgetWeb(remote_id);
   if (has_connected_controller) {
@@ -235,25 +238,9 @@ void GuiRuntime::HandleServerControllerDisconnected(
 
   LOG_INFO("Last remote controller disconnected; recovering privacy, reason={}",
            reason ? reason : "unknown");
-  privacy_.Disconnected();
-
   need_to_create_server_window_.store(false, std::memory_order_release);
   need_to_destroy_server_window_.store(true, std::memory_order_release);
   is_server_mode_ = false;
-#if (defined(__linux__) && !defined(__OHOS__)) && !defined(__APPLE__)
-  if (IsWaylandSession()) {
-    // Keep Wayland capture session warm to avoid black screen on subsequent
-    // reconnects.
-    start_screen_capturer_ = true;
-    LOG_INFO(
-        "Keeping Wayland screen capturer running after disconnect to "
-        "preserve reconnect stability");
-  } else {
-    start_screen_capturer_ = false;
-  }
-#else
-  start_screen_capturer_ = false;
-#endif
   devices_.StopSpeakerCapturer();
   start_mouse_controller_ = false;
   {

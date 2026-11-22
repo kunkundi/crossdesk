@@ -33,6 +33,8 @@ class ScreenCapturerLinux : public ScreenCapturer {
   int Pause(int monitor_index) override;
   int Resume(int monitor_index) override;
 
+  // A viewer subscription idles X11 readback while the session stays live.
+  void SetX11VideoWanted(bool wanted);
   int SwitchTo(int monitor_index) override;
   int ResetToInitialMonitor() override;
 

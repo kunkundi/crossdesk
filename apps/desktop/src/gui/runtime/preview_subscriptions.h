@@ -13,6 +13,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace crossdesk {
 // Accessed by the network callback and screen-capture callback. Legacy
@@ -36,6 +37,14 @@ public:
     if (state.request.fps != request.fps) state.next.clear();
     state.request = request;
     return true;
+  }
+  bool WantsVideo(const std::vector<std::string>& connected) {
+    std::lock_guard lock(mutex_);
+    for (const auto& id : connected) {
+      const auto it = states_.find(id);
+      if (it == states_.end() || it->second.request.fps > 0) return true;
+    }
+    return false;
   }
   bool ShouldSend(const std::string &id, Clock::time_point now = Clock::now(),
                   const std::string &stream = {}) {

@@ -5,7 +5,12 @@
 #include <X11/extensions/Xfixes.h>
 #include <X11/extensions/Xrandr.h>
 
+#include <poll.h>
+#include <sys/eventfd.h>
+#include <unistd.h>
+
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <mutex>
 #include <thread>
@@ -16,14 +21,29 @@
 #include "x11_error_trap.h"
 
 namespace crossdesk {
+namespace {
+void MarkOutputUnavailable(DisplayInfo& output) {
+  output.width = output.height = 0;
+  output.right = output.left;
+  output.bottom = output.top;
+}
+}  // namespace
 
-ScreenCapturerX11::ScreenCapturerX11() {}
+ScreenCapturerX11::ScreenCapturerX11()
+    : wake_fd_(eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK)) {}
 
-ScreenCapturerX11::~ScreenCapturerX11() { Destroy(); }
+ScreenCapturerX11::~ScreenCapturerX11() {
+  Destroy();
+  if (wake_fd_ >= 0) close(wake_fd_);
+}
 
 int ScreenCapturerX11::Init(const int fps, cb_desktop_data cb) {
   Destroy();
   if (!cb) return -1;
+  if (wake_fd_ < 0) {
+    LOG_ERROR("Cannot create X11 capture wake event");
+    return -1;
+  }
 
   display_ = XOpenDisplay(nullptr);
   if (!display_) {
@@ -103,43 +123,87 @@ int ScreenCapturerX11::Start(bool show_cursor) {
   next_capture_error_log_ = {};
   displays_need_refresh_ = true;
   next_display_refresh_ = {};
-  thread_ = std::thread([this]() {
-    using clock = std::chrono::steady_clock;
-    const auto frame_interval =
-        std::chrono::milliseconds(std::max(1, 1000 / std::max(1, fps_)));
+  video_wanted_ = true;
+  thread_ = std::thread([this] { CaptureLoop(); });
+  return 0;
+}
 
-    while (running_) {
-      const auto frame_start = clock::now();
-      HandleDisplayEvents();
-      if (!paused_) {
-        OnFrame();
-      }
+void ScreenCapturerX11::Wake() {
+  // A pending event also covers later changes. Retain it until the worker
+  // observes it, including when the change arrives just before poll().
+  while (eventfd_write(wake_fd_, 1) < 0 && errno == EINTR) {}
+}
 
-      const auto elapsed =
-          std::chrono::duration_cast<std::chrono::milliseconds>(clock::now() -
-                                                                frame_start);
-      if (elapsed < frame_interval) {
-        std::this_thread::sleep_for(frame_interval - elapsed);
+void ScreenCapturerX11::CaptureLoop() {
+  using Clock = std::chrono::steady_clock;
+  using namespace std::chrono;
+  const auto frame_interval = milliseconds(std::max(1, 1000 / std::max(1, fps_)));
+  auto next_frame = Clock::now();
+  pollfd fds[] = {{wake_fd_, POLLIN, 0}, {ConnectionNumber(display_), POLLIN, 0}};
+
+  while (running_) {
+    if (HandleDisplayEvents()) next_frame = Clock::now();
+    const auto now = Clock::now();
+    const bool capture = !paused_ && video_wanted_;
+    if (capture && now >= next_frame) {
+      OnFrame();
+      if (capture_error_count_ > 0) {
+        const int shift = std::min(capture_error_count_ - 1, 4);
+        next_frame = Clock::now() + milliseconds(std::min(1000, 100 << shift));
+      } else {
+        next_frame = now + frame_interval;
       }
     }
-  });
-  return 0;
+
+    auto deadline = capture ? next_frame : Clock::time_point::max();
+    if (displays_need_refresh_ || capture_error_count_ > 0)
+      deadline = std::min(deadline, next_display_refresh_);
+    // A synchronous X request may already have pulled a RandR event into
+    // Xlib's queue, in which case the connection fd need not be readable.
+    if (XEventsQueued(display_, QueuedAlready)) continue;
+    int timeout = -1;
+    if (deadline != Clock::time_point::max())
+      timeout = static_cast<int>(std::max(milliseconds::zero(),
+          ceil<milliseconds>(deadline - Clock::now())).count());
+    if (poll(fds, 2, timeout) < 0) {
+      if (errno == EINTR) continue;
+      LOG_ERROR("X11 capture poll failed: errno={}", errno);
+      break;
+    }
+    if (fds[0].revents & POLLIN) {
+      eventfd_t value;
+      while (eventfd_read(wake_fd_, &value) < 0 && errno == EINTR) {}
+      next_frame = Clock::now();
+    }
+    if (fds[1].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+      LOG_ERROR("X11 capture connection closed");
+      break;
+    }
+  }
+}
+
+void ScreenCapturerX11::SetVideoWanted(bool wanted) {
+  if (video_wanted_.exchange(wanted) != wanted) {
+    LOG_INFO("X11 capture video demand: {}", wanted);
+    Wake();
+  }
 }
 
 int ScreenCapturerX11::Stop() {
   if (!running_) return 0;
   running_ = false;
+  Wake();
   if (thread_.joinable()) thread_.join();
   return 0;
 }
 
 int ScreenCapturerX11::Pause(int monitor_index) {
-  paused_ = true;
+  if (!paused_.exchange(true)) Wake();
   return 0;
 }
 
 int ScreenCapturerX11::Resume(int monitor_index) {
-  paused_ = false;
+  if (paused_.exchange(false)) Wake();
   return 0;
 }
 
@@ -147,20 +211,19 @@ int ScreenCapturerX11::SwitchTo(int monitor_index) {
   std::lock_guard lock(display_info_mutex_);
   if (monitor_index < 0 ||
       monitor_index >= static_cast<int>(display_info_list_.size())) return -1;
-  monitor_index_ = monitor_index;
+  if (monitor_index_.exchange(monitor_index) != monitor_index) Wake();
   return 0;
 }
 
 int ScreenCapturerX11::ResetToInitialMonitor() {
-  monitor_index_ = initial_monitor_index_;
-  return 0;
+  return SwitchTo(initial_monitor_index_);
 }
 std::vector<DisplayInfo> ScreenCapturerX11::GetDisplayInfoList() {
   std::lock_guard lock(display_info_mutex_);
   return display_info_list_;
 }
 
-void ScreenCapturerX11::HandleDisplayEvents() {
+bool ScreenCapturerX11::HandleDisplayEvents() {
   bool changed = false;
   while (XPending(display_)) {
     XEvent event{};
@@ -177,7 +240,19 @@ void ScreenCapturerX11::HandleDisplayEvents() {
   if (changed || ((displays_need_refresh_ || capture_error_count_ > 0) &&
                   std::chrono::steady_clock::now() >= next_display_refresh_)) {
     RefreshDisplays();
+    if (capture_error_count_ > 0) {
+      std::lock_guard lock(display_info_mutex_);
+      const int index = monitor_index_;
+      if (index >= 0 && index < static_cast<int>(display_info_list_.size())) {
+        const auto& selected = display_info_list_[index];
+        // Only a newly usable rectangle may bypass a failed frame's deadline.
+        return selected.width > 1 && selected.height > 1 &&
+               (selected.left != left_ || selected.top != top_ ||
+                (selected.width & ~1) != width_ || (selected.height & ~1) != height_);
+      }
+    }
   }
+  return false;
 }
 
 void ScreenCapturerX11::RefreshDisplays() {
@@ -186,8 +261,13 @@ void ScreenCapturerX11::RefreshDisplays() {
   displays_need_refresh_ = true;
   ScopedX11ErrorTrap trap(display_);
   XWindowAttributes attr{};
-  if (!XGetWindowAttributes(display_, root_, &attr) ||
-      attr.width <= 1 || attr.height <= 1) return;
+  if (!XGetWindowAttributes(display_, root_, &attr)) return;
+  if (attr.width <= 1 || attr.height <= 1) {
+    // Keep the slots for recovery, but their old rectangles cannot be read.
+    std::lock_guard lock(display_info_mutex_);
+    for (auto& output : display_info_list_) MarkOutputUnavailable(output);
+    return;
+  }
   std::vector<DisplayInfo> latest;
   auto* resources = randr_event_base_ >= 0
                         ? XRRGetScreenResources(display_, root_)
@@ -263,9 +343,7 @@ void ScreenCapturerX11::RefreshDisplays() {
         existing.bottom = existing.height = attr.height & ~1;
         root_fallback = true;
       } else {
-        existing.width = existing.height = 0;
-        existing.right = existing.left;
-        existing.bottom = existing.top;
+        MarkOutputUnavailable(existing);
       }
     }
   }
@@ -342,9 +420,7 @@ void ScreenCapturerX11::OnFrame() {
   }
 
   if (image->bits_per_pixel != 32 || image->bytes_per_line <= 0) {
-    LOG_WARN(
-        "Unsupported X11 image layout: bits_per_pixel={}, bytes_per_line={}",
-        image->bits_per_pixel, image->bytes_per_line);
+    CaptureFailed("unsupported X11 image layout");
     XDestroyImage(image);
     return;
   }
@@ -371,8 +447,7 @@ void ScreenCapturerX11::OnFrame() {
                                width_, uv_plane_.data(), width_, width_,
                                height_);
   if (convert_ret != 0) {
-    LOG_WARN("X11 {} failed: {}",
-             use_abgr_to_nv12_ ? "ABGRToNV12" : "ARGBToNV12", convert_ret);
+    CaptureFailed("NV12 conversion failed");
     XDestroyImage(image);
     return;
   }

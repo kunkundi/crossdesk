@@ -47,13 +47,16 @@ class ScreenCapturerX11 : public ScreenCapturer {
 
   std::vector<DisplayInfo> GetDisplayInfoList() override;
 
-  void OnFrame();
+  void SetVideoWanted(bool wanted);
 
  private:
+  void CaptureLoop();
+  void Wake();
+  void OnFrame();
   void DrawCursor(XImage* image, int x, int y);
   bool ProbeCapture();
   void RefreshDisplays();
-  void HandleDisplayEvents();
+  bool HandleDisplayEvents();
   void CaptureFailed(const char* reason, int x11_error = 0);
 
  private:
@@ -64,9 +67,11 @@ class ScreenCapturerX11 : public ScreenCapturer {
   int top_ = 0;
   int width_ = 0;
   int height_ = 0;
+  const int wake_fd_;
   std::thread thread_;
   std::atomic<bool> running_{false};
   std::atomic<bool> paused_{false};
+  std::atomic<bool> video_wanted_{true};
   std::atomic<int> monitor_index_{0};
   int initial_monitor_index_ = 0;
   std::atomic<bool> show_cursor_{true};

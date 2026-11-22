@@ -317,9 +317,13 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
   GuiRuntime* runtime = &handler->owner_;
 
   std::string remote_id = handler->ConnectionKey(user_id, user_id_size);
-  if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected) runtime->transfers_.Connected(handler, remote_id);
-  else if (status == MiniRtcConnectionStatus::MiniRtcConnectionDisconnected || status == MiniRtcConnectionStatus::MiniRtcConnectionFailed ||
-           status == MiniRtcConnectionStatus::MiniRtcConnectionClosed) runtime->transfers_.Cancel(handler, remote_id);
+  const bool disconnected = status == MiniRtcConnectionStatus::MiniRtcConnectionDisconnected ||
+                            status == MiniRtcConnectionStatus::MiniRtcConnectionFailed ||
+                            status == MiniRtcConnectionStatus::MiniRtcConnectionClosed;
+  if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected)
+    runtime->transfers_.Connected(handler, remote_id);
+  else if (disconnected)
+    runtime->transfers_.Cancel(handler, remote_id);
   std::shared_ptr<GuiRuntime::RemoteSession> props;
   {
     std::shared_lock lock(runtime->remote_sessions_mutex_);
@@ -510,9 +514,14 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
   } else {
     runtime->is_client_mode_ = false;
     runtime->show_connection_status_window_ = true;
+    if (disconnected) {
+      runtime->HandleServerControllerDisconnected(remote_id, "connection_closed");
+      return;
+    }
     {
       std::unique_lock lock(runtime->connection_status_mutex_);
       if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
+        runtime->preview_subscriptions_.Remove(remote_id);
         runtime->disconnect_lock_.Connected(remote_id);
         // Local privacy requires explicit desktop capability. Host info may
         // arrive before Connected; consume that saved capability here.
@@ -532,38 +541,22 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
       runtime->devices_.OnControllerConnectionsChanged();
     }
 
-    switch (status) {
-      case MiniRtcConnectionStatus::MiniRtcConnectionConnected: {
-        runtime->preview_subscriptions_.Remove(remote_id);
+    if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
 #if _WIN32
-        runtime->last_windows_service_status_tick_ = 0;
+      runtime->last_windows_service_status_tick_ = 0;
 #endif
-        if (!runtime->managed_host_frontend_ || handler->IsDirect())
-          runtime->AnnounceHostCapabilities(remote_id);
+      if (!runtime->managed_host_frontend_ || handler->IsDirect())
+        runtime->AnnounceHostCapabilities(remote_id);
 
-        runtime->need_to_destroy_server_window_.store(
-            false, std::memory_order_release);
-        runtime->need_to_create_server_window_.store(true,
-                                                     std::memory_order_release);
-        runtime->is_server_mode_ = true;
-        if (!runtime->managed_host_frontend_ || handler->IsDirect())
-          runtime->start_screen_capturer_ = true;
-        runtime->devices_.StartSpeakerCapturer();
-        runtime->remote_client_id_ = remote_id;
-        if (!runtime->managed_host_frontend_ || handler->IsDirect())
-          runtime->start_mouse_controller_ = true;
-
-        break;
-      }
-      case MiniRtcConnectionStatus::MiniRtcConnectionDisconnected:
-      case MiniRtcConnectionStatus::MiniRtcConnectionFailed:
-      case MiniRtcConnectionStatus::MiniRtcConnectionClosed: {
-        runtime->HandleServerControllerDisconnected(remote_id,
-                                                    "connection_closed");
-        break;
-      }
-      default:
-        break;
+      runtime->need_to_destroy_server_window_.store(
+          false, std::memory_order_release);
+      runtime->need_to_create_server_window_.store(true,
+                                                   std::memory_order_release);
+      runtime->is_server_mode_ = true;
+      runtime->devices_.StartSpeakerCapturer();
+      runtime->remote_client_id_ = remote_id;
+      if (!runtime->managed_host_frontend_ || handler->IsDirect())
+        runtime->start_mouse_controller_ = true;
     }
   }
 }
