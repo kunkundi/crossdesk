@@ -396,6 +396,10 @@ export component StreamWindow inherits Window {
     in property <string> status-text: "";
     in property <string> receiving-text: "";
     in property <string> service-warning: "";
+    private property <bool> service-warning-expired: false;
+    changed service-warning => {
+        if root.service-warning == "" { root.service-warning-expired = false; }
+    }
     in property <bool> remote-update-visible: false;
     in property <bool> privacy-unlock-visible: false;
     in property <bool> privacy-can-lock: false;
@@ -1986,7 +1990,7 @@ export component StreamWindow inherits Window {
                     scroll-event(event) => { accept }
                 }
             }
-            if root.service-warning != "" && !root.modal-visible: FlatSurface {
+            if root.service-warning != "" && !root.service-warning-expired && !root.modal-visible: FlatSurface {
                 x: (parent.width - self.width) / 2;
                 y: 12px;
                 width: min(600px, parent.width - 32px);
@@ -1995,6 +1999,10 @@ export component StreamWindow inherits Window {
                 outline-color: #e8c56a;
                 border-radius: UiRadius.surface;
                 z: 12;
+                Timer {
+                    interval: 3s;
+                    triggered => { root.service-warning-expired = true; }
+                }
                 service-warning-text := Text {
                     x: 12px; y: 10px; width: parent.width - 24px;
                     text: root.service-warning; color: #805b12;
