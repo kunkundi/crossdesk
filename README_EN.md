@@ -24,6 +24,9 @@
 
 <p align="center">
   <a href="https://trendshift.io/repositories/17514?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-17514" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/17514" alt="kunkundi%2Fcrossdesk | Trendshift" width="24%"/></a>
+</p>
+
+<p align="center">
   <a href="https://trendshift.io/repositories/17514?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-17514" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/17514/daily?language=C%2B%2B" alt="kunkundi%2Fcrossdesk | Trendshift" width="24%"/></a>
   <a href="https://trendshift.io/repositories/17514?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-17514" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/17514/weekly?language=C%2B%2B" alt="kunkundi%2Fcrossdesk | Trendshift" width="24%"/></a>
   <a href="https://trendshift.io/repositories/17514?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-17514" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/17514/monthly?language=C%2B%2B" alt="kunkundi%2Fcrossdesk | Trendshift" width="24%"/></a>
