@@ -221,6 +221,7 @@ final class LocalizationKeys {
         IDS.put("网络状态", R.string.text_872428a7210d5e0c);
         IDS.put("自定义", R.string.text_4eafa9e925b30bcd);
         IDS.put("虚拟鼠标", R.string.text_dffd0c12b8f27247);
+        IDS.put("拖动虚拟鼠标", R.string.text_537f1d58c460e682);
         IDS.put("被控端已通过组合键解除隐私屏。点击“锁定”将重新开启隐私屏，并禁止本机使用组合键解锁。", R.string.text_62c199f37bf95869);
         IDS.put("被控端版本过低，请升级到最新版本。", R.string.text_a569ce729c1d6e19);
         IDS.put("被控端编码器", R.string.text_d814476826827b78);

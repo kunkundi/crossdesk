@@ -215,6 +215,7 @@
     <string name="text_872428a7210d5e0c" formatted="false">"Red"</string>
     <string name="text_4eafa9e925b30bcd" formatted="false">"Personalizado"</string>
     <string name="text_dffd0c12b8f27247" formatted="false">"Ratón virtual"</string>
+    <string name="text_537f1d58c460e682" formatted="false">"Mover el ratón virtual"</string>
     <string name="text_62c199f37bf95869" formatted="false">"La pantalla de privacidad remota se desbloqueó usando el acceso directo local. Bloquéelo nuevamente para restaurar la privacidad y deshabilitar el desbloqueo de accesos directos locales."</string>
     <string name="text_a569ce729c1d6e19" formatted="false">"La versión controlada es demasiado baja; actualice a la última versión."</string>
     <string name="text_d814476826827b78" formatted="false">"Codificador remoto"</string>

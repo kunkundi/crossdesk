@@ -212,6 +212,7 @@
 "网络连接已中断，请重新连接。" = "La connexion réseau a été interrompue, veuillez vous reconnecter.";
 "自定义" = "Personnalisé";
 "虚拟鼠标" = "Souris virtuelle";
+"拖动虚拟鼠标" = "Déplacer la souris virtuelle";
 "被控端不支持直接输入中文，请更新 macOS 被控端；也可先复制文字，通过远控菜单的剪贴板发送后粘贴" = "Le terminal contrôlé ne prend pas en charge la saisie directe du chinois, veuillez mettre à jour le terminal contrôlé par macOS ; vous pouvez également d'abord copier le texte, l'envoyer via le presse-papiers du menu de la télécommande, puis le coller";
 "被控端已通过组合键解除隐私屏。点击“锁定”将重新开启隐私屏，并禁止本机使用组合键解锁。" = "L'écran de confidentialité à distance a été déverrouillé à l'aide du raccourci local. Verrouillez-le à nouveau pour restaurer la confidentialité et désactiver le déverrouillage des raccourcis locaux.";
 "被控端平台：%1$@" = "Plateforme terminale contrôlée :%1$@";

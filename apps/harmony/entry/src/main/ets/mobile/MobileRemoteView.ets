@@ -7,6 +7,8 @@ import { RemoteViewport, MouseInput, TouchInput, TouchPoint, clamp, NetworkStati
 import { MobileTheme, MobileSegment, MobileIcon, MobileIconButton } from './MobileWidgets';
 
 interface KeyRow { keys: string[]; }
+const mouseBarWidth: number = 140;
+const mouseBarHeight: number = 68;
 @Component
 export struct MobileRemoteView {
   @ObjectLink @Watch('stateChanged') state: MobileState;
@@ -38,7 +40,9 @@ export struct MobileRemoteView {
   @State private modifiers: number[] = [];
   @State private keyboardX: number = 8;
   @State private keyboardY: number = 150;
-  @State private mouseVisible: boolean = false;
+  @State private mouseVisible: boolean = true;
+  @State private mouseBarOrigin: TouchPoint | undefined = undefined;
+  private mouseDragOrigin: TouchPoint = { x: 0, y: 0 };
   @State private leftHeld: boolean = false;
   @State private rightHeld: boolean = false;
   @State private wheelOffset: number = 0;
@@ -153,7 +157,10 @@ export struct MobileRemoteView {
   private action(index: number): void {
     if (index === 0) { this.keyboard = !this.keyboard; this.menu = ''; this.modifiers = []; if (this.keyboard) { this.keyboardX = (this.viewWidth - this.keyboardWidth()) / 2; this.keyboardY = Math.max(8, this.viewHeight - this.keyboardHeight - 20); } }
     if (index === 1) this.controller?.setRelative(!this.state.relative);
-    if (index === 2) { this.release(); this.mouseVisible = !this.mouseVisible; this.menu = ''; }
+    if (index === 2) {
+      this.release();
+      this.mouseVisible = !this.mouseVisible; this.menu = '';
+    }
     if (index === 3) { this.state.modal = 'displays'; this.menu = ''; }
     if (index === 4) this.menu = 'video';
     if (index === 5) this.controller?.mute();
@@ -174,13 +181,29 @@ export struct MobileRemoteView {
   private columns(): number { return this.viewHeight < 400 && this.viewWidth >= 400 ? 4 : 3; }
   private menuWidth(): number { return Math.max(1, Math.min(this.viewWidth - 16, this.columns() === 4 ? 380 : Math.max(280, Math.min(340, this.viewWidth - 160)))); }
   private menuX(): number { return clamp(this.orbX > this.viewWidth / 2 ? this.orbX - this.menuWidth() - 12 : this.orbX + 66, 8, this.viewWidth - this.menuWidth() - 8); }
-  private mousePosition(): Position {
-    let x = this.orbX >= 154 ? this.orbX - 146 : this.orbX + 60, y = this.orbY + 3;
-    if (x + 140 > this.viewWidth - 8) { x = this.orbX; y = this.orbY + 60; if (y + 48 > this.viewHeight - 8) y = this.orbY - 54; }
-    if (this.keyboard && x < this.keyboardX + this.keyboardWidth() && x + 140 > this.keyboardX && y < this.keyboardY + this.keyboardHeight && y + 48 > this.keyboardY) {
-      y = this.keyboardY - 54; if (y < 8) y = this.keyboardY + this.keyboardHeight + 6;
+  private mousePosition(): TouchPoint {
+    const x = clamp(this.mouseBarOrigin?.x ?? (this.viewWidth - mouseBarWidth - 16), 8, this.viewWidth - mouseBarWidth - 8);
+    const maxY = this.viewHeight - mouseBarHeight - 8;
+    let y = clamp(this.mouseBarOrigin?.y ?? (this.viewHeight - mouseBarHeight - 24), 8, maxY);
+    if (this.keyboard) {
+      const kb = this.keyboardPosition();
+      if (x < kb.x + this.keyboardWidth() && x + mouseBarWidth > kb.x &&
+        y < kb.y + this.keyboardHeight && y + mouseBarHeight > kb.y) {
+        y = kb.y - mouseBarHeight - 6;
+        if (y < 8) y = kb.y + this.keyboardHeight + 6;
+      }
     }
-    return { x: clamp(x, 8, this.viewWidth - 148), y: clamp(y, 8, this.viewHeight - 56) };
+    return { x: x, y: clamp(y, 8, maxY) };
+  }
+  private dragMouseBar(event: GestureEvent): void {
+    this.mouseBarOrigin = {
+      x: clamp(this.mouseDragOrigin.x + event.offsetX, 8, this.viewWidth - mouseBarWidth - 8),
+      y: clamp(this.mouseDragOrigin.y + event.offsetY, 8, this.viewHeight - mouseBarHeight - 8)
+    };
+  }
+  private keyboardPosition(): TouchPoint {
+    return { x: clamp(this.keyboardX, 8, this.viewWidth - this.keyboardWidth() - 8),
+      y: clamp(this.keyboardY, 8, this.viewHeight - this.keyboardHeight - 8) };
   }
   private keyboardWidth(): number { return Math.max(1, Math.min(this.computerKeyboard ? 520 : 440, this.viewWidth - 16)); }
   private keyboardTitle(key: string): string {
@@ -393,26 +416,32 @@ export struct MobileRemoteView {
       }
     }.padding(5).width(this.keyboardWidth()).backgroundColor('#D1D6DE').borderRadius(12)
       .shadow({ radius: 20, color: '#33000000', offsetY: 5 }).onAreaChange((_old: Area, next: Area) => this.keyboardHeight = Number(next.height))
-      .position({ x: clamp(this.keyboardX, 8, this.viewWidth - this.keyboardWidth() - 8), y: clamp(this.keyboardY, 8, Math.max(8, this.viewHeight - this.keyboardHeight - 8)) })
+      .position(this.keyboardPosition())
   }
   @Builder
   MouseBar() {
-    Row({ space: 2 }) {
-      ForEach([0, 1, 2], (button: number) => {
-        Stack() {
-          if (button === 1) {
-            Stack() {
-              Column({ space: 4 }) {
-                ForEach([0, 1, 2, 3, 4, 5, 6], (line: number) => { Row() {}.height(3).width(14).backgroundColor('#737378') })
-              }.translate({ y: this.wheelOffset - 8 })
-            }.width(18).height(30).clip(true)
-          } else { MobileIcon({ name: button === 0 ? 'mouse_left' : 'mouse_right', iconExtent: 22 }) }
-        }.width(44).height(44).borderRadius(7).clip(true)
-          .backgroundColor(button === 0 && this.leftHeld || button === 2 && this.rightHeld ? '#9BC7F7' : '#E9E9EE')
-          .accessibilityText(button === 0 ? tr("鼠标左键，按住拖动") : button === 1 ? tr("滚轮，上下滑动") : tr("鼠标右键，按住拖动"))
-          .onTouch((event: TouchEvent) => this.barTouch(event, button))
-      })
-    }.padding(2).width(140).height(48).backgroundColor('#FFFFFF').borderRadius(10)
+    Column() {
+      Stack() { Row() {}.width(28).height(3).borderRadius(2).backgroundColor(MobileTheme.secondary) }
+        .width('100%').height(20).accessibilityText(tr('拖动虚拟鼠标'))
+        .gesture(PanGesture().onActionStart(() => { this.mouseDragOrigin = this.mousePosition(); })
+          .onActionUpdate((event: GestureEvent) => this.dragMouseBar(event)))
+      Row({ space: 2 }) {
+        ForEach([0, 1, 2], (button: number) => {
+          Stack() {
+            if (button === 1) {
+              Stack() {
+                Column({ space: 4 }) {
+                  ForEach([0, 1, 2, 3, 4, 5, 6], (line: number) => { Row() {}.height(3).width(14).backgroundColor('#737378') })
+                }.translate({ y: this.wheelOffset - 8 })
+              }.width(18).height(30).clip(true)
+            } else { MobileIcon({ name: button === 0 ? 'mouse_left' : 'mouse_right', iconExtent: 22 }) }
+          }.width(44).height(44).borderRadius(7).clip(true)
+            .backgroundColor(button === 0 && this.leftHeld || button === 2 && this.rightHeld ? '#9BC7F7' : '#E9E9EE')
+            .accessibilityText(button === 0 ? tr("鼠标左键，按住拖动") : button === 1 ? tr("滚轮，上下滑动") : tr("鼠标右键，按住拖动"))
+            .onTouch((event: TouchEvent) => this.barTouch(event, button))
+        })
+      }.height(48)
+    }.width(mouseBarWidth).height(mouseBarHeight).backgroundColor('#FFFFFF').borderRadius(10)
       .border({ width: 0.5, color: MobileTheme.line }).shadow({ radius: 12, color: '#33000000', offsetY: 4 }).position(this.mousePosition())
   }
   build() {
@@ -436,9 +465,10 @@ export struct MobileRemoteView {
         .accessibilityText(tr("远程桌面：轻触点击、长按右键、双指捏合缩放、放大后双指拖动画面，原始比例下双指滚动"))
       MobileIcon({ name: 'cursor', iconExtent: 24, color: '#000000' })
         .position({ x: this.cursorX - 1, y: this.cursorY - 1 }).hitTestBehavior(HitTestMode.None)
-      if (this.menu) { Column() {}.width('100%').height('100%').onClick(() => this.menu = ''); this.Menu() }
+      if (this.menu) { Column() {}.width('100%').height('100%').onClick(() => this.menu = '') }
       if (this.keyboard) { this.Keyboard() }
-      if (this.mouseVisible && !this.menu && this.state.hasFrame) { this.MouseBar() }
+      if (this.mouseVisible && this.state.hasFrame) { this.MouseBar() }
+      if (this.menu) { this.Menu() }
       Stack() {
         Image($r('app.media.mobile_brand')).width(46).height(46).objectFit(ImageFit.Cover).borderRadius(23).draggable(false).hitTestBehavior(HitTestMode.None)
       }.width(54).height(54).backgroundColor('#F5F5F7').borderRadius(27).shadow({ radius: 14, color: '#33000000', offsetY: 4 })

@@ -212,6 +212,7 @@
 "网络连接已中断，请重新连接。" = "The network connection has been interrupted, please reconnect.";
 "自定义" = "Custom";
 "虚拟鼠标" = "Virtual mouse";
+"拖动虚拟鼠标" = "Drag virtual mouse";
 "被控端不支持直接输入中文，请更新 macOS 被控端；也可先复制文字，通过远控菜单的剪贴板发送后粘贴" = "The controlled terminal does not support direct input of Chinese, please update the macOS controlled terminal; you can also copy the text first, send it through the clipboard of the remote control menu and then paste it";
 "被控端已通过组合键解除隐私屏。点击“锁定”将重新开启隐私屏，并禁止本机使用组合键解锁。" = "The remote privacy screen was unlocked using the local shortcut. Lock it again to restore privacy and disable local shortcut unlocking.";
 "被控端平台：%1$@" = "Controlled terminal platform:%1$@";

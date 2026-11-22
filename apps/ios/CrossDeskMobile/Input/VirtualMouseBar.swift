@@ -1,7 +1,41 @@
 import SwiftUI
 import UIKit
 
-struct VirtualMouseBar: UIViewRepresentable {
+struct VirtualMouseBar: View {
+    static let size = CGSize(width: 140, height: 68)
+    let input: RemoteMouseInput
+    let center: CGPoint
+    let constrain: (CGPoint) -> CGPoint
+    let moved: (CGPoint) -> Void
+    @GestureState private var translation = CGSize.zero
+
+    private func translated(by offset: CGSize) -> CGPoint {
+        constrain(CGPoint(x: center.x + offset.width, y: center.y + offset.height))
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Capsule()
+                .fill(Color.gray)
+                .frame(width: 28, height: 3)
+                .frame(width: Self.size.width, height: 20)
+                .contentShape(Rectangle())
+                .accessibilityLabel(NSLocalizedString("拖动虚拟鼠标", comment: ""))
+                .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .updating($translation) { value, state, _ in state = value.translation }
+                    .onEnded { value in moved(translated(by: value.translation)) })
+            VirtualMouseKeys(input: input)
+        }
+        .frame(width: Self.size.width, height: Self.size.height)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18)
+            .strokeBorder(Color(red: 212 / 255, green: 218 / 255, blue: 226 / 255), lineWidth: 0.5)
+            .allowsHitTesting(false))
+        .position(translated(by: translation))
+    }
+}
+
+private struct VirtualMouseKeys: UIViewRepresentable {
     let input: RemoteMouseInput
 
     func makeUIView(context: Context) -> VirtualMouseBarView {
@@ -25,10 +59,6 @@ final class VirtualMouseBarView: UIView {
                 VirtualMouseKey(kind: .wheel, input: input),
                 VirtualMouseKey(kind: .right, input: input)]
         super.init(frame: .zero)
-        backgroundColor = .white
-        layer.cornerRadius = 18
-        layer.borderWidth = 0.5
-        layer.borderColor = UIColor(red: 212 / 255, green: 218 / 255, blue: 226 / 255, alpha: 1).cgColor
         isMultipleTouchEnabled = true
         keys.forEach(addSubview)
         input.didCancel = { [weak self] in self?.keys.forEach { $0.cancelTracking() } }

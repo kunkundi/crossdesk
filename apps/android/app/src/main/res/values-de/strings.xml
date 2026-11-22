@@ -215,6 +215,7 @@
     <string name="text_872428a7210d5e0c" formatted="false">"Netzwerk"</string>
     <string name="text_4eafa9e925b30bcd" formatted="false">"Benutzerdefiniert"</string>
     <string name="text_dffd0c12b8f27247" formatted="false">"Virtuelle Maus"</string>
+    <string name="text_537f1d58c460e682" formatted="false">"Virtuelle Maus verschieben"</string>
     <string name="text_62c199f37bf95869" formatted="false">"Der Remote-Datenschutzbildschirm wurde über die lokale Verknüpfung entsperrt. Sperren Sie es erneut, um die Privatsphäre wiederherzustellen und das Entsperren lokaler Verknüpfungen zu deaktivieren."</string>
     <string name="text_a569ce729c1d6e19" formatted="false">"Die kontrollierte Version ist zu niedrig, bitte aktualisieren Sie auf die neueste Version."</string>
     <string name="text_d814476826827b78" formatted="false">"Remote-Encoder"</string>

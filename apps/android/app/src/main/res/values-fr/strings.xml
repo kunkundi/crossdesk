@@ -215,6 +215,7 @@
     <string name="text_872428a7210d5e0c" formatted="false">"Réseau"</string>
     <string name="text_4eafa9e925b30bcd" formatted="false">"Personnalisé"</string>
     <string name="text_dffd0c12b8f27247" formatted="false">"Souris virtuelle"</string>
+    <string name="text_537f1d58c460e682" formatted="false">"Déplacer la souris virtuelle"</string>
     <string name="text_62c199f37bf95869" formatted="false">"L\'écran de confidentialité à distance a été déverrouillé à l\'aide du raccourci local. Verrouillez-le à nouveau pour restaurer la confidentialité et désactiver le déverrouillage des raccourcis locaux."</string>
     <string name="text_a569ce729c1d6e19" formatted="false">"La version contrôlée est trop basse, veuillez mettre à niveau vers la dernière version."</string>
     <string name="text_d814476826827b78" formatted="false">"Encodeur déporté"</string>

@@ -212,6 +212,7 @@
 "网络连接已中断，请重新连接。" = "Die Netzwerkverbindung wurde unterbrochen. Bitte stellen Sie die Verbindung wieder her.";
 "自定义" = "Benutzerdefiniert";
 "虚拟鼠标" = "Virtuelle Maus";
+"拖动虚拟鼠标" = "Virtuelle Maus verschieben";
 "被控端不支持直接输入中文，请更新 macOS 被控端；也可先复制文字，通过远控菜单的剪贴板发送后粘贴" = "Das gesteuerte Terminal unterstützt keine direkte Eingabe von Chinesisch. Bitte aktualisieren Sie das von macOS gesteuerte Terminal. Sie können den Text auch zunächst kopieren, über die Zwischenablage des Fernbedienungsmenüs senden und dann einfügen";
 "被控端已通过组合键解除隐私屏。点击“锁定”将重新开启隐私屏，并禁止本机使用组合键解锁。" = "Der Remote-Datenschutzbildschirm wurde über die lokale Verknüpfung entsperrt. Sperren Sie es erneut, um die Privatsphäre wiederherzustellen und das Entsperren lokaler Verknüpfungen zu deaktivieren.";
 "被控端平台：%1$@" = "Kontrollierte Terminalplattform:%1$@";

@@ -212,6 +212,7 @@
 "网络连接已中断，请重新连接。" = "La conexión de red ha sido interrumpida, vuelva a conectarse.";
 "自定义" = "Personalizado";
 "虚拟鼠标" = "Ratón virtual";
+"拖动虚拟鼠标" = "Mover el ratón virtual";
 "被控端不支持直接输入中文，请更新 macOS 被控端；也可先复制文字，通过远控菜单的剪贴板发送后粘贴" = "El terminal controlado no admite la entrada directa de chino; actualice el terminal controlado por macOS; También puedes copiar el texto primero, enviarlo a través del portapapeles del menú del control remoto y luego pegarlo.";
 "被控端已通过组合键解除隐私屏。点击“锁定”将重新开启隐私屏，并禁止本机使用组合键解锁。" = "La pantalla de privacidad remota se desbloqueó usando el acceso directo local. Bloquéelo nuevamente para restaurar la privacidad y deshabilitar el desbloqueo de accesos directos locales.";
 "被控端平台：%1$@" = "Plataforma terminal controlada:%1$@";

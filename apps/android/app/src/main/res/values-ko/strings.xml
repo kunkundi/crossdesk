@@ -215,6 +215,7 @@
     <string name="text_872428a7210d5e0c" formatted="false">"네트워크"</string>
     <string name="text_4eafa9e925b30bcd" formatted="false">"커스텀"</string>
     <string name="text_dffd0c12b8f27247" formatted="false">"가상마우스"</string>
+    <string name="text_537f1d58c460e682" formatted="false">"가상 마우스 드래그"</string>
     <string name="text_62c199f37bf95869" formatted="false">"로컬 단축키를 사용하여 원격 개인정보 보호 화면을 잠금 해제했습니다. 개인정보 보호를 복원하고 로컬 바로가기 잠금 해제를 비활성화하려면 다시 잠그세요."</string>
     <string name="text_a569ce729c1d6e19" formatted="false">"제어 버전이 너무 낮습니다. 최신 버전으로 업그레이드하세요."</string>
     <string name="text_d814476826827b78" formatted="false">"리모트 엔코더"</string>

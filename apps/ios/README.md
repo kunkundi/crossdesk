@@ -536,9 +536,10 @@ height remains visible. The bounds account for letterboxing. Pinching back to
 
 ## Touch controls and device validation
 
-The floating control menu includes **虚拟鼠标** (virtual mouse), a 140 × 48 pt
-horizontal left-button / wheel / right-button bar attached to the status orb.
-Drag the orb to reposition it, or use **收起鼠标** to hide it. The bar overlays
+The 140 × 68 pt virtual mouse appears in the lower-right corner when the first
+remote frame arrives. Drag anywhere along its top strip to reposition it.
+Use **收起鼠标** in the floating menu to hide the bar. Opening it again in the
+same session restores its position. The bar overlays
 the video without resizing it and avoids the computer keyboard. Hold either mouse
 button and drag the same finger, including beyond the key bounds, to drag at the
 remote cursor; lifting the finger releases that button. Moving another finger on

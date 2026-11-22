@@ -3996,6 +3996,18 @@
       "es": "Arrastre un divisor de tabla para cambiar el tamaño de todos los dispositivos",
       "pt-BR": "Arraste um divisor de mesa para redimensionar todos os dispositivos"
     },
+    "拖动虚拟鼠标": {
+      "zh-Hans": "拖动虚拟鼠标",
+      "en": "Drag virtual mouse",
+      "ru": "Перетащить виртуальную мышь",
+      "zh-Hant": "拖動虛擬滑鼠",
+      "ja": "仮想マウスをドラッグ",
+      "ko": "가상 마우스 드래그",
+      "de": "Virtuelle Maus verschieben",
+      "fr": "Déplacer la souris virtuelle",
+      "es": "Mover el ratón virtual",
+      "pt-BR": "Mover o mouse virtual"
+    },
     "拖动键盘": {
       "zh-Hans": "拖动键盘",
       "en": "Drag keyboard",
@@ -13130,6 +13142,7 @@
       "网络状态",
       "自定义",
       "虚拟鼠标",
+      "拖动虚拟鼠标",
       "被控端已通过组合键解除隐私屏。点击“锁定”将重新开启隐私屏，并禁止本机使用组合键解锁。",
       "被控端版本过低，请升级到最新版本。",
       "被控端编码器",
@@ -13512,6 +13525,7 @@
       "网络连接已中断，请重新连接。",
       "自定义",
       "虚拟鼠标",
+      "拖动虚拟鼠标",
       "被控端不支持直接输入中文，请更新 macOS 被控端；也可先复制文字，通过远控菜单的剪贴板发送后粘贴",
       "被控端已通过组合键解除隐私屏。点击“锁定”将重新开启隐私屏，并禁止本机使用组合键解锁。",
       "被控端平台：%1$@",
@@ -13837,6 +13851,7 @@
       "网络状态",
       "自定义",
       "虚拟鼠标",
+      "拖动虚拟鼠标",
       "被控端已通过组合键解除隐私屏。点击“锁定”将重新开启隐私屏，并禁止本机使用组合键解锁。",
       "被控端版本过低，请升级到最新版本。",
       "被控端编码器",

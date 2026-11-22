@@ -215,6 +215,7 @@
     <string name="text_872428a7210d5e0c" formatted="false">"网络状态"</string>
     <string name="text_4eafa9e925b30bcd" formatted="false">"自定义"</string>
     <string name="text_dffd0c12b8f27247" formatted="false">"虚拟鼠标"</string>
+    <string name="text_537f1d58c460e682" formatted="false">"拖动虚拟鼠标"</string>
     <string name="text_62c199f37bf95869" formatted="false">"被控端已通过组合键解除隐私屏。点击“锁定”将重新开启隐私屏，并禁止本机使用组合键解锁。"</string>
     <string name="text_a569ce729c1d6e19" formatted="false">"被控端版本过低，请升级到最新版本。"</string>
     <string name="text_d814476826827b78" formatted="false">"被控端编码器"</string>

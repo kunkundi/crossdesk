@@ -215,6 +215,7 @@
     <string name="text_872428a7210d5e0c" formatted="false">"Network"</string>
     <string name="text_4eafa9e925b30bcd" formatted="false">"Custom"</string>
     <string name="text_dffd0c12b8f27247" formatted="false">"Virtual mouse"</string>
+    <string name="text_537f1d58c460e682" formatted="false">"Drag virtual mouse"</string>
     <string name="text_62c199f37bf95869" formatted="false">"The remote privacy screen was unlocked using the local shortcut. Lock it again to restore privacy and disable local shortcut unlocking."</string>
     <string name="text_a569ce729c1d6e19" formatted="false">"The controlled version is too low, please upgrade to the latest version."</string>
     <string name="text_d814476826827b78" formatted="false">"Remote encoder"</string>

@@ -43,7 +43,8 @@ struct RemoteSessionView: View {
     @ObservedObject var session: RemoteSessionModel
     @Environment(\.scenePhase) private var scenePhase
     @State private var mouseInput = RemoteMouseInput()
-    @State private var virtualMouseVisible = false
+    @State private var virtualMouseVisible = true
+    @State private var virtualMouseCenter: CGPoint?
     @StateObject private var systemKeyboardContext = RemoteKeyboardInputContext()
     @StateObject private var keyboardGeometry = RemoteKeyboardGeometry()
     @StateObject private var shortcutStore = RemoteShortcutStore()
@@ -236,7 +237,6 @@ struct RemoteSessionView: View {
         .onDisappear {
             mouseInput.releaseAll()
             mouseInput.send = nil
-            virtualMouseVisible = false
             keyboardInputVisible = false
             viewport = RemoteViewportState()
             cursorPosition = nil
@@ -413,11 +413,6 @@ struct RemoteSessionView: View {
                                  ? 380 : min(340, max(280, containerSize.width - 160)))
 
             ZStack(alignment: .topLeading) {
-                if virtualMouseVisible && !statusMenuVisible && session.pixelBuffer != nil {
-                    VirtualMouseBar(input: mouseInput)
-                        .frame(width: 140, height: 48)
-                        .position(virtualMouseCenter(orbCenter: orbCenter, in: containerSize))
-                }
                 if statusMenuVisible {
                     Color.clear
                         .contentShape(Rectangle())
@@ -426,6 +421,12 @@ struct RemoteSessionView: View {
                                 statusMenuVisible = false
                             }
                         }
+                }
+                if virtualMouseVisible, session.pixelBuffer != nil {
+                    VirtualMouseBar(input: mouseInput,
+                                    center: boundedMouseCenter(virtualMouseCenter, in: containerSize),
+                                    constrain: { boundedMouseCenter($0, in: containerSize) },
+                                    moved: { self.virtualMouseCenter = $0 })
                 }
 
                 FloatingMenuLayout(orbCenter: orbCenter, panelWidth: panelWidth) {
@@ -506,33 +507,24 @@ struct RemoteSessionView: View {
         }
     }
 
-    private func virtualMouseCenter(orbCenter: CGPoint, in size: CGSize) -> CGPoint {
-        let halfWidth: CGFloat = 70
-        let halfHeight: CGFloat = 24
-        let reach: CGFloat = 27 + 6 + halfWidth
-        var x = orbCenter.x - reach
-        var y = orbCenter.y
-        if x - halfWidth < 8 {
-            x = orbCenter.x + reach
-            if x + halfWidth > size.width - 8 {
-                x = orbCenter.x
-                y = orbCenter.y + 27 + 6 + halfHeight
-                if y + halfHeight > size.height - 8 {
-                    y = orbCenter.y - 27 - 6 - halfHeight
-                }
-            }
-        }
-        x = min(max(x, halfWidth + 8), max(halfWidth + 8, size.width - halfWidth - 8))
+    private func boundedMouseCenter(_ preferred: CGPoint?, in size: CGSize) -> CGPoint {
+        let halfWidth = VirtualMouseBar.size.width / 2
+        let halfHeight = VirtualMouseBar.size.height / 2
+        let point = preferred ?? CGPoint(x: size.width - halfWidth - 16,
+                                         y: size.height - halfHeight - 24)
+        let x = min(max(point.x, halfWidth + 8), max(halfWidth + 8, size.width - halfWidth - 8))
+        let maxY = max(halfHeight + 8, size.height - halfHeight - 8)
+        var y = min(max(point.y, halfHeight + 8), maxY)
         if keyboardInputVisible && keyboardMode != .system {
             let keyboardSize = keyboardPanelSize(in: size)
             let center = keyboardCenter(in: size, panelSize: keyboardSize)
             let keyboardRect = CGRect(x: center.x - keyboardSize.width / 2, y: center.y - keyboardSize.height / 2, width: keyboardSize.width, height: keyboardSize.height)
-            if keyboardRect.intersects(CGRect(x: x - halfWidth, y: y - halfHeight, width: 140, height: 48)) {
+            if keyboardRect.intersects(CGRect(origin: CGPoint(x: x - halfWidth, y: y - halfHeight), size: VirtualMouseBar.size)) {
                 y = keyboardRect.minY - 6 - halfHeight
                 if y - halfHeight < 8 { y = keyboardRect.maxY + 6 + halfHeight }
             }
         }
-        return CGPoint(x: x, y: min(max(y, halfHeight + 8), max(halfHeight + 8, size.height - halfHeight - 8)))
+        return CGPoint(x: x, y: min(max(y, halfHeight + 8), maxY))
     }
 
     private var dockedKeyboard: some View {

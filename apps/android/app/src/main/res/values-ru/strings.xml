@@ -215,6 +215,7 @@
     <string name="text_872428a7210d5e0c" formatted="false">"Сеть"</string>
     <string name="text_4eafa9e925b30bcd" formatted="false">"Пользовательский"</string>
     <string name="text_dffd0c12b8f27247" formatted="false">"Виртуальная мышь"</string>
+    <string name="text_537f1d58c460e682" formatted="false">"Перетащить виртуальную мышь"</string>
     <string name="text_62c199f37bf95869" formatted="false">"Приватный экран отключён локальным сочетанием клавиш. Заблокируйте его снова, чтобы восстановить защиту и запретить локальную разблокировку."</string>
     <string name="text_a569ce729c1d6e19" formatted="false">"Управляемая версия слишком низкая, обновите ее до последней версии."</string>
     <string name="text_d814476826827b78" formatted="false">"Кодер удалённой стороны"</string>

@@ -215,6 +215,7 @@
     <string name="text_872428a7210d5e0c" formatted="false">"網路狀態"</string>
     <string name="text_4eafa9e925b30bcd" formatted="false">"自定義"</string>
     <string name="text_dffd0c12b8f27247" formatted="false">"虛擬滑鼠"</string>
+    <string name="text_537f1d58c460e682" formatted="false">"拖動虛擬滑鼠"</string>
     <string name="text_62c199f37bf95869" formatted="false">"被控端已透過組合鍵解除隱私屏。點選“鎖定”將重新開啟隱私屏，並禁止本機使用組合鍵解鎖。"</string>
     <string name="text_a569ce729c1d6e19" formatted="false">"被控端版本過低，請升級到最新版本。"</string>
     <string name="text_d814476826827b78" formatted="false">"被控端編碼器"</string>

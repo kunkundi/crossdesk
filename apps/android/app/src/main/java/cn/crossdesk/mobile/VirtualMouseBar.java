@@ -10,12 +10,16 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.InsetDrawable;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.Gravity;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-/** A 140 × 48 dp bar. Touch ownership continues outside the original key bounds. */
+/** Touch ownership continues outside the original key bounds. */
 @SuppressLint("ViewConstructor")
 final class VirtualMouseBar extends LinearLayout {
+    static final int WIDTH_DP = 140, HEIGHT_DP = 68;
+    final FrameLayout dragHandle;
     private final RemoteMouseInput input;
     private final MobileUi ui;
     private final TextView[] keys = new TextView[3];
@@ -23,15 +27,25 @@ final class VirtualMouseBar extends LinearLayout {
 
     VirtualMouseBar(MobileUi ui, RemoteMouseInput input) {
         super(ui.context); this.ui = ui; this.input = input;
-        setOrientation(HORIZONTAL);
-        setPadding(ui.dp(4), ui.dp(2), ui.dp(4), ui.dp(2));
+        setOrientation(VERTICAL);
         GradientDrawable shell = ui.background(Color.WHITE, 18);
         shell.setStroke(ui.dp(.5f), 0xFFD4DAE2);
         setBackground(shell);
         setMotionEventSplittingEnabled(true);
+        dragHandle = new FrameLayout(ui.context);
+        dragHandle.setContentDescription(L10n.tr("拖动虚拟鼠标"));
+        View grip = new View(ui.context);
+        grip.setBackground(ui.background(MobileUi.SECONDARY, 2));
+        dragHandle.addView(grip, new FrameLayout.LayoutParams(ui.dp(28), ui.dp(3), Gravity.CENTER));
+        addView(dragHandle, new LayoutParams(LayoutParams.MATCH_PARENT, ui.dp(20)));
+        LinearLayout row = ui.row();
+        row.setPadding(ui.dp(4), 0, ui.dp(4), 0);
+        row.setMotionEventSplittingEnabled(true);
+        addView(row, new LayoutParams(LayoutParams.MATCH_PARENT, ui.dp(48)));
         keys[0] = key(L10n.tr("鼠标左键，按住并拖动，松开结束拖拽"), 0);
         keys[1] = key(L10n.tr("鼠标滚轮，上下滑动，可滑出按键范围"), 1);
         keys[2] = key(L10n.tr("鼠标右键，按住并拖动，松开结束拖拽"), 2);
+        for (TextView key : keys) row.addView(key, new LayoutParams(0, ui.dp(44), 1));
         input.didCancel = this::resetTouches;
         setContentDescription(L10n.tr("虚拟鼠标"));
     }
@@ -43,7 +57,6 @@ final class VirtualMouseBar extends LinearLayout {
         key.setContentDescription(description);
         key.setClickable(true); key.setFocusable(true);
         highlight(key, index, false);
-        addView(key, new LayoutParams(0, ui.dp(44), 1));
         key.setOnClickListener(v -> {
             if (index == 1) { ((WheelKey)key).advance(ui.dp(10)); input.scroll(-1); }
             else { input.virtualButton(index == 0, true); input.virtualButton(index == 0, false); }
@@ -73,7 +86,7 @@ final class VirtualMouseBar extends LinearLayout {
                 int action = event.getActionMasked();
                 if (action == MotionEvent.ACTION_DOWN) {
                     pointer = event.getPointerId(0); startedGeneration = generation;
-                    lastX = event.getX(); lastY = event.getY(); remainder = 0;
+                    lastX = event.getRawX(); lastY = event.getRawY(); remainder = 0;
                     highlight(key, index, true);
                     if (index != 1) input.virtualButton(index == 0, true);
                     return true;
@@ -82,8 +95,11 @@ final class VirtualMouseBar extends LinearLayout {
                 if (action == MotionEvent.ACTION_MOVE) {
                     int p = event.findPointerIndex(pointer);
                     if (p < 0) return true;
-                    float dx = event.getX(p) - lastX, dy = event.getY(p) - lastY;
-                    lastX = event.getX(p); lastY = event.getY(p);
+                    // Use screen coordinates even if another finger moves the bar.
+                    float x = event.getRawX() + (event.getX(p) - event.getX());
+                    float y = event.getRawY() + (event.getY(p) - event.getY());
+                    float dx = x - lastX, dy = y - lastY;
+                    lastX = x; lastY = y;
                     if (index != 1) { input.drag(dx, dy); return true; }
                     ((WheelKey)key).advance(dy);
                     remainder += dy;
