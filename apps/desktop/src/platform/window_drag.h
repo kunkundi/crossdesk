@@ -31,26 +31,21 @@ bool IsGalleryWindowActive();
 bool MaximizeGalleryWindowWithoutAnimation();
 bool IsGalleryWindowMaximized();
 
-// Configures live resize and replaces the stream window's native Space
-// fullscreen action with an immediate, single-window fullscreen transition.
-// |slint_view| is the current stream window's AppKit NSView*. Passing the
-// identity explicitly prevents a closing window with the same title from
-// being selected during a later connection.
-bool ConfigureStreamWindowLiveResize(void* slint_view);
-
-// Drops the native stream-window reference if it belongs to |slint_view|.
-// This must run before the corresponding Slint component is destroyed.
-void UnregisterStreamWindow(void* slint_view);
+// Configures live resize and allows the control window to occupy its own
+// native macOS fullscreen Space. Reports when AppKit starts or finishes the
+// transition for this window. |slint_view| is its AppKit NSView*.
+bool ConfigureStreamWindowLiveResize(void* slint_view,
+                                    std::function<void(bool)> transition_changed);
+bool IsStreamWindowFullscreen(void* slint_view);
+// Signed top inset for an aspect-fit video in the moving control window.
+float StreamWindowVideoTransitionInset(void* view, float content_width, float content_height,
+                                      bool* transitioning = nullptr);
 
 // Returns whether the configured stream window is currently the active AppKit
 // key window.
 bool IsStreamWindowActive(void* slint_view);
 // Moves the system pointer to a control in the stream view (backing pixels).
 bool PlaceMacStreamControlPointer(void* slint_view, float pixel_x, float pixel_y);
-
-// Enters or leaves the stream window's animation-free fullscreen mode.
-bool SetStreamWindowFullscreen(void* slint_view, bool fullscreen);
-bool IsStreamWindowFullscreen(void* slint_view);
 
 // Shows a desktop transfer notification without replacing the current key
 // window, including while the stream is fullscreen.

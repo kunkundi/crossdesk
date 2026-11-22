@@ -350,8 +350,7 @@ SlintVideoPresenter::PresentResult SlintVideoPresenter::Present(
       dynamic_cast<MacMetalVideoRenderer*>(impl_->renderer.get());
   if (metal_renderer && metal_renderer->IsActive()) {
     const double top_inset = (*impl_->stream)->get_video_area_top();
-    const auto outcome = metal_renderer->RenderLatest(
-        impl_->remote_id, top_inset, !(*impl_->stream)->get_fullscreen_enabled());
+    const auto outcome = metal_renderer->RenderLatest(impl_->remote_id, top_inset);
     if (outcome.result == VideoRenderer::RenderResult::rendered) {
       (*impl_->stream)->set_has_frame(true);
       (*impl_->stream)->set_receiving_text("");

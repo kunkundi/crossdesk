@@ -66,8 +66,7 @@ class MacMetalVideoRenderer final : public VideoRenderer {
   // Slint's tab strip above the native video surface. A rendered outcome
   // carries metadata from the exact slot submitted to the command buffer.
   RenderOutcome RenderLatest(std::string_view remote_id,
-                             double top_inset_points,
-                             bool native_titlebar_visible);
+                             double top_inset_points);
 
   // Used only when a session closes, so thumbnail generation does not require
   // a second per-frame CPU copy during normal playback.

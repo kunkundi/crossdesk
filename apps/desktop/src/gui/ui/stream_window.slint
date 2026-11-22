@@ -448,6 +448,14 @@ export component StreamWindow inherits Window {
     in property <string> remote-resolution-feedback: "";
     callback change-remote-resolution(int);
     in property <bool> fullscreen-enabled: false;
+    in-out property <bool> fullscreen-transitioning: false;
+    pure callback fullscreen-video-inset(length, length) -> length;
+    // Release the controls if a Space transition ends without a completion event.
+    Timer {
+        running: root.fullscreen-transitioning;
+        interval: 5s;
+        triggered => { root.fullscreen-transitioning = false; }
+    }
     in property <bool> stats-visible: false;
     in property <[NetworkStatsRow]> stats-rows;
     in property <string> stats-fps: "0";
@@ -649,7 +657,7 @@ export component StreamWindow inherits Window {
     private property <bool> control-tooltip-visible: false;
     private property <ControlBarTooltip> hovered-control: {
         if root.window-active && !root.control-dragging
-            && !root.control-menu-open {
+            && !root.control-menu-open && !root.fullscreen-transitioning {
             if logo-button.has-hover { return logo-button.tooltip-info; }
             if root.control-expanded && root.control-content-visible {
                 if display-button.has-hover { return display-button.tooltip-info; }
@@ -1123,8 +1131,9 @@ export component StreamWindow inherits Window {
             clip: true;
 
             frame-image := Image {
+                y: root.fullscreen-transitioning ? root.fullscreen-video-inset(root.width, root.height) : 0px;
                 width: parent.width;
-                height: parent.height;
+                height: parent.height - self.y;
                 source: root.frame;
                 image-fit: contain;
                 visible: root.has-frame && !root.native-video-enabled;
@@ -1232,6 +1241,14 @@ export component StreamWindow inherits Window {
             // Keep the toolbar anchor and hit area stable while the visual
             // capsule grows from the logo's docked edge.
             control := Rectangle {
+                // Preserve the dock position while moving between macOS Spaces.
+                // Reveal the controls once the window reaches its final position.
+                visible: !root.fullscreen-transitioning;
+                opacity: root.fullscreen-transitioning ? 0 : 1;
+                animate opacity {
+                    duration: root.fullscreen-transitioning ? 0ms : 100ms;
+                    easing: ease-out;
+                }
                 x: root.control-dragging ? root.control-drag-x : root.control-docked-left ? 0px : parent.width - self.width;
                 y: min(max(0px, root.control-pos-y), parent.height - self.height);
                 width: root.control-visual-expanded ? min(80px + 7 * root.control-button-step + root.control-shortcut-width + root.control-privacy-width + root.control-disconnect-gap, parent.width) : root.control-toolbar-height;

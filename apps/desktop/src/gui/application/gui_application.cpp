@@ -1074,9 +1074,6 @@ struct GuiApplication::StreamView {
 
   ~StreamView() {
     session->SetVideoRenderer(nullptr);
-#if defined(__APPLE__)
-    UnregisterStreamWindow(window->window().appkit_view());
-#endif
     presenter.Detach();
     window->hide();
   }
@@ -2314,6 +2311,11 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
 
 void GuiApplication::BindStreamCallbacks(StreamView& view) {
   auto& stream = view.window;
+#if defined(__APPLE__)
+  stream->on_fullscreen_video_inset([&view](float width, float height) {
+    return StreamWindowVideoTransitionInset(view.window->window().appkit_view(), width, height);
+  });
+#endif
   stream->on_place_control_pointer([&view](float x, float y) {
     return PlaceStreamControlPointer(view.window->window(), x, y);
   });
@@ -2566,16 +2568,11 @@ void GuiApplication::BindStreamCallbacks(StreamView& view) {
     view.ObserveWindowState();
     const bool enter_fullscreen = !stream->get_fullscreen_enabled();
     stream->set_fullscreen_enabled(enter_fullscreen);
-#if defined(__APPLE__)
-    if (!SetStreamWindowFullscreen(stream->window().appkit_view(), enter_fullscreen)) {
-      stream->set_fullscreen_enabled(!enter_fullscreen);
-      return;
-    }
-    NotifyVideoFrameReady(*view.session);
-#else
     auto& window = stream->window();
     window.request_redraw();
     window.set_fullscreen(enter_fullscreen);
+#if defined(__APPLE__)
+    NotifyVideoFrameReady(*view.session);
 #endif
   });
   stream->on_disconnect([this, &view] {
@@ -3992,8 +3989,14 @@ void GuiApplication::SyncStreamWindow(StreamView& view) {
   ConfigureWindowsWindowIcons(stream->window().win32_hwnd());
 #elif defined(__APPLE__)
   if (view.chrome_attempts > 0) {
-    if (ConfigureStreamWindowLiveResize(stream->window().appkit_view())) view.chrome_attempts = 0;
-    else --view.chrome_attempts;
+    if (ConfigureStreamWindowLiveResize(stream->window().appkit_view(),
+            [weak = slint::ComponentWeakHandle(stream)](bool active) {
+              if (auto handle = weak.lock()) (*handle)->set_fullscreen_transitioning(active);
+            })) {
+      view.chrome_attempts = 0;
+    } else {
+      --view.chrome_attempts;
+    }
   }
 #endif
   if (view.position_attempts > 0 && NativeWindowReady(stream->window())) {

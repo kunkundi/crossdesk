@@ -1,9 +1,11 @@
 #include "platform/window_drag.h"
 
 #import <AppKit/AppKit.h>
-#import <objc/runtime.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <QuartzCore/CALayer.h>
+#import <QuartzCore/CAMediaTimingFunction.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#import <objc/runtime.h>
 
 #include <algorithm>
 #include <cmath>
@@ -11,20 +13,205 @@
 #include <memory>
 #include <utility>
 
-@interface CrossDeskStreamFullscreenTarget : NSObject
-@property(nonatomic, weak) NSView *view;
-@property(nonatomic) bool fullscreen;
-@property(nonatomic) NSRect frame;
-@property(nonatomic) NSWindowStyleMask style;
-@property(nonatomic) NSWindowTitleVisibility titleVisibility;
-@property(nonatomic) BOOL transparent, movable, closeHidden, miniaturizeHidden, zoomHidden;
-- (void)toggleStreamFullscreen:(id)sender;
+static char stream_transition_key;
+
+static NSTimeInterval StreamWindowAnimationDuration(NSTimeInterval duration) {
+  return NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion ? 0 : duration;
+}
+
+static void AnimateStreamWindowFrame(NSWindow* window, NSRect start,
+                                     NSRect target, NSTimeInterval duration) {
+  if (duration <= 0 || NSEqualRects(start, target)) {
+    if (!NSEqualRects(window.frame, target)) [window setFrame:target display:YES];
+    return;
+  }
+  if (!NSEqualRects(window.frame, start)) [window setFrame:start display:NO];
+  [NSAnimationContext runAnimationGroup:^(NSAnimationContext* context) {
+    context.duration = duration;
+    context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+    context.allowsImplicitAnimation = YES;
+    [window.animator setFrame:target display:YES];
+  } completionHandler:nil];
+}
+
+@interface CrossDeskStreamTransitionDelegate : NSObject <NSWindowDelegate>
+@property(nonatomic, weak) id<NSWindowDelegate> backendDelegate;
+@property(nonatomic, copy) void (^transitionChanged)(bool active);
+@property(nonatomic, readonly) BOOL animatingVideo;
+- (CGFloat)videoInsetForContentSize:(NSSize)size inWindow:(NSWindow*)window;
 @end
 
-@implementation CrossDeskStreamFullscreenTarget
-- (void)toggleStreamFullscreen:(id)sender {
-  (void)sender;
-  crossdesk::SetStreamWindowFullscreen((__bridge void *)self.view, !self.fullscreen);
+@implementation CrossDeskStreamTransitionDelegate {
+  NSRect _windowedFrame;
+  NSRect _windowedScreenFrame;
+  NSRect _fullscreenFrame;
+  CGFloat _titleHeight;
+  NSImage* _windowedTitle;
+  NSImageView* _exitingHeader;
+  NSViewLayerContentsRedrawPolicy _savedRedrawPolicy;
+  BOOL _transitioning;
+}
+
+- (CGFloat)videoInsetForContentSize:(NSSize)size inWindow:(NSWindow*)window {
+  if (!_animatingVideo) return 0;
+  // The real titlebar changes style immediately. Interpolate its occupied
+  // space with the actual window size so the picture follows the same path.
+  const CGFloat dw = NSWidth(_fullscreenFrame) - NSWidth(_windowedFrame);
+  const CGFloat dh = NSHeight(_fullscreenFrame) - NSHeight(_windowedFrame);
+  if (dw == 0 && dh == 0) return 0;
+  const CGFloat progress = std::abs(dw) >= std::abs(dh)
+      ? (size.width - NSWidth(_windowedFrame)) / dw
+      : (NSHeight(window.frame) - NSHeight(_windowedFrame)) / dh;
+  const CGFloat from = NSHeight(_windowedFrame) - _titleHeight;
+  const CGFloat height = from + std::clamp<CGFloat>(progress, 0, 1) *
+                                    (NSHeight(_fullscreenFrame) - from);
+  return std::clamp<CGFloat>(size.height - height, -_titleHeight, _titleHeight);
+}
+
+- (BOOL)respondsToSelector:(SEL)selector {
+  return [super respondsToSelector:selector] ||
+         [self.backendDelegate respondsToSelector:selector];
+}
+
+- (id)forwardingTargetForSelector:(SEL)selector {
+  if ([self.backendDelegate respondsToSelector:selector]) return self.backendDelegate;
+  return [super forwardingTargetForSelector:selector];
+}
+
+- (NSArray<NSWindow*>*)customWindowsToEnterFullScreenForWindow:(NSWindow*)window
+                                                      onScreen:(NSScreen*)screen {
+  return @[window];
+}
+
+- (NSImageView*)showTitleInContent:(NSView*)content
+                           exiting:(BOOL)exiting
+                          duration:(NSTimeInterval)duration {
+  if (!_windowedTitle || duration <= 0) return nil;
+  NSImageView* header = [NSImageView imageViewWithImage:_windowedTitle];
+  header.imageScaling = NSImageScaleAxesIndependently;
+  header.wantsLayer = YES;
+  header.layer.masksToBounds = YES;
+  header.layer.maskedCorners = kCALayerMinXMaxYCorner | kCALayerMaxXMaxYCorner;
+  header.layer.cornerRadius = _titleHeight * 0.5;
+  header.layer.cornerCurve = kCACornerCurveContinuous;
+  header.translatesAutoresizingMaskIntoConstraints = NO;
+  header.alphaValue = exiting ? 0 : 1;
+  [content addSubview:header];
+  [NSLayoutConstraint activateConstraints:@[
+      [header.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],
+      [header.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
+      [header.topAnchor constraintEqualToAnchor:content.topAnchor],
+      [header.heightAnchor constraintEqualToConstant:_titleHeight],
+  ]];
+  [content layoutSubtreeIfNeeded];
+  [NSAnimationContext runAnimationGroup:^(NSAnimationContext* context) {
+    context.duration = duration * (exiting ? 1 : 0.4);
+    header.animator.alphaValue = exiting ? 1 : 0;
+  } completionHandler:^{
+    if (!exiting) [header removeFromSuperview];
+  }];
+  return header;
+}
+
+- (void)window:(NSWindow*)window
+    startCustomAnimationToEnterFullScreenOnScreen:(NSScreen*)screen
+                                     withDuration:(NSTimeInterval)duration {
+  const NSRect start = window.frame;
+  _windowedFrame = start;
+  _windowedScreenFrame = window.screen.frame;
+  duration = StreamWindowAnimationDuration(duration);
+  NSView* content = window.contentView;
+  NSView* frame = content.superview;
+  NSRect titleRect = frame.bounds;
+  const CGFloat contentTop = NSMaxY([content convertRect:content.bounds toView:frame]);
+  titleRect.size.height = NSMaxY(titleRect) - contentTop;
+  titleRect.origin.y = contentTop;
+  NSImage* title = nil;
+  if (duration > 0 && !NSIsEmptyRect(titleRect)) {
+    NSBitmapImageRep* rep = [frame bitmapImageRepForCachingDisplayInRect:titleRect];
+    if (rep) {
+      [frame cacheDisplayInRect:titleRect toBitmapImageRep:rep];
+      title = [[NSImage alloc] initWithSize:titleRect.size];
+      [title addRepresentation:rep];
+      // Stretch only the empty fill so the title and traffic lights keep their shape.
+      const CGFloat right = NSHeight(titleRect);
+      if (NSWidth(titleRect) > right + 1) {
+        title.capInsets = NSEdgeInsetsMake(0, NSWidth(titleRect) - right - 1, 0, right);
+        title.resizingMode = NSImageResizingModeStretch;
+      }
+    }
+  }
+
+  // AppKit's default moving snapshot has a bright one-pixel rim over black
+  // video. Animate the actual fullscreen window. Applying the style first
+  // lets AppKit choose the destination frame, including the camera housing.
+  window.styleMask |= NSWindowStyleMaskFullScreen;
+  const NSRect target = window.frame;
+  _fullscreenFrame = target;
+  _titleHeight = std::max<CGFloat>(0, NSHeight(titleRect));
+  _windowedTitle = title;
+  _animatingVideo = duration > 0 && !NSEqualRects(start, target);
+  if (_animatingVideo) [self showTitleInContent:content exiting:NO duration:duration];
+  AnimateStreamWindowFrame(window, start, target, duration);
+}
+
+- (NSArray<NSWindow*>*)customWindowsToExitFullScreenForWindow:(NSWindow*)window {
+  // Let AppKit choose the restore frame if the display configuration changed.
+  if (NSIsEmptyRect(_windowedFrame) || !NSEqualRects(_windowedScreenFrame, window.screen.frame)) {
+    return nil;
+  }
+  return @[window];
+}
+
+- (void)window:(NSWindow*)window
+    startCustomAnimationToExitFullScreenWithDuration:(NSTimeInterval)duration {
+  // Keep fullscreen geometry until the window has shrunk. Otherwise AppKit
+  // can constrain an intermediate frame to the desktop's menu bar or Dock.
+  const NSRect start = window.frame;
+  duration = StreamWindowAnimationDuration(duration);
+  _animatingVideo = duration > 0 && !NSEqualRects(start, _windowedFrame);
+  if (_animatingVideo)
+    _exitingHeader = [self showTitleInContent:window.contentView exiting:YES duration:duration];
+  AnimateStreamWindowFrame(window, start, _windowedFrame, duration);
+}
+
+- (void)willToggleFullscreen:(NSNotification*)notification {
+  NSView* content = ((NSWindow*)notification.object).contentView;
+  if (!_transitioning) _savedRedrawPolicy = content.layerContentsRedrawPolicy;
+  _transitioning = YES;
+  content.layerContentsRedrawPolicy = NSViewLayerContentsRedrawDuringViewResize;
+  self.transitionChanged(true);
+}
+
+- (void)finishTransition:(NSWindow*)window {
+  _animatingVideo = NO;
+  [_exitingHeader removeFromSuperview];
+  _exitingHeader = nil;
+  if (_transitioning) window.contentView.layerContentsRedrawPolicy = _savedRedrawPolicy;
+  _transitioning = NO;
+  self.transitionChanged(false);
+}
+
+- (void)didToggleFullscreen:(NSNotification*)notification {
+  if ([notification.name isEqualToString:NSWindowDidExitFullScreenNotification]) {
+    _windowedFrame = NSZeroRect;
+    _windowedTitle = nil;
+  }
+  [self finishTransition:notification.object];
+}
+
+- (void)windowDidFailToEnterFullScreen:(NSWindow*)window {
+  _windowedFrame = NSZeroRect;
+  _windowedTitle = nil;
+  [self finishTransition:window];
+  if ([self.backendDelegate respondsToSelector:_cmd])
+    [self.backendDelegate windowDidFailToEnterFullScreen:window];
+}
+
+- (void)windowDidFailToExitFullScreen:(NSWindow*)window {
+  [self finishTransition:window];
+  if ([self.backendDelegate respondsToSelector:_cmd])
+    [self.backendDelegate windowDidFailToExitFullScreen:window];
 }
 @end
 
@@ -35,16 +222,13 @@ __weak NSWindow *gallery_window = nil;
 bool gallery_fullscreen = false;
 NSRect gallery_restore_frame = NSZeroRect;
 NSWindowStyleMask gallery_restore_style = NSWindowStyleMaskTitled;
-char stream_state_key;
-unsigned fullscreen_windows = 0;
 NSApplicationPresentationOptions saved_presentation;
 
 void UpdateFullscreenPresentation(bool enter) {
   if (!enter) {
-    if (--fullscreen_windows == 0) NSApp.presentationOptions = saved_presentation;
+    NSApp.presentationOptions = saved_presentation;
     return;
   }
-  if (fullscreen_windows++ != 0) return;
   saved_presentation = NSApp.presentationOptions;
   auto options = saved_presentation;
   if (!(options & NSApplicationPresentationHideDock))
@@ -52,10 +236,6 @@ void UpdateFullscreenPresentation(bool enter) {
   if (!(options & NSApplicationPresentationHideMenuBar))
     options |= NSApplicationPresentationAutoHideMenuBar;
   NSApp.presentationOptions = options;
-}
-
-CrossDeskStreamFullscreenTarget *StreamState(NSWindow *window) {
-  return objc_getAssociatedObject(window, &stream_state_key);
 }
 
 struct FileDialogRequest {
@@ -75,16 +255,6 @@ NSOpenPanel *CreateFileDialog() {
   panel.allowsMultipleSelection = NO;
   panel.resolvesAliases = YES;
   return panel;
-}
-
-void InstallStreamFullscreenButton(NSWindow *window) {
-  if (window == nil) {
-    return;
-  }
-  NSButton *zoom_button =
-      [window standardWindowButton:NSWindowZoomButton];
-  zoom_button.target = StreamState(window);
-  zoom_button.action = @selector(toggleStreamFullscreen:);
 }
 
 void SetTitlebarButtonsHidden(NSWindow *window, BOOL hidden) {
@@ -270,19 +440,37 @@ bool IsGalleryWindowMaximized() {
   }
 }
 
-bool ConfigureStreamWindowLiveResize(void *opaque_slint_view) {
+bool ConfigureStreamWindowLiveResize(void *opaque_slint_view,
+                                     std::function<void(bool)> transition_changed) {
   @autoreleasepool {
     NSView *slint_view = (__bridge NSView *)opaque_slint_view;
     NSWindow *window = slint_view.window;
-    if (window == nil) {
+    NSView *content_view = window.contentView;
+    if (content_view == nil) {
       return false;
     }
 
-    NSButton *zoom_button =
-        [window standardWindowButton:NSWindowZoomButton];
-    NSView *content_view = window.contentView;
-    if (zoom_button == nil || !zoom_button.enabled || content_view == nil) {
-      return false;
+    // Customize the fullscreen animations. Winit still handles native
+    // fullscreen state, closing, input and resizing.
+    auto* delegate = (CrossDeskStreamTransitionDelegate*)
+        objc_getAssociatedObject(window, &stream_transition_key);
+    if (!delegate) {
+      delegate = [[CrossDeskStreamTransitionDelegate alloc] init];
+      objc_setAssociatedObject(window, &stream_transition_key, delegate, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+      NSNotificationCenter* center = NSNotificationCenter.defaultCenter;
+      for (NSNotificationName name in @[NSWindowWillEnterFullScreenNotification,
+                                        NSWindowWillExitFullScreenNotification]) {
+        [center addObserver:delegate selector:@selector(willToggleFullscreen:) name:name object:window];
+      }
+      for (NSNotificationName name in @[NSWindowDidEnterFullScreenNotification,
+                                        NSWindowDidExitFullScreenNotification]) {
+        [center addObserver:delegate selector:@selector(didToggleFullscreen:) name:name object:window];
+      }
+    }
+    delegate.transitionChanged = ^(bool active) { transition_changed(active); };
+    if (window.delegate != delegate) {
+      delegate.backendDelegate = window.delegate;
+      window.delegate = delegate;
     }
 
     // During an ordinary edge resize, scale one cached frame and redraw once
@@ -292,37 +480,24 @@ bool ConfigureStreamWindowLiveResize(void *opaque_slint_view) {
         NSViewLayerContentsRedrawBeforeViewResize;
     content_view.layerContentsPlacement =
         NSViewLayerContentsPlacementScaleProportionallyToFit;
-    if (!StreamState(window)) {
-      auto *state = [[CrossDeskStreamFullscreenTarget alloc] init];
-      state.view = slint_view;
-      objc_setAssociatedObject(window, &stream_state_key, state,
-                               OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
     window.tabbingMode = NSWindowTabbingModeDisallowed;
     window.excludedFromWindowsMenu = NO;
-    // Native Space fullscreen cross-fades an AppKit source snapshot over a
-    // separately rendered destination window. Disable that path for the
-    // stream window and route the green button to the immediate transition.
     window.collectionBehavior =
-        (window.collectionBehavior &
-         ~(NSWindowCollectionBehaviorFullScreenPrimary |
-           NSWindowCollectionBehaviorFullScreenAuxiliary |
-           NSWindowCollectionBehaviorFullScreenAllowsTiling)) |
-        NSWindowCollectionBehaviorFullScreenNone;
-    InstallStreamFullscreenButton(window);
+        (window.collectionBehavior & ~(NSWindowCollectionBehaviorFullScreenAuxiliary |
+                                       NSWindowCollectionBehaviorFullScreenNone)) |
+        NSWindowCollectionBehaviorFullScreenPrimary;
     content_view.needsDisplay = YES;
     return true;
   }
 }
 
-void UnregisterStreamWindow(void *opaque_slint_view) {
-  @autoreleasepool {
-    NSView *slint_view = (__bridge NSView *)opaque_slint_view;
-    NSWindow *window = slint_view.window;
-    if (!window || StreamState(window).view != slint_view) return;
-    SetStreamWindowFullscreen(opaque_slint_view, false);
-    objc_setAssociatedObject(window, &stream_state_key, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-  }
+float StreamWindowVideoTransitionInset(void* opaque_view, float width, float height,
+                                      bool* transitioning) {
+  NSView* view = (__bridge NSView*)opaque_view;
+  auto* delegate = (CrossDeskStreamTransitionDelegate*)
+      objc_getAssociatedObject(view.window, &stream_transition_key);
+  if (transitioning) *transitioning = delegate.animatingVideo;
+  return [delegate videoInsetForContentSize:NSMakeSize(width, height) inWindow:view.window];
 }
 
 bool IsStreamWindowActive(void *opaque_slint_view) {
@@ -366,72 +541,9 @@ bool PlaceMacStreamControlPointer(void* slint_view, float pixel_x, float pixel_y
   }
 }
 
-bool SetStreamWindowFullscreen(void *opaque_slint_view, bool fullscreen) {
-  @autoreleasepool {
-    NSView *view = (__bridge NSView *)opaque_slint_view;
-    NSWindow *window = view.window;
-    auto *state = StreamState(window);
-    if (!state) return false;
-    if (state.fullscreen == fullscreen) return true;
-
-    if (fullscreen) {
-      NSScreen *screen = window.screen ?: NSScreen.mainScreen;
-      if (screen == nil) {
-        return false;
-      }
-
-      state.frame = window.frame;
-      state.style = window.styleMask;
-      state.titleVisibility = window.titleVisibility;
-      state.transparent =
-          window.titlebarAppearsTransparent;
-      state.movable = window.movable;
-      state.closeHidden =
-          [window standardWindowButton:NSWindowCloseButton].hidden;
-      state.miniaturizeHidden =
-          [window standardWindowButton:NSWindowMiniaturizeButton].hidden;
-      state.zoomHidden =
-          [window standardWindowButton:NSWindowZoomButton].hidden;
-
-      state.fullscreen = true;
-      window.styleMask =
-          state.style | NSWindowStyleMaskFullSizeContentView;
-      window.titleVisibility = NSWindowTitleHidden;
-      window.titlebarAppearsTransparent = YES;
-      window.movable = NO;
-      SetTitlebarButtonsHidden(window, YES);
-
-      UpdateFullscreenPresentation(true);
-      [window setFrame:screen.frame display:YES animate:NO];
-      [window makeKeyAndOrderFront:nil];
-    } else {
-      state.fullscreen = false;
-      UpdateFullscreenPresentation(false);
-      window.styleMask = state.style;
-      window.titleVisibility = state.titleVisibility;
-      window.titlebarAppearsTransparent =
-          state.transparent;
-      window.movable = state.movable;
-      [window setFrame:state.frame display:YES animate:NO];
-      [window standardWindowButton:NSWindowCloseButton].hidden =
-          state.closeHidden;
-      [window standardWindowButton:NSWindowMiniaturizeButton].hidden =
-          state.miniaturizeHidden;
-      [window standardWindowButton:NSWindowZoomButton].hidden =
-          state.zoomHidden;
-      InstallStreamFullscreenButton(window);
-    }
-
-    window.contentView.alphaValue = 1.0;
-    window.contentView.needsDisplay = YES;
-    [window displayIfNeeded];
-    return true;
-  }
-}
-
 bool IsStreamWindowFullscreen(void *opaque_slint_view) {
   NSView *view = (__bridge NSView *)opaque_slint_view;
-  return StreamState(view.window).fullscreen;
+  return (view.window.styleMask & NSWindowStyleMaskFullScreen) != 0;
 }
 
 void ShowFileTransferNotification(void* slint_view,
