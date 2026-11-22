@@ -108,7 +108,7 @@ final class NativeSession implements AutoCloseable {
     /** Promote the already registered identity peer to an outgoing desktop session. */
     void connect(String remoteId, String secret) {
         execute(() -> {
-            if (joining || connected) return;
+            if (!remote.isEmpty()) return;
             remote = remoteId;
             password = secret;
             // Serialize arming with identity callbacks, which cancel the idle

@@ -344,7 +344,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         LinearLayout details=row();TextView detail=text(id.contains(":") ? id : "ID "+id,10,false);detail.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));detail.setTextColor(SECONDARY);detail.setSingleLine();detail.setEllipsize(TextUtils.TruncateAt.END);details.addView(detail,new LinearLayout.LayoutParams(0,-2,1));
         if(item.optBoolean("remember")){View key=ui.icon("key",SECONDARY);key.setContentDescription(L10n.tr("已保存密码"));LinearLayout.LayoutParams keySize=ui.size(10,10);keySize.leftMargin=dp(4);details.addView(key,keySize);}
         boolean online=recentPresence.isOnline(id,android.os.SystemClock.elapsedRealtime());String availability=id.contains(":")?"IP":online?L10n.tr("在线"):L10n.tr("离线");TextView presence=text(availability,10,true);presence.setSingleLine();presence.setTextColor(online?GREEN:SECONDARY);LinearLayout.LayoutParams presenceSize=ui.size(-2,-2);presenceSize.leftMargin=dp(5);details.addView(presence,presenceSize);caption.addView(details);card.addView(caption);
-        card.setContentDescription(L10n.tr("连接 ")+title+"，ID "+id+(item.optBoolean("remember")?L10n.tr("，已保存密码"):"")+"，"+availability);card.setClickable(true);card.setFocusable(true);card.setOnClickListener(v->{remote.setText(formatId(id));promptConnection(id);});
+        card.setContentDescription(L10n.tr("连接 ")+title+"，ID "+id+(item.optBoolean("remember")?L10n.tr("，已保存密码"):"")+"，"+availability);card.setClickable(true);card.setFocusable(true);card.setOnClickListener(v->promptConnection(id));
         card.setOnLongClickListener(v->{actions.run();return true;});return card;
     }
     private void showRecentActions(String server, JSONObject item) {
@@ -421,9 +421,12 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         updateUngrouped.run();
     }
     private void promptConnection(String id){
+        if (session != null || (passwordDialog != null && passwordDialog.isShowing()) ||
+                (privacyDialog != null && privacyDialog.isShowing())) return;
         hideKeyboard();
         final String target = id.matches("[0-9]{9}") ? id : NativeSession.directEndpoint(id);
         if (target.isEmpty()) { remote.setError(L10n.tr("请输入设备 ID 或有效的 IP 地址")); remote.requestFocus(); return; }
+        if (!target.equals(id())) remote.setText(formatId(target));
         if(!preferences.getBoolean("networkConsent",false)){consent(()->connectOrPrompt(target));return;}connectOrPrompt(target);
     }
     private void connectOrPrompt(String id){
@@ -449,6 +452,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         LinearLayout save=row(),saveText=column();saveText.addView(text(L10n.tr("保存密码"),15,true));ui.gap(saveText,3);TextView security=text(L10n.tr("密码将加密保存在本机 Android Keystore 中"),11,false);security.setTextColor(SECONDARY);saveText.addView(security);save.addView(saveText,new LinearLayout.LayoutParams(0,-2,1));Switch remember=new Switch(this);remember.setContentDescription(L10n.tr("保存密码"));save.addView(remember);sheet.addView(save);
         remember.setChecked(rememberDefault);
         ui.gap(sheet,18);TextView connect=ui.primary(L10n.tr("连接"),()->{
+            if (!dialog.isShowing() || session != null) return;
             String secret=password.getText().toString();if(secret.isEmpty()||secret.length()>128||secret.contains("@")||(id.contains(":")&&!secret.matches("[a-zA-Z0-9]{6}"))){password.setError(L10n.tr("请输入有效访问密码"));return;}
             rememberPassword=remember.isChecked();password.setText("");dialog.dismiss();begin(id,secret);
         });connect.setContentDescription(L10n.tr("确认连接"));sheet.addView(connect,ui.size(-1,48));
@@ -456,7 +460,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         // This floating dialog uses window-managed IME resizing on all supported APIs.
         @SuppressWarnings("deprecation") int resizeMode=WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
         dialog.setContentView(scroll);Window window=dialog.getWindow();if(window!=null){window.setBackgroundDrawableResource(android.R.color.transparent);window.setSoftInputMode(resizeMode);window.setDimAmount(.22f);}dialog.show();sizePasswordDialog();password.requestFocus();if(!error.isEmpty())password.setError(error);
-        dialog.setOnDismissListener(d->{password.setText("");passwordDialog=null;});
+        dialog.setOnDismissListener(d->{password.setText("");if(passwordDialog==dialog)passwordDialog=null;});
     }
     private void sizePasswordDialog(){
         if(passwordDialog==null||passwordDialog.getWindow()==null)return;
@@ -465,6 +469,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         window.setGravity(width>=600?Gravity.CENTER:Gravity.BOTTOM);
     }
     private void begin(String id,String secret){
+        if (session != null) return;
         videoWidth=videoHeight=0;enteredPictureInPicture=false;
         pictureInPicture.disconnect();updatePictureInPicture();
         remoteServiceAvailable=false;receivedFile=null;

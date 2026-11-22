@@ -355,6 +355,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     @Published private(set) var isConnecting = false
     @Published private(set) var isConnected = false
     @Published private(set) var sessionVisible = false
+    var canStartConnection: Bool { !isConnecting && !isConnected && !sessionVisible }
     @Published private var videoFrame: RemoteVideoFrame?
     @Published private(set) var remoteCursorVisible = true
     @Published private(set) var remoteCursorShape = 0
@@ -596,12 +597,13 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     func connect(password: String, rememberPassword: Bool) {
+        guard canStartConnection else { return }
         self.password = password
         pendingRememberPassword = rememberPassword
         connect()
     }
 
-    func connect() {
+    private func connect() {
         guard hasNetworkConsent else {
             showPrivacyNotice()
             return

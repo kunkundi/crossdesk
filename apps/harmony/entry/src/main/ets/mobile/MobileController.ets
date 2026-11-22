@@ -147,6 +147,7 @@ export class MobileController {
   private previewSaved: boolean = false;
   private previewAttempts: number = 0;
   private uiEpoch: number = 0;
+  private passwordLookupEpoch?: number;
   private privacy: string = '';
   constructor(context: common.UIAbilityContext) {
     this.context = context; this.store = new MobileStore(context);
@@ -239,7 +240,7 @@ export class MobileController {
     if (changed) { this.state.recentFilter = undefined; this.end(''); this.stopSignal(); this.inbox.reset(); this.history(); this.ensureSignal(); }
     this.navigate('settings');
   }
-  navigate(page: string): void { this.state.page = page; this.state.modal = ''; }
+  navigate(page: string): void { this.uiEpoch++; this.state.page = page; this.state.modal = ''; }
   async pairingInfo(copy: boolean): Promise<void> {
     try {
       const seed = await this.store.trustKey();
@@ -273,6 +274,7 @@ export class MobileController {
     try { await this.store.delete(this.scope(), id); this.history(); } catch { this.toast(tr("记录或密码删除失败，请重试")); }
   }
   async requestConnection(id: string): Promise<void> {
+    if (this.state.connecting || this.state.ready || this.state.modal === 'password' || this.passwordLookupEpoch === this.uiEpoch) return;
     id = id.replace(/\s/g, ''); this.state.remote = id;
     if (!/^[0-9]{9}$/.test(id)) {
       const endpoint = bridge.mobileDirectEndpoint(id);
@@ -281,16 +283,22 @@ export class MobileController {
     }
     if (!this.state.consent) { this.state.modal = 'consent'; return; }
     const epoch = ++this.uiEpoch, scope = this.scope();
+    this.passwordLookupEpoch = epoch;
     this.state.password = ''; this.state.notice = '';
     this.state.remember = this.store.recent(scope).find((d: RecentDevice) => d.id === id)?.remember ?? false;
-    try {
-      const password = await this.store.secret(`password:${scope}:${id}`);
-      if (epoch !== this.uiEpoch || !this.foreground || !this.state.consent) return;
-      if (password) { this.state.remember = true; this.begin(password); return; }
-    } catch { if (epoch === this.uiEpoch) this.state.notice = tr("已保存密码无法读取，请重新输入"); }
-    if (epoch === this.uiEpoch) this.state.modal = 'password';
+    let password = '', notice = '';
+    try { password = await this.store.secret(`password:${scope}:${id}`); }
+    catch { notice = tr("已保存密码无法读取，请重新输入"); }
+    finally { if (this.passwordLookupEpoch === epoch) this.passwordLookupEpoch = undefined; }
+    if (epoch !== this.uiEpoch || !this.foreground || !this.state.consent || this.state.remote !== id) return;
+    if (password) { this.state.remember = true; this.startConnection(password); return; }
+    this.state.notice = notice; this.state.modal = 'password';
   }
   begin(password: string): void {
+    if (this.state.modal === 'password') this.startConnection(password);
+  }
+  private startConnection(password: string): void {
+    if (this.state.connecting || this.state.ready) return;
     if (!this.state.consent || (!/^[0-9]{9}$/.test(this.state.remote) &&
         (!bridge.mobileDirectEndpoint(this.state.remote) || !/^[A-Za-z0-9]{6}$/.test(password))) || !password || password.length > 128 || password.includes('@')) { this.toast(tr("请输入有效的访问密码")); return; }
     this.joinSent = false; this.connection++; this.connectingId = this.state.remote; this.pendingPassword = password;

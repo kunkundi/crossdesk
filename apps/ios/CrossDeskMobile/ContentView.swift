@@ -308,6 +308,7 @@ private struct ConnectionHomeView: View {
             PasswordPromptView(remoteID: promptRemoteID,
                                password: $promptPassword,
                                rememberPassword: $promptRememberPassword) {
+                guard passwordPromptVisible, session.canStartConnection else { return }
                 passwordPromptVisible = false
                 session.remoteID = promptRemoteID
                 session.connect(password: promptPassword,
@@ -641,6 +642,7 @@ private struct ConnectionHomeView: View {
     }
 
     private func presentPasswordPrompt(for identifier: String) {
+        guard !passwordPromptVisible, session.canStartConnection else { return }
         guard session.hasNetworkConsent else {
             remoteIDFocused = false
             session.showPrivacyNotice()
@@ -670,6 +672,7 @@ private struct ConnectionHomeView: View {
     }
 
     private func connectRecent(_ connection: RecentConnection) {
+        guard !passwordPromptVisible, session.canStartConnection else { return }
         session.remoteID = connection.remoteID
         remoteIDFocused = false
 
