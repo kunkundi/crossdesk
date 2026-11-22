@@ -421,6 +421,7 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"请重试或检查本机防火墙。", {"请重试或检查本机防火墙。", "Retry or check the local firewall.", "Повторите попытку или проверьте брандмауэр.", "請重試或檢查本機防火牆。", "再試行するか、ローカル ファイアウォールを確認します。", "로컬 방화벽을 다시 시도하거나 확인하세요.", "Versuchen Sie es erneut oder überprüfen Sie die lokale Firewall.", "Réessayez ou vérifiez le pare-feu local.", "Vuelva a intentarlo o verifique el firewall local.", "Tente novamente ou verifique o firewall local."}},
   {"读取失败", {"读取失败", "Read failed", "Ошибка чтения", "讀取失敗", "読み取りに失敗しました", "읽기 실패", "Lesen fehlgeschlagen", "Échec de la lecture", "Error de lectura", "Falha na leitura"}},
   {"调整失败，请重试。", {"调整失败，请重试。", "Could not apply settings. Try again.", "Не удалось применить настройки. Повторите попытку.", "調整失敗，請重試。", "設定を適用できませんでした。もう一度やり直してください。", "설정을 적용할 수 없습니다. 다시 시도해 보세요.", "Einstellungen konnten nicht angewendet werden. Versuchen Sie es erneut.", "Impossible d'appliquer les paramètres. Essayer à nouveau.", "No se pudieron aplicar las configuraciones. Intentar otra vez.", "Não foi possível aplicar as configurações. Tente novamente."}},
+  {"特别赞助", {"特别赞助", "Special sponsor", "Особый спонсор", "特別贊助", "特別協賛", "특별 후원", "Besonderer Sponsor", "Sponsor spécial", "Patrocinador especial", "Patrocinador especial"}},
   {"赞助支持", {"赞助支持", "Sponsorship", "Поддержка проекта", "贊助支援", "開発を支援", "후원", "Sponsoring", "Parrainage", "Patrocinio", "Patrocínio"}},
   {"跟随系统", {"跟随系统", "Follow system", "Как в системе", "跟隨系統", "システム設定に従う", "시스템 설정 따르기", "Systemsprache", "Langue du système", "Idioma del sistema", "Idioma do sistema"}},
   {"跟随设备设置", {"跟随设备设置", "Follow device settings", "Настройки устройства", "跟隨裝置設定", "デバイスの設定に従ってください", "기기 설정을 따르세요.", "Befolgen Sie die Geräteeinstellungen", "Suivre les paramètres de l'appareil", "Siga la configuración del dispositivo", "Siga as configurações do dispositivo"}},
@@ -1082,6 +1083,7 @@ inline constexpr const char* kSlintLiterals[] = {
   "控制窗口最小化时暂停接收视频，降低本机解码资源占用。",
   "鼠标灵敏度",
   "滚轮灵敏度",
+  "特别赞助",
 };
 }  // namespace detail
 

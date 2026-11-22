@@ -8532,6 +8532,18 @@
       "es": "No se pudieron aplicar las configuraciones. Intentar otra vez.",
       "pt-BR": "Não foi possível aplicar as configurações. Tente novamente."
     },
+    "特别赞助": {
+      "zh-Hans": "特别赞助",
+      "en": "Special sponsor",
+      "ru": "Особый спонсор",
+      "zh-Hant": "特別贊助",
+      "ja": "特別協賛",
+      "ko": "특별 후원",
+      "de": "Besonderer Sponsor",
+      "fr": "Sponsor spécial",
+      "es": "Patrocinador especial",
+      "pt-BR": "Patrocinador especial"
+    },
     "赞助支持": {
       "zh-Hans": "赞助支持",
       "en": "Sponsorship",
@@ -12369,7 +12381,8 @@
     "最小化时暂停视频",
     "控制窗口最小化时暂停接收视频，降低本机解码资源占用。",
     "鼠标灵敏度",
-    "滚轮灵敏度"
+    "滚轮灵敏度",
+    "特别赞助"
   ],
   "platforms": {
     "desktop": [
@@ -12781,6 +12794,7 @@
       "请重试或检查本机防火墙。",
       "读取失败",
       "调整失败，请重试。",
+      "特别赞助",
       "赞助支持",
       "跟随系统",
       "跟随设备设置",

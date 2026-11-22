@@ -1,0 +1,56 @@
+import { AboutNavigationRow, AboutStrings } from "about_panel.slint";
+
+export struct Sponsor {
+    name: string,
+    logo: image,
+    url: string,
+}
+
+export global SponsorDirectory {
+    in-out property <[Sponsor]> special: [
+        {
+            name: "HuaLongAI 华龙算力",
+            logo: @image-url("icons/sponsors/hualongai.png"),
+            url: "https://crossdesk.hualong-ai.com/",
+        },
+    ];
+}
+
+export component SpecialSponsorStrip inherits Rectangle {
+    callback open-link(string);
+    in property <bool> active: true;
+    min-width: 0px; height: 56px;
+    clip: true;
+
+    private property <length> overflow-width: max(0px, cards.min-width - root.width);
+    private property <length> offset: 0px;
+    private property <bool> forward: true;
+    changed overflow-width => { root.offset = 0px; root.forward = true; }
+
+    Timer {
+        running: root.active && root.overflow-width > 0px && !hover.has-hover;
+        interval: root.offset == 0px || root.offset >= root.overflow-width ? 1200ms : 32ms;
+        triggered => {
+            if root.offset == 0px { root.forward = true; }
+            if root.offset >= root.overflow-width { root.forward = false; }
+            root.offset = clamp(root.offset + (root.forward ? 1px : -1px), 0px, root.overflow-width);
+        }
+    }
+
+    hover := TouchArea {
+        cards := HorizontalLayout {
+            x: -root.offset; y: 0px;
+            width: max(root.width, self.min-width); height: root.height;
+            padding: 0px; spacing: 8px;
+            for sponsor in SponsorDirectory.special: AboutNavigationRow {
+                min-width: self.content-width;
+                horizontal-stretch: 1;
+                title: sponsor.name;
+                subtitle: AboutStrings.special-sponsor;
+                logo: sponsor.logo;
+                external: true;
+                clicked => { root.open-link(sponsor.url); }
+            }
+        }
+    }
+}

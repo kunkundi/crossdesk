@@ -2,6 +2,7 @@ import { SurfaceSeparator, FlatSurface, UiSurface } from "ui_surface.slint";
 import { TrustedDevicesDialog, TrustedDeviceEntry, TrustStrings } from "trusted_devices.slint";
 import { ControllerEntry, ServerPanel, ServerStrings } from "server_window.slint";
 import { LanStrings } from "lan_strings.slint";
+import { SpecialSponsorStrip, SponsorDirectory } from "sponsor_strip.slint";
 import { AboutPanel, AboutPage, AboutComponent, AboutStrings, AboutNavigationRow, AboutNavigationGroup, AboutRowSeparator } from "about_panel.slint";
 import { FeedbackPanel, FeedbackStrings } from "feedback_panel.slint";
 import { UiRadius } from "ui_radius.slint";
@@ -63,8 +64,6 @@ export global UiStrings {
     in-out property <string> settings: "Settings";
     in-out property <string> about: "About";
     in-out property <string> sponsorship-title: "Sponsorship";
-    in-out property <string> sponsorship-message;
-    in-out property <string> sponsorship-dismiss-hint;
     in-out property <string> sponsor-via-afdian: "AFDIAN";
     in-out property <string> ok: "OK";
     in-out property <string> cancel: "Cancel";
@@ -596,7 +595,7 @@ export component MainWindow inherits Window {
         root.lan-access-warning = "";
         root.lan-access-warning-endpoint = "";
         // Keep the failed draft ready to edit and validate it on every new blur.
-        if root.lan-mode && root.lan-port-dirty && root.sponsorship-unobstructed {
+        if root.lan-mode && root.lan-port-dirty && root.main-unobstructed {
             lan-port-editor.focus();
         } else { focus-sink.focus(); }
     }
@@ -722,6 +721,7 @@ export component MainWindow inherits Window {
     in property <string> latest-version: "";
     in property <string> release-name: "";
     in property <[ReleaseNoteBlock]> release-note-blocks;
+    in property <[string]> installed-release-notes;
     in property <string> release-date: "";
     in-out property <string> offline-warning: "";
     in property <bool> connection-dialog-open: false;
@@ -822,7 +822,7 @@ export component MainWindow inherits Window {
     callback open-afdian-sponsor;
     callback open-github-sponsor;
     callback open-kofi-sponsor;
-    callback dismiss-sponsorship;
+    callback dismiss-release-welcome;
     callback check-for-updates;
     callback signal-reconnect-requested;
     callback connection-cancel;
@@ -878,12 +878,12 @@ export component MainWindow inherits Window {
         else if root.about-page == AboutPage.component && root.about-component-index != 0 { root.about-page = AboutPage.components; }
         else { root.about-page = AboutPage.overview; }
     }
-    in-out property <bool> sponsorship-open: false;
+    in-out property <bool> release-welcome-open: false;
     // Automatic prompts must not interrupt another dialog or menu.
-    private property <bool> sponsorship-unobstructed: !root.gallery-mode
+    private property <bool> main-unobstructed: !root.gallery-mode
         && !root.controller-panel-open && !root.menu-open && !root.settings-open
         && !root.self-host-settings-open && !root.about-open && !root.feedback-open
-        && !(root.update-open && root.update-available) && !root.messages-open
+        && !root.update-dialog-visible && !root.messages-open
         && !root.update-confirm-open
         && !root.reset-password-open && !root.alias-open && !root.delete-open
         && !root.disconnect-open
@@ -892,11 +892,13 @@ export component MainWindow inherits Window {
         && !root.portable-service-dialog-open
         && !root.portable-service-suppressed-notice-open
         && root.offline-warning == "" && root.lan-access-warning == "";
-    out property <bool> can-show-sponsorship: !root.sponsorship-open
-        && root.sponsorship-unobstructed;
+    out property <bool> can-show-release-welcome: !root.release-welcome-open
+        && root.main-unobstructed;
     // Follow the first available update. Dismissing the dialog replaces this
     // binding, so background checks do not reopen it during this launch.
     in-out property <bool> update-open: root.update-available;
+    private property <bool> update-dialog-visible:
+        root.update-open && root.update-available && !root.release-welcome-open;
     changed update-open => {
         if !root.update-open { root.update-confirm-open = false; }
     }
@@ -947,7 +949,7 @@ export component MainWindow inherits Window {
             root.dialog-focus-pending = false;
             if root.settings-open || root.autostart-guide-open
                 || root.wayland-notice-open || root.messages-open || root.about-open || root.feedback-open
-                || (root.sponsorship-open && root.sponsorship-unobstructed) {
+                || (root.release-welcome-open && root.main-unobstructed) {
                 focus-sink.focus();
             }
         }
@@ -1004,8 +1006,8 @@ export component MainWindow inherits Window {
         if root.about-open { root.dialog-focus-pending = true; }
     }
 
-    changed sponsorship-open => {
-        if root.sponsorship-open { root.dialog-focus-pending = true; }
+    changed release-welcome-open => {
+        if root.release-welcome-open { root.dialog-focus-pending = true; }
     }
 
     reset-remote-id => {
@@ -1240,8 +1242,8 @@ export component MainWindow inherits Window {
                     }
                     return accept;
                 }
-                if root.sponsorship-open && root.sponsorship-unobstructed {
-                    if event.text == Key.Escape { root.dismiss-sponsorship(); }
+                if root.release-welcome-open && root.main-unobstructed {
+                    if event.text == Key.Escape { root.dismiss-release-welcome(); }
                     return accept;
                 }
                 if root.messages-open {
@@ -1618,7 +1620,7 @@ export component MainWindow inherits Window {
                             copy-timer.restart();
                         }
                     }
-                    private property <string> edit-hint: !root.lan-mode || !root.sponsorship-unobstructed
+                    private property <string> edit-hint: !root.lan-mode || !root.main-unobstructed
                         || root.lan-password-pending ? ""
                         : lan-ip-picker.has-hover ? GalleryStrings.texts[78]
                         : lan-port-hover.has-hover && !lan-port-editor.has-focus ? GalleryStrings.texts[79] : "";
@@ -3283,7 +3285,7 @@ export component MainWindow inherits Window {
         }
     }
 
-    if root.sponsorship-open && root.sponsorship-unobstructed: Rectangle {
+    if root.release-welcome-open && root.main-unobstructed: Rectangle {
         background: #15223850;
         z: 38;
         TouchArea { clicked => { focus-sink.focus(); } }
@@ -3291,40 +3293,63 @@ export component MainWindow inherits Window {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
             width: min(480px, parent.width - 40px);
-            height: self.content-top + sponsorship-content.preferred-height + 24px;
-            title: UiStrings.sponsorship-title;
-            show-close-button: false;
-            sponsorship-content := VerticalLayout {
+            height: min(416px, parent.height - 32px);
+            title: UiStrings.release-notes;
+            header-status: "CrossDesk " + root.current-version;
+            close-label: MessageStrings.close;
+            close => { root.dismiss-release-welcome(); }
+            VerticalLayout {
                 x: 24px; y: parent.content-top;
-                width: parent.width - 48px; height: self.preferred-height;
-                padding: 0px; spacing: 20px;
-                Text {
-                    text: UiStrings.sponsorship-message;
-                    color: WorkbenchStyle.text; font-size: 14px; wrap: word-wrap;
-                    // Match message bodies' 1.5em line height for wrapped text.
-                    font-family: "CrossDesk Message Spacing";
+                width: parent.width - 48px; height: parent.height - self.y - 20px;
+                padding: 0px; spacing: 12px;
+                FlatSurface {
+                    vertical-stretch: 1;
+                    background: WorkbenchStyle.surface;
+                    outline-color: UiSurface.edge;
+                    border-radius: UiRadius.control;
+                    notes-scroll := ScrollView {
+                        x: 12px; y: 10px;
+                        width: parent.width - 24px; height: parent.height - 20px;
+                        viewport-width: self.visible-width;
+                        viewport-height: highlights.preferred-height;
+                        horizontal-scrollbar-policy: always-off;
+                        vertical-scrollbar-policy: as-needed;
+                        highlights := VerticalLayout {
+                            width: notes-scroll.viewport-width; height: self.preferred-height;
+                            padding-right: 4px; spacing: 7px;
+                            for note in root.installed-release-notes: Rectangle {
+                                height: note-text.preferred-height;
+                                Rectangle {
+                                    x: 2px; y: 8px; width: 4px; height: 4px;
+                                    border-radius: 2px; background: WorkbenchStyle.accent;
+                                    accessible-role: none;
+                                }
+                                note-text := Text {
+                                    x: 16px; width: notes-scroll.viewport-width - self.x - 4px;
+                                    height: self.preferred-height;
+                                    text: note; font-size: 13px; wrap: word-wrap;
+                                    font-family: "CrossDesk Message Spacing";
+                                    color: WorkbenchStyle.text;
+                                }
+                            }
+                        }
+                    }
+                }
+                if SponsorDirectory.special.length > 0: SpecialSponsorStrip {
+                    active: root.window-active;
+                    open-link(url) => { root.open-about-link(url); }
                 }
                 SponsorshipSection {
-                    show-title: false;
                     open-afdian => { root.open-afdian-sponsor(); }
                     open-kofi => { root.open-kofi-sponsor(); }
                     open-github => { root.open-github-sponsor(); }
                 }
-                Text {
-                    text: UiStrings.sponsorship-dismiss-hint;
-                    color: WorkbenchStyle.muted; font-size: 12px; wrap: word-wrap;
-                    font-family: "CrossDesk Message Spacing";
-                }
-                SurfaceSeparator { height: 1px; outline-color: UiSurface.separator; }
                 HorizontalLayout {
                     alignment: end;
                     SettingsButton {
-                        width: max(80px, sponsorship-close-metrics.preferred-width + 24px);
+                        width: max(80px, self.label-width);
                         primary: true; text: MessageStrings.close;
-                        clicked => { root.dismiss-sponsorship(); }
-                        sponsorship-close-metrics := Text {
-                            visible: false; text: MessageStrings.close; font-size: 12px;
-                        }
+                        clicked => { root.dismiss-release-welcome(); }
                     }
                 }
             }
@@ -3384,23 +3409,26 @@ export component MainWindow inherits Window {
                     // Keep the expanding scrollbar outside the content.
                     padding: 0px; padding-right: 22px; spacing: 16px;
                     FlatSurface {
-                        height: max(80px, product-info.preferred-height + 32px);
+                        height: product-info.preferred-height + 16px;
                         background: WorkbenchStyle.surface;
                         border-radius: UiRadius.surface;
                         outline-color: UiSurface.edge;
-                        Image {
-                            x: 16px; y: (parent.height - self.height) / 2;
-                            width: 56px; height: 56px;
-                            source: @image-url("../../../resources/linux/crossdesk_128x128.png");
-                            image-fit: contain;
-                        }
-                        product-info := VerticalLayout {
-                            x: 88px; y: 16px; width: parent.width - 104px; height: parent.height - 32px;
-                            alignment: center; spacing: 5px;
-                            Text { text: "CrossDesk"; font-size: 22px; font-weight: 600; color: WorkbenchStyle.text; }
+                        product-info := HorizontalLayout {
+                            x: 12px; y: 8px; width: parent.width - 24px;
+                            height: self.preferred-height; spacing: 10px;
+                            Image {
+                                width: 32px; height: 32px;
+                                source: @image-url("../../../resources/linux/crossdesk_128x128.png");
+                                image-fit: contain;
+                            }
+                            Text {
+                                text: "CrossDesk"; font-size: 16px; font-weight: 600;
+                                color: WorkbenchStyle.text; vertical-alignment: center;
+                            }
                             Text {
                                 text: UiStrings.version + " " + root.current-version;
                                 color: WorkbenchStyle.muted; font-size: 12px; wrap: word-wrap;
+                                horizontal-stretch: 1; vertical-alignment: center;
                             }
                         }
                     }
@@ -3441,6 +3469,10 @@ export component MainWindow inherits Window {
                                 }
                             }
                         }
+                    }
+                    if SponsorDirectory.special.length > 0: SpecialSponsorStrip {
+                        active: root.window-active;
+                        open-link(url) => { root.open-about-link(url); }
                     }
                     SponsorshipSection {
                         open-afdian => { root.open-afdian-sponsor(); }
@@ -3511,7 +3543,7 @@ export component MainWindow inherits Window {
     }
 
     // Update notification modal.
-    if root.update-open && root.update-available: Rectangle {
+    if root.update-dialog-visible: Rectangle {
         background: #14233b45;
         z: 47;
         TouchArea { clicked => { focus-sink.focus(); } }

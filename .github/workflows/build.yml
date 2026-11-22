@@ -640,7 +640,10 @@ jobs:
 
       - name: Prepare release notes
         run: |
-          cat > "$RUNNER_TEMP/release-notes.md" << EOF
+          jq -r '(["## 更新内容", ""] + (."zh-CN" | map("- " + .)) +
+            ["", "## What’s new", ""] + (."en-US" | map("- " + .)) + [""]) | .[]' \
+            apps/desktop/resources/release-notes.json > "$RUNNER_TEMP/release-notes.md"
+          cat >> "$RUNNER_TEMP/release-notes.md" << EOF
           ## Corresponding source
 
           Source for these binaries: [${GITHUB_REF_NAME}](https://github.com/${GITHUB_REPOSITORY}/tree/${GITHUB_SHA}).

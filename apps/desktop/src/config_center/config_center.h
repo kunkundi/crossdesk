@@ -70,7 +70,7 @@ class ConfigCenter {
   int SetInputSensitivity(const std::string& device, int mouse_percent, int wheel_percent);
   int SetStreamWindowSize(const std::string& device, StreamWindowSize size);
   int SetPortableServicePromptSuppressed(bool suppressed);
-  int SetSponsorshipPromptDismissedVersion(const std::string& version);
+  int SetLastPresentedRelease(const std::string& version);
   int SetFileTransferSavePath(const std::string& path);
 
   // read config
@@ -103,7 +103,7 @@ class ConfigCenter {
   int GetWheelSensitivityPercent(const std::string& device) const;
   std::optional<StreamWindowSize> GetStreamWindowSize(const std::string& device) const;
   bool IsPortableServicePromptSuppressed() const;
-  std::string GetSponsorshipPromptDismissedVersion() const;
+  std::string GetLastPresentedRelease() const;
   std::string GetFileTransferSavePath() const;
 
   int Load();
@@ -150,7 +150,7 @@ class ConfigCenter {
   int legacy_wheel_sensitivity_percent_ = 100;
   std::map<std::string, int> device_wheel_sensitivity_;
   bool portable_service_prompt_suppressed_ = false;
-  std::string sponsorship_prompt_dismissed_version_;
+  std::string last_presented_release_;
   std::string file_transfer_save_path_ = "";
 };
 }  // namespace crossdesk

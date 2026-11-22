@@ -25,6 +25,7 @@ export global AboutStrings {
     out property <string> notices: GalleryStrings.texts[133];
     out property <string> view-source: GalleryStrings.texts[134];
     out property <string> back: GalleryStrings.texts[135];
+    out property <string> special-sponsor: GalleryStrings.texts[212];
 }
 
 export component AboutNavigationGroup inherits FlatSurface {
@@ -52,13 +53,17 @@ export component AboutNavigationRow inherits FlatSurface {
     in property <string> title;
     in property <string> subtitle;
     in property <string> icon;
+    in property <image> logo;
+    private property <bool> has-logo: root.logo.width > 0;
     in property <string> detail;
     in property <bool> grouped: false;
     in property <bool> external: false;
     in property <bool> enabled: true;
     callback clicked;
+    out property <length> content-width: labels.x + labels.preferred-width + 36px
+        + (root.detail != "" ? detail-label.width + 12px : 0px);
     min-width: 0px;
-    min-height: max(44px, labels.preferred-height + 20px);
+    min-height: max(root.has-logo ? 56px : 44px, labels.preferred-height + 20px);
     background: touch.pressed ? WorkbenchStyle.pressed-surface
         : touch.has-hover ? WorkbenchStyle.hover-surface : WorkbenchStyle.surface;
     border-radius: root.grouped ? 0px : UiRadius.control;
@@ -69,7 +74,13 @@ export component AboutNavigationRow inherits FlatSurface {
         + (root.detail != "" ? ", " + root.detail : "");
     accessible-enabled: root.enabled;
     accessible-action-default => { if root.enabled { root.clicked(); } }
-    if root.icon != "": Rectangle {
+    if root.has-logo: Image {
+        x: 12px; y: (parent.height - self.height) / 2;
+        width: 44px; height: 44px;
+        source: root.logo; image-fit: contain;
+        accessible-role: none;
+    }
+    if !root.has-logo && root.icon != "": Rectangle {
         x: 12px; y: (parent.height - self.height) / 2;
         width: 28px; height: 28px;
         border-radius: UiRadius.control;
@@ -82,7 +93,7 @@ export component AboutNavigationRow inherits FlatSurface {
         }
     }
     labels := VerticalLayout {
-        x: root.icon != "" ? 52px : 14px;
+        x: root.has-logo ? 68px : root.icon != "" ? 52px : 14px;
         y: (parent.height - self.height) / 2;
         width: parent.width - self.x - 36px - (root.detail != "" ? detail-label.width + 12px : 0px);
         height: self.preferred-height; spacing: 4px;

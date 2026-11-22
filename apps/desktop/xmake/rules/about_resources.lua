@@ -105,6 +105,7 @@ rule("crossdesk.about_resources")
             return a.name:lower() < b.name:lower()
         end)
         local data = json.encode({components = components, revision = revision:sub(1, 12),
+            releaseNotes = json.decode(read("apps/desktop/resources/release-notes.json")),
             sourceURL = source,
             buildURL = repository .. "/blob/" .. (revision ~= "" and revision or "main") .. "/docs/BUILD_EN.md"},
             {pure = true, orderkeys = true})

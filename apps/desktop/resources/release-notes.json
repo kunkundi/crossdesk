@@ -1,0 +1,52 @@
+{
+  "zh-CN": [
+    "每台远程设备都有独立的控制窗口，再次连接时会恢复上次的窗口大小。",
+    "macOS 和 Windows 的隐私屏幕新增纯黑模式，可在设置中开启。",
+    "远程控制悬浮按钮在空闲三秒后自动淡出并收起，减少对远程画面的遮挡。"
+  ],
+  "en-US": [
+    "Each remote device opens in its own control window. Reconnecting restores the window size last used for that device.",
+    "On macOS and Windows, you can now choose a solid black privacy screen in Settings.",
+    "The floating remote control button fades and retracts after three seconds of inactivity."
+  ],
+  "zh-Hant": [
+    "每部遠端裝置都有獨立的控制視窗，再次連線時會還原上次的視窗大小。",
+    "macOS 和 Windows 的隱私畫面新增全黑模式，可在設定中開啟。",
+    "遠端控制浮動按鈕會在閒置三秒後自動淡出並收起，減少對遠端畫面的遮擋。"
+  ],
+  "ru-RU": [
+    "Для каждого устройства открывается отдельное окно управления. При повторном подключении восстанавливается его прежний размер.",
+    "В настройках macOS и Windows теперь можно выбрать полностью чёрный экран конфиденциальности.",
+    "Плавающая кнопка управления плавно исчезает и сворачивается после трёх секунд бездействия."
+  ],
+  "ja": [
+    "リモートデバイスごとに個別の操作ウィンドウが開きます。再接続すると前回のウィンドウサイズに戻ります。",
+    "macOS と Windows で、プライバシースクリーンを黒一色に設定できるようになりました。",
+    "操作がない状態が 3 秒続くと、フローティング操作ボタンがフェードアウトして折りたたまれます。"
+  ],
+  "ko": [
+    "원격 기기마다 별도의 제어 창이 열립니다. 다시 연결하면 해당 기기에서 마지막으로 사용한 창 크기가 복원됩니다.",
+    "macOS와 Windows 설정에서 개인 정보 보호 화면을 검은색 단색으로 표시할 수 있습니다.",
+    "3초 동안 조작하지 않으면 플로팅 제어 버튼이 서서히 흐려지면서 접힙니다."
+  ],
+  "de": [
+    "Jedes entfernte Gerät öffnet sich in einem eigenen Steuerungsfenster. Beim erneuten Verbinden wird die letzte Fenstergröße wiederhergestellt.",
+    "Unter macOS und Windows lässt sich in den Einstellungen ein vollständig schwarzer Sichtschutz wählen.",
+    "Die schwebende Schaltfläche zur Fernsteuerung wird nach drei Sekunden Inaktivität ausgeblendet und eingeklappt."
+  ],
+  "fr": [
+    "Chaque appareil distant dispose de sa propre fenêtre de contrôle. À la reconnexion, elle retrouve sa taille précédente.",
+    "Sous macOS et Windows, les réglages permettent désormais de choisir un écran de confidentialité entièrement noir.",
+    "Le bouton de contrôle flottant s’estompe et se replie après trois secondes d’inactivité."
+  ],
+  "es": [
+    "Cada dispositivo remoto se abre en su propia ventana de control. Al volver a conectarte, se recupera el tamaño anterior de esa ventana.",
+    "En macOS y Windows puedes elegir una pantalla de privacidad completamente negra en los ajustes.",
+    "El botón flotante de control remoto se atenúa y se repliega tras tres segundos de inactividad."
+  ],
+  "pt-BR": [
+    "Cada dispositivo remoto abre em sua própria janela de controle. Ao reconectar, a janela volta ao tamanho usado anteriormente.",
+    "No macOS e no Windows, agora é possível escolher uma tela de privacidade totalmente preta nas configurações.",
+    "O botão flutuante de controle remoto esmaece e se recolhe após três segundos de inatividade."
+  ]
+}

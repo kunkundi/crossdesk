@@ -1182,7 +1182,7 @@ struct GuiApplication::SlintUi {
   bool connection_password_initialized = false;
   bool connection_dialog_gallery = false;
   bool portable_service_dialog_initialized = false;
-  bool sponsorship_prompt_pending = false;
+  bool release_welcome_pending = false;
   std::string recent_model_signature;
   gallery::PreviewResolutionDebouncer recent_preview_resolution;
   gallery::PreviewResolution recent_preview_size;
@@ -1472,8 +1472,9 @@ void GuiApplication::InitializeUi() {
 #if _WIN32
   ui_->session_end.Start();
 #endif
-  ui_->sponsorship_prompt_pending =
-      config_center_->GetSponsorshipPromptDismissedVersion() != CROSSDESK_VERSION;
+  const auto last_presented = config_center_->GetLastPresentedRelease();
+  ui_->release_welcome_pending =
+      last_presented.empty() || IsNewerVersion(last_presented, CROSSDESK_VERSION);
 #if defined(__APPLE__)
   ui_->video_scheduler.Start([this](double queued_ms) {
     for (auto& [_, view] : ui_->streams)
@@ -2176,11 +2177,12 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
   main->on_open_kofi_sponsor([this] {
     OpenUrl("https://ko-fi.com/kunkundi");
   });
-  main->on_dismiss_sponsorship([this, main] {
-    main->set_sponsorship_open(false);
-    ui_->sponsorship_prompt_pending = false;
-    if (config_center_->SetSponsorshipPromptDismissedVersion(CROSSDESK_VERSION) != 0) {
-      LOG_WARN("Could not save sponsorship prompt dismissal");
+  main->on_dismiss_release_welcome([this] {
+    ui_->main->set_release_welcome_open(false);
+    // Retry if the initial write failed while the dialog was on screen.
+    if (config_center_->GetLastPresentedRelease() != CROSSDESK_VERSION &&
+        config_center_->SetLastPresentedRelease(CROSSDESK_VERSION) != 0) {
+      LOG_WARN("Could not persist the displayed release version");
     }
   });
   main->on_check_for_updates([this] {
@@ -2710,7 +2712,7 @@ void GuiApplication::Tick() {
                                 : lan_->ListenerError(display_address)));
     // Show failures one address at a time, without interrupting edits or another
     // dialog. A working listener must not clear another address's error.
-    if (ui_->main->get_lan_mode() && ui_->main->get_can_show_sponsorship() &&
+    if (ui_->main->get_lan_mode() && ui_->main->get_can_show_release_welcome() &&
         !ui_->main->get_lan_port_editing() && !ui_->main->get_lan_port_dirty()) {
       if (auto issue = lan_->TakeListenerWarning()) {
         ui_->main->set_lan_access_warning_endpoint(
@@ -2834,15 +2836,17 @@ void GuiApplication::Tick() {
   SyncGallery();
   SyncConnectionDialog();
   SyncPlatformDialogs();
-  // Wait for startup notices and user interactions to finish. Once shown,
-  // never reopen it during this run, even if saving the dismissal fails.
-  if (ui_->sponsorship_prompt_pending &&
+  // A background or obstructed launch must not consume the first presentation.
+  if (ui_->release_welcome_pending &&
       ui_->main->window().is_visible() &&
       !ui_->main->window().is_minimized() &&
-      ui_->main->get_can_show_sponsorship() &&
+      ui_->main->get_can_show_release_welcome() &&
       !ui_->file_dialog_open && !HasActiveSession()) {
-    ui_->sponsorship_prompt_pending = false;
-    ui_->main->set_sponsorship_open(true);
+    ui_->release_welcome_pending = false;
+    ui_->main->set_release_welcome_open(true);
+    if (config_center_->SetLastPresentedRelease(CROSSDESK_VERSION) != 0) {
+      LOG_WARN("Could not persist the displayed release version");
+    }
   }
   SyncStreamWindows();
   SyncVideoFrameGapStats();
@@ -3365,6 +3369,7 @@ void GuiApplication::UpdateLocalization() {
         : "开机自启需要安装版 Release；便携版和 Debug 不支持无人值守服务。", language)));
   }
 #endif
+  about::SetInstalledReleaseNotes(ui_->main, localization::GetSupportedLanguages()[language].code);
   ui_localization::ApplyMainWindowStrings(ui_->main, language);
   ui_localization::ApplyServerStrings(ui_->main, language);
   ui_localization::ApplyStreamWindowStrings(ui_->main, language);

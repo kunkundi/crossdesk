@@ -19,6 +19,12 @@
 namespace crossdesk::about {
 namespace {
 
+const nlohmann::json& Catalog() {
+  static const auto catalog = nlohmann::json::parse(
+      std::begin(kAboutResources), std::end(kAboutResources));
+  return catalog;
+}
+
 slint::SharedString Text(const nlohmann::json& object, const char* key) {
   return slint::SharedString(object.value(key, std::string{}));
 }
@@ -74,13 +80,22 @@ slint::SharedString DocumentText(const nlohmann::json& document) {
 
 }  // namespace
 
+void SetInstalledReleaseNotes(const slint::ComponentHandle<ui::MainWindow>& window,
+                              const std::string& language) {
+  const auto& notes = Catalog().at("releaseNotes");
+  const auto& lines = notes.contains(language) ? notes.at(language) : notes.at("en-US");
+  std::vector<slint::SharedString> highlights;
+  for (const auto& line : lines) {
+    highlights.emplace_back(line.get<std::string>());
+  }
+  window->set_installed_release_notes(
+      std::make_shared<slint::VectorModel<slint::SharedString>>(highlights));
+}
+
 void Populate(const slint::ComponentHandle<ui::MainWindow>& window) {
-  // Both the main window and DeskHub share the immutable, embedded catalog.
-  static const auto catalog = nlohmann::json::parse(
-      std::begin(kAboutResources), std::end(kAboutResources));
   static const auto model = [] {
     std::vector<ui::AboutComponent> components;
-    for (const auto& item : catalog.at("components")) {
+    for (const auto& item : Catalog().at("components")) {
       ui::AboutComponent component;
       component.id = Text(item, "id");
       component.name = Text(item, "name");
@@ -107,6 +122,7 @@ void Populate(const slint::ComponentHandle<ui::MainWindow>& window) {
       break;
     }
   }
+  const auto& catalog = Catalog();
   window->set_about_revision(Text(catalog, "revision"));
   window->set_about_source_url(Text(catalog, "sourceURL"));
   window->set_about_build_url(Text(catalog, "buildURL"));

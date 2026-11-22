@@ -14,3 +14,6 @@ artwork license. Retrieved on 2026-10-19.
   [official logo archive](https://brand.github.com/GitHub_Logos.zip).
   [GitHub's brand guidelines](https://brand.github.com/foundations/logo)
   permit the logo to identify a link to GitHub.
+
+- `hualongai.png` uses the supplied HuaLongAI (华龙算力) logo, proportionally
+  resized to 160 × 160 for the [sponsor link](https://crossdesk.hualong-ai.com/).
