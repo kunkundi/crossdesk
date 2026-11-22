@@ -10,6 +10,7 @@ class Store {
   flag(k,f=false){return preferences.get(k)??f;} number(k,f){return preferences.get(k)??f;} text(k,f=''){return preferences.get(k)??f;}
   put(k,v){preferences.set(k,v);} static scope(s,p){return `${s.trim().toLowerCase().replace(/\.$/,'')}:${p}`;}
   async secret(k){return secrets.get(k)??'';} async saveSecret(k,v){secrets.set(k,v);} async removeSecret(k){secrets.delete(k);}
+  async trustKey(){return 'fixture-device-key';}
   recent(s){return records.get(s)??[];} clearPreviews(){this.cleared=true;}
   async saveRecent(s,d,p){saves.push({scope:s,device:{...d},password:p});records.set(s,[d]);if(d.remember)secrets.set(`password:${s}:${d.id}`,p);}
   metadata(s,id,n,p){for(const d of this.recent(s))if(d.id===id){d.name=n;d.platform=p;}}

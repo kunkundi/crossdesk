@@ -10,6 +10,7 @@ const background={BackgroundMode:{DATA_TRANSFER:1},startBackgroundRunning:()=>ne
   stopBackgroundRunning:async()=>{calls.push(['stop']);activeTasks--;}};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(root,'MobilePlatform.ets'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText,
   {exports:exports_,console,Promise,Date,Math,require:name=>{
+    if(name==='./Localization')return {tr:text=>text};
     if(name==='./AnnouncementText')return textExports;
     if(name==='@kit.BasicServicesKit')return {deviceInfo:{deviceType:'phone'}};
     if(name==='@kit.AbilityKit')return {wantAgent:{OperationType:{START_ABILITY:1},WantAgentFlags:{UPDATE_PRESENT_FLAG:1},getWantAgent:()=>new Promise(r=>agentResolve=r)}};

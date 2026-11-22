@@ -52,14 +52,20 @@ public class PrivacyConsentTest {
         return null;
     }
     private static TextView action(Dialog dialog,String text){
-        TextView view=findText(dialog.getWindow().getDecorView(),text);assertNotNull(text,view);return view;
+        String label=L10n.tr(text);
+        TextView view=findText(dialog.getWindow().getDecorView(),label);assertNotNull(label,view);return view;
     }
     private static void decline(MainActivity activity){action(notice(activity),"暂不同意").performClick();}
     private static void agree(MainActivity activity){
         Dialog dialog=notice(activity);action(dialog,"我已阅读并同意《隐私政策》").performClick();action(dialog,"同意并继续").performClick();
     }
 
-    @Test public void coldLaunchRequiresExplicitAgreementBeforeNetworking(){
+    @Test public void coldLaunchWithExistingIdentityRequiresExplicitAgreementBeforeNetworking() throws Exception {
+        Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        SharedPreferences identities=context.getSharedPreferences("identities",Context.MODE_PRIVATE);
+        String scope="127.0.0.1:1";
+        String previous=identities.getString(scope,null);
+        new SecretStore(context).put(scope,"existing-device-identity");
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
             scenario.onActivity(activity->{
                 Dialog dialog=notice(activity);
@@ -69,10 +75,10 @@ public class PrivacyConsentTest {
                 assertTrue(dialog.isShowing());assertFalse(preferences.getBoolean("networkConsent",false));
                 assertNull(field(activity,"signaling"));
                 decline(activity);assertFalse(dialog.isShowing());assertNull(field(activity,"signaling"));
-                assertNotNull(findText(activity.getWindow().getDecorView(),"等待隐私授权"));
+                assertNotNull(findText(activity.getWindow().getDecorView(),L10n.tr("等待隐私授权")));
             });
             scenario.onActivity(activity->assertNull(field(activity,"privacyDialog")));
-        }
+        }finally{identities.edit().putString(scope,previous).commit();}
     }
     @Test public void refusalPromptsOnBackgroundReturnButNotTransientInactivity(){
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
@@ -113,21 +119,14 @@ public class PrivacyConsentTest {
             scenario.onActivity(activity->{notice(activity);assertNull(field(activity,"signaling"));});
         }
     }
-    @Test public void existingLocalRecordsDoNotImplyConsent(){
-        Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
-        SharedPreferences identities=context.getSharedPreferences("identities",Context.MODE_PRIVATE);
-        String key="privacy-upgrade.invalid:1";
-        try{
-            identities.edit().putString(key,"existing-device-identity").commit();
-            try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
-                scenario.onActivity(activity->{notice(activity);assertNull(field(activity,"signaling"));});
-            }
-        }finally{identities.edit().remove(key).commit();}
-    }
-    @Test public void bundledChinesePolicyIsOfflineAndMissingPolicyCannotAuthorize(){
+    @Test public void bundledPolicyUsesAppLanguageAndMissingPolicyCannotAuthorize(){
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
         PrivacyPolicyDocument policy=new PrivacyPolicyDocument(context);
-        assertTrue(policy.available);assertTrue(policy.text.contains("更新日期："));assertTrue(policy.text.contains("查询与删除请求"));assertFalse(policy.text.contains("## English"));
+        boolean chinese=context.getResources().getConfiguration().getLocales().get(0).getLanguage().equals("zh");
+        assertTrue("Bundled policy must be available offline",policy.available);
+        assertTrue("Missing policy date in the app language",policy.text.contains(chinese?"更新日期：":"Updated:"));
+        assertTrue("Missing deletion section in the app language",policy.text.contains(chinese?"查询与删除请求":"Access and deletion requests"));
+        assertFalse("Policy includes another language",policy.text.contains(chinese?"Access and deletion requests":"查询与删除请求"));
         assertFalse(new PrivacyPolicyDocument(" \n").available);
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
             scenario.onActivity(activity->{

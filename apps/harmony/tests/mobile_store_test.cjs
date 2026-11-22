@@ -15,6 +15,8 @@ const io={OpenMode:{READ_ONLY:1,WRITE_ONLY:2,CREATE:4,TRUNC:8},mkdirSync(){},
   closeSync:f=>opened.delete(f.fd),readSync:(fd,b)=>{const content=files.get(opened.get(fd));new Uint8Array(b).set(content);return content.length;}};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(root,'MobileStore.ets'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText,
   {exports:exports_,Uint8Array,ArrayBuffer,Map,console,require:name=>{
+    if(name==='./Localization')return {tr:text=>text};
+    if(name==='libcrossdesk.so')return {default:{mobileGenerateTrustKey:()=>'fixture-device-key'}};
     if(name==='@kit.ArkData')return {preferences:{getPreferencesSync:()=>({getSync:(k,d)=>values.get(k)??d,putSync:(k,v)=>values.set(k,v),flushSync(){}})}};
     if(name==='@kit.AssetStoreKit')return {asset};
     if(name==='@kit.CryptoArchitectureKit')return {cryptoFramework:{createMd:()=>{const hash=crypto.createHash('sha256');return {update:async b=>hash.update(b.data),digest:async()=>({data:hash.digest()})};}}};

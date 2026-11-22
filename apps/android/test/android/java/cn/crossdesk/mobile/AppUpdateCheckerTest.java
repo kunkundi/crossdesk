@@ -97,13 +97,14 @@ public class AppUpdateCheckerTest {
                 checker.setEnabled(true);
                 replies.get(0).accept("1.7.0".getBytes(StandardCharsets.UTF_8));
                 assertEquals(View.VISIBLE, ((View)field(activity, "settingsUpdateDot")).getVisibility());
-                assertEquals("设置，有新版本", ((View)field(activity, "settingsUpdateButton")).getContentDescription());
+                assertEquals(L10n.tr("设置，有新版本"), ((View)field(activity, "settingsUpdateButton")).getContentDescription());
                 ((View)field(activity, "settingsUpdateButton")).performClick();
                 assertEquals(View.VISIBLE, ((View)field(activity, "aboutUpdateDot")).getVisibility());
                 ((View)field(activity, "aboutUpdateRow")).performClick();
-                assertNotNull(findText(activity.getWindow().getDecorView(), "新版本可用：v1.7.0"));
+                String updateLabel = L10n.format("新版本可用：v{0}", "1.7.0");
+                assertNotNull(findText(activity.getWindow().getDecorView(), updateLabel));
                 checker.checkNow(); replies.get(1).accept(null);
-                assertNotNull(findText(activity.getWindow().getDecorView(), "新版本可用：v1.7.0"));
+                assertNotNull(findText(activity.getWindow().getDecorView(), updateLabel));
                 checker.checkNow(); replies.get(2).accept(new byte[0]);
                 invoke(activity, "settings");
                 assertEquals(View.GONE, ((View)field(activity, "aboutUpdateDot")).getVisibility());

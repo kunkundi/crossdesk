@@ -41,7 +41,7 @@ public class TlsTrustTest {
             public void ended(String value){} public void data(JSONObject value){}public void videoSize(int w,int h){}
             public void clipboard(String value){}public void statistics(RemoteNetworkStatistics.Snapshot value){}
         });
-        File roots=new File(context.getCacheDir(),"tls-test-roots.pem");
+        File roots=File.createTempFile("tls-test-roots-", ".pem", context.getCacheDir());
         Field rtcField=NativeSession.class.getDeclaredField("RTC");rtcField.setAccessible(true);ExecutorService rtc=(ExecutorService)rtcField.get(null);
         try(SSLServerSocket server=(SSLServerSocket)tls.getServerSocketFactory().createServerSocket(0,1,InetAddress.getByName("127.0.0.1"))){
             server.setSoTimeout(10000);
@@ -54,9 +54,21 @@ public class TlsTrustTest {
                     return first!=null&&first.startsWith("GET ");
                 }catch(SSLException expected){return false;}
             });
-            Method create=NativeSession.class.getDeclaredMethod("nCreate",NativeSession.class,String.class,int.class,String.class,String.class,String.class);create.setAccessible(true);
+            Method generateKey=NativeSession.class.getDeclaredMethod("nGenerateTrustKey");
+            generateKey.setAccessible(true);
+            String trustKey=(String)generateKey.invoke(null);
+            assertNotNull("Could not create a device key for the TLS test",trustKey);
+            Method create=NativeSession.class.getDeclaredMethod("nCreate",NativeSession.class,String.class,int.class,
+                    String.class,String.class,String.class,String.class,boolean.class);
+            create.setAccessible(true);
             Field handle=NativeSession.class.getDeclaredField("handle");handle.setAccessible(true);
-            rtc.submit(()->{try{long value=(long)create.invoke(null,session,"127.0.0.1",server.getLocalPort(),"",context.getCacheDir().getAbsolutePath(),roots.getAbsolutePath());handle.setLong(session,value);assertNotEquals(0L,value);}catch(ReflectiveOperationException error){throw new RuntimeException(error);}}).get(10,TimeUnit.SECONDS);
+            rtc.submit(()->{
+                long value=(long)create.invoke(null,session,"127.0.0.1",server.getLocalPort(),"",
+                        context.getCacheDir().getAbsolutePath(),roots.getAbsolutePath(),trustKey,false);
+                handle.setLong(session,value);
+                assertNotEquals(0L,value);
+                return null;
+            }).get(10,TimeUnit.SECONDS);
             return request.get(15,TimeUnit.SECONDS);
         }finally{session.close();rtc.submit(()->{}).get(10,TimeUnit.SECONDS);serverWorker.shutdownNow();roots.delete();}
     }
