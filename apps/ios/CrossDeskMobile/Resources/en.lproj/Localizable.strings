@@ -351,3 +351,11 @@
 "选择桌面方案" = "Choose desktop environment";
 "选择桌面方案以加载系统预设" = "Choose a desktop environment to load system presets";
 "键盘上方常用栏" = "Favorites above keyboard";
+"全部设备" = "All devices";
+"分组" = "Group";
+"修改名称" = "Rename";
+"修改分组" = "Edit groups";
+"未分组" = "Ungrouped";
+"新建分组（可选）" = "New group (optional)";
+"该分组暂无近期连接" = "No recent connections in this group";
+"更多操作" = "More actions";

@@ -16,19 +16,24 @@ enum RemoteHostPlatform: String, Codable {
 
 struct RecentConnection: Codable, Identifiable, Equatable {
     let remoteID: String
-    var displayName: String
+    var hostName: String
+    var alias: String
+    var groups: [String]
     var lastConnectedAt: Date
     var remembersPassword: Bool
     var thumbnailFileName: String?
     var platform: RemoteHostPlatform
 
     var id: String { remoteID }
+    var displayName: String { alias.isEmpty ? hostName : alias }
 
     init(remoteID: String, displayName: String, lastConnectedAt: Date,
          remembersPassword: Bool, thumbnailFileName: String?,
-         platform: RemoteHostPlatform = .unknown) {
+         platform: RemoteHostPlatform = .unknown, alias: String = "", groups: [String] = []) {
         self.remoteID = remoteID
-        self.displayName = displayName
+        self.hostName = displayName
+        self.alias = alias
+        self.groups = groups
         self.lastConnectedAt = lastConnectedAt
         self.remembersPassword = remembersPassword
         self.thumbnailFileName = thumbnailFileName
@@ -36,13 +41,16 @@ struct RecentConnection: Codable, Identifiable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case remoteID, displayName, lastConnectedAt, remembersPassword, thumbnailFileName, platform
+        case hostName = "displayName"
+        case remoteID, alias, groups, lastConnectedAt, remembersPassword, thumbnailFileName, platform
     }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         remoteID = try values.decode(String.self, forKey: .remoteID)
-        displayName = try values.decode(String.self, forKey: .displayName)
+        hostName = try values.decode(String.self, forKey: .hostName)
+        alias = try values.decodeIfPresent(String.self, forKey: .alias) ?? ""
+        groups = try values.decodeIfPresent([String].self, forKey: .groups) ?? []
         lastConnectedAt = try values.decode(Date.self, forKey: .lastConnectedAt)
         remembersPassword = try values.decode(Bool.self, forKey: .remembersPassword)
         thumbnailFileName = try values.decodeIfPresent(String.self, forKey: .thumbnailFileName)
@@ -52,7 +60,7 @@ struct RecentConnection: Codable, Identifiable, Equatable {
 
     mutating func updateHostInfo(name: String, platform: RemoteHostPlatform) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty { displayName = trimmed }
+        if !trimmed.isEmpty { hostName = trimmed }
         self.platform = platform
     }
 }

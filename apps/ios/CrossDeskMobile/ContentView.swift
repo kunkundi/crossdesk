@@ -191,6 +191,8 @@ private struct ConnectionHomeView: View {
     @State private var promptRemoteID = ""
     @State private var promptPassword = ""
     @State private var promptRememberPassword = false
+    @State private var groupFilter: String?
+    @State private var groupDevice: RecentConnection?
 
     private let connectionAccent = Color(red: 0.18, green: 0.48, blue: 0.86)
     private let connectionAccentEnd = Color(red: 0.12, green: 0.38, blue: 0.78)
@@ -233,8 +235,16 @@ private struct ConnectionHomeView: View {
         ]
     }
 
+    private var recentGroups: [String] {
+        Set(session.recentConnections.flatMap(\.groups)).sorted()
+    }
+
     private var orderedRecentConnections: [RecentConnection] {
         session.recentConnections.enumerated()
+            .filter { entry in
+                guard let groupFilter else { return true }
+                return groupFilter.isEmpty ? entry.element.groups.isEmpty : entry.element.groups.contains(groupFilter)
+            }
             .sorted { lhs, rhs in
                 let lhsOnline = session.isRecentConnectionOnline(lhs.element)
                 let rhsOnline = session.isRecentConnectionOnline(rhs.element)
@@ -305,6 +315,17 @@ private struct ConnectionHomeView: View {
             }
             .presentationDetents([.height(340)])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $groupDevice) { device in
+            RecentGroupEditor(device: device, groups: recentGroups) { groups in
+                session.editRecentConnection(device.id, groups: groups)
+            }
+            .presentationDetents([.medium, .large])
+        }
+        .onValueChange(of: recentGroups) { groups in
+            if let groupFilter, !groupFilter.isEmpty, !groups.contains(groupFilter) {
+                self.groupFilter = nil
+            }
         }
         .alert(NSLocalizedString("设备离线", comment: ""), isPresented: Binding(
             get: { session.deviceOfflineAlertVisible },
@@ -467,15 +488,26 @@ private struct ConnectionHomeView: View {
 
     @ViewBuilder
     private func recentConnectionsPanel(windowWidth: CGFloat) -> some View {
+        let connections = orderedRecentConnections
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
                 Text(NSLocalizedString("最近连接", comment: ""))
                     .font(.title3.bold())
                 Spacer()
                 if !session.recentConnections.isEmpty {
-                    Text(String(format: NSLocalizedString("%1$@ 台设备", comment: ""), String(describing: session.recentConnections.count)))
+                    Text(String(format: NSLocalizedString("%1$@ 台设备", comment: ""), String(describing: connections.count)))
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    Picker(NSLocalizedString("分组", comment: ""), selection: $groupFilter) {
+                        Text(NSLocalizedString("全部设备", comment: "")).tag(nil as String?)
+                        Text(NSLocalizedString("未分组", comment: "")).tag(Optional(""))
+                        ForEach(recentGroups, id: \.self) { group in
+                            Text(verbatim: group).tag(Optional(group))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .lineLimit(1)
+                    .font(.subheadline)
                 }
             }
 
@@ -492,10 +524,14 @@ private struct ConnectionHomeView: View {
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if connections.isEmpty {
+                Text(NSLocalizedString("该分组暂无近期连接", comment: ""))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(.vertical) {
                     LazyVGrid(columns: recentConnectionColumns(windowWidth: windowWidth), spacing: 12) {
-                        ForEach(orderedRecentConnections) { connection in
+                        ForEach(connections) { connection in
                             RecentConnectionCard(
                                 connection: connection,
                                 thumbnail: session.thumbnailImage(for: connection),
@@ -503,6 +539,8 @@ private struct ConnectionHomeView: View {
                                 connect: {
                                     connectRecent(connection)
                                 },
+                                rename: { session.editRecentConnection(connection.id, alias: $0) },
+                                editGroups: { groupDevice = connection },
                                 delete: {
                                     session.removeRecentConnection(connection)
                                 }
@@ -621,7 +659,11 @@ private struct RecentConnectionCard: View {
     let thumbnail: UIImage?
     let online: Bool
     let connect: () -> Void
+    let rename: (String) -> Void
+    let editGroups: () -> Void
     let delete: () -> Void
+    @State private var renaming = false
+    @State private var nameDraft = ""
 
     private var platformColors: [Color] {
         switch connection.platform {
@@ -673,6 +715,12 @@ private struct RecentConnectionCard: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
+                    if !connection.groups.isEmpty {
+                        Text(connection.groups.joined(separator: " · "))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                     HStack(spacing: 5) {
                         Text("ID \(connection.remoteID)")
                             .font(.caption2.monospacedDigit())
@@ -701,16 +749,98 @@ private struct RecentConnectionCard: View {
             }
         }
         .buttonStyle(.plain)
-        .contextMenu {
-            Button(action: connect) {
-                Text(NSLocalizedString("连接", comment: ""))
+        .contextMenu { actions }
+        .overlay(alignment: .topTrailing) {
+            Menu { actions } label: {
+                Image(systemName: "ellipsis")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.white)
+                    .padding(7)
+                    .background(.black.opacity(0.55), in: Capsule())
+                    .frame(width: 44, height: 44)
             }
-            Button(role: .destructive, action: delete) {
-                Label(NSLocalizedString("删除记录", comment: ""), systemImage: "trash")
-            }
+            .accessibilityLabel(NSLocalizedString("更多操作", comment: ""))
+        }
+        .alert(NSLocalizedString("修改名称", comment: ""), isPresented: $renaming) {
+            TextField(connection.hostName, text: $nameDraft)
+            Button(NSLocalizedString("取消", comment: ""), role: .cancel) {}
+            Button(NSLocalizedString("保存", comment: "")) { rename(nameDraft) }
+        } message: {
+            Text("ID \(connection.remoteID)")
         }
     }
 
+    @ViewBuilder private var actions: some View {
+        Button(action: connect) { Label(NSLocalizedString("连接", comment: ""), systemImage: "arrow.right") }
+        Button {
+            nameDraft = connection.displayName
+            renaming = true
+        } label: { Label(NSLocalizedString("修改名称", comment: ""), systemImage: "pencil") }
+        Button(action: editGroups) { Label(NSLocalizedString("修改分组", comment: ""), systemImage: "folder") }
+        Button(role: .destructive, action: delete) {
+            Label(NSLocalizedString("删除记录", comment: ""), systemImage: "trash")
+        }
+    }
+}
+
+private struct RecentGroupEditor: View {
+    let device: RecentConnection
+    let groups: [String]
+    let save: ([String]) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var selected: Set<String>
+    @State private var newGroup = ""
+
+    init(device: RecentConnection, groups: [String], save: @escaping ([String]) -> Void) {
+        self.device = device
+        self.groups = groups
+        self.save = save
+        _selected = State(initialValue: Set(device.groups))
+    }
+
+    private var trimmedGroup: String { newGroup.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    ForEach([""] + groups, id: \.self) { group in
+                        let checked = group.isEmpty ? selected.isEmpty && trimmedGroup.isEmpty : selected.contains(group)
+                        Button {
+                            if group.isEmpty { selected.removeAll(); newGroup = "" }
+                            else if selected.contains(group) { selected.remove(group) }
+                            else { selected.insert(group) }
+                        } label: {
+                            HStack {
+                                Text(group.isEmpty ? NSLocalizedString("未分组", comment: "") : group)
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                if checked { Image(systemName: "checkmark") }
+                            }
+                        }
+                        .accessibilityAddTraits(checked ? .isSelected : [])
+                    }
+                    TextField(NSLocalizedString("新建分组（可选）", comment: ""), text: $newGroup)
+                } header: {
+                    Text("\(device.displayName) · ID \(device.id)").textCase(nil)
+                }
+            }
+            .navigationTitle(NSLocalizedString("修改分组", comment: ""))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(NSLocalizedString("取消", comment: "")) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(NSLocalizedString("保存", comment: "")) {
+                        if !trimmedGroup.isEmpty { selected.insert(trimmedGroup) }
+                        save(Array(selected))
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
 }
 
 private struct PasswordPromptView: View {

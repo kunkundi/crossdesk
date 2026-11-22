@@ -8,7 +8,10 @@ import { fileIo as fs } from '@kit.CoreFileKit';
 import { image } from '@kit.ImageKit';
 import bridge from 'libcrossdesk.so';
 
-export interface RecentDevice { id: string; name: string; platform: string; remember: boolean; preview: string; }
+export interface RecentDevice {
+  id: string; name: string; alias: string; groups: string[];
+  platform: string; remember: boolean; preview: string;
+}
 export class MobileStore {
   private static trustLoading?: Promise<string>;
   private data: preferences.Preferences;
@@ -85,6 +88,8 @@ export class MobileStore {
       const entries = JSON.parse(this.text(`recent:${scope}`, '[]')) as RecentDevice[];
       return entries.filter((d: RecentDevice) => typeof d.id === 'string' && /^[0-9]{9}$/.test(d.id) && typeof d.name === 'string').slice(0, 20)
         .map((d: RecentDevice) => {
+          d.alias = typeof d.alias === 'string' ? d.alias : '';
+          d.groups = Array.isArray(d.groups) ? d.groups : [];
           try { if (typeof d.preview !== 'string' || !d.preview.startsWith(`${this.previewDirectory}/`) || !fs.accessSync(d.preview)) d.preview = ''; }
           catch { d.preview = ''; }
           return d;
@@ -96,6 +101,9 @@ export class MobileStore {
     else await this.removeSecret(`password:${scope}:${device.id}`);
     const old = this.recent(scope), previous = old.find((d: RecentDevice) => d.id === device.id);
     device.preview = previous?.preview ?? '';
+    device.alias = previous?.alias ?? '';
+    device.groups = previous?.groups ?? [];
+    if (device.name === device.id && previous) device.name = previous.name;
     const next = [device, ...old.filter((d: RecentDevice) => d.id !== device.id)].slice(0, 20);
     this.put(`recent:${scope}`, JSON.stringify(next));
     for (const dropped of old.filter((d: RecentDevice) => !next.some((n: RecentDevice) => n.id === d.id))) {
@@ -104,7 +112,18 @@ export class MobileStore {
   }
   metadata(scope: string, id: string, name: string, platform: string): void {
     const entries = this.recent(scope);
-    entries.forEach((d: RecentDevice) => { if (d.id === id) { d.name = name || id; d.platform = platform; } });
+    const device = entries.find((d: RecentDevice) => d.id === id);
+    if (!device) return;
+    if (name && name.trim()) device.name = name.trim();
+    device.platform = platform;
+    this.put(`recent:${scope}`, JSON.stringify(entries));
+  }
+  editRecent(scope: string, id: string, alias?: string, groups?: string[]): void {
+    const entries = this.recent(scope);
+    const device = entries.find((d: RecentDevice) => d.id === id);
+    if (!device) return;
+    if (alias !== undefined) device.alias = alias.trim();
+    if (groups !== undefined) device.groups = Array.from(new Set<string>(groups)).sort();
     this.put(`recent:${scope}`, JSON.stringify(entries));
   }
   async delete(scope: string, id: string): Promise<void> {

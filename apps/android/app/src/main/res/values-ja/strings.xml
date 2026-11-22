@@ -370,4 +370,12 @@
     <string name="text_4bdabfba3368869d" formatted="false">"デスクトップ環境を選択"</string>
     <string name="text_4fa28857c6f253cc" formatted="false">"デスクトップ環境を選択してプリセットを読み込みます"</string>
     <string name="text_fc5f6f7462e8557a" formatted="false">"キーボード上のお気に入り"</string>
+    <string name="text_67943ba6d0038222" formatted="false">"すべてのデバイス"</string>
+    <string name="text_399ee69347726cee" formatted="false">"グループ"</string>
+    <string name="text_88f4625eade235b7" formatted="false">"名前を変更"</string>
+    <string name="text_663ba1c006b1f12b" formatted="false">"グループの編集"</string>
+    <string name="text_e86ea3f280d920a2" formatted="false">"グループ化されていない"</string>
+    <string name="text_1e5709f1b7a405da" formatted="false">"新しいグループ (オプション)"</string>
+    <string name="text_24c9c756f833ce88" formatted="false">"このグループには最近の接続がありません"</string>
+    <string name="text_9f07d2ce4115f575" formatted="false">"その他のアクション"</string>
 </resources>

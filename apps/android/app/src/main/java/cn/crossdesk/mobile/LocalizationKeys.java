@@ -376,6 +376,14 @@ final class LocalizationKeys {
         IDS.put("选择桌面方案", R.string.text_4bdabfba3368869d);
         IDS.put("选择桌面方案以加载系统预设", R.string.text_4fa28857c6f253cc);
         IDS.put("键盘上方常用栏", R.string.text_fc5f6f7462e8557a);
+        IDS.put("全部设备", R.string.text_67943ba6d0038222);
+        IDS.put("分组", R.string.text_399ee69347726cee);
+        IDS.put("修改名称", R.string.text_88f4625eade235b7);
+        IDS.put("修改分组", R.string.text_663ba1c006b1f12b);
+        IDS.put("未分组", R.string.text_e86ea3f280d920a2);
+        IDS.put("新建分组（可选）", R.string.text_1e5709f1b7a405da);
+        IDS.put("该分组暂无近期连接", R.string.text_24c9c756f833ce88);
+        IDS.put("更多操作", R.string.text_9f07d2ce4115f575);
     }
     private LocalizationKeys() {}
 }

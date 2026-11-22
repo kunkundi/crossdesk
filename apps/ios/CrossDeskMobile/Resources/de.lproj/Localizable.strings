@@ -351,3 +351,11 @@
 "选择桌面方案" = "Desktop-Umgebung auswählen";
 "选择桌面方案以加载系统预设" = "Desktop-Umgebung wählen, um Systemvorgaben zu laden";
 "键盘上方常用栏" = "Favoriten über der Tastatur";
+"全部设备" = "Alle Geräte";
+"分组" = "Gruppe";
+"修改名称" = "Umbenennen";
+"修改分组" = "Gruppen bearbeiten";
+"未分组" = "Nicht gruppiert";
+"新建分组（可选）" = "Neue Gruppe (optional)";
+"该分组暂无近期连接" = "Keine aktuellen Verbindungen in dieser Gruppe";
+"更多操作" = "Weitere Aktionen";

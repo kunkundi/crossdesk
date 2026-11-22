@@ -28,7 +28,9 @@ struct Mobile {
   @State private editingPort: string = '';
   @State private showPassword: boolean = false;
   @State private accepted: boolean = false;
-  @State private deleteId: string = '';
+  @State private recentId: string = '';
+  @State private recentDraft: string = '';
+  @State private selectedGroups: string[] = [];
   @State private refreshing: boolean = false;
   @State private licenses: LicenseComponent[] = [];
   @State private component: LicenseComponent | undefined = undefined;
@@ -104,7 +106,7 @@ struct Mobile {
     if (modal === 'revoke') this.controller?.revoke();
     if (modal === 'previews') { this.controller?.setPreviews(true); this.previewToggle = true; }
     if (modal === 'clearPreviews') this.controller?.clearPreviews();
-    if (modal === 'delete') this.controller?.deleteRecent(this.deleteId);
+    if (modal === 'delete') this.controller?.deleteRecent(this.recentId);
     if (modal === 'deleteAnnouncement' && this.state.announcement) { this.controller?.inbox.dismiss(this.state.announcement); this.navigate('announcements'); }
   }
   @Builder
@@ -160,16 +162,58 @@ struct Mobile {
     }.padding(18).width('100%').backgroundColor(Color.White).borderRadius(20)
       .border({ width: 0.5, color: MobileTheme.line }).shadow({ radius: 14, color: '#0E000000', offsetY: 5 })
   }
+  private recentActions(id: string): void {
+    this.recentId = id;
+    this.state.modal = 'recentActions';
+  }
+  private recentTitle(): string {
+    const device = this.state.recent.find((d: RecentDevice) => d.id === this.recentId);
+    return device?.alias || device?.name || this.recentId;
+  }
+  private editRecent(groups: boolean): void {
+    const device = this.state.recent.find((d: RecentDevice) => d.id === this.recentId);
+    if (!device) { this.dismissModal(); return; }
+    this.selectedGroups = device.groups.slice();
+    this.recentDraft = groups ? '' : this.recentTitle();
+    this.state.modal = groups ? 'recentGroups' : 'recentName';
+  }
+  private saveRecentEdit(): void {
+    const draft = this.recentDraft.trim();
+    if (this.state.modal === 'recentName') this.controller?.editRecent(this.recentId, draft);
+    else this.controller?.editRecent(this.recentId, undefined, draft ? this.selectedGroups.concat(draft) : this.selectedGroups);
+    this.dismissModal();
+  }
+  private visibleRecent(): RecentDevice[] {
+    const filter = this.state.recentFilter;
+    if (filter === undefined) return this.state.recent;
+    return this.state.recent.filter((d: RecentDevice) => filter ? d.groups.includes(filter) : d.groups.length === 0);
+  }
+  private groupFilterLabel(): string {
+    return this.state.recentFilter === undefined ? tr("全部设备") : this.state.recentFilter || tr("未分组");
+  }
+  private toggleGroup(group: string): void {
+    if (!group) { this.selectedGroups = []; this.recentDraft = ''; }
+    else if (this.selectedGroups.includes(group)) this.selectedGroups = this.selectedGroups.filter((name: string) => name !== group);
+    else this.selectedGroups = this.selectedGroups.concat(group);
+  }
   @Builder
   RecentCard(device: RecentDevice) {
     Column() {
-      Stack() {
+      Stack({ alignContent: Alignment.TopEnd }) {
         Text(device.platform === 'windows' ? 'Windows' : device.platform === 'macos' ? 'macOS' : device.platform === 'linux' ? 'Linux' : tr("远程电脑"))
           .fontSize(19).fontWeight(600).fontColor(Color.White).width('100%').height('100%').textAlign(TextAlign.Center)
         if (this.state.previews && device.preview) { Image(`file://${device.preview}`).objectFit(ImageFit.Cover).width('100%').height('100%') }
+        Button({ type: ButtonType.Normal }) {
+          Text('⋯').width(34).height(26).fontSize(19).fontWeight(600).textAlign(TextAlign.Center)
+            .fontColor(Color.White).backgroundColor('#88000000').borderRadius(13)
+        }.width(44).height(44).padding(0).backgroundColor(Color.Transparent)
+          .accessibilityText(tr("更多操作")).onClick(() => this.recentActions(device.id))
       }.aspectRatio(16 / 9).width('100%').backgroundColor(device.platform === 'windows' ? '#316AB7' : device.platform === 'macos' ? '#8057B9' : device.platform === 'linux' ? '#AE642B' : '#677587')
       Column({ space: 4 }) {
-        Text(device.name || device.id).fontSize(12).fontWeight(600).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
+        Text(device.alias || device.name || device.id).fontSize(12).fontWeight(600).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
+        if (device.groups.length) {
+          Text(device.groups.join(' · ')).fontSize(10).fontColor(MobileTheme.secondary).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
+        }
         Row({ space: 4 }) {
           Text(`ID ${device.id}`).fontSize(10).fontColor(MobileTheme.secondary).layoutWeight(1)
           if (device.remember) { MobileIcon({ name: 'key', iconExtent: 11, color: MobileTheme.secondary }).accessibilityText(tr("已保存密码")) }
@@ -179,14 +223,22 @@ struct Mobile {
       }.padding(9).width('100%')
     }.width('100%').backgroundColor(Color.White).border({ width: 0.5, color: MobileTheme.line }).borderRadius(14).clip(true)
       .onClick(() => this.controller?.requestConnection(device.id))
-      .gesture(LongPressGesture().onAction(() => { this.deleteId = device.id; this.state.modal = 'recentActions'; }))
+      .gesture(LongPressGesture().onAction(() => this.recentActions(device.id)))
   }
   @Builder
   Recent() {
     Column({ space: 14 }) {
       Row() {
         Text(tr("最近连接")).fontSize(20).fontWeight(600).fontColor(MobileTheme.ink).layoutWeight(1)
-        if (this.state.recent.length) { Text(tr("{0} 台设备", [String(this.state.recent.length)])).fontSize(12).fontColor(MobileTheme.secondary) }
+        if (this.state.recent.length) {
+          Text(tr("{0} 台设备", [String(this.visibleRecent().length)])).fontSize(12).fontColor(MobileTheme.secondary)
+          Select([tr("全部设备"), tr("未分组"), ...this.state.recentGroups].map((name: string): SelectOption => ({ value: name })))
+            .value(this.groupFilterLabel()).selected(this.state.recentFilter === undefined ? 0 :
+              this.state.recentFilter === '' ? 1 : this.state.recentGroups.indexOf(this.state.recentFilter) + 2)
+            .font({ size: 13 }).fontColor(MobileTheme.blue).constraintSize({ maxWidth: '40%' }).margin({ left: 6 })
+            .accessibilityText(tr("分组") + ' · ' + this.groupFilterLabel())
+            .onSelect((index: number) => this.state.recentFilter = index === 0 ? undefined : index === 1 ? '' : this.state.recentGroups[index - 2])
+        }
       }.width('100%')
       if (this.state.recent.length === 0) {
         Column() {
@@ -194,10 +246,13 @@ struct Mobile {
           Text(tr("还没有连接记录")).fontSize(17).fontWeight(600).fontColor(MobileTheme.ink).margin({ top: 12, bottom: 8 })
           Text(tr("成功连接后，这里会显示最近的远程设备。")).fontSize(13).lineHeight(19).fontColor(MobileTheme.secondary).textAlign(TextAlign.Center)
         }.layoutWeight(1).width('100%').justifyContent(FlexAlign.Center).padding({ left: 6, right: 6 })
+      } else if (!this.visibleRecent().length) {
+        Text(tr("该分组暂无近期连接")).fontSize(14).fontColor(MobileTheme.secondary).layoutWeight(1)
       } else {
         Scroll() {
           GridRow({ columns: { xs: 1, sm: 2, md: 3, lg: 4 }, breakpoints: { value: ['300vp', '564vp', '756vp'], reference: BreakpointsReference.ComponentSize }, gutter: 12 }) {
-            ForEach(this.state.recent, (device: RecentDevice) => { GridCol() { this.RecentCard(device) } }, (device: RecentDevice) => device.id)
+            ForEach(this.visibleRecent(), (device: RecentDevice) => { GridCol() { this.RecentCard(device) } },
+              (device: RecentDevice) => JSON.stringify(device) + this.controller?.presence.online(device.id, this.controller?.now() ?? 0))
           }.width('100%')
         }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
       }
@@ -596,14 +651,37 @@ struct Mobile {
         })
       }.padding(20).width('100%')
     } else if (this.state.modal === 'recentActions') {
-      Text(this.state.recent.find((d: RecentDevice) => d.id === this.deleteId)?.name || this.formatId(this.deleteId))
+      Text(this.recentTitle())
         .fontSize(17).fontWeight(600).fontColor(MobileTheme.ink).padding(20).width('100%').textAlign(TextAlign.Center)
       this.Rule()
-      this.Action(tr("连接"), () => { this.dismissModal(); this.controller?.requestConnection(this.deleteId); })
+      this.Action(tr("连接"), () => { this.dismissModal(); this.controller?.requestConnection(this.recentId); })
+      this.Rule()
+      this.Action(tr("修改名称"), () => this.editRecent(false))
+      this.Rule()
+      this.Action(tr("修改分组"), () => this.editRecent(true))
       this.Rule()
       this.Action(tr("删除记录"), () => this.state.modal = 'delete', true)
       this.Rule()
       this.Action(tr("取消"), () => this.dismissModal())
+    } else if (this.state.modal === 'recentGroups' || this.state.modal === 'recentName') {
+      Column({ space: 12 }) {
+        this.SheetHeader(this.state.modal === 'recentGroups' ? tr("修改分组") : tr("修改名称"), this.recentTitle() + ' · ID ' + this.recentId)
+        if (this.state.modal === 'recentGroups') {
+          ForEach(['', ...this.state.recentGroups], (group: string) => {
+            Button({ type: ButtonType.Normal }) {
+              Row({ space: 10 }) {
+                Text(group || tr("未分组")).fontSize(15).fontColor(MobileTheme.ink).layoutWeight(1).textAlign(TextAlign.Start)
+                if (group ? this.selectedGroups.includes(group) : !this.selectedGroups.length && !this.recentDraft.trim()) {
+                  MobileIcon({ name: 'check', iconExtent: 20, color: MobileTheme.blue })
+                }
+              }.width('100%')
+            }.width('100%').height(44).borderRadius(10).backgroundColor(MobileTheme.background).onClick(() => this.toggleGroup(group))
+          }, (group: string) => group)
+        }
+        TextInput({ text: this.recentDraft, placeholder: this.state.modal === 'recentGroups' ? tr("新建分组（可选）") : tr("修改名称") })
+          .height(48).onChange((value: string) => this.recentDraft = value)
+        MobilePrimaryButton({ label: tr("保存"), action: () => this.saveRecentEdit() })
+      }.padding(20).width('100%')
     } else {
       Column({ space: 12 }) {
         Text(this.state.modal === 'notice' ? tr("连接提示") : this.state.modal === 'upgrade' ? tr("升级提示") : this.state.modal === 'disconnect' ? tr("断开远程连接？") :

@@ -65,6 +65,8 @@ export class MobileState {
   update: string = '';
   updateStatus: string = '';
   recent: RecentDevice[] = [];
+  recentGroups: string[] = [];
+  recentFilter: string | undefined = undefined;
   width: number = 16;
   height: number = 9;
   hasFrame: boolean = false;
@@ -229,7 +231,7 @@ export class MobileController {
     }
     const changed = server !== this.state.server || port !== this.state.port;
     this.store.put('server', server); this.store.put('port', port); this.state.server = server; this.state.port = port;
-    if (changed) { this.end(''); this.stopSignal(); this.inbox.reset(); this.history(); this.ensureSignal(); }
+    if (changed) { this.state.recentFilter = undefined; this.end(''); this.stopSignal(); this.inbox.reset(); this.history(); this.ensureSignal(); }
     this.navigate('settings');
   }
   navigate(page: string): void { this.state.page = page; this.state.modal = ''; }
@@ -251,6 +253,14 @@ export class MobileController {
     const values = this.store.recent(this.scope()), now = this.now(); this.presence?.watch(values.map((d: RecentDevice) => d.id), now);
     this.state.recent = values.filter((d: RecentDevice) => this.presence?.online(d.id, now))
       .concat(values.filter((d: RecentDevice) => !this.presence?.online(d.id, now)));
+    const groups = new Set<string>();
+    values.forEach((d: RecentDevice) => d.groups.forEach((name: string) => groups.add(name)));
+    this.state.recentGroups = Array.from(groups).sort();
+    if (this.state.recentFilter && !groups.has(this.state.recentFilter)) this.state.recentFilter = undefined;
+  }
+  editRecent(id: string, alias?: string, groups?: string[]): void {
+    this.store.editRecent(this.scope(), id, alias, groups);
+    this.history();
   }
   async deleteRecent(id: string): Promise<void> {
     try { await this.store.delete(this.scope(), id); this.history(); } catch { this.toast(tr("记录或密码删除失败，请重试")); }
@@ -535,7 +545,7 @@ export class MobileController {
   private connected(): void {
     this.state.ready = true; this.state.connecting = false; this.state.modal = ''; this.state.page = 'session';
     const device: RecentDevice = { id: this.connectingId, name: this.state.hostName || this.connectingId,
-      platform: this.state.platform, remember: this.state.remember, preview: '' };
+      platform: this.state.platform, remember: this.state.remember, preview: '', alias: '', groups: [] };
     const password = this.pendingPassword; this.pendingPassword = '';
     const scope = this.scope(), connection = this.connection;
     this.store.saveRecent(scope, device, password).then(() => {

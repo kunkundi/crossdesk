@@ -13,6 +13,7 @@ import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.InsetDrawable;
 import android.os.Bundle;
 import android.text.*;
 import android.text.method.PasswordTransformationMethod;
@@ -21,7 +22,9 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.*;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import static cn.crossdesk.mobile.MobileUi.*;
@@ -47,6 +50,8 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private RecentConnections history;
     private final RecentConnectionPresence recentPresence=new RecentConnectionPresence();
     private LinearLayout recentGrid;
+    private TextView recentCount, recentFilterButton;
+    private String recentFilter, recentFilterServer;
     private int recentColumns=2;
     private final Runnable presenceTick=new Runnable(){public void run(){
         if(!recentPresence.isConnected())return;
@@ -232,7 +237,16 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         remote.addTextChangedListener(new TextWatcher(){boolean editing;public void beforeTextChanged(CharSequence s,int start,int count,int after){}public void onTextChanged(CharSequence s,int start,int before,int count){update.run();}public void afterTextChanged(Editable value){if(editing)return;String formatted=formatId(value.toString());if(!formatted.equals(value.toString())){editing=true;int cursor=remote.getSelectionStart(),digits=value.subSequence(0,Math.max(0,cursor)).toString().replaceAll("[^0-9]","").length();remote.setText(formatted);remote.setSelection(Math.min(formatted.length(),digits+Math.max(0,digits-1)/3));editing=false;}}});
         LinearLayout recent=column();recent.setPadding(dp(16),dp(16),dp(16),dp(16));ui.card(recent,18);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,0,1);p.topMargin=dp(20);content.addView(recent,p);
         JSONArray records=history.list(serverKey());recentPresence.watch(records,android.os.SystemClock.elapsedRealtime());LinearLayout heading=row();heading.addView(text(L10n.tr("最近连接"),20,true),new LinearLayout.LayoutParams(0,-2,1));
-        if(records.length()>0){TextView count=text(L10n.format("{0} 台设备",records.length()),12,false);count.setTextColor(SECONDARY);heading.addView(count);}recent.addView(heading);
+        if(!serverKey().equals(recentFilterServer)){recentFilter=null;recentFilterServer=serverKey();}
+        if(records.length()>0){
+            recentCount=text("",12,false);recentCount.setTextColor(SECONDARY);heading.addView(recentCount);
+            recentFilterButton=text("",13,true);recentFilterButton.setTextColor(BLUE);
+            recentFilterButton.setSingleLine();recentFilterButton.setEllipsize(TextUtils.TruncateAt.END);
+            recentFilterButton.setMaxWidth(dp(120));recentFilterButton.setPadding(dp(8),0,0,0);
+            recentFilterButton.setGravity(Gravity.CENTER);recentFilterButton.setOnClickListener(v->showRecentFilter());
+            heading.addView(recentFilterButton,ui.size(-2,44));
+        }
+        recent.addView(heading);
         if(records.length()==0){
             LinearLayout empty=column();empty.setGravity(Gravity.CENTER);recent.addView(empty,new LinearLayout.LayoutParams(-1,0,1));empty.addView(ui.icon("history",0xFFB6B6BB),ui.size(34,34));ui.gap(empty,12);
             TextView emptyTitle=text(L10n.tr("还没有连接记录"),17,true);emptyTitle.setGravity(Gravity.CENTER);empty.addView(emptyTitle);ui.gap(empty,8);TextView hint=text(L10n.tr("成功连接后，这里会显示最近的远程设备。"),13,false);hint.setTextColor(SECONDARY);hint.setGravity(Gravity.CENTER);empty.addView(hint);
@@ -259,9 +273,47 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     static String formatId(String value){String digits=value.replaceAll("[^0-9]","");if(digits.length()>9)digits=digits.substring(0,9);return digits.replaceAll("(.{3})(?=.)","$1 ");}
     private void renderRecentConnections(){
         if(recentGrid==null)return;
-        JSONArray records=recentPresence.ordered(history.list(serverKey()),android.os.SystemClock.elapsedRealtime());
+        JSONArray all = history.list(serverKey());
+        if (recentFilter != null && !recentFilter.isEmpty() && !RecentConnections.availableGroups(all).contains(recentFilter)) {
+            recentFilter = null;
+        }
+        JSONArray records = recentPresence.ordered(all, android.os.SystemClock.elapsedRealtime());
+        if (recentFilter != null) {
+            JSONArray filtered = new JSONArray();
+            for (int i = 0; i < records.length(); i++) {
+                JSONObject item = records.optJSONObject(i);
+                Set<String> groups = RecentConnections.groups(item);
+                if (recentFilter.isEmpty() ? groups.isEmpty() : groups.contains(recentFilter)) filtered.put(item);
+            }
+            records = filtered;
+        }
+        recentCount.setText(L10n.format("{0} 台设备",records.length()));
+        recentFilterButton.setText(recentGroupLabel(recentFilter)+" ▾");
+        recentFilterButton.setContentDescription(L10n.tr("分组")+" · "+recentGroupLabel(recentFilter));
         recentGrid.removeAllViews();previewCards.clear();
+        if(records.length()==0){
+            TextView empty=text(L10n.tr("该分组暂无近期连接"),14,false);
+            empty.setGravity(Gravity.CENTER);empty.setTextColor(SECONDARY);recentGrid.addView(empty,ui.size(-1,72));
+        }
         for(int i=0;i<records.length();i+=recentColumns){LinearLayout line=row();line.setGravity(Gravity.TOP);recentGrid.addView(line);for(int j=i;j<i+recentColumns;j++){View card=j<records.length()?recentCard(records.optJSONObject(j)):new View(this);LinearLayout.LayoutParams cell=new LinearLayout.LayoutParams(0,-2,1);if(j>i)cell.setMarginStart(dp(12));line.addView(card,cell);}ui.gap(recentGrid,12);}
+    }
+    private String recentGroupLabel(String filter) {
+        if (filter == null) return L10n.tr("全部设备");
+        return filter.isEmpty() ? L10n.tr("未分组") : filter;
+    }
+    private void showRecentFilter() {
+        List<String> filters = new ArrayList<>();
+        filters.add(null);
+        filters.add("");
+        filters.addAll(RecentConnections.availableGroups(history.list(serverKey())));
+        String[] labels = new String[filters.size()];
+        for (int i = 0; i < labels.length; i++) labels[i] = recentGroupLabel(filters.get(i));
+        new AlertDialog.Builder(this).setTitle(L10n.tr("分组"))
+            .setSingleChoiceItems(labels, filters.indexOf(recentFilter), (dialog, index) -> {
+                recentFilter = filters.get(index);
+                dialog.dismiss();
+                renderRecentConnections();
+            }).show();
     }
     private View recentCard(JSONObject item){
         if(item==null)return new View(this);String id=item.optString("id"),platform=item.optString("platform");
@@ -271,12 +323,96 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         ImageView image=new ImageView(this);image.setScaleType(ImageView.ScaleType.CENTER_CROP);image.setVisibility(View.GONE);image.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);preview.addView(image,new FrameLayout.LayoutParams(-1,-1));
         String server=serverKey();Runnable load=()->{if(!image.isAttachedToWindow())return;Object binding=new Object();image.setTag(binding);image.setImageDrawable(null);image.setVisibility(View.GONE);label.setVisibility(View.VISIBLE);
             previews.load(server,id,bitmap->{if(image.getTag()!=binding||!image.isAttachedToWindow()){if(bitmap!=null)bitmap.recycle();return;}if(bitmap!=null){image.setImageBitmap(bitmap);image.setVisibility(View.VISIBLE);label.setVisibility(View.GONE);}});};previewCards.add(load);image.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){public void onViewAttachedToWindow(View view){load.run();}public void onViewDetachedFromWindow(View view){image.setTag(null);}});if(image.isAttachedToWindow())load.run();
-        LinearLayout caption=column();caption.setPadding(dp(9),dp(9),dp(9),dp(9));TextView name=text(item.optString("name",id),12,true);name.setSingleLine();name.setEllipsize(TextUtils.TruncateAt.END);caption.addView(name);ui.gap(caption,4);
+        Runnable actions=()->showRecentActions(server,item);
+        TextView more=text("⋯",20,true);more.setGravity(Gravity.CENTER);more.setTextColor(Color.WHITE);
+        more.setBackground(new InsetDrawable(ui.background(0x88000000,14),dp(5),dp(9),dp(5),dp(9)));
+        more.setContentDescription(L10n.tr("更多操作"));more.setOnClickListener(v->actions.run());
+        FrameLayout.LayoutParams menuSize=new FrameLayout.LayoutParams(dp(44),dp(44),Gravity.TOP|Gravity.END);preview.addView(more,menuSize);
+        String title=RecentConnections.displayName(item);
+        LinearLayout caption=column();caption.setPadding(dp(9),dp(9),dp(9),dp(9));TextView name=text(title,12,true);name.setSingleLine();name.setEllipsize(TextUtils.TruncateAt.END);caption.addView(name);ui.gap(caption,4);
+        Set<String> groups=RecentConnections.groups(item);
+        if(!groups.isEmpty()){
+            TextView groupNames=text(TextUtils.join(" · ",groups),10,false);groupNames.setTextColor(SECONDARY);
+            groupNames.setSingleLine();groupNames.setEllipsize(TextUtils.TruncateAt.END);caption.addView(groupNames);
+        }
         LinearLayout details=row();TextView detail=text("ID "+id,10,false);detail.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));detail.setTextColor(SECONDARY);detail.setSingleLine();detail.setEllipsize(TextUtils.TruncateAt.END);details.addView(detail,new LinearLayout.LayoutParams(0,-2,1));
         if(item.optBoolean("remember")){View key=ui.icon("key",SECONDARY);key.setContentDescription(L10n.tr("已保存密码"));LinearLayout.LayoutParams keySize=ui.size(10,10);keySize.leftMargin=dp(4);details.addView(key,keySize);}
         boolean online=recentPresence.isOnline(id,android.os.SystemClock.elapsedRealtime());String availability=online?L10n.tr("在线"):L10n.tr("离线");TextView presence=text(availability,10,true);presence.setSingleLine();presence.setTextColor(online?GREEN:SECONDARY);LinearLayout.LayoutParams presenceSize=ui.size(-2,-2);presenceSize.leftMargin=dp(5);details.addView(presence,presenceSize);caption.addView(details);card.addView(caption);
-        card.setContentDescription(L10n.tr("连接 ")+item.optString("name",id)+"，ID "+id+(item.optBoolean("remember")?L10n.tr("，已保存密码"):"")+"，"+availability);card.setClickable(true);card.setFocusable(true);card.setOnClickListener(v->{remote.setText(formatId(id));promptConnection(id);});
-        card.setOnLongClickListener(v->{new AlertDialog.Builder(this).setTitle(item.optString("name",id)).setItems(new String[]{L10n.tr("连接"),L10n.tr("删除记录")},(d,w)->{if(w==0)promptConnection(id);else{history.delete(serverKey(),id);home("");}}).show();return true;});return card;
+        card.setContentDescription(L10n.tr("连接 ")+title+"，ID "+id+(item.optBoolean("remember")?L10n.tr("，已保存密码"):"")+"，"+availability);card.setClickable(true);card.setFocusable(true);card.setOnClickListener(v->{remote.setText(formatId(id));promptConnection(id);});
+        card.setOnLongClickListener(v->{actions.run();return true;});return card;
+    }
+    private void showRecentActions(String server, JSONObject item) {
+        String id = item.optString("id");
+        String[] actions = {L10n.tr("连接"), L10n.tr("修改名称"), L10n.tr("修改分组"), L10n.tr("删除记录")};
+        new AlertDialog.Builder(this).setTitle(RecentConnections.displayName(item)).setItems(actions, (dialog, index) -> {
+            switch (index) {
+                case 0: promptConnection(id); break;
+                case 1: editRecentDevice(server, item, false); break;
+                case 2: editRecentDevice(server, item, true); break;
+                case 3: history.delete(server, id); home(""); break;
+            }
+        }).show();
+    }
+    private void editRecentDevice(String server, JSONObject item, boolean editGroups) {
+        String id = item.optString("id");
+        String title = RecentConnections.displayName(item);
+        LinearLayout fields = column();
+        fields.setPadding(dp(22), dp(12), dp(22), 0);
+        fields.addView(text(editGroups ? title + " · ID " + id : "ID " + id, 13, false));
+        EditText input = field(editGroups ? L10n.tr("新建分组（可选）") : item.optString("name", id), InputType.TYPE_CLASS_TEXT);
+        Set<String> selected = RecentConnections.groups(item);
+        if (editGroups) {
+            addGroupChoices(fields, input, selected, RecentConnections.availableGroups(history.list(server)));
+        } else {
+            input.setText(title);
+            input.setSelectAllOnFocus(true);
+        }
+        fields.addView(input, ui.size(-1, 48));
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(fields);
+        new AlertDialog.Builder(this).setTitle(editGroups ? L10n.tr("修改分组") : L10n.tr("修改名称"))
+            .setView(scroll).setNegativeButton(L10n.tr("取消"), null)
+            .setPositiveButton(L10n.tr("保存"), (dialog, which) -> {
+                String value = input.getText().toString().trim();
+                if (editGroups) {
+                    if (!value.isEmpty()) selected.add(value);
+                    history.edit(server, id, null, selected);
+                } else {
+                    history.edit(server, id, value, null);
+                }
+                renderRecentConnections();
+            }).show();
+    }
+    private void addGroupChoices(LinearLayout fields, EditText input, Set<String> selected, Set<String> groups) {
+        CheckBox ungrouped = new CheckBox(this);
+        ungrouped.setText(L10n.tr("未分组"));
+        fields.addView(ungrouped);
+        Runnable updateUngrouped = () -> ungrouped.setChecked(selected.isEmpty() && input.getText().toString().trim().isEmpty());
+        List<CheckBox> choices = new ArrayList<>();
+        for (String group : groups) {
+            CheckBox choice = new CheckBox(this);
+            choice.setText(group);
+            choice.setChecked(selected.contains(group));
+            choice.setOnClickListener(v -> {
+                if (choice.isChecked()) selected.add(group);
+                else selected.remove(group);
+                updateUngrouped.run();
+            });
+            fields.addView(choice);
+            choices.add(choice);
+        }
+        ungrouped.setOnClickListener(v -> {
+            selected.clear();
+            for (CheckBox choice : choices) choice.setChecked(false);
+            input.setText("");
+            updateUngrouped.run();
+        });
+        input.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            public void onTextChanged(CharSequence s, int start, int before, int count) { updateUngrouped.run(); }
+            public void afterTextChanged(Editable s) {}
+        });
+        updateUngrouped.run();
     }
     private void promptConnection(String id){
         hideKeyboard();if(!id.matches("[0-9]{9}")){remote.setError(L10n.tr("请输入 9 位设备 ID"));remote.requestFocus();return;}
@@ -708,7 +844,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         if(message.optInt("type",-1)==12){if(!ready)return;videoSettings.receive(message);if(!videoSettings.pending)cancelVideoSettingsTimeout();if(controls!=null)controls.videoSettings(videoSettings);return;}
         JSONObject info=message.optJSONObject("host_info");
         if(info!=null){
-            hostPlatform=info.optString("platform","");JSONArray list=info.optJSONArray("displays");if(list!=null)displays=list;history.metadata(serverKey(),connectedRemote,info.optString("host_name",connectedRemote),hostPlatform);
+            hostPlatform=info.optString("platform","");JSONArray list=info.optJSONArray("displays");if(list!=null)displays=list;history.metadata(serverKey(),connectedRemote,info.optString("host_name"),hostPlatform);
             if(controls!=null)controls.setHostPlatform(hostPlatform);
             boolean wasSupported=videoSettings.supported;videoSettings.setSupported(info.optBoolean("supports_video_settings",false));
             if(!videoSettings.supported)cancelVideoSettingsTimeout();

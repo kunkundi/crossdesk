@@ -302,4 +302,12 @@ export const translations: Record<string, string[]> = {
   "选择桌面方案": ["选择桌面方案", "Choose desktop environment", "Выберите окружение рабочего стола", "選擇桌面環境", "デスクトップ環境を選択", "데스크톱 환경 선택", "Desktop-Umgebung auswählen", "Choisir l’environnement de bureau", "Elegir entorno de escritorio", "Escolher ambiente de trabalho"],
   "选择桌面方案以加载系统预设": ["选择桌面方案以加载系统预设", "Choose a desktop environment to load system presets", "Выберите окружение, чтобы загрузить системные наборы", "選擇桌面環境以載入系統預設", "デスクトップ環境を選択してプリセットを読み込みます", "데스크톱 환경을 선택하여 시스템 프리셋을 불러오세요", "Desktop-Umgebung wählen, um Systemvorgaben zu laden", "Choisissez un environnement pour charger les préréglages système", "Elige un entorno para cargar los ajustes del sistema", "Escolha um ambiente para carregar as predefinições do sistema"],
   "键盘上方常用栏": ["键盘上方常用栏", "Favorites above keyboard", "Избранное над клавиатурой", "鍵盤上方常用列", "キーボード上のお気に入り", "키보드 위 즐겨찾기 모음", "Favoriten über der Tastatur", "Favoris au-dessus du clavier", "Favoritos sobre el teclado", "Favoritos acima do teclado"],
+  "全部设备": ["全部设备", "All devices", "Все устройства", "全部裝置", "すべてのデバイス", "모든 장치", "Alle Geräte", "Tous les appareils", "Todos los dispositivos", "Todos os dispositivos"],
+  "分组": ["分组", "Group", "Группа", "分組", "グループ", "그룹", "Gruppe", "Groupe", "Grupo", "Grupo"],
+  "修改名称": ["修改名称", "Rename", "Переименовать", "修改名稱", "名前を変更", "이름 바꾸기", "Umbenennen", "Renommer", "Cambiar nombre", "Renomear"],
+  "修改分组": ["修改分组", "Edit groups", "Изменить группы", "修改分組", "グループの編集", "그룹 편집", "Gruppen bearbeiten", "Modifier les groupes", "Editar grupos", "Editar grupos"],
+  "未分组": ["未分组", "Ungrouped", "Без группы", "未分組", "グループ化されていない", "그룹 해제됨", "Nicht gruppiert", "Non groupé", "Desagrupado", "Desagrupado"],
+  "新建分组（可选）": ["新建分组（可选）", "New group (optional)", "Новая группа (необязательно)", "新建分組（可選）", "新しいグループ (オプション)", "새 그룹(선택 사항)", "Neue Gruppe (optional)", "Nouveau groupe (facultatif)", "Nuevo grupo (opcional)", "Novo grupo (opcional)"],
+  "该分组暂无近期连接": ["该分组暂无近期连接", "No recent connections in this group", "В этой группе нет недавних подключений", "該分組暫無近期連線", "このグループには最近の接続がありません", "이 그룹에는 최근 연결이 없습니다.", "Keine aktuellen Verbindungen in dieser Gruppe", "Aucune connexion récente dans ce groupe", "No hay conexiones recientes en este grupo.", "Nenhuma conexão recente neste grupo"],
+  "更多操作": ["更多操作", "More actions", "Другие действия", "更多操作", "その他のアクション", "추가 작업", "Weitere Aktionen", "Plus d'actions", "Más acciones", "Mais ações"],
 };

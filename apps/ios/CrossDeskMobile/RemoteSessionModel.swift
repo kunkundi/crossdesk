@@ -944,6 +944,17 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         }
     }
 
+    func editRecentConnection(_ id: String, alias: String? = nil, groups: [String]? = nil) {
+        guard let index = recentConnections.firstIndex(where: { $0.id == id }) else { return }
+        if let alias {
+            recentConnections[index].alias = alias.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let groups {
+            recentConnections[index].groups = Array(Set(groups)).sorted()
+        }
+        RecentConnectionStore.save(recentConnections)
+    }
+
     func removeRecentConnection(_ connection: RecentConnection) {
         recentConnections.removeAll { $0.remoteID == connection.remoteID }
         recentConnectionPresence.removeValue(forKey: connection.remoteID)
@@ -966,7 +977,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
 
         let previous = recentConnections.first { $0.remoteID == activeRemoteID }
         let title = activeDisplayName.isEmpty
-            ? (previous?.displayName ?? activeRemoteID)
+            ? (previous?.hostName ?? activeRemoteID)
             : activeDisplayName
         let connection = RecentConnection(
             remoteID: activeRemoteID,
@@ -974,7 +985,9 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             lastConnectedAt: Date(),
             remembersPassword: pendingRememberPassword,
             thumbnailFileName: previous?.thumbnailFileName,
-            platform: remoteHostInfoReceived ? remotePlatform : (previous?.platform ?? .unknown)
+            platform: remoteHostInfoReceived ? remotePlatform : (previous?.platform ?? .unknown),
+            alias: previous?.alias ?? "",
+            groups: previous?.groups ?? []
         )
         recentConnections.removeAll { $0.remoteID == activeRemoteID }
         recentConnections.insert(connection, at: 0)

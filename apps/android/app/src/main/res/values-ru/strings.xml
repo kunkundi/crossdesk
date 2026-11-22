@@ -370,4 +370,12 @@
     <string name="text_4bdabfba3368869d" formatted="false">"Выберите окружение рабочего стола"</string>
     <string name="text_4fa28857c6f253cc" formatted="false">"Выберите окружение, чтобы загрузить системные наборы"</string>
     <string name="text_fc5f6f7462e8557a" formatted="false">"Избранное над клавиатурой"</string>
+    <string name="text_67943ba6d0038222" formatted="false">"Все устройства"</string>
+    <string name="text_399ee69347726cee" formatted="false">"Группа"</string>
+    <string name="text_88f4625eade235b7" formatted="false">"Переименовать"</string>
+    <string name="text_663ba1c006b1f12b" formatted="false">"Изменить группы"</string>
+    <string name="text_e86ea3f280d920a2" formatted="false">"Без группы"</string>
+    <string name="text_1e5709f1b7a405da" formatted="false">"Новая группа (необязательно)"</string>
+    <string name="text_24c9c756f833ce88" formatted="false">"В этой группе нет недавних подключений"</string>
+    <string name="text_9f07d2ce4115f575" formatted="false">"Другие действия"</string>
 </resources>

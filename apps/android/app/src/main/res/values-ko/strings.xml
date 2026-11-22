@@ -370,4 +370,12 @@
     <string name="text_4bdabfba3368869d" formatted="false">"데스크톱 환경 선택"</string>
     <string name="text_4fa28857c6f253cc" formatted="false">"데스크톱 환경을 선택하여 시스템 프리셋을 불러오세요"</string>
     <string name="text_fc5f6f7462e8557a" formatted="false">"키보드 위 즐겨찾기 모음"</string>
+    <string name="text_67943ba6d0038222" formatted="false">"모든 장치"</string>
+    <string name="text_399ee69347726cee" formatted="false">"그룹"</string>
+    <string name="text_88f4625eade235b7" formatted="false">"이름 바꾸기"</string>
+    <string name="text_663ba1c006b1f12b" formatted="false">"그룹 편집"</string>
+    <string name="text_e86ea3f280d920a2" formatted="false">"그룹 해제됨"</string>
+    <string name="text_1e5709f1b7a405da" formatted="false">"새 그룹(선택 사항)"</string>
+    <string name="text_24c9c756f833ce88" formatted="false">"이 그룹에는 최근 연결이 없습니다."</string>
+    <string name="text_9f07d2ce4115f575" formatted="false">"추가 작업"</string>
 </resources>
