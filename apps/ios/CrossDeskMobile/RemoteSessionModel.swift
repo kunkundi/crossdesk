@@ -296,10 +296,31 @@ private final class RemoteAudioPlayer {
     }
 }
 
-final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDelegate {
-    static let officialSignalHost = "api.crossdesk.cn"
-    static let officialSignalPort = "9099"
+struct SignalServerConfiguration: Equatable {
+    let host: String
+    let signalPort: Int
 
+    static let official = Self(host: "api.crossdesk.cn", signalPort: 9099)
+    private static let customServerKey = "crossdesk.mobile.custom-signal-server"
+
+    static func loadCustom() -> Self? {
+        guard let saved = UserDefaults.standard.dictionary(forKey: customServerKey),
+              let host = (saved["host"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !host.isEmpty,
+              let port = saved["port"] as? Int, (1...65535).contains(port) else { return nil }
+        return Self(host: host, signalPort: port)
+    }
+
+    static func saveCustom(_ server: Self?) {
+        if let server {
+            UserDefaults.standard.set(["host": server.host, "port": server.signalPort], forKey: customServerKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: customServerKey)
+        }
+    }
+}
+
+final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDelegate {
     private let privacyPreferences = PrivacyPreferences()
     @Published private(set) var hasNetworkConsent = PrivacyPreferences().hasNetworkConsent
     @Published private var privacyNotice = PrivacyNoticeState(
@@ -310,8 +331,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     @Published private(set) var thumbnailCleanupError: String?
     private var thumbnailGeneration = UUID()
 
-    @Published var signalHost = RemoteSessionModel.officialSignalHost
-    @Published var signalPort = RemoteSessionModel.officialSignalPort
+    @Published private(set) var customServer = SignalServerConfiguration.loadCustom()
     @Published var mouseControlMode = MouseControlMode.saved {
         didSet { mouseControlMode.save() }
     }
@@ -400,11 +420,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     private static let presenceRefreshInterval: Duration = .seconds(30)
     private static let presenceMaxAge: Duration = .seconds(60)
 
-    private struct BridgeConfiguration: Equatable {
-        let host: String
-        let signalPort: Int
-    }
-    private var bridgeConfiguration: BridgeConfiguration?
+    private var bridgeConfiguration: SignalServerConfiguration?
 
     var pixelBuffer: CVPixelBuffer? { videoFrame?.pixelBuffer }
     var currentVideoFrameID: UInt64 { videoFrame?.id ?? 0 }
@@ -540,13 +556,11 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         }
     }
 
-    var usesOfficialServer: Bool {
-        signalHost == Self.officialSignalHost && signalPort == Self.officialSignalPort
-    }
-
-    func restoreOfficialServerConfiguration() {
-        signalHost = Self.officialSignalHost
-        signalPort = Self.officialSignalPort
+    func setCustomServer(_ server: SignalServerConfiguration?) {
+        guard server != customServer else { return }
+        SignalServerConfiguration.saveCustom(server)
+        customServer = server
+        configureBridge()
     }
 
     @discardableResult
@@ -555,14 +569,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             signalStatus = NSLocalizedString("等待隐私授权", comment: ""); signalHasError = false
             return false
         }
-        let host = signalHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let signal = Int(signalPort),
-              (1...65535).contains(signal),
-              !host.isEmpty else {
-            signalStatus = NSLocalizedString("服务器配置无效", comment: ""); signalHasError = true
-            return false
-        }
-        let configuration = BridgeConfiguration(host: host, signalPort: signal)
+        let configuration = customServer ?? .official
         if bridgeConfiguration != configuration {
             bridgeConfiguration = configuration
             signalConnected = false
@@ -576,8 +583,8 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             signalStatus = NSLocalizedString("已连接服务器", comment: ""); signalHasError = false
         }
         bridge.setVideoAdaptationPolicy(videoAdaptationPolicy.bridgeValue)
-        bridge.configure(withSignalHost: host,
-                         signalPort: signal)
+        bridge.configure(withSignalHost: configuration.host,
+                         signalPort: configuration.signalPort)
         return true
     }
 

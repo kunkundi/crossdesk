@@ -851,10 +851,10 @@ private struct ServerSettingsView: View {
 
     init(session: RemoteSessionModel) {
         self.session = session
-        let isCustom = !session.usesOfficialServer
-        _usesCustomServer = State(initialValue: isCustom)
-        _customServerHost = State(initialValue: isCustom ? session.signalHost : "")
-        _customServerPort = State(initialValue: isCustom ? session.signalPort : "")
+        let server = session.customServer
+        _usesCustomServer = State(initialValue: server != nil)
+        _customServerHost = State(initialValue: server?.host ?? "")
+        _customServerPort = State(initialValue: server.map { String($0.signalPort) } ?? "")
     }
 
     var body: some View {
@@ -996,9 +996,7 @@ private struct ServerSettingsView: View {
         focusedServerField = nil
         customServerHost = ""
         customServerPort = ""
-        guard !session.usesOfficialServer else { return }
-        session.restoreOfficialServerConfiguration()
-        session.configureBridge()
+        session.setCustomServer(nil)
     }
 
     private func validateAndApplyServerConfiguration() {
@@ -1016,10 +1014,6 @@ private struct ServerSettingsView: View {
         serverConfigurationError = nil
         customServerHost = host
         customServerPort = String(portNumber)
-        if session.signalHost != host || session.signalPort != customServerPort {
-            session.signalHost = host
-            session.signalPort = customServerPort
-            session.configureBridge()
-        }
+        session.setCustomServer(SignalServerConfiguration(host: host, signalPort: portNumber))
     }
 }
