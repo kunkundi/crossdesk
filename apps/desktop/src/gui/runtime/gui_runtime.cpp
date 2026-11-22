@@ -16,7 +16,6 @@
 #include <display_stream_id.h>
 #include <web_clipboard_protocol.h>
 #include "localization.h"
-#include "platform/video_renderer.h"
 #include "rd_log.h"
 #ifdef _WIN32
 #include "platform/windows/input/windows_input_injector.h"
@@ -86,14 +85,13 @@ GuiRuntime::~GuiRuntime() {
   RestoreHostDisplayResolutions(true);
 }
 
-void GuiRuntime::SendRemoteInput(const RemoteAction& action) {
+void GuiRuntime::SendRemoteInput(const RemoteAction& action, float wheel_delta) {
   const bool mouse = action.type == ControlType::mouse;
   const bool mouse_move = mouse && action.m.flag == MouseFlag::move;
   if (!mouse && action.type != ControlType::keyboard &&
       action.type != ControlType::keyboard_state)
     return;
-  const std::string& target_id = controlled_remote_id_.empty()
-      ? focused_remote_id_ : controlled_remote_id_;
+  const std::string& target_id = controlled_remote_id_;
   if (target_id.empty()) return;
   const bool group = gallery_group_control_id_ == target_id;
   const bool releasing = mouse
@@ -113,9 +111,21 @@ void GuiRuntime::SendRemoteInput(const RemoteAction& action) {
   if (!releasing &&
       (source == remote_sessions_.end() || !available(source->second)))
     return;
-  const auto message = action.to_json();
+  const bool wheel = mouse && (action.m.flag == MouseFlag::wheel_vertical ||
+                               action.m.flag == MouseFlag::wheel_horizontal);
+  auto message = wheel ? std::string{} : action.to_json();
   for (const auto& [id, props] : remote_sessions_) {
     if ((!group && id != target_id) || !available(props)) continue;
+    if (wheel) {
+      const int steps = props->scroll_.Consume(action.m.flag == MouseFlag::wheel_vertical,
+          wheel_delta, config_center_->GetWheelSensitivityPercent(props->device_preference_key_));
+      if (steps == 0) continue;
+      RemoteAction scaled{};
+      scaled.type = ControlType::mouse;
+      scaled.m = action.m;
+      scaled.m.s = steps;
+      message = scaled.to_json();
+    }
     if (mouse) {
       std::lock_guard cursor_lock(props->remote_cursor_state_mutex_);
       props->cursor_presentation_.NoteInput(SDL_GetTicks());

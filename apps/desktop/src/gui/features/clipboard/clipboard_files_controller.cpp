@@ -152,12 +152,12 @@ void ClipboardController::SendLocalFiles(bool changed) {
     if (session->controlling) {
       const auto viewer = session->viewer.lock();
       if (!viewer) continue;
-      if (!viewer->tab_opened_ || !viewer->tab_selected_ || !viewer->control_mouse_) {
+      if (!viewer->stream_window_open_ || !viewer->last_focused_stream_ || !viewer->control_mouse_) {
         if (deferred_file_session_.lock() == viewer) deferred_file_session_.reset();
         continue;
       }
       if (!viewer->clipboard_allowed_.load()) {
-        if (changed && viewer->tab_opened_ && viewer->tab_selected_ && viewer->control_mouse_)
+        if (changed && viewer->stream_window_open_ && viewer->last_focused_stream_ && viewer->control_mouse_)
           deferred_file_session_ = viewer;
         continue;
       }
@@ -182,7 +182,7 @@ void ClipboardController::ApplyPendingFiles() {
   if (!FileSessionActive(pending->remote, session)) { reject(); return; }
   if (session->controlling) {
     const auto viewer = session->viewer.lock();
-    if (!viewer || !viewer->tab_opened_ || !viewer->tab_selected_ || !viewer->control_mouse_) {
+    if (!viewer || !viewer->stream_window_open_ || !viewer->last_focused_stream_ || !viewer->control_mouse_) {
       reject(); return;
     }
   }

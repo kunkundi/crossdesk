@@ -148,6 +148,12 @@
 }
 
 - (void)windowDidUpdate:(NSNotification*)notification {
+  NSString *title = self.window.title;
+  if (title && ![_titleLabel.stringValue isEqualToString:title]) {
+    _titleLabel.stringValue = title;
+    [self setFrameSize:NSMakeSize(_titleLabel.fittingSize.width + 10, self.frame.size.height)];
+    self.needsLayout = YES;
+  }
   if (!self.windowLayoutPending || self.windowLayoutHandler == nil ||
       ![notification.object isKindOfClass:NSWindow.class]) {
     return;
@@ -585,7 +591,7 @@ struct MacMetalVideoRenderer::Impl {
         }
       }
       title_accessory_controller = nil;
-      if (window != nil && !IsStreamWindowFullscreen()) {
+      if (window != nil && !IsStreamWindowFullscreen((__bridge void *)slint_view)) {
         RestoreNativeWindowChrome(window);
         window.titleVisibility = NSWindowTitleVisible;
         NSView* frame_view = window.contentView.superview;
@@ -997,7 +1003,7 @@ bool MacMetalVideoRenderer::Attach(void* opaque_slint_view) {
     NSView* requested_view = (__bridge NSView*)opaque_slint_view;
     if (impl_->slint_view == requested_view && impl_->video_view != nil &&
         impl_->video_view.superview != nil) {
-      if (!IsStreamWindowFullscreen()) {
+      if (!IsStreamWindowFullscreen(opaque_slint_view)) {
         ConfigureStreamWindowChrome(requested_view.window);
         requested_view.window.titleVisibility = NSWindowTitleHidden;
         impl_->title_accessory_controller.view.hidden = NO;
@@ -1059,7 +1065,7 @@ bool MacMetalVideoRenderer::Attach(void* opaque_slint_view) {
     __weak NSTitlebarAccessoryViewController* title_accessory =
         impl_->title_accessory_controller;
     title_view.windowLayoutHandler = ^BOOL(NSWindow* window) {
-      const bool fullscreen = IsStreamWindowFullscreen();
+      const bool fullscreen = IsStreamWindowFullscreen((__bridge void *)window.contentView);
       title_accessory.view.hidden = fullscreen;
       if (fullscreen) {
         return YES;

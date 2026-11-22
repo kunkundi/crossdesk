@@ -4,7 +4,9 @@
 #include <charconv>
 #include <chrono>
 #include <cstring>
+#include <cstdint>
 #include <filesystem>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <vector>
 
@@ -38,7 +40,7 @@ bool IsValidTurnModeValue(long value) {
          value <= static_cast<long>(ConfigCenter::TURN_MODE::FORCE_TCP);
 }
 
-bool IsValidInputSensitivity(long percent) {
+bool IsValidInputSensitivity(std::int64_t percent) {
   return percent >= 10 && percent <= 500;
 }
 
@@ -212,7 +214,17 @@ int ConfigCenter::Load() {
     return IsValidInputSensitivity(percent) ? static_cast<int>(percent) : 100;
   };
   mouse_sensitivity_percent_ = read_sensitivity("mouse_sensitivity_percent");
-  wheel_sensitivity_percent_ = read_sensitivity("wheel_sensitivity_percent");
+  legacy_wheel_sensitivity_percent_ = read_sensitivity("wheel_sensitivity_percent");
+  const auto devices = nlohmann::json::parse(
+      ini_->GetValue(section_, "device_wheel_sensitivity", "{}"), nullptr, false);
+  device_wheel_sensitivity_.clear();
+  if (devices.is_object()) {
+    for (const auto& [device, value] : devices.items()) {
+      if (!device.empty() && value.is_number_integer() &&
+          IsValidInputSensitivity(value.get<std::int64_t>()))
+        device_wheel_sensitivity_.emplace(device, value.get<int>());
+    }
+  }
   portable_service_prompt_suppressed_ =
       ini_->GetBoolValue(section_, "portable_service_prompt_suppressed",
                         portable_service_prompt_suppressed_);
@@ -321,7 +333,6 @@ int ConfigCenter::Save() {
   ini_->SetBoolValue(section_, "pause_video_when_minimized",
                     pause_video_when_minimized_.load());
   ini_->SetLongValue(section_, "mouse_sensitivity_percent", GetMouseSensitivityPercent());
-  ini_->SetLongValue(section_, "wheel_sensitivity_percent", GetWheelSensitivityPercent());
   ini_->SetBoolValue(section_, "portable_service_prompt_suppressed",
                     portable_service_prompt_suppressed_);
   ini_->SetValue(section_, "sponsorship_prompt_dismissed_version",
@@ -646,13 +657,28 @@ bool ConfigCenter::IsPauseVideoWhenMinimized() const {
   return pause_video_when_minimized_.load();
 }
 
-int ConfigCenter::SetInputSensitivity(int mouse_percent, int wheel_percent) {
-  if (!IsValidInputSensitivity(mouse_percent) || !IsValidInputSensitivity(wheel_percent) ||
-      StoreValues({{"mouse_sensitivity_percent", std::to_string(mouse_percent)},
-                   {"wheel_sensitivity_percent", std::to_string(wheel_percent)}}) != 0)
+int ConfigCenter::GetWheelSensitivityPercent(const std::string& device) const {
+  const auto found = device_wheel_sensitivity_.find(device);
+  return found == device_wheel_sensitivity_.end() ? legacy_wheel_sensitivity_percent_
+                                                 : found->second;
+}
+
+int ConfigCenter::SetInputSensitivity(const std::string& device,
+                                     int mouse_percent, int wheel_percent) {
+  if (device.empty() || !IsValidInputSensitivity(mouse_percent) ||
+      !IsValidInputSensitivity(wheel_percent)) return -1;
+
+  const auto mouse = std::make_pair("mouse_sensitivity_percent", std::to_string(mouse_percent));
+  if (wheel_percent != GetWheelSensitivityPercent(device)) {
+    auto devices = device_wheel_sensitivity_;
+    devices[device] = wheel_percent;
+    if (StoreValues({mouse, {"device_wheel_sensitivity", nlohmann::json(devices).dump()}}) != 0)
+      return -1;
+    device_wheel_sensitivity_ = std::move(devices);
+  } else if (mouse_percent != GetMouseSensitivityPercent() && StoreValues({mouse}) != 0) {
     return -1;
+  }
   mouse_sensitivity_percent_.store(mouse_percent);
-  wheel_sensitivity_percent_.store(wheel_percent);
   return 0;
 }
 

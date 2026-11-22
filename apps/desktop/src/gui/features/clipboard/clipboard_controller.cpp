@@ -395,7 +395,7 @@ void ClipboardController::SendDeferredLocalText() {
   const auto current = owner_.remote_sessions_.find(session->remote_id_);
   if (current == owner_.remote_sessions_.end() || current->second != session ||
       session->closing_ || !session->peer_ || !session->connection_established_ ||
-      !session->tab_opened_ || !session->tab_selected_ ||
+      !session->stream_window_open_ || !session->last_focused_stream_ ||
       !session->control_mouse_) {
     deferred_local_session_.reset();
     return;
@@ -424,8 +424,8 @@ int ClipboardController::SendToPeers(const std::string &text) {
     if (!props->clipboard_allowed_.load()) {
       // Copying in another local app temporarily releases keyboard control.
       // Keep this copy for the same selected stream, without sharing it with
-      // background tabs or DeskHub previews.
-      if (props->tab_opened_ && props->tab_selected_ && props->control_mouse_) {
+      // background windows or DeskHub previews.
+      if (props->stream_window_open_ && props->last_focused_stream_ && props->control_mouse_) {
         deferred_local_session_ = props;
       }
       continue;

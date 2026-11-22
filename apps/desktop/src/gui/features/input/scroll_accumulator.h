@@ -21,6 +21,11 @@ class ScrollAccumulator {
   int Consume(bool vertical, float delta, int percent, Clock::time_point now = Clock::now()) {
     if (!std::isfinite(delta) || delta == 0) return 0;
 
+    if (percent != sensitivity_percent_) {
+      horizontal_ = {};
+      vertical_ = {};
+      sensitivity_percent_ = percent;
+    }
     constexpr float kPixelsPerNotch = 60;
     auto& axis = vertical ? vertical_ : horizontal_;
     const bool new_gesture =
@@ -58,6 +63,7 @@ class ScrollAccumulator {
     std::optional<Clock::time_point> last_event;
     bool last_whole_notch = false;
   };
+  int sensitivity_percent_ = 100;
   Axis horizontal_;
   Axis vertical_;
 };

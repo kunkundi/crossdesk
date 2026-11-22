@@ -40,7 +40,7 @@ struct InteractionState {
   std::chrono::steady_clock::time_point last_rejoin_check_time_ =
       std::chrono::steady_clock::now();
   std::string controlled_remote_id_;
-  std::string focused_remote_id_;
+  std::string connection_dialog_target_;
   std::string remote_client_id_;
 };
 
@@ -52,18 +52,10 @@ struct UpdateState {
   std::string release_date_;
 };
 
-struct StreamWindowState {
-  bool need_to_create_stream_window_ = false;
-  bool stream_window_created_ = false;
-  bool stream_window_inited_ = false;
-  bool control_mouse_ = false;
-};
-
 struct UiState {
   bool rejoin_ = false;
   bool show_password_ = true;
   bool show_connection_status_window_ = false;
-  bool fullscreen_button_pressed_ = false;
   bool is_client_mode_ = false;
   std::atomic<bool> is_server_mode_{false};
   std::atomic<bool> incoming_controllers_changed_{false};
@@ -76,7 +68,6 @@ struct UiState {
 struct ApplicationState : MainWindowState,
                           InteractionState,
                           UpdateState,
-                          StreamWindowState,
                           UiState {};
 
 }  // namespace crossdesk::gui_detail

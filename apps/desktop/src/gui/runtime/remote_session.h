@@ -24,6 +24,7 @@
 #include <stream_names.h>
 #include "display_info.h"
 #include "features/gallery/preview_resolution.h"
+#include "features/input/scroll_accumulator.h"
 #include "runtime/display_resolution_state.h"
 #include "cursor_presentation.h"
 #include "minirtc.h"
@@ -34,6 +35,7 @@
 
 namespace crossdesk {
 class PeerEventHandler;
+class VideoRenderer;
 namespace lan {
 struct Session;
 }
@@ -117,7 +119,7 @@ struct RemoteSession {
   MiniRtcPeerPtr* peer_ = nullptr;
   std::shared_ptr<PeerEventHandler> peer_events_;
   std::atomic<bool> closing_{false};
-  // Transport callbacks request tab closure; only the UI thread destroys it.
+  // Transport callbacks request window closure; only the UI thread destroys it.
   std::atomic<bool> remote_close_pending_{false};
   std::string audio_label_ = kAudioStream;
   std::string data_label_ = kDataStream;
@@ -130,7 +132,8 @@ struct RemoteSession {
   std::string local_id_;
   std::string remote_id_;
   // Stable device/server identity; LAN's remote_id_ is a temporary session key.
-  std::string resolution_preference_key_;
+  std::string device_preference_key_;
+  ScrollAccumulator scroll_;  // UI thread, one fractional remainder per axis and session.
   bool exit_ = false;
   bool signal_connected_ = false;
   MiniRtcSignalStatus signal_status_ = MiniRtcSignalStatus::MiniRtcSignalClosed;
@@ -158,7 +161,7 @@ struct RemoteSession {
   std::shared_ptr<std::vector<unsigned char>> front_frame_;
   std::shared_ptr<std::vector<unsigned char>> back_frame_;
   // Retains the most recent background CPU frame across disconnect cleanup
-  // so closing an unselected tab can still update its recent-item thumbnail.
+  // so closing a background window can still update its recent-item thumbnail.
   std::shared_ptr<std::vector<unsigned char>> thumbnail_frame_;
   int thumbnail_width_ = 0;
   int thumbnail_height_ = 0;
@@ -173,8 +176,10 @@ struct RemoteSession {
   VideoLatencyFrame video_frame_timing_;
   std::shared_ptr<VideoLatencyStats> video_latency_ =
       std::make_shared<VideoLatencyStats>();
-  bool tab_selected_ = false;
-  std::atomic<bool> tab_opened_{true};
+  std::shared_ptr<VideoRenderer> video_renderer_;  // Published atomically by the UI.
+  std::atomic<bool> frame_dirty_{true};
+  std::atomic<bool> last_focused_stream_{false};
+  std::atomic<bool> stream_window_open_{true};
   std::string remote_host_name_;
   // Host metadata and dismissal state belong to this connection and are
   // protected by remote_version_mutex_.

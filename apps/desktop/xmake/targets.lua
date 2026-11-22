@@ -552,6 +552,7 @@ function setup_targets()
 
     target("config_center")
         set_kind("object")
+        add_packages("nlohmann_json")
         add_deps("rd_log", "autostart")
         if is_os("linux") then
             add_deps("linux_runtime_daemon")

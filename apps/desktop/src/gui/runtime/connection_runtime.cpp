@@ -28,7 +28,12 @@ constexpr auto kPresenceRetryInterval = std::chrono::seconds(1);
 
 bool GuiRuntime::HasActiveSession() {
   if (lan_ && !lan_->Quiescent()) return true;
-  if (stream_window_inited_) return true;
+  {
+    std::shared_lock lock(remote_sessions_mutex_);
+    if (std::any_of(remote_sessions_.begin(), remote_sessions_.end(), [](const auto& entry) {
+          return entry.second->was_connected_ && !entry.second->closing_;
+        })) return true;
+  }
   std::shared_lock lock(connection_status_mutex_);
   return std::any_of(connection_status_.begin(), connection_status_.end(),
                      [](const auto& entry) {
@@ -242,15 +247,6 @@ void GuiRuntime::HandleServerControllerDisconnected(
   is_server_mode_ = false;
   devices_.StopSpeakerCapturer();
   start_mouse_controller_ = false;
-  {
-    std::shared_lock lock(remote_sessions_mutex_);
-    start_keyboard_capturer_ = std::any_of(
-        remote_sessions_.begin(), remote_sessions_.end(), [](const auto& item) {
-          const auto& session = item.second;
-          return session && !session->closing_ &&
-                 session->connection_established_ && !session->wall_managed_;
-        });
-  }
   remote_client_id_.clear();
   audio_capture_ = false;
 }
@@ -345,7 +341,7 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
       video_height = props->thumbnail_height_;
     }
   }
-  auto* native_renderer = video_renderer_.get();
+  auto native_renderer = std::atomic_load(&props->video_renderer_);
   if (save_preview && (!frame_snapshot || frame_snapshot->empty()) &&
       native_renderer) {
     auto native_snapshot = std::make_shared<std::vector<unsigned char>>();
@@ -358,7 +354,7 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
 
   if (native_renderer) {
     native_renderer->DiscardStream(props->remote_id_);
-    video_frame_dirty_.store(true, std::memory_order_release);
+    NotifyVideoFrameReady(*props);
   }
 
   MiniRtcPeerPtr* peer = nullptr;
@@ -627,7 +623,7 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
   // Do not recreate a failed peer or send another probe during a server cooldown.
   if (const auto current = FindRemoteSession(remote_id);
       current && current->connection_auth_.Get().retry_after > 0) {
-    if (!background) focused_remote_id_ = remote_id;
+    if (!background) connection_dialog_target_ = remote_id;
     if (!background) show_connection_status_window_ = true;
     current->rejoin_ = false;
     return 0;
@@ -657,7 +653,7 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
 
   LOG_INFO("Connecting to remote device");
   LOG_DEBUG("Connect to [{}]", remote_id);
-  if (!background) focused_remote_id_ = remote_id;
+  if (!background) connection_dialog_target_ = remote_id;
 
   auto stale = FindRemoteSession(remote_id);
   bool exists = stale != nullptr;
@@ -706,8 +702,11 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
         auto props = remote_sessions_[remote_id];
         props->local_id_ = "C-" + std::string(client_id_);
         props->remote_id_ = remote_id;
+        props->device_preference_key_ = nlohmann::json::array({"signal",
+            config_center_->GetSignalServerHost(), config_center_->GetSignalServerPort(),
+            remote_id}).dump();
         props->wall_managed_ = background;
-        props->tab_opened_ = !background;
+        props->stream_window_open_ = !background;
         props->control_mouse_ = !background;
         props->enable_mouse_control_ = !background;
         props->audio_capture_button_pressed_ = !background;
@@ -762,6 +761,8 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
     // This also covers reusing a foreground connection that is awaiting auth.
     props->wall_managed_ = true;
     MuteRemoteAudio(props);
+  } else {
+    props->stream_window_open_ = true;
   }
   if (!props->connection_established_) {
     if (!background) show_connection_status_window_ = true;

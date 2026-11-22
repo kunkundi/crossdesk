@@ -5,12 +5,6 @@ import { SettingsSelect } from "settings_controls.slint";
 import { RemoteCursor, AdjustedPointer } from "remote_cursor.slint";
 import { FontAwesomeIcons, IconButton, PrimaryButton, SecondaryButton, DialogSurface, ImGuiFontStyle, ControlStyle, ButtonStyle, ScrollingText } from "common.slint";
 
-export struct StreamTab {
-    remote-id: string,
-    title: string,
-    connected: bool,
-}
-
 export struct FileTransferEntry {
     name: string,
     status: string,
@@ -371,7 +365,8 @@ component VideoSettingRow inherits StreamSettingRow {
 }
 
 export component StreamWindow inherits Window {
-    title: "CrossDesk";
+    in property <string> session-title: "CrossDesk";
+    title: root.session-title;
     icon: @image-url("../../../resources/linux/crossdesk_256x256.png");
     preferred-width: 1280px;
     preferred-height: 720px + (root.custom-titlebar ? 32px : 0px);
@@ -386,14 +381,13 @@ export component StreamWindow inherits Window {
     in property <bool> control-hand-cursor-supported: true;
     in property <bool> native-video-enabled: false;
     // Export the actual input surface in logical pixels. Native rendering and
-    // input mapping must follow the same layout, including title and tab bars.
+    // input mapping must follow the same layout, including the title bar.
     out property <length> video-area-top: content-layer.y + video.y;
     out property <length> video-area-width: video.width;
     out property <length> video-area-height: video.height;
     in property <bool> window-active: true;
     in property <bool> window-maximized: false;
-    in property <[StreamTab]> tabs;
-    in-out property <int> selected-tab: 0;
+    out property <bool> video-input-focused: input-focus.has-focus;
     in property <image> frame;
     in property <bool> has-frame: false;
     in property <string> status-text: "";
@@ -467,9 +461,6 @@ export component StreamWindow inherits Window {
     in property <bool> file-transfer-visible: false;
     in property <[FileTransferEntry]> file-transfers;
 
-    callback select-tab(int);
-    callback reorder-tab(int, length, length);
-    callback close-tab(string);
     callback switch-display(int);
     in property <bool> secure-attention-supported: false;
     private property <[string]> shortcut-items: ["Ctrl+Alt+Del", "Win+L"];
@@ -558,10 +549,6 @@ export component StreamWindow inherits Window {
         root.keyboard-focus-changed(!root.control-menu-open && !root.modal-visible && input-focus.has-focus);
     }
     changed selected-display => { root.video-menu-open = false; }
-    changed selected-tab => {
-        root.close-control-menus();
-        root.cancel-remote-pointer();
-    }
     changed secure-attention-supported => {
         if !root.secure-attention-supported { root.shortcut-menu-open = false; }
     }
@@ -692,12 +679,11 @@ export component StreamWindow inherits Window {
     private property <bool> control-docked-left: true;
     private property <bool> control-dragging: false;
     private property <length> control-drag-x: 0px;
-    // Start flush against the title/tab strip. This remains mutable so a
+    // Start flush against the title bar. This remains mutable so a
     // manually dragged control bar keeps its chosen vertical position.
     private property <length> control-pos-y: 0px;
     private property <length> control-press-x: 0px;
     private property <length> control-press-y: 0px;
-    private property <int> dragging-tab: -1;
     private property <length> titlebar-height:
         root.custom-titlebar && !root.fullscreen-enabled ? 32px : 0px;
     private property <length> window-corner-radius: 12px;
@@ -727,8 +713,7 @@ export component StreamWindow inherits Window {
         root.disconnect-menu-open = false;
     }
 
-    // Native focus/session changes release input in C++; clear the matching UI
-    // ownership too, including when replacing the only tab (same tab index).
+    // Clear UI input ownership when C++ releases the remote input.
     public function reset-pressed-input() {
         root.remote-left-down = false;
         root.remote-right-down = false;
@@ -990,7 +975,7 @@ export component StreamWindow inherits Window {
                 x: 120px;
                 width: parent.width - 240px;
                 height: parent.height;
-                text: "CrossDesk";
+                text: root.session-title;
                 color: root.window-active ? #3d3d3d : #747474;
                 font-size: 12px;
                 font-weight: 600;
@@ -1131,70 +1116,8 @@ export component StreamWindow inherits Window {
             background: root.native-video-enabled ? transparent : black;
             clip: true;
 
-        // Keep the ImGui tab strip behavior, including pointer-drag reordering.
-        Rectangle {
-            y: 0px;
-            height: root.tabs.length > 1 ? 30px : 0px;
-            visible: !root.fullscreen-enabled && root.tabs.length > 1;
-            background: #f1f2f4;
-            z: 10;
-            HorizontalLayout {
-                spacing: 1px;
-                for tab[index] in root.tabs: tab-item := FlatSurface {
-                    width: min(190px, max(110px, (parent.width - 12px) / root.tabs.length));
-                    background: index == root.selected-tab ? white : tab-touch.has-hover || root.dragging-tab == index ? #e5e7eb : #d8dbe0;
-                    outline-enabled: root.dragging-tab == index;
-                    outline-color: UiSurface.focus;
-                    Rectangle {
-                        width: parent.width - 27px;
-                        height: parent.height;
-                        background: transparent;
-                        Text {
-                            x: 0px;
-                            width: parent.width - self.x;
-                            height: parent.height;
-                            text: tab.title;
-                            color: #30343b;
-                            font-size: ImGuiFontStyle.base;
-                            overflow: elide;
-                            vertical-alignment: center;
-                        }
-                    }
-                    Rectangle {
-                        y: parent.height - 2px;
-                        height: 2px;
-                        background: index == root.selected-tab ? #3b82f6 : transparent;
-                    }
-                    tab-touch := TouchArea {
-                        width: parent.width - 27px;
-                        changed pressed => {
-                            if (self.pressed) {
-                                root.dragging-tab = index;
-                            } else if (root.dragging-tab == index) {
-                                root.reorder-tab(index, tab-item.x + self.mouse-x, tab-item.width);
-                                root.dragging-tab = -1;
-                            }
-                        }
-                        clicked => { root.selected-tab = index; root.select-tab(index); }
-                    }
-                    IconButton {
-                        x: parent.width - 27px;
-                        y: 1px;
-                        width: 27px;
-                        height: 27px;
-                        z: 2;
-                        icon: FontAwesomeIcons.xmark;
-                        icon-size: 11px;
-                        icon-color: #555c66;
-                        danger: true;
-                        clicked => { root.close-tab(tab.remote-id); }
-                    }
-                }
-            }
-        }
-
         video := Rectangle {
-            y: root.fullscreen-enabled ? 0px : (root.tabs.length > 1 ? 30px : 0px);
+            y: 0px;
             height: parent.height - self.y;
             background: root.native-video-enabled ? transparent : black;
             clip: true;

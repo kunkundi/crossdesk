@@ -39,6 +39,8 @@ public:
 
 private:
   struct SlintUi;
+  struct StreamView;
+  StreamView* FindStreamView(const std::string& id);
   struct CursorDeliveryState {
     CursorState last_sent{};
     bool has_sent = false;
@@ -56,7 +58,7 @@ private:
   bool MinimizeMainWindowToTray();
   void BindMainCallbacks(bool gallery_window = false);
   void BindTrustedDeviceCallbacks(bool gallery_window = false);
-  void BindStreamCallbacks();
+  void BindStreamCallbacks(StreamView& view);
   void Tick();
 #ifdef _WIN32
   void TickLocalHost();
@@ -91,23 +93,26 @@ private:
   void SyncAnnouncements();
   void SyncConnectionDialog();
   void SyncPlatformDialogs();
-  void SyncStreamWindow();
-  void SyncStreamVideoFrame(double timer_lateness_ms);
+  void SyncStreamWindows();
+  void InitializeStreamWindow(StreamView& view);
+  void SyncStreamWindow(StreamView& view);
+  void ShowStreamWindow(const std::shared_ptr<RemoteSession>& session);
+  void SyncStreamVideoFrame(StreamView& view, double timer_lateness_ms);
   void SyncVideoFrameGapStats();
   void ScheduleNextVideoFrame();
   void PresentPendingVideoFrame(double lateness_ms);
 #if defined(__APPLE__)
   void UpdateVideoFrameScheduler();
 #endif
-  void ConfigureStreamVideoRenderer();
   void SyncStreamKeyboardFocus();
-  void SetStreamKeyboardFocus(bool focused);
+  void SetStreamKeyboardFocus(StreamView& view, bool focused);
+  bool AcceptStreamInput(StreamView& view);
   void SyncIncomingControllers();
   void SyncTrustedDevices();
   void SyncFileTransferNotifications();
   void SyncClipboardFileNotification();
   void OpenFileManager(const std::string& remote);
-  std::string FileManagerPeerName(const std::string& remote);
+  std::string SessionDisplayName(const std::string& remote);
   void CancelFileTransfer(uint32_t file_id);
 #if (defined(__linux__) && !defined(__OHOS__)) && !defined(__APPLE__)
   void SyncXWaylandWindowActivation();
@@ -123,10 +128,8 @@ private:
   void JoinPortableWindowsServiceInstallThread();
 #endif
   void ConnectFromUi(const std::string &remote_id);
-  void SelectStreamTab(int index);
-  void ReorderStreamTab(int from, float drop_x, float tab_width);
-  void CloseStreamTab(const std::string &remote_id);
-  void CloseRemoteClosedTabs();
+  void DisconnectSession(const std::string &remote_id);
+  void CloseDisconnectedSessions();
   void ResetPointerMotion();
   std::optional<VideoPoint> MapRemotePointer(RemoteSession& session, float x, float y);
   void SendPointerInput(int button, int kind, float x, float y);
@@ -135,7 +138,6 @@ private:
                     bool alt, bool shift, bool meta);
   void Cleanup();
 
-  std::shared_ptr<RemoteSession> SelectedSession();
   void OpenFileDialog(const std::string& title,
                       std::function<void(std::string)> completion);
   bool OpenUrl(const std::string &url);

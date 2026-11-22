@@ -293,7 +293,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
       std::lock_guard lock(props->display_resolution_mutex_);
       if (props->display_resolution_.Complete(remote_action.resolution_change,
               std::move(remote_action.display_resolutions)) &&
-          !runtime->remote_resolutions_.Remember(props->resolution_preference_key_,
+          !runtime->remote_resolutions_.Remember(props->device_preference_key_,
               {remote_action.resolution_change.display_key,
                remote_action.resolution_change.resolution}))
         LOG_WARN("Could not save remote display resolution");

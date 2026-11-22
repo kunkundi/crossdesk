@@ -38,7 +38,7 @@ apps/desktop/src/gui/
 │   ├── crossdesk_ui.slint           # 界面组件导出入口
 │   ├── common.slint                 # 共享控件、字体尺寸、颜色和图标字形
 │   ├── main_window.slint            # 主窗口、面板、设置及对话框
-│   ├── stream_window.slint          # 串流窗口、标签页和控制栏
+│   ├── stream_window.slint          # 单连接串流窗口和控制栏
 │   ├── server_window.slint          # 主窗口内的被控会话面板
 │   ├── ui_localization.h           # 本地化数据到 Slint 属性的映射
 │   └── icons/                      # SVG 图标资源
@@ -172,7 +172,7 @@ MainWindow::connect_requested
   → 创建或复用 RemoteSession
   → MiniRtcJoinConnection
   → PeerEventHandler 接收连接状态
-  → SyncStreamWindow 创建串流窗口并开始呈现视频
+  → SyncStreamWindows 为该会话创建控制窗口和视频渲染器
 ```
 
 ### 建立 IP 直连
@@ -229,7 +229,7 @@ Slint quit / SDL quit / tray exit
 | 文件传输 | `features/file_transfer/` |
 | 配置持久化 | `features/settings/` |
 | 主窗口内嵌区域、设置和对话框 | `ui/main_window.slint` |
-| 串流标签页、控制栏和统计面板 | `ui/stream_window.slint` |
+| 单连接串流窗口、控制栏和统计面板 | `ui/stream_window.slint` |
 | 主窗口内的被控会话面板 | `ui/server_window.slint` |
 | 共享控件、字体尺寸、颜色和图标字形 | `ui/common.slint` |
 | 系统托盘 | `apps/desktop/src/platform/<os>/gui/tray/` |

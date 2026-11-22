@@ -108,7 +108,7 @@ DeskHub connections are muted by default. Enable sound with **Select → More �
 
 ## Session controls
 
-Switch devices using session tabs. Expand the control bar if it is collapsed, and hover over icons to see their tooltips.
+Each connection opens its own control window. You can view multiple devices at once. Focus a window to direct keyboard and mouse input to that device. Closing a control window disconnects that device and leaves the other connections running. If DeskHub is using the device, its preview stays connected. Expand the control bar if it is collapsed, and hover over icons to see their tooltips.
 
 | Control | Action |
 | --- | --- |
@@ -139,7 +139,7 @@ If a manually deployed environment lacks FUSE, or container/system permissions p
 
 On macOS, paste into a local folder in Finder; existing files are preserved by adding a numbered suffix to conflicting names.
 
-On Windows, the main window and remote control window use separate taskbar buttons, so you can switch to or minimize either window independently. Closing the main window leaves the remote control window and its connections running; reopen the main window from the system tray. The remote control button appears only while the session window is present; use the main window's button to pin the application.
+On Windows, the main window and remote control windows use separate taskbar groups, so you can switch to or minimize either window independently. Closing the main window leaves the remote control window and its connections running; reopen the main window from the system tray. The remote control button appears only while the session window is present; use the main window's button to pin the application.
 
 On Linux, the main and remote control windows use different application grouping IDs on X11, XWayland, and native Wayland. Taskbar presentation depends on the desktop environment and its grouping settings. Closing the main window keeps remote connections running; reopen it from the system tray. Use the main application's launcher for pinning.
 
@@ -160,6 +160,8 @@ The task list shows transfer status and progress, with controls to cancel unfini
 ### Adjust video during a session
 
 After connecting, open **Video settings** (the sliders icon) in the toolbar. Choose low / medium / high quality, **30 / 60 fps**, and frame-rate priority / quality priority / balanced adaptation. Changes are sent to the current host without reconnecting; actual results depend on the network, device, and encoder. For older hosts that do not support live video settings, the menu explains the limitation and disables the options.
+
+Adjust horizontal and vertical scrolling under **Video settings → Scroll sensitivity**. The controller remembers the value for each host and restores it on reconnect. DeskHub group control uses each host’s own scroll sensitivity.
 
 For Windows, macOS, and Linux X11 hosts, **Video settings → Resolution** also lists supported desktop resolutions for the selected monitor. Changes take effect without reconnecting; when the last controller disconnects, the display mode from before the first change is restored. Linux requires X11 capture and a RandR-capable display server. Wayland, XWayland, and custom scaling or panning configurations are not supported. Choices come from the monitor or virtual display server; no additional modes are created for virtual screens that expose only one mode.
 

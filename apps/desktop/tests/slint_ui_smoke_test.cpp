@@ -391,13 +391,7 @@ void ConfigureStreamCapturePage(
   stream->set_receiving_text("");
   stream->set_status_text("");
 
-  crossdesk::ui::StreamTab tab;
-  tab.remote_id = "589173341";
-  tab.title = "Mac";
-  tab.connected = true;
-  stream->set_tabs(
-      std::make_shared<slint::VectorModel<crossdesk::ui::StreamTab>>(
-          std::vector{tab}));
+  stream->set_session_title("Mac (589173341)");
   stream->set_displays(
       std::make_shared<slint::VectorModel<slint::SharedString>>(
           std::vector{slint::SharedString("Display 1")}));
@@ -513,13 +507,7 @@ int RunCaptureMode(
         return 8;
       }
       stream->set_frame(frame);
-      crossdesk::ui::StreamTab tab;
-      tab.remote_id = "246813579";
-      tab.title = "Office PC";
-      tab.connected = true;
-      stream->set_tabs(
-          std::make_shared<slint::VectorModel<crossdesk::ui::StreamTab>>(
-              std::vector{tab}));
+      stream->set_session_title("Office PC (246813579)");
       stream->set_privacy_can_toggle(true);
       stream->set_privacy_off(true);
       stream->window().set_size(
@@ -1086,17 +1074,11 @@ int main() {
   window->invoke_connection_submit_password("654321", true);
   assert(password_submitted);
 
-  crossdesk::ui::StreamTab tab;
-  tab.remote_id = "123456789";
-  tab.title = "Remote host";
-  tab.connected = true;
-  stream->set_tabs(
-      std::make_shared<slint::VectorModel<crossdesk::ui::StreamTab>>(
-          std::vector{tab}));
+  stream->set_session_title("Remote host (123456789)");
   stream->set_custom_titlebar(true);
   stream->set_native_video_enabled(true);
   stream->set_window_maximized(true);
-  assert(stream->get_tabs()->row_count() == 1);
+  assert(stream->get_session_title() == "Remote host (123456789)");
   assert(stream->get_custom_titlebar());
   assert(stream->get_native_video_enabled());
   assert(stream->get_window_maximized());
@@ -1129,13 +1111,6 @@ int main() {
       return 5;
     }
   }
-
-  bool tab_reordered = false;
-  stream->on_reorder_tab([&](int index, float x, float width) {
-    tab_reordered = index == 0 && x == 120.0f && width == 110.0f;
-  });
-  stream->invoke_reorder_tab(0, 120.0f, 110.0f);
-  assert(tab_reordered);
 
   bool maximize_requested = false;
   stream->on_toggle_maximize_stream_window(

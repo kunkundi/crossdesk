@@ -67,6 +67,8 @@ void GuiRuntime::InitializeLan() {
     if (!session->incoming) {
       auto props = FindRemoteSession(session->key);
       if (!props) throw std::runtime_error("LAN session cancelled");
+      props->device_preference_key_ =
+          nlohmann::json::array({"lan", session->target.device_id}).dump();
       props->peer_events_ = events;
       props->local_id_ = session->local_id;
     }
@@ -168,7 +170,7 @@ void GuiRuntime::ConnectLan(const std::string& address, unsigned port,
       std::unique_lock lock(remote_sessions_mutex_);
       remote_sessions_[session->key] = props;
     }
-    focused_remote_id_ = session->key;
+    connection_dialog_target_ = session->key;
     show_connection_status_window_ = false;
     lan_error_.clear();
   } catch (const std::exception& error) {

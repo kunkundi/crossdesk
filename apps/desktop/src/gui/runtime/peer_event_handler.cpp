@@ -362,7 +362,6 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
 
   if (props) {
     runtime->is_client_mode_ = true;
-    if (!props->wall_managed_) runtime->show_connection_status_window_ = true;
     props->connection_status_.store(status);
     if (status != MiniRtcConnectionStatus::MiniRtcConnectionConnecting && status != MiniRtcConnectionStatus::MiniRtcConnectionGathering)
       props->connection_auth_.Complete();
@@ -377,19 +376,8 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
           props->cursor_presentation_ = {};
         }
         {
-          // Snapshot the server namespace for this session. Direct connections
-          // use the authenticated device identity, not a random LAN session key.
-          const auto preference_key = props->lan_session_
-              ? nlohmann::json::array({"lan", props->lan_session_->target.device_id}).dump()
-              : nlohmann::json::array({"signal",
-                  runtime->config_center_->GetSignalServerHost(),
-                  runtime->config_center_->GetSignalServerPort(), remote_id}).dump();
-          {
-            std::lock_guard lock(props->display_resolution_mutex_);
-            props->resolution_preference_key_ = preference_key;
-          }
           const auto msg = runtime->BuildHostInformation(true,
-              runtime->remote_resolutions_.Get(preference_key));
+              runtime->remote_resolutions_.Get(props->device_preference_key_));
           const int ret =
               MiniRtcSendReliableDataFrame(props->peer_, msg.data(), msg.size(),
                                     runtime->control_data_label_.c_str());
@@ -398,13 +386,9 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
           }
         }
 
-        if (!props->wall_managed_ && !runtime->need_to_create_stream_window_) {
-          runtime->need_to_create_stream_window_ = true;
-        }
         props->connection_established_ = true;
         props->was_connected_ = true;
         props->recent_connection_dirty_ = true;
-        if (!props->wall_managed_) runtime->start_keyboard_capturer_ = true;
         break;
       }
       case MiniRtcConnectionStatus::MiniRtcConnectionDisconnected:
@@ -467,7 +451,7 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
         }
         if (needs_native_snapshot &&
             runtime->config_center_->IsSaveRemotePreviews()) {
-          auto* native_renderer = runtime->video_renderer_.get();
+          auto native_renderer = std::atomic_load(&props->video_renderer_);
           auto snapshot = std::make_shared<std::vector<unsigned char>>();
           if (native_renderer &&
               native_renderer->CopyLatestNv12(remote_id, snapshot.get(),
@@ -494,13 +478,11 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
           props->render_rect_dirty_ = true;
           props->stream_cleanup_pending_ = true;
         }
-        auto* native_renderer = runtime->video_renderer_.get();
+        auto native_renderer = std::atomic_load(&props->video_renderer_);
         if (native_renderer) {
           native_renderer->DiscardStream(remote_id);
-          runtime->video_frame_dirty_.store(true, std::memory_order_release);
         }
-
-        runtime->focus_on_stream_window_ = false;
+        runtime->NotifyVideoFrameReady(*props);
 
         if (status == MiniRtcConnectionStatus::MiniRtcConnectionClosed) {
           props->remote_close_pending_.store(true, std::memory_order_release);

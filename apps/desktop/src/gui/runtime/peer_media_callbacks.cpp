@@ -114,7 +114,7 @@ void PeerEventHandler::OnReceiveVideoBuffer(
     }
     if (conversion_lock.owns_lock()) conversion_lock.unlock();
     // A wall-only session does not need a second full-resolution CPU buffer.
-    if (props->wall_managed_ && !props->tab_opened_) {
+    if (props->wall_managed_ && !props->stream_window_open_) {
       {
         std::lock_guard lock(props->video_frame_mutex_);
         props->video_width_ = video_frame->width;
@@ -126,7 +126,7 @@ void PeerEventHandler::OnReceiveVideoBuffer(
     const auto timing = props->video_latency_->Frame(
         video_frame->captured_timestamp, local_now_us, timing_now);
     bool background_snapshot_only = false;
-    auto* native_renderer = runtime->video_renderer_.get();
+    auto native_renderer = std::atomic_load(&props->video_renderer_);
     if (native_renderer && native_renderer->IsActive()) {
       VideoRenderer::SubmitResult submit_result =
           VideoRenderer::SubmitResult::failed;
@@ -179,7 +179,7 @@ void PeerEventHandler::OnReceiveVideoBuffer(
         props->background_snapshot_time_ = {};
         ++props->video_frame_sequence_;
         props->streaming_ = true;
-        runtime->NotifyVideoFrameReady();
+        runtime->NotifyVideoFrameReady(*props);
         return;
       }
       if (submit_result == VideoRenderer::SubmitResult::dropped ||
@@ -267,7 +267,7 @@ void PeerEventHandler::OnReceiveVideoBuffer(
     if (background_snapshot_only) {
       return;
     }
-    runtime->NotifyVideoFrameReady();
+    runtime->NotifyVideoFrameReady(*props);
   }
 }
 

@@ -33,13 +33,7 @@ class VideoRenderer;
 // details are intentionally contained in the implementation file.
 class SlintVideoPresenter {
 public:
-  struct SurfaceState {
-    std::string selected_stream;
-    bool fullscreen = false;
-  };
-
   struct Frame {
-    std::string remote_id;
     std::shared_ptr<std::vector<unsigned char>> nv12;
     int width = 0;
     int height = 0;
@@ -53,10 +47,9 @@ public:
     bool new_frame = false;
   };
 
-  using StateProvider = std::function<SurfaceState()>;
   using DirtyCallback = std::function<void()>;
 
-  explicit SlintVideoPresenter(VideoRenderer& renderer);
+  SlintVideoPresenter(std::shared_ptr<VideoRenderer> renderer, std::string remote_id);
   ~SlintVideoPresenter();
 
   SlintVideoPresenter(const SlintVideoPresenter&) = delete;
@@ -66,7 +59,6 @@ public:
   // notifier here; macOS deliberately defers native view attachment until a
   // later UI pass, after AppKit has committed the ordinary window style.
   void PrepareWindow(slint::ComponentHandle<ui::StreamWindow>& stream,
-                     StateProvider state_provider,
                      DirtyCallback dirty_callback);
 
   // Returns true only when a deferred native surface became attached during
@@ -74,14 +66,12 @@ public:
   bool EnsureAttached();
   bool NeedsRedraw() const;
 
-  bool SelectStream(std::string remote_id);
   PresentResult Present(const Frame& frame);
-  void ForgetStream(const std::string& remote_id);
   void Detach();
 
 private:
   struct Impl;
-  std::unique_ptr<Impl> impl_;
+  std::shared_ptr<Impl> impl_;
 };
 
 }  // namespace crossdesk
