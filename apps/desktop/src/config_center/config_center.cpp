@@ -31,13 +31,19 @@
 
 namespace crossdesk {
 
-struct ConfigCenter::IniStorage : CSimpleIniA {};
+struct ConfigCenter::IniStorage : CSimpleIniA {
+  nlohmann::json stream_window_sizes = nlohmann::json::object();
+};
 
 namespace {
 
 bool IsValidTurnModeValue(long value) {
   return value >= static_cast<long>(ConfigCenter::TURN_MODE::DISABLED) &&
          value <= static_cast<long>(ConfigCenter::TURN_MODE::FORCE_TCP);
+}
+
+bool ValidStreamWindowSize(std::int64_t width, std::int64_t height) {
+  return width >= 640 && height >= 360 && width <= 32768 && height <= 32768;
 }
 
 bool IsValidInputSensitivity(std::int64_t percent) {
@@ -225,6 +231,9 @@ int ConfigCenter::Load() {
         device_wheel_sensitivity_.emplace(device, value.get<int>());
     }
   }
+  auto sizes = nlohmann::json::parse(
+      ini_->GetValue(section_, "device_stream_window_sizes", "{}"), nullptr, false);
+  ini_->stream_window_sizes = sizes.is_object() ? std::move(sizes) : nlohmann::json::object();
   portable_service_prompt_suppressed_ =
       ini_->GetBoolValue(section_, "portable_service_prompt_suppressed",
                         portable_service_prompt_suppressed_);
@@ -679,6 +688,29 @@ int ConfigCenter::SetInputSensitivity(const std::string& device,
     return -1;
   }
   mouse_sensitivity_percent_.store(mouse_percent);
+  return 0;
+}
+
+std::optional<ConfigCenter::StreamWindowSize> ConfigCenter::GetStreamWindowSize(
+    const std::string& device) const {
+  const auto& sizes = ini_->stream_window_sizes;
+  const auto it = sizes.find(device);
+  if (it == sizes.end() || !it->is_array() || it->size() != 2 ||
+      !(*it)[0].is_number_integer() || !(*it)[1].is_number_integer())
+    return std::nullopt;
+  const auto width = (*it)[0].get<std::int64_t>();
+  const auto height = (*it)[1].get<std::int64_t>();
+  if (!ValidStreamWindowSize(width, height)) return std::nullopt;
+  return StreamWindowSize{static_cast<int>(width), static_cast<int>(height)};
+}
+
+int ConfigCenter::SetStreamWindowSize(const std::string& device, StreamWindowSize size) {
+  if (device.empty() || !ValidStreamWindowSize(size.width, size.height)) return -1;
+  if (GetStreamWindowSize(device) == size) return 0;
+  auto sizes = ini_->stream_window_sizes;
+  sizes[device] = {size.width, size.height};
+  if (StoreValues({{"device_stream_window_sizes", sizes.dump()}}) != 0) return -1;
+  ini_->stream_window_sizes = std::move(sizes);
   return 0;
 }
 

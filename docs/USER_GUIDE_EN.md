@@ -108,7 +108,7 @@ DeskHub connections are muted by default. Enable sound with **Select â†’ More â†
 
 ## Session controls
 
-Each connection opens its own control window. You can view multiple devices at once. Focus a window to direct keyboard and mouse input to that device. Closing a control window disconnects that device and leaves the other connections running. If DeskHub is using the device, its preview stays connected. Expand the control bar if it is collapsed, and hover over icons to see their tooltips.
+Each connection opens its own control window. The first connection uses the default window size. Reconnecting restores the last windowed size for that device. You can view multiple devices at once. Focus a window to direct keyboard and mouse input to that device. Closing a control window disconnects that device and leaves the other connections running. If DeskHub is using the device, its preview stays connected. Expand the control bar if it is collapsed, and hover over icons to see their tooltips.
 
 | Control | Action |
 | --- | --- |

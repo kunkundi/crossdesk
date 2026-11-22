@@ -835,14 +835,7 @@ bool PlaceStreamControlPointer(const slint::Window& window, float x, float y) {
 #endif
 }
 
-constexpr float kStreamWindowLogicalWidth = 1280.0f;
-constexpr float kStreamWindowLogicalHeight = 720.0f;
-constexpr float kWaylandTitlebarLogicalHeight = 32.0f;
-
-float StreamWindowLogicalHeight(bool custom_titlebar) {
-  return kStreamWindowLogicalHeight +
-         (custom_titlebar ? kWaylandTitlebarLogicalHeight : 0.0f);
-}
+constexpr int kWaylandTitlebarLogicalHeight = 32;
 
 SDL_DisplayID DisplayForSlintWindow(const slint::Window& window) {
   const auto position = window.position();
@@ -899,10 +892,10 @@ bool PositionWindowAtCenter(slint::Window& window, const slint::Window& anchor,
 #if defined(__APPLE__)
   const float target_x =
       static_cast<float>(usable_bounds.x) +
-      (static_cast<float>(usable_bounds.w) - logical_width) / 2.0f;
+      std::max(0.0f, (usable_bounds.w - logical_width) / 2.0f);
   const float target_y =
       static_cast<float>(usable_bounds.y) +
-      (static_cast<float>(usable_bounds.h) - logical_height) / 2.0f;
+      std::max(0.0f, (usable_bounds.h - logical_height) / 2.0f);
   window.set_position(
       slint::LogicalPosition(slint::Point<float>{target_x, target_y}));
 #else
@@ -1035,6 +1028,7 @@ struct GuiApplication::StreamView {
   WindowDragState drag;
   std::string endpoint;
   unsigned endpoint_window_number = 1;
+  ConfigCenter::StreamWindowSize normal_size{1280, 720};
   int position_attempts = 2;
 #if defined(__APPLE__)
   int chrome_attempts = 30;
@@ -1044,6 +1038,38 @@ struct GuiApplication::StreamView {
 
   bool Visible() const {
     return window->window().is_visible() && !window->window().is_minimized();
+  }
+
+  bool Fullscreen() const {
+#if defined(__APPLE__)
+    return IsStreamWindowFullscreen(window->window().appkit_view());
+#else
+    return window->window().is_fullscreen();
+#endif
+  }
+
+  void ObserveWindowState() {
+    const auto& native = window->window();
+    const bool fullscreen = Fullscreen();
+    const bool maximized = native.is_maximized();
+    window->set_fullscreen_enabled(fullscreen);
+    window->set_window_maximized(maximized);
+    if (position_attempts > 0 || !Visible() || fullscreen || maximized) return;
+    const auto size = native.size();
+    const float scale = native.scale_factor();
+    if (!(scale > 0)) return;
+    // Save logical client dimensions so moving between displays with different
+    // backing scales does not change the apparent size on the next connection.
+    const int width = std::lround(size.width / scale);
+    const int height = std::lround(size.height / scale);
+    if (width >= 640 && height >= 360) normal_size = {width, height};
+  }
+
+  void SaveSize(ConfigCenter& config) {
+    if (position_attempts > 0) return;  // The window closed before its first show.
+    ObserveWindowState();
+    if (config.SetStreamWindowSize(session->device_preference_key_, normal_size) != 0)
+      LOG_WARN("Could not save control window size");
   }
 
   ~StreamView() {
@@ -2340,9 +2366,11 @@ void GuiApplication::BindStreamCallbacks(StreamView& view) {
     DragWindow(view.window, phase, x, y, view.drag);
   });
   stream->on_minimize_stream_window([&view] {
+    view.ObserveWindowState();
     view.window->window().set_minimized(true);
   });
   stream->on_toggle_maximize_stream_window([&view] {
+    view.ObserveWindowState();
     auto& window = view.window->window();
     const bool maximize = !window.is_maximized();
     view.window->set_window_maximized(maximize);
@@ -2535,23 +2563,17 @@ void GuiApplication::BindStreamCallbacks(StreamView& view) {
   });
   stream->on_toggle_fullscreen([this, &view] {
     auto& stream = view.window;
-#if defined(__APPLE__)
-    const bool enter_fullscreen = !IsStreamWindowFullscreen(stream->window().appkit_view());
-    // Update Slint's fullscreen layout before AppKit applies the new frame.
+    view.ObserveWindowState();
+    const bool enter_fullscreen = !stream->get_fullscreen_enabled();
     stream->set_fullscreen_enabled(enter_fullscreen);
+#if defined(__APPLE__)
     if (!SetStreamWindowFullscreen(stream->window().appkit_view(), enter_fullscreen)) {
       stream->set_fullscreen_enabled(!enter_fullscreen);
       return;
     }
-#else
-    auto& window = stream->window();
-    const bool enter_fullscreen = !window.is_fullscreen();
-#endif
-
-#if defined(__APPLE__)
     NotifyVideoFrameReady(*view.session);
 #else
-    stream->set_fullscreen_enabled(enter_fullscreen);
+    auto& window = stream->window();
     window.request_redraw();
     window.set_fullscreen(enter_fullscreen);
 #endif
@@ -3913,6 +3935,7 @@ void GuiApplication::SyncStreamWindows() {
     }
     if (ui_->gallery_control_id.empty() && controlled_remote_id_ == it->first)
       ReleaseControl();
+    it->second.SaveSize(*config_center_);
     it = ui_->streams.erase(it);
   }
   for (const auto& [id, session] : open) {
@@ -3950,8 +3973,11 @@ void GuiApplication::InitializeStreamWindow(StreamView& view) {
     NotifyVideoFrameReady(*view.session);
   });
   std::atomic_store(&view.session->video_renderer_, view.renderer);
+  if (stream->get_custom_titlebar()) view.normal_size.height += kWaylandTitlebarLogicalHeight;
+  if (auto saved = config_center_->GetStreamWindowSize(view.session->device_preference_key_))
+    view.normal_size = *saved;
   stream->window().set_size(slint::LogicalSize({
-      kStreamWindowLogicalWidth, StreamWindowLogicalHeight(stream->get_custom_titlebar())}));
+      static_cast<float>(view.normal_size.width), static_cast<float>(view.normal_size.height)}));
 }
 
 void GuiApplication::SyncStreamWindow(StreamView& view) {
@@ -3970,10 +3996,9 @@ void GuiApplication::SyncStreamWindow(StreamView& view) {
     else --view.chrome_attempts;
   }
 #endif
-  stream->set_window_maximized(stream->window().is_maximized());
   if (view.position_attempts > 0 && NativeWindowReady(stream->window())) {
     if (PositionWindowAtCenter(stream->window(), ui_->main->window(),
-            kStreamWindowLogicalWidth, StreamWindowLogicalHeight(stream->get_custom_titlebar())))
+            view.normal_size.width, view.normal_size.height))
       --view.position_attempts;
     else
       view.position_attempts = 0;
@@ -4086,12 +4111,7 @@ void GuiApplication::SyncStreamWindow(StreamView& view) {
     stream->set_frame_rate_index(props->video_settings_.frame_rate == 30 ? 0 : 1);
     stream->set_adaptation_policy_index(props->video_settings_.preference);
   }
-#if defined(__APPLE__)
-  const bool fullscreen = IsStreamWindowFullscreen(stream->window().appkit_view());
-#else
-  const bool fullscreen = stream->window().is_fullscreen();
-#endif
-  stream->set_fullscreen_enabled(fullscreen);
+  view.ObserveWindowState();
   stream->set_stats_visible(props->net_traffic_stats_button_pressed_);
 
   std::vector<slint::SharedString> displays;
@@ -7001,6 +7021,7 @@ void GuiApplication::Cleanup() {
   CloseAllRemoteSessions();
   WaitForSessionCleanup();
   devices_.DestroyAudioOutput();
+  for (auto& [_, view] : ui_->streams) view.SaveSize(*config_center_);
   ui_->streams.clear();
 #if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
   if (ui_->tray) {

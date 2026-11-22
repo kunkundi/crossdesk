@@ -12,6 +12,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <utility>
 #include <string>
 
@@ -38,6 +39,14 @@ class ConfigCenter {
   explicit ConfigCenter(const std::string& config_path = "config.ini");
   ~ConfigCenter();
 
+  struct StreamWindowSize {
+    int width;
+    int height;
+    bool operator==(const StreamWindowSize& other) const {
+      return width == other.width && height == other.height;
+    }
+  };
+
   // write config
   int SetLanguage(LANGUAGE language);
   int SetConnectionMode(CONNECTION_MODE mode);
@@ -58,6 +67,7 @@ class ConfigCenter {
   int SetSaveRemotePreviews(bool enabled);
   int SetPauseVideoWhenMinimized(bool enabled);
   int SetInputSensitivity(const std::string& device, int mouse_percent, int wheel_percent);
+  int SetStreamWindowSize(const std::string& device, StreamWindowSize size);
   int SetPortableServicePromptSuppressed(bool suppressed);
   int SetSponsorshipPromptDismissedVersion(const std::string& version);
   int SetFileTransferSavePath(const std::string& path);
@@ -89,6 +99,7 @@ class ConfigCenter {
   bool IsPauseVideoWhenMinimized() const;
   int GetMouseSensitivityPercent() const { return mouse_sensitivity_percent_.load(); }
   int GetWheelSensitivityPercent(const std::string& device) const;
+  std::optional<StreamWindowSize> GetStreamWindowSize(const std::string& device) const;
   bool IsPortableServicePromptSuppressed() const;
   std::string GetSponsorshipPromptDismissedVersion() const;
   std::string GetFileTransferSavePath() const;
