@@ -18,8 +18,9 @@ target("crossdesk_controller")
         path.join(minirtc_dir, "src/api"), {public = true})
     add_files(path.join(controller_dir, "src/*.cpp"))
     remove_files(path.join(controller_dir, "src/file_browser.cpp"))
-    -- Mobile builds compile this helper with their own OpenSSL dependency.
+    -- Mobile targets build the device trust and direct connection helpers separately.
     remove_files(path.join(controller_dir, "src/mobile_device_trust.cpp"))
+    remove_files(path.join(controller_dir, "src/mobile_direct_connection.cpp"))
 target_end()
 
 target("crossdesk_terminal")
