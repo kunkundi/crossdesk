@@ -213,10 +213,20 @@ cd crossdesk
 
 ### 画面预览
 
-| ANSI 字符画面 | Kitty 协议像素画面 |
-| --- | --- |
-| <img src="docs/images/cli-ansi-overview.png" width="480" alt="CrossDesk CLI 的 ANSI 四象限全景：顶部显示只读模式和连接状态，底部显示操作快捷键" /> | <img src="docs/images/cli-kitty-overview.png" width="480" alt="CrossDesk CLI 的 Kitty 协议全景：同一远程桌面以像素画面显示，保留状态栏和操作快捷键" /> |
-| 用彩色字符显示桌面轮廓，适合普通终端；查看局部可用 `+/-` 或滚轮以鼠标位置缩放。 | 直接显示像素画面，适合支持 Kitty 图形协议的终端，如 Ghostty。 |
+<table>
+  <tr>
+    <th width="50%">ANSI 字符画面</th>
+    <th width="50%">Kitty 协议像素画面</th>
+  </tr>
+  <tr>
+    <td><img src="docs/images/cli-ansi-overview.png" width="480" alt="CrossDesk CLI 的 ANSI 四象限全景：顶部显示只读模式和连接状态，底部显示操作快捷键" /></td>
+    <td><img src="docs/images/cli-kitty-overview.png" width="480" alt="CrossDesk CLI 的 Kitty 协议全景：同一远程桌面以像素画面显示，保留状态栏和操作快捷键" /></td>
+  </tr>
+  <tr>
+    <td>用彩色字符显示桌面轮廓，适合普通终端；查看局部可用 <code>+/-</code> 或滚轮以鼠标位置缩放。</td>
+    <td>直接显示像素画面，适合支持 Kitty 图形协议的终端，如 Ghostty。</td>
+  </tr>
+</table>
 
 ANSI 用字符显示画面，Kitty 可显示像素画面；实际效果取决于终端支持、字体和窗口大小。
 
@@ -264,6 +274,10 @@ CLI 通过设备 ID 连接，暂不提供 IP 直连、音频播放、文件传�
 ## Agent 与 MCP
 
 [CrossDesk MCP](apps/mcp/README.md) 让你在 Codex 或 DeepSeek Harness 对话中安排远程任务，并在右侧查看远端画面。远端电脑运行 CrossDesk；本机按下表安装后，在面板中选择设备并授权。
+
+<p align="center">
+  <img src="docs/images/mcp-minesweeper.gif" width="784" alt="Codex 通过 CrossDesk MCP 连接远端 Mac mini，在浏览器中完成一局中级扫雷" />
+</p>
 
 | 使用环境 | 安装与配置 | 远端画面 |
 | --- | --- | --- |

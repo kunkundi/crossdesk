@@ -213,10 +213,20 @@ For Windows, macOS, and Linux X11 hosts, **Video settings → Resolution** selec
 
 ### Display preview
 
-| ANSI character rendering | Kitty pixel graphics |
-| --- | --- |
-| <img src="docs/images/cli-ansi-overview.png" width="480" alt="CrossDesk CLI ANSI quadrant overview, with read-only mode and connection status at the top and shortcuts at the bottom" /> | <img src="docs/images/cli-kitty-overview.png" width="480" alt="CrossDesk CLI Kitty protocol overview of the same remote desktop, rendered as pixels with the status bar and shortcuts" /> |
-| Colored characters show the desktop in standard terminals; use `+/-` or the wheel to zoom at the mouse position. | Pixel graphics display the desktop in terminals supporting the Kitty graphics protocol, such as Ghostty. |
+<table>
+  <tr>
+    <th width="50%">ANSI character rendering</th>
+    <th width="50%">Kitty pixel graphics</th>
+  </tr>
+  <tr>
+    <td><img src="docs/images/cli-ansi-overview.png" width="480" alt="CrossDesk CLI ANSI quadrant overview, with read-only mode and connection status at the top and shortcuts at the bottom" /></td>
+    <td><img src="docs/images/cli-kitty-overview.png" width="480" alt="CrossDesk CLI Kitty protocol overview of the same remote desktop, rendered as pixels with the status bar and shortcuts" /></td>
+  </tr>
+  <tr>
+    <td>Colored characters show the desktop in standard terminals; use <code>+/-</code> or the wheel to zoom at the mouse position.</td>
+    <td>Pixel graphics display the desktop in terminals supporting the Kitty graphics protocol, such as Ghostty.</td>
+  </tr>
+</table>
 
 ANSI displays characters; Kitty displays pixels. Appearance depends on terminal support, font, and window size.
 
@@ -264,6 +274,10 @@ The CLI connects by device ID. Direct IP, audio playback, file transfer, clipboa
 ## Agents and MCP
 
 [CrossDesk MCP](apps/mcp/README.md) lets you request remote tasks in a Codex or DeepSeek Harness chat and watch the remote screen on the right. Run CrossDesk on the remote computer, follow the installation guide for your local app below, then choose and authorize the device in the panel.
+
+<p align="center">
+  <img src="docs/images/mcp-minesweeper.gif" width="784" alt="Codex uses CrossDesk MCP to connect to a remote Mac mini and win a game of Intermediate Minesweeper in its browser" />
+</p>
 
 | Host | Installation and configuration | Remote video |
 | --- | --- | --- |
