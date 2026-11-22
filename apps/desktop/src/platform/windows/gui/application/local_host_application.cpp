@@ -32,7 +32,8 @@ bool GuiRuntime::SendLocalHostCommand(Json message) {
 }
 
 bool GuiRuntime::ForwardUserSessionData(const std::string& id,
-    const std::string& stream, const char* data, size_t size) {
+    const std::string& stream, const char* data, size_t size, bool trusted) {
+  if (!trusted && stream != control_data_label_) return true;
   const bool user_stream = stream == file_label_ || stream == file_feedback_label_ ||
       stream == clipboard_label_ || stream == web_clipboard::kStream ||
       stream == kClipboardFilesStream;
@@ -50,7 +51,14 @@ bool GuiRuntime::ForwardUserSessionData(const std::string& id,
     std::lock_guard lock(local_host_state_mutex_);
     const auto found = local_controller_info_.find(id);
     if (found == local_controller_info_.end()) return user_stream || user_control;
-    epoch = found->second.value("epoch", uint64_t{});
+    if (!found->second.contains("epoch")) {
+      // The first status snapshot after admission will carry this metadata.
+      // Commands and user data must not reach the GUI before then.
+      if (host_info) found->second["host_info"] = std::move(action);
+      return user_stream || user_control;
+    }
+    if (!trusted) return true;
+    epoch = found->second.at("epoch");
     if (host_info) found->second["host_info"] = action;
     if (preview) found->second["preview"] = action;
   }
@@ -81,7 +89,7 @@ void GuiRuntime::PublishLocalHostStatus() {
     {
       std::lock_guard lock(local_host_state_mutex_);
       const auto found = local_controller_info_.find(id);
-      if (found == local_controller_info_.end()) continue;
+      if (found == local_controller_info_.end() || !found->second.contains("epoch")) continue;
       info = found->second;
     }
     if (auto device = VerifiedController(id)) info["verified"] = DeviceInfo(*device);
@@ -195,7 +203,7 @@ void GuiApplication::TickLocalHost() {
           {
             std::lock_guard lock(local_host_state_mutex_);
             const auto found = local_controller_info_.find(id);
-            if (found == local_controller_info_.end() ||
+            if (found == local_controller_info_.end() || !found->second.contains("epoch") ||
                 message.at("epoch") != found->second.at("epoch")) continue;
           }
           if (op == "disconnect") { CloseServerController(id); continue; }

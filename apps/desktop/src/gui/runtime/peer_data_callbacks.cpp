@@ -138,11 +138,14 @@ void PeerEventHandler::OnReceiveDataBuffer(
       runtime->HandleDeviceTrustMessage(remote_id, handler, data, size)) return;
   const auto viewer = runtime->FindRemoteSession(remote_id);
   if (viewer && viewer->peer_events_.get() != handler) return;
-  if (!viewer && !runtime->TrustedControllerAllowed(remote_id)) return;
+  if (!viewer) {
+    const bool trusted = runtime->TrustedControllerAllowed(remote_id);
 #ifdef _WIN32
-  if (runtime->unattended_host_ && !viewer &&
-      runtime->ForwardUserSessionData(remote_id, source_id, data, size)) return;
+    if (runtime->unattended_host_ &&
+        runtime->ForwardUserSessionData(remote_id, source_id, data, size, trusted)) return;
 #endif
+    if (!trusted) return;
+  }
   // The service-owned host runs as SYSTEM. Do not expose filesystem or
   // clipboard operations in that security context.
   if (runtime->unattended_host_ &&

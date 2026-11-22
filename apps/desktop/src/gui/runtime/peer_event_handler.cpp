@@ -348,12 +348,16 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
 #ifdef _WIN32
     if (runtime->unattended_host_) {
       std::lock_guard lock(runtime->local_host_state_mutex_);
-      if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
+      if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnecting ||
+          status == MiniRtcConnectionStatus::MiniRtcConnectionGathering) {
+        // Keep early host info across negotiation callbacks. A new negotiation
+        // for an admitted ID must discard the previous session's capabilities.
+        auto& info = runtime->local_controller_info_[remote_id];
+        if (info.contains("epoch")) info.clear();
+      } else if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
         auto& info = runtime->local_controller_info_[remote_id];
         if (!info.contains("epoch")) info["epoch"] = ++runtime->next_controller_epoch_;
-      } else if (status == MiniRtcConnectionStatus::MiniRtcConnectionClosed ||
-                 status == MiniRtcConnectionStatus::MiniRtcConnectionFailed ||
-                 status == MiniRtcConnectionStatus::MiniRtcConnectionDisconnected) {
+      } else if (disconnected) {
         runtime->local_controller_info_.erase(remote_id);
       }
     }

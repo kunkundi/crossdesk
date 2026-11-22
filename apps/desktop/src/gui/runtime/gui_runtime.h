@@ -246,7 +246,7 @@ class GuiRuntime : protected gui_detail::GuiState {
   bool host_cursor_default_ = true, host_cursor_preference_ = true;
   std::atomic<uint64_t> host_capture_tick_{0};
   bool ForwardUserSessionData(const std::string& id, const std::string& stream,
-                              const char* data, size_t size);
+                              const char* data, size_t size, bool trusted);
   void PublishLocalHostStatus();
   bool SendLocalHostCommand(nlohmann::json message);
 #endif
