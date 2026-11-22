@@ -544,14 +544,18 @@ extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nPresenceRequest)(
       !message.contains("subscribe") || message["subscribe"] != true) return false;
   return MiniRtcSendSignalMessage(s->identity, bytes.data(), bytes.size()) == 0;
 }
-extern "C" JNIEXPORT void JNICALL JNI_METHOD(nClipboard)(
+extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nClipboard)(
     JNIEnv* env, jclass, jlong handle, jbyteArray data) {
-  auto* s = From(handle); if (!s || !data) return;
+  auto* s = From(handle);
+  if (!s || !s->controller || s->stopping || !data) return false;
   const auto size = env->GetArrayLength(data);
-  if (!size || size > static_cast<int>(kMaxClipboardBytes)) return;
+  if (!size || size > static_cast<int>(kMaxClipboardBytes)) return false;
   std::string bytes(size, '\0');
   env->GetByteArrayRegion(data, 0, size, reinterpret_cast<jbyte*>(bytes.data()));
-  s->Send(kClipboardStream, bytes);
+  if (env->ExceptionCheck() || bytes.find('\0') != std::string::npos) return false;
+  const auto id = s->remote.find(':') == std::string::npos ? s->remote : s->direct.RemotePeerId();
+  return !id.empty() && MiniRtcSendReliableDataFrameToPeer(
+      s->controller, bytes.data(), bytes.size(), kClipboardStream, id.data(), id.size()) == 0;
 }
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(nSurface)(JNIEnv* env, jclass, jlong handle, jobject surface) {
   if (auto* s = From(handle)) {

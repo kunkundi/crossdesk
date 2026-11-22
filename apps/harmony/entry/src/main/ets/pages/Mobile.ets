@@ -629,7 +629,16 @@ struct Mobile {
         Text(tr("发送文本后，点击“粘贴到远端”使用。")).fontSize(13).fontColor(MobileTheme.secondary).width('100%')
         TextArea({ text: this.state.clipboardText, placeholder: tr("要发送到远端的文本") }).fontSize(15).height(120).borderRadius(12).barState(BarState.Off)
           .backgroundColor(MobileTheme.background).onChange((value: string) => this.state.clipboardText = value)
-        MobilePrimaryButton({ label: tr("发送文本"), action: () => this.controller?.clipboard() })
+        Row({ space: 12 }) {
+          PasteButton().onClick((_event: ClickEvent, result: PasteButtonOnClickResult) => {
+            if (result === PasteButtonOnClickResult.SUCCESS) this.controller?.pasteLocalClipboard();
+            else this.controller?.toast(tr("无法访问剪贴板，请重试。"));
+          })
+          Column() {
+            MobilePrimaryButton({ label: tr("发送文本"), available: this.state.ready && this.state.clipboardText.length > 0,
+              action: () => this.controller?.clipboard() })
+          }.layoutWeight(1)
+        }.width('100%')
         Row({ space: 8 }) {
           Column() { this.Action(tr("粘贴到远端"), () => this.controller?.shortcut(86)) }.layoutWeight(1)
           Column() { this.Action(tr("复制远端文本"), () => this.controller?.copyRemote()) }.layoutWeight(1)

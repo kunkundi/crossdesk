@@ -47,6 +47,7 @@
     <string name="text_d087671ca7df7f0f" formatted="false">"Supprimer cette annonce ?"</string>
     <string name="text_33e7584cd5c252d7" formatted="false">"Actualiser l\'annonce"</string>
     <string name="text_8c10e2c1728ddf8e" formatted="false">"Presse-papiers"</string>
+    <string name="text_517405bc78cc0f2f" formatted="false">"Aucun texte dans le presse-papiers"</string>
     <string name="text_4927a53bcc886afb" formatted="false">"Chargement…"</string>
     <string name="text_af90a08fec8ee28d" formatted="false">"Charger plus"</string>
     <string name="text_a739f24a9fd8a5d9" formatted="false">"Mise à jour conseillée"</string>
@@ -91,6 +92,7 @@
     <string name="text_1cbd391383283924" formatted="false">"Le mot de passe enregistré ne peut pas être lu, veuillez le saisir à nouveau."</string>
     <string name="text_6792b9f341380c68" formatted="false">"Le mot de passe enregistré ne peut pas être conservé, veuillez le saisir à nouveau."</string>
     <string name="text_74d3f0927d465047" formatted="false">"Ctrl+Alt+Del envoyé"</string>
+    <string name="text_8051ec2a0f80d127" formatted="false">"Envoyé, veuillez coller à l\'extrémité distante"</string>
     <string name="text_c28d86acbedba3b6" formatted="false">"Le maintien de l\'activité en arrière-plan est activé, les applications de commutation peuvent continuer à maintenir la connexion."</string>
     <string name="text_506409ec08cb2a79" formatted="false">"Keepalive en arrière-plan activé pour revenir ou se déconnecter des notifications de connexion"</string>
     <string name="text_521e65ffc7d0ff2d" formatted="false">"Accordé"</string>
@@ -315,6 +317,7 @@
     <string name="text_3aab57c59aba6543" formatted="false">"Copier les informations"</string>
     <string name="text_cbacf1eafbca53e0" formatted="false">"Informations d’association copiées."</string>
     <string name="text_cde42ccdeacbbbd9" formatted="false">"Impossible de copier les informations d’association. Réessayez."</string>
+    <string name="text_0a12799632baaddb" formatted="false">"Impossible d’accéder au presse-papiers. Réessayez."</string>
     <string name="text_7383b2ae09252c59" formatted="false">"Le stockage sécurisé n\'est pas disponible, veuillez déverrouiller l\'appareil et réessayer"</string>
     <string name="text_c9b9ae7a61444ab7" formatted="false">"Page précédente"</string>
     <string name="text_8a8542f6964852dc" formatted="false">"Page suivante"</string>

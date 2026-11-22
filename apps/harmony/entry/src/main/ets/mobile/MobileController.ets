@@ -394,10 +394,26 @@ export class MobileController {
     this.state.modal = '';
   }
   clearPreviews(): void { this.send({ op: 'cancelPreview' }); this.previewEligible = false; this.store.clearPreviews(); this.history(); this.toast(tr("已清除预览")); }
+  async pasteLocalClipboard(): Promise<void> {
+    const connection = this.connection, draft = this.state.clipboardText, epoch = this.uiEpoch;
+    const active = (): boolean => this.uiEpoch === epoch && this.connection === connection &&
+      this.state.ready && this.state.modal === 'clipboard' && this.state.clipboardText === draft;
+    try {
+      const data = await pasteboard.getSystemPasteboard().getData();
+      if (!active()) return;
+      const text = data.getPrimaryText();
+      if (text) this.state.clipboardText = text;
+      else this.toast(tr("剪贴板中没有文本"));
+    } catch {
+      if (active()) this.toast(tr("无法访问剪贴板，请重试。"));
+    }
+  }
   clipboard(): void {
     const text = this.state.clipboardText;
+    if (!text) { this.toast(tr("剪贴板中没有文本")); return; }
+    if (!this.state.ready || text.includes('\0')) { this.toast(tr("指令发送失败，请重试")); return; }
     if (new util.TextEncoder().encodeInto(text).length > 128 * 1024) { this.toast(tr("文本超过 128 KB")); return; }
-    if (text) { this.send({ op: 'clipboard', text: text }); this.toast(tr("已发送，请在远端粘贴")); }
+    this.send({ op: 'clipboard', session: this.session, connection: this.connection, text: text });
   }
   async copyRemote(): Promise<void> {
     if (!this.state.remoteClipboard) { this.toast(tr("尚未收到远端文本")); return; }
@@ -527,6 +543,7 @@ export class MobileController {
       }
     } else if (e.type === 'network' && e.report) this.network.receive(e.report, this.now());
     else if (e.type === 'clipboard') this.state.remoteClipboard = e.text ?? '';
+    else if (e.type === 'clipboardSent') this.toast(e.ok ? tr("已发送，请在远端粘贴") : tr("指令发送失败，请重试"));
     else if (e.type === 'feedback') this.toast(e.text ?? '');
     else if (e.type === 'file') {
       if (e.sending && ((e.progress ?? 0) < 0 || (e.progress ?? 0) >= 1)) this.sendingFile = false;

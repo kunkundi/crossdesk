@@ -47,6 +47,7 @@
     <string name="text_d087671ca7df7f0f" formatted="false">"이 공지를 삭제하시겠습니까?"</string>
     <string name="text_33e7584cd5c252d7" formatted="false">"새로고침 안내"</string>
     <string name="text_8c10e2c1728ddf8e" formatted="false">"클립보드"</string>
+    <string name="text_517405bc78cc0f2f" formatted="false">"클립보드에 텍스트가 없습니다."</string>
     <string name="text_4927a53bcc886afb" formatted="false">"로드 중…"</string>
     <string name="text_af90a08fec8ee28d" formatted="false">"더 로드하기"</string>
     <string name="text_a739f24a9fd8a5d9" formatted="false">"업데이트 안내"</string>
@@ -91,6 +92,7 @@
     <string name="text_1cbd391383283924" formatted="false">"저장된 비밀번호를 읽을 수 없습니다. 다시 입력해 주세요."</string>
     <string name="text_6792b9f341380c68" formatted="false">"저장된 비밀번호는 보관할 수 없으므로 다시 입력해 주세요."</string>
     <string name="text_74d3f0927d465047" formatted="false">"Ctrl+Alt+Del가 전송되었습니다."</string>
+    <string name="text_8051ec2a0f80d127" formatted="false">"보냈습니다. 원격 끝에 붙여넣으세요."</string>
     <string name="text_c28d86acbedba3b6" formatted="false">"백그라운드 연결 유지가 활성화되어 전환 애플리케이션이 계속 연결을 유지할 수 있습니다."</string>
     <string name="text_506409ec08cb2a79" formatted="false">"연결 알림에서 돌아가거나 연결을 끊기 위해 백그라운드 연결 유지가 활성화되었습니다."</string>
     <string name="text_521e65ffc7d0ff2d" formatted="false">"승인됨"</string>
@@ -315,6 +317,7 @@
     <string name="text_3aab57c59aba6543" formatted="false">"페어링 정보 복사"</string>
     <string name="text_cbacf1eafbca53e0" formatted="false">"페어링 정보를 복사했습니다."</string>
     <string name="text_cde42ccdeacbbbd9" formatted="false">"페어링 정보를 복사할 수 없습니다. 다시 시도하세요."</string>
+    <string name="text_0a12799632baaddb" formatted="false">"클립보드에 접근할 수 없습니다. 다시 시도하세요."</string>
     <string name="text_7383b2ae09252c59" formatted="false">"보안 저장소를 사용할 수 없습니다. 장치를 잠금 해제한 후 다시 시도해 주세요."</string>
     <string name="text_c9b9ae7a61444ab7" formatted="false">"이전 페이지"</string>
     <string name="text_8a8542f6964852dc" formatted="false">"다음 페이지"</string>

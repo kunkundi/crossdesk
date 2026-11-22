@@ -53,6 +53,7 @@ final class LocalizationKeys {
         IDS.put("删除这条公告？", R.string.text_d087671ca7df7f0f);
         IDS.put("刷新公告", R.string.text_33e7584cd5c252d7);
         IDS.put("剪贴板", R.string.text_8c10e2c1728ddf8e);
+        IDS.put("剪贴板中没有文本", R.string.text_517405bc78cc0f2f);
         IDS.put("加载中…", R.string.text_4927a53bcc886afb);
         IDS.put("加载更多", R.string.text_af90a08fec8ee28d);
         IDS.put("升级提示", R.string.text_a739f24a9fd8a5d9);
@@ -97,6 +98,7 @@ final class LocalizationKeys {
         IDS.put("已保存密码无法读取，请重新输入", R.string.text_1cbd391383283924);
         IDS.put("已保存的密码未能保留，请重新输入一次", R.string.text_6792b9f341380c68);
         IDS.put("已发送 Ctrl+Alt+Del", R.string.text_74d3f0927d465047);
+        IDS.put("已发送，请在远端粘贴", R.string.text_8051ec2a0f80d127);
         IDS.put("已启用后台保活，切换应用可继续保持连接", R.string.text_c28d86acbedba3b6);
         IDS.put("已启用后台保活，可从连接通知返回或断开", R.string.text_506409ec08cb2a79);
         IDS.put("已授权", R.string.text_521e65ffc7d0ff2d);
@@ -321,6 +323,7 @@ final class LocalizationKeys {
         IDS.put("复制配对信息", R.string.text_3aab57c59aba6543);
         IDS.put("配对信息已复制。", R.string.text_cbacf1eafbca53e0);
         IDS.put("无法复制配对信息，请重试。", R.string.text_cde42ccdeacbbbd9);
+        IDS.put("无法访问剪贴板，请重试。", R.string.text_0a12799632baaddb);
         IDS.put("安全存储不可用，请解锁设备后重试", R.string.text_7383b2ae09252c59);
         IDS.put("上一页", R.string.text_c9b9ae7a61444ab7);
         IDS.put("下一页", R.string.text_8a8542f6964852dc);

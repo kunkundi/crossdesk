@@ -74,6 +74,12 @@ bool DirectConnection::Status(MiniRtcConnectionStatus status) {
   return true;
 }
 
+std::string DirectConnection::RemotePeerId() const {
+  auto session = std::atomic_load(&impl_->session);
+  if (!session || !session->authorized || session->closing) return {};
+  return session->remote_id;
+}
+
 void DirectConnection::Stop() {
   impl_->stopping = true;
   if (impl_->worker.joinable()) impl_->worker.join();

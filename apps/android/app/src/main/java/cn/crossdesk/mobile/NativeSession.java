@@ -19,6 +19,7 @@ import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
 
 final class NativeSession implements AutoCloseable {
+    static final int MAX_CLIPBOARD_BYTES = 128 * 1024;
     static { System.loadLibrary("crossdesk_android"); }
     interface Listener {
         void status(String message);
@@ -346,10 +347,11 @@ final class NativeSession implements AutoCloseable {
             privacyScreen.failed(request);listener.privacyChanged();
         });});
     }
-    void clipboard(String value) {
-        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
-        if (bytes.length == 0 || bytes.length > 128 * 1024) return;
-        execute(() -> { if (connected) nClipboard(handle, bytes); });
+    void sendClipboard(byte[] bytes) {
+        execute(() -> {
+            boolean sent = connected && nClipboard(handle, bytes);
+            ui(() -> listener.controlFeedback(sent ? L10n.tr("已发送，请在远端粘贴") : L10n.tr("指令发送失败，请重试")));
+        });
     }
     void secureAttention(){execute(()->{
         boolean sent=connected&&nSecureAttention(handle);
@@ -401,7 +403,7 @@ final class NativeSession implements AutoCloseable {
     private static native boolean nVideoSettings(long handle,int quality,int frameRate,int preference,long requestId);
     private static native boolean nAnnouncementRequest(long handle,byte[] data);
     private static native boolean nPresenceRequest(long handle,byte[] data);
-    private static native void nClipboard(long handle, byte[] data);
+    private static native boolean nClipboard(long handle, byte[] data);
     private static native boolean nSecureAttention(long handle);
     private static native boolean nPrivacy(long handle,int flag,boolean blockLocalInput);
     private static native void nFileDirectory(long handle,String directory);

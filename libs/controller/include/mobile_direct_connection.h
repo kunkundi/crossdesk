@@ -26,6 +26,7 @@ class DirectConnection {
              const std::string& password,
              std::function<void(MiniRtcConnectionStatus)> notify);
   bool Status(MiniRtcConnectionStatus status);
+  std::string RemotePeerId() const;
   void Stop();
 
  private:

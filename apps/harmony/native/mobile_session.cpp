@@ -331,6 +331,15 @@ class MobileSession {
       request["user_id"]=login_.substr(0,login_.find('@'));
       const auto bytes=request.dump(); const bool ok=MiniRtcSendSignalMessage(identity_,bytes.data(),bytes.size())==0;
       if (!ok) Event({{"type","requestFailed"},{"request",request.value("request_id","")}});
+    } else if (op=="clipboard") {
+      if (v.at("session").get<uint64_t>() != session_ || v.at("connection").get<uint64_t>() != connection_) return;
+      const auto& text = v.at("text").get_ref<const std::string&>();
+      const auto id = remote_.find(':') == std::string::npos ? remote_ : direct_.RemotePeerId();
+      const bool ok = connected_ && controller_ && !id.empty() && !text.empty() &&
+          text.size() <= kMaxClipboardBytes && text.find('\0') == std::string::npos &&
+          MiniRtcSendReliableDataFrameToPeer(controller_, text.data(), text.size(), kClipboardStream,
+                                             id.data(), id.size()) == 0;
+      Event({{"type", "clipboardSent"}, {"ok", ok}}, true);
     } else if (connected_) {
       if (op=="pointer") {
         const int flag=v.at("flag").get<int>(); const float x=v.at("x").get<float>(),y=v.at("y").get<float>();
@@ -368,9 +377,6 @@ class MobileSession {
       } else if (op=="mute") {
         muted_=v.at("muted").get<bool>(); if (muted_||suspended_) audio_.Stop(); else audio_.Start();
         RemoteAction a{}; a.type=audio_capture; a.a=!muted_; Send(a);
-      } else if (op=="clipboard") {
-        const auto text=v.at("text").get<std::string>();
-        if(!text.empty()&&text.size()<=kMaxClipboardBytes) MiniRtcSendReliableDataFrame(controller_,text.data(),text.size(),kClipboardStream);
       } else if (op=="videoSettings") {
         const int q=v.at("quality"),fps=v.at("frameRate"),pref=v.at("preference");
         if(q<0||q>2||(fps!=30&&fps!=60)||pref<0||pref>2)return;

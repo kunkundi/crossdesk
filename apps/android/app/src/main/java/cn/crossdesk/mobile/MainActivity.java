@@ -720,18 +720,56 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     @Override public void controlFeedback(String message){
         toast(message);
     }
-    private void clipboard(){
-        if(!ready)return;
-        EditText input=field(L10n.tr("要发送到远端的文本"),InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);input.setSingleLine(false);input.setMinLines(3);
-        new AlertDialog.Builder(this).setTitle(L10n.tr("剪贴板")).setView(input)
+    private void clipboard() {
+        NativeSession target = session;
+        if (!ready || target == null) return;
+        EditText input = field(L10n.tr("要发送到远端的文本"),
+                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        input.setSingleLine(false);
+        input.setMinLines(3);
+        ClipboardManager clipboard = getSystemService(ClipboardManager.class);
+        try {
+            ClipData clip = clipboard.getPrimaryClip();
+            if (clip != null) {
+                for (int i = 0; i < clip.getItemCount(); i++) {
+                    CharSequence text = clip.getItemAt(i).getText();
+                    if (!TextUtils.isEmpty(text)) {
+                        input.setText(text.toString());
+                        break;
+                    }
+                }
+            }
+        } catch (SecurityException denied) {
+            input.setError(L10n.tr("无法访问剪贴板，请重试。"));
+        }
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(L10n.tr("剪贴板")).setView(input)
                 .setMessage(L10n.tr("发送后，在远程键盘中点击“粘贴”。接收的远端文本可手动复制到本机。"))
-                .setNegativeButton(L10n.tr("关闭"),null).setNeutralButton(L10n.tr("复制远端文本"),(d,w)->{
-                    if(!remoteClipboard.isEmpty())((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("CrossDesk",remoteClipboard));
-                }).setPositiveButton(L10n.tr("发送文本"),(d,w)->{
-                    String value=input.getText().toString();
-                    if(value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>128*1024){Toast.makeText(this,L10n.tr("文本超过 128 KB"),Toast.LENGTH_SHORT).show();return;}
-                    if(session!=null)session.clipboard(value);
-                }).show();
+                .setNegativeButton(L10n.tr("关闭"), null)
+                .setNeutralButton(L10n.tr("复制远端文本"), (d, w) -> {
+                    if (!remoteClipboard.isEmpty()) {
+                        clipboard.setPrimaryClip(ClipData.newPlainText("CrossDesk", remoteClipboard));
+                    }
+                })
+                .setPositiveButton(L10n.tr("发送文本"), null).show();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String text = input.getText().toString();
+            if (text.isEmpty()) {
+                input.setError(L10n.tr("剪贴板中没有文本"));
+                return;
+            }
+            byte[] bytes = text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            if (bytes.length > NativeSession.MAX_CLIPBOARD_BYTES) {
+                input.setError(L10n.tr("文本超过 128 KB"));
+                return;
+            }
+            if (text.indexOf('\0') >= 0 || !ready || session != target || target.isClosed()) {
+                input.setError(L10n.tr("指令发送失败，请重试"));
+                return;
+            }
+            target.sendClipboard(bytes);
+            dialog.dismiss();
+        });
     }
     void licenseDocument(String title,String value,Runnable back){
         installRoot("document:"+title,false);navigation(title,back);
