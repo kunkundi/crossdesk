@@ -359,3 +359,7 @@
 "新建分组（可选）" = "New group (optional)";
 "该分组暂无近期连接" = "No recent connections in this group";
 "更多操作" = "More actions";
+"设备 ID 或 IP 地址" = "Device ID or IP address";
+"请输入设备 ID 或有效的 IP 地址" = "Enter a device ID or a valid IP address";
+"IP 直连密码" = "Direct IP password";
+"IP 直连失败，请检查电脑的直连地址和网络。" = "Direct IP connection failed. Check the computer’s direct IP address, port, and network.";

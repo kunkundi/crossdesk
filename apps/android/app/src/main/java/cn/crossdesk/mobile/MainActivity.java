@@ -228,9 +228,12 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         LinearLayout connection=column();connection.setPadding(dp(18),dp(18),dp(18),dp(18));content.addView(ui.shadowCard(connection,20));
         connection.addView(text(L10n.tr("远程桌面"),20,true));ui.gap(connection,16);
         LinearLayout entry=row();connection.addView(entry,ui.size(-1,54));
-        remote=field(L10n.tr("对端 ID"),InputType.TYPE_CLASS_NUMBER);remote.setTextSize(20);remote.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
+        remote=field(L10n.tr("设备 ID 或 IP 地址"), InputType.TYPE_CLASS_TEXT
+                | InputType.TYPE_TEXT_VARIATION_URI | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        remote.setImeOptions(remote.getImeOptions() | android.view.inputmethod.EditorInfo.IME_FLAG_FORCE_ASCII);
+        remote.setTextSize(20);remote.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
         remote.setOnFocusChangeListener((view,focused)->{GradientDrawable shape=ui.background(BACKGROUND,12);shape.setStroke(dp(focused?2:1),focused?BLUE:LINE);remote.setBackground(shape);});
-        remote.setFilters(new InputFilter[]{new InputFilter.LengthFilter(11)});remote.setText(formatId(preferences.getString("lastRemote","")));
+        remote.setFilters(new InputFilter[]{new InputFilter.LengthFilter(160)});remote.setText(formatId(preferences.getString("lastRemote","")));
         entry.addView(remote,new LinearLayout.LayoutParams(0,-1,1));
         TextView connect=ui.primary(L10n.tr("连接"),()->promptConnection(id()));connect.setContentDescription(L10n.tr("连接"));LinearLayout.LayoutParams buttonParams=ui.size(96,54);buttonParams.leftMargin=dp(10);entry.addView(connect,buttonParams);
         Runnable update=()->{connect.setEnabled(!id().isEmpty());connect.setAlpha(id().isEmpty()?.45f:1);};update.run();
@@ -270,7 +273,10 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         pendingConnectionMessage="";connectionDialog.show();
     }
     private String id(){return remote.getText().toString().replace(" ","");}
-    static String formatId(String value){String digits=value.replaceAll("[^0-9]","");if(digits.length()>9)digits=digits.substring(0,9);return digits.replaceAll("(.{3})(?=.)","$1 ");}
+    static String formatId(String value) {
+        String target = value.replace(" ", "");
+        return target.matches("[0-9]{1,9}") ? target.replaceAll("(.{3})(?=.)", "$1 ") : target;
+    }
     private void renderRecentConnections(){
         if(recentGrid==null)return;
         JSONArray all = history.list(serverKey());
@@ -335,9 +341,9 @@ public final class MainActivity extends Activity implements NativeSession.Listen
             TextView groupNames=text(TextUtils.join(" · ",groups),10,false);groupNames.setTextColor(SECONDARY);
             groupNames.setSingleLine();groupNames.setEllipsize(TextUtils.TruncateAt.END);caption.addView(groupNames);
         }
-        LinearLayout details=row();TextView detail=text("ID "+id,10,false);detail.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));detail.setTextColor(SECONDARY);detail.setSingleLine();detail.setEllipsize(TextUtils.TruncateAt.END);details.addView(detail,new LinearLayout.LayoutParams(0,-2,1));
+        LinearLayout details=row();TextView detail=text(id.contains(":") ? id : "ID "+id,10,false);detail.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));detail.setTextColor(SECONDARY);detail.setSingleLine();detail.setEllipsize(TextUtils.TruncateAt.END);details.addView(detail,new LinearLayout.LayoutParams(0,-2,1));
         if(item.optBoolean("remember")){View key=ui.icon("key",SECONDARY);key.setContentDescription(L10n.tr("已保存密码"));LinearLayout.LayoutParams keySize=ui.size(10,10);keySize.leftMargin=dp(4);details.addView(key,keySize);}
-        boolean online=recentPresence.isOnline(id,android.os.SystemClock.elapsedRealtime());String availability=online?L10n.tr("在线"):L10n.tr("离线");TextView presence=text(availability,10,true);presence.setSingleLine();presence.setTextColor(online?GREEN:SECONDARY);LinearLayout.LayoutParams presenceSize=ui.size(-2,-2);presenceSize.leftMargin=dp(5);details.addView(presence,presenceSize);caption.addView(details);card.addView(caption);
+        boolean online=recentPresence.isOnline(id,android.os.SystemClock.elapsedRealtime());String availability=id.contains(":")?"IP":online?L10n.tr("在线"):L10n.tr("离线");TextView presence=text(availability,10,true);presence.setSingleLine();presence.setTextColor(online?GREEN:SECONDARY);LinearLayout.LayoutParams presenceSize=ui.size(-2,-2);presenceSize.leftMargin=dp(5);details.addView(presence,presenceSize);caption.addView(details);card.addView(caption);
         card.setContentDescription(L10n.tr("连接 ")+title+"，ID "+id+(item.optBoolean("remember")?L10n.tr("，已保存密码"):"")+"，"+availability);card.setClickable(true);card.setFocusable(true);card.setOnClickListener(v->{remote.setText(formatId(id));promptConnection(id);});
         card.setOnLongClickListener(v->{actions.run();return true;});return card;
     }
@@ -415,8 +421,10 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         updateUngrouped.run();
     }
     private void promptConnection(String id){
-        hideKeyboard();if(!id.matches("[0-9]{9}")){remote.setError(L10n.tr("请输入 9 位设备 ID"));remote.requestFocus();return;}
-        if(!preferences.getBoolean("networkConsent",false)){consent(()->connectOrPrompt(id));return;}connectOrPrompt(id);
+        hideKeyboard();
+        final String target = id.matches("[0-9]{9}") ? id : NativeSession.directEndpoint(id);
+        if (target.isEmpty()) { remote.setError(L10n.tr("请输入设备 ID 或有效的 IP 地址")); remote.requestFocus(); return; }
+        if(!preferences.getBoolean("networkConsent",false)){consent(()->connectOrPrompt(target));return;}connectOrPrompt(target);
     }
     private void connectOrPrompt(String id){
         String stored;
@@ -435,13 +443,13 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private void passwordSheet(String id,String error,boolean rememberDefault){
         Dialog dialog=new Dialog(this);passwordDialog=dialog;LinearLayout sheet=column();sheet.setPadding(dp(22),dp(10),dp(22),dp(22));sheet.setBackground(ui.background(BACKGROUND,24));
         View handle=new View(this);handle.setBackground(ui.background(0xFFC6C6CB,3));LinearLayout.LayoutParams hp=ui.size(36,5);hp.gravity=Gravity.CENTER;sheet.addView(handle,hp);ui.gap(sheet,20);
-        LinearLayout header=row(),titles=column();titles.addView(text(L10n.tr("连接远程桌面"),22,true));ui.gap(titles,5);TextView subtitle=text(L10n.format("对端 ID  {0}",id),15,false);subtitle.setTextColor(SECONDARY);titles.addView(subtitle);header.addView(titles,new LinearLayout.LayoutParams(0,-2,1));header.addView(ui.iconButton("close",L10n.tr("关闭"),dialog::dismiss),ui.size(36,36));sheet.addView(header);ui.gap(sheet,18);
-        LinearLayout passwordRow=row();ui.card(passwordRow,10);EditText password=field(L10n.tr("访问密码"),InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);password.setBackgroundColor(Color.TRANSPARENT);passwordRow.addView(password,new LinearLayout.LayoutParams(0,dp(50),1));
+        LinearLayout header=row(),titles=column();titles.addView(text(L10n.tr("连接远程桌面"),22,true));ui.gap(titles,5);TextView subtitle=text(id.contains(":") ? id : L10n.format("对端 ID  {0}",id),15,false);subtitle.setTextColor(SECONDARY);titles.addView(subtitle);header.addView(titles,new LinearLayout.LayoutParams(0,-2,1));header.addView(ui.iconButton("close",L10n.tr("关闭"),dialog::dismiss),ui.size(36,36));sheet.addView(header);ui.gap(sheet,18);
+        LinearLayout passwordRow=row();ui.card(passwordRow,10);EditText password=field(L10n.tr(id.contains(":") ? "IP 直连密码" : "访问密码"),InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);password.setBackgroundColor(Color.TRANSPARENT);passwordRow.addView(password,new LinearLayout.LayoutParams(0,dp(50),1));
         View eye=ui.iconButton("eye",L10n.tr("显示密码"),()->{boolean hidden=password.getTransformationMethod()!=null;password.setTransformationMethod(hidden?null:PasswordTransformationMethod.getInstance());password.setSelection(password.length());});passwordRow.addView(eye,ui.size(44,44));sheet.addView(passwordRow);ui.gap(sheet,18);
         LinearLayout save=row(),saveText=column();saveText.addView(text(L10n.tr("保存密码"),15,true));ui.gap(saveText,3);TextView security=text(L10n.tr("密码将加密保存在本机 Android Keystore 中"),11,false);security.setTextColor(SECONDARY);saveText.addView(security);save.addView(saveText,new LinearLayout.LayoutParams(0,-2,1));Switch remember=new Switch(this);remember.setContentDescription(L10n.tr("保存密码"));save.addView(remember);sheet.addView(save);
         remember.setChecked(rememberDefault);
         ui.gap(sheet,18);TextView connect=ui.primary(L10n.tr("连接"),()->{
-            String secret=password.getText().toString();if(secret.isEmpty()||secret.length()>128||secret.contains("@")){password.setError(L10n.tr("请输入有效访问密码"));return;}
+            String secret=password.getText().toString();if(secret.isEmpty()||secret.length()>128||secret.contains("@")||(id.contains(":")&&!secret.matches("[a-zA-Z0-9]{6}"))){password.setError(L10n.tr("请输入有效访问密码"));return;}
             rememberPassword=remember.isChecked();password.setText("");dialog.dismiss();begin(id,secret);
         });connect.setContentDescription(L10n.tr("确认连接"));sheet.addView(connect,ui.size(-1,48));
         ScrollView scroll=new ScrollView(this);scroll.addView(sheet);
@@ -464,13 +472,21 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         resetVideoSettings();
         previewCapture=previews.begin(serverKey(),id);previewCopying=false;previewAttempts=0;
         connectedRemote=id;pendingPassword=rememberPassword?secret:"";ready=false;muted=false;selectedDisplay=0;hostPlatform="";remoteClipboard="";displays=new JSONArray();preferences.edit().putString("lastRemote",id).apply();
+        if (id.contains(":")) {
+            stopSignaling();
+            signalingServer=serverKey();
+            session=signaling=new NativeSession(this,host,port,id,secret,this);
+            showProgress();
+            session.start();
+            return;
+        }
         ensureSignaling();
         if(signaling==null){pendingPassword="";toast(L10n.tr("请先完成联网授权"));return;}
         session=signaling;showProgress();session.connect(id,secret);
     }
     private void showProgress(){
         Dialog dialog=new Dialog(this);progressDialog=dialog;LinearLayout card=column();ui.card(card,24);card.setGravity(Gravity.CENTER_HORIZONTAL);LinearLayout body=column();body.setGravity(Gravity.CENTER);body.setPadding(dp(26),dp(24),dp(26),dp(20));
-        ProgressBar spinner=new ProgressBar(this);spinner.setIndeterminateTintList(ColorStateList.valueOf(BLUE));body.addView(spinner,ui.size(34,34));ui.gap(body,14);TextView title=text(L10n.tr("正在连接"),20,true);title.setGravity(Gravity.CENTER);body.addView(title);ui.gap(body,6);status=text(L10n.tr("正在连接信令服务器…"),14,false);status.setGravity(Gravity.CENTER);status.setTextColor(SECONDARY);status.setMinHeight(dp(36));body.addView(status);card.addView(body,ui.size(-1,-2));ui.divider(card);card.addView(ui.action(L10n.tr("取消连接"),RED,()->end("")),ui.size(-1,46));
+        ProgressBar spinner=new ProgressBar(this);spinner.setIndeterminateTintList(ColorStateList.valueOf(BLUE));body.addView(spinner,ui.size(34,34));ui.gap(body,14);TextView title=text(L10n.tr("正在连接"),20,true);title.setGravity(Gravity.CENTER);body.addView(title);ui.gap(body,6);status=text(L10n.tr(connectedRemote.contains(":") ? "正在建立安全连接…" : "正在连接信令服务器…"),14,false);status.setGravity(Gravity.CENTER);status.setTextColor(SECONDARY);status.setMinHeight(dp(36));body.addView(status);card.addView(body,ui.size(-1,-2));ui.divider(card);card.addView(ui.action(L10n.tr("取消连接"),RED,()->end("")),ui.size(-1,46));
         dialog.setContentView(card);dialog.setCanceledOnTouchOutside(false);dialog.setOnCancelListener(d->end(""));Window w=dialog.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.setDimAmount(.08f);}dialog.show();if(w!=null)w.setLayout(dp(292),-2);
     }
     private void sessionScreen(boolean autoLandscape){

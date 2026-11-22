@@ -359,3 +359,7 @@
 "新建分组（可选）" = "Novo grupo (opcional)";
 "该分组暂无近期连接" = "Nenhuma conexão recente neste grupo";
 "更多操作" = "Mais ações";
+"设备 ID 或 IP 地址" = "ID do dispositivo ou endereço IP";
+"请输入设备 ID 或有效的 IP 地址" = "Insira um ID de dispositivo ou um endereço IP válido";
+"IP 直连密码" = "Senha de conexão IP direta";
+"IP 直连失败，请检查电脑的直连地址和网络。" = "Falha na conexão IP direta. Verifique o endereço, a porta e a rede do computador.";

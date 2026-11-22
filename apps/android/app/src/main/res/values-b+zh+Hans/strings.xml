@@ -378,4 +378,8 @@
     <string name="text_1e5709f1b7a405da" formatted="false">"新建分组（可选）"</string>
     <string name="text_24c9c756f833ce88" formatted="false">"该分组暂无近期连接"</string>
     <string name="text_9f07d2ce4115f575" formatted="false">"更多操作"</string>
+    <string name="text_a598bc68e2440131" formatted="false">"设备 ID 或 IP 地址"</string>
+    <string name="text_1be1c81002d880d1" formatted="false">"请输入设备 ID 或有效的 IP 地址"</string>
+    <string name="text_288a9a63177b76a1" formatted="false">"IP 直连密码"</string>
+    <string name="text_53b856ab7ac9d8e2" formatted="false">"IP 直连失败，请检查电脑的直连地址和网络。"</string>
 </resources>

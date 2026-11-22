@@ -378,4 +378,8 @@
     <string name="text_1e5709f1b7a405da" formatted="false">"新建分組（可選）"</string>
     <string name="text_24c9c756f833ce88" formatted="false">"該分組暫無近期連線"</string>
     <string name="text_9f07d2ce4115f575" formatted="false">"更多操作"</string>
+    <string name="text_a598bc68e2440131" formatted="false">"裝置 ID 或 IP 位址"</string>
+    <string name="text_1be1c81002d880d1" formatted="false">"請輸入裝置 ID 或有效的 IP 位址"</string>
+    <string name="text_288a9a63177b76a1" formatted="false">"IP 直連密碼"</string>
+    <string name="text_53b856ab7ac9d8e2" formatted="false">"IP 直連失敗，請檢查電腦的直連位址、連接埠和網路。"</string>
 </resources>

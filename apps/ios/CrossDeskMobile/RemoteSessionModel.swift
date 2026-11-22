@@ -588,6 +588,13 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         return true
     }
 
+    func connectionTarget(_ input: String) -> String? {
+        if input.range(of: "^[0-9]{9}$", options: .regularExpression) != nil { return input }
+        if let endpoint = CrossDeskRTCBridge.directEndpoint(input) { return endpoint }
+        connectionFailureMessage = NSLocalizedString("请输入设备 ID 或有效的 IP 地址", comment: "")
+        return nil
+    }
+
     func connect(password: String, rememberPassword: Bool) {
         self.password = password
         pendingRememberPassword = rememberPassword
@@ -600,17 +607,13 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             return
         }
         connectionFailureMessage = nil
-        let identifier = remoteID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !identifier.isEmpty else {
-            connectionStatus = NSLocalizedString("请输入远程设备 ID", comment: "")
-            return
-        }
+        guard let identifier = connectionTarget(remoteID.trimmingCharacters(in: .whitespacesAndNewlines)) else { return }
         remoteID = identifier
         guard configureBridge() else {
             connectionStatus = signalStatus
             return
         }
-        if isDeviceOnline(identifier) {
+        if identifier.contains(":") || isDeviceOnline(identifier) {
             beginRemoteConnection(identifier)
         } else {
             beginPresenceProbe(identifier)
@@ -683,7 +686,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     private func requestPresenceProbe(_ identifier: String) {
         guard hasNetworkConsent, signalConnected, presenceIsForeground else { return }
         // Older servers ignore subscribe=false and replace the watched list.
-        var identifiers = recentConnections.map(\.remoteID)
+        var identifiers = recentDeviceIDs
         if !identifiers.contains(identifier) { identifiers.append(identifier) }
         bridge.requestPresence(remoteIDs: identifiers, subscribe: false)
     }
@@ -843,10 +846,14 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         return updatedAt.duration(to: presenceClock.now) < Self.presenceMaxAge
     }
 
+    private var recentDeviceIDs: [String] {
+        recentConnections.map(\.remoteID).filter { !$0.contains(":") }
+    }
+
     private func refreshRecentConnectionPresence() {
         guard hasNetworkConsent, signalConnected, presenceIsForeground else { return }
         lastPresenceRefreshAt = presenceClock.now
-        bridge.requestPresence(remoteIDs: recentConnections.map(\.remoteID),
+        bridge.requestPresence(remoteIDs: recentDeviceIDs,
                                subscribe: true)
     }
 
@@ -1338,7 +1345,9 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         case 2: connectionStatus = NSLocalizedString("正在收集 ICE 候选", comment: "")
         case 3: finishConnection(withError: NSLocalizedString("网络连接已中断，请重新连接。", comment: ""))
         case 4:
-            finishConnection(withError: NSLocalizedString("P2P/TURN 建链失败，请检查网络后重试。", comment: ""))
+            let message = activeRemoteID.contains(":") ? NSLocalizedString("IP 直连失败，请检查电脑的直连地址和网络。", comment: "") :
+                NSLocalizedString("P2P/TURN 建链失败，请检查网络后重试。", comment: "")
+            finishConnection(withError: message)
         case 5:
             finishConnection(withError: NSLocalizedString("远程连接已结束。", comment: ""))
         case 6:
@@ -1405,7 +1414,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             awaitingPresenceSnapshot = false
         }
         let now = presenceClock.now
-        let watched = Set(recentConnections.map(\.remoteID))
+        let watched = Set(recentDeviceIDs)
         for (remoteID, online) in presence
             where watched.contains(remoteID) || pendingPresenceRemoteID == remoteID {
             updated[remoteID] = online.boolValue

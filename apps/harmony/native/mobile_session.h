@@ -15,6 +15,7 @@ namespace crossdesk::harmony {
 // Mobile uses an identity-only signaling peer and can never accept a guest.
 __attribute__((visibility("default"))) void MobileCommand(const std::string& json);
 __attribute__((visibility("default"))) std::string MobilePoll();
+__attribute__((visibility("default"))) std::string MobileDirectEndpoint(const std::string& input);
 __attribute__((visibility("default"))) void MobileShutdown();
 __attribute__((visibility("default"))) std::string MobileGenerateTrustKey();
 __attribute__((visibility("default"))) std::string MobileTrustInfo(const std::string& seed, const std::string& device_id);

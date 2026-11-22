@@ -78,8 +78,8 @@ struct Mobile {
       case 'document': return this.state.documentTitle; default: return '';
     }
   }
-  private deviceId(value: string): string { return value.replace(/[^0-9]/g, '').substring(0, 9); }
-  private formatId(value: string): string { return this.deviceId(value).replace(/(.{3})(?=.)/g, '$1 '); }
+  private deviceId(value: string): string { return value.replace(/\s/g, '').substring(0, 160); }
+  private formatId(value: string): string { return /^[0-9]{1,9}$/.test(value) ? value.replace(/(.{3})(?=.)/g, '$1 ') : value; }
   private policyParagraphs(body: string): string[] {
     const text = body.replace(/\r\n/g, '\n');
     const start = text.indexOf('## 中文\n'), end = start < 0 ? -1 : text.indexOf('## English', start);
@@ -148,7 +148,7 @@ struct Mobile {
     Column({ space: 16 }) {
       Text(tr("远程桌面")).fontSize(20).fontWeight(600).fontColor(MobileTheme.ink).width('100%')
       Row({ space: 10 }) {
-        TextInput({ text: this.formatId(this.state.remote), placeholder: tr("对端 ID") }).type(InputType.Number).maxLength(11)
+        TextInput({ text: this.formatId(this.state.remote), placeholder: tr("设备 ID 或 IP 地址") }).type(InputType.Normal).maxLength(160)
           .fontSize(20).fontWeight(500).fontColor(MobileTheme.ink).placeholderColor(MobileTheme.secondary)
           .height(54).layoutWeight(1).backgroundColor(MobileTheme.background).borderRadius(12)
           .border({ width: this.idFocused ? 2 : 1, color: this.idFocused ? MobileTheme.blue : MobileTheme.line })
@@ -215,9 +215,9 @@ struct Mobile {
           Text(device.groups.join(' · ')).fontSize(10).fontColor(MobileTheme.secondary).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
         }
         Row({ space: 4 }) {
-          Text(`ID ${device.id}`).fontSize(10).fontColor(MobileTheme.secondary).layoutWeight(1)
+          Text(device.id.includes(':') ? device.id : `ID ${device.id}`).fontSize(10).fontColor(MobileTheme.secondary).layoutWeight(1)
           if (device.remember) { MobileIcon({ name: 'key', iconExtent: 11, color: MobileTheme.secondary }).accessibilityText(tr("已保存密码")) }
-          Text(this.controller?.presence.online(device.id, this.controller?.now() ?? 0) ? tr("在线") : tr("离线")).fontSize(10)
+          Text(device.id.includes(':') ? 'IP' : this.controller?.presence.online(device.id, this.controller?.now() ?? 0) ? tr("在线") : tr("离线")).fontSize(10)
             .fontColor(this.controller?.presence.online(device.id, this.controller?.now() ?? 0) ? MobileTheme.green : MobileTheme.secondary)
         }.width('100%')
       }.padding(9).width('100%')
@@ -540,9 +540,9 @@ struct Mobile {
     Scroll() {
       Column() {
         Row() {}.width(36).height(5).backgroundColor('#C6C6CB').borderRadius(3).margin({ bottom: 20 })
-        this.SheetHeader(tr("连接远程桌面"), tr("对端 ID  {0}", [String(this.formatId(this.state.remote))]))
+        this.SheetHeader(tr("连接远程桌面"), this.state.remote.includes(':') ? this.state.remote : tr("对端 ID  {0}", [String(this.formatId(this.state.remote))]))
         Row() {
-          TextInput({ text: this.state.password, placeholder: tr("访问密码") }).type(this.showPassword ? InputType.Normal : InputType.Password)
+          TextInput({ text: this.state.password, placeholder: this.state.remote.includes(':') ? tr("IP 直连密码") : tr("访问密码") }).type(this.showPassword ? InputType.Normal : InputType.Password)
             .showPasswordIcon(false).maxLength(128).fontSize(17).height(50).layoutWeight(1).backgroundColor(Color.Transparent)
             .padding({ left: 14, right: 4 }).onChange((value: string) => this.state.password = value).onSubmit(() => this.controller?.begin(this.state.password))
           MobileIconButton({ icon: this.showPassword ? 'eye_off' : 'eye', label: this.showPassword ? tr("隐藏密码") : tr("显示密码"), iconExtent: 44,

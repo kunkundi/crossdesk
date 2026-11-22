@@ -23,7 +23,7 @@ final class RecentConnectionPresence {
         Set<String> next=new LinkedHashSet<>();
         for(int i=0;i<records.length();i++){
             JSONObject record=records.optJSONObject(i);
-            if(record!=null&&!record.optString("id").isEmpty())next.add(record.optString("id"));
+            if(record!=null&&!record.optString("id").contains(":")&&!record.optString("id").isEmpty())next.add(record.optString("id"));
         }
         if(watched.equals(next))return;
         watched.clear();watched.addAll(next);

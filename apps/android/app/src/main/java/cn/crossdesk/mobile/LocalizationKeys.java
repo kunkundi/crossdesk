@@ -384,6 +384,10 @@ final class LocalizationKeys {
         IDS.put("新建分组（可选）", R.string.text_1e5709f1b7a405da);
         IDS.put("该分组暂无近期连接", R.string.text_24c9c756f833ce88);
         IDS.put("更多操作", R.string.text_9f07d2ce4115f575);
+        IDS.put("设备 ID 或 IP 地址", R.string.text_a598bc68e2440131);
+        IDS.put("请输入设备 ID 或有效的 IP 地址", R.string.text_1be1c81002d880d1);
+        IDS.put("IP 直连密码", R.string.text_288a9a63177b76a1);
+        IDS.put("IP 直连失败，请检查电脑的直连地址和网络。", R.string.text_53b856ab7ac9d8e2);
     }
     private LocalizationKeys() {}
 }

@@ -214,8 +214,13 @@ export class MobileController {
       this.send({ op: 'start', session: session, server: this.state.server, port: Number(this.state.port), identity: identity,
         trustKey: trustKey, logs: this.context.cacheDir, certificates: '/etc/security/certificates', directory: this.store.directory,
         previewDirectory: this.store.previewDirectory, version: this.state.version });
-    } catch { this.state.signalText = tr("安全存储不可用，请解锁设备后重试"); this.state.signal = -1; }
-    finally { if (session === this.session) this.starting = false; }
+      this.joinIfReady();
+    } catch {
+      const reason = tr("安全存储不可用，请解锁设备后重试");
+      if (this.state.connecting) this.end(reason);
+      this.state.signalText = reason;
+      this.state.signal = -1;
+    } finally { if (session === this.session) this.starting = false; }
   }
   private stopSignal(): void {
     this.session++; this.starting = this.started = false; this.signalGeneration = -1;
@@ -250,7 +255,9 @@ export class MobileController {
     } catch { this.toast(tr("安全存储不可用，请解锁设备后重试")); }
   }
   history(): void {
-    const values = this.store.recent(this.scope()), now = this.now(); this.presence?.watch(values.map((d: RecentDevice) => d.id), now);
+    const values = this.store.recent(this.scope()), now = this.now();
+    const ids = values.filter((d: RecentDevice) => !d.id.includes(':')).map((d: RecentDevice) => d.id);
+    this.presence?.watch(ids, now);
     this.state.recent = values.filter((d: RecentDevice) => this.presence?.online(d.id, now))
       .concat(values.filter((d: RecentDevice) => !this.presence?.online(d.id, now)));
     const groups = new Set<string>();
@@ -267,7 +274,11 @@ export class MobileController {
   }
   async requestConnection(id: string): Promise<void> {
     id = id.replace(/\s/g, ''); this.state.remote = id;
-    if (!/^[0-9]{9}$/.test(id)) { this.toast(tr("请输入 9 位设备 ID")); return; }
+    if (!/^[0-9]{9}$/.test(id)) {
+      const endpoint = bridge.mobileDirectEndpoint(id);
+      if (!endpoint) { this.toast(tr("请输入设备 ID 或有效的 IP 地址")); return; }
+      id = endpoint; this.state.remote = endpoint;
+    }
     if (!this.state.consent) { this.state.modal = 'consent'; return; }
     const epoch = ++this.uiEpoch, scope = this.scope();
     this.state.password = ''; this.state.notice = '';
@@ -280,7 +291,8 @@ export class MobileController {
     if (epoch === this.uiEpoch) this.state.modal = 'password';
   }
   begin(password: string): void {
-    if (!this.state.consent || !/^[0-9]{9}$/.test(this.state.remote) || !password || password.length > 128 || password.includes('@')) { this.toast(tr("请输入有效的访问密码")); return; }
+    if (!this.state.consent || (!/^[0-9]{9}$/.test(this.state.remote) &&
+        (!bridge.mobileDirectEndpoint(this.state.remote) || !/^[A-Za-z0-9]{6}$/.test(password))) || !password || password.length > 128 || password.includes('@')) { this.toast(tr("请输入有效的访问密码")); return; }
     this.joinSent = false; this.connection++; this.connectingId = this.state.remote; this.pendingPassword = password;
     this.resolutionScope = this.scope();
     this.state.connecting = true; this.state.ready = false; this.state.modal = 'connecting'; this.state.notice = '';
@@ -299,7 +311,8 @@ export class MobileController {
   }
   private joinSent: boolean = false;
   private joinIfReady(): void {
-    if (!this.state.connecting || this.joinSent || this.state.signal !== 1 || !this.state.identity) return;
+    if (!this.state.connecting || this.joinSent || !this.started ||
+        (!this.connectingId.includes(':') && (this.state.signal !== 1 || !this.state.identity))) return;
     this.joinSent = true; this.send({ op: 'connect', connection: this.connection, remote: this.connectingId, password: this.pendingPassword,
       displayResolutions: this.resolutionStore.load(this.resolutionScope, this.connectingId) });
   }
@@ -499,7 +512,8 @@ export class MobileController {
         this.end(''); this.state.remote = this.connectingId; this.state.notice = tr("访问密码错误，请重新输入"); this.state.modal = 'password';
       } else if ((e.status ?? 0) >= 3) {
         const reasons = ['', '', '', tr("连接已断开"), tr("连接失败"), tr("远端已关闭连接"), tr("访问密码错误"), tr("找不到该设备 ID"), tr("远端当前不可用")];
-        this.end(reasons[e.status ?? 0] ?? tr("连接已结束"));
+        if (e.status === 4 && this.connectingId.includes(':')) this.end(tr("IP 直连失败，请检查电脑的直连地址和网络。"));
+        else this.end(reasons[e.status ?? 0] ?? tr("连接已结束"));
       }
     } else if (e.type === 'ended') this.end(e.reason ?? '');
     else if (e.type === 'data' && e.message) this.data(e.message as ControlData);

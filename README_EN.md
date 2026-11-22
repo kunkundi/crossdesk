@@ -31,7 +31,7 @@ CrossDesk connects your computers from desktop, browser, mobile, and terminal cl
 ## Features
 
 - **Cross-platform access:** control Windows, macOS, and Linux desktops from computers, browsers, or native iOS / Android clients. HarmonyOS PC and mobile clients are in development.
-- **Direct IP over LAN:** connect desktop clients using an IP address, port, and six-character password without a cloud signaling service. You can change the port, remember passwords, and view recent devices separately by mode.
+- **Direct IP over LAN:** connect to a desktop from Android, iOS, HarmonyOS, or another desktop using an IP address, port, and six-character password without a cloud signaling service. You can change the port, remember passwords, and view recent devices separately by mode.
 - **Terminal controller:** view and control remote desktops by device ID, with ANSI / Kitty / Sixel rendering, zoom and pan, persistent local command mode, a Pi extension, and a build independent of the desktop GUI.
 - **DeskHub:** live multi-device previews, groups, enlarged control, group input, and batch file distribution.
 - **Video and audio:** H.264 / AV1, hardware codecs, remote audio, and in-session quality, frame-rate, and remote display resolution controls. Confirmed resolution choices are remembered; the original display mode is restored when the last controller disconnects. Capabilities depend on the platform and device.
@@ -96,11 +96,13 @@ For self-hosting, connect both ends to the same service and update the server be
 
 ### Connect directly over LAN
 
-1. **Switch modes.** Run a desktop client with direct IP support on both computers. Click the top-left mode button to select **Direct IP mode**. If the button is hidden, select **Enable direct IP** under **Settings → General → Network** and save.
+On a phone or tablet, paste the address shown by the host into **Device ID or IP address** on the home screen and enter the host’s **Direct IP password**. For a desktop controller, follow these steps.
+
+1. **Switch modes.** Open the desktop client on both computers. Click the top-left mode button to select **Direct IP mode**. If the button is hidden, select **Enable direct IP** under **Settings → General → Network** and save.
 2. **Enter the address.** On the controller, enter the host's displayed `IP:port`, for example `192.168.1.20:52888` or `[2001:db8::20]:52888`, and click **Connect**. Omitting the port uses **52888**; use the actual port shown on the host.
 3. **Enter the password.** Use the host's **six-character ASCII letter/digit password** shown in Direct IP mode. You can select **Remember password**. Switching modes also switches the recent device list.
 
-Both computers must be reachable over the LAN. Internet access may be available or absent; direct sessions do not depend on a cloud signaling service. The main window lets you select the local IP, edit its port, and change the password. **Listen on all IP interfaces** is enabled by default for IPv4, IPv6, VPN, and other local interfaces on a shared port; change it under **Settings → General → Network**. Disabling **Enable direct IP** stops listeners, disconnects direct IP sessions, and hides the mode button. See the [direct IP guide](docs/USER_GUIDE_EN.md#lan-direct).
+The controller and host must be mutually reachable over a LAN or VPN. Internet access may be available or absent; direct sessions do not depend on a cloud signaling service. The main window lets you select the local IP, edit its port, and change the password. **Listen on all IP interfaces** is enabled by default for IPv4, IPv6, VPN, and other local interfaces on a shared port; change it under **Settings → General → Network**. Disabling **Enable direct IP** stops listeners, disconnects direct IP sessions, and hides the mode button. See the [direct IP guide](docs/USER_GUIDE_EN.md#lan-direct).
 
 <a id="trusted-devices"></a>
 

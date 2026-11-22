@@ -205,7 +205,7 @@ private struct ConnectionHomeView: View {
         Binding(
             get: { formatRemoteID(session.remoteID) },
             set: { value in
-                session.remoteID = String(value.filter { $0.isNumber }.prefix(9))
+                session.remoteID = String(value.replacingOccurrences(of: " ", with: "").prefix(160))
             }
         )
     }
@@ -337,12 +337,6 @@ private struct ConnectionHomeView: View {
                 session.dismissDeviceOfflineAlert()
             }
         }
-        .onValueChange(of: session.remoteID) { value in
-            let formatted = String(value.filter { $0.isNumber }.prefix(9))
-            if formatted != value {
-                session.remoteID = formatted
-            }
-        }
         .onDisappear { remoteIDFocused = false }
     }
 
@@ -428,8 +422,8 @@ private struct ConnectionHomeView: View {
             }
 
             HStack(spacing: 10) {
-                TextField(NSLocalizedString("对端 ID", comment: ""), text: groupedRemoteID)
-                    .keyboardType(.numberPad)
+                TextField(NSLocalizedString("设备 ID 或 IP 地址", comment: ""), text: groupedRemoteID)
+                    .keyboardType(.asciiCapable)
                     .textContentType(.username)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -658,14 +652,16 @@ private struct ConnectionHomeView: View {
             return
         }
         remoteIDFocused = false
-        promptRemoteID = trimmed
-        promptPassword = session.savedPassword(for: trimmed)
-        promptRememberPassword = session.remembersPassword(for: trimmed)
+        guard let target = session.connectionTarget(trimmed) else { return }
+        promptRemoteID = target
+        promptPassword = session.savedPassword(for: target)
+        promptRememberPassword = session.remembersPassword(for: target)
         passwordPromptVisible = true
     }
 
     private func formatRemoteID(_ value: String) -> String {
-        let digits = Array(value.filter { $0.isNumber }.prefix(9))
+        guard value.count <= 9, value.allSatisfy({ $0.isNumber }) else { return value }
+        let digits = Array(value)
         return stride(from: 0, to: digits.count, by: 3)
             .map { start in
                 String(digits[start..<min(start + 3, digits.count)])
@@ -754,7 +750,7 @@ private struct RecentConnectionCard: View {
                             .lineLimit(1)
                     }
                     HStack(spacing: 5) {
-                        Text("ID \(connection.remoteID)")
+                        Text(connection.remoteID.contains(":") ? connection.remoteID : "ID \(connection.remoteID)")
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -765,10 +761,10 @@ private struct RecentConnectionCard: View {
                                 .foregroundStyle(.secondary)
                                 .accessibilityLabel(NSLocalizedString("已保存密码", comment: ""))
                         }
-                        Text(online ? NSLocalizedString("在线", comment: "") : NSLocalizedString("离线", comment: ""))
+                        Text(connection.remoteID.contains(":") ? "IP" : online ? NSLocalizedString("在线", comment: "") : NSLocalizedString("离线", comment: ""))
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(online ? Color.green : Color.secondary)
-                            .accessibilityLabel(online ? NSLocalizedString("在线", comment: "") : NSLocalizedString("离线", comment: ""))
+                            .accessibilityLabel(connection.remoteID.contains(":") ? "IP" : online ? NSLocalizedString("在线", comment: "") : NSLocalizedString("离线", comment: ""))
                     }
                 }
                 .padding(9)
@@ -798,7 +794,7 @@ private struct RecentConnectionCard: View {
             Button(NSLocalizedString("取消", comment: ""), role: .cancel) {}
             Button(NSLocalizedString("保存", comment: "")) { rename(nameDraft) }
         } message: {
-            Text("ID \(connection.remoteID)")
+            Text(connection.remoteID.contains(":") ? connection.remoteID : "ID \(connection.remoteID)")
         }
     }
 
@@ -891,7 +887,7 @@ private struct PasswordPromptView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(NSLocalizedString("连接远程桌面", comment: ""))
                         .font(.title2.bold())
-                    Text(String(format: NSLocalizedString("对端 ID  %1$@", comment: ""), String(describing: remoteID)))
+                    Text(remoteID.contains(":") ? remoteID : String(format: NSLocalizedString("对端 ID  %1$@", comment: ""), remoteID))
                         .font(.subheadline.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -909,9 +905,9 @@ private struct PasswordPromptView: View {
             HStack(spacing: 10) {
                 Group {
                     if passwordVisible {
-                        TextField(NSLocalizedString("访问密码", comment: ""), text: $password)
+                        TextField(NSLocalizedString(remoteID.contains(":") ? "IP 直连密码" : "访问密码", comment: ""), text: $password)
                     } else {
-                        SecureField(NSLocalizedString("访问密码", comment: ""), text: $password)
+                        SecureField(NSLocalizedString(remoteID.contains(":") ? "IP 直连密码" : "访问密码", comment: ""), text: $password)
                     }
                 }
                 .keyboardType(.asciiCapable)
@@ -954,6 +950,7 @@ private struct PasswordPromptView: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 48)
             }
+            .disabled(remoteID.contains(":") && password.range(of: "^[A-Za-z0-9]{6}$", options: .regularExpression) == nil)
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.roundedRectangle(radius: 10))
         }

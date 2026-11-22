@@ -334,8 +334,11 @@ std::vector<Interface> LocalIpInterfaces(bool physical_only) {
                    std::string(a->ifa_name).rfind("en", 0) == 0;
       }
 #else
-    physical = std::filesystem::exists(std::filesystem::path("/sys/class/net") /
-                                       a->ifa_name / "device");
+    if (physical_only) {
+      std::error_code error;
+      physical = std::filesystem::exists(std::filesystem::path("/sys/class/net") /
+                                         a->ifa_name / "device", error);
+    }
 #endif
     if (physical_only && !physical) continue;
     append(a->ifa_addr, if_nametoindex(a->ifa_name));

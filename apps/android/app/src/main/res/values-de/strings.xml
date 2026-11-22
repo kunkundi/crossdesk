@@ -378,4 +378,8 @@
     <string name="text_1e5709f1b7a405da" formatted="false">"Neue Gruppe (optional)"</string>
     <string name="text_24c9c756f833ce88" formatted="false">"Keine aktuellen Verbindungen in dieser Gruppe"</string>
     <string name="text_9f07d2ce4115f575" formatted="false">"Weitere Aktionen"</string>
+    <string name="text_a598bc68e2440131" formatted="false">"Geräte-ID oder IP-Adresse"</string>
+    <string name="text_1be1c81002d880d1" formatted="false">"Geräte-ID oder gültige IP-Adresse eingeben"</string>
+    <string name="text_288a9a63177b76a1" formatted="false">"Passwort für direkte IP-Verbindung"</string>
+    <string name="text_53b856ab7ac9d8e2" formatted="false">"Direkte IP-Verbindung fehlgeschlagen. Adresse, Port und Netzwerk des Computers prüfen."</string>
 </resources>

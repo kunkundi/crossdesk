@@ -11795,6 +11795,54 @@
       "fr": "Vous pouvez envoyer les fichiers via la fenêtre de transfert.",
       "es": "Puedes enviar archivos desde la ventana de transferencia.",
       "pt-BR": "Você pode enviar arquivos pela janela de transferência."
+    },
+    "设备 ID 或 IP 地址": {
+      "zh-Hans": "设备 ID 或 IP 地址",
+      "en": "Device ID or IP address",
+      "ru": "ID устройства или IP-адрес",
+      "zh-Hant": "裝置 ID 或 IP 位址",
+      "ja": "デバイス ID または IP アドレス",
+      "ko": "기기 ID 또는 IP 주소",
+      "de": "Geräte-ID oder IP-Adresse",
+      "fr": "ID de l’appareil ou adresse IP",
+      "es": "ID del dispositivo o dirección IP",
+      "pt-BR": "ID do dispositivo ou endereço IP"
+    },
+    "请输入设备 ID 或有效的 IP 地址": {
+      "zh-Hans": "请输入设备 ID 或有效的 IP 地址",
+      "en": "Enter a device ID or a valid IP address",
+      "ru": "Введите ID устройства или действительный IP-адрес",
+      "zh-Hant": "請輸入裝置 ID 或有效的 IP 位址",
+      "ja": "デバイス ID または有効な IP アドレスを入力してください",
+      "ko": "기기 ID 또는 유효한 IP 주소를 입력하세요",
+      "de": "Geräte-ID oder gültige IP-Adresse eingeben",
+      "fr": "Saisissez un ID d’appareil ou une adresse IP valide",
+      "es": "Introduce un ID de dispositivo o una dirección IP válida",
+      "pt-BR": "Insira um ID de dispositivo ou um endereço IP válido"
+    },
+    "IP 直连密码": {
+      "zh-Hans": "IP 直连密码",
+      "en": "Direct IP password",
+      "ru": "Пароль прямого IP-подключения",
+      "zh-Hant": "IP 直連密碼",
+      "ja": "IP 直接接続パスワード",
+      "ko": "IP 직접 연결 비밀번호",
+      "de": "Passwort für direkte IP-Verbindung",
+      "fr": "Mot de passe de connexion IP directe",
+      "es": "Contraseña de conexión IP directa",
+      "pt-BR": "Senha de conexão IP direta"
+    },
+    "IP 直连失败，请检查电脑的直连地址和网络。": {
+      "zh-Hans": "IP 直连失败，请检查电脑的直连地址和网络。",
+      "en": "Direct IP connection failed. Check the computer’s direct IP address, port, and network.",
+      "ru": "Не удалось подключиться по IP. Проверьте адрес, порт и сеть компьютера.",
+      "zh-Hant": "IP 直連失敗，請檢查電腦的直連位址、連接埠和網路。",
+      "ja": "IP 直接接続に失敗しました。コンピュータのアドレス、ポート、ネットワークを確認してください。",
+      "ko": "IP 직접 연결에 실패했습니다. 컴퓨터의 주소, 포트 및 네트워크를 확인하세요.",
+      "de": "Direkte IP-Verbindung fehlgeschlagen. Adresse, Port und Netzwerk des Computers prüfen.",
+      "fr": "Échec de la connexion IP directe. Vérifiez l’adresse, le port et le réseau de l’ordinateur.",
+      "es": "Error de conexión IP directa. Comprueba la dirección, el puerto y la red del equipo.",
+      "pt-BR": "Falha na conexão IP direta. Verifique o endereço, a porta e a rede do computador."
     }
   },
   "desktop": {
@@ -13244,7 +13292,11 @@
       "未分组",
       "新建分组（可选）",
       "该分组暂无近期连接",
-      "更多操作"
+      "更多操作",
+      "设备 ID 或 IP 地址",
+      "请输入设备 ID 或有效的 IP 地址",
+      "IP 直连密码",
+      "IP 直连失败，请检查电脑的直连地址和网络。"
     ],
     "ios": [
       "%1$@ 传输失败",
@@ -13606,7 +13658,11 @@
       "未分组",
       "新建分组（可选）",
       "该分组暂无近期连接",
-      "更多操作"
+      "更多操作",
+      "设备 ID 或 IP 地址",
+      "请输入设备 ID 或有效的 IP 地址",
+      "IP 直连密码",
+      "IP 直连失败，请检查电脑的直连地址和网络。"
     ],
     "harmony": [
       "OpenFEC 告知",
@@ -13918,7 +13974,11 @@
       "未分组",
       "新建分组（可选）",
       "该分组暂无近期连接",
-      "更多操作"
+      "更多操作",
+      "设备 ID 或 IP 地址",
+      "请输入设备 ID 或有效的 IP 地址",
+      "IP 直连密码",
+      "IP 直连失败，请检查电脑的直连地址和网络。"
     ]
   }
 }

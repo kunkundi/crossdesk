@@ -110,6 +110,13 @@ SessionManager::SessionManager(std::filesystem::path path, Hooks hooks)
     }
   }
 }
+SessionManager::SessionManager(MiniRtcPeerPtr* controller_peer, Hooks hooks)
+    : controller_peer_(controller_peer), identity_(std::filesystem::path{}), hooks_(std::move(hooks)) {
+  if (!controller_peer_) throw std::invalid_argument("Missing LAN controller peer");
+  hooks_.prepare = [controller_peer](const SessionPtr&) {
+    return [controller_peer] { return Prepared{controller_peer, {}, {}}; };
+  };
+}
 SessionManager::~SessionManager() {
   Stop();
   while (!Quiescent()) {
@@ -320,7 +327,7 @@ std::string SessionManager::TakeNewPassword() {
 SessionManager::SessionPtr SessionManager::Connect(const std::string& address,
                                                    unsigned port,
                                                    std::string password) {
-  if (stopping_ || sessions_.size() >= 24)
+  if (stopping_ || sessions_.size() >= 24 || (controller_peer_ && !sessions_.empty()))
     throw std::runtime_error("LAN connection limit reached");
   if (!ValidPassword(password))
     throw std::runtime_error(
@@ -566,6 +573,7 @@ void SessionManager::Message(const SessionPtr& s, const std::string& text) {
 void SessionManager::Dispose(const SessionPtr& s) {
   if (!s->peer) return;
   auto* peer = std::exchange(s->peer, nullptr);
+  if (controller_peer_) return;
   auto owner = s->callback_owner;
   auto drain = s->drain_callbacks;
   cleanup_jobs_.push_back(
@@ -817,15 +825,16 @@ void SessionManager::Tick() {
   if (!stopping_ && now - interface_check_ >= std::chrono::seconds(2)) {
     interface_check_ = now;
     const auto local_interfaces = LocalIpInterfaces();
-    interfaces_ =
-        identity_.listen_all() ? local_interfaces : LocalIpInterfaces(true);
-    RefreshListeners();
+    if (!controller_peer_) {
+      interfaces_ = identity_.listen_all() ? local_interfaces : LocalIpInterfaces(true);
+      RefreshListeners();
+    }
     for (auto& [_, s] : sessions_)
       if (s->phase != Session::Connecting &&
           !s->channel->local_address.empty() &&
           std::none_of(local_interfaces.begin(), local_interfaces.end(),
-                       [&](const auto& i) {
-                         return i.address == s->channel->local_address;
+                       [&address = s->channel->local_address](const auto& i) {
+                         return i.address == address;
                        }))
         Close(s, "InterfaceRemoved");
   }

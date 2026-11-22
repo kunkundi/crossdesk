@@ -5,6 +5,7 @@
 #include <app_version.h>
 #include <mobile_controller_protocol.h>
 #include <mobile_device_trust.h>
+#include <mobile_direct_connection.h>
 #include <mobile_file_transfer_session.h>
 #include <mobile_video_timing.h>
 #include <display_stream_id.h>
@@ -133,7 +134,11 @@ class MobileSession {
     });
   }
   static void Connection(MiniRtcConnectionStatus status, const char* id, size_t size, void* user) {
-    const std::string remote(id ? id : "", id ? size : 0);
+    auto* context = static_cast<Context*>(user);
+    if (context->controller && context->owner->direct_.Status(status)) return;
+    ReportConnection(status, std::string(id ? id : "", id ? size : 0), user);
+  }
+  static void ReportConnection(MiniRtcConnectionStatus status, const std::string& remote, void* user) {
     Dispatch(user, [status, remote](MobileSession* s, bool controller) {
       if (!controller) {
         // Defense in depth if a server tries to attach a guest to our identity.
@@ -248,7 +253,11 @@ class MobileSession {
     const bool active = controller_ != nullptr;
     Release(); connected_=false; connecting_=false; ++video_generation_;
     CancelPreview();
-    if (controller_) { MiniRtcLeaveConnection(controller_,remote_.c_str()); MiniRtcDestroyPeer(&controller_); }
+    if (controller_) {
+      if (remote_.find(':') != std::string::npos) direct_.Stop();
+      else MiniRtcLeaveConnection(controller_,remote_.c_str());
+      MiniRtcDestroyPeer(&controller_);
+    }
     files_.reset(); renderer_.Clear(); audio_.Stop();
     preferred_display_resolutions_.clear();
     if (active) Event({{"type","ended"},{"reason",reason}},true);
@@ -287,11 +296,14 @@ class MobileSession {
       Event({{"type","version"},{"request",v.at("request")},{"ok",result.has_value()},{"latest",result.value_or("")}});
     } else if (op=="surface") renderer_.Surface(std::stoull(v.value("id","0")));
     else if (op=="connect") {
-      if (!online_||login_.empty()) throw std::runtime_error("Not signed in");
+      const auto target = v.at("remote").get<std::string>();
+      const bool direct = target.find(':') != std::string::npos;
+      if (!trust_ || (!direct && (!online_ || login_.empty()))) throw std::runtime_error("Not signed in");
       Disconnect(""); connection_=v.at("connection").get<uint64_t>();
       ReadDisplayResolutionPreferences(v.value("displayResolutions", json::array()), preferred_display_resolutions_);
-      remote_=v.at("remote").get<std::string>(); const auto password=v.at("password").get<std::string>();
-      if (remote_.size()!=9||!std::all_of(remote_.begin(),remote_.end(),::isdigit)||password.size()>128||password.find('@')!=std::string::npos)
+      remote_=target; const auto password=v.at("password").get<std::string>();
+      if ((!direct && (remote_.size()!=9 || !std::all_of(remote_.begin(),remote_.end(),::isdigit))) ||
+          password.size()>128 || password.find('@')!=std::string::npos)
         throw std::runtime_error("Invalid remote credentials");
       muted_=false; suspended_=false; controller_login_="C-"+login_.substr(0,login_.find('@'));
       control_context_=std::make_unique<Context>(Context{this,true,connection_});
@@ -306,7 +318,11 @@ class MobileSession {
           Event({{"type","file"},{"name",name},{"progress",progress},{"sending",sending},{"path",path}},true);
         });
       files_->SetDirectory(directory_+"/received");
-      if (MiniRtcInit(controller_)!=0||MiniRtcJoinConnection(controller_,(remote_+"@"+password).c_str())!=0) Disconnect("无法发起连接");
+      if (direct) {
+        if (!direct_.Start(controller_, remote_, password, [context = control_context_.get()](auto status) {
+              ReportConnection(status, {}, context);
+            })) Disconnect("无法发起连接");
+      } else if (MiniRtcInit(controller_)!=0||MiniRtcJoinConnection(controller_,(remote_+"@"+password).c_str())!=0) Disconnect("无法发起连接");
     } else if (op=="disconnect") Disconnect("");
     else if (op=="release") Release();
     else if (op=="signal" && online_ && identity_) {
@@ -397,7 +413,7 @@ class MobileSession {
   }
   void Tick() {
     const auto now=Clock::now();
-    if(identity_&&!online_&&now-signal_started_>std::chrono::seconds(40)) {
+    if(identity_&&!online_&&!(controller_ && remote_.find(':') != std::string::npos)&&now-signal_started_>std::chrono::seconds(40)) {
       Event({{"type","error"},{"text","服务器连接超时，请检查地址和网络"}}); Stop();
     }
     if(connecting_&&now-connection_started_>std::chrono::seconds(40)) Disconnect("连接超时，请确认设备在线");
@@ -435,6 +451,7 @@ class MobileSession {
   MiniRtcPeerPtr* controller_=nullptr;
   std::unique_ptr<Context> identity_context_,control_context_;
   std::unique_ptr<mobile_controller::FileTransferSession> files_;
+  mobile_controller::DirectConnection direct_;
   std::unique_ptr<mobile_controller::DeviceTrustIdentity> trust_;
   std::string server_,logs_,login_,controller_login_,remote_,directory_,preview_directory_,preview_path_,version_;
   std::vector<DisplayResolutionPreference> preferred_display_resolutions_;
@@ -461,6 +478,9 @@ void MobileCommand(const std::string& text) {
 std::string MobilePoll() { std::lock_guard lock(mobile_mutex); return mobile?mobile->Poll():"[]"; }
 void MobileShutdown() { std::lock_guard lock(mobile_mutex); mobile.reset(); }
 std::string MobileGenerateTrustKey() { return mobile_controller::DeviceTrustIdentity::GeneratePrivateKey(); }
+std::string MobileDirectEndpoint(const std::string& input) {
+  return mobile_controller::DirectConnection::Endpoint(input);
+}
 std::string MobileTrustInfo(const std::string& seed, const std::string& device_id) {
   mobile_controller::DeviceTrustIdentity trust(seed);
   return json{{"pairing", trust.PairingInfo(device_id.substr(0, device_id.find('@')), "CrossDesk HarmonyOS Mobile")},

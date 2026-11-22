@@ -75,6 +75,9 @@ class SessionManager {
     std::function<void(const std::string&)> error;
   };
   SessionManager(std::filesystem::path directory, Hooks hooks);
+  // Outgoing-only. The caller owns the registered peer and closes it after
+  // draining the manager, with the returned Session still alive for callbacks.
+  SessionManager(MiniRtcPeerPtr* controller_peer, Hooks hooks);
   ~SessionManager();
   Identity& identity() { return identity_; }
   // Refreshed by Tick; UI and listener maintenance share the same snapshot.
@@ -119,6 +122,7 @@ class SessionManager {
   void RetireListener(uint64_t id);
   void SetListenerError(const std::string& address, unsigned port,
                         const std::string& error);
+  MiniRtcPeerPtr* controller_peer_ = nullptr;
   Identity identity_;
   Hooks hooks_;
   Transport transport_;

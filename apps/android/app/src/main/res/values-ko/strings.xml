@@ -378,4 +378,8 @@
     <string name="text_1e5709f1b7a405da" formatted="false">"새 그룹(선택 사항)"</string>
     <string name="text_24c9c756f833ce88" formatted="false">"이 그룹에는 최근 연결이 없습니다."</string>
     <string name="text_9f07d2ce4115f575" formatted="false">"추가 작업"</string>
+    <string name="text_a598bc68e2440131" formatted="false">"기기 ID 또는 IP 주소"</string>
+    <string name="text_1be1c81002d880d1" formatted="false">"기기 ID 또는 유효한 IP 주소를 입력하세요"</string>
+    <string name="text_288a9a63177b76a1" formatted="false">"IP 직접 연결 비밀번호"</string>
+    <string name="text_53b856ab7ac9d8e2" formatted="false">"IP 직접 연결에 실패했습니다. 컴퓨터의 주소, 포트 및 네트워크를 확인하세요."</string>
 </resources>

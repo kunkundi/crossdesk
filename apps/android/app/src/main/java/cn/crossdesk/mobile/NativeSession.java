@@ -46,6 +46,7 @@ final class NativeSession implements AutoCloseable {
     private final SecretStore secrets;
     private final RemoteResolutionStore resolutionStore;
     private final String host, scope;
+    private final boolean direct;
     private volatile String remote;
     private String password, identity = "";
     private final int port;
@@ -79,6 +80,7 @@ final class NativeSession implements AutoCloseable {
     NativeSession(Context context, String host, int port, String remote, String password, Listener listener) {
         this.context = context.getApplicationContext(); this.listener = listener;
         this.host = host; this.port = port; this.remote = remote; this.password = password;
+        direct = remote.contains(":");
         scope = host.toLowerCase(java.util.Locale.ROOT) + ":" + port;
         secrets = new SecretStore(this.context);
         resolutionStore = new RemoteResolutionStore(this.context);
@@ -90,13 +92,14 @@ final class NativeSession implements AutoCloseable {
         main.postDelayed(timeout, 40000);
         execute(() -> {
             try {
-                identity = secrets.get(scope);
-                File certificates = exportTrust();
+                identity = direct ? "" : secrets.get(scope);
+                String certificates = direct ? "" : exportTrust().getAbsolutePath();
                 File logs = new File(context.getNoBackupFilesDir(), "logs");
                 if (!logs.isDirectory() && !logs.mkdirs()) throw new IllegalStateException("Log directory unavailable");
-                handle = nCreate(this, host, port, identity, logs.getAbsolutePath(), certificates.getAbsolutePath(), trustKey(context));
+                handle = nCreate(this, host, port, identity, logs.getAbsolutePath(), certificates, trustKey(context), direct);
                 if (handle == 0) { fail(L10n.tr("原生连接初始化失败")); return; }
                 nFileDirectory(handle,new File(documents.directory,"received").getAbsolutePath());
+                if (direct) tryJoin();
                 if (surface != null && surface.isValid()) nSurface(handle, surface);
             } catch (Exception error) { fail(L10n.tr("安全存储或证书初始化失败，请重试或清除应用数据")); }
         });
@@ -174,7 +177,7 @@ final class NativeSession implements AutoCloseable {
     private void ui(Runnable task) { main.post(() -> { if (!closed) task.run(); }); }
     private void fail(String reason) { ui(() -> { listener.ended(reason); close(); }); }
     private void tryJoin() {
-        if (handle == 0 || joining || remote.isEmpty() || !signalReady || identity.isEmpty()) return;
+        if (handle == 0 || joining || remote.isEmpty() || (!direct && (!signalReady || identity.isEmpty()))) return;
         joining = true;
         String base = identity.split("@", 2)[0];
         if (!nConnect(handle, base, remote, password)) fail(L10n.tr("无法发起远程连接"));
@@ -223,7 +226,8 @@ final class NativeSession implements AutoCloseable {
                     else {
                         String[] reasons = {"", "", "", L10n.tr("连接已断开"), L10n.tr("连接失败"), L10n.tr("远端已关闭连接"),
                                 L10n.tr("远端密码错误"), L10n.tr("找不到该设备 ID"), L10n.tr("远端当前不可用")};
-                        fail(status >= 0 && status < reasons.length ? reasons[status] : L10n.tr("连接已结束"));
+                        if (direct && status == 4) fail(L10n.tr("IP 直连失败，请检查电脑的直连地址和网络。"));
+                        else fail(status >= 0 && status < reasons.length ? reasons[status] : L10n.tr("连接已结束"));
                     }
                 } else if (type == 4) {
                     if(event.optInt("type",-1)==14){
@@ -383,9 +387,10 @@ final class NativeSession implements AutoCloseable {
     static native boolean nValidAppVersion(String version);
     static native boolean nHasAppUpdate(String version, byte[] releaseJson);
     static native String nCheckMobileUpdate(String version, byte[] releaseJson);
-    private static native long nCreate(NativeSession owner, String host, int port, String identity, String logs, String roots, String trustKey);
+    private static native long nCreate(NativeSession owner, String host, int port, String identity, String logs, String roots, String trustKey, boolean direct);
     private static native String nGenerateTrustKey();
     private static native String nTrustInfo(String seed, String deviceId);
+    static native String directEndpoint(String input);
     private static native boolean nConnect(long handle, String identity, String remote, String password);
     private static native void nReady(long handle,byte[] displayResolutions);
     private static native void nPointer(long handle, float x, float y, int flag, int wheel);

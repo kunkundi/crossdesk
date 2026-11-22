@@ -86,7 +86,7 @@ export class MobileStore {
   recent(scope: string): RecentDevice[] {
     try {
       const entries = JSON.parse(this.text(`recent:${scope}`, '[]')) as RecentDevice[];
-      return entries.filter((d: RecentDevice) => typeof d.id === 'string' && /^[0-9]{9}$/.test(d.id) && typeof d.name === 'string').slice(0, 20)
+      return entries.filter((d: RecentDevice) => typeof d.id === 'string' && (/^[0-9]{9}$/.test(d.id) || (d.id.includes(':') && bridge.mobileDirectEndpoint(d.id) === d.id)) && typeof d.name === 'string').slice(0, 20)
         .map((d: RecentDevice) => {
           d.alias = typeof d.alias === 'string' ? d.alias : '';
           d.groups = Array.isArray(d.groups) ? d.groups : [];

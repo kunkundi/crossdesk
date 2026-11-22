@@ -378,4 +378,8 @@
     <string name="text_1e5709f1b7a405da" formatted="false">"Novo grupo (opcional)"</string>
     <string name="text_24c9c756f833ce88" formatted="false">"Nenhuma conexão recente neste grupo"</string>
     <string name="text_9f07d2ce4115f575" formatted="false">"Mais ações"</string>
+    <string name="text_a598bc68e2440131" formatted="false">"ID do dispositivo ou endereço IP"</string>
+    <string name="text_1be1c81002d880d1" formatted="false">"Insira um ID de dispositivo ou um endereço IP válido"</string>
+    <string name="text_288a9a63177b76a1" formatted="false">"Senha de conexão IP direta"</string>
+    <string name="text_53b856ab7ac9d8e2" formatted="false">"Falha na conexão IP direta. Verifique o endereço, a porta e a rede do computador."</string>
 </resources>

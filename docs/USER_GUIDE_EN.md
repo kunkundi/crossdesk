@@ -50,12 +50,14 @@ The eye button shows or hides the local password, the refresh button generates a
 
 ### Connect directly over LAN
 
-The direct IP entry is available in the regular Windows, macOS, and Linux desktop clients. The computers must have mutually reachable IPv4 or IPv6 addresses. Internet access is optional, and there is no need to wait for a signaling server connection. Browsers, mobile clients, the Windows pre-sign-in service, and the Linux headless console currently use the device ID workflow.
+The regular Windows, macOS, and Linux desktop clients can initiate and accept direct IP sessions. Android, iOS, and HarmonyOS phones and tablets can initiate them. The controller and desktop host need mutually reachable IPv4 or IPv6 addresses. A signaling server connection is optional.
 
-1. **Enable and switch.** On both computers, select **Enable direct IP** under **Settings → General → Network** and save (enabled by default). Use the top-left button to switch to **Direct IP mode**.
+**From a phone or tablet.** Enable direct IP on the computer and copy its displayed address. Paste it into **Device ID or IP address** on the mobile home screen, tap **Connect**, and enter the computer’s **Direct IP password**. On iOS, allow Local Network access when prompted.
+
+1. **Enable and switch.** On each desktop client, select **Enable direct IP** under **Settings → General → Network** and save (enabled by default). Use the top-left button to switch to **Direct IP mode**.
 2. **Get the host address.** Read **Local IP / Port** on the host. The copy button copies the full `IP:port`. If several addresses are available, choose one reachable from the controller.
 3. **Connect and verify.** Enter an address such as `192.168.1.20:52888` or `[2001:db8::20]:52888` under **Remote IP / Port**, click **Connect**, and enter the host's six-character password for this mode. Omitting the port uses **52888**. Numeric IPv4 and IPv6 addresses are supported; hostnames are not.
-4. **Save and reconnect.** Select **Remember password** in the password dialog if needed. Recent connections are separated by ID / IP mode. Device records are kept even without a saved password; you will be prompted next time. Cards let you reconnect, rename devices, or remove records.
+4. **Save and reconnect.** Select **Remember password** in the password dialog if needed. Desktop clients show separate recent connections for ID and IP modes. Device records are kept even without a saved password; you will be prompted next time. Cards let you reconnect, rename devices, or remove records.
 
 <p align="center">
   <img src="images/desktop-lan-password-en.png" width="720" alt="Direct IP password dialog with Remember password and demonstration LAN devices in the background" />

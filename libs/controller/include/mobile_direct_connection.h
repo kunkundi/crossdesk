@@ -1,0 +1,38 @@
+/*
+ * @Author: DI JUNKUN
+ * @Date: 2026-11-23
+ * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
+ */
+
+#ifndef _MOBILE_DIRECT_CONNECTION_H_
+#define _MOBILE_DIRECT_CONNECTION_H_
+
+#include <functional>
+#include <memory>
+#include <string>
+
+#include "minirtc.h"
+
+namespace crossdesk::mobile_controller {
+
+// A controller borrows the platform's stream-configured peer for one outgoing
+// session. Start/Stop run on the platform RTC queue. Status is callback-safe.
+class DirectConnection {
+ public:
+  DirectConnection();
+  ~DirectConnection();
+  static std::string Endpoint(const std::string& input);
+  bool Start(MiniRtcPeerPtr* peer, const std::string& endpoint,
+             const std::string& password,
+             std::function<void(MiniRtcConnectionStatus)> notify);
+  bool Status(MiniRtcConnectionStatus status);
+  void Stop();
+
+ private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
+}  // namespace crossdesk::mobile_controller
+
+#endif

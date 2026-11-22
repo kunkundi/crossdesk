@@ -3,6 +3,18 @@
 #include <string>
 
 namespace {
+napi_value DirectEndpoint(napi_env env, napi_callback_info info) {
+  napi_value argument, result;
+  size_t count = 1, size = 0;
+  char input[161]{};
+  std::string endpoint;
+  if (napi_get_cb_info(env, info, &count, &argument, nullptr, nullptr) == napi_ok && count == 1 &&
+      napi_get_value_string_utf8(env, argument, nullptr, 0, &size) == napi_ok && size < sizeof(input) &&
+      napi_get_value_string_utf8(env, argument, input, sizeof(input), &size) == napi_ok)
+    endpoint = crossdesk::harmony::MobileDirectEndpoint(std::string(input, size));
+  napi_create_string_utf8(env, endpoint.data(), endpoint.size(), &result);
+  return result;
+}
 napi_value TrustKey(napi_env env, napi_callback_info) {
   try {
     const auto seed = crossdesk::harmony::MobileGenerateTrustKey();
@@ -58,6 +70,7 @@ napi_value Poll(napi_env env, napi_callback_info) {
 }
 napi_value Init(napi_env env, napi_value exports) {
   napi_property_descriptor properties[] = {
+    {"mobileDirectEndpoint", nullptr, DirectEndpoint, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"mobileGenerateTrustKey", nullptr, TrustKey, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"mobileTrustInfo", nullptr, TrustInfo, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"mobileCommand", nullptr, Command, nullptr, nullptr, nullptr, napi_default, nullptr},
