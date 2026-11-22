@@ -22,6 +22,16 @@
 
 </div>
 
+<p align="center">
+  <a href="https://www.star-history.com/kunkundi/crossdesk">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=kunkundi/crossdesk&amp;type=trending&amp;theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=kunkundi/crossdesk&amp;type=trending" />
+      <img alt="GitHub Trending Repository of the Day" src="https://api.star-history.com/badge?repo=kunkundi/crossdesk&amp;type=trending" />
+    </picture>
+  </a>
+</p>
+
 CrossDesk connects your computers from desktop, browser, mobile, and terminal clients, with DeskHub for viewing and controlling multiple devices together. It is built on [MiniRTC](https://github.com/kunkundi/minirtc) and supports self-hosting.
 
 [Features](#features) · [Download and platforms](#download) · [Build guide](#build) · [Quick start](#quick-start) · [Terminal CLI](#cli) · [Agent / MCP](#mcp) · [Direct IP](#lan-direct) · [Trusted devices](#trusted-devices) · [Preview](#preview) · [User guide](docs/USER_GUIDE_EN.md) · [Self-hosting](#self-hosting) · [Documentation and feedback](#development) · [Sponsor](#sponsor)

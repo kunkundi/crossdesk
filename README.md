@@ -22,6 +22,16 @@
 
 </div>
 
+<p align="center">
+  <a href="https://www.star-history.com/kunkundi/crossdesk">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=kunkundi/crossdesk&amp;type=trending&amp;theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=kunkundi/crossdesk&amp;type=trending" />
+      <img alt="GitHub Trending Repository of the Day" src="https://api.star-history.com/badge?repo=kunkundi/crossdesk&amp;type=trending" />
+    </picture>
+  </a>
+</p>
+
 CrossDesk 让你从电脑、浏览器、手机或终端（桌面 CLI）连接远端电脑，也能通过桌面墙（DeskHub）集中查看与操控多台设备。项目基于 [MiniRTC](https://github.com/kunkundi/minirtc)，支持自托管。
 
 [主要功能](#features) · [下载与平台支持](#download) · [构建指南](#build) · [快速连接](#quick-start) · [终端 CLI](#cli) · [Agent / MCP](#mcp) · [IP 直连](#lan-direct) · [可信设备](#trusted-devices) · [界面预览](#preview) · [使用指南](docs/USER_GUIDE.md) · [文档导航](docs/README.md) · [自托管](#self-hosting) · [文档与反馈](#development) · [赞助](#sponsor)
