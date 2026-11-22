@@ -12,10 +12,10 @@ import android.os.Looper;
 import android.view.PixelCopy;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
-import android.view.ScaleGestureDetector;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.widget.FrameLayout;
 
 @android.annotation.SuppressLint("ViewConstructor") // Constructed only with a live session, never from XML.
@@ -26,14 +26,15 @@ final class RemoteVideoView extends FrameLayout implements SurfaceHolder.Callbac
     final RemoteMouseInput mouseInput;
     Runnable remoteFocusChanged;
     private final GestureDetector gestures;
-    private final ScaleGestureDetector scales;
+    private final float pinchSlop;
     private final RemoteViewport viewport = new RemoteViewport();
     private final RemoteViewport pictureInPictureViewport = new RemoteViewport();
     private boolean pictureInPicture;
     private int frameWidth = 16, frameHeight = 9;
     private float x = .5f, y = .5f, scrollY;
-    private boolean dragging, twoFinger, relative, viewportGesture, viewportPanActive;
+    private boolean dragging, twoFinger, relative, pinching, viewportPanActive;
     private float lastX,lastY,twoFingerX,twoFingerY;
+    private float pinchSpan;
     private long touchRevision;
     private boolean suppressPointerGesture;
     void setRelative(boolean value) { releaseMouse(); relative=value; }
@@ -75,27 +76,8 @@ final class RemoteVideoView extends FrameLayout implements SurfaceHolder.Callbac
         });
         // Let the remote desktop detect double-clicks; the default listener consumes the second tap.
         gestures.setOnDoubleTapListener(null);
-        scales = new ScaleGestureDetector(context, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
-            @Override public boolean onScaleBegin(ScaleGestureDetector detector) {
-                if (mouseInput.hasVirtualButton()) return false;
-                // Pinches can start anywhere on the touch surface, including letterboxing.
-                if (viewport.width() <= 0 || viewport.height() <= 0) return false;
-                viewportGesture = true;
-                viewportPanActive = true;
-                return true;
-            }
-            @Override public boolean onScale(ScaleGestureDetector detector) {
-                viewport.zoomBy(detector.getScaleFactor(), detector.getFocusX(), detector.getFocusY());
-                applyViewport();
-                return true;
-            }
-            @Override public void onScaleEnd(ScaleGestureDetector detector) {
-                viewport.finishGesture();
-                applyViewport();
-            }
-        });
-        scales.setQuickScaleEnabled(false);
-        scales.setStylusScaleEnabled(false);
+        // Detect a change in finger spacing even when the fingers start close together.
+        pinchSlop = ViewConfiguration.get(context).getScaledTouchSlop() * .5f;
         cursor.setOnGenericMotionListener((v, event) -> {
             if (!point(event)) return true;
             if (event.getActionMasked() == MotionEvent.ACTION_SCROLL) {
@@ -180,46 +162,24 @@ final class RemoteVideoView extends FrameLayout implements SurfaceHolder.Callbac
     private boolean touch(MotionEvent e) {
         int action = e.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN) {
-            twoFinger = viewportGesture = viewportPanActive = false;
+            twoFinger = pinching = viewportPanActive = false;
             touchRevision = mouseInput.revision();
             suppressPointerGesture = mouseInput.hasVirtualButton();
         }
         if (action == MotionEvent.ACTION_POINTER_DOWN) {
             if (dragging) { mouseInput.gestureLeft(false); dragging = false; }
             twoFinger = true;
-            twoFingerX = focus(e,true,-1); twoFingerY = scrollY = focus(e,false,-1);
-            viewportPanActive = viewport.isZoomed() && viewport.contains(twoFingerX,twoFingerY);
             MotionEvent cancel = MotionEvent.obtain(e); cancel.setAction(MotionEvent.ACTION_CANCEL);
             gestures.onTouchEvent(cancel); cancel.recycle();
         }
-        scales.onTouchEvent(e);
-        if (twoFinger && action == MotionEvent.ACTION_MOVE && e.getPointerCount() >= 2) {
-            if (mouseInput.hasVirtualButton()) return true;
-            float focusX = focus(e,true,-1), focusY = focus(e,false,-1);
-            if (viewport.isZoomed() || viewportGesture || scales.isInProgress()) {
-                viewportGesture = true;
-                if (!viewportPanActive) viewportPanActive = viewport.contains(focusX,focusY);
-                if (viewportPanActive) {
-                    viewport.panBy(focusX-twoFingerX,focusY-twoFingerY);
-                    applyViewport();
-                }
-            } else if (viewport.contains(focusX,focusY)) {
-                float delta = focusY - scrollY;
-                if (Math.abs(delta) > 16 * getResources().getDisplayMetrics().density) {
-                    session.pointer(x,y,7,delta > 0 ? 1 : -1); scrollY = focusY;
-                }
-            }
-            twoFingerX = focusX; twoFingerY = focusY;
+        if (twoFinger && e.getPointerCount() >= 2 && (action == MotionEvent.ACTION_MOVE ||
+                action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_POINTER_UP)) {
+            updateTwoFingers(e);
         } else if (!twoFinger) {
             if ((e.getButtonState() & MotionEvent.BUTTON_SECONDARY) != 0 && action == MotionEvent.ACTION_DOWN) {
                 if (point(e)) click(3,4); return true;
             }
             gestures.onTouchEvent(e);
-        }
-        if (action == MotionEvent.ACTION_POINTER_UP) {
-            // Rebase when a finger lifts; never resume a click/drag until all lift.
-            twoFingerX = focus(e,true,e.getActionIndex());
-            twoFingerY = scrollY = focus(e,false,e.getActionIndex());
         }
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
             if (dragging) mouseInput.gestureLeft(false);
@@ -229,13 +189,58 @@ final class RemoteVideoView extends FrameLayout implements SurfaceHolder.Callbac
         }
         return true;
     }
-    private static float focus(MotionEvent event, boolean horizontal, int excludedIndex) {
-        float total = 0; int count = 0;
-        for (int i=0;i<event.getPointerCount();i++) {
-            if (i==excludedIndex) continue;
-            total += horizontal ? event.getX(i) : event.getY(i); count++;
+    private void updateTwoFingers(MotionEvent event) {
+        int action = event.getActionMasked();
+        int lifted = action == MotionEvent.ACTION_POINTER_UP ? event.getActionIndex() : -1;
+        int count = event.getPointerCount() - (lifted >= 0 ? 1 : 0);
+        float focusX = 0, focusY = 0;
+        for (int i = 0; i < event.getPointerCount(); i++) {
+            if (i == lifted) continue;
+            focusX += event.getX(i);
+            focusY += event.getY(i);
         }
-        return total / Math.max(1,count);
+        focusX /= count;
+        focusY /= count;
+        float radiusSum = 0;
+        for (int i = 0; i < event.getPointerCount(); i++) {
+            if (i == lifted) continue;
+            radiusSum += (float) Math.hypot(event.getX(i) - focusX, event.getY(i) - focusY);
+        }
+        float span = Math.max(pinchSlop, 2 * radiusSum / count);
+        boolean canMoveViewport = !mouseInput.hasVirtualButton() && viewport.width() > 0;
+        if (action == MotionEvent.ACTION_MOVE && canMoveViewport) {
+            moveTwoFingers(focusX, focusY, span);
+        } else {
+            // A change of contacts establishes a new baseline without moving the image.
+            pinchSpan = span;
+            pinching = pinching && count >= 2 && canMoveViewport;
+            viewportPanActive = viewport.isZoomed() && viewport.contains(focusX, focusY);
+            scrollY = focusY;
+        }
+        twoFingerX = focusX;
+        twoFingerY = focusY;
+    }
+    private void moveTwoFingers(float focusX, float focusY, float span) {
+        // Accumulate small span changes until the pinch threshold is crossed.
+        if (Math.abs(span - pinchSpan) >= pinchSlop) pinching = true;
+        if (pinching) {
+            viewport.zoomBy(span / pinchSpan, twoFingerX, twoFingerY);
+            pinchSpan = span;
+        }
+        if (pinching || viewport.isZoomed()) {
+            // Pinches can start in the letterbox. A pan alone starts over the image.
+            if (pinching || viewportPanActive || viewport.contains(focusX, focusY)) {
+                viewportPanActive = true;
+                viewport.panBy(focusX - twoFingerX, focusY - twoFingerY);
+                applyViewport();
+            }
+        } else if (viewport.contains(focusX, focusY)) {
+            float delta = focusY - scrollY;
+            if (Math.abs(delta) > 16 * getResources().getDisplayMetrics().density) {
+                session.pointer(x, y, 7, delta > 0 ? 1 : -1);
+                scrollY = focusY;
+            }
+        }
     }
     @Override public boolean performClick() { super.performClick(); return true; }
     @Override public void surfaceCreated(SurfaceHolder holder) { session.surface(holder.getSurface()); }
