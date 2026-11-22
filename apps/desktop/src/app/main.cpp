@@ -270,6 +270,10 @@ static int RunApplication(int argc, char* argv[]) {
   crossdesk::InitLogger(path_manager->GetLogPath().string());
 
 #ifdef _WIN32
+#if CROSSDESK_PORTABLE
+  // The first configuration save runs before the GUI creates its cache.
+  path_manager->CreateDirectories(path_manager->GetCachePath());
+#endif
   crossdesk::get_logger()->info(
       "CrossDesk executable: {}",
       std::filesystem::path(crossdesk::platform::CurrentExecutablePath()).u8string());

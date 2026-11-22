@@ -40,8 +40,6 @@ void GuiRuntime::InitializeLan() {
     // Direct initialization must not depend on cloud login/configuration having
     // successfully populated the managed peer's MiniRtcParams snapshot.
     MiniRtcParams params{};
-    std::snprintf(params.log_path, sizeof(params.log_path), "%s",
-                  dll_log_path_.c_str());
     params.hardware_acceleration = true;
     params.native_video_output = true;
     params.av1_encoding = config_center_->GetVideoEncodeFormat() ==
@@ -72,11 +70,11 @@ void GuiRuntime::InitializeLan() {
       props->peer_events_ = events;
       props->local_id_ = session->local_id;
     }
-    return [this, session, events, params, displays] {
+    return [this, session, events, params, displays, log_directory = dll_log_path_] {
       lan::SessionManager::Prepared result;
       result.callback_owner = events;
       result.drain_callbacks = [events] { events->Deactivate(); };
-      result.peer = MiniRtcCreatePeer(&params);
+      result.peer = MiniRtcCreatePeerWithLogDirectory(&params, log_directory.c_str());
       events->SetDirectPeer(result.peer);
       if (result.peer) RegisterStreams(result.peer, displays);
       return result;

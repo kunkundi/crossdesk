@@ -1,5 +1,8 @@
 #include "path_manager.h"
 
+#include <clocale>
+#include <mutex>
+
 #include "platform/path_backend.h"
 
 #ifndef CROSSDESK_PORTABLE
@@ -25,7 +28,14 @@ std::filesystem::path GetPortableRootPath() {
 
 namespace crossdesk {
 
-PathManager::PathManager(const std::string& app_name) : app_name_(app_name) {}
+PathManager::PathManager(const std::string& app_name) : app_name_(app_name) {
+#if defined(_WIN32) && CROSSDESK_PORTABLE
+  // Older Windows versions ignore the UTF-8 manifest. Initialize each static
+  // CRT (including the WGC plug-in's) before converting portable paths.
+  static std::once_flag path_encoding;
+  std::call_once(path_encoding, [] { std::setlocale(LC_CTYPE, ".UTF8"); });
+#endif
+}
 
 std::filesystem::path PathManager::GetConfigPath() {
 #if CROSSDESK_PORTABLE
