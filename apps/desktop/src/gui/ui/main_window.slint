@@ -1,5 +1,6 @@
 import { SurfaceSeparator, FlatSurface, UiSurface } from "ui_surface.slint";
 import { TrustedDevicesDialog, TrustedDeviceEntry, TrustStrings } from "trusted_devices.slint";
+import { ControllerEntry, ServerPanel, ServerStrings } from "server_window.slint";
 import { LanStrings } from "lan_strings.slint";
 import { AboutPanel, AboutPage, AboutComponent, AboutStrings, AboutNavigationRow, AboutNavigationGroup, AboutRowSeparator } from "about_panel.slint";
 import { FeedbackPanel, FeedbackStrings } from "feedback_panel.slint";
@@ -476,6 +477,17 @@ export component MainWindow inherits Window {
     out property <length> minimum-window-height:
         (root.gallery-mode ? 448px : 472px) + root.titlebar-height;
     private property <length> wayland-corner-radius: 12px;
+    in property <[ControllerEntry]> controllers;
+    in-out property <int> selected-controller: 0;
+    in-out property <bool> controller-panel-open: false;
+    in-out property <bool> confirming-disconnect: false;
+    callback controller-selected(int);
+    callback send-controller-file(string);
+    callback disconnect-controller(string);
+    callback disconnect-all-controllers();
+    changed controller-panel-open => {
+        if !root.controller-panel-open { root.confirming-disconnect = false; }
+    }
     in property <string> local-id: "";
     in property <string> local-password: "";
     in property <bool> ip-direct-enabled: true;
@@ -865,7 +877,7 @@ export component MainWindow inherits Window {
     in-out property <bool> sponsorship-open: false;
     // Automatic prompts must not interrupt another dialog or menu.
     private property <bool> sponsorship-unobstructed: !root.gallery-mode
-        && !root.menu-open && !root.settings-open
+        && !root.controller-panel-open && !root.menu-open && !root.settings-open
         && !root.self-host-settings-open && !root.about-open && !root.feedback-open
         && !(root.update-open && root.update-available) && !root.messages-open
         && !root.update-confirm-open
@@ -1309,6 +1321,37 @@ export component MainWindow inherits Window {
             text: GalleryStrings.texts[54];
             z: 8;
             clicked => { root.open-gallery(); }
+        }
+        controlled-button := WorkbenchButton {
+            visible: !root.gallery-mode && root.controllers.length > 0;
+            x: menu-button.x - self.width - 8px;
+            y: menu-button.y + (menu-button.height - self.height) / 2;
+            z: 8;
+            width: badge-content.preferred-width; height: 26px;
+            normal-background: #fff1d4; hover-background: #ffe7b5; pressed-background: #ffdc98;
+            normal-outline-color: #eab95f; text-color: #784308;
+            tooltip: ServerStrings.heading + " · " + GalleryStrings.device-count(root.controllers.length);
+            tooltip-suppressed: root.controller-panel-open;
+            accessible-expandable: true;
+            accessible-expanded: root.controller-panel-open;
+            clicked => { root.menu-open = false; root.controller-panel-open = !root.controller-panel-open; }
+            badge-content := HorizontalLayout {
+                alignment: center; padding-left: 9px; padding-right: 8px; spacing: 4px;
+                Text {
+                    text: FontAwesomeIcons.display; font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 12px;
+                    color: controlled-button.text-color; vertical-alignment: center; accessible-role: none;
+                }
+                Text {
+                    text: ServerStrings.controlled-prefix + root.controllers.length + ServerStrings.controlled-suffix;
+                    font-size: 12px; font-weight: 600; color: controlled-button.text-color;
+                    vertical-alignment: center; accessible-role: none;
+                }
+                Text {
+                    text: root.controller-panel-open ? FontAwesomeIcons.angle-up : FontAwesomeIcons.angle-down;
+                    font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 11px;
+                    color: controlled-button.text-color; vertical-alignment: center; accessible-role: none;
+                }
+            }
         }
         menu-button := WorkbenchButton {
             visible: !root.gallery-mode;
@@ -2197,17 +2240,40 @@ export component MainWindow inherits Window {
         }
     }
 
-    // Dismiss the application menu when clicking anywhere outside of it.
-    if !root.gallery-mode && root.menu-open: TouchArea {
+    // Both toolbar dropdowns dismiss on an outside click.
+    if !root.gallery-mode && (root.menu-open || root.controller-panel-open): TouchArea {
         x: 0px;
         y: 0px;
         width: parent.width;
         height: parent.height;
         z: 9;
         clicked => {
-            root.menu-open = false;
-            focus-sink.focus();
+            if root.controller-panel-open {
+                root.controller-panel-open = false;
+                controlled-button.focus();
+            } else {
+                root.menu-open = false;
+                focus-sink.focus();
+            }
         }
+    }
+
+    if !root.gallery-mode && root.controller-panel-open: ServerPanel {
+        x: controlled-button.x + controlled-button.width - self.width;
+        y: controlled-button.y + controlled-button.height + 6px;
+        width: self.preferred-width;
+        height: min(self.content-height, parent.height - self.y - 8px);
+        border-radius: UiRadius.menu;
+        z: 10;
+        controllers: root.controllers;
+        selected-controller <=> root.selected-controller;
+        confirming-disconnect <=> root.confirming-disconnect;
+        controller-selected(index) => { root.controller-selected(index); }
+        select-file => { root.send-controller-file(root.controllers[root.selected-controller].remote-id); }
+        disconnect-controller(id) => { root.disconnect-controller(id); }
+        disconnect-all => { root.disconnect-all-controllers(); }
+        dismiss-panel => { root.controller-panel-open = false; controlled-button.focus(); }
+        init => { self.focus(); }
     }
 
     // Expand downward from the application toolbar.

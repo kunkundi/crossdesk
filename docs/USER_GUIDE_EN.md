@@ -123,6 +123,8 @@ Switch devices using session tabs. Expand the control bar if it is collapsed, an
 | Fullscreen | Enter / exit fullscreen |
 | Disconnect | End the current remote session |
 
+When a controller connects, the host shows **Controlled** and the number of connected devices to the left of the **☰** menu in the upper-right corner of the main window. Select **Controlled** to open a dropdown listing the controllers. From there you can send a file or disconnect a session. Click outside the dropdown or press Esc to close it.
+
 Desktop clients synchronize text clipboard contents. Configure the receiving directory under **Settings → General → File Save Path**. Closing the main window hides it and keeps the app running; use the system tray or menu-bar exit command to quit completely.
 
 Windows, macOS, and Linux desktop clients support bidirectional file copy and paste when both ends use a version with on-demand pasting. Copy files in the system file manager and return to the current remote session to synchronize the file list only. The transfer starts when you paste on the other computer, using the context menu or `Ctrl+V` on Windows/Linux and `⌘V` in macOS Finder. A compact receiving progress card appears on the destination computer, and the original paste continues automatically after downloading; no second paste is needed. You can also copy remotely and paste locally without opening the transfer window.

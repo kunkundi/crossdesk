@@ -24,7 +24,10 @@ template <typename Component>
 void ApplyServerStrings(const Component& component, int language_index) {
   const int language = localization::detail::ClampLanguageIndex(language_index);
   auto& strings = component->template global<ui::ServerStrings>();
-  strings.set_controlled(Text(localization::server_controlled[language]));
+  const auto& badge = localization::Literal("被控中 · {0} 台", language);
+  const auto count = badge.find("{0}");
+  strings.set_controlled_prefix(Text(badge.substr(0, count)));
+  strings.set_controlled_suffix(Text(count == std::string::npos ? "" : badge.substr(count + 3)));
   strings.set_heading(Text(localization::server_heading[language]));
   strings.set_connected(Text(localization::server_connected[language]));
   strings.set_send_file(Text(localization::server_send_file[language]));

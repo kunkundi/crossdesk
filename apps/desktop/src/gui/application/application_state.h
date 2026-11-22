@@ -59,17 +59,6 @@ struct StreamWindowState {
   bool control_mouse_ = false;
 };
 
-struct ServerWindowState {
-  // Transport callbacks run outside the UI thread. Keep the two lifecycle
-  // requests atomic so a disconnect cannot be lost while the Slint timer is
-  // deciding whether to create or destroy the controlled-side window.
-  std::atomic<bool> need_to_create_server_window_{false};
-  std::atomic<bool> need_to_destroy_server_window_{false};
-  bool server_window_created_ = false;
-  bool server_window_inited_ = false;
-  bool server_window_collapsed_ = false;
-};
-
 struct UiState {
   bool rejoin_ = false;
   bool show_password_ = true;
@@ -77,6 +66,7 @@ struct UiState {
   bool fullscreen_button_pressed_ = false;
   bool is_client_mode_ = false;
   std::atomic<bool> is_server_mode_{false};
+  std::atomic<bool> incoming_controllers_changed_{false};
   bool reload_recent_connections_ = true;
   bool show_offline_warning_window_ = false;
   std::string offline_warning_text_;
@@ -87,7 +77,6 @@ struct ApplicationState : MainWindowState,
                           InteractionState,
                           UpdateState,
                           StreamWindowState,
-                          ServerWindowState,
                           UiState {};
 
 }  // namespace crossdesk::gui_detail

@@ -21,6 +21,8 @@ export component WorkbenchButton inherits FlatSurface {
     in property <color> text-color: root.destructive || root.primary ? white : WorkbenchStyle.text;
     in property <color> normal-outline-color: ButtonStyle.border;
     in property <color> normal-background: ButtonStyle.surface;
+    in property <color> hover-background: ButtonStyle.hover;
+    in property <color> pressed-background: ButtonStyle.pressed;
     in property <string> icon;
     in property <string> tooltip;
     in property <bool> tooltip-above: false;
@@ -61,7 +63,7 @@ export component WorkbenchButton inherits FlatSurface {
             : (touch.pressed ? ButtonStyle.pressed : touch.has-hover ? ButtonStyle.hover : ButtonStyle.surface))
         : root.primary
         ? (touch.pressed ? #254cc0 : touch.has-hover ? #4574f0 : WorkbenchStyle.accent)
-        : (touch.pressed ? ButtonStyle.pressed : touch.has-hover ? ButtonStyle.hover : root.quiet ? transparent : root.normal-background);
+        : (touch.pressed ? root.pressed-background : touch.has-hover ? root.hover-background : root.quiet ? transparent : root.normal-background);
     opacity: root.enabled ? 1 : 0.45;
     animate background, outline-color { duration: 120ms; }
     forward-focus: button-focus;

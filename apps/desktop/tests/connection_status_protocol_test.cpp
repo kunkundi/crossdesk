@@ -132,7 +132,7 @@ int main() {
   ok &= ExpectNotContains("connection_runtime.cpp", connection_runtime_cpp,
                           "ControllerHeartbeat");
   ok &= ExpectContains("application_state.h", application_state_h,
-                       "std::atomic<bool> need_to_destroy_server_window_");
+                       "std::atomic<bool> incoming_controllers_changed_");
 
   return ok ? 0 : 1;
 }

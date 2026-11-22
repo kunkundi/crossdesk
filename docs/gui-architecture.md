@@ -14,7 +14,7 @@ apps/desktop/src/gui/
 │   ├── gui_application.h            # GuiApplication 声明
 │   ├── gui_application.cpp          # 初始化、UI 回调、状态同步和清理
 │   ├── application_state.h          # 窗口、交互和 UI 状态
-│   ├── server_window_state.h        # 被控端窗口的控制端选择逻辑
+│   ├── server_window_state.h        # 被控连接列表的控制端选择逻辑
 │   └── window_geometry.h           # 窗口定位计算
 ├── rendering/                       # Slint 与原生视频渲染器的衔接
 │   └── slint_video_presenter.h/.cpp # 视频纹理呈现与渲染通知
@@ -39,7 +39,7 @@ apps/desktop/src/gui/
 │   ├── common.slint                 # 共享控件、字体尺寸、颜色和图标字形
 │   ├── main_window.slint            # 主窗口、面板、设置及对话框
 │   ├── stream_window.slint          # 串流窗口、标签页和控制栏
-│   ├── server_window.slint          # 被控端窗口
+│   ├── server_window.slint          # 主窗口内的被控会话面板
 │   ├── ui_localization.h           # 本地化数据到 Slint 属性的映射
 │   └── icons/                      # SVG 图标资源
 └── assets/                          # 嵌入字体和本地化数据
@@ -92,7 +92,7 @@ Render
 `GuiApplication` 是 Slint 应用外壳，负责：
 
 - 初始化日志、配置、SDL 和功能模块；
-- 创建、销毁 Slint 主窗口、串流窗口和被控端窗口；
+- 创建、销毁 Slint 主窗口和串流窗口；
 - 运行 Slint 事件循环，通过定时器执行 `Tick()` 和视频帧调度；
 - 将 Slint 回调转换为连接、键盘和鼠标操作，并处理 SDL 退出及剪贴板事件；
 - 将运行时状态同步到 Slint 属性和模型，并管理原生视频呈现；
@@ -230,7 +230,7 @@ Slint quit / SDL quit / tray exit
 | 配置持久化 | `features/settings/` |
 | 主窗口内嵌区域、设置和对话框 | `ui/main_window.slint` |
 | 串流标签页、控制栏和统计面板 | `ui/stream_window.slint` |
-| 被控端窗口 | `ui/server_window.slint` |
+| 主窗口内的被控会话面板 | `ui/server_window.slint` |
 | 共享控件、字体尺寸、颜色和图标字形 | `ui/common.slint` |
 | 系统托盘 | `apps/desktop/src/platform/<os>/gui/tray/` |
 | 嵌入字体和本地化数据 | `assets/` |

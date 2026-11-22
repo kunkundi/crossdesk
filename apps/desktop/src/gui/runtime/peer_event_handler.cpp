@@ -513,7 +513,6 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
     }
   } else {
     runtime->is_client_mode_ = false;
-    runtime->show_connection_status_window_ = true;
     if (disconnected) {
       runtime->HandleServerControllerDisconnected(remote_id, "connection_closed");
       return;
@@ -530,6 +529,7 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
         runtime->ApplyPrivacyAdmission(automatic_enable);
       }
       runtime->connection_status_[remote_id] = status;
+      runtime->incoming_controllers_changed_ = true;
       if (status == MiniRtcConnectionStatus::MiniRtcConnectionConnected)
         runtime->remote_input_.Connect(remote_id);
 #if _WIN32
@@ -548,10 +548,6 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
       if (!runtime->managed_host_frontend_ || handler->IsDirect())
         runtime->AnnounceHostCapabilities(remote_id);
 
-      runtime->need_to_destroy_server_window_.store(
-          false, std::memory_order_release);
-      runtime->need_to_create_server_window_.store(true,
-                                                   std::memory_order_release);
       runtime->is_server_mode_ = true;
       runtime->devices_.StartSpeakerCapturer();
       runtime->remote_client_id_ = remote_id;

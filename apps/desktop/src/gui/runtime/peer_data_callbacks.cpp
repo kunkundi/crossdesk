@@ -555,6 +555,7 @@ void PeerEventHandler::OnReceiveDataBuffer(
       {
         std::unique_lock lock(runtime->connection_status_mutex_);
         runtime->connection_host_names_[remote_id] = host_name;
+        runtime->incoming_controllers_changed_ = true;
         if (source_id == runtime->control_data_label_) {
           if (remote_action.i.supports_video_codec_status)
             runtime->codec_status_controllers_.insert(remote_id);

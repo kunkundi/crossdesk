@@ -57,7 +57,6 @@ private:
   void BindMainCallbacks(bool gallery_window = false);
   void BindTrustedDeviceCallbacks(bool gallery_window = false);
   void BindStreamCallbacks();
-  void BindServerCallbacks();
   void Tick();
 #ifdef _WIN32
   void TickLocalHost();
@@ -103,15 +102,13 @@ private:
   void ConfigureStreamVideoRenderer();
   void SyncStreamKeyboardFocus();
   void SetStreamKeyboardFocus(bool focused);
-  void SyncServerWindow();
+  void SyncIncomingControllers();
   void SyncTrustedDevices();
   void SyncFileTransferNotifications();
   void SyncClipboardFileNotification();
   void OpenFileManager(const std::string& remote);
   std::string FileManagerPeerName(const std::string& remote);
   void CancelFileTransfer(uint32_t file_id);
-  void SetServerPanelExpanded(bool expanded);
-  void PositionServerWindows();
 #if (defined(__linux__) && !defined(__OHOS__)) && !defined(__APPLE__)
   void SyncXWaylandWindowActivation();
 #endif

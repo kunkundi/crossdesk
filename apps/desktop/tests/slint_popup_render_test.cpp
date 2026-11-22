@@ -408,11 +408,11 @@ bool VerifyServerPanel(RenderTestPlatform& platform) {
   if (!Check(selected == 1, "Controlled-side controller selection must respond to a held click")) return false;
   const auto normal_height = screen.extent.height;
   screen.Click(180, 123, 4);
-  if (!Check(panel->get_confirming_disconnect() && screen.extent.height == normal_height + 36,
-             "Disconnect confirmation must expand immediately")) return false;
+  if (!Check(panel->get_confirming_disconnect() && screen.extent.height == normal_height,
+             "Disconnect confirmation must use the space reserved below the buttons")) return false;
   screen.Click(110, 123, 4);
   if (!Check(!panel->get_confirming_disconnect() && disconnected == 0 && screen.extent.height == normal_height,
-             "Cancel must collapse the controlled-side confirmation")) return false;
+             "Cancel must clear the confirmation and preserve the panel height")) return false;
   screen.Click(180, 123, 4);
   screen.Click(180, 123, 4);
   if (!Check(disconnected == 1 && !panel->get_confirming_disconnect(),

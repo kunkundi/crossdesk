@@ -202,6 +202,7 @@ void GuiRuntime::HandleServerControllerDisconnected(
   {
     std::unique_lock lock(connection_status_mutex_);
     connection_status_.erase(remote_id);
+    incoming_controllers_changed_ = true;
     preview_subscriptions_.Remove(remote_id);
     disconnect_lock_.Disconnected(remote_id,
         config_center_->IsLockOnDisconnect() &&
@@ -238,8 +239,6 @@ void GuiRuntime::HandleServerControllerDisconnected(
 
   LOG_INFO("Last remote controller disconnected; recovering privacy, reason={}",
            reason ? reason : "unknown");
-  need_to_create_server_window_.store(false, std::memory_order_release);
-  need_to_destroy_server_window_.store(true, std::memory_order_release);
   is_server_mode_ = false;
   devices_.StopSpeakerCapturer();
   start_mouse_controller_ = false;

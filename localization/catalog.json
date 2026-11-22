@@ -7440,6 +7440,18 @@
       "es": "Controlado",
       "pt-BR": "Controlado"
     },
+    "被控中 · {0} 台": {
+      "zh-Hans": "被控中 · {0} 台",
+      "en": "Controlled · {0}",
+      "ru": "Под управлением · {0}",
+      "zh-Hant": "被控中 · {0} 臺",
+      "ja": "遠隔操作中 · {0} 台",
+      "ko": "원격 제어 중 · {0}대",
+      "de": "Ferngesteuert · {0}",
+      "fr": "Sous contrôle · {0}",
+      "es": "Controlado · {0}",
+      "pt-BR": "Controlado · {0}"
+    },
     "被控端不支持直接输入中文，请更新 macOS 被控端；也可先复制文字，通过远控菜单的剪贴板发送后粘贴": {
       "zh-Hans": "被控端不支持直接输入中文，请更新 macOS 被控端；也可先复制文字，通过远控菜单的剪贴板发送后粘贴",
       "en": "The controlled terminal does not support direct input of Chinese, please update the macOS controlled terminal; you can also copy the text first, send it through the clipboard of the remote control menu and then paste it",
@@ -12634,6 +12646,7 @@
       "自托管设置",
       "自托管配置",
       "被控中",
+      "被控中 · {0} 台",
       "被控端已通过组合键解除隐私屏。点击“锁定”将重新开启隐私屏，并禁止本机使用组合键解锁。",
       "被控端编码器",
       "被控端编码器  ",

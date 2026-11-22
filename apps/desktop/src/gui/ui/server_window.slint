@@ -1,7 +1,7 @@
 import { FlatSurface, UiSurface } from "ui_surface.slint";
 import { UiRadius } from "ui_radius.slint";
 import { ScrollView } from "std-widgets.slint";
-import { FontAwesomeIcons, FloatingBarStyle, ButtonStyle } from "common.slint";
+import { ButtonStyle } from "common.slint";
 
 export struct ControllerEntry {
     remote-id: string,
@@ -9,7 +9,8 @@ export struct ControllerEntry {
 }
 
 export global ServerStrings {
-    in property <string> controlled: "被控中";
+    in property <string> controlled-prefix: "被控中 · ";
+    in property <string> controlled-suffix: " 台";
     in property <string> heading: "此设备被控中";
     in property <string> connected: "已连接";
     in property <string> send-file: "发送文件";
@@ -22,12 +23,14 @@ export global ServerStrings {
 
 component SessionButton inherits FlatSurface {
     in property <string> text;
+    in property <string> alternate-text;
+    in property <bool> show-alternate;
     in property <bool> danger: false;
     in property <bool> enabled: true;
     private property <bool> keyboard-focus: false;
     private property <bool> pointer-feedback: true;
     callback clicked;
-    width: label.preferred-width + 20px;
+    width: max(label.preferred-width, other-label.preferred-width) + 20px;
     height: 28px;
     border-radius: UiRadius.control;
     outline-enabled: !root.danger;
@@ -39,10 +42,16 @@ component SessionButton inherits FlatSurface {
     animate background, outline-color { duration: 120ms; }
     opacity: root.enabled ? 1 : 0.5;
     accessible-role: button;
-    accessible-label: root.text;
+    accessible-label: label.text;
     accessible-action-default => { if root.enabled { root.pointer-feedback = false; root.clicked(); } }
+    other-label := Text {
+        visible: false; accessible-role: none;
+        text: root.show-alternate ? root.text : root.alternate-text;
+        font-size: label.font-size;
+    }
     label := Text {
-        text: root.text; color: root.danger ? white : #24272d;
+        text: root.show-alternate ? root.alternate-text : root.text;
+        color: root.danger ? white : #24272d;
         font-size: 12px; horizontal-alignment: center; vertical-alignment: center;
     }
     forward-focus: keyboard;
@@ -82,74 +91,10 @@ component SessionButton inherits FlatSurface {
     }
 }
 
-// A separate native window keeps the collapsed footprint as small as the bar.
-export component ServerStatusBar inherits Window {
-    title: "CrossDesk";
-    no-frame: true;
-    always-on-top: true;
-    background: transparent;
-    in property <int> controller-count: 1;
-    in property <bool> expanded: false;
-    in property <bool> opens-above: false;
-    in property <bool> dragged: false;
-    out property <length> bar-width: label.preferred-width + 48px;
-    preferred-width: root.bar-width;
-    preferred-height: 36px;
-    min-width: root.bar-width; max-width: root.bar-width;
-    min-height: 36px; max-height: 36px;
-    callback toggle-panel;
-    callback dismiss-panel;
-    callback title-drag(int, length, length);
-    callback move-anchor(float);
-    forward-focus: keyboard;
-    keyboard := FocusScope {
-        key-pressed(event) => {
-            if event.text == Key.Return || event.text == " " { root.toggle-panel(); return accept; }
-            if event.text == Key.Escape { root.dismiss-panel(); return accept; }
-            if event.text == Key.UpArrow { root.move-anchor(-0.05); return accept; }
-            if event.text == Key.DownArrow { root.move-anchor(0.05); return accept; }
-            return reject;
-        }
-    }
-    FlatSurface {
-        x: 0px; y: 0px; width: parent.width; height: parent.height;
-        background: touch.pressed ? #dfe3e9 : touch.has-hover ? #f3f4f6 : white;
-        outline-color: UiSurface.edge;
-        border-radius: FloatingBarStyle.corner-radius;
-        border-top-right-radius: 0px;
-        border-bottom-right-radius: 0px;
-    }
-    label := Text {
-        x: 10px; width: root.width - 38px; height: root.height;
-        text: ServerStrings.controlled + (root.controller-count > 1 ? " · " + root.controller-count : "");
-        color: #24272d; font-size: 14px; vertical-alignment: center;
-    }
-    Text {
-        x: root.width - 26px; width: 18px; height: root.height;
-        text: root.opens-above != root.expanded ? FontAwesomeIcons.angle-up : FontAwesomeIcons.angle-down;
-        color: #24272d; font-family: "Font Awesome 6 Free"; font-weight: 900;
-        font-size: 12px; horizontal-alignment: center; vertical-alignment: center;
-    }
-    touch := TouchArea {
-        property <int> phase: self.pressed ? 1 : 0;
-        changed phase => { root.title-drag(self.phase, self.mouse-x, self.mouse-y); }
-        moved => { if self.pressed { root.title-drag(2, self.mouse-x, self.mouse-y); } }
-        clicked => { keyboard.focus(); if !root.dragged { root.toggle-panel(); } }
-    }
-    accessible-role: button;
-    accessible-label: label.text;
-    accessible-action-default => { root.toggle-panel(); }
-}
-
-export component ServerWindow inherits Window {
-    title: "CrossDesk";
-    icon: @image-url("../../../resources/linux/crossdesk_256x256.png");
-    preferred-width: 225px; min-width: 225px; max-width: 225px;
+export component ServerPanel inherits Rectangle {
+    preferred-width: 225px;
     preferred-height: root.content-height;
-    no-frame: true;
-    always-on-top: true;
-    background: transparent;
-    default-font-size: 12px;
+    border-radius: UiRadius.surface;
     in property <[ControllerEntry]> controllers;
     in-out property <int> selected-controller: 0;
     in property <bool> sending-file: false;
@@ -160,9 +105,10 @@ export component ServerWindow inherits Window {
     in property <string> file-size-text;
     in-out property <bool> confirming-disconnect: false;
     private property <length> footer-height: send-file.width + disconnect-all.width + 6px > 205px ? 62px : 28px;
+    private property <length> confirmation-space: root.controllers.length > 1 ? 6px + confirmation.preferred-height : 0px;
     private property <string> hovered-name;
     private property <length> tooltip-y;
-    out property <length> content-height: 10px + 24px + (root.controllers.length > 1 ? min(root.controllers.length, 6) * 34px : 28px) + 8px + root.footer-height + 10px + (root.confirming-disconnect ? 36px : 0px) + (root.file-transfer-visible ? 58px : 0px);
+    out property <length> content-height: 10px + 24px + (root.controllers.length > 1 ? min(root.controllers.length, 6) * 34px : 28px) + 8px + root.footer-height + 10px + root.confirmation-space + (root.file-transfer-visible ? 58px : 0px);
     callback controller-selected(int);
     callback select-file;
     callback disconnect-controller(string);
@@ -177,7 +123,8 @@ export component ServerWindow inherits Window {
         FlatSurface {
             width: root.width; height: root.height;
             background: white; outline-color: UiSurface.edge;
-            border-radius: UiRadius.surface;
+            border-radius: root.border-radius;
+            TouchArea { }
             Text {
                 x: 10px; y: 10px; width: parent.width - 20px; height: 24px;
                 text: ServerStrings.heading + (root.controllers.length > 1 ? " · " + root.controllers.length : "");
@@ -185,7 +132,7 @@ export component ServerWindow inherits Window {
             }
             list := ScrollView {
                 x: 10px; y: 34px; width: parent.width - 20px;
-                height: max(0px, root.height - 34px - root.footer-height - 18px - (root.confirming-disconnect ? 36px : 0px) - (root.file-transfer-visible ? 58px : 0px));
+                height: max(0px, root.height - 34px - root.footer-height - 18px - root.confirmation-space - (root.file-transfer-visible ? 58px : 0px));
                 viewport-width: self.visible-width;
                 viewport-height: root.controllers.length * (root.controllers.length > 1 ? 34px : 28px);
                 for controller[index] in root.controllers: row := Rectangle {
@@ -250,7 +197,9 @@ export component ServerWindow inherits Window {
                 send-file := SessionButton {
                     x: root.footer-height > 28px ? parent.width - self.width : disconnect-all.x - self.width - 6px;
                     y: 0px;
-                    text: root.confirming-disconnect ? ServerStrings.cancel : ServerStrings.send-file;
+                    text: ServerStrings.send-file;
+                    alternate-text: root.controllers.length > 1 ? ServerStrings.cancel : "";
+                    show-alternate: root.confirming-disconnect;
                     // Additional files join the queue while the current transfer continues.
                     clicked => { if root.confirming-disconnect { root.confirming-disconnect = false; } else { root.select-file(); } }
                 }
@@ -265,8 +214,9 @@ export component ServerWindow inherits Window {
                     }
                 }
             }
-            if root.confirming-disconnect: Text {
-                x: 10px; y: footer.y + footer.height + 6px; width: parent.width - 20px; height: 30px;
+            confirmation := Text {
+                visible: root.confirming-disconnect;
+                x: 10px; y: footer.y + footer.height + 6px; width: parent.width - 20px; height: self.preferred-height;
                 text: ServerStrings.confirm-disconnect; color: #d92d20; font-size: 12px; wrap: word-wrap;
             }
             if root.file-transfer-visible: VerticalLayout {
@@ -283,4 +233,23 @@ export component ServerWindow inherits Window {
             tip := Text { x: 6px; y: 6px; width: parent.width - 12px; text: root.hovered-name; color: white; font-size: 12px; wrap: word-wrap; }
         }
     }
+}
+
+// Standalone surface for UI snapshots and component rendering tests.
+export component ServerWindow inherits Window {
+    preferred-width: 225px;
+    preferred-height: panel.content-height;
+    in property <[ControllerEntry]> controllers <=> panel.controllers;
+    in property <bool> sending-file <=> panel.sending-file;
+    in property <bool> file-transfer-visible <=> panel.file-transfer-visible;
+    in property <float> file-progress <=> panel.file-progress;
+    in property <string> file-progress-text <=> panel.file-progress-text;
+    in property <string> current-file-name <=> panel.current-file-name;
+    in property <string> file-size-text <=> panel.file-size-text;
+    out property <bool> confirming-disconnect <=> panel.confirming-disconnect;
+    out property <length> content-height <=> panel.content-height;
+    callback controller-selected <=> panel.controller-selected;
+    callback select-file <=> panel.select-file;
+    callback disconnect-all <=> panel.disconnect-all;
+    panel := ServerPanel {}
 }
