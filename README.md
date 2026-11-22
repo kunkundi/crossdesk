@@ -16,11 +16,14 @@
 [![License: GPL v3](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/kunkundi/crossdesk?style=flat&label=stars)](https://github.com/kunkundi/crossdesk/stargazers)
 
-[![爱发电](https://img.shields.io/badge/%E7%88%B1%E5%8F%91%E7%94%B5-946CE6?logo=afdian&logoColor=white)](https://afdian.com/a/kunkundi)
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-FF6433?logo=kofi&logoColor=white)](https://ko-fi.com/kunkundi)
-[![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-C93C45?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/kunkundi)
-
 </div>
+
+<p align="center">
+  <strong><a href="#sponsor">特别赞助</a></strong><br />
+  <a href="https://crossdesk.hualong-ai.com/">
+    <img src="apps/desktop/src/gui/ui/icons/sponsors/hualongai.png" width="80" height="80" align="middle" alt="" />&nbsp;<strong>HuaLongAI&nbsp;华龙算力</strong>&nbsp;↗
+  </a>
+</p>
 
 <p align="center">
   <a href="https://trendshift.io/repositories/17514?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-17514" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/17514" alt="kunkundi%2Fcrossdesk | Trendshift" width="250" height="55"/></a>
@@ -319,11 +322,21 @@ PC 端可控制和被控制，复用桌面界面与桌面墙；手机和平板�
 
 <a id="sponsor"></a>
 
-## 支持 CrossDesk
+## 赞助与支持
+
+### 特别赞助
+
+**[HuaLongAI 华龙算力 ↗](https://crossdesk.hualong-ai.com/)**
+
+> 稳定、高效的 API 中转服务商，主营 Codex、0 注入 Kiro 与 Claude 系列模型。100% 官方源直供、不掺假、高可用，平均 SLA 高于 99.2%。计费透明，Token 级账单可逐笔核验，支持企业合同与发票。
+
+### 参与赞助
 
 如果 CrossDesk 对你有帮助，欢迎通过以下平台赞助，支持项目的持续开发、跨平台测试与日常维护。感谢你的支持！
 
-[爱发电](https://afdian.com/a/kunkundi) · [Ko-fi](https://ko-fi.com/kunkundi) · [GitHub Sponsors](https://github.com/sponsors/kunkundi)
+[![爱发电](https://img.shields.io/badge/%E7%88%B1%E5%8F%91%E7%94%B5-946CE6?logo=afdian&logoColor=white)](https://afdian.com/a/kunkundi)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-FF6433?logo=kofi&logoColor=white)](https://ko-fi.com/kunkundi)
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-C93C45?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/kunkundi)
 
 ## 致谢与许可
 

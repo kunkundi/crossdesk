@@ -16,11 +16,14 @@
 [![License: GPL v3](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/kunkundi/crossdesk?style=flat&label=stars)](https://github.com/kunkundi/crossdesk/stargazers)
 
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-FF6433?logo=kofi&logoColor=white)](https://ko-fi.com/kunkundi)
-[![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-C93C45?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/kunkundi)
-[![AFDIAN](https://img.shields.io/badge/AFDIAN-946CE6?logo=afdian&logoColor=white)](https://afdian.com/a/kunkundi)
-
 </div>
+
+<p align="center">
+  <strong><a href="#sponsor">Special Sponsors</a></strong><br />
+  <a href="https://crossdesk.hualong-ai.com/">
+    <img src="apps/desktop/src/gui/ui/icons/sponsors/hualongai.png" width="80" height="80" align="middle" alt="" />&nbsp;<strong>HuaLongAI&nbsp;华龙算力</strong>&nbsp;↗
+  </a>
+</p>
 
 <p align="center">
   <a href="https://trendshift.io/repositories/17514?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-17514" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/17514" alt="kunkundi%2Fcrossdesk | Trendshift" width="250" height="55"/></a>
@@ -320,11 +323,21 @@ Open **Feedback & suggestions** from the desktop main menu to export diagnostic 
 
 <a id="sponsor"></a>
 
-## Support CrossDesk
+## Sponsors and support
+
+### Special Sponsors
+
+**[HuaLongAI 华龙算力 ↗](https://crossdesk.hualong-ai.com/)**
+
+> A stable, efficient API relay for Codex, zero-injection Kiro, and Claude models. HuaLongAI sources 100% of its models directly from official providers, with no substitutions. It offers high availability and reports an average SLA above 99.2%. Token-level billing lets you verify each charge. Enterprise contracts and invoices are available.
+
+### Become a sponsor
 
 If CrossDesk is useful to you, consider sponsoring its continued development, cross-platform testing, and maintenance through one of the platforms below. Thank you for your support!
 
-[Ko-fi](https://ko-fi.com/kunkundi) · [GitHub Sponsors](https://github.com/sponsors/kunkundi) · [AFDIAN](https://afdian.com/a/kunkundi)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-FF6433?logo=kofi&logoColor=white)](https://ko-fi.com/kunkundi)
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-C93C45?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/kunkundi)
+[![AFDIAN](https://img.shields.io/badge/AFDIAN-946CE6?logo=afdian&logoColor=white)](https://afdian.com/a/kunkundi)
 
 ## Acknowledgements and license
 
