@@ -4,11 +4,13 @@ import { tr } from './Localization';
 export function clamp(value: number, low: number, high: number): number {
   return Math.max(low, Math.min(high, value));
 }
+interface KeyboardBounds { x: number; y: number; width: number; height: number; }
 export class RemoteViewport {
   private static readonly POINTER_INSET: number = 18;
   private containerWidth: number = 0;
   private containerHeight: number = 0;
   private followingPointer: boolean = false;
+  private keyboard?: KeyboardBounds;
   baseWidth: number = 1;
   baseHeight: number = 1;
   baseLeft: number = 0;
@@ -40,26 +42,54 @@ export class RemoteViewport {
     this.scale = next; this.constrain();
   }
   pan(x: number, y: number): void { this.offsetX += x; this.offsetY += y; this.constrain(); }
-  followPointer(x: number, y: number): void {
-    if (this.scale <= 1.001 || !this.containerWidth || !this.containerHeight) return;
-    const dx = this.pointerPan(this.left() + x * this.width(), this.containerWidth);
-    const dy = this.pointerPan(this.top() + y * this.height(), this.containerHeight);
+  setKeyboardBounds(bounds?: KeyboardBounds): void {
+    this.keyboard = bounds;
+    this.constrain();
+  }
+  private visibleHeight(x: number, y: number): number {
+    if (this.keyboard && x >= this.keyboard.x && x <= this.keyboard.x + this.keyboard.width &&
+      y < this.keyboard.y + this.keyboard.height) return this.keyboard.y;
+    return this.containerHeight;
+  }
+  followPointer(x: number, y: number, previousY: number): void {
+    const zoomed = this.scale > 1.001;
+    if ((!zoomed && !this.keyboard) || !this.containerWidth || !this.containerHeight) return;
+    const cursorX = this.left() + x * this.width(), cursorY = this.top() + y * this.height();
+    const dx = zoomed ? this.pointerPan(cursorX, this.containerWidth) : 0;
+    const visibleHeight = this.visibleHeight(cursorX + dx, Math.min(cursorY, this.top() + previousY * this.height()));
+    let dy = this.pointerPan(cursorY, visibleHeight);
+    if (!zoomed && visibleHeight === this.containerHeight) {
+      // Beside or below the floating keyboard, only bring hidden content back into view.
+      dy = clamp(dy, 0, Math.max(0, -this.top()));
+    }
     if (dx === 0 && dy === 0) return;
-    this.followingPointer = true;
+    this.followingPointer = zoomed;
     this.pan(dx, dy);
+  }
+  panForAbsolutePointer(x: number, y: number): void {
+    if (!this.keyboard || !this.contains(x, y)) return;
+    const height = this.visibleHeight(x, y);
+    if (y < 0 || y >= height || height === this.containerHeight) return;
+    const dy = clamp(this.pointerPan(y, height), Math.min(0, height - this.top() - this.height()), Math.max(0, -this.top()));
+    if (dy !== 0) this.pan(0, dy);
   }
   private pointerPan(position: number, length: number): number {
     const margin = Math.min(RemoteViewport.POINTER_INSET, length / 2);
     return clamp(position, margin, length - margin) - position;
   }
   reset(): void { this.scale = 1; this.offsetX = this.offsetY = 0; this.followingPointer = false; }
-  finish(): void { if (this.scale <= 1.001) this.reset(); }
+  finish(): void { if (this.scale <= 1.001 && (this.scale > 1 || !this.keyboard)) this.reset(); }
   private constrain(): void {
     const inset = this.followingPointer ? RemoteViewport.POINTER_INSET : 0;
     const maximumX = this.baseWidth * (this.scale - 1) / 2 + inset;
     const maximumY = this.baseHeight * (this.scale - 1) / 2 + inset;
+    let minimumY = -maximumY;
+    if (this.keyboard) {
+      const limit = this.keyboard.y - Math.min(RemoteViewport.POINTER_INSET, this.keyboard.y / 2);
+      minimumY = Math.min(minimumY, limit - this.baseTop - (this.baseHeight + this.height()) / 2);
+    }
     this.offsetX = clamp(this.offsetX, -maximumX, maximumX);
-    this.offsetY = clamp(this.offsetY, -maximumY, maximumY);
+    this.offsetY = clamp(this.offsetY, minimumY, maximumY);
   }
 }
 export class MouseInput {
@@ -266,9 +296,13 @@ export class TouchInput {
       if (this.moved && !this.relative && !this.long && this.revision === this.mouse.revision && !this.mouse.held()) this.mouse.gestureLeft(true);
       if (this.relative) {
         const dx = p.x - this.lastX, dy = p.y - this.lastY;
+        const previousY = this.mouse.y;
         this.mouse.move(this.mouse.x + dx / this.viewport.width(), this.mouse.y + dy / this.viewport.height());
-        if (dx !== 0 || dy !== 0) this.viewport.followPointer(this.mouse.x, this.mouse.y);
-      } else this.mouse.move(this.viewport.x(p.x), this.viewport.y(p.y));
+        if (dx !== 0 || dy !== 0) this.viewport.followPointer(this.mouse.x, this.mouse.y, previousY);
+      } else {
+        if (this.moved && (p.x !== this.lastX || p.y !== this.lastY)) this.viewport.panForAbsolutePointer(p.x, p.y);
+        this.mouse.move(this.viewport.x(p.x), this.viewport.y(p.y));
+      }
       this.lastX = p.x; this.lastY = p.y;
     } else if (kind === 'up') {
       if (this.active && !this.moved && !this.long && this.revision === this.mouse.revision) this.mouse.click();

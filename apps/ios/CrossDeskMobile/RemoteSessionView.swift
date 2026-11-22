@@ -114,6 +114,7 @@ struct RemoteSessionView: View {
 
                     RemoteTouchInputView(
                         mouseInput: mouseInput,
+                        keyboardGeometry: keyboardInputVisible ? keyboardGeometry : nil,
                         videoSize: session.displayGeometrySize,
                         controlMode: session.mouseControlMode,
                         remoteCursorPosition: session.remoteCursorPosition,
@@ -552,6 +553,7 @@ struct RemoteSessionView: View {
                                              windowSize: windowSize)
             remoteKeyboardPanel(bottomInset: proxy.safeAreaInsets.bottom)
                 .frame(width: panelSize.width, height: panelSize.height)
+                .background(RemoteKeyboardPanelFrame(geometry: keyboardGeometry))
                 .position(keyboardCenter(in: containerSize, panelSize: panelSize))
                 .transaction { transaction in
                     transaction.animation = nil

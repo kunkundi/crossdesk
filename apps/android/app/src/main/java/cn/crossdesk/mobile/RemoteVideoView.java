@@ -67,7 +67,7 @@ final class RemoteVideoView extends FrameLayout implements SurfaceHolder.Callbac
             @Override public void onLongPress(MotionEvent e) { if (!twoFinger && !dragging && !suppressPointerGesture() && point(e)) click(3, 4); }
             @Override public boolean onScroll(MotionEvent first, MotionEvent current, float dx, float dy) {
                 if (twoFinger) return true;
-                if (!relative && !dragging && !suppressPointerGesture()) {
+                if (!usesRelativeMotion(current) && !dragging && !suppressPointerGesture()) {
                     if (!point(first)) return true;
                     mouseInput.gestureLeft(true); dragging = true;
                 }
@@ -93,6 +93,9 @@ final class RemoteVideoView extends FrameLayout implements SurfaceHolder.Callbac
         frameWidth = width; frameHeight = height; fit();
     }
     void resetViewport() { releaseMouse(); viewport.reset(); applyViewport(); }
+    void setKeyboardInset(int inset) {
+        if (viewport.setKeyboardInset(inset)) applyViewport();
+    }
     static Rect previewCrop(int width,int height){
         int w=width,h=height;
         if((long)width*RemotePreviewStore.HEIGHT>(long)height*RemotePreviewStore.WIDTH)w=Math.max(1,height*RemotePreviewStore.WIDTH/RemotePreviewStore.HEIGHT);
@@ -140,8 +143,11 @@ final class RemoteVideoView extends FrameLayout implements SurfaceHolder.Callbac
         applyViewport();
         mouseInput.move(nextX, nextY);
     }
+    private boolean usesRelativeMotion(MotionEvent event) {
+        return relative && event.getToolType(0) != MotionEvent.TOOL_TYPE_MOUSE;
+    }
     private boolean point(MotionEvent e) {
-        boolean touchpad = relative && e.getToolType(0) != MotionEvent.TOOL_TYPE_MOUSE;
+        boolean touchpad = usesRelativeMotion(e);
         float px=e.getX(),py=e.getY();
         if (!touchpad && !viewport.contains(px,py)) return false;
         if(touchpad){
@@ -151,6 +157,12 @@ final class RemoteVideoView extends FrameLayout implements SurfaceHolder.Callbac
                 return true;
             }
         }else{
+            int action = e.getActionMasked();
+            if ((action == MotionEvent.ACTION_MOVE || action == MotionEvent.ACTION_HOVER_MOVE) &&
+                    (px != lastX || py != lastY) &&
+                    viewport.panForAbsolutePointer(px, py, 18 * getResources().getDisplayMetrics().density)) {
+                applyViewport();
+            }
             x=viewport.normalizedX(px);
             y=viewport.normalizedY(py);
         }

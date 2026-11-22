@@ -71,6 +71,7 @@ enum RemoteVideoGeometry {
 
 struct RemoteTouchInputView: UIViewRepresentable {
     let mouseInput: RemoteMouseInput
+    let keyboardGeometry: RemoteKeyboardGeometry?
     let videoSize: CGSize
     let controlMode: MouseControlMode
     let remoteCursorPosition: CGPoint?
@@ -90,6 +91,7 @@ struct RemoteTouchInputView: UIViewRepresentable {
 
     func updateUIView(_ view: RemoteTouchSurface, context: Context) {
         view.mouseInput = mouseInput
+        view.keyboardGeometry = keyboardGeometry
         view.videoSize = videoSize
         view.controlMode = controlMode
         view.setViewport(scale: viewportScale, offset: viewportOffset)
@@ -158,6 +160,7 @@ private final class FingerPinchGestureRecognizer: UIGestureRecognizer {
 }
 
 final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
+    weak var keyboardGeometry: RemoteKeyboardGeometry?
     var mouseInput: RemoteMouseInput? {
         didSet {
             guard oldValue !== mouseInput else { return }
@@ -216,6 +219,7 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
         super.init(frame: frame)
         backgroundColor = .clear
         isMultipleTouchEnabled = true
+        keyboardLayoutGuide.followsUndockedKeyboard = true
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
         tap.delegate = self
@@ -288,7 +292,7 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
         if nextScale == 1 && offset == .zero { edgePanned = false }
         viewportOffset = offset
         if needsViewportRestore { restoreEdgePanAllowance() }
-        viewportOffset = constrainedViewportOffset(offset, scale: nextScale)
+        setNeedsLayout()
         mouseInput?.viewportSize = renderRect()?.size ?? .zero
     }
 
@@ -398,7 +402,9 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
 
         switch recognizer.state {
         case .began, .changed:
-            guard let point = normalized(recognizer.location(in: self)) else { return }
+            let location = recognizer.location(in: self)
+            if recognizer.state == .changed { panForAbsolutePointer(at: location) }
+            guard let point = normalized(location) else { return }
             onMove?(point.0, point.1)
         default:
             break
@@ -417,7 +423,9 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
             return
         }
 
-        let point = normalized(recognizer.location(in: self)) ?? heldDragPoint
+        let location = recognizer.location(in: self)
+        if recognizer.state == .changed { panForAbsolutePointer(at: location) }
+        let point = normalized(location) ?? heldDragPoint
         switch recognizer.state {
         case .began:
             guard let point else { return }
@@ -558,6 +566,7 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
             return
         }
 
+        if recognizer.state == .changed { panForAbsolutePointer(at: location) }
         guard recognizer.state == .began || recognizer.state == .changed,
               let point = normalized(location) else { return }
         onMove?(point.0, point.1)
@@ -641,25 +650,40 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
         let cursorY = renderRect.minY + CGFloat(y) * renderRect.height
         var panY = -RemoteVideoGeometry.verticalPointerOverflow(
             y: cursorY, dy: delta.y, visibleRect: renderRect.intersection(bounds))
+        let cursorX = renderRect.minX + CGFloat(nextX) * renderRect.width
+        let nextCursorY = renderRect.minY + CGFloat(nextY) * renderRect.height
         var panX: CGFloat = 0
         if viewportScale > 1.001 {
-            panX = RemoteVideoGeometry.pointerPan(
-                position: renderRect.minX + CGFloat(nextX) * renderRect.width, length: bounds.width)
-            panY += RemoteVideoGeometry.pointerPan(
-                position: renderRect.minY + CGFloat(nextY) * renderRect.height + panY, length: bounds.height)
+            panX = RemoteVideoGeometry.pointerPan(position: cursorX, length: bounds.width)
         }
-        if panX != 0 || panY != 0 {
-            edgePanned = true
-            let proposedOffset = CGSize(width: viewportOffset.width + panX,
-                                        height: viewportOffset.height + panY)
-            let nextOffset = constrainedViewportOffset(proposedOffset, scale: viewportScale)
-            if nextOffset != viewportOffset {
-                viewportOffset = nextOffset
-                publishViewport()
-            }
+        let upperPoint = CGPoint(x: cursorX + panX, y: min(cursorY, nextCursorY))
+        let visibleHeight = keyboardGeometry?.visibleHeight(in: self, at: upperPoint) ?? bounds.height
+        if visibleHeight > 0 && (viewportScale > 1.001 || visibleHeight < bounds.height) {
+            panY += RemoteVideoGeometry.pointerPan(position: nextCursorY + panY, length: visibleHeight)
         }
+        panForPointer(dx: panX, dy: panY)
         relativeCursorPoint = (nextX, nextY)
         return relativeCursorPoint
+    }
+
+    private func panForAbsolutePointer(at point: CGPoint) {
+        guard let height = keyboardGeometry?.visibleHeight(in: self, at: point),
+              height < bounds.height, point.y >= 0, point.y < height,
+              let rect = renderRect(), rect.contains(point) else { return }
+        let dy = RemoteVideoGeometry.pointerPan(position: point.y, length: height)
+        // Keep the remote point under the finger or mouse as the image moves.
+        panForPointer(dx: 0, dy: min(max(dy, min(0, height - rect.maxY)), max(0, -rect.minY)))
+    }
+
+    private func panForPointer(dx: CGFloat, dy: CGFloat) {
+        guard dx != 0 || dy != 0 else { return }
+        edgePanned = true
+        let proposed = CGSize(width: viewportOffset.width + dx, height: viewportOffset.height + dy)
+        let next = constrainedViewportOffset(proposed, scale: viewportScale)
+        if next != viewportOffset {
+            viewportOffset = next
+            publishViewport()
+        }
     }
 
     private func normalized(_ point: CGPoint) -> (Float, Float)? {
@@ -690,13 +714,13 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
         var minimumY = -max(0, baseRect.height * (scale - 1) / 2)
         var maximumY = -minimumY
         if edgePanned {
-            // Reserve 20% of the viewport height at any zoom; keep the entire
+            // Reserve 20% of the unobscured height at any zoom; keep the entire
             // image visible when its height is below that minimum.
-            let visibleHeight = min(baseRect.height * scale,
-                                    bounds.height * minimumVisibleHeightFraction)
+            let availableHeight = keyboardGeometry?.visibleHeight(in: self) ?? bounds.height
+            let visibleHeight = min(baseRect.height * scale, availableHeight * minimumVisibleHeightFraction)
             let halfHeight = baseRect.height * scale / 2
             minimumY = visibleHeight - baseRect.midY - halfHeight
-            maximumY = bounds.height - visibleHeight - baseRect.midY + halfHeight
+            maximumY = availableHeight - visibleHeight - baseRect.midY + halfHeight
         }
         return CGSize(
             width: min(max(offset.width, -maximumX), maximumX),

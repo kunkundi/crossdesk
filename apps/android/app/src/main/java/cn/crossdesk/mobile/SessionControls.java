@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Color;
 import android.view.*;
 import android.widget.*;
+import java.util.function.IntConsumer;
 import static cn.crossdesk.mobile.MobileUi.*;
 
 /** Safe-area overlay: a draggable 54 dp orb, an adaptive menu and a docked keyboard. */
@@ -25,6 +26,7 @@ final class SessionControls extends FrameLayout {
     private View shield;
     private LinearLayout menu;
     private final RemoteKeyboard keyboard;
+    private final IntConsumer keyboardInsetChanged;
     private VirtualMouseBar mouseBar;
     private float mouseX = Float.NaN, mouseY = Float.NaN;
     private boolean mouseVisible = true, pictureInPicture;
@@ -57,8 +59,9 @@ final class SessionControls extends FrameLayout {
     private TextView[] networkDetails;
     private View encryptionLock,encryptionOpen;
     private boolean muted,relative=true,orbPositioned,secureAttentionVisible;
-    SessionControls(Context context,MobileUi ui,Actions actions){
+    SessionControls(Context context,MobileUi ui,IntConsumer keyboardInsetChanged,Actions actions){
         super(context);this.ui=ui;this.actions=actions;
+        this.keyboardInsetChanged = keyboardInsetChanged;
         keyboard=new RemoteKeyboard(context,ui,actions,()->{requestLayout();positionMouse();});
         addView(keyboard,new LayoutParams(-1,ui.dp(44),Gravity.BOTTOM));
         // This container must remain transparent to remote touch outside its controls.
@@ -363,6 +366,7 @@ final class SessionControls extends FrameLayout {
     }
     @Override protected void onLayout(boolean changed,int left,int top,int right,int bottom){
         super.onLayout(changed,left,top,right,bottom);
+        keyboardInsetChanged.accept(keyboard.isOpen() ? getHeight() - keyboard.getTop() : 0);
         if(!orbPositioned){orb.setX(Math.max(ui.dp(12),getWidth()-ui.dp(66)));orb.setY(ui.dp(17));orbPositioned=true;}
         orb.setX(bound(orb.getX(),ui.dp(8),getWidth()-orb.getWidth()-ui.dp(8)));orb.setY(bound(orb.getY(),ui.dp(8),getHeight()-orb.getHeight()-ui.dp(8)));
         // New/rebuilt menus have real dimensions now; position them in the same frame.

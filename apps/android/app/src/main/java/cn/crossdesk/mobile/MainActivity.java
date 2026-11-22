@@ -494,7 +494,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         // Video, cursor and touch input must share the area inside system bars
         // and display cutouts; fitting to the outer canvas hides image edges.
         safeArea.addView(video,0,new FrameLayout.LayoutParams(-1,-1));
-        controls=new SessionControls(this,ui,new SessionControls.Actions(){
+        controls=new SessionControls(this,ui,video::setKeyboardInset,new SessionControls.Actions(){
             public void disconnect(){confirmDisconnect();}public void display(){selectDisplay();}public void clipboard(){MainActivity.this.clipboard();}
             public void sendFile(){chooseFile();}public void saveFile(){saveReceivedFile();}public void secureAttention(){MainActivity.this.secureAttention();}
             public void togglePrivacy(){if(ready&&session!=null)session.togglePrivacy();}

@@ -73,6 +73,7 @@ private struct RemoteKeyboardHost: UIViewControllerRepresentable {
         controller.editor.applyEdit = edit
         inputContext?.editor = controller.editor
         controller.geometry = geometry
+        geometry?.systemInputBar = controller.inputBar
         controller.animatePresentation = animatePresentation
         controller.didPresent = didPresent
         controller.editor.key = key
@@ -255,6 +256,25 @@ final class RemoteKeyboardController: UIViewController, ObservableObject {
 /// after the text field resigns first responder during a keyboard switch.
 final class RemoteKeyboardGeometry: ObservableObject {
     private var heights: [String: CGFloat] = [:]
+    weak var systemInputBar: UIView?
+    weak var computerPanel: UIView?
+
+    func visibleHeight(in surface: UIView, at point: CGPoint? = nil) -> CGFloat {
+        guard let window = surface.window else { return surface.bounds.height }
+        var height = surface.bounds.height
+        for case let panel? in [systemInputBar, computerPanel] where panel.window === window {
+            let frame = panel.convert(panel.bounds, to: surface)
+            guard !frame.isEmpty, frame.maxY > 0 else { continue }
+            if let point, point.x < frame.minX || point.x > frame.maxX { continue }
+            height = min(height, max(0, frame.minY))
+        }
+        // On iPad the native keyboard can float independently of the docked toolbar.
+        guard systemInputBar?.window === window else { return height }
+        let frame = surface.keyboardLayoutGuide.layoutFrame
+        guard !frame.isEmpty, frame.minY > 0 else { return height }
+        if let point, point.x < frame.minX || point.x > frame.maxX || point.y >= frame.maxY { return height }
+        return min(height, frame.minY)
+    }
 
     private func key(for size: CGSize) -> String {
         "\(Int(size.width.rounded()))-\(size.width > size.height)"
@@ -274,6 +294,20 @@ final class RemoteKeyboardGeometry: ObservableObject {
             (fallback + bottomInset + RemoteKeyboardInputBar.barHeight)
         return min(height, size.height)
     }
+}
+
+/// Gives the touch surface the docked panel's actual frame in its own coordinates.
+struct RemoteKeyboardPanelFrame: UIViewRepresentable {
+    let geometry: RemoteKeyboardGeometry
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.isUserInteractionEnabled = false
+        geometry.computerPanel = view
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context: Context) {}
 }
 
 private final class RemoteKeyboardHostView: UIView {

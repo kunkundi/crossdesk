@@ -119,6 +119,10 @@ export struct MobileRemoteView {
   }
   private physicalMouse(event: MouseEvent): void {
     if (!this.viewport.contains(event.x, event.y) && event.action !== MouseAction.Release) return;
+    if (event.action === MouseAction.Move && this.keyboard) {
+      this.viewport.panForAbsolutePointer(event.x, event.y);
+      this.applyViewport();
+    }
     this.mouse.move(this.viewport.x(event.x), this.viewport.y(event.y));
     const button = event.button === MouseButton.Left ? 0 : event.button === MouseButton.Right ? 1 : event.button === MouseButton.Middle ? 2 : -1;
     if (button >= 0 && (event.action === MouseAction.Press || event.action === MouseAction.Release))
@@ -144,8 +148,9 @@ export struct MobileRemoteView {
         const delta = p.screenY - this.wheelY; this.wheelOffset = ((p.screenY - this.wheelLast) % 8 + 8) % 8;
         if (Math.abs(delta) > 8) { this.mouse.scroll(delta); this.wheelY = p.screenY; }
       } else if (this.mouse.held() && (p.screenX !== this.barX || p.screenY !== this.barY)) {
+        const previousY = this.mouse.y;
         this.mouse.drag(p.screenX - this.barX, p.screenY - this.barY, this.viewport.width(), this.viewport.height());
-        this.viewport.followPointer(this.mouse.x, this.mouse.y);
+        this.viewport.followPointer(this.mouse.x, this.mouse.y, previousY);
         this.applyViewport();
       }
       this.barX = p.screenX; this.barY = p.screenY;
@@ -415,8 +420,15 @@ export struct MobileRemoteView {
       }.width('100%').constraintSize({ maxHeight: Math.max(31, this.viewHeight - 88) }).scrollBar(BarState.Off)
       }
     }.padding(5).width(this.keyboardWidth()).backgroundColor('#D1D6DE').borderRadius(12)
-      .shadow({ radius: 20, color: '#33000000', offsetY: 5 }).onAreaChange((_old: Area, next: Area) => this.keyboardHeight = Number(next.height))
+      .shadow({ radius: 20, color: '#33000000', offsetY: 5 })
       .position(this.keyboardPosition())
+      .onAreaChange((_old: Area, next: Area) => {
+        this.keyboardHeight = Number(next.height);
+        this.viewport.setKeyboardBounds({ x: Number(next.position.x), y: Number(next.position.y),
+          width: Number(next.width), height: this.keyboardHeight });
+        this.applyViewport();
+      })
+      .onDisAppear(() => { this.viewport.setKeyboardBounds(); this.applyViewport(); })
   }
   @Builder
   MouseBar() {

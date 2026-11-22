@@ -528,6 +528,9 @@ When zoomed in, moving the relative mouse toward any screen edge pans the video
 to keep the cursor visible. Moving into a corner pans both axes. The same
 behavior applies when dragging a held virtual mouse button. At 1×, continuing
 outward at the top or bottom of the image still pans it vertically.
+With the keyboard open, move the cursor toward the top of the keyboard toolbar
+to bring the desktop underneath it into view. This works at any zoom level,
+including while dragging with a virtual mouse button held.
 Panning stops with the pointer movement and retains its position after release.
 At the vertical limit, the visible image occupies at least 20% of the viewport
 height regardless of zoom. If the entire image is shorter than that, its full
