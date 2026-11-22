@@ -486,28 +486,60 @@ private struct ConnectionHomeView: View {
         .shadow(color: .black.opacity(0.055), radius: 14, y: 5)
     }
 
+    private var recentGroupPicker: some View {
+        let all = NSLocalizedString("全部设备", comment: "")
+        let ungrouped = NSLocalizedString("未分组", comment: "")
+        let selected = groupFilter.map { $0.isEmpty ? ungrouped : $0 } ?? all
+        return Menu {
+            Picker(NSLocalizedString("分组", comment: ""), selection: $groupFilter) {
+                Text(all).tag(nil as String?)
+                Text(ungrouped).tag(Optional(""))
+                ForEach(recentGroups, id: \.self) { group in
+                    Text(verbatim: group).tag(Optional(group))
+                }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            HStack(spacing: 4) {
+                Text(verbatim: selected).lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2.weight(.semibold))
+            }
+            .font(.subheadline)
+            .foregroundStyle(.tint)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel(NSLocalizedString("分组", comment: ""))
+        .accessibilityValue(Text(verbatim: selected))
+    }
+
     @ViewBuilder
     private func recentConnectionsPanel(windowWidth: CGFloat) -> some View {
         let connections = orderedRecentConnections
+        let title = Text(NSLocalizedString("最近连接", comment: "")).font(.title3.bold())
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(NSLocalizedString("最近连接", comment: ""))
-                    .font(.title3.bold())
-                Spacer()
-                if !session.recentConnections.isEmpty {
-                    Text(String(format: NSLocalizedString("%1$@ 台设备", comment: ""), String(describing: connections.count)))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Picker(NSLocalizedString("分组", comment: ""), selection: $groupFilter) {
-                        Text(NSLocalizedString("全部设备", comment: "")).tag(nil as String?)
-                        Text(NSLocalizedString("未分组", comment: "")).tag(Optional(""))
-                        ForEach(recentGroups, id: \.self) { group in
-                            Text(verbatim: group).tag(Optional(group))
-                        }
+            if session.recentConnections.isEmpty {
+                title
+            } else {
+                let count = Text(String(format: NSLocalizedString("%1$@ 台设备", comment: ""), String(connections.count)))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline) {
+                        title
+                        Spacer(minLength: 8)
+                        count
+                        recentGroupPicker
                     }
-                    .pickerStyle(.menu)
-                    .lineLimit(1)
-                    .font(.subheadline)
+                    VStack(alignment: .trailing, spacing: 4) {
+                        HStack(alignment: .firstTextBaseline) {
+                            title
+                            Spacer(minLength: 8)
+                            count
+                        }
+                        recentGroupPicker
+                    }
                 }
             }
 
