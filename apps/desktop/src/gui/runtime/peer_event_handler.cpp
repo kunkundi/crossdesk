@@ -451,7 +451,7 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
         }
         if (needs_native_snapshot &&
             runtime->config_center_->IsSaveRemotePreviews()) {
-          auto native_renderer = std::atomic_load(&props->video_renderer_);
+          auto native_renderer = props->GetVideoRenderer();
           auto snapshot = std::make_shared<std::vector<unsigned char>>();
           if (native_renderer &&
               native_renderer->CopyLatestNv12(remote_id, snapshot.get(),
@@ -478,7 +478,7 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
           props->render_rect_dirty_ = true;
           props->stream_cleanup_pending_ = true;
         }
-        auto native_renderer = std::atomic_load(&props->video_renderer_);
+        auto native_renderer = props->GetVideoRenderer();
         if (native_renderer) {
           native_renderer->DiscardStream(remote_id);
         }

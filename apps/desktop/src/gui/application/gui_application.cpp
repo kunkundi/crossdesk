@@ -1073,7 +1073,7 @@ struct GuiApplication::StreamView {
   }
 
   ~StreamView() {
-    std::atomic_store(&session->video_renderer_, std::shared_ptr<VideoRenderer>{});
+    session->SetVideoRenderer(nullptr);
 #if defined(__APPLE__)
     UnregisterStreamWindow(window->window().appkit_view());
 #endif
@@ -3972,7 +3972,7 @@ void GuiApplication::InitializeStreamWindow(StreamView& view) {
   view.presenter.PrepareWindow(stream, [this, &view] {
     NotifyVideoFrameReady(*view.session);
   });
-  std::atomic_store(&view.session->video_renderer_, view.renderer);
+  view.session->SetVideoRenderer(view.renderer);
   if (stream->get_custom_titlebar()) view.normal_size.height += kWaylandTitlebarLogicalHeight;
   if (auto saved = config_center_->GetStreamWindowSize(view.session->device_preference_key_))
     view.normal_size = *saved;

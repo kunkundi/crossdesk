@@ -176,7 +176,6 @@ struct RemoteSession {
   VideoLatencyFrame video_frame_timing_;
   std::shared_ptr<VideoLatencyStats> video_latency_ =
       std::make_shared<VideoLatencyStats>();
-  std::shared_ptr<VideoRenderer> video_renderer_;  // Published atomically by the UI.
   std::atomic<bool> frame_dirty_{true};
   std::atomic<bool> last_focused_stream_{false};
   std::atomic<bool> stream_window_open_{true};
@@ -235,6 +234,20 @@ struct RemoteSession {
   using FileTransferStatus = FileTransferState::FileTransferStatus;
   using FileTransferInfo = FileTransferState::FileTransferInfo;
   FileTransferState file_transfer_;
+
+  std::shared_ptr<VideoRenderer> GetVideoRenderer() const {
+    std::lock_guard lock(video_renderer_mutex_);
+    return video_renderer_;
+  }
+
+  void SetVideoRenderer(std::shared_ptr<VideoRenderer> renderer) {
+    std::lock_guard lock(video_renderer_mutex_);
+    video_renderer_.swap(renderer);
+  }
+
+ private:
+  mutable std::mutex video_renderer_mutex_;
+  std::shared_ptr<VideoRenderer> video_renderer_;
 };
 
 using RemoteSessionPtr = std::shared_ptr<RemoteSession>;

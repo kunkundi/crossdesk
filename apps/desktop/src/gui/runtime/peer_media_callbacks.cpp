@@ -126,7 +126,7 @@ void PeerEventHandler::OnReceiveVideoBuffer(
     const auto timing = props->video_latency_->Frame(
         video_frame->captured_timestamp, local_now_us, timing_now);
     bool background_snapshot_only = false;
-    auto native_renderer = std::atomic_load(&props->video_renderer_);
+    auto native_renderer = props->GetVideoRenderer();
     if (native_renderer && native_renderer->IsActive()) {
       VideoRenderer::SubmitResult submit_result =
           VideoRenderer::SubmitResult::failed;

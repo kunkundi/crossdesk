@@ -341,7 +341,7 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
       video_height = props->thumbnail_height_;
     }
   }
-  auto native_renderer = std::atomic_load(&props->video_renderer_);
+  auto native_renderer = props->GetVideoRenderer();
   if (save_preview && (!frame_snapshot || frame_snapshot->empty()) &&
       native_renderer) {
     auto native_snapshot = std::make_shared<std::vector<unsigned char>>();
