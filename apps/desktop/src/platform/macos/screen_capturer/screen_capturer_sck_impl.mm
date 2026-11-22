@@ -325,6 +325,23 @@ ScreenCapturerSckImpl::~ScreenCapturerSckImpl() {
   Destroy();
 }
 
+static std::vector<CGDirectDisplayID> GetOnlineCaptureDisplays() {
+  uint32_t count = 0;
+  if (CGGetOnlineDisplayList(0, nullptr, &count) != kCGErrorSuccess || !count)
+    return {};
+
+  std::vector<CGDirectDisplayID> displays(count);
+  if (CGGetOnlineDisplayList(count, displays.data(), &count) != kCGErrorSuccess)
+    return {};
+  displays.resize(count);
+  displays.erase(std::remove_if(displays.begin(), displays.end(),
+                                [](CGDirectDisplayID id) {
+                                  return CGDisplayMirrorsDisplay(id) != kCGNullDirectDisplay;
+                                }),
+                 displays.end());
+  return displays;
+}
+
 int ScreenCapturerSckImpl::Init(const int fps, cb_desktop_data cb) {
   if (!cb) {
     LOG_ERROR("Screen capturer callback is null");
@@ -359,20 +376,34 @@ int ScreenCapturerSckImpl::Init(const int fps, cb_desktop_data cb) {
         }
         dispatch_semaphore_signal(sema);
       }];
-  if (dispatch_semaphore_wait(sema, dispatch_time(DISPATCH_TIME_NOW,
-                                                 5 * NSEC_PER_SEC)) != 0) {
-    LOG_ERROR("Timed out getting ScreenCaptureKit display info");
+  const bool completed = dispatch_semaphore_wait(
+      sema, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)) == 0;
+  if (completed && [capture_error.domain isEqualToString:SCStreamErrorDomain] &&
+      capture_error.code == SCStreamErrorUserDeclined) {
     return -1;
   }
 
-  if (capture_error || !content || content.displays.count == 0) {
-    LOG_ERROR("Failed to get display info, error: {}",
-              NSErrorToString(capture_error));
-    return -1;
+  std::vector<CGDirectDisplayID> display_ids;
+  if (completed && !capture_error) {
+    for (SCDisplay *display in content.displays)
+      display_ids.push_back(display.displayID);
   }
 
-  for (SCDisplay *display in content.displays) {
-    CGDirectDisplayID display_id = display.displayID;
+  if (display_ids.empty()) {
+    // Sleeping displays can disappear from ScreenCaptureKit before a peer
+    // negotiates its streams. CoreGraphics can still enumerate online outputs.
+    display_ids = GetOnlineCaptureDisplays();
+    LOG_WARN("ScreenCaptureKit display enumeration unavailable; found {} online displays",
+             display_ids.size());
+  }
+  if (display_ids.empty()) {
+    // Reserve Display1 even when WindowServer exposes no physical display.
+    // The first successful refresh binds this slot to its real ID and bounds.
+    display_id_map_[0] = kCGNullDirectDisplay;
+    display_info_list_.emplace_back(nullptr, MakeDisplayStreamId(0), true,
+                                    0, 0, 0, 0);
+  }
+  for (CGDirectDisplayID display_id : display_ids) {
     CGRect bounds = CGDisplayBounds(display_id);
     bool is_primary = CGDisplayIsMain(display_id);
 
@@ -510,7 +541,6 @@ int ScreenCapturerSckImpl::Stop() {
     [stream_ stopCaptureWithCompletionHandler:nil];
     stream_ = nil;
   }
-  current_display_ = 0;
   if (privacy_) privacy_->CaptureChanged(false);
 
   return 0;

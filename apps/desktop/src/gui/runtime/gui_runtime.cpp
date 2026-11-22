@@ -13,7 +13,6 @@
 #include <thread>
 #include <vector>
 
-#include <display_stream_id.h>
 #include <web_clipboard_protocol.h>
 #include "localization.h"
 #include "rd_log.h"
@@ -390,33 +389,18 @@ int GuiRuntime::CreateConnectionPeer() {
       return 0;
     }
 #endif
-    MiniRtcInit(peer_);
-    LOG_INFO("Peer initialization finished");
-  } else {
-    LOG_INFO("Create peer instance failed");
-  }
 
-  if (0 == devices_.EnsureCaptureReady()) {
-    const auto &displays = devices_.display_info_list();
-    for (size_t index = 0; index < displays.size(); ++index) {
-      const std::string stream_id = MakeDisplayStreamId(index);
-      MiniRtcAddVideoStream(peer_, stream_id.c_str());
-    }
-
-    MiniRtcAddAudioStream(peer_, audio_label_.c_str());
-    MiniRtcAddDataStream(peer_, data_label_.c_str(), false);
-    MiniRtcAddDataStream(peer_, mouse_label_.c_str(), true);
-    MiniRtcAddDataStream(peer_, keyboard_label_.c_str(), true);
-    MiniRtcAddDataStream(peer_, control_data_label_.c_str(), true);
-    MiniRtcAddDataStream(peer_, file_label_.c_str(), true);
-    MiniRtcAddDataStream(peer_, file_feedback_label_.c_str(), true);
-    MiniRtcAddDataStream(peer_, clipboard_label_.c_str(), true);
-    MiniRtcAddDataStream(peer_, kClipboardFilesStream, true);
+    // An incoming connection snapshots the stream names as soon as signaling
+    // starts. Register them before Init can deliver the first join.
+    devices_.EnsureCaptureReady();
+    RegisterStreams(peer_, std::max<size_t>(1, devices_.display_info_list().size()));
     MiniRtcAddDataStream(peer_, web_clipboard::kStream, true);
-    return 0;
-  } else {
-    return -1;
+    const int ret = MiniRtcInit(peer_);
+    if (ret == 0) LOG_INFO("Peer initialization finished");
+    return ret;
   }
+  LOG_ERROR("Create peer instance failed");
+  return -1;
 }
 
 void GuiRuntime::HandleRecentConnections() {

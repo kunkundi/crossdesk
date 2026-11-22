@@ -766,7 +766,7 @@ void SessionDeviceManager::UpdateInteractions() {
     if (StopMouseController() == 0) owner_.mouse_controller_is_started_ = false;
   }
 
-  if (owner_.screen_capturer_is_started_ && mouse_controller_ && SyncDisplayInfo()) {
+  if (owner_.screen_capturer_is_started_ && SyncDisplayInfo()) {
 #if defined(_WIN32) || defined(__OHOS__)
     const int active_display = screen_capturer_->GetCurrentMonitorIndex();
     const auto displays = display_info_list();
