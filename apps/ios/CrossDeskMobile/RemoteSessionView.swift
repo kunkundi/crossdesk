@@ -39,9 +39,20 @@ private struct RemoteViewportState: Equatable {
     var offset = CGSize.zero
 }
 
+private extension EnvironmentValues {
+    var hasVerticalSystemBar: Bool {
+        // The vertical bar environment value ships with the iOS 27.1 SDK.
+        #if canImport(SwiftUI, _version: 8.0.85)
+        if #available(iOS 27.1, *) { return toolbarVerticalEdge != nil }
+        #endif
+        return false
+    }
+}
+
 struct RemoteSessionView: View {
     @ObservedObject var session: RemoteSessionModel
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.hasVerticalSystemBar) private var hasVerticalSystemBar
     @State private var mouseInput = RemoteMouseInput()
     @State private var virtualMouseVisible = true
     @State private var virtualMouseCenter: CGPoint?
@@ -148,8 +159,9 @@ struct RemoteSessionView: View {
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 .clipped()
             }
-            // Fit video and input to the same unobscured area. Only the black
-            // background extends beneath the home indicator and display cutout.
+            // Give the video, cursor and touch surface the same full window on
+            // vertical-bar layouts. Floating controls retain their own safe area.
+            .ignoresSafeArea(.container, edges: hasVerticalSystemBar ? .all : [])
             .ignoresSafeArea(.keyboard)
             .transaction { transaction in
                 transaction.animation = nil
@@ -201,6 +213,7 @@ struct RemoteSessionView: View {
                     .zIndex(50)
             }
         }
+        .statusBarHidden(hasVerticalSystemBar)
         .alert(NSLocalizedString("升级提示", comment: ""), isPresented: Binding(
             get: { !session.privacyScreen.unlockNotice && session.remoteUpdateMessage != nil },
             set: { if !$0 && !session.privacyScreen.unlockNotice { session.dismissRemoteUpdate() } }

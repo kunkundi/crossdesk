@@ -42,7 +42,7 @@ permissions:
 jobs:
   build:
     name: Build on iOS (arm64)
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 120
     outputs:
       version: ${{ steps.ios_version.outputs.version }}
@@ -50,7 +50,7 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       CROSSDESK_SOURCE_TAG: ${{ inputs.source_tag || '' }}
       IOS_DEPLOYMENT_TARGET: "16.0"
-      EXPECTED_IOS_SDK: "26.5"
+      EXPECTED_IOS_SDK: "27.1"
       # Exercise the minimum supported version; local builds may use newer Xmake.
       XMAKE_MIN_VERSION: "3.1.1"
 
@@ -94,10 +94,10 @@ jobs:
           echo "VERSION_NUM=${VERSION_NUM}" >> "${GITHUB_ENV}"
           echo "VERSION_NUM=${VERSION_NUM}"
 
-      - name: Select Xcode 26.6
+      - name: Select Xcode 27.1
         shell: bash
         run: |
-          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          sudo xcode-select -s /Applications/Xcode_27.1.app/Contents/Developer
           xcodebuild -version
           SDK_VERSION="$(xcrun --sdk iphoneos --show-sdk-version)"
           if [[ "${SDK_VERSION}" != "${EXPECTED_IOS_SDK}" ]]; then
@@ -180,7 +180,7 @@ jobs:
         id: native-cache-key
         shell: bash
         env:
-          CACHE_ENVIRONMENT: ${{ runner.os }}-${{ runner.arch }}-ios-arm64-source-v3-xcode26.6-min16-xmake${{ env.XMAKE_MIN_VERSION }}-python${{ steps.python.outputs.python-version }}
+          CACHE_ENVIRONMENT: ${{ runner.os }}-${{ runner.arch }}-ios-arm64-source-v3-xcode27.1-min16-xmake${{ env.XMAKE_MIN_VERSION }}-python${{ steps.python.outputs.python-version }}
           RECIPE_HASH: ${{ hashFiles('apps/ios/scripts/build_minirtc_ios.sh', 'deps/submodules/minirtc/thirdparty/**') }}
           DEPENDENCY_HASH: ${{ hashFiles('xmake.lua', 'deps/submodules/minirtc/xmake.lua') }}
         run: |
@@ -198,7 +198,7 @@ jobs:
         with:
           xmake-version: "${{ env.XMAKE_MIN_VERSION }}"
           actions-cache-folder: ${{ runner.temp }}/crossdesk-ios-xmake-toolchain
-          actions-cache-key: ios-toolchain-v1-${{ runner.os }}-${{ runner.arch }}-image${{ steps.native-cache-key.outputs.image }}-xcode26.6
+          actions-cache-key: ios-toolchain-v1-${{ runner.os }}-${{ runner.arch }}-image${{ steps.native-cache-key.outputs.image }}-xcode27.1
 
       # Keep recipe/patch and toolchain changes outside the fallback boundary.
       - name: Restore native dependencies
