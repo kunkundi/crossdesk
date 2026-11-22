@@ -18,12 +18,25 @@
 
 </div>
 
-<p align="center">
-  <strong><a href="#sponsor">Special Sponsors</a></strong><br />
-  <a href="https://crossdesk.hualong-ai.com/">
-    <img src="apps/desktop/src/gui/ui/icons/sponsors/hualongai.png" width="80" height="80" align="middle" alt="" />&nbsp;<strong>HuaLongAI&nbsp;华龙算力</strong>&nbsp;↗
-  </a>
-</p>
+---
+
+<p align="center"><sub><a href="#sponsor">Special Sponsors</a></sub></p>
+
+<!-- Use one cell per sponsor, with its display name below the logo. Start a new row after each pair. -->
+<div align="center">
+  <table border="1">
+    <tr>
+      <td align="center">
+        <a href="https://crossdesk.hualong-ai.com/">
+          <img src="apps/desktop/src/gui/ui/icons/sponsors/hualongai.png" width="64" height="64" alt="" /><br />
+          <strong>HuaLongAI 华龙算力</strong>
+        </a>
+      </td>
+    </tr>
+  </table>
+</div>
+
+---
 
 <p align="center">
   <a href="https://trendshift.io/repositories/17514?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-17514" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/17514" alt="kunkundi%2Fcrossdesk | Trendshift" width="250" height="55"/></a>
@@ -327,9 +340,16 @@ Open **Feedback & suggestions** from the desktop main menu to export diagnostic 
 
 ### Special Sponsors
 
-**[HuaLongAI 华龙算力 ↗](https://crossdesk.hualong-ai.com/)**
+<table border="1">
+  <tr>
+    <td>
+      <p><strong><a href="https://crossdesk.hualong-ai.com/">HuaLongAI 华龙算力</a></strong></p>
+      <p>A stable, efficient API relay for Codex, zero-injection Kiro, and Claude models. HuaLongAI sources 100% of its models directly from official providers, with no substitutions. It offers high availability and reports an average SLA above 99.2%. Token-level billing lets you verify each charge. Enterprise contracts and invoices are available.</p>
+    </td>
+  </tr>
+</table>
 
-> A stable, efficient API relay for Codex, zero-injection Kiro, and Claude models. HuaLongAI sources 100% of its models directly from official providers, with no substitutions. It offers high availability and reports an average SLA above 99.2%. Token-level billing lets you verify each charge. Enterprise contracts and invoices are available.
+---
 
 ### Become a sponsor
 

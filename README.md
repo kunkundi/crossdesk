@@ -18,12 +18,25 @@
 
 </div>
 
-<p align="center">
-  <strong><a href="#sponsor">特别赞助</a></strong><br />
-  <a href="https://crossdesk.hualong-ai.com/">
-    <img src="apps/desktop/src/gui/ui/icons/sponsors/hualongai.png" width="80" height="80" align="middle" alt="" />&nbsp;<strong>HuaLongAI&nbsp;华龙算力</strong>&nbsp;↗
-  </a>
-</p>
+---
+
+<p align="center"><sub><a href="#sponsor">特别赞助</a></sub></p>
+
+<!-- 每家赞助商使用一个单元格，Logo 下方填写其品牌名，每两家另起一行。 -->
+<div align="center">
+  <table border="1">
+    <tr>
+      <td align="center">
+        <a href="https://crossdesk.hualong-ai.com/">
+          <img src="apps/desktop/src/gui/ui/icons/sponsors/hualongai.png" width="64" height="64" alt="" /><br />
+          <strong>HuaLongAI 华龙算力</strong>
+        </a>
+      </td>
+    </tr>
+  </table>
+</div>
+
+---
 
 <p align="center">
   <a href="https://trendshift.io/repositories/17514?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-17514" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/17514" alt="kunkundi%2Fcrossdesk | Trendshift" width="250" height="55"/></a>
@@ -326,9 +339,16 @@ PC 端可控制和被控制，复用桌面界面与桌面墙；手机和平板�
 
 ### 特别赞助
 
-**[HuaLongAI 华龙算力 ↗](https://crossdesk.hualong-ai.com/)**
+<table border="1">
+  <tr>
+    <td>
+      <p><strong><a href="https://crossdesk.hualong-ai.com/">HuaLongAI 华龙算力</a></strong></p>
+      <p>稳定、高效的 API 中转服务商，主营 Codex、0 注入 Kiro 与 Claude 系列模型。100% 官方源直供、不掺假、高可用，平均 SLA 高于 99.2%。计费透明，Token 级账单可逐笔核验，支持企业合同与发票。</p>
+    </td>
+  </tr>
+</table>
 
-> 稳定、高效的 API 中转服务商，主营 Codex、0 注入 Kiro 与 Claude 系列模型。100% 官方源直供、不掺假、高可用，平均 SLA 高于 99.2%。计费透明，Token 级账单可逐笔核验，支持企业合同与发票。
+---
 
 ### 参与赞助
 
