@@ -496,6 +496,20 @@ export component StreamWindow inherits Window {
     private property <bool> control-expanded: false;
     private property <bool> control-visual-expanded: false;
     private property <length> control-toolbar-height: 38px;
+    private property <bool> control-can-idle: !root.control-visual-expanded
+        && !root.control-drag-pending && !root.control-dragging
+        && !logo-button.has-hover && !root.fullscreen-transitioning;
+    private property <bool> control-idle: false;
+    changed control-can-idle => {
+        if !root.control-can-idle { root.control-idle = false; }
+    }
+    Timer {
+        interval: 3s;
+        running: root.control-can-idle && !root.control-idle;
+        triggered => { root.control-idle = true; }
+    }
+    private property <length> control-edge-offset: root.control-idle ? root.control-toolbar-height / 2 : 0px;
+    animate control-edge-offset { duration: 160ms; easing: ease-out; }
     private property <length> control-button-step: 32px;
     private property <length> control-shortcut-width: root.secure-attention-supported ? root.control-button-step : 0px;
     private property <length> control-privacy-width: root.privacy-visible ? root.control-button-step : 0px;
@@ -1244,12 +1258,13 @@ export component StreamWindow inherits Window {
                 // Preserve the dock position while moving between macOS Spaces.
                 // Reveal the controls once the window reaches its final position.
                 visible: !root.fullscreen-transitioning;
-                opacity: root.fullscreen-transitioning ? 0 : 1;
+                opacity: root.fullscreen-transitioning ? 0 : root.control-idle ? 0.5 : 1;
                 animate opacity {
-                    duration: root.fullscreen-transitioning ? 0ms : 100ms;
+                    duration: root.fullscreen-transitioning ? 0ms : 160ms;
                     easing: ease-out;
                 }
-                x: root.control-dragging ? root.control-drag-x : root.control-docked-left ? 0px : parent.width - self.width;
+                x: root.control-dragging ? root.control-drag-x
+                    : root.control-docked-left ? -root.control-edge-offset : parent.width - self.width + root.control-edge-offset;
                 y: min(max(0px, root.control-pos-y), parent.height - self.height);
                 width: root.control-visual-expanded ? min(80px + 7 * root.control-button-step + root.control-shortcut-width + root.control-privacy-width + root.control-disconnect-gap, parent.width) : root.control-toolbar-height;
                 height: root.control-toolbar-height;
