@@ -16,6 +16,7 @@
 #include <remote_action.h>
 
 #include "application/signal_connection_indicator.h"
+#include "rendering/video_geometry.h"
 #include "runtime/cursor_state_provider.h"
 #include "runtime/gui_runtime.h"
 
@@ -129,6 +130,8 @@ private:
   void ReorderStreamTab(int from, float drop_x, float tab_width);
   void CloseStreamTab(const std::string &remote_id);
   void CloseRemoteClosedTabs();
+  void ResetPointerMotion();
+  std::optional<VideoPoint> MapRemotePointer(RemoteSession& session, float x, float y);
   void SendPointerInput(int button, int kind, float x, float y);
   void SendScrollInput(float delta_x, float delta_y, float x, float y);
   void SendKeyInput(const std::string &text, bool pressed, bool control,

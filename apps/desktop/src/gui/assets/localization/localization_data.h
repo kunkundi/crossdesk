@@ -13,6 +13,8 @@ namespace localization {
 namespace detail {
 struct TranslationRow { const char* key; const char* text[10]; };
 inline constexpr TranslationRow kTranslationRows[] = {
+  {"鼠标灵敏度", {"鼠标灵敏度", "Pointer sensitivity", "Чувствительность указателя", "滑鼠靈敏度", "ポインターの感度", "포인터 민감도", "Zeigerempfindlichkeit", "Sensibilité du pointeur", "Sensibilidad del puntero", "Sensibilidade do ponteiro"}},
+  {"滚轮灵敏度", {"滚轮灵敏度", "Scroll sensitivity", "Чувствительность прокрутки", "滾輪靈敏度", "スクロールの感度", "스크롤 민감도", "Scroll-Empfindlichkeit", "Sensibilité du défilement", "Sensibilidad de desplazamiento", "Sensibilidade da rolagem"}},
   {"", {"", " ", " ", "", "", "", "", "", "", ""}},
   {" 台", {" 台", "", "", " 臺", " ", " ", " ", " ", " ", " "}},
   {" 台已连接", {" 台已连接", " connected", " подключено", " 臺已連線", " 接続されています", " 연결됨", " verbunden", " connecté", " conectado", " conectado"}},
@@ -566,6 +568,8 @@ inline constexpr TranslationRow kTranslationRows[] = {
 
 struct NamedTranslation { const char* name; const char* literal; };
 inline constexpr NamedTranslation kNamedTranslations[] = {
+  {"mouse_sensitivity", "鼠标灵敏度"},
+  {"wheel_sensitivity", "滚轮灵敏度"},
   {"window_minimize", "最小化"},
   {"window_maximize", "最大化"},
   {"window_restore", "还原窗口"},
@@ -1073,10 +1077,14 @@ inline constexpr const char* kSlintLiterals[] = {
   "所有接口共用一个端口，包括 VPN。分享时请选择实际 IP；关闭后恢复各 IP 的独立端口。",
   "最小化时暂停视频",
   "控制窗口最小化时暂停接收视频，降低本机解码资源占用。",
+  "鼠标灵敏度",
+  "滚轮灵敏度",
 };
 }  // namespace detail
 
 #define CROSSDESK_LOCALIZATION_ALL(X) \
+  X(mouse_sensitivity) \
+  X(wheel_sensitivity) \
   X(window_minimize) \
   X(window_maximize) \
   X(window_restore) \

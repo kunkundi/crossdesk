@@ -45,6 +45,8 @@ void UnregisterStreamWindow(void* slint_view);
 // Returns whether the configured stream window is currently the active AppKit
 // key window.
 bool IsStreamWindowActive();
+// Moves the system pointer to a control in the stream view (backing pixels).
+bool PlaceMacStreamControlPointer(void* slint_view, float pixel_x, float pixel_y);
 
 // Enters or leaves the stream window's animation-free fullscreen mode.
 bool SetStreamWindowFullscreen(bool fullscreen);

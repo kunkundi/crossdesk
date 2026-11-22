@@ -48,6 +48,7 @@
 #include "features/gallery/gallery_workspace.h"
 #include "features/gallery/preview_bandwidth.h"
 #include "features/gallery/preview_resolution.h"
+#include "features/input/pointer_motion.h"
 #include "features/input/scroll_accumulator.h"
 #include "features/input/stream_keyboard_focus.h"
 #include "filesystem_utf8.h"
@@ -792,6 +793,51 @@ bool CanUseGlobalPointerPosition() {
 #endif
 }
 
+// Place the native cursor in the stream's client area so Slint hit-tests its
+// ordinary controls at the same position as the scaled video cursor.
+bool PlaceStreamControlPointer(const slint::Window& window, float x, float y) {
+#if defined(_WIN32)
+  const HWND hwnd = window.win32_hwnd();
+  if (!hwnd || GetForegroundWindow() != hwnd) return false;
+  RECT client{};
+  POINT current{};
+  if (!GetClientRect(hwnd, &client) || IsRectEmpty(&client) || !GetCursorPos(&current) ||
+      GetAncestor(WindowFromPoint(current), GA_ROOT) != hwnd ||
+      !ScreenToClient(hwnd, &current) || !PtInRect(&client, current)) return false;
+  const float scale = window.scale_factor();
+  POINT target{std::clamp(std::lround(x * scale), client.left, client.right - 1),
+               std::clamp(std::lround(y * scale), client.top, client.bottom - 1)};
+  return ClientToScreen(hwnd, &target) && GetAncestor(WindowFromPoint(target), GA_ROOT) == hwnd &&
+         SetCursorPos(target.x, target.y) && GetCursorPos(&current) &&
+         current.x == target.x && current.y == target.y;
+#elif defined(__APPLE__)
+  const float scale = window.scale_factor();
+  return PlaceMacStreamControlPointer(window.appkit_view(), x * scale, y * scale);
+#elif defined(__linux__) && !defined(__OHOS__)
+  if (window.wayland_surface()) return false;
+  std::unique_ptr<Display, decltype(&XCloseDisplay)> display(XOpenDisplay(nullptr), XCloseDisplay);
+  if (!display) return false;
+  const auto active = X11GetActiveWindow(display.get());
+  if (!X11WindowMatches(display.get(), active, window) ||
+      X11GetWindowProcessId(display.get(), active) != static_cast<unsigned long>(getpid()))
+    return false;
+  const auto size = window.size();
+  if (!size.width || !size.height) return false;
+  const float scale = window.scale_factor();
+  const int px = std::clamp<long>(std::lround(x * scale), 0, size.width - 1);
+  const int py = std::clamp<long>(std::lround(y * scale), 0, size.height - 1);
+  // Specifying the source window also limits the warp to its visible area.
+  XWarpPointer(display.get(), active, active, 0, 0, 0, 0, px, py);
+  ::Window root, child;
+  int root_x, root_y, client_x, client_y;
+  unsigned int buttons;
+  return XQueryPointer(display.get(), active, &root, &child, &root_x, &root_y,
+                       &client_x, &client_y, &buttons) && client_x == px && client_y == py;
+#else
+  return false;
+#endif
+}
+
 constexpr float kStreamWindowLogicalWidth = 1280.0f;
 constexpr float kStreamWindowLogicalHeight = 720.0f;
 constexpr float kWaylandTitlebarLogicalHeight = 32.0f;
@@ -1055,9 +1101,8 @@ struct GuiApplication::SlintUi {
       std::make_shared<slint::VectorModel<ui::GalleryActionDevice>>();
   float pointer_x = 0, pointer_y = 0;
   std::set<int> pressed_mouse_buttons;
-#if defined(_WIN32) || defined(__APPLE__)
+  PointerMotion pointer_motion;
   ScrollAccumulator scroll;
-#endif
   uint64_t announcement_version = UINT64_MAX;
   std::string announcement_selected_id, announcement_selected_revision;
   // Share the window shell and dialogs, but keep each component's UI state and
@@ -2247,6 +2292,27 @@ void GuiApplication::BindStreamCallbacks() {
     return;
   }
   auto& stream = *ui_->stream;
+  stream->on_place_control_pointer([this](float x, float y) {
+    return ui_->stream && PlaceStreamControlPointer((*ui_->stream)->window(), x, y);
+  });
+  stream->set_mouse_sensitivity_percent(config_center_->GetMouseSensitivityPercent());
+  stream->set_wheel_sensitivity_percent(config_center_->GetWheelSensitivityPercent());
+  stream->on_save_input_sensitivity([this](int mouse, int wheel) {
+    auto& window = *ui_->stream;
+    const int old_mouse = config_center_->GetMouseSensitivityPercent();
+    const int old_wheel = config_center_->GetWheelSensitivityPercent();
+    if (mouse == old_mouse && wheel == old_wheel) return;
+    if (config_center_->SetInputSensitivity(mouse, wheel) != 0) {
+      window->set_mouse_sensitivity_percent(old_mouse);
+      window->set_wheel_sensitivity_percent(old_wheel);
+      window->set_sensitivity_error(UiText(localization::Literal(
+          "保存失败，请重试", localization_language_index_)));
+      return;
+    }
+    window->set_sensitivity_error("");
+    if (mouse != old_mouse) ResetPointerMotion();
+    if (wheel != old_wheel) ui_->scroll = {};
+  });
   stream->on_dismiss_remote_update([this] {
     if (auto props = SelectedSession()) {
       std::lock_guard lock(props->remote_version_mutex_);
@@ -2317,6 +2383,7 @@ void GuiApplication::BindStreamCallbacks() {
       if (index >= static_cast<int>(props->display_info_list_.size())) return;
     }
     props->selected_display_ = index;
+    ResetPointerMotion();
     {
       std::lock_guard lock(props->remote_cursor_state_mutex_);
       props->cursor_presentation_ = {};
@@ -4200,14 +4267,9 @@ void GuiApplication::SyncStreamWindow() {
     (*ui_->stream)
         ->set_video_settings_enabled(status == MiniRtcConnectionStatus::MiniRtcConnectionConnected &&
                                      props->video_settings_supported_);
-    (*ui_->stream)
-        ->set_video_settings_feedback(UiText(
-            props->video_settings_failed_ ? localization::video_settings_failed
-                                                [localization_language_index_]
-            : props->video_settings_pending_
-                ? localization::video_settings_pending
-                      [localization_language_index_]
-                : ""));
+    (*ui_->stream)->set_video_settings_feedback(UiText(
+        props->video_settings_failed_
+            ? localization::video_settings_failed[localization_language_index_] : ""));
     (*ui_->stream)->set_video_quality_index(props->video_settings_.quality);
     (*ui_->stream)
         ->set_frame_rate_index(props->video_settings_.frame_rate == 30 ? 0 : 1);
@@ -4258,8 +4320,7 @@ void GuiApplication::SyncStreamWindow() {
     (*ui_->stream)->set_remote_resolution_enabled(visible && !state.pending);
     (*ui_->stream)->set_remote_resolution_index(selected);
     (*ui_->stream)->set_remote_resolution_feedback(UiText(
-        state.failed ? localization::video_settings_failed[localization_language_index_]
-        : state.pending ? localization::video_settings_pending[localization_language_index_] : ""));
+        state.failed ? localization::video_settings_failed[localization_language_index_] : ""));
   }
 
   const auto net = props->net_traffic_stats_.Load();
@@ -5686,30 +5747,66 @@ GuiApplication::SelectedSession() {
   return nullptr;
 }
 
+void GuiApplication::ResetPointerMotion() {
+  ui_->pointer_motion = {};
+  ui_->wall->global<ui::RemoteCursor>().invoke_reset();
+  if (ui_->stream) (*ui_->stream)->global<ui::RemoteCursor>().invoke_reset();
+}
+
+std::optional<VideoPoint> GuiApplication::MapRemotePointer(
+    RemoteSession& session, float x, float y) {
+  const bool gallery = !ui_->gallery_control_id.empty();
+  const auto width = gallery ? ui_->wall->get_gallery_video_width()
+                             : (*ui_->stream)->get_video_area_width();
+  const auto height = gallery ? ui_->wall->get_gallery_video_height()
+                              : (*ui_->stream)->get_video_area_height();
+  int video_width, video_height;
+  {
+    std::lock_guard lock(session.video_frame_mutex_);
+    video_width = session.video_width_;
+    video_height = session.video_height_;
+  }
+  const auto& cursor = gallery ? ui_->wall->global<ui::RemoteCursor>()
+                               : (*ui_->stream)->global<ui::RemoteCursor>();
+  if (!std::isfinite(width) || !std::isfinite(height) ||
+      !(width > 0 && height > 0 && x >= 0 && x <= width && y >= 0 && y <= height) ||
+      video_width <= 0 || video_height <= 0) {
+    cursor.set_adjusted_x(-1);
+    cursor.set_outside_video(true);
+    return std::nullopt;
+  }
+  const int percent = config_center_->GetMouseSensitivityPercent();
+  if (percent != 100) {
+    if (!cursor.get_adjusted()) ui_->pointer_motion = {};
+    const auto adjusted = ui_->pointer_motion.Update({x, y}, {width, height}, percent);
+    x = adjusted.x;
+    y = adjusted.y;
+    cursor.set_adjusted_x(x);
+    cursor.set_adjusted_y(y);
+  }
+  const auto point = MapVideoPoint(x, y, width, height, video_width, video_height);
+  cursor.set_outside_video(!point);
+  // The stream takes over local hover after this callback. Do not send the
+  // covered move, press or scroll to the peer.
+  if (percent != 100 && !gallery && ui_->pressed_mouse_buttons.empty() &&
+      (*ui_->stream)->invoke_is_local_control_area(x, y)) {
+    return std::nullopt;
+  }
+  return point;
+}
+
 void GuiApplication::SendPointerInput(int button, int kind, float x, float y) {
   auto props = SelectedSession();
   if (!props || !props->peer_ || !props->control_mouse_ ||
       (!ui_->stream && ui_->gallery_control_id.empty())) {
     return;
   }
-
-  std::optional<VideoPoint> point;
-  {
-    std::lock_guard lock(props->video_frame_mutex_);
-    point = MapVideoPoint(x, y,
-                          ui_->gallery_control_id.empty()
-                              ? (*ui_->stream)->get_video_area_width()
-                              : ui_->wall->get_gallery_video_width(),
-                          ui_->gallery_control_id.empty()
-                              ? (*ui_->stream)->get_video_area_height()
-                              : ui_->wall->get_gallery_video_height(),
-                          props->video_width_, props->video_height_);
-  }
   if (kind == 0) {
     ReleaseControl();
     return;
   }
   if (kind == 2 && !ui_->pressed_mouse_buttons.count(button)) return;
+  auto point = MapRemotePointer(*props, x, y);
   if (!point) {
     if (kind != 2) return;
     point = VideoPoint{ui_->pointer_x, ui_->pointer_y};
@@ -5760,18 +5857,7 @@ void GuiApplication::SendScrollInput(float delta_x, float delta_y, float x,
       (!ui_->stream && ui_->gallery_control_id.empty())) {
     return;
   }
-  std::optional<VideoPoint> point;
-  {
-    std::lock_guard lock(props->video_frame_mutex_);
-    point = MapVideoPoint(x, y,
-                          ui_->gallery_control_id.empty()
-                              ? (*ui_->stream)->get_video_area_width()
-                              : ui_->wall->get_gallery_video_width(),
-                          ui_->gallery_control_id.empty()
-                              ? (*ui_->stream)->get_video_area_height()
-                              : ui_->wall->get_gallery_video_height(),
-                          props->video_width_, props->video_height_);
-  }
+  const auto point = MapRemotePointer(*props, x, y);
   if (!point) {
     return;
   }
@@ -5783,14 +5869,13 @@ void GuiApplication::SendScrollInput(float delta_x, float delta_y, float x,
   const float delta = vertical ? delta_y : delta_x;
   action.m.flag =
       vertical ? MouseFlag::wheel_vertical : MouseFlag::wheel_horizontal;
-#if defined(_WIN32) || defined(__APPLE__)
-  action.m.s = ui_->scroll.Consume(vertical, delta);
-#else
-  action.m.s = delta > 0 ? 1 : delta < 0 ? -1 : 0;
-#endif
+  action.m.s = ui_->scroll.Consume(vertical, delta,
+                                   config_center_->GetWheelSensitivityPercent());
   if (action.m.s == 0) {
     return;
   }
+  ui_->pointer_x = point->x;
+  ui_->pointer_y = point->y;
   controlled_remote_id_ = props->remote_id_;
   SendRemoteInput(action);
 }
@@ -5959,9 +6044,8 @@ void GuiApplication::SyncAudioPlayback() {
 }
 
 void GuiApplication::ReleasePressedInput(bool preserve_local_ui) {
-#if defined(_WIN32) || defined(__APPLE__)
   ui_->scroll = {};
-#endif
+  ResetPointerMotion();
   keyboard_.ForceReleasePressedKeys();
   for (int button : ui_->pressed_mouse_buttons) {
     RemoteAction action{};

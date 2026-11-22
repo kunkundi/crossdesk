@@ -269,7 +269,9 @@ inline int ApplyStreamWindowStrings(
   strings.set_privacy_disable(Text(localization::privacy_disable[language]));
   strings.set_control_mouse(Text(localization::control_mouse[language]));
   strings.set_release_mouse(Text(localization::release_mouse[language]));
-  strings.set_video_settings(Text(localization::video_settings[language]));
+  strings.set_settings(Text(localization::settings[language]));
+  strings.set_mouse_sensitivity(Text(localization::mouse_sensitivity[language]));
+  strings.set_wheel_sensitivity(Text(localization::wheel_sensitivity[language]));
   strings.set_video_settings_unavailable(
       Text(localization::video_settings_unavailable[language]));
   strings.set_video_quality(Text(localization::video_quality[language]));

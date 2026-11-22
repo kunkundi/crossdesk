@@ -1,6 +1,15 @@
 export global RemoteCursor {
+    in-out property <length> adjusted-x: -1px;
+    in-out property <length> adjusted-y: 0px;
+    in-out property <bool> outside-video: false;
+    out property <bool> adjusted: self.adjusted-x >= 0px;
+    public function reset() {
+        self.adjusted-x = -1px;
+        self.outside-video = false;
+    }
     // Numeric values mirror crossdesk::RemoteCursorShape on the wire.
     public pure function shape(value: int) -> MouseCursor {
+        if self.outside-video { return MouseCursor.default; }
         return value == 1 ? MouseCursor.none
             : value == 2 ? MouseCursor.help
             : value == 3 ? MouseCursor.pointer
@@ -30,5 +39,32 @@ export global RemoteCursor {
             : value == 27 ? MouseCursor.nesw-resize
             : value == 28 ? MouseCursor.nwse-resize
             : MouseCursor.default;
+    }
+}
+
+// The native pointer follows local motion. Draw the remote hotspot over the
+// video when pointer gain makes the two positions differ.
+export component AdjustedPointer inherits Rectangle {
+    in property <int> shape;
+    x: RemoteCursor.adjusted-x; y: RemoteCursor.adjusted-y;
+    width: 16px; height: 21px;
+    visible: RemoteCursor.adjusted && (RemoteCursor.outside-video || root.shape != 1);
+    accessible-role: none;
+    Path {
+        width: 16px; height: 21px; viewbox-width: 16; viewbox-height: 21;
+        commands: "M1 1 L1 17 L5.5 13 L8.8 20 L12 18.5 L8.7 11.8 L15 11.5 Z";
+        fill: #202020; stroke: white; stroke-width: 1px;
+    }
+    if root.shape > 1 && !RemoteCursor.outside-video: Text {
+        x: 9px; y: 9px; font-size: 13px; font-weight: 700;
+        color: white; stroke: black; stroke-width: 1px;
+        text: root.shape == 2 ? "?" : root.shape == 3 ? "☞"
+            : root.shape == 4 || root.shape == 5 ? "◷" : root.shape == 6 ? "⊕"
+            : root.shape == 7 ? "Ⅰ" : root.shape == 8 ? "↗" : root.shape == 9 ? "+"
+            : root.shape == 10 ? "✥" : root.shape == 11 || root.shape == 12 ? "⊘"
+            : root.shape == 13 || root.shape == 14 ? "☞"
+            : root.shape == 15 || root.shape == 18 || root.shape == 20 || root.shape == 25 ? "↔"
+            : root.shape == 16 || root.shape == 17 || root.shape == 19 || root.shape == 26 ? "↕"
+            : root.shape == 21 || root.shape == 24 || root.shape == 27 ? "⤢" : "⤡";
     }
 }

@@ -56,6 +56,7 @@ class ConfigCenter {
   int SetTrustedDevicesOnly(bool enabled);
   int SetSaveRemotePreviews(bool enabled);
   int SetPauseVideoWhenMinimized(bool enabled);
+  int SetInputSensitivity(int mouse_percent, int wheel_percent);
   int SetPortableServicePromptSuppressed(bool suppressed);
   int SetSponsorshipPromptDismissedVersion(const std::string& version);
   int SetFileTransferSavePath(const std::string& path);
@@ -85,6 +86,8 @@ class ConfigCenter {
   bool IsTrustedDevicesOnly() const;
   bool IsSaveRemotePreviews() const;
   bool IsPauseVideoWhenMinimized() const;
+  int GetMouseSensitivityPercent() const { return mouse_sensitivity_percent_.load(); }
+  int GetWheelSensitivityPercent() const { return wheel_sensitivity_percent_.load(); }
   bool IsPortableServicePromptSuppressed() const;
   std::string GetSponsorshipPromptDismissedVersion() const;
   std::string GetFileTransferSavePath() const;
@@ -128,6 +131,8 @@ class ConfigCenter {
   std::atomic<bool> trusted_devices_only_{false};
   std::atomic<bool> save_remote_previews_{true};
   std::atomic<bool> pause_video_when_minimized_{true};
+  std::atomic<int> mouse_sensitivity_percent_{100};
+  std::atomic<int> wheel_sensitivity_percent_{100};
   bool portable_service_prompt_suppressed_ = false;
   std::string sponsorship_prompt_dismissed_version_;
   std::string file_transfer_save_path_ = "";

@@ -1,8 +1,8 @@
 import { SurfaceSeparator, FlatSurface, UiSurface } from "ui_surface.slint";
 import { UiRadius } from "ui_radius.slint";
-import { ScrollView } from "std-widgets.slint";
+import { ScrollView, Slider } from "std-widgets.slint";
 import { SettingsSelect } from "settings_controls.slint";
-import { RemoteCursor } from "remote_cursor.slint";
+import { RemoteCursor, AdjustedPointer } from "remote_cursor.slint";
 import { FontAwesomeIcons, IconButton, PrimaryButton, SecondaryButton, DialogSurface, ImGuiFontStyle, ControlStyle, ButtonStyle, ScrollingText } from "common.slint";
 
 export struct StreamTab {
@@ -34,7 +34,9 @@ export global StreamStrings {
     in-out property <string> remote-update-title: "Remote update recommended";
     in-out property <string> remote-update: "Update the remote device to the latest version for improved features and performance.";
     in-out property <string> remote-update-dismiss: "Got it";
-    in-out property <string> video-settings: "Video settings";
+    in-out property <string> settings: "Settings";
+    in-out property <string> mouse-sensitivity: "Pointer sensitivity";
+    in-out property <string> wheel-sensitivity: "Scroll sensitivity";
     in-out property <string> remote-resolution: "Resolution";
     in-out property <string> video-settings-unavailable: "The remote device does not support live video settings";
     in-out property <string> video-quality: "Video quality";
@@ -240,14 +242,107 @@ component ControlBarButton inherits Rectangle {
     }
 }
 
-component VideoSettingRow inherits VerticalLayout {
+component StreamSettingRow inherits VerticalLayout {
     in property <string> label;
+    in property <string> value-text;
+    spacing: 4px;
+    HorizontalLayout {
+        height: 18px; spacing: 8px;
+        Text { text: root.label; color: #5c626c; font-size: 11px; overflow: elide; }
+        if root.value-text != "": Text {
+            text: root.value-text; color: #59636d;
+            font-size: 11px; horizontal-alignment: right; horizontal-stretch: 0;
+        }
+    }
+    @children
+}
+
+component SensitivityRow inherits StreamSettingRow {
+    in-out property <float> percent: 100;
+    private property <int> tick-interval: 100;
+    callback commit;
+    value-text: round(root.percent) + "%";
+    FlatSurface {
+        height: 27px;
+        background: ButtonStyle.surface;
+        border-radius: UiRadius.control;
+        rail := Rectangle {
+            // Match the travel of the Fluent slider's 20px handle.
+            x: slider.x + 10px; width: slider.width - 20px;
+            height: 4px; y: (slider.height - self.height) / 2;
+            background: #d3d3d3; border-radius: 2px;
+            pure function position-for(value: float) -> length {
+                return self.width * (value - slider.minimum) / (slider.maximum - slider.minimum);
+            }
+            pure function value-at(x: length) -> float {
+                return slider.minimum + clamp(x / max(1px, self.width), 0, 1) * (slider.maximum - slider.minimum);
+            }
+            for index in (ceil(slider.maximum / root.tick-interval) - 1): Rectangle {
+                private property <int> mark: (index + 1) * root.tick-interval;
+                x: rail.position-for(self.mark) - self.width / 2;
+                y: (parent.height - self.height) / 2;
+                width: 2px; height: self.mark == 100 ? 11px : 9px;
+                border-radius: 1px; background: rail.background;
+            }
+            Rectangle {
+                width: 13px; height: self.width; border-radius: self.width / 2;
+                x: rail.position-for(slider.value) - self.width / 2;
+                y: (parent.height - self.height) / 2;
+                background: white; border-width: 1.5px; border-color: #808080;
+            }
+        }
+        slider := Slider {
+            // The native slider owns keyboard focus and accessible value actions.
+            opacity: 0;
+            x: 5px; y: 0px; width: parent.width - 10px; height: parent.height;
+            orientation: horizontal; minimum: 10; maximum: 500; step: 1;
+            value <=> root.percent;
+            accessible-label: root.label;
+            released(value) => { root.percent = round(value); root.commit(); }
+        }
+        TouchArea {
+            private property <length> grab-offset;
+            private property <bool> dragging;
+            pointer-event(event) => {
+                if event.button == PointerEventButton.left {
+                    if event.kind == PointerEventKind.down {
+                        slider.focus();
+                        self.dragging = false;
+                        let x = self.mouse-x - rail.x;
+                        let value = rail.value-at(x);
+                        let tick = clamp(round(value / root.tick-interval) * root.tick-interval,
+                            root.tick-interval, slider.maximum);
+                        let snap-distance = 6px;
+                        if x <= snap-distance {
+                            root.percent = slider.minimum;
+                        } else if x >= rail.width - snap-distance {
+                            root.percent = slider.maximum;
+                        } else if abs(x - rail.position-for(tick)) <= snap-distance {
+                            root.percent = tick;
+                        } else if abs(x - rail.position-for(root.percent)) > 6.5px {
+                            root.percent = round(value);
+                        }
+                        self.grab-offset = x - rail.position-for(root.percent);
+                    } else if event.kind == PointerEventKind.up {
+                        root.commit();
+                    }
+                }
+            }
+            moved => {
+                if self.pressed && (self.dragging || abs(self.mouse-x - self.pressed-x) > 3px) {
+                    self.dragging = true;
+                    root.percent = round(rail.value-at(self.mouse-x - rail.x - self.grab-offset));
+                }
+            }
+        }
+    }
+}
+
+component VideoSettingRow inherits StreamSettingRow {
     in property <[string]> options;
     in property <int> selected;
     in property <bool> enabled;
     callback choose(int);
-    spacing: 4px;
-    Text { text: root.label; color: #5c626c; font-size: 11px; height: 18px; }
     HorizontalLayout {
         spacing: 4px;
         for option[index] in root.options: FlatSurface {
@@ -331,6 +426,13 @@ export component StreamWindow inherits Window {
     in-out property <int> frame-rate-index: 1;
     in-out property <int> adaptation-policy-index: 1;
     callback change-video-settings(int, int, int);
+    in-out property <float> mouse-sensitivity-percent: 100;
+    in-out property <float> wheel-sensitivity-percent: 100;
+    in property <string> sensitivity-error;
+    callback save-input-sensitivity(int, int);
+    function commit-input-sensitivity() {
+        root.save-input-sensitivity(round(root.mouse-sensitivity-percent), round(root.wheel-sensitivity-percent));
+    }
     in property <[string]> remote-resolutions;
     in property <bool> remote-resolution-visible: false;
     in property <int> remote-resolution-index: -1;
@@ -431,10 +533,14 @@ export component StreamWindow inherits Window {
     private property <bool> shortcut-menu-open: false;
     private property <length> shortcut-menu-y: root.control-panel-y(root.shortcut-menu-height);
     in-out property <bool> video-menu-open: false;
+    changed video-menu-open => { if !self.video-menu-open { root.commit-input-sensitivity(); } }
     private property <length> video-menu-width: min(320px, video.width - 8px);
-    private property <length> video-menu-height:
+    private property <length> settings-content-height:
         (root.video-settings-enabled && root.video-settings-feedback == "" ? 182px : 220px)
+        + 2 * (18px + 4px + 27px + 8px) + (root.sensitivity-error == "" ? 0px : 28px)
         + (root.remote-resolution-visible ? 57px + (root.remote-resolution-feedback == "" ? 0px : 32px) : 0px);
+    private property <length> video-menu-height: min(root.settings-content-height,
+        max(control.y, video.height - control.y - root.control-toolbar-height) - root.control-panel-gap);
     private property <length> video-menu-x: min(max(4px, control.x + video-button.x), video.width - root.video-menu-width - 4px);
     private property <length> video-menu-y: root.control-panel-y(root.video-menu-height);
     private property <bool> disconnect-menu-open: false;
@@ -599,6 +705,11 @@ export component StreamWindow inherits Window {
     callback move-control-drag(length, length);
     callback end-control-drag;
     pure callback is-local-control-area(length, length) -> bool;
+    callback place-control-pointer(length, length) -> bool;
+    private property <bool> awaiting-control-hover;
+    private property <length> native-target-x;
+    private property <length> native-target-y;
+    private property <length> native-approach-distance: -1px;
 
     pure function control-panel-y(panel-height: length) -> length {
         let below = control.y + root.control-toolbar-height + root.control-panel-gap;
@@ -622,6 +733,7 @@ export component StreamWindow inherits Window {
         root.remote-left-down = false;
         root.remote-right-down = false;
         root.remote-middle-down = false;
+        root.clear-control-handoff();
     }
 
     public function reset-input-state() {
@@ -651,6 +763,44 @@ export component StreamWindow inherits Window {
         if button == PointerEventButton.middle { root.remote-middle-down = down; }
     }
 
+    function clear-control-handoff() {
+        root.awaiting-control-hover = false;
+        root.native-approach-distance = -1px;
+    }
+
+    function hand-off-control-pointer(px: length, py: length, place-native: bool) -> bool {
+        if !RemoteCursor.adjusted || !root.is-local-control-area(
+            RemoteCursor.adjusted-x, RemoteCursor.adjusted-y) { return false; }
+        let x = RemoteCursor.adjusted-x;
+        let y = RemoteCursor.adjusted-y;
+        // Drop the remote anchor before the native move. The next video
+        // hover starts from the actual position where the pointer re-enters.
+        RemoteCursor.reset();
+        RemoteCursor.outside-video = true;
+        if place-native {
+            root.awaiting-control-hover = root.place-control-pointer(x, root.video-area-top + y);
+            if !root.awaiting-control-hover {
+                // Some window systems cannot reposition the system cursor.
+                // Show it at its actual position throughout the approach.
+                root.native-target-x = x;
+                root.native-target-y = y;
+                root.native-approach-distance = abs(px - x) + abs(py - y);
+            }
+        }
+        return true;
+    }
+
+    function approaching-native-control(x: length, y: length) -> bool {
+        if root.native-approach-distance < 0px { return false; }
+        let distance = abs(x - root.native-target-x) + abs(y - root.native-target-y);
+        if distance > root.native-approach-distance {
+            root.native-approach-distance = -1px;
+            return false;
+        }
+        root.native-approach-distance = distance;
+        return true;
+    }
+
     function route-remote-pointer(button: PointerEventButton, kind: PointerEventKind,
         x: length, y: length) {
         // Releases and cancellation must not be gated on hit testing. A local
@@ -661,25 +811,36 @@ export component StreamWindow inherits Window {
             if root.remote-button-down(button) {
                 root.set-remote-button(button, false);
                 root.pointer-input(button, kind, x, y);
+                if !root.remote-pointer-active { root.hand-off-control-pointer(x, y, true); }
             }
         } else if root.window-active && root.mouse-control-enabled && !root.modal-visible {
             let remote-target = root.remote-pointer-active
                 || (!root.control-menu-open && !root.is-local-control-area(x, y));
             if kind == PointerEventKind.down && remote-target
-                && button != PointerEventButton.other {
+                && button != PointerEventButton.other && !root.awaiting-control-hover {
+                root.native-approach-distance = -1px;
+                let already-grabbed = root.remote-pointer-active;
                 input-focus.focus();
                 root.set-remote-button(button, true);
                 root.pointer-input(button, kind, x, y);
+                if !already-grabbed && root.hand-off-control-pointer(x, y, false) {
+                    root.set-remote-button(button, false);
+                }
             } else if kind == PointerEventKind.move && remote-target {
+                root.awaiting-control-hover = false;
+                if root.approaching-native-control(x, y) { return; }
                 root.pointer-input(button, kind, x, y);
+                if !root.remote-pointer-active { root.hand-off-control-pointer(x, y, true); }
             }
         }
     }
 
     function route-remote-scroll(dx: length, dy: length, x: length, y: length) {
-        if root.window-active && root.mouse-control-enabled && !root.control-menu-open
+        if root.window-active && root.mouse-control-enabled && !root.control-menu-open && !root.awaiting-control-hover
             && !root.is-local-control-area(x, y) {
+            root.native-approach-distance = -1px;
             root.scroll-input(dx, dy, x, y);
+            if !root.remote-pointer-active { root.hand-off-control-pointer(x, y, false); }
         }
     }
 
@@ -1092,8 +1253,18 @@ export component StreamWindow inherits Window {
                     accept
                 }
                 pointer := TouchArea {
-                    mouse-cursor: root.remote-cursor-active
+                    private property <bool> over-local-control: root.is-local-control-area(self.mouse-x, self.mouse-y);
+                    private property <bool> remote-hover-or-grab: root.remote-pointer-active
+                        || (self.has-hover && !self.over-local-control);
+                    mouse-cursor: self.over-local-control && !root.remote-pointer-active ? MouseCursor.default
+                        : RemoteCursor.adjusted && root.mouse-control-enabled ? MouseCursor.none : root.remote-cursor-active
                         ? RemoteCursor.shape(root.remote-cursor-shape) : MouseCursor.default;
+                    changed remote-hover-or-grab => {
+                        if !self.remote-hover-or-grab {
+                            root.clear-control-handoff();
+                            RemoteCursor.reset();
+                        }
+                    }
                     pointer-event(event) => {
                         root.route-remote-pointer(event.button, event.kind, self.mouse-x, self.mouse-y);
                     }
@@ -1111,6 +1282,7 @@ export component StreamWindow inherits Window {
                 z: 15;
                 mouse-cursor: root.control-drag-pending
                     ? (root.control-hand-cursor-supported ? MouseCursor.pointer : MouseCursor.default)
+                    : RemoteCursor.adjusted ? MouseCursor.none
                     : root.remote-cursor-active ? RemoteCursor.shape(root.remote-cursor-shape)
                     : MouseCursor.default;
                 pointer-event(event) => {
@@ -1126,6 +1298,12 @@ export component StreamWindow inherits Window {
                     }
                     accept
                 }
+            }
+
+            if pointer.remote-hover-or-grab && root.mouse-control-enabled && !root.modal-visible && !root.control-menu-open: AdjustedPointer {
+                // Paint above the toolbar during a remote drag or when just
+                // the tip is outside a local control. This item takes no input.
+                z: 16; shape: root.remote-cursor-active ? root.remote-cursor-shape : 0;
             }
 
             // Keep the toolbar anchor and hit area stable while the visual
@@ -1229,7 +1407,7 @@ export component StreamWindow inherits Window {
                     x: root.control-buttons-x + 4 * root.control-button-step + root.control-shortcut-width + root.control-privacy-width;
                     y: (parent.height - self.height) / 2;
                     icon: "\u{f1de}"; selected: root.video-menu-open;
-                    tooltip: StreamStrings.video-settings;
+                    tooltip: StreamStrings.settings;
                     clicked => {
                         root.video-menu-open = !root.video-menu-open;
                         root.display-menu-open = false;
@@ -1653,49 +1831,72 @@ export component StreamWindow inherits Window {
                     mouse-cursor: default;
                     scroll-event(event) => { accept }
                 }
-                VerticalLayout {
-                    padding: 10px; spacing: 8px;
-                    if root.remote-resolution-visible: VerticalLayout {
-                        spacing: 4px;
-                        Text { text: StreamStrings.remote-resolution; color: #5c626c; font-size: 11px; height: 18px; }
-                        SettingsSelect {
-                            height: 27px;
-                            width: parent.width;
-                            maximum-popup-height: 240px;
-                            model: root.remote-resolutions;
-                            current-index <=> root.resolution-selection;
-                            enabled: root.remote-resolution-enabled;
-                            selected(index) => {
-                                root.change-remote-resolution(index);
-                                // Restore the host-confirmed value after selection.
-                                root.restore-confirmed-resolution();
+                settings-scroll := ScrollView {
+                    width: root.video-menu-width; height: root.video-menu-height;
+                    viewport-width: root.video-menu-width;
+                    viewport-height: root.settings-content-height;
+                    horizontal-scrollbar-policy: always-off;
+                    vertical-scrollbar-policy: as-needed;
+                    VerticalLayout {
+                        width: root.video-menu-width;
+                        height: root.settings-content-height;
+                        padding: 10px; spacing: 8px;
+                        padding-right: root.settings-content-height > root.video-menu-height ? 24px : 10px;
+                        if root.remote-resolution-visible: VerticalLayout {
+                            spacing: 4px;
+                            Text { text: StreamStrings.remote-resolution; color: #5c626c; font-size: 11px; height: 18px; }
+                            SettingsSelect {
+                                height: 27px;
+                                width: parent.width;
+                                maximum-popup-height: 240px;
+                                model: root.remote-resolutions;
+                                current-index <=> root.resolution-selection;
+                                enabled: root.remote-resolution-enabled;
+                                selected(index) => {
+                                    root.change-remote-resolution(index);
+                                    // Restore the host-confirmed value after selection.
+                                    root.restore-confirmed-resolution();
+                                }
                             }
                         }
-                    }
-                    if root.remote-resolution-visible && root.remote-resolution-feedback != "": Text {
-                        text: root.remote-resolution-feedback; wrap: word-wrap;
-                        color: #8b8f95; font-size: 11px; height: 24px;
-                    }
-                    VideoSettingRow {
-                        label: StreamStrings.video-quality;
-                        options: [StreamStrings.quality-low, StreamStrings.quality-medium, StreamStrings.quality-high];
-                        selected: root.video-quality-index; enabled: root.video-settings-enabled;
-                        choose(index) => { root.change-video-settings(index, root.frame-rate-index, root.adaptation-policy-index); }
-                    }
-                    VideoSettingRow {
-                        label: StreamStrings.frame-rate; options: ["30 fps", "60 fps"];
-                        selected: root.frame-rate-index; enabled: root.video-settings-enabled;
-                        choose(index) => { root.change-video-settings(root.video-quality-index, index, root.adaptation-policy-index); }
-                    }
-                    VideoSettingRow {
-                        label: StreamStrings.adaptation-policy;
-                        options: [StreamStrings.priority-frame-rate, StreamStrings.priority-quality, StreamStrings.priority-balanced];
-                        selected: root.adaptation-policy-index; enabled: root.video-settings-enabled;
-                        choose(index) => { root.change-video-settings(root.video-quality-index, root.frame-rate-index, index); }
-                    }
-                    if !root.video-settings-enabled || root.video-settings-feedback != "": Text {
-                        text: root.video-settings-enabled ? root.video-settings-feedback : StreamStrings.video-settings-unavailable; wrap: word-wrap;
-                        color: #8b8f95; font-size: 11px;
+                        if root.remote-resolution-visible && root.remote-resolution-feedback != "": Text {
+                            text: root.remote-resolution-feedback; wrap: word-wrap;
+                            color: #8b8f95; font-size: 11px; height: 24px;
+                        }
+                        VideoSettingRow {
+                            label: StreamStrings.video-quality;
+                            options: [StreamStrings.quality-low, StreamStrings.quality-medium, StreamStrings.quality-high];
+                            selected: root.video-quality-index; enabled: root.video-settings-enabled;
+                            choose(index) => { root.change-video-settings(index, root.frame-rate-index, root.adaptation-policy-index); }
+                        }
+                        VideoSettingRow {
+                            label: StreamStrings.frame-rate; options: ["30 fps", "60 fps"];
+                            selected: root.frame-rate-index; enabled: root.video-settings-enabled;
+                            choose(index) => { root.change-video-settings(root.video-quality-index, index, root.adaptation-policy-index); }
+                        }
+                        VideoSettingRow {
+                            label: StreamStrings.adaptation-policy;
+                            options: [StreamStrings.priority-frame-rate, StreamStrings.priority-quality, StreamStrings.priority-balanced];
+                            selected: root.adaptation-policy-index; enabled: root.video-settings-enabled;
+                            choose(index) => { root.change-video-settings(root.video-quality-index, root.frame-rate-index, index); }
+                        }
+                        if !root.video-settings-enabled || root.video-settings-feedback != "": Text {
+                            text: root.video-settings-enabled ? root.video-settings-feedback : StreamStrings.video-settings-unavailable; wrap: word-wrap;
+                            color: #8b8f95; font-size: 11px;
+                        }
+                        SensitivityRow {
+                            label: StreamStrings.mouse-sensitivity;
+                            percent <=> root.mouse-sensitivity-percent;
+                            commit => { root.commit-input-sensitivity(); }
+                        }
+                        SensitivityRow {
+                            label: StreamStrings.wheel-sensitivity;
+                            percent <=> root.wheel-sensitivity-percent;
+                            commit => { root.commit-input-sensitivity(); }
+                        }
+                        if root.sensitivity-error != "": Text {
+                            text: root.sensitivity-error; color: #59636d; font-size: 11px; wrap: word-wrap;
+                        }
                     }
                 }
             }

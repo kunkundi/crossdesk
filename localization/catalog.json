@@ -12,6 +12,30 @@
     "pt-BR"
   ],
   "strings": {
+    "鼠标灵敏度": {
+      "zh-Hans": "鼠标灵敏度",
+      "en": "Pointer sensitivity",
+      "ru": "Чувствительность указателя",
+      "zh-Hant": "滑鼠靈敏度",
+      "ja": "ポインターの感度",
+      "ko": "포인터 민감도",
+      "de": "Zeigerempfindlichkeit",
+      "fr": "Sensibilité du pointeur",
+      "es": "Sensibilidad del puntero",
+      "pt-BR": "Sensibilidade do ponteiro"
+    },
+    "滚轮灵敏度": {
+      "zh-Hans": "滚轮灵敏度",
+      "en": "Scroll sensitivity",
+      "ru": "Чувствительность прокрутки",
+      "zh-Hant": "滾輪靈敏度",
+      "ja": "スクロールの感度",
+      "ko": "스크롤 민감도",
+      "de": "Scroll-Empfindlichkeit",
+      "fr": "Sensibilité du défilement",
+      "es": "Sensibilidad de desplazamiento",
+      "pt-BR": "Sensibilidade da rolagem"
+    },
     "": {
       "zh-Hans": "",
       "en": " ",
@@ -11750,6 +11774,8 @@
     }
   },
   "desktop": {
+    "mouse_sensitivity": "鼠标灵敏度",
+    "wheel_sensitivity": "滚轮灵敏度",
     "window_minimize": "最小化",
     "window_maximize": "最大化",
     "window_restore": "还原窗口",
@@ -12256,10 +12282,14 @@
     "监听所有 IP 接口",
     "所有接口共用一个端口，包括 VPN。分享时请选择实际 IP；关闭后恢复各 IP 的独立端口。",
     "最小化时暂停视频",
-    "控制窗口最小化时暂停接收视频，降低本机解码资源占用。"
+    "控制窗口最小化时暂停接收视频，降低本机解码资源占用。",
+    "鼠标灵敏度",
+    "滚轮灵敏度"
   ],
   "platforms": {
     "desktop": [
+      "鼠标灵敏度",
+      "滚轮灵敏度",
       "",
       " 台",
       " 台已连接",

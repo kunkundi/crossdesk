@@ -1,8 +1,10 @@
 #include "platform/window_drag.h"
 
 #import <AppKit/AppKit.h>
+#import <CoreGraphics/CoreGraphics.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -328,6 +330,42 @@ bool IsStreamWindowActive() {
   @autoreleasepool {
     return stream_window != nil && [NSApp isActive] &&
            [stream_window isKeyWindow];
+  }
+}
+
+bool PlaceMacStreamControlPointer(void* slint_view, float pixel_x, float pixel_y) {
+  @autoreleasepool {
+    NSView *view = (__bridge NSView *)slint_view;
+    NSWindow *window = view.window;
+    if (!window || window != stream_window || !IsStreamWindowActive()) return false;
+    NSPoint current = [view convertPoint:window.mouseLocationOutsideOfEventStream fromView:nil];
+    if (!NSPointInRect(current, view.bounds) ||
+        [NSWindow windowNumberAtPoint:NSEvent.mouseLocation belowWindowWithWindowNumber:0]
+            != window.windowNumber) return false;
+    const CGFloat scale = window.backingScaleFactor;
+    NSRect bounds = view.bounds;
+    if (NSIsEmptyRect(bounds) || scale <= 0) return false;
+    const CGFloat x = std::clamp<CGFloat>(pixel_x / scale, 0,
+        std::max<CGFloat>(0, NSWidth(bounds) - 1 / scale));
+    const CGFloat y = std::clamp<CGFloat>(pixel_y / scale, 0,
+        std::max<CGFloat>(0, NSHeight(bounds) - 1 / scale));
+    NSPoint local = NSMakePoint(NSMinX(bounds) + x,
+        view.isFlipped ? NSMinY(bounds) + y : NSMaxY(bounds) - y);
+    NSPoint client = [view convertPoint:local toView:nil];
+    NSPoint screen = [window convertPointToScreen:client];
+    if ([NSWindow windowNumberAtPoint:screen belowWindowWithWindowNumber:0] != window.windowNumber)
+      return false;
+    NSScreen *primary = NSScreen.screens.firstObject;
+    if (!primary) return false;
+    const CGPoint target = CGPointMake(screen.x, NSMaxY(primary.frame) - screen.y);
+    if (CGWarpMouseCursorPosition(target) != kCGErrorSuccess) return false;
+    // Quartz warps do not post a mouse event. Feed AppKit a move so hover and
+    // the next button event use the new location even if the mouse stays still.
+    NSEvent *move = [NSEvent mouseEventWithType:NSEventTypeMouseMoved location:client
+        modifierFlags:NSEvent.modifierFlags timestamp:NSProcessInfo.processInfo.systemUptime
+        windowNumber:window.windowNumber context:nil eventNumber:0 clickCount:0 pressure:0];
+    [NSApp postEvent:move atStart:YES];
+    return true;
   }
 }
 

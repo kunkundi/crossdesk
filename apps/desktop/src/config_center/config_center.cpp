@@ -38,6 +38,10 @@ bool IsValidTurnModeValue(long value) {
          value <= static_cast<long>(ConfigCenter::TURN_MODE::FORCE_TCP);
 }
 
+bool IsValidInputSensitivity(long percent) {
+  return percent >= 10 && percent <= 500;
+}
+
 int ReadStartingBitrate(const CSimpleIniA& ini, const char* section,
                         const char* key, int fallback) {
   const char* value = ini.GetValue(section, key, nullptr);
@@ -203,6 +207,12 @@ int ConfigCenter::Load() {
       ini_->GetBoolValue(section_, "save_remote_previews", true));
   pause_video_when_minimized_.store(
       ini_->GetBoolValue(section_, "pause_video_when_minimized", true));
+  auto read_sensitivity = [&](const char* key) {
+    const long percent = ini_->GetLongValue(section_, key, 100);
+    return IsValidInputSensitivity(percent) ? static_cast<int>(percent) : 100;
+  };
+  mouse_sensitivity_percent_ = read_sensitivity("mouse_sensitivity_percent");
+  wheel_sensitivity_percent_ = read_sensitivity("wheel_sensitivity_percent");
   portable_service_prompt_suppressed_ =
       ini_->GetBoolValue(section_, "portable_service_prompt_suppressed",
                         portable_service_prompt_suppressed_);
@@ -310,6 +320,8 @@ int ConfigCenter::Save() {
                     save_remote_previews_.load());
   ini_->SetBoolValue(section_, "pause_video_when_minimized",
                     pause_video_when_minimized_.load());
+  ini_->SetLongValue(section_, "mouse_sensitivity_percent", GetMouseSensitivityPercent());
+  ini_->SetLongValue(section_, "wheel_sensitivity_percent", GetWheelSensitivityPercent());
   ini_->SetBoolValue(section_, "portable_service_prompt_suppressed",
                     portable_service_prompt_suppressed_);
   ini_->SetValue(section_, "sponsorship_prompt_dismissed_version",
@@ -632,6 +644,16 @@ int ConfigCenter::SetPauseVideoWhenMinimized(bool enabled) {
 
 bool ConfigCenter::IsPauseVideoWhenMinimized() const {
   return pause_video_when_minimized_.load();
+}
+
+int ConfigCenter::SetInputSensitivity(int mouse_percent, int wheel_percent) {
+  if (!IsValidInputSensitivity(mouse_percent) || !IsValidInputSensitivity(wheel_percent) ||
+      StoreValues({{"mouse_sensitivity_percent", std::to_string(mouse_percent)},
+                   {"wheel_sensitivity_percent", std::to_string(wheel_percent)}}) != 0)
+    return -1;
+  mouse_sensitivity_percent_.store(mouse_percent);
+  wheel_sensitivity_percent_.store(wheel_percent);
+  return 0;
 }
 
 int ConfigCenter::SetPortableServicePromptSuppressed(bool suppressed) {
