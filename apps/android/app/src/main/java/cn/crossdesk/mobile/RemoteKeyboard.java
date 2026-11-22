@@ -91,7 +91,7 @@ final class RemoteKeyboard extends LinearLayout {
         getContext().getSystemService(InputMethodManager.class).hideSoftInputFromWindow(getWindowToken(),0);
         setVisibility(GONE);changed.run();return true;
     }
-    void resetContext(){editor.resetContext();}
+    void resetContext(){editor.finishInputContext();}
     private void page(boolean next){functions=next;render();}
     private void switchKeyboard(){
         if(!opened||switching)return;

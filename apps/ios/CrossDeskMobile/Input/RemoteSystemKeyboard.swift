@@ -513,6 +513,7 @@ final class RemoteTextInputView: UITextField, UITextFieldDelegate {
     private(set) var acceptingInput = true
     var automaticallyFocus = true
     private var sentText = ""
+    private var committedText = ""
     private var changeScheduled = false
     private var resetting = false
     private var generation: UInt64 = 0
@@ -569,6 +570,8 @@ final class RemoteTextInputView: UITextField, UITextFieldDelegate {
 
     override func setMarkedText(_ markedText: String?, selectedRange: NSRange) {
         guard acceptingInput else { return }
+        // Preserve the last commit even if the next preedit starts in this run-loop turn.
+        if markedTextRange == nil { committedText = text ?? "" }
         super.setMarkedText(markedText, selectedRange: selectedRange)
         scheduleTextChange()
     }
@@ -613,9 +616,20 @@ final class RemoteTextInputView: UITextField, UITextFieldDelegate {
 
     @discardableResult
     func synchronizeText() -> Bool {
-        guard acceptingInput, !resetting, markedTextRange == nil else { return false }
-        let current = text ?? ""
-        guard current != sentText else { return true }
+        guard acceptingInput, !resetting else { return false }
+        let marked = markedTextRange
+        if let marked {
+            // Some IMEs confirm a prefix by moving the start of the marked range.
+            // Keep the committed tail if an existing word was marked for correction.
+            if let range = textRange(from: beginningOfDocument, to: marked.start),
+               let prefix = text(in: range), prefix.hasPrefix(committedText) {
+                committedText = prefix
+            }
+        } else {
+            committedText = text ?? ""
+        }
+        let current = committedText
+        guard current != sentText else { return marked == nil }
         let prefixCount = zip(sentText, current).prefix(while: { $0 == $1 }).count
         let deleteCount = sentText.count - prefixCount
         let insertion = String(current.dropFirst(prefixCount))
@@ -625,7 +639,7 @@ final class RemoteTextInputView: UITextField, UITextFieldDelegate {
             return false
         }
         sentText = current
-        return true
+        return marked == nil
     }
 
     func finishInputContext() {
@@ -642,6 +656,8 @@ final class RemoteTextInputView: UITextField, UITextFieldDelegate {
     }
 
     func stop() {
+        guard acceptingInput else { return }
+        _ = synchronizeText()
         acceptingInput = false
         applyEdit = nil
         key = nil
@@ -655,6 +671,7 @@ final class RemoteTextInputView: UITextField, UITextFieldDelegate {
         super.unmarkText()
         text = ""
         sentText = ""
+        committedText = ""
         resetting = false
     }
 }
