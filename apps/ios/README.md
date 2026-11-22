@@ -524,17 +524,15 @@ outside the image, in either pointer mode. A pinch also follows the fingers'
 midpoint movement when it starts in a margin. Held virtual mouse buttons still
 prevent viewport gestures.
 
-In relative mouse mode, continuing to move outward at the top or bottom of the
-visible image pans the video vertically in the opposite direction. Moving
-down-left at the bottom edge pans upward without shifting the video horizontally;
-left and right edges do not trigger panning.
-This also works at 1× scale and while dragging a held virtual mouse button.
+When zoomed in, moving the relative mouse toward any screen edge pans the video
+to keep the cursor visible. Moving into a corner pans both axes. The same
+behavior applies when dragging a held virtual mouse button. At 1×, continuing
+outward at the top or bottom of the image still pans it vertically.
 Panning stops with the pointer movement and retains its position after release.
 At the vertical limit, the visible image occupies at least 20% of the viewport
 height regardless of zoom. If the entire image is shorter than that, its full
-height remains visible. The bounds account for letterboxing. Ending a pinch,
-including returning to 1×, preserves the translated position within those bounds
-instead of recentering it. Switching displays restores the centered view.
+height remains visible. The bounds account for letterboxing. Pinching back to
+1× or switching displays restores the centered view.
 
 ## Touch controls and device validation
 

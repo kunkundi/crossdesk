@@ -139,7 +139,11 @@ export struct MobileRemoteView {
       if (button === 1) {
         const delta = p.screenY - this.wheelY; this.wheelOffset = ((p.screenY - this.wheelLast) % 8 + 8) % 8;
         if (Math.abs(delta) > 8) { this.mouse.scroll(delta); this.wheelY = p.screenY; }
-      } else this.mouse.drag(p.screenX - this.barX, p.screenY - this.barY, this.viewport.width(), this.viewport.height());
+      } else if (this.mouse.held() && (p.screenX !== this.barX || p.screenY !== this.barY)) {
+        this.mouse.drag(p.screenX - this.barX, p.screenY - this.barY, this.viewport.width(), this.viewport.height());
+        this.viewport.followPointer(this.mouse.x, this.mouse.y);
+        this.applyViewport();
+      }
       this.barX = p.screenX; this.barY = p.screenY;
     } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
       if (button !== 1) this.mouse.button(button === 0, false); this.wheelOffset = 0;

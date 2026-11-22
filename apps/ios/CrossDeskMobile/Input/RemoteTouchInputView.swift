@@ -60,6 +60,13 @@ enum RemoteVideoGeometry {
         return 0
     }
 
+    // Leave enough room for the cursor glyph around its hotspot.
+    static let pointerInset: CGFloat = 18
+
+    static func pointerPan(position: CGFloat, length: CGFloat) -> CGFloat {
+        let margin = min(pointerInset, length / 2)
+        return min(max(position, margin), length - margin) - position
+    }
 }
 
 struct RemoteTouchInputView: UIViewRepresentable {
@@ -229,7 +236,8 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
         // SwiftUI can restore state before assigning the new surface's bounds.
         guard let baseRect = baseRenderRect() else { return }
         needsViewportRestore = false
-        if abs(viewportOffset.height) > baseRect.height * (viewportScale - 1) / 2 {
+        if abs(viewportOffset.height) > baseRect.height * (viewportScale - 1) / 2 ||
+            abs(viewportOffset.width) > baseRect.width * (viewportScale - 1) / 2 {
             edgePanned = true
         }
     }
@@ -560,25 +568,31 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
         let delta = CGPoint(x: translation.x * relativePointerSpeed,
                             y: translation.y * relativePointerSpeed)
         guard delta.x.isFinite, delta.y.isFinite else { return nil }
-        let cursorY = renderRect.minY + CGFloat(relativeCursorPoint.1) * renderRect.height
-        let overflowY = RemoteVideoGeometry.verticalPointerOverflow(
+        guard delta != .zero else { return relativeCursorPoint }
+        let (x, y) = relativeCursorPoint
+        let nextX = Float(min(max(CGFloat(x) + delta.x / renderRect.width, 0), 1))
+        let nextY = Float(min(max(CGFloat(y) + delta.y / renderRect.height, 0), 1))
+        let cursorY = renderRect.minY + CGFloat(y) * renderRect.height
+        var panY = -RemoteVideoGeometry.verticalPointerOverflow(
             y: cursorY, dy: delta.y, visibleRect: renderRect.intersection(bounds))
-        if overflowY != 0 {
+        var panX: CGFloat = 0
+        if viewportScale > 1.001 {
+            panX = RemoteVideoGeometry.pointerPan(
+                position: renderRect.minX + CGFloat(nextX) * renderRect.width, length: bounds.width)
+            panY += RemoteVideoGeometry.pointerPan(
+                position: renderRect.minY + CGFloat(nextY) * renderRect.height + panY, length: bounds.height)
+        }
+        if panX != 0 || panY != 0 {
             edgePanned = true
-            let proposedOffset = CGSize(width: viewportOffset.width,
-                                        height: viewportOffset.height - overflowY)
+            let proposedOffset = CGSize(width: viewportOffset.width + panX,
+                                        height: viewportOffset.height + panY)
             let nextOffset = constrainedViewportOffset(proposedOffset, scale: viewportScale)
             if nextOffset != viewportOffset {
                 viewportOffset = nextOffset
                 publishViewport()
             }
         }
-        let nextX = CGFloat(relativeCursorPoint.0) + delta.x / renderRect.width
-        let nextY = CGFloat(relativeCursorPoint.1) + delta.y / renderRect.height
-        relativeCursorPoint = (
-            Float(min(max(nextX, 0), 1)),
-            Float(min(max(nextY, 0), 1))
-        )
+        relativeCursorPoint = (nextX, nextY)
         return relativeCursorPoint
     }
 
@@ -605,7 +619,8 @@ final class RemoteTouchSurface: UIView, UIGestureRecognizerDelegate {
     private func constrainedViewportOffset(_ offset: CGSize,
                                            scale: CGFloat) -> CGSize {
         guard let baseRect = baseRenderRect() else { return offset }
-        let maximumX = max(0, baseRect.width * (scale - 1) / 2)
+        let horizontalInset = edgePanned && scale > 1.001 ? RemoteVideoGeometry.pointerInset : 0
+        let maximumX = max(0, baseRect.width * (scale - 1) / 2) + horizontalInset
         var minimumY = -max(0, baseRect.height * (scale - 1) / 2)
         var maximumY = -minimumY
         if edgePanned {

@@ -4,12 +4,14 @@ package cn.crossdesk.mobile;
 final class RemoteViewport {
     private static final float MAXIMUM_SCALE = 10;
     private static final float MINIMUM_VISIBLE_HEIGHT_FRACTION = .2f;
-    private int baseWidth, baseHeight, baseLeft, baseTop, containerHeight;
+    private int baseWidth, baseHeight, baseLeft, baseTop, containerWidth, containerHeight;
     private boolean edgePanned;
+    private float pointerInset;
     private float scale = 1, offsetX, offsetY;
 
     void fit(int width, int height, int videoWidth, int videoHeight) {
         if (width <= 0 || height <= 0 || videoWidth <= 0 || videoHeight <= 0) return;
+        containerWidth = width;
         containerHeight = height;
         double fitScale = Math.min((double) width / videoWidth, (double) height / videoHeight);
         baseWidth = Math.max(1, (int) (videoWidth * fitScale));
@@ -60,17 +62,28 @@ final class RemoteViewport {
         constrainOffset();
     }
 
-    void panForPointer(float y, float dy) {
-        if (baseHeight == 0 || !Float.isFinite(dy)) return;
-        float overflowY = pointerOverflow(top() + y * height(), dy,
+    void panForPointer(float nextX, float nextY, float previousY, float dy, float inset) {
+        if (baseHeight == 0) return;
+        float overflowY = pointerOverflow(top() + previousY * height(), dy,
             Math.max(0, top()), Math.min(containerHeight, top() + height()));
-        if (overflowY == 0) return;
+        float panX = 0, panY = -overflowY;
+        if (isZoomed()) {
+            pointerInset = inset;
+            panX = followPointer(left() + nextX * width(), containerWidth, inset);
+            panY += followPointer(top() + nextY * height() + panY, containerHeight, inset);
+        }
+        if (panX == 0 && panY == 0) return;
         edgePanned = true;
-        panBy(0, -overflowY);
+        panBy(panX, panY);
     }
 
-    // Only the outward portion of this movement pans; an offscreen cursor must
-    // not make a tiny movement jump the viewport by its entire hidden distance.
+    // Keep room for the cursor glyph when its hotspot reaches a screen edge.
+    private static float followPointer(float position, float length, float inset) {
+        float margin = Math.min(inset, length / 2);
+        return clamp(position, margin, length - margin) - position;
+    }
+
+    // Continuing outward at the vertical image edge can also pan the image at 1x.
     private static float pointerOverflow(float position, float delta, float low, float high) {
         if (delta > 0) return Math.min(delta, Math.max(0, position + delta - high));
         if (delta < 0) return Math.max(delta, Math.min(0, position + delta - low));
@@ -87,6 +100,7 @@ final class RemoteViewport {
 
     private void constrainOffset() {
         float maximumX = baseWidth * (scale - 1) / 2;
+        if (edgePanned && isZoomed()) maximumX += pointerInset;
         float minimumY = -baseHeight * (scale - 1) / 2;
         float maximumY = -minimumY;
         if (edgePanned) {

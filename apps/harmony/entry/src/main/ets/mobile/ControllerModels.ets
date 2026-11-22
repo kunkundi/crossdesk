@@ -5,6 +5,10 @@ export function clamp(value: number, low: number, high: number): number {
   return Math.max(low, Math.min(high, value));
 }
 export class RemoteViewport {
+  private static readonly POINTER_INSET: number = 18;
+  private containerWidth: number = 0;
+  private containerHeight: number = 0;
+  private followingPointer: boolean = false;
   baseWidth: number = 1;
   baseHeight: number = 1;
   baseLeft: number = 0;
@@ -14,6 +18,7 @@ export class RemoteViewport {
   offsetY: number = 0;
   fit(width: number, height: number, videoWidth: number, videoHeight: number): void {
     if (Math.min(width, height, videoWidth, videoHeight) <= 0) return;
+    this.containerWidth = width; this.containerHeight = height;
     const scale = Math.min(width / videoWidth, height / videoHeight);
     this.baseWidth = Math.max(1, videoWidth * scale); this.baseHeight = Math.max(1, videoHeight * scale);
     this.baseLeft = (width - this.baseWidth) / 2; this.baseTop = (height - this.baseHeight) / 2;
@@ -29,16 +34,32 @@ export class RemoteViewport {
   zoom(factor: number, x: number, y: number): void {
     if (!Number.isFinite(factor) || factor <= 0) return;
     const next = clamp(this.scale * factor, 1, 10), ratio = next / this.scale;
+    if (next === 1) { this.reset(); return; }
     const fx = x - this.baseLeft - this.baseWidth / 2, fy = y - this.baseTop - this.baseHeight / 2;
     this.offsetX = fx - (fx - this.offsetX) * ratio; this.offsetY = fy - (fy - this.offsetY) * ratio;
     this.scale = next; this.constrain();
   }
   pan(x: number, y: number): void { this.offsetX += x; this.offsetY += y; this.constrain(); }
-  reset(): void { this.scale = 1; this.offsetX = this.offsetY = 0; }
+  followPointer(x: number, y: number): void {
+    if (this.scale <= 1.001 || !this.containerWidth || !this.containerHeight) return;
+    const dx = this.pointerPan(this.left() + x * this.width(), this.containerWidth);
+    const dy = this.pointerPan(this.top() + y * this.height(), this.containerHeight);
+    if (dx === 0 && dy === 0) return;
+    this.followingPointer = true;
+    this.pan(dx, dy);
+  }
+  private pointerPan(position: number, length: number): number {
+    const margin = Math.min(RemoteViewport.POINTER_INSET, length / 2);
+    return clamp(position, margin, length - margin) - position;
+  }
+  reset(): void { this.scale = 1; this.offsetX = this.offsetY = 0; this.followingPointer = false; }
   finish(): void { if (this.scale <= 1.001) this.reset(); }
   private constrain(): void {
-    this.offsetX = clamp(this.offsetX, -this.baseWidth * (this.scale - 1) / 2, this.baseWidth * (this.scale - 1) / 2);
-    this.offsetY = clamp(this.offsetY, -this.baseHeight * (this.scale - 1) / 2, this.baseHeight * (this.scale - 1) / 2);
+    const inset = this.followingPointer ? RemoteViewport.POINTER_INSET : 0;
+    const maximumX = this.baseWidth * (this.scale - 1) / 2 + inset;
+    const maximumY = this.baseHeight * (this.scale - 1) / 2 + inset;
+    this.offsetX = clamp(this.offsetX, -maximumX, maximumX);
+    this.offsetY = clamp(this.offsetY, -maximumY, maximumY);
   }
 }
 export class MouseInput {
@@ -240,8 +261,11 @@ export class TouchInput {
       const p = points[0];
       if (Math.hypot(p.x - this.startX, p.y - this.startY) > 4) this.moved = true;
       if (this.moved && !this.relative && !this.long && this.revision === this.mouse.revision && !this.mouse.held()) this.mouse.gestureLeft(true);
-      if (this.relative) this.mouse.move(this.mouse.x + (p.x - this.lastX) / this.viewport.width(), this.mouse.y + (p.y - this.lastY) / this.viewport.height());
-      else this.mouse.move(this.viewport.x(p.x), this.viewport.y(p.y));
+      if (this.relative) {
+        const dx = p.x - this.lastX, dy = p.y - this.lastY;
+        this.mouse.move(this.mouse.x + dx / this.viewport.width(), this.mouse.y + dy / this.viewport.height());
+        if (dx !== 0 || dy !== 0) this.viewport.followPointer(this.mouse.x, this.mouse.y);
+      } else this.mouse.move(this.viewport.x(p.x), this.viewport.y(p.y));
       this.lastX = p.x; this.lastY = p.y;
     } else if (kind === 'up') {
       if (this.active && !this.moved && !this.long && this.revision === this.mouse.revision) this.mouse.click();

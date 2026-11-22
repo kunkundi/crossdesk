@@ -151,9 +151,12 @@ final class RemoteVideoView extends FrameLayout implements SurfaceHolder.Callbac
     @Override protected void onSizeChanged(int w,int h,int oldw,int oldh) { post(this::fit); }
     private void moveRelative(float dx, float dy) {
         if (pictureInPicture || viewport.width() <= 0 || viewport.height() <= 0) return;
-        viewport.panForPointer(y, dy);
+        if (!Float.isFinite(dx) || !Float.isFinite(dy) || (dx == 0 && dy == 0)) return;
+        float nextX = Math.max(0, Math.min(1, x + dx / viewport.width()));
+        float nextY = Math.max(0, Math.min(1, y + dy / viewport.height()));
+        viewport.panForPointer(nextX, nextY, y, dy, 18 * getResources().getDisplayMetrics().density);
         applyViewport();
-        mouseInput.move(x + dx / viewport.width(), y + dy / viewport.height());
+        mouseInput.move(nextX, nextY);
     }
     private boolean point(MotionEvent e) {
         boolean touchpad = relative && e.getToolType(0) != MotionEvent.TOOL_TYPE_MOUSE;
