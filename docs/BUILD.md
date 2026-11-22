@@ -1,8 +1,8 @@
 # 从源码构建
 
-[返回 README](../README.md) · [English](BUILD_EN.md)
+[返回 README](../README_ZH.md) · [English](BUILD_EN.md)
 
-下文按平台介绍依赖、编译参数、打包和签名。安装包见 [下载页面](../README.md#download)，版本同步和发布编号见 [版本管理](VERSIONING.md)。
+下文按平台介绍依赖、编译参数、打包和签名。安装包见 [下载页面](../README_ZH.md#download)，版本同步和发布编号见 [版本管理](VERSIONING.md)。
 
 克隆仓库后，构建和打包命令均在仓库根目录执行。构建依赖与参数以 [Xmake 配置](../apps/desktop/xmake/options.lua) 和 [CI 工作流](../.github/workflows/build.yml) 为准。`1.4.3` 仅为本地构建示例版本号；调整时请同步修改配置命令与打包参数，避免程序内版本号与安装包不一致。
 
@@ -35,7 +35,7 @@ xmake r crossdesk
 .\apps\desktop\scripts\windows\pkg_x64.ps1 1.4.3
 ```
 
-完整流程见 [Windows 脚本](../apps/desktop/scripts/windows/pkg_x64.ps1) 和 [CI 工作流](../.github/workflows/build.yml)。手动部署时需保留运行库、两个服务辅助程序以及 `usbmmidd_v2` 驱动文件夹（构建后由 xmake 复制到输出目录），见 [Windows 服务说明](../README.md#windows-service)。
+完整流程见 [Windows 脚本](../apps/desktop/scripts/windows/pkg_x64.ps1) 和 [CI 工作流](../.github/workflows/build.yml)。手动部署时需保留运行库、两个服务辅助程序以及 `usbmmidd_v2` 驱动文件夹（构建后由 xmake 复制到输出目录），见 [Windows 服务说明](../README_ZH.md#windows-service)。
 
 ## macOS
 

@@ -1,8 +1,8 @@
 # CrossDesk 使用指南
 
-[返回项目首页](../README.md) · [English](USER_GUIDE_EN.md)
+[返回项目首页](../README_ZH.md) · [English](USER_GUIDE_EN.md)
 
-首次使用请先查看 [下载与安装](../README.md#download)。本文按安装、连接和日常操作介绍客户端；部分新功能可能尚未包含在已发布安装包中，请同时查看对应版本说明。
+首次使用请先查看 [下载与安装](../README_ZH.md#download)。本文按安装、连接和日常操作介绍客户端；部分新功能可能尚未包含在已发布安装包中，请同时查看对应版本说明。
 
 [安装与权限](#installation) · [快速连接](#quick-start) · [IP 直连](#lan-direct) · [可信设备](#trusted-devices) · [桌面墙](#deskhub) · [会话操作](#session) · [设置与更新](#settings) · [iOS](#ios) · [Android](#android) · [鸿蒙](#harmonyos) · [Windows 无人值守](#windows-service) · [自托管](#self-hosting)
 

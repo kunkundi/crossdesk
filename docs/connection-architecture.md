@@ -1,6 +1,6 @@
 # ID 连接与 IP 直连架构
 
-[项目首页](../README.md) · [使用指南](USER_GUIDE.md#quick-start) · [IP 直连操作](USER_GUIDE.md#lan-direct) · [GUI 架构](gui-architecture.md)
+[项目首页](../README_ZH.md) · [使用指南](USER_GUIDE.md#quick-start) · [IP 直连操作](USER_GUIDE.md#lan-direct) · [GUI 架构](gui-architecture.md)
 
 本文说明桌面客户端的网络拓扑、身份认证、连接协商和传输生命周期。操作步骤与身份迁移见 [连接指南](CONNECTIONS.md)；服务端实现位于独立的 [CrossDesk Server](https://github.com/kunkundi/crossdesk-server) 项目。
 

@@ -1,6 +1,6 @@
 # 自托管服务器
 
-[返回 README](../README.md) · [English](SELF_HOSTING_EN.md)
+[返回 README](../README_ZH.md) · [English](SELF_HOSTING_EN.md)
 
 CrossDesk 的信令服务与 TURN 中继由独立的 [CrossDesk Server](https://github.com/kunkundi/crossdesk-server) 项目维护。本页说明部署入口与当前客户端的配置方法；服务端文件请使用同一 Release 中的配套版本。
 

@@ -1,6 +1,6 @@
 # Self-hosting
 
-[Back to README](../README_EN.md) · [中文](SELF_HOSTING.md)
+[Back to README](../README.md) · [中文](SELF_HOSTING.md)
 
 Signaling and TURN deployment are maintained in [CrossDesk Server](https://github.com/kunkundi/crossdesk-server). Use matching server configuration files from the same release. This guide focuses on deployment entry points and the current client UI.
 

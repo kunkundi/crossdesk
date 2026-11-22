@@ -1,6 +1,6 @@
 # 连接方式、可信设备与身份迁移
 
-[返回首页](../README.md) · [使用指南](USER_GUIDE.md) · [连接故障排查](FAQ.md) · [连接架构与协议](connection-architecture.md)
+[返回首页](../README_ZH.md) · [使用指南](USER_GUIDE.md) · [连接故障排查](FAQ.md) · [连接架构与协议](connection-architecture.md)
 
 本文帮助你选择连接方式、管理允许访问的设备，以及在重装或迁移前保留连接身份。
 

@@ -1,10 +1,10 @@
 # CrossDesk 文档导航
 
-[项目首页](../README.md) · [English user guide](USER_GUIDE_EN.md)
+[项目首页](../README_ZH.md) · [English user guide](USER_GUIDE_EN.md)
 
 ## 第一次使用
 
-1. [下载并选择客户端](../README.md#download)。
+1. [下载并选择客户端](../README_ZH.md#download)。
 2. [安装与授予系统权限](USER_GUIDE.md#installation)。
 3. [通过设备 ID 连接](USER_GUIDE.md#quick-start)，或在局域网中 [IP 直连](USER_GUIDE.md#lan-direct)。
 4. 连接不成功时查看 [常见问题](FAQ.md)。

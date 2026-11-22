@@ -1,6 +1,6 @@
 # CrossDesk 界面配图 / Interface images
 
-[中文 README](../../README.md) · [English README](../../README_EN.md) · [中文使用指南](../USER_GUIDE.md) · [English user guide](../USER_GUIDE_EN.md)
+[中文 README](../../README_ZH.md) · [English README](../../README.md) · [中文使用指南](../USER_GUIDE.md) · [English user guide](../USER_GUIDE_EN.md)
 
 ## 文件 / Files
 

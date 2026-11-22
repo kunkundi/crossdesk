@@ -1,6 +1,6 @@
 # 常见问题 / FAQ
 
-[返回 README](../README.md) · [English](#english)
+[返回 README](../README_ZH.md) · [English](#english)
 
 ## 未连接服务器，或提示 TLS 证书错误
 
@@ -45,7 +45,7 @@ Wayland 画面捕获依赖启用了 Wayland 支持的构建、宿主系统 PipeW
 
 ## Windows 锁屏后无法操作
 
-在被控电脑检查 CrossDesk Service 是否安装、是否运行，并保持 CrossDesk 客户端运行。便携版可在“设置 → 锁屏控制服务”安装。服务状态检查命令见 [Windows 服务说明](../README.md#windows-service)。
+在被控电脑检查 CrossDesk Service 是否安装、是否运行，并保持 CrossDesk 客户端运行。便携版可在“设置 → 锁屏控制服务”安装。服务状态检查命令见 [Windows 服务说明](../README_ZH.md#windows-service)。
 
 “断开连接后自动锁屏”可用不代表锁屏控制服务可用：锁屏由客户端调用系统功能，输入登录密码则需要服务。若 Android 手机能看到登录界面但输入法无法输入，可在远程键盘中切换到 **电脑键盘**，对比数字、字母与回车是否有效；反馈时注明两端版本、安装版或便携版，以及两种键盘的表现。
 
@@ -97,7 +97,7 @@ CrossDesk 会自动选择可用的采集方式，并尝试使用随 Windows 安�
 
 ## English
 
-[Back to README](../README_EN.md)
+[Back to README](../README.md)
 
 | Symptom | What to check |
 | --- | --- |
@@ -107,7 +107,7 @@ CrossDesk 会自动选择可用的采集方式，并尝试使用随 Windows 安�
 | Black screen / no input on macOS | Grant Screen Recording and Accessibility, then reopen the app. Release updates with compatible signing identities normally retain permissions. For migration or stale grants, see [macOS permission repair](#repair-macos-permissions). |
 | No capture on Linux Wayland | Check the Wayland build option, host PipeWire 0.3, and desktop portal permission. Compare with an X11 session. See [Linux build instructions](BUILD_EN.md#linux). |
 | Linux host has no monitor or graphical session | Start CrossDesk normally to automatically discover and select your existing desktop, preserving its Dock and apps; no display number is needed. A bare Xvfb shows only CrossDesk on a black background; use an existing session or install Xfce and specify `--headless-session startxfce4`. See [Linux headless operation](HEADLESS_EN.md). |
-| Cannot control a Windows lock screen | Install/start CrossDesk Service and keep the host client running. See [service commands](../README_EN.md#windows-service). |
+| Cannot control a Windows lock screen | Install/start CrossDesk Service and keep the host client running. See [service commands](../README.md#windows-service). |
 | Android can connect but cannot type a Windows login password | Locking on disconnect does not verify service availability. Check CrossDesk Service, then compare the phone IME with **Computer keyboard** in the remote keyboard panel. Include both client versions, installer/portable edition, and both keyboard results in the report. |
 | Privacy screen does not activate for a mobile connection | Use **Privacy screen** in the native mobile floating menu. Update both clients if the entry is missing. Automatic activation also requires the host setting and a supported user desktop; older or Web controllers connected at the same time may prevent it. Locking on disconnect is separate. |
 | Windows host has no monitor attached | CrossDesk automatically selects a capture method and tries the bundled virtual display. Check that CrossDesk Service is installed and running. Unattended mode prefers a saved resolution, otherwise 1920×1080. If the driver is unavailable, resolution and frame rate may be limited. Reconnect after attaching a physical monitor to check recovery. |

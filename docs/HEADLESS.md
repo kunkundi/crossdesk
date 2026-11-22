@@ -1,6 +1,6 @@
 # Linux 无头运行
 
-[返回 README](../README.md) · [English](HEADLESS_EN.md)
+[返回 README](../README_ZH.md) · [English](HEADLESS_EN.md)
 
 无显示器的 Linux 主机可复用已有 X11 桌面，也可通过 Xvfb 创建独立虚拟桌面。画面采集、键鼠、光标和剪贴板使用同一个显示会话。
 

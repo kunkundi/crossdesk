@@ -1,6 +1,6 @@
 # CrossDesk Android
 
-[下载安装](../../README.md#android) · [使用指南](../../docs/USER_GUIDE.md#android) · [源码构建](#构建) · [签名与发布](#release-签名)
+[下载安装](../../README_ZH.md#android) · [使用指南](../../docs/USER_GUIDE.md#android) · [源码构建](#构建) · [签名与发布](#release-签名)
 
 原生 Android 控制端，使用 Java 界面、JNI 和 MiniRTC，与桌面端使用相同的信令、ICE、SRTP 和输入协议。没有 WebView。支持 Android 8.0（API 26）及以上的 arm64 手机和平板。桌面、Android、iOS 和 HarmonyOS 共用客户端发布版本，各移动平台构建号独立；可在仓库根目录执行 `python3 scripts/version.py show client` 查看，使用 `set client <版本>` 同步修改，详见[组件版本管理](../../docs/VERSIONING.md)。
 

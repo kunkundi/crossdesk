@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="docs/images/crossdesk-banner.svg" width="420" alt="CrossDesk 标志：图标在左，双色文字在右" />
-  <p>轻量、跨平台的远程桌面，支持电脑、浏览器、移动端和终端连接，用桌面墙集中查看与操控多台设备。</p>
-  <p><a href="https://www.crossdesk.cn/">官方网站</a> · <a href="https://github.com/kunkundi/crossdesk/releases">下载客户端</a> · <a href="#build">构建指南</a> · <a href="https://web.crossdesk.cn/">打开 Web 客户端</a> · <a href="README_EN.md">English</a></p>
+  <img src="docs/images/crossdesk-banner.svg" width="420" alt="CrossDesk logo with the icon on the left and a two-tone wordmark on the right" />
+  <p>A lightweight, cross-platform remote desktop for computers, browsers, mobile devices, and terminals, with DeskHub for viewing and controlling multiple desktops.</p>
+  <p><a href="https://www.crossdesk.cn/">Website</a> · <a href="https://github.com/kunkundi/crossdesk/releases">Download</a> · <a href="#build">Build guide</a> · <a href="https://web.crossdesk.cn/">Open Web Client</a> · <a href="README_ZH.md">中文</a></p>
 </div>
 
 <div align="center">
@@ -18,26 +18,6 @@
 
 </div>
 
----
-
-<h3 align="center"><a href="#sponsor">特别赞助</a></h3>
-
-<!-- 每家赞助商使用一个单元格，Logo 下方填写其品牌名，每两家另起一行。 -->
-<div align="center">
-  <table border="1">
-    <tr>
-      <td align="center">
-        <a href="https://crossdesk.hualong-ai.com/">
-          <img src="apps/desktop/src/gui/ui/icons/sponsors/hualongai.png" width="128" height="128" alt="" /><br />
-          <strong>HuaLongAI 华龙算力</strong>
-        </a>
-      </td>
-    </tr>
-  </table>
-</div>
-
----
-
 <p align="center">
   <a href="https://trendshift.io/repositories/17514?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-17514" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/17514" alt="kunkundi%2Fcrossdesk | Trendshift" width="250" height="55"/></a>
 </p>
@@ -48,193 +28,211 @@
   <a href="https://trendshift.io/repositories/17514?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-17514" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/17514/monthly?language=C%2B%2B" alt="kunkundi%2Fcrossdesk | Trendshift" width="250" height="55"/></a>
 </p>
 
-CrossDesk 让你从电脑、浏览器、手机或终端（桌面 CLI）连接远端电脑，也能通过桌面墙（DeskHub）集中查看与操控多台设备。项目基于 [MiniRTC](https://github.com/kunkundi/minirtc)，支持自托管。
+## Special Sponsors
 
-[主要功能](#features) · [下载与平台支持](#download) · [构建指南](#build) · [快速连接](#quick-start) · [终端 CLI](#cli) · [Agent / MCP](#mcp) · [IP 直连](#lan-direct) · [可信设备](#trusted-devices) · [界面预览](#preview) · [使用指南](docs/USER_GUIDE.md) · [文档导航](docs/README.md) · [自托管](#self-hosting) · [文档与反馈](#development) · [赞助](#sponsor)
+<table border="1">
+  <tr>
+    <td align="center" valign="middle" width="160">
+      <a href="https://crossdesk.hualong-ai.com/">
+        <img src="apps/desktop/src/gui/ui/icons/sponsors/hualongai.png" width="128" height="128" alt="HuaLongAI 华龙算力" />
+      </a>
+    </td>
+    <td valign="middle">
+      <p><strong><a href="https://crossdesk.hualong-ai.com/">HuaLongAI 华龙算力</a></strong></p>
+      <p>A stable, efficient API relay for Codex, zero-injection Kiro, and Claude models. HuaLongAI sources 100% of its models directly from official providers, with no substitutions. It offers high availability and reports an average SLA above 99.2%. Token-level billing lets you verify each charge. Enterprise contracts and invoices are available.</p>
+    </td>
+  </tr>
+</table>
+
+## Overview
+
+CrossDesk connects your computers from desktop, browser, mobile, and terminal clients, with a desktop wall for viewing and controlling multiple devices together. It is built on [MiniRTC](https://github.com/kunkundi/minirtc) and supports self-hosting.
+
+[Features](#features) · [Download and platforms](#download) · [Build guide](#build) · [Quick start](#quick-start) · [Terminal CLI](#cli) · [Agent / MCP](#mcp) · [Direct IP](#lan-direct) · [Trusted devices](#trusted-devices) · [Preview](#preview) · [User guide](docs/USER_GUIDE_EN.md) · [Self-hosting](#self-hosting) · [Documentation and feedback](#development) · [Sponsor](#sponsor)
 
 <a id="features"></a>
 
-## 主要功能
+## Features
 
-- **跨平台远控：** Windows、macOS、Linux 桌面互控，浏览器及原生 iOS / Android 客户端访问电脑；鸿蒙 PC 与移动端处于开发阶段。
-- **局域网 IP 直连：** 桌面客户端和 Android、iOS、鸿蒙移动端可通过 IP、端口和六位密码连接电脑，无需云端信令服务；支持独立端口、记住密码及按模式显示近期设备。
-- **终端主控：** 在终端中通过设备 ID 观看和操控远程桌面，支持 ANSI / Kitty / Sixel 画面、局部缩放与平移、持续本地命令模式及 Pi 扩展，可单独构建。
-- **桌面墙：** 多设备实时预览、分组、放大操控、群控和批量文件分发。
-- **画面与声音：** H.264 / AV1、硬件编解码、远端音频，会话内调整画质、帧率和远端显示器分辨率；记住已确认的分辨率选择，最后一个控制端断开后恢复原显示模式。可用能力随平台与设备而异。
-- **日常协作：** 多显示器切换、键鼠与组合键、文本剪贴板；双栏文件浏览支持目录导航、文件与文件夹双向传输、拖放和任务管理。
-- **Agent / MCP：** 通过本机 MCP 服务授权 Agent 观察和操作远端电脑，提供实时监看、人工接管、多会话、剪贴板和文件工具；可安装对应平台的 MCP 包。
-- **可信设备：** 桌面端可选开启可信设备限制，在连接密码之外校验设备身份；支持复制、粘贴配对信息，提前添加允许访问本机的设备。
-- **部署与运维：** P2P 直连、TURN 中继、SRTP 媒体加密、自托管，以及 Windows 登录前远控和 Linux 无头运行。
+- **Cross-platform access:** control Windows, macOS, and Linux desktops from computers, browsers, or native iOS / Android clients. HarmonyOS PC and mobile clients are in development.
+- **Direct IP over LAN:** connect to a desktop from Android, iOS, HarmonyOS, or another desktop using an IP address, port, and six-character password without a cloud signaling service. You can change the port, remember passwords, and view recent devices separately by mode.
+- **Terminal controller:** view and control remote desktops by device ID, with ANSI / Kitty / Sixel rendering, zoom and pan, persistent local command mode, a Pi extension, and a build independent of the desktop GUI.
+- **DeskHub:** live multi-device previews, groups, enlarged control, group input, and batch file distribution.
+- **Video and audio:** H.264 / AV1, hardware codecs, remote audio, and in-session quality, frame-rate, and remote display resolution controls. Confirmed resolution choices are remembered; the original display mode is restored when the last controller disconnects. Capabilities depend on the platform and device.
+- **Everyday controls:** monitor switching, keyboard and mouse input, shortcuts, and text clipboard. A dual-pane file browser supports directory navigation, bidirectional file and folder transfers, drag and drop, and transfer management.
+- **Agent / MCP:** authorize an Agent through a local MCP service to observe and operate remote computers, with live monitoring, manual takeover, multiple sessions, clipboard, and file tools. Install the package for your local platform.
+- **Trusted devices:** optionally restrict desktop access to trusted device identities in addition to the connection password. Copy and paste pairing information to approve devices before they connect.
+- **Deployment:** direct P2P connections, TURN relay, SRTP media encryption, self-hosting, Windows access before sign-in, and Linux headless operation.
 
 <a id="download"></a>
 
-## 下载与平台支持
+## Download and platform support
 
-从 [官方网站](https://www.crossdesk.cn/) 或 [GitHub Releases](https://github.com/kunkundi/crossdesk/releases) 下载与你的系统和 CPU 架构匹配的安装包；也可直接打开 [Web 客户端](https://web.crossdesk.cn/)。
+Get a package matching your OS and CPU architecture from the [website](https://www.crossdesk.cn/) or [GitHub Releases](https://github.com/kunkundi/crossdesk/releases), or open the [Web Client](https://web.crossdesk.cn/) directly.
 
-| 平台 | 支持范围与安装要求 |
+| Platform | Support and installation |
 | --- | --- |
-| Windows | **控制 / 被控**；Windows 10+，x64；`.exe` 安装包，也支持便携构建 |
-| macOS | **控制 / 被控**；macOS 14.0+；按 Intel / Apple Silicon 选择 x64 / arm64 `.pkg` |
-| Linux | **控制 / 被控**；Ubuntu 20.04+、glibc 2.31 基线；amd64 / arm64 `.deb` |
-| iOS / iPadOS | **仅控制**；从 [App Store](https://apps.apple.com/app/id6828859211) 安装，商店版系统要求以页面为准；当前源码目标为 iOS 16.0+，也可自行构建签名 |
-| Android | **仅控制**；Android 8.0+，arm64；下载已签名 APK 安装，或自行构建 |
-| 鸿蒙 PC（开发版） | **控制 / 被控**；API 26，arm64；使用 DevEco 构建并签名 HAP，仍在进行真机验收 |
-| 鸿蒙手机 / 平板（开发版） | **仅控制**；API 20+，arm64；使用 DevEco 构建并签名 HAP，仍在进行真机验收 |
-| Web | **仅控制**；支持 WebRTC 的浏览器；无需在控制端安装客户端 |
-| 终端 CLI（开发版） | **仅控制**；分发目标为 macOS / Linux（x64、arm64）和 Windows（x64）；通过 [npm 安装](#cli-npm) 或从源码构建，使用要求见 [CLI 说明](apps/cli/README.md) |
-| MCP（开发版） | **仅控制**；在 Codex 或 DSH 中操作远端并监看画面；DSH 安装一个插件包，Codex 需 Node.js 22+，见 [安装与使用](apps/mcp/README.md) |
+| Windows | **Control + host**. Windows 10+, x64; `.exe` installer, with portable builds also supported |
+| macOS | **Control + host**. macOS 14.0+; x64 / arm64 `.pkg` for Intel / Apple Silicon |
+| Linux | **Control + host**. Ubuntu 20.04+, glibc 2.31 baseline; amd64 / arm64 `.deb` |
+| iOS / iPadOS | **Control only**. Install from the [App Store](https://apps.apple.com/app/id6828859211); check the listing for its OS requirements. Current source targets iOS 16.0+ and can also be built and signed locally |
+| Android | **Control only**. Android 8.0+, arm64; install the signed APK or build from source |
+| HarmonyOS PC (development) | **Control + host**. API 26, arm64; build and sign a HAP with DevEco; physical-device validation is ongoing |
+| HarmonyOS phones / tablets (development) | **Control only**. API 20+, arm64; build and sign a HAP with DevEco; physical-device validation is ongoing |
+| Web | **Control only**. A WebRTC-capable browser; no client installation on the controlling device |
+| Terminal CLI (development) | **Control only**. Distribution targets: macOS / Linux (x64, arm64) and Windows (x64). [Install from npm](#cli-npm) or build from source; see the [CLI guide](apps/cli/README.md) (Chinese) for system requirements and compatibility |
+| MCP (development) | **Control only**. Operate and watch a remote computer in Codex or DSH. DSH needs one plugin package; Codex also needs Node.js 22+. See [installation and usage](apps/mcp/README.md) (Chinese) |
 
-请按下载页面选择与你的系统和芯片匹配的安装包。开发版功能可能尚未包含在已发布安装包中，具体以对应 Release 说明为准。
+Choose the package for your operating system and processor. Some development features may not be available in released packages; check the release notes for your download.
 
-- **Linux：** 已有桌面选普通版 `crossdesk-linux-…deb`；需要独立 Xfce 桌面的服务器选 `crossdesk-virtual-desktop-xfce-…deb`。两者选择其一，安装与启动方法见 [使用指南](docs/USER_GUIDE.md#installation) 和 [无头运行](docs/HEADLESS.md)。
-- **macOS：** 首次运行时按提示授予屏幕录制及辅助功能权限；前者用于桌面采集，后者用于远程键鼠输入。[权限说明](docs/USER_GUIDE.md#installation)
-- **iOS：** 优先从 [App Store](https://apps.apple.com/app/id6828859211) 安装；GitHub 的未签名产物仍需自行签名，步骤见 [iOS 构建说明](apps/ios/README.md)。鸿蒙需使用 DevEco 构建并签名，见 [鸿蒙说明](apps/harmony/README.md)。
+- **Linux:** use `crossdesk-linux-…deb` for an existing desktop, or `crossdesk-virtual-desktop-xfce-…deb` for a server needing a separate Xfce desktop. Choose one. See [installation details](docs/USER_GUIDE_EN.md#installation) and [headless operation](docs/HEADLESS_EN.md).
+- **macOS:** grant Screen Recording and Accessibility when prompted on first launch. These enable desktop capture and remote keyboard/mouse input. See [permissions](docs/USER_GUIDE_EN.md#installation).
+- **iOS:** install from the [App Store](https://apps.apple.com/app/id6828859211). Unsigned GitHub artifacts still require signing; see the [iOS build guide](apps/ios/README.md). HarmonyOS requires a signed DevEco build; see the [HarmonyOS guide](apps/harmony/README.md) (Chinese).
 
 <a id="build"></a>
 
-## 构建指南
+## Build guide
 
-桌面客户端使用 Xmake 构建。准备 Git、Xmake 3.1.1 或更新版本，并按对应平台安装编译工具链与依赖，然后获取源码及子模块：
+The desktop client uses Xmake. Install Git, Xmake 3.1.1 or newer, and the toolchain and dependencies for your platform, then clone the source and submodules:
 
 ```bash
 git clone --recurse-submodules https://github.com/kunkundi/crossdesk.git
 cd crossdesk
 ```
 
-- **桌面客户端：** 按 [Windows](docs/BUILD.md#windows)、[macOS](docs/BUILD.md#macos) 或 [Linux](docs/BUILD.md#linux) 的步骤配置、编译和运行；打包、签名与 CI 配置见 [完整构建指南](docs/BUILD.md)。
-- **移动端与鸿蒙：** [iOS / iPadOS](apps/ios/README.md)、[Android](apps/android/README.md)、[鸿蒙手机 / 平板](apps/harmony/README.md)、[鸿蒙 PC](apps/harmony/desktop-port/README.md)。
-- **终端与集成：** [CLI 构建与运行](apps/cli/README.md)、[MCP 构建与集成](apps/mcp/DEVELOPMENT.md)。
+- **Desktop:** follow the [Windows](docs/BUILD_EN.md#windows), [macOS](docs/BUILD_EN.md#macos), or [Linux](docs/BUILD_EN.md#linux) steps to configure, build, and run. See the [full build guide](docs/BUILD_EN.md) for packaging, signing, and CI configuration.
+- **Mobile and HarmonyOS:** [iOS / iPadOS](apps/ios/README.md), [Android](apps/android/README.md), [HarmonyOS phones / tablets](apps/harmony/README.md), and [HarmonyOS PC](apps/harmony/desktop-port/README.md) (Chinese).
+- **Terminal and integrations:** [CLI build and usage](apps/cli/README.md) and [MCP build and integration](apps/mcp/DEVELOPMENT.md) (Chinese).
 
 <a id="quick-start"></a>
 
-## 快速连接
+## Quick start
 
-### 通过设备 ID 连接
+### Connect by device ID
 
-1. **准备被控电脑。** 安装并运行 CrossDesk，切换至 ID 连接模式，等待显示“已连接服务器”，查看“本桌面”中的本机 ID 和密码。
-2. **发起连接。** 在另一台电脑的 CrossDesk 中输入被控电脑的 9 位 ID，点击“连接”；也可使用原生移动端或 [Web 客户端](https://web.crossdesk.cn/)。
-3. **验证密码。** 输入被控电脑当前的连接密码，等待远程画面出现。桌面端可勾选“记住密码”，后续从“近期连接”重连。
+1. **Prepare the host.** Install and run CrossDesk on the computer to control, select ID mode, and wait for the server-connected status, then find its ID and password under **Local Desktop**.
+2. **Connect.** On another computer, enter the host's 9-digit ID and click **Connect**. Native mobile clients and the [Web Client](https://web.crossdesk.cn/) can also connect.
+3. **Verify the password.** Enter the host's current connection password and wait for the desktop to appear. On desktop, select **Remember password** to reconnect later from **Recent Connections**.
 
-使用自建服务器时，两端需要接入同一服务；升级客户端前请先更新服务端。更多连接和密码操作见 [使用指南](docs/USER_GUIDE.md#quick-start)，连接失败、黑屏或无法操作键鼠时见 [常见问题](docs/FAQ.md)。
+For self-hosting, connect both ends to the same service and update the server before upgrading clients. See the [user guide](docs/USER_GUIDE_EN.md#quick-start) for connection steps and the [FAQ](docs/FAQ.md#english) for connection, video, and input problems.
 
 <a id="lan-direct"></a>
 
-### 通过局域网 IP 直连
+### Connect directly over LAN
 
-手机或平板可在首页的 **设备 ID 或 IP 地址** 中粘贴被控电脑显示的地址，再输入电脑的 **IP 直连密码**。桌面端操作如下。
+On a phone or tablet, paste the address shown by the host into **Device ID or IP address** on the home screen and enter the host’s **Direct IP password**. For a desktop controller, follow these steps.
 
-1. **切换模式。** 使用桌面客户端时，点击左上角模式按钮切换到 **IP 直连模式**。若按钮未显示，在 **设置 → 常规 → 网络连接** 中勾选 **启用 IP 直连** 并保存。
-2. **填写地址。** 在控制端输入被控电脑显示的 `IP:端口`，例如 `192.168.1.20:52888` 或 `[2001:db8::20]:52888`，点击“连接”。只输入 IP 时使用默认端口 **52888**；请以对方界面显示的实际端口为准。
-3. **输入密码。** 输入被控电脑在 IP 直连模式下显示的 **6 位英文字母或数字密码**，可勾选“记住密码”。切换模式时，“近期连接”同步切换为对应模式的设备记录。
+1. **Switch modes.** Open the desktop client on both computers. Click the top-left mode button to select **Direct IP mode**. If the button is hidden, select **Enable direct IP** under **Settings → General → Network** and save.
+2. **Enter the address.** On the controller, enter the host's displayed `IP:port`, for example `192.168.1.20:52888` or `[2001:db8::20]:52888`, and click **Connect**. Omitting the port uses **52888**; use the actual port shown on the host.
+3. **Enter the password.** Use the host's **six-character ASCII letter/digit password** shown in Direct IP mode. You can select **Remember password**. Switching modes also switches the recent device list.
 
-控制端和被控电脑需要在局域网或 VPN 内可互相访问；网络可以有外网，也可以没有外网，直连会话不依赖云端信令服务。主窗口可直接切换本机 IP、修改端口和密码，默认开启所有 IP 接口监听，支持 IPv4 和 IPv6，支持通过 VPN 等接口连接，可在设置的“网络连接”中调整；关闭设置中的“启用 IP 直连”会停止监听、断开 IP 直连会话并隐藏模式按钮。详见 [IP 直连使用指南](docs/USER_GUIDE.md#lan-direct)。
+The controller and host must be mutually reachable over a LAN or VPN. Internet access may be available or absent; direct sessions do not depend on a cloud signaling service. The main window lets you select the local IP, edit its port, and change the password. **Listen on all IP interfaces** is enabled by default for IPv4, IPv6, VPN, and other local interfaces on a shared port; change it under **Settings → General → Network**. Disabling **Enable direct IP** stops listeners, disconnects direct IP sessions, and hides the mode button. See the [direct IP guide](docs/USER_GUIDE_EN.md#lan-direct).
 
 <a id="trusted-devices"></a>
 
-### 仅允许可信设备连接（可选）
+### Allow only trusted devices (optional)
 
-桌面端的可信设备限制**默认关闭**，适用于 ID 连接和 IP 直连。开启后，控制端仍需通过原有密码验证，并持有可信名单中设备的配对私钥；仅知道 ID 和密码不能通过这项限制。
+The desktop trusted-device restriction is **off by default** and applies to both ID and direct IP connections. When enabled, the controller must pass the existing password verification and prove possession of a pairing private key recognized by the host. Knowing the ID and password alone does not satisfy this restriction.
 
-1. **在控制端复制配对信息。** 打开 **设置 → 常规 → 隐私保护 → 管理可信设备**，在 **本机配对信息** 中点击 **复制配对信息**。
-2. **在被控端添加控制端。** 打开同一管理界面，将收到的信息粘贴到 **添加可信设备** 输入框，点击 **添加** 即可加入，无需再次确认，也无需先建立远程连接。
-3. **在被控端开启限制。** 返回设置，勾选 **仅允许可信设备控制** 并保存。之后照常通过 ID 或 IP 发起连接、验证密码。
+1. **Copy pairing information on the controller.** Open **Settings → General → Privacy → Manage trusted devices**. Under **This device’s pairing info**, click **Copy pairing info**.
+2. **Add the controller on the host.** Open the same management dialog, paste the information into **Add a trusted device**, and click **Add**. It is saved immediately, with no second confirmation or prior remote connection required.
+3. **Enable the restriction on the host.** Return to settings, select **Only allow trusted devices**, and save. Connect by ID or IP and verify the password as usual.
 
-配对信息只包含公钥、设备名称和 ID，不含私钥或密码，应通过可信渠道传递。添加后可点击 **查看指纹** 与控制端核对；也允许添加本机，同一公钥不会重复加入。信任是单向的，如需互相控制，应在双方分别添加对方。
+Pairing information contains only the public key, device name, and ID, with no private key or password. Exchange it through a trusted channel. After adding a device, use **View fingerprint** to compare it with the controller. You can also add the local device; the same public key is not added twice. Trust is one-way: to control each other, add the other device on both computers.
 
-添加和移除会立即保存；开启限制时，**移除信任** 会断开对应设备的会话，名单为空则拒绝所有控制端。也可以从管理界面的已连接设备中添加完成身份验证的控制端。
+Adding or removing a device takes effect immediately. With the restriction enabled, **Remove trust** disconnects that device’s sessions, and an empty list rejects all controllers. The dialog also lets you add connected controllers that have completed identity verification.
 
-**兼容范围：** 使用支持配对的新版桌面端、iOS、Android 或鸿蒙移动端。手机和平板从“设置 → 本机配对信息”复制配对信息，再添加到被控电脑。旧客户端和当前终端 CLI 无法连接开启此限制的被控端。
+**Compatibility:** Use a recent desktop, iOS, Android, or HarmonyOS mobile client with pairing support. On a phone or tablet, copy the pairing information under **Settings → This device’s pairing info** and add it on the host computer. Older clients and the current terminal CLI cannot connect to a host with this restriction enabled.
 
-重装、清除应用数据或迁移电脑前，请先查看 [身份备份与迁移](docs/CONNECTIONS.md#backup)。仅保存 ID 和密码不足以恢复已绑定的桌面身份；更换设备身份后需要重新配对。
+Before reinstalling, clearing application data, or moving to another computer, see [identity backup and migration](docs/CONNECTIONS.md#backup) (Chinese). An ID and password alone cannot restore a bound desktop identity; a changed identity must be paired again.
 
 <a id="preview"></a>
 
-## 界面预览
+## Preview
 
-### 桌面客户端
+### Desktop client
 
-本机凭据、远程连接和近期设备集中在主窗口，左上角提供连接模式切换和桌面墙入口。
+Local credentials, remote connections, and recent devices share the main window. The top-left controls switch connection modes and open DeskHub.
 
 <p align="center">
-  <img src="docs/images/desktop-main-zh.png" width="800" alt="CrossDesk ID 连接模式：模式切换、本机 ID、远程连接入口和近期设备" />
+  <img src="docs/images/desktop-main-en.png" width="800" alt="CrossDesk ID mode with the mode switch, local ID, remote connection controls, and recent devices" />
 </p>
 
-### IP 直连模式
+### Direct IP mode
 
-切换本机 IP、修改端口与密码，通过对方地址连接；下方展示独立的局域网近期设备。
+Select the local IP, edit its port and password, and connect using the other desktop's address. Recent LAN devices have their own list below.
 
 <p align="center">
-  <img src="docs/images/desktop-lan-zh.png" width="800" alt="CrossDesk IP 直连模式：本机 IP 和端口编辑入口、六位密码、远端地址输入和局域网近期设备" />
+  <img src="docs/images/desktop-lan-en.png" width="800" alt="CrossDesk Direct IP mode with local IP and port editing, a six-character password, remote address input, and recent LAN devices" />
 </p>
 
 <a id="deskhub"></a>
 
-### 桌面墙（DeskHub）
+### DeskHub
 
-按分组查看多台设备，点击画面放大，再选择接管操控；支持批量连接、静音与文件分发。
+View devices by group, click a preview to enlarge it, and take control when needed. Batch actions include connecting, muting, and sending files.
 
 <p align="center">
-  <img src="docs/images/desktop-deskhub-zh.png" width="960" alt="DeskHub 桌面墙：六台设备的远程画面与管理工具栏" />
+  <img src="docs/images/desktop-deskhub-en.png" width="960" alt="DeskHub with six remote desktops and its management toolbar" />
 </p>
 
-群控会向所有已连接设备发送输入；关闭桌面墙会断开全部远程连接。操作范围与详细用法见 [桌面墙使用指南](docs/USER_GUIDE.md#deskhub)。
+Group control sends input to all connected devices; closing DeskHub disconnects all remote connections. See the [DeskHub user guide](docs/USER_GUIDE_EN.md#deskhub) for exact scopes and controls.
 
-### 双栏文件传输
+### Dual-pane file transfers
 
-在会话工具栏打开文件传输，同时浏览本机与远端目录，选择文件或文件夹后发送，也可在两栏之间拖放；任务列表显示进度并支持取消未完成任务。远端目录浏览需要兼容的被控端。
+Open file transfer from the session toolbar to browse local and remote directories side by side. Send selected files or folders, or drag them between panes; the task list shows progress and lets you cancel unfinished transfers. Remote directory browsing requires a compatible host.
 
 <p align="center">
-  <img src="docs/images/desktop-files-zh.png" width="960" alt="双栏文件传输：本机与远端路径、文件列表、发送按钮和任务列表" />
+  <img src="docs/images/desktop-files-en.png" width="960" alt="Dual-pane file transfer with local and remote paths, file lists, send controls, and a transfer task" />
 </p>
 
 <a id="session"></a>
 <a id="settings"></a>
 
-## 会话操作与设置
+## Session controls and settings
 
-远程会话支持显示器切换、画质与帧率调整、声音、文本剪贴板同步和双向文件传输。工具栏还可查看网络状态、控制隐私屏；桌面设置中可配置 IP 直连开关、可信设备限制、编码、中继、自托管、最小化时暂停视频及桌面墙画面预算。
+Remote sessions support monitor switching, video quality and frame-rate controls, audio, text clipboard synchronization, and bidirectional file transfers. The toolbar also provides network statistics and privacy screen controls. Desktop settings configure direct IP availability, trusted-device restrictions, codecs, relay, self-hosting, video pausing when minimized, and the DeskHub video budget.
 
-被控端为 Windows、macOS 或 Linux X11 时，可在 **画面设置 → 分辨率** 中选择当前显示器支持的模式，无需重连。桌面和原生移动端会记住远端确认成功的选择，重连时在仍受支持的情况下重新应用；最后一个控制端断开后，被控端恢复本轮连接首次调整前的显示模式。Linux 需要 X11 采集和 RandR，Wayland / XWayland 暂不支持此项调整。
+For Windows, macOS, and Linux X11 hosts, **Video settings → Resolution** selects a mode supported by the current remote display without reconnecting. Desktop and native mobile controllers remember confirmed choices and reapply them on reconnection when still supported. When the last controller disconnects, the host restores the display mode used before the first change in that connection period. Linux requires X11 capture and RandR; Wayland / XWayland resolution changes are not currently supported.
 
 <p align="center">
-  <img src="docs/images/desktop-stream-video-settings-zh.png" width="960" alt="会话画面设置：质量、帧率、远端显示器分辨率和画面偏好" />
+  <img src="docs/images/desktop-stream-video-settings-en.png" width="960" alt="Session video settings: quality, frame rate, remote display resolution, and video preference" />
 </p>
 
-- [会话操作](docs/USER_GUIDE.md#session)：工具栏、文本剪贴板、文件保存和隐私屏。
-- [客户端设置与更新](docs/USER_GUIDE.md#settings)：常规设置、桌面墙传输及版本检查。
-- [桌面墙使用说明](docs/deskhub.md)：整理设备、群控、批量传文件及降低带宽占用。
+- [Session controls](docs/USER_GUIDE_EN.md#session): toolbar, text clipboard, received files, and privacy screens.
+- [Client settings and updates](docs/USER_GUIDE_EN.md#settings): general options, DeskHub video settings, and version checks.
+- [DeskHub guide](docs/deskhub.md) (Chinese): organize devices, use group control, distribute files, and reduce bandwidth use.
 
 <a id="cli"></a>
 
-## 终端客户端 CLI
+## Terminal client CLI
 
-`crossdesk-cli` 在终端中通过 9 位设备 ID 连接被控电脑，默认只读、静音。普通终端使用 ANSI 字符画面，支持 Kitty 或 Sixel 图形协议的终端可显示像素画面；可切换显示器、调整画质、放大细节和平移，也可明确开启键鼠控制。CLI 可以独立于桌面 GUI 构建，被控电脑仍需运行 CrossDesk 并提供可捕获的图形会话，信令服务需支持 `cli` 临时身份注册。
+`crossdesk-cli` connects to a host by its 9-digit device ID and starts in read-only, silent mode. Standard terminals use ANSI character rendering; terminals supporting the Kitty or Sixel graphics protocol can display pixel graphics. The CLI supports monitor selection, quality settings, detail zoom, panning, and optional keyboard/mouse control. It builds independently of the desktop GUI. The host still needs CrossDesk and a capturable graphical session, and the signaling service must support temporary `cli` identities.
 
-### 画面预览
+### Display preview
 
 <table>
   <tr>
-    <th width="50%">ANSI 字符画面</th>
-    <th width="50%">Kitty 协议像素画面</th>
+    <th width="50%">ANSI character rendering</th>
+    <th width="50%">Kitty pixel graphics</th>
   </tr>
   <tr>
-    <td><img src="docs/images/cli-ansi-overview.png" width="480" alt="CrossDesk CLI 的 ANSI 四象限全景：顶部显示只读模式和连接状态，底部显示操作快捷键" /></td>
-    <td><img src="docs/images/cli-kitty-overview.png" width="480" alt="CrossDesk CLI 的 Kitty 协议全景：同一远程桌面以像素画面显示，保留状态栏和操作快捷键" /></td>
+    <td><img src="docs/images/cli-ansi-overview.png" width="480" alt="CrossDesk CLI ANSI quadrant overview, with read-only mode and connection status at the top and shortcuts at the bottom" /></td>
+    <td><img src="docs/images/cli-kitty-overview.png" width="480" alt="CrossDesk CLI Kitty protocol overview of the same remote desktop, rendered as pixels with the status bar and shortcuts" /></td>
   </tr>
   <tr>
-    <td>用彩色字符显示桌面轮廓，适合普通终端；查看局部可用 <code>+/-</code> 或滚轮以鼠标位置缩放。</td>
-    <td>直接显示像素画面，适合支持 Kitty 图形协议的终端，如 Ghostty。</td>
+    <td>Colored characters show the desktop in standard terminals; use <code>+/-</code> or the wheel to zoom at the mouse position.</td>
+    <td>Pixel graphics display the desktop in terminals supporting the Kitty graphics protocol, such as Ghostty.</td>
   </tr>
 </table>
 
-ANSI 用字符显示画面，Kitty 可显示像素画面；实际效果取决于终端支持、字体和窗口大小。
+ANSI displays characters; Kitty displays pixels. Appearance depends on terminal support, font, and window size.
 
 <a id="cli-npm"></a>
 
-### 通过 npm 安装并连接
+### Install from npm and connect
 
-准备 **Node.js 22 或以上**及 npm，从 [@chunkdash/crossdesk-cli](https://www.npmjs.com/package/@chunkdash/crossdesk-cli) 安装。npm 会按操作系统与 CPU 架构选择原生程序，无需安装 Xmake 或 C++ 编译工具链。
+Install **Node.js 22 or later** and npm, then get [@chunkdash/crossdesk-cli](https://www.npmjs.com/package/@chunkdash/crossdesk-cli). npm selects the native executable for your OS and CPU architecture; Xmake and a C++ toolchain are not required.
 
 ```sh
 npm install -g @chunkdash/crossdesk-cli@latest
@@ -242,134 +240,117 @@ crossdesk-cli doctor --json
 crossdesk-cli 123456789
 ```
 
-将 `123456789` 换成被控电脑的 9 位设备 ID，连接时按提示隐藏输入密码。默认只读、静音；`doctor` 仅检查本机环境，不发起连接。更新到最新版时，重新执行上面的 `npm install -g @chunkdash/crossdesk-cli@latest`。
+Replace `123456789` with the host's 9-digit device ID and enter its password at the hidden prompt. Connections start in read-only, silent mode; `doctor` checks the local environment without connecting. To update, run `npm install -g @chunkdash/crossdesk-cli@latest` again.
 
-无需全局安装时，也可使用 `npx`，首次运行会下载对应平台包：
+You can also use `npx` without a global installation. The first run downloads the matching platform package:
 
 ```sh
 npx @chunkdash/crossdesk-cli@latest doctor --json
 npx @chunkdash/crossdesk-cli@latest 123456789
 ```
 
-请安装统一入口 `@chunkdash/crossdesk-cli`，并保留 npm 的可选依赖，不要添加 `--omit=optional`；仅安装平台包不会注册 `crossdesk-cli` 命令。平台运行要求、旧包迁移及故障排查见 [npm 分发说明](apps/cli/docs/npm-distribution.md)。
+Install the main `@chunkdash/crossdesk-cli` package with npm optional dependencies enabled; do not add `--omit=optional`. Installing a platform package alone does not register the `crossdesk-cli` command. See the [npm distribution guide](apps/cli/docs/npm-distribution.md) (Chinese) for platform requirements, migration from older packages, and troubleshooting.
 
-### 常用操作
+### Everyday controls
 
-默认只读、静音。只读模式下按 `c` 开启键鼠控制，按 `+/-` 或滚轮缩放，按 `f` 回到全景。**控制模式下退出时，先按 `Ctrl+]`，再按 `q`**，否则普通按键会发给远端电脑。
+Connections start read-only and silent. Press `c` in read-only mode to enable keyboard and mouse input, `+/-` or the wheel to zoom, and `f` to restore the full desktop. **To quit while controlling the host, press `Ctrl+]`, then `q`**; ordinary keys otherwise go to the remote computer.
 
 ```sh
-# 普通终端，用字符显示画面
+# Character graphics in a standard terminal
 crossdesk-cli 123456789 --renderer ansi
 
-# 支持 Kitty 图形协议的终端，用像素显示画面
+# Pixel graphics in a terminal supporting the Kitty graphics protocol
 crossdesk-cli 123456789 --renderer kitty
 ```
 
-CLI 通过设备 ID 连接，暂不提供 IP 直连、音频播放、文件传输或剪贴板同步，也不支持连接开启可信设备限制的电脑。被控电脑需要运行 CrossDesk 并有可用的桌面。自托管用户需要使用支持 CLI 连接的服务端。
+The CLI connects by device ID. Direct IP, audio playback, file transfer, clipboard synchronization, and hosts with trusted-device restrictions are not currently supported. The host needs CrossDesk and an available desktop session. Self-hosted servers must support CLI connections.
 
-[完整 CLI 指南](apps/cli/README.md) · [参数、Pi 扩展与自行构建](apps/cli/docs/terminal-client.md) · [安装故障排查](apps/cli/docs/npm-distribution.md)
+[Complete CLI guide](apps/cli/README.md) · [Options, Pi extension, and source builds](apps/cli/docs/terminal-client.md) · [Installation troubleshooting](apps/cli/docs/npm-distribution.md) (Chinese)
 
 <a id="mcp"></a>
 
-## Agent 与 MCP
+## Agents and MCP
 
-[CrossDesk MCP](apps/mcp/README.md) 让你在 Codex 或 DeepSeek Harness 对话中安排远程任务，并在右侧查看远端画面。远端电脑运行 CrossDesk；本机按下表安装后，在面板中选择设备并授权。
+[CrossDesk MCP](apps/mcp/README.md) lets you request remote tasks in a Codex or DeepSeek Harness chat and watch the remote screen on the right. Run CrossDesk on the remote computer, follow the installation guide for your local app below, then choose and authorize the device in the panel.
 
 <p align="center">
-  <img src="docs/images/mcp-minesweeper.gif" width="784" alt="Codex 通过 CrossDesk MCP 连接远端 Mac mini，在浏览器中完成一局中级扫雷" />
+  <img src="docs/images/mcp-minesweeper.gif" width="784" alt="Codex uses CrossDesk MCP to connect to a remote Mac mini and win a game of Intermediate Minesweeper in its browser" />
 </p>
 
-| 使用环境 | 安装与配置 | 远端画面 |
+| Host | Installation and configuration | Remote video |
 | --- | --- | --- |
-| Codex 桌面版 | [Codex 安装指南](apps/mcp/README.md#install-codex)：注册 MCP，无需额外插件 | Agent 打开右侧内置浏览器 |
-| DeepSeek Harness 桌面版（DSH） | [DSH 安装指南](apps/mcp/README.md#install-dsh)：只安装一个对应平台的 MCP 插件包，自动注册服务 | 插件自动打开当前对话侧栏 |
+| Codex desktop | [Codex setup](apps/mcp/README.md#install-codex) (Chinese): register the MCP server; no extra plugin | The Agent opens the built-in browser on the right |
+| DeepSeek Harness desktop (DSH) | [DSH setup](apps/mcp/README.md#install-dsh) (Chinese): install one platform plugin package; MCP registration is automatic | The plugin opens the current chat's browser sidebar automatically |
 
-1. [下载与你的本机对应的平台安装包](apps/mcp/README.md#install-package)，再按上表完成安装。
-2. 让 Agent 打开 CrossDesk，在监看面板选择设备、输入连接密码，并选择仅查看或允许控制。密码在本地面板中输入；保存密码与允许以后自动连接分别设置。
-3. Agent 通过截图、键鼠和结构化桌面工具执行任务；用户可实时监看、暂停 Agent、人工接管或断开连接。
+1. [Download the platform package for your local computer](apps/mcp/README.md#install-package), then follow the guide for your app above.
+2. Ask the Agent to open CrossDesk. Choose a device and enter its password in the local monitoring panel, then grant view-only or control access. Saving a password and allowing future automatic connections are separate choices.
+3. The Agent uses screenshots, keyboard and mouse actions, and structured desktop tools. You can watch live, pause the Agent, take over manually, or disconnect.
 
-支持最多 8 个并行设备会话、多屏观察、远端文本剪贴板、文件浏览与传输、声音、系统锁屏及本地输入密码的解锁流程。窗口与可访问性操作受远端平台和系统权限限制，部分工具需要新版被控端。浏览器、终端和 MCP Apps 的面板能力因宿主而异；配置及兼容范围见 [MCP 文档](apps/mcp/README.md)。
+The service supports up to 8 concurrent device sessions, multi-display observation, remote text clipboard, file browsing and transfers, audio, system locking, and unlocking with a password entered locally. Window and accessibility actions depend on the remote platform and permissions; some tools require an updated host. Browser, terminal, and MCP Apps panels have different host requirements. See the [MCP guide](apps/mcp/README.md) (Chinese) for configuration and compatibility.
 
 <a id="mobile"></a>
 
-## 移动端与鸿蒙
+## Mobile and HarmonyOS
 
 <a id="ios"></a>
 
 ### iOS / iPadOS
 
-可从 [App Store](https://apps.apple.com/app/id6828859211) 安装原生控制端，支持触控与虚拟鼠标、多显示器、远端音频、文件收发和文本剪贴板。悬浮菜单的“剪贴板”按钮可主动发送本机文本，单次上限为 128 KiB；画面设置可调整受支持的远端显示器分辨率，并记住已确认的选择。iPhone / iPad 当前不能作为被控桌面，应用内更新检查指向 App Store。
+Install the native controller from the [App Store](https://apps.apple.com/app/id6828859211). It supports touch and a virtual mouse, multiple monitors, remote audio, file transfers, and text clipboard. Tap **Clipboard** in the floating menu to send local text, up to 128 KiB per transfer. Video settings can change supported remote display resolutions and remember confirmed choices. iPhone and iPad cannot currently act as remote hosts; in-app update checks point to the App Store.
 
-[使用说明](docs/USER_GUIDE.md#ios) · [构建与签名](apps/ios/README.md)
+[User guide](docs/USER_GUIDE_EN.md#ios) · [Build and signing](apps/ios/README.md)
 
 <a id="android"></a>
 
 ### Android
 
-原生控制端支持触控与外接键鼠、多屏切换、文件收发、文本剪贴板和画面设置。切换应用时优先通过画中画保持会话；不支持画中画时尝试通过后台通知保留连接。悬浮菜单可开关电脑的隐私屏。Android 手机和平板当前不能作为被控端。
+The native controller supports touch, external keyboards and mice, monitor switching, file transfers, text clipboard, and video settings. Switching apps uses Picture in Picture when available, with a background notification as a fallback. Use the floating menu to toggle the computer’s privacy screen. Android phones and tablets cannot currently act as hosts.
 
-[使用说明](docs/USER_GUIDE.md#android) · [源码构建](apps/android/README.md)
+[User guide](docs/USER_GUIDE_EN.md#android) · [Build from source](apps/android/README.md) (Chinese)
 
 <a id="harmonyos"></a>
 
-### 鸿蒙 HarmonyOS（开发版）
+### HarmonyOS (development)
 
-PC 端可控制和被控制，复用桌面界面与桌面墙；手机和平板使用原生 ArkUI 控制端，支持触控、外接键鼠、多屏、文本剪贴板和文件收发。PC 录屏与输入控制需要系统授权，真机和长期会话验收仍在进行。
+The PC client acts as both controller and host, sharing the desktop UI and DeskHub. Phones and tablets use a native ArkUI controller with touch, external input devices, monitors, text clipboard, and file transfers. PC screen capture and input control require system authorization. Physical-device and long-session validation are ongoing.
 
-[使用与限制](docs/USER_GUIDE.md#harmonyos) · [构建与签名](apps/harmony/README.md) · [PC 说明](apps/harmony/desktop-port/README.md) · [移动端功能](apps/harmony/MOBILE_PARITY.md)
+[Usage and limits](docs/USER_GUIDE_EN.md#harmonyos) · [Build and signing](apps/harmony/README.md) · [PC guide](apps/harmony/desktop-port/README.md) · [Mobile features](apps/harmony/MOBILE_PARITY.md) (platform guides in Chinese)
 
 <a id="windows-service"></a>
 
-## 无人值守与无头运行
+## Unattended and headless access
 
-- **Windows：** CrossDesk Service 支持锁屏、登录和安全桌面控制。安装版 Release 开启“开机自启”后，登录前后使用同一本机 ID 和密码；用户登录后界面自动打开，已有远控连接继续保留。便携版和 Debug 不提供此开关。无显示器时会尝试准备虚拟显示器，并优先恢复已记录的显示分辨率。功能限制及启停命令见 [Windows 无人值守指南](docs/USER_GUIDE.md#windows-service)。
-- **Linux：** 可复用现有桌面，也可创建独立 Xvfb / Xfce 会话，操作方法见 [Linux 无头运行](docs/HEADLESS.md)。
+- **Windows:** CrossDesk Service supports lock screens, sign-in, and secure desktops. Enabling **Auto Start** in an installed Release build uses the same device ID and password before and after sign-in. The interface opens after sign-in while the existing remote connection continues. Portable and Debug builds do not offer this switch. Without a monitor, the host attempts to prepare a virtual display and restore a previously recorded resolution. See the [Windows unattended guide](docs/USER_GUIDE_EN.md#windows-service) for capabilities, limits, and commands.
+- **Linux:** reuse an existing desktop or create an independent Xvfb / Xfce session. See [Linux headless operation](docs/HEADLESS_EN.md).
 
 <a id="self-hosting"></a>
 
-## 自托管
+## Self-hosting
 
-可自行部署信令与 TURN 中继服务，并在客户端“设置 → 常规 → 自托管配置”中启用。控制端与被控端需要接入同一服务。
+Host your own signaling and TURN services, then enable them under **Settings → General → Self-Hosted Config**. Both the controller and host must use the same service.
 
-[部署指南](docs/SELF_HOSTING.md) · [客户端配置](docs/USER_GUIDE.md#self-hosting) · [服务端源码](https://github.com/kunkundi/crossdesk-server) · [Web 客户端部署](https://github.com/kunkundi/crossdesk-web-client)
+[Deployment guide](docs/SELF_HOSTING_EN.md) · [Client setup](docs/USER_GUIDE_EN.md#self-hosting) · [Server source](https://github.com/kunkundi/crossdesk-server) · [Web client deployment](https://github.com/kunkundi/crossdesk-web-client)
 
 <a id="development"></a>
 
-## 文档与反馈
+## Documentation and feedback
 
-- [使用指南](docs/USER_GUIDE.md)：安装、连接、会话操作、设置和无人值守。
-- [常见问题](docs/FAQ.md)：连接失败、黑屏、系统权限及文件位置。
-- [连接与可信设备](docs/CONNECTIONS.md)：选择连接方式、配对及迁移身份。
-- [更新客户端](docs/UPDATER.md)：检查更新、安装与失败后的处理。
-- [源码构建](docs/BUILD.md)：依赖、编译、打包和签名。
-- [架构与集成](docs/README.md#构建与集成)：GUI 和连接架构、CLI / MCP 接口、各平台适配。
-- [版本与发布](docs/VERSIONING.md)：组件版本同步、发布编号及更新清单。
+- [Documentation index](docs/README.md) (Chinese): find help by task.
+- [User guide](docs/USER_GUIDE_EN.md): installation, connections, session controls, settings, and unattended access.
+- [FAQ](docs/FAQ.md#english): connection failures, blank video, permissions, and received files.
+- [Connections and trusted devices](docs/CONNECTIONS.md) (Chinese): connection modes, pairing, and identity migration.
+- [Client updates](docs/UPDATER.md) (Chinese): check, install, and recover from update failures.
+- [Build from source](docs/BUILD_EN.md): dependencies, compilation, packaging, and signing.
+- [Architecture and integration](docs/README.md#构建与集成) (Chinese): GUI and connection architecture, CLI / MCP interfaces, and platform support.
+- [Versions and releases](docs/VERSIONING.md) (Chinese): component version synchronization, release numbering, and update manifests.
 
-遇到问题时，可在桌面端主菜单打开 **反馈与建议**，导出诊断日志，并 [提交问题](https://github.com/kunkundi/crossdesk/issues)。请附上两端系统、客户端版本、连接方式、报错及复现步骤；分享前检查日志和截图中的私人信息。详见 [反馈与诊断日志](docs/USER_GUIDE.md#feedback)。
+Open **Feedback & suggestions** from the desktop main menu to export diagnostic logs and [report an issue](https://github.com/kunkundi/crossdesk/issues). Include both operating systems, client versions, connection mode, error message, and reproduction steps. Review logs and screenshots for private information before sharing. See [feedback and diagnostic logs](docs/USER_GUIDE_EN.md#feedback).
 
 <a id="sponsor"></a>
 
-## 赞助与支持
+## Sponsors and support
 
-### 特别赞助
-
-<table border="1">
-  <tr>
-    <td align="center" valign="middle" width="128">
-      <a href="https://crossdesk.hualong-ai.com/">
-        <img src="apps/desktop/src/gui/ui/icons/sponsors/hualongai.png" width="96" height="96" alt="HuaLongAI 华龙算力" />
-      </a>
-    </td>
-    <td valign="middle">
-      <p><strong><a href="https://crossdesk.hualong-ai.com/">HuaLongAI 华龙算力</a></strong></p>
-      <p>稳定、高效的 API 中转服务商，主营 Codex、0 注入 Kiro 与 Claude 系列模型。100% 官方源直供、不掺假、高可用，平均 SLA 高于 99.2%。计费透明，Token 级账单可逐笔核验，支持企业合同与发票。</p>
-    </td>
-  </tr>
-</table>
-
----
-
-### 支持者
+### Backers
 
 <p>
   <a href="https://afdian.com/u/41c14324f4b511ee8d785254001e7c00"><img src="docs/images/backers/tantiancheng.png" width="48" height="48" alt="TanTianCheng" /></a>
@@ -381,27 +362,27 @@ PC 端可控制和被控制，复用桌面界面与桌面墙；手机和平板�
   <a href="https://afdian.com/u/ec7329c4bc1511eda50252540025c377"><img src="docs/images/backers/afdian-avatar-yellow.png" width="48" height="48" alt="爱发电用户_ucXS" /></a>
 </p>
 
-### 参与赞助
+### Become a sponsor
 
-如果 CrossDesk 对你有帮助，欢迎通过以下平台赞助，支持项目的持续开发、跨平台测试与日常维护。感谢你的支持！
+If CrossDesk is useful to you, consider sponsoring its continued development, cross-platform testing, and maintenance through one of the platforms below. Thank you for your support!
 
-[![爱发电](https://img.shields.io/badge/%E7%88%B1%E5%8F%91%E7%94%B5-946CE6?logo=afdian&logoColor=white)](https://afdian.com/a/kunkundi)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-FF6433?logo=kofi&logoColor=white)](https://ko-fi.com/kunkundi)
 [![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-C93C45?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/kunkundi)
+[![AFDIAN](https://img.shields.io/badge/AFDIAN-946CE6?logo=afdian&logoColor=white)](https://afdian.com/a/kunkundi)
 
-## 致谢与许可
+## Acknowledgements and license
 
-感谢 [HelloGitHub](https://hellogithub.com/)、[阮一峰的科技爱好者周刊](https://github.com/ruanyf/weekly) 与 [LinuxDo](https://linux.do) 社区的推荐、交流与支持。
+Thanks to [HelloGitHub](https://hellogithub.com/), [Ruanyf Weekly](https://github.com/ruanyf/weekly), and the [LinuxDo](https://linux.do) community for featuring CrossDesk and contributing feedback.
 
 Copyright (c) 2026 JUNKUN DI.
 
-CrossDesk 使用 [GPL-3.0-only](LICENSE) 许可。隐私说明见 [隐私政策](PRIVACY.md#中文)。
+CrossDesk is licensed under [GPL-3.0-only](LICENSE). See the [Privacy Policy](PRIVACY.md#english).
 
 ### Code signing policy
 
-CrossDesk 使用 SignPath.io 为本仓库构建的官方 Windows 发布包提供代码签名。
+CrossDesk uses SignPath.io to sign official Windows releases built from this repository.
 
 **Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).**
 
-- **Committers and reviewers（代码提交与审核）：** [kunkundi](https://github.com/kunkundi)
-- **Approvers（签名审批）：** [kunkundi](https://github.com/kunkundi)
+- **Committers and reviewers:** [kunkundi](https://github.com/kunkundi)
+- **Approvers:** [kunkundi](https://github.com/kunkundi)

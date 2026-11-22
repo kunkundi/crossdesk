@@ -1,8 +1,8 @@
 # Build from source
 
-[Back to README](../README_EN.md) · [中文](BUILD.md)
+[Back to README](../README.md) · [中文](BUILD.md)
 
-Build dependencies, configuration, packaging, and signing are organized by platform below. Prebuilt packages are available from [downloads](../README_EN.md#download).
+Build dependencies, configuration, packaging, and signing are organized by platform below. Prebuilt packages are available from [downloads](../README.md#download).
 
 After cloning, run build and packaging commands from the repository root. The [Xmake options](../apps/desktop/xmake/options.lua) and [CI workflow](../.github/workflows/build.yml) define the build configuration. `1.4.3` is an example version for local builds; change both the configuration value and packaging argument together so the app and package versions match.
 
@@ -35,7 +35,7 @@ Installer packaging also uses NSIS. Copy the repository's [nsProcess.dll](../app
 .\apps\desktop\scripts\windows\pkg_x64.ps1 1.4.3
 ```
 
-See the [Windows packaging script](../apps/desktop/scripts/windows/pkg_x64.ps1) and [CI workflow](../.github/workflows/build.yml) for the full process. Manual deployment must retain the runtime libraries, both service helpers and the `usbmmidd_v2` driver folder (copied into the output directory by xmake after the build); see [Windows Service](../README_EN.md#windows-service).
+See the [Windows packaging script](../apps/desktop/scripts/windows/pkg_x64.ps1) and [CI workflow](../.github/workflows/build.yml) for the full process. Manual deployment must retain the runtime libraries, both service helpers and the `usbmmidd_v2` driver folder (copied into the output directory by xmake after the build); see [Windows Service](../README.md#windows-service).
 
 ## macOS
 

@@ -1,8 +1,8 @@
 # CrossDesk user guide
 
-[Project overview](../README_EN.md) · [中文](USER_GUIDE.md)
+[Project overview](../README.md) · [中文](USER_GUIDE.md)
 
-Start with [download and installation](../README_EN.md#download). This guide covers connections and everyday controls. Some new features may not be included in released packages; check the notes for your version.
+Start with [download and installation](../README.md#download). This guide covers connections and everyday controls. Some new features may not be included in released packages; check the notes for your version.
 
 [Installation and permissions](#installation) · [Quick start](#quick-start) · [Direct IP](#lan-direct) · [Trusted devices](#trusted-devices) · [DeskHub](#deskhub) · [Session controls](#session) · [Settings and updates](#settings) · [iOS](#ios) · [Android](#android) · [HarmonyOS](#harmonyos) · [Windows unattended access](#windows-service) · [Self-hosting](#self-hosting)
 
