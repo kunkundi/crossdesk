@@ -95,6 +95,8 @@ void ResetHostInfo(HostInfo& info) {
   info.supports_privacy_screen = false;
   info.supports_video_settings = false;
   info.supports_video_codec_status = false;
+  info.supports_av1_hdr10 = false;
+  info.supports_h264_hdr10 = false;
   info.supports_text_input = false;
   info.supports_deskhub_preview = false;
   info.supports_deskhub_resolution = false;
@@ -338,6 +340,8 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
           {"displays", displays},
           {"supports_privacy_screen", action.i.supports_privacy_screen},
           {"supports_video_settings", action.i.supports_video_settings},
+          {"supports_av1_hdr10", action.i.supports_av1_hdr10},
+          {"supports_h264_hdr10", action.i.supports_h264_hdr10},
           {"supports_video_codec_status", action.i.supports_video_codec_status},
           {"supports_text_input", action.i.supports_text_input},
           {"supports_deskhub_preview", action.i.supports_deskhub_preview},
@@ -594,6 +598,8 @@ bool RemoteAction::FromJson(const std::string& json_string,
             host_info_object.value("supports_text_input", false);
         output.i.supports_video_settings =
             host_info_object.value("supports_video_settings", false);
+        output.i.supports_av1_hdr10 = host_info_object.value("supports_av1_hdr10", false);
+        output.i.supports_h264_hdr10 = host_info_object.value("supports_h264_hdr10", false);
         output.i.supports_video_codec_status =
             host_info_object.value("supports_video_codec_status", false);
         output.i.supports_deskhub_preview =

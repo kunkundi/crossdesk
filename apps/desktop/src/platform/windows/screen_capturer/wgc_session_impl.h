@@ -5,6 +5,7 @@
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Graphics.Capture.h>
 
+#include <chrono>
 #include <mutex>
 #include <thread>
 
@@ -71,6 +72,7 @@ class WgcSessionImpl : public WgcSession {
   int InitializeLocked();
   void ReportFrameFailure(HRESULT error);
   int StartLocked(bool show_cursor);
+  bool UpdateColorMode();
   int StartCaptureLocked(bool show_cursor);
   void StopLocked();
   void CleanUp();
@@ -81,6 +83,8 @@ class WgcSessionImpl : public WgcSession {
  private:
   int id_ = -1;
   std::mutex lock_;
+  float hdr_white_nits_ = 0;
+  std::chrono::steady_clock::time_point next_color_check_{};
   bool is_initialized_ = false;
   bool is_running_ = false;
   bool is_paused_ = false;

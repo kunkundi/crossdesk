@@ -14,6 +14,7 @@
 #include <utility>
 #include "captured_cursor_state.h"
 #include "wgc_plugin_api.h"
+#include "hdr_video_frame.h"
 
 namespace crossdesk {
 class WgcPluginCapturer final : public ScreenCapturer {
@@ -76,11 +77,24 @@ class WgcPluginCapturer final : public ScreenCapturer {
       // The plugin has its own globals. Bridge only this callback's metadata
       // into the executable before the wrapper accepts/publishes the frame.
       CapturedCursorFrameScope cursor_scope(embedded);
+      if (set_hdr_fn_) set_hdr_fn_(hdr_requested.load());
+      if (native_frame && native_frame->type == MiniRtcNativeVideoFrameHdr10) {
+        // Retained frames can outlive the plugin DLL after a backend switch.
+        auto owned = minirtc::HdrVideoFrame::Create(width, height,
+                                                    native_frame->payload.hdr10.sdr_white_nits);
+        if (owned && native_frame->payload.hdr10.i010) {
+          std::memcpy(owned->Y(), native_frame->payload.hdr10.i010, size_t(width) * height * 3);
+          cb(data, size, width, height, stream_id, owned->Descriptor());
+          return;
+        }
+        native_frame = nullptr;
+      }
       cb(data, size, width, height, stream_id, native_frame);
     });
   }
   int Destroy() override { return impl_->Destroy(); }
   int Start(bool show_cursor) override {
+    if (set_hdr_fn_) set_hdr_fn_(hdr_requested.load());
     if (!frame_cursor_fn_) {
       legacy_capture_cursor_.store(show_cursor, std::memory_order_relaxed);
     }
@@ -114,6 +128,8 @@ class WgcPluginCapturer final : public ScreenCapturer {
       : module_(module), impl_(impl), destroy_fn_(destroy_fn) {
     set_cursor_fn_ = reinterpret_cast<SetCursorFn>(
         GetProcAddress(module, "CrossDeskSetWgcCursorCapture"));
+    set_hdr_fn_ = reinterpret_cast<decltype(set_hdr_fn_)>(
+        GetProcAddress(module, "CrossDeskSetWgcHdrRequested"));
     frame_cursor_fn_ = reinterpret_cast<FrameCursorFn>(
         GetProcAddress(module, "CrossDeskWgcFrameCapturesCursor"));
     // Use the legacy restart path unless both parts of the extension exist.
@@ -126,6 +142,7 @@ class WgcPluginCapturer final : public ScreenCapturer {
   DestroyFn destroy_fn_;
   SetCursorFn set_cursor_fn_ = nullptr;
   FrameCursorFn frame_cursor_fn_ = nullptr;
+  decltype(&CrossDeskSetWgcHdrRequested) set_hdr_fn_ = nullptr;
   std::atomic<bool> legacy_capture_cursor_{false};
 };
 

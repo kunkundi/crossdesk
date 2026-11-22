@@ -33,6 +33,10 @@ int CrossDeskSetWgcCursorCapture(crossdesk::ScreenCapturer* capturer, bool enabl
   return static_cast<crossdesk::ScreenCapturerWgc*>(capturer)->SetCursorCapture(enabled);
 }
 
+void CrossDeskSetWgcHdrRequested(bool requested) {
+  crossdesk::ScreenCapturer::hdr_requested.store(requested);
+}
+
 bool CrossDeskWgcFrameCapturesCursor() {
   return crossdesk::current_frame_has_cursor;
 }

@@ -17,6 +17,8 @@
 #include <vector>
 
 #include "secure_desktop_dxgi_cursor_state.h"
+#include "hdr_display.h"
+#include "scrgb_frame.h"
 
 namespace crossdesk {
 
@@ -49,10 +51,9 @@ class SecureDesktopDxgiCapture {
             D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0, D3D11_SDK_VERSION,
             device_.GetAddressOf(), nullptr, context_.GetAddressOf());
         if (FAILED(hr)) return hr;
-        Microsoft::WRL::ComPtr<IDXGIOutput1> output1;
-        hr = output.As(&output1);
-        if (FAILED(hr)) return hr;
-        hr = output1->DuplicateOutput(device_.Get(), duplication_.GetAddressOf());
+        const bool hdr = IsHdrOutput(output.Get());
+        if (hdr) white_nits_ = SdrWhiteNits(desc.Monitor);
+        hr = DuplicateDesktop(output.Get(), device_.Get(), hdr, duplication_.GetAddressOf());
         if (FAILED(hr)) return hr;
 
         output_desc_ = desc;
@@ -102,10 +103,17 @@ class SecureDesktopDxgiCapture {
     const UINT logical_width = swap_axes ? desc.Height : desc.Width;
     const UINT logical_height = swap_axes ? desc.Width : desc.Height;
     const RECT& bounds = output_desc_.DesktopCoordinates;
-    if (desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM ||
+    if ((desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM &&
+         desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT) ||
         logical_width != static_cast<UINT>(bounds.right - bounds.left) ||
         logical_height != static_cast<UINT>(bounds.bottom - bounds.top)) {
       return DXGI_ERROR_ACCESS_LOST;
+    }
+    if (staging_) {
+      D3D11_TEXTURE2D_DESC old{};
+      staging_->GetDesc(&old);
+      if (old.Format != desc.Format || old.Width != desc.Width || old.Height != desc.Height)
+        staging_.Reset();
     }
     if (!staging_) {
       desc.Usage = D3D11_USAGE_STAGING;
@@ -121,10 +129,18 @@ class SecureDesktopDxgiCapture {
     if (FAILED(result)) return result;
     stride_ = static_cast<int>(logical_width) * 4;
     pixels_.resize(static_cast<size_t>(stride_) * logical_height);
-    const int converted = libyuv::ARGBRotate(
-        static_cast<const uint8_t*>(mapped.pData), static_cast<int>(mapped.RowPitch),
-        pixels_.data(), stride_, static_cast<int>(desc.Width),
-        static_cast<int>(desc.Height), rotation_);
+    auto* source = static_cast<const uint8_t*>(mapped.pData);
+    int source_stride = static_cast<int>(mapped.RowPitch);
+    if (desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT) {
+      ScRgbFrame linear{source, mapped.RowPitch, static_cast<int>(desc.Width),
+                        static_cast<int>(desc.Height)};
+      linear.CopyBgra(white_nits_, sdr_);
+      source = sdr_.data();
+      source_stride = static_cast<int>(desc.Width) * 4;
+    }
+    const int converted =
+        libyuv::ARGBRotate(source, source_stride, pixels_.data(), stride_,
+                           static_cast<int>(desc.Width), static_cast<int>(desc.Height), rotation_);
     context_->Unmap(staging_.Get(), 0);
     updated_ = converted == 0;
     return converted == 0 ? S_OK : E_FAIL;
@@ -152,7 +168,8 @@ class SecureDesktopDxgiCapture {
   int offset_x_ = 0, offset_y_ = 0, stride_ = 0;
   SecureDesktopDxgiCursorState cursor_state_;
   bool updated_ = false;
-  std::vector<uint8_t> pixels_;
+  float white_nits_ = 203.f;
+  std::vector<uint8_t> sdr_, pixels_;
 };
 
 }  // namespace crossdesk

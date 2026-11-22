@@ -34,6 +34,7 @@ rule("crossdesk.about_resources")
             libsdl3 = {"SDL", "https://github.com/libsdl-org/SDL/tree/release-"},
             tinyfiledialogs = {"tinyfiledialogs", "https://sourceforge.net/projects/tinyfiledialogs/"},
             ["cpp-httplib"] = {"cpp-httplib", "https://github.com/yhirose/cpp-httplib/tree/v"},
+            ["ffmpeg-h264"] = {"FFmpeg (H.264 decoder)", "https://github.com/FFmpeg/FFmpeg/tree/n"},
             openh264 = {"OpenH264", "https://github.com/cisco/openh264/tree/v"},
             miniaudio = {"miniaudio", "https://github.com/mackron/miniaudio/tree/"},
             aom = {"libaom", "https://aomedia.googlesource.com/aom/+/v"}
@@ -91,7 +92,11 @@ rule("crossdesk.about_resources")
                             end
                         end
                     end
-                    if name == "slint" then
+                    if name == "x264" then
+                        item.license = "GPL-2.0-or-later"
+                        item.sourceURL = "https://code.videolan.org/videolan/x264/-/tree/c24e06c2e184345ceb33eb20a15d1024d9fd3497"
+                    end
+                    if name == "slint" or name == "x264" then
                         table.insert(item.documents, {title = "GNU GPL v3", text = read("LICENSE")})
                     end
                     table.insert(components, item)

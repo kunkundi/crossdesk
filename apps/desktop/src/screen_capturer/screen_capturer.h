@@ -8,6 +8,7 @@
 #define _SCREEN_CAPTURER_H_
 
 #include <functional>
+#include <atomic>
 
 #include "display_info.h"
 #include "minirtc.h"
@@ -18,6 +19,9 @@ class PrivacyController;
 
 class ScreenCapturer {
  public:
+  // One shared desktop capture serves all controllers in this process.
+  inline static std::atomic<bool> hdr_requested{false};
+
   // Windows backends emit a control-only callback BEFORE automatic recovery.
   // No video buffer accompanies this notification; wrappers must consume it.
   static constexpr int kBackendReset = -1;

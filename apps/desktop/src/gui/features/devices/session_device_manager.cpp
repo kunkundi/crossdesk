@@ -254,13 +254,7 @@ int SessionDeviceManager::InitializeScreenCapturer() {
         const bool stream_changed = !last_video_frame_stream_id_.empty() &&
                                     last_video_frame_stream_id_ != stream_id;
 
-        MiniRtcVideoFrame frame{};
-        frame.data = reinterpret_cast<const char *>(data);
-        frame.size = size;
-        frame.width = width;
-        frame.height = height;
-
-        frame.native_frame = native_frame;
+        std::vector<uint8_t> sdr_pixels;
         const auto send_started = std::chrono::steady_clock::now();
         uint64_t send_errors = 0;
         for (const std::string &remote_id : connected_remote_ids) {
@@ -269,6 +263,36 @@ int SessionDeviceManager::InitializeScreenCapturer() {
           if (!owner_.DisplayResolutionsReadyForCapture(remote_id)) continue;
           if (!owner_.preview_subscriptions_.ShouldSend(remote_id, now_time,
                                                         stream_id)) continue;
+          MiniRtcVideoFrame frame{};
+          frame.data = reinterpret_cast<const char*>(data);
+          frame.size = size;
+          frame.width = width;
+          frame.height = height;
+          frame.native_frame = native_frame;
+          MiniRtcNativeVideoFrame peer_frame;
+          if (native_frame && native_frame->type == MiniRtcNativeVideoFrameHdr10) {
+            uint32_t hdr_codecs = 0;
+            {
+              std::shared_lock lock(owner_.connection_status_mutex_);
+              auto it = owner_.controller_hdr_codecs_.find(remote_id);
+              if (it != owner_.controller_hdr_codecs_.end()) hdr_codecs = it->second;
+            }
+            if (hdr_codecs) {
+              peer_frame = *native_frame;
+              peer_frame.payload.hdr10.codec_mask = hdr_codecs;
+              frame.native_frame = &peer_frame;
+            } else {
+              if (!data && sdr_pixels.empty()) {
+                sdr_pixels.resize(size);
+                if (native_frame->copy_to_nv12(native_frame->owner, sdr_pixels.data(), size) != 0) {
+                  sdr_pixels.clear();
+                  continue;
+                }
+              }
+              frame.data = reinterpret_cast<const char*>(data ? data : sdr_pixels.data());
+              frame.native_frame = nullptr;
+            }
+          }
           if (owner_.WithController(
                   remote_id, [&](MiniRtcPeerPtr* peer, const std::string& wire) {
                     if (resumed_after_gap || stream_changed)

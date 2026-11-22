@@ -211,6 +211,7 @@ struct ConnectionState {
   std::unordered_map<std::string, MiniRtcConnectionStatus> connection_status_;
   std::unordered_map<std::string, std::string> connection_host_names_;
   std::unordered_set<std::string> codec_status_controllers_;
+  std::unordered_map<std::string, uint32_t> controller_hdr_codecs_;
   // Cursor position is sampled asynchronously after remote mouse input has
   // been injected. Remember the input source so the sampled position is not
   // immediately echoed back to that same controller as stale feedback.

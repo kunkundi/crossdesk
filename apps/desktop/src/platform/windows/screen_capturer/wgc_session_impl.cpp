@@ -5,6 +5,7 @@
 #include <string>
 
 #include "rd_log.h"
+#include "hdr_display.h"
 
 namespace crossdesk {
 
@@ -156,6 +157,18 @@ HRESULT WgcSessionImpl::CreateMappedTexture(
                                     d3d11_texture_mapped_.put());
 }
 
+using CaptureFormat = winrt::Windows::Graphics::DirectX::DirectXPixelFormat;
+
+bool WgcSessionImpl::UpdateColorMode() {
+  auto monitor = target_.is_window ? MonitorFromWindow(target_.hwnd, MONITOR_DEFAULTTONEAREST)
+                                   : target_.hmonitor;
+  const float white = IsHdrMonitor(monitor) ? SdrWhiteNits(monitor) : 0.f;
+  const bool format_changed = (white > 0) != (hdr_white_nits_ > 0);
+  hdr_white_nits_ = white;
+  next_color_check_ = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+  return format_changed;
+}
+
 int WgcSessionImpl::StartCaptureLocked(bool show_cursor) {
   if (!is_initialized_) {
     LOG_ERROR("AE_NEED_INIT");
@@ -168,13 +181,14 @@ int WgcSessionImpl::StartCaptureLocked(bool show_cursor) {
 
   try {
     if (!capture_session_) {
+      UpdateColorMode();
       auto current_size = capture_item_.Size();
       capture_framepool_ =
-          winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::
-              CreateFreeThreaded(d3d11_direct_device_,
-                                 winrt::Windows::Graphics::DirectX::
-                                     DirectXPixelFormat::B8G8R8A8UIntNormalized,
-                                 2, current_size);
+          winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::CreateFreeThreaded(
+              d3d11_direct_device_,
+              hdr_white_nits_ > 0 ? CaptureFormat::R16G16B16A16Float
+                              : CaptureFormat::B8G8R8A8UIntNormalized,
+              2, current_size);
       capture_session_ = capture_framepool_.CreateCaptureSession(capture_item_);
       capture_frame_size_ = current_size;
       capture_framepool_trigger_ = capture_framepool_.FrameArrived(
@@ -270,31 +284,36 @@ void WgcSessionImpl::OnFrame(
   std::lock_guard locker(lock_);
 
   if (!is_running_ || sender != capture_framepool_) return;
-  auto is_new_size = false;
-
   try {
     auto frame = sender.TryGetNextFrame();
-    if (!frame) return;
+    if (!frame || is_paused_) return;
     auto frame_size = frame.ContentSize();
-
-    if (frame_size.Width != capture_frame_size_.Width ||
+    if (frame_size.Width <= 0 || frame_size.Height <= 0) return;
+    const bool format_changed =
+        std::chrono::steady_clock::now() >= next_color_check_ && UpdateColorMode();
+    if (format_changed || frame_size.Width != capture_frame_size_.Width ||
         frame_size.Height != capture_frame_size_.Height) {
-      // The thing we have been capturing has changed size.
-      // We need to resize our swap chain first, then blit the pixels.
-      // After we do that, retire the frame and then recreate our frame pool.
-      is_new_size = true;
+      frame.Close();
       capture_frame_size_ = frame_size;
-    }
-
-    // copy to mapped texture
-    if (is_paused_) {
+      d3d11_texture_mapped_ = nullptr;
+      capture_framepool_.Recreate(d3d11_direct_device_,
+                                  hdr_white_nits_ > 0 ? CaptureFormat::R16G16B16A16Float
+                                                  : CaptureFormat::B8G8R8A8UIntNormalized,
+                                  2, frame_size);
       return;
     }
 
     auto frame_captured =
         GetDXGIInterfaceFromObject<ID3D11Texture2D>(frame.Surface());
 
-    if (!d3d11_texture_mapped_ || is_new_size) {
+    D3D11_TEXTURE2D_DESC desc{};
+    frame_captured->GetDesc(&desc);
+    const auto expected =
+        hdr_white_nits_ > 0 ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_B8G8R8A8_UNORM;
+    if (desc.Width != static_cast<UINT>(frame_size.Width) ||
+        desc.Height != static_cast<UINT>(frame_size.Height) || desc.Format != expected)
+      return;
+    if (!d3d11_texture_mapped_) {
       HRESULT tex_hr = CreateMappedTexture(frame_captured);
       if (FAILED(tex_hr)) {
         ReportFrameFailure(tex_hr);
@@ -335,23 +354,14 @@ void WgcSessionImpl::OnFrame(
                  target_.hmonitor);
         observer_->OnFrame(
             wgc_session_frame{static_cast<unsigned int>(frame_size.Width),
-                              static_cast<unsigned int>(frame_size.Height),
-                              map_result.RowPitch,
-                              const_cast<const unsigned char*>(
-                                  (unsigned char*)map_result.pData),
-                              cursor_captured},
+                              static_cast<unsigned int>(frame_size.Height), map_result.RowPitch,
+                              const_cast<const unsigned char*>((unsigned char*)map_result.pData),
+                              cursor_captured, hdr_white_nits_},
             id_);
         frame_failure_reported_ = false;
       }
     }
 
-    if (is_new_size) {
-      capture_framepool_.Recreate(
-          d3d11_direct_device_,
-          winrt::Windows::Graphics::DirectX::
-              DirectXPixelFormat::B8G8R8A8UIntNormalized,
-          2, capture_frame_size_);
-    }
   } catch (const winrt::hresult_error& error) {
     ReportFrameFailure(error.code());
   } catch (...) {

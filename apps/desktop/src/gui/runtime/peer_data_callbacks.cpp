@@ -25,6 +25,7 @@
 #include "platform.h"
 #include "rd_log.h"
 #include "runtime/gui_runtime.h"
+#include "screen_capturer.h"
 #include "web_clipboard_protocol.h"
 #ifdef __OHOS__
 #include "platform/harmony/input/system_shortcuts.h"
@@ -560,6 +561,14 @@ void PeerEventHandler::OnReceiveDataBuffer(
         runtime->connection_host_names_[remote_id] = host_name;
         runtime->incoming_controllers_changed_ = true;
         if (source_id == runtime->control_data_label_) {
+          const uint32_t hdr_codecs =
+              (remote_action.i.supports_av1_hdr10 ? MiniRtcHdrCodecAv1 : 0) |
+              (remote_action.i.supports_h264_hdr10 ? MiniRtcHdrCodecH264 : 0);
+          if (hdr_codecs)
+            runtime->controller_hdr_codecs_[remote_id] = hdr_codecs;
+          else
+            runtime->controller_hdr_codecs_.erase(remote_id);
+          ScreenCapturer::hdr_requested.store(!runtime->controller_hdr_codecs_.empty());
           if (remote_action.i.supports_video_codec_status)
             runtime->codec_status_controllers_.insert(remote_id);
           else

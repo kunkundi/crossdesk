@@ -23,6 +23,7 @@
 #include "rd_log.h"
 #include "screen_capturer.h"
 #include "stable_display_slots.h"
+#include "hdr_video_frame.h"
 
 namespace crossdesk {
 
@@ -96,6 +97,10 @@ class ScreenCapturerDxgi : public ScreenCapturer {
   unsigned char* nv12_frame_ = nullptr;
   int nv12_width_ = 0;
   int nv12_height_ = 0;
+  bool hdr_output_ = false;
+  float sdr_white_nits_ = 203.f;
+  std::shared_ptr<minirtc::HdrVideoFrame> hdr_frame_;
+  std::vector<uint8_t> sdr_bgra_;
   std::vector<uint8_t> rotated_frame_;
 };
 }  // namespace crossdesk

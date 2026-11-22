@@ -6,6 +6,7 @@
 
 #if defined(_WIN32)
 #include <windows.h>
+#include "platform/windows/gui/hdr_video_surface.h"
 #elif defined(__linux__)
 #include <dlfcn.h>
 #endif
@@ -295,6 +296,13 @@ void RestoreVertexAttrib(const OpenGlFunctions &gl, GLuint index,
 } // namespace
 
 struct OpenGlVideoRenderer::Impl {
+#ifdef _WIN32
+  bool pack_subimage_available = false;
+  HWND hdr_window = nullptr;
+  HdrVideoSurface hdr_surface;
+  NativeVideoFrameRef hdr_frame;
+  uint64_t hdr_sequence = 0;
+#endif
   OpenGlFunctions gl;
   std::shared_ptr<SharedFrameState> frames =
       std::make_shared<SharedFrameState>();
@@ -714,6 +722,9 @@ bool OpenGlVideoRenderer::Setup() {
   // Slint may fall back from GLES to a desktop core context. In that context
   // VAO 0, legacy luminance textures and legacy shader inputs are not usable.
   impl_->modern_gl = major >= 3;
+#ifdef _WIN32
+  impl_->pack_subimage_available = !is_gles || major >= 3;
+#endif
   if (impl_->modern_gl && !impl_->gl.LoadVertexArrayFunctions()) {
     LOG_WARN("OpenGL NV12 underlay unavailable: vertex array functions missing");
     return false;
@@ -832,7 +843,7 @@ void main() {
       return;
     }
     float y = 1.16438356 * (yuv.x - 16.0 / 255.0);
-    vec2 uv = yuv.yz - vec2(0.5);
+    vec2 uv = yuv.yz - vec2(128.0 / 255.0);
     rgb = clamp(vec3(y + 1.59602678 * uv.y,
                      y - 0.39176229 * uv.x - 0.81296764 * uv.y,
                      y + 2.01723214 * uv.x),
@@ -995,7 +1006,50 @@ void main() {
   return true;
 }
 
+#ifdef _WIN32
+void OpenGlVideoRenderer::SetHdrWindow(void* hwnd) {
+  impl_->hdr_window = static_cast<HWND>(hwnd);
+  if (!hwnd) {
+    impl_->hdr_surface.Hide();
+    impl_->hdr_frame.Reset();
+  }
+}
+
+void OpenGlVideoRenderer::PresentHdrControls() {
+  if (!impl_->hdr_surface.IsVisible()) return;
+  GLint pack_buffer = 0, alignment = 4, row_length = 0, rows = 0, pixels = 0;
+  glGetIntegerv(GL_PACK_ALIGNMENT, &alignment);
+  if (impl_->pack_subimage_available) {
+    glGetIntegerv(GL_PACK_ROW_LENGTH, &row_length);
+    glGetIntegerv(GL_PACK_SKIP_ROWS, &rows);
+    glGetIntegerv(GL_PACK_SKIP_PIXELS, &pixels);
+  }
+  if (impl_->pixel_unpack_buffer_available) {
+    glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &pack_buffer);
+    impl_->gl.bind_buffer(GL_PIXEL_PACK_BUFFER, 0);
+  }
+  glPixelStorei(GL_PACK_ALIGNMENT, 4);
+  if (impl_->pack_subimage_available) {
+    glPixelStorei(GL_PACK_ROW_LENGTH, 0);
+    glPixelStorei(GL_PACK_SKIP_ROWS, 0);
+    glPixelStorei(GL_PACK_SKIP_PIXELS, 0);
+  }
+  impl_->hdr_surface.PresentControls();
+  glPixelStorei(GL_PACK_ALIGNMENT, alignment);
+  if (impl_->pack_subimage_available) {
+    glPixelStorei(GL_PACK_ROW_LENGTH, row_length);
+    glPixelStorei(GL_PACK_SKIP_ROWS, rows);
+    glPixelStorei(GL_PACK_SKIP_PIXELS, pixels);
+  }
+  if (impl_->pixel_unpack_buffer_available)
+    impl_->gl.bind_buffer(GL_PIXEL_PACK_BUFFER, pack_buffer);
+}
+#endif
+
 void OpenGlVideoRenderer::Teardown() {
+#ifdef _WIN32
+  SetHdrWindow(nullptr);
+#endif
   impl_->ready.store(false, std::memory_order_release);
   if (impl_->scale_framebuffer != 0) {
     impl_->gl.delete_framebuffers(1, &impl_->scale_framebuffer);
@@ -1254,10 +1308,17 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
   const unsigned char *uv_data = nullptr;
   NativeVideoFrameRef active_native_frame;
   VideoLatencyFrame timing;
+#ifdef _WIN32
+  bool has_cached_hdr = false;
+#endif
   {
     std::lock_guard lock(impl_->frames->mutex);
     for (size_t index = 0; index < impl_->frames->slots.size(); ++index) {
       const auto &slot = impl_->frames->slots[index];
+#ifdef _WIN32
+      has_cached_hdr |= slot.valid && slot.sequence == impl_->hdr_sequence &&
+                        slot.remote_id == remote_id && impl_->frames->selected_stream == remote_id;
+#endif
       if (slot.valid && slot.use == SlotUse::pending &&
           slot.remote_id == remote_id &&
           (slot_index == kFrameSlotCount || slot.sequence > sequence)) {
@@ -1288,6 +1349,71 @@ OpenGlVideoRenderer::RenderLatest(std::string_view remote_id,
       }
     }
   }
+
+#ifdef _WIN32
+  if (slot_index != kFrameSlotCount || !has_cached_hdr) {
+    if (const auto* frame = active_native_frame.Get();
+        frame && frame->type == MiniRtcNativeVideoFrameHdr10) {
+      impl_->hdr_frame = active_native_frame;
+      impl_->hdr_sequence = sequence;
+    } else if (impl_->hdr_frame) {
+      impl_->hdr_surface.Hide();
+      impl_->hdr_frame.Reset();
+    }
+  }
+  if (const auto* hdr = impl_->hdr_frame.Get()) {
+    if (impl_->hdr_surface.Prepare(impl_->hdr_window, *hdr, impl_->hdr_sequence, target_width,
+                                   target_height, std::max(0, top_inset_pixels))) {
+      // Leave transparent pixels for Slint to paint its controls onto. Copy
+      // those controls after Slint renders, independently of the 10-bit image.
+      GLfloat clear[4];
+      GLboolean mask[4];
+      GLint scissor[4];
+      const bool clipped = glIsEnabled(GL_SCISSOR_TEST) != 0;
+      glGetFloatv(GL_COLOR_CLEAR_VALUE, clear);
+      glGetBooleanv(GL_COLOR_WRITEMASK, mask);
+      glGetIntegerv(GL_SCISSOR_BOX, scissor);
+      glDisable(GL_SCISSOR_TEST);
+      glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+      glClearColor(0, 0, 0, 1);
+      glClear(GL_COLOR_BUFFER_BIT);
+      const RECT& r = impl_->hdr_surface.Bounds();
+      glEnable(GL_SCISSOR_TEST);
+      glScissor(r.left, target_height - r.bottom, r.right - r.left, r.bottom - r.top);
+      glClearColor(0, 0, 0, 0);
+      glClear(GL_COLOR_BUFFER_BIT);
+      glScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
+      if (!clipped) glDisable(GL_SCISSOR_TEST);
+      glColorMask(mask[0], mask[1], mask[2], mask[3]);
+      glClearColor(clear[0], clear[1], clear[2], clear[3]);
+      if (slot_index != kFrameSlotCount) {
+        std::lock_guard lock(impl_->frames->mutex);
+        impl_->frames->slots[slot_index].use = SlotUse::available;
+        timing.MarkSubmitted();
+      }
+      return {RenderResult::rendered, static_cast<int>(hdr->width), static_cast<int>(hdr->height),
+              impl_->hdr_sequence};
+    }
+    impl_->hdr_surface.Hide();
+    // Moving the window to SDR must also repaint a static last HDR frame.
+    if (slot_index == kFrameSlotCount && impl_->uploaded_sequence != impl_->hdr_sequence) {
+      std::lock_guard lock(impl_->frames->mutex);
+      for (size_t i = 0; i < kFrameSlotCount; ++i) {
+        auto& slot = impl_->frames->slots[i];
+        if (slot.valid && slot.sequence == impl_->hdr_sequence && slot.use == SlotUse::available) {
+          slot_index = i;
+          slot.use = SlotUse::uploading;
+          sequence = slot.sequence;
+          source_width = slot.width;
+          source_height = slot.height;
+          active_native_frame = slot.native_frame;
+          timing = slot.timing;
+          break;
+        }
+      }
+    }
+  }
+#endif
 
   GLint previous_program = 0;
   GLint previous_active_texture = GL_TEXTURE0;

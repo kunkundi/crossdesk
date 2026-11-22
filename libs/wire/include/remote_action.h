@@ -143,6 +143,8 @@ struct HostInfo {
   bool supports_privacy_screen;
   bool supports_video_settings;
   bool supports_video_codec_status;
+  bool supports_av1_hdr10;
+  bool supports_h264_hdr10;
   bool supports_text_input;
   bool supports_deskhub_preview;
   bool supports_deskhub_resolution;

@@ -133,12 +133,11 @@ void PeerEventHandler::OnReceiveVideoBuffer(
       if (const auto* native = GetNativeVideoFrame(video_frame)) {
         submit_result =
             native_renderer->SubmitNativeFrame(remote_id, *native, timing);
-        // A CPU NV12 native frame is valid MiniRTC input, but the macOS Metal
-        // fast path only accepts CVPixelBuffer. Materialize it when that path
-        // rejects a software decoder's descriptor. This also supports peers
-        // using CPU decoding when their platform hardware decoder is unavailable.
+        // Software-decoded pictures can always supply canonical SDR pixels
+        // when the active renderer cannot upload their native storage.
         if (submit_result == VideoRenderer::SubmitResult::failed &&
-            native->type == MiniRtcNativeVideoFrameCpuNv12) {
+            (native->type == MiniRtcNativeVideoFrameCpuNv12 ||
+             native->type == MiniRtcNativeVideoFrameHdr10)) {
           const size_t frame_size =
               static_cast<size_t>(native->width) * native->height * 3U / 2U;
           // One decode callback thread per session; keep the buffer across

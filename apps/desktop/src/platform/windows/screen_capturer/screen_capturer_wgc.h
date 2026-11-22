@@ -67,6 +67,7 @@ class ScreenCapturerWgc : public ScreenCapturer,
 
   int fps_ = 60;
 
+  std::vector<uint8_t> sdr_bgra_;
   cb_desktop_data on_data_ = nullptr;
 
   unsigned char* nv12_frame_ = nullptr;

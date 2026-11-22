@@ -14,6 +14,7 @@ class WgcSession {
 
     const unsigned char* data;
     bool cursor_captured;
+    float hdr_sdr_white_nits;  // Nonzero for a linear scRGB FP16 surface.
   };
 
   class wgc_session_observer {

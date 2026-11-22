@@ -1,4 +1,5 @@
 #include "screen_capturer_wgc.h"
+#include "scrgb_frame.h"
 
 #include <Windows.h>
 #include <d3d11_4.h>
@@ -369,7 +370,7 @@ void ScreenCapturerWgc::OnFrame(const WgcSession::wgc_session_frame& frame,
     // calculate the maximum width that can be contained in one row according to
     // row_pitch (BGRA: 4 bytes per pixel), and take the minimum with logical
     // width to avoid out-of-bounds access.
-    unsigned int max_width_by_pitch = frame.row_pitch / 4u;
+    unsigned int max_width_by_pitch = frame.row_pitch / (frame.hdr_sdr_white_nits > 0 ? 8u : 4u);
     int logical_width = static_cast<int>(
         frame.width < max_width_by_pitch ? frame.width : max_width_by_pitch);
 
@@ -395,16 +396,24 @@ void ScreenCapturerWgc::OnFrame(const WgcSession::wgc_session_frame& frame,
       nv12_height_ = even_height;
     }
 
-    libyuv::ARGBToNV12((const uint8_t*)frame.data,
-                       static_cast<int>(frame.row_pitch), (uint8_t*)nv12_frame_,
-                       even_width,
-                       (uint8_t*)(nv12_frame_ + even_width * even_height),
-                       even_width, even_width, even_height);
+    std::shared_ptr<minirtc::HdrVideoFrame> hdr;
+    const uint8_t* bgra = frame.data;
+    int stride = static_cast<int>(frame.row_pitch);
+    if (frame.hdr_sdr_white_nits > 0) {
+      ScRgbFrame linear{frame.data, frame.row_pitch, logical_width, static_cast<int>(frame.height)};
+      linear.CopyBgra(frame.hdr_sdr_white_nits, sdr_bgra_);
+      bgra = sdr_bgra_.data();
+      stride = logical_width * 4;
+      if (hdr_requested.load(std::memory_order_relaxed))
+        hdr = linear.ToHdr10(even_width, even_height, 0, frame.hdr_sdr_white_nits);
+    }
+    libyuv::ARGBToNV12(bgra, stride, nv12_frame_, even_width,
+                       nv12_frame_ + even_width * even_height, even_width, even_width, even_height);
 
     const std::string stream_id = MakeDisplayStreamId(id);
     CapturedCursorFrameScope cursor_scope(frame.cursor_captured);
-    on_data_(nv12_frame_, nv12_size, even_width, even_height,
-             stream_id.c_str(), nullptr);
+    on_data_(nv12_frame_, nv12_size, even_width, even_height, stream_id.c_str(),
+             hdr ? hdr->Descriptor() : nullptr);
   }
 }
 

@@ -17,6 +17,7 @@
 #include "screen_lock.h"
 #include "runtime/device_presence_request.h"
 #include "runtime/gui_runtime.h"
+#include "screen_capturer.h"
 
 namespace crossdesk {
 
@@ -216,6 +217,8 @@ void GuiRuntime::HandleServerControllerDisconnected(
     devices_.OnControllerConnectionsChanged();
     connection_host_names_.erase(remote_id);
     codec_status_controllers_.erase(remote_id);
+    controller_hdr_codecs_.erase(remote_id);
+    ScreenCapturer::hdr_requested.store(!controller_hdr_codecs_.empty());
     privacy_sessions_.Disconnected(remote_id);
     for (const auto& [id, status] : connection_status_) {
       if (status != MiniRtcConnectionStatus::MiniRtcConnectionConnected) {

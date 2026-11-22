@@ -29,6 +29,7 @@ option("CROSSDESK_BUILD_CLI")
 option_end()
 
 local build_desktop = desktop_platform and not is_config("CROSSDESK_BUILD_DESKTOP", false)
+set_config("MINIRTC_ENABLE_H264_HIGH10", build_desktop)
 local build_cli = has_config("CROSSDESK_BUILD_CLI")
 if build_cli and not desktop_platform then
     raise("CrossDesk CLI supports Windows, macOS and Linux")

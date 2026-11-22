@@ -651,6 +651,11 @@ std::string GuiRuntime::BuildHostInformation(bool advertise_trust,
   action.preferred_display_resolutions = preferences;
   action.i.supports_video_settings = true;
   action.i.supports_video_codec_status = true;
+#if defined(_WIN32) || defined(__APPLE__)
+  const bool hdr_display = HasHdrVideoDisplay();
+  action.i.supports_av1_hdr10 = hdr_display;
+  action.i.supports_h264_hdr10 = hdr_display && MiniRtcSupportsH264High10();
+#endif
   action.i.supports_text_input = devices_.SupportsTextInput();
   action.i.supports_deskhub_preview = true;
   action.i.supports_deskhub_resolution = true;
