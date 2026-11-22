@@ -20,7 +20,7 @@
 
 ---
 
-<p align="center"><sub><a href="#sponsor">Special Sponsors</a></sub></p>
+<h3 align="center"><a href="#sponsor">Special Sponsors</a></h3>
 
 <!-- Use one cell per sponsor, with its display name below the logo. Start a new row after each pair. -->
 <div align="center">

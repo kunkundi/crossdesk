@@ -20,7 +20,7 @@
 
 ---
 
-<p align="center"><sub><a href="#sponsor">特别赞助</a></sub></p>
+<h3 align="center"><a href="#sponsor">特别赞助</a></h3>
 
 <!-- 每家赞助商使用一个单元格，Logo 下方填写其品牌名，每两家另起一行。 -->
 <div align="center">
