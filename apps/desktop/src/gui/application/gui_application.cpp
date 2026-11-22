@@ -1372,8 +1372,7 @@ void GuiApplication::InitializeSettings() {
       localization::detail::ClampLanguageIndex(language_button_value_);
   localization_language_ =
       static_cast<ConfigCenter::LANGUAGE>(language_button_value_);
-  privacy_.SetText({
-      localization::privacy_screen_unlock_hint[localization_language_index_]});
+  SyncPrivacyScreenSettings();
 }
 
 bool GuiApplication::InitializeSDL() {
@@ -1716,6 +1715,10 @@ void GuiApplication::ResetSettingsUi(bool gallery_window) {
   main->set_privacy_on_connect_enabled(
       config_center_->IsEnablePrivacyScreen());
   main->set_privacy_local_unlock_allowed(config_center_->IsPrivacyLocalUnlockAllowed());
+#if defined(_WIN32) || defined(__APPLE__)
+  main->set_privacy_black_screen_available(true);
+  main->set_privacy_black_screen(config_center_->IsPrivacyBlackScreen());
+#endif
   main->set_lock_on_disconnect_enabled(config_center_->IsLockOnDisconnect());
   main->set_trusted_devices_only(config_center_->IsTrustedDevicesOnly());
 #if defined(_WIN32) || defined(__APPLE__) || (defined(__linux__) && !defined(__OHOS__))
@@ -4992,6 +4995,13 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
         localization::Literal("无法保存隐私屏解锁设置，请重试。", localization_language_index_)));
     return false;
   }
+  if (main->get_privacy_black_screen_available() &&
+      config_center_->SetPrivacyBlackScreen(main->get_privacy_black_screen()) != 0) {
+    if (wall_changed) ui_->gallery.Save(ui_->gallery_path);
+    main->set_settings_save_error(UiText(
+        localization::Literal("保存失败，请重试", localization_language_index_)));
+    return false;
+  }
   if (config_center_->SetPauseVideoWhenMinimized(main->get_pause_video_when_minimized()) != 0) {
     if (wall_changed && !ui_->gallery.Save(ui_->gallery_path))
       LOG_ERROR("Failed to restore DeskHub settings after video pause preference save failure");
@@ -5038,10 +5048,7 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
       static_cast<ConfigCenter::LANGUAGE>(language_button_value_);
   localization_language_index_ = localization::detail::ClampLanguageIndex(language_button_value_);
   config_center_->SetLanguage(localization_language_);
-  privacy_.SetText(
-      {localization::privacy_screen_unlock_hint[localization_language_index_],
-       localization::privacy_screen_locked_hint[localization_language_index_],
-       config_center_->IsPrivacyLocalUnlockAllowed()});
+  SyncPrivacyScreenSettings();
   config_center_->SetVideoEncodeFormat(
       static_cast<ConfigCenter::VIDEO_ENCODE_FORMAT>(
           video_encode_format_button_value_));
@@ -5127,9 +5134,7 @@ void GuiApplication::ApplySettingsFromConfig(bool reconnect) {
   enable_self_hosted_ = config_center_->IsSelfHosted();
   enable_autostart_ = config_center_->IsEnableAutostart();
   enable_daemon_ = config_center_->IsEnableDaemon();
-  privacy_.SetText({localization::privacy_screen_unlock_hint[localization_language_index_],
-       localization::privacy_screen_locked_hint[localization_language_index_],
-       config_center_->IsPrivacyLocalUnlockAllowed()});
+  SyncPrivacyScreenSettings();
   const auto path = config_center_->GetFileTransferSavePath();
   std::snprintf(file_transfer_save_path_buf_, sizeof(file_transfer_save_path_buf_), "%s", path.c_str());
   const auto host = config_center_->GetSignalServerHost();

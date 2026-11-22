@@ -1128,6 +1128,18 @@
       "es": "Permitir compartir la pantalla de esta Mac",
       "pt-BR": "Permitir compartilhar a tela deste Mac"
     },
+    "隐私屏使用黑屏画面": {
+      "zh-Hans": "隐私屏使用黑屏画面",
+      "en": "Use a black privacy screen",
+      "ru": "Чёрный экран в режиме приватности",
+      "zh-Hant": "隱私螢幕使用黑色畫面",
+      "ja": "プライバシースクリーンを黒一色にする",
+      "ko": "프라이버시 화면을 검은색으로 표시",
+      "de": "Schwarzen Sichtschutzbildschirm verwenden",
+      "fr": "Utiliser un écran de confidentialité noir",
+      "es": "Usar una pantalla de privacidad negra",
+      "pt-BR": "Usar tela preta no modo de privacidade"
+    },
     "允许被控时解锁隐私屏": {
       "zh-Hans": "允许被控时解锁隐私屏",
       "en": "Allow privacy screen unlock while controlled",
@@ -12061,6 +12073,7 @@
     "wayland_recommendation_message": "为便于持续使用远程桌面，建议注销当前桌面会话，在登录界面选择 X11（Xorg）会话后重新登录。",
     "wayland_notice_acknowledge": "我知道了",
     "show_main_window": "显示主界面",
+    "privacy_black_screen": "隐私屏使用黑屏画面",
     "privacy_local_unlock": "允许被控时解锁隐私屏",
     "privacy_screen_locked_hint": "隐私屏已开启，本机解锁已禁用",
     "privacy_unlocked_title": "隐私屏已被解锁",
@@ -12355,6 +12368,7 @@
       "修改端口",
       "停留翻页，松开取消",
       "允许共享此 Mac 的屏幕画面",
+      "隐私屏使用黑屏画面",
       "允许被控时解锁隐私屏",
       "允许远程键盘和鼠标控制",
       "全屏",

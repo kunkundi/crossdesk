@@ -17,6 +17,11 @@
 
 namespace crossdesk {
 namespace {
+PrivacyCoverStyle CoverStyle(const PrivacyScreenText& text) {
+  if (text.black_screen) return PrivacyCoverStyle::black;
+  return text.allow_local_unlock ? PrivacyCoverStyle::unlock_hint : PrivacyCoverStyle::branded;
+}
+
 struct ScopedHandle {
   HANDLE value = nullptr;
   ~ScopedHandle() {
@@ -157,7 +162,7 @@ bool PrivacyBandGuard::Start(const PrivacyScreenText& text,
                            text.locked_hint.c_str(), -1, shared_->locked_hint,
                            static_cast<int>(std::size(shared_->locked_hint))))
     return Failed("Encode locked privacy screen text", error);
-  shared_->allow_local_unlock = text.allow_local_unlock;
+  shared_->cover_style = static_cast<LONG>(CoverStyle(text));
   shared_->parent_pid = GetCurrentProcessId();
   HANDLE handles[] = {parent.value, stop_, ready_, mapping_};
   std::wstring bootstrap;
@@ -304,11 +309,9 @@ bool PrivacyBandGuard::Windows(std::vector<PrivacyBandWindow>& windows,
   return retry();
 }
 
-void PrivacyBandGuard::SetLocalUnlockAllowed(bool allowed) {
-  const LONG value = allowed ? 1 : 0;
-  if (!shared_ ||
-      InterlockedExchange(&shared_->allow_local_unlock, value) == value)
-    return;
+void PrivacyBandGuard::UpdateCoverStyle(const PrivacyScreenText& text) {
+  const LONG style = static_cast<LONG>(CoverStyle(text));
+  if (!shared_ || InterlockedExchange(&shared_->cover_style, style) == style) return;
   std::vector<PrivacyBandWindow> windows;
   std::string error;
   if (Windows(windows, error))

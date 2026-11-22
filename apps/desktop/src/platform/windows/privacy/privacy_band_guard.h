@@ -27,7 +27,7 @@ class PrivacyBandGuard {
   ~PrivacyBandGuard();
   static bool Available(std::string& error);
   bool Start(const PrivacyScreenText& text, std::string& error);
-  void SetLocalUnlockAllowed(bool allowed);
+  void UpdateCoverStyle(const PrivacyScreenText& text);
   bool Stop(std::string& error);
   bool Healthy(std::string& error);
   bool Windows(std::vector<PrivacyBandWindow>& windows, std::string& error);

@@ -241,7 +241,7 @@ class MacPrivacyBackend final : public PrivacyBackend {
           NSView* content = CreateMacPrivacyCoverView(
               NSMakeRect(0, 0, m.frame.size.width, m.frame.size.height),
               [NSString stringWithUTF8String:(text.allow_local_unlock ? text.unlock_hint : text.locked_hint).c_str()],
-              text.allow_local_unlock);
+              text.allow_local_unlock, text.black_screen);
           if (!content) {
             state->failure = "Could not load the CrossDesk privacy screen logo";
             break;
@@ -267,10 +267,14 @@ class MacPrivacyBackend final : public PrivacyBackend {
     auto state = state_;
     OnMain([state, text] {
       std::lock_guard lock(state->mutex);
-      for (const auto& monitor : state->monitors)
-        UpdateMacPrivacyCoverView(monitor.cover.contentView,
+      for (const auto& monitor : state->monitors) {
+        if (!UpdateMacPrivacyCoverView(monitor.cover.contentView,
             [NSString stringWithUTF8String:(text.allow_local_unlock ? text.unlock_hint : text.locked_hint).c_str()],
-            text.allow_local_unlock);
+            text.allow_local_unlock, text.black_screen)) {
+          state->failure = "Could not load the CrossDesk privacy screen logo";
+          break;
+        }
+      }
     });
   }
   void Recover() override {

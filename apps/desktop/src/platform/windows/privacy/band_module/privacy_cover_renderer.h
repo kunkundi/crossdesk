@@ -7,13 +7,13 @@
 #ifndef _PRIVACY_COVER_RENDERER_H_
 #define _PRIVACY_COVER_RENDERER_H_
 
-#include <Windows.h>
+#include "../privacy_band_ipc.h"
 
 namespace crossdesk {
 
 // Paints the local, opaque cover. The caller owns the HWND and its DPI context.
 bool DrawPrivacyCover(HDC dc, const RECT& rect, UINT dpi, HINSTANCE module,
-                      const wchar_t* unlock_hint, bool allow_local_unlock = true);
+                      const wchar_t* unlock_hint, PrivacyCoverStyle style);
 
 }  // namespace crossdesk
 

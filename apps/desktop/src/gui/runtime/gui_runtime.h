@@ -117,6 +117,7 @@ class GuiRuntime : protected gui_detail::GuiState {
   void HandleWindowsServiceIntegration();
   void ProcessAutomationRequests();
   void HandlePrivacy();
+  void SyncPrivacyScreenSettings();
   void HandleScreenLock();
   bool IsAuthorizedController(const std::string& remote_id);
   void InitializeTrustedDevices(const std::filesystem::path& directory);

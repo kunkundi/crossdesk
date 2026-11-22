@@ -68,6 +68,7 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"修改端口", {"修改端口", "Edit port", "Изменить порт", "修改埠", "ポートの編集", "포트 편집", "Port bearbeiten", "Modifier le port", "Editar puerto", "Editar porta"}},
   {"停留翻页，松开取消", {"停留翻页，松开取消", "Hold to turn page; release to cancel", "Удерживайте для перелистывания; отпустите для отмены", "停留翻頁，鬆開取消", "長押ししてページをめくります。リリースしてキャンセルする", "페이지를 넘기려면 길게 누르세요. 취소하다", "Halten Sie gedrückt, um die Seite umzublättern. Freigabe zum Abbrechen", "Maintenez enfoncé pour tourner la page ; libérer pour annuler", "Mantenga presionado para pasar la página; liberar para cancelar", "Segure para virar a página; liberar para cancelar"}},
   {"允许共享此 Mac 的屏幕画面", {"允许共享此 Mac 的屏幕画面", "Allow sharing this Mac’s screen", "Разрешить показ экрана этого Mac", "允許共享此 Mac 的螢幕畫面", "この Mac の画面の共有を許可する", "이 Mac의 화면 공유를 허용합니다", "Erlauben Sie die Freigabe des Bildschirms dieses Mac", "Autoriser le partage de l'écran de ce Mac", "Permitir compartir la pantalla de esta Mac", "Permitir compartilhar a tela deste Mac"}},
+  {"隐私屏使用黑屏画面", {"隐私屏使用黑屏画面", "Use a black privacy screen", "Чёрный экран в режиме приватности", "隱私螢幕使用黑色畫面", "プライバシースクリーンを黒一色にする", "프라이버시 화면을 검은색으로 표시", "Schwarzen Sichtschutzbildschirm verwenden", "Utiliser un écran de confidentialité noir", "Usar una pantalla de privacidad negra", "Usar tela preta no modo de privacidade"}},
   {"允许被控时解锁隐私屏", {"允许被控时解锁隐私屏", "Allow privacy screen unlock while controlled", "Разрешить разблокировку приватного экрана при удалённом управлении", "允許被控時解鎖隱私屏", "制御中にプライバシー画面のロック解除を許可する", "제어되는 동안 개인 정보 보호 화면 잠금 해제 허용", "Entsperren des Sichtschutzbildschirms während der Steuerung zulassen", "Autoriser le déverrouillage de l'écran de confidentialité pendant le contrôle", "Permitir el desbloqueo de la pantalla de privacidad mientras está controlado", "Permitir desbloqueio da tela de privacidade enquanto controlado"}},
   {"允许远程键盘和鼠标控制", {"允许远程键盘和鼠标控制", "Allow remote keyboard and mouse input", "Разрешить удалённый ввод с клавиатуры и мыши", "允許遠端鍵盤和滑鼠控制", "リモートのキーボードとマウスの入力を許可する", "원격 키보드 및 마우스 입력 허용", "Remote-Tastatur- und Mauseingabe zulassen", "Autoriser la saisie au clavier et à la souris à distance", "Permitir la entrada remota de teclado y mouse", "Permitir entrada remota de teclado e mouse"}},
   {"全屏", {"全屏", "Fullscreen", "На весь экран", "全屏", "フルスクリーン", "전체화면", "Vollbild", "Plein écran", "Pantalla completa", "Tela cheia"}},
@@ -844,6 +845,7 @@ inline constexpr NamedTranslation kNamedTranslations[] = {
   {"wayland_recommendation_message", "为便于持续使用远程桌面，建议注销当前桌面会话，在登录界面选择 X11（Xorg）会话后重新登录。"},
   {"wayland_notice_acknowledge", "我知道了"},
   {"show_main_window", "显示主界面"},
+  {"privacy_black_screen", "隐私屏使用黑屏画面"},
   {"privacy_local_unlock", "允许被控时解锁隐私屏"},
   {"privacy_screen_locked_hint", "隐私屏已开启，本机解锁已禁用"},
   {"privacy_unlocked_title", "隐私屏已被解锁"},
@@ -1359,6 +1361,7 @@ inline constexpr const char* kSlintLiterals[] = {
   X(wayland_recommendation_message) \
   X(wayland_notice_acknowledge) \
   X(show_main_window) \
+  X(privacy_black_screen) \
   X(privacy_local_unlock) \
   X(privacy_screen_locked_hint) \
   X(privacy_unlocked_title) \

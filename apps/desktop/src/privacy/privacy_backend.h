@@ -16,6 +16,7 @@ struct PrivacyScreenText {
   std::string unlock_hint = "To turn off the privacy screen, press";
   std::string locked_hint = "Privacy screen is on. Local unlocking is disabled.";
   bool allow_local_unlock = true;
+  bool black_screen = false;
 };
 
 struct PrivacyCapabilities {

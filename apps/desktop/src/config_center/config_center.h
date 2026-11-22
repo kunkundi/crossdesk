@@ -62,6 +62,7 @@ class ConfigCenter {
   int SetDaemon(bool enable_daemon);
   int SetPrivacyScreen(bool enable_privacy_screen);
   int SetPrivacyLocalUnlock(bool allowed);
+  int SetPrivacyBlackScreen(bool enabled);
   int SetLockOnDisconnect(bool enabled);
   int SetTrustedDevicesOnly(bool enabled);
   int SetSaveRemotePreviews(bool enabled);
@@ -93,6 +94,7 @@ class ConfigCenter {
   bool IsEnableDaemon() const;
   bool IsEnablePrivacyScreen() const;
   bool IsPrivacyLocalUnlockAllowed() const;
+  bool IsPrivacyBlackScreen() const { return privacy_black_screen_.load(); }
   bool IsLockOnDisconnect() const;
   bool IsTrustedDevicesOnly() const;
   bool IsSaveRemotePreviews() const;
@@ -139,6 +141,7 @@ class ConfigCenter {
   bool enable_daemon_ = false;
   std::atomic<bool> enable_privacy_screen_{true};
   std::atomic<bool> privacy_local_unlock_allowed_{true};
+  std::atomic<bool> privacy_black_screen_{false};
   std::atomic<bool> lock_on_disconnect_{true};
   std::atomic<bool> trusted_devices_only_{false};
   std::atomic<bool> save_remote_previews_{true};

@@ -14,7 +14,7 @@
 namespace crossdesk {
 
 constexpr uint32_t kPrivacyBandMagic = 0x43534231;
-constexpr uint32_t kPrivacyBandVersion = 4;
+constexpr uint32_t kPrivacyBandVersion = 5;
 constexpr UINT kPrivacyTextChanged = WM_APP + 72;
 constexpr DWORD kPrivacyWindowBand = 18;  // ZBID_ABOVELOCK_UX, current desktop.
 constexpr size_t kPrivacyMaxMonitors = 64;
@@ -25,6 +25,8 @@ struct PrivacyBandWindow {
   uint64_t hwnd = 0;
   RECT rect{};
 };
+
+enum class PrivacyCoverStyle : LONG { branded, unlock_hint, black };
 
 // Unnamed mapping and synchronization/process handles are inherited only by
 // the newly created broker. No global window-name/PID discovery or named IPC.
@@ -42,7 +44,7 @@ struct PrivacyBandShared {
   wchar_t operation[128]{};
   wchar_t unlock_hint[128]{};
   wchar_t locked_hint[128]{};
-  volatile LONG allow_local_unlock = 1;
+  volatile LONG cover_style = static_cast<LONG>(PrivacyCoverStyle::unlock_hint);
   uint32_t count = 0;
   PrivacyBandWindow windows[kPrivacyMaxMonitors]{};
 };

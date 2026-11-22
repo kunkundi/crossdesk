@@ -73,15 +73,17 @@ void GuiRuntime::QueuePrivacyCommand(const std::string& remote_id,
   privacy_commands_.emplace_back(remote_id, command);
 }
 
+void GuiRuntime::SyncPrivacyScreenSettings() {
+  const int language = localization::detail::ClampLanguageIndex(
+      static_cast<int>(config_center_->GetLanguage()));
+  privacy_.SetText({localization::privacy_screen_unlock_hint[language],
+                    localization::privacy_screen_locked_hint[language],
+                    config_center_->IsPrivacyLocalUnlockAllowed(),
+                    config_center_->IsPrivacyBlackScreen()});
+}
+
 void GuiRuntime::HandlePrivacy() {
-  const auto sync_text = [this] {
-    const int language = localization::detail::ClampLanguageIndex(
-        static_cast<int>(config_center_->GetLanguage()));
-    privacy_.SetText({localization::privacy_screen_unlock_hint[language],
-                      localization::privacy_screen_locked_hint[language],
-                      config_center_->IsPrivacyLocalUnlockAllowed()});
-  };
-  sync_text();
+  SyncPrivacyScreenSettings();
   std::deque<std::pair<std::string, PrivacyCommand>> commands;
   {
     std::lock_guard lock(privacy_commands_mutex_);
@@ -103,7 +105,7 @@ void GuiRuntime::HandlePrivacy() {
       if (privacy_sessions_.CanEnable()) {
         if (config_center_->SetPrivacyLocalUnlock(false) == 0) {
           privacy_settings_changed_ = true;
-          sync_text();
+          SyncPrivacyScreenSettings();
           privacy_.Enable(true, true);
         } else {
           privacy_.RejectCommand("Could not save the local privacy unlock setting; try again");

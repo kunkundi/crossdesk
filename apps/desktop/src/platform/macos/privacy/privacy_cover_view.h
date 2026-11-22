@@ -10,9 +10,11 @@
 #import <AppKit/AppKit.h>
 
 namespace crossdesk {
-// Returns nil if the CrossDesk icon resource cannot be loaded.
-NSView* CreateMacPrivacyCoverView(NSRect frame, NSString* hint, bool allow_local_unlock = true);
-void UpdateMacPrivacyCoverView(NSView* view, NSString* hint, bool allow_local_unlock);
+// The branded cover requires the CrossDesk icon. The black cover needs no assets.
+NSView* CreateMacPrivacyCoverView(NSRect frame, NSString* hint, bool allow_local_unlock = true,
+                                  bool black_screen = false);
+bool UpdateMacPrivacyCoverView(NSView* view, NSString* hint, bool allow_local_unlock,
+                               bool black_screen = false);
 }
 
 #endif

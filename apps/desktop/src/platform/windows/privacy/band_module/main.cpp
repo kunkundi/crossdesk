@@ -204,14 +204,15 @@ class Windows {
       HDC dc = BeginPaint(hwnd, &paint);
       RECT rect{};
       GetClientRect(hwnd, &rect);
-      const bool allow_unlock = self &&
-          InterlockedCompareExchange(&self->shared_->allow_local_unlock, 0, 0);
-      if (self && !DrawPrivacyCover(dc, rect, PrivacyWindowDpi(hwnd), module,
-                                    allow_unlock ? self->shared_->unlock_hint
-                                                 : self->shared_->locked_hint,
-                                    allow_unlock)) {
-        self->paint_failed_ = true;
-        self->Fail(L"Paint privacy logo and unlock instructions");
+      if (self) {
+        const auto style = static_cast<PrivacyCoverStyle>(
+            InterlockedCompareExchange(&self->shared_->cover_style, 0, 0));
+        const wchar_t* hint = style == PrivacyCoverStyle::unlock_hint
+            ? self->shared_->unlock_hint : self->shared_->locked_hint;
+        if (!DrawPrivacyCover(dc, rect, PrivacyWindowDpi(hwnd), module, hint, style)) {
+          self->paint_failed_ = true;
+          self->Fail(L"Paint privacy screen");
+        }
       }
       EndPaint(hwnd, &paint);
       return 0;

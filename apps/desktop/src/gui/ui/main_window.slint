@@ -85,6 +85,7 @@ export global UiStrings {
     in-out property <string> save-remote-previews: "Save remote screen previews";
     in-out property <string> unknown-platform: "Unknown platform";
     in-out property <string> privacy-local-unlock: "Allow privacy screen unlock while controlled";
+    in-out property <string> privacy-black-screen: "Use a black privacy screen";
     in-out property <string> privacy-on-connect: "Privacy screen on connect";
     in-out property <string> lock-on-disconnect: "Lock screen on disconnect";
     in-out property <string> file-save-path: "File save path";
@@ -776,6 +777,8 @@ export component MainWindow inherits Window {
     in property <bool> privacy-setting-available: false;
     in-out property <bool> privacy-on-connect-enabled: true;
     in-out property <bool> privacy-local-unlock-allowed: true;
+    in property <bool> privacy-black-screen-available: false;
+    in-out property <bool> privacy-black-screen: false;
     in property <bool> lock-on-disconnect-available: false;
     in-out property <bool> lock-on-disconnect-enabled: true;
     in-out property <bool> trusted-devices-only: false;
@@ -3061,9 +3064,11 @@ export component MainWindow inherits Window {
                         }
                         SettingsGroup {
                             title: GalleryStrings.texts[120];
-                            rows: 5 + (root.mac-permission-settings-visible ? 1 : 0)
+                            rows: 5 + (root.privacy-black-screen-available ? 1 : 0)
+                                + (root.mac-permission-settings-visible ? 1 : 0)
                                 + (root.portable-service-settings-visible ? 1 : 0);
                             SettingsToggleRow { label: UiStrings.privacy-on-connect; checked <=> root.privacy-on-connect-enabled; enabled: root.privacy-setting-available; }
+                            if root.privacy-black-screen-available: SettingsToggleRow { label: UiStrings.privacy-black-screen; checked <=> root.privacy-black-screen; }
                             SettingsToggleRow { label: UiStrings.privacy-local-unlock; checked <=> root.privacy-local-unlock-allowed; enabled: root.privacy-setting-available; }
                             SettingsToggleRow { label: UiStrings.lock-on-disconnect; checked <=> root.lock-on-disconnect-enabled; enabled: root.lock-on-disconnect-available; }
                             SettingsToggleRow { label: TrustStrings.only; checked <=> root.trusted-devices-only; }
@@ -3097,10 +3102,6 @@ export component MainWindow inherits Window {
                                     clicked => { root.open-portable-service(); }
                                 }
                             }
-                        }
-                        Text {
-                            text: GalleryStrings.texts[121];
-                            font-size: 11px; color: WorkbenchStyle.muted; wrap: word-wrap;
                         }
                         SettingsGroup {
                             title: GalleryStrings.texts[122]; rows: 2;

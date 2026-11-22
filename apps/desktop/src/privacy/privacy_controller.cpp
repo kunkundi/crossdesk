@@ -48,7 +48,8 @@ bool PrivacyController::Requested() const {
 void PrivacyController::SetText(const PrivacyScreenText& text) {
   std::lock_guard lock(mutex_);
   if (text_.unlock_hint == text.unlock_hint && text_.locked_hint == text.locked_hint &&
-      text_.allow_local_unlock == text.allow_local_unlock) return;
+      text_.allow_local_unlock == text.allow_local_unlock &&
+      text_.black_screen == text.black_screen) return;
   text_ = text;
   text_pending_ = true;
   WakeLocked();

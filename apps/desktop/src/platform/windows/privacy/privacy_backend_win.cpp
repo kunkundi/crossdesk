@@ -152,7 +152,7 @@ class WindowsPrivacyBackend final : public PrivacyBackend {
 
   void UpdateText(const PrivacyScreenText& text) override {
     allow_local_unlock_ = text.allow_local_unlock;
-    band_guard_.SetLocalUnlockAllowed(text.allow_local_unlock);
+    band_guard_.UpdateCoverStyle(text);
   }
   void Recover() override {
     for (auto& hook : window_events_) {

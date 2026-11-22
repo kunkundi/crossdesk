@@ -109,6 +109,7 @@ void DrawUnlockInstructions(NSString* value, NSSize size, CGFloat scale,
 @property(nonatomic, strong) NSImage* logo;
 @property(nonatomic, copy) NSString* unlockHint;
 @property(nonatomic) BOOL allowLocalUnlock;
+@property(nonatomic) BOOL blackScreen;
 @end
 
 @implementation CrossDeskPrivacyCoverView
@@ -117,6 +118,7 @@ void DrawUnlockInstructions(NSString* value, NSSize size, CGFloat scale,
 - (void)drawRect:(NSRect)dirtyRect {
   [NSColor.blackColor setFill];
   NSRectFill(self.bounds);
+  if (self.blackScreen) return;
   const CGFloat width = NSWidth(self.bounds), height = NSHeight(self.bounds);
   if (width <= 0 || height <= 0) return;
   // Match the Windows cover's sizes, colors and bottom-left alignment.
@@ -145,19 +147,23 @@ void DrawUnlockInstructions(NSString* value, NSSize size, CGFloat scale,
 @end
 
 namespace crossdesk {
-void UpdateMacPrivacyCoverView(NSView* view, NSString* hint, bool allow_local_unlock) {
+bool UpdateMacPrivacyCoverView(NSView* view, NSString* hint, bool allow_local_unlock,
+                               bool black_screen) {
   auto* cover = static_cast<CrossDeskPrivacyCoverView*>(view);
-  cover.unlockHint = hint;
+  if (!black_screen && !cover.logo) {
+    cover.logo = LoadPrivacyLogo();
+    if (!cover.logo) return false;
+  }
+  cover.unlockHint = hint ?: @"To turn off the privacy screen, press";
   cover.allowLocalUnlock = allow_local_unlock;
+  cover.blackScreen = black_screen;
   cover.needsDisplay = YES;
+  return true;
 }
-NSView* CreateMacPrivacyCoverView(NSRect frame, NSString* unlock_hint, bool allow_local_unlock) {
-  NSImage* logo = LoadPrivacyLogo();
-  if (!logo) return nil;
+NSView* CreateMacPrivacyCoverView(NSRect frame, NSString* unlock_hint, bool allow_local_unlock,
+                                  bool black_screen) {
   auto* view = [[CrossDeskPrivacyCoverView alloc] initWithFrame:frame];
-  view.logo = logo;
-  view.allowLocalUnlock = allow_local_unlock;
-  view.unlockHint = unlock_hint ?: @"To turn off the privacy screen, press";
+  if (!UpdateMacPrivacyCoverView(view, unlock_hint, allow_local_unlock, black_screen)) return nil;
   view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
   return view;
 }

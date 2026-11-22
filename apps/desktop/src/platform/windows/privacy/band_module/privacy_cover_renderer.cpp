@@ -41,12 +41,14 @@ bool Select(HDC dc, HGDIOBJ object) {
 }  // namespace
 
 bool DrawPrivacyCover(HDC dc, const RECT& rect, UINT dpi, HINSTANCE module,
-                      const wchar_t* unlock_hint, bool allow_local_unlock) {
+                      const wchar_t* unlock_hint, PrivacyCoverStyle style) {
   if (!FillRect(dc, &rect, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH))))
     return false;
   const int width = rect.right - rect.left;
   const int height = rect.bottom - rect.top;
   if (width <= 0 || height <= 0) return false;
+  if (style == PrivacyCoverStyle::black) return true;
+  const bool allow_local_unlock = style == PrivacyCoverStyle::unlock_hint;
   // Scale with the monitor DPI, shrinking the whole group on small displays.
   // All coordinates remain in the owning window's physical-pixel context.
   const double scale = (std::min)({dpi / 96.0, width / 960.0, height / 280.0});
