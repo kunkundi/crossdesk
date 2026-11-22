@@ -79,7 +79,6 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"关于", {"关于", "About", "О программе", "關於", "概要", "소개", "Ungefähr", "À propos", "Acerca de", "Sobre"}},
   {"关闭", {"关闭", "Close", "Закрыть", "關閉", "閉じる", "닫기", "Schließen", "Fermer", "Cerrar", "Fechar"}},
   {"关闭 IP 连接将隐藏模式按钮，并断开 IP 连接会话。", {"关闭 IP 连接将隐藏模式按钮，并断开 IP 连接会话。", "Disabling IP connections hides the mode button and ends IP sessions.", "Отключение подключений по IP скроет кнопку режима и завершит IP-сеансы.", "關閉 IP 連線將隱藏模式按鈕，並斷開 IP 連線會話。", "IP 接続を無効にすると、モード ボタンが非表示になり、IP セッションが終了します。", "IP 연결을 비활성화하면 모드 버튼이 숨겨지고 IP 세션이 종료됩니다.", "Durch das Deaktivieren von IP-Verbindungen wird die Modusschaltfläche ausgeblendet und IP-Sitzungen beendet.", "La désactivation des connexions IP masque le bouton de mode et met fin aux sessions IP.", "Deshabilitar las conexiones IP oculta el botón de modo y finaliza las sesiones IP.", "Desativar conexões IP oculta o botão de modo e encerra sessões IP."}},
-  {"关闭后本版本不再提示，升级后再次显示。赞助入口仍在「关于」中。", {"关闭后本版本不再提示，升级后再次显示。赞助入口仍在「关于」中。", "Once closed, this prompt stays hidden until the version changes. Sponsorship links remain available in About.", "После закрытия это окно появится только при смене версии. Ссылки для поддержки останутся в разделе «О программе».", "關閉後本版本不再提示，升級後再次顯示。贊助入口仍在「關於」中。", "このプロンプトは一度閉じると、バージョンが変更されるまで非表示になります。スポンサーリンクは「About」から引き続き利用できます。", "일단 닫히면 이 메시지는 버전이 변경될 때까지 숨겨진 상태로 유지됩니다. 후원 링크는 정보에서 계속 사용할 수 있습니다.", "Nach dem Schließen bleibt diese Eingabeaufforderung ausgeblendet, bis sich die Version ändert. Sponsoring-Links bleiben weiterhin in „Info“ verfügbar.", "Une fois fermée, cette invite reste masquée jusqu'à ce que la version change. Les liens de parrainage restent disponibles dans À propos.", "Una vez cerrado, este mensaje permanece oculto hasta que cambie la versión. Los enlaces de patrocinio permanecen disponibles en Acerca de.", "Uma vez fechado, este prompt permanece oculto até que a versão seja alterada. Os links de patrocínio permanecem disponíveis em Sobre."}},
   {"关闭窗口", {"关闭窗口", "Close window", "Закрыть окно", "關閉視窗", "ウィンドウを閉じる", "창 닫기", "Fenster schließen", "Fermer la fenêtre", "Cerrar ventana", "Fechar janela"}},
   {"关闭群控", {"关闭群控", "Stop group control", "Откл. групп. ввод", "關閉群控", "グループ制御の停止", "그룹 제어 중지", "Gruppensteuerung stoppen", "Arrêter le contrôle de groupe", "Detener control de grupo", "Parar controle de grupo"}},
   {"关闭隐私屏", {"关闭隐私屏", "Disable privacy screen", "Выключить приватный экран", "關閉隱私屏", "プライバシー画面を無効にする", "개인 정보 보호 화면 비활성화", "Privatsphäre-Bildschirm deaktivieren", "Désactiver l'écran de confidentialité", "Desactivar la pantalla de privacidad", "Desativar tela de privacidade"}},
@@ -130,7 +129,6 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"复制失败，请重试。", {"复制失败，请重试。", "Could not copy. Try again.", "Не удалось скопировать. Повторите попытку.", "複製失敗，請重試。", "コピーできませんでした。もう一度やり直してください。", "복사할 수 없습니다. 다시 시도해 보세요.", "Kopieren nicht möglich. Versuchen Sie es erneut.", "Impossible de copier. Essayer à nouveau.", "No se pudo copiar. Intentar otra vez.", "Não foi possível copiar. Tente novamente."}},
   {"复制本机 ID", {"复制本机 ID", "Copy local ID", "Копировать ID", "複製本機 ID", "ローカルIDをコピーする", "로컬 ID 복사", "Lokale ID kopieren", "Copier l'identifiant local", "Copiar ID local", "Copiar ID local"}},
   {"失败", {"失败", "Failed", "Ошибка", "失敗", "失敗しました", "실패", "Fehlgeschlagen", "Échec", "Fallido", "Falhou"}},
-  {"如果 CrossDesk 对你有帮助，欢迎赞助支持项目的持续开发、跨平台测试与日常维护。感谢你的支持！", {"如果 CrossDesk 对你有帮助，欢迎赞助支持项目的持续开发、跨平台测试与日常维护。感谢你的支持！", "If CrossDesk is useful to you, consider supporting its continued development, cross-platform testing, and maintenance. Thank you for your support!", "Если CrossDesk вам полезен, поддержите его дальнейшую разработку, тестирование на разных платформах и сопровождение. Спасибо за вашу поддержку!", "如果 CrossDesk 對你有幫助，歡迎贊助支援專案的持續開發、跨平臺測試與日常維護。感謝你的支援！", "CrossDeskが役立つ場合は、継続的な開発、クロスプラットフォーム テスト、およびメンテナンスのサポートを検討してください。ご支援ありがとうございます！", "CrossDesk가 유용하다면 지속적인 개발, 크로스 플랫폼 테스트 및 유지 관리 지원을 고려해보세요. 귀하의 지원에 감사드립니다!", "Wenn CrossDesk für Sie nützlich ist, sollten Sie darüber nachdenken, seine weitere Entwicklung, plattformübergreifende Tests und Wartung zu unterstützen. Vielen Dank für Ihre Unterstützung!", "Si CrossDesk vous est utile, envisagez de prendre en charge son développement continu, ses tests multiplateformes et sa maintenance. Merci pour votre soutien !", "Si CrossDesk le resulta útil, considere respaldar su desarrollo continuo, pruebas multiplataforma y mantenimiento. ¡Gracias por su apoyo!", "Se CrossDesk for útil para você, considere apoiar seu desenvolvimento contínuo, testes de plataforma cruzada e manutenção. Obrigado pelo seu apoio!"}},
   {"守护进程（无头控制台中不生效）", {"守护进程（无头控制台中不生效）", "Daemon (inactive in headless console)", "Фоновый режим (не действует в консоли)", "守護程序（無頭控制檯中不生效）", "デーモン (ヘッドレス コンソールでは非アクティブ)", "데몬(헤드리스 콘솔에서는 비활성)", "Daemon (in der Headless-Konsole inaktiv)", "Démon (inactif dans la console sans tête)", "Daemon (inactivo en consola sin cabeza)", "Daemon (inativo no console headless)"}},
   {"安装", {"安装", "Install", "Установить", "安裝", "インストール", "설치", "Installieren", "Installer", "Instalar", "Instalar"}},
   {"安装 CrossDesk Service", {"安装 CrossDesk Service", "Install CrossDesk Service", "Установить CrossDesk Service", "安裝 CrossDesk Service", "CrossDeskサービスのインストール", "CrossDesk서비스 설치", "Installieren Sie den CrossDesk-Dienst", "Installer le service CrossDesk", "Instalar el servicio CrossDesk", "Instale o serviço CrossDesk"}},
@@ -764,8 +762,6 @@ inline constexpr NamedTranslation kNamedTranslations[] = {
   {"no_such_id", "无此 ID"},
   {"about", "关于"},
   {"sponsorship_title", "赞助支持"},
-  {"sponsorship_message", "如果 CrossDesk 对你有帮助，欢迎赞助支持项目的持续开发、跨平台测试与日常维护。感谢你的支持！"},
-  {"sponsorship_dismiss_hint", "关闭后本版本不再提示，升级后再次显示。赞助入口仍在「关于」中。"},
   {"sponsor_via_afdian", "爱发电"},
   {"notification", "通知"},
   {"new_version", "新版本"},
@@ -1281,8 +1277,6 @@ inline constexpr const char* kSlintLiterals[] = {
   X(no_such_id) \
   X(about) \
   X(sponsorship_title) \
-  X(sponsorship_message) \
-  X(sponsorship_dismiss_hint) \
   X(sponsor_via_afdian) \
   X(notification) \
   X(new_version) \

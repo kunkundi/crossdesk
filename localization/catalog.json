@@ -1332,18 +1332,6 @@
       "es": "Deshabilitar las conexiones IP oculta el botón de modo y finaliza las sesiones IP.",
       "pt-BR": "Desativar conexões IP oculta o botão de modo e encerra sessões IP."
     },
-    "关闭后本版本不再提示，升级后再次显示。赞助入口仍在「关于」中。": {
-      "zh-Hans": "关闭后本版本不再提示，升级后再次显示。赞助入口仍在「关于」中。",
-      "en": "Once closed, this prompt stays hidden until the version changes. Sponsorship links remain available in About.",
-      "ru": "После закрытия это окно появится только при смене версии. Ссылки для поддержки останутся в разделе «О программе».",
-      "zh-Hant": "關閉後本版本不再提示，升級後再次顯示。贊助入口仍在「關於」中。",
-      "ja": "このプロンプトは一度閉じると、バージョンが変更されるまで非表示になります。スポンサーリンクは「About」から引き続き利用できます。",
-      "ko": "일단 닫히면 이 메시지는 버전이 변경될 때까지 숨겨진 상태로 유지됩니다. 후원 링크는 정보에서 계속 사용할 수 있습니다.",
-      "de": "Nach dem Schließen bleibt diese Eingabeaufforderung ausgeblendet, bis sich die Version ändert. Sponsoring-Links bleiben weiterhin in „Info“ verfügbar.",
-      "fr": "Une fois fermée, cette invite reste masquée jusqu'à ce que la version change. Les liens de parrainage restent disponibles dans À propos.",
-      "es": "Una vez cerrado, este mensaje permanece oculto hasta que cambie la versión. Los enlaces de patrocinio permanecen disponibles en Acerca de.",
-      "pt-BR": "Uma vez fechado, este prompt permanece oculto até que a versão seja alterada. Os links de patrocínio permanecem disponíveis em Sobre."
-    },
     "关闭控制栏": {
       "zh-Hans": "关闭控制栏",
       "en": "Close control bar",
@@ -2483,18 +2471,6 @@
       "fr": "Échec",
       "es": "Fallido",
       "pt-BR": "Falhou"
-    },
-    "如果 CrossDesk 对你有帮助，欢迎赞助支持项目的持续开发、跨平台测试与日常维护。感谢你的支持！": {
-      "zh-Hans": "如果 CrossDesk 对你有帮助，欢迎赞助支持项目的持续开发、跨平台测试与日常维护。感谢你的支持！",
-      "en": "If CrossDesk is useful to you, consider supporting its continued development, cross-platform testing, and maintenance. Thank you for your support!",
-      "ru": "Если CrossDesk вам полезен, поддержите его дальнейшую разработку, тестирование на разных платформах и сопровождение. Спасибо за вашу поддержку!",
-      "zh-Hant": "如果 CrossDesk 對你有幫助，歡迎贊助支援專案的持續開發、跨平臺測試與日常維護。感謝你的支援！",
-      "ja": "CrossDeskが役立つ場合は、継続的な開発、クロスプラットフォーム テスト、およびメンテナンスのサポートを検討してください。ご支援ありがとうございます！",
-      "ko": "CrossDesk가 유용하다면 지속적인 개발, 크로스 플랫폼 테스트 및 유지 관리 지원을 고려해보세요. 귀하의 지원에 감사드립니다!",
-      "de": "Wenn CrossDesk für Sie nützlich ist, sollten Sie darüber nachdenken, seine weitere Entwicklung, plattformübergreifende Tests und Wartung zu unterstützen. Vielen Dank für Ihre Unterstützung!",
-      "fr": "Si CrossDesk vous est utile, envisagez de prendre en charge son développement continu, ses tests multiplateformes et sa maintenance. Merci pour votre soutien !",
-      "es": "Si CrossDesk le resulta útil, considere respaldar su desarrollo continuo, pruebas multiplataforma y mantenimiento. ¡Gracias por su apoyo!",
-      "pt-BR": "Se CrossDesk for útil para você, considere apoiar seu desenvolvimento contínuo, testes de plataforma cruzada e manutenção. Obrigado pelo seu apoio!"
     },
     "始终保持较高分辨率，带宽不足时通过降低帧率来保证画面清晰度。": {
       "zh-Hans": "始终保持较高分辨率，带宽不足时通过降低帧率来保证画面清晰度。",
@@ -12063,8 +12039,6 @@
     "no_such_id": "无此 ID",
     "about": "关于",
     "sponsorship_title": "赞助支持",
-    "sponsorship_message": "如果 CrossDesk 对你有帮助，欢迎赞助支持项目的持续开发、跨平台测试与日常维护。感谢你的支持！",
-    "sponsorship_dismiss_hint": "关闭后本版本不再提示，升级后再次显示。赞助入口仍在「关于」中。",
     "sponsor_via_afdian": "爱发电",
     "notification": "通知",
     "new_version": "新版本",
@@ -12452,7 +12426,6 @@
       "关于",
       "关闭",
       "关闭 IP 连接将隐藏模式按钮，并断开 IP 连接会话。",
-      "关闭后本版本不再提示，升级后再次显示。赞助入口仍在「关于」中。",
       "关闭窗口",
       "关闭群控",
       "关闭隐私屏",
@@ -12503,7 +12476,6 @@
       "复制失败，请重试。",
       "复制本机 ID",
       "失败",
-      "如果 CrossDesk 对你有帮助，欢迎赞助支持项目的持续开发、跨平台测试与日常维护。感谢你的支持！",
       "守护进程（无头控制台中不生效）",
       "安装",
       "安装 CrossDesk Service",

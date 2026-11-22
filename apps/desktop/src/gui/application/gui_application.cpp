@@ -1182,7 +1182,6 @@ struct GuiApplication::SlintUi {
   bool connection_password_initialized = false;
   bool connection_dialog_gallery = false;
   bool portable_service_dialog_initialized = false;
-  bool release_welcome_pending = false;
   std::string recent_model_signature;
   gallery::PreviewResolutionDebouncer recent_preview_resolution;
   gallery::PreviewResolution recent_preview_size;
@@ -1473,8 +1472,8 @@ void GuiApplication::InitializeUi() {
   ui_->session_end.Start();
 #endif
   const auto last_presented = config_center_->GetLastPresentedRelease();
-  ui_->release_welcome_pending =
-      last_presented.empty() || IsNewerVersion(last_presented, CROSSDESK_VERSION);
+  ui_->main->set_release_welcome_pending(
+      last_presented.empty() || IsNewerVersion(last_presented, CROSSDESK_VERSION));
 #if defined(__APPLE__)
   ui_->video_scheduler.Start([this](double queued_ms) {
     for (auto& [_, view] : ui_->streams)
@@ -2837,13 +2836,13 @@ void GuiApplication::Tick() {
   SyncConnectionDialog();
   SyncPlatformDialogs();
   // A background or obstructed launch must not consume the first presentation.
-  if (ui_->release_welcome_pending &&
+  if (ui_->main->get_release_welcome_pending() &&
       ui_->main->window().is_visible() &&
       !ui_->main->window().is_minimized() &&
       ui_->main->get_can_show_release_welcome() &&
       !ui_->file_dialog_open && !HasActiveSession()) {
-    ui_->release_welcome_pending = false;
     ui_->main->set_release_welcome_open(true);
+    ui_->main->set_release_welcome_pending(false);
     if (config_center_->SetLastPresentedRelease(CROSSDESK_VERSION) != 0) {
       LOG_WARN("Could not persist the displayed release version");
     }

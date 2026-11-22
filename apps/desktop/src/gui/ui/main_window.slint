@@ -878,6 +878,7 @@ export component MainWindow inherits Window {
         else if root.about-page == AboutPage.component && root.about-component-index != 0 { root.about-page = AboutPage.components; }
         else { root.about-page = AboutPage.overview; }
     }
+    in property <bool> release-welcome-pending: false;
     in-out property <bool> release-welcome-open: false;
     // Automatic prompts must not interrupt another dialog or menu.
     private property <bool> main-unobstructed: !root.gallery-mode
@@ -898,7 +899,8 @@ export component MainWindow inherits Window {
     // binding, so background checks do not reopen it during this launch.
     in-out property <bool> update-open: root.update-available;
     private property <bool> update-dialog-visible:
-        root.update-open && root.update-available && !root.release-welcome-open;
+        root.update-open && root.update-available
+        && !root.release-welcome-pending && !root.release-welcome-open;
     changed update-open => {
         if !root.update-open { root.update-confirm-open = false; }
     }
@@ -1235,7 +1237,7 @@ export component MainWindow inherits Window {
                     }
                     return accept;
                 }
-                if root.about-open && !root.update-open {
+                if root.about-open && !root.update-dialog-visible {
                     if event.text == Key.Escape {
                         if root.about-page != AboutPage.overview { root.about-back(); }
                         else { root.about-open = false; }
