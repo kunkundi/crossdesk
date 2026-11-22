@@ -10,6 +10,8 @@ import java.util.UUID;
 final class BackgroundSession implements NativeSession.Listener {
     final Context context;
     final NativeSession session;
+    // Own the identity connection only while the Activity is stopped.
+    NativeSession signaling;
     final String token = UUID.randomUUID().toString();
     final String host, remote;
     final int port;
@@ -42,11 +44,15 @@ final class BackgroundSession implements NativeSession.Listener {
         if (ended) return;
         ended = true; endReason = reason; clipboard = "";
         session.close();
+        if (signaling != null) { signaling.close(); signaling = null; }
         RemoteSessionService.release(context, this);
         NativeSession.Listener listener = view; view = null;
         if (listener != null) listener.ended(reason);
     }
     @Override public void ended(String reason) { finish(reason); }
+    @Override public void signalingEnded(String reason) {
+        signaling = null; signalState = -1; identity = "";
+    }
     @Override public void passwordRejected() { finish(L10n.tr("远端访问密码已失效，请重新连接")); }
     @Override public void connected() { /* Already connected before the service takes ownership. */ }
     @Override public void status(String message) { if (view != null) view.status(message); }

@@ -351,7 +351,7 @@ extern "C" JNIEXPORT jstring JNICALL JNI_METHOD(nCheckMobileUpdate)(
 }
 extern "C" JNIEXPORT jlong JNICALL JNI_METHOD(nCreate)(
     JNIEnv* env, jclass, jobject owner, jstring host, jint port, jstring identity,
-    jstring log_path, jstring certificates, jstring trust_key, jboolean direct) {
+    jstring log_path, jstring certificates, jstring trust_key, jboolean controller_only) {
   try {
     auto s = std::make_unique<Session>();
     s->owner = env->NewGlobalRef(owner);
@@ -370,13 +370,14 @@ extern "C" JNIEXPORT jlong JNICALL JNI_METHOD(nCreate)(
     // loads this path: OpenSSL's default loader ignores SSL_CERT_FILE in an
     // Android app process (AT_SECURE=1). Chain and hostname checks stay enabled.
     const auto bundle = String(env, certificates);
-    if (!direct && (bundle.empty() || setenv("SSL_CERT_FILE", bundle.c_str(), 1) != 0))
+    // An ID-based controller starts after the identity peer has configured TLS.
+    if (!controller_only && (bundle.empty() || setenv("SSL_CERT_FILE", bundle.c_str(), 1) != 0))
       throw std::runtime_error("Unable to configure Android trust bundle");
     // MiniRTC's diagnostic log includes login identities. Keep credentials
     // solely in Keystore-backed storage; do not persist its session logging.
     if (MiniRtcConfigureLogging(MiniRtcLogOff, nullptr, nullptr) != 0)
       throw std::runtime_error("Unable to configure MiniRTC logging");
-    if (direct) return reinterpret_cast<jlong>(s.release());
+    if (controller_only) return reinterpret_cast<jlong>(s.release());
     auto params = Parameters(s.get(), false);
     s->identity = MiniRtcCreatePeer(&params);
     if (!s->identity || MiniRtcInit(s->identity) != 0) return 0;

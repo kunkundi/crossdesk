@@ -261,7 +261,6 @@ public final class MainActivity extends Activity implements NativeSession.Listen
                 if(columns!=recentColumns){recentColumns=columns;view.post(()->{if(view==recentGrid)renderRecentConnections();});}
             });renderRecentConnections();
         }
-        ensureSignaling();
         if(!message.isEmpty())pendingConnectionMessage=message;
         showConnectionMessage();
     }
@@ -477,17 +476,14 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         resetVideoSettings();
         previewCapture=previews.begin(serverKey(),id);previewCopying=false;previewAttempts=0;
         connectedRemote=id;pendingPassword=rememberPassword?secret:"";ready=false;muted=false;selectedDisplay=0;hostPlatform="";remoteClipboard="";displays=new JSONArray();preferences.edit().putString("lastRemote",id).apply();
-        if (id.contains(":")) {
-            stopSignaling();
-            signalingServer=serverKey();
-            session=signaling=new NativeSession(this,host,port,id,secret,this);
-            showProgress();
-            session.start();
-            return;
+        if (!id.contains(":")) {
+            ensureSignaling();
+            if(signaling==null){pendingPassword="";toast(L10n.tr("请先完成联网授权"));return;}
         }
-        ensureSignaling();
-        if(signaling==null){pendingPassword="";toast(L10n.tr("请先完成联网授权"));return;}
-        session=signaling;showProgress();session.connect(id,secret);
+        session=new NativeSession(this,host,port,id,secret,this);
+        showProgress();
+        session.start();
+        if(signalState==1)session.connectAs(localIdentity);
     }
     private void showProgress(){
         Dialog dialog=new Dialog(this);progressDialog=dialog;LinearLayout card=column();ui.card(card,24);card.setGravity(Gravity.CENTER_HORIZONTAL);LinearLayout body=column();body.setGravity(Gravity.CENTER);body.setPadding(dp(26),dp(24),dp(26),dp(20));
@@ -532,7 +528,10 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         resetRemoteVersionCheck();
         resetVideoSettings();
         previewCapture=null;previewCopying=false;
-        if(progressDialog!=null){progressDialog.dismiss();progressDialog=null;}if(session!=null){releaseKeys();session.close();session=null;}stopSignaling();pendingPassword="";remoteClipboard="";hostPlatform="";displays=new JSONArray();ready=false;video=null;controls=null;getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if(progressDialog!=null){progressDialog.dismiss();progressDialog=null;}
+        if(session!=null){releaseKeys();session.close();session=null;}
+        if(!foreground)stopSignaling();
+        pendingPassword="";remoteClipboard="";hostPlatform="";displays=new JSONArray();ready=false;video=null;controls=null;getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if(closeWindow){finish();return;}
         home(reason);
         appUpdates.checkNow();
@@ -797,7 +796,6 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         renderSignaling();signaling.start();
     }
     private void stopSignaling(){
-        if(backgroundSession!=null&&backgroundSession.session==signaling){BackgroundSession retained=backgroundSession;backgroundSession=null;retained.detach(this);retained.finish("");}
         mainHandler.removeCallbacks(presenceTick);recentPresence.setConnected(false,android.os.SystemClock.elapsedRealtime());
         announcementInbox.setConnected(false);
         if(signaling!=null)signaling.close();
@@ -821,6 +819,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     }
     @Override public void signaling(int state,String deviceId){
         signalState=state;localIdentity=deviceId;signalError="";renderSignaling();
+        if(state==1&&session!=null&&!ready)session.connectAs(deviceId);
         long now=android.os.SystemClock.elapsedRealtime();recentPresence.watch(history.list(serverKey()),now);
         recentPresence.setConnected(foreground&&preferences.getBoolean("networkConsent",false)&&state==1&&!deviceId.isEmpty(),now);
         mainHandler.removeCallbacks(presenceTick);if(recentPresence.isConnected())mainHandler.postDelayed(presenceTick,1000);
@@ -838,8 +837,11 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         if(foreground&&preferences.getBoolean("networkConsent",false))remoteVersionCheck.connected();
     }
     @Override public void ended(String reason){
-        if(session!=null){end(reason);return;}
+        if(session!=null)end(reason);
+    }
+    @Override public void signalingEnded(String reason){
         stopSignaling();signalError=reason;renderSignaling();
+        if(session!=null&&!ready&&!connectedRemote.contains(":"))end(reason);
     }
     @Override public void passwordRejected(){
         if(session==null)return;
@@ -1020,8 +1022,12 @@ public final class MainActivity extends Activity implements NativeSession.Listen
             if(session==retained.session)end(retained.endReason);return false;
         }
         boolean rebuild=session!=retained.session||video==null||!page.equals("session");
-        backgroundSession=retained;session=signaling=retained.session;signalingServer=serverKey();
-        connectedRemote=retained.remote;localIdentity=retained.identity;signalState=retained.signalState;signalError="";
+        backgroundSession=retained;session=retained.session;
+        if(retained.signaling!=null){
+            signaling=retained.signaling;retained.signaling=null;signaling.setListener(this);
+            signalingServer=serverKey();localIdentity=retained.identity;signalState=retained.signalState;
+        }
+        connectedRemote=retained.remote;
         hostPlatform=retained.platform;displays=retained.displays;muted=retained.muted;selectedDisplay=retained.selectedDisplay;
         remoteServiceAvailable=retained.remoteServiceAvailable;remoteClipboard=retained.clipboard;receivedFile=retained.receivedFile;
         videoSettings=retained.videoSettings;displayResolutions=retained.displayResolutions;ready=true;retained.attach(this);
@@ -1084,6 +1090,8 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         // fallback. An unavailable/failed PiP can hand its live session off.
         if(!isFinishing()&&!enteredPictureInPicture&&ready&&(backgroundSession!=null||documentSession==null)&&prepareBackgroundSession(false)){
             captureBackgroundSession();backgroundSession.detach(this);backgroundSession.setBackground(true);
+            backgroundSession.signaling=signaling;
+            if(signaling!=null){signaling.setListener(backgroundSession);signaling=null;}
             mainHandler.removeCallbacks(presenceTick);recentPresence.setConnected(false,android.os.SystemClock.elapsedRealtime());announcementInbox.setConnected(false);
             cancelDisplayResolutionTimeout();if(displayResolutions.pending)displayResolutions.expire(displayResolutions.requested.id);
             cancelVideoSettingsTimeout();if(videoSettings.pending)videoSettings.expire(videoSettings.requestId);
@@ -1093,7 +1101,10 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     @Override protected void onDestroy(){dismissPrivacyUnlockDialog();mainHandler.removeCallbacks(documentTimeout);documentSession=null;documentToSave=null;appUpdates.setEnabled(false);pageHost.finish();resetRemoteVersionCheck();cancelVideoSettingsTimeout();cancelDisplayResolutionTimeout();previews.removeListener(previewChanged);if(privacyDialog!=null)privacyDialog.dismiss();if(previewDialog!=null)previewDialog.dismiss();announcementInbox.close();if(disconnectDialog!=null)disconnectDialog.dismiss();if(passwordDialog!=null)passwordDialog.dismiss();if(progressDialog!=null)progressDialog.dismiss();
         if(connectionDialog!=null)connectionDialog.dismiss();
         boolean retained=!isFinishing()&&backgroundSession!=null&&!backgroundSession.ended&&RemoteSessionService.current()==backgroundSession;
-        if(backgroundSession!=null)backgroundSession.detach(this);
+        if(backgroundSession!=null){
+            backgroundSession.detach(this);
+            if(!retained)backgroundSession.finish("");
+        }
         if(!retained){if(session!=null)session.close();stopSignaling();}else{mainHandler.removeCallbacks(presenceTick);session=signaling=null;}
         remoteOrientation.end();super.onDestroy();}
 }
