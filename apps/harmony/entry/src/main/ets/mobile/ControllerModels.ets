@@ -211,6 +211,7 @@ export function asciiKey(character: string): number {
 }
 export interface TouchPoint { x: number; y: number; }
 export class TouchInput {
+  private static readonly PINCH_SLOP: number = 4;
   relative: boolean = true;
   private active: boolean = false;
   private multi: boolean = false;
@@ -225,7 +226,6 @@ export class TouchInput {
   private focusX: number = 0;
   private focusY: number = 0;
   private span: number = 0;
-  private startSpan: number = 0;
   private scrollY: number = 0;
   readonly viewport: RemoteViewport;
   readonly mouse: MouseInput;
@@ -236,16 +236,19 @@ export class TouchInput {
     if (kind === 'cancel') { this.cancel(); return; }
     if (points.length >= 2) {
       const x = (points[0].x + points[1].x) / 2, y = (points[0].y + points[1].y) / 2;
-      const span = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
-      if (!this.multi) {
-        this.mouse.gestureLeft(false); this.multi = true; this.startSpan = this.span = span;
+      const span = Math.max(TouchInput.PINCH_SLOP, Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y));
+      if (!this.multi || kind === 'down' || kind === 'up' || points.length !== 2 || this.mouse.held()) {
+        this.mouse.gestureLeft(false); this.multi = true; this.span = span;
         this.focusX = x; this.scrollY = this.focusY = y; this.pinching = false;
-      } else if (kind === 'move' && !this.mouse.held()) {
-        if (!this.pinching && Math.abs(span - this.startSpan) > 6 && this.viewport.contains(x, y)) this.pinching = true;
-        if (this.pinching && this.span > 0) this.viewport.zoom(span / this.span, x, y);
+      } else if (kind === 'move') {
+        if (Math.abs(span - this.span) >= TouchInput.PINCH_SLOP) this.pinching = true;
+        if (this.pinching) {
+          this.viewport.zoom(span / this.span, this.focusX, this.focusY);
+          this.span = span;
+        }
         if (this.viewport.scale > 1.001 || this.pinching) this.viewport.pan(x - this.focusX, y - this.focusY);
         else if (this.viewport.contains(x, y) && Math.abs(y - this.scrollY) > 16) { this.mouse.scroll(y - this.scrollY); this.scrollY = y; }
-        this.span = span; this.focusX = x; this.focusY = y;
+        this.focusX = x; this.focusY = y;
       }
       return;
     }
