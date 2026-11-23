@@ -329,10 +329,19 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         String server=serverKey();Runnable load=()->{if(!image.isAttachedToWindow())return;Object binding=new Object();image.setTag(binding);image.setImageDrawable(null);image.setVisibility(View.GONE);label.setVisibility(View.VISIBLE);
             previews.load(server,id,bitmap->{if(image.getTag()!=binding||!image.isAttachedToWindow()){if(bitmap!=null)bitmap.recycle();return;}if(bitmap!=null){image.setImageBitmap(bitmap);image.setVisibility(View.VISIBLE);label.setVisibility(View.GONE);}});};previewCards.add(load);image.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){public void onViewAttachedToWindow(View view){load.run();}public void onViewDetachedFromWindow(View view){image.setTag(null);}});if(image.isAttachedToWindow())load.run();
         Runnable actions=()->showRecentActions(server,item);
-        TextView more=text("⋯",20,true);more.setGravity(Gravity.CENTER);more.setTextColor(Color.WHITE);
-        more.setBackground(new InsetDrawable(ui.background(0x88000000,14),dp(5),dp(9),dp(5),dp(9)));
-        more.setContentDescription(L10n.tr("更多操作"));more.setOnClickListener(v->actions.run());
-        FrameLayout.LayoutParams menuSize=new FrameLayout.LayoutParams(dp(44),dp(44),Gravity.TOP|Gravity.END);preview.addView(more,menuSize);
+        boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                == Configuration.UI_MODE_NIGHT_YES;
+        GradientDrawable capsule = ui.background(dark ? INK : BACKGROUND, 9);
+        capsule.setStroke(Math.max(1, dp(0.75f)), dark ? 0xFF434348 : LINE);
+        ImageButton more = new ImageButton(this);
+        more.setImageResource(R.drawable.ic_more_horizontal);
+        more.setScaleType(ImageView.ScaleType.CENTER);
+        more.setBackground(new InsetDrawable(capsule, dp(9), dp(13.5f), dp(9), dp(13.5f)));
+        more.setPadding(0, 0, 0, 0);
+        more.setColorFilter(dark ? Color.WHITE : INK);
+        more.setContentDescription(L10n.tr("更多操作"));
+        more.setOnClickListener(v -> actions.run());
+        preview.addView(more, new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.TOP | Gravity.END));
         String title=RecentConnections.displayName(item);
         LinearLayout caption=column();caption.setPadding(dp(9),dp(9),dp(9),dp(9));TextView name=text(title,12,true);name.setSingleLine();name.setEllipsize(TextUtils.TruncateAt.END);caption.addView(name);ui.gap(caption,4);
         Set<String> groups=RecentConnections.groups(item);

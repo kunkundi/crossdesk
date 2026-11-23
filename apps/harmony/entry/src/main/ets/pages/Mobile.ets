@@ -204,8 +204,13 @@ struct Mobile {
           .fontSize(19).fontWeight(600).fontColor(Color.White).width('100%').height('100%').textAlign(TextAlign.Center)
         if (this.state.previews && device.preview) { Image(`file://${device.preview}`).objectFit(ImageFit.Cover).width('100%').height('100%') }
         Button({ type: ButtonType.Normal }) {
-          Text('⋯').width(34).height(26).fontSize(19).fontWeight(600).textAlign(TextAlign.Center)
-            .fontColor(Color.White).backgroundColor('#88000000').borderRadius(13)
+          Row({ space: 2 }) {
+            ForEach([0, 1, 2], () => {
+              Circle().width(2.5).height(2.5).fill($r('sys.color.font_primary'))
+            })
+          }.width(26).height(17).justifyContent(FlexAlign.Center)
+            .backgroundColor($r('sys.color.background_secondary'))
+            .border({ width: 0.75, radius: 9, color: $r('sys.color.comp_divider') })
         }.width(44).height(44).padding(0).backgroundColor(Color.Transparent)
           .accessibilityText(tr("更多操作")).onClick(() => this.recentActions(device.id))
       }.aspectRatio(16 / 9).width('100%').backgroundColor(device.platform === 'windows' ? '#316AB7' : device.platform === 'macos' ? '#8057B9' : device.platform === 'linux' ? '#AE642B' : '#677587')

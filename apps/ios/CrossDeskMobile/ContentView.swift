@@ -784,11 +784,16 @@ private struct RecentConnectionCard: View {
         .overlay(alignment: .topTrailing) {
             Menu { actions } label: {
                 Image(systemName: "ellipsis")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(.white)
-                    .padding(7)
-                    .background(.black.opacity(0.55), in: Capsule())
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color(uiColor: .label))
+                    .padding(.horizontal, 6)
+                    .frame(minWidth: 26, minHeight: 17)
+                    .background(Color(uiColor: .secondarySystemBackground), in: Capsule())
+                    .overlay {
+                        Capsule().strokeBorder(Color(uiColor: .separator), lineWidth: 0.75)
+                    }
                     .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .accessibilityLabel(NSLocalizedString("更多操作", comment: ""))
         }
