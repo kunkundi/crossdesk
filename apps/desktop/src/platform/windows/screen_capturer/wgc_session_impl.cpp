@@ -270,31 +270,37 @@ void WgcSessionImpl::OnFrame(
   std::lock_guard locker(lock_);
 
   if (!is_running_ || sender != capture_framepool_) return;
-  auto is_new_size = false;
 
   try {
     auto frame = sender.TryGetNextFrame();
-    if (!frame) return;
-    auto frame_size = frame.ContentSize();
+    if (!frame || is_paused_) return;
+    const auto frame_size = frame.ContentSize();
+    if (frame_size.Width <= 0 || frame_size.Height <= 0) return;
 
     if (frame_size.Width != capture_frame_size_.Width ||
         frame_size.Height != capture_frame_size_.Height) {
-      // The thing we have been capturing has changed size.
-      // We need to resize our swap chain first, then blit the pixels.
-      // After we do that, retire the frame and then recreate our frame pool.
-      is_new_size = true;
+      // ContentSize already describes the new content, while this surface
+      // still belongs to the old pool. Retire it before mapping any pixels.
+      frame.Close();
+      d3d11_texture_mapped_ = nullptr;
+      capture_framepool_.Recreate(
+          d3d11_direct_device_,
+          winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,
+          2, frame_size);
       capture_frame_size_ = frame_size;
-    }
-
-    // copy to mapped texture
-    if (is_paused_) {
       return;
     }
 
     auto frame_captured =
         GetDXGIInterfaceFromObject<ID3D11Texture2D>(frame.Surface());
-
-    if (!d3d11_texture_mapped_ || is_new_size) {
+    D3D11_TEXTURE2D_DESC desc{};
+    frame_captured->GetDesc(&desc);
+    if (desc.Width != static_cast<UINT>(frame_size.Width) ||
+        desc.Height != static_cast<UINT>(frame_size.Height) ||
+        desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM) {
+      return;
+    }
+    if (!d3d11_texture_mapped_) {
       HRESULT tex_hr = CreateMappedTexture(frame_captured);
       if (FAILED(tex_hr)) {
         ReportFrameFailure(tex_hr);
@@ -343,14 +349,6 @@ void WgcSessionImpl::OnFrame(
             id_);
         frame_failure_reported_ = false;
       }
-    }
-
-    if (is_new_size) {
-      capture_framepool_.Recreate(
-          d3d11_direct_device_,
-          winrt::Windows::Graphics::DirectX::
-              DirectXPixelFormat::B8G8R8A8UIntNormalized,
-          2, capture_frame_size_);
     }
   } catch (const winrt::hresult_error& error) {
     ReportFrameFailure(error.code());
