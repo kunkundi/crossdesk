@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "com.chunkdash.crossdesk",
     "vendor": "CrossDesk",
-    "versionCode": 10001,
-    "versionName": "1.7.6",
+    "versionCode": 10002,
+    "versionName": "1.7.7",
     "icon": "$media:app_icon",
     "label": "$string:app_name"
   }
