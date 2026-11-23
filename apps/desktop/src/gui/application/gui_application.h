@@ -11,6 +11,7 @@
 #include <chrono>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -98,10 +99,10 @@ private:
   void InitializeStreamWindow(StreamView& view);
   void SyncStreamWindow(StreamView& view);
   void ShowStreamWindow(const std::shared_ptr<RemoteSession>& session);
-  void SyncStreamVideoFrame(StreamView& view, double timer_lateness_ms);
+  void SyncStreamVideoFrame(StreamView& view, std::optional<double> timer_lateness_ms);
   void SyncVideoFrameGapStats();
   void ScheduleNextVideoFrame();
-  void PresentPendingVideoFrame(double lateness_ms);
+  void PresentPendingVideoFrame(std::optional<double> timer_lateness_ms = std::nullopt);
   // Posted from a decoder thread when a frame becomes presentable. Coalesces
   // multiple wakeups into one event-loop task so a busy UI cannot queue work
   // faster than it drains it.

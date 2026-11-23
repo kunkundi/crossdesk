@@ -1479,7 +1479,7 @@ void GuiApplication::InitializeUi() {
     for (auto& [_, view] : ui_->streams)
       if (view.Visible() && view.session->frame_dirty_)
         view.session->video_latency_->RecordFrameWake(queued_ms);
-    PresentPendingVideoFrame(0);
+    PresentPendingVideoFrame();
   });
   std::atomic_store_explicit(&video_frame_wakeup_,
       std::make_shared<const std::function<void()>>(
@@ -4294,7 +4294,8 @@ void GuiApplication::SyncVideoFrameGapStats() {
   }
 }
 
-void GuiApplication::SyncStreamVideoFrame(StreamView& view, double timer_lateness_ms) {
+void GuiApplication::SyncStreamVideoFrame(
+    StreamView& view, std::optional<double> timer_lateness_ms) {
   const auto& props = view.session;
   props->video_latency_->RecordRenderTick(timer_lateness_ms);
 
@@ -4318,10 +4319,10 @@ void GuiApplication::SyncStreamVideoFrame(StreamView& view, double timer_latenes
   }
 }
 
-void GuiApplication::PresentPendingVideoFrame(double lateness_ms) {
+void GuiApplication::PresentPendingVideoFrame(std::optional<double> timer_lateness_ms) {
   for (auto& [_, view] : ui_->streams) {
     if (view.Visible() && (view.session->frame_dirty_.exchange(false) || view.presenter.NeedsRedraw()))
-      SyncStreamVideoFrame(view, lateness_ms);
+      SyncStreamVideoFrame(view, timer_lateness_ms);
   }
 }
 
@@ -4344,7 +4345,7 @@ void GuiApplication::RequestVideoPresent() {
       if (view.Visible() && view.session->frame_dirty_)
         view.session->video_latency_->RecordFrameWake(queued_ms);
     }
-    PresentPendingVideoFrame(queued_ms);
+    PresentPendingVideoFrame();
   });
 }
 

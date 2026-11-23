@@ -57,7 +57,8 @@ inline void LogVideoFrameDiagnostics(
             count(VideoFrameStage::committed),
             count(VideoFrameStage::gpu_completed), count(VideoFrameStage::presented),
             pipeline.render_ticks,
-            pipeline.render_ticks ? pipeline.timer_late_total_ms / pipeline.render_ticks : 0,
+            pipeline.timer_late_samples
+                ? pipeline.timer_late_total_ms / pipeline.timer_late_samples : 0,
             pipeline.timer_late_max_ms,
             pipeline.commit_timing_samples
                 ? pipeline.receive_to_commit_total_ms / pipeline.commit_timing_samples : 0,

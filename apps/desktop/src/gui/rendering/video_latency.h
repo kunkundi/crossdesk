@@ -109,6 +109,7 @@ class VideoLatencyStats
   struct PipelineSnapshot {
     std::array<uint64_t, static_cast<size_t>(VideoFrameStage::count)> frames{};
     uint64_t render_ticks = 0;
+    uint64_t timer_late_samples = 0;
     double timer_late_total_ms = 0;
     double timer_late_max_ms = 0;
     uint64_t commit_timing_samples = 0;
@@ -160,11 +161,13 @@ class VideoLatencyStats
     return TakeDiagnosticsLocked(now, false);
   }
 
-  void RecordRenderTick(double late_ms) {
+  void RecordRenderTick(std::optional<double> timer_lateness_ms) {
     std::lock_guard lock(mutex_);
-    if (!gap_tracking_enabled_ || !std::isfinite(late_ms)) return;
-    late_ms = std::max(0.0, late_ms);
+    if (!gap_tracking_enabled_) return;
     ++pipeline_.render_ticks;
+    if (!timer_lateness_ms || !std::isfinite(*timer_lateness_ms)) return;
+    const double late_ms = std::max(0.0, *timer_lateness_ms);
+    ++pipeline_.timer_late_samples;
     pipeline_.timer_late_total_ms += late_ms;
     pipeline_.timer_late_max_ms = std::max(pipeline_.timer_late_max_ms, late_ms);
   }
