@@ -83,7 +83,7 @@ final class RemoteKeyboard extends LinearLayout {
     int preferredHeight(){return ui.dp(44)+(computer?keyAreaHeight():0);}
     void toggle(){if(opened)close();else open();}
     void open(){
-        opened=true;computer=shortcuts=false;modifiers.clear();editor.start();setVisibility(VISIBLE);render();changed.run();
+        opened=true;computer=shortcuts=false;modifiers.clear();setVisibility(VISIBLE);render();changed.run();
         post(()->{if(opened&&!computer)changeIme(true,false,false);});
     }
     boolean close(){

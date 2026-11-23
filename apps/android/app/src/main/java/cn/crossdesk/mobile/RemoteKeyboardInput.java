@@ -48,8 +48,11 @@ final class RemoteKeyboardInput extends EditText {
         });
     }
     void start() {
-        boolean resume=!accepting&&hasFocus();accepting=true;requestFocus();
-        if(resume)getContext().getSystemService(InputMethodManager.class).restartInput(this);
+        if (!requestFocus() || accepting) return;
+        accepting = true;
+        // Android can still serve the connection invalidated by pause(), even
+        // when the editor has lost and regained focus in the meantime.
+        getContext().getSystemService(InputMethodManager.class).restartInput(this);
     }
     // Keep focus while replacing the IME, but reject its late edits without
     // restarting it. A restart here can show it again after the controlled hide.
