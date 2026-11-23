@@ -33,10 +33,14 @@ bool IsGalleryWindowMaximized();
 
 // Configures live resize and allows the control window to occupy its own
 // native macOS fullscreen Space. Reports when AppKit starts or finishes the
-// transition for this window. |slint_view| is its AppKit NSView*.
+// transition for this window. The callback returns whether video uses a native
+// surface that can resize independently of Slint. |slint_view| is its NSView*.
 bool ConfigureStreamWindowLiveResize(void* slint_view,
-                                    std::function<void(bool)> transition_changed);
+                                     std::function<bool(bool)> transition_changed);
+bool IsStreamWindowFullscreenTransitioning(void* slint_view);
 bool IsStreamWindowFullscreen(void* slint_view);
+// Leave the native fullscreen Space to minimize, then restore it on Dock activation.
+void MinimizeMacStreamWindow(void* slint_view);
 // Signed top inset for an aspect-fit video in the moving control window.
 float StreamWindowVideoTransitionInset(void* view, float content_width, float content_height,
                                       bool* transitioning = nullptr);

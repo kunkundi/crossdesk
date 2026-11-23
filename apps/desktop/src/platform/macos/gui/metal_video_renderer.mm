@@ -37,6 +37,7 @@
 @interface CrossDeskStreamTitleView : CrossDeskDecorationView
 @property(nonatomic, copy) BOOL (^windowLayoutHandler)(NSWindow* window);
 @property(nonatomic, copy) void (^surfaceInvalidationHandler)(void);
+@property(nonatomic, copy) void (^resizeVideoHandler)(NSWindow*);
 @property(nonatomic) BOOL windowLayoutPending;
 - (instancetype)initWithWindow:(NSWindow*)window;
 @end
@@ -171,6 +172,11 @@
 }
 
 - (void)windowDidResize:(NSNotification*)notification {
+  if (self.resizeVideoHandler) self.resizeVideoHandler(notification.object);
+  // The compositor scales the existing image during the Space animation.
+  // The titlebar and cached frame only need refreshing at its final size.
+  if (crossdesk::IsStreamWindowFullscreenTransitioning(
+          (__bridge void*)_streamWindow.contentView)) return;
   [self invalidateVideoSurface];
   self.windowLayoutPending = YES;
   [self applyWindowLayout];
@@ -188,7 +194,8 @@
 - (void)windowDidToggleFullscreen:(NSNotification*)notification {
   _titlebarBackground.alphaValue =
       (_streamWindow.styleMask & NSWindowStyleMaskFullScreen) ? 0 : 1;
-  [self windowDidResize:notification];
+  [self invalidateVideoSurface];
+  self.windowLayoutPending = ![self applyWindowLayout];
 }
 
 - (void)windowBackingPropertiesChanged:(NSNotification*)notification {
@@ -561,6 +568,13 @@ struct MacMetalVideoRenderer::Impl {
   NSLayoutConstraint* video_top = nil;
   NSTitlebarAccessoryViewController* title_accessory_controller = nil;
   CAMetalLayer* metal_layer = nil;
+  struct DrawableRequest {
+    id<CAMetalDrawable> drawable = nil;
+    double wait_ms = 0;
+    bool complete = false;
+  };
+  std::shared_ptr<DrawableRequest> drawable_request;
+  std::function<void()> drawable_ready;
   std::atomic<bool> attached{false};
   std::string rendered_stream;
   uint64_t rendered_content_generation = 0;
@@ -634,10 +648,53 @@ struct MacMetalVideoRenderer::Impl {
     return device != nil && command_queue != nil && pipeline != nil;
   }
 
+  // WindowServer can hold both drawables during a fullscreen Space change.
+  // Keep the window thread free to animate and leave the latest frame queued.
+  id<CAMetalDrawable> TakeTransitionDrawable(double& wait_ms) {
+    if (drawable_request) {
+      if (!drawable_request->complete) return nil;
+      auto ready = std::move(drawable_request);
+      id<CAMetalDrawable> drawable = ready->drawable;
+      const CGSize size = metal_layer.drawableSize;
+      if (drawable && drawable.texture.width == size.width &&
+          drawable.texture.height == size.height) {
+        wait_ms = ready->wait_ms;
+        return drawable;
+      }
+    }
+    drawable_request = std::make_shared<DrawableRequest>();
+    std::weak_ptr<DrawableRequest> weak_request = drawable_request;
+    CAMetalLayer* layer = metal_layer;
+    const auto notify = drawable_ready;
+    const auto dirty = native_surface_needs_redraw;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^{
+      @autoreleasepool {
+        const auto start = VideoLatencyFrame::Clock::now();
+        id<CAMetalDrawable> drawable = [layer nextDrawable];
+        const double elapsed = std::chrono::duration<double, std::milli>(
+            VideoLatencyFrame::Clock::now() - start).count();
+        dispatch_async(dispatch_get_main_queue(), ^{
+          // Detaching cancels this request, including a queued UI wakeup.
+          if (auto request = weak_request.lock()) {
+            request->drawable = drawable;
+            request->wait_ms = elapsed;
+            request->complete = true;
+            dirty->store(true, std::memory_order_release);
+            if (drawable && notify) notify();
+          }
+        });
+      }
+    });
+    return nil;
+  }
+
   void DetachViews() {
     @autoreleasepool {
       attached.store(false, std::memory_order_release);
+      drawable_request.reset();
+      drawable_ready = {};
       NSWindow* window = slint_view.window;
+      ((CrossDeskStreamTitleView*)title_accessory_controller.view).resizeVideoHandler = nil;
       if (video_view != nil) {
         [video_view removeFromSuperview];
       }
@@ -1028,7 +1085,8 @@ MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitNv12Internal(
   return SubmitResult::submitted;
 }
 
-bool MacMetalVideoRenderer::Attach(void* opaque_slint_view) {
+bool MacMetalVideoRenderer::Attach(void* opaque_slint_view,
+                                   std::function<void()> drawable_ready) {
   if (!IsReady() || opaque_slint_view == nullptr) {
     return false;
   }
@@ -1048,6 +1106,7 @@ bool MacMetalVideoRenderer::Attach(void* opaque_slint_view) {
     }
 
     impl_->DetachViews();
+    impl_->drawable_ready = std::move(drawable_ready);
     ConfigureStreamWindowChrome(window);
     impl_->slint_view = requested_view;
     impl_->slint_view.wantsLayer = YES;
@@ -1092,6 +1151,14 @@ bool MacMetalVideoRenderer::Attach(void* opaque_slint_view) {
     const auto surface_dirty_flag = impl_->native_surface_needs_redraw;
     title_view.surfaceInvalidationHandler = ^{
       surface_dirty_flag->store(true, std::memory_order_release);
+    };
+    title_view.resizeVideoHandler = ^(NSWindow* resized_window) {
+      // Native zoom runs a nested AppKit loop. Resize notifications continue
+      // while the usual main-queue wakeup for a decoded frame is waiting.
+      if (impl_->rendered_stream.empty() || resized_window.isMiniaturized ||
+          !(resized_window.occlusionState & NSWindowOcclusionStateVisible)) return;
+      const CGSize size = impl_->metal_layer.drawableSize;
+      DrawFrame(impl_->rendered_stream, size.width, size.height, false);
     };
     impl_->title_accessory_controller.view = title_view;
     [window addTitlebarAccessoryViewController:
@@ -1156,7 +1223,15 @@ MacMetalVideoRenderer::RenderOutcome MacMetalVideoRenderer::RenderLatest(
 
   @autoreleasepool {
     const CGSize raster_limit = impl_->UpdateVideoGeometry(top_inset_points);
-    if (raster_limit.width <= 0 || raster_limit.height <= 0) return {RenderResult::idle};
+    return DrawFrame(remote_id, raster_limit.width, raster_limit.height, true);
+  }
+}
+
+MacMetalVideoRenderer::RenderOutcome MacMetalVideoRenderer::DrawFrame(
+    std::string_view remote_id, double raster_width, double raster_height,
+    bool allow_cached_frame) {
+  if (raster_width <= 0 || raster_height <= 0) return {RenderResult::idle};
+  @autoreleasepool {
     const bool stream_changed = impl_->rendered_stream != remote_id;
     size_t slot_index = kFrameSlotCount;
     uint64_t sequence = 0;
@@ -1200,9 +1275,9 @@ MacMetalVideoRenderer::RenderOutcome MacMetalVideoRenderer::RenderLatest(
         return {RenderResult::idle};
       }
       content_generation = impl_->frames->content_generation;
-      redraw_cached_frame = stream_changed ||
+      redraw_cached_frame = allow_cached_frame && (stream_changed ||
           impl_->native_surface_needs_redraw->load(std::memory_order_acquire) ||
-          impl_->rendered_content_generation != content_generation;
+          impl_->rendered_content_generation != content_generation);
       select_latest();
       if (slot_index == kFrameSlotCount && !redraw_cached_frame) {
         return {RenderResult::idle};
@@ -1216,19 +1291,25 @@ MacMetalVideoRenderer::RenderOutcome MacMetalVideoRenderer::RenderLatest(
     // Keep letterboxing in the compositor. It can scale the last presented
     // image with the window even while the remote desktop is idle.
     if (source_width > 0 && source_height > 0) {
-      const CGFloat scale = std::min<CGFloat>({1, raster_limit.width / source_width,
-                                               raster_limit.height / source_height});
+      const CGFloat scale = std::min<CGFloat>({1, raster_width / source_width,
+                                               raster_height / source_height});
       const CGSize size = CGSizeMake(std::max<CGFloat>(1, std::round(source_width * scale)),
                                      std::max<CGFloat>(1, std::round(source_height * scale)));
       if (!CGSizeEqualToSize(impl_->metal_layer.drawableSize, size))
         impl_->metal_layer.drawableSize = size;
     }
-    const auto drawable_started = VideoLatencyFrame::Clock::now();
-    id<CAMetalDrawable> drawable = [impl_->metal_layer nextDrawable];
-    const double drawable_wait_ms = std::chrono::duration<double, std::milli>(
-        VideoLatencyFrame::Clock::now() - drawable_started).count();
-    if (drawable == nil) {
-      return {impl_->MissingDrawableResult()};
+    double drawable_wait_ms = 0;
+    id<CAMetalDrawable> drawable = nil;
+    if (impl_->drawable_request ||
+        IsStreamWindowFullscreenTransitioning((__bridge void*)impl_->slint_view)) {
+      drawable = impl_->TakeTransitionDrawable(drawable_wait_ms);
+      if (!drawable) return {RenderResult::idle};
+    } else {
+      const auto start = VideoLatencyFrame::Clock::now();
+      drawable = [impl_->metal_layer nextDrawable];
+      drawable_wait_ms = std::chrono::duration<double, std::milli>(
+          VideoLatencyFrame::Clock::now() - start).count();
+      if (!drawable) return {impl_->MissingDrawableResult()};
     }
 
     id<MTLTexture> y_texture = nil;

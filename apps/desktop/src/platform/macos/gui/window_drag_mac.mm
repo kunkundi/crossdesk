@@ -20,7 +20,8 @@ static NSTimeInterval StreamWindowAnimationDuration(NSTimeInterval duration) {
 }
 
 static void AnimateStreamWindowFrame(NSWindow* window, NSRect start,
-                                     NSRect target, NSTimeInterval duration) {
+                                     NSRect target, NSTimeInterval duration,
+                                     BOOL displayDuringResize) {
   if (duration <= 0 || NSEqualRects(start, target)) {
     if (!NSEqualRects(window.frame, target)) [window setFrame:target display:YES];
     return;
@@ -30,14 +31,16 @@ static void AnimateStreamWindowFrame(NSWindow* window, NSRect start,
     context.duration = duration;
     context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
     context.allowsImplicitAnimation = YES;
-    [window.animator setFrame:target display:YES];
+    [window.animator setFrame:target display:displayDuringResize];
   } completionHandler:nil];
 }
 
 @interface CrossDeskStreamTransitionDelegate : NSObject <NSWindowDelegate>
 @property(nonatomic, weak) id<NSWindowDelegate> backendDelegate;
-@property(nonatomic, copy) void (^transitionChanged)(bool active);
+@property(nonatomic, copy) bool (^transitionChanged)(bool active);
+@property(nonatomic, readonly) BOOL transitioning;
 @property(nonatomic, readonly) BOOL animatingVideo;
+- (void)minimizeFullscreenWindow:(NSWindow*)window;
 - (CGFloat)videoInsetForContentSize:(NSSize)size inWindow:(NSWindow*)window;
 @end
 
@@ -49,7 +52,10 @@ static void AnimateStreamWindowFrame(NSWindow* window, NSRect start,
   NSImage* _windowedTitle;
   NSImageView* _exitingHeader;
   NSViewLayerContentsRedrawPolicy _savedRedrawPolicy;
-  BOOL _transitioning;
+  __weak NSView* _deferredOverlay;
+  // AppKit minimizes asynchronously after leaving the fullscreen Space.
+  // Keep the request until the Dock restores this particular window.
+  BOOL _minimizedFromFullscreen;
 }
 
 - (CGFloat)videoInsetForContentSize:(NSSize)size inWindow:(NSWindow*)window {
@@ -152,7 +158,7 @@ static void AnimateStreamWindowFrame(NSWindow* window, NSRect start,
   _windowedTitle = title;
   _animatingVideo = duration > 0 && !NSEqualRects(start, target);
   if (_animatingVideo) [self showTitleInContent:content exiting:NO duration:duration];
-  AnimateStreamWindowFrame(window, start, target, duration);
+  AnimateStreamWindowFrame(window, start, target, duration, _deferredOverlay == nil);
 }
 
 - (NSArray<NSWindow*>*)customWindowsToExitFullScreenForWindow:(NSWindow*)window {
@@ -172,15 +178,25 @@ static void AnimateStreamWindowFrame(NSWindow* window, NSRect start,
   _animatingVideo = duration > 0 && !NSEqualRects(start, _windowedFrame);
   if (_animatingVideo)
     _exitingHeader = [self showTitleInContent:window.contentView exiting:YES duration:duration];
-  AnimateStreamWindowFrame(window, start, _windowedFrame, duration);
+  AnimateStreamWindowFrame(window, start, _windowedFrame, duration, _deferredOverlay == nil);
 }
 
 - (void)willToggleFullscreen:(NSNotification*)notification {
   NSView* content = ((NSWindow*)notification.object).contentView;
-  if (!_transitioning) _savedRedrawPolicy = content.layerContentsRedrawPolicy;
+  if (_transitioning) return;
+  _savedRedrawPolicy = content.layerContentsRedrawPolicy;
   _transitioning = YES;
-  content.layerContentsRedrawPolicy = NSViewLayerContentsRedrawDuringViewResize;
-  self.transitionChanged(true);
+  if (self.transitionChanged(true)) {
+    // Metal follows the window through native constraints. Winit only needs
+    // the final overlay size once the fullscreen controls become visible.
+    content.layerContentsRedrawPolicy = NSViewLayerContentsRedrawBeforeViewResize;
+    if (content.postsFrameChangedNotifications) {
+      _deferredOverlay = content;
+      content.postsFrameChangedNotifications = NO;
+    }
+  } else {
+    content.layerContentsRedrawPolicy = NSViewLayerContentsRedrawDuringViewResize;
+  }
 }
 
 - (void)finishTransition:(NSWindow*)window {
@@ -189,15 +205,32 @@ static void AnimateStreamWindowFrame(NSWindow* window, NSRect start,
   _exitingHeader = nil;
   if (_transitioning) window.contentView.layerContentsRedrawPolicy = _savedRedrawPolicy;
   _transitioning = NO;
+  // AppKit posts the accumulated frame change when notifications resume.
+  _deferredOverlay.postsFrameChangedNotifications = YES;
+  _deferredOverlay = nil;
   self.transitionChanged(false);
 }
 
 - (void)didToggleFullscreen:(NSNotification*)notification {
+  NSWindow* window = notification.object;
+  [self finishTransition:window];
   if ([notification.name isEqualToString:NSWindowDidExitFullScreenNotification]) {
     _windowedFrame = NSZeroRect;
     _windowedTitle = nil;
+    if (_minimizedFromFullscreen) [window miniaturize:nil];
   }
-  [self finishTransition:notification.object];
+}
+
+- (void)minimizeFullscreenWindow:(NSWindow*)window {
+  if (_transitioning || _minimizedFromFullscreen) return;
+  _minimizedFromFullscreen = YES;
+  [window toggleFullScreen:nil];
+}
+
+- (void)didDeminiaturize:(NSNotification*)notification {
+  if (!_minimizedFromFullscreen) return;
+  _minimizedFromFullscreen = NO;
+  [notification.object toggleFullScreen:nil];
 }
 
 - (void)windowDidFailToEnterFullScreen:(NSWindow*)window {
@@ -209,6 +242,7 @@ static void AnimateStreamWindowFrame(NSWindow* window, NSRect start,
 }
 
 - (void)windowDidFailToExitFullScreen:(NSWindow*)window {
+  _minimizedFromFullscreen = NO;
   [self finishTransition:window];
   if ([self.backendDelegate respondsToSelector:_cmd])
     [self.backendDelegate windowDidFailToExitFullScreen:window];
@@ -441,7 +475,7 @@ bool IsGalleryWindowMaximized() {
 }
 
 bool ConfigureStreamWindowLiveResize(void *opaque_slint_view,
-                                     std::function<void(bool)> transition_changed) {
+                                     std::function<bool(bool)> transition_changed) {
   @autoreleasepool {
     NSView *slint_view = (__bridge NSView *)opaque_slint_view;
     NSWindow *window = slint_view.window;
@@ -466,8 +500,10 @@ bool ConfigureStreamWindowLiveResize(void *opaque_slint_view,
                                         NSWindowDidExitFullScreenNotification]) {
         [center addObserver:delegate selector:@selector(didToggleFullscreen:) name:name object:window];
       }
+      [center addObserver:delegate selector:@selector(didDeminiaturize:)
+                     name:NSWindowDidDeminiaturizeNotification object:window];
     }
-    delegate.transitionChanged = ^(bool active) { transition_changed(active); };
+    delegate.transitionChanged = ^bool(bool active) { return transition_changed(active); };
     if (window.delegate != delegate) {
       delegate.backendDelegate = window.delegate;
       window.delegate = delegate;
@@ -489,6 +525,13 @@ bool ConfigureStreamWindowLiveResize(void *opaque_slint_view,
     content_view.needsDisplay = YES;
     return true;
   }
+}
+
+bool IsStreamWindowFullscreenTransitioning(void* opaque_view) {
+  NSView* view = (__bridge NSView*)opaque_view;
+  auto* delegate = (CrossDeskStreamTransitionDelegate*)
+      objc_getAssociatedObject(view.window, &stream_transition_key);
+  return delegate.transitioning;
 }
 
 float StreamWindowVideoTransitionInset(void* opaque_view, float width, float height,
@@ -544,6 +587,17 @@ bool PlaceMacStreamControlPointer(void* slint_view, float pixel_x, float pixel_y
 bool IsStreamWindowFullscreen(void *opaque_slint_view) {
   NSView *view = (__bridge NSView *)opaque_slint_view;
   return (view.window.styleMask & NSWindowStyleMaskFullScreen) != 0;
+}
+
+void MinimizeMacStreamWindow(void* slint_view) {
+  NSWindow* window = ((__bridge NSView*)slint_view).window;
+  if (window.styleMask & NSWindowStyleMaskFullScreen) {
+    auto* delegate = (CrossDeskStreamTransitionDelegate*)
+        objc_getAssociatedObject(window, &stream_transition_key);
+    [delegate minimizeFullscreenWindow:window];
+  } else {
+    [window miniaturize:nil];
+  }
 }
 
 void ShowFileTransferNotification(void* slint_view,

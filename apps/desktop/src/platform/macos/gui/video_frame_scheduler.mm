@@ -54,13 +54,12 @@ void MacVideoFrameScheduler::Request() const {
   Request(state_);
 }
 
-void MacVideoFrameScheduler::Request(const std::shared_ptr<State>& state) {
+void MacVideoFrameScheduler::Request(std::shared_ptr<State> state) {
   if (!state || !state->enabled.load(std::memory_order_acquire) ||
       state->queued.exchange(true, std::memory_order_acq_rel)) return;
   const auto queued_at = std::chrono::steady_clock::now();
-  // GCD accepts this void-returning submission; no extra event-loop proxy can
-  // reject it while leaving queued=true. Stop invalidates callbacks even if
-  // the run loop exits before a queued block gets a chance to drain.
+  // The block owns the state even if the notifier is destroyed before it runs.
+  // Stop clears its callback so an old wakeup cannot present after teardown.
   dispatch_async(dispatch_get_main_queue(), ^{
     // Clear before rendering so arrival during rendering can queue one more
     // wakeup. Clearing afterwards would lose that last dirty notification.

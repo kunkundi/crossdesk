@@ -290,7 +290,7 @@ bool SlintVideoPresenter::EnsureAttached() {
 
   if (void* view = (*impl_->stream)->window().appkit_view()) {
     (*impl_->stream)->set_native_video_enabled(true);
-    if (metal_renderer->Attach(view)) {
+    if (metal_renderer->Attach(view, impl_->dirty_callback)) {
       impl_->attachment_attempts = 0;
       impl_->displayed_frame_sequence = 0;
       impl_->seeded_frame_sequence = 0;

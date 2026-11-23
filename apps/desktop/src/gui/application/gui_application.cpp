@@ -2381,7 +2381,11 @@ void GuiApplication::BindStreamCallbacks(StreamView& view) {
   });
   stream->on_minimize_stream_window([&view] {
     view.ObserveWindowState();
+#if defined(__APPLE__)
+    MinimizeMacStreamWindow(view.window->window().appkit_view());
+#else
     view.window->window().set_minimized(true);
+#endif
   });
   stream->on_toggle_maximize_stream_window([&view] {
     view.ObserveWindowState();
@@ -4006,7 +4010,11 @@ void GuiApplication::SyncStreamWindow(StreamView& view) {
   if (view.chrome_attempts > 0) {
     if (ConfigureStreamWindowLiveResize(stream->window().appkit_view(),
             [weak = slint::ComponentWeakHandle(stream)](bool active) {
-              if (auto handle = weak.lock()) (*handle)->set_fullscreen_transitioning(active);
+              if (auto handle = weak.lock()) {
+                (*handle)->set_fullscreen_transitioning(active);
+                return (*handle)->get_native_video_enabled();
+              }
+              return false;
             })) {
       view.chrome_attempts = 0;
     } else {

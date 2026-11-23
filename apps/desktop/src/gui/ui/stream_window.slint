@@ -522,6 +522,7 @@ export component StreamWindow inherits Window {
     private property <length> control-button-step: 32px;
     private property <length> control-shortcut-width: root.secure-attention-supported ? root.control-button-step : 0px;
     private property <length> control-privacy-width: root.privacy-visible ? root.control-button-step : 0px;
+    private property <length> control-minimize-width: root.fullscreen-enabled ? root.control-button-step : 0px;
     private property <length> control-disconnect-gap: 8px;
     private property <length> control-buttons-x: root.control-docked-left ? 43px : 7px;
     private property <length> control-panel-gap: 8px;
@@ -691,6 +692,7 @@ export component StreamWindow inherits Window {
                 if audio-button.has-hover { return audio-button.tooltip-info; }
                 if file-button.has-hover { return file-button.tooltip-info; }
                 if stats-button.has-hover { return stats-button.tooltip-info; }
+                if root.fullscreen-enabled && minimize-button.has-hover { return minimize-button.tooltip-info; }
                 if fullscreen-button.has-hover { return fullscreen-button.tooltip-info; }
                 if close-button.has-hover { return close-button.tooltip-info; }
             }
@@ -1275,7 +1277,10 @@ export component StreamWindow inherits Window {
                 x: root.control-dragging ? root.control-drag-x
                     : root.control-docked-left ? -root.control-edge-offset : parent.width - self.width + root.control-edge-offset;
                 y: min(max(0px, root.control-pos-y), parent.height - self.height);
-                width: root.control-visual-expanded ? min(80px + 7 * root.control-button-step + root.control-shortcut-width + root.control-privacy-width + root.control-disconnect-gap, parent.width) : root.control-toolbar-height;
+                width: root.control-visual-expanded
+                    ? min(80px + 7 * root.control-button-step + root.control-shortcut-width
+                        + root.control-privacy-width + root.control-minimize-width + root.control-disconnect-gap, parent.width)
+                    : root.control-toolbar-height;
                 height: root.control-toolbar-height;
                 z: 10;
 
@@ -1389,11 +1394,24 @@ export component StreamWindow inherits Window {
                     tooltip: root.stats-visible ? StreamStrings.hide-stats : StreamStrings.show-stats;
                     clicked => { root.close-control-menus(); root.toggle-stats(); }
                 }
+                minimize-button := ControlBarButton {
+                    reveal-progress: root.control-content-progress;
+                    visible: root.control-content-visible && root.fullscreen-enabled;
+                    action-enabled: root.control-expanded && root.fullscreen-enabled;
+                    x: stats-button.x + root.control-button-step;
+                    y: (parent.height - self.height) / 2;
+                    icon: FontAwesomeIcons.minus;
+                    tooltip: StreamStrings.window-minimize;
+                    accessible-role: button;
+                    accessible-label: self.tooltip;
+                    accessible-action-default => { if self.action-enabled { self.clicked(); } }
+                    clicked => { root.close-control-menus(); root.minimize-stream-window(); }
+                }
                 fullscreen-button := ControlBarButton {
                     reveal-progress: root.control-content-progress;
                     visible: root.control-content-visible;
                     action-enabled: root.control-expanded;
-                    x: root.control-buttons-x + 6 * root.control-button-step + root.control-shortcut-width + root.control-privacy-width;
+                    x: minimize-button.x + root.control-minimize-width;
                     y: (parent.height - self.height) / 2;
                     icon: root.fullscreen-enabled ? FontAwesomeIcons.compress : FontAwesomeIcons.expand;
                     tooltip: root.fullscreen-enabled ? StreamStrings.exit-fullscreen : StreamStrings.fullscreen;
@@ -1409,7 +1427,7 @@ export component StreamWindow inherits Window {
                     reveal-progress: root.control-content-progress;
                     visible: root.control-content-visible;
                     action-enabled: root.control-expanded;
-                    x: root.control-buttons-x + 7 * root.control-button-step + root.control-shortcut-width + root.control-privacy-width + root.control-disconnect-gap;
+                    x: fullscreen-button.x + root.control-button-step + root.control-disconnect-gap;
                     y: (parent.height - self.height) / 2;
                     icon: FontAwesomeIcons.xmark; tooltip: StreamStrings.disconnect;
                     danger: true;

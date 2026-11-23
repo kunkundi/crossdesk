@@ -33,7 +33,7 @@ class MacVideoFrameScheduler {
 
  private:
   struct State;
-  static void Request(const std::shared_ptr<State>& state);
+  static void Request(std::shared_ptr<State> state);
   std::shared_ptr<State> state_;
 };
 

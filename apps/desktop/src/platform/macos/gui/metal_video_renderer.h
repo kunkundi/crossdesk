@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -53,7 +54,7 @@ class MacMetalVideoRenderer final : public VideoRenderer {
   // Attaches a native CAMetalLayer-backed sibling below Slint's NSView and
   // restores the containing AppKit window's ordinary opaque titlebar.
   // |slint_view| is an NSView* kept opaque so this header remains valid C++.
-  bool Attach(void* slint_view);
+  bool Attach(void* slint_view, std::function<void()> drawable_ready = {});
   void Detach();
   bool IsAttached() const;
 
@@ -75,6 +76,8 @@ class MacMetalVideoRenderer final : public VideoRenderer {
                       int* height) const override;
 
  private:
+  RenderOutcome DrawFrame(std::string_view remote_id, double raster_width,
+                          double raster_height, bool allow_cached_frame);
   SubmitResult SubmitNv12Internal(std::string_view remote_id,
                                   const uint8_t* data, size_t size, int width,
                                   int height, bool replace_pending,
