@@ -26,6 +26,7 @@
 #include "display_info.h"
 #include <display_stream_id.h>
 #include "rd_log.h"
+#include "sdr_color.h"
 #include "privacy_controller.h"
 #include "../privacy/privacy_capture_state.h"
 #include <algorithm>
@@ -104,6 +105,15 @@ static int CopyCapturedPixelBufferToNv12(void *owner, uint8_t *destination,
     }
   }
   CVPixelBufferUnlockBaseAddress(pixel_buffer, kCVPixelBufferLock_ReadOnly);
+  if (result == 0) {
+    CFTypeRef matrix = CVBufferCopyAttachment(
+        pixel_buffer, kCVImageBufferYCbCrMatrixKey, nullptr);
+    const minirtc::SdrColor color{
+        pixel_format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+        matrix && CFEqual(matrix, kCVImageBufferYCbCrMatrix_ITU_R_709_2)};
+    if (matrix) CFRelease(matrix);
+    color.Normalize(destination, width, height);
+  }
   return result;
 }
 
@@ -693,6 +703,8 @@ void ScreenCapturerSckImpl::OnShareableContentCreated(SCShareableContent *conten
   }
 
   config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
+  config.colorMatrix = kCGDisplayStreamYCbCrMatrix_ITU_R_601_4;
+  config.colorSpaceName = kCGColorSpaceSRGB;
   config.showsCursor = show_cursor;
   config.width = filter.contentRect.size.width * filter.pointPixelScale;
   config.height = filter.contentRect.size.height * filter.pointPixelScale;
