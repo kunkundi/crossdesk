@@ -1484,6 +1484,14 @@ void GuiApplication::InitializeUi() {
   std::atomic_store_explicit(&video_frame_wakeup_,
       std::make_shared<const std::function<void()>>(
           ui_->video_scheduler.Notifier()), std::memory_order_release);
+#elif !defined(__OHOS__)
+  // Windows/Linux have no display-link equivalent, so a decoded frame used to
+  // wait for the next fallback timer tick (up to a full 60 Hz interval) before
+  // it was submitted. Wake the event loop directly and keep the timer only as
+  // a safety net.
+  std::atomic_store_explicit(&video_frame_wakeup_,
+      std::make_shared<const std::function<void()>>(
+          [this] { RequestVideoPresent(); }), std::memory_order_release);
 #endif
 #if _WIN32
   ui_->main->set_custom_titlebar(true);
@@ -4317,6 +4325,29 @@ void GuiApplication::PresentPendingVideoFrame(double lateness_ms) {
   }
 }
 
+void GuiApplication::RequestVideoPresent() {
+  if (!ui_) return;
+  // A decoder thread can produce frames faster than the UI drains wakeups, and
+  // the post itself allocates on the event queue. Coalesce to one in-flight
+  // task; the newest frame is picked up when it runs because presentation reads
+  // the session's latest frame, not a queued copy.
+  if (video_present_queued_.exchange(true, std::memory_order_acq_rel)) return;
+  const auto queued_at = std::chrono::steady_clock::now();
+  // Safe to capture this: the task only runs while the event loop is running,
+  // and Cleanup() (which resets ui_) runs after run_event_loop() returns.
+  slint::invoke_from_event_loop([this, queued_at] {
+    video_present_queued_.store(false, std::memory_order_release);
+    if (exit_ || !ui_) return;
+    const double queued_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - queued_at).count();
+    for (auto& [_, view] : ui_->streams) {
+      if (view.Visible() && view.session->frame_dirty_)
+        view.session->video_latency_->RecordFrameWake(queued_ms);
+    }
+    PresentPendingVideoFrame(queued_ms);
+  });
+}
+
 #if defined(__APPLE__)
 void GuiApplication::UpdateVideoFrameScheduler() {
   if (!ui_->video_scheduler.IsRunning()) return;
@@ -6988,10 +7019,12 @@ void GuiApplication::SyncGallery() {
 }
 
 void GuiApplication::Cleanup() {
-#if defined(__APPLE__)
-  // Deactivate queued main-thread work before sessions/renderers are released.
+  // Deactivate queued presentation work before sessions/renderers are released.
+  // This covers every platform: the wakeup may be invoked from a decoder thread
+  // that outlives the window.
   std::atomic_store_explicit(&video_frame_wakeup_,
       std::shared_ptr<const std::function<void()>>{}, std::memory_order_release);
+#if defined(__APPLE__)
   if (ui_) ui_->video_scheduler.Stop();
 #endif
   BeginShutdown();

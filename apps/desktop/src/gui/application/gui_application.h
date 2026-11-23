@@ -7,6 +7,7 @@
 #ifndef _GUI_APPLICATION_H_
 #define _GUI_APPLICATION_H_
 
+#include <atomic>
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -101,6 +102,10 @@ private:
   void SyncVideoFrameGapStats();
   void ScheduleNextVideoFrame();
   void PresentPendingVideoFrame(double lateness_ms);
+  // Posted from a decoder thread when a frame becomes presentable. Coalesces
+  // multiple wakeups into one event-loop task so a busy UI cannot queue work
+  // faster than it drains it.
+  void RequestVideoPresent();
 #if defined(__APPLE__)
   void UpdateVideoFrameScheduler();
 #endif
@@ -153,6 +158,7 @@ private:
   uint32_t cursor_state_sequence_ = 0;
   std::chrono::steady_clock::time_point next_video_frame_time_{};
   std::chrono::steady_clock::time_point last_video_frame_gap_log_time_{};
+  std::atomic<bool> video_present_queued_{false};
   SignalConnectionIndicator signal_connection_indicator_;
 #if (defined(__linux__) && !defined(__OHOS__)) && !defined(__APPLE__)
   bool use_xwayland_gui_ = false;

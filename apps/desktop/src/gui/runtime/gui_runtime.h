@@ -296,16 +296,16 @@ class GuiRuntime : protected gui_detail::GuiState {
   KeyboardController keyboard_;
   RemoteInputDispatcher remote_input_;
   std::shared_ptr<PeerEventHandler> peer_events_;
-#if defined(__APPLE__)
+  // Wakes the UI thread so a decoded frame is presented immediately instead of
+  // waiting for the next fallback timer tick. Set once by the application shell
+  // (macOS uses its display scheduler, other platforms post to the Slint event
+  // loop) and cleared during shutdown.
   std::shared_ptr<const std::function<void()>> video_frame_wakeup_;
-#endif
   void NotifyVideoFrameReady(RemoteSession& session) {
     session.frame_dirty_ = true;
-#if defined(__APPLE__)
-    if (auto wake = std::atomic_load_explicit(
-            &video_frame_wakeup_, std::memory_order_acquire))
+    if (auto wake = std::atomic_load_explicit(&video_frame_wakeup_,
+                                              std::memory_order_acquire))
       (*wake)();
-#endif
   }
 
  private:
