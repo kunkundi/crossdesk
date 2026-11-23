@@ -1722,7 +1722,7 @@ export component MainWindow inherits Window {
                 }
                 WorkbenchButton {
                     x: 16px; y: 158px; width: parent.width - 32px; height: 36px;
-                    primary: true; icon: FontAwesomeIcons.arrow-right-long;
+                    primary: true;
                     text: root.connection-pending || root.lan-connecting ? GalleryStrings.texts[56] : UiStrings.connect;
                     enabled: !root.connection-pending && !root.lan-connecting;
                     clicked => { root.submit-connection(); }
