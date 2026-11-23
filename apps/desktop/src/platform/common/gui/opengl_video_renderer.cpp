@@ -832,7 +832,7 @@ void main() {
       return;
     }
     float y = 1.16438356 * (yuv.x - 16.0 / 255.0);
-    vec2 uv = yuv.yz - vec2(0.5);
+    vec2 uv = yuv.yz - vec2(128.0 / 255.0);
     rgb = clamp(vec3(y + 1.59602678 * uv.y,
                      y - 0.39176229 * uv.x - 0.81296764 * uv.y,
                      y + 2.01723214 * uv.x),
