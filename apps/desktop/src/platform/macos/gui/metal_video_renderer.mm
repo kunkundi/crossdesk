@@ -1046,7 +1046,10 @@ bool MacMetalVideoRenderer::Attach(void* opaque_slint_view) {
     impl_->metal_layer.framebufferOnly = YES;
     impl_->metal_layer.opaque = YES;
     impl_->metal_layer.backgroundColor = NSColor.blackColor.CGColor;
-    impl_->metal_layer.maximumDrawableCount = 3;
+    // Two drawables keep one frame in the compositor while the next renders.
+    // The default of three lets a slow GPU frame sit an extra display interval
+    // before it reaches the screen, which is pure added latency for live video.
+    impl_->metal_layer.maximumDrawableCount = 2;
     impl_->metal_layer.displaySyncEnabled = YES;
 
     [requested_view.superview addSubview:impl_->video_view
