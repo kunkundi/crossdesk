@@ -378,7 +378,13 @@ enum class SlotUse {
   in_flight,
 };
 
+struct Nv12Color {
+  uint32_t full_range = 0;
+  uint32_t bt709 = 0;
+};
+
 struct FrameSlot {
+  Nv12Color color;
   id<MTLBuffer> y_buffer = nil;
   id<MTLBuffer> uv_buffer = nil;
   id<MTLTexture> y_texture = nil;
@@ -408,6 +414,7 @@ struct FrameSlot {
       uv_cv_texture = nullptr;
     }
     native_frame.Reset();
+    color = {};
     y_buffer = nil;
     uv_buffer = nil;
     y_stride = 0;
@@ -513,22 +520,28 @@ vertex RasterData nv12_vertex(uint vertex_id [[vertex_id]]) {
   return out;
 }
 
+struct Nv12Color {
+  uint full_range;
+  uint bt709;
+};
+
 fragment half4 nv12_fragment(
     RasterData in [[stage_in]],
     texture2d<float, access::sample> y_texture [[texture(0)]],
-    texture2d<float, access::sample> uv_texture [[texture(1)]]) {
+    texture2d<float, access::sample> uv_texture [[texture(1)]],
+    constant Nv12Color& color [[buffer(0)]]) {
   constexpr sampler video_sampler(coord::normalized,
                                   address::clamp_to_edge,
                                   filter::linear);
-  const float y = 1.16438356 * (y_texture.sample(video_sampler, in.texcoord).r
-                                - 16.0 / 255.0);
-  const float2 uv = uv_texture.sample(video_sampler, in.texcoord).rg - 0.5;
-  // BT.601 limited-range NV12, matching the previous libyuv NV12ToABGR/RAW
-  // path. MiniRTC's current MiniRtcVideoFrame API does not carry color metadata, so
-  // retaining the established matrix avoids a platform-only color change.
-  const float3 rgb = float3(y + 1.59602678 * uv.y,
-                            y - 0.39176229 * uv.x - 0.81296764 * uv.y,
-                            y + 2.01723214 * uv.x);
+  float y = y_texture.sample(video_sampler, in.texcoord).r;
+  float2 uv = uv_texture.sample(video_sampler, in.texcoord).rg - 128.0 / 255.0;
+  if (!color.full_range) {
+    y = (y - 16.0 / 255.0) * (255.0 / 219.0);
+    uv *= 255.0 / 224.0;
+  }
+  const float3 rgb = color.bt709
+      ? float3(y + 1.5748 * uv.y, y - .187324 * uv.x - .468124 * uv.y, y + 1.8556 * uv.x)
+      : float3(y + 1.402 * uv.y, y - .344136 * uv.x - .714136 * uv.y, y + 1.772 * uv.x);
   return half4(half3(saturate(rgb)), 1.0h);
 }
 )metal";
@@ -904,6 +917,10 @@ MacMetalVideoRenderer::SubmitResult MacMetalVideoRenderer::SubmitNativeFrame(
   target->y_texture = y_texture;
   target->uv_texture = uv_texture;
   target->native_frame = std::move(retained);
+  CFTypeRef matrix = CVBufferCopyAttachment(pixel_buffer, kCVImageBufferYCbCrMatrixKey, nullptr);
+  target->color = {pixel_format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+                   matrix && CFEqual(matrix, kCVImageBufferYCbCrMatrix_ITU_R_709_2)};
+  if (matrix) CFRelease(matrix);
   target->width = width;
   target->height = height;
   target->remote_id.assign(remote_id);
@@ -1216,6 +1233,7 @@ MacMetalVideoRenderer::RenderOutcome MacMetalVideoRenderer::RenderLatest(
 
     id<MTLTexture> y_texture = nil;
     id<MTLTexture> uv_texture = nil;
+    Nv12Color color;
     VideoLatencyFrame timing;
     {
       std::lock_guard lock(impl_->frames->mutex);
@@ -1238,6 +1256,7 @@ MacMetalVideoRenderer::RenderOutcome MacMetalVideoRenderer::RenderLatest(
         y_texture = slot.y_texture;
         uv_texture = slot.uv_texture;
         timing = slot.timing;
+        color = slot.color;
       }
     }
     if (slot_index == kFrameSlotCount) {
@@ -1289,6 +1308,7 @@ MacMetalVideoRenderer::RenderOutcome MacMetalVideoRenderer::RenderLatest(
     }
 
     [encoder setRenderPipelineState:impl_->pipeline];
+    [encoder setFragmentBytes:&color length:sizeof(color) atIndex:0];
     [encoder setFragmentTexture:y_texture atIndex:0];
     [encoder setFragmentTexture:uv_texture atIndex:1];
     [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
