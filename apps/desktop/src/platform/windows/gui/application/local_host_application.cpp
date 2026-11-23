@@ -265,7 +265,19 @@ void GuiApplication::TickLocalHost() {
             MiniRtcUpdateConnectionSettings(peer_, true, message.at("av1"),
                                              static_cast<MiniRtcTurnMode>(turn));
         } else if (op == "reconnect") {
-          if (peer_ && !HasActiveSession()) MiniRtcReconnectSignal(peer_);
+          if (!peer_ || HasActiveSession()) {
+            const char* reason = !peer_ ? "Host signaling peer is unavailable"
+                                        : "Cannot reconnect signaling during an active session";
+            LOG_WARN("Host signaling reconnect skipped: {}", reason);
+            error(reason);
+          } else if (MiniRtcReconnectSignal(peer_) != 0) {
+            LOG_WARN("Host signaling reconnect could not be started");
+            error("Could not start host signaling reconnect");
+          } else {
+            LOG_INFO("Host processed signaling reconnect request (online={})",
+                     signal_connected_.load());
+            PublishLocalHostStatus();
+          }
         } else if (op == "trust_add") {
           if (!AddTrustedDevice(ReadDevice(message))) error("Could not add trusted device");
         } else if (op == "trust_remove") {
