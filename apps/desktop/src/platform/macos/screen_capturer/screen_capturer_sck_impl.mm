@@ -24,8 +24,6 @@
 #include <mutex>
 #include <vector>
 #include "display_info.h"
-#include "hdr_video_frame.h"
-#include "sdr_color.h"
 #include <display_stream_id.h>
 #include "rd_log.h"
 #include "privacy_controller.h"
@@ -60,21 +58,6 @@ static void ReleaseCapturedPixelBuffer(void *owner) {
   if (owner) {
     CVPixelBufferRelease(static_cast<CVPixelBufferRef>(owner));
   }
-}
-
-static bool AttachmentMatches(CVPixelBufferRef buffer, CFStringRef key, CFStringRef expected,
-                              bool missing_value) {
-  CFTypeRef value = CVBufferCopyAttachment(buffer, key, nullptr);
-  if (!value) return missing_value;
-  const bool matches = CFEqual(value, expected);
-  CFRelease(value);
-  return matches;
-}
-
-static minirtc::SdrColor CapturedSdrColor(CVPixelBufferRef buffer) {
-  return {CVPixelBufferGetPixelFormatType(buffer) == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
-          AttachmentMatches(buffer, kCVImageBufferYCbCrMatrixKey,
-                            kCVImageBufferYCbCrMatrix_ITU_R_709_2, false)};
 }
 
 static int CopyCapturedPixelBufferToNv12(void *owner, uint8_t *destination,
@@ -121,7 +104,6 @@ static int CopyCapturedPixelBufferToNv12(void *owner, uint8_t *destination,
     }
   }
   CVPixelBufferUnlockBaseAddress(pixel_buffer, kCVPixelBufferLock_ReadOnly);
-  if (!result) CapturedSdrColor(pixel_buffer).Normalize(destination, width, height);
   return result;
 }
 
@@ -235,8 +217,6 @@ class API_AVAILABLE(macos(14.0)) ScreenCapturerSckImpl : public ScreenCapturer {
   SckHelper *__strong helper_ = nil;
   // Callback for returning captured frames to the caller. ScreenCaptureKit may
   // invoke it on its sample-handler queue.
-  bool last_hdr_request_ = false;
-  std::atomic<bool> hdr_configuration_failed_{false};
   cb_desktop_data _on_data = nullptr;
   // Guards some variables that may be accessed on different threads.
   std::mutex lock_;
@@ -463,7 +443,6 @@ int ScreenCapturerSckImpl::Start(bool show_cursor) {
     if (capture_requested_) return 0;
     show_cursor_ = show_cursor;
     capture_requested_ = true;
-    hdr_configuration_failed_ = false;
     stream_running_ = received_frame_ = recovery_pending_ = false;
     recovery_attempt_ = 0;
     suspended_since_ = {};
@@ -489,7 +468,6 @@ int ScreenCapturerSckImpl::SwitchTo(int monitor_index) {
                monitor_index, display_id_map_.size());
       return -1;
     }
-    if (current_display_ != display_it->second) hdr_configuration_failed_ = false;
     current_monitor_index_ = monitor_index;
     current_display_ = display_it->second;
     current_stream_id_ = MakeDisplayStreamId(monitor_index);
@@ -518,7 +496,6 @@ int ScreenCapturerSckImpl::ResetToInitialMonitor() {
       return 0;
     }
     current_monitor_index_ = target;
-    hdr_configuration_failed_ = false;
     current_display_ = target_display;
     current_stream_id_ = MakeDisplayStreamId(target);
     should_reconfigure = capture_requested_ && stream_ != nil;
@@ -715,26 +692,7 @@ void ScreenCapturerSckImpl::OnShareableContentCreated(SCShareableContent *conten
     return;
   }
 
-  const bool want_hdr = hdr_requested.load();
   config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
-  config.colorMatrix = kCGDisplayStreamYCbCrMatrix_ITU_R_601_4;
-  config.colorSpaceName = kCGColorSpaceSRGB;
-#if defined(__arm64__)
-  if (@available(macOS 15.0, *)) {
-    for (NSScreen *screen in NSScreen.screens) {
-      if ([screen.deviceDescription[@"NSScreenNumber"] unsignedIntValue] ==
-              captured_display.displayID &&
-          screen.maximumPotentialExtendedDynamicRangeColorComponentValue > 1 && want_hdr &&
-          !hdr_configuration_failed_.load()) {
-        config.captureDynamicRange = SCCaptureDynamicRangeHDRCanonicalDisplay;
-        config.pixelFormat = kCVPixelFormatType_444YpCbCr10BiPlanarFullRange;
-        config.colorSpaceName = kCGColorSpaceITUR_2100_PQ;
-        config.colorMatrix = kCVImageBufferYCbCrMatrix_ITU_R_2020;
-        break;
-      }
-    }
-  }
-#endif
   config.showsCursor = show_cursor;
   config.width = filter.contentRect.size.width * filter.pointPixelScale;
   config.height = filter.contentRect.size.height * filter.pointPixelScale;
@@ -744,7 +702,6 @@ void ScreenCapturerSckImpl::OnShareableContentCreated(SCShareableContent *conten
   std::unique_lock<std::mutex> lock(lock_);
   if (!capture_requested_ || generation != configuration_generation_) return;
   if (configuration_in_flight_) { reconfigure_pending_ = true; return; }
-  last_hdr_request_ = want_hdr;
   if (GetMacPrivacyCaptureState().revision != revision) {
     lock.unlock();
     RetryPrivacyFilter();
@@ -830,8 +787,6 @@ void ScreenCapturerSckImpl::ConfigurationFinished(SCStream* source, uint64_t gen
     const auto current = GetMacPrivacyCaptureState();
     refresh = reconfigure_pending_ || current.revision != revision;
     reconfigure_pending_ = false;
-    if (error && configuration.pixelFormat == kCVPixelFormatType_444YpCbCr10BiPlanarFullRange)
-      hdr_configuration_failed_ = true;
     if (!error) {
       stream_running_ = true;
       applied_configuration_ = configuration;
@@ -911,8 +866,6 @@ bool ScreenCapturerSckImpl::CheckCaptureHealth(uint64_t session) {
     } else if ((!stream_running_ || !received_frame_) &&
                now - capture_attempt_started_ >= kCaptureStartTimeout) {
       failure = "ScreenCaptureKit did not deliver its first frame";
-    } else if (!configuration_in_flight_ && hdr_requested.load() != last_hdr_request_) {
-      retry = true;
     } else if (suspended_since_ != Clock::time_point{} &&
                now - suspended_since_ >= kCaptureStartTimeout) {
       failure = "ScreenCaptureKit frame updates remained suspended";
@@ -950,11 +903,11 @@ void ScreenCapturerSckImpl::OnNewCVPixelBuffer(SCStream* source,
   const size_t width = CVPixelBufferGetWidth(pixelBuffer);
   const size_t height = CVPixelBufferGetHeight(pixelBuffer);
   const OSType pixel_format = CVPixelBufferGetPixelFormatType(pixelBuffer);
-  if (width == 0 || height == 0 || (width & 1U) != 0 || (height & 1U) != 0 ||
-      !CVPixelBufferIsPlanar(pixelBuffer) || CVPixelBufferGetPlaneCount(pixelBuffer) < 2 ||
+  if (width == 0 || height == 0 || (width & 1U) != 0 ||
+      (height & 1U) != 0 || !CVPixelBufferIsPlanar(pixelBuffer) ||
+      CVPixelBufferGetPlaneCount(pixelBuffer) < 2 ||
       (pixel_format != kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange &&
-       pixel_format != kCVPixelFormatType_420YpCbCr8BiPlanarFullRange &&
-       pixel_format != kCVPixelFormatType_444YpCbCr10BiPlanarFullRange)) {
+       pixel_format != kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)) {
     LOG_ERROR("Invalid CVPixelBuffer: width={}, height={}, format={}, planes={}",
               width, height, pixel_format,
               CVPixelBufferGetPlaneCount(pixelBuffer));
@@ -998,57 +951,6 @@ void ScreenCapturerSckImpl::OnNewCVPixelBuffer(SCStream* source,
     }
   }
 
-  if (pixel_format == kCVPixelFormatType_444YpCbCr10BiPlanarFullRange) {
-    if (!AttachmentMatches(pixelBuffer, kCVImageBufferTransferFunctionKey,
-                           kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ, true) ||
-        !AttachmentMatches(pixelBuffer, kCVImageBufferYCbCrMatrixKey,
-                           kCVImageBufferYCbCrMatrix_ITU_R_2020, true) ||
-        !AttachmentMatches(pixelBuffer, kCVImageBufferColorPrimariesKey,
-                           kCVImageBufferColorPrimaries_ITU_R_2020, true)) {
-      if (!hdr_configuration_failed_.exchange(true)) RetryPrivacyFilter();
-      return;
-    }
-    auto hdr = minirtc::HdrVideoFrame::Create(static_cast<int>(width), static_cast<int>(height));
-    if (!hdr ||
-        CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly) != kCVReturnSuccess)
-      return;
-    const auto *luma =
-        static_cast<const uint16_t *>(CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0));
-    const auto *uv =
-        static_cast<const uint16_t *>(CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1));
-    const auto y_stride = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0) / 2;
-    const auto uv_stride = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1) / 2;
-    bool valid = luma && uv && y_stride >= width && uv_stride >= width * 2;
-    if (valid) {
-      for (size_t y = 0; y < height; ++y)
-        for (size_t x = 0; x < width; ++x)
-          hdr->Y()[y * width + x] = 64 + ((luma[y * y_stride + x] >> 6) * 876 + 511) / 1023;
-      for (size_t y = 0; y < height; y += 2)
-        for (size_t x = 0; x < width; x += 2) {
-          auto c = uv + y * uv_stride + x * 2;
-          auto chroma = [&](size_t i) {
-            int sum = (c[i] >> 6) + (c[i + 2] >> 6) + (c[uv_stride + i] >> 6) +
-                      (c[uv_stride + i + 2] >> 6);
-            return static_cast<uint16_t>(64 + (sum * 896 + 2046) / 4092);
-          };
-          hdr->U()[(y / 2) * (width / 2) + x / 2] = chroma(0);
-          hdr->V()[(y / 2) * (width / 2) + x / 2] = chroma(1);
-        }
-    }
-    CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
-    if (valid)
-      callback(nullptr, static_cast<int>(required_size), width, height, stream_id.c_str(),
-               hdr->Descriptor());
-    return;
-  }
-
-  if (CapturedSdrColor(pixelBuffer).NeedsConversion()) {
-    std::vector<uint8_t> packed(required_size);
-    if (CopyCapturedPixelBufferToNv12(pixelBuffer, packed.data(), required_size) == 0)
-      callback(packed.data(), static_cast<int>(required_size), width, height, stream_id.c_str(),
-               nullptr);
-    return;
-  }
   MiniRtcNativeVideoFrame native_frame{};
   native_frame.struct_size = sizeof(native_frame);
   native_frame.type = MiniRtcNativeVideoFrameCVPixelBuffer;

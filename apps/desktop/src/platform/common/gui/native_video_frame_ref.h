@@ -74,10 +74,6 @@ inline const MiniRtcNativeVideoFrame *GetOpenGlNativeFrame(
       native->height > static_cast<uint32_t>(std::numeric_limits<int>::max())) {
     return nullptr;
   }
-#ifdef _WIN32
-  if (native->type == MiniRtcNativeVideoFrameHdr10)
-    return native->payload.hdr10.i010 ? native : nullptr;
-#endif
   if (native->type == MiniRtcNativeVideoFrameCpuNv12) {
     return native->payload.cpu_nv12.y_plane &&
                    native->payload.cpu_nv12.uv_plane &&

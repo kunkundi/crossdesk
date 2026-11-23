@@ -76,9 +76,6 @@ public:
 
 // Exactly one factory implementation is linked for the target platform.
 std::unique_ptr<VideoRenderer> CreateVideoRenderer();
-#if defined(_WIN32) || defined(__APPLE__)
-bool HasHdrVideoDisplay();
-#endif
 
 }  // namespace crossdesk
 

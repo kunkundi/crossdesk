@@ -28,10 +28,6 @@ public:
   // These methods must run while Slint's OpenGL context is current, from the
   // RenderingSetup and RenderingTeardown notifier states respectively.
   bool Setup();
-#ifdef _WIN32
-  void SetHdrWindow(void* hwnd);
-  void PresentHdrControls();
-#endif
   void Teardown();
   bool IsReady() const override;
   bool IsActive() const override;

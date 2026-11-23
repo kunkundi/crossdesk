@@ -28,7 +28,6 @@ CROSSDESK_WGC_PLUGIN_API void CrossDeskDestroyWgcCapturer(
 CROSSDESK_WGC_PLUGIN_API int CrossDeskSetWgcCursorCapture(
     crossdesk::ScreenCapturer* capturer, bool enabled);
 CROSSDESK_WGC_PLUGIN_API bool CrossDeskWgcFrameCapturesCursor();
-CROSSDESK_WGC_PLUGIN_API void CrossDeskSetWgcHdrRequested(bool requested);
 }
 
 #endif

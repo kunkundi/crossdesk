@@ -11,8 +11,6 @@
 #include "cursor_frame_compositor.h"
 #include "display_label.h"
 #include "dxgi_cursor_state.h"
-#include "hdr_display.h"
-#include "scrgb_frame.h"
 #include "libyuv.h"
 #include "rd_log.h"
 #include "windows_thread_dpi.h"
@@ -267,12 +265,16 @@ bool ScreenCapturerDxgi::CreateDuplicationForMonitor(int monitor_index) {
   d3d_context_ = std::move(output_context);
   d3d_device_ = std::move(output_device);
 
-  auto* output = outputs_[monitor_index].Get();
-  hdr_output_ = IsHdrOutput(output);
-  if (hdr_output_)
-    sdr_white_nits_ = SdrWhiteNits(static_cast<HMONITOR>(display_info_list_[monitor_index].handle));
+  Microsoft::WRL::ComPtr<IDXGIOutput1> output1;
+  hr = outputs_[monitor_index]->QueryInterface(
+      IID_PPV_ARGS(output1.GetAddressOf()));
+  if (FAILED(hr)) {
+    LOG_ERROR("DXGI: Query IDXGIOutput1 failed, hr={}", (int)hr);
+    return false;
+  }
+
   duplication_.Reset();
-  hr = DuplicateDesktop(output, d3d_device_.Get(), hdr_output_, duplication_.GetAddressOf());
+  hr = output1->DuplicateOutput(d3d_device_.Get(), duplication_.GetAddressOf());
   if (FAILED(hr)) {
     LOG_ERROR("DXGI: DuplicateOutput failed, hr={}", (int)hr);
     return false;
@@ -334,13 +336,6 @@ bool ScreenCapturerDxgi::ConvertFrame(int frame_monitor, bool* cursor_embedded,
   int stride = static_cast<int>(mapped.RowPitch);
   int logical_width = static_cast<int>(src_desc.Width);
   int logical_height = static_cast<int>(src_desc.Height);
-  const bool fp16 = src_desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT;
-  ScRgbFrame linear{pixels, mapped.RowPitch, logical_width, logical_height};
-  if (fp16) {
-    linear.CopyBgra(sdr_white_nits_, sdr_bgra_);
-    pixels = sdr_bgra_.data();
-    stride = logical_width * 4;
-  }
   libyuv::RotationMode rotation = libyuv::kRotate0;
   switch (rotation_) {
     case DXGI_MODE_ROTATION_ROTATE90:
@@ -377,8 +372,6 @@ bool ScreenCapturerDxgi::ConvertFrame(int frame_monitor, bool* cursor_embedded,
     return false;
   }
 
-  const auto* original = pixels;
-  const int original_stride = stride;
   if (frame_monitor >= 0 &&
       frame_monitor < static_cast<int>(display_info_list_.size())) {
     const auto& display = display_info_list_[frame_monitor];
@@ -406,11 +399,6 @@ bool ScreenCapturerDxgi::ConvertFrame(int frame_monitor, bool* cursor_embedded,
     }
   }
 
-  hdr_frame_ =
-      fp16 && hdr_requested.load(std::memory_order_relaxed)
-          ? linear.ToHdr10(even_width, even_height, static_cast<int>(rotation), sdr_white_nits_,
-                           original, original_stride, pixels == original ? nullptr : pixels)
-          : nullptr;
   int nv12_size = even_width * even_height * 3 / 2;
   if (!nv12_frame_ || nv12_width_ != even_width ||
       nv12_height_ != even_height) {
@@ -462,13 +450,7 @@ void ScreenCapturerDxgi::CaptureLoop() {
     if (refresh || now >= next_topology_check) {
       next_topology_check = now + std::chrono::milliseconds(500);
       const bool changed = EnumerateDisplays();
-      const int selected = monitor_index_.load();
-      const bool hdr = selected >= 0 && selected < static_cast<int>(outputs_.size()) &&
-                       IsHdrOutput(outputs_[selected].Get());
-      const float white =
-          hdr ? SdrWhiteNits(static_cast<HMONITOR>(display_info_list_[selected].handle))
-              : sdr_white_nits_;
-      if (changed || refresh || !duplication_ || hdr != hdr_output_ || white != sdr_white_nits_) {
+      if (changed || refresh || !duplication_) {
         cached_frame_valid = false;
         ReleaseDuplication();
         CreateDuplicationForMonitor(monitor_index_.load());
@@ -493,19 +475,16 @@ void ScreenCapturerDxgi::CaptureLoop() {
         return;
       // Recompose from the clean staging texture while showing a cursor, or
       // once after disabling it. Never replay a baked-in stale cursor.
-      const bool hdr_changed = hdr_output_ && hdr_requested.load(std::memory_order_relaxed) !=
-                                                  static_cast<bool>(hdr_frame_);
-      if ((show_cursor_.load(std::memory_order_relaxed) || cached_cursor_embedded || hdr_changed) &&
+      if ((show_cursor_.load(std::memory_order_relaxed) || cached_cursor_embedded) &&
           !ConvertFrame(cached_monitor, &cached_cursor_embedded, cursor_compositor)) {
         cached_frame_valid = false;
         return;
       }
       const auto stream_id = MakeDisplayStreamId(cached_monitor);
-      auto hdr_frame = hdr_frame_;
       capture_lock.unlock();
       CapturedCursorFrameScope cursor_scope(cached_cursor_embedded);
-      callback_(nv12_frame_, nv12_width_ * nv12_height_ * 3 / 2, nv12_width_, nv12_height_,
-                stream_id.c_str(), hdr_frame ? hdr_frame->Descriptor() : nullptr);
+      callback_(nv12_frame_, nv12_width_ * nv12_height_ * 3 / 2, nv12_width_,
+                nv12_height_, stream_id.c_str(), nullptr);
     };
     DXGI_OUTDUPL_FRAME_INFO frame_info{};
     Microsoft::WRL::ComPtr<IDXGIResource> desktop_resource;
@@ -574,16 +553,6 @@ void ScreenCapturerDxgi::CaptureLoop() {
     D3D11_TEXTURE2D_DESC src_desc{};
     acquired_tex->GetDesc(&src_desc);
 
-    D3D11_TEXTURE2D_DESC old{};
-    if (staging_) staging_->GetDesc(&old);
-    if (old.Format != src_desc.Format || old.Width != src_desc.Width ||
-        old.Height != src_desc.Height)
-      staging_.Reset();
-    if (src_desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT &&
-        src_desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM) {
-      ReleaseAcquiredFrame();
-      continue;
-    }
     if (!staging_) {
       D3D11_TEXTURE2D_DESC staging_desc = src_desc;
       staging_desc.Usage = D3D11_USAGE_STAGING;
@@ -629,13 +598,12 @@ void ScreenCapturerDxgi::CaptureLoop() {
       next_topology_check = std::chrono::steady_clock::now();
       continue;
     }
-    auto hdr_frame = hdr_frame_;
     capture_lock.unlock();
 
     if (converted && frame_monitor == monitor_index_.load() && callback_) {
       CapturedCursorFrameScope cursor_scope(cursor_embedded);
-      callback_(nv12_frame_, nv12_width_ * nv12_height_ * 3 / 2, nv12_width_, nv12_height_,
-                stream_id.c_str(), hdr_frame ? hdr_frame->Descriptor() : nullptr);
+      callback_(nv12_frame_, nv12_width_ * nv12_height_ * 3 / 2, nv12_width_,
+                nv12_height_, stream_id.c_str(), nullptr);
       cached_cursor_embedded = cursor_embedded;
       cached_monitor = frame_monitor;
       cached_frame_valid = true;

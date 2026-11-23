@@ -29,18 +29,6 @@ option("CROSSDESK_BUILD_CLI")
 option_end()
 
 local build_desktop = desktop_platform and not is_config("CROSSDESK_BUILD_DESKTOP", false)
--- HDR is carried by AV1 only. miniRTC's optional H.264 High 10 backend needs a
--- software x264 encoder plus libavcodec for decoding, and on Windows both are
--- built through msys2 (autoconf + pacman), which makes a plain `xmake b` depend
--- on a whole second toolchain. AV1 HDR is already complete on both sides
--- (SVT-AV1 10-bit encode, dav1d 10-bit decode). Pinned explicitly rather than
--- dropped so the option cannot fall back to its permissive default: a
--- controller reports H.264 HDR support from MiniRtcSupportsH264High10(), so
--- disabling the backend here also removes the advertisement, and an H.264
--- stream over an HDR display degrades to tonemapped SDR.
--- Restoring H.264 HDR means flipping this back to build_desktop in a build
--- environment that has msys2 (for x264 and libavcodec) available.
-set_config("MINIRTC_ENABLE_H264_HIGH10", false)
 local build_cli = has_config("CROSSDESK_BUILD_CLI")
 if build_cli and not desktop_platform then
     raise("CrossDesk CLI supports Windows, macOS and Linux")
