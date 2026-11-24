@@ -387,6 +387,7 @@ function setup_targets()
             add_packages("libyuv", "nlohmann_json")
             add_files("apps/desktop/src/screen_capturer/captured_nv12_frame.cpp")
             add_files("apps/desktop/src/platform/windows/screen_capturer/screen_capturer_dxgi.cpp",
+                "apps/desktop/src/platform/windows/screen_capturer/dxgi_nv12_frames.cpp",
                 "apps/desktop/src/platform/windows/screen_capturer/screen_capturer_gdi.cpp",
                 "apps/desktop/src/platform/windows/screen_capturer/screen_capturer_win.cpp",
                 "apps/desktop/src/platform/windows/screen_capturer/screen_capturer_factory.cpp")

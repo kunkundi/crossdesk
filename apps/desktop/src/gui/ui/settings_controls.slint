@@ -167,3 +167,21 @@ export component SettingsToggleRow inherits SettingsRow {
         clicked => { root.clicked(); }
     }
 }
+
+export component SettingsHintToggleRow inherits TouchArea {
+    in property <string> label;
+    in property <bool> divider: true;
+    in-out property <bool> checked;
+    callback hover-changed(bool, length, length);
+    height: 36px;
+    function update-hint() {
+        root.hover-changed(self.has-hover, self.absolute-position.x + self.mouse-x,
+            self.absolute-position.y + self.mouse-y);
+    }
+    changed has-hover => { self.update-hint(); }
+    pointer-event(event) => { self.update-hint(); }
+    SettingsToggleRow {
+        width: parent.width; label: root.label; divider: root.divider;
+        checked <=> root.checked;
+    }
+}

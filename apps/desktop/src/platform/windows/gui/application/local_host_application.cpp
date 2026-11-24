@@ -263,9 +263,18 @@ void GuiApplication::TickLocalHost() {
           const auto turn = message.at("turn").get<int>();
           const int codec = message.value("codec", message.value("av1", false) ? 1 : 0);
           if (peer_ && turn >= 0 && turn <= 3 && codec >= 0 &&
-              codec <= static_cast<int>(MiniRtcVideoCodec::H265))
-            MiniRtcUpdateConnectionSettingsWithCodec(peer_, true,
-                static_cast<MiniRtcVideoCodec>(codec), static_cast<MiniRtcTurnMode>(turn));
+              codec <= static_cast<int>(MiniRtcVideoCodec::H265)) {
+            MiniRtcConnectionParams params{};
+            params.video_codec = static_cast<MiniRtcVideoCodec>(codec);
+            params.hardware_acceleration = message.value("hardware_acceleration", true);
+            params.turn_mode = static_cast<MiniRtcTurnMode>(turn);
+            params.desktop_encoding_mode = config_center_->GetDesktopEncodingMode();
+            if (message.contains("disable_desktop_realtime_rate_control")) {
+              params.desktop_encoding_mode = message.at("disable_desktop_realtime_rate_control").get<bool>()
+                  ? MiniRtcDesktopEncodingMode::EncoderDefault : MiniRtcDesktopEncodingMode::LowLoad;
+            }
+            MiniRtcUpdateConnectionParams(peer_, &params);
+          }
         } else if (op == "reconnect") {
           if (!peer_ || HasActiveSession()) {
             const char* reason = !peer_ ? "Host signaling peer is unavailable"

@@ -127,6 +127,12 @@ int ConfigCenter::Load() {
   // Capture always follows DXGI -> WGC -> GDI; discard old forced choices.
   persist_config_migration |= ini_->Delete(section_, "screen_capture_method");
 
+  desktop_realtime_rate_control_.store(ini_->GetBoolValue(
+      section_, "desktop_realtime_rate_control", ini_->GetBoolValue(section_, "nvenc_single_pass", true)));
+  if (ini_->Delete(section_, "nvenc_single_pass")) {
+    ini_->SetBoolValue(section_, "desktop_realtime_rate_control", desktop_realtime_rate_control_.load());
+    persist_config_migration = true;
+  }
   const long codec = ini_->GetLongValue(section_, "video_encode_format", 0);
   video_encode_format_ = codec >= 0 && codec <= static_cast<long>(VIDEO_ENCODE_FORMAT::H265)
       ? static_cast<VIDEO_ENCODE_FORMAT>(codec) : VIDEO_ENCODE_FORMAT::H264;
@@ -311,6 +317,7 @@ int ConfigCenter::Save() {
   ini_->SetValue(section_, "connection_mode",
                 connection_mode_ == CONNECTION_MODE::DIRECT_IP ? "ip" : "id");
   ini_->SetBoolValue(section_, "enable_ip_direct", enable_ip_direct_);
+  ini_->SetBoolValue(section_, "desktop_realtime_rate_control", desktop_realtime_rate_control_.load());
   ini_->SetLongValue(section_, "video_encode_format",
                     static_cast<long>(video_encode_format_));
   ini_->SetLongValue(section_, "turn_mode", static_cast<long>(turn_mode_));
@@ -372,6 +379,10 @@ std::string ConfigCenter::ExportSharedHostConfig() const {
   host.SetLongValue(section_, "relay_start_bitrate_bps", relay_start_bitrate_bps_);
   host.SetBoolValue(section_, "disable_receiver_padding_probing",
                     disable_receiver_padding_probing_);
+  const bool realtime_rc = desktop_realtime_rate_control_.load();
+  host.SetBoolValue(section_, "desktop_realtime_rate_control", realtime_rc);
+  // Older persistent hosts still read the NVIDIA-only spelling.
+  host.SetBoolValue(section_, "nvenc_single_pass", realtime_rc);
   host.SetLongValue(section_, "video_encode_format", static_cast<long>(video_encode_format_));
   host.SetBoolValue(section_, "trusted_devices_only", trusted_devices_only_.load());
   host.SetBoolValue(section_, "lock_on_disconnect", lock_on_disconnect_.load());
@@ -392,6 +403,8 @@ int ConfigCenter::ApplySharedHostConfig(const std::string& contents) {
   const std::string server = host.GetValue(section_, "signal_server_host", "");
   const long port = host.GetLongValue(section_, "signal_server_port", 0);
   const long turn = host.GetLongValue(section_, "turn_mode", static_cast<long>(turn_mode_));
+  const bool realtime_rc = host.GetBoolValue(section_, "desktop_realtime_rate_control",
+      host.GetBoolValue(section_, "nvenc_single_pass", desktop_realtime_rate_control_.load()));
   const long codec = host.GetLongValue(section_, "video_encode_format", static_cast<long>(video_encode_format_));
   const int direct_bps = ReadStartingBitrate(
       host, section_, "direct_start_bitrate_bps", kDefaultDirectStartBitrateBps);
@@ -409,6 +422,7 @@ int ConfigCenter::ApplySharedHostConfig(const std::string& contents) {
   if (StoreValues({{"enable_self_hosted", self_hosted ? "true" : "false"},
                    {"signal_server_host", server}, {"signal_server_port", std::to_string(port)},
                    {"turn_mode", std::to_string(turn)}, {"video_encode_format", std::to_string(codec)},
+                   {"desktop_realtime_rate_control", realtime_rc ? "true" : "false"},
                    {"direct_start_bitrate_bps", std::to_string(direct_bps)},
                    {"relay_start_bitrate_bps", std::to_string(relay_bps)},
                    {"disable_receiver_padding_probing",
@@ -422,6 +436,7 @@ int ConfigCenter::ApplySharedHostConfig(const std::string& contents) {
   direct_start_bitrate_bps_ = direct_bps;
   relay_start_bitrate_bps_ = relay_bps;
   disable_receiver_padding_probing_ = disable_receiver_padding_probing;
+  desktop_realtime_rate_control_.store(realtime_rc);
   video_encode_format_ = static_cast<VIDEO_ENCODE_FORMAT>(codec);
   trusted_devices_only_.store(trusted);
   lock_on_disconnect_.store(lock);
@@ -462,6 +477,13 @@ int ConfigCenter::SetIpDirectEnabled(bool enabled) {
     return -1;
   enable_ip_direct_ = enabled;
   connection_mode_ = mode;
+  return 0;
+}
+
+int ConfigCenter::SetDesktopRealtimeRateControl(bool enabled) {
+  if (desktop_realtime_rate_control_.load() == enabled) return 0;
+  if (StoreValues({{"desktop_realtime_rate_control", enabled ? "true" : "false"}}) != 0) return -1;
+  desktop_realtime_rate_control_.store(enabled);
   return 0;
 }
 

@@ -143,6 +143,8 @@ inline int ApplyMainWindowStrings(
       Text(localization::confirm_delete_connection[language]));
   strings.set_language(Text(localization::language[language]));
   strings.set_codec(Text(localization::video_encode_format[language]));
+  strings.set_desktop_rate_control(Text(localization::desktop_rate_control[language]));
+  strings.set_desktop_rate_control_hint(Text(localization::desktop_rate_control_hint[language]));
   strings.set_pause_video_when_minimized(
       Text(localization::pause_video_when_minimized[language]));
   strings.set_pause_video_when_minimized_hint(

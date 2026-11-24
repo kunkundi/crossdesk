@@ -11,6 +11,7 @@
 #include "cursor_frame_compositor.h"
 #include "display_label.h"
 #include "dxgi_cursor_state.h"
+#include "dxgi_nv12_frames.h"
 #include "libyuv.h"
 #include "rd_log.h"
 #include "windows_thread_dpi.h"
@@ -19,6 +20,10 @@
 namespace crossdesk {
 
 namespace {
+// Keep static streams available to joining viewers and inside MiniRTC's
+// 100 ms active-stream window. Actual presents and cursor changes bypass this.
+constexpr auto kStaticRefreshInterval = std::chrono::milliseconds(65);
+
 std::wstring GetOutputDeviceId(const std::wstring& device_name) {
   DISPLAY_DEVICEW device{sizeof(device)};
   if (!EnumDisplayDevicesW(device_name.c_str(), 0, &device,
@@ -28,6 +33,33 @@ std::wstring GetOutputDeviceId(const std::wstring& device_name) {
   return device.DeviceID;
 }
 }  // namespace
+
+struct ScreenCapturerDxgi::FrameCursor {
+  CURSORINFO info{sizeof(CURSORINFO)};
+  bool draw = false;
+  bool already_embedded = false;
+
+  FrameCursor() = default;
+  FrameCursor(const DisplayInfo& display, bool show_cursor) {
+    if (!GetCursorInfo(&info) || !(info.flags & CURSOR_SHOWING)) return;
+    const bool separate =
+        SharedDxgiCursorState().ShouldDrawCursor(true, display.handle);
+    const RECT bounds{display.left, display.top, display.right, display.bottom};
+    draw = show_cursor && separate &&
+           (PtInRect(&bounds, info.ptScreenPos) ||
+            CursorIntersectsCapture(info, display.left, display.top, display.width,
+                                    display.height));
+    already_embedded = !separate &&
+        MonitorFromPoint(info.ptScreenPos, MONITOR_DEFAULTTONULL) == display.handle;
+  }
+
+  bool SameImageAs(const FrameCursor& other) const {
+    return already_embedded == other.already_embedded && draw == other.draw &&
+           (!draw || (info.hCursor == other.info.hCursor &&
+                      info.ptScreenPos.x == other.info.ptScreenPos.x &&
+                      info.ptScreenPos.y == other.info.ptScreenPos.y));
+  }
+};
 
 ScreenCapturerDxgi::ScreenCapturerDxgi() {}
 ScreenCapturerDxgi::~ScreenCapturerDxgi() {
@@ -284,6 +316,13 @@ bool ScreenCapturerDxgi::CreateDuplicationForMonitor(int monitor_index) {
   DXGI_OUTDUPL_DESC desc{};
   duplication_->GetDesc(&desc);
   rotation_ = desc.Rotation;
+#if USE_CUDA
+  if (rotation_ == DXGI_MODE_ROTATION_IDENTITY || rotation_ == DXGI_MODE_ROTATION_UNSPECIFIED) {
+    DXGI_ADAPTER_DESC adapter{};
+    if (SUCCEEDED(output_adapter->GetDesc(&adapter)) && adapter.VendorId == 0x10DE)
+      gpu_frames_ = std::make_unique<DxgiNv12Frames>(d3d_device_.Get());
+  }
+#endif
   DXGI_ADAPTER_DESC adapter_desc{};
   output_adapter->GetDesc(&adapter_desc);
   DXGI_OUTPUT_DESC output_desc{};
@@ -304,6 +343,7 @@ void ScreenCapturerDxgi::ReleaseDuplication() {
   // Only the live duplication owns the shared pointer-plane state.
   if (duplication_) SharedDxgiCursorState().Reset();
   ++duplication_generation_;
+  gpu_frames_.reset();
   staging_.Reset();
   ReleaseAcquiredFrame();
   duplication_.Reset();
@@ -319,7 +359,24 @@ HRESULT ScreenCapturerDxgi::ReleaseAcquiredFrame() {
   return result;
 }
 
-bool ScreenCapturerDxgi::ConvertFrame(int frame_monitor, bool* cursor_embedded,
+bool ScreenCapturerDxgi::StageTexture(ID3D11Texture2D* texture) {
+  D3D11_TEXTURE2D_DESC desc{}, existing{};
+  texture->GetDesc(&desc);
+  if (staging_) staging_->GetDesc(&existing);
+  if (!staging_ || existing.Width != desc.Width || existing.Height != desc.Height ||
+      existing.Format != desc.Format) {
+    staging_.Reset();
+    desc.Usage = D3D11_USAGE_STAGING;
+    desc.BindFlags = desc.MiscFlags = 0;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    if (FAILED(d3d_device_->CreateTexture2D(&desc, nullptr, &staging_))) return false;
+  }
+  d3d_context_->CopyResource(staging_.Get(), texture);
+  return true;
+}
+
+bool ScreenCapturerDxgi::ConvertFrame(int frame_monitor, const FrameCursor& cursor,
+                                      bool* cursor_embedded,
                                       CursorFrameCompositor& compositor) {
   *cursor_embedded = false;
   if (!staging_) return false;
@@ -372,30 +429,15 @@ bool ScreenCapturerDxgi::ConvertFrame(int frame_monitor, bool* cursor_embedded,
     return false;
   }
 
-  if (frame_monitor >= 0 &&
-      frame_monitor < static_cast<int>(display_info_list_.size())) {
+  *cursor_embedded = cursor.already_embedded;
+  if (cursor.draw) {
     const auto& display = display_info_list_[frame_monitor];
-    CURSORINFO cursor{};
-    cursor.cbSize = sizeof(cursor);
-    if (GetCursorInfo(&cursor)) {
-      const bool visible = (cursor.flags & CURSOR_SHOWING) != 0;
-      const bool should_draw = SharedDxgiCursorState().ShouldDrawCursor(
-          visible, display.handle);
-      // show_cursor controls our extra composition, not cursors the OS has
-      // already put in the texture. Publish that distinction for native
-      // controllers as well, so they do not draw a second cursor.
-      *cursor_embedded = visible && !should_draw &&
-          MonitorFromPoint(cursor.ptScreenPos, MONITOR_DEFAULTTONULL) ==
-              display.handle;
-      if (show_cursor_.load(std::memory_order_relaxed) && should_draw) {
-        if (const auto* composited =
-                compositor.Draw(pixels, stride, even_width, even_height, cursor,
-                                display.left, display.top)) {
-          pixels = composited;
-          stride = even_width * 4;
-          *cursor_embedded = true;
-        }
-      }
+    if (const auto* composited =
+            compositor.Draw(pixels, stride, even_width, even_height,
+                            cursor.info, display.left, display.top)) {
+      pixels = composited;
+      stride = even_width * 4;
+      *cursor_embedded = true;
     }
   }
 
@@ -423,6 +465,20 @@ void ScreenCapturerDxgi::CaptureLoop() {
   const int timeout_ms = (std::max)(1, 1000 / (std::max)(1, fps_));
   bool cached_frame_valid = false;
   bool cached_cursor_embedded = false;
+  FrameCursor cached_cursor;
+  Microsoft::WRL::ComPtr<DxgiNv12Frame> cached_gpu;
+  const auto deliver = [&](const std::string& stream_id, bool embedded) {
+    CapturedCursorFrameScope cursor_scope(embedded);
+    if (cached_gpu) {
+      const auto* frame = cached_gpu->Descriptor();
+      callback_(nullptr, frame->width * frame->height * 3 / 2, frame->width,
+                frame->height, stream_id.c_str(), frame);
+    } else {
+      callback_(nv12_frame_, nv12_width_ * nv12_height_ * 3 / 2, nv12_width_,
+                nv12_height_, stream_id.c_str(), nullptr);
+    }
+  };
+  std::chrono::steady_clock::time_point last_delivery{};
   int cached_monitor = -1;
   uint64_t cached_generation = 0;
   auto next_topology_check = std::chrono::steady_clock::now();
@@ -430,6 +486,7 @@ void ScreenCapturerDxgi::CaptureLoop() {
   auto cursor_revision = SharedDxgiCursorState().CursorVisibilityRevision();
   while (running_) {
     if (paused_) {
+      cached_gpu.Reset();
       cached_frame_valid = false;
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
       continue;
@@ -439,6 +496,11 @@ void ScreenCapturerDxgi::CaptureLoop() {
     // replace them in SwitchTo while AcquireNextFrame/Map is using them.
     std::unique_lock capture_lock(switch_mutex_);
     if (paused_ || !running_) continue;
+    if (cached_generation != duplication_generation_) {
+      // A switched or lost output may never deliver another present.
+      cached_gpu.Reset();
+      cached_frame_valid = false;
+    }
     const auto now = std::chrono::steady_clock::now();
     const auto revision = SharedDxgiCursorState().CursorVisibilityRevision();
     // An IDD can bake the pointer into the last desktop texture. Retire that
@@ -469,22 +531,39 @@ void ScreenCapturerDxgi::CaptureLoop() {
     }
 
     const int frame_monitor = monitor_index_.load();
-    const auto deliver_cached = [&] {
+    const auto read_cursor = [&] {
+      return FrameCursor(display_info_list_[frame_monitor],
+                         show_cursor_.load(std::memory_order_relaxed));
+    };
+    const auto deliver_cached = [&](bool pointer_shape_changed) {
       if (!cached_frame_valid || cached_generation != duplication_generation_ ||
-          cached_monitor != monitor_index_.load() || !callback_ || !nv12_frame_)
+          cached_monitor != monitor_index_.load() || !callback_)
         return;
-      // Recompose from the clean staging texture while showing a cursor, or
-      // once after disabling it. Never replay a baked-in stale cursor.
-      if ((show_cursor_.load(std::memory_order_relaxed) || cached_cursor_embedded) &&
-          !ConvertFrame(cached_monitor, &cached_cursor_embedded, cursor_compositor)) {
+      const auto cursor = read_cursor();
+      const bool redraw = !cursor.SameImageAs(cached_cursor) ||
+                          (cursor.draw && pointer_shape_changed);
+      const auto delivery_time = std::chrono::steady_clock::now();
+      if (!redraw && delivery_time - last_delivery < kStaticRefreshInterval)
+        return;
+      if (cached_gpu && redraw && cursor.draw) {
+        // Cursor composition must start from the clean BGRA desktop, even on
+        // a pointer-only acquire. The next desktop present can use NV12 again.
+        if (!StageTexture(gpu_frames_->CleanDesktop())) return;
+        cached_gpu.Reset();
+      }
+      if (cached_gpu) cached_cursor_embedded = cursor.already_embedded;
+      // Retry a failed GDI cursor draw on the next refresh.
+      if (!cached_gpu && (redraw || (cursor.draw && !cached_cursor_embedded)) &&
+          !ConvertFrame(cached_monitor, cursor, &cached_cursor_embedded,
+                        cursor_compositor)) {
         cached_frame_valid = false;
         return;
       }
+      cached_cursor = cursor;
+      last_delivery = delivery_time;
       const auto stream_id = MakeDisplayStreamId(cached_monitor);
       capture_lock.unlock();
-      CapturedCursorFrameScope cursor_scope(cached_cursor_embedded);
-      callback_(nv12_frame_, nv12_width_ * nv12_height_ * 3 / 2, nv12_width_,
-                nv12_height_, stream_id.c_str(), nullptr);
+      deliver(stream_id, cached_cursor_embedded);
     };
     DXGI_OUTDUPL_FRAME_INFO frame_info{};
     Microsoft::WRL::ComPtr<IDXGIResource> desktop_resource;
@@ -493,7 +572,7 @@ void ScreenCapturerDxgi::CaptureLoop() {
     if (hr == DXGI_ERROR_WAIT_TIMEOUT) {
       // DXGI explicitly reports an unchanged desktop. Re-emit only a frame
       // successfully acquired for this monitor to keep delivering static frames.
-      deliver_cached();
+      deliver_cached(false);
       continue;
     }
     // Never replay a cached image after an acquisition/conversion failure or
@@ -531,7 +610,7 @@ void ScreenCapturerDxgi::CaptureLoop() {
         ReleaseDuplication();
         next_topology_check = std::chrono::steady_clock::now();
       } else {
-        deliver_cached();
+        deliver_cached(frame_info.PointerShapeBufferSize != 0);
       }
       continue;
     }
@@ -550,29 +629,13 @@ void ScreenCapturerDxgi::CaptureLoop() {
       continue;
     }
 
-    D3D11_TEXTURE2D_DESC src_desc{};
-    acquired_tex->GetDesc(&src_desc);
-
-    if (!staging_) {
-      D3D11_TEXTURE2D_DESC staging_desc = src_desc;
-      staging_desc.Usage = D3D11_USAGE_STAGING;
-      staging_desc.BindFlags = 0;
-      staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-      staging_desc.MiscFlags = 0;
-      hr = d3d_device_->CreateTexture2D(&staging_desc, nullptr,
-                                        staging_.GetAddressOf());
-      if (FAILED(hr)) {
-        LOG_ERROR("DXGI: CreateTexture2D staging failed, hr={}", (int)hr);
-        ReleaseAcquiredFrame();
-        continue;
-      }
-    }
-
-    d3d_context_->CopyResource(staging_.Get(), acquired_tex.Get());
-
-    bool cursor_embedded = false;
-    const bool converted =
-        ConvertFrame(frame_monitor, &cursor_embedded, cursor_compositor);
+    const auto cursor = read_cursor();
+    cached_gpu.Reset();
+    if (!cursor.draw && gpu_frames_) cached_gpu = gpu_frames_->Convert(acquired_tex.Get());
+    bool cursor_embedded = cursor.already_embedded;
+    const bool converted = cached_gpu ||
+        (StageTexture(acquired_tex.Get()) &&
+         ConvertFrame(frame_monitor, cursor, &cursor_embedded, cursor_compositor));
 
     const std::string stream_id = MakeDisplayStreamId(frame_monitor);
     cached_generation = duplication_generation_;
@@ -601,9 +664,9 @@ void ScreenCapturerDxgi::CaptureLoop() {
     capture_lock.unlock();
 
     if (converted && frame_monitor == monitor_index_.load() && callback_) {
-      CapturedCursorFrameScope cursor_scope(cursor_embedded);
-      callback_(nv12_frame_, nv12_width_ * nv12_height_ * 3 / 2, nv12_width_,
-                nv12_height_, stream_id.c_str(), nullptr);
+      cached_cursor = cursor;
+      last_delivery = std::chrono::steady_clock::now();
+      deliver(stream_id, cursor_embedded);
       cached_cursor_embedded = cursor_embedded;
       cached_monitor = frame_monitor;
       cached_frame_valid = true;

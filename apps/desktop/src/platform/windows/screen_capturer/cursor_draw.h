@@ -14,9 +14,8 @@
 namespace crossdesk {
 
 // ptScreenPos is the input hotspot; DrawIconEx expects the bitmap's top-left.
-// Return true only if a cursor intersects the captured rectangle and was drawn.
-inline bool DrawCursorInCapture(HDC dc, const CURSORINFO& cursor, int left,
-                                int top, int width, int height) {
+inline bool CursorIntersectsCapture(const CURSORINFO& cursor, int left, int top,
+                                    int width, int height, POINT* origin = nullptr) {
   if (!(cursor.flags & CURSOR_SHOWING) || !cursor.hCursor) return false;
   struct CursorIconInfo : ICONINFO {
     CursorIconInfo() : ICONINFO{} {}
@@ -40,8 +39,16 @@ inline bool DrawCursorInCapture(HDC dc, const CURSORINFO& cursor, int left,
   if (x >= width || y >= height || x + cursor_width <= 0 ||
       y + cursor_height <= 0)
     return false;
-  return DrawIconEx(dc, static_cast<int>(x), static_cast<int>(y),
-                    cursor.hCursor, 0, 0, 0, nullptr, DI_NORMAL) != FALSE;
+  if (origin) *origin = {static_cast<LONG>(x), static_cast<LONG>(y)};
+  return true;
+}
+
+inline bool DrawCursorInCapture(HDC dc, const CURSORINFO& cursor, int left,
+                                int top, int width, int height) {
+  POINT origin{};
+  return CursorIntersectsCapture(cursor, left, top, width, height, &origin) &&
+         DrawIconEx(dc, origin.x, origin.y, cursor.hCursor, 0, 0, 0, nullptr,
+                    DI_NORMAL) != FALSE;
 }
 
 }  // namespace crossdesk

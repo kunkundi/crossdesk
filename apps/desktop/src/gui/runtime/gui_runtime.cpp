@@ -325,6 +325,7 @@ int GuiRuntime::CreateConnectionPeer() {
   params_.disable_receiver_padding_probing =
       config_center_->IsReceiverPaddingProbingDisabled();
   params_.enable_srtp = config_center_->IsEnableSrtp();
+  params_.desktop_encoding_mode = config_center_->GetDesktopEncodingMode();
   params_.video_content_type = MiniRtcVideoContentType::ScreenContent;
   // Bootstrap outgoing media with fixed defaults. Live overrides come only
   // from the authorized controller and apply to its connection on this host.

@@ -49,6 +49,7 @@ void GuiRuntime::InitializeLan() {
     params.relay_start_bitrate_bps = config_center_->GetRelayStartBitrateBps();
     params.disable_receiver_padding_probing =
         config_center_->IsReceiverPaddingProbingDisabled();
+    params.desktop_encoding_mode = config_center_->GetDesktopEncodingMode();
     params.video_content_type = MiniRtcVideoContentType::ScreenContent;
     params.video_quality = MiniRtcVideoQuality::MiniRtcVideoQualityHigh;
     params.video_frame_rate = 60;

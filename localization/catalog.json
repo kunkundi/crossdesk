@@ -10680,6 +10680,30 @@
       "es": "Abrir carpeta",
       "pt-BR": "Abrir pasta"
     },
+    "低负载编码": {
+      "zh-Hans": "低负载编码",
+      "en": "Low-load encoding",
+      "ru": "Кодирование с низкой нагрузкой",
+      "zh-Hant": "低負載編碼",
+      "ja": "低負荷エンコード",
+      "ko": "저부하 인코딩",
+      "de": "Ressourcenschonende Kodierung",
+      "fr": "Encodage économe en ressources",
+      "es": "Codificación de bajo consumo de recursos",
+      "pt-BR": "Codificação com baixo uso de recursos"
+    },
+    "从下一次桌面连接起，优先使用编码器支持的低负载设置。已有连接沿用原设置。": {
+      "zh-Hans": "从下一次桌面连接起，优先使用编码器支持的低负载设置。已有连接沿用原设置。",
+      "en": "Prefer low-load encoding for new desktop connections when supported. Existing connections keep their settings.",
+      "ru": "Для новых подключений к рабочему столу предпочитать кодирование с низкой нагрузкой, если оно поддерживается. Текущие подключения сохраняют свои настройки.",
+      "zh-Hant": "從下一次桌面連線起，優先使用編碼器支援的低負載設定。現有連線沿用原設定。",
+      "ja": "次回のデスクトップ接続から、対応するエンコーダーで低負荷エンコードを優先します。接続中のセッションでは現在の設定を使用します。",
+      "ko": "다음 데스크톱 연결부터 지원되는 경우 저부하 인코딩을 우선 사용합니다. 기존 연결은 현재 설정을 유지합니다.",
+      "de": "Bei neuen Desktopverbindungen ressourcenschonende Kodierung bevorzugen, sofern verfügbar. Bestehende Verbindungen behalten ihre Einstellungen.",
+      "fr": "Privilégier un encodage économe en ressources pour les nouvelles connexions au bureau si possible. Les connexions en cours conservent leurs réglages.",
+      "es": "Dar prioridad a la codificación de bajo consumo de recursos en las nuevas conexiones de escritorio si está disponible. Las conexiones actuales conservan sus ajustes.",
+      "pt-BR": "Priorizar a codificação com baixo uso de recursos nas novas conexões de área de trabalho quando disponível. As conexões atuais mantêm suas configurações."
+    },
     "最小化时暂停视频": {
       "zh-Hans": "最小化时暂停视频",
       "en": "Pause video when minimized",
@@ -12152,6 +12176,8 @@
     "privacy_unlock_lock": "锁定",
     "privacy_screen_unlock_hint": "按下快捷键，解除隐私屏",
     "exit_program": "退出",
+    "desktop_rate_control": "低负载编码",
+    "desktop_rate_control_hint": "从下一次桌面连接起，优先使用编码器支持的低负载设置。已有连接沿用原设置。",
     "pause_video_when_minimized": "最小化时暂停视频",
     "pause_video_when_minimized_hint": "控制窗口最小化时暂停接收视频，降低本机解码资源占用。",
     "system_permissions": "系统权限",
@@ -12382,7 +12408,9 @@
     "滚轮灵敏度",
     "特别赞助",
     "本端地址",
-    "对端地址"
+    "对端地址",
+    "低负载编码",
+    "从下一次桌面连接起，优先使用编码器支持的低负载设置。已有连接沿用原设置。"
   ],
   "platforms": {
     "desktop": [
@@ -12900,6 +12928,8 @@
       "发送到本机",
       "清除已完成",
       "打开目录",
+      "低负载编码",
+      "从下一次桌面连接起，优先使用编码器支持的低负载设置。已有连接沿用原设置。",
       "最小化时暂停视频",
       "控制窗口最小化时暂停接收视频，降低本机解码资源占用。",
       "系统权限",

@@ -27,6 +27,7 @@
 namespace crossdesk {
 
 class CursorFrameCompositor;
+class DxgiNv12Frames;
 
 class ScreenCapturerDxgi : public ScreenCapturer {
  public:
@@ -60,11 +61,13 @@ class ScreenCapturerDxgi : public ScreenCapturer {
   }
 
  private:
+  struct FrameCursor;
   bool EnumerateDisplays();
   bool CreateDuplicationForMonitor(int monitor_index);
   void CaptureLoop();
-  bool ConvertFrame(int frame_monitor, bool* cursor_embedded,
-                    CursorFrameCompositor& compositor);
+  bool StageTexture(ID3D11Texture2D* texture);
+  bool ConvertFrame(int frame_monitor, const FrameCursor& cursor,
+                    bool* cursor_embedded, CursorFrameCompositor& compositor);
   void ReleaseDuplication();
   HRESULT ReleaseAcquiredFrame();
 
@@ -79,6 +82,7 @@ class ScreenCapturerDxgi : public ScreenCapturer {
   Microsoft::WRL::ComPtr<IDXGIOutputDuplication> duplication_;
   bool frame_acquired_ = false;  // Guarded by switch_mutex_ while capturing.
   Microsoft::WRL::ComPtr<ID3D11Texture2D> staging_;
+  std::unique_ptr<DxgiNv12Frames> gpu_frames_;
   DXGI_MODE_ROTATION rotation_ = DXGI_MODE_ROTATION_IDENTITY;
   uint64_t duplication_generation_ = 0;
   bool software_cursor_output_ = false;

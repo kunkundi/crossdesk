@@ -1719,6 +1719,7 @@ void GuiApplication::ResetSettingsUi(bool gallery_window) {
 #endif
   main->set_daemon_enabled(enable_daemon_);
   main->set_save_remote_previews(config_center_->IsSaveRemotePreviews());
+  main->set_desktop_realtime_rate_control(config_center_->IsDesktopRealtimeRateControlEnabled());
   main->set_pause_video_when_minimized(config_center_->IsPauseVideoWhenMinimized());
   main->set_privacy_on_connect_enabled(
       config_center_->IsEnablePrivacyScreen());
@@ -5049,6 +5050,12 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
         localization::Literal("保存失败，请重试", localization_language_index_)));
     return false;
   }
+  if (config_center_->SetDesktopRealtimeRateControl(main->get_desktop_realtime_rate_control()) != 0) {
+    if (wall_changed) ui_->gallery.Save(ui_->gallery_path);
+    main->set_settings_save_error(UiText(localization::Literal(
+        "保存失败，请重试", localization_language_index_)));
+    return false;
+  }
   if (config_center_->SetPauseVideoWhenMinimized(main->get_pause_video_when_minimized()) != 0) {
     if (wall_changed && !ui_->gallery.Save(ui_->gallery_path))
       LOG_ERROR("Failed to restore DeskHub settings after video pause preference save failure");
@@ -5211,15 +5218,18 @@ void GuiApplication::ApplySettingsFromConfig(bool reconnect) {
     // configuration. Keep the application and its console running throughout.
     CloseAllRemoteSessions();
   } else {
-    const auto codec = config_center_->GetVideoEncodeFormat();
-    const auto turn = static_cast<MiniRtcTurnMode>(config_center_->GetTurnMode());
-    if (codec != preferred_video_codec_ || turn != params_.turn_mode) {
-      // Update the listening peer for incoming connections and the template
-      // copied by ConnectTo for outgoing connections. Existing sessions retain
-      // the codec/ICE snapshot with which they negotiated.
-      if (!peer_ || PeerUpdateConnectionSettings(peer_, true, codec, turn) == 0) {
-        preferred_video_codec_ = codec;
-        params_.turn_mode = turn;
+    MiniRtcConnectionParams params{};
+    params.video_codec = config_center_->GetVideoEncodeFormat();
+    params.hardware_acceleration = true;
+    params.turn_mode = static_cast<MiniRtcTurnMode>(config_center_->GetTurnMode());
+    params.desktop_encoding_mode = config_center_->GetDesktopEncodingMode();
+    if (params.video_codec != preferred_video_codec_ || params.turn_mode != params_.turn_mode ||
+        params.desktop_encoding_mode != params_.desktop_encoding_mode) {
+      // Keep the outgoing peer template in sync with the listener.
+      if (!peer_ || PeerUpdateConnectionParams(peer_, params) == 0) {
+        preferred_video_codec_ = params.video_codec;
+        params_.turn_mode = params.turn_mode;
+        params_.desktop_encoding_mode = params.desktop_encoding_mode;
       } else {
         LOG_ERROR("Failed to apply connection settings without reconnecting");
       }
