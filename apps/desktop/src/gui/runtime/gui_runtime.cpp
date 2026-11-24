@@ -395,6 +395,9 @@ int GuiRuntime::CreateConnectionPeer() {
     devices_.EnsureCaptureReady();
     RegisterStreams(peer_, std::max<size_t>(1, devices_.display_info_list().size()));
     MiniRtcAddDataStream(peer_, web_clipboard::kStream, true);
+    const auto announcement_cache = path_manager_->GetCachePath() / "announcement_catalog";
+    const auto utf8 = announcement_cache.u8string();
+    MiniRtcSetAnnouncementCacheDirectory(peer_, std::string(utf8.begin(), utf8.end()).c_str());
     const int ret = MiniRtcInit(peer_);
     if (ret == 0) LOG_INFO("Peer initialization finished");
     return ret;

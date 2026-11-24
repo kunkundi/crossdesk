@@ -1394,7 +1394,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         guard announcementsConnected else { return }
         let object = (try? JSONSerialization.jsonObject(with: message)) as? [String: Any]
         if object?["type"] as? String == "announcements_changed" {
-            announcements.refresh()
+            announcements.catalogChanged(resetPages: object?["reset_pages"] as? Bool == true)
         } else {
             announcements.receive(message)
         }

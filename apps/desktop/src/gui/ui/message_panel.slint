@@ -22,6 +22,7 @@ export global MessageStrings {
     in-out property <string> empty: "No announcements";
     in-out property <string> select-message: "Select an announcement to read";
     in-out property <string> loading: "Loading…";
+    in-out property <string> retry: "Retry";
     in-out property <string> read-save-error: "Unable to save reading status locally. Please try again.";
     in-out property <string> close: "Close";
     in-out property <string> delete-message: "Delete";
@@ -208,6 +209,10 @@ export component MessagePanel inherits SettingsDialog {
                         }
                     }
                     SurfaceSeparator { height: 1px; outline-color: UiSurface.separator; }
+                    if root.connected && root.failed: SettingsButton {
+                        text: MessageStrings.retry;
+                        clicked => { root.open-message(root.selected-id, root.selected-revision); }
+                    }
                     StyledText {
                         vertical-stretch: 0;
                         text: root.selected-body;

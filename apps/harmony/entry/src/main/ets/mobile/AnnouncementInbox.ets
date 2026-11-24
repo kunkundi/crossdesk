@@ -4,9 +4,9 @@ export interface AnnouncementRevision { id: number; revision: number; }
 export interface AnnouncementItem extends AnnouncementRevision { title: string; body: string; updated_at: number; read?: boolean; }
 export interface AnnouncementResponse {
   type: string; request_id: string; summary_only: boolean; offset: number; total: number;
-  catalog_revision: number; items: AnnouncementItem[]; error?: string;
+  catalog_revision: number; items: AnnouncementItem[]; error?: string; pending_catalog?: boolean; local_catalog?: boolean; body_ready?: boolean; reset_pages?: boolean;
 }
-export interface AnnouncementRequest { type: string; request_id: string; summary_only: boolean; offset: number; }
+export interface AnnouncementRequest { type: string; request_id: string; summary_only: boolean; offset: number; detail_id?: number; revision?: number; }
 interface LocalRevision { id: number; revision: number; }
 interface LocalState { scope: string; reads: LocalRevision[]; dismissed: LocalRevision[]; }
 // Revisions, pagination, stale replies and local dismissal follow AnnouncementInbox.java.
@@ -33,6 +33,7 @@ export class AnnouncementInbox {
   private pageOffset: number = 0;
   private limit: number = 20;
   private summary: boolean = true;
+  private localCatalog: boolean = false;
   private requestId: string = '';
   private sequence: number = 0;
   private timeout: number = -1;
@@ -62,10 +63,15 @@ export class AnnouncementInbox {
     if (value === this.connected) return;
     this.connected = value; if (value) this.refresh(); else this.cancel(); this.changed();
   }
+  catalogChanged(resetPages: boolean): void {
+    if (resetPages) { this.pageIds.clear(); this.bodies.clear(); }
+    this.refresh();
+  }
   refresh(): void { this.cancel(); this.pending.clear(); this.pendingRevision = -1; this.pendingTotal = 0; this.summary = true; this.request(0); this.changed(); }
   more(): void { if (!this.connected || this.loading || this.failed || this.limit >= this.total) return; this.limit += Math.min(20, this.total - this.limit); this.rebuild(); this.changed(); }
   markRead(item: AnnouncementItem): void {
     if (!this.items.some((v: AnnouncementItem) => v.id === item.id && v.revision === item.revision)) return;
+    if (this.connected && !item.body) { this.cancel(); this.request(0, item); }
     const next = new Map(this.reads); next.set(item.id, item.revision);
     if (this.persist(next, this.dismissed)) { this.reads = next; this.reading(); } this.changed();
   }
@@ -84,6 +90,8 @@ export class AnnouncementInbox {
   fail(id: string): void { if (id && id === this.requestId) { this.cancel(); this.failed = true; this.changed(); } }
   receive(message: AnnouncementResponse): void {
     if (!this.connected || !this.requestId || message.request_id !== this.requestId) return;
+    if (message.pending_catalog) { this.cancel(); this.loading = true; this.failed = false; this.changed(); return; }
+    if (message.body_ready) { this.catalogChanged(true); return; }
     const request = this.requestId;
     try {
       if (message.type !== 'announcements' || message.error || message.summary_only !== this.summary ||
@@ -102,7 +110,9 @@ export class AnnouncementInbox {
         for (const item of message.items) { if (this.pending.has(item.id)) throw new Error('Duplicate item'); this.pending.set(item.id, item.revision); }
         this.pendingRevision = message.catalog_revision; this.pendingTotal = message.total; this.cancel();
         if (this.pending.size < this.pendingTotal) { this.request(this.pending.size); this.changed(); return; }
-        if (this.revision !== this.pendingRevision) { this.pageIds.clear(); this.bodies.clear(); }
+        const local = message.local_catalog === true;
+        if (this.revision !== this.pendingRevision || local !== this.localCatalog) { this.pageIds.clear(); this.bodies.clear(); }
+        this.localCatalog = local;
         this.catalog = new Map(this.pending); this.revision = this.pendingRevision;
       } else {
         if (message.offset !== this.pageOffset || message.total !== this.catalog.size) throw new Error('Invalid body page');
@@ -137,11 +147,13 @@ export class AnnouncementInbox {
     this.items = visible; this.loaded = true; this.reading();
     if (next >= 0) { this.pageOffset = next; this.request(next); }
   }
-  private request(offset: number): void {
+  private request(offset: number, detail?: AnnouncementItem): void {
     if (!this.connected || !this.scope) return;
     this.requestId = `hm-${++this.sequence}-${Date.now()}`; this.loading = true; this.failed = false;
     const id = this.requestId; this.timeout = setTimeout(() => this.fail(id), 12000);
-    this.send({ type: 'announcements_list', request_id: id, summary_only: this.summary, offset: offset });
+    const request: AnnouncementRequest = { type: 'announcements_list', request_id: id, summary_only: this.summary, offset: offset };
+    if (detail) { request.detail_id = detail.id; request.revision = detail.revision; }
+    this.send(request);
   }
   private cancel(): void { if (this.timeout >= 0) clearTimeout(this.timeout); this.timeout = -1; this.requestId = ''; this.loading = false; }
 }

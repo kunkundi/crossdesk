@@ -649,7 +649,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     }
     @Override public void announcement(JSONObject message){
         if(!preferences.getBoolean("networkConsent",false)||signalState!=1)return;
-        if("announcements_changed".equals(message.optString("type")))announcementInbox.refresh();else announcementInbox.receive(message);
+        if("announcements_changed".equals(message.optString("type")))announcementInbox.catalogChanged(message.optBoolean("reset_pages"));else announcementInbox.receive(message);
     }
     @Override public void announcementFailed(String requestId){announcementInbox.failed(requestId);}
     private void privacyPage(){

@@ -35,7 +35,7 @@ class AnnouncementInbox {
   void Configure(std::string host, int port, const std::string& device_id);
   void Reset();
   void SetConnected(bool connected);
-  void Refresh();
+  void Refresh(bool reset_pages = false);
   void LoadMore();
   bool Read(int64_t id, int64_t revision);
   bool ReadAll();
@@ -71,6 +71,8 @@ class AnnouncementInbox {
   int pending_total_ = 0;
   Phase phase_ = Phase::Catalog;
   bool connected_ = false, refresh_ = false;
+  bool local_catalog_ = false;
+  int64_t detail_id_ = 0, detail_revision_ = 0;
   uint64_t serial_ = 0;
   std::chrono::steady_clock::time_point deadline_{};
 };

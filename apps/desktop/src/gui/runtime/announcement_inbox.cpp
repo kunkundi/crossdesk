@@ -93,6 +93,7 @@ void AnnouncementInbox::Reset() {
   BeginCatalog();
 }
 void AnnouncementInbox::BeginCatalog() {
+  detail_id_ = 0;
   pending_catalog_.clear();
   pending_revision_ = -1;
   pending_total_ = 0;
@@ -107,8 +108,12 @@ void AnnouncementInbox::SetConnected(bool connected) {
   connected_ = connected;
   BeginCatalog();
 }
-void AnnouncementInbox::Refresh() {
+void AnnouncementInbox::Refresh(bool reset_pages) {
   std::lock_guard<std::mutex> lock(mutex_);
+  if (reset_pages) {
+    page_ids_.clear();
+    page_bodies_.clear();
+  }
   BeginCatalog();
 }
 void AnnouncementInbox::LoadMore() {
@@ -138,6 +143,11 @@ bool AnnouncementInbox::Read(int64_t id, int64_t revision) {
   std::lock_guard<std::mutex> lock(mutex_);
   for (const auto& item : state_.items) {
     if (item["id"] != id || item["revision"] != revision) continue;
+    if (connected_ && item["body"] == "") {
+      detail_id_ = id;
+      detail_revision_ = revision;
+      refresh_ = true;
+    }
     if (item["read"].get<bool>()) return true;
     auto updated = reads_;
     updated[id] = revision;
@@ -304,6 +314,12 @@ nlohmann::json AnnouncementInbox::TakePendingRequest(
   state_.failed = false;
   ++state_.version;
   deadline_ = now + std::chrono::seconds(12);
+  if (detail_id_ != 0) {
+    const auto id = detail_id_;
+    detail_id_ = 0;
+    return {{"type", "announcements_list"}, {"request_id", request_id_},
+            {"detail_id", id}, {"revision", detail_revision_}};
+  }
   return {{"type", "announcements_list"},
           {"request_id", request_id_},
           {"summary_only", phase_ == Phase::Catalog},
@@ -320,6 +336,19 @@ void AnnouncementInbox::Receive(const nlohmann::json& message) {
   if (!message.is_object() || !message.contains("request_id") ||
       message["request_id"] != request_id_ || request_id_.empty())
     return;
+  if (message.contains("pending_catalog") && message["pending_catalog"] == true) {
+    request_id_.clear();
+    deadline_ = std::chrono::steady_clock::time_point::max();
+    state_.loading = true;
+    state_.failed = false;
+    ++state_.version;
+    return;
+  }
+  if (message.contains("body_ready") && message["body_ready"] == true) {
+    page_bodies_.clear();
+    BeginCatalog();
+    return;
+  }
   if (message.contains("error")) {
     Fail();
     return;
@@ -398,10 +427,12 @@ void AnnouncementInbox::Receive(const nlohmann::json& message) {
       ++state_.version;
       return;
     }
-    if (catalog_revision_ != revision) {
+    const bool local = message.contains("local_catalog") && message["local_catalog"] == true;
+    if (catalog_revision_ != revision || local != local_catalog_) {
       page_ids_.clear();
       page_bodies_.clear();
     }
+    local_catalog_ = local;
     catalog_ = std::move(pending_catalog_);
     catalog_revision_ = revision;
     // Prune expired records in memory; the next local action persists them.

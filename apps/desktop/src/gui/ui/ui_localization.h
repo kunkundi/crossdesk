@@ -103,6 +103,7 @@ inline int ApplyMainWindowStrings(
   messages.set_read_all(Text(localization::message_read_all[language]));
   messages.set_empty(Text(localization::message_empty[language]));
   messages.set_select_message(Text(localization::message_select[language]));
+  messages.set_retry(Text(localization::Literal("重试", language)));
   messages.set_loading(Text(localization::message_loading[language]));
   messages.set_read_save_error(Text(localization::message_read_save_error[language]));
   messages.set_close(Text(localization::message_close[language]));

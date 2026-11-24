@@ -380,14 +380,14 @@ version manifest.
 ## Announcements
 
 The home toolbar's bell opens **通知公告** and shows the unread count (capped
-at `99+` on the badge). The persistent identity peer fetches announcements after
-signaling connects, so a remote desktop session is not required. Opening the
-inbox, returning to the foreground, reconnecting, and `announcements_changed`
-events refresh the catalog. Pull to refresh or use the refresh button to retry.
-
-The iOS inbox follows the desktop `announcements_list` protocol: summaries load
-in batches of 200 to count all unread announcements, while full bodies load in
-batches of 20 as the list scrolls. Opening a detail marks that revision read.
+at `99+` on the badge). The identity peer sends its cached catalog ID and revision at login.
+A matching catalog needs no additional network request. For a missing or
+changed catalog, the server sends paced pages of titles, timestamps, IDs and
+revisions. The app installs the complete catalog atomically and uses it to
+compute unread counts. Opening a detail fetches just the missing body for that
+revision. The system caches directory holds the catalog and previously opened
+bodies per endpoint and device. Older servers use the existing paged list.
+Opening a detail marks that revision read.
 Swipe or long-press a row to delete it after confirmation. Read and deleted
 revisions persist only on this device, scoped by server, port and device ID;
 updating an announcement makes its new revision visible and unread again.

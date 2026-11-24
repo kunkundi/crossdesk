@@ -457,6 +457,7 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"退出全屏", {"退出全屏", "Exit fullscreen", "Выйти из полноэкранного режима", "退出全屏", "全画面表示を終了する", "전체 화면 종료", "Vollbild beenden", "Quitter le mode plein écran", "Salir de pantalla completa", "Sair da tela cheia"}},
   {"退出精简", {"退出精简", "Exit compact", "Обычный вид", "退出精簡", "コンパクトに終了", "컴팩트 종료", "Kompakt verlassen", "Quitter le compact", "Salir compacto", "Sair do compacto"}},
   {"选择", {"选择", "Select", "Выбрать", "選擇", "選択", "선택", "Auswählen", "Sélectionnez", "Seleccionar", "Selecione"}},
+  {"重试", {"重试", "Retry", "Повторить", "重試", "再試行", "다시 시도", "Erneut versuchen", "Réessayer", "Reintentar", "Tentar novamente"}},
   {"选择公告查看详情", {"选择公告查看详情", "Select an announcement to read", "Выберите объявление для просмотра", "選擇公告檢視詳情", "読むお知らせを選択してください", "읽을 공지사항을 선택하세요.", "Wählen Sie eine Ankündigung zum Lesen aus", "Sélectionnez une annonce à lire", "Seleccione un anuncio para leer", "Selecione um anúncio para ler"}},
   {"选择分发文件", {"选择分发文件", "Select a file to send", "Выберите файл для отправки", "選擇分發檔案", "送信するファイルを選択する", "보낼 파일을 선택하세요", "Wählen Sie eine Datei zum Senden aus", "Sélectionnez un fichier à envoyer", "Seleccione un archivo para enviar", "Selecione um arquivo para enviar"}},
   {"选择文件发送", {"选择文件发送", "Select File to Send", "Выбрать файл для отправки", "選擇檔案傳送", "送信するファイルの選択", "보낼 파일 선택", "Wählen Sie die Datei zum Senden aus", "Sélectionnez le fichier à envoyer", "Seleccionar archivo para enviar", "Selecione o arquivo para enviar"}},

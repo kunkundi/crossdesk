@@ -453,6 +453,14 @@ struct Mobile {
     else if (this.state.page === 'announcement') {
       Column({ space: 16 }) {
         Text(this.state.announcement?.title ?? '').fontSize(24).fontWeight(600).width('100%').copyOption(CopyOptions.LocalDevice)
+        if (this.state.announcement && !this.state.announcement.body) {
+          if (this.controller?.inbox.loading) { LoadingProgress().width(24).height(24) }
+          else if (this.controller?.inbox.connected) {
+            this.Action(tr("重试"), () => {
+              if (this.state.announcement) this.controller?.inbox.markRead(this.state.announcement)
+            })
+          }
+        }
         Text() {
           ForEach(announcementSpans(this.state.announcement?.body ?? ''), (part: AnnouncementSpan) => {
             if (part.url) {

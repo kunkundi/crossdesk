@@ -39,7 +39,7 @@ final class AnnouncementInbox implements AutoCloseable {
     private final Map<Integer,List<Item>> pageBodies=new HashMap<>();
     private long catalogRevision=-1, pendingRevision=-1;
     private int pendingTotal, pageOffset, visibleLimit=20;
-    private boolean summary=true, connected;
+    private boolean summary=true, connected, localCatalog;
     private String scope="", requestId;
     private AtomicFile file;
     private Runnable timeout;
@@ -70,6 +70,10 @@ final class AnnouncementInbox implements AutoCloseable {
         if(connected==value)return;connected=value;
         if(value)refresh();else{cancelRequest();changed.run();}
     }
+    void catalogChanged(boolean resetPages){
+        if(resetPages){pageIds.clear();pageBodies.clear();}
+        refresh();
+    }
     void refresh(){
         cancelRequest();pendingCatalog=new LinkedHashMap<>();pendingRevision=-1;pendingTotal=0;summary=true;
         request(0);changed.run();
@@ -82,7 +86,9 @@ final class AnnouncementInbox implements AutoCloseable {
         for(Item item:items)if(item.id==id&&item.revision==revision)return item;return null;
     }
     void markRead(Item item){
-        if(find(item.id,item.revision)==null||Objects.equals(reads.get(item.id),item.revision))return;
+        if(find(item.id,item.revision)==null)return;
+        if(item.body.isEmpty() && connected){cancelRequest();request(0,item);}
+        if(Objects.equals(reads.get(item.id),item.revision))return;
         Map<Long,Long> updated=new HashMap<>(reads);updated.put(item.id,item.revision);
         if(!saveLocalState(updated,dismissed)){readSaveFailed=true;changed.run();return;}
         reads.clear();reads.putAll(updated);readSaveFailed=deleteFailed=false;updateReadingState();changed.run();
@@ -104,6 +110,8 @@ final class AnnouncementInbox implements AutoCloseable {
         Object identifier=message.opt("request_id");
         if(!(identifier instanceof String)||!identifier.equals(requestId))return;
         String id=(String)identifier;
+        if(message.optBoolean("pending_catalog")){cancelRequest();loading=true;failed=false;changed.run();return;}
+        if(message.optBoolean("body_ready")){catalogChanged(true);return;}
         try{
             if(!"announcements".equals(string(message,"type"))||message.has("error"))throw new IllegalArgumentException();
             Object summaryFlag=message.get("summary_only");
@@ -126,7 +134,9 @@ final class AnnouncementInbox implements AutoCloseable {
                     if(pendingCatalog.put(entry.getKey(),entry.getValue())!=null)throw new IllegalArgumentException();
                 pendingRevision=revision;pendingTotal=count;cancelRequest();
                 if(pendingCatalog.size()<pendingTotal){request(pendingCatalog.size());changed.run();return;}
-                if(catalogRevision!=pendingRevision){pageIds.clear();pageBodies.clear();}
+                boolean local=message.optBoolean("local_catalog");
+                if(catalogRevision!=pendingRevision||localCatalog!=local){pageIds.clear();pageBodies.clear();}
+                localCatalog=local;
                 catalog=new LinkedHashMap<>(pendingCatalog);catalogRevision=pendingRevision;
                 reads.keySet().retainAll(catalog.keySet());dismissed.keySet().retainAll(catalog.keySet());
             }else{
@@ -145,12 +155,14 @@ final class AnnouncementInbox implements AutoCloseable {
             failed=false;rebuild();changed.run();
         }catch(Exception error){failed(id);}
     }
-    private void request(int offset){
+    private void request(int offset){request(offset,null);}
+    private void request(int offset,Item detail){
         if(!connected||scope.isEmpty())return;
         String id=UUID.randomUUID().toString();
         try{
             JSONObject payload=new JSONObject().put("type","announcements_list").put("request_id",id)
                 .put("summary_only",summary).put("offset",offset);
+            if(detail!=null)payload.put("detail_id",detail.id).put("revision",detail.revision);
             requestId=id;loading=true;failed=false;timeout=()->failed(id);handler.postDelayed(timeout,12_000);
             if(sender!=null)sender.send(payload,id);else failed(id);
         }catch(Exception error){failed(id);}

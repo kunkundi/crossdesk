@@ -104,6 +104,12 @@ final class AnnouncementView extends ScrollView {
             content.addView(message(L10n.tr("无法保存本地阅读状态，请重试。"),RED));
             content.addView(ui.action(L10n.tr("重试保存阅读状态"),BLUE,()->inbox.markRead(item)));ui.gap(content,16);
         }
+        if(item.body.isEmpty()) {
+            if(inbox.loading){content.addView(message(L10n.tr("加载中…"),SECONDARY));}
+            else if(inbox.isConnected()){content.addView(ui.action(L10n.tr("重试"),BLUE,()->inbox.markRead(item)));}
+            else{content.addView(message(L10n.tr("连接服务器后可获取最新公告。"),SECONDARY));}
+            return;
+        }
         TextView body=ui.text("",17,false);body.setText(AnnouncementText.format(item.body));body.setTextIsSelectable(true);
         body.setMovementMethod(LinkMovementMethod.getInstance());body.setLinksClickable(true);body.setLinkTextColor(BLUE);body.setLineSpacing(ui.dp(4),1);
         content.addView(body,ui.size(-1,-2));

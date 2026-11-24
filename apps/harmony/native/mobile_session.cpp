@@ -285,6 +285,7 @@ class MobileSession {
         throw std::runtime_error("Unable to configure MiniRTC logging");
       identity_context_=std::make_unique<Context>(Context{this,false,session_});
       auto p=Parameters(false); identity_=MiniRtcCreatePeer(&p); signal_started_=Clock::now();
+      MiniRtcSetAnnouncementCacheDirectory(identity_, (directory_ + "/announcement_catalog").c_str());
       if (!identity_||MiniRtcInit(identity_)!=0) { throw std::runtime_error("Identity initialization failed"); }
     } else if (op=="stop") Stop();
     else if (op=="version") {

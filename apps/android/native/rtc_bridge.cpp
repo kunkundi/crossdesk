@@ -1,4 +1,5 @@
 #include <jni.h>
+#include <filesystem>
 #include <android/native_window_jni.h>
 #include <libyuv.h>
 #include <minirtc.h>
@@ -380,6 +381,8 @@ extern "C" JNIEXPORT jlong JNICALL JNI_METHOD(nCreate)(
     if (controller_only) return reinterpret_cast<jlong>(s.release());
     auto params = Parameters(s.get(), false);
     s->identity = MiniRtcCreatePeer(&params);
+    const auto announcement_cache = std::filesystem::path(s->log_path).parent_path() / "announcement_catalog";
+    MiniRtcSetAnnouncementCacheDirectory(s->identity, announcement_cache.c_str());
     if (!s->identity || MiniRtcInit(s->identity) != 0) return 0;
     return reinterpret_cast<jlong>(s.release());
   } catch (const std::exception&) { return 0; }

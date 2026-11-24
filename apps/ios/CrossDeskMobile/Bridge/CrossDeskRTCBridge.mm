@@ -1263,6 +1263,9 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
   MiniRtcParams params = MakeParams(*_state, _state->identity_with_password,
                              &_state->identity_context);
   _state->identity_peer = MiniRtcCreatePeer(&params);
+  NSString *cache = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject;
+  MiniRtcSetAnnouncementCacheDirectory(_state->identity_peer,
+      [cache stringByAppendingPathComponent:@"CrossDeskMobile/AnnouncementCatalog"].fileSystemRepresentation);
   if (!_state->identity_peer || MiniRtcInit(_state->identity_peer) != 0) {
     [self destroyIdentityPeer];
     [self handleSignalState:CrossDeskSignalStateFailed

@@ -166,6 +166,14 @@ struct AnnouncementDetailView: View {
                             .foregroundStyle(.red)
                         Button(NSLocalizedString("重试保存阅读状态", comment: "")) { inbox.markRead(item) }
                     }
+                    if item.body.isEmpty {
+                        if inbox.state.loading { ProgressView() }
+                        else if inbox.connected {
+                            Button(NSLocalizedString("重试", comment: "")) { inbox.markRead(item) }
+                        } else {
+                            Text(NSLocalizedString("连接服务器后可获取最新公告。", comment: ""))
+                        }
+                    }
                     Text(AnnouncementText.format(item.body))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)

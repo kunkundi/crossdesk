@@ -131,7 +131,7 @@ void PeerEventHandler::OnSignalMessage(const char* message, size_t size,
     const auto props = runtime->FindRemoteSession(j["transmission_id"].get<std::string>());
     if (props && !props->closing_) props->connection_auth_.Rejected(j);
   } else if (type == "announcements_changed") {
-    runtime->announcements_.Refresh();
+    runtime->announcements_.Refresh(j.contains("reset_pages") && j["reset_pages"] == true);
   } else if (type == "announcements") {
     runtime->announcements_.Receive(j);
   } else if (type == "presence") {
