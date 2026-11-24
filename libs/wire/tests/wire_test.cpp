@@ -164,6 +164,28 @@ int main() {
   crossdesk::FreeRemoteAction(parsed_host);
   crossdesk::FreeRemoteAction(advertised);
 
+  // user requests a wallpaper only when saved previews are enabled
+  // Given host information exchanged with old and new peers
+  // When the optional wallpaper request is present, absent, or malformed
+  // Then only an explicit request enables wallpaper transfer
+  advertised = crossdesk::MakeHostInformation("Viewer", {}, false);
+  advertised.i.wants_recent_wallpaper = true;
+  ok &= Expect(parsed_host.from_json(advertised.to_json()) &&
+                   parsed_host.i.wants_recent_wallpaper,
+               "explicit wallpaper requests must survive the wire round trip");
+  crossdesk::FreeRemoteAction(parsed_host);
+  crossdesk::FreeRemoteAction(advertised);
+  for (const std::string field : {"", ",\"wants_recent_wallpaper\":false",
+                                  ",\"wants_recent_wallpaper\":\"true\""}) {
+    const auto message =
+        "{\"type\":3,\"host_info\":{\"host_name\":\"Viewer\","
+        "\"display_num\":0,\"displays\":[]" + field + "}}";
+    ok &= Expect(parsed_host.from_json(message) &&
+                     !parsed_host.i.wants_recent_wallpaper,
+                 "legacy or malformed metadata must not request a wallpaper");
+    crossdesk::FreeRemoteAction(parsed_host);
+  }
+
   // The platform is optional metadata, not a requirement for connecting.
   for (const auto& platform : std::vector<std::string>{
            "windows", "linux", "macos", "ios", "android", "harmonyos", "unknown"}) {

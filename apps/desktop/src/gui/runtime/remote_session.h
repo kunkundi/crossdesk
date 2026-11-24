@@ -188,6 +188,8 @@ struct RemoteSession {
   HostPlatform remote_platform_ = HostPlatform::Unknown;
   // Retain history metadata after disconnect resets the live capabilities.
   HostPlatform recent_platform_ = HostPlatform::Unknown;
+  bool recent_wallpaper_requested_ = false;
+  std::string pending_recent_wallpaper_;
   bool remote_update_dismissed_ = false;
   bool remote_service_status_received_ = false;
   std::mutex video_settings_mutex_;

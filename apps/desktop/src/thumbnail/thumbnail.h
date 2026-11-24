@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <map>
 #include <mutex>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -49,7 +50,8 @@ class Thumbnail {
                       const std::string& remote_id,
                       const std::string& host_name, const std::string& password,
                       HostPlatform platform = HostPlatform::Unknown,
-                      const LanTarget* lan = nullptr);
+                      const LanTarget* lan = nullptr,
+                      std::string_view wallpaper = {});
 
   int LoadThumbnail(
       std::vector<std::pair<std::string, Thumbnail::RecentConnection>>&

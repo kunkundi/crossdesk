@@ -403,7 +403,7 @@ int GuiRuntime::CreateConnectionPeer() {
   return -1;
 }
 
-void GuiRuntime::HandleRecentConnections() {
+bool GuiRuntime::HandleRecentConnections() {
   if (thumbnail_ && session_cleanup_tasks_.empty()) {
     std::vector<std::shared_ptr<RemoteSession>> sessions;
     {
@@ -414,12 +414,13 @@ void GuiRuntime::HandleRecentConnections() {
           sessions.push_back(props);
     }
     for (const auto& props : sessions) {
-      std::string host_name;
+      std::string host_name, wallpaper;
       HostPlatform platform;
       {
         std::lock_guard lock(props->remote_version_mutex_);
         host_name = props->remote_host_name_;
         platform = props->recent_platform_;
+        wallpaper.swap(props->pending_recent_wallpaper_);
       }
       // Record a successful connection before a preview or host info arrives.
       // The close path still updates its final thumbnail. Remember password
@@ -435,7 +436,7 @@ void GuiRuntime::HandleRecentConnections() {
       if (thumbnail_->SaveToThumbnail(
               nullptr, 0, 0, record_id, host_name,
               props->remember_password_ ? props->remote_password_ : "",
-              platform, direct ? &target : nullptr) == 0)
+              platform, direct ? &target : nullptr, wallpaper) == 0)
         reload_recent_connections_ = true;
       else
         LOG_ERROR("Failed to save recent connection");
@@ -456,8 +457,10 @@ void GuiRuntime::HandleRecentConnections() {
           recent_connection_ids_.push_back(conn.first);
       }
       need_to_send_recent_connections_ = true;
+      return true;
     }
   }
+  return false;
 }
 
 

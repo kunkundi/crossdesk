@@ -2776,6 +2776,7 @@ void GuiApplication::Tick() {
   }
   clipboard_.ApplyPendingRemoteText();
   ProcessAutomationRequests();
+  HandleRecentWallpaperRequests();
 #ifndef __OHOS__
   std::string activation_token;
   bool activation_requested =
@@ -2815,9 +2816,7 @@ void GuiApplication::Tick() {
     HandlePendingRejoins();
   }
 
-  const bool was_reloading_recent_connections = reload_recent_connections_;
-  HandleRecentConnections();
-  if (was_reloading_recent_connections && !reload_recent_connections_) {
+  if (HandleRecentConnections()) {
     ui_->recent_model_signature.clear();
     ui_->recent_preview_images.clear();
   }

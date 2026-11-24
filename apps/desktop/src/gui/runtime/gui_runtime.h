@@ -105,7 +105,12 @@ class GuiRuntime : protected gui_detail::GuiState {
                                   const char* password, bool remember_password);
   int ForceSignalReconnect();
 
-  void HandleRecentConnections();
+  bool HandleRecentConnections();
+  void QueueRecentWallpaper(const std::string& id, PeerEventHandler* source);
+  void HandleRecentWallpaperRequests();
+  std::mutex recent_wallpaper_requests_mutex_;
+  std::map<std::string, std::weak_ptr<PeerEventHandler>> recent_wallpaper_requests_;
+  std::future<std::string> recent_wallpaper_task_;
   void HandleConnectionStatusChange();
   void HandlePendingRejoins();
   void CancelPendingConnection(const std::string& remote_id);
@@ -225,7 +230,8 @@ class GuiRuntime : protected gui_detail::GuiState {
   bool unattended_host_ = false;
   bool managed_host_frontend_ = false;
   std::string BuildHostInformation(bool advertise_trust = false,
-      const std::vector<DisplayResolutionPreference>& preferences = {});
+      const std::vector<DisplayResolutionPreference>& preferences = {},
+      bool wants_recent_wallpaper = false);
   void AnnounceHostCapabilities(const std::string& id);
 #ifdef _WIN32
   std::shared_ptr<LocalHostChannel> local_host_;
