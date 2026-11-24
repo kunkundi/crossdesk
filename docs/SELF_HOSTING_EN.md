@@ -60,7 +60,7 @@ Recheck the device ID after changing servers. Device identities belong to their 
 
 The signaling certificate must cover the configured hostname/IP and be trusted by the client OS. For a public CA certificate, configure the server's certificate chain as instructed by the server project. For a self-signed deployment, trust the root certificate belonging to your own server.
 
-The default [certificate generator](https://github.com/kunkundi/crossdesk-server/blob/admin-dashboard/docker/generate_certs.sh) includes only `EXTERNAL_IP` in the certificate's subject alternative name. Use that IP in the client, or supply a certificate covering your custom domain. The [startup script](https://github.com/kunkundi/crossdesk-server/blob/admin-dashboard/docker/start.sh) reuses existing certificates; editing the IP in `.env` does not update them automatically.
+The default certificate generator includes only `EXTERNAL_IP` in the certificate's subject alternative name. Use that IP in the client, or supply a certificate covering your custom domain. The startup script reuses existing certificates across image upgrades and IP changes in `.env`. If iOS rejects a 3650-day server certificate from the old generator, replace it and trust the new root on each device. [Server certificate replacement steps](https://github.com/kunkundi/crossdesk-server/blob/HEAD/docs/DEPLOYMENT_EN.md#certificate-rotation)
 
 Default certificates are stored in the data directory's `certs/` folder. Copy your server's `api.crossdesk.cn_root.crt` to the client and run the relevant command. Do not trust a root certificate from an unknown source.
 
@@ -89,7 +89,7 @@ Reopen the client afterwards. Self-signed certificates still support encryption;
 ## 4. Web and iOS
 
 - **Web:** configure your signaling endpoint following the [Web Client project](https://github.com/kunkundi/crossdesk-web-client). The browser must trust its certificate; do not disable TLS verification to work around certificate errors.
-- **iOS:** enter the signaling host, signaling port, and STUN/TURN port under **Settings → Server**, then apply. A self-signed deployment requires installing and trusting its root certificate on the device.
+- **iOS:** enter the signaling host, signaling port, and STUN/TURN port under **Settings → Server**, then apply. After manually installing the root certificate profile, open **Settings → General → About → Certificate Trust Settings** on the device and enable full trust for that root.
 
 ## Troubleshooting order
 

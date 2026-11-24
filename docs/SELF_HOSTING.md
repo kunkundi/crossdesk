@@ -62,7 +62,7 @@ sudo docker compose ps
 
 客户端通过 TLS 连接信令服务。证书必须覆盖填写的域名 / IP，且被客户端系统信任。使用受信任 CA 签发的证书时按服务端说明配置证书链；使用自签证书时，需要信任自己部署的根证书。
 
-默认的 [证书生成脚本](https://github.com/kunkundi/crossdesk-server/blob/admin-dashboard/docker/generate_certs.sh) 只将 `EXTERNAL_IP` 写入证书的地址范围；使用这份证书时，客户端应填写该 IP。改用域名需要配置包含该域名的证书。已有证书存在时，[启动脚本](https://github.com/kunkundi/crossdesk-server/blob/admin-dashboard/docker/start.sh) 会复用它们，修改 `.env` 中的 IP 不会自动更新证书。
+默认的证书生成脚本只将 `EXTERNAL_IP` 写入证书的地址范围，客户端应填写该 IP。改用域名需要配置包含该域名的证书。升级镜像或修改 `.env` 中的 IP 后，启动脚本仍会复用已有证书。如果 iOS 拒绝旧版脚本签发的 3650 天服务器证书，请按服务端指南换证并在设备上信任新根证书。[服务端换证步骤](https://github.com/kunkundi/crossdesk-server/blob/HEAD/docs/DEPLOYMENT.md#certificate-rotation)
 
 默认证书文件位于服务端数据目录下的 `certs/`。将自己服务器的 `api.crossdesk.cn_root.crt` 下载到客户端机器，再执行对应平台命令；不要导入来源不明的根证书。
 
@@ -91,7 +91,7 @@ sudo security add-trusted-cert -d -r trustRoot \
 ## 4. Web 与 iOS
 
 - **Web：** 按 [Web 客户端项目](https://github.com/kunkundi/crossdesk-web-client) 配置自己的信令连接。浏览器必须信任该服务的证书；不要通过关闭 TLS 校验解决证书错误。
-- **iOS：** 在“设置 → 服务器”填写信令服务器、信令端口与 STUN/TURN 端口，然后点击“应用”。自签证书需要在设备上安装对应根证书并启用信任。
+- **iOS：** 在“设置 → 服务器”填写信令服务器、信令端口与 STUN/TURN 端口，然后点击“应用”。手动安装根证书描述文件后，在系统的“设置 → 通用 → 关于本机 → 证书信任设置”中为该根证书启用完全信任。
 
 ## 排查顺序
 
