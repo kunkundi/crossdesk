@@ -51,6 +51,7 @@ final class AnnouncementView extends ScrollView {
         TextView text=ui.text(value,14,false);text.setTextColor(color);text.setLineSpacing(ui.dp(3),1);return text;
     }
     private void renderList(){
+        if(inbox.readSaveFailed){content.addView(message(L10n.tr("无法保存本地阅读状态，请重试。"),RED));ui.gap(content,12);}
         if(inbox.deleteFailed){content.addView(message(L10n.tr("无法删除这条公告，请重试。"),RED));ui.gap(content,12);}
         if(!inbox.isConnected()){
             content.addView(message(L10n.tr("连接服务器后可获取最新公告。"),SECONDARY));
@@ -59,8 +60,20 @@ final class AnnouncementView extends ScrollView {
             LinearLayout error=ui.row();error.addView(message(L10n.tr("公告加载失败，请重试。"),SECONDARY),new LinearLayout.LayoutParams(0,-2,1));
             error.addView(ui.action(L10n.tr("重试"),BLUE,inbox::refresh),ui.size(64,48));content.addView(error);ui.gap(content,8);
         }
+        LinearLayout header=ui.row();
+        header.setPaddingRelative(ui.dp(16),0,ui.dp(16),0);
+        header.setMinimumHeight(ui.dp(48));
         countLabel=ui.text(L10n.format("共 {0} 条 · {1} 条未读",inbox.total,inbox.unread),13,false);
-        countLabel.setTextColor(SECONDARY);countLabel.setPadding(ui.dp(16),ui.dp(8),0,ui.dp(8));content.addView(countLabel);
+        countLabel.setTextColor(SECONDARY);
+        header.addView(countLabel,new LinearLayout.LayoutParams(0,-2,1));
+        if(inbox.unread>0){
+            TextView readAll=ui.action(L10n.tr("全部已读"),BLUE,inbox::markAllRead);
+            readAll.setTextSize(14);
+            readAll.setGravity(Gravity.END|Gravity.CENTER_VERTICAL);
+            readAll.setPaddingRelative(ui.dp(8),0,0,0);
+            header.addView(readAll,new LinearLayout.LayoutParams(0,-2,1));
+        }
+        content.addView(header,ui.size(-1,-2));
         LinearLayout card=ui.column();ui.card(card,12);content.addView(card);
         for(AnnouncementInbox.Item item:inbox.items){
             if(card.getChildCount()>0)ui.divider(card);

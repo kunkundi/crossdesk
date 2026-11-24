@@ -90,6 +90,18 @@ final class AnnouncementInbox implements AutoCloseable {
         if(item.body.isEmpty() && connected){cancelRequest();request(0,item);}
         if(Objects.equals(reads.get(item.id),item.revision))return;
         Map<Long,Long> updated=new HashMap<>(reads);updated.put(item.id,item.revision);
+        saveReads(updated);
+    }
+    void markAllRead(){
+        if(unread==0)return;
+        Map<Long,Long> updated=new HashMap<>(reads);
+        for(Map.Entry<Long,Long> entry:catalog.entrySet()){
+            if(!Objects.equals(dismissed.get(entry.getKey()),entry.getValue()))
+                updated.put(entry.getKey(),entry.getValue());
+        }
+        saveReads(updated);
+    }
+    private void saveReads(Map<Long,Long> updated){
         if(!saveLocalState(updated,dismissed)){readSaveFailed=true;changed.run();return;}
         reads.clear();reads.putAll(updated);readSaveFailed=deleteFailed=false;updateReadingState();changed.run();
     }

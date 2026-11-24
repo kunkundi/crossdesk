@@ -73,7 +73,19 @@ export class AnnouncementInbox {
     if (!this.items.some((v: AnnouncementItem) => v.id === item.id && v.revision === item.revision)) return;
     if (this.connected && !item.body) { this.cancel(); this.request(0, item); }
     const next = new Map(this.reads); next.set(item.id, item.revision);
-    if (this.persist(next, this.dismissed)) { this.reads = next; this.reading(); } this.changed();
+    this.saveReads(next);
+  }
+  markAllRead(): void {
+    if (this.unread === 0) return;
+    const next = new Map(this.reads);
+    this.catalog.forEach((revision: number, id: number) => {
+      if (this.dismissed.get(id) !== revision) next.set(id, revision);
+    });
+    this.saveReads(next);
+  }
+  private saveReads(next: Map<number, number>): void {
+    if (this.persist(next, this.dismissed)) { this.reads = next; this.reading(); }
+    this.changed();
   }
   dismiss(item: AnnouncementItem): void {
     if (!this.items.some((v: AnnouncementItem) => v.id === item.id && v.revision === item.revision)) return;

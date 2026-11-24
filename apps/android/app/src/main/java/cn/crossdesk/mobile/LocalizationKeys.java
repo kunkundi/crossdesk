@@ -35,6 +35,7 @@ final class LocalizationKeys {
         IDS.put("保存远程画面预览", R.string.text_3bcdcd330bb3044c);
         IDS.put("保存远程画面预览？", R.string.text_0f197074373e38fd);
         IDS.put("信令连接中断，请重新连接", R.string.text_71ca53f95a8484da);
+        IDS.put("全部已读", R.string.text_231cbc4337c5a60c);
         IDS.put("公告加载失败，请重试。", R.string.text_789f22a8b1b34797);
         IDS.put("公告详情", R.string.text_00554b17c432937e);
         IDS.put("共 ", R.string.text_2428420e407fe2e8);

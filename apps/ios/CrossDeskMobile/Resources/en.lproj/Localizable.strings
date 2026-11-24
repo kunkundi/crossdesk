@@ -29,6 +29,7 @@
 "信令连接已关闭" = "Signaling connection closed";
 "偏好模式" = "Preference mode";
 "像触控板一样滑动光标，点击时操作当前光标位置。" = "Slide the cursor like a trackpad and operate the current cursor position when clicked.";
+"全部已读" = "Mark all as read";
 "公告加载失败，请重试。" = "Announcement loading failed, please try again.";
 "公告详情" = "Announcement details";
 "共 %1$@ 条 · %2$@ 条未读" = "Total %1$@ items ·%2$@ unread items";

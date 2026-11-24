@@ -29,6 +29,7 @@
     <string name="text_3bcdcd330bb3044c" formatted="false">"リモート画面のプレビューを保存する"</string>
     <string name="text_0f197074373e38fd" formatted="false">"リモート画面のプレビューを保存しますか?"</string>
     <string name="text_71ca53f95a8484da" formatted="false">"信号接続が中断されました。再接続してください。"</string>
+    <string name="text_231cbc4337c5a60c" formatted="false">"すべて既読にする"</string>
     <string name="text_789f22a8b1b34797" formatted="false">"お知らせを読み込めませんでした。再試行してください。"</string>
     <string name="text_00554b17c432937e" formatted="false">"発表内容"</string>
     <string name="text_2428420e407fe2e8" formatted="false">"合計 "</string>

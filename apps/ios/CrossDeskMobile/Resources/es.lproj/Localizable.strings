@@ -29,6 +29,7 @@
 "信令连接已关闭" = "Conexión de señalización cerrada";
 "偏好模式" = "Modo de preferencia";
 "像触控板一样滑动光标，点击时操作当前光标位置。" = "Deslice el cursor como un trackpad y opere la posición actual del cursor cuando se haga clic.";
+"全部已读" = "Marcar todo como leído";
 "公告加载失败，请重试。" = "Error al cargar el anuncio, inténtelo de nuevo.";
 "公告详情" = "Detalles del anuncio";
 "共 %1$@ 条 · %2$@ 条未读" = "Total de elementos %1$@· Elementos no leídos %2$@";

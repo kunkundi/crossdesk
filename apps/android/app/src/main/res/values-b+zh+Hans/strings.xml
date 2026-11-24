@@ -29,6 +29,7 @@
     <string name="text_3bcdcd330bb3044c" formatted="false">"保存远程画面预览"</string>
     <string name="text_0f197074373e38fd" formatted="false">"保存远程画面预览？"</string>
     <string name="text_71ca53f95a8484da" formatted="false">"信令连接中断，请重新连接"</string>
+    <string name="text_231cbc4337c5a60c" formatted="false">"全部已读"</string>
     <string name="text_789f22a8b1b34797" formatted="false">"公告加载失败，请重试。"</string>
     <string name="text_00554b17c432937e" formatted="false">"公告详情"</string>
     <string name="text_2428420e407fe2e8" formatted="false">"共 "</string>

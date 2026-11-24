@@ -431,7 +431,17 @@ struct Mobile {
       if (!this.state.consent) { Text(tr("同意联网后可查看公告")).fontSize(14); this.Action(tr("查看联网说明"), () => this.state.modal = 'consent') }
       if (this.controller?.inbox.failed) { this.Action(tr("加载失败，点击重试"), () => this.controller?.inbox.refresh()) }
       if (this.controller?.inbox.loading) { LoadingProgress().width(28).height(28) }
-      if (this.controller?.inbox.saveFailed) { Text(tr("已读或删除状态保存失败，请重试")).fontSize(12).fontColor(MobileTheme.red) }
+      if (this.state.announcementSaveFailed) { Text(tr("已读或删除状态保存失败，请重试")).fontSize(12).fontColor(MobileTheme.red) }
+      Row({ space: 8 }) {
+        Text(tr("共 {0} 条 · {1} 条未读", [String(this.state.announcementTotal), String(this.state.unread)]))
+          .fontSize(13).fontColor(MobileTheme.secondary).layoutWeight(1)
+        if (this.state.unread > 0) {
+          Button({ type: ButtonType.Normal }) {
+            Text(tr("全部已读")).fontSize(14).fontWeight(500).fontColor(MobileTheme.blue).textAlign(TextAlign.End)
+          }.constraintSize({ minWidth: 48, maxWidth: '50%', minHeight: 48 }).padding(0).backgroundColor(Color.Transparent)
+            .accessibilityText(tr("全部已读")).onClick(() => this.controller?.inbox.markAllRead())
+        }
+      }.width('100%').constraintSize({ minHeight: 48 }).padding({ left: 16, right: 16 })
       if (!this.state.announcements.length && this.controller?.inbox.loaded && !this.controller?.inbox.loading) { Text(tr("暂无公告")).fontSize(16).fontColor(MobileTheme.secondary).padding(40) }
       ForEach(this.state.announcements, (item: AnnouncementItem) => {
         Column({ space: 8 }) {
@@ -441,7 +451,7 @@ struct Mobile {
         }.padding(18).width('100%').backgroundColor(Color.White).borderRadius(18).border({ width: 0.5, color: MobileTheme.line })
           .onClick(() => this.openAnnouncement(item)).gesture(LongPressGesture().onAction(() => { this.state.announcement = item; this.state.modal = 'deleteAnnouncement'; }))
       }, (item: AnnouncementItem) => `${item.id}:${item.revision}:${item.read}`)
-      if ((this.controller?.inbox.total ?? 0) > this.state.announcements.length) { this.Action(tr("加载更多"), () => this.controller?.inbox.more()) }
+      if (this.state.announcementTotal > this.state.announcements.length) { this.Action(tr("加载更多"), () => this.controller?.inbox.more()) }
     }.width('100%')
   }
   @Builder

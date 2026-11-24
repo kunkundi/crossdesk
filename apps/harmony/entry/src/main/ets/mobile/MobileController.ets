@@ -100,6 +100,8 @@ export class MobileState {
   privacyVisible: boolean = true;
   networkTime: number = 0;
   unread: number = 0;
+  announcementTotal: number = 0;
+  announcementSaveFailed: boolean = false;
   announcements: AnnouncementItem[] = [];
   announcement?: AnnouncementItem;
   documentTitle: string = '';
@@ -173,6 +175,8 @@ export class MobileController {
     this.inbox = new AnnouncementInbox((request: AnnouncementRequest) => this.send({ op: 'signal', message: request }),
       (scope: string) => this.store.text(`inbox:${scope}`, '{}'), (scope: string, body: string) => this.store.put(`inbox:${scope}`, body));
     this.inbox.changed = () => { this.state.announcements = this.inbox.items.slice(); this.state.unread = this.inbox.unread;
+      this.state.announcementSaveFailed = this.inbox.saveFailed;
+      this.state.announcementTotal = this.inbox.total;
       const selected = this.state.announcement;
       if (selected && !this.inbox.loading) this.state.announcement = this.inbox.items.find((item: AnnouncementItem) =>
         item.id === selected.id && item.revision === selected.revision); };

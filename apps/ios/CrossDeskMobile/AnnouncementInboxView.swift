@@ -48,6 +48,10 @@ struct AnnouncementInboxView: View {
 
     var body: some View {
         List {
+            if inbox.state.readSaveFailed {
+                Text(NSLocalizedString("无法保存本地阅读状态，请重试。", comment: ""))
+                    .foregroundStyle(.red)
+            }
             if inbox.state.deleteFailed {
                 Text(NSLocalizedString("无法删除这条公告，请重试。", comment: ""))
                     .foregroundStyle(.red)
@@ -105,7 +109,23 @@ struct AnnouncementInboxView: View {
                         .frame(maxWidth: .infinity, minHeight: 120)
                 }
             } header: {
-                Text(String(format: NSLocalizedString("共 %1$@ 条 · %2$@ 条未读", comment: ""), String(describing: inbox.state.total), String(describing: inbox.state.unread)))
+                HStack(spacing: 8) {
+                    Text(String(format: NSLocalizedString("共 %1$@ 条 · %2$@ 条未读", comment: ""), String(describing: inbox.state.total), String(describing: inbox.state.unread)))
+                    Spacer(minLength: 0)
+                    if inbox.state.unread > 0 {
+                        Button(action: inbox.markAllRead) {
+                            Text(NSLocalizedString("全部已读", comment: ""))
+                                .font(.subheadline.weight(.medium))
+                                .multilineTextAlignment(.trailing)
+                                .frame(minWidth: 44, minHeight: 44, alignment: .trailing)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(Color.accentColor)
+                    }
+                }
+                .frame(minHeight: 44)
+                .textCase(nil)
             }
         }
         .readableContentWidth()

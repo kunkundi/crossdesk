@@ -359,7 +359,7 @@ private struct ConnectionHomeView: View {
                 .accessibilityHint(NSLocalizedString("打开隐私政策", comment: ""))
             }
         }
-        ToolbarItem(placement: .navigationBarTrailing) {
+        ToolbarItem(placement: announcementPlacement) {
             NavigationLink(value: HomeDestination.announcements) {
                 AnnouncementBadge(inbox: session.announcements)
             }
@@ -390,6 +390,11 @@ private struct ConnectionHomeView: View {
             .disabled(session.isConnecting)
             .accessibilityLabel(appUpdates.updateAvailable ? NSLocalizedString("设置，有新版本", comment: "") : NSLocalizedString("设置", comment: ""))
         }
+    }
+
+    private var announcementPlacement: ToolbarItemPlacement {
+        if #available(iOS 27.0, *) { return .topBarPinnedTrailing }
+        return .navigationBarTrailing
     }
 
     private var signalStatusBadge: some View {

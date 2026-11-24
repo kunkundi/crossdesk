@@ -162,6 +162,19 @@ final class AnnouncementInbox: ObservableObject {
         guard reads[item.id] != item.revision else { return }
         var updated = reads
         updated[item.id] = item.revision
+        saveReads(updated)
+    }
+
+    func markAllRead() {
+        guard state.unread > 0 else { return }
+        var updated = reads
+        for (id, revision) in catalog where dismissed[id] != revision {
+            updated[id] = revision
+        }
+        saveReads(updated)
+    }
+
+    private func saveReads(_ updated: [Int64: Int64]) {
         guard saveLocalState(reads: updated, dismissed: dismissed) else {
             state.readSaveFailed = true
             return
