@@ -88,6 +88,7 @@ struct PeerState {
   std::string file_feedback_label_ = kFileFeedbackStream;
   std::string clipboard_label_ = kClipboardStream;
   MiniRtcParams params_{};
+  MiniRtcVideoCodec preferred_video_codec_ = MiniRtcVideoCodec::H264;
 };
 
 // OS-specific service and permission state is kept separate from transport

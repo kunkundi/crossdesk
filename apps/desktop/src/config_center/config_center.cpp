@@ -127,9 +127,9 @@ int ConfigCenter::Load() {
   // Capture always follows DXGI -> WGC -> GDI; discard old forced choices.
   persist_config_migration |= ini_->Delete(section_, "screen_capture_method");
 
-  video_encode_format_ = static_cast<VIDEO_ENCODE_FORMAT>(
-      ini_->GetLongValue(section_, "video_encode_format",
-                        static_cast<long>(video_encode_format_)));
+  const long codec = ini_->GetLongValue(section_, "video_encode_format", 0);
+  video_encode_format_ = codec >= 0 && codec <= static_cast<long>(VIDEO_ENCODE_FORMAT::H265)
+      ? static_cast<VIDEO_ENCODE_FORMAT>(codec) : VIDEO_ENCODE_FORMAT::H264;
 
   const char* turn_mode_value = ini_->GetValue(section_, "turn_mode", nullptr);
   if (turn_mode_value != nullptr && strlen(turn_mode_value) > 0) {
@@ -403,7 +403,7 @@ int ConfigCenter::ApplySharedHostConfig(const std::string& contents) {
   const bool trusted = host.GetBoolValue(section_, "trusted_devices_only", false);
   const bool lock = host.GetBoolValue(section_, "lock_on_disconnect", true);
   MiniRtcSignalServerAddress address{};
-  if (!IsValidTurnModeValue(turn) || codec < 0 || codec > 1 ||
+  if (!IsValidTurnModeValue(turn) || codec < 0 || codec > static_cast<long>(VIDEO_ENCODE_FORMAT::H265) ||
       (self_hosted && (port < 1 || port > 65535 ||
        MiniRtcParseSignalServerAddress(server.data(), server.size(), &address) != 0))) return -1;
   if (StoreValues({{"enable_self_hosted", self_hosted ? "true" : "false"},
@@ -466,7 +466,7 @@ int ConfigCenter::SetIpDirectEnabled(bool enabled) {
 }
 
 int ConfigCenter::SetVideoEncodeFormat(VIDEO_ENCODE_FORMAT format) {
-  if (format != VIDEO_ENCODE_FORMAT::H264 && format != VIDEO_ENCODE_FORMAT::AV1) return -1;
+  if (format > VIDEO_ENCODE_FORMAT::H265) return -1;
   if (StoreValues({{"video_encode_format", std::to_string(static_cast<int>(format))}}) != 0) return -1;
   video_encode_format_ = format;
   return 0;

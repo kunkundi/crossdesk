@@ -7,6 +7,8 @@
 #ifndef _CONFIG_CENTER_H_
 #define _CONFIG_CENTER_H_
 
+#include <minirtc.h>
+
 #include <atomic>
 #include <initializer_list>
 #include <map>
@@ -27,7 +29,7 @@ class ConfigCenter {
     BRAZILIAN_PORTUGUESE = 9, SYSTEM = 10
   };
   enum class CONNECTION_MODE { DEVICE_ID = 0, DIRECT_IP = 1 };
-  enum class VIDEO_ENCODE_FORMAT { H264 = 0, AV1 = 1 };
+  using VIDEO_ENCODE_FORMAT = MiniRtcVideoCodec;
   enum class TURN_MODE {
     DISABLED = 0,
     AUTO_UDP_TCP = 1,

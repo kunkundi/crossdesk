@@ -714,8 +714,8 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
         props->params_.user_id = props->local_id_.c_str();
         props->peer_events_ = std::make_shared<PeerEventHandler>(*this);
         props->params_.user_data = props->peer_events_.get();
-        props->peer_ = MiniRtcCreatePeerWithLogDirectory(
-            &props->params_, dll_log_path_.c_str());
+        props->peer_ = MiniRtcCreatePeerWithVideoCodec(
+            &props->params_, dll_log_path_.c_str(), preferred_video_codec_);
 
         props->connection_status_.store(MiniRtcConnectionStatus::MiniRtcConnectionConnecting);
         if (!background) show_connection_status_window_ = true;

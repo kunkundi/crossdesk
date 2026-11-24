@@ -318,10 +318,7 @@ int GuiRuntime::CreateConnectionPeer() {
 #else
   params_.native_video_output = false;
 #endif
-  params_.av1_encoding = config_center_->GetVideoEncodeFormat() ==
-                                 ConfigCenter::VIDEO_ENCODE_FORMAT::AV1
-                             ? true
-                             : false;
+  preferred_video_codec_ = config_center_->GetVideoEncodeFormat();
   params_.turn_mode = static_cast<MiniRtcTurnMode>(config_center_->GetTurnMode());
   params_.direct_start_bitrate_bps = config_center_->GetDirectStartBitrateBps();
   params_.relay_start_bitrate_bps = config_center_->GetRelayStartBitrateBps();
@@ -360,7 +357,7 @@ int GuiRuntime::CreateConnectionPeer() {
   if (unattended_host_ && devices_.EnsureCaptureReady() != 0) return -1;
   {
     std::unique_lock lock(remote_sessions_mutex_);
-    peer_ = MiniRtcCreatePeerWithLogDirectory(&params_, dll_log_path_.c_str());
+    peer_ = MiniRtcCreatePeerWithVideoCodec(&params_, dll_log_path_.c_str(), preferred_video_codec_);
   }
   if (peer_) {
     LOG_INFO("Create peer instance successful");

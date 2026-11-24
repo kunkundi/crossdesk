@@ -261,9 +261,11 @@ void GuiApplication::TickLocalHost() {
           if (!ok) error("Could not apply host settings while a connection is active");
         } else if (op == "connection_settings") {
           const auto turn = message.at("turn").get<int>();
-          if (peer_ && turn >= 0 && turn <= 3)
-            MiniRtcUpdateConnectionSettings(peer_, true, message.at("av1"),
-                                             static_cast<MiniRtcTurnMode>(turn));
+          const int codec = message.value("codec", message.value("av1", false) ? 1 : 0);
+          if (peer_ && turn >= 0 && turn <= 3 && codec >= 0 &&
+              codec <= static_cast<int>(MiniRtcVideoCodec::H265))
+            MiniRtcUpdateConnectionSettingsWithCodec(peer_, true,
+                static_cast<MiniRtcVideoCodec>(codec), static_cast<MiniRtcTurnMode>(turn));
         } else if (op == "reconnect") {
           if (!peer_ || HasActiveSession()) {
             const char* reason = !peer_ ? "Host signaling peer is unavailable"

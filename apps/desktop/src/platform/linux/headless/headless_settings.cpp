@@ -26,6 +26,7 @@ std::optional<bool> Boolean(const std::string& value) {
 }
 const char* OnOff(bool value) { return value ? "on" : "off"; }
 const char* languages[] = {"zh-CN", "en-US", "ru-RU", "zh-Hant", "ja", "ko", "de", "fr", "es", "pt-BR", "system"};
+const char* codecs[] = {"h264", "av1", "h265"};
 const char* turn_modes[] = {"off", "auto", "udp", "tcp"};
 }  // namespace
 
@@ -34,7 +35,7 @@ std::vector<ConsoleSetting> GetConsoleSettings(const ConfigCenter& config) {
   const auto turn = std::clamp(static_cast<int>(config.GetTurnMode()), 0, 3);
   return {
       {"language", "console_setting_language", languages[language], "system / zh-CN / en-US / ru-RU / zh-Hant / ja / ko / de / fr / es / pt-BR"},
-      {"codec", "console_setting_codec", config.GetVideoEncodeFormat() == ConfigCenter::VIDEO_ENCODE_FORMAT::AV1 ? "av1" : "h264", "h264 / av1"},
+      {"codec", "console_setting_codec", codecs[static_cast<int>(config.GetVideoEncodeFormat())], "h264 / av1 / h265"},
       {"turn", "console_setting_turn", turn_modes[turn], "off / auto / udp / tcp"},
       {"self_hosted", "console_setting_self_hosted", OnOff(config.IsSelfHosted()), "on / off"},
       {"server_host", "console_setting_host", config.GetSignalServerHost(), "example.com"},
@@ -78,9 +79,11 @@ SettingResult ApplyConsoleSetting(ConfigCenter& config, const std::string& key,
     canonical = languages[language];
     save = [&config, language] { return config.SetLanguage(static_cast<ConfigCenter::LANGUAGE>(language)); };
   } else if (key == "codec") {
-    if (value != "h264" && value != "av1") return result;
+    const auto found = std::find(std::begin(codecs), std::end(codecs), value);
+    if (found == std::end(codecs)) return result;
     canonical = value;
-    save = [&] { return config.SetVideoEncodeFormat(value == "h264" ? ConfigCenter::VIDEO_ENCODE_FORMAT::H264 : ConfigCenter::VIDEO_ENCODE_FORMAT::AV1); };
+    const auto codec = static_cast<MiniRtcVideoCodec>(found - std::begin(codecs));
+    save = [&config, codec] { return config.SetVideoEncodeFormat(codec); };
   } else if (key == "turn") {
     const auto found = std::find(std::begin(turn_modes), std::end(turn_modes), value);
     if (found == std::end(turn_modes)) return result;

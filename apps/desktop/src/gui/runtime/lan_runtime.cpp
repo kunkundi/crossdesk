@@ -42,8 +42,7 @@ void GuiRuntime::InitializeLan() {
     MiniRtcParams params{};
     params.hardware_acceleration = true;
     params.native_video_output = true;
-    params.av1_encoding = config_center_->GetVideoEncodeFormat() ==
-                          ConfigCenter::VIDEO_ENCODE_FORMAT::AV1;
+    const auto codec = config_center_->GetVideoEncodeFormat();
     params.enable_srtp = true;
     params.turn_mode = MiniRtcTurnMode::MiniRtcTurnDisabled;
     params.direct_start_bitrate_bps = config_center_->GetDirectStartBitrateBps();
@@ -70,11 +69,11 @@ void GuiRuntime::InitializeLan() {
       props->peer_events_ = events;
       props->local_id_ = session->local_id;
     }
-    return [this, session, events, params, displays, log_directory = dll_log_path_] {
+    return [this, session, events, params, codec, displays, log_directory = dll_log_path_] {
       lan::SessionManager::Prepared result;
       result.callback_owner = events;
       result.drain_callbacks = [events] { events->Deactivate(); };
-      result.peer = MiniRtcCreatePeerWithLogDirectory(&params, log_directory.c_str());
+      result.peer = MiniRtcCreatePeerWithVideoCodec(&params, log_directory.c_str(), codec);
       events->SetDirectPeer(result.peer);
       if (result.peer) RegisterStreams(result.peer, displays);
       return result;

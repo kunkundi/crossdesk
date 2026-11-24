@@ -3008,7 +3008,7 @@ export component MainWindow inherits Window {
                             rows: 2;
                             SettingsRow {
                                 label: UiStrings.codec; enabled: !root.settings-session-active;
-                                SettingsSelect { x: parent.width - 116px; y: 4px; width: 104px; enabled: !root.settings-session-active; model: [UiStrings.codec-h264, UiStrings.codec-av1]; current-index <=> root.codec-index; }
+                                SettingsSelect { x: parent.width - 116px; y: 4px; width: 104px; enabled: !root.settings-session-active; model: [UiStrings.codec-h264, UiStrings.codec-av1, "H.265"]; current-index <=> root.codec-index; }
                             }
                             pause-video-hover := TouchArea {
                                 height: 36px;
