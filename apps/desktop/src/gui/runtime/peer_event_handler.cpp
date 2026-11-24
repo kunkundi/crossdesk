@@ -379,16 +379,14 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
           props->remote_cursor_state_received_ = false;
           props->cursor_presentation_ = {};
         }
-        const bool wants_recent_wallpaper =
-            runtime->config_center_->IsSaveRemotePreviews();
         {
           std::lock_guard lock(props->remote_version_mutex_);
-          props->recent_wallpaper_requested_ = wants_recent_wallpaper;
+          props->recent_wallpaper_requested_ = true;
         }
         {
           const auto msg = runtime->BuildHostInformation(true,
               runtime->remote_resolutions_.Get(props->device_preference_key_),
-              wants_recent_wallpaper);
+              true);
           const int ret =
               MiniRtcSendReliableDataFrame(props->peer_, msg.data(), msg.size(),
                                     runtime->control_data_label_.c_str());

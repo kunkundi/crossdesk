@@ -204,14 +204,12 @@ bool Thumbnail::ReadRecord(const std::filesystem::path& path,
     connection->remember_password = !connection->password.empty();
     connection->platform =
         ParseHostPlatform(record.value("platform", "unknown"));
-    if (save_previews_) {
-      for (const auto* extension : {".jpg", ".png"}) {
-        auto image = path.parent_path() / (connection->remote_id + extension);
-        if (!std::filesystem::is_regular_file(image)) continue;
-        connection->image_path = std::move(image);
-        break;
-      }
-    }
+    const auto wallpaper = path.parent_path() / (connection->remote_id + ".jpg");
+    const auto frame = path.parent_path() / (connection->remote_id + ".png");
+    if (std::filesystem::is_regular_file(wallpaper))
+      connection->image_path = wallpaper;
+    else if (save_previews_ && std::filesystem::is_regular_file(frame))
+      connection->image_path = frame;
     return true;
   } catch (const nlohmann::json::exception&) {
     return false;
@@ -254,14 +252,10 @@ int Thumbnail::SaveToThumbnail(const char* nv12, int width, int height,
   const auto image = std::filesystem::path(save_path_) / (remote_id + ".png");
   const auto wallpaper_path =
       std::filesystem::path(save_path_) / (remote_id + ".jpg");
-  if (!save_previews_) {
-    std::error_code image_error, wallpaper_error;
-    std::filesystem::remove(image, image_error);
-    std::filesystem::remove(wallpaper_path, wallpaper_error);
-    return image_error || wallpaper_error ? -1 : 0;
-  }
-  if (IsWallpaperPreviewJpeg(wallpaper)) {
-    if (!WriteFileAtomically(wallpaper_path, wallpaper)) return -1;
+  const bool has_new_wallpaper = IsWallpaperPreviewJpeg(wallpaper);
+  if (has_new_wallpaper && !WriteFileAtomically(wallpaper_path, wallpaper))
+    return -1;
+  if (has_new_wallpaper || !save_previews_) {
     std::error_code error;
     std::filesystem::remove(image, error);
     return error ? -1 : 0;
@@ -358,10 +352,8 @@ int Thumbnail::LoadThumbnailLocked(
       if (it != records.end()) {
         recent_connections.emplace_back(ConnectionKey(it->second), it->second);
       }
-    } else if (!save_previews_ &&
-               (path.extension() == ".png" || path.extension() == ".jpg" ||
-                (path.extension() == ".tmp" &&
-                 path.stem().extension() == ".jpg"))) {
+    } else if ((!save_previews_ && path.extension() == ".png") ||
+               (path.extension() == ".tmp" && path.stem().extension() == ".jpg")) {
       std::error_code error;
       std::filesystem::remove(path, error);
       if (error) result = -1;

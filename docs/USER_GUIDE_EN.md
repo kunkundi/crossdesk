@@ -190,7 +190,7 @@ Open **☰ → Settings** in the top-right corner, choose **General / DeskHub**,
 | Video Encode Format | H.264 / AV1; H.264 automatically prefers hardware codecs, with software fallback when unavailable or initialization fails; desktop AV1 uses software codecs |
 | Enable direct IP | Enabled by default; saving starts or stops direct IP immediately. Disabling disconnects IP sessions, stops listeners, and hides the mode button; the choice persists across restarts |
 | Force Relay | When off, automatically select a connection path with P2P and TURN relay fallback; when on, use relay connections only |
-| Save remote screen previews | On by default. When disabled, the thumbnail area shows the remote device’s platform and existing previews are cleared; connection records and passwords are preserved |
+| Save remote screen previews | On by default. Recent connections can show a saved session frame when wallpaper is unavailable. Disabling this setting clears saved session frames |
 | Privacy screen on connect | Automatically enable privacy when this computer is controlled remotely; the controller can toggle it from the session toolbar |
 | Self-Hosted Config | Click Edit to set the server address and signaling port, then enable the switch on the right |
 | Auto Start | Installed Windows Release builds use the same ID and password before and after sign-in, with the GUI attaching to the background service after login. Unavailable in portable and Debug Windows builds. Other desktop platforms start at desktop login |

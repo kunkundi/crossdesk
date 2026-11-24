@@ -101,6 +101,8 @@ typedef struct {
     didReceivePresence:(NSDictionary<NSString *, NSNumber *> *)presence
                snapshot:(BOOL)snapshot;
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
+    didReceiveWallpaper:(NSData *)jpeg;
+- (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didReceiveDisplayResolutions:(NSData *)message;
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didFailDisplayResolutionRequest:(uint32_t)requestID;

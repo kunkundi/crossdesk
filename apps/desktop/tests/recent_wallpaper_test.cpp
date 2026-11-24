@@ -36,7 +36,9 @@ int main() {
   const unsigned char red[] = {255, 0, 0, 255, 0, 0};
   if (!stbi_write_png(source.string().c_str(), 2, 1, 3, red, 6)) return 1;
   const auto jpeg = crossdesk::EncodeWallpaperPreview(source);
-  if (!Check(crossdesk::IsWallpaperPreviewJpeg(jpeg),
+  const auto message = std::string(crossdesk::kWallpaperPreviewPrefix) + jpeg;
+  if (!Check(crossdesk::WallpaperPreviewFromMessage(message) == jpeg &&
+                 crossdesk::IsWallpaperPreviewJpeg(jpeg),
              "fixture wallpaper must encode as a valid cover"))
     return 1;
 
@@ -94,32 +96,30 @@ int main() {
     }
   }
 
-  // user disables saved previews and keeps the devices in history
-  // Given two recent devices with saved covers
-  // When the user disables previews
-  // Then both image files are removed and both connection records remain
+  // user sees wallpapers with session previews disabled
+  // Given a device with a wallpaper and an older device with a saved frame
+  // When the user disables screen previews and reconnects
+  // Then the wallpaper is still available and the older frame is removed
   if (!Check(history.SetSavePreviews(false) == 0 &&
-                 history.SaveToThumbnail(nullptr, 0, 0, lan_id, "LAN", "ABC123",
-                     crossdesk::HostPlatform::MacOS, &lan, jpeg) == 0 &&
                  history.LoadThumbnail(entries) == 0 && entries.size() == 2 &&
-                 entries[0].second.image_path.empty() &&
-                 entries[1].second.image_path.empty() &&
-                 std::distance(std::filesystem::directory_iterator(cache),
-                               std::filesystem::directory_iterator{}) == 2,
-             "disabling previews must remove both images and preserve history"))
+                 std::filesystem::is_regular_file(cache / (lan_id + ".jpg")) &&
+                 !std::filesystem::exists(cache / "123456789.png") &&
+                 history.SaveToThumbnail(frame, 2, 2, cloud, "Cloud", "",
+                     crossdesk::HostPlatform::MacOS, nullptr, jpeg) == 0 &&
+                 history.LoadThumbnail(entries) == 0 && entries.size() == 2 &&
+                 !entries[0].second.image_path.empty() &&
+                 !entries[1].second.image_path.empty(),
+             "wallpapers must be saved and loaded with screen previews disabled"))
     return 1;
 
   // user removes a LAN connection and its wallpaper
   // Given a LAN device with a saved cover
   // When the user deletes that connection
   // Then its cover and connection record are removed
-  return Check(history.SetSavePreviews(true) == 0 &&
-                   history.SaveToThumbnail(nullptr, 0, 0, lan_id, "LAN", "",
-                       crossdesk::HostPlatform::MacOS, &lan, jpeg) == 0 &&
-                   history.DeleteThumbnail(lan_id) == 0 &&
+  return Check(history.DeleteThumbnail(lan_id) == 0 &&
                    history.LoadThumbnail(entries) == 0 && entries.size() == 1 &&
                    entries[0].second.remote_id == cloud &&
                    std::distance(std::filesystem::directory_iterator(cache),
-                                 std::filesystem::directory_iterator{}) == 1,
+                                 std::filesystem::directory_iterator{}) == 2,
                "removing a LAN connection must remove its cached cover") ? 0 : 1;
 }

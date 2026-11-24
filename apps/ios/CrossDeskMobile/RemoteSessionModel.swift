@@ -1,6 +1,8 @@
 import AVFoundation
 import CoreImage
 import CoreVideo
+import CryptoKit
+import ImageIO
 import Foundation
 import Security
 import UIKit
@@ -103,6 +105,9 @@ private enum RecentConnectionStore {
     private static let thumbnails = ThumbnailFileStore(directory:
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("RecentConnectionThumbnails", isDirectory: true))
+    private static let wallpapers = ThumbnailFileStore(directory:
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("RecentConnectionWallpapers", isDirectory: true))
     private static let context = CIContext(options: [.cacheIntermediates: false])
 
     static func load() -> [RecentConnection] {
@@ -126,6 +131,32 @@ private enum RecentConnectionStore {
     private static func thumbnailFileName(for remoteID: String) -> String {
         let safeID = remoteID.filter { $0.isLetter || $0.isNumber || $0 == "-" }
         return "\(safeID.isEmpty ? "remote" : safeID).jpg"
+    }
+
+    private static func wallpaperName(for key: String) -> String {
+        SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined() + ".jpg"
+    }
+
+    static func wallpaperURL(key: String) -> URL {
+        wallpapers.url(for: wallpaperName(for: key))
+    }
+
+    static func saveWallpaper(_ jpeg: Data, key: String, completion: @escaping (Bool) -> Void) {
+        wallpapers.save(fileName: wallpaperName(for: key), makeData: {
+            guard let source = CGImageSourceCreateWithData(jpeg as CFData, nil),
+                  let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+                  let width = properties[kCGImagePropertyPixelWidth] as? Int,
+                  let height = properties[kCGImagePropertyPixelHeight] as? Int,
+                  (1...640).contains(width), (1...640).contains(height),
+                  CGImageSourceCreateImageAtIndex(source, 0, nil) != nil else { return nil }
+            return jpeg
+        }) { name in
+            DispatchQueue.main.async { completion(name != nil) }
+        }
+    }
+
+    static func removeWallpaper(key: String) {
+        wallpapers.remove(fileName: wallpaperName(for: key))
     }
 
     static func captureThumbnail(from pixelBuffer: CVPixelBuffer,
@@ -161,10 +192,27 @@ private enum RecentConnectionStore {
         }
     }
 
-    static func removeAllThumbnails(completion: @escaping (Bool) -> Void) {
+    static func removeAllThumbnails(includingWallpapers: Bool, completion: @escaping (Bool) -> Void) {
+        let cleanup = DispatchGroup()
+        var screenSuccess = true
+        var wallpaperSuccess = true
+        cleanup.enter()
         thumbnails.removeAll { success in
-            DispatchQueue.main.async { completion(success) }
+            DispatchQueue.main.async {
+                screenSuccess = success
+                cleanup.leave()
+            }
         }
+        if includingWallpapers {
+            cleanup.enter()
+            wallpapers.removeAll { success in
+                DispatchQueue.main.async {
+                    wallpaperSuccess = success
+                    cleanup.leave()
+                }
+            }
+        }
+        cleanup.notify(queue: .main) { completion(screenSuccess && wallpaperSuccess) }
     }
 
 }
@@ -401,6 +449,8 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     private var pendingRememberPassword = false
     private var connectionRecorded = false
     private var shouldCaptureThumbnail = false
+    private var pendingWallpaper: Data?
+    private var wallpaperClearedForSession = false
     private var activeDisplayName = ""
     private var remoteCursorSequence: UInt32?
     private var remoteServiceAvailable = false
@@ -457,7 +507,9 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         announcements.send = { [weak bridge] data, requestID in
             bridge?.sendAnnouncementRequest(data, requestID: requestID)
         }
-        if !savesConnectionThumbnails { clearConnectionThumbnails() }
+        if !savesConnectionThumbnails {
+            clearConnectionThumbnails(includingWallpapers: !hasNetworkConsent)
+        }
         if hasNetworkConsent { configureBridge() }
     }
 
@@ -533,12 +585,16 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     func setSavesConnectionThumbnails(_ allowed: Bool) {
         privacyPreferences.setSavesThumbnails(allowed)
         savesConnectionThumbnails = privacyPreferences.savesThumbnails
-        if !savesConnectionThumbnails { clearConnectionThumbnails() }
+        if !savesConnectionThumbnails { clearConnectionThumbnails(includingWallpapers: false) }
         // Enabling applies on the next connection, never to a frame captured
         // before the user opted in.
     }
 
-    func clearConnectionThumbnails() {
+    func clearConnectionThumbnails(includingWallpapers: Bool = true) {
+        if includingWallpapers {
+            pendingWallpaper = nil
+            wallpaperClearedForSession = true
+        }
         thumbnailGeneration = UUID()
         shouldCaptureThumbnail = false
         for index in recentConnections.indices {
@@ -548,7 +604,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         thumbnailCleanupInProgress = true
         thumbnailCleanupError = nil
         let generation = thumbnailGeneration
-        RecentConnectionStore.removeAllThumbnails { [weak self] success in
+        RecentConnectionStore.removeAllThumbnails(includingWallpapers: includingWallpapers) { [weak self] success in
             guard let self, self.thumbnailGeneration == generation else { return }
             self.thumbnailCleanupInProgress = false
             self.thumbnailCleanupError = success
@@ -637,6 +693,8 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         displaySizes = []
         connectionRecorded = false
         shouldCaptureThumbnail = savesConnectionThumbnails
+        pendingWallpaper = nil
+        wallpaperClearedForSession = false
         isConnecting = true
         isConnected = false
         sessionVisible = false
@@ -739,6 +797,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             refreshRecentConnectionPresence()
         }
         bridge.disconnect()
+        pendingWallpaper = nil
         isConnecting = false
         isConnected = false
         sessionVisible = false
@@ -829,7 +888,18 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             .remembersPassword == true
     }
 
+    private func wallpaperKey(for remoteID: String) -> String {
+        let server = customServer ?? .official
+        return RemoteDisplayResolutionStore.key(host: server.host,
+                                                port: server.signalPort, remoteID: remoteID)
+    }
+
     func thumbnailImage(for connection: RecentConnection) -> UIImage? {
+        if hasNetworkConsent,
+           let cover = UIImage(contentsOfFile: RecentConnectionStore.wallpaperURL(
+                key: wallpaperKey(for: connection.remoteID)).path) {
+            return cover
+        }
         guard savesConnectionThumbnails,
               let fileName = connection.thumbnailFileName else {
             return nil
@@ -970,6 +1040,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         presenceUpdatedAt.removeValue(forKey: connection.remoteID)
         RecentConnectionStore.save(recentConnections)
         RecentConnectionStore.removeThumbnail(for: connection)
+        RecentConnectionStore.removeWallpaper(key: wallpaperKey(for: connection.remoteID))
         ConnectionCredentialStore.removePassword(for: connection.remoteID)
         refreshRecentConnectionPresence()
     }
@@ -1341,6 +1412,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             if videoSettings.requestID == 0 { updateVideoSettings() }
             checkRemoteVersionIfNeeded()
             recordSuccessfulConnectionIfNeeded()
+            saveRecentWallpaperIfReady()
             audioPlayer.setEnabled(audioEnabled)
             bridge.setAudioEnabled(audioEnabled)
             AppOrientation.beginSession(autoLandscape: autoLandscape)
@@ -1465,6 +1537,22 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         )
         frameCount &+= 1
         captureRecentThumbnailIfNeeded(pixelBuffer)
+    }
+
+    func rtcBridge(_ bridge: CrossDeskRTCBridge, didReceiveWallpaper jpeg: Data) {
+        guard hasNetworkConsent, !wallpaperClearedForSession, isConnecting || isConnected else { return }
+        pendingWallpaper = jpeg
+        saveRecentWallpaperIfReady()
+    }
+
+    private func saveRecentWallpaperIfReady() {
+        guard isConnected, let jpeg = pendingWallpaper,
+              recentConnections.contains(where: { $0.remoteID == activeRemoteID }) else { return }
+        pendingWallpaper = nil
+        RecentConnectionStore.saveWallpaper(jpeg, key: resolutionPreferenceKey) { [weak self] saved in
+            guard let self, saved, self.hasNetworkConsent else { return }
+            self.objectWillChange.send()
+        }
     }
 
     func rtcBridge(_ bridge: CrossDeskRTCBridge,

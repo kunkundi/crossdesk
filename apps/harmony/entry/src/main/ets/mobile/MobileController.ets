@@ -143,6 +143,8 @@ export class MobileController {
   private receivedHostInfo: boolean = false;
   private previewEligible: boolean = false;
   private historySaved: boolean = false;
+  private pendingWallpaper: string = '';
+  private wallpaperClearedForSession: boolean = false;
   private previewPending: boolean = false;
   private previewSaved: boolean = false;
   private previewAttempts: number = 0;
@@ -308,6 +310,7 @@ export class MobileController {
     this.state.remoteClipboard = ''; this.state.displays = []; this.state.width = 16; this.state.height = 9; this.state.hasFrame = false;
     this.state.selectedDisplay = 0; this.state.viewportReset++; this.remoteVersion = ''; this.receivedHostInfo = false;
     this.serviceAvailable = this.checkedRemote = this.sendingFile = false;
+    this.pendingWallpaper = ''; this.wallpaperClearedForSession = false;
     this.previewEligible = this.state.previews; this.historySaved = false; this.previewSaved = this.previewPending = false; this.previewAttempts = 0;
     this.network = new NetworkStatistics(); let edge = 1920;
     try { const screen = display.getDefaultDisplaySync(); edge = Math.max(screen.width, screen.height); } catch {}
@@ -398,10 +401,14 @@ export class MobileController {
   setAutoLandscape(value: boolean): void { this.store.put('autoLandscape', value); this.state.autoLandscape = value; }
   setPreviews(value: boolean): void {
     this.store.put('previews', value); this.state.previews = value;
-    if (!value) { this.send({ op: 'cancelPreview' }); this.previewEligible = false; this.store.clearPreviews(); this.history(); }
+    if (!value) { this.send({ op: 'cancelPreview' }); this.previewEligible = false; this.store.clearPreviews(false); this.history(); }
     this.state.modal = '';
   }
-  clearPreviews(): void { this.send({ op: 'cancelPreview' }); this.previewEligible = false; this.store.clearPreviews(); this.history(); this.toast(tr("已清除预览")); }
+  clearPreviews(): void {
+    this.send({ op: 'cancelPreview' }); this.previewEligible = false;
+    this.pendingWallpaper = ''; this.wallpaperClearedForSession = true;
+    this.store.clearPreviews(); this.history(); this.toast(tr("已清除预览"));
+  }
   async pasteLocalClipboard(): Promise<void> {
     const connection = this.connection, draft = this.state.clipboardText, epoch = this.uiEpoch;
     const active = (): boolean => this.uiEpoch === epoch && this.connection === connection &&
@@ -541,6 +548,10 @@ export class MobileController {
       }
     } else if (e.type === 'ended') this.end(e.reason ?? '');
     else if (e.type === 'data' && e.message) this.data(e.message as ControlData);
+    else if (e.type === 'wallpaper' && e.text && this.state.consent &&
+        !this.wallpaperClearedForSession && (this.state.ready || this.state.connecting)) {
+      this.pendingWallpaper = e.text; this.saveWallpaperIfReady();
+    }
     else if (e.type === 'frame') {
       this.state.hasFrame = true;
       this.state.width = e.width ?? 16; this.state.height = e.height ?? 9;
@@ -581,6 +592,12 @@ export class MobileController {
     if (this.state.identity) this.inbox.configure(`${this.scope()}:${this.state.identity}`);
     this.inbox.connect(this.state.signal === 1 && this.foreground && this.state.consent);
   }
+  private saveWallpaperIfReady(): void {
+    if (!this.historySaved || !this.pendingWallpaper || !this.state.ready) return;
+    const wallpaper = this.pendingWallpaper; this.pendingWallpaper = '';
+    this.store.saveWallpaper(this.scope(), this.connectingId, wallpaper)
+      .then(() => this.history()).catch(() => {});
+  }
   private connected(): void {
     this.state.ready = true; this.state.connecting = false; this.state.modal = ''; this.state.page = 'session';
     const device: RecentDevice = { id: this.connectingId, name: this.state.hostName || this.connectingId,
@@ -590,6 +607,7 @@ export class MobileController {
     this.store.saveRecent(scope, device, password).then(() => {
       if (connection === this.connection && scope === this.scope()) {
         this.historySaved = true;
+        this.saveWallpaperIfReady();
         if (this.state.hostName) this.store.metadata(scope, device.id, this.state.hostName, this.state.platform);
         this.history();
       }

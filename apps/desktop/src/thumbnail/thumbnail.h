@@ -41,7 +41,7 @@ class Thumbnail {
   explicit Thumbnail(std::string save_path, unsigned char* aes128_key,
                      unsigned char* aes128_iv);
 
-  // Serialized with writes so disabling also clears any in-flight preview.
+  // Controls saved session frames. Wallpaper covers are stored separately.
   int SetSavePreviews(bool enabled);
 
   // Also records metadata without an image. Empty password means do not store

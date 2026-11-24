@@ -183,6 +183,16 @@ final class NativeSession implements AutoCloseable {
     // Called on arbitrary native callback threads; borrowed payloads were copied by JNI.
     @SuppressWarnings("unused") private void onNativeEvent(int type, byte[] bytes) {
         execute(() -> {
+            if (type == 11) {
+                if (connected) {
+                    ui(() -> {
+                        String server = host + ":" + port;
+                        if (new RecentConnections(context).contains(server, remote))
+                            RemotePreviewStore.get(context).saveWallpaper(server, remote, bytes);
+                    });
+                }
+                return;
+            }
             String value = new String(bytes, StandardCharsets.UTF_8);
             try {
                 if (type == 3) {

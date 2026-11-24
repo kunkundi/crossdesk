@@ -49,6 +49,31 @@ public class RemotePreviewStoreTest {
         Bitmap loaded=load("server:1","123456789");assertNotNull(loaded);assertEquals(640,loaded.getWidth());assertEquals(360,loaded.getHeight());assertTrue(Color.green(loaded.getPixel(320,180))>240);loaded.recycle();
     }
 
+    @Test public void userSeesWallpaperWithScreenPreviewsOff()throws Exception{
+        // Given network consent and the default screen preview setting
+        options.edit().putBoolean("networkConsent",true).commit();
+        assertFalse(store.enabled());
+        ByteArrayOutputStream jpeg=new ByteArrayOutputStream();
+        Bitmap source=solid(Color.RED);
+        try{assertTrue(source.compress(Bitmap.CompressFormat.JPEG,75,jpeg));}
+        finally{source.recycle();}
+
+        // When the computer supplies its wallpaper
+        store.saveWallpaper("server:1","123456789",jpeg.toByteArray());
+        flush();
+
+        // Then its cover is visible only in the correct history and disappears on revocation
+        Bitmap cover=load("server:1","123456789");
+        assertNotNull(cover);
+        try{assertTrue(Color.red(cover.getPixel(320,180))>240);}
+        finally{cover.recycle();}
+        assertNull(load("server:2","123456789"));
+        options.edit().putBoolean("networkConsent",false).commit();
+        store.enforceConsent();flush();
+        options.edit().putBoolean("networkConsent",true).commit();
+        assertNull(load("server:1","123456789"));
+    }
+
     @Test public void disablingDeletesFilesAndInvalidatesInFlightCapture()throws Exception{
         enable();var capture=store.begin("server","1");store.save(capture,solid(Color.BLUE));flush();
         store.setEnabled(false);store.save(capture,solid(Color.RED));flush();

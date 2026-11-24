@@ -10,7 +10,7 @@ import bridge from 'libcrossdesk.so';
 
 export interface RecentDevice {
   id: string; name: string; alias: string; groups: string[];
-  platform: string; remember: boolean; preview: string;
+  platform: string; remember: boolean; preview: string; wallpaper?: string;
 }
 export class MobileStore {
   private static trustLoading?: Promise<string>;
@@ -18,11 +18,16 @@ export class MobileStore {
   readonly directory: string;
   readonly previewDirectory: string;
   private previewEpoch: number = 0;
+  private wallpaperEpoch: number = 0;
+  private wallpaperWrites: Promise<void> = Promise.resolve();
+  private readonly wallpaperDirectory: string;
   constructor(context: common.UIAbilityContext) {
     this.data = preferences.getPreferencesSync(context, { name: 'crossdesk_mobile' });
     this.directory = `${context.filesDir}/mobile`;
     this.previewDirectory = `${context.cacheDir}/mobile-previews`;
+    this.wallpaperDirectory = `${context.cacheDir}/mobile-wallpapers`;
     try { fs.mkdirSync(this.previewDirectory, true); } catch {}
+    try { fs.mkdirSync(this.wallpaperDirectory, true); } catch {}
     for (const name of ['', '/outgoing', '/received']) {
       try { fs.mkdirSync(this.directory + name, true); } catch { /* Existing directories are reusable. */ }
     }
@@ -92,6 +97,11 @@ export class MobileStore {
           d.groups = Array.isArray(d.groups) ? d.groups : [];
           try { if (typeof d.preview !== 'string' || !d.preview.startsWith(`${this.previewDirectory}/`) || !fs.accessSync(d.preview)) d.preview = ''; }
           catch { d.preview = ''; }
+          try {
+            if (typeof d.wallpaper !== 'string' ||
+                !d.wallpaper.startsWith(`${this.wallpaperDirectory}/`) || !fs.accessSync(d.wallpaper))
+              d.wallpaper = '';
+          } catch { d.wallpaper = ''; }
           return d;
         });
     } catch { return []; }
@@ -101,6 +111,7 @@ export class MobileStore {
     else await this.removeSecret(`password:${scope}:${device.id}`);
     const old = this.recent(scope), previous = old.find((d: RecentDevice) => d.id === device.id);
     device.preview = previous?.preview ?? '';
+    device.wallpaper = previous?.wallpaper ?? '';
     device.alias = previous?.alias ?? '';
     device.groups = previous?.groups ?? [];
     if (device.name === device.id && previous) device.name = previous.name;
@@ -108,6 +119,7 @@ export class MobileStore {
     this.put(`recent:${scope}`, JSON.stringify(next));
     for (const dropped of old.filter((d: RecentDevice) => !next.some((n: RecentDevice) => n.id === d.id))) {
       await this.removeSecret(`password:${scope}:${dropped.id}`); this.removePreview(dropped.preview);
+      this.removeWallpaper(dropped.wallpaper ?? '');
     }
   }
   metadata(scope: string, id: string, name: string, platform: string): void {
@@ -129,17 +141,71 @@ export class MobileStore {
   async delete(scope: string, id: string): Promise<void> {
     await this.removeSecret(`password:${scope}:${id}`);
     const old = this.recent(scope); this.put(`recent:${scope}`, JSON.stringify(old.filter((d: RecentDevice) => d.id !== id)));
-    this.removePreview(old.find((d: RecentDevice) => d.id === id)?.preview ?? '');
+    const removed = old.find((d: RecentDevice) => d.id === id);
+    this.removePreview(removed?.preview ?? '');
+    this.removeWallpaper(removed?.wallpaper ?? '');
   }
   private removePreview(path: string): void {
     if (!path.startsWith(`${this.previewDirectory}/`)) return;
     try { fs.unlinkSync(path); } catch { /* Already removed. */ }
   }
-  clearPreviews(): void {
+  clearPreviews(includingWallpapers: boolean = true): void {
     this.previewEpoch++;
     let names: string[] = [];
     try { names = fs.listFileSync(this.previewDirectory); } catch { /* The system may already have cleared the cache. */ }
     for (const name of names) this.removePreview(`${this.previewDirectory}/${name}`);
+    if (includingWallpapers) {
+      this.wallpaperEpoch++;
+      try { names = fs.listFileSync(this.wallpaperDirectory); } catch { names = []; }
+      for (const name of names) this.removeWallpaper(`${this.wallpaperDirectory}/${name}`);
+    }
+  }
+  private removeWallpaper(path: string): void {
+    if (!path.startsWith(`${this.wallpaperDirectory}/`)) return;
+    try { fs.unlinkSync(path); } catch { /* Already removed. */ }
+  }
+  saveWallpaper(scope: string, id: string, encoded: string): Promise<void> {
+    if (!this.flag('consent') || !encoded || encoded.length > 65536) return Promise.resolve();
+    const epoch = this.wallpaperEpoch;
+    const write = this.wallpaperWrites.then(() => this.writeWallpaper(scope, id, encoded, epoch));
+    this.wallpaperWrites = write.catch(() => {});
+    return write;
+  }
+  private async writeWallpaper(scope: string, id: string, encoded: string, epoch: number): Promise<void> {
+    if (epoch !== this.wallpaperEpoch || !this.flag('consent')) return;
+    const decoded = new util.Base64Helper().decodeSync(encoded);
+    const bytes = new ArrayBuffer(decoded.length);
+    new Uint8Array(bytes).set(decoded);
+    const source = image.createImageSource(bytes);
+    try {
+      const size = (await source.getImageInfo()).size;
+      if (size.width <= 0 || size.height <= 0 || size.width > 640 || size.height > 640) return;
+    } finally {
+      await source.release();
+    }
+    const key = await MobileStore.hash(JSON.stringify([scope, id]));
+    if (epoch !== this.wallpaperEpoch || !this.flag('consent')) return;
+    const entries = this.recent(scope), device = entries.find((d: RecentDevice) => d.id === id);
+    if (!device) return;
+    const destination = `${this.wallpaperDirectory}/${key}-${Date.now()}.jpg`;
+    let temporary = `${destination}.tmp`;
+    try {
+      const output = fs.openSync(temporary, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
+      try {
+        if (fs.writeSync(output.fd, bytes) !== bytes.byteLength) return;
+      } finally { fs.closeSync(output); }
+      fs.renameSync(temporary, destination);
+      const previous = device.wallpaper;
+      device.wallpaper = destination;
+      this.put(`recent:${scope}`, JSON.stringify(entries));
+      temporary = '';
+      if (previous && previous !== destination) this.removeWallpaper(previous);
+    } finally {
+      if (temporary) {
+        this.removeWallpaper(temporary);
+        this.removeWallpaper(destination);
+      }
+    }
   }
   discardRaw(path: string): void {
     if (!path.startsWith(`${this.previewDirectory}/preview-`) || !/^preview-[0-9]+-[0-9]+\.rgba$/.test(path.substring(this.previewDirectory.length + 1))) return;

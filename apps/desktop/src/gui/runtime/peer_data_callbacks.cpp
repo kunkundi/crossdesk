@@ -137,13 +137,12 @@ void PeerEventHandler::OnReceiveDataBuffer(
   const auto remote_id = handler->ConnectionKey(user_id, user_id_size);
   const std::string_view payload(data, size);
   if (source_id == runtime->control_data_label_ &&
-      payload.substr(0, kWallpaperPreviewPrefix.size()) == kWallpaperPreviewPrefix) {
+      IsWallpaperPreviewMessage(payload)) {
     const auto viewer = runtime->FindRemoteSession(remote_id);
-    if (!viewer || viewer->peer_events_.get() != handler ||
-        !runtime->config_center_->IsSaveRemotePreviews())
+    if (!viewer || viewer->peer_events_.get() != handler)
       return;
-    const auto jpeg = payload.substr(kWallpaperPreviewPrefix.size());
-    if (jpeg.empty() || jpeg.size() > kWallpaperPreviewMaxBytes) return;
+    const auto jpeg = WallpaperPreviewFromMessage(payload);
+    if (jpeg.empty()) return;
     std::lock_guard lock(viewer->remote_version_mutex_);
     if (viewer->closing_ || !viewer->recent_wallpaper_requested_ ||
         viewer->connection_status_ != MiniRtcConnectionStatus::MiniRtcConnectionConnected)

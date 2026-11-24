@@ -3594,14 +3594,12 @@ void GuiApplication::SyncMainWindow() {
           ui_->main->get_recent_preview_height(),
           ui_->main->window().scale_factor()),
       gallery::PreviewResolutionDebouncer::Clock::now());
-  const bool save_previews = config_center_->IsSaveRemotePreviews();
-  if (!(preview_size == ui_->recent_preview_size) || !save_previews) {
+  if (!(preview_size == ui_->recent_preview_size)) {
     ui_->recent_preview_size = preview_size;
     ui_->recent_preview_images.clear();
   }
   std::ostringstream signature_builder;
-  signature_builder << save_previews << '\n'
-                    << preview_size.width << ':' << preview_size.height << '\n'
+  signature_builder << preview_size.width << ':' << preview_size.height << '\n'
                     << lan_mode << '\n'
                     << bool(ui_->recent_group_filter) << '\0'
                     << ui_->recent_group_filter.value_or("") << '\n';
@@ -3649,7 +3647,7 @@ void GuiApplication::SyncMainWindow() {
         !item.lan && device_presence_cache_.IsOnline(connection.remote_id);
     item.connected = is_connected(connection.remote_id);
     item.platform = UiText(HostPlatformName(connection.platform));
-    if (save_previews && !connection.image_path.empty()) {
+    if (!connection.image_path.empty()) {
       const auto path = connection.image_path.string();
       auto cached = ui_->recent_preview_images.find(path);
       if (cached == ui_->recent_preview_images.end()) {
