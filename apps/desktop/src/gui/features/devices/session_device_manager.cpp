@@ -418,14 +418,24 @@ std::string SessionDeviceManager::SendServiceMouseCommand(int x, int y,
   service_mouse_x_ = x;
   service_mouse_y_ = y;
   const unsigned bit = flag >= 1 && flag <= 6 ? 1u << ((flag - 1) / 2) : 0;
+  const unsigned previous_buttons = service_mouse_buttons_;
   // A timeout can follow successful injection. Keep downs for disconnect
   // cleanup even if the reply was lost; only clear a confirmed release.
   if (flag % 2 == 1) service_mouse_buttons_ |= bit;
   const auto response = SendCrossDeskSecureDesktopMouseInput(x, y, wheel, flag,
                                                            1000);
+  if (!bit) return response;
   const auto json = nlohmann::json::parse(response, nullptr, false);
-  if (flag % 2 == 0 && json.is_object() && json.value("ok", false))
+  if (!json.is_object()) return response;
+  if (flag % 2 == 1) {
+    // These pipe failures precede the write. A repeated down must still
+    // preserve any earlier press whose release has not been confirmed.
+    const auto error = json.value("error", "");
+    if (error == "pipe_unavailable" || error == "pipe_connect_failed")
+      service_mouse_buttons_ = previous_buttons;
+  } else if (json.value("ok", false)) {
     service_mouse_buttons_ &= ~bit;
+  }
   return response;
 }
 #endif
