@@ -167,7 +167,13 @@ class API_AVAILABLE(macos(14.0)) ScreenCapturerSckImpl : public ScreenCapturer {
 
   std::vector<DisplayInfo> GetDisplayInfoList() override {
     std::lock_guard<std::mutex> lock(lock_);
-    return display_info_list_;
+    auto displays = display_info_list_;
+    if (capture_requested_ && !stream_running_ && !displays.empty()) {
+      // Preserve the negotiated slot, but suspend input until SCK has a target.
+      auto& target = displays[current_monitor_index_];
+      target = DisplayInfo(nullptr, target.name, false, 0, 0, 0, 0);
+    }
+    return displays;
   }
   int ResetToInitialMonitor() override;
   bool RefreshIdleDisplays(const std::function<bool(size_t)>& accept) override;
@@ -471,8 +477,7 @@ bool ScreenCapturerSckImpl::RefreshIdleDisplays(const std::function<bool(size_t)
   // Keep surviving displays in their previous slots when WindowServer changes
   // enumeration order. Fill a vacated slot with a replacement or a new screen.
   for (size_t slot = 0; slot < ids.size() && slot < display_info_list_.size(); ++slot) {
-    const auto previous = static_cast<CGDirectDisplayID>(
-        reinterpret_cast<uintptr_t>(display_info_list_[slot].handle));
+    const auto previous = display_id_map_.at(slot);
     const auto found = std::find(ids.begin(), ids.end(), previous);
     if (found != ids.end()) std::iter_swap(ids.begin() + slot, found);
   }
@@ -649,7 +654,8 @@ void ScreenCapturerSckImpl::OnShareableContentCreated(SCShareableContent *conten
     if (!captured_display) {
       captured_display = logical_fallback ? logical_fallback
                                           : content.displays.firstObject;
-      if (!logical_fallback) logical_index = 0;
+      // The viewer and input still use the selected slot, even when SCK
+      // falls back to its first display. Bind that slot to the new geometry.
     }
 
     if (captured_display) {
@@ -666,7 +672,6 @@ void ScreenCapturerSckImpl::OnShareableContentCreated(SCShareableContent *conten
       current_monitor_index_ = logical_index;
       current_display_ = new_display;
       current_stream_id_ = stable_stream_id;
-      display_id_map_[logical_index] = new_display;
 
       CGRect bounds = CGDisplayBounds(new_display);
       auto& info = display_info_list_[logical_index];

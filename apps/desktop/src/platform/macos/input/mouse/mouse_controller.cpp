@@ -129,11 +129,11 @@ int PlatformMouseController::SendMouseCommand(RemoteAction remote_action,
   }
 
   const DisplayInfo& display_info = display_info_list_[display_index];
-  if (display_info.width <= 0 || display_info.height <= 0) {
-    LOG_WARN("Mouse command skipped, invalid display geometry: {}x{}",
-             display_info.width, display_info.height);
-    return -1;
-  }
+  if (!display_info.handle || display_info.width <= 0 || display_info.height <= 0) return -1;
+  // A physical removal can precede both the capture callback and the UI tick.
+  const auto id = static_cast<CGDirectDisplayID>(reinterpret_cast<uintptr_t>(display_info.handle));
+  const CGRect bounds = CGDisplayBounds(id);
+  if (CGRectIsEmpty(bounds)) return -1;
 
   const double normalized_x =
       std::clamp(static_cast<double>(remote_action.m.x), 0.0, 1.0);
@@ -143,16 +143,11 @@ int PlatformMouseController::SendMouseCommand(RemoteAction remote_action,
   // avoids turning a one-pixel rounding error into a visible offset when the
   // client zooms the remote image. The upper bound remains just inside the
   // display because CG display rectangles use an exclusive right/bottom edge.
-  const double max_x = std::nextafter(static_cast<double>(display_info.right),
-                                      static_cast<double>(display_info.left));
-  const double max_y = std::nextafter(static_cast<double>(display_info.bottom),
-                                      static_cast<double>(display_info.top));
-  const double mouse_pos_x = std::clamp(
-      display_info.left + normalized_x * display_info.width,
-      static_cast<double>(display_info.left), max_x);
-  const double mouse_pos_y = std::clamp(
-      display_info.top + normalized_y * display_info.height,
-      static_cast<double>(display_info.top), max_y);
+  const double left = CGRectGetMinX(bounds), top = CGRectGetMinY(bounds);
+  const double max_x = std::nextafter(CGRectGetMaxX(bounds), left);
+  const double max_y = std::nextafter(CGRectGetMaxY(bounds), top);
+  const double mouse_pos_x = std::clamp(left + normalized_x * bounds.size.width, left, max_x);
+  const double mouse_pos_y = std::clamp(top + normalized_y * bounds.size.height, top, max_y);
   const int tracked_mouse_pos_x = static_cast<int>(std::lround(mouse_pos_x));
   const int tracked_mouse_pos_y = static_cast<int>(std::lround(mouse_pos_y));
 

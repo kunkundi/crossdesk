@@ -457,6 +457,9 @@ bool SessionDeviceManager::SyncDisplayInfo() {
   // Called every UI tick; replace the shared list only when geometry actually
   // changed so readers on other threads rarely contend for the lock.
   bool changed = false;
+#ifdef __APPLE__
+  bool release_buttons = false;
+#endif
   {
     std::lock_guard<std::mutex> lock(display_info_mutex_);
     changed = !std::equal(
@@ -466,8 +469,19 @@ bool SessionDeviceManager::SyncDisplayInfo() {
                  a.is_primary == b.is_primary && a.left == b.left &&
                  a.top == b.top && a.width == b.width && a.height == b.height;
         });
-    if (changed) display_info_list_ = displays;
+    if (changed) {
+#ifdef __APPLE__
+      const size_t selected = owner_.selected_display_.load();
+      release_buttons = selected < display_info_list_.size() &&
+                        (selected >= displays.size() ||
+                         displays[selected].handle != display_info_list_[selected].handle);
+#endif
+      display_info_list_ = displays;
+    }
   }
+#ifdef __APPLE__
+  if (release_buttons) ReleaseRemoteMouseButtons();
+#endif
   if (changed) {
     std::lock_guard lock(mouse_controller_mutex_);
     if (mouse_controller_) mouse_controller_->UpdateDisplayInfoList(displays);
