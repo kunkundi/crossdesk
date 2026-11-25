@@ -47,6 +47,8 @@ class ScreenCapturerX11 : public ScreenCapturer {
 
   std::vector<DisplayInfo> GetDisplayInfoList() override;
 
+  using AcceptLayout = std::function<bool(const std::vector<DisplayInfo>&)>;
+  bool RefreshDisplays(const AcceptLayout& accept = {});
   void SetVideoWanted(bool wanted);
 
  private:
@@ -55,7 +57,7 @@ class ScreenCapturerX11 : public ScreenCapturer {
   void OnFrame();
   void DrawCursor(XImage* image, int x, int y);
   bool ProbeCapture();
-  void RefreshDisplays();
+  bool ConsumeDisplayEvents();
   bool HandleDisplayEvents();
   void CaptureFailed(const char* reason, int x11_error = 0);
 

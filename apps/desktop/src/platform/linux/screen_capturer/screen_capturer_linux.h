@@ -8,6 +8,7 @@
 #define _SCREEN_CAPTURER_LINUX_H_
 
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -34,6 +35,9 @@ class ScreenCapturerLinux : public ScreenCapturer {
   int Resume(int monitor_index) override;
 
   // A viewer subscription idles X11 readback while the session stays live.
+  int GetCurrentMonitorIndex() const override { return current_monitor_index_.load(); }
+  bool UsesWaylandPortal() const { return backend_ == BackendType::kWayland; }
+  bool RefreshIdleDisplays(const std::function<bool(size_t)>& accept) override;
   void SetX11VideoWanted(bool wanted);
   int SwitchTo(int monitor_index) override;
   int ResetToInitialMonitor() override;
@@ -51,7 +55,11 @@ class ScreenCapturerLinux : public ScreenCapturer {
   bool TryFallbackToDrm(bool show_cursor);
   bool TryFallbackToX11(bool show_cursor);
   bool TryFallbackToWayland(bool show_cursor);
-  void UpdateAliasesFromBackend(ScreenCapturer* backend);
+  bool StartFallback(std::unique_ptr<ScreenCapturer> candidate, BackendType type,
+                     const char* name, bool show_cursor);
+  void UpdateAliasesFromBackend(ScreenCapturer* backend, bool fallback = false);
+  int BackendIndex(int slot) const;
+  void SelectBackendMonitor(ScreenCapturer* backend, int requested);
   std::string MapStreamId(const char* reported_stream_id) const;
 
  private:
@@ -68,7 +76,8 @@ class ScreenCapturerLinux : public ScreenCapturer {
   mutable std::mutex alias_mutex_;
   std::unordered_map<std::string, std::string> stream_id_alias_;
   std::atomic<int> current_monitor_index_{0};
-  int initial_monitor_index_ = 0;
+  std::vector<int> backend_indices_;
+  std::chrono::steady_clock::time_point next_idle_display_probe_{};
   mutable std::atomic<bool> invalid_stream_id_logged_{false};
 };
 

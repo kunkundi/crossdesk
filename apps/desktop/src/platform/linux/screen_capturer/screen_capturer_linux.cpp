@@ -1,5 +1,6 @@
 #include "screen_capturer_linux.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -167,6 +168,7 @@ int ScreenCapturerLinux::Destroy() {
   {
     std::lock_guard<std::mutex> lock(alias_mutex_);
     canonical_displays_.clear();
+    backend_indices_.clear();
     stream_id_alias_.clear();
   }
   return 0;
@@ -290,7 +292,9 @@ int ScreenCapturerLinux::SwitchTo(int monitor_index) {
   if (!impl_) {
     return -1;
   }
-  const int ret = impl_->SwitchTo(monitor_index);
+  const int index = BackendIndex(monitor_index);
+  if (index < 0) return -1;
+  const int ret = impl_->SwitchTo(index);
   if (ret == 0) {
     current_monitor_index_.store(monitor_index, std::memory_order_relaxed);
   }
@@ -298,15 +302,55 @@ int ScreenCapturerLinux::SwitchTo(int monitor_index) {
 }
 
 int ScreenCapturerLinux::ResetToInitialMonitor() {
-  if (!impl_) {
-    return -1;
+  return SwitchTo(0);
+}
+
+int ScreenCapturerLinux::BackendIndex(int slot) const {
+  std::lock_guard lock(alias_mutex_);
+  if (slot < 0 || static_cast<size_t>(slot) >= backend_indices_.size()) return -1;
+  return backend_indices_[slot];
+}
+
+void ScreenCapturerLinux::SelectBackendMonitor(ScreenCapturer* backend, int requested) {
+  int slot = requested;
+  int index = BackendIndex(slot);
+  if (index < 0) {
+    std::lock_guard lock(alias_mutex_);
+    const auto first = std::find_if(backend_indices_.begin(), backend_indices_.end(),
+                                    [](int i) { return i >= 0; });
+    if (first == backend_indices_.end()) {
+      current_monitor_index_.store(-1);
+      return;
+    }
+    slot = static_cast<int>(first - backend_indices_.begin());
+    index = *first;
   }
-  const int ret = impl_->ResetToInitialMonitor();
-  if (ret == 0) {
-    current_monitor_index_.store(initial_monitor_index_,
-                                 std::memory_order_relaxed);
+  current_monitor_index_.store(backend->SwitchTo(index) == 0 ? slot : -1);
+}
+
+bool ScreenCapturerLinux::RefreshIdleDisplays(const std::function<bool(size_t)>& accept) {
+  const auto now = std::chrono::steady_clock::now();
+  if (!impl_ || UsesWaylandPortal() || now < next_idle_display_probe_) return false;
+  next_idle_display_probe_ = now + std::chrono::seconds(1);
+  auto publish = [&](const std::vector<DisplayInfo>& displays) {
+    std::lock_guard lock(alias_mutex_);
+    if (displays.empty() || displays == canonical_displays_ || !accept(displays.size()))
+      return false;
+    canonical_displays_ = displays;
+    return true;
+  };
+  bool changed = false;
+  if (backend_ == BackendType::kX11)
+    changed = static_cast<ScreenCapturerX11*>(impl_.get())->RefreshDisplays(publish);
+#if defined(CROSSDESK_HAS_DRM) && CROSSDESK_HAS_DRM
+  if (backend_ == BackendType::kDrm)
+    changed = static_cast<ScreenCapturerDrm*>(impl_.get())->RefreshIdleOutputs(publish);
+#endif
+  if (changed) {
+    current_monitor_index_.store(0);
+    UpdateAliasesFromBackend(impl_.get());
   }
-  return ret;
+  return changed;
 }
 
 std::vector<DisplayInfo> ScreenCapturerLinux::GetDisplayInfoList() {
@@ -319,11 +363,7 @@ std::vector<DisplayInfo> ScreenCapturerLinux::GetDisplayInfoList() {
   UpdateAliasesFromBackend(impl_.get());
 
   std::lock_guard<std::mutex> lock(alias_mutex_);
-  if (!canonical_displays_.empty()) {
-    return canonical_displays_;
-  }
-
-  return impl_->GetDisplayInfoList();
+  return canonical_displays_;
 }
 
 int ScreenCapturerLinux::InitX11() {
@@ -421,9 +461,7 @@ int ScreenCapturerLinux::RefreshCurrentBackend() {
   const int requested_monitor =
       current_monitor_index_.load(std::memory_order_relaxed);
   UpdateAliasesFromBackend(backend.get());
-  if (requested_monitor > 0 && backend->SwitchTo(requested_monitor) != 0) {
-    current_monitor_index_.store(0, std::memory_order_relaxed);
-  }
+  SelectBackendMonitor(backend.get(), requested_monitor);
 
   if (impl_) {
     impl_->Destroy();
@@ -437,195 +475,120 @@ int ScreenCapturerLinux::RefreshCurrentBackend() {
 
 bool ScreenCapturerLinux::TryFallbackToDrm(bool show_cursor) {
 #if defined(CROSSDESK_HAS_DRM) && CROSSDESK_HAS_DRM
-  auto drm_backend = std::make_unique<ScreenCapturerDrm>();
-  int ret = drm_backend->Init(fps_, callback_);
-  if (ret != 0) {
-    LOG_ERROR("Linux screen capturer fallback DRM init failed: {}", ret);
-    return false;
-  }
-
-  UpdateAliasesFromBackend(drm_backend.get());
-  ret = drm_backend->Start(show_cursor);
-  if (ret != 0) {
-    drm_backend->Destroy();
-    LOG_ERROR("Linux screen capturer fallback DRM start failed: {}", ret);
-    return false;
-  }
-
-  if (impl_) {
-    impl_->Stop();
-    impl_->Destroy();
-  }
-
-  impl_ = std::move(drm_backend);
-  backend_ = BackendType::kDrm;
-  LOG_INFO("Linux screen capturer fallback switched to DRM");
-  return true;
+  return StartFallback(std::make_unique<ScreenCapturerDrm>(), BackendType::kDrm, "DRM", show_cursor);
 #else
-  (void)show_cursor;
-  LOG_WARN("Linux screen capturer DRM fallback is disabled at build time");
   return false;
 #endif
 }
 
 bool ScreenCapturerLinux::TryFallbackToX11(bool show_cursor) {
-  auto x11_backend = std::make_unique<ScreenCapturerX11>();
-  int ret = x11_backend->Init(fps_, callback_);
-  if (ret != 0) {
-    LOG_ERROR("Linux screen capturer fallback X11 init failed: {}", ret);
-    return false;
-  }
-
-  UpdateAliasesFromBackend(x11_backend.get());
-  ret = x11_backend->Start(show_cursor);
-  if (ret != 0) {
-    x11_backend->Destroy();
-    LOG_ERROR("Linux screen capturer fallback X11 start failed: {}", ret);
-    return false;
-  }
-
-  if (impl_) {
-    impl_->Stop();
-    impl_->Destroy();
-  }
-
-  impl_ = std::move(x11_backend);
-  backend_ = BackendType::kX11;
-  LOG_INFO("Linux screen capturer fallback switched to X11");
-  return true;
+  return StartFallback(std::make_unique<ScreenCapturerX11>(), BackendType::kX11, "X11", show_cursor);
 }
 
 bool ScreenCapturerLinux::TryFallbackToWayland(bool show_cursor) {
 #if defined(CROSSDESK_HAS_WAYLAND_CAPTURER) && CROSSDESK_HAS_WAYLAND_CAPTURER
-  auto wayland_backend = std::make_unique<ScreenCapturerWayland>();
-  int ret = wayland_backend->Init(fps_, callback_);
-  if (ret != 0) {
-    LOG_ERROR("Linux screen capturer fallback Wayland init failed: {}", ret);
-    return false;
-  }
-
-  UpdateAliasesFromBackend(wayland_backend.get());
-  ret = wayland_backend->Start(show_cursor);
-  if (ret != 0) {
-    wayland_backend->Destroy();
-    LOG_ERROR("Linux screen capturer fallback Wayland start failed: {}", ret);
-    return false;
-  }
-
-  if (impl_) {
-    impl_->Stop();
-    impl_->Destroy();
-  }
-
-  impl_ = std::move(wayland_backend);
-  backend_ = BackendType::kWayland;
-  LOG_INFO("Linux screen capturer fallback switched to Wayland");
-  return true;
+  return StartFallback(std::make_unique<ScreenCapturerWayland>(), BackendType::kWayland,
+                       "Wayland", show_cursor);
 #else
-  (void)show_cursor;
-  LOG_WARN("Linux screen capturer Wayland fallback is disabled at build time");
   return false;
 #endif
 }
 
-void ScreenCapturerLinux::UpdateAliasesFromBackend(ScreenCapturer* backend) {
-  if (!backend) {
-    return;
+bool ScreenCapturerLinux::StartFallback(std::unique_ptr<ScreenCapturer> candidate,
+    BackendType type, const char* name, bool show_cursor) {
+  if (const int ret = candidate->Init(fps_, callback_); ret != 0) {
+    LOG_ERROR("Linux screen capturer fallback {} init failed: {}", name, ret);
+    return false;
   }
 
-  const auto backend_displays = backend->GetDisplayInfoList();
-  if (backend_displays.empty()) {
-    return;
+  const int requested = current_monitor_index_.load();
+  std::vector<DisplayInfo> previous;
+  {
+    std::lock_guard lock(alias_mutex_);
+    previous = canonical_displays_;
+  }
+  UpdateAliasesFromBackend(candidate.get(), true);
+  SelectBackendMonitor(candidate.get(), requested);
+  if (const int ret = candidate->Start(show_cursor); ret != 0) {
+    candidate->Destroy();
+    {
+      std::lock_guard lock(alias_mutex_);
+      canonical_displays_ = std::move(previous);
+    }
+    UpdateAliasesFromBackend(impl_.get());
+    current_monitor_index_.store(requested);
+    LOG_ERROR("Linux screen capturer fallback {} start failed: {}", name, ret);
+    return false;
   }
 
-  std::lock_guard<std::mutex> lock(alias_mutex_);
+  impl_->Destroy();
+  impl_ = std::move(candidate);
+  backend_ = type;
+  LOG_INFO("Linux screen capturer fallback switched to {}", name);
+  return true;
+}
+
+void ScreenCapturerLinux::UpdateAliasesFromBackend(ScreenCapturer* backend, bool fallback) {
+  const auto displays = backend->GetDisplayInfoList();
+  std::lock_guard lock(alias_mutex_);
+  if (canonical_displays_.empty()) canonical_displays_ = displays;
   stream_id_alias_.clear();
+  backend_indices_.assign(canonical_displays_.size(), -1);
 
-  if (canonical_displays_.empty()) {
-    canonical_displays_ = backend_displays;
-    for (size_t i = 0; i < backend_displays.size(); ++i) {
-      auto& canonical = canonical_displays_[i];
-      const std::string stream_id = MakeDisplayStreamId(i);
-      if (canonical.name.empty()) {
-        canonical.name = stream_id;
-      }
-      stream_id_alias_[stream_id] = stream_id;
-    }
-    return;
-  }
-
-  if (canonical_displays_.size() < backend_displays.size()) {
-    LOG_WARN("Linux capturer detected {} additional display(s); they remain "
-             "unavailable until peer streams are reinitialized",
-             backend_displays.size() - canonical_displays_.size());
-  }
-
-  auto similar = [](const DisplayInfo& current, const DisplayInfo& canonical) {
-    return std::abs(current.left - canonical.left) <= 10 &&
-           std::abs(current.top - canonical.top) <= 10 &&
-           std::abs(current.width - canonical.width) <= 20 &&
-           std::abs(current.height - canonical.height) <= 20;
+  // Reserve all native identities before assigning slots across backends.
+  // A newly inserted output must never claim a surviving display's stream.
+  std::vector<bool> used(displays.size(), false);
+  auto bind = [&](size_t slot, size_t index) {
+    used[index] = true;
+    canonical_displays_[slot] = displays[index];
+    if (displays[index].width <= 0 || displays[index].height <= 0) return;
+    backend_indices_[slot] = static_cast<int>(index);
+    stream_id_alias_[MakeDisplayStreamId(index)] = MakeDisplayStreamId(slot);
   };
-  std::vector<bool> used(canonical_displays_.size(), false);
-  for (size_t current_index = 0; current_index < backend_displays.size();
-       ++current_index) {
-    const auto& backend_display = backend_displays[current_index];
-    int canonical_index = -1;
-    // Native identity survives a resolution change; geometry may now coincide
-    // with another screen and must not redirect this stream to its slot.
-    for (size_t i = 0; i < canonical_displays_.size(); ++i) {
-      if (!used[i] && backend_display.handle &&
-          backend_display.handle == canonical_displays_[i].handle &&
-          backend_display.name == canonical_displays_[i].name) {
-        canonical_index = static_cast<int>(i);
+  for (size_t slot = 0; slot < canonical_displays_.size(); ++slot) {
+    const auto& old = canonical_displays_[slot];
+    size_t match = displays.size();
+    for (size_t i = 0; i < displays.size(); ++i) {
+      if (used[i] || old.name != displays[i].name ||
+          (old.handle != displays[i].handle && !UsesWaylandPortal())) continue;
+      if (match == displays.size()) match = i;
+      if (old == displays[i]) {
+        match = i;
         break;
       }
     }
-    for (size_t i = 0; i < canonical_displays_.size(); ++i) {
-      if (canonical_index < 0 && !used[i] &&
-          similar(backend_display, canonical_displays_[i])) {
-        canonical_index = static_cast<int>(i);
-        break;
+    if (match < displays.size()) bind(slot, match);
+  }
+  for (size_t slot = 0; slot < canonical_displays_.size(); ++slot) {
+    if (backend_indices_[slot] >= 0) continue;
+    auto& old = canonical_displays_[slot];
+    if (fallback) {
+      // X11, DRM and the portal use different native names and handles.
+      size_t match = displays.size();
+      for (size_t i = 0; i < displays.size(); ++i) {
+        if (used[i]) continue;
+        if (match == displays.size() || i == slot) match = i;
+        const auto& d = displays[i];
+        if (d.left == old.left && d.top == old.top &&
+            d.width == old.width && d.height == old.height) {
+          match = i;
+          break;
+        }
+      }
+      if (match < displays.size()) {
+        bind(slot, match);
+        continue;
       }
     }
-    if (canonical_index < 0 && current_index < canonical_displays_.size() &&
-        !used[current_index]) {
-      canonical_index = static_cast<int>(current_index);
-    }
-    if (canonical_index < 0) {
-      continue;
-    }
-
-    used[canonical_index] = true;
-    const std::string backend_stream_id =
-        MakeDisplayStreamId(current_index);
-    const std::string stable_stream_id =
-        MakeDisplayStreamId(static_cast<size_t>(canonical_index));
-    stream_id_alias_[backend_stream_id] = stable_stream_id;
-
-    // Refresh the user-visible label and geometry. The MiniRTC stream ID is
-    // derived independently from this stable logical index.
-    canonical_displays_[canonical_index] = backend_display;
-    if (canonical_displays_[canonical_index].name.empty()) {
-      canonical_displays_[canonical_index].name = stable_stream_id;
-    }
+    old.left = old.top = old.right = old.bottom = old.width = old.height = 0;
+    old.is_primary = false;
   }
 }
 
-std::string ScreenCapturerLinux::MapStreamId(
-    const char* reported_stream_id) const {
-  std::string input_id = reported_stream_id ? reported_stream_id : "";
-  std::lock_guard<std::mutex> lock(alias_mutex_);
-  auto it = stream_id_alias_.find(input_id);
-  if (it != stream_id_alias_.end()) {
-    input_id = it->second;
-  } else {
-    input_id.clear();
-  }
-
-  return ResolveDisplayStreamId(
-      input_id.c_str(), canonical_displays_.size(),
-      current_monitor_index_.load(std::memory_order_relaxed));
+std::string ScreenCapturerLinux::MapStreamId(const char* reported_stream_id) const {
+  std::lock_guard lock(alias_mutex_);
+  const auto it = stream_id_alias_.find(reported_stream_id ? reported_stream_id : "");
+  return it == stream_id_alias_.end() ? std::string{} : it->second;
 }
 
 }  // namespace crossdesk

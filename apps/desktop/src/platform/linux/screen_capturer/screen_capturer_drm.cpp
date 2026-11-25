@@ -180,7 +180,19 @@ std::vector<DisplayInfo> ScreenCapturerDrm::GetDisplayInfoList() {
   return display_info_list_;
 }
 
-bool ScreenCapturerDrm::DiscoverOutputs() {
+bool ScreenCapturerDrm::RefreshIdleOutputs(
+    const std::function<bool(const std::vector<DisplayInfo>&)>& accept) {
+  if (running_) return false;
+  ScreenCapturerDrm snapshot;
+  if (!snapshot.DiscoverOutputs(true) || !accept(snapshot.display_info_list_)) return false;
+  devices_.swap(snapshot.devices_);
+  outputs_.swap(snapshot.outputs_);
+  display_info_list_.swap(snapshot.display_info_list_);
+  monitor_index_ = initial_monitor_index_ = 0;
+  return true;
+}
+
+bool ScreenCapturerDrm::DiscoverOutputs(bool idle) {
   for (int card_index = 0; card_index < kMaxDrmCards; ++card_index) {
     const std::string card_path = "/dev/dri/card" + std::to_string(card_index);
     const int fd = open(card_path.c_str(), O_RDWR | O_CLOEXEC);
@@ -203,7 +215,8 @@ bool ScreenCapturerDrm::DiscoverOutputs() {
 
     for (int i = 0; i < resources->count_connectors; ++i) {
       drmModeConnector* connector =
-          drmModeGetConnector(fd, resources->connectors[i]);
+          idle ? drmModeGetConnectorCurrent(fd, resources->connectors[i])
+               : drmModeGetConnector(fd, resources->connectors[i]);
       if (!connector) {
         continue;
       }
@@ -270,8 +283,10 @@ bool ScreenCapturerDrm::DiscoverOutputs() {
           DisplayInfo(output.name, output.left, output.top,
                       output.left + output.width, output.top + output.height));
 
-      LOG_INFO("DRM output found: {} on {}, {}x{} @ ({}, {})", output.name,
-               card_path, output.width, output.height, output.left, output.top);
+      if (!idle) {
+        LOG_INFO("DRM output found: {} on {}, {}x{} @ ({}, {})", output.name,
+                 card_path, output.width, output.height, output.left, output.top);
+      }
 
       drmModeFreeCrtc(crtc);
       drmModeFreeConnector(connector);
@@ -289,7 +304,7 @@ bool ScreenCapturerDrm::DiscoverOutputs() {
     return false;
   }
 
-  LOG_INFO("DRM screen capturer discovered {} output(s)", outputs_.size());
+  if (!idle) LOG_INFO("DRM screen capturer discovered {} output(s)", outputs_.size());
   return true;
 }
 
@@ -506,6 +521,9 @@ ScreenCapturerDrm::ScreenCapturerDrm() {}
 
 ScreenCapturerDrm::~ScreenCapturerDrm() { Destroy(); }
 
+bool ScreenCapturerDrm::RefreshIdleOutputs(
+    const std::function<bool(const std::vector<DisplayInfo>&)>&) { return false; }
+
 int ScreenCapturerDrm::Init([[maybe_unused]] const int fps, cb_desktop_data cb) {
   Destroy();
   callback_ = cb;
@@ -545,7 +563,7 @@ std::vector<DisplayInfo> ScreenCapturerDrm::GetDisplayInfoList() {
   return display_info_list_;
 }
 
-bool ScreenCapturerDrm::DiscoverOutputs() { return false; }
+bool ScreenCapturerDrm::DiscoverOutputs(bool) { return false; }
 
 void ScreenCapturerDrm::CloseDevices() {}
 

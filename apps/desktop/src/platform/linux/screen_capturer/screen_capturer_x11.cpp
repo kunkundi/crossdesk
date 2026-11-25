@@ -223,7 +223,7 @@ std::vector<DisplayInfo> ScreenCapturerX11::GetDisplayInfoList() {
   return display_info_list_;
 }
 
-bool ScreenCapturerX11::HandleDisplayEvents() {
+bool ScreenCapturerX11::ConsumeDisplayEvents() {
   bool changed = false;
   while (XPending(display_)) {
     XEvent event{};
@@ -235,6 +235,11 @@ bool ScreenCapturerX11::HandleDisplayEvents() {
       changed = true;
     }
   }
+  return changed;
+}
+
+bool ScreenCapturerX11::HandleDisplayEvents() {
+  const bool changed = ConsumeDisplayEvents();
   // A driver can announce a mode transition before its new CRTC is usable,
   // without sending another event when it settles. Retry even while paused.
   if (changed || ((displays_need_refresh_ || capture_error_count_ > 0) &&
@@ -255,25 +260,32 @@ bool ScreenCapturerX11::HandleDisplayEvents() {
   return false;
 }
 
-void ScreenCapturerX11::RefreshDisplays() {
+bool ScreenCapturerX11::RefreshDisplays(const AcceptLayout& accept) {
+  if (accept && (running_ || !display_)) return false;
   next_display_refresh_ =
       std::chrono::steady_clock::now() + std::chrono::seconds(1);
   displays_need_refresh_ = true;
   ScopedX11ErrorTrap trap(display_);
   XWindowAttributes attr{};
-  if (!XGetWindowAttributes(display_, root_, &attr)) return;
+  if (!XGetWindowAttributes(display_, root_, &attr)) return false;
   if (attr.width <= 1 || attr.height <= 1) {
+    if (accept) return false;
     // Keep the slots for recovery, but their old rectangles cannot be read.
     std::lock_guard lock(display_info_mutex_);
     for (auto& output : display_info_list_) MarkOutputUnavailable(output);
-    return;
+    return false;
   }
   std::vector<DisplayInfo> latest;
-  auto* resources = randr_event_base_ >= 0
-                        ? XRRGetScreenResources(display_, root_)
-                        : nullptr;
+  // RandR's cached resources can still describe an unplugged connector when
+  // it first comes online. Ask the driver to reprobe after its notification.
+  XRRScreenResources* resources = nullptr;
+  if (randr_event_base_ >= 0) {
+    const bool probe = !accept || ConsumeDisplayEvents();
+    resources = probe ? XRRGetScreenResources(display_, root_)
+                      : XRRGetScreenResourcesCurrent(display_, root_);
+  }
   // A failed query is not evidence that every output was disconnected.
-  if (randr_event_base_ >= 0 && !resources) return;
+  if (randr_event_base_ >= 0 && !resources) return false;
   bool query_failed = false;
   if (resources) {
     const auto primary = XRRGetOutputPrimary(display_, root_);
@@ -305,16 +317,18 @@ void ScreenCapturerX11::RefreshDisplays() {
     }
     XRRFreeScreenResources(resources);
   }
-  if (trap.SyncAndGetError() || query_failed) return;
+  if (trap.SyncAndGetError() || query_failed) return false;
   displays_need_refresh_ = latest.empty();
   std::lock_guard lock(display_info_mutex_);
-  if (display_info_list_.empty()) {
+  if (accept || display_info_list_.empty()) {
     if (latest.empty()) {
       latest.emplace_back(nullptr, "Virtual Display", true, 0, 0,
                           attr.width & ~1, attr.height & ~1);
     }
+    if (accept && !accept(latest)) return false;
     display_info_list_ = std::move(latest);
-    return;
+    if (accept) monitor_index_ = initial_monitor_index_ = 0;
+    return true;
   }
   // Keep stream slots stable across mode changes and unplug/replug. Newly
   // attached outputs need peer stream registration before they can be used.
@@ -352,6 +366,7 @@ void ScreenCapturerX11::RefreshDisplays() {
              root_fallback ? "enabled" : "disabled", attr.width, attr.height);
     root_fallback_ = root_fallback;
   }
+  return true;
 }
 
 void ScreenCapturerX11::CaptureFailed(const char* reason, int x11_error) {

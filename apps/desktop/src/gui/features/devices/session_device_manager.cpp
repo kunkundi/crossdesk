@@ -777,7 +777,8 @@ void SessionDeviceManager::UpdateInteractions() {
   bool capture_needed = !controllers.empty();
 #if defined(__linux__) && !defined(__OHOS__)
   // Preserve a running Wayland portal across reconnects.
-  capture_needed = capture_needed || (owner_.screen_capturer_is_started_ && IsWaylandSession());
+  capture_needed = capture_needed || (owner_.screen_capturer_is_started_ &&
+      static_cast<ScreenCapturerLinux*>(screen_capturer_)->UsesWaylandPortal());
 #endif
   if (capture_needed && !owner_.screen_capturer_is_started_) {
     const auto now = std::chrono::steady_clock::now();
@@ -814,7 +815,7 @@ void SessionDeviceManager::UpdateInteractions() {
   }
 
   if (owner_.screen_capturer_is_started_ && SyncDisplayInfo()) {
-#if defined(_WIN32) || defined(__OHOS__)
+#if defined(_WIN32) || defined(__OHOS__) || defined(__linux__)
     const int active_display = screen_capturer_->GetCurrentMonitorIndex();
     const auto displays = display_info_list();
     if (active_display >= 0 &&

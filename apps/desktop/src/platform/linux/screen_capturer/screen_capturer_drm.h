@@ -36,6 +36,8 @@ class ScreenCapturerDrm : public ScreenCapturer {
 
   std::vector<DisplayInfo> GetDisplayInfoList() override;
 
+  bool RefreshIdleOutputs(const std::function<bool(const std::vector<DisplayInfo>&)>& accept);
+
  private:
   struct DrmDevice {
     int fd = -1;
@@ -55,7 +57,7 @@ class ScreenCapturerDrm : public ScreenCapturer {
   };
 
  private:
-  bool DiscoverOutputs();
+  bool DiscoverOutputs(bool idle = false);
   void CloseDevices();
   void CaptureLoop();
   bool CaptureOutputFrame(const DrmOutput& output, bool emit_callback = true);
