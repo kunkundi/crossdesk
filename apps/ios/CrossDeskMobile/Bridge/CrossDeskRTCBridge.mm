@@ -25,6 +25,7 @@
 #include "minirtc.h"
 #include "../../../../libs/controller/include/mobile_device_trust.h"
 #include "../../../../libs/controller/include/mobile_direct_connection.h"
+#include "../../../../libs/controller/include/history_server_endpoint.h"
 
 namespace {
 
@@ -547,6 +548,11 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
   std::atomic<uint64_t> _signalGeneration;
   std::atomic<uint64_t> _presenceGeneration;
   std::atomic<uint64_t> _networkingGeneration;
+}
+
++ (NSString *)historyEndpoint:(NSString *)host port:(NSInteger)port {
+  const auto endpoint = crossdesk::HistoryServerEndpoint(host.UTF8String ?: "", static_cast<int>(port));
+  return [NSString stringWithUTF8String:endpoint.c_str()];
 }
 
 + (nullable NSString *)directEndpoint:(NSString *)input {

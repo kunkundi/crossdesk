@@ -1284,14 +1284,14 @@ int GuiApplication::Run(bool login_launch) {
 
 #if defined(__linux__) && !defined(__OHOS__)
   try {
-    InitializeSettings();
+    if (!InitializeSettings()) return -1;
   } catch (const std::system_error&) {
     // Credential I/O errors are logged by SettingsManager. Exit cleanly rather
     // than initializing a new identity or crashing with an uncaught exception.
     return -1;
   }
 #else
-  InitializeSettings();
+  if (!InitializeSettings()) return -1;
 #endif
 #ifdef _WIN32
   // Older credential caches and trust stores are available after settings initialization.
@@ -1365,12 +1365,12 @@ int GuiApplication::Run(bool login_launch) {
 
 void GuiApplication::InitializeLogger() { InitLogger(exec_log_path_); }
 
-void GuiApplication::InitializeSettings() {
+bool GuiApplication::InitializeSettings() {
   settings_.Load();
-  if (thumbnail_->SetSavePreviews(config_center_->IsSaveRemotePreviews()) != 0) {
-    LOG_ERROR("Failed to clear saved remote previews");
-  }
-  settings_.LoadRecentConnectionAliases();
+  if (!settings_.UpgradeHistory()) return false;
+  settings_.SelectHistoryServer();
+  settings_.ApplyPreviewPreference();
+  ReloadRecentConnections();
   if (!remote_resolutions_.Load(
           std::filesystem::path(cache_path_) / "remote_display_resolutions.json"))
     LOG_WARN("Could not load remembered remote display resolutions");
@@ -1379,6 +1379,7 @@ void GuiApplication::InitializeSettings() {
   localization_language_ =
       static_cast<ConfigCenter::LANGUAGE>(language_button_value_);
   SyncPrivacyScreenSettings();
+  return true;
 }
 
 bool GuiApplication::InitializeSDL() {
@@ -1513,9 +1514,7 @@ void GuiApplication::InitializeUi() {
   ui_->main->set_release_note_blocks(ui_->release_note_blocks_model);
   RegisterFontAwesome(ui_->main->window());
   ui_->main->set_recent_connections(ui_->recent_model);
-  ui_->gallery_path = std::filesystem::path(cache_path_) / "deskhub.json";
-  if (!ui_->gallery.Load(ui_->gallery_path))
-    LOG_WARN("Could not load DeskHub workspace; original file retained");
+  LoadHistoryWorkspace();
   ui_->wall->set_gallery_tiles(ui_->gallery_model);
   ui_->wall->set_gallery_selected_devices(ui_->gallery_selected_model);
   ui_->wall->set_gallery_network_devices(ui_->gallery_network_model);
@@ -1534,7 +1533,7 @@ void GuiApplication::InitializeUi() {
 #endif
   ui_->gallery_window.wall_size = default_gallery_size;
   try {
-    std::ifstream file(ui_->gallery_path.string() + ".window");
+    std::ifstream file(std::filesystem::path(cache_path_) / "deskhub.json.window");
     if (file) {
       const auto saved = nlohmann::json::parse(file);
       const float scale = std::max(ui_->main->window().scale_factor(), 1.0f);
@@ -2015,7 +2014,7 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
       // History is newest first. Match both address and port, and only use
       // the latest matching record when an endpoint has been reused.
       for (const auto& [_, recent] : recent_connections_) {
-        if (recent.lan.device_id.empty() || recent.lan.address != address ||
+        if (recent.lan.address != address ||
             recent.lan.port != port)
           continue;
         if (recent.remember_password && lan::ValidPassword(recent.password)) {
@@ -2085,7 +2084,12 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
         recent_connections_.begin(), recent_connections_.end(),
         [&](const auto& entry) { return entry.second.remote_id == remote_id; });
     if (connection != recent_connections_.end()) {
-      thumbnail_->DeleteThumbnail(connection->first);
+      if (thumbnail_->DeleteThumbnail(connection->first) != 0) return;
+      if (ui_->gallery.HasAssignments(remote_id) && !ui_->gallery.Contains(remote_id)) {
+        auto updated = ui_->gallery;
+        updated.Forget(remote_id);
+        if (updated.Save(ui_->gallery_path)) ui_->gallery = std::move(updated);
+      }
       settings_.EraseRecentConnectionAlias(remote_id);
       settings_.SaveRecentConnectionAliases();
       reload_recent_connections_ = true;
@@ -3638,7 +3642,7 @@ void GuiApplication::SyncMainWindow() {
   std::vector<ui::RecentConnection> model;
   model.reserve(recent_connections_.size());
   for (const auto& [_, connection] : recent_connections_) {
-    if (lan_mode != !connection.lan.device_id.empty()) continue;
+    if (lan_mode != !connection.lan.address.empty()) continue;
     if (!lan_mode &&
         !ui_->gallery.MatchesGroup(connection.remote_id, ui_->recent_group_filter))
       continue;
@@ -3650,7 +3654,7 @@ void GuiApplication::SyncMainWindow() {
     item.group_names = UiText(group_labels[connection.remote_id]);
     item.display_name =
         UiText(settings_.RecentConnectionDisplayName(connection));
-    item.lan = !connection.lan.device_id.empty();
+    item.lan = !connection.lan.address.empty();
     item.endpoint =
         UiText(item.lan ? lan::FormatEndpoint(connection.lan.address,
                                               connection.lan.port)
@@ -4593,7 +4597,7 @@ std::string GuiApplication::SessionDisplayName(const std::string& remote) {
   device.remote_id = remote;
   if (const auto props = FindRemoteSession(remote)) {
     if (const auto direct = props->lan_session_) {
-      device.remote_id = Thumbnail::LanRecordId(direct->target.device_id);
+      device.remote_id = Thumbnail::LanRecordId(direct->target.address, direct->target.port);
     }
     std::lock_guard lock(props->remote_version_mutex_);
     device.remote_host_name = props->remote_host_name_;
@@ -4979,13 +4983,27 @@ bool GuiApplication::ValidateSelfHostedSettingsFromUi(bool gallery_window) {
 }
 
 bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
+  const auto previous_server = GetSignalServerSettings(*config_center_);
+  const bool saved = PersistSettingsFromUi(gallery_window);
+  const bool server_changed = previous_server != GetSignalServerSettings(*config_center_);
+  // Individual settings are committed separately. Even if a later setter
+  // fails, the saved endpoint and preview preference already apply.
+  if (saved || server_changed) ApplySettingsFromConfig(server_changed);
+  else settings_.ApplyPreviewPreference();
+  if (saved) {
+    ResetSettingsUi(gallery_window);
+    ui_->gallery_synced = {};
+  }
+  return saved;
+}
+
+bool GuiApplication::PersistSettingsFromUi(bool gallery_window) {
 #ifdef _WIN32
   // A later setter can fail after earlier values were persisted. Reconcile
   // with the host on the next status even when no config request was sent.
   if (managed_host_frontend_)
     local_host_status_.config_dirty = local_host_status_.identity_dirty = true;
 #endif
-  const auto previous_server = GetSignalServerSettings(*config_center_);
   const bool previous_ip_enabled = config_center_->IsIpDirectEnabled();
   const auto previous_connection_mode = config_center_->GetConnectionMode();
   auto& main = ui_->Window(gallery_window);
@@ -5010,11 +5028,14 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
       (wall_settings->resolution != ui_->gallery.stream_settings.resolution ||
        wall_settings->frame_rate != ui_->gallery.stream_settings.frame_rate ||
        wall_settings->bandwidth_mbps != ui_->gallery.stream_settings.bandwidth_mbps);
-  auto updated_wall = ui_->gallery;
+  const auto shared_wall_path = std::filesystem::path(cache_path_) / "deskhub.json";
+  gallery::Workspace previous_wall;
+  const bool wall_readable = !wall_changed || previous_wall.Load(shared_wall_path);
+  auto updated_wall = previous_wall;
   if (wall_settings) updated_wall.stream_settings = *wall_settings;
   // Persist the draft first, but leave live sessions unchanged until the
   // common save succeeds. Restore the previous wall file if it fails.
-  if (!wall_settings || (wall_changed && !updated_wall.Save(ui_->gallery_path))) {
+  if (!wall_settings || (wall_changed && (!wall_readable || !updated_wall.Save(shared_wall_path)))) {
     main->set_gallery_settings_error(UiText(
         localization::Literal("保存失败，请重试", localization_language_index_)));
     main->set_settings_tab(1);
@@ -5023,7 +5044,7 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
   if ((has_endpoint && config_center_->SetServerEndpoint(
           std::string(main->get_server_host()), *ParsePort(main->get_server_port())) != 0) ||
       config_center_->SetSelfHosted(main->get_self_hosted_enabled()) != 0) {
-    if (wall_changed && !ui_->gallery.Save(ui_->gallery_path))
+    if (wall_changed && !previous_wall.Save(shared_wall_path))
       LOG_ERROR("Failed to restore DeskHub settings after common save failure");
     main->set_self_host_settings_error(UiText(
         localization::self_hosted_save_failed[localization_language_index_]));
@@ -5032,7 +5053,7 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
     return false;
   }
   if (config_center_->SetIpDirectEnabled(main->get_ip_direct_enabled_draft()) != 0) {
-    if (wall_changed && !ui_->gallery.Save(ui_->gallery_path))
+    if (wall_changed && !previous_wall.Save(shared_wall_path))
       LOG_ERROR("Failed to restore DeskHub settings after IP direct save failure");
     main->set_settings_save_error(UiText(
         localization::Literal("无法保存 IP 连接设置，请重试。", localization_language_index_)));
@@ -5040,7 +5061,7 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
   }
 #if defined(_WIN32) || defined(__APPLE__) || (defined(__linux__) && !defined(__OHOS__))
   if (config_center_->SetLockOnDisconnect(main->get_lock_on_disconnect_enabled()) != 0) {
-    if (wall_changed && !ui_->gallery.Save(ui_->gallery_path))
+    if (wall_changed && !previous_wall.Save(shared_wall_path))
       LOG_ERROR("Failed to restore DeskHub settings after lock preference save failure");
     main->set_settings_save_error(UiText(
         localization::Literal("无法保存断开后锁屏设置，请重试。", localization_language_index_)));
@@ -5048,26 +5069,26 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
   }
 #endif
   if (config_center_->SetPrivacyLocalUnlock(main->get_privacy_local_unlock_allowed()) != 0) {
-    if (wall_changed) ui_->gallery.Save(ui_->gallery_path);
+    if (wall_changed) previous_wall.Save(shared_wall_path);
     main->set_settings_save_error(UiText(
         localization::Literal("无法保存隐私屏解锁设置，请重试。", localization_language_index_)));
     return false;
   }
   if (main->get_privacy_black_screen_available() &&
       config_center_->SetPrivacyBlackScreen(main->get_privacy_black_screen()) != 0) {
-    if (wall_changed) ui_->gallery.Save(ui_->gallery_path);
+    if (wall_changed) previous_wall.Save(shared_wall_path);
     main->set_settings_save_error(UiText(
         localization::Literal("保存失败，请重试", localization_language_index_)));
     return false;
   }
   if (config_center_->SetDesktopRealtimeRateControl(main->get_desktop_realtime_rate_control()) != 0) {
-    if (wall_changed) ui_->gallery.Save(ui_->gallery_path);
+    if (wall_changed) previous_wall.Save(shared_wall_path);
     main->set_settings_save_error(UiText(localization::Literal(
         "保存失败，请重试", localization_language_index_)));
     return false;
   }
   if (config_center_->SetPauseVideoWhenMinimized(main->get_pause_video_when_minimized()) != 0) {
-    if (wall_changed && !ui_->gallery.Save(ui_->gallery_path))
+    if (wall_changed && !previous_wall.Save(shared_wall_path))
       LOG_ERROR("Failed to restore DeskHub settings after video pause preference save failure");
     main->set_settings_save_error(UiText(
         localization::Literal("保存失败，请重试", localization_language_index_)));
@@ -5092,7 +5113,7 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
     if (config_center_->SetIpDirectEnabled(previous_ip_enabled) != 0 ||
         config_center_->SetConnectionMode(previous_connection_mode) != 0)
       LOG_ERROR("Failed to restore IP availability after listener settings failure");
-    if (wall_changed && !ui_->gallery.Save(ui_->gallery_path))
+    if (wall_changed && !previous_wall.Save(shared_wall_path))
       LOG_ERROR("Failed to restore DeskHub settings after listener settings failure");
     main->set_settings_tab(0);
     main->set_settings_save_error(
@@ -5145,9 +5166,6 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
   if (config_center_->SetSaveRemotePreviews(main->get_save_remote_previews()) != 0) {
     LOG_ERROR("Failed to save remote preview preference");
   }
-  if (thumbnail_->SetSavePreviews(config_center_->IsSaveRemotePreviews()) != 0) {
-    LOG_ERROR("Failed to clear saved remote previews");
-  }
   reload_recent_connections_ = true;
 #if defined(_WIN32) || defined(__APPLE__) || (defined(__linux__) && !defined(__OHOS__))
   if (config_center_->SetPrivacyScreen(main->get_privacy_on_connect_enabled()) !=
@@ -5183,14 +5201,64 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
         "保存失败，请重试", localization_language_index_)));
     return false;
   }
-  ApplySettingsFromConfig(previous_server !=
-                          GetSignalServerSettings(*config_center_));
-  ResetSettingsUi(gallery_window);
-  ui_->gallery_synced = {};
   return true;
 }
 
+void GuiApplication::LoadHistoryWorkspace() {
+  ui_->gallery = {};
+  ui_->gallery_path = settings_.HistoryDirectory() / "deskhub.json";
+  if (!ui_->gallery.Load(ui_->gallery_path))
+    LOG_WARN("Could not load DeskHub workspace; original file retained");
+  gallery::Workspace shared;
+  if (shared.Load(std::filesystem::path(cache_path_) / "deskhub.json"))
+    ui_->gallery.stream_settings = shared.stream_settings;
+}
+
 void GuiApplication::ApplySettingsFromConfig(bool reconnect) {
+  const bool changed_history = settings_.SelectHistoryServer();
+  settings_.ApplyPreviewPreference();
+  if (changed_history) {
+    if (ui_) ReleaseControl();
+    CloseAllRemoteSessions();
+    ReloadRecentConnections();
+    device_presence_cache_.SetSignalConnected(false);
+    gallery_presence_ids_.clear();
+    {
+      std::lock_guard lock(pending_presence_probe_mutex_);
+      pending_presence_probe_ = false;
+      pending_presence_result_ready_ = false;
+      pending_presence_remote_id_.clear();
+      pending_presence_password_.clear();
+      pending_presence_remember_password_ = false;
+    }
+    connection_dialog_target_.clear();
+    show_connection_status_window_ = false;
+    if (ui_) {
+      ui_->recent_group_filter.reset();
+      ui_->recent_preview_images.clear();
+      ui_->recent_model_signature.clear();
+      ui_->recent_model->set_vector({});
+      ui_->gallery_previews.clear();
+      ui_->gallery_pending_previews.clear();
+      ui_->gallery_ids.clear();
+      ui_->gallery_focus.clear();
+      ui_->gallery_auth_id.clear();
+      ui_->gallery_requested_auth.clear();
+      ui_->batch_operations.clear();
+      ui_->gallery_hidden_active_ids.clear();
+      ui_->gallery_recent_model->set_vector({});
+      ui_->gallery_network_model->set_vector({});
+      ui_->gallery_model->set_vector({});
+      ui_->gallery_selected_model->set_vector({});
+      ui_->wall->set_gallery_group_index(0);
+      ui_->wall->invoke_reset_gallery_transient();
+      for (const auto& window : {ui_->main, ui_->wall})
+        window->invoke_reset_history_view();
+      LoadHistoryWorkspace();
+      ui_->gallery_synced = {};
+      SyncMainWindow();
+    }
+  }
   language_button_value_ = static_cast<int>(config_center_->GetLanguage());
   localization_language_index_ = localization::detail::ClampLanguageIndex(language_button_value_);
   localization_language_ = config_center_->GetLanguage();
@@ -5223,6 +5291,7 @@ void GuiApplication::ApplySettingsFromConfig(bool reconnect) {
     if (!ui_->wall->get_settings_open()) ResetSettingsUi(true);
   }
   ApplyLanSettings();
+  if (changed_history) return;
   if (reconnect && !HasActiveSession()) {
     // Tick recreates the peer after asynchronous cleanup, using the committed
     // configuration. Keep the application and its console running throughout.
@@ -5257,7 +5326,7 @@ void GuiApplication::ConnectFromUi(const std::string& input) {
       return;
     }
     for (const auto& [_, recent] : recent_connections_)
-      if (recent.remote_id == input && !recent.lan.device_id.empty()) {
+      if (recent.remote_id == input && !recent.lan.address.empty()) {
         ui_->main->invoke_request_lan_connection(
             UiText(lan::FormatEndpoint(recent.lan.address, recent.lan.port)));
         return;
@@ -5842,7 +5911,7 @@ void GuiApplication::SaveGalleryWindowState() {
     }
     const auto text = state.dump();
     if (text != ui_->saved_window_signature &&
-        gallery::WriteAtomically(ui_->gallery_path.string() + ".window", text))
+        gallery::WriteAtomically(std::filesystem::path(cache_path_) / "deskhub.json.window", text))
       ui_->saved_window_signature = text;
     ui_->window_saved = now;
   }
@@ -6051,7 +6120,7 @@ void GuiApplication::GalleryAction(const std::string& action,
     std::set<std::string> seen;
     int available = 0;
     for (const auto& [_, recent] : recent_connections_) {
-      if (!recent.lan.device_id.empty()) continue;
+      if (!recent.lan.address.empty()) continue;
       if (!gallery::Workspace::ValidId(recent.remote_id) ||
           !seen.insert(recent.remote_id).second)
         continue;
@@ -6537,7 +6606,7 @@ void GuiApplication::SyncGallery() {
   };
   const auto name = [this](const std::string& id) {
     for (const auto& [_, recent] : recent_connections_)
-      if (recent.lan.device_id.empty())
+      if (recent.lan.address.empty())
         if (recent.remote_id == id)
           return settings_.RecentConnectionDisplayName(recent);
     Thumbnail::RecentConnection device{};
@@ -6661,7 +6730,7 @@ void GuiApplication::SyncGallery() {
           bool remember = operation.remember_password;
           if (!operation.password)
             for (const auto& [_, recent] : recent_connections_)
-              if (recent.lan.device_id.empty())
+              if (recent.lan.address.empty())
                 if (recent.remote_id == operation.id) {
                   password = recent.password;
                   remember = recent.remember_password;
@@ -6816,7 +6885,7 @@ void GuiApplication::SyncGallery() {
     tile.selected = wall.selected.count(id);
     auto props = FindRemoteSession(id);
     for (const auto& [_, recent] : recent_connections_) {
-      if (!recent.lan.device_id.empty()) continue;
+      if (!recent.lan.address.empty()) continue;
       if (recent.remote_id != id) continue;
       tile.host_name = UiText(recent.remote_host_name);
       break;

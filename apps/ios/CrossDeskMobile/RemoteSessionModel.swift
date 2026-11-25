@@ -99,39 +99,17 @@ private struct RemoteVideoFrame {
 }
 
 private enum RecentConnectionStore {
-    private static let defaultsKey = "crossdesk.mobile.recent-connections.v1"
     private static let thumbnails = ThumbnailFileStore(directory:
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("RecentConnectionThumbnails", isDirectory: true))
     private static let context = CIContext(options: [.cacheIntermediates: false])
 
-    static func load() -> [RecentConnection] {
-        guard let data = UserDefaults.standard.data(forKey: defaultsKey),
-              let connections = try? JSONDecoder().decode([RecentConnection].self,
-                                                           from: data) else {
-            return []
-        }
-        return connections.sorted { $0.lastConnectedAt > $1.lastConnectedAt }
-    }
-
-    static func save(_ connections: [RecentConnection]) {
-        guard let data = try? JSONEncoder().encode(connections) else { return }
-        UserDefaults.standard.set(data, forKey: defaultsKey)
-    }
-
     static func thumbnailURL(fileName: String) -> URL {
         thumbnails.url(for: fileName)
     }
 
-    private static func thumbnailFileName(for remoteID: String) -> String {
-        let safeID = remoteID.filter { $0.isLetter || $0.isNumber || $0 == "-" }
-        return "\(safeID.isEmpty ? "remote" : safeID).jpg"
-    }
-
-    static func captureThumbnail(from pixelBuffer: CVPixelBuffer,
-                                 remoteID: String,
+    static func captureThumbnail(from pixelBuffer: CVPixelBuffer, name: String,
                                  completion: @escaping (String?) -> Void) {
-        let name = thumbnailFileName(for: remoteID)
         thumbnails.save(fileName: name, makeData: {
             let image = CIImage(cvPixelBuffer: pixelBuffer)
             let targetSize = CGSize(width: 640, height: 360)
@@ -151,14 +129,12 @@ private enum RecentConnectionStore {
         }
     }
 
-    static func removeThumbnail(for connection: RecentConnection) {
-        // The first capture may still be queued, before its filename has been
-        // attached to the recent connection. Delete that pending file too.
-        let pendingFileName = thumbnailFileName(for: connection.remoteID)
-        thumbnails.remove(fileName: pendingFileName)
-        if let fileName = connection.thumbnailFileName, fileName != pendingFileName {
-            thumbnails.remove(fileName: fileName)
-        }
+    static func removeLegacyThumbnails() {
+        thumbnails.removeLegacyFiles()
+    }
+
+    static func removeThumbnail(named name: String) {
+        thumbnails.remove(fileName: name)
     }
 
     static func removeAllThumbnails(completion: @escaping (Bool) -> Void) {
@@ -172,42 +148,39 @@ private enum RecentConnectionStore {
 private enum ConnectionCredentialStore {
     private static let service = "cn.crossdesk.mobile.saved-password"
 
-    static func password(for remoteID: String) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: remoteID,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
+    static func password(for account: String) -> String? {
+        var attributes = query(for: account)
+        attributes[kSecReturnData as String] = true
+        attributes[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else {
-            return nil
-        }
+        guard SecItemCopyMatching(attributes as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
-    static func save(password: String, for remoteID: String) {
-        removePassword(for: remoteID)
-        let attributes: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: remoteID,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-            kSecValueData as String: Data(password.utf8)
-        ]
-        SecItemAdd(attributes as CFDictionary, nil)
+    private static func query(for account: String) -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword,
+         kSecAttrService as String: service,
+         kSecAttrAccount as String: account]
     }
 
-    static func removePassword(for remoteID: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: remoteID
-        ]
-        SecItemDelete(query as CFDictionary)
+    @discardableResult
+    static func save(password: String, for account: String) -> Bool {
+        let query = query(for: account)
+        let value = [kSecValueData as String: Data(password.utf8)]
+        let status = SecItemUpdate(query as CFDictionary, value as CFDictionary)
+        if status != errSecItemNotFound { return status == errSecSuccess }
+        var attributes = query.merging(value) { _, new in new }
+        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        return SecItemAdd(attributes as CFDictionary, nil) == errSecSuccess
     }
+
+    @discardableResult
+    static func removePassword(for account: String) -> Bool {
+        let status = SecItemDelete(query(for: account) as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
+    }
+
 }
 
 private final class RemoteAudioPlayer {
@@ -300,6 +273,9 @@ struct SignalServerConfiguration: Equatable {
     let host: String
     let signalPort: Int
 
+    var historyEndpoint: String { CrossDeskRTCBridge.historyEndpoint(host, port: signalPort) }
+    var history: ConnectionHistory { ConnectionHistory(endpoint: historyEndpoint) }
+
     static let official = Self(host: "api.crossdesk.cn", signalPort: 9099)
     private static let customServerKey = "crossdesk.mobile.custom-signal-server"
 
@@ -377,7 +353,10 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     @Published private(set) var transferProgress = 0.0
     @Published private(set) var receivedFileURL: URL?
     @Published private(set) var frameCount: UInt64 = 0
-    @Published private(set) var recentConnections = RecentConnectionStore.load()
+    @Published private(set) var history = SignalServerConfiguration.official.history
+    @Published private(set) var recentConnections: [RecentConnection] = []
+    private var activeHistory: ConnectionHistory?
+    private var pendingCaptures: [String: UUID] = [:]
     @Published private(set) var recentConnectionPresence: [String: Bool] = [:]
     @Published private(set) var deviceOfflineAlertVisible = false
     @Published private(set) var connectionFailureMessage: String?
@@ -437,6 +416,10 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
 
     override init() {
         super.init()
+        history = (customServer ?? .official).history
+        history.adoptLegacyHistory()
+        recentConnections = history.load()
+        RecentConnectionStore.removeLegacyThumbnails()
         bridge.delegate = self
         pictureInPicture.requestFrame = { [weak self] in
             guard let self, self.isConnected else { return }
@@ -541,10 +524,9 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     func clearConnectionThumbnails() {
         thumbnailGeneration = UUID()
         shouldCaptureThumbnail = false
-        for index in recentConnections.indices {
-            recentConnections[index].thumbnailFileName = nil
-        }
-        RecentConnectionStore.save(recentConnections)
+        pendingCaptures.removeAll()
+        ConnectionHistory.clearThumbnailReferences()
+        recentConnections = history.load()
         thumbnailCleanupInProgress = true
         thumbnailCleanupError = nil
         let generation = thumbnailGeneration
@@ -561,6 +543,23 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         guard server != customServer else { return }
         SignalServerConfiguration.saveCustom(server)
         customServer = server
+        let selected = (server ?? .official).history
+        if selected != history {
+            if !canStartConnection { resetConnection() }
+            if bridgeConfiguration != nil {
+                bridge.stopNetworking()
+                bridgeConfiguration = nil
+            }
+            activeHistory = nil
+            activeRemoteID = ""
+            shouldCaptureThumbnail = false
+            pendingRememberPassword = false
+            password = ""
+            remoteID = ""
+            history = selected
+            recentConnections = selected.load()
+            invalidatePresence()
+        }
         configureBridge()
     }
 
@@ -570,7 +569,11 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             signalStatus = NSLocalizedString("等待隐私授权", comment: ""); signalHasError = false
             return false
         }
-        let configuration = customServer ?? .official
+        let selected = customServer ?? .official
+        // Keep the live peer for equivalent spellings of the same endpoint.
+        let configuration = bridgeConfiguration.flatMap {
+            $0.historyEndpoint == selected.historyEndpoint ? $0 : nil
+        } ?? selected
         if bridgeConfiguration != configuration {
             bridgeConfiguration = configuration
             signalConnected = false
@@ -630,6 +633,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         cancelVideoRecovery()
         resetVideoSettings()
         cancelPresenceProbe()
+        activeHistory = history
         activeRemoteID = identifier
         resolutionPreferenceKey = RemoteDisplayResolutionStore.key(host: configuration.host,
             port: configuration.signalPort, remoteID: identifier)
@@ -817,11 +821,19 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     func savedPassword(for remoteID: String) -> String {
-        ConnectionCredentialStore.password(for: remoteID) ?? ""
+        savedCredential(for: remoteID) ?? ""
+    }
+
+    private func credentialAccount(for remoteID: String) -> String {
+        if recentConnections.first(where: { $0.id == remoteID })?.usesLegacyPassword == true {
+            return remoteID
+        }
+        return history.account(for: remoteID)
     }
 
     func savedCredential(for remoteID: String) -> String? {
-        ConnectionCredentialStore.password(for: remoteID)
+        guard remembersPassword(for: remoteID) else { return nil }
+        return ConnectionCredentialStore.password(for: credentialAccount(for: remoteID))
     }
 
     func remembersPassword(for remoteID: String) -> Bool {
@@ -831,7 +843,8 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
 
     func thumbnailImage(for connection: RecentConnection) -> UIImage? {
         guard savesConnectionThumbnails,
-              let fileName = connection.thumbnailFileName else {
+              let fileName = connection.thumbnailFileName,
+              fileName == history.thumbnailName(for: connection.id) else {
             return nil
         }
         return UIImage(contentsOfFile: RecentConnectionStore.thumbnailURL(fileName: fileName).path)
@@ -961,75 +974,81 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         if let groups {
             recentConnections[index].groups = Array(Set(groups)).sorted()
         }
-        RecentConnectionStore.save(recentConnections)
+        history.save(recentConnections)
     }
 
     func removeRecentConnection(_ connection: RecentConnection) {
+        guard ConnectionCredentialStore.removePassword(for: credentialAccount(for: connection.id)) else {
+            connectionFailureMessage = NSLocalizedString("安全存储不可用，请解锁设备后重试", comment: "")
+            return
+        }
         recentConnections.removeAll { $0.remoteID == connection.remoteID }
         recentConnectionPresence.removeValue(forKey: connection.remoteID)
         presenceUpdatedAt.removeValue(forKey: connection.remoteID)
-        RecentConnectionStore.save(recentConnections)
-        RecentConnectionStore.removeThumbnail(for: connection)
-        ConnectionCredentialStore.removePassword(for: connection.remoteID)
+        history.save(recentConnections)
+        pendingCaptures.removeValue(forKey: history.account(for: connection.id))
+        if activeRemoteID == connection.id { shouldCaptureThumbnail = false }
+        RecentConnectionStore.removeThumbnail(named: history.thumbnailName(for: connection.id))
         refreshRecentConnectionPresence()
     }
 
     private func recordSuccessfulConnectionIfNeeded() {
-        guard !connectionRecorded, !activeRemoteID.isEmpty else { return }
+        guard activeHistory == history, !connectionRecorded, !activeRemoteID.isEmpty else { return }
         connectionRecorded = true
 
-        if pendingRememberPassword {
-            ConnectionCredentialStore.save(password: password, for: activeRemoteID)
-        } else {
-            ConnectionCredentialStore.removePassword(for: activeRemoteID)
-        }
+        let account = credentialAccount(for: activeRemoteID)
+        let remembered = pendingRememberPassword && ConnectionCredentialStore.save(password: password, for: account)
+        if !pendingRememberPassword { ConnectionCredentialStore.removePassword(for: account) }
 
         let previous = recentConnections.first { $0.remoteID == activeRemoteID }
         let title = activeDisplayName.isEmpty
             ? (previous?.hostName ?? activeRemoteID)
             : activeDisplayName
-        let connection = RecentConnection(
+        var connection = RecentConnection(
             remoteID: activeRemoteID,
             displayName: title,
             lastConnectedAt: Date(),
-            remembersPassword: pendingRememberPassword,
+            remembersPassword: remembered,
             thumbnailFileName: previous?.thumbnailFileName,
             platform: remoteHostInfoReceived ? remotePlatform : (previous?.platform ?? .unknown),
             alias: previous?.alias ?? "",
             groups: previous?.groups ?? []
         )
+        connection.usesLegacyPassword = previous?.usesLegacyPassword
         recentConnections.removeAll { $0.remoteID == activeRemoteID }
         recentConnections.insert(connection, at: 0)
-        RecentConnectionStore.save(recentConnections)
+        history.save(recentConnections)
         refreshRecentConnectionPresence()
     }
 
     private func updateActiveConnectionHostInfo(_ name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !activeRemoteID.isEmpty else { return }
+        guard activeHistory == history, !activeRemoteID.isEmpty else { return }
         if !trimmed.isEmpty { activeDisplayName = trimmed }
         guard let index = recentConnections.firstIndex(where: {
             $0.remoteID == activeRemoteID
         }) else { return }
         recentConnections[index].updateHostInfo(name: trimmed, platform: remotePlatform)
-        RecentConnectionStore.save(recentConnections)
+        history.save(recentConnections)
     }
 
     private func captureRecentThumbnailIfNeeded(_ pixelBuffer: CVPixelBuffer) {
         guard hasNetworkConsent, savesConnectionThumbnails,
-              shouldCaptureThumbnail, !activeRemoteID.isEmpty else { return }
+              let scope = activeHistory, scope == history, shouldCaptureThumbnail, !activeRemoteID.isEmpty else { return }
         shouldCaptureThumbnail = false
-        let generation = thumbnailGeneration
         let identifier = activeRemoteID
-        RecentConnectionStore.captureThumbnail(from: pixelBuffer,
-                                                remoteID: identifier) { [weak self] fileName in
-            guard let self, let fileName, self.hasNetworkConsent,
-                  self.savesConnectionThumbnails, self.thumbnailGeneration == generation,
-                  let index = self.recentConnections.firstIndex(where: {
-                      $0.remoteID == identifier
-                  }) else { return }
-            self.recentConnections[index].thumbnailFileName = fileName
-            RecentConnectionStore.save(self.recentConnections)
+        let account = scope.account(for: identifier)
+        let token = UUID()
+        pendingCaptures[account] = token
+        RecentConnectionStore.captureThumbnail(from: pixelBuffer, name: scope.thumbnailName(for: identifier)) { [weak self] name in
+            guard let self, self.pendingCaptures[account] == token else { return }
+            self.pendingCaptures.removeValue(forKey: account)
+            guard let name, self.savesConnectionThumbnails else { return }
+            var records = scope.load()
+            guard let index = records.firstIndex(where: { $0.id == identifier }) else { return }
+            records[index].thumbnailFileName = name
+            scope.save(records)
+            if self.history == scope { self.recentConnections = records }
         }
     }
 

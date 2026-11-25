@@ -675,6 +675,26 @@ export component MainWindow inherits Window {
     in property <[string]> recent-groups: [GalleryStrings.texts[57], GalleryStrings.texts[31]];
     in-out property <int> recent-group-index: 0;
     callback recent-group-selected(int);
+    public function reset-history-view() {
+        recent-group-filter.close-menu();
+        recent-scroll.viewport-x = 0px;
+        root.recent-tooltip-visible = false;
+        root.recent-tooltip-id = "";
+        root.recent-tooltip-index = -1;
+        root.alias-open = false;
+        root.delete-open = false;
+        root.disconnect-open = false;
+        root.device-group-open = false;
+        root.lan-open = false;
+        root.lan-access-password = "";
+        root.lan-remember-password = false;
+        root.connection-password = "";
+        root.connection-remember-password = false;
+        root.connection-input-error = "";
+        root.id-connection-draft = "";
+        root.ip-connection-draft = "";
+        root.remote-id-input = "";
+    }
     changed recent-group-index => {
         root.recent-tooltip-visible = false;
         recent-scroll.viewport-x = 0px;

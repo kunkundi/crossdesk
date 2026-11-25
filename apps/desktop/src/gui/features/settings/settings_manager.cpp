@@ -1,3 +1,4 @@
+#include "history_server_endpoint.h"
 #include "features/settings/settings_manager.h"
 
 #include <cerrno>
@@ -27,6 +28,8 @@
 #endif
 
 #include "localization.h"
+#include "features/gallery/gallery_workspace.h"
+#include "signal_server_settings.h"
 #include "network/lan/lan_identity.h"
 #include "rd_log.h"
 #include "runtime/gui_runtime.h"
@@ -414,10 +417,9 @@ int SettingsManager::Load() {
       std::memset(owner_.aes128_iv_, 0, sizeof(owner_.aes128_iv_));
       std::memset(owner_.self_hosted_id_, 0, sizeof(owner_.self_hosted_id_));
 
-      owner_.thumbnail_ =
+      legacy_history_ =
           std::make_shared<Thumbnail>(owner_.cache_path_ + "/thumbnails/");
-      owner_.thumbnail_->GetKeyAndIv(owner_.aes128_key_, owner_.aes128_iv_);
-      owner_.thumbnail_->DeleteAllFilesInDirectory();
+      legacy_history_->GetKeyAndIv(owner_.aes128_key_, owner_.aes128_iv_);
 
       Save();
       return -1;
@@ -451,7 +453,7 @@ int SettingsManager::Load() {
 
   ActivateCachedPublicIdentity();
 
-  owner_.thumbnail_ =
+  legacy_history_ =
       std::make_shared<Thumbnail>(owner_.cache_path_ + "/thumbnails/",
                                   owner_.aes128_key_, owner_.aes128_iv_);
 
@@ -662,13 +664,158 @@ void SettingsManager::PersistSelfHostedIdentity(const char *client_id) {
   }
 }
 
-int SettingsManager::LoadRecentConnectionAliases() {
-  recent_connection_aliases_.clear();
+std::filesystem::path SettingsManager::ConfiguredHistoryDirectory() const {
+  const auto [_, address, port] = GetSignalServerSettings(*owner_.config_center_);
+  return std::filesystem::path(owner_.cache_path_) / "recent_servers" /
+         Thumbnail::Digest(HistoryServerEndpoint(address, port));
+}
 
-  std::ifstream alias_file(owner_.cache_path_ +
-                           "/recent_connection_aliases.json");
+bool SettingsManager::UpgradeHistory() try {
+  // The desktop client holds the single-instance guard throughout startup.
+  // Commit the owner before moving anything so an interrupted upgrade can
+  // resume even when the configured server has since changed.
+  const auto current = ConfiguredHistoryDirectory();
+  const auto servers = current.parent_path();
+  std::filesystem::create_directories(servers);
+  const auto marker = servers / "upgrade.json";
+  nlohmann::json state;
+  if (std::filesystem::exists(marker)) {
+    std::ifstream(marker) >> state;
+    if (state.at("complete").get<bool>()) return true;
+  } else {
+    state = {{"owner", current.filename().string()}, {"complete", false}};
+    if (!gallery::WriteAtomically(marker, state.dump())) {
+      LOG_ERROR("Could not record the original history server");
+      return false;
+    }
+  }
+  const auto owner = state.at("owner").get<std::string>();
+  if (owner.size() != 64 || owner.find_first_not_of("0123456789abcdef") != std::string::npos)
+    throw std::runtime_error("Invalid history server in upgrade marker");
+  if (MoveLegacyHistory(servers / owner)) {
+    state["complete"] = true;
+    if (gallery::WriteAtomically(marker, state.dump())) return true;
+  }
+  LOG_WARN("History upgrade incomplete; will retry for the original server on next launch");
+  return true;
+} catch (const std::exception& error) {
+  LOG_WARN("Could not upgrade recent history: {}", error.what());
+  return false;
+}
+
+bool SettingsManager::MoveLegacyHistory(const std::filesystem::path& directory) {
+  const std::filesystem::path root(owner_.cache_path_);
+  Thumbnail destination((directory / "thumbnails").string(), owner_.aes128_key_, owner_.aes128_iv_);
+  // Older versions encoded the entire record in the screenshot filename.
+  if (legacy_history_->SetSavePreviews(false) != 0) return false;
+  std::vector<std::pair<std::string, Thumbnail::RecentConnection>> records;
+  if (legacy_history_->LoadThumbnail(records) != 0) return false;
+
+  const auto alias_file = "recent_connection_aliases.json";
+  Aliases source_aliases, aliases;
+  if (ReadAliases(root / alias_file, source_aliases) != 0 ||
+      ReadAliases(directory / alias_file, aliases) != 0) return false;
+  for (auto& [source_id, record] : records) {
+    source_id = record.remote_id;
+    if (record.lan.address.empty()) continue;
+    if (lan::IsIpAddress(record.lan.address))
+      record.lan.address = lan::NormalizeAddress(record.lan.address);
+    record.remote_id = Thumbnail::LanRecordId(record.lan.address, record.lan.port);
+    if (source_id == record.remote_id) continue;
+    if (auto alias = source_aliases.extract(source_id)) {
+      alias.key() = record.remote_id;
+      source_aliases.insert(std::move(alias));
+    }
+  }
+  if (!source_aliases.empty()) {
+    aliases.merge(source_aliases);
+    if (WriteAliases(directory / alias_file, aliases) != 0) return false;
+    std::filesystem::remove(root / alias_file);
+  }
+
+  // LoadThumbnail returns newest first. Keep an existing destination record
+  // on retry, including when multiple legacy LAN IDs resolve to one endpoint.
+  for (const auto& [old_id, record] : records) {
+    const auto source = root / "thumbnails" / (old_id + ".json");
+    const auto target = directory / "thumbnails" / (record.remote_id + ".json");
+    if (old_id == record.remote_id && !std::filesystem::exists(target)) {
+      std::filesystem::rename(source, target);
+    } else {
+      if (!destination.ImportRecord(record, std::filesystem::last_write_time(source))) return false;
+      std::filesystem::remove(source);
+    }
+  }
+
+  const auto wall = root / "deskhub.json";
+  if (std::filesystem::exists(wall)) {
+    gallery::Workspace legacy;
+    if (!legacy.Load(wall)) return false;
+    const auto target = directory / "deskhub.json";
+    if (!std::filesystem::exists(target)) {
+      if (!legacy.Save(target)) return false;
+    } else if (!legacy.members.empty()) {
+      gallery::Workspace existing;
+      if (!existing.Load(target)) return false;
+      std::map<std::string, std::vector<std::string>> groups;
+      for (const auto& member : legacy.members) groups[member.id].push_back(member.group);
+      for (const auto& [id, names] : groups)
+        if (!existing.HasAssignments(id)) existing.SetGroups(id, names);
+      for (const auto& id : legacy.Ids()) existing.Add(id);
+      if (!existing.Save(target)) return false;
+    }
+    gallery::Workspace preferences;
+    preferences.stream_settings = legacy.stream_settings;
+    if (!preferences.Save(wall)) return false;
+  }
+  return true;
+}
+
+bool SettingsManager::SelectHistoryServer() {
+  const auto directory = ConfiguredHistoryDirectory();
+  if (directory == history_directory_) return false;
+  auto& store = history_stores_[directory];
+  if (!store) {
+    store = std::make_shared<Thumbnail>((directory / "thumbnails").string(),
+                                        owner_.aes128_key_, owner_.aes128_iv_);
+    store->SetSavePreviews(owner_.config_center_->IsSaveRemotePreviews());
+  }
+  owner_.thumbnail_ = store;
+  history_directory_ = directory;
+  ReadAliases(directory / "recent_connection_aliases.json", recent_connection_aliases_);
+  return true;
+}
+
+void SettingsManager::ApplyPreviewPreference() {
+  const bool enabled = owner_.config_center_->IsSaveRemotePreviews();
+  if (save_previews_ == enabled) return;
+  // Directories that have not been opened in this process must also be cleared.
+  bool success = true;
+  if (!enabled) {
+    for (const auto& entry : std::filesystem::directory_iterator(history_directory_.parent_path())) {
+      if (!entry.is_directory() || !std::filesystem::is_directory(entry.path() / "thumbnails"))
+        continue;
+      auto& store = history_stores_[entry.path()];
+      if (!store) store = std::make_shared<Thumbnail>((entry.path() / "thumbnails").string(),
+                                                      owner_.aes128_key_, owner_.aes128_iv_);
+    }
+  }
+  for (const auto& [_, store] : history_stores_)
+    success &= store->SetSavePreviews(enabled) == 0;
+  if (!enabled) success &= legacy_history_->SetSavePreviews(false) == 0;
+  if (success) save_previews_ = enabled;
+  else {
+    save_previews_.reset();
+    LOG_ERROR("Failed to clear saved remote previews");
+  }
+}
+
+int SettingsManager::ReadAliases(const std::filesystem::path& path, Aliases& result) {
+  result.clear();
+  std::ifstream alias_file(path);
   if (!alias_file.good()) {
-    return 0;
+    std::error_code error;
+    const bool exists = std::filesystem::exists(path, error);
+    return (exists || error) ? -1 : 0;
   }
 
   try {
@@ -689,7 +836,7 @@ int SettingsManager::LoadRecentConnectionAliases() {
         const std::string remote_id = it.key();
         const std::string alias = it.value().get<std::string>();
         if (!remote_id.empty() && !alias.empty()) {
-          recent_connection_aliases_[remote_id] = alias;
+          result[remote_id] = alias;
         }
       }
     }
@@ -701,30 +848,19 @@ int SettingsManager::LoadRecentConnectionAliases() {
 }
 
 int SettingsManager::SaveRecentConnectionAliases() const {
-  std::error_code ec;
-  std::filesystem::create_directories(owner_.cache_path_, ec);
-  if (ec) {
-    LOG_WARN("Create cache directory failed while saving aliases: {}",
-             ec.message());
-    return -1;
-  }
+  return WriteAliases(history_directory_ / "recent_connection_aliases.json", recent_connection_aliases_);
+}
 
+int SettingsManager::WriteAliases(const std::filesystem::path& path, const Aliases& aliases) {
   nlohmann::json alias_json;
   alias_json["aliases"] = nlohmann::json::object();
-  for (const auto &[remote_id, alias] : recent_connection_aliases_) {
+  for (const auto &[remote_id, alias] : aliases) {
     if (!remote_id.empty() && !alias.empty()) {
       alias_json["aliases"][remote_id] = alias;
     }
   }
 
-  std::ofstream alias_file(
-      owner_.cache_path_ + "/recent_connection_aliases.json", std::ios::trunc);
-  if (!alias_file.good()) {
-    LOG_WARN("Open recent connection alias file failed");
-    return -1;
-  }
-  alias_file << alias_json.dump(2);
-  return 0;
+  return gallery::WriteAtomically(path, alias_json.dump(2)) ? 0 : -1;
 }
 
 std::string SettingsManager::RecentConnectionDisplayName(
@@ -738,7 +874,7 @@ std::string SettingsManager::RecentConnectionDisplayName(
       connection.remote_host_name != "unknown") {
     return connection.remote_host_name;
   }
-  if (!connection.lan.device_id.empty())
+  if (!connection.lan.address.empty())
     return lan::FormatEndpoint(connection.lan.address, connection.lan.port);
   return connection.remote_id;
 }

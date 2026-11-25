@@ -7,6 +7,7 @@
 #ifndef _THUMBNAIL_H_
 #define _THUMBNAIL_H_
 
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <map>
@@ -21,10 +22,12 @@ namespace crossdesk {
 class Thumbnail {
  public:
   struct LanTarget {
-    std::string address, device_id;
+    std::string address;
     unsigned port = 52888;
   };
-  static std::string LanRecordId(const std::string& device_id);
+  static std::string Digest(const std::string& value);
+  static std::string LanRecordId(const std::string& address, unsigned port);
+  uint64_t RecordGeneration(const std::string& id);
   struct RecentConnection {
     std::filesystem::path image_path;
     std::string remote_id;
@@ -49,11 +52,14 @@ class Thumbnail {
                       const std::string& remote_id,
                       const std::string& host_name, const std::string& password,
                       HostPlatform platform = HostPlatform::Unknown,
-                      const LanTarget* lan = nullptr);
+                      const LanTarget* lan = nullptr, uint64_t generation = 0);
 
   int LoadThumbnail(
       std::vector<std::pair<std::string, Thumbnail::RecentConnection>>&
           recent_connections);
+
+  // An existing destination wins when importing a legacy record or retrying.
+  bool ImportRecord(const RecentConnection& record, std::filesystem::file_time_type modified);
 
   // Crop from the saved master and downsample for a physical-pixel viewport.
   // Low-resolution legacy images are never enlarged in the cache.
@@ -99,6 +105,7 @@ class Thumbnail {
 
  private:
   mutable std::mutex mutex_;
+  std::unordered_map<std::string, uint64_t> generations_;
   bool save_previews_ = true;
   std::string save_path_ = "thumbnails/";
 

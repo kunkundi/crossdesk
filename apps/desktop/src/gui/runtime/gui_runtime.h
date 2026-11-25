@@ -106,6 +106,7 @@ class GuiRuntime : protected gui_detail::GuiState {
   int ForceSignalReconnect();
 
   void HandleRecentConnections();
+  void ReloadRecentConnections();
   void HandleConnectionStatusChange();
   void HandlePendingRejoins();
   void CancelPendingConnection(const std::string& remote_id);

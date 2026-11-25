@@ -271,6 +271,7 @@ private struct ConnectionHomeView: View {
                         remoteConnectionPanel
                             .frame(width: isWide ? 360 : nil)
                         recentConnectionsPanel(windowWidth: proxy.size.width)
+                            .id(session.history.key)
                             .frame(maxHeight: .infinity)
                     }
                     .frame(maxWidth: MobileLayout.homeMaximumWidth)
@@ -322,6 +323,14 @@ private struct ConnectionHomeView: View {
                 session.editRecentConnection(device.id, groups: groups)
             }
             .presentationDetents([.medium, .large])
+        }
+        .onValueChange(of: session.history) { _ in
+            passwordPromptVisible = false
+            promptRemoteID = ""
+            promptPassword = ""
+            promptRememberPassword = false
+            groupFilter = nil
+            groupDevice = nil
         }
         .onValueChange(of: recentGroups) { groups in
             if let groupFilter, !groupFilter.isEmpty, !groups.contains(groupFilter) {

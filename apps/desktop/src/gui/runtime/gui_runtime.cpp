@@ -404,6 +404,21 @@ int GuiRuntime::CreateConnectionPeer() {
   return -1;
 }
 
+void GuiRuntime::ReloadRecentConnections() {
+  int ret = thumbnail_->LoadThumbnail(recent_connections_);
+  if (!ret) {
+    LOG_INFO("Load recent connection thumbnails");
+  }
+  reload_recent_connections_ = false;
+
+  recent_connection_ids_.clear();
+  for (const auto &conn : recent_connections_) {
+    if (conn.second.lan.address.empty())
+      recent_connection_ids_.push_back(conn.first);
+  }
+  need_to_send_recent_connections_ = true;
+}
+
 void GuiRuntime::HandleRecentConnections() {
   if (thumbnail_ && session_cleanup_tasks_.empty()) {
     std::vector<std::shared_ptr<RemoteSession>> sessions;
@@ -428,15 +443,14 @@ void GuiRuntime::HandleRecentConnections() {
       const auto direct = props->lan_session_;
       const Thumbnail::LanTarget target =
           direct ? Thumbnail::LanTarget{direct->target.address,
-                                        direct->target.device_id,
                                         direct->target.port}
                  : Thumbnail::LanTarget{};
       const auto record_id =
-          direct ? Thumbnail::LanRecordId(target.device_id) : props->remote_id_;
-      if (thumbnail_->SaveToThumbnail(
+          direct ? Thumbnail::LanRecordId(target.address, target.port) : props->remote_id_;
+      if (props->history_store_ && props->history_store_->SaveToThumbnail(
               nullptr, 0, 0, record_id, host_name,
               props->remember_password_ ? props->remote_password_ : "",
-              platform, direct ? &target : nullptr) == 0)
+              platform, direct ? &target : nullptr, props->history_generation_) == 0)
         reload_recent_connections_ = true;
       else
         LOG_ERROR("Failed to save recent connection");
@@ -445,18 +459,7 @@ void GuiRuntime::HandleRecentConnections() {
   if (session_cleanup_tasks_.empty() && reload_recent_connections_ && thumbnail_) {
     uint32_t now_time = SDL_GetTicks();
     if (now_time - recent_connection_image_save_time_ >= 50) {
-      int ret = thumbnail_->LoadThumbnail(recent_connections_);
-      if (!ret) {
-        LOG_INFO("Load recent connection thumbnails");
-      }
-      reload_recent_connections_ = false;
-
-      recent_connection_ids_.clear();
-      for (const auto &conn : recent_connections_) {
-        if (conn.second.lan.device_id.empty())
-          recent_connection_ids_.push_back(conn.first);
-      }
-      need_to_send_recent_connections_ = true;
+      ReloadRecentConnections();
     }
   }
 }

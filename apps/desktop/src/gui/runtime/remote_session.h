@@ -35,6 +35,7 @@
 
 namespace crossdesk {
 class PeerEventHandler;
+class Thumbnail;
 class VideoRenderer;
 namespace lan {
 struct Session;
@@ -85,6 +86,8 @@ struct FileTransferState {
 // Runtime state for one connected or connecting remote endpoint. It groups the
 // connection, media, input, window and transfer data that share one lifetime.
 struct RemoteSession {
+  std::shared_ptr<Thumbnail> history_store_;
+  uint64_t history_generation_ = 0;
   // Wall membership, stream-window visibility and input ownership are separate.
   std::atomic<bool> wall_managed_{false};
   std::atomic<bool> preview_subscription_supported_{false};

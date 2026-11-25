@@ -103,7 +103,7 @@ bool IsLanRecordId(const std::string& id) {
          });
 }
 std::string ConnectionKey(const Thumbnail::RecentConnection& connection) {
-  if (!connection.lan.device_id.empty()) return connection.remote_id;
+  if (!connection.lan.address.empty()) return connection.remote_id;
   return connection.remote_id + (connection.remember_password ? "Y" : "N") +
          connection.remote_host_name +
          (connection.remember_password ? "@" + connection.password : "");
@@ -111,18 +111,39 @@ std::string ConnectionKey(const Thumbnail::RecentConnection& connection) {
 
 }  // namespace
 
-std::string Thumbnail::LanRecordId(const std::string& device_id) {
+std::string Thumbnail::Digest(const std::string& input) {
   unsigned char digest[32]{};
   unsigned int size = 0;
-  const std::string input = "lan_direct/" + device_id;
   if (EVP_Digest(input.data(), input.size(), digest, &size, EVP_sha256(),
                  nullptr) != 1 ||
       size != 32)
-    return {};
+    throw std::runtime_error("Cannot hash history key");
   std::ostringstream text;
-  text << "lan-" << std::hex << std::setfill('0');
+  text << std::hex << std::setfill('0');
   for (const auto byte : digest) text << std::setw(2) << unsigned(byte);
   return text.str();
+}
+
+std::string Thumbnail::LanRecordId(const std::string& address, unsigned port) {
+  return "lan-" + Digest("lan_endpoint/" + address + "/" + std::to_string(port));
+}
+
+uint64_t Thumbnail::RecordGeneration(const std::string& id) {
+  std::lock_guard lock(mutex_);
+  return generations_[id];
+}
+
+bool Thumbnail::ImportRecord(const RecentConnection& record,
+                             std::filesystem::file_time_type modified) {
+  std::lock_guard lock(mutex_);
+  const auto path = std::filesystem::path(save_path_) / (record.remote_id + ".json");
+  if (std::filesystem::exists(path)) {
+    RecentConnection existing;
+    return ReadRecord(path, &existing);
+  }
+  if (!WriteRecord(record)) return false;
+  std::filesystem::last_write_time(path, modified);
+  return true;
 }
 
 bool Thumbnail::WriteRecord(const RecentConnection& connection) {
@@ -133,12 +154,11 @@ bool Thumbnail::WriteRecord(const RecentConnection& connection) {
       std::filesystem::path(save_path_) / (connection.remote_id + ".json");
   const auto temporary = path.string() + ".tmp";
   const nlohmann::json record = {
-      {"version", 2},
-      {"kind", connection.lan.device_id.empty() ? "cloud_id" : "lan_direct"},
+      {"version", 3},
+      {"kind", connection.lan.address.empty() ? "cloud_id" : "lan_direct"},
       {"lan",
        {{"address", connection.lan.address},
-        {"port", connection.lan.port},
-        {"device_id", connection.lan.device_id}}},
+        {"port", connection.lan.port}}},
       {"remote_id", connection.remote_id},
       {"host_name", connection.remote_host_name},
       {"password", password},
@@ -175,11 +195,12 @@ bool Thumbnail::ReadRecord(const std::filesystem::path& path,
     const auto kind = record.value("kind", "cloud_id");
     if (kind == "lan_direct") {
       const auto& target = record.at("lan");
-      connection->lan = {target.at("address"), target.at("device_id"),
-                         target.at("port")};
+      connection->lan = {target.at("address"), target.at("port")};
+      const auto legacy_device = target.value("device_id", "");
+      const bool legacy_id = legacy_device.size() == 32 &&
+          connection->remote_id == "lan-" + Digest("lan_direct/" + legacy_device);
       if (!IsLanRecordId(connection->remote_id) ||
-          connection->lan.device_id.size() != 32 ||
-          connection->remote_id != LanRecordId(connection->lan.device_id) ||
+          (!legacy_id && connection->remote_id != LanRecordId(connection->lan.address, connection->lan.port)) ||
           !connection->lan.port || connection->lan.port > 65535 ||
           connection->lan.address.empty() ||
           connection->lan.address.size() > 128)
@@ -191,6 +212,7 @@ bool Thumbnail::ReadRecord(const std::filesystem::path& path,
     const auto password = record.value("password", "");
     connection->password =
         password.empty() ? "" : AES_decrypt(password, aes128_key_, aes128_iv_);
+    if (!password.empty() && connection->password.empty()) return false;
     connection->remember_password = !connection->password.empty();
     connection->platform =
         ParseHostPlatform(record.value("platform", "unknown"));
@@ -218,11 +240,12 @@ int Thumbnail::SaveToThumbnail(const char* nv12, int width, int height,
                                const std::string& remote_id,
                                const std::string& host_name,
                                const std::string& password,
-                               HostPlatform platform, const LanTarget* lan) {
+                               HostPlatform platform, const LanTarget* lan, uint64_t generation) {
   std::lock_guard lock(mutex_);
+  if (generation != generations_[remote_id]) return 0;
   // Successful connections are history even without saved credentials.
   if (lan ? (!IsLanRecordId(remote_id) ||
-             remote_id != LanRecordId(lan->device_id))
+             remote_id != LanRecordId(lan->address, lan->port))
           : !IsRemoteId(remote_id))
     return -1;
   RecentConnection connection;
@@ -293,6 +316,10 @@ int Thumbnail::LoadThumbnailLocked(
       if (connection.remember_password) {
         connection.password = AES_decrypt(filename.substr(separator + 1),
                                           aes128_key_, aes128_iv_);
+        if (connection.password.empty()) {
+          result = -1;
+          continue;
+        }
       }
       if (!WriteRecord(connection)) {
         result = -1;
@@ -332,7 +359,8 @@ int Thumbnail::LoadThumbnailLocked(
       if (it != records.end()) {
         recent_connections.emplace_back(ConnectionKey(it->second), it->second);
       }
-    } else if (!save_previews_ && path.extension() == ".png") {
+    } else if (!save_previews_ && path.extension() == ".png" &&
+               (IsRemoteId(path.stem().string()) || IsLanRecordId(path.stem().string()))) {
       std::error_code error;
       std::filesystem::remove(path, error);
       if (error) result = -1;
@@ -408,9 +436,10 @@ bool Thumbnail::DecodeImage(const std::filesystem::path& image_path,
   return true;
 }
 
-int Thumbnail::DeleteThumbnail(const std::string& filename_keyword) {
+int Thumbnail::DeleteThumbnail(const std::string& filename_keyword) try {
   std::lock_guard lock(mutex_);
   if (IsLanRecordId(filename_keyword)) {
+    ++generations_[filename_keyword];
     for (const auto* extension : {".json", ".png"})
       std::filesystem::remove(std::filesystem::path(save_path_) /
                               (filename_keyword + extension));
@@ -418,6 +447,7 @@ int Thumbnail::DeleteThumbnail(const std::string& filename_keyword) {
   }
   const auto remote_id = filename_keyword.substr(0, 9);
   if (!IsRemoteId(remote_id)) return -1;
+  ++generations_[remote_id];
   for (const auto& entry : std::filesystem::directory_iterator(save_path_)) {
     const auto name = entry.path().filename().string();
     if (entry.is_regular_file() && name.size() > 9 &&
@@ -427,6 +457,9 @@ int Thumbnail::DeleteThumbnail(const std::string& filename_keyword) {
     }
   }
   return 0;
+} catch (const std::filesystem::filesystem_error& error) {
+  LOG_ERROR("Could not delete recent connection: {}", error.code().message());
+  return -1;
 }
 
 std::vector<std::filesystem::path> Thumbnail::FindThumbnailPath(

@@ -160,6 +160,9 @@ void GuiRuntime::ConnectLan(const std::string& address, unsigned port,
       std::memcpy(props->remote_password_, password.data(), password.size());
     auto session = lan_->Connect(address, port, std::move(password));
     lan_connecting_ = session;
+    props->history_store_ = thumbnail_;
+    props->history_generation_ = thumbnail_->RecordGeneration(
+        Thumbnail::LanRecordId(session->target.address, session->target.port));
     props->lan_session_ = session;
     props->remote_id_ = session->key;
     props->connection_status_ = MiniRtcConnectionStatus::MiniRtcConnectionConnecting;

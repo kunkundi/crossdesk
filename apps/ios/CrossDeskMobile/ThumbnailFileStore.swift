@@ -46,6 +46,16 @@ final class ThumbnailFileStore {
         queue.async { try? FileManager.default.removeItem(at: self.url(for: fileName)) }
     }
 
+    func removeLegacyFiles() {
+        queue.async {
+            guard let files = try? FileManager.default.contentsOfDirectory(at: self.directory,
+                includingPropertiesForKeys: nil) else { return }
+            for file in files where file.pathExtension == "jpg" && !file.lastPathComponent.hasPrefix("v2-") {
+                try? FileManager.default.removeItem(at: file)
+            }
+        }
+    }
+
     func removeAll(completion: @escaping (Bool) -> Void) {
         queue.async {
             do {

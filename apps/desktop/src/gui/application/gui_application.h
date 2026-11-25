@@ -51,7 +51,8 @@ private:
   };
 
   void InitializeLogger();
-  void InitializeSettings();
+  bool InitializeSettings();
+  void LoadHistoryWorkspace();
   bool InitializeSDL();
   void InitializeModules();
   void InitializeUi();
@@ -127,6 +128,7 @@ private:
   void ResetSettingsUi(bool gallery_window = false);
   bool ValidateSelfHostedSettingsFromUi(bool gallery_window = false);
   bool SaveSettingsFromUi(bool gallery_window = false);
+  bool PersistSettingsFromUi(bool gallery_window);
   void ApplySettingsFromConfig(bool reconnect);
 #if _WIN32 && CROSSDESK_PORTABLE
   void CheckPortableWindowsService();

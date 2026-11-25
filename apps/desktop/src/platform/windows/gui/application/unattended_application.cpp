@@ -42,7 +42,7 @@ int GuiApplication::RunUnattended(void* stop_event) {
   if (config_center_->SetPrivacyScreen(false) != 0 ||
       config_center_->SetSaveRemotePreviews(false) != 0)
     return 1;
-  InitializeSettings();
+  if (!InitializeSettings()) return 1;
 
   // The transport and device controllers do not need a Slint window, an SDL
   // video driver, a tray icon, or a logged-in user's audio/clipboard session.

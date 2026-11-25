@@ -371,7 +371,7 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
   const auto queued_at = std::chrono::steady_clock::now();
   session_cleanup_tasks_[props->remote_id_] = session_cleanup_queue_.PostTask(
       [props, peer, frame_snapshot, video_width, video_height, platform,
-       thumbnail = thumbnail_, queued_at]() mutable {
+       thumbnail = props->history_store_, queued_at]() mutable {
         if (props->peer_events_) props->peer_events_->Deactivate();
         if (peer && !props->lan_session_) {
           LOG_INFO("Background leave connection");
@@ -384,17 +384,16 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
           const auto direct = props->lan_session_;
           const Thumbnail::LanTarget target =
               direct ? Thumbnail::LanTarget{direct->target.address,
-                                            direct->target.device_id,
                                             direct->target.port}
                      : Thumbnail::LanTarget{};
           const auto record_id = direct
-                                     ? Thumbnail::LanRecordId(target.device_id)
+                                     ? Thumbnail::LanRecordId(target.address, target.port)
                                      : props->remote_id_;
           if (thumbnail->SaveToThumbnail(
                   nv12, video_width, video_height, record_id,
                   props->remote_host_name_,
                   props->remember_password_ ? props->remote_password_ : "",
-                  platform, direct ? &target : nullptr) != 0) {
+                  platform, direct ? &target : nullptr, props->history_generation_) != 0) {
             LOG_ERROR("Failed to save recent connection");
           }
         }
@@ -609,7 +608,7 @@ std::shared_ptr<GuiRuntime::RemoteSession> GuiRuntime::FindRemoteSession(
     if (remote_id.rfind("lan-", 0) == 0)
       for (const auto& [_, props] : remote_sessions_)
         if (props->lan_session_ && !props->closing_ &&
-            Thumbnail::LanRecordId(props->lan_session_->target.device_id) ==
+            Thumbnail::LanRecordId(props->lan_session_->target.address, props->lan_session_->target.port) ==
                 remote_id)
           return props;
     return nullptr;
@@ -651,6 +650,9 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
     return -1;
   }
 
+  // A DeskHub request may bypass presence checks while a server switch is
+  // draining the old peer. Its connection template still points at that server.
+  if (!peer_) return -1;
   LOG_INFO("Connecting to remote device");
   LOG_DEBUG("Connect to [{}]", remote_id);
   if (!background) connection_dialog_target_ = remote_id;
@@ -700,6 +702,8 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
       if (remote_sessions_.find(remote_id) == remote_sessions_.end()) {
         remote_sessions_[remote_id] = std::make_shared<RemoteSession>();
         auto props = remote_sessions_[remote_id];
+        props->history_store_ = thumbnail_;
+        props->history_generation_ = thumbnail_->RecordGeneration(remote_id);
         props->local_id_ = "C-" + std::string(client_id_);
         props->remote_id_ = remote_id;
         props->device_preference_key_ = nlohmann::json::array({"signal",

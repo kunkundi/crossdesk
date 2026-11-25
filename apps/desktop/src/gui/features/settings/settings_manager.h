@@ -3,6 +3,8 @@
 
 #include <cstdint>
 #include <mutex>
+#include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -24,7 +26,10 @@ public:
   std::string ActiveIdentity() const;
   bool ApplyHostIdentity(const std::string& identity, bool self_hosted);
 
-  int LoadRecentConnectionAliases();
+  bool UpgradeHistory();
+  bool SelectHistoryServer();
+  void ApplyPreviewPreference();
+  const std::filesystem::path& HistoryDirectory() const { return history_directory_; }
   int SaveRecentConnectionAliases() const;
   std::string RecentConnectionDisplayName(
       const Thumbnail::RecentConnection &connection) const;
@@ -58,6 +63,12 @@ public:
   bool ClearPendingPasswordChange();
 
 private:
+  using Aliases = std::unordered_map<std::string, std::string>;
+  static int WriteAliases(const std::filesystem::path& path, const Aliases& aliases);
+  static int ReadAliases(const std::filesystem::path& path, Aliases& aliases);
+  std::filesystem::path ConfiguredHistoryDirectory() const;
+  bool MoveLegacyHistory(const std::filesystem::path& directory);
+
   using CacheV1 = credential_cache::CacheV1;
   using CacheV2 = credential_cache::CacheV2;
   using CacheV3 = credential_cache::CacheV3;
@@ -72,7 +83,11 @@ private:
   CacheV2 cache_v2_{};
   CacheV3 cache_v3_{};
   mutable std::mutex cache_mutex_;
-  std::unordered_map<std::string, std::string> recent_connection_aliases_;
+  std::shared_ptr<Thumbnail> legacy_history_;
+  std::filesystem::path history_directory_;
+  std::map<std::filesystem::path, std::shared_ptr<Thumbnail>> history_stores_;
+  std::optional<bool> save_previews_;
+  Aliases recent_connection_aliases_;
 };
 
 } // namespace crossdesk

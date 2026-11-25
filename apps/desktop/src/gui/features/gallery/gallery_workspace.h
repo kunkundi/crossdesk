@@ -178,6 +178,15 @@ struct Workspace {
     PruneGroups();
     return true;
   }
+  bool HasAssignments(const std::string &id) const {
+    return std::any_of(members.begin(), members.end(),
+                       [&](const auto &m) { return m.id == id; });
+  }
+  void Forget(const std::string& id) {
+    Remove(id);
+    std::erase_if(members, [&](const auto& member) { return member.id == id; });
+    PruneGroups();
+  }
   void Remove(const std::string &id, const std::string &group = {}) {
     if (group.empty()) {
       // Removing from the wall leaves history's group assignments intact.
@@ -272,10 +281,6 @@ private:
   std::set<std::string> wall_ids_;
   std::vector<std::string> device_order_;
 
-  bool HasAssignments(const std::string &id) const {
-    return std::any_of(members.begin(), members.end(),
-                       [&](const auto &m) { return m.id == id; });
-  }
   bool AddAssignment(const std::string &id, const std::string &group) {
     if (!ValidId(id))
       return false;
