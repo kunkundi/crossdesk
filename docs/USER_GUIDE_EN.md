@@ -318,6 +318,8 @@ The installer registers an on-demand service by default. CrossDesk tries to star
 
 In installed Windows Release builds, **Auto Start** enables remote access before sign-in with the same ID and password. After sign-in, the client starts in the system tray. Existing connections stay active. Turning this off disables unattended startup. **Enable Daemon** separately controls recovery after an interface crash. Portable and Debug builds do not offer unattended Auto Start.
 
+If Auto Start was enabled in the old version, the upgrade configures unattended access with the existing device ID, password, and paired devices. If the old credentials need conversion, the client finishes setup the next time it runs. A newer setting that explicitly disabled unattended startup takes precedence.
+
 <a id="windows-service-development-update"></a>
 
 ### Updating the service in a manual deployment

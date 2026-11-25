@@ -3,6 +3,7 @@
 #include <Windows.h>
 
 #include <filesystem>
+#include <optional>
 #include <string>
 
 namespace crossdesk {
@@ -12,9 +13,11 @@ std::filesystem::path UnattendedDataPath();
 // Missing configuration is a successful disabled result; other read failures
 // must not be mistaken for a completed disable operation.
 bool QueryUnattendedEnabled(bool& enabled);
+// An absent preference predates the machine-wide startup setting.
+bool QueryUnattendedPreference(std::optional<bool>& enabled);
 bool IsUnattendedEnabled();
 bool IsSharedIdentityServiceConfigured();
-bool SetUnattendedEnabled(bool enabled);
+bool SetUnattendedEnabled(std::optional<bool> enabled);
 bool IsLocalSystemProcess();
 bool IsAdministratorProcess();
 // Reject reparse points, untrusted owners and permissive existing DACLs.

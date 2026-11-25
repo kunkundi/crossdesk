@@ -120,13 +120,15 @@ installApp:
 
     Call RegisterInstalledService
 
-    ; Replace an existing per-user Run entry only after the new binary is in
-    ; place. A fresh installation must not opt the user into auto-start.
+    ; Import the previous user's startup preference after installing service
+    ; binaries. The migration CLI also runs during a silent updater install.
     ClearErrors
     ExecWait '"$INSTDIR\CrossDesk.exe" --autostart-migrate' $0
     ${If} ${Errors}
     ${OrIf} $0 != 0
-        MessageBox MB_ICONEXCLAMATION|MB_OK "Could not migrate CrossDesk auto-start. Open CrossDesk and enable Auto Start again."
+        DetailPrint "CrossDesk will retry auto-start migration on the next launch."
+        IfSilent +2
+        MessageBox MB_ICONEXCLAMATION|MB_OK "CrossDesk will retry auto-start migration when you next open it."
     ${EndIf}
 
     ; Write uninstall information

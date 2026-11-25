@@ -548,6 +548,35 @@ int ConfigCenter::SetSelfHosted(bool enabled) {
   return 0;
 }
 
+#if defined(__APPLE__) || (defined(__linux__) && !defined(__OHOS__))
+namespace {
+bool LegacyAutostartEnabled(const CSimpleIniA& ini) {
+  return ini.GetBoolValue("Settings", "enable_autostart", false) &&
+         !ini.GetBoolValue("Settings", "autostart_tray_migrated", false);
+}
+
+bool MigrateLoginEntry(bool restore_missing) {
+  return platform::MigrateLegacyAutostart("CrossDesk") &&
+         (!restore_missing || IsAutostartEnabled("CrossDesk") || EnableAutostart("CrossDesk"));
+}
+}  // namespace
+
+bool ConfigCenter::MigrateAutostart() {
+  const bool restore = LegacyAutostartEnabled(*ini_);
+  if (!MigrateLoginEntry(restore)) return false;
+  // Record success once, so later removals in the system startup manager stick.
+  return !restore || StoreValues({{"autostart_tray_migrated", "true"}}) == 0;
+}
+
+bool ConfigCenter::MigrateAutostartWhileRunning(const std::string& config_path) {
+  // The older running client owns config.ini. Update the system entry now and
+  // let the next client holding the lease record completion.
+  CSimpleIniA ini;
+  ini.SetUnicode(true);
+  return ini.LoadFile(config_path.c_str()) >= 0 && MigrateLoginEntry(LegacyAutostartEnabled(ini));
+}
+#endif
+
 int ConfigCenter::SetAutostart(bool enabled) {
 #ifdef _WIN32
   // System registration determines success; INI only mirrors the last
@@ -582,7 +611,8 @@ int ConfigCenter::SetAutostart(bool enabled) {
     LOG_ERROR("Cannot configure autostart");
     return -1;
   }
-  if (StoreValues({{"enable_autostart", enabled ? "true" : "false"}}) != 0) {
+  if (StoreValues({{"enable_autostart", enabled ? "true" : "false"},
+                   {"autostart_tray_migrated", "true"}}) != 0) {
     if (enabled != previous && !configure(previous))
       LOG_ERROR("Cannot restore autostart");
     return -1;

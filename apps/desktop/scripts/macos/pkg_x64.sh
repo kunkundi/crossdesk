@@ -132,12 +132,10 @@ find "${APP_BUNDLE}" -name '._*' -delete
 
 echo ".app created successfully."
 
-PKG_SCRIPT_ARGS=()
+mkdir -p build_pkg_scripts
+install -m 0755 "${SCRIPT_DIR}/autostart_postinstall.sh" build_pkg_scripts/postinstall
 if [[ "${CROSSDESK_MACOS_SIGN_IDENTITY:--}" != "-" ]]; then
-    mkdir -p build_pkg_scripts
-    cp "${SCRIPT_DIR}/tcc_migration_preinstall.sh" build_pkg_scripts/preinstall
-    chmod +x build_pkg_scripts/preinstall
-    PKG_SCRIPT_ARGS=(--scripts build_pkg_scripts)
+    install -m 0755 "${SCRIPT_DIR}/tcc_migration_preinstall.sh" build_pkg_scripts/preinstall
 fi
 
 mkdir -p build_pkg_resources
@@ -181,7 +179,7 @@ pkgbuild \
   --version "${APP_VERSION}" \
   --install-location "/Applications" \
   --component "${APP_BUNDLE}" \
-  ${PKG_SCRIPT_ARGS[@]+"${PKG_SCRIPT_ARGS[@]}"} \
+  --scripts build_pkg_scripts \
   build_pkg_temp/${APP_NAME}-component.pkg
 
 cat > build_pkg_temp/Distribution <<EOF

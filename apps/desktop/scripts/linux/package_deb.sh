@@ -79,6 +79,7 @@ ICON_BASE_DIR="$DEB_DIR/usr/share/icons/hicolor"
 DESKTOP_DIR="$DEB_DIR/usr/share/applications"
 
 install -d "$DEBIAN_DIR" "$BIN_DIR" "$PRIVATE_DIR" "$DESKTOP_DIR"
+install -m 0755 "$SCRIPT_DIR/autostart_postinst.sh" "$DEBIAN_DIR/postinst"
 install -m 0755 "$BUILD_BINARY" "$PRIVATE_DIR/crossdesk-bin"
 install -m 0755 "$(dirname "$BUILD_BINARY")/crossdesk_updater" "$PRIVATE_DIR/crossdesk_updater"
 

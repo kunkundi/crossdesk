@@ -65,16 +65,23 @@ std::filesystem::path UnattendedDataPath() {
   return path;
 }
 
-bool QueryUnattendedEnabled(bool& enabled) {
-  enabled = false;
+bool QueryUnattendedPreference(std::optional<bool>& enabled) {
+  enabled.reset();
   DWORD value = 0;
   DWORD size = sizeof(value);
   const LONG result = RegGetValueW(HKEY_LOCAL_MACHINE, kRegistryKey, L"Enabled",
       RRF_RT_REG_DWORD | RRF_SUBKEY_WOW6464KEY, nullptr, &value, &size);
   if (result == ERROR_FILE_NOT_FOUND || result == ERROR_PATH_NOT_FOUND) return true;
-  if (result != ERROR_SUCCESS) return false;
+  if (result != ERROR_SUCCESS || value > 1) return false;
   enabled = value == 1;
   return true;
+}
+
+bool QueryUnattendedEnabled(bool& enabled) {
+  std::optional<bool> preference;
+  const bool ok = QueryUnattendedPreference(preference);
+  enabled = preference.value_or(false);
+  return ok;
 }
 
 bool IsUnattendedEnabled() {
@@ -82,18 +89,23 @@ bool IsUnattendedEnabled() {
   return QueryUnattendedEnabled(enabled) && enabled;
 }
 
-bool SetUnattendedEnabled(bool enabled) {
+bool SetUnattendedEnabled(std::optional<bool> enabled) {
   if (!IsAdministratorProcess()) return false;
   HKEY key = nullptr;
   if (RegCreateKeyExW(HKEY_LOCAL_MACHINE, kRegistryKey, 0, nullptr, 0,
                       KEY_SET_VALUE | KEY_WOW64_64KEY, nullptr, &key,
                       nullptr) != ERROR_SUCCESS)
     return false;
-  const DWORD value = enabled ? 1 : 0;
+  if (!enabled.has_value()) {
+    const LONG result = RegDeleteValueW(key, L"Enabled");
+    RegCloseKey(key);
+    return result == ERROR_SUCCESS || result == ERROR_FILE_NOT_FOUND;
+  }
+  const DWORD value = *enabled ? 1 : 0;
   auto result =
       RegSetValueExW(key, L"Enabled", 0, REG_DWORD,
                      reinterpret_cast<const BYTE*>(&value), sizeof(value));
-  if (result == ERROR_SUCCESS && enabled) {
+  if (result == ERROR_SUCCESS && *enabled) {
     const DWORD version = 1;
     result = RegSetValueExW(key, L"SharedIdentityVersion", 0, REG_DWORD,
                             reinterpret_cast<const BYTE*>(&version), sizeof(version));

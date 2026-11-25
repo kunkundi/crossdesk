@@ -24,9 +24,9 @@ bool ServiceAutostartMatches(bool enabled);
 // running host when the installed service already matches this executable.
 bool SetServiceAutostart(bool enabled, std::string& error);
 
-// Logon startup only exists as the GUI handoff of an enabled machine host.
-// Remove registrations left by versions before the service-based startup.
-bool CleanupLegacyServiceAutostart();
+// The running GUI already holds the client lease. The installer acquires it
+// before importing the previous user's device identity.
+bool MigrateServiceAutostart(bool running_gui);
 
 }  // namespace crossdesk
 

@@ -286,10 +286,6 @@ static int RunApplication(int argc, char* argv[], bool login_launch) {
   }
 
 #ifdef _WIN32
-  if (!crossdesk::CleanupLegacyServiceAutostart()) {
-    crossdesk::get_logger()->warn(
-        "Could not remove legacy Windows logon startup");
-  }
   TryStartManagedWindowsService();
 #endif
 
@@ -298,8 +294,8 @@ static int RunApplication(int argc, char* argv[], bool login_launch) {
     std::string cache_path = path_manager->GetCachePath().string();
     crossdesk::ConfigCenter config_center(cache_path + "/config.ini");
     enable_daemon = config_center.IsEnableDaemon();
-#if defined(__linux__) || defined(__APPLE__)
-    if (!crossdesk::platform::MigrateLegacyAutostart("CrossDesk")) {
+#if defined(__APPLE__) || (defined(__linux__) && !defined(__OHOS__))
+    if (!config_center.MigrateAutostart()) {
       crossdesk::get_logger()->warn(
           "Could not migrate the legacy autostart entry");
     }
@@ -339,6 +335,23 @@ static int RunApplication(int argc, char* argv[], bool login_launch) {
 }
 
 int main(int argc, char* argv[]) {
+#if defined(__APPLE__) || (defined(__linux__) && !defined(__OHOS__))
+  if (argc == 2 && std::strcmp(argv[1], "--autostart-migrate") == 0) {
+    crossdesk::PathManager paths("CrossDesk");
+    const auto config = paths.GetCachePath() / "config.ini";
+    std::error_code error;
+    if (!std::filesystem::exists(config, error))
+      return !error && crossdesk::platform::MigrateLegacyAutostart("CrossDesk") ? 0 : 1;
+    crossdesk::platform::SingleInstanceGuard client;
+    std::string reason;
+    const auto acquired = client.TryAcquire(crossdesk::platform::InstanceRole::kClient, reason);
+    if (acquired == crossdesk::platform::InstanceResult::kAlreadyRunning)
+      return crossdesk::ConfigCenter::MigrateAutostartWhileRunning(config.string()) ? 0 : 1;
+    if (acquired != crossdesk::platform::InstanceResult::kAcquired) return 1;
+    crossdesk::InitLogger(paths.GetLogPath().string(), "crossdesk-autostart-cli");
+    return crossdesk::ConfigCenter(config.string()).MigrateAutostart() ? 0 : 1;
+  }
+#endif
 #ifdef __APPLE__
   if (argc >= 2 &&
       std::strcmp(argv[1], crossdesk::platform::kMacDaemonArgument) == 0) {
@@ -416,7 +429,7 @@ int main(int argc, char* argv[]) {
                           "crossdesk-autostart-cli");
     const bool success =
         std::strcmp(argv[1], "--autostart-migrate") == 0
-            ? crossdesk::CleanupLegacyServiceAutostart()
+            ? crossdesk::MigrateServiceAutostart(false)
             : crossdesk::platform::RemoveInstalledAutostart("CrossDesk");
     return success ? 0 : 1;
   }

@@ -1294,6 +1294,8 @@ int GuiApplication::Run(bool login_launch) {
   InitializeSettings();
 #endif
 #ifdef _WIN32
+  // Older credential caches and trust stores are available after settings initialization.
+  MigrateServiceAutostart(true);
   // Upgrade an already-enabled standalone host before the GUI opens its peer.
   // Until an identity is attached the GUI can still run on its own identity,
   // e.g. before its first connection has obtained a device ID.
