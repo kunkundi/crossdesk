@@ -325,7 +325,7 @@ export struct MobileRemoteView {
             Button(`${this.state.resolutionCurrent} ▾`, { type: ButtonType.Normal })
               .fontSize(13).fontColor(MobileTheme.ink).backgroundColor('#F0F0F2').borderRadius(7)
               .width('100%').height(34).enabled(this.state.resolutionEnabled)
-              .bindMenu(() => { this.ResolutionMenu(this.state.resolutionModes, this.state.selectedDisplay, this.state.resolutionKey) })
+              .bindMenu(this.ResolutionMenu(this.state.resolutionModes, this.state.selectedDisplay, this.state.resolutionKey))
             if (this.state.resolutionFeedback) { Text(this.state.resolutionFeedback).fontSize(12).fontColor(MobileTheme.secondary).width('100%') }
             Text(this.state.videoFeedback).fontSize(12).fontColor(MobileTheme.secondary).width('100%')
             Text(tr("画面质量")).fontSize(12).width('100%')

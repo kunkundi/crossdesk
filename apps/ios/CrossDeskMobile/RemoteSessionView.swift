@@ -1548,36 +1548,30 @@ private struct FloatingNetworkStatistics: View {
 
 private struct FloatingVideoSettings: View {
     @ObservedObject var session: RemoteSessionModel
+    @State private var showingResolutions = false
 
     var body: some View {
+        let display = session.displayResolutions.display(session.selectedDisplay)
+        let canChooseResolution = session.isConnected && !session.displayResolutions.pending
+            && !session.privacyScreen.unlockNotice && display?.modes.isEmpty == false
+
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 5) {
                 Text(NSLocalizedString("被控端分辨率", comment: ""))
                     .font(.caption).foregroundStyle(.secondary)
-                let display = session.displayResolutions.display(session.selectedDisplay)
-                Menu {
-                    ForEach(Array(Set(display?.modes ?? [])).sorted {
-                        $0.width == $1.width ? $0.height > $1.height : $0.width > $1.width
-                    }, id: \.self) { mode in
-                        Button {
-                            if let display {
-                                session.updateDisplayResolution(mode, displayID: display.display_id, displayKey: display.display_key)
-                            }
-                        } label: {
-                            if mode == display?.current { Label(mode.label, systemImage: "checkmark") }
-                            else { Text(mode.label) }
-                        }
-                    }
+                Button {
+                    showingResolutions = true
                 } label: {
                     HStack {
                         Text(display?.current.label ?? NSLocalizedString("设备不支持", comment: ""))
                         Spacer()
-                        Image(systemName: "chevron.up.chevron.down")
+                        Image(systemName: "chevron.forward")
+                            .accessibilityHidden(true)
                     }
                     .font(.subheadline).padding(8)
                     .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
                 }
-                .disabled(!session.isConnected || session.displayResolutions.pending || (display?.modes.isEmpty ?? true))
+                .disabled(!canChooseResolution)
                 if session.displayResolutions.pending {
                     Text(NSLocalizedString("等待电脑端确认…", comment: "")).font(.caption).foregroundStyle(.secondary)
                 } else if session.displayResolutions.failed {
@@ -1602,6 +1596,16 @@ private struct FloatingVideoSettings: View {
                        ))
         }
         .padding(.vertical, 2)
+        .sheet(isPresented: $showingResolutions) {
+            if let display {
+                DisplayResolutionList(display: display) { mode in
+                    session.updateDisplayResolution(mode, displayID: display.display_id, displayKey: display.display_key)
+                }
+            }
+        }
+        .onValueChange(of: canChooseResolution ? display?.display_key : nil) { _ in
+            showingResolutions = false
+        }
     }
 
     private func settingRow(_ title: String, options: [String], values: [Int],
@@ -1617,6 +1621,40 @@ private struct FloatingVideoSettings: View {
             }
             .pickerStyle(.segmented)
             .disabled(!session.canChangeVideoSettings)
+        }
+    }
+}
+
+private struct DisplayResolutionList: View {
+    let display: RemoteDisplayResolutionInfo
+    let select: (RemoteDisplayResolution) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        let modes = Set(display.modes).sorted { ($0.width, $0.height) > ($1.width, $1.height) }
+        NavigationStack {
+            List(modes, id: \.self) { mode in
+                Button {
+                    select(mode)
+                    dismiss()
+                } label: {
+                    HStack {
+                        Text(mode.label).foregroundStyle(.primary)
+                        Spacer()
+                        if mode == display.current {
+                            Image(systemName: "checkmark").accessibilityHidden(true)
+                        }
+                    }
+                }
+                .accessibilityAddTraits(mode == display.current ? .isSelected : [])
+            }
+            .navigationTitle(NSLocalizedString("被控端分辨率", comment: ""))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(NSLocalizedString("取消", comment: "")) { dismiss() }
+                }
+            }
         }
     }
 }
