@@ -389,4 +389,7 @@
     <string name="text_53b856ab7ac9d8e2" formatted="false">"IP 直連失敗，請檢查電腦的直連位址、連接埠和網路。"</string>
     <string name="text_3a940622a8012b31" formatted="false">"本端位址"</string>
     <string name="text_2c5e32d2c5de5c2b" formatted="false">"對端位址"</string>
+    <string name="text_7605c1d82eed69a5" formatted="false">"刪除分組"</string>
+    <string name="text_b113e4e040b875a8" formatted="false">"組內裝置和連線記錄將保留。"</string>
+    <string name="text_f42a1238b44a4858" formatted="false">"儲存失敗，請重試"</string>
 </resources>

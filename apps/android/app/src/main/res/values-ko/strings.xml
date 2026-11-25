@@ -389,4 +389,7 @@
     <string name="text_53b856ab7ac9d8e2" formatted="false">"IP 직접 연결에 실패했습니다. 컴퓨터의 주소, 포트 및 네트워크를 확인하세요."</string>
     <string name="text_3a940622a8012b31" formatted="false">"로컬 주소"</string>
     <string name="text_2c5e32d2c5de5c2b" formatted="false">"원격 주소"</string>
+    <string name="text_7605c1d82eed69a5" formatted="false">"그룹 삭제"</string>
+    <string name="text_b113e4e040b875a8" formatted="false">"그룹의 기기와 연결 기록은 유지됩니다."</string>
+    <string name="text_f42a1238b44a4858" formatted="false">"저장할 수 없습니다. 다시 시도"</string>
 </resources>

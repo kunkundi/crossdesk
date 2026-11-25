@@ -389,4 +389,7 @@
     <string name="text_53b856ab7ac9d8e2" formatted="false">"Falha na conexão IP direta. Verifique o endereço, a porta e a rede do computador."</string>
     <string name="text_3a940622a8012b31" formatted="false">"Endereço local"</string>
     <string name="text_2c5e32d2c5de5c2b" formatted="false">"Endereço remoto"</string>
+    <string name="text_7605c1d82eed69a5" formatted="false">"Excluir grupo"</string>
+    <string name="text_b113e4e040b875a8" formatted="false">"Os dispositivos e o histórico de conexões serão mantidos."</string>
+    <string name="text_f42a1238b44a4858" formatted="false">"Não foi possível salvar; tente novamente"</string>
 </resources>

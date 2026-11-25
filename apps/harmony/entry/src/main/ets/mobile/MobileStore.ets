@@ -126,6 +126,15 @@ export class MobileStore {
     if (groups !== undefined) device.groups = Array.from(new Set<string>(groups)).sort();
     this.put(`recent:${scope}`, JSON.stringify(entries));
   }
+  deleteGroup(scope: string, group: string): void {
+    if (!group) return;
+    const entries = this.recent(scope);
+    if (!entries.some((device: RecentDevice) => device.groups.includes(group))) return;
+    entries.forEach((device: RecentDevice) => {
+      device.groups = device.groups.filter((name: string) => name !== group);
+    });
+    this.put(`recent:${scope}`, JSON.stringify(entries));
+  }
   async delete(scope: string, id: string): Promise<void> {
     await this.removeSecret(`password:${scope}:${id}`);
     const old = this.recent(scope); this.put(`recent:${scope}`, JSON.stringify(old.filter((d: RecentDevice) => d.id !== id)));

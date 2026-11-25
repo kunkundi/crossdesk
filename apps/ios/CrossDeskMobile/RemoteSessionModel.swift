@@ -977,6 +977,17 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         history.save(recentConnections)
     }
 
+    func deleteGroup(_ name: String, in scope: ConnectionHistory) {
+        guard scope == history, !name.isEmpty else { return }
+        var updated = recentConnections
+        for index in updated.indices { updated[index].groups.removeAll { $0 == name } }
+        guard history.save(updated) else {
+            connectionFailureMessage = NSLocalizedString("保存失败，请重试", comment: "")
+            return
+        }
+        recentConnections = updated
+    }
+
     func removeRecentConnection(_ connection: RecentConnection) {
         guard ConnectionCredentialStore.removePassword(for: credentialAccount(for: connection.id)) else {
             connectionFailureMessage = NSLocalizedString("安全存储不可用，请解锁设备后重试", comment: "")

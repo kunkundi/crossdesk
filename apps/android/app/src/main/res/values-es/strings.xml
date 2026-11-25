@@ -389,4 +389,7 @@
     <string name="text_53b856ab7ac9d8e2" formatted="false">"Error de conexión IP directa. Comprueba la dirección, el puerto y la red del equipo."</string>
     <string name="text_3a940622a8012b31" formatted="false">"Dirección local"</string>
     <string name="text_2c5e32d2c5de5c2b" formatted="false">"Dirección remota"</string>
+    <string name="text_7605c1d82eed69a5" formatted="false">"Eliminar grupo"</string>
+    <string name="text_b113e4e040b875a8" formatted="false">"Se conservarán los dispositivos y el historial de conexiones."</string>
+    <string name="text_f42a1238b44a4858" formatted="false">"No se pudo guardar; intentarlo de nuevo"</string>
 </resources>

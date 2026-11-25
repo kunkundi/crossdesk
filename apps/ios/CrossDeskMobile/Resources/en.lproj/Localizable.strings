@@ -367,3 +367,6 @@
 "IP 直连失败，请检查电脑的直连地址和网络。" = "Direct IP connection failed. Check the computer’s direct IP address, port, and network.";
 "本端地址" = "Local endpoint";
 "对端地址" = "Remote endpoint";
+"删除分组" = "Delete group";
+"组内设备和连接记录将保留。" = "Devices and connection history will be kept.";
+"保存失败，请重试" = "Could not save; try again";

@@ -395,6 +395,9 @@ final class LocalizationKeys {
         IDS.put("IP 直连失败，请检查电脑的直连地址和网络。", R.string.text_53b856ab7ac9d8e2);
         IDS.put("本端地址", R.string.text_3a940622a8012b31);
         IDS.put("对端地址", R.string.text_2c5e32d2c5de5c2b);
+        IDS.put("删除分组", R.string.text_7605c1d82eed69a5);
+        IDS.put("组内设备和连接记录将保留。", R.string.text_b113e4e040b875a8);
+        IDS.put("保存失败，请重试", R.string.text_f42a1238b44a4858);
     }
     private LocalizationKeys() {}
 }

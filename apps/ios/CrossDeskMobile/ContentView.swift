@@ -193,6 +193,7 @@ private struct ConnectionHomeView: View {
     @State private var promptRememberPassword = false
     @State private var groupFilter: String?
     @State private var groupDevice: RecentConnection?
+    @State private var groupToDelete: (name: String, history: ConnectionHistory)?
 
     private let connectionAccent = Color(red: 0.18, green: 0.48, blue: 0.86)
     private let connectionAccentEnd = Color(red: 0.12, green: 0.38, blue: 0.78)
@@ -272,6 +273,17 @@ private struct ConnectionHomeView: View {
                             .frame(width: isWide ? 360 : nil)
                         recentConnectionsPanel(windowWidth: proxy.size.width)
                             .id(session.history.key)
+                            .alert(NSLocalizedString("删除分组", comment: ""),
+                                   isPresented: Binding(get: { groupToDelete != nil },
+                                                        set: { if !$0 { groupToDelete = nil } }),
+                                   presenting: groupToDelete) { group in
+                                Button(NSLocalizedString("删除", comment: ""), role: .destructive) {
+                                    session.deleteGroup(group.name, in: group.history)
+                                }
+                                Button(NSLocalizedString("取消", comment: ""), role: .cancel) {}
+                            } message: { group in
+                                Text(verbatim: group.name + "\n" + NSLocalizedString("组内设备和连接记录将保留。", comment: ""))
+                            }
                             .frame(maxHeight: .infinity)
                     }
                     .frame(maxWidth: MobileLayout.homeMaximumWidth)
@@ -331,6 +343,7 @@ private struct ConnectionHomeView: View {
             promptRememberPassword = false
             groupFilter = nil
             groupDevice = nil
+            groupToDelete = nil
         }
         .onValueChange(of: recentGroups) { groups in
             if let groupFilter, !groupFilter.isEmpty, !groups.contains(groupFilter) {
@@ -508,6 +521,16 @@ private struct ConnectionHomeView: View {
                 }
             }
             .pickerStyle(.inline)
+            if !recentGroups.isEmpty {
+                Divider()
+                Menu {
+                    ForEach(recentGroups, id: \.self) { name in
+                        Button { groupToDelete = (name, session.history) } label: { Text(verbatim: name) }
+                    }
+                } label: {
+                    Label(NSLocalizedString("删除分组", comment: ""), systemImage: "trash")
+                }
+            }
         } label: {
             HStack(spacing: 4) {
                 Text(verbatim: selected).lineLimit(1)

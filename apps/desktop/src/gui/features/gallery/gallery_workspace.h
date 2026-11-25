@@ -182,6 +182,24 @@ struct Workspace {
     return std::any_of(members.begin(), members.end(),
                        [&](const auto &m) { return m.id == id; });
   }
+  bool DeleteGroup(std::string name) {
+    if (name.empty() || !std::erase(groups, name)) return false;
+    // The first assignment determines the default wall order. Keep its slot
+    // even if the device's remaining named assignments occur further down.
+    std::vector<Member> remaining;
+    std::set<std::string> seen, empty_assignments;
+    for (auto &member : members) {
+      const bool first = seen.insert(member.id).second;
+      if (member.group == name) {
+        if (!first) continue;
+        member.group.clear();
+      }
+      if (member.group.empty() && !empty_assignments.insert(member.id).second) continue;
+      remaining.push_back(std::move(member));
+    }
+    members = std::move(remaining);
+    return true;
+  }
   void Forget(const std::string& id) {
     Remove(id);
     std::erase_if(members, [&](const auto& member) { return member.id == id; });

@@ -324,16 +324,35 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         return filter.isEmpty() ? L10n.tr("未分组") : filter;
     }
     private void showRecentFilter() {
+        String server = serverKey();
         List<String> filters = new ArrayList<>();
         filters.add(null);
         filters.add("");
-        filters.addAll(RecentConnections.availableGroups(history.list(serverKey())));
+        String[] groups = RecentConnections.availableGroups(history.list(server)).toArray(new String[0]);
+        java.util.Collections.addAll(filters, groups);
         String[] labels = new String[filters.size()];
         for (int i = 0; i < labels.length; i++) labels[i] = recentGroupLabel(filters.get(i));
-        new AlertDialog.Builder(this).setTitle(L10n.tr("分组"))
+        AlertDialog.Builder picker = new AlertDialog.Builder(this).setTitle(L10n.tr("分组"))
             .setSingleChoiceItems(labels, filters.indexOf(recentFilter), (dialog, index) -> {
+                if (!server.equals(serverKey())) return;
                 recentFilter = filters.get(index);
                 dialog.dismiss();
+                renderRecentConnections();
+            });
+        if (groups.length > 0) {
+            picker.setNeutralButton(L10n.tr("删除分组"), (dialog, which) ->
+                new AlertDialog.Builder(this).setTitle(L10n.tr("删除分组"))
+                    .setItems(groups, (list, index) -> confirmDeleteGroup(server, groups[index]))
+                    .setNegativeButton(L10n.tr("取消"), null).show());
+        }
+        picker.show();
+    }
+    private void confirmDeleteGroup(String server, String group) {
+        new AlertDialog.Builder(this).setTitle(group).setMessage(L10n.tr("组内设备和连接记录将保留。"))
+            .setNegativeButton(L10n.tr("取消"), null)
+            .setPositiveButton(L10n.tr("删除分组"), (dialog, which) -> {
+                if (!server.equals(serverKey())) return;
+                if (!history.deleteGroup(server, group)) toast(L10n.tr("保存失败，请重试"));
                 renderRecentConnections();
             }).show();
     }

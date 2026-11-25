@@ -61,6 +61,25 @@ final class RecentConnections {
         }
         return null;
     }
+    boolean deleteGroup(String server, String name) {
+        if (name.isEmpty()) return true;
+        JSONArray records = list(server);
+        boolean changed = false;
+        for (int i = 0; i < records.length(); i++) {
+            JSONObject item = records.optJSONObject(i);
+            if (item == null) continue;
+            JSONArray groups = item.optJSONArray("groups");
+            if (groups == null) continue;
+            for (int j = groups.length() - 1; j >= 0; j--) {
+                if (name.equals(groups.optString(j).trim())) {
+                    groups.remove(j);
+                    changed = true;
+                }
+            }
+        }
+        return !changed || preferences.edit().putString(key(server), records.toString()).commit();
+    }
+
     void edit(String server, String id, String alias, Set<String> groups) {
         JSONArray records = list(server);
         JSONObject item = find(records, id);

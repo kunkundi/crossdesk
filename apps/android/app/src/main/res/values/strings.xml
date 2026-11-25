@@ -389,4 +389,7 @@
     <string name="text_53b856ab7ac9d8e2" formatted="false">"Direct IP connection failed. Check the computer’s direct IP address, port, and network."</string>
     <string name="text_3a940622a8012b31" formatted="false">"Local endpoint"</string>
     <string name="text_2c5e32d2c5de5c2b" formatted="false">"Remote endpoint"</string>
+    <string name="text_7605c1d82eed69a5" formatted="false">"Delete group"</string>
+    <string name="text_b113e4e040b875a8" formatted="false">"Devices and connection history will be kept."</string>
+    <string name="text_f42a1238b44a4858" formatted="false">"Could not save; try again"</string>
 </resources>

@@ -569,6 +569,8 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"可使用文件传输窗口发送文件。", {"可使用文件传输窗口发送文件。", "You can send files using the file transfer window.", "Файлы можно отправить через окно передачи файлов.", "可使用檔案傳輸視窗傳送檔案。", "ファイル転送ウィンドウから送信できます。", "파일 전송 창에서 파일을 보낼 수 있습니다.", "Senden Sie Dateien über das Dateiübertragungsfenster.", "Vous pouvez envoyer les fichiers via la fenêtre de transfert.", "Puedes enviar archivos desde la ventana de transferencia.", "Você pode enviar arquivos pela janela de transferência."}},
   {"本端地址", {"本端地址", "Local endpoint", "Локальный адрес", "本端位址", "ローカルアドレス", "로컬 주소", "Lokale Adresse", "Adresse locale", "Dirección local", "Endereço local"}},
   {"对端地址", {"对端地址", "Remote endpoint", "Удалённый адрес", "對端位址", "リモートアドレス", "원격 주소", "Remote-Adresse", "Adresse distante", "Dirección remota", "Endereço remoto"}},
+  {"删除分组", {"删除分组", "Delete group", "Удалить группу", "刪除分組", "グループを削除", "그룹 삭제", "Gruppe löschen", "Supprimer le groupe", "Eliminar grupo", "Excluir grupo"}},
+  {"组内设备和连接记录将保留。", {"组内设备和连接记录将保留。", "Devices and connection history will be kept.", "Устройства и история подключений сохранятся.", "組內裝置和連線記錄將保留。", "グループ内のデバイスと接続履歴は保持されます。", "그룹의 기기와 연결 기록은 유지됩니다.", "Geräte und Verbindungsverlauf bleiben erhalten.", "Les appareils et l’historique des connexions seront conservés.", "Se conservarán los dispositivos y el historial de conexiones.", "Os dispositivos e o histórico de conexões serão mantidos."}},
 };
 
 struct NamedTranslation { const char* name; const char* literal; };
@@ -1090,6 +1092,9 @@ inline constexpr const char* kSlintLiterals[] = {
   "对端地址",
   "低负载编码",
   "从下一次桌面连接起，优先使用编码器支持的低负载设置。已有连接沿用原设置。",
+  "删除分组",
+  "组内设备和连接记录将保留。",
+  "保存失败，请重试",
 };
 }  // namespace detail
 

@@ -367,3 +367,6 @@
 "IP 直连失败，请检查电脑的直连地址和网络。" = "Error de conexión IP directa. Comprueba la dirección, el puerto y la red del equipo.";
 "本端地址" = "Dirección local";
 "对端地址" = "Dirección remota";
+"删除分组" = "Eliminar grupo";
+"组内设备和连接记录将保留。" = "Se conservarán los dispositivos y el historial de conexiones.";
+"保存失败，请重试" = "No se pudo guardar; intentarlo de nuevo";

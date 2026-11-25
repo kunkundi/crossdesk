@@ -277,6 +277,11 @@ export class MobileController {
     this.store.editRecent(this.scope(), id, alias, groups);
     this.history();
   }
+  deleteGroup(scope: string, group: string): void {
+    if (scope !== this.scope()) return;
+    try { this.store.deleteGroup(scope, group); this.history(); }
+    catch { this.toast(tr("保存失败，请重试")); }
+  }
   async deleteRecent(id: string): Promise<void> {
     try { await this.store.delete(this.scope(), id); this.history(); } catch { this.toast(tr("记录或密码删除失败，请重试")); }
   }

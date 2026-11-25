@@ -949,6 +949,18 @@ export component MainWindow inherits Window {
     private property <string> alias-remote-id: "";
     in-out property <string> alias-input: "";
     in-out property <bool> delete-open: false;
+    callback delete-group(string) -> bool;
+    private property <string> delete-group-name;
+    private property <bool> delete-group-failed;
+    changed delete-open => {
+        if !root.delete-open { root.delete-group-name = ""; root.delete-group-failed = false; }
+    }
+    function confirm-delete-group(name: string) {
+        if name == "" { return; }
+        root.delete-group-name = name;
+        root.delete-group-failed = false;
+        root.delete-open = true;
+    }
     private property <string> delete-remote-id: "";
     private property <bool> delete-from-gallery: false;
     in-out property <bool> disconnect-open: false;
@@ -1792,6 +1804,8 @@ export component MainWindow inherits Window {
                 hover-outline-color: UiSurface.hover;
                 focus-outline-color: WorkbenchStyle.accent;
                 model: root.recent-groups;
+                delete-label: GalleryStrings.texts[217];
+                delete-requested(name) => { root.confirm-delete-group(name); }
                 current-index <=> root.recent-group-index;
                 selected(index) => { root.recent-group-selected(index); }
             }
@@ -2096,6 +2110,7 @@ export component MainWindow inherits Window {
             key-input(text, pressed, ctrl, alt, shift, meta) => { root.gallery-key(text, pressed, ctrl, alt, shift, meta); }
             tiles: root.gallery-tiles; groups: root.gallery-groups;
             group-index <=> root.gallery-group-index;
+            delete-group-requested(name) => { root.confirm-delete-group(name); }
             page: root.gallery-page; pages: root.gallery-pages; count: root.gallery-count;
             connected-count: root.gallery-connected; selected-count: root.gallery-selected;
             selected-audio-available: root.gallery-selected-audio-available;
@@ -2641,14 +2656,27 @@ export component MainWindow inherits Window {
         DialogSurface {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
-            width: root.compact-language ? 230px : 320px;
-            height: 140px;
+            width: root.delete-group-name != "" ? 360px : root.compact-language ? 230px : 320px;
+            height: root.delete-group-name != "" ? (root.delete-group-failed ? 210px : 170px) : 140px;
             VerticalLayout {
                 padding: 20px; spacing: 18px;
-                DialogPromptText { prompt: root.delete-from-gallery ? (root.gallery-group-index > 0 ? GalleryStrings.texts[104] : GalleryStrings.texts[105]) : UiStrings.confirm-delete; }
+                if root.delete-group-name != "": Text {
+                    text: GalleryStrings.texts[217] + " · " + root.delete-group-name;
+                    font-weight: 600; overflow: elide; horizontal-alignment: center;
+                }
+                DialogPromptText { prompt: root.delete-group-name != "" ? GalleryStrings.texts[218] : root.delete-from-gallery ? (root.gallery-group-index > 0 ? GalleryStrings.texts[104] : GalleryStrings.texts[105]) : UiStrings.confirm-delete; }
+                if root.delete-group-failed: Text {
+                    text: GalleryStrings.texts[219]; color: #c53e3e; horizontal-alignment: center;
+                }
                 HorizontalLayout {
                     alignment: center; spacing: 8px;
-                    PrimaryButton { text: UiStrings.ok; clicked => { if root.delete-from-gallery { root.gallery-action("remove", root.delete-remote-id); } else { root.recent-delete(root.delete-remote-id); } root.delete-open = false; } }
+                    PrimaryButton { text: UiStrings.ok; clicked => {
+                        if root.delete-group-name != "" {
+                            if !root.delete-group(root.delete-group-name) { root.delete-group-failed = true; return; }
+                        } else if root.delete-from-gallery { root.gallery-action("remove", root.delete-remote-id); }
+                        else { root.recent-delete(root.delete-remote-id); }
+                        root.delete-open = false;
+                    } }
                     SecondaryButton { text: UiStrings.cancel; clicked => { root.delete-open = false; } }
                 }
             }

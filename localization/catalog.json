@@ -11891,6 +11891,30 @@
       "fr": "Adresse distante",
       "es": "Dirección remota",
       "pt-BR": "Endereço remoto"
+    },
+    "删除分组": {
+      "zh-Hans": "删除分组",
+      "en": "Delete group",
+      "ru": "Удалить группу",
+      "zh-Hant": "刪除分組",
+      "ja": "グループを削除",
+      "ko": "그룹 삭제",
+      "de": "Gruppe löschen",
+      "fr": "Supprimer le groupe",
+      "es": "Eliminar grupo",
+      "pt-BR": "Excluir grupo"
+    },
+    "组内设备和连接记录将保留。": {
+      "zh-Hans": "组内设备和连接记录将保留。",
+      "en": "Devices and connection history will be kept.",
+      "ru": "Устройства и история подключений сохранятся.",
+      "zh-Hant": "組內裝置和連線記錄將保留。",
+      "ja": "グループ内のデバイスと接続履歴は保持されます。",
+      "ko": "그룹의 기기와 연결 기록은 유지됩니다.",
+      "de": "Geräte und Verbindungsverlauf bleiben erhalten.",
+      "fr": "Les appareils et l’historique des connexions seront conservés.",
+      "es": "Se conservarán los dispositivos y el historial de conexiones.",
+      "pt-BR": "Os dispositivos e o histórico de conexões serão mantidos."
     }
   },
   "desktop": {
@@ -12410,7 +12434,10 @@
     "本端地址",
     "对端地址",
     "低负载编码",
-    "从下一次桌面连接起，优先使用编码器支持的低负载设置。已有连接沿用原设置。"
+    "从下一次桌面连接起，优先使用编码器支持的低负载设置。已有连接沿用原设置。",
+    "删除分组",
+    "组内设备和连接记录将保留。",
+    "保存失败，请重试"
   ],
   "platforms": {
     "desktop": [
@@ -12969,7 +12996,9 @@
       "请检查 FUSE 安装和挂载权限。",
       "可使用文件传输窗口发送文件。",
       "本端地址",
-      "对端地址"
+      "对端地址",
+      "删除分组",
+      "组内设备和连接记录将保留。"
     ],
     "android": [
       " · 已完成",
@@ -13359,7 +13388,10 @@
       "IP 直连密码",
       "IP 直连失败，请检查电脑的直连地址和网络。",
       "本端地址",
-      "对端地址"
+      "对端地址",
+      "删除分组",
+      "组内设备和连接记录将保留。",
+      "保存失败，请重试"
     ],
     "ios": [
       "%1$@ 传输失败",
@@ -13729,7 +13761,10 @@
       "IP 直连密码",
       "IP 直连失败，请检查电脑的直连地址和网络。",
       "本端地址",
-      "对端地址"
+      "对端地址",
+      "删除分组",
+      "组内设备和连接记录将保留。",
+      "保存失败，请重试"
     ],
     "harmony": [
       "OpenFEC 告知",
@@ -14052,7 +14087,10 @@
       "IP 直连密码",
       "IP 直连失败，请检查电脑的直连地址和网络。",
       "本端地址",
-      "对端地址"
+      "对端地址",
+      "删除分组",
+      "组内设备和连接记录将保留。",
+      "保存失败，请重试"
     ]
   }
 }

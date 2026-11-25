@@ -389,4 +389,7 @@
     <string name="text_53b856ab7ac9d8e2" formatted="false">"IP 直连失败，请检查电脑的直连地址和网络。"</string>
     <string name="text_3a940622a8012b31" formatted="false">"本端地址"</string>
     <string name="text_2c5e32d2c5de5c2b" formatted="false">"对端地址"</string>
+    <string name="text_7605c1d82eed69a5" formatted="false">"删除分组"</string>
+    <string name="text_b113e4e040b875a8" formatted="false">"组内设备和连接记录将保留。"</string>
+    <string name="text_f42a1238b44a4858" formatted="false">"保存失败，请重试"</string>
 </resources>

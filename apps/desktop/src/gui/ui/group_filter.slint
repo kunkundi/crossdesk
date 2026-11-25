@@ -1,7 +1,7 @@
 import { SurfaceSeparator, FlatSurface, UiSurface } from "ui_surface.slint";
 import { UiRadius } from "ui_radius.slint";
 import { ScrollView } from "std-widgets.slint";
-import { FontAwesomeIcons, ControlStyle } from "common.slint";
+import { FontAwesomeIcons, ControlStyle, IconButton } from "common.slint";
 
 // Shared by history and DeskHub; system choices precede the named groups.
 export component GroupFilter inherits FlatSurface {
@@ -23,6 +23,8 @@ export component GroupFilter inherits FlatSurface {
     out property <bool> has-focus: trigger-focus.has-focus || popup.is-open;
     out property <bool> has-hover: root.enabled && trigger-touch.has-hover && !popup.is-open;
     callback selected(int);
+    in property <string> delete-label;
+    callback delete-requested(string);
     private property <bool> has-divider: root.system-count > 0 && root.model.length > root.system-count;
     private property <length> list-height: root.model.length * 26px + (root.has-divider ? 6px : 0px);
     private property <length> visible-height: min(root.list-height, 162px);
@@ -104,6 +106,10 @@ export component GroupFilter inherits FlatSurface {
             return accept;
         }
         if event.text == Key.Escape && popup.is-open { popup.close(); return accept; }
+        if event.text == Key.Delete && popup.is-open && root.delete-label != ""
+            && root.current-index >= root.system-count && root.current-index < root.model.length {
+            root.delete-requested(root.model[root.current-index]); popup.close(); return accept;
+        }
         return reject;
     }
     Text {
@@ -165,6 +171,7 @@ export component GroupFilter inherits FlatSurface {
                             width: parent.width - 12px; height: 1px; outline-color: UiSurface.separator;
                         }
                         for choice[index] in root.model: Rectangle {
+                            private property <bool> deletable: root.delete-label != "" && index >= root.system-count;
                             y: index * 26px + (root.has-divider && index >= root.system-count ? 6px : 0px);
                             width: parent.width; height: 26px; border-radius: UiRadius.control;
                             background: index == root.current-index
@@ -174,14 +181,14 @@ export component GroupFilter inherits FlatSurface {
                             accessible-role: list-item;
                             accessible-label: choice;
                             Text {
-                                x: 8px; width: parent.width - 34px; height: parent.height;
+                                x: 8px; width: parent.width - 34px - (parent.deletable ? 26px : 0px); height: parent.height;
                                 text: choice; color: index == root.current-index ? ControlStyle.selected-text : #30343b; font-size: 12px;
                                 font-weight: index == root.current-index ? 600 : 400;
                                 overflow: elide; vertical-alignment: center;
                                 accessible-role: none;
                             }
                             if index == root.current-index: Text {
-                                x: parent.width - 24px; width: 16px; height: parent.height;
+                                x: parent.width - 24px - (parent.deletable ? 26px : 0px); width: 16px; height: parent.height;
                                 text: FontAwesomeIcons.check; font-family: "Font Awesome 6 Free";
                                 font-weight: 900; font-size: 10px; color: ControlStyle.selected-text;
                                 horizontal-alignment: center; vertical-alignment: center;
@@ -189,6 +196,15 @@ export component GroupFilter inherits FlatSurface {
                             }
                             option-touch := TouchArea {
                                 clicked => { root.choose(index); popup.close(); }
+                            }
+                            if self.deletable: IconButton {
+                                x: parent.width - self.width; width: 26px; height: parent.height;
+                                icon: FontAwesomeIcons.trash-can; icon-size: 12px; danger: true;
+                                accessible-role: button;
+                                accessible-label: root.delete-label + " " + choice;
+                                accessible-action-default => { self.clicked(); }
+                                // Closing the popup destroys this row and its choice binding.
+                                clicked => { root.delete-requested(choice); popup.close(); }
                             }
                         }
                     }

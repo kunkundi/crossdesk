@@ -1831,6 +1831,9 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
     else ui_->recent_group_filter.reset();
     SyncMainWindow();
   });
+  main->on_delete_group([this](slint::SharedString name) {
+    return DeleteGroup(std::string(name));
+  });
   main->on_delete_announcement([this](slint::SharedString id,
                                           slint::SharedString revision) {
     const auto parse = [](const slint::SharedString& value)
@@ -6085,6 +6088,37 @@ bool GuiApplication::SaveDeviceGroups(const std::string& new_group,
   // existing session. Only the explicit wall-add actions do that.
   ui_->gallery_synced = {};
   main->set_device_group_error("");
+  SyncGallery();
+  return true;
+}
+
+bool GuiApplication::DeleteGroup(const std::string& name) {
+  auto updated = ui_->gallery;
+  if (!updated.DeleteGroup(name)) return true;
+  if (!updated.Save(ui_->gallery_path)) return false;
+
+  const auto removed = std::find(ui_->gallery.groups.begin(), ui_->gallery.groups.end(), name);
+  const int removed_index = int(removed - ui_->gallery.groups.begin()) + 1;
+  const int selected = ui_->wall->get_gallery_group_index();
+  ui_->gallery = std::move(updated);
+  if (selected == removed_index) ui_->wall->set_gallery_group_index(0);
+  else if (selected > removed_index) ui_->wall->set_gallery_group_index(selected - 1);
+  if (ui_->recent_group_filter == name) ui_->recent_group_filter.reset();
+
+  // A device editor can still be open in the other window.
+  for (auto& editor : ui_->group_editors) {
+    if (editor.options->row_count() == 0) continue;
+    std::vector<ui::DeviceGroupOption> options;
+    for (size_t row = 0; row < editor.options->row_count(); ++row) {
+      auto option = *editor.options->row_data(row);
+      if (std::string(option.name) != name) options.push_back(option);
+    }
+    options.front().selected = std::none_of(options.begin() + 1, options.end(),
+        [](const auto& option) { return option.selected; });
+    editor.options->set_vector(options);
+  }
+  ui_->gallery_synced = {};
+  SyncMainWindow();
   SyncGallery();
   return true;
 }
