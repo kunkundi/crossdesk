@@ -24,6 +24,7 @@
 
 #include "libyuv.h"
 #include "rd_log.h"
+#include "wallpaper_preview.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -37,6 +38,35 @@ namespace {
 // Keep enough detail for high-DPI cards, independently of the display used
 // when the session closes. Preserve the source aspect ratio without bars.
 constexpr int kPreviewMaxEdge = 1024;
+
+bool WriteFileAtomically(const std::filesystem::path& path,
+                         std::string_view bytes) {
+  auto temporary = path;
+  temporary += ".tmp";
+  std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+  output.write(bytes.data(), bytes.size());
+  output.close();
+  std::error_code error;
+  if (!output) {
+    std::filesystem::remove(temporary, error);
+    return false;
+  }
+#ifdef _WIN32
+  // Windows rename does not replace an existing destination.
+  if (!MoveFileExW(temporary.c_str(), path.c_str(),
+                   MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+    std::filesystem::remove(temporary, error);
+    return false;
+  }
+#else
+  std::filesystem::rename(temporary, path, error);
+  if (error) {
+    std::filesystem::remove(temporary, error);
+    return false;
+  }
+#endif
+  return true;
+}
 
 bool ScaleNv12ToABGR(const char* src, int src_w, int src_h, int dst_w,
                      int dst_h, uint8_t* dst_rgba) {
@@ -131,7 +161,6 @@ bool Thumbnail::WriteRecord(const RecentConnection& connection) {
   if (connection.remember_password && password.empty()) return false;
   const auto path =
       std::filesystem::path(save_path_) / (connection.remote_id + ".json");
-  const auto temporary = path.string() + ".tmp";
   const nlohmann::json record = {
       {"version", 2},
       {"kind", connection.lan.device_id.empty() ? "cloud_id" : "lan_direct"},
@@ -143,26 +172,7 @@ bool Thumbnail::WriteRecord(const RecentConnection& connection) {
       {"host_name", connection.remote_host_name},
       {"password", password},
       {"platform", HostPlatformName(connection.platform)}};
-  std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
-  output << record.dump();
-  output.close();
-  if (!output) return false;
-  std::error_code error;
-#ifdef _WIN32
-  // Windows rename does not replace an existing destination.
-  if (!MoveFileExW(std::filesystem::path(temporary).c_str(), path.c_str(),
-                   MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-    std::filesystem::remove(temporary, error);
-    return false;
-  }
-#else
-  std::filesystem::rename(temporary, path, error);
-  if (error) {
-    std::filesystem::remove(temporary, error);
-    return false;
-  }
-#endif
-  return true;
+  return WriteFileAtomically(path, record.dump());
 }
 
 bool Thumbnail::ReadRecord(const std::filesystem::path& path,
@@ -194,10 +204,12 @@ bool Thumbnail::ReadRecord(const std::filesystem::path& path,
     connection->remember_password = !connection->password.empty();
     connection->platform =
         ParseHostPlatform(record.value("platform", "unknown"));
-    const auto image = path.parent_path() / (connection->remote_id + ".png");
-    if (save_previews_ && std::filesystem::is_regular_file(image)) {
-      connection->image_path = image;
-    }
+    const auto wallpaper = path.parent_path() / (connection->remote_id + ".jpg");
+    const auto frame = path.parent_path() / (connection->remote_id + ".png");
+    if (std::filesystem::is_regular_file(wallpaper))
+      connection->image_path = wallpaper;
+    else if (save_previews_ && std::filesystem::is_regular_file(frame))
+      connection->image_path = frame;
     return true;
   } catch (const nlohmann::json::exception&) {
     return false;
@@ -218,7 +230,8 @@ int Thumbnail::SaveToThumbnail(const char* nv12, int width, int height,
                                const std::string& remote_id,
                                const std::string& host_name,
                                const std::string& password,
-                               HostPlatform platform, const LanTarget* lan) {
+                               HostPlatform platform, const LanTarget* lan,
+                               std::string_view wallpaper) {
   std::lock_guard lock(mutex_);
   // Successful connections are history even without saved credentials.
   if (lan ? (!IsLanRecordId(remote_id) ||
@@ -237,7 +250,18 @@ int Thumbnail::SaveToThumbnail(const char* nv12, int width, int height,
   if (!WriteRecord(connection)) return -1;
 
   const auto image = std::filesystem::path(save_path_) / (remote_id + ".png");
-  if (save_previews_ && nv12 && width > 0 && height > 0) {
+  const auto wallpaper_path =
+      std::filesystem::path(save_path_) / (remote_id + ".jpg");
+  const bool has_new_wallpaper = IsWallpaperPreviewJpeg(wallpaper);
+  if (has_new_wallpaper && !WriteFileAtomically(wallpaper_path, wallpaper))
+    return -1;
+  if (has_new_wallpaper || !save_previews_) {
+    std::error_code error;
+    std::filesystem::remove(image, error);
+    return error ? -1 : 0;
+  }
+  if (nv12 && width > 0 && height > 0 &&
+      !std::filesystem::is_regular_file(wallpaper_path)) {
     const double scale = std::min(1.0, double(kPreviewMaxEdge) /
                                           std::max(width, height));
     const int image_width = std::max(1, int(std::lround(width * scale)));
@@ -248,10 +272,6 @@ int Thumbnail::SaveToThumbnail(const char* nv12, int width, int height,
         !stbi_write_png(image.string().c_str(), image_width, image_height, 4,
                          rgba.data(), image_width * 4))
       return -1;
-  } else if (!save_previews_) {
-    std::error_code error;
-    std::filesystem::remove(image, error);
-    if (error) return -1;
   }
   return 0;
 }
@@ -332,7 +352,8 @@ int Thumbnail::LoadThumbnailLocked(
       if (it != records.end()) {
         recent_connections.emplace_back(ConnectionKey(it->second), it->second);
       }
-    } else if (!save_previews_ && path.extension() == ".png") {
+    } else if ((!save_previews_ && path.extension() == ".png") ||
+               (path.extension() == ".tmp" && path.stem().extension() == ".jpg")) {
       std::error_code error;
       std::filesystem::remove(path, error);
       if (error) result = -1;
@@ -411,7 +432,7 @@ bool Thumbnail::DecodeImage(const std::filesystem::path& image_path,
 int Thumbnail::DeleteThumbnail(const std::string& filename_keyword) {
   std::lock_guard lock(mutex_);
   if (IsLanRecordId(filename_keyword)) {
-    for (const auto* extension : {".json", ".png"})
+    for (const auto* extension : {".json", ".png", ".jpg", ".jpg.tmp"})
       std::filesystem::remove(std::filesystem::path(save_path_) /
                               (filename_keyword + extension));
     return 0;

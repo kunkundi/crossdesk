@@ -491,6 +491,17 @@ function setup_targets()
         add_deps("rd_log", "desktop_common")
         add_files("apps/desktop/src/thumbnail/*.cpp")
         add_includedirs("apps/desktop/src/thumbnail", {public = true})
+        if is_os("macosx") then
+            add_files("apps/desktop/src/platform/macos/wallpaper_preview.mm",
+                {mxxflags = "-fobjc-arc"})
+            add_frameworks("ImageIO", {public = true})
+        end
+
+    target("recent_wallpaper_test")
+        set_kind("binary")
+        set_default(false)
+        add_deps("thumbnail", "crossdesk_wire")
+        add_files("apps/desktop/tests/recent_wallpaper_test.cpp")
 
     target("autostart")
         set_kind("object")

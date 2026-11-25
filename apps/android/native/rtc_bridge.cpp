@@ -4,6 +4,7 @@
 #include <libyuv.h>
 #include <minirtc.h>
 #include <remote_action.h>
+#include <recent_wallpaper.h>
 #include <app_version.h>
 #include <stream_names.h>
 #include <display_stream_id.h>
@@ -61,6 +62,7 @@ struct Session {
   std::unique_ptr<mobile_controller::DeviceTrustIdentity> trust;
   int port;
   std::atomic<bool> stopping{false};
+  std::atomic<bool> wallpaper_requested{false};
   std::atomic<uint64_t> signal_generation{0};
   std::atomic<int> signal_status{-1};
   std::atomic<int> display{0};
@@ -196,6 +198,13 @@ void Data(const char* data, size_t size, const char*, size_t,
   if (name == kFileStream) { ctx->owner->files.Receive(data, size); return; }
   if (name == kFileFeedbackStream) { ctx->owner->files.Ack(data, size); return; }
   if (name == kControlStream) {
+    const std::string_view message(data, size);
+    if (IsWallpaperPreviewMessage(message)) {
+      const auto jpeg = WallpaperPreviewFromMessage(message);
+      if (!jpeg.empty() && ctx->owner->wallpaper_requested.exchange(false))
+        ctx->owner->Event(11, jpeg.data(), jpeg.size());
+      return;
+    }
     if (auto proof = ctx->owner->trust->ChallengeResponse(std::string_view(data, size),
             ctx->owner->controller_login.substr(2), "CrossDesk Android")) {
       ctx->owner->Send(kControlStream, *proof);
@@ -416,6 +425,8 @@ extern "C" JNIEXPORT void JNICALL JNI_METHOD(nReady)(JNIEnv* env, jclass, jlong 
   auto* s = From(handle); if (!s || !s->controller) return;
   auto action = MakeHostInformation("CrossDesk Android", {}, true, "1.6.0", HostPlatform::Android);
   action.i.supports_video_codec_status = true;
+  action.i.wants_recent_wallpaper = true;
+  s->wallpaper_requested = true;
   if (preferences && env->GetArrayLength(preferences) <= 65536) {
     std::string bytes(env->GetArrayLength(preferences), '\0');
     env->GetByteArrayRegion(preferences, 0, bytes.size(), reinterpret_cast<jbyte*>(bytes.data()));

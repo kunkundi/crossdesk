@@ -21,6 +21,7 @@
 #include <app_version.h>
 #include <file_transfer_format.h>
 #include <remote_action.h>
+#include <recent_wallpaper.h>
 #include <stream_names.h>
 #include "minirtc.h"
 #include "../../../../libs/controller/include/mobile_device_trust.h"
@@ -543,6 +544,7 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
   std::atomic<uint64_t> _receivedVideoFrames;
   std::atomic<uint64_t> _controllerGenerationCounter;
   std::atomic<uint64_t> _activeControllerGeneration;
+  std::atomic<uint64_t> _wallpaperRequestedGeneration;
   std::atomic<uint64_t> _identityGeneration;
   std::atomic<uint64_t> _signalGeneration;
   std::atomic<uint64_t> _presenceGeneration;
@@ -598,6 +600,7 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
     _selectedDisplay.store(0);
     _receivedVideoFrames.store(0);
     _controllerGenerationCounter.store(0);
+    _wallpaperRequestedGeneration.store(0);
     _activeControllerGeneration.store(0);
     _identityGeneration.store(0);
     _signalGeneration.store(0);
@@ -1593,6 +1596,7 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
       action.i.platform = crossdesk::HostPlatform::IOS;
       action.i.supports_privacy_screen = true;
       action.i.supports_video_codec_status = true;
+      action.i.wants_recent_wallpaper = true;
       CopyCString(action.i.host_name, sizeof(action.i.host_name),
                   controller_name);
       action.i.host_name_size = std::strlen(action.i.host_name);
@@ -1606,6 +1610,7 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
       action.i.top = nullptr;
       action.i.right = nullptr;
       action.i.bottom = nullptr;
+      self->_wallpaperRequestedGeneration.store(generation);
       const std::string host_info = DeviceTrustIdentity::Advertise(action.to_json());
       MiniRtcSendReliableDataFrame(self->_state->controller_peer, host_info.data(),
                             host_info.size(), kControlStream);
@@ -1876,6 +1881,22 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
   if (!data || size == 0 || !sourceID) return;
   const std::string source(sourceID, sourceIDSize);
   if (source == kControlStream) {
+    const std::string_view message(data, size);
+    if (crossdesk::IsWallpaperPreviewMessage(message)) {
+      const auto jpeg = crossdesk::WallpaperPreviewFromMessage(message);
+      auto expected = generation;
+      if (jpeg.empty() || ![self isControllerGenerationActive:generation] ||
+          !self->_wallpaperRequestedGeneration.compare_exchange_strong(expected, 0))
+        return;
+      NSData *wallpaper = [NSData dataWithBytes:jpeg.data() length:jpeg.size()];
+      DispatchMain(^{
+        if (![self isControllerGenerationActive:generation]) return;
+        id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
+        if ([delegate respondsToSelector:@selector(rtcBridge:didReceiveWallpaper:)])
+          [delegate rtcBridge:self didReceiveWallpaper:wallpaper];
+      });
+      return;
+    }
     if (DeviceTrustIdentity::IsChallenge(std::string_view(data, size))) {
       const std::string challenge(data, size);
       dispatch_async(_rtcQueue, ^{

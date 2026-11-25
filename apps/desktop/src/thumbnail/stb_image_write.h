@@ -1385,11 +1385,12 @@ static const unsigned char stbiw__jpg_ZigZag[] = {
     10, 19, 23, 32, 39, 45, 52, 54, 20, 22, 33, 38, 46, 51, 55, 60,
     21, 34, 37, 47, 50, 56, 59, 61, 35, 36, 48, 49, 57, 58, 62, 63};
 
-static void stbiw__jpg_writeBits(stbi__write_context *s, int *bitBufP,
+static void stbiw__jpg_writeBits(stbi__write_context *s, unsigned int *bitBufP,
                                  int *bitCntP, const unsigned short *bs) {
-  int bitBuf = *bitBufP, bitCnt = *bitCntP;
+  unsigned int bitBuf = *bitBufP;
+  int bitCnt = *bitCntP;
   bitCnt += bs[1];
-  bitBuf |= bs[0] << (24 - bitCnt);
+  bitBuf |= (unsigned int)bs[0] << (24 - bitCnt);
   while (bitCnt >= 8) {
     unsigned char c = (bitBuf >> 16) & 255;
     stbiw__putc(s, c);
@@ -1466,7 +1467,7 @@ static void stbiw__jpg_calcBits(int val, unsigned short bits[2]) {
   bits[0] = val & ((1 << bits[1]) - 1);
 }
 
-static int stbiw__jpg_processDU(stbi__write_context *s, int *bitBuf,
+static int stbiw__jpg_processDU(stbi__write_context *s, unsigned int *bitBuf,
                                 int *bitCnt, float *CDU, int du_stride,
                                 float *fdtbl, int DC,
                                 const unsigned short HTDC[256][2],
@@ -1813,7 +1814,8 @@ static int stbi_write_jpg_core(stbi__write_context *s, int width, int height,
   {
     static const unsigned short fillBits[] = {0x7F, 7};
     int DCY = 0, DCU = 0, DCV = 0;
-    int bitBuf = 0, bitCnt = 0;
+    unsigned int bitBuf = 0;
+    int bitCnt = 0;
     // comp == 2 is grey+alpha (alpha is ignored)
     int ofsG = comp > 2 ? 1 : 0, ofsB = comp > 2 ? 2 : 0;
     const unsigned char *dataR = (const unsigned char *)data;

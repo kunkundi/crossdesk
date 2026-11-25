@@ -4,6 +4,8 @@
 #include "key_mapping.h"
 #include <app_version.h>
 #include <mobile_controller_protocol.h>
+#include <recent_wallpaper.h>
+#include <openssl/evp.h>
 #include <mobile_device_trust.h>
 #include <mobile_direct_connection.h>
 #include <mobile_file_transfer_session.h>
@@ -151,6 +153,8 @@ class MobileSession {
         s->connecting_ = false; s->connected_ = true;
         auto info = MakeHostInformation("CrossDesk HarmonyOS Mobile", {}, true, s->version_, HostPlatform::HarmonyOS);
         info.i.supports_video_codec_status = true;
+        info.i.wants_recent_wallpaper = true;
+        s->wallpaper_requested_ = true;
         info.preferred_display_resolutions = s->preferred_display_resolutions_;
         const auto message = mobile_controller::DeviceTrustIdentity::Advertise(info.to_json());
         MiniRtcSendReliableDataFrame(s->controller_, message.data(), message.size(), kControlStream);
@@ -191,6 +195,20 @@ class MobileSession {
       else if (name == kClipboardStream && bytes.size() <= kMaxClipboardBytes)
         s->Event({{"type", "clipboard"}, {"text", bytes}}, true);
       else if (name == kControlStream) {
+        if (IsWallpaperPreviewMessage(bytes)) {
+          const auto jpeg = WallpaperPreviewFromMessage(bytes);
+          if (!s->wallpaper_requested_ || jpeg.empty()) return;
+          s->wallpaper_requested_ = false;
+          std::string encoded(4 * ((jpeg.size() + 2) / 3) + 1, '\0');
+          const int length = EVP_EncodeBlock(
+              reinterpret_cast<unsigned char*>(encoded.data()),
+              reinterpret_cast<const unsigned char*>(jpeg.data()),
+              static_cast<int>(jpeg.size()));
+          if (length <= 0) return;
+          encoded.resize(length);
+          s->Event({{"type", "wallpaper"}, {"text", std::move(encoded)}}, true);
+          return;
+        }
         if (s->trust_) {
           if (auto proof = s->trust_->ChallengeResponse(bytes, s->login_.substr(0, s->login_.find('@')),
                   "CrossDesk HarmonyOS Mobile")) {
@@ -252,6 +270,7 @@ class MobileSession {
   void Disconnect(const std::string& reason) {
     const bool active = controller_ != nullptr;
     Release(); connected_=false; connecting_=false; ++video_generation_;
+    wallpaper_requested_ = false;
     CancelPreview();
     if (controller_) {
       if (remote_.find(':') != std::string::npos) direct_.Stop();
@@ -462,6 +481,7 @@ class MobileSession {
   std::unique_ptr<mobile_controller::DeviceTrustIdentity> trust_;
   std::string server_,logs_,login_,controller_login_,remote_,directory_,preview_directory_,preview_path_,version_;
   std::vector<DisplayResolutionPreference> preferred_display_resolutions_;
+  bool wallpaper_requested_ = false;
   int port_=9099,signal_status_=-1;
   uint64_t signal_generation_=0;
   std::set<int> keys_;

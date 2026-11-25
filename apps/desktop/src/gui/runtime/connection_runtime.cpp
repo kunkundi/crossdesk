@@ -379,6 +379,11 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
           MiniRtcDestroyPeer(&peer);
         }
         if (thumbnail && props->was_connected_) {
+          std::string wallpaper;
+          {
+            std::lock_guard lock(props->remote_version_mutex_);
+            wallpaper.swap(props->pending_recent_wallpaper_);
+          }
           const char* nv12 = frame_snapshot && !frame_snapshot->empty()
               ? reinterpret_cast<const char*>(frame_snapshot->data()) : nullptr;
           const auto direct = props->lan_session_;
@@ -394,7 +399,7 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
                   nv12, video_width, video_height, record_id,
                   props->remote_host_name_,
                   props->remember_password_ ? props->remote_password_ : "",
-                  platform, direct ? &target : nullptr) != 0) {
+                  platform, direct ? &target : nullptr, wallpaper) != 0) {
             LOG_ERROR("Failed to save recent connection");
           }
         }

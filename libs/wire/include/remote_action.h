@@ -148,6 +148,7 @@ struct HostInfo {
   bool supports_deskhub_resolution;
   bool supports_deskhub_fps15;
   bool supports_deskhub_bandwidth;
+  bool wants_recent_wallpaper;
   // Optional; legacy peers keep the original single-file transfer UI.
   bool supports_file_browser;
   bool supports_file_clipboard;

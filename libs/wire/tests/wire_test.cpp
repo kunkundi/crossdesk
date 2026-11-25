@@ -7,6 +7,7 @@
 #include <display_stream_id.h>
 #include <file_transfer_format.h>
 #include <remote_action.h>
+#include <recent_wallpaper.h>
 #include <stream_names.h>
 
 namespace {
@@ -163,6 +164,46 @@ int main() {
                "host factory should advertise the app version");
   crossdesk::FreeRemoteAction(parsed_host);
   crossdesk::FreeRemoteAction(advertised);
+
+  // user can receive wallpaper from a compatible host
+  // Given host information exchanged with old and new peers
+  // When the optional wallpaper request is present, absent, or malformed
+  // Then only an explicit request enables wallpaper transfer
+  advertised = crossdesk::MakeHostInformation("Viewer", {}, false);
+  advertised.i.wants_recent_wallpaper = true;
+  ok &= Expect(parsed_host.from_json(advertised.to_json()) &&
+                   parsed_host.i.wants_recent_wallpaper,
+               "explicit wallpaper requests must survive the wire round trip");
+  crossdesk::FreeRemoteAction(parsed_host);
+  crossdesk::FreeRemoteAction(advertised);
+  for (const std::string field : {"", ",\"wants_recent_wallpaper\":false",
+                                  ",\"wants_recent_wallpaper\":\"true\""}) {
+    const auto message =
+        "{\"type\":3,\"host_info\":{\"host_name\":\"Viewer\","
+        "\"display_num\":0,\"displays\":[]" + field + "}}";
+    ok &= Expect(parsed_host.from_json(message) &&
+                     !parsed_host.i.wants_recent_wallpaper,
+                 "legacy or malformed metadata must not request a wallpaper");
+    crossdesk::FreeRemoteAction(parsed_host);
+  }
+
+  // Given a desktop controller that requests its recent connection wallpaper
+  // When the response carries a malformed or oversized JPEG header
+  // Then the wire layer rejects it before a mobile platform decodes the image
+  std::string wallpaper_message(crossdesk::kWallpaperPreviewPrefix);
+  const unsigned char jfif[] = {
+      0xff, 0xd8, 0xff, 0xe0, 0, 2, 0xff, 0xc0, 0, 11,
+      8, 1, 0x68, 2, 0x80, 1, 1, 0x11, 0, 0xff, 0xd9};
+  wallpaper_message.append(reinterpret_cast<const char*>(jfif), sizeof(jfif));
+  ok &= Expect(crossdesk::WallpaperPreviewFromMessage(wallpaper_message).size() == sizeof(jfif),
+               "a bounded baseline JPEG header should be accepted");
+  const auto width_byte = crossdesk::kWallpaperPreviewPrefix.size() + 14;
+  wallpaper_message[width_byte] = static_cast<char>(0x81);
+  ok &= Expect(crossdesk::WallpaperPreviewFromMessage(wallpaper_message).empty(),
+               "a wallpaper wider than the cover limit should be rejected");
+  wallpaper_message.resize(crossdesk::kWallpaperPreviewPrefix.size() + 4);
+  ok &= Expect(crossdesk::WallpaperPreviewFromMessage(wallpaper_message).empty(),
+               "a truncated wallpaper should be rejected");
 
   // The platform is optional metadata, not a requirement for connecting.
   for (const auto& platform : std::vector<std::string>{

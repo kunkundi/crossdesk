@@ -100,6 +100,7 @@ void ResetHostInfo(HostInfo& info) {
   info.supports_deskhub_resolution = false;
   info.supports_deskhub_fps15 = false;
   info.supports_deskhub_bandwidth = false;
+  info.wants_recent_wallpaper = false;
   info.supports_file_browser = false;
   info.supports_file_clipboard = false;
   info.file_clipboard_version = 0;
@@ -347,6 +348,8 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
           {"supports_file_browser", action.i.supports_file_browser},
           {"supports_file_clipboard", action.i.supports_file_clipboard},
           {"file_clipboard_version", action.i.file_clipboard_version}};
+      if (action.i.wants_recent_wallpaper)
+        object["host_info"]["wants_recent_wallpaper"] = true;
       if (!action.display_resolutions.empty())
         object["host_info"]["display_resolutions"] =
             DisplayResolutionsJson(action.display_resolutions);
@@ -604,6 +607,8 @@ bool RemoteAction::FromJson(const std::string& json_string,
             host_info_object.value("supports_deskhub_fps15", false);
         output.i.supports_deskhub_bandwidth =
             host_info_object.value("supports_deskhub_bandwidth", false);
+        output.i.wants_recent_wallpaper =
+            host_info_object.value("wants_recent_wallpaper", json{}) == true;
         output.i.supports_file_browser =
             host_info_object.value("supports_file_browser", false);
         output.i.supports_file_clipboard =

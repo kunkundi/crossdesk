@@ -202,7 +202,8 @@ struct Mobile {
       Stack({ alignContent: Alignment.TopEnd }) {
         Text(device.platform === 'windows' ? 'Windows' : device.platform === 'macos' ? 'macOS' : device.platform === 'linux' ? 'Linux' : tr("远程电脑"))
           .fontSize(19).fontWeight(600).fontColor(Color.White).width('100%').height('100%').textAlign(TextAlign.Center)
-        if (this.state.previews && device.preview) { Image(`file://${device.preview}`).objectFit(ImageFit.Cover).width('100%').height('100%') }
+        if (this.state.consent && device.wallpaper) { Image(`file://${device.wallpaper}`).objectFit(ImageFit.Cover).width('100%').height('100%') }
+        else if (this.state.previews && device.preview) { Image(`file://${device.preview}`).objectFit(ImageFit.Cover).width('100%').height('100%') }
         Button({ type: ButtonType.Normal }) {
           Row({ space: 2 }) {
             ForEach([0, 1, 2], () => {

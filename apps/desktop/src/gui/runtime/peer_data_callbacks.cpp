@@ -25,6 +25,7 @@
 #include "platform.h"
 #include "rd_log.h"
 #include "runtime/gui_runtime.h"
+#include "wallpaper_preview.h"
 #include "web_clipboard_protocol.h"
 #ifdef __OHOS__
 #include "platform/harmony/input/system_shortcuts.h"
@@ -134,6 +135,23 @@ void PeerEventHandler::OnReceiveDataBuffer(
 
   std::string source_id = std::string(src_id, src_id_size);
   const auto remote_id = handler->ConnectionKey(user_id, user_id_size);
+  const std::string_view payload(data, size);
+  if (source_id == runtime->control_data_label_ &&
+      IsWallpaperPreviewMessage(payload)) {
+    const auto viewer = runtime->FindRemoteSession(remote_id);
+    if (!viewer || viewer->peer_events_.get() != handler)
+      return;
+    const auto jpeg = WallpaperPreviewFromMessage(payload);
+    if (jpeg.empty()) return;
+    std::lock_guard lock(viewer->remote_version_mutex_);
+    if (viewer->closing_ || !viewer->recent_wallpaper_requested_ ||
+        viewer->connection_status_ != MiniRtcConnectionStatus::MiniRtcConnectionConnected)
+      return;
+    viewer->recent_wallpaper_requested_ = false;
+    viewer->pending_recent_wallpaper_.assign(jpeg);
+    viewer->recent_connection_dirty_ = true;
+    return;
+  }
   if (source_id == runtime->control_data_label_ &&
       runtime->HandleDeviceTrustMessage(remote_id, handler, data, size)) return;
   const auto viewer = runtime->FindRemoteSession(remote_id);
@@ -572,6 +590,8 @@ void PeerEventHandler::OnReceiveDataBuffer(
             std::move(remote_action.preferred_display_resolutions));
         runtime->SetControllerPrivacySupport(
             remote_id, remote_action.i.supports_privacy_screen);
+        if (remote_action.i.wants_recent_wallpaper)
+          runtime->QueueRecentWallpaper(remote_id, handler);
       }
       FreeRemoteAction(remote_action);
     }

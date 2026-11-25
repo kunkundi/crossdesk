@@ -380,8 +380,13 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
           props->cursor_presentation_ = {};
         }
         {
+          std::lock_guard lock(props->remote_version_mutex_);
+          props->recent_wallpaper_requested_ = true;
+        }
+        {
           const auto msg = runtime->BuildHostInformation(true,
-              runtime->remote_resolutions_.Get(props->device_preference_key_));
+              runtime->remote_resolutions_.Get(props->device_preference_key_),
+              true);
           const int ret =
               MiniRtcSendReliableDataFrame(props->peer_, msg.data(), msg.size(),
                                     runtime->control_data_label_.c_str());
@@ -404,6 +409,7 @@ void PeerEventHandler::DispatchConnectionStatus(MiniRtcConnectionStatus status,
         {
           std::lock_guard lock(props->remote_version_mutex_);
           props->remote_host_info_received_ = false;
+          props->recent_wallpaper_requested_ = false;
           props->remote_app_version_.clear();
           props->remote_platform_ = HostPlatform::Unknown;
           props->remote_update_dismissed_ = false;
@@ -644,7 +650,8 @@ void PeerEventHandler::OnNetStatusReport(
   }
 }
 std::string GuiRuntime::BuildHostInformation(bool advertise_trust,
-    const std::vector<DisplayResolutionPreference>& preferences) {
+    const std::vector<DisplayResolutionPreference>& preferences,
+    bool wants_recent_wallpaper) {
   auto action = MakeHostInformation(GetHostName(), devices_.host_display_list(),
       UserSessionFeaturesAvailable(), CROSSDESK_VERSION, kClientPlatform);
   action.display_resolutions = QueryHostDisplayResolutions();
@@ -656,6 +663,7 @@ std::string GuiRuntime::BuildHostInformation(bool advertise_trust,
   action.i.supports_deskhub_resolution = true;
   action.i.supports_deskhub_fps15 = true;
   action.i.supports_deskhub_bandwidth = true;
+  action.i.wants_recent_wallpaper = wants_recent_wallpaper;
   action.i.supports_file_browser = UserSessionFeaturesAvailable();
 #ifndef __OHOS__
   action.i.supports_file_clipboard = UserSessionFeaturesAvailable();
