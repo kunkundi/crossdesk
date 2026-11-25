@@ -26,8 +26,7 @@ bool CleanupLegacyServiceAutostart() {
   if (!SupportsServiceAutostart()) return true;
   // Enabling sets the flag and disabling removes every task, so a task without
   // the flag predates service startup. Remove it rather than silently turning
-  // it into pre-login access. With the flag set, only fold a Run entry back
-  // into the elevated handoff task.
+  // it into pre-login access. With the flag set, upgrade the existing login entry.
   return IsUnattendedEnabled() ? platform::MigrateLegacyAutostart("CrossDesk")
                                : platform::RemoveInstalledAutostart("CrossDesk");
 }

@@ -1313,9 +1313,8 @@ int GuiApplication::Run(bool login_launch) {
         ApplySettingsFromConfig(effect == SettingEffect::reconnect);
       });
 #endif
-  const bool start_in_tray = login_launch && config_center_->IsSilentAutostart();
 #ifdef __APPLE__
-  if (start_in_tray) SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
+  if (login_launch) SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
 #endif
   if (!InitializeSDL()) {
     return -1;
@@ -1348,7 +1347,7 @@ int GuiApplication::Run(bool login_launch) {
   // The native tray icon is managed outside Slint, so Slint cannot count it
   // when deciding whether the last hidden window should stop the event loop.
   // Keep the loop alive until the tray's explicit Exit action requests quit.
-  if (!start_in_tray || !MinimizeMainWindowToTray()) {
+  if (!login_launch || !MinimizeMainWindowToTray()) {
     ui_->main->show();
 #if _WIN32
     ConfigureWindowsWindowIcons(ui_->main->window().win32_hwnd());
@@ -1716,12 +1715,6 @@ void GuiApplication::ResetSettingsUi(bool gallery_window) {
   enable_autostart_ = config_center_->IsEnableAutostart();
 #endif
   main->set_autostart_enabled(enable_autostart_);
-  main->set_silent_autostart(config_center_->IsSilentAutostart());
-#ifdef _WIN32
-  main->set_silent_autostart_available(SupportsServiceAutostart());
-#else
-  main->set_silent_autostart_available(true);
-#endif
 #if defined(__OHOS__)
   main->set_autostart_system_managed(true);
 #endif
@@ -5128,9 +5121,7 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
 #ifdef _WIN32
   identity_ready = !enable_autostart_ || PrepareSharedGuiIdentity(false);
 #endif
-  const bool require_login_marker =
-      main->get_silent_autostart() && !config_center_->IsSilentAutostart();
-  if (!identity_ready || config_center_->SetAutostart(enable_autostart_, require_login_marker) != 0) {
+  if (!identity_ready || config_center_->SetAutostart(enable_autostart_) != 0) {
     enable_autostart_ = config_center_->IsEnableAutostart();
     main->set_autostart_enabled(enable_autostart_);
     main->set_settings_save_error(UiText(
@@ -5142,12 +5133,6 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
     return false;
   }
 #endif
-  if (config_center_->SetSilentAutostart(main->get_silent_autostart()) != 0) {
-    main->set_silent_autostart(config_center_->IsSilentAutostart());
-    main->set_settings_save_error(UiText(
-        localization::Literal("保存失败，请重试", localization_language_index_)));
-    return false;
-  }
   if (config_center_->SetDaemon(enable_daemon_) != 0) {
     enable_daemon_ = config_center_->IsEnableDaemon();
     main->set_daemon_enabled(enable_daemon_);

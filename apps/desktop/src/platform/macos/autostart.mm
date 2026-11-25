@@ -18,6 +18,43 @@ std::filesystem::path AutostartPath(const std::string& app_name) {
          (app_name + ".plist");
 }
 
+bool ConfigureLaunchAgent(const std::string& app_name,
+                          const std::string& executable_path, bool create) {
+  const std::filesystem::path path = AutostartPath(app_name);
+  if (path.empty()) return false;
+
+  std::error_code error;
+  @autoreleasepool {
+    NSString* label = @(app_name.c_str());
+    NSString* executable = @(executable_path.c_str());
+    NSURL* url = [NSURL fileURLWithPath:@(path.c_str())];
+    NSMutableDictionary* agent = [NSMutableDictionary dictionary];
+    NSArray* arguments = @[executable];
+    if (std::filesystem::exists(path, error)) {
+      // Add the marker to our existing job without losing launchd overrides.
+      NSDictionary* existing = [NSDictionary dictionaryWithContentsOfURL:url error:nullptr];
+      if (!existing) return false;
+      arguments = existing[@"ProgramArguments"];
+      if (![existing[@"Label"] isEqual:label] || ![arguments isKindOfClass:NSArray.class] ||
+          ![arguments.firstObject isEqual:executable]) return !create;
+      if ([arguments containsObject:@"--autostart"] || (!create && arguments.count != 1)) return true;
+      [agent addEntriesFromDictionary:existing];
+    } else {
+      if (error) return false;
+      if (!create) return true;
+      std::filesystem::create_directories(path.parent_path(), error);
+      if (error) return false;
+      agent[@"Label"] = label;
+      agent[@"RunAtLoad"] = @YES;
+    }
+    agent[@"ProgramArguments"] = [arguments arrayByAddingObject:@"--autostart"];
+    NSData* plist = [NSPropertyListSerialization
+        dataWithPropertyList:agent format:NSPropertyListXMLFormat_v1_0
+                     options:0 error:nullptr];
+    return [plist writeToURL:url options:NSDataWritingAtomic error:nullptr];
+  }
+}
+
 }  // namespace
 
 std::string GetAutostartExecutablePath() {
@@ -30,38 +67,12 @@ std::string GetAutostartExecutablePath() {
 
 bool EnableAutostart(const std::string& app_name,
                      const std::string& executable_path) {
-  const std::filesystem::path path = AutostartPath(app_name);
-  if (path.empty()) return false;
+  return ConfigureLaunchAgent(app_name, executable_path, true);
+}
 
-  std::error_code error;
-  std::filesystem::create_directories(path.parent_path(), error);
-  if (error) return false;
-
-  @autoreleasepool {
-    NSString* label = @(app_name.c_str());
-    NSString* executable = @(executable_path.c_str());
-    NSURL* url = [NSURL fileURLWithPath:@(path.c_str())];
-    NSMutableDictionary* agent = [NSMutableDictionary dictionary];
-    NSArray* arguments = @[executable];
-    if (std::filesystem::exists(path, error)) {
-      // Add the marker to our existing job without losing launchd overrides.
-      NSDictionary* existing = [NSDictionary dictionaryWithContentsOfURL:url error:nullptr];
-      arguments = existing[@"ProgramArguments"];
-      if (![existing[@"Label"] isEqual:label] || ![arguments isKindOfClass:NSArray.class] ||
-          ![arguments.firstObject isEqual:executable]) return false;
-      if ([arguments containsObject:@"--autostart"]) return true;
-      [agent addEntriesFromDictionary:existing];
-    } else {
-      if (error) return false;
-      agent[@"Label"] = label;
-      agent[@"RunAtLoad"] = @YES;
-    }
-    agent[@"ProgramArguments"] = [arguments arrayByAddingObject:@"--autostart"];
-    NSData* plist = [NSPropertyListSerialization
-        dataWithPropertyList:agent format:NSPropertyListXMLFormat_v1_0
-                     options:0 error:nullptr];
-    return [plist writeToURL:url options:NSDataWritingAtomic error:nullptr];
-  }
+bool MigrateLegacyAutostart(const std::string& app_name) {
+  const auto executable = GetAutostartExecutablePath();
+  return !executable.empty() && ConfigureLaunchAgent(app_name, executable, false);
 }
 
 bool DisableAutostart(const std::string& app_name) {

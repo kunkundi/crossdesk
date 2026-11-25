@@ -30,6 +30,7 @@
 
 #include "config_center.h"
 #include "path_manager.h"
+#include "platform/autostart_backend.h"
 #include "platform/instance_activation.h"
 #include "platform/single_instance.h"
 #include "rd_log.h"
@@ -40,7 +41,6 @@
 
 #ifdef __linux__
 #include "SimpleIni.h"
-#include "platform/linux/autostart.h"
 #include "platform/linux/headless/headless_console.h"
 #include "platform/linux/headless/headless_session.h"
 #include "platform/linux/privacy/privacy_guard.h"
@@ -298,11 +298,10 @@ static int RunApplication(int argc, char* argv[], bool login_launch) {
     std::string cache_path = path_manager->GetCachePath().string();
     crossdesk::ConfigCenter config_center(cache_path + "/config.ini");
     enable_daemon = config_center.IsEnableDaemon();
-#ifdef __linux__
-    if (config_center.IsEnableAutostart() &&
-        !crossdesk::platform::MigrateLegacyAutostart("CrossDesk")) {
+#if defined(__linux__) || defined(__APPLE__)
+    if (!crossdesk::platform::MigrateLegacyAutostart("CrossDesk")) {
       crossdesk::get_logger()->warn(
-          "Could not migrate the legacy Linux autostart entry");
+          "Could not migrate the legacy autostart entry");
     }
 #endif
   }

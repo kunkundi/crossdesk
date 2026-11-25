@@ -193,8 +193,7 @@ Open **☰ → Settings** in the top-right corner, choose **General / DeskHub**,
 | Save remote screen previews | On by default. When disabled, the thumbnail area shows the remote device’s platform and existing previews are cleared; connection records and passwords are preserved |
 | Privacy screen on connect | Automatically enable privacy when this computer is controlled remotely; the controller can toggle it from the session toolbar |
 | Self-Hosted Config | Click Edit to set the server address and signaling port, then enable the switch on the right |
-| Auto Start | Installed Windows Release builds use the same ID and password before and after sign-in, with the GUI attaching to the background service after login. Unavailable in portable and Debug Windows builds. Other desktop platforms start at desktop login |
-| Start in tray at login | With Auto Start enabled, turn this on to start in the system tray when you sign in. Open the main window from the tray. Off by default |
+| Auto Start | Installed Windows Release builds use the same ID and password before and after sign-in, with the GUI attaching to the background service after login. Unavailable in portable and Debug Windows builds. With Auto Start enabled, CrossDesk starts in the system tray at desktop login. Open the main window from the tray. |
 | Enable Daemon | On Windows / macOS / Linux desktops, saving immediately enables or disables restart after an abnormal exit. Normal exit or logoff does not relaunch the app; headless console mode does not use the built-in daemon |
 | File Save Path | Choose where received files are saved |
 
@@ -317,7 +316,7 @@ These are development builds. Follow the [HarmonyOS build guide](../apps/harmony
 
 The installer registers an on-demand service by default. CrossDesk tries to start it on launch. Unless unattended mode is enabled, the service exits when no local CrossDesk client is running. Portable builds offer service installation in the prompt or **Settings → Lock Screen Service**, with administrator privileges.
 
-In installed Windows Release builds, **Auto Start** enables remote access before sign-in with the same ID and password. After sign-in, the interface opens in the main window or the system tray, according to your settings. Existing connections stay active. Turning this off disables unattended startup. **Enable Daemon** separately controls recovery after an interface crash. Portable and Debug builds do not offer unattended Auto Start.
+In installed Windows Release builds, **Auto Start** enables remote access before sign-in with the same ID and password. After sign-in, the client starts in the system tray. Existing connections stay active. Turning this off disables unattended startup. **Enable Daemon** separately controls recovery after an interface crash. Portable and Debug builds do not offer unattended Auto Start.
 
 <a id="windows-service-development-update"></a>
 

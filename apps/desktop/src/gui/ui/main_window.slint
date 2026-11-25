@@ -82,7 +82,6 @@ export global UiStrings {
     in-out property <string> pause-video-when-minimized-hint: "Pause video reception when the control window is minimized to reduce local decoding resource usage.";
     in-out property <string> force-relay: "Force relay";
     in-out property <string> self-hosted: "Self-hosted server";
-    in-out property <string> silent-autostart: "Start in tray at login";
     in-out property <string> autostart: "Start with system";
     in-out property <string> daemon: "Run in background";
     in-out property <string> save-remote-previews: "Save remote screen previews";
@@ -761,8 +760,6 @@ export component MainWindow inherits Window {
     in-out property <bool> force-relay-enabled: false;
     in-out property <bool> self-hosted-enabled: false;
     in-out property <bool> autostart-enabled: false;
-    in-out property <bool> silent-autostart: false;
-    in property <bool> silent-autostart-available: false;
     in property <bool> autostart-available: true;
     in property <bool> service-autostart-platform: false;
     in property <string> service-autostart-hint;
@@ -3119,18 +3116,13 @@ export component MainWindow inherits Window {
                             }
                         }
                         SettingsGroup {
-                            title: GalleryStrings.texts[123]; rows: root.silent-autostart-available ? 3 : 2;
+                            title: GalleryStrings.texts[123]; rows: 2;
                             if !root.autostart-system-managed: SettingsToggleRow { label: UiStrings.autostart; checked <=> root.autostart-enabled; enabled: root.autostart-available && !root.settings-session-active; }
                             if root.autostart-system-managed: SettingsToggleRow {
                                 label: UiStrings.autostart;
                                 checked: root.autostart-status == AutostartStatus.enabled;
                                 toggle-on-click: false;
                                 clicked => { root.autostart-guide-open = true; }
-                            }
-                            if root.silent-autostart-available: SettingsToggleRow {
-                                label: UiStrings.silent-autostart; checked <=> root.silent-autostart;
-                                enabled: !root.settings-session-active && (root.autostart-system-managed
-                                    ? root.autostart-status == AutostartStatus.enabled : root.autostart-enabled);
                             }
                             SettingsToggleRow { label: UiStrings.daemon; checked <=> root.daemon-enabled; enabled: !root.settings-session-active; divider: false; }
                         }

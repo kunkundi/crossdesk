@@ -3672,18 +3672,6 @@
       "es": "Habilitar pantalla de privacidad",
       "pt-BR": "Habilitar tela de privacidade"
     },
-    "开机后静默启动": {
-      "zh-Hans": "开机后静默启动",
-      "en": "Start in tray at login",
-      "ru": "При входе запускать в трее",
-      "zh-Hant": "開機後靜默啟動",
-      "ja": "ログイン時はトレイに常駐",
-      "ko": "로그인 시 트레이에서 시작",
-      "de": "Bei Anmeldung im Infobereich starten",
-      "fr": "Démarrer dans la zone de notification",
-      "es": "Iniciar en la bandeja al entrar",
-      "pt-BR": "Iniciar na bandeja ao entrar"
-    },
     "开机自启": {
       "zh-Hans": "开机自启",
       "en": "Auto Start",
@@ -12126,7 +12114,6 @@
     "input_connection_alias": "请输入连接名称:",
     "confirm_delete_connection": "确认删除此连接",
     "enable_autostart": "开机自启",
-    "silent_autostart": "开机后静默启动",
     "enable_daemon": "启用守护进程",
     "privacy_on_connect": "被连接时开启隐私屏",
     "lock_on_disconnect": "连接断开后锁屏",
@@ -12601,7 +12588,6 @@
       "开启群控",
       "开启隐私屏",
       "开机自启",
-      "开机后静默启动",
       "开源组件",
       "强制中继连接",
       "当前仍需要安全桌面专用采集/输入",

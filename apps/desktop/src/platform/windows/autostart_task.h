@@ -78,10 +78,6 @@ inline std::wstring BuildAutostartTaskXml(const std::wstring& user_sid,
          L"</WorkingDirectory></Exec></Actions></Task>";
 }
 
-// Called at normal startup and by the installer after an upgrade. Only migrate
-// a legacy Run entry pointing to this executable, leaving other copies alone.
-bool MigrateLegacyAutostart(const std::string& app_name);
-
 // Installer cleanup: remove tasks for this executable across users, preserving
 // registrations belonging to other installation/portable directories.
 bool RemoveInstalledAutostart(const std::string& app_name);

@@ -1,5 +1,4 @@
 #include "platform/autostart_backend.h"
-#include "platform/linux/autostart.h"
 
 #include <limits.h>
 #include <unistd.h>
@@ -97,16 +96,15 @@ bool EnableAutostart(const std::string& app_name,
       "Name=" + app_name + "\n");
 }
 
-bool MigrateLegacyAutostart(const std::string& app_name, bool require_login_marker) {
+bool MigrateLegacyAutostart(const std::string& app_name) {
   const auto launcher = GetAutostartExecutablePath();
   if (launcher.empty()) return false;
-  if (!require_login_marker && launcher != kInstalledLauncher) return true;
   const std::filesystem::path path = AutostartPath(app_name);
   if (path.empty()) return false;
   std::error_code error;
   const bool exists = std::filesystem::exists(path, error);
   if (error) return false;
-  if (!exists) return !require_login_marker;  // Never recreate a removed entry.
+  if (!exists) return true;
   if (!std::filesystem::is_regular_file(path, error) || error) return false;
 
   std::ifstream file(path);
@@ -137,7 +135,7 @@ bool MigrateLegacyAutostart(const std::string& app_name, bool require_login_mark
     }
     start = end == contents.size() ? end : end + 1;
   }
-  return !require_login_marker;  // Leave custom commands and other installations alone.
+  return true;  // Leave custom commands and other installations alone.
 }
 
 bool DisableAutostart(const std::string& app_name) {

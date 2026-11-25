@@ -10,6 +10,8 @@ bool EnableAutostart(const std::string& app_name,
                      const std::string& executable_path);
 bool DisableAutostart(const std::string& app_name);
 bool IsAutostartEnabled(const std::string& app_name);
+// Upgrade existing login entries for this installation without enabling startup.
+bool MigrateLegacyAutostart(const std::string& app_name);
 
 }  // namespace crossdesk::platform
 

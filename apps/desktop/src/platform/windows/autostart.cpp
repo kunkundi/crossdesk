@@ -183,6 +183,58 @@ bool RemoveLogonTask(const std::wstring& app_name) {
          Check(result, "delete logon task");
 }
 
+// Only a single executable action belonging to this installation is eligible
+// for migration or uninstall.
+bool ReadInstalledAction(IRegisteredTask* task, const std::wstring& executable,
+                         ComPtr<ITaskDefinition>& definition,
+                         ComPtr<IExecAction>& exec) {
+  ComPtr<IActionCollection> actions;
+  ComPtr<IAction> action;
+  LONG count = 0;
+  if (!Check(task->get_Definition(definition.GetAddressOf()), "read task definition") ||
+      !Check(definition->get_Actions(actions.GetAddressOf()), "read task actions") ||
+      !Check(actions->get_Count(&count), "count task actions")) return false;
+  if (count != 1) return true;
+  if (!Check(actions->get_Item(1, action.GetAddressOf()), "read task action")) return false;
+  const HRESULT result = action.As(&exec);
+  if (result == E_NOINTERFACE) return true;
+  if (!Check(result, "read executable action")) return false;
+  BSTR raw_path = nullptr;
+  if (!Check(exec->get_Path(&raw_path), "read task executable")) return false;
+  Bstr path(raw_path, SysFreeString);
+  if (!path || _wcsicmp(path.get(), executable.c_str()) != 0) exec.Reset();
+  return true;
+}
+
+bool MigrateLogonTask(const std::wstring& app_name, const std::wstring& executable) {
+  const auto sid = CurrentUserSid();
+  TaskScheduler scheduler;
+  if (sid.empty() || !scheduler.Open()) return false;
+  auto name = MakeBstr(AutostartTaskName(app_name, sid));
+  ComPtr<IRegisteredTask> task;
+  if (!name) return false;
+  const HRESULT result = scheduler.folder->GetTask(name.get(), task.GetAddressOf());
+  if (result == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND) ||
+      result == HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND)) return true;
+  if (!Check(result, "read logon task")) return false;
+  ComPtr<ITaskDefinition> definition;
+  ComPtr<IExecAction> exec;
+  if (!ReadInstalledAction(task.Get(), executable, definition, exec)) return false;
+  if (!exec) return true;
+  BSTR raw_args = nullptr;
+  if (!Check(exec->get_Arguments(&raw_args), "read logon arguments")) return false;
+  Bstr args(raw_args, SysFreeString);
+  if (args && *args.get()) return true;  // Already marked or customized.
+  auto marker = MakeBstr(L"--autostart");
+  if (!marker || !Check(exec->put_Arguments(marker.get()), "set logon arguments")) return false;
+  const VARIANT empty{};
+  ComPtr<IRegisteredTask> updated;
+  return Check(scheduler.folder->RegisterTaskDefinition(
+                   name.get(), definition.Get(), TASK_UPDATE | TASK_IGNORE_REGISTRATION_TRIGGERS,
+                   empty, empty, TASK_LOGON_INTERACTIVE_TOKEN, empty, updated.GetAddressOf()),
+               "update logon arguments");
+}
+
 }  // namespace
 
 std::string GetAutostartExecutablePath() {
@@ -238,17 +290,19 @@ bool MigrateLegacyAutostart(const std::string& app_name) {
   if (!kAutostartRequiresElevation) return true;
   std::wstring command;
   const auto name = FromUtf8(app_name);
-  if (name.empty()) return false;
-  const LONG result = ReadRunEntry(name, &command);
-  if (result == ERROR_FILE_NOT_FOUND || result == ERROR_PATH_NOT_FOUND)
-    return true;
-  if (result != ERROR_SUCCESS) return false;
-  if (command.size() >= 2 && command.front() == L'"' && command.back() == L'"')
-    command = command.substr(1, command.size() - 2);
   const auto executable = GetAutostartExecutablePath();
-  if (executable.empty()) return false;
-  if (_wcsicmp(command.c_str(), FromUtf8(executable).c_str()) != 0) return true;
-  return EnableAutostart(app_name, executable);
+  if (name.empty() || executable.empty()) return false;
+  const auto path = FromUtf8(executable);
+  const LONG result = ReadRunEntry(name, &command);
+  if (result == ERROR_SUCCESS) {
+    if (command.size() >= 2 && command.front() == L'"' && command.back() == L'"')
+      command = command.substr(1, command.size() - 2);
+    if (_wcsicmp(command.c_str(), path.c_str()) == 0)
+      return EnableAutostart(app_name, executable);
+  } else if (result != ERROR_FILE_NOT_FOUND && result != ERROR_PATH_NOT_FOUND) {
+    return false;
+  }
+  return MigrateLogonTask(name, path);
 }
 
 namespace {
@@ -283,27 +337,9 @@ bool CollectInstalledAutostart(const std::string& app_name,
     const std::wstring task_text(task_name.get() ? task_name.get() : L"");
     if (task_text.compare(0, prefix.size(), prefix) != 0) continue;
     ComPtr<ITaskDefinition> definition;
-    ComPtr<IActionCollection> actions;
-    ComPtr<IAction> action;
     ComPtr<IExecAction> exec;
-    LONG action_count = 0;
-    if (!Check(task->get_Definition(definition.GetAddressOf()),
-               "read task definition") ||
-        !Check(definition->get_Actions(actions.GetAddressOf()),
-               "read task actions") ||
-        !Check(actions->get_Count(&action_count), "count task actions"))
-      return false;
-    if (action_count != 1) continue;
-    if (!Check(actions->get_Item(1, action.GetAddressOf()), "read task action"))
-      return false;
-    const HRESULT queried = action.As(&exec);
-    if (queried == E_NOINTERFACE) continue;
-    if (!Check(queried, "read executable action")) return false;
-    BSTR raw_path = nullptr;
-    if (!Check(exec->get_Path(&raw_path), "read task executable")) return false;
-    Bstr path(raw_path, SysFreeString);
-    if (path && _wcsicmp(path.get(), executable.c_str()) == 0)
-      matching_tasks.push_back(task_text);
+    if (!ReadInstalledAction(task.Get(), executable, definition, exec)) return false;
+    if (exec) matching_tasks.push_back(task_text);
   }
   std::wstring command;
   const LONG result = ReadRunEntry(name, &command);

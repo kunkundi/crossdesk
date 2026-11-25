@@ -12,6 +12,7 @@
 
 #include "SimpleIni.h"
 #include "autostart.h"
+#include "platform/autostart_backend.h"
 #include "rd_log.h"
 #include <minirtc.h>
 
@@ -25,7 +26,6 @@
 #endif
 
 #if defined(__linux__) && !defined(__OHOS__)
-#include "platform/linux/autostart.h"
 #include "platform/linux/runtime_daemon.h"
 #endif
 
@@ -104,6 +104,7 @@ int ConfigCenter::Load() {
       ini_->Delete(section_, "enable_desktop_quality_optimization");
   persist_config_migration |=
       ini_->Delete(section_, "enable_minimize_to_tray");
+  persist_config_migration |= ini_->Delete(section_, "silent_autostart");
   // The legacy global flag carries no release identity.
   persist_config_migration |=
       ini_->Delete(section_, "sponsorship_prompt_dismissed");
@@ -206,7 +207,6 @@ int ConfigCenter::Load() {
   }
   enable_autostart_ =
       ini_->GetBoolValue(section_, "enable_autostart", enable_autostart_);
-  silent_autostart_ = ini_->GetBoolValue(section_, "silent_autostart", false);
   enable_daemon_ = ini_->GetBoolValue(section_, "enable_daemon", enable_daemon_);
   enable_privacy_screen_.store(
       ini_->GetBoolValue(section_, "enable_privacy_screen", true));
@@ -339,7 +339,6 @@ int ConfigCenter::Save() {
   }
 
   ini_->SetBoolValue(section_, "enable_autostart", enable_autostart_);
-  ini_->SetBoolValue(section_, "silent_autostart", silent_autostart_);
   ini_->SetBoolValue(section_, "enable_daemon", enable_daemon_);
   ini_->SetBoolValue(section_, "enable_privacy_screen",
                     enable_privacy_screen_.load());
@@ -549,13 +548,13 @@ int ConfigCenter::SetSelfHosted(bool enabled) {
   return 0;
 }
 
-int ConfigCenter::SetAutostart(bool enabled, bool require_login_marker) {
+int ConfigCenter::SetAutostart(bool enabled) {
 #ifdef _WIN32
   // System registration determines success; INI only mirrors the last
   // successfully applied preference. Unsupported builds never touch services.
   if (!SupportsServiceAutostart()) {
     if (enabled) return -1;
-  } else if (!ServiceAutostartMatches(enabled) || (enabled && require_login_marker)) {
+  } else if (!ServiceAutostartMatches(enabled)) {
     std::string error;
     if (!SetServiceAutostart(enabled, error)) {
       LOG_ERROR("Cannot configure autostart: {}", error);
@@ -573,19 +572,13 @@ int ConfigCenter::SetAutostart(bool enabled, bool require_login_marker) {
   const auto configure = [](bool value) {
     return value ? EnableAutostart("CrossDesk") : DisableAutostart("CrossDesk");
   };
-#if defined(__linux__) && !defined(__OHOS__)
-  // Repair old deb entries even when the saved boolean is unchanged, keeping
-  // desktop-managed disabled flags and custom commands intact.
-  if (enabled && previous && !platform::MigrateLegacyAutostart("CrossDesk", require_login_marker)) {
-    LOG_ERROR("Failed to migrate Linux autostart");
+#if defined(__APPLE__) || (defined(__linux__) && !defined(__OHOS__))
+  if (enabled && previous && !platform::MigrateLegacyAutostart("CrossDesk")) {
+    LOG_ERROR("Failed to migrate the existing autostart entry");
     return -1;
   }
 #endif
-  bool update_registration = enabled != previous;
-#ifdef __APPLE__
-  update_registration |= enabled && require_login_marker;
-#endif
-  if (update_registration && !configure(enabled)) {
+  if (enabled != previous && !configure(enabled)) {
     LOG_ERROR("Cannot configure autostart");
     return -1;
   }
@@ -597,13 +590,6 @@ int ConfigCenter::SetAutostart(bool enabled, bool require_login_marker) {
   enable_autostart_ = enabled;
   return 0;
 #endif
-}
-
-int ConfigCenter::SetSilentAutostart(bool enabled) {
-  if (enabled == silent_autostart_) return 0;
-  if (StoreValues({{"silent_autostart", enabled ? "true" : "false"}}) != 0) return -1;
-  silent_autostart_ = enabled;
-  return 0;
 }
 
 int ConfigCenter::SetDaemon(bool enabled) {
