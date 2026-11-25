@@ -38,7 +38,7 @@ class PrivacyController {
   // Includes automatic privacy suspended until the user desktop recovers.
   bool Requested() const;
   void CaptureChanged(bool running);
-  // macOS is replacing a lost capture source while the local covers stay up.
+  // A recoverable source change leaves the local privacy covers in place.
   void CaptureDisplayLost();
 
  private:

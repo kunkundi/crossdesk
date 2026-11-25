@@ -912,7 +912,7 @@ void ScreenCapturerWin::MaybeAdoptVirtualDisplay() {
   const int current_monitor = monitor_index_.load(std::memory_order_relaxed);
   LOG_INFO("Windows capturer: adopting usbmmidd display '{}' in stream slot {}",
            virtual_name, current_monitor);
-  NotifyPrivacyCapture(false);
+  if (privacy_) privacy_->CaptureDisplayLost();
   // Drain callbacks while impl_ still names their backend. A topology callback
   // can rebuild aliases and must not observe the temporary null during a swap.
   if (impl_) impl_->Stop();
@@ -929,8 +929,10 @@ void ScreenCapturerWin::MaybeAdoptVirtualDisplay() {
     replacement_display_name_ = virtual_name;
     replacement_display_slot_ = current_monitor;
   }
-  if (StartPreferredBackend(current_monitor)) {
-    if (!IsCurrentSessionUserDesktopActive()) impl_->Stop();
+  const bool started = StartPreferredBackend(current_monitor);
+  const bool on_desktop = started && IsCurrentSessionUserDesktopActive();
+  if (started) {
+    if (!on_desktop) impl_->Stop();
     virtual_display_ready_.store(false, std::memory_order_release);
     // The owner refreshes its display list and input mapping every tick from
     // GetDisplayInfoList(), so the new geometry is picked up without a hint.
@@ -947,7 +949,7 @@ void ScreenCapturerWin::MaybeAdoptVirtualDisplay() {
     }
     // Retain the stopped instance for Stop() and the next ordered retry.
   }
-  NotifyPrivacyCapture(true);
+  NotifyPrivacyCapture(on_desktop);
 }
 
 int ScreenCapturerWin::Pause(int monitor_index) {
@@ -1265,7 +1267,7 @@ void ScreenCapturerWin::CheckDisplayPresence(ULONGLONG now) {
   if (headless && desktop_available && impl_ &&
       dynamic_cast<ScreenCapturerGdi*>(impl_.get()) == nullptr) {
     const int current_monitor = monitor_index_.load(std::memory_order_relaxed);
-    NotifyPrivacyCapture(false);
+    if (privacy_) privacy_->CaptureDisplayLost();
     impl_->Stop();
     const bool started = StartPreferredBackend(current_monitor, CaptureBackendMethod(impl_.get()));
     NotifyPrivacyCapture(started);
@@ -1296,7 +1298,7 @@ void ScreenCapturerWin::RestorePhysicalDisplay() {
   JoinVirtualDisplayThread();
   if (!running_.load(std::memory_order_relaxed)) return;
   LOG_INFO("Windows capturer: physical monitor returned; restoring physical capture");
-  NotifyPrivacyCapture(false);
+  if (privacy_) privacy_->CaptureDisplayLost();
   if (impl_) impl_->Stop();
   StopSecureDesktopSharedCapture(secure_shared_session_id_);
   virtual_display_ready_.store(false, std::memory_order_release);
@@ -1315,8 +1317,9 @@ void ScreenCapturerWin::RestorePhysicalDisplay() {
   headless_recovery_.Reset();
   if (!running_.load(std::memory_order_relaxed)) return;
   const bool started = StartPreferredBackend(slot);
-  if (started && !IsCurrentSessionUserDesktopActive()) impl_->Stop();
-  NotifyPrivacyCapture(started);
+  const bool on_desktop = started && IsCurrentSessionUserDesktopActive();
+  if (started && !on_desktop) impl_->Stop();
+  NotifyPrivacyCapture(on_desktop);
   if (!started) ReleaseNativeCursor();
 }
 
@@ -1335,7 +1338,7 @@ void ScreenCapturerWin::CheckCaptureProgress(ULONGLONG now) {
     const auto failed = CaptureBackendMethod(impl_.get());
     const int monitor = monitor_index_.load(std::memory_order_relaxed);
     LOG_WARN("Windows capturer: {} has no frame; advancing DXGI/WGC/GDI fallback", CaptureBackendName(impl_.get()));
-    NotifyPrivacyCapture(false);
+    if (privacy_) privacy_->CaptureDisplayLost();
     impl_->Stop();
     // Exhausting the sequence starts a fresh ordered recovery cycle.
     const bool started = StartPreferredBackend(monitor, failed) || StartPreferredBackend(monitor);
