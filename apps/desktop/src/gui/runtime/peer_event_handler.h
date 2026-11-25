@@ -43,6 +43,7 @@ public:
   void ApplyConnectionStatus(MiniRtcConnectionStatus status, const std::string& id) {
     DispatchConnectionStatus(status, id.data(), id.size(), this);
   }
+  bool StopAcceptingIfIdle() { return callbacks_.StopAcceptingIfIdle(); }
   void StopAccepting() { callbacks_.StopAccepting(); }
   bool IsActive() const { return callbacks_.IsActive(); }
   auto EnterCallback() { return callbacks_.Enter(); }

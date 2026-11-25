@@ -105,6 +105,7 @@ class SessionManager {
   void Close(const SessionPtr& session, const std::string& error = {});
   void Tick();
   void Stop();
+  bool HasIncomingSession() const;
   bool Quiescent() const;
   std::string PendingWork() const;
 

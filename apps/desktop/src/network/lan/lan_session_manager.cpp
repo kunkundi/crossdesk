@@ -610,6 +610,11 @@ void SessionManager::Stop() {
   listener_warnings_.clear();
   for (auto& [_, s] : sessions_) Close(s);
 }
+bool SessionManager::HasIncomingSession() const {
+  return std::any_of(sessions_.begin(), sessions_.end(),
+                     [](const auto& item) { return item.second->incoming; });
+}
+
 bool SessionManager::Quiescent() const {
   return (!stopping_ || network_drained_) && sessions_.empty() &&
          auth_jobs_.empty() && prepare_jobs_.empty() && cleanup_jobs_.empty() &&

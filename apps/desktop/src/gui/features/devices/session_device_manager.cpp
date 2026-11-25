@@ -234,8 +234,9 @@ int SessionDeviceManager::InitializeScreenCapturer() {
           return;
         }
 
+        const auto stream_count = registered_display_stream_count_.load();
         const std::string stream_id = ResolveDisplayStreamId(
-            display_name, registered_display_stream_count_, -1,
+            display_name, stream_count, -1,
             last_video_frame_stream_id_);
         if (stream_id.empty()) {
           if (!invalid_video_stream_id_logged_) {
@@ -243,7 +244,7 @@ int SessionDeviceManager::InitializeScreenCapturer() {
                 "Drop captured frames with an empty or unregistered video "
                 "stream id, reported='{}', registered_streams={}",
                 display_name ? display_name : "",
-                registered_display_stream_count_);
+                stream_count);
             invalid_video_stream_id_logged_ = true;
           }
           return;
@@ -719,6 +720,34 @@ void SessionDeviceManager::PushAudio(const std::string& remote_id,
   }
 }
 
+#ifdef __APPLE__
+void SessionDeviceManager::RefreshIdleMacDisplays() {
+  bool recreate_peer = false;
+  size_t display_count = 0;
+  std::shared_lock admission(owner_.connection_status_mutex_, std::defer_lock);
+  const auto accept = [&](size_t count) {
+    if (owner_.lan_ && owner_.lan_->HasIncomingSession()) return false;
+    admission.lock();
+    if (!owner_.connection_status_.empty()) return false;
+    {
+      std::lock_guard lock(owner_.controller_trust_mutex_);
+      if (!owner_.controller_trust_.empty()) return false;
+    }
+    display_count = count;
+    // Cloud peers negotiate their registered streams when a viewer joins.
+    // Retire only the listening peer, before a new callback can enter.
+    recreate_peer = owner_.peer_ && count != registered_display_stream_count_.load();
+    return !recreate_peer || owner_.peer_events_->StopAcceptingIfIdle();
+  };
+  if (!screen_capturer_->RefreshIdleDisplays(accept)) return;
+  SyncDisplayInfo();
+  registered_display_stream_count_ = display_count;
+  owner_.selected_display_ = 0;
+  admission.unlock();
+  if (recreate_peer) owner_.CloseConnectionPeer();
+}
+#endif
+
 void SessionDeviceManager::UpdateInteractions() {
   // Restore the previous session's modes and apply the new controller's saved
   // selections before starting capture or allowing an early input return.
@@ -757,6 +786,10 @@ void SessionDeviceManager::UpdateInteractions() {
   } else if (!capture_needed && owner_.screen_capturer_is_started_) {
     StopScreenCapturer();
   }
+#ifdef __APPLE__
+  if (!capture_needed && !owner_.screen_capturer_is_started_ && screen_capturer_)
+    RefreshIdleMacDisplays();
+#endif
   if (!capture_needed) next_capture_start_retry_ = {};
   screen_sharing_power_.SetSharing(!controllers.empty() && owner_.screen_capturer_is_started_);
 

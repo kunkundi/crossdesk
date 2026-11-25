@@ -91,6 +91,10 @@ std::vector<DisplayInfo> ScreenCapturerSck::GetDisplayInfoList() {
   return std::vector<DisplayInfo>();
 }
 
+bool ScreenCapturerSck::RefreshIdleDisplays(const std::function<bool(size_t)>& accept) {
+  return screen_capturer_sck_impl_ && screen_capturer_sck_impl_->RefreshIdleDisplays(accept);
+}
+
 void ScreenCapturerSck::OnFrame() {}
 
 void ScreenCapturerSck::CleanUp() {}

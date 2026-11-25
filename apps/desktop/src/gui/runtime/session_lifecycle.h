@@ -39,6 +39,7 @@ class SessionCallbackGate {
   CallbackGuard Enter();
 
   // Called by the session owner, never from within this session's callbacks.
+  bool StopAcceptingIfIdle();
   void StopAccepting();
   void Close();
 

@@ -37,6 +37,13 @@ void SessionCallbackGate::EndCallback() {
   }
 }
 
+bool SessionCallbackGate::StopAcceptingIfIdle() {
+  std::lock_guard lock(mutex_);
+  if (!accepting_callbacks_ || running_callbacks_ != 0) return false;
+  accepting_callbacks_ = false;
+  return true;
+}
+
 void SessionCallbackGate::StopAccepting() {
   std::lock_guard lock(mutex_);
   accepting_callbacks_ = false;

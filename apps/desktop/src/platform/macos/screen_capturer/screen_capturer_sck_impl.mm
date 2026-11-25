@@ -170,6 +170,7 @@ class API_AVAILABLE(macos(14.0)) ScreenCapturerSckImpl : public ScreenCapturer {
     return display_info_list_;
   }
   int ResetToInitialMonitor() override;
+  bool RefreshIdleDisplays(const std::function<bool(size_t)>& accept) override;
 
  private:
   std::vector<DisplayInfo> display_info_list_;
@@ -189,6 +190,8 @@ class API_AVAILABLE(macos(14.0)) ScreenCapturerSckImpl : public ScreenCapturer {
   Clock::time_point configuration_started_{};
   Clock::time_point suspended_since_{};
   Clock::time_point next_recovery_{};
+  Clock::time_point refresh_displays_after_{};
+  void SetCaptureDisplays(const std::vector<CGDirectDisplayID>& display_ids);
   bool invalid_stream_id_logged_ = false;
   bool native_output_logged_ = false;
   PrivacyController* privacy_ = nullptr;
@@ -208,6 +211,13 @@ class API_AVAILABLE(macos(14.0)) ScreenCapturerSckImpl : public ScreenCapturer {
   void RetryPrivacyFilter();
   bool CheckCaptureHealth(uint64_t session);
   void CaptureConfigurationChanged() { StartOrReconfigureCapturer(); }
+  void ScreenParametersChanged() {
+    {
+      std::lock_guard lock(lock_);
+      refresh_displays_after_ = Clock::now() + std::chrono::seconds(2);
+    }
+    StartOrReconfigureCapturer();
+  }
   void CaptureStopped(SCStream* source, NSError* error);
   void CaptureSuspended(SCStream* source);
   // Called by SckHelper to notify of a newly captured frame. May run on an arbitrary thread.
@@ -335,21 +345,22 @@ ScreenCapturerSckImpl::~ScreenCapturerSckImpl() {
   Destroy();
 }
 
-static std::vector<CGDirectDisplayID> GetOnlineCaptureDisplays() {
+static bool GetOnlineCaptureDisplays(std::vector<CGDirectDisplayID>& displays) {
   uint32_t count = 0;
-  if (CGGetOnlineDisplayList(0, nullptr, &count) != kCGErrorSuccess || !count)
-    return {};
-
-  std::vector<CGDirectDisplayID> displays(count);
-  if (CGGetOnlineDisplayList(count, displays.data(), &count) != kCGErrorSuccess)
-    return {};
+  if (CGGetOnlineDisplayList(0, nullptr, &count) != kCGErrorSuccess) return false;
+  displays.resize(count);
+  if (!count) return true;
+  if (CGGetOnlineDisplayList(count, displays.data(), &count) != kCGErrorSuccess) {
+    displays.clear();
+    return false;
+  }
   displays.resize(count);
   displays.erase(std::remove_if(displays.begin(), displays.end(),
                                 [](CGDirectDisplayID id) {
                                   return CGDisplayMirrorsDisplay(id) != kCGNullDirectDisplay;
                                 }),
                  displays.end());
-  return displays;
+  return true;
 }
 
 int ScreenCapturerSckImpl::Init(const int fps, cb_desktop_data cb) {
@@ -360,8 +371,6 @@ int ScreenCapturerSckImpl::Init(const int fps, cb_desktop_data cb) {
 
   _on_data = cb;
   fps_ = fps > 0 ? fps : 60;
-  display_info_list_.clear();
-  display_id_map_.clear();
   native_output_logged_ = false;
 
   if (@available(macOS 10.15, *)) {
@@ -402,10 +411,18 @@ int ScreenCapturerSckImpl::Init(const int fps, cb_desktop_data cb) {
   if (display_ids.empty()) {
     // Sleeping displays can disappear from ScreenCaptureKit before a peer
     // negotiates its streams. CoreGraphics can still enumerate online outputs.
-    display_ids = GetOnlineCaptureDisplays();
+    GetOnlineCaptureDisplays(display_ids);
     LOG_WARN("ScreenCaptureKit display enumeration unavailable; found {} online displays",
              display_ids.size());
   }
+  std::lock_guard lock(lock_);
+  SetCaptureDisplays(display_ids);
+  return 0;
+}
+
+void ScreenCapturerSckImpl::SetCaptureDisplays(const std::vector<CGDirectDisplayID>& display_ids) {
+  display_info_list_.clear();
+  display_id_map_.clear();
   if (display_ids.empty()) {
     // Reserve Display1 even when WindowServer exposes no physical display.
     // The first successful refresh binds this slot to its real ID and bounds.
@@ -438,7 +455,30 @@ int ScreenCapturerSckImpl::Init(const int fps, cb_desktop_data cb) {
   current_monitor_index_ = initial_monitor_index_;
   current_display_ = display_id_map_[current_monitor_index_];
   current_stream_id_ = MakeDisplayStreamId(current_monitor_index_);
-  return 0;
+}
+
+bool ScreenCapturerSckImpl::RefreshIdleDisplays(const std::function<bool(size_t)>& accept) {
+  std::lock_guard lock(lock_);
+  const auto now = Clock::now();
+  if (capture_requested_ || refresh_displays_after_ == Clock::time_point{} ||
+      now < refresh_displays_after_) return false;
+
+  // WindowServer can report several intermediate layouts during a mode switch.
+  // Keep the previous snapshot on enumeration failure or concurrent admission.
+  refresh_displays_after_ = now + std::chrono::seconds(1);
+  std::vector<CGDirectDisplayID> ids;
+  if (!GetOnlineCaptureDisplays(ids) || !accept(std::max<size_t>(1, ids.size()))) return false;
+  // Keep surviving displays in their previous slots when WindowServer changes
+  // enumeration order. Fill a vacated slot with a replacement or a new screen.
+  for (size_t slot = 0; slot < ids.size() && slot < display_info_list_.size(); ++slot) {
+    const auto previous = static_cast<CGDirectDisplayID>(
+        reinterpret_cast<uintptr_t>(display_info_list_[slot].handle));
+    const auto found = std::find(ids.begin(), ids.end(), previous);
+    if (found != ids.end()) std::iter_swap(ids.begin() + slot, found);
+  }
+  SetCaptureDisplays(ids);
+  refresh_displays_after_ = {};
+  return true;
 }
 
 int ScreenCapturerSckImpl::Start(bool show_cursor) {
@@ -1061,7 +1101,7 @@ void ScreenCapturerSckImpl::StartOrReconfigureCapturer() {
   // geometry and update the stream's pixel dimensions and input bounds.
   dispatch_async(_completion_queue, ^{
     std::lock_guard<std::mutex> lock(self->_capturer_lock);
-    if (self->_capturer) self->_capturer->CaptureConfigurationChanged();
+    if (self->_capturer) self->_capturer->ScreenParametersChanged();
   });
 }
 - (void)configurationFinished:(SCStream*)stream generation:(uint64_t)generation

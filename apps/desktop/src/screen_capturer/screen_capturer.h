@@ -49,6 +49,11 @@ class ScreenCapturer {
   // Append virtual methods to preserve existing WGC plugin vtable slots.
   // Backends without index reporting retain the default primary index.
   virtual int GetCurrentMonitorIndex() const { return 0; }
+#ifdef __APPLE__
+  // Called on the UI thread. Publish a settled topology only if the host can
+  // admit its stream count for the next connection.
+  virtual bool RefreshIdleDisplays(const std::function<bool(size_t)>&) { return false; }
+#endif
 };
 }  // namespace crossdesk
 #endif
