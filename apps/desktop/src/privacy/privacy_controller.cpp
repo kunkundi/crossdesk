@@ -168,6 +168,11 @@ void PrivacyController::Fail(const std::string& reason) {
   std::lock_guard lock(mutex_);
   FailLocked(reason);
 }
+void PrivacyController::CaptureDisplayLost() {
+  std::lock_guard lock(mutex_);
+  capture_running_ = false;
+  WakeLocked();
+}
 void PrivacyController::CaptureChanged(bool running) {
   std::lock_guard lock(mutex_);
   // Windows announces a stopped capture while preparing the first session.

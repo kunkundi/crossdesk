@@ -45,12 +45,17 @@ void OnMain(std::function<void()> task) {
   dispatch_async(dispatch_get_main_queue(), ^{ FlushMacPrivacyTasks(); });
 }
 
+void RequireNewFilterLocked() {
+  ++capture_state.revision;
+  capture_state.filter_deadline = Clock::now() + std::chrono::seconds(3);
+}
+
 void PublishCovers(std::vector<uint32_t> windows, uint32_t cursor_window = 0) {
   {
     std::lock_guard lock(capture_mutex);
     capture_state.excluded_windows = std::move(windows);
     capture_state.cursor_window = cursor_window;
-    ++capture_state.revision;
+    RequireNewFilterLocked();
   }
   dispatch_async(dispatch_get_main_queue(), ^{
     [NSNotificationCenter.defaultCenter postNotificationName:@"CrossDeskPrivacyCoversChanged"
@@ -73,7 +78,6 @@ struct WindowState {
   bool check_queued = false;
   PrivacyScreenText text;
   MacPrivacyCursor cursor;
-  Clock::time_point filter_deadline{};
   Clock::time_point topology_pending_since{};
   std::string failure;
   Clock::time_point checked = Clock::now();
@@ -152,7 +156,6 @@ void SyncPrivacyDisplays(WindowState& state, NSArray<NSScreen*>* screens) {
     for (const auto& m : state.monitors)
       covers.push_back(static_cast<uint32_t>(m.cover.windowNumber));
     PublishCovers(std::move(covers), state.cursor.WindowId());
-    state.filter_deadline = Clock::now() + std::chrono::seconds(3);
   }
 }
 
@@ -396,7 +399,7 @@ class MacPrivacyBackend final : public PrivacyBackend {
             state->covers_shown = true;
           }
           if (state->failure.empty() && state->covers_shown &&
-              capture.revision != capture.applied_revision && Clock::now() >= state->filter_deadline)
+              capture.revision != capture.applied_revision && Clock::now() >= capture.filter_deadline)
             state->failure = "ScreenCaptureKit did not update the privacy cover filter";
           if (state->failure.empty() && state->covers_shown) {
             state->failure = state->cursor.Healthy() ? CoverageFailure(*state)
@@ -462,9 +465,15 @@ MacPrivacyCaptureState GetMacPrivacyCaptureState() {
   std::lock_guard lock(capture_mutex);
   return capture_state;
 }
-void AcknowledgeMacPrivacyCapture(uint64_t revision) {
+void InvalidateMacPrivacyCaptureFilter() {
   std::lock_guard lock(capture_mutex);
-  if (revision == capture_state.revision) capture_state.applied_revision = revision;
+  RequireNewFilterLocked();
+}
+bool AcknowledgeMacPrivacyCapture(uint64_t revision) {
+  std::lock_guard lock(capture_mutex);
+  if (revision != capture_state.revision) return false;
+  capture_state.applied_revision = revision;
+  return true;
 }
 std::unique_ptr<PrivacyBackend> CreateMacPrivacyBackend() {
   return std::make_unique<MacPrivacyBackend>();

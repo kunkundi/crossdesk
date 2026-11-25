@@ -38,6 +38,8 @@ class PrivacyController {
   // Includes automatic privacy suspended until the user desktop recovers.
   bool Requested() const;
   void CaptureChanged(bool running);
+  // macOS is replacing a lost capture source while the local covers stay up.
+  void CaptureDisplayLost();
 
  private:
   void Run(Factory factory);
