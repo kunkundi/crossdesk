@@ -31,7 +31,12 @@ class DisplayInfo {
     height = bottom - top;
   }
   ~DisplayInfo() {}
-  bool operator==(const DisplayInfo&) const = default;
+  bool operator==(const DisplayInfo& other) const {
+    return handle == other.handle && name == other.name &&
+           is_primary == other.is_primary && left == other.left &&
+           top == other.top && right == other.right && bottom == other.bottom &&
+           width == other.width && height == other.height;
+  }
 
   void* handle = nullptr;
   std::string name = "";

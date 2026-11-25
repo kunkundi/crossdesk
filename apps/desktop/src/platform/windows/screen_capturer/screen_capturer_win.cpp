@@ -512,7 +512,7 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
         // as the virtual display's stream.
         const std::string_view reported(raw_stream_id);
         if (!replacement_display_name_.empty() ||
-            (reported.starts_with("Display") && reported.size() > 7 &&
+            (reported.rfind("Display", 0) == 0 && reported.size() > 7 &&
              reported.find_first_not_of("0123456789", 7) == std::string_view::npos))
           return;
         // Unknown backend labels are presentation data, not wire IDs.
@@ -1024,7 +1024,9 @@ bool ScreenCapturerWin::RefreshIdleDisplays(const std::function<bool(size_t)>& a
     // Start() retains the owned output while headless and releases it when a
     // physical monitor returns. Advertise exactly the targets that will remain.
     const bool keep_virtual = ForceHeadlessEnabled() || QueryAttachedPhysicalDisplayMode().width <= 0;
-    std::erase_if(displays, [&](const auto& d) { return (d.name == name) != keep_virtual; });
+    displays.erase(std::remove_if(displays.begin(), displays.end(), [&](const auto& display) {
+      return (display.name == name) != keep_virtual;
+    }), displays.end());
   }
   if (displays.empty() || displays == GetDisplayInfoList() || !accept(displays.size()))
     return false;
