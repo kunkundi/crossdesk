@@ -144,10 +144,9 @@ int main() {
   }
 
   bool ok = true;
-  static constexpr std::array<std::string_view, 11> kLegacyRootDirectories = {
-      "src",       "ios",       "scripts",    "icons",
-      "tests",     "xmake",     "shared",     "platforms",
-      "wire",      "submodules", "thirdparty"};
+  static constexpr std::array<std::string_view, 10> kLegacyRootDirectories = {
+      "src",    "ios",       "icons", "tests",      "xmake",
+      "shared", "platforms", "wire",  "submodules", "thirdparty"};
   for (std::string_view directory : kLegacyRootDirectories) {
     if (!std::filesystem::exists(repo_root / directory)) {
       continue;
