@@ -715,9 +715,15 @@ void ScreenCapturerSckImpl::OnShareableContentCreated(SCShareableContent *conten
            generation, privacy_capture.revision, excluded_ids.size(),
            excluded.count);
   if (!privacy_filter_complete) {
-    bool have_stream;
-    { std::lock_guard lock(lock_); have_stream = stream_ != nil; }
-    if (privacy_capture.applied_revision == privacy_capture.revision) {
+    bool have_stream, layout_settling;
+    {
+      std::lock_guard lock(lock_);
+      have_stream = stream_ != nil;
+      layout_settling = Clock::now() < refresh_displays_after_;
+    }
+    // A departing display may take its window out of SCK's list before
+    // AppKit publishes the replacement covers. Keep the last complete filter.
+    if (privacy_capture.applied_revision == privacy_capture.revision && !layout_settling) {
       if (privacy_) privacy_->Fail("ScreenCaptureKit could not enumerate every privacy cover");
       return; // Preserve the existing exclusion until recovery removes covers.
     }

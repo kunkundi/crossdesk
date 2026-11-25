@@ -71,7 +71,10 @@ struct WindowState {
   bool recovering = false;
   bool covers_shown = false;
   bool check_queued = false;
+  PrivacyScreenText text;
   MacPrivacyCursor cursor;
+  Clock::time_point filter_deadline{};
+  Clock::time_point topology_pending_since{};
   std::string failure;
   Clock::time_point checked = Clock::now();
 };
@@ -99,6 +102,60 @@ CrossDeskPrivacyPanel* MakePanel(NSRect frame, NSInteger level) {
   return panel;
 }
 
+// Run on the AppKit thread. Keep existing covers opaque when moving or
+// resizing them; a new display joins an already-private desktop covered.
+void SyncPrivacyDisplays(WindowState& state, NSArray<NSScreen*>* screens) {
+  // AppKit can briefly have no screens during a mode change. Keep the old
+  // panels until the new desktop is known; health checks bound this wait.
+  if (!screens.count) return;
+  bool windows_changed = false;
+  std::vector<CGDirectDisplayID> ids;
+  for (NSScreen* screen in screens) {
+    const auto id = [screen.deviceDescription[@"NSScreenNumber"] unsignedIntValue];
+    ids.push_back(id);
+    const auto bounds = CGDisplayBounds(id);
+    const auto frame = screen.frame;
+    const auto existing = std::find_if(state.monitors.begin(), state.monitors.end(),
+        [id](const Monitor& m) { return m.id == id; });
+    if (existing != state.monitors.end()) {
+      if (!NSEqualRects(existing->frame, frame) || !CGRectEqualToRect(existing->bounds, bounds)) {
+        [existing->cover setFrame:frame display:YES];
+        existing->frame = frame;
+        existing->bounds = bounds;
+      }
+      continue;
+    }
+    const auto& text = state.text;
+    NSView* content = CreateMacPrivacyCoverView(NSMakeRect(0, 0, frame.size.width, frame.size.height),
+        [NSString stringWithUTF8String:(text.allow_local_unlock ? text.unlock_hint : text.locked_hint).c_str()],
+        text.allow_local_unlock, text.black_screen);
+    if (!content) {
+      state.failure = "Could not load the CrossDesk privacy screen logo";
+      return;
+    }
+    auto* cover = MakePanel(frame, CGWindowLevelForKey(kCGScreenSaverWindowLevelKey) + 1);
+    cover.contentView = content;
+    cover.alphaValue = state.covers_shown ? 1 : 0;
+    [cover orderFrontRegardless];
+    state.monitors.push_back({id, bounds, frame, cover});
+    windows_changed = true;
+  }
+  const auto removed = std::remove_if(state.monitors.begin(), state.monitors.end(), [&](const Monitor& m) {
+    if (std::find(ids.begin(), ids.end(), m.id) != ids.end()) return false;
+    [m.cover orderOut:nil];
+    [m.cover close];
+    return true;
+  });
+  if (windows_changed || removed != state.monitors.end()) {
+    state.monitors.erase(removed, state.monitors.end());
+    std::vector<uint32_t> covers;
+    for (const auto& m : state.monitors)
+      covers.push_back(static_cast<uint32_t>(m.cover.windowNumber));
+    PublishCovers(std::move(covers), state.cursor.WindowId());
+    state.filter_deadline = Clock::now() + std::chrono::seconds(3);
+  }
+}
+
 bool IsSystemCursorPlane(NSDictionary* info, CGRect bounds) {
   const auto layer = [info[(__bridge NSString*)kCGWindowLayer] intValue];
   // WindowServer's cursor plane also carries small recording indicators.
@@ -118,24 +175,38 @@ bool IsSystemCursorPlane(NSDictionary* info, CGRect bounds) {
       !system_executable.empty() && system_executable == executable;
 }
 
-std::string CoverageFailure(const std::vector<Monitor>& monitors) {
-  uint32_t count = 0;
-  if (CGGetActiveDisplayList(0, nullptr, &count) != kCGErrorSuccess || !count)
-    return "No active macOS desktop; privacy screen unavailable";
-  std::vector<CGDirectDisplayID> displays(count);
-  if (CGGetActiveDisplayList(count, displays.data(), &count) != kCGErrorSuccess ||
-      count != monitors.size())
-    return "Display topology changed; turn privacy off to recover";
-  for (const auto& m : monitors) {
-    if (std::find(displays.begin(), displays.end(), m.id) == displays.end() ||
-        !CGRectEqualToRect(CGDisplayBounds(m.id), m.bounds) ||
-        !m.cover.visible || !m.cover.isOnActiveSpace ||
-        !NSEqualRects(m.cover.frame, m.frame) || m.cover.alphaValue != 1.0)
-      return "Privacy cover or display geometry changed; privacy screen unavailable";
-  }
+std::string CoverageFailure(WindowState& state) {
   NSDictionary* session = CFBridgingRelease(CGSessionCopyCurrentDictionary());
   if (!session || ![session[(__bridge NSString*)kCGSessionOnConsoleKey] boolValue])
     return "macOS session is not on console; privacy screen unavailable";
+  const auto& monitors = state.monitors;
+  uint32_t count = 0;
+  if (CGGetActiveDisplayList(0, nullptr, &count) != kCGErrorSuccess)
+    return "No active macOS desktop; privacy screen unavailable";
+  std::vector<CGDirectDisplayID> displays(count);
+  if (count && CGGetActiveDisplayList(count, displays.data(), &count) != kCGErrorSuccess)
+    return "Cannot enumerate active macOS displays";
+  displays.resize(count);
+  const bool settled = count && monitors.size() == displays.size() &&
+      std::all_of(monitors.begin(), monitors.end(), [&](const Monitor& m) {
+        return std::find(displays.begin(), displays.end(), m.id) != displays.end() &&
+               CGRectEqualToRect(CGDisplayBounds(m.id), m.bounds);
+      });
+  if (!settled) {
+    // CoreGraphics and AppKit can report the same hotplug on different ticks.
+    // Continue protecting the known displays while their layouts converge.
+    const auto now = Clock::now();
+    if (state.topology_pending_since == Clock::time_point{}) state.topology_pending_since = now;
+    if (now - state.topology_pending_since >= std::chrono::seconds(3))
+      return "Privacy cover topology did not settle after a display change";
+    return {};
+  }
+  state.topology_pending_since = {};
+  for (const auto& m : monitors) {
+    if (!m.cover.visible || !m.cover.isOnActiveSpace ||
+        !NSEqualRects(m.cover.frame, m.frame) || m.cover.alphaValue != 1.0)
+      return "Privacy cover is not visible across the display";
+  }
 
   NSArray* windows = CFBridgingRelease(CGWindowListCopyWindowInfo(
       kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
@@ -232,31 +303,8 @@ class MacPrivacyBackend final : public PrivacyBackend {
           state->failure = "Cannot prepare the privacy cursor";
           return;
         }
-        std::vector<uint32_t> covers;
-        for (NSScreen* screen in NSScreen.screens) {
-          Monitor m;
-          m.id = [screen.deviceDescription[@"NSScreenNumber"] unsignedIntValue];
-          m.bounds = CGDisplayBounds(m.id);
-          m.frame = screen.frame;
-          NSView* content = CreateMacPrivacyCoverView(
-              NSMakeRect(0, 0, m.frame.size.width, m.frame.size.height),
-              [NSString stringWithUTF8String:(text.allow_local_unlock ? text.unlock_hint : text.locked_hint).c_str()],
-              text.allow_local_unlock, text.black_screen);
-          if (!content) {
-            state->failure = "Could not load the CrossDesk privacy screen logo";
-            break;
-          }
-          m.cover = MakePanel(m.frame, CGWindowLevelForKey(kCGScreenSaverWindowLevelKey) + 1);
-          m.cover.contentView = content;
-          // Register transparent windows first. Make them opaque only after
-          // SCK has acknowledged exclusion, avoiding a black remote frame.
-          m.cover.alphaValue = 0;
-          [m.cover orderFrontRegardless];
-          covers.push_back(static_cast<uint32_t>(m.cover.windowNumber));
-          state->monitors.push_back(std::move(m));
-        }
-        PublishCovers(std::move(covers), state->cursor.WindowId());
-        if (state->monitors.empty()) state->failure = "No active macOS desktop";
+        state->text = text;
+        SyncPrivacyDisplays(*state, NSScreen.screens);
         state->checked = Clock::now();
       }
     });
@@ -267,6 +315,7 @@ class MacPrivacyBackend final : public PrivacyBackend {
     auto state = state_;
     OnMain([state, text] {
       std::lock_guard lock(state->mutex);
+      state->text = text;
       for (const auto& monitor : state->monitors) {
         if (!UpdateMacPrivacyCoverView(monitor.cover.contentView,
             [NSString stringWithUTF8String:(text.allow_local_unlock ? text.unlock_hint : text.locked_hint).c_str()],
@@ -297,6 +346,7 @@ class MacPrivacyBackend final : public PrivacyBackend {
       }
       state->monitors.clear();
       state->covers_shown = false;
+      state->topology_pending_since = {};
       state->cursor.Restore();
       PublishCovers({});
       state->failure.clear();
@@ -328,6 +378,7 @@ class MacPrivacyBackend final : public PrivacyBackend {
       OnMain([state] {
         std::lock_guard lock(state->mutex);
         if (!state->recovered && !state->recovering && state->failure.empty()) {
+          SyncPrivacyDisplays(*state, NSScreen.screens);
           const auto capture = GetMacPrivacyCaptureState();
           if (!state->covers_shown && !state->monitors.empty() &&
               capture.revision == capture.applied_revision) {
@@ -344,8 +395,11 @@ class MacPrivacyBackend final : public PrivacyBackend {
             }
             state->covers_shown = true;
           }
-          if (state->covers_shown) {
-            state->failure = state->cursor.Healthy() ? CoverageFailure(state->monitors)
+          if (state->failure.empty() && state->covers_shown &&
+              capture.revision != capture.applied_revision && Clock::now() >= state->filter_deadline)
+            state->failure = "ScreenCaptureKit did not update the privacy cover filter";
+          if (state->failure.empty() && state->covers_shown) {
+            state->failure = state->cursor.Healthy() ? CoverageFailure(*state)
                 : "Cannot keep the local privacy cursor hidden";
           }
         }
@@ -354,7 +408,7 @@ class MacPrivacyBackend final : public PrivacyBackend {
       });
     }
     const auto capture = GetMacPrivacyCaptureState();
-    return {{}, false, state->covers_shown &&
+    return {{}, false, state->covers_shown && state->topology_pending_since == Clock::time_point{} &&
                        capture.revision == capture.applied_revision};
   }
   void WaitForEvents(unsigned timeout_ms) override {
