@@ -155,15 +155,32 @@ public final class MainActivity extends Activity implements NativeSession.Listen
             }else view.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());return insets;
         });
         root.setFocusableInTouchMode(true);pageHost.show(canvas,motion);
-        applySystemBars(dark);
+        applySystemBars();
     }
     // Android 8–10 require system UI flags instead of WindowInsetsController.
     @SuppressWarnings("deprecation")
-    private void applySystemBars(boolean dark){
-        if(android.os.Build.VERSION.SDK_INT>=30){
-            android.view.WindowInsetsController controller=getWindow().getInsetsController();
-            if(controller!=null){int light=android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS|android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;controller.setSystemBarsAppearance(dark?0:light,light);}
-        }else getWindow().getDecorView().setSystemUiVisibility(dark?0:View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+    private void applySystemBars() {
+        boolean sessionPage = "session".equals(page);
+        boolean immersive = sessionPage && !isInMultiWindowMode();
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller == null) return;
+            int light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                    | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+            controller.setSystemBarsAppearance(sessionPage ? 0 : light, light);
+            int bars = WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars();
+            if (immersive) {
+                controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                controller.hide(bars);
+            } else {
+                controller.show(bars);
+            }
+        } else {
+            int flags = sessionPage ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            if (immersive) flags |= View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION;
+            getWindow().getDecorView().setSystemUiVisibility(flags);
+        }
     }
     private EditText field(String hint,int type){
         EditText v=new EditText(this);v.setHint(hint);v.setContentDescription(hint);v.setInputType(type);v.setSingleLine(true);v.setTextSize(17);v.setTextColor(INK);v.setHintTextColor(SECONDARY);
@@ -973,7 +990,11 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private void releaseKeys(){if(session!=null)for(int code:pressed)session.key(code,false);pressed.clear();}
     private void navigateBack(){if(backAction==null)return;navigatingBack=true;try{backAction.run();}finally{navigatingBack=false;}}
     private void back(){if(controls!=null&&controls.closeKeyboard())return;pageHost.finish();if(session!=null){if(ready)confirmDisconnect();else end("");}else if(backAction!=null)navigateBack();else finish();}
-    @Override public void onWindowFocusChanged(boolean focus){super.onWindowFocusChanged(focus);if(!focus)releaseKeys();else applySystemBars(ready);}
+    @Override public void onWindowFocusChanged(boolean focus){super.onWindowFocusChanged(focus);if(!focus)releaseKeys();else applySystemBars();}
+    @Override public void onMultiWindowModeChanged(boolean multiWindow, Configuration config) {
+        super.onMultiWindowModeChanged(multiWindow, config);
+        applySystemBars();
+    }
     // API 26–32 use this callback; API 33+ registers OnBackInvokedCallback in onCreate.
     @SuppressWarnings("deprecation")
     @android.annotation.SuppressLint("GestureBackNavigation") @Override public void onBackPressed(){back();}

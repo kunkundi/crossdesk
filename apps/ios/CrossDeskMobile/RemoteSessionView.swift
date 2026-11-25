@@ -75,6 +75,8 @@ struct RemoteSessionView: View {
     @GestureState private var statusOrbDragTranslation = CGSize.zero
 
     var body: some View {
+        let isPhone = UIDevice.current.userInterfaceIdiom == .phone
+        let videoEdges: Edge.Set = hasVerticalSystemBar ? .all : (isPhone ? .bottom : [])
         ZStack {
             Color.black.ignoresSafeArea()
             GeometryReader { proxy in
@@ -160,9 +162,9 @@ struct RemoteSessionView: View {
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 .clipped()
             }
-            // Give the video, cursor and touch surface the same full window on
-            // vertical-bar layouts. Floating controls retain their own safe area.
-            .ignoresSafeArea(.container, edges: hasVerticalSystemBar ? .all : [])
+            // Video and input can use the home indicator area together.
+            // Floating controls still use the safe area around the display cutout.
+            .ignoresSafeArea(.container, edges: videoEdges)
             .ignoresSafeArea(.keyboard)
             .transaction { transaction in
                 transaction.animation = nil
@@ -214,7 +216,8 @@ struct RemoteSessionView: View {
                     .zIndex(50)
             }
         }
-        .statusBarHidden(hasVerticalSystemBar)
+        .statusBarHidden(isPhone || hasVerticalSystemBar)
+        .persistentSystemOverlays(isPhone ? .hidden : .automatic)
         .alert(NSLocalizedString("升级提示", comment: ""), isPresented: Binding(
             get: { !session.privacyScreen.unlockNotice && session.remoteUpdateMessage != nil },
             set: { if !$0 && !session.privacyScreen.unlockNotice { session.dismissRemoteUpdate() } }

@@ -262,6 +262,9 @@ the available space. Settings and reading pages are limited to 720 points.
 Resizing preserves the connection fields and active session. iPhone retains its
 portrait home screen and two-column recent-connection grid.
 
+On iPhone, connecting hides the status bar and lets the Home indicator fade.
+Leaving the session restores the system bars.
+
 On iPhone, Settings → Screen orientation (屏幕方向) → Lock landscape after connecting
 (连接建立后锁定横屏) is disabled by default and saved locally. When enabled, the session
 enters and stays in landscape; when disabled, it follows the device orientation.

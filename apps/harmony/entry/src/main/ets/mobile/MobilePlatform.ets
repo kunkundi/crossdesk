@@ -23,8 +23,8 @@ export class MobilePlatform {
   private backgroundActive: boolean = false;
   private active: boolean = false;
   private autoLandscape: boolean = false;
-  private orientationRevision: number = 0;
-  private orientationQueue: Promise<void> = Promise.resolve();
+  private windowRevision: number = 0;
+  private windowQueue: Promise<void> = Promise.resolve();
   private foreground: boolean = true;
   choosing: boolean = false;
   pipActive: boolean = false;
@@ -45,7 +45,7 @@ export class MobilePlatform {
     if (this.active) return;
     this.autoLandscape = autoLandscape;
     this.active = true; const generation = ++this.generation;
-    this.muted = false; this.orientation(true);
+    this.muted = false; this.updateWindow();
     this.backgroundQueue = this.backgroundQueue.then(async () => {
     try {
       const agent = await wantAgent.getWantAgent({ wants: [{ bundleName: this.context.abilityInfo.bundleName,
@@ -83,6 +83,7 @@ export class MobilePlatform {
         if (state === PiPWindow.PiPState.STOPPED) {
           this.pipActive = false;
           this.onVisibility(this.foreground);
+          if (this.foreground) this.updateWindow();
           if (!this.foreground && !this.choosing && this.active) this.ended(tr("画中画已关闭"));
         }
       });
@@ -107,7 +108,7 @@ export class MobilePlatform {
     if (generation === this.generation && !this.foreground && this.active && !this.backgroundActive && !this.pipActive && !this.choosing)
       this.ended(tr("系统未允许后台会话，连接已断开"));
   }
-  resume(): void { this.foreground = true; this.dismissPiP(); this.orientation(this.active); this.onVisibility(true); }
+  resume(): void { this.foreground = true; this.dismissPiP(); this.updateWindow(); this.onVisibility(true); }
   private async dismissPiP(): Promise<void> {
     if (!this.pipActive) return;
     this.pipActive = false;
@@ -122,21 +123,27 @@ export class MobilePlatform {
     this.backgroundQueue = this.backgroundQueue.then(async () => {
       if (this.backgroundActive) { this.backgroundActive = false; try { await backgroundTaskManager.stopBackgroundRunning(this.context); } catch {} }
     });
-    this.orientation(false);
+    this.updateWindow();
   }
-  private orientation(session: boolean): void {
-    const generation = this.generation;
-    const revision = ++this.orientationRevision;
-    // Serialize window requests so the latest policy wins after a lifecycle change.
-    this.orientationQueue = this.orientationQueue.then(async () => {
-      if (generation !== this.generation || revision !== this.orientationRevision) return;
+  private updateWindow(): void {
+    const revision = ++this.windowRevision;
+    this.windowQueue = this.windowQueue.then(async () => {
+      if (revision !== this.windowRevision) return;
       try {
-        const win = await window.getLastWindow(this.context);
-        if (generation !== this.generation || revision !== this.orientationRevision) return;
-        await win.setWindowKeepScreenOn(session);
-        if (generation !== this.generation || revision !== this.orientationRevision) return;
-        // Tablets and resizable windows follow the user orientation in both views.
+        // PiP and pickers can be topmost. Session settings belong to the main window.
+        const win = this.context.windowStage.getMainWindowSync();
+        const session = this.active;
         const phone = deviceInfo.deviceType === 'phone';
+        if (phone) {
+          // The window manager applies bar visibility in fullscreen and manages it in split screen.
+          const bars: Array<'status' | 'navigation'> = session ? [] : ['status', 'navigation'];
+          await win.setWindowSystemBarEnable(bars).catch(() => {});
+          await win.setSpecificSystemBarEnabled('navigationIndicator', !session).catch(() => {});
+        }
+        if (revision !== this.windowRevision) return;
+        await win.setWindowKeepScreenOn(session);
+        if (revision !== this.windowRevision) return;
+        // Tablets and resizable windows follow the user orientation in both views.
         const rect = win.getWindowProperties().windowRect;
         const narrow = Math.min(rect.width, rect.height) / display.getDefaultDisplaySync().densityPixels < 600;
         const fullScreen = win.getWindowStatus() === window.WindowStatusType.FULL_SCREEN;
