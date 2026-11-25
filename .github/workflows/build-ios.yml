@@ -110,6 +110,8 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ inputs.source_tag || github.ref }}
+          submodules: recursive
+          persist-credentials: false
 
       - name: Select corresponding source tag
         shell: bash
@@ -151,9 +153,6 @@ jobs:
           echo "IOS_VERSION_BASE=${IOS_VERSION_BASE}" >> "${GITHUB_ENV}"
           echo "VERSION_NUM=${VERSION_NUM}" >> "${GITHUB_ENV}"
           echo "version=${VERSION_NUM}" >> "${GITHUB_OUTPUT}"
-
-      - name: Initialize submodules
-        run: git submodule update --init --recursive
 
       - name: Set up Python
         id: python
