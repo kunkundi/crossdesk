@@ -63,6 +63,8 @@ class DesktopWindow final : public slint::platform::WindowAdapter {
   slint::PhysicalSize extent;
   slint::PhysicalPosition origin{{0, 0}};
   bool dirty = true, visible = false, active = false, explicitly_sized = false;
+  // The stage can report its initial focus before it acknowledges tray startup.
+  bool can_restore_on_activation = false;
   bool positioned = false;
   float density = 1;
   int decor = 0;
@@ -85,6 +87,7 @@ class DesktopWindow final : public slint::platform::WindowAdapter {
     if (!scaled) SetDensity(Environment().value("density", 1.f));
     if (!value) ReleaseInput();
     visible = value;
+    if (value) can_restore_on_activation = true;
     Json command{{"op", "visible"}, {"id", id}, {"visible", value}, {"width", extent.width}, {"height", extent.height}};
     if (positioned) { command["x"] = origin.x; command["y"] = origin.y; }
     Emit(std::move(command));
@@ -191,12 +194,13 @@ void Dispatch(const Json& command) {
   else if (op == "active") {
     adapter.active = command.value("active", false);
     if (!adapter.active) adapter.ReleaseInput();
-    if (command.value("active", false) && adapter.scaled && !adapter.visible) {
+    if (command.value("active", false) && adapter.can_restore_on_activation && !adapter.visible) {
       adapter.window().set_minimized(false);
       adapter.window().show();
     }
     adapter.window().dispatch_window_active_changed_event(command.value("active", false));
   } else if (op == "state") {
+    if (command.value("minimized", false)) adapter.can_restore_on_activation = true;
     adapter.state_revision = command.value("stateRevision", uint64_t{0});
     auto actual = Json::object();
     for (const auto* name : {"fullscreen", "maximized", "minimized"})
@@ -320,7 +324,7 @@ napi_value Start(napi_env env, napi_callback_info info) {
       // immediately, so select an app-writable directory before construction.
       crossdesk::InitLogger(crossdesk::platform::GetLogPath("CrossDesk").string());
       crossdesk::GuiApplication app;
-      app.Run();
+      app.Run(Environment().value("loginLaunch", false));
       Emit({{"op", "exit"}});
     } catch (const std::exception& error) {
       OH_LOG_Print(LOG_APP, LOG_ERROR, 0, "SlintDesktop", "Application failed: %{public}s", error.what());

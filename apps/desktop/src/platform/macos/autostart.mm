@@ -1,11 +1,12 @@
 #include "platform/autostart_backend.h"
 
+#import <Foundation/Foundation.h>
+
 #include <limits.h>
 #include <mach-o/dyld.h>
 
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
 
 namespace crossdesk::platform {
 namespace {
@@ -36,27 +37,31 @@ bool EnableAutostart(const std::string& app_name,
   std::filesystem::create_directories(path.parent_path(), error);
   if (error) return false;
 
-  std::ofstream file(path);
-  if (!file.is_open()) return false;
-  file << R"(<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-"http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>)"
-       << app_name << R"(</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>)"
-       << executable_path << R"(</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-</dict>
-</plist>)";
-  file.close();
-  return file.good();
+  @autoreleasepool {
+    NSString* label = @(app_name.c_str());
+    NSString* executable = @(executable_path.c_str());
+    NSURL* url = [NSURL fileURLWithPath:@(path.c_str())];
+    NSMutableDictionary* agent = [NSMutableDictionary dictionary];
+    NSArray* arguments = @[executable];
+    if (std::filesystem::exists(path, error)) {
+      // Add the marker to our existing job without losing launchd overrides.
+      NSDictionary* existing = [NSDictionary dictionaryWithContentsOfURL:url error:nullptr];
+      arguments = existing[@"ProgramArguments"];
+      if (![existing[@"Label"] isEqual:label] || ![arguments isKindOfClass:NSArray.class] ||
+          ![arguments.firstObject isEqual:executable]) return false;
+      if ([arguments containsObject:@"--autostart"]) return true;
+      [agent addEntriesFromDictionary:existing];
+    } else {
+      if (error) return false;
+      agent[@"Label"] = label;
+      agent[@"RunAtLoad"] = @YES;
+    }
+    agent[@"ProgramArguments"] = [arguments arrayByAddingObject:@"--autostart"];
+    NSData* plist = [NSPropertyListSerialization
+        dataWithPropertyList:agent format:NSPropertyListXMLFormat_v1_0
+                     options:0 error:nullptr];
+    return [plist writeToURL:url options:NSDataWritingAtomic error:nullptr];
+  }
 }
 
 bool DisableAutostart(const std::string& app_name) {

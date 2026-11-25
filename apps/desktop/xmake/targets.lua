@@ -503,7 +503,8 @@ function setup_targets()
             add_files("apps/desktop/src/platform/windows/autostart.cpp")
             add_syslinks("Advapi32", "Ole32", "OleAut32", "Taskschd", {public = true})
         elseif is_os("macosx") then
-            add_files("apps/desktop/src/platform/macos/autostart.cpp")
+            add_files("apps/desktop/src/platform/macos/autostart.mm")
+            add_frameworks("Foundation", {public = true})
         elseif is_os("linux") then
             add_files("apps/desktop/src/platform/linux/autostart.cpp")
         end

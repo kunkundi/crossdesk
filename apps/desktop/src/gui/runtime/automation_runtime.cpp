@@ -43,6 +43,7 @@ void GuiRuntime::HandleAutomation(const std::string& remote_id,
       if (result == RemoteInputDispatcher::Result::rejected ||
           result == RemoteInputDispatcher::Result::overflow)
         reply(false, "INPUT_REJECTED");
+#if defined(_WIN32) || defined(__APPLE__) || (defined(__linux__) && !defined(__OHOS__))
     } else if (method == "desktop") {
       const auto arguments = request.at("arguments");
       if (!arguments.is_object()) { reply(false, "INVALID_ARGUMENT"); return; }
@@ -59,6 +60,7 @@ void GuiRuntime::HandleAutomation(const std::string& remote_id,
               ? code : "UI_AUTOMATION_FAILED");
         }
       });
+#endif
     } else if (method == "system") {
       const auto operation = request.at("arguments").at("operation").get<std::string>();
       if (operation != "status" && operation != "lock" && operation != "send_sas") {

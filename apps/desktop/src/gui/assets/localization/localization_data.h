@@ -187,6 +187,7 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"开启群控", {"开启群控", "Group control", "Групп. ввод", "開啟群控", "グループ制御", "그룹 제어", "Gruppenkontrolle", "Contrôle de groupe", "Control de grupo", "Controle de grupo"}},
   {"开启隐私屏", {"开启隐私屏", "Enable privacy screen", "Включить приватный экран", "開啟隱私屏", "プライバシー画面を有効にする", "개인 정보 보호 화면 활성화", "Privatsphärenschutz aktivieren", "Activer l'écran de confidentialité", "Habilitar pantalla de privacidad", "Habilitar tela de privacidade"}},
   {"开机自启", {"开机自启", "Auto Start", "Автозапуск", "開機自啟", "オートスタート", "자동 시작", "Autostart", "Démarrage automatique", "Inicio automático", "Início automático"}},
+  {"开机后静默启动", {"开机后静默启动", "Start in tray at login", "При входе запускать в трее", "開機後靜默啟動", "ログイン時はトレイに常駐", "로그인 시 트레이에서 시작", "Bei Anmeldung im Infobereich starten", "Démarrer dans la zone de notification", "Iniciar en la bandeja al entrar", "Iniciar na bandeja ao entrar"}},
   {"开源组件", {"开源组件", "Open-source components", "Компоненты с открытым кодом", "開源元件", "オープンソースコンポーネント", "오픈 소스 구성 요소", "Open-Source-Komponenten", "Composants open source", "Componentes de código abierto", "Componentes de código aberto"}},
   {"强制中继连接", {"强制中继连接", "Force relay connection", "Только через ретранслятор", "強制中繼連線", "強制リレー接続", "강제 릴레이 연결", "Relaisverbindung erzwingen", "Forcer la connexion du relais", "Conexión del relé de fuerza", "Forçar conexão do relé"}},
   {"当前仍需要安全桌面专用采集/输入", {"当前仍需要安全桌面专用采集/输入", "Secure desktop capture/input is still required", "По-прежнему нужен отдельный захват/ввод для защищенного рабочего стола", "當前仍需要安全桌面專用採集/輸入", "安全なデスクトップ キャプチャ/入力が引き続き必要です", "안전한 데스크톱 캡처/입력이 여전히 필요합니다.", "Eine sichere Desktop-Erfassung/-Eingabe ist weiterhin erforderlich", "La capture/saisie sécurisée du bureau est toujours requise", "Aún se requiere captura/entrada de escritorio segura", "A captura/entrada segura da área de trabalho ainda é necessária"}},
@@ -793,6 +794,7 @@ inline constexpr NamedTranslation kNamedTranslations[] = {
   {"input_connection_alias", "请输入连接名称:"},
   {"confirm_delete_connection", "确认删除此连接"},
   {"enable_autostart", "开机自启"},
+  {"silent_autostart", "开机后静默启动"},
   {"enable_daemon", "启用守护进程"},
   {"privacy_on_connect", "被连接时开启隐私屏"},
   {"lock_on_disconnect", "连接断开后锁屏"},
@@ -1314,6 +1316,7 @@ inline constexpr const char* kSlintLiterals[] = {
   X(input_connection_alias) \
   X(confirm_delete_connection) \
   X(enable_autostart) \
+  X(silent_autostart) \
   X(enable_daemon) \
   X(privacy_on_connect) \
   X(lock_on_disconnect) \

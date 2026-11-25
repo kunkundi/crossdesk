@@ -62,6 +62,7 @@ bool Capture::Start(int width, int height, uint64_t display, Frame frame, State 
 void Capture::Stop() { ++stops; frame_callback = {}; }
 bool Input::Configure(int, int, int display) { if (!Release()) return false; input_display = display; return true; }
 bool Input::Release() { ++releases; return release_ok; }
+unsigned Input::ReleaseMouseButtons(unsigned mask) { return release_ok ? mask & 7u : 0; }
 bool Input::Apply(const RemoteAction&) { return true; }
 bool Input::LockWorkstation() { return true; }
 }

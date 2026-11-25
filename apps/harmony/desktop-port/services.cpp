@@ -20,6 +20,12 @@ std::mutex event_mutex;
 std::deque<SDL_Event> events;
 thread_local std::string service_error;
 std::atomic<crossdesk::HarmonyAutostartStatus> autostart_status{crossdesk::HarmonyAutostartStatus::checking};
+bool SetKeepScreenOn(bool active) {
+  const auto result = Request({{"op", "keepScreenOn"}, {"active", active}});
+  if (result.value("ok", false)) return true;
+  service_error = result.value("message", "Could not change the Harmony window power setting");
+  return false;
+}
 bool AudioFormat(const SDL_AudioSpec* spec) {
   return spec && spec->freq == 48000 && spec->channels == 1 && spec->format == SDL_AUDIO_S16;
 }
@@ -70,6 +76,15 @@ const SDL_DisplayMode* SDL_GetCurrentDisplayMode(SDL_DisplayID id) {
   }
   return nullptr;
 }
+bool SDL_EnableScreenSaver() { return SetKeepScreenOn(false); }
+bool SDL_DisableScreenSaver() { return SetKeepScreenOn(true); }
+float SDL_GetDisplayContentScale(SDL_DisplayID id) {
+  for (const auto& display : ReadDisplays(Environment())) {
+    if (display.SdlId() == id) return display.density;
+  }
+  return 0.0f;
+}
+
 SDL_DisplayID SDL_GetPrimaryDisplay() {
   const auto displays = ReadDisplays(Environment());
   return displays.empty() ? 0 : displays.front().SdlId();

@@ -41,6 +41,9 @@ inline void SDL_free(void* p) { std::free(p); }
 const char* SDL_GetCurrentVideoDriver();
 const SDL_DisplayMode* SDL_GetCurrentDisplayMode(SDL_DisplayID);
 SDL_DisplayID SDL_GetPrimaryDisplay();
+float SDL_GetDisplayContentScale(SDL_DisplayID);
+bool SDL_EnableScreenSaver();
+bool SDL_DisableScreenSaver();
 SDL_DisplayID SDL_GetDisplayForPoint(const SDL_Point*);
 SDL_DisplayID* SDL_GetDisplays(int*);
 bool SDL_GetDisplayUsableBounds(SDL_DisplayID, SDL_Rect*);

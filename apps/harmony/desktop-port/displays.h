@@ -21,6 +21,7 @@ struct DesktopDisplay {
   bool primary;
   int x, y, width, height;
   int usable_x, usable_y, usable_width, usable_height;
+  float density = 1.0f;
   // SDL reserves zero for failure; Harmony's primary display can be zero.
   uint32_t SdlId() const { return uint32_t(id) + 1; }
 };
@@ -35,7 +36,8 @@ inline std::vector<DesktopDisplay> ReadDisplays(const nlohmann::json& environmen
     const int x = item.value("x", 0), y = item.value("y", 0);
     result.push_back({int(id), item.value("name", "Harmony Display"), item.value("primary", false),
         x, y, width, height, item.value("usableX", x), item.value("usableY", y),
-        item.value("usableWidth", width), item.value("usableHeight", height)});
+        item.value("usableWidth", width), item.value("usableHeight", height),
+        item.value("density", 1.0f)});
   }
   std::stable_sort(result.begin(), result.end(), [](const auto& a, const auto& b) {
     return a.primary != b.primary ? a.primary : a.id < b.id;

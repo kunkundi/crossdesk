@@ -87,6 +87,7 @@ const check = value => assert.deepEqual(latest(), { op: 'autostartState', ...val
     './DisplayHost': { DisplayHost: {
       snapshot: async () => [], observe() {}, global: () => ({ x: 0, y: 0 }), screen: () => ({ densityPixels: 1 })
     } },
+    '@kit.LocalizationKit': { i18n: { System: { getSystemLanguage: () => 'en-US' } } },
     '@kit.ArkUI': { display: { getDefaultDisplaySync: () => ({ width: 1280, height: 800, densityPixels: 1, id: 0 }) },
       window: { WindowEventType: { WINDOW_ACTIVE: 1, WINDOW_INACTIVE: 2 } } },
     '@kit.BasicServicesKit': { pasteboard: { getSystemPasteboard: () => ({ on() {}, off() {} }) } },

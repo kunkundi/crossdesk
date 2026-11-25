@@ -320,7 +320,7 @@ PC 端可控制和被控制，复用桌面界面与桌面墙；手机和平板�
 
 ## 无人值守与无头运行
 
-- **Windows：** CrossDesk Service 支持锁屏、登录和安全桌面控制。安装版 Release 开启“开机自启”后，登录前后使用同一本机 ID 和密码；用户登录后界面自动打开，已有远控连接继续保留。便携版和 Debug 不提供此开关。无显示器时会尝试准备虚拟显示器，并优先恢复已记录的显示分辨率。功能限制及启停命令见 [Windows 无人值守指南](docs/USER_GUIDE.md#windows-service)。
+- **Windows：** CrossDesk Service 支持锁屏、登录和安全桌面控制。安装版 Release 开启“开机自启”后，登录前后使用同一本机 ID 和密码；用户登录后客户端自动启动，可选择静默启动到托盘，已有远控连接继续保留。便携版和 Debug 不提供此开关。无显示器时会尝试准备虚拟显示器，并优先恢复已记录的显示分辨率。功能限制及启停命令见 [Windows 无人值守指南](docs/USER_GUIDE.md#windows-service)。
 - **Linux：** 可复用现有桌面，也可创建独立 Xvfb / Xfce 会话，操作方法见 [Linux 无头运行](docs/HEADLESS.md)。
 
 <a id="self-hosting"></a>

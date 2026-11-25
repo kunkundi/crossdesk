@@ -114,7 +114,7 @@ export class DesktopHost {
     AutostartHost.refresh();
   }
 
-  static start(stage: window.WindowStage, context: common.UIAbilityContext): void {
+  static start(stage: window.WindowStage, context: common.UIAbilityContext, loginLaunch: boolean = false): void {
     DesktopHost.stage = stage; DesktopHost.context = context;
     const screen = display.getDefaultDisplaySync();
     const storage = new LocalStorage();
@@ -129,7 +129,7 @@ export class DesktopHost {
         if (event.op === 'clipboardChanged') DesktopHost.clipboardChanged();
         else DesktopHost.send(event);
       }, hostPermissions);
-      native.start(JSON.stringify({ language: i18n.System.getSystemLanguage(), filesDir: context.filesDir, cacheDir: context.cacheDir,
+      native.start(JSON.stringify({ loginLaunch, language: i18n.System.getSystemLanguage(), filesDir: context.filesDir, cacheDir: context.cacheDir,
         width: screen.width, height: screen.height, density: screen.densityPixels,
         displayId: screen.id, displays: screens, name: 'Harmony PC',
         certificates: certificateManager.getCertificateStorePath({ certType: certificateManager.CertType.CA_CERT_SYSTEM }) }));
@@ -436,8 +436,9 @@ export class DesktopHost {
     else if (event.op === 'clipboardWrite') {
       await board.setData(pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, event.text ?? ''));
       DesktopHost.clipboardChanged();
-    }
-    else if (event.op === 'openUrl') await DesktopHost.context.openLink(event.url ?? '');
+    } else if (event.op === 'keepScreenOn') {
+      await DesktopHost.stage.getMainWindowSync().setWindowKeepScreenOn(event.active === true);
+    } else if (event.op === 'openUrl') await DesktopHost.context.openLink(event.url ?? '');
     else if (event.op === 'trayCreate') response.ok = await TrayHost.create(DesktopHost.context, event,
       (reply: DesktopEvent) => DesktopHost.send(reply));
     else if (event.op === 'selectFile' || event.op === 'selectFolder') {

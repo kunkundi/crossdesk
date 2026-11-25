@@ -48,7 +48,8 @@ inline std::wstring EscapeTaskXml(const std::wstring& value) {
 
 inline std::wstring BuildAutostartTaskXml(const std::wstring& user_sid,
                                           const std::wstring& executable,
-                                          const std::wstring& directory) {
+                                          const std::wstring& directory,
+                                          const std::wstring& arguments = {}) {
   const auto sid = EscapeTaskXml(user_sid);
   // InteractiveToken keeps the GUI in this user's logged-in desktop and does
   // not store a password. A remote desktop client must also survive battery
@@ -70,7 +71,9 @@ inline std::wstring BuildAutostartTaskXml(const std::wstring& user_sid,
          L"<AllowHardTerminate>false</AllowHardTerminate>"
          L"<Enabled>true</Enabled><ExecutionTimeLimit>PT0S</ExecutionTimeLimit>"
          L"</Settings><Actions Context=\"CurrentUser\"><Exec><Command>" +
-         EscapeTaskXml(executable) + L"</Command><WorkingDirectory>" +
+         EscapeTaskXml(executable) + L"</Command>" +
+         (arguments.empty() ? L"" : L"<Arguments>" + EscapeTaskXml(arguments) + L"</Arguments>") +
+         L"<WorkingDirectory>" +
          EscapeTaskXml(directory) +
          L"</WorkingDirectory></Exec></Actions></Task>";
 }

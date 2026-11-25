@@ -28,7 +28,7 @@ class WinTray {
           HICON icon, const std::wstring& tooltip, int language_index);
   ~WinTray();
 
-  void MinimizeToTray();
+  bool MinimizeToTray();
   void RemoveTrayIcon();
   bool HandleTrayMessage(MSG* msg);
 

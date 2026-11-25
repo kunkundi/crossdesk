@@ -31,7 +31,7 @@ class MacTray {
           const std::string& tooltip, int language_index);
   ~MacTray();
 
-  void MinimizeToTray();
+  bool MinimizeToTray();
   // Keep the Dock available while another normal window is open or minimized.
   void SyncDockVisibility();
   void RemoveTrayIcon();

@@ -152,6 +152,7 @@ inline int ApplyMainWindowStrings(
   strings.set_force_relay(Text(localization::force_relay[language]));
   strings.set_self_hosted(
       Text(localization::self_hosted_server_config[language]));
+  strings.set_silent_autostart(Text(localization::silent_autostart[language]));
   strings.set_autostart(Text(localization::enable_autostart[language]));
   strings.set_daemon(Text(localization::enable_daemon[language]));
   strings.set_save_remote_previews(Text(localization::save_remote_previews[language]));

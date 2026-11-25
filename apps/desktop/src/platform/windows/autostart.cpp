@@ -156,7 +156,7 @@ bool RegisterLogonTask(const std::wstring& app_name,
   if (!scheduler.Open()) return false;
   auto name = MakeBstr(AutostartTaskName(app_name, sid));
   auto xml = MakeBstr(BuildAutostartTaskXml(
-      sid, executable.wstring(), executable.parent_path().wstring()));
+      sid, executable.wstring(), executable.parent_path().wstring(), L"--autostart"));
   auto user = MakeBstr(sid);
   if (!name || !xml || !user) return false;
   VARIANT user_id{};

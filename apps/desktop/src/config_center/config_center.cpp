@@ -206,6 +206,7 @@ int ConfigCenter::Load() {
   }
   enable_autostart_ =
       ini_->GetBoolValue(section_, "enable_autostart", enable_autostart_);
+  silent_autostart_ = ini_->GetBoolValue(section_, "silent_autostart", false);
   enable_daemon_ = ini_->GetBoolValue(section_, "enable_daemon", enable_daemon_);
   enable_privacy_screen_.store(
       ini_->GetBoolValue(section_, "enable_privacy_screen", true));
@@ -338,6 +339,7 @@ int ConfigCenter::Save() {
   }
 
   ini_->SetBoolValue(section_, "enable_autostart", enable_autostart_);
+  ini_->SetBoolValue(section_, "silent_autostart", silent_autostart_);
   ini_->SetBoolValue(section_, "enable_daemon", enable_daemon_);
   ini_->SetBoolValue(section_, "enable_privacy_screen",
                     enable_privacy_screen_.load());
@@ -547,13 +549,13 @@ int ConfigCenter::SetSelfHosted(bool enabled) {
   return 0;
 }
 
-int ConfigCenter::SetAutostart(bool enabled) {
+int ConfigCenter::SetAutostart(bool enabled, bool require_login_marker) {
 #ifdef _WIN32
   // System registration determines success; INI only mirrors the last
   // successfully applied preference. Unsupported builds never touch services.
   if (!SupportsServiceAutostart()) {
     if (enabled) return -1;
-  } else if (!ServiceAutostartMatches(enabled)) {
+  } else if (!ServiceAutostartMatches(enabled) || (enabled && require_login_marker)) {
     std::string error;
     if (!SetServiceAutostart(enabled, error)) {
       LOG_ERROR("Cannot configure autostart: {}", error);
@@ -574,12 +576,16 @@ int ConfigCenter::SetAutostart(bool enabled) {
 #if defined(__linux__) && !defined(__OHOS__)
   // Repair old deb entries even when the saved boolean is unchanged, keeping
   // desktop-managed disabled flags and custom commands intact.
-  if (enabled && previous && !platform::MigrateLegacyAutostart("CrossDesk")) {
+  if (enabled && previous && !platform::MigrateLegacyAutostart("CrossDesk", require_login_marker)) {
     LOG_ERROR("Failed to migrate Linux autostart");
     return -1;
   }
 #endif
-  if (enabled != previous && !configure(enabled)) {
+  bool update_registration = enabled != previous;
+#ifdef __APPLE__
+  update_registration |= enabled && require_login_marker;
+#endif
+  if (update_registration && !configure(enabled)) {
     LOG_ERROR("Cannot configure autostart");
     return -1;
   }
@@ -591,6 +597,13 @@ int ConfigCenter::SetAutostart(bool enabled) {
   enable_autostart_ = enabled;
   return 0;
 #endif
+}
+
+int ConfigCenter::SetSilentAutostart(bool enabled) {
+  if (enabled == silent_autostart_) return 0;
+  if (StoreValues({{"silent_autostart", enabled ? "true" : "false"}}) != 0) return -1;
+  silent_autostart_ = enabled;
+  return 0;
 }
 
 int ConfigCenter::SetDaemon(bool enabled) {

@@ -81,13 +81,14 @@ WinTray::~WinTray() {
   if (hwnd_message_only_) DestroyWindow(hwnd_message_only_);
 }
 
-void WinTray::MinimizeToTray() {
-  EnsureTrayIcon();
+bool WinTray::MinimizeToTray() {
+  if (!EnsureTrayIcon()) return false;
   if (hide_window_) {
     hide_window_();
   } else if (app_hwnd_) {
     ShowWindow(app_hwnd_, SW_HIDE);
   }
+  return true;
 }
 
 bool WinTray::EnsureTrayIcon() {

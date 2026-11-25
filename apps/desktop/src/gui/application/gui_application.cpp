@@ -1231,7 +1231,7 @@ struct GuiApplication::SlintUi {
 GuiApplication::GuiApplication() = default;
 GuiApplication::~GuiApplication() = default;
 
-int GuiApplication::Run() {
+int GuiApplication::Run(bool login_launch) {
 #ifndef __OHOS__
   // Publish the GUI endpoint before configuration/media initialization, so a
   // second launch can queue activation even while this window is starting.
@@ -1313,6 +1313,10 @@ int GuiApplication::Run() {
         ApplySettingsFromConfig(effect == SettingEffect::reconnect);
       });
 #endif
+  const bool start_in_tray = login_launch && config_center_->IsSilentAutostart();
+#ifdef __APPLE__
+  if (start_in_tray) SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
+#endif
   if (!InitializeSDL()) {
     return -1;
   }
@@ -1344,13 +1348,15 @@ int GuiApplication::Run() {
   // The native tray icon is managed outside Slint, so Slint cannot count it
   // when deciding whether the last hidden window should stop the event loop.
   // Keep the loop alive until the tray's explicit Exit action requests quit.
-  ui_->main->show();
+  if (!start_in_tray || !MinimizeMainWindowToTray()) {
+    ui_->main->show();
 #if _WIN32
-  ConfigureWindowsWindowIcons(ui_->main->window().win32_hwnd());
+    ConfigureWindowsWindowIcons(ui_->main->window().win32_hwnd());
 #elif defined(__APPLE__)
-  ConfigureMainWindowChrome(ui_->main->window().appkit_view());
-  PrepareNativeFileDialog();
+    ConfigureMainWindowChrome(ui_->main->window().appkit_view());
+    PrepareNativeFileDialog();
 #endif
+  }
   slint::run_event_loop(slint::EventLoopMode::RunUntilQuit);
   Cleanup();
   return 0;
@@ -1398,7 +1404,9 @@ bool GuiApplication::InitializeSDL() {
 #endif
   // SDL disables the screensaver by default. A background remote desktop app
   // should leave automatic display sleep under the user's system settings.
+#ifndef __OHOS__
   SDL_SetHint(SDL_HINT_VIDEO_ALLOW_SCREENSAVER, "1");
+#endif
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
     LOG_ERROR("SDL initialization failed: {}", SDL_GetError());
     return false;
@@ -1667,13 +1675,7 @@ bool GuiApplication::MinimizeMainWindowToTray() {
   if (!ui_) {
     return false;
   }
-#if _WIN32 || defined(__APPLE__)
-  if (!ui_->tray) {
-    return false;
-  }
-  ui_->tray->MinimizeToTray();
-  return true;
-#elif defined(__linux__)
+#if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
   return ui_->tray && ui_->tray->MinimizeToTray();
 #else
   return false;
@@ -1714,6 +1716,12 @@ void GuiApplication::ResetSettingsUi(bool gallery_window) {
   enable_autostart_ = config_center_->IsEnableAutostart();
 #endif
   main->set_autostart_enabled(enable_autostart_);
+  main->set_silent_autostart(config_center_->IsSilentAutostart());
+#ifdef _WIN32
+  main->set_silent_autostart_available(SupportsServiceAutostart());
+#else
+  main->set_silent_autostart_available(true);
+#endif
 #if defined(__OHOS__)
   main->set_autostart_system_managed(true);
 #endif
@@ -2772,7 +2780,12 @@ void GuiApplication::Tick() {
     if (event.type == SDL_EVENT_QUIT) {
       exit_ = true;
     } else if (event.type == SDL_EVENT_CLIPBOARD_UPDATE) {
+#ifdef __OHOS__
+      // Harmony's pasteboard reports content changes without an SDL owner.
+      clipboard_.HandleLocalUpdate();
+#else
       clipboard_.HandleLocalUpdate(!event.clipboard.owner);
+#endif
     }
   }
   clipboard_.ApplyPendingRemoteText();
@@ -4834,7 +4847,9 @@ void GuiApplication::SyncFileTransferNotifications() {
   const float screen_height = bounds.h / desktop_scale - (clipboard_visible ? 122.0f : 0.0f);
   const auto layout = Fit(screen_width, screen_height);
   size_t slot = 0;
-  for (auto& [id, notification] : ui_->transfer_notifications) {
+  for (auto& transfer : ui_->transfer_notifications) {
+    const auto& id = transfer.first;
+    auto& notification = transfer.second;
     auto& info = notification.info;
     if (!files.count(id) && !pending_files.count(id) && info.status != Status::Completed &&
         info.status != Status::Failed && info.status != Status::Cancelled) {
@@ -5113,7 +5128,9 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
 #ifdef _WIN32
   identity_ready = !enable_autostart_ || PrepareSharedGuiIdentity(false);
 #endif
-  if (!identity_ready || config_center_->SetAutostart(enable_autostart_) != 0) {
+  const bool require_login_marker =
+      main->get_silent_autostart() && !config_center_->IsSilentAutostart();
+  if (!identity_ready || config_center_->SetAutostart(enable_autostart_, require_login_marker) != 0) {
     enable_autostart_ = config_center_->IsEnableAutostart();
     main->set_autostart_enabled(enable_autostart_);
     main->set_settings_save_error(UiText(
@@ -5125,6 +5142,12 @@ bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
     return false;
   }
 #endif
+  if (config_center_->SetSilentAutostart(main->get_silent_autostart()) != 0) {
+    main->set_silent_autostart(config_center_->IsSilentAutostart());
+    main->set_settings_save_error(UiText(
+        localization::Literal("保存失败，请重试", localization_language_index_)));
+    return false;
+  }
   if (config_center_->SetDaemon(enable_daemon_) != 0) {
     enable_daemon_ = config_center_->IsEnableDaemon();
     main->set_daemon_enabled(enable_daemon_);

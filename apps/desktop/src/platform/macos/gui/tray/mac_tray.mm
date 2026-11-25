@@ -58,14 +58,16 @@ struct MacTrayImpl {
     target = nil;
   }
 
-  void MinimizeToTray() {
+  bool MinimizeToTray() {
     EnsureStatusItem();
+    if (![status_item button]) return false;
     if (hide_window) {
       hide_window();
     } else if (app_window) {
       SDL_HideWindow(app_window);
     }
     SyncDockVisibility();
+    return true;
   }
 
   void SyncDockVisibility() {
@@ -355,7 +357,7 @@ void MacActivateWindow(void *appkit_view) {
   [window makeKeyAndOrderFront:nil];
 }
 
-void MacTray::MinimizeToTray() { impl_->MinimizeToTray(); }
+bool MacTray::MinimizeToTray() { return impl_->MinimizeToTray(); }
 
 void MacTray::SyncDockVisibility() { impl_->SyncDockVisibility(); }
 

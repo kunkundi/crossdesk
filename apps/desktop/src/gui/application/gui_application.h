@@ -34,7 +34,7 @@ public:
   GuiApplication();
   ~GuiApplication();
 
-  int Run();
+  int Run(bool login_launch = false);
 #ifdef _WIN32
   int RunUnattended(void* stop_event);
 #endif

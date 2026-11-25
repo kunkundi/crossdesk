@@ -61,7 +61,9 @@ class ConfigCenter {
   int SetServerPort(int signal_server_port);
   int SetServerEndpoint(const std::string& address, int port);
   int SetSelfHosted(bool enable_self_hosted);
-  int SetAutostart(bool enable_autostart);
+  // Upgrade an existing login entry when the user first opts into tray startup.
+  int SetAutostart(bool enabled, bool require_login_marker = false);
+  int SetSilentAutostart(bool enabled);
   int SetDaemon(bool enable_daemon);
   int SetPrivacyScreen(bool enable_privacy_screen);
   int SetPrivacyLocalUnlock(bool allowed);
@@ -99,6 +101,7 @@ class ConfigCenter {
   int GetDefaultSignalServerPort() const;
   bool IsSelfHosted() const;
   bool IsEnableAutostart() const;
+  bool IsSilentAutostart() const { return silent_autostart_; }
   bool IsEnableDaemon() const;
   bool IsEnablePrivacyScreen() const;
   bool IsPrivacyLocalUnlockAllowed() const;
@@ -147,6 +150,7 @@ class ConfigCenter {
   int server_port_default_ = 9099;
   bool enable_self_hosted_ = false;
   bool enable_autostart_ = false;
+  bool silent_autostart_ = false;
   bool enable_daemon_ = false;
   std::atomic<bool> enable_privacy_screen_{true};
   std::atomic<bool> privacy_local_unlock_allowed_{true};
