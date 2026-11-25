@@ -12,6 +12,7 @@
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -509,7 +510,11 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
       } else {
         // During IDD takeover, never relabel a late frame from the old output
         // as the virtual display's stream.
-        if (!replacement_display_name_.empty()) return;
+        const std::string_view reported(raw_stream_id);
+        if (!replacement_display_name_.empty() ||
+            (reported.starts_with("Display") && reported.size() > 7 &&
+             reported.find_first_not_of("0123456789", 7) == std::string_view::npos))
+          return;
         // Unknown backend labels are presentation data, not wire IDs.
         // Resolve them through the selected logical display instead.
         mapped_stream_id.clear();
@@ -578,7 +583,7 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
   if (impl_) {
     LOG_INFO("Windows capturer: using {}{}", CaptureBackendName(impl_.get()),
              headless ? " (headless desktop)" : "");
-    BuildCanonicalFromImpl();
+    BuildCanonicalFromImpl(impl_->GetDisplayInfoList());
     monitor_index_.store(0, std::memory_order_relaxed);
     if (prepared_display) {
       const auto name = replacement_display_name_;
@@ -619,6 +624,7 @@ int ScreenCapturerWin::Destroy() {
     std::lock_guard<std::mutex> lock(alias_mutex_);
     stream_id_alias_.clear();
     handle_to_canonical_index_.clear();
+    canonical_displays_.clear();
   }
   native_frame_pool_.reset();
   return 0;
@@ -991,7 +997,6 @@ int ScreenCapturerWin::ResetToInitialMonitor() {
 }
 
 std::vector<DisplayInfo> ScreenCapturerWin::GetDisplayInfoList() {
-  if (!impl_) return {};
   std::lock_guard<std::mutex> lock(alias_mutex_);
   return canonical_displays_;
 }
@@ -1000,12 +1005,47 @@ int ScreenCapturerWin::GetCurrentMonitorIndex() const {
   return monitor_index_.load(std::memory_order_relaxed);
 }
 
-void ScreenCapturerWin::BuildCanonicalFromImpl() {
+bool ScreenCapturerWin::RefreshIdleDisplays(const std::function<bool(size_t)>& accept) {
+  const auto now = GetTickCount64();
+  if (running_.load() || !impl_ || now < next_idle_display_probe_) return false;
+  next_idle_display_probe_ = now + 1000;
+
+  // GDI enumerates the current desktop without starting capture. Start() will
+  // select the preferred capture backend after the next peer negotiates.
+  auto desktop = std::make_unique<ScreenCapturerGdi>();
+  if (desktop->Init(fps_, cb_) != 0) return false;
+  auto displays = desktop->GetDisplayInfoList();
+  if (virtual_display_.active()) {
+    if (!unattended_host_) return false;  // Stop() is releasing the temporary output.
+    const auto name = GetDisplayLabel(FindUsbmmiddDisplayDeviceName());
+    if (name.empty()) return false;
+    // Start() retains the owned output while headless and releases it when a
+    // physical monitor returns. Advertise exactly the targets that will remain.
+    const bool keep_virtual = ForceHeadlessEnabled() || QueryAttachedPhysicalDisplayMode().width <= 0;
+    std::erase_if(displays, [&](const auto& d) { return (d.name == name) != keep_virtual; });
+  }
+  if (displays.empty() || displays == GetDisplayInfoList() || !accept(displays.size()))
+    return false;
+
+  std::lock_guard lock(impl_mutex_);
+  impl_ = std::move(desktop);
+  {
+    std::lock_guard alias_lock(alias_mutex_);
+    replacement_display_name_.clear();
+    replacement_display_slot_ = -1;
+  }
+  BuildCanonicalFromImpl(std::move(displays));
+  monitor_index_.store(0);
+  return true;
+}
+
+void ScreenCapturerWin::BuildCanonicalFromImpl(std::vector<DisplayInfo> displays) {
   std::lock_guard<std::mutex> lock(alias_mutex_);
   handle_to_canonical_index_.clear();
   stream_id_alias_.clear();
-  canonical_displays_ = impl_->GetDisplayInfoList();
-  backend_to_canonical_.clear();
+  canonical_displays_ = std::move(displays);
+  const auto backend_displays = impl_->GetDisplayInfoList();
+  backend_to_canonical_.assign(backend_displays.size(), -1);
   std::unordered_map<std::string, size_t> name_counts;
   for (const auto& display : canonical_displays_) {
     if (!display.name.empty()) {
@@ -1013,14 +1053,17 @@ void ScreenCapturerWin::BuildCanonicalFromImpl() {
     }
   }
   for (size_t i = 0; i < canonical_displays_.size(); ++i) {
-    backend_to_canonical_.push_back(static_cast<int>(i));
     auto& di = canonical_displays_[i];
+    const auto found = std::find(backend_displays.begin(), backend_displays.end(), di);
+    if (found == backend_displays.end()) continue;
+    const auto backend_index = static_cast<size_t>(found - backend_displays.begin());
+    backend_to_canonical_[backend_index] = static_cast<int>(i);
     const std::string stream_id = MakeDisplayStreamId(i);
     if (di.name.empty()) {
       di.name = stream_id;
     }
     handle_to_canonical_index_[di.handle] = i;
-    stream_id_alias_[stream_id] = stream_id;
+    stream_id_alias_[MakeDisplayStreamId(backend_index)] = stream_id;
     if (name_counts[di.name] == 1) {
       // Compatibility with an older WGC plugin that reports display names.
       stream_id_alias_[di.name] = stream_id;

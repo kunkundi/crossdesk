@@ -31,6 +31,7 @@ class DisplayInfo {
     height = bottom - top;
   }
   ~DisplayInfo() {}
+  bool operator==(const DisplayInfo&) const = default;
 
   void* handle = nullptr;
   std::string name = "";

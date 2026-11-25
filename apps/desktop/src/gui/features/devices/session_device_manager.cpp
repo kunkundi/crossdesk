@@ -462,13 +462,7 @@ bool SessionDeviceManager::SyncDisplayInfo() {
 #endif
   {
     std::lock_guard<std::mutex> lock(display_info_mutex_);
-    changed = !std::equal(
-        displays.begin(), displays.end(), display_info_list_.begin(),
-        display_info_list_.end(), [](const auto &a, const auto &b) {
-          return a.handle == b.handle && a.name == b.name &&
-                 a.is_primary == b.is_primary && a.left == b.left &&
-                 a.top == b.top && a.width == b.width && a.height == b.height;
-        });
+    changed = displays != display_info_list_;
     if (changed) {
 #ifdef __APPLE__
       const size_t selected = owner_.selected_display_.load();
@@ -734,8 +728,7 @@ void SessionDeviceManager::PushAudio(const std::string& remote_id,
   }
 }
 
-#ifdef __APPLE__
-void SessionDeviceManager::RefreshIdleMacDisplays() {
+void SessionDeviceManager::RefreshIdleDisplays() {
   bool recreate_peer = false;
   size_t display_count = 0;
   std::shared_lock admission(owner_.connection_status_mutex_, std::defer_lock);
@@ -760,7 +753,6 @@ void SessionDeviceManager::RefreshIdleMacDisplays() {
   admission.unlock();
   if (recreate_peer) owner_.CloseConnectionPeer();
 }
-#endif
 
 void SessionDeviceManager::UpdateInteractions() {
   // Restore the previous session's modes and apply the new controller's saved
@@ -800,10 +792,8 @@ void SessionDeviceManager::UpdateInteractions() {
   } else if (!capture_needed && owner_.screen_capturer_is_started_) {
     StopScreenCapturer();
   }
-#ifdef __APPLE__
   if (!capture_needed && !owner_.screen_capturer_is_started_ && screen_capturer_)
-    RefreshIdleMacDisplays();
-#endif
+    RefreshIdleDisplays();
   if (!capture_needed) next_capture_start_retry_ = {};
   screen_sharing_power_.SetSharing(!controllers.empty() && owner_.screen_capturer_is_started_);
 

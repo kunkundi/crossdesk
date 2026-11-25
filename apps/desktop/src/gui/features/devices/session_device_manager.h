@@ -111,9 +111,7 @@ private:
                                int fps);
   bool ShouldCaptureCursor() const;
   bool SyncDisplayInfo();
-#ifdef __APPLE__
-  void RefreshIdleMacDisplays();
-#endif
+  void RefreshIdleDisplays();
   void SetDisplayInfoList(std::vector<DisplayInfo> displays);
   void ResetCaptureMetrics();
   uint64_t RecordCaptureCadence(std::chrono::steady_clock::time_point now,

@@ -55,6 +55,7 @@ class ScreenCapturerWin : public ScreenCapturer {
 
   std::vector<DisplayInfo> GetDisplayInfoList() override;
   int GetCurrentMonitorIndex() const override;
+  bool RefreshIdleDisplays(const std::function<bool(size_t)>& accept) override;
   bool OwnsNativeCursor() const { return native_cursor_owned_.load(); }
   void SetNativeCursorPolicy(bool default_enabled, bool current_enabled) {
     native_cursor_default_.store(default_enabled);
@@ -100,6 +101,7 @@ class ScreenCapturerWin : public ScreenCapturer {
   std::atomic<ULONGLONG> last_capture_progress_tick_{0};
   std::atomic<bool> backend_frame_received_{false}, backend_reset_pending_{false};
   std::atomic<bool> display_probe_requested_{false};
+  ULONGLONG next_idle_display_probe_ = 0;
   ULONGLONG last_display_probe_tick_ = 0;
   ULONGLONG last_capture_retry_tick_ = 0;
   HeadlessRecovery headless_recovery_;
@@ -141,7 +143,7 @@ class ScreenCapturerWin : public ScreenCapturer {
   ULONGLONG secure_shared_last_keepalive_ = 0;
   std::shared_ptr<CapturedNv12FramePool> native_frame_pool_;
 
-  void BuildCanonicalFromImpl();
+  void BuildCanonicalFromImpl(std::vector<DisplayInfo> displays);
   void RebuildAliasesFromImpl(bool preserve_backend_slots = false);
   void RestoreMonitor(int monitor_index);
   bool TryStartBackend(std::unique_ptr<ScreenCapturer> candidate,
