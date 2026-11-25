@@ -156,15 +156,10 @@ class NativePrivacy {
     // There is deliberately no cover window to contaminate remote frames.
     x_error = 0;
     for (const auto& output : outputs_) {
-      Gamma black(XRRAllocGamma(output.saved->size), XRRFreeGamma);
-      if (!black) {
-        Fail("Cannot allocate Linux privacy display ramp");
+      if (!Blank(output.crtc, output.saved->size)) {
+        Fail("Cannot blank Linux display");
         return;
       }
-      std::fill_n(black->red, black->size, 0);
-      std::fill_n(black->green, black->size, 0);
-      std::fill_n(black->blue, black->size, 0);
-      XRRSetCrtcGamma(display_, output.crtc, black.get());
     }
     for (int i = 0; i < ScreenCount(display_); ++i) {
       XFixesHideCursor(display_, RootWindow(display_, i));
@@ -209,7 +204,10 @@ class NativePrivacy {
           std::find(resources->crtcs, resources->crtcs + resources->ncrtc,
                     it->crtc) != resources->crtcs + resources->ncrtc;
       if (exists && it->saved) {
-        XRRSetCrtcGamma(display_, it->crtc, it->saved.get());
+        if (!RestoreRamp(*it)) {
+          ++it;
+          continue;
+        }
         XSync(display_, False);
         if (x_error) {
           ++it;
@@ -234,9 +232,15 @@ class NativePrivacy {
 
   void Poll() {
     if (!display_) return;
+    bool display_event = false;
     while (XPending(display_)) {
       XEvent event{};
       XNextEvent(display_, &event);
+      if (event.type == randr_event_base_ + RRScreenChangeNotify ||
+          event.type == randr_event_base_ + RRNotify) {
+        display_event = true;
+        continue;
+      }
       if (event.type != GenericEvent || event.xcookie.extension != xi_opcode_ ||
           !XGetEventData(display_, &event.xcookie))
         continue;
@@ -254,8 +258,8 @@ class NativePrivacy {
       XFreeEventData(display_, &event.xcookie);
     }
     if (reply_.active &&
-        Clock::now() - checked_ >= std::chrono::milliseconds(100))
-      Check();
+        (display_event || Clock::now() - checked_ >= std::chrono::milliseconds(100)))
+      Check(display_event);
     if (!reply_.active && !reply_.recovered) Recover();
   }
 
@@ -292,7 +296,7 @@ class NativePrivacy {
       error = "XWayland cannot protect native Wayland displays";
       return false;
     }
-    if (!XRRQueryExtension(display_, &event, &code) ||
+    if (!XRRQueryExtension(display_, &randr_event_base_, &code) ||
         !XRRQueryVersion(display_, &major, &minor) || major < 1 ||
         (major == 1 && minor < 3)) {
       error = "Linux privacy screen requires RandR 1.3 display gamma control";
@@ -325,14 +329,61 @@ class NativePrivacy {
     XISetMask(bits.data(), XI_RawKeyRelease);
     XIEventMask mask{XIAllDevices, static_cast<int>(bits.size()), bits.data()};
     x_error = 0;
-    for (int i = 0; i < ScreenCount(display_); ++i)
-      XISelectEvents(display_, RootWindow(display_, i), &mask, 1);
+    for (int i = 0; i < ScreenCount(display_); ++i) {
+      const auto root = RootWindow(display_, i);
+      XISelectEvents(display_, root, &mask, 1);
+      XRRSelectInput(display_, root, RRScreenChangeNotifyMask |
+                     RRCrtcChangeNotifyMask | RROutputChangeNotifyMask);
+    }
     XSync(display_, False);
     if (x_error) {
       error = "Cannot monitor the local privacy recovery shortcut";
       return false;
     }
     initialized_ = true;
+    return true;
+  }
+
+  bool SaveRamp(Output& output, std::string& error) {
+    output.saved.reset(XRRGetCrtcGamma(display_, output.crtc));
+    if (output.saved && output.saved->size > 0 && !IsBlack(output.saved.get())) return true;
+    error = "Display gamma control is unavailable or the display is already blank";
+    return false;
+  }
+
+  bool Blank(RRCrtc crtc, int size) {
+    if (size <= 0) return false;
+    Gamma black(XRRAllocGamma(size), XRRFreeGamma);
+    if (!black) return false;
+    std::fill_n(black->red, size, 0);
+    std::fill_n(black->green, size, 0);
+    std::fill_n(black->blue, size, 0);
+    XRRSetCrtcGamma(display_, crtc, black.get());
+    return true;
+  }
+
+  bool RestoreRamp(const Output& output) {
+    const int size = XRRGetCrtcGammaSize(display_, output.crtc);
+    if (size <= 0) return false;
+    if (size == output.saved->size) {
+      XRRSetCrtcGamma(display_, output.crtc, output.saved.get());
+      return true;
+    }
+    // A mode change can change the hardware LUT size. Preserve the saved
+    // channel curves, including their endpoints, in the new table.
+    Gamma scaled(XRRAllocGamma(size), XRRFreeGamma);
+    if (!scaled) return false;
+    for (int i = 0; i < size; ++i) {
+      const double position = double(i) * (output.saved->size - 1) / std::max(1, size - 1);
+      const int lo = static_cast<int>(position), hi = std::min(lo + 1, output.saved->size - 1);
+      const auto sample = [&](const unsigned short* channel) {
+        return static_cast<unsigned short>(channel[lo] + (position - lo) * (channel[hi] - channel[lo]));
+      };
+      scaled->red[i] = sample(output.saved->red);
+      scaled->green[i] = sample(output.saved->green);
+      scaled->blue[i] = sample(output.saved->blue);
+    }
+    XRRSetCrtcGamma(display_, output.crtc, scaled.get());
     return true;
   }
 
@@ -368,21 +419,12 @@ class NativePrivacy {
         output.rotation = info->rotation;
         output.connectors.assign(info->outputs, info->outputs + info->noutput);
         std::sort(output.connectors.begin(), output.connectors.end());
-        if (save) {
-          output.saved.reset(XRRGetCrtcGamma(display_, output.crtc));
-          if (!output.saved || output.saved->size <= 0 ||
-              IsBlack(output.saved.get())) {
-            error =
-                "Display gamma control is unavailable or the display is "
-                "already blank";
-            return false;
-          }
-        }
+        if (save && !SaveRamp(output, error)) return false;
         outputs.push_back(std::move(output));
       }
     }
     XSync(display_, False);
-    if (x_error || outputs.empty()) {
+    if (x_error || (save && outputs.empty())) {
       error = "No controllable Linux display outputs";
       return false;
     }
@@ -579,7 +621,7 @@ class NativePrivacy {
     }
   }
 
-  void Check() {
+  void Check(bool display_event = false) {
     checked_ = Clock::now();
     std::string error;
     std::vector<Output> current;
@@ -588,19 +630,45 @@ class NativePrivacy {
       Fail(error);
       return;
     }
-    if (current.size() != outputs_.size() ||
-        !std::equal(
-            current.begin(), current.end(), outputs_.begin(),
-            [](const auto& a, const auto& b) { return a.SameLayout(b); })) {
-      Fail("Display topology changed; Linux privacy has been turned off");
-      return;
-    }
     if (devices != devices_) {
       Fail("Local input devices changed; Linux privacy has been turned off");
       return;
     }
     x_error = 0;
+    const auto active_before = std::count_if(outputs_.begin(), outputs_.end(),
+        [](const Output& old) { return old.mode != None; });
+    const bool layout_changed = display_event || static_cast<size_t>(active_before) != current.size() ||
+        std::any_of(current.begin(), current.end(), [&](const Output& output) {
+          return std::none_of(outputs_.begin(), outputs_.end(),
+                              [&](const Output& old) { return old.SameLayout(output); });
+        });
+    // A modeset can reset the LUT on other CRTCs as well. Reapply every
+    // active ramp, retaining originals even while a CRTC is disconnected.
+    if (layout_changed) {
+      for (auto& old : outputs_) old.mode = None;
+      for (auto& output : current) {
+        const auto crtc = output.crtc;
+        auto old = std::find_if(outputs_.begin(), outputs_.end(), [&](const Output& saved) {
+          return saved.crtc == crtc && saved.root == output.root;
+        });
+        if (old == outputs_.end()) {
+          if (!SaveRamp(output, error)) {
+            Fail(error);
+            return;
+          }
+          outputs_.push_back(std::move(output));
+        } else {
+          output.saved = std::move(old->saved);
+          *old = std::move(output);
+        }
+        if (!Blank(crtc, XRRGetCrtcGammaSize(display_, crtc))) {
+          Fail("Cannot protect a changed Linux display");
+          return;
+        }
+      }
+    }
     for (const auto& output : outputs_) {
+      if (!output.mode) continue;
       Gamma ramp(XRRGetCrtcGamma(display_, output.crtc), XRRFreeGamma);
       if (!IsBlack(ramp.get())) {
         Fail(
@@ -618,6 +686,7 @@ class NativePrivacy {
   bool initialized_ = false;
   bool blocking_ = false;
   int xi_opcode_ = 0;
+  int randr_event_base_ = 0;
   Atom xtest_property_ = None, selection_ = None;
   Window owner_ = 0;
   std::vector<Output> outputs_;
