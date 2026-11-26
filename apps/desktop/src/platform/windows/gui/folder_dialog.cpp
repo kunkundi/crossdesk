@@ -1,5 +1,6 @@
 #include "folder_dialog.h"
 
+#include <commctrl.h>
 #include <shobjidl.h>
 #include <wrl/client.h>
 
@@ -22,10 +23,46 @@ std::wstring DialogTitle(const std::string& title) {
   return wide_title;
 }
 
+constexpr HRESULT kCancelled = HRESULT_FROM_WIN32(ERROR_CANCELLED);
+
+LRESULT CALLBACK CancelFolderDialog(HWND window, UINT message, WPARAM wparam,
+                                    LPARAM lparam, UINT_PTR id, DWORD_PTR data) {
+  if (message == WM_CLOSE || (message == WM_TIMER && wparam == id)) {
+    // Show can pump messages before the shell finishes creating the dialog.
+    // Retry on this STA until Show returns and the notification window is removed.
+    if (message == WM_CLOSE) SetTimer(window, id, 50, nullptr);
+    reinterpret_cast<IFileDialog*>(data)->Close(kCancelled);
+    return 0;
+  }
+  return DefSubclassProc(window, message, wparam, lparam);
+}
+
+HRESULT ShowFolderDialog(IFileDialog* dialog, HWND owner, std::stop_token stop) {
+  if (stop.stop_requested()) return kCancelled;
+  const HWND window = CreateWindowExW(0, L"STATIC", nullptr, 0, 0, 0, 0, 0,
+                                      HWND_MESSAGE, nullptr, nullptr, nullptr);
+  if (!window) return E_FAIL;
+  HRESULT result = E_FAIL;
+  if (SetWindowSubclass(window, CancelFolderDialog, 1,
+                        reinterpret_cast<DWORD_PTR>(dialog))) {
+    // Only the worker apartment touches the COM interface. The UI thread posts
+    // cancellation even if the shell is currently inside its modal message loop.
+    std::stop_callback on_stop(stop, [window] {
+      PostMessageW(window, WM_CLOSE, 0, 0);
+    });
+    result = stop.stop_requested() ? kCancelled : dialog->Show(owner);
+    RemoveWindowSubclass(window, CancelFolderDialog, 1);
+  }
+  DestroyWindow(window);
+  return result;
+}
+
 }  // namespace
 
 std::string ChooseWindowsFolder(HWND owner, const std::string& title,
-                               const std::string& initial_folder) {
+                               const std::string& initial_folder,
+                               std::stop_token stop) {
+  if (stop.stop_requested()) return {};
   struct Apartment {
     const HRESULT result =
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
@@ -54,7 +91,7 @@ std::string ChooseWindowsFolder(HWND owner, const std::string& title,
                                              IID_PPV_ARGS(&folder))))
       dialog->SetFolder(folder.Get());
   }
-  if (FAILED(dialog->Show(owner))) return {};
+  if (FAILED(ShowFolderDialog(dialog.Get(), owner, stop))) return {};
 
   Microsoft::WRL::ComPtr<IShellItem> selection;
   PWSTR path = nullptr;

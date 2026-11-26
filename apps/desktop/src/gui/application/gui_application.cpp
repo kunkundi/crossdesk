@@ -1194,8 +1194,12 @@ struct GuiApplication::SlintUi {
   std::shared_ptr<void> file_dialog_lifetime = std::make_shared<int>(0);
   bool file_dialog_open = false;
 #if _WIN32
-  std::future<std::string> receive_folder_dialog;
-  std::optional<bool> receive_folder_gallery;
+  struct ReceiveFolderDialog {
+    bool gallery;
+    std::stop_source stop;
+    std::future<std::string> result;
+  };
+  std::optional<ReceiveFolderDialog> receive_folder_dialog;
 #endif
   std::future<feedback::ExportResult> diagnostic_export;
   std::string diagnostic_saved_path;
@@ -1693,8 +1697,10 @@ void GuiApplication::ResetSettingsUi(bool gallery_window) {
     return;
   }
 #if _WIN32
-  if (ui_->receive_folder_gallery == gallery_window)
-    ui_->receive_folder_gallery.reset();
+  if (ui_->receive_folder_dialog &&
+      ui_->receive_folder_dialog->gallery == gallery_window) {
+    CancelReceiveFolderDialog();
+  }
 #endif
   auto& main = ui_->Window(gallery_window);
   main->set_language_index(language_button_value_);
@@ -2114,16 +2120,19 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
 #if _WIN32
     if (exit_ || ui_->file_dialog_open) return;
     const HWND owner = main->window().win32_hwnd();
+    if (!owner) return;
     try {
+      std::stop_source stop;
       std::packaged_task<std::string()> select(
-          [owner, title,
-           initial_folder = std::string(file_transfer_save_path_buf_)] {
-            return ChooseWindowsFolder(owner, title, initial_folder);
+          [owner, title, initial_folder = std::string(main->get_file_save_path()),
+           token = stop.get_token()] {
+            return ChooseWindowsFolder(owner, title, initial_folder, token);
           });
       auto result = select.get_future();
       std::thread(std::move(select)).detach();
-      ui_->receive_folder_dialog = std::move(result);
-      ui_->receive_folder_gallery = gallery_window;
+      ui_->receive_folder_dialog.emplace(gallery_window, std::move(stop),
+                                         std::move(result));
+      main->set_receive_folder_pending(true);
       ui_->file_dialog_open = true;
     } catch (const std::system_error& error) {
       LOG_WARN("Failed to start the Windows folder picker: {}", error.what());
@@ -5018,6 +5027,9 @@ bool GuiApplication::ValidateSelfHostedSettingsFromUi(bool gallery_window) {
 }
 
 bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
+#if _WIN32
+  if (ui_->Window(gallery_window)->get_receive_folder_pending()) return false;
+#endif
   const auto previous_server = GetSignalServerSettings(*config_center_);
   const bool saved = PersistSettingsFromUi(gallery_window);
   const bool server_changed = previous_server != GetSignalServerSettings(*config_center_);
@@ -5645,23 +5657,31 @@ void GuiApplication::OpenFileDialog(const std::string& title,
 }
 
 #if _WIN32
-void GuiApplication::PollReceiveFolderDialog() {
-  auto& result = ui_->receive_folder_dialog;
-  if (!result.valid() ||
-      result.wait_for(0ms) != std::future_status::ready) return;
-
+void GuiApplication::CancelReceiveFolderDialog() {
+  auto& picker = ui_->receive_folder_dialog;
+  if (!picker) return;
+  picker->stop.request_stop();
+  ui_->Window(picker->gallery)->set_receive_folder_pending(false);
+  picker.reset();
   ui_->file_dialog_open = false;
-  const auto gallery_window =
-      std::exchange(ui_->receive_folder_gallery, std::nullopt);
+}
+
+void GuiApplication::PollReceiveFolderDialog() {
+  auto& picker = ui_->receive_folder_dialog;
+  if (!picker || picker->result.wait_for(0ms) != std::future_status::ready) return;
+
+  auto& window = ui_->Window(picker->gallery);
   try {
-    const std::string path = result.get();
-    if (gallery_window && !path.empty()) {
-      auto& window = ui_->Window(*gallery_window);
-      if (window->get_settings_open()) window->set_file_save_path(UiText(path));
+    const auto path = picker->result.get();
+    if (window->get_settings_open() && !path.empty()) {
+      window->set_file_save_path(UiText(path));
     }
-  } catch (const std::exception&) {
-    LOG_WARN("Windows folder selection failed");
+  } catch (const std::exception& error) {
+    LOG_WARN("Windows folder selection failed: {}", error.what());
   }
+  window->set_receive_folder_pending(false);
+  picker.reset();
+  ui_->file_dialog_open = false;
 }
 #endif
 
@@ -7228,6 +7248,9 @@ void GuiApplication::Cleanup() {
     return;
   }
   ui_->file_dialog_lifetime.reset();
+#if _WIN32
+  CancelReceiveFolderDialog();
+#endif
 #if defined(__APPLE__)
   CancelNativeFileDialog();
 #endif

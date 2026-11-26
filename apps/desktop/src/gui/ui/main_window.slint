@@ -817,6 +817,7 @@ export component MainWindow inherits Window {
     in-out property <string> trust-pairing-input;
     callback trust-action(string, string, string);
     in-out property <string> file-save-path: "";
+    in property <bool> receive-folder-pending: false;
     in-out property <string> server-host: "";
     in-out property <string> server-port: "";
     in-out property <string> self-host-settings-error: "";
@@ -3211,6 +3212,7 @@ export component MainWindow inherits Window {
                 SettingsButton {
                     width: max(92px, self.label-width); primary: true;
                     text: GalleryStrings.texts[34];
+                    enabled: !root.receive-folder-pending;
                     clicked => { if root.save-settings() { root.settings-open = false; root.self-host-settings-open = false; } }
                 }
             }
