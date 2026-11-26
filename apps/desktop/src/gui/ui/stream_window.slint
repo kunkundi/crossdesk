@@ -1193,7 +1193,7 @@ export component StreamWindow inherits Window {
                 focus-gained => { root.keyboard-focus-changed(!root.control-menu-open && !root.modal-visible); }
                 focus-lost => { root.keyboard-focus-changed(false); }
                 key-pressed(event) => {
-                    if !root.modal-visible && !root.control-menu-open {
+                    if root.window-active && !root.modal-visible && !root.control-menu-open {
                         root.key-input(event.text, true, event.modifiers.control, event.modifiers.alt, event.modifiers.shift, event.modifiers.meta);
                     }
                     accept

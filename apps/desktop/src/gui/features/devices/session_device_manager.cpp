@@ -600,9 +600,10 @@ int SessionDeviceManager::StartKeyboardCapturer() {
     LOG_WARN(
         "Start keyboard capturer failed, falling back to Slint keyboard events");
   } else {
-    // The native backend now owns the physical modifier edges. Its queued
-    // presses must follow the release of any Shift inferred from window input.
-    owner_.keyboard_.ReleaseInferredWindowShift();
+    // The native backend now owns the physical modifier edges. Release any
+    // inferred Shift and reconcile window-originated keys whose release may
+    // have occurred before the hook became active.
+    owner_.keyboard_.OnNativeCaptureStarted();
     LOG_INFO("Start keyboard capturer with native input");
   }
   return 0;
@@ -879,6 +880,7 @@ void SessionDeviceManager::DrainCapturedKeyboardInput() {
     return;
   }
   for (const KeyboardInput &input : inputs.events) {
+    owner_.keyboard_.NoteNativeKey(input.key_code);
     owner_.keyboard_.SendKeyCommand(input.key_code, input.is_down,
                                     input.scan_code, input.extended);
   }

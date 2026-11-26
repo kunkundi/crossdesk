@@ -18,6 +18,7 @@ const HWND stream = reinterpret_cast<HWND>(1);
 const HWND local = reinterpret_cast<HWND>(2);
 HWND foreground = stream;
 HOOKPROC callback = nullptr;
+WINEVENTPROC foreground_callback = nullptr;
 std::array<bool, 256> windows_down{};
 bool raw_registered = false;
 bool old_hook_expired = false;
@@ -41,7 +42,9 @@ DWORD WindowProcess(HWND, LPDWORD process) {
   *process = GetCurrentProcessId();
   return GetCurrentThreadId();
 }
-SHORT AsyncKey(int code) { return windows_down[code] ? SHORT(0x8000) : 0; }
+SHORT AsyncKey(int code) {
+  return windows_down[code] ? static_cast<SHORT>(-0x8000) : 0;
+}
 HHOOK Install(int, HOOKPROC proc, HINSTANCE, DWORD) {
   callback = proc;
   if (leave_during_install) {
@@ -56,6 +59,15 @@ BOOL Remove(HHOOK) {
     SetLastError(ERROR_INVALID_HOOK_HANDLE);
     return FALSE;
   }
+  return TRUE;
+}
+HWINEVENTHOOK InstallWinEvent(DWORD, DWORD, HMODULE, WINEVENTPROC proc, DWORD,
+                              DWORD, DWORD) {
+  foreground_callback = proc;
+  return reinterpret_cast<HWINEVENTHOOK>(4);
+}
+BOOL RemoveWinEvent(HWINEVENTHOOK) {
+  foreground_callback = nullptr;
   return TRUE;
 }
 LRESULT NextHook(HHOOK, int, WPARAM, LPARAM) { return 0; }
@@ -112,6 +124,7 @@ void Event(int key, bool down, HWND window, bool should_swallow,
 void Reset(int key, const std::string& name) {
   foreground = stream;
   callback = nullptr;
+  foreground_callback = nullptr;
   windows_down.fill(false);
   raw_registered = old_hook_expired = leave_during_install = false;
   scenario = name + " key=" + std::to_string(key);
@@ -119,6 +132,15 @@ void Reset(int key, const std::string& name) {
   steps.clear();
   next_step = 0;
   finished = std::promise<void>();
+}
+
+void FocusChange(HWND window) {
+  foreground = window;
+  if (foreground_callback) {
+    foreground_callback(reinterpret_cast<HWINEVENTHOOK>(4),
+                        EVENT_SYSTEM_FOREGROUND, window, OBJID_WINDOW,
+                        CHILDID_SELF, GetCurrentThreadId(), 0);
+  }
 }
 
 }  // namespace mock
@@ -130,6 +152,8 @@ void Reset(int key, const std::string& name) {
 #define GetAsyncKeyState mock::AsyncKey
 #define SetWindowsHookExW mock::Install
 #define UnhookWindowsHookEx mock::Remove
+#define SetWinEventHook mock::InstallWinEvent
+#define UnhookWinEvent mock::RemoveWinEvent
 #define CallNextHookEx mock::NextHook
 #define GetRegisteredRawInputDevices mock::Registrations
 #define RegisterRawInputDevices mock::Register
@@ -229,6 +253,101 @@ int main() {
       mock::Event(key, false, mock::stream, false);
     });
     Run(key);
+    ++scenarios;
+
+    // Issue #266: if a modifier press reached Windows without local_keys_down_
+    // recording it (e.g. single hook timeout), releasing it on the stream must
+    // pass through to Windows so the client's modifier never stays stuck.
+    mock::Reset(key, "untracked local press still releases Windows state");
+    mock::steps.push_back([=](MSG&) {
+      mock::windows_down[key] = true;
+      mock::Event(key, false, mock::stream, false);
+    });
+    Run(key);
+    ++scenarios;
+
+    // Issue #266: releasing an inherited modifier immediately after returning
+    // to the stream must not synthesize a spurious down+up tap on the peer.
+    mock::Reset(key, "background modifier released on stream without tap");
+    mock::steps.push_back([=](MSG&) {
+      mock::Event(key, true, mock::local, false);
+      mock::Event(key, false, mock::stream, false);
+      for (const auto& item : mock::forwarded) {
+        mock::Expect(!item.is_down,
+                     "releasing inherited modifier must not press it remotely");
+      }
+    });
+    Run(key);
+    ++scenarios;
+
+    // Issue #266: if a modifier pressed in a background window was released in
+    // an elevated/UIPI window where WH_KEYBOARD_LL could not observe key-up,
+    // returning to the stream and pressing Esc must not forward the stale
+    // modifier (which turned Esc into Ctrl+Esc / Win).
+    mock::Reset(key, "uipi-missed modifier release not forwarded on Esc");
+    mock::steps.push_back([=](MSG&) {
+      mock::Event(key, true, mock::local, false);
+      mock::windows_down[key] = false;  // Released in elevated/UIPI window.
+      mock::Event(VK_ESCAPE, true, mock::stream, true);
+      mock::Event(VK_ESCAPE, false, mock::stream, true);
+      mock::Expect(mock::forwarded.size() == 2 &&
+                       mock::forwarded[0].key_code == VK_ESCAPE &&
+                       mock::forwarded[0].is_down &&
+                       mock::forwarded[1].key_code == VK_ESCAPE &&
+                       !mock::forwarded[1].is_down,
+                   "stale background modifier must not prefix Esc");
+    });
+    Run(key);
+    ++scenarios;
+
+    // Issue #266: rapid focus switch away from and back to the stream within a
+    // single UI tick must release captured remote modifiers via foreground hook.
+    mock::Reset(key, "rapid foreground bounce releases captured modifier");
+    mock::steps.push_back([=](MSG&) {
+      mock::Event(key, true, mock::stream, true);
+      mock::FocusChange(mock::local);
+      mock::Expect(mock::forwarded.size() == 2 &&
+                       mock::forwarded[1].key_code == key &&
+                       !mock::forwarded[1].is_down,
+                   "leaving stream must immediately release captured modifier");
+      mock::FocusChange(mock::stream);
+      mock::Event(VK_ESCAPE, true, mock::stream, true);
+      mock::Event(VK_ESCAPE, false, mock::stream, true);
+      mock::Expect(mock::forwarded.size() == 4 &&
+                       mock::forwarded[2].key_code == VK_ESCAPE &&
+                       mock::forwarded[3].key_code == VK_ESCAPE,
+                   "returning to stream must not resurrect released modifier");
+    });
+    Run(key);
+    ++scenarios;
+
+    // Issue #266: if another key is pressed in a non-stream window before the
+    // UI thread unhooks, all previously captured modifiers must be released.
+    mock::Reset(key, "background key releases all captured modifiers");
+    mock::steps.push_back([=](MSG&) {
+      mock::Event(key, true, mock::stream, true);
+      mock::Event('A', true, mock::local, false);
+      mock::Event('A', false, mock::local, false);
+      mock::Expect(mock::forwarded.size() == 2 &&
+                       mock::forwarded[1].key_code == key &&
+                       !mock::forwarded[1].is_down,
+                   "background key must release captured stream modifier");
+    });
+    Run(key);
+    ++scenarios;
+  }
+
+  for (const auto [side_key, generic_key] :
+       {std::pair{VK_LSHIFT, VK_SHIFT}, std::pair{VK_RSHIFT, VK_SHIFT},
+        std::pair{VK_LCONTROL, VK_CONTROL}, std::pair{VK_RCONTROL, VK_CONTROL},
+        std::pair{VK_LMENU, VK_MENU}, std::pair{VK_RMENU, VK_MENU}}) {
+    mock::Reset(side_key, "generic Windows modifier state still releases");
+    mock::steps.push_back([=](MSG&) {
+      mock::windows_down[generic_key] = true;
+      mock::Event(side_key, false, mock::stream, false, true);
+      mock::windows_down[generic_key] = false;
+    });
+    Run(side_key);
     ++scenarios;
   }
   std::cout << scenarios << " keyboard capture scenarios: "

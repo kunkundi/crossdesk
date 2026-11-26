@@ -22,6 +22,8 @@ inline int LinuxEvdevKeycodeFromWindowsScanCode(uint32_t scan_code,
         return KEY_RIGHTCTRL;
       case 0x35:
         return KEY_KPSLASH;
+      case 0x36:
+        return KEY_RIGHTSHIFT;
       case 0x38:
         return KEY_RIGHTALT;
       case 0x47:

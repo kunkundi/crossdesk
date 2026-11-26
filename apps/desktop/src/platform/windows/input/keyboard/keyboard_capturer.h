@@ -37,15 +37,22 @@ class PlatformKeyboardCapturer final : public KeyboardCapturer {
  private:
   static LRESULT CALLBACK KeyboardHookProc(int code, WPARAM message,
                                            LPARAM data);
+  static void CALLBACK ForegroundEventProc(HWINEVENTHOOK hook, DWORD event,
+                                           HWND hwnd, LONG id_object,
+                                           LONG id_child, DWORD event_thread,
+                                           DWORD event_time);
   static thread_local PlatformKeyboardCapturer* active_capturer_;
 
   void CaptureThreadMain();
   bool RenewKeyboardHook();
   void RemoveKeyboardHook();
+  bool IsWindowsKeyDown(int key_code) const;
+  void RefreshLocalKeys();
   void SnapshotLocalKeys();
-  void ForwardLocalModifiers();
+  void ForwardLocalModifiers(int skip_key = 0);
   void ReleaseCapturedKeys();
   void ForwardKey(int code, bool down, uint32_t scan_code, bool extended);
+  void HandleForegroundChanged(HWND foreground_window);
   bool HandleKeyboardInput(WPARAM message, const KBDLLHOOKSTRUCT& keyboard,
                            HWND foreground_window);
 
@@ -56,8 +63,10 @@ class PlatformKeyboardCapturer final : public KeyboardCapturer {
   std::atomic<bool> stop_requested_{false};
   std::atomic<ULONGLONG> last_hook_pump_tick_{0};
   HHOOK keyboard_hook_ = nullptr;
+  HWINEVENTHOOK foreground_hook_ = nullptr;
   WindowsRawKeyboardGuard raw_keyboard_guard_;
   HHOOK retired_hook_ = nullptr;
+  bool capture_window_focused_ = false;
   std::array<bool, 256> local_keys_down_{};
   std::array<KeyboardKey, 256> captured_keys_{};
   std::thread capture_thread_;

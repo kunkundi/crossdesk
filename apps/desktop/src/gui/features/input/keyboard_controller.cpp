@@ -125,6 +125,7 @@ void KeyboardController::ForceReleasePressedKeys() {
 }
 
 void KeyboardController::RecoverCapturedState(const PressedKeys& pressed) {
+  window_shift_.ClearWindowKeys();
   std::vector<KeyboardInput> changes;
   {
     std::lock_guard lock(pressed_keys_mutex_);
@@ -168,15 +169,99 @@ void KeyboardController::SendHeartbeat(bool force) {
   last_heartbeat_tick_ = now;
 }
 
-void KeyboardController::SendWindowKey(int key_code, bool is_down, bool shift) {
+void KeyboardController::SendWindowKey(int key_code, bool is_down,
+                                       WindowShiftState::Modifiers modifiers) {
   WindowShiftState::Held held;
   {
     std::lock_guard lock(pressed_keys_mutex_);
-    held = {pressed_keys_.count(WindowShiftState::kLeft) != 0,
-            pressed_keys_.count(WindowShiftState::kRight) != 0};
+    held = {
+        pressed_keys_.count(WindowShiftState::kLeft) != 0,
+        pressed_keys_.count(WindowShiftState::kRight) != 0,
+        pressed_keys_.count(WindowShiftState::kLeftControl) != 0,
+        pressed_keys_.count(WindowShiftState::kRightControl) != 0,
+        pressed_keys_.count(WindowShiftState::kLeftAlt) != 0,
+        pressed_keys_.count(WindowShiftState::kRightAlt) != 0,
+        pressed_keys_.count(WindowShiftState::kLeftMeta) != 0,
+        pressed_keys_.count(WindowShiftState::kRightMeta) != 0,
+    };
   }
-  window_shift_.Forward(key_code, is_down, shift, held,
-                        [this](int key, bool down) { SendKeyCommand(key, down); });
+  window_shift_.Forward(
+      key_code, is_down, modifiers, held,
+      [this](int key, bool down) { SendKeyCommand(key, down); });
+}
+
+void KeyboardController::SendWindowKey(int key_code, bool is_down, bool shift) {
+  SendWindowKey(key_code, is_down, {false, false, shift, false});
+}
+
+void KeyboardController::ReleaseWindowKey(int key_code) {
+  bool is_pressed = false;
+  {
+    std::lock_guard lock(pressed_keys_mutex_);
+    is_pressed = pressed_keys_.count(key_code) != 0;
+  }
+  window_shift_.ReleaseWindowKey(
+      key_code, is_pressed,
+      [this](int key, bool down) { SendKeyCommand(key, down); });
+}
+
+void KeyboardController::ReconcileWindowModifiers(
+    WindowShiftState::Modifiers live) {
+  WindowShiftState::Held held;
+  {
+    std::lock_guard lock(pressed_keys_mutex_);
+    held = {
+        pressed_keys_.count(WindowShiftState::kLeft) != 0,
+        pressed_keys_.count(WindowShiftState::kRight) != 0,
+        pressed_keys_.count(WindowShiftState::kLeftControl) != 0,
+        pressed_keys_.count(WindowShiftState::kRightControl) != 0,
+        pressed_keys_.count(WindowShiftState::kLeftAlt) != 0,
+        pressed_keys_.count(WindowShiftState::kRightAlt) != 0,
+        pressed_keys_.count(WindowShiftState::kLeftMeta) != 0,
+        pressed_keys_.count(WindowShiftState::kRightMeta) != 0,
+    };
+  }
+  window_shift_.ReconcileModifiers(
+      live, held, [this](int key, bool down) { SendKeyCommand(key, down); });
+}
+
+void KeyboardController::OnNativeCaptureStarted() {
+  ReleaseInferredWindowShift();
+#if _WIN32
+  std::vector<int> stale_keys;
+  {
+    std::lock_guard lock(pressed_keys_mutex_);
+    auto down = [](int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; };
+    for (const auto& [key_code, _] : pressed_keys_) {
+      if (!window_shift_.HasWindowKey(key_code)) continue;
+      bool physically_down = down(key_code);
+      if (!physically_down) {
+        if (key_code == WindowShiftState::kLeft ||
+            key_code == WindowShiftState::kRight) {
+          physically_down = down(VK_SHIFT);
+        } else if (key_code == WindowShiftState::kLeftControl ||
+                   key_code == WindowShiftState::kRightControl) {
+          physically_down = down(VK_CONTROL);
+        } else if (key_code == WindowShiftState::kLeftAlt ||
+                   key_code == WindowShiftState::kRightAlt) {
+          physically_down = down(VK_MENU);
+        }
+      }
+      if (!physically_down) {
+        stale_keys.push_back(key_code);
+      }
+    }
+  }
+  for (int key_code : stale_keys) {
+    if (window_shift_.ConsumeWindowKey(key_code)) {
+      SendKeyCommand(key_code, false);
+    }
+  }
+#endif
+}
+
+void KeyboardController::NoteNativeKey(int key_code) {
+  window_shift_.ClearWindowKey(key_code);
 }
 
 void KeyboardController::ReleaseInferredWindowShift() {

@@ -221,6 +221,16 @@ class ScopedUnsetEnvironmentVariable {
     return 0;
   }
 
+  ::Window focused_window = 0;
+  int revert_to = RevertToNone;
+  XGetInputFocus(display, &focused_window, &revert_to);
+  if (focused_window == None) {
+    // Under XWayland, focusing a native Wayland window or opening the desktop
+    // shell overview clears X11 input focus while _NET_ACTIVE_WINDOW may still
+    // reference the last XWayland window.
+    return 0;
+  }
+
   const ::Window root = DefaultRootWindow(display);
   const Atom active_window_atom =
       XInternAtom(display, "_NET_ACTIVE_WINDOW", True);
@@ -237,19 +247,16 @@ class ScopedUnsetEnvironmentVariable {
         data) {
       const ::Window active_window = *reinterpret_cast<const ::Window*>(data);
       XFree(data);
-      return active_window;
+      if (active_window != None) {
+        return active_window;
+      }
     }
     if (data) {
       XFree(data);
     }
   }
 
-  ::Window focused_window = 0;
-  int revert_to = RevertToNone;
-  XGetInputFocus(display, &focused_window, &revert_to);
-  return focused_window == None || focused_window == PointerRoot
-             ? 0
-             : focused_window;
+  return focused_window == PointerRoot ? 0 : focused_window;
 }
 
 std::optional<unsigned long> X11GetWindowProcessId(Display* display,
@@ -3893,7 +3900,7 @@ void GuiApplication::SyncXWaylandWindowActivation() {
   }
 
   const auto now = std::chrono::steady_clock::now();
-  if (now - ui_->last_x11_activation_poll < 100ms) {
+  if (now - ui_->last_x11_activation_poll < 16ms) {
     return;
   }
   ui_->last_x11_activation_poll = now;
@@ -3933,7 +3940,8 @@ void GuiApplication::SetStreamKeyboardFocus(StreamView& view, bool focused) {
 #elif defined(__OHOS__)
   focused = focused && IsHarmonyWindowActive(view.window->window());
 #else
-  focused = focused && view.window->get_video_input_focused();
+  focused = focused && view.window->get_window_active() &&
+            view.window->get_video_input_focused();
 #endif
   if (!focused) {
     if (ui_->gallery_control_id.empty() && controlled_remote_id_ == id) {
@@ -3976,6 +3984,8 @@ void GuiApplication::SyncStreamKeyboardFocus() {
     if (GetForegroundWindow() != ui_->wall->window().win32_hwnd()) ReleaseControl();
 #elif defined(__OHOS__)
     if (!IsHarmonyWindowActive(ui_->wall->window())) ReleaseControl();
+#else
+    if (!ui_->wall->get_window_active()) ReleaseControl();
 #endif
   }
   for (auto& [_, view] : ui_->streams) {
@@ -5531,6 +5541,57 @@ std::optional<VideoPoint> GuiApplication::MapRemotePointer(
   return point;
 }
 
+void GuiApplication::SyncWindowModifiersBeforePointer() {
+  if (keyboard_capturer_is_started_ && !keyboard_capturer_uses_window_events_) {
+    return;
+  }
+#if defined(_WIN32)
+  DWORD foreground_pid = 0;
+  const HWND foreground = GetForegroundWindow();
+  if (foreground &&
+      GetWindowThreadProcessId(foreground, &foreground_pid) != 0 &&
+      foreground_pid == GetCurrentProcessId()) {
+    auto down = [](int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; };
+    keyboard_.ReconcileWindowModifiers({
+        down(VK_CONTROL) || down(VK_LCONTROL) || down(VK_RCONTROL),
+        down(VK_MENU) || down(VK_LMENU) || down(VK_RMENU),
+        down(VK_SHIFT) || down(VK_LSHIFT) || down(VK_RSHIFT),
+        down(VK_LWIN) || down(VK_RWIN),
+    });
+    return;
+  }
+#elif (defined(__linux__) && !defined(__OHOS__)) && !defined(__APPLE__)
+  if (use_x11_custom_titlebar_) {
+    if (!ui_->x11_focus_display) {
+      ui_->x11_focus_display = XOpenDisplay(nullptr);
+    }
+    if (Display* display = ui_->x11_focus_display) {
+      ::Window focused_window = 0;
+      int revert_to = RevertToNone;
+      XGetInputFocus(display, &focused_window, &revert_to);
+      if (focused_window != None) {
+        ::Window root_return = 0;
+        ::Window child_return = 0;
+        int root_x = 0, root_y = 0, win_x = 0, win_y = 0;
+        unsigned int mask = 0;
+        if (XQueryPointer(display, DefaultRootWindow(display), &root_return,
+                          &child_return, &root_x, &root_y, &win_x, &win_y,
+                          &mask)) {
+          keyboard_.ReconcileWindowModifiers({
+              (mask & ControlMask) != 0,
+              (mask & (Mod1Mask | Mod5Mask)) != 0,
+              (mask & ShiftMask) != 0,
+              (mask & Mod4Mask) != 0,
+          });
+          return;
+        }
+      }
+    }
+  }
+#endif
+  keyboard_.ReleaseInferredWindowShift();
+}
+
 void GuiApplication::SendPointerInput(int button, int kind, float x, float y) {
   auto props = FindRemoteSession(controlled_remote_id_);
   if (!props || !props->peer_ || !props->control_mouse_) {
@@ -5577,7 +5638,10 @@ void GuiApplication::SendPointerInput(int button, int kind, float x, float y) {
     return;
   }
 
-  if (kind == 1) ui_->pressed_mouse_buttons.insert(button);
+  if (kind == 1) {
+    SyncWindowModifiersBeforePointer();
+    ui_->pressed_mouse_buttons.insert(button);
+  }
   if (kind == 2) ui_->pressed_mouse_buttons.erase(button);
   ui_->pointer_x = point->x;
   ui_->pointer_y = point->y;
@@ -5594,6 +5658,7 @@ void GuiApplication::SendScrollInput(float delta_x, float delta_y, float x,
   if (!point) {
     return;
   }
+  SyncWindowModifiersBeforePointer();
   RemoteAction action{};
   action.type = ControlType::mouse;
   action.m.x = point->x;
@@ -5610,25 +5675,25 @@ void GuiApplication::SendScrollInput(float delta_x, float delta_y, float x,
 void GuiApplication::SendKeyInput(const std::string& text, bool pressed,
                                   bool control, bool alt, bool shift,
                                   bool meta) {
-  (void)control;
-  (void)alt;
-  (void)meta;
   auto props = FindRemoteSession(controlled_remote_id_);
   if (!props || !props->peer_ || !props->control_mouse_ ||
       props->connection_status_.load() != MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
     return;
   }
 
+  const int virtual_key = SlintKeyToWindowsVk(text);
 
-  // Native capture forwards the event independently. Slint keyboard events
-  // are used only by platforms whose native capture backend is unavailable.
+  // Native capture forwards events independently once started, except for a
+  // release of a key that was pressed via Slint before native capture hooked.
   if (keyboard_capturer_is_started_ && !keyboard_capturer_uses_window_events_) {
+    if (!pressed && virtual_key >= 0) {
+      keyboard_.ReleaseWindowKey(virtual_key);
+    }
     return;
   }
 
-  const int virtual_key = SlintKeyToWindowsVk(text);
   if (virtual_key >= 0) {
-    keyboard_.SendWindowKey(virtual_key, pressed, shift);
+    keyboard_.SendWindowKey(virtual_key, pressed, {control, alt, shift, meta});
   }
 }
 

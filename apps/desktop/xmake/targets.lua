@@ -169,6 +169,14 @@ function setup_targets()
         add_includedirs("apps/desktop/src/platform/macos/input")
         add_files("apps/desktop/tests/macos_keyboard_modifier_state_test.cpp")
 
+    target("window_shift_state_test")
+        set_kind("binary")
+        set_default(false)
+        add_includedirs("apps/desktop/src/gui/features/input",
+            "apps/desktop/src/platform/common/input",
+            "apps/desktop/src/platform/linux/input")
+        add_files("apps/desktop/tests/window_shift_state_test.cpp")
+
     if is_os("macosx") then
         target("macos_keyboard_capturer_test")
             set_kind("binary")

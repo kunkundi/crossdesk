@@ -112,19 +112,64 @@ int PlatformKeyboardCapturer::Unhook() {
   on_key_action_ = nullptr;
   user_ptr_ = nullptr;
   capture_window_ = nullptr;
+  capture_window_focused_ = false;
   local_keys_down_.fill(false);
   captured_keys_.fill({});
   return 0;
+}
+
+bool PlatformKeyboardCapturer::IsWindowsKeyDown(int key_code) const {
+  if (key_code < VK_BACK || key_code >= 0xFF) return false;
+  if ((GetAsyncKeyState(key_code) & 0x8000) != 0) return true;
+  switch (key_code) {
+    case VK_LSHIFT:
+      return (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0 &&
+             (GetAsyncKeyState(VK_RSHIFT) & 0x8000) == 0;
+    case VK_RSHIFT:
+      return (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0 &&
+             (GetAsyncKeyState(VK_LSHIFT) & 0x8000) == 0;
+    case VK_LCONTROL:
+      return (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 &&
+             (GetAsyncKeyState(VK_RCONTROL) & 0x8000) == 0;
+    case VK_RCONTROL:
+      return (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 &&
+             (GetAsyncKeyState(VK_LCONTROL) & 0x8000) == 0;
+    case VK_LMENU:
+      return (GetAsyncKeyState(VK_MENU) & 0x8000) != 0 &&
+             (GetAsyncKeyState(VK_RMENU) & 0x8000) == 0;
+    case VK_RMENU:
+      return (GetAsyncKeyState(VK_MENU) & 0x8000) != 0 &&
+             (GetAsyncKeyState(VK_LMENU) & 0x8000) == 0;
+    default:
+      return false;
+  }
+}
+
+void PlatformKeyboardCapturer::RefreshLocalKeys() {
+  local_keys_down_.fill(false);
+  for (int code = VK_BACK; code < 0xFF; ++code)
+    local_keys_down_[code] = (GetAsyncKeyState(code) & 0x8000) != 0;
+  if (local_keys_down_[VK_SHIFT] && !local_keys_down_[VK_LSHIFT] &&
+      !local_keys_down_[VK_RSHIFT]) {
+    local_keys_down_[VK_LSHIFT] = true;
+  }
+  if (local_keys_down_[VK_CONTROL] && !local_keys_down_[VK_LCONTROL] &&
+      !local_keys_down_[VK_RCONTROL]) {
+    local_keys_down_[VK_LCONTROL] = true;
+  }
+  if (local_keys_down_[VK_MENU] && !local_keys_down_[VK_LMENU] &&
+      !local_keys_down_[VK_RMENU]) {
+    local_keys_down_[VK_LMENU] = true;
+  }
 }
 
 void PlatformKeyboardCapturer::SnapshotLocalKeys() {
   // Keep local release ownership even if focus changed during installation
   // or recovery. Focus may return before the UI stops capture; forgetting a
   // held local modifier here would swallow its release and leave Windows stuck.
-  local_keys_down_.fill(false);
-  for (int code = VK_BACK; code < 0xFF; ++code)
-    local_keys_down_[code] = (GetAsyncKeyState(code) & 0x8000) != 0;
-  if (GetForegroundWindow() == capture_window_) ForwardLocalModifiers();
+  RefreshLocalKeys();
+  capture_window_focused_ = GetForegroundWindow() == capture_window_;
+  if (capture_window_focused_) ForwardLocalModifiers();
 }
 
 void PlatformKeyboardCapturer::ForwardKey(int code, bool down,
@@ -134,13 +179,24 @@ void PlatformKeyboardCapturer::ForwardKey(int code, bool down,
   on_key_action_(code, down, scan_code, extended, user_ptr_);
 }
 
-void PlatformKeyboardCapturer::ForwardLocalModifiers() {
+void PlatformKeyboardCapturer::ForwardLocalModifiers(int skip_key) {
   // Windows already saw these presses before capture began. Forward held
   // modifiers now, but let their eventual physical releases reach Windows
   // too. Swallowing those releases would leave the controller's keys stuck.
   for (const int code : {VK_LSHIFT, VK_RSHIFT, VK_LCONTROL, VK_RCONTROL,
                          VK_LMENU, VK_RMENU, VK_LWIN, VK_RWIN}) {
-    if (!local_keys_down_[code] || captured_keys_[code].key_code != 0) continue;
+    if (!local_keys_down_[code]) continue;
+    if (!IsWindowsKeyDown(code)) {
+      // A key-up may have been consumed by an elevated/UIPI window or an
+      // upstream hook while unfocused. Clear stale local ownership.
+      local_keys_down_[code] = false;
+      if (captured_keys_[code].key_code != 0) {
+        ForwardKey(code, false, captured_keys_[code].scan_code,
+                   captured_keys_[code].extended);
+      }
+      continue;
+    }
+    if (code == skip_key || captured_keys_[code].key_code != 0) continue;
     const UINT scan = MapVirtualKeyW(code, MAPVK_VK_TO_VSC_EX);
     ForwardKey(code, true, scan & 0xFF, (scan & 0xFF00) != 0);
   }
@@ -206,6 +262,8 @@ bool PlatformKeyboardCapturer::RenewKeyboardHook() {
 }
 
 void PlatformKeyboardCapturer::RemoveKeyboardHook() {
+  if (foreground_hook_) UnhookWinEvent(foreground_hook_);
+  foreground_hook_ = nullptr;
   if (keyboard_hook_) UnhookWindowsHookEx(keyboard_hook_);
   keyboard_hook_ = nullptr;
   if (retired_hook_) UnhookWindowsHookEx(retired_hook_);
@@ -232,6 +290,12 @@ void PlatformKeyboardCapturer::CaptureThreadMain() {
   if (installed && !timer) {
     LOG_WARN("Failed to create keyboard hook renewal timer, error={}",
              GetLastError());
+  }
+  if (capture_started) {
+    foreground_hook_ = SetWinEventHook(
+        EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, nullptr,
+        &PlatformKeyboardCapturer::ForegroundEventProc, 0, 0,
+        WINEVENT_OUTOFCONTEXT);
   }
   hook_active_.store(capture_started);
   if (capture_started) SnapshotLocalKeys();
@@ -282,6 +346,29 @@ void PlatformKeyboardCapturer::CaptureThreadMain() {
   LOG_INFO("Keyboard hook capture stopped, thread_id={}", thread_id);
 }
 
+void CALLBACK PlatformKeyboardCapturer::ForegroundEventProc(
+    HWINEVENTHOOK, DWORD event, HWND hwnd, LONG, LONG, DWORD, DWORD) {
+  if (event == EVENT_SYSTEM_FOREGROUND && active_capturer_) {
+    active_capturer_->HandleForegroundChanged(hwnd);
+  }
+}
+
+void PlatformKeyboardCapturer::HandleForegroundChanged(HWND foreground_window) {
+  if (stop_requested_.load() || !hook_active_.load() || !on_key_action_ ||
+      !capture_window_) {
+    return;
+  }
+  if (foreground_window != capture_window_) {
+    capture_window_focused_ = false;
+    ReleaseCapturedKeys();
+    return;
+  }
+  if (!capture_window_focused_) {
+    ReleaseCapturedKeys();
+    SnapshotLocalKeys();
+  }
+}
+
 LRESULT CALLBACK PlatformKeyboardCapturer::KeyboardHookProc(
     int code, WPARAM message, LPARAM data) {
   if (code == HC_ACTION && active_capturer_ && data != 0 &&
@@ -326,15 +413,30 @@ bool PlatformKeyboardCapturer::HandleKeyboardInput(
 
   if (foreground_window != capture_window_) {
     // This event goes to Windows, even if focus changed before the UI thread
-    // has noticed. Remember ownership in case focus returns before Unhook().
+    // has noticed. Release all remote keys immediately so modifiers cannot
+    // remain held across a rapid focus round-trip, and remember local state.
+    capture_window_focused_ = false;
     local_keys_down_[key_code] = is_down;
-    if (!is_down && captured_keys_[key_code].key_code != 0)
-      ForwardKey(key_code, false, keyboard.scanCode, extended);
+    ReleaseCapturedKeys();
     return false;
   }
-  ForwardLocalModifiers();
-  const bool release_local = !is_down && local_keys_down_[key_code];
-  if (!is_down) local_keys_down_[key_code] = false;
+  if (!capture_window_focused_) {
+    capture_window_focused_ = true;
+    ReleaseCapturedKeys();
+    RefreshLocalKeys();
+  }
+  ForwardLocalModifiers(is_down ? 0 : key_code);
+  const bool release_local =
+      !is_down && (local_keys_down_[key_code] || IsWindowsKeyDown(key_code));
+  if (!is_down) {
+    local_keys_down_[key_code] = false;
+    if (key_code == VK_LSHIFT || key_code == VK_RSHIFT)
+      local_keys_down_[VK_SHIFT] = false;
+    else if (key_code == VK_LCONTROL || key_code == VK_RCONTROL)
+      local_keys_down_[VK_CONTROL] = false;
+    else if (key_code == VK_LMENU || key_code == VK_RMENU)
+      local_keys_down_[VK_MENU] = false;
+  }
   ForwardKey(key_code, is_down, keyboard.scanCode, extended);
   return !release_local;
 }
