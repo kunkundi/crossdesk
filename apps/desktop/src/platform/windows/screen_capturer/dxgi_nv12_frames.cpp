@@ -3,6 +3,7 @@
 #include <d3d10.h>
 #include <libyuv.h>
 
+#include "capture_resolution.h"
 #include "rd_log.h"
 
 namespace crossdesk {
@@ -148,6 +149,8 @@ bool DxgiNv12Frames::Init(const D3D11_TEXTURE2D_DESC& desc, UINT width,
 
   source_width_ = desc.Width;
   source_height_ = desc.Height;
+  output_width_ = width;
+  output_height_ = height;
   if (desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM) {
     auto source_desc = desc;
     source_desc.Usage = D3D11_USAGE_DEFAULT;
@@ -190,7 +193,11 @@ ComPtr<DxgiNv12Frame> DxgiNv12Frames::Convert(ID3D11Texture2D* desktop) {
   if (desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM ||
       ((desc.Width | desc.Height) & 1))
     return {};
-  return Convert(desktop, desc.Width, desc.Height);
+  const auto target = ClampCaptureResolution(static_cast<int>(desc.Width),
+                                             static_cast<int>(desc.Height));
+  if (!target.valid()) return {};
+  return Convert(desktop, static_cast<UINT>(target.width),
+                 static_cast<UINT>(target.height));
 }
 
 ComPtr<DxgiNv12Frame> DxgiNv12Frames::Convert(ID3D11Texture2D* texture,
@@ -199,7 +206,8 @@ ComPtr<DxgiNv12Frame> DxgiNv12Frames::Convert(ID3D11Texture2D* texture,
   D3D11_TEXTURE2D_DESC desc{};
   texture->GetDesc(&desc);
   if (processor_ &&
-      (source_width_ != desc.Width || source_height_ != desc.Height))
+      (source_width_ != desc.Width || source_height_ != desc.Height ||
+       output_width_ != width || output_height_ != height))
     *this = DxgiNv12Frames(device_.Get());
   if (!processor_ && !Init(desc, width, height)) {
     disabled_ = true;

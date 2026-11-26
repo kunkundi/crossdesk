@@ -188,6 +188,18 @@ function setup_targets()
             "apps/desktop/src/gui/runtime")
         add_files("apps/desktop/tests/cursor_position_test.cpp")
 
+    target("capture_resolution_downscale_test")
+        set_kind("binary")
+        set_default(false)
+        add_deps("crossdesk_wire")
+        add_includedirs("apps/desktop/src/common",
+            "apps/desktop/src/gui",
+            "apps/desktop/src/gui/runtime")
+        add_files("apps/desktop/tests/capture_resolution_downscale_test.cpp")
+        if is_os("windows") then
+            add_syslinks("d3d11")
+        end
+
     target("single_instance")
         set_kind("object")
         add_includedirs("apps/desktop/src", {public = true})

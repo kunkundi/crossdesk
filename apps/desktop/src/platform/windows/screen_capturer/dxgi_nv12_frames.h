@@ -59,6 +59,7 @@ class DxgiNv12Frames {
   bool Init(const D3D11_TEXTURE2D_DESC& desc, UINT width, UINT height);
   std::shared_ptr<DxgiNv12Scaler> scaler_;
   UINT source_width_ = 0, source_height_ = 0;
+  UINT output_width_ = 0, output_height_ = 0;
   Microsoft::WRL::ComPtr<ID3D11Device> device_;
   Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_;
   Microsoft::WRL::ComPtr<ID3D11VideoDevice> video_;

@@ -18,11 +18,13 @@
 #include <IOSurface/IOSurface.h>
 #include <ScreenCaptureKit/ScreenCaptureKit.h>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <map>
 #include <mutex>
 #include <vector>
+#include "capture_resolution.h"
 #include "display_info.h"
 #include <display_stream_id.h>
 #include "rd_log.h"
@@ -790,8 +792,15 @@ void ScreenCapturerSckImpl::OnShareableContentCreated(SCShareableContent *conten
   config.colorMatrix = kCGDisplayStreamYCbCrMatrix_ITU_R_601_4;
   config.colorSpaceName = kCGColorSpaceSRGB;
   config.showsCursor = show_cursor;
-  config.width = filter.contentRect.size.width * filter.pointPixelScale;
-  config.height = filter.contentRect.size.height * filter.pointPixelScale;
+  const int raw_width = static_cast<int>(
+      std::lround(filter.contentRect.size.width * filter.pointPixelScale));
+  const int raw_height = static_cast<int>(
+      std::lround(filter.contentRect.size.height * filter.pointPixelScale));
+  const auto target = ClampCaptureResolution(raw_width, raw_height);
+  config.width = target.valid() ? static_cast<size_t>(target.width)
+                                : static_cast<size_t>(std::max(2, raw_width & ~1));
+  config.height = target.valid() ? static_cast<size_t>(target.height)
+                                 : static_cast<size_t>(std::max(2, raw_height & ~1));
   config.captureResolution = SCCaptureResolutionAutomatic;
   config.minimumFrameInterval = CMTimeMake(1, fps_);
 

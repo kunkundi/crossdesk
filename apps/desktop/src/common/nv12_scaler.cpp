@@ -59,4 +59,49 @@ int ScaleNv12ViaI420(const uint8_t* src_y, int src_stride_y,
   return 0;
 }
 
+namespace {
+
+int ScaleOversizedDesktopNv12(const uint8_t* src_y, int src_stride_y,
+                              const uint8_t* src_uv, int src_stride_uv,
+                              int src_width, int src_height, uint8_t* dst_y,
+                              int dst_stride_y, uint8_t* dst_uv,
+                              int dst_stride_uv, int dst_width, int dst_height,
+                              std::vector<uint8_t>* scratch_buffer) {
+  return ScaleNv12ViaI420(src_y, src_stride_y, src_uv, src_stride_uv, src_width,
+                          src_height, dst_y, dst_stride_y, dst_uv,
+                          dst_stride_uv, dst_width, dst_height,
+                          libyuv::kFilterBox, scratch_buffer);
+}
+
+}  // namespace
+
+bool DownscaleOversizedNv12Packed(OversizedNv12FrameScaler* scaler,
+                                  const uint8_t* data, size_t size, int width,
+                                  int height, ScaledNv12FrameView* out) {
+  if (!scaler) return false;
+  return scaler->ScalePacked(data, size, width, height,
+                             &ScaleOversizedDesktopNv12, out);
+}
+
+bool DownscaleOversizedNv12Planes(OversizedNv12FrameScaler* scaler,
+                                  const Nv12PlaneView& planes,
+                                  ScaledNv12FrameView* out) {
+  if (!scaler) return false;
+  return scaler->ScalePlanes(planes, &ScaleOversizedDesktopNv12, out);
+}
+
+bool MaterializeAndDownscaleOversizedNv12(OversizedNv12FrameScaler* scaler,
+                                          int width, int height,
+                                          CopyNativeNv12Fn copy_to_nv12,
+                                          void* owner,
+                                          ScaledNv12FrameView* out) {
+  if (!scaler || !copy_to_nv12 || !owner) return false;
+  return scaler->MaterializeAndScale(
+      width, height,
+      [copy_to_nv12, owner](uint8_t* dst, size_t dst_size) {
+        return copy_to_nv12(owner, dst, dst_size);
+      },
+      &ScaleOversizedDesktopNv12, out);
+}
+
 }  // namespace crossdesk

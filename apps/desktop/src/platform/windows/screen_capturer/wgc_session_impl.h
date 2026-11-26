@@ -61,6 +61,10 @@ class WgcSessionImpl : public WgcSession {
 
   HRESULT CreateMappedTexture(winrt::com_ptr<ID3D11Texture2D> src_texture,
                               unsigned int width = 0, unsigned int height = 0);
+  winrt::com_ptr<ID3D11Texture2D> ScaleOversizedTexture(
+      const winrt::com_ptr<ID3D11Texture2D>& src_texture, UINT target_width,
+      UINT target_height);
+  void ResetVideoScalerLocked();
   void OnFrame(
       winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const&
           sender,
@@ -99,6 +103,21 @@ class WgcSessionImpl : public WgcSession {
       d3d11_direct_device_{nullptr};
   winrt::com_ptr<ID3D11DeviceContext> d3d11_device_context_{nullptr};
   winrt::com_ptr<ID3D11Texture2D> d3d11_texture_mapped_{nullptr};
+  unsigned int mapped_width_ = 0;
+  unsigned int mapped_height_ = 0;
+  winrt::com_ptr<ID3D11VideoDevice> video_device_{nullptr};
+  winrt::com_ptr<ID3D11VideoContext> video_context_{nullptr};
+  winrt::com_ptr<ID3D11VideoProcessorEnumerator> video_enumerator_{nullptr};
+  winrt::com_ptr<ID3D11VideoProcessor> video_processor_{nullptr};
+  winrt::com_ptr<ID3D11Texture2D> video_input_tex_{nullptr};
+  winrt::com_ptr<ID3D11Texture2D> video_output_tex_{nullptr};
+  winrt::com_ptr<ID3D11VideoProcessorInputView> video_input_view_{nullptr};
+  winrt::com_ptr<ID3D11VideoProcessorOutputView> video_output_view_{nullptr};
+  UINT video_src_width_ = 0;
+  UINT video_src_height_ = 0;
+  UINT video_dst_width_ = 0;
+  UINT video_dst_height_ = 0;
+  bool gpu_scale_disabled_ = false;
 
   winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool
       capture_framepool_{nullptr};

@@ -1580,7 +1580,11 @@ struct SecureDesktopCaptureResources {
       cursor_snapshot.y = cursor.ptScreenPos.y;
       // Never draw into DXGI's cached desktop: each cursor position starts
       // with clean pixels, including on a static screen or after a toggle.
-      if (request.show_cursor && !embedded && (using_dxgi || using_wgc) &&
+      const bool wgc_matches_request_size =
+          using_wgc && wgc->width() == request.width &&
+          wgc->height() == request.height;
+      if (request.show_cursor && !embedded &&
+          (using_dxgi || wgc_matches_request_size) &&
           (cursor.flags & CURSOR_SHOWING) != 0) {
         if (!InitializeGdi(request)) return false;
         const size_t row_bytes = static_cast<size_t>(request.width) * 4;
@@ -1600,7 +1604,7 @@ struct SecureDesktopCaptureResources {
         frame_bits = static_cast<const uint8_t*>(bits);
         frame_stride = request.width * 4;
       }
-      if (request.show_cursor && !embedded && mem_dc &&
+      if (request.show_cursor && !embedded && !frame_nv12 && mem_dc &&
           crossdesk::DrawCursorInCapture(mem_dc, cursor, request.left,
                                         request.top, request.width,
                                         request.height)) {
@@ -1623,8 +1627,12 @@ std::vector<uint8_t> CaptureSecureDesktopFrame(
         BuildErrorJson(capture.error, capture.error_code));
   }
 
+  const int output_width =
+      capture.frame_nv12 ? capture.wgc->width() : request.width;
+  const int output_height =
+      capture.frame_nv12 ? capture.wgc->height() : request.height;
   const size_t nv12_size =
-      static_cast<size_t>(request.width) * request.height * 3 / 2;
+      static_cast<size_t>(output_width) * output_height * 3 / 2;
   crossdesk::CrossDeskSecureDesktopFrameHeader header{};
   // Each pipe client handles one command, so an intermediate capture buffer
   // cannot be reused. Convert straight into the response payload.
@@ -1633,9 +1641,9 @@ std::vector<uint8_t> CaptureSecureDesktopFrame(
   const int convert_result = capture.frame_nv12
       ? (std::memcpy(payload, capture.frame_nv12->data(), nv12_size), 0)
       : libyuv::ARGBToNV12(
-      capture.frame_bits, capture.frame_stride, payload, request.width,
-      payload + static_cast<size_t>(request.width) * request.height,
-      request.width, request.width, request.height);
+      capture.frame_bits, capture.frame_stride, payload, output_width,
+      payload + static_cast<size_t>(output_width) * output_height,
+      output_width, output_width, output_height);
 
   if (convert_result != 0) {
     return BuildTextResponseBytes(BuildErrorJson("argb_to_nv12_failed"));
@@ -1645,8 +1653,8 @@ std::vector<uint8_t> CaptureSecureDesktopFrame(
   header.version = crossdesk::kCrossDeskSecureDesktopFrameVersion;
   header.left = request.left;
   header.top = request.top;
-  header.width = static_cast<uint32_t>(request.width);
-  header.height = static_cast<uint32_t>(request.height);
+  header.width = static_cast<uint32_t>(output_width);
+  header.height = static_cast<uint32_t>(output_height);
   header.payload_size = static_cast<uint32_t>(nv12_size);
   header.cursor = capture.cursor_snapshot;
 
@@ -1778,8 +1786,10 @@ void SecureDesktopSharedCaptureThread(SecureSharedCaptureState* capture_state) {
         header->version = crossdesk::kCrossDeskSecureDesktopFrameVersion;
         header->left = request.left;
         header->top = request.top;
-        header->width = static_cast<uint32_t>(request.width);
-        header->height = static_cast<uint32_t>(request.height);
+        header->width = static_cast<uint32_t>(
+            capture->frame_nv12 ? capture->wgc->width() : request.width);
+        header->height = static_cast<uint32_t>(
+            capture->frame_nv12 ? capture->wgc->height() : request.height);
         header->payload_size = static_cast<uint32_t>(nv12_frame.size());
         header->cursor = capture->cursor_snapshot;
         if (pixels_updated) {

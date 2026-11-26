@@ -101,6 +101,7 @@ class ScreenCapturerDxgi : public ScreenCapturer {
   int nv12_width_ = 0;
   int nv12_height_ = 0;
   std::vector<uint8_t> rotated_frame_;
+  std::vector<uint8_t> scaled_frame_;
 };
 }  // namespace crossdesk
 

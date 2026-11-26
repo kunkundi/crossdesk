@@ -7,6 +7,7 @@
 
 #include <display_stream_id.h>
 #include "captured_cursor_state.h"
+#include "capture_resolution.h"
 #include "cursor_draw.h"
 #include "display_label.h"
 #include "libyuv.h"
@@ -69,6 +70,7 @@ int ScreenCapturerGdi::Destroy() {
     nv12_width_ = 0;
     nv12_height_ = 0;
   }
+  scaled_argb_.clear();
   return 0;
 }
 
@@ -211,24 +213,52 @@ void ScreenCapturerGdi::CaptureLoop() {
     }
     GdiFlush();
 
-    int stride_argb = width * 4;
-    int nv12_size = width * height * 3 / 2;
-    if (!nv12_frame_ || nv12_width_ != width || nv12_height_ != height) {
-      delete[] nv12_frame_;
-      nv12_frame_ = new unsigned char[nv12_size];
-      nv12_width_ = width;
-      nv12_height_ = height;
+    const auto target = ClampCaptureResolution(width, height);
+    if (!target.valid()) {
+      SelectObject(mem_dc, old);
+      DeleteObject(dib);
+      DeleteDC(mem_dc);
+      std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
+      continue;
     }
 
-    libyuv::ARGBToNV12(static_cast<const uint8_t*>(bits), stride_argb,
-                       nv12_frame_, width, nv12_frame_ + width * height, width,
-                       width, height);
+    const uint8_t* src_pixels = static_cast<const uint8_t*>(bits);
+    int stride_argb = width * 4;
+    if (target.width != width || target.height != height) {
+      scaled_argb_.resize(static_cast<size_t>(target.width) * target.height *
+                          4);
+      if (libyuv::ARGBScale(src_pixels, stride_argb, width, height,
+                            scaled_argb_.data(), target.width * 4, target.width,
+                            target.height, libyuv::kFilterBox) != 0) {
+        SelectObject(mem_dc, old);
+        DeleteObject(dib);
+        DeleteDC(mem_dc);
+        std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
+        continue;
+      }
+      src_pixels = scaled_argb_.data();
+      stride_argb = target.width * 4;
+    }
+
+    const size_t luma_size = static_cast<size_t>(target.width) * target.height;
+    const size_t nv12_size = luma_size + luma_size / 2;
+    if (!nv12_frame_ || nv12_width_ != target.width ||
+        nv12_height_ != target.height) {
+      delete[] nv12_frame_;
+      nv12_frame_ = new unsigned char[nv12_size];
+      nv12_width_ = target.width;
+      nv12_height_ = target.height;
+    }
+
+    libyuv::ARGBToNV12(src_pixels, stride_argb, nv12_frame_, target.width,
+                       nv12_frame_ + luma_size, target.width, target.width,
+                       target.height);
 
     if (callback_) {
       CapturedCursorFrameScope cursor_scope(cursor_embedded);
       const std::string stream_id = MakeDisplayStreamId(idx);
-      callback_(nv12_frame_, nv12_size, width, height, stream_id.c_str(),
-                nullptr);
+      callback_(nv12_frame_, static_cast<int>(nv12_size), target.width,
+                target.height, stream_id.c_str(), nullptr);
     }
 
     SelectObject(mem_dc, old);

@@ -68,6 +68,7 @@ class ScreenCapturerGdi : public ScreenCapturer {
   unsigned char* nv12_frame_ = nullptr;
   int nv12_width_ = 0;
   int nv12_height_ = 0;
+  std::vector<uint8_t> scaled_argb_;
 };
 }  // namespace crossdesk
 

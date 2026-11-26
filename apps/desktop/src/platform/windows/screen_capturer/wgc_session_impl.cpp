@@ -4,6 +4,7 @@
 
 #include <string>
 
+#include "capture_resolution.h"
 #include "rd_log.h"
 
 namespace crossdesk {
@@ -152,8 +153,146 @@ HRESULT WgcSessionImpl::CreateMappedTexture(
   auto d3dDevice =
       GetDXGIInterfaceFromObject<ID3D11Device>(d3d11_direct_device_);
 
-  return d3dDevice->CreateTexture2D(&map_desc, nullptr,
-                                    d3d11_texture_mapped_.put());
+  d3d11_texture_mapped_ = nullptr;
+  const HRESULT hr = d3dDevice->CreateTexture2D(&map_desc, nullptr,
+                                                d3d11_texture_mapped_.put());
+  if (SUCCEEDED(hr)) {
+    mapped_width_ = map_desc.Width;
+    mapped_height_ = map_desc.Height;
+  } else {
+    mapped_width_ = 0;
+    mapped_height_ = 0;
+  }
+  return hr;
+}
+
+void WgcSessionImpl::ResetVideoScalerLocked() {
+  video_output_view_ = nullptr;
+  video_input_view_ = nullptr;
+  video_output_tex_ = nullptr;
+  video_input_tex_ = nullptr;
+  video_processor_ = nullptr;
+  video_enumerator_ = nullptr;
+  video_context_ = nullptr;
+  video_device_ = nullptr;
+  video_src_width_ = 0;
+  video_src_height_ = 0;
+  video_dst_width_ = 0;
+  video_dst_height_ = 0;
+}
+
+winrt::com_ptr<ID3D11Texture2D> WgcSessionImpl::ScaleOversizedTexture(
+    const winrt::com_ptr<ID3D11Texture2D>& src_texture, UINT target_width,
+    UINT target_height) {
+  if (gpu_scale_disabled_ || !src_texture || target_width < 2 ||
+      target_height < 2) {
+    return nullptr;
+  }
+  D3D11_TEXTURE2D_DESC src_desc{};
+  src_texture->GetDesc(&src_desc);
+  if (!video_processor_ || video_src_width_ != src_desc.Width ||
+      video_src_height_ != src_desc.Height ||
+      video_dst_width_ != target_width || video_dst_height_ != target_height) {
+    ResetVideoScalerLocked();
+    auto d3d_device =
+        GetDXGIInterfaceFromObject<ID3D11Device>(d3d11_direct_device_);
+    video_device_ = d3d_device.try_as<ID3D11VideoDevice>();
+    video_context_ = d3d11_device_context_.try_as<ID3D11VideoContext>();
+    if (!video_device_ || !video_context_) {
+      ResetVideoScalerLocked();
+      gpu_scale_disabled_ = true;
+      return nullptr;
+    }
+    D3D11_VIDEO_PROCESSOR_CONTENT_DESC content{};
+    content.InputFrameFormat = D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE;
+    content.InputWidth = src_desc.Width;
+    content.InputHeight = src_desc.Height;
+    content.OutputWidth = target_width;
+    content.OutputHeight = target_height;
+    content.InputFrameRate = content.OutputFrameRate = {60, 1};
+    content.Usage = D3D11_VIDEO_USAGE_PLAYBACK_NORMAL;
+    UINT input_support = 0;
+    UINT output_support = 0;
+    if (FAILED(video_device_->CreateVideoProcessorEnumerator(
+            &content, video_enumerator_.put())) ||
+        FAILED(video_enumerator_->CheckVideoProcessorFormat(
+            DXGI_FORMAT_B8G8R8A8_UNORM, &input_support)) ||
+        !(input_support & D3D11_VIDEO_PROCESSOR_FORMAT_SUPPORT_INPUT) ||
+        FAILED(video_enumerator_->CheckVideoProcessorFormat(
+            DXGI_FORMAT_B8G8R8A8_UNORM, &output_support)) ||
+        !(output_support & D3D11_VIDEO_PROCESSOR_FORMAT_SUPPORT_OUTPUT) ||
+        FAILED(video_device_->CreateVideoProcessor(
+            video_enumerator_.get(), 0, video_processor_.put()))) {
+      ResetVideoScalerLocked();
+      gpu_scale_disabled_ = true;
+      return nullptr;
+    }
+
+    D3D11_TEXTURE2D_DESC input_desc = src_desc;
+    input_desc.Usage = D3D11_USAGE_DEFAULT;
+    input_desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+    input_desc.CPUAccessFlags = 0;
+    input_desc.MiscFlags = 0;
+    D3D11_TEXTURE2D_DESC output_desc = input_desc;
+    output_desc.Width = target_width;
+    output_desc.Height = target_height;
+    D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC input_view_desc{};
+    input_view_desc.ViewDimension = D3D11_VPIV_DIMENSION_TEXTURE2D;
+    D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC output_view_desc{};
+    output_view_desc.ViewDimension = D3D11_VPOV_DIMENSION_TEXTURE2D;
+    if (FAILED(d3d_device->CreateTexture2D(&input_desc, nullptr,
+                                           video_input_tex_.put())) ||
+        FAILED(d3d_device->CreateTexture2D(&output_desc, nullptr,
+                                           video_output_tex_.put())) ||
+        FAILED(video_device_->CreateVideoProcessorInputView(
+            video_input_tex_.get(), video_enumerator_.get(), &input_view_desc,
+            video_input_view_.put())) ||
+        FAILED(video_device_->CreateVideoProcessorOutputView(
+            video_output_tex_.get(), video_enumerator_.get(), &output_view_desc,
+            video_output_view_.put()))) {
+      ResetVideoScalerLocked();
+      gpu_scale_disabled_ = true;
+      return nullptr;
+    }
+
+    D3D11_VIDEO_PROCESSOR_COLOR_SPACE rgb{};
+    rgb.Nominal_Range = D3D11_VIDEO_PROCESSOR_NOMINAL_RANGE_0_255;
+    video_context_->VideoProcessorSetStreamColorSpace(video_processor_.get(), 0,
+                                                      &rgb);
+    video_context_->VideoProcessorSetOutputColorSpace(video_processor_.get(),
+                                                      &rgb);
+    video_context_->VideoProcessorSetStreamFrameFormat(
+        video_processor_.get(), 0, D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE);
+    const RECT src_rect{0, 0, static_cast<LONG>(src_desc.Width),
+                        static_cast<LONG>(src_desc.Height)};
+    const RECT dst_rect{0, 0, static_cast<LONG>(target_width),
+                        static_cast<LONG>(target_height)};
+    video_context_->VideoProcessorSetStreamSourceRect(video_processor_.get(), 0,
+                                                      TRUE, &src_rect);
+    video_context_->VideoProcessorSetStreamDestRect(video_processor_.get(), 0,
+                                                    TRUE, &dst_rect);
+    video_context_->VideoProcessorSetOutputTargetRect(video_processor_.get(),
+                                                      TRUE, &dst_rect);
+    video_context_->VideoProcessorSetStreamAutoProcessingMode(
+        video_processor_.get(), 0, FALSE);
+    video_src_width_ = src_desc.Width;
+    video_src_height_ = src_desc.Height;
+    video_dst_width_ = target_width;
+    video_dst_height_ = target_height;
+  }
+
+  d3d11_device_context_->CopyResource(video_input_tex_.get(),
+                                      src_texture.get());
+  D3D11_VIDEO_PROCESSOR_STREAM stream{};
+  stream.Enable = TRUE;
+  stream.pInputSurface = video_input_view_.get();
+  if (FAILED(video_context_->VideoProcessorBlt(
+          video_processor_.get(), video_output_view_.get(), 0, 1, &stream))) {
+    ResetVideoScalerLocked();
+    gpu_scale_disabled_ = true;
+    return nullptr;
+  }
+  return video_output_tex_;
 }
 
 int WgcSessionImpl::StartCaptureLocked(bool show_cursor) {
@@ -262,6 +401,10 @@ void WgcSessionImpl::StopLocked() {
   }
 
   d3d11_texture_mapped_ = nullptr;
+  mapped_width_ = 0;
+  mapped_height_ = 0;
+  ResetVideoScalerLocked();
+  gpu_scale_disabled_ = false;
 }
 
 void WgcSessionImpl::OnFrame(
@@ -283,6 +426,10 @@ void WgcSessionImpl::OnFrame(
       // still belongs to the old pool. Retire it before mapping any pixels.
       frame.Close();
       d3d11_texture_mapped_ = nullptr;
+      mapped_width_ = 0;
+      mapped_height_ = 0;
+      ResetVideoScalerLocked();
+      gpu_scale_disabled_ = false;
       capture_framepool_.Recreate(
           d3d11_direct_device_,
           winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,
@@ -300,8 +447,28 @@ void WgcSessionImpl::OnFrame(
         desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM) {
       return;
     }
-    if (!d3d11_texture_mapped_) {
-      HRESULT tex_hr = CreateMappedTexture(frame_captured);
+
+    winrt::com_ptr<ID3D11Texture2D> readback_source = frame_captured;
+    unsigned int readback_width = static_cast<unsigned int>(frame_size.Width);
+    unsigned int readback_height = static_cast<unsigned int>(frame_size.Height);
+    if (IsOversizedCaptureResolution(frame_size.Width, frame_size.Height)) {
+      const auto target =
+          ClampCaptureResolution(frame_size.Width, frame_size.Height);
+      if (target.valid()) {
+        if (auto scaled = ScaleOversizedTexture(
+                frame_captured, static_cast<UINT>(target.width),
+                static_cast<UINT>(target.height))) {
+          readback_source = scaled;
+          readback_width = static_cast<unsigned int>(target.width);
+          readback_height = static_cast<unsigned int>(target.height);
+        }
+      }
+    }
+
+    if (!d3d11_texture_mapped_ || mapped_width_ != readback_width ||
+        mapped_height_ != readback_height) {
+      HRESULT tex_hr =
+          CreateMappedTexture(readback_source, readback_width, readback_height);
       if (FAILED(tex_hr)) {
         ReportFrameFailure(tex_hr);
         return;
@@ -309,7 +476,7 @@ void WgcSessionImpl::OnFrame(
     }
 
     d3d11_device_context_->CopyResource(d3d11_texture_mapped_.get(),
-                                        frame_captured.get());
+                                        readback_source.get());
 
     D3D11_MAPPED_SUBRESOURCE map_result;
     HRESULT hr = d3d11_device_context_->Map(
@@ -340,8 +507,7 @@ void WgcSessionImpl::OnFrame(
              MonitorFromPoint(cursor.ptScreenPos, MONITOR_DEFAULTTONULL) ==
                  target_.hmonitor);
         observer_->OnFrame(
-            wgc_session_frame{static_cast<unsigned int>(frame_size.Width),
-                              static_cast<unsigned int>(frame_size.Height),
+            wgc_session_frame{readback_width, readback_height,
                               map_result.RowPitch,
                               const_cast<const unsigned char*>(
                                   (unsigned char*)map_result.pData),

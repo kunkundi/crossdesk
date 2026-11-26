@@ -14,6 +14,7 @@
 #include <utility>
 
 #include "device_controller_factory.h"
+#include "nv12_scaler.h"
 #include "screen_capturer_factory.h"
 #include "platform.h"
 #include "rd_log.h"
@@ -193,6 +194,11 @@ int SessionDeviceManager::InitializeScreenCapturer() {
   registered_display_stream_count_ = 0;
   last_video_frame_stream_id_.clear();
   invalid_video_stream_id_logged_ = false;
+  {
+    std::lock_guard<std::mutex> lock(oversized_frame_mutex_);
+    oversized_frame_scaler_.Reset();
+    last_logged_oversized_source_ = {};
+  }
 
   const int init_ret = screen_capturer_->Init(
       fps, [this, fps](unsigned char *data, int size, int width, int height,
@@ -257,11 +263,98 @@ int SessionDeviceManager::InitializeScreenCapturer() {
 
         MiniRtcVideoFrame frame{};
         frame.data = reinterpret_cast<const char *>(data);
-        frame.size = size;
-        frame.width = width;
-        frame.height = height;
-
+        frame.size = size > 0 ? static_cast<size_t>(size) : 0;
+        frame.width = width > 0 ? static_cast<uint32_t>(width) : 0;
+        frame.height = height > 0 ? static_cast<uint32_t>(height) : 0;
         frame.native_frame = native_frame;
+
+        struct ScopedScaledNativeFrame {
+          const MiniRtcNativeVideoFrame *descriptor = nullptr;
+          ~ScopedScaledNativeFrame() {
+            if (descriptor && descriptor->release && descriptor->owner) {
+              descriptor->release(descriptor->owner);
+            }
+          }
+        } scaled_native;
+        std::unique_lock<std::mutex> oversized_lock(oversized_frame_mutex_,
+                                                    std::defer_lock);
+        const int input_width =
+            native_frame ? static_cast<int>(native_frame->width) : width;
+        const int input_height =
+            native_frame ? static_cast<int>(native_frame->height) : height;
+        if (IsOversizedCaptureResolution(input_width, input_height)) {
+          const auto target =
+              ClampCaptureResolution(input_width, input_height);
+          if (!target.valid()) {
+            return;
+          }
+          bool handled_on_gpu = false;
+          if (native_frame &&
+              native_frame->type == MiniRtcNativeVideoFrameD3D11Nv12 &&
+              native_frame->owner && native_frame->payload.d3d11_nv12.scale) {
+            scaled_native.descriptor = native_frame->payload.d3d11_nv12.scale(
+                native_frame->owner, static_cast<uint32_t>(target.width),
+                static_cast<uint32_t>(target.height));
+            if (scaled_native.descriptor &&
+                scaled_native.descriptor->width ==
+                    static_cast<uint32_t>(target.width) &&
+                scaled_native.descriptor->height ==
+                    static_cast<uint32_t>(target.height)) {
+              size_t scaled_size = 0;
+              if (TryGetNv12FrameSize(target.width, target.height,
+                                      &scaled_size)) {
+                frame.data = nullptr;
+                frame.size = scaled_size;
+                frame.width = static_cast<uint32_t>(target.width);
+                frame.height = static_cast<uint32_t>(target.height);
+                frame.native_frame = scaled_native.descriptor;
+                handled_on_gpu = true;
+              }
+            }
+          }
+          if (!handled_on_gpu) {
+            oversized_lock.lock();
+            ScaledNv12FrameView scaled_view{};
+            bool downscaled = false;
+            if (native_frame &&
+                native_frame->type == MiniRtcNativeVideoFrameCpuNv12) {
+              const auto &cpu = native_frame->payload.cpu_nv12;
+              downscaled = DownscaleOversizedNv12Planes(
+                  &oversized_frame_scaler_,
+                  {cpu.y_plane, static_cast<int>(cpu.y_stride), cpu.uv_plane,
+                   static_cast<int>(cpu.uv_stride), input_width, input_height},
+                  &scaled_view);
+            } else if (native_frame && native_frame->owner &&
+                       native_frame->copy_to_nv12) {
+              downscaled = MaterializeAndDownscaleOversizedNv12(
+                  &oversized_frame_scaler_, input_width, input_height,
+                  native_frame->copy_to_nv12, native_frame->owner,
+                  &scaled_view);
+            } else if (!native_frame) {
+              downscaled = DownscaleOversizedNv12Packed(
+                  &oversized_frame_scaler_, data,
+                  size > 0 ? static_cast<size_t>(size) : 0, input_width,
+                  input_height, &scaled_view);
+            }
+            if (!downscaled) {
+              LOG_ERROR("Drop oversized captured frame ({}x{}): downscale failed",
+                        input_width, input_height);
+              return;
+            }
+            const CaptureResolution source_res{input_width, input_height};
+            if (last_logged_oversized_source_ != source_res) {
+              last_logged_oversized_source_ = source_res;
+              LOG_INFO("Downscaling oversized captured frames from {}x{} to {}x{}",
+                       input_width, input_height, scaled_view.width,
+                       scaled_view.height);
+            }
+            frame.data = reinterpret_cast<const char *>(scaled_view.data);
+            frame.size = scaled_view.size;
+            frame.width = static_cast<uint32_t>(scaled_view.width);
+            frame.height = static_cast<uint32_t>(scaled_view.height);
+            frame.native_frame = nullptr;
+          }
+        }
         const auto send_started = std::chrono::steady_clock::now();
         uint64_t send_errors = 0;
         for (const std::string &remote_id : connected_remote_ids) {
@@ -370,6 +463,11 @@ int SessionDeviceManager::StopScreenCapturer() {
   // Discard the final partial window and callback timestamp after stopping the
   // backend; a late completion cannot contribute to the next generation.
   ResetCaptureMetrics();
+  {
+    std::lock_guard<std::mutex> lock(oversized_frame_mutex_);
+    oversized_frame_scaler_.Reset();
+    last_logged_oversized_source_ = {};
+  }
   owner_.screen_capturer_is_started_ = false;
   screen_sharing_power_.SetSharing(false);
   return 0;

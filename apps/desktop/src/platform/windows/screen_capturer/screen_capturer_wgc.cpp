@@ -9,6 +9,7 @@
 
 #include <display_stream_id.h>
 #include "captured_cursor_state.h"
+#include "capture_resolution.h"
 #include "display_label.h"
 #include "libyuv.h"
 #include "rd_log.h"
@@ -376,8 +377,9 @@ void ScreenCapturerWgc::OnFrame(const WgcSession::wgc_session_frame& frame,
     // libyuv::ARGBToNV12 requires even width/height
     int even_width = logical_width & ~1;
     int even_height = static_cast<int>(frame.height) & ~1;
+    const auto target = ClampCaptureResolution(even_width, even_height);
 
-    if (even_width <= 0 || even_height <= 0) {
+    if (!target.valid()) {
       LOG_ERROR(
           "WGC OnFrame invalid frame size after adjust: width={} "
           "(frame.width={}, max_by_pitch={}), height={}",
@@ -385,26 +387,41 @@ void ScreenCapturerWgc::OnFrame(const WgcSession::wgc_session_frame& frame,
       return;
     }
 
-    int nv12_size = even_width * even_height * 3 / 2;
-
-    if (!nv12_frame_ || nv12_width_ != even_width ||
-        nv12_height_ != even_height) {
-      delete[] nv12_frame_;
-      nv12_frame_ = new unsigned char[nv12_size];
-      nv12_width_ = even_width;
-      nv12_height_ = even_height;
+    const uint8_t* argb_pixels = static_cast<const uint8_t*>(frame.data);
+    int argb_stride = static_cast<int>(frame.row_pitch);
+    if (target.width != even_width || target.height != even_height) {
+      scaled_argb_.resize(static_cast<size_t>(target.width) * target.height *
+                          4);
+      if (libyuv::ARGBScale(argb_pixels, argb_stride, even_width, even_height,
+                            scaled_argb_.data(), target.width * 4, target.width,
+                            target.height, libyuv::kFilterBox) != 0) {
+        LOG_ERROR("WGC OnFrame failed to downscale {}x{} to {}x{}", even_width,
+                  even_height, target.width, target.height);
+        return;
+      }
+      argb_pixels = scaled_argb_.data();
+      argb_stride = target.width * 4;
     }
 
-    libyuv::ARGBToNV12((const uint8_t*)frame.data,
-                       static_cast<int>(frame.row_pitch), (uint8_t*)nv12_frame_,
-                       even_width,
-                       (uint8_t*)(nv12_frame_ + even_width * even_height),
-                       even_width, even_width, even_height);
+    const size_t luma_size = static_cast<size_t>(target.width) * target.height;
+    const size_t nv12_size = luma_size + luma_size / 2;
+
+    if (!nv12_frame_ || nv12_width_ != target.width ||
+        nv12_height_ != target.height) {
+      delete[] nv12_frame_;
+      nv12_frame_ = new unsigned char[nv12_size];
+      nv12_width_ = target.width;
+      nv12_height_ = target.height;
+    }
+
+    libyuv::ARGBToNV12(argb_pixels, argb_stride, (uint8_t*)nv12_frame_,
+                       target.width, (uint8_t*)(nv12_frame_ + luma_size),
+                       target.width, target.width, target.height);
 
     const std::string stream_id = MakeDisplayStreamId(id);
     CapturedCursorFrameScope cursor_scope(frame.cursor_captured);
-    on_data_(nv12_frame_, nv12_size, even_width, even_height,
-             stream_id.c_str(), nullptr);
+    on_data_(nv12_frame_, static_cast<int>(nv12_size), target.width,
+             target.height, stream_id.c_str(), nullptr);
   }
 }
 
@@ -418,6 +435,7 @@ void ScreenCapturerWgc::CleanUp() {
   sessions_.clear();
   display_info_list_.clear();
   gs_display_list.clear();
+  scaled_argb_.clear();
   monitor_ = nullptr;
   inited_ = false;
 }

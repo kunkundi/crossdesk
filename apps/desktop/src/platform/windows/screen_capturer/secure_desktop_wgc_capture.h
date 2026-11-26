@@ -16,6 +16,7 @@
 #include <thread>
 #include <vector>
 
+#include "capture_resolution.h"
 #include "wgc_plugin_capturer.h"
 #include "../winrt_apartment.h"
 #include "../windows_thread_dpi.h"
@@ -122,6 +123,20 @@ class SecureDesktopWgcCapture {
       // The IPC regions are normally whole monitors. A region with an odd
       // chroma offset, or spanning outputs, falls through to GDI.
       if ((x_ | y_ | width | height) & 1) return -1;
+      const int display_even_w = display.width & ~1;
+      const int display_even_h = display.height & ~1;
+      const auto clamped =
+          ClampCaptureResolution(display_even_w, display_even_h);
+      if (!clamped.valid()) return -1;
+      if (clamped.width != display_even_w || clamped.height != display_even_h) {
+        if (x_ != 0 || y_ != 0 || width != display_even_w ||
+            height != display_even_h) {
+          return -1;
+        }
+        std::lock_guard lock(mutex_);
+        width_ = clamped.width;
+        height_ = clamped.height;
+      }
       stream_ = MakeDisplayStreamId(index);
       const int selected = capture_->SwitchTo(static_cast<int>(index));
       return selected == 0 ? capture_->Start(cursor) : selected;
@@ -146,6 +161,8 @@ class SecureDesktopWgcCapture {
     return S_OK;
   }
   const std::vector<uint8_t>& pixels() const { return pixels_; }
+  int width() const { return width_; }
+  int height() const { return height_; }
   bool updated() const { return updated_; }
   bool CursorEmbedded() const { return cursor_; }
 

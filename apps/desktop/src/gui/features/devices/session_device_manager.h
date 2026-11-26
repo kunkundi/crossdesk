@@ -19,6 +19,7 @@
 
 #include <remote_action.h>
 
+#include "capture_resolution.h"
 #include "device_controller.h"
 #include "display_info.h"
 #include "features/input/captured_keyboard_queue.h"
@@ -159,6 +160,9 @@ private:
   int64_t capture_send_us_ = 0, capture_max_send_us_ = 0;
   std::string last_video_frame_stream_id_;
   bool invalid_video_stream_id_logged_ = false;
+  std::mutex oversized_frame_mutex_;
+  OversizedNv12FrameScaler oversized_frame_scaler_;
+  CaptureResolution last_logged_oversized_source_{};
 };
 
 } // namespace crossdesk

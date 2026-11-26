@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "captured_cursor_state.h"
+#include "capture_resolution.h"
 #include "cursor_frame_compositor.h"
 #include "display_label.h"
 #include "dxgi_cursor_state.h"
@@ -101,6 +102,8 @@ int ScreenCapturerDxgi::Destroy() {
     nv12_width_ = 0;
     nv12_height_ = 0;
   }
+  rotated_frame_.clear();
+  scaled_frame_.clear();
   return 0;
 }
 
@@ -424,11 +427,14 @@ bool ScreenCapturerDxgi::ConvertFrame(int frame_monitor, const FrameCursor& curs
   }
   int even_width = logical_width & ~1;
   int even_height = logical_height & ~1;
-  if (even_width <= 0 || even_height <= 0) {
+  const auto target = ClampCaptureResolution(even_width, even_height);
+  if (!target.valid()) {
     d3d_context_->Unmap(staging_.Get(), 0);
     return false;
   }
 
+  // Composite the cursor in desktop coordinates before any resolution clamp so
+  // the embedded pointer matches normalized viewer input on oversized monitors.
   *cursor_embedded = cursor.already_embedded;
   if (cursor.draw) {
     const auto& display = display_info_list_[frame_monitor];
@@ -441,21 +447,39 @@ bool ScreenCapturerDxgi::ConvertFrame(int frame_monitor, const FrameCursor& curs
     }
   }
 
-  int nv12_size = even_width * even_height * 3 / 2;
-  if (!nv12_frame_ || nv12_width_ != even_width ||
-      nv12_height_ != even_height) {
+  bool staging_mapped = true;
+  if (target.width != even_width || target.height != even_height) {
+    scaled_frame_.resize(static_cast<size_t>(target.width) * target.height * 4);
+    const int scaled = libyuv::ARGBScale(
+        pixels, stride, even_width, even_height, scaled_frame_.data(),
+        target.width * 4, target.width, target.height, libyuv::kFilterBox);
+    d3d_context_->Unmap(staging_.Get(), 0);
+    staging_mapped = false;
+    if (scaled != 0) {
+      return false;
+    }
+    pixels = scaled_frame_.data();
+    stride = target.width * 4;
+  }
+
+  const size_t luma_size = static_cast<size_t>(target.width) * target.height;
+  const size_t nv12_size = luma_size + luma_size / 2;
+  if (!nv12_frame_ || nv12_width_ != target.width ||
+      nv12_height_ != target.height) {
     delete[] nv12_frame_;
     nv12_frame_ = new unsigned char[nv12_size];
-    nv12_width_ = even_width;
-    nv12_height_ = even_height;
+    nv12_width_ = target.width;
+    nv12_height_ = target.height;
   }
 
   const int converted =
-      libyuv::ARGBToNV12(pixels, stride, nv12_frame_, even_width,
-                         nv12_frame_ + even_width * even_height, even_width,
-                         even_width, even_height);
+      libyuv::ARGBToNV12(pixels, stride, nv12_frame_, target.width,
+                         nv12_frame_ + luma_size, target.width,
+                         target.width, target.height);
 
-  d3d_context_->Unmap(staging_.Get(), 0);
+  if (staging_mapped) {
+    d3d_context_->Unmap(staging_.Get(), 0);
+  }
   return converted == 0;
 }
 
