@@ -22,6 +22,9 @@ class PlatformKeyboardCapturer final : public KeyboardCapturer {
  public:
   int Hook(OnKeyAction on_key_action, void* user_ptr) override;
   int Unhook() override;
+  bool IsHookActive() const override {
+    return event_tap_ && CGEventTapIsEnabled(event_tap_);
+  }
   bool SupportsTextInput() const override { return true; }
   int SendTextCommand(const std::string& text) override;
   int SendKeyboardCommand(int key_code, bool is_down,
