@@ -149,6 +149,10 @@ private:
 
   void OpenFileDialog(const std::string& title,
                       std::function<void(std::string)> completion);
+#if _WIN32
+  void PollReceiveFolderDialog();
+  void CancelReceiveFolderDialog();
+#endif
   bool OpenUrl(const std::string &url);
 
   std::unique_ptr<SlintUi> ui_;
