@@ -567,6 +567,14 @@ function setup_targets()
             end
             add_files("apps/desktop/tests/windows_autostart_test.cpp")
 
+        target("windows_autostart_tray_test")
+            set_kind("binary")
+            set_default(false)
+            add_includedirs("apps/desktop/src/gui/application",
+                "apps/desktop/src/platform/windows/gui/tray")
+            add_syslinks("User32", "Shell32")
+            add_files("apps/desktop/tests/windows_autostart_tray_test.cpp")
+
         target("windows_runtime_daemon")
             set_kind("static")
             add_includedirs("apps/desktop/src", {public = true})

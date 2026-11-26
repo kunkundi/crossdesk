@@ -204,6 +204,11 @@ bool CheckTask(ITaskFolder* folder, BSTR task_name,
       "Unicode command round-trips");
   SysFreeString(path);
   path = nullptr;
+  ok &= Expect(SUCCEEDED(exec->get_Arguments(&path)) && path &&
+                   std::wstring(path) == L"--autostart",
+               "logon task marks silent tray launch");
+  SysFreeString(path);
+  path = nullptr;
   ok &= Expect(SUCCEEDED(exec->get_WorkingDirectory(&path)) && path &&
                    executable.parent_path().wstring() == path,
                "working directory is executable directory");
