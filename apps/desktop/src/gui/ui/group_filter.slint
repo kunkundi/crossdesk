@@ -23,6 +23,8 @@ export component GroupFilter inherits FlatSurface {
     out property <bool> has-focus: trigger-focus.has-focus || popup.is-open;
     out property <bool> has-hover: root.enabled && trigger-touch.has-hover && !popup.is-open;
     callback selected(int);
+    in property <string> rename-label;
+    callback rename-requested(string);
     in property <string> delete-label;
     callback delete-requested(string);
     private property <bool> has-divider: root.system-count > 0 && root.model.length > root.system-count;
@@ -106,9 +108,15 @@ export component GroupFilter inherits FlatSurface {
             return accept;
         }
         if event.text == Key.Escape && popup.is-open { popup.close(); return accept; }
+        if event.text == Key.F2 && popup.is-open && root.rename-label != ""
+            && root.current-index >= root.system-count && root.current-index < root.model.length {
+            let current = root.model[root.current-index];
+            root.rename-requested(current); popup.close(); return accept;
+        }
         if event.text == Key.Delete && popup.is-open && root.delete-label != ""
             && root.current-index >= root.system-count && root.current-index < root.model.length {
-            root.delete-requested(root.model[root.current-index]); popup.close(); return accept;
+            let current = root.model[root.current-index];
+            root.delete-requested(current); popup.close(); return accept;
         }
         return reject;
     }
@@ -171,7 +179,9 @@ export component GroupFilter inherits FlatSurface {
                             width: parent.width - 12px; height: 1px; outline-color: UiSurface.separator;
                         }
                         for choice[index] in root.model: Rectangle {
+                            private property <bool> renamable: root.rename-label != "" && index >= root.system-count;
                             private property <bool> deletable: root.delete-label != "" && index >= root.system-count;
+                            private property <length> actions-width: (self.renamable ? 24px : 0px) + (self.deletable ? 24px : 0px);
                             y: index * 26px + (root.has-divider && index >= root.system-count ? 6px : 0px);
                             width: parent.width; height: 26px; border-radius: UiRadius.control;
                             background: index == root.current-index
@@ -181,14 +191,16 @@ export component GroupFilter inherits FlatSurface {
                             accessible-role: list-item;
                             accessible-label: choice;
                             Text {
-                                x: 8px; width: parent.width - 34px - (parent.deletable ? 26px : 0px); height: parent.height;
+                                x: 8px;
+                                width: max(0px, parent.width - (index == root.current-index ? 30px : 12px) - parent.actions-width);
+                                height: parent.height;
                                 text: choice; color: index == root.current-index ? ControlStyle.selected-text : #30343b; font-size: 12px;
                                 font-weight: index == root.current-index ? 600 : 400;
                                 overflow: elide; vertical-alignment: center;
                                 accessible-role: none;
                             }
                             if index == root.current-index: Text {
-                                x: parent.width - 24px - (parent.deletable ? 26px : 0px); width: 16px; height: parent.height;
+                                x: parent.width - 20px - parent.actions-width; width: 16px; height: parent.height;
                                 text: FontAwesomeIcons.check; font-family: "Font Awesome 6 Free";
                                 font-weight: 900; font-size: 10px; color: ControlStyle.selected-text;
                                 horizontal-alignment: center; vertical-alignment: center;
@@ -197,14 +209,26 @@ export component GroupFilter inherits FlatSurface {
                             option-touch := TouchArea {
                                 clicked => { root.choose(index); popup.close(); }
                             }
+                            if self.renamable: IconButton {
+                                x: parent.width - (parent.deletable ? 48px : 24px);
+                                width: 24px; height: parent.height;
+                                icon: FontAwesomeIcons.pen; icon-size: 11px;
+                                hover-background: index == root.current-index ? ControlStyle.selected-pressed : ControlStyle.hover;
+                                pressed-background: index == root.current-index ? #8ab1e3 : ControlStyle.pressed;
+                                accessible-role: button;
+                                accessible-label: root.rename-label + " " + choice;
+                                accessible-action-default => { self.clicked(); }
+                                // Closing the popup destroys this row and its choice binding.
+                                clicked => { let target = choice; root.rename-requested(target); popup.close(); }
+                            }
                             if self.deletable: IconButton {
-                                x: parent.width - self.width; width: 26px; height: parent.height;
-                                icon: FontAwesomeIcons.trash-can; icon-size: 12px; danger: true;
+                                x: parent.width - self.width; width: 24px; height: parent.height;
+                                icon: FontAwesomeIcons.trash-can; icon-size: 11px; danger: true;
                                 accessible-role: button;
                                 accessible-label: root.delete-label + " " + choice;
                                 accessible-action-default => { self.clicked(); }
                                 // Closing the popup destroys this row and its choice binding.
-                                clicked => { root.delete-requested(choice); popup.close(); }
+                                clicked => { let target = choice; root.delete-requested(target); popup.close(); }
                             }
                         }
                     }

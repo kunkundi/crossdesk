@@ -11915,6 +11915,66 @@
       "fr": "Les appareils et l’historique des connexions seront conservés.",
       "es": "Se conservarán los dispositivos y el historial de conexiones.",
       "pt-BR": "Os dispositivos e o histórico de conexões serão mantidos."
+    },
+    "重命名分组": {
+      "zh-Hans": "重命名分组",
+      "en": "Rename group",
+      "ru": "Переименовать группу",
+      "zh-Hant": "重新命名分組",
+      "ja": "グループ名を変更",
+      "ko": "그룹 이름 바꾸기",
+      "de": "Gruppe umbenennen",
+      "fr": "Renommer le groupe",
+      "es": "Cambiar nombre del grupo",
+      "pt-BR": "Renomear grupo"
+    },
+    "请输入分组名称": {
+      "zh-Hans": "请输入分组名称",
+      "en": "Enter a group name",
+      "ru": "Введите название группы",
+      "zh-Hant": "請輸入分組名稱",
+      "ja": "グループ名を入力してください",
+      "ko": "그룹 이름을 입력하세요",
+      "de": "Gruppennamen eingeben",
+      "fr": "Saisissez un nom de groupe",
+      "es": "Introduce un nombre de grupo",
+      "pt-BR": "Digite um nome de grupo"
+    },
+    "分组名称已存在": {
+      "zh-Hans": "分组名称已存在",
+      "en": "Group name already exists",
+      "ru": "Такая группа уже существует",
+      "zh-Hant": "分組名稱已存在",
+      "ja": "同じ名前のグループが既に存在します",
+      "ko": "이미 존재하는 그룹 이름입니다",
+      "de": "Gruppenname existiert bereits",
+      "fr": "Ce nom de groupe existe déjà",
+      "es": "El nombre del grupo ya existe",
+      "pt-BR": "O nome do grupo já existe"
+    },
+    "不能使用系统保留分组名称": {
+      "zh-Hans": "不能使用系统保留分组名称",
+      "en": "Cannot use a reserved group name",
+      "ru": "Нельзя использовать системное имя группы",
+      "zh-Hant": "不能使用系統保留分組名稱",
+      "ja": "システム予約済みのグループ名は使用できません",
+      "ko": "시스템 예약 그룹 이름은 사용할 수 없습니다",
+      "de": "Reservierter Gruppenname nicht zulässig",
+      "fr": "Impossible d’utiliser un nom de groupe réservé",
+      "es": "No se puede usar un nombre de grupo reservado",
+      "pt-BR": "Não é possível usar um nome de grupo reservado"
+    },
+    "分组名称过长": {
+      "zh-Hans": "分组名称过长",
+      "en": "Group name is too long",
+      "ru": "Название группы слишком длинное",
+      "zh-Hant": "分組名稱過長",
+      "ja": "グループ名が長すぎます",
+      "ko": "그룹 이름이 너무 깁니다",
+      "de": "Gruppenname ist zu lang",
+      "fr": "Le nom du groupe est trop long",
+      "es": "El nombre del grupo es demasiado largo",
+      "pt-BR": "O nome do grupo é muito longo"
     }
   },
   "desktop": {
@@ -12437,7 +12497,9 @@
     "从下一次桌面连接起，优先使用编码器支持的低负载设置。已有连接沿用原设置。",
     "删除分组",
     "组内设备和连接记录将保留。",
-    "保存失败，请重试"
+    "保存失败，请重试",
+    "重命名分组",
+    "请输入分组名称"
   ],
   "platforms": {
     "desktop": [
@@ -12998,7 +13060,12 @@
       "本端地址",
       "对端地址",
       "删除分组",
-      "组内设备和连接记录将保留。"
+      "组内设备和连接记录将保留。",
+      "重命名分组",
+      "请输入分组名称",
+      "分组名称已存在",
+      "不能使用系统保留分组名称",
+      "分组名称过长"
     ],
     "android": [
       " · 已完成",

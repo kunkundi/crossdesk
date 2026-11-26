@@ -571,6 +571,11 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"对端地址", {"对端地址", "Remote endpoint", "Удалённый адрес", "對端位址", "リモートアドレス", "원격 주소", "Remote-Adresse", "Adresse distante", "Dirección remota", "Endereço remoto"}},
   {"删除分组", {"删除分组", "Delete group", "Удалить группу", "刪除分組", "グループを削除", "그룹 삭제", "Gruppe löschen", "Supprimer le groupe", "Eliminar grupo", "Excluir grupo"}},
   {"组内设备和连接记录将保留。", {"组内设备和连接记录将保留。", "Devices and connection history will be kept.", "Устройства и история подключений сохранятся.", "組內裝置和連線記錄將保留。", "グループ内のデバイスと接続履歴は保持されます。", "그룹의 기기와 연결 기록은 유지됩니다.", "Geräte und Verbindungsverlauf bleiben erhalten.", "Les appareils et l’historique des connexions seront conservés.", "Se conservarán los dispositivos y el historial de conexiones.", "Os dispositivos e o histórico de conexões serão mantidos."}},
+  {"重命名分组", {"重命名分组", "Rename group", "Переименовать группу", "重新命名分組", "グループ名を変更", "그룹 이름 바꾸기", "Gruppe umbenennen", "Renommer le groupe", "Cambiar nombre del grupo", "Renomear grupo"}},
+  {"请输入分组名称", {"请输入分组名称", "Enter a group name", "Введите название группы", "請輸入分組名稱", "グループ名を入力してください", "그룹 이름을 입력하세요", "Gruppennamen eingeben", "Saisissez un nom de groupe", "Introduce un nombre de grupo", "Digite um nome de grupo"}},
+  {"分组名称已存在", {"分组名称已存在", "Group name already exists", "Такая группа уже существует", "分組名稱已存在", "同じ名前のグループが既に存在します", "이미 존재하는 그룹 이름입니다", "Gruppenname existiert bereits", "Ce nom de groupe existe déjà", "El nombre del grupo ya existe", "O nome do grupo já existe"}},
+  {"不能使用系统保留分组名称", {"不能使用系统保留分组名称", "Cannot use a reserved group name", "Нельзя использовать системное имя группы", "不能使用系統保留分組名稱", "システム予約済みのグループ名は使用できません", "시스템 예약 그룹 이름은 사용할 수 없습니다", "Reservierter Gruppenname nicht zulässig", "Impossible d’utiliser un nom de groupe réservé", "No se puede usar un nombre de grupo reservado", "Não é possível usar um nome de grupo reservado"}},
+  {"分组名称过长", {"分组名称过长", "Group name is too long", "Название группы слишком длинное", "分組名稱過長", "グループ名が長すぎます", "그룹 이름이 너무 깁니다", "Gruppenname ist zu lang", "Le nom du groupe est trop long", "El nombre del grupo es demasiado largo", "O nome do grupo é muito longo"}},
 };
 
 struct NamedTranslation { const char* name; const char* literal; };
@@ -1095,6 +1100,8 @@ inline constexpr const char* kSlintLiterals[] = {
   "删除分组",
   "组内设备和连接记录将保留。",
   "保存失败，请重试",
+  "重命名分组",
+  "请输入分组名称",
 };
 }  // namespace detail
 

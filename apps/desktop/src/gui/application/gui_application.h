@@ -89,6 +89,8 @@ private:
   void DeviceGroupAction(const std::string& action, const std::string& value,
                          bool gallery_window);
   bool SaveDeviceGroups(const std::string& new_group, bool gallery_window);
+  bool RenameGroup(const std::string& old_name, const std::string& new_name,
+                   bool gallery_window);
   bool DeleteGroup(const std::string& name);
   void ReleasePressedInput(bool preserve_local_ui = false);
   void ReleaseControl(bool preserve_local_ui = false);

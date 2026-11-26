@@ -148,6 +148,7 @@ export component GalleryView inherits Rectangle {
     in property <[GalleryTile]> tiles;
     in property <[string]> groups;
     in-out property <int> group-index: 0;
+    callback rename-group-requested(string);
     callback delete-group-requested(string);
     // Pagination and rendering share the same fixed-aspect cell geometry.
     out property <int> columns: max(1, floor(grid.width / root.card-width));
@@ -289,6 +290,8 @@ export component GalleryView inherits Rectangle {
             x: 0px; y: 0px; width: parent.width - selection-toggle.width - 6px; height: parent.height;
             visible: !root.batch; spacing: 6px;
             group-filter := GroupFilter { width: 155px; height: 24px; system-count: 1; model: root.groups; current-index <=> root.group-index;
+                rename-label: GalleryStrings.texts[220];
+                rename-requested(name) => { root.rename-group-requested(name); }
                 delete-label: GalleryStrings.texts[217];
                 delete-requested(name) => { root.delete-group-requested(name); }
                 selected(index) => { root.action("group", index); }

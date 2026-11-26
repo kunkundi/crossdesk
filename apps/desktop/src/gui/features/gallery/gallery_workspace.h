@@ -8,12 +8,14 @@
 #define _GALLERY_WORKSPACE_H_
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "gallery_storage.h"
@@ -181,6 +183,99 @@ struct Workspace {
   bool HasAssignments(const std::string &id) const {
     return std::any_of(members.begin(), members.end(),
                        [&](const auto &m) { return m.id == id; });
+  }
+  static constexpr size_t kMaxGroupNameLength = 64;
+
+  enum class GroupNameError {
+    None,
+    Empty,
+    TooLong,
+    Reserved,
+    NotFound,
+    Duplicate,
+  };
+
+  static std::string TrimGroupName(std::string_view input) {
+    const auto first = std::find_if_not(
+        input.begin(), input.end(),
+        [](unsigned char ch) { return std::isspace(ch) != 0; });
+    const auto last = std::find_if_not(
+        input.rbegin(), input.rend(),
+        [](unsigned char ch) { return std::isspace(ch) != 0; }).base();
+    if (first >= last)
+      return {};
+    return std::string(first, last);
+  }
+  static size_t GroupNameLength(std::string_view name) {
+    size_t count = 0;
+    for (unsigned char ch : name)
+      if ((ch & 0xC0) != 0x80)
+        ++count;
+    return count;
+  }
+  static bool HasControlCharacters(std::string_view name) {
+    return std::any_of(name.begin(), name.end(), [](unsigned char ch) {
+      return ch < 0x20 || ch == 0x7F;
+    });
+  }
+  static bool IsReservedGroupName(
+      std::string_view name,
+      const std::vector<std::string> &extra_reserved = {}) {
+    if (name == "全部设备" || name == "未分组" ||
+        name == "All devices" || name == "Ungrouped")
+      return true;
+    return std::any_of(extra_reserved.begin(), extra_reserved.end(),
+                       [&](const auto &reserved) {
+                         return !reserved.empty() && name == reserved;
+                       });
+  }
+  GroupNameError ValidateGroupName(
+      std::string_view candidate,
+      const std::vector<std::string> &extra_reserved = {}) const {
+    const auto trimmed = TrimGroupName(candidate);
+    if (trimmed.empty() || HasControlCharacters(trimmed))
+      return GroupNameError::Empty;
+    if (GroupNameLength(trimmed) > kMaxGroupNameLength)
+      return GroupNameError::TooLong;
+    if (IsReservedGroupName(trimmed, extra_reserved))
+      return GroupNameError::Reserved;
+    return GroupNameError::None;
+  }
+  GroupNameError ValidateRenameGroup(
+      const std::string &old_name, const std::string &new_name,
+      const std::vector<std::string> &extra_reserved = {}) const {
+    if (old_name.empty() ||
+        std::find(groups.begin(), groups.end(), old_name) == groups.end())
+      return GroupNameError::NotFound;
+    const auto name_error = ValidateGroupName(new_name, extra_reserved);
+    if (name_error != GroupNameError::None)
+      return name_error;
+    const auto trimmed = TrimGroupName(new_name);
+    if (trimmed != old_name &&
+        std::find(groups.begin(), groups.end(), trimmed) != groups.end())
+      return GroupNameError::Duplicate;
+    return GroupNameError::None;
+  }
+  bool RenameGroup(const std::string &old_name, const std::string &new_name) {
+    if (ValidateRenameGroup(old_name, new_name) != GroupNameError::None)
+      return false;
+    const auto trimmed = TrimGroupName(new_name);
+    if (trimmed == old_name)
+      return true;
+    const auto group_it = std::find(groups.begin(), groups.end(), old_name);
+    *group_it = trimmed;
+    std::vector<Member> updated;
+    updated.reserve(members.size());
+    std::set<std::string> seen_renamed;
+    for (auto &member : members) {
+      if (member.group == old_name)
+        member.group = trimmed;
+      if (member.group == trimmed && !seen_renamed.insert(member.id).second)
+        continue;
+      updated.push_back(std::move(member));
+    }
+    members = std::move(updated);
+    return true;
   }
   bool DeleteGroup(std::string name) {
     if (name.empty() || !std::erase(groups, name)) return false;

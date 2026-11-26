@@ -188,6 +188,15 @@ function setup_targets()
             "apps/desktop/src/gui/runtime")
         add_files("apps/desktop/tests/cursor_position_test.cpp")
 
+    target("gallery_workspace_test")
+        set_kind("binary")
+        set_languages("c++20")
+        set_default(false)
+        add_deps("crossdesk_wire")
+        add_includedirs("apps/desktop/src/gui/features/gallery")
+        add_files("apps/desktop/tests/gallery_workspace_test.cpp",
+            "apps/desktop/src/gui/features/gallery/gallery_storage.cpp")
+
     target("single_instance")
         set_kind("object")
         add_includedirs("apps/desktop/src", {public = true})

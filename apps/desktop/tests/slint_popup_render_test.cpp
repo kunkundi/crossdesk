@@ -161,6 +161,66 @@ bool VerifyWorkbenchPopups(RenderTestPlatform& platform) {
   screen.Click(width - 90, 371, 4);
   if (!Check(selected_group == 2 && main->get_recent_group_index() == 2,
              "Group selection must survive a held click")) return false;
+  std::string renamed_from, renamed_to, deleted_group;
+  main->on_rename_group([&](slint::SharedString old_name, slint::SharedString new_name) {
+    renamed_from = old_name;
+    renamed_to = new_name;
+    if (renamed_to == "Duplicate") {
+      main->set_rename_group_error("Group name already exists");
+      return false;
+    }
+    return true;
+  });
+  main->on_delete_group([&](slint::SharedString name) {
+    deleted_group = name;
+    return true;
+  });
+  // GroupFilter custom-group Rename action (pen icon) opens the rename modal.
+  screen.Click(width - 90, 276);
+  screen.Click(580, 371, 4);
+  if (!Check(main->get_rename_group_open() &&
+                 std::string(main->get_rename_group_target()) == "Lab" &&
+                 std::string(main->get_rename_group_input()) == "Lab",
+             "Group filter Rename button must prefill and open the rename modal")) return false;
+  main->set_rename_group_input("Duplicate");
+  screen.Key(slint::platform::key_codes::Return);
+  if (!Check(main->get_rename_group_open() &&
+                 std::string(main->get_rename_group_error()) == "Group name already exists",
+             "Failed group rename must stay open and display inline validation error")) return false;
+  screen.Key(slint::platform::key_codes::Escape);
+  if (!Check(!main->get_rename_group_open(),
+             "Escape must dismiss the group rename modal")) return false;
+  // GroupFilter custom-group Delete action (trash icon) opens confirmation.
+  screen.Click(width - 90, 276);
+  screen.Click(604, 371, 4);
+  if (!Check(main->get_delete_open(),
+             "Group filter Delete button must open the delete confirmation modal")) return false;
+  main->set_delete_open(false);
+  screen.Settle();
+  // DeviceGroupDialog custom-group rows also expose Rename and Delete actions.
+  auto group_options = std::make_shared<slint::VectorModel<crossdesk::ui::DeviceGroupOption>>(
+      std::vector<crossdesk::ui::DeviceGroupOption>{
+          {"", false}, {"Office", true}, {"Lab", false}});
+  main->set_device_group_options(group_options);
+  main->set_device_group_open(true);
+  screen.Settle();
+  screen.Click(438, 227, 4);
+  if (!Check(main->get_rename_group_open() && main->get_device_group_open() &&
+                 std::string(main->get_rename_group_target()) == "Office",
+             "DeviceGroupDialog Rename button must open rename modal above the group editor")) return false;
+  main->set_rename_group_input("Studio");
+  screen.Key(slint::platform::key_codes::Return);
+  if (!Check(!main->get_rename_group_open() && main->get_device_group_open() &&
+                 renamed_from == "Office" && renamed_to == "Studio",
+             "Confirming group rename from DeviceGroupDialog must keep the group editor open")) return false;
+  screen.Click(466, 259, 4);
+  if (!Check(main->get_delete_open() && main->get_device_group_open(),
+             "DeviceGroupDialog Delete button must open confirmation above the group editor")) return false;
+  screen.Click(280, 290, 4);
+  if (!Check(!main->get_delete_open() && deleted_group == "Lab" && main->get_device_group_open(),
+             "Confirming group deletion from DeviceGroupDialog must delete the group cleanly")) return false;
+  main->set_device_group_open(false);
+  screen.Settle();
   screen.Click(width - 38, 20);
   screen.Click(width - 78, 56, 4);
   if (!Check(main->get_settings_open(), "Application menu must open settings on click")) return false;
@@ -328,7 +388,22 @@ bool VerifyGalleryPopups(RenderTestPlatform& platform) {
   screen.Click(600, 55, 4);
   if (!Check(wall->get_gallery_adding(), "Add menu must open the device dialog")) return false;
   screen.Click(422, 421, 4);
-  return Check(!wall->get_gallery_adding(), "Add dialog Cancel must respond immediately");
+  if (!Check(!wall->get_gallery_adding(), "Add dialog Cancel must respond immediately")) return false;
+  // DeskHub's group filter also exposes custom-group Rename and Delete buttons.
+  screen.Click(100, 24);
+  screen.Click(144, 89, 4);
+  if (!Check(wall->get_rename_group_open() &&
+                 std::string(wall->get_rename_group_target()) == "Lab",
+             "DeskHub group filter Rename button must open the rename modal")) return false;
+  screen.Key(slint::platform::key_codes::Escape);
+  if (!Check(!wall->get_rename_group_open(),
+             "Escape must dismiss DeskHub group rename modal")) return false;
+  screen.Click(100, 24);
+  screen.Click(168, 89, 4);
+  if (!Check(wall->get_delete_open(),
+             "DeskHub group filter Delete button must open confirmation")) return false;
+  wall->set_delete_open(false);
+  return true;
 }
 
 bool VerifyUpdateRecovery(RenderTestPlatform& platform) {
