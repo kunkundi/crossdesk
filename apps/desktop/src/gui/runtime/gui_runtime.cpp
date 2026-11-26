@@ -144,10 +144,15 @@ void GuiRuntime::SendRemoteInput(const RemoteAction& action, float wheel_delta) 
   }
 }
 
-bool GuiRuntime::PrepareSharedGuiIdentity(bool import_existing) {
+bool GuiRuntime::PrepareSharedGuiIdentity(bool import_existing,
+                                          std::string* error_out) {
+  if (error_out) error_out->clear();
 #ifdef _WIN32
   if (!SupportsServiceAutostart() || shared_identity_) return true;
-  if (!import_existing && settings_.Save() != 0) return false;
+  if (!import_existing && settings_.Save() != 0) {
+    if (error_out) *error_out = "Cannot save local settings";
+    return false;
+  }
   if (peer_) {
     CloseConnectionPeer();
     WaitForSessionCleanup();
@@ -157,13 +162,16 @@ bool GuiRuntime::PrepareSharedGuiIdentity(bool import_existing) {
       path_manager_->GetCachePath(), path_manager_->GetConfigPath() / "trusted-devices",
       config_center_->ExportSharedHostConfig(), error)) {
     LOG_ERROR("Cannot prepare persistent host: {}", error);
+    if (error_out) *error_out = error;
     return false;
   }
   auto identity = SharedHostIdentity::AttachGui(path_manager_->GetCachePath(),
       path_manager_->GetConfigPath() / "trusted-devices", import_existing, error);
   if (!identity ||
       (import_existing && config_center_->ApplySharedHostConfig(identity->HostConfig()) != 0)) {
+    if (error.empty()) error = "Cannot apply shared host configuration";
     LOG_ERROR("Cannot load the machine identity: {}", error);
+    if (error_out) *error_out = error;
     return false;
   }
   shared_identity_ = std::move(identity);

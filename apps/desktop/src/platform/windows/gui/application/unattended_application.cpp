@@ -12,8 +12,8 @@ namespace crossdesk {
 
 int GuiApplication::RunUnattended(void* stop_event) {
   if (!stop_event || !IsLocalSystemProcess() ||
-      (!IsUnattendedEnabled() && !SharedHostIdentity::GuiPresent()) ||
-      !PrepareUnattendedDirectory(false))
+      !RepairUnattendedDirectory(false) ||
+      (!IsUnattendedEnabled() && !SharedHostIdentity::GuiPresent()))
     return 1;
   unattended_host_ = true;
   DWORD session = 0;

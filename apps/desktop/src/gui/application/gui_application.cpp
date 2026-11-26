@@ -71,6 +71,7 @@
 #include "platform/windows/gui/tray/win_tray.h"
 #include "platform/windows/gui/window_icons.h"
 #include "platform/windows/gui/window_taskbar.h"
+#include "platform/windows/runtime_daemon.h"
 #include "platform/windows/service/autostart_control.h"
 #include "platform/windows/service/interactive_desktop.h"
 #include "platform/windows/service/unattended_config.h"
@@ -1274,7 +1275,35 @@ int GuiApplication::Run(bool login_launch) {
         Sleep(250);
       } while (IsUnattendedEnabled() && !IsCurrentSessionUserDesktopActive());
     }
-    if (!PrepareSharedGuiIdentity(true)) return -1;
+    std::string identity_error;
+    if (!PrepareSharedGuiIdentity(true, &identity_error)) {
+      // Deterministic identity/ACL failures cannot be cleared by respawning
+      // the unattached GUI every second from the per-user runtime watcher.
+      platform::WindowsRuntimeDaemon::Instance().Shutdown(false);
+      if (!login_launch) {
+        std::wstring text =
+            L"CrossDesk could not attach to the shared machine identity.\n\n";
+        if (!identity_error.empty()) {
+          const int needed = MultiByteToWideChar(
+              CP_UTF8, 0, identity_error.data(),
+              static_cast<int>(identity_error.size()), nullptr, 0);
+          if (needed > 0) {
+            std::wstring wide_error(static_cast<size_t>(needed), L'\0');
+            MultiByteToWideChar(CP_UTF8, 0, identity_error.data(),
+                                static_cast<int>(identity_error.size()),
+                                wide_error.data(), needed);
+            text += L"Reason: " + wide_error + L"\n\n";
+          }
+        }
+        text +=
+            L"Verify that CrossDesk is launched with administrator privileges "
+            L"and that C:\\ProgramData\\CrossDeskUnattended is owned by "
+            L"SYSTEM or Administrators.";
+        MessageBoxW(nullptr, text.c_str(), L"CrossDesk",
+                    MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+      }
+      return -1;
+    }
   }
 #endif
   InitializeTrustedDevices(path_manager_->GetConfigPath() / "trusted-devices");

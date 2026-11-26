@@ -24,6 +24,14 @@ struct Handle {
 void Require(bool ok, const char* message) {
   if (!ok) throw std::runtime_error(message);
 }
+void Require(bool ok, const std::string& message) {
+  if (!ok) throw std::runtime_error(message);
+}
+std::string FormatDirectoryFailure(const char* prefix,
+                                   const std::string& diagnostic) {
+  return diagnostic.empty() ? std::string(prefix)
+                            : std::string(prefix) + " (" + diagnostic + ")";
+}
 uint64_t Created(HANDLE process) {
   FILETIME created{}, exited{}, kernel{}, user{};
   if (!GetProcessTimes(process, &created, &exited, &kernel, &user)) return 0;
@@ -167,7 +175,10 @@ void ValidateTrustedDevices(const Json& devices) {
   }
 }
 Json Snapshot() {
-  Require(PrepareUnattendedDirectory(false), "Machine identity directory is not private");
+  std::string diagnostic;
+  Require(PrepareUnattendedDirectory(false, &diagnostic),
+          FormatDirectoryFailure("Machine identity directory is not private",
+                                 diagnostic));
   auto data = Document(UnattendedDataPath() / kSnapshot);
   Require(data.at("version") == 1 && data.at("host_config").is_string(),
           "Unsupported shared identity version");
@@ -226,7 +237,11 @@ std::unique_ptr<SharedHostIdentity> SharedHostIdentity::AttachGui(
   bool reserved = false;
   try {
     Require(IsAdministratorProcess() && !IsLocalSystemProcess(), "Shared GUI identity requires an administrator");
-    Require(PrepareUnattendedDirectory(true), "Cannot prepare private machine identity directory");
+    std::string diagnostic;
+    Require(RepairUnattendedDirectory(true, &diagnostic),
+            FormatDirectoryFailure(
+                "Cannot prepare private machine identity directory",
+                diagnostic));
     Handle claim{Lock(L"gui-claim.lock")};
     Require(claim.value != INVALID_HANDLE_VALUE, "Another GUI attachment is in progress");
     Require(!GuiPresent(), "Another GUI is already using this machine identity");
@@ -253,7 +268,12 @@ std::unique_ptr<SharedHostIdentity> SharedHostIdentity::AttachGui(
 std::unique_ptr<SharedHostIdentity> SharedHostIdentity::AcquireHost(std::string& error) {
   error.clear();
   try {
-    Require(IsLocalSystemProcess() && PrepareUnattendedDirectory(false), "Machine identity requires SYSTEM");
+    Require(IsLocalSystemProcess(), "Machine identity requires SYSTEM");
+    std::string diagnostic;
+    Require(RepairUnattendedDirectory(false, &diagnostic),
+            FormatDirectoryFailure(
+                "Cannot prepare private machine identity directory",
+                diagnostic));
     HANDLE lease = Lock(L"identity-owner.lock");
     Require(lease != INVALID_HANDLE_VALUE, "Machine identity is already in use");
     const auto cache = UnattendedDataPath() / L"host";
@@ -268,7 +288,7 @@ std::unique_ptr<SharedHostIdentity> SharedHostIdentity::AcquireHost(std::string&
 void SharedHostIdentity::Import() {
   const auto data = Snapshot();
   private_file::EnsureDirectory(cache_, true);
-  private_file::EnsureDirectory(trusted_);
+  private_file::EnsureDirectory(trusted_, !gui_);
   Json identity{{"version", 1}};
   if (std::filesystem::exists(trusted_ / "identity.json"))
     identity = PrivateDocument(trusted_ / "identity.json");
@@ -329,7 +349,13 @@ bool SharedHostIdentity::Prepare(const std::filesystem::path& cache,
     const std::filesystem::path& trusted, const std::string& host_config, std::string& error) {
   error.clear();
   try {
-    Require(PrepareUnattendedDirectory(true), "Cannot prepare private machine identity directory");
+    Require(IsAdministratorProcess() || IsLocalSystemProcess(),
+            "Shared machine identity requires administrator privileges");
+    std::string diagnostic;
+    Require(RepairUnattendedDirectory(true, &diagnostic),
+            FormatDirectoryFailure(
+                "Cannot prepare private machine identity directory",
+                diagnostic));
     if (Configured()) { Snapshot(); return true; }
     Require(!GuiPresent(), "Enable shared startup from the running GUI settings");
     HANDLE lease = Lock(L"identity-owner.lock");

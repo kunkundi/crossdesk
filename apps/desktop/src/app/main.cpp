@@ -398,8 +398,9 @@ int main(int argc, char* argv[]) {
     // Internal service entry point: never elevate an ordinary invocation into
     // a SYSTEM host, and never open the GUI or the per-user daemon here.
     if (argc != 4 || !crossdesk::IsLocalSystemProcess() ||
-        (!crossdesk::IsUnattendedEnabled() && !crossdesk::SharedHostIdentity::GuiPresent()) ||
-        !crossdesk::PrepareUnattendedDirectory(false))
+        !crossdesk::RepairUnattendedDirectory(false) ||
+        (!crossdesk::IsUnattendedEnabled() &&
+         !crossdesk::SharedHostIdentity::GuiPresent()))
       return 1;
     const std::string name(argv[2]);
     if (name.rfind("Global\\CrossDeskUnattendedStop-", 0) != 0) return 1;
