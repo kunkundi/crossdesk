@@ -363,7 +363,7 @@ foreach ($serviceAction in '--service-stop', '--service-install', '--service-sta
 
 启用后服务随 Windows 启动，不需要设置 Windows 自动登录或保存系统登录密码。退出 CrossDesk 界面不会停止后台远控；注销、切换用户、重启服务或网络中断仍可能导致断线。
 
-登录前可使用画面、键鼠、多屏及安全桌面控制。声音、文件、剪贴板和隐私屏需要用户登录并运行 CrossDesk 界面，退出界面后这些功能暂时不可用。共享资料位于 `%ProgramData%\CrossDeskUnattended`，仅管理员和 SYSTEM 可访问，日志位于其中的 `logs` 子目录。
+登录前可使用画面、键鼠、多屏及安全桌面控制。声音、文件、剪贴板和隐私屏需要用户登录并运行 CrossDesk 界面，退出界面后这些功能暂时不可用。共享资料位于 `%ProgramData%\CrossDeskUnattended`，仅管理员和 SYSTEM 可访问，无人值守宿主的日志位于 SYSTEM 账户本地 AppData 下的 `CrossDesk\logs\unattended`。
 
 没有实体显示器时，会尝试创建虚拟显示器，优先使用已记录的分辨率，没有记录时使用 1920×1080。实际效果取决于驱动是否可用；接入稳定的实体显示器后会尝试切回。
 

@@ -122,7 +122,7 @@ class ConfigCenter {
   int Save();
   // Only connection/admission preferences cross into the SYSTEM host profile.
   std::string ExportSharedHostConfig() const;
-  int ApplySharedHostConfig(const std::string& contents);
+  int ApplySharedHostConfig(const std::string& contents, bool* save_failed = nullptr);
 
  private:
   int CommitIni(bool warn_only = false);

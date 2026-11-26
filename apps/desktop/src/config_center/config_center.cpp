@@ -395,7 +395,8 @@ std::string ConfigCenter::ExportSharedHostConfig() const {
   return contents;
 }
 
-int ConfigCenter::ApplySharedHostConfig(const std::string& contents) {
+int ConfigCenter::ApplySharedHostConfig(const std::string& contents, bool* save_failed) {
+  if (save_failed) *save_failed = false;
   CSimpleIniA host;
   host.SetUnicode(true);
   if (host.LoadData(contents.c_str(), contents.size()) < 0 ||
@@ -429,7 +430,10 @@ int ConfigCenter::ApplySharedHostConfig(const std::string& contents) {
                    {"disable_receiver_padding_probing",
                     disable_receiver_padding_probing ? "true" : "false"},
                    {"trusted_devices_only", trusted ? "true" : "false"},
-                   {"lock_on_disconnect", lock ? "true" : "false"}}) != 0) return -1;
+                   {"lock_on_disconnect", lock ? "true" : "false"}}) != 0) {
+    if (save_failed) *save_failed = true;
+    return -1;
+  }
   enable_self_hosted_ = self_hosted;
   signal_server_host_ = server;
   signal_server_port_ = static_cast<int>(port);
