@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "secure_desktop_dxgi_cursor_state.h"
+#include "windows_hdr_capture.h"
 
 namespace crossdesk {
 
@@ -49,11 +50,13 @@ class SecureDesktopDxgiCapture {
             D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0, D3D11_SDK_VERSION,
             device_.GetAddressOf(), nullptr, context_.GetAddressOf());
         if (FAILED(hr)) return hr;
-        Microsoft::WRL::ComPtr<IDXGIOutput1> output1;
-        hr = output.As(&output1);
+        hdr_info_ = {};
+        hdr_tone_mapper_.Reset();
+        next_hdr_white_check_tick_ = 0;
+        hr = DuplicateDxgiOutput(output.Get(), device_.Get(),
+                                 duplication_.GetAddressOf(), &hdr_info_);
         if (FAILED(hr)) return hr;
-        hr = output1->DuplicateOutput(device_.Get(), duplication_.GetAddressOf());
-        if (FAILED(hr)) return hr;
+        next_hdr_white_check_tick_ = GetTickCount64() + 1000;
 
         output_desc_ = desc;
         offset_x_ = left - bounds.left;
@@ -95,8 +98,20 @@ class SecureDesktopDxgiCapture {
     Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
     HRESULT result = resource.As(&texture);
     if (FAILED(result)) return result;
+    ID3D11Texture2D* bgra_texture = texture.Get();
     D3D11_TEXTURE2D_DESC desc{};
-    texture->GetDesc(&desc);
+    bgra_texture->GetDesc(&desc);
+    if (IsHdrDesktopTextureFormat(desc.Format)) {
+      const ULONGLONG now = GetTickCount64();
+      if (output_desc_.Monitor && now >= next_hdr_white_check_tick_) {
+        hdr_info_.sdr_white_scale = QueryMonitorSdrWhiteScale(output_desc_.Monitor);
+        next_hdr_white_check_tick_ = now + 1000;
+      }
+      bgra_texture = hdr_tone_mapper_.ToneMapToBgra8(
+          device_.Get(), context_.Get(), bgra_texture, hdr_info_);
+      if (!bgra_texture) return E_FAIL;
+      bgra_texture->GetDesc(&desc);
+    }
     const bool swap_axes = rotation_ == libyuv::kRotate90 ||
                            rotation_ == libyuv::kRotate270;
     const UINT logical_width = swap_axes ? desc.Height : desc.Width;
@@ -115,7 +130,7 @@ class SecureDesktopDxgiCapture {
       result = device_->CreateTexture2D(&desc, nullptr, staging_.GetAddressOf());
       if (FAILED(result)) return result;
     }
-    context_->CopyResource(staging_.Get(), texture.Get());
+    context_->CopyResource(staging_.Get(), bgra_texture);
     D3D11_MAPPED_SUBRESOURCE mapped{};
     result = context_->Map(staging_.Get(), 0, D3D11_MAP_READ, 0, &mapped);
     if (FAILED(result)) return result;
@@ -147,6 +162,9 @@ class SecureDesktopDxgiCapture {
   Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_;
   Microsoft::WRL::ComPtr<IDXGIOutputDuplication> duplication_;
   Microsoft::WRL::ComPtr<ID3D11Texture2D> staging_;
+  WindowsHdrOutputInfo hdr_info_{};
+  D3d11HdrToneMapper hdr_tone_mapper_;
+  ULONGLONG next_hdr_white_check_tick_ = 0;
   DXGI_OUTPUT_DESC output_desc_{};
   libyuv::RotationMode rotation_ = libyuv::kRotate0;
   int offset_x_ = 0, offset_y_ = 0, stride_ = 0;

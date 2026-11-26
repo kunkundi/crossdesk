@@ -265,6 +265,17 @@ function setup_targets()
         add_includedirs("apps/desktop/src/platform/windows/service")
         add_files("apps/desktop/tests/windows_sas_guard_test.cpp")
 
+    target("windows_hdr_tone_map_test")
+        set_kind("binary")
+        set_default(false)
+        add_includedirs("apps/desktop/src/platform/windows",
+            "apps/desktop/src/platform/windows/screen_capturer")
+        add_files("apps/desktop/tests/windows_hdr_tone_map_test.cpp")
+        if is_os("windows") then
+            add_files("apps/desktop/src/platform/windows/screen_capturer/windows_hdr_capture.cpp")
+            add_syslinks("user32", "d3d11", "dxgi")
+        end
+
     target("crossdesk_ui")
         set_kind("static")
         set_languages("c++20")
@@ -410,6 +421,7 @@ function setup_targets()
             add_files("apps/desktop/src/screen_capturer/captured_nv12_frame.cpp")
             add_files("apps/desktop/src/platform/windows/screen_capturer/screen_capturer_dxgi.cpp",
                 "apps/desktop/src/platform/windows/screen_capturer/dxgi_nv12_frames.cpp",
+                "apps/desktop/src/platform/windows/screen_capturer/windows_hdr_capture.cpp",
                 "apps/desktop/src/platform/windows/screen_capturer/screen_capturer_gdi.cpp",
                 "apps/desktop/src/platform/windows/screen_capturer/screen_capturer_win.cpp",
                 "apps/desktop/src/platform/windows/screen_capturer/screen_capturer_factory.cpp")
@@ -794,12 +806,15 @@ function setup_targets()
             -- MSVC's deprecated experimental coroutine header.
             add_defines("_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS")
             add_links("windowsapp")
+            add_syslinks("user32", "d3d11", "dxgi")
             add_files("apps/desktop/src/platform/windows/screen_capturer/screen_capturer_wgc.cpp",
                 "apps/desktop/src/platform/windows/screen_capturer/wgc_session_impl.cpp",
+                "apps/desktop/src/platform/windows/screen_capturer/windows_hdr_capture.cpp",
                 "apps/desktop/src/platform/windows/screen_capturer/wgc_plugin_entry.cpp")
             add_files("apps/desktop/resources/windows/wgc_plugin.rc",
                 {defines = windows_resource_defines})
             add_includedirs("apps/desktop/src/common", "apps/desktop/src/screen_capturer",
+                "apps/desktop/src/platform/windows",
                 "apps/desktop/src/platform/windows/screen_capturer",
                 "deps/submodules/minirtc/src/api")
 
@@ -827,11 +842,13 @@ function setup_targets()
                   "d3d11", "dxgi", "RuntimeObject")
             add_files("apps/desktop/src/platform/windows/service/session_helper_main.cpp")
               add_files("apps/desktop/src/platform/windows/privacy/privacy_cursor_guard.cpp")
+            add_files("apps/desktop/src/platform/windows/screen_capturer/windows_hdr_capture.cpp")
             add_files("apps/desktop/src/platform/windows/virtual_display/usbmmidd_virtual_display.cpp")
             add_files("apps/desktop/resources/windows/crossdesk_session_helper.rc",
                 {defines = windows_resource_defines})
             add_includedirs("apps/desktop/src/common",
                   "apps/desktop/src/screen_capturer", "deps/submodules/minirtc/src/api",
+                "apps/desktop/src/platform/windows",
                 "apps/desktop/src/platform/windows/service",
                 "apps/desktop/src/platform/windows/screen_capturer",
                 "apps/desktop/src/platform/windows/virtual_display")
