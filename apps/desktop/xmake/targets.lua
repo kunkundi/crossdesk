@@ -248,6 +248,17 @@ function setup_targets()
             add_syslinks("user32")
     end
 
+    if is_os("macosx") then
+        target("macos_keyboard_tap_state_test")
+            set_kind("binary")
+            set_default(false)
+            add_includedirs("apps/desktop/src/platform/macos/input",
+                "apps/desktop/src/device_controller", "apps/desktop/src/common",
+                "apps/desktop/src/log", "libs/wire/include")
+            add_files("apps/desktop/tests/macos_keyboard_tap_state_test.cpp")
+            add_frameworks("ApplicationServices")
+    end
+
     target("windows_sas_guard_test")
         set_kind("binary")
         set_default(false)
