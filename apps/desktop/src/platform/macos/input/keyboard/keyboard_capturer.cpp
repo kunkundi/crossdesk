@@ -1,5 +1,7 @@
 #include "keyboard_capturer.h"
 
+#include <Carbon/Carbon.h>
+
 #include <cstdint>
 #include <unordered_map>
 
@@ -137,12 +139,16 @@ CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type,
     }
     const int vk_code = key_it->second;
 
-    // caps lock
-    bool caps_lock_state = (current_flags & kCGEventFlagMaskAlphaShift) != 0;
-    if (caps_lock_state != keyboard_capturer->caps_lock_flag_) {
-      keyboard_capturer->caps_lock_flag_ = caps_lock_state;
-      g_on_key_action(vk_code, keyboard_capturer->caps_lock_flag_, 0, false,
-                      g_user_ptr);
+    if (key_code == kVK_CapsLock) {
+      const bool caps_lock_state =
+          (current_flags & kCGEventFlagMaskAlphaShift) != 0;
+      if (caps_lock_state != keyboard_capturer->caps_lock_flag_) {
+        keyboard_capturer->caps_lock_flag_ = caps_lock_state;
+        // Each lock-state change represents a complete press of Caps Lock.
+        g_on_key_action(vk_code, true, 0, false, g_user_ptr);
+        g_on_key_action(vk_code, false, 0, false, g_user_ptr);
+      }
+      return nullptr;
     }
 
     // shift

@@ -169,6 +169,17 @@ function setup_targets()
         add_includedirs("apps/desktop/src/platform/macos/input")
         add_files("apps/desktop/tests/macos_keyboard_modifier_state_test.cpp")
 
+    if is_os("macosx") then
+        target("macos_keyboard_capturer_test")
+            set_kind("binary")
+            set_default(false)
+            add_includedirs("apps/desktop/src/platform/macos/input",
+                "apps/desktop/src/device_controller", "apps/desktop/src/common",
+                "apps/desktop/src/log", "libs/wire/include")
+            add_files("apps/desktop/tests/macos_keyboard_capturer_test.cpp")
+            add_frameworks("ApplicationServices")
+    end
+
     target("cursor_position_test")
         set_kind("binary")
         set_default(false)
