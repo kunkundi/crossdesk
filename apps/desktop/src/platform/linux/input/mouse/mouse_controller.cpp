@@ -7,6 +7,8 @@
 #include <X11/extensions/XTest.h>
 #include <unistd.h>
 
+#include <algorithm>
+
 #include "platform.h"
 #include "rd_log.h"
 
@@ -180,10 +182,11 @@ int PlatformMouseController::SendMouseCommand(RemoteAction remote_action,
           break;
         }
         case MouseFlag::wheel_horizontal: {
+          // X11 maps button 6 to scroll left and button 7 to scroll right.
           if (remote_action.m.s > 0) {
-            SimulateMouseWheel(6, remote_action.m.s);
+            SimulateMouseWheel(7, (std::min)(remote_action.m.s, 1200));
           } else if (remote_action.m.s < 0) {
-            SimulateMouseWheel(7, -remote_action.m.s);
+            SimulateMouseWheel(6, -(std::max)(remote_action.m.s, -1200));
           }
           break;
         }

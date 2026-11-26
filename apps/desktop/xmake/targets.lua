@@ -236,6 +236,12 @@ function setup_targets()
         set_default(false)
         add_files("apps/desktop/tests/windows_mouse_controller_safety_test.cpp")
 
+    target("scroll_accumulator_test")
+        set_kind("binary")
+        set_default(false)
+        add_includedirs("apps/desktop/src/gui/features/input")
+        add_files("apps/desktop/tests/scroll_accumulator_test.cpp")
+
     if is_os("windows") then
         target("windows_keyboard_capturer_test")
             set_kind("binary")

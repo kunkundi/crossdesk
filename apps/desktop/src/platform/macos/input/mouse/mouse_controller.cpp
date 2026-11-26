@@ -211,8 +211,10 @@ int PlatformMouseController::SendMouseCommand(RemoteAction remote_action,
                                                   2, remote_action.m.s, 0);
       break;
     case MouseFlag::wheel_horizontal:
-      mouse_event = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitLine,
-                                                  2, 0, remote_action.m.s);
+      // CoreGraphics wheel2 uses positive values for scrolling left.
+      mouse_event = CGEventCreateScrollWheelEvent(
+          NULL, kCGScrollEventUnitLine, 2, 0,
+          -std::clamp(remote_action.m.s, -1200, 1200));
       break;
     default:
       if (left_dragging_) {

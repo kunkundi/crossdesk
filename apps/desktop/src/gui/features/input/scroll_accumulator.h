@@ -20,6 +20,9 @@ class ScrollAccumulator {
 
   int Consume(bool vertical, float delta, int percent, Clock::time_point now = Clock::now()) {
     if (!std::isfinite(delta) || delta == 0) return 0;
+    // Slint's winit backend reports content displacement (+x = scroll left),
+    // whereas wheel_horizontal uses positive steps for scrolling right.
+    if (!vertical) delta = -delta;
 
     if (percent != sensitivity_percent_) {
       horizontal_ = {};
