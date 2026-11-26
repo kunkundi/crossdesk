@@ -187,12 +187,12 @@ struct Workspace {
   static constexpr size_t kMaxGroupNameLength = 64;
 
   enum class GroupNameError {
-    None,
-    Empty,
-    TooLong,
-    Reserved,
-    NotFound,
-    Duplicate,
+    kOk,
+    kEmpty,
+    kTooLong,
+    kReserved,
+    kNotFound,
+    kDuplicate,
   };
 
   static std::string TrimGroupName(std::string_view input) {
@@ -234,30 +234,30 @@ struct Workspace {
       const std::vector<std::string> &extra_reserved = {}) const {
     const auto trimmed = TrimGroupName(candidate);
     if (trimmed.empty() || HasControlCharacters(trimmed))
-      return GroupNameError::Empty;
+      return GroupNameError::kEmpty;
     if (GroupNameLength(trimmed) > kMaxGroupNameLength)
-      return GroupNameError::TooLong;
+      return GroupNameError::kTooLong;
     if (IsReservedGroupName(trimmed, extra_reserved))
-      return GroupNameError::Reserved;
-    return GroupNameError::None;
+      return GroupNameError::kReserved;
+    return GroupNameError::kOk;
   }
   GroupNameError ValidateRenameGroup(
       const std::string &old_name, const std::string &new_name,
       const std::vector<std::string> &extra_reserved = {}) const {
     if (old_name.empty() ||
         std::find(groups.begin(), groups.end(), old_name) == groups.end())
-      return GroupNameError::NotFound;
+      return GroupNameError::kNotFound;
     const auto name_error = ValidateGroupName(new_name, extra_reserved);
-    if (name_error != GroupNameError::None)
+    if (name_error != GroupNameError::kOk)
       return name_error;
     const auto trimmed = TrimGroupName(new_name);
     if (trimmed != old_name &&
         std::find(groups.begin(), groups.end(), trimmed) != groups.end())
-      return GroupNameError::Duplicate;
-    return GroupNameError::None;
+      return GroupNameError::kDuplicate;
+    return GroupNameError::kOk;
   }
   bool RenameGroup(const std::string &old_name, const std::string &new_name) {
-    if (ValidateRenameGroup(old_name, new_name) != GroupNameError::None)
+    if (ValidateRenameGroup(old_name, new_name) != GroupNameError::kOk)
       return false;
     const auto trimmed = TrimGroupName(new_name);
     if (trimmed == old_name)

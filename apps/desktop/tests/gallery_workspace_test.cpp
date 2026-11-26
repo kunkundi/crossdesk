@@ -1,3 +1,7 @@
+// Guard against X11 <X11/X.h> defining '#define None 0L' before GUI headers.
+#ifndef None
+#define None 0L
+#endif
 #include "gallery_workspace.h"
 
 #include <chrono>
@@ -125,44 +129,44 @@ bool TestValidationEdgeCases() {
 
   using Error = Workspace::GroupNameError;
   if (!Check(!ws.RenameGroup("", "NewName") &&
-                 ws.ValidateRenameGroup("", "NewName") == Error::NotFound,
+                 ws.ValidateRenameGroup("", "NewName") == Error::kNotFound,
              "reject empty source group"))
     return false;
   if (!Check(!ws.RenameGroup("Missing", "NewName") &&
-                 ws.ValidateRenameGroup("Missing", "NewName") == Error::NotFound,
+                 ws.ValidateRenameGroup("Missing", "NewName") == Error::kNotFound,
              "reject missing source group"))
     return false;
   if (!Check(!ws.RenameGroup("Office", "") &&
                  !ws.RenameGroup("Office", "   \t\r\n ") &&
-                 ws.ValidateRenameGroup("Office", "   ") == Error::Empty,
+                 ws.ValidateRenameGroup("Office", "   ") == Error::kEmpty,
              "reject empty or whitespace-only target name"))
     return false;
   if (!Check(!ws.RenameGroup("Office", "Line1\nLine2") &&
-                 ws.ValidateRenameGroup("Office", "Line1\nLine2") == Error::Empty,
+                 ws.ValidateRenameGroup("Office", "Line1\nLine2") == Error::kEmpty,
              "reject control characters in group name"))
     return false;
   if (!Check(!ws.RenameGroup("Office", "Lab") &&
                  !ws.RenameGroup("Office", "  Lab ") &&
-                 ws.ValidateRenameGroup("Office", "Lab") == Error::Duplicate,
+                 ws.ValidateRenameGroup("Office", "Lab") == Error::kDuplicate,
              "reject duplicate existing group name"))
     return false;
 
   for (const char* reserved :
        {"全部设备", "未分组", "All devices", "Ungrouped"}) {
     if (!Check(!ws.RenameGroup("Office", reserved) &&
-                   ws.ValidateRenameGroup("Office", reserved) == Error::Reserved,
+                   ws.ValidateRenameGroup("Office", reserved) == Error::kReserved,
                "reject built-in reserved system group names"))
       return false;
   }
   if (!Check(ws.ValidateRenameGroup("Office", "Все устройства",
                                     {"Все устройства", "Без группы"}) ==
-                 Error::Reserved,
+                 Error::kReserved,
              "reject localized reserved system group names"))
     return false;
 
   const std::string ascii_65(Workspace::kMaxGroupNameLength + 1, 'x');
   if (!Check(!ws.RenameGroup("Office", ascii_65) &&
-                 ws.ValidateRenameGroup("Office", ascii_65) == Error::TooLong,
+                 ws.ValidateRenameGroup("Office", ascii_65) == Error::kTooLong,
              "reject ASCII group name exceeding max length"))
     return false;
 
@@ -170,7 +174,7 @@ bool TestValidationEdgeCases() {
   for (size_t i = 0; i < Workspace::kMaxGroupNameLength; ++i) cjk_64 += "组";
   const std::string cjk_65 = cjk_64 + "组";
   if (!Check(!ws.RenameGroup("Office", cjk_65) &&
-                 ws.ValidateRenameGroup("Office", cjk_65) == Error::TooLong,
+                 ws.ValidateRenameGroup("Office", cjk_65) == Error::kTooLong,
              "reject 65-codepoint UTF-8 group name"))
     return false;
   if (!Check(ws.RenameGroup("Office", cjk_64),
