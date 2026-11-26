@@ -425,6 +425,15 @@ int ScreenCapturerSckImpl::Init(const int fps, cb_desktop_data cb) {
   if (completed && !capture_error) {
     for (SCDisplay *display in content.displays)
       display_ids.push_back(display.displayID);
+
+    // During wake, ScreenCaptureKit may list only a secondary display.
+    // Reserve the primary built-in display's slot before negotiating streams.
+    const CGDirectDisplayID primary = CGMainDisplayID();
+    if (CGDisplayIsBuiltin(primary) && CGDisplayIsOnline(primary) &&
+        std::find(display_ids.begin(), display_ids.end(), primary) ==
+            display_ids.end()) {
+      display_ids.insert(display_ids.begin(), primary);
+    }
   }
 
   if (display_ids.empty()) {
@@ -668,7 +677,12 @@ void ScreenCapturerSckImpl::OnShareableContentCreated(SCShareableContent *conten
       }
       ++display_index;
     }
-    if (!captured_display) {
+    // The built-in panel can briefly disappear from ScreenCaptureKit on wake.
+    // Keep its stream bound to that panel while CoreGraphics reports it online.
+    const bool waiting_for_builtin =
+        !captured_display && CGDisplayIsBuiltin(current_display_) &&
+        CGDisplayIsOnline(current_display_);
+    if (!captured_display && !waiting_for_builtin) {
       captured_display = logical_fallback ? logical_fallback
                                           : content.displays.firstObject;
       // The viewer and input still use the selected slot, even when SCK
