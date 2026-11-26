@@ -103,6 +103,7 @@ class WgcSessionImpl : public WgcSession {
       d3d11_direct_device_{nullptr};
   winrt::com_ptr<ID3D11DeviceContext> d3d11_device_context_{nullptr};
   winrt::com_ptr<ID3D11Texture2D> d3d11_texture_mapped_{nullptr};
+  WindowsHdrOutputCache hdr_output_cache_;
   WindowsHdrOutputInfo hdr_info_{};
   D3d11HdrToneMapper hdr_tone_mapper_;
   bool pool_uses_hdr_format_ = false;

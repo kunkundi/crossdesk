@@ -1,3 +1,9 @@
+/*
+ * @Author: NandaNg314
+ * @Date: 2026-11-26
+ * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
+ */
+
 #ifndef _HDR_TONE_MAP_MATH_H_
 #define _HDR_TONE_MAP_MATH_H_
 

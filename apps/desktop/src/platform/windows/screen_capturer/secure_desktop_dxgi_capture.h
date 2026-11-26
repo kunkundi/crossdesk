@@ -103,14 +103,18 @@ class SecureDesktopDxgiCapture {
     bgra_texture->GetDesc(&desc);
     if (IsHdrDesktopTextureFormat(desc.Format)) {
       const ULONGLONG now = GetTickCount64();
-      if (output_desc_.Monitor && now >= next_hdr_white_check_tick_) {
-        hdr_info_.sdr_white_scale = QueryMonitorSdrWhiteScale(output_desc_.Monitor);
+      if (hdr_info_.hdr_enabled && output_desc_.Monitor &&
+          now >= next_hdr_white_check_tick_) {
+        RefreshMonitorSdrWhiteScale(output_desc_.Monitor,
+                                    &hdr_info_.sdr_white_scale);
         next_hdr_white_check_tick_ = now + 1000;
       }
       bgra_texture = hdr_tone_mapper_.ToneMapToBgra8(
           device_.Get(), context_.Get(), bgra_texture, hdr_info_);
       if (!bgra_texture) return E_FAIL;
       bgra_texture->GetDesc(&desc);
+    } else if (hdr_tone_mapper_.HasAllocatedResources()) {
+      hdr_tone_mapper_.Reset();
     }
     const bool swap_axes = rotation_ == libyuv::kRotate90 ||
                            rotation_ == libyuv::kRotate270;

@@ -527,8 +527,9 @@ void ScreenCapturerDxgi::CaptureLoop() {
       if (hdr_info_.hdr_enabled && active_monitor >= 0 &&
           active_monitor < static_cast<int>(display_info_list_.size()) &&
           display_info_list_[active_monitor].handle) {
-        hdr_info_.sdr_white_scale = QueryMonitorSdrWhiteScale(
-            static_cast<HMONITOR>(display_info_list_[active_monitor].handle));
+        RefreshMonitorSdrWhiteScale(
+            static_cast<HMONITOR>(display_info_list_[active_monitor].handle),
+            &hdr_info_.sdr_white_scale);
       }
     }
     if (!duplication_) {
@@ -647,6 +648,8 @@ void ScreenCapturerDxgi::CaptureLoop() {
         ReleaseAcquiredFrame();
         continue;
       }
+    } else if (hdr_tone_mapper_.HasAllocatedResources()) {
+      hdr_tone_mapper_.Reset();
     }
 
     const auto cursor = read_cursor();

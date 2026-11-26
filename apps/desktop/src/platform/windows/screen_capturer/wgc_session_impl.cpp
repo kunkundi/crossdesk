@@ -158,8 +158,9 @@ HRESULT WgcSessionImpl::CreateMappedTexture(ID3D11Texture2D* src_texture,
 }
 
 void WgcSessionImpl::RefreshHdrInfoLocked() noexcept {
-  hdr_info_ = target_.is_window ? QueryWindowHdrInfo(target_.hwnd)
-                                : QueryMonitorHdrInfo(target_.hmonitor);
+  hdr_info_ = target_.is_window
+                  ? hdr_output_cache_.QueryForWindow(target_.hwnd)
+                  : hdr_output_cache_.QueryForMonitor(target_.hmonitor);
   next_hdr_check_tick_ = GetTickCount64() + 1000;
 }
 
@@ -197,13 +198,18 @@ int WgcSessionImpl::StartCaptureLocked(bool show_cursor) {
             (pixel_format ==
              winrt::Windows::Graphics::DirectX::DirectXPixelFormat::
                  R16G16B16A16Float);
-      } catch (const winrt::hresult_error&) {
+      } catch (const winrt::hresult_error& error) {
         if (pixel_format ==
-            winrt::Windows::Graphics::DirectX::DirectXPixelFormat::
-                R16G16B16A16Float) {
+                winrt::Windows::Graphics::DirectX::DirectXPixelFormat::
+                    R16G16B16A16Float &&
+            IsHdrFramePoolFormatUnsupported(error.code())) {
           hdr_pool_unsupported_ = true;
           pool_uses_hdr_format_ = false;
-          LOG_WARN("WGC: FP16 frame pool unsupported, falling back to BGRA8");
+          hdr_tone_mapper_.Reset();
+          LOG_WARN(
+              "WGC: FP16 frame pool unsupported (hr=0x{:08X}), falling back to "
+              "BGRA8",
+              static_cast<uint32_t>(error.code().value));
           capture_framepool_ =
               winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::
                   CreateFreeThreaded(
@@ -307,6 +313,7 @@ void WgcSessionImpl::StopLocked() {
 
   d3d11_texture_mapped_ = nullptr;
   hdr_tone_mapper_.Reset();
+  hdr_output_cache_.Reset();
   pool_uses_hdr_format_ = false;
   next_hdr_check_tick_ = 0;
 }
@@ -344,10 +351,18 @@ void WgcSessionImpl::OnFrame(
         capture_framepool_.Recreate(d3d11_direct_device_, desired_format, 2,
                                     frame_size);
         pool_uses_hdr_format_ = want_hdr_pool;
-      } catch (const winrt::hresult_error&) {
-        if (want_hdr_pool) {
+        if (!pool_uses_hdr_format_) {
+          hdr_tone_mapper_.Reset();
+        }
+      } catch (const winrt::hresult_error& error) {
+        if (want_hdr_pool && IsHdrFramePoolFormatUnsupported(error.code())) {
           hdr_pool_unsupported_ = true;
           pool_uses_hdr_format_ = false;
+          hdr_tone_mapper_.Reset();
+          LOG_WARN(
+              "WGC: FP16 frame pool recreate unsupported (hr=0x{:08X}), "
+              "falling back to BGRA8",
+              static_cast<uint32_t>(error.code().value));
           capture_framepool_.Recreate(
               d3d11_direct_device_,
               winrt::Windows::Graphics::DirectX::DirectXPixelFormat::
@@ -377,6 +392,8 @@ void WgcSessionImpl::OnFrame(
         return;
       }
       bgra_source->GetDesc(&desc);
+    } else if (hdr_tone_mapper_.HasAllocatedResources()) {
+      hdr_tone_mapper_.Reset();
     }
     if (desc.Width != static_cast<UINT>(frame_size.Width) ||
         desc.Height != static_cast<UINT>(frame_size.Height) ||
@@ -491,6 +508,9 @@ int WgcSessionImpl::InitializeLocked() {
   d3d11_device_context_ = nullptr;
   d3d11_direct_device_ = nullptr;
   capture_frame_size_ = {};
+  hdr_pool_unsupported_ = false;
+  hdr_output_cache_.Reset();
+  hdr_tone_mapper_.Reset();
 
   if (!(d3d11_direct_device_ = CreateD3D11Device())) {
     LOG_ERROR("AE_D3D_CREATE_DEVICE_FAILED");
@@ -538,6 +558,7 @@ void WgcSessionImpl::CleanUpLocked() {
   d3d11_device_context_ = nullptr;
   d3d11_direct_device_ = nullptr;
   capture_frame_size_ = {};
+  hdr_pool_unsupported_ = false;
   is_initialized_ = false;
   is_paused_ = false;
 }

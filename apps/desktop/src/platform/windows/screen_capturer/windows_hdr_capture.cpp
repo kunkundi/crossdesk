@@ -487,74 +487,25 @@ bool ConstantsEqual(const HdrShaderConstants& a,
          a.max_headroom == b.max_headroom && a.shoulder_c == b.shoulder_c;
 }
 
-}  // namespace
-
-bool IsHdrDesktopTextureFormat(DXGI_FORMAT format) noexcept {
-  return format == DXGI_FORMAT_R16G16B16A16_FLOAT ||
-         format == DXGI_FORMAT_R10G10B10A2_UNORM;
+float ComputeEffectiveMaxLuminanceNits(bool hdr_enabled, float reported_max_nits,
+                                       float sdr_white_scale) noexcept {
+  const float sdr_nits = sdr_white_scale * 80.0f;
+  if (hdr_enabled) {
+    return (reported_max_nits > 80.0f) ? (std::max)(reported_max_nits, sdr_nits)
+                                       : (std::max)(400.0f, sdr_nits * 2.0f);
+  }
+  return (reported_max_nits > 0.0f) ? reported_max_nits : 80.0f;
 }
 
-float QueryMonitorSdrWhiteScale(HMONITOR monitor) noexcept {
-  if (!monitor) {
-    return 1.0f;
+WindowsHdrOutputInfo QueryDxgiOutputHdrInfoInternal(
+    IDXGIOutput* output, float fallback_sdr_white_scale,
+    float* reported_max_nits_out) noexcept {
+  if (reported_max_nits_out) {
+    *reported_max_nits_out = 0.0f;
   }
-  MONITORINFOEXW mi{};
-  mi.cbSize = sizeof(mi);
-  if (!GetMonitorInfoW(monitor, &mi)) {
-    return 1.0f;
-  }
-
-  UINT32 path_count = 0;
-  UINT32 mode_count = 0;
-  if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &path_count,
-                                  &mode_count) != ERROR_SUCCESS ||
-      path_count == 0) {
-    return 1.0f;
-  }
-
-  std::vector<DISPLAYCONFIG_PATH_INFO> paths(path_count);
-  std::vector<DISPLAYCONFIG_MODE_INFO> modes(mode_count);
-  if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &path_count, paths.data(),
-                         &mode_count, modes.data(), nullptr) != ERROR_SUCCESS) {
-    return 1.0f;
-  }
-
-  for (UINT32 i = 0; i < path_count; ++i) {
-    DISPLAYCONFIG_SOURCE_DEVICE_NAME source_name{};
-    source_name.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
-    source_name.header.size = sizeof(source_name);
-    source_name.header.adapterId = paths[i].sourceInfo.adapterId;
-    source_name.header.id = paths[i].sourceInfo.id;
-    if (DisplayConfigGetDeviceInfo(&source_name.header) != ERROR_SUCCESS ||
-        wcscmp(source_name.viewGdiDeviceName, mi.szDevice) != 0) {
-      continue;
-    }
-
-    DISPLAYCONFIG_SDR_WHITE_LEVEL white_level{};
-    white_level.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL;
-    white_level.header.size = sizeof(white_level);
-    white_level.header.adapterId = paths[i].targetInfo.adapterId;
-    white_level.header.id = paths[i].targetInfo.id;
-    if (DisplayConfigGetDeviceInfo(&white_level.header) == ERROR_SUCCESS &&
-        white_level.SDRWhiteLevel > 0) {
-      const float scale =
-          static_cast<float>(white_level.SDRWhiteLevel) / 1000.0f;
-      return (std::max)(0.5f, (std::min)(scale, 12.5f));
-    }
-    break;
-  }
-  return 1.0f;
-}
-
-WindowsHdrOutputInfo QueryDxgiOutputHdrInfo(IDXGIOutput* output) noexcept {
   WindowsHdrOutputInfo info;
   if (!output) {
     return info;
-  }
-
-  DXGI_OUTPUT_DESC desc{};
-  if (SUCCEEDED(output->GetDesc(&desc)) && desc.Monitor) {
-    info.sdr_white_scale = QueryMonitorSdrWhiteScale(desc.Monitor);
   }
 
   Microsoft::WRL::ComPtr<IDXGIOutput6> output6;
@@ -568,32 +519,118 @@ WindowsHdrOutputInfo QueryDxgiOutputHdrInfo(IDXGIOutput* output) noexcept {
     return info;
   }
 
+  if (reported_max_nits_out) {
+    *reported_max_nits_out = desc1.MaxLuminance;
+  }
   info.color_space = desc1.ColorSpace;
   info.hdr_enabled =
       (desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020 ||
        desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709);
-  if (desc1.Monitor) {
-    info.sdr_white_scale = QueryMonitorSdrWhiteScale(desc1.Monitor);
-  }
-  const float sdr_nits = info.sdr_white_scale * 80.0f;
   if (info.hdr_enabled) {
-    info.max_luminance_nits =
-        (desc1.MaxLuminance > 80.0f)
-            ? (std::max)(desc1.MaxLuminance, sdr_nits)
-            : (std::max)(400.0f, sdr_nits * 2.0f);
+    info.sdr_white_scale = ResolveMonitorSdrWhiteScale(
+        desc1.Monitor ? TryQueryMonitorSdrWhiteScale(desc1.Monitor)
+                      : std::nullopt,
+        fallback_sdr_white_scale);
   } else {
-    info.max_luminance_nits =
-        (desc1.MaxLuminance > 0.0f) ? desc1.MaxLuminance : 80.0f;
+    info.sdr_white_scale = 1.0f;
   }
+  info.max_luminance_nits = ComputeEffectiveMaxLuminanceNits(
+      info.hdr_enabled, desc1.MaxLuminance, info.sdr_white_scale);
   return info;
 }
 
-WindowsHdrOutputInfo QueryMonitorHdrInfo(HMONITOR monitor) noexcept {
+}  // namespace
+
+bool IsHdrDesktopTextureFormat(DXGI_FORMAT format) noexcept {
+  return format == DXGI_FORMAT_R16G16B16A16_FLOAT ||
+         format == DXGI_FORMAT_R10G10B10A2_UNORM;
+}
+
+std::optional<float> TryQueryMonitorSdrWhiteScale(HMONITOR monitor) noexcept {
+  if (!monitor) {
+    return std::nullopt;
+  }
+  MONITORINFOEXW mi{};
+  mi.cbSize = sizeof(mi);
+  if (!GetMonitorInfoW(monitor, &mi)) {
+    return std::nullopt;
+  }
+
+  std::vector<DISPLAYCONFIG_PATH_INFO> paths;
+  std::vector<DISPLAYCONFIG_MODE_INFO> modes;
+  if (!QueryDisplayConfigPathsWithRetry(
+          QDC_ONLY_ACTIVE_PATHS, &paths, &modes,
+          [](UINT32 flags, UINT32* path_count, UINT32* mode_count) {
+            return GetDisplayConfigBufferSizes(flags, path_count, mode_count);
+          },
+          [](UINT32 flags, UINT32* path_count,
+             DISPLAYCONFIG_PATH_INFO* path_array, UINT32* mode_count,
+             DISPLAYCONFIG_MODE_INFO* mode_array) {
+            return QueryDisplayConfig(flags, path_count, path_array, mode_count,
+                                      mode_array, nullptr);
+          })) {
+    return std::nullopt;
+  }
+
+  for (const auto& path : paths) {
+    DISPLAYCONFIG_SOURCE_DEVICE_NAME source_name{};
+    source_name.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+    source_name.header.size = sizeof(source_name);
+    source_name.header.adapterId = path.sourceInfo.adapterId;
+    source_name.header.id = path.sourceInfo.id;
+    if (DisplayConfigGetDeviceInfo(&source_name.header) != ERROR_SUCCESS ||
+        wcscmp(source_name.viewGdiDeviceName, mi.szDevice) != 0) {
+      continue;
+    }
+
+    DISPLAYCONFIG_SDR_WHITE_LEVEL white_level{};
+    white_level.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL;
+    white_level.header.size = sizeof(white_level);
+    white_level.header.adapterId = path.targetInfo.adapterId;
+    white_level.header.id = path.targetInfo.id;
+    if (DisplayConfigGetDeviceInfo(&white_level.header) == ERROR_SUCCESS &&
+        white_level.SDRWhiteLevel > 0) {
+      const float scale =
+          static_cast<float>(white_level.SDRWhiteLevel) / 1000.0f;
+      return ClampSdrWhiteScale(scale);
+    }
+    break;
+  }
+  return std::nullopt;
+}
+
+bool RefreshMonitorSdrWhiteScale(HMONITOR monitor,
+                                 float* sdr_white_scale) noexcept {
+  if (!sdr_white_scale) {
+    return false;
+  }
+  const std::optional<float> queried = TryQueryMonitorSdrWhiteScale(monitor);
+  if (!queried.has_value()) {
+    *sdr_white_scale = ClampSdrWhiteScale(*sdr_white_scale);
+    return false;
+  }
+  *sdr_white_scale = *queried;
+  return true;
+}
+
+float QueryMonitorSdrWhiteScale(HMONITOR monitor,
+                                float fallback_scale) noexcept {
+  return ResolveMonitorSdrWhiteScale(TryQueryMonitorSdrWhiteScale(monitor),
+                                     fallback_scale);
+}
+
+WindowsHdrOutputInfo QueryDxgiOutputHdrInfo(
+    IDXGIOutput* output, float fallback_sdr_white_scale) noexcept {
+  return QueryDxgiOutputHdrInfoInternal(output, fallback_sdr_white_scale,
+                                        nullptr);
+}
+
+WindowsHdrOutputInfo QueryMonitorHdrInfo(
+    HMONITOR monitor, float fallback_sdr_white_scale) noexcept {
   WindowsHdrOutputInfo info;
   if (!monitor) {
     return info;
   }
-  info.sdr_white_scale = QueryMonitorSdrWhiteScale(monitor);
 
   Microsoft::WRL::ComPtr<IDXGIFactory1> factory;
   if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(factory.GetAddressOf()))) ||
@@ -616,19 +653,105 @@ WindowsHdrOutputInfo QueryMonitorHdrInfo(HMONITOR monitor) noexcept {
       DXGI_OUTPUT_DESC desc{};
       if (SUCCEEDED(output->GetDesc(&desc)) && desc.AttachedToDesktop &&
           desc.Monitor == monitor) {
-        return QueryDxgiOutputHdrInfo(output.Get());
+        return QueryDxgiOutputHdrInfo(output.Get(), fallback_sdr_white_scale);
       }
     }
   }
   return info;
 }
 
-WindowsHdrOutputInfo QueryWindowHdrInfo(HWND hwnd) noexcept {
+WindowsHdrOutputInfo QueryWindowHdrInfo(
+    HWND hwnd, float fallback_sdr_white_scale) noexcept {
   if (!hwnd) {
     return {};
   }
   const HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-  return QueryMonitorHdrInfo(monitor);
+  return QueryMonitorHdrInfo(monitor, fallback_sdr_white_scale);
+}
+
+void WindowsHdrOutputCache::Reset() noexcept {
+  factory_.Reset();
+  monitor_ = nullptr;
+  info_ = {};
+  reported_max_luminance_nits_ = 0.0f;
+  valid_ = false;
+}
+
+WindowsHdrOutputInfo WindowsHdrOutputCache::QueryForMonitor(
+    HMONITOR monitor) noexcept {
+  if (!monitor) {
+    Reset();
+    return {};
+  }
+
+  const bool same_monitor = valid_ && monitor_ == monitor;
+  if (same_monitor && factory_ && factory_->IsCurrent()) {
+    if (info_.hdr_enabled) {
+      RefreshMonitorSdrWhiteScale(monitor, &info_.sdr_white_scale);
+      info_.max_luminance_nits = ComputeEffectiveMaxLuminanceNits(
+          true, reported_max_luminance_nits_, info_.sdr_white_scale);
+    }
+    return info_;
+  }
+
+  const float fallback_white_scale =
+      (same_monitor && info_.hdr_enabled) ? info_.sdr_white_scale : 1.0f;
+
+  Microsoft::WRL::ComPtr<IDXGIFactory1> factory;
+  if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(factory.GetAddressOf()))) ||
+      !factory) {
+    if (same_monitor) {
+      factory_.Reset();
+      return info_;
+    }
+    Reset();
+    return {};
+  }
+
+  WindowsHdrOutputInfo updated;
+  float reported_max_nits = 0.0f;
+  Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;
+  for (UINT a = 0;
+       factory->EnumAdapters1(a, adapter.ReleaseAndGetAddressOf()) !=
+       DXGI_ERROR_NOT_FOUND;
+       ++a) {
+    if (!adapter) break;
+    Microsoft::WRL::ComPtr<IDXGIOutput> output;
+    bool found = false;
+    for (UINT o = 0;
+         adapter->EnumOutputs(o, output.ReleaseAndGetAddressOf()) !=
+         DXGI_ERROR_NOT_FOUND;
+         ++o) {
+      if (!output) break;
+      DXGI_OUTPUT_DESC desc{};
+      if (SUCCEEDED(output->GetDesc(&desc)) && desc.AttachedToDesktop &&
+          desc.Monitor == monitor) {
+        updated = QueryDxgiOutputHdrInfoInternal(
+            output.Get(), fallback_white_scale, &reported_max_nits);
+        found = true;
+        break;
+      }
+    }
+    if (found) {
+      break;
+    }
+  }
+
+  factory_ = std::move(factory);
+  monitor_ = monitor;
+  info_ = updated;
+  reported_max_luminance_nits_ = reported_max_nits;
+  valid_ = true;
+  return info_;
+}
+
+WindowsHdrOutputInfo WindowsHdrOutputCache::QueryForWindow(HWND hwnd) noexcept {
+  if (!hwnd) {
+    Reset();
+    return {};
+  }
+  const HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+  return QueryForMonitor(monitor);
 }
 
 HRESULT DuplicateDxgiOutput(IDXGIOutput* output, ID3D11Device* device,
@@ -652,14 +775,10 @@ HRESULT DuplicateDxgiOutput(IDXGIOutput* output, ID3D11Device* device,
     if (SUCCEEDED(
             output->QueryInterface(IID_PPV_ARGS(output5.GetAddressOf()))) &&
         output5) {
-      static constexpr DXGI_FORMAT kSupportedFormats[] = {
-          DXGI_FORMAT_R16G16B16A16_FLOAT,
-          DXGI_FORMAT_R10G10B10A2_UNORM,
-          DXGI_FORMAT_B8G8R8A8_UNORM,
-      };
       const HRESULT hr = output5->DuplicateOutput1(
-          device, 0, static_cast<UINT>(ARRAYSIZE(kSupportedFormats)),
-          kSupportedFormats, duplication_out);
+          device, 0,
+          static_cast<UINT>(kDxgiHdrDuplicationFormats.size()),
+          kDxgiHdrDuplicationFormats.data(), duplication_out);
       if (SUCCEEDED(hr)) {
         return hr;
       }
@@ -679,7 +798,7 @@ HRESULT DuplicateDxgiOutput(IDXGIOutput* output, ID3D11Device* device,
   return output1->DuplicateOutput(device, duplication_out);
 }
 
-void D3d11HdrToneMapper::Reset() noexcept {
+void D3d11HdrToneMapper::ReleaseDeviceResources() noexcept {
   bound_device_ = nullptr;
   width_ = 0;
   height_ = 0;
@@ -699,11 +818,21 @@ void D3d11HdrToneMapper::Reset() noexcept {
   output_rtv_.Reset();
   output_texture_.Reset();
   cpu_staging_.Reset();
-  cpu_bgra_.clear();
+  std::vector<uint8_t>().swap(cpu_bgra_);
+}
+
+void D3d11HdrToneMapper::Reset() noexcept {
+  ReleaseDeviceResources();
+  last_backend_ = Backend::kNone;
+}
+
+bool D3d11HdrToneMapper::HasAllocatedResources() const noexcept {
+  return input_texture_ != nullptr || output_texture_ != nullptr ||
+         cpu_staging_ != nullptr || cpu_bgra_.capacity() != 0;
 }
 
 bool D3d11HdrToneMapper::EnsureGpuPipeline(ID3D11Device* device) {
-  if (gpu_disabled_) {
+  if (gpu_disabled_ || gpu_disabled_for_testing_) {
     return false;
   }
   if (vertex_shader_ && pixel_shader_ && constant_buffer_ &&
@@ -847,7 +976,9 @@ bool D3d11HdrToneMapper::ToneMapOnGpu(ID3D11Device* device,
   if (!EnsureGpuPipeline(device) ||
       !EnsureTextures(device, src_desc.Width, src_desc.Height, src_desc.Format,
                       true)) {
-    gpu_disabled_ = true;
+    if (!gpu_disabled_for_testing_) {
+      gpu_disabled_ = true;
+    }
     return false;
   }
 
@@ -961,7 +1092,9 @@ bool D3d11HdrToneMapper::ToneMapOnCpu(ID3D11Device* device,
 
 ID3D11Texture2D* D3d11HdrToneMapper::ToneMapToBgra8(
     ID3D11Device* device, ID3D11DeviceContext* context,
-    ID3D11Texture2D* src_texture, const WindowsHdrOutputInfo& hdr_info) {
+    ID3D11Texture2D* src_texture, const WindowsHdrOutputInfo& hdr_info,
+    std::optional<DXGI_COLOR_SPACE_TYPE> source_color_space) {
+  last_backend_ = Backend::kNone;
   if (!device || !context || !src_texture) {
     return nullptr;
   }
@@ -969,6 +1102,7 @@ ID3D11Texture2D* D3d11HdrToneMapper::ToneMapToBgra8(
   D3D11_TEXTURE2D_DESC src_desc{};
   src_texture->GetDesc(&src_desc);
   if (src_desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM) {
+    last_backend_ = Backend::kPassthroughBgra8;
     return src_texture;
   }
   if (!IsHdrDesktopTextureFormat(src_desc.Format) || src_desc.Width == 0 ||
@@ -977,15 +1111,18 @@ ID3D11Texture2D* D3d11HdrToneMapper::ToneMapToBgra8(
   }
 
   if (bound_device_ != device) {
-    Reset();
+    ReleaseDeviceResources();
     bound_device_ = device;
   }
 
-  const HdrToneMapParams params = hdr_info.ToToneMapParams(src_desc.Format);
+  const HdrToneMapParams params =
+      hdr_info.ToToneMapParams(src_desc.Format, source_color_space);
   if (ToneMapOnGpu(device, context, src_texture, src_desc, params)) {
+    last_backend_ = Backend::kGpu;
     return output_texture_.Get();
   }
   if (ToneMapOnCpu(device, context, src_texture, src_desc, params)) {
+    last_backend_ = Backend::kCpuFallback;
     return output_texture_.Get();
   }
   return nullptr;
