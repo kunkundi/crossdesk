@@ -123,6 +123,15 @@ void GuiRuntime::SendRemoteInput(const RemoteAction& action, float wheel_delta) 
       scaled.type = ControlType::mouse;
       scaled.m = action.m;
       scaled.m.s = steps;
+#ifdef _WIN32
+      if (action.m.flag == MouseFlag::wheel_horizontal) {
+        std::lock_guard version_lock(props->remote_version_mutex_);
+        // winit negates WM_MOUSEHWHEEL. Windows injection expects the native sign.
+        if (props->remote_platform_ == HostPlatform::Windows) {
+          scaled.m.s = -steps;
+        }
+      }
+#endif
       message = scaled.to_json();
     }
     if (mouse) {
