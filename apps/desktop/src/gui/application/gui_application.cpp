@@ -31,6 +31,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -64,6 +65,7 @@
 #if _WIN32
 #include <windows.h>
 
+#include "platform/windows/gui/folder_dialog.h"
 #include "platform/windows/gui/slint_backend.h"
 #include "platform/windows/gui/session_end_observer.h"
 #include "platform/windows/gui/tray/win_tray.h"
@@ -1191,6 +1193,10 @@ struct GuiApplication::SlintUi {
   slint::Timer timer;
   std::shared_ptr<void> file_dialog_lifetime = std::make_shared<int>(0);
   bool file_dialog_open = false;
+#if _WIN32
+  std::future<std::string> receive_folder_dialog;
+  std::optional<bool> receive_folder_gallery;
+#endif
   std::future<feedback::ExportResult> diagnostic_export;
   std::string diagnostic_saved_path;
   WindowDragState main_drag, gallery_drag;
@@ -1686,6 +1692,10 @@ void GuiApplication::ResetSettingsUi(bool gallery_window) {
   if (!ui_) {
     return;
   }
+#if _WIN32
+  if (ui_->receive_folder_gallery == gallery_window)
+    ui_->receive_folder_gallery.reset();
+#endif
   auto& main = ui_->Window(gallery_window);
   main->set_language_index(language_button_value_);
   main->set_codec_index(video_encode_format_button_value_);
@@ -2098,15 +2108,36 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
       reload_recent_connections_ = true;
     }
   });
-  main->on_browse_save_path([this, main] {
+  main->on_browse_save_path([this, main, gallery_window] {
+    const auto& title =
+        localization::file_transfer_save_path[localization_language_index_];
+#if _WIN32
+    if (exit_ || ui_->file_dialog_open) return;
+    const HWND owner = main->window().win32_hwnd();
+    try {
+      std::packaged_task<std::string()> select(
+          [owner, title,
+           initial_folder = std::string(file_transfer_save_path_buf_)] {
+            return ChooseWindowsFolder(owner, title, initial_folder);
+          });
+      auto result = select.get_future();
+      std::thread(std::move(select)).detach();
+      ui_->receive_folder_dialog = std::move(result);
+      ui_->receive_folder_gallery = gallery_window;
+      ui_->file_dialog_open = true;
+    } catch (const std::system_error& error) {
+      LOG_WARN("Failed to start the Windows folder picker: {}", error.what());
+    }
+#else
+    (void)gallery_window;
     const char* folder = tinyfd_selectFolderDialog(
-        localization::file_transfer_save_path[localization_language_index_]
-            .c_str(),
+        title.c_str(),
         file_transfer_save_path_buf_[0] ? file_transfer_save_path_buf_
                                         : nullptr);
     if (folder) {
       main->set_file_save_path(folder);
     }
+#endif
   });
   BindTrustedDeviceCallbacks(gallery_window);
   main->on_save_settings([this, main] {
@@ -2640,6 +2671,7 @@ void GuiApplication::Tick() {
   }
   PollDiagnosticExport();
 #ifdef _WIN32
+  PollReceiveFolderDialog();
   TickLocalHost();
 #endif
   TickLan();
@@ -5611,6 +5643,27 @@ void GuiApplication::OpenFileDialog(const std::string& title,
   finished(path ? path : "");
 #endif
 }
+
+#if _WIN32
+void GuiApplication::PollReceiveFolderDialog() {
+  auto& result = ui_->receive_folder_dialog;
+  if (!result.valid() ||
+      result.wait_for(0ms) != std::future_status::ready) return;
+
+  ui_->file_dialog_open = false;
+  const auto gallery_window =
+      std::exchange(ui_->receive_folder_gallery, std::nullopt);
+  try {
+    const std::string path = result.get();
+    if (gallery_window && !path.empty()) {
+      auto& window = ui_->Window(*gallery_window);
+      if (window->get_settings_open()) window->set_file_save_path(UiText(path));
+    }
+  } catch (const std::exception&) {
+    LOG_WARN("Windows folder selection failed");
+  }
+}
+#endif
 
 void GuiApplication::ExportDiagnosticLogs() {
   if (!ui_ || exit_ || ui_->file_dialog_open || ui_->diagnostic_export.valid()) return;
