@@ -178,6 +178,13 @@ function setup_targets()
                 "apps/desktop/src/log", "libs/wire/include")
             add_files("apps/desktop/tests/macos_keyboard_capturer_test.cpp")
             add_frameworks("ApplicationServices")
+
+        target("macos_screen_sharing_power_test")
+            set_kind("binary")
+            set_default(false)
+            add_includedirs("apps/desktop/src/gui", "apps/desktop/src/log")
+            add_files("apps/desktop/tests/macos_screen_sharing_power_test.cpp")
+            add_frameworks("CoreFoundation", "IOKit")
     end
 
     target("cursor_position_test")
