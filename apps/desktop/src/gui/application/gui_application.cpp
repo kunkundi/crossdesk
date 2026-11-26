@@ -1277,8 +1277,8 @@ int GuiApplication::Run(bool login_launch) {
     }
     std::string identity_error;
     if (!PrepareSharedGuiIdentity(true, &identity_error)) {
-      // Deterministic identity/ACL failures cannot be cleared by respawning
-      // the unattached GUI every second from the per-user runtime watcher.
+      // Startup has already retried transient I/O. A new process would reset
+      // the retry budget and hide a persistent failure.
       platform::WindowsRuntimeDaemon::Instance().Shutdown(false);
       if (!login_launch) {
         std::wstring text =
@@ -1295,10 +1295,7 @@ int GuiApplication::Run(bool login_launch) {
             text += L"Reason: " + wide_error + L"\n\n";
           }
         }
-        text +=
-            L"Verify that CrossDesk is launched with administrator privileges "
-            L"and that C:\\ProgramData\\CrossDeskUnattended is owned by "
-            L"SYSTEM or Administrators.";
+        text += L"Correct the reported problem, then open CrossDesk again.";
         MessageBoxW(nullptr, text.c_str(), L"CrossDesk",
                     MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
       }

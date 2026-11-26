@@ -354,7 +354,7 @@ Connect using the existing `device_id` and `password`. Password changes, device 
 
 Once enabled, the service starts with Windows without automatic sign-in or saved Windows login passwords. Closing the CrossDesk interface leaves remote viewing and input available. Signing out, switching users, restarting the service, or losing the network can interrupt the connection.
 
-Before sign-in, video, input, monitor switching, and secure-desktop controls are available. Audio, files, clipboard, and privacy screen require the user to sign in and run the CrossDesk interface. Shared identity is in `%ProgramData%\CrossDeskUnattended`, accessible to administrators and SYSTEM; logs are in its `logs` subdirectory.
+Before sign-in, video, input, monitor switching, and secure-desktop controls are available. Audio, files, clipboard, and privacy screen require the user to sign in and run the CrossDesk interface. Shared identity is in `%ProgramData%\CrossDeskUnattended`, accessible to administrators and SYSTEM. The unattended host writes logs to `CrossDesk\logs\unattended` under the SYSTEM account’s local AppData directory.
 
 Without a physical monitor, the unattended host attempts to prepare a virtual display before accepting connections, preferring a previously recorded resolution and using 1920 × 1080 when no valid record exists. These temporary modes do not overwrite persistent Windows display configuration. Once a physical display is stable, the temporary virtual display is released while preserving the remote stream index.
 

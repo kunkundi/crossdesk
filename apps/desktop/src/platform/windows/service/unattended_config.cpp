@@ -3,22 +3,31 @@
 #include <ShlObj.h>
 
 #include <ctime>
-#include <fstream>
 #include <nlohmann/json.hpp>
 
 namespace crossdesk {
 namespace {
 constexpr wchar_t kRegistryKey[] = L"SOFTWARE\\CrossDesk\\Unattended";
+std::filesystem::path KnownFolder(REFKNOWNFOLDERID id) {
+  PWSTR value = nullptr;
+  if (FAILED(SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, nullptr, &value)))
+    return {};
+  const std::filesystem::path path(value);
+  CoTaskMemFree(value);
+  return path;
+}
 }  // namespace
 
 std::filesystem::path UnattendedDataPath() {
-  PWSTR value = nullptr;
-  if (FAILED(SHGetKnownFolderPath(FOLDERID_ProgramData, KF_FLAG_DEFAULT,
-                                  nullptr, &value)))
-    return {};
-  const auto path = std::filesystem::path(value) / L"CrossDeskUnattended";
-  CoTaskMemFree(value);
-  return path;
+  const auto base = KnownFolder(FOLDERID_ProgramData);
+  return base.empty() ? base : base / L"CrossDeskUnattended";
+}
+
+std::filesystem::path UnattendedLogPath() {
+  // The logger opens and rotates files by name. Keep these writes in the
+  // SYSTEM profile even when the machine identity directory needs recovery.
+  const auto base = KnownFolder(FOLDERID_LocalAppData);
+  return base.empty() ? base : base / L"CrossDesk" / L"logs" / L"unattended";
 }
 
 bool QueryUnattendedPreference(std::optional<bool>& enabled) {
@@ -104,13 +113,13 @@ bool PrepareUnattendedDirectoryForService(std::string* error, bool* repaired) {
 }
 
 bool WriteUnattendedStatus(const std::string& identity, bool online,
-                           DWORD session_id) {
+                           DWORD session_id, std::string* diagnostic) {
+  if (diagnostic) diagnostic->clear();
   const auto root = UnattendedDataPath();
   if (root.empty()) return false;
   if (IsLocalSystemProcess() &&
-      !unattended_detail::PreparePrivateDirectory(root, false)) {
-    RepairUnattendedDirectory(false);
-  }
+      !unattended_detail::PreparePrivateDirectory(root, false) &&
+      !unattended_detail::RepairPrivateDirectory(root, false, diagnostic)) return false;
   const auto separator = identity.find('@');
   nlohmann::json status = {
       {"online", online},
@@ -122,7 +131,11 @@ bool WriteUnattendedStatus(const std::string& identity, bool online,
        separator == std::string::npos ? "" : identity.substr(0, separator)},
       {"password",
        separator == std::string::npos ? "" : identity.substr(separator + 1)}};
-  return unattended_detail::WritePrivateMachineFile(root, root / L"status.json", status.dump());
+  if (unattended_detail::WritePrivateMachineFile(root, root / L"status.json", status.dump()))
+    return true;
+  const DWORD code = GetLastError();
+  if (diagnostic) *diagnostic = "Cannot write status.json (Win32=" + std::to_string(code) + ")";
+  return false;
 }
 
 std::string ReadUnattendedStatus() {
@@ -134,8 +147,22 @@ std::string ReadUnattendedStatus() {
     if (!detail.empty()) status["detail"] = detail;
     return status.dump(2);
   }
-  std::ifstream input(UnattendedDataPath() / L"status.json", std::ios::binary);
-  auto saved = nlohmann::json::parse(input, nullptr, false);
+  const auto root = UnattendedDataPath();
+  HANDLE input = unattended_detail::OpenPrivateMachineFile(
+      root, root / L"status.json", GENERIC_READ,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_EXISTING,
+      FILE_ATTRIBUTE_NORMAL, &detail);
+  if (input == INVALID_HANDLE_VALUE) {
+    if (!detail.empty()) status["error"] = detail;
+    return status.dump(2);
+  }
+  // A status heartbeat contains just the current PID, session and identity.
+  char buffer[4096];
+  DWORD size = 0;
+  const bool read = ReadFile(input, buffer, sizeof(buffer), &size, nullptr);
+  CloseHandle(input);
+  if (!read || size == sizeof(buffer)) return status.dump(2);
+  auto saved = nlohmann::json::parse(buffer, buffer + size, nullptr, false);
   if (saved.is_object()) {
     status.update(saved);
     const auto updated = status.value("updated_at", std::time_t{0});

@@ -1,4 +1,11 @@
-#pragma once
+/*
+ * @Author: DI JUNKUN
+ * @Date: 2026-11-26
+ * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
+ */
+
+#ifndef _UNATTENDED_SECURITY_H_
+#define _UNATTENDED_SECURITY_H_
 
 #include <Windows.h>
 
@@ -46,12 +53,13 @@ bool RepairPrivateDirectory(const std::filesystem::path& root, bool create,
 HANDLE OpenPrivateMachineFile(const std::filesystem::path& root,
                               const std::filesystem::path& path, DWORD access,
                               DWORD sharing, DWORD creation,
-                              DWORD flags,
-                              const SecurityPolicy& policy);
+                              DWORD flags, const SecurityPolicy& policy,
+                              std::string* diagnostic = nullptr);
 HANDLE OpenPrivateMachineFile(const std::filesystem::path& root,
                               const std::filesystem::path& path, DWORD access,
                               DWORD sharing, DWORD creation,
-                              DWORD flags = FILE_ATTRIBUTE_NORMAL);
+                              DWORD flags = FILE_ATTRIBUTE_NORMAL,
+                              std::string* diagnostic = nullptr);
 
 // Write through a protected temporary file, then atomically replace the target.
 bool WritePrivateMachineFile(const std::filesystem::path& root,
@@ -64,3 +72,5 @@ bool WritePrivateMachineFile(const std::filesystem::path& root,
 
 }  // namespace unattended_detail
 }  // namespace crossdesk
+
+#endif

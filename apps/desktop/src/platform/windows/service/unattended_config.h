@@ -12,6 +12,7 @@ namespace crossdesk {
 
 // This directory is deliberately separate from every user's GUI profile.
 std::filesystem::path UnattendedDataPath();
+std::filesystem::path UnattendedLogPath();
 // Missing configuration is a successful disabled result; other read failures
 // must not be mistaken for a completed disable operation.
 bool QueryUnattendedEnabled(bool& enabled);
@@ -30,7 +31,7 @@ bool RepairUnattendedDirectory(bool create, std::string* error = nullptr,
 bool PrepareUnattendedDirectoryForService(std::string* error = nullptr,
                                           bool* repaired = nullptr);
 bool WriteUnattendedStatus(const std::string& identity, bool online,
-                           DWORD session_id);
+                           DWORD session_id, std::string* diagnostic = nullptr);
 std::string ReadUnattendedStatus();
 
 }  // namespace crossdesk

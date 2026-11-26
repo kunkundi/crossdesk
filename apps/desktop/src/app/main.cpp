@@ -416,7 +416,12 @@ int main(int argc, char* argv[]) {
     }
     // Runtime members can log during construction. Select the protected host
     // log before constructing Render, not after its logger has already opened.
-    crossdesk::InitLogger((crossdesk::UnattendedDataPath() / L"logs").string());
+    const auto log_directory = crossdesk::UnattendedLogPath();
+    if (log_directory.empty()) {
+      CloseHandle(stop);
+      return 1;
+    }
+    crossdesk::InitLogger(log_directory.string());
     crossdesk::Render render;
     const int result = render.RunUnattended(stop);
     CloseHandle(stop);

@@ -21,7 +21,6 @@ int GuiApplication::RunUnattended(void* stop_event) {
     return 1;
 
   path_manager_ = std::make_unique<PathManager>("CrossDesk");
-  const auto root = UnattendedDataPath();
   std::string identity_error;
   shared_identity_ = SharedHostIdentity::AcquireHost(identity_error);
   if (!shared_identity_) {
@@ -29,7 +28,9 @@ int GuiApplication::RunUnattended(void* stop_event) {
     return 1;
   }
   cache_path_ = shared_identity_->CachePath().string();
-  exec_log_path_ = (root / L"logs").string();
+  const auto log_directory = UnattendedLogPath();
+  if (log_directory.empty()) return 1;
+  exec_log_path_ = log_directory.string();
   dll_log_path_ = exec_log_path_;
   InitializeLogger();
   LOG_INFO("Unattended host initialized in session {}", session);
@@ -70,10 +71,12 @@ int GuiApplication::RunUnattended(void* stop_event) {
     ShareLocalCursorState();
     if (now - last_status >= 1000) {
       last_status = now;
+      std::string diagnostic;
       if (!WriteUnattendedStatus(settings_.ActiveIdentity(),
-                                 signal_connected_.load(), session)) {
-        LOG_WARN("Could not publish unattended host status");
-      }
+                                 signal_connected_.load(), session, &diagnostic))
+        LOG_WARN("Could not publish unattended host status: {}", diagnostic);
+      else if (!diagnostic.empty())
+        LOG_WARN("Repaired machine identity directory permissions: {}", diagnostic);
     }
     // Pump native device messages without constructing an application window.
     MSG message{};

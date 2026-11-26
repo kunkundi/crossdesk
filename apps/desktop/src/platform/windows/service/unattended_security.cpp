@@ -3,9 +3,17 @@
 #endif
 
 #include "unattended_security.h"
+#include "private_file.h"
 
 #include <Aclapi.h>
 #include <sddl.h>
+#include <winternl.h>
+
+// The Windows SDK exposes the Ntdll import library, but declares this routine
+// only in the WDK headers.
+extern "C" NTSYSAPI NTSTATUS NTAPI NtSetSecurityObject(
+    HANDLE handle, SECURITY_INFORMATION information,
+    PSECURITY_DESCRIPTOR descriptor);
 
 #include <atomic>
 #include <cstdio>
@@ -35,9 +43,10 @@ std::string WideToUtf8(const wchar_t* value) {
   const int needed = WideCharToMultiByte(CP_UTF8, 0, value, -1, nullptr, 0,
                                          nullptr, nullptr);
   if (needed <= 1) return {};
-  std::string out(static_cast<size_t>(needed - 1), '\0');
+  std::string out(static_cast<size_t>(needed), '\0');
   WideCharToMultiByte(CP_UTF8, 0, value, -1, out.data(), needed, nullptr,
                       nullptr);
+  out.pop_back();
   return out;
 }
 
@@ -244,7 +253,8 @@ bool EvaluateHandleSecurity(HANDLE handle, bool directory,
           " sid=" + (ace_sid ? FormatSid(ace_sid) : std::string("unknown"));
       return true;
     }
-    if ((header->AceFlags & INHERITED_ACE) == 0 &&
+    if ((header->AceFlags & (INHERITED_ACE | INHERIT_ONLY_ACE |
+                             NO_PROPAGATE_INHERIT_ACE)) == 0 &&
         (mask & FILE_ALL_ACCESS) == FILE_ALL_ACCESS) {
       for (size_t index = 0; index < trusted.size(); ++index) {
         if (EqualSid(ace_sid, trusted[index].get())) {
@@ -299,14 +309,16 @@ bool ApplyProtectedDaclToHandle(HANDLE handle, const std::wstring& sddl,
     if (diagnostic) *diagnostic = "security descriptor missing DACL";
     return false;
   }
-  const DWORD status = SetSecurityInfo(
-      handle, SE_FILE_OBJECT,
-      DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, nullptr,
-      nullptr, acl, nullptr);
-  if (status != ERROR_SUCCESS) {
+  // SetSecurityInfo(SE_FILE_OBJECT) propagates inheritable ACEs to existing
+  // children. Set only this directory's descriptor, leaving the original
+  // security information on every child available for independent validation.
+  const NTSTATUS status = NtSetSecurityObject(
+      handle, DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+      descriptor);
+  if (status < 0) {
     if (diagnostic) {
-      *diagnostic =
-          "SetSecurityInfo failed (Win32=" + std::to_string(status) + ")";
+      *diagnostic = "Cannot set directory DACL (Win32=" +
+                    std::to_string(RtlNtStatusToDosError(status)) + ")";
     }
     return false;
   }
@@ -365,8 +377,8 @@ void DiagnoseUnwritableDirectory(const std::filesystem::path& root,
     }
     SecurityEvaluation eval{};
     if (EvaluateHandleSecurity(inspect.value, true, trusted, &eval) &&
-        !eval.owner_trusted) {
-      *diagnostic = eval.diagnostic;
+        !eval.diagnostic.empty()) {
+      *diagnostic = eval.diagnostic + " (Win32=" + std::to_string(open_error) + ")";
       return;
     }
   }
@@ -494,15 +506,20 @@ bool RepairPrivateDirectory(const std::filesystem::path& root, bool create,
     return false;
   }
 
-  // Open without FILE_SHARE_DELETE and apply SetSecurityInfo on the verified
-  // non-reparse handle so path replacement can never redirect DACL repair.
-  ScopedHandle directory{CreateFileW(
-      root.c_str(), FILE_READ_ATTRIBUTES | READ_CONTROL | WRITE_DAC,
-      FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
-      FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr)};
-  if (directory.value == INVALID_HANDLE_VALUE) {
-    DiagnoseUnwritableDirectory(root, GetLastError(), trusted, diagnostic);
-    return false;
+  // Pin the verified directory while reading and updating its DACL.
+  ScopedHandle directory;
+  for (unsigned attempt = 0;; ++attempt) {
+    directory.Reset(CreateFileW(
+        root.c_str(), FILE_READ_ATTRIBUTES | READ_CONTROL | WRITE_DAC,
+        FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr));
+    if (directory.value != INVALID_HANDLE_VALUE) break;
+    const DWORD code = GetLastError();
+    if (code != ERROR_SHARING_VIOLATION || attempt == 3) {
+      DiagnoseUnwritableDirectory(root, code, trusted, diagnostic);
+      return false;
+    }
+    Sleep(250u << attempt);
   }
   if (!VerifyHandleNotReparse(directory.value, true, nullptr, diagnostic)) {
     return false;
@@ -517,18 +534,12 @@ bool RepairPrivateDirectory(const std::filesystem::path& root, bool create,
     return false;
   }
 
-  bool any_repaired = false;
-  std::string repair_summary;
-  if (!eval.private_access || !eval.canonical_complete) {
-    const std::string prior_issue = eval.diagnostic;
-    std::string apply_error;
-    if (!ApplyProtectedDaclToHandle(directory.value, policy.directory_sddl,
-                                    &apply_error)) {
-      if (diagnostic) *diagnostic = prior_issue + "; " + apply_error;
-      return false;
-    }
-    any_repaired = true;
-    repair_summary = prior_issue;
+  if (eval.canonical_complete) return true;
+  std::string apply_error;
+  if (!ApplyProtectedDaclToHandle(directory.value, policy.directory_sddl,
+                                  &apply_error)) {
+    if (diagnostic) *diagnostic = eval.diagnostic + "; " + apply_error;
+    return false;
   }
 
   SecurityEvaluation verified{};
@@ -543,59 +554,8 @@ bool RepairPrivateDirectory(const std::filesystem::path& root, bool create,
     return false;
   }
 
-  // Heal direct child machine files owned by trusted principals (for example
-  // after recursive icacls /T), while refusing to touch subdirectories,
-  // reparse points, hardlinks, or untrusted-owner files.
-  WIN32_FIND_DATAW entry{};
-  const auto pattern = (root / L"*").wstring();
-  HANDLE search = FindFirstFileW(pattern.c_str(), &entry);
-  if (search != INVALID_HANDLE_VALUE) {
-    const auto& file_sddl = IsLocalSystemProcess() ? policy.system_file_sddl
-                                                   : policy.admin_file_sddl;
-    do {
-      if (wcscmp(entry.cFileName, L".") == 0 ||
-          wcscmp(entry.cFileName, L"..") == 0) {
-        continue;
-      }
-      if ((entry.dwFileAttributes &
-           (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0) {
-        continue;
-      }
-      const auto child_path = root / entry.cFileName;
-      ScopedHandle child{CreateFileW(
-          child_path.c_str(), FILE_READ_ATTRIBUTES | READ_CONTROL | WRITE_DAC,
-          FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
-          OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr)};
-      if (child.value == INVALID_HANDLE_VALUE) continue;
-      if (!VerifyHandleNotReparse(child.value, false, nullptr, nullptr)) {
-        continue;
-      }
-      SecurityEvaluation child_eval{};
-      if (!EvaluateHandleSecurity(child.value, false, trusted, &child_eval) ||
-          !child_eval.owner_trusted) {
-        continue;
-      }
-      if (!child_eval.private_access || !child_eval.canonical_complete) {
-        std::string child_apply_error;
-        if (!ApplyProtectedDaclToHandle(child.value, file_sddl,
-                                        &child_apply_error)) {
-          FindClose(search);
-          if (diagnostic) {
-            *diagnostic = "child file DACL repair failed: " + child_apply_error;
-          }
-          return false;
-        }
-        any_repaired = true;
-        if (repair_summary.empty()) {
-          repair_summary = "child file " + child_eval.diagnostic;
-        }
-      }
-    } while (FindNextFileW(search, &entry));
-    FindClose(search);
-  }
-
-  if (repaired) *repaired = any_repaired;
-  if (diagnostic && any_repaired) *diagnostic = repair_summary;
+  if (repaired) *repaired = true;
+  if (diagnostic) *diagnostic = eval.diagnostic;
   return true;
 }
 
@@ -608,10 +568,12 @@ bool RepairPrivateDirectory(const std::filesystem::path& root, bool create,
 HANDLE OpenPrivateMachineFile(const std::filesystem::path& root,
                               const std::filesystem::path& path, DWORD access,
                               DWORD sharing, DWORD creation, DWORD flags,
-                              const SecurityPolicy& policy) {
+                              const SecurityPolicy& policy,
+                              std::string* diagnostic) {
+  if (diagnostic) diagnostic->clear();
   std::vector<LocalBuffer> trusted;
   if (path.parent_path() != root || !ParseTrustedSids(policy, &trusted) ||
-      !PreparePrivateDirectory(root, false, policy, nullptr)) {
+      !PreparePrivateDirectory(root, false, policy, diagnostic)) {
     SetLastError(ERROR_ACCESS_DENIED);
     return INVALID_HANDLE_VALUE;
   }
@@ -633,10 +595,11 @@ HANDLE OpenPrivateMachineFile(const std::filesystem::path& root,
     return file;
   }
   SecurityEvaluation eval{};
-  const bool safe = VerifyHandleNotReparse(file, false, nullptr, nullptr) &&
-                    EvaluateHandleSecurity(file, false, trusted, &eval) &&
-                    eval.owner_trusted && eval.private_access;
-  if (safe) return file;
+  if (VerifyHandleNotReparse(file, false, nullptr, diagnostic)) {
+    if (EvaluateHandleSecurity(file, false, trusted, &eval) &&
+        eval.owner_trusted && eval.private_access) return file;
+    if (diagnostic) *diagnostic = eval.diagnostic;
+  }
   CloseHandle(file);
   SetLastError(ERROR_ACCESS_DENIED);
   return INVALID_HANDLE_VALUE;
@@ -644,9 +607,10 @@ HANDLE OpenPrivateMachineFile(const std::filesystem::path& root,
 
 HANDLE OpenPrivateMachineFile(const std::filesystem::path& root,
                               const std::filesystem::path& path, DWORD access,
-                              DWORD sharing, DWORD creation, DWORD flags) {
+                              DWORD sharing, DWORD creation, DWORD flags,
+                              std::string* diagnostic) {
   return OpenPrivateMachineFile(root, path, access, sharing, creation, flags,
-                                DefaultMachineSecurityPolicy());
+                                DefaultMachineSecurityPolicy(), diagnostic);
 }
 
 bool WritePrivateMachineFile(const std::filesystem::path& root,
@@ -656,6 +620,7 @@ bool WritePrivateMachineFile(const std::filesystem::path& root,
   const DWORD attributes = GetFileAttributesW(path.c_str());
   if (attributes != INVALID_FILE_ATTRIBUTES &&
       (attributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY))) {
+    SetLastError(ERROR_ACCESS_DENIED);
     return false;
   }
   static std::atomic<unsigned long> sequence{0};
@@ -672,12 +637,14 @@ bool WritePrivateMachineFile(const std::filesystem::path& root,
       WriteFile(output, contents.data(), static_cast<DWORD>(contents.size()),
                 &written, nullptr) &&
       written == contents.size() && FlushFileBuffers(output);
+  DWORD error = saved ? ERROR_SUCCESS : GetLastError();
   CloseHandle(output);
-  if (saved && MoveFileExW(temporary.c_str(), path.c_str(),
-                           MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-    return true;
+  if (saved) {
+    error = private_file::ReplaceTemporaryFile(temporary, path);
+    if (error == ERROR_SUCCESS) return true;
   }
   DeleteFileW(temporary.c_str());
+  SetLastError(error ? error : ERROR_WRITE_FAULT);
   return false;
 }
 
