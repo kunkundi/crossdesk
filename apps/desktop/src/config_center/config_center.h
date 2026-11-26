@@ -26,8 +26,12 @@ class ConfigCenter {
   enum class LANGUAGE {
     CHINESE = 0, ENGLISH = 1, RUSSIAN = 2, TRADITIONAL_CHINESE = 3,
     JAPANESE = 4, KOREAN = 5, GERMAN = 6, FRENCH = 7, SPANISH = 8,
-    BRAZILIAN_PORTUGUESE = 9, SYSTEM = 10
+    BRAZILIAN_PORTUGUESE = 9, TURKISH = 10, SYSTEM = 11
   };
+  // config.ini and numeric console commands reserve 10 for "follow system".
+  static constexpr int kSystemLanguageSetting = 10;
+  static LANGUAGE LanguageFromSetting(long value);
+  static int LanguageSettingValue(LANGUAGE language);
   enum class CONNECTION_MODE { DEVICE_ID = 0, DIRECT_IP = 1 };
   using VIDEO_ENCODE_FORMAT = MiniRtcVideoCodec;
   enum class TURN_MODE {

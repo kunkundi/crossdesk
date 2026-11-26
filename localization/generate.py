@@ -37,9 +37,9 @@ def render(data):
 namespace crossdesk {
 namespace localization {
 namespace detail {
-struct TranslationRow { const char* key; const char* text[10]; };
+struct TranslationRow { const char* key; const char* text[%d]; };
 inline constexpr TranslationRow kTranslationRows[] = {
-'''
+''' % len(languages)
     for key in data['platforms']['desktop']:
         header += '  {' + quoted(key) + ', {' + ', '.join(quoted(translated(key, lang)) for lang in languages) + '}},\n'
     header += '};\n\nstruct NamedTranslation { const char* name; const char* literal; };\ninline constexpr NamedTranslation kNamedTranslations[] = {\n'
@@ -74,7 +74,7 @@ final class LocalizationKeys {
     android += ''.join('        IDS.put('+quoted(key)+', R.string.'+resource_id(key)+');\n' for key in data['platforms']['android'])
     android += '    }\n    private LocalizationKeys() {}\n}\n'
     outputs['apps/android/app/src/main/java/cn/crossdesk/mobile/LocalizationKeys.java'] = android
-    locales = ['en','zh-Hans','zh-Hant','ja','ko','de','fr','es','pt-BR','ru']
+    locales = ['en'] + [code for code in languages if code != 'en']
     outputs['apps/android/app/src/main/res/xml/locales_config.xml'] = '<?xml version="1.0" encoding="utf-8"?>\n<locale-config xmlns:android="http://schemas.android.com/apk/res/android">\n' + ''.join('    <locale android:name="'+code+'" />\n' for code in locales) + '</locale-config>\n'
     # iOS uses Foundation/SwiftUI localization directly, including strings from models.
     permission = 'CrossDesk 使用局域网发现并建立原生 P2P 远程控制连接。'

@@ -75,6 +75,18 @@ ConfigCenter::ConfigCenter(const std::string& config_path)
 
 ConfigCenter::~ConfigCenter() {}
 
+ConfigCenter::LANGUAGE ConfigCenter::LanguageFromSetting(long value) {
+  if (value == kSystemLanguageSetting) return LANGUAGE::SYSTEM;
+  if (value < 0 || value > static_cast<long>(LANGUAGE::SYSTEM)) return LANGUAGE::ENGLISH;
+  return static_cast<LANGUAGE>(value > kSystemLanguageSetting ? value - 1 : value);
+}
+
+int ConfigCenter::LanguageSettingValue(LANGUAGE language) {
+  if (language == LANGUAGE::SYSTEM) return kSystemLanguageSetting;
+  const int index = static_cast<int>(language);
+  return index >= kSystemLanguageSetting ? index + 1 : index;
+}
+
 int ConfigCenter::Load() {
   SI_Error rc = ini_->LoadFile(config_path_.c_str());
   if (rc < 0) {
@@ -109,14 +121,8 @@ int ConfigCenter::Load() {
   persist_config_migration |=
       ini_->Delete(section_, "sponsorship_prompt_dismissed");
 
-  const long language_value =
-      ini_->GetLongValue(section_, "language", static_cast<long>(language_));
-  if (language_value < static_cast<long>(LANGUAGE::CHINESE) ||
-      language_value > static_cast<long>(LANGUAGE::SYSTEM)) {
-    language_ = LANGUAGE::ENGLISH;
-  } else {
-    language_ = static_cast<LANGUAGE>(language_value);
-  }
+  language_ = LanguageFromSetting(
+      ini_->GetLongValue(section_, "language", LanguageSettingValue(language_)));
 
   enable_ip_direct_ = ini_->GetBoolValue(section_, "enable_ip_direct", true);
   connection_mode_ =
@@ -314,7 +320,7 @@ int ConfigCenter::StoreValues(
 }
 
 int ConfigCenter::Save() {
-  ini_->SetLongValue(section_, "language", static_cast<long>(language_));
+  ini_->SetLongValue(section_, "language", LanguageSettingValue(language_));
   ini_->SetValue(section_, "connection_mode",
                 connection_mode_ == CONNECTION_MODE::DIRECT_IP ? "ip" : "id");
   ini_->SetBoolValue(section_, "enable_ip_direct", enable_ip_direct_);
@@ -452,7 +458,8 @@ int ConfigCenter::ApplySharedHostConfig(const std::string& contents, bool* save_
 
 int ConfigCenter::SetLanguage(LANGUAGE language) {
   const int value = static_cast<int>(language);
-  if (value < 0 || value > static_cast<int>(LANGUAGE::SYSTEM) || StoreValues({{"language", std::to_string(value)}}) != 0) return -1;
+  if (value < 0 || value > static_cast<int>(LANGUAGE::SYSTEM)) return -1;
+  if (StoreValues({{"language", std::to_string(LanguageSettingValue(language))}}) != 0) return -1;
   language_ = language;
   return 0;
 }
