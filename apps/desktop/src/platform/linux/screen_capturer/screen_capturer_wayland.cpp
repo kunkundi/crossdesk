@@ -86,16 +86,12 @@ int ScreenCapturerWayland::Init(const int fps, cb_desktop_data cb) {
   portal_stream_height_ = 0;
   logical_width_ = kFallbackWidth;
   logical_height_ = kFallbackHeight;
-  y_plane_.resize(kFallbackWidth * kFallbackHeight);
-  uv_plane_.resize((kFallbackWidth / 2) * (kFallbackHeight / 2) * 2);
-
   return 0;
 }
 
 int ScreenCapturerWayland::Destroy() {
   Stop();
-  y_plane_.clear();
-  uv_plane_.clear();
+  nv12_.clear();
   display_info_list_.clear();
   callback_ = nullptr;
   return 0;

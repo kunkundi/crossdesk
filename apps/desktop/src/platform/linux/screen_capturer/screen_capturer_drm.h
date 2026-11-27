@@ -82,8 +82,7 @@ class ScreenCapturerDrm : public ScreenCapturer {
   cb_desktop_data callback_;
   int consecutive_failures_ = 0;
 
-  std::vector<uint8_t> y_plane_;
-  std::vector<uint8_t> uv_plane_;
+  std::vector<uint8_t> nv12_;
 };
 
 }  // namespace crossdesk

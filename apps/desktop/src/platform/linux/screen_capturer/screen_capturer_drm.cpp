@@ -86,8 +86,7 @@ int ScreenCapturerDrm::Init(const int fps, cb_desktop_data cb) {
   consecutive_failures_ = 0;
   display_info_list_.clear();
   outputs_.clear();
-  y_plane_.clear();
-  uv_plane_.clear();
+  nv12_.clear();
 
   if (!DiscoverOutputs()) {
     LOG_ERROR("DRM screen capturer could not find active outputs");
@@ -104,8 +103,7 @@ int ScreenCapturerDrm::Destroy() {
   callback_ = nullptr;
   display_info_list_.clear();
   outputs_.clear();
-  y_plane_.clear();
-  uv_plane_.clear();
+  nv12_.clear();
   CloseDevices();
   return 0;
 }
@@ -416,35 +414,21 @@ bool ScreenCapturerDrm::CaptureOutputFrame(const DrmOutput& output,
 
   const size_t y_size =
       static_cast<size_t>(capture_width) * static_cast<size_t>(capture_height);
-  const size_t uv_size = y_size / 2;
-  if (y_plane_.size() != y_size) {
-    y_plane_.resize(y_size);
-  }
-  if (uv_plane_.size() != uv_size) {
-    uv_plane_.resize(uv_size);
-  }
+  nv12_.resize(y_size + y_size / 2);
+  auto* y = nv12_.data();
+  auto* uv = y + y_size;
 
   const int convert_ret =
-      libyuv::ARGBToNV12(mapped_ptr, static_cast<int>(pitch), y_plane_.data(),
-                         capture_width, uv_plane_.data(), capture_width,
-                         capture_width, capture_height);
-
-  if (convert_ret != 0) {
-    UnmapFramebuffer(mapped_ptr, mapped_size, prime_fd);
-    return false;
-  }
-
-  std::vector<uint8_t> nv12;
-  nv12.reserve(y_plane_.size() + uv_plane_.size());
-  nv12.insert(nv12.end(), y_plane_.begin(), y_plane_.end());
-  nv12.insert(nv12.end(), uv_plane_.begin(), uv_plane_.end());
-
-  if (emit_callback && callback_) {
-    callback_(nv12.data(), static_cast<int>(nv12.size()), capture_width,
-              capture_height, output.stream_id.c_str(), nullptr);
-  }
+      libyuv::ARGBToNV12(mapped_ptr, static_cast<int>(pitch), y, capture_width,
+                         uv, capture_width, capture_width, capture_height);
 
   UnmapFramebuffer(mapped_ptr, mapped_size, prime_fd);
+  if (convert_ret != 0) return false;
+
+  if (emit_callback && callback_) {
+    callback_(nv12_.data(), static_cast<int>(nv12_.size()), capture_width,
+              capture_height, output.stream_id.c_str(), nullptr);
+  }
   return true;
 }
 

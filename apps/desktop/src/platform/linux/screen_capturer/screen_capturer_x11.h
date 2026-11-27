@@ -89,8 +89,7 @@ class ScreenCapturerX11 : public ScreenCapturer {
   std::chrono::steady_clock::time_point next_capture_error_log_{};
   bool use_abgr_to_nv12_ = false;
 
-  std::vector<uint8_t> y_plane_;
-  std::vector<uint8_t> uv_plane_;
+  std::vector<uint8_t> nv12_;
 };
 }  // namespace crossdesk
 #endif

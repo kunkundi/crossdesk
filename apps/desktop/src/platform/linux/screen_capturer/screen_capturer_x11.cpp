@@ -77,9 +77,6 @@ int ScreenCapturerX11::Init(const int fps, cb_desktop_data cb) {
   fps_ = std::max(1, fps);
   callback_ = cb;
 
-  y_plane_.resize(width_ * height_);
-  uv_plane_.resize((width_ / 2) * (height_ / 2) * 2);
-
   if (!ProbeCapture()) {
     LOG_ERROR("X11 backend probe failed, XGetImage is not usable");
     Destroy();
@@ -92,8 +89,7 @@ int ScreenCapturerX11::Init(const int fps, cb_desktop_data cb) {
 int ScreenCapturerX11::Destroy() {
   Stop();
 
-  y_plane_.clear();
-  uv_plane_.clear();
+  nv12_.clear();
   {
     std::lock_guard lock(display_info_mutex_);
     display_info_list_.clear();
@@ -449,25 +445,17 @@ void ScreenCapturerX11::OnFrame() {
 
   const size_t y_size =
       static_cast<size_t>(width_) * static_cast<size_t>(height_);
-  const size_t uv_size = y_size / 2;
-  if (y_plane_.size() != y_size) {
-    y_plane_.resize(y_size);
-  }
-  if (uv_plane_.size() != uv_size) {
-    uv_plane_.resize(uv_size);
-  }
+  nv12_.resize(y_size + y_size / 2);
+  auto* y = nv12_.data();
+  auto* uv = y + y_size;
 
   const int convert_ret =
       use_abgr_to_nv12_
-          ? libyuv::ABGRToNV12(src_argb, src_stride_argb, y_plane_.data(),
-                               width_, uv_plane_.data(), width_, width_,
-                               height_)
-          : libyuv::ARGBToNV12(src_argb, src_stride_argb, y_plane_.data(),
-                               width_, uv_plane_.data(), width_, width_,
-                               height_);
+          ? libyuv::ABGRToNV12(src_argb, src_stride_argb, y, width_, uv, width_, width_, height_)
+          : libyuv::ARGBToNV12(src_argb, src_stride_argb, y, width_, uv, width_, width_, height_);
+  XDestroyImage(image);
   if (convert_ret != 0) {
     CaptureFailed("NV12 conversion failed");
-    XDestroyImage(image);
     return;
   }
   if (capture_error_count_ > 0) {
@@ -476,18 +464,11 @@ void ScreenCapturerX11::OnFrame() {
     capture_error_count_ = 0;
   }
 
-  std::vector<uint8_t> nv12;
-  nv12.reserve(y_plane_.size() + uv_plane_.size());
-  nv12.insert(nv12.end(), y_plane_.begin(), y_plane_.end());
-  nv12.insert(nv12.end(), uv_plane_.begin(), uv_plane_.end());
-
   if (callback_) {
     const std::string stream_id = MakeDisplayStreamId(monitor_index);
-    callback_(nv12.data(), width_ * height_ * 3 / 2, width_, height_,
+    callback_(nv12_.data(), static_cast<int>(nv12_.size()), width_, height_,
               stream_id.c_str(), nullptr);
   }
-
-  XDestroyImage(image);
 }
 
 void ScreenCapturerX11::DrawCursor(XImage* image, int x, int y) {

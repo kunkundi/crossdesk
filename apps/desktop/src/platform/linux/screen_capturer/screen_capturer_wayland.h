@@ -123,8 +123,7 @@ class ScreenCapturerWayland : public ScreenCapturer {
   int logical_height_ = 0;
   std::unique_ptr<LinuxCursorThemeMatcher> cursor_theme_matcher_;
 
-  std::vector<uint8_t> y_plane_;
-  std::vector<uint8_t> uv_plane_;
+  std::vector<uint8_t> nv12_;
 };
 
 }  // namespace crossdesk

@@ -1082,30 +1082,21 @@ void ScreenCapturerWayland::DeliverPendingFrame() {
   next_delivery_ += interval;
 
   const size_t y_size = static_cast<size_t>(even_width) * even_height;
-  const size_t uv_size = y_size / 2;
-  if (y_plane_.size() != y_size) {
-    y_plane_.resize(y_size);
-  }
-  if (uv_plane_.size() != uv_size) {
-    uv_plane_.resize(uv_size);
-  }
+  nv12_.resize(y_size + y_size / 2);
+  auto* y = nv12_.data();
+  auto* uv = y + y_size;
 
-  libyuv::ARGBToNV12(src, stride, y_plane_.data(), even_width, uv_plane_.data(),
-                     even_width, even_width, even_height);
-
-  std::vector<uint8_t> nv12;
-  nv12.reserve(y_plane_.size() + uv_plane_.size());
-  nv12.insert(nv12.end(), y_plane_.begin(), y_plane_.end());
-  nv12.insert(nv12.end(), uv_plane_.begin(), uv_plane_.end());
+  const int result = libyuv::ARGBToNV12(src, stride, y, even_width, uv, even_width,
+                                        even_width, even_height);
+  requeue();
+  if (result != 0) return;
 
   if (callback_) {
     const std::string stream_id = MakeDisplayStreamId(0);
-    callback_(nv12.data(), static_cast<int>(nv12.size()), even_width,
+    callback_(nv12_.data(), static_cast<int>(nv12_.size()), even_width,
               even_height, stream_id.c_str(), nullptr);
   }
   pipewire_last_frame_ms_.store(NowMs());
-
-  requeue();
 }
 
 void ScreenCapturerWayland::UpdateDisplayGeometry(int width, int height) {
