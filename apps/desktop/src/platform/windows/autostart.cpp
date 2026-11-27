@@ -326,8 +326,9 @@ bool MigrateLegacyAutostart(const std::string& app_name) {
   if (result == ERROR_SUCCESS) {
     if (command.size() >= 2 && command.front() == L'"' && command.back() == L'"')
       command = command.substr(1, command.size() - 2);
-    if (_wcsicmp(command.c_str(), path.c_str()) == 0)
-      return EnableAutostart(app_name, executable);
+    if (_wcsicmp(command.c_str(), path.c_str()) == 0 &&
+        !EnableAutostart(app_name, executable))
+      return false;
   } else if (result != ERROR_FILE_NOT_FOUND && result != ERROR_PATH_NOT_FOUND) {
     return false;
   }

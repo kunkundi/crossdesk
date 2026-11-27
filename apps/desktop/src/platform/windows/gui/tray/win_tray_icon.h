@@ -76,7 +76,7 @@ class WinTrayIconHost {
     nid_.hIcon = icon;
     wcsncpy_s(nid_.szTip, tooltip.c_str(), _TRUNCATE);
 
-    EnsureTrayIcon();
+    AddTrayIcon(false);  // This window has never registered an icon.
   }
 
   ~WinTrayIconHost() {
@@ -97,22 +97,8 @@ class WinTrayIconHost {
     if (!hwnd_) {
       return false;
     }
-    if (tray_icon_added_) {
-      // NIM_MODIFY also detects an icon lost when Explorer was restarted.
-      if (notify_icon_(NIM_MODIFY, &nid_)) {
-        return true;
-      }
-      tray_icon_added_ = false;
-    }
-
-    tray_icon_added_ = notify_icon_(NIM_ADD, &nid_) != FALSE;
-    if (!tray_icon_added_) {
-      last_retry_tick_ = tick_count_();
-      has_retry_tick_ = true;
-    } else {
-      has_retry_tick_ = false;
-    }
-    return tray_icon_added_;
+    if (tray_icon_added_ && notify_icon_(NIM_MODIFY, &nid_)) return true;
+    return AddTrayIcon(!tray_icon_added_);
   }
 
   void ProcessEvents() {
@@ -141,10 +127,14 @@ class WinTrayIconHost {
 
   static ULONGLONG DefaultTickCount() { return GetTickCount64(); }
 
-  void OnTaskbarCreated() {
-    // Explorer recreated the notification area; a fresh NIM_ADD is required.
-    tray_icon_added_ = false;
-    EnsureTrayIcon();
+  bool AddTrayIcon(bool may_already_exist) {
+    if (!nid_.hWnd) return false;
+    // TaskbarCreated also fires on DPI changes, when Explorer can retain the icon.
+    tray_icon_added_ = notify_icon_(NIM_ADD, &nid_) ||
+                       (may_already_exist && notify_icon_(NIM_MODIFY, &nid_));
+    has_retry_tick_ = !tray_icon_added_;
+    if (has_retry_tick_) last_retry_tick_ = tick_count_();
+    return tray_icon_added_;
   }
 
   static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam,
@@ -179,7 +169,7 @@ class WinTrayIconHost {
 
     if (self->taskbar_created_message_ != 0 &&
         msg == self->taskbar_created_message_) {
-      self->OnTaskbarCreated();
+      self->AddTrayIcon(true);
       return 0;
     }
 
