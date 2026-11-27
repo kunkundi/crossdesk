@@ -84,7 +84,7 @@
     <string name="text_3f31300a23afb390" formatted="false">"הסיסמאות נשמרות מוצפנות ב-Android Keystore של המכשיר"</string>
     <string name="text_8d3b052c4c67acda" formatted="false">"מזהה מרוחק"</string>
     <string name="text_0512084e130984bc" formatted="false">"מזהה מרוחק "</string>
-    <string name="text_c5147d65960196b0" formatted="false">"מזהה מרוחק {0}"</string>
+    <string name="text_c5147d65960196b0" formatted="false">"מזהה מרוחק ⁦{0}⁩"</string>
     <string name="text_882b705d31ac7e2a" formatted="false">"כל התצוגות המקדימות של מכשירים מרוחקים שנשמרו במכשיר הזה יימחקו. רשומות החיבור והסיסמאות יישמרו."</string>
     <string name="text_60cc99cc0013972e" formatted="false">"כיוון המסך"</string>
     <string name="text_9e7294d264afecb7" formatted="false">"הרחבת תפריט השליטה מרחוק"</string>
@@ -163,7 +163,7 @@
     <string name="text_d1fcb66a323a16f5" formatted="false">"לא מחובר לשרת · לחצו לניסיון חוזר"</string>
     <string name="text_7eea7966c0b746c5" formatted="false">"האפליקציה משתמשת ב-OpenFEC לתיקון שגיאות קדימה לפי רישיון CeCILL-C 1.0, שמעניק אחריות מוגבלת ומגביל את החבות. הפרטים בנוסח המלא של הרישיון."</string>
     <string name="text_c611b4e50b0dbc08" formatted="false">"המזהה שלי "</string>
-    <string name="text_97d10220f08dd7fc" formatted="false">"המזהה שלי {0}"</string>
+    <string name="text_97d10220f08dd7fc" formatted="false">"המזהה שלי ⁦{0}⁩"</string>
     <string name="text_91f15d505770d7a0" formatted="false">"קוד המקור והוראות הבנייה של הגרסה הזו"</string>
     <string name="text_5b2c8ca2c5a87241" formatted="false">"פרטי קוד המקור של הגרסה הזו לא זמינים."</string>
     <string name="text_f0e274aa130e08a2" formatted="false">"שחררו לרענון"</string>
