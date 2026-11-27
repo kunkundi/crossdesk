@@ -42,7 +42,7 @@ class ScreenCapturerWin : public ScreenCapturer {
   int Destroy() override;
   int Start(bool show_cursor) override;
   int Stop() override;
-  void SetCaptureFrameRate(int fps);
+  void SetCaptureFrameRate(int fps) override;
   // Applied on the capture-management thread, including secure-desktop capture.
   void SetCursorCapture(bool enabled) {
     show_cursor_.store(enabled, std::memory_order_relaxed);

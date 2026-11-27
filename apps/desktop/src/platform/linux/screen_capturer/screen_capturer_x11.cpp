@@ -74,7 +74,7 @@ int ScreenCapturerX11::Init(const int fps, cb_desktop_data cb) {
   }
   RefreshDisplays();
 
-  fps_ = fps;
+  fps_ = std::max(1, fps);
   callback_ = cb;
 
   y_plane_.resize(width_ * height_);
@@ -137,7 +137,6 @@ void ScreenCapturerX11::Wake() {
 void ScreenCapturerX11::CaptureLoop() {
   using Clock = std::chrono::steady_clock;
   using namespace std::chrono;
-  const auto frame_interval = milliseconds(std::max(1, 1000 / std::max(1, fps_)));
   auto next_frame = Clock::now();
   pollfd fds[] = {{wake_fd_, POLLIN, 0}, {ConnectionNumber(display_), POLLIN, 0}};
 
@@ -151,7 +150,8 @@ void ScreenCapturerX11::CaptureLoop() {
         const int shift = std::min(capture_error_count_ - 1, 4);
         next_frame = Clock::now() + milliseconds(std::min(1000, 100 << shift));
       } else {
-        next_frame = now + frame_interval;
+        const auto interval = nanoseconds(1'000'000'000 / fps_.load());
+        next_frame = std::max(next_frame + interval, now + interval / 2);
       }
     }
 
@@ -180,6 +180,10 @@ void ScreenCapturerX11::CaptureLoop() {
       break;
     }
   }
+}
+
+void ScreenCapturerX11::SetCaptureFrameRate(int fps) {
+  if (fps > 0 && fps_.exchange(fps) != fps && running_) Wake();
 }
 
 void ScreenCapturerX11::SetVideoWanted(bool wanted) {

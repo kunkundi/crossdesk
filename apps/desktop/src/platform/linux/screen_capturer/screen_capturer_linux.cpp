@@ -277,6 +277,12 @@ int ScreenCapturerLinux::Resume(int monitor_index) {
   return impl_->Resume(monitor_index);
 }
 
+void ScreenCapturerLinux::SetCaptureFrameRate(int fps) {
+  if (fps <= 0 || fps_ == fps) return;
+  fps_ = fps;  // Refreshed and fallback backends inherit the current demand in Init.
+  if (impl_) impl_->SetCaptureFrameRate(fps);
+}
+
 void ScreenCapturerLinux::SetX11VideoWanted(bool wanted) {
   if (backend_ != BackendType::kX11) return;
   // Automatic privacy on connection needs a first real frame before the

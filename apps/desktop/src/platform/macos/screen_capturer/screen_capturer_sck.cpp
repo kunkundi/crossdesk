@@ -32,6 +32,10 @@ int ScreenCapturerSck::Init(const int fps, cb_desktop_data cb) {
   return 0;
 }
 
+void ScreenCapturerSck::SetCaptureFrameRate(int fps) {
+  if (screen_capturer_sck_impl_) screen_capturer_sck_impl_->SetCaptureFrameRate(fps);
+}
+
 int ScreenCapturerSck::Destroy() {
   if (screen_capturer_sck_impl_) {
     screen_capturer_sck_impl_->Destroy();

@@ -606,6 +606,11 @@ bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
         return;
       }
 
+      if (self->pending_frame_) {
+        GetPipeWireApi()->stream_queue_buffer(self->pw_stream_, self->pending_frame_);
+        self->pending_frame_ = nullptr;
+      }
+      self->next_delivery_ = {};
       self->spa_video_format_ = info.format;
       self->frame_width_ = static_cast<int>(info.size.width);
       self->frame_height_ = static_cast<int>(info.size.height);
@@ -770,6 +775,10 @@ bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
             pointer_height, observed_scale_x, observed_scale_y);
       }
     };
+    events.remove_buffer = [](void* userdata, pw_buffer* buffer) {
+      auto* self = static_cast<ScreenCapturerWayland*>(userdata);
+      if (self->pending_frame_ == buffer) self->pending_frame_ = nullptr;
+    };
     events.process = [](void* userdata) {
       auto* self = static_cast<ScreenCapturerWayland*>(userdata);
       if (self) {
@@ -779,6 +788,9 @@ bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
     return events;
   }();
 
+  delivery_timer_ = pw_loop_add_timer(pipewire->thread_loop_get_loop(pw_thread_loop_),
+      [](void* data, uint64_t) { static_cast<ScreenCapturerWayland*>(data)->DeliverPendingFrame(); },
+      this);
   pipewire->stream_add_listener(pw_stream_, listener, &stream_events, this);
   pipewire_format_ready_.store(false);
   pipewire_stream_start_ms_.store(NowMs());
@@ -796,6 +808,9 @@ bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
   const spa_rectangle min_size{1u, 1u};
   const spa_rectangle max_size{16384u, 16384u};
 
+  // Keep the negotiated format across viewer rate changes. Replacing it on a
+  // running stream can stall fixed-rate producers or retire the last image.
+  const spa_fraction preferred_rate{60, 1}, min_rate{0, 1}, max_rate{INT32_MAX, 1};
   if (!relaxed_connect) {
     auto add_format_param = [&](uint32_t spa_format) {
       if (param_count >= static_cast<int>(sizeof(params) / sizeof(params[0]))) {
@@ -809,7 +824,9 @@ bool ScreenCapturerWayland::SetupPipeWireStream(bool relaxed_connect,
               SPA_FORMAT_VIDEO_format, SPA_POD_Id(spa_format),
               SPA_FORMAT_VIDEO_size,
               SPA_POD_CHOICE_RANGE_Rectangle(&fixed_size, &min_size,
-                                             &max_size)));
+                                             &max_size),
+              SPA_FORMAT_VIDEO_maxFramerate,
+              SPA_POD_CHOICE_RANGE_Fraction(&preferred_rate, &min_rate, &max_rate)));
     };
 
     add_format_param(SPA_VIDEO_FORMAT_BGRx);
@@ -870,6 +887,13 @@ void ScreenCapturerWayland::CleanupPipeWire() {
   }
 
   if (pw_stream_ && pipewire) {
+    if (delivery_timer_) {
+      pw_loop_destroy_source(pipewire->thread_loop_get_loop(pw_thread_loop_), delivery_timer_);
+      delivery_timer_ = nullptr;
+    }
+    if (pending_frame_) pipewire->stream_queue_buffer(pw_stream_, pending_frame_);
+    pending_frame_ = nullptr;
+    next_delivery_ = {};
     pipewire->stream_set_active(pw_stream_, false);
     pipewire->stream_disconnect(pw_stream_);
   }
@@ -1001,8 +1025,30 @@ void ScreenCapturerWayland::HandlePipeWireBuffer() {
     }
   }
 
-  const spa_data& data = spa_buffer->datas[0];
-  if (!data.chunk) {
+  if (!spa_buffer->datas[0].chunk || !spa_buffer->datas[0].chunk->size) {
+    requeue();
+    return;
+  }
+  if (pending_frame_) pipewire->stream_queue_buffer(pw_stream_, pending_frame_);
+  pending_frame_ = buffer;
+  const auto wait = next_delivery_ - std::chrono::steady_clock::now();
+  if (delivery_timer_ && wait > std::chrono::milliseconds(1)) {
+    const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(wait).count();
+    timespec delay{static_cast<time_t>(ns / 1'000'000'000),
+                   static_cast<long>(ns % 1'000'000'000)};
+    if (pw_loop_update_timer(pipewire->thread_loop_get_loop(pw_thread_loop_),
+                             delivery_timer_, &delay, nullptr, false) >= 0) return;
+  }
+  DeliverPendingFrame();
+}
+
+void ScreenCapturerWayland::DeliverPendingFrame() {
+  if (!pending_frame_) return;
+  auto* buffer = pending_frame_;
+  pending_frame_ = nullptr;
+  const auto requeue = [&] { GetPipeWireApi()->stream_queue_buffer(pw_stream_, buffer); };
+  const spa_data& data = buffer->buffer->datas[0];
+  if (paused_ || !data.chunk) {
     requeue();
     return;
   }
@@ -1028,6 +1074,12 @@ void ScreenCapturerWayland::HandlePipeWireBuffer() {
     requeue();
     return;
   }
+
+  const auto now = std::chrono::steady_clock::now();
+  const auto interval = std::chrono::nanoseconds(1'000'000'000 / fps_.load());
+  if (next_delivery_ == std::chrono::steady_clock::time_point{} || now >= next_delivery_ + interval)
+    next_delivery_ = now;
+  next_delivery_ += interval;
 
   const size_t y_size = static_cast<size_t>(even_width) * even_height;
   const size_t uv_size = y_size / 2;

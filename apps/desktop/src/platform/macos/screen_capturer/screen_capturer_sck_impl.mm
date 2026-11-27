@@ -163,6 +163,7 @@ class API_AVAILABLE(macos(14.0)) ScreenCapturerSckImpl : public ScreenCapturer {
 
  public:
   int Init(const int fps, cb_desktop_data cb) override;
+  void SetCaptureFrameRate(int fps) override;
   void SetPrivacyController(PrivacyController* privacy) override { privacy_ = privacy; }
 
   int Start(bool show_cursor) override;
@@ -608,6 +609,15 @@ int ScreenCapturerSckImpl::Destroy() {
   return 0;
 }
 
+void ScreenCapturerSckImpl::SetCaptureFrameRate(int fps) {
+  {
+    std::lock_guard lock(lock_);
+    if (fps <= 0 || fps_ == fps) return;
+    fps_ = fps;
+  }
+  StartOrReconfigureCapturer();
+}
+
 int ScreenCapturerSckImpl::Stop() {
   std::lock_guard<std::mutex> lock(lock_);
   capture_requested_ = false;
@@ -799,9 +809,8 @@ void ScreenCapturerSckImpl::OnShareableContentCreated(SCShareableContent *conten
   config.width = filter.contentRect.size.width * filter.pointPixelScale;
   config.height = filter.contentRect.size.height * filter.pointPixelScale;
   config.captureResolution = SCCaptureResolutionAutomatic;
-  config.minimumFrameInterval = CMTimeMake(1, fps_);
-
   std::unique_lock<std::mutex> lock(lock_);
+  config.minimumFrameInterval = CMTimeMake(1, fps_);
   if (!capture_requested_ || generation != configuration_generation_) return;
   if (configuration_in_flight_) { reconfigure_pending_ = true; return; }
   if (GetMacPrivacyCaptureState().revision != revision) {

@@ -185,8 +185,7 @@ int SessionDeviceManager::InitializeScreenCapturer() {
   last_frame_time_ = {};
   next_frame_deadline_ = {};
   ResetCaptureMetrics();
-  // MiniRTC admits frames per viewer. Windows also samples at the highest
-  // active interactive rate, before readback and conversion.
+  // Start at the legacy rate until the viewers publish their frame rates.
   const int fps = 60;
   LOG_INFO("Init screen capturer with {} fps", fps);
   SetDisplayInfoList({});
@@ -778,12 +777,6 @@ void SessionDeviceManager::UpdateInteractions() {
     std::erase_if(controllers, [](const auto& id) { return id.rfind("lan/", 0) != 0; });
   }
   bool capture_needed = !controllers.empty();
-#ifdef _WIN32
-  if (capture_needed) {
-    if (auto* windows = dynamic_cast<ScreenCapturerWin*>(screen_capturer_))
-      windows->SetCaptureFrameRate(owner_.preview_subscriptions_.CaptureFrameRate(controllers));
-  }
-#endif
 #ifdef __APPLE__
   if (screen_capturer_) {
     headless_display_.Update(owner_.config_center_->IsAutoVirtualDisplay(),
@@ -795,6 +788,8 @@ void SessionDeviceManager::UpdateInteractions() {
   capture_needed = capture_needed || (owner_.screen_capturer_is_started_ &&
       static_cast<ScreenCapturerLinux*>(screen_capturer_)->UsesWaylandPortal());
 #endif
+  if (screen_capturer_ && capture_needed)
+    screen_capturer_->SetCaptureFrameRate(owner_.preview_subscriptions_.CaptureFrameRate(controllers));
   if (capture_needed && !owner_.screen_capturer_is_started_) {
     const auto now = std::chrono::steady_clock::now();
     if (now >= next_capture_start_retry_ &&

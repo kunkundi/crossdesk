@@ -24,6 +24,7 @@ class ScreenCapturerDrm : public ScreenCapturer {
 
  public:
   int Init(const int fps, cb_desktop_data cb) override;
+  void SetCaptureFrameRate(int fps) override { if (fps > 0) fps_ = fps; }
   int Destroy() override;
   int Start(bool show_cursor) override;
   int Stop() override;
@@ -77,7 +78,7 @@ class ScreenCapturerDrm : public ScreenCapturer {
   std::atomic<int> monitor_index_{0};
   int initial_monitor_index_ = 0;
   std::atomic<bool> show_cursor_{true};
-  int fps_ = 60;
+  std::atomic<int> fps_{60};
   cb_desktop_data callback_;
   int consecutive_failures_ = 0;
 

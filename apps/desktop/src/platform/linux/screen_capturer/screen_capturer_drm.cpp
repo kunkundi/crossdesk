@@ -320,8 +320,7 @@ void ScreenCapturerDrm::CloseDevices() {
 
 void ScreenCapturerDrm::CaptureLoop() {
   using clock = std::chrono::steady_clock;
-  const auto frame_interval =
-      std::chrono::milliseconds(std::max(1, 1000 / std::max(1, fps_)));
+  auto deadline = clock::now();
 
   while (running_) {
     const auto frame_start = clock::now();
@@ -341,11 +340,9 @@ void ScreenCapturerDrm::CaptureLoop() {
       }
     }
 
-    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        clock::now() - frame_start);
-    if (elapsed < frame_interval) {
-      std::this_thread::sleep_for(frame_interval - elapsed);
-    }
+    const auto interval = std::chrono::nanoseconds(1'000'000'000 / fps_.load());
+    deadline = std::max(deadline + interval, frame_start + interval / 2);
+    std::this_thread::sleep_until(deadline);
   }
 }
 

@@ -65,7 +65,7 @@ int ScreenCapturerWayland::Init(const int fps, cb_desktop_data cb) {
     return -1;
   }
 
-  fps_ = fps;
+  fps_ = fps > 0 ? fps : 60;
   callback_ = cb;
   pointer_granted_ = false;
   shared_session_registered_ = false;

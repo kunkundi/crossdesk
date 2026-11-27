@@ -52,6 +52,7 @@ class ScreenCapturer {
   // Called on the UI thread. Publish a settled topology only if the host can
   // admit its stream count for the next connection.
   virtual bool RefreshIdleDisplays(const std::function<bool(size_t)>&) { return false; }
+  virtual void SetCaptureFrameRate(int fps) {}
 };
 }  // namespace crossdesk
 #endif
