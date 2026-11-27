@@ -384,6 +384,24 @@ slint::SharedString UiText(std::string_view value) {
   return slint::SharedString(value);
 }
 
+std::vector<std::string> ReservedGroupNames(int language) {
+  return {localization::Literal("全部设备", language),
+          localization::Literal("未分组", language)};
+}
+
+const char* GroupNameErrorMessage(gallery::Workspace::GroupNameError error) {
+  using Error = gallery::Workspace::GroupNameError;
+  switch (error) {
+    case Error::kOk: return nullptr;
+    case Error::kEmpty: return "请输入分组名称";
+    case Error::kTooLong: return "分组名称过长";
+    case Error::kReserved: return "不能使用系统保留分组名称";
+    case Error::kDuplicate: return "分组名称已存在";
+    case Error::kNotFound: return "此分组已更名或删除，请重新选择。";
+  }
+  return "保存失败，请重试";
+}
+
 slint::SharedString TrustFingerprint(std::string fingerprint) {
   for (size_t i = 8; i < fingerprint.size(); i += 9) fingerprint.insert(i, " ");
   return UiText(fingerprint);
@@ -1894,6 +1912,11 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
     else ui_->recent_group_filter.reset();
     SyncMainWindow();
   });
+  main->on_rename_group(
+      [this, main](slint::SharedString old_name, slint::SharedString new_name) {
+        return RenameGroup(std::string(old_name), std::string(new_name),
+                           main->get_gallery_mode());
+      });
   main->on_delete_group([this](slint::SharedString name) {
     return DeleteGroup(std::string(name));
   });
@@ -3696,9 +3719,18 @@ void GuiApplication::SyncMainWindow() {
   if (!recent_groups_changed)
     for (size_t i = 0; i < recent_groups.size(); ++i)
       recent_groups_changed |= old_recent_groups->row_data(i) != recent_groups[i];
-  if (recent_groups_changed)
+  if (recent_groups_changed) {
     ui_->main->set_recent_groups(
         std::make_shared<slint::VectorModel<slint::SharedString>>(recent_groups));
+    for (const auto& window : {ui_->main, ui_->wall}) {
+      if (!window->get_rename_group_open()) continue;
+      const std::string target(window->get_rename_group_target());
+      if (!target.empty() && !ui_->gallery.HasGroup(target)) {
+        window->invoke_invalidate_group_rename(tr_group(
+            GroupNameErrorMessage(gallery::Workspace::GroupNameError::kNotFound)));
+      }
+    }
+  }
   ui_->main->set_recent_group_index(recent_group_index);
 
   // Derive group labels from the shared workspace, including devices with
@@ -5977,6 +6009,7 @@ void GuiApplication::CloseGalleryWindow() {
   need_to_rejoin_ = false;
   ui_->wall->invoke_reset_gallery_transient();
   ui_->wall->set_alias_open(false);
+  ui_->wall->set_rename_group_open(false);
   ui_->wall->set_delete_open(false);
   ui_->wall->set_device_group_open(false);
   ui_->wall->set_self_host_settings_open(false);
@@ -6087,8 +6120,12 @@ bool GuiApplication::AddGalleryDevice(const std::string& input,
         (operation.state == State::Queued || operation.state == State::Running))
       return error("该设备正在连接，请稍候");
 
+  auto target_group = group;
+  const auto validation = ui_->gallery.ResolveAssignmentGroup(
+      target_group, ReservedGroupNames(localization_language_index_));
+  if (const auto* message = GroupNameErrorMessage(validation)) return error(message);
   auto updated = ui_->gallery;
-  updated.Add(id, Trim(group));
+  updated.Add(id, target_group);
   if (!updated.Save(ui_->gallery_path))
     return error("保存失败，请重试");
   ui_->gallery = std::move(updated);
@@ -6127,7 +6164,14 @@ bool GuiApplication::ImportGalleryRecent(const std::string& input_group) {
       ids.emplace_back(device->id);
   }
   if (ids.empty()) return false;
-  const auto group = Trim(input_group);
+  auto group = input_group;
+  const auto validation = ui_->gallery.ResolveAssignmentGroup(
+      group, ReservedGroupNames(localization_language_index_));
+  if (const auto* message = GroupNameErrorMessage(validation)) {
+    ui_->wall->set_gallery_notice(
+        UiText(localization::Literal(message, localization_language_index_)));
+    return false;
+  }
   auto updated = ui_->gallery;
   updated.AddMany(ids, group);
   if (!updated.Save(ui_->gallery_path)) {
@@ -6207,7 +6251,15 @@ bool GuiApplication::SaveDeviceGroups(const std::string& new_group,
     const auto option = *editor.options->row_data(i);
     if (option.selected && !option.name.empty()) names.emplace_back(option.name);
   }
-  if (const auto name = Trim(new_group); !name.empty()) names.push_back(name);
+  auto name = new_group;
+  const auto validation = ui_->gallery.ResolveAssignmentGroup(
+      name, ReservedGroupNames(localization_language_index_));
+  if (const auto* message = GroupNameErrorMessage(validation)) {
+    main->set_device_group_error(
+        UiText(localization::Literal(message, localization_language_index_)));
+    return false;
+  }
+  if (!name.empty()) names.push_back(name);
 
   auto updated = ui_->gallery;
   if (!updated.SetGroups(id, names) || !updated.Save(ui_->gallery_path)) {
@@ -6230,6 +6282,71 @@ bool GuiApplication::SaveDeviceGroups(const std::string& new_group,
   // existing session. Only the explicit wall-add actions do that.
   ui_->gallery_synced = {};
   main->set_device_group_error("");
+  SyncMainWindow();
+  SyncGallery();
+  return true;
+}
+
+bool GuiApplication::RenameGroup(const std::string& old_name,
+                                 const std::string& new_name,
+                                 bool gallery_window) {
+  auto& window = ui_->Window(gallery_window);
+  const auto fail = [&](const char* key) {
+    window->set_rename_group_error(
+        UiText(localization::Literal(key, localization_language_index_)));
+    return false;
+  };
+  const auto trimmed = gallery::Workspace::TrimGroupName(new_name);
+  if ((new_name == old_name || trimmed == old_name) && ui_->gallery.HasGroup(old_name)) {
+    window->set_rename_group_error("");
+    return true;
+  }
+  const auto validation = ui_->gallery.ValidateRenameGroup(
+      old_name, new_name, ReservedGroupNames(localization_language_index_));
+  if (const auto* message = GroupNameErrorMessage(validation)) return fail(message);
+
+  auto updated = ui_->gallery;
+  if (!updated.RenameGroup(old_name, trimmed) ||
+      !updated.Save(ui_->gallery_path)) {
+    return fail("保存失败，请重试");
+  }
+
+  const int wall_index = ui_->wall->get_gallery_group_index();
+  std::string wall_group =
+      wall_index > 0 && wall_index <= int(ui_->gallery.groups.size())
+          ? ui_->gallery.groups[wall_index - 1]
+          : std::string{};
+  if (wall_group == old_name) wall_group = trimmed;
+
+  ui_->gallery = std::move(updated);
+  if (wall_group.empty()) {
+    ui_->wall->set_gallery_group_index(0);
+  } else {
+    const auto found = std::find(ui_->gallery.groups.begin(),
+                                 ui_->gallery.groups.end(), wall_group);
+    ui_->wall->set_gallery_group_index(
+        found == ui_->gallery.groups.end()
+            ? 0
+            : int(found - ui_->gallery.groups.begin()) + 1);
+  }
+  if (ui_->recent_group_filter == old_name)
+    ui_->recent_group_filter = trimmed;
+  if (std::string(ui_->wall->get_gallery_import_group()) == old_name)
+    ui_->wall->set_gallery_import_group(UiText(trimmed));
+
+  // Keep any open device group dialogs in both windows synchronized in place.
+  for (auto& editor : ui_->group_editors) {
+    for (size_t row = 1; row < editor.options->row_count(); ++row) {
+      auto option = *editor.options->row_data(row);
+      if (std::string(option.name) == old_name) {
+        option.name = UiText(trimmed);
+        editor.options->set_row_data(row, option);
+      }
+    }
+  }
+  window->set_rename_group_error("");
+  ui_->gallery_synced = {};
+  SyncMainWindow();
   SyncGallery();
   return true;
 }

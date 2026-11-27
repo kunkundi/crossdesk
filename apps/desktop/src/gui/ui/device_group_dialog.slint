@@ -2,7 +2,7 @@ import { FlatSurface, UiSurface } from "ui_surface.slint";
 import { UiRadius } from "ui_radius.slint";
 import { ScrollView } from "std-widgets.slint";
 import { RoundedLineEdit } from "rounded_line_edit.slint";
-import { CompactButton, ImGuiCheckBox, ControlStyle } from "common.slint";
+import { CompactButton, ImGuiCheckBox, ControlStyle, FontAwesomeIcons, IconButton } from "common.slint";
 import { GalleryStrings } from "device_strings.slint";
 
 export struct DeviceGroupOption {
@@ -15,10 +15,14 @@ export component DeviceGroupDialog inherits Rectangle {
     in property <string> device-id;
     in property <[DeviceGroupOption]> options;
     in property <string> error;
+    in property <bool> editing-enabled: true;
     in-out property <string> new-group;
     callback toggle-group(string);
+    callback rename-group(string);
+    callback delete-group(string);
     callback save(string);
     callback cancel();
+    private property <length> scrollbar-gutter: root.options.length > 5 ? 14px : 0px;
     background: #00000040;
     TouchArea {}
     dialog := FlatSurface {
@@ -49,11 +53,15 @@ export component DeviceGroupDialog inherits Rectangle {
             clip: true;
             ScrollView {
                 x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
-                viewport-width: self.width;
+                viewport-width: self.visible-width;
+                horizontal-scrollbar-policy: always-off;
+                vertical-scrollbar-policy: as-needed;
                 VerticalLayout {
+                    width: max(0px, parent.visible-width - root.scrollbar-gutter);
                     spacing: 0px;
                     for option[index] in root.options: Rectangle {
-                        private property <bool> selected: option.selected && (option.name != "" || root.new-group == "");
+                        private property <bool> custom: option.name != "";
+                        private property <bool> selected: option.selected && (self.custom || root.new-group == "");
                         height: 32px;
                         background: self.selected
                             ? (row-touch.pressed ? ControlStyle.selected-pressed : row-touch.has-hover ? ControlStyle.selected-hover : ControlStyle.selected)
@@ -63,13 +71,33 @@ export component DeviceGroupDialog inherits Rectangle {
                             checked: parent.selected;
                         }
                         Text {
-                            x: 39px; width: parent.width - 48px; height: parent.height;
+                            x: 39px;
+                            width: max(0px, parent.width - (parent.custom ? 99px : 48px));
+                            height: parent.height;
                             text: option.name == "" ? GalleryStrings.texts[31] : option.name;
                             color: parent.selected ? ControlStyle.selected-text : #30343b;
                             font-weight: parent.selected ? 600 : 400;
                             font-size: 12px; overflow: elide; vertical-alignment: center;
                         }
                         row-touch := TouchArea { clicked => { root.toggle-group(option.name); } }
+                        if self.custom: IconButton {
+                            x: parent.width - 56px; y: 3px; width: 26px; height: 26px;
+                            icon: FontAwesomeIcons.pen; icon-size: 12px;
+                            hover-background: parent.selected ? ControlStyle.selected-pressed : ControlStyle.hover;
+                            pressed-background: parent.selected ? #8ab1e3 : ControlStyle.pressed;
+                            accessible-role: button;
+                            accessible-label: GalleryStrings.texts[220] + " " + option.name;
+                            accessible-action-default => { self.clicked(); }
+                            clicked => { root.rename-group(option.name); }
+                        }
+                        if self.custom: IconButton {
+                            x: parent.width - 28px; y: 3px; width: 26px; height: 26px;
+                            icon: FontAwesomeIcons.trash-can; icon-size: 12px; danger: true;
+                            accessible-role: button;
+                            accessible-label: GalleryStrings.texts[217] + " " + option.name;
+                            accessible-action-default => { self.clicked(); }
+                            clicked => { root.delete-group(option.name); }
+                        }
                     }
                 }
             }
@@ -88,10 +116,12 @@ export component DeviceGroupDialog inherits Rectangle {
             }
         }
         RoundedLineEdit {
+            enabled: root.editing-enabled;
             x: 18px; y: group-list.y + group-list.height + 12px;
             width: parent.width - 36px; height: 30px;
             text <=> root.new-group;
             placeholder-text: GalleryStrings.texts[32];
+            accepted => { root.save(root.new-group); }
         }
         if root.error != "": Text {
             x: 18px; y: group-list.y + group-list.height + 48px;

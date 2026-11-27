@@ -682,6 +682,7 @@ export component MainWindow inherits Window {
         root.recent-tooltip-id = "";
         root.recent-tooltip-index = -1;
         root.alias-open = false;
+        root.rename-group-open = false;
         root.delete-open = false;
         root.disconnect-open = false;
         root.device-group-open = false;
@@ -920,7 +921,8 @@ export component MainWindow inherits Window {
         && !root.self-host-settings-open && !root.about-open && !root.feedback-open
         && !root.update-dialog-visible && !root.messages-open
         && !root.update-confirm-open
-        && !root.reset-password-open && !root.alias-open && !root.delete-open
+        && !root.reset-password-open && !root.alias-open
+        && !root.rename-group-open && !root.delete-open
         && !root.disconnect-open
         && !root.device-group-open && !root.connection-dialog-open && !root.lan-open
         && !root.permission-dialog-open && !root.wayland-notice-open
@@ -949,6 +951,37 @@ export component MainWindow inherits Window {
     in-out property <bool> alias-open: false;
     private property <string> alias-remote-id: "";
     in-out property <string> alias-input: "";
+    in-out property <bool> rename-group-open: false;
+    in-out property <string> rename-group-target: "";
+    in-out property <string> rename-group-input: "";
+    in-out property <string> rename-group-error: "";
+    callback rename-group(string, string) -> bool;
+    changed rename-group-open => {
+        if !root.rename-group-open {
+            root.rename-group-target = "";
+            root.rename-group-input = "";
+            root.rename-group-error = "";
+        }
+    }
+    function open-rename-group(name: string) {
+        if name == "" { return; }
+        root.gallery-action("release", "");
+        root.recent-tooltip-visible = false;
+        root.rename-group-target = name;
+        root.rename-group-input = name;
+        root.rename-group-error = "";
+        root.rename-group-open = true;
+    }
+    function submit-rename-group() {
+        if root.rename-group-target == "" { return; }
+        if root.rename-group(root.rename-group-target, root.rename-group-input) {
+            root.rename-group-open = false;
+        }
+    }
+    public function invalidate-group-rename(message: string) {
+        root.rename-group-target = "";
+        root.rename-group-error = message;
+    }
     in-out property <bool> delete-open: false;
     callback delete-group(string) -> bool;
     private property <string> delete-group-name;
@@ -958,6 +991,9 @@ export component MainWindow inherits Window {
     }
     function confirm-delete-group(name: string) {
         if name == "" { return; }
+        root.gallery-action("release", "");
+        focus-sink.focus();
+        root.recent-tooltip-visible = false;
         root.delete-group-name = name;
         root.delete-group-failed = false;
         root.delete-open = true;
@@ -1805,6 +1841,8 @@ export component MainWindow inherits Window {
                 hover-outline-color: UiSurface.hover;
                 focus-outline-color: WorkbenchStyle.accent;
                 model: root.recent-groups;
+                rename-label: GalleryStrings.texts[220];
+                rename-requested(name) => { root.open-rename-group(name); }
                 delete-label: GalleryStrings.texts[217];
                 delete-requested(name) => { root.confirm-delete-group(name); }
                 current-index <=> root.recent-group-index;
@@ -2111,6 +2149,7 @@ export component MainWindow inherits Window {
             key-input(text, pressed, ctrl, alt, shift, meta) => { root.gallery-key(text, pressed, ctrl, alt, shift, meta); }
             tiles: root.gallery-tiles; groups: root.gallery-groups;
             group-index <=> root.gallery-group-index;
+            rename-group-requested(name) => { root.open-rename-group(name); }
             delete-group-requested(name) => { root.confirm-delete-group(name); }
             page: root.gallery-page; pages: root.gallery-pages; count: root.gallery-count;
             connected-count: root.gallery-connected; selected-count: root.gallery-selected;
@@ -2603,13 +2642,17 @@ export component MainWindow inherits Window {
     // One editor and one callback path for recent connections and DeskHub.
     if root.device-group-open: DeviceGroupDialog {
         z: 40;
+        editing-enabled: !root.rename-group-open && !root.delete-open;
         device-id: root.device-group-id;
         device-name: root.device-group-name;
         options: root.device-group-options;
         error: root.device-group-error;
         new-group <=> root.device-group-new-name;
         toggle-group(name) => { root.device-group-action("toggle", name); }
+        rename-group(name) => { root.open-rename-group(name); }
+        delete-group(name) => { root.confirm-delete-group(name); }
         save(name) => {
+            if root.rename-group-open || root.delete-open { return; }
             if root.device-group-save(name) {
                 root.device-group-action("close", "");
                 root.device-group-open = false;
@@ -2649,11 +2692,90 @@ export component MainWindow inherits Window {
         }
     }
 
-    // Delete confirmation modal.
-    if root.delete-open: Rectangle {
+    // Rename group modal.
+    if root.rename-group-open: Rectangle {
         background: #00000042;
-        z: 40;
-        TouchArea { clicked => { focus-sink.focus(); } }
+        z: 42;
+        TouchArea { clicked => { rename-group-focus.focus(); } }
+        rename-group-focus := FocusScope {
+            width: parent.width;
+            height: parent.height;
+            key-pressed(event) => {
+                if event.text == Key.Escape {
+                    root.rename-group-open = false;
+                    return accept;
+                }
+                return reject;
+            }
+            Timer {
+                interval: 1ms;
+                running: true;
+                triggered => {
+                    self.running = false;
+                    rename-group-editor.focus();
+                }
+            }
+            DialogSurface {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: min(360px, parent.width - 40px);
+                height: rename-group-content.preferred-height;
+                TouchArea { clicked => { rename-group-focus.focus(); } }
+                rename-group-content := VerticalLayout {
+                    padding: 20px; spacing: 14px;
+                    Text {
+                        text: GalleryStrings.texts[220] + (root.rename-group-target == "" ? "" : " · " + root.rename-group-target);
+                        color: #24272d; font-size: 14px; font-weight: 600;
+                        overflow: elide; horizontal-alignment: center;
+                    }
+                    rename-group-editor := RoundedLineEdit {
+                        height: 30px;
+                        normal-outline-color: root.rename-group-error != "" ? UiSurface.error : UiSurface.edge;
+                        text <=> root.rename-group-input;
+                        placeholder-text: GalleryStrings.texts[221];
+                        edited => { if root.rename-group-target != "" { root.rename-group-error = ""; } }
+                        accepted => { root.submit-rename-group(); }
+                    }
+                    if root.rename-group-error != "": Text {
+                        text: root.rename-group-error;
+                        color: #c53e3e; font-size: 11px;
+                        wrap: word-wrap; horizontal-alignment: center;
+                    }
+                    HorizontalLayout {
+                        alignment: center; spacing: 8px;
+                        PrimaryButton {
+                            text: UiStrings.ok;
+                            enabled: root.rename-group-target != "" && root.rename-group-input != "";
+                            clicked => { root.submit-rename-group(); }
+                        }
+                        SecondaryButton {
+                            text: UiStrings.cancel;
+                            clicked => { root.rename-group-open = false; }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Delete confirmation modal.
+    if root.delete-open: FocusScope {
+        width: parent.width; height: parent.height;
+        z: 42;
+        key-pressed(event) => {
+            if event.text == Key.Escape { root.delete-open = false; return accept; }
+            if event.text == Key.Tab {
+                if delete-cancel.has-focus { delete-confirm.focus(); }
+                else { delete-cancel.focus(); }
+            }
+            return accept;
+        }
+        Timer {
+            interval: 1ms; running: true;
+            triggered => { self.running = false; delete-cancel.focus(); }
+        }
+        Rectangle { background: #00000042; }
+        TouchArea { scroll-event(event) => { accept } }
         DialogSurface {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
@@ -2671,14 +2793,20 @@ export component MainWindow inherits Window {
                 }
                 HorizontalLayout {
                     alignment: center; spacing: 8px;
-                    PrimaryButton { text: UiStrings.ok; clicked => {
-                        if root.delete-group-name != "" {
-                            if !root.delete-group(root.delete-group-name) { root.delete-group-failed = true; return; }
-                        } else if root.delete-from-gallery { root.gallery-action("remove", root.delete-remote-id); }
-                        else { root.recent-delete(root.delete-remote-id); }
-                        root.delete-open = false;
-                    } }
-                    SecondaryButton { text: UiStrings.cancel; clicked => { root.delete-open = false; } }
+                    delete-confirm := WorkbenchButton {
+                        width: 88px; height: 32px; primary: true; text: UiStrings.ok;
+                        clicked => {
+                            if root.delete-group-name != "" {
+                                if !root.delete-group(root.delete-group-name) { root.delete-group-failed = true; return; }
+                            } else if root.delete-from-gallery { root.gallery-action("remove", root.delete-remote-id); }
+                            else { root.recent-delete(root.delete-remote-id); }
+                            root.delete-open = false;
+                        }
+                    }
+                    delete-cancel := WorkbenchButton {
+                        width: 88px; height: 32px; text: UiStrings.cancel;
+                        clicked => { root.delete-open = false; }
+                    }
                 }
             }
         }

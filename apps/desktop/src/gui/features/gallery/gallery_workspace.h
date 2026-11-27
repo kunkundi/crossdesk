@@ -8,12 +8,14 @@
 #define _GALLERY_WORKSPACE_H_
 
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "gallery_storage.h"
@@ -181,6 +183,118 @@ struct Workspace {
   bool HasAssignments(const std::string &id) const {
     return std::any_of(members.begin(), members.end(),
                        [&](const auto &m) { return m.id == id; });
+  }
+  static constexpr size_t kMaxGroupNameLength = 64;
+
+  enum class GroupNameError {
+    kOk,
+    kEmpty,
+    kTooLong,
+    kReserved,
+    kNotFound,
+    kDuplicate,
+  };
+
+  static std::string TrimGroupName(std::string_view input) {
+    // UTF-8 encodings of the Unicode White_Space property, independent of locale.
+    static constexpr auto spaces = std::to_array<std::string_view>({
+        " ", "\t", "\n", "\v", "\f", "\r", "\u0085", "\u00a0", "\u1680",
+        "\u2000", "\u2001", "\u2002", "\u2003", "\u2004", "\u2005", "\u2006",
+        "\u2007", "\u2008", "\u2009", "\u200a", "\u2028", "\u2029", "\u202f",
+        "\u205f", "\u3000"});
+    while (!input.empty()) {
+      const auto space = std::find_if(spaces.begin(), spaces.end(),
+          [&](auto s) { return input.starts_with(s); });
+      if (space == spaces.end()) break;
+      input.remove_prefix(space->size());
+    }
+    while (!input.empty()) {
+      const auto space = std::find_if(spaces.begin(), spaces.end(),
+          [&](auto s) { return input.ends_with(s); });
+      if (space == spaces.end()) break;
+      input.remove_suffix(space->size());
+    }
+    return std::string(input);
+  }
+  static size_t GroupNameLength(std::string_view name) {
+    size_t count = 0;
+    for (unsigned char ch : name)
+      if ((ch & 0xC0) != 0x80)
+        ++count;
+    return count;
+  }
+  static bool HasControlCharacters(std::string_view name) {
+    return std::any_of(name.begin(), name.end(), [](unsigned char ch) {
+      return ch < 0x20 || ch == 0x7F;
+    });
+  }
+  static bool IsReservedGroupName(
+      std::string_view name,
+      const std::vector<std::string> &extra_reserved = {}) {
+    if (name == "全部设备" || name == "未分组" ||
+        name == "All devices" || name == "Ungrouped")
+      return true;
+    return std::any_of(extra_reserved.begin(), extra_reserved.end(),
+                       [&](const auto &reserved) {
+                         return !reserved.empty() && name == reserved;
+                       });
+  }
+  GroupNameError ValidateGroupName(
+      std::string_view candidate,
+      const std::vector<std::string> &extra_reserved = {}) const {
+    const auto trimmed = TrimGroupName(candidate);
+    if (trimmed.empty() || HasControlCharacters(trimmed))
+      return GroupNameError::kEmpty;
+    if (GroupNameLength(trimmed) > kMaxGroupNameLength)
+      return GroupNameError::kTooLong;
+    if (IsReservedGroupName(trimmed, extra_reserved))
+      return GroupNameError::kReserved;
+    return GroupNameError::kOk;
+  }
+  bool HasGroup(std::string_view name) const {
+    return std::find(groups.begin(), groups.end(), name) != groups.end();
+  }
+  GroupNameError ResolveAssignmentGroup(
+      std::string &name, const std::vector<std::string> &extra_reserved) const {
+    // Reuse persisted names verbatim, including names accepted by older clients.
+    if (name.empty() || HasGroup(name)) return GroupNameError::kOk;
+    name = TrimGroupName(name);
+    if (HasGroup(name)) return GroupNameError::kOk;
+    return ValidateGroupName(name, extra_reserved);
+  }
+  GroupNameError ValidateRenameGroup(
+      const std::string &old_name, const std::string &new_name,
+      const std::vector<std::string> &extra_reserved = {}) const {
+    if (old_name.empty() || !HasGroup(old_name))
+      return GroupNameError::kNotFound;
+    const auto name_error = ValidateGroupName(new_name, extra_reserved);
+    if (name_error != GroupNameError::kOk)
+      return name_error;
+    const auto trimmed = TrimGroupName(new_name);
+    if (trimmed != old_name && HasGroup(trimmed))
+      return GroupNameError::kDuplicate;
+    return GroupNameError::kOk;
+  }
+  bool RenameGroup(std::string old_name, const std::string &new_name) {
+    if (ValidateRenameGroup(old_name, new_name) != GroupNameError::kOk)
+      return false;
+    const auto trimmed = TrimGroupName(new_name);
+    if (trimmed == old_name)
+      return true;
+    const auto group_it = std::find(groups.begin(), groups.end(), old_name);
+    *group_it = trimmed;
+    std::vector<Member> updated;
+    updated.reserve(members.size());
+    std::set<std::string> seen_renamed;
+    for (auto &member : members) {
+      if (member.group == old_name)
+        member.group = trimmed;
+      if (member.group == trimmed && !seen_renamed.insert(member.id).second)
+        continue;
+      updated.push_back(std::move(member));
+    }
+    members = std::move(updated);
+    return true;
   }
   bool DeleteGroup(std::string name) {
     if (name.empty() || !std::erase(groups, name)) return false;
