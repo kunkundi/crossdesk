@@ -1,9 +1,11 @@
 /*
+ * @Author: DI JUNKUN
+ * @Date: 2026-11-26
  * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
  */
 
-#ifndef CROSSDESK_LOGIN_LAUNCH_POLICY_H_
-#define CROSSDESK_LOGIN_LAUNCH_POLICY_H_
+#ifndef _LOGIN_LAUNCH_POLICY_H_
+#define _LOGIN_LAUNCH_POLICY_H_
 
 #include <chrono>
 
@@ -95,4 +97,4 @@ class LoginLaunchTrayPolicy {
 
 }  // namespace crossdesk
 
-#endif  // CROSSDESK_LOGIN_LAUNCH_POLICY_H_
+#endif

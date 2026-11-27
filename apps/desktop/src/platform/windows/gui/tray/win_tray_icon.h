@@ -1,4 +1,6 @@
 /*
+ * @Author: DI JUNKUN
+ * @Date: 2026-11-26
  * Copyright (c) 2026 by DI JUNKUN, All Rights Reserved.
  */
 
@@ -194,4 +196,4 @@ class WinTrayIconHost {
 
 }  // namespace crossdesk
 
-#endif  // _WIN_TRAY_ICON_H_
+#endif
