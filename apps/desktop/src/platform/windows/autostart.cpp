@@ -207,32 +207,61 @@ bool ReadInstalledAction(IRegisteredTask* task, const std::wstring& executable,
 }
 
 bool MigrateLogonTask(const std::wstring& app_name, const std::wstring& executable) {
-  const auto sid = CurrentUserSid();
   TaskScheduler scheduler;
-  if (sid.empty() || !scheduler.Open()) return false;
-  auto name = MakeBstr(AutostartTaskName(app_name, sid));
-  ComPtr<IRegisteredTask> task;
-  if (!name) return false;
-  const HRESULT result = scheduler.folder->GetTask(name.get(), task.GetAddressOf());
-  if (result == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND) ||
-      result == HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND)) return true;
-  if (!Check(result, "read logon task")) return false;
-  ComPtr<ITaskDefinition> definition;
-  ComPtr<IExecAction> exec;
-  if (!ReadInstalledAction(task.Get(), executable, definition, exec)) return false;
-  if (!exec) return true;
-  BSTR raw_args = nullptr;
-  if (!Check(exec->get_Arguments(&raw_args), "read logon arguments")) return false;
-  Bstr args(raw_args, SysFreeString);
-  if (args && *args.get()) return true;  // Already marked or customized.
-  auto marker = MakeBstr(L"--autostart");
-  if (!marker || !Check(exec->put_Arguments(marker.get()), "set logon arguments")) return false;
-  const VARIANT empty{};
-  ComPtr<IRegisteredTask> updated;
-  return Check(scheduler.folder->RegisterTaskDefinition(
-                   name.get(), definition.Get(), TASK_UPDATE | TASK_IGNORE_REGISTRATION_TRIGGERS,
-                   empty, empty, TASK_LOGON_INTERACTIVE_TOKEN, empty, updated.GetAddressOf()),
-               "update logon arguments");
+  if (!scheduler.Open()) return false;
+  ComPtr<IRegisteredTaskCollection> tasks;
+  if (!Check(scheduler.folder->GetTasks(TASK_ENUM_HIDDEN, tasks.GetAddressOf()),
+             "enumerate logon tasks"))
+    return false;
+  LONG count = 0;
+  if (!Check(tasks->get_Count(&count), "count logon tasks")) return false;
+  const auto prefix = app_name + L" Autostart ";
+  for (LONG index = 1; index <= count; ++index) {
+    VARIANT item{};
+    item.vt = VT_I4;
+    item.lVal = index;
+    ComPtr<IRegisteredTask> task;
+    if (!Check(tasks->get_Item(item, task.GetAddressOf()), "read logon task"))
+      return false;
+    BSTR raw_name = nullptr;
+    if (!Check(task->get_Name(&raw_name), "read task name")) return false;
+    Bstr name(raw_name, SysFreeString);
+    const std::wstring task_text(name.get() ? name.get() : L"");
+    if (task_text.compare(0, prefix.size(), prefix) != 0) continue;
+    ComPtr<ITaskDefinition> definition;
+    ComPtr<IExecAction> exec;
+    if (!ReadInstalledAction(task.Get(), executable, definition, exec)) return false;
+    if (!exec) continue;
+    BSTR raw_args = nullptr;
+    if (!Check(exec->get_Arguments(&raw_args), "read logon arguments")) return false;
+    Bstr args(raw_args, SysFreeString);
+    if (args && *args.get()) continue;  // Already marked or customized.
+    auto marker = MakeBstr(L"--autostart");
+    if (!marker || !Check(exec->put_Arguments(marker.get()), "set logon arguments"))
+      return false;
+    ComPtr<IPrincipal> principal;
+    BSTR raw_user = nullptr;
+    if (!Check(definition->get_Principal(principal.GetAddressOf()),
+               "read task principal") ||
+        !Check(principal->get_UserId(&raw_user), "read task principal user"))
+      return false;
+    Bstr user(raw_user, SysFreeString);
+    VARIANT user_id{};
+    if (user && *user.get()) {
+      user_id.vt = VT_BSTR;
+      user_id.bstrVal = user.get();
+    }
+    const VARIANT empty{};
+    ComPtr<IRegisteredTask> updated;
+    if (!Check(scheduler.folder->RegisterTaskDefinition(
+                   name.get(), definition.Get(),
+                   TASK_UPDATE | TASK_IGNORE_REGISTRATION_TRIGGERS, user_id,
+                   empty, TASK_LOGON_INTERACTIVE_TOKEN, empty,
+                   updated.GetAddressOf()),
+               "update logon arguments"))
+      return false;
+  }
+  return true;
 }
 
 }  // namespace
@@ -297,8 +326,9 @@ bool MigrateLegacyAutostart(const std::string& app_name) {
   if (result == ERROR_SUCCESS) {
     if (command.size() >= 2 && command.front() == L'"' && command.back() == L'"')
       command = command.substr(1, command.size() - 2);
-    if (_wcsicmp(command.c_str(), path.c_str()) == 0)
-      return EnableAutostart(app_name, executable);
+    if (_wcsicmp(command.c_str(), path.c_str()) == 0 &&
+        !EnableAutostart(app_name, executable))
+      return false;
   } else if (result != ERROR_FILE_NOT_FOUND && result != ERROR_PATH_NOT_FOUND) {
     return false;
   }

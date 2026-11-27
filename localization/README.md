@@ -1,6 +1,6 @@
 # CrossDesk 界面本地化
 
-桌面端和 Android、iOS、HarmonyOS 移动端支持以下 10 种界面语言：
+桌面端和 Android、iOS、HarmonyOS 移动端支持以下 11 种界面语言：
 
 | 语言 | 标识 |
 | --- | --- |
@@ -14,6 +14,7 @@
 | Français | `fr` |
 | Español | `es` |
 | Português (Brasil) | `pt-BR` |
+| Türkçe | `tr` |
 
 ## 语言选择
 
@@ -41,6 +42,6 @@ python3 localization/generate.py --check
 
 生成器使用 Python 标准库，输出桌面 C++ 文案表、Android 原生资源及语言声明、iOS `.lproj` 资源，以及 HarmonyOS 文案表。`--check` 检查语言覆盖、格式占位符和生成文件是否同步。
 
-新增文案时，在 `strings` 中提供所有语言的译文，并加入 `platforms` 中对应的平台列表。桌面命名键同时加入 `desktop`；Slint 使用的键追加到 `slint` 列表末尾，已有索引不能重排。桌面语言顺序中的前 3 项与历史配置兼容，修改顺序需要配置迁移。
+新增文案时，在 `strings` 中提供所有语言的译文，并加入 `platforms` 中对应的平台列表。桌面命名键同时加入 `desktop`；Slint 使用的键追加到 `slint` 列表末尾，已有索引不能重排。新增语言同样追加到 `languages` 末尾。桌面配置值 10 保留给“跟随系统”，土耳其语使用 11。
 
 占位符须完整保留：Android/HarmonyOS 使用 `{0}` 等位置占位符；iOS 使用 `%1$@` 等位置格式；已有桌面文案使用其原有格式。不同语言可以调整占位符位置，但不能更改数量或类型。新语言的初始译文包含机器辅助翻译，发布前应由对应语言使用者复核术语、语气及长文本。

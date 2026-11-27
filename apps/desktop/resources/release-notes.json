@@ -48,5 +48,10 @@
     "Cada dispositivo remoto abre em sua própria janela de controle. Ao reconectar, a janela volta ao tamanho usado anteriormente.",
     "No macOS e no Windows, agora é possível escolher uma tela de privacidade totalmente preta nas configurações.",
     "O botão flutuante de controle remoto esmaece e se recolhe após três segundos de inatividade."
+  ],
+  "tr": [
+    "Her uzak cihaz ayrı bir denetim penceresinde açılır. Yeniden bağlandığınızda pencere o cihazda en son kullandığınız boyuta döner.",
+    "macOS ve Windows’ta Ayarlar’dan gizlilik ekranını tamamen siyah gösterebilirsiniz.",
+    "Üç saniye boyunca işlem yapılmadığında yüzer denetim düğmesi soluklaşarak küçülür."
   ]
 }

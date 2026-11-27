@@ -992,8 +992,18 @@ int CrossDeskServiceHost::RunInConsole() {
 }
 
 int CrossDeskServiceHost::InitializeRuntime() {
-  if (IsUnattendedEnabled() && !PrepareUnattendedDirectoryForService())
-    LOG_ERROR("Cannot prepare the protected machine identity directory");
+  if (IsUnattendedEnabled()) {
+    std::string directory_diagnostic;
+    bool directory_repaired = false;
+    if (!PrepareUnattendedDirectoryForService(&directory_diagnostic,
+                                              &directory_repaired)) {
+      LOG_ERROR("Cannot prepare the protected machine identity directory: {}",
+                directory_diagnostic);
+    } else if (directory_repaired) {
+      LOG_WARN("Repaired machine identity directory permissions: {}",
+               directory_diagnostic);
+    }
+  }
   stop_event_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
   if (stop_event_ == nullptr) {
     DWORD error = GetLastError();
@@ -1210,9 +1220,21 @@ void CrossDeskServiceHost::ClientProcessMonitorLoop() {
 }
 
 bool CrossDeskServiceHost::LaunchUnattendedHost(DWORD session_id) {
-  if (!IsLocalSystemProcess() || !PrepareUnattendedDirectory(false)) {
-    LOG_ERROR("Unattended host requires SYSTEM and a private machine profile");
+  std::string directory_diagnostic;
+  bool directory_repaired = false;
+  if (!IsLocalSystemProcess() ||
+      !RepairUnattendedDirectory(false, &directory_diagnostic,
+                                 &directory_repaired)) {
+    LOG_ERROR(
+        "Unattended host requires SYSTEM and a private machine profile: {}",
+        directory_diagnostic.empty() ? "not running as SYSTEM"
+                                     : directory_diagnostic);
     return false;
+  }
+  if (directory_repaired) {
+    LOG_WARN(
+        "Repaired machine identity directory permissions before host launch: {}",
+        directory_diagnostic);
   }
   const auto executable =
       std::filesystem::path(GetCurrentExecutablePathW()).parent_path() /

@@ -476,7 +476,7 @@ struct Mobile {
       ForEach(this.state.announcements, (item: AnnouncementItem) => {
         Column({ space: 8 }) {
           Row({ space: 8 }) { if (!item.read) { Row() {}.width(6).height(6).borderRadius(3).backgroundColor(MobileTheme.blue) } Text(item.title).fontSize(17).fontWeight(600).layoutWeight(1) }.width('100%')
-          Text(new Date(item.updated_at * 1000).toLocaleDateString('zh-CN')).fontSize(12).fontColor(MobileTheme.secondary).width('100%')
+          Text(new Date(item.updated_at * 1000).toLocaleDateString()).fontSize(12).fontColor(MobileTheme.secondary).width('100%')
           Text(item.body).fontSize(13).fontColor(MobileTheme.secondary).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
         }.padding(18).width('100%').backgroundColor(Color.White).borderRadius(18).border({ width: 0.5, color: MobileTheme.line })
           .onClick(() => this.openAnnouncement(item)).gesture(LongPressGesture().onAction(() => { this.state.announcement = item; this.state.modal = 'deleteAnnouncement'; }))

@@ -4,8 +4,9 @@
 #include <cstring>
 #include <nlohmann/json.hpp>
 #include <openssl/rand.h>
-#include <stdexcept>
 #include <set>
+#include <stdexcept>
+#include <system_error>
 
 #include "common/credential_cache.h"
 #include "private_file.h"
@@ -24,6 +25,14 @@ struct Handle {
 void Require(bool ok, const char* message) {
   if (!ok) throw std::runtime_error(message);
 }
+void RequireMachineDirectory(bool create) {
+  std::string diagnostic;
+  if (!RepairUnattendedDirectory(create, &diagnostic))
+    throw std::runtime_error("Cannot prepare machine identity directory: " + diagnostic);
+}
+[[noreturn]] void ThrowIoError(DWORD code, const char* operation) {
+  throw std::system_error(static_cast<int>(code), std::system_category(), operation);
+}
 uint64_t Created(HANDLE process) {
   FILETIME created{}, exited{}, kernel{}, user{};
   if (!GetProcessTimes(process, &created, &exited, &kernel, &user)) return 0;
@@ -37,12 +46,24 @@ std::wstring ProcessPath(HANDLE process) {
 }
 std::string Read(const std::filesystem::path& path, DWORD limit = 256 * 1024) {
   const DWORD sharing = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
-  Handle file{path.parent_path() == UnattendedDataPath()
-      ? unattended_detail::OpenPrivateMachineFile(UnattendedDataPath(), path,
-                                                 GENERIC_READ, sharing, OPEN_EXISTING)
+  const auto root = UnattendedDataPath();
+  std::string diagnostic;
+  Handle file{path.parent_path() == root
+      ? unattended_detail::OpenPrivateMachineFile(root, path, GENERIC_READ,
+            sharing, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, &diagnostic)
       : CreateFileW(path.c_str(), GENERIC_READ, sharing, nullptr, OPEN_EXISTING,
                     FILE_FLAG_OPEN_REPARSE_POINT, nullptr)};
-  Require(file.value != INVALID_HANDLE_VALUE, "Cannot open shared identity data");
+  if (file.value == INVALID_HANDLE_VALUE) {
+    const DWORD code = GetLastError();
+    const auto name = path.filename().string();
+    if (!diagnostic.empty()) {
+      const auto recovery = path.filename() == kSnapshot
+          ? ". Restore the machine identity from a trusted backup." : "";
+      throw std::runtime_error(name + ": " + diagnostic + recovery);
+    }
+    throw std::system_error(static_cast<int>(code), std::system_category(),
+                            "Cannot open " + name);
+  }
   BY_HANDLE_FILE_INFORMATION info{};
   Require(GetFileInformationByHandle(file.value, &info) &&
       !(info.dwFileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY)) &&
@@ -50,8 +71,9 @@ std::string Read(const std::filesystem::path& path, DWORD limit = 256 * 1024) {
       "Invalid shared identity file");
   std::string value(info.nFileSizeLow, '\0');
   DWORD read = 0;
-  Require(ReadFile(file.value, value.data(), static_cast<DWORD>(value.size()), &read,
-                   nullptr) && read == value.size(), "Cannot read shared identity data");
+  if (!ReadFile(file.value, value.data(), static_cast<DWORD>(value.size()), &read, nullptr))
+    ThrowIoError(GetLastError(), "Cannot read shared identity data");
+  Require(read == value.size(), "Incomplete shared identity data");
   return value;
 }
 Json Document(const std::filesystem::path& path) {
@@ -66,8 +88,8 @@ Json PrivateDocument(const std::filesystem::path& path) {
 }
 void WriteMachine(const wchar_t* name, const std::string& contents) {
   const auto root = UnattendedDataPath();
-  Require(unattended_detail::WritePrivateMachineFile(root, root / name, contents),
-          "Cannot persist machine identity");
+  if (!unattended_detail::WritePrivateMachineFile(root, root / name, contents))
+    ThrowIoError(GetLastError(), "Cannot persist machine identity");
 }
 HANDLE Lock(const wchar_t* name) {
   const auto root = UnattendedDataPath();
@@ -167,7 +189,9 @@ void ValidateTrustedDevices(const Json& devices) {
   }
 }
 Json Snapshot() {
-  Require(PrepareUnattendedDirectory(false), "Machine identity directory is not private");
+  std::string diagnostic;
+  if (!PrepareUnattendedDirectory(false, &diagnostic))
+    throw std::runtime_error("Machine identity directory is not private: " + diagnostic);
   auto data = Document(UnattendedDataPath() / kSnapshot);
   Require(data.at("version") == 1 && data.at("host_config").is_string(),
           "Unsupported shared identity version");
@@ -221,14 +245,17 @@ bool SharedHostIdentity::GuiPresent() {
 
 std::unique_ptr<SharedHostIdentity> SharedHostIdentity::AttachGui(
     const std::filesystem::path& cache, const std::filesystem::path& trusted,
-    bool import_existing, std::string& error) {
+    bool import_existing, std::string& error, bool& retryable) {
   error.clear();
+  retryable = false;
+  Handle claim;
   bool reserved = false;
   try {
     Require(IsAdministratorProcess() && !IsLocalSystemProcess(), "Shared GUI identity requires an administrator");
-    Require(PrepareUnattendedDirectory(true), "Cannot prepare private machine identity directory");
-    Handle claim{Lock(L"gui-claim.lock")};
-    Require(claim.value != INVALID_HANDLE_VALUE, "Another GUI attachment is in progress");
+    RequireMachineDirectory(true);
+    claim.value = Lock(L"gui-claim.lock");
+    if (claim.value == INVALID_HANDLE_VALUE)
+      ThrowIoError(GetLastError(), "Cannot acquire the GUI attachment lock");
     Require(!GuiPresent(), "Another GUI is already using this machine identity");
     DWORD session = 0;
     Require(ProcessIdToSessionId(GetCurrentProcessId(), &session) && session != 0,
@@ -243,17 +270,24 @@ std::unique_ptr<SharedHostIdentity> SharedHostIdentity::AttachGui(
     if (import_existing) result->Import();
     else result->host_config_ = Snapshot().at("host_config").get<std::string>();
     return result;
-  } catch (const std::exception& failure) {
-    if (reserved) RemoveGuiOwner();
+  } catch (const std::system_error& failure) {
+    const auto code = failure.code();
+    retryable = code.category() == std::system_category() &&
+        (code.value() == ERROR_SHARING_VIOLATION || code.value() == ERROR_LOCK_VIOLATION ||
+         code.value() == ERROR_USER_MAPPED_FILE || code.value() == ERROR_BUSY);
     error = failure.what();
-    return nullptr;
+  } catch (const std::exception& failure) {
+    error = failure.what();
   }
+  if (reserved) RemoveGuiOwner();
+  return nullptr;
 }
 
 std::unique_ptr<SharedHostIdentity> SharedHostIdentity::AcquireHost(std::string& error) {
   error.clear();
   try {
-    Require(IsLocalSystemProcess() && PrepareUnattendedDirectory(false), "Machine identity requires SYSTEM");
+    Require(IsLocalSystemProcess(), "Machine identity requires SYSTEM");
+    RequireMachineDirectory(false);
     HANDLE lease = Lock(L"identity-owner.lock");
     Require(lease != INVALID_HANDLE_VALUE, "Machine identity is already in use");
     const auto cache = UnattendedDataPath() / L"host";
@@ -267,7 +301,7 @@ std::unique_ptr<SharedHostIdentity> SharedHostIdentity::AcquireHost(std::string&
 
 void SharedHostIdentity::Import() {
   const auto data = Snapshot();
-  private_file::EnsureDirectory(cache_, true);
+  private_file::EnsureDirectory(cache_, gui_);
   private_file::EnsureDirectory(trusted_);
   Json identity{{"version", 1}};
   if (std::filesystem::exists(trusted_ / "identity.json"))
@@ -329,7 +363,9 @@ bool SharedHostIdentity::Prepare(const std::filesystem::path& cache,
     const std::filesystem::path& trusted, const std::string& host_config, std::string& error) {
   error.clear();
   try {
-    Require(PrepareUnattendedDirectory(true), "Cannot prepare private machine identity directory");
+    Require(IsAdministratorProcess() || IsLocalSystemProcess(),
+            "Shared machine identity requires administrator privileges");
+    RequireMachineDirectory(true);
     if (Configured()) { Snapshot(); return true; }
     Require(!GuiPresent(), "Enable shared startup from the running GUI settings");
     HANDLE lease = Lock(L"identity-owner.lock");

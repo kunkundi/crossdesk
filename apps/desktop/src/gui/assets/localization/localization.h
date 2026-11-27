@@ -40,7 +40,7 @@ inline const std::vector<LanguageOption>& GetSupportedLanguages() {
       {"zh-CN", "简体中文"}, {"en-US", "English"}, {"ru-RU", "Русский"},
       {"zh-Hant", "繁體中文"}, {"ja", "日本語"}, {"ko", "한국어"},
       {"de", "Deutsch"}, {"fr", "Français"}, {"es", "Español"},
-      {"pt-BR", "Português (Brasil)"}};
+      {"pt-BR", "Português (Brasil)"}, {"tr", "Türkçe"}};
   return kSupportedLanguages;
 }
 

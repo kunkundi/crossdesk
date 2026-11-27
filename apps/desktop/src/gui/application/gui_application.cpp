@@ -1,4 +1,5 @@
 #include "application/gui_application.h"
+#include "application/login_launch_policy.h"
 
 #include <SDL3/SDL.h>
 #include <openssl/rand.h>
@@ -71,6 +72,7 @@
 #include "platform/windows/gui/tray/win_tray.h"
 #include "platform/windows/gui/window_icons.h"
 #include "platform/windows/gui/window_taskbar.h"
+#include "platform/windows/runtime_daemon.h"
 #include "platform/windows/service/autostart_control.h"
 #include "platform/windows/service/interactive_desktop.h"
 #include "platform/windows/service/unattended_config.h"
@@ -1226,6 +1228,7 @@ struct GuiApplication::SlintUi {
   int gallery_native_titlebar_attempts = 0;
   int localized_language = -1;
   std::chrono::steady_clock::time_point last_clipboard_poll{};
+  LoginLaunchTrayPolicy login_launch_tray;
   slint::Timer video_timer;
 #if defined(__APPLE__)
   MacVideoFrameScheduler video_scheduler;
@@ -1292,7 +1295,32 @@ int GuiApplication::Run(bool login_launch) {
         Sleep(250);
       } while (IsUnattendedEnabled() && !IsCurrentSessionUserDesktopActive());
     }
-    if (!PrepareSharedGuiIdentity(true)) return -1;
+    std::string identity_error;
+    if (!PrepareSharedGuiIdentity(true, &identity_error)) {
+      // Startup has already retried transient I/O. A new process would reset
+      // the retry budget and hide a persistent failure.
+      platform::WindowsRuntimeDaemon::Instance().Shutdown(false);
+      if (!login_launch) {
+        std::wstring text =
+            L"CrossDesk could not attach to the shared machine identity.\n\n";
+        if (!identity_error.empty()) {
+          const int needed = MultiByteToWideChar(
+              CP_UTF8, 0, identity_error.data(),
+              static_cast<int>(identity_error.size()), nullptr, 0);
+          if (needed > 0) {
+            std::wstring wide_error(static_cast<size_t>(needed), L'\0');
+            MultiByteToWideChar(CP_UTF8, 0, identity_error.data(),
+                                static_cast<int>(identity_error.size()),
+                                wide_error.data(), needed);
+            text += L"Reason: " + wide_error + L"\n\n";
+          }
+        }
+        text += L"Correct the reported problem, then open CrossDesk again.";
+        MessageBoxW(nullptr, text.c_str(), L"CrossDesk",
+                    MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+      }
+      return -1;
+    }
   }
 #endif
   InitializeTrustedDevices(path_manager_->GetConfigPath() / "trusted-devices");
@@ -1377,14 +1405,18 @@ int GuiApplication::Run(bool login_launch) {
   // The native tray icon is managed outside Slint, so Slint cannot count it
   // when deciding whether the last hidden window should stop the event loop.
   // Keep the loop alive until the tray's explicit Exit action requests quit.
-  if (!login_launch || !MinimizeMainWindowToTray()) {
-    ui_->main->show();
-#if _WIN32
-    ConfigureWindowsWindowIcons(ui_->main->window().win32_hwnd());
-#elif defined(__APPLE__)
-    ConfigureMainWindowChrome(ui_->main->window().appkit_view());
-    PrepareNativeFileDialog();
+#if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
+  const bool tray_supported = ui_->tray != nullptr;
+#else
+  const bool tray_supported = false;
 #endif
+  const bool minimized_to_tray =
+      login_launch && tray_supported && MinimizeMainWindowToTray();
+  if (ui_->login_launch_tray.Begin(login_launch, tray_supported,
+                                   minimized_to_tray,
+                                   std::chrono::steady_clock::now()) ==
+      LoginLaunchTrayPolicy::Action::kShowMainWindow) {
+    PresentInitialMainWindow();
   }
   slint::run_event_loop(slint::EventLoopMode::RunUntilQuit);
   Cleanup();
@@ -1627,6 +1659,20 @@ void GuiApplication::InitializeUi() {
   SyncMainWindow();
 }
 
+void GuiApplication::PresentInitialMainWindow() {
+  if (!ui_) {
+    return;
+  }
+  ui_->login_launch_tray.Cancel();
+  ui_->main->show();
+#if _WIN32
+  ConfigureWindowsWindowIcons(ui_->main->window().win32_hwnd());
+#elif defined(__APPLE__)
+  ConfigureMainWindowChrome(ui_->main->window().appkit_view());
+  PrepareNativeFileDialog();
+#endif
+}
+
 void GuiApplication::ShowMainWindow(const std::string& activation_token) {
 #if !defined(__linux__) || defined(__OHOS__)
   (void)activation_token;
@@ -1634,6 +1680,7 @@ void GuiApplication::ShowMainWindow(const std::string& activation_token) {
   if (!ui_) {
     return;
   }
+  ui_->login_launch_tray.Cancel();
   ui_->main->show();
   ui_->main->window().set_minimized(false);
 #if _WIN32
@@ -2883,7 +2930,29 @@ void GuiApplication::Tick() {
   if (ui_->tray) {
     ui_->tray->ProcessEvents();
   }
+#elif defined(_WIN32)
+  if (ui_->tray) {
+    ui_->tray->ProcessEvents();
+  }
 #endif
+  if (ui_->login_launch_tray.pending()) {
+    bool tray_ready_now = false;
+#if _WIN32
+    tray_ready_now = ui_->tray && ui_->tray->IsReady();
+#endif
+    const auto poll_time = std::chrono::steady_clock::now();
+    if (ui_->login_launch_tray.Poll(poll_time, tray_ready_now) ==
+        LoginLaunchTrayPolicy::Action::kRetryMinimizeToTray) {
+      if (ui_->login_launch_tray.CompleteRetry(MinimizeMainWindowToTray(),
+                                               poll_time) ==
+          LoginLaunchTrayPolicy::Action::kShowMainWindow) {
+        LOG_WARN(
+            "System tray did not become ready during login startup; showing "
+            "main window");
+        PresentInitialMainWindow();
+      }
+    }
+  }
   const auto now = std::chrono::steady_clock::now();
   if (now - ui_->last_clipboard_poll >= 250ms) {
     clipboard_.HandleLocalUpdate();

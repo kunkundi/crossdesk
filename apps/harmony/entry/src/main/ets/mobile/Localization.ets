@@ -14,7 +14,7 @@ export function languageIndex(tag: string): number {
     if (parts.includes('-hans-')) return 0;
     return ['-hant-', '-tw-', '-hk-', '-mo-'].some((part: string) => parts.includes(part)) ? 3 : 0;
   }
-  const codes = ['zh', 'en', 'ru', 'zh-hant', 'ja', 'ko', 'de', 'fr', 'es', 'pt'];
+  const codes = ['zh', 'en', 'ru', 'zh-hant', 'ja', 'ko', 'de', 'fr', 'es', 'pt', 'tr'];
   const index = codes.indexOf(base);
   return index < 0 ? 1 : index;
 }

@@ -60,13 +60,13 @@ Enter commands in that terminal while CrossDesk is running:
 | `help` | Print command help |
 | `quit` | Exit CrossDesk, preserving a reused desktop |
 
-The menu shares the GUI's `config.ini`. Each valid change is saved immediately; `cancel` discards the value being edited. Console status, menus, password messages and help follow the saved Chinese, English or Russian language setting. Command names remain the same.
+The menu shares the GUI's `config.ini`. Each valid change is saved immediately. Use `cancel` to discard the value being edited. Console status, menus, password prompts and help use the selected interface language. All languages use the same commands.
 
 H.264 automatically prefers hardware codecs, with software fallback when unavailable or initialization fails; AV1 uses software codecs. There is no separate hardware acceleration switch, and the legacy `hardware_video_codec` setting is removed automatically.
 
 | Key | Values / format | When applied |
 | --- | --- | --- |
-| `language` | `zh-CN` / `en-US` / `ru-RU` | Immediately, including the GUI; retained on restart |
+| `language` | `system` / `zh-CN` / `en-US` / `ru-RU` / `zh-Hant` / `ja` / `ko` / `de` / `fr` / `es` / `pt-BR` / `tr` | Applies immediately to the console and GUI and persists after restart |
 | `codec` | `h264` / `av1` | Reconnect after saving |
 | `turn` | `off` / `auto` / `udp` / `tcp` | Reconnect; UDP/TCP force relay use |
 | `server_host` | Hostname, IP, or HTTPS/WSS signaling URL, with optional path and explicit port | Reconnect if self-hosting is enabled; otherwise saved for later |

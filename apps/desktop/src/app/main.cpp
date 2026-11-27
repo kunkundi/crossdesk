@@ -388,7 +388,9 @@ int main(int argc, char* argv[]) {
     CSimpleIniA config;
     config.SetUnicode(true);
     config.LoadFile((paths.GetCachePath() / "config.ini").string().c_str());
-    console.SetLanguage(static_cast<int>(config.GetLongValue("Settings", "language", 10)));
+    const auto language = config.GetLongValue(
+        "Settings", "language", crossdesk::ConfigCenter::kSystemLanguageSetting);
+    console.SetLanguage(static_cast<int>(crossdesk::ConfigCenter::LanguageFromSetting(language)));
     std::cout << console.Text("console_cli_help");
     return 0;
   }
@@ -398,8 +400,9 @@ int main(int argc, char* argv[]) {
     // Internal service entry point: never elevate an ordinary invocation into
     // a SYSTEM host, and never open the GUI or the per-user daemon here.
     if (argc != 4 || !crossdesk::IsLocalSystemProcess() ||
-        (!crossdesk::IsUnattendedEnabled() && !crossdesk::SharedHostIdentity::GuiPresent()) ||
-        !crossdesk::PrepareUnattendedDirectory(false))
+        !crossdesk::RepairUnattendedDirectory(false) ||
+        (!crossdesk::IsUnattendedEnabled() &&
+         !crossdesk::SharedHostIdentity::GuiPresent()))
       return 1;
     const std::string name(argv[2]);
     if (name.rfind("Global\\CrossDeskUnattendedStop-", 0) != 0) return 1;
@@ -415,7 +418,12 @@ int main(int argc, char* argv[]) {
     }
     // Runtime members can log during construction. Select the protected host
     // log before constructing Render, not after its logger has already opened.
-    crossdesk::InitLogger((crossdesk::UnattendedDataPath() / L"logs").string());
+    const auto log_directory = crossdesk::UnattendedLogPath();
+    if (log_directory.empty()) {
+      CloseHandle(stop);
+      return 1;
+    }
+    crossdesk::InitLogger(log_directory.string());
     crossdesk::Render render;
     const int result = render.RunUnattended(stop);
     CloseHandle(stop);

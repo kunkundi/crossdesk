@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
+#include <iterator>
 #include <optional>
 
 #include "config_center.h"
@@ -25,16 +26,16 @@ std::optional<bool> Boolean(const std::string& value) {
   return std::nullopt;
 }
 const char* OnOff(bool value) { return value ? "on" : "off"; }
-const char* languages[] = {"zh-CN", "en-US", "ru-RU", "zh-Hant", "ja", "ko", "de", "fr", "es", "pt-BR", "system"};
+const char* languages[] = {"zh-CN", "en-US", "ru-RU", "zh-Hant", "ja", "ko", "de", "fr", "es", "pt-BR", "system", "tr"};
 const char* codecs[] = {"h264", "av1", "h265"};
 const char* turn_modes[] = {"off", "auto", "udp", "tcp"};
 }  // namespace
 
 std::vector<ConsoleSetting> GetConsoleSettings(const ConfigCenter& config) {
-  const auto language = std::clamp(static_cast<int>(config.GetLanguage()), 0, 10);
+  const auto language = ConfigCenter::LanguageSettingValue(config.GetLanguage());
   const auto turn = std::clamp(static_cast<int>(config.GetTurnMode()), 0, 3);
   return {
-      {"language", "console_setting_language", languages[language], "system / zh-CN / en-US / ru-RU / zh-Hant / ja / ko / de / fr / es / pt-BR"},
+      {"language", "console_setting_language", languages[language], "system / zh-CN / en-US / ru-RU / zh-Hant / ja / ko / de / fr / es / pt-BR / tr"},
       {"codec", "console_setting_codec", codecs[static_cast<int>(config.GetVideoEncodeFormat())], "h264 / av1 / h265"},
       {"turn", "console_setting_turn", turn_modes[turn], "off / auto / udp / tcp"},
       {"self_hosted", "console_setting_self_hosted", OnOff(config.IsSelfHosted()), "on / off"},
@@ -68,16 +69,18 @@ SettingResult ApplyConsoleSetting(ConfigCenter& config, const std::string& key,
   std::string canonical = input;
   std::function<int()> save;
   if (key == "language") {
-    int language = value == "zh-cn" || value == "zh" || value == "0" ? 0
-                  : value == "en-us" || value == "en" || value == "1" ? 1
-                  : value == "ru-ru" || value == "ru" || value == "2" ? 2 : -1;
+    int language = value == "zh" ? 0 : value == "en" ? 1 : value == "ru" ? 2 : -1;
     if (language < 0) {
-      for (int i = 0; i <= 10; ++i)
-        if (value == Lower(languages[i]) || value == std::to_string(i)) language = i;
+      for (int i = 0; i < static_cast<int>(std::size(languages)); ++i) {
+        if (value == Lower(languages[i]) || value == std::to_string(i)) {
+          language = i;
+          break;
+        }
+      }
     }
     if (language < 0) return result;
     canonical = languages[language];
-    save = [&config, language] { return config.SetLanguage(static_cast<ConfigCenter::LANGUAGE>(language)); };
+    save = [&config, language] { return config.SetLanguage(ConfigCenter::LanguageFromSetting(language)); };
   } else if (key == "codec") {
     const auto found = std::find(std::begin(codecs), std::end(codecs), value);
     if (found == std::end(codecs)) return result;
