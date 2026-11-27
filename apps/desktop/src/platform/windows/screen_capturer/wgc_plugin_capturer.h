@@ -23,7 +23,8 @@ class WgcPluginCapturer final : public ScreenCapturer {
   using SetCursorFn = decltype(&CrossDeskSetWgcCursorCapture);
   using FrameCursorFn = decltype(&CrossDeskWgcFrameCapturesCursor);
 
-  static std::unique_ptr<ScreenCapturer> Create() {
+  // The rate source, when supplied, outlives the plugin instance.
+  static std::unique_ptr<ScreenCapturer> Create(const std::atomic<int>* frame_rate = nullptr) {
     wchar_t module_path[MAX_PATH] = {0};
     const DWORD len = GetModuleFileNameW(nullptr, module_path, MAX_PATH);
     if (len == 0 || len >= MAX_PATH) {
@@ -46,7 +47,13 @@ class WgcPluginCapturer final : public ScreenCapturer {
       return nullptr;
     }
 
-    ScreenCapturer* impl = create_fn();
+    auto create_with_rate = reinterpret_cast<decltype(&CrossDeskCreateWgcCapturerWithFrameRate)>(
+        GetProcAddress(module, "CrossDeskCreateWgcCapturerWithFrameRate"));
+    const auto read_rate = [](const void* context) {
+      return static_cast<const std::atomic<int>*>(context)->load(std::memory_order_relaxed);
+    };
+    ScreenCapturer* impl = frame_rate && create_with_rate
+        ? create_with_rate(read_rate, frame_rate) : create_fn();
     if (!impl) {
       FreeLibrary(module);
       return nullptr;

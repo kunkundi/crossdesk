@@ -21,8 +21,13 @@ void InitializePluginLogger() {
 extern "C" {
 
 crossdesk::ScreenCapturer* CrossDeskCreateWgcCapturer() {
+  return CrossDeskCreateWgcCapturerWithFrameRate(nullptr, nullptr);
+}
+
+crossdesk::ScreenCapturer* CrossDeskCreateWgcCapturerWithFrameRate(
+    CrossDeskWgcReadFrameRate read_rate, const void* context) {
   InitializePluginLogger();
-  return new crossdesk::ScreenCapturerWgc();
+  return new crossdesk::ScreenCapturerWgc(read_rate, context);
 }
 
 void CrossDeskDestroyWgcCapturer(crossdesk::ScreenCapturer* capturer) {

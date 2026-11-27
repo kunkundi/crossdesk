@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "capture_frame_pacer.h"
 #include "captured_cursor_state.h"
 #include "cursor_frame_compositor.h"
 #include "display_label.h"
@@ -61,7 +62,8 @@ struct ScreenCapturerDxgi::FrameCursor {
   }
 };
 
-ScreenCapturerDxgi::ScreenCapturerDxgi() {}
+ScreenCapturerDxgi::ScreenCapturerDxgi(const std::atomic<int>* live_frame_rate)
+    : live_frame_rate_(live_frame_rate) {}
 ScreenCapturerDxgi::~ScreenCapturerDxgi() {
   Destroy();
 }
@@ -465,7 +467,9 @@ bool ScreenCapturerDxgi::ConvertFrame(int frame_monitor, const FrameCursor& curs
 void ScreenCapturerDxgi::CaptureLoop() {
   ScopedWindowsPhysicalCoordinates physical_coordinates;
   CursorFrameCompositor cursor_compositor;
-  const int timeout_ms = (std::max)(1, 1000 / (std::max)(1, fps_));
+  CaptureFramePacer pacer;
+  CaptureFramePacer::Clock::time_point last_sample{};
+  int sample_fps = 0;
   bool cached_frame_valid = false;
   bool cached_cursor_embedded = false;
   FrameCursor cached_cursor;
@@ -491,9 +495,21 @@ void ScreenCapturerDxgi::CaptureLoop() {
     if (paused_) {
       cached_gpu.Reset();
       cached_frame_valid = false;
+      last_sample = {};
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
       continue;
     }
+
+    const int fps = live_frame_rate_
+        ? live_frame_rate_->load(std::memory_order_relaxed) : fps_;
+    if (fps != sample_fps) {
+      sample_fps = fps;
+      LOG_INFO("DXGI: sampling desktop at {} fps", fps);
+    }
+    // Leave desktop updates pending in DXGI until we can use them. Dropping
+    // an acquired present here could lose the final update after scrolling.
+    if (last_sample != CaptureFramePacer::Clock::time_point{})
+      pacer.Wait(last_sample, fps);
 
     // Duplication/staging textures belong to one monitor. Do not release or
     // replace them in SwitchTo while AcquireNextFrame/Map is using them.
@@ -570,8 +586,9 @@ void ScreenCapturerDxgi::CaptureLoop() {
     };
     DXGI_OUTDUPL_FRAME_INFO frame_info{};
     Microsoft::WRL::ComPtr<IDXGIResource> desktop_resource;
+    last_sample = CaptureFramePacer::Clock::now();
     HRESULT hr = duplication_->AcquireNextFrame(
-        timeout_ms, &frame_info, desktop_resource.GetAddressOf());
+        0, &frame_info, desktop_resource.GetAddressOf());
     if (hr == DXGI_ERROR_WAIT_TIMEOUT) {
       // DXGI explicitly reports an unchanged desktop. Re-emit only a frame
       // successfully acquired for this monitor to keep delivering static frames.

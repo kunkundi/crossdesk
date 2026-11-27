@@ -5,9 +5,12 @@
 #include <winrt/Windows.Foundation.Metadata.h>
 #include <winrt/Windows.Graphics.Capture.h>
 
+#include <algorithm>
 #include <iostream>
 
 #include <display_stream_id.h>
+#include "capture_frame_pacer.h"
+#include "../winrt_apartment.h"
 #include "captured_cursor_state.h"
 #include "display_label.h"
 #include "libyuv.h"
@@ -53,7 +56,8 @@ HMONITOR GetPrimaryMonitor() {
   return hmonitor;
 }
 
-ScreenCapturerWgc::ScreenCapturerWgc() : monitor_(nullptr) {}
+ScreenCapturerWgc::ScreenCapturerWgc(CrossDeskWgcReadFrameRate read_rate, const void* context)
+    : monitor_(nullptr), read_rate_(read_rate), rate_context_(context) {}
 
 int ScreenCapturerWgc::SetCursorCapture(bool enabled) {
   int result = 0;
@@ -66,7 +70,6 @@ int ScreenCapturerWgc::SetCursorCapture(bool enabled) {
 }
 
 ScreenCapturerWgc::~ScreenCapturerWgc() {
-  Stop();
   CleanUp();
 
   if (nv12_frame_) {
@@ -200,6 +203,7 @@ int ScreenCapturerWgc::Start(bool show_cursor) {
 }
 
 int ScreenCapturerWgc::StartSessions(bool show_cursor) {
+  if (!frame_event_) return -1;
   bool any_started = false;
   bool active_started = false;
   int last_error = 0;
@@ -250,6 +254,25 @@ int ScreenCapturerWgc::StartSessions(bool show_cursor) {
     LOG_ERROR("WGC: no session started successfully");
     return last_error != 0 ? last_error : -1;
   }
+  sampling_thread_ = std::thread([this] {
+    ScopedWinRtApartment apartment;
+    if (!apartment.ready()) {
+      OnFrame({}, 0);
+      return;
+    }
+    CaptureFramePacer pacer;
+    bool repeat_pending = false;
+    while (running_) {
+      if (!repeat_pending) WaitForSingleObject(frame_event_.get(), INFINITE);
+      if (!running_) break;
+      const auto started = CaptureFramePacer::Clock::now();
+      const int fps = (std::clamp)(read_rate_ ? read_rate_(rate_context_) : fps_, 1, 1000);
+      repeat_pending = false;
+      for (const auto& session : sessions_)
+        repeat_pending |= session.session_->Sample(fps);
+      pacer.Wait(started, fps);
+    }
+  });
   return 0;
 }
 
@@ -283,12 +306,14 @@ int ScreenCapturerWgc::Resume(int monitor_index) {
 
 int ScreenCapturerWgc::Stop() {
   running_ = false;
+  if (sampling_thread_.joinable()) {
+    FrameAvailable();
+    sampling_thread_.join();
+  }
 
-  for (int i = 0; i < sessions_.size(); i++) {
-    if (sessions_[i].running_) {
-      sessions_[i].session_->Stop();
-      sessions_[i].running_ = false;
-    }
+  for (auto& session : sessions_) {
+    session.session_->Stop();
+    session.running_ = false;
   }
 
   return 0;
@@ -353,6 +378,7 @@ void ScreenCapturerWgc::OnFrame(const WgcSession::wgc_session_frame& frame,
   }
 
   std::lock_guard<std::mutex> lock(frame_mutex_);
+  cached_monitor_ = -1;
 
   if (on_data_) {
     if (id < 0 || id >= static_cast<int>(display_info_list_.size())) {
@@ -389,32 +415,38 @@ void ScreenCapturerWgc::OnFrame(const WgcSession::wgc_session_frame& frame,
 
     if (!nv12_frame_ || nv12_width_ != even_width ||
         nv12_height_ != even_height) {
+      auto* resized = new unsigned char[nv12_size];
       delete[] nv12_frame_;
-      nv12_frame_ = new unsigned char[nv12_size];
+      nv12_frame_ = resized;
       nv12_width_ = even_width;
       nv12_height_ = even_height;
     }
 
-    libyuv::ARGBToNV12((const uint8_t*)frame.data,
-                       static_cast<int>(frame.row_pitch), (uint8_t*)nv12_frame_,
-                       even_width,
-                       (uint8_t*)(nv12_frame_ + even_width * even_height),
-                       even_width, even_width, even_height);
+    if (libyuv::ARGBToNV12(frame.data, static_cast<int>(frame.row_pitch),
+                           nv12_frame_, even_width,
+                           nv12_frame_ + even_width * even_height, even_width,
+                           even_width, even_height) != 0) return;
 
     const std::string stream_id = MakeDisplayStreamId(id);
+    cached_monitor_ = id;
+    cached_cursor_embedded_ = frame.cursor_captured;
     CapturedCursorFrameScope cursor_scope(frame.cursor_captured);
     on_data_(nv12_frame_, nv12_size, even_width, even_height,
              stream_id.c_str(), nullptr);
   }
 }
 
+void ScreenCapturerWgc::RepeatFrame(int id) {
+  std::lock_guard lock(frame_mutex_);
+  if (!running_ || !on_data_ || cached_monitor_ != id) return;
+  const auto stream_id = MakeDisplayStreamId(id);
+  CapturedCursorFrameScope cursor_scope(cached_cursor_embedded_);
+  on_data_(nv12_frame_, nv12_width_ * nv12_height_ * 3 / 2, nv12_width_, nv12_height_,
+           stream_id.c_str(), nullptr);
+}
+
 void ScreenCapturerWgc::CleanUp() {
-  running_ = false;
-  for (auto& session : sessions_) {
-    if (session.session_) {
-      session.session_->Stop();
-    }
-  }
+  Stop();
   sessions_.clear();
   display_info_list_.clear();
   gs_display_list.clear();

@@ -36,7 +36,24 @@ public:
     auto &state = states_[id];
     if (state.request.fps != request.fps) state.next.clear();
     state.request = request;
+    if (request.fps > 0) frame_rates_[id] = request.frame_rate;
     return true;
+  }
+  void SetVideoFrameRate(const std::string& id, int fps) {
+    std::lock_guard lock(mutex_);
+    frame_rates_[id] = fps;
+  }
+  // Shared interactive capture has two rates. Sparse and paused previews
+  // keep their own downstream cadence and do not require a 60 FPS source.
+  int CaptureFrameRate(const std::vector<std::string>& connected) {
+    std::lock_guard lock(mutex_);
+    for (const auto& id : connected) {
+      const auto preview = states_.find(id);
+      if (preview != states_.end() && preview->second.request.fps < 60) continue;
+      const auto rate = frame_rates_.find(id);
+      if (rate == frame_rates_.end() || rate->second == 60) return 60;
+    }
+    return 30;
   }
   bool WantsVideo(const std::vector<std::string>& connected) {
     std::lock_guard lock(mutex_);
@@ -79,6 +96,7 @@ public:
   void Remove(const std::string &id) {
     std::lock_guard lock(mutex_);
     states_.erase(id);
+    frame_rates_.erase(id);
   }
 
 private:
@@ -89,6 +107,7 @@ private:
   };
   std::mutex mutex_;
   std::unordered_map<std::string, State> states_;
+  std::unordered_map<std::string, int> frame_rates_;
 };
 } // namespace crossdesk
 

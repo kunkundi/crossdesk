@@ -6,6 +6,8 @@
 #include <vector>
 
 #include <display_stream_id.h>
+#include "capture_frame_pacer.h"
+#include "capture_dib.h"
 #include "captured_cursor_state.h"
 #include "cursor_draw.h"
 #include "display_label.h"
@@ -14,7 +16,8 @@
 
 namespace crossdesk {
 
-ScreenCapturerGdi::ScreenCapturerGdi() {}
+ScreenCapturerGdi::ScreenCapturerGdi(const std::atomic<int>* live_frame_rate)
+    : live_frame_rate_(live_frame_rate) {}
 ScreenCapturerGdi::~ScreenCapturerGdi() {
   Stop();
   Destroy();
@@ -120,15 +123,23 @@ int ScreenCapturerGdi::ResetToInitialMonitor() {
 }
 
 void ScreenCapturerGdi::CaptureLoop() {
-  int interval_ms = fps_ > 0 ? (1000 / fps_) : 16;
+  CaptureFramePacer pacer;
+  CaptureFramePacer::Clock::time_point last_sample{};
+  CaptureDib surface;
   HDC screen_dc = GetDC(nullptr);
   bool dc_error_logged = false;
   bool capture_error_logged = false;
   while (running_) {
     if (paused_) {
+      last_sample = {};
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
       continue;
     }
+    const int fps = live_frame_rate_ ? live_frame_rate_->load(std::memory_order_relaxed) : fps_;
+    if (last_sample != CaptureFramePacer::Clock::time_point{})
+      pacer.Wait(last_sample, fps);
+    if (!running_ || paused_) continue;
+    last_sample = CaptureFramePacer::Clock::now();
     if (!screen_dc) {
       // The screen DC can be unavailable during a desktop switch; retry so
       // capture resumes once the desktop is reachable again.
@@ -137,7 +148,6 @@ void ScreenCapturerGdi::CaptureLoop() {
                  GetLastError());
         dc_error_logged = true;
       }
-      std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
       screen_dc = GetDC(nullptr);
       continue;
     }
@@ -147,7 +157,6 @@ void ScreenCapturerGdi::CaptureLoop() {
     if (idx < 0 || idx >= static_cast<int>(display_info_list_.size())) {
       LOG_ERROR("GDI: CaptureLoop invalid monitor_index {} (list size {})",
                 idx, display_info_list_.size());
-      std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
       continue;
     }
     const auto& di = display_info_list_[idx];
@@ -156,47 +165,24 @@ void ScreenCapturerGdi::CaptureLoop() {
     int width = di.width & ~1;
     int height = di.height & ~1;
     if (width <= 0 || height <= 0) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
       continue;
     }
 
-    BITMAPINFO bmi{};
-    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bmi.bmiHeader.biWidth = width;
-    bmi.bmiHeader.biHeight = -height;
-    bmi.bmiHeader.biPlanes = 1;
-    bmi.bmiHeader.biBitCount = 32;
-    bmi.bmiHeader.biCompression = BI_RGB;
-
-    // GDI is the only backend on a headless desktop, where odd DIB sizes and
-    // exhausted GDI handles are plausible; never dereference a failed alloc.
-    void* bits = nullptr;
-    HDC mem_dc = CreateCompatibleDC(screen_dc);
-    HBITMAP dib = mem_dc ? CreateDIBSection(mem_dc, &bmi, DIB_RGB_COLORS,
-                                            &bits, nullptr, 0)
-                         : nullptr;
-    HGDIOBJ old = (dib && bits) ? SelectObject(mem_dc, dib) : nullptr;
-    if (!old) {
+    if (!surface.EnsureSize(width, height, screen_dc)) {
       LOG_WARN("GDI: frame buffer allocation failed ({}x{}), error={}", width,
                height, GetLastError());
-      if (dib) DeleteObject(dib);
-      if (mem_dc) DeleteDC(mem_dc);
-      std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
       continue;
     }
 
-    if (!BitBlt(mem_dc, 0, 0, width, height, screen_dc, left, top,
+    if (!BitBlt(surface.dc(), 0, 0, width, height, screen_dc, left, top,
                 SRCCOPY | CAPTUREBLT)) {
       if (!capture_error_logged) {
         LOG_WARN("GDI: BitBlt failed, error={}; reacquiring desktop DC", GetLastError());
         capture_error_logged = true;
       }
-      SelectObject(mem_dc, old);
-      DeleteObject(dib);
-      DeleteDC(mem_dc);
+      surface.Reset();
       ReleaseDC(nullptr, screen_dc);
       screen_dc = nullptr;
-      std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
       continue;
     }
     capture_error_logged = false;
@@ -206,7 +192,7 @@ void ScreenCapturerGdi::CaptureLoop() {
       CURSORINFO ci{};
       ci.cbSize = sizeof(CURSORINFO);
       if (GetCursorInfo(&ci)) {
-        cursor_embedded = DrawCursorInCapture(mem_dc, ci, left, top, width, height);
+        cursor_embedded = DrawCursorInCapture(surface.dc(), ci, left, top, width, height);
       }
     }
     GdiFlush();
@@ -220,7 +206,7 @@ void ScreenCapturerGdi::CaptureLoop() {
       nv12_height_ = height;
     }
 
-    libyuv::ARGBToNV12(static_cast<const uint8_t*>(bits), stride_argb,
+    libyuv::ARGBToNV12(surface.bits(), stride_argb,
                        nv12_frame_, width, nv12_frame_ + width * height, width,
                        width, height);
 
@@ -230,12 +216,6 @@ void ScreenCapturerGdi::CaptureLoop() {
       callback_(nv12_frame_, nv12_size, width, height, stream_id.c_str(),
                 nullptr);
     }
-
-    SelectObject(mem_dc, old);
-    DeleteObject(dib);
-    DeleteDC(mem_dc);
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
   }
   if (screen_dc) ReleaseDC(nullptr, screen_dc);
 }

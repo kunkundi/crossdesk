@@ -353,6 +353,8 @@ void PeerEventHandler::OnReceiveDataBuffer(
             bound_peer, wire_id.data(), wire_id.size(),
             static_cast<MiniRtcVideoQuality>(settings.quality), settings.frame_rate,
             static_cast<MiniRtcVideoDegradationPreference>(settings.preference)) == 0;
+    if (remote_action.vs.accepted)
+      runtime->preview_subscriptions_.SetVideoFrameRate(remote_id, settings.frame_rate);
     LOG_INFO(
         "Video settings: source={} request={} quality={} fps={} preference={} "
         "accepted={}",

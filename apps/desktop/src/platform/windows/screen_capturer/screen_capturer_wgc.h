@@ -10,6 +10,7 @@
 
 #include "screen_capturer.h"
 #include "wgc_session.h"
+#include "wgc_plugin_api.h"
 #include "wgc_session_impl.h"
 
 namespace crossdesk {
@@ -17,7 +18,7 @@ namespace crossdesk {
 class ScreenCapturerWgc : public ScreenCapturer,
                           public WgcSession::wgc_session_observer {
  public:
-  ScreenCapturerWgc();
+  ScreenCapturerWgc(CrossDeskWgcReadFrameRate read_rate = nullptr, const void* context = nullptr);
   ~ScreenCapturerWgc();
 
  public:
@@ -38,6 +39,8 @@ class ScreenCapturerWgc : public ScreenCapturer,
   int ResetToInitialMonitor() override;
 
   void OnFrame(const WgcSession::wgc_session_frame& frame, int id);
+  void FrameAvailable() override { SetEvent(frame_event_.get()); }
+  void RepeatFrame(int id) override;
 
  protected:
   void CleanUp();
@@ -66,6 +69,12 @@ class ScreenCapturerWgc : public ScreenCapturer,
   std::atomic_bool inited_{false};
 
   int fps_ = 60;
+  CrossDeskWgcReadFrameRate read_rate_;
+  const void* rate_context_;
+  std::thread sampling_thread_;
+  winrt::handle frame_event_{CreateEventW(nullptr, FALSE, FALSE, nullptr)};
+  int cached_monitor_ = -1;
+  bool cached_cursor_embedded_ = false;
 
   cb_desktop_data on_data_ = nullptr;
 

@@ -31,7 +31,7 @@ class DxgiNv12Frames;
 
 class ScreenCapturerDxgi : public ScreenCapturer {
  public:
-  ScreenCapturerDxgi();
+  explicit ScreenCapturerDxgi(const std::atomic<int>* live_frame_rate = nullptr);
   ~ScreenCapturerDxgi();
 
  public:
@@ -98,6 +98,7 @@ class ScreenCapturerDxgi : public ScreenCapturer {
   std::atomic<bool> show_cursor_{true};
   std::thread thread_;
   int fps_ = 60;
+  const std::atomic<int>* const live_frame_rate_;
   cb_desktop_data callback_ = nullptr;
   std::mutex switch_mutex_;
 

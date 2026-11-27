@@ -58,14 +58,14 @@ constexpr DWORD kPostSecureDesktopRestartRetryMs = 500;
 constexpr DWORD kPostSecureDesktopRestartTimeoutMs = 10000;
 constexpr ULONGLONG kCaptureStallTimeoutMs = 3000;
 constexpr int kSecureDesktopCaptureMinFps = 30;
-constexpr int kSecureDesktopCaptureMaxIntervalMs =
-    1000 / kSecureDesktopCaptureMinFps;
 
-std::unique_ptr<ScreenCapturer> CreateCaptureBackend(ScreenCaptureMethod method) {
+std::unique_ptr<ScreenCapturer> CreateCaptureBackend(
+    ScreenCaptureMethod method, const std::atomic<int>& frame_rate) {
   switch (method) {
-    case ScreenCaptureMethod::Dxgi: return std::make_unique<ScreenCapturerDxgi>();
-    case ScreenCaptureMethod::Wgc: return WgcPluginCapturer::Create();
-    case ScreenCaptureMethod::Gdi: return std::make_unique<ScreenCapturerGdi>();
+    case ScreenCaptureMethod::Dxgi:
+      return std::make_unique<ScreenCapturerDxgi>(&frame_rate);
+    case ScreenCaptureMethod::Wgc: return WgcPluginCapturer::Create(&frame_rate);
+    case ScreenCaptureMethod::Gdi: return std::make_unique<ScreenCapturerGdi>(&frame_rate);
     default: return nullptr;
   }
 }
@@ -457,10 +457,17 @@ void ScreenCapturerWin::NotifyPrivacyCapture(bool running) {
     privacy_->CaptureChanged(running);
 }
 
+void ScreenCapturerWin::SetCaptureFrameRate(int fps) {
+  if (capture_frame_rate_.load(std::memory_order_relaxed) == fps) return;
+  capture_frame_rate_.store(fps, std::memory_order_relaxed);
+  LOG_INFO("Windows capturer: target frame rate {} fps", fps);
+}
+
 int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
   ResolveVirtualDisplayMode();  // Remember the attached mode before a later unplug/reboot.
   NotifyPrivacyCapture(false);
   fps_ = fps;
+  SetCaptureFrameRate(fps);
   cb_orig_ = cb;
   native_output_logged_.store(false, std::memory_order_relaxed);
   native_output_error_logged_.store(false, std::memory_order_relaxed);
@@ -571,7 +578,7 @@ int ScreenCapturerWin::Init(const int fps, cb_desktop_data cb) {
   const bool headless = DetectHeadlessDesktop();
   int ret = -1;
   for (const auto backend : WindowsCaptureBackendOrder()) {
-    auto candidate = CreateCaptureBackend(backend);
+    auto candidate = CreateCaptureBackend(backend, capture_frame_rate_);
     ret = candidate ? candidate->Init(fps_, cb_) : -1;
     if (ret == 0) {
       impl_ = std::move(candidate);
@@ -772,7 +779,8 @@ bool ScreenCapturerWin::StartPreferredBackend(int monitor_index, ScreenCaptureMe
   bool include = after == ScreenCaptureMethod::Auto;
   for (const auto backend : WindowsCaptureBackendOrder()) {
     if (!include) { include = backend == after; continue; }
-    if (PrepareBackend(CreateCaptureBackend(backend), monitor_index, true)) return true;
+    if (PrepareBackend(CreateCaptureBackend(backend, capture_frame_rate_), monitor_index, true))
+      return true;
   }
   return false;
 }
@@ -1670,9 +1678,6 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop(bool normal_backend_suspended) 
   // Virtual-display adoption constructs WGC on this std::thread, which does
   // not inherit the UI thread's WinRT apartment.
   ScopedWinRtApartment apartment;
-  const int frame_interval_ms =
-      fps_ > 0 ? (std::min)(kSecureDesktopCaptureMaxIntervalMs, 1000 / fps_)
-               : kSecureDesktopCaptureMaxIntervalMs;
   ULONGLONG last_error_tick = 0;
   ULONGLONG capture_stage_started_tick = 0;
   bool post_secure_restart_pending = false;
@@ -1925,9 +1930,9 @@ void ScreenCapturerWin::SecureDesktopCaptureLoop(bool normal_backend_suspended) 
     std::string error_message;
     bool frame_delivered = false;
     const bool show_cursor = show_cursor_.load(std::memory_order_relaxed);
-    const int shared_fps = fps_ > 0
-                               ? (std::max)(kSecureDesktopCaptureMinFps, fps_)
-                               : kSecureDesktopCaptureMinFps;
+    const int shared_fps = (std::max)(kSecureDesktopCaptureMinFps,
+        capture_frame_rate_.load(std::memory_order_relaxed));
+    const int frame_interval_ms = (std::max)(1, 1000 / shared_fps);
 
     if (secure_shared_capture_started_ &&
         frame_schedule.SharedCaptureStalled(now)) {
