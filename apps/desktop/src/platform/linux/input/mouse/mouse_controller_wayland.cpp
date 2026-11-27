@@ -910,14 +910,14 @@ void PlatformMouseController::CleanupWaylandPortal() {
   using_shared_wayland_session_ = false;
 }
 
-int PlatformMouseController::SendWaylandMouseCommand(RemoteAction remote_action,
-                                             int display_index) {
+int PlatformMouseController::SendWaylandMouseCommand(const Mouse& mouse, int display_index,
+                                                    bool require_absolute) {
 #if defined(CROSSDESK_HAS_WAYLAND_CAPTURER) && CROSSDESK_HAS_WAYLAND_CAPTURER
   if (!dbus_connection_ || wayland_session_handle_.empty()) {
     return -1;
   }
 
-  switch (remote_action.m.flag) {
+  switch (mouse.flag) {
     case MouseFlag::move: {
       if (display_index < 0 ||
           display_index >= static_cast<int>(display_info_list_.size())) {
@@ -945,15 +945,17 @@ int PlatformMouseController::SendWaylandMouseCommand(RemoteAction remote_action,
       }
 
       const DisplayInfo& display_info = display_info_list_[display_index];
-      const int width = std::max(display_info.width, 1);
-      const int height = std::max(display_info.height, 1);
+      const int width = display_info.width;
+      const int height = display_info.height;
+      if (width <= 1 || height <= 1 || !std::isfinite(mouse.x) ||
+          !std::isfinite(mouse.y)) return -2;
 
       const double norm_x =
-          std::clamp(static_cast<double>(remote_action.m.x), 0.0, 1.0);
+          std::clamp(static_cast<double>(mouse.x), 0.0, 1.0);
       const double norm_y =
-          std::clamp(static_cast<double>(remote_action.m.y), 0.0, 1.0);
+          std::clamp(static_cast<double>(mouse.y), 0.0, 1.0);
 
-      if (last_display_index_ == display_index &&
+      if (!require_absolute && last_display_index_ == display_index &&
           std::abs(norm_x - last_norm_x_) < 1e-6 &&
           std::abs(norm_y - last_norm_y_) < 1e-6) {
         return 0;
@@ -987,7 +989,7 @@ int PlatformMouseController::SendWaylandMouseCommand(RemoteAction remote_action,
       };
 
       auto try_relative_fallback = [&]() -> bool {
-        if (!can_use_relative) {
+        if (require_absolute || !can_use_relative) {
           return false;
         }
         if (std::abs(rel_dx) < 1e-6 && std::abs(rel_dy) < 1e-6) {
@@ -1068,21 +1070,21 @@ int PlatformMouseController::SendWaylandMouseCommand(RemoteAction remote_action,
       }
       break;
     case MouseFlag::wheel_vertical: {
-      if (remote_action.m.s == 0) {
+      if (mouse.s == 0) {
         return 0;
       }
       if (!NotifyWaylandPointerAxisDiscrete(kPointerAxisVertical,
-                                            remote_action.m.s)) {
+                                            mouse.s)) {
         return -3;
       }
       break;
     }
     case MouseFlag::wheel_horizontal: {
-      if (remote_action.m.s == 0) {
+      if (mouse.s == 0) {
         return 0;
       }
       if (!NotifyWaylandPointerAxisDiscrete(kPointerAxisHorizontal,
-                                            remote_action.m.s)) {
+                                            mouse.s)) {
         return -3;
       }
       break;
@@ -1091,7 +1093,8 @@ int PlatformMouseController::SendWaylandMouseCommand(RemoteAction remote_action,
 
   return 0;
 #else
-  (void)remote_action;
+  (void)mouse;
+  (void)require_absolute;
   (void)display_index;
   return -1;
 #endif

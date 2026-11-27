@@ -180,7 +180,7 @@ class GuiRuntime : protected gui_detail::GuiState {
       const std::string& remote_id);
   // UI thread: send mapped mouse/keyboard input to the current control target,
   // or every connected session while that target leads DeskHub group control.
-  void SendRemoteInput(const RemoteAction& action, float wheel_delta = 0);
+  void SendRemoteInput(RemoteAction action, float wheel_delta = 0);
   InputOutcome ApplyRemoteInput(const std::string& remote_id, const RemoteAction& action);
   void HandleAutomation(const std::string& remote_id, const nlohmann::json& request);
   DesktopAutomation desktop_automation_;
@@ -189,6 +189,7 @@ class GuiRuntime : protected gui_detail::GuiState {
   bool automation_closing_ = false;
   InputOutcome InjectRemoteMouse(const RemoteAction& action, int display);
   std::string gallery_group_control_id_;
+  uint64_t pointer_sequence_ = 0;  // UI thread, shared by group-control recipients.
 
   void ResetRemoteServiceStatus(RemoteSession& props);
   void ApplyRemoteServiceStatus(RemoteSession& props,

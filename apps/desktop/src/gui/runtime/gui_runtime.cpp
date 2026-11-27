@@ -84,7 +84,7 @@ GuiRuntime::~GuiRuntime() {
   RestoreHostDisplayResolutions(true);
 }
 
-void GuiRuntime::SendRemoteInput(const RemoteAction& action, float wheel_delta) {
+void GuiRuntime::SendRemoteInput(RemoteAction action, float wheel_delta) {
   const bool mouse = action.type == ControlType::mouse;
   const bool mouse_move = mouse && action.m.flag == MouseFlag::move;
   if (!mouse && action.type != ControlType::keyboard &&
@@ -112,6 +112,7 @@ void GuiRuntime::SendRemoteInput(const RemoteAction& action, float wheel_delta) 
     return;
   const bool wheel = mouse && (action.m.flag == MouseFlag::wheel_vertical ||
                                action.m.flag == MouseFlag::wheel_horizontal);
+  if (mouse && !wheel) action.pointer_sequence = ++pointer_sequence_;
   auto message = wheel ? std::string{} : action.to_json();
   for (const auto& [id, props] : remote_sessions_) {
     if ((!group && id != target_id) || !available(props)) continue;

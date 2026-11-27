@@ -223,6 +223,7 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
                          {"y", action.m.y},
                          {"s", action.m.s},
                          {"flag", action.m.flag}};
+      if (action.pointer_sequence) object["mouse"]["seq"] = action.pointer_sequence;
       break;
     case ControlType::text_input:
       if (action.text.empty() || action.text.size() > kMaxTextInputBytes ||
@@ -389,6 +390,7 @@ bool RemoteAction::FromJson(const std::string& json_string,
         break;
       }
       case ControlType::mouse:
+        output.pointer_sequence = object.at("mouse").value("seq", uint64_t{0});
         output.m.x = object.at("mouse").at("x").get<float>();
         output.m.y = object.at("mouse").at("y").get<float>();
         output.m.s = object.at("mouse").at("s").get<int>();

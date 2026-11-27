@@ -38,11 +38,12 @@ class PlatformMouseController final : public MouseController {
  private:
   void SimulateKeyDown(int kval);
   void SimulateKeyUp(int kval);
-  void SetMousePosition(int x, int y);
+  int PositionX11Pointer(const Mouse& mouse, int display_index);
   void SimulateMouseWheel(int direction_button, int count);
   bool InitWaylandPortal();
   void CleanupWaylandPortal();
-  int SendWaylandMouseCommand(RemoteAction remote_action, int display_index);
+  int SendWaylandMouseCommand(const Mouse& mouse, int display_index,
+                              bool require_absolute = false);
   void OnWaylandDisplayInfoListUpdated();
   bool NotifyWaylandPointerMotion(double dx, double dy);
   bool NotifyWaylandPointerMotionAbsolute(uint32_t stream, double x, double y);

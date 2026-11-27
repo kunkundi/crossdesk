@@ -112,6 +112,7 @@ class RemoteInputDispatcher {
   std::deque<Item> pending_;
   std::unordered_set<std::string> connected_, blocked_;
   std::unordered_map<std::string, size_t> pending_counts_;
+  std::unordered_map<std::string, uint64_t> last_pointer_sequence_;
   std::unordered_map<std::string, Retry> retries_;
   std::unordered_map<std::string, LogState> logs_;
   bool last_was_retry_ = false;
