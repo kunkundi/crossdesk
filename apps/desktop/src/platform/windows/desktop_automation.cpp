@@ -55,18 +55,18 @@ json Perform(ComPtr<IUIAutomationElement> element, const std::string& operation,
   if (operation == "focus" || operation == "activate") result = element->SetFocus();
   else if (operation == "press") {
     ComPtr<IUIAutomationInvokePattern> invoke;
-    if (SUCCEEDED(element->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&invoke)))) result = invoke->Invoke();
+    if (SUCCEEDED(element->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&invoke))) && invoke) result = invoke->Invoke();
     else {
       ComPtr<IUIAutomationSelectionItemPattern> select;
-      if (SUCCEEDED(element->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&select)))) result = select->Select();
+      if (SUCCEEDED(element->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&select))) && select) result = select->Select();
       else {
         ComPtr<IUIAutomationTogglePattern> toggle;
-        if (SUCCEEDED(element->GetCurrentPatternAs(UIA_TogglePatternId, IID_PPV_ARGS(&toggle)))) result = toggle->Toggle();
+        if (SUCCEEDED(element->GetCurrentPatternAs(UIA_TogglePatternId, IID_PPV_ARGS(&toggle))) && toggle) result = toggle->Toggle();
       }
     }
   } else if (operation == "set_value") {
     ComPtr<IUIAutomationValuePattern> pattern;
-    if (SUCCEEDED(element->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&pattern)))) {
+    if (SUCCEEDED(element->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&pattern))) && pattern) {
       const auto text = Wide(value);
       Bstr automation_value(
           SysAllocStringLen(text.data(), static_cast<UINT>(text.size())),
@@ -103,7 +103,7 @@ DesktopSnapshot Tree(ComPtr<IUIAutomationElement> root, int limit, int depth) {
       {"bounds", {{"x", bounds.left}, {"y", bounds.top}, {"width", bounds.right - bounds.left}, {"height", bounds.bottom - bounds.top}}}};
     if (!secure) {
       ComPtr<IUIAutomationValuePattern> pattern;
-      if (SUCCEEDED(element->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&pattern)))) {
+      if (SUCCEEDED(element->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&pattern))) && pattern) {
         BSTR value = nullptr;
         if (SUCCEEDED(pattern->get_CurrentValue(&value))) data["value"] = Utf8(value);
       }
