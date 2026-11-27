@@ -138,7 +138,7 @@ sudo apt-get update
 sudo apt-get install -y \
   git curl unzip build-essential gcc-10 g++-10 python3-pip \
   pkg-config binutils dpkg-dev \
-  libx11-dev libxext-dev libxrender-dev libxft-dev libxrandr-dev \
+  libx11-dev libxext-dev libxrender-dev libxft-dev libfribidi-dev libxrandr-dev \
   libxinerama-dev libxcursor-dev libxi-dev libxfixes-dev libxv-dev \
   libxtst-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev \
   libxcb-shape0-dev libxcb-xkb-dev libxcb-xfixes0-dev libxcb-shm0-dev \
