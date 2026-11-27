@@ -2102,6 +2102,9 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
     try {
       const auto [address, port] = lan::ParseEndpoint(Trim(std::string(endpoint)), 52888);
       if (!LanAvailable()) return UiText(lan_error_.empty() ? "Busy" : lan_error_);
+      lan_expected_key_.clear();
+      lan_saved_password_ = false;
+      main->set_lan_key_change("");
       main->set_lan_remote_address(UiText(address));
       main->set_lan_remote_port(UiText(std::to_string(port)));
       main->set_lan_retry_after(lan_->RetryAfter(address, port));
@@ -2111,7 +2114,11 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
         if (recent.lan.address != address ||
             recent.lan.port != port)
           continue;
-        if (recent.remember_password && lan::ValidPassword(recent.password)) {
+        lan_expected_key_ = recent.lan.fingerprint;
+        if (recent.remember_password && lan::ValidPassword(recent.password) &&
+            (!lan::IsDnsName(address) ||
+             lan::ValidFingerprint(lan_expected_key_))) {
+          lan_saved_password_ = true;
           main->set_lan_access_password(UiText(recent.password));
           main->set_lan_remember_password(true);
         }
@@ -2137,6 +2144,7 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
     try {
       ConnectLan(std::string(address), lan::ParsePort(std::string(port)),
                  std::string(password), remember);
+      if (lan_connecting_) main->set_lan_key_change("");
     } catch (const std::exception& error) {
       lan_error_ = error.what();
     }
@@ -2771,6 +2779,15 @@ void GuiApplication::Tick() {
       ui_->main->set_lan_open(false);
       lan_connecting_.reset();
     } else if (lan_connecting_ && lan_connecting_->closing) {
+      const auto& observed = lan_connecting_->observed_host_key;
+      if (!observed.empty()) {
+        ui_->main->set_lan_key_change(
+            UiText(lan_expected_key_ + "\n↓\n" + observed));
+        ui_->main->set_lan_access_password("");
+        lan_expected_key_ = observed;
+        lan_saved_password_ = false;
+        lan_error_ = "HostKeyChanged";
+      }
       lan_connecting_.reset();
     }
     ui_->main->set_lan_connecting(lan_connecting_ != nullptr);
@@ -4392,7 +4409,14 @@ void GuiApplication::SyncStreamWindow(StreamView& view) {
       : mode == MiniRtcTraversalRelay
           ? localization::connection_mode_relay[localization_language_index_] : "—"));
   stream->set_stats_local_endpoint(UiText(direct ? net.local_endpoint : ""));
-  stream->set_stats_remote_endpoint(UiText(direct ? net.remote_endpoint : ""));
+  std::string remote_endpoint = direct ? net.remote_endpoint : "";
+  const auto& session = props->lan_session_;
+  if (!remote_endpoint.empty() && session &&
+      lan::IsDnsName(session->target.address))
+    remote_endpoint =
+        lan::FormatEndpoint(session->target.address, session->target.port) +
+        " → " + remote_endpoint;
+  stream->set_stats_remote_endpoint(UiText(remote_endpoint));
 
   const auto fps_now = std::chrono::steady_clock::now();
   bool refresh_stats = false;

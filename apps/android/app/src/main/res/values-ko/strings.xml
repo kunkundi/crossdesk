@@ -395,4 +395,20 @@
     <string name="text_88ea96f38f7b9279" formatted="false">"기기 상태를 확인하는 중..."</string>
     <string name="text_64d655aad73dce57" formatted="false">"원격 장치가 응답하지 않습니다. 온라인 상태인지 확인한 후 다시 시도하세요."</string>
     <string name="text_d5770d2b84139ab2" formatted="false">"원격 연결 설정"</string>
+    <string name="text_d64a151b4956d033" formatted="false">"기기 ID가 변경되었습니다. 공개 키 지문을 확인하고 암호를 다시 입력하세요."</string>
+    <string name="text_5a220e368fc24cd4" formatted="false">"새 기기에 연결"</string>
+    <string name="text_62deed99aae5e453" formatted="false">"지문 복사"</string>
+    <string name="text_961d96488df18b5e" formatted="false">"호스트 이름을 확인할 수 없습니다"</string>
+    <string name="text_3765c75d9189fabb" formatted="false">"호스트 이름 확인 시간 초과"</string>
+    <string name="text_2169e184b335ba99" formatted="false">"직접 연결에 사용할 주소가 없습니다"</string>
+    <string name="text_cc2b0ac48f5dd186" formatted="false">"대상 포트에 연결할 수 없습니다"</string>
+    <string name="text_f984f357f7b1003f" formatted="false">"직접 연결 인증서가 유효하지 않습니다"</string>
+    <string name="text_777136199c9aa458" formatted="false">"직접 연결 프로토콜이 호환되지 않습니다"</string>
+    <string name="text_ffbbac568f2a8d2a" formatted="false">"기기 간 UDP 연결을 확인하세요"</string>
+    <string name="text_b11b4e9a81701eae" formatted="false">"기기 ID, IP 또는 호스트 이름"</string>
+    <string name="text_6930740da68525a4" formatted="false">"기기 ID, IP 또는 호스트 이름을 입력하세요"</string>
+    <string name="text_3384f4975b43f9b1" formatted="false">"원격 IP 또는 호스트 이름"</string>
+    <string name="text_ff7241ff93bd6907" formatted="false">"IP 또는 호스트 이름과 선택적으로 포트를 입력하세요"</string>
+    <string name="text_f36b579d49cdc4c1" formatted="false">"유효한 IP 또는 호스트 이름을 입력하세요"</string>
+    <string name="text_8d6b894fd86867bb" formatted="false">"같은 LAN, 로컬 이름 확인 및 네트워크 권한을 확인하세요"</string>
 </resources>

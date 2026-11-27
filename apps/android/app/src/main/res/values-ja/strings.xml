@@ -395,4 +395,20 @@
     <string name="text_88ea96f38f7b9279" formatted="false">"機器の状態を確認しています..."</string>
     <string name="text_64d655aad73dce57" formatted="false">"リモート端末が応答しません。オンラインであることを確認して再試行してください。"</string>
     <string name="text_d5770d2b84139ab2" formatted="false">"リモート接続の確立"</string>
+    <string name="text_d64a151b4956d033" formatted="false">"デバイスの識別情報が変わりました。公開鍵の指紋を確認し、パスワードを再入力してください。"</string>
+    <string name="text_5a220e368fc24cd4" formatted="false">"新しいデバイスに接続"</string>
+    <string name="text_62deed99aae5e453" formatted="false">"指紋をコピー"</string>
+    <string name="text_961d96488df18b5e" formatted="false">"ホスト名を解決できません"</string>
+    <string name="text_3765c75d9189fabb" formatted="false">"名前解決がタイムアウトしました"</string>
+    <string name="text_2169e184b335ba99" formatted="false">"直接接続に使用できるアドレスがありません"</string>
+    <string name="text_cc2b0ac48f5dd186" formatted="false">"指定ポートに接続できません"</string>
+    <string name="text_f984f357f7b1003f" formatted="false">"直接接続の証明書が無効です"</string>
+    <string name="text_777136199c9aa458" formatted="false">"直接接続プロトコルに互換性がありません"</string>
+    <string name="text_ffbbac568f2a8d2a" formatted="false">"デバイス間の UDP 接続を確認してください"</string>
+    <string name="text_b11b4e9a81701eae" formatted="false">"デバイス ID、IP またはホスト名"</string>
+    <string name="text_6930740da68525a4" formatted="false">"デバイス ID、IP またはホスト名を入力してください"</string>
+    <string name="text_3384f4975b43f9b1" formatted="false">"リモート IP またはホスト名"</string>
+    <string name="text_ff7241ff93bd6907" formatted="false">"IP またはホスト名を入力し、必要に応じてポートを指定してください"</string>
+    <string name="text_f36b579d49cdc4c1" formatted="false">"有効な IP またはホスト名を入力してください"</string>
+    <string name="text_8d6b894fd86867bb" formatted="false">"同じ LAN、ローカル名前解決、ネットワーク権限を確認してください"</string>
 </resources>

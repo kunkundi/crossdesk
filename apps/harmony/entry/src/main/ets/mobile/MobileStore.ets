@@ -10,7 +10,7 @@ import bridge from 'libcrossdesk.so';
 
 export interface RecentDevice {
   id: string; name: string; alias: string; groups: string[];
-  platform: string; remember: boolean; preview: string;
+  platform: string; remember: boolean; preview: string; credentialRef?: string; fingerprint?: string;
 }
 export class MobileStore {
   private static trustLoading?: Promise<string>;
@@ -96,17 +96,42 @@ export class MobileStore {
         });
     } catch { return []; }
   }
-  async saveRecent(scope: string, device: RecentDevice, password: string): Promise<void> {
-    if (device.remember) await this.saveSecret(`password:${scope}:${device.id}`, password);
-    else await this.removeSecret(`password:${scope}:${device.id}`);
+  private mutations: Map<string, number> = new Map();
+  private revision(scope: string, id: string): number {
+    const key = scope + '/' + id, next = (this.mutations.get(key) ?? 0) + 1;
+    this.mutations.set(key, next); return next;
+  }
+  async saveRecent(scope: string, device: RecentDevice, password: string, fingerprint: string = ''): Promise<void> {
+    const revision = this.revision(scope, device.id);
+    const domain = device.id.includes(':') && !!bridge.mobileDirectEndpoint(device.id, true);
+    if (domain && device.remember) {
+      if (!/^[0-9a-f]{64}$/.test(fingerprint)) throw new Error(tr("直连证书无效"));
+      device.credentialRef = util.generateRandomUUID();
+      device.fingerprint = fingerprint;
+      await this.saveSecret(`domain-v1:${scope}:${device.id}:${device.credentialRef}`, fingerprint + ':' + password);
+    } else if (!domain) {
+      if (device.remember) await this.saveSecret(`password:${scope}:${device.id}`, password);
+      else await this.removeSecret(`password:${scope}:${device.id}`);
+    }
+    if (this.mutations.get(scope + '/' + device.id) !== revision) {
+      if (device.credentialRef) await this.removeSecret(`domain-v1:${scope}:${device.id}:${device.credentialRef}`);
+      return;
+    }
     const old = this.recent(scope), previous = old.find((d: RecentDevice) => d.id === device.id);
     device.preview = previous?.preview ?? '';
     device.alias = previous?.alias ?? '';
     device.groups = previous?.groups ?? [];
     if (device.name === device.id && previous) device.name = previous.name;
     const next = [device, ...old.filter((d: RecentDevice) => d.id !== device.id)].slice(0, 20);
-    this.put(`recent:${scope}`, JSON.stringify(next));
+    try {
+      this.put(`recent:${scope}`, JSON.stringify(next));
+    } catch (error) {
+      if (device.credentialRef) await this.removeSecret(`domain-v1:${scope}:${device.id}:${device.credentialRef}`);
+      throw error as Error;
+    }
+    if (previous?.credentialRef) await this.removeSecret(`domain-v1:${scope}:${device.id}:${previous.credentialRef}`);
     for (const dropped of old.filter((d: RecentDevice) => !next.some((n: RecentDevice) => n.id === d.id))) {
+      if (dropped.credentialRef) await this.removeSecret(`domain-v1:${scope}:${dropped.id}:${dropped.credentialRef}`);
       await this.removeSecret(`password:${scope}:${dropped.id}`); this.removePreview(dropped.preview);
     }
   }
@@ -136,8 +161,11 @@ export class MobileStore {
     this.put(`recent:${scope}`, JSON.stringify(entries));
   }
   async delete(scope: string, id: string): Promise<void> {
+    this.revision(scope, id);
+    const old = this.recent(scope), ref = old.find((d: RecentDevice) => d.id === id)?.credentialRef;
+    this.put(`recent:${scope}`, JSON.stringify(old.filter((d: RecentDevice) => d.id !== id)));
+    if (ref) await this.removeSecret(`domain-v1:${scope}:${id}:${ref}`);
     await this.removeSecret(`password:${scope}:${id}`);
-    const old = this.recent(scope); this.put(`recent:${scope}`, JSON.stringify(old.filter((d: RecentDevice) => d.id !== id)));
     this.removePreview(old.find((d: RecentDevice) => d.id === id)?.preview ?? '');
   }
   private removePreview(path: string): void {

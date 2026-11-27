@@ -380,6 +380,22 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     private var remoteVersionCheckTask: URLSessionDataTask?
     private static let remoteUpdateNotice = NSLocalizedString("被控端版本过低，请升级到最新版本。", comment: "")
     private var pendingRememberPassword = false
+    private var expectedHostKey = ""
+    private var verifiedHostKey = ""
+    private var usingSavedCredential = false
+    struct HostKeyChange: Equatable {
+        let target: String
+        let expected: String
+        let observed: String
+    }
+    @Published var hostKeyChange: HostKeyChange?
+    struct DirectPasswordPrompt: Equatable {
+        let target: String
+        let expectedKey: String
+    }
+    @Published var requestedPasswordPrompt: DirectPasswordPrompt?
+    @Published var rejectedPasswordPrompt: DirectPasswordPrompt?
+    private var rejectedCredentialAccount: String?
     private var connectionRecorded = false
     private var shouldCaptureThumbnail = false
     private var activeDisplayName = ""
@@ -607,12 +623,18 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     func connectionTarget(_ input: String) -> String? {
         if input.range(of: "^[0-9]{9}$", options: .regularExpression) != nil { return input }
         if let endpoint = CrossDeskRTCBridge.directEndpoint(input) { return endpoint }
-        connectionFailureMessage = NSLocalizedString("请输入设备 ID 或有效的 IP 地址", comment: "")
+        connectionFailureMessage = NSLocalizedString("请输入设备 ID、IP 或域名", comment: "")
         return nil
     }
 
-    func connect(password: String, rememberPassword: Bool) {
+    func connect(password: String, rememberPassword: Bool, saved: Bool = false, replacement: String? = nil) {
         guard canStartConnection else { return }
+        guard let target = connectionTarget(remoteID.trimmingCharacters(in: .whitespacesAndNewlines)) else { return }
+        expectedHostKey = replacement ?? recentConnections.first(where: { $0.id == target })?.boundFingerprint ?? ""
+        usingSavedCredential = saved
+        verifiedHostKey = ""
+        hostKeyChange = nil
+        rejectedPasswordPrompt = nil
         self.password = password
         pendingRememberPassword = rememberPassword
         connect()
@@ -658,7 +680,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         sessionVisible = false
         resetRemoteCursorState()
         connectionStatus = NSLocalizedString("正在准备连接…", comment: "")
-        bridge.connect(toRemoteID: identifier, password: password,
+        bridge.connect(toRemoteID: identifier, password: password, expectedKey: expectedHostKey, saved: usingSavedCredential,
                        displayResolutions: RemoteDisplayResolutionStore.message(key: resolutionPreferenceKey))
     }
 
@@ -724,6 +746,8 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     func dismissConnectionFailure() {
         guard connectionFailureMessage != nil else { return }
         connectionFailureMessage = nil
+        hostKeyChange = nil
+        rejectedPasswordPrompt = nil
     }
 
     private func finishConnection(withError message: String) {
@@ -837,15 +861,24 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     private func credentialAccount(for remoteID: String) -> String {
-        if recentConnections.first(where: { $0.id == remoteID })?.usesLegacyPassword == true {
+        let record = recentConnections.first { $0.id == remoteID }
+        if let ref = record?.credentialRef {
+            return history.account(for: remoteID) + ":domain-v1:" + ref
+        }
+        if record?.usesLegacyPassword == true {
             return remoteID
         }
         return history.account(for: remoteID)
     }
 
     func savedCredential(for remoteID: String) -> String? {
-        guard remembersPassword(for: remoteID) else { return nil }
-        return ConnectionCredentialStore.password(for: credentialAccount(for: remoteID))
+        guard remembersPassword(for: remoteID), history.account(for: remoteID) != rejectedCredentialAccount else { return nil }
+        let value = ConnectionCredentialStore.password(for: credentialAccount(for: remoteID))
+        guard CrossDeskRTCBridge.isDomainEndpoint(remoteID) else { return value }
+        guard let record = recentConnections.first(where: { $0.id == remoteID }), record.credentialRef != nil,
+              let pin = record.boundFingerprint, let value, value.hasPrefix(pin + ":") else { return nil }
+        let password = String(value.dropFirst(65))
+        return password.range(of: "^[A-Za-z0-9]{6}$", options: .regularExpression) != nil ? password : nil
     }
 
     func remembersPassword(for remoteID: String) -> Bool {
@@ -1001,11 +1034,19 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     func removeRecentConnection(_ connection: RecentConnection) {
-        guard ConnectionCredentialStore.removePassword(for: credentialAccount(for: connection.id)) else {
+        let account = credentialAccount(for: connection.id)
+        let updated = recentConnections.filter { $0.remoteID != connection.remoteID }
+        if connection.credentialRef != nil {
+            guard history.save(updated) else { return }
+            recentConnections = updated
+            if activeRemoteID == connection.id { connectionRecorded = true }
+        }
+        guard ConnectionCredentialStore.removePassword(for: account) else {
             connectionFailureMessage = NSLocalizedString("安全存储不可用，请解锁设备后重试", comment: "")
             return
         }
-        recentConnections.removeAll { $0.remoteID == connection.remoteID }
+        recentConnections = updated
+        if activeRemoteID == connection.id { connectionRecorded = true }
         recentConnectionPresence.removeValue(forKey: connection.remoteID)
         presenceUpdatedAt.removeValue(forKey: connection.remoteID)
         history.save(recentConnections)
@@ -1019,11 +1060,15 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         guard activeHistory == history, !connectionRecorded, !activeRemoteID.isEmpty else { return }
         connectionRecorded = true
 
-        let account = credentialAccount(for: activeRemoteID)
-        let remembered = pendingRememberPassword && ConnectionCredentialStore.save(password: password, for: account)
-        if !pendingRememberPassword { ConnectionCredentialStore.removePassword(for: account) }
-
         let previous = recentConnections.first { $0.remoteID == activeRemoteID }
+        let oldAccount = credentialAccount(for: activeRemoteID)
+        let domain = CrossDeskRTCBridge.isDomainEndpoint(activeRemoteID)
+        let ref = domain && pendingRememberPassword ? UUID().uuidString : nil
+        let account = ref.map { history.account(for: activeRemoteID) + ":domain-v1:" + $0 } ?? oldAccount
+        let secret = domain ? verifiedHostKey + ":" + password : password
+        let remembered = pendingRememberPassword && (!domain || verifiedHostKey.count == 64) &&
+            ConnectionCredentialStore.save(password: secret, for: account)
+        if domain && pendingRememberPassword && !remembered { return }
         let title = activeDisplayName.isEmpty
             ? (previous?.hostName ?? activeRemoteID)
             : activeDisplayName
@@ -1038,9 +1083,19 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             groups: previous?.groups ?? []
         )
         connection.usesLegacyPassword = previous?.usesLegacyPassword
-        recentConnections.removeAll { $0.remoteID == activeRemoteID }
-        recentConnections.insert(connection, at: 0)
-        history.save(recentConnections)
+        connection.credentialRef = ref
+        connection.fingerprint = domain && remembered ? verifiedHostKey : nil
+        var updated = recentConnections.filter { $0.remoteID != activeRemoteID }
+        updated.insert(connection, at: 0)
+        guard history.save(updated) else {
+            if ref != nil { ConnectionCredentialStore.removePassword(for: account) }
+            return
+        }
+        recentConnections = updated
+        if history.account(for: activeRemoteID) == rejectedCredentialAccount { rejectedCredentialAccount = nil }
+        if !pendingRememberPassword || (domain && previous?.credentialRef != nil && account != oldAccount) {
+            ConnectionCredentialStore.removePassword(for: oldAccount)
+        }
         refreshRecentConnectionPresence()
     }
 
@@ -1372,7 +1427,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
 
     func rtcBridge(_ bridge: CrossDeskRTCBridge,
                    didChange state: CrossDeskConnectionState,
-                   remoteID: String) {
+                   remoteID: String, detail: String) {
         guard isConnecting || isConnected || sessionVisible,
               remoteID.isEmpty || remoteID == activeRemoteID else {
             return
@@ -1385,6 +1440,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         switch state.rawValue {
         case 0: connectionStatus = NSLocalizedString("正在建立远程连接", comment: "")
         case 1:
+            verifiedHostKey = detail
             connectionStatus = NSLocalizedString("已连接", comment: "")
             startPrivacyMonitoring()
             sessionVisible = true
@@ -1398,13 +1454,30 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         case 2: connectionStatus = NSLocalizedString("正在收集 ICE 候选", comment: "")
         case 3: finishConnection(withError: NSLocalizedString("网络连接已中断，请重新连接。", comment: ""))
         case 4:
+            if detail.hasPrefix("HostKeyChanged:") {
+                let key = String(detail.dropFirst(15))
+                let change = HostKeyChange(target: activeRemoteID, expected: expectedHostKey, observed: key)
+                finishConnection(withError: NSLocalizedString("设备身份已变化。核对以下公钥指纹后，重新输入密码。", comment: "") + "\n" + expectedHostKey + "\n↓\n" + key)
+                hostKeyChange = change
+                return
+            }
+            if !detail.isEmpty {
+                let lines = detail.components(separatedBy: "\n").map { NSLocalizedString($0, comment: "") }
+                finishConnection(withError: lines.joined(separator: "\n"))
+                return
+            }
             let message = activeRemoteID.contains(":") ? NSLocalizedString("IP 直连失败，请检查电脑的直连地址和网络。", comment: "") :
                 NSLocalizedString("P2P/TURN 建链失败，请检查网络后重试。", comment: "")
             finishConnection(withError: message)
         case 5:
             finishConnection(withError: NSLocalizedString("远程连接已结束。", comment: ""))
         case 6:
+            let target = activeRemoteID
+            let retry = CrossDeskRTCBridge.isDomainEndpoint(target)
+                ? DirectPasswordPrompt(target: target, expectedKey: expectedHostKey) : nil
+            if retry != nil && usingSavedCredential { rejectedCredentialAccount = history.account(for: target) }
             finishConnection(withError: NSLocalizedString("访问密码错误，请重新输入。", comment: ""))
+            rejectedPasswordPrompt = retry
         case 7:
             if !remoteID.isEmpty {
                 recentConnectionPresence[remoteID] = false

@@ -52,11 +52,13 @@ The eye button shows or hides the local password, the refresh button generates a
 
 The regular Windows, macOS, and Linux desktop clients can initiate and accept direct IP sessions. Android, iOS, and HarmonyOS phones and tablets can initiate them. The controller and desktop host need mutually reachable IPv4 or IPv6 addresses. A signaling server connection is optional.
 
-**From a phone or tablet.** Enable direct IP on the computer and copy its displayed address. Paste it into **Device ID or IP address** on the mobile home screen, tap **Connect**, and enter the computer’s **Direct IP password**. On iOS, allow Local Network access when prompted.
+**From a phone or tablet.** Enable direct IP on the computer and copy its displayed address. Paste it into **Device ID, IP or hostname** on the mobile home screen, tap **Connect**, and enter the computer’s **Direct IP password**. On iOS, allow Local Network access when prompted.
 
 1. **Enable and switch.** On each desktop client, select **Enable direct IP** under **Settings → General → Network** and save (enabled by default). Use the top-left button to switch to **Direct IP mode**.
 2. **Get the host address.** Read **Local IP / Port** on the host. The copy button copies the full `IP:port`. If several addresses are available, choose one reachable from the controller.
-3. **Connect and verify.** Enter an address such as `192.168.1.20:52888` or `[2001:db8::20]:52888` under **Remote IP / Port**, click **Connect**, and enter the host's six-character password for this mode. Omitting the port uses **52888**. Numeric IPv4 and IPv6 addresses are supported; hostnames are not.
+3. **Connect and verify.** Enter an address such as `192.168.1.20:52888` or `[2001:db8::20]:52888` under **Remote IP or hostname**, click **Connect**, and enter the host's six-character password for this mode. Omitting the port uses **52888**. You can also enter a hostname such as `home.example.net` or `home.example.net:55001`. An IPv6-only DDNS name needs an AAAA record and reachable TCP negotiation and UDP media paths. On the same LAN, enter a name advertised by the host, such as `mini.local`. Windows and Linux desktop controllers can also look up these names using multicast DNS.
+
+Recent connections retain the hostname and port. A saved password is bound to the host’s TLS public key. An address change allows reconnection through the same entry. A key change prompts you to verify the fingerprints before entering a password for the new device. On the host, run `openssl x509 -in certificate.pem -noout -pubkey | openssl pkey -pubin -outform DER | openssl dgst -sha256` in the direct connection configuration directory to verify the fingerprint.
 4. **Save and reconnect.** Select **Remember password** in the password dialog if needed. Desktop clients show separate recent connections for ID and IP modes. Device records are kept even without a saved password; you will be prompted next time. Cards let you reconnect, rename devices, or remove records.
 
 <p align="center">

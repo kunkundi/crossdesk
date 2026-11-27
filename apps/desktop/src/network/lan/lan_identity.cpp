@@ -226,8 +226,49 @@ std::string FormatEndpoint(const std::string& address, unsigned port) {
                                                  : "[" + address + "]") +
          ":" + std::to_string(port);
 }
-std::pair<std::string, unsigned> ParseEndpoint(const std::string& value,
-                                               unsigned default_port) {
+bool IsDnsName(std::string_view host) {
+  if (host.empty() || host.size() > 253 || host.find('.') == host.npos ||
+      host.back() == '.')
+    return false;
+  constexpr std::string_view allowed_label =
+      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-";
+  bool numeric_address = true;
+  while (!host.empty()) {
+    const auto dot = host.find('.');
+    const auto label = host.substr(0, dot);
+    if (label.empty() || label.size() > 63 || label.front() == '-' ||
+        label.back() == '-' ||
+        label.find_first_not_of(allowed_label) != label.npos)
+      return false;
+    const bool hex = label.size() > 2 && label[0] == '0' &&
+                     (label[1] == 'x' || label[1] == 'X') &&
+                     label.substr(2).find_first_not_of(
+                         "0123456789abcdefABCDEF") == label.npos;
+    numeric_address &=
+        hex || label.find_first_not_of("0123456789") == label.npos;
+    if (dot == host.npos) break;
+    host.remove_prefix(dot + 1);
+  }
+  return !numeric_address;
+}
+bool ValidFingerprint(const std::string& value) { return IsHex(value, 64); }
+std::string CertificateFingerprint(X509* certificate) {
+  if (!certificate) return {};
+  unsigned char* der = nullptr;
+  const int size = i2d_X509_PUBKEY(X509_get_X509_PUBKEY(certificate), &der);
+  unsigned char digest[EVP_MAX_MD_SIZE];
+  unsigned length = 0;
+  const bool ok = size > 0 && EVP_Digest(der, size, digest, &length,
+                                         EVP_sha256(), nullptr) == 1;
+  OPENSSL_free(der);
+  return ok && length == 32 ? Hex(digest, length) : "";
+}
+DialEndpoint ParseDialEndpoint(const std::string& text, unsigned default_port) {
+  const auto first = text.find_first_not_of(" \t\r\n");
+  const auto last = text.find_last_not_of(" \t\r\n");
+  Require(first != text.npos && last - first + 1 <= kMaxDialEndpointSize,
+          "Invalid LAN endpoint");
+  const auto value = text.substr(first, last - first + 1);
   std::string address = value;
   unsigned port = default_port;
   if (!value.empty() && value.front() == '[') {
@@ -245,13 +286,28 @@ std::pair<std::string, unsigned> ParseEndpoint(const std::string& value,
     port = ParsePort(value.substr(colon + 1));
     address.resize(colon);
   }
-  Require(IsIpAddress(address) && port > 0 && port <= 65535,
-          "Invalid LAN endpoint");
-  return {NormalizeAddress(address), port};
+  Require(port > 0 && port <= 65535, "Invalid LAN port");
+  if (IsIpAddress(address))
+    return {DialEndpoint::IpLiteral, NormalizeAddress(address), port};
+  if (!address.empty() && address.back() == '.') address.pop_back();
+  Require(IsDnsName(address), "Invalid LAN endpoint");
+  for (auto& c : address)
+    if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+  return {DialEndpoint::DnsName, std::move(address), port};
 }
-std::vector<Interface> LocalIpInterfaces(bool physical_only) {
+std::pair<std::string, unsigned> ParseEndpoint(const std::string& value,
+                                               unsigned default_port) {
+  auto target = ParseDialEndpoint(value, default_port);
+  return {std::move(target.host), target.port};
+}
+namespace {
+enum class InterfaceFilter { All, Physical, Multicast };
+std::vector<Interface> EnumerateInterfaces(InterfaceFilter filter) {
+  const bool physical_only = filter == InterfaceFilter::Physical;
+  const bool multicast_only = filter == InterfaceFilter::Multicast;
   std::vector<Interface> result;
-  const auto append = [&](const sockaddr* native, unsigned index) {
+  const auto append = [&](const sockaddr* native, unsigned index,
+                          unsigned prefix) {
     char text[INET6_ADDRSTRLEN]{};
     std::string address;
     if (native->sa_family == AF_INET) {
@@ -275,7 +331,8 @@ std::vector<Interface> LocalIpInterfaces(bool physical_only) {
       address = text;
       if (v6.sin6_scope_id) address += "%" + std::to_string(v6.sin6_scope_id);
     }
-    if (IsIpAddress(address)) result.push_back({NormalizeAddress(address)});
+    if (IsIpAddress(address))
+      result.push_back({NormalizeAddress(address), index, prefix});
   };
 #ifdef _WIN32
   ULONG bytes = 16384;
@@ -294,7 +351,10 @@ std::vector<Interface> LocalIpInterfaces(bool physical_only) {
   if (code != NO_ERROR) return result;
   for (auto* a = adapters; a; a = a->Next) {
     if (a->OperStatus != IfOperStatusUp ||
-        a->IfType == IF_TYPE_SOFTWARE_LOOPBACK)
+        a->IfType == IF_TYPE_SOFTWARE_LOOPBACK ||
+        (multicast_only &&
+         ((a->Flags & IP_ADAPTER_NO_MULTICAST) || a->IfType == IF_TYPE_TUNNEL ||
+          a->IfType == IF_TYPE_PPP)))
       continue;
     if (physical_only) {
       if ((a->IfType != IF_TYPE_ETHERNET_CSMACD &&
@@ -311,7 +371,7 @@ std::vector<Interface> LocalIpInterfaces(bool physical_only) {
       if (!u->Address.lpSockaddr || (u->DadState != IpDadStatePreferred &&
                                      u->DadState != IpDadStateDeprecated))
         continue;
-      append(u->Address.lpSockaddr, a->Ipv6IfIndex);
+      append(u->Address.lpSockaddr, a->Ipv6IfIndex, u->OnLinkPrefixLength);
     }
   }
 #else
@@ -322,7 +382,9 @@ std::vector<Interface> LocalIpInterfaces(bool physical_only) {
         (a->ifa_addr->sa_family != AF_INET &&
          a->ifa_addr->sa_family != AF_INET6) ||
         !(a->ifa_flags & IFF_UP) || (a->ifa_flags & IFF_LOOPBACK) ||
-        (physical_only && (a->ifa_flags & IFF_POINTOPOINT)))
+        ((physical_only || multicast_only) &&
+         (a->ifa_flags & IFF_POINTOPOINT)) ||
+        (multicast_only && !(a->ifa_flags & IFF_MULTICAST)))
       continue;
     bool physical = false;
 #ifdef __APPLE__
@@ -336,12 +398,26 @@ std::vector<Interface> LocalIpInterfaces(bool physical_only) {
 #else
     if (physical_only) {
       std::error_code error;
-      physical = std::filesystem::exists(std::filesystem::path("/sys/class/net") /
-                                         a->ifa_name / "device", error);
+      physical = std::filesystem::exists(
+          std::filesystem::path("/sys/class/net") / a->ifa_name / "device",
+          error);
     }
 #endif
     if (physical_only && !physical) continue;
-    append(a->ifa_addr, if_nametoindex(a->ifa_name));
+    unsigned prefix = 0;
+    if (multicast_only && a->ifa_netmask) {
+      const bool v4 = a->ifa_addr->sa_family == AF_INET;
+      const auto* mask =
+          v4 ? reinterpret_cast<const unsigned char*>(
+                   &reinterpret_cast<const sockaddr_in*>(a->ifa_netmask)
+                        ->sin_addr)
+             : reinterpret_cast<const sockaddr_in6*>(a->ifa_netmask)
+                   ->sin6_addr.s6_addr;
+      const unsigned bits = v4 ? 32 : 128;
+      while (prefix < bits && (mask[prefix / 8] & (0x80 >> (prefix % 8))))
+        ++prefix;
+    }
+    append(a->ifa_addr, if_nametoindex(a->ifa_name), prefix);
   }
   freeifaddrs(list);
 #endif
@@ -356,6 +432,14 @@ std::vector<Interface> LocalIpInterfaces(bool physical_only) {
                            }),
                result.end());
   return result;
+}
+}  // namespace
+std::vector<Interface> LocalIpInterfaces(bool physical_only) {
+  return EnumerateInterfaces(physical_only ? InterfaceFilter::Physical
+                                           : InterfaceFilter::All);
+}
+std::vector<Interface> LocalMulticastInterfaces() {
+  return EnumerateInterfaces(InterfaceFilter::Multicast);
 }
 std::string RandomHex(size_t bytes) {
   std::vector<unsigned char> data(bytes);

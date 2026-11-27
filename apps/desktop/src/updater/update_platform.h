@@ -37,6 +37,9 @@ class MaintenanceLock {
   MaintenanceLock& operator=(const MaintenanceLock&) = delete;
  private:
   std::intptr_t handle_ = -1;
+#ifndef _WIN32
+  int status_reader_ = -1;
+#endif
 };
 bool MaintenanceActive(const fs::path& application);
 }  // namespace crossdesk::updater

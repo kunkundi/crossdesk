@@ -395,4 +395,20 @@
     <string name="text_88ea96f38f7b9279" formatted="false">"Cihaz durumu doğrulanıyor…"</string>
     <string name="text_64d655aad73dce57" formatted="false">"Uzak cihaz yanıt vermedi. Çevrimiçi olduğunu kontrol edip tekrar deneyin."</string>
     <string name="text_d5770d2b84139ab2" formatted="false">"Uzak bağlantı kuruluyor"</string>
+    <string name="text_d64a151b4956d033" formatted="false">"Cihaz kimliği değişti. Anahtar parmak izlerini doğrulayıp parolayı yeniden girin."</string>
+    <string name="text_5a220e368fc24cd4" formatted="false">"Yeni cihaza bağlan"</string>
+    <string name="text_62deed99aae5e453" formatted="false">"Parmak izlerini kopyala"</string>
+    <string name="text_961d96488df18b5e" formatted="false">"Ana makine adı çözümlenemedi"</string>
+    <string name="text_3765c75d9189fabb" formatted="false">"Ad çözümlemesi zaman aşımına uğradı"</string>
+    <string name="text_2169e184b335ba99" formatted="false">"Doğrudan bağlantı için kullanılabilir adres yok"</string>
+    <string name="text_cc2b0ac48f5dd186" formatted="false">"Hedef bağlantı noktasına bağlanılamadı"</string>
+    <string name="text_f984f357f7b1003f" formatted="false">"Doğrudan bağlantı sertifikası geçersiz"</string>
+    <string name="text_777136199c9aa458" formatted="false">"Doğrudan bağlantı protokolü uyumsuz"</string>
+    <string name="text_ffbbac568f2a8d2a" formatted="false">"Cihazlar arasındaki UDP bağlantısını denetleyin"</string>
+    <string name="text_b11b4e9a81701eae" formatted="false">"Cihaz kimliği, IP veya ana makine adı"</string>
+    <string name="text_6930740da68525a4" formatted="false">"Cihaz kimliği, IP veya ana makine adı girin"</string>
+    <string name="text_3384f4975b43f9b1" formatted="false">"Uzak IP veya ana makine adı"</string>
+    <string name="text_ff7241ff93bd6907" formatted="false">"IP veya ana makine adı ve isteğe bağlı bağlantı noktası girin"</string>
+    <string name="text_f36b579d49cdc4c1" formatted="false">"Geçerli bir IP veya ana makine adı girin"</string>
+    <string name="text_8d6b894fd86867bb" formatted="false">"Yerel ağı, yerel ad çözümlemesini ve ağ izinlerini denetleyin"</string>
 </resources>

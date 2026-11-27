@@ -120,7 +120,7 @@ For self-hosting, connect both ends to the same service and update the server be
 
 ### Connect directly over LAN
 
-On a phone or tablet, paste the address shown by the host into **Device ID or IP address** on the home screen and enter the host’s **Direct IP password**. For a desktop controller, follow these steps.
+On a phone or tablet, paste the address shown by the host into **Device ID, IP or hostname** on the home screen and enter the host’s **Direct IP password**. For a desktop controller, follow these steps.
 
 1. **Switch modes.** Open the desktop client on both computers. Click the top-left mode button to select **Direct IP mode**. If the button is hidden, select **Enable direct IP** under **Settings → General → Network** and save.
 2. **Enter the address.** On the controller, enter the host's displayed `IP:port`, for example `192.168.1.20:52888` or `[2001:db8::20]:52888`, and click **Connect**. Omitting the port uses **52888**; use the actual port shown on the host.

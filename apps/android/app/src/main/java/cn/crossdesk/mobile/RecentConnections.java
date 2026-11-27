@@ -30,7 +30,27 @@ final class RecentConnections {
         JSONObject item = find(list(server), id);
         return item != null && item.optBoolean("remember");
     }
-    String password(String server,String id)throws Exception{return secrets.get(credential(server,id));}
+    String fingerprint(String server,String id) {
+        JSONObject item=find(list(server),id);
+        String key=item==null?"":item.optString("spki");
+        return key.matches("[0-9a-f]{64}")?key:"";
+    }
+    private String boundCredential(String server,String id,String ref) {
+        return credential(server,id)+":domain-v1:"+ref;
+    }
+    String password(String server,String id)throws Exception {
+        JSONObject item=find(list(server),id);
+        if(!id.contains(":") || !NativeSession.isDomainEndpoint(id)) return secrets.get(credential(server,id));
+        if(item==null || !item.optBoolean("remember") || item.optString("credentialRef").isEmpty())return "";
+        String key=fingerprint(server,id);
+        String value=secrets.get(boundCredential(server,id,item.getString("credentialRef")));
+        return !key.isEmpty() && value.startsWith(key+":") && value.substring(65).matches("[A-Za-z0-9]{6}")
+            ? value.substring(65) : "";
+    }
+    private void removeBound(String server,JSONObject item) {
+        String ref=item.optString("credentialRef");
+        if(!ref.isEmpty())secrets.remove(boundCredential(server,item.optString("id"),ref));
+    }
     boolean contains(String server,String id){return find(list(server), id) != null;}
     static String displayName(JSONObject item) {
         String alias = item.optString("alias");
@@ -93,16 +113,45 @@ final class RecentConnections {
         preferences.edit().putString(key(server), records.toString()).apply();
     }
     void save(String server,String id,String name,String platform,boolean remember,String password)throws Exception{
+        save(server,id,name,platform,remember,password,"");
+    }
+    void save(String server,String id,String name,String platform,boolean remember,String password,String pin)throws Exception{
         if(remember&&password.isEmpty())throw new IllegalArgumentException("Cannot remember an empty password");
-        if(remember)secrets.put(credential(server,id),password);else secrets.remove(credential(server,id));
+        boolean domain=id.contains(":") && NativeSession.isDomainEndpoint(id);
+        if(domain && remember && !pin.matches("[0-9a-f]{64}"))throw new IllegalStateException("Missing peer key");
+        if(!domain){if(remember)secrets.put(credential(server,id),password);else secrets.remove(credential(server,id));}
         JSONArray old = list(server);
         JSONObject item = find(old, id);
         if (item == null) item = new JSONObject().put("id", id).put("name", id);
+        String oldRef=item.optString("credentialRef");
+        String newRef = "";
+        if (domain && remember) {
+            newRef = java.util.UUID.randomUUID().toString();
+            secrets.put(boundCredential(server, id, newRef), pin + ":" + password);
+            item.put("credentialRef", newRef).put("spki", pin);
+        } else {
+            item.remove("credentialRef");
+            item.remove("spki");
+        }
         if (!name.isEmpty() && !name.equals(id)) item.put("name", name);
         item.put("platform", platform).put("remember", remember);
         JSONArray result = new JSONArray().put(item);
-        for(int i=0;i<old.length();i++){JSONObject entry=old.optJSONObject(i);if(entry!=null&&!id.equals(entry.optString("id"))){if(result.length()<20)result.put(entry);else RemotePreviewStore.get(context).remove(server,entry.optString("id"));}}
-        preferences.edit().putString(key(server),result.toString()).apply();
+        for (int i = 0; i < old.length() && result.length() < 20; i++) {
+            JSONObject entry = old.optJSONObject(i);
+            if (entry != null && !id.equals(entry.optString("id"))) result.put(entry);
+        }
+        if (!preferences.edit().putString(key(server), result.toString()).commit()) {
+            if (!newRef.isEmpty()) secrets.remove(boundCredential(server, id, newRef));
+            throw new IllegalStateException("Cannot save recent connection");
+        }
+        if (!oldRef.isEmpty()) secrets.remove(boundCredential(server, id, oldRef));
+        for (int i = 0; i < old.length(); i++) {
+            JSONObject dropped = old.optJSONObject(i);
+            if (dropped != null && find(result, dropped.optString("id")) == null) {
+                removeBound(server, dropped);
+                RemotePreviewStore.get(context).remove(server, dropped.optString("id"));
+            }
+        }
     }
     void metadata(String server,String id,String name,String platform){
         JSONArray all=list(server);
@@ -116,7 +165,9 @@ final class RecentConnections {
     }
     void delete(String server,String id){
         JSONArray result=new JSONArray(),old=list(server);for(int i=0;i<old.length();i++){JSONObject entry=old.optJSONObject(i);if(entry!=null&&!id.equals(entry.optString("id")))result.put(entry);}
-        preferences.edit().putString(key(server),result.toString()).apply();secrets.remove(credential(server,id));
+        if(!preferences.edit().putString(key(server),result.toString()).commit())return;
+        JSONObject removed=find(old,id);if(removed!=null)removeBound(server,removed);
+        secrets.remove(credential(server,id));
         RemotePreviewStore.get(context).remove(server,id);
     }
 }

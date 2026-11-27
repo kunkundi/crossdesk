@@ -570,7 +570,7 @@ export component MainWindow inherits Window {
         root.lan-remember-password = false;
         let error = root.lan-prepare-connect(address);
         root.connection-input-error = error == "Invalid LAN endpoint"
-            ? GalleryStrings.texts[55]
+            ? GalleryStrings.texts[236]
             : LanStrings.error-message(error);
         if error == "" {
             root.lan-open = true;
@@ -636,6 +636,7 @@ export component MainWindow inherits Window {
     in-out property <bool> lan-remember-password;
     in-out property <string> lan-new-password;
     in-out property <string> lan-message;
+    in-out property <string> lan-key-change;
     callback lan-reset-password;
     callback lan-copy-text(string) -> bool;
     callback lan-cancel-connect;
@@ -647,6 +648,8 @@ export component MainWindow inherits Window {
     private property <string> prompt-status-text: !root.lan-open ? root.connection-status-text
         : root.lan-connecting ? GalleryStrings.texts[56]
         : root.lan-retry-after > 0 ? GalleryStrings.retry-after(root.lan-retry-after)
+        : root.lan-message == "DirectPortUnreachable" ? GalleryStrings.texts[228] + " " + root.lan-remote-port
+        : root.lan-key-change != "" ? GalleryStrings.texts[222] + "\n" + root.lan-key-change
         : root.lan-message == "InvalidCredentials" ? UiStrings.reinput-password
         : root.lan-message == "" || root.lan-message == "AuthenticationRateLimited" ? UiStrings.input-password
         : LanStrings.error-message(root.lan-message);
@@ -1764,8 +1767,8 @@ export component MainWindow inherits Window {
             WorkbenchCard {
                 x: local-card.width + 16px; y: 0px; width: local-card.width; height: parent.height;
                 Text { x: 16px; y: 14px; width: parent.width - 32px; height: 24px; overflow: elide; text: UiStrings.remote-desktop; font-size: 16px; font-weight: 600; color: WorkbenchStyle.text; }
-                Text { x: 16px; y: 38px; width: parent.width - 32px; height: 18px; text: root.lan-mode ? GalleryStrings.texts[83] : GalleryStrings.texts[84]; font-size: 11px; color: WorkbenchStyle.muted; overflow: elide; }
-                Text { x: 16px; y: 68px; height: 18px; text: root.lan-mode ? GalleryStrings.texts[85] : UiStrings.remote-id; font-size: 12px; color: WorkbenchStyle.muted; }
+                Text { x: 16px; y: 38px; width: parent.width - 32px; height: 18px; text: root.lan-mode ? GalleryStrings.texts[235] : GalleryStrings.texts[84]; font-size: 11px; color: WorkbenchStyle.muted; overflow: elide; }
+                Text { x: 16px; y: 68px; height: 18px; text: root.lan-mode ? GalleryStrings.texts[234] : UiStrings.remote-id; font-size: 12px; color: WorkbenchStyle.muted; }
                 FlatSurface {
                     x: 16px; y: 90px; width: parent.width - 32px; height: 40px;
                     background: remote-id-editor.has-focus ? ControlStyle.input-focused : ControlStyle.input-surface;
@@ -1775,14 +1778,14 @@ export component MainWindow inherits Window {
                     animate outline-color { duration: 120ms; }
                     if root.remote-id-input == "": Text {
                         x: 12px; width: parent.width - 24px; height: parent.height;
-                        text: root.lan-mode ? "192.168.1.20:52888" : GalleryStrings.texts[86];
+                        text: root.lan-mode ? "home.example.net:52888" : GalleryStrings.texts[86];
                         font-size: 13px; color: ControlStyle.input-placeholder; vertical-alignment: center;
                     }
                     remote-id-editor := TextInput {
                         x: 12px; width: parent.width - 24px; height: parent.height;
                         text <=> root.remote-id-input; font-size: root.lan-mode ? 18px : 24px; font-weight: 600; letter-spacing: root.lan-mode ? 0px : 1px;
                         input-type: root.lan-mode ? InputType.text : InputType.number; color: WorkbenchStyle.text;
-                        accessible-label: root.lan-mode ? GalleryStrings.texts[85] : UiStrings.remote-id;
+                        accessible-label: root.lan-mode ? GalleryStrings.texts[234] : UiStrings.remote-id;
                         enabled: !root.connection-pending && !root.lan-connecting;
                         vertical-alignment: center;
                         selection-foreground-color: white; selection-background-color: WorkbenchStyle.accent;
@@ -2975,12 +2978,16 @@ export component MainWindow inherits Window {
             HorizontalLayout {
                 x: 24px; y: parent.height - 60px; width: parent.width - 48px; height: 36px;
                 spacing: 12px; alignment: center;
+                if root.lan-open && root.lan-key-change != "": WorkbenchButton {
+                    text: GalleryStrings.texts[224];
+                    clicked => { root.lan-copy-text(root.lan-key-change); }
+                }
                 if root.prompt-password-required || root.prompt-pending: WorkbenchButton {
                     text: UiStrings.cancel;
                     clicked => { root.cancel-connection-prompt(); }
                 }
                 if root.prompt-password-required && !root.prompt-validating: WorkbenchButton {
-                    primary: true; text: UiStrings.ok;
+                    primary: true; text: root.lan-open && root.lan-key-change != "" ? GalleryStrings.texts[223] : UiStrings.ok;
                     enabled: !root.lan-open || (root.lan-retry-after == 0 && root.lan-access-password.character-count == 6);
                     clicked => { root.submit-connection-password(); }
                 }

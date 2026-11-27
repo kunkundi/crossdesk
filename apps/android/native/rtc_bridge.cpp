@@ -396,8 +396,11 @@ extern "C" JNIEXPORT jstring JNICALL JNI_METHOD(directEndpoint)(JNIEnv* env, jcl
   auto endpoint = mobile_controller::DirectConnection::Endpoint(String(env, input));
   return env->NewStringUTF(endpoint.c_str());
 }
+extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(isDomainEndpoint)(JNIEnv* env, jclass, jstring input) {
+  return mobile_controller::DirectConnection::IsDomain(String(env, input));
+}
 extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nConnect)(
-    JNIEnv* env, jclass, jlong handle, jstring identity, jstring remote, jstring password) {
+    JNIEnv* env, jclass, jlong handle, jstring identity, jstring remote, jstring password, jstring expectedKey, jboolean saved) {
   auto* s = From(handle);
   if (!s || s->controller) return false;
   s->controller_login = "C-" + String(env, identity);
@@ -411,7 +414,9 @@ extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nConnect)(
                           kClipboardStream, kFileStream, kFileFeedbackStream}) MiniRtcAddDataStream(s->controller, name, true);
   if (s->remote.find(':') != std::string::npos) {
     return s->direct.Start(s->controller, s->remote, String(env, password),
-        [s](MiniRtcConnectionStatus status) { s->Event(2, {{"status", status}}); });
+        String(env, expectedKey), saved, [s](MiniRtcConnectionStatus status, const std::string& detail) {
+          s->Event(2, {{"status", status}, {"detail", detail}});
+        });
   }
   if (MiniRtcInit(s->controller) != 0) return false;
   const auto join = s->remote + "@" + String(env, password);

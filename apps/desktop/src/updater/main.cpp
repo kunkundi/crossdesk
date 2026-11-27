@@ -4,7 +4,9 @@
 
 #include <nlohmann/json.hpp>
 #include <chrono>
+#include <future>
 #include <iostream>
+#include <optional>
 #include <thread>
 #ifdef _WIN32
 #include <windows.h>
@@ -29,12 +31,12 @@ Request ReadRequest(const fs::path& job) {
           request.value("restart_arguments", std::vector<std::string>{})};
 }
 
-void WaitForCommit(const fs::path& job) {
+void WaitForCommit(const fs::path& job, const char* marker = "commit") {
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(120);
   while (true) {
     if (fs::exists(job / "cancel"))
       throw std::runtime_error("Update cancelled before application exit");
-    if (fs::exists(job / "commit")) return;
+    if (fs::exists(job / marker)) return;
     if (std::chrono::steady_clock::now() >= deadline)
       throw std::runtime_error("Application did not confirm update installation");
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -49,6 +51,9 @@ int Install(const fs::path& job) {
     const auto request = ReadRequest(job);
     stage = PrivateDirectory();
     const auto package = stage / request.artifact.filename;
+#ifndef _WIN32
+    std::optional<MaintenanceLock> maintenance;
+#endif
     ExecuteInstall({
         [&] {
           // A privileged installer never executes the caller's writable file.
@@ -62,9 +67,12 @@ int Install(const fs::path& job) {
           // atomically without writing through a caller-controlled file.
           if (fs::exists(job / "cancel"))
             throw std::runtime_error("Update cancelled before application exit");
+          maintenance.emplace(request.application);
           if (!fs::create_directory(job / "ready"))
             throw std::runtime_error("Update readiness was already published");
-          WaitForCommit(job);
+          WaitForCommit(job, "coordinator-ready");
+          if (!fs::exists(job / "commit"))
+            throw std::runtime_error("Application did not commit the update");
 #endif
           WaitForApplicationExit(request.application);
         },
@@ -88,14 +96,22 @@ int Coordinate(const fs::path& job) {
   bool success = false;
   bool exited = false;
   std::string error;
+  platform::SingleInstanceGuard client;
+  platform::SingleInstanceGuard launcher;
+#ifdef _WIN32
   std::unique_ptr<MaintenanceLock> maintenance;
+#else
+  std::future<int> elevated;
+#endif
   try {
     const auto request = ReadRequest(job);
     application = request.application;
     restart_arguments = request.restart_arguments;
     auto pinned = PinHelper(ExecutablePath());
     {
+#ifdef _WIN32
       maintenance = std::make_unique<MaintenanceLock>(application);
+#endif
       VerifyPackage(job / request.artifact.filename, request.artifact);
 #ifdef _WIN32
       WriteText(job / "ready", "ready\n");
@@ -105,14 +121,14 @@ int Coordinate(const fs::path& job) {
       // The root-owned helper publishes ready only after authorization and
       // verification of its private package copy, then waits for the GUI's
       // commit before touching the installation.
-      const int code = RunElevated(HelperPath(application), job);
-      committed = fs::exists(job / "commit");
-      if (!committed)
-        throw std::runtime_error("Update preparation failed or authorization was cancelled (code " +
-                                 std::to_string(code) + ")");
+      elevated = std::async(std::launch::async, RunElevated, HelperPath(application), job);
+      while (!fs::exists(job / "commit")) {
+        if (elevated.wait_for(std::chrono::milliseconds(100)) == std::future_status::ready)
+          throw std::runtime_error("Update preparation failed or authorization was cancelled (code " +
+                                   std::to_string(elevated.get()) + ")");
+      }
+      committed = true;
 #endif
-      platform::SingleInstanceGuard client;
-      platform::SingleInstanceGuard launcher;
       const auto exit_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(45);
       while (true) {
         std::string lease_error;
@@ -131,16 +147,31 @@ int Coordinate(const fs::path& job) {
 #ifdef _WIN32
       // This relocated copy is held read-only across UAC and installation.
       const int code = RunElevated(ExecutablePath(), job);
+#else
+      // Hold the initiating user's launch guards through the result receipt, even
+      // after the privileged installer exits and releases the machine-wide lock.
+      WriteText(job / "coordinator-ready", "ready\n");
+      const int code = elevated.get();
 #endif
       if (code != 0) throw std::runtime_error("Installation failed or authorization was cancelled (code " +
                                               std::to_string(code) + ")");
       success = true;
     }
   } catch (const std::exception& exception) { error = exception.what(); }
+#ifndef _WIN32
+  if (elevated.valid()) {
+    try { WriteText(job / "cancel", "cancel\n"); } catch (const std::exception&) {}
+    elevated.wait();
+  }
+#endif
   try {
     WriteText(job / "result.json", nlohmann::json{{"success", success}, {"error", error}}.dump(2));
   } catch (const std::exception&) {}
+  client.Release();
+  launcher.Release();
+#ifdef _WIN32
   maintenance.reset();
+#endif
   if (committed && exited) {
     try {
       Restart(application, restart_arguments);

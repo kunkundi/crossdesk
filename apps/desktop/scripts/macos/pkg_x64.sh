@@ -112,10 +112,6 @@ cat > "${CONTENTS_DIR}/Info.plist" <<EOF
     <string>${MACOS_MIN_VERSION}</string>
     <key>NSHighResolutionCapable</key>
     <true/>
-    <key>NSCameraUsageDescription</key>
-    <string>应用需要访问摄像头</string>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>应用需要访问麦克风</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>应用需要发送 Apple 事件</string>
     <key>NSScreenCaptureUsageDescription</key>
