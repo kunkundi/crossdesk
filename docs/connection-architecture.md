@@ -168,6 +168,8 @@ IP 直连由**控制端**发起 offer。双方内部 ID 和随机 `session_id` �
 
 SessionManager 将当前 WSS socket 的本地与对端 IPv4/IPv6 传入 `MiniRtcInitDirectPeer()`，由 MiniRTC 构造 `HostOnly` 策略，启动独立 ICE worker，不执行云端登录。MiniRTC 通过 `SignalSender` 回调把协商消息交给 SessionManager，再由 WSS 发送。
 
+应用层 VPN 可能使对端宣告的虚拟网卡 IP 与 WSS 对端 IP 不同。收到同地址族的合法 UDP host 候选时，MiniRTC 使用已认证 WSS 对端的 IP 和候选宣告的端口发起 ICE 检查。这一规则同时适用于单独发送的候选和 offer/answer SDP 中的候选。
+
 MiniRTC 关闭 STUN/TURN 服务器访问、UPnP、ICE TCP 和公网打洞扩展，仅收集指定本机 IPv4/IPv6 的 UDP host 候选。libnice 的 `direct-peer-address` 补丁同时检查远端候选和入站来源：在解析 STUN 连通性检查、学习新候选或回复数据之前，拒绝不匹配的 IP。ICE 自身的 STUN 检查报文仍会在双方之间使用，这与访问 STUN 服务器是两回事。
 
 IPv6 候选按地址字节比较，允许等价压缩写法；线上候选不携带网卡作用域。链路本地远端候选由 libnice 绑定到当前 WSS 连接确认的本机作用域，接收路径在学习候选前同时检查地址与作用域，防止跨网卡匹配。新补丁提供 `direct-peer-ipv6` 能力标志并更新包配置，旧 libnice 不会静默接受 IPv6 策略。认证能力列表增加 `host-only-ipv6`，IPv4 连接仍仅要求原有能力以兼容旧客户端。
