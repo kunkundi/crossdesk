@@ -67,7 +67,7 @@ H.264 自动优先使用硬件编解码，不可用或初始化失败时回退�
 
 | 设置名称 | 可选值 / 格式 | 生效方式 |
 | --- | --- | --- |
-| `language` | `system` / `zh-CN` / `en-US` / `ru-RU` / `zh-Hant` / `ja` / `ko` / `de` / `fr` / `es` / `pt-BR` / `tr` | 立即切换控制台和 GUI 语言，下次启动保留 |
+| `language` | `system` / `zh-CN` / `en-US` / `ru-RU` / `zh-Hant` / `ja` / `ko` / `de` / `fr` / `es` / `pt-BR` / `tr` / `he` | 立即切换控制台和 GUI 语言，下次启动保留 |
 | `codec` | `h264` / `av1` | 保存后重新连接 |
 | `turn` | `off` / `auto` / `udp` / `tcp` | 保存后重新连接；`udp` / `tcp` 表示强制中继 |
 | `server_host` | 主机名、IP 或 HTTPS/WSS 信令地址，支持路径和显式端口 | 自托管未启用时保存备用，已启用时重连 |

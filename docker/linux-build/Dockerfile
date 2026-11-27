@@ -53,6 +53,7 @@ RUN apt-get update \
         libegl1-mesa-dev \
         libffi-dev \
         libfontconfig1-dev \
+        libfribidi-dev \
         libfreetype6-dev \
         libfuse-dev libfuse3-dev \
         libgl1-mesa-dev \

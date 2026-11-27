@@ -26,7 +26,7 @@ std::optional<bool> Boolean(const std::string& value) {
   return std::nullopt;
 }
 const char* OnOff(bool value) { return value ? "on" : "off"; }
-const char* languages[] = {"zh-CN", "en-US", "ru-RU", "zh-Hant", "ja", "ko", "de", "fr", "es", "pt-BR", "system", "tr"};
+const char* languages[] = {"zh-CN", "en-US", "ru-RU", "zh-Hant", "ja", "ko", "de", "fr", "es", "pt-BR", "system", "tr", "he"};
 const char* codecs[] = {"h264", "av1", "h265"};
 const char* turn_modes[] = {"off", "auto", "udp", "tcp"};
 }  // namespace
@@ -35,7 +35,7 @@ std::vector<ConsoleSetting> GetConsoleSettings(const ConfigCenter& config) {
   const auto language = ConfigCenter::LanguageSettingValue(config.GetLanguage());
   const auto turn = std::clamp(static_cast<int>(config.GetTurnMode()), 0, 3);
   return {
-      {"language", "console_setting_language", languages[language], "system / zh-CN / en-US / ru-RU / zh-Hant / ja / ko / de / fr / es / pt-BR / tr"},
+      {"language", "console_setting_language", languages[language], "system / zh-CN / en-US / ru-RU / zh-Hant / ja / ko / de / fr / es / pt-BR / tr / he"},
       {"codec", "console_setting_codec", codecs[static_cast<int>(config.GetVideoEncodeFormat())], "h264 / av1 / h265"},
       {"turn", "console_setting_turn", turn_modes[turn], "off / auto / udp / tcp"},
       {"self_hosted", "console_setting_self_hosted", OnOff(config.IsSelfHosted()), "on / off"},
@@ -69,7 +69,9 @@ SettingResult ApplyConsoleSetting(ConfigCenter& config, const std::string& key,
   std::string canonical = input;
   std::function<int()> save;
   if (key == "language") {
-    int language = value == "zh" ? 0 : value == "en" ? 1 : value == "ru" ? 2 : -1;
+    // iw הוא הקוד הישן לעברית, ועדיין מופיע בחלק מהמערכות.
+    int language = value == "zh" ? 0 : value == "en" ? 1 : value == "ru" ? 2
+                 : value == "iw" || value == "he-il" ? 12 : -1;
     if (language < 0) {
       for (int i = 0; i < static_cast<int>(std::size(languages)); ++i) {
         if (value == Lower(languages[i]) || value == std::to_string(i)) {
