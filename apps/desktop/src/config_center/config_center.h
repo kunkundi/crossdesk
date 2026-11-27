@@ -26,7 +26,7 @@ class ConfigCenter {
   enum class LANGUAGE {
     CHINESE = 0, ENGLISH = 1, RUSSIAN = 2, TRADITIONAL_CHINESE = 3,
     JAPANESE = 4, KOREAN = 5, GERMAN = 6, FRENCH = 7, SPANISH = 8,
-    BRAZILIAN_PORTUGUESE = 9, TURKISH = 10, SYSTEM = 11
+    BRAZILIAN_PORTUGUESE = 9, TURKISH = 10, HEBREW = 11, SYSTEM = 12
   };
   // config.ini and numeric console commands reserve 10 for "follow system".
   static constexpr int kSystemLanguageSetting = 10;

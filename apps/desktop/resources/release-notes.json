@@ -53,5 +53,10 @@
     "Her uzak cihaz ayrı bir denetim penceresinde açılır. Yeniden bağlandığınızda pencere o cihazda en son kullandığınız boyuta döner.",
     "macOS ve Windows’ta Ayarlar’dan gizlilik ekranını tamamen siyah gösterebilirsiniz.",
     "Üç saniye boyunca işlem yapılmadığında yüzer denetim düğmesi soluklaşarak küçülür."
+  ],
+  "he": [
+    "כל מכשיר מרוחק נפתח בחלון שליטה משלו. בהתחברות מחדש החלון חוזר לגודל האחרון שהיה לו באותו מכשיר.",
+    "ב-macOS וב-Windows אפשר עכשיו לבחור בהגדרות מסך פרטיות שחור לגמרי.",
+    "כפתור השליטה הצף מתעמעם ומתכווץ אחרי שלוש שניות בלי פעילות, כדי שלא יסתיר את המסך המרוחק."
   ]
 }
