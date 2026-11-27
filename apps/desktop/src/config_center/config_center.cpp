@@ -218,6 +218,9 @@ int ConfigCenter::Load() {
       ini_->GetBoolValue(section_, "enable_privacy_screen", true));
   privacy_local_unlock_allowed_.store(
       ini_->GetBoolValue(section_, "privacy_local_unlock_allowed", true));
+#ifdef __APPLE__
+  auto_virtual_display_.store(ini_->GetBoolValue(section_, "auto_virtual_display", true));
+#endif
   privacy_black_screen_.store(ini_->GetBoolValue(section_, "privacy_black_screen", false));
   lock_on_disconnect_.store(
       ini_->GetBoolValue(section_, "lock_on_disconnect", true));
@@ -350,6 +353,9 @@ int ConfigCenter::Save() {
                     enable_privacy_screen_.load());
   ini_->SetBoolValue(section_, "privacy_local_unlock_allowed",
                     privacy_local_unlock_allowed_.load());
+#ifdef __APPLE__
+  ini_->SetBoolValue(section_, "auto_virtual_display", auto_virtual_display_.load());
+#endif
   ini_->SetBoolValue(section_, "privacy_black_screen", privacy_black_screen_.load());
   ini_->SetBoolValue(section_, "lock_on_disconnect", lock_on_disconnect_.load());
   ini_->SetBoolValue(section_, "trusted_devices_only", trusted_devices_only_.load());
@@ -687,6 +693,15 @@ int ConfigCenter::SetPrivacyLocalUnlock(bool allowed) {
 bool ConfigCenter::IsPrivacyLocalUnlockAllowed() const {
   return privacy_local_unlock_allowed_.load();
 }
+
+#ifdef __APPLE__
+int ConfigCenter::SetAutoVirtualDisplay(bool enabled) {
+  if (auto_virtual_display_.load() == enabled) return 0;
+  if (StoreValues({{"auto_virtual_display", enabled ? "true" : "false"}}) != 0) return -1;
+  auto_virtual_display_.store(enabled);
+  return 0;
+}
+#endif
 
 int ConfigCenter::SetPrivacyBlackScreen(bool enabled) {
   if (privacy_black_screen_.load() == enabled) return 0;

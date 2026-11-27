@@ -9,6 +9,7 @@
  */
 
 #include "screen_capturer_sck.h"
+#include "../virtual_display/headless_display.h"
 
 #include <AppKit/AppKit.h>
 #include <ApplicationServices/ApplicationServices.h>
@@ -290,6 +291,9 @@ static std::string GetAppKitDisplayName(CGDirectDisplayID display_id) {
 }
 
 std::string GetDisplayName(CGDirectDisplayID display_id) {
+  // WindowServer can publish the new ID before NSScreen updates its names.
+  if (const char* name = MacHeadlessDisplay::NameFor(display_id)) return name;
+
   // IODisplayConnect is no longer exposed for some external displays on
   // modern Apple Silicon Macs. NSScreen is the system-owned source for the
   // user-visible name and maps directly to CGDirectDisplayID.
@@ -437,7 +441,7 @@ int ScreenCapturerSckImpl::Init(const int fps, cb_desktop_data cb) {
     // During wake, ScreenCaptureKit may list only a secondary display.
     // Reserve the primary built-in display's slot before negotiating streams.
     const CGDirectDisplayID primary = CGMainDisplayID();
-    if (CGDisplayIsBuiltin(primary) && CGDisplayIsOnline(primary) &&
+    if (CGDisplayIsBuiltin(primary) == 1 && CGDisplayIsOnline(primary) == 1 &&
         CGDisplayMirrorsDisplay(primary) == kCGNullDirectDisplay &&
         std::find(display_ids.begin(), display_ids.end(), primary) ==
             display_ids.end()) {
@@ -668,7 +672,10 @@ void ScreenCapturerSckImpl::OnShareableContentCreated(SCShareableContent *conten
       logical_index = 0;
     }
 
-    const CGDirectDisplayID mirror_source = current_display_
+    // WindowServer returns UINT32_MAX for queries against a retired display.
+    // Never wait for a removed placeholder as if it were a mirrored or waking panel.
+    const bool current_online = current_display_ && CGDisplayIsOnline(current_display_) == 1;
+    const CGDirectDisplayID mirror_source = current_online
         ? CGDisplayMirrorsDisplay(current_display_) : kCGNullDirectDisplay;
     for (SCDisplay *display in content.displays) {
       if (mirror_source != kCGNullDirectDisplay && mirror_source == display.displayID) {
@@ -680,8 +687,7 @@ void ScreenCapturerSckImpl::OnShareableContentCreated(SCShareableContent *conten
       }
     }
     if (!captured_display && mirror_source == kCGNullDirectDisplay) {
-      const bool waking_panel = current_display_ && CGDisplayIsBuiltin(current_display_) &&
-                                CGDisplayIsOnline(current_display_);
+      const bool waking_panel = current_online && CGDisplayIsBuiltin(current_display_) == 1;
       if (!waking_panel) {
         const NSUInteger slot = static_cast<NSUInteger>(logical_index);
         captured_display = slot < content.displays.count ? content.displays[slot]

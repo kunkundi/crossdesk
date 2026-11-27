@@ -424,7 +424,8 @@ function setup_targets()
             add_deps("privacy")
             add_mxxflags("-fobjc-arc")
             add_files("apps/desktop/src/platform/macos/screen_capturer/*.cpp",
-                "apps/desktop/src/platform/macos/screen_capturer/*.mm")
+                "apps/desktop/src/platform/macos/screen_capturer/*.mm",
+                "apps/desktop/src/platform/macos/virtual_display/*.mm")
             add_includedirs("apps/desktop/src/platform/macos/screen_capturer")
         elseif is_os("linux") then
             add_deps("privacy")

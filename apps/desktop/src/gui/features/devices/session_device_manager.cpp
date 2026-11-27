@@ -167,6 +167,7 @@ int SessionDeviceManager::InitializeScreenCapturer() {
   if (!owner_.EnsureMacScreenRecordingPermission()) {
     return -1;
   }
+  headless_display_.Update(owner_.config_center_->IsAutoVirtualDisplay(), false);
 #endif
 
   if (!screen_capturer_) {
@@ -314,6 +315,9 @@ int SessionDeviceManager::InitializeScreenCapturer() {
   screen_capturer_->Destroy();
   delete screen_capturer_;
   screen_capturer_ = nullptr;
+#ifdef __APPLE__
+  headless_display_.Release();
+#endif
   return -1;
 }
 
@@ -775,6 +779,12 @@ void SessionDeviceManager::UpdateInteractions() {
     std::erase_if(controllers, [](const auto& id) { return id.rfind("lan/", 0) != 0; });
   }
   bool capture_needed = !controllers.empty();
+#ifdef __APPLE__
+  if (screen_capturer_) {
+    headless_display_.Update(owner_.config_center_->IsAutoVirtualDisplay(),
+                             capture_needed || owner_.screen_capturer_is_started_);
+  }
+#endif
 #if defined(__linux__) && !defined(__OHOS__)
   // Preserve a running Wayland portal across reconnects.
   capture_needed = capture_needed || (owner_.screen_capturer_is_started_ &&
@@ -957,6 +967,9 @@ void SessionDeviceManager::DestroyDevices() {
     delete screen_capturer_;
     screen_capturer_ = nullptr;
   }
+#ifdef __APPLE__
+  headless_display_.Release();
+#endif
   if (keyboard_capturer_) {
     delete keyboard_capturer_;
     keyboard_capturer_ = nullptr;

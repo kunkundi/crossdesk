@@ -1807,6 +1807,10 @@ void GuiApplication::ResetSettingsUi(bool gallery_window) {
   main->set_privacy_on_connect_enabled(
       config_center_->IsEnablePrivacyScreen());
   main->set_privacy_local_unlock_allowed(config_center_->IsPrivacyLocalUnlockAllowed());
+#ifdef __APPLE__
+  main->set_auto_virtual_display_available(true);
+  main->set_auto_virtual_display(config_center_->IsAutoVirtualDisplay());
+#endif
 #if defined(_WIN32) || defined(__APPLE__)
   main->set_privacy_black_screen_available(true);
   main->set_privacy_black_screen(config_center_->IsPrivacyBlackScreen());
@@ -5225,6 +5229,14 @@ bool GuiApplication::PersistSettingsFromUi(bool gallery_window) {
         localization::Literal("无法保存隐私屏解锁设置，请重试。", localization_language_index_)));
     return false;
   }
+#ifdef __APPLE__
+  if (config_center_->SetAutoVirtualDisplay(main->get_auto_virtual_display()) != 0) {
+    if (wall_changed) previous_wall.Save(shared_wall_path);
+    main->set_settings_save_error(UiText(
+        localization::Literal("保存失败，请重试", localization_language_index_)));
+    return false;
+  }
+#endif
   if (main->get_privacy_black_screen_available() &&
       config_center_->SetPrivacyBlackScreen(main->get_privacy_black_screen()) != 0) {
     if (wall_changed) previous_wall.Save(shared_wall_path);

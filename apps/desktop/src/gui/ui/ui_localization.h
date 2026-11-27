@@ -157,6 +157,7 @@ inline int ApplyMainWindowStrings(
   strings.set_save_remote_previews(Text(localization::save_remote_previews[language]));
   strings.set_unknown_platform(Text(localization::unknown_platform[language]));
   strings.set_privacy_local_unlock(Text(localization::privacy_local_unlock[language]));
+  strings.set_auto_virtual_display(Text(localization::auto_virtual_display[language]));
   strings.set_privacy_black_screen(Text(localization::privacy_black_screen[language]));
   strings.set_privacy_on_connect(Text(localization::privacy_on_connect[language]));
   strings.set_lock_on_disconnect(Text(localization::lock_on_disconnect[language]));

@@ -25,6 +25,9 @@
 #include "features/input/remote_mouse_buttons.h"
 #include "screen_sharing_power.h"
 #include "speaker_capture_controller.h"
+#ifdef __APPLE__
+#include "platform/macos/virtual_display/headless_display.h"
+#endif
 
 struct SDL_AudioStream;
 
@@ -124,6 +127,9 @@ private:
   ScreenCapturerFactory *screen_capturer_factory_ = nullptr;
   ScreenCapturer *screen_capturer_ = nullptr;
   ScreenSharingPower screen_sharing_power_;
+#ifdef __APPLE__
+  MacHeadlessDisplay headless_display_;
+#endif
   std::atomic<bool> cursor_capture_dirty_{true};
   SpeakerCaptureController speaker_capture_;
   DeviceControllerFactory *device_controller_factory_ = nullptr;

@@ -577,6 +577,7 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"不能使用系统保留分组名称", {"不能使用系统保留分组名称", "Cannot use a reserved group name", "Нельзя использовать системное имя группы", "不能使用系統保留分組名稱", "システム予約済みのグループ名は使用できません", "시스템 예약 그룹 이름은 사용할 수 없습니다", "Reservierter Gruppenname nicht zulässig", "Impossible d’utiliser un nom de groupe réservé", "No se puede usar un nombre de grupo reservado", "Não é possível usar um nome de grupo reservado", "Sistem için ayrılmış bir grup adı kullanılamaz"}},
   {"分组名称过长", {"分组名称过长", "Group name is too long", "Название группы слишком длинное", "分組名稱過長", "グループ名が長すぎます", "그룹 이름이 너무 깁니다", "Gruppenname ist zu lang", "Le nom du groupe est trop long", "El nombre del grupo es demasiado largo", "O nome do grupo é muito longo", "Grup adı çok uzun"}},
   {"此分组已更名或删除，请重新选择。", {"此分组已更名或删除，请重新选择。", "This group was renamed or deleted. Select a group again.", "Группа переименована или удалена. Выберите группу снова.", "此分組已重新命名或刪除，請重新選擇。", "グループ名が変更されたか、グループが削除されました。もう一度グループを選択してください。", "그룹 이름이 변경되었거나 그룹이 삭제되었습니다. 그룹을 다시 선택하세요.", "Die Gruppe wurde umbenannt oder gelöscht. Wählen Sie erneut eine Gruppe aus.", "Ce groupe a été renommé ou supprimé. Sélectionnez à nouveau un groupe.", "Este grupo se ha renombrado o eliminado. Vuelve a seleccionar un grupo.", "Este grupo foi renomeado ou excluído. Selecione um grupo novamente.", "Bu grup yeniden adlandırıldı veya silindi. Lütfen yeniden seçim yapın."}},
+  {"未连接显示器时自动创建虚拟屏", {"未连接显示器时自动创建虚拟屏", "Create a virtual display when no monitor is connected", "Создавать виртуальный дисплей без монитора", "未連接顯示器時自動建立虛擬螢幕", "モニター未接続時に仮想ディスプレイを作成", "모니터가 없을 때 가상 디스플레이 생성", "Ohne Monitor ein virtuelles Display erstellen", "Créer un écran virtuel si aucun moniteur n’est connecté", "Crear una pantalla virtual si no hay monitor", "Criar tela virtual quando não houver monitor", "Monitör bağlı değilken sanal ekran oluştur"}},
 };
 
 struct NamedTranslation { const char* name; const char* literal; };
@@ -879,6 +880,7 @@ inline constexpr NamedTranslation kNamedTranslations[] = {
   {"windows_service_repair_success", "服务已修复并启动"},
   {"windows_service_repair_failed", "修复失败，请检查管理员权限和便携版文件后重试"},
   {"remote_service_unavailable_message", "远端 Windows 服务不可用，锁屏时无法操作。请在远端安装或修复 CrossDesk 服务。"},
+  {"auto_virtual_display", "未连接显示器时自动创建虚拟屏"},
 };
 inline constexpr const char* kSlintLiterals[] = {
   "此端口已被占用，",
@@ -1404,7 +1406,8 @@ inline constexpr const char* kSlintLiterals[] = {
   X(windows_service_repairing) \
   X(windows_service_repair_success) \
   X(windows_service_repair_failed) \
-  X(remote_service_unavailable_message)
+  X(remote_service_unavailable_message) \
+  X(auto_virtual_display)
 
 }  // namespace localization
 }  // namespace crossdesk

@@ -87,6 +87,7 @@ export global UiStrings {
     in-out property <string> save-remote-previews: "Save remote screen previews";
     in-out property <string> unknown-platform: "Unknown platform";
     in-out property <string> privacy-local-unlock: "Allow privacy screen unlock while controlled";
+    in-out property <string> auto-virtual-display: "Create a virtual display when no monitor is connected";
     in-out property <string> privacy-black-screen: "Use a black privacy screen";
     in-out property <string> privacy-on-connect: "Privacy screen on connect";
     in-out property <string> lock-on-disconnect: "Lock screen on disconnect";
@@ -803,6 +804,8 @@ export component MainWindow inherits Window {
     in property <bool> privacy-setting-available: false;
     in-out property <bool> privacy-on-connect-enabled: true;
     in-out property <bool> privacy-local-unlock-allowed: true;
+    in property <bool> auto-virtual-display-available: false;
+    in-out property <bool> auto-virtual-display: true;
     in property <bool> privacy-black-screen-available: false;
     in-out property <bool> privacy-black-screen: false;
     in property <bool> lock-on-disconnect-available: false;
@@ -3195,7 +3198,7 @@ export component MainWindow inherits Window {
                         }
                         SettingsGroup {
                             title: GalleryStrings.texts[115];
-                            rows: 3;
+                            rows: 3 + (root.auto-virtual-display-available ? 1 : 0);
                             SettingsRow {
                                 label: UiStrings.codec; enabled: !root.settings-session-active;
                                 SettingsSelect { x: parent.width - 116px; y: 4px; width: 104px; enabled: !root.settings-session-active; model: [UiStrings.codec-h264, UiStrings.codec-av1, "H.265"]; current-index <=> root.codec-index; }
@@ -3209,10 +3212,14 @@ export component MainWindow inherits Window {
                             }
                             SettingsHintToggleRow {
                                 label: UiStrings.pause-video-when-minimized;
-                                checked <=> root.pause-video-when-minimized; divider: false;
+                                checked <=> root.pause-video-when-minimized; divider: root.auto-virtual-display-available;
                                 hover-changed(show, px, py) => {
                                     root.update-toggle-hint(UiStrings.pause-video-when-minimized-hint, show, px, py);
                                 }
+                            }
+                            if root.auto-virtual-display-available: SettingsToggleRow {
+                                label: UiStrings.auto-virtual-display; divider: false;
+                                checked <=> root.auto-virtual-display;
                             }
                         }
                         SettingsGroup {
