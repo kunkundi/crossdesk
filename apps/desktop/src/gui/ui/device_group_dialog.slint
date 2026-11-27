@@ -15,6 +15,7 @@ export component DeviceGroupDialog inherits Rectangle {
     in property <string> device-id;
     in property <[DeviceGroupOption]> options;
     in property <string> error;
+    in property <bool> editing-enabled: true;
     in-out property <string> new-group;
     callback toggle-group(string);
     callback rename-group(string);
@@ -115,6 +116,7 @@ export component DeviceGroupDialog inherits Rectangle {
             }
         }
         RoundedLineEdit {
+            enabled: root.editing-enabled;
             x: 18px; y: group-list.y + group-list.height + 12px;
             width: parent.width - 36px; height: 30px;
             text <=> root.new-group;

@@ -11975,6 +11975,18 @@
       "fr": "Le nom du groupe est trop long",
       "es": "El nombre del grupo es demasiado largo",
       "pt-BR": "O nome do grupo é muito longo"
+    },
+    "此分组已更名或删除，请重新选择。": {
+      "zh-Hans": "此分组已更名或删除，请重新选择。",
+      "en": "This group was renamed or deleted. Select a group again.",
+      "ru": "Группа переименована или удалена. Выберите группу снова.",
+      "zh-Hant": "此分組已重新命名或刪除，請重新選擇。",
+      "ja": "グループ名が変更されたか、グループが削除されました。もう一度グループを選択してください。",
+      "ko": "그룹 이름이 변경되었거나 그룹이 삭제되었습니다. 그룹을 다시 선택하세요.",
+      "de": "Die Gruppe wurde umbenannt oder gelöscht. Wählen Sie erneut eine Gruppe aus.",
+      "fr": "Ce groupe a été renommé ou supprimé. Sélectionnez à nouveau un groupe.",
+      "es": "Este grupo se ha renombrado o eliminado. Vuelve a seleccionar un grupo.",
+      "pt-BR": "Este grupo foi renomeado ou excluído. Selecione um grupo novamente."
     }
   },
   "desktop": {
@@ -13065,7 +13077,8 @@
       "请输入分组名称",
       "分组名称已存在",
       "不能使用系统保留分组名称",
-      "分组名称过长"
+      "分组名称过长",
+      "此分组已更名或删除，请重新选择。"
     ],
     "android": [
       " · 已完成",
