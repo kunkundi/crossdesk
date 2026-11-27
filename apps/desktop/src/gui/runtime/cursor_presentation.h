@@ -33,25 +33,21 @@ class CursorPresentation {
     const bool separate =
         state.render_mode == CursorRenderMode::separate ||
         (state.render_mode == CursorRenderMode::legacy && state.visible);
-    system_hidden_ = state.render_mode == CursorRenderMode::hidden &&
-                     state.hidden_reason == CursorHiddenReason::system_hidden;
+    hidden_reason_ = state.render_mode == CursorRenderMode::hidden
+                         ? state.hidden_reason : CursorHiddenReason::unspecified;
     if (separate) {
       mac_locator_allowed_ = state.shape != RemoteCursorShape::none;
-    } else if (!system_hidden_) {
+    } else if (hidden_reason_ != CursorHiddenReason::system_hidden) {
       // Embedded cursors and other hiding policies end the separate-cursor
       // history. A later system_hidden sample must not revive that overlay.
       mac_locator_allowed_ = false;
     }
-    // Old senders cannot distinguish embedded from hidden. Only explicit
-    // metadata from a new sender can establish the no-device compatibility
-    // case.
-    no_device_ = state.render_mode == CursorRenderMode::hidden &&
-                 state.hidden_reason == CursorHiddenReason::no_pointing_device;
     held_shape_ = separate ? state.shape : RemoteCursorShape::none;
     if (held_shape_ != RemoteCursorShape::none) {
       last_visible_shape_ = held_shape_;
     }
-    if (!no_device_) fallback_engaged_ = false;
+    if (hidden_reason_ != CursorHiddenReason::no_pointing_device)
+      fallback_engaged_ = false;
   }
 
   void NoteInput(uint64_t now) { last_input_ = now; }
@@ -66,15 +62,22 @@ class CursorPresentation {
     // protocol cannot distinguish typing from other system_hidden cases;
     // restrict this policy to identified Mac hosts and stop on any explicit
     // embedded cursor or other hiding policy.
-    if (remote_platform == HostPlatform::MacOS && system_hidden_ &&
+    if (remote_platform == HostPlatform::MacOS &&
+        hidden_reason_ == CursorHiddenReason::system_hidden &&
         mac_locator_allowed_) {
       return last_visible_shape_;
     }
 
     const bool recent_input =
         last_input_ && now - *last_input_ < kInputActivityMs;
+    // Windows may keep the cursor suppressed after touch or pen input even
+    // while a remote mouse is moving. Give that controller a local pointer.
+    if (remote_platform == HostPlatform::Windows && recent_input &&
+        !sample_unavailable_ && hidden_reason_ == CursorHiddenReason::system_suppressed)
+      return RemoteCursorShape::default_cursor;
     const bool can_recover =
-        now >= *stale_at_ || (!sample_unavailable_ && no_device_);
+        now >= *stale_at_ || (!sample_unavailable_ &&
+                              hidden_reason_ == CursorHiddenReason::no_pointing_device);
     if (can_recover && recent_input) {
       fallback_engaged_ = true;
     }
@@ -85,9 +88,8 @@ class CursorPresentation {
 
  private:
   bool sample_unavailable_ = false;
-  bool system_hidden_ = false;
+  CursorHiddenReason hidden_reason_ = CursorHiddenReason::unspecified;
   bool mac_locator_allowed_ = true;
-  bool no_device_ = false;
   bool fallback_engaged_ = false;
   std::optional<uint64_t> stale_at_;
   std::optional<uint64_t> last_input_;

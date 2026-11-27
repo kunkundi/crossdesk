@@ -724,6 +724,10 @@ bool ScreenCapturerWin::PrepareBackend(std::unique_ptr<ScreenCapturer> candidate
   {
     std::lock_guard<std::mutex> lock(alias_mutex_);
     required_display = replacement_display_name_;
+    if (ret == 0 && required_display.empty() && canonical_displays_.size() == 1) {
+      if (auto* dxgi = dynamic_cast<ScreenCapturerDxgi*>(candidate.get()))
+        dxgi->FollowSingleOutput();
+    }
   }
   if (ret == 0 && !required_display.empty()) {
     const auto displays = candidate->GetDisplayInfoList();

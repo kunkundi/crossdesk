@@ -75,6 +75,7 @@ int ScreenCapturerDxgi::Init(const int fps, cb_desktop_data cb) {
   }
 
   display_slots_.Reset();
+  follow_single_output_ = false;
   display_info_list_.clear();
   topology_refresh_requested_.store(false);
   EnumerateDisplays();
@@ -217,10 +218,12 @@ bool ScreenCapturerDxgi::EnumerateDisplays() {
                          [](const auto& item) { return item.display.is_primary; });
   std::vector<std::string> identities;
   for (const auto& item : current) identities.push_back(item.identity);
+  const bool rebound = follow_single_output_ && identities.size() == 1 &&
+                       display_slots_.BindSoleOutput(identities.front());
   const auto slots = display_slots_.Update(identities);
   std::vector<DisplayInfo> displays;
   std::vector<Microsoft::WRL::ComPtr<IDXGIOutput>> outputs;
-  bool changed = slots.size() != display_info_list_.size();
+  bool changed = rebound || slots.size() != display_info_list_.size();
   for (size_t slot = 0; slot < slots.size(); ++slot) {
     if (slots[slot] < 0) {
       auto missing = display_info_list_[slot];

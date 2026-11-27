@@ -52,6 +52,9 @@ class ScreenCapturerDxgi : public ScreenCapturer {
   // Rebuild the selected output on the capture thread, never on the caller.
   void RequestTopologyRefresh() { topology_refresh_requested_.store(true); }
 
+  // Called after Init and before Start for an unpinned, single-stream session.
+  void FollowSingleOutput() { follow_single_output_ = display_info_list_.size() == 1; }
+
   std::vector<DisplayInfo> GetDisplayInfoList() override {
     std::lock_guard<std::mutex> lock(switch_mutex_);
     return display_info_list_;
@@ -75,6 +78,7 @@ class ScreenCapturerDxgi : public ScreenCapturer {
   std::vector<DisplayInfo> display_info_list_;
   std::vector<Microsoft::WRL::ComPtr<IDXGIOutput>> outputs_;
   StableDisplaySlots display_slots_;
+  bool follow_single_output_ = false;
   std::atomic<bool> topology_refresh_requested_{false};
 
   Microsoft::WRL::ComPtr<ID3D11Device> d3d_device_;
