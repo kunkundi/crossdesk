@@ -142,6 +142,7 @@ export component GalleryView inherits Rectangle {
         ? root.card-width - root.card-inset * 2 : root.rail-preview-width) / 1px;
     out property <float> preview-height: (root.focused.id == ""
         ? root.card-preview-height : root.rail-preview-height) / 1px;
+    out property <bool> pointer-shift;
     callback pointer-input(PointerEventButton, PointerEventKind, length, length);
     callback scroll-input(length, length, length, length);
     callback key-input(string, bool, bool, bool, bool, bool);
@@ -643,12 +644,18 @@ export component GalleryView inherits Rectangle {
                         changed has-hover => { if !self.has-hover && !self.pressed { RemoteCursor.reset(); } }
                         pointer-event(event) => {
                             if !root.input-suspended {
-                                if event.kind == PointerEventKind.down { video-focus.focus(); }
+                                if event.kind == PointerEventKind.down {
+                                    video-focus.focus();
+                                    root.pointer-shift = event.modifiers.shift;
+                                }
                                 if root.controlling { root.pointer-input(event.button, event.kind, self.mouse-x, self.mouse-y); }
                             }
                         }
                         scroll-event(event) => {
-                            if root.controlling && !root.input-suspended { root.scroll-input(event.delta-x, event.delta-y, self.mouse-x, self.mouse-y); }
+                            if root.controlling && !root.input-suspended {
+                                root.pointer-shift = event.modifiers.shift;
+                                root.scroll-input(event.delta-x, event.delta-y, self.mouse-x, self.mouse-y);
+                            }
                             accept
                         }
                     }

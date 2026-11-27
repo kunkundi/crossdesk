@@ -168,15 +168,20 @@ void KeyboardController::SendHeartbeat(bool force) {
   last_heartbeat_tick_ = now;
 }
 
+WindowShiftState::Held KeyboardController::HeldShift() {
+  std::lock_guard lock(pressed_keys_mutex_);
+  return {pressed_keys_.count(WindowShiftState::kLeft) != 0,
+          pressed_keys_.count(WindowShiftState::kRight) != 0};
+}
+
 void KeyboardController::SendWindowKey(int key_code, bool is_down, bool shift) {
-  WindowShiftState::Held held;
-  {
-    std::lock_guard lock(pressed_keys_mutex_);
-    held = {pressed_keys_.count(WindowShiftState::kLeft) != 0,
-            pressed_keys_.count(WindowShiftState::kRight) != 0};
-  }
-  window_shift_.Forward(key_code, is_down, shift, held,
+  window_shift_.Forward(key_code, is_down, shift, HeldShift(),
                         [this](int key, bool down) { SendKeyCommand(key, down); });
+}
+
+void KeyboardController::SyncPointerShift(bool shift) {
+  window_shift_.Sync(shift, true, HeldShift(),
+                     [this](int key, bool down) { SendKeyCommand(key, down); });
 }
 
 void KeyboardController::ReleaseInferredWindowShift() {

@@ -1843,15 +1843,16 @@ void GuiApplication::ResetSettingsUi(bool gallery_window) {
 
 void GuiApplication::BindMainCallbacks(bool gallery_window) {
   auto* main = ui_->Window(gallery_window).operator->();
-  main->on_gallery_pointer([this](slint::PointerEventButton button,
+  main->on_gallery_pointer([this, main](slint::PointerEventButton button,
                                  slint::PointerEventKind kind, float x,
                                  float y) {
     if (!ui_->gallery_control_id.empty() && !ui_->gallery_transition.Active())
-      SendPointerInput(static_cast<int>(button), static_cast<int>(kind), x, y);
+      SendPointerInput(static_cast<int>(button), static_cast<int>(kind), x, y,
+                       main->get_gallery_pointer_shift());
   });
-  main->on_gallery_scroll([this](float dx, float dy, float x, float y) {
+  main->on_gallery_scroll([this, main](float dx, float dy, float x, float y) {
     if (!ui_->gallery_control_id.empty() && !ui_->gallery_transition.Active())
-      SendScrollInput(dx, dy, x, y);
+      SendScrollInput(dx, dy, x, y, main->get_gallery_pointer_shift());
   });
   main->on_gallery_key([this](slint::SharedString text, bool pressed,
                              bool ctrl, bool alt, bool shift, bool meta) {
@@ -2720,11 +2721,12 @@ void GuiApplication::BindStreamCallbacks(StreamView& view) {
                                   slint::PointerEventKind kind, float x,
                                   float y) {
     if (!AcceptStreamInput(view)) return;
-    SendPointerInput(static_cast<int>(button), static_cast<int>(kind), x, y);
+    SendPointerInput(static_cast<int>(button), static_cast<int>(kind), x, y,
+                     view.window->get_pointer_shift());
   });
   stream->on_scroll_input([this, &view](float dx, float dy, float x, float y) {
     if (!AcceptStreamInput(view)) return;
-    SendScrollInput(dx, dy, x, y);
+    SendScrollInput(dx, dy, x, y, view.window->get_pointer_shift());
   });
   stream->on_key_input([this, &view](slint::SharedString text, bool pressed,
                               bool control, bool alt, bool shift, bool meta) {
@@ -5632,7 +5634,16 @@ std::optional<VideoPoint> GuiApplication::MapRemotePointer(
   return point;
 }
 
-void GuiApplication::SendPointerInput(int button, int kind, float x, float y) {
+void GuiApplication::SyncPointerShift(bool shift) {
+  if (keyboard_capturer_is_started_ && !keyboard_capturer_uses_window_events_) {
+    // A native Shift edge may already be queued for the next UI tick.
+    devices_.DrainCapturedKeyboardInput();
+  } else {
+    keyboard_.SyncPointerShift(shift);
+  }
+}
+
+void GuiApplication::SendPointerInput(int button, int kind, float x, float y, bool shift) {
   auto props = FindRemoteSession(controlled_remote_id_);
   if (!props || !props->peer_ || !props->control_mouse_) {
     return;
@@ -5678,7 +5689,10 @@ void GuiApplication::SendPointerInput(int button, int kind, float x, float y) {
     return;
   }
 
-  if (kind == 1) ui_->pressed_mouse_buttons.insert(button);
+  if (kind == 1) {
+    SyncPointerShift(shift);
+    ui_->pressed_mouse_buttons.insert(button);
+  }
   if (kind == 2) ui_->pressed_mouse_buttons.erase(button);
   ui_->pointer_x = point->x;
   ui_->pointer_y = point->y;
@@ -5686,7 +5700,7 @@ void GuiApplication::SendPointerInput(int button, int kind, float x, float y) {
 }
 
 void GuiApplication::SendScrollInput(float delta_x, float delta_y, float x,
-                                     float y) {
+                                     float y, bool shift) {
   auto props = FindRemoteSession(controlled_remote_id_);
   if (!props || !props->peer_ || !props->control_mouse_) {
     return;
@@ -5705,6 +5719,7 @@ void GuiApplication::SendScrollInput(float delta_x, float delta_y, float x,
       vertical ? MouseFlag::wheel_vertical : MouseFlag::wheel_horizontal;
   ui_->pointer_x = point->x;
   ui_->pointer_y = point->y;
+  SyncPointerShift(shift);
   SendRemoteInput(action, delta);
 }
 

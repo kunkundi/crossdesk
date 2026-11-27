@@ -80,6 +80,7 @@ public:
   int StopMouseController(bool force = false);
   int StartKeyboardCapturer();
   int StopKeyboardCapturer();
+  void DrainCapturedKeyboardInput();
 
   int DestroyAudioOutput();
   // Serialized by GuiRuntime::audio_delivery_mutex_. Each peer has its own
@@ -106,7 +107,6 @@ public:
 private:
   int InitializeAudioOutput();
   unsigned ReleaseMouseButtonMask(unsigned mask);
-  void DrainCapturedKeyboardInput();
   bool ShouldSendCapturedFrame(std::chrono::steady_clock::time_point now,
                                int fps);
   bool ShouldCaptureCursor() const;

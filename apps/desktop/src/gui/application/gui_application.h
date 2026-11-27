@@ -144,8 +144,9 @@ private:
   void CloseDisconnectedSessions();
   void ResetPointerMotion();
   std::optional<VideoPoint> MapRemotePointer(RemoteSession& session, float x, float y);
-  void SendPointerInput(int button, int kind, float x, float y);
-  void SendScrollInput(float delta_x, float delta_y, float x, float y);
+  void SyncPointerShift(bool shift);
+  void SendPointerInput(int button, int kind, float x, float y, bool shift);
+  void SendScrollInput(float delta_x, float delta_y, float x, float y, bool shift);
   void SendKeyInput(const std::string &text, bool pressed, bool control,
                     bool alt, bool shift, bool meta);
   void Cleanup();

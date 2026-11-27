@@ -417,6 +417,7 @@ export component MainWindow inherits Window {
     out property <float> gallery-video-height: gallery.video-height;
     out property <float> gallery-preview-width: gallery.preview-width;
     out property <float> gallery-preview-height: gallery.preview-height;
+    out property <bool> gallery-pointer-shift: gallery.pointer-shift;
     callback gallery-pointer(PointerEventButton, PointerEventKind, length, length);
     callback gallery-scroll(length, length, length, length);
     callback gallery-key(string, bool, bool, bool, bool, bool);

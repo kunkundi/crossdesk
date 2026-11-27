@@ -7,6 +7,8 @@
 #ifndef _WINDOW_SHIFT_STATE_H_
 #define _WINDOW_SHIFT_STATE_H_
 
+#include "keyboard_state.h"
+
 namespace crossdesk {
 
 // A window can gain focus after Shift was pressed. Slint then reports Shift
@@ -34,17 +36,22 @@ class WindowShiftState {
       return;
     }
 
+    const bool infer = down && !IsKeyboardModifier(key) &&
+                       key != 0x14 && key != 0x90 && key != 0x91;  // Lock keys.
+    Sync(shift, infer, held, send);
+    send(key, down);
+  }
+
+  template <typename Send>
+  void Sync(bool shift, bool infer, Held held, Send send) {
     if (!shift) {
-      // A window may also miss a key-up. Trust the snapshot on an ordinary
-      // key and release whichever side was forwarded before sending it.
       if (held.left) send(kLeft, false);
       if (held.right) send(kRight, false);
       inferred_left_ = false;
-    } else if (!held.left && !held.right) {
+    } else if (infer && !held.left && !held.right) {
       send(kLeft, true);
       inferred_left_ = true;
     }
-    send(key, down);
   }
 
   template <typename Send>
