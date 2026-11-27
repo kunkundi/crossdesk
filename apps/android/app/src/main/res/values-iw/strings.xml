@@ -239,7 +239,7 @@
     <string name="text_990fd23c62de5ccf" formatted="false">"תם הזמן לבקשה, ומצב מסך הפרטיות במחשב עדיין לא אושר."</string>
     <string name="text_e5c8fa6dcf7b2a8b" formatted="false">"צריך לחכות לסיום השליחה של הקובץ הנוכחי."</string>
     <string name="text_9305d9d72b06110d" formatted="false">"צריך להזין פורט בטווח 1–65535"</string>
-    <string name="text_3c7223dfb8dde5cf" formatted="false">"צריך להזין מזהה מכשיר בן 9 ספרות"</string>
+    <string name="text_3c7223dfb8dde5cf" formatted="false">"הזינו מזהה מכשיר בן 9 ספרות"</string>
     <string name="text_285a0714894d2899" formatted="false">"צריך להזין סיסמת גישה תקינה"</string>
     <string name="text_c808bb77ffd2b4cd" formatted="false">"לא ניתן היה להחיל את ההגדרות. נסו שוב."</string>
     <string name="text_a762e7e650e285fa" formatted="false">"רישיון התוכנה"</string>

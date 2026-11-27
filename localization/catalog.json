@@ -376,7 +376,7 @@
       "es": "Modo de identificación",
       "pt-BR": "Modo ID",
       "tr": "Kimlikle",
-      "he": "חיבור לפי מזהה"
+      "he": "לפי מזהה"
     },
     "IP 和端口已复制": {
       "zh-Hans": "IP 和端口已复制",
@@ -404,7 +404,7 @@
       "es": "Modo IP",
       "pt-BR": "Modo IP",
       "tr": "IP ile",
-      "he": "חיבור לפי IP"
+      "he": "לפי IP"
     },
     "IP 连接准备中…": {
       "zh-Hans": "IP 连接准备中…",
@@ -9658,7 +9658,7 @@
       "es": "Ingrese una ID de dispositivo de 9 dígitos",
       "pt-BR": "Insira um ID de dispositivo de 9 dígitos",
       "tr": "9 haneli cihaz kimliğini girin",
-      "he": "צריך להזין מזהה מכשיר בן 9 ספרות"
+      "he": "הזינו מזהה מכשיר בן 9 ספרות"
     },
     "请输入六位密码:": {
       "zh-Hans": "请输入六位密码:",
