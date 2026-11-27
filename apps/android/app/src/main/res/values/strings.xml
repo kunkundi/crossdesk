@@ -395,4 +395,20 @@
     <string name="text_88ea96f38f7b9279" formatted="false">"Confirming device status..."</string>
     <string name="text_64d655aad73dce57" formatted="false">"The remote device did not respond. Check that it is online and try again."</string>
     <string name="text_d5770d2b84139ab2" formatted="false">"Establishing remote connection"</string>
+    <string name="text_d64a151b4956d033" formatted="false">"The device identity changed. Verify the public key fingerprints below and re-enter the password."</string>
+    <string name="text_5a220e368fc24cd4" formatted="false">"Connect to new device"</string>
+    <string name="text_62deed99aae5e453" formatted="false">"Copy fingerprints"</string>
+    <string name="text_961d96488df18b5e" formatted="false">"Could not resolve the hostname"</string>
+    <string name="text_3765c75d9189fabb" formatted="false">"Hostname lookup timed out"</string>
+    <string name="text_2169e184b335ba99" formatted="false">"The hostname has no usable direct address"</string>
+    <string name="text_cc2b0ac48f5dd186" formatted="false">"Could not connect to the target port"</string>
+    <string name="text_f984f357f7b1003f" formatted="false">"Invalid direct connection certificate"</string>
+    <string name="text_777136199c9aa458" formatted="false">"Incompatible direct connection protocol"</string>
+    <string name="text_ffbbac568f2a8d2a" formatted="false">"Check UDP connectivity between the devices"</string>
+    <string name="text_b11b4e9a81701eae" formatted="false">"Device ID, IP or hostname"</string>
+    <string name="text_6930740da68525a4" formatted="false">"Enter a device ID, IP or hostname"</string>
+    <string name="text_3384f4975b43f9b1" formatted="false">"Remote IP or hostname"</string>
+    <string name="text_ff7241ff93bd6907" formatted="false">"Enter an IP or hostname, optionally with a port"</string>
+    <string name="text_f36b579d49cdc4c1" formatted="false">"Enter a valid IP or hostname"</string>
+    <string name="text_8d6b894fd86867bb" formatted="false">"Check the local network, local name resolution and network permissions"</string>
 </resources>

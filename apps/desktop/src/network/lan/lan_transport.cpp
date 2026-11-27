@@ -1,5 +1,8 @@
 #include "lan_transport.h"
 
+#include "lan_mdns.h"
+
+#include <asio/thread_pool.hpp>
 #include <atomic>
 #include <chrono>
 #include <deque>
@@ -23,6 +26,47 @@ using Client = websocketpp::client<websocketpp::config::asio_tls_client>;
 using Hdl = websocketpp::connection_hdl;
 using Error = websocketpp::lib::error_code;
 using Context = websocketpp::lib::asio::ssl::context;
+using ResolveResults = asio::ip::tcp::resolver::results_type;
+
+// System resolvers may keep running after cancellation. A lookup owns no
+// session state and can only post results while its transport is attached.
+struct NameLookup {
+  std::mutex mutex;
+  std::function<void(Error, ResolveResults)> deliver;
+  void Cancel() {
+    std::lock_guard lock(mutex);
+    deliver = {};
+  }
+  static bool Start(std::shared_ptr<NameLookup> lookup, std::string name,
+                    unsigned port) {
+    static asio::thread_pool workers(4);
+    static std::atomic<unsigned> pending{0};
+    if (pending.fetch_add(1) >= 24) {
+      --pending;
+      return false;
+    }
+    asio::post(
+        workers, [lookup = std::move(lookup), name = std::move(name), port] {
+          {
+            std::lock_guard lock(lookup->mutex);
+            if (!lookup->deliver) {
+              --pending;
+              return;
+            }
+          }
+          asio::io_context io;
+          asio::ip::tcp::resolver resolver(io);
+          Error error;
+          auto results =
+              resolver.resolve(name, std::to_string(port),
+                               asio::ip::tcp::resolver::numeric_service, error);
+          --pending;
+          std::lock_guard lock(lookup->mutex);
+          if (lookup->deliver) lookup->deliver(error, std::move(results));
+        });
+    return true;
+  }
+};
 constexpr const char* kPath = "/crossdesk/lan/v2";
 constexpr const char* kProtocol = "crossdesk.lan.v2";
 void ValidateListener(const std::string& address, unsigned port) {
@@ -175,6 +219,9 @@ struct Transport::Channel::State {
   std::string pending_ping, error;
   std::function<void(const std::string&)> send, ping;
   std::function<void()> close, graceful_close;
+  ChannelPtr logical;
+  std::string candidate_address;
+  bool selected = false;
 };
 struct Transport::Impl {
   asio::io_context io;
@@ -187,6 +234,27 @@ struct Transport::Impl {
   std::map<uint64_t, std::shared_ptr<Server>> servers;
   std::map<uint64_t, std::shared_ptr<Client>> clients;
   std::map<Hdl, ChannelPtr, std::owner_less<Hdl>> channels;
+  static constexpr unsigned kMaxCandidates = 16;
+  struct Dial {
+    explicit Dial(asio::io_context& io)
+        : stagger(io), deadline(io), fallback_timer(io) {}
+    std::shared_ptr<NameLookup> lookup = std::make_shared<NameLookup>();
+    asio::steady_timer stagger, deadline, fallback_timer;
+    std::function<void()> cancel_mdns;
+    std::string multicast_host;
+    bool mdns_started = false, mdns_pending = false, mdns_found = false;
+    std::set<std::string> candidates;
+    ChannelPtr channel;
+    unsigned port = 0;
+    std::string expected_key, error;
+    bool resolving = true, local_name = false;
+    unsigned attempted = 0;
+    long long dns_ms = 0;
+    int resolver_error = 0;
+    std::deque<std::string> addresses;
+    std::map<uint64_t, ChannelPtr> active;
+  };
+  std::map<uint64_t, std::shared_ptr<Dial>> dials;
   size_t preauth = 0;
   std::set<uint64_t> retired_listeners;
   std::mutex event_mutex;
@@ -209,7 +277,19 @@ struct Transport::Impl {
     c->state->closing = true;
     c->state->terminal = true;
     if (c->incoming && !c->state->authenticated) --preauth;
-    Emit(Event::Closed, c, c->state->error);
+    const auto parent = c->state->logical;
+    if (!parent) {
+      Emit(Event::Closed, c, c->state->error);
+    } else if (c->state->selected) {
+      parent->state->error = c->state->error;
+      Finish(parent);
+    } else if (auto it = dials.find(parent->id); it != dials.end()) {
+      auto dial = it->second;
+      dial->active.erase(c->id);
+      if (ErrorRank(c->state->error) > ErrorRank(dial->error))
+        dial->error = c->state->error;
+      asio::post(io, [this, dial] { Pump(dial); });
+    }
   }
   void Abort(const ChannelPtr& c) {
     if (c->state->terminal) return;
@@ -291,6 +371,300 @@ struct Transport::Impl {
       if (auto c = cweak.lock()) Finish(c);
     };
   }
+  static int ErrorRank(const std::string& error) {
+    if (error.rfind("HostKeyChanged:", 0) == 0) return 4;
+    if (error == "InvalidCertificate" || error == "FingerprintMissing")
+      return 3;
+    if (error == "IncompatibleProtocol" || error == "UnsupportedNetworkPath")
+      return 2;
+    return error.empty() ? 0 : 1;
+  }
+  void OpenClient(const ChannelPtr& c, const std::string& address,
+                  unsigned port, const std::string& expected_key) {
+    try {
+      auto client = std::make_shared<Client>();
+      Configure(client.get());
+      auto context = TlsContext();
+      context->set_verify_mode(asio::ssl::verify_peer);
+      context->set_verify_callback(
+          [c, expected_key](bool, asio::ssl::verify_context& verification) {
+            X509_STORE_CTX* store = verification.native_handle();
+            auto* certificate = X509_STORE_CTX_get_current_cert(store);
+            // Self-signed LAN certificates establish the encrypted channel.
+            // Password verification authorizes access at the receiving host;
+            // it does not authenticate this certificate's device identity.
+            const bool valid = X509_STORE_CTX_get_error_depth(store) == 0 &&
+                               VerifyLanCertificate(certificate);
+            if (valid && c->state->logical) {
+              c->peer_fingerprint = CertificateFingerprint(certificate);
+              if (c->peer_fingerprint.empty()) {
+                c->state->error = "FingerprintMissing";
+                return false;
+              }
+              if (!expected_key.empty() &&
+                  c->peer_fingerprint != expected_key) {
+                c->state->error = "HostKeyChanged:" + c->peer_fingerprint;
+                return false;
+              }
+            }
+            if (!valid) c->state->error = "InvalidCertificate";
+            return valid;
+          });
+      client->set_tls_init_handler([context](Hdl) { return context; });
+      Error error;
+      auto connection = client->get_connection(
+          "wss://" + FormatEndpoint(address, port) + kPath, error);
+      if (error) {
+        c->state->error = "ConnectionFailed";
+        Finish(c);
+        return;
+      }
+      connection->add_subprotocol(kProtocol);
+      Attach(client.get(), connection->get_handle(), c);
+      clients[c->id] = client;
+      client->connect(connection);
+    } catch (...) {
+      c->state->error = "ConnectionFailed";
+      Abort(c);
+      Finish(c);
+    }
+  }
+  void EndDial(std::shared_ptr<Dial> dial, const ChannelPtr& winner = {}) {
+    if (!dials.erase(dial->channel->id)) return;
+    dial->lookup->Cancel();
+    dial->fallback_timer.cancel();
+    if (dial->cancel_mdns) dial->cancel_mdns();
+    const auto total = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           Clock::now() - dial->channel->state->created)
+                           .count();
+    const std::string family =
+        winner
+            ? (winner->remote_address.find(':') == std::string::npos ? "IPv4"
+                                                                     : "IPv6")
+            : "none";
+    dial->channel->dial_diagnostic =
+        "dns_ms=" + std::to_string(dial->resolving ? total : dial->dns_ms) +
+        " resolver_error=" + std::to_string(dial->resolver_error) +
+        " candidates=" + std::to_string(dial->candidates.size()) +
+        " mdns=" + (dial->mdns_started ? "1" : "0") +
+        " attempts=" + std::to_string(dial->attempted) + " selected=" + family +
+        " total_ms=" + std::to_string(total);
+    dial->stagger.cancel();
+    dial->deadline.cancel();
+    for (auto& [_, candidate] : dial->active)
+      if (candidate != winner) Abort(candidate);
+    if (!winner) {
+      dial->channel->state->error = dial->error;
+      Finish(dial->channel);
+    }
+  }
+  void Pump(const std::shared_ptr<Dial>& dial) {
+    if (!dials.count(dial->channel->id)) return;
+    if (stopping || dial->channel->state->closing) {
+      EndDial(dial);
+      return;
+    }
+    if (dial->attempted >= kMaxCandidates) dial->addresses.clear();
+    if (dial->mdns_pending &&
+        (HasHandshakeError(dial) || dial->attempted >= kMaxCandidates)) {
+      dial->cancel_mdns();
+      dial->mdns_pending = false;
+    }
+    if (!dial->multicast_host.empty() && !dial->mdns_started &&
+        ErrorRank(dial->error) <= 1 && !dial->resolving &&
+        ((dial->addresses.empty() && dial->active.empty()) ||
+         dial->attempted >= kMaxCandidates - 2)) {
+      StartMulticast(dial);
+    }
+    // Reserve the last two attempts for link-local discovery. If it returns
+    // nothing, the remaining system candidates can use those slots.
+    if (dial->mdns_pending && !dial->mdns_found &&
+        dial->attempted >= kMaxCandidates - 2)
+      return;
+    if (dial->addresses.empty()) {
+      if (dial->active.empty() && !dial->resolving && !dial->mdns_pending)
+        EndDial(dial);
+      return;
+    }
+    if (dial->active.size() >= 2) return;
+    if (channels.size() >= 24 || AdmissionBlocked()) {
+      if (dial->active.empty()) {
+        dial->error = "Busy";
+        EndDial(dial);
+      }
+      return;
+    }
+    auto c = std::make_shared<Channel>();
+    c->id = next_id++;
+    c->state = std::make_shared<Channel::State>();
+    c->state->logical = dial->channel;
+    c->state->candidate_address = std::move(dial->addresses.front());
+    dial->addresses.pop_front();
+    dial->active[c->id] = c;
+    ++dial->attempted;
+    OpenClient(c, c->state->candidate_address, dial->port, dial->expected_key);
+    ScheduleNext(dial);
+  }
+  void ScheduleNext(const std::shared_ptr<Dial>& dial) {
+    if (dial->addresses.empty()) return;
+    // If both sockets stall, leave time for later addresses before the common
+    // deadline.
+    auto delay = std::chrono::milliseconds(250);
+    if (dial->active.size() == 2) {
+      auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+          dial->deadline.expiry() - Clock::now());
+      delay =
+          std::clamp(remaining / static_cast<int>(dial->addresses.size() + 1),
+                     delay, std::chrono::milliseconds(2000));
+    }
+    dial->stagger.expires_after(delay);
+    dial->stagger.async_wait([this, dial](const Error& e) {
+      if (e || dial->addresses.empty() || !dials.count(dial->channel->id))
+        return;
+      if (dial->active.size() == 2) {
+        auto oldest = dial->active.begin()->second;
+        Abort(oldest);
+      } else {
+        Pump(dial);
+      }
+    });
+  }
+  void Resolve(const ChannelPtr& c, const DialEndpoint& target,
+               const std::string& key) {
+    auto dial = std::make_shared<Dial>(io);
+    dial->channel = c;
+    dial->port = target.port;
+    dial->local_name =
+        target.host.size() > 6 &&
+        target.host.compare(target.host.size() - 6, 6, ".local") == 0;
+    if (kUseMulticastFallback && dial->local_name) {
+      dial->multicast_host = target.host;
+      // Leave room within the same deadline when DNS stalls or returns a
+      // black-holed address. A healthy system result wins without any
+      // multicast.
+      dial->fallback_timer.expires_at(c->state->created +
+                                      std::chrono::seconds(4));
+      dial->fallback_timer.async_wait([this, dial](Error e) {
+        if (!e && dials.count(dial->channel->id)) StartMulticast(dial);
+      });
+    }
+    dial->expected_key = key;
+    dials[c->id] = dial;
+    c->state->close = [this, weak = std::weak_ptr<Dial>(dial)] {
+      if (auto current = weak.lock()) EndDial(current);
+    };
+    dial->deadline.expires_at(c->state->created + std::chrono::seconds(8));
+    dial->deadline.async_wait([this, dial](const Error& e) {
+      if (e) return;
+      if (ErrorRank(dial->error) <= 1)
+        dial->error =
+            dial->resolving && dial->candidates.empty()
+                ? (dial->local_name ? "LocalNameTimeout" : "DnsTimeout")
+                : "DirectPortUnreachable";
+      EndDial(dial);
+    });
+    dial->lookup->deliver = [this, weak = std::weak_ptr<Dial>(dial)](
+                                Error e, ResolveResults results) {
+      asio::post(io, [this, weak, e, results = std::move(results)] {
+        if (auto current = weak.lock();
+            current && dials.count(current->channel->id))
+          Resolved(current, e, results);
+      });
+    };
+    if (!NameLookup::Start(dial->lookup, target.host + ".", target.port)) {
+      dial->error = "Busy";
+      EndDial(dial);
+    }
+  }
+  void Resolved(const std::shared_ptr<Dial>& dial, const Error& e,
+                const ResolveResults& results) {
+    dial->resolving = false;
+    dial->resolver_error = e.value();
+    dial->dns_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       Clock::now() - dial->channel->state->created)
+                       .count();
+    std::vector<asio::ip::address> addresses;
+    for (const auto& entry : results)
+      addresses.push_back(entry.endpoint().address());
+    QueueAddresses(dial, addresses, false);
+    if (dial->candidates.empty())
+      dial->error = e ? (dial->local_name ? "LocalNameFailed" : "DnsFailed")
+                      : "DnsNoUsableAddress";
+    Pump(dial);
+  }
+  bool HasHandshakeError(const std::shared_ptr<Dial>& dial) const {
+    if (ErrorRank(dial->error) > 1) return true;
+    return std::any_of(dial->active.begin(), dial->active.end(),
+                       [](const auto& entry) {
+                         return ErrorRank(entry.second->state->error) > 1;
+                       });
+  }
+  void StartMulticast(const std::shared_ptr<Dial>& dial) {
+    if (dial->mdns_started || HasHandshakeError(dial)) return;
+    dial->mdns_started = dial->mdns_pending = true;
+    dial->fallback_timer.cancel();
+    dial->cancel_mdns = QueryLocalName(
+        io, dial->multicast_host,
+        [this, weak = std::weak_ptr<Dial>(dial)](
+            std::vector<asio::ip::address> addresses, bool complete) {
+          auto d = weak.lock();
+          if (!d || !dials.count(d->channel->id)) return;
+          d->mdns_pending = !complete;
+          if (!HasHandshakeError(d) && QueueAddresses(d, addresses, true)) {
+            if (d->active.size() == 2) {
+              if (d->mdns_found) {
+                ScheduleNext(d);
+              } else {
+                const auto oldest = d->active.begin()->second;
+                Abort(oldest);
+              }
+            }
+            d->mdns_found = true;
+          }
+          Pump(d);
+        });
+  }
+  // Interleave both address families before applying the candidate limit.
+  // Newly discovered multicast addresses take priority over unused DNS answers.
+  bool QueueAddresses(const std::shared_ptr<Dial>& dial,
+                      const std::vector<asio::ip::address>& addresses,
+                      bool prioritize) {
+    std::deque<std::string> families[2];
+    std::set<std::string> seen;
+    int family = 0;
+    for (const auto& address : addresses) {
+      if (address.is_v6() && address.to_v6().is_v4_mapped()) continue;
+      auto ip = SocketAddress(address);
+      if (!IsIpAddress(ip) || !seen.insert(ip).second) continue;
+      if (dial->candidates.count(ip)) {
+        if (!prioritize) continue;
+        auto pending =
+            std::find(dial->addresses.begin(), dial->addresses.end(), ip);
+        if (pending == dial->addresses.end()) continue;
+        dial->addresses.erase(pending);
+      }
+      int index = address.is_v6() ? 1 : 0;
+      if (families[0].empty() && families[1].empty()) family = index;
+      families[index].push_back(std::move(ip));
+    }
+    std::vector<std::string> queued;
+    while ((!families[0].empty() || !families[1].empty()) &&
+           queued.size() < kMaxCandidates) {
+      auto& queue = families[family];
+      if (!queue.empty()) {
+        dial->candidates.insert(queue.front());
+        queued.push_back(std::move(queue.front()));
+        queue.pop_front();
+      }
+      family = 1 - family;
+    }
+    dial->addresses.insert(
+        prioritize ? dial->addresses.begin() : dial->addresses.end(),
+        queued.begin(), queued.end());
+    if (!queued.empty() && ErrorRank(dial->error) <= 1)
+      dial->error = "DirectPortUnreachable";
+    return !queued.empty();
+  }
   template <class Endpoint>
   void Configure(Endpoint* endpoint) {
     endpoint->clear_access_channels(websocketpp::log::alevel::all);
@@ -305,7 +679,9 @@ struct Transport::Impl {
       if (it == channels.end()) return;
       auto c = it->second;
       if (c->state->closing) {
-        Abort(c);
+        // A WebSocket++ resolver may have completed after the first
+        // cancellation.
+        if (c->state->close) c->state->close();
         return;
       }
       Error e;
@@ -345,8 +721,31 @@ struct Transport::Impl {
         Abort(c);
         return;
       }
+      if (c->state->logical &&
+          c->remote_address != c->state->candidate_address) {
+        c->state->error = "UnsupportedNetworkPath";
+        Abort(c);
+        return;
+      }
       c->state->opened = true;
-      Emit(Event::Open, c);
+      if (auto parent = c->state->logical) {
+        if (parent->state->closing || !dials.count(parent->id)) {
+          Abort(c);
+          return;
+        }
+        c->state->selected = true;
+        parent->local_address = c->local_address;
+        parent->remote_address = c->remote_address;
+        parent->peer_fingerprint = c->peer_fingerprint;
+        parent->state->opened = true;
+        parent->state->send = c->state->send;
+        parent->state->close = c->state->close;
+        parent->state->graceful_close = c->state->graceful_close;
+        EndDial(dials.at(parent->id), c);
+        Emit(Event::Open, parent);
+      } else {
+        Emit(Event::Open, c);
+      }
     });
     auto closed = [this, endpoint](Hdl hdl) {
       auto it = channels.find(hdl);
@@ -355,10 +754,18 @@ struct Transport::Impl {
         if (state.error.empty() && !state.opened && !state.closing) {
           Error error;
           auto connection = endpoint->get_con_from_hdl(hdl, error);
-          state.error =
-              !error && connection
-                  ? "ConnectionFailed: " + connection->get_ec().message()
-                  : "ConnectionFailed";
+          if (!error && connection) {
+            const auto failure = connection->get_ec();
+            const bool http_replied = connection->get_response_code() !=
+                                      websocketpp::http::status_code::uninitialized;
+            const bool malformed = failure == websocketpp::error::make_error_code(
+                                                  websocketpp::error::http_parse_error);
+            state.error = state.logical && (http_replied || malformed)
+                              ? "IncompatibleProtocol"
+                              : "ConnectionFailed: " + failure.message();
+          } else {
+            state.error = "ConnectionFailed";
+          }
         }
         const auto id = it->second->id;
         const bool incoming = it->second->incoming;
@@ -384,7 +791,8 @@ struct Transport::Impl {
             Abort(c);
             return;
           }
-          Emit(Event::Message, c, text);
+          if (!s.logical || s.selected)
+            Emit(Event::Message, s.logical ? s.logical : c, text);
         });
     endpoint->set_ping_handler([this](Hdl hdl, std::string nonce) {
       auto it = channels.find(hdl);
@@ -512,56 +920,27 @@ void Transport::StopAccept(uint64_t listener) {
     }
   });
 }
-Transport::ChannelPtr Transport::Connect(const Target& target) {
-  if (!IsIpAddress(target.address) || target.port == 0 || target.port > 65535)
-    throw std::runtime_error("Invalid LAN endpoint");
+Transport::ChannelPtr Transport::Connect(const DialEndpoint& target,
+                                         const std::string& expected_key) {
   auto c = std::make_shared<Channel>();
   c->id = impl_->next_id++;
   c->state = std::make_shared<Channel::State>();
-  asio::post(impl_->io, [this, c, target] {
-    try {
-      if (impl_->stopping || impl_->channels.size() >= 24 ||
-          impl_->AdmissionBlocked()) {
-        impl_->Finish(c);
-        return;
-      }
-      auto client = std::make_shared<Client>();
-      impl_->Configure(client.get());
-      auto context = TlsContext();
-      context->set_verify_mode(asio::ssl::verify_peer);
-      context->set_verify_callback(
-          [c](bool, asio::ssl::verify_context& verification) {
-            X509_STORE_CTX* store = verification.native_handle();
-            auto* certificate = X509_STORE_CTX_get_current_cert(store);
-            // Self-signed LAN certificates establish the encrypted channel.
-            // Password verification authorizes access at the receiving host;
-            // it does not authenticate this certificate's device identity.
-            const bool valid = X509_STORE_CTX_get_error_depth(store) == 0 &&
-                               VerifyLanCertificate(certificate);
-            if (!valid) c->state->error = "InvalidCertificate";
-            return valid;
-          });
-      client->set_tls_init_handler([context](Hdl) { return context; });
-      Error error;
-      auto connection = client->get_connection(
-          "wss://" + FormatEndpoint(target.address, target.port) + kPath,
-          error);
-      if (error) {
-        impl_->Finish(c);
-        return;
-      }
-      connection->add_subprotocol(kProtocol);
-      impl_->Attach(client.get(), connection->get_handle(), c);
-      impl_->clients[c->id] = client;
-      client->connect(connection);
-    } catch (...) {
-      impl_->Abort(c);
+  asio::post(impl_->io, [this, c, target, expected_key] {
+    if (impl_->stopping || c->state->closing || impl_->channels.size() >= 24 ||
+        impl_->dials.size() >= 24 || impl_->AdmissionBlocked()) {
+      c->state->error = "Busy";
       impl_->Finish(c);
+      return;
     }
+    if (target.kind == DialEndpoint::DnsName)
+      impl_->Resolve(c, target, expected_key);
+    else
+      impl_->OpenClient(c, target.host, target.port, {});
   });
   return c;
 }
-bool Transport::Send(const ChannelPtr& c, std::string message) {
+bool Transport::Send(const ChannelPtr& c, std::string message,
+                     bool discard_on_close) {
   if (!c || impl_->stopping || c->state->closing || message.empty() ||
       message.size() > 256 * 1024)
     return false;
@@ -573,8 +952,10 @@ bool Transport::Send(const ChannelPtr& c, std::string message) {
     ++c->state->sent_count;
     c->state->sent_bytes += message.size();
   }
-  asio::post(impl_->io, [c, message = std::move(message)] {
-    if (!c->state->terminal && c->state->send) c->state->send(message);
+  asio::post(impl_->io, [c, message = std::move(message), discard_on_close] {
+    if (!c->state->terminal && c->state->send &&
+        !(discard_on_close && c->state->closing))
+      c->state->send(message);
   });
   return true;
 }
@@ -607,6 +988,7 @@ void Transport::Shutdown() {
   asio::post(impl_->io, [this] {
     Error e;
     impl_->timer.cancel();
+    while (!impl_->dials.empty()) impl_->EndDial(impl_->dials.begin()->second);
     for (auto& [_, server] : impl_->servers) server->stop_listening(e);
     for (auto& [_, c] : impl_->channels) impl_->Abort(c);
     impl_->work.reset();

@@ -384,7 +384,8 @@ void GuiRuntime::CloseRemoteSession(std::shared_ptr<RemoteSession> props) {
           const auto direct = props->lan_session_;
           const Thumbnail::LanTarget target =
               direct ? Thumbnail::LanTarget{direct->target.address,
-                                            direct->target.port}
+                                            direct->target.port,
+                                            direct->channel->peer_fingerprint}
                      : Thumbnail::LanTarget{};
           const auto record_id = direct
                                      ? Thumbnail::LanRecordId(target.address, target.port)

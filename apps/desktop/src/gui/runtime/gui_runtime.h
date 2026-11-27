@@ -82,7 +82,8 @@ class GuiRuntime : protected gui_detail::GuiState {
   std::shared_ptr<PeerEventHandler> ControllerEvents(const std::string& id);
   std::vector<std::string> ConnectedControllers();
   std::unique_ptr<lan::SessionManager> lan_;
-  std::string lan_error_;
+  std::string lan_error_, lan_expected_key_;
+  bool lan_saved_password_ = false;
   std::shared_ptr<lan::Session> lan_connecting_;
   bool lan_stopping_ = false;
   bool stopping_ = false;

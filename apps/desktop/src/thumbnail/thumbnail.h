@@ -24,10 +24,12 @@ class Thumbnail {
   struct LanTarget {
     std::string address;
     unsigned port = 52888;
+    std::string fingerprint;
   };
   static std::string Digest(const std::string& value);
   static std::string LanRecordId(const std::string& address, unsigned port);
   uint64_t RecordGeneration(const std::string& id);
+  uint64_t ClaimRecordGeneration(const std::string& id, uint64_t expected);
   struct RecentConnection {
     std::filesystem::path image_path;
     std::string remote_id;

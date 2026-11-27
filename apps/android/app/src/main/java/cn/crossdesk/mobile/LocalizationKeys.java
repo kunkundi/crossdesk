@@ -401,6 +401,22 @@ final class LocalizationKeys {
         IDS.put("正在确认设备状态…", R.string.text_88ea96f38f7b9279);
         IDS.put("对端未响应，请确认设备在线后重试。", R.string.text_64d655aad73dce57);
         IDS.put("正在建立远程连接", R.string.text_d5770d2b84139ab2);
+        IDS.put("设备身份已变化。核对以下公钥指纹后，重新输入密码。", R.string.text_d64a151b4956d033);
+        IDS.put("连接新设备", R.string.text_5a220e368fc24cd4);
+        IDS.put("复制指纹", R.string.text_62deed99aae5e453);
+        IDS.put("无法解析域名", R.string.text_961d96488df18b5e);
+        IDS.put("域名解析超时", R.string.text_3765c75d9189fabb);
+        IDS.put("域名没有可用于直连的地址", R.string.text_2169e184b335ba99);
+        IDS.put("无法连接目标端口", R.string.text_cc2b0ac48f5dd186);
+        IDS.put("直连证书无效", R.string.text_f984f357f7b1003f);
+        IDS.put("直连协议不兼容", R.string.text_777136199c9aa458);
+        IDS.put("请检查直连 UDP 路径", R.string.text_ffbbac568f2a8d2a);
+        IDS.put("设备 ID、IP 或域名", R.string.text_b11b4e9a81701eae);
+        IDS.put("请输入设备 ID、IP 或域名", R.string.text_6930740da68525a4);
+        IDS.put("远端 IP 或域名", R.string.text_3384f4975b43f9b1);
+        IDS.put("输入 IP 或域名，可指定端口", R.string.text_ff7241ff93bd6907);
+        IDS.put("请输入有效的 IP 或域名", R.string.text_f36b579d49cdc4c1);
+        IDS.put("请检查同一局域网、本地名称解析和本地网络权限", R.string.text_8d6b894fd86867bb);
     }
     private LocalizationKeys() {}
 }

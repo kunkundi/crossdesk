@@ -80,7 +80,7 @@ struct Mobile {
       case 'document': return this.state.documentTitle; default: return '';
     }
   }
-  private deviceId(value: string): string { return value.replace(/\s/g, '').substring(0, 160); }
+  private deviceId(value: string): string { return /^[0-9 ]+$/.test(value) ? value.replace(/ /g, '') : value; }
   private formatId(value: string): string { return /^[0-9]{1,9}$/.test(value) ? value.replace(/(.{3})(?=.)/g, '$1 ') : value; }
   private policyParagraphs(body: string): string[] {
     const text = body.replace(/\r\n/g, '\n');
@@ -151,7 +151,7 @@ struct Mobile {
     Column({ space: 16 }) {
       Text(tr("远程桌面")).fontSize(20).fontWeight(600).fontColor(MobileTheme.ink).width('100%')
       Row({ space: 10 }) {
-        TextInput({ text: this.formatId(this.state.remote), placeholder: tr("设备 ID 或 IP 地址") }).type(InputType.Normal).maxLength(160)
+        TextInput({ text: this.formatId(this.state.remote), placeholder: tr("设备 ID、IP 或域名") }).type(InputType.Normal)
           .fontSize(20).fontWeight(500).fontColor(MobileTheme.ink).placeholderColor(MobileTheme.secondary)
           .height(54).layoutWeight(1).backgroundColor(MobileTheme.background).borderRadius(12)
           .border({ width: this.idFocused ? 2 : 1, color: this.idFocused ? MobileTheme.blue : MobileTheme.line })
@@ -601,7 +601,7 @@ struct Mobile {
           MobileIconButton({ icon: this.showPassword ? 'eye_off' : 'eye', label: this.showPassword ? tr("隐藏密码") : tr("显示密码"), iconExtent: 44,
             action: () => this.showPassword = !this.showPassword })
         }.width('100%').backgroundColor(Color.White).borderRadius(10).border({ width: 0.5, color: MobileTheme.line }).margin({ top: 18 })
-        if (this.state.notice) { Text(this.state.notice).fontSize(13).fontColor(MobileTheme.red).width('100%').margin({ top: 8 }) }
+        if (this.state.notice) { Text(this.state.notice).fontSize(13).fontColor(MobileTheme.red).width('100%').copyOption(CopyOptions.LocalDevice).margin({ top: 8 }) }
         Row({ space: 12 }) {
           Column({ space: 3 }) {
             Text(tr("保存密码")).fontSize(15).fontWeight(600).fontColor(MobileTheme.ink).width('100%')
@@ -610,7 +610,7 @@ struct Mobile {
           Toggle({ type: ToggleType.Switch, isOn: this.state.remember }).selectedColor(MobileTheme.green)
             .onChange((value: boolean) => this.state.remember = value).accessibilityText(tr("保存密码"))
         }.width('100%').margin({ top: 18, bottom: 18 })
-        MobilePrimaryButton({ label: tr("连接"), available: this.state.password.length > 0, action: () => this.controller?.begin(this.state.password) })
+        MobilePrimaryButton({ label: this.state.changedHostKey ? tr("连接新设备") : tr("连接"), available: this.state.password.length > 0, action: () => this.controller?.begin(this.state.password) })
       }.padding({ left: 22, right: 22, top: 10, bottom: 22 }).width('100%')
     }.width(this.viewWidth < 600 ? '100%' : Math.min(520, this.viewWidth - 48)).constraintSize({ maxHeight: this.viewHeight * 0.92 })
       .backgroundColor(MobileTheme.background).borderRadius(24).scrollBar(BarState.Off)

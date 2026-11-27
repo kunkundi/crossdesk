@@ -28,6 +28,9 @@ void GuiRuntime::InitializeLan() {
 #endif
   lan_error_.clear();
   lan::SessionManager::Hooks hooks;
+  hooks.diagnostic = [](const std::string& line) {
+    LOG_INFO("LAN dial {}", line);
+  };
   hooks.error = [this](const std::string& error) {
     if (!lan_stopping_ && !stopping_) lan_error_ = error;
   };
@@ -91,6 +94,16 @@ void GuiRuntime::InitializeLan() {
       it->second->peer_ = session->peer;
   };
   hooks.connected = [this](const std::shared_ptr<lan::Session>& session) {
+    if (!session->incoming && lan::IsDnsName(session->target.address)) {
+      if (auto props = FindRemoteSession(session->key);
+          props && props->history_store_) {
+        const auto id = Thumbnail::LanRecordId(session->target.address,
+                                               session->target.port);
+        props->history_generation_ =
+            props->history_store_->ClaimRecordGeneration(
+                id, props->history_generation_);
+      }
+    }
     auto events =
         std::static_pointer_cast<PeerEventHandler>(session->callback_owner);
     events->ApplyConnectionStatus(MiniRtcConnectionStatus::MiniRtcConnectionConnected, session->key);
@@ -158,7 +171,9 @@ void GuiRuntime::ConnectLan(const std::string& address, unsigned port,
     props->remember_password_ = remember_password;
     if (remember_password && lan::ValidPassword(password))
       std::memcpy(props->remote_password_, password.data(), password.size());
-    auto session = lan_->Connect(address, port, std::move(password));
+    auto session =
+        lan_->Connect(address, port, std::move(password), lan_expected_key_,
+                      std::exchange(lan_saved_password_, false));
     lan_connecting_ = session;
     props->history_store_ = thumbnail_;
     props->history_generation_ = thumbnail_->RecordGeneration(

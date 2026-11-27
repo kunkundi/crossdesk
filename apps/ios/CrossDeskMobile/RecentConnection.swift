@@ -23,10 +23,17 @@ struct RecentConnection: Codable, Identifiable, Equatable {
     var lastConnectedAt: Date
     var remembersPassword: Bool
     var thumbnailFileName: String?
+    var credentialRef: String?
+    var fingerprint: String?
     var usesLegacyPassword: Bool?
     var platform: RemoteHostPlatform
 
     var id: String { remoteID }
+    var boundFingerprint: String? {
+        guard let fingerprint, fingerprint.utf8.count == 64,
+              fingerprint.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else { return nil }
+        return fingerprint
+    }
     var displayName: String { alias.isEmpty ? hostName : alias }
 
     init(remoteID: String, displayName: String, lastConnectedAt: Date,
@@ -44,6 +51,7 @@ struct RecentConnection: Codable, Identifiable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case hostName = "displayName"
+        case credentialRef, fingerprint
         case remoteID, alias, groups, lastConnectedAt, remembersPassword, thumbnailFileName, platform, usesLegacyPassword
     }
 
@@ -56,6 +64,8 @@ struct RecentConnection: Codable, Identifiable, Equatable {
         lastConnectedAt = try values.decode(Date.self, forKey: .lastConnectedAt)
         remembersPassword = try values.decode(Bool.self, forKey: .remembersPassword)
         thumbnailFileName = try values.decodeIfPresent(String.self, forKey: .thumbnailFileName)
+        credentialRef = try? values.decode(String.self, forKey: .credentialRef)
+        fingerprint = try? values.decode(String.self, forKey: .fingerprint)
         usesLegacyPassword = try values.decodeIfPresent(Bool.self, forKey: .usesLegacyPassword)
         // Adding platform metadata must not discard records saved by older apps.
         platform = (try? values.decode(RemoteHostPlatform.self, forKey: .platform)) ?? .unknown

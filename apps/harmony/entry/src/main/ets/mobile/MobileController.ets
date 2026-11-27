@@ -17,7 +17,7 @@ interface Command {
   displayResolutions?: ResolutionPreference[];
   displayId?: number; displayKey?: string; width?: number; height?: number;
   op: string; session?: number; connection?: number; server?: string; port?: number; identity?: string;
-  logs?: string; certificates?: string; directory?: string; previewDirectory?: string; remote?: string; password?: string; version?: string;
+  logs?: string; certificates?: string; directory?: string; previewDirectory?: string; remote?: string; password?: string; expectedKey?: string; saved?: boolean; version?: string;
   id?: string; x?: number; y?: number; flag?: number; scroll?: number; code?: number; down?: boolean;
   index?: number; muted?: boolean; visible?: boolean; text?: string; message?: Object; quality?: number; frameRate?: number;
   preference?: number; blockLocalInput?: boolean; request?: number; path?: string; name?: string; body?: string; local?: boolean;
@@ -25,7 +25,7 @@ interface Command {
 interface NativeEvent {
   type: string; session: number; connection?: number; status?: number; controller?: boolean; generation?: number;
   id?: string; identity?: string; message?: Object; report?: NetworkReport; width?: number; height?: number;
-  frame?: number; latency?: number; latencyCount?: number; text?: string; reason?: string; name?: string; progress?: number;
+  detail?: string; frame?: number; latency?: number; latencyCount?: number; text?: string; reason?: string; name?: string; progress?: number;
   sending?: boolean; path?: string; ok?: boolean; request?: number | string; latest?: string;
 }
 export interface RemoteDisplay { name: string; }
@@ -41,6 +41,7 @@ interface TrustInfo { pairing: string; fingerprint: string; }
 @Observed
 export class MobileState {
   trustFingerprint: string = '';
+  changedHostKey: boolean = false;
   page: string = 'home';
   consent: boolean = false;
   privacyAvailable: boolean = false;
@@ -133,6 +134,8 @@ export class MobileController {
   private starting: boolean = false;
   private signalGeneration: number = -1;
   private pendingPassword: string = '';
+  private expectedKey: string = '';
+  private savedCredential: boolean = false;
   private connectingId: string = '';
   private sendingFile: boolean = false;
   private serviceAvailable: boolean = false;
@@ -288,29 +291,43 @@ export class MobileController {
   }
   async requestConnection(id: string): Promise<void> {
     if (this.state.connecting || this.state.ready || this.state.modal === 'password' || this.passwordLookupEpoch === this.uiEpoch) return;
-    id = id.replace(/\s/g, ''); this.state.remote = id;
+    id = id.trim(); if (/^[0-9 ]+$/.test(id)) id = id.replace(/ /g, ''); this.state.remote = id;
     if (!/^[0-9]{9}$/.test(id)) {
       const endpoint = bridge.mobileDirectEndpoint(id);
-      if (!endpoint) { this.toast(tr("请输入设备 ID 或有效的 IP 地址")); return; }
+      if (!endpoint) { this.toast(tr("请输入设备 ID、IP 或域名")); return; }
       id = endpoint; this.state.remote = endpoint;
     }
     if (!this.state.consent) { this.state.modal = 'consent'; return; }
     const epoch = ++this.uiEpoch, scope = this.scope();
     this.passwordLookupEpoch = epoch;
     this.state.password = ''; this.state.notice = '';
-    this.state.remember = this.store.recent(scope).find((d: RecentDevice) => d.id === id)?.remember ?? false;
+    const record = this.store.recent(scope).find((d: RecentDevice) => d.id === id);
+    this.state.remember = record?.remember ?? false;
+    const fingerprint = record?.fingerprint ?? '';
+    this.expectedKey = /^[0-9a-f]{64}$/.test(fingerprint) ? fingerprint : '';
+    this.state.changedHostKey = false;
     let password = '', notice = '';
-    try { password = await this.store.secret(`password:${scope}:${id}`); }
+    try {
+      if (id.includes(':') && bridge.mobileDirectEndpoint(id, true)) {
+        if (record?.credentialRef && record.remember && /^[0-9a-f]{64}$/.test(this.expectedKey)) {
+          const secret = await this.store.secret(`domain-v1:${scope}:${id}:${record.credentialRef}`);
+          if (secret.startsWith(this.expectedKey + ':') && /^[A-Za-z0-9]{6}$/.test(secret.substring(65))) {
+            password = secret.substring(65);
+          }
+        }
+      } else { password = await this.store.secret(`password:${scope}:${id}`); }
+    }
     catch { notice = tr("已保存密码无法读取，请重新输入"); }
     finally { if (this.passwordLookupEpoch === epoch) this.passwordLookupEpoch = undefined; }
     if (epoch !== this.uiEpoch || !this.foreground || !this.state.consent || this.state.remote !== id) return;
-    if (password) { this.state.remember = true; this.startConnection(password); return; }
+    if (password) { this.state.remember = true; this.startConnection(password, true); return; }
     this.state.notice = notice; this.state.modal = 'password';
   }
   begin(password: string): void {
     if (this.state.modal === 'password') this.startConnection(password);
   }
-  private startConnection(password: string): void {
+  private startConnection(password: string, saved: boolean = false): void {
+    this.savedCredential = saved;
     if (this.state.connecting || this.state.ready) return;
     if (!this.state.consent || (!/^[0-9]{9}$/.test(this.state.remote) &&
         (!bridge.mobileDirectEndpoint(this.state.remote) || !/^[A-Za-z0-9]{6}$/.test(password))) || !password || password.length > 128 || password.includes('@')) { this.toast(tr("请输入有效的访问密码")); return; }
@@ -335,7 +352,7 @@ export class MobileController {
   private joinIfReady(): void {
     if (!this.state.connecting || this.joinSent || !this.started ||
         (!this.connectingId.includes(':') && (this.state.signal !== 1 || !this.state.identity))) return;
-    this.joinSent = true; this.send({ op: 'connect', connection: this.connection, remote: this.connectingId, password: this.pendingPassword,
+    this.joinSent = true; this.send({ op: 'connect', connection: this.connection, remote: this.connectingId, password: this.pendingPassword, expectedKey: this.expectedKey, saved: this.savedCredential,
       displayResolutions: this.resolutionStore.load(this.resolutionScope, this.connectingId) });
   }
   end(reason: string): void {
@@ -546,7 +563,14 @@ export class MobileController {
     else if (e.type === 'joinDelivery' && this.state.connecting) {
       this.state.deliveryStatus = e.text ?? '';
     } else if (e.type === 'connection') {
-      if (e.status === 1 && !this.state.ready) this.connected();
+      if (e.status === 1 && !this.state.ready) this.connected(e.detail ?? '');
+      else if (e.detail?.startsWith('HostKeyChanged:')) {
+        const key = e.detail.substring(15), previous = this.expectedKey;
+        this.end(''); this.expectedKey = key; this.state.remote = this.connectingId;
+        this.state.changedHostKey = true;
+        this.state.notice = tr("设备身份已变化。核对以下公钥指纹后，重新输入密码。") + '\n' + previous + '\n↓\n' + key;
+        this.state.modal = 'password';
+      } else if (e.status === 4 && e.detail) this.end(e.detail.split('\n').map((line: string) => tr(line)).join('\n'));
       else if (e.status === 6) {
         this.end(''); this.state.remote = this.connectingId; this.state.notice = tr("访问密码错误，请重新输入"); this.state.modal = 'password';
       } else if ((e.status ?? 0) >= 3) {
@@ -597,13 +621,13 @@ export class MobileController {
     if (this.state.identity) this.inbox.configure(`${this.scope()}:${this.state.identity}`);
     this.inbox.connect(this.state.signal === 1 && this.foreground && this.state.consent);
   }
-  private connected(): void {
+  private connected(fingerprint: string): void {
     this.state.ready = true; this.state.connecting = false; this.state.modal = ''; this.state.page = 'session';
     const device: RecentDevice = { id: this.connectingId, name: this.state.hostName || this.connectingId,
       platform: this.state.platform, remember: this.state.remember, preview: '', alias: '', groups: [] };
     const password = this.pendingPassword; this.pendingPassword = '';
     const scope = this.scope(), connection = this.connection;
-    this.store.saveRecent(scope, device, password).then(() => {
+    this.store.saveRecent(scope, device, password, fingerprint).then(() => {
       if (connection === this.connection && scope === this.scope()) {
         this.historySaved = true;
         if (this.state.hostName) this.store.metadata(scope, device.id, this.state.hostName, this.state.platform);
