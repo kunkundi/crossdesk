@@ -657,7 +657,7 @@ struct Mobile {
       Column({ space: 14 }) {
         LoadingProgress().width(34).height(34).color(MobileTheme.blue)
         Text(tr("正在连接")).fontSize(20).fontWeight(600).fontColor(MobileTheme.ink)
-        Text(this.state.signal === 1 ? tr("正在建立安全连接…") : this.state.signalText).fontSize(14).fontColor(MobileTheme.secondary).textAlign(TextAlign.Center).constraintSize({ minHeight: 36 })
+        Text(this.state.deliveryStatus === 'checking' ? tr("正在确认设备状态…") : this.state.deliveryStatus === 'received' ? tr("正在建立远程连接") : this.state.signal === 1 ? tr("正在建立安全连接…") : this.state.signalText).fontSize(14).fontColor(MobileTheme.secondary).textAlign(TextAlign.Center).constraintSize({ minHeight: 36 })
       }.padding({ left: 26, right: 26, top: 24, bottom: 20 }).width('100%')
       this.Rule()
       this.Action(tr("取消连接"), () => this.controller?.end(''), true)

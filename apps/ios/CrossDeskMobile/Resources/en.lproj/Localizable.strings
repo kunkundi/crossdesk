@@ -370,3 +370,4 @@
 "删除分组" = "Delete group";
 "组内设备和连接记录将保留。" = "Devices and connection history will be kept.";
 "保存失败，请重试" = "Could not save; try again";
+"对端未响应，请确认设备在线后重试。" = "The remote device did not respond. Check that it is online and try again.";

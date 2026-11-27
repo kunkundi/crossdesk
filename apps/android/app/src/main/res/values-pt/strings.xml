@@ -392,4 +392,7 @@
     <string name="text_7605c1d82eed69a5" formatted="false">"Excluir grupo"</string>
     <string name="text_b113e4e040b875a8" formatted="false">"Os dispositivos e o histórico de conexões serão mantidos."</string>
     <string name="text_f42a1238b44a4858" formatted="false">"Não foi possível salvar; tente novamente"</string>
+    <string name="text_88ea96f38f7b9279" formatted="false">"Confirmando o status do dispositivo..."</string>
+    <string name="text_64d655aad73dce57" formatted="false">"O dispositivo remoto não respondeu. Verifique se está online e tente novamente."</string>
+    <string name="text_d5770d2b84139ab2" formatted="false">"Estabelecendo conexão remota"</string>
 </resources>

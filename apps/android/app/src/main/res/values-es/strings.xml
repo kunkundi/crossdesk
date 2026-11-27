@@ -392,4 +392,7 @@
     <string name="text_7605c1d82eed69a5" formatted="false">"Eliminar grupo"</string>
     <string name="text_b113e4e040b875a8" formatted="false">"Se conservarán los dispositivos y el historial de conexiones."</string>
     <string name="text_f42a1238b44a4858" formatted="false">"No se pudo guardar; intentarlo de nuevo"</string>
+    <string name="text_88ea96f38f7b9279" formatted="false">"Confirmando el estado del dispositivo..."</string>
+    <string name="text_64d655aad73dce57" formatted="false">"El dispositivo remoto no respondió. Comprueba que esté en línea y vuelve a intentarlo."</string>
+    <string name="text_d5770d2b84139ab2" formatted="false">"Establecer conexión remota"</string>
 </resources>

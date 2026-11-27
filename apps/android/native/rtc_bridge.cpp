@@ -164,11 +164,16 @@ void Signal(MiniRtcSignalStatus status, const char*, size_t, void* user) {
 }
 void SignalMessage(const char* data, size_t size, void* user) {
   auto* ctx = static_cast<CallbackContext*>(user);
-  if (ctx->controller || !data || !size || size > 1024 * 1024) return;
+  if (!data || !size || size > 1024 * 1024) return;
   const auto generation = ctx->owner->signal_generation.load();
   auto message = json::parse(data, data + size, nullptr, false);
   if (!message.is_object() || !message.contains("type") || !message["type"].is_string()) return;
   const auto type = message["type"].get<std::string>();
+  if (ctx->controller) {
+    if (type == "join_delivery" || message.value("error_code", "") == "REMOTE_UNRESPONSIVE")
+      ctx->owner->Event(11, message);
+    return;
+  }
   if (type == "announcements" || type == "announcements_changed") ctx->owner->Event(8, data, size);
   else if (type == "presence" || type == "presence_update") {
     message["generation"] = generation;
@@ -568,4 +573,11 @@ extern "C" JNIEXPORT void JNICALL JNI_METHOD(nSurface)(JNIEnv* env, jclass, jlon
       MiniRtcRequestVideoKeyFrame(s->controller, MakeDisplayStreamId(s->display.load()).c_str());
   }
 }
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(nVerifySignaling)(JNIEnv*, jclass, jlong handle) {
+  auto* session = From(handle);
+  if (session->identity) MiniRtcVerifySignal(session->identity);
+  if (session->controller && session->remote.find(':') == std::string::npos)
+    MiniRtcVerifySignal(session->controller);
+}
+
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(nDestroy)(JNIEnv*, jclass, jlong handle) { delete From(handle); }

@@ -392,4 +392,7 @@
     <string name="text_7605c1d82eed69a5" formatted="false">"Supprimer le groupe"</string>
     <string name="text_b113e4e040b875a8" formatted="false">"Les appareils et l’historique des connexions seront conservés."</string>
     <string name="text_f42a1238b44a4858" formatted="false">"Impossible d\'enregistrer ; réessaye"</string>
+    <string name="text_88ea96f38f7b9279" formatted="false">"Confirmation de l\'état de l\'appareil..."</string>
+    <string name="text_64d655aad73dce57" formatted="false">"L’appareil distant ne répond pas. Vérifiez qu’il est en ligne et réessayez."</string>
+    <string name="text_d5770d2b84139ab2" formatted="false">"Établissement d\'une connexion à distance"</string>
 </resources>

@@ -74,6 +74,8 @@ typedef struct {
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didChangeIdentityStorageError:(BOOL)hasError;
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
+    joinDelivery:(NSString *)status remoteID:(NSString *)remoteID;
+- (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didChangeConnectionState:(CrossDeskConnectionState)state
                     remoteID:(NSString *)remoteID;
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
@@ -189,6 +191,7 @@ typedef struct {
       displayResolutions:(NSData *)displayResolutions;
 - (void)disconnect;
 // Close both session and signaling peers, including automatic reconnection.
+- (void)verifySignaling;
 - (void)stopNetworking;
 - (void)requestKeyFrame;
 

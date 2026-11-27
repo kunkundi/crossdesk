@@ -53,6 +53,10 @@ final class NativeSession implements AutoCloseable {
     private String password, identity = "";
     private final int port;
     private long handle;
+    private boolean remoteUnresponsive;
+    void verifySignaling() {
+        execute(() -> { if (!closed && handle != 0) nVerifySignaling(handle); });
+    }
     private boolean signalReady, joining, started;
     private volatile boolean connected, supportsTextInput;
     final RemotePrivacyScreen privacyScreen = new RemotePrivacyScreen();
@@ -204,10 +208,17 @@ final class NativeSession implements AutoCloseable {
                         if (signalReady && remote.isEmpty()) main.removeCallbacks(timeout);
                         publishSignaling();
                     }
+                    if (connected) return; // ICE and media have an independent lifetime.
                     if (status == 6) fail(L10n.tr("服务器 TLS 证书校验失败"));
                     else if (status == 2) fail(L10n.tr("服务器登录失败，请检查服务器地址和网络"));
-                    else if (status >= 3 && connected) fail(L10n.tr("信令连接中断，请重新连接"));
                     else if (!remote.isEmpty() && (status == 0 || status == 4)) ui(() -> listener.status(L10n.tr("正在连接信令服务器…")));
+                } else if (type == 11 && !connected && remote.equals(event.optString("transmission_id"))) {
+                    remoteUnresponsive = "REMOTE_UNRESPONSIVE".equals(event.optString("error_code"));
+                    if (!remoteUnresponsive) {
+                        String progress = "checking".equals(event.optString("status"))
+                            ? L10n.tr("正在确认设备状态…") : L10n.tr("正在建立远程连接");
+                        ui(() -> listener.status(progress));
+                    }
                 } else if (type == 2) {
                     int status = event.getInt("status");
                     if (status == 1) {
@@ -222,7 +233,8 @@ final class NativeSession implements AutoCloseable {
                     else {
                         String[] reasons = {"", "", "", L10n.tr("连接已断开"), L10n.tr("连接失败"), L10n.tr("远端已关闭连接"),
                                 L10n.tr("远端密码错误"), L10n.tr("找不到该设备 ID"), L10n.tr("远端当前不可用")};
-                        if (direct && status == 4) fail(L10n.tr("IP 直连失败，请检查电脑的直连地址和网络。"));
+                        if (remoteUnresponsive && status == 8) fail(L10n.tr("对端未响应，请确认设备在线后重试。"));
+                        else if (direct && status == 4) fail(L10n.tr("IP 直连失败，请检查电脑的直连地址和网络。"));
                         else fail(status >= 0 && status < reasons.length ? reasons[status] : L10n.tr("连接已结束"));
                     }
                 } else if (type == 4) {
@@ -405,5 +417,6 @@ final class NativeSession implements AutoCloseable {
     private static native boolean nSendFile(long handle,String path,byte[] name);
     private static native boolean nPumpFiles(long handle);
     private static native void nSurface(long handle, Surface surface);
+    private static native void nVerifySignaling(long handle);
     private static native void nDestroy(long handle);
 }

@@ -119,7 +119,7 @@ class MobileSession {
       }
       s->Event({{"type", "signal"}, {"controller", controller}, {"status", status},
                 {"generation", s->signal_generation_}, {"id", s->login_.substr(0, s->login_.find('@'))}});
-      if (controller && status >= MiniRtcSignalFailed && status != MiniRtcSignalReconnecting) s->Disconnect("远程会话信令连接失败");
+      if (controller && !s->connected_ && status >= MiniRtcSignalFailed && status != MiniRtcSignalReconnecting) s->Disconnect("远程会话信令连接失败");
     });
   }
   static void SignalMessage(const char* data, size_t size, void* user) {
@@ -127,8 +127,13 @@ class MobileSession {
     const auto value = json::parse(data, data+size, nullptr, false);
     if (!value.is_object()) return;
     Dispatch(user, [value](MobileSession* s, bool controller) {
-      if (controller || !s->online_) return;
       const auto type = value.value("type", "");
+      if (controller) {
+        if (type == "join_delivery" || value.value("error_code", "") == "REMOTE_UNRESPONSIVE")
+          s->Event({{"type", "joinDelivery"}, {"text", value.value("status", "")}}, true);
+        return;
+      }
+      if (!s->online_) return;
       if (type == "announcements" || type == "announcements_changed" || type == "presence" || type == "presence_update")
         s->Event({{"type", "signalMessage"}, {"message", value}, {"generation", s->signal_generation_}});
     });
@@ -324,6 +329,9 @@ class MobileSession {
               ReportConnection(status, {}, context);
             })) Disconnect("无法发起连接");
       } else if (MiniRtcInit(controller_)!=0||MiniRtcJoinConnection(controller_,(remote_+"@"+password).c_str())!=0) Disconnect("无法发起连接");
+    } else if (op=="verifySignaling") {
+      if (identity_) MiniRtcVerifySignal(identity_);
+      if (controller_ && remote_.find(':') == std::string::npos) MiniRtcVerifySignal(controller_);
     } else if (op=="disconnect") Disconnect("");
     else if (op=="release") Release();
     else if (op=="signal" && online_ && identity_) {

@@ -635,7 +635,7 @@ int GuiRuntime::ConnectTo(const std::string& remote_id, const char* password,
   }
   // Wall requests, including deferred reconnects, must not replace the single
   // interactive presence probe. Join reports availability for each session.
-  if (!background && !bypass_presence_check &&
+  if (!background && !bypass_presence_check && (!password || !*password) &&
       !device_presence_cache_.IsOnline(remote_id)) {
     int ret = RequestSingleDevicePresence(remote_id, password,
                                           remember_password);

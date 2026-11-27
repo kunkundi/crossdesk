@@ -398,6 +398,9 @@ final class LocalizationKeys {
         IDS.put("删除分组", R.string.text_7605c1d82eed69a5);
         IDS.put("组内设备和连接记录将保留。", R.string.text_b113e4e040b875a8);
         IDS.put("保存失败，请重试", R.string.text_f42a1238b44a4858);
+        IDS.put("正在确认设备状态…", R.string.text_88ea96f38f7b9279);
+        IDS.put("对端未响应，请确认设备在线后重试。", R.string.text_64d655aad73dce57);
+        IDS.put("正在建立远程连接", R.string.text_d5770d2b84139ab2);
     }
     private LocalizationKeys() {}
 }

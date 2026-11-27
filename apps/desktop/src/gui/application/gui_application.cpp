@@ -3884,6 +3884,12 @@ void GuiApplication::SyncConnectionDialog() {
            : auth.incorrect_password
                ? localization::reinput_password[localization_language_index_]
                : localization::input_password[localization_language_index_];
+  } else if (auth.unresponsive) {
+    text = localization::join_unresponsive[localization_language_index_];
+  } else if (pending && auth.checking_delivery) {
+    text = localization::join_checking[localization_language_index_];
+  } else if (pending && auth.received) {
+    text = localization::join_received[localization_language_index_];
   } else if (auth.error == MiniRtcJoinFailureKind::Throttled) {
     text = localization::connection_auth_throttled[localization_language_index_];
   } else if (auth.error == MiniRtcJoinFailureKind::Busy) {

@@ -68,6 +68,16 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private final java.util.List<Runnable> previewCards=new java.util.ArrayList<>();
     private final Runnable previewChanged=this::renderPreviews;
     private NativeSession session, signaling;
+    private final android.net.ConnectivityManager.NetworkCallback signalingNetwork =
+        new android.net.ConnectivityManager.NetworkCallback() {
+            @Override public void onAvailable(android.net.Network network) {
+                runOnUiThread(() -> verifySignaling());
+            }
+        };
+    private void verifySignaling() {
+        if (signaling != null) signaling.verifySignaling();
+        if (session != null && session != signaling) session.verifySignaling();
+    }
     private String signalingServer="", localIdentity="", signalError="";
     private int signalState=-1;
     private boolean foreground;
@@ -104,7 +114,9 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private Runnable backAction;
 
     @Override public void onCreate(Bundle state){
-        super.onCreate(state);ui=new MobileUi(this);history=new RecentConnections(this);remoteOrientation=new RemoteOrientation(this);
+        super.onCreate(state);
+        getSystemService(android.net.ConnectivityManager.class).registerDefaultNetworkCallback(signalingNetwork);
+        ui=new MobileUi(this);history=new RecentConnections(this);remoteOrientation=new RemoteOrientation(this);
         pageHost=new PageHost(this);setContentView(pageHost);
         preferences=getSharedPreferences("settings",MODE_PRIVATE);host=preferences.getString("host","api.crossdesk.cn");port=preferences.getInt("port",9099);
         recentPresence.sender=ids->{if(signaling!=null&&!signaling.isClosed())signaling.presenceRequest(ids);};
@@ -1129,7 +1141,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         super.onPictureInPictureUiStateChanged(state);
         if(android.os.Build.VERSION.SDK_INT>=35&&state.isTransitioningToPip())setPictureInPictureUi(true);
     }
-    @Override protected void onResume(){super.onResume();privacyChanged();if(!isInPictureInPictureMode())enteredPictureInPicture=false;setPictureInPictureUi(isInPictureInPictureMode());updatePictureInPicture();if(ready&&!canUsePictureInPicture())prepareBackgroundSession(true);if(backgroundSession!=null)requestBackgroundNotifications();}
+    @Override protected void onResume(){super.onResume();verifySignaling();privacyChanged();if(!isInPictureInPictureMode())enteredPictureInPicture=false;setPictureInPictureUi(isInPictureInPictureMode());updatePictureInPicture();if(ready&&!canUsePictureInPicture())prepareBackgroundSession(true);if(backgroundSession!=null)requestBackgroundNotifications();}
     // onStart marks a new visit; focus/resume callbacks must not reopen a refused notice.
     @Override protected void onPause(){releaseKeys();if(controls!=null)controls.cancelMouseInput();if(video!=null)video.releaseMouse();super.onPause();}
     @Override protected void onStart(){super.onStart();foreground=true;restoreBackgroundSession();appUpdates.setEnabled(preferences.getBoolean("networkConsent",false));if(!preferences.getBoolean("networkConsent",false))consent(this::renderSignaling);ensureSignaling();showConnectionMessage();}
@@ -1147,7 +1159,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
             resetRemoteVersionCheck();if(disconnectDialog!=null)disconnectDialog.dismiss();
         }else if(documentSession==null||documentSession!=session||isFinishing()){if(session!=null)end(isFinishing()?"":L10n.tr("远程窗口已关闭，或后台保活未能启动，会话已结束"));stopSignaling();}
         super.onStop();}
-    @Override protected void onDestroy(){dismissPrivacyUnlockDialog();mainHandler.removeCallbacks(documentTimeout);documentSession=null;documentToSave=null;appUpdates.setEnabled(false);pageHost.finish();resetRemoteVersionCheck();cancelVideoSettingsTimeout();cancelDisplayResolutionTimeout();previews.removeListener(previewChanged);if(privacyDialog!=null)privacyDialog.dismiss();if(previewDialog!=null)previewDialog.dismiss();announcementInbox.close();if(disconnectDialog!=null)disconnectDialog.dismiss();if(passwordDialog!=null)passwordDialog.dismiss();if(progressDialog!=null)progressDialog.dismiss();
+    @Override protected void onDestroy(){getSystemService(android.net.ConnectivityManager.class).unregisterNetworkCallback(signalingNetwork);dismissPrivacyUnlockDialog();mainHandler.removeCallbacks(documentTimeout);documentSession=null;documentToSave=null;appUpdates.setEnabled(false);pageHost.finish();resetRemoteVersionCheck();cancelVideoSettingsTimeout();cancelDisplayResolutionTimeout();previews.removeListener(previewChanged);if(privacyDialog!=null)privacyDialog.dismiss();if(previewDialog!=null)previewDialog.dismiss();announcementInbox.close();if(disconnectDialog!=null)disconnectDialog.dismiss();if(passwordDialog!=null)passwordDialog.dismiss();if(progressDialog!=null)progressDialog.dismiss();
         if(connectionDialog!=null)connectionDialog.dismiss();
         boolean retained=!isFinishing()&&backgroundSession!=null&&!backgroundSession.ended&&RemoteSessionService.current()==backgroundSession;
         if(backgroundSession!=null){

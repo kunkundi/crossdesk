@@ -929,6 +929,14 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
   });
 }
 
+- (void)verifySignaling {
+  dispatch_async(_rtcQueue, ^{
+    if (self->_state->identity_peer) MiniRtcVerifySignal(self->_state->identity_peer);
+    if (self->_state->controller_peer && self->_state->pending_remote_id.find(':') == std::string::npos)
+      MiniRtcVerifySignal(self->_state->controller_peer);
+  });
+}
+
 - (void)stopNetworking {
   _networkingGeneration.fetch_add(1);
   _controllerGenerationCounter.fetch_add(1);
@@ -1461,7 +1469,8 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
                  generation:(uint64_t)generation {
   // Twenty 8 KiB bodies may expand substantially when JSON-escaped.
   constexpr size_t kMaxSignalMessageSize = 1024 * 1024;
-  if (role != PeerRole::Identity || generation != _identityGeneration.load() ||
+  if ((role == PeerRole::Identity && generation != _identityGeneration.load()) ||
+      (role == PeerRole::Controller && ![self isControllerGenerationActive:generation]) ||
       !message || size == 0 ||
       size > kMaxSignalMessageSize) {
     return;
@@ -1478,6 +1487,22 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
   NSDictionary *object = static_cast<NSDictionary *>(decoded);
   NSString *type = object[@"type"];
   if (![type isKindOfClass:NSString.class]) return;
+
+  if (role == PeerRole::Controller) {
+    NSString *remote = object[@"transmission_id"];
+    NSString *status = nil;
+    if ([type isEqualToString:@"join_delivery"]) status = object[@"status"];
+    if ([type isEqualToString:@"user_join_transmission"] &&
+        [object[@"error_code"] isEqual:@"REMOTE_UNRESPONSIVE"]) status = @"unresponsive";
+    if ([remote isKindOfClass:NSString.class] && [status isKindOfClass:NSString.class]) {
+      DispatchMain(^{
+        if ([self isControllerGenerationActive:generation] &&
+            [self.delegate respondsToSelector:@selector(rtcBridge:joinDelivery:remoteID:)])
+          [self.delegate rtcBridge:self joinDelivery:status remoteID:remote];
+      });
+    }
+    return;
+  }
 
   if ([type isEqualToString:@"announcements"] ||
       [type isEqualToString:@"announcements_changed"]) {

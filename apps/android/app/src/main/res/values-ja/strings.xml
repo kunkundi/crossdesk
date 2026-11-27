@@ -392,4 +392,7 @@
     <string name="text_7605c1d82eed69a5" formatted="false">"グループを削除"</string>
     <string name="text_b113e4e040b875a8" formatted="false">"グループ内のデバイスと接続履歴は保持されます。"</string>
     <string name="text_f42a1238b44a4858" formatted="false">"保存できませんでした。もう一度試してください"</string>
+    <string name="text_88ea96f38f7b9279" formatted="false">"機器の状態を確認しています..."</string>
+    <string name="text_64d655aad73dce57" formatted="false">"リモート端末が応答しません。オンラインであることを確認して再試行してください。"</string>
+    <string name="text_d5770d2b84139ab2" formatted="false">"リモート接続の確立"</string>
 </resources>

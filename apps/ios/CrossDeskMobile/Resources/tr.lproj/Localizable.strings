@@ -370,3 +370,4 @@
 "删除分组" = "Grubu sil";
 "组内设备和连接记录将保留。" = "Gruptaki cihazlar ve bağlantı geçmişi korunacak.";
 "保存失败，请重试" = "Kaydedilemedi. Tekrar deneyin";
+"对端未响应，请确认设备在线后重试。" = "Uzak cihaz yanıt vermedi. Çevrimiçi olduğunu kontrol edip tekrar deneyin.";

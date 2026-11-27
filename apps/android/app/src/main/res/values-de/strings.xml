@@ -392,4 +392,7 @@
     <string name="text_7605c1d82eed69a5" formatted="false">"Gruppe löschen"</string>
     <string name="text_b113e4e040b875a8" formatted="false">"Geräte und Verbindungsverlauf bleiben erhalten."</string>
     <string name="text_f42a1238b44a4858" formatted="false">"Konnte nicht gespeichert werden; Versuchen Sie es noch einmal"</string>
+    <string name="text_88ea96f38f7b9279" formatted="false">"Gerätestatus bestätigen..."</string>
+    <string name="text_64d655aad73dce57" formatted="false">"Das entfernte Gerät antwortet nicht. Prüfen Sie, ob es online ist, und versuchen Sie es erneut."</string>
+    <string name="text_d5770d2b84139ab2" formatted="false">"Remote-Verbindung aufbauen"</string>
 </resources>

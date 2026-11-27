@@ -370,3 +370,4 @@
 "删除分组" = "Supprimer le groupe";
 "组内设备和连接记录将保留。" = "Les appareils et l’historique des connexions seront conservés.";
 "保存失败，请重试" = "Impossible d'enregistrer ; réessaye";
+"对端未响应，请确认设备在线后重试。" = "L’appareil distant ne répond pas. Vérifiez qu’il est en ligne et réessayez.";

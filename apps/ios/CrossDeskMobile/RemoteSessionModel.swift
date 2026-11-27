@@ -2,6 +2,7 @@ import AVFoundation
 import CoreImage
 import CoreVideo
 import Foundation
+import Network
 import Security
 import UIKit
 
@@ -364,6 +365,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     @Published private(set) var remotePlatform: RemoteHostPlatform = .unknown
 
     let bridge = CrossDeskRTCBridge()
+    private let networkPath = NWPathMonitor()
     let pictureInPicture = RemotePictureInPicture()
     let announcements = AnnouncementInbox()
     let appUpdates = AppUpdateChecker()
@@ -421,6 +423,14 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         recentConnections = history.load()
         RecentConnectionStore.removeLegacyThumbnails()
         bridge.delegate = self
+        networkPath.pathUpdateHandler = { [weak self] path in
+            guard path.status == .satisfied else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.hasNetworkConsent, self.appIsActive else { return }
+                self.bridge.verifySignaling()
+            }
+        }
+        networkPath.start(queue: DispatchQueue(label: "crossdesk.signaling.path"))
         pictureInPicture.requestFrame = { [weak self] in
             guard let self, self.isConnected else { return }
             self.bridge.requestKeyFrame()
@@ -445,6 +455,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
     }
 
     deinit {
+        networkPath.cancel()
         privacyTimer?.invalidate()
         presenceTimer?.invalidate()
         remoteVersionCheckTask?.cancel()
@@ -456,6 +467,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         privacyClock = ProcessInfo.processInfo.systemUptime
         privacyScreen.tick(at: privacyClock)
         appIsActive = true
+        if hasNetworkConsent { bridge.verifySignaling() }
         AppOrientation.resume()
         pictureInPicture.didBecomeActive()
         appUpdates.setEnabled(hasNetworkConsent)
@@ -618,7 +630,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
             connectionStatus = signalStatus
             return
         }
-        if identifier.contains(":") || isDeviceOnline(identifier) {
+        if !password.isEmpty || identifier.contains(":") || isDeviceOnline(identifier) {
             beginRemoteConnection(identifier)
         } else {
             beginPresenceProbe(identifier)
@@ -1345,6 +1357,16 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         } else {
             stopPresenceMonitoring()
             cancelPendingPresenceConnection()
+        }
+    }
+
+    func rtcBridge(_ bridge: CrossDeskRTCBridge, joinDelivery status: String, remoteID: String) {
+        guard isConnecting, remoteID == activeRemoteID else { return }
+        if status == "unresponsive" {
+            finishConnection(withError: NSLocalizedString("对端未响应，请确认设备在线后重试。", comment: ""))
+        } else {
+            connectionStatus = status == "checking" ? NSLocalizedString("正在确认设备状态…", comment: "")
+                : NSLocalizedString("正在建立远程连接", comment: "")
         }
     }
 

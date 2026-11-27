@@ -578,6 +578,9 @@ inline constexpr TranslationRow kTranslationRows[] = {
   {"分组名称过长", {"分组名称过长", "Group name is too long", "Название группы слишком длинное", "分組名稱過長", "グループ名が長すぎます", "그룹 이름이 너무 깁니다", "Gruppenname ist zu lang", "Le nom du groupe est trop long", "El nombre del grupo es demasiado largo", "O nome do grupo é muito longo", "Grup adı çok uzun"}},
   {"此分组已更名或删除，请重新选择。", {"此分组已更名或删除，请重新选择。", "This group was renamed or deleted. Select a group again.", "Группа переименована или удалена. Выберите группу снова.", "此分組已重新命名或刪除，請重新選擇。", "グループ名が変更されたか、グループが削除されました。もう一度グループを選択してください。", "그룹 이름이 변경되었거나 그룹이 삭제되었습니다. 그룹을 다시 선택하세요.", "Die Gruppe wurde umbenannt oder gelöscht. Wählen Sie erneut eine Gruppe aus.", "Ce groupe a été renommé ou supprimé. Sélectionnez à nouveau un groupe.", "Este grupo se ha renombrado o eliminado. Vuelve a seleccionar un grupo.", "Este grupo foi renomeado ou excluído. Selecione um grupo novamente.", "Bu grup yeniden adlandırıldı veya silindi. Lütfen yeniden seçim yapın."}},
   {"未连接显示器时自动创建虚拟屏", {"未连接显示器时自动创建虚拟屏", "Create a virtual display when no monitor is connected", "Создавать виртуальный дисплей без монитора", "未連接顯示器時自動建立虛擬螢幕", "モニター未接続時に仮想ディスプレイを作成", "모니터가 없을 때 가상 디스플레이 생성", "Ohne Monitor ein virtuelles Display erstellen", "Créer un écran virtuel si aucun moniteur n’est connecté", "Crear una pantalla virtual si no hay monitor", "Criar tela virtual quando não houver monitor", "Monitör bağlı değilken sanal ekran oluştur"}},
+  {"正在确认设备状态…", {"正在确认设备状态…", "Confirming device status...", "Подтверждение статуса устройства...", "正在確認裝置狀態…", "機器の状態を確認しています...", "기기 상태를 확인하는 중...", "Gerätestatus bestätigen...", "Confirmation de l'état de l'appareil...", "Confirmando el estado del dispositivo...", "Confirmando o status do dispositivo...", "Cihaz durumu doğrulanıyor…"}},
+  {"对端未响应，请确认设备在线后重试。", {"对端未响应，请确认设备在线后重试。", "The remote device did not respond. Check that it is online and try again.", "Удалённое устройство не ответило. Убедитесь, что оно в сети, и повторите попытку.", "對端未回應，請確認裝置在線後重試。", "リモート端末が応答しません。オンラインであることを確認して再試行してください。", "원격 장치가 응답하지 않습니다. 온라인 상태인지 확인한 후 다시 시도하세요.", "Das entfernte Gerät antwortet nicht. Prüfen Sie, ob es online ist, und versuchen Sie es erneut.", "L’appareil distant ne répond pas. Vérifiez qu’il est en ligne et réessayez.", "El dispositivo remoto no respondió. Comprueba que esté en línea y vuelve a intentarlo.", "O dispositivo remoto não respondeu. Verifique se está online e tente novamente.", "Uzak cihaz yanıt vermedi. Çevrimiçi olduğunu kontrol edip tekrar deneyin."}},
+  {"正在建立远程连接", {"正在建立远程连接", "Establishing remote connection", "Установление удаленного соединения", "正在建立遠端連線", "リモート接続の確立", "원격 연결 설정", "Remote-Verbindung aufbauen", "Établissement d'une connexion à distance", "Establecer conexión remota", "Estabelecendo conexão remota", "Uzak bağlantı kuruluyor"}},
 };
 
 struct NamedTranslation { const char* name; const char* literal; };
@@ -881,6 +884,9 @@ inline constexpr NamedTranslation kNamedTranslations[] = {
   {"windows_service_repair_failed", "修复失败，请检查管理员权限和便携版文件后重试"},
   {"remote_service_unavailable_message", "远端 Windows 服务不可用，锁屏时无法操作。请在远端安装或修复 CrossDesk 服务。"},
   {"auto_virtual_display", "未连接显示器时自动创建虚拟屏"},
+  {"join_checking", "正在确认设备状态…"},
+  {"join_unresponsive", "对端未响应，请确认设备在线后重试。"},
+  {"join_received", "正在建立远程连接"},
 };
 inline constexpr const char* kSlintLiterals[] = {
   "此端口已被占用，",
@@ -1407,7 +1413,10 @@ inline constexpr const char* kSlintLiterals[] = {
   X(windows_service_repair_success) \
   X(windows_service_repair_failed) \
   X(remote_service_unavailable_message) \
-  X(auto_virtual_display)
+  X(auto_virtual_display) \
+  X(join_checking) \
+  X(join_unresponsive) \
+  X(join_received)
 
 }  // namespace localization
 }  // namespace crossdesk

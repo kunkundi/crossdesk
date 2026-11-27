@@ -12999,6 +12999,19 @@
       "es": "Crear una pantalla virtual si no hay monitor",
       "pt-BR": "Criar tela virtual quando não houver monitor",
       "tr": "Monitör bağlı değilken sanal ekran oluştur"
+    },
+    "对端未响应，请确认设备在线后重试。": {
+      "zh-Hans": "对端未响应，请确认设备在线后重试。",
+      "en": "The remote device did not respond. Check that it is online and try again.",
+      "ru": "Удалённое устройство не ответило. Убедитесь, что оно в сети, и повторите попытку.",
+      "zh-Hant": "對端未回應，請確認裝置在線後重試。",
+      "ja": "リモート端末が応答しません。オンラインであることを確認して再試行してください。",
+      "ko": "원격 장치가 응답하지 않습니다. 온라인 상태인지 확인한 후 다시 시도하세요.",
+      "de": "Das entfernte Gerät antwortet nicht. Prüfen Sie, ob es online ist, und versuchen Sie es erneut.",
+      "fr": "L’appareil distant ne répond pas. Vérifiez qu’il est en ligne et réessayez.",
+      "es": "El dispositivo remoto no respondió. Comprueba que esté en línea y vuelve a intentarlo.",
+      "pt-BR": "O dispositivo remoto não respondeu. Verifique se está online e tente novamente.",
+      "tr": "Uzak cihaz yanıt vermedi. Çevrimiçi olduğunu kontrol edip tekrar deneyin."
     }
   },
   "desktop": {
@@ -13300,7 +13313,10 @@
     "windows_service_repair_success": "服务已修复并启动",
     "windows_service_repair_failed": "修复失败，请检查管理员权限和便携版文件后重试",
     "remote_service_unavailable_message": "远端 Windows 服务不可用，锁屏时无法操作。请在远端安装或修复 CrossDesk 服务。",
-    "auto_virtual_display": "未连接显示器时自动创建虚拟屏"
+    "auto_virtual_display": "未连接显示器时自动创建虚拟屏",
+    "join_checking": "正在确认设备状态…",
+    "join_unresponsive": "对端未响应，请确认设备在线后重试。",
+    "join_received": "正在建立远程连接"
   },
   "slint": [
     "此端口已被占用，",
@@ -14092,7 +14108,10 @@
       "不能使用系统保留分组名称",
       "分组名称过长",
       "此分组已更名或删除，请重新选择。",
-      "未连接显示器时自动创建虚拟屏"
+      "未连接显示器时自动创建虚拟屏",
+      "正在确认设备状态…",
+      "对端未响应，请确认设备在线后重试。",
+      "正在建立远程连接"
     ],
     "android": [
       " · 已完成",
@@ -14485,7 +14504,10 @@
       "对端地址",
       "删除分组",
       "组内设备和连接记录将保留。",
-      "保存失败，请重试"
+      "保存失败，请重试",
+      "正在确认设备状态…",
+      "对端未响应，请确认设备在线后重试。",
+      "正在建立远程连接"
     ],
     "ios": [
       "%1$@ 传输失败",
@@ -14858,7 +14880,8 @@
       "对端地址",
       "删除分组",
       "组内设备和连接记录将保留。",
-      "保存失败，请重试"
+      "保存失败，请重试",
+      "对端未响应，请确认设备在线后重试。"
     ],
     "harmony": [
       "OpenFEC 告知",
@@ -15184,7 +15207,10 @@
       "对端地址",
       "删除分组",
       "组内设备和连接记录将保留。",
-      "保存失败，请重试"
+      "保存失败，请重试",
+      "正在确认设备状态…",
+      "对端未响应，请确认设备在线后重试。",
+      "正在建立远程连接"
     ]
   }
 }

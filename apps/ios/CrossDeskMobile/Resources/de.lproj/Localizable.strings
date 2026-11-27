@@ -370,3 +370,4 @@
 "删除分组" = "Gruppe löschen";
 "组内设备和连接记录将保留。" = "Geräte und Verbindungsverlauf bleiben erhalten.";
 "保存失败，请重试" = "Konnte nicht gespeichert werden; Versuchen Sie es noch einmal";
+"对端未响应，请确认设备在线后重试。" = "Das entfernte Gerät antwortet nicht. Prüfen Sie, ob es online ist, und versuchen Sie es erneut.";

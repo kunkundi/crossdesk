@@ -392,4 +392,7 @@
     <string name="text_7605c1d82eed69a5" formatted="false">"刪除分組"</string>
     <string name="text_b113e4e040b875a8" formatted="false">"組內裝置和連線記錄將保留。"</string>
     <string name="text_f42a1238b44a4858" formatted="false">"儲存失敗，請重試"</string>
+    <string name="text_88ea96f38f7b9279" formatted="false">"正在確認裝置狀態…"</string>
+    <string name="text_64d655aad73dce57" formatted="false">"對端未回應，請確認裝置在線後重試。"</string>
+    <string name="text_d5770d2b84139ab2" formatted="false">"正在建立遠端連線"</string>
 </resources>

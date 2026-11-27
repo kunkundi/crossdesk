@@ -55,6 +55,7 @@ export class MobileState {
   signalText: string = tr("未连接");
   identity: string = '';
   connecting: boolean = false;
+  deliveryStatus: string = '';
   ready: boolean = false;
   relative: boolean = true;
   muted: boolean = false;
@@ -200,7 +201,7 @@ export class MobileController {
   }
   resume(): void {
     this.foreground = true; this.platform.resume(); this.syncPrivacy();
-    if (this.state.consent) { this.ensureSignal(); this.checkLocal(); this.inbox.connect(this.state.signal === 1); }
+    if (this.state.consent) { this.ensureSignal(); this.send({op: 'verifySignaling', session: this.session}); this.checkLocal(); this.inbox.connect(this.state.signal === 1); }
     else this.state.modal = 'consent';
   }
   background(): void {
@@ -315,6 +316,7 @@ export class MobileController {
         (!bridge.mobileDirectEndpoint(this.state.remote) || !/^[A-Za-z0-9]{6}$/.test(password))) || !password || password.length > 128 || password.includes('@')) { this.toast(tr("请输入有效的访问密码")); return; }
     this.joinSent = false; this.connection++; this.connectingId = this.state.remote; this.pendingPassword = password;
     this.resolutionScope = this.scope();
+    this.state.deliveryStatus = '';
     this.state.connecting = true; this.state.ready = false; this.state.modal = 'connecting'; this.state.notice = '';
     this.state.muted = false; this.state.platform = ''; this.state.hostName = ''; this.state.receivedPath = this.state.receivedName = this.state.transfer = '';
     this.state.remoteClipboard = ''; this.state.displays = []; this.state.width = 16; this.state.height = 9; this.state.hasFrame = false;
@@ -541,13 +543,16 @@ export class MobileController {
       else if (type === 'announcements') this.inbox.receive(e.message as AnnouncementResponse);
       else this.presence.receive(e.message as PresenceMessage, this.now());
     } else if (e.type === 'requestFailed') this.inbox.fail(String(e.request ?? ''));
-    else if (e.type === 'connection') {
+    else if (e.type === 'joinDelivery' && this.state.connecting) {
+      this.state.deliveryStatus = e.text ?? '';
+    } else if (e.type === 'connection') {
       if (e.status === 1 && !this.state.ready) this.connected();
       else if (e.status === 6) {
         this.end(''); this.state.remote = this.connectingId; this.state.notice = tr("访问密码错误，请重新输入"); this.state.modal = 'password';
       } else if ((e.status ?? 0) >= 3) {
         const reasons = ['', '', '', tr("连接已断开"), tr("连接失败"), tr("远端已关闭连接"), tr("访问密码错误"), tr("找不到该设备 ID"), tr("远端当前不可用")];
-        if (e.status === 4 && this.connectingId.includes(':')) this.end(tr("IP 直连失败，请检查电脑的直连地址和网络。"));
+        if (e.status === 8 && this.state.deliveryStatus === 'failed') this.end(tr("对端未响应，请确认设备在线后重试。"));
+        else if (e.status === 4 && this.connectingId.includes(':')) this.end(tr("IP 直连失败，请检查电脑的直连地址和网络。"));
         else this.end(reasons[e.status ?? 0] ?? tr("连接已结束"));
       }
     } else if (e.type === 'ended') this.end(e.reason ?? '');

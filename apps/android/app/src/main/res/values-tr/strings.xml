@@ -392,4 +392,7 @@
     <string name="text_7605c1d82eed69a5" formatted="false">"Grubu sil"</string>
     <string name="text_b113e4e040b875a8" formatted="false">"Gruptaki cihazlar ve bağlantı geçmişi korunacak."</string>
     <string name="text_f42a1238b44a4858" formatted="false">"Kaydedilemedi. Tekrar deneyin"</string>
+    <string name="text_88ea96f38f7b9279" formatted="false">"Cihaz durumu doğrulanıyor…"</string>
+    <string name="text_64d655aad73dce57" formatted="false">"Uzak cihaz yanıt vermedi. Çevrimiçi olduğunu kontrol edip tekrar deneyin."</string>
+    <string name="text_d5770d2b84139ab2" formatted="false">"Uzak bağlantı kuruluyor"</string>
 </resources>

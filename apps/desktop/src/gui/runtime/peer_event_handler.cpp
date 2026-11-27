@@ -125,6 +125,11 @@ void PeerEventHandler::OnSignalMessage(const char* message, size_t size,
        type == "announcements" || type == "announcements_changed"))
     runtime->local_host_->Send({{"op", "signal"}, {"message", s}});
 #endif
+  if (type == "join_delivery") {
+    const auto props = runtime->FindRemoteSession(j.value("transmission_id", ""));
+    if (props && !props->closing_) props->connection_auth_.Delivery(j.value("status", "") == "received");
+    return;
+  }
   if (type == "user_join_transmission" && j.contains("status") &&
       j["status"] == "failed" && j.contains("transmission_id") &&
       j["transmission_id"].is_string()) {
