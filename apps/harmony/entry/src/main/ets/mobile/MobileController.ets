@@ -381,8 +381,7 @@ export class MobileController {
     if (!display || display.display_id !== displayId || display.display_key !== displayKey) return;
     if (!this.resolutions.pending && display.width === mode.width && display.height === mode.height &&
         display.modes.some((value: ResolutionMode) => value.width === mode.width && value.height === mode.height)) {
-      this.resolutionStore.remember(this.resolutionScope, this.connectingId,
-        { display_key: displayKey, width: mode.width, height: mode.height });
+      this.resolutionStore.remember(this.resolutionScope, this.connectingId, display);
       return;
     }
     const request = this.resolutions.begin(displayId, mode);

@@ -17,7 +17,7 @@ final class RemoteDisplayResolutions {
     static final class Display {
         final int id;
         final String key;
-        final Mode current;
+        final Mode current, pixelSize;
         final List<Mode> modes=new ArrayList<>();
         Display(JSONObject value)throws Exception{
             id=(int)integer(value,"display_id",0,31);
@@ -26,6 +26,7 @@ final class RemoteDisplayResolutions {
             key=(String)identity;
             if(key.isEmpty()||key.getBytes(StandardCharsets.UTF_8).length>1024||key.indexOf('\0')>=0)throw new IllegalArgumentException();
             current=mode(value);
+            pixelSize=pixelSize(value);
             JSONArray options=value.getJSONArray("modes");
             if(options.length()>256)throw new IllegalArgumentException();
             for(int i=0;i<options.length();i++){
@@ -57,7 +58,7 @@ final class RemoteDisplayResolutions {
         requested=new Request(display,mode,next==0?1:next);pending=true;failed=false;return requested;
     }
     void expire(long id){if(pending&&requested!=null&&requested.id==id){pending=false;failed=true;}}
-    Request receive(JSONObject message){
+    Display receive(JSONObject message){
         try{
             int type=message.getInt("type");JSONArray values;JSONObject response=null;
             if(type==3){JSONObject host=message.getJSONObject("host_info");values=host.has("display_resolutions")?host.getJSONArray("display_resolutions"):new JSONArray();}
@@ -74,7 +75,7 @@ final class RemoteDisplayResolutions {
             if(response!=null){
                 Display display=display(requested.displayId);pending=false;
                 failed=!response.getBoolean("accepted")||display==null||!display.key.equals(requested.displayKey)||!display.current.same(requested.mode);
-                if(!failed)return requested;
+                if(!failed)return display;
             }else if(pending){
                 Display display=display(requested.displayId);
                 if(display==null||!display.key.equals(requested.displayKey)||!display.supports(requested.mode))expire(requested.id);
@@ -83,7 +84,10 @@ final class RemoteDisplayResolutions {
         return null;
     }
     String feedback(){return pending?L10n.tr("等待电脑端确认…"):failed?L10n.tr("调整失败，请重试。"):"";}
-    private static Mode mode(JSONObject value)throws Exception{return new Mode((int)integer(value,"width",1,32768),(int)integer(value,"height",1,32768));}
+    static Mode pixelSize(JSONObject value)throws Exception{
+        return value.has("pixel_size") ? mode(value.getJSONObject("pixel_size")) : null;
+    }
+    static Mode mode(JSONObject value)throws Exception{return new Mode((int)integer(value,"width",1,32768),(int)integer(value,"height",1,32768));}
     private static long integer(JSONObject value,String key,long min,long max)throws Exception{
         Object raw=value.get(key);
         if(!(raw instanceof Integer)&&!(raw instanceof Long))throw new IllegalArgumentException();

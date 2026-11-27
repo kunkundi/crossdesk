@@ -1110,8 +1110,7 @@ final class RemoteSessionModel: NSObject, ObservableObject, CrossDeskRTCBridgeDe
         guard hasNetworkConsent, isConnected, selectedDisplay == displayID,
               let display = displayResolutions.display(displayID), display.display_key == displayKey else { return }
         if !displayResolutions.pending, display.current == resolution, display.modes.contains(resolution) {
-            RemoteDisplayResolutionStore.remember(RemoteDisplayResolutionPreference(display_key: displayKey,
-                width: resolution.width, height: resolution.height), key: resolutionPreferenceKey)
+            RemoteDisplayResolutionStore.remember(display.preference, key: resolutionPreferenceKey)
             return
         }
         guard let request = displayResolutions.begin(displayID: selectedDisplay, resolution: resolution) else { return }

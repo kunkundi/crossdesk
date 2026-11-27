@@ -912,7 +912,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         if(!ready||session==null||!hasNetworkConsent())return;
         RemoteDisplayResolutions.Display display=displayResolutions.display(selectedDisplay);
         if(!displayResolutions.pending&&display!=null&&display.supports(mode)&&display.current.same(mode)){
-            session.rememberDisplayResolution(display.key,mode);return;
+            session.rememberDisplayResolution(display);return;
         }
         RemoteDisplayResolutions.Request request=displayResolutions.begin(selectedDisplay,mode);if(request==null)return;
         cancelDisplayResolutionTimeout();session.displayResolution(request);
@@ -940,8 +940,8 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     @Override public void data(JSONObject message){
         if(session==null)return;
         if(message.optInt("type",-1)==3||message.optInt("type",-1)==16){
-            RemoteDisplayResolutions.Request confirmed=displayResolutions.receive(message);
-            if(confirmed!=null&&session!=null)session.rememberDisplayResolution(confirmed.displayKey,confirmed.mode);
+            RemoteDisplayResolutions.Display confirmed=displayResolutions.receive(message);
+            if(confirmed!=null&&session!=null)session.rememberDisplayResolution(confirmed);
             if(!displayResolutions.pending)cancelDisplayResolutionTimeout();
             if(controls!=null)controls.displayResolutions(displayResolutions,selectedDisplay);
             if(message.optInt("type",-1)==16)return;

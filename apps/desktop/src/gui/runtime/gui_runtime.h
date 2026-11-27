@@ -163,7 +163,8 @@ class GuiRuntime : protected gui_detail::GuiState {
                                     const DisplayResolutionChange& change);
   void HandleDisplayResolutionChanges();
   void RestoreHostDisplayResolutions(bool force = false);
-  bool ApplyHostDisplayResolution(const DisplayResolutionChange& change);
+  bool ApplyHostDisplayResolution(const DisplayResolutionChange& change,
+                                  std::optional<DisplayResolution> pixel_size = std::nullopt);
   void BeginDisplayResolutionStartup(const std::string& id, PeerEventHandler* source);
   void ReceiveDisplayResolutionStartup(const std::string& id, PeerEventHandler* source,
       std::vector<DisplayResolutionPreference> preferences);

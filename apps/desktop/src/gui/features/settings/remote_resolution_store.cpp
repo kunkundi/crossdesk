@@ -52,7 +52,8 @@ bool RemoteResolutionStore::Remember(
   const auto found = std::find_if(preferences.begin(), preferences.end(),
       [&](const auto &saved) { return saved.display_key == preference.display_key; });
   if (found != preferences.end()) {
-    if (found->resolution == preference.resolution) return true;
+    if (found->resolution == preference.resolution &&
+        found->pixel_size == preference.pixel_size) return true;
     *found = preference;
   } else {
     if (preferences.size() >= kMaxResolutionDisplays)

@@ -86,13 +86,16 @@ bool GuiRuntime::DisplayResolutionsReadyForCapture(const std::string &id) {
       });
 }
 
-bool GuiRuntime::ApplyHostDisplayResolution(const DisplayResolutionChange &change) {
+bool GuiRuntime::ApplyHostDisplayResolution(const DisplayResolutionChange &change,
+                                            std::optional<DisplayResolution> pixel_size) {
   const auto available = QueryHostDisplayResolutions();
   const auto selected = std::find_if(available.begin(), available.end(),
       [&](const auto &info) { return SupportsDisplayResolution(info, change); });
   // Unsupported or stale requests must never create a restoration record.
   if (selected == available.end()) return false;
-  if (selected->current == change.resolution) return true;
+  if (pixel_size && !selected->pixel_size) return false;
+  if (selected->current == change.resolution &&
+      (!pixel_size || selected->pixel_size == pixel_size)) return true;
   const auto displays = devices_.display_info_list();
   std::lock_guard lock(native_display_resolution_mutex);
 #ifdef _WIN32
@@ -103,7 +106,7 @@ bool GuiRuntime::ApplyHostDisplayResolution(const DisplayResolutionChange &chang
 #elif defined(__APPLE__)
   return display_resolution_restoration_.Apply(change.display_key,
       [&] { return CaptureMacDisplayResolution(displays, change); },
-      [&] { return ApplyMacDisplayResolution(displays, change); });
+      [&] { return ApplyMacDisplayResolution(displays, change, pixel_size); });
 #elif defined(__linux__) && !defined(__OHOS__)
   return display_resolution_restoration_.Apply(change.display_key,
       [&] { return CaptureLinuxDisplayResolution(displays, change); },
@@ -177,7 +180,7 @@ void GuiRuntime::HandleDisplayResolutionChanges() {
       // list, and another display must never inherit the remembered mode.
       const DisplayResolutionChange change{display->display_id,
           display->display_key, preference.resolution};
-      if (!ApplyHostDisplayResolution(change))
+      if (!ApplyHostDisplayResolution(change, preference.pixel_size))
         LOG_INFO("Remembered display resolution is unavailable; keeping current mode");
     }
     RestoreHostDisplayResolutions();

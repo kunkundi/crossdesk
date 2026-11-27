@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -31,6 +32,13 @@ inline bool ValidDisplayResolution(const DisplayResolution &mode) {
          mode.height <= 32768;
 }
 
+// Persist the native identity, never the display's position in a session.
+struct DisplayResolutionPreference {
+  std::string display_key;
+  DisplayResolution resolution;
+  std::optional<DisplayResolution> pixel_size;
+};
+
 struct DisplayResolutionInfo {
   int display_id = 0;
   // Opaque native identity: reject requests for a replaced/hot-unplugged
@@ -38,9 +46,13 @@ struct DisplayResolutionInfo {
   std::string display_key;
   DisplayResolution current;
   std::vector<DisplayResolution> modes;
+  std::optional<DisplayResolution> pixel_size;
+  DisplayResolutionPreference CurrentPreference() const {
+    return {display_key, current, pixel_size};
+  }
   bool operator==(const DisplayResolutionInfo &other) const {
     return display_id == other.display_id && display_key == other.display_key &&
-           current == other.current && modes == other.modes;
+           current == other.current && modes == other.modes && pixel_size == other.pixel_size;
   }
 };
 
@@ -52,12 +64,6 @@ struct DisplayResolutionChange {
   bool accepted = false;
 };
 
-// Persist the native identity, never the display's position in a session.
-struct DisplayResolutionPreference {
-  std::string display_key;
-  DisplayResolution resolution;
-};
-
 // JSON-free boundary for native bridges that do not expose the JSON library.
 bool ParseDisplayResolutionPreferences(
     const std::string &text, std::vector<DisplayResolutionPreference> &result);
@@ -67,7 +73,8 @@ inline bool ValidDisplayResolutionPreference(
   return !preference.display_key.empty() &&
          preference.display_key.size() <= 1024 &&
          preference.display_key.find('\0') == std::string::npos &&
-         ValidDisplayResolution(preference.resolution);
+         ValidDisplayResolution(preference.resolution) &&
+         (!preference.pixel_size || ValidDisplayResolution(*preference.pixel_size));
 }
 
 inline bool SupportsDisplayResolution(const DisplayResolutionInfo &display,

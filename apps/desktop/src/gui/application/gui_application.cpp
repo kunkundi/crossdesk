@@ -2646,13 +2646,14 @@ void GuiApplication::BindStreamCallbacks(StreamView& view) {
       const DisplayResolutionChange selection{props->selected_display_,
           view.resolution_choices.display_key, view.resolution_choices.modes[index]};
       // Explicitly choosing the current mode also establishes a preference.
-      if (!state.pending && std::any_of(state.displays.begin(), state.displays.end(),
+      const auto current = std::find_if(state.displays.begin(), state.displays.end(),
           [&](const auto& display) {
             return SupportsDisplayResolution(display, selection) &&
                    display.current == selection.resolution;
-          })) {
+          });
+      if (!state.pending && current != state.displays.end()) {
         if (!remote_resolutions_.Remember(props->device_preference_key_,
-                {selection.display_key, selection.resolution}))
+                current->CurrentPreference()))
           LOG_WARN("Could not save remote display resolution");
         return;
       }

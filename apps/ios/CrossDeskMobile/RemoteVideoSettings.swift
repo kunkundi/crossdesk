@@ -78,12 +78,13 @@ struct RemoteDisplayResolution: Codable, Equatable, Hashable {
 }
 
 struct RemoteDisplayResolutionPreference: Codable, Equatable {
+    var pixel_size: RemoteDisplayResolution?
     let display_key: String
     let width: Int
     let height: Int
     var valid: Bool {
         !display_key.isEmpty && display_key.utf8.count <= 1024 && !display_key.contains("\0") &&
-            RemoteDisplayResolution(width: width, height: height).valid
+            RemoteDisplayResolution(width: width, height: height).valid && (pixel_size?.valid ?? true)
     }
 }
 
@@ -119,11 +120,14 @@ struct RemoteDisplayResolutionInfo: Decodable {
     let width: Int
     let height: Int
     let modes: [RemoteDisplayResolution]
+    let pixel_size: RemoteDisplayResolution?
+    var preference: RemoteDisplayResolutionPreference {
+        RemoteDisplayResolutionPreference(pixel_size: pixel_size, display_key: display_key,
+                                          width: width, height: height)
+    }
     var current: RemoteDisplayResolution { RemoteDisplayResolution(width: width, height: height) }
     var valid: Bool {
-        (0..<32).contains(display_id) && !display_key.isEmpty &&
-            display_key.utf8.count <= 1024 && !display_key.contains("\0") &&
-            current.valid && modes.count <= 256 && modes.allSatisfy(\.valid)
+        (0..<32).contains(display_id) && preference.valid && modes.count <= 256 && modes.allSatisfy(\.valid)
     }
 }
 
@@ -186,14 +190,12 @@ struct RemoteDisplayResolutionState {
         displays = actual
         if message.type == 16, let response = message.display_resolution {
             pending = false
-            failed = !response.accepted || !actual.contains {
+            let confirmed = actual.first {
                 $0.display_id == response.display_id && $0.display_key == response.display_key &&
                     $0.current == response.resolution
             }
-            if !failed {
-                return RemoteDisplayResolutionPreference(display_key: response.display_key,
-                    width: response.width, height: response.height)
-            }
+            failed = !response.accepted || confirmed == nil
+            return response.accepted ? confirmed?.preference : nil
         } else if pending, let requested, !actual.contains(where: {
             $0.display_id == requested.display_id && $0.display_key == requested.display_key &&
                 $0.modes.contains(requested.resolution)
