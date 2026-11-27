@@ -12,6 +12,7 @@
 #include <dxgi1_2.h>
 #include <wrl/client.h>
 
+#include <array>
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -28,6 +29,7 @@ namespace crossdesk {
 
 class CursorFrameCompositor;
 class DxgiNv12Frames;
+class IntelCaptureDemand;
 
 class ScreenCapturerDxgi : public ScreenCapturer {
  public:
@@ -68,9 +70,10 @@ class ScreenCapturerDxgi : public ScreenCapturer {
   bool EnumerateDisplays();
   bool CreateDuplicationForMonitor(int monitor_index);
   void CaptureLoop();
-  bool StageTexture(ID3D11Texture2D* texture);
-  bool ConvertFrame(int frame_monitor, const FrameCursor& cursor,
-                    bool* cursor_embedded, CursorFrameCompositor& compositor);
+  bool QueueReadback(ID3D11Texture2D* texture, bool cursor_embedded);
+  HRESULT ConvertFrame(ID3D11Texture2D* staging, int frame_monitor,
+                       const FrameCursor& cursor, bool* cursor_embedded,
+                       CursorFrameCompositor& compositor);
   void ReleaseDuplication();
   HRESULT ReleaseAcquiredFrame();
 
@@ -85,8 +88,16 @@ class ScreenCapturerDxgi : public ScreenCapturer {
   Microsoft::WRL::ComPtr<ID3D11DeviceContext> d3d_context_;
   Microsoft::WRL::ComPtr<IDXGIOutputDuplication> duplication_;
   bool frame_acquired_ = false;  // Guarded by switch_mutex_ while capturing.
-  Microsoft::WRL::ComPtr<ID3D11Texture2D> staging_;
+  struct ReadbackSlot {
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+    bool cursor_embedded = false;
+  };
+  std::array<ReadbackSlot, 2> readback_;
+  // Oldest queued slot, or the next write slot when the queue is empty.
+  unsigned read_slot_ = 0;
+  unsigned pending_readbacks_ = 0;
   std::unique_ptr<DxgiNv12Frames> gpu_frames_;
+  Microsoft::WRL::ComPtr<IntelCaptureDemand> intel_demand_;
   DXGI_MODE_ROTATION rotation_ = DXGI_MODE_ROTATION_IDENTITY;
   uint64_t duplication_generation_ = 0;
   bool software_cursor_output_ = false;

@@ -404,6 +404,7 @@ function setup_targets()
         add_deps("rd_log", "desktop_common", "crossdesk_wire")
         add_includedirs("apps/desktop/src/screen_capturer", {public = true})
         add_includedirs("deps/submodules/minirtc/src/api", {public = true})
+        add_includedirs("deps/submodules/minirtc/src/shared")
         if is_os("windows") then
             add_deps("privacy")
             add_packages("libyuv", "nlohmann_json")
