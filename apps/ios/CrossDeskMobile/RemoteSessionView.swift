@@ -1071,6 +1071,8 @@ private struct RemoteComputerKeyboardRow: View {
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
+        // These rows reproduce the physical PC keyboard layout.
+        .environment(\.layoutDirection, .leftToRight)
         .frame(maxHeight: .infinity)
     }
 }
