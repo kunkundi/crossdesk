@@ -84,10 +84,23 @@ int PlatformMouseController::SendMouseCommand(RemoteAction remote_action,
   if (!std::isfinite(remote_action.m.x) || !std::isfinite(remote_action.m.y))
     return -1;
   ip.type = INPUT_MOUSE;
-  ip.mi.dx = (LONG)(std::clamp(remote_action.m.x, 0.0f, 1.0f) *
-                    (display.width - 1)) + display.left;
-  ip.mi.dy = (LONG)(std::clamp(remote_action.m.y, 0.0f, 1.0f) *
-                    (display.height - 1)) + display.top;
+  if (remote_action.m.relative) {
+    // Position-free packet: only the displacement applies, the pointer is never warped.
+    if (!std::isfinite(remote_action.m.dx) || !std::isfinite(remote_action.m.dy))
+      return -1;
+    if (remote_action.m.flag == MouseFlag::move) {
+      ip.mi.dx = static_cast<LONG>(std::lround(std::clamp(
+          remote_action.m.dx, -kMaxRelativeMouseDelta, kMaxRelativeMouseDelta)));
+      ip.mi.dy = static_cast<LONG>(std::lround(std::clamp(
+          remote_action.m.dy, -kMaxRelativeMouseDelta, kMaxRelativeMouseDelta)));
+      ip.mi.dwFlags = MOUSEEVENTF_MOVE;
+    }
+  } else {
+    ip.mi.dx = (LONG)(std::clamp(remote_action.m.x, 0.0f, 1.0f) *
+                      (display.width - 1)) + display.left;
+    ip.mi.dy = (LONG)(std::clamp(remote_action.m.y, 0.0f, 1.0f) *
+                      (display.height - 1)) + display.top;
+  }
 
   switch (remote_action.m.flag) {
     case MouseFlag::left_down:
@@ -120,30 +133,32 @@ int PlatformMouseController::SendMouseCommand(RemoteAction remote_action,
       break;
   }
 
-  const int virtual_left = GetSystemMetrics(SM_XVIRTUALSCREEN);
-  const int virtual_top = GetSystemMetrics(SM_YVIRTUALSCREEN);
-  const int virtual_width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-  const int virtual_height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-  if (virtual_width <= 0 || virtual_height <= 0) {
-    LOG_WARN("Remote mouse skipped: invalid virtual desktop geometry");
-    return -1;
+  if (!remote_action.m.relative) {
+    const int virtual_left = GetSystemMetrics(SM_XVIRTUALSCREEN);
+    const int virtual_top = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    const int virtual_width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+    const int virtual_height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    if (virtual_width <= 0 || virtual_height <= 0) {
+      LOG_WARN("Remote mouse skipped: invalid virtual desktop geometry");
+      return -1;
+    }
+    // Pixel centres in the virtual desktop, including negative monitor origins.
+    // SetCursorPos cannot carry dwExtraInfo through the privacy mouse hook.
+    const int virtual_width_range = (std::max)(1, virtual_width - 1);
+    const int virtual_height_range = (std::max)(1, virtual_height - 1);
+    ip.mi.dx = static_cast<LONG>(std::clamp<int64_t>(
+        (static_cast<int64_t>(ip.mi.dx - virtual_left) * 65535 +
+            virtual_width_range / 2) /
+            virtual_width_range,
+        0, 65535));
+    ip.mi.dy = static_cast<LONG>(std::clamp<int64_t>(
+        (static_cast<int64_t>(ip.mi.dy - virtual_top) * 65535 +
+            virtual_height_range / 2) /
+            virtual_height_range,
+        0, 65535));
+    ip.mi.dwFlags |=
+        MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
   }
-  // Pixel centres in the virtual desktop, including negative monitor origins.
-  // SetCursorPos cannot carry dwExtraInfo through the privacy mouse hook.
-  const int virtual_width_range = (std::max)(1, virtual_width - 1);
-  const int virtual_height_range = (std::max)(1, virtual_height - 1);
-  ip.mi.dx = static_cast<LONG>(std::clamp<int64_t>(
-      (static_cast<int64_t>(ip.mi.dx - virtual_left) * 65535 +
-       virtual_width_range / 2) /
-          virtual_width_range,
-      0, 65535));
-  ip.mi.dy = static_cast<LONG>(std::clamp<int64_t>(
-      (static_cast<int64_t>(ip.mi.dy - virtual_top) * 65535 +
-       virtual_height_range / 2) /
-          virtual_height_range,
-      0, 65535));
-  ip.mi.dwFlags |=
-      MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
   ip.mi.dwExtraInfo = kInjectedMouseInputMarker;
   const UINT sent = SendInputOnUserDesktop(ip);
   if (sent != 1) {

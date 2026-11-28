@@ -692,6 +692,8 @@ InputOutcome GuiRuntime::InjectRemoteMouse(const RemoteAction& remote_action,
               sent, IsDesktopTransitionInputError(error) || blocked, blocked};
         },
         [&]() -> DesktopInputResult {
+          // The service channel only carries absolute coordinates.
+          if (remote_action.m.relative) return {};
           int absolute_x = 0;
           int absolute_y = 0;
           if (!BuildAbsoluteMousePosition(devices_.display_info_list(), display,

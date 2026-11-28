@@ -53,11 +53,19 @@ enum MouseFlag {
 enum KeyFlag { key_down = 0, key_up };
 enum ServiceCommandFlag { send_sas = 0, lock_workstation };
 
+// Largest relative displacement accepted from one packet, in host pixels.
+inline constexpr float kMaxRelativeMouseDelta = 10000.0f;
+
 struct Mouse {
   float x;
   float y;
   int s;
   MouseFlag flag;
+  // Position-free packet: the host must not warp the pointer to (x, y).
+  bool relative;
+  // Displacement in host display pixels, read when relative && flag == move.
+  float dx;
+  float dy;
 };
 
 struct Key {
@@ -144,6 +152,7 @@ struct HostInfo {
   bool supports_video_settings;
   bool supports_video_codec_status;
   bool supports_text_input;
+  bool supports_relative_mouse;
   bool supports_deskhub_preview;
   bool supports_deskhub_resolution;
   bool supports_deskhub_fps15;
@@ -263,6 +272,9 @@ RemoteAction MakeHostInformation(const std::string& host_name,
                                  bool supports_privacy_screen,
                                  const std::string& app_version = {},
                                  HostPlatform platform = HostPlatform::Unknown);
+
+// True only on hosts whose mouse controller injects position-free packets.
+bool HostSupportsRelativeMouse();
 
 }  // namespace crossdesk
 

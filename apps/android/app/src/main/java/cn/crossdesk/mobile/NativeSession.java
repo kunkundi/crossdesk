@@ -61,7 +61,7 @@ final class NativeSession implements AutoCloseable {
         execute(() -> { if (!closed && handle != 0) nVerifySignaling(handle); });
     }
     private boolean signalReady, joining, started;
-    private volatile boolean connected, supportsTextInput;
+    private volatile boolean connected, supportsTextInput, supportsRelativeMouse;
     final RemotePrivacyScreen privacyScreen = new RemotePrivacyScreen();
     private int signalState;
     private volatile long signalGeneration;
@@ -256,7 +256,10 @@ final class NativeSession implements AutoCloseable {
                         return;
                     }
                     JSONObject info=event.optJSONObject("host_info");
-                    if(info!=null)supportsTextInput=info.optBoolean("supports_text_input",false);
+                    if(info!=null){
+                        supportsTextInput=info.optBoolean("supports_text_input",false);
+                        supportsRelativeMouse=info.optBoolean("supports_relative_mouse",false);
+                    }
                     ui(() -> {
                         if(event.optInt("type",-1)==10){
                             privacyScreen.receive(event,android.os.SystemClock.elapsedRealtime());
@@ -323,6 +326,8 @@ final class NativeSession implements AutoCloseable {
     }
     void surface(Surface value) { execute(() -> { surface = value; if (handle != 0) nSurface(handle, value); }); }
     void pointer(float x, float y, int flag, int wheel) { execute(() -> { if (connected) nPointer(handle, x, y, flag, wheel); }); }
+    void pointerRelative(int flag, float dx, float dy, int wheel) { execute(() -> { if (connected) nPointerRelative(handle, flag, dx, dy, wheel); }); }
+    boolean supportsRelativeMouse() { return supportsRelativeMouse; }
     void key(int code, boolean down) { execute(() -> { if (connected) nKey(handle, code, down); }); }
     void chord(int code,int[] modifiers) {
         if(closed||!connected)return;
@@ -417,6 +422,7 @@ final class NativeSession implements AutoCloseable {
     private static native boolean nConnect(long handle, String identity, String remote, String password, String expectedKey, boolean saved);
     private static native void nReady(long handle,byte[] displayResolutions);
     private static native void nPointer(long handle, float x, float y, int flag, int wheel);
+    private static native void nPointerRelative(long handle,int flag,float dx,float dy,int wheel);
     private static native void nKey(long handle, int code, boolean down);
     private static native void nText(long handle,byte[] text);
     private static native void nControl(long handle, int type, int value);

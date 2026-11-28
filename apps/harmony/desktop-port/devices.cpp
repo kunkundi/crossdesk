@@ -265,6 +265,7 @@ class HarmonyMouse final : public MouseController {
   }
   int SendMouseCommand(RemoteAction action, int index) override {
     std::lock_guard lock(input_mutex);
+    if (action.m.relative) return 0;
     if (index < 0 || index >= int(displays_.size()) || displays_[index].width <= 0 || displays_[index].height <= 0 || !InjectionAuthorized()) return -1;
     if (!Configure(index)) return -1;
     return input.Apply(action) ? 0 : -1;

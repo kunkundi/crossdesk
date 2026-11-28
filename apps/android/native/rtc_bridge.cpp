@@ -447,6 +447,17 @@ extern "C" JNIEXPORT void JNICALL JNI_METHOD(nPointer)(
   }
   s->Send(kMouseStream, action.to_json());
 }
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(nPointerRelative)(
+    JNIEnv*, jclass, jlong handle, jint flag, jfloat dx, jfloat dy, jint wheel) {
+  auto* s = From(handle); if (!s) return;
+  const std::string message = android_controller::RelativeMouseMessage(flag, dx, dy, wheel);
+  if (message.empty()) return;
+  if (flag >= 1 && flag <= 6) {
+    const unsigned bit = 1u << ((flag - 1) / 2);
+    if (flag & 1) s->pressed_buttons |= bit; else s->pressed_buttons &= ~bit;
+  }
+  s->Send(kMouseStream, message);
+}
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(nKey)(JNIEnv*, jclass, jlong handle, jint key, jboolean down) {
   auto* s = From(handle); if (!s) return;
   RemoteAction action{}; action.type = keyboard;

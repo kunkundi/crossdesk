@@ -41,6 +41,18 @@ bool ExpectContains(const char* name, const std::string& value,
   return false;
 }
 
+bool ExpectBefore(const char* name, const std::string& value,
+                  const std::string& first, const std::string& second) {
+  const auto before = value.find(first);
+  if (before != std::string::npos &&
+      value.find(second, before) != std::string::npos) {
+    return true;
+  }
+
+  std::cerr << name << " expected " << first << " before " << second << "\n";
+  return false;
+}
+
 }  // namespace
 
 int main() {
@@ -58,5 +70,15 @@ int main() {
                        "INPUT ip = {0};");
   ok &= ExpectContains("mouse_controller.cpp", mouse_controller,
                        "SendInput failed for mouse");
+  ok &= ExpectContains("mouse_controller.cpp", mouse_controller,
+                       "if (remote_action.m.relative) {");
+  ok &= ExpectContains("mouse_controller.cpp", mouse_controller,
+                       "-kMaxRelativeMouseDelta, kMaxRelativeMouseDelta");
+  ok &= ExpectContains("mouse_controller.cpp", mouse_controller,
+                       "ip.mi.dwFlags = MOUSEEVENTF_MOVE;");
+  // Absolute warping must stay inside the non-relative branch.
+  ok &= ExpectBefore("mouse_controller.cpp", mouse_controller,
+                     "if (!remote_action.m.relative) {",
+                     "MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK");
   return ok ? 0 : 1;
 }

@@ -89,6 +89,7 @@ void ResetHostInfo(HostInfo& info) {
   info.supports_video_settings = false;
   info.supports_video_codec_status = false;
   info.supports_text_input = false;
+  info.supports_relative_mouse = false;
   info.supports_deskhub_preview = false;
   info.supports_deskhub_resolution = false;
   info.supports_deskhub_fps15 = false;
@@ -216,6 +217,13 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
                          {"y", action.m.y},
                          {"s", action.m.s},
                          {"flag", action.m.flag}};
+      if (action.m.relative) {
+        object["mouse"]["relative"] = true;
+        if (action.m.flag == MouseFlag::move) {
+          object["mouse"]["dx"] = action.m.dx;
+          object["mouse"]["dy"] = action.m.dy;
+        }
+      }
       if (action.pointer_sequence) object["mouse"]["seq"] = action.pointer_sequence;
       break;
     case ControlType::text_input:
@@ -334,6 +342,7 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
           {"supports_video_settings", action.i.supports_video_settings},
           {"supports_video_codec_status", action.i.supports_video_codec_status},
           {"supports_text_input", action.i.supports_text_input},
+          {"supports_relative_mouse", action.i.supports_relative_mouse},
           {"supports_deskhub_preview", action.i.supports_deskhub_preview},
           {"supports_deskhub_resolution", action.i.supports_deskhub_resolution},
           {"supports_deskhub_fps15", action.i.supports_deskhub_fps15},
@@ -389,6 +398,10 @@ bool RemoteAction::FromJson(const std::string& json_string,
         output.m.s = object.at("mouse").at("s").get<int>();
         output.m.flag = static_cast<MouseFlag>(
             object.at("mouse").at("flag").get<int>());
+        // Assign unconditionally: the caller may reuse a struct that held a relative packet.
+        output.m.relative = object.at("mouse").value("relative", false);
+        output.m.dx = object.at("mouse").value("dx", 0.f);
+        output.m.dy = object.at("mouse").value("dy", 0.f);
         break;
       case ControlType::text_input:
         output.text = object.at("text").get<std::string>();
@@ -587,6 +600,8 @@ bool RemoteAction::FromJson(const std::string& json_string,
             privacy_support->is_boolean() && privacy_support->get<bool>();
         output.i.supports_text_input =
             host_info_object.value("supports_text_input", false);
+        output.i.supports_relative_mouse =
+            host_info_object.value("supports_relative_mouse", false);
         output.i.supports_video_settings =
             host_info_object.value("supports_video_settings", false);
         output.i.supports_video_codec_status =
@@ -648,6 +663,14 @@ bool RemoteAction::FromJson(const std::string& json_string,
                  exception.what());
     return false;
   }
+}
+
+bool HostSupportsRelativeMouse() {
+#if defined(_WIN32)
+  return true;
+#else
+  return false;
+#endif
 }
 
 void FreeRemoteAction(RemoteAction& action) {

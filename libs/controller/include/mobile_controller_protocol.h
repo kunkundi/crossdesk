@@ -11,6 +11,7 @@
 #include <nlohmann/json.hpp>
 #include <remote_action.h>
 #include <cstring>
+#include <cmath>
 
 namespace crossdesk::mobile_controller {
 inline std::string PrivacyMessage(int flag, bool block_local_input) {
@@ -24,6 +25,21 @@ inline std::string SecureAttentionMessage() {
   RemoteAction action{};
   action.type = service_command;
   action.c.flag = send_sas;
+  return action.to_json();
+}
+// A position-free pointer packet. (dx, dy) are host display pixels and only
+// travel with MouseFlag::move. Returns empty for values the host would reject.
+inline std::string RelativeMouseMessage(int flag, float dx, float dy, int wheel) {
+  if (flag < 0 || flag > static_cast<int>(MouseFlag::wheel_horizontal) ||
+      !std::isfinite(dx) || !std::isfinite(dy)) return {};
+  RemoteAction action{};
+  action.type = mouse;
+  action.m = {0.f, 0.f, wheel, static_cast<MouseFlag>(flag)};
+  action.m.relative = true;
+  if (action.m.flag == MouseFlag::move) {
+    action.m.dx = dx;
+    action.m.dy = dy;
+  }
   return action.to_json();
 }
 inline std::string VideoSettingsMessage(int quality, int frame_rate, int preference,
