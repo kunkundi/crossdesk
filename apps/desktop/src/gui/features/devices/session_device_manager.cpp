@@ -913,6 +913,10 @@ bool SessionDeviceManager::SendMouseCommand(const RemoteAction &action,
                                             int selected_display) {
   std::lock_guard lock(mouse_controller_mutex_);
   if (mouse_controller_) {
+    // Hosts without relative injection must not warp the pointer for such a packet.
+    if (action.type == ControlType::mouse && action.m.relative &&
+        !HostSupportsRelativeMouse())
+      return true;
     return mouse_controller_->SendMouseCommand(action, selected_display) == 0;
   }
   return false;
