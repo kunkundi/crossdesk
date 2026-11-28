@@ -53,11 +53,19 @@ enum MouseFlag {
 enum KeyFlag { key_down = 0, key_up };
 enum ServiceCommandFlag { send_sas = 0, lock_workstation };
 
+// Largest relative displacement accepted from one packet, in host pixels.
+inline constexpr float kMaxRelativeMouseDelta = 10000.0f;
+
 struct Mouse {
   float x;
   float y;
   int s;
   MouseFlag flag;
+  // Position-free packet: the host must not warp the pointer to (x, y).
+  bool relative;
+  // Displacement in host display pixels, read when relative && flag == move.
+  float dx;
+  float dy;
 };
 
 struct Key {

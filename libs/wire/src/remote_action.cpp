@@ -216,6 +216,13 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
                          {"y", action.m.y},
                          {"s", action.m.s},
                          {"flag", action.m.flag}};
+      if (action.m.relative) {
+        object["mouse"]["relative"] = true;
+        if (action.m.flag == MouseFlag::move) {
+          object["mouse"]["dx"] = action.m.dx;
+          object["mouse"]["dy"] = action.m.dy;
+        }
+      }
       if (action.pointer_sequence) object["mouse"]["seq"] = action.pointer_sequence;
       break;
     case ControlType::text_input:
@@ -389,6 +396,10 @@ bool RemoteAction::FromJson(const std::string& json_string,
         output.m.s = object.at("mouse").at("s").get<int>();
         output.m.flag = static_cast<MouseFlag>(
             object.at("mouse").at("flag").get<int>());
+        // Assign unconditionally: the caller may reuse a struct that held a relative packet.
+        output.m.relative = object.at("mouse").value("relative", false);
+        output.m.dx = object.at("mouse").value("dx", 0.f);
+        output.m.dy = object.at("mouse").value("dy", 0.f);
         break;
       case ControlType::text_input:
         output.text = object.at("text").get<std::string>();

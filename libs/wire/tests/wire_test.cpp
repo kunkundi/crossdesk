@@ -73,6 +73,49 @@ int main() {
                    parsed_mouse.m.flag == mouse.m.flag,
                "mouse JSON round trip changed fields");
 
+  // Legacy absolute packets must stay byte-identical.
+  ok &= Expect(mouse.to_json().find("\"relative\"") == std::string::npos &&
+                   mouse.to_json().find("\"dx\"") == std::string::npos &&
+                   mouse.to_json().find("\"dy\"") == std::string::npos,
+               "absolute mouse packets must not carry relative keys");
+
+  crossdesk::RemoteAction relative_move{};
+  relative_move.type = crossdesk::ControlType::mouse;
+  relative_move.m = {0.f, 0.f, 0, crossdesk::MouseFlag::move};
+  relative_move.m.relative = true;
+  relative_move.m.dx = 12.5f;
+  relative_move.m.dy = -3.f;
+  const auto relative_json = relative_move.to_json();
+  ok &= Expect(relative_json.find("\"relative\":true") != std::string::npos &&
+                   relative_json.find("\"dx\":") != std::string::npos &&
+                   relative_json.find("\"dy\":") != std::string::npos,
+               "relative move must carry its displacement");
+  ok &= Expect(parsed_mouse.from_json(relative_json) && parsed_mouse.m.relative &&
+                   parsed_mouse.m.flag == crossdesk::MouseFlag::move &&
+                   parsed_mouse.m.dx == 12.5f && parsed_mouse.m.dy == -3.f,
+               "relative move JSON round trip failed");
+
+  crossdesk::RemoteAction relative_button{};
+  relative_button.type = crossdesk::ControlType::mouse;
+  relative_button.m = {0.f, 0.f, 0, crossdesk::MouseFlag::left_down};
+  relative_button.m.relative = true;
+  ok &= Expect(parsed_mouse.from_json(relative_button.to_json()) &&
+                   parsed_mouse.m.relative &&
+                   parsed_mouse.m.flag == crossdesk::MouseFlag::left_down &&
+                   parsed_mouse.m.dx == 0.f && parsed_mouse.m.dy == 0.f,
+               "relative button packets must stay position-free");
+
+  // A struct that previously held a relative packet must be reset by an absolute one.
+  ok &= Expect(parsed_mouse.from_json(
+                   "{\"type\":0,\"mouse\":{\"x\":0.5,\"y\":0.5,\"s\":0,\"flag\":0}}") &&
+                   !parsed_mouse.m.relative && parsed_mouse.m.dx == 0.f &&
+                   parsed_mouse.m.dy == 0.f,
+               "legacy absolute packets must decode as non-relative");
+  ok &= Expect(!parsed_mouse.from_json(
+                   "{\"type\":0,\"mouse\":{\"x\":0.5,\"y\":0.5,\"s\":0,\"flag\":0,"
+                   "\"relative\":1}}"),
+               "non-boolean relative flag must be rejected");
+
   crossdesk::RemoteAction cursor{};
   cursor.type = crossdesk::ControlType::cursor_state;
   cursor.cs = {42, true, crossdesk::RemoteCursorShape::pointer,
