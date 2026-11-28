@@ -309,16 +309,11 @@ bool ScreenCapturerDxgi::CreateDuplicationForMonitor(int monitor_index) {
   d3d_context_ = std::move(output_context);
   d3d_device_ = std::move(output_device);
 
-  Microsoft::WRL::ComPtr<IDXGIOutput1> output1;
-  hr = outputs_[monitor_index]->QueryInterface(
-      IID_PPV_ARGS(output1.GetAddressOf()));
-  if (FAILED(hr)) {
-    LOG_ERROR("DXGI: Query IDXGIOutput1 failed, hr={}", (int)hr);
-    return false;
-  }
-
   duplication_.Reset();
-  hr = output1->DuplicateOutput(d3d_device_.Get(), duplication_.GetAddressOf());
+  hdr_info_ = {};
+  hdr_tone_mapper_.Reset();
+  hr = DuplicateDxgiOutput(outputs_[monitor_index].Get(), d3d_device_.Get(),
+                           duplication_.GetAddressOf(), &hdr_info_);
   if (FAILED(hr)) {
     LOG_ERROR("DXGI: DuplicateOutput failed, hr={}", (int)hr);
     return false;
@@ -350,9 +345,13 @@ bool ScreenCapturerDxgi::CreateDuplicationForMonitor(int monitor_index) {
   SharedDxgiCursorState().BeginOutput(
       display_info_list_[monitor_index].handle, software_cursor_output_);
   last_logged_cursor_embedding_ = -1;
-  LOG_INFO("DXGI: duplication ready, monitor={}, rotation={}, adapter='{}'",
-           monitor_index, static_cast<int>(rotation_),
-           WideToUtf8(adapter_desc.Description));
+  LOG_INFO(
+      "DXGI: duplication ready, monitor={}, rotation={}, format={}, hdr={}, "
+      "sdr_white_scale={:.2f}, max_nits={:.0f}, adapter='{}'",
+      monitor_index, static_cast<int>(rotation_),
+      static_cast<int>(desc.ModeDesc.Format), hdr_info_.hdr_enabled,
+      hdr_info_.sdr_white_scale, hdr_info_.max_luminance_nits,
+      WideToUtf8(adapter_desc.Description));
   return true;
 }
 
@@ -362,6 +361,8 @@ void ScreenCapturerDxgi::ReleaseDuplication() {
   if (duplication_) SharedDxgiCursorState().Reset();
   ++duplication_generation_;
   gpu_frames_.reset();
+  hdr_tone_mapper_.Reset();
+  hdr_info_ = {};
   intel_demand_.Reset();
   readback_ = {};
   read_slot_ = pending_readbacks_ = 0;
@@ -565,6 +566,14 @@ void ScreenCapturerDxgi::CaptureLoop() {
                     0, 0, "", nullptr);
         continue;
       }
+      const int active_monitor = monitor_index_.load();
+      if (hdr_info_.hdr_enabled && active_monitor >= 0 &&
+          active_monitor < static_cast<int>(display_info_list_.size()) &&
+          display_info_list_[active_monitor].handle) {
+        RefreshMonitorSdrWhiteScale(
+            static_cast<HMONITOR>(display_info_list_[active_monitor].handle),
+            &hdr_info_.sdr_white_scale);
+      }
     }
     if (!duplication_) {
       cached_frame_valid = false;
@@ -707,11 +716,25 @@ void ScreenCapturerDxgi::CaptureLoop() {
       continue;
     }
 
+    ID3D11Texture2D* desktop_tex = acquired_tex.Get();
+    D3D11_TEXTURE2D_DESC acquired_desc{};
+    desktop_tex->GetDesc(&acquired_desc);
+    if (IsHdrDesktopTextureFormat(acquired_desc.Format)) {
+      desktop_tex = hdr_tone_mapper_.ToneMapToBgra8(
+          d3d_device_.Get(), d3d_context_.Get(), desktop_tex, hdr_info_);
+      if (!desktop_tex) {
+        ReleaseAcquiredFrame();
+        continue;
+      }
+    } else if (hdr_tone_mapper_.HasAllocatedResources()) {
+      hdr_tone_mapper_.Reset();
+    }
+
     const auto cursor = read_cursor();
     cached_gpu.Reset();
     if (!cursor.draw && gpu_frames_ && (!intel_demand_ || intel_demand_->TryNative()))
-      cached_gpu = gpu_frames_->Convert(acquired_tex.Get());
-    const bool submitted = cached_gpu || QueueReadback(acquired_tex.Get(), cursor.already_embedded);
+      cached_gpu = gpu_frames_->Convert(desktop_tex);
+    const bool submitted = cached_gpu || QueueReadback(desktop_tex, cursor.already_embedded);
     acquired_tex.Reset();
     desktop_resource.Reset();
     // All GPU reads of the acquired surface have been submitted. Release it

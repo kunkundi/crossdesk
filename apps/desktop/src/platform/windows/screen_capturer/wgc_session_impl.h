@@ -9,6 +9,7 @@
 #include <mutex>
 
 #include "wgc_session.h"
+#include "windows_hdr_capture.h"
 
 namespace crossdesk {
 
@@ -60,8 +61,11 @@ class WgcSessionImpl : public WgcSession {
   auto CreateCaptureItemForWindow(HWND hwnd);
   auto CreateCaptureItemForMonitor(HMONITOR hmonitor);
 
-  HRESULT CreateMappedTexture(winrt::com_ptr<ID3D11Texture2D> src_texture,
+  HRESULT CreateMappedTexture(ID3D11Texture2D* src_texture,
                               unsigned int width = 0, unsigned int height = 0);
+  void RefreshHdrInfoLocked() noexcept;
+  winrt::Windows::Graphics::DirectX::DirectXPixelFormat DesiredPoolPixelFormatLocked()
+      const noexcept;
   void OnFrame(
       winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const&
           sender,
@@ -104,6 +108,12 @@ class WgcSessionImpl : public WgcSession {
       d3d11_direct_device_{nullptr};
   winrt::com_ptr<ID3D11DeviceContext> d3d11_device_context_{nullptr};
   winrt::com_ptr<ID3D11Texture2D> d3d11_texture_mapped_{nullptr};
+  WindowsHdrOutputCache hdr_output_cache_;
+  WindowsHdrOutputInfo hdr_info_{};
+  D3d11HdrToneMapper hdr_tone_mapper_;
+  bool pool_uses_hdr_format_ = false;
+  bool hdr_pool_unsupported_ = false;
+  ULONGLONG next_hdr_check_tick_ = 0;
 
   winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool
       capture_framepool_{nullptr};

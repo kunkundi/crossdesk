@@ -24,6 +24,7 @@
 #include "rd_log.h"
 #include "screen_capturer.h"
 #include "stable_display_slots.h"
+#include "windows_hdr_capture.h"
 
 namespace crossdesk {
 
@@ -97,6 +98,8 @@ class ScreenCapturerDxgi : public ScreenCapturer {
   unsigned read_slot_ = 0;
   unsigned pending_readbacks_ = 0;
   std::unique_ptr<DxgiNv12Frames> gpu_frames_;
+  WindowsHdrOutputInfo hdr_info_{};
+  D3d11HdrToneMapper hdr_tone_mapper_;
   Microsoft::WRL::ComPtr<IntelCaptureDemand> intel_demand_;
   DXGI_MODE_ROTATION rotation_ = DXGI_MODE_ROTATION_IDENTITY;
   uint64_t duplication_generation_ = 0;
