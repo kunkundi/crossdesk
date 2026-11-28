@@ -8,6 +8,16 @@
 namespace crossdesk {
 using Microsoft::WRL::ComPtr;
 
+bool IntelCaptureDemand::TryNative() {
+  if (encoders_.load()) return true;
+  auto retry = retry_after_.load();
+  if (!retry) return true;
+  const auto now = GetTickCount64();
+  // Allow a new viewer/codec to discover native input while CPU consumers
+  // continue using the original BGRA readback path between probes.
+  return now >= retry && retry_after_.compare_exchange_strong(retry, now + 2000);
+}
+
 // Shared by the capture slots, but not by the derived textures. Bound the
 // retained viewport sizes when independent viewers resize their windows.
 struct DxgiNv12Scaler {
@@ -82,6 +92,7 @@ bool DxgiNv12Frame::Init(ID3D11Device* device, ID3D11VideoDevice* video,
   frame_.retain = [](void* p) { static_cast<DxgiNv12Frame*>(p)->AddRef(); };
   frame_.release = [](void* p) { static_cast<DxgiNv12Frame*>(p)->Release(); };
   frame_.copy_to_nv12 = &Readback;
+  feedback_ = minirtc::D3D11CaptureFeedback::Find(device);
   return true;
 }
 
@@ -90,6 +101,7 @@ int DxgiNv12Frame::Readback(void* owner, uint8_t* destination, size_t size) {
   const UINT w = slot.frame_.width, h = slot.frame_.height;
   const size_t pixels = static_cast<size_t>(w) * h;
   if (!destination || size < pixels + pixels / 2) return -1;
+  if (slot.feedback_) slot.feedback_->RequestCpuFrames();
   std::lock_guard lock(slot.readback_mutex_);
   ComPtr<ID3D11Device> device;
   ComPtr<ID3D11DeviceContext> context;

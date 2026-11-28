@@ -44,6 +44,12 @@ RemoteInputDispatcher::Result RemoteInputDispatcher::Push(
   if (!Accepts(action)) return Result::rejected;
   std::lock_guard lock(mutex_);
   if (stopping_ || !connected_.count(id)) return Result::rejected;
+  if (action.type == ControlType::mouse && action.pointer_sequence) {
+    auto& latest = last_pointer_sequence_[id];
+    // Reliable button edges must run even if a later hover arrived first.
+    if (IsMove(action) && action.pointer_sequence <= latest) return Result::rejected;
+    latest = std::max(latest, action.pointer_sequence);
+  }
   if (!completion && IsMove(action) && !pending_.empty()) {
     auto& last = pending_.back();
     if (!last.completion && last.id == id && last.IsInput() && IsMove(*last.action)) {
@@ -65,6 +71,7 @@ RemoteInputDispatcher::Result RemoteInputDispatcher::Push(
 void RemoteInputDispatcher::Disconnect(const std::string& id) {
   std::lock_guard lock(mutex_);
   if (stopping_ || !connected_.erase(id)) return;
+  last_pointer_sequence_.erase(id);
   QueueReleaseLocked(id);
   if (connected_.empty() && reset_display_) {
     RemoveResetsLocked();

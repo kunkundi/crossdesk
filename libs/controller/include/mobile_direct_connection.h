@@ -22,9 +22,12 @@ class DirectConnection {
   DirectConnection();
   ~DirectConnection();
   static std::string Endpoint(const std::string& input);
+  static bool IsDomain(const std::string& input);
+  using Notify =
+      std::function<void(MiniRtcConnectionStatus, const std::string&)>;
   bool Start(MiniRtcPeerPtr* peer, const std::string& endpoint,
-             const std::string& password,
-             std::function<void(MiniRtcConnectionStatus)> notify);
+             const std::string& password, const std::string& expected_key,
+             bool saved, Notify notify);
   bool Status(MiniRtcConnectionStatus status);
   std::string RemotePeerId() const;
   void Stop();

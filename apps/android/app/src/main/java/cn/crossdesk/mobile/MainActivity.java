@@ -68,6 +68,16 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private final java.util.List<Runnable> previewCards=new java.util.ArrayList<>();
     private final Runnable previewChanged=this::renderPreviews;
     private NativeSession session, signaling;
+    private final android.net.ConnectivityManager.NetworkCallback signalingNetwork =
+        new android.net.ConnectivityManager.NetworkCallback() {
+            @Override public void onAvailable(android.net.Network network) {
+                runOnUiThread(() -> verifySignaling());
+            }
+        };
+    private void verifySignaling() {
+        if (signaling != null) signaling.verifySignaling();
+        if (session != null && session != signaling) session.verifySignaling();
+    }
     private String signalingServer="", localIdentity="", signalError="";
     private int signalState=-1;
     private boolean foreground;
@@ -104,7 +114,9 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     private Runnable backAction;
 
     @Override public void onCreate(Bundle state){
-        super.onCreate(state);ui=new MobileUi(this);history=new RecentConnections(this);remoteOrientation=new RemoteOrientation(this);
+        super.onCreate(state);
+        getSystemService(android.net.ConnectivityManager.class).registerDefaultNetworkCallback(signalingNetwork);
+        ui=new MobileUi(this);history=new RecentConnections(this);remoteOrientation=new RemoteOrientation(this);
         pageHost=new PageHost(this);setContentView(pageHost);
         preferences=getSharedPreferences("settings",MODE_PRIVATE);host=preferences.getString("host","api.crossdesk.cn");port=preferences.getInt("port",9099);
         recentPresence.sender=ids->{if(signaling!=null&&!signaling.isClosed())signaling.presenceRequest(ids);};
@@ -245,12 +257,12 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         LinearLayout connection=column();connection.setPadding(dp(18),dp(18),dp(18),dp(18));content.addView(ui.shadowCard(connection,20));
         connection.addView(text(L10n.tr("远程桌面"),20,true));ui.gap(connection,16);
         LinearLayout entry=row();connection.addView(entry,ui.size(-1,54));
-        remote=field(L10n.tr("设备 ID 或 IP 地址"), InputType.TYPE_CLASS_TEXT
+        remote=field(L10n.tr("设备 ID、IP 或域名"), InputType.TYPE_CLASS_TEXT
                 | InputType.TYPE_TEXT_VARIATION_URI | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         remote.setImeOptions(remote.getImeOptions() | android.view.inputmethod.EditorInfo.IME_FLAG_FORCE_ASCII);
         remote.setTextSize(20);remote.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
         remote.setOnFocusChangeListener((view,focused)->{GradientDrawable shape=ui.background(BACKGROUND,12);shape.setStroke(dp(focused?2:1),focused?BLUE:LINE);remote.setBackground(shape);});
-        remote.setFilters(new InputFilter[]{new InputFilter.LengthFilter(160)});remote.setText(formatId(preferences.getString("lastRemote","")));
+        remote.setText(formatId(preferences.getString("lastRemote","")));
         entry.addView(remote,new LinearLayout.LayoutParams(0,-1,1));
         TextView connect=ui.primary(L10n.tr("连接"),()->promptConnection(id()));connect.setContentDescription(L10n.tr("连接"));LinearLayout.LayoutParams buttonParams=ui.size(96,54);buttonParams.leftMargin=dp(10);entry.addView(connect,buttonParams);
         Runnable update=()->{connect.setEnabled(!id().isEmpty());connect.setAlpha(id().isEmpty()?.45f:1);};update.run();
@@ -288,10 +300,10 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         connectionDialog.setOnDismissListener(dialog->connectionDialog=null);
         pendingConnectionMessage="";connectionDialog.show();
     }
-    private String id(){return remote.getText().toString().replace(" ","");}
+    private String id(){String value=remote.getText().toString().trim();return value.matches("[0-9 ]+")?value.replace(" ",""):value;}
     static String formatId(String value) {
         String target = value.replace(" ", "");
-        return target.matches("[0-9]{1,9}") ? target.replaceAll("(.{3})(?=.)", "$1 ") : target;
+        return target.matches("[0-9]{1,9}") ? target.replaceAll("(.{3})(?=.)", "$1 ") : value;
     }
     private void renderRecentConnections(){
         if(recentGrid==null)return;
@@ -469,14 +481,15 @@ public final class MainActivity extends Activity implements NativeSession.Listen
                 (privacyDialog != null && privacyDialog.isShowing())) return;
         hideKeyboard();
         final String target = id.matches("[0-9]{9}") ? id : NativeSession.directEndpoint(id);
-        if (target.isEmpty()) { remote.setError(L10n.tr("请输入设备 ID 或有效的 IP 地址")); remote.requestFocus(); return; }
+        if (target.isEmpty()) { remote.setError(L10n.tr("请输入设备 ID、IP 或域名")); remote.requestFocus(); return; }
         if (!target.equals(id())) remote.setText(formatId(target));
         if(!preferences.getBoolean("networkConsent",false)){consent(()->connectOrPrompt(target));return;}connectOrPrompt(target);
     }
     private void connectOrPrompt(String id){
+        expectedHostKey=history.fingerprint(serverKey(),id);
         String stored;
         try{stored=history.password(serverKey(),id);}catch(Exception error){passwordSheet(id,L10n.tr("已保存密码无法读取，请重新输入"),true);return;}
-        if(!stored.isEmpty()){rememberPassword=true;begin(id,stored);return;}
+        if(!stored.isEmpty()){rememberPassword=true;begin(id,stored,true);return;}
         boolean remember=history.remembersPassword(serverKey(),id);
         passwordSheet(id,remember?L10n.tr("已保存的密码未能保留，请重新输入一次"):"",remember);
     }
@@ -512,7 +525,9 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         Window window=passwordDialog.getWindow();window.setLayout(width>=600?dp(Math.min(520,width-48)):-1,-2);
         window.setGravity(width>=600?Gravity.CENTER:Gravity.BOTTOM);
     }
-    private void begin(String id,String secret){
+    private String expectedHostKey = "";
+    private void begin(String id,String secret){begin(id,secret,false);}
+    private void begin(String id,String secret,boolean saved){
         if (session != null) return;
         videoWidth=videoHeight=0;enteredPictureInPicture=false;
         pictureInPicture.disconnect();updatePictureInPicture();
@@ -526,6 +541,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
             if(signaling==null){pendingPassword="";toast(L10n.tr("请先完成联网授权"));return;}
         }
         session=new NativeSession(this,host,port,id,secret,this);
+        session.expectedKey=expectedHostKey;session.savedCredential=saved;
         showProgress();
         session.start();
         if(signalState==1)session.connectAs(localIdentity);
@@ -876,7 +892,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         // Transport readiness can be reported again after ICE changes its selected path.
         // The first success consumes pendingPassword; a duplicate must not save it again.
         if(session==null||ready)return;ready=true;if(progressDialog!=null){progressDialog.dismiss();progressDialog=null;}
-        try{history.save(serverKey(),connectedRemote,connectedRemote,hostPlatform,rememberPassword,pendingPassword);}catch(Exception error){toast(L10n.tr("密码保存失败，本次连接仍可使用"));}pendingPassword="";sessionScreen(preferences.getBoolean("autoLandscape",false));
+        try{history.save(serverKey(),connectedRemote,connectedRemote,hostPlatform,rememberPassword,pendingPassword,session.verifiedKey);}catch(Exception error){toast(L10n.tr("密码保存失败，本次连接仍可使用"));}pendingPassword="";sessionScreen(preferences.getBoolean("autoLandscape",false));
         if(!canUsePictureInPicture())prepareBackgroundSession(true);
         if(videoSettings.supported&&videoSettings.requestId==0)updateVideoSettings(videoSettings.selection);
         if(foreground&&preferences.getBoolean("networkConsent",false))remoteVersionCheck.connected();
@@ -887,6 +903,16 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     @Override public void signalingEnded(String reason){
         stopSignaling();signalError=reason;renderSignaling();
         if(session!=null&&!ready&&!connectedRemote.contains(":"))end(reason);
+    }
+    @Override public void hostKeyChanged(String oldKey,String newKey){
+        String id=connectedRemote;
+        end("");
+        if(!foreground || !newKey.matches("[0-9a-f]{64}"))return;
+        String keys=oldKey+"\n↓\n"+newKey;
+        new AlertDialog.Builder(this).setMessage(L10n.tr("设备身份已变化。核对以下公钥指纹后，重新输入密码。")+"\n"+keys)
+            .setNegativeButton(L10n.tr("取消"),null)
+            .setNeutralButton(L10n.tr("复制指纹"),(d,w)->getSystemService(ClipboardManager.class).setPrimaryClip(ClipData.newPlainText("CrossDesk",keys)))
+            .setPositiveButton(L10n.tr("连接新设备"),(d,w)->{expectedHostKey=newKey;passwordSheet(id,"",true);}).show();
     }
     @Override public void passwordRejected(){
         if(session==null)return;
@@ -912,7 +938,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         if(!ready||session==null||!hasNetworkConsent())return;
         RemoteDisplayResolutions.Display display=displayResolutions.display(selectedDisplay);
         if(!displayResolutions.pending&&display!=null&&display.supports(mode)&&display.current.same(mode)){
-            session.rememberDisplayResolution(display.key,mode);return;
+            session.rememberDisplayResolution(display);return;
         }
         RemoteDisplayResolutions.Request request=displayResolutions.begin(selectedDisplay,mode);if(request==null)return;
         cancelDisplayResolutionTimeout();session.displayResolution(request);
@@ -940,8 +966,8 @@ public final class MainActivity extends Activity implements NativeSession.Listen
     @Override public void data(JSONObject message){
         if(session==null)return;
         if(message.optInt("type",-1)==3||message.optInt("type",-1)==16){
-            RemoteDisplayResolutions.Request confirmed=displayResolutions.receive(message);
-            if(confirmed!=null&&session!=null)session.rememberDisplayResolution(confirmed.displayKey,confirmed.mode);
+            RemoteDisplayResolutions.Display confirmed=displayResolutions.receive(message);
+            if(confirmed!=null&&session!=null)session.rememberDisplayResolution(confirmed);
             if(!displayResolutions.pending)cancelDisplayResolutionTimeout();
             if(controls!=null)controls.displayResolutions(displayResolutions,selectedDisplay);
             if(message.optInt("type",-1)==16)return;
@@ -1129,7 +1155,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
         super.onPictureInPictureUiStateChanged(state);
         if(android.os.Build.VERSION.SDK_INT>=35&&state.isTransitioningToPip())setPictureInPictureUi(true);
     }
-    @Override protected void onResume(){super.onResume();privacyChanged();if(!isInPictureInPictureMode())enteredPictureInPicture=false;setPictureInPictureUi(isInPictureInPictureMode());updatePictureInPicture();if(ready&&!canUsePictureInPicture())prepareBackgroundSession(true);if(backgroundSession!=null)requestBackgroundNotifications();}
+    @Override protected void onResume(){super.onResume();verifySignaling();privacyChanged();if(!isInPictureInPictureMode())enteredPictureInPicture=false;setPictureInPictureUi(isInPictureInPictureMode());updatePictureInPicture();if(ready&&!canUsePictureInPicture())prepareBackgroundSession(true);if(backgroundSession!=null)requestBackgroundNotifications();}
     // onStart marks a new visit; focus/resume callbacks must not reopen a refused notice.
     @Override protected void onPause(){releaseKeys();if(controls!=null)controls.cancelMouseInput();if(video!=null)video.releaseMouse();super.onPause();}
     @Override protected void onStart(){super.onStart();foreground=true;restoreBackgroundSession();appUpdates.setEnabled(preferences.getBoolean("networkConsent",false));if(!preferences.getBoolean("networkConsent",false))consent(this::renderSignaling);ensureSignaling();showConnectionMessage();}
@@ -1147,7 +1173,7 @@ public final class MainActivity extends Activity implements NativeSession.Listen
             resetRemoteVersionCheck();if(disconnectDialog!=null)disconnectDialog.dismiss();
         }else if(documentSession==null||documentSession!=session||isFinishing()){if(session!=null)end(isFinishing()?"":L10n.tr("远程窗口已关闭，或后台保活未能启动，会话已结束"));stopSignaling();}
         super.onStop();}
-    @Override protected void onDestroy(){dismissPrivacyUnlockDialog();mainHandler.removeCallbacks(documentTimeout);documentSession=null;documentToSave=null;appUpdates.setEnabled(false);pageHost.finish();resetRemoteVersionCheck();cancelVideoSettingsTimeout();cancelDisplayResolutionTimeout();previews.removeListener(previewChanged);if(privacyDialog!=null)privacyDialog.dismiss();if(previewDialog!=null)previewDialog.dismiss();announcementInbox.close();if(disconnectDialog!=null)disconnectDialog.dismiss();if(passwordDialog!=null)passwordDialog.dismiss();if(progressDialog!=null)progressDialog.dismiss();
+    @Override protected void onDestroy(){getSystemService(android.net.ConnectivityManager.class).unregisterNetworkCallback(signalingNetwork);dismissPrivacyUnlockDialog();mainHandler.removeCallbacks(documentTimeout);documentSession=null;documentToSave=null;appUpdates.setEnabled(false);pageHost.finish();resetRemoteVersionCheck();cancelVideoSettingsTimeout();cancelDisplayResolutionTimeout();previews.removeListener(previewChanged);if(privacyDialog!=null)privacyDialog.dismiss();if(previewDialog!=null)previewDialog.dismiss();announcementInbox.close();if(disconnectDialog!=null)disconnectDialog.dismiss();if(passwordDialog!=null)passwordDialog.dismiss();if(progressDialog!=null)progressDialog.dismiss();
         if(connectionDialog!=null)connectionDialog.dismiss();
         boolean retained=!isFinishing()&&backgroundSession!=null&&!backgroundSession.ended&&RemoteSessionService.current()==backgroundSession;
         if(backgroundSession!=null){

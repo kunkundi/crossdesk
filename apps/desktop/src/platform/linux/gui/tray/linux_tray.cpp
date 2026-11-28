@@ -10,6 +10,7 @@
 #include <X11/extensions/shape.h>
 #include <X11/extensions/Xrender.h>
 #include <dlfcn.h>
+#include <fribidi/fribidi.h>
 
 #include <algorithm>
 #include <chrono>
@@ -165,26 +166,37 @@ bool IsAsciiPrintable(const std::string& text) {
   return true;
 }
 
-std::string GetShowMainWindowMenuLabel(int language_index) {
-  const int normalized_index = localization::detail::ClampLanguageIndex(
-      language_index);
-  const std::string& label = localization::show_main_window[normalized_index];
-  return label.empty() ? "Show Main Window" : label;
+// Xft draws glyphs in the supplied order. GTK lays out logical text itself.
+std::string X11VisualText(const std::string& text) {
+  std::vector<FriBidiChar> logical(text.size() + 1);
+  const auto length = fribidi_charset_to_unicode(
+      FRIBIDI_CHAR_SET_UTF8, text.data(), static_cast<FriBidiStrIndex>(text.size()),
+      logical.data());
+  std::vector<FriBidiChar> visual(length + 1);
+  FriBidiParType direction = FRIBIDI_PAR_ON;
+  if (!fribidi_log2vis(logical.data(), length, &direction, visual.data(),
+                       nullptr, nullptr, nullptr)) {
+    return text;
+  }
+
+  // A Unicode scalar occupies at most four UTF-8 bytes, plus a terminator.
+  std::string result(4 * static_cast<size_t>(length) + 1, '\0');
+  const auto bytes = fribidi_unicode_to_charset(
+      FRIBIDI_CHAR_SET_UTF8, visual.data(), length, result.data());
+  result.resize(bytes);
+  return result;
 }
 
-std::string GetSettingsMenuLabel(int language_index) {
-  const int normalized_index = localization::detail::ClampLanguageIndex(
-      language_index);
-  const std::string& label = localization::settings[normalized_index];
-  return label.empty() ? "Settings" : label;
-}
+struct TrayMenuLabel {
+  TrayMenuLabel(const std::string& translation, const char* english)
+      : text(translation.empty() ? english : translation),
+        visual(X11VisualText(text)),
+        ascii(IsAsciiPrintable(text) ? text : english) {}
 
-std::string GetExitMenuLabel(int language_index) {
-  const int normalized_index = localization::detail::ClampLanguageIndex(
-      language_index);
-  const std::string& label = localization::exit_program[normalized_index];
-  return label.empty() ? "Exit" : label;
-}
+  std::string text;
+  std::string visual;
+  std::string ascii;
+};
 
 unsigned long AllocateColor(Display* display, int screen, const char* name,
                             unsigned long fallback) {
@@ -387,20 +399,7 @@ struct LinuxTrayImpl {
       : app_window(window),
         tooltip(std::move(tray_tooltip)),
         language_index(language_index_value),
-        exit_event_type(tray_exit_event_type),
-        show_menu_label(GetShowMainWindowMenuLabel(language_index_value)),
-        show_menu_ascii_label(IsAsciiPrintable(show_menu_label)
-                                  ? show_menu_label
-                                  : "Show Main Window"),
-        settings_menu_label(GetSettingsMenuLabel(language_index_value)),
-        settings_menu_ascii_label(IsAsciiPrintable(settings_menu_label)
-                                      ? settings_menu_label
-                                      : "Settings"),
-        exit_menu_label(GetExitMenuLabel(language_index_value)),
-        exit_menu_ascii_label(IsAsciiPrintable(exit_menu_label)
-                                  ? exit_menu_label
-                                  : "Exit") {
-
+        exit_event_type(tray_exit_event_type) {
     EnsureTrayIcon();
   }
 
@@ -414,19 +413,7 @@ struct LinuxTrayImpl {
         open_settings(std::move(open_settings_callback)),
         exit_app(std::move(exit_callback)),
         tooltip(std::move(tray_tooltip)),
-        language_index(language_index_value),
-        show_menu_label(GetShowMainWindowMenuLabel(language_index_value)),
-        show_menu_ascii_label(IsAsciiPrintable(show_menu_label)
-                                  ? show_menu_label
-                                  : "Show Main Window"),
-        settings_menu_label(GetSettingsMenuLabel(language_index_value)),
-        settings_menu_ascii_label(IsAsciiPrintable(settings_menu_label)
-                                      ? settings_menu_label
-                                      : "Settings"),
-        exit_menu_label(GetExitMenuLabel(language_index_value)),
-        exit_menu_ascii_label(IsAsciiPrintable(exit_menu_label)
-                                  ? exit_menu_label
-                                  : "Exit") {
+        language_index(language_index_value) {
     EnsureTrayIcon();
   }
 
@@ -543,12 +530,12 @@ struct LinuxTrayImpl {
 
     desktop_menu = desktop_indicator_api.gtk_menu_new();
     void* show_item = desktop_indicator_api.gtk_menu_item_new_with_label(
-        show_menu_label.c_str());
+        show_menu_label.text.c_str());
     void* settings_item = desktop_indicator_api.gtk_menu_item_new_with_label(
-        settings_menu_label.c_str());
+        settings_menu_label.text.c_str());
     void* separator = desktop_indicator_api.gtk_separator_menu_item_new();
     void* exit_item = desktop_indicator_api.gtk_menu_item_new_with_label(
-        exit_menu_label.c_str());
+        exit_menu_label.text.c_str());
     if (!desktop_menu || !show_item || !settings_item || !separator ||
         !exit_item) {
       if (desktop_menu) {
@@ -1201,30 +1188,29 @@ struct LinuxTrayImpl {
     return false;
   }
 
-  int MenuTextWidth(const std::string& label,
-                    const std::string& ascii_label) const {
+  int MenuTextWidth(const TrayMenuLabel& label) const {
     if (menu_font) {
       XGlyphInfo extents{};
       XftTextExtentsUtf8(display, menu_font,
-                         reinterpret_cast<const FcChar8*>(label.c_str()),
-                         static_cast<int>(label.size()), &extents);
+                         reinterpret_cast<const FcChar8*>(label.visual.c_str()),
+                         static_cast<int>(label.visual.size()), &extents);
       return extents.xOff;
     }
 
     if (font_set) {
       XRectangle ink{};
       XRectangle logical{};
-      Xutf8TextExtents(font_set, label.c_str(), static_cast<int>(label.size()),
-                       &ink, &logical);
+      Xutf8TextExtents(font_set, label.visual.c_str(),
+                       static_cast<int>(label.visual.size()), &ink, &logical);
       return logical.width;
     }
 
     if (fallback_font) {
-      return XTextWidth(fallback_font, ascii_label.c_str(),
-                        static_cast<int>(ascii_label.size()));
+      return XTextWidth(fallback_font, label.ascii.c_str(),
+                        static_cast<int>(label.ascii.size()));
     }
 
-    return static_cast<int>(ascii_label.size()) * 8;
+    return static_cast<int>(label.ascii.size()) * 8;
   }
 
   int MenuItemAt(int x, int y) const {
@@ -1280,15 +1266,10 @@ struct LinuxTrayImpl {
 
     HideMenu();
 
-    menu_width =
-        std::max({72,
-                  MenuTextWidth(show_menu_label, show_menu_ascii_label) +
-                      kMenuHorizontalPadding * 2,
-                  MenuTextWidth(settings_menu_label,
-                                settings_menu_ascii_label) +
-                      kMenuHorizontalPadding * 2,
-                  MenuTextWidth(exit_menu_label, exit_menu_ascii_label) +
-                      kMenuHorizontalPadding * 2});
+    const int label_width = std::max({MenuTextWidth(show_menu_label),
+                                      MenuTextWidth(settings_menu_label),
+                                      MenuTextWidth(exit_menu_label)});
+    menu_width = std::max(72, label_width + kMenuHorizontalPadding * 2);
     const int display_width = DisplayWidth(display, screen);
     const int display_height = DisplayHeight(display, screen);
     const int x = std::clamp(root_x, 0, std::max(0, display_width - menu_width));
@@ -1378,8 +1359,7 @@ struct LinuxTrayImpl {
                                             DefaultVisual(display, screen),
                                             DefaultColormap(display, screen))
                             : nullptr;
-    auto draw_label = [&](int item_index, const std::string& label,
-                          const std::string& ascii_label) {
+    auto draw_label = [&](int item_index, const TrayMenuLabel& label) {
       const int item_y =
           kMenuVerticalPadding + item_index * kMenuItemHeight;
       int baseline = item_y + kMenuItemHeight / 2 + 5;
@@ -1391,8 +1371,8 @@ struct LinuxTrayImpl {
                    menu_font->ascent;
         XftDrawStringUtf8(
             xft_draw, &menu_text_color, menu_font, kMenuHorizontalPadding,
-            baseline, reinterpret_cast<const FcChar8*>(label.c_str()),
-            static_cast<int>(label.size()));
+            baseline, reinterpret_cast<const FcChar8*>(label.visual.c_str()),
+            static_cast<int>(label.visual.size()));
       } else if (font_set) {
         XFontSetExtents* extents = XExtentsOfFontSet(font_set);
         if (extents) {
@@ -1403,8 +1383,8 @@ struct LinuxTrayImpl {
                      extents->max_logical_extent.y;
         }
         Xutf8DrawString(display, menu_window, font_set, gc,
-                        kMenuHorizontalPadding, baseline, label.c_str(),
-                        static_cast<int>(label.size()));
+                        kMenuHorizontalPadding, baseline, label.visual.c_str(),
+                        static_cast<int>(label.visual.size()));
       } else {
         if (fallback_font) {
           XSetFont(display, gc, fallback_font->fid);
@@ -1414,13 +1394,12 @@ struct LinuxTrayImpl {
                          2;
         }
         XDrawString(display, menu_window, gc, kMenuHorizontalPadding, baseline,
-                    ascii_label.c_str(),
-                    static_cast<int>(ascii_label.size()));
+                    label.ascii.c_str(), static_cast<int>(label.ascii.size()));
       }
     };
-    draw_label(0, show_menu_label, show_menu_ascii_label);
-    draw_label(1, settings_menu_label, settings_menu_ascii_label);
-    draw_label(2, exit_menu_label, exit_menu_ascii_label);
+    draw_label(0, show_menu_label);
+    draw_label(1, settings_menu_label);
+    draw_label(2, exit_menu_label);
     if (xft_draw) {
       XftDrawDestroy(xft_draw);
     }
@@ -1468,12 +1447,11 @@ struct LinuxTrayImpl {
   std::string tooltip;
   int language_index = 0;
   uint32_t exit_event_type = 0;
-  std::string show_menu_label;
-  std::string show_menu_ascii_label;
-  std::string settings_menu_label;
-  std::string settings_menu_ascii_label;
-  std::string exit_menu_label;
-  std::string exit_menu_ascii_label;
+  TrayMenuLabel show_menu_label{localization::show_main_window[language_index],
+                               "Show Main Window"};
+  TrayMenuLabel settings_menu_label{localization::settings[language_index],
+                                   "Settings"};
+  TrayMenuLabel exit_menu_label{localization::exit_program[language_index], "Exit"};
   DesktopIndicatorApi desktop_indicator_api;
   void* desktop_indicator = nullptr;
   void* desktop_menu = nullptr;

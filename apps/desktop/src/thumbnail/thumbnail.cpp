@@ -1,4 +1,5 @@
 #include "thumbnail.h"
+#include "../network/lan/lan_identity.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -133,6 +134,13 @@ uint64_t Thumbnail::RecordGeneration(const std::string& id) {
   return generations_[id];
 }
 
+uint64_t Thumbnail::ClaimRecordGeneration(const std::string& id,
+                                          uint64_t expected) {
+  std::lock_guard lock(mutex_);
+  auto& current = generations_[id];
+  return current == expected ? ++current : expected;
+}
+
 bool Thumbnail::ImportRecord(const RecentConnection& record,
                              std::filesystem::file_time_type modified) {
   std::lock_guard lock(mutex_);
@@ -153,16 +161,23 @@ bool Thumbnail::WriteRecord(const RecentConnection& connection) {
   const auto path =
       std::filesystem::path(save_path_) / (connection.remote_id + ".json");
   const auto temporary = path.string() + ".tmp";
-  const nlohmann::json record = {
+  const bool domain = lan::IsDnsName(connection.lan.address);
+  nlohmann::json record = {
       {"version", 3},
       {"kind", connection.lan.address.empty() ? "cloud_id" : "lan_direct"},
       {"lan",
-       {{"address", connection.lan.address},
-        {"port", connection.lan.port}}},
+       {{"address", connection.lan.address}, {"port", connection.lan.port}}},
       {"remote_id", connection.remote_id},
       {"host_name", connection.remote_host_name},
-      {"password", password},
+      {"password", domain ? "" : password},
       {"platform", HostPlatformName(connection.platform)}};
+  if (domain && connection.remember_password) {
+    if (!lan::ValidFingerprint(connection.lan.fingerprint)) return false;
+    record["domain_credential"] = {{"version", 1},
+                                   {"target", connection.remote_id},
+                                   {"spki_sha256", connection.lan.fingerprint},
+                                   {"password", password}};
+  }
   std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
   output << record.dump();
   output.close();
@@ -200,19 +215,47 @@ bool Thumbnail::ReadRecord(const std::filesystem::path& path,
       const bool legacy_id = legacy_device.size() == 32 &&
           connection->remote_id == "lan-" + Digest("lan_direct/" + legacy_device);
       if (!IsLanRecordId(connection->remote_id) ||
-          (!legacy_id && connection->remote_id != LanRecordId(connection->lan.address, connection->lan.port)) ||
+          (!legacy_id &&
+           connection->remote_id !=
+               LanRecordId(connection->lan.address, connection->lan.port)) ||
           !connection->lan.port || connection->lan.port > 65535 ||
           connection->lan.address.empty() ||
-          connection->lan.address.size() > 128)
+          (lan::IsDnsName(connection->lan.address)
+               ? lan::ParseDialEndpoint(connection->lan.address,
+                                        connection->lan.port)
+                         .host != connection->lan.address
+               : !lan::IsIpAddress(connection->lan.address)))
         return false;
     } else if (kind != "cloud_id" || !IsRemoteId(connection->remote_id))
       return false;
     if (path.stem() != connection->remote_id) return false;
     connection->remote_host_name = record.value("host_name", "");
-    const auto password = record.value("password", "");
+    std::string password;
+    const bool domain = lan::IsDnsName(connection->lan.address);
+    if (domain) {
+      const auto credential = record.find("domain_credential");
+      if (credential != record.end() && credential->is_object() &&
+          credential->contains("version") && credential->at("version") == 1 &&
+          credential->contains("target") &&
+          credential->at("target") == connection->remote_id &&
+          credential->contains("password") &&
+          credential->at("password").is_string() &&
+          credential->contains("spki_sha256") &&
+          credential->at("spki_sha256").is_string() &&
+          lan::ValidFingerprint(
+              credential->at("spki_sha256").get_ref<const std::string&>())) {
+        connection->lan.fingerprint = credential->at("spki_sha256");
+        password = credential->value("password", "");
+      }
+    } else {
+      password = record.value("password", "");
+    }
     connection->password =
         password.empty() ? "" : AES_decrypt(password, aes128_key_, aes128_iv_);
-    if (!password.empty() && connection->password.empty()) return false;
+    if (domain && !lan::ValidPassword(connection->password))
+      connection->password.clear();
+    if (!domain && !password.empty() && connection->password.empty())
+      return false;
     connection->remember_password = !connection->password.empty();
     connection->platform =
         ParseHostPlatform(record.value("platform", "unknown"));

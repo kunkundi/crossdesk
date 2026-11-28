@@ -19,10 +19,12 @@ struct SharedCaptureConfiguration {
   bool show_cursor = true;
   int fps = 30;
 
-  bool operator==(const SharedCaptureConfiguration& other) const {
+  bool SameSurface(const SharedCaptureConfiguration& other) const {
     return left == other.left && top == other.top && width == other.width &&
-           height == other.height && show_cursor == other.show_cursor &&
-           fps == other.fps;
+           height == other.height && show_cursor == other.show_cursor;
+  }
+  bool operator==(const SharedCaptureConfiguration& other) const {
+    return SameSurface(other) && fps == other.fps;
   }
 };
 

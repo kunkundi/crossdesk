@@ -26,6 +26,7 @@ class ScreenCapturerLinux : public ScreenCapturer {
 
  public:
   int Init(const int fps, cb_desktop_data cb) override;
+  void SetCaptureFrameRate(int fps) override;
   void SetPrivacyController(PrivacyController* privacy) override { privacy_ = privacy; }
   int Destroy() override;
   int Start(bool show_cursor) override;

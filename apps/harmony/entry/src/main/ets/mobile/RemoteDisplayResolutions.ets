@@ -1,7 +1,7 @@
 import { tr } from './Localization';
 
 export interface ResolutionMode { width: number; height: number; }
-export interface ResolutionPreference extends ResolutionMode { display_key: string; }
+export interface ResolutionPreference extends ResolutionMode { display_key: string; pixel_size?: ResolutionMode; }
 export interface ResolutionDisplay extends ResolutionPreference {
   display_id: number; display_key: string; width: number; height: number; modes: ResolutionMode[];
 }
@@ -15,13 +15,19 @@ function validMode(mode: ResolutionMode): boolean {
     mode.width > 0 && mode.width <= 32768 && mode.height > 0 && mode.height <= 32768;
 }
 export function validResolutionPreference(value: ResolutionPreference): boolean {
-  if (!validMode(value) || typeof value.display_key !== 'string' || !value.display_key.length ||
+  if (!validMode(value) || (value.pixel_size !== undefined && !validMode(value.pixel_size)) ||
+      typeof value.display_key !== 'string' || !value.display_key.length ||
       value.display_key.length > 1024 || value.display_key.includes('\0')) return false;
   const bytes = Array.from(value.display_key).reduce((n: number, c: string) => {
     const point = c.codePointAt(0) ?? 0;
     return n + (point < 128 ? 1 : point < 2048 ? 2 : point < 65536 ? 3 : 4);
   }, 0);
   return bytes <= 1024;
+}
+function resolutionPreference(value: ResolutionPreference): ResolutionPreference {
+  const result: ResolutionPreference = { display_key: value.display_key, width: value.width, height: value.height };
+  if (value.pixel_size) result.pixel_size = { width: value.pixel_size.width, height: value.pixel_size.height };
+  return result;
 }
 export function readResolutionPreferences(text: string): ResolutionPreference[] {
   if (text.length > 65536) return [];
@@ -33,7 +39,7 @@ export function readResolutionPreferences(text: string): ResolutionPreference[] 
     for (const value of values) {
       if (!validResolutionPreference(value) || keys.includes(value.display_key)) return [];
       keys.push(value.display_key);
-      result.push({ display_key: value.display_key, width: value.width, height: value.height });
+      result.push(resolutionPreference(value));
     }
     return result;
   } catch { return []; }
@@ -54,7 +60,7 @@ export class RemoteResolutionStore {
     try {
       const values = this.load(scope, id).filter((value: ResolutionPreference) => value.display_key !== preference.display_key);
       if (values.length >= 32) values.shift();
-      values.push({ display_key: preference.display_key, width: preference.width, height: preference.height });
+      values.push(resolutionPreference(preference));
       this.write(`resolutions:${JSON.stringify([scope, id])}`, JSON.stringify(values));
     } catch { console.warn('Could not save remote display resolution'); }
   }
@@ -99,9 +105,10 @@ export class RemoteDisplayResolutions {
     if (!request || !response || response.request_id !== request.request_id || response.display_id !== request.display_id ||
         response.display_key !== request.display_key || !sameMode(response, request) || typeof response.accepted !== 'boolean' || !this.valid(displays)) return undefined;
     this.displays = displays; this.pending = false;
-    this.failed = !response.accepted || !displays.some((d: ResolutionDisplay) =>
+    const confirmed = displays.find((d: ResolutionDisplay) =>
       d.display_id === response.display_id && d.display_key === response.display_key && sameMode(d, response));
-    return this.failed ? undefined : { display_key: response.display_key, width: response.width, height: response.height };
+    this.failed = !response.accepted || !confirmed;
+    return response.accepted && confirmed ? resolutionPreference(confirmed) : undefined;
   }
   feedback(): string { return this.pending ? tr("等待电脑端确认…") : this.failed ? tr("调整失败，请重试。") : ''; }
 }

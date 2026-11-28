@@ -12,34 +12,28 @@
 #include <cstdlib>
 #include <stdexcept>
 #include <thread>
+#include <utility>
 
 namespace crossdesk::updater {
 namespace {
-std::string LockPath(const fs::path& application) {
-  return "/tmp/CrossDesk-update-" + Sha256(fs::weakly_canonical(application).string()) + ".lock";
+std::string LockPrefix(const fs::path& application) {
+  return "/var/run/crossdesk-update-" + Sha256(fs::weakly_canonical(application).string());
 }
+
+struct ScopedFd {
+  explicit ScopedFd(int fd) : value(fd) {}
+  ~ScopedFd() { if (value >= 0) close(value); }
+  ScopedFd(const ScopedFd&) = delete;
+  ScopedFd& operator=(const ScopedFd&) = delete;
+  int release() { return std::exchange(value, -1); }
+  int value;
+};
+
 std::vector<char*> Argv(std::vector<std::string>& args) {
   std::vector<char*> values;
   for (auto& argument : args) values.push_back(argument.data());
   values.push_back(nullptr);
   return values;
-}
-int OpenLock(const std::string& path, bool create) {
-  constexpr int flags = O_RDONLY | O_CLOEXEC | O_NOFOLLOW;
-  int fd = open(path.c_str(), flags | (create ? O_CREAT | O_EXCL : 0), 0644);
-  if (fd < 0 && create && errno == EEXIST) fd = open(path.c_str(), flags);
-  if (fd >= 0) {
-    struct stat info{};
-    if (fstat(fd, &info) || !S_ISREG(info.st_mode)) {
-      close(fd); errno = EINVAL; return -1;
-    }
-    // A restrictive umask must not leave a stale lock file that permanently
-    // prevents other users from probing whether an update is active.
-    if (create && info.st_uid == geteuid() && fchmod(fd, 0644)) {
-      const int error = errno; close(fd); errno = error; return -1;
-    }
-  }
-  return fd;
 }
 }  // namespace
 
@@ -122,17 +116,45 @@ void Launch(const fs::path& executable, const std::vector<std::string>& argument
 }
 
 MaintenanceLock::MaintenanceLock(const fs::path& application) {
-  const int fd = OpenLock(LockPath(application), true);
-  if (fd < 0) throw std::runtime_error("Cannot open update lock");
-  if (flock(fd, LOCK_EX | LOCK_NB)) { close(fd); throw std::runtime_error("An update is already running"); }
-  handle_ = fd;
+  if (!IsPrivileged()) throw std::runtime_error("Update maintenance requires authorization");
+  const auto prefix = LockPrefix(application);
+  ScopedFd guard(open((prefix + ".lock").c_str(),
+                      O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK, 0600));
+  struct stat info{};
+  if (guard.value < 0 || fstat(guard.value, &info) || !S_ISREG(info.st_mode) ||
+      info.st_uid != 0 || (info.st_mode & 0077))
+    throw std::runtime_error("Cannot open private update lock");
+  if (flock(guard.value, LOCK_EX | LOCK_NB))
+    throw std::runtime_error("Cannot acquire update lock; another update may be running");
+
+  // Only root may open the read end. Other users observe its lifetime by opening
+  // the write end without sending data. Their descriptors cannot keep maintenance active.
+  const auto status_path = prefix + ".active";
+  if (mkfifo(status_path.c_str(), 0622) && errno != EEXIST)
+    throw std::runtime_error("Cannot create update status FIFO");
+  ScopedFd reader(open(status_path.c_str(), O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW));
+  if (reader.value < 0 || fstat(reader.value, &info) || !S_ISFIFO(info.st_mode) ||
+      info.st_uid != 0 || fchmod(reader.value, 0622))
+    throw std::runtime_error("Cannot publish update maintenance status");
+  handle_ = guard.release();
+  status_reader_ = reader.release();
 }
-MaintenanceLock::~MaintenanceLock() { if (handle_ != -1) close(static_cast<int>(handle_)); }
+
+MaintenanceLock::~MaintenanceLock() {
+  if (status_reader_ >= 0) close(status_reader_);
+  if (handle_ != -1) close(static_cast<int>(handle_));
+}
+
 bool MaintenanceActive(const fs::path& application) {
-  const int fd = OpenLock(LockPath(application), false);
-  if (fd < 0) return errno != ENOENT;
-  const bool locked = flock(fd, LOCK_SH | LOCK_NB) != 0;
-  close(fd);
-  return locked;
+  const auto path = LockPrefix(application) + ".active";
+  ScopedFd writer(open(path.c_str(), O_WRONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW));
+  if (writer.value < 0) {
+    if (errno == ENOENT || errno == ENXIO) return false;
+    throw std::runtime_error("Cannot inspect update maintenance status");
+  }
+  struct stat info{};
+  if (fstat(writer.value, &info) || !S_ISFIFO(info.st_mode) || info.st_uid != 0)
+    throw std::runtime_error("Invalid update maintenance status");
+  return true;
 }
 }  // namespace crossdesk::updater

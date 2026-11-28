@@ -140,7 +140,17 @@ void PlatformKeyboardCapturer::ForwardLocalModifiers() {
   // too. Swallowing those releases would leave the controller's keys stuck.
   for (const int code : {VK_LSHIFT, VK_RSHIFT, VK_LCONTROL, VK_RCONTROL,
                          VK_LMENU, VK_RMENU, VK_LWIN, VK_RWIN}) {
-    if (!local_keys_down_[code] || captured_keys_[code].key_code != 0) continue;
+    if (!local_keys_down_[code]) continue;
+    // A release in another desktop can be invisible to this hook. Confirm
+    // the inherited modifier before using it for a new remote shortcut.
+    const auto captured = captured_keys_[code];
+    if ((GetAsyncKeyState(code) & 0x8000) == 0) {
+      local_keys_down_[code] = false;
+      if (captured.key_code)
+        ForwardKey(code, false, captured.scan_code, captured.extended);
+      continue;
+    }
+    if (captured.key_code) continue;
     const UINT scan = MapVirtualKeyW(code, MAPVK_VK_TO_VSC_EX);
     ForwardKey(code, true, scan & 0xFF, (scan & 0xFF00) != 0);
   }
@@ -326,14 +336,16 @@ bool PlatformKeyboardCapturer::HandleKeyboardInput(
 
   if (foreground_window != capture_window_) {
     // This event goes to Windows, even if focus changed before the UI thread
-    // has noticed. Remember ownership in case focus returns before Unhook().
+    // has noticed. End the old remote chord before focus can return.
     local_keys_down_[key_code] = is_down;
-    if (!is_down && captured_keys_[key_code].key_code != 0)
-      ForwardKey(key_code, false, keyboard.scanCode, extended);
+    ReleaseCapturedKeys();
     return false;
   }
-  ForwardLocalModifiers();
-  const bool release_local = !is_down && local_keys_down_[key_code];
+  if (is_down) ForwardLocalModifiers();
+  // Only swallow the release of a press owned exclusively by this hook.
+  // A press missed during installation or renewal may have reached Windows.
+  const bool release_local = !is_down &&
+      (local_keys_down_[key_code] || captured_keys_[key_code].key_code == 0);
   if (!is_down) local_keys_down_[key_code] = false;
   ForwardKey(key_code, is_down, keyboard.scanCode, extended);
   return !release_local;

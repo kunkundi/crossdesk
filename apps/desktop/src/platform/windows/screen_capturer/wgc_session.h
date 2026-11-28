@@ -20,6 +20,8 @@ class WgcSession {
    public:
     virtual ~wgc_session_observer() {}
     virtual void OnFrame(const wgc_session_frame& frame, int id) = 0;
+    virtual void FrameAvailable() = 0;
+    virtual void RepeatFrame(int id) = 0;
   };
 
  public:
@@ -35,6 +37,8 @@ class WgcSession {
 
   virtual int Pause() = 0;
   virtual int Resume() = 0;
+  // True while a final cached delivery is pending.
+  virtual bool Sample(int fps) = 0;
 
   virtual ~WgcSession() {};
 };

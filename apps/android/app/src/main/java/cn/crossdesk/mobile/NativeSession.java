@@ -38,6 +38,7 @@ final class NativeSession implements AutoCloseable {
         default void presence(JSONObject message) { }
         default void announcement(JSONObject message) { }
         default void announcementFailed(String requestId) { }
+        default void hostKeyChanged(String expected, String observed) { ended(L10n.tr("直连证书无效")); }
         default void passwordRejected() { ended(L10n.tr("远端密码错误")); }
     }
     // Serializes all peer creation/API calls/destruction, including across activities.
@@ -51,8 +52,14 @@ final class NativeSession implements AutoCloseable {
     private final boolean direct;
     private final String remote;
     private String password, identity = "";
+    String expectedKey = "", verifiedKey = "";
+    boolean savedCredential;
     private final int port;
     private long handle;
+    private boolean remoteUnresponsive;
+    void verifySignaling() {
+        execute(() -> { if (!closed && handle != 0) nVerifySignaling(handle); });
+    }
     private boolean signalReady, joining, started;
     private volatile boolean connected, supportsTextInput;
     final RemotePrivacyScreen privacyScreen = new RemotePrivacyScreen();
@@ -177,7 +184,7 @@ final class NativeSession implements AutoCloseable {
     private void join(String deviceId) {
         if (handle == 0 || joining) return;
         joining = true;
-        if (!nConnect(handle, deviceId, remote, password)) fail(L10n.tr("无法发起远程连接"));
+        if (!nConnect(handle, deviceId, remote, password, expectedKey, savedCredential)) fail(L10n.tr("无法发起远程连接"));
         password = "";
     }
     // Called on arbitrary native callback threads; borrowed payloads were copied by JNI.
@@ -204,14 +211,27 @@ final class NativeSession implements AutoCloseable {
                         if (signalReady && remote.isEmpty()) main.removeCallbacks(timeout);
                         publishSignaling();
                     }
+                    if (connected) return; // ICE and media have an independent lifetime.
                     if (status == 6) fail(L10n.tr("服务器 TLS 证书校验失败"));
                     else if (status == 2) fail(L10n.tr("服务器登录失败，请检查服务器地址和网络"));
-                    else if (status >= 3 && connected) fail(L10n.tr("信令连接中断，请重新连接"));
                     else if (!remote.isEmpty() && (status == 0 || status == 4)) ui(() -> listener.status(L10n.tr("正在连接信令服务器…")));
+                } else if (type == 11 && !connected && remote.equals(event.optString("transmission_id"))) {
+                    remoteUnresponsive = "REMOTE_UNRESPONSIVE".equals(event.optString("error_code"));
+                    if (!remoteUnresponsive) {
+                        String progress = "checking".equals(event.optString("status"))
+                            ? L10n.tr("正在确认设备状态…") : L10n.tr("正在建立远程连接");
+                        ui(() -> listener.status(progress));
+                    }
                 } else if (type == 2) {
                     int status = event.getInt("status");
+                    String detail = event.optString("detail");
+                    if (direct && detail.startsWith("HostKeyChanged:")) {
+                        ui(() -> { listener.hostKeyChanged(expectedKey,detail.substring(15)); close(); });
+                        return;
+                    }
                     if (status == 1) {
                         if (connected) return; // Repeated transport readiness is the same desktop session.
+                        verifiedKey = detail;
                         connected = true; main.removeCallbacks(timeout);
                         nReady(handle,resolutionStore.load(host,port,remote).toString().getBytes(StandardCharsets.UTF_8));
                         audio = new AudioPlayer();
@@ -222,7 +242,12 @@ final class NativeSession implements AutoCloseable {
                     else {
                         String[] reasons = {"", "", "", L10n.tr("连接已断开"), L10n.tr("连接失败"), L10n.tr("远端已关闭连接"),
                                 L10n.tr("远端密码错误"), L10n.tr("找不到该设备 ID"), L10n.tr("远端当前不可用")};
-                        if (direct && status == 4) fail(L10n.tr("IP 直连失败，请检查电脑的直连地址和网络。"));
+                        if (remoteUnresponsive && status == 8) fail(L10n.tr("对端未响应，请确认设备在线后重试。"));
+                        else if (direct && status == 4) {
+                            String[] lines = (detail.isEmpty() ? "IP 直连失败，请检查电脑的直连地址和网络。" : detail).split("\n");
+                            for (int i = 0; i < lines.length; i++) lines[i] = L10n.tr(lines[i]);
+                            fail(String.join("\n", lines));
+                        }
                         else fail(status >= 0 && status < reasons.length ? reasons[status] : L10n.tr("连接已结束"));
                     }
                 } else if (type == 4) {
@@ -277,8 +302,8 @@ final class NativeSession implements AutoCloseable {
     void displayResolution(RemoteDisplayResolutions.Request request){
         execute(()->{if(!connected||!nDisplayResolution(handle,request.displayId,request.displayKey,request.mode.width,request.mode.height,request.id))ui(()->listener.displayResolutionFailed(request.id));});
     }
-    void rememberDisplayResolution(String displayKey,RemoteDisplayResolutions.Mode mode){
-        if(!closed&&connected)resolutionStore.remember(host,port,remote,displayKey,mode);
+    void rememberDisplayResolution(RemoteDisplayResolutions.Display display){
+        if(!closed&&connected)resolutionStore.remember(host,port,remote,display);
     }
     void announcementRequest(JSONObject request,String requestId){
         byte[] bytes=request.toString().getBytes(StandardCharsets.UTF_8);
@@ -388,7 +413,8 @@ final class NativeSession implements AutoCloseable {
     private static native String nGenerateTrustKey();
     private static native String nTrustInfo(String seed, String deviceId);
     static native String directEndpoint(String input);
-    private static native boolean nConnect(long handle, String identity, String remote, String password);
+    static native boolean isDomainEndpoint(String input);
+    private static native boolean nConnect(long handle, String identity, String remote, String password, String expectedKey, boolean saved);
     private static native void nReady(long handle,byte[] displayResolutions);
     private static native void nPointer(long handle, float x, float y, int flag, int wheel);
     private static native void nKey(long handle, int code, boolean down);
@@ -405,5 +431,6 @@ final class NativeSession implements AutoCloseable {
     private static native boolean nSendFile(long handle,String path,byte[] name);
     private static native boolean nPumpFiles(long handle);
     private static native void nSurface(long handle, Surface surface);
+    private static native void nVerifySignaling(long handle);
     private static native void nDestroy(long handle);
 }

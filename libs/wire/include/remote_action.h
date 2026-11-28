@@ -220,6 +220,9 @@ struct RemoteAction {
     VideoCodecStatus vcs;
   };
 
+  // Optional order of pointer events across the motion and reliable streams.
+  uint64_t pointer_sequence = 0;
+
   // Committed UTF-8 text. Kept outside the POD union for automatic ownership.
   std::string text;
   // Optional host information extension, also returned with resolution status.

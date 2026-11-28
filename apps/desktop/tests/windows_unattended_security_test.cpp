@@ -17,6 +17,7 @@ bool Check(bool condition, const char* message) {
 
 int main() {
   using crossdesk::unattended_detail::PreparePrivateDirectory;
+  using crossdesk::unattended_detail::RepairPrivateDirectory;
   if (!Check(crossdesk::IsAdministratorProcess(), "Run this test elevated"))
     return 1;
   const auto root =
@@ -80,7 +81,9 @@ int main() {
                                  SYMBOLIC_LINK_FLAG_DIRECTORY) != FALSE,
              "create directory link") ||
       !Check(!PreparePrivateDirectory(link, false),
-             "reject directory reparse points"))
+             "reject directory reparse points") ||
+      !Check(!RepairPrivateDirectory(link, false),
+             "never repair directory reparse points"))
     return 1;
   std::filesystem::remove(link);
 
@@ -97,11 +100,20 @@ int main() {
       DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, nullptr,
       nullptr, dacl, nullptr);
   LocalFree(descriptor);
+  bool repaired = false;
+  std::string diagnostic;
   if (!Check(result == ERROR_SUCCESS, "make profile permissive") ||
       !Check(!PreparePrivateDirectory(root, false),
              "reject exposed credentials") ||
       !Check(!PreparePrivateDirectory(root, true),
-             "never silently adopt an unsafe profile"))
+             "never silently adopt an unsafe profile") ||
+      !Check(RepairPrivateDirectory(root, false, &diagnostic, &repaired) &&
+                 repaired,
+             "repair trusted-owner directory DACL") ||
+      !Check(PreparePrivateDirectory(root, false),
+             "validate repaired directory") ||
+      !Check(std::filesystem::exists(secret),
+             "preserve existing files across DACL repair"))
     return 1;
   std::cout << "Unattended profile ACL and reparse-point checks passed\n";
 }

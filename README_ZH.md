@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/images/crossdesk-banner.svg" width="420" alt="CrossDesk 标志：图标在左，双色文字在右" />
   <p>轻量、跨平台的远程桌面，支持电脑、浏览器、移动端和终端连接，用桌面墙集中查看与操控多台设备。</p>
-  <p><a href="https://www.crossdesk.cn/">官方网站</a> · <a href="https://github.com/kunkundi/crossdesk/releases">下载客户端</a> · <a href="#build">构建指南</a> · <a href="https://web.crossdesk.cn/">打开 Web 客户端</a> · <a href="README.md">English</a></p>
+  <p><a href="https://www.crossdesk.cn/">官方网站</a> · <a href="https://github.com/kunkundi/crossdesk/releases">下载客户端</a> · <a href="#build">构建指南</a> · <a href="https://web.crossdesk.cn/">打开 Web 客户端</a> · <a href="README.md">English</a> · <a href="README_JA.md">日本語</a></p>
 </div>
 
 <div align="center">
@@ -120,7 +120,7 @@ cd crossdesk
 
 ### 通过局域网 IP 直连
 
-手机或平板可在首页的 **设备 ID 或 IP 地址** 中粘贴被控电脑显示的地址，再输入电脑的 **IP 直连密码**。桌面端操作如下。
+手机或平板可在首页的 **设备 ID、IP 或域名** 中粘贴被控电脑显示的地址，再输入电脑的 **IP 直连密码**。桌面端操作如下。
 
 1. **切换模式。** 使用桌面客户端时，点击左上角模式按钮切换到 **IP 直连模式**。若按钮未显示，在 **设置 → 常规 → 网络连接** 中勾选 **启用 IP 直连** 并保存。
 2. **填写地址。** 在控制端输入被控电脑显示的 `IP:端口`，例如 `192.168.1.20:52888` 或 `[2001:db8::20]:52888`，点击“连接”。只输入 IP 时使用默认端口 **52888**；请以对方界面显示的实际端口为准。
@@ -321,6 +321,7 @@ PC 端可控制和被控制，复用桌面界面与桌面墙；手机和平板�
 ## 无人值守与无头运行
 
 - **Windows：** CrossDesk Service 支持锁屏、登录和安全桌面控制。安装版 Release 开启“开机自启”后，登录前后使用同一本机 ID 和密码；用户登录后客户端自动启动到系统托盘，已有远控连接继续保留。便携版和 Debug 不提供此开关。无显示器时会尝试准备虚拟显示器，并优先恢复已记录的显示分辨率。功能限制及启停命令见 [Windows 无人值守指南](docs/USER_GUIDE.md#windows-service)。
+- **macOS** 在已登录且未连接显示器的 Mac 上，CrossDesk 可自动创建虚拟屏，无需单独安装 Snug。内置虚拟屏的实现改编自 [Snug 2.8.0](https://github.com/zephyr4123/snug/tree/v2.8.0)。
 - **Linux：** 可复用现有桌面，也可创建独立 Xvfb / Xfce 会话，操作方法见 [Linux 无头运行](docs/HEADLESS.md)。
 
 <a id="self-hosting"></a>

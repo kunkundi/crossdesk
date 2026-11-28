@@ -19,6 +19,8 @@ export global GalleryStrings {
         if self.language == 7 { return count + (count == 1 ? " appareil" : " appareils"); }
         if self.language == 8 { return count + (count == 1 ? " dispositivo" : " dispositivos"); }
         if self.language == 9 { return count + (count == 1 ? " dispositivo" : " dispositivos"); }
+        if self.language == 10 { return count + " cihaz"; }
+        if self.language == 11 { return count == 1 ? "מכשיר אחד" : count + " מכשירים"; }
         if self.language == 2 {
             let last-two = mod(count, 100);
             let last = mod(count, 10);

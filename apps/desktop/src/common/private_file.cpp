@@ -5,6 +5,7 @@
 #include <fstream>
 #include <memory>
 #include <stdexcept>
+#include <system_error>
 #include <vector>
 #ifdef _WIN32
 #include <windows.h>
@@ -62,6 +63,24 @@ PSECURITY_DESCRIPTOR PrivateSecurityDescriptor(bool directory) {
 #endif
 }  // namespace
 
+#ifdef _WIN32
+unsigned long ReplaceTemporaryFile(const std::filesystem::path& temporary,
+                                   const std::filesystem::path& target) {
+  if (MoveFileExW(temporary.c_str(), target.c_str(),
+                  MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+    return ERROR_SUCCESS;
+  const DWORD error = GetLastError();
+  if (error == ERROR_ACCESS_DENIED) {
+    HANDLE probe = CreateFileW(target.c_str(), DELETE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+        OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    if (probe != INVALID_HANDLE_VALUE) CloseHandle(probe);
+    else if (GetLastError() == ERROR_SHARING_VIOLATION) return ERROR_SHARING_VIOLATION;
+  }
+  return error;
+}
+#endif
+
 void Write(const std::filesystem::path& path, const std::string& text) {
   const auto temporary = path.parent_path() / (".write-" + RandomSuffix());
 #ifdef _WIN32
@@ -69,17 +88,21 @@ void Write(const std::filesystem::path& path, const std::string& text) {
   SECURITY_ATTRIBUTES security{sizeof(security), descriptor, FALSE};
   HANDLE file = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, &security,
                             CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+  DWORD error = GetLastError();
   LocalFree(descriptor);
-  Require(file != INVALID_HANDLE_VALUE, "Cannot create private file");
+  if (file == INVALID_HANDLE_VALUE)
+    throw std::system_error(error, std::system_category(), "Cannot create private file");
   DWORD written = 0;
   bool ok = WriteFile(file, text.data(), static_cast<DWORD>(text.size()),
                       &written, nullptr) &&
             written == text.size() && FlushFileBuffers(file);
+  error = ok ? ERROR_SUCCESS : GetLastError();
   CloseHandle(file);
-  if (!ok || !MoveFileExW(temporary.c_str(), path.c_str(),
-                          MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+  if (ok) error = ReplaceTemporaryFile(temporary, path);
+  if (!ok || error != ERROR_SUCCESS) {
     DeleteFileW(temporary.c_str());
-    throw std::runtime_error("Cannot persist private file");
+    throw std::system_error(error ? error : ERROR_WRITE_FAULT, std::system_category(),
+                            "Cannot persist private file");
   }
 #else
   int fd =
@@ -113,15 +136,19 @@ FileHandle OpenPrivatePath(const std::filesystem::path& path, DWORD access) {
       path.c_str(), access, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
       OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS,
       nullptr);
-  Require(file != INVALID_HANDLE_VALUE, "Cannot open private path");
+  if (file == INVALID_HANDLE_VALUE)
+    throw std::system_error(GetLastError(), std::system_category(), "Cannot open private path");
   return {file, CloseHandle};
 }
-void CheckPrivateWindowsPath(const std::filesystem::path& path) {
-  auto file = OpenPrivatePath(path, READ_CONTROL);
+FileHandle OpenCheckedPrivatePath(const std::filesystem::path& path, bool directory) {
+  auto file = OpenPrivatePath(path, directory ? READ_CONTROL : (GENERIC_READ | READ_CONTROL));
   BY_HANDLE_FILE_INFORMATION info{};
   Require(GetFileInformationByHandle(file.get(), &info) &&
               !(info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT),
           "private path cannot be a reparse point");
+  Require(((info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) == directory,
+          "Unexpected private path type");
+  if (!directory) Require(info.nNumberOfLinks == 1, "private file must have a single link");
   auto user = CurrentUser();
   auto sid = reinterpret_cast<TOKEN_USER*>(user.data())->User.Sid;
   PSID owner = nullptr;
@@ -170,6 +197,7 @@ void CheckPrivateWindowsPath(const std::filesystem::path& path) {
                                 nullptr, nullptr) == ERROR_SUCCESS,
             "Cannot repair private file owner");
   }
+  return file;
 }
 void CreatePrivateDirectory(const std::filesystem::path& path, bool protect_existing) {
   if (!std::filesystem::exists(path)) {
@@ -209,24 +237,33 @@ void CreatePrivateDirectory(const std::filesystem::path& path, bool protect_exis
                     nullptr, nullptr, acl, nullptr) == ERROR_SUCCESS,
             "Cannot protect cache directory");
   }
-  CheckPrivateWindowsPath(path);
+  OpenCheckedPrivatePath(path, true);
 }
 #endif
 }  // namespace
 
 std::string Read(const std::filesystem::path& path) {
 #ifdef _WIN32
-  CheckPrivateWindowsPath(path);
+  auto file = OpenCheckedPrivatePath(path, false);
+  LARGE_INTEGER size{};
+  Require(GetFileSizeEx(file.get(), &size) && size.QuadPart >= 0 && size.QuadPart <= 64 * 1024,
+          "Invalid private file size");
+  std::string contents(static_cast<size_t>(size.QuadPart), '\0');
+  DWORD read = 0;
+  if (!ReadFile(file.get(), contents.data(), static_cast<DWORD>(contents.size()), &read, nullptr))
+    throw std::system_error(GetLastError(), std::system_category(), "Cannot read private file");
+  Require(read == contents.size(), "Incomplete private file");
+  return contents;
 #else
   struct stat status{};
   Require(lstat(path.c_str(), &status) == 0 && S_ISREG(status.st_mode) &&
               status.st_uid == getuid() && (status.st_mode & 0077) == 0,
           "private file must be owned by this user with mode 0600");
-#endif
   Require(std::filesystem::file_size(path) <= 64 * 1024, "private file too large");
   std::ifstream input(path, std::ios::binary);
   Require(input.good(), "Cannot read private file");
   return {std::istreambuf_iterator<char>(input), {}};
+#endif
 }
 
 void EnsureDirectory(const std::filesystem::path& directory, bool protect_existing) {

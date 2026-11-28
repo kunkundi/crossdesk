@@ -25,6 +25,9 @@
 #include "features/input/remote_mouse_buttons.h"
 #include "screen_sharing_power.h"
 #include "speaker_capture_controller.h"
+#ifdef __APPLE__
+#include "platform/macos/virtual_display/headless_display.h"
+#endif
 
 struct SDL_AudioStream;
 
@@ -80,6 +83,7 @@ public:
   int StopMouseController(bool force = false);
   int StartKeyboardCapturer();
   int StopKeyboardCapturer();
+  void DrainCapturedKeyboardInput();
 
   int DestroyAudioOutput();
   // Serialized by GuiRuntime::audio_delivery_mutex_. Each peer has its own
@@ -106,7 +110,6 @@ public:
 private:
   int InitializeAudioOutput();
   unsigned ReleaseMouseButtonMask(unsigned mask);
-  void DrainCapturedKeyboardInput();
   bool ShouldSendCapturedFrame(std::chrono::steady_clock::time_point now,
                                int fps);
   bool ShouldCaptureCursor() const;
@@ -124,6 +127,9 @@ private:
   ScreenCapturerFactory *screen_capturer_factory_ = nullptr;
   ScreenCapturer *screen_capturer_ = nullptr;
   ScreenSharingPower screen_sharing_power_;
+#ifdef __APPLE__
+  MacHeadlessDisplay headless_display_;
+#endif
   std::atomic<bool> cursor_capture_dirty_{true};
   SpeakerCaptureController speaker_capture_;
   DeviceControllerFactory *device_controller_factory_ = nullptr;

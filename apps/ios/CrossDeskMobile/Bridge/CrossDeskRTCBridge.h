@@ -74,8 +74,12 @@ typedef struct {
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didChangeIdentityStorageError:(BOOL)hasError;
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
+    joinDelivery:(NSString *)status remoteID:(NSString *)remoteID;
+- (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didChangeConnectionState:(CrossDeskConnectionState)state
-                    remoteID:(NSString *)remoteID;
+                    remoteID:(NSString *)remoteID
+                      detail:(NSString *)detail
+    NS_SWIFT_NAME(rtcBridge(_:didChange:remoteID:detail:));
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
     didProvisionIdentity:(NSString *)identity;
 - (void)rtcBridge:(CrossDeskRTCBridge *)bridge
@@ -154,6 +158,7 @@ typedef struct {
 /// are delivered on the main queue so SwiftUI never touches callback threads.
 @interface CrossDeskRTCBridge : NSObject
 + (NSString *)historyEndpoint:(NSString *)host port:(NSInteger)port NS_SWIFT_NAME(historyEndpoint(_:port:));
++ (BOOL)isDomainEndpoint:(NSString *)input NS_SWIFT_NAME(isDomainEndpoint(_:));
 + (nullable NSString *)directEndpoint:(NSString *)input NS_SWIFT_NAME(directEndpoint(_:));
 + (nullable NSDictionary<NSString *, NSString *> *)deviceTrustInfoForDeviceID:(NSString *)deviceID;
 
@@ -185,10 +190,14 @@ typedef struct {
 - (void)sendAnnouncementRequest:(NSData *)request requestID:(NSString *)requestID
     NS_SWIFT_NAME(sendAnnouncementRequest(_:requestID:));
 
-- (void)connectToRemoteID:(NSString *)remoteID password:(NSString *)password
-      displayResolutions:(NSData *)displayResolutions;
+- (void)connectToRemoteID:(NSString *)remoteID
+                 password:(NSString *)password
+              expectedKey:(NSString *)expectedKey
+                    saved:(BOOL)saved
+       displayResolutions:(NSData *)displayResolutions;
 - (void)disconnect;
 // Close both session and signaling peers, including automatic reconnection.
+- (void)verifySignaling;
 - (void)stopNetworking;
 - (void)requestKeyFrame;
 

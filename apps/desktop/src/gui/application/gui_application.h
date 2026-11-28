@@ -57,6 +57,7 @@ private:
   void InitializeModules();
   void InitializeUi();
   void InitializeSystemTray();
+  void PresentInitialMainWindow();
   void ShowMainWindow(const std::string& activation_token = {});
   bool MinimizeMainWindowToTray();
   void BindMainCallbacks(bool gallery_window = false);
@@ -89,6 +90,8 @@ private:
   void DeviceGroupAction(const std::string& action, const std::string& value,
                          bool gallery_window);
   bool SaveDeviceGroups(const std::string& new_group, bool gallery_window);
+  bool RenameGroup(const std::string& old_name, const std::string& new_name,
+                   bool gallery_window);
   bool DeleteGroup(const std::string& name);
   void ReleasePressedInput(bool preserve_local_ui = false);
   void ReleaseControl(bool preserve_local_ui = false);
@@ -141,14 +144,19 @@ private:
   void CloseDisconnectedSessions();
   void ResetPointerMotion();
   std::optional<VideoPoint> MapRemotePointer(RemoteSession& session, float x, float y);
-  void SendPointerInput(int button, int kind, float x, float y);
-  void SendScrollInput(float delta_x, float delta_y, float x, float y);
+  void SyncPointerShift(bool shift);
+  void SendPointerInput(int button, int kind, float x, float y, bool shift);
+  void SendScrollInput(float delta_x, float delta_y, float x, float y, bool shift);
   void SendKeyInput(const std::string &text, bool pressed, bool control,
                     bool alt, bool shift, bool meta);
   void Cleanup();
 
   void OpenFileDialog(const std::string& title,
                       std::function<void(std::string)> completion);
+#if _WIN32
+  void PollReceiveFolderDialog();
+  void CancelReceiveFolderDialog();
+#endif
   bool OpenUrl(const std::string &url);
 
   std::unique_ptr<SlintUi> ui_;

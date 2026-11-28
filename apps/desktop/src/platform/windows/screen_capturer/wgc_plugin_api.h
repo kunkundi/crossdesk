@@ -20,11 +20,15 @@ class ScreenCapturer;
 #endif
 
 extern "C" {
+using CrossDeskWgcReadFrameRate = int (*)(const void* context);
 CROSSDESK_WGC_PLUGIN_API crossdesk::ScreenCapturer*
 CrossDeskCreateWgcCapturer();
 CROSSDESK_WGC_PLUGIN_API void CrossDeskDestroyWgcCapturer(
     crossdesk::ScreenCapturer* capturer);
 // Optional extensions; they do not change ScreenCapturer's virtual ABI.
+CROSSDESK_WGC_PLUGIN_API crossdesk::ScreenCapturer*
+CrossDeskCreateWgcCapturerWithFrameRate(CrossDeskWgcReadFrameRate read_rate,
+                                        const void* context);
 CROSSDESK_WGC_PLUGIN_API int CrossDeskSetWgcCursorCapture(
     crossdesk::ScreenCapturer* capturer, bool enabled);
 CROSSDESK_WGC_PLUGIN_API bool CrossDeskWgcFrameCapturesCursor();

@@ -6,10 +6,13 @@
 #include <optional>
 #include <string>
 
+#include "unattended_security.h"
+
 namespace crossdesk {
 
 // This directory is deliberately separate from every user's GUI profile.
 std::filesystem::path UnattendedDataPath();
+std::filesystem::path UnattendedLogPath();
 // Missing configuration is a successful disabled result; other read failures
 // must not be mistaken for a completed disable operation.
 bool QueryUnattendedEnabled(bool& enabled);
@@ -18,27 +21,17 @@ bool QueryUnattendedPreference(std::optional<bool>& enabled);
 bool IsUnattendedEnabled();
 bool IsSharedIdentityServiceConfigured();
 bool SetUnattendedEnabled(std::optional<bool> enabled);
-bool IsLocalSystemProcess();
-bool IsAdministratorProcess();
 // Reject reparse points, untrusted owners and permissive existing DACLs.
-bool PrepareUnattendedDirectory(bool create);
-// SYSTEM repairs the old host's user-only root ACL before GUI migration.
-bool PrepareUnattendedDirectoryForService();
-namespace unattended_detail {
-// Parameterized only for isolated native ACL tests; production always uses
-// the fixed ProgramData path above.
-bool PreparePrivateDirectory(const std::filesystem::path& root, bool create);
-// Both owner and DACL are restricted to SYSTEM/Administrators, including
-// WRITE_DAC access from a filtered token belonging to the file's creator.
-HANDLE OpenPrivateMachineFile(const std::filesystem::path& root,
-    const std::filesystem::path& path, DWORD access, DWORD sharing,
-    DWORD creation, DWORD flags = FILE_ATTRIBUTE_NORMAL);
-// Write through a protected temporary file, then atomically replace the target.
-bool WritePrivateMachineFile(const std::filesystem::path& root,
-    const std::filesystem::path& path, const std::string& contents);
-}  // namespace unattended_detail
+bool PrepareUnattendedDirectory(bool create, std::string* error = nullptr);
+// Repair a SYSTEM/Administrators-owned unattended directory DACL on a verified
+// non-reparse handle before validating private access.
+bool RepairUnattendedDirectory(bool create, std::string* error = nullptr,
+                               bool* repaired = nullptr);
+// SYSTEM repairs the unattended root ACL before starting or migrating hosts.
+bool PrepareUnattendedDirectoryForService(std::string* error = nullptr,
+                                          bool* repaired = nullptr);
 bool WriteUnattendedStatus(const std::string& identity, bool online,
-                           DWORD session_id);
+                           DWORD session_id, std::string* diagnostic = nullptr);
 std::string ReadUnattendedStatus();
 
 }  // namespace crossdesk

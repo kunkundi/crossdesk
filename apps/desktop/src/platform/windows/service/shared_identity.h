@@ -30,7 +30,7 @@ class SharedHostIdentity {
   static std::unique_ptr<SharedHostIdentity> AttachGui(
       const std::filesystem::path& cache,
       const std::filesystem::path& trusted_devices, bool import_existing,
-      std::string& error);
+      std::string& error, bool& retryable);
   static std::unique_ptr<SharedHostIdentity> AcquireHost(std::string& error);
 
   bool Publish(const std::string& host_config, std::string& error);

@@ -3,6 +3,7 @@
 #include <Windows.Graphics.Capture.Interop.h>
 
 #include <string>
+#include <utility>
 
 #include "rd_log.h"
 
@@ -60,6 +61,8 @@ int WgcSessionImpl::Pause() {
   std::lock_guard locker(lock_);
 
   is_paused_ = true;
+  pending_frame_ = nullptr;
+  repeat_after_ = {};
 
   if (!is_initialized_) {
     LOG_ERROR("AE_NEED_INIT");
@@ -288,7 +291,9 @@ int WgcSessionImpl::StartLocked(bool show_cursor) {
 void WgcSessionImpl::StopLocked() {
   is_running_ = false;
 
-  // if (loop_.joinable()) loop_.join();
+  pending_frame_ = nullptr;
+  repeat_after_ = {};
+  applied_fps_ = 0;
 
   if (capture_framepool_trigger_) capture_framepool_trigger_.revoke();
   if (capture_close_trigger_) capture_close_trigger_.revoke();
@@ -328,137 +333,11 @@ void WgcSessionImpl::OnFrame(
   try {
     auto frame = sender.TryGetNextFrame();
     if (!frame || is_paused_) return;
-    const auto frame_size = frame.ContentSize();
-    if (frame_size.Width <= 0 || frame_size.Height <= 0) return;
-
-    if (GetTickCount64() >= next_hdr_check_tick_) {
-      RefreshHdrInfoLocked();
-    }
-    const auto desired_format = DesiredPoolPixelFormatLocked();
-    const bool want_hdr_pool =
-        (desired_format ==
-         winrt::Windows::Graphics::DirectX::DirectXPixelFormat::
-             R16G16B16A16Float);
-
-    if (frame_size.Width != capture_frame_size_.Width ||
-        frame_size.Height != capture_frame_size_.Height ||
-        want_hdr_pool != pool_uses_hdr_format_) {
-      // ContentSize already describes the new content, while this surface
-      // still belongs to the old pool. Retire it before mapping any pixels.
-      frame.Close();
-      d3d11_texture_mapped_ = nullptr;
-      try {
-        capture_framepool_.Recreate(d3d11_direct_device_, desired_format, 2,
-                                    frame_size);
-        pool_uses_hdr_format_ = want_hdr_pool;
-        if (!pool_uses_hdr_format_) {
-          hdr_tone_mapper_.Reset();
-        }
-      } catch (const winrt::hresult_error& error) {
-        if (want_hdr_pool && IsHdrFramePoolFormatUnsupported(error.code())) {
-          hdr_pool_unsupported_ = true;
-          pool_uses_hdr_format_ = false;
-          hdr_tone_mapper_.Reset();
-          LOG_WARN(
-              "WGC: FP16 frame pool recreate unsupported (hr=0x{:08X}), "
-              "falling back to BGRA8",
-              static_cast<uint32_t>(error.code().value));
-          capture_framepool_.Recreate(
-              d3d11_direct_device_,
-              winrt::Windows::Graphics::DirectX::DirectXPixelFormat::
-                  B8G8R8A8UIntNormalized,
-              2, frame_size);
-        } else {
-          throw;
-        }
-      }
-      capture_frame_size_ = frame_size;
-      return;
-    }
-
-    auto frame_captured =
-        GetDXGIInterfaceFromObject<ID3D11Texture2D>(frame.Surface());
-    ID3D11Texture2D* bgra_source = frame_captured.get();
-    D3D11_TEXTURE2D_DESC desc{};
-    bgra_source->GetDesc(&desc);
-    if (IsHdrDesktopTextureFormat(desc.Format)) {
-      auto d3d_device =
-          GetDXGIInterfaceFromObject<ID3D11Device>(d3d11_direct_device_);
-      bgra_source = hdr_tone_mapper_.ToneMapToBgra8(
-          d3d_device.get(), d3d11_device_context_.get(), bgra_source,
-          hdr_info_);
-      if (!bgra_source) {
-        ReportFrameFailure(E_FAIL);
-        return;
-      }
-      bgra_source->GetDesc(&desc);
-    } else if (hdr_tone_mapper_.HasAllocatedResources()) {
-      hdr_tone_mapper_.Reset();
-    }
-    if (desc.Width != static_cast<UINT>(frame_size.Width) ||
-        desc.Height != static_cast<UINT>(frame_size.Height) ||
-        desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM) {
-      return;
-    }
-    if (d3d11_texture_mapped_) {
-      D3D11_TEXTURE2D_DESC mapped_desc{};
-      d3d11_texture_mapped_->GetDesc(&mapped_desc);
-      if (mapped_desc.Width != desc.Width ||
-          mapped_desc.Height != desc.Height ||
-          mapped_desc.Format != desc.Format) {
-        d3d11_texture_mapped_ = nullptr;
-      }
-    }
-    if (!d3d11_texture_mapped_) {
-      HRESULT tex_hr = CreateMappedTexture(bgra_source);
-      if (FAILED(tex_hr)) {
-        ReportFrameFailure(tex_hr);
-        return;
-      }
-    }
-
-    d3d11_device_context_->CopyResource(d3d11_texture_mapped_.get(),
-                                        bgra_source);
-
-    D3D11_MAPPED_SUBRESOURCE map_result;
-    HRESULT hr = d3d11_device_context_->Map(
-        d3d11_texture_mapped_.get(), 0, D3D11_MAP_READ,
-        0 /*coz we use CreateFreeThreaded, so we cant use flags
-             D3D11_MAP_FLAG_DO_NOT_WAIT*/
-        ,
-        &map_result);
-    if (FAILED(hr)) {
-      ReportFrameFailure(hr);
-      return;
-    }
-
-    {
-      struct UnmapOnExit {
-        ID3D11DeviceContext* context;
-        ID3D11Texture2D* texture;
-        ~UnmapOnExit() { context->Unmap(texture, 0); }
-      } unmap{d3d11_device_context_.get(), d3d11_texture_mapped_.get()};
-      // copy data from map_result.pData
-      if (map_result.pData && observer_) {
-        CURSORINFO cursor{};
-        cursor.cbSize = sizeof(cursor);
-        const bool cursor_captured =
-            last_show_cursor_ && GetCursorInfo(&cursor) && cursor.hCursor &&
-            (cursor.flags & CURSOR_SHOWING) != 0 &&
-            (target_.is_window ||
-             MonitorFromPoint(cursor.ptScreenPos, MONITOR_DEFAULTTONULL) ==
-                 target_.hmonitor);
-        observer_->OnFrame(
-            wgc_session_frame{static_cast<unsigned int>(frame_size.Width),
-                              static_cast<unsigned int>(frame_size.Height),
-                              map_result.RowPitch,
-                              const_cast<const unsigned char*>(
-                                  (unsigned char*)map_result.pData),
-                              cursor_captured},
-            id_);
-        frame_failure_reported_ = false;
-      }
-    }
+    // Drain every arrival so the pool can publish the final desktop update.
+    // Only the newest surface needs CPU readback on the next sampling tick.
+    const bool wake = !pending_frame_;
+    pending_frame_ = std::move(frame);
+    if (wake && observer_) observer_->FrameAvailable();
   } catch (const winrt::hresult_error& error) {
     ReportFrameFailure(error.code());
   } catch (...) {
@@ -466,7 +345,175 @@ void WgcSessionImpl::OnFrame(
   }
 }
 
+bool WgcSessionImpl::Sample(int fps) {
+  std::lock_guard locker(lock_);
+  if (!is_running_) return false;
+  if (applied_fps_ != fps) {
+    applied_fps_ = fps;
+#ifdef ____x_ABI_CWindows_CGraphics_CCapture_CIGraphicsCaptureSession5_INTERFACE_DEFINED__
+    // On older SDKs and runtimes the sampling thread still limits readback.
+    using ABI::Windows::Graphics::Capture::IGraphicsCaptureSession5;
+    if (auto session = capture_session_.try_as<IGraphicsCaptureSession5>()) {
+      const HRESULT hr = session->put_MinUpdateInterval({10'000'000LL / fps});
+      if (FAILED(hr))
+        LOG_DEBUG("WGC: native frame interval unavailable, hr={}", static_cast<int>(hr));
+    }
+#endif
+  }
+  if (is_paused_) return false;
+  try {
+    auto frame = std::exchange(pending_frame_, nullptr);
+    if (!frame) {
+      // Slower viewers can skip the last update from a shared 60 FPS stream.
+      if (repeat_after_ != std::chrono::steady_clock::time_point{} &&
+          std::chrono::steady_clock::now() >= repeat_after_) {
+        repeat_after_ = {};
+        if (observer_) observer_->RepeatFrame(id_);
+      }
+    } else {
+      repeat_after_ = {};
+      ReadFrameLocked(frame);
+    }
+  } catch (const winrt::hresult_error& error) {
+    ReportFrameFailure(error.code());
+  } catch (...) {
+    ReportFrameFailure(E_FAIL);
+  }
+  return repeat_after_ != std::chrono::steady_clock::time_point{};
+}
+
+void WgcSessionImpl::ReadFrameLocked(
+    const winrt::Windows::Graphics::Capture::Direct3D11CaptureFrame& frame) {
+  const auto frame_size = frame.ContentSize();
+  if (frame_size.Width <= 0 || frame_size.Height <= 0) return;
+
+  if (GetTickCount64() >= next_hdr_check_tick_) {
+    RefreshHdrInfoLocked();
+  }
+  const auto desired_format = DesiredPoolPixelFormatLocked();
+  const bool want_hdr_pool =
+      (desired_format ==
+       winrt::Windows::Graphics::DirectX::DirectXPixelFormat::
+           R16G16B16A16Float);
+
+  if (frame_size.Width != capture_frame_size_.Width ||
+      frame_size.Height != capture_frame_size_.Height ||
+      want_hdr_pool != pool_uses_hdr_format_) {
+    // ContentSize already describes the new content, while this surface
+    // still belongs to the old pool. Retire it before mapping any pixels.
+    frame.Close();
+    d3d11_texture_mapped_ = nullptr;
+    try {
+      capture_framepool_.Recreate(d3d11_direct_device_, desired_format, 2,
+                                  frame_size);
+      pool_uses_hdr_format_ = want_hdr_pool;
+      if (!pool_uses_hdr_format_) {
+        hdr_tone_mapper_.Reset();
+      }
+    } catch (const winrt::hresult_error& error) {
+      if (want_hdr_pool && IsHdrFramePoolFormatUnsupported(error.code())) {
+        hdr_pool_unsupported_ = true;
+        pool_uses_hdr_format_ = false;
+        hdr_tone_mapper_.Reset();
+        LOG_WARN(
+            "WGC: FP16 frame pool recreate unsupported (hr=0x{:08X}), "
+            "falling back to BGRA8",
+            static_cast<uint32_t>(error.code().value));
+        capture_framepool_.Recreate(
+            d3d11_direct_device_,
+            winrt::Windows::Graphics::DirectX::DirectXPixelFormat::
+                B8G8R8A8UIntNormalized,
+            2, frame_size);
+      } else {
+        throw;
+      }
+    }
+    capture_frame_size_ = frame_size;
+    return;
+  }
+
+  auto frame_captured =
+      GetDXGIInterfaceFromObject<ID3D11Texture2D>(frame.Surface());
+  ID3D11Texture2D* bgra_source = frame_captured.get();
+  D3D11_TEXTURE2D_DESC desc{};
+  bgra_source->GetDesc(&desc);
+  if (IsHdrDesktopTextureFormat(desc.Format)) {
+    auto d3d_device =
+        GetDXGIInterfaceFromObject<ID3D11Device>(d3d11_direct_device_);
+    bgra_source = hdr_tone_mapper_.ToneMapToBgra8(
+        d3d_device.get(), d3d11_device_context_.get(), bgra_source, hdr_info_);
+    if (!bgra_source) {
+      ReportFrameFailure(E_FAIL);
+      return;
+    }
+    bgra_source->GetDesc(&desc);
+  } else if (hdr_tone_mapper_.HasAllocatedResources()) {
+    hdr_tone_mapper_.Reset();
+  }
+  if (desc.Width != static_cast<UINT>(frame_size.Width) ||
+      desc.Height != static_cast<UINT>(frame_size.Height) ||
+      desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM) {
+    return;
+  }
+  if (d3d11_texture_mapped_) {
+    D3D11_TEXTURE2D_DESC mapped_desc{};
+    d3d11_texture_mapped_->GetDesc(&mapped_desc);
+    if (mapped_desc.Width != desc.Width || mapped_desc.Height != desc.Height ||
+        mapped_desc.Format != desc.Format) {
+      d3d11_texture_mapped_ = nullptr;
+    }
+  }
+  if (!d3d11_texture_mapped_) {
+    HRESULT tex_hr = CreateMappedTexture(bgra_source);
+    if (FAILED(tex_hr)) {
+      ReportFrameFailure(tex_hr);
+      return;
+    }
+  }
+
+  d3d11_device_context_->CopyResource(d3d11_texture_mapped_.get(),
+                                      bgra_source);
+  frame.Close();
+
+  D3D11_MAPPED_SUBRESOURCE map_result{};
+  HRESULT hr = d3d11_device_context_->Map(d3d11_texture_mapped_.get(), 0,
+                                          D3D11_MAP_READ, 0, &map_result);
+  if (FAILED(hr)) {
+    ReportFrameFailure(hr);
+    return;
+  }
+
+  {
+    struct UnmapOnExit {
+      ID3D11DeviceContext* context;
+      ID3D11Texture2D* texture;
+      ~UnmapOnExit() { context->Unmap(texture, 0); }
+    } unmap{d3d11_device_context_.get(), d3d11_texture_mapped_.get()};
+    if (map_result.pData && observer_) {
+      CURSORINFO cursor{};
+      cursor.cbSize = sizeof(cursor);
+      const bool cursor_captured =
+          last_show_cursor_ && GetCursorInfo(&cursor) && cursor.hCursor &&
+          (cursor.flags & CURSOR_SHOWING) != 0 &&
+          (target_.is_window ||
+           MonitorFromPoint(cursor.ptScreenPos, MONITOR_DEFAULTTONULL) ==
+               target_.hmonitor);
+      observer_->OnFrame(
+          wgc_session_frame{static_cast<unsigned int>(frame_size.Width),
+                            static_cast<unsigned int>(frame_size.Height),
+                            map_result.RowPitch,
+                            static_cast<const unsigned char*>(map_result.pData),
+                            cursor_captured},
+          id_);
+      frame_failure_reported_ = false;
+      repeat_after_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(65);
+    }
+  }
+}
+
 void WgcSessionImpl::ReportFrameFailure(HRESULT error) {
+  pending_frame_ = nullptr;
+  repeat_after_ = {};
   if (frame_failure_reported_) return;
   frame_failure_reported_ = true;
   LOG_WARN("WGC: frame processing failed, hr=0x{:08X}", static_cast<uint32_t>(error));
@@ -476,9 +523,10 @@ void WgcSessionImpl::ReportFrameFailure(HRESULT error) {
 }
 
 void WgcSessionImpl::OnClosed(
-    winrt::Windows::Graphics::Capture::GraphicsCaptureItem const&,
+    winrt::Windows::Graphics::Capture::GraphicsCaptureItem const& sender,
     winrt::Windows::Foundation::IInspectable const&) {
   std::lock_guard locker(lock_);
+  if (!is_running_ || sender != capture_item_) return;
   if (observer_) observer_->OnFrame({}, id_);
   const bool was_running = is_running_;
   const bool was_paused = is_paused_;

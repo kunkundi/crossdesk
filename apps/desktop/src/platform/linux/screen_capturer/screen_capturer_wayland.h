@@ -10,10 +10,13 @@
 struct DBusConnection;
 struct pw_context;
 struct pw_core;
+struct pw_buffer;
+struct spa_source;
 struct pw_stream;
 struct pw_thread_loop;
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -36,6 +39,7 @@ class ScreenCapturerWayland : public ScreenCapturer {
 
  public:
   int Init(const int fps, cb_desktop_data cb) override;
+  void SetCaptureFrameRate(int fps) override { if (fps > 0) fps_ = fps; }
   int Destroy() override;
   int Start(bool show_cursor) override;
   int Stop() override;
@@ -65,6 +69,7 @@ class ScreenCapturerWayland : public ScreenCapturer {
   void CleanupDbus();
   void ClosePortalSession();
   void HandlePipeWireBuffer();
+  void DeliverPendingFrame();
   void UpdateDisplayGeometry(int width, int height);
 
  private:
@@ -80,7 +85,7 @@ class ScreenCapturerWayland : public ScreenCapturer {
   std::atomic<int64_t> pipewire_last_frame_ms_{0};
   int initial_monitor_index_ = 0;
   std::atomic<bool> show_cursor_{true};
-  int fps_ = 60;
+  std::atomic<int> fps_{60};
   cb_desktop_data callback_ = nullptr;
   std::vector<DisplayInfo> display_info_list_;
 
@@ -95,6 +100,11 @@ class ScreenCapturerWayland : public ScreenCapturer {
   pw_core* pw_core_ = nullptr;
   pw_stream* pw_stream_ = nullptr;
   void* stream_listener_ = nullptr;
+  // Owned by the PipeWire loop. Keep the newest image until its deadline,
+  // including the final update before a compositor stops producing buffers.
+  spa_source* delivery_timer_ = nullptr;
+  pw_buffer* pending_frame_ = nullptr;
+  std::chrono::steady_clock::time_point next_delivery_{};
   bool pipewire_initialized_ = false;
   bool pipewire_thread_loop_started_ = false;
   bool pointer_granted_ = false;
@@ -113,8 +123,7 @@ class ScreenCapturerWayland : public ScreenCapturer {
   int logical_height_ = 0;
   std::unique_ptr<LinuxCursorThemeMatcher> cursor_theme_matcher_;
 
-  std::vector<uint8_t> y_plane_;
-  std::vector<uint8_t> uv_plane_;
+  std::vector<uint8_t> nv12_;
 };
 
 }  // namespace crossdesk

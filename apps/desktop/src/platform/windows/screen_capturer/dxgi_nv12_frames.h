@@ -9,6 +9,7 @@
 
 #include <d3d11.h>
 #include <wrl/client.h>
+#include <wrl/implements.h>
 
 #include <array>
 #include <atomic>
@@ -16,10 +17,25 @@
 #include <mutex>
 
 #include "minirtc.h"
+#include "d3d11_capture_feedback.h"
 
 namespace crossdesk {
 
 struct DxgiNv12Scaler;
+
+class IntelCaptureDemand final : public Microsoft::WRL::RuntimeClass<
+    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, minirtc::D3D11CaptureFeedback> {
+ public:
+  void STDMETHODCALLTYPE EncoderStarted() override { ++encoders_; retry_after_ = 0; }
+  void STDMETHODCALLTYPE EncoderStopped() override { --encoders_; }
+  void STDMETHODCALLTYPE RequestCpuFrames() override { retry_after_ = GetTickCount64() + 2000; }
+  bool PrefersCpu() const { return !encoders_.load() && retry_after_.load() != 0; }
+  bool TryNative();
+
+ private:
+  std::atomic<unsigned> encoders_{0};
+  std::atomic<ULONGLONG> retry_after_{0};
+};
 
 class DxgiNv12Frame {
  public:
@@ -42,6 +58,7 @@ class DxgiNv12Frame {
   Microsoft::WRL::ComPtr<IDXGIKeyedMutex> key_;
   Microsoft::WRL::ComPtr<ID3D11VideoProcessorOutputView> output_;
   std::mutex readback_mutex_;
+  Microsoft::WRL::ComPtr<minirtc::D3D11CaptureFeedback> feedback_;
   std::shared_ptr<DxgiNv12Scaler> scaler_;
 };
 

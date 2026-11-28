@@ -162,6 +162,8 @@ struct RemoteSessionView: View {
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 .clipped()
             }
+            // Remote pointer coordinates are measured from the left edge of the video.
+            .environment(\.layoutDirection, .leftToRight)
             // Video and input can use the home indicator area together.
             // Floating controls still use the safe area around the display cutout.
             .ignoresSafeArea(.container, edges: videoEdges)
@@ -1069,6 +1071,8 @@ private struct RemoteComputerKeyboardRow: View {
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
+        // These rows reproduce the physical PC keyboard layout.
+        .environment(\.layoutDirection, .leftToRight)
         .frame(maxHeight: .infinity)
     }
 }

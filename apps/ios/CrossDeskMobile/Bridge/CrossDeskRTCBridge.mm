@@ -97,7 +97,8 @@ struct RTCState {
   std::string pending_remote_id;
   std::vector<crossdesk::DisplayResolutionPreference> preferred_display_resolutions;
   uint64_t pending_controller_generation = 0;
-  std::string pending_password;
+  std::string pending_password, expected_host_key;
+  bool using_saved_password = false;
   std::string transmission_id;
   std::string log_path;
   std::unordered_map<uint32_t, IncomingFile> incoming_files;
@@ -369,6 +370,10 @@ void DispatchMain(dispatch_block_t block) {
 - (void)handleConnectionState:(CrossDeskConnectionState)state
                       remoteID:(const std::string &)remoteID
                     generation:(uint64_t)generation;
+- (void)handleConnectionState:(CrossDeskConnectionState)state
+                     remoteID:(const std::string &)remoteID
+                   generation:(uint64_t)generation
+                       detail:(NSString *)detail;
 - (BOOL)isControllerGenerationActive:(uint64_t)generation;
 - (BOOL)isControllerGenerationCurrent:(uint64_t)generation;
 - (void)handleVideoFrame:(const MiniRtcVideoFrame *)frame
@@ -555,8 +560,13 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
   return [NSString stringWithUTF8String:endpoint.c_str()];
 }
 
++ (BOOL)isDomainEndpoint:(NSString *)input {
+  return DirectConnection::IsDomain(
+      std::string(input.UTF8String ?: "", [input lengthOfBytesUsingEncoding:NSUTF8StringEncoding]));
+}
 + (nullable NSString *)directEndpoint:(NSString *)input {
-  const auto endpoint = DirectConnection::Endpoint(input.UTF8String ?: "");
+  const auto endpoint = DirectConnection::Endpoint(
+      std::string(input.UTF8String ?: "", [input lengthOfBytesUsingEncoding:NSUTF8StringEncoding]));
   return endpoint.empty() ? nil : [NSString stringWithUTF8String:endpoint.c_str()];
 }
 
@@ -881,8 +891,11 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
   });
 }
 
-- (void)connectToRemoteID:(NSString *)remoteID password:(NSString *)password
-      displayResolutions:(NSData *)displayResolutions {
+- (void)connectToRemoteID:(NSString *)remoteID
+                 password:(NSString *)password
+              expectedKey:(NSString *)expectedKey
+                    saved:(BOOL)saved
+       displayResolutions:(NSData *)displayResolutions {
   std::vector<crossdesk::DisplayResolutionPreference> preferences;
   if (displayResolutions.length > 0 && displayResolutions.length <= 65536) {
     const auto *bytes = static_cast<const char *>(displayResolutions.bytes);
@@ -911,6 +924,8 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
     self->_state->preferred_display_resolutions = preferences;
     self->_state->pending_controller_generation = generation;
     self->_state->pending_password = password_value;
+    self->_state->expected_host_key = expectedKey.UTF8String ?: "";
+    self->_state->using_saved_password = saved;
     [self destroyControllerPeer];
     if (identifier.find(':') != std::string::npos ||
         (self->_state->identity_ready && !self->_state->identity_base.empty())) {
@@ -926,6 +941,14 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
     self->_state->pending_remote_id.clear();
     self->_state->pending_password.clear();
     [self destroyControllerPeer];
+  });
+}
+
+- (void)verifySignaling {
+  dispatch_async(_rtcQueue, ^{
+    if (self->_state->identity_peer) MiniRtcVerifySignal(self->_state->identity_peer);
+    if (self->_state->controller_peer && self->_state->pending_remote_id.find(':') == std::string::npos)
+      MiniRtcVerifySignal(self->_state->controller_peer);
   });
 }
 
@@ -1317,18 +1340,23 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
     __weak CrossDeskRTCBridge *owner = self;
     const auto endpoint = _state->pending_remote_id;
     dispatch_queue_t queue = _rtcQueue;
-    auto notify = [owner, queue, endpoint, generation](MiniRtcConnectionStatus status) {
+    auto notify = [owner, queue, endpoint, generation](MiniRtcConnectionStatus status,
+                                                       const std::string &detail) {
+      NSString *info = [NSString stringWithUTF8String:detail.c_str()];
       const std::string remote = endpoint;
       const uint64_t attempt = generation;
       __weak CrossDeskRTCBridge *bridge = owner;
       dispatch_async(queue, ^{
         [bridge handleConnectionState:static_cast<CrossDeskConnectionState>(status)
-                            remoteID:remote generation:attempt];
+                             remoteID:remote
+                           generation:attempt
+                               detail:info];
       });
     };
-    if (!_state->trust || !_state->direct.Start(_state->controller_peer, endpoint,
-                                                _state->pending_password, notify))
-      notify(MiniRtcConnectionFailed);
+    if (!_state->trust ||
+        !_state->direct.Start(_state->controller_peer, endpoint, _state->pending_password,
+                              _state->expected_host_key, _state->using_saved_password, notify))
+      notify(MiniRtcConnectionFailed, {});
     _state->pending_password.clear();
     return;
   }
@@ -1461,7 +1489,8 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
                  generation:(uint64_t)generation {
   // Twenty 8 KiB bodies may expand substantially when JSON-escaped.
   constexpr size_t kMaxSignalMessageSize = 1024 * 1024;
-  if (role != PeerRole::Identity || generation != _identityGeneration.load() ||
+  if ((role == PeerRole::Identity && generation != _identityGeneration.load()) ||
+      (role == PeerRole::Controller && ![self isControllerGenerationActive:generation]) ||
       !message || size == 0 ||
       size > kMaxSignalMessageSize) {
     return;
@@ -1478,6 +1507,22 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
   NSDictionary *object = static_cast<NSDictionary *>(decoded);
   NSString *type = object[@"type"];
   if (![type isKindOfClass:NSString.class]) return;
+
+  if (role == PeerRole::Controller) {
+    NSString *remote = object[@"transmission_id"];
+    NSString *status = nil;
+    if ([type isEqualToString:@"join_delivery"]) status = object[@"status"];
+    if ([type isEqualToString:@"user_join_transmission"] &&
+        [object[@"error_code"] isEqual:@"REMOTE_UNRESPONSIVE"]) status = @"unresponsive";
+    if ([remote isKindOfClass:NSString.class] && [status isKindOfClass:NSString.class]) {
+      DispatchMain(^{
+        if ([self isControllerGenerationActive:generation] &&
+            [self.delegate respondsToSelector:@selector(rtcBridge:joinDelivery:remoteID:)])
+          [self.delegate rtcBridge:self joinDelivery:status remoteID:remote];
+      });
+    }
+    return;
+  }
 
   if ([type isEqualToString:@"announcements"] ||
       [type isEqualToString:@"announcements_changed"]) {
@@ -1579,6 +1624,12 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
 - (void)handleConnectionState:(CrossDeskConnectionState)state
                       remoteID:(const std::string &)remoteID
                     generation:(uint64_t)generation {
+  [self handleConnectionState:state remoteID:remoteID generation:generation detail:@""];
+}
+- (void)handleConnectionState:(CrossDeskConnectionState)state
+                     remoteID:(const std::string &)remoteID
+                   generation:(uint64_t)generation
+                       detail:(NSString *)detail {
   if (![self isControllerGenerationCurrent:generation]) return;
   if (state != CrossDeskConnectionStateFailed &&
       ![self isControllerGenerationActive:generation]) return;
@@ -1628,9 +1679,9 @@ MiniRtcParams MakeParams(const RTCState &state, const std::string &user_id,
     }
     NSString *identifier = [NSString stringWithUTF8String:remote_copy.c_str()];
     id<CrossDeskRTCBridgeDelegate> delegate = self.delegate;
-    if ([delegate respondsToSelector:
-            @selector(rtcBridge:didChangeConnectionState:remoteID:)]) {
-      [delegate rtcBridge:self didChangeConnectionState:state remoteID:identifier];
+    if ([delegate respondsToSelector:@selector(rtcBridge:
+                                         didChangeConnectionState:remoteID:detail:)]) {
+      [delegate rtcBridge:self didChangeConnectionState:state remoteID:identifier detail:detail];
     }
   });
 }

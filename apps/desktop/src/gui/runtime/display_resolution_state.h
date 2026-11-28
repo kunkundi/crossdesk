@@ -41,13 +41,13 @@ struct DisplayResolutionState {
     return false;
   }
 
-  bool Complete(const DisplayResolutionChange &response,
+  std::optional<DisplayResolutionPreference> Complete(const DisplayResolutionChange &response,
                 std::vector<DisplayResolutionInfo> actual) {
     if (response.request_id != requested.request_id ||
         response.display_id != requested.display_id ||
         response.display_key != requested.display_key ||
         !(response.resolution == requested.resolution))
-      return false;
+      return std::nullopt;
     displays = std::move(actual);
     pending = false;
     failed = !response.accepted;
@@ -58,9 +58,10 @@ struct DisplayResolutionState {
                    display.display_key == response.display_key &&
                    display.current == response.resolution;
           });
-      failed = found == displays.end();
+      if (found != displays.end()) return found->CurrentPreference();
+      failed = true;
     }
-    return !failed;
+    return std::nullopt;
   }
 
   void Expire(uint64_t now) {

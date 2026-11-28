@@ -56,6 +56,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		7417A2F8D14F4DFCA2F9A3F2 /* tr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = tr; path = Resources/tr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		BC7DC43512AD400B9DA0E6D8 /* tr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = tr; path = Resources/tr.lproj/Localizable.strings; sourceTree = "<group>"; };
+		A3E1C0D24B7F4E9A8C6D2B10 /* he */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = he; path = Resources/he.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		5F9B2E7C1D4A4C3B9E8F6A21 /* he */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = he; path = Resources/he.lproj/Localizable.strings; sourceTree = "<group>"; };
 		02A713C4B5A1623480A005D6 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = Resources/ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		093D4362C938821DE02B9032 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = Resources/es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		0BB7EC0F2A5A6A313F782DCA /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = Resources/fr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -271,6 +275,8 @@
 				es,
 				"pt-BR",
 				pt,
+				tr,
+				he,
 			);
 			mainGroup = 400000000000000000000001;
 			productRefGroup = 400000000000000000000007 /* Products */;
@@ -394,6 +400,8 @@
 				2EA0435DFAEE685F04391B3B /* es */,
 				1C906F7AD7B701DB61B512D2 /* pt-BR */,
 				B6189259C1AE18847A742A13 /* pt */,
+				BC7DC43512AD400B9DA0E6D8 /* tr */,
+				5F9B2E7C1D4A4C3B9E8F6A21 /* he */,
 			);
 			name = Localizable.strings;
 			sourceTree = "<group>";
@@ -412,6 +420,8 @@
 				093D4362C938821DE02B9032 /* es */,
 				125E3BF17EC58E43B32F2AC3 /* pt-BR */,
 				7DDF05F5D35AB063DB447879 /* pt */,
+				7417A2F8D14F4DFCA2F9A3F2 /* tr */,
+				A3E1C0D24B7F4E9A8C6D2B10 /* he */,
 			);
 			name = InfoPlist.strings;
 			sourceTree = "<group>";

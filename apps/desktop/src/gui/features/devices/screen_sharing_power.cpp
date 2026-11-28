@@ -92,6 +92,7 @@ struct ScreenSharingPower::Impl {
 #elif defined(__APPLE__)
   IOPMAssertionID display = kIOPMNullAssertionID;
   IOPMAssertionID system = kIOPMNullAssertionID;
+  IOPMAssertionID user_activity = kIOPMNullAssertionID;
 
   void Start() {
     const auto reason = CFSTR("CrossDesk is sharing the desktop");
@@ -105,12 +106,22 @@ struct ScreenSharingPower::Impl {
         reason, &display);
     if (result != kIOReturnSuccess)
       LOG_WARN("Cannot prevent display idle sleep: {}", result);
+
+    // The idle-sleep assertion cannot turn an already sleeping display on.
+    // Wake it so ScreenCaptureKit can enumerate it on a locked reconnect.
+    result = IOPMAssertionDeclareUserActivity(
+        CFSTR("CrossDesk remote controller connected"), kIOPMUserActiveRemote,
+        &user_activity);
+    if (result != kIOReturnSuccess)
+      LOG_WARN("Cannot wake the display for screen sharing: {}", result);
   }
 
   void Stop() {
+    if (user_activity != kIOPMNullAssertionID)
+      IOPMAssertionRelease(user_activity);
     if (display != kIOPMNullAssertionID) IOPMAssertionRelease(display);
     if (system != kIOPMNullAssertionID) IOPMAssertionRelease(system);
-    display = system = kIOPMNullAssertionID;
+    user_activity = display = system = kIOPMNullAssertionID;
   }
 #elif defined(__linux__) && !defined(__OHOS__)
   BusConnection session;

@@ -119,7 +119,7 @@ class MobileSession {
       }
       s->Event({{"type", "signal"}, {"controller", controller}, {"status", status},
                 {"generation", s->signal_generation_}, {"id", s->login_.substr(0, s->login_.find('@'))}});
-      if (controller && status >= MiniRtcSignalFailed && status != MiniRtcSignalReconnecting) s->Disconnect("远程会话信令连接失败");
+      if (controller && !s->connected_ && status >= MiniRtcSignalFailed && status != MiniRtcSignalReconnecting) s->Disconnect("远程会话信令连接失败");
     });
   }
   static void SignalMessage(const char* data, size_t size, void* user) {
@@ -127,8 +127,13 @@ class MobileSession {
     const auto value = json::parse(data, data+size, nullptr, false);
     if (!value.is_object()) return;
     Dispatch(user, [value](MobileSession* s, bool controller) {
-      if (controller || !s->online_) return;
       const auto type = value.value("type", "");
+      if (controller) {
+        if (type == "join_delivery" || value.value("error_code", "") == "REMOTE_UNRESPONSIVE")
+          s->Event({{"type", "joinDelivery"}, {"text", value.value("status", "")}}, true);
+        return;
+      }
+      if (!s->online_) return;
       if (type == "announcements" || type == "announcements_changed" || type == "presence" || type == "presence_update")
         s->Event({{"type", "signalMessage"}, {"message", value}, {"generation", s->signal_generation_}});
     });
@@ -138,26 +143,34 @@ class MobileSession {
     if (context->controller && context->owner->direct_.Status(status)) return;
     ReportConnection(status, std::string(id ? id : "", id ? size : 0), user);
   }
-  static void ReportConnection(MiniRtcConnectionStatus status, const std::string& remote, void* user) {
-    Dispatch(user, [status, remote](MobileSession* s, bool controller) {
+  static void ReportConnection(MiniRtcConnectionStatus status,
+                               const std::string& remote, void* user,
+                               const std::string& detail = {}) {
+    Dispatch(user, [status, remote, detail](MobileSession* s, bool controller) {
       if (!controller) {
         // Defense in depth if a server tries to attach a guest to our identity.
         if (status == MiniRtcConnectionConnected && s->identity_)
           MiniRtcDisconnectPeerConnection(s->identity_, s->login_.substr(0,s->login_.find('@')).c_str(), remote.c_str());
         return;
       }
-      s->Event({{"type", "connection"}, {"status", status}}, true);
+      s->Event({{"type", "connection"}, {"status", status}, {"detail", detail}},
+               true);
       if (status == MiniRtcConnectionConnected && !s->connected_) {
-        s->connecting_ = false; s->connected_ = true;
+        s->connecting_ = false;
+        s->connected_ = true;
         auto info = MakeHostInformation("CrossDesk HarmonyOS Mobile", {}, true, s->version_, HostPlatform::HarmonyOS);
         info.i.supports_video_codec_status = true;
         info.preferred_display_resolutions = s->preferred_display_resolutions_;
         const auto message = mobile_controller::DeviceTrustIdentity::Advertise(info.to_json());
         MiniRtcSendReliableDataFrame(s->controller_, message.data(), message.size(), kControlStream);
         FreeRemoteAction(info);
-        RemoteAction audio{}; audio.type = audio_capture; audio.a = !s->muted_; s->Send(audio);
+        RemoteAction audio{};
+        audio.type = audio_capture;
+        audio.a = !s->muted_;
+        s->Send(audio);
         s->audio_.Start();
-      } else if (status >= MiniRtcConnectionDisconnected) s->Disconnect("");
+      } else if (status >= MiniRtcConnectionDisconnected)
+        s->Disconnect("");
     });
   }
   static void Network(const char* id, size_t size, MiniRtcTraversalMode mode, const MiniRtcNetTrafficStats* stats,
@@ -320,10 +333,17 @@ class MobileSession {
         });
       files_->SetDirectory(directory_+"/received");
       if (direct) {
-        if (!direct_.Start(controller_, remote_, password, [context = control_context_.get()](auto status) {
-              ReportConnection(status, {}, context);
-            })) Disconnect("无法发起连接");
+        if (!direct_.Start(controller_, remote_, password,
+                           v.value("expectedKey", ""), v.value("saved", false),
+                           [context = control_context_.get()](
+                               auto status, const std::string& detail) {
+                             ReportConnection(status, {}, context, detail);
+                           }))
+          Disconnect("无法发起连接");
       } else if (MiniRtcInit(controller_)!=0||MiniRtcJoinConnection(controller_,(remote_+"@"+password).c_str())!=0) Disconnect("无法发起连接");
+    } else if (op=="verifySignaling") {
+      if (identity_) MiniRtcVerifySignal(identity_);
+      if (controller_ && remote_.find(':') == std::string::npos) MiniRtcVerifySignal(controller_);
     } else if (op=="disconnect") Disconnect("");
     else if (op=="release") Release();
     else if (op=="signal" && online_ && identity_) {
@@ -485,7 +505,9 @@ void MobileCommand(const std::string& text) {
 std::string MobilePoll() { std::lock_guard lock(mobile_mutex); return mobile?mobile->Poll():"[]"; }
 void MobileShutdown() { std::lock_guard lock(mobile_mutex); mobile.reset(); }
 std::string MobileGenerateTrustKey() { return mobile_controller::DeviceTrustIdentity::GeneratePrivateKey(); }
-std::string MobileDirectEndpoint(const std::string& input) {
+std::string MobileDirectEndpoint(const std::string& input, bool domain_only) {
+  if (domain_only && !mobile_controller::DirectConnection::IsDomain(input))
+    return {};
   return mobile_controller::DirectConnection::Endpoint(input);
 }
 std::string MobileTrustInfo(const std::string& seed, const std::string& device_id) {

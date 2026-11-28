@@ -20,10 +20,10 @@ json DisplayResolutionsJson(const std::vector<DisplayResolutionInfo>& displays) 
     json modes = json::array();
     for (const auto& mode : display.modes)
       modes.push_back({{"width", mode.width}, {"height", mode.height}});
-    result.push_back({{"display_id", display.display_id},
-                      {"display_key", display.display_key},
-                      {"width", display.current.width},
-                      {"height", display.current.height}, {"modes", modes}});
+    auto value = DisplayResolutionPreferenceJson(display.CurrentPreference());
+    value["display_id"] = display.display_id;
+    value["modes"] = std::move(modes);
+    result.push_back(std::move(value));
   }
   return result;
 }
@@ -36,14 +36,6 @@ bool ReadInteger(const json& object, const char* key, int64_t min,
     return false;
   result = value.get<int64_t>();
   return result >= min && result <= max;
-}
-
-bool ReadResolution(const json& object, DisplayResolution& result) {
-  int64_t width = 0, height = 0;
-  if (!ReadInteger(object, "width", 1, 32768, width) ||
-      !ReadInteger(object, "height", 1, 32768, height)) return false;
-  result = {int(width), int(height)};
-  return true;
 }
 
 bool ReadDisplayKey(const json& object, int& id, std::string& key) {
@@ -64,7 +56,8 @@ bool ReadDisplayResolutions(const json& values,
   for (const auto& value : values) {
     DisplayResolutionInfo display;
     if (!ReadDisplayKey(value, display.display_id, display.display_key) ||
-        !ReadResolution(value, display.current)) return false;
+        !ReadResolution(value, display.current) ||
+        !ReadDisplayPixelSize(value, display.pixel_size)) return false;
     if (std::any_of(result.begin(), result.end(), [&](const auto& existing) {
           return existing.display_id == display.display_id;
         })) return false;
@@ -223,6 +216,7 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
                          {"y", action.m.y},
                          {"s", action.m.s},
                          {"flag", action.m.flag}};
+      if (action.pointer_sequence) object["mouse"]["seq"] = action.pointer_sequence;
       break;
     case ControlType::text_input:
       if (action.text.empty() || action.text.size() > kMaxTextInputBytes ||
@@ -389,6 +383,7 @@ bool RemoteAction::FromJson(const std::string& json_string,
         break;
       }
       case ControlType::mouse:
+        output.pointer_sequence = object.at("mouse").value("seq", uint64_t{0});
         output.m.x = object.at("mouse").at("x").get<float>();
         output.m.y = object.at("mouse").at("y").get<float>();
         output.m.s = object.at("mouse").at("s").get<int>();

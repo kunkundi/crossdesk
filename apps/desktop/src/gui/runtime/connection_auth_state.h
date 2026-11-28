@@ -18,6 +18,7 @@ class ConnectionAuthState {
   struct Snapshot {
     bool password_required = false;
     bool validating = false;
+    bool checking_delivery = false, received = false, unresponsive = false;
     bool incorrect_password = false;
     MiniRtcJoinFailureKind error = MiniRtcJoinFailureKind::Unknown;
     int retry_after = 0;
@@ -40,12 +41,19 @@ class ConnectionAuthState {
     std::lock_guard lock(mutex_);
     state_ = {};
     state_.error = failure.kind;
+    state_.unresponsive = reply.value("error_code", "") == "REMOTE_UNRESPONSIVE";
     state_.incorrect_password =
         failure.kind == MiniRtcJoinFailureKind::AuthenticationFailed;
     state_.password_required =
         state_.incorrect_password ||
         failure.kind == MiniRtcJoinFailureKind::PasswordRequired;
     retry_at_ = now + std::chrono::seconds(failure.retry_after);
+  }
+
+  void Delivery(bool received) {
+    std::lock_guard lock(mutex_);
+    state_.checking_delivery = !received;
+    state_.received = received;
   }
 
   void Complete() {

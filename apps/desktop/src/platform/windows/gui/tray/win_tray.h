@@ -13,7 +13,7 @@
 #include <functional>
 #include <string>
 
-#define WM_TRAY_CALLBACK (WM_USER + 1)
+#include "win_tray_icon.h"
 
 namespace crossdesk {
 
@@ -28,6 +28,8 @@ class WinTray {
           HICON icon, const std::wstring& tooltip, int language_index);
   ~WinTray();
 
+  bool IsReady() const;
+  void ProcessEvents();
   bool MinimizeToTray();
   void RemoveTrayIcon();
   bool HandleTrayMessage(MSG* msg);
@@ -38,16 +40,12 @@ class WinTray {
   void OpenSettings();
 
   HWND app_hwnd_;
-  HWND hwnd_message_only_;
-  HICON icon_;
-  std::wstring tip_;
   int language_index_;
-  NOTIFYICONDATA nid_;
-  bool tray_icon_added_ = false;
   std::function<void()> show_window_;
   std::function<void()> hide_window_;
   std::function<void()> open_settings_;
   std::function<void()> exit_app_;
+  WinTrayIconHost icon_host_;
 };
 }  // namespace crossdesk
 #endif

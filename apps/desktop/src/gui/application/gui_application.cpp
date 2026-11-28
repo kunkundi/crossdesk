@@ -1,4 +1,5 @@
 #include "application/gui_application.h"
+#include "application/login_launch_policy.h"
 
 #include <SDL3/SDL.h>
 #include <openssl/rand.h>
@@ -31,6 +32,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -64,11 +66,13 @@
 #if _WIN32
 #include <windows.h>
 
+#include "platform/windows/gui/folder_dialog.h"
 #include "platform/windows/gui/slint_backend.h"
 #include "platform/windows/gui/session_end_observer.h"
 #include "platform/windows/gui/tray/win_tray.h"
 #include "platform/windows/gui/window_icons.h"
 #include "platform/windows/gui/window_taskbar.h"
+#include "platform/windows/runtime_daemon.h"
 #include "platform/windows/service/autostart_control.h"
 #include "platform/windows/service/interactive_desktop.h"
 #include "platform/windows/service/unattended_config.h"
@@ -378,6 +382,24 @@ HICON LoadSlintTrayIcon() {
 
 slint::SharedString UiText(std::string_view value) {
   return slint::SharedString(value);
+}
+
+std::vector<std::string> ReservedGroupNames(int language) {
+  return {localization::Literal("全部设备", language),
+          localization::Literal("未分组", language)};
+}
+
+const char* GroupNameErrorMessage(gallery::Workspace::GroupNameError error) {
+  using Error = gallery::Workspace::GroupNameError;
+  switch (error) {
+    case Error::kOk: return nullptr;
+    case Error::kEmpty: return "请输入分组名称";
+    case Error::kTooLong: return "分组名称过长";
+    case Error::kReserved: return "不能使用系统保留分组名称";
+    case Error::kDuplicate: return "分组名称已存在";
+    case Error::kNotFound: return "此分组已更名或删除，请重新选择。";
+  }
+  return "保存失败，请重试";
 }
 
 slint::SharedString TrustFingerprint(std::string fingerprint) {
@@ -1191,6 +1213,14 @@ struct GuiApplication::SlintUi {
   slint::Timer timer;
   std::shared_ptr<void> file_dialog_lifetime = std::make_shared<int>(0);
   bool file_dialog_open = false;
+#if _WIN32
+  struct ReceiveFolderDialog {
+    bool gallery;
+    std::stop_source stop;
+    std::future<std::string> result;
+  };
+  std::optional<ReceiveFolderDialog> receive_folder_dialog;
+#endif
   std::future<feedback::ExportResult> diagnostic_export;
   std::string diagnostic_saved_path;
   WindowDragState main_drag, gallery_drag;
@@ -1198,6 +1228,7 @@ struct GuiApplication::SlintUi {
   int gallery_native_titlebar_attempts = 0;
   int localized_language = -1;
   std::chrono::steady_clock::time_point last_clipboard_poll{};
+  LoginLaunchTrayPolicy login_launch_tray;
   slint::Timer video_timer;
 #if defined(__APPLE__)
   MacVideoFrameScheduler video_scheduler;
@@ -1264,7 +1295,32 @@ int GuiApplication::Run(bool login_launch) {
         Sleep(250);
       } while (IsUnattendedEnabled() && !IsCurrentSessionUserDesktopActive());
     }
-    if (!PrepareSharedGuiIdentity(true)) return -1;
+    std::string identity_error;
+    if (!PrepareSharedGuiIdentity(true, &identity_error)) {
+      // Startup has already retried transient I/O. A new process would reset
+      // the retry budget and hide a persistent failure.
+      platform::WindowsRuntimeDaemon::Instance().Shutdown(false);
+      if (!login_launch) {
+        std::wstring text =
+            L"CrossDesk could not attach to the shared machine identity.\n\n";
+        if (!identity_error.empty()) {
+          const int needed = MultiByteToWideChar(
+              CP_UTF8, 0, identity_error.data(),
+              static_cast<int>(identity_error.size()), nullptr, 0);
+          if (needed > 0) {
+            std::wstring wide_error(static_cast<size_t>(needed), L'\0');
+            MultiByteToWideChar(CP_UTF8, 0, identity_error.data(),
+                                static_cast<int>(identity_error.size()),
+                                wide_error.data(), needed);
+            text += L"Reason: " + wide_error + L"\n\n";
+          }
+        }
+        text += L"Correct the reported problem, then open CrossDesk again.";
+        MessageBoxW(nullptr, text.c_str(), L"CrossDesk",
+                    MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+      }
+      return -1;
+    }
   }
 #endif
   InitializeTrustedDevices(path_manager_->GetConfigPath() / "trusted-devices");
@@ -1349,14 +1405,18 @@ int GuiApplication::Run(bool login_launch) {
   // The native tray icon is managed outside Slint, so Slint cannot count it
   // when deciding whether the last hidden window should stop the event loop.
   // Keep the loop alive until the tray's explicit Exit action requests quit.
-  if (!login_launch || !MinimizeMainWindowToTray()) {
-    ui_->main->show();
-#if _WIN32
-    ConfigureWindowsWindowIcons(ui_->main->window().win32_hwnd());
-#elif defined(__APPLE__)
-    ConfigureMainWindowChrome(ui_->main->window().appkit_view());
-    PrepareNativeFileDialog();
+#if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
+  const bool tray_supported = ui_->tray != nullptr;
+#else
+  const bool tray_supported = false;
 #endif
+  const bool minimized_to_tray =
+      login_launch && tray_supported && MinimizeMainWindowToTray();
+  if (ui_->login_launch_tray.Begin(login_launch, tray_supported,
+                                   minimized_to_tray,
+                                   std::chrono::steady_clock::now()) ==
+      LoginLaunchTrayPolicy::Action::kShowMainWindow) {
+    PresentInitialMainWindow();
   }
   slint::run_event_loop(slint::EventLoopMode::RunUntilQuit);
   Cleanup();
@@ -1599,6 +1659,20 @@ void GuiApplication::InitializeUi() {
   SyncMainWindow();
 }
 
+void GuiApplication::PresentInitialMainWindow() {
+  if (!ui_) {
+    return;
+  }
+  ui_->login_launch_tray.Cancel();
+  ui_->main->show();
+#if _WIN32
+  ConfigureWindowsWindowIcons(ui_->main->window().win32_hwnd());
+#elif defined(__APPLE__)
+  ConfigureMainWindowChrome(ui_->main->window().appkit_view());
+  PrepareNativeFileDialog();
+#endif
+}
+
 void GuiApplication::ShowMainWindow(const std::string& activation_token) {
 #if !defined(__linux__) || defined(__OHOS__)
   (void)activation_token;
@@ -1606,6 +1680,7 @@ void GuiApplication::ShowMainWindow(const std::string& activation_token) {
   if (!ui_) {
     return;
   }
+  ui_->login_launch_tray.Cancel();
   ui_->main->show();
   ui_->main->window().set_minimized(false);
 #if _WIN32
@@ -1686,6 +1761,12 @@ void GuiApplication::ResetSettingsUi(bool gallery_window) {
   if (!ui_) {
     return;
   }
+#if _WIN32
+  if (ui_->receive_folder_dialog &&
+      ui_->receive_folder_dialog->gallery == gallery_window) {
+    CancelReceiveFolderDialog();
+  }
+#endif
   auto& main = ui_->Window(gallery_window);
   main->set_language_index(language_button_value_);
   main->set_codec_index(video_encode_format_button_value_);
@@ -1726,6 +1807,10 @@ void GuiApplication::ResetSettingsUi(bool gallery_window) {
   main->set_privacy_on_connect_enabled(
       config_center_->IsEnablePrivacyScreen());
   main->set_privacy_local_unlock_allowed(config_center_->IsPrivacyLocalUnlockAllowed());
+#ifdef __APPLE__
+  main->set_auto_virtual_display_available(true);
+  main->set_auto_virtual_display(config_center_->IsAutoVirtualDisplay());
+#endif
 #if defined(_WIN32) || defined(__APPLE__)
   main->set_privacy_black_screen_available(true);
   main->set_privacy_black_screen(config_center_->IsPrivacyBlackScreen());
@@ -1762,15 +1847,16 @@ void GuiApplication::ResetSettingsUi(bool gallery_window) {
 
 void GuiApplication::BindMainCallbacks(bool gallery_window) {
   auto* main = ui_->Window(gallery_window).operator->();
-  main->on_gallery_pointer([this](slint::PointerEventButton button,
+  main->on_gallery_pointer([this, main](slint::PointerEventButton button,
                                  slint::PointerEventKind kind, float x,
                                  float y) {
     if (!ui_->gallery_control_id.empty() && !ui_->gallery_transition.Active())
-      SendPointerInput(static_cast<int>(button), static_cast<int>(kind), x, y);
+      SendPointerInput(static_cast<int>(button), static_cast<int>(kind), x, y,
+                       main->get_gallery_pointer_shift());
   });
-  main->on_gallery_scroll([this](float dx, float dy, float x, float y) {
+  main->on_gallery_scroll([this, main](float dx, float dy, float x, float y) {
     if (!ui_->gallery_control_id.empty() && !ui_->gallery_transition.Active())
-      SendScrollInput(dx, dy, x, y);
+      SendScrollInput(dx, dy, x, y, main->get_gallery_pointer_shift());
   });
   main->on_gallery_key([this](slint::SharedString text, bool pressed,
                              bool ctrl, bool alt, bool shift, bool meta) {
@@ -1831,6 +1917,11 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
     else ui_->recent_group_filter.reset();
     SyncMainWindow();
   });
+  main->on_rename_group(
+      [this, main](slint::SharedString old_name, slint::SharedString new_name) {
+        return RenameGroup(std::string(old_name), std::string(new_name),
+                           main->get_gallery_mode());
+      });
   main->on_delete_group([this](slint::SharedString name) {
     return DeleteGroup(std::string(name));
   });
@@ -2011,6 +2102,9 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
     try {
       const auto [address, port] = lan::ParseEndpoint(Trim(std::string(endpoint)), 52888);
       if (!LanAvailable()) return UiText(lan_error_.empty() ? "Busy" : lan_error_);
+      lan_expected_key_.clear();
+      lan_saved_password_ = false;
+      main->set_lan_key_change("");
       main->set_lan_remote_address(UiText(address));
       main->set_lan_remote_port(UiText(std::to_string(port)));
       main->set_lan_retry_after(lan_->RetryAfter(address, port));
@@ -2020,7 +2114,11 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
         if (recent.lan.address != address ||
             recent.lan.port != port)
           continue;
-        if (recent.remember_password && lan::ValidPassword(recent.password)) {
+        lan_expected_key_ = recent.lan.fingerprint;
+        if (recent.remember_password && lan::ValidPassword(recent.password) &&
+            (!lan::IsDnsName(address) ||
+             lan::ValidFingerprint(lan_expected_key_))) {
+          lan_saved_password_ = true;
           main->set_lan_access_password(UiText(recent.password));
           main->set_lan_remember_password(true);
         }
@@ -2046,6 +2144,7 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
     try {
       ConnectLan(std::string(address), lan::ParsePort(std::string(port)),
                  std::string(password), remember);
+      if (lan_connecting_) main->set_lan_key_change("");
     } catch (const std::exception& error) {
       lan_error_ = error.what();
     }
@@ -2098,15 +2197,39 @@ void GuiApplication::BindMainCallbacks(bool gallery_window) {
       reload_recent_connections_ = true;
     }
   });
-  main->on_browse_save_path([this, main] {
+  main->on_browse_save_path([this, main, gallery_window] {
+    const auto& title =
+        localization::file_transfer_save_path[localization_language_index_];
+#if _WIN32
+    if (exit_ || ui_->file_dialog_open) return;
+    const HWND owner = main->window().win32_hwnd();
+    if (!owner) return;
+    try {
+      std::stop_source stop;
+      std::packaged_task<std::string()> select(
+          [owner, title, initial_folder = std::string(main->get_file_save_path()),
+           token = stop.get_token()] {
+            return ChooseWindowsFolder(owner, title, initial_folder, token);
+          });
+      auto result = select.get_future();
+      std::thread(std::move(select)).detach();
+      ui_->receive_folder_dialog.emplace(gallery_window, std::move(stop),
+                                         std::move(result));
+      main->set_receive_folder_pending(true);
+      ui_->file_dialog_open = true;
+    } catch (const std::system_error& error) {
+      LOG_WARN("Failed to start the Windows folder picker: {}", error.what());
+    }
+#else
+    (void)gallery_window;
     const char* folder = tinyfd_selectFolderDialog(
-        localization::file_transfer_save_path[localization_language_index_]
-            .c_str(),
+        title.c_str(),
         file_transfer_save_path_buf_[0] ? file_transfer_save_path_buf_
                                         : nullptr);
     if (folder) {
       main->set_file_save_path(folder);
     }
+#endif
   });
   BindTrustedDeviceCallbacks(gallery_window);
   main->on_save_settings([this, main] {
@@ -2535,13 +2658,14 @@ void GuiApplication::BindStreamCallbacks(StreamView& view) {
       const DisplayResolutionChange selection{props->selected_display_,
           view.resolution_choices.display_key, view.resolution_choices.modes[index]};
       // Explicitly choosing the current mode also establishes a preference.
-      if (!state.pending && std::any_of(state.displays.begin(), state.displays.end(),
+      const auto current = std::find_if(state.displays.begin(), state.displays.end(),
           [&](const auto& display) {
             return SupportsDisplayResolution(display, selection) &&
                    display.current == selection.resolution;
-          })) {
+          });
+      if (!state.pending && current != state.displays.end()) {
         if (!remote_resolutions_.Remember(props->device_preference_key_,
-                {selection.display_key, selection.resolution}))
+                current->CurrentPreference()))
           LOG_WARN("Could not save remote display resolution");
         return;
       }
@@ -2610,11 +2734,12 @@ void GuiApplication::BindStreamCallbacks(StreamView& view) {
                                   slint::PointerEventKind kind, float x,
                                   float y) {
     if (!AcceptStreamInput(view)) return;
-    SendPointerInput(static_cast<int>(button), static_cast<int>(kind), x, y);
+    SendPointerInput(static_cast<int>(button), static_cast<int>(kind), x, y,
+                     view.window->get_pointer_shift());
   });
   stream->on_scroll_input([this, &view](float dx, float dy, float x, float y) {
     if (!AcceptStreamInput(view)) return;
-    SendScrollInput(dx, dy, x, y);
+    SendScrollInput(dx, dy, x, y, view.window->get_pointer_shift());
   });
   stream->on_key_input([this, &view](slint::SharedString text, bool pressed,
                               bool control, bool alt, bool shift, bool meta) {
@@ -2640,6 +2765,7 @@ void GuiApplication::Tick() {
   }
   PollDiagnosticExport();
 #ifdef _WIN32
+  PollReceiveFolderDialog();
   TickLocalHost();
 #endif
   TickLan();
@@ -2653,6 +2779,15 @@ void GuiApplication::Tick() {
       ui_->main->set_lan_open(false);
       lan_connecting_.reset();
     } else if (lan_connecting_ && lan_connecting_->closing) {
+      const auto& observed = lan_connecting_->observed_host_key;
+      if (!observed.empty()) {
+        ui_->main->set_lan_key_change(
+            UiText(lan_expected_key_ + "\n↓\n" + observed));
+        ui_->main->set_lan_access_password("");
+        lan_expected_key_ = observed;
+        lan_saved_password_ = false;
+        lan_error_ = "HostKeyChanged";
+      }
       lan_connecting_.reset();
     }
     ui_->main->set_lan_connecting(lan_connecting_ != nullptr);
@@ -2819,7 +2954,29 @@ void GuiApplication::Tick() {
   if (ui_->tray) {
     ui_->tray->ProcessEvents();
   }
+#elif defined(_WIN32)
+  if (ui_->tray) {
+    ui_->tray->ProcessEvents();
+  }
 #endif
+  if (ui_->login_launch_tray.pending()) {
+    bool tray_ready_now = false;
+#if _WIN32
+    tray_ready_now = ui_->tray && ui_->tray->IsReady();
+#endif
+    const auto poll_time = std::chrono::steady_clock::now();
+    if (ui_->login_launch_tray.Poll(poll_time, tray_ready_now) ==
+        LoginLaunchTrayPolicy::Action::kRetryMinimizeToTray) {
+      if (ui_->login_launch_tray.CompleteRetry(MinimizeMainWindowToTray(),
+                                               poll_time) ==
+          LoginLaunchTrayPolicy::Action::kShowMainWindow) {
+        LOG_WARN(
+            "System tray did not become ready during login startup; showing "
+            "main window");
+        PresentInitialMainWindow();
+      }
+    }
+  }
   const auto now = std::chrono::steady_clock::now();
   if (now - ui_->last_clipboard_poll >= 250ms) {
     clipboard_.HandleLocalUpdate();
@@ -3586,9 +3743,18 @@ void GuiApplication::SyncMainWindow() {
   if (!recent_groups_changed)
     for (size_t i = 0; i < recent_groups.size(); ++i)
       recent_groups_changed |= old_recent_groups->row_data(i) != recent_groups[i];
-  if (recent_groups_changed)
+  if (recent_groups_changed) {
     ui_->main->set_recent_groups(
         std::make_shared<slint::VectorModel<slint::SharedString>>(recent_groups));
+    for (const auto& window : {ui_->main, ui_->wall}) {
+      if (!window->get_rename_group_open()) continue;
+      const std::string target(window->get_rename_group_target());
+      if (!target.empty() && !ui_->gallery.HasGroup(target)) {
+        window->invoke_invalidate_group_rename(tr_group(
+            GroupNameErrorMessage(gallery::Workspace::GroupNameError::kNotFound)));
+      }
+    }
+  }
   ui_->main->set_recent_group_index(recent_group_index);
 
   // Derive group labels from the shared workspace, including devices with
@@ -3735,6 +3901,12 @@ void GuiApplication::SyncConnectionDialog() {
            : auth.incorrect_password
                ? localization::reinput_password[localization_language_index_]
                : localization::input_password[localization_language_index_];
+  } else if (auth.unresponsive) {
+    text = localization::join_unresponsive[localization_language_index_];
+  } else if (pending && auth.checking_delivery) {
+    text = localization::join_checking[localization_language_index_];
+  } else if (pending && auth.received) {
+    text = localization::join_received[localization_language_index_];
   } else if (auth.error == MiniRtcJoinFailureKind::Throttled) {
     text = localization::connection_auth_throttled[localization_language_index_];
   } else if (auth.error == MiniRtcJoinFailureKind::Busy) {
@@ -4237,7 +4409,14 @@ void GuiApplication::SyncStreamWindow(StreamView& view) {
       : mode == MiniRtcTraversalRelay
           ? localization::connection_mode_relay[localization_language_index_] : "—"));
   stream->set_stats_local_endpoint(UiText(direct ? net.local_endpoint : ""));
-  stream->set_stats_remote_endpoint(UiText(direct ? net.remote_endpoint : ""));
+  std::string remote_endpoint = direct ? net.remote_endpoint : "";
+  const auto& session = props->lan_session_;
+  if (!remote_endpoint.empty() && session &&
+      lan::IsDnsName(session->target.address))
+    remote_endpoint =
+        lan::FormatEndpoint(session->target.address, session->target.port) +
+        " → " + remote_endpoint;
+  stream->set_stats_remote_endpoint(UiText(remote_endpoint));
 
   const auto fps_now = std::chrono::steady_clock::now();
   bool refresh_stats = false;
@@ -4986,6 +5165,9 @@ bool GuiApplication::ValidateSelfHostedSettingsFromUi(bool gallery_window) {
 }
 
 bool GuiApplication::SaveSettingsFromUi(bool gallery_window) {
+#if _WIN32
+  if (ui_->Window(gallery_window)->get_receive_folder_pending()) return false;
+#endif
   const auto previous_server = GetSignalServerSettings(*config_center_);
   const bool saved = PersistSettingsFromUi(gallery_window);
   const bool server_changed = previous_server != GetSignalServerSettings(*config_center_);
@@ -5077,6 +5259,14 @@ bool GuiApplication::PersistSettingsFromUi(bool gallery_window) {
         localization::Literal("无法保存隐私屏解锁设置，请重试。", localization_language_index_)));
     return false;
   }
+#ifdef __APPLE__
+  if (config_center_->SetAutoVirtualDisplay(main->get_auto_virtual_display()) != 0) {
+    if (wall_changed) previous_wall.Save(shared_wall_path);
+    main->set_settings_save_error(UiText(
+        localization::Literal("保存失败，请重试", localization_language_index_)));
+    return false;
+  }
+#endif
   if (main->get_privacy_black_screen_available() &&
       config_center_->SetPrivacyBlackScreen(main->get_privacy_black_screen()) != 0) {
     if (wall_changed) previous_wall.Save(shared_wall_path);
@@ -5487,7 +5677,16 @@ std::optional<VideoPoint> GuiApplication::MapRemotePointer(
   return point;
 }
 
-void GuiApplication::SendPointerInput(int button, int kind, float x, float y) {
+void GuiApplication::SyncPointerShift(bool shift) {
+  if (keyboard_capturer_is_started_ && !keyboard_capturer_uses_window_events_) {
+    // A native Shift edge may already be queued for the next UI tick.
+    devices_.DrainCapturedKeyboardInput();
+  } else {
+    keyboard_.SyncPointerShift(shift);
+  }
+}
+
+void GuiApplication::SendPointerInput(int button, int kind, float x, float y, bool shift) {
   auto props = FindRemoteSession(controlled_remote_id_);
   if (!props || !props->peer_ || !props->control_mouse_) {
     return;
@@ -5533,7 +5732,10 @@ void GuiApplication::SendPointerInput(int button, int kind, float x, float y) {
     return;
   }
 
-  if (kind == 1) ui_->pressed_mouse_buttons.insert(button);
+  if (kind == 1) {
+    SyncPointerShift(shift);
+    ui_->pressed_mouse_buttons.insert(button);
+  }
   if (kind == 2) ui_->pressed_mouse_buttons.erase(button);
   ui_->pointer_x = point->x;
   ui_->pointer_y = point->y;
@@ -5541,7 +5743,7 @@ void GuiApplication::SendPointerInput(int button, int kind, float x, float y) {
 }
 
 void GuiApplication::SendScrollInput(float delta_x, float delta_y, float x,
-                                     float y) {
+                                     float y, bool shift) {
   auto props = FindRemoteSession(controlled_remote_id_);
   if (!props || !props->peer_ || !props->control_mouse_) {
     return;
@@ -5560,6 +5762,7 @@ void GuiApplication::SendScrollInput(float delta_x, float delta_y, float x,
       vertical ? MouseFlag::wheel_vertical : MouseFlag::wheel_horizontal;
   ui_->pointer_x = point->x;
   ui_->pointer_y = point->y;
+  SyncPointerShift(shift);
   SendRemoteInput(action, delta);
 }
 
@@ -5611,6 +5814,35 @@ void GuiApplication::OpenFileDialog(const std::string& title,
   finished(path ? path : "");
 #endif
 }
+
+#if _WIN32
+void GuiApplication::CancelReceiveFolderDialog() {
+  auto& picker = ui_->receive_folder_dialog;
+  if (!picker) return;
+  picker->stop.request_stop();
+  ui_->Window(picker->gallery)->set_receive_folder_pending(false);
+  picker.reset();
+  ui_->file_dialog_open = false;
+}
+
+void GuiApplication::PollReceiveFolderDialog() {
+  auto& picker = ui_->receive_folder_dialog;
+  if (!picker || picker->result.wait_for(0ms) != std::future_status::ready) return;
+
+  auto& window = ui_->Window(picker->gallery);
+  try {
+    const auto path = picker->result.get();
+    if (window->get_settings_open() && !path.empty()) {
+      window->set_file_save_path(UiText(path));
+    }
+  } catch (const std::exception& error) {
+    LOG_WARN("Windows folder selection failed: {}", error.what());
+  }
+  window->set_receive_folder_pending(false);
+  picker.reset();
+  ui_->file_dialog_open = false;
+}
+#endif
 
 void GuiApplication::ExportDiagnosticLogs() {
   if (!ui_ || exit_ || ui_->file_dialog_open || ui_->diagnostic_export.valid()) return;
@@ -5835,6 +6067,7 @@ void GuiApplication::CloseGalleryWindow() {
   need_to_rejoin_ = false;
   ui_->wall->invoke_reset_gallery_transient();
   ui_->wall->set_alias_open(false);
+  ui_->wall->set_rename_group_open(false);
   ui_->wall->set_delete_open(false);
   ui_->wall->set_device_group_open(false);
   ui_->wall->set_self_host_settings_open(false);
@@ -5945,8 +6178,12 @@ bool GuiApplication::AddGalleryDevice(const std::string& input,
         (operation.state == State::Queued || operation.state == State::Running))
       return error("该设备正在连接，请稍候");
 
+  auto target_group = group;
+  const auto validation = ui_->gallery.ResolveAssignmentGroup(
+      target_group, ReservedGroupNames(localization_language_index_));
+  if (const auto* message = GroupNameErrorMessage(validation)) return error(message);
   auto updated = ui_->gallery;
-  updated.Add(id, Trim(group));
+  updated.Add(id, target_group);
   if (!updated.Save(ui_->gallery_path))
     return error("保存失败，请重试");
   ui_->gallery = std::move(updated);
@@ -5985,7 +6222,14 @@ bool GuiApplication::ImportGalleryRecent(const std::string& input_group) {
       ids.emplace_back(device->id);
   }
   if (ids.empty()) return false;
-  const auto group = Trim(input_group);
+  auto group = input_group;
+  const auto validation = ui_->gallery.ResolveAssignmentGroup(
+      group, ReservedGroupNames(localization_language_index_));
+  if (const auto* message = GroupNameErrorMessage(validation)) {
+    ui_->wall->set_gallery_notice(
+        UiText(localization::Literal(message, localization_language_index_)));
+    return false;
+  }
   auto updated = ui_->gallery;
   updated.AddMany(ids, group);
   if (!updated.Save(ui_->gallery_path)) {
@@ -6065,7 +6309,15 @@ bool GuiApplication::SaveDeviceGroups(const std::string& new_group,
     const auto option = *editor.options->row_data(i);
     if (option.selected && !option.name.empty()) names.emplace_back(option.name);
   }
-  if (const auto name = Trim(new_group); !name.empty()) names.push_back(name);
+  auto name = new_group;
+  const auto validation = ui_->gallery.ResolveAssignmentGroup(
+      name, ReservedGroupNames(localization_language_index_));
+  if (const auto* message = GroupNameErrorMessage(validation)) {
+    main->set_device_group_error(
+        UiText(localization::Literal(message, localization_language_index_)));
+    return false;
+  }
+  if (!name.empty()) names.push_back(name);
 
   auto updated = ui_->gallery;
   if (!updated.SetGroups(id, names) || !updated.Save(ui_->gallery_path)) {
@@ -6088,6 +6340,71 @@ bool GuiApplication::SaveDeviceGroups(const std::string& new_group,
   // existing session. Only the explicit wall-add actions do that.
   ui_->gallery_synced = {};
   main->set_device_group_error("");
+  SyncMainWindow();
+  SyncGallery();
+  return true;
+}
+
+bool GuiApplication::RenameGroup(const std::string& old_name,
+                                 const std::string& new_name,
+                                 bool gallery_window) {
+  auto& window = ui_->Window(gallery_window);
+  const auto fail = [&](const char* key) {
+    window->set_rename_group_error(
+        UiText(localization::Literal(key, localization_language_index_)));
+    return false;
+  };
+  const auto trimmed = gallery::Workspace::TrimGroupName(new_name);
+  if ((new_name == old_name || trimmed == old_name) && ui_->gallery.HasGroup(old_name)) {
+    window->set_rename_group_error("");
+    return true;
+  }
+  const auto validation = ui_->gallery.ValidateRenameGroup(
+      old_name, new_name, ReservedGroupNames(localization_language_index_));
+  if (const auto* message = GroupNameErrorMessage(validation)) return fail(message);
+
+  auto updated = ui_->gallery;
+  if (!updated.RenameGroup(old_name, trimmed) ||
+      !updated.Save(ui_->gallery_path)) {
+    return fail("保存失败，请重试");
+  }
+
+  const int wall_index = ui_->wall->get_gallery_group_index();
+  std::string wall_group =
+      wall_index > 0 && wall_index <= int(ui_->gallery.groups.size())
+          ? ui_->gallery.groups[wall_index - 1]
+          : std::string{};
+  if (wall_group == old_name) wall_group = trimmed;
+
+  ui_->gallery = std::move(updated);
+  if (wall_group.empty()) {
+    ui_->wall->set_gallery_group_index(0);
+  } else {
+    const auto found = std::find(ui_->gallery.groups.begin(),
+                                 ui_->gallery.groups.end(), wall_group);
+    ui_->wall->set_gallery_group_index(
+        found == ui_->gallery.groups.end()
+            ? 0
+            : int(found - ui_->gallery.groups.begin()) + 1);
+  }
+  if (ui_->recent_group_filter == old_name)
+    ui_->recent_group_filter = trimmed;
+  if (std::string(ui_->wall->get_gallery_import_group()) == old_name)
+    ui_->wall->set_gallery_import_group(UiText(trimmed));
+
+  // Keep any open device group dialogs in both windows synchronized in place.
+  for (auto& editor : ui_->group_editors) {
+    for (size_t row = 1; row < editor.options->row_count(); ++row) {
+      auto option = *editor.options->row_data(row);
+      if (std::string(option.name) == old_name) {
+        option.name = UiText(trimmed);
+        editor.options->set_row_data(row, option);
+      }
+    }
+  }
+  window->set_rename_group_error("");
+  ui_->gallery_synced = {};
+  SyncMainWindow();
   SyncGallery();
   return true;
 }
@@ -7175,6 +7492,9 @@ void GuiApplication::Cleanup() {
     return;
   }
   ui_->file_dialog_lifetime.reset();
+#if _WIN32
+  CancelReceiveFolderDialog();
+#endif
 #if defined(__APPLE__)
   CancelNativeFileDialog();
 #endif

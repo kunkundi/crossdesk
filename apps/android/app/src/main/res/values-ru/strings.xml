@@ -392,4 +392,23 @@
     <string name="text_7605c1d82eed69a5" formatted="false">"Удалить группу"</string>
     <string name="text_b113e4e040b875a8" formatted="false">"Устройства и история подключений сохранятся."</string>
     <string name="text_f42a1238b44a4858" formatted="false">"Не удалось сохранить. Повторите попытку"</string>
+    <string name="text_88ea96f38f7b9279" formatted="false">"Подтверждение статуса устройства..."</string>
+    <string name="text_64d655aad73dce57" formatted="false">"Удалённое устройство не ответило. Убедитесь, что оно в сети, и повторите попытку."</string>
+    <string name="text_d5770d2b84139ab2" formatted="false">"Установление удаленного соединения"</string>
+    <string name="text_d64a151b4956d033" formatted="false">"Устройство изменилось. Сверьте отпечатки ключей и введите пароль заново."</string>
+    <string name="text_5a220e368fc24cd4" formatted="false">"Подключить новое устройство"</string>
+    <string name="text_62deed99aae5e453" formatted="false">"Скопировать отпечатки"</string>
+    <string name="text_961d96488df18b5e" formatted="false">"Не удалось разрешить имя узла"</string>
+    <string name="text_3765c75d9189fabb" formatted="false">"Истекло время разрешения имени"</string>
+    <string name="text_2169e184b335ba99" formatted="false">"Нет подходящего адреса для прямого подключения"</string>
+    <string name="text_cc2b0ac48f5dd186" formatted="false">"Не удалось подключиться к порту"</string>
+    <string name="text_f984f357f7b1003f" formatted="false">"Недействительный сертификат прямого подключения"</string>
+    <string name="text_777136199c9aa458" formatted="false">"Несовместимый протокол прямого подключения"</string>
+    <string name="text_ffbbac568f2a8d2a" formatted="false">"Проверьте доступность UDP между устройствами"</string>
+    <string name="text_b11b4e9a81701eae" formatted="false">"ID устройства, IP или имя узла"</string>
+    <string name="text_6930740da68525a4" formatted="false">"Введите ID, IP или имя узла"</string>
+    <string name="text_3384f4975b43f9b1" formatted="false">"IP или имя удалённого узла"</string>
+    <string name="text_ff7241ff93bd6907" formatted="false">"Введите IP или имя узла, при желании с портом"</string>
+    <string name="text_f36b579d49cdc4c1" formatted="false">"Введите корректный IP или имя узла"</string>
+    <string name="text_8d6b894fd86867bb" formatted="false">"Проверьте локальную сеть, разрешение локальных имён и права доступа"</string>
 </resources>

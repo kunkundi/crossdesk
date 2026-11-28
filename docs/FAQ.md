@@ -16,6 +16,10 @@
 
 公共服务的兼容性变更也会影响旧客户端；请核对 [Release 说明](https://github.com/kunkundi/crossdesk/releases)，尽量让两端使用兼容的近期版本。
 
+## Mac mini 没有接显示器，如何远程连接？
+
+在已登录的 Mac 上为 CrossDesk 授予录屏权限。「设置」中的「未连接显示器时自动创建虚拟屏」默认开启。只剩 macOS 占位屏或没有显示器时，CrossDesk 会创建 **CrossDesk Virtual Display**，默认分辨率为 1920×1080。连接后，可在控制栏的「设置 → 分辨率」中切换到 2560×1440 或 3840×2160（4K）。已有实体显示器或 Snug 虚拟屏时，CrossDesk 使用现有屏幕。无屏时断开连接会保留虚拟屏供下次连接。接回显示器或关闭该设置后，CrossDesk 会在空闲时撤掉自己创建的屏幕。
+
 ## macOS 有连接但黑屏，或无法操作键鼠
 
 在“系统设置 → 隐私与安全性”中检查 CrossDesk 的屏幕录制与辅助功能权限。更换应用位置或签名、更新开发构建后，可能需要重新授权并重启应用。
@@ -110,6 +114,7 @@ CrossDesk 会自动选择可用的采集方式，并尝试使用随 Windows 安�
 | Cannot control a Windows lock screen | Install/start CrossDesk Service and keep the host client running. See [service commands](../README.md#windows-service). |
 | Android can connect but cannot type a Windows login password | Locking on disconnect does not verify service availability. Check CrossDesk Service, then compare the phone IME with **Computer keyboard** in the remote keyboard panel. Include both client versions, installer/portable edition, and both keyboard results in the report. |
 | Privacy screen does not activate for a mobile connection | Use **Privacy screen** in the native mobile floating menu. Update both clients if the entry is missing. Automatic activation also requires the host setting and a supported user desktop; older or Web controllers connected at the same time may prevent it. Locking on disconnect is separate. |
+| Mac host has no monitor attached | In a signed-in session with Screen Recording permission, **Create a virtual display when no monitor is connected** is on by default. When only the macOS placeholder or no output is available, CrossDesk creates a virtual display at 1920×1080. During a connection, select **Settings → Resolution** in the control bar to switch to 2560×1440 or 3840×2160 (4K). CrossDesk reuses existing displays, including Snug. The managed display remains available between connections and is released when idle after a monitor is attached or the setting is disabled. |
 | Windows host has no monitor attached | CrossDesk automatically selects a capture method and tries the bundled virtual display. Check that CrossDesk Service is installed and running. Unattended mode prefers a saved resolution, otherwise 1920×1080. If the driver is unavailable, resolution and frame rate may be limited. Reconnect after attaching a physical monitor to check recovery. |
 | Removing the bundled virtual display driver | The installer removes a driver installed by CrossDesk. For a portable build, uninstall “USB Mobile Monitor Virtual Display” in Device Manager when it is no longer needed. |
 | Saved password no longer works | Use six case-sensitive ASCII letters or digits. ID password changes require a server connection; wait for confirmation. Direct IP has a separate password that applies immediately after a successful change. Enter the new password on the controller. |

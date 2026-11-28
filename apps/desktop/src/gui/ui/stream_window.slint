@@ -498,6 +498,7 @@ export component StreamWindow inherits Window {
     callback toggle-maximize-stream-window;
     callback close-stream-window;
     callback pointer-input(PointerEventButton, PointerEventKind, length, length);
+    out property <bool> pointer-shift;
     callback scroll-input(length, length, length, length);
     callback key-input(string, bool, bool, bool, bool, bool);
     callback keyboard-focus-changed(bool);
@@ -820,7 +821,7 @@ export component StreamWindow inherits Window {
     }
 
     function route-remote-pointer(button: PointerEventButton, kind: PointerEventKind,
-        x: length, y: length) {
+        x: length, y: length, shift: bool) {
         // Releases and cancellation must not be gated on hit testing. A local
         // popup removing itself on click cannot manufacture a remote release.
         if kind == PointerEventKind.cancel {
@@ -839,6 +840,7 @@ export component StreamWindow inherits Window {
                 root.native-approach-distance = -1px;
                 let already-grabbed = root.remote-pointer-active;
                 input-focus.focus();
+                root.pointer-shift = shift;
                 root.set-remote-button(button, true);
                 root.pointer-input(button, kind, x, y);
                 if !already-grabbed && root.hand-off-control-pointer(x, y, false) {
@@ -853,10 +855,11 @@ export component StreamWindow inherits Window {
         }
     }
 
-    function route-remote-scroll(dx: length, dy: length, x: length, y: length) {
+    function route-remote-scroll(dx: length, dy: length, x: length, y: length, shift: bool) {
         if root.window-active && root.mouse-control-enabled && !root.control-menu-open && !root.awaiting-control-hover
             && !root.is-local-control-area(x, y) {
             root.native-approach-distance = -1px;
+            root.pointer-shift = shift;
             root.scroll-input(dx, dy, x, y);
             if !root.remote-pointer-active { root.hand-off-control-pointer(x, y, false); }
         }
@@ -1223,10 +1226,10 @@ export component StreamWindow inherits Window {
                         }
                     }
                     pointer-event(event) => {
-                        root.route-remote-pointer(event.button, event.kind, self.mouse-x, self.mouse-y);
+                        root.route-remote-pointer(event.button, event.kind, self.mouse-x, self.mouse-y, event.modifiers.shift);
                     }
                     scroll-event(event) => {
-                        root.route-remote-scroll(event.delta-x, event.delta-y, self.mouse-x, self.mouse-y);
+                        root.route-remote-scroll(event.delta-x, event.delta-y, self.mouse-x, self.mouse-y, event.modifiers.shift);
                         accept
                     }
                 }
@@ -1246,12 +1249,12 @@ export component StreamWindow inherits Window {
                     if root.control-drag-pending {
                         root.update-control-drag(event.button, event.kind, self.mouse-x, self.mouse-y);
                     } else {
-                        root.route-remote-pointer(event.button, event.kind, self.mouse-x, self.mouse-y);
+                        root.route-remote-pointer(event.button, event.kind, self.mouse-x, self.mouse-y, event.modifiers.shift);
                     }
                 }
                 scroll-event(event) => {
                     if !root.control-drag-pending {
-                        root.route-remote-scroll(event.delta-x, event.delta-y, self.mouse-x, self.mouse-y);
+                        root.route-remote-scroll(event.delta-x, event.delta-y, self.mouse-x, self.mouse-y, event.modifiers.shift);
                     }
                     accept
                 }

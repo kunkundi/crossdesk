@@ -39,7 +39,7 @@ struct Session {
   Transport::ChannelPtr channel;
   Target target;
   std::string key, session_id, local_id, remote_id, auth_request;
-  std::string password, error;
+  std::string password, error, observed_host_key;
   bool incoming = false;
   uint64_t epoch = 0, receive_seq = 0, send_seq = 0;
   std::chrono::steady_clock::time_point deadline;
@@ -72,7 +72,7 @@ class SessionManager {
     // UI.
     std::function<std::function<Prepared()>(const SessionPtr&)> prepare;
     std::function<void(const SessionPtr&)> attached, connected, closed;
-    std::function<void(const std::string&)> error;
+    std::function<void(const std::string&)> error, diagnostic;
   };
   SessionManager(std::filesystem::path directory, Hooks hooks);
   // Outgoing-only. The caller owns the registered peer and closes it after
@@ -101,7 +101,8 @@ class SessionManager {
   std::string TakeNewPassword();
   int RetryAfter(const std::string& address, unsigned port) const;
   SessionPtr Connect(const std::string& address, unsigned port,
-                     std::string password);
+                     std::string password, const std::string& expected_key = {},
+                     bool saved_password = false);
   void Close(const SessionPtr& session, const std::string& error = {});
   void Tick();
   void Stop();

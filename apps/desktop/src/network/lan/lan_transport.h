@@ -38,8 +38,10 @@ class Transport {
   Listener Listen(const Identity& identity, const std::string& address,
                   unsigned port);
   void StopAccept(uint64_t listener);
-  ChannelPtr Connect(const Target& target);
-  bool Send(const ChannelPtr& channel, std::string message);
+  ChannelPtr Connect(const DialEndpoint& target,
+                     const std::string& expected_key);
+  bool Send(const ChannelPtr& channel, std::string message,
+            bool discard_on_close = false);
   void Authenticated(const ChannelPtr& channel);
   void Close(const ChannelPtr& channel);
   std::vector<Event> Poll();
@@ -48,7 +50,8 @@ class Transport {
     uint64_t id = 0, listener = 0;
     bool incoming = false;
     // Published by Open, immutable thereafter.
-    std::string local_address, remote_address;
+    std::string local_address, remote_address, peer_fingerprint,
+        dial_diagnostic;
 
    private:
     friend class Transport;

@@ -19,6 +19,14 @@ class StableDisplaySlots {
  public:
   void Reset() { identities_.clear(); }
 
+  // In a session that negotiated only Display1, Windows can replace the
+  // only attached output (e.g. DISPLAY1 -> DISPLAY5) on the same desktop.
+  bool BindSoleOutput(const std::string& identity) {
+    if (identities_.size() == 1 && identities_.front() == identity) return false;
+    identities_.assign(1, identity);
+    return true;
+  }
+
   std::vector<int> Update(const std::vector<std::string>& current) {
     for (const auto& identity : current) {
       if (std::find(identities_.begin(), identities_.end(), identity) ==

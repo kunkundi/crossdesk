@@ -25,13 +25,20 @@ namespace crossdesk {
 inline DisplayResolution MacDisplayResolution(CGDisplayModeRef mode) {
   if (!mode)
     return {};
-  // Desktop dimensions, matching macOS scaled resolutions. Pixel dimensions
-  // can be twice these values on Retina displays and belong to capture only.
+  // Desktop dimensions shown in the resolution picker.
   const auto width = CGDisplayModeGetWidth(mode);
   const auto height = CGDisplayModeGetHeight(mode);
   if (width > 32768 || height > 32768)
     return {};
   return {int(width), int(height)};
+}
+
+inline std::optional<DisplayResolution> MacDisplayPixelSize(CGDisplayModeRef mode) {
+  if (!mode) return std::nullopt;
+  const auto width = CGDisplayModeGetPixelWidth(mode);
+  const auto height = CGDisplayModeGetPixelHeight(mode);
+  if (!width || !height || width > 32768 || height > 32768) return std::nullopt;
+  return DisplayResolution{int(width), int(height)};
 }
 
 inline bool ResolveMacResolutionDisplay(const DisplayInfo &display,
@@ -82,7 +89,8 @@ public:
   MacResolutionModes(const MacResolutionModes &) = delete;
   MacResolutionModes &operator=(const MacResolutionModes &) = delete;
 
-  std::vector<CGDisplayModeRef> Choices() const {
+  std::vector<CGDisplayModeRef> Choices(
+      std::optional<DisplayResolution> pixel_size = std::nullopt) const {
     std::vector<CGDisplayModeRef> result;
     const auto current_size = MacDisplayResolution(current);
     if (!modes_ || !ValidDisplayResolution(current_size))
@@ -101,13 +109,15 @@ public:
     };
     std::map<std::pair<int, int>, CGDisplayModeRef> unique;
     const auto current_key = std::make_pair(current_size.width, current_size.height);
-    unique.emplace(current_key, current);
+    const bool include_current = !pixel_size || MacDisplayPixelSize(current) == pixel_size;
+    if (include_current) unique.emplace(current_key, current);
     for (CFIndex index = 0; index < CFArrayGetCount(modes_); ++index) {
       auto mode = static_cast<CGDisplayModeRef>(
           const_cast<void *>(CFArrayGetValueAtIndex(modes_, index)));
       const auto size = MacDisplayResolution(mode);
       const auto flags = CGDisplayModeGetIOFlags(mode);
-      if (!ValidDisplayResolution(size) ||
+      if ((pixel_size && !(MacDisplayPixelSize(mode) == pixel_size)) ||
+          !ValidDisplayResolution(size) ||
           !CGDisplayModeIsUsableForDesktopGUI(mode) ||
           (flags & (kDisplayModeInterlacedFlag | kDisplayModeStretchedFlag)))
         continue;
@@ -121,7 +131,7 @@ public:
       result.push_back(it->second);
       if (result.size() == kMaxDisplayResolutionModes) {
         // Keep the active mode selectable even when the wire limit truncates the list.
-        if (it->first > current_key)
+        if (include_current && it->first > current_key)
           result.back() = current;
         break;
       }
@@ -148,6 +158,7 @@ QueryMacDisplayResolutions(const std::vector<DisplayInfo> &displays) {
       continue;
     MacResolutionModes modes(id);
     info.current = MacDisplayResolution(modes.current);
+    info.pixel_size = MacDisplayPixelSize(modes.current);
     if (!ValidDisplayResolution(info.current))
       continue;
     for (auto mode : modes.Choices())
@@ -158,7 +169,8 @@ QueryMacDisplayResolutions(const std::vector<DisplayInfo> &displays) {
 }
 
 inline bool ApplyMacDisplayResolution(const std::vector<DisplayInfo> &displays,
-                                      const DisplayResolutionChange &change) {
+                                      const DisplayResolutionChange &change,
+                                      std::optional<DisplayResolution> pixel_size = std::nullopt) {
   if (change.display_id < 0 || change.display_id >= int(displays.size()) ||
       !ValidDisplayResolution(change.resolution))
     return false;
@@ -168,17 +180,20 @@ inline bool ApplyMacDisplayResolution(const std::vector<DisplayInfo> &displays,
       key != change.display_key)
     return false;
   MacResolutionModes modes(id);
-  for (auto mode : modes.Choices()) {
+  const auto matches = [&](CGDisplayModeRef mode) {
+    return MacDisplayResolution(mode) == change.resolution &&
+           (!pixel_size || MacDisplayPixelSize(mode) == pixel_size);
+  };
+  if (matches(modes.current)) return true;
+  for (auto mode : modes.Choices(pixel_size)) {
     if (!(MacDisplayResolution(mode) == change.resolution))
       continue;
-    if (MacDisplayResolution(modes.current) == change.resolution)
-      return true;
     // A synchronous, application-lifetime change; never persist remote choices
     // in the user's permanent display configuration.
     if (CGDisplaySetDisplayMode(id, mode, nullptr) != kCGErrorSuccess)
       return false;
     CGDisplayModeRef applied = CGDisplayCopyDisplayMode(id);
-    const bool accepted = MacDisplayResolution(applied) == change.resolution;
+    const bool accepted = matches(applied);
     if (applied)
       CGDisplayModeRelease(applied);
     if (!accepted)

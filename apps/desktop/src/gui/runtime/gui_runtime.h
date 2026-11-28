@@ -82,7 +82,8 @@ class GuiRuntime : protected gui_detail::GuiState {
   std::shared_ptr<PeerEventHandler> ControllerEvents(const std::string& id);
   std::vector<std::string> ConnectedControllers();
   std::unique_ptr<lan::SessionManager> lan_;
-  std::string lan_error_;
+  std::string lan_error_, lan_expected_key_;
+  bool lan_saved_password_ = false;
   std::shared_ptr<lan::Session> lan_connecting_;
   bool lan_stopping_ = false;
   bool stopping_ = false;
@@ -123,7 +124,8 @@ class GuiRuntime : protected gui_detail::GuiState {
   bool IsAuthorizedController(const std::string& remote_id);
   void InitializeTrustedDevices(const std::filesystem::path& directory);
   bool PublishSharedIdentity(bool include_config = false);
-  bool PrepareSharedGuiIdentity(bool import_existing);
+  bool PrepareSharedGuiIdentity(bool import_existing,
+                                std::string* error_out = nullptr);
   bool TrustedControllerAllowed(const std::string& remote_id);
   bool BeginControllerTrust(const std::string& remote_id, PeerEventHandler* events);
   void ForgetControllerTrust(const std::string& remote_id, PeerEventHandler* events);
@@ -162,7 +164,8 @@ class GuiRuntime : protected gui_detail::GuiState {
                                     const DisplayResolutionChange& change);
   void HandleDisplayResolutionChanges();
   void RestoreHostDisplayResolutions(bool force = false);
-  bool ApplyHostDisplayResolution(const DisplayResolutionChange& change);
+  bool ApplyHostDisplayResolution(const DisplayResolutionChange& change,
+                                  std::optional<DisplayResolution> pixel_size = std::nullopt);
   void BeginDisplayResolutionStartup(const std::string& id, PeerEventHandler* source);
   void ReceiveDisplayResolutionStartup(const std::string& id, PeerEventHandler* source,
       std::vector<DisplayResolutionPreference> preferences);
@@ -179,7 +182,7 @@ class GuiRuntime : protected gui_detail::GuiState {
       const std::string& remote_id);
   // UI thread: send mapped mouse/keyboard input to the current control target,
   // or every connected session while that target leads DeskHub group control.
-  void SendRemoteInput(const RemoteAction& action, float wheel_delta = 0);
+  void SendRemoteInput(RemoteAction action, float wheel_delta = 0);
   InputOutcome ApplyRemoteInput(const std::string& remote_id, const RemoteAction& action);
   void HandleAutomation(const std::string& remote_id, const nlohmann::json& request);
   DesktopAutomation desktop_automation_;
@@ -188,6 +191,7 @@ class GuiRuntime : protected gui_detail::GuiState {
   bool automation_closing_ = false;
   InputOutcome InjectRemoteMouse(const RemoteAction& action, int display);
   std::string gallery_group_control_id_;
+  uint64_t pointer_sequence_ = 0;  // UI thread, shared by group-control recipients.
 
   void ResetRemoteServiceStatus(RemoteSession& props);
   void ApplyRemoteServiceStatus(RemoteSession& props,

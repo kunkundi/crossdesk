@@ -5,8 +5,8 @@
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Graphics.Capture.h>
 
+#include <chrono>
 #include <mutex>
-#include <thread>
 
 #include "wgc_session.h"
 #include "windows_hdr_capture.h"
@@ -54,6 +54,7 @@ class WgcSessionImpl : public WgcSession {
 
   int Pause() override;
   int Resume() override;
+  bool Sample(int fps) override;
 
  private:
   auto CreateD3D11Device();
@@ -71,6 +72,7 @@ class WgcSessionImpl : public WgcSession {
       winrt::Windows::Foundation::IInspectable const& args);
   void OnClosed(winrt::Windows::Graphics::Capture::GraphicsCaptureItem const&,
                 winrt::Windows::Foundation::IInspectable const&);
+  void ReadFrameLocked(const winrt::Windows::Graphics::Capture::Direct3D11CaptureFrame& frame);
 
   int InitializeLocked();
   void ReportFrameFailure(HRESULT error);
@@ -90,6 +92,9 @@ class WgcSessionImpl : public WgcSession {
   bool is_paused_ = false;
   bool last_show_cursor_ = false;
   bool frame_failure_reported_ = false;
+  int applied_fps_ = 0;
+  std::chrono::steady_clock::time_point repeat_after_{};
+  winrt::Windows::Graphics::Capture::Direct3D11CaptureFrame pending_frame_{nullptr};
 
   wgc_session_observer* observer_ = nullptr;
 
@@ -116,10 +121,6 @@ class WgcSessionImpl : public WgcSession {
       FrameArrived_revoker capture_framepool_trigger_;
   winrt::Windows::Graphics::Capture::GraphicsCaptureItem::Closed_revoker
       capture_close_trigger_;
-
-  // message loop
-  std::thread loop_;
-  HWND hwnd_ = nullptr;
 };
 
 // template <typename T>

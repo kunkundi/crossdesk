@@ -164,11 +164,16 @@ void Signal(MiniRtcSignalStatus status, const char*, size_t, void* user) {
 }
 void SignalMessage(const char* data, size_t size, void* user) {
   auto* ctx = static_cast<CallbackContext*>(user);
-  if (ctx->controller || !data || !size || size > 1024 * 1024) return;
+  if (!data || !size || size > 1024 * 1024) return;
   const auto generation = ctx->owner->signal_generation.load();
   auto message = json::parse(data, data + size, nullptr, false);
   if (!message.is_object() || !message.contains("type") || !message["type"].is_string()) return;
   const auto type = message["type"].get<std::string>();
+  if (ctx->controller) {
+    if (type == "join_delivery" || message.value("error_code", "") == "REMOTE_UNRESPONSIVE")
+      ctx->owner->Event(11, message);
+    return;
+  }
   if (type == "announcements" || type == "announcements_changed") ctx->owner->Event(8, data, size);
   else if (type == "presence" || type == "presence_update") {
     message["generation"] = generation;
@@ -391,8 +396,11 @@ extern "C" JNIEXPORT jstring JNICALL JNI_METHOD(directEndpoint)(JNIEnv* env, jcl
   auto endpoint = mobile_controller::DirectConnection::Endpoint(String(env, input));
   return env->NewStringUTF(endpoint.c_str());
 }
+extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(isDomainEndpoint)(JNIEnv* env, jclass, jstring input) {
+  return mobile_controller::DirectConnection::IsDomain(String(env, input));
+}
 extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nConnect)(
-    JNIEnv* env, jclass, jlong handle, jstring identity, jstring remote, jstring password) {
+    JNIEnv* env, jclass, jlong handle, jstring identity, jstring remote, jstring password, jstring expectedKey, jboolean saved) {
   auto* s = From(handle);
   if (!s || s->controller) return false;
   s->controller_login = "C-" + String(env, identity);
@@ -406,7 +414,9 @@ extern "C" JNIEXPORT jboolean JNICALL JNI_METHOD(nConnect)(
                           kClipboardStream, kFileStream, kFileFeedbackStream}) MiniRtcAddDataStream(s->controller, name, true);
   if (s->remote.find(':') != std::string::npos) {
     return s->direct.Start(s->controller, s->remote, String(env, password),
-        [s](MiniRtcConnectionStatus status) { s->Event(2, {{"status", status}}); });
+        String(env, expectedKey), saved, [s](MiniRtcConnectionStatus status, const std::string& detail) {
+          s->Event(2, {{"status", status}, {"detail", detail}});
+        });
   }
   if (MiniRtcInit(s->controller) != 0) return false;
   const auto join = s->remote + "@" + String(env, password);
@@ -568,4 +578,11 @@ extern "C" JNIEXPORT void JNICALL JNI_METHOD(nSurface)(JNIEnv* env, jclass, jlon
       MiniRtcRequestVideoKeyFrame(s->controller, MakeDisplayStreamId(s->display.load()).c_str());
   }
 }
+extern "C" JNIEXPORT void JNICALL JNI_METHOD(nVerifySignaling)(JNIEnv*, jclass, jlong handle) {
+  auto* session = From(handle);
+  if (session->identity) MiniRtcVerifySignal(session->identity);
+  if (session->controller && session->remote.find(':') == std::string::npos)
+    MiniRtcVerifySignal(session->controller);
+}
+
 extern "C" JNIEXPORT void JNICALL JNI_METHOD(nDestroy)(JNIEnv*, jclass, jlong handle) { delete From(handle); }

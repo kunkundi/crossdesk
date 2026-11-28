@@ -26,6 +26,8 @@ namespace crossdesk {
 // remains responsible for WGC/WinRT and cursor exclusion, as in normal capture.
 class SecureDesktopWgcCapture {
  public:
+  explicit SecureDesktopWgcCapture(const std::atomic<int>* live_frame_rate = nullptr)
+      : live_frame_rate_(live_frame_rate) {}
   ~SecureDesktopWgcCapture() {
     if (stop_) SetEvent(stop_);
     if (worker_.joinable()) worker_.join();
@@ -78,7 +80,7 @@ class SecureDesktopWgcCapture {
 
  private:
   int InitializeWorker(int left, int top, int width, int height, int fps, bool cursor) {
-    capture_ = WgcPluginCapturer::Create();
+    capture_ = WgcPluginCapturer::Create(live_frame_rate_);
     if (!capture_) return -1;
     width_ = width;
     height_ = height;
@@ -150,6 +152,7 @@ class SecureDesktopWgcCapture {
   bool CursorEmbedded() const { return cursor_; }
 
  private:
+  const std::atomic<int>* const live_frame_rate_;
   std::unique_ptr<ScreenCapturer> capture_;
   HDESK desktop_ = nullptr;
   HANDLE stop_ = nullptr;

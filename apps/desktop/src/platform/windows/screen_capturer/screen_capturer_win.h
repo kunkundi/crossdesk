@@ -42,6 +42,7 @@ class ScreenCapturerWin : public ScreenCapturer {
   int Destroy() override;
   int Start(bool show_cursor) override;
   int Stop() override;
+  void SetCaptureFrameRate(int fps) override;
   // Applied on the capture-management thread, including secure-desktop capture.
   void SetCursorCapture(bool enabled) {
     show_cursor_.store(enabled, std::memory_order_relaxed);
@@ -69,6 +70,8 @@ class ScreenCapturerWin : public ScreenCapturer {
   static bool CurrentFrameIsFromSecureDesktop();
 
  private:
+  // Outlives each backend, including replacement sessions after fallback.
+  std::atomic<int> capture_frame_rate_{60};
   std::unique_ptr<ScreenCapturer> impl_;
   // Serializes backend replacement (secure-desktop recovery runs on the
   // management thread) against the public entry points that dereference it.
@@ -146,8 +149,8 @@ class ScreenCapturerWin : public ScreenCapturer {
   void BuildCanonicalFromImpl(std::vector<DisplayInfo> displays);
   void RebuildAliasesFromImpl(bool preserve_backend_slots = false);
   void RestoreMonitor(int monitor_index);
-  bool TryStartBackend(std::unique_ptr<ScreenCapturer> candidate,
-                       int monitor_index);
+  bool PrepareBackend(std::unique_ptr<ScreenCapturer> candidate,
+                      int monitor_index, bool start_capture);
   bool StartPreferredBackend(int monitor_index,
       ScreenCaptureMethod after = ScreenCaptureMethod::Auto);
   void ResetPostSecureDesktopState(bool secure = false);
@@ -169,7 +172,7 @@ class ScreenCapturerWin : public ScreenCapturer {
   // the GDI compatibility backend with a GPU backend on that display.
   void MaybeAdoptVirtualDisplay();
   void ApplyCursorCaptureSetting();
-  void SecureDesktopCaptureLoop();
+  void SecureDesktopCaptureLoop(bool normal_backend_suspended);
   bool GetCurrentCaptureRegion(int* left, int* top, int* width, int* height,
                                std::string* display_name);
   bool StartSecureDesktopSharedCapture(DWORD session_id, int left, int top,

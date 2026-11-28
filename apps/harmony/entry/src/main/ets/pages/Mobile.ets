@@ -80,7 +80,7 @@ struct Mobile {
       case 'document': return this.state.documentTitle; default: return '';
     }
   }
-  private deviceId(value: string): string { return value.replace(/\s/g, '').substring(0, 160); }
+  private deviceId(value: string): string { return /^[0-9 ]+$/.test(value) ? value.replace(/ /g, '') : value; }
   private formatId(value: string): string { return /^[0-9]{1,9}$/.test(value) ? value.replace(/(.{3})(?=.)/g, '$1 ') : value; }
   private policyParagraphs(body: string): string[] {
     const text = body.replace(/\r\n/g, '\n');
@@ -151,7 +151,7 @@ struct Mobile {
     Column({ space: 16 }) {
       Text(tr("远程桌面")).fontSize(20).fontWeight(600).fontColor(MobileTheme.ink).width('100%')
       Row({ space: 10 }) {
-        TextInput({ text: this.formatId(this.state.remote), placeholder: tr("设备 ID 或 IP 地址") }).type(InputType.Normal).maxLength(160)
+        TextInput({ text: this.formatId(this.state.remote), placeholder: tr("设备 ID、IP 或域名") }).type(InputType.Normal)
           .fontSize(20).fontWeight(500).fontColor(MobileTheme.ink).placeholderColor(MobileTheme.secondary)
           .height(54).layoutWeight(1).backgroundColor(MobileTheme.background).borderRadius(12)
           .border({ width: this.idFocused ? 2 : 1, color: this.idFocused ? MobileTheme.blue : MobileTheme.line })
@@ -476,7 +476,7 @@ struct Mobile {
       ForEach(this.state.announcements, (item: AnnouncementItem) => {
         Column({ space: 8 }) {
           Row({ space: 8 }) { if (!item.read) { Row() {}.width(6).height(6).borderRadius(3).backgroundColor(MobileTheme.blue) } Text(item.title).fontSize(17).fontWeight(600).layoutWeight(1) }.width('100%')
-          Text(new Date(item.updated_at * 1000).toLocaleDateString('zh-CN')).fontSize(12).fontColor(MobileTheme.secondary).width('100%')
+          Text(new Date(item.updated_at * 1000).toLocaleDateString()).fontSize(12).fontColor(MobileTheme.secondary).width('100%')
           Text(item.body).fontSize(13).fontColor(MobileTheme.secondary).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
         }.padding(18).width('100%').backgroundColor(Color.White).borderRadius(18).border({ width: 0.5, color: MobileTheme.line })
           .onClick(() => this.openAnnouncement(item)).gesture(LongPressGesture().onAction(() => { this.state.announcement = item; this.state.modal = 'deleteAnnouncement'; }))
@@ -601,7 +601,7 @@ struct Mobile {
           MobileIconButton({ icon: this.showPassword ? 'eye_off' : 'eye', label: this.showPassword ? tr("隐藏密码") : tr("显示密码"), iconExtent: 44,
             action: () => this.showPassword = !this.showPassword })
         }.width('100%').backgroundColor(Color.White).borderRadius(10).border({ width: 0.5, color: MobileTheme.line }).margin({ top: 18 })
-        if (this.state.notice) { Text(this.state.notice).fontSize(13).fontColor(MobileTheme.red).width('100%').margin({ top: 8 }) }
+        if (this.state.notice) { Text(this.state.notice).fontSize(13).fontColor(MobileTheme.red).width('100%').copyOption(CopyOptions.LocalDevice).margin({ top: 8 }) }
         Row({ space: 12 }) {
           Column({ space: 3 }) {
             Text(tr("保存密码")).fontSize(15).fontWeight(600).fontColor(MobileTheme.ink).width('100%')
@@ -610,7 +610,7 @@ struct Mobile {
           Toggle({ type: ToggleType.Switch, isOn: this.state.remember }).selectedColor(MobileTheme.green)
             .onChange((value: boolean) => this.state.remember = value).accessibilityText(tr("保存密码"))
         }.width('100%').margin({ top: 18, bottom: 18 })
-        MobilePrimaryButton({ label: tr("连接"), available: this.state.password.length > 0, action: () => this.controller?.begin(this.state.password) })
+        MobilePrimaryButton({ label: this.state.changedHostKey ? tr("连接新设备") : tr("连接"), available: this.state.password.length > 0, action: () => this.controller?.begin(this.state.password) })
       }.padding({ left: 22, right: 22, top: 10, bottom: 22 }).width('100%')
     }.width(this.viewWidth < 600 ? '100%' : Math.min(520, this.viewWidth - 48)).constraintSize({ maxHeight: this.viewHeight * 0.92 })
       .backgroundColor(MobileTheme.background).borderRadius(24).scrollBar(BarState.Off)
@@ -657,7 +657,7 @@ struct Mobile {
       Column({ space: 14 }) {
         LoadingProgress().width(34).height(34).color(MobileTheme.blue)
         Text(tr("正在连接")).fontSize(20).fontWeight(600).fontColor(MobileTheme.ink)
-        Text(this.state.signal === 1 ? tr("正在建立安全连接…") : this.state.signalText).fontSize(14).fontColor(MobileTheme.secondary).textAlign(TextAlign.Center).constraintSize({ minHeight: 36 })
+        Text(this.state.deliveryStatus === 'checking' ? tr("正在确认设备状态…") : this.state.deliveryStatus === 'received' ? tr("正在建立远程连接") : this.state.signal === 1 ? tr("正在建立安全连接…") : this.state.signalText).fontSize(14).fontColor(MobileTheme.secondary).textAlign(TextAlign.Center).constraintSize({ minHeight: 36 })
       }.padding({ left: 26, right: 26, top: 24, bottom: 20 }).width('100%')
       this.Rule()
       this.Action(tr("取消连接"), () => this.controller?.end(''), true)

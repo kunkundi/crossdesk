@@ -167,6 +167,7 @@ int SessionDeviceManager::InitializeScreenCapturer() {
   if (!owner_.EnsureMacScreenRecordingPermission()) {
     return -1;
   }
+  headless_display_.Update(owner_.config_center_->IsAutoVirtualDisplay(), false);
 #endif
 
   if (!screen_capturer_) {
@@ -184,9 +185,7 @@ int SessionDeviceManager::InitializeScreenCapturer() {
   last_frame_time_ = {};
   next_frame_deadline_ = {};
   ResetCaptureMetrics();
-  // Keep the shared source ready for either live rate. MiniRTC admits 30/60
-  // frames independently per viewer, so switching never restarts native
-  // capture.
+  // Start at the legacy rate until the viewers publish their frame rates.
   const int fps = 60;
   LOG_INFO("Init screen capturer with {} fps", fps);
   SetDisplayInfoList({});
@@ -314,6 +313,9 @@ int SessionDeviceManager::InitializeScreenCapturer() {
   screen_capturer_->Destroy();
   delete screen_capturer_;
   screen_capturer_ = nullptr;
+#ifdef __APPLE__
+  headless_display_.Release();
+#endif
   return -1;
 }
 
@@ -775,11 +777,19 @@ void SessionDeviceManager::UpdateInteractions() {
     std::erase_if(controllers, [](const auto& id) { return id.rfind("lan/", 0) != 0; });
   }
   bool capture_needed = !controllers.empty();
+#ifdef __APPLE__
+  if (screen_capturer_) {
+    headless_display_.Update(owner_.config_center_->IsAutoVirtualDisplay(),
+                             capture_needed || owner_.screen_capturer_is_started_);
+  }
+#endif
 #if defined(__linux__) && !defined(__OHOS__)
   // Preserve a running Wayland portal across reconnects.
   capture_needed = capture_needed || (owner_.screen_capturer_is_started_ &&
       static_cast<ScreenCapturerLinux*>(screen_capturer_)->UsesWaylandPortal());
 #endif
+  if (screen_capturer_ && capture_needed)
+    screen_capturer_->SetCaptureFrameRate(owner_.preview_subscriptions_.CaptureFrameRate(controllers));
   if (capture_needed && !owner_.screen_capturer_is_started_) {
     const auto now = std::chrono::steady_clock::now();
     if (now >= next_capture_start_retry_ &&
@@ -957,6 +967,9 @@ void SessionDeviceManager::DestroyDevices() {
     delete screen_capturer_;
     screen_capturer_ = nullptr;
   }
+#ifdef __APPLE__
+  headless_display_.Release();
+#endif
   if (keyboard_capturer_) {
     delete keyboard_capturer_;
     keyboard_capturer_ = nullptr;

@@ -4,14 +4,21 @@
 
 namespace {
 napi_value DirectEndpoint(napi_env env, napi_callback_info info) {
-  napi_value argument, result;
-  size_t count = 1, size = 0;
-  char input[161]{};
+  napi_value args[2], result;
+  size_t count = 2, size = 0;
+  bool domain_only = false;
+  char input[261]{};
   std::string endpoint;
-  if (napi_get_cb_info(env, info, &count, &argument, nullptr, nullptr) == napi_ok && count == 1 &&
-      napi_get_value_string_utf8(env, argument, nullptr, 0, &size) == napi_ok && size < sizeof(input) &&
-      napi_get_value_string_utf8(env, argument, input, sizeof(input), &size) == napi_ok)
-    endpoint = crossdesk::harmony::MobileDirectEndpoint(std::string(input, size));
+  if (napi_get_cb_info(env, info, &count, args, nullptr, nullptr) == napi_ok &&
+      count >= 1 &&
+      (count == 1 ||
+       napi_get_value_bool(env, args[1], &domain_only) == napi_ok) &&
+      napi_get_value_string_utf8(env, args[0], nullptr, 0, &size) == napi_ok &&
+      size < sizeof(input) &&
+      napi_get_value_string_utf8(env, args[0], input, sizeof(input), &size) ==
+          napi_ok)
+    endpoint = crossdesk::harmony::MobileDirectEndpoint(
+        std::string(input, size), domain_only);
   napi_create_string_utf8(env, endpoint.data(), endpoint.size(), &result);
   return result;
 }

@@ -294,11 +294,9 @@ void PeerEventHandler::OnReceiveDataBuffer(
         props && source_id == props->control_data_label_ && !props->closing_ &&
         props->connection_status_ == MiniRtcConnectionStatus::MiniRtcConnectionConnected) {
       std::lock_guard lock(props->display_resolution_mutex_);
-      if (props->display_resolution_.Complete(remote_action.resolution_change,
-              std::move(remote_action.display_resolutions)) &&
-          !runtime->remote_resolutions_.Remember(props->device_preference_key_,
-              {remote_action.resolution_change.display_key,
-               remote_action.resolution_change.resolution}))
+      const auto confirmed = props->display_resolution_.Complete(
+          remote_action.resolution_change, std::move(remote_action.display_resolutions));
+      if (confirmed && !runtime->remote_resolutions_.Remember(props->device_preference_key_, *confirmed))
         LOG_WARN("Could not save remote display resolution");
     }
     return;
@@ -355,6 +353,8 @@ void PeerEventHandler::OnReceiveDataBuffer(
             bound_peer, wire_id.data(), wire_id.size(),
             static_cast<MiniRtcVideoQuality>(settings.quality), settings.frame_rate,
             static_cast<MiniRtcVideoDegradationPreference>(settings.preference)) == 0;
+    if (remote_action.vs.accepted)
+      runtime->preview_subscriptions_.SetVideoFrameRate(remote_id, settings.frame_rate);
     LOG_INFO(
         "Video settings: source={} request={} quality={} fps={} preference={} "
         "accepted={}",

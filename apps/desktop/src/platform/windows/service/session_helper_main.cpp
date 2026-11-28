@@ -32,7 +32,7 @@
 #include "secure_desktop_dxgi_capture.h"
 #include "secure_desktop_wgc_capture.h"
 #include "capture_backend_policy.h"
-#include "secure_desktop_frame_pacer.h"
+#include "capture_frame_pacer.h"
 #include "secure_desktop_nv12_cache.h"
 #include "service_lifetime.h"
 #include "shutdown_order.h"
@@ -107,6 +107,7 @@ struct SecureSharedCaptureState {
   uint8_t* frame_view = nullptr;
   uint32_t sequence = 0;
   std::atomic<ULONGLONG> last_owner_refresh{0};
+  std::atomic<int> frame_rate{30};
   // Last member: joins/cleans the producer before any captured state is destroyed.
   crossdesk::SharedCaptureLifecycle lifecycle;
 };
@@ -1373,6 +1374,9 @@ std::vector<uint8_t> BuildTextResponseBytes(const std::string& response) {
 // Own the desktop before its capture objects, and release those objects before
 // restoring the original desktop. Shared and pipe capture use the same order.
 struct SecureDesktopCaptureResources {
+  explicit SecureDesktopCaptureResources(const std::atomic<int>* frame_rate = nullptr)
+      : live_frame_rate(frame_rate) {}
+  const std::atomic<int>* const live_frame_rate;
   ScopedInteractiveDesktop desktop;
   // Destroy before releasing the bound desktop, after capture objects.
   std::unique_ptr<crossdesk::PrivacyCursorGuard> cursor_guard;
@@ -1521,7 +1525,7 @@ struct SecureDesktopCaptureResources {
       } else if (backend == crossdesk::ScreenCaptureMethod::Wgc) {
         if (!wgc && !wgc_attempted) {
           wgc_attempted = true;
-          auto candidate = std::make_unique<crossdesk::SecureDesktopWgcCapture>();
+          auto candidate = std::make_unique<crossdesk::SecureDesktopWgcCapture>(live_frame_rate);
           const int result = candidate->Initialize(request.left, request.top, request.width,
                   request.height, request.fps, request.show_cursor);
           if (result == 0) {
@@ -1692,7 +1696,7 @@ void SecureDesktopSharedCaptureThread(SecureSharedCaptureState* capture_state) {
   }
 
   crossdesk::ScopedWindowsPhysicalCoordinates physical_coordinates;
-  crossdesk::SecureDesktopFramePacer pacer(request.fps);
+  crossdesk::CaptureFramePacer pacer;
   std::unique_ptr<SecureDesktopCaptureResources> capture;
   ULONGLONG last_error_tick = 0;
   auto stats_started = std::chrono::steady_clock::now();
@@ -1712,7 +1716,7 @@ void SecureDesktopSharedCaptureThread(SecureSharedCaptureState* capture_state) {
           "converted_frames={}, reused_frames={}",
           frame_count / elapsed, capture_ms / frame_count,
           convert_ms / frame_count, publish_ms / frame_count, request.width,
-          request.height, request.fps, dxgi_frames, dxgi_updates, wgc_frames,
+          request.height, capture_state->frame_rate.load(), dxgi_frames, dxgi_updates, wgc_frames,
           frame_count - dxgi_frames - wgc_frames, converted_frames,
           frame_count - converted_frames);
     }
@@ -1739,7 +1743,7 @@ void SecureDesktopSharedCaptureThread(SecureSharedCaptureState* capture_state) {
       capture.reset();
     }
     if (!capture) {
-      capture = std::make_unique<SecureDesktopCaptureResources>();
+      capture = std::make_unique<SecureDesktopCaptureResources>(&capture_state->frame_rate);
       if (!capture->Initialize(request, true)) {
         const DWORD error = capture->error_code;
         capture.reset();
@@ -1819,7 +1823,7 @@ void SecureDesktopSharedCaptureThread(SecureSharedCaptureState* capture_state) {
     }
 
     if (capture) {
-      pacer.Wait(frame_started);
+      pacer.Wait(frame_started, capture_state->frame_rate.load(std::memory_order_relaxed));
     } else {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
@@ -1923,6 +1927,7 @@ std::vector<uint8_t> PrepareSecureDesktopSharedCapture(
   capture_state->frame_view = frame_view;
   capture_state->sequence = 0;
   capture_state->request = request;
+  capture_state->frame_rate.store(request.fps, std::memory_order_relaxed);
   capture_state->last_owner_refresh.store(GetTickCount64(), std::memory_order_relaxed);
 
   return {};
@@ -1946,12 +1951,14 @@ std::vector<uint8_t> StartSecureDesktopSharedCapture(
       },
       [&] {
         // A timed-out caller may retry a start that already succeeded.
-        const bool reuse = capture_state->request == request &&
+        const bool reuse = capture_state->request.SameSurface(request) &&
             capture_state->request.owner_pid == request.owner_pid &&
             capture_state->request.owner_process &&
             WaitForSingleObject(capture_state->request.owner_process.get(), 0) == WAIT_TIMEOUT;
-        if (reuse)
+        if (reuse) {
+          capture_state->frame_rate.store(request.fps, std::memory_order_relaxed);
           capture_state->last_owner_refresh.store(GetTickCount64(), std::memory_order_relaxed);
+        }
         return reuse;
       });
   if (result == crossdesk::SharedCaptureLifecycle::StartResult::ShuttingDown) {

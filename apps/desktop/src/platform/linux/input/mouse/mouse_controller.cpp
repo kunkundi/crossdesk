@@ -2,6 +2,9 @@
 
 #include <remote_action.h>
 
+#include <algorithm>
+#include <cmath>
+
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/XTest.h>
@@ -86,9 +89,8 @@ unsigned PlatformMouseController::ReleasePressedButtons(unsigned mask) {
     if (!(pressed & bit)) continue;
     bool released = false;
     if (use_wayland_portal_) {
-      RemoteAction up{};
-      up.type = ControlType::mouse;
-      up.m.flag = static_cast<MouseFlag>(2 + i * 2);
+      Mouse up{};
+      up.flag = static_cast<MouseFlag>(2 + i * 2);
       released = SendWaylandMouseCommand(up, 0) == 0;
     } else if (display_) {
       const unsigned buttons[] = {1, 3, 2};
@@ -101,116 +103,72 @@ unsigned PlatformMouseController::ReleasePressedButtons(unsigned mask) {
 }
 
 int PlatformMouseController::SendMouseCommand(RemoteAction remote_action,
-                                      int display_index) {
+                                             int display_index) {
   if (remote_action.type != ControlType::mouse) {
     return 0;
   }
 
-  if (use_wayland_portal_) {
-    const int ret = SendWaylandMouseCommand(remote_action, display_index);
-    if (ret == 0) {
-      const int flag = static_cast<int>(remote_action.m.flag);
-      if (flag >= 1 && flag <= 6) {
-        const unsigned bit = 1u << ((flag - 1) / 2);
-        if (flag & 1) pressed_buttons_ |= bit;
-        else pressed_buttons_ &= ~bit;
-      }
+  const Mouse& mouse = remote_action.m;
+  const int flag = static_cast<int>(mouse.flag);
+  const bool button = flag >= MouseFlag::left_down && flag <= MouseFlag::middle_up;
+  const bool down = button && (flag & 1);
+  if (mouse.flag == MouseFlag::move || button) {
+    // Button packets carry their own position. Hover motion may be lost or
+    // arrive on the other stream after the button.
+    int result;
+    if (use_wayland_portal_) {
+      Mouse motion = mouse;
+      motion.flag = MouseFlag::move;
+      result = SendWaylandMouseCommand(motion, display_index, button);
+    } else {
+      result = PositionX11Pointer(mouse, display_index);
     }
-    return ret;
+    if (mouse.flag == MouseFlag::move || (down && result != 0)) return result;
+    // Always release an existing press, even if its display disappeared.
   }
 
-  if (!display_) {
-    LOG_ERROR("X11 display not initialized");
-    return -1;
+  if (use_wayland_portal_) {
+    const int result = SendWaylandMouseCommand(mouse, display_index);
+    if (result != 0) return result;
+  } else {
+    if (!display_) return -1;
+    if (button) {
+      constexpr unsigned x11_buttons[] = {1, 3, 2};  // Left, right, middle.
+      if (!XTestFakeButtonEvent(display_, x11_buttons[(flag - 1) / 2], down,
+                                CurrentTime)) return -1;
+      XFlush(display_);
+    } else if (mouse.flag == MouseFlag::wheel_vertical) {
+      if (mouse.s > 0) SimulateMouseWheel(4, mouse.s);
+      if (mouse.s < 0) SimulateMouseWheel(5, -mouse.s);
+    } else if (mouse.flag == MouseFlag::wheel_horizontal) {
+      if (mouse.s > 0) SimulateMouseWheel(6, mouse.s);
+      if (mouse.s < 0) SimulateMouseWheel(7, -mouse.s);
+    }
   }
 
-  switch (remote_action.type) {
-    case mouse:
-      switch (remote_action.m.flag) {
-        case MouseFlag::move: {
-          if (display_index < 0 ||
-              display_index >= static_cast<int>(display_info_list_.size())) {
-            LOG_ERROR("Invalid display index: {}", display_index);
-            return -2;
-          }
-          // A disconnected output has no coordinate space. In particular,
-          // do not collapse every remote movement onto its former origin.
-          if (display_info_list_[display_index].width <= 1 ||
-              display_info_list_[display_index].height <= 1) return -2;
-
-          SetMousePosition(
-              static_cast<int>(remote_action.m.x *
-                                   display_info_list_[display_index].width +
-                               display_info_list_[display_index].left),
-              static_cast<int>(remote_action.m.y *
-                                   display_info_list_[display_index].height +
-                               display_info_list_[display_index].top));
-          break;
-        }
-        case MouseFlag::left_down:
-          if (!XTestFakeButtonEvent(display_, 1, True, CurrentTime)) return -1;
-          XFlush(display_);
-          break;
-        case MouseFlag::left_up:
-          if (!XTestFakeButtonEvent(display_, 1, False, CurrentTime)) return -1;
-          XFlush(display_);
-          break;
-        case MouseFlag::right_down:
-          if (!XTestFakeButtonEvent(display_, 3, True, CurrentTime)) return -1;
-          XFlush(display_);
-          break;
-        case MouseFlag::right_up:
-          if (!XTestFakeButtonEvent(display_, 3, False, CurrentTime)) return -1;
-          XFlush(display_);
-          break;
-        case MouseFlag::middle_down:
-          if (!XTestFakeButtonEvent(display_, 2, True, CurrentTime)) return -1;
-          XFlush(display_);
-          break;
-        case MouseFlag::middle_up:
-          if (!XTestFakeButtonEvent(display_, 2, False, CurrentTime)) return -1;
-          XFlush(display_);
-          break;
-        case MouseFlag::wheel_vertical: {
-          if (remote_action.m.s > 0) {
-            SimulateMouseWheel(4, remote_action.m.s);
-          } else if (remote_action.m.s < 0) {
-            SimulateMouseWheel(5, -remote_action.m.s);
-          }
-          break;
-        }
-        case MouseFlag::wheel_horizontal: {
-          if (remote_action.m.s > 0) {
-            SimulateMouseWheel(6, remote_action.m.s);
-          } else if (remote_action.m.s < 0) {
-            SimulateMouseWheel(7, -remote_action.m.s);
-          }
-          break;
-        }
-      }
-      break;
-    default:
-      break;
-  }
-
-  const int flag = static_cast<int>(remote_action.m.flag);
-  if (flag >= 1 && flag <= 6) {
+  if (button) {
     const unsigned bit = 1u << ((flag - 1) / 2);
-    if (flag & 1) pressed_buttons_ |= bit;
+    if (down) pressed_buttons_ |= bit;
     else pressed_buttons_ &= ~bit;
   }
   return 0;
 }
 
-void PlatformMouseController::SetMousePosition(int x, int y) {
-  if (!display_) {
-    return;
-  }
-  // Inject motion through XTest so XInput2 raw-motion listeners (including
-  // SDL's global pointer cache) see the movement.
-  // XWarpPointer moves the cursor without producing those raw events.
-  XTestFakeMotionEvent(display_, DefaultScreen(display_), x, y, CurrentTime);
+int PlatformMouseController::PositionX11Pointer(const Mouse& mouse, int display_index) {
+  if (!display_ || display_index < 0 ||
+      display_index >= static_cast<int>(display_info_list_.size())) return -1;
+  const auto& display = display_info_list_[display_index];
+  if (display.width <= 1 || display.height <= 1 ||
+      !std::isfinite(mouse.x) || !std::isfinite(mouse.y)) return -2;
+  const auto pixel = [](float value, int extent) {
+    return std::min(static_cast<int>(std::clamp(value, 0.f, 1.f) * extent), extent - 1);
+  };
+  // XTest also updates consumers of raw motion, including SDL.
+  if (!XTestFakeMotionEvent(display_, DefaultScreen(display_),
+                            display.left + pixel(mouse.x, display.width),
+                            display.top + pixel(mouse.y, display.height), CurrentTime)) return -1;
   XFlush(display_);
+  return 0;
 }
 
 void PlatformMouseController::SimulateKeyDown(int kval) {

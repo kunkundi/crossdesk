@@ -21,7 +21,8 @@
 namespace crossdesk {
 namespace localization {
 
-inline constexpr int kSystemLanguage = 10;
+inline constexpr int kSystemLanguage = 12;
+inline constexpr int kHebrewLanguage = 11;
 inline constexpr int kEnglishLanguage = 1;
 
 // Keep 0/1/2 compatible with existing Chinese/English/Russian config files.
@@ -40,9 +41,11 @@ inline int MatchLanguage(std::string tag) {
                    parts.find("-hk-") != std::string::npos ||
                    parts.find("-mo-") != std::string::npos ? 3 : 0;
   }
-  const char* codes[] = {"zh", "en", "ru", "zh", "ja", "ko", "de", "fr", "es", "pt"};
+  const char* codes[] = {"zh", "en", "ru", "zh", "ja", "ko", "de", "fr", "es", "pt", "tr", "he"};
   for (int i = 1; i < kSystemLanguage; ++i)
     if (i != 3 && base == codes[i]) return i;
+  // iw הוא קוד ה-ISO הישן לעברית, ש-Java ו-glibc ישנים עדיין מחזירים.
+  if (base == "iw") return kHebrewLanguage;
   if (base == "c" || base == "posix") return kEnglishLanguage;
   return -1;
 }

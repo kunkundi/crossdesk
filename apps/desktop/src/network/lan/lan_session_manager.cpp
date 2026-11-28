@@ -324,22 +324,29 @@ void SessionManager::RefreshListeners() {
 std::string SessionManager::TakeNewPassword() {
   return std::exchange(new_password_, {});
 }
-SessionManager::SessionPtr SessionManager::Connect(const std::string& address,
-                                                   unsigned port,
-                                                   std::string password) {
+SessionManager::SessionPtr SessionManager::Connect(
+    const std::string& address, unsigned port, std::string password,
+    const std::string& expected_key, bool saved_password) {
   if (stopping_ || sessions_.size() >= 24 || (controller_peer_ && !sessions_.empty()))
     throw std::runtime_error("LAN connection limit reached");
   if (!ValidPassword(password))
     throw std::runtime_error(
         "LAN password must contain exactly 6 ASCII letters or digits");
-  if (RetryAfter(address, port) > 0) {
+  const auto target = ParseDialEndpoint(address, port);
+  if (target.kind == DialEndpoint::DnsName &&
+      (saved_password || !expected_key.empty()) &&
+      !ValidFingerprint(expected_key)) {
+    Wipe(password);
+    throw std::runtime_error("FingerprintMissing");
+  }
+  const auto retry = retry_at_.find(FormatEndpoint(target.host, target.port));
+  if (retry != retry_at_.end() && retry->second > Clock::now()) {
     Wipe(password);
     throw std::runtime_error("AuthenticationRateLimited");
   }
   auto s = std::make_shared<Session>();
-  const auto [ip, endpoint_port] = ParseEndpoint(address, port);
-  s->target = Target{ip, {}, endpoint_port};
-  s->channel = transport_.Connect(s->target);
+  s->target = Target{target.host, {}, target.port};
+  s->channel = transport_.Connect(target, expected_key);
   s->password = std::move(password);
   s->epoch = epoch_;
   s->key = "lan/" + RandomHex(16);
@@ -353,7 +360,8 @@ bool SessionManager::Send(const SessionPtr& s, Json j, bool sequenced) {
     j["session_id"] = s->session_id;
     j["seq"] = s->send_seq + 1;
   }
-  if (s->closing || !transport_.Send(s->channel, j.dump())) {
+  if (s->closing ||
+      !transport_.Send(s->channel, j.dump(), j.at("type") == "auth")) {
     Close(s, "SignalSendFailed");
     return false;
   }
@@ -755,6 +763,14 @@ void SessionManager::Tick() {
     }
     auto s = it->second;
     if (s->closing) continue;
+    if (hooks_.diagnostic && !s->channel->dial_diagnostic.empty() &&
+        s->phase == Session::Connecting) {
+      const std::string outcome =
+          event.kind == Transport::Event::Open
+              ? "open"
+              : event.payload.substr(0, event.payload.find(':'));
+      hooks_.diagnostic(s->channel->dial_diagnostic + " result=" + outcome);
+    }
     if (event.kind == Transport::Event::Open) {
       s->deadline = Clock::now() + std::chrono::seconds(10);
       s->phase = s->incoming ? Session::AwaitAuth : Session::AwaitAuthResult;
@@ -767,9 +783,15 @@ void SessionManager::Tick() {
         Send(s, auth);
         Wipe(auth["password"].get_ref<std::string&>());
       }
-    } else if (event.kind == Transport::Event::Closed)
-      Close(s, event.payload.empty() ? "ConnectionClosed" : event.payload);
-    else
+    } else if (event.kind == Transport::Event::Closed) {
+      if (event.payload.rfind("HostKeyChanged:", 0) == 0 &&
+          ValidFingerprint(event.payload.substr(15))) {
+        s->observed_host_key = event.payload.substr(15);
+        Close(s, "HostKeyChanged");
+      } else {
+        Close(s, event.payload.empty() ? "ConnectionClosed" : event.payload);
+      }
+    } else
       try {
         Message(s, event.payload);
       } catch (...) {
@@ -784,7 +806,8 @@ void SessionManager::Tick() {
       Fail(s, FailureReason(*s, "SecureTransportFailed"));
       continue;
     }
-    if (s->phase != Session::Connected && now >= s->deadline) {
+    if (s->phase != Session::Connected && now >= s->deadline &&
+        !(s->phase == Session::Connecting && IsDnsName(s->target.address))) {
       Fail(s, s->phase == Session::Negotiating ? "IceConnectionTimeout"
                                                : "Timeout");
       continue;

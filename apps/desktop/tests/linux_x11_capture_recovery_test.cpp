@@ -175,7 +175,7 @@ namespace crossdesk {
 bool IsWaylandSession() { return false; }
 bool PlatformMouseController::InitWaylandPortal() { return false; }
 void PlatformMouseController::CleanupWaylandPortal() {}
-int PlatformMouseController::SendWaylandMouseCommand(RemoteAction, int) {
+int PlatformMouseController::SendWaylandMouseCommand(const Mouse&, int, bool) {
   std::abort();
 }
 void PlatformMouseController::OnWaylandDisplayInfoListUpdated() { std::abort(); }

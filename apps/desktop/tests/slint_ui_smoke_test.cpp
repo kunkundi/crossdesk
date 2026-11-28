@@ -187,6 +187,10 @@ void ResetMainCaptureState(
   window->set_new_password_input("");
   window->set_alias_open(false);
   window->set_alias_input("");
+  window->set_rename_group_open(false);
+  window->set_rename_group_target("");
+  window->set_rename_group_input("");
+  window->set_rename_group_error("");
   window->set_delete_open(false);
   window->set_offline_warning("");
   window->set_connection_dialog_open(false);

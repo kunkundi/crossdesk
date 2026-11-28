@@ -48,6 +48,13 @@ rule("crossdesk.about_resources")
             documents = {{title = "GNU LGPL v3", text = read("deps/submodules/minirtc/LICENSE")},
                          {title = "GNU GPL v3", text = read("LICENSE")}}
         }}
+        if target:is_plat("macosx") then
+            table.insert(components, {
+                id = "snug", name = "Snug (virtual display)", version = "2.8.0",
+                license = "MIT", sourceURL = "https://github.com/zephyr4123/snug/tree/v2.8.0",
+                documents = {{title = "MIT", text = read("apps/desktop/resources/macos/Snug-LICENSE.txt")}}
+            })
+        end
         local seen = {}
         for _, dependency in ipairs(table.join({target}, target:orderdeps())) do
             for _, package in ipairs(dependency:orderpkgs()) do

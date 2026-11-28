@@ -16,6 +16,12 @@ void EnsureDirectory(const std::filesystem::path& directory,
                      bool protect_existing = false);
 std::string Read(const std::filesystem::path& path);
 void Write(const std::filesystem::path& path, const std::string& text);
+#ifdef _WIN32
+// Atomically replace a private file and return the Win32 status, including
+// sharing violations that MoveFileEx reports as access denied.
+unsigned long ReplaceTemporaryFile(const std::filesystem::path& temporary,
+                                   const std::filesystem::path& target);
+#endif
 }
 
 #endif

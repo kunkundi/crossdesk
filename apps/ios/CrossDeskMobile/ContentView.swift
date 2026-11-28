@@ -81,6 +81,15 @@ struct ContentView: View {
             get: { session.connectionFailureMessage != nil },
             set: { if !$0 { session.dismissConnectionFailure() } }
         )) {
+            if let change = session.hostKeyChange {
+                Button(NSLocalizedString("连接新设备", comment: "")) {
+                    session.requestedPasswordPrompt = .init(target: change.target, expectedKey: change.observed)
+                }
+                Button(NSLocalizedString("复制指纹", comment: "")) { UIPasteboard.general.string = change.expected + "\n" + change.observed }
+            }
+            if let retry = session.rejectedPasswordPrompt {
+                Button(NSLocalizedString("重试", comment: "")) { session.requestedPasswordPrompt = retry }
+            }
             Button(NSLocalizedString("确定", comment: ""), role: .cancel) { session.dismissConnectionFailure() }
         } message: {
             Text(session.connectionFailureMessage ?? "")
@@ -189,6 +198,7 @@ private struct ConnectionHomeView: View {
     @FocusState private var remoteIDFocused: Bool
     @State private var passwordPromptVisible = false
     @State private var promptRemoteID = ""
+    @State private var replacementKey: String?
     @State private var promptPassword = ""
     @State private var promptRememberPassword = false
     @State private var groupFilter: String?
@@ -206,7 +216,7 @@ private struct ConnectionHomeView: View {
         Binding(
             get: { formatRemoteID(session.remoteID) },
             set: { value in
-                session.remoteID = String(value.replacingOccurrences(of: " ", with: "").prefix(160))
+                session.remoteID = value.allSatisfy { $0.isNumber || $0 == " " } ? value.replacingOccurrences(of: " ", with: "") : value
             }
         )
     }
@@ -325,10 +335,15 @@ private struct ConnectionHomeView: View {
                 passwordPromptVisible = false
                 session.remoteID = promptRemoteID
                 session.connect(password: promptPassword,
-                                rememberPassword: promptRememberPassword)
+                                rememberPassword: promptRememberPassword, replacement: replacementKey)
             }
             .presentationDetents([.height(340)])
             .presentationDragIndicator(.visible)
+        }
+        .onValueChange(of: session.requestedPasswordPrompt) { prompt in
+            guard let prompt else { return }
+            session.requestedPasswordPrompt = nil
+            presentPasswordPrompt(for: prompt.target, replacement: prompt.expectedKey)
         }
         .sheet(item: $groupDevice) { device in
             RecentGroupEditor(device: device, groups: recentGroups) { groups in
@@ -450,7 +465,7 @@ private struct ConnectionHomeView: View {
             }
 
             HStack(spacing: 10) {
-                TextField(NSLocalizedString("设备 ID 或 IP 地址", comment: ""), text: groupedRemoteID)
+                TextField(NSLocalizedString("设备 ID、IP 或域名", comment: ""), text: groupedRemoteID)
                     .keyboardType(.asciiCapable)
                     .textContentType(.username)
                     .textInputAutocapitalization(.never)
@@ -678,7 +693,7 @@ private struct ConnectionHomeView: View {
         .transition(.opacity.combined(with: .scale(scale: 0.96)))
     }
 
-    private func presentPasswordPrompt(for identifier: String) {
+    private func presentPasswordPrompt(for identifier: String, replacement: String? = nil) {
         guard !passwordPromptVisible, session.canStartConnection else { return }
         guard session.hasNetworkConsent else {
             remoteIDFocused = false
@@ -692,8 +707,15 @@ private struct ConnectionHomeView: View {
         }
         remoteIDFocused = false
         guard let target = session.connectionTarget(trimmed) else { return }
+        if replacement == nil, CrossDeskRTCBridge.isDomainEndpoint(target),
+           let saved = session.savedCredential(for: target) {
+            session.remoteID = target
+            session.connect(password: saved, rememberPassword: true, saved: true)
+            return
+        }
+        replacementKey = replacement
         promptRemoteID = target
-        promptPassword = session.savedPassword(for: target)
+        promptPassword = CrossDeskRTCBridge.isDomainEndpoint(target) ? "" : session.savedPassword(for: target)
         promptRememberPassword = session.remembersPassword(for: target)
         passwordPromptVisible = true
     }
@@ -715,7 +737,7 @@ private struct ConnectionHomeView: View {
 
         if connection.remembersPassword,
            let savedPassword = session.savedCredential(for: connection.remoteID) {
-            session.connect(password: savedPassword, rememberPassword: true)
+            session.connect(password: savedPassword, rememberPassword: true, saved: true)
         } else {
             presentPasswordPrompt(for: connection.remoteID)
         }
