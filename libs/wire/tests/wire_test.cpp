@@ -249,6 +249,31 @@ int main() {
                "unspecified platform must be advertised as unknown");
   crossdesk::FreeRemoteAction(advertised);
 
+  advertised = crossdesk::MakeHostInformation("Host", {}, false);
+  ok &= Expect(!advertised.i.supports_relative_mouse,
+               "hosts must opt in to relative mouse");
+  advertised.i.supports_relative_mouse = true;
+  ok &= Expect(advertised.to_json().find("\"supports_relative_mouse\":true") !=
+                   std::string::npos &&
+                   parsed_host.from_json(advertised.to_json()) &&
+                   parsed_host.i.supports_relative_mouse,
+               "relative mouse capability must survive a JSON round trip");
+  crossdesk::FreeRemoteAction(parsed_host);
+  crossdesk::FreeRemoteAction(advertised);
+  ok &= Expect(parsed_host.from_json(
+                   "{\"type\":3,\"host_info\":{\"host_name\":\"Legacy\","
+                   "\"display_num\":0,\"displays\":[]}}") &&
+                   !parsed_host.i.supports_relative_mouse,
+               "legacy hosts must not advertise relative mouse");
+  crossdesk::FreeRemoteAction(parsed_host);
+#if defined(_WIN32)
+  ok &= Expect(crossdesk::HostSupportsRelativeMouse(),
+               "Windows hosts inject relative mouse");
+#else
+  ok &= Expect(!crossdesk::HostSupportsRelativeMouse(),
+               "only Windows hosts inject relative mouse");
+#endif
+
   // Missing and malformed optional versions must not break legacy host info.
   for (const auto& version_field : std::vector<std::string>{
            "", ",\"app_version\":null", ",\"app_version\":123",

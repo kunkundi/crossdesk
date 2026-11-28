@@ -152,6 +152,7 @@ struct HostInfo {
   bool supports_video_settings;
   bool supports_video_codec_status;
   bool supports_text_input;
+  bool supports_relative_mouse;
   bool supports_deskhub_preview;
   bool supports_deskhub_resolution;
   bool supports_deskhub_fps15;
@@ -271,6 +272,9 @@ RemoteAction MakeHostInformation(const std::string& host_name,
                                  bool supports_privacy_screen,
                                  const std::string& app_version = {},
                                  HostPlatform platform = HostPlatform::Unknown);
+
+// True only on hosts whose mouse controller injects position-free packets.
+bool HostSupportsRelativeMouse();
 
 }  // namespace crossdesk
 

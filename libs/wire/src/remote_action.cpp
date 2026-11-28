@@ -89,6 +89,7 @@ void ResetHostInfo(HostInfo& info) {
   info.supports_video_settings = false;
   info.supports_video_codec_status = false;
   info.supports_text_input = false;
+  info.supports_relative_mouse = false;
   info.supports_deskhub_preview = false;
   info.supports_deskhub_resolution = false;
   info.supports_deskhub_fps15 = false;
@@ -341,6 +342,7 @@ std::string RemoteAction::ToJson(const RemoteAction& action) {
           {"supports_video_settings", action.i.supports_video_settings},
           {"supports_video_codec_status", action.i.supports_video_codec_status},
           {"supports_text_input", action.i.supports_text_input},
+          {"supports_relative_mouse", action.i.supports_relative_mouse},
           {"supports_deskhub_preview", action.i.supports_deskhub_preview},
           {"supports_deskhub_resolution", action.i.supports_deskhub_resolution},
           {"supports_deskhub_fps15", action.i.supports_deskhub_fps15},
@@ -598,6 +600,8 @@ bool RemoteAction::FromJson(const std::string& json_string,
             privacy_support->is_boolean() && privacy_support->get<bool>();
         output.i.supports_text_input =
             host_info_object.value("supports_text_input", false);
+        output.i.supports_relative_mouse =
+            host_info_object.value("supports_relative_mouse", false);
         output.i.supports_video_settings =
             host_info_object.value("supports_video_settings", false);
         output.i.supports_video_codec_status =
@@ -659,6 +663,14 @@ bool RemoteAction::FromJson(const std::string& json_string,
                  exception.what());
     return false;
   }
+}
+
+bool HostSupportsRelativeMouse() {
+#if defined(_WIN32)
+  return true;
+#else
+  return false;
+#endif
 }
 
 void FreeRemoteAction(RemoteAction& action) {
