@@ -21,6 +21,19 @@ int main() {
         RemoteAction reply{}; assert(reply.from_json(desktop.to_json()));
         assert(reply.type == video_settings_status && reply.vs.accepted && reply.vs.request_id == UINT32_MAX);
       }
+  for (int flag = 0; flag <= 8; ++flag) {
+    const auto message = android_controller::RelativeMouseMessage(flag, 12.5f, -3.f, 2);
+    RemoteAction desktop{};
+    assert(desktop.from_json(message) && desktop.type == mouse && desktop.m.relative);
+    assert(desktop.m.flag == static_cast<MouseFlag>(flag) && desktop.m.s == 2);
+    // Only motion carries a displacement; buttons and wheels act in place.
+    assert(desktop.m.dx == (flag == move ? 12.5f : 0.f));
+    assert(desktop.m.dy == (flag == move ? -3.f : 0.f));
+  }
+  assert(android_controller::RelativeMouseMessage(-1, 1, 1, 0).empty());
+  assert(android_controller::RelativeMouseMessage(9, 1, 1, 0).empty());
+  assert(android_controller::RelativeMouseMessage(0, std::numeric_limits<float>::quiet_NaN(), 1, 0).empty());
+  assert(android_controller::RelativeMouseMessage(0, 1, std::numeric_limits<float>::infinity(), 0).empty());
   MiniRtcNetTrafficStats stats{};
   stats.video_inbound_stats.bitrate = 8'000'000; stats.video_inbound_stats.loss_rate = .02f;
   stats.audio_inbound_stats.bitrate = 64'000; stats.audio_outbound_stats.bitrate = 128'000;

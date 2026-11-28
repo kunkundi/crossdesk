@@ -13,6 +13,7 @@ using mobile_controller::SecureAttentionMessage;
 using mobile_controller::PrivacyMessage;
 using mobile_controller::VideoSettingsMessage;
 using mobile_controller::NetworkReport;
+using mobile_controller::RelativeMouseMessage;
 }
 
 #endif
